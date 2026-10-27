@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { socialCapabilityReadiness } from '~~/server/utils/socialPublishing/capabilityReadiness'
+import { socialCapabilityReadiness, providerAccountOperationEligibility } from '~~/server/utils/socialPublishing/capabilityReadiness'
 import { platformPublishingSupport } from '~~/shared/socialCapabilityReadiness'
 const staff = {clientMapped:true,socialDraft:true,reporting:true,signedRead:true,signedWrite:true}
 const account = {platform:'linkedin',isActive:true,metadata:{grantedScopes:['w_organization_social','r_organization_social']}}
@@ -30,4 +30,11 @@ describe('staff operation readiness',()=>{
     expect(platformPublishingSupport('tiktok').productionReady).toBe(false)
     expect(state({...account,platform:'tiktok'}).organic_publish).toMatchObject({state:'external_blocked',providerState:'external_blocked'})
   })
+  it.each([false, true])('never lets webhook subscription %s mask a missing linked Page', webhook_subscribed => {
+    const linked = { platform: 'instagram', isActive: true, metadata: { via_page_id: 'page', webhook_subscribed, grantedScopes: ['instagram_content_publish'] } }
+    expect(providerAccountOperationEligibility(linked, 'organic_publish').state).toBe('external_blocked')
+    expect(providerAccountOperationEligibility({ ...linked, linkedFacebookAccountId: 'same-client-page', linkedFacebookIsActive: true }, 'organic_publish').state).toBe('available')
+    expect(socialCapabilityReadiness(linked, staff).find(row => row.operation === 'organic_publish')!.state).toBe('external_blocked')
+  })
+
 })

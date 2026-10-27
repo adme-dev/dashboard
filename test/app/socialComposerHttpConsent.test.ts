@@ -15,6 +15,8 @@ vi.mock('~~/server/utils/notifications',()=>({createBulkNotifications:async()=>{
 vi.mock('~~/server/utils/social-providers/http',async original=>({...await original<any>(),providerFetch:(...args:any[])=>f.request(...args),providerFetchRaw:(...args:any[])=>f.request(...args)}))
 // Explicit dormant eligibility override, shared production registry remains false.
 vi.mock('~~/server/utils/socialPublishing/platformReadiness',async original=>({...await original<any>(),productionReadyPublishPlatformsError:()=>null,assertProductionReadyPublishPlatforms:()=>{}}))
+// Dormant TikTok transport exercise only; production provider eligibility remains blocked.
+vi.mock('~~/shared/socialCapabilityReadiness',async original=>{const actual=await original<any>();return {...actual,providerOperationSupport:(platform:string,operation:string)=>platform==='tiktok' && operation==='organic_publish'?{state:'available',reason:'Explicit dormant test override'}:actual.providerOperationSupport(platform,operation)}})
 const C='0a000000-0000-4000-8000-00000000000a',S='51000000-0000-4000-8000-000000000001',ADMIN='ad000000-0000-4000-8000-000000000001',A='fa000000-0000-4000-8000-00000000000a',IMG='aa000000-0000-4000-8000-000000000001'
 const dsn=process.env.SOCIAL_TASK5_TEST_DSN??''
 const state=ref(emptyComposerState())

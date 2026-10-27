@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { toMcpInputSchema } from './project'
 import type { ToolContext, ToolResult } from '~~/server/utils/ai/toolContext'
 import type {
   McpProjectionContext,
@@ -42,6 +43,15 @@ for (const [name, action] of Object.entries(actionByName))
       (schema) => schema.shape.action.value === action
     )! as z.ZodObject<any>
   ).omit({ action: true })
+/** One typed input contract for staff manifests, descriptors and dispatch. */
+function task4StaffSchema(name: string): z.ZodType {
+  if (gtmSchemas[name]) return gtmSchemas[name]!
+  if (name === 'google_ads_list_connections') return z.strictObject({ clientId: z.string().uuid() })
+  const schema = getGoogleAdsToolSchema(name)!
+  return schema instanceof z.ZodObject && 'requestedMode' in schema.shape
+    ? schema.extend({ requestedMode: z.enum(['proposal']).default('proposal') }) : schema
+}
+
 export function projectTask4StaffSuite(
   context: McpProjectionContext
 ): McpToolManifest[] {
@@ -53,17 +63,7 @@ export function projectTask4StaffSuite(
         : context.suiteFlags.googleAdsRead
     )
     .map((name) => {
-      const schema =
-        name === 'google_ads_list_connections'
-          ? z.strictObject({ clientId: z.string().uuid() })
-          : getGoogleAdsToolSchema(name)!
-      const inputSchema = z.toJSONSchema(schema) as any
-      if (inputSchema.properties?.requestedMode)
-        inputSchema.properties.requestedMode = {
-          type: 'string',
-          enum: ['proposal'],
-          default: 'proposal'
-        }
+      const inputSchema = toMcpInputSchema(task4StaffSchema(name)) as any
       return {
         name,
         description:
@@ -82,7 +82,7 @@ export function projectTask4StaffSuite(
         : name === 'record_gtm_tracking_ownership'
           ? 'Record exact host, accepted-enquiry ownership, consent, current-source and documentary evidence; do not include credentials or customer payloads.'
           : 'Read client-scoped tracking inventory or proposal evidence; installation does not prove conversion delivery.',
-      inputSchema: z.toJSONSchema(gtmSchemas[name]!) as any
+      inputSchema: toMcpInputSchema(gtmSchemas[name]!) as any
     }))
   ]
 }
@@ -97,9 +97,7 @@ export function resolveTask4StaffExecutions(
     tool: {
       name: m.name,
       description: m.description,
-      parameters: (gtmSchemas[m.name] ??
-        getGoogleAdsToolSchema(m.name) ??
-        z.strictObject({ clientId: z.string().uuid() })) as any,
+      parameters: task4StaffSchema(m.name) as any,
       mutates: isTask4WriteTool(m.name),
       handler: async () => ({
         ok: false,
@@ -157,7 +155,7 @@ export async function executeTask4StaffTool(
         const { executeGoogleAdsSearchPlanningTool } =
           await import('./googleAdsSearchTools')
         // Server logical request identity, never assistant-selected idempotency, owns durable plan replay.
-        const parsed = getGoogleAdsToolSchema(name)!.parse(args) as Record<
+        const parsed = task4StaffSchema(name).parse(args) as Record<
           string,
           unknown
         >

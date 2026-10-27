@@ -20,7 +20,7 @@ const actionLogFilter = z.object({
 })
 const params = z.object({ actionLog: actionLogFilter.optional() })
 type Args = z.infer<typeof params>
-type ToolMode = 'read' | 'inspection' | 'propose_only' | 'confirmation' | 'direct_generation'
+type ToolMode = 'read' | 'inspection' | 'propose_only' | 'confirmation' | 'direct_generation' | 'local_mutation'
 
 export type CapabilityInspection = {
   tools: Array<{ name: string, mode: ToolMode }>
@@ -254,15 +254,19 @@ export async function inspectCapabilityCatalog(ctx: ToolContext): Promise<Capabi
   const executionsByName = new Map(
     registryModule.resolveGodModeMcpExecutions(projectionContext).map(execution => [execution.name, execution])
   )
-  const executableNames = new Set(executionsByName.keys())
   // Ordinary management MCP staff: exactly their tools/list projection — binding-first runtime
   // config, fresh groups, signed write scope. (Non-management staff never reach get_capabilities.)
   const freshManagement = ctx.mcpStaffAuthority === 'fresh' && policyModule.isMcpManagementStaff(ctx)
+  const staffProjectionContext = { ...projectionContext, suiteFlags: runtimeModule.resolveMcpRuntimeConfig(ctx.event).suiteFlags }
+  const staffExecutions = freshManagement && !ctx.godModeExecutionKey
+    ? registryModule.resolveStaffOnlyMcpExecutions(staffProjectionContext) : []
+  const staffMutationNames = new Set(staffExecutions.filter(execution => execution.tool.mutates).map(execution => execution.name))
+  const executableNames = new Set([...executionsByName.keys(), ...staffExecutions.map(execution => execution.name)])
   const manifests = ctx.godModeExecutionKey
     ? registryModule.projectGodModeTools(projectionContext)
     : freshManagement
       ? policyModule.projectMcpToolsForStaff({
-          context: { ...projectionContext, suiteFlags: runtimeModule.resolveMcpRuntimeConfig(ctx.event).suiteFlags },
+          context: staffProjectionContext,
           staff: ctx
         })
       : registryModule.projectRegisteredMcpTools(projectionContext)
@@ -279,7 +283,9 @@ export async function inspectCapabilityCatalog(ctx: ToolContext): Promise<Capabi
   )
   const alwaysConfirmNames = new Set<string>(feedModule.MCP_FEED_ALWAYS_CONFIRM)
   const unique = [...new Map(manifests.map(manifest => {
-    const mode: ToolMode = manifest.name === 'confirm_action'
+    const mode: ToolMode = staffMutationNames.has(manifest.name)
+      ? 'local_mutation'
+      : manifest.name === 'confirm_action'
       ? 'confirmation'
       : inspectionNames.has(manifest.name)
         ? 'inspection'
@@ -394,6 +400,7 @@ export async function getCapabilities(args: Args, ctx: ToolContext, deps: Capabi
         ? { godModeBypass: 'an owner-authority session direct-executes registry writes; propose_only tools with effectiveMode direct_execute do not stop at a proposal for this identity' }
         : {}),
       read: 'executes immediately',
+      local_mutation: 'saves a local draft, plan, ownership record or review submission; provider publication or execution still requires independent review',
       inspection: 'executes immediately for analysis and evidence capture; does not create a media asset',
       propose_only: 'creates a reviewable proposal without executing it',
       confirmation: 'requires the authenticated user to confirm a proposal',

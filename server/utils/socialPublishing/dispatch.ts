@@ -213,9 +213,15 @@ async function publishClaimedPost(
 ): Promise<{ outcome: PublishOutcome, accountsCount: number }> {
   try {
     const accounts = await queryRows<PublishableAccount>(
-      `SELECT id, platform, platform_account_id, access_token, refresh_token, token_expires_at, account_name, last_error, metadata
-         FROM social_accounts
-        WHERE id = ANY($1) AND client_id = $2 AND is_active = TRUE`,
+      `SELECT sa.id, sa.platform, sa.platform_account_id, sa.access_token, sa.refresh_token, sa.token_expires_at, sa.account_name, sa.last_error, sa.metadata,
+              linked_fb.id AS linked_facebook_account_id, linked_fb.is_active AS linked_facebook_is_active
+         FROM social_accounts sa
+         LEFT JOIN social_accounts linked_fb
+         ON sa.platform = 'instagram'
+        AND linked_fb.client_id = sa.client_id
+        AND linked_fb.platform = 'facebook'
+        AND linked_fb.platform_account_id = sa.metadata->>'via_page_id'
+        WHERE sa.id = ANY($1) AND sa.client_id = $2 AND sa.is_active = TRUE`,
       [post.account_ids ?? [], post.client_id]
     )
     return {
@@ -421,9 +427,15 @@ async function prepareDelegatedPublishablePost(
   if (!targets.length) return { error: 'Approved revision has no publishing targets' }
   const accountIds = [...new Set(targets.map(target => target.accountId))]
   const accounts = await queryRowsFresh<PublishableAccount>(
-    `SELECT id, client_id, platform, platform_account_id, access_token, refresh_token, token_expires_at, account_name, last_error, metadata
-       FROM social_accounts
-      WHERE id = ANY($1) AND client_id = $2 AND is_active = TRUE`,
+    `SELECT sa.id, sa.client_id, sa.platform, sa.platform_account_id, sa.access_token, sa.refresh_token, sa.token_expires_at, sa.account_name, sa.last_error, sa.metadata,
+            linked_fb.id AS linked_facebook_account_id, linked_fb.is_active AS linked_facebook_is_active
+       FROM social_accounts sa
+       LEFT JOIN social_accounts linked_fb
+         ON sa.platform = 'instagram'
+        AND linked_fb.client_id = sa.client_id
+        AND linked_fb.platform = 'facebook'
+        AND linked_fb.platform_account_id = sa.metadata->>'via_page_id'
+      WHERE sa.id = ANY($1) AND sa.client_id = $2 AND sa.is_active = TRUE`,
     [accountIds, claimed.client_id]
   )
   const byId = new Map(accounts.map(account => [account.id, account]))

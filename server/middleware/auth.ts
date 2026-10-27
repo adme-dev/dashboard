@@ -106,7 +106,7 @@ const BANNER_ASSET_CAPABILITY_PATH = /^\/api\/public\/banner-assets\/v1\.[A-Za-z
 const VIDEO_ASSET_CAPABILITY_PATH = /^\/api\/public\/video-assets\/[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/
 // Reviewed social media is fetched by providers at publish time. Only the exact content-pinned
 // capability path reaches the handler, which verifies the HMAC, owner, expiry and stored ETag.
-const SOCIAL_MEDIA_CAPABILITY_PATH = /^\/api\/public\/social-media\/v1\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.(?:jpg|png|gif|webp|mp4|mov)$/
+const SOCIAL_MEDIA_CAPABILITY_PATH = /^\/api\/public\/social-media\/v1\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.(?:jpg|png|gif|webp|mp4|mov|webm)$/
 
 // These operational diagnostics accept either an admin session or the
 // dedicated smoke secret in their handlers. They must reach that inline guard

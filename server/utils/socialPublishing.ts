@@ -14,6 +14,7 @@ import { getProviderOrThrow } from '~~/server/utils/social-providers/registry'
 import { redactSocialMediaCapabilities } from '~~/server/utils/social-providers/http'
 import { execute, queryOne, queryOneFresh } from '~~/server/utils/db'
 import { resolveSocialAccountAccessToken } from '~~/server/utils/socialInbox/tokenRefresh'
+import { providerAccountOperationEligibility } from '~~/server/utils/socialPublishing/capabilityReadiness'
 import { classifySocialPublishingAccountHealth } from '~~/server/utils/socialPublishing/accountHealth'
 import { productionReadyPublishPlatformsError } from '~~/server/utils/socialPublishing/platformReadiness'
 import {
@@ -48,6 +49,8 @@ export interface PublishableAccount {
   refresh_token?: string | null
   token_expires_at?: string | null
   account_name: string | null
+  linked_facebook_account_id?: string | null
+  linked_facebook_is_active?: boolean | null
   last_error?: string | null
   metadata?: Record<string, unknown> | null
 }
@@ -217,9 +220,19 @@ async function prepareTarget(
 ): Promise<{ prepared: PreparedTarget } | { error: string }> {
   const localError = publishTargetPreflightError(platform, account, mediaUrls)
   if (localError) return { error: localError }
+  const firstComment = payload({ options: {} }).firstComment
+  if (reviewed) {
+    const eligibilityError = reviewedAccountEligibilityError(account, firstComment)
+    if (eligibilityError) return { error: eligibilityError }
+  }
   try {
     const provider = getProviderOrThrow(platform)
     const target = await resolvePublishTarget(account, reviewed, event)
+    // Refresh/CAS may replace token and grants; check the fresh winning account, including comments.
+    if (reviewed) {
+      const eligibilityError = reviewedAccountEligibilityError(account, firstComment)
+      if (eligibilityError) return { error: eligibilityError }
+    }
     const built = payload(target)
     if (platform === 'tiktok') {
       if (built.options.consentAccountId !== account.platform_account_id) return {error:'TikTok account changed; renew consent'}
@@ -564,6 +577,21 @@ function publishPrerequisiteError(platform: string, mediaUrls: string[]): string
   return null
 }
 
+/** Governed reviewed targets require known provider grants; legacy callers retain their existing policy. */
+function reviewedAccountEligibilityError(account: PublishableAccount, firstComment?: string | null): string | null {
+  const operations = firstComment ? ['organic_publish', 'organic_comment'] as const : ['organic_publish'] as const
+  for (const operation of operations) {
+    const eligibility = providerAccountOperationEligibility({
+      platform: account.platform, isActive: true, lastError: account.last_error,
+      tokenExpiresAt: account.token_expires_at, hasRefreshToken: Boolean(account.refresh_token),
+      metadata: account.metadata, linkedFacebookAccountId: account.linked_facebook_account_id,
+      linkedFacebookIsActive: account.linked_facebook_is_active
+    }, operation)
+    if (eligibility.state !== 'available') return eligibility.reason
+  }
+  return null
+}
+
 function publishingAccountError(account: PublishableAccount): string | null {
   const health = classifySocialPublishingAccountHealth({
     platform: account.platform,
@@ -571,7 +599,9 @@ function publishingAccountError(account: PublishableAccount): string | null {
     lastError: account.last_error,
     tokenExpiresAt: account.token_expires_at,
     hasRefreshToken: Boolean(account.refresh_token),
-    metadata: account.metadata ?? null
+    metadata: account.metadata ?? null,
+    linkedFacebookAccountId: account.linked_facebook_account_id,
+    linkedFacebookIsActive: account.linked_facebook_is_active
   })
 
   return health.requiresReconnect || health.health === 'reconnect'
@@ -635,13 +665,19 @@ export async function refreshableAccessToken(account: PublishableAccount, review
   // binding must throw rather than letting the shared refresh helper fall back to the losing token.
   const currentBinding = async () => {
     const current = account.client_id ? await queryOneFresh<PublishableAccount>(
-      `SELECT id, client_id, platform, platform_account_id, access_token, refresh_token,
-              token_expires_at, account_name, last_error, metadata
-         FROM social_accounts
-        WHERE id = $1 AND client_id = $2 AND platform = $3 AND platform_account_id = $4 AND is_active = TRUE`,
+      `SELECT sa.id, sa.client_id, sa.platform, sa.platform_account_id, sa.access_token, sa.refresh_token,
+              sa.token_expires_at, sa.account_name, sa.last_error, sa.metadata,
+              linked_fb.id AS linked_facebook_account_id, linked_fb.is_active AS linked_facebook_is_active
+         FROM social_accounts sa
+         LEFT JOIN social_accounts linked_fb
+         ON sa.platform = 'instagram'
+        AND linked_fb.client_id = sa.client_id
+        AND linked_fb.platform = 'facebook'
+        AND linked_fb.platform_account_id = sa.metadata->>'via_page_id'
+        WHERE sa.id = $1 AND sa.client_id = $2 AND sa.platform = $3 AND sa.platform_account_id = $4 AND sa.is_active = TRUE`,
       [account.id, account.client_id, account.platform, account.platform_account_id]
     ) : null
-    if (!current || !current.access_token || publishingAccountError(current)
+    if (!current || !current.access_token || publishingAccountError(current) || reviewedAccountEligibilityError(current)
       || linkedInAccountIsOrganization(current) !== linkedInAccountIsOrganization(account)) {
       throw new Error('Reviewed publishing account changed during token refresh; a new review is required')
     }
@@ -667,7 +703,10 @@ export async function refreshableAccessToken(account: PublishableAccount, review
       token_expires_at: account.token_expires_at ?? null
     }
   })
-  return reviewed ? (await currentBinding()).access_token : token
+  if (!reviewed) return token
+  const current = await currentBinding()
+  Object.assign(account, current)
+  return current.access_token
 }
 
 function errorMessage(error: unknown): string {

@@ -14,6 +14,7 @@ import { validateTikTokReviewedTargets } from '~~/server/utils/socialPublishing/
 //    revisions so the existing client-portal gate can bind to the same revision.
 import { createHash } from 'node:crypto'
 import { createError, type H3Event } from 'h3'
+import { assertMarketingCapabilityAtBoundary } from '~~/server/utils/ai/marketing/reviewAuthority'
 import { normalizePublishingTargets } from '~~/server/utils/socialPublishing/guards'
 import { productionReadyPublishPlatformsError } from '~~/server/utils/socialPublishing/platformReadiness'
 import { effectiveSocialPayloadError, resolveEffectiveSocialTargets } from '~~/server/utils/socialPublishing/effectivePayload'
@@ -485,6 +486,9 @@ export async function reviewSocialPostRevision(
       throw createError({ statusCode: 403, statusMessage: 'Requesters cannot review their own delegated submission' })
     }
     if (input.decision === 'approved') {
+      // Locked revision/post identities are authoritative; browser approval carries no MCP scopes.
+      // Revalidate the requester before provider/media access or committing the decision.
+      await assertMarketingCapabilityAtBoundary(input.event, revision.requested_by, post.client_id, 'social_draft')
       if (Date.parse(String(revision.expires_at)) <= now) conflict('This review request expired. Resubmit the draft.')
       const scheduled = revision.snapshot?.schedule?.scheduledAt
       if (scheduled && Date.parse(scheduled) <= now) conflict('The scheduled time has passed. Resubmit with a new schedule.')

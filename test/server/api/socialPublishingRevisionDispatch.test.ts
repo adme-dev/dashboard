@@ -22,7 +22,9 @@ const holder = vi.hoisted(() => ({
   providerPost: null as null | ((params: any) => Promise<any>),
   /** When true the REAL provider registry/adapters run; their HTTP goes to the stubbed global fetch. */
   realProviders: false,
-  authUser: null as null | Record<string, unknown>
+  authUser: null as null | Record<string, unknown>,
+  enqueue: vi.fn(),
+  notify: vi.fn()
 }))
 
 vi.mock('~~/server/utils/db', () => {
@@ -54,6 +56,9 @@ vi.mock('~~/server/utils/social-providers/registry', async (importOriginal) => {
         }
   }
 })
+
+vi.mock('~~/server/utils/agencyWorkflows/client', () => ({ startSocialPublishingWorkflow: holder.enqueue }))
+vi.mock('~~/server/utils/notifications', () => ({ createNotification: holder.notify }))
 
 // Browser routes (delete, approvals list) authenticate the signed-in staff user.
 vi.mock('~~/server/utils/auth', () => ({
@@ -156,6 +161,10 @@ async function seed() {
        ($7, $5, 'instagram', 'ig-a2', 'A Second Instagram')`,
     [FB_A, IG_A, LI_A, FB_B, CLIENT_A, CLIENT_B, IG_A2]
   )
+  await pool.query(`UPDATE social_accounts SET metadata = jsonb_build_object('grantedScopes',
+    CASE platform WHEN 'facebook' THEN '["pages_manage_posts","pages_manage_engagement"]'::jsonb
+      WHEN 'instagram' THEN '["instagram_content_publish","instagram_manage_comments"]'::jsonb
+      ELSE '["w_organization_social","w_organization_social_feed"]'::jsonb END)`)
   for (const [id, client, file, mime] of [
     [IMG_A, CLIENT_A, 'a.jpg', 'image/jpeg'],
     [IMG_A2, CLIENT_A, 'a2.jpg', 'image/jpeg'],
@@ -305,6 +314,8 @@ describe.skipIf(!SOCIAL_TASK3_DSN)('delegated social review against real SQL', (
     holder.authUser = { id: STAFF, role: 'creative', permissionGroups: ['CREATIVE'] }
     await clearCachedTables(pool)
     providerCalls = []
+    holder.enqueue.mockReset()
+    holder.notify.mockReset()
     holder.providerPost = async (params) => {
       providerCalls.push(params)
       return { status: 'success', platformPostId: `${params.platform}-post-${providerCalls.length}`, url: 'https://provider.example/p' }
@@ -444,6 +455,210 @@ describe.skipIf(!SOCIAL_TASK3_DSN)('delegated social review against real SQL', (
     const published = audit.find(row => row.action === 'post_published')!
     expect(published.metadata).toMatchObject({ revisionId, attempt: 1, requesterId: STAFF, reviewerId: ADMIN })
     expect(JSON.stringify(audit)).not.toContain('task3-render-link-secret')
+  })
+
+  describe('Final I1: requester authority at actual approval route', () => {
+    async function approveRoute(postId: string, revisionId: string | null, event = makeEvent()) {
+      holder.authUser = { id: ADMIN, role: 'admin', permissionGroups: ['ADMIN', 'MANAGEMENT', 'CREATIVE'] }
+      Object.assign(globalThis, {
+        defineEventHandler: (fn: unknown) => fn,
+        getRouterParam: () => postId,
+        readBody: async () => ({ revisionId }),
+        createError: (await import('h3')).createError
+      })
+      const { default: handler } = await import('~~/server/api/agency/social/publishing/posts/[id]/approve.post')
+      return await (handler as any)(event)
+    }
+
+    it.each(['grant', 'assignment', 'inactive', 'read-only', 'management-group', 'inactive-client'])('denies %s revoked after submission before effects', async (kind) => {
+      const roleId = randomUUID()
+      if (kind === 'management-group') {
+        await pool.query(`INSERT INTO custom_roles (id, slug) VALUES ($1, 'review-test')`, [roleId])
+        await pool.query(`INSERT INTO role_permission_groups VALUES ($1, 'MANAGEMENT')`, [roleId])
+        await pool.query(`UPDATE team_members SET custom_role_id = $2 WHERE id = $1`, [STAFF, roleId])
+        await pool.query(`DELETE FROM client_team_assignments WHERE team_member_id = $1`, [STAFF])
+      }
+      const { postId, revisionId } = await draftAndSubmit({ scheduledAt: futureIso(2) })
+      const event = kind === 'grant' ? makeEvent({}) : makeEvent()
+      const head = vi.spyOn(bucket, 'head')
+      const get = vi.spyOn(bucket, 'get')
+      try {
+        if (kind === 'assignment') await pool.query(`DELETE FROM client_team_assignments WHERE team_member_id = $1`, [STAFF])
+        if (kind === 'inactive') await pool.query(`UPDATE team_members SET is_active = FALSE WHERE id = $1`, [STAFF])
+        if (kind === 'read-only') {
+          await pool.query(`INSERT INTO custom_roles (id, slug, is_read_only) VALUES ($1, 'readonly-test', TRUE)`, [roleId])
+          await pool.query(`INSERT INTO role_permission_groups VALUES ($1, 'CREATIVE')`, [roleId])
+          await pool.query(`UPDATE team_members SET custom_role_id = $2 WHERE id = $1`, [STAFF, roleId])
+        }
+        if (kind === 'management-group') await pool.query(`DELETE FROM role_permission_groups WHERE role_id = $1`, [roleId])
+        if (kind === 'inactive-client') await pool.query(`UPDATE agency_clients SET is_active = FALSE WHERE id = $1`, [CLIENT_A])
+        await expect(approveRoute(postId, revisionId, event)).rejects.toMatchObject({ statusCode: 403 })
+        expect(await postRow(postId)).toMatchObject({ status: 'draft', approved_revision_id: null, approved_by: null })
+        expect(await revisionRow(revisionId)).toMatchObject({ review_status: 'pending', reviewed_by: null })
+        expect(holder.enqueue).not.toHaveBeenCalled()
+        expect(holder.notify).not.toHaveBeenCalled()
+        expect(head).not.toHaveBeenCalled()
+        expect(get).not.toHaveBeenCalled()
+        expect(providerCalls).toHaveLength(0)
+        expect((await pool.query(`SELECT action FROM social_publishing_audit_events WHERE post_id = $1 AND action IN ('revision_approved', 'post_approved')`, [postId])).rows).toHaveLength(0)
+      } finally {
+        head.mockRestore()
+        get.mockRestore()
+        await pool.query(`UPDATE team_members SET is_active = TRUE, custom_role_id = NULL WHERE id = $1`, [STAFF])
+        await pool.query(`DELETE FROM role_permission_groups WHERE role_id = $1`, [roleId])
+        await pool.query(`DELETE FROM custom_roles WHERE id = $1`, [roleId])
+        await pool.query(`UPDATE agency_clients SET is_active = TRUE WHERE id = $1`, [CLIENT_A])
+        await pool.query(`DELETE FROM client_team_assignments WHERE team_member_id = $1`, [STAFF])
+        await pool.query(`INSERT INTO client_team_assignments VALUES ($1, $2)`, [STAFF, CLIENT_A])
+      }
+    })
+
+    it('approves a current requester and enqueues only after the committed decision', async () => {
+      const { postId, revisionId } = await draftAndSubmit({ scheduledAt: futureIso(2) })
+      holder.enqueue.mockImplementationOnce(async () => {
+        expect(await revisionRow(revisionId)).toMatchObject({ review_status: 'approved', reviewed_by: ADMIN })
+      })
+      expect(await approveRoute(postId, revisionId)).toEqual({ ok: true, revisionId })
+      expect(holder.enqueue).toHaveBeenCalledOnce()
+      expect(await postRow(postId)).toMatchObject({ status: 'scheduled', approved_revision_id: revisionId })
+      expect(providerCalls).toHaveLength(0)
+    })
+
+    it('allows independent rejection after requester grant revocation and preserves legacy approval', async () => {
+      const { postId, revisionId } = await draftAndSubmit()
+      await holder.db!.transaction!(async (db: any) => services.revisions.reviewSocialPostRevision(db, {
+        event: makeEvent({}), postId, revisionId, reviewerId: ADMIN, decision: 'rejected', reason: 'Grant withdrawn'
+      }))
+      expect(await revisionRow(revisionId)).toMatchObject({ review_status: 'rejected' })
+      const legacyId = randomUUID()
+      await pool.query(`INSERT INTO social_posts (id, client_id, created_by, content, platforms, status) VALUES ($1, $2, $3, 'Legacy owner draft', ARRAY['facebook'], 'draft')`, [legacyId, CLIENT_A, ADMIN])
+      expect(await approveRoute(legacyId, null, makeEvent({}))).toEqual({ ok: true })
+      expect(await postRow(legacyId)).toMatchObject({ status: 'approved', approved_by: ADMIN })
+    })
+  })
+
+  describe('Final I2: OAuth Instagram linked Page', () => {
+    beforeEach(async () => {
+      const { mapPagesToAccountRows } = await import('~~/server/utils/socialOAuth/meta')
+      const ig = mapPagesToAccountRows({ id: 'fb-page-a', name: 'Page A', accessToken: 'token', igId: 'ig-a', grantedScopes: ['instagram_content_publish', 'instagram_manage_comments'] }, null).find(row => row.platform === 'instagram')!
+      // The callback persists the subscription result after the pure OAuth mapping.
+      await pool.query(`UPDATE social_accounts SET metadata = $2::jsonb WHERE id = $1`, [IG_A, JSON.stringify({ ...ig.metadata, webhook_subscribed: true })])
+    })
+    afterEach(async () => {
+      uninstallNetwork()
+      await pool.query(`UPDATE social_accounts SET metadata = '{"grantedScopes":["instagram_content_publish","instagram_manage_comments"]}'::jsonb WHERE id = $1`, [IG_A])
+      await pool.query(`UPDATE social_accounts SET client_id = $2, is_active = TRUE, platform_account_id = 'fb-page-a' WHERE id = $1`, [FB_A, CLIENT_A])
+    })
+
+    it('creates, updates, submits, reviews and publishes with an active same-client Page through the real adapter', async () => {
+      const created = await callTool('create_social_post_draft', { clientId: CLIENT_A, targets: [{ platform: 'instagram', accountId: IG_A }], content: 'Initial', mediaAssets: [{ kind: 'banner_asset', id: IMG_A }] })
+      expect(created.ok, JSON.stringify(created)).toBe(true)
+      const postId = (created.data as any).postId
+      expect(await callTool('update_social_post_draft', { postId, patch: { content: 'Linked Page launch' } })).toMatchObject({ ok: true })
+      const submitted = await callTool('submit_social_post_for_review', { postId })
+      expect(submitted.ok, JSON.stringify(submitted)).toBe(true)
+      const revisionId = (submitted.data as any).revision.id
+      await approve(postId, revisionId)
+      installNetwork(call => call.url.endsWith('/ig-a/media') ? json({ id: 'linked-container' })
+        : call.url.endsWith('/ig-a/media_publish') ? json({ id: 'linked-post' })
+        : call.url.includes('/linked-post?') ? json({ permalink: 'https://instagram.example/p/linked' }) : null)
+      expect((await dispatch(postId, revisionId)).status).toBe('published')
+      expect(netCalls.filter(call => call.url.endsWith('/ig-a/media_publish'))).toHaveLength(1)
+      expect(JSON.parse(netCalls.find(call => call.url.endsWith('/ig-a/media'))!.body!).caption).toBe('Linked Page launch')
+    })
+
+    it.each(['missing', 'disconnected', 'reassigned'])('denies %s Page at draft, submission and dispatch with a stale cached row', async (kind) => {
+      const { postId, revisionId } = await draftAndSubmit({ targets: [{ platform: 'instagram', accountId: IG_A }] })
+      await approve(postId, revisionId)
+      const other = await callTool('create_social_post_draft', { clientId: CLIENT_A, targets: [{ platform: 'instagram', accountId: IG_A }], content: 'Awaiting submit', mediaAssets: [{ kind: 'banner_asset', id: IMG_A }] })
+      expect(other.ok).toBe(true)
+      await freezeCachedTable(pool, 'social_accounts')
+      if (kind === 'missing') await pool.query(`UPDATE social_accounts SET platform_account_id = 'page-no-longer-linked' WHERE id = $1`, [FB_A])
+      if (kind === 'disconnected') await pool.query(`UPDATE social_accounts SET is_active = FALSE WHERE id = $1`, [FB_A])
+      if (kind === 'reassigned') await pool.query(`UPDATE social_accounts SET client_id = $2 WHERE id = $1`, [FB_A, CLIENT_B])
+      expect(await callTool('create_social_post_draft', { clientId: CLIENT_A, targets: [{ platform: 'instagram', accountId: IG_A }], content: 'Blocked' })).toMatchObject({ ok: false })
+      expect(await callTool('submit_social_post_for_review', { postId: (other.data as any).postId })).toMatchObject({ ok: false })
+      installNetwork(() => { throw new Error('No provider request permitted') })
+      expect((await dispatch(postId, revisionId)).status).toBe('failed')
+      expect(netCalls).toHaveLength(0)
+      expect(providerCalls).toHaveLength(0)
+    })
+  })
+
+  describe('Final I3: shared provider grant eligibility at reviewed publication', () => {
+    afterEach(() => { uninstallNetwork(); vi.unstubAllEnvs() })
+
+    it.each(['facebook', 'instagram', 'linkedin'])('preflights a later %s target with missing or revoked actual scope before any publication', async (platform) => {
+      const id = platform === 'facebook' ? FB_A : platform === 'instagram' ? IG_A : LI_A
+      const first = platform === 'linkedin' ? { platform: 'facebook', accountId: FB_A } : { platform: 'linkedin', accountId: LI_A }
+      const original = (await pool.query('SELECT metadata FROM social_accounts WHERE id = $1', [id])).rows[0].metadata
+      try {
+        for (const metadata of [{}, { grantedScopes: ['unrelated.read'] }]) {
+          const { postId, revisionId } = await draftAndSubmit({ targets: [first, { platform, accountId: id }] })
+          await approve(postId, revisionId)
+          await freezeCachedTable(pool, 'social_accounts')
+          await pool.query('UPDATE social_accounts SET metadata = $2::jsonb WHERE id = $1', [id, JSON.stringify(metadata)])
+          installNetwork(() => json({}, 201, { 'x-restli-id': 'unexpected' }))
+          const result = await dispatch(postId, revisionId)
+          expect(result.status).toBe('failed')
+          expect(netCalls.filter(isPublication)).toHaveLength(0)
+          expect(netCalls).toHaveLength(0)
+          expect(JSON.stringify(result.platformResults)).toContain('Actual provider grant')
+          await pool.query('UPDATE social_accounts SET metadata = $2::jsonb WHERE id = $1', [id, JSON.stringify(original)])
+          await clearCachedTables(pool)
+        }
+      } finally {
+        await pool.query('UPDATE social_accounts SET metadata = $2::jsonb WHERE id = $1', [id, JSON.stringify(original)])
+        await clearCachedTables(pool)
+      }
+    })
+
+    it.each(['missing', 'reduced', 'cas-winner', 'comment-reduced'])('rejects %s scope evidence after a real LinkedIn refresh before earlier Facebook publication', async (kind) => {
+      const { postId, revisionId } = await draftAndSubmit({ targets: [{ platform: 'facebook', accountId: FB_A }, { platform: 'linkedin', accountId: LI_A }], mediaAssets: [], ...(kind === 'comment-reduced' ? { firstComment: 'Reviewed comment' } : {}) })
+      await approve(postId, revisionId)
+      const original = (await pool.query('SELECT metadata FROM social_accounts WHERE id = $1', [LI_A])).rows[0].metadata
+      await pool.query(`UPDATE social_accounts SET access_token = 'old-token', refresh_token = 'refresh', token_expires_at = NOW() + INTERVAL '1 minute' WHERE id = $1`, [LI_A])
+      await freezeCachedTable(pool, 'social_accounts')
+      const event = makeEvent()
+      Object.assign(event.context.cloudflare.env, { LINKEDIN_ORGANIC_CLIENT_ID: 'fixture-id', LINKEDIN_ORGANIC_CLIENT_SECRET: 'fixture-secret' })
+      installNetwork(async call => {
+        if (call.url.endsWith('/oauth/v2/accessToken')) {
+          if (kind === 'cas-winner') await pool.query(`UPDATE social_accounts SET access_token = 'winner-token', metadata = '{"grantedScopes":[]}'::jsonb, token_expires_at = NOW() + INTERVAL '1 day' WHERE id = $1`, [LI_A])
+          return json({ access_token: 'refreshed-token', expires_in: 3600, ...(kind === 'missing' ? {} : { scope: ['cas-winner', 'comment-reduced'].includes(kind) ? 'w_organization_social' : 'r_organization_social' }) })
+        }
+        return json({}, 201, { 'x-restli-id': 'unexpected-post' })
+      })
+      try {
+        expect((await dispatch(postId, revisionId, event)).status).toBe('failed')
+        expect(netCalls.filter(call => call.url.endsWith('/oauth/v2/accessToken'))).toHaveLength(1)
+        expect(netCalls.filter(isPublication)).toHaveLength(0)
+        expect((await pool.query('SELECT metadata FROM social_accounts WHERE id = $1', [LI_A])).rows[0].metadata.grantedScopes).not.toContain(kind === 'comment-reduced' ? 'w_organization_social_feed' : 'w_organization_social')
+      } finally {
+        await pool.query(`UPDATE social_accounts SET access_token = 'token', refresh_token = NULL, token_expires_at = NULL, metadata = $2::jsonb WHERE id = $1`, [LI_A, JSON.stringify(original)])
+        await clearCachedTables(pool)
+      }
+    })
+
+    it('publishes every healthy approved target through real Facebook and LinkedIn adapters', async () => {
+      const { postId, revisionId } = await draftAndSubmit({ targets: [{ platform: 'facebook', accountId: FB_A }, { platform: 'linkedin', accountId: LI_A }], mediaAssets: [] })
+      await approve(postId, revisionId)
+      installNetwork(call => call.url.endsWith('/fb-page-a/feed') ? json({ id: 'fb-page-a_post' })
+        : call.url.endsWith('/rest/posts') ? json({}, 201, { 'x-restli-id': 'urn:li:share:healthy' }) : null)
+      expect((await dispatch(postId, revisionId)).status).toBe('published')
+      expect(netCalls.filter(isPublication)).toHaveLength(2)
+    })
+
+    it('checks requested first-comment grant independently while preserving post-only eligibility', async () => {
+      const { postId, revisionId } = await draftAndSubmit({ targets: [{ platform: 'facebook', accountId: FB_A }], mediaAssets: [], firstComment: 'Reviewed first comment' })
+      await approve(postId, revisionId)
+      const original = (await pool.query('SELECT metadata FROM social_accounts WHERE id = $1', [FB_A])).rows[0].metadata
+      await pool.query(`UPDATE social_accounts SET metadata = '{"grantedScopes":["pages_manage_posts"]}'::jsonb WHERE id = $1`, [FB_A])
+      try {
+        installNetwork(() => json({ id: 'unexpected' }))
+        expect((await dispatch(postId, revisionId)).status).toBe('failed')
+        expect(netCalls).toHaveLength(0)
+      } finally { await pool.query('UPDATE social_accounts SET metadata = $2::jsonb WHERE id = $1', [FB_A, JSON.stringify(original)]) }
+    })
   })
 
   it('invalidates approval on edit so an old callback cannot publish the new content', async () => {

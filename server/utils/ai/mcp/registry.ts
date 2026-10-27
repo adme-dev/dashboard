@@ -217,15 +217,15 @@ function projectSuites(
   return [...byName.values()].map(entry => entry.manifest)
 }
 
-function resolveOwnerCatalog(
+function resolveCatalog(
   context: McpProjectionContext,
-  suites: readonly RegisteredMcpSuite[]
+  suites: readonly RegisteredMcpSuite[],
+  staffOnly = false
 ): { manifests: McpToolManifest[], executions: McpExecutionDescriptor[] } {
-  const ownerContext = { ...context, governanceBypass: true }
-  const manifests = projectSuites(ownerContext, suites)
+  const manifests = projectSuites(context, suites)
   const executionRows = new Map<string, Array<{ suiteKey: string, descriptor: McpExecutionDescriptor }>>()
   for (const suite of suites) {
-    for (const descriptor of suite.executions(ownerContext)) {
+    for (const descriptor of suite.executions(context)) {
       if (
         !descriptor
         || typeof descriptor.name !== 'string'
@@ -242,7 +242,8 @@ function resolveOwnerCatalog(
         throw new Error(`Local-transactional MCP resolver requires a transaction-aware executor: ${descriptor.name}`)
       }
       if (
-        descriptor.kind === 'supplemental'
+        !staffOnly
+        && descriptor.kind === 'supplemental'
         && descriptor.tool.mutates
         && descriptor.executionClass !== 'local-transactional'
         && typeof descriptor.executeSupplemental !== 'function'
@@ -294,18 +295,26 @@ export function projectStaffOnlyMcpTools(
   context: McpProjectionContext,
   suites: readonly RegisteredMcpSuite[] = staffOnlyMcpSuites
 ): McpToolManifest[] {
-  const manifests = projectSuites({ ...context, governanceBypass: false }, suites)
-  const names = new Set(manifests.map(manifest => manifest.name))
-  for (const suite of suites) {
-    for (const descriptor of suite.executions(context)) {
-      if (!names.has(descriptor.name)) throw new Error(`MCP execution resolver has no projected manifest: ${descriptor.name}`)
-      if (descriptor.executionClass && descriptor.executionClass !== 'local-transactional') {
-        throw new Error(`Staff-only MCP suites may only execute locally: ${descriptor.name}`)
-      }
-      if (descriptor.executeSupplemental) throw new Error(`Staff-only MCP suites expose no dispatch executor: ${descriptor.name}`)
+  return resolveStaffOnlyCatalog(context, suites).manifests
+}
+
+function resolveStaffOnlyCatalog(context: McpProjectionContext, suites: readonly RegisteredMcpSuite[]) {
+  const resolved = resolveCatalog({ ...context, governanceBypass: false }, suites, true)
+  for (const descriptor of resolved.executions) {
+    if (descriptor.executionClass && descriptor.executionClass !== 'local-transactional') {
+      throw new Error(`Staff-only MCP suites may only execute locally: ${descriptor.name}`)
     }
+    if (descriptor.executeSupplemental) throw new Error(`Staff-only MCP suites expose no dispatch executor: ${descriptor.name}`)
   }
-  return manifests
+  return resolved
+}
+
+/** Validated staff descriptors; calls still use their scoped staff dispatch boundary, never God mode. */
+export function resolveStaffOnlyMcpExecutions(
+  context: McpProjectionContext,
+  suites: readonly RegisteredMcpSuite[] = staffOnlyMcpSuites
+): McpExecutionDescriptor[] {
+  return resolveStaffOnlyCatalog(context, suites).executions
 }
 
 /**
@@ -317,14 +326,14 @@ export function projectGodModeTools(
   context: McpProjectionContext,
   suites: readonly RegisteredMcpSuite[] = registeredMcpSuites
 ): McpToolManifest[] {
-  return resolveOwnerCatalog(context, suites).manifests
+  return resolveCatalog({ ...context, governanceBypass: true }, suites).manifests
 }
 
 export function resolveGodModeMcpExecutions(
   context: McpProjectionContext,
   suites: readonly RegisteredMcpSuite[] = registeredMcpSuites
 ): McpExecutionDescriptor[] {
-  return resolveOwnerCatalog(context, suites).executions
+  return resolveCatalog({ ...context, governanceBypass: true }, suites).executions
 }
 
 export function resolveGodModeMcpExecution(

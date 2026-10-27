@@ -85,6 +85,8 @@ interface PublishingAccountValidationRow {
   is_active?: boolean
   last_error?: string | null
   token_expires_at?: string | null
+  linked_facebook_account_id?: string | null
+  linked_facebook_is_active?: boolean | null
   has_refresh_token?: boolean
   metadata?: Record<string, unknown> | string | null
 }
@@ -255,11 +257,17 @@ export async function assertPublishingTargets(
   if (!accountIds.length) return accountIds
 
   const rows = await queryRows<PublishingAccountValidationRow>(
-    `SELECT id, platform, is_active, last_error, token_expires_at, metadata,
-            (NULLIF(refresh_token, '') IS NOT NULL) AS has_refresh_token
-       FROM social_accounts
-      WHERE id = ANY($1)
-        AND client_id = $2`,
+    `SELECT sa.id, sa.platform, sa.is_active, sa.last_error, sa.token_expires_at, sa.metadata,
+            (NULLIF(sa.refresh_token, '') IS NOT NULL) AS has_refresh_token,
+            linked_fb.id AS linked_facebook_account_id, linked_fb.is_active AS linked_facebook_is_active
+       FROM social_accounts sa
+       LEFT JOIN social_accounts linked_fb
+         ON sa.platform = 'instagram'
+        AND linked_fb.client_id = sa.client_id
+        AND linked_fb.platform = 'facebook'
+        AND linked_fb.platform_account_id = sa.metadata->>'via_page_id'
+      WHERE sa.id = ANY($1)
+        AND sa.client_id = $2`,
     [accountIds, clientId]
   )
   const byId = new Map(rows.map(row => [row.id, row]))
@@ -331,11 +339,17 @@ export async function normalizePublishingTargets(
 
   const readRows = options.queryRows ?? queryRows
   const rows = await readRows<PublishingAccountValidationRow>(
-    `SELECT id, platform, is_active, last_error, token_expires_at, metadata,
-            (NULLIF(refresh_token, '') IS NOT NULL) AS has_refresh_token
-       FROM social_accounts
-      WHERE id = ANY($1)
-        AND client_id = $2`,
+    `SELECT sa.id, sa.platform, sa.is_active, sa.last_error, sa.token_expires_at, sa.metadata,
+            (NULLIF(sa.refresh_token, '') IS NOT NULL) AS has_refresh_token,
+            linked_fb.id AS linked_facebook_account_id, linked_fb.is_active AS linked_facebook_is_active
+       FROM social_accounts sa
+       LEFT JOIN social_accounts linked_fb
+         ON sa.platform = 'instagram'
+        AND linked_fb.client_id = sa.client_id
+        AND linked_fb.platform = 'facebook'
+        AND linked_fb.platform_account_id = sa.metadata->>'via_page_id'
+      WHERE sa.id = ANY($1)
+        AND sa.client_id = $2`,
     [accountIds, clientId]
   )
   const byId = new Map(rows.map(row => [row.id, row]))
@@ -379,7 +393,9 @@ function assertPublishingAccountUsable(account: PublishingAccountValidationRow):
     lastError: account.last_error,
     tokenExpiresAt: account.token_expires_at,
     hasRefreshToken: account.has_refresh_token,
-    metadata: parseAccountMetadata(account.metadata)
+    metadata: parseAccountMetadata(account.metadata),
+    linkedFacebookAccountId: account.linked_facebook_account_id,
+    linkedFacebookIsActive: account.linked_facebook_is_active
   })
 
   if (health.requiresReconnect || health.health === 'reconnect') {
