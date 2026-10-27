@@ -86,9 +86,11 @@ const API_INVENTORY = {
   // gates and machine credentials remain required. Twelve additional mutations
   // now have inline write gates; dissection import adds a guarded transaction.
   // These lexical counts do not register any God mode mutation bypass.
-  totalRouteFiles: 2294,
+  // Private raster downloads add GET/HEAD; two existing export mutations gain
+  // native write gates while fresh project/client access remains independent.
+  totalRouteFiles: 2296,
   mutationRouteFiles: 1254,
-  explicitlyGuardedMutationFiles: 422,
+  explicitlyGuardedMutationFiles: 424,
   guardedMutationFilesWithTransactionCall: 50
 } as const
 
@@ -137,9 +139,9 @@ describe('God mode route isolation inventory', () => {
   it('records the full mechanical API and mutation inventory reviewed before implementation', () => {
     expect(mechanicalInventory()).toEqual(API_INVENTORY)
     expect(API_INVENTORY).toEqual({
-      totalRouteFiles: 2294,
+      totalRouteFiles: 2296,
       mutationRouteFiles: 1254,
-      explicitlyGuardedMutationFiles: 422,
+      explicitlyGuardedMutationFiles: 424,
       guardedMutationFilesWithTransactionCall: 50
     })
   })

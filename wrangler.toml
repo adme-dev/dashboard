@@ -522,3 +522,13 @@ entrypoint = "EmailRenderer"
 binding = "EMAIL_RENDERER"
 service = "xeroflow-email-rendering-production"
 entrypoint = "EmailRenderer"
+
+[[env.preview.services]]
+binding = "BANNER_RENDERER_STAGING"
+service = "banner-renderer-staging"
+entrypoint = "BannerRenderer"
+
+[[env.production.services]]
+binding = "BANNER_RENDERER_PRODUCTION"
+service = "banner-renderer-production"
+entrypoint = "BannerRenderer"

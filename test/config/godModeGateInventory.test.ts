@@ -317,11 +317,15 @@ describe('God mode gate inventory', () => {
     expect(inventory.rows).not.toContain('server/utils/bannerDissectorPipeline.ts\tconst R2_ACCESS_KEY_ID = process.env.R2_ACCESS_KEY_ID || \'\'\tprovider_infrastructure_availability')
     expect(inventory.rows).not.toContain('server/utils/bannerDissectorPipeline.ts\tconst R2_SECRET_ACCESS_KEY = process.env.R2_SECRET_ACCESS_KEY || \'\'\tprovider_infrastructure_availability')
     expect(inventory.rows).not.toContain('server/utils/bannerDissectorPipeline.ts\tconst R2_BUCKET_NAME = process.env.R2_BUCKET_NAME || \'agency-files\'\tprovider_infrastructure_availability')
-    expect(inventory.rows).toHaveLength(1625)
+    // Raster export mutations now require staff write access. These two native
+    // gates retain project/client authority and register no new bypass.
+    expect(inventory.rows).toContain('server/api/agency/banner-studio/export-image.post.ts\tconst user = await requireWriteAccess(event)\tapplication_governance_bypass')
+    expect(inventory.rows).toContain('server/api/agency/banner-studio/export-gif.post.ts\tconst user = await requireWriteAccess(event)\tapplication_governance_bypass')
+    expect(inventory.rows).toHaveLength(1627)
     expect(inventory.counts).toEqual({
       identity_tenant_hard_boundary: 128,
       provider_infrastructure_availability: 221,
-      application_governance_bypass: 1648,
+      application_governance_bypass: 1650,
       ordinary_user_behavior: 192,
       unrelated_configuration: 435
     })
@@ -338,7 +342,7 @@ describe('God mode gate inventory', () => {
     // Publication casts the PostgreSQL user_role enum to text before comparing
     // the role slug. The predicate, scope and classification remain unchanged.
     expect(inventory.rows).toContain('server/utils/pageStudio/releaseFeatureAuthority.ts\tOR (owner.custom_role_id IS NULL AND role.slug=owner.user_role::text AND role.is_system=TRUE))\tidentity_tenant_hard_boundary')
-    expect(inventory.digest).toBe('3d200d48926a51804066ebd3bd4753b88515ef95169b791dd83f7990a16d8cd5')
+    expect(inventory.digest).toBe('63509634b313ef7888c61578325b6d6ac8e58c031701873516c331fc827e8603')
     expect(inventory.rows).toContain(
       'app/composables/usePageStudioLauncher.ts\tconst config = useRuntimeConfig()\tunrelated_configuration'
     )
