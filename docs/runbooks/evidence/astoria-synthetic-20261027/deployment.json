@@ -1,0 +1,35 @@
+{
+  "at": "2026-10-27T08:05:48.258Z",
+  "repo": "adme-dev/astoria-gwm",
+  "branch": "master",
+  "command": "npm run build",
+  "dir": "dist",
+  "functions": "src/functions",
+  "published": {
+    "id": "6ae05b31900c697e170cae95",
+    "commit": "c96233aa1a89c3ab3a9cd6883d064f5715bcf873"
+  },
+  "recent": [
+    {
+      "id": "6ae05b31900c697e170cae95",
+      "state": "ready",
+      "context": "production",
+      "source": "c96233aa1a89c3ab3a9cd6883d064f5715bcf873",
+      "error": null
+    },
+    {
+      "id": "6ae05ab94a8866f420573740",
+      "state": "ready",
+      "context": "deploy-preview",
+      "source": "d3b9a561195aaac81de47936b0adc0175c090a94",
+      "error": null
+    },
+    {
+      "id": "6ae05a81a326f2f3fc573783",
+      "state": "ready",
+      "context": "production",
+      "source": "adc0414084d19ac155383cdd4b8ac443be455c85",
+      "error": null
+    }
+  ]
+}

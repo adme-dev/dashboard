@@ -1,0 +1,113 @@
+{
+  "at": "2026-10-27T08:16:36.025Z",
+  "updateId": "5667400240",
+  "body": "<p>Astoria contained dummy-enquiry proof \u2014 27 October 2026</p><p>The fresh Netlify preview exposed a GitHub clone failure (Repository not found), which the earlier saved-link check had not detected. Reconnected the same repository using existing authorization; fresh builds now succeed. PR7 is merged and production deployment 6ae05b31900c697e170cae95 is published at c96233aa1a89c3ab3a9cd6883d064f5715bcf873.</p><p>The protected diagnostic uses the real accepted-lead service and signed XeroFlow receiver with a simulated CRM response and isolated test storage. All 93 repository tests passed. Production exercised contact, stock, model-variant, rejection, transport retry and duplicate receipt scenarios. The duplicate acknowledgement initially failed; its retained envelope recovered through a manual same-core retry, returning HTTP 200 / duplicate with exactly one lead. This does not prove scheduled-job invocation.</p><p>Readback: six flagged test leads total (one preview plus five accepted production fixtures), no rejected lead, zero sales-rule deliveries, zero CRM links, zero conversion events and zero conversion deliveries. Eight isolated test-storage keys were removed and zero remain. No real CRM enquiry or production conversion was created.</p><p>QA stays open for actual legacy CRM acceptance/hook ownership, controlled browser acceptance and consented GA4/provider reporting. Synthetic success is bounded server-delivery proof; it is not a full customer-path pass. Existing live measurement profile remains enabled. Status, assignee and due date are unchanged.</p><p>Source: https://github.com/adme-dev/astoria-gwm/pull/7<br>Committed ledger and receipts: https://github.com/adme-dev/dashboard/blob/7f333d52a4e65d4c7c8d98def7a5979f4b5220e2/docs/runbooks/ita-dealer-completion-ledger-20261026.md#astoria-contained-synthetic-diagnostics--27-october-07580810-utc</p>",
+  "bodyVerified": true,
+  "fieldsUnchanged": true,
+  "item": {
+    "id": "13225458455",
+    "name": "Driveagent Conversion tracking setup",
+    "column_values": [
+      {
+        "id": "dropdown93",
+        "text": "All Clients",
+        "value": "{\"ids\":[16]}"
+      },
+      {
+        "id": "who",
+        "text": "Paul Giurin",
+        "value": "{\"changed_at\":\"2026-10-19T00:55:21.047Z\",\"personsAndTeams\":[{\"id\":574175,\"kind\":\"person\"}]}"
+      },
+      {
+        "id": "status0",
+        "text": "QA",
+        "value": "{\"index\":11,\"changed_at\":\"2026-10-27T02:00:34.389Z\"}"
+      },
+      {
+        "id": "due_date5",
+        "text": "",
+        "value": null
+      },
+      {
+        "id": "color_mm1mz7k2",
+        "text": "Fixed",
+        "value": "{\"index\":2,\"post_id\":null,\"changed_at\":\"2026-10-07T21:39:36.504Z\"}"
+      },
+      {
+        "id": "text_mm67hxk4",
+        "text": "",
+        "value": null
+      },
+      {
+        "id": "date_mm67aq9h",
+        "text": "",
+        "value": null
+      },
+      {
+        "id": "text_mm67npts",
+        "text": "",
+        "value": null
+      },
+      {
+        "id": "color_mm4k96s3",
+        "text": null,
+        "value": null
+      },
+      {
+        "id": "dropdown_mm1m5vxy",
+        "text": null,
+        "value": null
+      },
+      {
+        "id": "dropdown_mm1m4gkk",
+        "text": null,
+        "value": null
+      },
+      {
+        "id": "numeric",
+        "text": "",
+        "value": null
+      },
+      {
+        "id": "color6",
+        "text": "",
+        "value": null
+      },
+      {
+        "id": "temp",
+        "text": null,
+        "value": null
+      },
+      {
+        "id": "color_mm2n5s5a",
+        "text": null,
+        "value": null
+      },
+      {
+        "id": "time_tracking7",
+        "text": "",
+        "value": "{\"duration\":0}"
+      },
+      {
+        "id": "subitems",
+        "text": null,
+        "value": null
+      },
+      {
+        "id": "last_updated",
+        "text": "2026-10-27 02:00:39 UTC",
+        "value": "{\"updated_at\":\"2026-10-27T02:00:39Z\",\"updater_id\":\"24000966\"}"
+      },
+      {
+        "id": "creation_log",
+        "text": "2026-10-07 06:31:20 UTC",
+        "value": "{\"created_at\":\"2026-10-07T06:31:20Z\",\"creator_id\":\"78099299\"}"
+      },
+      {
+        "id": "direct_doc_mkzwy1rk",
+        "text": "",
+        "value": null
+      }
+    ]
+  }
+}

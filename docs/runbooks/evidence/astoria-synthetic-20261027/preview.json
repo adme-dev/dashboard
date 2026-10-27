@@ -1,0 +1,48 @@
+{
+  "at": "2026-10-27T08:04:10.314Z",
+  "endpoint": "https://deploy-preview-7--astoriagwm.netlify.app",
+  "runId": "56f51b56-8ed9-46a5-90d9-ea62dafdd778",
+  "results": [
+    {
+      "input": {
+        "runId": "56f51b56-8ed9-46a5-90d9-ea62dafdd778",
+        "submissionId": "16a4d60a-8d38-4cf7-97b6-fce0b31bb028",
+        "kind": "contact",
+        "scenario": "accepted"
+      },
+      "startedAt": "2026-10-27T08:04:10.315Z",
+      "status": "received",
+      "httpStatus": 200,
+      "result": {
+        "runId": "56f51b56-8ed9-46a5-90d9-ea62dafdd778",
+        "submissionId": "16a4d60a-8d38-4cf7-97b6-fce0b31bb028",
+        "kind": "contact",
+        "scenario": "accepted",
+        "upstream": "simulated",
+        "simulatedCrmCalls": 1,
+        "webhookAttempts": 1,
+        "first": {
+          "is_valid": true,
+          "confirmation_message": "Thank you for your enquiry. Our team will be in touch shortly.",
+          "submissionId": "16a4d60a-8d38-4cf7-97b6-fce0b31bb028",
+          "trackingStatus": "delivered"
+        },
+        "retry": null,
+        "repeated": {
+          "is_valid": true,
+          "confirmation_message": "Thank you for your enquiry. Our team will be in touch shortly.",
+          "submissionId": "16a4d60a-8d38-4cf7-97b6-fce0b31bb028",
+          "trackingStatus": "delivered"
+        },
+        "receipts": [
+          {
+            "status": 201,
+            "outcome": "created"
+          }
+        ],
+        "ledgerStatus": "delivered",
+        "customerPayloadRetained": false
+      }
+    }
+  ]
+}

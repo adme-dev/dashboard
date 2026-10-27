@@ -1,0 +1,19 @@
+{
+  "at": "2026-10-27T08:08:51.736Z",
+  "runId": "56f51b56-8ed9-46a5-90d9-ea62dafdd778",
+  "scope": "manual same-core retry of isolated synthetic store",
+  "before": "accepted",
+  "attempts": [
+    {
+      "id": "a0fda83e-d84d-43ce-aa33-cba2153e9797",
+      "status": 200,
+      "outcome": "duplicate",
+      "elapsedMs": 5178,
+      "requestId": "a510373f0b6e5aa4-MEL"
+    }
+  ],
+  "retry": {
+    "delivered": 1
+  },
+  "after": "delivered"
+}
