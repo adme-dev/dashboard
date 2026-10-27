@@ -13,7 +13,7 @@ On 27 October, the user explicitly requested updates to the related marketing jo
 | Northern Nissan PMAX | **QA** (06:33 UTC) | `5667297106` |
 | Astoria ORC | Working On It (08:06 UTC readback; human-owned status preserved) | `5667031182` |
 | Fairfield Foton setup | **Done** (05:49 UTC) | `5667260266` |
-| Driveagent conversion tracking | QA | `5667031486` |
+| Driveagent conversion tracking | QA | `5667400240` |
 
 | Parent job | Exact Monday item | Remaining scope |
 | --- | --- | --- |
@@ -342,3 +342,5 @@ After verification, removed exactly eight keys from the isolated test-run Blobs 
 **Remaining:** real legacy CRM acceptance and provider-hook ownership; controlled real-browser external-script-absence acceptance; actual consented event delivery/reporting in GA4 and genuine paid-ad attribution. No production measurement profile was disabled merely to rerun provider validation. The currently deployed profile remains enabled/live v8 with four destinations. Parent tracking task stays QA.
 
 Durable receipts: [production scenarios](evidence/astoria-synthetic-20261027/production.json), [duplicate recovery](evidence/astoria-synthetic-20261027/duplicate-recovery.json), [receiver and containment proof](evidence/astoria-synthetic-20261027/receiver-proof.json), [deployment](evidence/astoria-synthetic-20261027/deployment.json), [published deploy screenshot](evidence/astoria-synthetic-20261027/published-deploy.png), [cleanup](evidence/astoria-synthetic-20261027/cleanup.json), [HTTP guards](evidence/astoria-synthetic-20261027/http-checks.json). Canonical Astoria source/docs were updated in PR7; no maintained graph/wiki refresh is claimed because the earlier access/freshness limitation remains.
+
+Monday update **5667400240** was posted and independently read back at **2026-10-27T08:16:36.025Z** on item **13225458455**. Exact post body verified; status **QA**, assignee Paul Giurin and blank due date were unchanged. The post links the committed evidence, corrects the earlier repository-access claim and preserves the remaining real-customer acceptance boundaries.
