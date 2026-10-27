@@ -1,0 +1,142 @@
+{
+  "at": "2026-10-27T08:10:02.687676+00:00",
+  "run": {
+    "id": "56f51b56-8ed9-46a5-90d9-ea62dafdd778",
+    "status": "running",
+    "expiresAt": "2026-10-27T08:18:37.329889+00:00"
+  },
+  "leads": [
+    {
+      "id": "da653cf1-9039-40be-8d85-fddd4cd2c15e",
+      "source_lead_id": "08a8715c-d153-4e6d-8ff6-ec847be73b4d:a0fda83e-d84d-43ce-aa33-cba2153e9797",
+      "is_test": true,
+      "test_run_id": "56f51b56-8ed9-46a5-90d9-ea62dafdd778",
+      "form_id": "3",
+      "enquiry_type": "contact"
+    },
+    {
+      "id": "489f7f1c-2ad4-4a30-b322-2dc6b75363d7",
+      "source_lead_id": "08a8715c-d153-4e6d-8ff6-ec847be73b4d:47101aed-0455-424d-a40e-7f5c42ac92a1",
+      "is_test": true,
+      "test_run_id": "56f51b56-8ed9-46a5-90d9-ea62dafdd778",
+      "form_id": "3",
+      "enquiry_type": "contact"
+    },
+    {
+      "id": "282a06ba-925e-4ea4-9418-6d4a05e5e829",
+      "source_lead_id": "08a8715c-d153-4e6d-8ff6-ec847be73b4d:a6b90809-2d2f-482c-b769-6188b3d079c0",
+      "is_test": true,
+      "test_run_id": "56f51b56-8ed9-46a5-90d9-ea62dafdd778",
+      "form_id": "5",
+      "enquiry_type": "model_variant"
+    },
+    {
+      "id": "0a9d3cb1-13ea-486b-b16c-2179750be8d4",
+      "source_lead_id": "08a8715c-d153-4e6d-8ff6-ec847be73b4d:5981b138-bbe0-4bde-9f89-e52c5a040579",
+      "is_test": true,
+      "test_run_id": "56f51b56-8ed9-46a5-90d9-ea62dafdd778",
+      "form_id": "6",
+      "enquiry_type": "stock"
+    },
+    {
+      "id": "d9657661-a69d-4188-a2fe-1418f9ba5940",
+      "source_lead_id": "08a8715c-d153-4e6d-8ff6-ec847be73b4d:f8ffda6c-fa99-417b-9a1c-a6ff395a7a40",
+      "is_test": true,
+      "test_run_id": "56f51b56-8ed9-46a5-90d9-ea62dafdd778",
+      "form_id": "3",
+      "enquiry_type": "contact"
+    },
+    {
+      "id": "b0e64e3c-6b6a-404a-82ed-3e74e1228bc6",
+      "source_lead_id": "08a8715c-d153-4e6d-8ff6-ec847be73b4d:16a4d60a-8d38-4cf7-97b6-fce0b31bb028",
+      "is_test": true,
+      "test_run_id": "56f51b56-8ed9-46a5-90d9-ea62dafdd778",
+      "form_id": "3",
+      "enquiry_type": "contact"
+    }
+  ],
+  "stages": [
+    {
+      "stage": "trusted_receipt_accepted",
+      "outcome": "passed",
+      "evidence_key": "08a8715c-d153-4e6d-8ff6-ec847be73b4d:16a4d60a-8d38-4cf7-97b6-fce0b31bb028",
+      "redacted_diagnostic": null
+    },
+    {
+      "stage": "canonical_test_lead_stored",
+      "outcome": "passed",
+      "evidence_key": "b0e64e3c-6b6a-404a-82ed-3e74e1228bc6",
+      "redacted_diagnostic": null
+    },
+    {
+      "stage": "destinations_validated",
+      "outcome": "skipped",
+      "evidence_key": "normal-side-effects-contained",
+      "redacted_diagnostic": "Synthetic lead stored; normal routing, CRM, notification, and conversion delivery skipped."
+    },
+    {
+      "stage": "trusted_receipt_accepted",
+      "outcome": "passed",
+      "evidence_key": "08a8715c-d153-4e6d-8ff6-ec847be73b4d:f8ffda6c-fa99-417b-9a1c-a6ff395a7a40",
+      "redacted_diagnostic": null
+    },
+    {
+      "stage": "canonical_test_lead_stored",
+      "outcome": "passed",
+      "evidence_key": "d9657661-a69d-4188-a2fe-1418f9ba5940",
+      "redacted_diagnostic": null
+    },
+    {
+      "stage": "trusted_receipt_accepted",
+      "outcome": "passed",
+      "evidence_key": "08a8715c-d153-4e6d-8ff6-ec847be73b4d:5981b138-bbe0-4bde-9f89-e52c5a040579",
+      "redacted_diagnostic": null
+    },
+    {
+      "stage": "canonical_test_lead_stored",
+      "outcome": "passed",
+      "evidence_key": "0a9d3cb1-13ea-486b-b16c-2179750be8d4",
+      "redacted_diagnostic": null
+    },
+    {
+      "stage": "trusted_receipt_accepted",
+      "outcome": "passed",
+      "evidence_key": "08a8715c-d153-4e6d-8ff6-ec847be73b4d:a6b90809-2d2f-482c-b769-6188b3d079c0",
+      "redacted_diagnostic": null
+    },
+    {
+      "stage": "canonical_test_lead_stored",
+      "outcome": "passed",
+      "evidence_key": "282a06ba-925e-4ea4-9418-6d4a05e5e829",
+      "redacted_diagnostic": null
+    },
+    {
+      "stage": "trusted_receipt_accepted",
+      "outcome": "passed",
+      "evidence_key": "08a8715c-d153-4e6d-8ff6-ec847be73b4d:47101aed-0455-424d-a40e-7f5c42ac92a1",
+      "redacted_diagnostic": null
+    },
+    {
+      "stage": "canonical_test_lead_stored",
+      "outcome": "passed",
+      "evidence_key": "489f7f1c-2ad4-4a30-b322-2dc6b75363d7",
+      "redacted_diagnostic": null
+    },
+    {
+      "stage": "trusted_receipt_accepted",
+      "outcome": "passed",
+      "evidence_key": "08a8715c-d153-4e6d-8ff6-ec847be73b4d:a0fda83e-d84d-43ce-aa33-cba2153e9797",
+      "redacted_diagnostic": null
+    },
+    {
+      "stage": "canonical_test_lead_stored",
+      "outcome": "passed",
+      "evidence_key": "da653cf1-9039-40be-8d85-fddd4cd2c15e",
+      "redacted_diagnostic": null
+    }
+  ],
+  "ruleDeliveries": 0,
+  "crmLinks": 0,
+  "conversionEvents": 0,
+  "conversionDeliveries": 0
+}

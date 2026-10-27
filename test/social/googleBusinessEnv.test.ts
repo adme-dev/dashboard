@@ -1,6 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
+  getLinkedInAdsOAuthConfig,
   getLinkedInOrganicOAuthConfig,
+  LINKEDIN_ADS_APP_CLIENT_ID,
+  LINKEDIN_ORGANIC_APP_CLIENT_ID,
   getGoogleBusinessOAuthConfig,
   getSocialOauthStateSecret,
   getTikTokContentOAuthConfig,
@@ -29,7 +32,7 @@ const KEYS = [
   'TIKTOK_CONTENT_CLIENT_KEY', 'NUXT_TIKTOK_CONTENT_CLIENT_KEY', 'TIKTOK_CLIENT_KEY', 'TIKTOK_APP_ID',
   'TIKTOK_CONTENT_CLIENT_SECRET', 'NUXT_TIKTOK_CONTENT_CLIENT_SECRET', 'TIKTOK_CLIENT_SECRET', 'TIKTOK_APP_SECRET',
   'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET',
-  'GOOGLE_BUSINESS_REDIRECT_URI', 'YOUTUBE_REDIRECT_URI', 'LINKEDIN_ORGANIC_REDIRECT_URI', 'TIKTOK_CONTENT_REDIRECT_URI',
+  'GOOGLE_BUSINESS_REDIRECT_URI', 'YOUTUBE_REDIRECT_URI', 'LINKEDIN_ORGANIC_REDIRECT_URI', 'LINKEDIN_REDIRECT_URI', 'NUXT_LINKEDIN_CLIENT_ID', 'NUXT_LINKEDIN_CLIENT_SECRET', 'TIKTOK_CONTENT_REDIRECT_URI',
   'GOOGLE_BUSINESS_PUBLISHING_ENABLED', 'SOCIAL_OAUTH_STATE_SECRET', 'META_APP_SECRET'
 ]
 
@@ -167,6 +170,45 @@ describe('getLinkedInOrganicOAuthConfig', () => {
     expect(cfg.clientId).toBe('ads-client')
     expect(cfg.clientSecret).toBe('ads-secret')
     expect(cfg.redirectUri).toBe('/api/agency/social/publishing/accounts/callback/linkedin')
+  })
+
+  it('pairs the built-in organic app ID with a secret-only organic configuration', () => {
+    process.env.LINKEDIN_ORGANIC_CLIENT_SECRET = 'organic-secret'
+    process.env.LINKEDIN_CLIENT_ID = 'ads-client'
+    expect(getLinkedInOrganicOAuthConfig()).toMatchObject({
+      clientId: LINKEDIN_ORGANIC_APP_CLIENT_ID, clientSecret: 'organic-secret'
+    })
+  })
+
+  it('never pairs the organic app ID with the Ads app secret', () => {
+    process.env.LINKEDIN_ORGANIC_CLIENT_ID = 'organic-client'
+    process.env.LINKEDIN_CLIENT_SECRET = 'ads-secret'
+    expect(getLinkedInOrganicOAuthConfig()).toMatchObject({
+      clientId: LINKEDIN_ADS_APP_CLIENT_ID, clientSecret: 'ads-secret'
+    })
+  })
+})
+
+describe('getLinkedInAdsOAuthConfig', () => {
+  beforeEach(clearKeys)
+  afterEach(clearKeys)
+
+  it('reads the Ads secret from bindings and builds in the public Ads client ID', () => {
+    process.env.LINKEDIN_CLIENT_SECRET = 'ads-secret'
+    expect(getLinkedInAdsOAuthConfig()).toEqual({
+      linkedinClientId: LINKEDIN_ADS_APP_CLIENT_ID,
+      linkedinClientSecret: 'ads-secret',
+      linkedinRedirectUri: '/api/agency/social/linkedin/callback'
+    })
+  })
+
+  it('lets a configured client ID override the built-in one', () => {
+    process.env.LINKEDIN_CLIENT_ID = 'ads-client'
+    expect(getLinkedInAdsOAuthConfig().linkedinClientId).toBe('ads-client')
+  })
+
+  it('reports no secret when none is configured', () => {
+    expect(getLinkedInAdsOAuthConfig().linkedinClientSecret).toBe('')
   })
 })
 

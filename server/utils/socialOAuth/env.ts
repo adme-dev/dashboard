@@ -15,7 +15,7 @@ const GOOGLE_CLIENT_ID_PATTERN = /^\d+-[A-Za-z0-9_-]+\.apps\.googleusercontent\.
 
 function getCfBinding(event: H3Event | undefined, key: string): string | undefined {
   if (event) {
-    const value = (event.context as CloudflareContext).cloudflare?.env?.[key]
+    const value = (event.context as CloudflareContext | undefined)?.cloudflare?.env?.[key]
     if (typeof value === 'string') return value
   }
   return getCachedBinding(key)
@@ -135,6 +135,43 @@ export function isYouTubeConnectionEnabled(event?: H3Event): boolean {
   return Boolean(clientId && clientSecret)
 }
 
+// LinkedIn client IDs are public (they appear in every authorize URL), so the
+// ADME apps' IDs are built in. Production sits at the Pages 150 text-binding
+// limit; this keeps LinkedIn to two secret bindings (the client secrets).
+export const LINKEDIN_ORGANIC_APP_CLIENT_ID = '86f03s18de7z8p'
+export const LINKEDIN_ADS_APP_CLIENT_ID = '86j76jtfd3bdbf'
+
+/**
+ * LinkedIn Ads (Advertising API app) credentials. Cloudflare secrets only reach
+ * Nitro through the request/cached bindings, not runtimeConfig, so read them
+ * here rather than from Nuxt runtime config alone (same reason as metaOAuthRuntimeConfig).
+ */
+export function getLinkedInAdsOAuthConfig(event?: H3Event): {
+  linkedinClientId: string
+  linkedinClientSecret: string
+  linkedinRedirectUri: string
+} {
+  const config = useRuntimeConfig()
+  return {
+    linkedinClientId: firstConfigured([
+      getConfiguredValue(event, 'LINKEDIN_CLIENT_ID'),
+      getConfiguredValue(event, 'NUXT_LINKEDIN_CLIENT_ID'),
+      String(config.linkedinClientId || ''),
+      LINKEDIN_ADS_APP_CLIENT_ID
+    ]),
+    linkedinClientSecret: firstConfigured([
+      getConfiguredValue(event, 'LINKEDIN_CLIENT_SECRET'),
+      getConfiguredValue(event, 'NUXT_LINKEDIN_CLIENT_SECRET'),
+      String(config.linkedinClientSecret || '')
+    ]),
+    linkedinRedirectUri: firstConfigured([
+      getConfiguredValue(event, 'LINKEDIN_REDIRECT_URI'),
+      String(config.linkedinRedirectUri || ''),
+      '/api/agency/social/linkedin/callback'
+    ])
+  }
+}
+
 export function getLinkedInOrganicOAuthConfig(event?: H3Event): {
   clientId: string
   clientSecret: string
@@ -142,21 +179,24 @@ export function getLinkedInOrganicOAuthConfig(event?: H3Event): {
   scopes: string
 } {
   const config = useRuntimeConfig()
+  const organicSecret = firstConfigured([
+    getConfiguredValue(event, 'LINKEDIN_ORGANIC_CLIENT_SECRET'),
+    getConfiguredValue(event, 'NUXT_LINKEDIN_ORGANIC_CLIENT_SECRET'),
+    String(config.linkedinOrganicClientSecret || '')
+  ])
+  // Without a dedicated organic secret, fall back to the Ads app as a matched
+  // pair; never mix one app's client ID with the other app's secret.
+  const ads = organicSecret ? null : getLinkedInAdsOAuthConfig(event)
   return {
-    clientId: firstConfigured([
-      getConfiguredValue(event, 'LINKEDIN_ORGANIC_CLIENT_ID'),
-      getConfiguredValue(event, 'NUXT_LINKEDIN_ORGANIC_CLIENT_ID'),
-      getConfiguredValue(event, 'LINKEDIN_CLIENT_ID'),
-      String(config.linkedinOrganicClientId || ''),
-      String(config.linkedinClientId || '')
-    ]),
-    clientSecret: firstConfigured([
-      getConfiguredValue(event, 'LINKEDIN_ORGANIC_CLIENT_SECRET'),
-      getConfiguredValue(event, 'NUXT_LINKEDIN_ORGANIC_CLIENT_SECRET'),
-      getConfiguredValue(event, 'LINKEDIN_CLIENT_SECRET'),
-      String(config.linkedinOrganicClientSecret || ''),
-      String(config.linkedinClientSecret || '')
-    ]),
+    clientId: ads
+      ? ads.linkedinClientId
+      : firstConfigured([
+          getConfiguredValue(event, 'LINKEDIN_ORGANIC_CLIENT_ID'),
+          getConfiguredValue(event, 'NUXT_LINKEDIN_ORGANIC_CLIENT_ID'),
+          String(config.linkedinOrganicClientId || ''),
+          LINKEDIN_ORGANIC_APP_CLIENT_ID
+        ]),
+    clientSecret: ads ? ads.linkedinClientSecret : organicSecret,
     redirectUri: firstConfigured([
       getConfiguredValue(event, 'LINKEDIN_ORGANIC_REDIRECT_URI'),
       String(config.linkedinOrganicRedirectUri || LINKEDIN_ORGANIC_CALLBACK_PATH)
