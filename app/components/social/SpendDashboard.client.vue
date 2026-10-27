@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { SpendSummary } from '~/composables/useSocialConnections'
 import type { GoogleAiMaxReadinessResponse } from '~/types'
 
 const toast = useToast()
@@ -27,7 +28,8 @@ const loading = ref(false)
 const syncing = ref(false)
 const searchQuery = ref('')
 
-const spendData = ref<any>(null)
+const spendData = ref<SpendSummary | null>(null)
+const financeProjection = computed(() => spendData.value?.projection === 'finance')
 const spendDiagnostics = ref<any>(null)
 const aiMaxReadiness = ref<GoogleAiMaxReadinessResponse | null>(null)
 const bankCharges = ref<any>(null)
@@ -91,6 +93,7 @@ async function loadPacingReview() {
 }
 
 async function loadSpendDiagnostics() {
+  if (!financeProjection.value) return
   diagnosticsLoading.value = true
   try {
     spendDiagnostics.value = await fetchSpendControlDiagnostics(selectedMonth.value, selectedYear.value, selectedPlatform.value)
@@ -103,6 +106,7 @@ async function loadSpendDiagnostics() {
 }
 
 async function loadAiMaxReadiness() {
+  if (!financeProjection.value) return
   const sequence = ++aiMaxRequestSequence
   if (!['all', 'google'].includes(selectedPlatform.value)) {
     aiMaxReadiness.value = null
@@ -117,6 +121,7 @@ async function loadAiMaxReadiness() {
 }
 
 async function loadBudgetControlSettings() {
+  if (!financeProjection.value) return
   budgetControlLoading.value = true
   try {
     budgetControlSettings.value = await fetchBudgetControlSettings()
@@ -128,6 +133,7 @@ async function loadBudgetControlSettings() {
 }
 
 async function setLiveBudgetChanges(enabled: boolean) {
+  if (!financeProjection.value) return
   const previous = { ...budgetControlSettings.value }
   budgetControlSaving.value = true
   budgetControlSettings.value = {
@@ -161,11 +167,13 @@ let bankChargesDebounceTimer: ReturnType<typeof setTimeout> | null = null
 let bankChargesAbort: AbortController | null = null
 
 function loadBankCharges(refresh = false) {
+  if (!financeProjection.value) return
   if (bankChargesDebounceTimer) clearTimeout(bankChargesDebounceTimer)
   bankChargesDebounceTimer = setTimeout(() => { void doLoadBankCharges(refresh) }, 300)
 }
 
 async function doLoadBankCharges(refresh = false) {
+  if (!financeProjection.value) return
   if (bankChargesAbort) bankChargesAbort.abort()
   const ctrl = new AbortController()
   bankChargesAbort = ctrl
@@ -333,7 +341,7 @@ onBeforeUnmount(() => stopSyncPoll())
 function exportCSV() {
   if (!spendData.value?.items?.length) return
   const hasBankCol = hasBankData.value
-  const headers = ['Client', 'Platform', 'Budget', 'Spend', ...(hasBankCol ? ['Bank Charged', 'Source'] : []), 'Commission', 'Variance', 'Variance %']
+  const headers = ['Client', 'Platform', 'Budget', 'Spend', ...(hasBankCol ? ['Bank Charged', 'Source'] : []), ...(financeProjection.value ? ['Commission'] : []), 'Variance', 'Variance %']
   const rows = spendData.value.items.map((i: any) => {
     const base = [i.clientName, i.platform, i.budget, i.spend]
     if (hasBankCol) {
@@ -351,7 +359,7 @@ function exportCSV() {
       const bankAmt = platformTotal > 0 ? Math.round(platformBankTotal * (i.spend / platformTotal) * 100) / 100 : 0
       base.push(bankAmt, bankAmt > 0 ? source : '')
     }
-    return [...base, i.commission, i.variance, `${i.variancePercent}%`]
+    return [...base, ...(financeProjection.value ? [i.commission] : []), i.variance, `${i.variancePercent}%`]
   })
   const csv = [headers.join(','), ...rows.map((r: any[]) => r.join(','))].join('\n')
   const blob = new Blob([csv], { type: 'text/csv' })
@@ -363,8 +371,8 @@ function exportCSV() {
   URL.revokeObjectURL(url)
 }
 
-watch([selectedMonth, selectedYear, selectedPlatform], () => {
-  loadSpend()
+watch([selectedMonth, selectedYear, selectedPlatform], async () => {
+  await loadSpend()
   loadPacingReview()
   loadSpendDiagnostics()
   loadAiMaxReadiness()
@@ -379,8 +387,8 @@ watch([selectedMonth, selectedYear, selectedPlatform], () => {
   router.replace({ query: q })
 })
 
-onMounted(() => {
-  loadSpend()
+onMounted(async () => {
+  await loadSpend()
   loadSpendDiagnostics()
   loadAiMaxReadiness()
   loadPacingReview()
@@ -389,7 +397,7 @@ onMounted(() => {
 })
 
 const lastSyncedAt = computed(() => spendData.value?.lastSyncedAt || null)
-const latestSyncJobs = computed(() => spendData.value?.latestSyncJobs || [])
+const latestSyncJobs = computed(() => spendData.value?.projection === 'finance' ? spendData.value.latestSyncJobs || [] : [])
 
 const flaggedItems = computed(() => {
   if (!spendData.value?.items) return []
@@ -422,11 +430,11 @@ const overallPacing = computed(() => {
 })
 
 const hasBankData = computed(() => {
-  if (!bankCharges.value?.connected) return false
+  if (!financeProjection.value || !bankCharges.value?.connected) return false
   return bankCharges.value.total > 0 || (bankCharges.value.metaBilling?.total ?? 0) > 0
 })
 
-const showPacingReview = computed(() => ['all', 'meta', 'google'].includes(selectedPlatform.value))
+const showPacingReview = computed(() => financeProjection.value && ['all', 'meta', 'google'].includes(selectedPlatform.value))
 const liveBudgetChangesEnabled = computed(() => Boolean(budgetControlSettings.value.liveBudgetChangesEnabled))
 const pacingReviewItems = computed(() => pacingReview.value?.items ?? [])
 const campaignReviewItems = computed(() => pacingReview.value?.campaigns ?? pacingReview.value?.items ?? [])
@@ -545,6 +553,7 @@ const bankDiscrepancy = computed(() => {
 
         <!-- Bank Charged -->
         <div
+          v-if="financeProjection"
           class="rounded-xl border border-default p-4 space-y-3"
           :class="bankDiscrepancy && Math.abs(bankDiscrepancy.pct) > 2 ? 'ring-1 ring-amber-500/20' : ''"
         >
@@ -594,7 +603,7 @@ const bankDiscrepancy = computed(() => {
         </div>
 
         <!-- Commission -->
-        <div class="rounded-xl border border-default p-4 space-y-3">
+        <div v-if="spendData.projection === 'finance'" class="rounded-xl border border-default p-4 space-y-3">
           <div class="flex items-center justify-between">
             <span class="text-xs font-medium text-muted uppercase tracking-wide">Commission</span>
             <div class="rounded-lg bg-emerald-100 dark:bg-emerald-950/40 p-1.5">
@@ -729,6 +738,7 @@ const bankDiscrepancy = computed(() => {
         </div>
         <SocialSpendAutoActionSettings v-if="showPacingReview" class="mb-3" />
         <SocialSpendVarianceTable
+          :projection="spendData.projection"
           :items="spendData.items"
           :totals="spendData.totals"
           :search="searchQuery"
@@ -737,7 +747,7 @@ const bankDiscrepancy = computed(() => {
           :campaign-review-items="campaignReviewItems"
           :latest-sync-jobs="latestSyncJobs"
           :budget-control-settings="budgetControlSettings"
-          :bank-charges="bankCharges"
+          :bank-charges="financeProjection ? bankCharges : null"
           @budget-updated="loadSpend"
         />
       </div>

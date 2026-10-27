@@ -4,7 +4,7 @@ import type {
   SpendSyncJobStatus
 } from '~/types'
 
-interface SpendSummaryItem {
+export interface FinanceSpendSummaryItem {
   groupKey: string
   platform: string
   clientName: string
@@ -21,14 +21,15 @@ interface SpendSummaryItem {
   campaignCount: number
 }
 
-interface SpendSummary {
+interface FinanceSpendSummary {
+  projection: 'finance'
   month: number
   year: number
   platform: string
-  items: SpendSummaryItem[]
+  items: FinanceSpendSummaryItem[]
   totals: { budget: number; spend: number; commission: number; variance: number }
   lastSyncedAt: string | null
-  latestSyncJobs: Array<{
+  latestSyncJobs?: Array<{
     platform: string
     status: 'running' | 'completed' | 'failed'
     syncedCount: number
@@ -41,6 +42,13 @@ interface SpendSummary {
     processedAccounts: number
   }>
 }
+
+export type MarketingSpendSummaryItem = Omit<FinanceSpendSummaryItem, 'clientCode' | 'owner' | 'commission'>
+export type SpendSummary = FinanceSpendSummary | (Omit<FinanceSpendSummary, 'projection' | 'items' | 'totals' | 'latestSyncJobs'> & {
+  projection: 'marketing'
+  items: MarketingSpendSummaryItem[]
+  totals: { budget: number; spend: number; variance: number }
+})
 
 interface PacingReview {
   period: string

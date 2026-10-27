@@ -305,12 +305,15 @@ describe('God mode gate inventory', () => {
     // fresh MCP staff carry their groups into the Google Ads policy — two risk-tier checks (+2) and one
     // fresh-or-role permission helper (+1) replace four inline legacy-role derivations (-4), plus four
     // permissionGroups wiring rows. No gate is removed or turned into a God mode bypass.
-    expect(inventory.rows).toHaveLength(1638)
+    // Scoped marketing reads add seven fresh permission-group wiring/check rows.
+    // These are lexical ordinary-user rows; scope and role predicates remain
+    // mandatory and no God-mode bypass is registered by the shared services.
+    expect(inventory.rows).toHaveLength(1645)
     expect(inventory.counts).toEqual({
       identity_tenant_hard_boundary: 127,
       provider_infrastructure_availability: 222,
       application_governance_bypass: 1622,
-      ordinary_user_behavior: 234,
+      ordinary_user_behavior: 241,
       unrelated_configuration: 432
     })
     // Removing the session KV shortcut removes four auth middleware rows:
@@ -326,7 +329,7 @@ describe('God mode gate inventory', () => {
     // Publication casts the PostgreSQL user_role enum to text before comparing
     // the role slug. The predicate, scope and classification remain unchanged.
     expect(inventory.rows).toContain('server/utils/pageStudio/releaseFeatureAuthority.ts\tOR (owner.custom_role_id IS NULL AND role.slug=owner.user_role::text AND role.is_system=TRUE))\tidentity_tenant_hard_boundary')
-    expect(inventory.digest).toBe('3638658efc40d97245c9b6ae6077de11dc1f36d1091f0529d512c72eceed2533')
+    expect(inventory.digest).toBe('75b08e3e3c9bd7d3fe8ae0e8c607a785eee7888954ac2a20a22dcfdac7bd727b')
     expect(inventory.rows).toContain(
       'app/composables/usePageStudioLauncher.ts\tconst config = useRuntimeConfig()\tunrelated_configuration'
     )

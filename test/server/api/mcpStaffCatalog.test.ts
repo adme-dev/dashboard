@@ -176,11 +176,11 @@ describe('ordinary staff MCP catalog boundary', () => {
     ))
   })
 
-  it('lists only reviewed tools for non-management staff; pilot reads stay hidden until Task 2', async () => {
+  it('lists the reviewed pilot reads and scoped overview for enrolled non-management staff', async () => {
     bindings.MCP_MARKETING_STAFF_GRANTS = JSON.stringify({ [USER_ID]: ['reporting'] })
-    expect(await listedNames()).toEqual(['get_tasks'])
+    expect(await listedNames()).toEqual(['get_adspend_pacing', 'get_campaign_breakdown', 'get_client_overview', 'get_tasks'])
     scopes = ['mcp:read', 'mcp:write']
-    expect(await listedNames()).toEqual(['get_tasks', 'remember'])
+    expect(await listedNames()).toEqual(['get_adspend_pacing', 'get_campaign_breakdown', 'get_client_overview', 'get_tasks', 'remember'])
     expect(mocks.resolveUserPermissions).not.toHaveBeenCalled()
     expect(mocks.getAssignedClientIds).not.toHaveBeenCalled()
   })
@@ -188,7 +188,7 @@ describe('ordinary staff MCP catalog boundary', () => {
   it('denies stale-catalog direct calls to unreviewed tools before any handler runs', async () => {
     bindings.MCP_MARKETING_STAFF_GRANTS = JSON.stringify({ [USER_ID]: ['reporting', 'social_draft', 'ads_plan', 'tracking_plan'] })
     scopes = ['mcp:read', 'mcp:write']
-    for (const name of ['get_leads', 'get_client_overview', 'get_client_profitability', 'get_campaign_breakdown', 'get_adspend_pacing']) {
+    for (const name of ['get_leads', 'get_client_profitability', 'get_finance_snapshot']) {
       await expect(call(name, name === 'get_leads' ? { summary: true } : {})).resolves.toMatchObject({ ok: false, code: 'not_reviewed' })
       expect(mocks.handlers[name]).not.toHaveBeenCalled()
     }

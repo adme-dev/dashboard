@@ -50,12 +50,12 @@ Task 1 does not claim the six reads execute yet: Task 2 delivers that before pil
 **Files:** marketing read services/helpers under `server/utils/ai/marketing/`; existing tool files `campaignBreakdown`, `adBreakdown`, `adCreativeText`, `searchTerms`, `adspend`, `social`, `leads`, `clients`; shared API read services as needed. Do not edit Task 1 routes or policy without coordinator handoff.
 **Consumes:** Task 1 trusted `ToolContext` authority/scope. **Produces:** normal tool handlers that work for ordinary MCP staff without owner HTTP delegation and preserve owner/browser semantics.
 
-- [ ] Inspect each real query and write regression tests that reach its production adapter rather than only stubbing the entire handler.
-- [ ] Refactor selected route-backed reads into reusable services with trusted actor scope. Use the same services from browser and tool handlers where compatible. Do not loosen owner delegation or forward manufactured sessions.
-- [ ] Scope client-name resolution, media/campaign IDs, aggregates, comparison windows, lead attribution, freshness/sync data, assets and pagination before limits. Unknown or unassigned IDs produce no provider access or metadata leakage.
-- [ ] Close direct lead-summary and client-overview leaks; marketing reporting cannot return profitability. Preserve supported financial reads only under their separate current authorization.
-- [ ] Avoid provider refresh side effects from read-only staff requests; require an explicit governed mutation capability where refreshing writes persisted diagnostics.
-- [ ] Verify assigned A/unassigned B/zero-assignment, custom-role and read-only staff plus owner regressions. Review a combined actual route-to-service path before marking pilot usable.
+- [x] Inspect each real query and write regression tests that reach its production adapter rather than only stubbing the entire handler.
+- [x] Refactor selected route-backed reads into reusable services with trusted actor scope. Use the same services from browser and tool handlers where compatible. Do not loosen owner delegation or forward manufactured sessions.
+- [x] Scope client-name resolution, media/campaign IDs, aggregates, comparison windows, lead attribution, freshness/sync data, assets and pagination before limits. Unknown or unassigned IDs produce no provider access or metadata leakage.
+- [x] Close direct lead-summary and client-overview leaks; marketing reporting cannot return profitability. Preserve supported financial reads only under their separate current authorization.
+- [x] Avoid provider refresh side effects from read-only staff requests; require an explicit governed mutation capability where refreshing writes persisted diagnostics.
+- [x] Verify assigned A/unassigned B/zero-assignment, custom-role and read-only staff plus owner regressions. Review a combined actual route-to-service path before marking pilot usable.
 
 ## Task 3: Reviewed social workflows
 

@@ -103,18 +103,18 @@ describe('staff tool admission', () => {
     expect(isMcpManagementStaff(staff({ permissionGroups: undefined }))).toBe(false)
   })
 
-  it('keeps the six pilot reads pending until Task 2 proves their scoped data path', () => {
-    for (const name of MARKETING_PILOT_READ_TOOLS) {
-      expect(MCP_STAFF_TOOL_POLICY[name]).toMatchObject({ capability: 'reporting', status: 'pending_scope_review' })
+  it('admits the six proven pilot reads and scoped overview with explicit reporting grant', () => {
+    for (const name of [...MARKETING_PILOT_READ_TOOLS, 'get_client_overview']) {
+      expect(MCP_STAFF_TOOL_POLICY[name]).toMatchObject({ capability: 'reporting', status: 'reviewed', legacyRoleSensitive: false })
       expect(evaluateStaffToolAdmission(name, staff({ marketingCapabilities: ['reporting'] })))
-        .toMatchObject({ allowed: false, code: 'not_reviewed' })
+        .toMatchObject({ allowed: true })
     }
   })
 
-  it('denies unreviewed direct paths such as lead summaries and client overview/profitability', () => {
+  it('denies unreviewed direct paths such as lead summaries and profitability', () => {
     const granted = staff({ marketingCapabilities: ['reporting', 'social_draft', 'ads_plan', 'tracking_plan'] })
     for (const name of [
-      'get_leads', 'get_client_overview', 'get_client_profitability', 'get_capabilities',
+      'get_leads', 'get_client_profitability', 'get_capabilities',
       'propose_create_task', 'confirm_action', 'get_finance_snapshot', 'list_gtm_containers', 'not_a_tool'
     ]) {
       expect(evaluateStaffToolAdmission(name, granted)).toMatchObject({ allowed: false, code: 'not_reviewed' })
@@ -196,7 +196,7 @@ describe('single staff projection policy', () => {
       context,
       staff: staff({ mcpScopes: new Set(['mcp:read', 'mcp:write']), marketingCapabilities: ['reporting'] }),
       policy: reviewedReporting
-    }).map(tool => tool.name).sort()).toEqual(['get_campaign_breakdown', 'get_tasks', 'remember'])
+    }).map(tool => tool.name).sort()).toEqual(['get_campaign_breakdown', 'get_client_overview', 'get_tasks', 'remember'])
   })
 
   it('keeps the management projection, narrowed by fresh groups, read-only policy and write scope', () => {

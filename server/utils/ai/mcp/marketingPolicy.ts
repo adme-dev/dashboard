@@ -61,11 +61,10 @@ export interface StaffToolPolicyEntry {
 
 const pilotRead: StaffToolPolicyEntry = Object.freeze({
   capability: 'reporting',
-  // Task 2 owns the scoped service path; until then these handlers may aggregate across clients or
-  // rely on owner-only HTTP delegation, so they are neither advertised nor executable for staff.
-  status: 'pending_scope_review',
+  // Task 2: real scoped services, stored-only staff reads, adapter/SQL-contract tests.
+  status: 'reviewed',
   clientScoped: true,
-  legacyRoleSensitive: true
+  legacyRoleSensitive: false
 })
 
 /** Registered, reviewed staff tools. Anything absent is denied for non-management staff. */
@@ -74,6 +73,7 @@ export const MCP_STAFF_TOOL_POLICY: Readonly<Record<string, StaffToolPolicyEntry
   remember: Object.freeze({ capability: null, status: 'reviewed', clientScoped: false, legacyRoleSensitive: false }),
   // Pinned to the caller's own assigned tasks for non-manager legacy roles (tasks.ts).
   get_tasks: Object.freeze({ capability: null, status: 'reviewed', clientScoped: false, legacyRoleSensitive: true }),
+  get_client_overview: pilotRead,
   ...Object.fromEntries(MARKETING_PILOT_READ_TOOLS.map(name => [name, pilotRead]))
 })
 
