@@ -1,6 +1,7 @@
 import { requireAuth } from '~~/server/utils/auth'
 import { queryOne } from '~~/server/utils/db'
 import { ensureLinkedInAccessToken, getLinkedInCampaignInsights } from '~~/server/utils/linkedinClient'
+import { getLinkedInAdsOAuthConfig } from '~~/server/utils/socialOAuth/env'
 
 /**
  * GET /api/agency/social/linkedin/insights?accountId=X&month=Y&year=Z
@@ -44,7 +45,7 @@ export default eventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: `Connection is ${conn.status}. Please reconnect.` })
   }
 
-  const accessToken = await ensureLinkedInAccessToken(conn, useRuntimeConfig(event))
+  const accessToken = await ensureLinkedInAccessToken(conn, getLinkedInAdsOAuthConfig(event))
   const campaigns = await getLinkedInCampaignInsights(conn.account_id, accessToken, month, year)
 
   return {
