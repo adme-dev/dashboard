@@ -22,6 +22,7 @@ import {
   type McpToolManifest
 } from './project'
 import { projectRegisteredMcpTools, projectStaffOnlyMcpTools, type RegisteredMcpSuite } from './registry'
+import { ADS_STAFF_READ_NAMES,ADS_STAFF_PLAN_NAMES,GTM_STAFF_NAMES,TASK4_STAFF_NAMES,isLegacyAdsMutation } from './marketingTask4Names'
 import { LEGACY_MCP_SOCIAL_PROPOSAL_TOOL, SOCIAL_MCP_TOOL_NAMES } from './socialToolNames'
 
 export type { MarketingCapability } from '~~/server/utils/ai/toolContext'
@@ -78,6 +79,9 @@ const pilotRead: StaffToolPolicyEntry = Object.freeze({
 
 /** Registered, reviewed staff tools. Anything absent is denied for non-management staff. */
 export const MCP_STAFF_TOOL_POLICY: Readonly<Record<string, StaffToolPolicyEntry>> = Object.freeze({
+  ...Object.fromEntries(ADS_STAFF_READ_NAMES.map(name=>[name,{...pilotRead,capability:'ads_plan'}])),
+  ...Object.fromEntries(ADS_STAFF_PLAN_NAMES.map(name=>[name,{...pilotRead,capability:'ads_plan'}])),
+  ...Object.fromEntries(GTM_STAFF_NAMES.map(name=>[name,{...pilotRead,capability:'tracking_plan'}])),
   // Private per-user memory: actor-bound write through its own durable coordinator; needs mcp:write.
   remember: Object.freeze({ capability: null, status: 'reviewed', clientScoped: false, legacyRoleSensitive: false }),
   // Pinned to the caller's own assigned tasks for non-manager legacy roles (tasks.ts).
@@ -88,7 +92,7 @@ export const MCP_STAFF_TOOL_POLICY: Readonly<Record<string, StaffToolPolicyEntry
 })
 
 /** Staff-only suite tools management staff may also reach (still grant/scope/client admitted). */
-const MANAGEMENT_ADMITTED_STAFF_SUITE_TOOLS = new Set<string>(SOCIAL_MCP_TOOL_NAMES)
+const MANAGEMENT_ADMITTED_STAFF_SUITE_TOOLS = new Set<string>([...SOCIAL_MCP_TOOL_NAMES,...TASK4_STAFF_NAMES])
 
 // ---------------------------------------------------------------------------------------------------
 // Grant configuration
@@ -192,7 +196,8 @@ export function evaluateStaffToolAdmission(
   if (!entry || entry.status !== 'reviewed') {
     return deny('not_reviewed', 'This tool is not available to your XeroFlow account over MCP.')
   }
-  if (entry.capability && !(ctx.marketingCapabilities ?? []).includes(entry.capability)) {
+  if (entry.capability && !(ctx.marketingCapabilities ?? []).includes(entry.capability)
+    && !(ADS_STAFF_READ_NAMES.includes(name as any) && !isWriteScopeToolName(name) && (ctx.marketingCapabilities ?? []).includes('reporting'))) {
     return deny('capability_required', 'Your account has not been granted this marketing capability.')
   }
   if (isWriteScopeToolName(name)) {
@@ -267,7 +272,7 @@ export function projectMcpToolsForStaff(input: StaffProjectionInput): McpToolMan
     ...manifests.filter((manifest) => {
       // Ordinary MCP social preparation goes through the reviewed draft suite, management included:
       // the legacy self-approvable proposal is never offered to ordinary staff.
-      if (manifest.name === LEGACY_MCP_SOCIAL_PROPOSAL_TOOL) return false
+      if (manifest.name === LEGACY_MCP_SOCIAL_PROPOSAL_TOOL || isLegacyAdsMutation(manifest.name) || manifest.name.startsWith('google_ads_')) return false
       // Suite projectors still filter by legacy role; re-apply the fresh group ceiling for any manifest
       // backed by a registry tool (catalog reads and their propose_* aliases).
       const registryTool = registryByName.get(manifest.name)

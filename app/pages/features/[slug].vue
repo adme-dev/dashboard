@@ -196,6 +196,17 @@ const features: Record<string, Feature> = {
       }
     ]
   },
+  'marketing-reviews': {
+    title: 'Reviewed Marketing Changes', slug: 'marketing-reviews', icon: 'i-lucide-shield-check',
+    category: 'AI & Intelligence', categoryIcon: 'i-lucide-brain', categoryIconBg: 'bg-amber-50 dark:bg-amber-500/10', categoryIconColor: 'text-amber-600 dark:text-amber-400',
+    description: 'Prepare client-scoped advertising and tracking changes with independent review before execution. Availability depends on staff grants and connected provider accounts.',
+    details: [
+      { title: 'Your assigned client accounts', content: 'Staff discover and inspect only the client accounts covered by their current permissions and marketing grants. Connecting an assistant does not connect an advertising account or grant wider agency access.' },
+      { title: 'Exact Google Ads proposals', content: 'Campaign changes are saved with the account, desired change, risk, expiry and diff. A different active owner or admin reviews that exact plan in XeroFlow. Approval and execution are separate actions; staff cannot self-confirm advertising changes.' },
+      { title: 'Bounded tracking changes', content: 'Tracking proposals require documented website ownership, consent and existing conversion routing. Supported templates cover a bounded Google tag, GA4 event and Google Ads conversion, plus folders and a window-loaded trigger. Native DriveAgent accepted enquiries retain their server delivery path. Arbitrary HTML, JavaScript and unregistered templates are excluded.' },
+      { title: 'Results you can inspect', content: 'Workspace compilation, publish, live read-back and actual conversion delivery are separate evidence. Publishing a compiled version requires another review. Drift blocks execution and uncertain outcomes stay held for inspection. Provider scopes, permissions and live account acceptance remain activation requirements.' }
+    ]
+  },
   'page-studio': {
     title: 'Page Studio',
     slug: 'page-studio',

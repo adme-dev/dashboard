@@ -324,12 +324,17 @@ describe('God mode gate inventory', () => {
     expect(publishingCallback).toContain("agencyWorkflowConfigText(event, 'WORKFLOW_CALLBACK_SECRET')")
     expect(publishingCallback).toContain("agencyWorkflowConfigText(event, 'WORKFLOW_SERVICE_SECRET')")
     expect(publishingCallback).toContain("getHeader(event, 'x-workflow-secret') !== expected")
-    expect(inventory.rows).toHaveLength(1645)
+    // Task4: seven explicit ordinary wiring/reviewer rows (four GTM review handlers,
+    // two Ads review service rows and one GTM reviewer gate). Three existing MEDIA_BUYING
+    // predicates are replaced by delegated-grant versus legacy branches, with unchanged
+    // governance count. No owner bypass or provider/identity gate is removed. Exact diff:
+    // .superpowers/sdd/2026-10-27-marketing-staff-mcp/task-4-gate-inventory-diff.json.
+    expect(inventory.rows).toHaveLength(1652)
     expect(inventory.counts).toEqual({
       identity_tenant_hard_boundary: 127,
       provider_infrastructure_availability: 222,
       application_governance_bypass: 1620,
-      ordinary_user_behavior: 244,
+      ordinary_user_behavior: 251,
       unrelated_configuration: 431
     })
     // Removing the session KV shortcut removes four auth middleware rows:
@@ -349,7 +354,7 @@ describe('God mode gate inventory', () => {
     expect(inventory.rows.filter(row => row.startsWith('server/utils/socialPublishing/mediaAssets.ts\t'))).toEqual([
       "server/utils/socialPublishing/mediaAssets.ts\tconst secret = typeof bound === 'string' ? bound : (env && 'RENDER_LINK_SECRET' in env ? null : process.env.RENDER_LINK_SECRET)\tprovider_infrastructure_availability"
     ])
-    expect(inventory.digest).toBe('60a26a71413acd031f91759d641cb238b30bee840356edba2f540c06f9a5a5f3')
+    expect(inventory.digest).toBe('895025a784eb5e082b5d8d0c2e6786a55d573fff3ca6bedb83520e9acf4c8222')
     expect(inventory.rows).toContain(
       'app/composables/usePageStudioLauncher.ts\tconst config = useRuntimeConfig()\tunrelated_configuration'
     )

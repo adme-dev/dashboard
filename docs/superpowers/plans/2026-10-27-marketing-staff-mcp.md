@@ -71,11 +71,11 @@ Task 1 does not claim the six reads execute yet: Task 2 delivers that before pil
 
 **Files:** existing `mcp/googleAds*`, `mcp/gtm*`, associated control-plane/store/installer services and review endpoints.
 
-- [ ] Produce subordinate plan separating scoped read inventory, local proposals, provider draft creation and reviewed apply/publish/rollback.
-- [ ] Add current assignment checks before credentials and on plan/status/replay; whitelist staff planning operations rather than expose all owner tools.
-- [ ] Preserve provider drift/version checks, durable idempotency, cost limits and unknown-outcome holds. Staff cannot self-confirm campaign changes.
-- [ ] GTM requires explicit ownership evidence and allowed template operations; retain native DriveAgent conversion routing. A provider workspace creation is itself reviewed.
-- [ ] Prove no effects on invalid scope/revision/approval and exact authorized dispatch/read-back. Leave unrelated financial, automation and destructive suites governed separately.
+- [x] Produce subordinate plan separating scoped read inventory, local proposals, provider draft creation and reviewed apply/publish/rollback.
+- [x] Add current assignment checks before credentials and on plan/status/replay; whitelist staff planning operations rather than expose all owner tools.
+- [x] Preserve provider drift/version checks, durable idempotency, cost limits and unknown-outcome holds. Staff cannot self-confirm campaign changes.
+- [x] GTM requires explicit ownership evidence and allowed template operations; retain native DriveAgent conversion routing. A provider workspace creation is itself reviewed.
+- [x] Prove no effects on invalid scope/revision/approval and exact authorized dispatch/read-back. Leave unrelated financial, automation and destructive suites governed separately.
 
 ## Task 5: Remaining providers and capability readiness
 

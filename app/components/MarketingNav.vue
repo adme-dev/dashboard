@@ -661,6 +661,7 @@ const featuresCol3b = [
 ]
 
 const featuresCol4 = [
+  { title: 'Marketing Reviews', subtitle: 'Scoped Ads and tracking proposals', icon: 'i-lucide-shield-check', iconBg: 'bg-amber-500/15', iconColor: 'text-amber-400', to: '/features/marketing-reviews' },
   { title: 'AI Assistant', subtitle: 'Agentic chat, anomaly detection, search', icon: 'i-lucide-sparkles', iconBg: 'bg-amber-500/15', iconColor: 'text-amber-400', to: '/platform/ai' },
   { title: 'Governed AI Assistants', subtitle: 'Personal and department specialists', icon: 'i-lucide-shield-check', iconBg: 'bg-amber-500/15', iconColor: 'text-amber-400', to: '/ai-assistants' },
   { title: 'Advisor Backlog', subtitle: 'CFO recommendations as a triage queue', icon: 'i-lucide-target', iconBg: 'bg-amber-500/15', iconColor: 'text-amber-400', to: '/features/advisor-backlog' },

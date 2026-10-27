@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { delegatedAdsContext, assertGoogleAdsConnection } from '~~/server/utils/ai/marketing/googleAdsAccess'
 import type { PermissionGroup } from '~~/server/utils/permissions'
 import type { ToolContext } from '~~/server/utils/ai/toolContext'
 import {
@@ -387,11 +388,13 @@ export async function executeGoogleAdsTool(
   if (!isGoogleAdsToolName(name)) {
     return { ok: false, error: `Unknown Google Ads tool: ${name}`, code: 'not_found' }
   }
-  if (!mcpContextHasPermission(context, 'MEDIA_BUYING')) {
+  if (delegatedAdsContext(context) ? !(context.marketingCapabilities ?? []).some(c => c === 'ads_plan' || c === 'reporting') : !mcpContextHasPermission(context, 'MEDIA_BUYING')) {
     return { ok: false, error: 'Not permitted.', code: 'forbidden' }
   }
 
+  if (delegatedAdsContext(context) && (name === GOOGLE_ADS_PROPOSE_ACTION_TOOL || name === GOOGLE_ADS_RUN_SEARCH_TERM_POLICY_TOOL || name === GOOGLE_ADS_RUN_PAUSE_POLICY_TOOL)) return { ok: false, error: 'Use the independently reviewed planning workflow.', code: 'forbidden' }
   const isWrite = isGoogleAdsWriteToolName(name)
+  if (delegatedAdsContext(context) && isWrite && (context.assistantReadOnly || ![...(context.mcpScopes??[])].includes('mcp:write'))) return {ok:false,error:'Signed write scope required.',code:'forbidden'}
   if (isWrite && !flags.write) {
     return { ok: false, error: 'Google Ads write tools are not enabled over MCP.', code: 'disabled' }
   }
@@ -490,6 +493,7 @@ export async function executeGoogleAdsTool(
       return { ok: false, error: 'This action plan belongs to another user.', code: 'forbidden' }
     }
 
+    if (delegatedAdsContext(context)) await assertGoogleAdsConnection(context, plan.clientId, plan.connectionId, plan.customerId)
     if (name === GOOGLE_ADS_GET_STATUS_TOOL) {
       return { ok: true, data: await dependencies.getStatus(plan, context) }
     }
@@ -574,10 +578,11 @@ export async function dispatchGoogleAdsConfirm(
   dependencies: GoogleAdsConfirmDependencies
 ): Promise<WriteConfirmOutcome | null> {
   if (row.tool_name !== GOOGLE_ADS_PENDING_ACTION) return null
+  if (delegatedAdsContext(context)) return { ok: false, error: 'Google Ads changes require independent browser review; retained MCP proposals cannot be self-confirmed.', code: 'forbidden' }
   if (!flags.write) {
     return { ok: false, error: 'Google Ads write tools are not enabled over MCP.', code: 'forbidden' }
   }
-  if (!mcpContextHasPermission(context, 'MEDIA_BUYING')) {
+  if (delegatedAdsContext(context) ? !(context.marketingCapabilities ?? []).some(c => c === 'ads_plan' || c === 'reporting') : !mcpContextHasPermission(context, 'MEDIA_BUYING')) {
     return { ok: false, error: 'Not permitted.', code: 'forbidden' }
   }
 

@@ -1,5 +1,6 @@
+import { gtmHash } from '~~/server/utils/tracking/gtmOwnership'
 import { createError, getRequestURL, type H3Event } from 'h3'
-import { execute, queryOne, queryRows } from '~~/server/utils/db'
+import { execute, queryOne, queryOneFresh, queryRows } from '~~/server/utils/db'
 import {
   buildXeroFlowGtmEntities,
   createGtmTag,
@@ -7,6 +8,8 @@ import {
   createGtmVersion,
   createGtmWorkspace,
   getGtmWorkspaceStatus,
+  getGtmEntity,
+  getGtmVersion,
   getLiveGtmVersion,
   publishGtmVersion,
   quickPreviewGtmWorkspace,
@@ -47,7 +50,7 @@ export interface GtmSiteBindingSummary {
 }
 
 async function loadBindingForSite(siteId: string): Promise<GtmSiteBindingRow | null> {
-  return queryOne<GtmSiteBindingRow>(
+  return queryOneFresh<GtmSiteBindingRow>(
     `SELECT gb.id AS binding_id,
             gb.tracking_site_id,
             gb.connection_id,
@@ -90,6 +93,7 @@ export async function upsertGtmContainerBinding(input: {
   connectionId: string
   account: { path: string, name: string }
   container: GtmContainer
+  beforeWrite?: () => void
 }): Promise<GtmSiteBindingSummary> {
   if (!/^accounts\/\d+$/.test(input.account.path)) {
     throw createError({ statusCode: 400, statusMessage: 'Invalid GTM account path' })
@@ -105,6 +109,7 @@ export async function upsertGtmContainerBinding(input: {
     throw createError({ statusCode: 400, statusMessage: 'The selected GTM container is not a web container' })
   }
 
+  input.beforeWrite?.()
   const row = await queryOne<GtmSiteBindingRow>(
     `INSERT INTO gtm_container_bindings (
        tracking_site_id, connection_id,
@@ -172,6 +177,49 @@ function buildSnippet(event: H3Event, binding: GtmSiteBindingRow): string {
   const spa = binding.spa ? ' data-spa="true"' : ''
   return `<script src="${origin}/track.js" data-key="${binding.write_key}"${spa} async></script>`
 }
+
+function installationConfiguration(event: H3Event, binding: GtmSiteBindingRow) {
+  const entities = buildXeroFlowGtmEntities({
+    siteId: binding.tracking_site_id,
+    siteName: binding.site_name,
+    snippet: buildSnippet(event, binding)
+  })
+  const collectorOrigin = getRequestURL(event).origin
+  return {
+    entities,
+    identity: {
+      hash: gtmHash({ bindingId: binding.binding_id, container: binding.container_path, collectorOrigin,
+        siteId: binding.tracking_site_id, siteName: binding.site_name, spa: binding.spa,
+        writeKey: binding.write_key, entities }),
+      review: {
+        siteName: binding.site_name, spa: binding.spa, collectorOrigin,
+        scriptUrl: `${collectorOrigin}/track.js`, writeKeyHash: gtmHash(binding.write_key),
+        marker: entities.marker, trigger: entities.trigger,
+        tag: { name: entities.tag.name, type: entities.tag.type, payloadHash: gtmHash(entities.tag),
+          firingTrigger: 'Server-created XeroFlow window-loaded trigger' }
+      }
+    }
+  }
+}
+/** Exact server-generated payload identity; no credentials or provider calls. */
+export async function getGtmInstallationIdentity(event: H3Event, siteId: string) {
+  const binding = await loadBindingForSite(siteId)
+  if (!binding) throw createError({ statusCode: 409, statusMessage: 'Installation binding required' })
+  return installationConfiguration(event, binding).identity
+}
+export type GtmInstallationResult =
+  | { ok: true, status: 'already_installed', effect: 'none', installed: true, liveVersion: ReturnType<typeof compactVersion> }
+  | { ok: true, status: 'already_in_progress', effect: 'none', changeSet: unknown }
+  | {
+      ok: boolean
+      status: 'versioned' | 'verified' | 'failed'
+      effect: 'attempted'
+      changeSetId: string
+      managed: Array<{ action: string, kind: string, id: string, body: Record<string, any> }>
+      installed?: boolean
+      liveVersion?: ReturnType<typeof compactVersion>
+      version?: ReturnType<typeof compactVersion>
+    }
 
 function errorCode(error: unknown): string {
   const raw = error as { code?: string, statusCode?: number }
@@ -269,19 +317,22 @@ export async function installXeroFlowViaGtm(event: H3Event, input: {
   siteId: string
   userId: string
   publish: boolean
-}): Promise<Record<string, unknown>> {
+  reviewed?: {proposalId:string,requesterId:string,reviewerId:string,basePath:string,baseFingerprint:string,bindingId:string,connectionId:string,installationHash:string}
+  execution?: { beforeWrite(): void, quotaReserved: true }
+}): Promise<GtmInstallationResult> {
   const binding = await loadBindingForSite(input.siteId)
   if (!binding) throw createError({ statusCode: 404, statusMessage: 'Bind a GTM container to this tracking site first' })
 
+  if (input.reviewed && (binding.binding_id !== input.reviewed.bindingId || binding.connection_id !== input.reviewed.connectionId || !input.reviewed.basePath.startsWith(`${binding.container_path}/versions/`))) throw createError({ statusCode: 409, statusMessage: 'Reviewed binding changed' })
+  if(input.reviewed && (input.publish || input.reviewed.requesterId===input.reviewed.reviewerId)) throw createError({statusCode:403,statusMessage:'Separate publish review required'})
+  const { entities, identity } = installationConfiguration(event, binding)
+  if (input.reviewed && identity.hash !== input.reviewed.installationHash)
+    throw createError({ statusCode: 409, statusMessage: 'Reviewed installation configuration changed' })
   const credential = await resolveGtmAccessToken(event, binding.connection_id)
-  const entities = buildXeroFlowGtmEntities({
-    siteId: input.siteId,
-    siteName: binding.site_name,
-    snippet: buildSnippet(event, binding),
-  })
 
-  await reserveGtmApiQuota(1)
+  if (!input.execution?.quotaReserved) await reserveGtmApiQuota(1)
   const liveBefore = await getLiveGtmVersion(credential.token, binding.container_path)
+  if(input.reviewed && (liveBefore.path!==input.reviewed.basePath || liveBefore.fingerprint!==input.reviewed.baseFingerprint)) throw createError({statusCode:409,statusMessage:'Reviewed live version changed'})
   if (versionHasXeroFlowTag(liveBefore, entities.marker, binding.write_key)) {
     await execute(
       `UPDATE gtm_container_bindings
@@ -294,6 +345,7 @@ export async function installXeroFlowViaGtm(event: H3Event, input: {
     return {
       ok: true,
       status: 'already_installed',
+      effect: 'none',
       installed: true,
       liveVersion: compactVersion(liveBefore),
     }
@@ -306,9 +358,9 @@ export async function installXeroFlowViaGtm(event: H3Event, input: {
          binding_id, action_type, status,
          requested_by, approved_by, executed_by,
          approved_at, desired_state, observed_before,
-         previous_live_version_path, previous_live_version_fingerprint
+         previous_live_version_path, previous_live_version_fingerprint, source_proposal_id
        )
-       VALUES ($1,'install_xeroflow','executing',$2,$2,$2,NOW(),$3,$4,$5,$6)
+       VALUES ($1,'install_xeroflow','executing',$7,$8,$2,NOW(),$3,$4,$5,$6,$9)
        RETURNING id`,
       [
         binding.binding_id,
@@ -317,6 +369,9 @@ export async function installXeroFlowViaGtm(event: H3Event, input: {
         JSON.stringify({ liveVersion: compactVersion(liveBefore) }),
         liveBefore.path,
         liveBefore.fingerprint || null,
+        input.reviewed?.requesterId ?? input.userId,
+        input.reviewed?.reviewerId ?? input.userId,
+        input.reviewed?.proposalId ?? null,
       ],
     )
   } catch (error: any) {
@@ -330,7 +385,7 @@ export async function installXeroFlowViaGtm(event: H3Event, input: {
           ORDER BY created_at DESC LIMIT 1`,
         [binding.binding_id],
       )
-      return { ok: true, status: 'already_in_progress', changeSet: active }
+      return { ok: true, status: 'already_in_progress', effect: 'none', changeSet: active }
     }
     throw error
   }
@@ -340,8 +395,9 @@ export async function installXeroFlowViaGtm(event: H3Event, input: {
     // Remaining calls: workspace, trigger, tag, status, quick preview, version,
     // and optionally publish + live read-back. Reserve after the change-set row exists so a
     // pacing failure is recorded instead of leaving an executing operation behind.
-    await reserveGtmApiQuota(input.publish ? 8 : 6)
+    if (!input.execution?.quotaReserved) await reserveGtmApiQuota(input.reviewed ? 9 : input.publish ? 8 : 6)
     const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+    input.execution?.beforeWrite()
     const workspace = await createGtmWorkspace(credential.token, binding.container_path, {
       name: `XeroFlow - ${binding.site_name} - ${stamp}`.slice(0, 200),
       description: `Managed by XeroFlow. ${entities.marker}`,
@@ -358,6 +414,19 @@ export async function installXeroFlowViaGtm(event: H3Event, input: {
       firingTriggerId: [trigger.triggerId],
     })
 
+    if (!tag.tagId) throw new Error('Google Tag Manager did not return a tag ID')
+    const managed = [
+      { action:'create', kind:'triggers', id:trigger.triggerId, body:entities.trigger },
+      { action:'create', kind:'tags', id:tag.tagId, body:{...entities.tag,firingTriggerId:[trigger.triggerId]} }
+    ]
+    if(input.reviewed) {
+      const {verifyGtmManagedEntity}=await import('~~/server/utils/tracking/gtmTypedChanges')
+      if(!tag.tagId || !tag.path || !tag.fingerprint || !trigger.path || !trigger.fingerprint
+        || !tag.path.startsWith(`${workspace.path}/tags/`) || !trigger.path.startsWith(`${workspace.path}/triggers/`)) throw new Error('Invalid reviewed installation receipt')
+      verifyGtmManagedEntity(managed[0]!.body,await getGtmEntity(credential.token,trigger.path,'triggers'))
+      verifyGtmManagedEntity(managed[1]!.body,await getGtmEntity(credential.token,tag.path,'tags'))
+    }
+
     const workspaceStatus = await getGtmWorkspaceStatus(credential.token, workspace.path)
     if ((workspaceStatus.mergeConflict || []).length) {
       const conflict = new Error('The XeroFlow workspace conflicts with newer GTM changes') as Error & { code?: string }
@@ -372,6 +441,11 @@ export async function installXeroFlowViaGtm(event: H3Event, input: {
       throw conflict
     }
 
+    if(input.reviewed) {
+      if(!preview.containerVersion) throw new Error('Reviewed preview version required')
+      const {assertGtmOnlyManagedChanges}=await import('~~/server/utils/tracking/gtmTypedChanges')
+      assertGtmOnlyManagedChanges(liveBefore,preview.containerVersion,managed)
+    }
     const version = await createGtmVersion(credential.token, workspace.path, {
       name: `XeroFlow - ${binding.site_name} - tracking install`.slice(0, 200),
       notes: `Installed XeroFlow first-party tracking. ${entities.marker}`,
@@ -382,6 +456,14 @@ export async function installXeroFlowViaGtm(event: H3Event, input: {
       throw compiler
     }
     const created = version.containerVersion
+    if(input.reviewed) {
+      if(!created.fingerprint || version.syncStatus?.mergeConflict || version.syncStatus?.syncError) throw new Error('Reviewed version receipt invalid')
+      const exact=await getGtmVersion(credential.token,created.path)
+      const {assertGtmOnlyManagedChanges,verifyGtmVersion}=await import('~~/server/utils/tracking/gtmTypedChanges')
+      if(exact.fingerprint!==created.fingerprint) throw new Error('Reviewed installation version drift')
+      assertGtmOnlyManagedChanges(liveBefore,exact,managed)
+      verifyGtmVersion(managed,exact,binding.container_path)
+    }
     await execute(
       `UPDATE gtm_change_sets
           SET status = 'versioned',
@@ -390,13 +472,15 @@ export async function installXeroFlowViaGtm(event: H3Event, input: {
               observed_after = $4,
               updated_at = NOW()
         WHERE id = $1`,
-      [changeSet.id, created.path, created.fingerprint || null, JSON.stringify({ tag, trigger, preview: compactVersion(preview.containerVersion) })],
+      [changeSet.id, created.path, created.fingerprint || null, JSON.stringify({ tag, trigger, managed, preview: compactVersion(preview.containerVersion) })],
     )
 
     if (!input.publish) {
       return {
         ok: true,
         status: 'versioned',
+        effect: 'attempted',
+        managed,
         changeSetId: changeSet.id,
         version: compactVersion(created),
       }
@@ -445,6 +529,8 @@ export async function installXeroFlowViaGtm(event: H3Event, input: {
     return {
       ok: verified,
       status: verified ? 'verified' : 'failed',
+      effect: 'attempted',
+      managed,
       changeSetId: changeSet.id,
       installed: verified,
       liveVersion: compactVersion(liveAfter),
@@ -476,6 +562,7 @@ export async function publishGtmChangeSet(event: H3Event, input: {
       WHERE id = $1
         AND binding_id = $2
         AND status = 'versioned'
+        AND source_proposal_id IS NULL
       RETURNING id, created_version_path, created_version_fingerprint`,
     [input.changeSetId, binding.binding_id, input.userId],
   )
@@ -534,7 +621,7 @@ export async function rollbackGtmChangeSet(event: H3Event, input: {
   }>(
     `SELECT previous_live_version_path, previous_live_version_fingerprint
        FROM gtm_change_sets
-      WHERE id = $1 AND binding_id = $2 AND status IN ('published','verified','failed')`,
+      WHERE id = $1 AND binding_id = $2 AND source_proposal_id IS NULL AND status IN ('published','verified','failed')`,
     [input.changeSetId, binding.binding_id],
   )
   if (!source?.previous_live_version_path) {

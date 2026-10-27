@@ -265,3 +265,22 @@ baked into `[vars]` and a tenant with video-gen enabled — otherwise the engine
 - OAuth bounce: `server/api/mcp/authorize.get.ts` + `server/utils/ai/mcp/{assertion,consent}.ts`
 - In-app connector page: `app/pages/agency/ai/connectors.vue` + `GET /api/agency/ai/mcp/my-tools`
 - Worker: `workers/mcp-server/` (deploy: `workers/mcp-server/DEPLOYMENT.md`)
+
+### Independently reviewed Ads and tracking proposals
+
+Enrolled staff with `ads_plan` can inspect assigned Google Ads accounts and prepare
+immutable plans. Ordinary management/admin MCP users use the same independent
+review requirement: legacy propose/confirm/automatic tools cannot self-approve
+campaign changes. A different active owner/admin reviews and executes the exact
+plan at `/agency/marketing/reviews/google-ads`. Owner direct execution remains
+separate. `reporting` also permits scoped Ads reads; every local mutation requires
+signed `mcp:write` and current role/client access.
+
+With `tracking_plan`, staff inspect assigned GTM site inventories, record
+ownership evidence and prepare local binding/workspace/installation/publish/
+rollback proposals. Provider workspace creation and publication require separate
+reviews at `/agency/marketing/reviews/gtm`. The bounded Google tag, GA4 event and
+Google Ads conversion templates exclude raw HTML/JavaScript, arbitrary variables
+and unknown settings. Native DriveAgent accepted enquiries retain their supported
+server delivery. See [the review runbook](runbooks/marketing-ads-tracking-review.md)
+for exact capabilities, uncertain outcomes and provider acceptance requirements.

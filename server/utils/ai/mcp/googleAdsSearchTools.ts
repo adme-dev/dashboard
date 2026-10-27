@@ -1,4 +1,6 @@
+import { assertGoogleAdsResourceCustomers } from '~~/server/utils/ai/marketing/googleAdsAccess'
 import { z } from 'zod'
+import { delegatedAdsContext, assertGoogleAdsConnection, replayGoogleAdsPlan } from '~~/server/utils/ai/marketing/googleAdsAccess'
 import type { ToolContext } from '~~/server/utils/ai/toolContext'
 import { mcpContextHasPermission, toMcpInputSchema, type McpToolManifest } from '~~/server/utils/ai/mcp/project'
 import type { PlanGoogleAdsActionInput } from '~~/server/utils/googleAds/actionPlanner'
@@ -1118,6 +1120,7 @@ export function mcpGoogleAdsControlAuthority(context: ToolContext, hasWriteScope
   return {
     actorRole: context.userRole,
     hasWriteScope,
+    delegatedPlanning: delegatedAdsContext(context) && (context.marketingCapabilities ?? []).includes('ads_plan'),
     ...(context.mcpStaffAuthority === 'fresh' ? { permissionGroups: context.permissionGroups ?? [] } : {})
   }
 }
@@ -1148,7 +1151,7 @@ export async function executeGoogleAdsSearchPlanningTool(
   if (!flags.write) {
     return { ok: false, error: 'Google Ads write tools are not enabled over MCP.', code: 'disabled' }
   }
-  if (!hasWriteScope || !mcpContextHasPermission(context, 'MEDIA_BUYING')) {
+  if (!hasWriteScope || (delegatedAdsContext(context) ? !(context.marketingCapabilities ?? []).includes('ads_plan') : !mcpContextHasPermission(context, 'MEDIA_BUYING'))) {
     return { ok: false, error: 'Not permitted.', code: 'forbidden' }
   }
   const dependencies = { ...defaultDependencies, ...overrides }
@@ -2068,7 +2071,14 @@ export async function executeGoogleAdsSearchPlanningTool(
     } else {
       throw new Error('Unsupported Google Ads Search planning tool')
     }
-    const plan = await dependencies.plan(plannerInput, mcpGoogleAdsControlAuthority(context, hasWriteScope), flags)
+    let replay: Awaited<ReturnType<typeof replayGoogleAdsPlan>> = null
+    if (delegatedAdsContext(context)) {
+      if (plannerInput.requestedMode !== 'proposal' || /^(remove_|archive_custom_)/.test(plannerInput.operation)) return { ok: false, error: 'Staff automatic and destructive actions are unavailable.', code: 'forbidden' }
+      const mapping = await assertGoogleAdsConnection(context, plannerInput.clientId, plannerInput.connectionId, undefined, 'plan')
+      assertGoogleAdsResourceCustomers(plannerInput.arguments, mapping.customerId)
+      replay = await replayGoogleAdsPlan(context,plannerInput.clientId,plannerInput.idempotencyKey)
+    }
+    const plan = replay ?? await dependencies.plan(plannerInput, mcpGoogleAdsControlAuthority(context, hasWriteScope), flags)
     if (!plan.policyDecision.allowed || plan.status === 'cancelled') {
       return {
         ok: false,

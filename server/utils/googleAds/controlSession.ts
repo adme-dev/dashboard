@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { queryOne } from '~~/server/utils/db'
+import { queryOneFresh } from '~~/server/utils/db'
 import {
   GOOGLE_CREDENTIAL_PROFILE_JOIN,
   GOOGLE_CREDENTIAL_PROFILE_SELECT,
@@ -31,7 +31,7 @@ interface LoadConnectionDependencies {
   queryOne<T>(sql: string, params: unknown[]): Promise<T | null>
 }
 
-const defaultLoadDependencies: LoadConnectionDependencies = { queryOne }
+const defaultLoadDependencies: LoadConnectionDependencies = { queryOne: queryOneFresh }
 
 export async function loadGoogleAdsControlConnection(
   rawClientId: string,

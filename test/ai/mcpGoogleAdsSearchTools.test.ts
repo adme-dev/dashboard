@@ -8,7 +8,7 @@ import {
 
 const context: ToolContext = {
   userId: '11111111-1111-4111-8111-111111111111',
-  userRole: 'media_buyer',
+  userRole: 'owner',
   event: {} as never,
   source: 'mcp'
 }
@@ -119,7 +119,7 @@ describe('Google Ads Search MCP planning descriptors', () => {
       operation: 'pause_campaign',
       resourceType: 'campaign',
       arguments: { resourceName: 'customers/1234567890/campaigns/10' }
-    }), expect.objectContaining({ actorRole: 'media_buyer', hasWriteScope: true }), flags)
+    }), expect.objectContaining({ actorRole: 'owner', hasWriteScope: true }), flags)
   })
 
   it('maps archive to pause semantics rather than provider removal', async () => {

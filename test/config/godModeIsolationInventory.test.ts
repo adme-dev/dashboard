@@ -8,6 +8,10 @@ import {
 } from '../../server/utils/godMode/featureGate'
 
 const API_INVENTORY = {
+  // Task4 adds eight authenticated Ads/GTM review routes, six mutations. Only the
+  // three GTM mutation adapters contain the lexical user.role token; all eight
+  // delegate to fresh scope/reviewer services. Direct transaction count stays 52;
+  // service-owned claims do not create route-level God mode bypasses.
   // Page Studio publication now delegates its selected-tenant permission check
   // to requireAgencyPageStudioAccess; this lexical inventory counts inline gates.
   // Delegated permission gates do not register a God mode mutation bypass.
@@ -90,9 +94,9 @@ const API_INVENTORY = {
   // owner, expiry and stored-ETag checks, no session or bypass). Request-approval, approve and reject
   // now commit their revision decision in one transaction for delegated/news posts (+3 transactional
   // guarded mutations); their role gates are unchanged and none registers a God mode bypass.
-  totalRouteFiles: 2284,
-  mutationRouteFiles: 1245,
-  explicitlyGuardedMutationFiles: 408,
+  totalRouteFiles: 2292,
+  mutationRouteFiles: 1251,
+  explicitlyGuardedMutationFiles: 411,
   guardedMutationFilesWithTransactionCall: 52
 } as const
 
@@ -141,11 +145,37 @@ describe('God mode route isolation inventory', () => {
   it('records the full mechanical API and mutation inventory reviewed before implementation', () => {
     expect(mechanicalInventory()).toEqual(API_INVENTORY)
     expect(API_INVENTORY).toEqual({
-      totalRouteFiles: 2284,
-      mutationRouteFiles: 1245,
-      explicitlyGuardedMutationFiles: 408,
+      totalRouteFiles: 2292,
+      mutationRouteFiles: 1251,
+      explicitlyGuardedMutationFiles: 411,
       guardedMutationFilesWithTransactionCall: 52
     })
+  })
+
+  it('pins all eight marketing review adapters to authentication and their fresh authority services', () => {
+    const expected = {
+      'google-ads/index.get.ts': 'listGoogleAdsReviewPlans(event, user.id)',
+      'google-ads/[id]/approve.post.ts': 'reviewGoogleAdsPlan(event, user.id,',
+      'google-ads/[id]/reject.post.ts': 'reviewGoogleAdsPlan(event, user.id,',
+      'google-ads/[id]/execute.post.ts': 'executeReviewedGoogleAdsPlan(event, user.id,',
+      'gtm/index.get.ts': 'listGtmReviewProposals(',
+      'gtm/[id]/approve.post.ts': 'reviewGtmChangeProposal(',
+      'gtm/[id]/reject.post.ts': 'reviewGtmChangeProposal(',
+      'gtm/[id]/execute.post.ts': 'executeApprovedGtmProposal('
+    }
+    const base = 'server/api/agency/marketing/reviews/'
+    expect(listApiFiles().filter(file => file.startsWith(base)).sort()).toEqual(Object.keys(expected).map(file => base + file).sort())
+    for (const [file, service] of Object.entries(expected)) {
+      const source = readFileSync(base + file, 'utf8')
+      expect(source).toContain('await requireAuth(event)')
+      expect(source).toContain(service)
+      expect(source).not.toContain('registerGodModeMutationFamily')
+    }
+    for (const service of ['server/utils/googleAds/staffReview.ts', 'server/utils/tracking/gtmProposals.ts']) {
+      const source = readFileSync(service, 'utf8')
+      expect(source).toContain('requireIndependentMarketingReviewer(')
+      expect(source).toContain('assertMarketingCapabilityAtBoundary(')
+    }
   })
 
   it('pins transfer and verification bootstrap routes to native authority without a bypass', () => {

@@ -1,3 +1,5 @@
+import { isTask4StaffTool,isLegacyAdsMutation } from '~~/server/utils/ai/mcp/marketingTask4Names'
+import { executeTask4StaffTool } from '~~/server/utils/ai/mcp/marketingTask4Tools'
 // server/api/internal/mcp/call.post.ts
 // Executes one MCP tool for the authenticated user. The Worker validates OAuth; Pages independently
 // requires the service secret plus an exact one-time request claim, re-derives current role/authority,
@@ -233,13 +235,17 @@ export default defineEventHandler(async (event) => {
   })
 
   let outcome: { ok: boolean, data?: unknown, error?: string, code?: string }
-  if (toolName === LEGACY_MCP_SOCIAL_PROPOSAL_TOOL) {
+  if (isLegacyAdsMutation(toolName)) {
+    outcome={ok:false,error:'Google Ads changes require independent browser review.',code:'review_required'}
+  } else if (toolName === LEGACY_MCP_SOCIAL_PROPOSAL_TOOL) {
     // Ordinary staff (management included) never create a legacy, self-approvable social post over MCP.
     outcome = { ok: false, error: LEGACY_MCP_SOCIAL_PROPOSAL_REDIRECT, code: 'review_required' }
   } else if (isWriteScopeTool && !hasWriteScope(grantedScopes)) {
     outcome = { ok: false, error: 'This action requires write access. Reconnect your AI assistant and grant write (mcp:write) to use it.', code: 'insufficient_scope' }
   } else if (isWriteScopeTool && ctx.assistantReadOnly === true) {
     outcome = { ok: false, error: 'Your role is read-only.', code: 'read_only' }
+  } else if (isTask4StaffTool(toolName)) {
+    outcome=await executeTask4StaffTool(toolName,args,ctx,idempotencyKey)
   } else if (!managementStaff) {
     // Non-management staff: reviewed staff-policy tools only, re-evaluated against fresh authority.
     const admission = evaluateStaffToolAdmission(toolName, ctx)
@@ -295,7 +301,12 @@ export default defineEventHandler(async (event) => {
           RETURNING tool_name, resolved_payload`,
         [proposalId, uid]
       ).catch(() => null),
-      replay: replayExecutedMcpProposal,
+      replay: async (proposalId, uid) => {
+        const retained = await queryOne<{tool_name:string}>(
+          `SELECT tool_name FROM ai_pending_actions WHERE id=$1 AND user_id=$2 AND source='mcp'`, [proposalId,uid])
+        if (retained?.tool_name === 'google_ads_action') return {ok:false,error:'Retained advertising proposals require a new independently reviewed plan.',code:'forbidden'}
+        return replayExecutedMcpProposal(proposalId,uid)
+      },
       persistResult: persistMcpProposalResult,
       // Restore a just-claimed row to 'proposed' when a PRE-execution gate (ack/permission) rejects, so a
       // money-mover proposal isn't burned and the caller can retry with ack:true. Scoped to our own claim.

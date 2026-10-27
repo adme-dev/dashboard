@@ -20,6 +20,7 @@ export interface GoogleAdsAccountPolicyInput {
 export interface ResolveGoogleAdsPolicyInput {
   operation: GoogleAdsOperationType
   actorRole: string
+  delegatedPlanning?: boolean
   hasMediaPermission: boolean
   hasElevatedPermission: boolean
   /**
@@ -166,13 +167,14 @@ export function resolveGoogleAdsPolicy(input: ResolveGoogleAdsPolicyInput): Goog
     : floor === 'automatic' ? 'confirm' : floor
   riskTier = maximumRisk(riskTier, input.accountPolicy.minimumRiskTier)
 
+  if (input.delegatedPlanning && (riskTier === 'destructive_confirm' || input.requestedMode !== 'proposal')) return blocked('independent_review_required')
   if (riskTier === 'destructive_confirm') {
     if (!input.destructiveEnabled) return blocked('destructive_actions_disabled')
     if ((input.actorRole !== 'owner' && input.actorRole !== 'admin') || input.hasDestructivePermission === false) {
       return blocked('owner_or_admin_required')
     }
   }
-  if (riskTier === 'rich_confirm' && !input.hasElevatedPermission) {
+  if (riskTier === 'rich_confirm' && !input.hasElevatedPermission && !input.delegatedPlanning) {
     return blocked('elevated_permission_required')
   }
 

@@ -132,10 +132,10 @@ describe('MCP social draft suite and legacy social bypass closure', () => {
 
   it('keeps the suite out of the owner union and exposes only local, non-provider descriptors', () => {
     expect(registeredMcpSuites.map(suite => suite.key)).not.toContain('social-drafts')
-    const [suite] = staffOnlyMcpSuites
+    const suite = staffOnlyMcpSuites.find(s => s.key === 'social-drafts')
     expect(suite!.key).toBe('social-drafts')
     const context = { tools: [], role: 'creative', scopes: [], requireWriteScope: true, suiteFlags: {} as any }
-    expect(projectStaffOnlyMcpTools(context).map(tool => tool.name).sort()).toEqual([...SOCIAL_MCP_TOOL_NAMES].sort())
+    expect(projectStaffOnlyMcpTools(context, [suite!]).map(tool => tool.name).sort()).toEqual([...SOCIAL_MCP_TOOL_NAMES].sort())
     for (const descriptor of suite!.executions(context)) {
       expect(descriptor.executeSupplemental).toBeUndefined()
       if (descriptor.tool.mutates) expect(descriptor.executionClass).toBe('local-transactional')

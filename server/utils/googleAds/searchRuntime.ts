@@ -48,6 +48,9 @@ import {
 import { GoogleAdsActionError, normalizeGoogleAdsError } from '~~/server/utils/googleAds/errors'
 
 export interface GoogleAdsControlAuthority {
+  delegatedPlanning?: boolean
+  executorId?: string
+  reviewedPlanId?: string
   actorRole: string
   hasWriteScope: boolean
   /**
@@ -63,7 +66,8 @@ function authorityPolicyInput(authority: GoogleAdsControlAuthority) {
   const has = (group: PermissionGroup) => groups ? groups.includes(group) : roleHasPermission(authority.actorRole, group)
   return {
     actorRole: authority.actorRole,
-    hasMediaPermission: has('MEDIA_BUYING'),
+    delegatedPlanning: authority.delegatedPlanning === true,
+    hasMediaPermission: authority.delegatedPlanning === true || has('MEDIA_BUYING'),
     hasElevatedPermission: has('MANAGEMENT'),
     ...(groups ? { hasDestructivePermission: groups.includes('ADMIN') } : {})
   }
@@ -333,7 +337,7 @@ export async function planSearchGoogleAdsControlAction(
             actionClass: grantActive ? grant?.actionClass : undefined
           }
     }),
-    persist: dependencies.persist,
+    persist: plan => dependencies.persist({ ...plan, reviewPolicy: authority.delegatedPlanning ? 'delegated_marketing' : 'legacy' }),
     policyVersion: grantActive && grant ? grant.policyVersion : 'google-ads-v1',
     grantId: grantActive && grant ? grant.id : null,
     now: dependencies.now,
@@ -1275,6 +1279,9 @@ export async function executeSearchGoogleAdsControlAction(
   flags: GoogleAdsControlFlags,
   overrides: Partial<SearchGoogleAdsExecutionDependencies> = {}
 ): Promise<GoogleAdsExecutionOutcome> {
+  if (plan.reviewPolicy === 'delegated_marketing' && (authority.reviewedPlanId !== plan.id || !plan.reviewedBy || plan.reviewedBy === plan.actorId)) {
+    return { ok: false, status: 'forbidden', message: 'Independent browser review required.' }
+  }
   if (!isExecutableSearchGoogleAdsPlan(plan)) {
     return { ok: false, status: 'blocked', message: 'This Google Ads action type is not active.' }
   }
@@ -1338,7 +1345,8 @@ export async function executeSearchGoogleAdsControlAction(
       id: candidate.id,
       clientId: candidate.clientId,
       actorId: candidate.actorId,
-      expectedStatus
+      expectedStatus,
+      ...(candidate.reviewPolicy === 'delegated_marketing' ? {executorId:authority.executorId} : {})
     })),
     validate: () => runMutation(true),
     mutate: () => runMutation(false),
