@@ -36,7 +36,7 @@ type ModelMapRow = {
   runtimeRoutingStatus: 'runtime_routed' | 'partial' | 'worker_side' | 'direct'
   runtimeRoutingLabel: string
   runtimeControlEnabled: boolean
-  runtimeSupportedProviders: Array<'groq' | 'anthropic' | 'workers_ai' | 'minimax' | 'aigateway'>
+  runtimeSupportedProviders: Array<'groq' | 'anthropic' | 'workers_ai' | 'minimax' | 'aigateway' | 'openai'>
   runtimeNotes: string | null
 }
 

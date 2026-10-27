@@ -21,7 +21,7 @@ export function computeClipPath(
   mask: Rect,
   target: Rect,
   shape: 'rect' | 'ellipse',
-  invert: boolean,
+  invert: boolean
 ): string {
   // Convert mask bounds to target's local coordinate space (percentages)
   const left = ((mask.x - target.x) / target.w) * 100
@@ -30,6 +30,8 @@ export function computeClipPath(
   const bottom = 100 - (((mask.y + mask.h) - target.y) / target.h) * 100
 
   if (shape === 'ellipse') {
+    // CSS path uses pixels; bounds are recomputed whenever the layer is resized.
+    if (invert) return computeClipPathPx(mask, target, shape, true)
     const rx = (mask.w / target.w) * 50
     const ry = (mask.h / target.h) * 50
     const cx = left + (mask.w / target.w) * 50
@@ -62,7 +64,7 @@ export function computeClipPathPx(
   mask: Rect,
   target: Rect,
   shape: 'rect' | 'ellipse',
-  invert: boolean,
+  invert: boolean
 ): string {
   const left = mask.x - target.x
   const top = mask.y - target.y
@@ -74,6 +76,11 @@ export function computeClipPathPx(
     const ry = mask.h / 2
     const cx = left + rx
     const cy = top + ry
+    if (invert) {
+      // Two closed subpaths with even-odd fill form an exact elliptical cutout,
+      // including when the hole crosses the target edge. No polygon approximation.
+      return `path(evenodd, "M0 0H${target.w}V${target.h}H0Z M${cx + rx} ${cy}A${rx} ${ry} 0 1 0 ${cx - rx} ${cy}A${rx} ${ry} 0 1 0 ${cx + rx} ${cy}Z")`
+    }
     return `ellipse(${rx}px ${ry}px at ${cx}px ${cy}px)`
   }
 

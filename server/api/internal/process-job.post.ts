@@ -24,6 +24,7 @@
 import crypto from 'node:crypto'
 import { defineEventHandler, getHeader, readBody, createError } from 'h3'
 import { processJob } from '~~/server/utils/queueConsumer'
+import type { H3Event } from 'h3'
 import type { QueueJob } from '~~/server/utils/queue'
 import { startJobExecution, finishJobExecution } from '~~/server/utils/jobExecutionLedger'
 
@@ -32,9 +33,10 @@ function positiveHeader(value: string | undefined, fallback: number) {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback
 }
 
-function isValidCronSecret(supplied: string | undefined): boolean {
-  const expected = process.env.CRON_SECRET
-  if (!expected || !supplied) return false
+function isValidCronSecret(event: H3Event, supplied: string | undefined): boolean {
+  const cloudflare = event.context.cloudflare
+  const expected = cloudflare ? cloudflare.env?.CRON_SECRET : process.env.CRON_SECRET
+  if (typeof expected !== 'string' || !expected || !supplied) return false
   const a = Buffer.from(supplied)
   const b = Buffer.from(expected)
   return a.length === b.length && crypto.timingSafeEqual(a, b)
@@ -42,7 +44,7 @@ function isValidCronSecret(supplied: string | undefined): boolean {
 
 export default defineEventHandler(async (event) => {
   const cronSecret = getHeader(event, 'x-cron-secret')
-  if (!import.meta.dev && !isValidCronSecret(cronSecret)) {
+  if (!import.meta.dev && !isValidCronSecret(event, cronSecret)) {
     throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
   }
 

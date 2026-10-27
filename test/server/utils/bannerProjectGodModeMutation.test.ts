@@ -19,8 +19,11 @@ testGlobal.readBody = async event => event.body ?? {}
 testGlobal.createError = input => Object.assign(new Error(input.statusMessage), input)
 
 vi.mock('~~/server/utils/auth', () => ({
-  requireAuth: (...args: unknown[]) => mockRequireAuth(...args)
+  requireAuth: (...args: unknown[]) => mockRequireAuth(...args),
+  requireWriteAccess: (...args: unknown[]) => mockRequireAuth(...args)
 }))
+
+vi.mock('~~/server/utils/social/clientAccess', () => ({ requireSocialClientAccess: vi.fn() }))
 
 vi.mock('~~/server/utils/banner/godModeProjectCreation', () => ({
   executeGodModeBannerProjectCreation: (...args: unknown[]) => mockExecuteGodModeBannerProjectCreation(...args)
@@ -201,10 +204,14 @@ describe('God mode banner project creation coordination', () => {
     expect(JSON.parse((params as string[])[2]).mrec.layers[2]).toMatchObject({ type: 'button', text: 'BOOK A TEST DRIVE' })
     expect(mockExecuteGodModeBannerProjectCreation).toHaveBeenCalledWith(expect.anything(), expect.any(Function))
     expect([...projectCreationRouteSource.matchAll(/^import\s+[^'"\n]+from\s+['"]([^'"]+)['"]/gm)].map(([, source]) => source)).toEqual([
+      '#shared/bannerScopedCanvas',
+      '~~/server/utils/banner/scopedCanvasAccess',
+      '~~/server/utils/godMode/transactionCoordinator',
       '~~/server/utils/auth',
       '~~/server/utils/banner/godModeProjectCreation',
       '~~/server/utils/banner/thebriefProjectImport',
-      '~~/server/utils/social/clientAccess'
+      '~~/server/utils/social/clientAccess',
+      '~~/server/utils/banner/platformQrCanvas'
     ])
     expect(projectCreationRouteSource).not.toMatch(/\b(?:render(?:Job|Banner)?|publish(?:Banner|ToAdPlatform)?|enqueue|queue|export(?:Banner)?|upload(?:Asset)?)[A-Za-z0-9_]*\s*\(/i)
   })

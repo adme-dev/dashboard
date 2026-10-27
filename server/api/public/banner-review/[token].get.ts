@@ -1,10 +1,12 @@
+import { hasScopedCanvas, SCOPED_DISSECTION_EXCLUSION } from '#shared/bannerScopedCanvas'
 /**
  * Get project data for public review (token-based, no auth)
  * GET /api/public/banner-review/:token
  */
-import { queryOne, queryRows } from '~~/server/utils/db'
+import { queryOneFresh, queryRows } from '~~/server/utils/db'
 
 export default defineEventHandler(async (event) => {
+  setHeader(event, 'Cache-Control', 'private, no-store')
   const token = getRouterParam(event, 'token')
 
   if (!token) {
@@ -12,7 +14,7 @@ export default defineEventHandler(async (event) => {
   }
 
   // Validate token
-  const link = await queryOne(`
+  const link = await queryOneFresh(`
     SELECT id, project_id AS "projectId", expires_at AS "expiresAt", revoked
     FROM banner_review_links
     WHERE token = $1
@@ -33,7 +35,7 @@ export default defineEventHandler(async (event) => {
   }
 
   // Get project data
-  const project = await queryOne(`
+  const project = await queryOneFresh(`
     SELECT
       id, name,
       canvas_data AS "canvasData",
@@ -46,6 +48,8 @@ export default defineEventHandler(async (event) => {
   if (!project) {
     throw createError({ statusCode: 404, statusMessage: 'Project not found' })
   }
+
+  if (hasScopedCanvas(project.canvasData)) throw createError({ statusCode: 409, statusMessage: SCOPED_DISSECTION_EXCLUSION })
 
   // Get existing comments
   const comments = await queryRows(`

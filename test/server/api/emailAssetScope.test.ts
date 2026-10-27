@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+vi.stubGlobal('setHeader', vi.fn())
 const mockGetQuery = vi.fn()
 const mockRequireAuth = vi.fn()
 const mockRequireWriteAccess = vi.fn()
@@ -56,6 +57,7 @@ vi.mock('~~/server/utils/clientScoping', () => ({
 
 vi.mock('~~/server/utils/db', () => ({
   queryRows: (...args: unknown[]) => mockQueryRows(...args),
+  queryRowsFresh: (...args: unknown[]) => mockQueryRows(...args),
   queryOne: (...args: unknown[]) => mockQueryOne(...args)
 }))
 

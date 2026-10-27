@@ -89,6 +89,16 @@ const API_INVENTORY = {
   // Banner recovery adds six routes (five mutations) and eight explicit write
   // gates. Preset creation, design/reference generation, export retry and social
   // handoff retain client/project authority; none registers a mutation bypass.
+  // Editable artwork adds eleven routes (nine mutations); delegated artwork/QR
+  // gates and machine credentials remain required. Twelve additional mutations
+  // now have inline write gates; dissection import adds a guarded transaction.
+  // These lexical counts do not register any God mode mutation bypass.
+  // Private raster downloads add GET/HEAD; two existing export mutations gain
+  // native write gates while fresh project/client access remains independent.
+  // Protected asset GET/HEAD and saved HTML POST add three routes; four write
+  // gates retain independent fresh authority without a mutation bypass.
+  // Import now uses transactionWithoutRetry. This lexical counter only
+  // matches transaction(...); the non-retrying atomic boundary remains tested.
   // Marketing staff MCP: internal/mcp tools.post and call.post no longer contain a
   // lexical role read; both now resolve fresh staff authority through
   // server/utils/ai/mcp/staffAuthority.ts after the service secret and signed
@@ -97,9 +107,9 @@ const API_INVENTORY = {
   // owner, expiry and stored-ETag checks, no session or bypass). Request-approval, approve and reject
   // now commit their revision decision in one transaction for delegated/news posts (+3 transactional
   // guarded mutations); their role gates are unchanged and none registers a God mode bypass.
-  totalRouteFiles: 2294,
-  mutationRouteFiles: 1252,
-  explicitlyGuardedMutationFiles: 411,
+  totalRouteFiles: 2310,
+  mutationRouteFiles: 1262,
+  explicitlyGuardedMutationFiles: 429,
   guardedMutationFilesWithTransactionCall: 53
 } as const
 
@@ -148,9 +158,9 @@ describe('God mode route isolation inventory', () => {
   it('records the full mechanical API and mutation inventory reviewed before implementation', () => {
     expect(mechanicalInventory()).toEqual(API_INVENTORY)
     expect(API_INVENTORY).toEqual({
-      totalRouteFiles: 2294,
-      mutationRouteFiles: 1252,
-      explicitlyGuardedMutationFiles: 411,
+      totalRouteFiles: 2310,
+      mutationRouteFiles: 1262,
+      explicitlyGuardedMutationFiles: 429,
       guardedMutationFilesWithTransactionCall: 53
     })
   })
@@ -196,8 +206,8 @@ describe('God mode route isolation inventory', () => {
 
   it('pins transfer and verification bootstrap routes to native authority without a bypass', () => {
     const routes = {
-      'server/api/agency/page-studio/sites/[siteId]/transfer-requests/[requestId]/recovery/admission.post.ts': "handleTransferOperatorHttp(event, 'POST', 'recovery-admission')",
-      'server/api/agency/page-studio/sites/[siteId]/transfer-requests/[requestId]/recovery/review.post.ts': "handleTransferOperatorHttp(event, 'POST', 'recovery-review')",
+      'server/api/agency/page-studio/sites/[siteId]/transfer-requests/[requestId]/recovery/admission.post.ts': 'handleTransferOperatorHttp(event, \'POST\', \'recovery-admission\')',
+      'server/api/agency/page-studio/sites/[siteId]/transfer-requests/[requestId]/recovery/review.post.ts': 'handleTransferOperatorHttp(event, \'POST\', \'recovery-review\')',
       'server/api/portal/page-studio/customer/sites/[siteId]/transfer-requests/[requestId]/recovery/review.post.ts': 'handleTransferReviewOwnerHttp(event)',
       'server/api/agency/page-studio/sites/[siteId]/adoption-grant.get.ts': 'handleTransferOperatorHttp(event, \'GET\', \'adoption-grant\')',
       'server/api/agency/page-studio/sites/[siteId]/adoption-grant.post.ts': 'handleTransferOperatorHttp(event, \'POST\', \'adoption-grant\')',

@@ -1,0 +1,164 @@
+{
+  "status": "local working references, not print approval",
+  "baseCommit": "294d5fc10082ee627ccfd9d7eeb604b79b4bc82e",
+  "root": "output/editable-artwork-reference-pack",
+  "currentConceptB": "local-lifestyle; coastal designs superseded",
+  "files": [
+    {
+      "path": "concepts/concept-1-bold-retail-A4.jpg",
+      "bytes": 3646209,
+      "sha256": "89a4e55d726dd5cca074459af8495aa455dd55fe66e0f4d2bbed7b09e40d4ada"
+    },
+    {
+      "path": "concepts/concept-1-bold-retail-original.png",
+      "bytes": 2147832,
+      "sha256": "56b656a3318b6c8f548cfee50d531bcfcf9d9d69529b18d5ab07f77f724aadb3"
+    },
+    {
+      "path": "concepts/concept-1-bold-retail-back-A4.jpg",
+      "bytes": 2793322,
+      "sha256": "fd0ff489cef3f40568c4e4f405fbf7ac958451ee2622eac57f640906da5e2663"
+    },
+    {
+      "path": "concepts/concept-1-bold-retail-back-original.png",
+      "bytes": 1652733,
+      "sha256": "f11df433e7b5f062da00fded302abe82385822ab9e2fa82a7bdc0f9349e05bff"
+    },
+    {
+      "path": "concepts/concept-2-local-lifestyle-front-A4.jpg",
+      "bytes": 4120589,
+      "sha256": "be557b1b019462dbf8b396a47ef09e8a091c70c5f3d142905f11a8a77b768890"
+    },
+    {
+      "path": "concepts/concept-2-local-lifestyle-front-original.png",
+      "bytes": 2540159,
+      "sha256": "f57289b48794535c420a72c945aef1177a01fc45de17606c72a753badbf1ffbe"
+    },
+    {
+      "path": "concepts/concept-2-local-lifestyle-back-A4.jpg",
+      "bytes": 3503537,
+      "sha256": "d0c806aed9b85a283d9ef55f3348ab0fe0d64bad904531514c63ac33f5480a79"
+    },
+    {
+      "path": "concepts/concept-2-local-lifestyle-back-original.png",
+      "bytes": 2151636,
+      "sha256": "b8f226169690d148f48578ff1ab5f251870224154b46e3cd7fa763c42d599ce6"
+    },
+    {
+      "path": "oem/trailseeker.jpg",
+      "bytes": 1772226,
+      "sha256": "c09478dbaf67de396f441c413d259bc87fd3e7fb09ecd4aa4a9c06f21a5fa5dc"
+    },
+    {
+      "path": "oem/xpeng-g6.jpg",
+      "bytes": 344191,
+      "sha256": "1b9234d51cf2f98dcf0862867efa953e2de5b04e52fdaa491fbc89aaa3112ad5"
+    },
+    {
+      "path": "oem/eastern-subaru-logo.png",
+      "bytes": 18549,
+      "sha256": "edcc6e56692c4df6d1e903ba98a367c97df8b70f53b52b22fe74458621b777b2"
+    },
+    {
+      "path": "provenance/prompts.md",
+      "bytes": 7937,
+      "sha256": "107c0d5273db710cb1e3504a0d58c2298bfedd79472fd3552c7230fce1f201df"
+    },
+    {
+      "path": "provenance/reverse-prompts.md",
+      "bytes": 9654,
+      "sha256": "2a2ee3cb2329af318e97a0b12af1660c9725bd20dc899aa1c1756932fe2b59d0"
+    },
+    {
+      "path": "provenance/lifestyle-prompts.md",
+      "bytes": 2402,
+      "sha256": "ff700a7a081ff90eeeffae0c132f2e7a3d289c5e2ecf65787ac0d117d9594315"
+    },
+    {
+      "path": "provenance/lifestyle-export-check.json",
+      "bytes": 419,
+      "sha256": "668b493f74c2734ba8f2e632da5f61000d944acbe73dec9d8f82505f626def6f"
+    },
+    {
+      "path": "provenance/export-check.json",
+      "bytes": 487,
+      "sha256": "eabdd1b1e8b01225ec8a9d6ea5c58ab1091337937d00ae08a8963892f4e13395"
+    },
+    {
+      "path": "provenance/reverse-export-check.json",
+      "bytes": 453,
+      "sha256": "6e5facb8d671679726525774463691cecde06d6076815a593af7a0c7310b62a1"
+    },
+    {
+      "path": "map-data/route.json",
+      "bytes": 37844,
+      "sha256": "e7f2cd7e931221a09bc7c6cf188f1f06c0f94bd58b83516949bab849d3af0b20"
+    },
+    {
+      "path": "map-data/ringwood.osm",
+      "bytes": 2683504,
+      "sha256": "34e12704821b2d4259675a2148f4b02277bb3891fcd5e9e83ab6cc5bdbe288d0"
+    },
+    {
+      "path": "map-data/lilydale-geocode.json",
+      "bytes": 391,
+      "sha256": "8491a0a47f7710ab429d85d315e8197e59cbdcd962d0d89f74b2d8f2ee310ec7"
+    },
+    {
+      "path": "map-data/ringwood-geocode.json",
+      "bytes": 403,
+      "sha256": "6e75cf35001ac0da804b1494745507ca50c7762443e5f31569efa7fa5681a809"
+    },
+    {
+      "path": "prior-layout/build_revision2.py",
+      "bytes": 18517,
+      "sha256": "215b2e5fd2757b6640d710c979513533dcfa04f5cf7c48af616ca96dcc48c130"
+    },
+    {
+      "path": "prior-layout/scenes.json",
+      "bytes": 112917,
+      "sha256": "40743bbc57a08672f6415fd2061a5c040d2809f0be6829f8889a9674f562ccc0"
+    },
+    {
+      "path": "prior-layout/READ-ME.md",
+      "bytes": 4133,
+      "sha256": "0114e6f668279148f5c61407cb76e92490d648f1671610c2a54f33599c23cb71"
+    }
+  ],
+  "updatedConceptA": {
+    "root": "/Users/paulgiurin/Documents/Projects/dashboard/output/eastern-subaru-mailout-20261026/updated-map-artwork",
+    "status": "Latest user-supplied map and QR layout references; direct Maps QR must be replaced by a platform-managed record before platform publication",
+    "files": [
+      {
+        "path": "eastern-subaru-front-map-qr-A4.jpg",
+        "bytes": 4026970,
+        "sha256": "f133ec18438646e65c123b7029b3c6faec58e1e899fb4292ddab62c78234b788"
+      },
+      {
+        "path": "eastern-subaru-back-map-qr-A4.jpg",
+        "bytes": 2944030,
+        "sha256": "7876760055a504271ff585d21091253e6e04f178835268960ec4dc606e64d3c1"
+      },
+      {
+        "path": "eastern-subaru-front-map-qr-A4.png",
+        "bytes": 14613550,
+        "sha256": "6008bb552f223e27517e6f9329b15f7c67f87f47093c769df28945272231a7d5"
+      },
+      {
+        "path": "eastern-subaru-back-map-qr-A4.png",
+        "bytes": 7829726,
+        "sha256": "146cdd542df08a6e350bf5a0e1666c087eb76b2b3b756630dbb82ec26b14692d"
+      },
+      {
+        "path": "verification.json",
+        "bytes": 2487,
+        "sha256": "885c6c7a97d1bd9867fb9c9934fbc6e2de3227857f81c1c0a4bfb6caf3ff2ade"
+      },
+      {
+        "path": "export.cjs",
+        "bytes": 3590,
+        "sha256": "aa25d35d8c22ca964f5796889ba7f2ab8cdc2fd5df216f37571fa526f3ac4956"
+      }
+    ]
+  }
+}

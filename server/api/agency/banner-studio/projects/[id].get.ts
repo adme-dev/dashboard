@@ -1,3 +1,5 @@
+import { assertScopedCanvasAccess } from '~~/server/utils/banner/scopedCanvasAccess'
+import { hasScopedCanvas } from '#shared/bannerScopedCanvas'
 import { queryOneFresh } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
 import { hasAllSocialClientAccess, requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
@@ -36,6 +38,8 @@ export default defineEventHandler(async (event) => {
       throw createError({ statusCode: 403, statusMessage: 'No access to this project' })
     }
 
+    await assertScopedCanvasAccess(user.id, row.canvasData, id)
+    if (hasScopedCanvas(row.canvasData)) row.thumbnailUrl = null
     return row
   } catch (error: any) {
     if (error.statusCode) throw error

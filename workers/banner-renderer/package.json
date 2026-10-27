@@ -1,0 +1,7 @@
+{
+  "name": "xeroflow-banner-renderer",
+  "private": true,
+  "type": "module",
+  "scripts": { "build": "node build.mjs", "typecheck": "tsc --noEmit -p tsconfig.json", "prove:runtime": "node prove-runtime.mjs" },
+  "dependencies": { "@cloudflare/puppeteer": "1.4.0", "gifenc": "1.0.3", "pngjs": "7.0.0" }
+}

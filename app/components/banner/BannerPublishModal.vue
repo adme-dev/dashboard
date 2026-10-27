@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { hasScopedCanvas, SCOPED_DISSECTION_EXCLUSION } from '#shared/bannerScopedCanvas'
 import { FORMATS, PLATFORM_META } from '~/utils/banner-constants'
 import { buildBannerHTML } from '~/utils/banner-html-builder'
 import { getScaledLayers } from '~/utils/banner-scaling'
@@ -107,6 +108,10 @@ function toggleSize(key: string) {
 }
 
 async function publish() {
+  if (hasScopedCanvas(state.sets) || hasScopedCanvas(state.project?.canvasData)) {
+    toast.add({ title: 'Protected artwork', description: SCOPED_DISSECTION_EXCLUSION, color: 'warning' })
+    return
+  }
   const keys = [...selected.value]
   if (!keys.length) return
 
@@ -187,6 +192,10 @@ async function publish() {
 }
 
 async function schedulePublish() {
+  if (hasScopedCanvas(state.sets) || hasScopedCanvas(state.project?.canvasData)) {
+    toast.add({ title: 'Protected artwork', description: SCOPED_DISSECTION_EXCLUSION, color: 'warning' })
+    return
+  }
   if (!state.project?.id || !scheduleDate.value || !scheduleTime.value) return
   isScheduling.value = true
   try {

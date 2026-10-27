@@ -3,6 +3,8 @@
  * GET /api/_uploads/banner-assets/user-id/uuid/file.png
  */
 import { promises as fs } from 'fs'
+import { eventHandler, getRouterParam, createError, setResponseHeader } from 'h3'
+import { isProtectedDissectionStorageKey } from '../../../shared/bannerDissectionDelivery'
 import { join, extname } from 'path'
 
 const MIME_MAP: Record<string, string> = {
@@ -27,8 +29,15 @@ export default eventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Path is required' })
   }
 
-  // Prevent path traversal
-  const normalized = pathParam.replace(/\.\./g, '')
+  // Reject aliases instead of rewriting them into another storage identity.
+  // These private namespaces have no local/public compatibility path.
+  if (isProtectedDissectionStorageKey(pathParam) || pathParam.toLowerCase().startsWith('banner-dissector/') || pathParam.includes('%')
+    || pathParam.includes('\\') || pathParam.startsWith('/')
+    || pathParam.split('/').some(segment => !segment || segment === '.' || segment === '..')) {
+    setResponseHeader(event, 'Cache-Control', 'private, no-store')
+    throw createError({ statusCode: 404, statusMessage: 'File not found' })
+  }
+  const normalized = pathParam
   const filePath = join(LOCAL_UPLOAD_DIR, normalized)
   if (!filePath.startsWith(LOCAL_UPLOAD_DIR)) {
     throw createError({ statusCode: 403, statusMessage: 'Forbidden' })

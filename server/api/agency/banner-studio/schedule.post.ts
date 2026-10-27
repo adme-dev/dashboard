@@ -1,3 +1,4 @@
+import { assertProjectAllowsUnprotectedFlow } from '~~/server/utils/banner/scopedExport'
 /**
  * Schedule a banner publish for a future date/time.
  * POST /api/agency/banner-studio/schedule
@@ -28,6 +29,8 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'scheduledAt must be a valid future date' })
   }
 
+  await assertProjectAllowsUnprotectedFlow(projectId, body)
+
   // Verify project exists
   const project = await queryOne('SELECT id, name FROM banner_projects WHERE id = $1', [projectId])
   if (!project) {
@@ -43,6 +46,7 @@ export default defineEventHandler(async (event) => {
       [projectId, formatKey],
     ) as any
 
+    await assertProjectAllowsUnprotectedFlow(projectId, body)
     if (existing) {
       // Update existing with schedule
       const row = await queryOne(`

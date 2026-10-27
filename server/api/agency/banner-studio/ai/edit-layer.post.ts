@@ -1,3 +1,4 @@
+import { assertNoScopedDissectionReferences } from '~~/server/utils/banner/scopedExport'
 import { requireAuth } from '~~/server/utils/auth'
 import { queryOne } from '~~/server/utils/db'
 import { uploadBannerAsset } from '~~/server/utils/bannerStorage'
@@ -42,6 +43,8 @@ export default defineEventHandler(async (event) => {
   if (body.prompt.length > 500) {
     throw createError({ statusCode: 400, statusMessage: 'prompt must be 500 characters or less' })
   }
+
+  assertNoScopedDissectionReferences(body.imageUrl)
 
   // SSRF check: only allow known domains
   let parsedUrl: URL

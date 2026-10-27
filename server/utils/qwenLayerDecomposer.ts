@@ -1,7 +1,6 @@
 const SPACE_BASE = 'https://qwen-qwen-image-layered.hf.space'
 
-// Trusted domains for layer download URLs returned by the Space
-const TRUSTED_HOSTS = ['.hf.space', '.huggingface.co']
+const MAX_LAYER_BYTES = 20 * 1024 * 1024
 
 function bufferToBlobPart(buffer: Buffer): Uint8Array<ArrayBuffer> {
   const bytes = new Uint8Array(buffer.length)
@@ -13,6 +12,8 @@ interface DecomposeLayerResult {
   index: number
   label: string
   pngBuffer: Buffer
+  width: number
+  height: number
 }
 
 export interface DecomposeOutput {
@@ -60,7 +61,7 @@ export async function decomposeImageLayers(
 
     // Step 2: Submit prediction with all 10 params
     const eventId = await submitPrediction(uploadPath, {
-      numLayers, prompt, negPrompt, guidanceScale, steps,
+      numLayers, prompt, negPrompt, guidanceScale, steps
     }, headers, controller.signal)
     if (!eventId) return null
 
@@ -68,46 +69,35 @@ export async function decomposeImageLayers(
     const result = await streamResult(eventId, headers, controller.signal)
     if (!result?.layerUrls || result.layerUrls.length === 0) return null
 
-    // Step 4: Download each layer PNG
+    // Gallery count is authoritative: Qwen may include a background in addition
+    // to the requested layers. Never silently accept a missing gallery member.
     const layers: DecomposeLayerResult[] = []
     for (let i = 0; i < result.layerUrls.length; i++) {
-      const url = result.layerUrls[i]
-      if (!url) continue
-      try {
-        const resp = await fetch(url, { headers, signal: controller.signal })
-        if (!resp.ok) {
-          console.warn(`[Decomposer] Layer ${i} download failed: ${resp.status}`)
-          continue
-        }
-        const buf = Buffer.from(await resp.arrayBuffer())
-        if (buf.length > 0) {
-          layers.push({
-            index: i,
-            label: `Layer ${i + 1}`,
-            pngBuffer: buf,
-          })
-        }
-      } catch (err) {
-        console.warn(`[Decomposer] Layer ${i} download error:`, err)
+      const resp = await fetch(result.layerUrls[i]!, { headers, signal: controller.signal, redirect: 'error' })
+      if (!resp.ok || Number(resp.headers.get('content-length')) > MAX_LAYER_BYTES) {
+        console.warn(`[Decomposer] Layer ${i} download rejected`)
+        return null
       }
-    }
-
-    if (layers.length === 0) {
-      console.warn('[Decomposer] No layers downloaded successfully')
-      return null
+      const pngBuffer = Buffer.from(await resp.arrayBuffer())
+      const frame = readRgbaPngFrame(pngBuffer)
+      if (!frame || (layers[0] && (frame.width !== layers[0].width || frame.height !== layers[0].height))) {
+        console.warn(`[Decomposer] Layer ${i} has invalid PNG frame`)
+        return null
+      }
+      layers.push({ index: i, label: `Layer ${i + 1}`, pngBuffer, ...frame })
     }
 
     console.log(`[Decomposer] Decomposed into ${layers.length} layers`)
     return {
       layers,
       pptxUrl: result.pptxUrl,
-      zipUrl: result.zipUrl,
+      zipUrl: result.zipUrl
     }
-  } catch (err: any) {
-    if (err.name === 'AbortError') {
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') {
       console.warn('[Decomposer] Request timed out after 120s')
     } else {
-      console.warn('[Decomposer] Decomposition failed:', err)
+      console.warn('[Decomposer] Decomposition failed')
     }
     return null
   } finally {
@@ -130,37 +120,39 @@ async function uploadToSpace(
       headers,
       body: formData,
       signal,
+      redirect: 'error'
     })
 
     if (!resp.ok) {
-      console.warn(`[Decomposer] Upload returned ${resp.status}: ${await resp.text()}`)
+      console.warn(`[Decomposer] Upload returned ${resp.status}`)
       return null
     }
 
     // Gradio /upload returns either string[] or {name: string}[] depending on version
-    const result = await resp.json() as any[]
-    if (!result || result.length === 0) {
+    const result: unknown = await resp.json()
+    if (!Array.isArray(result) || result.length === 0) {
       console.warn('[Decomposer] Upload returned empty result')
       return null
     }
 
-    const first = result[0]
-    const path = typeof first === 'string' ? first : first?.name || first?.path
-    if (!path) {
-      console.warn('[Decomposer] Upload returned unexpected format:', JSON.stringify(first))
+    const first: unknown = result[0]
+    const file = isRecord(first) ? first : undefined
+    const path = typeof first === 'string' ? first : file?.name || file?.path
+    if (typeof path !== 'string' || !path) {
+      console.warn('[Decomposer] Upload returned unexpected format')
       return null
     }
 
     return path
-  } catch (err) {
-    console.warn('[Decomposer] Upload failed:', err)
+  } catch {
+    console.warn('[Decomposer] Upload failed')
     return null
   }
 }
 
 async function submitPrediction(
   uploadPath: string,
-  params: { numLayers: number; prompt: string; negPrompt: string; guidanceScale: number; steps: number },
+  params: { numLayers: number, prompt: string, negPrompt: string, guidanceScale: number, steps: number },
   headers: Record<string, string>,
   signal: AbortSignal
 ): Promise<string | null> {
@@ -172,39 +164,40 @@ async function submitPrediction(
       method: 'POST',
       headers: {
         ...headers,
-        'Content-Type': 'application/json',
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify({
         data: [
-          { path: uploadPath },  // input_image
-          0,                     // seed
-          true,                  // randomize_seed
-          params.prompt,         // prompt (guides layer separation)
-          params.negPrompt,      // neg_prompt
-          params.guidanceScale,  // true_guidance_scale
-          params.steps,          // num_inference_steps
-          params.numLayers,      // layer (number of output layers)
-          true,                  // cfg_norm
-          true,                  // use_en_prompt
-        ],
+          { path: uploadPath }, // input_image
+          0, // seed
+          true, // randomize_seed
+          params.prompt, // overall image description, not per-layer control
+          params.negPrompt, // neg_prompt
+          params.guidanceScale, // true_guidance_scale
+          params.steps, // num_inference_steps
+          params.numLayers, // layer (number of output layers)
+          true, // cfg_norm
+          true // use_en_prompt
+        ]
       }),
       signal,
+      redirect: 'error'
     })
 
     if (!resp.ok) {
-      console.warn(`[Decomposer] Submit returned ${resp.status}: ${await resp.text()}`)
+      console.warn(`[Decomposer] Submit returned ${resp.status}`)
       return null
     }
 
     const result = await resp.json() as { event_id: string }
-    if (!result?.event_id) {
+    if (typeof result?.event_id !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(result.event_id)) {
       console.warn('[Decomposer] Submit returned no event_id')
       return null
     }
 
     return result.event_id
-  } catch (err) {
-    console.warn('[Decomposer] Submit failed:', err)
+  } catch {
+    console.warn('[Decomposer] Submit failed')
     return null
   }
 }
@@ -224,6 +217,7 @@ async function streamResult(
     const resp = await fetch(`${SPACE_BASE}/gradio_api/call/infer_1/${eventId}`, {
       headers,
       signal,
+      redirect: 'error'
     })
 
     if (!resp.ok) {
@@ -245,23 +239,22 @@ async function streamResult(
         try {
           const data = JSON.parse(line.slice(6))
           return extractAllOutputs(data)
-        } catch (parseErr) {
-          console.warn('[Decomposer] Failed to parse complete event data:', line.slice(6))
+        } catch {
+          console.warn('[Decomposer] Failed to parse complete event data')
           return null
         }
       }
 
       if (line.startsWith('data: ') && currentEvent === 'error') {
-        const errorData = line.slice(6)
-        console.warn(`[Decomposer] Space returned error: ${errorData}`)
+        console.warn('[Decomposer] Space returned error')
         return null
       }
     }
 
     console.warn('[Decomposer] No complete event found in stream')
     return null
-  } catch (err) {
-    console.warn('[Decomposer] Stream failed:', err)
+  } catch {
+    console.warn('[Decomposer] Stream failed')
     return null
   }
 }
@@ -270,7 +263,7 @@ async function streamResult(
  * Extract all outputs from the Space response.
  * The Space returns 3 outputs: [Gallery (layers), PPTX file, ZIP file]
  */
-function extractAllOutputs(data: any): StreamOutput {
+function extractAllOutputs(data: unknown): StreamOutput | null {
   const layerUrls: string[] = []
   let pptxUrl: string | undefined
   let zipUrl: string | undefined
@@ -279,55 +272,65 @@ function extractAllOutputs(data: any): StreamOutput {
   // data[0] = Gallery (array of image objects)
   // data[1] = PPTX file object { path/url, ... }
   // data[2] = ZIP file object { path/url, ... }
-  if (Array.isArray(data)) {
-    // Extract layer image URLs from gallery (first output)
-    if (data[0]) {
-      walkImages(data[0], layerUrls)
+  if (Array.isArray(data) && Array.isArray(data[0]) && data[0].length > 0) {
+    // Gradio Gallery uses { image: FileData, caption }; older versions
+    // expose FileData directly or [FileData, caption]. Preserve every slot.
+    for (const entry of data[0]) {
+      const node = Array.isArray(entry) ? entry[0] : isRecord(entry) ? entry.image ?? entry : entry
+      const url = resolveFileUrl(node)
+      if (!url) return null
+      layerUrls.push(url)
     }
     // Extract PPTX URL (second output)
     pptxUrl = resolveFileUrl(data[1])
     // Extract ZIP URL (third output)
     zipUrl = resolveFileUrl(data[2])
-  }
+  } else return null
 
   return { layerUrls, pptxUrl, zipUrl }
 }
 
-function resolveFileUrl(node: any): string | undefined {
-  if (!node) return undefined
-  const rawUrl = node.url || node.path
-  if (!rawUrl || typeof rawUrl !== 'string') return undefined
-  if (rawUrl.startsWith('http')) {
-    try {
-      const parsed = new URL(rawUrl)
-      const isTrusted = TRUSTED_HOSTS.some(h => parsed.hostname.endsWith(h))
-      if (!isTrusted) return undefined
-    } catch { return undefined }
-    return rawUrl
-  }
-  return `${SPACE_BASE}/gradio_api/file=${rawUrl}`
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-function walkImages(node: any, urls: string[]) {
-  if (!node) return
-  if (typeof node === 'object' && !Array.isArray(node) && node.url && typeof node.url === 'string') {
-    const rawUrl = node.url
-    if (rawUrl.startsWith('http')) {
-      try {
-        const parsed = new URL(rawUrl)
-        const isTrusted = TRUSTED_HOSTS.some(h => parsed.hostname.endsWith(h))
-        if (!isTrusted) {
-          console.warn('[Decomposer] Skipping untrusted layer URL:', rawUrl)
-          return
-        }
-      } catch { return }
-      urls.push(rawUrl)
-    } else {
-      urls.push(`${SPACE_BASE}/gradio_api/file=${rawUrl}`)
-    }
-    return
+function resolveFileUrl(node: unknown): string | undefined {
+  if (!isRecord(node)) return undefined
+  const rawUrl = node.url || node.path
+  if (!rawUrl || typeof rawUrl !== 'string') return undefined
+  try {
+    const parsed = new URL(rawUrl)
+    if (parsed.origin !== SPACE_BASE || parsed.username || parsed.password) return undefined
+    return parsed.href
+  } catch {
+    // FileData.path is an absolute server filesystem path, not another URL.
+    if (!rawUrl.startsWith('/') || rawUrl.startsWith('//') || /[\\\r\n?#]/.test(rawUrl)) return undefined
+    return `${SPACE_BASE}/gradio_api/file=${rawUrl}`
   }
-  if (Array.isArray(node)) {
-    for (const item of node) walkImages(item, urls)
+}
+
+/** Header/structure validation only; pixel fidelity and masks need review. */
+function readRgbaPngFrame(buffer: Buffer): { width: number, height: number } | null {
+  if (buffer.length < 45 || buffer.length > MAX_LAYER_BYTES
+    || !buffer.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
+    || buffer.readUInt32BE(8) !== 13 || buffer.toString('ascii', 12, 16) !== 'IHDR'
+    || ![8, 16].includes(buffer[24]!) || buffer[25] !== 6
+    || buffer[26] !== 0 || buffer[27] !== 0 || buffer[28]! > 1) return null
+
+  const width = buffer.readUInt32BE(16)
+  const height = buffer.readUInt32BE(20)
+  if (!width || !height || width > 4096 || height > 4096) return null
+  let offset = 33
+  let hasImageData = false
+  while (offset + 12 <= buffer.length) {
+    const length = buffer.readUInt32BE(offset)
+    const end = offset + 12 + length
+    if (end > buffer.length) return null
+    const type = buffer.toString('ascii', offset + 4, offset + 8)
+    if (type === 'IHDR') return null
+    if (type === 'IDAT' && length > 0) hasImageData = true
+    if (type === 'IEND') return length === 0 && end === buffer.length && hasImageData ? { width, height } : null
+    offset = end
   }
+  return null
 }

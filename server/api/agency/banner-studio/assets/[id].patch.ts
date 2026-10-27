@@ -1,8 +1,11 @@
-import { queryOne } from '~~/server/utils/db'
-import { requireAuth } from '~~/server/utils/auth'
+import { hasScopedCanvas, SCOPED_DISSECTION_EXCLUSION } from '#shared/bannerScopedCanvas'
+import { queryOne, queryOneFresh } from '~~/server/utils/db'
+import { requireWriteAccess } from '~~/server/utils/auth'
+import { hasAllSocialClientAccess, requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
+import { preservePlatformQrAssetAttestations } from '~~/server/utils/banner/platformQrCanvas'
 
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
+  const user = await requireWriteAccess(event)
   const id = getRouterParam(event, 'id')
 
   if (!id) {
@@ -11,10 +14,20 @@ export default defineEventHandler(async (event) => {
 
   const body = await readBody(event)
   const { name, tags } = body
+  const existing = await queryOneFresh<{ client_id: string | null, uploaded_by: string, tags: unknown, r2_key: string, url: string }>(
+    'SELECT client_id, uploaded_by, tags, r2_key, url FROM banner_assets WHERE id = $1', [id]
+  )
+  if (!existing) throw createError({ statusCode: 404, statusMessage: 'Asset not found' })
+  if (hasScopedCanvas(existing) || hasScopedCanvas(body)) throw createError({ statusCode: 409, statusMessage: SCOPED_DISSECTION_EXCLUSION })
+  if (existing.client_id) await requireSocialClientAccess(event, existing.client_id)
+  else if (existing.uploaded_by !== user.id && !hasAllSocialClientAccess(user)) {
+    throw createError({ statusCode: 403, statusMessage: 'No access to this asset' })
+  }
+  const savedTags = tags === undefined ? undefined : preservePlatformQrAssetAttestations(existing.tags, tags)
 
   try {
     const sets: string[] = []
-    const params: any[] = []
+    const params: unknown[] = []
     let paramIndex = 1
 
     if (name !== undefined) {
@@ -25,7 +38,7 @@ export default defineEventHandler(async (event) => {
 
     if (tags !== undefined) {
       sets.push(`tags = $${paramIndex}`)
-      params.push(tags)
+      params.push(savedTags)
       paramIndex++
     }
 
@@ -54,8 +67,8 @@ export default defineEventHandler(async (event) => {
     }
 
     return row
-  } catch (error: any) {
-    if (error.statusCode) throw error
+  } catch (error) {
+    if ((error as { statusCode?: number })?.statusCode) throw error
     console.error('Failed to update banner asset:', error)
     throw createError({ statusCode: 500, statusMessage: 'Failed to update banner asset' })
   }

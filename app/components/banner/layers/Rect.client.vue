@@ -4,6 +4,7 @@ import type { Layer } from '~/types/banner-studio'
 const props = defineProps<{
   layer: Layer
   isActive: boolean
+  opacityManaged?: boolean
 }>()
 
 const { getFeedOverride } = useBannerFeeds()
@@ -16,7 +17,7 @@ const displayFillColor = computed(() => getFeedOverride(props.layer.id, 'fillCol
     :style="{
       background: displayFillColor,
       borderRadius: `${layer.borderRadius ?? 0}px`,
-      opacity: layer.opacity
+      opacity: opacityManaged ? 1 : layer.opacity
     }"
   />
 </template>

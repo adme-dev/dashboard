@@ -737,6 +737,36 @@ describe('Lakebase evaluation report publication', () => {
     expect(JSON.stringify(caught)).not.toContain(outputDir)
   })
 
+  it.each([LEASE_FILE, HEARTBEAT_FILE])('fails closed on a transient EINVAL reading recovery %s', async (filename) => {
+    const outputDir = await temporaryOutputDirectory()
+    const active = await seedRecoverySentinel(outputDir, {
+      ownerToken: 'live-recovery-einval', acquiredAtEpochMs: 10_000, processId: process.pid
+    })
+    const before = await readFile(join(active.ownerDirectoryPath, filename), 'utf8')
+    const fileSystem = realPublisherFileSystem()
+    let injected = false
+    await expect(publishEvaluationReports(outputDir, { json: '{}\n', markdown: 'unpublished\n' }, {
+      now: () => 10_000, leaseDurationMs: 100, sleep: async () => {},
+      fileSystem: {
+        ...fileSystem,
+        async readText(path) {
+          if (!injected && path === join(active.sentinelPath, filename)) {
+            injected = true
+            throw Object.assign(new Error('Concurrent symlink removal'), { code: 'EINVAL' })
+          }
+          return fileSystem.readText(path)
+        }
+      }
+    })).rejects.toMatchObject({ code: 'lakebase_evaluation_publish_lock_unavailable' })
+    expect(injected).toBe(true)
+    expect(await readlink(active.sentinelPath)).toBe(basename(active.ownerDirectoryPath))
+    expect(await readFile(join(active.ownerDirectoryPath, filename), 'utf8')).toBe(before)
+    await expect(readFile(join(outputDir, 'evaluation.json'), 'utf8')).rejects.toThrow()
+    expect((await readdir(outputDir)).sort()).toEqual([
+      LOCK_RECOVERY_SENTINEL, basename(active.ownerDirectoryPath)
+    ].sort())
+  })
+
   it('takes over an expired recovery sentinel left by a crashed local recoverer', async () => {
     const outputDir = await temporaryOutputDirectory()
     const crashed = await seedRecoverySentinel(outputDir, {

@@ -1,4 +1,5 @@
 import type { Layer } from '~/types/banner-studio'
+import { assertManagedQrCanvas, assertManagedQrTransition } from '~~/shared/bannerQrProtection'
 
 // ── Types ──────────────────────────────
 export interface CollabUser {
@@ -198,12 +199,19 @@ export function useBannerRealtime() {
     const layers = state.sets[formatKey]?.layers
     if (!layers) return
     const layer = layers.find(l => l.id === layerId)
-    if (layer) Object.assign(layer, props)
+    if (layer) {
+      try {
+        assertManagedQrTransition({ board: { layers } }, { board: { layers: layers.map(l => l.id === layerId ? { ...l, ...props } : l) } })
+      } catch { return }
+      Object.assign(layer, props)
+      if (props.letteringRecipe === null) delete layer.letteringRecipe
+    }
   }
 
   function applyRemoteLayerAdd(formatKey: string, layer: Layer): void {
     const { state } = useBannerStudio()
     if (!state.sets[formatKey]) state.sets[formatKey] = { layers: [] }
+    try { assertManagedQrCanvas({ board: { layers: [...state.sets[formatKey].layers, layer] } }) } catch { return }
     // Avoid duplicate
     const existing = state.sets[formatKey].layers.find(l => l.id === layer.id)
     if (!existing) state.sets[formatKey].layers.push(layer)
@@ -259,7 +267,7 @@ export function useBannerRealtime() {
     sendRaw({ type: 'layer_select', layerId, formatKey })
   }
 
-  function sendLayerUpdate(layerId: number, formatKey: string, props: Partial<Layer>): void {
+  function sendLayerUpdate(layerId: number, formatKey: string, props: Partial<Layer> | (Omit<Partial<Layer>, 'letteringRecipe'> & { letteringRecipe: null })): void {
     if (!isConnected.value) return
     sendRaw({ type: 'layer_update', layerId, formatKey, props })
   }
