@@ -45,18 +45,43 @@ Organic requests, by default:
 Requesting a scope the app isn't granted fails the whole consent screen
 (`unauthorized_scope_error`). Compare with the app's **Auth → OAuth 2.0 scopes**
 list; if it differs, set `LINKEDIN_ORGANIC_SCOPES` (space- or comma-separated)
-to exactly what the app shows, then redeploy. Production has one spare text
-binding (see below), so this override uses it.
+to exactly what the app shows, then redeploy. This extra binding does not fit the
+conditional staff-enrollment plan below: it would require 151/150 slots. Obtain a new
+capacity decision rather than requesting ungranted scopes or removing unrelated bindings.
 
 Ads requests `r_ads r_ads_reporting`.
 
 ## 4. Cloudflare Pages secrets (`agency-dashboard`, Production)
 
 Cloudflare Pages allows **150 text bindings** (plain vars + secrets) per
-environment, and production is budgeted to 149 with LinkedIn
-(`test/config/pagesProductionTextBindings.test.ts`). Going over fails every
-deploy with `Too many text bindings`. Recount live secrets
-(`wrangler pages secret list`) before adding any.
+environment. The names-only observation on 27 October 2026 found 102 secret names,
+43 production variables and four expected generated bindings: **149 total**. Those
+102 include both public LinkedIn IDs but neither matching LinkedIn secret nor
+`MCP_MARKETING_STAFF_GRANTS`; the old assumption “100 existing + 2 new secrets” is stale.
+The source test models this snapshot, not live provisioning evidence.
+
+Adding all three missing bindings without removals would require **152/150**. The
+conditional minimum plan removes only `LINKEDIN_CLIENT_ID` and
+`LINKEDIN_ORGANIC_CLIENT_ID`, then adds the two matching client secrets and eventual
+staff grant: **43 + (102 - 2 + 3) + 4 = 150**, zero spare slots. Before removing
+an ID, the release operator must privately verify its stored public value equals
+the built-in ID above and that request/background runtime resolvers use the same
+intended app pair, with no conflicting runtime/process/cache overrides. If either
+ID differs, preserve it and obtain another capacity plan. Do not replace an app
+merely to fit the budget. The two real secrets must come from their exact apps;
+the recorded local configuration did not contain them. Nothing here provisions them.
+
+Task 5 code completion adds no binding while TikTok remains unavailable. Adding
+its creator credential pair later would require at least **152/150** after this
+plan. `LINKEDIN_ORGANIC_SCOPES` would require **151/150**. Neither is authorized by
+this capacity model. No unrelated secret removal is approved.
+
+Recount production secret names and the actual flattened build variables before
+release; include generated text names without double-counting overlaps. Going over
+fails deployment with `Too many text bindings`. See
+`test/config/pagesProductionTextBindings.test.ts` and
+[staff enrollment](marketing-staff-mcp.md). Configuration-name presence is not
+provider grant, app verification, OAuth, publishing or reporting acceptance.
 
 ```bash
 pbpaste | npx wrangler pages secret put LINKEDIN_ORGANIC_CLIENT_SECRET --project-name agency-dashboard
@@ -71,7 +96,7 @@ already be set; the `CACHE` KV binding is needed for multi-Page selection.
 
 ## 5. Connect
 
-1. Deploy (`pnpm deploy:production`, from `origin/main` only).
+1. Reconcile the reviewed candidate onto current `origin/main`, pass `pnpm deploy:check`, then deploy with `pnpm deploy:production`. Record source commit, target `agency-dashboard` and deployment ID.
 2. Agency → Social → Publishing → Accounts → pick the ADME client → **Connect LinkedIn**.
    The person clicking must be an **ADMINISTRATOR** of the Page.
 3. If they admin several Pages, choose ADME Advertising on the selection screen.

@@ -1,19 +1,129 @@
 import { readFile } from 'node:fs/promises'
 import { runInNewContext } from 'node:vm'
 import { parse } from 'smol-toml'
-import { describe, expect, it } from 'vitest'
+import { agencyWorkflowConfigText } from '../../server/utils/agencyWorkflows/client'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 type PagesConfig = { vars: Record<string, string>, env: Record<'production' | 'preview', { vars: Record<string, string> }> }
 const read = (file: string) => readFile(new URL(`../../${file}`, import.meta.url), 'utf8')
 const config = parse(await read('wrangler.toml')) as unknown as PagesConfig
+// Names-only production observation, 2026-10-27T09:30:21.725444Z; no secret values.
+// This snapshot is a capacity model, not proof of current provisioning. Refresh before release.
+const observedSecretNames = [
+  "AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET",
+  "AI_GATEWAY_AUTH_TOKEN",
+  "AI_ORCHESTRATOR_WORKER_URL",
+  "ANOMALY_NOTIFY_ALLOWLIST",
+  "AUTOGATE_LEAD_API_PASSWORD",
+  "AUTOGATE_LEAD_API_USERNAME",
+  "CF_ACCOUNT_ID",
+  "CF_API_TOKEN",
+  "CRM_COMMS_BRIDGE_ENABLED",
+  "CRM_EMAIL_REPLY_SECRETS",
+  "CRM_EMAIL_WORKER_SECRET",
+  "CRM_LEAD_PROMOTION_ENABLED",
+  "CRON_SECRET",
+  "DATABASE_URL",
+  "DEALER_FEEDS_ENABLED",
+  "EMAIL_INGEST_HMAC_SECRET",
+  "EMAIL_LINK_SECRET",
+  "EMAIL_QUARANTINE_ENCRYPTION_SECRET",
+  "FINANCIAL_WATCH_AGENT_ENABLED",
+  "GOD_MODE_INTERNAL_EXECUTION_SECRET",
+  "GOOGLE_BUSINESS_CLIENT_ID",
+  "GOOGLE_BUSINESS_CLIENT_SECRET",
+  "GOOGLE_BUSINESS_OAUTH_CLIENT_ID",
+  "GOOGLE_BUSINESS_OAUTH_CLIENT_SECRET",
+  "GOOGLE_CLIENT_ID",
+  "GOOGLE_CLIENT_SECRET",
+  "GOOGLE_DEVELOPER_TOKEN",
+  "GOOGLE_REDIRECT_URI",
+  "GROQ_API_KEY",
+  "GTM_GOOGLE_CLIENT_ID",
+  "GTM_GOOGLE_CLIENT_SECRET",
+  "GTM_GOOGLE_REDIRECT_URI",
+  "INTERNAL_API_KEY",
+  "INTERNAL_CRON_TOKEN",
+  "JWT_SECRET",
+  "LEAD_IDENTITY_HMAC_KEY",
+  "LINKEDIN_CLIENT_ID",
+  "LINKEDIN_ORGANIC_CLIENT_ID",
+  "MCP_HANDSHAKE_SECRET",
+  "MCP_INTERNAL_SECRET",
+  "MCP_REQUEST_SIGNING_SECRET",
+  "MEASUREMENT_PROVIDER_ASTORIA_GA4",
+  "MEASUREMENT_PROVIDER_META_BIG_GARAGE",
+  "MEASUREMENT_PROVIDER_TIKTOK_WERRIBEE",
+  "META_APP_ID",
+  "META_APP_SECRET",
+  "META_LEADGEN_VERIFY_TOKEN",
+  "META_REDIRECT_URI",
+  "MONDAY_API_TOKEN",
+  "MONDAY_OAUTH_APP_VERSION_ID",
+  "MONDAY_OAUTH_CLIENT_ID",
+  "MONDAY_OAUTH_CLIENT_SECRET",
+  "MONDAY_SIGNING_SECRET",
+  "NEWSROOM_SOCIAL_ACCOUNT_ID",
+  "NEWSROOM_SOCIAL_CLIENT_ID",
+  "NEWSROOM_SOCIAL_ENABLED",
+  "NEWSROOM_SOCIAL_SECRET",
+  "NUXT_GOOGLE_BUSINESS_CLIENT_ID",
+  "NUXT_GOOGLE_BUSINESS_CLIENT_SECRET",
+  "NUXT_PUBLIC_SOCIAL_PLANNER_AI_ENABLED",
+  "NUXT_PUBLIC_SOCIAL_PLANNER_ENABLED",
+  "OFFICE_GUEST_REALTIME_MEDIA_ENABLED",
+  "OFFICE_GUEST_REALTIME_PILOT_OFFICE_IDS",
+  "OFFICE_SYNC_SECRET",
+  "PAGE_STUDIO_CONTROL_SECRET",
+  "PAGE_STUDIO_SESSION_ISSUER",
+  "PAGE_STUDIO_SESSION_PRIVATE_KEY",
+  "PAGE_STUDIO_SESSION_PUBLIC_KEY",
+  "PLATFORM_AGENT_SCOPE_SIGNING_SECRET",
+  "PLATFORM_AGENT_THINK_TURNS_ENABLED",
+  "PLATFORM_AGENT_WORKER_URL",
+  "PUBLISHING_PLANNER_AGENT_ENABLED",
+  "R2_ACCESS_KEY_ID",
+  "R2_ACCOUNT_ID",
+  "R2_BUCKET_NAME",
+  "R2_SECRET_ACCESS_KEY",
+  "REALTIME_APP_ID",
+  "REALTIME_APP_SECRET",
+  "RENDER_LINK_SECRET",
+  "REPO_TOKEN_ENCRYPTION_KEY",
+  "RESEND_API_KEY",
+  "SESSION_SECRET",
+  "SOCIAL_DASHBOARD_BASE_URL",
+  "SOCIAL_DASHBOARD_SERVICE_SECRET",
+  "SOCIAL_PLANNER_AI_ENABLED",
+  "SOCIAL_PLANNER_ENABLED",
+  "SPEND_CONTROLLER_AGENT_ENABLED",
+  "SPEND_CONTROLLER_AGENT_PROPOSALS_ENABLED",
+  "TRACKING_IP_SALT",
+  "TRAFFIC_CONTROLLER_AGENT_ENABLED",
+  "VAPID_PRIVATE_KEY",
+  "VAPID_PUBLIC_KEY",
+  "VAPID_SUBJECT",
+  "VIDEO_GENERATION_ENABLED",
+  "VIDEO_GENERATION_TEST_TENANT_ENABLED",
+  "VIDEO_GENERATION_TEST_TENANT_ID",
+  "VIDEO_STUDIO_ENABLED",
+  "WORKFLOW_CALLBACK_SECRET",
+  "WORKFLOW_SERVICE_SECRET",
+  "XERO_CLIENT_ID",
+  "XERO_CLIENT_SECRET",
+  "XERO_REDIRECT_URI"
+] as const
+const generatedTextNames = ['NUXT_APP_BASE_URL', 'NUXT_APP_BUILD_ASSETS_DIR', 'NUXT_APP_CDN_URL', 'NITRO_PRESET']
+const conditionalRemovals = ['LINKEDIN_CLIENT_ID', 'LINKEDIN_ORGANIC_CLIENT_ID']
+const conditionalAdditions = ['LINKEDIN_CLIENT_SECRET', 'LINKEDIN_ORGANIC_CLIENT_SECRET', 'MCP_MARKETING_STAFF_GRANTS']
+
 const omittedFalseFlags = [
   'MCP_FINANCIAL_TOOLS_ENABLED',
   'MCP_REQUIRE_WRITE_SCOPE',
-  'AGENCY_WORKFLOWS_SCHEDULED_PUBLISHING_PRIMARY',
   'AGENCY_WORKFLOWS_CRM_FOLLOWUP_WRITES_ENABLED',
   'AGENCY_WORKFLOWS_CRM_FOLLOWUP_PRIMARY'
 ]
-// These are all current runtime consumers of the five omitted flags. Evaluate
+// These are all current runtime consumers of the four direct-process omitted flags. Evaluate
 // their actual gate expressions so an absent value must retain false semantics.
 const consumers = await Promise.all([
   'server/api/internal/mcp/tools.post.ts',
@@ -27,6 +137,27 @@ const consumers = await Promise.all([
 ].map(read))
 
 describe('production Pages text binding budget', () => {
+  afterEach(() => vi.unstubAllEnvs())
+
+  it('preserves absent scheduled publishing primary through its binding-first runtime helper', () => {
+    const key = 'AGENCY_WORKFLOWS_SCHEDULED_PUBLISHING_PRIMARY'
+    expect(config.env.production.vars).not.toHaveProperty(key)
+    expect(config.vars[key]).toBe('false')
+    const expression = "agencyWorkflowConfigText(event, 'AGENCY_WORKFLOWS_SCHEDULED_PUBLISHING_PRIMARY') === 'true'"
+    expect(consumers.join('\n')).toContain(expression)
+    const evaluate = (bindings: Record<string, unknown>) => runInNewContext(expression, {
+      agencyWorkflowConfigText, event: { context: { cloudflare: { env: bindings } } }
+    })
+    vi.stubEnv(key, undefined)
+    expect(evaluate({})).toBe(false)
+    expect(evaluate({ [key]: 'false' })).toBe(false)
+    expect(evaluate({ [key]: 'true' })).toBe(true)
+    vi.stubEnv(key, 'true')
+    expect(evaluate({})).toBe(true)
+    expect(evaluate({ [key]: 'false' })).toBe(false)
+    expect(evaluate({ [key]: '' })).toBe(false)
+  })
+
   it.each(omittedFalseFlags)('preserves disabled behavior when %s is absent', (key) => {
     expect(config.env.production.vars).not.toHaveProperty(key)
     expect(config.vars[key]).toBe('false')
@@ -76,23 +207,31 @@ describe('production Pages text binding budget', () => {
     if (viaFlag.length) expect(sources[1]).toMatch(/process\.env\[name\]\) === 'true'/)
   })
 
-  it('fits the scoped activation in the full reviewed text-binding budget', () => {
+  it('distinguishes the observed baseline from the conditional 150-slot enrollment plan', () => {
     const declaredTextBindings = Object.keys(config.env.production.vars).length
     expect(declaredTextBindings).toBe(43)
     expect(config.env.production.vars).not.toHaveProperty('APP_NAME')
-    // NUXT_APP_BASE_URL, NUXT_APP_BUILD_ASSETS_DIR, NUXT_APP_CDN_URL, NITRO_PRESET.
-    // Reviewed 2026-10-26 in agency-dashboard production: 100 secret_text
-    // bindings, including the scoped Astoria GA4 credential. LinkedIn adds
-    // exactly two (LINKEDIN_ORGANIC_CLIENT_SECRET, LINKEDIN_CLIENT_SECRET); its
-    // public client IDs are built into server/utils/socialOAuth/env.ts.
-    // Secret count is live provider state and must be recounted before release.
-    const generatedTextBindings = 4
-    const providerTextBindingLimit = 150
-    const reviewedSecretBindings = 100
-    const linkedInSecretBindings = 2
-    const total = declaredTextBindings + reviewedSecretBindings + linkedInSecretBindings + generatedTextBindings
-    expect(total).toBe(149)
-    expect(total).toBeLessThanOrEqual(providerTextBindingLimit)
+    const declaredNames = Object.keys(config.env.production.vars)
+    const textCount = (secretNames: readonly string[]) => {
+      const all = [...declaredNames, ...secretNames, ...generatedTextNames]
+      // Never hide duplicated/overlapping bindings behind count-only arithmetic.
+      expect(new Set(all).size).toBe(all.length)
+      return all.length
+    }
+    expect(observedSecretNames).toHaveLength(102)
+    expect(textCount(observedSecretNames)).toBe(149)
+    for (const name of conditionalRemovals) expect(observedSecretNames).toContain(name)
+    for (const name of conditionalAdditions) expect(observedSecretNames).not.toContain(name)
+    expect(textCount([...observedSecretNames, ...conditionalAdditions])).toBe(152)
+    // Only after exact public-ID equality/runtime pairing verification may the operator remove these.
+    const conditionalSecrets = [...observedSecretNames.filter(name => !conditionalRemovals.includes(name)), ...conditionalAdditions]
+    expect(textCount(conditionalSecrets)).toBe(150)
+    expect(textCount(conditionalSecrets)).toBeLessThanOrEqual(150)
+    expect(textCount([...conditionalSecrets, 'LINKEDIN_ORGANIC_SCOPES'])).toBe(151)
+    expect(textCount([...conditionalSecrets, 'TIKTOK_CONTENT_CLIENT_KEY', 'TIKTOK_CONTENT_CLIENT_SECRET'])).toBe(152)
+    // Task 5 code completion adds no binding while TikTok stays unavailable.
+    expect(config.env.production.vars).not.toHaveProperty('TIKTOK_CONTENT_CLIENT_KEY')
+    expect(config.env.production.vars).not.toHaveProperty('TIKTOK_CONTENT_CLIENT_SECRET')
     expect(config.env.production.vars).toHaveProperty('PAGE_STUDIO_CUSTOMER_ACTIVATION')
     for (const suffix of ['PREVIEW_ENABLED', 'PREVIEW_APPROVALS', 'CMS_SETUP_ENABLED', 'BROWSER_ENABLED', 'EDITOR_ENABLED']) {
       expect(config.env.production.vars).not.toHaveProperty(`PAGE_STUDIO_CUSTOMER_${suffix}`)

@@ -301,7 +301,8 @@ const categories = [
       { title: 'Knowledge Base', slug: 'knowledge-base', icon: 'i-lucide-book-open', description: 'Curate and approve knowledge entries that enhance AI responses with agency-specific context.' },
       { title: 'LoRA Adapters', slug: 'lora-adapters', icon: 'i-lucide-cpu', description: 'Fine-tune AI models with your agency data. Custom adapters with traffic routing and A/B testing.' },
       { title: 'Reviewed Marketing Changes', slug: 'marketing-reviews', icon: 'i-lucide-shield-check', description: 'Prepare scoped Google Ads and tracking proposals through your assistant, then have a separate owner or admin review the exact change before execution.' },
-      { title: 'AI Assistant Connectors', slug: 'ai-connectors', icon: 'i-lucide-plug', description: 'Give Claude, Cursor, or ChatGPT governed Godmode access to live operations and a mixed creative model fleet — with explicit freshness, current creative-source discovery, standalone action audit, audio, video, and separate vision-inspection controls.' }
+      { title: 'Marketing Staff MCP', slug: 'marketing-staff-mcp', icon: 'i-lucide-user-check', description: 'Connect your assistant with your own login for assigned-client reporting and reviewed marketing drafts, with current permissions and provider readiness kept visible.' },
+      { title: 'AI Assistant Connectors', slug: 'ai-connectors', icon: 'i-lucide-plug', description: 'Connect Claude, Cursor, or ChatGPT to permitted XeroFlow work. Staff use scoped reporting and reviewed preparation; active owners retain the separate audited operations and creative model catalog.' }
     ]
   },
   {

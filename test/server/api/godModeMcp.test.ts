@@ -95,6 +95,7 @@ describe('owner-visible MCP manifest', () => {
       userRole: 'lead',
       permissionGroups: ['MANAGEMENT'],
       assistantReadOnly: false,
+      assistantScope: { clientAccessMode: 'all_active', assignedClientIds: [] },
       mcpScopes: new Set(['mcp:read', 'mcp:write']),
       marketingCapabilities: [],
       event
@@ -119,6 +120,7 @@ describe('owner-visible MCP manifest', () => {
       role: 'lead',
       preview: { assumedScopes: ['mcp:read', 'mcp:write'], projection: 'management' },
       marketingCapabilities: [],
+      access: { permissionGroups: ['MANAGEMENT'], readOnly: false, clientScope: { mode: 'all_active', assignedClientCount: null } },
       tools: [{ name: 'get_tasks', description: 'Core read', requiresWriteScope: false }]
     })
   })

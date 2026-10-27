@@ -333,12 +333,13 @@ describe('God mode gate inventory', () => {
     expect(inventory.rows).toContain("server/utils/social/clientAccess.ts\tconst groups = context.permissionGroups ?? []\tordinary_user_behavior")
     // R3 adds the current CREATIVE operation check; reads retain their existing authority boundary.
     expect(inventory.rows).toContain("server/api/agency/social/publishing/accounts/index.get.ts\tconst canPublish = context.permissionGroups?.includes('CREATIVE') === true\tordinary_user_behavior")
-    expect(inventory.rows).toHaveLength(1654)
+    // Task6 adds exactly three lexical permission-group presentation/metadata rows. No gate or classifier changes.
+    expect(inventory.rows).toHaveLength(1657)
     expect(inventory.counts).toEqual({
       identity_tenant_hard_boundary: 127,
       provider_infrastructure_availability: 222,
       application_governance_bypass: 1620,
-      ordinary_user_behavior: 253,
+      ordinary_user_behavior: 256,
       unrelated_configuration: 431
     })
     // Removing the session KV shortcut removes four auth middleware rows:
@@ -358,7 +359,7 @@ describe('God mode gate inventory', () => {
     expect(inventory.rows.filter(row => row.startsWith('server/utils/socialPublishing/mediaAssets.ts\t'))).toEqual([
       "server/utils/socialPublishing/mediaAssets.ts\tconst secret = typeof bound === 'string' ? bound : (env && 'RENDER_LINK_SECRET' in env ? null : process.env.RENDER_LINK_SECRET)\tprovider_infrastructure_availability"
     ])
-    expect(inventory.digest).toBe('ef70e070b1b766c934101ed984b094c9c66952d74f7e74932434af3fd7aeabe5')
+    expect(inventory.digest).toBe('d4049c9d69989449eefa2d81d03fc6adf74a6b859ff555d8284edc7827ec3be7')
     expect(inventory.rows).toContain(
       'app/composables/usePageStudioLauncher.ts\tconst config = useRuntimeConfig()\tunrelated_configuration'
     )

@@ -87,8 +87,8 @@ Task 1 does not claim the six reads execute yet: Task 2 delivers that before pil
 
 **Files:** `app/pages/agency/ai/connectors.vue`, admin enrollment surface if required, `docs/mcp-server-guide.md`, staff runbook, relevant feature pages/nav.
 
-- [ ] Correct host setup from current official documentation, provide staff-relevant examples, explain separate provider OAuth and grant/readiness status.
-- [ ] Verify bounded scroll, Nuxt UI, custom-role presentation and preview parity. Public pages distinguish delivered workflows from unavailable provider actions.
+- [x] Correct host setup from current official documentation, provide staff-relevant examples, explain separate provider OAuth and grant/readiness status.
+- [x] Verify bounded scroll, Nuxt UI, custom-role presentation and preview parity. Public pages distinguish delivered workflows from unavailable provider actions.
 - [ ] Run combined regression suite, lint/type/build checks appropriate to changed code and repository deploy guards. Fresh independent whole-branch review, then fix material findings.
 - [ ] Fetch current main, reconcile, record exact source and prepare reviewable release. Deployment/live-account proof remains distinct from local tests and may require available provider grants.
 - [ ] Keep the execution ledger current with every completed task, commit, review, blocker and remaining acceptance. Never report completion of the full request for a read-only pilot.

@@ -61,6 +61,17 @@ export default defineEventHandler(async (event) => {
       projection: isMcpManagementStaff(staff) ? 'management' as const : 'staff' as const
     },
     marketingCapabilities: staff.marketingCapabilities ?? [],
+    // Display only the already-resolved fresh authority; never enumerate clients or query providers.
+    access: {
+      permissionGroups: staff.permissionGroups ?? [],
+      readOnly: staff.assistantReadOnly === true,
+      clientScope: {
+        mode: staff.assistantScope?.clientAccessMode ?? 'assigned',
+        assignedClientCount: staff.assistantScope?.clientAccessMode === 'all_active'
+          ? null
+          : (staff.assistantScope?.assignedClientIds.length ?? 0)
+      }
+    },
     tools: tools.map(t => ({
       name: t.name,
       description: t.description,
