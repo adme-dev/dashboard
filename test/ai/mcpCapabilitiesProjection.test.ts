@@ -70,33 +70,33 @@ describe('get_capabilities parity for management MCP staff', () => {
     expect(reported).not.toContain('confirm_action')
     expect(reported.some(name => name.startsWith('propose_'))).toBe(false)
   })
-  it.each(['MANAGEMENT', 'ADMIN'] as const)('keeps %s granted staff suites in read and write catalog parity with validated local mutation modes', async (group) => {
-    for (const capability of ['social_draft', 'ads_plan', 'tracking_plan'] as const) {
-      for (const write of [false, true]) {
-        const ctx = managementCtx([group, 'CREATIVE', 'MEDIA_BUYING'], { MCP_WRITE_TOOLS_ENABLED: 'true', GOOGLE_ADS_MCP_READ_ENABLED: 'true', GOOGLE_ADS_MCP_WRITE_ENABLED: 'true' }, write ? ['mcp:read', 'mcp:write'] : ['mcp:read'])
-        ctx.marketingCapabilities = [capability]
-        const { getCapabilities } = await import('~~/server/utils/ai/tools/capabilities')
-        await inspectCapabilityCatalog(ctx)
-        const result = await getCapabilities({}, ctx, { inspect: inspectCapabilityCatalog, retryDelay: async () => {} })
-        expect(result.ok).toBe(true)
-        const data = (result as any).data
-        expect(data.degraded).toBeUndefined()
-        expect(data.tools.map((tool: any) => tool.name).sort()).toEqual(toolsListNames(ctx))
-        const { resolveStaffOnlyMcpExecutions } = await import('~~/server/utils/ai/mcp/registry')
-        const executions = resolveStaffOnlyMcpExecutions({ tools: registry, role: ctx.userRole, scopes: [...ctx.mcpScopes!], suiteFlags: resolveMcpRuntimeConfig(ctx.event).suiteFlags })
-        const mutations = new Set(executions.filter(execution => execution.tool.mutates).map(execution => execution.name))
-        const advertisedMutations = data.tools.filter((tool: any) => mutations.has(tool.name))
-        if (write) {
-          expect(advertisedMutations.length).toBeGreaterThan(0)
-          expect(advertisedMutations.every((tool: any) => tool.mode === 'local_mutation')).toBe(true)
-          expect(data.governance.local_mutation).toContain('independent review')
-        } else expect(advertisedMutations).toEqual([])
-        ctx.assistantReadOnly = true
-        const readonly = await inspectCapabilityCatalog(ctx)
-        expect(readonly.tools.map(tool => tool.name).sort()).toEqual(toolsListNames(ctx))
-        expect(readonly.tools.some(tool => mutations.has(tool.name))).toBe(false)
-      }
-    }
+  it.each((['MANAGEMENT', 'ADMIN'] as const).flatMap(group =>
+    (['social_draft', 'ads_plan', 'tracking_plan'] as const).flatMap(capability =>
+      [false, true].map(write => ({ group, capability, write }))
+    )
+  ))('keeps $group $capability write=$write in catalog parity with validated local mutation modes', async ({ group, capability, write }) => {
+    const ctx = managementCtx([group, 'CREATIVE', 'MEDIA_BUYING'], { MCP_WRITE_TOOLS_ENABLED: 'true', GOOGLE_ADS_MCP_READ_ENABLED: 'true', GOOGLE_ADS_MCP_WRITE_ENABLED: 'true' }, write ? ['mcp:read', 'mcp:write'] : ['mcp:read'])
+    ctx.marketingCapabilities = [capability]
+    const { getCapabilities } = await import('~~/server/utils/ai/tools/capabilities')
+    await inspectCapabilityCatalog(ctx)
+    const result = await getCapabilities({}, ctx, { inspect: inspectCapabilityCatalog, retryDelay: async () => {} })
+    expect(result.ok).toBe(true)
+    const data = (result as any).data
+    expect(data.degraded).toBeUndefined()
+    expect(data.tools.map((tool: any) => tool.name).sort()).toEqual(toolsListNames(ctx))
+    const { resolveStaffOnlyMcpExecutions } = await import('~~/server/utils/ai/mcp/registry')
+    const executions = resolveStaffOnlyMcpExecutions({ tools: registry, role: ctx.userRole, scopes: [...ctx.mcpScopes!], suiteFlags: resolveMcpRuntimeConfig(ctx.event).suiteFlags })
+    const mutations = new Set(executions.filter(execution => execution.tool.mutates).map(execution => execution.name))
+    const advertisedMutations = data.tools.filter((tool: any) => mutations.has(tool.name))
+    if (write) {
+      expect(advertisedMutations.length).toBeGreaterThan(0)
+      expect(advertisedMutations.every((tool: any) => tool.mode === 'local_mutation')).toBe(true)
+      expect(data.governance.local_mutation).toContain('independent review')
+    } else expect(advertisedMutations).toEqual([])
+    ctx.assistantReadOnly = true
+    const readonly = await inspectCapabilityCatalog(ctx)
+    expect(readonly.tools.map(tool => tool.name).sort()).toEqual(toolsListNames(ctx))
+    expect(readonly.tools.some(tool => mutations.has(tool.name))).toBe(false)
   })
 
   it('keeps staff-only local handlers out of owner God mode', async () => {

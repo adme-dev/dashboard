@@ -285,7 +285,17 @@ const steps = {
               Social drafts require an independent owner/admin to approve the exact revision in XeroFlow before dispatch.
               Edits, expiry or revoked access can require a new review. TikTok publishing remains unavailable pending product eligibility and app approval; OAuth alone cannot enable it.
             </p>
+            <p class="text-sm text-muted leading-relaxed">
+              Owner MCP mutations use a dedicated execution boundary; ordinary browser GTM controls do not depend on this MCP path.
+              Open the tracking manager to use your existing browser controls.
+            </p>
             <div class="flex flex-wrap gap-2">
+              <UButton
+                to="/agency/tracking"
+                color="neutral"
+                variant="outline"
+                label="Tracking manager"
+              />
               <UButton
                 to="/agency/social/publishing/accounts"
                 color="neutral"
