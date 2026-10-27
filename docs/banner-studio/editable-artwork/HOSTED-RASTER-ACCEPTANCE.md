@@ -1,6 +1,6 @@
 # Hosted raster export acceptance — 27 October 2026
 
-Checkpoint 12:38 UTC: **PNG and JPG pass live acceptance; GIF remains under repair.** This is bounded synthetic acceptance, not completion of the editable-artwork PRD or provider/native-engine acceptance.
+Checkpoint 12:50 UTC: **PNG, JPG and animated GIF pass live editor acceptance.** This is bounded synthetic acceptance, not completion of the editable-artwork PRD or provider/native-engine acceptance.
 
 ## Released source
 
@@ -45,3 +45,9 @@ Local receipts are under `/private/tmp/banner-live-*-evidence.json`, `banner-pri
 ## GIF decoder release candidate — 12:49 UTC
 
 The exact generated-HTML failure is reproduced and corrected locally in actual bundled workerd with real Chrome. Only the shared bounded PNG inflater changes production behavior: fixed 64 KiB native allocation headroom plus strict original decoded-byte bound. Candidate30 browser/inflate and4 interoperability tests, lint and renderer TypeScript pass; implementation reports78 focused tests and independent review reports58 additional boundary assertions. Full candidate Pages build passes3,016modules, raw25,394,186/25,468,928 and gzip7,442,059/9,750,000; all6 exact-artifact tests pass, now including640x360 full-pixel hashing, one-byte overflow and native inflate-bomb rejection. This candidate has not yet been deployed and does not upgrade hosted GIF acceptance. See GIF-GENERATED-HTML-REPAIR.md.
+
+## Hosted GIF accepted — 12:50 UTC
+
+Private renderer source `8326ba1c6` was deployed as version `4f21784e-a014-48be-8b8c-9f14f1bb42ee`. The actual editor GIF button now succeeds using unchanged generated HTML: export `c6a905e1-b113-43c7-bda5-2e9f2f1214d4`, 591,465 bytes, SHA-256 `9bb11eda82efeb0ef6663c9302c739034484eac84a945de927c74805f29f6878`. Sharp independently decoded 640×360, 50 frames, 100 ms every frame, seven distinct decoded frames; all-decoded-pixel SHA-256 `13f5448922d5de7bb57ee21d2989bd9e24511fa8b58f6eaed603078a17be0e25`. This supersedes the failed GIF row and pre-deployment checkpoint above. The saved canvas was unchanged.
+
+Independent `GIF-INFLATE-REVIEW.md` found no source/security blocker and separately proved58 boundary cases, including exact and one-byte-overflow pairs through16,002,000 decoded scanline bytes. Root then passed the full Pages build and all6 strengthened final-artifact checks. Pages still requires the guarded release of this shared decoder correction; native/provider/full-PRD limitations remain.

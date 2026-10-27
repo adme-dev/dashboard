@@ -1,5 +1,11 @@
 ## 27 October 2026, 11:57 UTC — final-artifact gate stopped upload
 
+## Current checkpoint — 12:50 UTC
+
+All three raster export buttons now pass live synthetic acceptance: PNG640×360, JPG2×1280×720, GIF640×360 with50frames at100ms and7distinct decoded frames. Private renderer source `8326ba1c6`, version `4f21784e-a014-48be-8b8c-9f14f1bb42ee`, contains the independently reviewed bounded full-size PNG inflater correction. Full candidate Pages build passes unchanged size limits and all6 strengthened exact-artifact checks; its guarded production release and final CI remain next. See [hosted raster acceptance](HOSTED-RASTER-ACCEPTANCE.md).
+
+GIF implementation and independent reviewers are settled/released. Native registry review is settled/released and found no proven EOF fix; the installed Docker containerd path ignores upload concurrency limits, and host-wide upgrades were not performed. No third unchanged upload or native invocation occurred. Provider automatic-approval rejection remains unresolved. Full PRD completion is not claimed.
+
 ## Current checkpoint — 12:38 UTC
 
 PNG and JPG exports now pass actual hosted editor download checks, including pinned font, neon styling and 2× JPG dimensions. Signed synthetic asset rendering and authenticated/unauthenticated private download checks pass. Pages remains source `09bc4d2e9`, deployment `44decd8f-7e44-4513-b99b-cf3309d39ab0`; private renderer is source `86ebf6fd3`, version `cb00095b-73af-4cfb-acef-9b54aa52de11`. Native fetch receiver and public resource routing repairs are tested and independently reviewed. Customer baseline hash remains unchanged. See [hosted raster evidence](HOSTED-RASTER-ACCEPTANCE.md) for exact artifact hashes, test boundaries and HEAD-header limitation.
