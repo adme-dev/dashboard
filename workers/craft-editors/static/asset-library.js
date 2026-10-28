@@ -12479,7 +12479,7 @@ function Uh() {
 	let t = document.createElement("div");
 	t.dataset.xfAssets = "";
 	let n = t.attachShadow({ mode: "open" }), r = document.createElement("style");
-	r.textContent = ":host{display:block}.xf-library-dock-action{display:grid;place-items:center;width:45px;height:45px;border:1px solid #ffffff20;border-radius:11px;background:#ffffff12;color:white;cursor:pointer;font:500 12px system-ui}.xf-library-dock-action:focus-visible{outline:2px solid #67e8f9;outline-offset:3px}@media(max-width:450px){.xf-library-dock-action{width:36px;height:36px;font-size:10px}}@media(max-width:360px){.xf-library-dock-action{width:30px;height:30px;font-size:9px}}";
+	r.textContent = ":host{display:block;flex:none;padding-bottom:5px}.xf-library-dock-action{box-sizing:border-box;display:flex;align-items:center;justify-content:center;flex:none;width:60px;min-width:60px;height:45px;padding:0 8px;gap:0;white-space:nowrap;overflow:visible;border:1px solid #ffffff55;border-radius:11px;background:linear-gradient(145deg,#ffffff20,#ffffff08),#16171c70;color:#fff;cursor:pointer;font:650 12px/1 system-ui;letter-spacing:0;text-shadow:0 1px 3px #0008;box-shadow:inset 0 1px #ffffff30,0 2px 5px #0002}.xf-library-dock-action:hover{background-color:#16171ca0}.xf-library-dock-action:focus-visible{outline:2px solid #67e8f9;outline-offset:3px}@media(max-width:450px){.xf-library-dock-action{width:48px;min-width:48px;height:32px;padding:0 5px;font-size:11px}}@media(max-width:360px){.xf-library-dock-action{width:44px;min-width:44px;height:26px;padding:0 4px;font-size:10px}}";
 	let i = document.createElement("link");
 	i.rel = "stylesheet", i.href = "/asset-library.css";
 	let a = document.createElement("div");
