@@ -3,12 +3,55 @@
  * Returns all clients with profitability summary from Postgres
  */
 
-import { db, queryRows } from '~~/server/utils/db'
+import { db, queryRows, queryRowsFresh } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
 import { cachedFetch } from '~~/server/utils/kv'
+import { CLIENT_FINANCIAL_ACCESS_HEADER, isMarketingClientViewer } from '~~/server/utils/clients/marketingAccess'
+
+/** Department directory: fresh, active-only, identity and project counts — no profitability or rates. */
+async function listMarketingClients() {
+  const clients = await queryRowsFresh<Record<string, unknown>>(`
+    SELECT c.id, c.name, c.is_active, c.logo_url, c.created_at, c.updated_at,
+           COALESCE(p.project_count, 0) AS project_count,
+           COALESCE(p.active_projects, 0) AS active_projects
+      FROM agency_clients c
+      LEFT JOIN (
+        SELECT client_id,
+               COUNT(*) AS project_count,
+               COUNT(*) FILTER (WHERE status = 'active') AS active_projects
+          FROM projects
+         GROUP BY client_id
+      ) p ON p.client_id = c.id
+     WHERE c.is_active = TRUE
+     ORDER BY c.name
+  `)
+  return clients.map(c => ({
+    id: c.id,
+    name: c.name,
+    isActive: c.is_active,
+    logoUrl: c.logo_url || null,
+    createdAt: c.created_at,
+    updatedAt: c.updated_at,
+    projectCount: Number(c.project_count) || 0,
+    activeProjects: Number(c.active_projects) || 0
+  }))
+}
 
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
+  const user = await requireAuth(event)
+
+  // The department never shares the cached financial list, and ignores `active`: inactive clients
+  // are outside its authority whatever the query asks for.
+  if (await isMarketingClientViewer(user.id)) {
+    setResponseHeader(event, CLIENT_FINANCIAL_ACCESS_HEADER, 'marketing')
+    setResponseHeader(event, 'cache-control', 'private, no-store')
+    try {
+      return await listMarketingClients()
+    } catch (error) {
+      console.error('Failed to fetch marketing clients:', error)
+      throw createError({ statusCode: 500, statusMessage: 'Failed to fetch clients' })
+    }
+  }
 
   const query = getQuery(event)
   const activeOnly = query.active !== 'false'

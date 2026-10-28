@@ -1,0 +1,59 @@
+import { createError, type H3Event } from 'h3'
+import { dispatchBannerRenderJob, RECORD_BANNER_DISPATCH_FAILURE_SQL } from '~~/server/utils/banner/renderDispatch'
+import { uploadFile, type R2BucketBinding } from '~~/server/utils/storage'
+import { execute } from '~~/server/utils/db'
+import type { EnqueueDeps, InsertJobRow } from '~~/server/utils/banner/renderJob'
+
+/**
+ * Native MP4 render enqueue dependencies, shared by the export-video route and the marketing
+ * department MCP export. Bindings come from the request event; a queue rejection is recorded as
+ * an uncertain dispatch (the job may still render), never as a definite failure.
+ */
+export function buildBannerRenderEnqueueDeps(
+  event: H3Event,
+  options: { genId: () => string, markDispatched: () => Promise<void> }
+): EnqueueDeps {
+  const cloudflare = (event.context as {
+    cloudflare?: {
+      env?: {
+        BANNER_RENDER_QUEUE?: { send: (message: unknown) => Promise<void> }
+        MEDIA_BUCKET?: R2BucketBinding
+      }
+    }
+  }).cloudflare
+  const queue = cloudflare?.env?.BANNER_RENDER_QUEUE
+  const mediaBucket = cloudflare?.env?.MEDIA_BUCKET
+  if (!queue) throw createError({ statusCode: 503, statusMessage: 'MP4 export is not enabled yet (render queue unavailable).' })
+  if (cloudflare && (!mediaBucket || typeof mediaBucket.put !== 'function' || typeof mediaBucket.head !== 'function')) {
+    throw createError({ statusCode: 503, statusMessage: 'MP4 export is not enabled yet (render storage unavailable).' })
+  }
+  return {
+    genId: options.genId,
+    putSourceHtml: async (key, html) => {
+      if (!mediaBucket) {
+        await uploadFile(Buffer.from(html, 'utf8'), key, 'text/html')
+        return
+      }
+      const bytes = new TextEncoder().encode(html)
+      await mediaBucket.put(key, bytes, { httpMetadata: { contentType: 'text/html' } })
+      const stored = await mediaBucket.head(key)
+      if (!stored || stored.size !== bytes.byteLength) {
+        throw new Error(`Banner render source write failed for ${key}`)
+      }
+    },
+    insertJob: async (r: InsertJobRow) => {
+      await execute(
+        `INSERT INTO banner_render_jobs (id, project_id, format_key, width, height, fps, crf, quality, source_r2_key, created_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+        [r.id, r.project_id, r.format_key, r.width, r.height, r.fps, r.crf, r.quality, r.source_r2_key, r.created_by]
+      )
+    },
+    sendQueue: msg => dispatchBannerRenderJob(msg.jobId, {
+      beforeDispatch: options.markDispatched,
+      send: message => queue.send(message),
+      recordFailure: async (jobId, uncertain, message) => {
+        await execute(RECORD_BANNER_DISPATCH_FAILURE_SQL, [jobId, uncertain, message])
+      }
+    })
+  }
+}

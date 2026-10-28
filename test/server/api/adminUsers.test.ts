@@ -37,6 +37,7 @@ vi.mock('~~/server/utils/auth', () => ({
 
 vi.mock('~~/server/utils/db', () => ({
   queryRows: (...args: unknown[]) => mockQueryRows(...args),
+  queryRowsFresh: (...args: unknown[]) => mockQueryRows(...args),
   queryOne: (...args: unknown[]) => mockQueryOne(...args)
 }))
 

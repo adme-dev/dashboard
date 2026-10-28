@@ -6,6 +6,7 @@ import {
   type ClientFinancialAllocationErrorCode,
 } from '~~/server/utils/clientFinancialAllocations'
 import { getSelectedTenant } from '~~/server/utils/session'
+import { denyMarketingClientViewer } from '~~/server/utils/clients/marketingAccess'
 
 const projectId = z.string().uuid().nullable()
 
@@ -39,6 +40,8 @@ const errorStatus: Record<ClientFinancialAllocationErrorCode, {
 export default defineEventHandler(async (event) => {
   const user = await requirePermission(event, 'FINANCE')
   await requireWriteAccess(event)
+  // A KV-cached FINANCE group must not outlive a fresh department-only role policy.
+  await denyMarketingClientViewer(user.id)
 
   const clientIdResult = z.string().uuid().safeParse(getRouterParam(event, 'id'))
   if (!clientIdResult.success) {

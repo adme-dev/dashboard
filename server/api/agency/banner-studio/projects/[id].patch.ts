@@ -1,5 +1,8 @@
-import { queryOne } from '~~/server/utils/db'
+import { queryOne, queryOneFresh } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
+import {
+  ACTIVE_PROJECT_CLIENT_SQL, checkMarketingBannerProjectPatch, isMarketingPortfolioUser, type MarketingBannerProject
+} from '~~/server/utils/banner/marketingProjectAccess'
 
 const MAX_VERSIONS_PER_PROJECT = 50
 
@@ -13,6 +16,19 @@ export default defineEventHandler(async (event) => {
 
   const body = await readBody(event)
   const { name, canvasData, status, thumbnailUrl, tags, clientId } = body
+
+  // Marketing-management portfolio: active clients and protected artwork are checked before any
+  // snapshot, and the UPDATE below is bound to the checked client/review state.
+  let checked: MarketingBannerProject | null = null
+  let marketingTags: string[] | undefined
+  if (isMarketingPortfolioUser(user)) {
+    checked = await queryOneFresh<MarketingBannerProject>(
+      'SELECT client_id, created_by, tags, review_status FROM banner_projects WHERE id = $1',
+      [id]
+    )
+    if (!checked) throw createError({ statusCode: 404, statusMessage: 'Project not found' })
+    marketingTags = (await checkMarketingBannerProjectPatch(event, user, checked, body)).tags
+  }
 
   try {
     // Auto-snapshot: save current canvas_data as a version before overwriting
@@ -64,10 +80,12 @@ export default defineEventHandler(async (event) => {
       paramIndex++
     }
 
+    let clientIndex: number | null = null
     if (clientId !== undefined) {
       if (clientId !== null && !/^[0-9a-f-]{36}$/i.test(String(clientId))) {
         throw createError({ statusCode: 400, statusMessage: 'Invalid clientId' })
       }
+      clientIndex = paramIndex
       sets.push(`client_id = $${paramIndex}`)
       params.push(clientId)
       paramIndex++
@@ -93,7 +111,7 @@ export default defineEventHandler(async (event) => {
 
     if (tags !== undefined) {
       sets.push(`tags = $${paramIndex}`)
-      params.push(tags)
+      params.push(marketingTags ?? tags)
       paramIndex++
     }
 
@@ -103,10 +121,18 @@ export default defineEventHandler(async (event) => {
 
     sets.push('updated_at = NOW()')
 
+    const guard = checked
+      ? ` AND client_id IS NOT DISTINCT FROM $${paramIndex}::uuid AND review_status::text IS NOT DISTINCT FROM $${paramIndex + 1}::text
+        AND ${ACTIVE_PROJECT_CLIENT_SQL}${clientIndex === null
+          ? ''
+          : ` AND ($${clientIndex}::uuid IS NULL OR EXISTS (SELECT 1 FROM agency_clients target_client
+            WHERE target_client.id = $${clientIndex}::uuid AND target_client.is_active = TRUE))`}`
+      : ''
+    const idIndex = checked ? paramIndex + 2 : paramIndex
     const row = await queryOne(`
       UPDATE banner_projects
       SET ${sets.join(', ')}
-      WHERE id = $${paramIndex}
+      WHERE id = $${idIndex}${guard}
       RETURNING
         id, name,
         client_id AS "clientId",
@@ -116,8 +142,11 @@ export default defineEventHandler(async (event) => {
         created_by AS "createdBy",
         created_at AS "createdAt",
         updated_at AS "updatedAt"
-    `, [...params, id])
+    `, checked ? [...params, checked.client_id, checked.review_status ?? null, id] : [...params, id])
 
+    if (!row && checked) {
+      throw createError({ statusCode: 409, statusMessage: 'Project or client access changed; reload before saving' })
+    }
     if (!row) {
       throw createError({ statusCode: 404, statusMessage: 'Project not found' })
     }

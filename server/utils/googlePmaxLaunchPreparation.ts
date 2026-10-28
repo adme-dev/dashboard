@@ -155,9 +155,11 @@ export function createGooglePmaxLaunchPreparation(dependencies: PreparationDepen
   const normalize = dependencies.normalize || (input => createGooglePmaxRemoteDecisionEngine(useEvent()).normalize(input))
 
   return {
-    async list(input: { tenantId: string, clientId?: string, limit?: number }): Promise<GooglePmaxPreparableBrief[]> {
+    async list(input: { tenantId: string, clientId?: string, limit?: number, activeClientsOnly?: boolean, clientIds?: string[] }): Promise<GooglePmaxPreparableBrief[]> {
       const params: unknown[] = [input.tenantId, Math.min(Math.max(input.limit || 50, 1), 100)]
       const clientClause = input.clientId ? `AND b.client_id = $${params.push(input.clientId)}::uuid` : ''
+      const activeClause = input.activeClientsOnly ? 'AND c.is_active = TRUE' : ''
+      const setClause = input.clientIds ? `AND b.client_id = ANY($${params.push(input.clientIds)}::uuid[])` : ''
       const rows = await queryRows<BriefRow>(
         `SELECT b.id, b.client_id, c.name AS client_name, b.title, b.status,
                 b.launch_config_version, b.converted_to_project_id,
@@ -175,6 +177,8 @@ export function createGooglePmaxLaunchPreparation(dependencies: PreparationDepen
                LIMIT 1
             )
             ${clientClause}
+            ${activeClause}
+            ${setClause}
             AND NOT EXISTS (
               SELECT 1
                 FROM campaign_launches launch

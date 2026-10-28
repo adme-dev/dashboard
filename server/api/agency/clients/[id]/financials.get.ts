@@ -5,9 +5,13 @@ import { parseClientFinancialRange } from '~~/server/utils/clientFinancialCalcul
 import { ClientFinancialRepositoryError } from '~~/server/utils/clientFinancialRepository'
 import { isReadOnlyRole, PERMISSIONS, roleHasPermission } from '~~/server/utils/permissions'
 import { getSelectedTenant } from '~~/server/utils/session'
+import { denyMarketingClientViewer } from '~~/server/utils/clients/marketingAccess'
 
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, PERMISSIONS.CLIENTS)
+  // CLIENTS alone exposes reconciled revenue, labour and invoices; the marketing department is
+  // denied outright so restricted figures are never presented as zero.
+  await denyMarketingClientViewer(user.id)
   const clientId = getRouterParam(event, 'id')
 
   if (!clientId) {

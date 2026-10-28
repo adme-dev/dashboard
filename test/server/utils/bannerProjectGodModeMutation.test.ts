@@ -204,7 +204,8 @@ describe('God mode banner project creation coordination', () => {
       '~~/server/utils/auth',
       '~~/server/utils/banner/godModeProjectCreation',
       '~~/server/utils/banner/thebriefProjectImport',
-      '~~/server/utils/social/clientAccess'
+      '~~/server/utils/social/clientAccess',
+      '~~/server/utils/banner/marketingProjectAccess'
     ])
     expect(projectCreationRouteSource).not.toMatch(/\b(?:render(?:Job|Banner)?|publish(?:Banner|ToAdPlatform)?|enqueue|queue|export(?:Banner)?|upload(?:Asset)?)[A-Za-z0-9_]*\s*\(/i)
   })

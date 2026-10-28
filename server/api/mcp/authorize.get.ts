@@ -1,3 +1,4 @@
+import { captureMcpPageStudioLogin } from '~~/server/utils/ai/mcp/pageStudioLogin'
 // server/api/mcp/authorize.get.ts
 // MCP Server Phase 1 — the "reuse app identity" point (mcp-server-phase1 spec §3, TODO A). The MCP Worker
 // redirects the browser here to authenticate the user against XeroFlow's OWN login. If logged in, we mint a
@@ -11,7 +12,7 @@
 // chosen scope (mcp:read, optionally mcp:write) is signed INTO the assertion so the Worker mints exactly it.
 import { defineEventHandler, getQuery, sendRedirect, createError } from 'h3'
 import { requireAuth } from '~~/server/utils/auth'
-import { signMcpAssertion } from '~~/server/utils/ai/mcp/assertion'
+import { digestMcpOAuthState, signMcpAssertion } from '~~/server/utils/ai/mcp/assertion'
 import { buildConsentHtml } from '~~/server/utils/ai/mcp/consent'
 
 export default defineEventHandler(async (event) => {
@@ -53,10 +54,14 @@ export default defineEventHandler(async (event) => {
   // an mcp:read+mcp:write one. The user's click selects which scoped assertion is handed to the Worker.
   // A crafted link can neither skip this screen nor pre-elevate to mcp:write: it cannot forge an assertion,
   // and scope is never derived from a raw `write`/`consent` query param. (Closes the self-elevation defect.)
+  // Both assertions are bound to this exact OAuth request: a captured assertion cannot complete a
+  // different client's authorization, and only a bound assertion carries the original Studio login.
+  const pageStudioLogin = await captureMcpPageStudioLogin(event, user.id)
+  const stateHash = await digestMcpOAuthState(state)
   const ttlSec = 300
   const [readAssertion, writeAssertion] = await Promise.all([
-    signMcpAssertion(user.id, secret, { scope: ['mcp:read'], ttlSec }),
-    signMcpAssertion(user.id, secret, { scope: ['mcp:read', 'mcp:write'], ttlSec }),
+    signMcpAssertion(user.id, secret, { scope: ['mcp:read'], ttlSec, stateHash, pageStudioLogin }),
+    signMcpAssertion(user.id, secret, { scope: ['mcp:read', 'mcp:write'], ttlSec, stateHash, pageStudioLogin })
   ])
   const allowUrl = new URL(dest)
   allowUrl.searchParams.set('state', state)
@@ -71,6 +76,6 @@ export default defineEventHandler(async (event) => {
     userName: user.name || user.email || 'your account',
     allowUrl: allowUrl.toString(),
     allowWriteUrl: allowWriteUrl.toString(),
-    cancelUrl: cancelUrl.toString(),
+    cancelUrl: cancelUrl.toString()
   })
 })

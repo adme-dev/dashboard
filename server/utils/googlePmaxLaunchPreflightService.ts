@@ -1,3 +1,5 @@
+import { queryOneFresh, queryRowsFresh } from '~~/server/utils/db'
+import { isExactNativeFeedScope } from '~~/server/utils/ai/marketing/departmentCatalogSchemas'
 import type { H3Event } from 'h3'
 import {
   collectGooglePmaxDecisionEvidence,
@@ -29,7 +31,7 @@ async function createFeedReader(input: {
   evaluate: ReturnType<typeof createGooglePmaxRemoteDecisionEngine>['internalFeedEvidence']
 }) {
   if (!isDealerFeedsEnabled(input.runtimeEnv)) throw new Error('Dealer feeds are disabled.')
-  const client = await getSocialDashboardClient({ runtimeEnv: input.runtimeEnv })
+  const client = await getSocialDashboardClient({ env: input.runtimeEnv, runtimeEnv: input.runtimeEnv, queryOne: queryOneFresh })
   if (!client) throw new Error('Social dashboard feed credentials are unavailable.')
   const providers = new Map<string, FeedProvider>()
   const provider = (providerId: string) => {
@@ -43,6 +45,7 @@ async function createFeedReader(input: {
   return {
     async read(config: GooglePmaxInventoryLaunchConfig) {
       const links = await listDealerLinks({
+        queryRows: queryRowsFresh,
         clientId: config.clientId,
         providerId: config.inventorySource.providerId,
         status: 'active'
@@ -57,7 +60,7 @@ async function createFeedReader(input: {
         if (feed?.isActive && feed.platform === 'google') {
           const ref = { providerId: link.providerId, feedId: feed.id, platform: feed.platform }
           detail = await provider(link.providerId).getFeed(context(link), ref)
-          if (detail.id === feed.id && detail.platform === feed.platform && detail.isActive) {
+          if (detail.id === feed.id && detail.platform === feed.platform && detail.isActive && isExactNativeFeedScope(detail, link)) {
             preview = await provider(link.providerId).previewFeed(context(link), link, ref, { limit: 100, offset: 0 })
           }
         }
@@ -80,10 +83,12 @@ export async function runGooglePmaxLaunchPreflight(input: {
   tenantId: string
   actorId: string
   actorEmail: string
+  runtimeEnv?: RuntimeEnv
+  googleRuntimeConfig?: ReturnType<typeof resolveGoogleAdsRuntimeConfig>
 }) {
-  const runtimeEnv = mergedRuntimeEnv(input.event)
+  const runtimeEnv = input.runtimeEnv ?? mergedRuntimeEnv(input.event)
   const decisionEngine = createGooglePmaxRemoteDecisionEngine(input.event)
-  const googleRuntimeConfig = resolveGoogleAdsRuntimeConfig(undefined, input.event)
+  const googleRuntimeConfig = input.googleRuntimeConfig ?? resolveGoogleAdsRuntimeConfig(undefined, input.event)
   let feedReaderPromise: ReturnType<typeof createFeedReader> | undefined
   const feedReader = () => {
     feedReaderPromise ||= createFeedReader({
@@ -96,7 +101,7 @@ export async function runGooglePmaxLaunchPreflight(input: {
   let providerEvidencePromise: Promise<GooglePmaxPreflightEvidence> | undefined
   const readProviderEvidence = (config: GooglePmaxInventoryLaunchConfig) => {
     providerEvidencePromise ||= Promise.all([
-      loadGooglePmaxProviderConnection(config, { getRuntimeConfig: () => googleRuntimeConfig }),
+      loadGooglePmaxProviderConnection(config, { queryOne: queryOneFresh, getRuntimeConfig: () => googleRuntimeConfig }),
       feedReader().then(reader => reader.read(config))
     ]).then(([connection, internalFeed]) => decisionEngine.providerEvidence({
       config,

@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { parse } from 'smol-toml'
 import { describe, expect, it } from 'vitest'
 
 const root = process.cwd()
@@ -7,98 +8,8 @@ const root = process.cwd()
 type TomlValue = string | number | boolean | TomlValue[] | TomlObject | TomlObject[]
 type TomlObject = { [key: string]: TomlValue }
 
-function stripTomlComment(line: string): string {
-  let quoted = false
-  let escaped = false
-  for (let i = 0; i < line.length; i += 1) {
-    const char = line[i]
-    if (escaped) {
-      escaped = false
-      continue
-    }
-    if (char === '\\' && quoted) {
-      escaped = true
-      continue
-    }
-    if (char === '"') {
-      quoted = !quoted
-      continue
-    }
-    if (char === '#' && !quoted) {
-      return line.slice(0, i).trim()
-    }
-  }
-  return line.trim()
-}
-
-function parseTomlValue(raw: string): TomlValue {
-  const value = raw.trim()
-  if (value.startsWith('"') && value.endsWith('"')) {
-    return value.slice(1, -1).replace(/\\"/g, '"')
-  }
-  if (value === 'true') return true
-  if (value === 'false') return false
-  if (/^-?\d+$/.test(value)) return Number(value)
-  if (value.startsWith('[') && value.endsWith(']')) {
-    const inner = value.slice(1, -1).trim()
-    if (!inner) return []
-    return inner.split(',').map(item => parseTomlValue(item.trim()))
-  }
-  throw new Error(`Unsupported TOML value in test parser: ${raw}`)
-}
-
-function objectAt(rootObject: TomlObject, path: string[]): TomlObject {
-  let cursor = rootObject
-  for (const key of path) {
-    const existing = cursor[key]
-    if (existing === undefined) {
-      const next: TomlObject = {}
-      cursor[key] = next
-      cursor = next
-      continue
-    }
-    if (typeof existing !== 'object' || Array.isArray(existing)) {
-      throw new Error(`TOML path ${path.join('.')} conflicts at ${key}`)
-    }
-    cursor = existing as TomlObject
-  }
-  return cursor
-}
-
 function parseTomlSubset(config: string): TomlObject {
-  const parsed: TomlObject = {}
-  let current = parsed
-
-  for (const rawLine of config.split('\n')) {
-    const line = stripTomlComment(rawLine)
-    if (!line) continue
-
-    const arrayTable = line.match(/^\[\[([A-Za-z0-9_.-]+)\]\]$/)
-    if (arrayTable) {
-      const path = arrayTable[1].split('.')
-      const parent = objectAt(parsed, path.slice(0, -1))
-      const key = path[path.length - 1]
-      const table = parent[key] ?? []
-      if (!Array.isArray(table)) throw new Error(`TOML table ${arrayTable[1]} is not an array`)
-      const item: TomlObject = {}
-      table.push(item)
-      parent[key] = table
-      current = item
-      continue
-    }
-
-    const table = line.match(/^\[([A-Za-z0-9_.-]+)\]$/)
-    if (table) {
-      current = objectAt(parsed, table[1].split('.'))
-      continue
-    }
-
-    const assignment = line.match(/^([A-Za-z0-9_-]+)\s*=\s*(.+)$/)
-    if (!assignment) throw new Error(`Unsupported TOML line in test parser: ${rawLine}`)
-    current[assignment[1]] = parseTomlValue(assignment[2])
-  }
-
-  return parsed
+  return parse(config) as TomlObject
 }
 
 function tomlArray(config: TomlObject, path: string): TomlObject[] {

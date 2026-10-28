@@ -2,6 +2,7 @@ import { requireAuth, requireWriteAccess } from '~~/server/utils/auth'
 import { executeGodModeBannerProjectCreation } from '~~/server/utils/banner/godModeProjectCreation'
 import { findExistingTheBriefProject, readTheBriefProjectIdentity } from '~~/server/utils/banner/thebriefProjectImport'
 import { requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
+import { isMarketingPortfolioUser, requireMarketingBannerProjectCreate } from '~~/server/utils/banner/marketingProjectAccess'
 
 export default defineEventHandler(async (event) => {
   const user = await requireAuth(event)
@@ -20,6 +21,9 @@ export default defineEventHandler(async (event) => {
     await requireWriteAccess(event)
     await requireSocialClientAccess(event, importIdentity.clientId)
   }
+  // Marketing-management portfolio: active clients only; the INSERT re-checks the client atomically.
+  const marketing = isMarketingPortfolioUser(user)
+  if (marketing && !importIdentity) await requireMarketingBannerProjectCreate(event, user, { clientId, tags })
 
   try {
     const row = await executeGodModeBannerProjectCreation(event, async (db) => {
@@ -29,7 +33,10 @@ export default defineEventHandler(async (event) => {
       }
       const result = await db.query(`
         INSERT INTO banner_projects (name, client_id, canvas_data, tags, created_by)
-        VALUES ($1, $2, $3, $4, $5)
+        ${marketing
+          ? `SELECT $1, $2::uuid, $3::jsonb, $4::text[], $5 WHERE $2::uuid IS NULL OR EXISTS (SELECT 1 FROM agency_clients active_client
+            WHERE active_client.id = $2::uuid AND active_client.is_active = TRUE)`
+          : 'VALUES ($1, $2, $3, $4, $5)'}
         RETURNING
           id, name,
           client_id AS "clientId",
@@ -46,12 +53,14 @@ export default defineEventHandler(async (event) => {
         importIdentity?.tags || tags || [],
         user.id
       ])
+      if (marketing && !result.rows[0]) throw createError({ statusCode: 403, statusMessage: 'No current access to this client' })
       return result.rows[0]
     })
     if (!row) throw new Error('Banner project insert returned no row')
     return row
   } catch (error) {
-    if ((error as { statusCode?: number })?.statusCode === 400) throw error
+    const status = (error as { statusCode?: number })?.statusCode
+    if (status === 400 || (marketing && status === 403)) throw error
     console.error('Failed to create banner project:', error)
     throw createError({ statusCode: 500, statusMessage: 'Failed to create banner project' })
   }

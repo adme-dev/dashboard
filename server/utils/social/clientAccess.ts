@@ -1,9 +1,10 @@
 import { createError, type H3Event } from 'h3'
 import { requireAuth, type User } from '~~/server/utils/auth'
-import { queryOne } from '~~/server/utils/db'
+import { queryOne, queryOneFresh } from '~~/server/utils/db'
+import { hasFreshMarketingManagementPermission } from '~~/server/utils/clientScoping'
 import { roleHasPermission, type PermissionGroup } from '~~/server/utils/permissions'
 
-const SOCIAL_PERMISSION_GROUPS: PermissionGroup[] = ['CLIENTS', 'MEDIA_BUYING', 'CREATIVE']
+const SOCIAL_PERMISSION_GROUPS: PermissionGroup[] = ['CLIENTS', 'MEDIA_BUYING', 'CREATIVE', 'MARKETING_MANAGEMENT']
 const ALL_CLIENT_PERMISSION_GROUPS: PermissionGroup[] = ['ADMIN', 'MANAGEMENT']
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -38,6 +39,15 @@ export async function requireSocialClientAccess(event: H3Event, clientId: string
     throw createError({ statusCode: 403, statusMessage: 'Forbidden - Insufficient permissions' })
   }
   if (hasAllSocialClientAccess(user)) {
+    return user
+  }
+  // Dedicated portfolio authority is active-only. Do not add it to the legacy unrestricted
+  // all-client predicate: list routes using that sentinel need their own active-client SQL scope.
+  if (user.permissionGroups?.includes('MARKETING_MANAGEMENT')) {
+    const allowed = await hasFreshMarketingManagementPermission(user.id)
+    if (!allowed || !await queryOneFresh('SELECT id FROM agency_clients WHERE id = $1 AND is_active = TRUE', [clientId])) {
+      throw createError({ statusCode: 403, statusMessage: 'No current access to this client' })
+    }
     return user
   }
 

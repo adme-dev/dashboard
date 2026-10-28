@@ -1,4 +1,4 @@
-import { requireAuth } from '~~/server/utils/auth'
+import { requireSocialInboxConversation } from '~~/server/utils/socialInbox/departmentScope'
 import { emitInboxEvent } from '~~/server/utils/socialInbox/events'
 import { executeSocialInboxMutation, socialInboxTransactionDb } from '~~/server/utils/socialInbox/godModeMutations'
 import {
@@ -8,8 +8,8 @@ import {
 } from '~~/server/utils/socialInbox/nativeLinks'
 
 export default defineEventHandler(async (event) => {
-  const user = await requireAuth(event)
   const id = getRouterParam(event, 'id')!
+  const { user } = await requireSocialInboxConversation(event, id)
   const body = await readBody(event)
 
   try {

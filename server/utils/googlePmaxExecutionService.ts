@@ -1,15 +1,21 @@
+import { queryOneFresh } from '~~/server/utils/db'
 import type { H3Event } from 'h3'
 import { mergedRuntimeEnv } from '~~/server/utils/feeds/serverContext'
 import { createGooglePmaxPausedExecutor } from '~~/server/utils/googlePmaxPausedExecutor'
 import { loadGooglePmaxProviderConnection } from '~~/server/utils/googlePmaxProviderConnection'
 import { createGooglePmaxRemoteProvider } from '~~/server/utils/googlePmaxRemoteProvider'
 import { createGooglePmaxRemoteDecisionEngine } from '~~/server/utils/googlePmaxRemoteDecisionEngine'
+import type { GooglePmaxLaunch } from '~~/server/utils/googlePmaxLaunchStore'
+import { getGooglePmaxLaunch } from '~~/server/utils/googlePmaxLaunchStore'
 import { resolveGoogleAdsRuntimeConfig } from '~~/server/utils/spendSync'
+import { resolveMarketingProviderConfig } from '~~/server/utils/marketingProviderConfig'
 
 type RuntimeEnv = Record<string, string | undefined>
 
 interface ExecutionServiceDependencies {
   env?: (event: H3Event) => RuntimeEnv
+  runtimeConfig?: ReturnType<typeof resolveGoogleAdsRuntimeConfig>
+  authorize?: (launch: GooglePmaxLaunch, kind: 'create' | 'activate') => Promise<void>
   executor?: ReturnType<typeof createGooglePmaxPausedExecutor>
 }
 
@@ -25,22 +31,24 @@ export class GooglePmaxExecutionGateError extends Error {
 }
 
 export function googlePmaxExecutionPolicy(env: RuntimeEnv) {
-  const providerWritesEnabled = env.GOOGLE_PMAX_PROVIDER_WRITES_ENABLED === 'true'
+  // Kill switches resolve through the shared marketing provider config; defaults are off.
+  const config = resolveMarketingProviderConfig(env)
   return {
-    providerWritesEnabled,
-    activationEnabled: providerWritesEnabled && env.GOOGLE_PMAX_ACTIVATION_ENABLED === 'true'
+    providerWritesEnabled: config.pmaxProviderWrites,
+    activationEnabled: config.pmaxProviderWrites && config.pmaxActivation
   }
 }
 
 function executor(event: H3Event, dependencies: ExecutionServiceDependencies) {
   if (dependencies.executor) return dependencies.executor
-  const googleRuntimeConfig = resolveGoogleAdsRuntimeConfig(undefined, event)
+  const googleRuntimeConfig = dependencies.runtimeConfig ?? resolveGoogleAdsRuntimeConfig(undefined, event)
   const decisionEngine = createGooglePmaxRemoteDecisionEngine(event)
   return createGooglePmaxPausedExecutor({
+    ...(dependencies.authorize ? { authorize: dependencies.authorize, getLaunch: input => getGooglePmaxLaunch({ ...input, fresh: true }) } : {}),
     parseConfig: decisionEngine.parseConfig,
     provider: createGooglePmaxRemoteProvider(event, {
       loadConnection: config => loadGooglePmaxProviderConnection(config, {
-        getRuntimeConfig: () => googleRuntimeConfig
+        queryOne: queryOneFresh, getRuntimeConfig: () => googleRuntimeConfig
       })
     })
   })

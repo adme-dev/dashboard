@@ -31,7 +31,32 @@ export function compactSqlTemplateSource(source, { decoderSpecifier } = {}) {
   return compactStaticSource(source, 'XEROFLOW_SQL_TEMPLATE_DATA', () => false, 256, false, decoderSpecifier, true)
 }
 
-function compactStaticSource(source, marker, accepts, minimumCharacters = MIN_LITERAL_CHARACTERS, includeConstants = false, decoderSpecifier, sqlTemplates = false) {
+// Descriptive copy is consumed only as exact string data: MCP tool and feature
+// description/content values, schema describe() text, and JSON.parse() input
+// (the Nuxt Icon server bundle). Keys, callees and every other argument stay.
+const STATIC_TEXT_KEYS = new Set(['description', 'content'])
+function selectsStaticText(node) {
+  const parent = node.parent
+  if (ts.isPropertyAssignment(parent)) {
+    return parent.initializer === node
+      && (ts.isIdentifier(parent.name) || ts.isStringLiteral(parent.name))
+      && STATIC_TEXT_KEYS.has(parent.name.text)
+  }
+  if (!ts.isCallExpression(parent) || parent.arguments[0] !== node
+    || !ts.isPropertyAccessExpression(parent.expression)) return false
+  const { expression, name } = parent.expression
+  return name.text === 'describe'
+    || (name.text === 'parse' && ts.isIdentifier(expression) && expression.text === 'JSON')
+}
+
+/** Text in function bodies may be read through an import cycle before the
+ * module body runs, so this pass uses a hoisted lookup instead of a const. */
+export function compactStaticTextDataSource(source, { decoderSpecifier } = {}) {
+  if (source.includes('XEROFLOW_COMPACT_PRECOMPUTED')) return { code: source, literals: 0 }
+  return compactStaticSource(source, 'XEROFLOW_STATIC_TEXT_DATA', () => true, 64, false, decoderSpecifier, false, { selects: selectsStaticText, hoisted: true })
+}
+
+function compactStaticSource(source, marker, accepts, minimumCharacters = MIN_LITERAL_CHARACTERS, includeConstants = false, decoderSpecifier, sqlTemplates = false, { selects, hoisted = false } = {}) {
   const unchanged = { code: source, literals: 0 }
   if (source.includes(marker)) return unchanged
   const file = ts.createSourceFile('ssr.mjs', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS)
@@ -53,6 +78,19 @@ function compactStaticSource(source, marker, accepts, minimumCharacters = MIN_LI
     const call = `${prefix}(${index})`
     replacements.push({ start, end, value: template ? '${' + call + '}' : call })
   }
+  // A pass may narrow these data positions (call arguments and property
+  // values) but never widen them.
+  const selected = selects || (node => (ts.isCallExpression(node.parent)
+    && node.parent.expression.kind !== ts.SyntaxKind.ImportKeyword
+    && node.parent.arguments.includes(node))
+  || (ts.isPropertyAssignment(node.parent) && node.parent.initializer === node)
+  // SQL constants are immutable string data too. Keep the declaration and
+  // initializer in place; only replace the complete literal with its exact
+  // decoded value. Never fold expressions, tagged templates or mutable vars.
+  || (includeConstants && ts.isVariableDeclaration(node.parent)
+    && node.parent.initializer === node
+    && ts.isVariableDeclarationList(node.parent.parent)
+    && (node.parent.parent.flags & ts.NodeFlags.Const) !== 0))
   const visit = (node) => {
     if (sqlTemplates && ts.isTemplateExpression(node) && !ts.isTaggedTemplateExpression(node.parent)
       && /^\s*(?:\/\*[\s\S]*?\*\/\s*)*(?:SELECT|INSERT|UPDATE|DELETE|WITH|CREATE|ALTER)\s/i.test(node.head.text)) {
@@ -63,17 +101,7 @@ function compactStaticSource(source, marker, accepts, minimumCharacters = MIN_LI
       }
     }
     if (ts.isStringLiteralLike(node)
-      && ((ts.isCallExpression(node.parent)
-        && node.parent.expression.kind !== ts.SyntaxKind.ImportKeyword
-        && node.parent.arguments.includes(node))
-      || (ts.isPropertyAssignment(node.parent) && node.parent.initializer === node)
-      // SQL constants are immutable string data too. Keep the declaration and
-      // initializer in place; only replace the complete literal with its exact
-      // decoded value. Never fold expressions, tagged templates or mutable vars.
-      || (includeConstants && ts.isVariableDeclaration(node.parent)
-        && node.parent.initializer === node
-        && ts.isVariableDeclarationList(node.parent.parent)
-        && (node.parent.parent.flags & ts.NodeFlags.Const) !== 0))
+      && selected(node)
       && node.text.length >= minimumCharacters
       && accepts(node.text)
     // UTF-8 replaces lone surrogates, so do not encode those JS strings.
@@ -91,11 +119,18 @@ function compactStaticSource(source, marker, accepts, minimumCharacters = MIN_LI
   // Share compression within bounded groups of immutable build-time strings.
   // The original AST selection and individual profitability checks stay intact.
   const data = JSON.stringify(packStaticStrings(values))
-  const decoder = decoderSpecifier
-    ? `import { createStaticDecoder as ${prefix}Create } from ${JSON.stringify(decoderSpecifier)};
-const ${prefix} = ${prefix}Create(${data});`
-    : `${staticDecoderSource(prefix + 'Create', prefix)}
-const ${prefix} = ${prefix}Create(${data});`
+  const create = decoderSpecifier
+    ? `import { createStaticDecoder as ${prefix}Create } from ${JSON.stringify(decoderSpecifier)};`
+    : staticDecoderSource(prefix + 'Create', prefix)
+  // Function declarations and var bindings are initialized before any module
+  // body runs; the data array is still materialized once, on first lookup.
+  const lookup = hoisted
+    ? `var ${prefix}Lookup;
+function ${prefix}(index) {
+  return (${prefix}Lookup ??= ${prefix}Create(${data}))(index);
+}`
+    : `const ${prefix} = ${prefix}Create(${data});`
+  const decoder = `${create}\n${lookup}`
   const code = `// ${marker}\n${decoder}\n${body}`
   return Buffer.byteLength(code) < Buffer.byteLength(source)
     ? { code, literals: replacements.length }
@@ -237,6 +272,12 @@ export async function compactRouteSqlDirectory(workerDirectory) {
  * fragments; request expressions and parameters never enter its data or cache. */
 export async function compactSqlTemplateDirectory(workerDirectory) {
   return compactSqlDirectories(workerDirectory, ['nitro', 'routes'], compactSqlTemplateSource)
+}
+
+/** Descriptive copy lives in the Nitro runtime, API routes, Vue page chunks and
+ * the generated Vue server entry. Shared `_` library chunks are not scanned. */
+export async function compactStaticTextDataDirectory(workerDirectory) {
+  return compactSqlDirectories(workerDirectory, ['nitro', 'routes', 'build', 'virtual'], compactStaticTextDataSource)
 }
 
 async function compactSqlDirectories(workerDirectory, directories, compactSource) {

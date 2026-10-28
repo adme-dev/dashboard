@@ -14,6 +14,7 @@ import { generationTools, isGenerationReadToolName } from './generationTools'
 import { isTask4WriteTool } from './marketingTask4Names'
 import { isGoogleAdsWriteToolName } from './googleAdsTools'
 import { isSocialMcpWriteToolName } from './socialToolNames'
+import { isDepartmentWriteTool } from './departmentToolNames'
 
 export const MCP_READ_SCOPE = 'mcp:read'
 export const MCP_WRITE_SCOPE = 'mcp:write'
@@ -38,6 +39,7 @@ const GEN_WRITE_NAMES = new Set(generationTools.map(t => t.name).filter(n => !is
  */
 export function isWriteScopeToolName(name: string): boolean {
   return name === 'remember'
+    || isDepartmentWriteTool(name)
     || name === MCP_CONFIRM_TOOL
     || resolveProposeAction(name) !== null
     || isFinancialAction(name)

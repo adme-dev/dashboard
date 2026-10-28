@@ -1,4 +1,4 @@
-import { requireAuth } from '~~/server/utils/auth'
+import { requireSocialInboxConversation } from '~~/server/utils/socialInbox/departmentScope'
 import { loadSocialInboxAiContext } from '~~/server/utils/socialInbox/aiContext'
 import { generateSocialInboxAiTriage } from '~~/server/utils/socialInbox/aiTriage'
 import { executeSocialInboxExternalMutation } from '~~/server/utils/socialInbox/godModeMutations'
@@ -12,8 +12,8 @@ type Triage = Awaited<ReturnType<typeof generateSocialInboxAiTriage>>
  * replay — the context is reloaded fresh because it can be large.
  */
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
   const id = getRouterParam(event, 'id')!
+  await requireSocialInboxConversation(event, id)
   const context = await loadSocialInboxAiContext(id)
   if (!context) throw createError({ statusCode: 404, statusMessage: 'Conversation not found' })
 

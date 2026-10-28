@@ -300,9 +300,9 @@ const categories = [
       { title: 'AI Training Pipeline', slug: 'ai-training-pipeline', icon: 'i-lucide-graduation-cap', description: 'Extract training data from conversations, upload knowledge entries, and manage training datasets.' },
       { title: 'Knowledge Base', slug: 'knowledge-base', icon: 'i-lucide-book-open', description: 'Curate and approve knowledge entries that enhance AI responses with agency-specific context.' },
       { title: 'LoRA Adapters', slug: 'lora-adapters', icon: 'i-lucide-cpu', description: 'Fine-tune AI models with your agency data. Custom adapters with traffic routing and A/B testing.' },
-      { title: 'Reviewed Marketing Changes', slug: 'marketing-reviews', icon: 'i-lucide-shield-check', description: 'Prepare scoped Google Ads and tracking proposals through your assistant, then have a separate owner or admin review the exact change before execution.' },
+      { title: 'Reviewed Marketing Changes', slug: 'marketing-reviews', icon: 'i-lucide-shield-check', description: 'Prepare scoped Google Ads and tracking proposals through your assistant, then have a separate authorised reviewer approve the exact change before execution.' },
       { title: 'Creative Workspace MCP', slug: 'creative-workspace-mcp', icon: 'i-lucide-panels-top-left', description: 'Preview: discover client-scoped banner assets, projects, audio, video and EDM templates through the shared XeroFlow AI and MCP tool registry. Browser editing connections are in development.' },
-      { title: 'Marketing Staff MCP', slug: 'marketing-staff-mcp', icon: 'i-lucide-user-check', description: 'Connect your assistant with your own login for assigned-client reporting and reviewed marketing drafts, with current permissions and provider readiness kept visible.' },
+      { title: 'Marketing Staff MCP', slug: 'marketing-staff-mcp', icon: 'i-lucide-user-check', description: 'Manage client reporting, KPI targets, campaigns, work, creative, email and supported website releases through your assistant, with scoped access and independent review.' },
       { title: 'AI Assistant Connectors', slug: 'ai-connectors', icon: 'i-lucide-plug', description: 'Connect Claude, Cursor, or ChatGPT to permitted XeroFlow work. Staff use scoped reporting and reviewed preparation; active owners retain the separate audited operations and creative model catalog.' }
     ]
   },

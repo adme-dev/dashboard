@@ -3,11 +3,7 @@
  */
 
 import { queryOne, transaction } from '~~/server/utils/db'
-import { emitBoardEvent } from '~~/server/utils/boardEvents'
-import { notifyBoardSubscribers } from '~~/server/utils/boardNotifications'
-import { evaluateAutomations } from '~~/server/utils/automationEngine'
-import { enqueue } from '~~/server/utils/queue'
-import { postBoardEventToChat } from '~~/server/utils/boardChatBridge'
+import { dispatchTaskFieldUpdateEffects } from '~~/server/utils/workManagement/taskEffects'
 import { notifyTaskAssigneeChanged } from '~~/server/utils/notifications'
 import { runCappedBeforeResponse } from '~~/server/utils/asyncBackground'
 
@@ -271,34 +267,15 @@ export default defineEventHandler(async (event) => {
       }
     }
 
-    // Emit board event for real-time updates
+    // Emit board event, subscriber/automation queue jobs and chat bridge for the edited fields
     if (currentTask.department_id && changes.length > 0) {
-      emitBoardEvent({
+      await dispatchTaskFieldUpdateEffects(event, {
         boardId: currentTask.department_id,
-        type: 'task_updated',
         taskId: id,
-        changes: Object.fromEntries(changes.map(c => [c.field, c.newValue])),
-      }, event)
-
-      const boardEvent = {
-        boardId: currentTask.department_id,
-        type: 'task_updated',
-        taskId: id,
-        actorId: actorUserId,
-        changes: Object.fromEntries(changes.map(c => [c.field, c.newValue])),
-      }
-
-      // Notify board subscribers (queued with retry, fallback to fire-and-forget)
-      enqueue(event, 'board.notify', boardEvent, () => notifyBoardSubscribers(boardEvent))
-
-      // Evaluate board automations (queued with retry, fallback to fire-and-forget)
-      enqueue(event, 'board.automate', boardEvent, () => evaluateAutomations(currentTask.department_id, boardEvent))
-
-      // Post to linked chat channels (in-request, capped so it can't stall the response)
-      await runCappedBeforeResponse(postBoardEventToChat({
-        ...boardEvent,
         taskTitle: currentTask.title,
-      }), 'postBoardEventToChat')
+        actorUserId,
+        changes: Object.fromEntries(changes.map(c => [c.field, c.newValue])),
+      })
     }
 
     // Notify the new assignee directly (in-app + email).

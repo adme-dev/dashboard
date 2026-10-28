@@ -1,6 +1,6 @@
-import { requireRole } from '~~/server/utils/auth'
+import { requireDepartmentBrowserReviewer, getDepartmentBrowserSocialPost } from '~~/server/utils/ai/marketing/departmentReviewOperations'
 import { PERMISSIONS } from '~~/server/utils/permissions'
-import { queryOne } from '~~/server/utils/db'
+import { queryOne, queryOneFresh } from '~~/server/utils/db'
 import { createNotification } from '~~/server/utils/notifications'
 import { requireSocialPostClientAccess } from '~~/server/utils/socialPublishing/guards'
 import { recordSocialPublishingAudit } from '~~/server/utils/socialPublishing/audit'
@@ -20,17 +20,19 @@ interface ApprovedPost {
  * POST /api/agency/social/publishing/posts/:id/approve   body: { revisionId? }
  * Approve a post (MANAGEMENT) and notify the requester.
  *
- * Delegated (staff/MCP) posts require `revisionId`, a freshly authorized owner/admin who is neither the
+ * Delegated (staff/MCP) posts require `revisionId`, a freshly authorized admin or marketing manager who is neither the
  * requester nor the draft creator, and an exact match between the current post and the submitted
  * revision (content hash, reviewed media bytes, unexpired, still pending). Legacy posts keep the
  * existing MANAGEMENT approval; a client-portal draft additionally needs the client decision on the
  * current revision.
  */
 export default defineEventHandler(async (event) => {
-  const user = await requireRole(event, PERMISSIONS.MANAGEMENT)
+  const { user, departmentContext, legacyRoleAuthorized } = await requireDepartmentBrowserReviewer(event, PERMISSIONS.MANAGEMENT)
   const id = getRouterParam(event, 'id')
   if (!id) throw createError({ statusCode: 400, statusMessage: 'id required' })
-  const existing = await requireSocialPostClientAccess(event, id)
+  const existing = departmentContext
+    ? await getDepartmentBrowserSocialPost(departmentContext, id, legacyRoleAuthorized)
+    : await requireSocialPostClientAccess(event, id)
   const requestedRevisionId = await optionalRevisionId(event)
 
   let post: ApprovedPost | null
@@ -42,7 +44,7 @@ export default defineEventHandler(async (event) => {
       import('~~/server/utils/socialPublishing/revisions'),
       import('~~/server/utils/db')
     ])
-    const revision = await queryOne<{ requested_by: string }>(
+    const revision = await queryOneFresh<{ requested_by: string }>(
       'SELECT requested_by FROM social_post_revisions WHERE id = $1 AND post_id = $2 AND client_id = $3',
       [requestedRevisionId, id, existing.client_id]
     )

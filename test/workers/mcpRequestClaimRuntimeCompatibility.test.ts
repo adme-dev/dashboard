@@ -34,7 +34,8 @@ describe('MCP request claim Worker-runtime compatibility', () => {
       userId: USER_ID,
       tool: 'create_task',
       args: { title: 'Ship', clientId: '22222222-2222-4222-8222-222222222222' },
-      idempotencyKey: `mcp:${'a'.repeat(64)}`
+      idempotencyKey: `mcp:${'a'.repeat(64)}`,
+      pageStudioLogin: { role: 'agency', userId: USER_ID, tokenHash: 'c'.repeat(64), issuedAt: Date.now() - 60000, expiresAt: Date.now() + 600000 }
     }
     const response = await worker.fetch('https://worker.test/sign', {
       method: 'POST',
@@ -48,6 +49,7 @@ describe('MCP request claim Worker-runtime compatibility', () => {
       godMode: true,
       path: '/api/internal/mcp/call',
       toolName: 'create_task',
+      pageStudioLogin: body.pageStudioLogin,
       bodyDigest: await digestMcpRequestBody(body)
     })
   }, 20_000)

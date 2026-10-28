@@ -40,6 +40,7 @@ import {
 } from './googleAdsRegistryTools'
 import { projectGoogleAdsTools } from './googleAdsTools'
 import { projectSocialMcpSuite, resolveSocialMcpExecutions } from './socialTools'
+import { projectDepartmentMcpSuite, resolveDepartmentMcpExecutions } from './departmentTools'
 
 export interface RegisteredMcpSuite {
   key: string
@@ -125,6 +126,7 @@ export const registeredMcpSuites: readonly RegisteredMcpSuite[] = Object.freeze(
  * projects and admits them per fresh staff context (grant, client coverage, write scope).
  */
 const staffSuiteDefinitions: RegisteredMcpSuite[] = [
+  { key: 'marketing-department', project: projectDepartmentMcpSuite, executions: resolveDepartmentMcpExecutions },
   { key: 'marketing-ads-tracking', project: projectTask4StaffSuite, executions: resolveTask4StaffExecutions },
   {
     key: 'social-drafts',

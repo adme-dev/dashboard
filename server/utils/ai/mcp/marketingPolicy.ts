@@ -1,3 +1,4 @@
+import { DEPARTMENT_WEBSITE_GRANTS, type DepartmentWebsiteToolName } from '../marketing/departmentWebsiteSchemas'
 // server/utils/ai/mcp/marketingPolicy.ts
 // The single policy interpretation for ordinary (non-owner) MCP staff, shared by tools/list,
 // tools/call and the connector preview (my-tools).
@@ -5,8 +6,8 @@
 //  - Management staff (fresh MANAGEMENT or ADMIN group) keep the existing registered projection, now
 //    narrowed by their fresh groups, read-only policy and — always — the signed mcp:write scope.
 //  - Every other staff member sees and calls ONLY tools in MCP_STAFF_TOOL_POLICY that are `reviewed`.
-//    Unlisted tools (lead summaries, client overview/profitability, propose/confirm suites, GTM,
-//    finance…) are denied at discovery AND invocation until their handlers satisfy the scope contract.
+//    Unlisted tools (unrestricted profitability, legacy propose/confirm suites and finance) are denied
+//    at discovery AND invocation. Scoped client overview, Ads/GTM and department tools are explicit entries.
 //  - Marketing capabilities come from the operator-owned MCP_MARKETING_STAFF_GRANTS binding. A grant
 //    unlocks only its listed reviewed tools; it never creates a permission group or all-client scope.
 import { PERMISSIONS, type PermissionGroup } from '~~/server/utils/permissions'
@@ -24,6 +25,7 @@ import {
 import { projectRegisteredMcpTools, projectStaffOnlyMcpTools, type RegisteredMcpSuite } from './registry'
 import { ADS_STAFF_READ_NAMES, ADS_STAFF_PLAN_NAMES, GTM_STAFF_NAMES, TASK4_STAFF_NAMES, isLegacyAdsMutation } from './marketingTask4Names'
 import { LEGACY_MCP_SOCIAL_PROPOSAL_TOOL, SOCIAL_MCP_TOOL_NAMES } from './socialToolNames'
+import { DEPARTMENT_TOOL_NAMES } from './departmentToolNames'
 
 export type { MarketingCapability } from '~~/server/utils/ai/toolContext'
 
@@ -31,7 +33,8 @@ export const MARKETING_CAPABILITIES = Object.freeze([
   'reporting',
   'social_draft',
   'ads_plan',
-  'tracking_plan'
+  'tracking_plan',
+  'department_management'
 ] as const satisfies readonly MarketingCapability[])
 
 const CAPABILITY_SET = new Set<string>(MARKETING_CAPABILITIES)
@@ -81,10 +84,11 @@ const pilotRead: StaffToolPolicyEntry = Object.freeze({
 
 /** Registered, reviewed staff tools. Anything absent is denied for non-management staff. */
 export const MCP_STAFF_TOOL_POLICY: Readonly<Record<string, StaffToolPolicyEntry>> = Object.freeze({
+  ...Object.fromEntries(DEPARTMENT_TOOL_NAMES.map(name => [name, { ...pilotRead, capability: 'department_management' }])),
   ...Object.fromEntries(ADS_STAFF_READ_NAMES.map(name => [name, { ...pilotRead, capability: 'ads_plan' }])),
   ...Object.fromEntries(ADS_STAFF_PLAN_NAMES.map(name => [name, { ...pilotRead, capability: 'ads_plan' }])),
   ...Object.fromEntries(GTM_STAFF_NAMES.map(name => [name, { ...pilotRead, capability: 'tracking_plan' }])),
-  // Creative discovery uses fresh CREATIVE authority; search additionally requires current client scope.
+  // Creative metadata discovery never inherits marketing grants.
   get_creative_workspace_capabilities: Object.freeze({ capability: null, status: 'reviewed', clientScoped: false, legacyRoleSensitive: false, requiredPermission: 'CREATIVE' }),
   search_creative_workspace: Object.freeze({ capability: null, status: 'reviewed', clientScoped: true, legacyRoleSensitive: false, requiredPermission: 'CREATIVE' }),
   // Private per-user memory: actor-bound write through its own durable coordinator; needs mcp:write.
@@ -97,7 +101,7 @@ export const MCP_STAFF_TOOL_POLICY: Readonly<Record<string, StaffToolPolicyEntry
 })
 
 /** Staff-only suite tools management staff may also reach (still grant/scope/client admitted). */
-const MANAGEMENT_ADMITTED_STAFF_SUITE_TOOLS = new Set<string>([...SOCIAL_MCP_TOOL_NAMES, ...TASK4_STAFF_NAMES])
+const MANAGEMENT_ADMITTED_STAFF_SUITE_TOOLS = new Set<string>([...SOCIAL_MCP_TOOL_NAMES, ...TASK4_STAFF_NAMES, ...DEPARTMENT_TOOL_NAMES])
 
 // ---------------------------------------------------------------------------------------------------
 // Grant configuration
@@ -158,12 +162,12 @@ export function marketingCapabilitiesFor(config: MarketingStaffGrantConfig, user
 export const MCP_ALL_CLIENT_GROUPS: readonly PermissionGroup[] = Object.freeze(['ADMIN', 'MANAGEMENT'])
 
 export function hasMcpAllClientAuthority(groups: readonly PermissionGroup[] | undefined): boolean {
-  return !!groups && MCP_ALL_CLIENT_GROUPS.some(group => groups.includes(group))
+  return !!groups && (MCP_ALL_CLIENT_GROUPS.some(group => groups.includes(group)) || groups.includes('MARKETING_MANAGEMENT'))
 }
 
 /** Management staff = explicit fresh MANAGEMENT/ADMIN group. Legacy role strings and grants never count. */
 export function isMcpManagementStaff(ctx: Pick<ToolContext, 'permissionGroups'>): boolean {
-  return hasMcpAllClientAuthority(ctx.permissionGroups)
+  return !!ctx.permissionGroups && MCP_ALL_CLIENT_GROUPS.some(group => ctx.permissionGroups!.includes(group))
 }
 
 const LEGACY_BROAD_ROLES = new Set<string>([...PERMISSIONS.MANAGEMENT, ...PERMISSIONS.ADMIN])
@@ -205,8 +209,20 @@ export function evaluateStaffToolAdmission(
   if (entry.requiredPermission && !ctx.permissionGroups?.includes(entry.requiredPermission)) {
     return deny('permission_required', 'Your current role does not permit this creative tool.')
   }
+  // The marketing department is a separate capability surface, never the broad management catalog.
+  // Both fresh role authority and operator enrollment are required, including when an admin is enrolled.
+  if (entry.capability === 'department_management'
+    && (ctx.mcpStaffAuthority !== 'fresh' || !ctx.permissionGroups?.includes('MARKETING_MANAGEMENT'))) {
+    return deny('role_policy_mismatch', 'A current marketing management role is required.')
+  }
+  const websiteGrant = Object.prototype.hasOwnProperty.call(DEPARTMENT_WEBSITE_GRANTS, name)
+    ? DEPARTMENT_WEBSITE_GRANTS[name as DepartmentWebsiteToolName]
+    : undefined
+  if (websiteGrant && !ctx.permissionGroups?.includes(websiteGrant)) {
+    return deny('role_policy_mismatch', 'The specific Page Studio permission is required for this operation.')
+  }
   if (entry.capability && !(ctx.marketingCapabilities ?? []).includes(entry.capability)
-    && !(ADS_STAFF_READ_NAMES.includes(name as any) && !isWriteScopeToolName(name) && (ctx.marketingCapabilities ?? []).includes('reporting'))) {
+    && !(ADS_STAFF_READ_NAMES.some(readName => readName === name) && !isWriteScopeToolName(name) && (ctx.marketingCapabilities ?? []).includes('reporting'))) {
     return deny('capability_required', 'Your account has not been granted this marketing capability.')
   }
   if (isWriteScopeToolName(name)) {
@@ -215,8 +231,9 @@ export function evaluateStaffToolAdmission(
       return deny('insufficient_scope', 'This action requires write access. Reconnect your AI assistant and grant write (mcp:write) to use it.')
     }
   }
-  // Fresh MANAGEMENT/ADMIN staff resolve to all ACTIVE clients; everyone else needs ≥1 assignment.
-  const allActive = ctx.assistantScope?.clientAccessMode === 'all_active' && isMcpManagementStaff(ctx)
+  // Fresh management or explicitly enrolled marketing roles resolve to all ACTIVE clients; other staff need an assignment.
+  const allActive = ctx.assistantScope?.clientAccessMode === 'all_active'
+    && (isMcpManagementStaff(ctx) || (ctx.mcpStaffAuthority === 'fresh' && ctx.permissionGroups?.includes('MARKETING_MANAGEMENT')))
   if (entry.clientScoped && !allActive && (
     ctx.assistantScope?.clientAccessMode !== 'assigned'
     || ctx.assistantScope.assignedClientIds.length === 0

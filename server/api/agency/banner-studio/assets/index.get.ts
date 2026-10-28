@@ -1,4 +1,5 @@
 import { queryRowsFresh } from '~~/server/utils/db'
+import { hasFreshMarketingManagementPermission } from '~~/server/utils/clientScoping'
 import { requireAuth } from '~~/server/utils/auth'
 import { hasAllSocialClientAccess, hasSocialClientPermission, requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
 
@@ -9,6 +10,10 @@ export default defineEventHandler(async (event) => {
   const query = getQuery(event)
   const { clientId, search, limit, offset } = query
   if (clientId) await requireSocialClientAccess(event, String(clientId))
+  const marketingPortfolio = user.permissionGroups?.includes('MARKETING_MANAGEMENT') === true
+  if (marketingPortfolio && !await hasFreshMarketingManagementPermission(user.id)) {
+    throw createError({ statusCode: 403, statusMessage: 'Marketing permission revoked' })
+  }
 
   try {
     let sql = `
@@ -32,7 +37,9 @@ export default defineEventHandler(async (event) => {
     if (!hasAllSocialClientAccess(user)) {
       sql += ` AND ((client_id IS NULL AND uploaded_by = $${paramIndex})`
       params.push(user.id)
-      if (hasSocialClientPermission(user)) {
+      if (marketingPortfolio) {
+        sql += ` OR EXISTS (SELECT 1 FROM agency_clients active_client WHERE active_client.id = banner_assets.client_id AND active_client.is_active = TRUE)`
+      } else if (hasSocialClientPermission(user)) {
         sql += ` OR EXISTS (SELECT 1 FROM client_team_assignments a WHERE a.client_id = banner_assets.client_id AND a.team_member_id = $${paramIndex})`
       }
       sql += ')'

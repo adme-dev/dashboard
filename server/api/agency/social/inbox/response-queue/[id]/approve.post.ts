@@ -1,4 +1,5 @@
-import { requireAuth } from '~~/server/utils/auth'
+import { requireSocialInboxClient } from '~~/server/utils/socialInbox/departmentScope'
+import { departmentQueueScopeSql } from '~~/server/utils/socialInbox/departmentScopeSql'
 import { queryOne, execute } from '~~/server/utils/db'
 import { dispatchReply } from '~~/server/utils/socialInbox/dispatch'
 import { recordSocialInboxApprovalEvent } from '~~/server/utils/socialInbox/clientApprovals'
@@ -26,18 +27,21 @@ interface ApproveResult { ok: true, platformMessageId?: string }
  * replayed owner attempt return the stored platform message id.
  */
 export default defineEventHandler(async (event) => {
-  const user = await requireAuth(event)
   const id = getRouterParam(event, 'id')!
   const body = await readBody(event).catch(() => ({}))
   const clientId = body?.clientId
   if (!clientId) throw createError({ statusCode: 400, statusMessage: 'clientId required' })
+  const { user, department } = await requireSocialInboxClient(event, clientId)
+  // Department staff: the queue row, its conversation and the sending account must all belong to
+  // the same active client. Bound into both the read and the claim so no stale check can send.
+  const scopeSql = department ? ` AND ${departmentQueueScopeSql('social_response_queue')}` : ''
 
   return await executeSocialInboxExternalMutation<ApproveResult>(event, 'response-queue-approve', async (run) => {
     if (run.replay && run.replayResult) return run.replayResult
 
     // Scope by client_id (defense-in-depth: an approval triggers a live external send).
     const row = await queryOne<SocialResponseQueueApprovalRow>(
-      `SELECT * FROM social_response_queue WHERE id = $1 AND client_id = $2`, [id, clientId])
+      `SELECT * FROM social_response_queue WHERE id = $1 AND client_id = $2${scopeSql}`, [id, clientId])
     if (!row) throw createError({ statusCode: 404, statusMessage: 'Not found' })
     const canSendStaffPending = row.approver_type === 'staff' && row.status === 'pending'
     const canSendClientApproved = row.approver_type === 'client' && row.status === 'approved'
@@ -59,7 +63,7 @@ export default defineEventHandler(async (event) => {
             (approver_type = 'staff' AND status = 'pending') OR
             (approver_type = 'client' AND status = 'approved') OR
             (approver_type = 'none' AND status = 'approved')
-          )`,
+          )${scopeSql}`,
       [id, clientId])
     if (claimed !== 1) throw createError({ statusCode: 409, statusMessage: 'already being processed' })
 

@@ -3,6 +3,7 @@ import { createError } from 'h3'
 import { requireAuth, type User } from '~~/server/utils/auth'
 import { queryOne, queryOneFresh } from '~~/server/utils/db'
 import { accessibleClientIds, isUuid } from '~~/server/utils/client-access'
+import { hasFreshMarketingManagementPermission } from '~~/server/utils/clientScoping'
 import { canAccessQrCodes, hasAgencyQrAccess, type QrPermissionSubject } from '~~/shared/qr/permissions'
 import { QR_ACCESS_TEAM_IDS } from '~~/shared/qr/teams'
 
@@ -28,12 +29,23 @@ export async function requireQrAccess(event: H3Event) {
 }
 
 export async function accessibleQrClientIds(user: QrPermissionSubject & { id: string }): Promise<string[] | null> {
+  if (user.permissionGroups?.includes('MARKETING_MANAGEMENT')) {
+    if (!await hasFreshMarketingManagementPermission(user.id)) throw createError({ statusCode: 403, statusMessage: 'Marketing permission revoked' })
+    return accessibleClientIds(user)
+  }
   return hasAgencyQrAccess(user) ? null : accessibleClientIds(user)
 }
 
 export async function requireQrClientAccess(event: H3Event, clientId: string | undefined) {
   const user = await requireQrAccess(event)
   if (!isUuid(clientId)) throw createError({ statusCode: 400, statusMessage: 'Valid clientId is required' })
+  if (user.permissionGroups?.includes('MARKETING_MANAGEMENT')) {
+    if (!await hasFreshMarketingManagementPermission(user.id)
+      || !await queryOneFresh('SELECT id FROM agency_clients WHERE id = $1 AND is_active = TRUE', [clientId])) {
+      throw createError({ statusCode: 403, statusMessage: 'No current access to this client' })
+    }
+    return user
+  }
   if (hasAgencyQrAccess(user)) return user
   const assigned = await queryOne(
     'SELECT 1 FROM client_team_assignments WHERE client_id = $1 AND team_member_id = $2 LIMIT 1',

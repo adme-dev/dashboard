@@ -45,6 +45,11 @@ vi.mock('~~/server/utils/auth', () => ({
   requireAuth: (...args: unknown[]) => requireAuth(...args),
   requireRole: (...args: unknown[]) => requireRole(...args)
 }))
+// Legacy client edits; the marketing-department branch is covered by agencyClientsMarketingBoundaryPostgres.
+vi.mock('~~/server/utils/clients/marketingAccess', async importOriginal => ({
+  ...await importOriginal<typeof import('~~/server/utils/clients/marketingAccess')>(),
+  isMarketingClientViewer: async () => false
+}))
 vi.mock('~~/server/utils/crm/emailRouteManagement', () => ({
   revokeCrmLeadInboxRoute: (...args: unknown[]) => revokeCrmLeadInboxRoute(...args)
 }))
@@ -106,7 +111,7 @@ describe('client CRM access', () => {
     requireClientEntitlement.mockResolvedValue(undefined)
     execute.mockResolvedValue(undefined)
     requireAuth.mockResolvedValue({ id: 'staff-1' })
-    requireRole.mockResolvedValue(undefined)
+    requireRole.mockResolvedValue({ id: 'staff-1' })
     transaction.mockImplementation(async (callback: (db: { query: typeof transactionQuery }) => unknown) =>
       await callback({ query: transactionQuery })
     )

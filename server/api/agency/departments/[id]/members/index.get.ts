@@ -3,8 +3,14 @@
  */
 
 import { queryRows, queryOne } from '~~/server/utils/db'
+import { requireAuth } from '~~/server/utils/auth'
+import { isMarketingClientViewer } from '~~/server/utils/clients/marketingAccess'
 
 export default defineEventHandler(async (event) => {
+  const user = await requireAuth(event)
+  // The marketing department sees board membership and workload, not pay rates or HR targets.
+  const marketingOnly = await isMarketingClientViewer(user.id)
+  const hrColumns = marketingOnly ? '' : ' tm.default_hourly_rate, tm.target_utilization,'
   const id = getRouterParam(event, 'id')
 
   if (!id) {
@@ -32,9 +38,7 @@ export default defineEventHandler(async (event) => {
         tm.id,
         tm.name,
         tm.email,
-        tm.role,
-        tm.default_hourly_rate,
-        tm.target_utilization,
+        tm.role,${hrColumns}
         tm.is_active,
         COALESCE(stats.active_task_count, 0) as active_task_count,
         COALESCE(stats.overdue_task_count, 0) as overdue_task_count,
@@ -64,8 +68,12 @@ export default defineEventHandler(async (event) => {
       name: m.name,
       email: m.email,
       role: m.role,
-      defaultHourlyRate: m.default_hourly_rate ? Number(m.default_hourly_rate) : null,
-      targetUtilization: m.target_utilization ? Number(m.target_utilization) : null,
+      ...(marketingOnly
+        ? {}
+        : {
+            defaultHourlyRate: m.default_hourly_rate ? Number(m.default_hourly_rate) : null,
+            targetUtilization: m.target_utilization ? Number(m.target_utilization) : null
+          }),
       isActive: m.is_active,
       activeTaskCount: Number(m.active_task_count) || 0,
       overdueTaskCount: Number(m.overdue_task_count) || 0,

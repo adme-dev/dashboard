@@ -399,15 +399,18 @@ describe('roleHasPermission static pre-check', () => {
 })
 
 describe('SYSTEM_ROLE_PERMISSIONS static map', () => {
-  it('should give owner every permission group, including Page Studio administration', () => {
-    expect(SYSTEM_ROLE_PERMISSIONS['owner']).toHaveLength(PERMISSION_GROUPS.length)
-    for (const group of PERMISSION_GROUPS) {
+  it('retains owner defaults without implicitly enrolling the dedicated marketing department', () => {
+    const defaultGroups = PERMISSION_GROUPS.filter(group => group !== 'MARKETING_MANAGEMENT')
+    expect(SYSTEM_ROLE_PERMISSIONS['owner']).not.toContain('MARKETING_MANAGEMENT')
+    expect(SYSTEM_ROLE_PERMISSIONS['owner']).toHaveLength(defaultGroups.length)
+    for (const group of defaultGroups) {
       expect(SYSTEM_ROLE_PERMISSIONS['owner']).toContain(group)
     }
   })
 
-  it('should give admin every group except owner-only HR administration', () => {
-    expect(SYSTEM_ROLE_PERMISSIONS['admin']).toHaveLength(PERMISSION_GROUPS.length - 1)
+  it('retains admin defaults except owner HR and explicit department enrollment', () => {
+    expect(SYSTEM_ROLE_PERMISSIONS['admin']).not.toContain('MARKETING_MANAGEMENT')
+    expect(SYSTEM_ROLE_PERMISSIONS['admin']).toHaveLength(PERMISSION_GROUPS.length - 2)
     expect(SYSTEM_ROLE_PERMISSIONS['admin']).not.toContain('HR_ADMIN')
     expect(SYSTEM_ROLE_PERMISSIONS['admin']).toEqual(expect.arrayContaining([
       'PAGE_STUDIO_VIEW',
