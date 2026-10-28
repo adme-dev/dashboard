@@ -18,7 +18,7 @@ const fixture = `<!doctype html><html><body><canvas id="preview_decoy" width="10
     const u = new URL(req.url, 'http://localhost')
     if (u.pathname.startsWith('/__assets/')) {
       if (status !== 200) { res.writeHead(status, { 'Content-Type': 'application/json' }).end('{}'); return }
-      if (u.pathname.endsWith('/brands')) { res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ brands: [{ id: 'nissan', name: 'Nissan' }, { id: 'kia', name: 'Kia' }] })); return }
+      if (u.pathname.endsWith('/brands')) { res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ brands: [{ id: 'nissan', name: 'Nissan' }, { id: 'kia', name: 'Kia' }, { id:'ford', name:'Ford Australia' }, ...Array.from({length:29},(_,i)=>({id:'brand-'+i,name:'Brand '+i}))] })); return }
       if (u.pathname.endsWith('/catalog')) { catalogQueries.push(Object.fromEntries(u.searchParams)); res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ assets: [...assets, {id:'bad',name:'Rejected external asset',mime:'image/png',url:'https://example.invalid/leak',thumbnail:'https://example.invalid/leak'}], colors: [{ name: 'Ink', value: '#121317' }], truncated:true, warnings:['<b>Catalog is limited</b>',...Array(8).fill('Only this selection is shown.')]  })); return }
       res.setHeader('Content-Type', u.searchParams.get('id') === 'pdf' ? 'application/pdf' : u.searchParams.get('id') === 'font' ? 'font/woff' : 'image/png'); res.end(await png); return
     }
@@ -37,11 +37,28 @@ const fixture = `<!doctype html><html><body><canvas id="preview_decoy" width="10
     await page.getByRole('button', { name: 'Open Motorstack asset library' }).click({timeout:5000})
     await page.getByRole('heading', { name: 'Motorstack assets' }).waitFor()
     await page.getByText('Navara hero', { exact: true }).waitFor()
+    await page.getByLabel('Find a brand').fill('ford')
+    if (await page.getByRole('button',{name:'Nissan',exact:true}).count()) throw Error('Brand search did not filter brands')
+    await page.getByRole('button',{name:'Ford Australia',exact:true}).click()
+    await page.getByText('Navara hero',{exact:true}).waitFor()
+    if(catalogQueries.at(-1).brand!=='ford')throw Error('Ford selection did not query Ford catalogue')
+    const inputStyle=await page.getByLabel('Find an asset').evaluate(el=>({border:getComputedStyle(el).borderTopWidth,bg:getComputedStyle(el).backgroundColor,height:el.getBoundingClientRect().height}))
+    if(parseFloat(inputStyle.border)<1||inputStyle.bg==='rgba(0, 0, 0, 0)'||inputStyle.height<36)throw Error('Search input is not a visible bordered surface')
+    if(!await page.getByRole('button',{name:'Search assets',exact:true}).locator('svg').count())throw Error('Search magnifier missing')
+    await page.getByLabel('Find a brand').fill('')
+    if(await page.locator('.xf-library-brands button').count()!==32)throw Error('Not all authorized brands can be selected')
+    await page.getByRole('button',{name:'Nissan',exact:true}).click()
+    await page.getByText('Navara hero',{exact:true}).waitFor()
+    report.checks.push({brandSearchFord:true,all32BrandsAccessible:true,visibleInput:inputStyle,searchMagnifier:true})
+    await page.locator('.xf-library-art').first().dispatchEvent('error')
+    await page.getByText('Preview unavailable',{exact:true}).waitFor()
+    report.checks.push('Unavailable thumbnails show a clear fallback without retry loops')
+
     if (await page.getByText('Rejected external asset', {exact:true}).count()) throw Error('External asset URL was accepted')
     await page.getByText('Showing the first selection of assets.', {exact:false}).waitFor()
     await page.getByText('<b>Catalog is limited</b>', {exact:true}).waitFor()
     if (await page.locator('.xf-library-warnings b').count() || await page.locator('.xf-library-warnings p').count() !== 6) throw Error('Warnings were not bounded plain text')
-    if (!(await page.getByLabel('Media model (optional)').isDisabled()) || catalogQueries.at(-1).model) throw Error('All assets must not apply a media model')
+    if ((await page.getByLabel('Media model (optional)').count()) || catalogQueries.at(-1).model) throw Error('All assets must not apply a media model')
     await page.getByRole('button',{name:'Photos & brochures',exact:true}).click()
     await page.getByText('Navara hero',{exact:true}).waitFor()
     const initialCalls = catalogQueries.length
@@ -53,13 +70,13 @@ const fixture = `<!doctype html><html><body><canvas id="preview_decoy" width="10
     report.checks.push({modelQuery:catalogQueries.at(-1),explicitApply:true})
     await page.getByRole('button', {name:'Banners',exact:true}).click()
     await page.getByText('Navara hero', {exact:true}).waitFor()
-    if (!(await page.getByLabel('Media model (optional)').isDisabled()) || catalogQueries.at(-1).model) throw Error('Model filter applied to a non-model category')
+    if ((await page.getByLabel('Media model (optional)').count()) || catalogQueries.at(-1).model) throw Error('Model filter applied to a non-model category')
     await page.getByRole('button', {name:'All assets',exact:true}).click()
     await page.getByText('Navara hero', {exact:true}).waitFor()
     await page.getByRole('button', {name:'Kia',exact:true}).click()
     await page.getByText('Navara hero', {exact:true}).waitFor()
-    if (await page.getByLabel('Media model (optional)').inputValue() || catalogQueries.at(-1).model) throw Error('Brand change did not reset model')
-    report.checks.push('Media-only model is disabled and cleared for other categories and brand changes')
+    if (await page.getByLabel('Media model (optional)').count() || catalogQueries.at(-1).model) throw Error('Brand change did not reset model')
+    report.checks.push('Media-only model is hidden and cleared for other categories and brand changes')
     await page.getByLabel('Find an asset').fill('brochure')
     if (await page.getByText('Navara hero', { exact: true }).count()) throw Error('Search did not filter')
     await page.getByLabel('Find an asset').fill('')
@@ -93,6 +110,15 @@ const fixture = `<!doctype html><html><body><canvas id="preview_decoy" width="10
     const size = await page.locator('.xf-library-panel').boundingBox()
     if (size.x < 0 || size.x + size.width > 320 || size.y < 0) throw Error('Mobile overflow')
     report.checks.push({ mobile320: size })
+    await page.getByRole('button',{name:'Photos & brochures',exact:true}).click()
+    await page.getByLabel('Media model (optional)').scrollIntoViewIfNeeded()
+    const visibleModel=await page.getByLabel('Media model (optional)').boundingBox()
+    const controlBounds=await page.locator('.xf-library-controls').boundingBox()
+    if(visibleModel.y<controlBounds.y || visibleModel.y+visibleModel.height>controlBounds.y+controlBounds.height+1)throw Error('Model input cannot scroll into the controls viewport')
+    report.checks.push('Media model input remains reachable in the mobile controls scroll area')
+    await page.getByRole('button',{name:'All assets',exact:true}).click()
+    await page.getByLabel('Find a brand').scrollIntoViewIfNeeded()
+
     await page.emulateMedia({ reducedMotion: 'reduce' })
     await page.screenshot({ path: '/private/tmp/xf-asset-library-ui.png' })
     const sound = await browser.newPage({ viewport: { width: 390, height: 844 } })

@@ -104,7 +104,26 @@ export function createMotorstack({ fetcher = (...args) => fetch(...args) } = {})
       const data = await rpc(key, 'get_webslides', { oem: brand })
       for (const [i, slide] of (Array.isArray(data.slides) ? data.slides : []).entries()) {
         const label = text(slide.heading || slide.model || 'Webslide ' + (i + 1))
-        for (const [field, suffix] of [['desktop_url', 'desktop'], ['mobile_url', 'mobile'], ['combined_desktop_url', 'desktop combined'], ['combined_mobile_url', 'mobile combined'], ['overlay_url', 'overlay']]) await add(slide[field], label + ' · ' + suffix, 'Motorstack webslides')
+        const fields = [['desktop_url', 'desktop'], ['mobile_url', 'mobile'], ['combined_desktop_url', 'desktop combined'], ['combined_mobile_url', 'mobile combined'], ['overlay_url', 'overlay']]
+        const published = new Set(fields.map(([field]) => safeURL(slide[field])?.href).filter(Boolean))
+        for (const [field, suffix] of fields) {
+          let value = slide[field]; let variant = suffix
+          const candidate = safeURL(value)
+          // Motorstack sometimes appends an origin CMS rendition path to a stored R2 object.
+          // Use only an exact base separately published on this same slide, never a guessed URL.
+          if (candidate?.hostname === R2_HOST && candidate.pathname.startsWith('/img/' + brand + '/')) {
+            const basePath = candidate.pathname.replace(/(\.(?:jpe?g|png|webp|avif))\/jcr:content\/renditions\/desktop\.(?:jpe?g|png|webp|avif)$/i, '$1')
+            if (basePath !== candidate.pathname) {
+              const base = new URL(candidate); base.pathname = basePath
+              if (published.has(base.href)) {
+                value = base.href; variant = 'original'
+                const warning = 'Some desktop renditions are unavailable; their separately supplied original images are shown.'
+                if (!warnings.includes(warning)) warnings.push(warning)
+              }
+            }
+          }
+          await add(value, label + ' · ' + variant, 'Motorstack webslides')
+        }
       }
     }
     if (kind === 'all' || kind === 'media') {
@@ -183,6 +202,7 @@ export function createMotorstack({ fetcher = (...args) => fetch(...args) } = {})
         if (!location || hop === 3) throw new AdapterError(502, 'asset_redirect_refused')
         url = safeURL(new URL(location, url).href); continue
       }
+      if (res.status === 404 || res.status === 410) throw new AdapterError(404, 'asset_not_found')
       if (!res.ok) throw new AdapterError(502, 'asset_unavailable')
       const mime = (res.headers.get('Content-Type') || '').split(';')[0].toLowerCase().trim()
       if (!Object.values(MIME).includes(mime) || mime !== asset.mime) throw new AdapterError(502, 'asset_type_refused')

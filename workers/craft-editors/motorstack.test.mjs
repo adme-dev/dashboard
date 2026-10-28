@@ -194,3 +194,37 @@ test('all category budgets preserve brand assets and report omitted results; cat
   assert.equal(single.data.truncated,true)
   assert.equal((await assetURL(fixture(),'all')).data.truncated,false)
 })
+
+
+test('provider missing or withdrawn asset is 404 while outages remain 502', async () => {
+  for (const [status, expected] of [[404,404],[410,404],[403,502],[500,502]]) {
+    const a=fixture({response:()=>new Response('provider content', {status})})
+    const {path}=await assetURL(a)
+    const r=await a.handleMotorstack(new Request('https://creative.xeroflow.io'+path),env)
+    assert.equal(r.status,expected)
+    assert.deepEqual(await r.json(),{error:expected===404?'asset_not_found':'asset_unavailable'})
+  }
+})
+
+test('malformed CMS desktop rendition uses only an exact same-slide published brand base', async () => {
+  const base=R2+'/img/nissan/hero.jpg'
+  const a=fixture({slides:[{desktop_url:base+'/jcr:content/renditions/desktop.jpg',mobile_url:base}]})
+  const {data}=await assetURL(a)
+  assert.equal(data.assets.length,1)
+  assert.match(data.assets[0].name,/original$/)
+  assert.equal(data.warnings.length,1)
+  assert.equal(data.truncated,false)
+  const r=await a.handleMotorstack(new Request('https://creative.xeroflow.io'+data.assets[0].url),env)
+  // Test fixture returns PNG for every file, so strict MIME must still reject a JPEG label.
+  assert.equal(r.status,502)
+  assert.equal(a.calls.at(-1).url,base)
+  for(const slides of [
+    [{desktop_url:base+'/jcr:content/renditions/desktop.jpg'}],
+    [{desktop_url:base+'/jcr:content/renditions/desktop.jpg'},{mobile_url:base}],
+    [{desktop_url:R2+'/img/other/hero.jpg/jcr:content/renditions/desktop.jpg',mobile_url:R2+'/img/other/hero.jpg'}]
+  ]) {
+    const b=fixture({slides});const {data:untouched}=await assetURL(b)
+    assert.equal(untouched.warnings.length,0)
+    assert.ok(untouched.assets.some(x=>x.name.endsWith('desktop')))
+  }
+})
