@@ -1,7 +1,7 @@
 /* Scoped overlay: hidden editors retain their full canvas and pointer surface. */
 .xf-dock{position:fixed;z-index:2147483000;left:50%;bottom:0;transform:translateX(-50%);width:min(500px,calc(100vw - 16px));max-width:calc(100vw - 16px);height:112px;box-sizing:border-box;pointer-events:none;font:13px/1.2 Geist,Inter,system-ui,sans-serif;color:#fafafa;outline:none;-webkit-user-select:none;user-select:none}
 .xf-dock *{box-sizing:border-box}
-.xf-dock-panel{position:absolute;left:50%;bottom:19px;transform:translate(-50%,calc(100% + 22px));display:flex;align-items:flex-end;gap:7px;padding:10px 12px 13px;border:1px solid rgba(255,255,255,.18);border-radius:22px;background:rgba(22,23,28,.92);box-shadow:0 12px 50px rgba(0,0,0,.5),inset 0 1px rgba(255,255,255,.06);backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px);opacity:0;visibility:hidden;pointer-events:none;transition:transform .22s cubic-bezier(.2,.8,.2,1),opacity .16s,visibility .22s;width:max-content;max-width:calc(100vw - 16px)}
+.xf-dock-panel{position:absolute;left:50%;bottom:19px;transform:translate(-50%,calc(100% + 22px));display:flex;align-items:flex-end;gap:7px;padding:10px 12px 13px;border:1px solid rgba(255,255,255,.18);border-radius:22px;background:linear-gradient(145deg,rgba(255,255,255,.16),rgba(255,255,255,.04)),rgba(22,23,28,.29);box-shadow:0 12px 42px rgba(0,0,0,.28),inset 0 1px rgba(255,255,255,.32),inset 0 -1px rgba(255,255,255,.06);backdrop-filter:blur(28px) saturate(1.6);-webkit-backdrop-filter:blur(28px) saturate(1.6);opacity:0;visibility:hidden;pointer-events:none;transition:transform .22s cubic-bezier(.2,.8,.2,1),opacity .16s,visibility .22s;width:max-content;max-width:calc(100vw - 16px)}
 .xf-dock[data-open=true] .xf-dock-panel{transform:translate(-50%,0);opacity:1;visibility:visible;pointer-events:auto}
 .xf-dock-bridge{position:absolute;left:0;right:0;bottom:0;height:23px;pointer-events:none}
 .xf-dock[data-open=true] .xf-dock-bridge{pointer-events:auto}
@@ -10,7 +10,7 @@
 .xf-dock-handle:hover span,.xf-dock-handle:focus-visible span{background:#fff;width:52px}
 .xf-dock:focus-visible .xf-dock-panel,.xf-dock-handle:focus-visible{outline:2px solid #67e8f9;outline-offset:3px}
 .xf-dock-link{position:relative;flex:none;display:flex;align-items:center;justify-content:center;width:48px;height:53px;margin:0;padding:0 0 5px;border:0;border-radius:11px;text-decoration:none!important;color:#101216!important;background:none;outline:none;cursor:pointer;touch-action:manipulation}
-.xf-dock-tile{display:grid;place-items:center;width:45px;height:45px;border-radius:11px;background:var(--xf-dock-color,#fff);font-size:16px;line-height:1;font-weight:650;letter-spacing:-.6px;box-shadow:inset 0 1px 1px rgba(255,255,255,.35),0 2px 4px rgba(0,0,0,.3);transform-origin:center bottom;transition:transform .16s ease,box-shadow .16s ease}
+.xf-dock-tile{position:relative;isolation:isolate;overflow:hidden;display:grid;place-items:center;width:45px;height:45px;border-radius:11px;background:var(--xf-dock-color,#fff);font-size:16px;line-height:1;font-weight:650;letter-spacing:-.6px;box-shadow:inset 0 1px 1px rgba(255,255,255,.35),0 2px 4px rgba(0,0,0,.3);transform-origin:center bottom;transition:transform .16s ease,box-shadow .16s ease}
 .xf-dock-home .xf-dock-tile{font-size:17px;font-weight:750;letter-spacing:-1px}
 .xf-dock-current .xf-dock-tile{outline:2px solid rgba(255,255,255,.8);outline-offset:2px}
 .xf-dock-link:focus-visible .xf-dock-tile{outline:2px solid #67e8f9;outline-offset:4px}
@@ -34,3 +34,8 @@
 /* Keep the shared Assets tile reachable on small screens. */
 @media(max-width:450px){.xf-dock-link{width:33px}.xf-dock-tile{width:32px;height:32px;font-size:12px}}
 @media(max-width:360px){.xf-dock-panel{gap:2px;padding-left:6px;padding-right:6px}.xf-dock-link{width:27px;height:38px}.xf-dock-tile{width:26px;height:26px;font-size:10px}.xf-dock-home .xf-dock-tile{font-size:12px}}
+
+/* Local thumbnail art sits beneath readable abbreviations, like glossy app icons. */
+.xf-dock-thumbnail{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:-2;pointer-events:none}
+.xf-dock-app .xf-dock-tile::after{content:"";position:absolute;inset:0;z-index:-1;border-radius:inherit;background:linear-gradient(155deg,rgba(255,255,255,.22),transparent 45%,rgba(0,0,0,.42)),rgba(0,0,0,.16);box-shadow:inset 0 1px 1px rgba(255,255,255,.55),inset 0 0 0 1px rgba(255,255,255,.2);pointer-events:none}
+.xf-dock-abbreviation{color:#fff;text-shadow:0 1px 3px #000,0 0 7px rgba(0,0,0,.9);font-weight:750;letter-spacing:-.4px}

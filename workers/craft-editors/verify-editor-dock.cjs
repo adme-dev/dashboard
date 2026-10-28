@@ -14,6 +14,8 @@ const html = `<!doctype html><html><head><meta name="viewport" content="width=de
     const url = new URL(req.url, 'http://fixture')
     if (url.pathname === '/editor-apps.json') {
       res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ apps: url.searchParams.has('bad') ? [...apps.slice(0, 5), { id: 'figflow', url: 'https://evil.invalid/' }] : apps }))
+    } else if (/^\/images\/(photoflow|vectorflow|effectflow|filmflow|soundflow|figflow)\.png$/.test(url.pathname)) {
+      res.writeHead(200, { 'Content-Type': 'image/png' }).end(await fs.readFile(path.join(__dirname, 'assets', path.basename(url.pathname))))
     } else if (['/editor-dock.css', '/editor-dock.js'].includes(url.pathname)) {
       res.writeHead(200, { 'Content-Type': url.pathname.endsWith('.css') ? 'text/css' : 'text/javascript' }).end(await fs.readFile(path.join(__dirname, 'static', url.pathname.slice(1))))
     } else { res.writeHead(200, { 'Content-Type': 'text/html' }).end(html) }
@@ -37,6 +39,7 @@ const html = `<!doctype html><html><head><meta name="viewport" content="width=de
     await photo.locator('.xf-dock-handle').hover()
     await photo.waitForFunction(() => document.getElementById('xf-editor-dock').dataset.open === 'true')
     assert.equal(await photo.locator('.xf-dock-app').count(), 6)
+    await photo.waitForFunction(() => [...document.querySelectorAll('.xf-dock-thumbnail')].length === 6 && [...document.querySelectorAll('.xf-dock-thumbnail')].every(img => img.complete && img.naturalWidth > 0))
     assert.equal(await photo.locator('[data-xf-install]').count(), 1)
     assert.equal(await photo.locator('[aria-current="page"]').getAttribute('data-app'), 'photoflow')
     const popup = context.waitForEvent('page')
@@ -104,13 +107,15 @@ const html = `<!doctype html><html><head><meta name="viewport" content="width=de
     await bp.waitForLoadState('networkidle')
     assert.equal(await bp.locator('#xf-editor-dock').count(), 0, 'invalid external configuration fails closed')
     assert.deepEqual(errors, [])
-    Object.assign(result, { hover: true, namedTabReuse: true, unsavedStatePreserved: true, currentAppNoReload: true, livePresence: true, keyboardAndEscape: true, reducedMotion: true, mobileWidths: [390, 320], touchToggle: true, noBroadcastChannel: true, blockedWindowFallbackPreservesWork: true, externalConfigRejected: true, browserErrors: errors })
+    Object.assign(result, { thumbnailsLoaded: true, hover: true, namedTabReuse: true, unsavedStatePreserved: true, currentAppNoReload: true, livePresence: true, keyboardAndEscape: true, reducedMotion: true, mobileWidths: [390, 320], touchToggle: true, noBroadcastChannel: true, blockedWindowFallbackPreservesWork: true, externalConfigRejected: true, browserErrors: errors })
     if (process.argv[2]) {
       await photo.bringToFront()
       await photo.emulateMedia({ reducedMotion: 'no-preference' })
       await photo.locator('.xf-dock-handle').hover()
       await photo.locator('[data-app="vectorflow"]').hover()
       await photo.screenshot({ path: process.argv[2] + '.png' })
+      await photo.evaluate(() => { document.body.style.background = 'linear-gradient(120deg,#f6eee3,#9ab7ce)' ; document.documentElement.style.background = '#e1e8ed' })
+      await photo.screenshot({ path: process.argv[2] + '.light.png' })
       await fs.writeFile(process.argv[2], JSON.stringify(result, null, 2) + '\n')
     }
     console.log(JSON.stringify(result))

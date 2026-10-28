@@ -107,6 +107,17 @@ async function mountXeroFlowDock() {
     anchor.target = targetName
     anchor.dataset.app = app.id
     anchor.style.setProperty('--xf-dock-color', app.color)
+    const tile = anchor.querySelector('.xf-dock-tile')
+    const thumbnail = document.createElement('img')
+    thumbnail.className = 'xf-dock-thumbnail'
+    thumbnail.src = `/images/${app.id}.png`
+    thumbnail.alt = ''
+    thumbnail.draggable = false
+    thumbnail.decoding = 'async'
+    const abbreviation = document.createElement('span')
+    abbreviation.className = 'xf-dock-abbreviation'
+    abbreviation.textContent = app.short
+    tile.replaceChildren(thumbnail, abbreviation)
     if (app.id === current) {
       anchor.setAttribute('aria-current', 'page')
       anchor.classList.add('xf-dock-current')
