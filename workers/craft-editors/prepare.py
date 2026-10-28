@@ -9,6 +9,7 @@ import subprocess
 import sys
 import zipfile
 from brand_package import brand_package
+from pwa_package import install_support
 
 source = Path(__file__).resolve().parent
 if len(sys.argv) not in (3, 4, 5):
@@ -86,6 +87,8 @@ for engine, pin in pins.items():
         if path.is_file() and not path.name.endswith('.wasm.br'):
             manifest['/' + str(path.relative_to(public))] = hashlib.sha256(path.read_bytes()).hexdigest()
 shutil.copyfile(source / 'worker.mjs', output / 'worker.mjs')
+shutil.copyfile(source / 'auth.mjs', output / 'auth.mjs')
+shutil.copyfile(source / 'motorstack.mjs', output / 'motorstack.mjs')
 for page in ('index.html', 'credits.html'):
     html = (source / page).read_text()
     for engine, pin in pins.items():
@@ -94,9 +97,21 @@ for page in ('index.html', 'credits.html'):
     (public / page).write_text(html)
 shutil.copytree(source / 'assets', public / 'images')
 shutil.copytree(source / 'static', public, dirs_exist_ok=True)
+install_support(public, pins)
+for sw in public.rglob('sw.js'):
+    sw.write_bytes((source / 'static' / 'retired-sw.js').read_bytes())
+app_routes = {}
+for engine, pin in pins.items():
+    brand = engine.replace('craft', 'flow')
+    for path in (f'/{brand}', f'/{brand}/'):
+        app_routes[path] = f"/{brand}/{pin.get('hosted_version', pin['version'])}/"
+(output / 'app-routes.json').write_text(json.dumps(app_routes, indent=2)+'\n')
 (output / 'compressed.json').write_text(json.dumps(compressed, indent=2)+'\n')
-(output / 'asset-sha256.json').write_text(json.dumps(manifest, indent=2)+'\n')
 (public / '_headers').write_text('/*\n  X-Content-Type-Options: nosniff\n  Referrer-Policy: strict-origin-when-cross-origin\n  Cache-Control: no-cache\n  Content-Security-Policy: frame-ancestors \'self\' https://app.xeroflow.io\n')
-config = {'name':'xeroflow-creative-tools','account_id':'a5b299b3ad15c1b5b895dc66f9357b17','main':'worker.mjs','compatibility_date':'2026-10-27','workers_dev':True,'preview_urls':False,'routes':[{'pattern':'creative.xeroflow.io','custom_domain':True}],'assets':{'directory':'./public','binding':'ASSETS','run_worker_first':[p for p in compressed]},'observability':{'enabled':True,'head_sampling_rate':0.1}}
+for file in public.rglob('*'):
+    if file.is_file() and not file.name.endswith('.wasm.br'):
+        manifest['/' + str(file.relative_to(public))] = hashlib.sha256(file.read_bytes()).hexdigest()
+(output / 'asset-sha256.json').write_text(json.dumps(manifest, indent=2)+'\n')
+config = {'name':'xeroflow-creative-tools','account_id':'a5b299b3ad15c1b5b895dc66f9357b17','main':'worker.mjs','compatibility_date':'2026-10-27','workers_dev':True,'preview_urls':False,'routes':[{'pattern':'creative.xeroflow.io','custom_domain':True},{'pattern':'app.xeroflow.io/creative-launch*','zone_name':'xeroflow.io'}],'assets':{'directory':'./public','binding':'ASSETS','run_worker_first':True},'observability':{'enabled':True,'head_sampling_rate':0.1}}
 (output / 'wrangler.jsonc').write_text(json.dumps(config, indent=2)+'\n')
 print(json.dumps({'output':str(output),'engines':list(pins),'compressed':compressed,'verified_assets':len(manifest)}))

@@ -1,0 +1,114 @@
+{
+  "checked_at": "2026-10-28T01:55:26.083100+00:00",
+  "read_only_check": true,
+  "applications": [
+    {
+      "engine": "photocraft",
+      "current_version": "0.16.0",
+      "latest_version": "0.16.0",
+      "tag": "v0.16.0",
+      "release_url": "https://github.com/storytold/photocraft/releases/tag/v0.16.0",
+      "status": "up_to_date",
+      "source_commit": "b1794c6e0608ccfc887213dcf58398977c5cb75e",
+      "source_url": "https://codeload.github.com/storytold/photocraft/tar.gz/b1794c6e0608ccfc887213dcf58398977c5cb75e",
+      "browser_asset": {
+        "name": "photocraft-web-0.16.0.zip",
+        "size": 12192545,
+        "digest": "sha256:d811b72621546180d033dd5e6a88255f58f21788d83bd50fbbcd94b5084267a9",
+        "browser_download_url": "https://github.com/storytold/photocraft/releases/download/v0.16.0/photocraft-web-0.16.0.zip"
+      },
+      "candidate_ready": true,
+      "upstream_digest_available": true
+    },
+    {
+      "engine": "vectorcraft",
+      "current_version": "0.17.0",
+      "latest_version": "0.17.0",
+      "tag": "v0.17.0",
+      "release_url": "https://github.com/storytold/vectorcraft/releases/tag/v0.17.0",
+      "status": "up_to_date",
+      "source_commit": "43313f9451de7ab5b909801006b8881458f2bf04",
+      "source_url": "https://codeload.github.com/storytold/vectorcraft/tar.gz/43313f9451de7ab5b909801006b8881458f2bf04",
+      "browser_asset": {
+        "name": "vectorcraft-web-0.17.0.zip",
+        "size": 29276998,
+        "digest": "sha256:71ddc4e71538ec1ce8467c21cb6ca47754042b222605a7de1851fbb1f3d6b37c",
+        "browser_download_url": "https://github.com/storytold/vectorcraft/releases/download/v0.17.0/vectorcraft-web-0.17.0.zip"
+      },
+      "candidate_ready": true,
+      "upstream_digest_available": true
+    },
+    {
+      "engine": "effectcraft",
+      "current_version": "0.17.0",
+      "latest_version": "0.17.0",
+      "tag": "v0.17.0",
+      "release_url": "https://github.com/storytold/effectcraft/releases/tag/v0.17.0",
+      "status": "up_to_date",
+      "source_commit": "362474a843ddb67555d4c2d19ad6a590388aad0e",
+      "source_url": "https://codeload.github.com/storytold/effectcraft/tar.gz/362474a843ddb67555d4c2d19ad6a590388aad0e",
+      "browser_asset": {
+        "name": "effectcraft-web-0.17.0.zip",
+        "size": 19453875,
+        "digest": "sha256:95f93e7a8d7907616e219152272b7e0c1791030309be02eb9214ae4258fec783",
+        "browser_download_url": "https://github.com/storytold/effectcraft/releases/download/v0.17.0/effectcraft-web-0.17.0.zip"
+      },
+      "candidate_ready": true,
+      "upstream_digest_available": true
+    },
+    {
+      "engine": "filmcraft",
+      "current_version": "0.13.0",
+      "latest_version": "0.13.0",
+      "tag": "v0.13.0",
+      "release_url": "https://github.com/storytold/filmcraft/releases/tag/v0.13.0",
+      "status": "up_to_date",
+      "source_commit": "30536bc5d0ddf690f2181b7b97182db8658a6038",
+      "source_url": "https://codeload.github.com/storytold/filmcraft/tar.gz/30536bc5d0ddf690f2181b7b97182db8658a6038",
+      "browser_asset": {
+        "name": "filmcraft-web-0.13.0.zip",
+        "size": 13517113,
+        "digest": "sha256:c632afdcafc0cf185c01063471cf4a78eecb2d526787f3eb821047786c6482d5",
+        "browser_download_url": "https://github.com/storytold/filmcraft/releases/download/v0.13.0/filmcraft-web-0.13.0.zip"
+      },
+      "candidate_ready": true,
+      "upstream_digest_available": true
+    },
+    {
+      "engine": "soundcraft",
+      "current_version": "0.13.1",
+      "latest_version": "0.13.1",
+      "tag": "v0.13.1",
+      "release_url": "https://github.com/storytold/soundcraft/releases/tag/v0.13.1",
+      "status": "up_to_date",
+      "source_commit": "01b39850ad16e84b45904ba07bd5cec7cf96c4b7",
+      "source_url": "https://codeload.github.com/storytold/soundcraft/tar.gz/01b39850ad16e84b45904ba07bd5cec7cf96c4b7",
+      "browser_asset": {
+        "name": "soundcraft-web-0.13.1.zip",
+        "size": 6332742,
+        "digest": "sha256:bcb0d914e556d043dc0406674a7916684b5c9f21dcd94b539d56a20b1fd540b6",
+        "browser_download_url": "https://github.com/storytold/soundcraft/releases/download/v0.13.1/soundcraft-web-0.13.1.zip"
+      },
+      "candidate_ready": true,
+      "upstream_digest_available": true
+    },
+    {
+      "engine": "figcraft",
+      "current_version": "0.11.2",
+      "latest_version": "0.11.2",
+      "tag": "v0.11.2",
+      "release_url": "https://github.com/storytold/figcraft/releases/tag/v0.11.2",
+      "status": "up_to_date",
+      "source_commit": "d4a303d4708602a9df1738960852d18b185a616b",
+      "source_url": "https://codeload.github.com/storytold/figcraft/tar.gz/d4a303d4708602a9df1738960852d18b185a616b",
+      "browser_asset": {
+        "name": "figcraft-web-0.11.2.zip",
+        "size": 9075892,
+        "digest": "sha256:5d0bd7dd5a952f669c7ecca083e5eaf28faea8e39cb5575d1773533c3a640973",
+        "browser_download_url": "https://github.com/storytold/figcraft/releases/download/v0.11.2/figcraft-web-0.11.2.zip"
+      },
+      "candidate_ready": true,
+      "upstream_digest_available": true
+    }
+  ]
+}

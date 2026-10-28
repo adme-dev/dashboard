@@ -5,22 +5,77 @@ on:
     branches:
       - adme-dev/craft-hosted-rollout-20261028
     paths:
-      - workers/craft-editors/**
       - .github/workflows/creative-tools-build.yml
+      - workers/craft-editors/source-pins.json
+      - workers/craft-editors/patches/**
+      - workers/craft-editors/build-browser.sh
+      - workers/craft-editors/ci-build-browser.sh
+      - workers/craft-editors/ci-setup.py
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/creative-tools-build.yml
+      - workers/craft-editors/source-pins.json
+      - workers/craft-editors/patches/**
+      - workers/craft-editors/build-browser.sh
+      - workers/craft-editors/ci-build-browser.sh
+      - workers/craft-editors/ci-setup.py
+  workflow_dispatch:
+    inputs:
+      engine:
+        description: Application to build
+        type: choice
+        default: all
+        required: true
+        options:
+          - all
+          - photocraft
+          - vectorcraft
+          - effectcraft
+          - filmcraft
+          - soundcraft
+          - figcraft
 
 permissions:
   contents: read
 
 jobs:
+  select-engines:
+    name: Select application builds
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      engines: ${{ steps.select.outputs.engines }}
+      test_fig: ${{ steps.select.outputs.test_fig }}
+    steps:
+      - id: select
+        name: Validate requested applications
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          SELECTED_ENGINE: ${{ inputs.engine || 'all' }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          engines = ['photocraft', 'vectorcraft', 'effectcraft', 'filmcraft', 'soundcraft', 'figcraft']
+          selected = os.environ['SELECTED_ENGINE']
+          if selected not in ['all', *engines]:
+              raise SystemExit('Unsupported application')
+          requested = [selected] if os.environ['EVENT_NAME'] == 'workflow_dispatch' and selected != 'all' else engines
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write('engines=' + json.dumps(requested) + '\n')
+              output.write('test_fig=' + ('true' if 'figcraft' in requested else 'false') + '\n')
+          PY
+
   browser:
     name: Browser / ${{ matrix.engine }}
+    needs: select-engines
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     strategy:
       fail-fast: false
       max-parallel: 2
       matrix:
-        engine: [vectorcraft, figcraft, effectcraft]
+        engine: ${{ fromJSON(needs.select-engines.outputs.engines) }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
@@ -38,6 +93,8 @@ jobs:
 
   fig-tests:
     name: FigFlow native save, export and branding tests
+    needs: select-engines
+    if: needs.select-engines.outputs.test_fig == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:

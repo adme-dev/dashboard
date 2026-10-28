@@ -1,0 +1,106 @@
+const { chromium } = require('playwright')
+const http = require('node:http')
+const fs = require('node:fs/promises')
+const path = require('node:path')
+const root = __dirname
+const report = { checks: [], errors: [] }
+const png = fs.readFile(path.join(root, 'static/social-preview.png'))
+let status = 200
+const catalogQueries = []
+const assets = [
+  { id: 'photo', name: 'Navara hero', type: 'image', mime: 'image/png', importable: true },
+  { id: 'pdf', name: 'Navara brochure', type: 'brochure', mime: 'application/pdf', importable: false },
+  { id: 'font', name: 'Nissan body font', type: 'font', mime: 'font/woff', importable: false },
+].map(a => ({ ...a, url: '/__assets/motorstack/file?brand=nissan&kind=all&id=' + a.id, thumbnail: a.id === 'photo' ? '/__assets/motorstack/file?brand=nissan&kind=all&id=photo' : null }))
+const fixture = `<!doctype html><html><body><canvas width="800" height="600"></canvas><div class="xf-dock-panel"></div><script>window.unsaved='retain';window.drops=[];document.querySelector('canvas').addEventListener('drop',e=>{e.preventDefault();drops.push([...e.dataTransfer.files].map(f=>({name:f.name,type:f.type,size:f.size})))})</script><script type="module" src="/asset-library.js"></script></body></html>`
+;(async () => {
+  const server = http.createServer(async (req, res) => {
+    const u = new URL(req.url, 'http://localhost')
+    if (u.pathname.startsWith('/__assets/')) {
+      if (status !== 200) { res.writeHead(status, { 'Content-Type': 'application/json' }).end('{}'); return }
+      if (u.pathname.endsWith('/brands')) { res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ brands: [{ id: 'nissan', name: 'Nissan' }, { id: 'kia', name: 'Kia' }] })); return }
+      if (u.pathname.endsWith('/catalog')) { catalogQueries.push(Object.fromEntries(u.searchParams)); res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ assets: [...assets, {id:'bad',name:'Rejected external asset',mime:'image/png',url:'https://example.invalid/leak',thumbnail:'https://example.invalid/leak'}], colors: [{ name: 'Ink', value: '#121317' }] })); return }
+      res.setHeader('Content-Type', u.searchParams.get('id') === 'pdf' ? 'application/pdf' : u.searchParams.get('id') === 'font' ? 'font/woff' : 'image/png'); res.end(await png); return
+    }
+    const files = { '/asset-library.js': ['static/asset-library.js', 'text/javascript'], '/asset-library.css': ['static/asset-library.css', 'text/css'], '/fonts/geist-latin-variable.woff2': ['static/fonts/geist-latin-variable.woff2', 'font/woff2'] }
+    if (files[u.pathname]) { const [name, type] = files[u.pathname]; res.setHeader('Content-Type', type); res.end(await fs.readFile(path.join(root, name))); return }
+    res.setHeader('Content-Type', 'text/html'); res.end(fixture)
+  })
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
+  const browser = await chromium.launch({ channel: 'chrome', headless: true })
+  try {
+    const base = 'http://127.0.0.1:' + server.address().port
+    const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, acceptDownloads: true })
+    page.on('pageerror', e => report.errors.push(e.message))
+    page.on('request', r => { if (!r.url().startsWith(base + '/')) report.errors.push('Unexpected external request') })
+    await page.goto(base + '/photoflow/', { waitUntil: 'networkidle' })
+    await page.getByRole('button', { name: 'Open Motorstack asset library' }).click({timeout:5000})
+    await page.getByRole('heading', { name: 'Motorstack assets' }).waitFor()
+    await page.getByText('Navara hero', { exact: true }).waitFor()
+    if (await page.getByText('Rejected external asset', {exact:true}).count()) throw Error('External asset URL was accepted')
+    const initialCalls = catalogQueries.length
+    await page.getByLabel('Model (optional)').fill('  Ariya  ')
+    if (catalogQueries.length !== initialCalls) throw Error('Typing a model sent a request before Apply')
+    await page.getByRole('button', {name:'Apply',exact:true}).click()
+    await page.getByText('Navara hero', {exact:true}).waitFor()
+    if (catalogQueries.at(-1).model !== 'Ariya') throw Error('Applied model was not trimmed and sent')
+    report.checks.push({modelQuery:catalogQueries.at(-1),explicitApply:true})
+    await page.getByRole('button', {name:'Banners',exact:true}).click()
+    await page.getByText('Navara hero', {exact:true}).waitFor()
+    if (!(await page.getByLabel('Model (optional)').isDisabled()) || catalogQueries.at(-1).model) throw Error('Model filter applied to a non-model category')
+    await page.getByRole('button', {name:'All assets',exact:true}).click()
+    await page.getByText('Navara hero', {exact:true}).waitFor()
+    await page.getByRole('button', {name:'Kia',exact:true}).click()
+    await page.getByText('Navara hero', {exact:true}).waitFor()
+    if (await page.getByLabel('Model (optional)').inputValue() || catalogQueries.at(-1).model) throw Error('Brand change did not reset model')
+    report.checks.push('Model disabled outside all/media and resets on brand change')
+    await page.getByLabel('Find an asset').fill('brochure')
+    if (await page.getByText('Navara hero', { exact: true }).count()) throw Error('Search did not filter')
+    await page.getByLabel('Find an asset').fill('')
+    await page.getByRole('button', { name: 'Send to editor', exact: true }).click()
+    await page.waitForFunction(() => window.drops.length === 1)
+    const drops = await page.evaluate(() => ({ drops, unsaved }))
+    if (drops.unsaved !== 'retain' || drops.drops[0][0].type !== 'image/png') throw Error('Import changed state or wrong file')
+    report.checks.push({ import: drops })
+    const download = page.waitForEvent('download')
+    await page.getByRole('article').filter({ hasText: 'Navara brochure' }).getByRole('button', { name: 'Download', exact: true }).click()
+    report.checks.push({ downloaded: (await download).suggestedFilename() })
+    const fontDownload = page.waitForEvent('download')
+    await page.getByRole('article').filter({hasText:'Nissan body font'}).getByRole('button',{name:'Download',exact:true}).click()
+    const fontName = (await fontDownload).suggestedFilename()
+    if (fontName !== 'Nissan body font.woff') throw Error('WOFF extension missing: '+fontName)
+    report.checks.push({woffDownload:fontName})
+    await page.keyboard.press('Escape')
+    if (await page.getByRole('heading', { name: 'Motorstack assets' }).isVisible()) throw Error('Escape did not close')
+    report.checks.push('Escape closes and returns focus')
+    await page.getByRole('button', { name: 'Open Motorstack asset library' }).click()
+    await page.setViewportSize({ width: 320, height: 700 })
+    const size = await page.locator('.xf-library-panel').boundingBox()
+    if (size.x < 0 || size.x + size.width > 320 || size.y < 0) throw Error('Mobile overflow')
+    report.checks.push({ mobile320: size })
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    await page.screenshot({ path: '/private/tmp/xf-asset-library-ui.png' })
+    const sound = await browser.newPage({ viewport: { width: 390, height: 844 } })
+    sound.on('pageerror', e => report.errors.push(e.message))
+    await sound.goto(base + '/soundflow/', { waitUntil: 'networkidle' })
+    await sound.getByRole('button', { name: 'Open Motorstack asset library' }).click()
+    await sound.getByText('Navara hero', { exact: true }).waitFor()
+    if (await sound.getByRole('button', { name: 'Send to editor', exact: true }).count()) throw Error('Sound import should be disabled')
+    report.checks.push('SoundFlow offers downloads only')
+    status = 401
+    const denied = await browser.newPage()
+    await denied.goto(base + '/photoflow/', { waitUntil: 'networkidle' })
+    await denied.getByRole('button', { name: 'Open Motorstack asset library' }).click()
+    await denied.getByRole('link', { name: 'Sign in to XeroFlow' }).waitFor()
+    report.checks.push('401 shows sign-in without navigation')
+    status = 503
+    const offline = await browser.newPage()
+    await offline.goto(base + '/photoflow/', { waitUntil: 'networkidle' })
+    await offline.getByRole('button', { name: 'Open Motorstack asset library' }).click()
+    await offline.getByRole('button', { name: 'Try again', exact: true }).waitFor()
+    report.checks.push('503 offers retry')
+    if (report.errors.length) throw Error(report.errors.join('\n'))
+    await fs.writeFile('/private/tmp/xf-asset-library-verification.json', JSON.stringify(report, null, 2))
+    console.log(JSON.stringify(report))
+  } finally { await browser.close(); await new Promise(resolve => server.close(resolve)) }
+})().catch(e => { console.error(e); console.error(JSON.stringify(report)); process.exitCode = 1 })

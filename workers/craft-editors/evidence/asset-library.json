@@ -1,0 +1,46 @@
+{
+  "checks": [
+    {
+      "modelQuery": {
+        "brand": "nissan",
+        "kind": "all",
+        "model": "Ariya"
+      },
+      "explicitApply": true
+    },
+    "Model disabled outside all/media and resets on brand change",
+    {
+      "import": {
+        "drops": [
+          [
+            {
+              "name": "Navara hero.png",
+              "type": "image/png",
+              "size": 371207
+            }
+          ]
+        ],
+        "unsaved": "retain"
+      }
+    },
+    {
+      "downloaded": "Navara brochure.pdf"
+    },
+    {
+      "woffDownload": "Nissan body font.woff"
+    },
+    "Escape closes and returns focus",
+    {
+      "mobile320": {
+        "x": 8,
+        "y": 8,
+        "width": 304,
+        "height": 578
+      }
+    },
+    "SoundFlow offers downloads only",
+    "401 shows sign-in without navigation",
+    "503 offers retry"
+  ],
+  "errors": []
+}

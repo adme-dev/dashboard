@@ -1,0 +1,56 @@
+{
+  "effectcraft": {
+    "version": "0.17.0",
+    "commit": "362474a843ddb67555d4c2d19ad6a590388aad0e",
+    "name": "effectcraft-web-0.17.0.zip",
+    "size": 19280107,
+    "digest": "sha256:9b708e786eccb6f8bd62acea30fa0aac6e522e4033f453175d74245535201b7c",
+    "browser_download_url": "https://github.com/storytold/effectcraft/releases/download/v0.17.0/effectcraft-web-0.17.0.zip",
+    "hosted_version": "0.17.0-flow1"
+  },
+  "filmcraft": {
+    "version": "0.13.0",
+    "commit": "30536bc5d0ddf690f2181b7b97182db8658a6038",
+    "name": "filmcraft-web-0.13.0.zip",
+    "size": 16402542,
+    "digest": "sha256:c0a19f0d74879b8bc6ef3e3ad8ab86db54974f0b09efffcda5b3f9536ea0adab",
+    "browser_download_url": "https://github.com/storytold/filmcraft/releases/download/v0.13.0/filmcraft-web-0.13.0.zip",
+    "hosted_version": "0.13.0-flow1"
+  },
+  "photocraft": {
+    "version": "0.16.0",
+    "commit": "b1794c6e0608ccfc887213dcf58398977c5cb75e",
+    "name": "photocraft-web-0.16.0.zip",
+    "size": 12110518,
+    "digest": "sha256:3885e8f221da8886f041e7f31c9389ef91f1c85afee3df33fa5874e59d0afa84",
+    "browser_download_url": "https://github.com/storytold/photocraft/releases/download/v0.16.0/photocraft-web-0.16.0.zip",
+    "hosted_version": "0.16.0-flow1"
+  },
+  "vectorcraft": {
+    "version": "0.17.0",
+    "commit": "43313f9451de7ab5b909801006b8881458f2bf04",
+    "name": "vectorcraft-web-0.17.0.zip",
+    "size": 29245083,
+    "digest": "sha256:8555573f2536a261923cc8034fb3eaf7560d748434377eea6bbf64dbed5049f0",
+    "browser_download_url": "https://github.com/storytold/vectorcraft/releases/download/v0.17.0/vectorcraft-web-0.17.0.zip",
+    "hosted_version": "0.17.0-flow1"
+  },
+  "soundcraft": {
+    "version": "0.13.1",
+    "commit": "01b39850ad16e84b45904ba07bd5cec7cf96c4b7",
+    "name": "soundcraft-web-0.13.1.zip",
+    "size": 6439300,
+    "digest": "sha256:f47f949ae9d85a77fc94ca8bff3727d57719cda8fb390694a7a97932eadb6da8",
+    "browser_download_url": "https://github.com/storytold/soundcraft/releases/download/v0.13.1/soundcraft-web-0.13.1.zip",
+    "hosted_version": "0.13.1-flow1"
+  },
+  "figcraft": {
+    "version": "0.11.2",
+    "commit": "d4a303d4708602a9df1738960852d18b185a616b",
+    "name": "figcraft-web-0.11.2.zip",
+    "size": 9070250,
+    "digest": "sha256:c035468c4e2b576564b9541edb4fbe9bf2a6755b466fc68e5e4c75bb318dbcf9",
+    "browser_download_url": "https://github.com/storytold/figcraft/releases/download/v0.11.2/figcraft-web-0.11.2.zip",
+    "hosted_version": "0.11.2-flow1"
+  }
+}

@@ -11,12 +11,12 @@ or native execution service is required.
 
 | Editor | Upstream version | Current path |
 | --- | --- | --- |
-| PhotoFlow | 0.16.0 | `/photoflow/0.16.0/` |
-| VectorFlow | 0.17.0 | `/vectorflow/0.17.0/` |
-| EffectFlow | 0.17.0 | `/effectflow/0.17.0/` |
-| FilmFlow | 0.13.0 | `/filmflow/0.13.0/` |
-| SoundFlow | 0.13.1 | `/soundflow/0.13.1/` |
-| FigFlow | 0.11.2 | `/figflow/0.11.2/` |
+| PhotoFlow | 0.16.0 | `/photoflow/` |
+| VectorFlow | 0.17.0 | `/vectorflow/` |
+| EffectFlow | 0.17.0 | `/effectflow/` |
+| FilmFlow | 0.13.0 | `/filmflow/` |
+| SoundFlow | 0.13.1 | `/soundflow/` |
+| FigFlow | 0.11.2 | `/figflow/` |
 
 The launcher links back to XeroFlow. Automatic XeroFlow project saving and importing
 are **not implemented**. Users must save/download their work. Browser storage is
@@ -166,3 +166,55 @@ repository permissions, no deployment secrets and seven-day artifacts with recei
 and logs. Source/patch/Cargo.lock checks must pass before build acceptance. Remote
 artifact creation is not hosted browser acceptance; download and check actual editors
 before updating the launcher to their versioned paths.
+
+## Laser hover border
+
+Worker `5060fe96-5568-40f9-a7b3-4e0f5e98635c` adds the requested blue-white beam
+travelling around the hovered card's border. A masked conic gradient leaves card
+content clear and never intercepts pointer events. It stops on pointer leave;
+reduced-motion users get a steady border highlight. The live six-card animation,
+leave and reduced-motion checks are in `evidence/card-laser-live.json`.
+
+Remaining builds/test execution:
+https://github.com/adme-dev/dashboard/actions/runs/40615269520 from source commit
+`02ac5acf41f5fc119b5148502a124c44740c3a66`. The laser CSS update does not change the
+pinned editor sources or patches used by that run.
+
+## Registered-user release candidate
+
+All six branded source packages are now built and pinned in `rebuilt-releases.json`.
+CI run40615269520 passed Vector/Effect/Fig builds and Fig native regressions; local
+Photo/Film/Sound packages have browser startup proof. FigFlow's formerly broken
+PNG export now downloads the drawn rectangle in a real browser.
+
+Access is restricted to four active, registered accounts: paul@adme.net.au,
+robert@adme.net.au, tina@adme.net.au and kristi@adme.net.au. The Worker uses the
+canonical `/api/auth/me` authority before every private resource; no identity
+header or email input grants access. A narrow `app.xeroflow.io/creative-launch*`
+route sees the existing first-party session and issues a short encrypted,
+browser-state-bound handoff. Signed-out users see the canonical XeroFlow magic-link
+and password login in a same-origin iframe, with a new-tab fallback. State expires
+at ten minutes; encrypted tickets at two. Worker session cookies are host-only,
+Secure and HttpOnly; no tokens enter frontend storage or plain URL parameters.
+
+The public homepage, thumbnail and install metadata remain shareable. Editor HTML,
+WASM, JavaScript and asset-proxy endpoints require fresh account authority. Old
+worker.dev editor origins use the same gate. Effect's upstream cache-first service
+worker is retired without deleting OPFS/IndexedDB projects. New private responses
+are no-store. The client session overlay preserves an already-open project while
+reauthentication occurs; it is not a substitute for server authorization.
+
+The auto-hide dock switches related browser tabs without reloading open projects.
+Optional manifests and install controls support browser installation; actual OS app
+installation and Safari installed-app SSO remain separately unverified.
+
+Motorstack is a fixed read-only MCP adapter. Its key is a Worker secret, never a
+browser query parameter or bundle value. Catalogue/file requests recheck the key's
+brand membership, use issued asset IDs and restrict HTTPS downloads to the provider
+and its specific public R2 host. The Nuxt UI asset-browser island keeps styles in
+Shadow DOM and offers raster sending plus downloads; SoundFlow offers visual-asset
+downloads. Real Rust import acceptance remains a release check, not inferred from
+mock file-drop tests. Automatic XeroFlow project saving is still not implemented.
+
+See `UPGRADES.md` for the all-six candidate/build/promotion process. The weekly
+read-only upstream workflow becomes scheduled after default-branch integration.

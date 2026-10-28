@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=1200, initial-scale=1">
+  <title>XeroFlow Creative Suite — share preview</title>
+  <style>
+    @font-face { font-family: Geist; src: url('./static/fonts/geist-latin-variable.woff2') format('woff2'); font-weight: 100 900; font-style: normal; font-display: block; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; width: 1200px; height: 630px; overflow: hidden; }
+    body { background: #0a0b0e; color: #fff; font-family: Geist, sans-serif; }
+    .artboard { position: relative; width: 1200px; height: 630px; padding: 48px 54px; isolation: isolate; }
+    .artboard::before { content: ''; position: absolute; inset: 0; z-index: -2; background: radial-gradient(ellipse at 80% 46%, rgba(38, 97, 117, .13), transparent 49%); }
+    .stars { position: absolute; inset: 0; z-index: -1; opacity: .5; background-image: radial-gradient(circle at 14% 23%, #a6c4d4 0 1px, transparent 1.5px), radial-gradient(circle at 40% 13%, #fff 0 .7px, transparent 1.3px), radial-gradient(circle at 88% 18%, #bbd9e9 0 1px, transparent 1.4px), radial-gradient(circle at 49% 76%, #d5e8f2 0 1px, transparent 1.6px), radial-gradient(circle at 94% 89%, #fff 0 .6px, transparent 1px), radial-gradient(circle at 28% 82%, #c2ddea 0 .7px, transparent 1.3px), radial-gradient(circle at 60% 8%, #fff 0 .6px, transparent 1px), radial-gradient(circle at 3% 8%, #93acbd 0 1px, transparent 1.4px); }
+    header { display: flex; align-items: center; justify-content: space-between; }
+    .brand { display: flex; align-items: center; gap: 13px; font-size: 27px; font-weight: 400; letter-spacing: -.6px; }
+    .brand img { width: 42px; height: 42px; }
+    .edition { font-size: 14px; font-weight: 450; letter-spacing: 1.8px; color: rgba(255,255,255,.48); }
+    .hero { position: absolute; left: 54px; top: 169px; width: 460px; }
+    .eyebrow { display: inline-flex; align-items: center; gap: 9px; margin: 0 0 21px; color: rgba(255,255,255,.68); font-size: 16px; }
+    .eyebrow::before { content: ''; width: 6px; height: 6px; background: #34d399; border-radius: 50%; }
+    h1 { margin: 0; font-size: 76px; font-weight: 450; letter-spacing: -3.8px; line-height: 1.04; }
+    .tagline { margin: 24px 0 0; font-size: 27px; line-height: 1.45; font-weight: 400; letter-spacing: -.4px; color: rgba(255,255,255,.58); }
+    .apps { position: absolute; left: 554px; top: 160px; width: 592px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px 16px; }
+    .card { margin: 0; overflow: hidden; background: rgba(255,255,255,.035); border: 1px solid rgba(255,255,255,.12); border-radius: 13px; }
+    .card img { display: block; width: 100%; height: 123px; object-fit: cover; border-bottom: 1px solid rgba(255,255,255,.08); }
+    .card figcaption { padding: 14px 15px 15px; font-size: 20px; line-height: 1; letter-spacing: -.5px; font-weight: 450; }
+    footer { position: absolute; left: 54px; right: 54px; bottom: 42px; display: flex; align-items: center; justify-content: space-between; border-top: 1px solid rgba(255,255,255,.09); padding-top: 22px; }
+    .url { font-size: 20px; letter-spacing: -.3px; color: rgba(255,255,255,.8); }
+    .browser { font-size: 16px; color: rgba(255,255,255,.4); }
+  </style>
+</head>
+<body>
+  <main class="artboard">
+    <div class="stars" aria-hidden="true"></div>
+    <header><div class="brand"><img src="./static/xeroflow-logo.svg" alt="XF"><span>XeroFlow</span></div><span class="edition">SIX TOOLS. ONE FLOW.</span></header>
+    <section class="hero"><p class="eyebrow">Made for your next idea</p><h1>Creative<br>Suite.</h1><p class="tagline">Your creative tools,<br>in one flow.</p></section>
+    <section class="apps" aria-label="Six creative applications">
+      <figure class="card"><img src="./assets/photoflow.png" alt="Orange flower photograph"><figcaption>PhotoFlow</figcaption></figure>
+      <figure class="card"><img src="./assets/vectorflow.png" alt="Geometric blue bird illustration"><figcaption>VectorFlow</figcaption></figure>
+      <figure class="card"><img src="./assets/effectflow.png" alt="Glowing glass sphere and ribbons"><figcaption>EffectFlow</figcaption></figure>
+      <figure class="card"><img src="./assets/filmflow.png" alt="Coastal road film frames"><figcaption>FilmFlow</figcaption></figure>
+      <figure class="card"><img src="./assets/soundflow.png" alt="Microphone, headphones and waveforms"><figcaption>SoundFlow</figcaption></figure>
+      <figure class="card"><img src="./assets/figflow.png" alt="Interface design artboards"><figcaption>FigFlow</figcaption></figure>
+    </section>
+    <footer><span class="url">creative.xeroflow.io</span><span class="browser">Ready in your browser</span></footer>
+  </main>
+</body>
+</html>

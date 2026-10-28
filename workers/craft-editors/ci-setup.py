@@ -23,6 +23,8 @@ TOOLS = {
     },
 }
 FONTS = {
+    'photocraft': ('abb83316d96aa59c1cf64784289e378fe9fa5695', '53e41ed01ee81a0ef664601a73fb87281f1fd748e724f560c8128d7d33eb3328'),
+    'filmcraft': ('bfcbf714e45a3ea8e98f88ab2b7971372a576414', '75a7e31d81e34937b8d66106811efe4060a5df5f4ce373951c1e533aa2964b0f'),
     'vectorcraft': ('a71c20e30af613287c504f7e685ca8fad77752bc', 'ecbe9b8f4f8cc79b05e656412b6f214efeec3c5e6f26d16f2693307eb353c048'),
     'figcraft': ('43913056ce82a3fdad0ef69f6b88d1dc922a8104', 'e2dd2bb3ae39e442ee67416b9bc29b7ca8ef906e8ff2caaf5a451aaa6c662057'),
 }
@@ -79,7 +81,7 @@ def extract(archive, destination, prefix=None):
 def setup(engine, root, tools_root, evidence):
     scripts = Path(__file__).resolve().parent
     pins = json.loads((scripts / 'source-pins.json').read_text())
-    if engine not in ('vectorcraft', 'figcraft', 'effectcraft'):
+    if engine not in ('photocraft', 'vectorcraft', 'effectcraft', 'filmcraft', 'soundcraft', 'figcraft'):
         raise ValueError('Unsupported CI engine')
     pin = pins[engine]
     root.mkdir(parents=True, exist_ok=False)

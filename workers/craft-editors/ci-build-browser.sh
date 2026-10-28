@@ -4,7 +4,7 @@
 set -euo pipefail
 engine="${1:?engine required}"
 mode="${2:?web or test required}"
-case "$engine:$mode" in vectorcraft:web|figcraft:web|effectcraft:web|figcraft:test) ;; *) exit 2;; esac
+case "$engine:$mode" in photocraft:web|vectorcraft:web|effectcraft:web|filmcraft:web|soundcraft:web|figcraft:web|figcraft:test) ;; *) exit 2;; esac
 [[ "$(uname -s):$(uname -m)" == Linux:x86_64 ]] || { echo 'Linux x86_64 runner required'; exit 2; }
 script_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 job_root="${RUNNER_TEMP:?GitHub runner temp directory required}/creative-${engine}-${mode}"

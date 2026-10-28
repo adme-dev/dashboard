@@ -1,0 +1,18 @@
+{
+  "hover": true,
+  "namedTabReuse": true,
+  "unsavedStatePreserved": true,
+  "currentAppNoReload": true,
+  "livePresence": true,
+  "keyboardAndEscape": true,
+  "reducedMotion": true,
+  "mobileWidths": [
+    390,
+    320
+  ],
+  "touchToggle": true,
+  "noBroadcastChannel": true,
+  "blockedWindowFallbackPreservesWork": true,
+  "externalConfigRejected": true,
+  "browserErrors": []
+}

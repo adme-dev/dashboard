@@ -1,0 +1,51 @@
+[
+  {
+    "endpoint": "brands",
+    "status": 200,
+    "brands": 32
+  },
+  {
+    "endpoint": "catalog",
+    "kind": "slides",
+    "status": 200,
+    "assets": 10,
+    "colors": 0
+  },
+  {
+    "endpoint": "file",
+    "kind": "slides",
+    "type": "image",
+    "mime": "image/jpeg",
+    "status": 200,
+    "servedType": "image/jpeg",
+    "bytes": 956588,
+    "error": null
+  },
+  {
+    "endpoint": "catalog",
+    "kind": "brand",
+    "status": 200,
+    "assets": 6,
+    "colors": 3
+  },
+  {
+    "endpoint": "file",
+    "kind": "brand",
+    "type": "font",
+    "mime": "font/woff",
+    "status": 200,
+    "servedType": "font/woff",
+    "bytes": 19880,
+    "error": null
+  },
+  {
+    "endpoint": "file",
+    "kind": "brand",
+    "type": "image",
+    "mime": "image/svg+xml",
+    "status": 200,
+    "servedType": "image/svg+xml",
+    "bytes": 3489,
+    "error": null
+  }
+]

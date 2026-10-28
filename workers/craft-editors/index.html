@@ -4,6 +4,23 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Creative Tools · XeroFlow</title>
 <meta name="description" content="Your XeroFlow creative workspace. Six browser tools for photos, vectors, effects, film, sound and interface design.">
+<link rel="canonical" href="https://creative.xeroflow.io/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="XeroFlow">
+<meta property="og:title" content="Creative Tools · XeroFlow">
+<meta property="og:description" content="Your XeroFlow creative workspace. Six browser tools for photos, vectors, effects, film, sound and interface design.">
+<meta property="og:url" content="https://creative.xeroflow.io/">
+<meta property="og:image" content="https://creative.xeroflow.io/social-preview.png?v=20261028-1">
+<meta property="og:image:secure_url" content="https://creative.xeroflow.io/social-preview.png?v=20261028-1">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="XeroFlow Creative Suite: PhotoFlow, VectorFlow, EffectFlow, FilmFlow, SoundFlow and FigFlow.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Creative Tools · XeroFlow">
+<meta name="twitter:description" content="Six creative tools for photos, vectors, effects, film, sound and interface design.">
+<meta name="twitter:image" content="https://creative.xeroflow.io/social-preview.png?v=20261028-1">
+<meta name="twitter:image:alt" content="XeroFlow Creative Suite: six creative applications in one workspace.">
 <link rel="icon" type="image/svg+xml" href="/xeroflow-logo.svg">
 <link rel="preload" href="/fonts/geist-latin-variable.woff2" as="font" type="font/woff2" crossorigin>
 <style>
@@ -24,23 +41,36 @@
   .editor{transform:perspective(1000px) rotateX(0deg) rotateY(0deg);transition:transform .35s ease,border-color .2s,background .2s,box-shadow .35s}
   .editor.is-tilting{position:relative;z-index:2;transform:perspective(1000px) rotateX(var(--tilt-x,0deg)) rotateY(var(--tilt-y,0deg));transition:transform .12s ease-out,border-color .2s,background .2s,box-shadow .35s;box-shadow:0 18px 50px rgba(0,0,0,.25)}
 }
+
+@property --beam-angle{syntax:"<angle>";initial-value:0deg;inherits:false}
+.editor{position:relative}
+@keyframes card-laser{to{--beam-angle:360deg}}
+@media (hover:hover) and (pointer:fine){
+  .editor::before{content:"";position:absolute;inset:0;z-index:3;border-radius:inherit;padding:1.5px;pointer-events:none;opacity:0;background:conic-gradient(from var(--beam-angle),transparent 0deg,transparent 250deg,#38bdf8 295deg,#a5f3fc 320deg,#fff 338deg,transparent 360deg);-webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);-webkit-mask-composite:xor;mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);mask-composite:exclude;transition:opacity .2s}
+  .editor:hover::before{opacity:1;animation:card-laser 3s linear infinite}
+  .editor:hover{border-color:rgba(103,232,249,.35)}
+}
+@media (prefers-reduced-motion:reduce){.editor::before{transition:none}.editor:hover::before{animation:none}}
+
+.xf-launcher-install{margin-left:auto;margin-right:8px;padding:8px 16px;border:1px solid rgba(255,255,255,.18);border-radius:999px;background:transparent;color:white;font:500 13px Geist,system-ui;white-space:nowrap;cursor:pointer}.xf-launcher-install:hover{background:rgba(255,255,255,.07)}.xf-launcher-install:focus-visible{outline:2px solid #67e8f9;outline-offset:3px}.xf-launcher-install[hidden]{display:none}
+@media(max-width:639px){.xf-launcher-install{font-size:12px;padding:7px 10px;margin-right:0}.topbar .brand{gap:8px}.topbar nav{gap:8px}.back-link{font-size:11px;padding:7px 9px}}
 </style>
 </head>
 <body>
 <div id="stars" aria-hidden="true"></div>
-<header class="topbar"><nav class="shell" aria-label="Main navigation"><a class="brand" href="https://app.xeroflow.io/"><img src="/xeroflow-logo.svg" alt="" width="36" height="36"><span>XeroFlow</span></a><a class="back-link" href="https://app.xeroflow.io/agency/banner-studio">Back to workspace <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7M7 7h10v10"/></svg></a></nav></header>
+<header class="topbar"><nav class="shell" aria-label="Main navigation"><a class="brand" href="https://app.xeroflow.io/"><img src="/xeroflow-logo.svg" alt="" width="36" height="36"><span>XeroFlow</span></a><button type="button" class="xf-launcher-install" data-xf-install><span data-xf-install-label>Install app</span></button><a class="back-link" href="https://app.xeroflow.io/agency/banner-studio">Back to workspace <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7M7 7h10v10"/></svg></a></nav></header>
 <main class="shell">
 <div class="intro"><div><p class="eyebrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>XeroFlow Creative Suite</p><h1>Your creative tools,<br>in one flow.</h1><p>Photos, vectors, motion, film, sound and interface design. Six creative tools, ready in your browser.</p></div></div>
 <div class="section-heading"><h2>All applications</h2><span>6 tools · One creative workspace</span></div>
 <section class="editors" aria-label="Creative editors">
-<a class="editor" href="/photoflow/0.16.0/"><img src="/images/photoflow.png" alt="" width="1586" height="992" loading="eager"><div class="card-content"><h2>PhotoFlow</h2><p>Edit photos, compose images and work with layers.</p><span class="open-link">Open photo editor<svg class="card-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></span></div></a>
-<a class="editor" href="/vectorflow/0.17.0/"><img src="/images/vectorflow.png" alt="" width="1586" height="992" loading="eager"><div class="card-content"><h2>VectorFlow</h2><p>Draw shapes, build illustrations and create vector artwork.</p><span class="open-link">Open vector editor<svg class="card-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></span></div></a>
-<a class="editor" href="/effectflow/0.17.0/"><img src="/images/effectflow.png" alt="" width="1586" height="992" loading="eager"><div class="card-content"><h2>EffectFlow</h2><p>Create motion graphics, compositions and visual effects.</p><span class="open-link">Open effects editor<svg class="card-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></span></div></a>
-<a class="editor" href="/filmflow/0.13.0/"><img src="/images/filmflow.png" alt="" width="1586" height="992" loading="eager"><div class="card-content"><h2>FilmFlow</h2><p>Edit video on a timeline and assemble your next film.</p><span class="open-link">Open film editor<svg class="card-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></span></div></a>
-<a class="editor" href="/soundflow/0.13.1/"><img src="/images/soundflow.png" alt="" width="1586" height="992" loading="eager"><div class="card-content"><h2>SoundFlow</h2><p>Arrange audio, shape your sound and explore multitrack mixing.</p><span class="open-link">Open sound editor<svg class="card-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></span></div></a>
-<a class="editor" href="/figflow/0.11.2/"><img src="/images/figflow.png" alt="" width="1586" height="992" loading="eager"><div class="card-content"><h2>FigFlow</h2><p>Design interfaces, reusable components and interactive prototypes.</p><span class="open-link">Open design editor<svg class="card-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></span></div></a>
+<a class="editor" href="/photoflow/"><img src="/images/photoflow.png" alt="" width="1586" height="992" loading="eager"><div class="card-content"><h2>PhotoFlow</h2><p>Edit photos, compose images and work with layers.</p><span class="open-link">Open photo editor<svg class="card-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></span></div></a>
+<a class="editor" href="/vectorflow/"><img src="/images/vectorflow.png" alt="" width="1586" height="992" loading="eager"><div class="card-content"><h2>VectorFlow</h2><p>Draw shapes, build illustrations and create vector artwork.</p><span class="open-link">Open vector editor<svg class="card-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></span></div></a>
+<a class="editor" href="/effectflow/"><img src="/images/effectflow.png" alt="" width="1586" height="992" loading="eager"><div class="card-content"><h2>EffectFlow</h2><p>Create motion graphics, compositions and visual effects.</p><span class="open-link">Open effects editor<svg class="card-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></span></div></a>
+<a class="editor" href="/filmflow/"><img src="/images/filmflow.png" alt="" width="1586" height="992" loading="eager"><div class="card-content"><h2>FilmFlow</h2><p>Edit video on a timeline and assemble your next film.</p><span class="open-link">Open film editor<svg class="card-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></span></div></a>
+<a class="editor" href="/soundflow/"><img src="/images/soundflow.png" alt="" width="1586" height="992" loading="eager"><div class="card-content"><h2>SoundFlow</h2><p>Arrange audio, shape your sound and explore multitrack mixing.</p><span class="open-link">Open sound editor<svg class="card-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></span></div></a>
+<a class="editor" href="/figflow/"><img src="/images/figflow.png" alt="" width="1586" height="992" loading="eager"><div class="card-content"><h2>FigFlow</h2><p>Design interfaces, reusable components and interactive prototypes.</p><span class="open-link">Open design editor<svg class="card-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></span></div></a>
 </section>
-<aside class="note" aria-label="Saving your work"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10v2"/></svg><p><strong>Your work, on your device.</strong> Save or export your projects before clearing browser storage. Automatic saving to XeroFlow projects is not connected yet.</p></aside>
+<aside class="note" aria-label="Saving your work"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10v2"/></svg><p><strong>Your work, on your device.</strong> Available to authorised XeroFlow accounts. Save or export your projects before clearing browser storage. Automatic saving to XeroFlow projects is not connected yet.</p></aside>
 <footer><span>XeroFlow Creative Tools</span><a href="/credits.html">Open-source software credits ↗</a></footer>
 </main><script type="module" src="/starfield.js"></script><script type="module" src="/card-tilt.js"></script>
 </body></html>
