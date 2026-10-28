@@ -4,7 +4,7 @@
  */
 
 import { requireRole } from '../../../utils/auth'
-import { queryRows } from '../../../utils/db'
+import { queryRowsFresh } from '../../../utils/db'
 
 type AdminUserRow = {
   id: string
@@ -12,6 +12,7 @@ type AdminUserRow = {
   email: string
   avatar_url: string | null
   role: string | null
+  custom_role_id: string | null
   title: string | null
   is_active: boolean
   monday_user_id: string | null
@@ -28,13 +29,14 @@ export default eventHandler(async (event) => {
   await requireRole(event, ['admin', 'owner'])
 
   try {
-    const users = await queryRows<AdminUserRow>(`
+    const users = await queryRowsFresh<AdminUserRow>(`
       SELECT
         tm.id,
         tm.name,
         tm.email,
         tm.avatar_url,
         tm.user_role::text AS role,
+        tm.custom_role_id::text AS custom_role_id,
         tm.role AS title,
         tm.is_active,
         tm.monday_user_id,
@@ -65,7 +67,7 @@ export default eventHandler(async (event) => {
 
     // Get teams for each user
     const userIds = Array.from(new Set(users.map(u => u.id)))
-    const memberships = userIds.length > 0 ? await queryRows<{
+    const memberships = userIds.length > 0 ? await queryRowsFresh<{
       user_id: string
       team_id: string
       team_name: string
@@ -95,6 +97,7 @@ export default eventHandler(async (event) => {
         email: user.email,
         avatarUrl: user.avatar_url,
         role: user.role || 'member',
+        customRoleId: user.custom_role_id ?? null,
         title: user.title,
         status: user.is_active ? 'active' : 'inactive',
         mondayUserId: user.monday_user_id,

@@ -8,6 +8,7 @@ import { commitPageStudioCheckpoint, registerPageStudioVersion, submitPageStudio
 import { loadPageStudioCheckpoint, type PageStudioCheckpointBucket } from '~~/shared/pageStudio/checkpointReader'
 import { PageStudioHistoryMutationSchema, PageStudioHistoryQuerySchema, type PageStudioHistoryReceipt, type PageStudioHistoryState } from '~~/shared/pageStudio/draftHistory'
 import type { PageStudioContentActor } from '~~/server/utils/pageStudio/businessContent'
+import type { PageStudioLoginSession } from '~~/shared/pageStudio/controlTypes'
 
 export class PageStudioHistoryError extends Error {
   constructor(readonly code: string, readonly statusCode: number, message: string) {
@@ -26,6 +27,8 @@ interface Request {
   bucket?: Bucket
   event?: H3Event
   env?: Record<string, unknown>
+  /** Original agency login proven by a consumed MCP request (name/submit only). */
+  login?: PageStudioLoginSession
 }
 interface SiteRow {
   tenant_id: string
@@ -134,6 +137,8 @@ export async function mutatePageStudioHistory(request: Request & {
     throw invalid()
   if (!request.event) throw createError({ statusCode: 401, statusMessage: 'Sign in again before changing draft history' })
   const body = parsed.data
+  if (request.login && body.action !== 'name')
+    throw denied()
   if (body.action === 'name' && body.submitForReview && request.actor.role !== 'agency')
     throw denied()
   if (body.action === 'restore') {
@@ -152,7 +157,7 @@ export async function mutatePageStudioHistory(request: Request & {
     const { site, scope } = await authorise(db, request, true)
     if (body.action === 'restore' && (await db.query(`SELECT scope_key FROM page_studio_cms_scopes WHERE tenant_id=$1 AND client_id=$2 AND site_id=$3 AND state<>'legacy' LIMIT 1`, [scope.tenantId, scope.clientId, scope.siteId])).rows.length)
       throw new PageStudioHistoryError('HISTORY_MANAGED_RETRY', 409, 'Content setup changed. Retry this restore through the current authoring environment.')
-    const { recheck: recheckAuthority, login } = await lockPageStudioHistoryAuthority(db, request.event!, request.actor, scope)
+    const { recheck: recheckAuthority, login } = await lockPageStudioHistoryAuthority(db, request.event!, request.actor, scope, request.login)
     const args = [scope.tenantId, scope.clientId, scope.siteId]
     const operationKey = `history:${request.actor.role}:${request.actor.actorId}:${body.requestId}`
     const existing = await db.query<{

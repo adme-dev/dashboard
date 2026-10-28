@@ -1,8 +1,8 @@
 import { z } from 'zod'
-import { requireRole } from '~~/server/utils/auth'
 import { PERMISSIONS } from '~~/server/utils/permissions'
 import { queryOne } from '~~/server/utils/db'
-import { getAdapter } from '~~/server/utils/leads/destinations'
+import { resolveMarketingLeadRuleScope } from '~~/server/utils/leads/followupAccess'
+import { validateLeadRuleDestination } from '~~/server/utils/leads/ruleConfiguration'
 
 const Body = z.object({
   destination_type: z.string(),
@@ -10,19 +10,14 @@ const Body = z.object({
   filter: z.any().nullable().optional(),
   delay_minutes: z.number().int().min(0).max(1440).default(0),
   enabled: z.boolean().default(true),
-  sort_order: z.number().int().default(0),
+  sort_order: z.number().int().default(0)
 })
 
 export default defineEventHandler(async (event) => {
-  await requireRole(event, PERMISSIONS.MEDIA_BUYING)
   const ruleId = getRouterParam(event, 'ruleId')!
+  await resolveMarketingLeadRuleScope(event, ruleId, { write: true, legacyRoles: PERMISSIONS.MEDIA_BUYING })
   const b = Body.parse(await readBody(event))
-  const adapter = getAdapter(b.destination_type)
-  if (!adapter) throw createError({ statusCode: 400, statusMessage: 'unknown_type' })
-  const v = adapter.validateConfig(b.config)
-  if (!v.valid) {
-    throw createError({ statusCode: 400, statusMessage: 'invalid_config', data: v.errors })
-  }
+  validateLeadRuleDestination(b.destination_type, b.config)
   const row = await queryOne<{ id: string }>(
     `INSERT INTO lead_rule_destinations
        (rule_id, destination_type, config, filter, delay_minutes, enabled, sort_order)
@@ -31,8 +26,8 @@ export default defineEventHandler(async (event) => {
     [
       ruleId, b.destination_type, JSON.stringify(b.config),
       b.filter ? JSON.stringify(b.filter) : null,
-      b.delay_minutes, b.enabled, b.sort_order,
-    ],
+      b.delay_minutes, b.enabled, b.sort_order
+    ]
   )
   return { ok: true, id: row!.id }
 })

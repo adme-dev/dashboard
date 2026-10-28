@@ -2,7 +2,7 @@ import type { H3Event } from 'h3'
 import type { PermissionGroup } from '~~/server/utils/permissions'
 
 /** Operator-granted marketing capability for ordinary MCP staff (see ai/mcp/marketingPolicy.ts). */
-export type MarketingCapability = 'reporting' | 'social_draft' | 'ads_plan' | 'tracking_plan'
+export type MarketingCapability = 'reporting' | 'social_draft' | 'ads_plan' | 'tracking_plan' | 'department_management'
 
 /**
  * Runtime context the tool layer injects into every handler. `userId`/`userRole` are always set by

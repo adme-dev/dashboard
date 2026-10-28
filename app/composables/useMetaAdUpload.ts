@@ -22,6 +22,9 @@ export interface UploadProgressItem {
   step: 'queued' | 'image' | 'creative' | 'ad' | 'done' | 'error'
   stepLabel: string
   error?: string
+  proposalId?: string
+  clientId?: string
+  revision?: string
 }
 
 export interface TextPreset {
@@ -35,10 +38,10 @@ export interface TextPreset {
 
 const STEP_LABELS: Record<string, string> = {
   queued: 'Waiting',
-  image: 'Uploading Image',
+  image: 'Preparing Review',
   creative: 'Creating Creative',
   ad: 'Creating Ad',
-  done: 'Complete',
+  done: 'Awaiting Independent Review',
   error: 'Failed',
 }
 
@@ -71,7 +74,7 @@ const descriptions = ref<string[]>([''])
 const callToAction = ref('LEARN_MORE')
 const linkUrl = ref('')
 const adNamePattern = ref('{ProjectName} - {Format} - {Date}')
-const adStatus = ref<'PAUSED' | 'ACTIVE'>('PAUSED')
+const adStatus = ref<'PAUSED'>('PAUSED')
 
 const connections = ref<any[]>([])
 const campaigns = ref<any[]>([])
@@ -307,7 +310,7 @@ export function useMetaAdUpload() {
       progress.stepLabel = STEP_LABELS.image
 
       try {
-        await apiFetch('/api/agency/banner-studio/ad-publish/meta', {
+        const proposal = await apiFetch<{ proposalId: string, clientId: string, revision: string, requiresIndependentReview: boolean }>('/api/agency/banner-studio/ad-publish/meta', {
           method: 'POST',
           body: {
             publishedId: progress.publishedId,
@@ -321,10 +324,14 @@ export function useMetaAdUpload() {
             callToAction: callToAction.value,
             linkUrl: linkUrl.value,
             adName,
-            status: adStatus.value,
+            status: 'PAUSED',
           },
         })
 
+        if (!proposal.requiresIndependentReview || !proposal.proposalId) throw new Error('Review proposal was not confirmed; inspect status before retrying')
+        progress.proposalId = proposal.proposalId
+        progress.clientId = proposal.clientId
+        progress.revision = proposal.revision
         progress.step = 'done'
         progress.stepLabel = STEP_LABELS.done
       } catch (err: any) {
@@ -377,7 +384,7 @@ export function useMetaAdUpload() {
       progress.stepLabel = STEP_LABELS.image
 
       try {
-        await apiFetch('/api/agency/banner-studio/ad-publish/meta', {
+        const proposal = await apiFetch<{ proposalId: string, clientId: string, revision: string, requiresIndependentReview: boolean }>('/api/agency/banner-studio/ad-publish/meta', {
           method: 'POST',
           body: {
             publishedId: progress.publishedId,
@@ -391,10 +398,14 @@ export function useMetaAdUpload() {
             callToAction: callToAction.value,
             linkUrl: linkUrl.value,
             adName,
-            status: adStatus.value,
+            status: 'PAUSED',
           },
         })
 
+        if (!proposal.requiresIndependentReview || !proposal.proposalId) throw new Error('Review proposal was not confirmed; inspect status before retrying')
+        progress.proposalId = proposal.proposalId
+        progress.clientId = proposal.clientId
+        progress.revision = proposal.revision
         progress.step = 'done'
         progress.stepLabel = STEP_LABELS.done
       } catch (err: any) {

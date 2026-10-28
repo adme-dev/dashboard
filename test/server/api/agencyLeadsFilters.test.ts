@@ -21,10 +21,14 @@ const mockQueryCount = vi.fn()
 vi.mock('~~/server/utils/auth', () => ({
   requireAuth: (...args: unknown[]) => mockRequireAuth(...args)
 }))
+vi.mock('~~/server/utils/clientScoping', () => ({
+  hasFreshMarketingManagementPermission: vi.fn(async () => false)
+}))
 
 vi.mock('~~/server/utils/db', () => ({
   queryRows: (...args: unknown[]) => mockQueryRows(...args),
-  queryCount: (...args: unknown[]) => mockQueryCount(...args)
+  queryCount: (...args: unknown[]) => mockQueryCount(...args),
+  queryOneFresh: vi.fn(async () => null)
 }))
 
 const { default: listHandler } = await import(

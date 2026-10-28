@@ -1,10 +1,11 @@
+import { requireFreshSocialClientAccess } from '~~/server/utils/social/clientAccess'
 /**
  * GET /api/agency/banner-studio/ad-publish/meta/campaigns
  * Browse campaigns for a Meta Ads connection.
  * Query: connectionId, status? (ACTIVE, PAUSED, etc.)
  */
 import { requireAuth } from '~~/server/utils/auth'
-import { queryOne } from '~~/server/utils/db'
+import { queryOneFresh as queryOne } from '~~/server/utils/db'
 import { getCampaigns } from '~~/server/utils/metaClient'
 
 export default defineEventHandler(async (event) => {
@@ -16,7 +17,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const connection = await queryOne(`
-    SELECT account_id AS "accountId", access_token AS "accessToken",
+    SELECT client_id AS "clientId", account_id AS "accountId", access_token AS "accessToken",
       metadata, token_expires_at AS "tokenExpiresAt"
     FROM social_connections
     WHERE id = $1 AND platform = 'meta' AND status = 'active'
@@ -25,6 +26,8 @@ export default defineEventHandler(async (event) => {
   if (!connection) {
     throw createError({ statusCode: 404, statusMessage: 'Meta connection not found' })
   }
+
+  await requireFreshSocialClientAccess(event, connection.clientId)
 
   if (connection.tokenExpiresAt && new Date(connection.tokenExpiresAt) < new Date()) {
     throw createError({ statusCode: 401, statusMessage: 'Meta token has expired. Please reconnect.' })

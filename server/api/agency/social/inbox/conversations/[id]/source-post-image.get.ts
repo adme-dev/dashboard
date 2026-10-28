@@ -1,4 +1,4 @@
-import { requireAuth } from '~~/server/utils/auth'
+import { requireSocialInboxConversation } from '~~/server/utils/socialInbox/departmentScope'
 import { queryOne } from '~~/server/utils/db'
 import { fetchMetaSourcePostImageUrl } from '~~/server/utils/socialInbox/sourcePostMedia'
 
@@ -9,8 +9,8 @@ interface SourcePostRecord {
 }
 
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
   const id = getRouterParam(event, 'id')!
+  await requireSocialInboxConversation(event, id)
   const source = await queryOne<SourcePostRecord>(
     `SELECT conversation.platform, conversation.source_post_id, account.access_token
        FROM social_conversations AS conversation

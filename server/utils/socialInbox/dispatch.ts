@@ -31,12 +31,15 @@ interface FullDb {
 /**
  * Send a reply through the conversation's provider and record it as outbound.
  * `sentByUserId` is a real user id for manual/approved sends, or 'automation' for autopilot.
+ * `expectedTarget` (reviewed sends) refuses before any provider call when the resolved reply target
+ * differs from the one that was reviewed; `onDispatchStart` fires immediately before the provider call,
+ * so callers can tell an effect-free refusal from an outcome that may have reached the platform.
  */
 export async function dispatchReply(
   db: FullDb,
   conversationId: string,
-  args: { content: string; sentByUserId: string; aiGenerated?: boolean },
-): Promise<{ ok: boolean; platformMessageId?: string; error?: string; clientId?: string }> {
+  args: { content: string, sentByUserId: string, aiGenerated?: boolean, expectedTarget?: string, onDispatchStart?: () => void },
+): Promise<{ ok: boolean, platformMessageId?: string, error?: string, clientId?: string, dispatched?: boolean }> {
   const conv = await db.queryOne<any>(
     `SELECT c.*, a.platform_account_id, a.access_token, a.refresh_token, a.token_expires_at, a.metadata AS account_metadata
        FROM social_conversations c JOIN social_accounts a ON a.id = c.social_account_id
@@ -67,6 +70,9 @@ export async function dispatchReply(
   }
 
   const target = await resolveReplyTarget(db, conversationId, conv)
+  if (args.expectedTarget !== undefined && target !== args.expectedTarget) {
+    return { ok: false, error: 'reply_target_changed' }
+  }
   // LinkedIn nests one level deep: when the target is itself a nested reply, pass its parent thread.
   const threadParent = conv.platform === 'linkedin' && conv.channel_type === 'comment'
     ? await db.queryOne<{ platform_message_id: string }>(
@@ -76,6 +82,7 @@ export async function dispatchReply(
         LIMIT 1`,
       [conversationId, target])
     : null
+  args.onDispatchStart?.()
   const r = await provider.reply({
     accountId: conv.platform_account_id, accessToken,
     conversationId: target, content: args.content, channelType: conv.channel_type,
@@ -83,12 +90,12 @@ export async function dispatchReply(
     // IG DMs route through the linked Page (stored on the IG account row at metadata.via_page_id).
     viaPageId: conv.account_metadata?.via_page_id,
   })
-  if (r.status !== 'success') return { ok: false, error: r.error || 'reply failed' }
+  if (r.status !== 'success') return { ok: false, error: r.error || 'reply failed', dispatched: true }
 
   await recordOutbound(db as any, conversationId, conv.client_id, {
     platformMessageId: r.platformMessageId || null,
     content: args.content,
     sentByUserId: args.sentByUserId,
   })
-  return { ok: true, platformMessageId: r.platformMessageId, clientId: conv.client_id }
+  return { ok: true, platformMessageId: r.platformMessageId, clientId: conv.client_id, dispatched: true }
 }

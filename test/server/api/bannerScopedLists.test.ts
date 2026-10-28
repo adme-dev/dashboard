@@ -1,7 +1,9 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- Partial request and database doubles exercise endpoint authority. */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { H3Event } from 'h3'
 
-const mocks = vi.hoisted(() => ({ auth: vi.fn(), rows: vi.fn(), all: vi.fn(), permission: vi.fn(), access: vi.fn() }))
+const mocks = vi.hoisted(() => ({ auth: vi.fn(), rows: vi.fn(), all: vi.fn(), permission: vi.fn(), access: vi.fn(), freshMarketing: vi.fn() }))
+vi.mock('~~/server/utils/clientScoping', () => ({ hasFreshMarketingManagementPermission: mocks.freshMarketing }))
 vi.mock('~~/server/utils/auth', () => ({ requireAuth: mocks.auth }))
 vi.mock('~~/server/utils/db', () => ({ queryRowsFresh: mocks.rows }))
 vi.mock('~~/server/utils/social/clientAccess', () => ({
@@ -9,6 +11,7 @@ vi.mock('~~/server/utils/social/clientAccess', () => ({
 }))
 vi.stubGlobal('defineEventHandler', (handler: unknown) => handler)
 vi.stubGlobal('getQuery', (event: { query: unknown }) => event.query)
+vi.stubGlobal('createError', (input: any) => Object.assign(new Error(input.statusMessage), input))
 vi.stubGlobal('setHeader', vi.fn())
 const projects = (await import('~~/server/api/agency/banner-studio/projects/index.get')).default
 const assets = (await import('~~/server/api/agency/banner-studio/assets/index.get')).default
@@ -19,6 +22,7 @@ beforeEach(() => {
   mocks.auth.mockResolvedValue({ id: 'staff-id' })
   mocks.rows.mockResolvedValue([])
   mocks.all.mockReturnValue(false)
+  mocks.freshMarketing.mockResolvedValue(true)
   mocks.permission.mockReturnValue(true)
   mocks.access.mockReset().mockResolvedValue({ id: 'staff-id' })
 })
@@ -34,6 +38,23 @@ describe.each([
     expect(sql).toContain('EXISTS (SELECT 1 FROM client_team_assignments a')
     expect(sql).toContain('a.team_member_id = $1')
     expect(params).toEqual(['staff-id'])
+  })
+
+  it('includes every active marketing client without broadening to inactive or unowned agency records', async () => {
+    mocks.auth.mockResolvedValue({ id: 'staff-id', permissionGroups: ['MARKETING_MANAGEMENT'] })
+    await handler(request())
+    const [sql, params] = mocks.rows.mock.calls[0]!
+    expect(sql).toContain(`${client} IS NULL AND ${owner} = $1`)
+    expect(sql).toContain('is_active = TRUE')
+    expect(sql).not.toContain('client_team_assignments')
+    expect(params).toEqual(['staff-id'])
+  })
+
+  it('rejects a cached marketing role after revocation before returning creative assets', async () => {
+    mocks.auth.mockResolvedValue({ id: 'staff-id', permissionGroups: ['MARKETING_MANAGEMENT'] })
+    mocks.freshMarketing.mockResolvedValue(false)
+    await expect(handler(request())).rejects.toMatchObject({ statusCode: 403 })
+    expect(mocks.rows).not.toHaveBeenCalled()
   })
 
   it('rejects an explicit foreign-client filter before reading canvas or signed asset URLs', async () => {

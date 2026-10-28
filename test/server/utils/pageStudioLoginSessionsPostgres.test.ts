@@ -1,3 +1,4 @@
+import { captureMcpPageStudioLogin } from '~~/server/utils/ai/mcp/pageStudioLogin'
 import { randomUUID } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { IncomingMessage, ServerResponse } from 'node:http'
@@ -130,6 +131,16 @@ describe.runIf(Boolean(databaseUrl))('Studio login helpers on disposable Postgre
     } finally {
       await observer.end()
     }
+  })
+
+  it('captures genuine agency login for MCP consent and refuses the same proof after logout', async () => {
+    const token = await credential('agency')
+    const proof = await captureMcpPageStudioLogin(eventFor(token), userId)
+    expect(proof).toMatchObject({ role: 'agency', userId, tokenHash: await digestPortalSessionToken(token) })
+    expect(JSON.stringify(proof)).not.toContain(token)
+    expect((await observer.query('SELECT token_hash FROM page_studio_login_sessions WHERE token_hash=$1', [proof!.tokenHash])).rows).toHaveLength(1)
+    await revokePageStudioLoginSession(eventFor(token), 'agency')
+    expect(await captureMcpPageStudioLogin(eventFor(token), userId)).toBeUndefined()
   })
 
   it('resolves and binds a cryptographically verified agency cookie without storing the credential', async () => {

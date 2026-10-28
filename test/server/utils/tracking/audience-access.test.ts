@@ -20,7 +20,8 @@ vi.mock('~~/server/utils/auth', () => ({
 
 vi.mock('~~/server/utils/db', () => ({
   query: (...args: unknown[]) => mockQuery(...args),
-  queryOne: vi.fn()
+  queryOne: vi.fn(),
+  queryOneFresh: vi.fn().mockResolvedValue(null)
 }))
 
 const { requireTrackingAudienceScope } = await import(

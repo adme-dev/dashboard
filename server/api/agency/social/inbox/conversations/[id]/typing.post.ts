@@ -1,4 +1,4 @@
-import { requireAuth } from '~~/server/utils/auth'
+import { requireSocialInboxConversation } from '~~/server/utils/socialInbox/departmentScope'
 import { queryOne } from '~~/server/utils/db'
 import { emitInboxEvent } from '~~/server/utils/socialInbox/events'
 import { executeSocialInboxExternalMutation } from '~~/server/utils/socialInbox/godModeMutations'
@@ -12,8 +12,8 @@ import { executeSocialInboxExternalMutation } from '~~/server/utils/socialInbox/
  * replayed owner attempt is a no-op.
  */
 export default defineEventHandler(async (event) => {
-  const user = await requireAuth(event)
   const id = getRouterParam(event, 'id')!
+  const { user } = await requireSocialInboxConversation(event, id)
   const body = await readBody<{ active?: boolean }>(event).catch((): { active?: boolean } => ({}))
 
   return await executeSocialInboxExternalMutation<{ ok: true }>(event, 'typing', async (run) => {

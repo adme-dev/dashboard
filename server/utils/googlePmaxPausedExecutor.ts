@@ -51,6 +51,7 @@ interface ExecutorDependencies {
   transition?: typeof transitionGooglePmaxLaunch
   parseConfig: (value: Record<string, unknown>) => GooglePmaxInventoryLaunchConfig | Promise<GooglePmaxInventoryLaunchConfig>
   provider: GooglePmaxPausedProvider
+  authorize?: (launch: GooglePmaxLaunch, kind: 'create' | 'activate') => Promise<void>
 }
 
 export class GooglePmaxPausedExecutorError extends Error {
@@ -121,6 +122,7 @@ export function createGooglePmaxPausedExecutor(dependencies: ExecutorDependencie
         throw new GooglePmaxPausedExecutorError('PMAX_EXECUTION_STATE_INVALID')
       }
       const config = await dependencies.parseConfig(launch.normalizedConfig)
+      await dependencies.authorize?.(launch, 'create')
       const createClaimState = launch.state
       launch = await transition({
         launchId: launch.id,
@@ -148,17 +150,18 @@ export function createGooglePmaxPausedExecutor(dependencies: ExecutorDependencie
         throw new GooglePmaxPausedExecutorError('PMAX_CREATE_VALIDATION_FAILED')
       }
 
+      await dependencies.authorize?.(launch, 'create')
       let resources: GooglePmaxProviderResources
       try {
         resources = await dependencies.provider.createPaused(config)
       } catch {
         await transition({
           launchId: launch.id, tenantId: launch.tenantId,
-          expectedState: 'EXECUTING', toState: 'FAILED_RETRYABLE',
+          expectedState: 'EXECUTING', toState: 'RECOVERY_REQUIRED',
           expectedConfigVersion: launch.configVersion, expectedConfigHash: launch.configHash,
           actorId: input.actorId, eventType: 'CREATE_PROVIDER_FAILED',
           providerRequestId: safeRequestId(validation.requestId),
-          payload: { retryable: true, validateOnlyPassed: true }
+          payload: { retryable: false, outcomeUnknown: true, validateOnlyPassed: true }
         })
         throw new GooglePmaxPausedExecutorError('PMAX_CREATE_FAILED')
       }
@@ -179,6 +182,7 @@ export function createGooglePmaxPausedExecutor(dependencies: ExecutorDependencie
           expectedState: 'EXECUTING', toState: 'RECOVERY_REQUIRED',
           expectedConfigVersion: launch.configVersion, expectedConfigHash: launch.configHash,
           actorId: input.actorId, eventType: 'UNSAFE_CREATE_STATUS_DETECTED',
+          results: { providerResources: resourceRecord(resources) },
           providerRequestId: emergencyRequestId || safeRequestId(resources.requestId),
           payload: {
             returnedStatus: resources.status,
@@ -258,6 +262,7 @@ export function createGooglePmaxPausedExecutor(dependencies: ExecutorDependencie
       }
       const config = await dependencies.parseConfig(launch.normalizedConfig)
       const resources = resourcesFromLaunch(launch)
+      await dependencies.authorize?.(launch, 'activate')
       const activationClaimState = launch.state
       launch = await transition({
         launchId: launch.id, tenantId: launch.tenantId,

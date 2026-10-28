@@ -1,4 +1,5 @@
-import { requireAuth } from '~~/server/utils/auth'
+import { requireSocialInboxClient } from '~~/server/utils/socialInbox/departmentScope'
+import { departmentQueueScopeSql } from '~~/server/utils/socialInbox/departmentScopeSql'
 import { recordSocialInboxApprovalEvent } from '~~/server/utils/socialInbox/clientApprovals'
 import { emitInboxEvent } from '~~/server/utils/socialInbox/events'
 import { executeSocialInboxMutation, socialInboxTransactionDb } from '~~/server/utils/socialInbox/godModeMutations'
@@ -11,21 +12,22 @@ interface SocialResponseQueueRejectRow {
 
 /** POST /api/agency/social/inbox/response-queue/:id/reject */
 export default defineEventHandler(async (event) => {
-  const user = await requireAuth(event)
   const id = getRouterParam(event, 'id')!
   const body = await readBody(event).catch(() => ({}))
   const clientId = body?.clientId
   if (!clientId) throw createError({ statusCode: 400, statusMessage: 'clientId required' })
+  const { user, department } = await requireSocialInboxClient(event, clientId)
+  const scopeSql = department ? ` AND ${departmentQueueScopeSql('social_response_queue')}` : ''
 
   const result = await executeSocialInboxMutation(event, 'response-queue-reject', async (client) => {
     const db = socialInboxTransactionDb(client)
     const row = await db.queryOne<SocialResponseQueueRejectRow>(
-      `SELECT conversation_id, status, approver_type FROM social_response_queue WHERE id = $1 AND client_id = $2`, [id, clientId])
+      `SELECT conversation_id, status, approver_type FROM social_response_queue WHERE id = $1 AND client_id = $2${scopeSql}`, [id, clientId])
     if (!row) throw createError({ statusCode: 404, statusMessage: 'Not found' })
     if (row.status !== 'pending' || row.approver_type !== 'staff') {
       throw createError({ statusCode: 409, statusMessage: `cannot reject a ${row.status} ${row.approver_type} item` })
     }
-    await db.execute(
+    const rejected = await db.execute(
       `UPDATE social_response_queue
           SET status = 'rejected',
               approved_by = $2,
@@ -33,8 +35,9 @@ export default defineEventHandler(async (event) => {
               updated_at = NOW()
         WHERE id = $1
           AND approver_type = 'staff'
-          AND status = 'pending'`,
+          AND status = 'pending'${scopeSql}`,
       [id, String(user.id)])
+    if (department && rejected !== 1) throw createError({ statusCode: 409, statusMessage: 'already being processed' })
     await db.execute(`UPDATE social_conversations SET automation_state = NULL, updated_at = NOW() WHERE id = $1`, [row.conversation_id])
     await recordSocialInboxApprovalEvent(db, {
       conversationId: row.conversation_id,

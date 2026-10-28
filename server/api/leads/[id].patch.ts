@@ -1,31 +1,43 @@
 import { z } from 'zod'
-import { requireAuth, requireWriteAccess } from '~~/server/utils/auth'
-import { execute, queryOne } from '~~/server/utils/db'
+import { execute, queryOne, transaction } from '~~/server/utils/db'
 import { leadStatusTransitionService } from '~~/server/utils/leads/statusTransition'
 import { conversionOutboxPublisher } from '~~/server/utils/measurement/publisher'
+import { resolveMarketingLeadBrowserScope, requireLeadAssigneeAuthority } from '~~/server/utils/leads/followupAccess'
+import { assignLeadFollowup } from '~~/server/utils/leads/followupAssignment'
 
 const Body = z.object({
   status: z.enum(['new', 'contacted', 'qualified', 'won', 'lost', 'spam_suspected']).optional(),
   assigned_to: z.string().uuid().nullable().optional(),
-  notes: z.string().nullable().optional(),
+  notes: z.string().nullable().optional()
 }).refine(b => Object.keys(b).length > 0, { message: 'no fields' })
 
 export default defineEventHandler(async (event) => {
-  const user = await requireAuth(event)
-  await requireWriteAccess(event)
+  const { user, marketing } = await resolveMarketingLeadBrowserScope(event, undefined, { write: true, legacyWrite: true })
   const id = getRouterParam(event, 'id')!
   const body = Body.parse(await readBody(event))
   const lead = await queryOne<{ client_id: string }>(
-    `SELECT client_id FROM leads WHERE id = $1 AND deleted_at IS NULL`,
+    `SELECT client_id FROM leads l ${marketing ? 'JOIN agency_clients c ON c.id=l.client_id AND c.is_active=TRUE' : ''} WHERE l.id = $1 AND l.deleted_at IS NULL`,
     [id]
   )
   if (!lead) throw createError({ statusCode: 404, statusMessage: 'not_found' })
 
   const sets: string[] = []
-  const params: any[] = []
-  const set = (col: string, val: any) => { params.push(val); sets.push(`${col} = $${params.length}`) }
+  const params: unknown[] = []
+  const set = (col: string, val: unknown) => {
+    params.push(val)
+    sets.push(`${col} = $${params.length}`)
+  }
 
-  if ('assigned_to' in body) set('assigned_to', body.assigned_to)
+  if (marketing && body.assigned_to) await requireLeadAssigneeAuthority(event, lead.client_id, body.assigned_to)
+  if ('assigned_to' in body) {
+    await transaction(async db => assignLeadFollowup(db, {
+      clientId: lead.client_id,
+      leadId: id,
+      assigneeId: body.assigned_to ?? null,
+      scopeActiveClient: marketing !== null,
+      excludeTest: marketing !== null
+    }))
+  }
   if ('notes' in body) set('notes', body.notes)
 
   if (body.status) {
@@ -68,7 +80,7 @@ export default defineEventHandler(async (event) => {
         WHERE id = $${idIndex}
           AND client_id = $${clientIndex}
           AND deleted_at IS NULL`,
-      params,
+      params
     )
     if (!n) throw createError({ statusCode: 404, statusMessage: 'not_found' })
   }

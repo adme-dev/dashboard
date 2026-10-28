@@ -1,4 +1,4 @@
-import { requireAuth } from '~~/server/utils/auth'
+import { requireSocialInboxConversation } from '~~/server/utils/socialInbox/departmentScope'
 import {
   requestSocialReplyClientApproval,
   SocialInboxClientApprovalError
@@ -7,8 +7,8 @@ import { emitInboxEvent } from '~~/server/utils/socialInbox/events'
 import { executeSocialInboxMutation, socialInboxTransactionDb } from '~~/server/utils/socialInbox/godModeMutations'
 
 export default defineEventHandler(async (event) => {
-  const user = await requireAuth(event)
   const id = getRouterParam(event, 'id')!
+  const { user } = await requireSocialInboxConversation(event, id)
   const body = await readBody(event).catch(() => ({}))
 
   try {

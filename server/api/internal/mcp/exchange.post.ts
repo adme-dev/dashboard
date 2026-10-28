@@ -4,7 +4,7 @@
 // in assertion.ts (tested), so the Worker never does crypto itself. Auth: x-mcp-secret == MCP_INTERNAL_SECRET.
 // HARD-gated by MCP_SERVER_ENABLED.
 import { defineEventHandler, getHeader, readBody, createError } from 'h3'
-import { verifyMcpAssertion } from '~~/server/utils/ai/mcp/assertion'
+import { digestMcpOAuthState, verifyMcpAssertion } from '~~/server/utils/ai/mcp/assertion'
 import { resolveGodModeAuthority } from '~~/server/utils/godMode/authority'
 
 export default defineEventHandler(async (event) => {
@@ -21,12 +21,21 @@ export default defineEventHandler(async (event) => {
   const hs = process.env.MCP_HANDSHAKE_SECRET
   if (!hs) throw createError({ statusCode: 503, statusMessage: 'MCP_HANDSHAKE_SECRET not configured' })
 
-  const body = await readBody<{ assertion?: string }>(event).catch(() => null)
+  const body = await readBody<{ assertion?: string, state?: unknown }>(event).catch(() => null)
   const verified = await verifyMcpAssertion(body?.assertion || '', hs)
   if (!verified) throw createError({ statusCode: 401, statusMessage: 'Invalid or expired assertion' })
+
+  // An assertion completes only the exact OAuth request it was consented for. Unbound assertions,
+  // a missing forwarded state or a different state are refused (no unbound or legacy window); a
+  // connection in flight during the Pages-first rollout simply reconnects. Stored grants never exchange.
+  if (!verified.stateHash || typeof body?.state !== 'string'
+    || await digestMcpOAuthState(body.state) !== verified.stateHash) {
+    throw createError({ statusCode: 401, statusMessage: 'Assertion does not match this authorization request' })
+  }
+  const pageStudioLogin = verified.pageStudioLogin
 
   // The OAuth assertion carries identity + consented scope only. Resolve owner authority here from the
   // verified subject; a client-provided role/God-mode bit is never accepted by this exchange.
   const authority = await resolveGodModeAuthority(event, verified.uid)
-  return { userId: verified.uid, scope: verified.scope, godMode: authority.active }
+  return { userId: verified.uid, scope: verified.scope, godMode: authority.active, ...(pageStudioLogin ? { pageStudioLogin } : {}) }
 })

@@ -6,11 +6,16 @@
 import { requireRole } from '~~/server/utils/auth'
 import { PERMISSIONS } from '~~/server/utils/permissions'
 import { executeGodModeAgencyClientUpdate } from '~~/server/utils/clients/godModeMutations'
+import {
+  isMarketingClientViewer,
+  MARKETING_EDITABLE_CLIENT_FIELDS,
+  requireActiveMarketingClient
+} from '~~/server/utils/clients/marketingAccess'
 
 export default defineEventHandler(async (event) => {
   // Editing billing type, rates, Xero link and active status is a sensitive
   // mutation — gate it to CLIENTS-permission staff (matches the page's Edit action).
-  await requireRole(event, PERMISSIONS.CLIENTS)
+  const user = await requireRole(event, PERMISSIONS.CLIENTS)
 
   const id = getRouterParam(event, 'id')
   const body = await readBody(event)
@@ -20,6 +25,20 @@ export default defineEventHandler(async (event) => {
       statusCode: 400,
       statusMessage: 'Invalid client update'
     })
+  }
+
+  // The marketing department may correct contact details on active clients only; billing, rates,
+  // Xero link, notes, status, portal and CRM mode stay with finance/management.
+  const marketingOnly = await isMarketingClientViewer(user.id)
+  if (marketingOnly) {
+    const restricted = Object.keys(body).filter(key => body[key] !== undefined && !MARKETING_EDITABLE_CLIENT_FIELDS.has(key))
+    if (restricted.length) {
+      throw createError({
+        statusCode: 403,
+        statusMessage: 'Financial and administrative client fields require finance or management access'
+      })
+    }
+    await requireActiveMarketingClient(id)
   }
 
   if (body.isActive !== undefined && typeof body.isActive !== 'boolean') {
@@ -120,7 +139,7 @@ export default defineEventHandler(async (event) => {
     const sql = `
       UPDATE agency_clients
       SET ${updates.join(', ')}
-      WHERE id = $${paramIndex}
+      WHERE id = $${paramIndex}${marketingOnly ? ' AND is_active = TRUE' : ''}
       RETURNING *
     `
 
@@ -156,6 +175,23 @@ export default defineEventHandler(async (event) => {
         statusCode: 404,
         statusMessage: 'Client not found'
       })
+    }
+
+    if (marketingOnly) {
+      return {
+        success: true,
+        client: {
+          id: client.id,
+          name: client.name,
+          isActive: client.is_active,
+          contactEmail: client.contact_email,
+          contactPhone: client.contact_phone,
+          reportingTimezone: client.reporting_timezone,
+          leadCaptureMode: client.lead_capture_mode || 'capture_only',
+          createdAt: client.created_at,
+          updatedAt: client.updated_at
+        }
+      }
     }
 
     return {

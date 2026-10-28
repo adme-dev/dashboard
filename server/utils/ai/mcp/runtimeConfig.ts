@@ -18,12 +18,42 @@ export interface McpRuntimeConfig {
    * ordinary staff ALWAYS need the signed mcp:write scope for write-class tools, flag or not.
    */
   legacyRequireWriteScope: boolean
+  /** Legacy flags override optional MCP_SUITE_CONFIG JSON, including explicit false/invalid values. */
   suiteFlags: Required<McpSuiteFlags>
   /** MCP_MARKETING_STAFF_GRANTS — operator-owned JSON; invalid config grants nobody anything. */
   marketingStaffGrants: MarketingStaffGrantConfig
 }
 
 const MISSING = Symbol('missing')
+
+const SUITE_BINDINGS = {
+  generation: 'MCP_GEN_TOOLS_ENABLED',
+  writes: 'MCP_WRITE_TOOLS_ENABLED',
+  financial: 'MCP_FINANCIAL_TOOLS_ENABLED',
+  video: 'MCP_VIDEO_TOOLS_ENABLED',
+  videoGeneration: 'MCP_VIDEO_GEN_ENABLED',
+  banners: 'MCP_BANNER_TOOLS_ENABLED',
+  feeds: 'MCP_FEED_TOOLS_ENABLED',
+  googleAdsRead: 'GOOGLE_ADS_MCP_READ_ENABLED',
+  googleAdsWrite: 'GOOGLE_ADS_MCP_WRITE_ENABLED',
+  googleAdsAutomation: 'GOOGLE_ADS_MCP_AUTOMATION_ENABLED',
+  googleAdsDestructive: 'GOOGLE_ADS_MCP_DESTRUCTIVE_ENABLED'
+} satisfies Record<keyof McpSuiteFlags, string>
+
+/** Reject the whole compact source on any invalid field; never discard independent legacy flags. */
+function parseSuiteConfig(raw: unknown): Partial<McpSuiteFlags> {
+  if (typeof raw !== 'string') return {}
+  try {
+    const value: unknown = JSON.parse(raw)
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+    for (const [key, enabled] of Object.entries(value)) {
+      if (!Object.prototype.hasOwnProperty.call(SUITE_BINDINGS, key) || typeof enabled !== 'boolean') return {}
+    }
+    return value as Partial<McpSuiteFlags>
+  } catch {
+    return {}
+  }
+}
 
 function readRaw(event: H3Event | undefined, key: string): unknown | typeof MISSING {
   const env = (event?.context as { cloudflare?: { env?: Record<string, unknown> } } | undefined)?.cloudflare?.env
@@ -43,23 +73,17 @@ function flag(event: H3Event | undefined, key: string): boolean {
 
 export function resolveMcpRuntimeConfig(event?: H3Event): McpRuntimeConfig {
   const grantsRaw = readRaw(event, 'MCP_MARKETING_STAFF_GRANTS')
+  const compact = parseSuiteConfig(readRaw(event, 'MCP_SUITE_CONFIG'))
+  const suiteFlags = Object.fromEntries(Object.entries(SUITE_BINDINGS).map(([field, key]) => {
+    const legacy = readRaw(event, key)
+    // Presence, not truthiness: even null/undefined/malformed bindings block compact and local grants.
+    return [field, legacy === MISSING ? compact[field as keyof McpSuiteFlags] === true : legacy === 'true']
+  })) as Required<McpSuiteFlags>
   return {
     serverEnabled: flag(event, 'MCP_SERVER_ENABLED'),
     workerOrigin: readMcpRuntimeValue(event, 'MCP_WORKER_ORIGIN') ?? '',
     legacyRequireWriteScope: flag(event, 'MCP_REQUIRE_WRITE_SCOPE'),
-    suiteFlags: {
-      generation: flag(event, 'MCP_GEN_TOOLS_ENABLED'),
-      writes: flag(event, 'MCP_WRITE_TOOLS_ENABLED'),
-      financial: flag(event, 'MCP_FINANCIAL_TOOLS_ENABLED'),
-      video: flag(event, 'MCP_VIDEO_TOOLS_ENABLED'),
-      videoGeneration: flag(event, 'MCP_VIDEO_GEN_ENABLED'),
-      banners: flag(event, 'MCP_BANNER_TOOLS_ENABLED'),
-      feeds: flag(event, 'MCP_FEED_TOOLS_ENABLED'),
-      googleAdsRead: flag(event, 'GOOGLE_ADS_MCP_READ_ENABLED'),
-      googleAdsWrite: flag(event, 'GOOGLE_ADS_MCP_WRITE_ENABLED'),
-      googleAdsAutomation: flag(event, 'GOOGLE_ADS_MCP_AUTOMATION_ENABLED'),
-      googleAdsDestructive: flag(event, 'GOOGLE_ADS_MCP_DESTRUCTIVE_ENABLED')
-    },
+    suiteFlags,
     marketingStaffGrants: parseMarketingStaffGrants(grantsRaw === MISSING ? undefined : grantsRaw)
   }
 }

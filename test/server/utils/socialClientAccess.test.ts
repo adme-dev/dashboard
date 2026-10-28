@@ -2,12 +2,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mockRequireAuth = vi.fn()
 const mockQueryOne = vi.fn()
+const mockFreshGroup = vi.fn()
+const mockQueryOneFresh = vi.fn()
 
 vi.mock('~~/server/utils/auth', () => ({
   requireAuth: (...args: unknown[]) => mockRequireAuth(...args)
 }))
 
+vi.mock('~~/server/utils/clientScoping', () => ({ hasFreshMarketingManagementPermission: (...args: unknown[]) => mockFreshGroup(...args) }))
 vi.mock('~~/server/utils/db', () => ({
+  queryOneFresh: (...args: unknown[]) => mockQueryOneFresh(...args),
   queryOne: (...args: unknown[]) => mockQueryOne(...args)
 }))
 
@@ -22,6 +26,8 @@ const testEvent = {} as Parameters<typeof requireSocialClientAccess>[0]
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mockFreshGroup.mockResolvedValue(false)
+  mockQueryOneFresh.mockResolvedValue(null)
   mockRequireAuth.mockResolvedValue({
     id: 'user-1',
     role: 'account_manager',
@@ -77,6 +83,27 @@ describe('social client access', () => {
       statusCode: 403,
       statusMessage: 'Forbidden - Insufficient permissions'
     })
+    expect(mockQueryOne).not.toHaveBeenCalled()
+  })
+
+  it('admits a newly active client through a fresh dedicated marketing group without assignment rows', async () => {
+    mockRequireAuth.mockResolvedValue({ id: 'user-1', role: 'media_buyer', permissionGroups: ['MARKETING_MANAGEMENT'] })
+    mockFreshGroup.mockResolvedValue(true)
+    mockQueryOneFresh.mockResolvedValue({ id: validClientId })
+    await expect(requireSocialClientAccess(testEvent, validClientId)).resolves.toMatchObject({ id: 'user-1' })
+    expect(mockFreshGroup).toHaveBeenCalledWith('user-1')
+    expect(mockQueryOneFresh).toHaveBeenCalledWith(expect.stringContaining('is_active = TRUE'), [validClientId])
+    expect(mockQueryOne).not.toHaveBeenCalled()
+    expect(hasAllSocialClientAccess({ role: 'media_buyer', permissionGroups: ['MARKETING_MANAGEMENT'] })).toBe(false)
+  })
+
+  it('rejects inactive clients and revoked dedicated authority', async () => {
+    mockRequireAuth.mockResolvedValue({ id: 'user-1', role: 'media_buyer', permissionGroups: ['MARKETING_MANAGEMENT'] })
+    mockFreshGroup.mockResolvedValue(true)
+    await expect(requireSocialClientAccess(testEvent, validClientId)).rejects.toMatchObject({ statusCode: 403 })
+    mockFreshGroup.mockResolvedValue(false)
+    mockQueryOneFresh.mockResolvedValue({ id: validClientId })
+    await expect(requireSocialClientAccess(testEvent, validClientId)).rejects.toMatchObject({ statusCode: 403 })
     expect(mockQueryOne).not.toHaveBeenCalled()
   })
 

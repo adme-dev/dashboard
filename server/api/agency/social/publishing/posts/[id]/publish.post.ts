@@ -1,4 +1,4 @@
-import { requireRole } from '~~/server/utils/auth'
+import { requireDepartmentBrowserReviewer, getDepartmentBrowserSocialPost } from '~~/server/utils/ai/marketing/departmentReviewOperations'
 import { PERMISSIONS } from '~~/server/utils/permissions'
 import { queryOne } from '~~/server/utils/db'
 import { requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
@@ -20,17 +20,19 @@ interface SocialPostRow {
  * Publish an approved post immediately across its platforms.
  *
  * Delegated (staff/MCP) posts publish only their approved, unexpired, unclaimed revision, and only when
- * triggered by a freshly authorized owner/admin other than the requester — a staff member cannot
- * self-trigger dispatch. There is no MCP route to this endpoint.
+ * triggered by a freshly authorized admin or marketing manager other than the requester — a staff member cannot
+ * self-trigger dispatch. MCP uses the same revision dispatcher through the department review adapter.
  */
 export default defineEventHandler(async (event) => {
-  const user = await requireRole(event, PERMISSIONS.CREATIVE)
+  const { user, departmentContext, legacyRoleAuthorized } = await requireDepartmentBrowserReviewer(event, PERMISSIONS.CREATIVE)
   const id = getRouterParam(event, 'id')
   if (!id) throw createError({ statusCode: 400, statusMessage: 'id required' })
 
-  const post = await queryOne<SocialPostRow>('SELECT * FROM social_posts WHERE id = $1', [id])
+  const post = departmentContext
+    ? await getDepartmentBrowserSocialPost(departmentContext, id, legacyRoleAuthorized)
+    : await queryOne<SocialPostRow>('SELECT * FROM social_posts WHERE id = $1', [id])
   if (!post) throw createError({ statusCode: 404, statusMessage: 'Post not found' })
-  await requireSocialClientAccess(event, post.client_id)
+  if (!departmentContext) await requireSocialClientAccess(event, post.client_id)
 
   // Guard: terminal / in-flight states can't be re-published.
   if (['published', 'publishing', 'cancelled'].includes(post.status)) {

@@ -1,10 +1,10 @@
-import { queryRows } from '~~/server/utils/db'
+import { queryRowsFresh } from '~~/server/utils/db'
 import { requireRole } from '~~/server/utils/auth'
 
 export default defineEventHandler(async (event) => {
   await requireRole(event, ['owner', 'admin'])
 
-  const roles = await queryRows(`
+  const roles = await queryRowsFresh(`
     SELECT
       cr.id,
       cr.name,

@@ -10,6 +10,7 @@ import { createError, type H3Event } from 'h3'
 import { queryOneFresh } from '~~/server/utils/db'
 import type { MarketingCapability, ToolContext } from '~~/server/utils/ai/toolContext'
 import { resolveMcpStaffContext, type McpStaffAuthorityOptions } from '~~/server/utils/ai/mcp/staffAuthority'
+import { isMarketingManagementContext } from '~~/server/utils/marketingManagement'
 import { MCP_WRITE_SCOPE } from '~~/server/utils/ai/mcp/scope'
 
 export interface MarketingBoundaryOptions extends McpStaffAuthorityOptions {
@@ -81,9 +82,9 @@ export async function assertMarketingCapabilityAtBoundary(
 }
 
 /**
- * The delegated-marketing reviewer: a currently active owner/admin (fresh ADMIN group), who is NOT the
+ * The delegated-marketing reviewer: a currently active ADMIN or MARKETING_MANAGEMENT member, who is NOT the
  * requester — an admin requester cannot review their own submission either — and the client must be
- * an active client. Leads/project managers (MANAGEMENT without ADMIN) are not reviewers. This grants no
+ * an active client. MANAGEMENT alone is not reviewer authority. This grants no
  * owner/God-mode authority. `reviewerId` defaults to the signed-in browser user.
  */
 export async function requireIndependentMarketingReviewer(
@@ -101,8 +102,8 @@ export async function requireIndependentMarketingReviewer(
     forbidden('Requesters cannot review their own delegated submission')
   }
   const ctx = await resolveMcpStaffContext(event, reviewerId, [], options)
-  if (!(ctx.permissionGroups ?? []).includes('ADMIN')) {
-    forbidden('Only an owner or admin can review delegated marketing work')
+  if (!(ctx.permissionGroups ?? []).includes('ADMIN') && !isMarketingManagementContext(ctx)) {
+    forbidden('An admin or marketing manager must review delegated marketing work')
   }
   if (ctx.assistantReadOnly === true) forbidden('MARKETING_ROLE_READ_ONLY')
   if (!await freshContextCoversClient(ctx, input.clientId, options.clientIsActive)) {

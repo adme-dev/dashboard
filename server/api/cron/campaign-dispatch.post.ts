@@ -1,8 +1,8 @@
 // server/api/cron/campaign-dispatch.post.ts
 // Campaign send engine tick (Phase 2b-2b). Auth: x-cron-secret vs CRON_SECRET
 // (mirror of anomaly-detection.post.ts). Promotes due scheduled campaigns and
-// drains in-flight ones a bounded amount. Self-gates: a no-op unless
-// EMAIL_SENDING_ENABLED=true (the hard send gate).
+// drains in-flight ones a bounded amount. Self-gates: a no-op unless the hard
+// send gate (isCampaignSendingEnabled, read from this request's bindings) is on.
 //
 // ⚠️ This route is DORMANT until its cron trigger is enabled in the Cloudflare
 // dashboard (Workers & Pages → Triggers → Cron, e.g. every minute). Enabling it
@@ -19,6 +19,6 @@ export default defineEventHandler(async (event) => {
   // Surface CF bindings (RESEND_API_KEY etc.) to the gate/transport in cron ctx.
   setCfBindings((event.context as { cloudflare?: { env?: Record<string, unknown> } }).cloudflare?.env)
 
-  const summary = await dispatchCampaigns()
+  const summary = await dispatchCampaigns({ event })
   return { ok: true, ...summary }
 })

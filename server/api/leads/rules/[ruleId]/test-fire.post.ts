@@ -2,17 +2,21 @@
 // Synthesizes a sample lead from form metadata, runs filter eval per destination,
 // dispatches via the adapter, and returns per-destination result. Persists nothing.
 
-import { requireRole } from '~~/server/utils/auth'
 import { PERMISSIONS } from '~~/server/utils/permissions'
 import { execute, queryOne, queryRows } from '~~/server/utils/db'
+import { resolveMarketingLeadRuleScope } from '~~/server/utils/leads/followupAccess'
 import { evaluateFilter } from '~~/server/utils/leads/filterEval'
 import { getAdapter } from '~~/server/utils/leads/destinations'
 import { deliveryIdempotencyKey } from '~~/server/utils/leads/idempotency'
-import type { Lead, LeadDelivery } from '~~/app/types'
+import type { Lead, LeadDelivery, LeadFilter } from '~~/app/types'
+
+type Rule = { id: string, client_id: string, source: Lead['source'], form_id: string, form_name: string | null }
+type Metadata = { fields?: Array<{ key: string, sample_value?: string }> }
+type Destination = { id: string, destination_type: LeadDelivery['destination_type'], config: unknown, filter: LeadFilter | null, enabled: boolean }
 
 export default defineEventHandler(async (event) => {
-  await requireRole(event, PERMISSIONS.MEDIA_BUYING)
   const ruleId = getRouterParam(event, 'ruleId')!
+  await resolveMarketingLeadRuleScope(event, ruleId, { write: true, legacyRoles: PERMISSIONS.MEDIA_BUYING })
   const overrides = (await readBody(event)) as {
     field_data?: Record<string, string>
     campaign_id?: string | null
@@ -22,11 +26,11 @@ export default defineEventHandler(async (event) => {
     page_id?: string | null
   } | null
 
-  const rule: any = await queryOne(`SELECT * FROM lead_form_rules WHERE id = $1`, [ruleId])
+  const rule = await queryOne<Rule>(`SELECT * FROM lead_form_rules WHERE id = $1`, [ruleId])
   if (!rule) throw createError({ statusCode: 404, statusMessage: 'not_found' })
-  const meta: any = await queryOne(
+  const meta = await queryOne<Metadata>(
     `SELECT * FROM lead_form_metadata WHERE source = $1 AND form_id = $2`,
-    [rule.source, rule.form_id],
+    [rule.source, rule.form_id]
   )
   const sampleFields: Record<string, string> = {}
   for (const f of (meta?.fields ?? [])) {
@@ -51,19 +55,28 @@ export default defineEventHandler(async (event) => {
     attribution: null, score: null, score_reasons: null, status: 'new',
     spam_reasons: null, assigned_to: null, contacted_at: null, contacted_by: null,
     notes: null, created_by: null, deleted_at: null,
-    created_at: new Date().toISOString(),
+    created_at: new Date().toISOString()
   }
 
-  const destinations: any[] = await queryRows(
+  const destinations = await queryRows<Destination>(
     `SELECT * FROM lead_rule_destinations WHERE rule_id = $1 ORDER BY sort_order`,
-    [ruleId],
+    [ruleId]
   )
-  const results: any[] = []
+  const results: Array<Record<string, unknown>> = []
   for (const d of destinations) {
-    if (!d.enabled) { results.push({ id: d.id, skipped: 'disabled' }); continue }
-    if (!evaluateFilter(fakeLead, d.filter)) { results.push({ id: d.id, skipped: 'filter' }); continue }
+    if (!d.enabled) {
+      results.push({ id: d.id, skipped: 'disabled' })
+      continue
+    }
+    if (!evaluateFilter(fakeLead, d.filter)) {
+      results.push({ id: d.id, skipped: 'filter' })
+      continue
+    }
     const adapter = getAdapter(d.destination_type)
-    if (!adapter) { results.push({ id: d.id, skipped: 'unknown_type' }); continue }
+    if (!adapter) {
+      results.push({ id: d.id, skipped: 'unknown_type' })
+      continue
+    }
     const fakeDelivery: LeadDelivery = {
       id: crypto.randomUUID(),
       lead_id: fakeLead.id,
@@ -79,7 +92,7 @@ export default defineEventHandler(async (event) => {
       response_meta: null,
       idempotency_key: deliveryIdempotencyKey(testLeadId, d.id),
       created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
     }
     const r = await adapter.dispatch(fakeDelivery, fakeLead, d.config)
     results.push({ id: d.id, type: d.destination_type, ...r })

@@ -43,7 +43,7 @@ const STEPS = [
   { num: 2, label: 'Campaign' },
   { num: 3, label: 'Creatives' },
   { num: 4, label: 'Ad Copy' },
-  { num: 5, label: 'Publish' },
+  { num: 5, label: 'Review' },
 ]
 
 const canNext = computed(() => {
@@ -108,7 +108,7 @@ function platformLabel(p: string): string {
       <div class="flex flex-col h-full">
         <!-- Header -->
         <div class="flex items-center justify-between px-5 py-3 border-b border-(--ui-border) shrink-0">
-          <h2 class="text-sm font-bold">Publish to Meta Ads</h2>
+          <h2 class="text-sm font-bold">Prepare Meta Ad Review</h2>
           <UButton icon="i-lucide-x" variant="ghost" size="xs" @click="handleClose" />
         </div>
 
