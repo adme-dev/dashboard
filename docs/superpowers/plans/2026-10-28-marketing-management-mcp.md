@@ -77,17 +77,19 @@
 
 - [x] Add `department_management` to the operator grant contract without granting groups by configuration alone.
 - [x] Integrate explicit department tools with discovery/call parity; unknown or unauthorised calls fail closed.
-- [ ] Run combined boundary tests and required repository checks; compare existing diagnostics; independent complete diff review and corrections.
+- [x] Run combined boundary tests and required repository checks; compare existing diagnostics; independent complete diff review and corrections.
 - [x] Update operator/public documentation to match implemented behavior and record remaining provider acceptance gates.
 
 ## Task 6 — enrollment and current-main release
 
 - [x] Re-read both identities, role membership and production configuration; prepare exact dedicated role/groups/grants and rollback data without credentials in logs.
-- [ ] Enroll both using supported authenticated application routes, retaining existing identities and support assignments; independent canonical readback.
-- [ ] Integrate onto fresh main, run `pnpm deploy:check`, build/release only to `agency-dashboard`; record source and deployment identity.
-- [ ] Verify live fresh marketing role/access projection, existing owner/QR behavior, enabled suite readiness and relevant read-only application routes.
+- [x] Enroll both using supported authenticated application routes, retaining existing identities and support assignments; independent canonical readback.
+- [x] Integrate onto fresh main, run `pnpm deploy:check`, build/release only to `agency-dashboard`; record source and deployment identity.
+- [x] Verify live canonical marketing roles and grant configuration, existing owner/QR behavior, connector rendering and relevant read-only application routes. Employee host projection remains the acceptance step below.
 - [ ] Staff use their own Claude/ChatGPT OAuth login for host acceptance. Do not mint or impersonate staff sessions; report any remaining externally dependent verification separately.
 
 ## Execution and decisions
 
-The owner has authorised the researched scope and implementation; no repeat design/permission question is needed. Both receive the marketing-management function; no HR title or employee performance profile is changed. Kimi completed an independent review after the owner explicitly requested renewed use, and is now implementing bounded review corrections alongside Claude and Codex. Keep explicit file ownership. Each task records red/green evidence, source files, reviewer result and unresolved gates in `.superpowers/sdd/2026-10-28-marketing-management-mcp/progress.md`.
+The owner has authorised the researched scope and implementation; no repeat design/permission question is needed. Both receive the marketing-management function; no HR title or employee performance profile is changed. Claude and Kimi completed implementation and independent reviews. Codex recovered quota-limited work, integrated the reviewed candidate, deployed Pages/MCP and verified both enrollments. Worker ownership boundaries were retained throughout. Each task records red/green evidence, source files, reviewer result and unresolved gates in `.superpowers/sdd/2026-10-28-marketing-management-mcp/progress.md`.
+
+Release and canonical enrollment evidence: [28 October release record](../../runbooks/marketing-management-mcp-release-20261028.md). CI 40619400728 passed, PR 727 merged, both nine-group roles and 438 board memberships verified. Actual employee OAuth remains the explicitly external acceptance item above.
