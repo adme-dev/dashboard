@@ -19,10 +19,15 @@ const transaction = vi.fn(async (callback: (db: { query: typeof query }) => Prom
 )
 
 vi.mock('~~/server/utils/auth', () => ({
+  requireAuth: vi.fn(async () => ({ id: 'actor-1', role: 'member' })),
   requireRole: (...args: unknown[]) => requireRole(...args)
+}))
+vi.mock('~~/server/utils/clientScoping', () => ({
+  hasFreshMarketingManagementPermission: vi.fn(async () => false)
 }))
 vi.mock('~~/server/utils/db', () => ({
   queryOne: (...args: unknown[]) => queryOne(...args),
+  queryOneFresh: vi.fn(async () => null),
   transaction: (...args: unknown[]) => transaction(...args)
 }))
 

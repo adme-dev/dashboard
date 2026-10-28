@@ -202,7 +202,7 @@ const features: Record<string, Feature> = {
     description: 'Prepare client-scoped advertising and tracking changes with independent review before execution. Availability depends on staff grants and connected provider accounts.',
     details: [
       { title: 'Your assigned client accounts', content: 'Staff discover and inspect only the client accounts covered by their current permissions and marketing grants. Connecting an assistant does not connect an advertising account or grant wider agency access.' },
-      { title: 'Exact Google Ads proposals', content: 'Campaign changes are saved with the account, desired change, risk, expiry and diff. A different active owner or admin reviews that exact plan in XeroFlow. Approval and execution are separate actions; staff cannot self-confirm advertising changes.' },
+      { title: 'Exact Google Ads proposals', content: 'Campaign changes are saved with the account, desired change, risk, expiry and diff. A different active owner, administrator or explicitly authorised marketing manager reviews that exact plan. Approval and execution are separate actions; staff cannot self-confirm advertising changes.' },
       { title: 'Bounded tracking changes', content: 'Tracking proposals require documented website ownership, consent and existing conversion routing. Supported templates cover a bounded Google tag, GA4 event and Google Ads conversion, plus folders and a window-loaded trigger. Native DriveAgent accepted enquiries retain their server delivery path. Arbitrary HTML, JavaScript and unregistered templates are excluded.' },
       { title: 'Results you can inspect', content: 'Workspace compilation, publish, live read-back and actual conversion delivery are separate evidence. Publishing a compiled version requires another review. Drift blocks execution and uncertain outcomes stay held for inspection. Provider scopes, permissions and live account acceptance remain activation requirements.' }
     ]
@@ -666,7 +666,7 @@ const features: Record<string, Feature> = {
     details: [
       {
         title: 'Supported Conversations in One Inbox',
-        content: 'Supported Meta conversations, LinkedIn Company Page comments and Google Business reviews share a conversation view. Coverage differs by provider and granted operation; TikTok organic inbox and replies are unavailable, and YouTube publishing is disabled. The marketing staff MCP connector does not expose inbox or comment sending.'
+        content: 'Supported Meta conversations, LinkedIn Company Page comments and Google Business reviews share a conversation view. Coverage differs by provider and granted operation; TikTok organic inbox and replies are unavailable, and YouTube publishing is disabled. Staff with department management access can prepare supported replies for independent review and execution through MCP. Exact conversation, account and message checks remain required.'
       },
       {
         title: 'Reply In Place',
@@ -1949,23 +1949,23 @@ const features: Record<string, Feature> = {
     categoryIcon: 'i-lucide-brain',
     categoryIconBg: 'bg-amber-50 dark:bg-amber-500/10',
     categoryIconColor: 'text-amber-600 dark:text-amber-400',
-    description: 'Use your AI assistant for assigned-client reporting and reviewed marketing preparation, with your own login, current permissions and clear provider readiness.',
+    description: 'Use your AI assistant for client reporting and marketing management, with your own login, current permissions and clear provider readiness.',
     details: [
       {
         title: 'Connect with your own account',
         content: 'The setup page guides staff through connecting Claude, ChatGPT or Cursor to XeroFlow. It previews effective permission groups, client scope and narrow capability grants, and names the OAuth scopes it assumes. Your actual host grant can be narrower; host plan and workspace policies still apply. Owner access stays separate from staff enrollment.'
       },
       {
-        title: 'Understand assigned campaign performance',
-        content: 'Read stored campaign, ad, search-term, pacing and social performance for your permitted clients. Reporting keeps source dates, coverage gaps and unavailable data visible instead of treating missing data as zero. Ordinary reporting reads do not refresh provider data or expand access to unassigned clients.'
+        title: 'Manage your active client portfolio',
+        content: 'Read stored campaign, ad, search-term, pacing and social performance for your permitted clients. The dedicated Marketing management role can cover every active client, with department summaries for budget health, lead quality, SEO, inbox and email statistics, creative inventory and work coverage. Reporting shows dates, coverage gaps and unavailable data; it does not silently refresh providers.'
       },
       {
-        title: 'Prepare work for independent review',
-        content: 'Granted staff can create social drafts with exact account and media choices, submit immutable revisions, and prepare supported Google Ads or tracking proposals. A separate authorized owner or administrator reviews the exact change in XeroFlow. Changes, expiry or revoked access can require a new review; the staff connector cannot publish a social post directly.'
+        title: 'Manage daily marketing work',
+        content: 'Manage supported tasks, content, lead follow-up, creative drafts, KPI targets, budget allocations, inventory feeds and ad preparation through your assistant. Department access also supports reviewed campaign email, inbox replies and website releases where enabled. Website work retains its native permissions and original XeroFlow login checks; boards retain membership requirements. Some specialist editing and administration actions remain in their native editors.'
       },
       {
         title: 'See what each provider supports',
-        content: 'Assistant authorization and provider OAuth are separate. Account readiness distinguishes publishing, comments, inbox, organic reporting and paid operations, with explicit reasons when an operation is unavailable. Facebook, Page-linked Instagram and LinkedIn still need their required grants and account authority. TikTok publishing remains unavailable pending product eligibility and app approval; the staff connector does not send inbox replies.'
+        content: 'Assistant authorization and provider OAuth are separate. Account readiness distinguishes publishing, comments, inbox, organic reporting and paid operations, with explicit reasons when an operation is unavailable. Facebook, Page-linked Instagram and LinkedIn still need their required grants and account authority. TikTok publishing remains unavailable pending product eligibility and app approval. Supported sends and releases require an independently authorised reviewer of the exact submission; changes, revoked access or uncertain outcomes can stop execution.'
       }
     ]
   },
@@ -1977,7 +1977,7 @@ const features: Record<string, Feature> = {
     categoryIcon: 'i-lucide-brain',
     categoryIconBg: 'bg-amber-50',
     categoryIconColor: 'text-amber-600',
-    description: 'Connect Claude, Cursor, or ChatGPT to XeroFlow with your own login. Marketing staff receive scoped reporting and reviewed preparation; the owner workflows below require separately verified active owner authority, including operational evidence, approved creative sources and the immutable action ledger.',
+    description: 'Connect Claude, Cursor, or ChatGPT to XeroFlow with your own login. Marketing staff receive scoped reporting and supported department management with independent review for consequential actions; the owner workflows below require separately verified active owner authority, including operational evidence, approved creative sources and the immutable action ledger.',
     details: [
       {
         title: 'Owner Campaign and Creative Godmode',

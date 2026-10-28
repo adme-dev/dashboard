@@ -1,4 +1,4 @@
-import { requireAuth } from '~~/server/utils/auth'
+import { requireSocialInboxClient } from '~~/server/utils/socialInbox/departmentScope'
 import { queryOne, queryRows } from '~~/server/utils/db'
 import { getSocialInboxAnalytics } from '~~/server/utils/socialInbox/analytics'
 
@@ -7,10 +7,10 @@ import { getSocialInboxAnalytics } from '~~/server/utils/socialInbox/analytics'
  * Response-time, SLA, volume and automation-rate metrics for the client's conversations in the window.
  */
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
   const q = getQuery(event)
   const clientId = q.clientId as string
   if (!clientId) throw createError({ statusCode: 400, statusMessage: 'clientId required' })
+  await requireSocialInboxClient(event, clientId)
   const days = Math.min(Math.max(Number(q.days) || 30, 1), 365)
 
   return getSocialInboxAnalytics({ queryOne, queryRows }, { clientId, days })

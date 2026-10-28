@@ -19,6 +19,7 @@ const mockCreateOnboardingAttestation = vi.fn()
 const mockRunPreflight = vi.fn()
 const mockExecutePausedCreate = vi.fn()
 const mockExecuteActivation = vi.fn()
+const mockDepartmentPortfolio = vi.fn()
 
 let query: Record<string, unknown> = {}
 let body: Record<string, unknown> = {}
@@ -46,8 +47,14 @@ vi.mock('~~/server/utils/social/clientAccess', () => ({
   requireAllSocialClientAccess: (...args: unknown[]) => mockRequireAllSocialClientAccess(...args)
 }))
 
+vi.mock('~~/server/utils/googlePmaxDepartmentScope', () => ({
+  resolvePmaxDepartmentPortfolio: (...args: unknown[]) => mockDepartmentPortfolio(...args)
+}))
+
 vi.mock('~~/server/utils/db', () => ({
-  queryOne: (...args: unknown[]) => mockQueryOne(...args)
+  queryOne: (...args: unknown[]) => mockQueryOne(...args),
+  queryOneFresh: (...args: unknown[]) => mockQueryOne(...args),
+  queryRowsFresh: vi.fn()
 }))
 
 vi.mock('~~/server/utils/googlePmaxLaunchStore', async (importOriginal) => {
@@ -69,6 +76,7 @@ vi.mock('~~/server/utils/googlePmaxLaunchPreparation', () => {
   }
   return {
     GooglePmaxLaunchPreparationError,
+    createGooglePmaxLaunchPreparation: () => ({ list: (...args: unknown[]) => mockListPreparableBriefs(...args) }),
     googlePmaxLaunchPreparation: {
       list: (...args: unknown[]) => mockListPreparableBriefs(...args),
       identify: (...args: unknown[]) => mockIdentifyPreparableBrief(...args),
@@ -189,6 +197,7 @@ describe('Google PMax launch API boundaries', () => {
     vi.resetModules()
     query = {}
     body = {}
+    mockDepartmentPortfolio.mockResolvedValue(null)
     launchId = '5c4ca47b-df3a-43cd-b82f-a23a3f03a781'
     mockRequirePermission.mockResolvedValue({ id: ids.actor, role: 'owner', email: 'owner@example.com' })
     mockGetSelectedTenant.mockResolvedValue(ids.tenant)
@@ -236,6 +245,32 @@ describe('Google PMax launch API boundaries', () => {
     expect(mockListPreparableBriefs).toHaveBeenCalledWith({ tenantId: ids.tenant, clientId: undefined, limit: 50 })
     expect(result.preparableBriefs).toHaveLength(1)
     expect(result.permissions).toEqual({ canApprove: true })
+  })
+
+  it('lists only fresh active department clients for marketing staff without the all-social sentinel', async () => {
+    mockDepartmentPortfolio.mockResolvedValue({ userId: ids.actor, clientIds: undefined })
+    const handler = (await import('~~/server/api/agency/social/google/pmax-launches/index.get')).default
+
+    const result = await handler({ context: {} } as never)
+
+    expect(mockDepartmentPortfolio).toHaveBeenCalledWith(expect.anything(), undefined)
+    expect(mockRequirePermission).not.toHaveBeenCalled()
+    expect(mockRequireAllSocialClientAccess).not.toHaveBeenCalled()
+    expect(mockRequireSocialClientAccess).not.toHaveBeenCalled()
+    expect(mockListLaunches).toHaveBeenCalledWith({ tenantId: ids.tenant, clientId: undefined, clientIds: undefined, activeClientsOnly: true, limit: 50 })
+    expect(mockListPreparableBriefs).toHaveBeenCalledWith({ tenantId: ids.tenant, clientId: undefined, clientIds: undefined, activeClientsOnly: true, limit: 50 })
+    expect(result.permissions).toEqual({ canApprove: false, departmentApprovalChannel: 'mcp' })
+  })
+
+  it('narrows a department list to the fresh assigned client set', async () => {
+    mockDepartmentPortfolio.mockResolvedValue({ userId: ids.actor, clientIds: [ids.client] })
+    query = { clientId: ids.client }
+    const handler = (await import('~~/server/api/agency/social/google/pmax-launches/index.get')).default
+
+    await handler({ context: {} } as never)
+
+    expect(mockDepartmentPortfolio).toHaveBeenCalledWith(expect.anything(), ids.client)
+    expect(mockListLaunches).toHaveBeenCalledWith({ tenantId: ids.tenant, clientId: ids.client, clientIds: [ids.client], activeClientsOnly: true, limit: 50 })
   })
 
   it('enforces assignment scope when listing one client', async () => {

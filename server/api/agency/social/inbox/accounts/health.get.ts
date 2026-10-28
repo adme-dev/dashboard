@@ -1,15 +1,20 @@
-import { requireAuth } from '~~/server/utils/auth'
+import { requireSocialInboxClient } from '~~/server/utils/socialInbox/departmentScope'
 import { queryRows } from '~~/server/utils/db'
 
 /**
  * GET /api/agency/social/inbox/accounts/health?clientId=...
  * Read-only sync/permission diagnostics for the engagement inbox. Tokens are never returned.
- * Omit clientId for all active connected accounts.
+ * Omit clientId for all active connected accounts. Department (MARKETING_MANAGEMENT) staff only see
+ * active accounts of active clients, and per-account conversation counts only include conversations
+ * that the account's own client owns.
  */
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
   const rawClientId = getQuery(event).clientId
   const clientId = typeof rawClientId === 'string' && rawClientId.trim() ? rawClientId : null
+  const { department } = await requireSocialInboxClient(event, clientId)
+  const departmentAccountSql = department
+    ? ' AND a.is_active = TRUE AND EXISTS (SELECT 1 FROM agency_clients ac WHERE ac.id = a.client_id AND ac.is_active = TRUE)'
+    : ''
 
   return await queryRows(
     `SELECT
@@ -54,9 +59,9 @@ export default defineEventHandler(async (event) => {
        LEFT JOIN LATERAL (
          SELECT COUNT(*) AS conversation_count, MAX(last_message_at) AS latest_message_at
          FROM social_conversations c
-         WHERE c.social_account_id = a.id
+         WHERE c.social_account_id = a.id${department ? ' AND c.client_id = a.client_id' : ''}
        ) conv_stats ON TRUE
-      WHERE ${clientId ? 'a.client_id = $1' : 'a.is_active = TRUE'}
+      WHERE ${clientId ? 'a.client_id = $1' : 'a.is_active = TRUE'}${departmentAccountSql}
       ORDER BY a.platform, a.account_name NULLS LAST`,
     clientId ? [clientId] : []
   )

@@ -336,6 +336,12 @@ describe('Google PMax launch store', () => {
     expect(mockQuery).toHaveBeenCalledTimes(4)
   })
 
+  it('rejects requester self-approval even through the shared browser store', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ brief_id: ids.brief }] }).mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [launchRow({ state: 'READY_FOR_APPROVAL' })] }).mockResolvedValueOnce({ rows: [] })
+    await expect(approveGooglePmaxLaunch({ launchId: ids.launch, tenantId: ids.tenant, approvalKind: 'create', expectedConfigVersion: 1, expectedConfigHash: configHash, actorId: ids.actor, reason: 'Self approval must fail' })).rejects.toMatchObject({ code: 'LAUNCH_APPROVAL_CONFLICT' })
+  })
+
   it('records creation approval and state/event transition in one transaction', async () => {
     mockQuery
       .mockResolvedValueOnce({ rows: [{ brief_id: ids.brief }] })
@@ -352,7 +358,7 @@ describe('Google PMax launch store', () => {
       approvalKind: 'create',
       expectedConfigVersion: 1,
       expectedConfigHash: configHash,
-      actorId: ids.actor,
+      actorId: '11111111-1111-4111-8111-111111111111',
       reason: 'Approved after reviewing the exact fixed-flight launch configuration.'
     })
 

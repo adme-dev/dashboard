@@ -62,6 +62,18 @@ export interface CampaignRecipientSnapshot {
   generatedAt: string
 }
 
+/** Optional open-transaction handle (pg client). Without it the pooled helpers are used unchanged. */
+export interface CampaignDb {
+  // pg row shape, matching the department execution ledger's transaction client.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  query: (sql: string, params?: unknown[]) => Promise<{ rows: any[] }>
+}
+
+async function campaignRow(db: CampaignDb | undefined, sql: string, params: unknown[]): Promise<Campaign | null> {
+  if (!db) return queryOne<Campaign>(sql, params)
+  return ((await db.query(sql, params)).rows[0] as Campaign | undefined) ?? null
+}
+
 export interface CampaignHtmlPrepareOptions {
   appUrl?: string
   userId?: string
@@ -229,7 +241,7 @@ export interface CreateCampaignInput {
   created_by: string | null
 }
 
-export async function createCampaign(input: CreateCampaignInput, renderer: EmailRendererClient): Promise<Campaign> {
+export async function createCampaign(input: CreateCampaignInput, renderer: EmailRendererClient, db?: CampaignDb): Promise<Campaign> {
   const source = input.body_source ?? { root: { type: 'EmailLayout', data: { childrenIds: [] } } }
   const name = input.name.trim()
   const subject = normalizeNullableText(input.subject) ?? null
@@ -238,7 +250,7 @@ export async function createCampaign(input: CreateCampaignInput, renderer: Email
   const replyTo = normalizeNullableText(input.reply_to) ?? null
   const previewText = normalizeNullableText(input.preview_text) ?? null
   const html = await renderHtml(renderer, source, subject, previewText)
-  const row = await queryOne<Campaign>(`
+  const row = await campaignRow(db, `
     INSERT INTO campaigns
       (name, subject, from_name, from_email, reply_to, preview_text,
        body_source, body_html, template_id, client_id, created_by, filter_rules)
@@ -277,8 +289,8 @@ export interface UpdateCampaignInput {
   filter_rules?: unknown
 }
 
-export async function updateCampaign(id: string, patch: UpdateCampaignInput, renderer: EmailRendererClient): Promise<Campaign | null> {
-  const existing = await getCampaign(id)
+export async function updateCampaign(id: string, patch: UpdateCampaignInput, renderer: EmailRendererClient, db?: CampaignDb): Promise<Campaign | null> {
+  const existing = db ? await campaignRow(db, 'SELECT * FROM campaigns WHERE id = $1', [id]) : await getCampaign(id)
   if (!existing) return null
   if (existing.status !== 'draft') {
     throw createError({ statusCode: 409, statusMessage: 'campaign_not_editable' })
@@ -294,7 +306,7 @@ export async function updateCampaign(id: string, patch: UpdateCampaignInput, ren
   const filterRules = patch.filter_rules !== undefined ? patch.filter_rules : existing.filter_rules
   const name = patch.name !== undefined ? patch.name.trim() || existing.name : existing.name
 
-  const row = await queryOne<Campaign>(`
+  const row = await campaignRow(db, `
     UPDATE campaigns SET
       name         = $2,
       subject      = $3,
@@ -329,21 +341,23 @@ export async function updateCampaign(id: string, patch: UpdateCampaignInput, ren
 }
 
 // Replace the campaign's target lists (draft-only).
-export async function setCampaignLists(campaignId: string, listIds: string[]): Promise<void> {
-  const existing = await getCampaign(campaignId)
+export async function setCampaignLists(campaignId: string, listIds: string[], db?: CampaignDb): Promise<void> {
+  const existing = db ? await campaignRow(db, 'SELECT * FROM campaigns WHERE id = $1', [campaignId]) : await getCampaign(campaignId)
   if (!existing) throw createError({ statusCode: 404, statusMessage: 'not_found' })
   if (existing.status !== 'draft') {
     throw createError({ statusCode: 409, statusMessage: 'campaign_not_editable' })
   }
-  await transaction(async (db) => {
-    await db.query('DELETE FROM campaign_lists WHERE campaign_id = $1', [campaignId])
+  const replace = async (tx: CampaignDb) => {
+    await tx.query('DELETE FROM campaign_lists WHERE campaign_id = $1', [campaignId])
     for (const listId of listIds) {
-      await db.query(
+      await tx.query(
         'INSERT INTO campaign_lists (campaign_id, list_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
         [campaignId, listId]
       )
     }
-  })
+  }
+  if (db) await replace(db)
+  else await transaction(async tx => replace(tx as unknown as CampaignDb))
 }
 
 // Expand the target lists into the per-recipient work queue. Idempotent

@@ -1,3 +1,4 @@
+import type { PageStudioLoginSession } from '~~/shared/pageStudio/controlTypes'
 import type { H3Event } from 'h3'
 import { createError, getHeader, getMethod, getRequestURL, readBody } from 'h3'
 
@@ -29,10 +30,24 @@ export interface ConsumeMcpRequestClaimDependencies {
 }
 
 const authorityContextKey = Symbol('mcpRequestGodModeAuthority')
+const consumedStudioClaims = new WeakMap<H3Event, Readonly<McpRequestClaim>>()
+
+/** Only this exact, successfully consumed request can supply original-login proof to Studio. */
+export function getConsumedMcpPageStudioLogin(event: H3Event, expectedUserId: string, expectedToolName: string): PageStudioLoginSession | null {
+  const claim = consumedStudioClaims.get(event)
+  const proof = claim?.pageStudioLogin
+  const now = Date.now()
+  if (!claim || claim.path !== '/api/internal/mcp/call' || claim.uid !== expectedUserId
+    || claim.toolName !== expectedToolName || claim.exp * 1000 <= now || !claim.scope.includes('mcp:read')
+    || !proof || proof.role !== 'agency' || proof.userId !== expectedUserId
+    || proof.issuedAt > now || proof.expiresAt <= now) return null
+  // Copies prevent a caller from mutating the evidence stored for this request.
+  return { ...proof, issuedAt: new Date(proof.issuedAt), expiresAt: new Date(proof.expiresAt) }
+}
 
 function requestSigningSecret(event: H3Event, configured?: string): string {
   if (configured !== undefined) return configured
-  const binding = (event.context as any).cloudflare?.env?.MCP_REQUEST_SIGNING_SECRET
+  const binding = (event.context as { cloudflare?: { env?: Record<string, unknown> } }).cloudflare?.env?.MCP_REQUEST_SIGNING_SECRET
   return typeof binding === 'string' ? binding : (process.env.MCP_REQUEST_SIGNING_SECRET ?? '')
 }
 
@@ -136,5 +151,6 @@ export async function consumeMcpRequestClaim(
   if (!consumed) deny(409, 'MCP request assertion already consumed')
 
   ;(event.context as Record<PropertyKey, unknown>)[authorityContextKey] = authority
+  if (claim.pageStudioLogin) consumedStudioClaims.set(event, Object.freeze({ ...claim, scope: [...claim.scope], pageStudioLogin: Object.freeze({ ...claim.pageStudioLogin }) }))
   return claim
 }

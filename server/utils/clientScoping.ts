@@ -1,5 +1,5 @@
 import { createError, type H3Event } from 'h3'
-import { queryRows } from './db'
+import { queryRows, queryOneFresh } from './db'
 import { kvGet, kvPut, kvDelete } from './kv'
 import { roleHasPermission } from './permissions'
 import type { User } from './auth'
@@ -61,4 +61,18 @@ export async function requireInvoiceAccess(event: H3Event): Promise<{ user: User
  */
 export function invalidateAssignmentCache(event: H3Event, userId: string) {
   kvDelete(event, `client-assignments:${userId}`)
+}
+
+/** Fresh explicit browser grant; never infer marketing management from a legacy role or KV cache. */
+export async function hasFreshMarketingManagementPermission(userId: string): Promise<boolean> {
+  const row = await queryOneFresh<{ allowed: boolean }>(`
+    SELECT TRUE AS allowed
+      FROM team_members tm
+      JOIN custom_roles cr ON cr.id = tm.custom_role_id
+        OR (tm.custom_role_id IS NULL AND cr.is_system = TRUE AND cr.slug = tm.user_role::text)
+      JOIN role_permission_groups rpg ON rpg.role_id = cr.id
+     WHERE tm.id = $1 AND tm.is_active = TRUE
+       AND rpg.permission_group = 'MARKETING_MANAGEMENT'
+     LIMIT 1`, [userId])
+  return row?.allowed === true
 }

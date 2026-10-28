@@ -333,13 +333,14 @@ describe('God mode gate inventory', () => {
     expect(inventory.rows).toContain('server/utils/social/clientAccess.ts\tconst groups = context.permissionGroups ?? []\tordinary_user_behavior')
     // R3 adds the current CREATIVE operation check; reads retain their existing authority boundary.
     expect(inventory.rows).toContain('server/api/agency/social/publishing/accounts/index.get.ts\tconst canPublish = context.permissionGroups?.includes(\'CREATIVE\') === true\tordinary_user_behavior')
-    // Task6 adds exactly three lexical permission-group presentation/metadata rows. No gate or classifier changes.
-    expect(inventory.rows).toHaveLength(1657)
+    // Department client and KPI boundaries add fresh role reads and retain native manager gates.
+    // Exact reviewed diff: root-gate-inventory-release-diff.json; classifier and seed counts unchanged.
+    expect(inventory.rows).toHaveLength(1688)
     expect(inventory.counts).toEqual({
-      identity_tenant_hard_boundary: 127,
+      identity_tenant_hard_boundary: 133,
       provider_infrastructure_availability: 222,
-      application_governance_bypass: 1620,
-      ordinary_user_behavior: 256,
+      application_governance_bypass: 1607,
+      ordinary_user_behavior: 294,
       unrelated_configuration: 431
     })
     // Removing the session KV shortcut removes four auth middleware rows:
@@ -355,13 +356,15 @@ describe('God mode gate inventory', () => {
     // Publication casts the PostgreSQL user_role enum to text before comparing
     // the role slug. The predicate, scope and classification remain unchanged.
     expect(inventory.rows).toContain('server/utils/pageStudio/releaseFeatureAuthority.ts\tOR (owner.custom_role_id IS NULL AND role.slug=owner.user_role::text AND role.is_system=TRUE))\tidentity_tenant_hard_boundary')
-    expect(inventory.rows).toContain('server/utils/ai/marketing/reviewAuthority.ts\tif (!(ctx.permissionGroups ?? []).includes(\'ADMIN\')) {\tordinary_user_behavior')
+    expect(inventory.rows).toContain('server/utils/ai/marketing/reviewAuthority.ts\tif (!(ctx.permissionGroups ?? []).includes(\'ADMIN\') && !isMarketingManagementContext(ctx)) {\tordinary_user_behavior')
     expect(inventory.rows.filter(row => row.startsWith('server/utils/socialPublishing/mediaAssets.ts\t'))).toEqual([
       'server/utils/socialPublishing/mediaAssets.ts\tconst secret = typeof bound === \'string\' ? bound : (env && \'RENDER_LINK_SECRET\' in env ? null : process.env.RENDER_LINK_SECRET)\tprovider_infrastructure_availability'
     ])
-    // Formatting connectors.vue changes one lexical permission-group presentation row;
-    // all 1657 rows retain their classifications and counts.
-    expect(inventory.digest).toBe('d87c32635f751e1a2ba781e643d84e8bfe2c07c6acf26c7ec7af001ccbcc5b2e')
+    // Marketing management adds fresh role/client checks and delegates browser gates
+    // to shared services. Email dispatch now reads request-bound provider config.
+    // The classifier and owner bypass registrations remain unchanged; the reviewed
+    // row diff is recorded in the marketing-management verification ledger.
+    expect(inventory.digest).toBe('6dea82a15a9098f93fe1b2ea5b6c2937389f35c3bb7f20cd73174de4ae4515ff')
     expect(inventory.rows).toContain(
       'app/composables/usePageStudioLauncher.ts\tconst config = useRuntimeConfig()\tunrelated_configuration'
     )

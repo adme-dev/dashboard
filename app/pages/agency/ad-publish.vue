@@ -19,7 +19,6 @@ const {
   canProceedStep3,
   canProceedStep4,
   adNamePattern,
-  adStatus,
   primaryTexts,
   headlines,
   descriptions,
@@ -143,9 +142,9 @@ async function handleLaunch() {
     const done = uploadProgress.value.filter(p => p.step === 'done').length
     const errors = uploadProgress.value.filter(p => p.step === 'error').length
     if (errors === 0) {
-      toast.add({ title: 'All ads launched!', description: `${done} ad${done > 1 ? 's' : ''} created successfully.`, color: 'success' })
+      toast.add({ title: 'Ad reviews prepared', description: `${done} ad${done > 1 ? 's' : ''} ready for independent review.`, color: 'success' })
     } else {
-      toast.add({ title: 'Launch completed with errors', description: `${done} succeeded, ${errors} failed.`, color: 'warning' })
+      toast.add({ title: 'Review preparation finished with errors', description: `${done} succeeded, ${errors} failed.`, color: 'warning' })
     }
   } catch (err: any) {
     toast.add({ title: 'Launch failed', description: err.message || 'Unknown error', color: 'error' })
@@ -195,9 +194,9 @@ const helpSteps = [
   },
   {
     number: 5,
-    title: 'Review & Launch',
+    title: 'Review & Submit',
     icon: 'i-lucide-rocket',
-    description: 'Preview the ad names that will be generated, choose whether ads start Paused or Active, then launch. Each creative is uploaded and published individually with a progress indicator.',
+    description: 'Preview the ad names that will be generated, prepare exact paused ad reviews. An independent marketing reviewer must approve each revision before provider creation.',
   },
 ]
 
@@ -346,52 +345,26 @@ const reviewItems = computed(() =>
             </div>
           </div>
 
-          <!-- Section 5: Review & Launch -->
+          <!-- Section 5: Review & Submit -->
           <div class="rounded-lg border border-(--ui-border) overflow-hidden">
             <button
               class="w-full flex items-center gap-3 px-4 py-3 bg-(--ui-bg) hover:bg-(--ui-bg-elevated) transition-colors"
               @click="toggleSection(5)"
             >
               <span class="w-6 h-6 rounded-full bg-blue-500/10 text-blue-500 text-xs font-bold flex items-center justify-center shrink-0">5</span>
-              <span class="text-sm font-semibold flex-1 text-left">Review & Launch</span>
+              <span class="text-sm font-semibold flex-1 text-left">Review & Submit</span>
               <UIcon :name="isExpanded(5) ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'" class="w-4 h-4 text-(--ui-text-muted) shrink-0" />
             </button>
             <div v-if="isExpanded(5)" class="px-4 py-4 border-t border-(--ui-border) space-y-4">
-              <!-- Ad name pattern -->
-              <div>
-                <label class="text-xs font-medium block mb-1.5">Ad Name Pattern</label>
+              <UFormField label="Ad Name Pattern" description="Variables: {ProjectName}, {Format}, {Date}">
                 <UInput
                   v-model="adNamePattern"
                   size="sm"
+                  class="w-full"
                   placeholder="{ProjectName} - {Format} - {Date}"
                 />
-                <p class="text-[10px] text-(--ui-text-muted) mt-1">
-                  Variables: {ProjectName}, {Format}, {Date}
-                </p>
-              </div>
-
-              <!-- Ad status toggle -->
-              <div class="flex items-center gap-3">
-                <label class="text-xs font-medium">Initial Status:</label>
-                <div class="flex gap-1.5">
-                  <UButton
-                    :variant="adStatus === 'PAUSED' ? 'solid' : 'outline'"
-                    :color="adStatus === 'PAUSED' ? 'primary' : 'neutral'"
-                    size="xs"
-                    @click="adStatus = 'PAUSED'"
-                  >
-                    Paused
-                  </UButton>
-                  <UButton
-                    :variant="adStatus === 'ACTIVE' ? 'solid' : 'outline'"
-                    :color="adStatus === 'ACTIVE' ? 'primary' : 'neutral'"
-                    size="xs"
-                    @click="adStatus = 'ACTIVE'"
-                  >
-                    Active
-                  </UButton>
-                </div>
-              </div>
+              </UFormField>
+              <UAlert color="neutral" title="Ads are created paused after independent approval" />
 
               <!-- Review table -->
               <div v-if="reviewItems.length" class="rounded-lg border border-(--ui-border) overflow-hidden">
@@ -479,11 +452,11 @@ const reviewItems = computed(() =>
                   :loading="isUploading"
                   @click="handleLaunch"
                 >
-                  Launch {{ selectedPublishedIds.length }} Ad{{ selectedPublishedIds.length !== 1 ? 's' : '' }} to Meta
+                  Prepare {{ selectedPublishedIds.length }} Ad{{ selectedPublishedIds.length !== 1 ? 's' : '' }} for Review
                 </UButton>
 
                 <p v-if="!canLaunch && !isUploading" class="text-[10px] text-(--ui-text-muted) text-center mt-1.5">
-                  Complete all sections above to enable launch.
+                  Complete all sections above to prepare reviews.
                 </p>
               </div>
 
@@ -498,9 +471,9 @@ const reviewItems = computed(() =>
               <!-- Post-launch success -->
               <div v-if="uploadComplete && !isUploading" class="rounded-lg bg-green-500/5 border border-green-500/20 px-4 py-3 text-center">
                 <UIcon name="i-lucide-party-popper" class="w-6 h-6 text-green-500 mx-auto mb-1" />
-                <p class="text-sm font-medium text-green-600">Launch Complete!</p>
+                <p class="text-sm font-medium text-green-600">Review Preparation Finished</p>
                 <p class="text-xs text-(--ui-text-muted) mt-0.5">
-                  Check your Meta Ads Manager for the new ads.
+                  No ads have been created. Share the proposal references with an independent marketing reviewer.
                 </p>
                 <UButton variant="outline" size="xs" class="mt-2" @click="handleReset">
                   Start New Batch

@@ -1,4 +1,4 @@
-import { requireAuth } from '~~/server/utils/auth'
+import { requireSocialInboxConversation } from '~~/server/utils/socialInbox/departmentScope'
 import { confirmSocialInboxAiAction } from '~~/server/utils/socialInbox/aiActions'
 import { emitInboxEvent } from '~~/server/utils/socialInbox/events'
 import { executeSocialInboxExternalMutation } from '~~/server/utils/socialInbox/godModeMutations'
@@ -13,8 +13,8 @@ type ConfirmResult = Awaited<ReturnType<typeof confirmSocialInboxAiAction>>
  * result instead of executing the proposal twice.
  */
 export default defineEventHandler(async (event) => {
-  const user = await requireAuth(event)
   const id = getRouterParam(event, 'id')!
+  const { user } = await requireSocialInboxConversation(event, id)
   const body = await readBody<{ proposalId?: unknown }>(event)
   const proposalId = String(body.proposalId || '').trim()
 

@@ -17,7 +17,6 @@ const {
   callToAction,
   linkUrl,
   adNamePattern,
-  adStatus,
   uploadProgress,
   isUploading,
   uploadComplete,
@@ -51,8 +50,8 @@ async function handlePublish() {
       })
     } else {
       toast.add({
-        title: 'All Ads Published',
-        description: `${uploadProgress.value.length} ad(s) created successfully`,
+        title: 'Ad reviews prepared',
+        description: `${uploadProgress.value.length} ad review(s) ready for an independent reviewer`,
         color: 'success',
       })
     }
@@ -69,9 +68,9 @@ async function handlePublish() {
 <template>
   <div class="space-y-4">
     <div>
-      <h3 class="text-sm font-semibold mb-1">Review & Publish</h3>
+      <h3 class="text-sm font-semibold mb-1">Review & Submit</h3>
       <p class="text-xs text-(--ui-text-muted)">
-        Review your selections before publishing to Meta Ads.
+        Prepare a paused ad for an independent marketing reviewer.
       </p>
     </div>
 
@@ -112,7 +111,7 @@ async function handlePublish() {
 
       <!-- Creatives list -->
       <div>
-        <span class="text-xs font-medium text-(--ui-text-muted) block mb-1.5">Creatives to Upload</span>
+        <span class="text-xs font-medium text-(--ui-text-muted) block mb-1.5">Creatives for Review</span>
         <div class="space-y-1">
           <div
             v-for="c in selectedCreatives"
@@ -128,42 +127,14 @@ async function handlePublish() {
         </div>
       </div>
 
-      <!-- Ad name pattern -->
-      <div>
-        <label class="text-xs font-medium block mb-1.5">Ad Name Pattern</label>
-        <UInput v-model="adNamePattern" size="sm" />
-        <p class="text-[10px] text-(--ui-text-muted) mt-0.5">
-          Variables: {'{'}ProjectName{'}'}, {'{'}Format{'}'}, {'{'}Date{'}'}
-        </p>
-      </div>
-
-      <!-- Status toggle -->
-      <div class="flex items-center justify-between">
-        <div>
-          <label class="text-xs font-medium block">Initial Ad Status</label>
-          <p class="text-[10px] text-(--ui-text-muted)">Paused is recommended for review before going live</p>
-        </div>
-        <div class="flex gap-1 p-0.5 bg-(--ui-bg) rounded-md">
-          <button
-            class="px-3 py-1 text-xs rounded-md transition-colors"
-            :class="adStatus === 'PAUSED' ? 'bg-(--ui-bg-elevated) font-medium shadow-sm' : 'text-(--ui-text-muted)'"
-            @click="adStatus = 'PAUSED'"
-          >
-            Paused
-          </button>
-          <button
-            class="px-3 py-1 text-xs rounded-md transition-colors"
-            :class="adStatus === 'ACTIVE' ? 'bg-green-500/10 text-green-500 font-medium shadow-sm' : 'text-(--ui-text-muted)'"
-            @click="adStatus = 'ACTIVE'"
-          >
-            Active
-          </button>
-        </div>
-      </div>
+      <UFormField label="Ad Name Pattern" description="Variables: {ProjectName}, {Format}, {Date}">
+        <UInput v-model="adNamePattern" size="sm" class="w-full" />
+      </UFormField>
+      <UAlert color="neutral" title="Ads are created paused after independent approval" description="This step prepares an exact review of the account, creative and ad copy." />
 
       <!-- Publish button -->
       <UButton
-        label="Publish to Meta Ads"
+        label="Prepare Ad Review"
         icon="i-lucide-send"
         block
         size="md"
@@ -182,9 +153,9 @@ async function handlePublish() {
     <!-- Done message -->
     <div v-if="uploadComplete && !isUploading" class="text-center py-4">
       <UIcon name="i-lucide-check-circle-2" class="w-10 h-10 text-green-500 mx-auto mb-2" />
-      <p class="text-sm font-medium">Upload Complete</p>
+      <p class="text-sm font-medium">Review Preparation Finished</p>
       <p class="text-xs text-(--ui-text-muted) mt-1">
-        Check your Meta Ads Manager to review the created ads.
+        No ads have been created. Share each proposal reference with an independent marketing reviewer.
       </p>
     </div>
   </div>

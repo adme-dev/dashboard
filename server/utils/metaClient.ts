@@ -105,6 +105,15 @@ export interface MetaAdSet {
   name: string
   status: string
   optimization_goal: string
+  account_id?: string
+  campaign_id?: string
+  targeting?: Record<string, unknown>
+  lifetime_budget?: string
+  billing_event?: string
+  bid_amount?: number
+  bid_strategy?: string
+  start_time?: string
+  end_time?: string
   daily_budget?: string
 }
 
@@ -345,7 +354,7 @@ async function metaFetch<T>(
 ): Promise<T> {
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
-      const options: any = { method }
+      const options: any = { method, ...(retries === 0 ? { retry: 0 } : {}) }
       if (method === 'GET') {
         options.query = { ...params, access_token: token }
       } else {
@@ -1011,7 +1020,7 @@ export async function getAdSets(
   statusFilter?: string
 ): Promise<MetaAdSet[]> {
   const params: Record<string, string> = {
-    fields: 'id,name,status,optimization_goal,daily_budget',
+    fields: 'id,name,status,optimization_goal,daily_budget,lifetime_budget,billing_event,bid_amount,bid_strategy,start_time,end_time,account_id,campaign_id,targeting',
     limit: '100'
   }
   if (statusFilter) {
@@ -1051,7 +1060,8 @@ export async function getPages(
 export async function uploadAdImage(
   accountId: string,
   token: string,
-  imageBuffer: Buffer
+  imageBuffer: Buffer,
+  options: { retries?: number } = {}
 ): Promise<{ hash: string; url: string }> {
   const formData = new FormData()
   const blob = new Blob([bufferToBlobPart(imageBuffer)], { type: 'image/png' })
@@ -1061,7 +1071,7 @@ export async function uploadAdImage(
     `${META_GRAPH_BASE}/${accountId}/adimages`,
     token,
     {},
-    3,
+    options.retries ?? 3,
     'POST',
     formData
   )
@@ -1106,7 +1116,8 @@ export async function uploadAdImageByUrl(
 export async function createAdCreative(
   accountId: string,
   token: string,
-  params: CreateCreativeParams
+  params: CreateCreativeParams,
+  options: { retries?: number } = {}
 ): Promise<{ id: string }> {
   // Build asset_feed_spec for text variations
   const assetFeedSpec: Record<string, any> = {
@@ -1150,7 +1161,7 @@ export async function createAdCreative(
     `${META_GRAPH_BASE}/${accountId}/adcreatives`,
     token,
     {},
-    3,
+    options.retries ?? 3,
     'POST',
     postBody
   )
@@ -1167,13 +1178,14 @@ export async function createAdCreative(
 export async function createAd(
   accountId: string,
   token: string,
-  params: CreateAdParams
+  params: CreateAdParams,
+  options: { retries?: number } = {}
 ): Promise<{ id: string }> {
   const res = await metaFetch<{ id: string }>(
     `${META_GRAPH_BASE}/${accountId}/ads`,
     token,
     {},
-    3,
+    options.retries ?? 3,
     'POST',
     {
       name: params.name,
@@ -1187,6 +1199,20 @@ export async function createAd(
     throw new Error('Meta API: Ad creation did not return an ID')
   }
   return { id: res.id }
+}
+
+/** Exact paid-ad readback; effective delivery status is not the configured pause state. */
+export async function getAdLaunchBinding(adId: string, token: string): Promise<{
+  id: string
+  accountId: string
+  campaignId: string
+  adSetId: string
+  creativeId: string
+  status: string
+}> {
+  const r = await metaFetch<{ id: string, account_id: string, campaign_id: string, adset_id: string, creative?: { id: string }, configured_status: string }>(
+    `${META_GRAPH_BASE}/${adId}`, token, { fields: 'id,account_id,campaign_id,adset_id,creative{id},configured_status' })
+  return { id: r.id, accountId: r.account_id, campaignId: r.campaign_id, adSetId: r.adset_id, creativeId: r.creative?.id ?? '', status: r.configured_status }
 }
 
 /**

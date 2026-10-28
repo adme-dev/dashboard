@@ -1,9 +1,14 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- Partial request and database doubles exercise endpoint authority. */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mockRequireWriteAccess = vi.fn()
 const mockGetSelectedTenant = vi.fn()
 const mockQueryRows = vi.fn()
 const mockQueryOne = vi.fn()
+const mockReadScope = vi.fn()
+const mockRequirePermission = vi.fn()
+const mockScopeSql = vi.fn()
+const mockTransaction = vi.fn()
 const mockInvalidateSpendPeriodCaches = vi.fn()
 let mockBody: Record<string, unknown> = {}
 
@@ -15,9 +20,15 @@ vi.mock('~~/server/utils/session', () => ({
   getSelectedTenant: (...args: unknown[]) => mockGetSelectedTenant(...args),
 }))
 
+vi.mock('~~/server/utils/ai/marketing/readScope', () => ({
+  resolveBrowserMarketingReadScope: (...args: unknown[]) => mockReadScope(...args),
+  requireMarketingReadPermission: (...args: unknown[]) => mockRequirePermission(...args),
+  clientScopeSql: (...args: unknown[]) => mockScopeSql(...args),
+}))
 vi.mock('~~/server/utils/db', () => ({
+  transaction: (...args: unknown[]) => mockTransaction(...args),
   queryRows: (...args: unknown[]) => mockQueryRows(...args),
-  queryOne: (...args: unknown[]) => mockQueryOne(...args),
+  queryOne: (...args: unknown[]) => mockQueryOne(...args)
 }))
 
 vi.mock('~~/server/utils/socialSpendCache', () => ({
@@ -31,6 +42,17 @@ vi.mock('~~/server/utils/socialSpendCache', () => ({
 describe('PATCH /api/agency/social/spend/bulk-budget', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockReadScope.mockResolvedValue({ financialReadAllowed: false })
+    mockRequirePermission.mockReturnValue(undefined)
+    mockScopeSql.mockReturnValue('c.is_active = TRUE')
+    mockTransaction.mockImplementation(fn => fn({ query: async (sql: string, values: unknown[]) => {
+      if (sql.includes('INSERT INTO budget_audit_log')) {
+        await mockQueryOne(sql, values)
+        return { rows: [], rowCount: 1 }
+      }
+      const rows = await mockQueryRows(sql, values)
+      return { rows, rowCount: rows.length }
+    } }))
     mockBody = {
       spendIds: ['11111111-1111-4111-8111-111111111111', '22222222-2222-4222-8222-222222222222'],
       budgetAllocated: 3000,
@@ -128,6 +150,23 @@ describe('PATCH /api/agency/social/spend/bulk-budget', () => {
       ['33333333-3333-4333-8333-333333333333', 0, 333.33, 'user-1', 'Grouped total budget'],
     )
     expect(result).toEqual({ updated: true, count: 3, rollingSet: false, updatedRows: 3 })
+  })
+
+  it('uses active client scope and a transaction for the entire selection and audit', async () => {
+    const handler = (await import('~~/server/api/agency/social/spend/bulk-budget.patch')).default
+    await handler({} as any)
+    expect(mockTransaction).toHaveBeenCalledTimes(1)
+    expect(mockReadScope).toHaveBeenCalled()
+    expect(mockRequirePermission).toHaveBeenCalledWith({ financialReadAllowed: false }, 'pacing')
+    expect(mockQueryRows.mock.calls[0][0]).toContain('c.is_active = TRUE')
+    expect(mockQueryRows.mock.calls[0][0]).toContain('FOR UPDATE')
+  })
+
+  it('refuses commission changes without finance authority before touching budget rows', async () => {
+    mockBody.commissionRate = 5
+    const handler = (await import('~~/server/api/agency/social/spend/bulk-budget.patch')).default
+    await expect(handler({} as any)).rejects.toMatchObject({ statusCode: 403 })
+    expect(mockQueryRows).not.toHaveBeenCalled()
   })
 
   it('rejects if any requested spend row is missing', async () => {

@@ -1,5 +1,9 @@
+import { departmentConversationScopeSql } from './departmentScopeSql'
+
 export interface SocialInboxConversationListInput {
   clientId?: string | null
+  /** Department staff: only conversations of active clients through their own active account. */
+  departmentScope?: boolean
   channel?: string | null
   platform?: string | null
   status?: string | null
@@ -54,6 +58,8 @@ export function buildSocialInboxConversationListQuery(input: SocialInboxConversa
       LIMIT 1
     ) latest_in ON TRUE
     WHERE a.is_active = TRUE`
+
+  if (input.departmentScope) sql += ` AND ${departmentConversationScopeSql('c')}`
 
   if (input.clientId) {
     params.push(input.clientId)

@@ -1,5 +1,8 @@
+import { departmentAudit } from '~~/server/utils/ai/mcp/departmentAudit'
 import { isTask4StaffTool, isLegacyAdsMutation } from '~~/server/utils/ai/mcp/marketingTask4Names'
 import { executeTask4StaffTool } from '~~/server/utils/ai/mcp/marketingTask4Tools'
+import { isDepartmentTool } from '~~/server/utils/ai/mcp/departmentToolNames'
+import { departmentTools, executeDepartmentTool } from '~~/server/utils/ai/mcp/departmentTools'
 // server/api/internal/mcp/call.post.ts
 // Executes one MCP tool for the authenticated user. The Worker validates OAuth; Pages independently
 // requires the service secret plus an exact one-time request claim, re-derives current role/authority,
@@ -246,6 +249,8 @@ export default defineEventHandler(async (event) => {
     outcome = { ok: false, error: 'Your role is read-only.', code: 'read_only' }
   } else if (isTask4StaffTool(toolName)) {
     outcome = await executeTask4StaffTool(toolName, args, ctx, idempotencyKey)
+  } else if (isDepartmentTool(toolName)) {
+    outcome = await executeDepartmentTool(toolName, args, ctx, idempotencyKey, claim.bodyDigest)
   } else if (!managementStaff) {
     // Non-management staff: reviewed staff-policy tools only, re-evaluated against fresh authority.
     const admission = evaluateStaffToolAdmission(toolName, ctx)
@@ -440,6 +445,7 @@ export default defineEventHandler(async (event) => {
   const isProposeCall = !!writeAction || !!videoProposeAction || !!bannerProposeAction
     || isFinancialPropose || isGoogleAdsPropose || isGoogleAdsSearchPlan
   // pending_id only on success (real, existing row id) to avoid dangling references on failed attempts.
+  const departmentAuditResult = departmentAudit(toolName, args, outcome, departmentTools.find(tool => tool.name === toolName)?.riskTier)
   const auditPendingId = !outcome.ok
     ? null
     : isConfirm
@@ -458,13 +464,13 @@ export default defineEventHandler(async (event) => {
     `INSERT INTO ai_action_audit (pending_id, user_id, confirmed_by, tool_name, risk_tier, client_scope, payload, result_ref, outcome)
      VALUES ($1, $2, $3, $4, $5, NULL, $6, NULL, $7)`,
     [
-      auditPendingId,
+      departmentAuditResult ? departmentAuditResult.pendingId : auditPendingId,
       userId,
-      isConfirm && outcome.ok ? userId : null,
+      (isConfirm || departmentAuditResult?.actionClass === 'review') && outcome.ok ? userId : null,
       toolName,
-      auditRiskTier,
-      JSON.stringify({ source: 'mcp', argKeys: Object.keys(args) }),
-      auditOutcome
+      departmentAuditResult?.riskTier ?? auditRiskTier,
+      JSON.stringify({ ...(departmentAuditResult ? { actionClass: departmentAuditResult.actionClass } : {}), source: 'mcp', argKeys: Object.keys(args) }),
+      departmentAuditResult?.outcome ?? auditOutcome
     ]
   ).catch(() => {})
 

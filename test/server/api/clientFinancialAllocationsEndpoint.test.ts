@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   requireWriteAccess: vi.fn(),
   getSelectedTenant: vi.fn(),
   applyAllocation: vi.fn(),
+  denyMarketingClientViewer: vi.fn()
 }))
 
 const testGlobal = globalThis as typeof globalThis & {
@@ -35,6 +36,10 @@ vi.mock('~~/server/utils/auth', () => ({
 
 vi.mock('~~/server/utils/session', () => ({
   getSelectedTenant: (...args: unknown[]) => mocks.getSelectedTenant(...args),
+}))
+
+vi.mock('~~/server/utils/clients/marketingAccess', () => ({
+  denyMarketingClientViewer: (...args: unknown[]) => mocks.denyMarketingClientViewer(...args)
 }))
 
 vi.mock('~~/server/utils/clientFinancialAllocations', async (importOriginal) => {
@@ -69,6 +74,20 @@ describe('PATCH /api/agency/clients/:id/financial-allocations', () => {
       projectId: PROJECT_ID,
       changedAt: '2026-08-22T04:05:06.000Z',
     } satisfies FinancialAllocationResult)
+    mocks.denyMarketingClientViewer.mockResolvedValue(undefined)
+  })
+
+  it('denies a fresh department-only policy even when the cached session still holds FINANCE', async () => {
+    mocks.denyMarketingClientViewer.mockRejectedValue(Object.assign(new Error('denied'), { statusCode: 403 }))
+    const { default: handler } = await import(
+      '~~/server/api/agency/clients/[id]/financial-allocations.patch'
+    )
+
+    await expect(handler(event({
+      sourceType: 'media_spend', sourceId: MEDIA_ID, projectId: PROJECT_ID
+    }) as never)).rejects.toMatchObject({ statusCode: 403 })
+    expect(mocks.denyMarketingClientViewer).toHaveBeenCalledWith(ACTOR_ID)
+    expect(mocks.applyAllocation).not.toHaveBeenCalled()
   })
 
   it('requires FINANCE and write access without resolving a Xero tenant for media', async () => {

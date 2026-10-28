@@ -1,4 +1,4 @@
-import { queryRows } from '~~/server/utils/db'
+import { queryRowsFresh } from '~~/server/utils/db'
 import { requireRole } from '~~/server/utils/auth'
 
 export default defineEventHandler(async (event) => {
@@ -9,7 +9,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Role ID is required' })
   }
 
-  const members = await queryRows(
+  const members = await queryRowsFresh(
     `SELECT id, name, email, avatar_url
      FROM team_members
      WHERE custom_role_id = $1 AND is_active = true

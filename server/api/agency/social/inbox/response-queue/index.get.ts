@@ -1,12 +1,13 @@
-import { requireAuth } from '~~/server/utils/auth'
+import { requireSocialInboxClient } from '~~/server/utils/socialInbox/departmentScope'
+import { departmentQueueScopeSql } from '~~/server/utils/socialInbox/departmentScopeSql'
 import { queryRows } from '~~/server/utils/db'
 
 /** GET /api/agency/social/inbox/response-queue?clientId=&status=pending */
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
   const q = getQuery(event)
   const clientId = q.clientId as string
   if (!clientId) throw createError({ statusCode: 400, statusMessage: 'clientId required' })
+  const { department } = await requireSocialInboxClient(event, clientId)
   const params: unknown[] = [clientId]
   let sql = `
     SELECT rq.*, r.name AS rule_name, c.platform, c.channel_type, c.participant_name, c.permalink,
@@ -15,6 +16,9 @@ export default defineEventHandler(async (event) => {
       JOIN social_conversations c ON c.id = rq.conversation_id
       LEFT JOIN social_automation_rules r ON r.id = rq.rule_id
      WHERE rq.client_id = $1`
+  // Department staff: scoped before the limit to rows whose conversation shares the row's client
+  // and belongs to that client's own active account.
+  if (department) sql += ` AND ${departmentQueueScopeSql('rq')}`
   if (q.status === 'actionable') {
     sql += ` AND (
       (rq.approver_type = 'staff' AND rq.status = 'pending') OR

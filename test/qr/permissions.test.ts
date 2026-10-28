@@ -50,6 +50,16 @@ describe('QR-only permissions', () => {
     expect(await requireQrClientAccess({} as H3Event, clientId)).toEqual(user)
     expect(mocks.query).toHaveBeenLastCalledWith(expect.stringContaining('client_team_assignments'), [clientId, 'u'])
   })
+  it('narrows the department QR grant to freshly active clients and rejects revoked marketing authority', async () => {
+    const user = { id: 'manager', role: 'media_buyer', permissionGroups: ['QR_CODES', 'MARKETING_MANAGEMENT'] }
+    mocks.auth.mockResolvedValue(user)
+    mocks.fresh.mockResolvedValueOnce({ allowed: true }).mockResolvedValueOnce({ id: clientId })
+    expect(await requireQrClientAccess({} as H3Event, clientId)).toEqual(user)
+    mocks.fresh.mockResolvedValueOnce({ allowed: true }).mockResolvedValueOnce(null)
+    await expect(requireQrClientAccess({} as H3Event, clientId)).rejects.toMatchObject({ statusCode: 403 })
+    mocks.fresh.mockResolvedValueOnce(null)
+    await expect(requireQrClientAccess({} as H3Event, clientId)).rejects.toMatchObject({ statusCode: 403 })
+  })
   it('validates a client id before the database query', async () => {
     mocks.auth.mockResolvedValue({ id: 'u', role: 'member', permissionGroups: ['QR_CODES'] })
     await expect(requireQrClientAccess({} as H3Event, 'bad')).rejects.toMatchObject({ statusCode: 400 })

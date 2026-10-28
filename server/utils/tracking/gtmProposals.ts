@@ -2,7 +2,7 @@ import { gtmVersionReview, gtmReplacementChanges, gtmProposalProjection, safeGtm
 import { createError } from 'h3'
 import { z } from 'zod'
 import type { ToolContext } from '~~/server/utils/ai/toolContext'
-import { queryOneFresh, queryRows, transaction } from '~~/server/utils/db'
+import { queryOneFresh, queryRowsFresh, transaction } from '~~/server/utils/db'
 import {
   assertMarketingCapabilityAtBoundary,
   requireIndependentMarketingReviewer
@@ -32,6 +32,8 @@ import {
   verifyGtmVersion
 } from './gtmTypedChanges'
 import { GtmProposalInput } from './gtmProposalSchemas'
+
+import { isMarketingManagementContext } from '~~/server/utils/marketingManagement'
 
 const UUID = z.string().uuid()
 export { GtmProposalInput } from './gtmProposalSchemas'
@@ -412,6 +414,8 @@ async function reviewedContext(ctx: ToolContext, id: string) {
   )
   if (!row)
     throw createError({ statusCode: 404, statusMessage: 'Proposal not found' })
+  if (ctx.clientScope && ctx.clientScope !== row.client_id)
+    throw createError({ statusCode: 403, statusMessage: 'Proposal outside requested client scope' })
   await requireIndependentMarketingReviewer(ctx.event, {
     requesterId: row.requester_id,
     clientId: row.client_id,
@@ -433,6 +437,10 @@ async function reviewedContext(ctx: ToolContext, id: string) {
     conflict('Ownership evidence changed')
   return { row, requester }
 }
+export async function getGtmReviewProposal(ctx: ToolContext, id: string) {
+  return gtmProposalProjection((await reviewedContext(ctx, id)).row)
+}
+
 export async function reviewGtmChangeProposal(ctx: ToolContext, raw: unknown) {
   const input = reviewInput
     .extend({
@@ -458,21 +466,34 @@ export async function reviewGtmChangeProposal(ctx: ToolContext, raw: unknown) {
 }
 export async function listGtmReviewProposals(ctx: ToolContext) {
   const fresh = await resolveMcpStaffContext(ctx.event, ctx.userId, [])
-  if (!fresh.permissionGroups?.includes('ADMIN') || fresh.assistantReadOnly)
+  if ((!fresh.permissionGroups?.includes('ADMIN') && !isMarketingManagementContext(fresh)) || fresh.assistantReadOnly)
     throw createError({
       statusCode: 403,
       statusMessage: 'Reviewer authority required'
     })
-  const rows = await queryRows<any>(
-    `SELECT p.*,e.evidence AS ownership_evidence FROM gtm_change_proposals p JOIN gtm_tracking_ownership_evidence e ON e.id=p.ownership_evidence_id JOIN agency_clients c ON c.id=p.client_id AND c.is_active=TRUE WHERE requester_id<>$1 AND ($2::uuid[] IS NULL OR p.client_id=ANY($2)) ORDER BY p.created_at DESC LIMIT 100`,
+  const rows = await queryRowsFresh<any>(
+    `SELECT p.*,e.evidence AS ownership_evidence FROM gtm_change_proposals p JOIN gtm_tracking_ownership_evidence e ON e.id=p.ownership_evidence_id JOIN agency_clients c ON c.id=p.client_id AND c.is_active=TRUE WHERE requester_id<>$1 AND ($2::uuid[] IS NULL OR p.client_id=ANY($2)) AND ($3::uuid IS NULL OR p.client_id=$3) ORDER BY p.created_at DESC LIMIT 100`,
     [
       ctx.userId,
       fresh.assistantScope?.clientAccessMode === 'all_active'
         ? null
-        : (fresh.assistantScope?.assignedClientIds ?? [])
+        : (fresh.assistantScope?.assignedClientIds ?? []),
+      ctx.clientScope ?? null
     ]
   )
-  return rows.map(gtmProposalProjection)
+  const proposals = []
+  for (const row of rows) {
+    try {
+      await requireIndependentMarketingReviewer(ctx.event, {
+        requesterId: row.requester_id, clientId: row.client_id, reviewerId: ctx.userId
+      })
+      await assertMarketingCapabilityAtBoundary(ctx.event, row.requester_id, row.client_id, 'tracking_plan')
+      proposals.push(gtmProposalProjection(row))
+    } catch (error) {
+      if (![403, 404].includes((error as { statusCode: number }).statusCode)) throw error
+    }
+  }
+  return proposals
 }
 export async function executeApprovedGtmProposal(
   ctx: ToolContext,

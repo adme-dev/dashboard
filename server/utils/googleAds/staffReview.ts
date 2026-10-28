@@ -1,6 +1,6 @@
 import { createError, type H3Event } from 'h3'
 import { z } from 'zod'
-import { queryOneFresh, queryRows, transaction } from '~~/server/utils/db'
+import { queryOneFresh, queryRowsFresh, transaction } from '~~/server/utils/db'
 import {
   assertMarketingCapabilityAtBoundary,
   requireIndependentMarketingReviewer
@@ -9,6 +9,8 @@ import { assertGoogleAdsConnection } from '~~/server/utils/ai/marketing/googleAd
 import { getGoogleAdsActionPlan } from './actionStore'
 import { executeSearchGoogleAdsControlAction } from './searchRuntime'
 import { resolveMcpRuntimeConfig } from '~~/server/utils/ai/mcp/runtimeConfig'
+
+import { isMarketingManagementContext } from '~~/server/utils/marketingManagement'
 
 const Request = z.strictObject({
   actionPlanId: z.string().uuid(),
@@ -51,6 +53,10 @@ async function load(event: H3Event, id: string, actorId: string) {
   )
   return plan
 }
+export async function getGoogleAdsReviewPlan(event: H3Event, actorId: string, id: string) {
+  return load(event, z.string().uuid().parse(id), actorId)
+}
+
 export async function listGoogleAdsReviewPlans(
   event: H3Event,
   actorId: string,
@@ -59,12 +65,12 @@ export async function listGoogleAdsReviewPlans(
   const { resolveMcpStaffContext }
     = await import('~~/server/utils/ai/mcp/staffAuthority')
   const ctx = await resolveMcpStaffContext(event, actorId, [])
-  if (!ctx.permissionGroups?.includes('ADMIN') || ctx.assistantReadOnly)
+  if ((!ctx.permissionGroups?.includes('ADMIN') && !isMarketingManagementContext(ctx)) || ctx.assistantReadOnly)
     throw createError({
       statusCode: 403,
       statusMessage: 'Reviewer authority required'
     })
-  const rows = await queryRows<{ id: string, client_id: string }>(
+  const rows = await queryRowsFresh<{ id: string, client_id: string }>(
     `SELECT p.id,p.client_id FROM google_ads_action_plans p JOIN agency_clients c ON c.id=p.client_id AND c.is_active=TRUE WHERE review_policy='delegated_marketing' AND actor_id<>$1 AND ($2::uuid IS NULL OR p.client_id=$2) AND ($3::uuid[] IS NULL OR p.client_id=ANY($3)) ORDER BY p.created_at DESC LIMIT 100`,
     [
       actorId,
@@ -74,11 +80,15 @@ export async function listGoogleAdsReviewPlans(
         : (ctx.assistantScope?.assignedClientIds ?? [])
     ]
   )
-  return Promise.all(
-    rows.map(r =>
-      getGoogleAdsActionPlan(r.id, r.client_id, { queryOne: queryOneFresh })
-    )
-  )
+  const plans = []
+  for (const row of rows) {
+    try {
+      plans.push(await load(event, row.id, actorId))
+    } catch (error) {
+      if (![403, 404].includes((error as { statusCode: number }).statusCode)) throw error
+    }
+  }
+  return plans
 }
 export async function reviewGoogleAdsPlan(
   event: H3Event,
@@ -158,6 +168,8 @@ export async function executeReviewedGoogleAdsPlan(
     {
       actorRole: executor.userRole,
       permissionGroups: executor.permissionGroups,
+      // Exact independent review above authorizes non-destructive delegated proposal policy only.
+      delegatedPlanning: isMarketingManagementContext(executor),
       hasWriteScope: true,
       reviewedPlanId: plan.id,
       executorId: actorId

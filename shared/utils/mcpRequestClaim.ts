@@ -1,3 +1,5 @@
+import { parseMcpPageStudioLogin, type McpPageStudioLoginProof } from './mcpPageStudioLogin'
+
 const textEncoder = new TextEncoder()
 const textDecoder = new TextDecoder()
 
@@ -9,6 +11,7 @@ export type McpRequestPath = '/api/internal/mcp/tools' | '/api/internal/mcp/call
 export type McpScope = 'mcp:read' | 'mcp:write'
 
 export interface McpRequestClaim {
+  pageStudioLogin?: McpPageStudioLoginProof
   uid: string
   scope: string[]
   godMode: boolean
@@ -101,7 +104,7 @@ function parseClaim(value: unknown): McpRequestClaim | null {
   const claim = value as Record<string, unknown>
   const keys = Object.keys(claim)
   const permittedKeys = new Set([
-    'uid', 'scope', 'godMode', 'jti', 'exp', 'audience', 'method', 'path', 'toolName', 'bodyDigest'
+    'uid', 'scope', 'godMode', 'jti', 'exp', 'audience', 'method', 'path', 'toolName', 'bodyDigest', 'pageStudioLogin'
   ])
   if (keys.some(key => !permittedKeys.has(key))) return null
   const scope = normalizeScopes(claim.scope)
@@ -129,7 +132,11 @@ function parseClaim(value: unknown): McpRequestClaim | null {
     return null
   }
 
+  const proof = claim.pageStudioLogin === undefined ? undefined : parseMcpPageStudioLogin(claim.pageStudioLogin, claim.uid)
+  if (proof === null) return null
+
   return {
+    ...(proof ? { pageStudioLogin: proof } : {}),
     uid: claim.uid,
     scope,
     godMode: claim.godMode,

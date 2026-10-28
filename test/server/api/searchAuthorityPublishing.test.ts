@@ -127,11 +127,14 @@ describe('Search Authority publishing routes', () => {
 
   it('requires tenant access and an approved immutable version for publishing', () => {
     const publish = route('publish.post.ts')
-    expect(publish).toContain('requireAgencySearchAuthorityAccess')
-    expect(publish).toMatch(/await requireAgencySearchAuthorityAccess[\s\S]+await queryOne/)
-    expect(publish).toMatch(/status[^\n]+approved/i)
-    expect(publish).toContain('current_version_id')
-    expect(publish).toContain('transaction')
+    // The route authorizes, then delegates to the shared publication service.
+    expect(publish).toMatch(/await requireAgencySearchAuthorityAccess[\s\S]+publishSearchAuthorityContent\(/)
+    const service = readFileSync('server/utils/searchAuthority/contentPublication.ts', 'utf8')
+    expect(service).toMatch(/await queryOne[\s\S]+status[^\n]+approved/i)
+    expect(service).toContain('current_version_id')
+    expect(service).toContain('transaction')
+    expect(service).toContain('restoreSearchAuthorityPublicationPointer')
+    expect(service).toContain('executeSearchAuthorityExternalMutation<SearchAuthorityPublishResult>(event, \'publish\'')
   })
 
   it('records audited rollback and never mutates a version object', () => {

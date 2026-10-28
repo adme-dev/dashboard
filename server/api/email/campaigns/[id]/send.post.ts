@@ -22,11 +22,11 @@ export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id')
   if (!id) throw createError({ statusCode: 400, statusMessage: 'missing_id' })
 
-  if (!isCampaignSendingEnabled()) {
+  if (!isCampaignSendingEnabled(event)) {
     throw createError({
       statusCode: 403,
       statusMessage: 'sending_disabled',
-      message: 'Email sending is disabled. Set EMAIL_SENDING_ENABLED=true (and configure Resend) to enable.'
+      message: 'Email sending is disabled. Enable emailSending in MARKETING_PROVIDER_CONFIG (or set EMAIL_SENDING_ENABLED=true) and configure Resend.'
     })
   }
 
@@ -71,7 +71,7 @@ export default defineEventHandler(async (event) => {
   }
   const result = await runCampaignSend(
     { ...campaign, status: 'sending' },
-    { prepareHtml: false }
+    { prepareHtml: false, event }
   )
 
   if (result.drained) await setCampaignStatus(id, 'sent')

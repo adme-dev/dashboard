@@ -96,3 +96,38 @@ describe('dispatchReply LinkedIn token refresh', () => {
     expect(mocks.reply).toHaveBeenCalledWith(expect.objectContaining({ accessToken: 'stale' }))
   })
 })
+
+describe('dispatchReply reviewed-send hooks', () => {
+  const facebookConv = { ...linkedinConv, platform: 'facebook', refresh_token: null }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.reply.mockResolvedValue({ platformMessageId: 'fb_1', status: 'success' })
+  })
+
+  it('refuses before any provider call when the resolved target differs from the reviewed one', async () => {
+    const onDispatchStart = vi.fn()
+    const result = await dispatchReply(db(facebookConv), 'conv1', { content: 'Hi', sentByUserId: 'U1', expectedTarget: 'older_comment', onDispatchStart })
+    expect(result).toEqual({ ok: false, error: 'reply_target_changed' })
+    expect(onDispatchStart).not.toHaveBeenCalled()
+    expect(mocks.reply).not.toHaveBeenCalled()
+    expect(mocks.recordOutbound).not.toHaveBeenCalled()
+  })
+
+  it('signals dispatch start immediately before the provider call and marks provider outcomes as dispatched', async () => {
+    const order: string[] = []
+    mocks.reply.mockImplementationOnce(async () => {
+      order.push('provider')
+      return { platformMessageId: '', status: 'failed', error: 'http 500' }
+    })
+    const failed = await dispatchReply(db(facebookConv), 'conv1', {
+      content: 'Hi', sentByUserId: 'U1', expectedTarget: 'urn:li:comment:(urn:li:activity:1,42)', onDispatchStart: () => order.push('start')
+    })
+    expect(order).toEqual(['start', 'provider'])
+    expect(failed).toEqual({ ok: false, error: 'http 500', dispatched: true })
+    expect(mocks.recordOutbound).not.toHaveBeenCalled()
+    const sent = await dispatchReply(db(facebookConv), 'conv1', { content: 'Hi', sentByUserId: 'U1', expectedTarget: 'urn:li:comment:(urn:li:activity:1,42)' })
+    expect(sent).toMatchObject({ ok: true, platformMessageId: 'fb_1', dispatched: true })
+    expect(mocks.recordOutbound).toHaveBeenCalledTimes(1)
+  })
+})

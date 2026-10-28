@@ -11,11 +11,16 @@ export async function lockPageStudioHistoryAuthority(
   db: PageStudioControlQueryClient,
   event: H3Event,
   actor: PageStudioContentActor,
-  scope: PageStudioControlScope
+  scope: PageStudioControlScope,
+  /** Original agency login proven by a consumed MCP request; same binding and SQL rechecks apply. */
+  suppliedLogin?: PageStudioLoginSession
 ): Promise<{ recheck: () => Promise<void>, login: PageStudioLoginSession }> {
   let login: PageStudioLoginSession
   try {
-    login = await resolvePageStudioLoginSession(db, event, actor.role, actor.actorId)
+    if (suppliedLogin && (suppliedLogin.role !== 'agency' || actor.role !== 'agency' || suppliedLogin.userId !== actor.actorId)) {
+      throw createError({ statusCode: 401, statusMessage: 'Original login does not match this actor' })
+    }
+    login = suppliedLogin ?? await resolvePageStudioLoginSession(db, event, actor.role, actor.actorId)
     await bindPageStudioLoginSession(db, login)
   } catch (error) {
     if ((error as { statusCode?: number })?.statusCode === 401) {

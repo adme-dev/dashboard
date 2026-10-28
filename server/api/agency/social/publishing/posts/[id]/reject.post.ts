@@ -1,6 +1,6 @@
-import { requireRole } from '~~/server/utils/auth'
+import { requireDepartmentBrowserReviewer, getDepartmentBrowserSocialPost } from '~~/server/utils/ai/marketing/departmentReviewOperations'
 import { PERMISSIONS } from '~~/server/utils/permissions'
-import { queryOne } from '~~/server/utils/db'
+import { queryOne, queryOneFresh } from '~~/server/utils/db'
 import { createNotification } from '~~/server/utils/notifications'
 import { requireSocialPostClientAccess } from '~~/server/utils/socialPublishing/guards'
 import { recordSocialPublishingAudit } from '~~/server/utils/socialPublishing/audit'
@@ -15,16 +15,18 @@ interface RejectedPost {
  * POST /api/agency/social/publishing/posts/:id/reject   body: { reason, revisionId? }
  * Reject a post back to draft (MANAGEMENT) with a reason, and notify the requester.
  *
- * Delegated posts require the exact pending `revisionId` and the same independent owner/admin reviewer
+ * Delegated posts require the exact pending `revisionId` and the same independent admin or marketing manager
  * rule as approval; the rejected snapshot is preserved for audit. Legacy posts keep their existing
  * rejection, also closing any pending submitted revision.
  */
 export default defineEventHandler(async (event) => {
-  const user = await requireRole(event, PERMISSIONS.MANAGEMENT)
+  const { user, departmentContext, legacyRoleAuthorized } = await requireDepartmentBrowserReviewer(event, PERMISSIONS.MANAGEMENT)
   const id = getRouterParam(event, 'id')
   if (!id) throw createError({ statusCode: 400, statusMessage: 'id required' })
   const b = await readBody(event)
-  const existing = await requireSocialPostClientAccess(event, id)
+  const existing = departmentContext
+    ? await getDepartmentBrowserSocialPost(departmentContext, id, legacyRoleAuthorized)
+    : await requireSocialPostClientAccess(event, id)
 
   let post: RejectedPost | null
   let revisionId: string | null = null
@@ -36,7 +38,7 @@ export default defineEventHandler(async (event) => {
       import('~~/server/utils/socialPublishing/revisions'),
       import('~~/server/utils/db')
     ])
-    const revision = await queryOne<{ requested_by: string }>(
+    const revision = await queryOneFresh<{ requested_by: string }>(
       'SELECT requested_by FROM social_post_revisions WHERE id = $1 AND post_id = $2 AND client_id = $3',
       [requestedRevisionId, id, existing.client_id]
     )

@@ -1,8 +1,9 @@
 import { z } from 'zod'
-import { requireRole } from '~~/server/utils/auth'
 import { PERMISSIONS } from '~~/server/utils/permissions'
 import { transaction } from '~~/server/utils/db'
 import { createError } from 'h3'
+import { resolveMarketingLeadBrowserScope } from '~~/server/utils/leads/followupAccess'
+import { assertLeadRuleFormClient } from '~~/server/utils/leads/ruleConfiguration'
 
 const Body = z.object({
   client_id: z.string().uuid(),
@@ -12,9 +13,10 @@ const Body = z.object({
 })
 
 export default defineEventHandler(async (event) => {
-  await requireRole(event, PERMISSIONS.MEDIA_BUYING)
   const b = Body.parse(await readBody(event))
+  const { marketing } = await resolveMarketingLeadBrowserScope(event, b.client_id, { write: true, legacyRoles: PERMISSIONS.MEDIA_BUYING })
   const id = await transaction(async (db) => {
+    if (marketing) await assertLeadRuleFormClient(db, { clientId: b.client_id, source: b.source, formId: b.form_id })
     if (b.source === 'email') {
       const endpoint = await db.query<{ id: string }>(`
         SELECT id

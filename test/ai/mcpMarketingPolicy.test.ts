@@ -86,8 +86,8 @@ describe('marketing staff grant configuration', () => {
     expect(parseMarketingStaffGrants({ [USER_A]: ['reporting'] } as unknown)).toMatchObject({ status: 'invalid' })
   })
 
-  it('only knows the four approved marketing capabilities', () => {
-    expect([...MARKETING_CAPABILITIES].sort()).toEqual(['ads_plan', 'reporting', 'social_draft', 'tracking_plan'])
+  it('only knows the explicitly approved marketing capabilities', () => {
+    expect([...MARKETING_CAPABILITIES].sort()).toEqual(['ads_plan', 'department_management', 'reporting', 'social_draft', 'tracking_plan'])
   })
 })
 

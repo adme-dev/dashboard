@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- Partial request and database doubles exercise endpoint authority. */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 
@@ -176,6 +177,26 @@ describe('ordinary staff MCP catalog boundary', () => {
     ))
   })
 
+  it('gives dedicated marketing managers department discovery and invocation with fresh revocation', async () => {
+    actor = { role: 'media_buyer', customRoleId: CUSTOM_ROLE, customRole: { is_read_only: false, permission_groups: ['MARKETING_MANAGEMENT', 'MEDIA_BUYING', 'CREATIVE', 'CLIENTS'] } }
+    bindings.MCP_MARKETING_STAFF_GRANTS = JSON.stringify({ [USER_ID]: ['department_management', 'reporting'] })
+    bindings.MCP_SUITE_CONFIG = JSON.stringify({ writes: true, feeds: true, googleAdsRead: true, googleAdsWrite: true })
+    const names = await listedNames()
+    expect(names).toContain('get_department_client_inventory')
+    expect(names).toContain('marketing_list_budget_allocations')
+    expect(names).not.toContain('marketing_set_budget_allocations')
+    expect(names).not.toContain('get_finance_snapshot')
+    expect(names).not.toContain('confirm_action')
+    expect(await call('get_department_client_inventory')).toMatchObject({ ok: true, data: { coverage: { totalActiveClients: 0 } } })
+    scopes = ['mcp:read', 'mcp:write']
+    expect(await listedNames()).toContain('marketing_set_budget_allocations')
+    expect(await call('marketing_set_budget_allocations', { commissionRate: 5 })).toMatchObject({ ok: false, code: 'bad_args' })
+    actor.customRole!.permission_groups = ['MEDIA_BUYING']
+    expect(await listedNames()).not.toContain('get_department_client_inventory')
+    expect(await call('get_department_client_inventory')).toMatchObject({ ok: false })
+    expect(mocks.executeGodModeMcpCall).not.toHaveBeenCalled()
+  })
+
   it('lists the reviewed pilot reads and scoped overview for enrolled non-management staff', async () => {
     bindings.MCP_MARKETING_STAFF_GRANTS = JSON.stringify({ [USER_ID]: ['reporting'] })
     expect(await listedNames()).toEqual(['get_adspend_pacing', 'get_campaign_breakdown', 'get_client_overview', 'get_tasks'])
@@ -248,6 +269,32 @@ describe('ordinary staff MCP catalog boundary', () => {
     mocks.handlers.get_finance_snapshot.mockClear()
     await expect(call('get_finance_snapshot')).resolves.toMatchObject({ ok: false, code: 'forbidden' })
     expect(mocks.handlers.get_finance_snapshot).not.toHaveBeenCalled()
+  })
+
+  it('uses compact flags consistently for discovery, preview and calls, including legacy revocation', async () => {
+    actor = { role: 'lead' }
+    scopes = ['mcp:read', 'mcp:write']
+    vi.stubEnv('MCP_WRITE_TOOLS_ENABLED', undefined)
+    delete bindings.MCP_WRITE_TOOLS_ENABLED
+    bindings.MCP_SUITE_CONFIG = JSON.stringify({ writes: true })
+
+    const assertParity = async (enabled: boolean) => {
+      const names = await listedNames()
+      const preview = await myToolsHandler({ context: { cloudflare: { env: bindings } } } as any) as any
+      expect(preview.tools.map((tool: { name: string }) => tool.name).sort()).toEqual(names)
+      expect(names.includes('propose_create_task')).toBe(enabled)
+      mocks.handlers.create_task.mockClear()
+      const result = await call('propose_create_task', { title: 'Compact config task' })
+      expect(result.ok).toBe(enabled)
+      expect(mocks.handlers.create_task).toHaveBeenCalledTimes(enabled ? 1 : 0)
+    }
+
+    await assertParity(true)
+    bindings.MCP_WRITE_TOOLS_ENABLED = 'false'
+    await assertParity(false)
+    delete bindings.MCP_WRITE_TOOLS_ENABLED
+    bindings.MCP_SUITE_CONFIG = '{"writes":true,"unknown":true}'
+    await assertParity(false)
   })
 
   it('preserves owner God-mode routing', async () => {

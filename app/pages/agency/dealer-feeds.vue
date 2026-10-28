@@ -1,7 +1,17 @@
 <script setup lang="ts">
 import { formatDealerFeedHandoffSummary } from '~/utils/dealerFeedHandoff'
 
-definePageMeta({ layout: 'agency', middleware: ['role-admin'] })
+definePageMeta({
+  layout: 'agency',
+  middleware: [async (to) => {
+    const { user, fetchUser, hasPermission } = useAuth()
+    if (!user.value) await fetchUser()
+    if (!user.value) return navigateTo({ path: '/auth/login', query: { redirect: to.fullPath } })
+    if (!hasPermission('ADMIN') && !hasPermission('MARKETING_MANAGEMENT')) {
+      return navigateTo({ path: '/agency', query: { error: 'no-feed-access' } })
+    }
+  }]
+})
 
 type AgencyClient = {
   id: string

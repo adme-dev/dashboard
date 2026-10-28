@@ -14,33 +14,37 @@ export interface SocialPublishingNavCounts {
 }
 
 /**
- * One round-trip for all four badge counts. clientId is optional: when omitted
+ * One round-trip for all badge counts. Marketing portfolio calls restrict all counts to active clients. clientId is optional: when omitted
  * the counts span every client (the `$1::uuid IS NULL` arm short-circuits the
  * filter). The pending-approval predicate mirrors approvals/badge.get.ts so the
  * Approvals badge and tile never disagree.
  */
 export async function getSocialPublishingNavCounts(
-  clientId?: string | null
+  clientId?: string | null,
+  activeClientsOnly = false
 ): Promise<SocialPublishingNavCounts> {
+  const activeClient = (table: string) => activeClientsOnly
+    ? `AND EXISTS (SELECT 1 FROM agency_clients authorized_client WHERE authorized_client.id = ${table}.client_id AND authorized_client.is_active = TRUE)`
+    : ''
   const row = await queryOne<Partial<SocialPublishingNavCounts>>(
     `SELECT
        (SELECT COUNT(*)::int FROM social_accounts
          WHERE is_active = true
            AND platform <> 'google-business'
-           AND ($1::uuid IS NULL OR client_id = $1)) AS accounts,
+           AND ($1::uuid IS NULL OR client_id = $1) ${activeClient('social_accounts')}) AS accounts,
        (SELECT COUNT(*)::int FROM social_posts
          WHERE status = 'scheduled'
-           AND ($1::uuid IS NULL OR client_id = $1)) AS scheduled,
+           AND ($1::uuid IS NULL OR client_id = $1) ${activeClient('social_posts')}) AS scheduled,
        (SELECT COUNT(*)::int FROM social_posts
          WHERE approval_requested_at IS NOT NULL
            AND approved_at IS NULL
            AND status NOT IN ('cancelled', 'published')
-           AND ($1::uuid IS NULL OR client_id = $1)) AS "pendingApprovals",
+           AND ($1::uuid IS NULL OR client_id = $1) ${activeClient('social_posts')}) AS "pendingApprovals",
        (SELECT COUNT(*)::int FROM social_posts
          WHERE status = 'draft'
-           AND ($1::uuid IS NULL OR client_id = $1)) AS drafts,
+           AND ($1::uuid IS NULL OR client_id = $1) ${activeClient('social_posts')}) AS drafts,
        (SELECT COUNT(*)::int FROM social_campaigns
-         WHERE ($1::uuid IS NULL OR client_id = $1)) AS campaigns`,
+         WHERE ($1::uuid IS NULL OR client_id = $1) ${activeClient('social_campaigns')}) AS campaigns`,
     [clientId ?? null]
   )
 
@@ -50,6 +54,6 @@ export async function getSocialPublishingNavCounts(
     pendingApprovals: row?.pendingApprovals ?? 0,
     drafts: row?.drafts ?? 0,
     // Planner dormant → don't surface a campaigns badge even though the table exists.
-    campaigns: isPlannerEnabled() ? (row?.campaigns ?? 0) : 0,
+    campaigns: isPlannerEnabled() ? (row?.campaigns ?? 0) : 0
   }
 }

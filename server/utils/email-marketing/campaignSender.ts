@@ -9,6 +9,7 @@
 // per-chunk work onto CF Queues with FOR UPDATE SKIP LOCKED claiming + a cron
 // watchdog. This module sends synchronously in a capped, paced loop for now.
 
+import type { H3Event } from 'h3'
 import { queryRows, queryOne, execute } from '~~/server/utils/db'
 import { getAppUrl } from '~~/server/utils/appUrl'
 import { getResendClient, isEmailConfigured } from '~~/server/utils/email'
@@ -17,6 +18,7 @@ import { bridgeCommunication } from '~~/server/utils/crm/commsDb'
 import { signEmailToken, emailLinkSecret } from './links'
 import { getCampaign, prepareCampaignHtmlForSend, setCampaignStatus, type Campaign } from './campaigns'
 import { resolveCampaignSenderDomains } from './senderIdentity'
+import { resolveMarketingProviderConfig } from '~~/server/utils/marketingProviderConfig'
 
 export interface RecipientRow {
   id: string
@@ -26,10 +28,23 @@ export interface RecipientRow {
 }
 
 // ── Hard send gate ────────────────────────────────────────────────────────
-// Sending is OFF unless the operator sets EMAIL_SENDING_ENABLED='true' AND a
-// Resend key is configured. This is the single switch that lets real email out.
-export function isCampaignSendingEnabled(): boolean {
-  return process.env.EMAIL_SENDING_ENABLED === 'true' && isEmailConfigured()
+// Sending is OFF unless the switch is on AND a Resend key is configured. This is
+// the single switch that lets real email out. The switch is the legacy
+// EMAIL_SENDING_ENABLED binding (which wins whenever present, including 'false'
+// or a malformed value) or, when that is absent, `emailSending` in the compact
+// MARKETING_PROVIDER_CONFIG binding. The request's Cloudflare bindings override
+// process.env, which is only a local fallback (a request binding that is present
+// but not 'true' therefore closes the gate even if process.env says 'true').
+export function campaignSendingRuntimeEnv(event?: H3Event): Record<string, unknown> {
+  const requestEnv = (event?.context as { cloudflare?: { env?: unknown } } | undefined)?.cloudflare?.env
+  return {
+    ...process.env,
+    ...(requestEnv && typeof requestEnv === 'object' ? requestEnv as Record<string, unknown> : {})
+  }
+}
+
+export function isCampaignSendingEnabled(event?: H3Event): boolean {
+  return resolveMarketingProviderConfig(campaignSendingRuntimeEnv(event)).emailSending && isEmailConfigured(event)
 }
 
 // ── DB: claim a chunk of pending recipients ─────────────────────────────────
@@ -171,18 +186,18 @@ export interface ChunkResult { sent: number, failed: number, rateLimited: boolea
 // Send one batch chunk for a campaign. Gated — throws if sending is disabled so
 // no path reaches Resend by accident. On 429 the claim is released (not failed)
 // so the recipients retry on the next pass.
-export async function sendCampaignChunk(campaign: Campaign): Promise<ChunkResult> {
-  if (!isCampaignSendingEnabled()) {
+export async function sendCampaignChunk(campaign: Campaign, event?: H3Event): Promise<ChunkResult> {
+  if (!isCampaignSendingEnabled(event)) {
     throw createError({ statusCode: 403, statusMessage: 'sending_disabled' })
   }
-  const client = getResendClient()
+  const client = getResendClient(event)
   if (!client) throw createError({ statusCode: 503, statusMessage: 'resend_unavailable' })
 
   await cancelIneligiblePendingRecipients(campaign.id)
   const recipients = await claimPendingChunk(campaign.id, RESEND_BATCH_LIMIT)
   if (recipients.length === 0) return { sent: 0, failed: 0, rateLimited: false, retryAfterSec: 0 }
 
-  const appUrl = getAppUrl()
+  const appUrl = getAppUrl(event)
   const secret = emailLinkSecret()
   const payload = await Promise.all(recipients.map(async r =>
     buildTrackedBatchEmail(
@@ -282,11 +297,11 @@ async function campaignStillSending(campaignId: string): Promise<boolean> {
 // on a 429 so the next tick backs off.
 export async function runCampaignSend(
   campaign: Campaign,
-  opts: { maxChunks?: number, pacingMs?: number, prepareHtml?: boolean } = {}
+  opts: { maxChunks?: number, pacingMs?: number, prepareHtml?: boolean, event?: H3Event } = {}
 ): Promise<SendRunResult> {
   const preparedCampaign = opts.prepareHtml === false
     ? campaign
-    : await prepareCampaignHtmlForSend(campaign)
+    : await prepareCampaignHtmlForSend(campaign, opts.event ? { appUrl: getAppUrl(opts.event) } : undefined)
   const maxChunks = opts.maxChunks ?? 50
   const pacingMs = opts.pacingMs ?? 500
   let sent = 0
@@ -295,7 +310,7 @@ export async function runCampaignSend(
   let retryAfterSec = 0
   for (let i = 0; i < maxChunks; i++) {
     if (!(await campaignStillSending(campaign.id))) break
-    const result = await sendCampaignChunk(preparedCampaign)
+    const result = await sendCampaignChunk(preparedCampaign, opts.event)
     sent += result.sent
     failed += result.failed
     if (result.rateLimited) {
@@ -337,8 +352,9 @@ async function storeCampaignPreflight(campaignId: string, preflight: ReturnType<
   `, [campaignId, JSON.stringify(preflight), checkedAt])
 }
 
-export async function dispatchCampaigns(opts: { maxChunksPerCampaign?: number } = {}): Promise<DispatchSummary> {
-  if (!isCampaignSendingEnabled()) {
+export async function dispatchCampaigns(opts: { maxChunksPerCampaign?: number, event?: H3Event } = {}): Promise<DispatchSummary> {
+  const { event } = opts
+  if (!isCampaignSendingEnabled(event)) {
     return { skipped: 'sending_disabled', promoted: 0, drained: 0, sent: 0, failed: 0, retryAfterSec: 0 }
   }
 
@@ -354,13 +370,13 @@ export async function dispatchCampaigns(opts: { maxChunksPerCampaign?: number } 
     try {
       const full = await getCampaign(c.id)
       if (!full) continue
-      const sendingConfigured = isEmailConfigured()
+      const sendingConfigured = isEmailConfigured(event)
       const preflight = buildCampaignPreflight({
         campaign: full,
         toSend: full.to_send,
         sendingConfigured,
         senderDomainAuthenticated: sendingConfigured,
-        allowedSenderDomains: resolveCampaignSenderDomains()
+        allowedSenderDomains: resolveCampaignSenderDomains(event)
       })
       if (preflight.blocked) {
         await storeCampaignPreflight(c.id, preflight)
@@ -388,7 +404,7 @@ export async function dispatchCampaigns(opts: { maxChunksPerCampaign?: number } 
   for (const campaign of sending) {
     try {
       await releaseStaleClaims(campaign.id)
-      const result = await runCampaignSend(campaign, { maxChunks: opts.maxChunksPerCampaign ?? 50 })
+      const result = await runCampaignSend(campaign, { maxChunks: opts.maxChunksPerCampaign ?? 50, event })
       sent += result.sent
       failed += result.failed
       retryAfterSec = Math.max(retryAfterSec, result.retryAfterSec)

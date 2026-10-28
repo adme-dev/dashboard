@@ -6,5 +6,5 @@ import { isCampaignSendingEnabled } from '~~/server/utils/email-marketing/campai
 
 export default defineEventHandler(async (event) => {
   await requireAuth(event)
-  return { sending_enabled: isCampaignSendingEnabled() }
+  return { sending_enabled: isCampaignSendingEnabled(event) }
 })

@@ -3,16 +3,105 @@
  * Returns client info, projects, time entries, invoices, and profitability
  */
 
-import { queryOne, queryRows } from '~~/server/utils/db'
-import { requireRole } from '~~/server/utils/auth'
+import { queryOne, queryOneFresh, queryRows, queryRowsFresh } from '~~/server/utils/db'
+import { requireAuth, requireRole } from '~~/server/utils/auth'
 import { PERMISSIONS } from '~~/server/utils/permissions'
+import {
+  isMarketingClientViewer,
+  MARKETING_CLIENT_ACCESS,
+  requireActiveMarketingClient
+} from '~~/server/utils/clients/marketingAccess'
+
+type DbRow = Record<string, unknown>
+
+/**
+ * Department detail: active client identity, project status and ad spend/budget only. Rates,
+ * labour, expenses, invoices, profitability, commission, billing address and notes are never read.
+ */
+async function getMarketingClientDetail(id: string | undefined) {
+  await requireActiveMarketingClient(id)
+  // Every read carries the active predicate, so a mid-request deactivation yields no client data.
+  const [client, projects, mediaSpend] = await Promise.all([
+    queryOneFresh<DbRow>(`
+      SELECT id, name, is_active, contact_email, contact_phone, reporting_timezone, lead_capture_mode,
+             created_at, updated_at
+        FROM agency_clients
+       WHERE id = $1 AND is_active = TRUE
+    `, [id]),
+    queryRowsFresh<DbRow>(`
+      SELECT p.id, p.name, p.status, p.start_date, p.end_date
+        FROM projects p
+        JOIN agency_clients c ON c.id = p.client_id AND c.is_active = TRUE
+       WHERE p.client_id = $1
+       ORDER BY p.created_at DESC
+    `, [id]),
+    queryRowsFresh<DbRow>(`
+      SELECT ms.id, ms.platform, ms.period, ms.budget_allocated, ms.actual_spend
+        FROM media_spend ms
+        JOIN agency_clients c ON c.id = ms.client_id AND c.is_active = TRUE
+       WHERE ms.client_id = $1
+       ORDER BY ms.period DESC, ms.platform
+       LIMIT 20
+    `, [id])
+  ])
+  if (!client) throw createError({ statusCode: 404, statusMessage: 'Client not found' })
+
+  return {
+    access: MARKETING_CLIENT_ACCESS,
+    client: {
+      id: client.id,
+      name: client.name,
+      isActive: client.is_active,
+      contactEmail: client.contact_email,
+      contactPhone: client.contact_phone,
+      reportingTimezone: client.reporting_timezone,
+      leadCaptureMode: client.lead_capture_mode || 'capture_only',
+      createdAt: client.created_at,
+      updatedAt: client.updated_at
+    },
+    projects: projects.map(p => ({
+      id: p.id,
+      name: p.name,
+      status: p.status,
+      startDate: p.start_date,
+      endDate: p.end_date
+    })),
+    mediaSpend: mediaSpend.map(ms => ({
+      id: ms.id,
+      platform: ms.platform,
+      period: ms.period,
+      budgetAllocated: Number(ms.budget_allocated) || 0,
+      actualSpend: Number(ms.actual_spend) || 0
+    })),
+    summary: {
+      totalProjects: projects.length,
+      activeProjects: projects.filter(p => p.status === 'active').length,
+      completedProjects: projects.filter(p => p.status === 'completed').length,
+      // Recent rows only, matching the legacy media summary window.
+      totalMediaSpend: mediaSpend.reduce((sum, ms) => sum + (Number(ms.actual_spend) || 0), 0),
+      totalMediaBudget: mediaSpend.reduce((sum, ms) => sum + (Number(ms.budget_allocated) || 0), 0)
+    }
+  }
+}
 
 export default defineEventHandler(async (event) => {
+  const user = await requireAuth(event)
+  const id = getRouterParam(event, 'id')
+
+  if (await isMarketingClientViewer(user.id)) {
+    setResponseHeader(event, 'cache-control', 'private, no-store')
+    try {
+      return await getMarketingClientDetail(id)
+    } catch (error) {
+      if ((error as { statusCode?: number }).statusCode) throw error
+      console.error('Failed to fetch marketing client:', error)
+      throw createError({ statusCode: 500, statusMessage: 'Failed to fetch client details' })
+    }
+  }
+
   // Match the page's `role-clients` gate: only CLIENTS-permission staff may read
   // full client financials (revenue, cost, invoices, time entries, team).
   await requireRole(event, PERMISSIONS.CLIENTS)
-
-  const id = getRouterParam(event, 'id')
 
   if (!id) {
     throw createError({
@@ -111,6 +200,7 @@ export default defineEventHandler(async (event) => {
     }
 
     return {
+      access: { financial: true },
       client: {
         id: client.id,
         name: client.name,

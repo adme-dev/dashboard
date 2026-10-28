@@ -13,6 +13,7 @@ const mockGetSelectedTenant = vi.fn()
 const mockRoleHasPermission = vi.fn()
 const mockIsReadOnlyRole = vi.fn()
 const mockGetClientFinancials = vi.fn()
+const mockDenyMarketingClientViewer = vi.fn()
 
 const testGlobal = globalThis as typeof globalThis & {
   defineEventHandler: <T>(handler: T) => T
@@ -46,6 +47,10 @@ vi.mock('~~/server/utils/permissions', async (importOriginal) => {
   }
 })
 
+vi.mock('~~/server/utils/clients/marketingAccess', () => ({
+  denyMarketingClientViewer: (...args: unknown[]) => mockDenyMarketingClientViewer(...args)
+}))
+
 vi.mock('~~/server/utils/clientFinancials', () => ({
   getClientFinancials: (...args: unknown[]) => mockGetClientFinancials(...args),
 }))
@@ -68,6 +73,24 @@ describe('GET /api/agency/clients/:id/financials', () => {
     mockRoleHasPermission.mockReturnValue(false)
     mockIsReadOnlyRole.mockReturnValue(false)
     mockGetClientFinancials.mockResolvedValue({ summary: { xeroRevenue: 2500 } })
+    mockDenyMarketingClientViewer.mockResolvedValue(undefined)
+  })
+
+  it('denies department-only marketing staff before reading any financial source', async () => {
+    mockRequireRole.mockResolvedValue({
+      id: 'user-mm',
+      role: 'media_buyer',
+      permissionGroups: ['MARKETING_MANAGEMENT', 'CLIENTS'],
+      isCustomReadOnly: false
+    })
+    mockDenyMarketingClientViewer.mockRejectedValue(Object.assign(new Error('denied'), { statusCode: 403 }))
+    const { default: handler } = await import('~~/server/api/agency/clients/[id]/financials.get')
+
+    await expect(handler(event as never)).rejects.toMatchObject({ statusCode: 403 })
+
+    expect(mockDenyMarketingClientViewer).toHaveBeenCalledWith('user-mm')
+    expect(mockGetSelectedTenant).not.toHaveBeenCalled()
+    expect(mockGetClientFinancials).not.toHaveBeenCalled()
   })
 
   it('requires CLIENTS permission and returns summaries without detailed sources to account managers', async () => {

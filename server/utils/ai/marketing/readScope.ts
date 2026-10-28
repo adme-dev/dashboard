@@ -1,5 +1,6 @@
 import { createError, type H3Event } from 'h3'
 import { queryOneFresh } from '~~/server/utils/db'
+import { hasMarketingManagementPermission, isMarketingManagementContext } from '~~/server/utils/marketingManagement'
 import type { PermissionGroup } from '~~/server/utils/permissions'
 import { resolveGodModeAuthority, isActiveGodModeAuthority } from '~~/server/utils/godMode/authority'
 import type { ToolContext } from '../toolContext'
@@ -36,7 +37,7 @@ export async function resolveMarketingReadScope(ctx: ToolContext): Promise<Marke
   const groups = (authority.permissionGroups ?? []).filter(group =>
     !application || !ctx.permissionGroups || ctx.permissionGroups.includes(group))
   const allActive = !ownerVerified && authority.assistantScope?.clientAccessMode === 'all_active'
-  if (allActive && !(authority.permissionGroups ?? []).some(g => g === 'ADMIN' || g === 'MANAGEMENT')) throw createError({ statusCode: 403, statusMessage: 'Invalid client scope' })
+  if (allActive && !isMarketingManagementContext(authority) && !(authority.permissionGroups ?? []).some(g => g === 'ADMIN' || g === 'MANAGEMENT')) throw createError({ statusCode: 403, statusMessage: 'Invalid client scope' })
   let clientIds: readonly string[] | null = ownerVerified || allActive ? null : [...(authority.assistantScope?.assignedClientIds ?? [])]
   if (application && ctx.assistantScope?.clientAccessMode === 'assigned') {
     const personalIds = ctx.assistantScope.assignedClientIds
@@ -61,7 +62,7 @@ export function requireMarketingReadPermission(scope: MarketingReadScope, family
       : family === 'social'
         ? ['CREATIVE', 'CLIENTS', 'ADMIN', 'MANAGEMENT']
         : family === 'clients' ? ['CLIENTS', 'CREATIVE', 'MEDIA_BUYING', 'ADMIN', 'MANAGEMENT'] : ['MEDIA_BUYING', 'ADMIN', 'MANAGEMENT']
-  if (!scope.ownerVerified && !(family !== 'lead_summary' && scope.reportingGranted) && !groups.some(g => scope.permissionGroups.includes(g))) {
+  if (!scope.ownerVerified && !hasMarketingManagementPermission(scope.permissionGroups) && !(family !== 'lead_summary' && scope.reportingGranted) && !groups.some(g => scope.permissionGroups.includes(g))) {
     throw createError({ statusCode: 403, statusMessage: 'Reporting permission required' })
   }
 }

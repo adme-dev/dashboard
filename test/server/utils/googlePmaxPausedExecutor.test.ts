@@ -235,3 +235,26 @@ describe('Google PMax paused-only executor', () => {
     expect(activationDeps.provider.enable).not.toHaveBeenCalled()
   })
 })
+
+describe('PMax uncertain create and dispatch fences', () => {
+  it('holds an ambiguous create rather than permitting another provider create', async () => {
+    const deps = dependencies()
+    deps.provider.createPaused.mockRejectedValue(new Error('lost acknowledgement'))
+    const executor = createGooglePmaxPausedExecutor(deps)
+    await expect(executor.createAndVerify({ launchId: ids.launch, tenantId: ids.tenant, actorId: ids.actor }))
+      .rejects.toMatchObject({ code: 'PMAX_CREATE_FAILED' })
+    expect((await deps.getLaunch()).state).toBe('RECOVERY_REQUIRED')
+    await expect(executor.createAndVerify({ launchId: ids.launch, tenantId: ids.tenant, actorId: ids.actor })).rejects.toBeDefined()
+    expect(deps.provider.createPaused).toHaveBeenCalledTimes(1)
+  })
+
+  it('refreshes authorization after validate-only and stops a revoked dispatch', async () => {
+    const deps = dependencies()
+    let checks = 0
+    const executor = createGooglePmaxPausedExecutor({ ...deps, authorize: async () => {
+      if (++checks === 2) throw new Error('revoked')
+    } })
+    await expect(executor.createAndVerify({ launchId: ids.launch, tenantId: ids.tenant, actorId: ids.actor })).rejects.toThrow('revoked')
+    expect(deps.provider.createPaused).not.toHaveBeenCalled()
+  })
+})
