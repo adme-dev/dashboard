@@ -1,0 +1,47 @@
+[
+  {
+    "engine": "photocraft",
+    "version": "0.16.0",
+    "zip": "photocraft-web-0.16.0.zip",
+    "size": 12110518,
+    "sha256": "3885e8f221da8886f041e7f31c9389ef91f1c85afee3df33fa5874e59d0afa84",
+    "source_patch_replay": "source-patch-replay.json",
+    "rust": "1.95.0",
+    "wasm_bindgen": "0.2.129",
+    "trunk": "0.21.14",
+    "wasm_opt": 123,
+    "browser_startup": true,
+    "browser_uncaught_errors": [],
+    "full_document_workflow_verified": false
+  },
+  {
+    "engine": "filmcraft",
+    "version": "0.13.0",
+    "zip": "filmcraft-web-0.13.0.zip",
+    "size": 16402542,
+    "sha256": "c0a19f0d74879b8bc6ef3e3ad8ab86db54974f0b09efffcda5b3f9536ea0adab",
+    "source_patch_replay": "source-patch-replay.json",
+    "rust": "1.95.0",
+    "wasm_bindgen": "0.2.129",
+    "trunk": null,
+    "wasm_opt": null,
+    "browser_startup": true,
+    "browser_uncaught_errors": [],
+    "full_document_workflow_verified": false
+  },
+  {
+    "engine": "soundcraft",
+    "version": "0.13.1",
+    "zip": "soundcraft-web-0.13.1.zip",
+    "size": 6439300,
+    "sha256": "f47f949ae9d85a77fc94ca8bff3727d57719cda8fb390694a7a97932eadb6da8",
+    "source_patch_replay": "source-patch-replay.json",
+    "rust": "1.95.0",
+    "wasm_bindgen": "0.2.129",
+    "trunk": "0.21.14",
+    "wasm_opt": 123,
+    "browser_startup": true,
+    "browser_uncaught_errors": [],
+    "full_document_workflow_verified": false
+  }
+]

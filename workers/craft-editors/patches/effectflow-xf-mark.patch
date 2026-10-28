@@ -1,0 +1,13 @@
+--- a/crates/ui-egui/src/header.rs
++++ b/crates/ui-egui/src/header.rs
+@@ -665,8 +665,8 @@
+ /// not use, see `docs/brand/LICENSE-brand.txt`, so this fork paints its own mark instead. The files
+ /// in `docs/brand/` are left untouched and are no longer compiled in.)
+ pub fn paint_logo(p: &egui::Painter, r: Rect) {
+-    p.rect_filled(r, r.height() * 0.22, Color32::from_rgb(0x4f, 0x46, 0xe5));
+-    p.text(r.center(), Align2::CENTER_CENTER, "X", egui::FontId::proportional(r.height() * 0.62), Color32::WHITE);
++    p.rect_filled(r, r.height() * 0.22, Color32::WHITE);
++    p.text(r.center(), Align2::CENTER_CENTER, "XF", egui::FontId::proportional(r.height() * 0.46), Color32::from_rgb(0x12, 0x13, 0x17));
+ }
+ 
+ #[cfg(test)]

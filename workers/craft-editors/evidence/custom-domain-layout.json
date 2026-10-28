@@ -1,0 +1,143 @@
+{
+  "url": "https://creative.xeroflow.io/",
+  "at": "2026-10-28T01:05:39.046Z",
+  "results": [
+    {
+      "width": 1440,
+      "scroll": 1440,
+      "columns": 3,
+      "font": "Geist, Inter, system-ui, sans-serif",
+      "fontLoaded": true,
+      "logo": true,
+      "cards": [
+        {
+          "name": "PhotoFlow",
+          "image": true
+        },
+        {
+          "name": "VectorFlow",
+          "image": true
+        },
+        {
+          "name": "EffectFlow",
+          "image": true
+        },
+        {
+          "name": "FilmFlow",
+          "image": true
+        },
+        {
+          "name": "SoundFlow",
+          "image": true
+        },
+        {
+          "name": "FigFlow",
+          "image": true
+        }
+      ]
+    },
+    {
+      "width": 1024,
+      "scroll": 1024,
+      "columns": 3,
+      "font": "Geist, Inter, system-ui, sans-serif",
+      "fontLoaded": true,
+      "logo": true,
+      "cards": [
+        {
+          "name": "PhotoFlow",
+          "image": true
+        },
+        {
+          "name": "VectorFlow",
+          "image": true
+        },
+        {
+          "name": "EffectFlow",
+          "image": true
+        },
+        {
+          "name": "FilmFlow",
+          "image": true
+        },
+        {
+          "name": "SoundFlow",
+          "image": true
+        },
+        {
+          "name": "FigFlow",
+          "image": true
+        }
+      ]
+    },
+    {
+      "width": 768,
+      "scroll": 768,
+      "columns": 2,
+      "font": "Geist, Inter, system-ui, sans-serif",
+      "fontLoaded": true,
+      "logo": true,
+      "cards": [
+        {
+          "name": "PhotoFlow",
+          "image": true
+        },
+        {
+          "name": "VectorFlow",
+          "image": true
+        },
+        {
+          "name": "EffectFlow",
+          "image": true
+        },
+        {
+          "name": "FilmFlow",
+          "image": true
+        },
+        {
+          "name": "SoundFlow",
+          "image": true
+        },
+        {
+          "name": "FigFlow",
+          "image": true
+        }
+      ]
+    },
+    {
+      "width": 390,
+      "scroll": 390,
+      "columns": 1,
+      "font": "Geist, Inter, system-ui, sans-serif",
+      "fontLoaded": true,
+      "logo": true,
+      "cards": [
+        {
+          "name": "PhotoFlow",
+          "image": true
+        },
+        {
+          "name": "VectorFlow",
+          "image": true
+        },
+        {
+          "name": "EffectFlow",
+          "image": true
+        },
+        {
+          "name": "FilmFlow",
+          "image": true
+        },
+        {
+          "name": "SoundFlow",
+          "image": true
+        },
+        {
+          "name": "FigFlow",
+          "image": true
+        }
+      ]
+    }
+  ],
+  "dns_override": "Chrome host resolver mapped creative.xeroflow.io to public DNS result while router NXDOMAIN cache remained"
+}

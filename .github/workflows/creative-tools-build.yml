@@ -1,0 +1,56 @@
+name: Creative tools browser builds
+
+on:
+  push:
+    branches:
+      - adme-dev/craft-hosted-rollout-20261028
+    paths:
+      - workers/craft-editors/**
+      - .github/workflows/creative-tools-build.yml
+
+permissions:
+  contents: read
+
+jobs:
+  browser:
+    name: Browser / ${{ matrix.engine }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        engine: [vectorcraft, figcraft, effectcraft]
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - name: Build verified browser package
+        run: bash workers/craft-editors/ci-build-browser.sh '${{ matrix.engine }}' web
+      - name: Upload package, verification receipts and logs
+        if: always()
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: creative-${{ matrix.engine }}-web-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/creative-artifacts/${{ matrix.engine }}-web/
+          retention-days: 7
+          if-no-files-found: warn
+
+  fig-tests:
+    name: FigFlow native save, export and branding tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - name: Test verified FigFlow sources
+        run: bash workers/craft-editors/ci-build-browser.sh figcraft test
+      - name: Upload verification receipts and test logs
+        if: always()
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: creative-figcraft-tests-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/creative-artifacts/figcraft-test/
+          retention-days: 7
+          if-no-files-found: warn

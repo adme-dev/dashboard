@@ -1,0 +1,16 @@
+--- a/crates/ui-egui/src/brand.rs
++++ b/crates/ui-egui/src/brand.rs
+@@ -5,10 +5,10 @@
+ use egui::{Align2, Color32, CornerRadius, FontId, Id, Rect, Ui};
+ 
+ /// The tile's fill and the monogram's colour.
+-const TILE: Color32 = Color32::from_rgb(0x1F, 0x6F, 0xEB);
+-const INK: Color32 = Color32::WHITE;
++const TILE: Color32 = Color32::WHITE;
++const INK: Color32 = Color32::from_rgb(0x12, 0x13, 0x17);
+ /// The letters drawn on the tile.
+-const MONOGRAM: &str = "PF";
++const MONOGRAM: &str = "XF";
+ 
+ /// Where the mark was painted this frame (tests and screenshots).
+ fn rect_id() -> Id {
