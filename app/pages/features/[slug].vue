@@ -1714,6 +1714,18 @@ const features: Record<string, Feature> = {
       }
     ]
   },
+  'creative-workspace-mcp': {
+    title: 'Creative Workspace MCP', slug: 'creative-workspace-mcp', icon: 'i-lucide-panels-top-left',
+    category: 'AI & Intelligence', categoryIcon: 'i-lucide-brain',
+    categoryIconBg: 'bg-amber-50 dark:bg-amber-500/10', categoryIconColor: 'text-amber-600 dark:text-amber-400',
+    description: 'Preview: shared discovery across your creative workspace, using current XeroFlow permissions. Live browser editing and cross-app project handoffs remain in development.',
+    details: [
+      { title: 'One Shared Connection', content: 'The shared XeroFlow AI tool registry also supplies the existing remote MCP connector. The creative preview adds capability discovery and metadata search alongside the existing governed Banner Studio, video and generation suites. Actual operations depend on the tools and permissions available to the signed-in account.' },
+      { title: 'Find Authorized Creative Work', content: 'Search names across Banner Studio assets and projects, audio assets, video assets and EDM templates. Each result has a stable source-qualified reference. Current client assignments narrow results before pagination; the metadata preview does not return file contents, private storage keys, email bodies or signed download URLs.' },
+      { title: 'Individual Editors, Clear Status', content: 'PhotoFlow, VectorFlow, EffectFlow, FilmFlow, SoundFlow and FigFlow are separate browser editors. Their native automation interfaces inform the integration design, but browser control requires an additional authenticated connection. Capability discovery explicitly distinguishes this planned connection from existing application services.' },
+      { title: 'Managed Updates', content: 'The creative suite uses pinned upstream GitHub releases and source commits. Candidate upgrades must preserve branding, document formats and integration patches, pass rebuild and browser checks, and retain a previous version for rollback. Detecting an upstream release does not automatically replace an active editor.' }
+    ]
+  },
   'ai-chat': {
     title: 'AI Chat',
     slug: 'ai-chat',

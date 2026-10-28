@@ -39,6 +39,7 @@ import { socialNewsRecommendationsTool } from './socialNewsRecommendations'
 import { capabilitiesTool } from './capabilities'
 import { actionLogTool } from './actionLogTool'
 import { creativeAssetsTool } from './creativeAssetsTool'
+import { creativeWorkspaceTools } from './creativeWorkspace'
 import { adBreakdownTool } from './adBreakdown'
 import { modelCapabilitiesTool } from './modelCapabilities'
 import { runAdspendSyncTool, getAdspendSyncStatusTool } from './adspendSync'
@@ -57,6 +58,7 @@ export const registry: AiTool<any>[] = [
   capabilitiesTool,
   actionLogTool,
   creativeAssetsTool,
+  ...creativeWorkspaceTools,
   adBreakdownTool,
   modelCapabilitiesTool,
   runAdspendSyncTool,
