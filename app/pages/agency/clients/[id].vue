@@ -16,8 +16,8 @@ definePageMeta({
 
 const route = useRoute()
 const toast = useToast()
-// KPI targets are editable only by MANAGEMENT roles (matches the kpi-targets PUT
-// guard) — non-managers get a read-only view instead of a 403 on save.
+// KPI targets are editable by writable MANAGEMENT roles and the marketing department view
+// (see canManageKpis) — everyone else gets a read-only view instead of a 403 on save.
 const { isManager, isOwner, canAccessMediaBuying, canWrite } = useAuth()
 const clientId = route.params.id as string
 const apiFetch = $fetch as <T = unknown>(
@@ -77,6 +77,26 @@ const isNotFound = computed(() => ((error.value as any)?.statusCode ?? (error.va
 
 const client = computed(() => (clientData.value as any)?.client || null)
 
+// Explicit server access metadata: the marketing department view carries `financial: false` and
+// never requests the financial façade. Legacy responses keep the financial view.
+interface MarketingClientPayload {
+  access?: { financial?: boolean }
+  projects?: Array<{ id: string, name: string, status: string, startDate: string | null, endDate: string | null }>
+  mediaSpend?: Array<{ id: string | number, platform: string, period: string, budgetAllocated: number, actualSpend: number }>
+}
+const clientPayload = computed(() => clientData.value as MarketingClientPayload | null)
+const marketingView = computed(() => clientPayload.value?.access?.financial === false)
+const canViewFinancials = computed(() => Boolean(client.value) && !marketingView.value)
+const financialsEnabledAtSetup = canViewFinancials.value
+const marketingProjects = computed(() => marketingView.value ? clientPayload.value?.projects ?? [] : [])
+const marketingMedia = computed(() => marketingView.value ? clientPayload.value?.mediaSpend ?? [] : [])
+const marketingSummary = computed(() => ({
+  activeProjects: marketingProjects.value.filter(project => project.status === 'active').length,
+  totalProjects: marketingProjects.value.length,
+  mediaSpend: marketingMedia.value.reduce((sum, row) => sum + (Number(row.actualSpend) || 0), 0),
+  mediaBudget: marketingMedia.value.reduce((sum, row) => sum + (Number(row.budgetAllocated) || 0), 0)
+}))
+
 // One reporting period owns every financial surface on this route. CalendarDate
 // keeps the inclusive ISO range independent of browser/server UTC conversion.
 const calendarToday = today(getLocalTimeZone())
@@ -114,8 +134,26 @@ const {
   refresh: refreshFinancials,
 } = await useFetch<ClientFinancialsResponse>(
   `/api/agency/clients/${clientId}/financials`,
-  { query: financialQuery },
+  financialsEnabledAtSetup
+    ? { query: financialQuery }
+    : { query: financialQuery, immediate: false, watch: false }
 )
+
+async function reloadFinancials() {
+  if (canViewFinancials.value) await refreshFinancials()
+}
+
+// Deferred only when the client failed to load at setup; the marketing view never fetches.
+if (!financialsEnabledAtSetup) {
+  watch(financialQuery, () => {
+    void reloadFinancials()
+  })
+}
+
+async function retryClient() {
+  await refresh()
+  if (!financialsEnabledAtSetup) await reloadFinancials()
+}
 
 // Nuxt retains prior data while a reactive query changes. Only render a response
 // whose inclusive server period matches the currently selected range.
@@ -175,7 +213,22 @@ const activeTab = ref('overview')
 const showFinancialAllocation = ref(false)
 const qrGrid = ref<{ refresh: () => void, openNew: () => void }>()
 
-const tabItems = computed(() => [
+const reportingTabs = computed(() => [
+  { label: 'Website', value: 'website', icon: 'i-lucide-radio' },
+  { label: 'QR Codes', value: 'qr', icon: 'i-lucide-qr-code' },
+  ...(canAccessMediaBuying.value
+    ? [{ label: 'Measurement', value: 'measurement', icon: 'i-lucide-activity' }]
+    : [])
+])
+
+const marketingTabItems = computed(() => [
+  { label: 'Overview', value: 'overview', icon: 'i-lucide-layout-dashboard' },
+  { label: 'Projects', value: 'projects', icon: 'i-lucide-folder', badge: String(marketingProjects.value.length) },
+  { label: 'Media Spend', value: 'media', icon: 'i-lucide-megaphone', badge: String(marketingMedia.value.length) },
+  ...reportingTabs.value
+])
+
+const financialTabItems = computed(() => [
   { label: 'Overview', value: 'overview', icon: 'i-lucide-layout-dashboard' },
   {
     label: 'Projects',
@@ -207,12 +260,10 @@ const tabItems = computed(() => [
       ? String(financialActivity.value.mediaCampaigns.length)
       : undefined,
   },
-  { label: 'Website', value: 'website', icon: 'i-lucide-radio' },
-  { label: 'QR Codes', value: 'qr', icon: 'i-lucide-qr-code' },
-  ...(canAccessMediaBuying.value
-    ? [{ label: 'Measurement', value: 'measurement', icon: 'i-lucide-activity' }]
-    : []),
+  ...reportingTabs.value
 ])
+
+const tabItems = computed(() => marketingView.value ? marketingTabItems.value : financialTabItems.value)
 
 // Format helpers
 const currencyFormatters = new Map<string, Intl.NumberFormat>()
@@ -285,11 +336,11 @@ const formatCampaignSpend = (campaign: ClientFinancialMediaCampaign) => {
 }
 
 async function retryFinancials() {
-  await refreshFinancials()
+  await reloadFinancials()
 }
 
 async function handleFinancialAllocated() {
-  await refreshFinancials()
+  await reloadFinancials()
 }
 
 // Billing type labels
@@ -394,7 +445,7 @@ const saveClient = async () => {
     mutationAttempts.delete('crm')
     showEditModal.value = false
     await refresh()
-    await refreshFinancials()
+    await reloadFinancials()
   } catch (err: any) {
     toast.add({ title: 'Failed to update client', description: apiErrorDescription(err), color: 'error' })
   } finally {
@@ -413,7 +464,7 @@ const unlinkXero = async () => {
     mutationAttempts.delete('unlink')
     toast.add({ title: 'Xero contact unlinked', color: 'success' })
     await refresh()
-    await refreshFinancials()
+    await reloadFinancials()
   } catch (err: any) {
     toast.add({ title: 'Failed to unlink', description: apiErrorDescription(err), color: 'error' })
   }
@@ -474,6 +525,20 @@ const invoiceColumns = [
   { accessorKey: 'status', header: 'Status' },
 ]
 
+const marketingProjectColumns = [
+  { accessorKey: 'name', header: 'Project' },
+  { accessorKey: 'status', header: 'Status' },
+  { accessorKey: 'startDate', header: 'Start' },
+  { accessorKey: 'endDate', header: 'End' }
+]
+
+const marketingMediaColumns = [
+  { accessorKey: 'period', header: 'Period' },
+  { accessorKey: 'platform', header: 'Platform' },
+  { accessorKey: 'budgetAllocated', header: 'Budget' },
+  { accessorKey: 'actualSpend', header: 'Actual spend' }
+]
+
 const mediaColumns = [
   { accessorKey: 'campaignName', header: 'Campaign' },
   { accessorKey: 'platform', header: 'Platform' },
@@ -485,10 +550,12 @@ const mediaColumns = [
 ]
 
 // KPI Targets
-const kpiData = ref<{ targets: Array<{ resultType: string, targetCostPerResult: number, targetCtr: number | null, maxFrequency: number | null }>, availableResultTypes: string[] }>({ targets: [], availableResultTypes: [] })
+const kpiData = ref<{ targets: Array<{ resultType: string, targetCostPerResult: number, targetCtr: number | null, maxFrequency: number | null }>, availableResultTypes: string[], revision?: string, canManage?: boolean }>({ targets: [], availableResultTypes: [] })
+// KPI targets are department work: the marketing view may edit them (revision-bound), as may managers.
+const canManageKpis = computed(() => canWrite.value && (isManager.value || marketingView.value || kpiData.value.canManage === true))
 
 async function refreshKpi() {
-  kpiData.value = await apiFetch<{ targets: Array<{ resultType: string, targetCostPerResult: number, targetCtr: number | null, maxFrequency: number | null }>, availableResultTypes: string[] }>(
+  kpiData.value = await apiFetch<{ targets: Array<{ resultType: string, targetCostPerResult: number, targetCtr: number | null, maxFrequency: number | null }>, availableResultTypes: string[], revision?: string, canManage?: boolean }>(
     `/api/agency/clients/${clientId}/kpi-targets`
   ).catch(() => ({ targets: [], availableResultTypes: [] }))
 }
@@ -508,14 +575,28 @@ function removeKpiRow(i: number) { kpiTargets.value.splice(i, 1) }
 
 const kpiSaving = ref(false)
 async function saveKpiTargets() {
-  const clean = kpiTargets.value.filter(t => t.resultType && Number(t.targetCostPerResult) > 0)
+  const optionalNumber = (value: number | string | null) => value == null || value === '' ? null : Number(value)
+  const clean = kpiTargets.value.map(t => ({
+    resultType: t.resultType.trim(),
+    targetCostPerResult: Number(t.targetCostPerResult),
+    targetCtr: optionalNumber(t.targetCtr),
+    maxFrequency: optionalNumber(t.maxFrequency)
+  }))
+  if (clean.some(t => !t.resultType || !Number.isFinite(t.targetCostPerResult) || t.targetCostPerResult <= 0
+    || (t.targetCtr !== null && !Number.isFinite(t.targetCtr)) || (t.maxFrequency !== null && !Number.isFinite(t.maxFrequency)))) {
+    toast.add({ title: 'Check KPI targets', description: 'Enter a result type and positive cost for each target, or remove the row.', color: 'error' })
+    return
+  }
   kpiSaving.value = true
   try {
-    await apiFetch(`/api/agency/clients/${clientId}/kpi-targets`, { method: 'PUT', body: { targets: clean } })
+    const body = kpiData.value.revision
+      ? { targets: clean, expectedRevision: kpiData.value.revision }
+      : { targets: clean }
+    await apiFetch(`/api/agency/clients/${clientId}/kpi-targets`, { method: 'PUT', body })
     toast.add({ title: 'KPI targets saved', color: 'success' })
     await refreshKpi()
-  } catch {
-    toast.add({ title: 'Failed to save targets', color: 'error' })
+  } catch (error) {
+    toast.add({ title: 'Failed to save targets', description: apiErrorDescription(error), color: 'error' })
   } finally {
     kpiSaving.value = false
   }
@@ -538,11 +619,11 @@ async function saveKpiTargets() {
             <UBadge variant="subtle" :color="client.isActive ? 'success' : 'neutral'">
               {{ client.isActive ? 'Active' : 'Inactive' }}
             </UBadge>
-            <span class="text-sm text-muted">{{ billingTypeLabels[client.billingType] || client.billingType }}</span>
+            <span v-if="!marketingView" class="text-sm text-muted">{{ billingTypeLabels[client.billingType] || client.billingType }}</span>
           </div>
         </template>
         <template #right>
-          <div class="flex gap-2">
+          <div v-if="!marketingView" class="flex gap-2">
             <UButton
               label="New Project"
               icon="i-lucide-folder-plus"
@@ -566,7 +647,63 @@ async function saveKpiTargets() {
         </div>
 
         <template v-else-if="client">
-          <section aria-labelledby="client-financial-heading" class="mb-6 space-y-4">
+          <section v-if="marketingView" aria-labelledby="client-marketing-heading" class="mb-6 space-y-4">
+            <div class="space-y-1 border-b border-default pb-4">
+              <h2 id="client-marketing-heading" class="text-lg font-semibold text-highlighted">
+                Marketing reporting
+              </h2>
+              <p class="max-w-2xl text-sm text-muted">
+                Project status and recorded ad platform spend for this active client.
+              </p>
+            </div>
+
+            <div class="grid auto-rows-fr grid-cols-1 gap-3 sm:grid-cols-3">
+              <UCard class="h-full">
+                <dl class="flex h-full flex-col justify-between gap-3">
+                  <dt class="text-sm font-medium text-muted">
+                    Active projects
+                  </dt>
+                  <dd class="text-2xl font-semibold tabular-nums tracking-tight">
+                    {{ marketingSummary.activeProjects }}
+                    <span class="text-sm font-normal text-muted">of {{ marketingSummary.totalProjects }}</span>
+                  </dd>
+                </dl>
+              </UCard>
+              <!-- No zero placeholders: spend cards appear only when spend rows exist. -->
+              <template v-if="marketingMedia.length">
+                <UCard class="h-full">
+                  <dl class="flex h-full flex-col justify-between gap-3">
+                    <dt class="text-sm font-medium text-muted">
+                      Recent media spend
+                    </dt>
+                    <dd class="text-2xl font-semibold tabular-nums tracking-tight">
+                      {{ formatCurrency(marketingSummary.mediaSpend) }}
+                    </dd>
+                  </dl>
+                </UCard>
+                <UCard class="h-full">
+                  <dl class="flex h-full flex-col justify-between gap-3">
+                    <dt class="text-sm font-medium text-muted">
+                      Recent media budget
+                    </dt>
+                    <dd class="text-2xl font-semibold tabular-nums tracking-tight">
+                      {{ formatCurrency(marketingSummary.mediaBudget) }}
+                    </dd>
+                  </dl>
+                </UCard>
+              </template>
+            </div>
+
+            <UAlert
+              title="Agency financials are limited to finance and management"
+              description="Revenue, labour, invoices, rates and commission are not part of the marketing view."
+              color="neutral"
+              variant="subtle"
+              icon="i-lucide-lock"
+            />
+          </section>
+
+          <section v-else aria-labelledby="client-financial-heading" class="mb-6 space-y-4">
             <div class="flex flex-col gap-4 border-b border-default pb-4 xl:flex-row xl:items-end xl:justify-between">
               <div class="space-y-1">
                 <div class="flex flex-wrap items-center gap-2">
@@ -668,7 +805,7 @@ async function saveKpiTargets() {
                 </h3>
               </template>
               <dl class="space-y-3">
-                <div>
+                <div v-if="!marketingView">
                   <dt class="text-sm text-muted">
                     Billing Type
                   </dt>
@@ -676,7 +813,7 @@ async function saveKpiTargets() {
                     {{ billingTypeLabels[client.billingType] || client.billingType }}
                   </dd>
                 </div>
-                <div>
+                <div v-if="!marketingView">
                   <dt class="text-sm text-muted">
                     Payment Terms
                   </dt>
@@ -747,7 +884,7 @@ async function saveKpiTargets() {
             <ClientsClientTeamCard :client-id="clientId" />
 
             <!-- Xero Link -->
-            <UCard class="lg:col-span-3">
+            <UCard v-if="!marketingView" class="lg:col-span-3">
               <template #header>
                 <div class="flex items-center justify-between">
                   <h3 class="font-semibold">
@@ -810,7 +947,7 @@ async function saveKpiTargets() {
                     </p>
                   </div>
                   <UButton
-                    v-if="isManager"
+                    v-if="canManageKpis"
                     size="xs"
                     variant="outline"
                     icon="i-lucide-plus"
@@ -819,52 +956,56 @@ async function saveKpiTargets() {
                   />
                 </div>
               </template>
-              <div class="space-y-3">
-                <div v-for="(t, i) in kpiTargets" :key="i" class="grid grid-cols-12 gap-2 items-end">
-                  <UFormField class="col-span-4" label="Result type">
+              <div class="@container space-y-3">
+                <div v-for="(t, i) in kpiTargets" :key="i" class="grid grid-cols-1 @lg:grid-cols-12 gap-4 items-end">
+                  <UFormField class="@lg:col-span-4" label="Result type">
                     <USelectMenu
                       v-model="t.resultType"
+                      class="w-full"
                       :items="resultTypeOptions"
                       create-item
                       placeholder="Select result type"
                       size="sm"
-                      :disabled="!isManager"
+                      :disabled="!canManageKpis"
                       @create="(v: string) => { t.resultType = v }"
                     />
                   </UFormField>
-                  <UFormField class="col-span-3" label="Target cost / result">
+                  <UFormField class="@lg:col-span-3" label="Target cost / result">
                     <UInput
                       v-model.number="t.targetCostPerResult"
+                      class="w-full"
                       type="number"
                       :min="0"
                       step="0.01"
                       size="sm"
-                      :disabled="!isManager"
+                      :disabled="!canManageKpis"
                     />
                   </UFormField>
-                  <UFormField class="col-span-2" label="Target CTR %">
+                  <UFormField class="@lg:col-span-2" label="Target CTR %">
                     <UInput
                       v-model.number="t.targetCtr"
+                      class="w-full"
                       type="number"
                       :min="0"
                       step="0.01"
                       size="sm"
-                      :disabled="!isManager"
+                      :disabled="!canManageKpis"
                     />
                   </UFormField>
-                  <UFormField class="col-span-2" label="Max freq.">
+                  <UFormField class="@lg:col-span-2" label="Max freq.">
                     <UInput
                       v-model.number="t.maxFrequency"
+                      class="w-full"
                       type="number"
                       :min="0"
                       step="0.1"
                       size="sm"
-                      :disabled="!isManager"
+                      :disabled="!canManageKpis"
                     />
                   </UFormField>
                   <UButton
-                    v-if="isManager"
-                    class="col-span-1"
+                    v-if="canManageKpis"
+                    class="@lg:col-span-1"
                     size="xs"
                     variant="ghost"
                     color="error"
@@ -873,9 +1014,9 @@ async function saveKpiTargets() {
                   />
                 </div>
                 <p v-if="!kpiTargets.length" class="text-xs text-muted">
-                  {{ isManager ? 'No targets yet. Add one to enable health scoring for this client.' : 'No KPI targets set for this client.' }}
+                  {{ canManageKpis ? 'No targets yet. Add one to enable health scoring for this client.' : 'No KPI targets set for this client.' }}
                 </p>
-                <div v-if="isManager" class="flex justify-end pt-1">
+                <div v-if="canManageKpis" class="flex justify-end pt-1">
                   <UButton
                     size="sm"
                     label="Save targets"
@@ -887,8 +1028,35 @@ async function saveKpiTargets() {
             </UCard>
           </div>
 
-          <!-- Projects Tab -->
-          <section v-if="activeTab === 'projects'" aria-label="Project financials" class="space-y-4">
+          <!-- Projects Tab (marketing view: status only, no budgets or costs) -->
+          <section v-if="activeTab === 'projects' && marketingView" aria-label="Projects" class="space-y-4">
+            <UCard v-if="marketingProjects.length">
+              <UTable :data="marketingProjects" :columns="marketingProjectColumns">
+                <template #name-cell="{ row }">
+                  <span class="font-medium text-highlighted">{{ row.original.name }}</span>
+                </template>
+                <template #status-cell="{ row }">
+                  {{ formatStatusLabel(row.original.status) }}
+                </template>
+                <template #startDate-cell="{ row }">
+                  {{ row.original.startDate ? formatDate(row.original.startDate) : '—' }}
+                </template>
+                <template #endDate-cell="{ row }">
+                  {{ row.original.endDate ? formatDate(row.original.endDate) : '—' }}
+                </template>
+              </UTable>
+            </UCard>
+            <UAlert
+              v-else
+              title="No projects yet"
+              description="This client has no projects."
+              color="neutral"
+              variant="subtle"
+              icon="i-lucide-folder-open"
+            />
+          </section>
+
+          <section v-if="activeTab === 'projects' && !marketingView" aria-label="Project financials" class="space-y-4">
             <ClientsClientProjectFinancialTable
               v-if="financialPending"
               :projects="[]"
@@ -916,7 +1084,7 @@ async function saveKpiTargets() {
           </section>
 
           <!-- Time Entries Tab -->
-          <section v-if="activeTab === 'time'" aria-labelledby="time-entries-heading" class="space-y-4">
+          <section v-if="activeTab === 'time' && !marketingView" aria-labelledby="time-entries-heading" class="space-y-4">
             <div class="flex flex-wrap items-center gap-2">
               <h3 id="time-entries-heading" class="text-base font-semibold text-highlighted">Time entries</h3>
               <UBadge v-if="financialActivity" color="neutral" variant="subtle">
@@ -993,7 +1161,7 @@ async function saveKpiTargets() {
           </section>
 
           <!-- Invoices Tab -->
-          <section v-if="activeTab === 'invoices'" aria-labelledby="invoices-heading" class="space-y-4">
+          <section v-if="activeTab === 'invoices' && !marketingView" aria-labelledby="invoices-heading" class="space-y-4">
             <div class="flex flex-wrap items-center gap-2">
               <h3 id="invoices-heading" class="text-base font-semibold text-highlighted">Xero invoice headers</h3>
               <UBadge v-if="financialActivity" color="neutral" variant="subtle">
@@ -1060,8 +1228,32 @@ async function saveKpiTargets() {
             </template>
           </section>
 
-          <!-- Media Spend Tab -->
-          <section v-if="activeTab === 'media'" aria-labelledby="media-spend-heading" class="space-y-4">
+          <!-- Media Spend Tab (marketing view: recorded platform spend and budget, no commission) -->
+          <section v-if="activeTab === 'media' && marketingView" aria-labelledby="marketing-media-heading" class="space-y-4">
+            <h3 id="marketing-media-heading" class="text-base font-semibold text-highlighted">
+              Recorded media spend
+            </h3>
+            <UCard v-if="marketingMedia.length">
+              <UTable :data="marketingMedia" :columns="marketingMediaColumns">
+                <template #budgetAllocated-cell="{ row }">
+                  <span class="tabular-nums">{{ formatCurrency(row.original.budgetAllocated) }}</span>
+                </template>
+                <template #actualSpend-cell="{ row }">
+                  <span class="tabular-nums">{{ formatCurrency(row.original.actualSpend) }}</span>
+                </template>
+              </UTable>
+            </UCard>
+            <UAlert
+              v-else
+              title="No media spend recorded"
+              description="No ad platform spend rows are recorded for this client yet."
+              color="neutral"
+              variant="subtle"
+              icon="i-lucide-megaphone-off"
+            />
+          </section>
+
+          <section v-if="activeTab === 'media' && !marketingView" aria-labelledby="media-spend-heading" class="space-y-4">
             <div class="flex flex-wrap items-center gap-2">
               <h3 id="media-spend-heading" class="text-base font-semibold text-highlighted">Campaign media spend</h3>
               <UBadge
@@ -1199,7 +1391,7 @@ async function saveKpiTargets() {
               v-if="!isNotFound"
               icon="i-lucide-refresh-cw"
               label="Retry"
-              @click="refresh()"
+              @click="retryClient()"
             />
             <UButton
               variant="outline"

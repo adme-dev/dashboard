@@ -116,7 +116,7 @@ async function resolveRolePolicy(
  * Resolve the trusted ToolContext for one ordinary MCP staff request.
  *  - 403 for an invalid, unknown or deactivated actor (checked before any other lookup)
  *  - 503 when authority storage is unavailable/malformed or the assignment set is unbounded
- *  - explicit MANAGEMENT/ADMIN groups → `all_active`; everyone else → their current active
+ *  - explicit MANAGEMENT/ADMIN/MARKETING_MANAGEMENT groups → `all_active`; everyone else → current active
  *    assignments only (zero assignments = zero clients, never agency-wide)
  *  - marketing capabilities from MCP_MARKETING_STAFF_GRANTS (never adds groups or client scope)
  */

@@ -7,9 +7,10 @@
  * (team_member_id === the authenticated user's id — the user table IS
  * team_members). NEVER trust a clientId without calling this first.
  */
-import type { H3Event } from 'h3'
+import { createError, type H3Event } from 'h3'
 import { requireAuth, requireRole } from '~~/server/utils/auth'
-import { queryOne, query } from '~~/server/utils/db'
+import { hasFreshMarketingManagementPermission } from '~~/server/utils/clientScoping'
+import { queryOneFresh, queryRowsFresh, queryOne, query } from '~~/server/utils/db'
 
 const MANAGEMENT_ROLES = ['owner', 'admin', 'lead', 'project_manager'] as const
 const SCOPED_ROLES = ['media_buyer', 'account_manager'] as const
@@ -30,9 +31,15 @@ export function isUuid(v: string | undefined | null): boolean {
  *  Throws 401/403/400 as appropriate. Returns the authenticated user. */
 export async function requireClientTrackingAccess(event: H3Event, clientId: string | undefined) {
   const user = await requireAuth(event)
-  await requireRole(event, ANALYTICS_ROLES)
+  const marketingManagement = !isManagementRole(user.role) && await hasFreshMarketingManagementPermission(user.id)
+  if (!marketingManagement) await requireRole(event, ANALYTICS_ROLES)
   if (!clientId) throw createError({ statusCode: 400, statusMessage: 'clientId is required' })
   if (!isUuid(clientId)) throw createError({ statusCode: 400, statusMessage: 'Invalid clientId' })
+  if (marketingManagement) {
+    const active = await queryOneFresh('SELECT id FROM agency_clients WHERE id = $1 AND is_active = TRUE', [clientId])
+    if (!active) throw createError({ statusCode: 403, statusMessage: 'No access to this client' })
+    return user
+  }
   if (isManagementRole(user.role)) return user
   const row = await queryOne(
     `SELECT 1 FROM client_team_assignments WHERE client_id = $1 AND team_member_id = $2 LIMIT 1`,
@@ -42,13 +49,26 @@ export async function requireClientTrackingAccess(event: H3Event, clientId: stri
   return user
 }
 
-/** Client ids the user may access: null = all clients (management role); else the
- *  array of clients assigned via client_team_assignments. Use to scope list queries. */
+async function activeMarketingClientIds(): Promise<string[]> {
+  // The legacy list contract has no active-only sentinel: enumerate clients, never assignments.
+  const rows = await queryRowsFresh<{ client_id: string }>(
+    'SELECT id AS client_id FROM agency_clients WHERE is_active = TRUE ORDER BY id'
+  )
+  return rows.map(row => row.client_id)
+}
+
+/** Client ids the user may access: null = all clients (legacy management); otherwise active
+ * marketing portfolio IDs for the explicit grant, or assigned IDs. Use to scope list queries. */
 export async function accessibleClientIds(user: { id: string, role: string }): Promise<string[] | null> {
   if (isManagementRole(user.role)) return null
+  if (await hasFreshMarketingManagementPermission(user.id)) return activeMarketingClientIds()
+  return assignedClientIds(user.id)
+}
+
+async function assignedClientIds(userId: string): Promise<string[]> {
   const rows = await query<{ client_id: string }>(
     `SELECT client_id FROM client_team_assignments WHERE team_member_id = $1`,
-    [user.id]
+    [userId]
   )
   return rows.map(r => r.client_id)
 }
@@ -61,13 +81,14 @@ export async function requireTrackingAudienceScope(
   requestedClientId?: string
 ) {
   const user = await requireAuth(event)
-  await requireRole(event, ANALYTICS_ROLES)
-
   if (requestedClientId && !isUuid(requestedClientId)) {
     throw createError({ statusCode: 400, statusMessage: 'Invalid clientId' })
   }
 
-  const allowedIds = await accessibleClientIds(user)
+  const management = isManagementRole(user.role)
+  const marketingManagement = !management && await hasFreshMarketingManagementPermission(user.id)
+  if (!marketingManagement) await requireRole(event, ANALYTICS_ROLES)
+  const allowedIds = management ? null : marketingManagement ? await activeMarketingClientIds() : await assignedClientIds(user.id)
   if (requestedClientId) {
     if (allowedIds !== null && !allowedIds.includes(requestedClientId)) {
       throw createError({ statusCode: 403, statusMessage: 'No access to this client' })

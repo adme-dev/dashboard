@@ -332,11 +332,14 @@ CRM_SEARCH_PROVIDER_APIS_ENABLED = "false"
 AGENCY_WORKFLOWS_ENABLED = "true"
 SITE_INTELLIGENCE_ENABLED = "true"
 AGENCY_WORKFLOWS_SMOKE_SHARED_SECRET_SHA256 = "8aa2f98fd3d621bb0ac8f0157622d86cae347e14cdb35f32375b9467778462f2"
+# Reviewed provider execution switches share one binding; explicit legacy kill switches still win.
+MARKETING_PROVIDER_CONFIG = '{"pmaxProviderWrites":true,"pmaxActivation":true,"metaAdPublish":true,"emailSending":true}'
 MCP_SERVER_ENABLED = "true"
 MCP_WORKER_ORIGIN = "https://mcp-server.adme-dev.workers.dev"
-MCP_GEN_TOOLS_ENABLED = "true"
-MCP_VIDEO_TOOLS_ENABLED = "true"
-MCP_BANNER_TOOLS_ENABLED = "true"
+# Compact suite flags replace three legacy production variables, saving two binding slots.
+# Staff permissions, grants, signed write scope and provider readiness still gate each operation.
+# Exact values/precedence and activation checks: docs/runbooks/marketing-management-config.md.
+MCP_SUITE_CONFIG = '{"generation":true,"writes":true,"financial":false,"video":true,"videoGeneration":false,"banners":true,"feeds":true,"googleAdsRead":true,"googleAdsWrite":true,"googleAdsAutomation":false,"googleAdsDestructive":false}'
 CRM_SEARCH_RELEASE_ENVIRONMENT = "production"
 PAGE_STUDIO_RELEASE_ENVIRONMENT = "production"
 PAGE_STUDIO_PROVISIONING_ENVIRONMENT = "production"

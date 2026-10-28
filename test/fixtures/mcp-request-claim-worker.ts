@@ -1,3 +1,4 @@
+import type { McpPageStudioLoginProof } from '../../shared/utils/mcpPageStudioLogin'
 import {
   MCP_REQUEST_AUDIENCE,
   digestMcpRequestBody,
@@ -15,9 +16,11 @@ export default {
       tool: string
       args: unknown
       idempotencyKey: string
+      pageStudioLogin?: McpPageStudioLoginProof
     }
     const assertion = await signMcpRequestClaim({
       uid: body.userId,
+      ...(body.pageStudioLogin ? { pageStudioLogin: body.pageStudioLogin } : {}),
       scope: ['mcp:read', 'mcp:write'],
       godMode: true,
       audience: MCP_REQUEST_AUDIENCE,

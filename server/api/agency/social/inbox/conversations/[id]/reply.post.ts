@@ -1,4 +1,4 @@
-import { requireAuth } from '~~/server/utils/auth'
+import { requireSocialInboxConversation } from '~~/server/utils/socialInbox/departmentScope'
 import { queryOne, execute } from '~~/server/utils/db'
 import { dispatchReply } from '~~/server/utils/socialInbox/dispatch'
 import { emitInboxEvent } from '~~/server/utils/socialInbox/events'
@@ -15,8 +15,9 @@ interface ReplyResult { ok: true, platformMessageId?: string, clientId?: string 
  * replayed owner attempt returns the stored platform message id instead of sending twice.
  */
 export default defineEventHandler(async (event) => {
-  const user = await requireAuth(event)
   const id = getRouterParam(event, 'id')!
+  // Department staff: current grant + active client/account ownership, checked before any provider I/O.
+  const { user } = await requireSocialInboxConversation(event, id)
   const { content } = await readBody(event)
   if (!content?.trim()) throw createError({ statusCode: 400, statusMessage: 'content required' })
 
@@ -25,7 +26,7 @@ export default defineEventHandler(async (event) => {
     const res = await dispatchReply({ queryOne, execute }, id, {
       content: content.trim(),
       sentByUserId: String(user.id),
-      aiGenerated: false,
+      aiGenerated: false
     })
     if (!res.ok) throw createError({ statusCode: 502, statusMessage: res.error || 'reply failed' })
     await run.markDispatched()

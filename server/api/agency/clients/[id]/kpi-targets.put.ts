@@ -1,42 +1,27 @@
+import { z } from 'zod'
 import { transaction } from '~~/server/utils/db'
-import { requireRole } from '~~/server/utils/auth'
+import { requireRole, requireWriteAccess } from '~~/server/utils/auth'
 import { PERMISSIONS } from '~~/server/utils/permissions'
-
-interface TargetInput {
-  resultType: string
-  targetCostPerResult: number
-  targetCtr?: number | null
-  maxFrequency?: number | null
-}
+import { hasFreshMarketingManagementPermission } from '~~/server/utils/clientScoping'
+import { resolveMcpStaffContext } from '~~/server/utils/ai/mcp/staffAuthority'
+import { replaceClientKpiTargets } from '~~/server/utils/clients/kpiTargets'
 
 export default defineEventHandler(async (event) => {
-  await requireRole(event, [...PERMISSIONS.MANAGEMENT])
-  const clientId = getRouterParam(event, 'id')
-  if (!clientId) throw createError({ statusCode: 400, statusMessage: 'Client ID is required' })
-
+  const user = await requireWriteAccess(event)
+  const marketing = await hasFreshMarketingManagementPermission(user.id)
+  if (!marketing) await requireRole(event, PERMISSIONS.MANAGEMENT)
+  const parsed = z.string().uuid().safeParse(getRouterParam(event, 'id'))
+  if (!parsed.success) throw createError({ statusCode: 400, statusMessage: 'Valid client ID required' })
   const body = await readBody(event)
-  const targets: TargetInput[] = Array.isArray(body?.targets) ? body.targets : []
-
-  for (const t of targets) {
-    if (!t.resultType || typeof t.resultType !== 'string') {
-      throw createError({ statusCode: 400, statusMessage: 'Each target needs a resultType' })
+  const expected = z.string().regex(/^[a-f0-9]{64}$/).safeParse(body?.expectedRevision)
+  if (marketing && !expected.success) throw createError({ statusCode: 400, statusMessage: 'Read the current KPI revision before saving' })
+  return transaction(async (db) => {
+    if (marketing) {
+      // Reuse only the uncached native identity/role policy; MCP consent/grants do not authorize browser edits.
+      const fresh = await resolveMcpStaffContext(event, user.id, [])
+      if (!fresh.permissionGroups?.includes('MARKETING_MANAGEMENT') || fresh.assistantReadOnly) throw createError({ statusCode: 403, statusMessage: 'Writable marketing management permission required' })
     }
-    if (!(Number(t.targetCostPerResult) > 0)) {
-      throw createError({ statusCode: 400, statusMessage: `targetCostPerResult must be > 0 for ${t.resultType}` })
-    }
-  }
-
-  await transaction(async (client) => {
-    await client.query(`DELETE FROM client_kpi_targets WHERE client_id = $1`, [clientId])
-    for (const t of targets) {
-      await client.query(
-        `INSERT INTO client_kpi_targets (client_id, result_type, target_cost_per_result, target_ctr, max_frequency)
-         VALUES ($1, $2, $3, $4, $5)`,
-        [clientId, t.resultType, t.targetCostPerResult,
-         t.targetCtr == null ? null : t.targetCtr, t.maxFrequency == null ? null : t.maxFrequency]
-      )
-    }
+    const saved = await replaceClientKpiTargets(db, parsed.data, body?.targets, expected.success ? expected.data : undefined, marketing)
+    return { ok: true, count: saved.targets.length, revision: saved.revision }
   })
-
-  return { ok: true, count: targets.length }
 })

@@ -35,7 +35,8 @@ vi.mock('h3', async (importOriginal) => {
 })
 
 vi.mock('~~/server/utils/ai/mcp/assertion', () => ({
-  verifyMcpAssertion: mocks.verifyAssertion
+  verifyMcpAssertion: mocks.verifyAssertion,
+  digestMcpOAuthState: async (state: string) => `digest:${state}`
 }))
 vi.mock('~~/server/utils/godMode/authority', () => ({
   resolveGodModeAuthority: mocks.resolveAuthority,
@@ -151,13 +152,13 @@ describe('internal MCP exchange authority', () => {
     vi.stubEnv('MCP_SERVER_ENABLED', 'true')
     vi.stubEnv('MCP_INTERNAL_SECRET', INTERNAL_SECRET)
     vi.stubEnv('MCP_HANDSHAKE_SECRET', 'handshake-secret')
-    mocks.verifyAssertion.mockResolvedValue({ uid: USER_ID, scope: ['mcp:read'] })
+    mocks.verifyAssertion.mockResolvedValue({ uid: USER_ID, scope: ['mcp:read'], stateHash: 'digest:oauth-state' })
     mocks.resolveAuthority.mockResolvedValue({ active: true, actorUserId: USER_ID })
   })
 
   it('resolves the OAuth assertion subject freshly and returns only that server-derived owner bit', async () => {
     const requestEvent = event(
-      { assertion: 'oauth-assertion', godMode: false },
+      { assertion: 'oauth-assertion', state: 'oauth-state', godMode: false },
       { 'x-mcp-secret': INTERNAL_SECRET }
     )
 

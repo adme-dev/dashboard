@@ -11,10 +11,16 @@ definePageMeta({
 const activeFilter = ref<'all' | 'active' | 'inactive'>('active')
 const searchQuery = ref('')
 
+// The server marks the marketing department's minimized, active-only directory explicitly.
+const marketingView = useState('agency-clients-marketing-view', () => false)
+
 // Fetch clients
 const { data: clientsData, pending, refresh } = await useFetch('/api/agency/clients', {
   query: {
     active: computed(() => activeFilter.value === 'all' ? undefined : activeFilter.value === 'active')
+  },
+  onResponse({ response }) {
+    marketingView.value = response.headers.get('x-client-financial-access') === 'marketing'
   }
 })
 
@@ -99,7 +105,8 @@ const getBillingTypeLabel = (type: BillingType) => {
 }
 
 // Table columns
-const columns = [
+const financialColumnKeys = new Set(['billingType', 'retainerAmount', 'totalRevenue', 'grossMargin'])
+const allColumns = [
   { accessorKey: 'name', header: 'Client', enableSorting: true },
   { accessorKey: 'billingType', header: 'Billing Type' },
   { accessorKey: 'retainerAmount', header: 'Retainer' },
@@ -109,6 +116,9 @@ const columns = [
   { accessorKey: 'status', header: 'Status' },
   { accessorKey: 'actions', header: '' }
 ]
+const columns = computed(() => marketingView.value
+  ? allColumns.filter(column => !financialColumnKeys.has(column.accessorKey))
+  : allColumns)
 
 // Actions
 const toast = useToast()
@@ -126,6 +136,10 @@ const getActions = (client: any) => [
     onSelect: () => toggleClientStatus(client)
   }
 ]
+
+// The marketing view keeps only navigation: no projects, Xero, invoicing or status changes.
+const getRowActions = (client: Parameters<typeof getActions>[0]) =>
+  marketingView.value ? getActions(client).slice(0, 1) : getActions(client)
 
 const toggleClientStatus = async (client: any) => {
   try {
@@ -182,6 +196,7 @@ const showNewClientModal = ref(false)
               @click="bulkMatchXero"
             />
             <UButton
+              v-if="!marketingView"
               label="New Client"
               icon="i-lucide-plus"
               color="primary"
@@ -193,7 +208,8 @@ const showNewClientModal = ref(false)
 
       <div class="flex-1 overflow-y-auto p-4 sm:p-6">
         <!-- Summary Cards -->
-        <div class="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
+        <!-- Agency financial summaries are absent (not zero) in the marketing view. -->
+        <div class="grid grid-cols-1 gap-4 mb-6" :class="marketingView ? 'md:grid-cols-2' : 'md:grid-cols-5'">
           <UCard>
             <div class="text-center">
               <p class="text-sm text-gray-500 dark:text-gray-400">Total Clients</p>
@@ -206,13 +222,13 @@ const showNewClientModal = ref(false)
               <p class="text-3xl font-bold text-emerald-500">{{ summary.active }}</p>
             </div>
           </UCard>
-          <UCard>
+          <UCard v-if="!marketingView">
             <div class="text-center">
               <p class="text-sm text-gray-500 dark:text-gray-400">Total Revenue</p>
               <p class="text-3xl font-bold">{{ formatCurrency(summary.totalRevenue) }}</p>
             </div>
           </UCard>
-          <UCard>
+          <UCard v-if="!marketingView">
             <div class="text-center">
               <p class="text-sm text-gray-500 dark:text-gray-400">Avg Margin</p>
               <p
@@ -223,7 +239,7 @@ const showNewClientModal = ref(false)
               </p>
             </div>
           </UCard>
-          <UCard>
+          <UCard v-if="!marketingView">
             <div class="text-center">
               <p class="text-sm text-gray-500 dark:text-gray-400">Monthly MRR</p>
               <p class="text-3xl font-bold text-violet-500">{{ formatCurrency(summary.totalMRR) }}</p>
@@ -240,7 +256,9 @@ const showNewClientModal = ref(false)
             class="w-64"
           />
 
+          <!-- The marketing directory is active-only on the server, so it has no status filter. -->
           <USelectMenu
+            v-if="!marketingView"
             v-model="activeFilter"
             :items="activeOptions"
             value-key="value"
@@ -325,7 +343,7 @@ const showNewClientModal = ref(false)
             </template>
 
             <template #actions-cell="{ row }">
-              <UDropdownMenu :items="getActions(row.original)">
+              <UDropdownMenu :items="getRowActions(row.original)">
                 <UButton
                   color="neutral"
                   variant="ghost"

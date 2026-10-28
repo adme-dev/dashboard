@@ -132,6 +132,22 @@ describe('standalone MCP Worker request authority', () => {
     expect(new Headers(firstInit.headers).has('x-mcp-scope')).toBe(false)
   })
 
+  it('carries original-login proof from OAuth props inside the signed call without bearer credentials', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(responseJson({ ok: true, data: {} }))
+    vi.stubGlobal('fetch', fetchMock)
+    const agent = new XeroFlowMcpAgent() as unknown as { env: unknown, props: unknown, init: () => Promise<void> }
+    const proof = { role: 'agency', userId: USER_ID, tokenHash: 'a'.repeat(64), issuedAt: Date.now() - 60000, expiresAt: Date.now() + 600000 }
+    agent.env = env()
+    agent.props = { ...props(), pageStudioLogin: proof }
+    await agent.init()
+    await mocks.handlers.get(mocks.callSchema)!({ params: { name: 'marketing_publish_website_version', arguments: {} } }, { requestId: 'studio-1' })
+    const init = fetchMock.mock.calls[0][1] as RequestInit
+    const claim = await verifyMcpRequestClaim(new Headers(init.headers).get('x-mcp-assertion')!, SIGNING_SECRET)
+    expect(claim?.pageStudioLogin).toEqual(proof)
+    expect(new Headers(init.headers).has('authorization')).toBe(false)
+    expect(String(init.body)).not.toContain(proof.tokenHash)
+  })
+
   it('uses OAuth session plus SDK requestId for stable logical call idempotency while rotating JTI', async () => {
     const fetchMock = vi.fn().mockImplementation(async () => responseJson({ ok: true, data: { count: 1 } }))
     vi.stubGlobal('fetch', fetchMock)
@@ -257,6 +273,32 @@ describe('standalone MCP Worker request authority', () => {
     await expect(call(request, { requestId: Number.POSITIVE_INFINITY })).rejects.toThrow(TypeError)
     await expect(call(request, { requestId: { nested: true } })).rejects.toThrow(TypeError)
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('retains only valid exchange-signed original-login proof in the OAuth grant', async () => {
+    const state = Buffer.from(JSON.stringify({ clientId: 'client-1', scope: ['mcp:read'] })).toString('base64url')
+    const proof = { role: 'agency', userId: USER_ID, tokenHash: 'c'.repeat(64), issuedAt: Date.now() - 60000, expiresAt: Date.now() + 600000 }
+    const fetchMock = vi.fn().mockResolvedValue(responseJson({ userId: USER_ID, scope: ['mcp:read'], pageStudioLogin: proof }))
+    vi.stubGlobal('fetch', fetchMock)
+    mocks.completeAuthorization.mockResolvedValue({ redirectTo: 'https://client.test/callback' })
+    const auth = (workerModule.default as unknown as { options: { defaultHandler: { fetch: (request: Request, env: unknown) => Promise<Response> } } }).options.defaultHandler
+    const request = () => new Request(`https://mcp.test/callback?state=${state}&assertion=oauth-assertion`)
+    await auth.fetch(request(), env())
+    expect(mocks.completeAuthorization.mock.calls[0][0].props.pageStudioLogin).toEqual(proof)
+    mocks.completeAuthorization.mockClear()
+    fetchMock.mockResolvedValue(responseJson({ userId: USER_ID, scope: ['mcp:read'], pageStudioLogin: { ...proof, userId: '22222222-2222-4222-8222-222222222222' } }))
+    expect((await auth.fetch(request(), env())).status).toBe(401)
+    expect(mocks.completeAuthorization).not.toHaveBeenCalled()
+  })
+
+  it('forwards the exact OAuth request state so the app can bind the consent assertion to it', async () => {
+    const state = Buffer.from(JSON.stringify({ clientId: 'client-1', scope: ['mcp:read'] })).toString('base64url')
+    const fetchMock = vi.fn().mockResolvedValue(responseJson({ userId: USER_ID, scope: ['mcp:read'] }))
+    vi.stubGlobal('fetch', fetchMock)
+    mocks.completeAuthorization.mockResolvedValue({ redirectTo: 'https://client.test/callback' })
+    const auth = (workerModule.default as unknown as { options: { defaultHandler: { fetch: (request: Request, env: unknown) => Promise<Response> } } }).options.defaultHandler
+    await auth.fetch(new Request(`https://mcp.test/callback?state=${state}&assertion=oauth-assertion`), env())
+    expect(JSON.parse(String(fetchMock.mock.calls[0]![1].body))).toEqual({ assertion: 'oauth-assertion', state })
   })
 
   it('stores only the exchange-derived owner bit and a persistent OAuth session ID in token props', async () => {

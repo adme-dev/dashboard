@@ -2,11 +2,11 @@
 // List observed forms and proactively configured rules. Rules must remain
 // visible before their first live lead arrives, when no metadata row exists.
 
-import { requireAuth } from '~~/server/utils/auth'
 import { queryRows } from '~~/server/utils/db'
+import { resolveMarketingLeadBrowserScope } from '~~/server/utils/leads/followupAccess'
 
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
+  const { marketing } = await resolveMarketingLeadBrowserScope(event)
   const rows = await queryRows(`
     SELECT
       COALESCE(m.source, r.source) AS source,
@@ -18,6 +18,7 @@ export default defineEventHandler(async (event) => {
     FROM lead_form_metadata m
     FULL OUTER JOIN lead_form_rules r ON r.source = m.source AND r.form_id = m.form_id
     LEFT JOIN agency_clients c ON c.id = r.client_id
+    ${marketing ? 'WHERE EXISTS (SELECT 1 FROM agency_clients active_client WHERE active_client.id=r.client_id AND active_client.is_active=TRUE)' : ''}
     ORDER BY m.last_lead_at DESC NULLS LAST, COALESCE(r.updated_at, m.updated_at) DESC
   `)
   return { items: rows }

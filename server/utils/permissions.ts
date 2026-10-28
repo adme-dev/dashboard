@@ -34,7 +34,7 @@ export function roleHasPermission(role: string, group: PermissionGroup): boolean
 
 // Permission groups for dynamic role resolution
 export const PERMISSION_GROUPS = [
-  'ADMIN', 'HR_ADMIN', 'MANAGEMENT', 'FINANCE', 'SALES', 'CLIENTS',
+  'ADMIN', 'HR_ADMIN', 'MANAGEMENT', 'MARKETING_MANAGEMENT', 'FINANCE', 'SALES', 'CLIENTS',
   'CREATIVE', 'MEDIA_BUYING', 'QR_CODES', 'TIME_APPROVALS', 'AUTOMATION', 'INVOICE_OWN_CLIENTS',
   'PAGE_STUDIO_VIEW', 'PAGE_STUDIO_EDIT', 'PAGE_STUDIO_APPROVE',
   'PAGE_STUDIO_PUBLISH', 'PAGE_STUDIO_DOMAINS', 'PAGE_STUDIO_SUBSCRIPTIONS'
@@ -42,6 +42,7 @@ export const PERMISSION_GROUPS = [
 
 export type PermissionGroup = typeof PERMISSION_GROUPS[number]
 
+// MARKETING_MANAGEMENT is explicit-only: no legacy role array or default assignment.
 // Page Studio groups intentionally have no matching PERMISSIONS role arrays. `hasRole()` reverse-
 // maps identical legacy arrays, so representing PAGE_STUDIO_DOMAINS as ['owner', 'admin'] would let
 // a custom role holding only that group pass every legacy ADMIN gate. Page Studio endpoints enforce

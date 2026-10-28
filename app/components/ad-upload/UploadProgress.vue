@@ -69,6 +69,8 @@ function isActive(step: UploadProgressItem['step']): boolean {
           <span class="text-xs font-medium truncate block">
             {{ FORMATS[item.formatKey]?.name || item.formatKey }}
           </span>
+          <span v-if="item.proposalId" class="text-[10px] text-muted block break-all">Review {{ item.proposalId }} · Client {{ item.clientId }}</span>
+          <span v-if="item.revision" class="text-[10px] text-muted block break-all">Revision {{ item.revision }}</span>
           <span v-if="item.error" class="text-[10px] text-red-500 block truncate">{{ item.error }}</span>
         </div>
 

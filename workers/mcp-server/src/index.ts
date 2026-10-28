@@ -1,3 +1,4 @@
+import { parseMcpPageStudioLogin, type McpPageStudioLoginProof } from '../../../shared/utils/mcpPageStudioLogin'
 // workers/mcp-server/src/index.ts
 //
 // XeroFlow standalone MCP transport.
@@ -73,6 +74,7 @@ const b64urlDecode = (s: string) => atob(s.replace(/-/g, '+').replace(/_/g, '/')
 // the granted OAuth scope (['mcp:read'] or ['mcp:read','mcp:write']) — forwarded to the app, which
 // enforces mcp:write for write-class tools when MCP_REQUIRE_WRITE_SCOPE is on.
 type Props = {
+  pageStudioLogin?: McpPageStudioLoginProof
   userId: string
   scope: string[]
   godMode: boolean
@@ -96,6 +98,7 @@ async function appFetch(
     uid: props.userId,
     scope: props.scope,
     godMode: props.godMode,
+    ...(props.pageStudioLogin ? { pageStudioLogin: props.pageStudioLogin } : {}),
     audience: MCP_REQUEST_AUDIENCE,
     method: 'POST',
     path,
@@ -124,7 +127,8 @@ export class XeroFlowMcpAgent extends McpAgent<Env, unknown, Props> {
       userId,
       scope: this.props?.scope ?? ['mcp:read'],
       godMode: this.props?.godMode === true,
-      oauthSessionId: this.props?.oauthSessionId ?? ''
+      oauthSessionId: this.props?.oauthSessionId ?? '',
+      ...(this.props?.pageStudioLogin ? { pageStudioLogin: this.props.pageStudioLogin } : {})
     }
     if (!props.oauthSessionId) throw new Error('unauthenticated: reconnect to establish an OAuth session identity')
 
@@ -254,17 +258,21 @@ const authHandler = {
       const res = await fetch(`${env.APP_BASE_URL}/api/internal/mcp/exchange`, {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-mcp-secret': env.MCP_INTERNAL_SECRET },
-        body: JSON.stringify({ assertion }),
+        // The app binds the consent assertion to this exact OAuth request.
+        body: JSON.stringify({ assertion, state }),
       })
       if (!res.ok) return new Response('Authentication failed', { status: 401 })
-      const { userId, scope, godMode } = await res.json() as {
+      const { userId, scope, godMode, pageStudioLogin } = await res.json() as {
         userId: string
         scope?: string[]
         godMode?: boolean
+        pageStudioLogin?: unknown
       }
       // Mint the token with exactly the scope the user consented to (read-only, or read + write).
       const granted = Array.isArray(scope) && scope.length ? scope : ['mcp:read']
 
+      const studioProof = pageStudioLogin === undefined ? undefined : parseMcpPageStudioLogin(pageStudioLogin, userId)
+      if (studioProof === null) return new Response('Invalid login proof', { status: 401 })
       const oauthReqInfo = JSON.parse(b64urlDecode(state))
       const { redirectTo } = await env.OAUTH_PROVIDER.completeAuthorization({
         request: oauthReqInfo,
@@ -275,7 +283,8 @@ const authHandler = {
           userId,
           scope: granted,
           godMode: godMode === true,
-          oauthSessionId: crypto.randomUUID()
+          oauthSessionId: crypto.randomUUID(),
+          ...(studioProof ? { pageStudioLogin: studioProof } : {})
         },
       })
       return Response.redirect(redirectTo, 302)

@@ -97,10 +97,13 @@ const API_INVENTORY = {
   // owner, expiry and stored-ETag checks, no session or bypass). Request-approval, approve and reject
   // now commit their revision decision in one transaction for delegated/news posts (+3 transactional
   // guarded mutations); their role gates are unchanged and none registers a God mode bypass.
+  // Marketing feed/social/lead routes delegate fresh authority to scoped services.
+  // Their transaction services retain atomic writes; bulk budgets add a route transaction.
+  // No route or God mode mutation bypass is added.
   totalRouteFiles: 2294,
   mutationRouteFiles: 1252,
-  explicitlyGuardedMutationFiles: 411,
-  guardedMutationFilesWithTransactionCall: 53
+  explicitlyGuardedMutationFiles: 398,
+  guardedMutationFilesWithTransactionCall: 51
 } as const
 
 const EMAIL_TEMPLATE_ROUTE_ADDITIONS = {
@@ -150,8 +153,8 @@ describe('God mode route isolation inventory', () => {
     expect(API_INVENTORY).toEqual({
       totalRouteFiles: 2294,
       mutationRouteFiles: 1252,
-      explicitlyGuardedMutationFiles: 411,
-      guardedMutationFilesWithTransactionCall: 53
+      explicitlyGuardedMutationFiles: 398,
+      guardedMutationFilesWithTransactionCall: 51
     })
   })
 

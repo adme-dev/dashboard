@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { queryRows, transaction } from '~~/server/utils/db'
+import { queryRows, queryRowsFresh, transaction } from '~~/server/utils/db'
 import {
   GooglePmaxLaunchJsonError,
   hashSerializedCanonicalLaunchJson,
@@ -383,8 +383,8 @@ export async function transitionGooglePmaxLaunch(input: {
   const payloadJson = serializeSafePayload(payload)
   const results = input.results || {}
   const allowedPreflight = ['PREFLIGHT_FAILED', 'READY_FOR_APPROVAL'].includes(input.toState)
-  const allowedProviderResources = input.toState === 'CREATED_PAUSED'
-  const allowedVerification = ['VERIFICATION_FAILED', 'VERIFIED_PAUSED', 'ENABLED_VERIFIED'].includes(input.toState)
+  const allowedProviderResources = ['CREATED_PAUSED', 'RECOVERY_REQUIRED'].includes(input.toState)
+  const allowedVerification = ['VERIFICATION_FAILED', 'VERIFIED_PAUSED', 'ENABLED_VERIFIED', 'RECOVERY_REQUIRED'].includes(input.toState)
   if (
     (results.preflight !== undefined && !allowedPreflight)
     || (results.providerResources !== undefined && !allowedProviderResources)
@@ -474,8 +474,9 @@ export async function transitionGooglePmaxLaunch(input: {
 export async function getGooglePmaxLaunch(input: {
   launchId: string
   tenantId: string
+  fresh?: boolean
 }): Promise<GooglePmaxLaunch | null> {
-  const rows = await queryRows(
+  const rows = await (input.fresh ? queryRowsFresh : queryRows)(
     `SELECT ${LAUNCH_COLUMNS}
        FROM campaign_launches
       WHERE id = $1::uuid
@@ -490,18 +491,29 @@ export async function listGooglePmaxLaunches(input: {
   tenantId: string
   clientId?: string
   limit?: number
+  /** Dedicated department portfolio scope: current active clients only, read from fresh storage. */
+  activeClientsOnly?: boolean
+  clientIds?: string[]
 }): Promise<GooglePmaxLaunch[]> {
   const limit = Math.min(Math.max(Math.trunc(input.limit || 50), 1), 100)
   const params: unknown[] = [input.tenantId]
   const clientFilter = input.clientId
     ? `AND client_id = $${params.push(input.clientId)}::uuid`
     : ''
+  const activeFilter = input.activeClientsOnly
+    ? 'AND EXISTS (SELECT 1 FROM agency_clients ac WHERE ac.id = campaign_launches.client_id AND ac.is_active = TRUE)'
+    : ''
+  const setFilter = input.clientIds
+    ? `AND client_id = ANY($${params.push(input.clientIds)}::uuid[])`
+    : ''
   params.push(limit)
-  const rows = await queryRows(
+  const rows = await (input.activeClientsOnly ? queryRowsFresh : queryRows)(
     `SELECT ${LAUNCH_COLUMNS}
        FROM campaign_launches
       WHERE tenant_id = $1::uuid
         ${clientFilter}
+        ${activeFilter}
+        ${setFilter}
       ORDER BY updated_at DESC, id DESC
       LIMIT $${params.length}`,
     params
@@ -517,6 +529,7 @@ export async function approveGooglePmaxLaunch(input: {
   expectedConfigHash: string
   actorId: string
   reason: string
+  beforeApprove?: (launch: GooglePmaxLaunch) => Promise<{ departmentBindingHash: string }>
 }): Promise<GooglePmaxLaunch> {
   const expectedState = input.approvalKind === 'create' ? 'READY_FOR_APPROVAL' : 'VERIFIED_PAUSED'
   const toState = input.approvalKind === 'create' ? 'APPROVED' : 'ACTIVATION_APPROVED'
@@ -525,6 +538,8 @@ export async function approveGooglePmaxLaunch(input: {
   try {
     return await transaction(async (db) => {
       const current = await getLockedLaunch(db, input.launchId, input.tenantId)
+      if (current.createdBy.toLowerCase() === input.actorId.toLowerCase()) throw new GooglePmaxLaunchConflictError('LAUNCH_APPROVAL_CONFLICT', 'An independent reviewer must approve this launch.')
+      const reviewedBinding = await input.beforeApprove?.(current)
       const decision = evaluateGooglePmaxLaunchTransition({
         from: current.state,
         to: toState,
@@ -567,7 +582,7 @@ export async function approveGooglePmaxLaunch(input: {
         fromState: current.state,
         toState: launch.state,
         actorId: input.actorId,
-        payloadJson: serializeSafePayload({ reasonRecorded: true })
+        payloadJson: serializeSafePayload({ reasonRecorded: true, ...(reviewedBinding ?? {}) })
       })
       return launch
     })

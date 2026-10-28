@@ -1,6 +1,7 @@
 import { createError, type H3Event } from 'h3'
 import type { User } from '~~/server/utils/auth'
-import { getAssignedClientIds } from '~~/server/utils/clientScoping'
+import { getAssignedClientIds, hasFreshMarketingManagementPermission } from '~~/server/utils/clientScoping'
+import { queryRowsFresh } from '~~/server/utils/db'
 import { PERMISSIONS } from '~~/server/utils/permissions'
 
 export type EmailClientScope = 'all' | string[]
@@ -13,6 +14,13 @@ export function isAgencyEmailUser(user: Pick<User, 'role' | 'permissionGroups'>)
 
 export async function resolveEmailClientScope(event: H3Event, user: User): Promise<EmailClientScope> {
   if (isAgencyEmailUser(user)) return 'all'
+  if (user.permissionGroups?.includes('MARKETING_MANAGEMENT')) {
+    if (!await hasFreshMarketingManagementPermission(user.id)) {
+      throw createError({ statusCode: 403, statusMessage: 'email_marketing_permission_revoked' })
+    }
+    const clients = await queryRowsFresh<{ id: string }>('SELECT id FROM agency_clients WHERE is_active = TRUE ORDER BY id')
+    return clients.map(client => client.id)
+  }
   return getAssignedClientIds(event, user.id)
 }
 

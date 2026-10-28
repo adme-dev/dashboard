@@ -2,9 +2,9 @@
 // Filtered + paginated agency lead list.
 
 import { z } from 'zod'
-import { requireAuth } from '~~/server/utils/auth'
 import { queryRows, queryCount } from '~~/server/utils/db'
 import { safeEmailLeadPresentationSelect } from '~~/server/utils/leads/leadPresentation'
+import { resolveMarketingLeadBrowserScope } from '~~/server/utils/leads/followupAccess'
 
 const Query = z.object({
   client_id: z.string().uuid().optional(),
@@ -24,8 +24,8 @@ const Query = z.object({
 })
 
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
   const q = Query.parse(getQuery(event))
+  const { marketing } = await resolveMarketingLeadBrowserScope(event, q.client_id)
 
   const conds: string[] = ['l.deleted_at IS NULL']
   const params: unknown[] = []
@@ -35,7 +35,7 @@ export default defineEventHandler(async (event) => {
   }
 
   if (q.client_id) push('l.client_id = ?', q.client_id)
-  if (q.unmapped) conds.push('l.client_id IS NULL')
+  if (q.unmapped && !marketing) conds.push('l.client_id IS NULL')
   if (!q.include_test) conds.push('l.is_test = false')
   if (q.source) push('l.source = ?', q.source)
   if (q.form_id) push('l.form_id = ?', q.form_id)
@@ -52,14 +52,15 @@ export default defineEventHandler(async (event) => {
   }
 
   const where = `WHERE ${conds.join(' AND ')}`
+  const clientJoin = marketing ? 'JOIN agency_clients c ON c.id=l.client_id AND c.is_active=TRUE' : ''
   const offset = (q.page - 1) * q.page_size
 
   const rows = await queryRows(`
     SELECT l.*, ${safeEmailLeadPresentationSelect('l')}
-    FROM leads l ${where}
+    FROM leads l ${clientJoin} ${where}
     ORDER BY l.submitted_at DESC
     LIMIT ${q.page_size} OFFSET ${offset}
   `, params)
-  const total = await queryCount(`SELECT COUNT(*)::text AS count FROM leads l ${where}`, params)
+  const total = await queryCount(`SELECT COUNT(*)::text AS count FROM leads l ${clientJoin} ${where}`, params)
   return { items: rows, total, page: q.page, page_size: q.page_size }
 })

@@ -100,11 +100,11 @@ const steps = {
         <div class="max-w-3xl space-y-8">
           <div class="space-y-2">
             <h1 class="text-lg font-semibold text-highlighted">
-              Bring your assigned work into your AI assistant
+              Bring your marketing work into your AI assistant
             </h1>
             <p class="text-sm text-muted leading-relaxed">
               Connect with your XeroFlow login to read permitted campaign data and prepare reviewed work.
-              Your current permissions, client assignments and capability grants determine the tools you can use.
+              Your current permissions, client scope and capability grants determine the tools you can use.
             </p>
           </div>
 
@@ -282,7 +282,7 @@ const steps = {
               A connected account can support one operation while another is unavailable. Stored reports do not refresh providers.
             </p>
             <p class="text-sm text-muted leading-relaxed">
-              Social drafts require an independent owner/admin to approve the exact revision in XeroFlow before dispatch.
+              Social drafts require an independent authorised reviewer to approve the exact revision before dispatch. Enrolled marketing managers can review and execute peer submissions through MCP.
               Edits, expiry or revoked access can require a new review. TikTok publishing remains unavailable pending product eligibility and app approval; OAuth alone cannot enable it.
             </p>
             <p class="text-sm text-muted leading-relaxed">

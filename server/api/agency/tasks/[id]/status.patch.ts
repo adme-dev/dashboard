@@ -3,14 +3,7 @@
  */
 
 import { queryOne, transaction } from '~~/server/utils/db'
-import { notifyTaskStatusChanged } from '~~/server/utils/notifications'
-import { emitBoardEvent } from '~~/server/utils/boardEvents'
-import { notifyBoardSubscribers } from '~~/server/utils/boardNotifications'
-import { evaluateAutomations } from '~~/server/utils/automationEngine'
-import { evaluateLifecycleTransition } from '~~/server/utils/automation/lifecycleGuard'
-import { enqueue } from '~~/server/utils/queue'
-import { postBoardEventToChat } from '~~/server/utils/boardChatBridge'
-import { maybeProposeBriefCompletion } from '~~/server/utils/briefConversion/completionAlert'
+import { dispatchTaskStatusChangeEffects } from '~~/server/utils/workManagement/taskEffects'
 import { requireBoardAccess, requireWriteAccess } from '~~/server/utils/auth'
 
 interface UpdateStatusBody {
@@ -118,50 +111,7 @@ export default defineEventHandler(async (event) => {
       ])
     })
 
-    // Emit board event for real-time updates
-    if (currentTask.department_id) {
-      const statusChanges = {
-        oldStatusId: currentTask.status_id,
-        oldStatusName: currentTask.old_status_name,
-        newStatusId: newStatus.id,
-        newStatusName: newStatus.name
-      }
-
-      emitBoardEvent({
-        boardId: currentTask.department_id,
-        type: 'status_changed',
-        taskId: id,
-        userId: actorUserId,
-        changes: statusChanges
-      }, event)
-
-      const boardEvent = {
-        boardId: currentTask.department_id,
-        type: 'status_changed',
-        taskId: id,
-        actorId: actorUserId,
-        changes: statusChanges
-      }
-
-      // Notify board subscribers (queued with retry, fallback to fire-and-forget)
-      enqueue(event, 'board.notify', boardEvent, () => notifyBoardSubscribers(boardEvent))
-
-      // Evaluate board automations (queued with retry, fallback to fire-and-forget)
-      enqueue(event, 'board.automate', boardEvent, () => evaluateAutomations(currentTask.department_id, boardEvent))
-
-      // A.3 lifecycle guard: observe the transition; raise an A.1 escalation for 🟡 gate
-      // stages. Read-only to task state (never moves the task) — cannot double-fire vs the
-      // engine above. Inert on generic statuses. (queued with retry, fire-and-forget fallback)
-      enqueue(event, 'lifecycle.evaluate', boardEvent, async () => {
-        await evaluateLifecycleTransition(boardEvent)
-      })
-
-      // Post to linked chat channels (fire-and-forget)
-      postBoardEventToChat({
-        ...boardEvent,
-        taskTitle: currentTask.title
-      }).catch(() => {})
-    }
+    dispatchTaskStatusChangeEffects(event, { task: currentTask, newStatus, actorUserId })
 
     // Return updated task
     const updatedTask = await queryOne(`
@@ -175,33 +125,6 @@ export default defineEventHandler(async (event) => {
       JOIN task_statuses ts ON t.status_id = ts.id
       WHERE t.id = $1
     `, [id])
-
-    // Notify watchers about status change (assignee, reporter, and anyone who has interacted)
-    const watcherIds = new Set<string>()
-    if (currentTask.assignee_id && currentTask.assignee_id !== actorUserId) {
-      watcherIds.add(currentTask.assignee_id)
-    }
-    if (currentTask.reporter_id && currentTask.reporter_id !== actorUserId) {
-      watcherIds.add(currentTask.reporter_id)
-    }
-
-    if (watcherIds.size > 0) {
-      notifyTaskStatusChanged(
-        id,
-        currentTask.title,
-        currentTask.old_status_name,
-        newStatus.name,
-        actorUserId,
-        Array.from(watcherIds)
-      ).catch(err => console.error('Failed to send status change notification:', err))
-    }
-
-    // G6: when a task reaches a final status, propose completing the brief this project came
-    // from — only if every task is now done. AI-proposes / human-confirms, never auto-completes.
-    if (newStatus.is_final && currentTask.project_id) {
-      maybeProposeBriefCompletion({ projectId: currentTask.project_id, actorId: actorUserId })
-        .catch(err => console.error('[Brief] completion proposal failed:', err))
-    }
 
     return {
       id: updatedTask.id,

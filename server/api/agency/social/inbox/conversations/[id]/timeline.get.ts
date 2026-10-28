@@ -1,10 +1,10 @@
-import { requireAuth } from '~~/server/utils/auth'
+import { requireSocialInboxConversation } from '~~/server/utils/socialInbox/departmentScope'
 import { queryOne, queryRows } from '~~/server/utils/db'
 import { buildSocialInboxCaseTimelineQuery } from '~~/server/utils/socialInbox/caseTimeline'
 
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
   const id = getRouterParam(event, 'id')!
+  await requireSocialInboxConversation(event, id)
   const query = getQuery(event)
 
   const conversation = await queryOne<{ id: string }>(

@@ -54,7 +54,7 @@ connectors had to reconnect at Worker activation, before traffic reopened; legac
 `oauthSessionId` reject and fail closed. Initial activation was not availability-safe. Preserve that
 outage model for any future signing or OAuth-props migration.
 
-Any release that changes request signing or OAuth session props requires a coordinated maintenance
+Any release that changes required request signing or required OAuth session props requires a coordinated maintenance
 window; it is not availability-safe:
 
 1. Announce the outage and stop accepting MCP traffic.
@@ -122,6 +122,30 @@ use an irreversible Finance or publishing operation as a smoke test.
 Client setup remains: add the custom Worker `/mcp` connector, complete app login and explicit OAuth
 consent, then request only the scopes required. ChatGPT requires an eligible managed workspace with
 Developer Mode enabled by an administrator. Cursor uses Settings → Tools & Integrations.
+
+## Optional original-login proof (28 October 2026)
+
+The marketing website tools add an optional signed `pageStudioLogin` property. This is
+non-bearer login metadata, not an application JWT or a replacement login. Existing
+OAuth grants without this property continue to use their existing non-Studio tools;
+website mutations requiring the original native login fail closed until the employee
+reconnects through their own application session. Native expiry and revocation still
+apply after reconnect; refreshing the MCP token does not extend the application login.
+
+This rollout does not rotate keys or replace `oauthSessionId`; existing connected
+tools continue to use their signed requests. Deploy **Pages first**, then the MCP
+Worker from the same reviewed source. New OAuth connections may fail between these
+two deployments because state-bound consent assertions require the Worker to forward
+the matching state. Retry new connections after the Worker update; do not weaken
+state verification for compatibility. The new Worker passes the proof only after
+the Pages exchange verifies the signed consent assertion and matching OAuth state. Pages binds it to the exact consumed one-time request; native
+Studio services revalidate the original session and current permissions. The required
+signing/session migration and key-rotation procedure above remains mandatory for
+changes to required claims, signing keys, or the OAuth session identity.
+
+Record both deployment IDs and their source commit. Verify existing safe reads before
+asking staff to reconnect. Genuine staff OAuth and website authority acceptance are
+separate from transport tests; do not mint or impersonate employee sessions.
 
 ## Request-authority rotation
 

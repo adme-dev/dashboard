@@ -531,6 +531,7 @@ const PERMISSION_GROUP_LABELS: Record<string, string> = {
   CLIENTS: 'Client management',
   CREATIVE: 'Creative tools',
   MEDIA_BUYING: 'Media buying & ads',
+  MARKETING_MANAGEMENT: 'Marketing management across all active clients',
   QR_CODES: 'QR codes & campaigns',
   TIME_APPROVALS: 'Time approvals',
   AUTOMATION: 'Automations',

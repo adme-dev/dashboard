@@ -1,5 +1,5 @@
 import { queryRowsFresh } from '~~/server/utils/db'
-import { requireSocialClientScope } from '~~/server/utils/social/clientAccess'
+import { requireDepartmentBrowserReviewScope, getDepartmentBrowserSocialPost } from '~~/server/utils/ai/marketing/departmentReviewOperations'
 import { resolveEffectiveSocialTargets } from '~~/server/utils/socialPublishing/effectivePayload'
 
 interface ApprovalRow {
@@ -32,7 +32,7 @@ interface DestinationAccountRow {
  */
 export default defineEventHandler(async (event) => {
   const clientId = getQuery(event).clientId as string | undefined
-  const user = await requireSocialClientScope(event, clientId) as { id?: string, role?: string, permissionGroups?: string[] } | undefined
+  const { user, departmentContext } = await requireDepartmentBrowserReviewScope(event, clientId)
   const params: any[] = [user?.id ?? null]
   let sql = `SELECT p.*,
                     (SELECT to_jsonb(r) - 'snapshot' || jsonb_build_object(
@@ -50,14 +50,35 @@ export default defineEventHandler(async (event) => {
                 AND NOT (p.review_policy = 'delegated_marketing' AND (
                   COALESCE(p.created_by = $1::text, FALSE) OR COALESCE(p.approval_requested_by = $1::text, FALSE)
                 ))`
+  if (departmentContext) {
+    sql += ` AND p.review_policy='delegated_marketing'
+      AND EXISTS (SELECT 1 FROM agency_clients c WHERE c.id=p.client_id AND c.is_active=TRUE)
+      AND EXISTS (SELECT 1 FROM social_post_revisions r WHERE r.id=p.current_revision_id AND r.post_id=p.id AND r.client_id=p.client_id AND r.requested_by<>$1)`
+    if (departmentContext.assistantScope?.clientAccessMode !== 'all_active') {
+      params.push(departmentContext.assistantScope?.assignedClientIds ?? [])
+      sql += ` AND p.client_id=ANY($${params.length}::uuid[])`
+    }
+  }
   if (clientId) {
     params.push(clientId)
     sql += ` AND p.client_id = $${params.length}`
   }
   sql += ` ORDER BY p.approval_requested_at ASC`
-  const rows = await queryRowsFresh<ApprovalRow>(sql, params)
-  // Advisory only (owner/admin role or ADMIN group); decisions re-resolve fresh authority.
-  const isAdmin = ['owner', 'admin'].includes(user?.role ?? '') || !!user?.permissionGroups?.includes('ADMIN')
+  let rows = await queryRowsFresh<ApprovalRow>(sql, params)
+  if (departmentContext) {
+    const authorized: ApprovalRow[] = []
+    for (const row of rows) {
+      try {
+        await getDepartmentBrowserSocialPost(departmentContext, row.id)
+        authorized.push(row)
+      } catch (error) {
+        if (![403, 404].includes((error as { statusCode: number }).statusCode)) throw error
+      }
+    }
+    rows = authorized
+  }
+  // Advisory only; decisions re-resolve independent reviewer authority.
+  const isAdmin = !!departmentContext || ['owner', 'admin'].includes(user?.role ?? '') || !!user?.permissionGroups?.includes('ADMIN')
   const destinations = await destinationAccounts(rows)
 
   return await Promise.all(rows.map(async ({ current_snapshot: snapshot, ...row }) => {
@@ -72,7 +93,7 @@ export default defineEventHandler(async (event) => {
           : expired
             ? 'This review request expired. Ask the requester to resubmit.'
             : !isAdmin
-                ? 'Delegated marketing work is reviewed by an owner or admin.'
+                ? 'Delegated marketing work requires an independent admin or marketing manager.'
                 : null
     return {
       ...row,
