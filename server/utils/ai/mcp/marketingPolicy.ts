@@ -54,6 +54,8 @@ export const MARKETING_PILOT_READ_TOOLS = Object.freeze([
 export type StaffToolReviewStatus = 'reviewed' | 'pending_scope_review'
 
 export interface StaffToolPolicyEntry {
+  /** Explicit fresh group required for reviewed tools outside marketing. */
+  requiredPermission?: PermissionGroup
   /** Capability grant required; null = every non-management staff member (actor-private/self-scoped). */
   capability: MarketingCapability | null
   /** Only `reviewed` tools are listed or callable. Flip per tool once its full data path is scoped. */
@@ -86,6 +88,9 @@ export const MCP_STAFF_TOOL_POLICY: Readonly<Record<string, StaffToolPolicyEntry
   ...Object.fromEntries(ADS_STAFF_READ_NAMES.map(name => [name, { ...pilotRead, capability: 'ads_plan' }])),
   ...Object.fromEntries(ADS_STAFF_PLAN_NAMES.map(name => [name, { ...pilotRead, capability: 'ads_plan' }])),
   ...Object.fromEntries(GTM_STAFF_NAMES.map(name => [name, { ...pilotRead, capability: 'tracking_plan' }])),
+  // Creative metadata discovery never inherits marketing grants.
+  get_creative_workspace_capabilities: Object.freeze({ capability: null, status: 'reviewed', clientScoped: false, legacyRoleSensitive: false, requiredPermission: 'CREATIVE' }),
+  search_creative_workspace: Object.freeze({ capability: null, status: 'reviewed', clientScoped: true, legacyRoleSensitive: false, requiredPermission: 'CREATIVE' }),
   // Private per-user memory: actor-bound write through its own durable coordinator; needs mcp:write.
   remember: Object.freeze({ capability: null, status: 'reviewed', clientScoped: false, legacyRoleSensitive: false }),
   // Pinned to the caller's own assigned tasks for non-manager legacy roles (tasks.ts).
@@ -174,6 +179,7 @@ export type StaffToolDenialCode
     | 'read_only'
     | 'no_client_assignments'
     | 'role_policy_mismatch'
+    | 'permission_required'
 
 export type StaffToolAdmission
   = | { allowed: true, entry: StaffToolPolicyEntry }
@@ -199,6 +205,9 @@ export function evaluateStaffToolAdmission(
   const entry = Object.prototype.hasOwnProperty.call(policy, name) ? policy[name] : undefined
   if (!entry || entry.status !== 'reviewed') {
     return deny('not_reviewed', 'This tool is not available to your XeroFlow account over MCP.')
+  }
+  if (entry.requiredPermission && !ctx.permissionGroups?.includes(entry.requiredPermission)) {
+    return deny('permission_required', 'Your current role does not permit this creative tool.')
   }
   // The marketing department is a separate capability surface, never the broad management catalog.
   // Both fresh role authority and operator enrollment are required, including when an admin is enrolled.
