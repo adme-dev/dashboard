@@ -39,6 +39,12 @@ const html = `<!doctype html><html><head><meta name="viewport" content="width=de
     await photo.locator('.xf-dock-handle').hover()
     await photo.waitForFunction(() => document.getElementById('xf-editor-dock').dataset.open === 'true')
     assert.equal(await photo.locator('.xf-dock-app').count(), 6)
+    await photo.locator('[data-app="vectorflow"]').hover()
+    await photo.waitForTimeout(450)
+    const wave = await photo.locator('.xf-dock-app').evaluateAll(els => els.map(el => new DOMMatrix(getComputedStyle(el).transform).a))
+    assert.ok(wave[1] > 1.2 && wave[0] > 1 && wave[2] > 1, 'pointer magnifies the current icon and both neighbours')
+    assert.ok(wave[1] > wave[0] && wave[1] > wave[2], 'magnification peaks near the pointer')
+
     await photo.waitForFunction(() => [...document.querySelectorAll('.xf-dock-thumbnail')].length === 6 && [...document.querySelectorAll('.xf-dock-thumbnail')].every(img => img.complete && img.naturalWidth > 0))
     assert.equal(await photo.locator('[data-xf-install]').count(), 1)
     assert.equal(await photo.locator('[aria-current="page"]').getAttribute('data-app'), 'photoflow')

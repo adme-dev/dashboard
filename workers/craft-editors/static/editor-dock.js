@@ -173,6 +173,42 @@ async function mountXeroFlowDock() {
   install.append(installTile, installLabel)
   links.push(install)
   panel.append(install)
+  // Proximity magnification: neighbouring icons follow the pointer as one smooth wave.
+  const magnifyMotion = matchMedia('(hover:hover) and (pointer:fine) and (prefers-reduced-motion:no-preference)')
+  let magnifyPointer = null, magnifyFrame = 0, magnifyTime = 0
+  const magnifyValues = new Map()
+  function animateMagnification(time) {
+    const controls = [...panel.children].filter(el => el.classList.contains('xf-dock-link') || el.hasAttribute('data-xf-assets')).filter(el => !el.hidden && el.offsetWidth)
+    const bounds = panel.getBoundingClientRect()
+    const mix = 1 - Math.exp(-Math.min(40, time - (magnifyTime || time - 16)) / 65)
+    magnifyTime = time
+    let unsettled = false
+    const values = controls.map(el => {
+      const distance = magnifyPointer === null ? Infinity : Math.abs(magnifyPointer - bounds.left - el.offsetLeft - el.offsetWidth / 2)
+      const target = magnifyMotion.matches && distance < 120 ? .42 * (1 + Math.cos(Math.PI * distance / 120)) / 2 : 0
+      const previous = magnifyValues.get(el) || 0
+      const value = !magnifyMotion.matches || Math.abs(target - previous) < .0005 ? target : previous + (target - previous) * mix
+      if (value !== target) unsettled = true
+      magnifyValues.set(el, value)
+      return { el, value, extra: el.offsetWidth * value }
+    })
+    const total = values.reduce((sum, entry) => sum + entry.extra, 0)
+    let before = 0
+    for (const { el, value, extra } of values) {
+      el.style.transformOrigin = 'center bottom'
+      el.style.transform = value ? `translate3d(${before + extra / 2 - total / 2}px,${-value * 12}px,0) scale(${1 + value})` : ''
+      before += extra
+    }
+    magnifyFrame = unsettled ? requestAnimationFrame(animateMagnification) : 0
+    if (!magnifyFrame) magnifyTime = 0
+  }
+  function magnifyAt(x) {
+    magnifyPointer = x
+    if (!magnifyFrame) magnifyFrame = requestAnimationFrame(animateMagnification)
+  }
+  panel.addEventListener('pointermove', event => { if (event.pointerType !== 'touch' && magnifyMotion.matches) magnifyAt(event.clientX) })
+  panel.addEventListener('pointerleave', () => magnifyAt(null))
+  magnifyMotion.addEventListener('change', () => magnifyAt(null))
   root.append(bridge, panel, handle)
   document.body.append(root)
   handle.addEventListener('pointerenter', event => { if (event.pointerType !== 'touch') setOpen(true) })

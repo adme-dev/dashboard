@@ -19,7 +19,7 @@
 .xf-dock-label{position:absolute;left:50%;bottom:66px;transform:translate(-50%,4px);white-space:nowrap;padding:6px 9px;border:1px solid rgba(255,255,255,.16);border-radius:7px;background:rgba(18,19,23,.97);color:#fff;font-size:12px;line-height:1.2;font-weight:450;letter-spacing:0;opacity:0;visibility:hidden;pointer-events:none;transition:opacity .2s ease,transform .26s cubic-bezier(.22,1,.36,1)}
 .xf-dock-link:hover .xf-dock-label,.xf-dock-link:focus-visible .xf-dock-label{opacity:1;visibility:visible;transform:translate(-50%,0)}
 .xf-dock-divider{align-self:center;flex:none;display:block;width:1px;height:36px;margin:0 4px;background:rgba(255,255,255,.18)}
-@media(hover:hover) and (pointer:fine) and (prefers-reduced-motion:no-preference){.xf-dock-link:hover .xf-dock-tile{transform:translateY(-4px) scale(1.12);box-shadow:inset 0 1px 1px rgba(255,255,255,.4),0 6px 13px rgba(0,0,0,.4)}}
+@media(hover:hover) and (pointer:fine) and (prefers-reduced-motion:no-preference){.xf-dock-link:hover .xf-dock-tile{box-shadow:inset 0 1px 1px rgba(255,255,255,.4),0 6px 13px rgba(0,0,0,.4)}}
 @media(max-width:450px){.xf-dock-panel{gap:3px;padding:9px 8px 12px;border-radius:18px}.xf-dock-link{width:38px;height:46px}.xf-dock-tile{width:36px;height:36px;border-radius:9px;font-size:14px}.xf-dock-home .xf-dock-tile{font-size:15px}.xf-dock-divider{margin:0 2px;height:30px}.xf-dock-label{bottom:57px}}
 @media(prefers-reduced-motion:reduce){.xf-dock-panel,.xf-dock-tile,.xf-dock-label,.xf-dock-handle span{transition:none!important;animation:none!important}}
 
@@ -39,3 +39,7 @@
 .xf-dock-thumbnail{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:-2;pointer-events:none}
 .xf-dock-app .xf-dock-tile::after{content:"";position:absolute;inset:0;z-index:-1;border-radius:inherit;background:linear-gradient(155deg,rgba(255,255,255,.22),transparent 45%,rgba(0,0,0,.42)),rgba(0,0,0,.16);box-shadow:inset 0 1px 1px rgba(255,255,255,.55),inset 0 0 0 1px rgba(255,255,255,.2);pointer-events:none}
 .xf-dock-abbreviation{color:#fff;text-shadow:0 1px 3px #000,0 0 7px rgba(0,0,0,.9);font-weight:750;letter-spacing:-.4px}
+
+/* Magnification is driven by pointer distance, including adjacent app icons. */
+.xf-dock-panel>.xf-dock-link,.xf-dock-panel>[data-xf-assets]{transform-origin:center bottom}
+@media(max-width:600px){.xf-dock-panel>.xf-dock-link,.xf-dock-panel>[data-xf-assets]{transform:none!important}}
