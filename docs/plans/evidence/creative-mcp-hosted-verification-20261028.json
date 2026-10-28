@@ -1,0 +1,49 @@
+{
+  "pagesId": "86380c01-aa87-4b12-8de2-f5316b1432a4",
+  "sourceCommit": "d0bd6af7b4577694df98c91c18696b04b63fe684",
+  "includedMain": "3eea2c96ff187d84054862213cc2aca6f58c029a",
+  "environmentTypes": {
+    "plain_text": 42,
+    "secret_text": 103
+  },
+  "marketingGrantPresent": true,
+  "marketingGrantType": "secret_text",
+  "resourceBindingCounts": {
+    "kv_namespaces": 1,
+    "durable_object_namespaces": 6,
+    "r2_buckets": 6,
+    "services": 13,
+    "queue_producers": 10,
+    "ai_bindings": 1,
+    "vectorize_bindings": 2,
+    "browsers": 1,
+    "hyperdrive_bindings": 2,
+    "compatibility_flags": 3
+  },
+  "grantMutationsByThisRollout": false,
+  "workerDeploymentsByThisRollout": false,
+  "testsPassed": 66,
+  "liveCatalogTools": [
+    "get_creative_workspace_capabilities",
+    "search_creative_workspace"
+  ],
+  "liveAiAudit": [
+    {
+      "tool": "get_creative_workspace_capabilities",
+      "phase": "succeeded",
+      "outcome": "read_completed"
+    },
+    {
+      "tool": "search_creative_workspace",
+      "phase": "succeeded",
+      "outcome": "read_completed"
+    }
+  ],
+  "routeChecks": {
+    "/agency/qr-codes": 200,
+    "/agency/banner-studio": 200,
+    "/features/creative-workspace-mcp": 200
+  },
+  "externalMcpClientCallVerified": false,
+  "browserEditingEnabled": false
+}
