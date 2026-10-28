@@ -10,3 +10,5 @@
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
 
 .xf-library-model{margin-top:12px}.xf-library-model-controls{display:flex;align-items:start;gap:8px}.xf-library-model-controls>div{min-width:0;flex:1}.xf-library-model-controls>button{flex:none}
+
+.xf-library-warnings{margin-bottom:16px;padding:11px 12px;border:1px solid #ffffff1c;border-radius:9px;color:#c4c7d0;font-size:12px;line-height:1.5}.xf-library-warnings p{margin:0}.xf-library-warnings p+p{margin-top:7px}

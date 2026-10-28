@@ -23,6 +23,21 @@ function cookieValue(request, name) {
   if (found.length !== 1) return null
   try { return decodeURIComponent(found[0].slice(name.length + 1)) } catch { return null }
 }
+// Match the canonical main-app cookie precedence without accepting duplicate credentials.
+// Only the exact APP_ORIGIN bridge invokes this; creative endpoints never accept main cookies.
+function mainSessionToken(request) {
+  const cookies = (request.headers.get('Cookie') || '').split(';').map(value => value.trim())
+  for (const name of ['auth_token', 'auth_token_client']) {
+    const matches = cookies.filter(value => value.startsWith(name + '='))
+    if (matches.length > 1) return null
+    if (matches.length === 1) {
+      const value = cookieValue(request, name)
+      if (value === null) return null
+      if (value) return value
+    }
+  }
+  return null
+}
 function cookie(name, value, age) {
   return `${name}=${encodeURIComponent(value)}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${age}`
 }
@@ -127,7 +142,7 @@ export function createAuth({ fetcher = (...args) => fetch(...args), now = () => 
     const denied = status === 403
     const message = denied ? 'This XeroFlow account does not have access to Creative Suite.' : status === 503 ? 'XeroFlow could not verify your session. Please try again shortly.' : 'Sign in with your existing XeroFlow account to open Creative Suite.'
     const embedded = status === 401
-    const html = `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sign in · XeroFlow Creative</title><style>html{color-scheme:dark;font:15px/1.6 system-ui;background:#0a0b0e;color:white}body{margin:0}main{max-width:${embedded ? '1000' : '520'}px;margin:${embedded ? '24px' : '12vh'} auto;padding:20px}header{display:flex;align-items:center;gap:12px}.mark{display:inline-grid;place-items:center;width:36px;height:36px;background:white;color:#121317;border-radius:8px;font-weight:700}header strong{font-size:18px;font-weight:500}p,small{color:#a1a1aa}a{color:white}.actions{display:flex;flex-wrap:wrap;align-items:center;gap:16px}.action{display:inline-block;background:white;color:#121317;padding:9px 18px;border-radius:24px;text-decoration:none}.continue{padding:10px 0}iframe{display:block;width:100%;height:min(720px,75vh);min-height:570px;border:1px solid #27272a;border-radius:16px;background:#0a0b0e;margin:18px 0}small{display:block;margin-top:12px}@media(max-width:600px){main{padding:14px;margin:10px auto}iframe{min-height:650px;height:80vh}}</style><main><header><span class="mark">XF</span><strong>XeroFlow Creative Suite</strong></header><p>${message}</p>${embedded ? '<iframe src="/auth/login/" title="Sign in to XeroFlow" referrerpolicy="no-referrer"></iframe>' : ''}<div class="actions"><a class="action" href="${APP_ORIGIN}/auth/login/" target="_blank" rel="noopener noreferrer">${embedded ? 'Open sign-in in a new tab' : 'Sign in to XeroFlow'}</a><a class="continue" href="${esc(resume.href)}">Continue</a></div><small>${embedded ? 'Use your usual XeroFlow sign-in above. If it does not load, open sign-in in a new tab.' : 'After signing in, return here.'} Access will continue automatically.</small><p role="status" id="status"></p></main><script nonce="${nonce}">const target=${JSON.stringify(check.href)},resume=${JSON.stringify(resume.href)};let busy=false;async function verify(){if(busy)return;busy=true;try{const r=await fetch(target,{credentials:'same-origin',cache:'no-store',redirect:'error'});if(r.status===204)location.replace(resume)}catch{}finally{busy=false}}const timer=setInterval(verify,2500);window.addEventListener('focus',verify);setTimeout(()=>{clearInterval(timer);document.getElementById('status').textContent='If this sign-in has expired, return to Creative Suite and start again.'},600000);</script></html>`
+    const html = `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sign in · XeroFlow Creative</title><style>html{color-scheme:dark;font:15px/1.6 system-ui;background:#0a0b0e;color:white}body{margin:0}main{max-width:${embedded ? '1000' : '520'}px;margin:${embedded ? '24px' : '12vh'} auto;padding:20px}header{display:flex;align-items:center;gap:12px}.mark{display:inline-grid;place-items:center;width:36px;height:36px;background:white;color:#121317;border-radius:8px;font-weight:700}header strong{font-size:18px;font-weight:500}h1{font-size:clamp(25px,4vw,38px);line-height:1.2;font-weight:500;letter-spacing:-.03em;margin:28px 0 12px}p,small{color:#a1a1aa}a{color:white}.actions{display:flex;flex-wrap:wrap;align-items:center;gap:16px}.action{display:inline-block;background:white;color:#121317;padding:9px 18px;border-radius:24px;text-decoration:none}.continue{padding:10px 0}iframe{display:block;width:100%;height:min(720px,75vh);min-height:570px;border:1px solid #27272a;border-radius:16px;background:#0a0b0e;margin:18px 0}small{display:block;margin-top:12px}@media(max-width:600px){main{padding:14px;margin:10px auto}iframe{min-height:650px;height:80vh}}</style><main><header><span class="mark">XF</span><strong>XeroFlow Creative Suite</strong></header><h1>Design your world with XeroFlow</h1><p>${message}</p>${embedded ? '<iframe src="/auth/login/" title="Sign in to XeroFlow" referrerpolicy="no-referrer"></iframe>' : ''}<div class="actions"><a class="action" href="${APP_ORIGIN}/auth/login/" target="_blank" rel="noopener noreferrer">${embedded ? 'Open sign-in in a new tab' : 'Sign in to XeroFlow'}</a><a class="continue" href="${esc(resume.href)}">Continue</a></div><small>${embedded ? 'Use your usual XeroFlow sign-in above. If it does not load, open sign-in in a new tab.' : 'After signing in, return here.'} Access will continue automatically.</small><p role="status" id="status"></p></main><script nonce="${nonce}">const target=${JSON.stringify(check.href)},resume=${JSON.stringify(resume.href)};let busy=false;async function verify(){if(busy)return;busy=true;try{const r=await fetch(target,{credentials:'same-origin',cache:'no-store',redirect:'error'});if(r.status===204)location.replace(resume)}catch{}finally{busy=false}}const timer=setInterval(verify,2500);window.addEventListener('focus',verify);setTimeout(()=>{clearInterval(timer);document.getElementById('status').textContent='If this sign-in has expired, return to Creative Suite and start again.'},600000);</script></html>`
     return reply(denied ? 403 : status === 503 ? 503 : 200, html, { 'Content-Type': 'text/html; charset=utf-8', 'Content-Security-Policy': `default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}'; connect-src 'self'; frame-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'` })
   }
   async function handleAuthRoute(request, env) {
@@ -139,7 +154,7 @@ export function createAuth({ fetcher = (...args) => fetch(...args), now = () => 
       if (!CREATIVE_ORIGINS.includes(origin) || !/^[A-Za-z0-9_-]{43}$/.test(state || '')) return reply(400, 'Invalid sign-in request')
       let key
       try { key = await keyFor(env) } catch { return reply(503, 'Sign-in temporarily unavailable') }
-      const token = cookieValue(request, 'auth_token')
+      const token = mainSessionToken(request)
       const result = await authority(token)
       if (url.searchParams.get('check') === '1') return reply(result.status)
       if (!result.ok) return loginPage(url, result.status)

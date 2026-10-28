@@ -8,7 +8,7 @@ so Tailwind's reset cannot affect the editor canvas or its HTML shell.
 The frontend-design skill was read before fields were built. The visual plan uses
 XeroFlow's selected dark creative-suite direction: ink `#15161b`, panel `#1b1e27`,
 soft edge `#ffffff24`, white `#fafafa`, muted `#a1a1aa` and cyan `#67e8f9`. Geist is
-used with compact, left-aligned controls. Brand chips, categories, local name search and an explicitly applied optional model filter sit above a
+used with compact, left-aligned controls. Brand chips, categories, local name search and an explicitly applied optional media-model filter sit above a
 bounded scrolling image/file grid. The artwork is the main visual element; extra
 ornament and animations were omitted. The panel remains usable at 320px width and
 respects reduced motion.
@@ -33,12 +33,20 @@ PNG/JPEG/WebP/AVIF images and disabled for SoundFlow.
 
 "Send to editor" fetches a file and sends the editor's existing canvas a synthetic
 file-drop event. The editor decides whether it opens a new document or imports
-media. The browser fixture verifies the File reaches a drop handler while an
-unsaved marker remains intact. **Actual import in the Rust editors needs separate
+media. The target must be the visible, connected canvas with the host editor’s explicit
+canvas id (including legacy Craft paths); decorative/preview canvases are never
+fallbacks. The browser fixture verifies the File reaches that drop handler while a
+decoy receives nothing and an unsaved marker remains intact. A hidden/missing target
+refuses the operation. **Actual import in the Rust editors needs separate
 browser acceptance**; no placement-as-layer or native format conversion is claimed.
 
-The mock browser check covers local search, explicit trimmed model requests (no request while typing), category disabling, reset on brand change, image sending, PDF and WOFF downloads, Escape,
+The mock browser check covers local search, explicit trimmed media-model requests (no request while typing), reset when leaving media or changing brands, bounded plain-text truncation warnings, verified-MIME filename aliases, image sending, PDF and WOFF downloads, Escape,
 320px layout, SoundFlow download-only behavior, 401 sign-in and 503 retry with no
 page errors. Malicious cross-origin asset URLs are rejected and the panel makes no external browser requests. Evidence is `/private/tmp/xf-asset-library-verification.json` and
 `/private/tmp/xf-asset-library-ui.png`. It does not install an OS app, publish files,
 modify documents, or call external Motorstack services.
+
+The model control applies only to “Photos & brochures”. Other categories never send
+a model parameter. Backend `truncated`/`warnings` are shown as bounded plain text so
+a capped selection is visible to the user. `helpers.test.mjs` covers JPEG aliases,
+all explicit canvas ids and warning projection.

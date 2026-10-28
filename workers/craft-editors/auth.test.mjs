@@ -67,16 +67,38 @@ test('email casing is normalized only after server authority proves the active u
   assert.equal((await h.api.authorize(req('/app', { headers: { Cookie: '__Host-xf_creative_session=token-0' } }), env)).status, 204)
 })
 
-test('incoming identity headers, query emails and fallback cookies do not grant access', async () => {
+test('incoming identity headers, query emails and main cookies on creative do not grant access', async () => {
   const h = harness()
   const forged = req('/photoflow/?email=paul@adme.net.au', { headers: { Authorization: 'Bearer token-0', 'X-User-Email': 'paul@adme.net.au', 'Cf-Access-Authenticated-User-Email': 'paul@adme.net.au', Cookie: 'auth_token=token-0; auth_token_client=token-0' } })
   assert.deepEqual(await h.api.authorize(forged, env), { ok: false, status: 401 })
   assert.equal(h.calls.length, 0)
   const flow = await h.api.handleAuthRoute(req('/__auth/start'), env)
-  const bridge = await h.api.handleAuthRoute(new Request(flow.headers.get('Location'), { headers: { Authorization: 'Bearer token-0', Cookie: 'auth_token_client=token-0' } }), env)
+  const bridge = await h.api.handleAuthRoute(new Request(flow.headers.get('Location'), { headers: { Authorization: 'Bearer token-0', 'X-User-Email': 'paul@adme.net.au' } }), env)
   assert.equal(bridge.status, 200)
   assert.match(await bridge.text(), /Sign in to XeroFlow/)
   assert.equal(h.calls.length, 0)
+})
+
+test('main bridge accepts the canonical fallback cookie only after fresh server validation', async () => {
+  for (const cookies of ['auth_token_client=token-0', 'auth_token=; auth_token_client=token-0', 'auth_token=token-0; auth_token_client=invalid']) {
+    const h = harness(), start = await h.api.handleAuthRoute(req('/__auth/start'), env)
+    const bridge = await h.api.handleAuthRoute(new Request(start.headers.get('Location'), { headers: { Cookie: cookies } }), env)
+    assert.equal(bridge.status, 303)
+    assert.equal(h.calls.length, 1)
+    assert.equal(h.calls[0].headers.Authorization, 'Bearer token-0')
+    assert.ok(!bridge.headers.get('Location').includes('token-0'))
+  }
+  for (const cookies of ['auth_token=invalid; auth_token_client=token-0', 'auth_token=invalid; auth_token=token-0; auth_token_client=token-0', 'auth_token_client=invalid; auth_token_client=token-0']) {
+    const h = harness(), start = await h.api.handleAuthRoute(req('/__auth/start'), env)
+    const bridge = await h.api.handleAuthRoute(new Request(start.headers.get('Location'), { headers: { Cookie: cookies } }), env)
+    assert.equal(bridge.status, 200)
+    assert.match(await bridge.text(), /Design your world with XeroFlow/)
+  }
+  const h = harness(), start = await h.api.handleAuthRoute(req('/__auth/start'), env)
+  h.users.delete('token-0')
+  const revoked = await h.api.handleAuthRoute(new Request(start.headers.get('Location'), { headers: { Cookie: 'auth_token_client=token-0' } }), env)
+  assert.equal(revoked.status, 200)
+  assert.equal(h.calls.length, 1)
 })
 
 test('unknown, inactive, revoked and malformed server identities fail closed', async () => {

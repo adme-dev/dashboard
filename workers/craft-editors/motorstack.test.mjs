@@ -20,7 +20,7 @@ function fixture({ slides, response, brands, rpcResponse } = {}) {
       if (body.params.name === 'get_webslides') return rpc({ oem: 'nissan', slides: slides ?? [{ heading: 'Navara', desktop_url: R2 + '/nissan/hero.png' }] })
       if (body.params.name === 'get_variants') {
         assert.equal(body.params.arguments.include_photos, false)
-        return rpc({ vehicles: [{ title: 'Navara ST', colours: [{ name: 'White', main_photo_url: R2 + '/nissan/white.png' }] }] })
+        return rpc({ vehicles: [{ model: 'Navara', title: 'Navara ST', colours: [{ name: 'White', main_photo_url: R2 + '/nissan/white.png' }] }] })
       }
       if (body.params.name === 'get_media_library') return rpc({ brochures: [{ title: 'Nissan brochure', url: R2 + '/nissan/brochure.pdf' }], models: [{ model: 'Navara', heroImage: R2 + '/nissan/hero.png' }] })
       return rpc({ logos: [{ variant: 'Main logo', url: 'https://oem-variants.pages.dev/api/logos/nissan.svg?key=must-not-leak&v=1' }], fonts: { body: { family: 'Nissan Brand', weight: 400, url: 'https://oem-variants.pages.dev/api/fonts/nissan/font.woff2' } }, colours: { primary: '#C3002F', invalid: 'url(https://evil)' } })
@@ -131,4 +131,66 @@ test('selected models include bounded colour heroes without oversized gallery re
   assert.ok(data.assets.some(x => x.name.includes('White')))
   assert.ok(a.calls.some(x => x.options.body?.includes('get_variants')))
   assert.ok(a.calls.filter(x => x.options.body?.includes('get_variants')).every(x => JSON.parse(x.options.body).params.arguments.include_photos === false))
+})
+
+
+test('model scope excludes mixed models and unproven brochures, inheriting matches for nested colours', async () => {
+  const a = fixture({ rpcResponse: name => {
+    if (name === 'list_oems') return rpc({ oems: [{ oem: 'nissan', name: 'Nissan' }] })
+    if (name === 'get_media_library') return rpc({
+      brochures: [{ model: 'ARIYA', title: 'Scoped brochure', url: R2+'/ariya.pdf' }, { title: 'Unscoped brochure', url: R2+'/unknown.pdf' }, { model: 'Navara', url: R2+'/navara.pdf' }],
+      models: [{ model: 'Ariya', colours: [{ name: 'Green', image: R2+'/ariya-green.png' }, { model: 'Navara', image: R2+'/wrong-child.png' }] }, { model: 'Navara', heroImage: R2+'/navara.png' }, { title: 'Ariya unknown metadata', image: R2+'/unproven.png' }]
+    })
+    return rpc({ vehicles: [{ model: 'Ariya', colours: [{ name: 'White', main_photo_url: R2+'/ariya-white.png' }] }, { model: 'Navara', colours: [{ name: 'Black', main_photo_url: R2+'/navara-black.png' }] }] })
+  } })
+  const r = await a.handleMotorstack(request('catalog?brand=nissan&kind=media&model=a-riya'), env)
+  const data = await r.json()
+  assert.equal(data.assets.length, 3)
+  assert.ok(data.assets.some(x => x.name.includes('Green')))
+  assert.ok(data.assets.some(x => x.name.includes('White')))
+  assert.ok(data.assets.some(x => x.name === 'Scoped brochure'))
+  assert.deepEqual(data.models, ['Ariya'])
+  const denied = await a.handleMotorstack(request('file?brand=nissan&kind=media&model=Navara&id='+data.assets[0].id), env)
+  assert.equal(denied.status, 404)
+})
+
+test('only the four supported raster MIME types are importable', async () => {
+  const a = fixture({ slides: ['png','jpg','jpeg','webp','avif','gif','svg'].map(ext => ({ desktop_url: R2+'/asset.'+ext })) })
+  const { data } = await assetURL(a)
+  assert.equal(data.assets.length, 7)
+  for (const asset of data.assets) assert.equal(asset.importable, ['image/png','image/jpeg','image/webp','image/avif'].includes(asset.mime))
+})
+
+test('attachment names preserve valid extension aliases and append only missing MIME suffixes', async () => {
+  for (const [label, ext, mime, expected] of [['photo.png','png','image/png','photo.png'],['Photo.JPEG','jpg','image/jpeg','Photo.JPEG'],['Photo.jpg','jpeg','image/jpeg','Photo.jpg'],['Photo','jpeg','image/jpeg','Photo.jpg'],['png','png','image/png','png.png']]) {
+    // A root media image uses its explicit title as the attachment label.
+    const b = fixture({ rpcResponse: name => name === 'list_oems' ? rpc({ oems: [{ oem:'nissan',name:'Nissan' }] }) : rpc({ title:label, image:R2+'/photo.'+ext }), response: () => new Response('image', {headers:{'Content-Type':mime}}) })
+    const { path } = await assetURL(b,'media')
+    const res = await b.handleMotorstack(new Request('https://creative.xeroflow.io'+path),env)
+    assert.equal(res.status,200)
+    const filename = decodeURIComponent(res.headers.get('Content-Disposition').split("UTF-8''")[1])
+    assert.ok(filename.endsWith(expected),filename)
+    assert.ok(!/\.(?:png\.png|jpeg\.jpg|jpg\.jpeg)$/i.test(filename))
+  }
+})
+
+test('all category budgets preserve brand assets and report omitted results; category-only gets 500', async () => {
+  const a = fixture({ rpcResponse: name => {
+    if (name === 'list_oems') return rpc({oems:[{oem:'nissan',name:'Nissan'}]})
+    if (name === 'get_webslides') return rpc({slides:Array.from({length:510},(_,i)=>({desktop_url:R2+'/slide-'+i+'.png'}))})
+    if (name === 'get_media_library') return rpc({models:Array.from({length:400},(_,i)=>({model:'Model '+i,heroImage:R2+'/media-'+i+'.png'}))})
+    return rpc({logos:Array.from({length:60},(_,i)=>({url:R2+'/logo-'+i+'.png'}))})
+  } })
+  const {data} = await assetURL(a,'all')
+  assert.equal(data.assets.length,500)
+  assert.equal(data.assets.filter(x=>x.source==='Motorstack webslides').length,150)
+  assert.equal(data.assets.filter(x=>x.source==='Motorstack media').length,300)
+  assert.equal(data.assets.filter(x=>x.source==='Motorstack brand assets').length,50)
+  assert.equal(data.truncated,true)
+  assert.ok(data.warnings.every(x=>typeof x==='string'))
+  assert.ok(data.warnings.length)
+  const single = await assetURL(a,'slides')
+  assert.equal(single.data.assets.length,500)
+  assert.equal(single.data.truncated,true)
+  assert.equal((await assetURL(fixture(),'all')).data.truncated,false)
 })

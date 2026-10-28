@@ -5,6 +5,8 @@ const PREFIX = '/__assets/motorstack/'
 const UA = 'Mozilla/5.0 XeroFlow-Creative/1.0'
 const JSON_LIMIT = 4 * 1024 * 1024
 const FILE_LIMIT = 32 * 1024 * 1024
+const IMPORT_MIME = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/avif'])
+const normalizeModel = value => text(value).normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '')
 const KINDS = new Set(['all', 'slides', 'media', 'brand'])
 const MIME = Object.freeze({ png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', avif: 'image/avif', gif: 'image/gif', svg: 'image/svg+xml', pdf: 'application/pdf', woff: 'font/woff', woff2: 'font/woff2', ttf: 'font/ttf', otf: 'font/otf' })
 class AdapterError extends Error {
@@ -81,17 +83,22 @@ export function createMotorstack({ fetcher = (...args) => fetch(...args) } = {})
     const allowed = await brands(key)
     const owner = allowed.find(x => x.id === brand)
     if (!owner) throw new AdapterError(403, 'brand_not_available')
+    let category = 'slides'; let truncated = false
+    const counts = { slides: 0, media: 0, brand: 0 }
+    const budgets = kind === 'all' ? { slides: 150, media: 300, brand: 50 } : { slides: 500, media: 500, brand: 500 }
     const assets = []; const seen = new Set(); const colors = []; const fonts = []; const models = []; const warnings = []
     async function add(value, label, source, declaredType = '') {
       const url = safeURL(value)
-      if (!url || url.href.includes(key) || assets.length >= 500) return
+      if (!url || url.href.includes(key)) return
       const ext = extension(url.href)
       if (!ext || seen.has(url.href)) return
+      if (counts[category] >= budgets[category]) { truncated = true; return }
+      counts[category]++
       seen.add(url.href)
       const mime = MIME[ext]
       const type = declaredType || (mime.startsWith('image/') ? 'image' : mime.startsWith('font/') ? 'font' : 'document')
       const id = await idFor(brand + '\n' + url.href)
-      assets.push({ id, name: text(label || decodeURIComponent(url.pathname.split('/').pop())), type, mime, source, importable: mime.startsWith('image/') && mime !== 'image/svg+xml', original: url.href })
+      assets.push({ id, name: text(label || decodeURIComponent(url.pathname.split('/').pop())), type, mime, source, importable: IMPORT_MIME.has(mime), original: url.href })
     }
     if (kind === 'all' || kind === 'slides') {
       const data = await rpc(key, 'get_webslides', { oem: brand })
@@ -101,26 +108,36 @@ export function createMotorstack({ fetcher = (...args) => fetch(...args) } = {})
       }
     }
     if (kind === 'all' || kind === 'media') {
+      category = 'media'
       const data = await rpc(key, 'get_media_library', { oem: brand, ...(model ? { model } : {}) })
-      for (const item of Array.isArray(data.brochures) ? data.brochures : []) await add(item.url, item.title || item.model, 'Motorstack brochures', 'document')
+      const wanted = normalizeModel(model)
+      const matches = value => normalizeModel(value) === wanted
+      for (const item of Array.isArray(data.brochures) ? data.brochures : []) {
+        if (model && !matches(item.model || item.model_name || item.modelName)) continue
+        await add(item.url, item.title || item.model, 'Motorstack brochures', 'document')
+      }
       // Provider media is structured data; only image-bearing fields are harvested, never CTA links.
-      async function visit(node, label = model || owner.name, depth = 0) {
+      async function visit(node, label = model || owner.name, depth = 0, parentMatch = false) {
         if (!node || depth > 12) return
-        if (Array.isArray(node)) { for (const item of node.slice(0, 500)) await visit(item, label, depth + 1); return }
+        if (Array.isArray(node)) { if (node.length > 500) truncated = true; for (const item of node.slice(0, 500)) await visit(item, label, depth + 1, parentMatch); return }
         if (typeof node !== 'object') return
+        const explicitModel = node.model || node.model_name || node.modelName
+        const modelMatch = !model || (explicitModel ? matches(explicitModel) : parentMatch)
+        if (model && explicitModel && !modelMatch) return
         const own = text(node.title || node.model || node.colour || node.color || node.name || node.badge || '')
         const name = own && own !== label ? text(label + ' · ' + own) : own || label
         if (typeof node.model === 'string' && !models.includes(node.model)) models.push(text(node.model))
         for (const [field, value] of Object.entries(node)) {
           if (typeof value === 'string' && /^(?:heroImage|hero_image|hero_url|main_photo_url|image|image_url|url|desktop_url|mobile_url)$/.test(field)) {
             const safe = safeURL(value); const ext = safe ? extension(safe.href) : null
-            if (ext && MIME[ext].startsWith('image/')) await add(value, name, 'Motorstack media')
+            if (modelMatch && ext && MIME[ext].startsWith('image/')) await add(value, name, 'Motorstack media')
           } else if (Array.isArray(value) && /gallery|interior|photos|images/i.test(field)) {
+            if (value.length > 100) truncated = true
             for (const [i, item] of value.slice(0, 100).entries()) {
-              if (typeof item === 'string') await add(item, name + ' · ' + field + ' ' + (i + 1), 'Motorstack media')
-              else await visit(item, name, depth + 1)
+              if (typeof item === 'string' && modelMatch) await add(item, name + ' · ' + field + ' ' + (i + 1), 'Motorstack media')
+              else await visit(item, name, depth + 1, modelMatch)
             }
-          } else if (value && typeof value === 'object' && field !== 'brochures') await visit(value, name, depth + 1)
+          } else if (value && typeof value === 'object' && field !== 'brochures') await visit(value, name, depth + 1, modelMatch)
         }
       }
       await visit(data.models || data)
@@ -128,11 +145,12 @@ export function createMotorstack({ fetcher = (...args) => fetch(...args) } = {})
         // Full-gallery output can exceed the provider's own text cap; colour heroes stay bounded.
         try {
           const variants = await rpc(key, 'get_variants', { oem: brand, model, include_photos: false })
-          await visit(variants.vehicles || [])
+          await visit(variants.vehicles || [], model)
         } catch { warnings.push('Some model colour images are temporarily unavailable.') }
       }
     }
     if (kind === 'all' || kind === 'brand') {
+      category = 'brand'
       const data = await rpc(key, 'get_brand_assets', { oem: brand })
       for (const logo of Array.isArray(data.logos) ? data.logos : []) await add(logo.url, owner.name + ' · ' + (logo.variant || logo.role || 'logo'), 'Motorstack brand assets')
       for (const [role, font] of Object.entries(data.fonts || {})) {
@@ -142,7 +160,8 @@ export function createMotorstack({ fetcher = (...args) => fetch(...args) } = {})
       }
       for (const [name, value] of Object.entries(data.colours || {})) if (typeof value === 'string' && /^#[0-9a-f]{3}(?:[0-9a-f]{3})?$/i.test(value)) colors.push({ name: text(name), value })
     }
-    return { brand: owner, assets, colors, fonts, models: models.slice(0, 100), warnings }
+    if (truncated) warnings.push('Some assets were omitted to keep this catalogue bounded. Choose a category to see more.')
+    return { brand: owner, assets, colors, fonts, models: models.slice(0, 100), warnings, truncated }
   }
   function project(data, brand, kind, model) {
     return { ...data, assets: data.assets.map(({ original, ...asset }) => {
@@ -168,8 +187,10 @@ export function createMotorstack({ fetcher = (...args) => fetch(...args) } = {})
       const mime = (res.headers.get('Content-Type') || '').split(';')[0].toLowerCase().trim()
       if (!Object.values(MIME).includes(mime) || mime !== asset.mime) throw new AdapterError(502, 'asset_type_refused')
       const bytes = await boundedBody(res, FILE_LIMIT)
-      const ext = extension(url.href) || Object.keys(MIME).find(k => MIME[k] === mime) || 'bin'
-      const name = (asset.name.replace(/[^\p{L}\p{N} ._-]/gu, '-').trim().slice(0, 100) || 'Motorstack asset') + '.' + ext
+      const ext = Object.keys(MIME).find(k => MIME[k] === mime) || 'bin'
+      const base = asset.name.replace(/[^\p{L}\p{N} ._-]/gu, '-').trim().slice(0, 100) || 'Motorstack asset'
+      const existing = base.split('.').pop().toLowerCase()
+      const name = base + (base.includes('.') && MIME[existing] === mime ? '' : '.' + ext)
       // Even SVG and PDF are attachments, never executable same-origin documents.
       return new Response(bytes, { headers: { 'Content-Type': mime, 'Content-Length': String(bytes.length), 'Content-Disposition': "attachment; filename*=UTF-8''" + encodeURIComponent(name), 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'; sandbox", 'Referrer-Policy': 'no-referrer' } })
     }

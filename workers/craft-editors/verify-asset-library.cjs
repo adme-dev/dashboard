@@ -12,14 +12,14 @@ const assets = [
   { id: 'pdf', name: 'Navara brochure', type: 'brochure', mime: 'application/pdf', importable: false },
   { id: 'font', name: 'Nissan body font', type: 'font', mime: 'font/woff', importable: false },
 ].map(a => ({ ...a, url: '/__assets/motorstack/file?brand=nissan&kind=all&id=' + a.id, thumbnail: a.id === 'photo' ? '/__assets/motorstack/file?brand=nissan&kind=all&id=photo' : null }))
-const fixture = `<!doctype html><html><body><canvas width="800" height="600"></canvas><div class="xf-dock-panel"></div><script>window.unsaved='retain';window.drops=[];document.querySelector('canvas').addEventListener('drop',e=>{e.preventDefault();drops.push([...e.dataTransfer.files].map(f=>({name:f.name,type:f.type,size:f.size})))})</script><script type="module" src="/asset-library.js"></script></body></html>`
+const fixture = `<!doctype html><html><body><canvas id="preview_decoy" width="100" height="100"></canvas><canvas id="photocraft_canvas" width="800" height="600"></canvas><div class="xf-dock-panel"></div><script>window.unsaved='retain';window.drops=[];window.decoyDrops=0;document.getElementById('preview_decoy').addEventListener('drop',()=>decoyDrops++);document.getElementById('photocraft_canvas').addEventListener('drop',e=>{e.preventDefault();drops.push([...e.dataTransfer.files].map(f=>({name:f.name,type:f.type,size:f.size})))})</script><script type="module" src="/asset-library.js"></script></body></html>`
 ;(async () => {
   const server = http.createServer(async (req, res) => {
     const u = new URL(req.url, 'http://localhost')
     if (u.pathname.startsWith('/__assets/')) {
       if (status !== 200) { res.writeHead(status, { 'Content-Type': 'application/json' }).end('{}'); return }
       if (u.pathname.endsWith('/brands')) { res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ brands: [{ id: 'nissan', name: 'Nissan' }, { id: 'kia', name: 'Kia' }] })); return }
-      if (u.pathname.endsWith('/catalog')) { catalogQueries.push(Object.fromEntries(u.searchParams)); res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ assets: [...assets, {id:'bad',name:'Rejected external asset',mime:'image/png',url:'https://example.invalid/leak',thumbnail:'https://example.invalid/leak'}], colors: [{ name: 'Ink', value: '#121317' }] })); return }
+      if (u.pathname.endsWith('/catalog')) { catalogQueries.push(Object.fromEntries(u.searchParams)); res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ assets: [...assets, {id:'bad',name:'Rejected external asset',mime:'image/png',url:'https://example.invalid/leak',thumbnail:'https://example.invalid/leak'}], colors: [{ name: 'Ink', value: '#121317' }], truncated:true, warnings:['<b>Catalog is limited</b>',...Array(8).fill('Only this selection is shown.')]  })); return }
       res.setHeader('Content-Type', u.searchParams.get('id') === 'pdf' ? 'application/pdf' : u.searchParams.get('id') === 'font' ? 'font/woff' : 'image/png'); res.end(await png); return
     }
     const files = { '/asset-library.js': ['static/asset-library.js', 'text/javascript'], '/asset-library.css': ['static/asset-library.css', 'text/css'], '/fonts/geist-latin-variable.woff2': ['static/fonts/geist-latin-variable.woff2', 'font/woff2'] }
@@ -38,8 +38,14 @@ const fixture = `<!doctype html><html><body><canvas width="800" height="600"></c
     await page.getByRole('heading', { name: 'Motorstack assets' }).waitFor()
     await page.getByText('Navara hero', { exact: true }).waitFor()
     if (await page.getByText('Rejected external asset', {exact:true}).count()) throw Error('External asset URL was accepted')
+    await page.getByText('Showing the first selection of assets.', {exact:false}).waitFor()
+    await page.getByText('<b>Catalog is limited</b>', {exact:true}).waitFor()
+    if (await page.locator('.xf-library-warnings b').count() || await page.locator('.xf-library-warnings p').count() !== 6) throw Error('Warnings were not bounded plain text')
+    if (!(await page.getByLabel('Media model (optional)').isDisabled()) || catalogQueries.at(-1).model) throw Error('All assets must not apply a media model')
+    await page.getByRole('button',{name:'Photos & brochures',exact:true}).click()
+    await page.getByText('Navara hero',{exact:true}).waitFor()
     const initialCalls = catalogQueries.length
-    await page.getByLabel('Model (optional)').fill('  Ariya  ')
+    await page.getByLabel('Media model (optional)').fill('  Ariya  ')
     if (catalogQueries.length !== initialCalls) throw Error('Typing a model sent a request before Apply')
     await page.getByRole('button', {name:'Apply',exact:true}).click()
     await page.getByText('Navara hero', {exact:true}).waitFor()
@@ -47,21 +53,30 @@ const fixture = `<!doctype html><html><body><canvas width="800" height="600"></c
     report.checks.push({modelQuery:catalogQueries.at(-1),explicitApply:true})
     await page.getByRole('button', {name:'Banners',exact:true}).click()
     await page.getByText('Navara hero', {exact:true}).waitFor()
-    if (!(await page.getByLabel('Model (optional)').isDisabled()) || catalogQueries.at(-1).model) throw Error('Model filter applied to a non-model category')
+    if (!(await page.getByLabel('Media model (optional)').isDisabled()) || catalogQueries.at(-1).model) throw Error('Model filter applied to a non-model category')
     await page.getByRole('button', {name:'All assets',exact:true}).click()
     await page.getByText('Navara hero', {exact:true}).waitFor()
     await page.getByRole('button', {name:'Kia',exact:true}).click()
     await page.getByText('Navara hero', {exact:true}).waitFor()
-    if (await page.getByLabel('Model (optional)').inputValue() || catalogQueries.at(-1).model) throw Error('Brand change did not reset model')
-    report.checks.push('Model disabled outside all/media and resets on brand change')
+    if (await page.getByLabel('Media model (optional)').inputValue() || catalogQueries.at(-1).model) throw Error('Brand change did not reset model')
+    report.checks.push('Media-only model is disabled and cleared for other categories and brand changes')
     await page.getByLabel('Find an asset').fill('brochure')
     if (await page.getByText('Navara hero', { exact: true }).count()) throw Error('Search did not filter')
     await page.getByLabel('Find an asset').fill('')
     await page.getByRole('button', { name: 'Send to editor', exact: true }).click()
     await page.waitForFunction(() => window.drops.length === 1)
-    const drops = await page.evaluate(() => ({ drops, unsaved }))
-    if (drops.unsaved !== 'retain' || drops.drops[0][0].type !== 'image/png') throw Error('Import changed state or wrong file')
+    const drops = await page.evaluate(() => ({ drops, unsaved, decoyDrops }))
+    if (drops.decoyDrops !== 0 || drops.unsaved !== 'retain' || drops.drops[0][0].type !== 'image/png') throw Error('Import changed state or wrong file')
     report.checks.push({ import: drops })
+    await page.evaluate(()=>document.getElementById('photocraft_canvas').style.display='none')
+    await page.getByRole('button',{name:'Send to editor',exact:true}).click()
+    await page.getByText('Open a document in the editor, then try again.',{exact:true}).waitFor()
+    const declined=await page.evaluate(()=>({drops:drops.length,decoyDrops}))
+    if(declined.drops!==1||declined.decoyDrops!==0)throw Error('A hidden target redirected a drop to the decoy')
+    await page.evaluate(()=>document.getElementById('photocraft_canvas').style.display='block')
+    await page.getByRole('button',{name:'Try again',exact:true}).click()
+    await page.getByText('Navara hero',{exact:true}).waitFor()
+    report.checks.push('Explicit visible editor canvas receives files; hidden target declines without using decoy')
     const download = page.waitForEvent('download')
     await page.getByRole('article').filter({ hasText: 'Navara brochure' }).getByRole('button', { name: 'Download', exact: true }).click()
     report.checks.push({ downloaded: (await download).suggestedFilename() })
