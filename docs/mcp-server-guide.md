@@ -336,3 +336,14 @@ verified media delivery and live acceptance. Internal team upload utilities are 
 published guidelines. See [TikTok activation boundaries](runbooks/tiktok-publishing-activation.md).
 LinkedIn video is referenced in a Posts call only after its Videos API reports `AVAILABLE`; ambiguous
 publication outcomes remain held and cannot be blindly retried.
+
+## Creative workspace discovery preview — 28 October 2026
+
+The shared AI registry now includes two read-only creative discovery descriptors:
+
+- `get_creative_workspace_capabilities`: distinguishes application services from Flow editors whose browser bridge is still pending. An inventory entry is not proof of a live connected editor; use the current authenticated MCP tools/list for executable operations.
+- `search_creative_workspace`: accepts literal `query`, optional narrowing `clientId`, a `sources` selection (`banner_assets`, `banner_projects`, `audio_assets`, `video_assets`, `edm_templates`) and `limit` (1–50, default30). Returns bounded metadata with stable `source:UUID` references and truthful `truncated` status. No file access, email content, storage keys or signed URLs are returned.
+
+Both resolve current authority and require CREATIVE access or a freshly verified owner. Ordinary MCP staff need current client assignments for search; assignment predicates precede ordering and limits. Existing video creator/project-creator visibility is retained. The older broad creative aggregators and Banner/video mutation suites have not been opened to ordinary staff by this change.
+
+The proposed FigFlow browser bridge is a separate, inactive R&D patch at `docs/plans/fixtures/figflow-browser-bridge.patch`. It is not registered as an MCP write tool, included in production source pins or deployed. It requires Rust tests, WASM compilation, actual browser acceptance and an authenticated actor/document relay before external AI editing can be claimed. Shared project saving, cross-app import/export and EDM draft editing/sending are separate delivery milestones.
