@@ -400,6 +400,7 @@ const mainNav = computed<NavigationMenuItem[]>(() => {
   if (canAccessCreative.value) {
     items.push(
       { type: 'label', label: 'Creative' },
+      { label: 'Creative Suite', icon: 'i-lucide-palette', to: 'https://creative.xeroflow.io', target: '_blank', rel: 'noopener noreferrer', onSelect: close },
       { label: 'Banner Studio', icon: 'i-lucide-palette', to: '/agency/banner-studio', onSelect: close },
       { label: 'Templates', icon: 'i-lucide-layout-template', to: '/agency/banner-studio/templates', onSelect: close },
       { label: 'Brand Kits', icon: 'i-lucide-paintbrush', to: '/agency/banner-studio/brand-kits', onSelect: close },
