@@ -41,9 +41,13 @@ const html = `<!doctype html><html><head><meta name="viewport" content="width=de
     assert.equal(await photo.locator('.xf-dock-app').count(), 6)
     await photo.locator('[data-app="vectorflow"]').hover()
     await photo.waitForTimeout(450)
-    const wave = await photo.locator('.xf-dock-app').evaluateAll(els => els.map(el => new DOMMatrix(getComputedStyle(el).transform).a))
+    const wave = await photo.locator('.xf-dock-app').evaluateAll(els => els.map(el => new DOMMatrix(getComputedStyle(el.querySelector(".xf-dock-tile")).transform).a))
     assert.ok(wave[1] > 1.2 && wave[0] > 1 && wave[2] > 1, 'pointer magnifies the current icon and both neighbours')
     assert.ok(wave[1] > wave[0] && wave[1] > wave[2], 'magnification peaks near the pointer')
+    const iconBounds = await photo.locator('.xf-dock-tile').evaluateAll(els => els.map(el => {const r=el.getBoundingClientRect();return {left:r.left,right:r.right,bottom:r.bottom}}))
+    for(let i=1;i<iconBounds.length;i++) assert.ok(iconBounds[i].left >= iconBounds[i-1].right + 2, 'magnified icons retain a clear gap')
+    assert.ok(Math.max(...iconBounds.map(r=>r.bottom))-Math.min(...iconBounds.map(r=>r.bottom)) < 1, 'icons share a steady baseline')
+
 
     await photo.waitForFunction(() => [...document.querySelectorAll('.xf-dock-thumbnail')].length === 6 && [...document.querySelectorAll('.xf-dock-thumbnail')].every(img => img.complete && img.naturalWidth > 0))
     assert.equal(await photo.locator('[data-xf-install]').count(), 1)

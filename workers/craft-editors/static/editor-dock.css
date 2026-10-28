@@ -43,3 +43,6 @@
 /* Magnification is driven by pointer distance, including adjacent app icons. */
 .xf-dock-panel>.xf-dock-link,.xf-dock-panel>[data-xf-assets]{transform-origin:center bottom}
 @media(max-width:600px){.xf-dock-panel>.xf-dock-link,.xf-dock-panel>[data-xf-assets]{transform:none!important}}
+
+/* Keep labels steady above the full magnification arc. */
+@media(hover:hover) and (pointer:fine) and (min-width:601px){.xf-dock-label{bottom:78px}.xf-dock-tile{transition:box-shadow .25s ease}.xf-dock-panel{padding-left:24px;padding-right:24px}}
