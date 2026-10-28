@@ -1,0 +1,30 @@
+{
+  "at": "2026-10-28T01:05:49Z",
+  "main": {
+    "url": "https://creative.xeroflow.io/",
+    "version": "9f2d6d55-0717-4964-956b-ba01315c2359",
+    "https_status": 200,
+    "tls_verified": true
+  },
+  "alias": {
+    "url": "https://create.xeroflow.io/",
+    "version": "17ccfe8d-b8ca-4f06-b46d-412c57c12a29",
+    "status": 308,
+    "preserves_path_and_query": true
+  },
+  "public_dns": {
+    "cloudflare": "NOERROR",
+    "google": "NOERROR",
+    "addresses": [
+      "104.21.28.189",
+      "172.67.147.80"
+    ]
+  },
+  "local_dns": {
+    "resolver": "10.10.10.1",
+    "status": "NXDOMAIN",
+    "negative_cache_remaining_seconds": 1396
+  },
+  "browser_ui": "custom-domain-layout.json",
+  "storage_migration": false
+}

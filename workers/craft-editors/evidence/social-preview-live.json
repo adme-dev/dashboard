@@ -1,0 +1,33 @@
+{
+  "page": "https://creative.xeroflow.io/",
+  "image": "https://creative.xeroflow.io/social-preview.png?v=20261028-1",
+  "status": 200,
+  "type": "image/png",
+  "size": 371207,
+  "sha256": "46578f31b0b270e7e3170cdfb6f358437315cd595b5ddd652e55ac4501a0b4b1",
+  "dimensions": [
+    1200,
+    630
+  ],
+  "crawler_metadata": {
+    "": null,
+    "viewport": "width=device-width,initial-scale=1",
+    "description": "Your XeroFlow creative workspace. Six browser tools for photos, vectors, effects, film, sound and interface design.",
+    "og:type": "website",
+    "og:site_name": "XeroFlow",
+    "og:title": "Creative Tools \u00b7 XeroFlow",
+    "og:description": "Your XeroFlow creative workspace. Six browser tools for photos, vectors, effects, film, sound and interface design.",
+    "og:url": "https://creative.xeroflow.io/",
+    "og:image": "https://creative.xeroflow.io/social-preview.png?v=20261028-1",
+    "og:image:secure_url": "https://creative.xeroflow.io/social-preview.png?v=20261028-1",
+    "og:image:type": "image/png",
+    "og:image:width": "1200",
+    "og:image:height": "630",
+    "og:image:alt": "XeroFlow Creative Suite: PhotoFlow, VectorFlow, EffectFlow, FilmFlow, SoundFlow and FigFlow.",
+    "twitter:card": "summary_large_image",
+    "twitter:title": "Creative Tools \u00b7 XeroFlow",
+    "twitter:description": "Six creative tools for photos, vectors, effects, film, sound and interface design.",
+    "twitter:image": "https://creative.xeroflow.io/social-preview.png?v=20261028-1",
+    "twitter:image:alt": "XeroFlow Creative Suite: six creative applications in one workspace."
+  }
+}

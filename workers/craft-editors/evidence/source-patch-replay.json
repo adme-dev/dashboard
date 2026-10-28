@@ -1,0 +1,44 @@
+[
+  {
+    "engine": "effectcraft",
+    "source_archive_verified": true,
+    "patches_verified": 2,
+    "patched_files_equal_build_source": 41,
+    "cargo_lock_unchanged": true
+  },
+  {
+    "engine": "filmcraft",
+    "source_archive_verified": true,
+    "patches_verified": 1,
+    "patched_files_equal_build_source": 47,
+    "cargo_lock_unchanged": true
+  },
+  {
+    "engine": "photocraft",
+    "source_archive_verified": true,
+    "patches_verified": 2,
+    "patched_files_equal_build_source": 62,
+    "cargo_lock_unchanged": true
+  },
+  {
+    "engine": "vectorcraft",
+    "source_archive_verified": true,
+    "patches_verified": 2,
+    "patched_files_equal_build_source": 77,
+    "cargo_lock_unchanged": true
+  },
+  {
+    "engine": "soundcraft",
+    "source_archive_verified": true,
+    "patches_verified": 1,
+    "patched_files_equal_build_source": 17,
+    "cargo_lock_unchanged": true
+  },
+  {
+    "engine": "figcraft",
+    "source_archive_verified": true,
+    "patches_verified": 4,
+    "patched_files_equal_build_source": 64,
+    "cargo_lock_unchanged": true
+  }
+]

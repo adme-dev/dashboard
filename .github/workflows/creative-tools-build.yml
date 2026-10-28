@@ -1,0 +1,113 @@
+name: Creative tools browser builds
+
+on:
+  push:
+    branches:
+      - adme-dev/craft-hosted-rollout-20261028
+    paths:
+      - .github/workflows/creative-tools-build.yml
+      - workers/craft-editors/source-pins.json
+      - workers/craft-editors/patches/**
+      - workers/craft-editors/build-browser.sh
+      - workers/craft-editors/ci-build-browser.sh
+      - workers/craft-editors/ci-setup.py
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/creative-tools-build.yml
+      - workers/craft-editors/source-pins.json
+      - workers/craft-editors/patches/**
+      - workers/craft-editors/build-browser.sh
+      - workers/craft-editors/ci-build-browser.sh
+      - workers/craft-editors/ci-setup.py
+  workflow_dispatch:
+    inputs:
+      engine:
+        description: Application to build
+        type: choice
+        default: all
+        required: true
+        options:
+          - all
+          - photocraft
+          - vectorcraft
+          - effectcraft
+          - filmcraft
+          - soundcraft
+          - figcraft
+
+permissions:
+  contents: read
+
+jobs:
+  select-engines:
+    name: Select application builds
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      engines: ${{ steps.select.outputs.engines }}
+      test_fig: ${{ steps.select.outputs.test_fig }}
+    steps:
+      - id: select
+        name: Validate requested applications
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          SELECTED_ENGINE: ${{ inputs.engine || 'all' }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          engines = ['photocraft', 'vectorcraft', 'effectcraft', 'filmcraft', 'soundcraft', 'figcraft']
+          selected = os.environ['SELECTED_ENGINE']
+          if selected not in ['all', *engines]:
+              raise SystemExit('Unsupported application')
+          requested = [selected] if os.environ['EVENT_NAME'] == 'workflow_dispatch' and selected != 'all' else engines
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write('engines=' + json.dumps(requested) + '\n')
+              output.write('test_fig=' + ('true' if 'figcraft' in requested else 'false') + '\n')
+          PY
+
+  browser:
+    name: Browser / ${{ matrix.engine }}
+    needs: select-engines
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        engine: ${{ fromJSON(needs.select-engines.outputs.engines) }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - name: Build verified browser package
+        run: bash workers/craft-editors/ci-build-browser.sh '${{ matrix.engine }}' web
+      - name: Upload package, verification receipts and logs
+        if: always()
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: creative-${{ matrix.engine }}-web-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/creative-artifacts/${{ matrix.engine }}-web/
+          retention-days: 7
+          if-no-files-found: warn
+
+  fig-tests:
+    name: FigFlow native save, export and branding tests
+    needs: select-engines
+    if: needs.select-engines.outputs.test_fig == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - name: Test verified FigFlow sources
+        run: bash workers/craft-editors/ci-build-browser.sh figcraft test
+      - name: Upload verification receipts and test logs
+        if: always()
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: creative-figcraft-tests-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/creative-artifacts/figcraft-test/
+          retention-days: 7
+          if-no-files-found: warn

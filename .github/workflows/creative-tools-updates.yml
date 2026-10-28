@@ -1,0 +1,50 @@
+name: Check creative tools upstream releases
+
+on:
+  schedule:
+    - cron: '17 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - name: Check six pinned upstream applications
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 workers/craft-editors/check-updates.py --report "$RUNNER_TEMP/creative-updates/report.json"
+      - name: Summarize check
+        if: always()
+        env:
+          REPORT: ${{ runner.temp }}/creative-updates/report.json
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          report = Path(os.environ['REPORT'])
+          with Path(os.environ['GITHUB_STEP_SUMMARY']).open('a') as out:
+              out.write('## Creative application release check\n\n')
+              if not report.is_file():
+                  out.write('The check did not produce a report. Inspect the job failure.\n')
+              else:
+                  data = json.loads(report.read_text())
+                  out.write('| Application | Pinned | Latest stable | Status |\n| --- | --- | --- | --- |\n')
+                  for app in data['applications']:
+                      out.write(f"| {app['engine']} | {app['current_version']} | {app.get('latest_version', 'unknown')} | {app['status']} |\n")
+                  out.write('\nThis workflow does not download application binaries, change pins, build or deploy.\n')
+          PY
+      - name: Preserve report
+        if: always()
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: creative-upstream-releases-${{ github.run_id }}
+          path: ${{ runner.temp }}/creative-updates/
+          retention-days: 30
+          if-no-files-found: warn

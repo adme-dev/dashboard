@@ -1,0 +1,15 @@
+{
+  "blocked": {
+    "project": "unsaved-rectangle",
+    "keys": 1,
+    "inert": true,
+    "heading": "Sign in to continue"
+  },
+  "resumed": {
+    "project": "unsaved-rectangle",
+    "inert": false
+  },
+  "unavailable": "Connection to XeroFlow interrupted",
+  "pageURL": "http://127.0.0.1:64388/",
+  "redirected": false
+}
