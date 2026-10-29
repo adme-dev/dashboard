@@ -80,4 +80,30 @@ describe('Banner Studio revisions', () => {
     studio.undo()
     expect(studio.state.sets.mrec.layers).toEqual([])
   })
+  it('updates linked content on every size while keeping its placement and timing', () => {
+    const studio = useBannerStudio()
+    const first = { id: 1, type: 'text', name: 'Offer', linkId: 'source:offer', text: 'Old', x: 20, y: 30, w: 200, h: 50, zIndex: 1, opacity: 1, startTime: 0, endTime: 4 }
+    const second = { ...first, id: 2, x: 85, y: 120, w: 300, startTime: 1 }
+    studio.loadProject({ ...project(), canvasData: { mrec: { layers: [first] }, fb_sq: { layers: [second] } } } as BannerProject)
+    studio.updateLayer(1, { text: 'New offer', x: 40, startTime: 2 })
+    expect(studio.state.sets.mrec.layers[0]).toMatchObject({ text: 'New offer', x: 40, startTime: 2 })
+    expect(studio.state.sets.fb_sq.layers[0]).toMatchObject({ text: 'New offer', x: 85, y: 120, w: 300, startTime: 1 })
+    studio.undo()
+    expect(studio.state.sets.mrec.layers[0].text).toBe('Old')
+    expect(studio.state.sets.fb_sq.layers[0].text).toBe('Old')
+  })
+  it('copies reactive text runs without sharing their mutable array across sizes', () => {
+    const studio = useBannerStudio()
+    const layer = { id: 1, type: 'text', name: 'Price', linkId: 'source:price', text: '$38,990', textRuns: [{ text: '$38,990' }], x: 0, y: 0, w: 100, h: 30, zIndex: 1, opacity: 1 }
+    studio.loadProject({ ...project(), canvasData: { mrec: { layers: [layer] }, fb_sq: { layers: [{ ...layer, id: 2 }] } } } as BannerProject)
+    const reactiveRuns = studio.state.sets.mrec.layers[0].textRuns
+    studio.updateLayer(1, { textRuns: reactiveRuns })
+    expect(studio.state.sets.fb_sq.layers[0].textRuns).toEqual([{ text: '$38,990' }])
+    expect(studio.state.sets.fb_sq.layers[0].textRuns).not.toBe(reactiveRuns)
+  })
+  it('keeps duplicated layers independent of linked source content', () => {
+    const studio = useBannerStudio()
+    studio.loadProject({ ...project(), canvasData: { mrec: { layers: [{ id: 1, type: 'text', name: 'Offer', linkId: 'source:offer', text: 'Old', x: 0, y: 0, w: 100, h: 20, zIndex: 1, opacity: 1 }] } } } as BannerProject)
+    expect(studio.duplicateLayer(1)?.linkId).toBeUndefined()
+  })
 })

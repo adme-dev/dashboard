@@ -45,6 +45,9 @@ export async function enqueueBannerRender(input: BannerRenderInput, deps: Enqueu
   const { fps, crf, quality } = clampRenderParams(input.fps, input.crf, input.quality)
 
   for (const f of input.formats) {
+    if (/<audio\b/i.test(f.html)) {
+      throw new BannerRenderError('MP4 export cannot include audio yet. Download HTML5 for sound playback.')
+    }
     const findings = lintBannerRenderFormat(f, { fps, crf, quality, maxDimension: CAPS.MAX_DIMENSION })
     if (hasRenderLintErrors(findings)) {
       const firstError = findings.find(finding => finding.severity === 'error')

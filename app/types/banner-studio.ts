@@ -61,6 +61,8 @@ export interface Layer {
   id: number
   type: LayerType
   name: string
+  /** Shared content identity across independently positioned sizes in one design set. */
+  linkId?: string
   // Position & size
   x: number
   y: number
@@ -81,6 +83,8 @@ export interface Layer {
   text?: string
   /** Safe inline superscripts; rendered only while their text matches the layer. */
   textRuns?: Array<{ text: string, fontSize?: number, top?: number }>
+  /** Reviewed TheBrief per-word entrance; words remain one editable text layer. */
+  wordPop?: { duration: number, stagger: number, ease: string }
   fontSize?: number
   fontWeight?: number
   fontFamily?: string

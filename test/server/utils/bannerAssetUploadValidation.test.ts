@@ -46,7 +46,8 @@ describe('validateBannerAssetUpload', () => {
     ['GIF', signatures.gif, 'image/gif', 'banner.gif'],
     ['WebP', signatures.webp, 'image/webp', 'banner.webp'],
     ['MP4', signatures.mp4, 'video/mp4', 'banner.mp4'],
-    ['WebM', signatures.webm, 'video/webm', 'banner.webm']
+    ['WebM', signatures.webm, 'video/webm', 'banner.webm'],
+    ['MP3', Buffer.from('ID3\x04\x00\x00', 'binary'), 'audio/mpeg', 'banner.mp3']
   ])('detects %s from its content rather than its filename', (_format, data, mimeType, fileName) => {
     expect(validateBannerAssetUpload({ filename: 'banner.not-trusted', type: mimeType, data }))
       .toMatchObject({ mimeType, fileName })
@@ -81,7 +82,6 @@ describe('validateBannerAssetUpload', () => {
 
   it.each([
     ['SVG', 'banner.svg', 'image/svg+xml', Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>')],
-    ['audio', 'banner.mp3', 'audio/mpeg', Buffer.from('ID3\x04\x00\x00', 'binary')],
     ['executable', 'banner.exe', 'application/octet-stream', Buffer.from([0x4d, 0x5a, 0x90, 0x00])]
   ])('rejects unsupported %s content', (_format, filename, type, data) => {
     expect(() => validateBannerAssetUpload({ filename, type, data })).toThrowError(/unsupported/i)

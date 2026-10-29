@@ -16,6 +16,17 @@ describe('reviewed TheBrief native package', () => {
     expect(importTags(result)).toContain('import:needs-review')
   })
 
+  it('accepts a linked multi-size design and validates every board', () => {
+    const input = fixture()
+    const first = input.canvasData.custom_300x250.layers[0]
+    Object.assign(first, { linkId: 'source:1' })
+    Object.assign(input.canvasData, { custom_1200x1200: { layers: [{ ...first, x: 100, w: 900 }] } })
+    const parsed = parseTheBriefPackage(input)
+    expect(Object.keys(parsed.canvasData)).toEqual(['custom_300x250', 'custom_1200x1200'])
+    input.canvasData.custom_1200x1200.layers[0].endTime = 5
+    expect(() => parseTheBriefPackage(input)).toThrow(/timing/)
+  })
+
   it('rejects unsafe CSS, external assets and unsupported layers', () => {
     for (const change of [{ color: 'red;position:fixed' }, { src: 'https://example.com/a.png' }, { type: 'html' }]) {
       const input = fixture()

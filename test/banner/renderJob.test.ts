@@ -58,6 +58,15 @@ describe('enqueueBannerRender', () => {
     expect(d.putSourceHtml).not.toHaveBeenCalled()
   })
 
+  it('does not queue a silent MP4 when the design contains audio', async () => {
+    const d = deps()
+    await expect(enqueueBannerRender({
+      projectId: 'p1', formats: [{ ...fmt('sound'), html: `<audio src="/sound.mp3"></audio>${validHtml}` }],
+      fps: 30, quality: 1, crf: 23, userId: 'u1',
+    }, d)).rejects.toThrow(/cannot include audio/i)
+    expect(d.putSourceHtml).not.toHaveBeenCalled()
+  })
+
   it('preflights every format before creating any partial render side effects', async () => {
     const d = deps()
     await expect(enqueueBannerRender({

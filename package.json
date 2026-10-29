@@ -6,7 +6,7 @@
     "node": "24.18.0"
   },
   "scripts": {
-    "build": "NODE_OPTIONS='--max-old-space-size=16384' nuxt build && node scripts/wrap-worker.mjs && node scripts/check-worker-size.mjs",
+    "build": "DEBUG= NODE_OPTIONS='--max-old-space-size=16384' nuxt build && node scripts/wrap-worker.mjs && node scripts/check-worker-size.mjs",
     "dev": "NODE_OPTIONS='--max-old-space-size=16384' nuxt dev",
     "graphify:rebuild": "sh scripts/regenerate-graphify.sh",
     "graphify:upload": "node --env-file=.env scripts/upload-graphify.mjs graphify-out",

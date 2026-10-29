@@ -115,9 +115,19 @@ if (!await exists(compactChunksDirectory)) {
   const precomputedManifest = await resolvePrecomputedManifestPath(distDir)
   const precomputedSource = await fs.readFile(precomputedManifest, 'utf8')
   if (!precomputedSource.includes('XEROFLOW_COMPACT_PRECOMPUTED')) {
-    const manifestModule = await import(
-      `${pathToFileURL(precomputedManifest).href}?compact=${Date.now()}`
-    )
+    // Nuxt's optional build timing wrapper now surrounds this generated
+    // module. It is loaded here as data, outside the Worker bootstrap that
+    // normally installs __timing__. Supply a local no-op recorder for import.
+    const previousTiming = globalThis.__timing__
+    if (!previousTiming) globalThis.__timing__ = { logStart() {}, logEnd() {} }
+    let manifestModule
+    try {
+      manifestModule = await import(
+        `${pathToFileURL(precomputedManifest).href}?compact=${Date.now()}`
+      )
+    } finally {
+      if (!previousTiming) delete globalThis.__timing__
+    }
     const exportContract = typeof manifestModule.default === 'function'
       ? 'loader'
       : 'value'

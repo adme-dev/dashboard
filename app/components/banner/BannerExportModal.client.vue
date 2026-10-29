@@ -358,6 +358,11 @@ async function exportVideos() {
   const keys = [...selected.value]
   if (!keys.length) return
 
+  if (keys.some(key => state.sets[key]?.layers.some(layer => layer.type === 'audio' && layer.src))) {
+    toast.add({ title: 'Audio in MP4 is not ready', description: 'Download HTML5 to keep sound playback. MP4 exports currently contain video only.', color: 'warning' })
+    return
+  }
+
   if (!state.project?.id) {
     toast.add({ title: 'Save first', description: 'Save the project before exporting videos', color: 'warning' })
     return
@@ -465,10 +470,12 @@ const exportButtonLabel = computed(() => {
 
         <!-- Export type selector -->
         <div class="flex gap-1.5 mb-4 p-1 bg-(--ui-bg) rounded-lg">
-          <button
+          <UButton
             v-for="opt in exportTypeOptions"
             :key="opt.value"
-            class="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors"
+            color="neutral"
+            variant="ghost"
+            class="flex-1 justify-center"
             :class="exportType === opt.value
               ? 'bg-(--ui-bg-elevated) text-(--ui-text) shadow-sm'
               : 'text-(--ui-text-muted) hover:text-(--ui-text)'"
@@ -476,16 +483,17 @@ const exportButtonLabel = computed(() => {
           >
             <UIcon :name="opt.icon" class="w-3.5 h-3.5" />
             {{ opt.label }}
-          </button>
+          </UButton>
         </div>
 
         <!-- Image export options -->
         <div v-if="isImageExport" class="space-y-3 mb-4 p-3 bg-(--ui-bg) rounded-lg">
           <!-- Resolution -->
-          <div>
-            <label class="text-xs font-medium text-(--ui-text-muted) mb-1.5 block">Resolution</label>
+          <UFormField label="Resolution">
             <div class="flex gap-2">
-              <button
+              <UButton
+                color="neutral"
+                variant="outline"
                 class="flex-1 px-3 py-1.5 rounded-md text-xs font-medium border transition-colors"
                 :class="imageQuality === 1
                   ? 'border-(--ui-primary) bg-(--ui-primary)/10 text-(--ui-primary)'
@@ -493,8 +501,10 @@ const exportButtonLabel = computed(() => {
                 @click="() => { imageQuality = 1 }"
               >
                 Standard (1x)
-              </button>
-              <button
+              </UButton>
+              <UButton
+                color="neutral"
+                variant="outline"
                 class="flex-1 px-3 py-1.5 rounded-md text-xs font-medium border transition-colors"
                 :class="imageQuality === 2
                   ? 'border-(--ui-primary) bg-(--ui-primary)/10 text-(--ui-primary)'
@@ -502,43 +512,21 @@ const exportButtonLabel = computed(() => {
                 @click="() => { imageQuality = 2 }"
               >
                 Retina (2x)
-              </button>
+              </UButton>
             </div>
-          </div>
+          </UFormField>
 
           <!-- JPG quality slider -->
-          <div v-if="exportType === 'jpg'">
-            <div class="flex items-center justify-between mb-1.5">
-              <label class="text-xs font-medium text-(--ui-text-muted)">Quality</label>
-              <span class="text-xs font-mono text-(--ui-text-muted)">{{ jpgQuality }}%</span>
-            </div>
-            <input
-              v-model.number="jpgQuality"
-              type="range"
-              min="60"
-              max="100"
-              step="5"
-              class="w-full accent-(--ui-primary)"
-            >
-          </div>
+          <UFormField v-if="exportType === 'jpg'" :label="`Quality · ${jpgQuality}%`">
+            <USlider v-model="jpgQuality" :min="60" :max="100" :step="5" class="w-full" />
+          </UFormField>
         </div>
 
         <!-- GIF export options -->
         <div v-if="isGifExport" class="space-y-3 mb-4 p-3 bg-(--ui-bg) rounded-lg">
-          <div>
-            <div class="flex items-center justify-between mb-1.5">
-              <label class="text-xs font-medium text-(--ui-text-muted)">Frame Rate</label>
-              <span class="text-xs font-mono text-(--ui-text-muted)">{{ gifFps }} fps</span>
-            </div>
-            <input
-              v-model.number="gifFps"
-              type="range"
-              min="5"
-              max="15"
-              step="1"
-              class="w-full accent-(--ui-primary)"
-            >
-          </div>
+          <UFormField :label="`Frame rate · ${gifFps} fps`">
+            <USlider v-model="gifFps" :min="5" :max="15" :step="1" class="w-full" />
+          </UFormField>
           <div class="flex items-center justify-between text-[11px]">
             <span class="text-(--ui-text-muted)">
               Est. frames: <span class="font-mono">{{ estimatedGifFrames }}</span>
@@ -553,12 +541,13 @@ const exportButtonLabel = computed(() => {
         <!-- MP4 export options -->
         <div v-if="isVideoExport" class="space-y-3 mb-4 p-3 bg-(--ui-bg) rounded-lg">
           <!-- Frame rate -->
-          <div>
-            <label class="text-xs font-medium text-(--ui-text-muted) mb-1.5 block">Frame Rate</label>
+          <UFormField label="Frame rate">
             <div class="flex gap-2">
-              <button
+              <UButton
                 v-for="fps in [24, 30, 60]"
                 :key="fps"
+                color="neutral"
+                variant="outline"
                 class="flex-1 px-3 py-1.5 rounded-md text-xs font-medium border transition-colors"
                 :class="videoFps === fps
                   ? 'border-(--ui-primary) bg-(--ui-primary)/10 text-(--ui-primary)'
@@ -566,15 +555,16 @@ const exportButtonLabel = computed(() => {
                 @click="() => { videoFps = fps }"
               >
                 {{ fps }}fps
-              </button>
+              </UButton>
             </div>
-          </div>
+          </UFormField>
 
           <!-- Resolution -->
-          <div>
-            <label class="text-xs font-medium text-(--ui-text-muted) mb-1.5 block">Resolution</label>
+          <UFormField label="Resolution">
             <div class="flex gap-2">
-              <button
+              <UButton
+                color="neutral"
+                variant="outline"
                 class="flex-1 px-3 py-1.5 rounded-md text-xs font-medium border transition-colors"
                 :class="videoQuality === 1
                   ? 'border-(--ui-primary) bg-(--ui-primary)/10 text-(--ui-primary)'
@@ -582,8 +572,10 @@ const exportButtonLabel = computed(() => {
                 @click="() => { videoQuality = 1 }"
               >
                 Standard (1x)
-              </button>
-              <button
+              </UButton>
+              <UButton
+                color="neutral"
+                variant="outline"
                 class="flex-1 px-3 py-1.5 rounded-md text-xs font-medium border transition-colors"
                 :class="videoQuality === 2
                   ? 'border-(--ui-primary) bg-(--ui-primary)/10 text-(--ui-primary)'
@@ -591,29 +583,18 @@ const exportButtonLabel = computed(() => {
                 @click="() => { videoQuality = 2 }"
               >
                 Retina (2x)
-              </button>
+              </UButton>
             </div>
-          </div>
+          </UFormField>
 
           <!-- CRF quality -->
-          <div>
-            <div class="flex items-center justify-between mb-1.5">
-              <label class="text-xs font-medium text-(--ui-text-muted)">Quality (CRF)</label>
-              <span class="text-xs font-mono text-(--ui-text-muted)">{{ videoCrf }}</span>
-            </div>
-            <input
-              v-model.number="videoCrf"
-              type="range"
-              min="15"
-              max="35"
-              step="1"
-              class="w-full accent-(--ui-primary)"
-            >
+          <UFormField :label="`Quality (CRF) · ${videoCrf}`">
+            <USlider v-model="videoCrf" :min="15" :max="35" :step="1" class="w-full" />
             <div class="flex justify-between text-[10px] text-(--ui-text-dimmed) mt-0.5">
               <span>Higher quality</span>
               <span>Smaller file</span>
             </div>
-          </div>
+          </UFormField>
 
           <!-- Estimated frames -->
           <div class="flex items-center justify-between text-[11px]">

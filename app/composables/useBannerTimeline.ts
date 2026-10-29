@@ -349,18 +349,38 @@ function addAudioSync(tl: gsap.core.Timeline, el: HTMLElement, layer: Layer) {
   const presenceDur = endTime - startTime
   const volume = layer.muted ? 0 : (layer.volume ?? 1)
   const proxy = { t: 0 }
+  audioEl.volume = volume
   tl.to(proxy, {
     t: Math.min(presenceDur, audioEl.duration || presenceDur),
     duration: presenceDur,
     ease: 'none',
     onUpdate() {
-      audioEl.currentTime = proxy.t
-      audioEl.volume = volume
-      if (audioEl.paused && proxy.t > 0) audioEl.play().catch(() => {})
+      if (tl.paused()) {
+        audioEl.pause()
+        audioEl.currentTime = proxy.t
+      } else {
+        // Repeated seeks on every animation frame interrupt audible playback.
+        if (Math.abs(audioEl.currentTime - proxy.t) > 0.3) audioEl.currentTime = proxy.t
+        if (audioEl.paused) audioEl.play().catch(() => {})
+      }
     },
-    onStart() { audioEl.play().catch(() => {}) },
+    onStart() { if (!tl.paused()) audioEl.play().catch(() => {}) },
     onComplete() { audioEl.pause() },
   }, startTime)
+}
+
+function addWordPop(tl: gsap.core.Timeline, el: HTMLElement, layer: Layer) {
+  if (!layer.wordPop) return
+  const { duration, stagger, ease } = layer.wordPop
+  const curve = resolveEase(ease)
+  el.querySelectorAll<HTMLElement>('[data-banner-word]').forEach((word, index) => {
+    const at = (layer.startTime || 0) + index * stagger
+    tl.set(word, { opacity: 0, scale: 0.6, filter: 'blur(10px)', y: 0, immediateRender: false }, 0)
+    tl.to(word, { opacity: 1, duration: duration * 0.4, ease: curve, immediateRender: false }, at)
+    tl.to(word, { scale: 1.05, duration: duration * 0.7, ease: curve, immediateRender: false }, at)
+    tl.to(word, { scale: 1, duration: duration * 0.3, ease: curve, immediateRender: false }, at + duration * 0.7)
+    tl.to(word, { filter: 'blur(0px)', duration, ease: curve, immediateRender: false }, at)
+  })
 }
 
 /** Recompute animated clips after timeline transforms have settled. */
@@ -429,6 +449,8 @@ function addLayerToTimeline(tl: gsap.core.Timeline, el: HTMLElement, layer: Laye
   } else {
     buildPresetLayer(tl, el, layer)
   }
+
+  addWordPop(tl, el, layer)
 
   // Motion path animation — drives position along a curved trajectory
   if (layer.motionPath && layer.motionPath.length >= 2) {

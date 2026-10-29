@@ -14,10 +14,25 @@ const panStart = ref({ x: 0, y: 0, scrollX: 0, scrollY: 0 })
 
 // Initialise after layout, and only on project/artboard changes. Resizing a panel
 // must not undo a zoom level the designer has deliberately chosen.
-watch([() => state.project?.id, () => state.activeKey, canvasEl], () => {
+watch([() => state.project?.id, () => state.setKeys.length, () => state.activeKey, canvasEl], (_next, previous) => {
   const el = canvasEl.value
-  if (el) zoomToFitFormat(state.activeKey, { width: el.clientWidth, height: el.clientHeight })
+  if (!el) return
+  // Opening a design set starts with every layout visible. Choosing an artboard
+  // then gives that size the working scale without changing any layer geometry.
+  if (state.setKeys.length > 1 && (!previous || _next[0] !== previous[0] || _next[1] !== previous[1] || _next[3] !== previous[3])) fitAllArtboards()
+  else zoomToFitFormat(state.activeKey, { width: el.clientWidth, height: el.clientHeight })
 }, { flush: 'post', immediate: true })
+
+function fitAllArtboards() {
+  const el = canvasEl.value
+  const dimensions = state.setKeys.map(key => FORMATS[key]).filter(Boolean)
+  if (!el || !dimensions.length) return
+  const width = dimensions.reduce((sum, format) => sum + format.w, 0)
+  const height = Math.max(...dimensions.map(format => format.h))
+  const gap = Math.max(0, dimensions.length - 1) * 32
+  state.wsScale = Math.max(0.05, Math.min(1, (el.clientWidth - 80 - gap) / width, (el.clientHeight - 96) / height))
+  el.scrollTo({ top: 0, left: 0 })
+}
 
 function setArtboardRef(key: string, el: any) {
   if (el) artboardRefs.value[key] = el
@@ -29,7 +44,7 @@ function getActiveArtboardEl(): HTMLElement | null {
   return comp?.artboardEl || null
 }
 
-defineExpose({ getActiveArtboardEl, artboardRefs })
+defineExpose({ getActiveArtboardEl, fitAllArtboards, artboardRefs })
 
 function onCanvasClick() {
   if (state.activeTool === 'hand') return
