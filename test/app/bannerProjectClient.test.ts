@@ -24,7 +24,7 @@ function editor(clientId = 'driveagent') {
   const offerDefaultBrandKit = vi.fn()
   const globals = { state, settingsName, settingsClientId, showProjectSettings, settingsSaving, clientsForSettings,
     $fetch: fetch, offerDefaultBrandKit, saveProject: vi.fn(), toast: { add: vi.fn() },
-    navigateTo: vi.fn(), isAmbiguousApiFailure: () => false, crypto: { randomUUID: () => 'retry-key' } }
+    route: { path: '/creative/banner-studio/new' }, navigateTo: vi.fn(), isAmbiguousApiFailure: () => false, crypto: { randomUUID: () => 'retry-key' } }
   const compiled = transpileModule(`let createProjectIdempotencyKey = 'create-key';\n${settingsHandler}\n${saveHandler}\nreturn { saveProjectSettings, handleSave };`, {
     compilerOptions: { target: ScriptTarget.ES2022, module: ModuleKind.None }
   }).outputText
@@ -42,6 +42,8 @@ describe('Banner Studio first save', () => {
     await e.handleSave()
     expect(e.fetch.mock.calls[0]![1].body.clientId).toBe('driveagent')
     expect(e.state.project.clientId).toBe('driveagent')
+    expect(e.state.isDirty).toBe(false)
+    expect(e.navigateTo).toHaveBeenCalledWith('/creative/banner-studio/saved-project', { replace: true })
   })
 
   it('keeps an explicitly unassigned new banner unassigned', async () => {
@@ -80,4 +82,27 @@ describe('Banner Studio first save', () => {
     await e.handleSave()
     expect(e.state.project).toMatchObject({ id: 'saved-project', clientId: 'driveagent' })
   })
+})
+
+
+it('retains edits made while the first viewer snapshot is being stored', async () => {
+  const e = editor()
+  await e.saveProjectSettings()
+  let finish!: () => void
+  e.fetch.mockImplementation(async (url, options) => {
+    if (url.endsWith('/snapshot')) return new Promise<void>(resolve => { finish = resolve })
+    return { id: 'saved-project', ...options.body }
+  })
+  e.saveProject.mockImplementation(async () => {
+    expect(e.state.sets.mrec.layers).toEqual([{ text: 'Typed during snapshot' }])
+    e.state.isDirty = false
+  })
+  const pending = e.handleSave()
+  await vi.waitFor(() => expect(e.fetch).toHaveBeenCalledTimes(2))
+  e.state.sets.mrec.layers.push({ text: 'Typed during snapshot' })
+  e.state.isDirty = true
+  finish()
+  expect(await pending).toBe(true)
+  expect(e.saveProject).toHaveBeenCalledTimes(1)
+  expect(e.navigateTo).toHaveBeenCalledTimes(1)
 })

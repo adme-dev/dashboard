@@ -638,6 +638,7 @@ export function useBannerStudio() {
       await $fetch(`/api/agency/banner-studio/projects/${projectId}`, {
         method: 'PATCH', body: { canvasData, name }
       })
+      await $fetch(`/api/agency/banner-studio/projects/${projectId}/snapshot`, { method: 'POST' })
       if (epoch === projectEpoch && state.project?.id === projectId) {
         state.isDirty = JSON.stringify(getCanvasData()) !== snapshot || state.project.name !== name
       }
@@ -645,6 +646,9 @@ export function useBannerStudio() {
     pendingSave = operation
     try {
       await operation
+    } catch (error) {
+      if (epoch === projectEpoch && state.project?.id === projectId) state.isDirty = true
+      throw error
     } finally {
       if (pendingSave === operation) pendingSave = null
       state.isSaving = false
@@ -950,11 +954,14 @@ export function useBannerStudio() {
   }
 
   function initDefault() {
-    if (state.setKeys.length > 0) return
+    // A new route must never keep the previous project's singleton identity.
+    loadProject({ name: 'Untitled Banner', canvasData: {} } as BannerProject)
     const defaultSet = { keys: ['mrec'], name: 'Default' }
     loadBannerSet(defaultSet)
     // Apply first template
     loadTemplate('automotive')
+    undoStack.value = []
+    redoStack.value = []
     state.isDirty = false
     // Auto-zoom to fit the default artboard
     zoomToFitFormat(state.activeKey)
