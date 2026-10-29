@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import gsap from 'gsap'
+import type gsap from 'gsap'
+import { ref, shallowRef, nextTick, watch, onUnmounted } from 'vue'
 import { syncTimelineAudio, pauseTimelineAudio, disposeTimelineAudio } from '~/utils/bannerTimelineAudio'
 import { resolveBannerPlayback } from '~/utils/banner-playback'
 import { FORMATS, PLATFORM_META } from '~/utils/banner-constants'
@@ -46,8 +47,8 @@ function buildAll() {
     if (!props.open) return
     const audioKey = state.setKeys.includes(state.activeKey) ? state.activeKey : state.setKeys[0]
     state.setKeys.forEach(key => {
-      const ref = artboardRefs.value[key]
-      const artboardEl = ref?.artboardEl || ref?.$el
+      const artboardRef = artboardRefs.value[key]
+      const artboardEl = artboardRef?.artboardEl || artboardRef?.$el
       if (!artboardEl) return
 
       const layers = state.sets[key]?.layers ?? []
