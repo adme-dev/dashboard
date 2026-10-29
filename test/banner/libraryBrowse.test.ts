@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { BannerProject } from '../../app/types/banner-studio'
-import { bannerDimensions, bannerLibraryFacets, filterBannerProjects, libraryDate, sortLibrary } from '../../app/utils/banner-library'
+import { bannerDimensions, hasBannerPreview, bannerLibraryFacets, filterBannerProjects, libraryDate, sortLibrary } from '../../app/utils/banner-library'
 
 const project = (id: string, clientId: string | null, tags: string[] = []): BannerProject => ({
   id, name: `Banner ${id}`, clientId, clientName: clientId === 'news' ? 'DriveAgent News' : 'DriveAgent', tags,
@@ -31,6 +31,18 @@ describe('banner library browsing', () => {
     expect(bannerDimensions({ fb_sq: { layers: [] }, custom_1080x1080: { layers: [] }, leader: { layers: [] } })).toBe('1080 × 1080 · 728 × 90')
     expect(bannerDimensions(undefined, ['custom_1234x567'])).toBe('1234 × 567')
     expect(bannerDimensions()).toBe('Size not recorded')
+  })
+
+  it('recognizes usable native thumbnails without relying on a stale image URL', () => {
+    expect(hasBannerPreview()).toBe(false)
+    expect(hasBannerPreview({ mrec: { layers: [] } })).toBe(false)
+    expect(hasBannerPreview({ unknown: { layers: [{ id: 1 }] } } as any)).toBe(false)
+    expect(hasBannerPreview({ unknown: { layers: [{ id: 1 }] }, custom_1200x1200: { layers: [{ id: 2 }] } } as any)).toBe(true)
+  })
+
+  it('finds a project by its imported folder while retaining the client scope', () => {
+    const items = [project('one', 'driveagent', ['source-folder:JAC']), project('two', 'news', ['source-folder:JAC'])]
+    expect(filterBannerProjects(items, { ...filters, client: 'driveagent', search: 'jac' }).map(p => p.id)).toEqual(['one'])
   })
 
   it('sorts by actual update time or recorded creation time without mutating the input', () => {

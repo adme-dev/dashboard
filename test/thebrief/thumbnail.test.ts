@@ -33,7 +33,7 @@ afterEach(() => {
 
 it('renders custom imported dimensions with managed fonts inside a script-disabled thumbnail', async () => {
   const artboard: ArtboardState = { bgColor: '#fff', layers: [{ id: 1, name: 'Headline', type: 'text', text: 'Imported headline', fontFamily: 'Example Brand', fontWeight: 300, x: 0, y: 0, w: 1080, h: 100, opacity: 1, zIndex: 1, animIn: 'none', animInDur: 0, startTime: 0, endTime: 5 }] }
-  const canvasData = ref({ custom_1080x1080: artboard } as Record<string, ArtboardState>)
+  const canvasData = ref({ unknown_legacy_size: artboard, custom_1080x1080: artboard } as Record<string, ArtboardState>)
   app = createApp({ render: () => h(Thumbnail, { canvasData: canvasData.value }) })
   app.component('UIcon', { render: () => h('span') })
   app.mount(host)

@@ -16,6 +16,12 @@ export interface BannerLibraryItem {
   to?: string
 }
 
+/** Native saved canvas takes precedence over potentially stale imported thumbnails. */
+export function hasBannerPreview(canvasData?: Record<string, ArtboardState>): boolean {
+  return !!canvasData && Object.entries(canvasData).some(([key, board]) =>
+    !!resolveBannerFormat(key) && Array.isArray(board?.layers) && board.layers.length > 0)
+}
+
 export function bannerDimensions(canvasData?: Record<string, ArtboardState>, formats?: string[]): string {
   const keys = canvasData && Object.keys(canvasData).length ? Object.keys(canvasData) : formats || []
   if (!keys.length) return 'Size not recorded'
