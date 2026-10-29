@@ -33,11 +33,13 @@ const testGlobal = globalThis as unknown as {
     data?: unknown
   }
   getQuery: typeof mockGetQuery
+  setHeader: ReturnType<typeof vi.fn>
 }
 
 testGlobal.defineEventHandler = fn => fn
 testGlobal.createError = input => Object.assign(new Error(input.statusMessage), input)
 testGlobal.getQuery = mockGetQuery
+testGlobal.setHeader = vi.fn()
 
 vi.mock('h3', () => ({
   createError: (input: { statusCode: number, statusMessage: string, data?: unknown }) =>
@@ -56,12 +58,17 @@ vi.mock('~~/server/utils/clientScoping', () => ({
 
 vi.mock('~~/server/utils/db', () => ({
   queryRows: (...args: unknown[]) => mockQueryRows(...args),
+  queryRowsFresh: (...args: unknown[]) => mockQueryRows(...args),
   queryOne: (...args: unknown[]) => mockQueryOne(...args)
 }))
 
-vi.mock('~~/server/utils/bannerStorage', () => ({
-  uploadBannerAsset: (...args: unknown[]) => mockUploadBannerAsset(...args)
-}))
+vi.mock('~~/server/utils/bannerStorage', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('~~/server/utils/bannerStorage')>()
+  return {
+    ...actual,
+    uploadBannerAsset: (...args: unknown[]) => mockUploadBannerAsset(...args)
+  }
+})
 
 describe('email asset client-scoped policy', () => {
   beforeEach(() => {
@@ -124,21 +131,50 @@ describe('email asset client-scoped policy', () => {
 
   it('stores uploaded email image assets against the scoped actor assigned client', async () => {
     const handler = (await import('~~/server/api/agency/email/assets/upload.post')).default
+    const mediaBucket = { put: vi.fn(), head: vi.fn(), delete: vi.fn() }
+    mockUploadBannerAsset.mockImplementation(async (
+      _buffer: unknown,
+      _fileName: unknown,
+      _mimeType: unknown,
+      _userId: unknown,
+      key: unknown
+    ) => ({
+      key,
+      url: 'https://cdn.example.com/hero.png',
+      size: 12
+    }))
 
-    await handler({} as never)
+    await handler({
+      context: {
+        cloudflare: {
+          env: {
+            APP_URL: 'https://app.xeroflow.test',
+            MEDIA_BUCKET: mediaBucket,
+            RENDER_LINK_SECRET: 'render-link-secret-with-at-least-thirty-two-bytes'
+          }
+        }
+      }
+    } as never)
 
     expect(mockUploadBannerAsset).toHaveBeenCalledWith(
       Buffer.from('image-bytes'),
       expect.stringMatching(/hero/),
       'image/png',
-      'user-1'
+      'user-1',
+      expect.stringMatching(/^banner-assets\/user-1\/[0-9a-f-]{36}\/hero\.png$/i),
+      expect.objectContaining({
+        bucket: mediaBucket,
+        assetUrl: expect.stringMatching(/\/api\/public\/banner-assets\/v1\./)
+      })
     )
     expect(String(mockQueryOne.mock.calls[0]?.[0])).toContain('client_id')
+    const uploadKey = mockUploadBannerAsset.mock.calls[0]?.[4]
     expect(mockQueryOne.mock.calls[0]?.[1]).toEqual([
+      expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i),
       'hero.png',
       'image/png',
       12,
-      'email/hero.png',
+      uploadKey,
       'https://cdn.example.com/hero.png',
       ['email', 'image'],
       'user-1',
