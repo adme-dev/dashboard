@@ -51,6 +51,8 @@ const innerStyle = computed(() => ({
 <template>
   <div
     ref="thumbnailRoot"
+    inert
+    aria-hidden="true"
     class="edm-document-thumbnail relative overflow-hidden rounded-md border border-default bg-white"
     :style="tileStyle"
   >

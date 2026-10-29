@@ -35,4 +35,10 @@ describe('EdmDocumentThumbnail', () => {
     expect(html).toContain('scale(0.5)')
     expect(html).toContain('pointer-events:none')
   })
+  it('keeps preview links outside keyboard navigation and the accessibility tree', async () => {
+    const html = await renderThumbnail()
+    expect(html).toContain('inert')
+    expect(html).toContain('aria-hidden="true"')
+  })
+
 })

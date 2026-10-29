@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { readTemplateBackup } from '~~/shared/emailRendering/templateBackup'
 import { computed, ref, watch } from 'vue'
 
 const props = defineProps<{ initialClientId?: string | null }>()
@@ -7,15 +8,18 @@ const open = defineModel<boolean>('open', { default: false })
 const emit = defineEmits<{ imported: [template: ImportedTemplate] }>()
 const name = ref('Imported template')
 const subject = ref('')
+const previewText = ref('')
 const format = ref<'html' | 'json'>('html')
 const content = ref('')
 const file = ref<File | null>(null)
 const preview = ref('')
+const importKey = ref<string | null>(null)
 const blocks = ref(0)
 const busy = ref(false)
 const error = ref('')
 const toast = useToast()
 const category = ref('')
+const templateKind = ref<'template' | 'draft'>('template')
 const clientSelection = ref('__unset__')
 const clientsLoading = ref(false)
 const clients = ref<{ id: string, name: string }[]>([])
@@ -33,8 +37,9 @@ async function loadClients() {
   finally { clientsLoading.value = false }
 }
 let revision = 0
-watch([content, format, name, subject, clientSelection, category], () => {
+watch([content, format, name, subject, previewText, clientSelection, category, templateKind], () => {
   revision++
+  importKey.value = null
   preview.value = ''
   error.value = ''
 })
@@ -44,9 +49,11 @@ watch(open, (value) => {
     file.value = null
     name.value = 'Imported template'
     subject.value = ''
+    previewText.value = ''
     preview.value = ''
     error.value = ''
     category.value = ''
+    templateKind.value = 'template'
     clientSelection.value = '__unset__'
     void loadClients()
   }
@@ -54,10 +61,16 @@ watch(open, (value) => {
 watch(file, async (value) => {
   if (!value) return
   if (value.size > 512 * 1024) {
+    revision++
+    preview.value = ''
+    importKey.value = null
+    content.value = ''
     error.value = 'Choose a file up to 512 KB.'
     return
   }
   const current = ++revision
+  preview.value = ''
+  importKey.value = null
   try {
     const text = await value.text()
     if (current !== revision || !open.value) return
@@ -66,23 +79,36 @@ watch(file, async (value) => {
     name.value = value.name.replace(/\.(html?|json)$/i, '')
   } catch { error.value = 'Could not read this file. Try pasting its content.' }
 })
+watch([content, format], () => {
+  if (format.value !== 'json') return
+  try {
+    const backup = readTemplateBackup(JSON.parse(content.value))
+    if (!backup) return
+    name.value = backup.metadata.name || name.value
+    subject.value = backup.metadata.subject
+    previewText.value = backup.metadata.preview_text
+    category.value = backup.metadata.folder_name
+    templateKind.value = backup.metadata.template_kind
+  } catch { /* Incomplete pasted JSON is validated by Preview import. */ }
+})
 async function submit(save = false) {
-  if (busy.value || clientsLoading.value || !hasClient.value || !content.value.trim() || !name.value.trim() || (save && !preview.value)) return
+  if (busy.value || clientsLoading.value || !hasClient.value || !content.value.trim() || !name.value.trim() || (save && (!preview.value || !importKey.value))) return
   busy.value = true
   error.value = ''
   const current = revision
   try {
-    const result = await $fetch<{ template: ImportedTemplate, html: string, blocks: number }>('/api/email/templates/import', { method: 'POST', body: { format: format.value, content: content.value, name: name.value, subject: subject.value, client_id: clientSelection.value === '__shared__' ? null : clientSelection.value, folder_name: category.value.trim() || null, save } })
+    const result = await $fetch<{ template: ImportedTemplate, html: string, blocks: number }>('/api/email/templates/import', { method: 'POST', body: { format: format.value, content: content.value, name: name.value, subject: subject.value, preview_text: previewText.value, client_id: clientSelection.value === '__shared__' ? null : clientSelection.value, request_key: save ? importKey.value : undefined, folder_name: category.value.trim() || null, template_kind: templateKind.value, save } })
     if (save) {
       emit('imported', result.template)
       toast.add({ title: 'Template imported', color: 'success' })
       open.value = false
     } else if (current === revision && open.value) {
+      importKey.value = crypto.randomUUID()
       preview.value = result.html
       blocks.value = result.blocks
     }
   } catch (cause: unknown) {
-    error.value = (cause as { data?: { statusMessage?: string } })?.data?.statusMessage || 'Import failed. Check your content and try again.'
+    error.value = (cause as { data?: { statusMessage?: string } })?.data?.statusMessage || (save ? 'The import could not be confirmed. Retry here to check the same save without creating another copy.' : 'Preview failed. Check your content and try again.')
   } finally { busy.value = false }
 }
 </script>
@@ -102,7 +128,7 @@ async function submit(save = false) {
             Import email template
           </h2>
           <p class="mt-1 text-sm text-muted">
-            Upload or paste an HTML email or XeroFlow document JSON. Review the preview before saving.
+            Upload or paste an HTML email, XeroFlow document JSON or template backup. Review the preview before saving.
           </p>
         </div>
         <div class="@container space-y-4">
@@ -123,10 +149,14 @@ async function submit(save = false) {
                 class="w-full"
               />
             </UFormField>
+            <UFormField label="Preview text"><UInput v-model="previewText" :maxlength="300" :disabled="busy" class="w-full" /></UFormField>
             <UFormField label="Client" required>
               <USelect v-model="clientSelection" :items="clientOptions" value-key="value" :disabled="busy || clientsLoading" class="w-full" />
             </UFormField>
             <UFormField label="Category"><UInput v-model="category" :maxlength="120" :disabled="busy" placeholder="e.g. Vehicle launches" class="w-full" /></UFormField>
+            <UFormField label="Save as" description="Use Draft for historical campaigns or work that still needs review.">
+              <USelect v-model="templateKind" :disabled="busy" :items="[{ label: 'Reusable template', value: 'template' }, { label: 'Draft', value: 'draft' }]" class="w-full" />
+            </UFormField>
             <UFormField label="Format">
               <USelect
                 v-model="format"

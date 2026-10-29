@@ -3,8 +3,9 @@
      lifecycle actions around the composer: new / open / duplicate / rename /
      delete. Reuses the existing /api/email/templates CRUD — no new endpoints. -->
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import TemplateLibrarySidebar from './TemplateLibrarySidebar.vue'
+import { templateSourceDetails, buildTemplateExport, isTemplateClientCopy, templateCopyName, markTemplateClientCopy, templateCopyCategory } from '~~/app/utils/edmTemplateProvenance'
 import { filterTemplateLibrary } from '~~/app/utils/edmTemplateLibrary'
 import type { EdmImageAsset } from '~~/app/utils/edmImageAssets'
 import { EDM_STARTER_TEMPLATES } from '~~/app/utils/edmPresets'
@@ -44,16 +45,24 @@ const apiFetch = $fetch as <T = unknown>(
 
 const data = ref<{ items: TemplateRow[] }>({ items: [] })
 const pending = ref(false)
+const libraryError = ref('')
+let refreshGeneration = 0
+let mutationGeneration = 0
 // Keep confirmed deletions out of any older list response still in flight.
 const deletedTemplateIds = new Set<string>()
 
 async function refresh() {
+  const generation = ++refreshGeneration
+  const mutation = mutationGeneration
   pending.value = true
+  libraryError.value = ''
   try {
     const result = await apiFetch<{ items: TemplateRow[] }>('/api/email/templates')
-    data.value = { items: result.items.filter(row => !deletedTemplateIds.has(row.id)) }
+    if (generation === refreshGeneration && mutation === mutationGeneration) data.value = { items: result.items.filter(row => !deletedTemplateIds.has(row.id)) }
+  } catch {
+    if (generation === refreshGeneration) libraryError.value = 'Templates could not be loaded. Your saved templates have not been changed.'
   } finally {
-    pending.value = false
+    if (generation === refreshGeneration) pending.value = false
   }
 }
 
@@ -99,19 +108,42 @@ function rememberTemplate(id: string, starter = false) {
   try { localStorage.setItem(RECENT_KEY, JSON.stringify({ saved: recentSavedIds.value, starters: recentStarterIds.value })) } catch { /* Optional local ID-only history. */ }
 }
 const allSavedRows = computed(() => data.value.items.map(row => ({ ...row, client_name: row.client_id ? clientName(row.client_id) : 'Shared default' })))
-const savedRows = computed(() => filterTemplateLibrary(allSavedRows.value, { view: libraryView.value, client: selectedClient.value, search: starterSearch.value, recentIds: recentSavedIds.value }))
+const savedRows = computed(() => filterTemplateLibrary(allSavedRows.value, { view: libraryView.value, client: selectedClient.value, search: starterSearch.value, recentIds: recentSavedIds.value, make: selectedMake.value }))
 const categoryNames = computed(() => Array.from(new Set(filterTemplateLibrary(allSavedRows.value, { view: 'templates', client: selectedClient.value }).map(row => row.folder_name?.trim()).filter((name): name is string => Boolean(name)))).sort())
 const showStarters = computed(() => ['templates', 'shared', 'recent'].includes(libraryView.value))
 const libraryTitle = computed(() => ({ templates: 'All templates', shared: 'Shared defaults', drafts: 'Drafts', recent: 'Recently viewed' }[libraryView.value] || libraryView.value.slice(7)))
 function selectLibraryView(view: string) { libraryView.value = view }
 function mergeSavedTemplate(template: TemplateRow) {
+  mutationGeneration++
   data.value = { items: [template, ...data.value.items.filter(row => row.id !== template.id)] }
 }
 function openCopyTemplate(row: TemplateRow) {
   rememberTemplate(row.id)
   const query = new URLSearchParams({ copy: row.id })
-  if (targetClient.value) query.set('client', targetClient.value)
+  const clientId = targetClient.value || (clientChoices.value.clients.some(client => client.id === row.client_id) ? row.client_id : '')
+  if (clientId) query.set('client', clientId)
   navigateTo(`/agency/email/compose?${query}`)
+}
+
+const detailsTarget = ref<TemplateRow | null>(null)
+const sourceDetails = computed(() => templateSourceDetails(detailsTarget.value?.body_source))
+const showDetails = ref(false)
+function openDetails(row: TemplateRow) { detailsTarget.value = row; showDetails.value = true }
+function usesClientCopy(row: TemplateRow) { return !row.client_id || (!!templateSourceDetails(row.body_source) && !isTemplateClientCopy(row.body_source)) }
+async function exportTemplate(row: TemplateRow) {
+  busyId.value = row.id
+  try {
+    const { template } = await apiFetch<{ template: FullTemplate }>(`/api/email/templates/${row.id}`)
+    const file = buildTemplateExport(template.name, template.body_source, template)
+    const url = URL.createObjectURL(new Blob([file.content], { type: 'application/json' }))
+    const link = document.createElement('a')
+    link.href = url; link.download = file.filename
+    document.body.appendChild(link); link.click(); link.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+    toast.add({ title: 'Template exported', description: 'Import this JSON backup to restore the design and template settings. Choose the client during import.', color: 'success' })
+  } catch (error) {
+    toast.add({ title: 'Export failed', description: error instanceof Error ? error.message : 'Try again.', color: 'error' })
+  } finally { busyId.value = null }
 }
 
 function rowKind(row: TemplateRow): 'template' | 'draft' {
@@ -123,15 +155,9 @@ function rowFolder(row: TemplateRow): string {
 }
 
 const savedTemplateGroups = computed<TemplateGroup[]>(() => {
-  const drafts = savedRows.value.filter(row => rowKind(row) === 'draft')
-  const templates = savedRows.value.filter(row => rowKind(row) === 'template')
   const groups: TemplateGroup[] = []
-  if (drafts.length > 0) {
-    groups.push({ key: 'drafts', title: 'Drafts', rows: drafts })
-  }
-
   const byFolder = new Map<string, TemplateRow[]>()
-  for (const row of templates) {
+  for (const row of savedRows.value) {
     const folder = rowFolder(row)
     byFolder.set(folder, [...(byFolder.get(folder) ?? []), row])
   }
@@ -167,12 +193,16 @@ const styleOptions = computed(() =>
   Array.from(new Set(EDM_STARTER_TEMPLATES.map(t => t.style)))
 )
 
+const selectedMake = ref('all')
+watch(selectedClient, () => { selectedMake.value = 'all' })
+const makeOptions = computed(() => [{ label: 'All makes', value: 'all' }, ...Array.from(new Set(filterTemplateLibrary(allSavedRows.value, { view: 'templates', client: selectedClient.value }).map(row => templateSourceDetails(row.body_source)?.make).filter((make): make is string => !!make))).sort().map(make => ({ label: make, value: make }))])
 const selectedIndustry = ref('all')
 const selectedUsage = ref('all')
 const selectedStyle = ref('all')
 const starterSearch = ref('')
 
 function resetFilters() {
+  selectedMake.value = 'all'
   selectedIndustry.value = 'all'
   selectedUsage.value = 'all'
   selectedStyle.value = 'all'
@@ -180,7 +210,7 @@ function resetFilters() {
 }
 
 const hasActiveFilters = computed(() =>
-  selectedIndustry.value !== 'all'
+  selectedMake.value !== 'all' || selectedIndustry.value !== 'all'
   || selectedUsage.value !== 'all'
   || selectedStyle.value !== 'all'
   || starterSearch.value.trim().length > 0
@@ -284,12 +314,12 @@ async function duplicate(row: TemplateRow) {
     const result = await apiFetch<{ template: TemplateRow }>('/api/email/templates', {
       method: 'POST',
       body: {
-        name: `${template.name} (copy)`,
+        name: templateCopyName(template.name),
         subject: template.subject,
         preview_text: template.preview_text,
-        body_source: template.body_source,
+        body_source: markTemplateClientCopy(template.body_source, row.id),
         template_kind: template.template_kind === 'draft' ? 'draft' : 'template',
-        folder_name: template.folder_name || null,
+        folder_name: templateCopyCategory(template.body_source, template.folder_name),
         client_id: template.client_id ?? row.client_id ?? null
       }
     })
@@ -385,11 +415,13 @@ function templateDocument(row: TemplateRow): EdmFlyhubDocument | null {
       </div>
 
       <div class="space-y-10 p-6">
+        <UAlert v-if="libraryError" color="error" :title="libraryError" :actions="[{ label: 'Retry', onClick: refresh }]" />
         <UAlert v-if="clientsError" color="warning" :title="clientsError" :actions="[{ label: 'Retry', onClick: refreshClients }]" />
         <UFormField label="Client" help="Choose a client to browse its templates and start a client copy of a default.">
           <USelect v-model="selectedClient" :items="clientOptions" value-key="value" class="w-full max-w-md" />
         </UFormField>
-        <section v-if="showStarters" class="space-y-5">
+        <UFormField v-if="makeOptions.length > 1" label="OEM make"><USelect v-model="selectedMake" :items="makeOptions" value-key="value" class="w-full max-w-md" /></UFormField>
+        <section v-if="showStarters && selectedMake === 'all'" class="space-y-5">
           <h2 class="text-sm font-semibold">XeroFlow defaults</h2>
           <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <UFormField label="Industry">
@@ -420,6 +452,7 @@ function templateDocument(row: TemplateRow): EdmFlyhubDocument | null {
               color="neutral" variant="ghost"
               v-for="starter in filteredStarters"
               :key="starter.id"
+              :aria-label="`Use ${starter.name} template`"
               type="button"
               class="email-starter-card group block w-full min-w-0 p-0 text-left whitespace-normal hover:bg-transparent"
               @click="openStarter(starter.id)"
@@ -467,7 +500,7 @@ function templateDocument(row: TemplateRow): EdmFlyhubDocument | null {
           <div v-if="pending" class="text-sm text-muted">
             Loading…
           </div>
-          <div v-else-if="!savedRows.length" class="text-sm text-muted py-8 text-center">
+          <div v-else-if="!libraryError && !savedRows.length" class="text-sm text-muted py-8 text-center">
             No templates yet. Build one in the composer and save it to reuse across campaigns.
           </div>
 
@@ -493,8 +526,9 @@ function templateDocument(row: TemplateRow): EdmFlyhubDocument | null {
                   <UButton
                     color="neutral" variant="ghost"
                     type="button"
+                    :aria-label="`${usesClientCopy(row) ? 'Create client copy of' : 'Edit'} ${row.name}`"
                     class="flex w-full flex-1 flex-col rounded-none p-0 text-left cursor-pointer whitespace-normal hover:bg-transparent"
-                    @click="libraryView === 'shared' ? openCopyTemplate(row) : openComposer(row.id)"
+                    @click="usesClientCopy(row) ? openCopyTemplate(row) : openComposer(row.id)"
                   >
                     <div class="flex h-[430px] w-full items-start justify-center overflow-hidden bg-elevated/40">
                       <EmailBuilderEdmDocumentThumbnail
@@ -514,13 +548,14 @@ function templateDocument(row: TemplateRow): EdmFlyhubDocument | null {
                           label="Draft"
                         />
                         <UBadge
-                          v-else-if="row.folder_name?.trim()"
+                          v-if="row.folder_name?.trim()"
                           variant="subtle"
                           color="neutral"
                           size="xs"
                           :label="rowFolder(row)"
                         />
                       </div>
+                      <UBadge v-if="templateSourceDetails(row.body_source)" :label="`${templateSourceDetails(row.body_source)?.make || 'Imported'} · ${isTemplateClientCopy(row.body_source) ? 'Client copy' : 'OEM source'} · Review required`" color="warning" variant="subtle" size="xs" class="mb-2" />
                       <p class="font-semibold truncate group-hover:text-primary">
                         {{ row.name }}
                       </p>
@@ -537,18 +572,21 @@ function templateDocument(row: TemplateRow): EdmFlyhubDocument | null {
                   </UButton>
 
                   <div class="flex flex-wrap items-center justify-end gap-1 border-t border-default px-3 py-2">
-                    <UButton v-if="!row.client_id && rowKind(row) !== 'draft'" label="Use template" icon="i-lucide-copy-plus" variant="ghost" color="neutral" size="xs" @click="openCopyTemplate(row)" />
+                    <UButton v-if="usesClientCopy(row)" :label="templateSourceDetails(row.body_source) ? 'Create client copy' : 'Use template'" icon="i-lucide-copy-plus" variant="ghost" color="neutral" size="xs" @click="openCopyTemplate(row)" />
                     <UButton
                       icon="i-lucide-pencil"
                       variant="ghost"
                       color="neutral"
                       size="xs"
-                      label="Edit"
+                      :label="usesClientCopy(row) ? 'Edit original' : 'Edit'"
                       @click="openComposer(row.id)"
                     />
+                    <UTooltip text="Template details"><UButton icon="i-lucide-info" aria-label="Template details" variant="ghost" color="neutral" size="xs" @click="openDetails(row)" /></UTooltip>
+                    <UTooltip text="Export JSON"><UButton icon="i-lucide-download" aria-label="Export template JSON" variant="ghost" color="neutral" size="xs" :loading="busyId === row.id" @click="exportTemplate(row)" /></UTooltip>
                     <UTooltip text="Duplicate">
                       <UButton
                         icon="i-lucide-copy"
+                        aria-label="Duplicate template"
                         variant="ghost"
                         color="neutral"
                         size="xs"
@@ -559,6 +597,7 @@ function templateDocument(row: TemplateRow): EdmFlyhubDocument | null {
                     <UTooltip text="Rename">
                       <UButton
                         icon="i-lucide-text-cursor-input"
+                        aria-label="Rename template"
                         variant="ghost"
                         color="neutral"
                         size="xs"
@@ -568,6 +607,7 @@ function templateDocument(row: TemplateRow): EdmFlyhubDocument | null {
                     <UTooltip text="Delete">
                       <UButton
                         icon="i-lucide-trash-2"
+                        aria-label="Delete template"
                         variant="ghost"
                         color="error"
                         size="xs"
@@ -583,6 +623,32 @@ function templateDocument(row: TemplateRow): EdmFlyhubDocument | null {
       </div>
     </main>
 
+    <UModal v-model:open="showDetails" title="Template details" :ui="{ content: 'sm:max-w-2xl' }">
+      <template #content>
+        <div v-if="detailsTarget" class="max-h-[85svh] space-y-5 overflow-y-auto p-6">
+          <div><h2 class="text-lg font-semibold">{{ detailsTarget.name }}</h2><p class="mt-1 text-sm text-muted">{{ detailsTarget.client_id ? clientName(detailsTarget.client_id) : 'Shared default' }} · {{ rowFolder(detailsTarget) }}</p></div>
+          <template v-if="sourceDetails">
+            <UAlert color="warning" title="Review before use" :description="usesClientCopy(detailsTarget) ? 'Recorded OEM source information is not a current campaign approval. Create a client copy, then check offers, dates, links and dealership details.' : 'This client copy retains its source information. Review offers, dates, links and dealership details before use.'" />
+            <dl class="grid grid-cols-1 gap-4 sm:grid-cols-2 text-sm">
+              <div><dt class="text-muted">Source</dt><dd>{{ sourceDetails.provider }} / {{ sourceDetails.make }}</dd></div>
+              <div><dt class="text-muted">Imported</dt><dd>{{ sourceDetails.retrievedAt || 'Not recorded' }}</dd></div>
+              <div><dt class="text-muted">Format</dt><dd>{{ sourceDetails.formatLabel }}</dd></div>
+              <div><dt class="text-muted">Source asset</dt><dd class="break-all">{{ sourceDetails.assetId || 'Not recorded' }}</dd></div>
+              <div v-if="sourceDetails.originalSha256" class="sm:col-span-2"><dt class="text-muted">Original file SHA-256</dt><dd class="break-all font-mono text-xs">{{ sourceDetails.originalSha256 }}</dd></div>
+            </dl>
+            <p v-if="sourceDetails.notes" class="text-sm leading-relaxed text-muted">{{ sourceDetails.notes }}</p>
+            <p class="text-sm text-muted">HTML imports preserve the email design as an editable HTML block. The original portal's native editing fields are not included.</p>
+            <UButton v-if="sourceDetails.sourceUrl" :to="sourceDetails.sourceUrl" target="_blank" rel="noopener noreferrer" label="Open source portal" icon="i-lucide-external-link" variant="outline" color="neutral" />
+          </template>
+          <p v-else class="text-sm text-muted">Export a portable JSON backup or create an independent client copy. The original is preserved when you create a copy.</p>
+          <div class="flex flex-wrap justify-end gap-2 border-t border-default pt-4">
+            <UButton label="Close" variant="ghost" color="neutral" @click="showDetails = false" />
+            <UButton label="Export JSON" icon="i-lucide-download" variant="outline" :loading="busyId === detailsTarget.id" @click="exportTemplate(detailsTarget)" />
+            <UButton :label="usesClientCopy(detailsTarget) ? 'Create client copy' : 'Edit template'" icon="i-lucide-copy-plus" @click="usesClientCopy(detailsTarget) ? openCopyTemplate(detailsTarget) : openComposer(detailsTarget.id)" />
+          </div>
+        </div>
+      </template>
+    </UModal>
     <EmailTemplateImportModal v-model:open="showImport" :initial-client-id="targetClient || null" @imported="onImported" />
 
     <UModal v-model:open="showCategory" title="Create category" :dismissible="!categoryBusy" :close="!categoryBusy">

@@ -20,4 +20,11 @@ describe('template library views', () => {
     expect(filterTemplateLibrary(rows, { view: 'templates', client: 'all', search: 'monthly' }).map(r => r.id)).toEqual(['b'])
     expect(filterTemplateLibrary(rows, { view: 'templates', client: 'shared', search: 'automotive' }).map(r => r.id)).toEqual(['shared'])
   })
+  it('searches recorded OEM make/provider while combining make and client scope', () => {
+    const source=(make:string)=>({root:{type:'EmailLayout',data:{props:{sourceProvenance:{make,provider:'Sesimi'}}}}})
+    const sources=[{id:'g-a',name:'Launch',client_id:'a',body_source:source('Geely')},{id:'g-b',name:'Launch',client_id:'b',body_source:source('Geely')},{id:'j-a',name:'Launch',client_id:'a',body_source:source('Jaecoo')}]
+    expect(filterTemplateLibrary(sources,{view:'templates',client:'a',make:'Geely',search:'sesimi'}).map(r=>r.id)).toEqual(['g-a'])
+    expect(filterTemplateLibrary(sources,{view:'templates',client:'a',search:'jaecoo'}).map(r=>r.id)).toEqual(['j-a'])
+  })
+
 })

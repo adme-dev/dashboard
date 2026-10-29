@@ -145,7 +145,7 @@
         :class="['revert-browser-styles', { 'edm-editable': editable }]"
         :contenteditable="editable ? 'true' : undefined"
         @blur="editable && onTextEdit($event, true)"
-        v-html="blockProps.text || ''"
+        v-html="sanitizeEmailCanvasHtml(String(blockProps.text || ''), false)"
       />
     </div>
 
@@ -520,6 +520,7 @@
 </template>
 
 <script setup lang="ts">
+import { sanitizeEmailCanvasHtml } from '~~/app/utils/edmCanvasHtml'
 import { computed, ref } from 'vue'
 import { previewFontFamily } from '~~/shared/emailRendering/fonts'
 import { dividerLineThickness } from '~~/app/utils/edmDivider'
@@ -696,8 +697,9 @@ const htmlAnnotationEnabled = computed(() => {
     && (props.htmlEditingEnabled || Boolean(props.selectedHtmlEditableId))
 })
 const htmlContents = computed(() => {
-  if (!htmlAnnotationEnabled.value) return rawHtmlContents.value
-  return annotateHtmlEditables(rawHtmlContents.value, {
+  const safeHtml = sanitizeEmailCanvasHtml(rawHtmlContents.value)
+  if (!htmlAnnotationEnabled.value) return safeHtml
+  return annotateHtmlEditables(safeHtml, {
     editable: true,
     selectedId: props.selectedHtmlEditableId || null
   })
