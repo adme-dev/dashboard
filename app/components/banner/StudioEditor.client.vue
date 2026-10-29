@@ -445,6 +445,7 @@ async function handleSave() {
         headers: { 'Idempotency-Key': createProjectIdempotencyKey },
         body: {
           name: initialName,
+          folderId: typeof route.query?.folder === 'string' ? route.query.folder : undefined,
           clientId: state.project?.clientId || null,
           canvasData: JSON.parse(initialCanvas),
         },

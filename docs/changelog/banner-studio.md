@@ -2,6 +2,16 @@
 
 This is the team's change log for the move from TheBrief. Entries distinguish released features from work still in progress. Detailed evidence and migration acceptance are in the [transition ledger](../plans/2026-10-29-banner-studio-transition.md).
 
+## Prepared — matching TheBrief folders (30 October 2026)
+
+- Captured the complete expanded source tree: 101 folders, with 88 roots and 13 nested folders.
+- Preserves exact source names, including `Citreon`, and treats `FNQ / Brighton Motor Group` as one folder name.
+- Adds stored folder identities and parent links, empty-folder browsing, nested folder search and breadcrumbs.
+- Matches existing imported projects only to a single exact recorded source path. Client access and artwork stay under their existing rules.
+- New banners created from a folder retain that folder on first save; duplicates retain their folder.
+
+**Folder records are stored; browser release verification follows deployment.** Verified all 101 paths and parent links against the captured source, with no missing or extra folders. Automated checks: 655 passed, one skipped. Migration 490 was applied through the verified production Hyperdrive binding after the stale local connection failed. It created 101 folders and placed 144 projects by an exact source-path match. Folder creation, renaming, moving and pinning controls remain separate follow-up work.
+
 ## Project overview — release #746
 
 Release status and deployment evidence: [PR #746](https://github.com/adme-dev/dashboard/pull/746).

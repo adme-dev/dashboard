@@ -1,0 +1,628 @@
+{
+  "source": "https://app.thebrief.ai/team/6422/project/1768984/designs",
+  "capturedAt": "2026-10-30",
+  "folders": [
+    {
+      "name": "ADME",
+      "path": [
+        "ADME"
+      ]
+    },
+    {
+      "name": "Temporary",
+      "path": [
+        "ADME",
+        "Temporary"
+      ]
+    },
+    {
+      "name": "AI generated designs",
+      "path": [
+        "AI generated designs"
+      ]
+    },
+    {
+      "name": "Alan Mance",
+      "path": [
+        "Alan Mance"
+      ]
+    },
+    {
+      "name": "Alfa Romeo",
+      "path": [
+        "Alfa Romeo"
+      ]
+    },
+    {
+      "name": "Arctic Campers",
+      "path": [
+        "Arctic Campers"
+      ]
+    },
+    {
+      "name": "Audi",
+      "path": [
+        "Audi"
+      ]
+    },
+    {
+      "name": "Bay City Auto Group",
+      "path": [
+        "Bay City Auto Group"
+      ]
+    },
+    {
+      "name": "Blood Motor Group",
+      "path": [
+        "Blood Motor Group"
+      ]
+    },
+    {
+      "name": "Boulevard Motors",
+      "path": [
+        "Boulevard Motors"
+      ]
+    },
+    {
+      "name": "Brighton Auto Group (Holdings)",
+      "path": [
+        "Brighton Auto Group (Holdings)"
+      ]
+    },
+    {
+      "name": "Brighton Hyundai",
+      "path": [
+        "Brighton Hyundai"
+      ]
+    },
+    {
+      "name": "Brighton MG",
+      "path": [
+        "Brighton MG"
+      ]
+    },
+    {
+      "name": "Brighton Mitsubishi",
+      "path": [
+        "Brighton Mitsubishi"
+      ]
+    },
+    {
+      "name": "Brighton Ssangyong",
+      "path": [
+        "Brighton Ssangyong"
+      ]
+    },
+    {
+      "name": "Caravan Hire Co.",
+      "path": [
+        "Caravan Hire Co."
+      ]
+    },
+    {
+      "name": "Chery",
+      "path": [
+        "Chery"
+      ]
+    },
+    {
+      "name": "Citreon",
+      "path": [
+        "Citreon"
+      ]
+    },
+    {
+      "name": "DEEPAL",
+      "path": [
+        "DEEPAL"
+      ]
+    },
+    {
+      "name": "DENZA",
+      "path": [
+        "DENZA"
+      ]
+    },
+    {
+      "name": "Essential Caravans",
+      "path": [
+        "Essential Caravans"
+      ]
+    },
+    {
+      "name": "Ferntree Gully Automotive",
+      "path": [
+        "Ferntree Gully Automotive"
+      ]
+    },
+    {
+      "name": "Fiat",
+      "path": [
+        "Fiat"
+      ]
+    },
+    {
+      "name": "FNQ / Brighton Motor Group",
+      "path": [
+        "FNQ / Brighton Motor Group"
+      ]
+    },
+    {
+      "name": "Ford",
+      "path": [
+        "Ford"
+      ]
+    },
+    {
+      "name": "Forthing",
+      "path": [
+        "Forthing"
+      ]
+    },
+    {
+      "name": "Foton",
+      "path": [
+        "Foton"
+      ]
+    },
+    {
+      "name": "GAC",
+      "path": [
+        "GAC"
+      ]
+    },
+    {
+      "name": "Garry and Warren Smith",
+      "path": [
+        "Garry and Warren Smith"
+      ]
+    },
+    {
+      "name": "Geely",
+      "path": [
+        "Geely"
+      ]
+    },
+    {
+      "name": "Gendore",
+      "path": [
+        "Gendore"
+      ]
+    },
+    {
+      "name": "Get You Finance",
+      "path": [
+        "Get You Finance"
+      ]
+    },
+    {
+      "name": "Gippsland Motor Group",
+      "path": [
+        "Gippsland Motor Group"
+      ]
+    },
+    {
+      "name": "GMSV",
+      "path": [
+        "GMSV"
+      ]
+    },
+    {
+      "name": "Google Ads",
+      "path": [
+        "Google Ads"
+      ]
+    },
+    {
+      "name": "Google Demand Gen",
+      "path": [
+        "Google Demand Gen"
+      ]
+    },
+    {
+      "name": "GWM Haval",
+      "path": [
+        "GWM Haval"
+      ]
+    },
+    {
+      "name": "Heritage Auto Group",
+      "path": [
+        "Heritage Auto Group"
+      ]
+    },
+    {
+      "name": "Holden",
+      "path": [
+        "Holden"
+      ]
+    },
+    {
+      "name": "Honda",
+      "path": [
+        "Honda"
+      ]
+    },
+    {
+      "name": "Hyundai",
+      "path": [
+        "Hyundai"
+      ]
+    },
+    {
+      "name": "Ineos",
+      "path": [
+        "Ineos"
+      ]
+    },
+    {
+      "name": "Ironman 4x4",
+      "path": [
+        "Ironman 4x4"
+      ]
+    },
+    {
+      "name": "Island Coast",
+      "path": [
+        "Island Coast"
+      ]
+    },
+    {
+      "name": "Isuzu UTE",
+      "path": [
+        "Isuzu UTE"
+      ]
+    },
+    {
+      "name": "JAC",
+      "path": [
+        "JAC"
+      ]
+    },
+    {
+      "name": "Jaecoo",
+      "path": [
+        "Jaecoo"
+      ]
+    },
+    {
+      "name": "Jaguar Land Rover",
+      "path": [
+        "Jaguar Land Rover"
+      ]
+    },
+    {
+      "name": "Jeep",
+      "path": [
+        "Jeep"
+      ]
+    },
+    {
+      "name": "KGM",
+      "path": [
+        "KGM"
+      ]
+    },
+    {
+      "name": "KIA",
+      "path": [
+        "KIA"
+      ]
+    },
+    {
+      "name": "LDV",
+      "path": [
+        "LDV"
+      ]
+    },
+    {
+      "name": "Leapmotor",
+      "path": [
+        "Leapmotor"
+      ]
+    },
+    {
+      "name": "Mahindra",
+      "path": [
+        "Mahindra"
+      ]
+    },
+    {
+      "name": "Mansfield Motor Group",
+      "path": [
+        "Mansfield Motor Group"
+      ]
+    },
+    {
+      "name": "Mazda",
+      "path": [
+        "Mazda"
+      ]
+    },
+    {
+      "name": "McRae Motors",
+      "path": [
+        "McRae Motors"
+      ]
+    },
+    {
+      "name": "Mercedes-Benz",
+      "path": [
+        "Mercedes-Benz"
+      ]
+    },
+    {
+      "name": "MG",
+      "path": [
+        "MG"
+      ]
+    },
+    {
+      "name": "Mitsubishi",
+      "path": [
+        "Mitsubishi"
+      ]
+    },
+    {
+      "name": "Mornington Mits & Isuzu Ute",
+      "path": [
+        "Mornington Mits & Isuzu Ute"
+      ]
+    },
+    {
+      "name": "Mornington Used Car Dealers",
+      "path": [
+        "Mornington Used Car Dealers"
+      ]
+    },
+    {
+      "name": "MotorOne",
+      "path": [
+        "MotorOne"
+      ]
+    },
+    {
+      "name": "New Age Caravans",
+      "path": [
+        "New Age Caravans"
+      ]
+    },
+    {
+      "name": "4.99% finance",
+      "path": [
+        "New Age Caravans",
+        "4.99% finance"
+      ]
+    },
+    {
+      "name": "Organic Social Media",
+      "path": [
+        "New Age Caravans",
+        "Organic Social Media"
+      ]
+    },
+    {
+      "name": "Nissan",
+      "path": [
+        "Nissan"
+      ]
+    },
+    {
+      "name": "Northern Motor Group",
+      "path": [
+        "Northern Motor Group"
+      ]
+    },
+    {
+      "name": "Performance Max",
+      "path": [
+        "Performance Max"
+      ]
+    },
+    {
+      "name": "PMAX (Google etc)",
+      "path": [
+        "Performance Max",
+        "PMAX (Google etc)"
+      ]
+    },
+    {
+      "name": "PMAX (Microsoft)",
+      "path": [
+        "Performance Max",
+        "PMAX (Microsoft)"
+      ]
+    },
+    {
+      "name": "Peugeot",
+      "path": [
+        "Peugeot"
+      ]
+    },
+    {
+      "name": "Polaris",
+      "path": [
+        "Polaris"
+      ]
+    },
+    {
+      "name": "Ram",
+      "path": [
+        "Ram"
+      ]
+    },
+    {
+      "name": "Reelmotion",
+      "path": [
+        "Reelmotion"
+      ]
+    },
+    {
+      "name": "Renault",
+      "path": [
+        "Renault"
+      ]
+    },
+    {
+      "name": "Robo",
+      "path": [
+        "Robo"
+      ]
+    },
+    {
+      "name": "Rowanos Restaurant",
+      "path": [
+        "Rowanos Restaurant"
+      ]
+    },
+    {
+      "name": "Sale Motor Group",
+      "path": [
+        "Sale Motor Group"
+      ]
+    },
+    {
+      "name": "SKODA",
+      "path": [
+        "SKODA"
+      ]
+    },
+    {
+      "name": "Social Media Templates",
+      "path": [
+        "Social Media Templates"
+      ]
+    },
+    {
+      "name": "Archived Templates",
+      "path": [
+        "Social Media Templates",
+        "Archived Templates"
+      ]
+    },
+    {
+      "name": "Customer Reviews",
+      "path": [
+        "Social Media Templates",
+        "Archived Templates",
+        "Customer Reviews"
+      ]
+    },
+    {
+      "name": "Delivery Templates",
+      "path": [
+        "Social Media Templates",
+        "Archived Templates",
+        "Delivery Templates"
+      ]
+    },
+    {
+      "name": "Updates",
+      "path": [
+        "Social Media Templates",
+        "Archived Templates",
+        "Updates"
+      ]
+    },
+    {
+      "name": "Customer Reviews",
+      "path": [
+        "Social Media Templates",
+        "Customer Reviews"
+      ]
+    },
+    {
+      "name": "Delivery Photos",
+      "path": [
+        "Social Media Templates",
+        "Delivery Photos"
+      ]
+    },
+    {
+      "name": "Footy Tipping",
+      "path": [
+        "Social Media Templates",
+        "Footy Tipping"
+      ]
+    },
+    {
+      "name": "Updates",
+      "path": [
+        "Social Media Templates",
+        "Updates"
+      ]
+    },
+    {
+      "name": "South Morang Motor Group",
+      "path": [
+        "South Morang Motor Group"
+      ]
+    },
+    {
+      "name": "Subaru",
+      "path": [
+        "Subaru"
+      ]
+    },
+    {
+      "name": "Suzuki",
+      "path": [
+        "Suzuki"
+      ]
+    },
+    {
+      "name": "The Big Garage",
+      "path": [
+        "The Big Garage"
+      ]
+    },
+    {
+      "name": "The Touring Hub",
+      "path": [
+        "The Touring Hub"
+      ]
+    },
+    {
+      "name": "Toyota",
+      "path": [
+        "Toyota"
+      ]
+    },
+    {
+      "name": "Traralgon Automotive Group",
+      "path": [
+        "Traralgon Automotive Group"
+      ]
+    },
+    {
+      "name": "Urban Caravans",
+      "path": [
+        "Urban Caravans"
+      ]
+    },
+    {
+      "name": "Victorian RV Sales",
+      "path": [
+        "Victorian RV Sales"
+      ]
+    },
+    {
+      "name": "Volkswagen",
+      "path": [
+        "Volkswagen"
+      ]
+    },
+    {
+      "name": "Volvo",
+      "path": [
+        "Volvo"
+      ]
+    },
+    {
+      "name": "XPeng",
+      "path": [
+        "XPeng"
+      ]
+    }
+  ]
+}

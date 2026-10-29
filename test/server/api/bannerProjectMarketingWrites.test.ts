@@ -262,6 +262,15 @@ describe('browser Banner Studio create for the marketing-management portfolio', 
   it('keeps legacy creation (no client check) for non-marketing staff', async () => {
     m.user = { id: STAFF, role: 'staff', permissionGroups: ['CREATIVE'] }
     expect(await post({ name: 'Legacy', clientId: INACTIVE })).toMatchObject({ clientId: INACTIVE })
-    expect(m.sql.find(entry => entry.sql.includes('INSERT INTO banner_projects'))!.sql).toContain('VALUES ($1, $2, $3, $4, $5)')
+    expect(m.sql.find(entry => entry.sql.includes('INSERT INTO banner_projects'))!.sql).toContain('VALUES ($1, $2, $3, $4, $5, $6)')
   })
+})
+
+it('retains the source folder when copying protected artwork without carrying its provenance', async () => {
+  m.project!.folder_id = '632a71d5-cd2c-4d9f-812d-e3f70bb6c241'
+  m.project!.tags = ['source:thebrief', 'source-folder:JAC', 'social']
+  await call(duplicate)
+  const insert = m.sql.find(entry => entry.sql.includes('INSERT INTO banner_projects'))!
+  expect(insert.params[5]).toBe(m.project!.folder_id)
+  expect(insert.params[3]).toEqual(['source-folder:JAC', 'social'])
 })

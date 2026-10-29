@@ -106,3 +106,11 @@ it('retains edits made while the first viewer snapshot is being stored', async (
   expect(e.saveProject).toHaveBeenCalledTimes(1)
   expect(e.navigateTo).toHaveBeenCalledTimes(1)
 })
+
+it('keeps the chosen library folder on the first autosaved project', async () => {
+  const e = editor()
+  ;(e.route as any).query = { folder: '632a71d5-cd2c-4d9f-812d-e3f70bb6c241' }
+  await e.saveProjectSettings()
+  expect(await e.handleSave()).toBe(true)
+  expect(e.fetch.mock.calls[0]![1].body.folderId).toBe('632a71d5-cd2c-4d9f-812d-e3f70bb6c241')
+})
