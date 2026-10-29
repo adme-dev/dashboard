@@ -266,7 +266,7 @@ describe('edmPresets', () => {
     for (const id of ['postcards-glidex', 'postcards-futurax', 'postcards-aviro']) {
       expect(starterIds, `expected imported starter ${id} to be added`).toContain(id)
     }
-    expect(starterIds).toHaveLength(8)
+    expect(starterIds).toHaveLength(11)
     expect(starterIds).not.toContain('postcards-metahome')
   })
 

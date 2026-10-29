@@ -23,6 +23,7 @@ import {
   IMPORTED_POSTCARDS_STARTER_TEMPLATES
 } from '~~/app/utils/edmImportedPostcards'
 
+import { AUTOMOTIVE_SECTION_IDS, AUTOMOTIVE_SECTION_PRESETS, AUTOMOTIVE_STARTER_TEMPLATES } from '~~/app/utils/edmAutomotivePresets'
 import { MODERN_EDM_SECTION_IDS, MODERN_EDM_SECTION_PRESETS, MODERN_EDM_STARTER_TEMPLATES } from '~~/app/utils/edmModernPresets'
 
 export type EdmSectionCategoryId
@@ -159,7 +160,8 @@ export const EDM_SECTION_PRESET_IDS = [
   'footer-app-download',
   'footer-newsletter-signup',
   ...IMPORTED_POSTCARDS_SECTION_IDS,
-  ...MODERN_EDM_SECTION_IDS
+  ...MODERN_EDM_SECTION_IDS,
+  ...AUTOMOTIVE_SECTION_IDS
 ] as const
 
 export type EdmSectionPresetId = typeof EDM_SECTION_PRESET_IDS[number]
@@ -1641,7 +1643,8 @@ const IMPORTED_CATEGORY_BY_ID: Record<string, EdmSectionCategoryId> = {
 }
 const MODERN_LIBRARY_SECTIONS: EdmSectionPreset[] = [
   ...IMPORTED_POSTCARDS_SECTION_PRESETS.map(preset => ({ ...preset, categoryId: IMPORTED_CATEGORY_BY_ID[preset.id] ?? preset.categoryId })),
-  ...MODERN_EDM_SECTION_PRESETS
+  ...MODERN_EDM_SECTION_PRESETS,
+  ...AUTOMOTIVE_SECTION_PRESETS
 ]
 export const EDM_SECTION_CATEGORIES: EdmSectionCategory[] = LEGACY_EDM_SECTION_CATEGORIES
   .filter(category => category.id !== 'imported')
@@ -1872,7 +1875,8 @@ const LEGACY_EDM_STARTER_TEMPLATES: EdmStarterTemplate[] = [
 
 export const EDM_STARTER_TEMPLATES: EdmStarterTemplate[] = [
   ...IMPORTED_POSTCARDS_STARTER_TEMPLATES.map(template => ({ ...template, isNew: false })),
-  ...MODERN_EDM_STARTER_TEMPLATES
+  ...MODERN_EDM_STARTER_TEMPLATES,
+  ...AUTOMOTIVE_STARTER_TEMPLATES
 ]
 
 const ALL_SECTION_PRESETS = [

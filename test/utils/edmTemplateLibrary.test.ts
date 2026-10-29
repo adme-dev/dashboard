@@ -1,0 +1,23 @@
+import { describe, expect, it } from 'vitest'
+import { filterTemplateLibrary } from '~~/app/utils/edmTemplateLibrary'
+const rows = [
+  { id: 'shared', name: 'Shared launch', client_id: null, folder_name: 'Automotive', template_kind: 'template' },
+  { id: 'a', name: 'Alpha launch', client_id: 'client-a', folder_name: 'Automotive', template_kind: 'template' },
+  { id: 'b', name: 'Beta newsletter', subject: 'Monthly news', client_id: 'client-b', folder_name: 'Newsletters', template_kind: 'draft' }
+]
+describe('template library views', () => {
+  it('combines client and category filtering without exposing another client', () => {
+    expect(filterTemplateLibrary(rows, { view: 'folder:Automotive', client: 'client-a' }).map(r => r.id)).toEqual(['a'])
+  })
+  it('separates shared defaults and drafts', () => {
+    expect(filterTemplateLibrary(rows, { view: 'shared', client: 'all' }).map(r => r.id)).toEqual(['shared'])
+    expect(filterTemplateLibrary(rows, { view: 'drafts', client: 'all' }).map(r => r.id)).toEqual(['b'])
+  })
+  it('shows only currently accessible recent rows in viewing order', () => {
+    expect(filterTemplateLibrary(rows, { view: 'recent', client: 'all', recentIds: ['foreign', 'b', 'a'] }).map(r => r.id)).toEqual(['b', 'a'])
+  })
+  it('searches saved names, subjects and categories', () => {
+    expect(filterTemplateLibrary(rows, { view: 'templates', client: 'all', search: 'monthly' }).map(r => r.id)).toEqual(['b'])
+    expect(filterTemplateLibrary(rows, { view: 'templates', client: 'shared', search: 'automotive' }).map(r => r.id)).toEqual(['shared'])
+  })
+})

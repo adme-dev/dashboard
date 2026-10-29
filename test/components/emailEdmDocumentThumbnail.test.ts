@@ -23,6 +23,7 @@ async function renderThumbnail(width?: number) {
 describe('EdmDocumentThumbnail', () => {
   it('renders a saved document through the real block renderer', async () => {
     const html = await renderThumbnail()
+    expect(html).toContain('width:100%')
     expect(html).toContain('Saved headline')
     expect(html).toContain('Saved body copy')
     expect(html).not.toContain('Unknown block')

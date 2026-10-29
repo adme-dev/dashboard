@@ -20,7 +20,7 @@ describe('EdmTemplateThumbnail', () => {
     const ids = EDM_STARTER_TEMPLATES.map(template => template.id)
     expect(ids).not.toContain('newsletter-digest')
     expect(ids).not.toContain('flash-sale')
-    expect(ids).toHaveLength(8)
+    expect(ids).toHaveLength(11)
     expect(ids).toContain('postcards-glidex')
     expect(ids).toContain('postcards-futurax')
     expect(ids).toContain('postcards-aviro')
@@ -57,6 +57,13 @@ describe('EdmTemplateThumbnail', () => {
     expect(html).toContain('width:600px')
     expect(html).toContain('scale(0.5)')
     expect(html).toContain('pointer-events:none')
+  })
+
+  it('fills the preview frame so the hover border follows the image edge', async () => {
+    const app = createSSRApp({ render: () => h(EdmTemplateThumbnail, { templateId: 'postcards-glidex', previewImageUrl: '/email/template-previews/postcards-glidex.jpeg', width: 320, maxHeight: 430 }) })
+    const html = await renderToString(app)
+    expect(html).toContain('width:100%')
+    expect(html).toContain('height:430px')
   })
 
   it('keys rendered starter blocks by document block id, not array index', () => {

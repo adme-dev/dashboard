@@ -175,6 +175,9 @@ importers:
       ofetch:
         specifier: ^1.5.1
         version: 1.5.1
+      parse5:
+        specifier: 8.0.1
+        version: 8.0.1
       pg:
         specifier: ^8.22.0
         version: 8.22.0

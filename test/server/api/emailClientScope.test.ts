@@ -409,6 +409,30 @@ describe('email client-scoped route policy', () => {
     expect(mockUpdateTemplate).not.toHaveBeenCalled()
   })
 
+  it('deletes an assigned client template after write authentication', async () => {
+    const handler = (await import('~~/server/api/email/templates/[id].delete')).default
+    mockGetRouterParam.mockReturnValueOnce('tpl-1')
+    await expect(handler({} as never)).resolves.toEqual({ ok: true })
+    expect(mockRequireWriteAccess).toHaveBeenCalled()
+    expect(mockDeleteTemplate).toHaveBeenCalledWith('tpl-1', CLIENT_1)
+  })
+
+  it('blocks template deletion across client scope', async () => {
+    const handler = (await import('~~/server/api/email/templates/[id].delete')).default
+    mockGetRouterParam.mockReturnValueOnce('tpl-2')
+    mockGetTemplate.mockResolvedValueOnce({ id: 'tpl-2', client_id: CLIENT_2 })
+    await expect(handler({} as never)).rejects.toMatchObject({ statusCode: 403 })
+    expect(mockDeleteTemplate).not.toHaveBeenCalled()
+  })
+
+  it('does not read or delete templates when write authentication fails', async () => {
+    const handler = (await import('~~/server/api/email/templates/[id].delete')).default
+    mockRequireWriteAccess.mockRejectedValueOnce(Object.assign(new Error('Unauthorized'), { statusCode: 401 }))
+    await expect(handler({} as never)).rejects.toMatchObject({ statusCode: 401 })
+    expect(mockGetTemplate).not.toHaveBeenCalled()
+    expect(mockDeleteTemplate).not.toHaveBeenCalled()
+  })
+
   it('passes assigned client ids into custom module reads for scoped users', async () => {
     const handler = (await import('~~/server/api/agency/email/modules/index.get')).default
 

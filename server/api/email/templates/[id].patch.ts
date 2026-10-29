@@ -3,9 +3,10 @@ import { createEmailRenderer } from '~~/server/utils/email-marketing/render/clie
 import { z } from 'zod'
 import { requireWriteAccess } from '~~/server/utils/auth'
 import { getTemplate, updateTemplate } from '~~/server/utils/email-marketing/templates'
-import { assertEmailClientAccess } from '~~/server/utils/email-marketing/access'
+import { assertEmailClientIdInScope, resolveEmailClientScope } from '~~/server/utils/email-marketing/access'
 
 const Body = z.object({
+  client_id: z.string().uuid().optional().nullable(),
   name: z.string().min(1).max(200).optional(),
   subject: z.string().max(300).optional().nullable(),
   preview_text: z.string().max(300).optional().nullable(),
@@ -24,8 +25,10 @@ export default defineEventHandler(async (event) => {
   }
   const existing = await getTemplate(id)
   if (!existing) throw createError({ statusCode: 404, statusMessage: 'not_found' })
-  await assertEmailClientAccess(event, user, existing.client_id)
-  const template = await updateTemplate(id, parsed.data, createEmailRenderer(event.context?.cloudflare?.env ?? {}))
+  const scope = await resolveEmailClientScope(event, user)
+  assertEmailClientIdInScope(scope, existing.client_id)
+  if (parsed.data.client_id !== undefined) assertEmailClientIdInScope(scope, parsed.data.client_id)
+  const template = await updateTemplate(id, parsed.data, createEmailRenderer(event.context?.cloudflare?.env ?? {}), existing.client_id)
   if (!template) throw createError({ statusCode: 404, statusMessage: 'not_found' })
   return { template }
 })
