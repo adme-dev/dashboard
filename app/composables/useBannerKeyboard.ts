@@ -5,6 +5,7 @@ export function useBannerKeyboard(opts: {
 }) {
   const {
     state,
+    setLayoutView,
     activeLayers,
     selectedLayer,
     removeLayer,
@@ -52,6 +53,12 @@ export function useBannerKeyboard(opts: {
     const target = e.target as HTMLElement
     // Ignore when typing in input fields
     if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return
+
+    if (e.key === 'Escape' && state.layoutView === 'single' && !target.closest('[role=dialog], [role=menu], [role=listbox]')) {
+      e.preventDefault()
+      setLayoutView('all')
+      return
+    }
 
     const mod = e.metaKey || e.ctrlKey
 

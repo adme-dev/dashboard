@@ -26,7 +26,6 @@ const {
   duplicateLayer,
   updateLayer,
   setActiveArtboard,
-  zoomToFitFormat,
   loadProject,
   saveProject,
   initDefault,
@@ -50,9 +49,9 @@ const canvasRef = ref<any>(null)
 const { connect: connectRealtime, disconnect: disconnectRealtime, remoteUsers } = useBannerRealtime()
 
 // Timeline resize
-const timelineHeight = ref(200)
+const timelineHeight = ref(280)
 const tlCollapsed = ref(false)
-let tlHeightBeforeCollapse = 200
+let tlHeightBeforeCollapse = 280
 const MIN_TL_HEIGHT = 100
 const MAX_TL_HEIGHT = 600
 const tlResizing = ref(false)
@@ -113,6 +112,7 @@ function rebuildTimeline() {
 // motionPath / motionPathTweens / keyframes never fire a shallow watch and play
 // would run a stale timeline. rebuildTimeline() is debounced and skipped while playing.
 watch(() => state.activeKey, () => { destroyTimeline(); rebuildTimeline() })
+watch(() => state.layoutView, () => { pauseTimeline(); rebuildTimeline() })
 watch(activeLayers, rebuildTimeline, { deep: true })
 watch(() => state.soloMotionPath, rebuildTimeline)
 onMounted(() => nextTick(rebuildTimeline))
@@ -463,10 +463,7 @@ function zoomOut() {
   state.wsScale = Math.max(0.05, state.wsScale / 1.2)
 }
 function zoomFit() {
-  const canvasEl = (canvasRef.value as any)?.$el as HTMLElement | undefined
-  zoomToFitFormat(state.activeKey, canvasEl
-    ? { width: canvasEl.clientWidth, height: canvasEl.clientHeight }
-    : undefined, 4)
+  canvasRef.value?.fitWorkspace?.()
 }
 
 const zoomPercent = computed(() => Math.round(state.wsScale * 100))
@@ -638,18 +635,7 @@ const { activeSize } = useBannerFileSize()
 
       <div class="h-4 w-px bg-[#3a3a3f]" />
 
-      <!-- Active format chip -->
-      <UButton
-        v-if="activeFormat"
-        variant="soft"
-        size="xs"
-        class="ring-1 ring-(--ui-primary)"
-        @click="() => { showSizePicker = true }"
-      >
-        <span class="font-mono text-xs">{{ activeFormat.w }}×{{ activeFormat.h }}</span>
-        <span class="text-xs text-(--ui-text-muted)">{{ activeFormat.name }}</span>
-        <UIcon name="i-lucide-chevron-down" class="w-3 h-3" />
-      </UButton>
+      <BannerLayoutControls />
 
       <!-- File size indicator -->
       <BannerFileSizeMeter :total="activeSize.total" class="w-24 hidden @4xl:block" />
@@ -712,6 +698,9 @@ const { activeSize } = useBannerFileSize()
       </div>
 
       <div class="h-4 w-px bg-[#3a3a3f]" />
+
+      <UButton :label="tlCollapsed ? 'Show timeline' : 'Hide timeline'" icon="i-lucide-panel-bottom" variant="ghost" color="neutral" size="xs"
+        :aria-expanded="!tlCollapsed" @click="onTlResizeDblClick" />
 
       <!-- Timeline controls -->
       <div class="flex gap-0.5">
@@ -794,29 +783,14 @@ const { activeSize } = useBannerFileSize()
       <!-- Vertical Toolbar -->
       <BannerToolbar @switch-tab="openLeftPanel" />
 
-      <!-- Center: Canvas + Timeline -->
+      <!-- Canvas -->
       <div class="flex-1 flex flex-col min-w-0">
         <!-- Feed Preview Bar -->
         <BannerFeedPreviewBar v-if="feedsState.isPreviewMode" />
 
         <!-- Canvas workspace -->
-        <div class="flex-1 overflow-auto relative bg-[#1a1a1e]">
+        <div class="flex-1 min-h-0 overflow-hidden relative bg-muted">
           <BannerCanvas ref="canvasRef" :project-id="projectId" />
-        </div>
-
-        <!-- Timeline resize handle -->
-        <div
-          class="h-1.5 shrink-0 cursor-row-resize group relative border-t border-[#3a3a3f] hover:bg-[#4af0a2]/20 transition-colors"
-          :class="tlResizing ? 'bg-[#4af0a2]/30' : ''"
-          @mousedown="onTlResizeStart"
-          @dblclick="onTlResizeDblClick"
-        >
-          <div class="absolute inset-x-0 top-1/2 -translate-y-1/2 h-0.5 mx-auto w-8 rounded transition-colors" :class="tlCollapsed ? 'bg-[#4af0a2]' : 'bg-[#555] group-hover:bg-[#4af0a2]'" />
-        </div>
-
-        <!-- Timeline -->
-        <div v-show="!tlCollapsed" class="shrink-0" :style="{ height: timelineHeight + 'px' }">
-          <BannerTimeline />
         </div>
       </div>
 
@@ -824,6 +798,21 @@ const { activeSize } = useBannerFileSize()
       <div class="w-72 shrink-0 border-l border-[#3a3a3f] overflow-y-auto bg-[#252528]">
         <BannerInspector />
       </div>
+    </div>
+
+    <!-- Timeline resize handle -->
+    <div
+      class="h-1.5 shrink-0 cursor-row-resize group relative border-t border-[#3a3a3f] hover:bg-[#4af0a2]/20 transition-colors"
+      :class="tlResizing ? 'bg-[#4af0a2]/30' : ''"
+      @mousedown="onTlResizeStart"
+      @dblclick="onTlResizeDblClick"
+    >
+      <div class="absolute inset-x-0 top-1/2 -translate-y-1/2 h-0.5 mx-auto w-8 rounded transition-colors" :class="tlCollapsed ? 'bg-[#4af0a2]' : 'bg-[#555] group-hover:bg-[#4af0a2]'" />
+    </div>
+
+    <!-- Timeline -->
+    <div v-show="!tlCollapsed" class="shrink-0" :style="{ height: timelineHeight + 'px' }">
+      <BannerTimeline />
     </div>
 
     <!-- Modals -->

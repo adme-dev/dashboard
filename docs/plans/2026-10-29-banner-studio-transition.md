@@ -22,7 +22,7 @@
 
 ## Acceptance still open
 
-1. Square import and saved-canvas verification are complete. Producer visual and audible acceptance remains open. Story and wide packages remain offline and need refreshing and review before import.
+1. The square and a separate three-size full set have now been imported and verified as saved drafts. Producer visual and audible acceptance remains open. See the full-set checkpoint below.
 2. Render and review story and wide sizes with exact fonts, image placement and 8 second loop. Compare both audio tracks in audible HTML5 playback and native preview. Check video source frames when a design contains video.
 3. Add proper audio mixing to the MP4 container render, with duration, volume, mute and loop handling. Verify the decoded MP4 has an audio stream and samples at the intended time. Remove the audio guard only after this passes.
 4. Reconcile the Creative Suite Worker source with current main, add a Banner Studio launcher card and dock option pointing to the full-screen app route, build the Worker package, deploy the correct Worker target and verify the live link. Preserve PhotoFlow/VectorFlow MotorStack behavior and their browser storage.
@@ -55,7 +55,7 @@ The current public pricing page lists API under Enterprise (https://www.thebrief
 
 The signed-in JAC folder `/team/6422/project/1768984/designs/folder/1459819` exposes a select-all checkbox. Selecting it revealed `18 items selected` and a shared Download action. The resulting `Download (18 items)` dialog accepts HTML5 with General usage and offers Local, Email and Google Drive destinations (also SharePoint and Adobe AEM entries). This confirms a batch UI route without opening designs individually; the batch itself was not started and completion/legacy limits are not yet verified. Its default `Convert custom fonts to SVG` is on and must be turned off for editable text migration. The live format menu also exposes PSD Beta, although the older help page says PSD cannot be exported; treat the current UI as capability evidence and test fidelity before selecting it as a migration format.
 
-The completed feature branch can be retired. The separate documentation branch `docs/banner-pilot-release-20261029` contains this closeout and open acceptance ledger; it is documentation work, not a future application release base.
+The completed pilot, audio and documentation branches have been retired after their work reached main. Unrelated active contributor worktrees were preserved.
 
 ## Audio transport correction
 
@@ -68,4 +68,59 @@ Browser verification used the real JAC MP3 files with the updated source on a lo
 Validation checkpoint: 170 focused tests passed across 29 suites, including eight new audio regressions, imported playback, canvas zoom, QR navigation/rendering and deployment source/target guards. The audio utility also passed an isolated TypeScript check. PR #736 merged as `484f00af85b220480a2c113c3672b858ef38e879` and deployed to `agency-dashboard` production/main as `b990ba0a-4019-4847-a036-838cfef2991d` (https://b990ba0a.agency-dashboard-6cm.pages.dev). The guarded release build passed: raw 25,013,120 bytes; gzip 7,196,220 bytes. Live JAC verification showed both tracks held at 0.799047 and 4.399047 seconds on Pause and resumed at 0.994308 and 4.605517 seconds, without resetting the timeline. This follow-up incorporates the historical closeout from documentation PR #735 so the ledger does not continue claiming the pilot is undeployed; the redundant draft #735 was closed after integration. It does not import the missing story/wide layouts, enable TheBrief API scopes, or implement MP4 audio mixing.
 
 
-Live verification also exposed `ReferenceError: ref is not defined` when opening Play All: its nested `const ref` shadowed Vue's auto-import detection. A follow-up explicitly imports the Vue APIs and renames the local artboard binding. A mounted component regression (without injected Vue globals) verifies initial-open initialization, exactly one audible layout among three, Pause, resume and unmount cleanup. The 18 component/audio/imported-playback checks pass. The follow-up production release is pending at this checkpoint.
+Live verification also exposed `ReferenceError: ref is not defined` when opening Play All: its nested `const ref` shadowed Vue's auto-import detection. A follow-up explicitly imports the Vue APIs and renames the local artboard binding. A mounted component regression (without injected Vue globals) verifies initial-open initialization, exactly one audible layout among three, Pause, resume and unmount cleanup. The 18 component/audio/imported-playback checks pass. PR #737 merged as `7ec1cf527bd123f8e82a931d4391480fde8bb5bb` and deployed to `agency-dashboard` production/main as `d42ee8ee-ae8a-434c-bab3-dcfb32609e62`. Live Play All opens, plays only the selected layout soundtrack, pauses all media and cleans up on close. The main editor remains paused. QR Codes navigation and the existing 21-code library were also verified.
+
+
+## Full-set import checkpoint
+
+The refreshed JAC package was imported as a separate Northern Motor Group draft, project `b38a779f-6869-42cc-9e02-5b7cd245c4c0`, at https://app.xeroflow.io/creative/banner-studio/b38a779f-6869-42cc-9e02-5b7cd245c4c0. All three native sizes (1200 × 1200, 1080 × 1920, 1920 × 1080) appear on the canvas. Each has 17 layers; matching source identities link all 17 across the layouts. All nine displayed image elements loaded, and all six audio elements decoded and remained paused. The importer verified persisted client and canvas before reporting saved. Nothing was published; the original square draft and the operator's open edits were preserved.
+
+Preparation found an offline merge-tool defect: identical font paths from independently converted size archives can carry different managed family aliases. This particular full-set package normalized the aliases only after matching font bytes, weight and style; it bundles three font faces and ten unique assets. The general merge tool still needs the same normalization and regression coverage before unattended bulk migration. Original ZIPs and the prepared package remain outside Git.
+
+## Team transition plan — acceptance gates
+
+The operator wants familiar TheBrief workflows, including All layouts / Single edit, per-layout editing, the timeline and a true Slides panel. The aim is to retire TheBrief only after production work and exports pass acceptance. Do not cancel the subscription or remove source access during this work.
+
+| Workstream | Current evidence | Required before team cutover |
+| --- | --- | --- |
+| Workspace familiarity | Existing full-screen app and linked multi-size canvas are live. A current-main follow-up implements named layouts, dotted overview, Edit size, All layouts / Single edit scope, stable overview zoom, and a full-width timeline with pinned layer labels and ruler. | Verify actual team actions: open a set, choose a size, edit shared price/image, isolate an edit, undo/redo, save/reopen, scrub, play/pause, resize/collapse timeline, and export. Review with a producer; source similarity alone is not acceptance. |
+| Slides | **Missing.** The current model has one layer timeline per format. Timed layers and hard cuts are not a Slides editor. | Implement persistent ordered slides with thumbnails, add/duplicate/reorder/remove, per-slide duration, loop settings and transitions. Keep slide identity across layout variants. Editing, undo, save/reopen, import, native preview and exported output must use the same sequence. Prove this with the Gendore Social CF Moto FB multi-slide job shown by the operator. Do not silently flatten unsupported transitions. |
+| Imports and library | JAC three-size pilot is saved. JAC folder exposes an 18-item HTML5 batch export; no batch has completed. API key creation is blocked on Pro Legacy and support was contacted. | Resolve supported bulk export or API entitlement; archive originals, preserve client/folder/design/size identity, normalize fonts, deduplicate retries, and create a per-design manifest with unsupported content and review state. Import batches, not individual manual downloads. Reconcile source and destination counts and sampling evidence. |
+| Media and exports | Native audio pause/resume fix is live; the JAC pilot has no video source. Sound-bearing MP4 export is deliberately blocked. | Implement MP4 sound mixing; verify actual output audio streams, timing, volume, mute, loops, transitions and video frames. Download and inspect HTML5, PNG/JPG, GIF and MP4 artifacts for the team's required sizes. Browser-ready media is not proof of an audible final file. |
+| MotorStack and launcher | PhotoFlow/VectorFlow have a guarded MotorStack integration in the Creative Suite source. Banner Studio on Pages does not yet share it. | Reconcile the current Creative Suite release base, add the Banner Studio launcher/dock entry, and connect fonts, logos and vehicle imagery via a guarded server integration. Verify client context and retained assets after saving; never expose proxy secrets to the browser. |
+| Production handoff | Monday workflow and representative revision cases have been researched. | Link imported sets to jobs and briefs, preserve version/review history, test a price change, image replacement, end-date change and 1–2 second offer reveal, then hand off all requested aspect ratios and thumbnails. Producers and account managers confirm the workflow. |
+
+### Sequence
+
+1. Complete and review workspace/timeline parity on the current branch. Keep this release separate from claims of Slides support or completed migration.
+2. Implement Slides and transitions together with the preview/export data contract. Add MP4 audio mixing and prove final-file output before using multi-slide campaigns as migration acceptance.
+3. Complete the Creative Suite launcher and MotorStack path; verify existing PhotoFlow/VectorFlow behavior still works.
+4. Trial a small representative batch: JAC linked layouts with two audio tracks, the Gendore multi-slide design, a real video-source job, an HTML5 display set, and a font-heavy static design. Compare source and destination at entrance, hold, transition and loop boundaries.
+5. Migrate the remaining library by batch with a manifest, retained originals and review exceptions. Have the team complete real revisions in Banner Studio through an agreed trial period.
+6. Retire TheBrief only after every active job has a usable source/archive, all required output formats pass, unsupported imports are resolved or explicitly rebuilt, and the team signs off. Cancellation remains a separate operator action; no cancellation has been performed.
+
+### Follow-up validation record
+
+The layout/timeline work starts from freshly fetched main `7ec1cf527bd123f8e82a931d4391480fde8bb5bb`. The final full build passed the unchanged worker-size limits (raw 25,013,311 bytes; gzip 7,196,275 bytes). Focused validation: 311 tests passed and one was skipped across 46 files, covering scope/undo, mounted canvas transitions, imported media, Play All and deployment guards. The built local preview used the real three-size JAC package and real Nuxt UI/Canvas/Timeline components. Browser checks verified the named picker, single-size visibility, overview return, ruler pinned at scrollTop 294, layer labels pinned at scrollLeft 431.5, and paused audio after switching layouts. The preview shell is isolated and does not prove a production deployment or saved-data round trip. Final review and release evidence belong in the follow-up PR. This paragraph is not a claim that the follow-up has been deployed.
+
+
+## Expanded release review — 29 October 2026
+
+The workspace candidate was reconciled with `origin/main` at `e538898e9a46c54133e4fd3b23d905933e35510e` (email work through PR #742). The four failing first-save checks were stale test extraction paths left behind when the page became the shared `StudioEditor.client.vue`; they now exercise the current component. The broadened Banner Studio, QR and deployment suite passes 778 tests, with 10 skipped across 108 files (105 passed files; 3 skipped). Skipped database integrations are not claimed as verified.
+
+A second localhost preview mounts the complete, unchanged `BannerStudioEditor` component and original library pages with an isolated local JAC fixture API. This exposes the real Sets, Templates, Elements, Assets, Feeds, Brand, History, inspector and timeline controls; the earlier canvas-only harness omitted most of them. Publishing, AI, production permissions, collaboration and server-rendered exports are unavailable in this fixture and are not proved by it.
+
+Browser checks on the full editor: a side-panel CTA edit reaches all three linked sizes; local save/reopen retains it and preserves independent positions. Single-edit Story text affects only Story; returning to All layouts and undo restores the three shared values. Direct canvas editing in All layouts also propagates. Active-layout playback starts its audio while other layouts remain paused; pause stops all six media elements. These checks are local-component evidence, not production writes or audible final-file acceptance.
+
+### Additional migration blockers from current work and supplied screenshots
+
+- Werribee Toyota bZ4X (`7803q0j`, Monday `13402062842`) has three six-second sizes, MP3 sound and tracking/letter-spacing entrances. All three fail the converter's unsupported-custom-animation guard. No Toyota native project was created, and no successful like-for-like Toyota editing/export comparison is claimed.
+- Gendore's legacy two-slide example (`m51dqz7`) reconstructs two five-second visibility intervals, but four fractional opacity pulses are unsupported; the package builder blocks import. This is a legacy regression example, not recent work.
+- True slides, named build-in/mid/out effect blocks, an animation builder/presets, audio fades, MP4 mixing and selected-frame JPG output remain open.
+- Adding a new element currently targets only the active artboard, even in All layouts. Existing linked text/media changes propagate; linked insertion, duplicate/delete scope and whole-set undo need separate implementation.
+- TheBrief uses main layouts per orientation and secondary sizes below. The workspace's visual rows are not a persistent main/secondary hierarchy or a Push Changes implementation.
+- The agency library already has search, sorting, client filters, grid/list views and imported source-folder filters. The standalone Creative library is simpler. Folder labels are imported tags, not a nested editable folder system. The supplied Recents/Chery screens require a shared library with real create/rename/move/copy/pin workflows, breadcrumbs, size counts and consistent row actions. Do not describe tag filtering as folder-management parity.
+- Current Blood Hyundai work requests a fifth ordered carousel card; Knox GWM has distinct audience variants. Carousel cards, timed slides, size variants and campaign variants must remain distinct.
+- MotorStack returned Toyota/JAC/GWM logos, colours and font metadata. Extend existing brand kits with a brand asset browser and deliberate kit application, dealer overrides and secure retained files. Metadata availability is not proof of usable fonts or final exports. Selecting a kit must not silently restyle a campaign.
+
+The operator authorized releasing the verified workspace change, while requesting broader comparison and home-screen checks. This authorization does not make the migration blockers complete. Keep release evidence separate from full transition acceptance.

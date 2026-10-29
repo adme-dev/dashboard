@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { layoutName } from '~/utils/banner-workspace'
 import { FORMATS, BANNER_SETS, PLATFORM_META } from '~/utils/banner-constants'
 
 const {
@@ -61,7 +62,7 @@ function platformColor(key: string): string {
             :style="{ backgroundColor: platformColor(key) }"
           />
           <div class="flex-1 min-w-0">
-            <div class="text-xs font-medium text-[#e0e0e0] truncate">{{ FORMATS[key]?.name }}</div>
+            <div class="text-xs font-medium text-[#e0e0e0] truncate">{{ layoutName(FORMATS[key]) }}</div>
             <div class="text-[10px] text-[#777] font-mono">{{ FORMATS[key]?.w }}x{{ FORMATS[key]?.h }}</div>
           </div>
           <UBadge v-if="state.activeKey === key" color="primary" variant="subtle" size="xs">Editing</UBadge>

@@ -1,37 +1,46 @@
 <script setup lang="ts">
-import { FORMATS, PLATFORM_META } from '~/utils/banner-constants'
+import { computed, nextTick, ref, watch } from 'vue'
+import { FORMATS } from '~/utils/banner-constants'
+
+import { layoutName, layoutRows, fitLayoutRows, WORKSPACE_GAP, WORKSPACE_FOOTER } from '~/utils/banner-workspace'
 
 const props = defineProps<{ projectId?: string }>()
 
-const { state, setActiveArtboard, selectLayer, zoomToFitFormat } = useBannerStudio()
+const { state, setActiveArtboard, selectLayer, zoomToFitFormat, setLayoutView } = useBannerStudio()
 const { sendCursorMove } = useBannerRealtime()
-const commentMode = inject<Ref<boolean>>('commentMode', ref(false))
 
 const artboardRefs = ref<Record<string, any>>({})
 const canvasEl = ref<HTMLElement | null>(null)
 const isPanning = ref(false)
 const panStart = ref({ x: 0, y: 0, scrollX: 0, scrollY: 0 })
 
-// Initialise after layout, and only on project/artboard changes. Resizing a panel
-// must not undo a zoom level the designer has deliberately chosen.
-watch([() => state.project?.id, () => state.setKeys.length, () => state.activeKey, canvasEl], (_next, previous) => {
+const rows = computed(() => layoutRows(state.setKeys.map(key => FORMATS[key]).filter(Boolean)))
+const isOverview = computed(() => state.layoutView === 'all')
+
+// Selection in the overview must not reflow or zoom the other artboards.
+watch([() => state.project?.id, () => state.setKeys.join('|'), () => state.layoutView, canvasEl], () => {
+  fitWorkspace()
+}, { flush: 'post', immediate: true })
+watch(() => state.activeKey, () => {
+  if (!isOverview.value) fitWorkspace()
+}, { flush: 'post' })
+
+function fitWorkspace(allRows = false) {
   const el = canvasEl.value
   if (!el) return
-  // Opening a design set starts with every layout visible. Choosing an artboard
-  // then gives that size the working scale without changing any layer geometry.
-  if (state.setKeys.length > 1 && (!previous || _next[0] !== previous[0] || _next[1] !== previous[1] || _next[3] !== previous[3])) fitAllArtboards()
+  if (isOverview.value) state.wsScale = fitLayoutRows(allRows ? rows.value : rows.value.slice(0, 1), el.clientWidth, el.clientHeight)
   else zoomToFitFormat(state.activeKey, { width: el.clientWidth, height: el.clientHeight })
-}, { flush: 'post', immediate: true })
-
-function fitAllArtboards() {
-  const el = canvasEl.value
-  const dimensions = state.setKeys.map(key => FORMATS[key]).filter(Boolean)
-  if (!el || !dimensions.length) return
-  const width = dimensions.reduce((sum, format) => sum + format.w, 0)
-  const height = Math.max(...dimensions.map(format => format.h))
-  const gap = Math.max(0, dimensions.length - 1) * 32
-  state.wsScale = Math.max(0.05, Math.min(1, (el.clientWidth - 80 - gap) / width, (el.clientHeight - 96) / height))
   el.scrollTo({ top: 0, left: 0 })
+}
+
+async function fitAllArtboards() {
+  setLayoutView('all')
+  await nextTick()
+  fitWorkspace(true)
+}
+
+function editSize(key: string) {
+  setLayoutView('single', key)
 }
 
 function setArtboardRef(key: string, el: any) {
@@ -44,7 +53,7 @@ function getActiveArtboardEl(): HTMLElement | null {
   return comp?.artboardEl || null
 }
 
-defineExpose({ getActiveArtboardEl, fitAllArtboards, artboardRefs })
+defineExpose({ getActiveArtboardEl, fitAllArtboards, fitWorkspace, artboardRefs })
 
 function onCanvasClick() {
   if (state.activeTool === 'hand') return
@@ -94,7 +103,8 @@ function onCanvasCursorMove(e: MouseEvent) {
 <template>
   <div
     ref="canvasEl"
-    class="w-full h-full overflow-auto p-8 bg-[#1a1a1e]"
+    aria-label="Design layouts canvas"
+    class="banner-workspace w-full h-full overflow-auto p-8 bg-muted text-default"
     :class="{
       'cursor-grab': state.activeTool === 'hand' && !isPanning,
       'cursor-grabbing': isPanning,
@@ -106,81 +116,80 @@ function onCanvasCursorMove(e: MouseEvent) {
     @mouseup="onCanvasMouseUp"
     @mouseleave="onCanvasMouseUp"
   >
-    <div class="flex flex-wrap gap-8 items-start justify-center" @click.self="onCanvasClick">
+    <div class="flex min-w-fit flex-col" :style="{ gap: `${WORKSPACE_GAP}px` }" @click.self="onCanvasClick">
+      <div v-for="(row, rowIndex) in rows" :key="rowIndex"
+        v-show="isOverview || row.some(format => format.key === state.activeKey)"
+        class="flex min-w-fit items-center justify-center"
+        :style="{ gap: `${WORKSPACE_GAP}px` }">
       <div
-        v-for="key in state.setKeys"
-        :key="key"
-        class="flex flex-col items-center gap-2 shrink-0"
+        v-for="format in row"
+        :key="format.key"
+        v-show="isOverview || format.key === state.activeKey"
+        class="group flex shrink-0 flex-col items-center"
+        :data-layout-key="format.key"
         @click.self="onCanvasClick"
       >
-        <!-- Artboard label -->
-        <div class="flex items-center gap-2 mb-1">
-          <span
-            class="w-5 h-5 rounded text-[10px] font-bold flex items-center justify-center shrink-0"
-            :style="{
-              backgroundColor: PLATFORM_META[FORMATS[key]?.platform]?.bg || 'rgba(255,255,255,0.08)',
-              color: PLATFORM_META[FORMATS[key]?.platform]?.color || '#888',
-            }"
-          >{{ FORMATS[key]?.icon || '?' }}</span>
-          <span class="text-xs font-medium text-(--ui-text-muted)">
-            {{ FORMATS[key]?.name || key }}
-          </span>
-          <span class="text-[10px] font-mono text-(--ui-text-dimmed)">
-            {{ FORMATS[key]?.w }}x{{ FORMATS[key]?.h }}
-          </span>
-          <UBadge
-            v-if="state.activeKey === key"
-            color="primary"
-            variant="subtle"
-            size="xs"
-          >
-            Editing
-          </UBadge>
-        </div>
-
         <!-- Artboard wrapper with scale -->
         <div
           class="relative cursor-pointer rounded transition-shadow"
-          :class="state.activeKey === key
-            ? 'ring-2 ring-[#4a8fe8] shadow-[0_0_24px_rgba(74,143,232,0.12)]'
-            : 'ring-1 ring-white/8 hover:ring-white/15'"
+          :class="state.activeKey === format.key
+            ? 'ring-2 ring-primary'
+            : 'ring-1 ring-default hover:ring-primary/50'"
           :style="{
-            width: `${(FORMATS[key]?.w || 300) * state.wsScale}px`,
-            height: `${(FORMATS[key]?.h || 250) * state.wsScale}px`,
+            width: `${(format.w || 300) * state.wsScale}px`,
+            height: `${(format.h || 250) * state.wsScale}px`,
           }"
-          @click.stop="state.activeKey !== key ? setActiveArtboard(key) : undefined"
+          @click.stop="state.activeKey !== format.key ? setActiveArtboard(format.key) : undefined"
         >
           <!-- Inner at full resolution, scaled down -->
           <div
             :style="{
               transformOrigin: 'top left',
               transform: `scale(${state.wsScale})`,
-              width: `${FORMATS[key]?.w || 300}px`,
-              height: `${FORMATS[key]?.h || 250}px`,
+              width: `${format.w || 300}px`,
+              height: `${format.h || 250}px`,
             }"
           >
             <BannerArtboard
-              :ref="(el: any) => setArtboardRef(key, el)"
-              :format-key="key"
-              :is-active="state.activeKey === key"
+              :ref="(el: any) => setArtboardRef(format.key, el)"
+              :format-key="format.key"
+              :is-active="state.activeKey === format.key"
             />
           </div>
 
           <!-- Collaboration cursors overlay -->
           <BannerCollaborationCursors
             :scale="state.wsScale"
-            :active-format-key="key"
+            :active-format-key="format.key"
           />
 
           <!-- Comment overlay (on top of artboard) -->
           <BannerCommentOverlay
             v-if="props.projectId && props.projectId !== 'new'"
-            :format-key="key"
+            :format-key="format.key"
             :project-id="props.projectId"
             :scale="state.wsScale"
           />
         </div>
+        <div class="flex flex-col items-center justify-center gap-1.5" :style="{ height: `${WORKSPACE_FOOTER}px`, width: `${Math.max(144, format.w * state.wsScale)}px` }">
+          <UButton v-if="isOverview" :aria-label="`Edit size: ${layoutName(format)} ${format.w} × ${format.h}`"
+            label="Edit size" icon="i-lucide-pencil" size="xs" color="neutral" variant="soft"
+            class="w-full justify-center opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
+            @click.stop="editSize(format.key)" />
+          <span class="max-w-full truncate rounded-full bg-elevated px-3 py-1 text-xs font-medium text-default"
+            :title="`${layoutName(format)} · ${format.w} × ${format.h} px`">
+            {{ layoutName(format) }} · {{ format.w }} × {{ format.h }} px
+          </span>
+        </div>
+      </div>
       </div>
     </div>
   </div>
 </template>
+
+<style scoped>
+.banner-workspace {
+  background-image: radial-gradient(var(--ui-border-accented) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+</style>
