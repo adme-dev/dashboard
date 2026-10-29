@@ -2,19 +2,21 @@
 
 This is the team's change log for the move from TheBrief. Entries distinguish released features from work still in progress. Detailed evidence and migration acceptance are in the [transition ledger](../plans/2026-10-29-banner-studio-transition.md).
 
-## Light and dark workspace — prepared (30 October 2026)
+## Light and dark workspace — live (30 October 2026)
 
 - Banner Studio opens in light mode, with a sun/moon control in the library, editor and saved viewer.
 - The choice persists across agency and full-screen Banner Studio routes, independently of the agency-wide preference.
 - Toolbar, size list, inspector fields, layer effects and timeline labels follow the selected theme. Saved artwork colours and export content retain their existing values.
 
-Validated locally with the three-size JAC set: both themes, reload persistence, text and animation inspectors, a smaller desktop viewport, and 51 rendered layers with unchanged inline styles, backgrounds and explicit text colours. Theme switches did not dirty the project. Focused automated checks: 659 passed, one skipped. Production release evidence follows verification.
+Validated locally with the three-size JAC set: both themes, reload persistence, text and animation inspectors, a smaller desktop viewport, and 51 rendered layers with unchanged inline styles, backgrounds and explicit text colours. Theme switches did not dirty the project. Focused automated checks: 659 passed, one skipped. Released in [PR #749](https://github.com/adme-dev/dashboard/pull/749), source `1f76a877d7d909141cd452efe092a94d90a8185a`, production deployment `7c4b5006-1fb9-4680-a13d-1e35859f71a5`. Verified the live library and JAC editor, both themes, reload persistence and 51 unchanged artwork layers. The saved acceptance preview loads with its theme control. An older project without a stored snapshot still correctly asks for its first save.
 
 ## Bulk migration update (30 October 2026)
 
 TheBrief support confirmed that general API access requires a full Enterprise plan change; there is no API-only add-on. They recommend folder/workspace bulk selection with batches of about 50 designs, depending on complexity and browser download limits. No plan change has been made.
 
-A two-design Chery bulk HTML5 export completed on Pro Legacy: one 5.5 MB outer ZIP with four size-specific ZIPs. Local images, fonts and MP3 files were retained. The current converter held the EV set for unsupported text shadows, and the larger carousel for unsupported slide/custom animations. No native projects were created from this test. Download capability and editable migration acceptance remain separate.
+A two-design Chery bulk HTML5 export completed on Pro Legacy: one 5.5 MB outer ZIP with four size-specific ZIPs. Local images, fonts and MP3 files were retained. The current converter held the EV set for unsupported text shadows, and the larger carousel for unsupported slide/custom animations. No native projects were created from this test. Download capability and editable migration acceptance remain separate. A second test preserved full project names by turning off the 50-character filename limit. Returning from that naming panel reset custom-font conversion to SVG, so the final recipe rechecks that option and turns it off immediately before download. The verified full-name archive contains 18 font-file entries and two MP3 entries across four layouts. Extracted and verified 8 unique original TTF files (Aero, HarmonyOS Sans and two Tactic Sans faces) into a separate ZIP with family/weight/style metadata and checksums. This archive is ready for reuse; it has not been bulk-registered in the Banner Studio font catalog. MotorStack's current Chery kit lists Helvetica, so it must not silently substitute for these original campaign fonts.
+
+**Export recipe:** select designs in the folder → Download → HTML5 / General usage → Exported file names: keep Design name, Size and Unit; turn off the 50-character limit → return and recheck **Convert custom fonts to SVG is off** → Local download. Start small, validate the archive, then use batches up to the support-recommended 50 designs. Keep original ZIPs and a folder/source manifest. The current browser importer accepts up to 10 prepared native packages; an unconverted bulk HTML5 ZIP is not a native import package.
 
 ## Matching TheBrief folders — live (30 October 2026)
 
