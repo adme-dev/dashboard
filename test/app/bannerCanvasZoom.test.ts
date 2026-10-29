@@ -30,7 +30,7 @@ describe('Banner Studio initial canvas scale', () => {
   it('does not enlarge small banners automatically when switching sizes', () => {
     const studio = useBannerStudio()
     studio.loadProject({ id: 'test', canvasData: { mrec: { layers: [] }, ig_port: { layers: [] } } } as any)
-    studio.setActiveArtboard('ig_port')
+    studio.setLayoutView('single', 'ig_port')
     studio.setActiveArtboard('mrec')
     expect(studio.state.wsScale).toBe(1)
   })

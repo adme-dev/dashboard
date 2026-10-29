@@ -1,9 +1,11 @@
 <script setup lang="ts">
+import { computed, ref, watch, nextTick, onMounted, onUnmounted } from 'vue'
+import { layoutName } from '~/utils/banner-workspace'
 import { LAYER_COLORS, LAYER_TYPE_COLORS } from '~/utils/banner-constants'
 import type { KeyframeProperty, Keyframe, Layer } from '~/types/banner-studio'
 import { hasKeyframes } from '~/composables/useBannerTimeline'
 
-const { state, activeLayers, selectLayer, updateLayer, duplicateLayer, removeLayer, bringToFront, sendToBack, getMotionPathTweens, updateMotionPathTween, addMotionPathTween, removeMotionPathTween } = useBannerStudio()
+const { state, activeLayers, activeFormat, selectLayer, updateLayer, duplicateLayer, removeLayer, bringToFront, sendToBack, getMotionPathTweens, updateMotionPathTween, addMotionPathTween, removeMotionPathTween } = useBannerStudio()
 const { remoteLocks } = useBannerRealtime()
 const { togglePlay, seekTo, restartTimeline, buildTimeline } = useBannerTimeline()
 const { decomposingLayerId, decomposeFromUrl } = useDecompose()
@@ -236,10 +238,10 @@ function clearLoopRange() {
 const stretchLabel = ref<{ x: number; y: number; text: string } | null>(null)
 
 // ── Constants ─────────────────────────
-const LANE_H = 28
+const LANE_H = 32
 const KF_TRACK_H = 20
-const RULER_H = 24
-const LABEL_W = 160
+const RULER_H = 32
+const LABEL_W = 256
 
 /** Get height for a layer lane (main + expanded keyframe tracks) */
 function getLaneHeight(layerId: number): number {
@@ -774,9 +776,11 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="flex flex-col h-full bg-[#222225] select-none" @wheel="onWheelZoom">
+  <div aria-label="Animation timeline" class="flex min-h-0 flex-col h-full bg-default select-none" @wheel="onWheelZoom">
     <!-- Timeline header -->
-    <div class="flex items-center gap-2 px-3 py-1.5 border-b border-[#3a3a3f] bg-[#2a2a2e] shrink-0">
+    <div class="flex flex-wrap items-center gap-2 px-3 py-1.5 border-b border-default bg-elevated shrink-0">
+      <span class="text-sm font-semibold mr-2">Timeline</span>
+      <span class="hidden sm:inline text-xs text-muted max-w-64 truncate">{{ layoutName(activeFormat || undefined) }} · {{ activeFormat?.w }} × {{ activeFormat?.h }}</span>
       <UButton
         :aria-label="state.isPlaying ? 'Pause playback' : 'Play playback'"
         :icon="state.isPlaying ? 'i-lucide-pause' : 'i-lucide-play'"
@@ -786,6 +790,7 @@ onUnmounted(() => {
       />
       <UButton
         icon="i-lucide-rotate-ccw"
+        aria-label="Restart playback"
         variant="ghost"
         size="xs"
         @click="restartTimeline"
@@ -810,25 +815,26 @@ onUnmounted(() => {
           icon="i-lucide-locate-fixed"
           variant="ghost"
           size="xs"
+          aria-label="Center on playhead"
           @click="centerOnPlayhead"
         />
       </UTooltip>
 
       <!-- Zoom controls -->
       <div class="ml-auto flex items-center gap-1">
-        <UButton icon="i-lucide-minus" variant="ghost" size="xs" @click="zoomOut" :disabled="pxPerSec <= ZOOM_MIN" />
+        <UButton aria-label="Zoom timeline out" icon="i-lucide-minus" variant="ghost" size="xs" @click="zoomOut" :disabled="pxPerSec <= ZOOM_MIN" />
         <span class="text-[10px] text-(--ui-text-muted) w-8 text-center font-mono">{{ zoomPercent }}%</span>
-        <UButton icon="i-lucide-plus" variant="ghost" size="xs" @click="zoomIn" :disabled="pxPerSec >= ZOOM_MAX" />
+        <UButton aria-label="Zoom timeline in" icon="i-lucide-plus" variant="ghost" size="xs" @click="zoomIn" :disabled="pxPerSec >= ZOOM_MAX" />
       </div>
     </div>
 
     <!-- Timeline body -->
-    <div ref="timelineEl" class="flex-1 overflow-auto relative">
+    <div ref="timelineEl" aria-label="Timeline tracks" class="flex-1 min-h-0 overflow-auto relative">
       <div class="flex min-w-fit" :style="{ width: `${LABEL_W + timelineWidth}px` }">
         <!-- Layer labels column -->
-        <div class="shrink-0 border-r border-(--ui-border)" :style="{ width: `${LABEL_W}px` }">
+        <div class="sticky left-0 z-30 shrink-0 border-r border-default bg-default" :style="{ width: `${LABEL_W}px` }">
           <!-- Ruler spacer -->
-          <div class="border-b border-(--ui-border)" :style="{ height: `${RULER_H}px` }" />
+          <div class="sticky top-0 z-40 flex items-center border-b border-default bg-elevated px-3 text-xs font-medium text-muted" :style="{ height: `${RULER_H}px` }">Layers</div>
           <!-- Layer labels + keyframe sub-labels -->
           <template v-for="(layer, i) in sortedLayers" :key="layer.id">
             <!-- Main layer label -->
@@ -844,33 +850,37 @@ onUnmounted(() => {
               @contextmenu.prevent="onLayerContextMenu($event, layer)"
             >
               <!-- Expand chevron -->
-              <button
-                class="w-4 h-4 flex items-center justify-center text-[10px] text-(--ui-text-dimmed) hover:text-(--ui-text) shrink-0 transition-transform"
+              <UButton color="neutral" variant="ghost" size="xs"
+                class="p-0 w-4 h-4 flex items-center justify-center text-[10px] text-(--ui-text-dimmed) hover:text-(--ui-text) shrink-0 transition-transform"
                 :class="state.expandedKeyframeLayers.has(layer.id) ? 'rotate-90' : ''"
+                :aria-label="`Keyframe tracks for ${layer.name}`"
+                :aria-expanded="state.expandedKeyframeLayers.has(layer.id)"
                 @click.stop="toggleKeyframeLanes(layer.id)"
               >
                 <UIcon name="i-lucide-chevron-right" class="w-3 h-3" />
-              </button>
+              </UButton>
               <span
                 class="w-2 h-2 rounded-full shrink-0"
                 :style="{ backgroundColor: getLayerColor(layer) }"
               />
-              <button
-                class="w-4 h-4 flex items-center justify-center shrink-0"
+              <UButton color="neutral" variant="ghost" size="xs"
+                class="p-0 w-4 h-4 flex items-center justify-center shrink-0"
                 :class="layer.hidden ? 'text-[#555]' : 'text-[#888] hover:text-white'"
+                :aria-label="`${layer.hidden ? 'Show' : 'Hide'} ${layer.name}`"
                 @click.stop="updateLayer(layer.id, { hidden: !layer.hidden })"
               >
                 <UIcon :name="layer.hidden ? 'i-lucide-eye-off' : 'i-lucide-eye'" class="w-3 h-3" />
-              </button>
-              <button
-                class="w-4 h-4 flex items-center justify-center shrink-0"
+              </UButton>
+              <UButton color="neutral" variant="ghost" size="xs"
+                class="p-0 w-4 h-4 flex items-center justify-center shrink-0"
                 :class="layer.locked ? 'text-[#e8884a]' : 'text-[#555] hover:text-white'"
+                :aria-label="`${layer.locked ? 'Unlock' : 'Lock'} ${layer.name}`"
                 @click.stop="updateLayer(layer.id, { locked: !layer.locked })"
               >
                 <UIcon :name="layer.locked ? 'i-lucide-lock' : 'i-lucide-unlock'" class="w-3 h-3" />
-              </button>
+              </UButton>
               <UIcon v-if="decomposingLayerId === layer.id" name="i-lucide-loader-2" class="w-3 h-3 animate-spin text-(--ui-primary) shrink-0" />
-              <span class="text-[10px] truncate text-(--ui-text-muted)">{{ layer.name }}</span>
+              <span class="text-xs truncate text-default">{{ layer.name }}</span>
               <!-- Mask indicator -->
               <UIcon v-if="layer.isMask" name="i-lucide-scan" class="w-3 h-3 text-[#e84aff] shrink-0" />
               <!-- Motion path indicator -->
@@ -917,12 +927,12 @@ onUnmounted(() => {
           </template>
         </div>
 
-        <!-- Tracks area -->
-        <div class="flex-1 relative">
+        <!-- Keep the playhead below the pinned labels when scrolling horizontally. -->
+        <div class="flex-1 relative isolate">
           <!-- Ruler -->
           <div
             ref="rulerEl"
-            class="border-b border-(--ui-border) relative cursor-pointer"
+            aria-label="Time ruler" class="sticky top-0 z-20 border-b border-default bg-elevated cursor-pointer"
             :style="{ height: `${RULER_H}px` }"
             @mousedown="onRulerMouseDown"
           >
@@ -937,13 +947,17 @@ onUnmounted(() => {
                 :style="{
                   width: '1px',
                   height: mark.label ? '12px' : '6px',
-                  marginTop: mark.label ? '12px' : '18px',
+                  marginTop: mark.label ? '20px' : '26px',
                 }"
               />
               <span
                 v-if="mark.label"
-                class="absolute top-0 left-1 text-[9px] text-(--ui-text-dimmed) whitespace-nowrap"
+                class="absolute top-1 left-1 text-[11px] text-muted whitespace-nowrap"
               >{{ mark.label }}</span>
+            </div>
+            <div class="absolute top-0 bottom-0 pointer-events-none" :style="{ left: `${playheadX}px` }">
+              <div class="h-full w-px bg-primary" />
+              <div class="absolute top-0 -left-1 h-2 w-2 rotate-45 bg-primary" />
             </div>
             <!-- Loop range overlay -->
             <div
@@ -980,7 +994,7 @@ onUnmounted(() => {
             <div
               class="relative border-b border-(--ui-border)/30 cursor-pointer"
               :style="{ height: `${LANE_H}px`, zIndex: 2 }"
-              @click="onTrackClick"
+              @click="selectLayer(layer.id); onTrackClick($event)"
             >
               <!-- Presence bar group (draggable) -->
               <div
@@ -1019,6 +1033,9 @@ onUnmounted(() => {
                     opacity: 0.7,
                   }"
                 />
+                <span class="absolute inset-0 flex items-center gap-2 overflow-hidden px-2 text-[10px] font-medium text-default pointer-events-none whitespace-nowrap">
+                  {{ layer.type === 'audio' ? 'Audio' : hasKeyframes(layer) ? 'Keyframes' : layer.animIn !== 'none' ? layer.animIn : layer.name }}
+                </span>
                 <!-- Left edge handle -->
                 <div
                   class="absolute top-0 left-0 w-[6px] h-full cursor-col-resize hover:bg-white/20 rounded-l-sm"
@@ -1178,8 +1195,8 @@ onUnmounted(() => {
             class="absolute top-0 bottom-0 pointer-events-none"
             :style="{ left: `${playheadX}px`, zIndex: 50 }"
           >
-            <div class="w-px h-full bg-red-500" />
-            <div class="absolute -top-0 -left-[4px] w-[9px] h-3 bg-red-500 rounded-b-sm" />
+            <div class="w-px h-full bg-primary" />
+            <div class="absolute -top-0 -left-[4px] w-[9px] h-3 bg-primary rounded-b-sm" />
           </div>
         </div>
       </div>

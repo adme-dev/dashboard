@@ -2494,7 +2494,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Multi-Format Artboards',
-        content: 'See every size together on the overview canvas. Each artboard keeps its own position, size and timing. When imported layers share a source identity, text, fonts, colours and asset choices update across those sizes as one undoable edit. The full-screen editor opens without the agency dashboard navigation and keeps the timeline and inspector close to the canvas. Add formats at any time, and use AI auto-resize when a new layout needs a starting point.'
+        content: 'See named sizes together on a dotted overview canvas, with square and portrait layouts above landscape formats. Choose Edit size or Single edit to focus on one artboard; return to All layouts from the toolbar or Escape. Single edit changes only that size, while All layouts updates linked content across sizes. Each artboard keeps its own position, size and timing. When imported layers share a source identity, text, fonts, colours and asset choices update across those sizes as one undoable edit. The full-screen editor opens without the agency dashboard navigation and keeps the timeline and inspector close to the canvas. Add formats at any time, and use AI auto-resize when a new layout needs a starting point.'
       },
       {
         title: 'Properties Panel',
@@ -2518,7 +2518,7 @@ const features: Record<string, Feature> = {
     details: [
       {
         title: 'Keyframe Timeline',
-        content: 'A visual timeline at the bottom of the editor shows every layer as a row with diamond-shaped keyframe markers. Drag keyframes to adjust timing, click between them to add new property changes, and use the playhead to scrub through the animation in real time. Each keyframe can animate position, scale, rotation, opacity, colour, and more — all rendered by GSAP for buttery smooth playback.'
+        content: 'A full-width timeline at the bottom of the editor keeps layer names pinned on the left and the time ruler visible as you scroll. Named animation bars and a shared playhead make timing easy to scan; expand a layer to see its keyframe tracks. Drag keyframes to adjust timing, click between them to add new property changes, and use the playhead to scrub through the animation in real time. Each keyframe can animate position, scale, rotation, opacity, colour, and more — all rendered by GSAP for buttery smooth playback.'
       },
       {
         title: 'Entry & Exit Animations',

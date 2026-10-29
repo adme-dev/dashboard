@@ -25,6 +25,7 @@ const state = reactive({
   sets: {} as Record<string, ArtboardState>,
   setKeys: [] as string[],
   activeKey: '',
+  layoutView: 'all' as 'all' | 'single',
   selectedLayerId: null as number | null,
   clipboard: null as Layer | null,
   wsScale: 1,
@@ -174,7 +175,7 @@ export function useBannerStudio() {
     const shared = Object.fromEntries(sharedFields
       .filter(key => Object.prototype.hasOwnProperty.call(props, key))
       .map(key => [key, props[key]])) as Partial<Layer>
-    const targets = layer.linkId && Object.keys(shared).length
+    const targets = state.layoutView === 'all' && layer.linkId && Object.keys(shared).length
       ? state.setKeys.flatMap(key => key === state.activeKey ? [] :
         (state.sets[key]?.layers || []).filter(other => other.linkId === layer.linkId && other.type === layer.type).map(other => ({ key, other })))
       : []
@@ -251,7 +252,13 @@ export function useBannerStudio() {
     if (!state.sets[key]) return
     state.selectedLayerId = null
     state.activeKey = key
-    zoomToFitFormat(key)
+    if (state.layoutView === 'single') zoomToFitFormat(key)
+  }
+
+  function setLayoutView(view: 'all' | 'single', key = state.activeKey) {
+    if (!state.sets[key]) return
+    setActiveArtboard(key)
+    state.layoutView = view
   }
 
   function addSizeToSet(key: string) {
@@ -547,6 +554,7 @@ export function useBannerStudio() {
     state.clipboard = null
     animClipboard.value = null
     state.project = project
+    state.layoutView = 'all'
     state.sets = JSON.parse(JSON.stringify(project.canvasData || {}))
     state.setKeys = Object.keys(state.sets)
     for (const key of state.setKeys) {
@@ -972,6 +980,7 @@ export function useBannerStudio() {
     selectLayer,
     // Artboard ops
     setActiveArtboard,
+    setLayoutView,
     zoomToFitFormat,
     addSizeToSet,
     addSizeWithLayers,
