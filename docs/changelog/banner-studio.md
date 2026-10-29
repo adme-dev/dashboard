@@ -2,13 +2,17 @@
 
 This is the team's change log for the move from TheBrief. Entries distinguish released features from work still in progress. Detailed evidence and migration acceptance are in the [transition ledger](../plans/2026-10-29-banner-studio-transition.md).
 
-## Unreleased — project overview
+## Project overview — release #746
+
+Release status and deployment evidence: [PR #746](https://github.com/adme-dev/dashboard/pull/746).
 
 - The full-screen app and agency dashboard share the same project overview.
 - Browse visual project thumbnails in grid or list view, with client and imported-folder filters.
 - Find projects by name, client, folder/tag or dimensions; sort by name or last modified.
 - Native thumbnails reflect the saved canvas rather than an older imported thumbnail. Open a project in the same editor mode used to browse it.
 - Keep existing import, duplicate and delete actions and paginated browsing.
+
+Validated with 605 passing checks (1 skipped), plus local browser checks for thumbnails, search, folder/client filtering, pagination and opening the editor.
 
 Folder filters use recorded import labels. Creating, renaming, moving and nesting folders is still outstanding.
 
