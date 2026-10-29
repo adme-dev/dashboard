@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- Compact mocked UI/API fixtures. */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import handler from '../../server/api/email/templates/import.post'
+import { snapshotRenderInput } from '../../shared/emailRendering/bounds'
 
 const mocks = vi.hoisted(() => {
   vi.stubGlobal('defineEventHandler', (handler: unknown) => handler)
@@ -27,6 +28,11 @@ describe('import API', () => {
     expect(await handler(event)).toMatchObject({ html: '<html>Preview</html>', blocks: 1 })
     expect(mocks.scope).toHaveBeenCalledWith(event, { id: 'writer' }, null)
     expect(mocks.create).not.toHaveBeenCalled()
+  })
+  it('previews a missing optional subject through the strict renderer boundary', async () => {
+    mocks.render.mockImplementationOnce(async (_document, options) => { snapshotRenderInput(options); return '<html>Preview</html>' })
+    expect(await handler(event)).toMatchObject({ html: '<html>Preview</html>' })
+    expect(mocks.render).toHaveBeenCalledWith(expect.anything(), {})
   })
   it('saves only explicitly via existing create pipeline', async () => {
     raw = JSON.stringify({ ...JSON.parse(raw), save: true })

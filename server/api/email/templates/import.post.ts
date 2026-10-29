@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { requireWriteAccess } from '~~/server/utils/auth'
 import { resolveEmailWriteClientId } from '~~/server/utils/email-marketing/access'
 import { createTemplate } from '~~/server/utils/email-marketing/templates'
+import { renderTemplateDocument } from '~~/server/utils/email-marketing/render'
 import { createEmailRenderer } from '~~/server/utils/email-marketing/render/client'
 import { prepareTemplateImport, MAX_TEMPLATE_IMPORT_BYTES } from '~~/server/utils/email-marketing/templateImport'
 
@@ -22,7 +23,7 @@ export default defineEventHandler(async (event) => {
   } catch { throw createError({ statusCode: 400, statusMessage: 'Invalid import. Use HTML or a valid XeroFlow document JSON, up to 512 KB.' }) }
   const clientId = await resolveEmailWriteClientId(event, user, input.client_id ?? null)
   const renderer = createEmailRenderer(event.context?.cloudflare?.env ?? {})
-  if (!input.save) return { html: await renderer.renderDocument(document, { subjectLine: input.subject }), blocks: Object.keys(document).length - 1 }
+  if (!input.save) return { html: await renderTemplateDocument(document, { subjectLine: input.subject }, renderer), blocks: Object.keys(document).length - 1 }
   const template = await createTemplate({ name: input.name, subject: input.subject, body_source: document, client_id: clientId, folder_name: input.folder_name ?? null, created_by: user.id, template_kind: 'template' }, renderer)
   return { template }
 })

@@ -10,6 +10,12 @@ describe('email template import', () => {
     expect(doc.imported.data.props?.contents).toContain('style="color:red"')
     expect(doc.imported.data.props?.contents).toContain('https://example.com/a.jpg')
   })
+  it('preserves email inline layout without allowing hidden or positioned content', () => {
+    const html = sanitizeImportedHtml('<table style="display:inline-table;margin:0 auto;background:#000"><tr><td>Social</td></tr></table><div style="display:inline-block;position:fixed">Icon</div>')
+    expect(html).toContain('display:inline-table;margin:0 auto;background:#000')
+    expect(html).toContain('display:inline-block')
+    expect(html).not.toContain('position')
+  })
   it('removes active markup, encoded schemes, handlers and unsafe CSS', () => {
     const html = sanitizeImportedHtml('<script>alert(1)</script><iframe src="https://example.com"></iframe><form>secret</form><img onerror="evil()" src="data:x"><a href="jav&#97;script:evil()">Go</a><p style="background:url(https://example.com)">Text</p>')
     for (const unsafe of ['script', 'iframe', 'form', 'onerror', 'data:x', 'javascript', 'url(']) expect(html).not.toContain(unsafe)
