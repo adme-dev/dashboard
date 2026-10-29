@@ -8,6 +8,7 @@
      testable via renderToString. Non-interactive — the parent owns clicks. -->
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { useElementSize } from '@vueuse/core'
 import EdmBlockRenderer from './EdmBlockRenderer.vue'
 import { buildStarterTemplateDocument } from '~~/app/utils/edmPresets'
 import type { EdmFlyhubBlock } from '~~/app/types/edm'
@@ -47,12 +48,14 @@ const blocks = computed<ThumbnailBlockEntry[]>(() => {
     .filter((entry): entry is ThumbnailBlockEntry => Boolean(entry.block))
 })
 
-const scale = computed(() => props.width / EMAIL_WIDTH)
+const thumbnailRoot = ref<HTMLElement | null>(null)
+const { width: measuredWidth } = useElementSize(thumbnailRoot, { width: props.width, height: 0 })
+const scale = computed(() => (measuredWidth.value || props.width) / EMAIL_WIDTH)
 
 const useImagePreview = computed(() => Boolean(props.previewImageUrl && !imageFailed.value))
 
 const tileStyle = computed(() => ({
-  width: props.width + 'px',
+  width: '100%',
   height: useImagePreview.value ? props.maxHeight + 'px' : undefined,
   maxHeight: props.maxHeight + 'px'
 }))
@@ -67,6 +70,7 @@ const innerStyle = computed(() => ({
 
 <template>
   <div
+    ref="thumbnailRoot"
     class="edm-template-thumbnail relative overflow-hidden rounded-md border border-default bg-white"
     :style="tileStyle"
   >

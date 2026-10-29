@@ -59,6 +59,13 @@ describe('EdmTemplateThumbnail', () => {
     expect(html).toContain('pointer-events:none')
   })
 
+  it('fills the preview frame so the hover border follows the image edge', async () => {
+    const app = createSSRApp({ render: () => h(EdmTemplateThumbnail, { templateId: 'postcards-glidex', previewImageUrl: '/email/template-previews/postcards-glidex.jpeg', width: 320, maxHeight: 430 }) })
+    const html = await renderToString(app)
+    expect(html).toContain('width:100%')
+    expect(html).toContain('height:430px')
+  })
+
   it('keys rendered starter blocks by document block id, not array index', () => {
     const source = readFileSync(
       new URL('../../app/components/email/builder/EdmTemplateThumbnail.vue', import.meta.url),

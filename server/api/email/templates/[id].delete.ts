@@ -10,6 +10,7 @@ export default defineEventHandler(async (event) => {
   const existing = await getTemplate(id)
   if (!existing) throw createError({ statusCode: 404, statusMessage: 'not_found' })
   await assertEmailClientAccess(event, user, existing.client_id)
-  await deleteTemplate(id)
+  const deleted = await deleteTemplate(id, existing.client_id)
+  if (deleted === false) throw createError({ statusCode: 404, statusMessage: 'not_found' })
   return { ok: true }
 })

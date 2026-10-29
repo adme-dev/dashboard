@@ -2,7 +2,8 @@
 <!-- Live-rendered mini preview of a saved EDM document. Non-interactive; parent
      components own clicks/actions. -->
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
+import { useElementSize } from '@vueuse/core'
 import EdmBlockRenderer from './EdmBlockRenderer.vue'
 import type { EdmFlyhubBlock, EdmFlyhubDocument } from '~~/app/types/edm'
 
@@ -30,10 +31,12 @@ const blocks = computed<ThumbnailBlockEntry[]>(() => {
     .filter((entry): entry is ThumbnailBlockEntry => Boolean(entry.block))
 })
 
-const scale = computed(() => props.width / EMAIL_WIDTH)
+const thumbnailRoot = ref<HTMLElement | null>(null)
+const { width: measuredWidth } = useElementSize(thumbnailRoot, { width: props.width, height: 0 })
+const scale = computed(() => (measuredWidth.value || props.width) / EMAIL_WIDTH)
 
 const tileStyle = computed(() => ({
-  width: props.width + 'px',
+  width: '100%',
   maxHeight: props.maxHeight + 'px'
 }))
 
@@ -47,6 +50,7 @@ const innerStyle = computed(() => ({
 
 <template>
   <div
+    ref="thumbnailRoot"
     class="edm-document-thumbnail relative overflow-hidden rounded-md border border-default bg-white"
     :style="tileStyle"
   >

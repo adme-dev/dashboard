@@ -530,6 +530,34 @@ const showSaveModal = ref(false)
 type TemplateKind = 'template' | 'draft'
 const templateKind = ref<TemplateKind>('template')
 const templateFolderName = ref('')
+const templateClient = ref<string | undefined>()
+const templateClients = ref<Array<{ id: string, name: string }>>([])
+const canUseSharedTemplates = ref(false)
+const loadingTemplateClients = ref(true)
+const templateClientsError = ref(false)
+const templateClientOptions = computed(() => [
+  ...(canUseSharedTemplates.value ? [{ label: 'Shared default', value: '__shared__' }] : []),
+  ...templateClients.value.map(client => ({ label: client.name, value: client.id }))
+])
+const hasValidTemplateClient = computed(() => templateClientOptions.value.some(option => option.value === templateClient.value))
+
+async function loadTemplateClients() {
+  loadingTemplateClients.value = true
+  templateClientsError.value = false
+  try {
+    const result = await apiFetch<{ clients: Array<{ id: string, name: string }>, canUseSharedTemplates: boolean }>('/api/email/template-clients')
+    templateClients.value = result.clients
+    canUseSharedTemplates.value = result.canUseSharedTemplates
+    const requested = route.query.client
+    templateClient.value = typeof requested === 'string' && result.clients.some(client => client.id === requested)
+      ? requested
+      : undefined
+  } catch {
+    templateClientsError.value = true
+  } finally {
+    loadingTemplateClients.value = false
+  }
+}
 const TEMPLATE_KIND_OPTIONS: { label: string, value: TemplateKind }[] = [
   { label: 'Template', value: 'template' },
   { label: 'Draft', value: 'draft' }
@@ -551,7 +579,12 @@ async function save() {
       toast.add({ title: 'Name required', description: 'Give the template a name.', color: 'error' })
       return
     }
+    if (loadingTemplateClients.value || templateClientsError.value || !hasValidTemplateClient.value) {
+      toast.add({ title: 'Client required', description: 'Choose an available client or shared default before saving.', color: 'error' })
+      return
+    }
     const body = {
+      client_id: templateClient.value === '__shared__' ? null : templateClient.value,
       name: name.value.trim(),
       subject: subject.value || null,
       preview_text: previewText.value || null,
@@ -743,6 +776,8 @@ onMounted(async () => {
     return
   }
 
+  await loadTemplateClients()
+
   const starter = route.query.starter
   if (typeof starter === 'string' && starter) {
     const starterTemplate = findStarterTemplate(starter)
@@ -757,7 +792,8 @@ onMounted(async () => {
     return
   }
 
-  const id = route.query.id
+  const copying = typeof route.query.copy === 'string' && !!route.query.copy
+  const id = copying ? route.query.copy : route.query.id
   if (typeof id !== 'string' || !id) return
   try {
     const res = await apiFetch<{
@@ -769,17 +805,19 @@ onMounted(async () => {
         body_source: unknown
         template_kind?: TemplateKind | null
         folder_name?: string | null
+        client_id: string | null
       }
     }>(`/api/email/templates/${id}`)
     if (res.template?.body_source) {
       store.resetDocument(res.template.body_source as EdmFlyhubDocument)
     }
-    templateId.value = res.template.id
-    name.value = res.template.name || ''
+    templateId.value = copying ? null : res.template.id
+    name.value = copying ? `Copy of ${res.template.name}` : res.template.name || ''
     subject.value = res.template.subject || ''
     previewText.value = res.template.preview_text || ''
     templateKind.value = res.template.template_kind === 'draft' ? 'draft' : 'template'
     templateFolderName.value = res.template.folder_name || ''
+    if (!copying) templateClient.value = res.template.client_id ?? '__shared__'
   } catch {
     toast.add({ title: 'Load failed', description: 'Could not load that template.', color: 'error' })
   }
@@ -1117,7 +1155,7 @@ onMounted(async () => {
     <!-- Save modal -->
     <UModal v-model:open="showSaveModal" :title="campaignId ? 'Save to campaign' : 'Save template'">
       <template #content>
-        <div class="p-4 space-y-4">
+        <div class="@container p-4 space-y-4">
           <p class="text-sm font-semibold">
             {{ campaignId ? `Save content to “${name || 'campaign'}”` : (templateId ? 'Update template' : 'Save template') }}
           </p>
@@ -1128,7 +1166,24 @@ onMounted(async () => {
           <UFormField v-if="!campaignId" label="Name" required>
             <UInput v-model="name" placeholder="e.g. Monthly newsletter" class="w-full" />
           </UFormField>
-          <div v-if="!campaignId" class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <UFormField
+            v-if="!campaignId"
+            label="Client"
+            required
+            :error="templateClientsError ? 'Client choices could not load. Reload the builder to try again.' : undefined"
+            help="Shared defaults are reusable agency templates. Client copies are independent."
+          >
+            <USelect
+              v-model="templateClient"
+              :items="templateClientOptions"
+              value-key="value"
+              placeholder="Choose a client"
+              :loading="loadingTemplateClients"
+              :disabled="loadingTemplateClients || templateClientsError"
+              class="w-full"
+            />
+          </UFormField>
+          <div v-if="!campaignId" class="grid grid-cols-1 gap-4 @lg:grid-cols-2">
             <UFormField label="Save as">
               <USelect
                 v-model="templateKind"
@@ -1137,7 +1192,7 @@ onMounted(async () => {
                 class="w-full"
               />
             </UFormField>
-            <UFormField label="Folder">
+            <UFormField label="Category">
               <UInput v-model="templateFolderName" placeholder="e.g. Newsletters" class="w-full" />
             </UFormField>
           </div>
@@ -1171,6 +1226,7 @@ onMounted(async () => {
               color="primary"
               label="Save"
               :loading="saving"
+              :disabled="!campaignId && (loadingTemplateClients || templateClientsError || !hasValidTemplateClient)"
               @click="save()"
             />
           </div>
