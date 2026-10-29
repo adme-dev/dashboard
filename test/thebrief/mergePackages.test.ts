@@ -4,9 +4,10 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import type { TheBriefPackage } from '../../app/utils/thebrief-import'
 import { parseTheBriefPackage } from '../../app/utils/thebrief-import'
 
-function sizePackage(size: string, sha: string) {
+function sizePackage(size: string, sha: string): TheBriefPackage {
   return {
     kind: 'xeroflow-thebrief-import', version: 1, name: 'Hunter',
     source: { designHash: size, sha256: sha, folder: 'Northern JAC', duration: 8, loopCount: 0 },
@@ -35,4 +36,27 @@ describe('TheBrief design set packaging', () => {
       expect(result.source.sha256).not.toBe(createHash('sha256').update('a'.repeat(64)).digest('hex'))
     } finally { rmSync(dir, { recursive: true, force: true }) }
   })
+})
+
+it('retains every independently managed font alias when source paths and bytes match', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'thebrief-font-merge-'))
+  try {
+    const paths = ['1200x1200', '1080x1920'].map((size, index) => {
+      const pkg = sizePackage(size, String(index + 1).repeat(64))
+      const family = `Campaign XF source${index}`
+      pkg.canvasData[`custom_${size}`].layers[0].fontFamily = family
+      pkg.fonts = [{ path: './fonts/campaign.ttf', fileName: 'campaign.ttf', family, weight: 400, style: 'normal', format: 'truetype', mimeType: 'font/ttf', sha256: 'a'.repeat(64), base64: 'YQ==' }]
+      const file = join(dir, `${index}.json`)
+      writeFileSync(file, JSON.stringify(pkg))
+      return file
+    })
+    const output = join(dir, 'set.json')
+    execFileSync(process.execPath, ['--import', 'tsx', 'scripts/thebrief/merge-packages.mjs', 'campaign', 'Campaign set', output, ...paths], {
+      cwd: resolve('.'), env: { ...process.env, TSX_TSCONFIG_PATH: 'scripts/thebrief/tsconfig.json' }, timeout: 10000
+    })
+    const merged = parseTheBriefPackage(JSON.parse(readFileSync(output, 'utf8')))
+    expect(merged.fonts).toHaveLength(2)
+    expect(new Set(merged.fonts.map(font => font.path)).size).toBe(2)
+    for (const board of Object.values(merged.canvasData)) expect(merged.fonts.some(font => font.family === board.layers[0].fontFamily)).toBe(true)
+  } finally { rmSync(dir, { recursive: true, force: true }) }
 })

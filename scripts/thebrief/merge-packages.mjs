@@ -24,11 +24,18 @@ for (const pkg of packages) {
     if (Object.hasOwn(canvasData, key)) throw new Error(`Duplicate design size: ${key}`)
     canvasData[key] = board
   }
-  for (const [collection, target] of [[pkg.assets, assets], [pkg.fonts, fonts]]) {
-    for (const item of collection) {
-      const existing = target.get(item.path)
-      if (existing && existing.sha256 !== item.sha256) throw new Error(`Conflicting packaged asset: ${item.path}`)
-      target.set(item.path, item)
+  for (const item of pkg.assets) {
+    const existing = assets.get(item.path)
+    if (existing && existing.sha256 !== item.sha256) throw new Error(`Conflicting packaged asset: ${item.path}`)
+    assets.set(item.path, item)
+  }
+  for (const font of pkg.fonts) {
+    const identity = `${font.family}:${font.weight}:${font.style}`
+    const existing = fonts.get(identity)
+    if (existing && existing.sha256 !== font.sha256) throw new Error(`Conflicting packaged font: ${font.family}`)
+    if (!existing) {
+      const aliasHash = createHash('sha256').update(identity).digest('hex')
+      fonts.set(identity, { ...font, path: `./fonts/${aliasHash}-${font.fileName}` })
     }
   }
 }

@@ -1,5 +1,15 @@
 # Banner Studio change log
 
+## Timeline picker and compact library navigation (30 October 2026)
+
+- Search Clients, Folders and Tags in separate sidebar tabs. All clients and Unassigned stay pinned, names wrap, and each list scrolls within the screen. Active filters remain visible above projects when changing tabs.
+- Click native entrance or exit clips for a floating preset picker. Layer icons identify media types; the inspector opens for timing and easing. Words Pop has editable duration and stagger. Imported keyframe tracks open their existing details without replacing source motion.
+- Offline conversion now accepts CSS unitless-zero text shadows; combining sizes retains distinct managed font aliases even when source filenames and bytes match.
+- Imported four unchanged Chery source images into the shared asset library: background, white logo, red E5 and white E5. See `docs/migrations/thebrief-chery-source-assets-20261030.json` for source checksums and stored IDs. No client project was created. The EV design remains held for `translateZ`/`rotateX` motion; the carousel remains held for custom animation/slide data.
+
+Validation: local browser checks covered client search, no matches, Unassigned, folder search, active filter visibility, long names, light/dark mode, 390px and 1280px layouts, the transition picker and editable word timing. Automated suite: 441 passed, 1 skipped; the unchanged rectangle-gradient test separately fails because installed happy-dom 20.0.11 discards that valid CSS gradient even without application code. Existing full-project typecheck errors remain outside these modified files. Release evidence is recorded in the transition ledger after deployment.
+
+
 This is the team's change log for the move from TheBrief. Entries distinguish released features from work still in progress. Detailed evidence and migration acceptance are in the [transition ledger](../plans/2026-10-29-banner-studio-transition.md).
 
 ## Light and dark workspace — live (30 October 2026)

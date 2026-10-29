@@ -9,11 +9,18 @@ const { seekTo, playTimeline, pauseTimeline } = useBannerTimeline()
 
 function set(key: string, val: any) {
   if (!selectedLayer.value) return
-  updateLayer(selectedLayer.value.id, { [key]: val })
+  updateLayer(selectedLayer.value.id, { [key]: val, ...(key === 'animIn' ? { wordPop: undefined } : {}) })
 }
 
 function setNum(key: string, val: string | number) {
   set(key, Number(val))
+}
+
+function setWordTiming(key: 'duration' | 'stagger', value: string | number) {
+  if (!selectedLayer.value?.wordPop) return
+  const number = Number(value)
+  if (!Number.isFinite(number)) return
+  set('wordPop', { ...selectedLayer.value.wordPop, [key]: Math.min(5, Math.max(key === 'duration' ? 0.05 : 0, number)) })
 }
 
 const CATEGORY_LABEL: Record<string, string> = { out: 'Ease out', in: 'Ease in', inOut: 'Ease in/out', special: '' }
@@ -194,9 +201,34 @@ function deleteSelectedKeyframe() {
           @click="set('wordPop', undefined)"
         />
       </div>
-      <p class="mt-2 font-mono text-[10px] text-muted">
-        {{ selectedLayer.wordPop.duration }}s per word · {{ selectedLayer.wordPop.stagger }}s stagger
-      </p>
+      <div class="@container mt-3">
+        <div class="grid grid-cols-1 gap-4 @lg:grid-cols-2">
+          <UFormField label="Seconds per word">
+            <UInput
+              :model-value="selectedLayer.wordPop.duration"
+              type="number"
+              :min="0.05"
+              :max="5"
+              :step="0.05"
+              size="xs"
+              class="w-full"
+              @update:model-value="setWordTiming('duration', $event)"
+            />
+          </UFormField>
+          <UFormField label="Word stagger (seconds)">
+            <UInput
+              :model-value="selectedLayer.wordPop.stagger"
+              type="number"
+              :min="0"
+              :max="5"
+              :step="0.05"
+              size="xs"
+              class="w-full"
+              @update:model-value="setWordTiming('stagger', $event)"
+            />
+          </UFormField>
+        </div>
+      </div>
     </div>
 
     <!-- Keyframe Mode Toggle -->
