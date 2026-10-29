@@ -138,7 +138,7 @@ const filteredStarters = computed(() => {
 })
 
 function starterPreviewImageUrl(starterId: string): string {
-  return `/email/template-previews/${starterId}.jpeg?v=20261029-oem2`
+  return `/email/template-previews/${starterId}.jpeg?v=20261029-oem3`
 }
 
 // ── Rename ──────────────────────────────────────────────────────────────────

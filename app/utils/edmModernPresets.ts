@@ -2,7 +2,7 @@
 // FuturaX and Aviro. This catalog deliberately contains no legacy starter IDs.
 import type { EdmPresetBlockTemplate, EdmSectionPreset, EdmStarterTemplate } from '~~/app/utils/edmPresets'
 import type { EdmFlyhubBlock } from '~~/app/types/edm'
-import { oemSplit, oemPoster, OEM_IMAGES, OEM_DRIVE_IMAGE } from '~~/app/utils/edmOemLayouts'
+import { oemSplit, oemInspectionClose, oemStudioClose, OEM_IMAGES, OEM_DRIVE_IMAGE } from '~~/app/utils/edmOemLayouts'
 import { featureRow, navMenu, richFooter } from '~~/app/utils/edmSectionBuilders'
 
 export const MODERN_EDM_SECTION_IDS = [
@@ -89,9 +89,9 @@ function cta(theme: Theme, title: string, copy: string, label: string, path: str
   const common = { title, copy, action: label, path }
   switch (theme.brand) {
     case 'Northline Motors': return [oemSplit({ ...common, title: 'Your next drive starts here.', image: OEM_DRIVE_IMAGE, alt: 'Kia EV9 outside a contemporary building', bg: '#F0F4F7' })]
-    case 'Fieldwork Property': return [oemPoster({ ...common, image: OEM_IMAGES.property, alt: 'Contemporary home and native landscaping', bg: '#FFFFFF', ink: '#183C35', accent: '#183C35' })]
+    case 'Fieldwork Property': return [oemInspectionClose()]
     case 'Tide House': return [oemSplit({ ...common, image: OEM_IMAGES.hospitality, alt: 'Breakfast on a coastal terrace', reverse: true, bg: '#F6F3ED', ink: '#153B43', accent: '#153B43' })]
-    case 'Forma Studio': return [oemPoster({ ...common, image: OEM_IMAGES.wellness, alt: 'Light-filled Pilates studio', bg: '#F2EFF8', ink: '#39324F', accent: '#39324F' })]
+    case 'Forma Studio': return [oemStudioClose()]
     default: return [oemSplit({ ...common, image: OEM_IMAGES.services, alt: 'Plans and material samples in an architectural workspace', reverse: true, bg: '#182E49', ink: '#FFFFFF', accent: '#FFFFFF', buttonInk: '#182E49' })]
   }
 }

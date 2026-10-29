@@ -26,11 +26,13 @@ describe('OEM-informed dealership campaigns', () => {
     const rsvp = renderTemplateDocumentLocally(buildStarterTemplateDocument('oem-launch-rsvp'))
     expect(interest).toContain('launch updates')
     expect(interest).not.toContain('Confirm attendance')
+    expect((interest.match(/>Register your interest<\/a>/g) || []).length).toBe(1)
     for (const term of ['Event date', 'Event time', 'Dealership address', 'RSVP by', 'Confirm attendance']) expect(rsvp).toContain(term)
   })
   it('provides example savings and offer conditions without inventing prices or scarcity', () => {
     const html = renderTemplateDocumentLocally(buildStarterTemplateDocument('oem-sale-weekend'))
     for (const term of ['Save thousands', 'selected vehicles', 'Offer start', 'Offer end', 'Offer conditions']) expect(html).toContain(term)
+    expect(html).toContain('[Start date]')
     expect(html).not.toMatch(/\$[0-9]|Only [0-9]+ left|Guaranteed finance/)
   })
   it('refreshes the repetitive CTA modules with image-led, structurally varied layouts', () => {
@@ -38,13 +40,15 @@ describe('OEM-informed dealership campaigns', () => {
     const modules = EDM_SECTION_CATEGORIES.flatMap(c => c.presets).filter(s => ids.includes(s.id))
     expect(modules).toHaveLength(5)
     const variants = new Set<string>()
+    let imageLed = 0
     for (const module of modules) {
       const html = JSON.stringify(module.blocks)
-      expect(html).toContain('<img')
+      if (html.includes('<img')) imageLed++
       const layout = html.match(/data-edm-layout=\\"([^\\]+)\\"/)?.[1]
       expect(layout).toBeTruthy()
       variants.add(layout!)
     }
-    expect(variants.size).toBeGreaterThanOrEqual(3)
+    expect(imageLed).toBeGreaterThanOrEqual(3)
+    expect(variants.size).toBeGreaterThanOrEqual(4)
   })
 })
