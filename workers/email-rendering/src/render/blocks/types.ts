@@ -8,40 +8,13 @@ import type { createRenderBudget } from '../../../../../shared/emailRendering/bo
  */
 
 // ---------------------------------------------------------------------------
-// Font family mapping — exact match to @flyhub/email-core FONT_FAMILIES
+// Font family mapping — exact match to @flyhub/email-core FONT_FAMILIES.
+// Strings live in shared/emailRendering/fonts.ts so the editor preview can
+// resolve keys without importing this Worker. Re-exported here so existing
+// renderer imports and golden HTML stay on the same values.
 // ---------------------------------------------------------------------------
 
-export const FONT_FAMILY_MAP: Record<string, string> = {
-  MODERN_SANS: '"Helvetica Neue", "Arial Nova", "Nimbus Sans", Arial, sans-serif',
-  BOOK_SANS: 'Optima, Candara, "Noto Sans", source-sans-pro, sans-serif',
-  ORGANIC_SANS:
-    'Seravek, "Gill Sans Nova", Ubuntu, Calibri, "DejaVu Sans", source-sans-pro, sans-serif',
-  GEOMETRIC_SANS:
-    'Avenir, "Avenir Next LT Pro", Montserrat, Corbel, "URW Gothic", source-sans-pro, sans-serif',
-  HEAVY_SANS:
-    'Bahnschrift, "DIN Alternate", "Franklin Gothic Medium", "Nimbus Sans Narrow", sans-serif-condensed, sans-serif',
-  ROUNDED_SANS:
-    'ui-rounded, "Hiragino Maru Gothic ProN", Quicksand, Comfortaa, Manjari, "Arial Rounded MT Bold", Calibri, source-sans-pro, sans-serif',
-  MODERN_SERIF: 'Charter, "Bitstream Charter", "Sitka Text", Cambria, serif',
-  BOOK_SERIF: '"Iowan Old Style", "Palatino Linotype", "URW Palladio L", P052, serif',
-  MONOSPACE: '"Nimbus Mono PS", "Courier New", "Cutive Mono", monospace'
-}
-
-const DEFAULT_FONT_FAMILY = FONT_FAMILY_MAP.MODERN_SANS || '"Helvetica Neue", "Arial Nova", "Nimbus Sans", Arial, sans-serif'
-
-// ---------------------------------------------------------------------------
-// Helper functions
-// ---------------------------------------------------------------------------
-
-/**
- * Resolve a FlyHub font-family key to its CSS font stack.
- * Falls back to MODERN_SANS when the key is missing or unrecognised.
- */
-export function resolveFontFamily(key?: string | null, fallback?: string): string {
-  const fallbackFont = fallback || DEFAULT_FONT_FAMILY
-  if (!key) return fallbackFont
-  return FONT_FAMILY_MAP[key] || fallbackFont
-}
+export { FONT_FAMILY_MAP, resolveFontFamily } from '../../../../../shared/emailRendering/fonts'
 
 /**
  * Convert a padding object to a CSS shorthand string (e.g. "16px 24px 16px 24px").

@@ -2,6 +2,7 @@
 // FuturaX and Aviro. This catalog deliberately contains no legacy starter IDs.
 import type { EdmPresetBlockTemplate, EdmSectionPreset, EdmStarterTemplate } from '~~/app/utils/edmPresets'
 import type { EdmFlyhubBlock } from '~~/app/types/edm'
+import { oemSplit, oemPoster, OEM_IMAGES, OEM_DRIVE_IMAGE } from '~~/app/utils/edmOemLayouts'
 import { featureRow, navMenu, richFooter } from '~~/app/utils/edmSectionBuilders'
 
 export const MODERN_EDM_SECTION_IDS = [
@@ -29,8 +30,8 @@ const IMAGE_ROOT = 'https://app.xeroflow.io/email/modern/'
 const SITE = 'https://example.com'
 const themes: Record<string, Theme> = {
   electric: { brand: 'Northline Motors', ink: '#12283A', muted: '#506476', paper: '#F1F6FA', deep: '#102332', accent: '#71D9F0', accentInk: '#102332', display: 'GEOMETRIC_SANS' },
-  property: { brand: 'Fieldwork Property', ink: '#183C35', muted: '#526A63', paper: '#F1F5F2', deep: '#183C35', accent: '#D4E4DB', accentInk: '#183C35', display: 'MODERN_SERIF' },
-  hospitality: { brand: 'Tide House', ink: '#153B43', muted: '#526A70', paper: '#F1F7F8', deep: '#153B43', accent: '#F6C99F', accentInk: '#153B43', display: 'MODERN_SERIF' },
+  property: { brand: 'Fieldwork Property', ink: '#183C35', muted: '#526A63', paper: '#F1F5F2', deep: '#183C35', accent: '#D4E4DB', accentInk: '#183C35', display: 'GEOMETRIC_SANS' },
+  hospitality: { brand: 'Tide House', ink: '#153B43', muted: '#526A70', paper: '#F1F7F8', deep: '#153B43', accent: '#F6C99F', accentInk: '#153B43', display: 'GEOMETRIC_SANS' },
   wellness: { brand: 'Forma Studio', ink: '#39324F', muted: '#685F7B', paper: '#F2EFF8', deep: '#39324F', accent: '#DDD5EE', accentInk: '#39324F', display: 'GEOMETRIC_SANS' },
   advisory: { brand: 'Arc & Co.', ink: '#182E49', muted: '#566B82', paper: '#F0F4F9', deep: '#182E49', accent: '#C7DDF8', accentInk: '#182E49', display: 'GEOMETRIC_SANS' }
 }
@@ -85,7 +86,14 @@ function features(theme: Theme, title: string, intro: string, items: { heading: 
   return [heading(title, theme, { bg: theme.paper, size: 27 }), text(intro, theme, { bg: theme.paper, bottom: 18 }), row]
 }
 function cta(theme: Theme, title: string, copy: string, label: string, path: string): EdmPresetBlockTemplate[] {
-  return [heading(title, theme, { bg: theme.deep, color: '#FFFFFF', size: 28, top: 34 }), text(copy, theme, { bg: theme.deep, color: '#E0E7EF', bottom: 22 }), button(label, `${SITE}/${path}`, theme, { bg: theme.deep, bottom: 34 })]
+  const common = { title, copy, action: label, path }
+  switch (theme.brand) {
+    case 'Northline Motors': return [oemSplit({ ...common, title: 'Your next drive starts here.', image: OEM_DRIVE_IMAGE, alt: 'Kia EV9 outside a contemporary building', bg: '#F0F4F7' })]
+    case 'Fieldwork Property': return [oemPoster({ ...common, image: OEM_IMAGES.property, alt: 'Contemporary home and native landscaping', bg: '#FFFFFF', ink: '#183C35', accent: '#183C35' })]
+    case 'Tide House': return [oemSplit({ ...common, image: OEM_IMAGES.hospitality, alt: 'Breakfast on a coastal terrace', reverse: true, bg: '#F6F3ED', ink: '#153B43', accent: '#153B43' })]
+    case 'Forma Studio': return [oemPoster({ ...common, image: OEM_IMAGES.wellness, alt: 'Light-filled Pilates studio', bg: '#F2EFF8', ink: '#39324F', accent: '#39324F' })]
+    default: return [oemSplit({ ...common, image: OEM_IMAGES.services, alt: 'Plans and material samples in an architectural workspace', reverse: true, bg: '#182E49', ink: '#FFFFFF', accent: '#FFFFFF', buttonInk: '#182E49' })]
+  }
 }
 function footer(theme: Theme): EdmPresetBlockTemplate[] {
   // Native footer keeps the renderer's actual unsubscribe handling; identity copy

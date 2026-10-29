@@ -62,8 +62,8 @@ const stubs: Record<string, unknown> = {
   },
   EmailBuilderEdmDocumentThumbnail: {
     name: 'EmailBuilderEdmDocumentThumbnail',
-    props: ['document'],
-    template: '<div class="saved-document-thumb">{{ document?.root?.type }}</div>'
+    props: ['document', 'width', 'maxHeight'],
+    template: '<div class="saved-document-thumb" :data-width="width" :data-max-height="maxHeight">{{ document?.root?.type }}</div>'
   }
 }
 
@@ -102,6 +102,9 @@ describe('Email TemplatesPanel saved templates', () => {
     expect(html).toContain('saved-template-grid')
     expect(html).toContain('saved-template-card')
     expect(html).toContain('saved-document-thumb')
+    expect(html).toContain('data-width="320"')
+    expect(html).toContain('data-max-height="430"')
+    expect(html).not.toContain('Unfiled')
     expect(html).toContain('Saved Newsletter')
     expect(html).toContain('June update')
     expect(html).toContain('No subject')

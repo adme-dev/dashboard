@@ -1604,11 +1604,11 @@ const features: Record<string, Feature> = {
     categoryIcon: 'i-lucide-message-circle',
     categoryIconBg: 'bg-violet-50',
     categoryIconColor: 'text-violet-600',
-    description: 'A visual, section-based email builder — drop in pre-designed sections, launch from eight curated starter templates, fine-tune every block, and render to bulletproof email HTML that looks right in every inbox.',
+    description: 'A visual, section-based email builder — drop in pre-designed sections, launch from eleven curated starter templates, fine-tune every block, and render to bulletproof email HTML that looks right in every inbox.',
     details: [
       {
         title: 'Sections and Building Blocks',
-        content: 'Build emails from 47 current design sections organised by purpose — Header, Content, Feature, Call to action, E-Commerce, Transactional, and Footer — alongside basic blocks like headings, text, buttons, images, dividers, spacers, columns, and containers. Drop a whole section onto the canvas and you get a polished, on-brand layout in one click instead of assembling it element by element. Reorder, duplicate, or delete with a click, use the insert zones between blocks to slot new content exactly where you want it, and edit headings and body copy directly on the canvas — click the text and type, WYSIWYG.'
+        content: 'Build emails from 60 current design sections organised by purpose — Header, Content, Feature, Call to action, E-Commerce, Transactional, and Footer — alongside basic blocks like headings, text, buttons, images, dividers, spacers, columns, and containers. Drop a whole section onto the canvas and you get a polished, on-brand layout in one click instead of assembling it element by element. Reorder, duplicate, or delete with a click, use the insert zones between blocks to slot new content exactly where you want it, and edit headings and body copy directly on the canvas — click the text and type, WYSIWYG.'
       },
       {
         title: 'Live Section Previews',
@@ -1620,7 +1620,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Starter Templates and a Visual Gallery',
-        content: 'Start with GlideX, FuturaX and Aviro, or choose a coordinated industry design for automotive, property, hospitality, health and wellness, or professional services. The eight-template gallery includes locally hosted preview images and filters for industry, email type and design style, plus name and industry search. Each new industry starter contains editable headers, image-led content, features, a clear call to action and an unsubscribe footer. A blank-start option remains available, and saved team templates and drafts are preserved.'
+        content: 'Start with GlideX, FuturaX and Aviro, or choose a coordinated industry design for automotive, property, hospitality, health and wellness, or professional services. Dealership campaigns include upcoming-vehicle interest registration, sale weekends and launch-event RSVPs. The eleven-template gallery includes locally hosted preview images and filters for industry, email type and design style, plus name and industry search. Each new industry starter contains editable headers, image-led content, features, a clear call to action and an unsubscribe footer. A blank-start option remains available, and saved team templates and drafts are preserved.'
       },
       {
         title: 'Per-Block Styling and Bulletproof HTML',
