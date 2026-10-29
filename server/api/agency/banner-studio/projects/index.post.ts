@@ -1,3 +1,4 @@
+import { resolveBannerFolderId } from '~~/server/utils/banner/folders'
 import { requireAuth, requireWriteAccess } from '~~/server/utils/auth'
 import { executeGodModeBannerProjectCreation } from '~~/server/utils/banner/godModeProjectCreation'
 import { findExistingTheBriefProject, readTheBriefProjectIdentity } from '~~/server/utils/banner/thebriefProjectImport'
@@ -14,6 +15,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Project name is required' })
   }
 
+  const folderId = await resolveBannerFolderId(body.folderId)
   const importIdentity = readTheBriefProjectIdentity(clientId, tags)
   if (importIdentity) {
     // Deduplication can return saved canvas data, including on coordinator replay.
@@ -32,13 +34,13 @@ export default defineEventHandler(async (event) => {
         if (existing) return existing
       }
       const result = await db.query(`
-        INSERT INTO banner_projects (name, client_id, canvas_data, tags, created_by)
+        INSERT INTO banner_projects (name, client_id, canvas_data, tags, created_by, folder_id)
         ${marketing
-          ? `SELECT $1, $2::uuid, $3::jsonb, $4::text[], $5 WHERE $2::uuid IS NULL OR EXISTS (SELECT 1 FROM agency_clients active_client
+          ? `SELECT $1, $2::uuid, $3::jsonb, $4::text[], $5, $6::uuid WHERE $2::uuid IS NULL OR EXISTS (SELECT 1 FROM agency_clients active_client
             WHERE active_client.id = $2::uuid AND active_client.is_active = TRUE)`
-          : 'VALUES ($1, $2, $3, $4, $5)'}
+          : 'VALUES ($1, $2, $3, $4, $5, $6)'}
         RETURNING
-          id, name,
+          id, name, folder_id AS "folderId",
           client_id AS "clientId",
           canvas_data AS "canvasData",
           thumbnail_url AS "thumbnailUrl",
@@ -51,7 +53,8 @@ export default defineEventHandler(async (event) => {
         importIdentity?.clientId || clientId || null,
         JSON.stringify(canvasData || {}),
         importIdentity?.tags || tags || [],
-        user.id
+        user.id,
+        folderId
       ])
       if (marketing && !result.rows[0]) throw createError({ statusCode: 403, statusMessage: 'No current access to this client' })
       return result.rows[0]

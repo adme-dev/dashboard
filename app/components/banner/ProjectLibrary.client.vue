@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import type { BannerProject } from '~/types/banner-studio'
+import type { BannerProject, BannerFolder } from '~/types/banner-studio'
+import { bannerFolderPath, bannerFolderRows, bannerProjectInFolder } from '~/utils/banner-folders'
 import { isAmbiguousApiFailure } from '~/utils/apiError'
 import { bannerDimensions, bannerLibraryFacets, filterBannerProjects, sortLibrary } from '~/utils/banner-library'
 import type { LibrarySort } from '~/utils/banner-library'
@@ -13,6 +14,10 @@ const toast = useToast()
 const searchQuery = ref('')
 const clientFilter = ref('all')
 const folderFilter = ref('all')
+const folderSearch = ref('')
+const expandedFolders = ref(new Set<string>())
+const folderData = ref<BannerFolder[]>([])
+const folderError = ref(false)
 const tagFilter = ref('all')
 const savedView = useCookie<'list' | 'grid'>('banner-library-view', { default: () => 'grid', sameSite: 'lax' })
 const view = computed<'list' | 'grid'>({
@@ -37,8 +42,14 @@ const fetchStatus = ref<'idle' | 'pending' | 'success' | 'error'>('idle')
 
 async function refresh() {
   fetchStatus.value = 'pending'
+  folderError.value = false
   try {
-    projectsData.value = await apiFetch<BannerProject[]>('/api/agency/banner-studio/projects')
+    const [projects, folders] = await Promise.all([
+      apiFetch<BannerProject[]>('/api/agency/banner-studio/projects'),
+      apiFetch<BannerFolder[]>('/api/agency/banner-studio/folders').catch(() => { folderError.value = true; return [] })
+    ])
+    projectsData.value = projects
+    folderData.value = folders
     fetchStatus.value = 'success'
   } catch {
     projectsData.value = []
@@ -63,11 +74,19 @@ const clients = computed(() => {
 })
 const clientProjects = computed(() => filterBannerProjects(allProjects.value, { client: clientFilter.value, tag: 'all', status: 'all', search: '' }))
 const facets = computed(() => bannerLibraryFacets(clientProjects.value))
-const folders = computed(() => facets.value.folders)
+const folderRows = computed(() => bannerFolderRows(folderData.value, expandedFolders.value, folderSearch.value))
+const selectedFolderPath = computed(() => bannerFolderPath(folderData.value, folderFilter.value))
+const childFolders = computed(() => folderData.value.filter(f => f.parentId === (folderFilter.value === 'all' ? null : folderFilter.value)))
+function toggleFolder(id: string) {
+  const next = new Set(expandedFolders.value)
+  if (next.has(id)) next.delete(id)
+  else next.add(id)
+  expandedFolders.value = next
+}
 const categories = computed(() => facets.value.categories)
 const projects = computed(() => sortLibrary(filterBannerProjects(clientProjects.value, {
   client: 'all', tag: tagFilter.value, status: statusFilter.value, search: searchQuery.value
-}).filter(p => folderFilter.value === 'all' || p.tags?.includes(folderFilter.value)), sort.value))
+}).filter(p => bannerProjectInFolder(p, folderFilter.value, folderData.value)), sort.value))
 const visibleProjects = computed(() => projects.value.slice((page.value - 1) * pageSize, page.value * pageSize))
 const libraryItems = computed(() => visibleProjects.value.map(p => ({
   id: p.id, name: p.name, client: p.clientName || (p.clientId ? 'Unnamed client' : 'Unassigned'),
@@ -93,7 +112,7 @@ const sortItems = [
 ]
 
 function newProject() {
-  router.push(`${editorBase.value}/new`)
+  router.push({ path: `${editorBase.value}/new`, query: selectedFolderPath.value.length ? { folder: folderFilter.value } : {} })
 }
 
 function editProject(p: BannerProject) {
@@ -110,6 +129,7 @@ async function duplicateProject(p: BannerProject) {
       body: {
         name: `${p.name} (copy)`,
         clientId: p.clientId,
+        folderId: p.folderId,
         canvasData: p.canvasData,
         status: 'draft'
       }
@@ -161,6 +181,7 @@ const hasActiveFilters = computed(() => statusFilter.value !== 'all' || searchQu
 
 function clearFilters() {
   searchQuery.value = ''
+  folderSearch.value = ''
   statusFilter.value = 'all'
   clientFilter.value = 'all'
   folderFilter.value = 'all'
@@ -269,34 +290,23 @@ function clearFilters() {
             <span class="ml-auto text-xs text-muted">{{ client.count }}</span>
           </template>
         </UButton>
-        <h2 class="mt-6 px-2 pb-2 text-xs font-semibold text-muted">
-          Folders
-        </h2>
-        <UButton
-          label="All folders"
-          icon="i-lucide-folders"
-          :aria-pressed="folderFilter === 'all'"
-          :variant="folderFilter === 'all' ? 'soft' : 'ghost'"
-          color="neutral"
-          class="w-full justify-start"
-          @click="() => { folderFilter = 'all' }"
-        />
-        <UButton
-          v-for="folder in folders"
-          :key="folder"
-          :label="folder.slice(14)"
-          :title="folder.slice(14)"
-          icon="i-lucide-folder"
-          :variant="folderFilter === folder ? 'soft' : 'ghost'"
-          :aria-pressed="folderFilter === folder"
-          color="neutral"
-          class="w-full justify-start"
-          :ui="{ label: 'truncate' }"
-          @click="() => { folderFilter = folder }"
-        />
-        <p v-if="!folders.length" class="px-2 py-2 text-xs text-muted">
-          No source folders recorded.
-        </p>
+        <h2 class="mt-6 px-2 pb-2 text-xs font-semibold text-muted">Folders</h2>
+        <UFormField label="Find folder" class="mb-2">
+          <UInput v-model="folderSearch" placeholder="Search folders" icon="i-lucide-search" size="xs" class="w-full" />
+        </UFormField>
+        <UButton label="All folders" icon="i-lucide-folders" :aria-pressed="folderFilter === 'all'"
+          :variant="folderFilter === 'all' ? 'soft' : 'ghost'" color="neutral" class="w-full justify-start" @click="folderFilter = 'all'" />
+        <UAlert v-if="folderError" title="Folders unavailable" description="Reload the library to try again." color="warning" variant="subtle" class="my-2" />
+        <div v-for="row in folderRows" :key="row.folder.id" class="flex min-w-0 items-center" :style="{ paddingLeft: `${row.depth * 12}px` }">
+          <UButton v-if="row.hasChildren" :icon="expandedFolders.has(row.folder.id) || folderSearch.trim() ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'"
+            :aria-label="`${expandedFolders.has(row.folder.id) || folderSearch.trim() ? 'Collapse' : 'Expand'} ${row.folder.name}`"
+            :aria-expanded="!!folderSearch.trim() || expandedFolders.has(row.folder.id)" :disabled="!!folderSearch.trim()" color="neutral" variant="ghost" size="xs" @click="toggleFolder(row.folder.id)" />
+          <span v-else class="w-6 shrink-0" />
+          <UButton :label="row.folder.name" :title="row.folder.name" icon="i-lucide-folder"
+            :aria-pressed="folderFilter === row.folder.id" :variant="folderFilter === row.folder.id ? 'soft' : 'ghost'"
+            color="neutral" class="min-w-0 flex-1 justify-start" :ui="{ label: 'truncate' }" @click="folderFilter = row.folder.id" />
+        </div>
+        <p v-if="!folderError && folderSearch && !folderRows.length" class="px-2 py-2 text-xs text-muted">No matching folders.</p>
         <h2 class="mt-6 px-2 pb-2 text-xs font-semibold text-muted">
           Categories &amp; tags
         </h2>
@@ -362,6 +372,17 @@ function clearFilters() {
           </div>
         </div>
         <div class="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
+          <nav v-if="selectedFolderPath.length" aria-label="Folder breadcrumb" class="mb-4 flex flex-wrap items-center gap-1">
+            <UButton label="All folders" variant="link" color="neutral" size="xs" @click="folderFilter = 'all'" />
+            <template v-for="folder in selectedFolderPath" :key="folder.id">
+              <UIcon name="i-lucide-chevron-right" class="size-3 text-muted" />
+              <UButton :label="folder.name" variant="link" color="neutral" size="xs" @click="folderFilter = folder.id" />
+            </template>
+          </nav>
+          <div v-if="selectedFolderPath.length && childFolders.length && !searchQuery" class="mb-5 grid grid-cols-1 gap-2 @container">
+            <UButton v-for="folder in childFolders" :key="folder.id" :label="folder.name" icon="i-lucide-folder"
+              color="neutral" variant="outline" class="justify-start" @click="folderFilter = folder.id" />
+          </div>
           <div class="mb-4 flex items-center justify-between gap-2">
             <p class="text-xs text-muted" role="status">
               {{ projects.length }} project{{ projects.length === 1 ? '' : 's' }}
@@ -413,10 +434,10 @@ function clearFilters() {
           <div v-else class="py-16 text-center">
             <UIcon name="i-lucide-images" class="mb-3 size-8 text-muted" />
             <h2 class="font-semibold">
-              {{ hasActiveFilters ? 'No matching banners' : 'Your banner library starts here' }}
+              {{ selectedFolderPath.length && !searchQuery ? 'No banners in this folder yet' : hasActiveFilters ? 'No matching banners' : 'Your banner library starts here' }}
             </h2>
             <p class="mt-1 text-sm text-muted">
-              {{ hasActiveFilters ? 'Try a different client, folder or search.' : 'Create a project or import a design from TheBrief.' }}
+              {{ selectedFolderPath.length && !searchQuery ? 'The folder is ready. Create a banner here or import its designs from TheBrief.' : hasActiveFilters ? 'Try a different client, folder or search.' : 'Create a project or import a design from TheBrief.' }}
             </p>
             <UButton
               v-if="hasActiveFilters"

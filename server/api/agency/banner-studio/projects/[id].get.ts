@@ -14,7 +14,7 @@ export default defineEventHandler(async (event) => {
   try {
     const row = await queryOneFresh(`
       SELECT
-        p.id, p.name,
+        p.id, p.name, p.folder_id AS "folderId",
         p.client_id AS "clientId",
         c.name AS "clientName",
         p.canvas_data AS "canvasData",

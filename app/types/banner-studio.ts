@@ -170,7 +170,16 @@ export interface ArtboardState {
   bgColor?: string
 }
 
+export interface BannerFolder {
+  id: string
+  name: string
+  parentId: string | null
+  position: number
+  sourcePath?: string[] | null
+}
+
 export interface BannerProject {
+  folderId?: string | null
   id: string
   name: string
   clientId: string | null
