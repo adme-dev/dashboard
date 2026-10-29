@@ -26,7 +26,8 @@ describe('TheBrief candidate through native Banner Studio state', () => {
     expect(studio.activeLayers.value.find(layer => layer.id === headline.id)!.text).toBe('Hello world')
     studio.redo()
     await studio.saveProject()
-    const payload = save.mock.calls.at(-1)![1].body
+    const payload = save.mock.calls.find(([, options]) => options.method === 'PATCH')![1].body
+    expect(save).toHaveBeenCalledWith('/api/agency/banner-studio/projects/pilot/snapshot', { method: 'POST' })
     const saved = JSON.parse(JSON.stringify(payload.canvasData))
     studio.loadProject({ ...project, canvasData: saved })
     const restored = studio.activeLayers.value.find(layer => layer.id === headline.id)!

@@ -14,7 +14,17 @@ defineEmits<{ open: [id: string] }>()
       </div>
       <article v-for="item in items" :key="item.id" :class="view === 'grid' ? 'min-w-0 overflow-hidden rounded-lg border border-default bg-default' : 'flex items-center gap-4 p-3 @4xl:grid @4xl:grid-cols-[minmax(240px,2fr)_minmax(110px,1fr)_minmax(120px,1fr)_100px_110px_32px] @4xl:px-4'">
         <div :class="view === 'grid' ? '' : 'flex min-w-0 flex-1 items-center gap-3'">
-          <BannerLibraryThumbnail :thumbnail-url="item.thumbnailUrl" :canvas-data="item.canvasData" :class="view === 'grid' ? 'h-40 w-full border-b border-default' : 'h-12 w-20 shrink-0 rounded'" />
+          <UButton
+            :to="item.to"
+            :aria-label="`Open ${item.name}`"
+            variant="link"
+            color="neutral"
+            class="p-0"
+            :class="view === 'grid' ? 'flex w-full rounded-none' : 'shrink-0'"
+            @click="!item.to && $emit('open', item.id)"
+          >
+            <BannerLibraryThumbnail :thumbnail-url="item.thumbnailUrl" :canvas-data="item.canvasData" :class="view === 'grid' ? 'h-52 w-full border-b border-default' : 'h-12 w-20 rounded'" />
+          </UButton>
           <div class="min-w-0" :class="view === 'grid' ? 'px-3 pt-3' : ''">
             <UButton
               :to="item.to"

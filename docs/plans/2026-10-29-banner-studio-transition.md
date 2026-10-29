@@ -1,5 +1,7 @@
 # Banner Studio transition — 29 October 2026
 
+Team-facing updates: [Banner Studio change log](../changelog/banner-studio.md).
+
 ## Source and workflow checked
 
 - TheBrief design: `1nz5y6q`, “Northern JAC Meta Traffic - Hunter Ute”, under the ADME SUPPORT team. Its signed-in editor shows a single 8 second loop with 1200 × 1200, 1080 × 1920 and 1920 × 1080 layouts. The HTML5 download contains three separate size ZIPs, two MP3 files per size and local Futura Md BT faces. Original export SHA-256: `297b8d943797edbc13dd5e3e13318eb2a58cf231bb0af53e46dd5f5fbd7ec8e4`. Keep the export outside Git.
@@ -134,3 +136,10 @@ Each editor save first persists the project, then asks the server to store the a
 Local browser acceptance used the complete editor and an existing MU-X MP4 placed as a background in an isolated test project: title and text autosaved without clicking Save, the viewer refreshed, reopening retained the video source, the video decoded at 1920×700 and advanced through the eight-second preview. A simulated snapshot-storage outage showed Save failed/retrying, preserved the prior viewer with a stale-version notice, blocked leaving the editor, and recovered automatically after storage returned. This is video-layer save/view acceptance, not a successful import of a TheBrief video-background project or an MP4 export certification. Local files and screenshots remain outside Git.
 
 Unit checks cover debounce/max-wait/retry/disposal, save races including edits during first creation and snapshot storage, canonical JSONB hashing, immutable revision ordering, storage failure, project access denial, and video-background roundtrip. Exact test/build/deployment evidence will be recorded on the follow-up PR. The main checkout's unrelated analytics work remains untouched.
+
+
+## Shared project overview follow-up
+
+The full-screen library previously showed text cards without the agency library's thumbnails, finder or source-folder filters. Both entry routes now use one ProjectLibrary component with the existing client/folder/category filters, name/client/tag/dimension search, sorting, pagination, grid/list preference and project actions. Full-screen links stay in the full-screen editor. Native saved canvas previews take precedence over stale imported thumbnail URLs; image-only records retain an image fallback. This remains imported-folder browsing, not create/rename/move/pin or nested folder management. Release status and validation are tracked in the change log and follow-up PR.
+
+Stock-video gallery gap: TheBrief publicly lists Pexels and Pixabay integrations (https://www.thebrief.ai/integrations/). Banner Studio currently has uploaded-video selection only; no stock provider was configured in the local environment examined. A searchable preview gallery and retained, licensed media ingestion remain outstanding. MotorStack brand assets are a separate integration.

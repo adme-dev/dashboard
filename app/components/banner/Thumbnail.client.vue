@@ -17,7 +17,7 @@ const preview = computed(() => {
   const data = props.canvasData
   if (!data || typeof data !== 'object') return null
 
-  const keys = Object.keys(data)
+  const keys = Object.keys(data).filter(key => !!resolveBannerFormat(key))
   if (!keys.length) return null
 
   // Prefer square-ish formats for thumbnails
