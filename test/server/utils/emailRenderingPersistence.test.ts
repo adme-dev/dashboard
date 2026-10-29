@@ -4,7 +4,7 @@ import { createCampaign, updateCampaign } from '../../../server/utils/email-mark
 import { createEmailRenderer } from '../../../server/utils/email-marketing/render/client'
 
 const { queryOne } = vi.hoisted(() => ({ queryOne: vi.fn() }))
-vi.mock('~~/server/utils/db', () => ({ queryOne, queryRows: vi.fn(), execute: vi.fn(), transaction: vi.fn() }))
+vi.mock('~~/server/utils/db', () => ({ queryOne, queryOneFresh: queryOne, queryRows: vi.fn(), execute: vi.fn(), transaction: vi.fn() }))
 const document = { root: { type: 'EmailLayout', data: { childrenIds: [] } } }
 const existing = { id: 'one', name: 'Draft', status: 'draft', body_source: document, subject: null, preview_text: null }
 const result = { version: 1, environment: 'staging', operation: 'document', ok: true, value: { html: '<p>Rendered</p>' } }
