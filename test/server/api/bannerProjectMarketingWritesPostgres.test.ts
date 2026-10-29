@@ -77,8 +77,9 @@ describe.runIf(Boolean(databaseUrl))('marketing Banner Studio browser writes on 
       CREATE TABLE custom_roles(id UUID PRIMARY KEY,slug TEXT,is_system BOOLEAN,is_read_only BOOLEAN);
       CREATE TABLE role_permission_groups(role_id UUID,permission_group TEXT);
       CREATE TABLE agency_clients(id UUID PRIMARY KEY,is_active BOOLEAN);
+      CREATE TABLE banner_folders(id UUID PRIMARY KEY);
       CREATE TABLE banner_projects(id UUID PRIMARY KEY DEFAULT gen_random_uuid(), name VARCHAR(255) NOT NULL,
-        client_id UUID REFERENCES agency_clients(id), canvas_data JSONB NOT NULL DEFAULT '{}', thumbnail_url TEXT,
+        client_id UUID REFERENCES agency_clients(id), folder_id UUID REFERENCES banner_folders(id), canvas_data JSONB NOT NULL DEFAULT '{}', thumbnail_url TEXT,
         status VARCHAR(20) DEFAULT 'draft', tags TEXT[] DEFAULT '{}', created_by UUID NOT NULL REFERENCES team_members(id),
         created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW(), review_status TEXT NOT NULL DEFAULT 'draft');
       CREATE TABLE banner_dissections(id UUID PRIMARY KEY DEFAULT gen_random_uuid(), project_id UUID REFERENCES banner_projects(id));
@@ -137,10 +138,12 @@ describe.runIf(Boolean(databaseUrl))('marketing Banner Studio browser writes on 
   })
 
   it('keeps provenance on tag edits, and duplicates without provenance only into an active client', async () => {
-    await db.query('UPDATE banner_projects SET tags = $2 WHERE id = $1', [project, ['source:thebrief', SHA]])
+    const folderId = randomUUID()
+    await db.query('INSERT INTO banner_folders(id) VALUES($1)', [folderId])
+    await db.query('UPDATE banner_projects SET tags = $2, folder_id = $3 WHERE id = $1', [project, ['source:thebrief', SHA], folderId])
     await call(patch, project, { tags: ['fresh'] })
     expect((await projectRow()).tags).toEqual(['source:thebrief', SHA, 'fresh'])
-    expect(await call(duplicate, project)).toMatchObject({ clientId: ACTIVE, tags: ['fresh'] })
+    expect(await call(duplicate, project)).toMatchObject({ clientId: ACTIVE, folderId, tags: ['fresh'] })
     adapter.beforeWrite = async () => {
       await db.query('UPDATE agency_clients SET is_active = FALSE WHERE id = $1', [ACTIVE])
     }
