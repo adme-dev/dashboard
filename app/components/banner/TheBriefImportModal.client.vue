@@ -176,7 +176,7 @@ async function importDrafts() {
                 </p>
               </div>
               <UBadge color="neutral" variant="subtle">
-                {{ Object.keys(row.pkg.canvasData)[0]?.replace('custom_', '') }}
+                {{ Object.keys(row.pkg.canvasData).map(key => key.replace('custom_', '')).join(' · ') }}
               </UBadge>
             </div>
             <UFormField label="Client" help="Confirm ownership before importing. Unassigned designs are skipped.">

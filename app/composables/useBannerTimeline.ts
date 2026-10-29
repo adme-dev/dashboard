@@ -349,16 +349,22 @@ function addAudioSync(tl: gsap.core.Timeline, el: HTMLElement, layer: Layer) {
   const presenceDur = endTime - startTime
   const volume = layer.muted ? 0 : (layer.volume ?? 1)
   const proxy = { t: 0 }
+  audioEl.volume = volume
   tl.to(proxy, {
     t: Math.min(presenceDur, audioEl.duration || presenceDur),
     duration: presenceDur,
     ease: 'none',
     onUpdate() {
-      audioEl.currentTime = proxy.t
-      audioEl.volume = volume
-      if (audioEl.paused && proxy.t > 0) audioEl.play().catch(() => {})
+      if (tl.paused()) {
+        audioEl.pause()
+        audioEl.currentTime = proxy.t
+      } else {
+        // Repeated seeks on every animation frame interrupt audible playback.
+        if (Math.abs(audioEl.currentTime - proxy.t) > 0.3) audioEl.currentTime = proxy.t
+        if (audioEl.paused) audioEl.play().catch(() => {})
+      }
     },
-    onStart() { audioEl.play().catch(() => {}) },
+    onStart() { if (!tl.paused()) audioEl.play().catch(() => {}) },
     onComplete() { audioEl.pause() },
   }, startTime)
 }

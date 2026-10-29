@@ -45,7 +45,8 @@ export function validateBannerAssetUpload(file: BannerAssetUploadFile, clientId?
 
   const maximumSize = identity.mimeType.startsWith('image/') ? MAX_BANNER_IMAGE_BYTES : MAX_BANNER_VIDEO_BYTES
   if (buffer.length > maximumSize) {
-    throw new Error(`Banner ${identity.mimeType.startsWith('image/') ? 'image' : 'video'} exceeds the ${maximumSize / 1024 / 1024} MiB limit`)
+    const kind = identity.mimeType.startsWith('image/') ? 'image' : identity.mimeType.startsWith('audio/') ? 'audio' : 'video'
+    throw new Error(`Banner ${kind} exceeds the ${maximumSize / 1024 / 1024} MiB limit`)
   }
 
   return {

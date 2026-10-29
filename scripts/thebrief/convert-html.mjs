@@ -339,7 +339,7 @@ export async function convertTheBriefHtml(html) {
       rootImage = { src: localAsset(match[1]), fit: rootCss.backgroundSize }
     }
     const background = rootImage.src ? (rootCss.backgroundColor || 'transparent') : (rootCss.background || imageBackground || rootCss.backgroundColor || 'transparent')
-    layers.push({ ...base, id: id++, type: 'bg', name: 'Background', ...rootImage, x: 0, y: 0, w: source.width, h: source.height, zIndex: 0, bgColor: background })
+    layers.push({ ...base, id: id++, type: 'bg', name: 'Background', linkId: 'source:background', ...rootImage, x: 0, y: 0, w: source.width, h: source.height, zIndex: 0, bgColor: background })
     for (const element of elements) {
       const css = style(element)
       const sourceId = Number(element.id.replace('element-', ''))
@@ -349,7 +349,7 @@ export async function convertTheBriefHtml(html) {
       const end = Math.min(slide.end, timing.duration === undefined ? slide.end : start + timing.duration / 1000)
       if (!(start >= 0 && end > start)) throw new Error('Invalid element presence')
       const clipToPresence = slides.length > 1 || end < duration
-      const layerBase = { ...base, x: px(css.left), y: px(css.top), w: px(css.width), h: px(css.height), zIndex: id, startTime: start, endTime: end, ...(clipToPresence ? { clipToPresence: true } : {}) }
+      const layerBase = { ...base, linkId: `source:${sourceId}`, x: px(css.left), y: px(css.top), w: px(css.width), h: px(css.height), zIndex: id, startTime: start, endTime: end, ...(clipToPresence ? { clipToPresence: true } : {}) }
       if ([layerBase.x, layerBase.y, layerBase.w, layerBase.h].some(n => !Number.isFinite(n))) throw new Error('Unsupported element geometry')
       if (css.mixBlendMode && css.mixBlendMode !== 'normal') {
         if (/^(multiply|screen|overlay|darken|lighten|color-dodge|color-burn|hard-light|soft-light|difference|exclusion|hue|saturation|color|luminosity)$/.test(css.mixBlendMode)) layerBase.mixBlendMode = css.mixBlendMode
@@ -388,7 +388,13 @@ export async function convertTheBriefHtml(html) {
       if (extraEffects.length) warnings.push(`${element.id}: additional effects are not converted: ${extraEffects.map(node => node.id).join(', ')}`)
       const before = layers.length
       const type = element.getAttribute('data-eltype')
-      if (type === 'text') {
+      if (type === 'audio') {
+        const sources = [...element.querySelectorAll('audio > source[src]')]
+        if (sources.length !== 1 || !['audio/mp3', 'audio/mpeg'].includes(sources[0].getAttribute('type'))) throw new Error('Unsupported audio source')
+        const audio = element.querySelector('audio')
+        if (!audio || audio.hasAttribute('loop')) throw new Error('Unsupported audio playback')
+        layers.push({ ...layerBase, id: id++, type: 'audio', name: `Audio ${sourceId}`, src: localAsset(sources[0].getAttribute('src')), x: 0, y: 0, w: 1, h: 1, volume: Number.isFinite(audio.volume) ? audio.volume : 1 })
+      } else if (type === 'text') {
         const rows = [...element.querySelectorAll('.row')]
         if (!rows.length) throw new Error('Unsupported text layout')
         const rotations = [...element.querySelectorAll('div')].map(div => style(div).transform).filter(t => t && t !== 'none')
@@ -400,14 +406,17 @@ export async function convertTheBriefHtml(html) {
           layerBase.transformOrigin = { x: layerBase.w / 2, y: layerBase.h / 2 }
         }
         let y = layerBase.y
-        for (const row of rows) {
+        for (const [rowIndex, row] of rows.entries()) {
           const rowCss = style(row)
           const span = [...row.querySelectorAll('span')].find(item => item.textContent.trim() && !item.closest('sup')) || row
           const textCss = style(span)
           const textTransform = textCss.textTransform || rowCss.textTransform || 'none'
           if (!['none', 'uppercase', 'lowercase', 'capitalize'].includes(textTransform)) throw new Error('Unsupported text transform')
-          if (textCss.fontStyle && textCss.fontStyle !== 'normal') warnings.push(`${element.id}: ${textCss.fontStyle} text is not preserved by native export`)
-          const runs = [...row.querySelectorAll('span')].filter(item => item.textContent.trim())
+          if (textCss.fontStyle && !['normal', 'italic'].includes(textCss.fontStyle)) throw new Error('Unsupported text font style')
+          // Animated word wrappers inherit their visible child's typography but
+          // can report an empty computed colour in offline CSS parsing. Compare
+          // the painted leaf spans, not both a wrapper and its child.
+          const runs = [...row.querySelectorAll('span')].filter(item => item.textContent.trim() && !item.children.length)
           const signature = node => ['fontSize', 'fontFamily', 'fontWeight', 'fontStyle', 'color', 'letterSpacing'].map(key => style(node)[key]).join('|')
           if (new Set(runs.filter(item => !item.closest('sup')).map(signature)).size > 1) throw new Error('Mixed styled text within a line needs an adapter')
           const textRuns = []
@@ -435,7 +444,7 @@ export async function convertTheBriefHtml(html) {
           const lineHeight = /^\d*\.?\d+$/.test(rowCss.lineHeight) ? Number(rowCss.lineHeight) : px(rowCss.lineHeight) / fontSize
           const height = lineBoxFontSize * lineHeight
           if (!Number.isFinite(height)) throw new Error('Unsupported text line height')
-          if (row.textContent.trim()) layers.push({ ...layerBase, id: id++, type: 'text', name: row.textContent.trim().slice(0, 60), y, h: height, ...(layerBase.transformOrigin ? { transformOrigin: { x: layerBase.transformOrigin.x, y: layerBase.transformOrigin.y - (y - layerBase.y) } } : {}), text: row.textContent.trim(), ...(textRuns.length ? { text: row.textContent, textRuns } : {}), textTransform, fontFamily: textCss.fontFamily.replace(/["']/g, ''), fontSize, lineBoxFontSize, textAntialias: style(document.documentElement).getPropertyValue('-webkit-font-smoothing') === 'antialiased', fontWeight: Number(textCss.fontWeight) || 400, lineHeight, color: textCss.color, textAlign: textCss.textAlign || 'left', letterSpacing: !textCss.letterSpacing || textCss.letterSpacing === 'normal' ? '0px' : textCss.letterSpacing })
+          if (row.textContent.trim()) layers.push({ ...layerBase, linkId: `source:${sourceId}:row:${rowIndex}`, id: id++, type: 'text', name: row.textContent.trim().slice(0, 60), y, h: height, ...(layerBase.transformOrigin ? { transformOrigin: { x: layerBase.transformOrigin.x, y: layerBase.transformOrigin.y - (y - layerBase.y) } } : {}), text: row.textContent.trim(), ...(textRuns.length ? { text: row.textContent, textRuns } : {}), textTransform, fontFamily: textCss.fontFamily.replace(/["']/g, ''), fontStyle: textCss.fontStyle === 'italic' ? 'italic' : 'normal', fontSize, lineBoxFontSize, textAntialias: style(document.documentElement).getPropertyValue('-webkit-font-smoothing') === 'antialiased', fontWeight: Number(textCss.fontWeight) || 400, lineHeight, color: textCss.color, textAlign: textCss.textAlign || 'left', letterSpacing: !textCss.letterSpacing || textCss.letterSpacing === 'normal' ? '0px' : textCss.letterSpacing })
           y += height
         }
         if (new Set(rows.map(row => style(row).fontSize)).size > 1) warnings.push(`${element.id}: mixed-size text split into editable lines; baseline alignment needs visual review`)
@@ -483,7 +492,11 @@ export async function convertTheBriefHtml(html) {
         if (new Set(radii).size === 1 && Number.isFinite(px(radii[0])) && px(radii[0]) >= 0) borderRadius = px(radii[0])
         else warnings.push(`${element.id}: unequal or non-pixel corner radii are not converted`)
         if (rotation && (keyframes.scaleX || keyframes.scaleY || keyframes.rotation)) throw new Error('Nested static rotation with animated scale/rotation needs an adapter')
-        const backgroundImage = contentCss.backgroundImage
+        // happy-dom can omit a shorthand gradient from computed backgroundImage.
+        // Read only the bounded inline gradient value in that case; the strict
+        // composition checks below still decide whether it is representable.
+        const inlineGradient = content?.getAttribute('style')?.match(/(?:^|;)\s*background\s*:\s*((?:linear|radial)-gradient\([^;]+\))/i)?.[1]
+        const backgroundImage = contentCss.backgroundImage || inlineGradient || ''
         const borders = ['Top', 'Right', 'Bottom', 'Left'].map(side => px(contentCss[`border${side}Width`] || '0px'))
         if (/^(linear|radial)-gradient\(/.test(backgroundImage)) {
           if (!/^[\w\s#(),.%+-]+$/.test(backgroundImage)

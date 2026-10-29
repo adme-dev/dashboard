@@ -42,6 +42,18 @@ for (const board of Object.values(candidate.canvasData)) {
     let asset = sourceAssets.get(originalPath)
     if (!asset) {
       let bytes = await sourceFile(originalPath)
+      if (extname(originalPath).toLowerCase() === '.mp3') {
+        if (layer.type !== 'audio') throw new Error('Audio is used by a non-audio layer')
+        const sha256 = hash(bytes)
+        asset = assets.find(item => item.sha256 === sha256)
+        if (!asset) {
+          asset = { originalPath, path: `./media/${sha256}.mp3`, fileName: `${sha256}.mp3`, mimeType: 'audio/mpeg', sha256, base64: bytes.toString('base64') }
+          assets.push(asset)
+        }
+        sourceAssets.set(originalPath, asset)
+        layer.src = asset.path
+        continue
+      }
       if (extname(originalPath).toLowerCase() === '.svg') {
         const svg = bytes.toString('utf8')
         if (/<!DOCTYPE|<!ENTITY|<script|<foreignObject|@import|(?:href\s*=\s*["'](?!#|data:))|url\(\s*["']?(?!#)/i.test(svg)) throw new Error('SVG contains unsupported external or active content')
@@ -63,7 +75,7 @@ for (const board of Object.values(candidate.canvasData)) {
   }
 }
 for (const font of [...(candidate.fonts || []), ...external.fonts]) {
-  if (font.style !== 'normal') throw new Error('Italic/oblique font imports need a compatible font adapter')
+  if (!['normal', 'italic'].includes(font.style)) throw new Error('Oblique font imports need a compatible font adapter')
   let bytes = font.bytes || await sourceFile(font.path)
   let format = font.format
   let path = font.path
@@ -83,9 +95,16 @@ for (const font of [...(candidate.fonts || []), ...external.fonts]) {
   // Include the original name when normalising so A/B cannot replace A B.
   // All weights of the same source family still share one managed alias.
   const identity = safeFamily === font.family ? sourceIdentity : hash(Buffer.from(`${sourceIdentity}:${font.family}`))
-  const family = `${safeFamily.slice(0, 84)} XF ${identity.slice(0, 12)}`
-  for (const board of Object.values(candidate.canvasData)) for (const layer of board.layers) if (layer.fontFamily === font.family) layer.fontFamily = family
-  fonts.push({ ...font, format, path, family, fileName: `${sha256}${extname(path)}`, mimeType: { truetype: 'font/ttf', opentype: 'font/otf', woff: 'font/woff', woff2: 'font/woff2' }[format], sha256, base64: bytes.toString('base64') })
+  const family = `${safeFamily.slice(0, font.style === 'italic' ? 76 : 83)}${font.style === 'italic' ? ' Italic' : ''} XF ${identity.slice(0, 12)}`
+  for (const board of Object.values(candidate.canvasData)) for (const layer of board.layers) {
+    if (layer.fontFamily === font.family && (layer.fontWeight || 400) === font.weight && (layer.fontStyle || 'normal') === font.style) {
+      layer.fontFamily = family
+      // The stored face is already italic. The managed catalog serves each
+      // alias as a normal face so the browser must not synthesize a second slant.
+      layer.fontStyle = 'normal'
+    }
+  }
+  fonts.push({ ...font, style: 'normal', format, path, family, fileName: `${sha256}${extname(path)}`, mimeType: { truetype: 'font/ttf', opentype: 'font/otf', woff: 'font/woff', woff2: 'font/woff2' }[format], sha256, base64: bytes.toString('base64') })
 }
 const pkg = parseTheBriefPackage({ kind: 'xeroflow-thebrief-import', version: 1, name,
   source: { designHash: candidate.source.designHash, sha256: inspection.sha256, folder, duration: candidate.source.duration, loopCount: candidate.source.loopCount },

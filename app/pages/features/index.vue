@@ -161,7 +161,7 @@ const categories = [
     iconBg: 'bg-rose-50 dark:bg-rose-500/10',
     iconColor: 'text-rose-600',
     features: [
-      { title: 'Visual Editor', slug: 'banner-editor', icon: 'i-lucide-pen-tool', description: 'Create editable animated banners with font-preserving 3D headings, reviewed AI text textures, layers, collapsible navigation and multi-format support.' },
+      { title: 'Visual Editor', slug: 'banner-editor', icon: 'i-lucide-pen-tool', description: 'Create editable animated banners in a full-screen workspace. Linked content updates across sizes while each artboard keeps its own layout.' },
       { title: 'Animation & Timeline', slug: 'banner-animation', icon: 'i-lucide-clapperboard', description: 'GSAP-powered keyframe timeline with entry/exit animations, easing curves, and motion paths.' },
       { title: 'Motion Paths', slug: 'motion-paths', icon: 'i-lucide-spline', description: 'SVG-based motion path editor with draggable waypoints, curviness control, and auto-rotate.' },
       { title: 'Static & GIF Export', slug: 'banner-export', icon: 'i-lucide-image', description: 'Export to PNG/JPG at 1x/2x via headless Chromium, or animated GIF with configurable FPS.' },

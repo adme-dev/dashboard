@@ -5,6 +5,7 @@ export type SupportedBannerAssetMime
     | 'image/webp'
     | 'video/mp4'
     | 'video/webm'
+    | 'audio/mpeg'
 
 export interface BannerAssetIdentity {
   fileName: string
@@ -26,7 +27,8 @@ const MIME_EXTENSIONS: Record<SupportedBannerAssetMime, string> = {
   'image/gif': 'gif',
   'image/webp': 'webp',
   'video/mp4': 'mp4',
-  'video/webm': 'webm'
+  'video/webm': 'webm',
+  'audio/mpeg': 'mp3'
 }
 
 function hasBytes(bytes: Uint8Array, offset: number, expected: number[]): boolean {
@@ -45,6 +47,7 @@ export function detectBannerAssetMime(bytes: Uint8Array): SupportedBannerAssetMi
   if (hasAscii(bytes, 0, 'RIFF') && hasAscii(bytes, 8, 'WEBP')) return 'image/webp'
   if (hasAscii(bytes, 4, 'ftyp')) return 'video/mp4'
   if (hasBytes(bytes, 0, [0x1a, 0x45, 0xdf, 0xa3])) return 'video/webm'
+  if (hasAscii(bytes, 0, 'ID3')) return 'audio/mpeg'
   return null
 }
 

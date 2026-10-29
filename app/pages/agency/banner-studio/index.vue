@@ -211,6 +211,15 @@ function clearFilters() {
         >
           Import from TheBrief
         </UButton>
+        <UButton
+          to="/creative/banner-studio"
+          color="neutral"
+          variant="outline"
+          icon="i-lucide-expand"
+          size="sm"
+        >
+          Open full screen
+        </UButton>
         <UButton icon="i-lucide-plus" size="sm" @click="newProject">
           New Project
         </UButton>

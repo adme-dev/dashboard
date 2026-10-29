@@ -2486,7 +2486,7 @@ const features: Record<string, Feature> = {
     categoryIcon: 'i-lucide-palette',
     categoryIconBg: 'bg-rose-50',
     categoryIconColor: 'text-rose-600',
-    description: 'Turn uploaded artwork into editable animated banner drafts in a full WYSIWYG artboard editor with layers, a properties panel, drag-to-position, and multi-format support — purpose-built for HTML5 banner production.',
+    description: 'Work in a full-screen banner editor with an overview canvas, editable layers, a properties panel, timeline and multi-format artboards.',
     details: [
       {
         title: 'Layer-Based Design',
@@ -2494,7 +2494,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Multi-Format Artboards',
-        content: 'Define multiple ad sizes in a single project — 300x250, 728x90, 160x600, 320x50, and any custom dimensions. Each format gets its own artboard with independent layer positioning, so you can fine-tune layouts per size while keeping shared assets and animations consistent. Collapse the main admin navigation into a persistent icon rail, with tooltips and flyouts for navigation groups. The editor tools sidebar can also collapse for more canvas space; selecting a tool reopens its panel, and your layout preference is remembered. A wrapping canvas toolbar and labelled Actions menu keep creation and publishing controls accessible on smaller screens. Add new formats at any time, and optionally use AI auto-resize to adapt layouts intelligently.'
+        content: 'See every size together on the overview canvas. Each artboard keeps its own position, size and timing. When imported layers share a source identity, text, fonts, colours and asset choices update across those sizes as one undoable edit. The full-screen editor opens without the agency dashboard navigation and keeps the timeline and inspector close to the canvas. Add formats at any time, and use AI auto-resize when a new layout needs a starting point.'
       },
       {
         title: 'Properties Panel',

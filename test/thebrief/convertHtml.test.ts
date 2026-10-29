@@ -108,10 +108,10 @@ describe('TheBrief single-slide native conversion pilot', () => {
     expect(result.warnings.join(' ')).toMatch(/External font stylesheet/)
   })
 
-  it('rejects unsafe font paths and flags unsupported italic text', async () => {
+  it('rejects unsafe font paths and preserves italic text', async () => {
     await expect(convertTheBriefHtml(source.replace('<style>', `<style>@font-face{font-family:'Example';src:url("../secret.ttf") format("truetype")}`))).rejects.toThrow(/local asset/)
     const result = await convertTheBriefHtml(source.replace('font-weight:700', 'font-weight:700;font-style:italic'))
-    expect(result.warnings.join(' ')).toMatch(/italic.*not preserved/)
+    expect(result.canvasData.custom_300x250.layers.find(l => l.type === 'text')?.fontStyle).toBe('italic')
   })
 
   it('retains a longhand canvas background and static shape rotation', async () => {

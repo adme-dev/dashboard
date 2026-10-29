@@ -277,7 +277,7 @@ export function buildBannerHTML(
         if (l.src) {
           const presenceDur = endTime - startTime
           const volume = l.muted ? 0 : (l.volume ?? 1)
-          lines.push(`  (function() { var a = document.querySelector('[data-id="${l.id}"]'); if (a) { a.pause(); a.volume = ${volume}; var p = { t: 0 }; tl.to(p, { t: ${presenceDur.toFixed(2)}, duration: ${presenceDur.toFixed(2)}, ease: 'none', onStart: function() { a.play(); }, onUpdate: function() { a.currentTime = p.t; }, onComplete: function() { a.pause(); } }, ${startTime}); } })();`)
+          lines.push(`  (function() { var a = document.querySelector('[data-id="${l.id}"]'); if (a) { a.pause(); a.volume = ${volume}; var p = { t: 0 }; tl.to(p, { t: ${presenceDur.toFixed(2)}, duration: ${presenceDur.toFixed(2)}, ease: 'none', onStart: function() { if (!tl.paused()) { a.currentTime = 0; a.play().catch(function() {}); } }, onUpdate: function() { if (tl.paused()) { a.pause(); a.currentTime = p.t; } else { if (Math.abs(a.currentTime - p.t) > 0.3) a.currentTime = p.t; if (a.paused) a.play().catch(function() {}); } }, onComplete: function() { a.pause(); } }, ${startTime}); } })();`)
         }
         return
       }

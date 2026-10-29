@@ -61,6 +61,8 @@ export interface Layer {
   id: number
   type: LayerType
   name: string
+  /** Shared content identity across independently positioned sizes in one design set. */
+  linkId?: string
   // Position & size
   x: number
   y: number

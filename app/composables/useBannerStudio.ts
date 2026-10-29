@@ -1,4 +1,5 @@
 import type { Layer, ArtboardState, BannerProject, UndoAction, BannerBrandKit, AnimInType, AnimOutType, MotionPathPoint, MotionPathTween } from '~/types/banner-studio'
+import { toRaw } from 'vue'
 import { FORMATS, TEMPLATES, migrateLayer, DEFAULT_BG, resolveBannerFormat } from '~/utils/banner-constants'
 import { brandColor, brandFont, isLogoLayer, isDarkColor } from '~/utils/banner-brand-kit'
 
@@ -152,6 +153,9 @@ export function useBannerStudio() {
     delete copy.maskShape
     delete copy.maskTargetIds
     delete copy.maskInvert
+    // A duplicate is independent content, even when its source was linked
+    // across the sizes in a design set.
+    delete copy.linkId
     state.sets[state.activeKey].layers.push(copy)
     state.selectedLayerId = copy.id
     state.isDirty = true
@@ -161,6 +165,33 @@ export function useBannerStudio() {
   function updateLayer(id: number, props: Partial<Layer>) {
     const layer = activeLayers.value.find(l => l.id === id)
     if (!layer) return
+    const sharedFields: (keyof Layer)[] = [
+      'text', 'textRuns', 'fontFamily', 'fontWeight', 'fontStyle', 'color',
+      'textTransform', 'letterSpacing', 'lineHeight', 'textAlign',
+      'textShadow', 'textStroke', 'src', 'fit', 'volume', 'muted', 'loopAudio',
+      'bgColor', 'fillColor', 'borderColor', 'borderWidth', 'borderRadius',
+    ]
+    const shared = Object.fromEntries(sharedFields
+      .filter(key => Object.prototype.hasOwnProperty.call(props, key))
+      .map(key => [key, props[key]])) as Partial<Layer>
+    const targets = layer.linkId && Object.keys(shared).length
+      ? state.setKeys.flatMap(key => key === state.activeKey ? [] :
+        (state.sets[key]?.layers || []).filter(other => other.linkId === layer.linkId && other.type === layer.type).map(other => ({ key, other })))
+      : []
+    if (targets.length) {
+      withCanvasUndo(() => {
+        Object.assign(layer, props)
+        for (const { key, other } of targets) {
+          const copy = Object.fromEntries(Object.entries(shared).map(([field, value]) => [
+            field, value && typeof value === 'object' ? structuredClone(toRaw(value)) : value,
+          ]))
+          Object.assign(other, copy)
+          try { useBannerRealtime().sendLayerUpdate(other.id, key, shared) } catch {}
+        }
+      })
+      try { useBannerRealtime().sendLayerUpdate(id, state.activeKey, props) } catch {}
+      return
+    }
     const before = { ...layer }
     Object.assign(layer, props)
     pushUndo({ type: 'updateLayer', before, after: { ...layer } })
