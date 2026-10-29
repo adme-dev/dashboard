@@ -75,4 +75,10 @@ describe('EdmTemplateThumbnail', () => {
     expect(source).toContain(':key="entry.id"')
     expect(source).not.toContain(':key="i"')
   })
+  it('keeps preview links outside keyboard navigation and the accessibility tree', async () => {
+    const html = await renderThumbnail('postcards-glidex')
+    expect(html).toContain('inert')
+    expect(html).toContain('aria-hidden="true"')
+  })
+
 })

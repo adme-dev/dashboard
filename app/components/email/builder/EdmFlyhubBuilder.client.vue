@@ -3,6 +3,7 @@
      undo/redo, Editor/Preview/HTML views, and Save to edm_templates (2a-ii-4).
      Loads an existing template via ?id= or a starter layout via ?starter=. -->
 <script setup lang="ts">
+import { templateCopyCategory, markTemplateClientCopy, templateCopyName } from '~~/app/utils/edmTemplateProvenance'
 import { EDM_SECTION_CATEGORIES, findStarterTemplate } from '~~/app/utils/edmPresets'
 import type { EdmSectionPreset } from '~~/app/utils/edmPresets'
 import type { EdmFlyhubBlock, EdmFlyhubDocument } from '~~/app/types/edm'
@@ -42,6 +43,7 @@ import type { EdmCustomModule } from '~~/app/composables/useEdmCustomModules'
 
 const store = useEdmBuilder()
 const route = useRoute()
+const router = useRouter()
 const toast = useToast()
 const apiFetch = $fetch as <T = unknown>(
   request: string,
@@ -520,6 +522,9 @@ async function scheduleCampaignFromBuilder() {
 // loads and saves that campaign's body (subject + body_source) instead of an
 // edm_template. ?id=<templateId> is the original template-editing path.
 const templateId = ref<string | null>(null)
+const templateLoading = ref(true)
+const templateLoadError = ref('')
+let retryInitialLoad: (() => Promise<void>) | null = null
 const campaignId = ref<string | null>(null)
 const name = ref('')
 const subject = ref('')
@@ -564,6 +569,7 @@ const TEMPLATE_KIND_OPTIONS: { label: string, value: TemplateKind }[] = [
 ]
 
 async function save() {
+  if (templateLoading.value || templateLoadError.value) return
   saving.value = true
   try {
     // Campaign mode: the campaign already exists (its name is managed in the
@@ -575,8 +581,8 @@ async function save() {
       return
     }
 
-    if (!name.value.trim()) {
-      toast.add({ title: 'Name required', description: 'Give the template a name.', color: 'error' })
+    if (!name.value.trim() || name.value.trim().length > 200) {
+      toast.add({ title: 'Name required', description: 'Give the template a name up to 200 characters.', color: 'error' })
       return
     }
     if (loadingTemplateClients.value || templateClientsError.value || !hasValidTemplateClient.value) {
@@ -600,6 +606,13 @@ async function save() {
         body
       })
       templateId.value = res.template.id
+      const query = { ...route.query }
+      query.id = res.template.id
+      delete query.copy
+      delete query.starter
+      void router.replace({ query }).catch(() => {
+        toast.add({ title: 'Template saved', description: 'The address could not update. Reopen this template from the library before refreshing.', color: 'warning' })
+      })
     }
     toast.add({ title: 'Saved', description: 'Template saved.', color: 'success' })
     showSaveModal.value = false
@@ -743,89 +756,109 @@ async function confirmDeleteModule() {
 }
 
 onMounted(async () => {
-  const campaign = route.query.campaign
-  if (typeof campaign === 'string' && campaign) {
-    campaignId.value = campaign
+  async function initialise() {
+    templateLoading.value = true
+    templateLoadError.value = ''
     try {
-      const res = await apiFetch<{
-        campaign: {
-          id: string
-          name: string
-          subject: string | null
-          from_email: string | null
-          preview_text: string | null
-          body_source: unknown
-          preflight_result?: EmailBuilderSchedulePreflight | null
-          recipient_snapshot?: EmailBuilderScheduleRecipientSnapshot | null
+      const campaign = route.query.campaign
+      if (typeof campaign === 'string' && campaign) {
+        campaignId.value = campaign
+        try {
+          const res = await apiFetch<{
+            campaign: {
+              id: string
+              name: string
+              subject: string | null
+              from_email: string | null
+              preview_text: string | null
+              body_source: unknown
+              preflight_result?: EmailBuilderSchedulePreflight | null
+              recipient_snapshot?: EmailBuilderScheduleRecipientSnapshot | null
+            }
+          }>(`/api/email/campaigns/${campaign}`)
+          if (res.campaign?.body_source) {
+            store.resetDocument(res.campaign.body_source as EdmFlyhubDocument)
+          }
+          name.value = res.campaign.name || ''
+          subject.value = res.campaign.subject || ''
+          fromEmail.value = res.campaign.from_email || ''
+          previewText.value = res.campaign.preview_text || ''
+          campaignPreflight.value = res.campaign.preflight_result ?? null
+          campaignSnapshot.value = res.campaign.recipient_snapshot ?? null
+          schedulePreflight.value = campaignPreflight.value
+          scheduleSnapshot.value = campaignSnapshot.value
+        } catch {
+          templateLoadError.value = 'Could not load this campaign. Retry before editing.'
+          toast.add({ title: 'Load failed', description: 'Could not load that campaign.', color: 'error' })
         }
-      }>(`/api/email/campaigns/${campaign}`)
-      if (res.campaign?.body_source) {
-        store.resetDocument(res.campaign.body_source as EdmFlyhubDocument)
+        return
       }
-      name.value = res.campaign.name || ''
-      subject.value = res.campaign.subject || ''
-      fromEmail.value = res.campaign.from_email || ''
-      previewText.value = res.campaign.preview_text || ''
-      campaignPreflight.value = res.campaign.preflight_result ?? null
-      campaignSnapshot.value = res.campaign.recipient_snapshot ?? null
-      schedulePreflight.value = campaignPreflight.value
-      scheduleSnapshot.value = campaignSnapshot.value
+
+      await loadTemplateClients()
+      if (templateClientsError.value) throw new Error('Client choices could not load.')
+
+      const starter = route.query.starter
+      if (typeof starter === 'string' && starter) {
+        const starterTemplate = findStarterTemplate(starter)
+        if (starterTemplate) {
+          store.setTemplatePreset(starterTemplate.id)
+          name.value = starterTemplate.name
+          subject.value = starterTemplate.subject
+          previewText.value = starterTemplate.previewText
+          templateKind.value = 'template'
+          templateFolderName.value = ''
+        } else { templateLoadError.value = 'This starter template is not available. Return to the library to choose another.' }
+        return
+      }
+
+      const copying = typeof route.query.copy === 'string' && !!route.query.copy
+      const id = copying ? route.query.copy : route.query.id
+      if (typeof id !== 'string' || !id) return
+      try {
+        const res = await apiFetch<{
+          template: {
+            id: string
+            name: string
+            subject: string | null
+            preview_text: string | null
+            body_source: unknown
+            template_kind?: TemplateKind | null
+            folder_name?: string | null
+            client_id: string | null
+          }
+        }>(`/api/email/templates/${id}`)
+        if (res.template?.body_source) {
+          store.resetDocument((copying ? markTemplateClientCopy(res.template.body_source, res.template.id) : res.template.body_source) as EdmFlyhubDocument)
+        }
+        templateId.value = copying ? null : res.template.id
+        name.value = copying ? templateCopyName(res.template.name) : res.template.name || ''
+        subject.value = res.template.subject || ''
+        previewText.value = res.template.preview_text || ''
+        templateKind.value = res.template.template_kind === 'draft' ? 'draft' : 'template'
+        templateFolderName.value = copying ? templateCopyCategory(res.template.body_source, res.template.folder_name) : res.template.folder_name || ''
+        if (!copying) templateClient.value = res.template.client_id ?? '__shared__'
+      } catch {
+        templateLoadError.value = 'Could not load this template. Retry before editing.'
+        toast.add({ title: 'Load failed', description: 'Could not load that template.', color: 'error' })
+      }
     } catch {
-      toast.add({ title: 'Load failed', description: 'Could not load that campaign.', color: 'error' })
+      templateLoadError.value = 'The editor could not load its template or client choices. Retry before editing.'
+    } finally {
+      templateLoading.value = false
     }
-    return
   }
-
-  await loadTemplateClients()
-
-  const starter = route.query.starter
-  if (typeof starter === 'string' && starter) {
-    const starterTemplate = findStarterTemplate(starter)
-    if (starterTemplate) {
-      store.setTemplatePreset(starterTemplate.id)
-      name.value = starterTemplate.name
-      subject.value = starterTemplate.subject
-      previewText.value = starterTemplate.previewText
-      templateKind.value = 'template'
-      templateFolderName.value = ''
-    }
-    return
-  }
-
-  const copying = typeof route.query.copy === 'string' && !!route.query.copy
-  const id = copying ? route.query.copy : route.query.id
-  if (typeof id !== 'string' || !id) return
-  try {
-    const res = await apiFetch<{
-      template: {
-        id: string
-        name: string
-        subject: string | null
-        preview_text: string | null
-        body_source: unknown
-        template_kind?: TemplateKind | null
-        folder_name?: string | null
-        client_id: string | null
-      }
-    }>(`/api/email/templates/${id}`)
-    if (res.template?.body_source) {
-      store.resetDocument(res.template.body_source as EdmFlyhubDocument)
-    }
-    templateId.value = copying ? null : res.template.id
-    name.value = copying ? `Copy of ${res.template.name}` : res.template.name || ''
-    subject.value = res.template.subject || ''
-    previewText.value = res.template.preview_text || ''
-    templateKind.value = res.template.template_kind === 'draft' ? 'draft' : 'template'
-    templateFolderName.value = res.template.folder_name || ''
-    if (!copying) templateClient.value = res.template.client_id ?? '__shared__'
-  } catch {
-    toast.add({ title: 'Load failed', description: 'Could not load that template.', color: 'error' })
-  }
+  retryInitialLoad = initialise
+  await initialise()
 })
 </script>
 
 <template>
-  <div class="flex flex-col h-full">
+  <div v-if="templateLoading || templateLoadError" class="space-y-4 p-6" role="status">
+    <p v-if="templateLoading" class="text-sm text-muted">Loading your email workspace…</p>
+    <UAlert v-else color="error" :title="templateLoadError" :actions="[{ label: 'Retry', onClick: () => retryInitialLoad?.() }]" />
+    <UButton to="/agency/email?tab=templates" label="Back to templates" variant="outline" color="neutral" />
+  </div>
+  <div v-show="!templateLoading && !templateLoadError" class="flex flex-col h-full">
     <!-- Toolbar -->
     <header class="flex items-center gap-2 px-4 py-2 border-b border-default">
       <div class="flex items-center gap-1">
@@ -1164,7 +1197,7 @@ onMounted(async () => {
             recipients from the Campaigns tab.
           </p>
           <UFormField v-if="!campaignId" label="Name" required>
-            <UInput v-model="name" placeholder="e.g. Monthly newsletter" class="w-full" />
+            <UInput v-model="name" :maxlength="200" placeholder="e.g. Monthly newsletter" class="w-full" />
           </UFormField>
           <UFormField
             v-if="!campaignId"

@@ -1,3 +1,5 @@
+import { readTemplateBackup } from '../../../shared/emailRendering/templateBackup'
+import { redactTemplateProvenance } from '../../../shared/emailRendering/templateProvenance'
 import { parse, parseFragment } from 'parse5'
 import { snapshotRenderInput, validateDocumentGraph } from '../../../shared/emailRendering/bounds'
 import type { EdmFlyhubDocument } from '../../../app/types/edm'
@@ -71,7 +73,8 @@ export function prepareTemplateImport(format: 'html' | 'json', content: string):
   if (!content.trim()) throw new Error('Choose a file or paste email content')
   if (new TextEncoder().encode(content).byteLength > MAX_TEMPLATE_IMPORT_BYTES) throw new Error('Import must be 512 KB or smaller')
   if (format === 'html') return { root: { type: 'EmailLayout', data: { childrenIds: ['imported'] } }, imported: { type: 'Html', data: { props: { contents: sanitizeImportedHtml(content) } } } }
-  const document = snapshotRenderInput(JSON.parse(content), MAX_TEMPLATE_IMPORT_BYTES) as EdmFlyhubDocument
+  const parsed = JSON.parse(content)
+  const document = snapshotRenderInput(redactTemplateProvenance(readTemplateBackup(parsed)?.document ?? parsed), MAX_TEMPLATE_IMPORT_BYTES) as EdmFlyhubDocument
   validateDocumentGraph(document)
   // Validate disconnected blocks as well, and reject dangling references.
   for (const [id, block] of Object.entries(document)) {

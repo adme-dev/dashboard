@@ -3,7 +3,13 @@
 definePageMeta({ layout: 'agency' })
 useHead({ title: 'Email Marketing — XeroFlow Agency' })
 
-const tab = ref<'lists' | 'subscribers' | 'suppressions' | 'templates' | 'campaigns'>('lists')
+type EmailTab = 'lists' | 'subscribers' | 'suppressions' | 'templates' | 'campaigns'
+const route = useRoute()
+const router = useRouter()
+const tab = computed<EmailTab>({
+  get: () => typeof route.query.tab === 'string' && ['lists', 'subscribers', 'suppressions', 'templates', 'campaigns'].includes(String(route.query.tab)) ? route.query.tab as EmailTab : 'lists',
+  set: value => { void router.replace({ query: { ...route.query, tab: value }, hash: route.hash }) }
+})
 const tabs = [
   { value: 'lists', label: 'Lists', icon: 'i-lucide-list' },
   { value: 'subscribers', label: 'Subscribers', icon: 'i-lucide-users' },
@@ -14,7 +20,7 @@ const tabs = [
 </script>
 
 <template>
-  <div class="h-[calc(100vh-4rem)] flex flex-col">
+  <div class="h-[calc(100vh-4rem)] min-h-0 flex flex-col">
     <header class="px-6 py-4 border-b border-default flex items-start justify-between gap-4">
       <div>
         <h1 class="text-xl font-semibold">
@@ -36,7 +42,7 @@ const tabs = [
       <UTabs v-model="tab" :items="tabs" />
     </div>
 
-    <div class="flex-1 overflow-auto px-6 py-4">
+    <div class="flex-1 min-h-0 overflow-auto px-6 py-4">
       <EmailListsPanel v-if="tab === 'lists'" />
       <EmailSubscribersPanel v-else-if="tab === 'subscribers'" />
       <EmailSuppressionPanel v-else-if="tab === 'suppressions'" />

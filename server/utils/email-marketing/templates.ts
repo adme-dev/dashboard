@@ -1,3 +1,4 @@
+import { redactTemplateProvenance } from '../../../shared/emailRendering/templateProvenance'
 // server/utils/email-marketing/templates.ts
 // DB layer for edm_templates. body_html is always (re)rendered from
 // body_source on write via the private rendering service.
@@ -56,6 +57,8 @@ export async function getTemplate(id: string): Promise<EdmTemplate | null> {
 }
 
 export interface CreateTemplateInput {
+  /** Internal deterministic identity for import retry reconciliation; never accepted from template CRUD bodies. */
+  id?: string
   name: string
   subject?: string | null
   preview_text?: string | null
@@ -67,15 +70,16 @@ export interface CreateTemplateInput {
 }
 
 export async function createTemplate(input: CreateTemplateInput, renderer: EmailRendererClient): Promise<EdmTemplate> {
-  const source = input.body_source ?? { root: { type: 'EmailLayout', data: { childrenIds: [] } } }
+  const source = redactTemplateProvenance(input.body_source ?? { root: { type: 'EmailLayout', data: { childrenIds: [] } } })
   const html = await renderHtml(renderer, source, input.subject, input.preview_text)
   const kind = input.template_kind === 'draft' ? 'draft' : 'template'
   const folderName = input.folder_name?.trim() || null
   const row = await queryOne<EdmTemplate>(`
     INSERT INTO edm_templates (
-      name, subject, preview_text, body_source, body_html, template_kind, folder_name, client_id, created_by
+      name, subject, preview_text, body_source, body_html, template_kind, folder_name, client_id, created_by, id
     )
-    VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8, $9)
+    VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8, $9, COALESCE($10::uuid, gen_random_uuid()))
+    ON CONFLICT (id) DO NOTHING
     RETURNING *
   `, [
     input.name,
@@ -86,9 +90,13 @@ export async function createTemplate(input: CreateTemplateInput, renderer: Email
     kind,
     folderName,
     input.client_id ?? null,
-    input.created_by
+    input.created_by,
+    input.id ?? null
   ])
-  return row as EdmTemplate
+  if (row) return row
+  const existing = input.id ? await getTemplate(input.id) : null
+  if (!existing) throw new Error('Template save could not be confirmed.')
+  return existing
 }
 
 export interface UpdateTemplateInput {
@@ -110,7 +118,7 @@ export async function updateTemplate(id: string, patch: UpdateTemplateInput, ren
   const name = patch.name ?? existing.name
   const subject = patch.subject !== undefined ? patch.subject : existing.subject
   const previewText = patch.preview_text !== undefined ? patch.preview_text : existing.preview_text
-  const source = patch.body_source !== undefined ? patch.body_source : existing.body_source
+  const source = redactTemplateProvenance(patch.body_source !== undefined ? patch.body_source : existing.body_source)
   const kind = patch.template_kind !== undefined
     ? (patch.template_kind === 'draft' ? 'draft' : 'template')
     : existing.template_kind

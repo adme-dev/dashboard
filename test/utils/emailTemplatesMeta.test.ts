@@ -8,6 +8,7 @@ const executeMock = vi.fn()
 vi.mock('~~/server/utils/db', () => ({
   queryRows: (...args: unknown[]) => queryRowsMock(...args),
   queryOne: (...args: unknown[]) => queryOneMock(...args),
+  queryOneFresh: (...args: unknown[]) => queryOneMock(...args),
   execute: (...args: unknown[]) => executeMock(...args)
 }))
 
@@ -67,5 +68,6 @@ describe('email marketing template metadata', () => {
     expect(sql).toContain('folder_name')
     expect(params).toContain('draft')
     expect(params).toContain('Promos')
+    expect(JSON.parse(params[3])).toEqual({ root: { type: 'EmailLayout', data: { childrenIds: [] } } })
   })
 })

@@ -100,9 +100,20 @@ const API_INVENTORY = {
   // Marketing feed/social/lead routes delegate fresh authority to scoped services.
   // Their transaction services retain atomic writes; bulk budgets add a route transaction.
   // No route or God mode mutation bypass is added.
-  totalRouteFiles: 2294,
-  mutationRouteFiles: 1252,
-  explicitlyGuardedMutationFiles: 398,
+  // Banner viewer snapshots add one GET and one POST. Both call authorizedBannerSnapshot.
+  // GET authenticates; POST requires write access in viewerSnapshot.ts, so the route
+  // file itself is not an inline guarded mutation and calls no transaction().
+  // Client projects recheck requireSocialClientAccess. Projects without a client
+  // require the creator or all-client social access. Stored project bytes are the
+  // only snapshot body. Neither path is a reviewed read, a Task 5 target, or a
+  // registered God mode mutation, so the write gate stays fail-closed.
+  // Email template clients GET authenticates, then resolveEmailClientScope filters
+  // the name query to assigned clients unless the caller already has agency scope.
+  // Import POST is the one new inline guarded mutation: requireWriteAccess, then
+  // resolveEmailWriteClientId. It has no transaction() call and registers no bypass.
+  totalRouteFiles: 2298,
+  mutationRouteFiles: 1254,
+  explicitlyGuardedMutationFiles: 399,
   guardedMutationFilesWithTransactionCall: 51
 } as const
 
@@ -151,9 +162,9 @@ describe('God mode route isolation inventory', () => {
   it('records the full mechanical API and mutation inventory reviewed before implementation', () => {
     expect(mechanicalInventory()).toEqual(API_INVENTORY)
     expect(API_INVENTORY).toEqual({
-      totalRouteFiles: 2294,
-      mutationRouteFiles: 1252,
-      explicitlyGuardedMutationFiles: 398,
+      totalRouteFiles: 2298,
+      mutationRouteFiles: 1254,
+      explicitlyGuardedMutationFiles: 399,
       guardedMutationFilesWithTransactionCall: 51
     })
   })
@@ -301,6 +312,29 @@ describe('God mode route isolation inventory', () => {
 
     expect(mutationRegistrations).toEqual([])
     expect(featureConsumers).toEqual(['server/api/crm/ai/status.get.ts'])
+  })
+
+  it('pins banner snapshots and email template import to independent scope without a God mode bypass', () => {
+    const routes = {
+      'server/api/agency/banner-studio/projects/[id]/snapshot.get.ts': 'await authorizedBannerSnapshot(event)',
+      'server/api/agency/banner-studio/projects/[id]/snapshot.post.ts': 'await authorizedBannerSnapshot(event, true)',
+      'server/api/email/template-clients.get.ts': 'await resolveEmailClientScope(event, user)',
+      'server/api/email/templates/import.post.ts': 'await resolveEmailWriteClientId(event, user, input.client_id ?? null)'
+    }
+    for (const [file, authority] of Object.entries(routes)) {
+      const source = readFileSync(file, 'utf8')
+      expect(source).toContain(authority)
+      expect(source).not.toMatch(/isApplicationCapabilityEnabled|registerGodModeMutationFamily/)
+    }
+    expect(readFileSync('server/api/email/template-clients.get.ts', 'utf8')).toContain('await requireAuth(event)')
+    expect(readFileSync('server/api/email/templates/import.post.ts', 'utf8')).toContain('await requireWriteAccess(event)')
+    const snapshot = readFileSync('server/utils/banner/viewerSnapshot.ts', 'utf8')
+    expect(snapshot).toContain('const user = write ? await requireWriteAccess(event) : await requireAuth(event)')
+    expect(snapshot).toContain('if (project.clientId) await requireSocialClientAccess(event, project.clientId)')
+    expect(snapshot).toContain('project.createdBy !== user.id && !hasAllSocialClientAccess(user)')
+    expect(snapshot).not.toMatch(/isApplicationCapabilityEnabled|registerGodModeMutationFamily/)
+    const reviewed = listReviewedGodModeReadRoutes().map(route => route.file)
+    for (const file of Object.keys(routes)) expect(reviewed).not.toContain(file)
   })
 
   it('pins the concrete uncoordinated mutation evidence', () => {

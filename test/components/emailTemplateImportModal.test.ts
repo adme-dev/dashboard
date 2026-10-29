@@ -14,7 +14,9 @@ async function mount() {
   app.component('UButton', { props: ['label', 'disabled', 'loading'], template: '<button :disabled="disabled || loading">{{ label }}</button>' })
   app.component('UInput', { props: ['modelValue'], emits: ['update:modelValue'], template: '<input :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />' })
   app.component('UTextarea', { props: ['modelValue'], emits: ['update:modelValue'], template: '<textarea :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />' })
-  for (const name of ['UFormField', 'USelect', 'UFileUpload', 'UAlert']) app.component(name, { props: ['title'], template: '<div>{{ title }}<slot /></div>' })
+  app.component('UFormField', {props:['label'],template:'<label :data-label="label"><slot /></label>'})
+  app.component('USelect', {props:['modelValue','items'],emits:['update:modelValue'],template:'<select :value="modelValue" @change="$emit(\'update:modelValue\',$event.target.value)"><option v-for="item in items" :value="item.value">{{ item.label }}</option></select>'})
+  for (const name of ['UFileUpload', 'UAlert']) app.component(name, { props: ['title'], template: '<div>{{ title }}<slot /></div>' })
   app.mount(host); cleanup = () => app.unmount(); await flush(); return host
 }
 const click = (host: HTMLElement, label: string) => Array.from(host.querySelectorAll('button')).find(b => b.textContent === label)!.click()
@@ -44,4 +46,28 @@ describe('template import modal', () => {
     expect(imported).toHaveBeenCalledWith({ id: 'imported' })
     expect(toast).toHaveBeenCalledWith(expect.objectContaining({ title: 'Template imported' }))
   })
+  it('reuses its request key after an uncertain save response', async () => {
+    const host = await mount(); const input=host.querySelector('textarea')!
+    input.value='<p>Retry me</p>';input.dispatchEvent(new Event('input'));await flush()
+    fetcher.mockResolvedValueOnce({html:'<p>Retry me</p>',blocks:1});click(host,'Preview import');await flush()
+    fetcher.mockRejectedValueOnce(new Error('response lost'));click(host,'Import template');await flush()
+    fetcher.mockResolvedValueOnce({template:{id:'confirmed'}});click(host,'Import template');await flush()
+    const saves=fetcher.mock.calls.filter(call=>call[0]==='/api/email/templates/import'&&call[1].body.save)
+    expect(saves).toHaveLength(2)
+    expect(saves[0][1].body.request_key).toBeTruthy()
+    expect(saves[1][1].body.request_key).toBe(saves[0][1].body.request_key)
+  })
+
+  it('restores backup metadata while retaining the explicitly authorised client choice', async () => {
+    const host=await mount();const format=host.querySelector<HTMLSelectElement>('[data-label="Format"] select')!
+    format.value='json';format.dispatchEvent(new Event('change'))
+    const input=host.querySelector('textarea')!
+    input.value=JSON.stringify({format:'xeroflow-email-template',version:1,template:{name:'OEM reference',subject:'Launch',preview_text:'Coming soon',template_kind:'draft',folder_name:'Official OEM / Geely',client_id:'foreign',body_source:{root:{type:'EmailLayout',data:{childrenIds:[]}}}}})
+    input.dispatchEvent(new Event('input'));await flush()
+    expect(host.querySelector<HTMLInputElement>('[data-label="Template name"] input')!.value).toBe('OEM reference')
+    fetcher.mockResolvedValueOnce({html:'<p>OEM</p>',blocks:0});click(host,'Preview import');await flush()
+    const body=fetcher.mock.calls.find(call=>call[0]==='/api/email/templates/import')![1].body
+    expect(body).toMatchObject({subject:'Launch',preview_text:'Coming soon',template_kind:'draft',folder_name:'Official OEM / Geely',client_id:'11111111-1111-4111-8111-111111111111'})
+  })
+
 })

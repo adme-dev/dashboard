@@ -39,6 +39,13 @@ describe('import API', () => {
     expect(await handler(event)).toEqual({ template: { id: 'new' } })
     expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ client_id: 'scoped-client', created_by: 'writer', template_kind: 'template' }), expect.anything())
   })
+  it('preserves explicit draft classification and rejects unsupported kinds', async () => {
+    raw = JSON.stringify({ ...JSON.parse(raw), save: true, template_kind: 'draft', name: 'a'.repeat(200), folder_name: 'Official OEM / Geely', preview_text: 'Vehicle launch' })
+    await handler(event)
+    expect(mocks.create).toHaveBeenLastCalledWith(expect.objectContaining({ template_kind: 'draft', folder_name: 'Official OEM / Geely', preview_text: 'Vehicle launch', name: 'a'.repeat(200) }), expect.anything())
+    raw = JSON.stringify({ ...JSON.parse(raw), template_kind: 'approved' })
+    await expect(handler(event)).rejects.toMatchObject({ statusCode: 400 })
+  })
   it('rejects authentication and client scope failures before render or persistence', async () => {
     mocks.auth.mockRejectedValueOnce(new Error('unauthorized'))
     await expect(handler(event)).rejects.toThrow('unauthorized')
