@@ -6,13 +6,15 @@ export const MAX_TEMPLATE_IMPORT_BYTES = 512 * 1024
 const tags = new Set('html head body title table tbody thead tfoot tr td th caption colgroup col div span p br hr h1 h2 h3 h4 h5 h6 a img b strong i em u s small sup sub center font ul ol li blockquote pre'.split(' '))
 const attrs = new Set('style id width height align valign bgcolor border cellpadding cellspacing colspan rowspan role aria-label alt title color size face target'.split(' '))
 type HtmlNode = { nodeName: string, value?: string, tagName?: string, childNodes?: HtmlNode[], attrs?: { name: string, value: string, namespace?: string, prefix?: string }[] }
-const cssProperties = new Set('color background-color font-family font-size font-weight font-style text-align text-decoration line-height letter-spacing vertical-align width max-width min-width height max-height border border-top border-bottom border-left border-right border-color border-width border-style border-radius border-collapse border-spacing padding padding-top padding-bottom padding-left padding-right'.split(' '))
+const cssProperties = new Set('display margin margin-top margin-bottom margin-left margin-right background color background-color font-family font-size font-weight font-style text-align text-decoration line-height letter-spacing vertical-align width max-width min-width height max-height border border-top border-bottom border-left border-right border-color border-width border-style border-radius border-collapse border-spacing padding padding-top padding-bottom padding-left padding-right'.split(' '))
 function cleanStyle(style: string): string {
   if (style.length > 4096 || /url\s*\(|expression|@import|behavior|\\|[<>]/i.test(style)) return ''
   return style.split(';').map((declaration) => {
     const colon = declaration.indexOf(':')
     const property = declaration.slice(0, colon).trim().toLowerCase()
     const value = declaration.slice(colon + 1).trim()
+    if (property === 'display' && !['block', 'inline', 'inline-block', 'inline-table', 'table', 'table-row', 'table-cell'].includes(value.toLowerCase())) return ''
+    if (property.startsWith('margin') && !/^(?:auto|(?:0|[0-9]+(?:\.[0-9]+)?(?:px|em|rem|%)?))(?:\s+(?:auto|(?:0|[0-9]+(?:\.[0-9]+)?(?:px|em|rem|%)?))){0,3}$/i.test(value)) return ''
     return colon > 0 && cssProperties.has(property) && value.length <= 200 && !/[{}@!]/.test(value) ? `${property}:${value}` : ''
   }).filter(Boolean).join(';')
 }
