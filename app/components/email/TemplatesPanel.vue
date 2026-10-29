@@ -39,11 +39,14 @@ const apiFetch = $fetch as <T = unknown>(
 
 const data = ref<{ items: TemplateRow[] }>({ items: [] })
 const pending = ref(false)
+// Keep confirmed deletions out of any older list response still in flight.
+const deletedTemplateIds = new Set<string>()
 
 async function refresh() {
   pending.value = true
   try {
-    data.value = await apiFetch<{ items: TemplateRow[] }>('/api/email/templates')
+    const result = await apiFetch<{ items: TemplateRow[] }>('/api/email/templates')
+    data.value = { items: result.items.filter(row => !deletedTemplateIds.has(row.id)) }
   } finally {
     pending.value = false
   }
@@ -59,7 +62,7 @@ function rowKind(row: TemplateRow): 'template' | 'draft' {
 }
 
 function rowFolder(row: TemplateRow): string {
-  return row.folder_name?.trim() || 'Unfiled'
+  return row.folder_name?.trim() || 'No folder'
 }
 
 const savedTemplateGroups = computed<TemplateGroup[]>(() => {
@@ -135,7 +138,7 @@ const filteredStarters = computed(() => {
 })
 
 function starterPreviewImageUrl(starterId: string): string {
-  return `/email/template-previews/${starterId}.jpeg`
+  return `/email/template-previews/${starterId}.jpeg?v=20261029-oem2`
 }
 
 // ── Rename ──────────────────────────────────────────────────────────────────
@@ -196,25 +199,29 @@ async function duplicate(row: TemplateRow) {
 // ── Delete ──────────────────────────────────────────────────────────────────
 const showDelete = ref(false)
 const deleteTarget = ref<TemplateRow | null>(null)
+const deleting = ref(false)
 
 function confirmDelete(row: TemplateRow) {
+  if (deleting.value) return
   deleteTarget.value = row
   showDelete.value = true
 }
 
 async function doDelete() {
   const row = deleteTarget.value
-  if (!row) return
-  busyId.value = row.id
+  if (!row || deleting.value) return
+  deleting.value = true
   try {
     await apiFetch(`/api/email/templates/${row.id}`, { method: 'DELETE' })
+    deletedTemplateIds.add(row.id)
+    data.value = { items: data.value.items.filter(item => item.id !== row.id) }
     toast.add({ title: 'Template deleted', color: 'success' })
     showDelete.value = false
-    refresh()
+    deleteTarget.value = null
   } catch {
-    toast.add({ title: 'Delete failed', color: 'error' })
+    toast.add({ title: 'Delete failed', description: 'The template was not removed. Try again.', color: 'error' })
   } finally {
-    busyId.value = null
+    deleting.value = false
   }
 }
 
@@ -381,14 +388,14 @@ function templateDocument(row: TemplateRow): EdmFlyhubDocument | null {
               :key="group.key"
               class="space-y-3"
             >
-              <div class="flex items-center justify-between gap-3">
+              <div v-if="savedTemplateGroups.length > 1 || group.key !== 'folder:No folder'" class="flex items-center justify-between gap-3">
                 <h3 class="text-sm font-semibold text-default">
                   {{ group.title }}
                 </h3>
                 <span class="text-xs text-muted">{{ group.rows.length }} template(s)</span>
               </div>
 
-              <div class="saved-template-grid grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              <div class="saved-template-grid grid gap-x-5 gap-y-10 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
                 <div
                   v-for="row in group.rows"
                   :key="row.id"
@@ -399,11 +406,11 @@ function templateDocument(row: TemplateRow): EdmFlyhubDocument | null {
                     class="flex flex-1 flex-col text-left cursor-pointer"
                     @click="openComposer(row.id)"
                   >
-                    <div class="flex h-52 items-start justify-center overflow-hidden bg-elevated/40 p-3">
+                    <div class="flex h-[430px] items-start justify-center overflow-hidden bg-elevated/40">
                       <EmailBuilderEdmDocumentThumbnail
                         :document="templateDocument(row)"
-                        :width="300"
-                        :max-height="184"
+                        :width="320"
+                        :max-height="430"
                       />
                     </div>
                     <div class="flex-1 border-t border-default p-4">
@@ -416,7 +423,7 @@ function templateDocument(row: TemplateRow): EdmFlyhubDocument | null {
                           label="Draft"
                         />
                         <UBadge
-                          v-else
+                          v-else-if="row.folder_name?.trim()"
                           variant="subtle"
                           color="neutral"
                           size="xs"
@@ -518,7 +525,7 @@ function templateDocument(row: TemplateRow): EdmFlyhubDocument | null {
       </template>
     </UModal>
 
-    <UModal v-model:open="showDelete" title="Delete template">
+    <UModal v-model:open="showDelete" title="Delete template" :dismissible="!deleting" :close="!deleting">
       <template #content>
         <div class="p-4 space-y-4">
           <p class="text-sm font-semibold">
@@ -533,13 +540,15 @@ function templateDocument(row: TemplateRow): EdmFlyhubDocument | null {
               variant="ghost"
               color="neutral"
               label="Cancel"
+              :disabled="deleting"
               @click="showDelete = false"
             />
             <UButton
               color="error"
               icon="i-lucide-trash-2"
               label="Delete"
-              :loading="busyId === deleteTarget?.id"
+              :loading="deleting"
+              :disabled="!deleteTarget || deleting"
               @click="doDelete()"
             />
           </div>

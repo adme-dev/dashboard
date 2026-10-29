@@ -20,7 +20,7 @@ describe('EdmTemplateThumbnail', () => {
     const ids = EDM_STARTER_TEMPLATES.map(template => template.id)
     expect(ids).not.toContain('newsletter-digest')
     expect(ids).not.toContain('flash-sale')
-    expect(ids).toHaveLength(8)
+    expect(ids).toHaveLength(11)
     expect(ids).toContain('postcards-glidex')
     expect(ids).toContain('postcards-futurax')
     expect(ids).toContain('postcards-aviro')

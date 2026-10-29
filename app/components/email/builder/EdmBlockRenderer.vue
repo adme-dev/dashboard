@@ -521,6 +521,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { previewFontFamily } from '~~/shared/emailRendering/fonts'
 import { dividerLineThickness } from '~~/app/utils/edmDivider'
 import { extendedStyleVue, safeCssColor } from '~~/app/utils/edmStyle'
 import { sanitizeInlineHtml, extractPlainText, safeInlineHref } from '~~/app/utils/edmInlineText'
@@ -895,7 +896,7 @@ function buildBaseStyle(
   return {
     color: (s.color as string) || undefined,
     backgroundColor: (s.backgroundColor as string) || undefined,
-    fontFamily: (s.fontFamily as string) || undefined,
+    fontFamily: previewFontFamily(s.fontFamily),
     fontSize: s.fontSize ? `${s.fontSize}px` : undefined,
     fontWeight: (s.fontWeight as string) || undefined,
     textAlign: (s.textAlign as string) || undefined,

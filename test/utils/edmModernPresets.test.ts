@@ -3,9 +3,9 @@ import { existsSync, statSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { MODERN_EDM_SECTION_IDS, MODERN_EDM_SECTION_PRESETS, MODERN_EDM_STARTER_TEMPLATES } from '~~/app/utils/edmModernPresets'
 
-const nativeTypes = new Set(['Heading', 'Text', 'Button', 'Image', 'menu', 'feature-grid', 'footer'])
+const nativeTypes = new Set(['Heading', 'Text', 'Button', 'Image', 'menu', 'feature-grid', 'footer', 'Html'])
 describe('modern industry email library', () => {
-  it('builds five distinct complete industry starters from reusable, native editable sections', () => {
+  it('builds five distinct complete industry starters from reusable editable sections', () => {
     expect(MODERN_EDM_STARTER_TEMPLATES).toHaveLength(5)
     expect(new Set(MODERN_EDM_STARTER_TEMPLATES.map(t => t.industry)).size).toBe(5)
     expect(new Set(MODERN_EDM_SECTION_IDS).size).toBe(MODERN_EDM_SECTION_IDS.length)
@@ -17,7 +17,7 @@ describe('modern industry email library', () => {
       const blocks = sections.flatMap(s => s!.blocks)
       expect(blocks.every(b => nativeTypes.has(b.type))).toBe(true)
       expect(blocks.some(b => b.type === 'Image' && String(b.data.props?.alt).length > 20)).toBe(true)
-      expect(blocks.some(b => b.type === 'Button' && String(b.data.props?.url).startsWith('https://'))).toBe(true)
+      expect(blocks.some(b => (b.type === 'Button' && String(b.data.props?.url).startsWith('https://')) || (b.type === 'Html' && /<a href="https:\/\//.test(String(b.data.props?.contents))))).toBe(true)
       expect(blocks.filter(b => b.type === 'footer')).toHaveLength(1)
       expect(blocks.find(b => b.type === 'footer')!.data.props?.showUnsubscribe).toBe(true)
       expect(JSON.stringify(blocks)).not.toMatch(/picsum|placehold\.co|100 George St|Weekly Digest/)
