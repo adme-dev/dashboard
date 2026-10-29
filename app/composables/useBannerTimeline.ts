@@ -369,6 +369,20 @@ function addAudioSync(tl: gsap.core.Timeline, el: HTMLElement, layer: Layer) {
   }, startTime)
 }
 
+function addWordPop(tl: gsap.core.Timeline, el: HTMLElement, layer: Layer) {
+  if (!layer.wordPop) return
+  const { duration, stagger, ease } = layer.wordPop
+  const curve = resolveEase(ease)
+  el.querySelectorAll<HTMLElement>('[data-banner-word]').forEach((word, index) => {
+    const at = (layer.startTime || 0) + index * stagger
+    tl.set(word, { opacity: 0, scale: 0.6, filter: 'blur(10px)', y: 0, immediateRender: false }, 0)
+    tl.to(word, { opacity: 1, duration: duration * 0.4, ease: curve, immediateRender: false }, at)
+    tl.to(word, { scale: 1.05, duration: duration * 0.7, ease: curve, immediateRender: false }, at)
+    tl.to(word, { scale: 1, duration: duration * 0.3, ease: curve, immediateRender: false }, at + duration * 0.7)
+    tl.to(word, { filter: 'blur(0px)', duration, ease: curve, immediateRender: false }, at)
+  })
+}
+
 /** Recompute animated clips after timeline transforms have settled. */
 function addMaskAnimation(tl: gsap.core.Timeline, el: HTMLElement, layer: Layer, layers: Layer[]) {
   if (!layer.isMask || !layer.maskTargetIds?.length) return
@@ -435,6 +449,8 @@ function addLayerToTimeline(tl: gsap.core.Timeline, el: HTMLElement, layer: Laye
   } else {
     buildPresetLayer(tl, el, layer)
   }
+
+  addWordPop(tl, el, layer)
 
   // Motion path animation — drives position along a curved trajectory
   if (layer.motionPath && layer.motionPath.length >= 2) {

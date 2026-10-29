@@ -1,5 +1,6 @@
 import { bannerEffectCss, bannerTextDepthShadow, bannerTextMarkup, safeBannerTextTexture } from '~~/shared/bannerEffects'
 import { bannerImageCropCss } from '~~/shared/bannerImageCrop'
+import { bannerWordTokens } from '~~/shared/bannerWordPop'
 import { resolveBannerPlayback, bannerPlaybackRepeat } from '~~/app/utils/banner-playback'
 import { layerTransformOrigin } from '~~/app/utils/banner-transform'
 import { ANIM_IN, ANIM_OUT, resolveBannerFormat } from '~~/app/utils/banner-constants'
@@ -165,6 +166,13 @@ function buildKeyframeAnimLines(l: Layer, cycleEnd?: number): string[] {
   return lines
 }
 
+function buildWordPopAnimLines(l: Layer): string[] {
+  if (!l.wordPop) return []
+  const { duration, stagger, ease } = l.wordPop
+  const at = l.startTime || 0
+  return [`  (function() { var words = document.querySelectorAll('[data-id="${l.id}"] [data-banner-word]'); var ease = ${easeToExportExpr(ease)}; words.forEach(function(word, index) { var at = ${at} + index * ${stagger}; tl.set(word, { opacity: 0, scale: 0.6, filter: 'blur(10px)', y: 0 }, 0); tl.to(word, { opacity: 1, duration: ${duration * 0.4}, ease: ease }, at); tl.to(word, { scale: 1.05, duration: ${duration * 0.7}, ease: ease }, at); tl.to(word, { scale: 1, duration: ${duration * 0.3}, ease: ease }, at + ${duration * 0.7}); tl.to(word, { filter: 'blur(0px)', duration: ${duration}, ease: ease }, at); }); })();`]
+}
+
 export interface BuildBannerOptions {
   playback?: BannerPlayback
   includeAnimations?: boolean
@@ -239,11 +247,17 @@ export function buildBannerHTML(
         if (l.textAlign) style += `text-align:${l.textAlign};`
         if (l.bgColor) style += `background:${l.bgColor};padding:${l.paddingV ?? 4}px ${l.paddingH ?? 10}px;`
         if (l.fontStyle === 'italic') style += 'font-style:italic;'
+        if (l.textStroke) style += 'paint-order:stroke;'
         if (!bannerTextDepthShadow(l as unknown as Record<string, unknown>) && !safeBannerTextTexture(l.textTexture)) style += bannerEffectCss(l as unknown as Record<string, unknown>)
         const lineStrut = Number.isFinite(l.lineBoxFontSize) && l.lineBoxFontSize! > (l.fontSize || 16)
           ? `<span aria-hidden="true" style="font-size:${l.lineBoxFontSize}px">&#160;</span>`
           : ''
-        const content = `${l.textRuns?.length && l.textRuns.map(run => run.text).join('') === l.text ? l.textRuns.map(run => `<span style="${run.fontSize ? `font-size:${run.fontSize}px;` : ''}${run.top !== undefined ? `position:relative;top:${run.top}px;` : ''}">${escapeHtml(run.text)}</span>`).join('') : escapeHtml(l.text || '')}${lineStrut}`
+        const textMarkup = l.wordPop
+          ? bannerWordTokens(l.text || '').map(token => token.wordIndex === null ? escapeHtml(token.text) : `<span data-banner-word="${token.wordIndex}" style="display:inline-block;transform-origin:center center">${escapeHtml(token.text)}</span>`).join('')
+          : l.textRuns?.length && l.textRuns.map(run => run.text).join('') === l.text
+            ? l.textRuns.map(run => `<span style="${run.fontSize ? `font-size:${run.fontSize}px;` : ''}${run.top !== undefined ? `position:relative;top:${run.top}px;` : ''}">${escapeHtml(run.text)}</span>`).join('')
+            : escapeHtml(l.text || '')
+        const content = `${textMarkup}${lineStrut}`
         return `<div class="layer" data-id="${l.id}" style="${style}">${bannerTextMarkup(content, l as unknown as Record<string, unknown>)}</div>`
       }
       if (l.type === 'button') {
@@ -295,6 +309,7 @@ export function buildBannerHTML(
       // Keyframe-based layers use dedicated builder
       if (layerHasKeyframes(l)) {
         lines.push(...buildKeyframeAnimLines(l, playback?.duration))
+        lines.push(...buildWordPopAnimLines(l))
         // Video sync for keyframe layers
         if ((l.type === 'bg' && l.srcType === 'video') || l.type === 'video') {
           const startTime = l.startTime || 0
@@ -404,6 +419,8 @@ export function buildBannerHTML(
           lines.push(`  tl.to(${sel}, { motionPath: { path: ${pathJson}, curviness: ${curviness}${autoRotate}${startEnd} }, duration: ${dur.toFixed(3)}, ease: ${easeToExportExpr(tw.ease)} }, ${tw.startTime});`)
         }
       }
+
+      lines.push(...buildWordPopAnimLines(l))
 
     })
 

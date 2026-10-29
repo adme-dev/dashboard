@@ -127,12 +127,21 @@ function fontManifest(document, warnings) {
 
 function transformValues(text) {
   const values = {}
-  const pattern = /(translateX|translateY|rotate|scaleX|scaleY|scale)\(([^)]+)\)/g
+  const pattern = /(translateX|translateY|translate|rotate|scaleX|scaleY|scale)\(([^)]+)\)/g
   const parts = [...text.matchAll(pattern)]
   if (text.replace(pattern, '').trim()) throw new Error(`Unsupported transform ${text}`)
   let hasRotationOrScale = false
   let hasScale = false
   for (const [, name, raw] of parts) {
+    if (name === 'translate') {
+      const coords = raw.split(',').map(value => value.trim())
+      if (coords.length !== 2 || coords.some(value => !/^-?(?:\d*\.)?\d+(?:px)?$/.test(value))) throw new Error(`Unsupported transform ${text}`)
+      if (hasRotationOrScale && coords.some(value => Number.parseFloat(value) !== 0)) throw new Error('Unsupported ordered translation after rotation/scale')
+      if ('x' in values || 'y' in values) throw new Error('Repeated transform function')
+      values.x = Number.parseFloat(coords[0])
+      values.y = Number.parseFloat(coords[1])
+      continue
+    }
     const unit = name === 'rotate' ? 'deg' : name.startsWith('translate') ? 'px' : ''
     if (!new RegExp(`^-?(?:\\d*\\.)?\\d+(?:${unit})?$`).test(raw)) throw new Error(`Unsupported transform ${text}`)
     const value = Number.parseFloat(raw)
@@ -182,6 +191,72 @@ function reverseEase(value) {
 const identityValue = property => property === 'opacity' || property.startsWith('scale') ? 1 : 0
 const sameTime = (a, b) => Math.abs(a - b) < 1e-9
 
+function easedFraction(easing, fraction) {
+  if (easing === 'linear' || easing === 'none') return fraction
+  const match = /^cubic-bezier\(\s*([\d.-]+)\s*,\s*([\d.-]+)\s*,\s*([\d.-]+)\s*,\s*([\d.-]+)\s*\)$/.exec(easing || '')
+  if (!match) throw new Error('Unsupported repeated animation easing')
+  const [, x1, y1, x2, y2] = match.map(Number)
+  const cubic = (a, b, t) => 3 * a * t * (1 - t) ** 2 + 3 * b * t ** 2 * (1 - t) + t ** 3
+  let low = 0, high = 1
+  for (let i = 0; i < 24; i++) {
+    const middle = (low + high) / 2
+    if (cubic(x1, x2, middle) < fraction) low = middle
+    else high = middle
+  }
+  return cubic(y1, y2, (low + high) / 2)
+}
+
+// Fractional/slide-clipped repetitions cannot be represented as whole cycles.
+// Bound them to one linear native keyframe per 60 Hz source frame. This keeps
+// the visible phase and easing while leaving the source loop reset to playback.
+function sampleRepeatedFrames(cycle, at, duration, visibleEnd) {
+  const sampleCount = Math.ceil((visibleEnd - at) * 60)
+  if (sampleCount > 480) throw new Error('Repeated effect exceeds the native keyframe budget')
+  const valueAt = time => {
+    const elapsed = Math.max(0, time - at)
+    const phase = elapsed - Math.floor(elapsed / duration) * duration
+    const target = at + phase
+    const nextIndex = cycle.findIndex(frame => frame.time >= target - 1e-9)
+    if (nextIndex <= 0) return cycle[0].value
+    const previous = cycle[nextIndex - 1], next = cycle[nextIndex]
+    const fraction = Math.max(0, Math.min(1, (target - previous.time) / (next.time - previous.time)))
+    return previous.value + (next.value - previous.value) * easedFraction(previous.easing || 'linear', fraction)
+  }
+  const frames = []
+  for (let i = 0; i <= sampleCount; i++) {
+    const time = Number(Math.min(visibleEnd, at + i / 60).toFixed(9))
+    if (!frames.length || !sameTime(frames.at(-1).time, time)) frames.push({ time, value: valueAt(time), easing: 'linear' })
+  }
+  if (!sameTime(frames.at(-1).time, visibleEnd)) frames.push({ time: visibleEnd, value: valueAt(visibleEnd), easing: 'linear' })
+  delete frames.at(-1).easing
+  return frames
+}
+
+function sourceWordPop(element, sourceId, style, rules) {
+  const wrapper = element.querySelector('[data-words-animation="true"]')
+  if (!wrapper) return null
+  if (wrapper.id !== `effIn${sourceId}` || element.querySelectorAll('.row').length !== 1) throw new Error('Unsupported word animation structure')
+  const words = [...wrapper.querySelectorAll('span.word.in')]
+  if (!words.length || words.length > 20) throw new Error('Unsupported word animation count')
+  const settings = words.map((word, index) => {
+    const css = style(word)
+    if (Number(word.getAttribute('data-index')) !== index || !word.textContent.trim() || css.animationIterationCount !== '1' || css.animationDirection !== 'normal' || css.animationFillMode !== 'backwards') throw new Error('Unsupported word animation settings')
+    return { name: css.animationName, duration: seconds(css.animationDuration), delay: seconds(css.animationDelay), ease: cssEase(css.animationTimingFunction) }
+  })
+  const first = settings[0]
+  const stagger = settings.length > 1 ? settings[1].delay - first.delay : 0
+  if (first.delay !== 0 || !Number.isFinite(stagger) || stagger < 0 || first.duration <= 0 || first.duration > 5 || settings.some((item, index) => item.name !== first.name || item.duration !== first.duration || item.ease !== first.ease || !sameTime(item.delay, index * stagger))) throw new Error('Unsupported word animation stagger')
+  const rule = rules.findLast(item => item.name === first.name)
+  const frames = rule && [...rule.cssRules].map(frame => [frame.keyText, frame.style.transform, frame.style.filter, frame.style.opacity])
+  if (JSON.stringify(frames) !== JSON.stringify([
+    ['0%', 'translateY(0) scale(.6)', 'blur(10px)', '0'],
+    ['40%', '', '', '1'],
+    ['70%', 'translateY(0) scale(1.05)', '', ''],
+    ['100%', 'translateY(0) scale(1)', 'blur(0px)', ''],
+  ])) throw new Error('Unsupported word animation keyframes')
+  return { duration: first.duration, stagger, ease: first.ease }
+}
+
 // Only sequential wrappers that settle back to identity can share a native
 // transform. Overlapping/nested transforms need matrix-aware composition.
 function appendEffect(current, effect, start) {
@@ -214,8 +289,10 @@ function effectTracks(effect, style, rules, start, end, warnings, geometry, inte
   const rule = rules.findLast(r => r.name === css.animationName)
   if (!rule) throw new Error(`Missing animation ${css.animationName}`)
   const iterations = Number(css.animationIterationCount || 1)
-  if (!Number.isInteger(iterations) || iterations < 1 || iterations > 50 || !['normal', 'reverse', ''].includes(css.animationDirection)) throw new Error('Unsupported repeated/reversed animation')
-  if (at < 0 || duration <= 0 || at + duration * iterations > end + 1e-9) throw new Error('Animation crosses slide boundary')
+  if (!Number.isFinite(iterations) || iterations < 1 || iterations > 50 || !['normal', 'reverse', ''].includes(css.animationDirection)) throw new Error('Unsupported repeated/reversed animation')
+  const animationEnd = at + duration * iterations
+  if (at < 0 || duration <= 0 || (!intermediate && animationEnd > end + 1e-9)) throw new Error('Animation crosses slide boundary')
+  if (!Number.isInteger(iterations) && animationEnd < end - 1e-9) throw new Error('Partial animation reset needs an adapter')
   if ((intermediate || iterations > 1) && ((!['', 'none'].includes(css.transform)) || !['', '1'].includes(css.opacity))) throw new Error('Intermediate effect has nonidentity underlying styles')
   const tracks = {}
   const parsedFrames = []
@@ -266,7 +343,9 @@ function effectTracks(effect, style, rules, start, end, warnings, geometry, inte
       })))
     }
     if (!intermediate && frames.at(-1).value !== identityValue(property) && !['forwards', 'both'].includes(css.animationFillMode)) throw new Error('Animation reset after completion needs an adapter')
-    if (iterations > 1) {
+    if (iterations > 1 && (intermediate && (!Number.isInteger(iterations) || animationEnd > end + 1e-9))) {
+      frames.splice(0, frames.length, ...sampleRepeatedFrames(frames, at, duration, Math.min(end, animationEnd)))
+    } else if (iterations > 1) {
       if (frames[0].value !== frames.at(-1).value) throw new Error('Repeated animation reset needs an adapter')
       const cycle = structuredClone(frames)
       for (let iteration = 1; iteration < iterations; iteration++) {
@@ -356,8 +435,10 @@ export async function convertTheBriefHtml(html) {
         else warnings.push(`${element.id}: unsupported native blend mode ${css.mixBlendMode}`)
       }
       let keyframes = {}
+      let wordPop = null
       try {
-        let effect = effectTracks(document.getElementById(`effIn${sourceId}`), style, rules, start, end, warnings, layerBase)
+        wordPop = sourceWordPop(element, sourceId, style, rules)
+        let effect = wordPop ? {} : effectTracks(document.getElementById(`effIn${sourceId}`), style, rules, start, end, warnings, layerBase)
         const middle = document.getElementById(`effMid${sourceId}`)
         if (middle) {
           try {
@@ -410,8 +491,6 @@ export async function convertTheBriefHtml(html) {
           const rowCss = style(row)
           const span = [...row.querySelectorAll('span')].find(item => item.textContent.trim() && !item.closest('sup')) || row
           const textCss = style(span)
-          const textTransform = textCss.textTransform || rowCss.textTransform || 'none'
-          if (!['none', 'uppercase', 'lowercase', 'capitalize'].includes(textTransform)) throw new Error('Unsupported text transform')
           if (textCss.fontStyle && !['normal', 'italic'].includes(textCss.fontStyle)) throw new Error('Unsupported text font style')
           // Animated word wrappers inherit their visible child's typography but
           // can report an empty computed colour in offline CSS parsing. Compare
@@ -419,6 +498,16 @@ export async function convertTheBriefHtml(html) {
           const runs = [...row.querySelectorAll('span')].filter(item => item.textContent.trim() && !item.children.length)
           const signature = node => ['fontSize', 'fontFamily', 'fontWeight', 'fontStyle', 'color', 'letterSpacing'].map(key => style(node)[key]).join('|')
           if (new Set(runs.filter(item => !item.closest('sup')).map(signature)).size > 1) throw new Error('Mixed styled text within a line needs an adapter')
+          const paintedCss = style(runs.find(item => !item.closest('sup')) || span)
+          const textTransform = paintedCss.textTransform || textCss.textTransform || rowCss.textTransform || 'none'
+          if (!['none', 'uppercase', 'lowercase', 'capitalize'].includes(textTransform)) throw new Error('Unsupported text transform')
+          const textContainer = row.closest('.text-content')
+          const containerCss = textContainer ? style(textContainer) : rowCss
+          const textStroke = containerCss.getPropertyValue('-webkit-text-stroke') || ''
+          const textShadow = containerCss.textShadow || ''
+          if (textStroke && !/^\d+(?:\.\d+)?px #[0-9a-f]{6}$/i.test(textStroke)) throw new Error('Unsupported text stroke')
+          if (textShadow && !/^-?\d+(?:\.\d+)?px -?\d+(?:\.\d+)?px (?:\d+(?:\.\d+)?px|0) #[0-9a-f]{3,6}$/i.test(textShadow)) throw new Error('Unsupported text shadow')
+          if (textStroke && !['stroke', ''].includes(containerCss.paintOrder)) throw new Error('Unsupported text paint order')
           const textRuns = []
           if (row.querySelector('sup')) {
             const walk = (node) => {
@@ -444,7 +533,7 @@ export async function convertTheBriefHtml(html) {
           const lineHeight = /^\d*\.?\d+$/.test(rowCss.lineHeight) ? Number(rowCss.lineHeight) : px(rowCss.lineHeight) / fontSize
           const height = lineBoxFontSize * lineHeight
           if (!Number.isFinite(height)) throw new Error('Unsupported text line height')
-          if (row.textContent.trim()) layers.push({ ...layerBase, linkId: `source:${sourceId}:row:${rowIndex}`, id: id++, type: 'text', name: row.textContent.trim().slice(0, 60), y, h: height, ...(layerBase.transformOrigin ? { transformOrigin: { x: layerBase.transformOrigin.x, y: layerBase.transformOrigin.y - (y - layerBase.y) } } : {}), text: row.textContent.trim(), ...(textRuns.length ? { text: row.textContent, textRuns } : {}), textTransform, fontFamily: textCss.fontFamily.replace(/["']/g, ''), fontStyle: textCss.fontStyle === 'italic' ? 'italic' : 'normal', fontSize, lineBoxFontSize, textAntialias: style(document.documentElement).getPropertyValue('-webkit-font-smoothing') === 'antialiased', fontWeight: Number(textCss.fontWeight) || 400, lineHeight, color: textCss.color, textAlign: textCss.textAlign || 'left', letterSpacing: !textCss.letterSpacing || textCss.letterSpacing === 'normal' ? '0px' : textCss.letterSpacing })
+          if (row.textContent.trim()) layers.push({ ...layerBase, linkId: `source:${sourceId}:row:${rowIndex}`, id: id++, type: 'text', name: row.textContent.trim().slice(0, 60), y, h: height, ...(layerBase.transformOrigin ? { transformOrigin: { x: layerBase.transformOrigin.x, y: layerBase.transformOrigin.y - (y - layerBase.y) } } : {}), text: row.textContent.trim(), ...(textRuns.length ? { text: row.textContent, textRuns } : {}), ...(wordPop ? { wordPop } : {}), textTransform, fontFamily: textCss.fontFamily.replace(/["']/g, ''), fontStyle: textCss.fontStyle === 'italic' ? 'italic' : 'normal', fontSize, lineBoxFontSize, textAntialias: style(document.documentElement).getPropertyValue('-webkit-font-smoothing') === 'antialiased', fontWeight: Number(textCss.fontWeight) || 400, lineHeight, color: paintedCss.color || textCss.color || '#fff', ...(textStroke ? { textStroke } : {}), ...(textShadow ? { textShadow } : {}), textAlign: textCss.textAlign || 'left', letterSpacing: !textCss.letterSpacing || textCss.letterSpacing === 'normal' ? '0px' : textCss.letterSpacing })
           y += height
         }
         if (new Set(rows.map(row => style(row).fontSize)).size > 1) warnings.push(`${element.id}: mixed-size text split into editable lines; baseline alignment needs visual review`)

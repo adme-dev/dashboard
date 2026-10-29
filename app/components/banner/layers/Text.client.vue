@@ -110,6 +110,7 @@ function onKeydown(e: KeyboardEvent) {
           filter: effects.visualFilter,
           textShadow: texture ? 'none' : effects.textShadow || 'none',
           WebkitTextStroke: effects.textStroke || 'unset',
+          paintOrder: effects.textStroke ? 'stroke' : undefined,
           textTransform: (layer.textTransform as any) || 'none',
           letterSpacing: layer.letterSpacing || 'normal',
           lineHeight: layer.lineHeight || 1.2,
@@ -135,6 +136,7 @@ function onKeydown(e: KeyboardEvent) {
         <TextGlyphs
           :text="isEditing ? (layer.text || '') : displayText"
           :runs="displayRuns"
+          :word-pop="!!layer.wordPop && !isEditing"
           :line-box-font-size="!isEditing ? layer.lineBoxFontSize : undefined"
           :font-size="layer.fontSize"
         />
