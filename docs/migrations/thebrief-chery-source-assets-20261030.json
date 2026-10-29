@@ -1,0 +1,39 @@
+{
+  "sourceDesign": "m1z20xq",
+  "sourceArchiveSha256": "bff4f34b1ef8e2142d7666a5e4ed5f4ba13422235479fcc41667285081b9deee",
+  "purpose": "Reusable source artwork only; complete native design held for unsupported 3D animation",
+  "assets": [
+    {
+      "sourcePath": "media/61a5f84d9f976cc7a61f6db03f11f994.jpg",
+      "file": "FTG-Chery-EV-OCT-background-6a8eff8dcc32.jpg",
+      "sha256": "6a8eff8dcc321eb7003e78ed09811f9748c9cc2314707d7dd37d73c1c8351f38",
+      "bytes": 147566,
+      "assetId": "772b68ea-ca35-436f-aa50-514947cbe8ae"
+    },
+    {
+      "sourcePath": "media/0b721467609de9ddddedd7118bf8321a.png",
+      "file": "FTG-Chery-EV-OCT-white-logo-0ba812e5fa9a.png",
+      "sha256": "0ba812e5fa9a9021423d2997a520a2b5a3624c565b6cfbb35c803058e05e649a",
+      "bytes": 4254,
+      "assetId": "ee6000f2-4d01-4300-b892-2a59389df5a8"
+    },
+    {
+      "sourcePath": "media/26bec22b0006a8d5e7525eaf037ade6f.png",
+      "file": "FTG-Chery-EV-OCT-red-e5-3c441d19054f.png",
+      "sha256": "3c441d19054f8df185e260ac067299e17c46697978016412f0ff131b06f35189",
+      "bytes": 34967,
+      "assetId": "9dd5eb5b-8dca-44db-a12b-8e606dc93402"
+    },
+    {
+      "sourcePath": "media/f2e3e841bbc7fed6e2e9f3158291cc86.png",
+      "file": "FTG-Chery-EV-OCT-white-e5-d113a957d4c5.png",
+      "sha256": "d113a957d4c541561fd01bf69e6fb48d7df31b2f94e7ee93971ad997680a33fd",
+      "bytes": 53588,
+      "assetId": "95ae4717-0e8c-41cd-9acd-5d886d33568a"
+    }
+  ],
+  "importedAt": "2026-10-30",
+  "destination": "Banner Studio shared asset library",
+  "clientId": null,
+  "ownershipNote": "Source naming retained as FTG Chery; generic asset uploader stores shared assets without client assignment. No client project was created or artwork applied."
+}

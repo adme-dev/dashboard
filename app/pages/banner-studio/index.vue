@@ -290,7 +290,7 @@
               Timeline-driven animation
             </h2>
             <p class="text-[#45474D] dark:text-white/60 text-base md:text-lg leading-relaxed max-w-[480px] mb-6">
-              GSAP-powered animations with a visual timeline editor. Keyframe any property, add motion paths, and preview in real-time. Export to HTML5, GIF, or MP4.
+              Click entrance and exit clips on the visual timeline to choose transitions, then refine timing and easing in the inspector. Add keyframes or motion paths, preview in real time, and export to HTML5, GIF, or MP4.
             </p>
             <ul class="flex flex-col gap-3">
               <li v-for="item in animationFeatures" :key="item" class="flex items-center gap-3 text-[15px] text-[#45474D] dark:text-white/60">
@@ -840,7 +840,7 @@ const capabilityCards = [
   },
   {
     title: 'Animation & Motion',
-    description: 'GSAP-powered timeline with keyframes, easing curves, motion paths, and exit animations. Preview and scrub in real-time.',
+    description: 'Pick entrance and exit transitions from timeline clips, then refine keyframes, easing curves, and motion paths in the inspector. Preview and scrub in real time.',
     icon: 'i-lucide-clapperboard',
     iconBg: 'bg-violet-500/10',
     iconColor: 'text-violet-600'
@@ -865,7 +865,7 @@ const editorFeatures = [
 const animationFeatures = [
   'Visual timeline with draggable keyframes',
   'Motion path curves with artboard overlay',
-  'Entry + exit animation presets',
+  'Clickable entry + exit clips with a preset picker',
   'Export to HTML5, GIF (5-15 fps), or MP4'
 ]
 

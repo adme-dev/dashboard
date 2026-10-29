@@ -12,6 +12,7 @@ const { decomposingLayerId, decomposeFromUrl } = useDecompose()
 const { isEditing: isAiEditing, openEdit: openAiEdit } = useAiLayerEdit()
 const { isMerging, mergeLayers } = useMergeLayers()
 const { openGenerate: openAiGenerate } = useAiImageGenerate()
+const { inspectorTab } = useBannerInspector()
 
 // ── Layer context menu ──
 const contextMenuLayer = ref<Layer | null>(null)
@@ -242,6 +243,15 @@ const LANE_H = 32
 const KF_TRACK_H = 20
 const RULER_H = 32
 const LABEL_W = 256
+const LAYER_ICONS: Record<Layer['type'], string> = {
+  text: 'i-lucide-type',
+  image: 'i-lucide-image',
+  video: 'i-lucide-video',
+  rect: 'i-lucide-square',
+  button: 'i-lucide-mouse-pointer-click',
+  bg: 'i-lucide-panels-top-left',
+  audio: 'i-lucide-music-2'
+}
 
 /** Get height for a layer lane (main + expanded keyframe tracks) */
 function getLaneHeight(layerId: number): number {
@@ -278,6 +288,37 @@ const playheadX = computed(() => state.currentTime * pxPerSec.value)
 
 function getLayerColor(layer: { type: string }): string {
   return LAYER_TYPE_COLORS[layer.type] || LAYER_COLORS[0]
+}
+
+function presenceWidth(layer: Layer): number {
+  return Math.max(0.1, (layer.endTime || 3) - (layer.startTime || 0)) * pxPerSec.value
+}
+
+function animationClipWidth(layer: Layer, direction: 'in' | 'out'): number {
+  const width = presenceWidth(layer)
+  const start = layer.startTime || 0
+  const end = layer.endTime || 3
+  const outDur = layer.outDur || (layer.type === 'bg' ? 0.5 : 0.25)
+  const wordCount = layer.text?.trim() ? layer.text.trim().split(/\s+/).length : 1
+  const duration = direction === 'in'
+    ? layer.wordPop
+      ? layer.wordPop.duration + (wordCount - 1) * layer.wordPop.stagger
+      : layer.animInDur || 0.6
+    : end - Math.max(start + (layer.animInDur || 0.6), end - outDur)
+  return Math.min(width / 2, Math.max(28, duration * pxPerSec.value))
+}
+
+function openAnimationDetails(layer: Layer) {
+  selectLayer(layer.id)
+  inspectorTab.value = 'animation'
+}
+
+function onPresenceBarClick(layer: Layer) {
+  if (justFinishedDrag) {
+    justFinishedDrag = false
+    return
+  }
+  openAnimationDetails(layer)
 }
 
 // ── Ruler / Playhead drag ─────────────
@@ -379,6 +420,7 @@ const presenceDrag = ref<{
 } | null>(null)
 
 let justFinishedDrag = false
+let dragClickReset: ReturnType<typeof setTimeout> | null = null
 
 function onPresenceMouseDown(e: MouseEvent, layerId: number, mode: 'start' | 'end' | 'move') {
   e.stopPropagation()
@@ -477,7 +519,11 @@ function onPresenceMouseUp(e: MouseEvent) {
       d.barEl.style.width = ''
     }
 
-    justFinishedDrag = true
+    justFinishedDrag = Math.abs(dx) > 3
+    if (dragClickReset) clearTimeout(dragClickReset)
+    dragClickReset = setTimeout(() => {
+      justFinishedDrag = false
+    }, 0)
   }
 
   presenceDrag.value = null
@@ -761,6 +807,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  if (dragClickReset) clearTimeout(dragClickReset)
   window.removeEventListener('keydown', onKeydown)
   window.removeEventListener('mousemove', onPlayheadDrag)
   window.removeEventListener('mouseup', onPlayheadUp)
@@ -859,10 +906,7 @@ onUnmounted(() => {
               >
                 <UIcon name="i-lucide-chevron-right" class="w-3 h-3" />
               </UButton>
-              <span
-                class="w-2 h-2 rounded-full shrink-0"
-                :style="{ backgroundColor: getLayerColor(layer) }"
-              />
+              <UIcon :name="LAYER_ICONS[layer.type]" class="w-3 h-3 shrink-0" :style="{ color: getLayerColor(layer) }" />
               <UButton color="neutral" variant="ghost" size="xs"
                 class="p-0 w-4 h-4 flex items-center justify-center shrink-0"
                 :class="layer.hidden ? 'text-dimmed' : 'text-muted hover:text-highlighted'"
@@ -1013,6 +1057,7 @@ onUnmounted(() => {
                     opacity: 0.35,
                   }"
                   @mousedown="onPresenceMouseDown($event, layer.id, 'move')"
+                  @click.stop="onPresenceBarClick(layer)"
                 />
                 <!-- Waveform canvas for audio layers -->
                 <canvas
@@ -1022,28 +1067,50 @@ onUnmounted(() => {
                   :width="Math.round(((layer.endTime || 3) - (layer.startTime || 0)) * pxPerSec)"
                   :height="LANE_H - 8"
                 />
-                <!-- Anim-in marker (only for preset-mode layers) -->
-                <div
-                  v-if="!hasKeyframes(layer) && layer.animIn !== 'none'"
-                  class="absolute top-0 left-0 rounded-l-sm pointer-events-none"
-                  :style="{
-                    width: `${Math.min((layer.animInDur || 0.6) * pxPerSec, ((layer.endTime || 3) - (layer.startTime || 0)) * pxPerSec)}px`,
-                    height: '100%',
-                    backgroundColor: getLayerColor(layer),
-                    opacity: 0.7,
-                  }"
+                <!-- Clickable entrance and exit clips use the same presets as the inspector. -->
+                <template v-if="layer.type !== 'audio' && !hasKeyframes(layer)">
+                  <div
+                    class="absolute top-0 left-0 z-10 h-full overflow-visible rounded-l-sm"
+                    :class="state.selectedLayerId === layer.id ? 'ring-1 ring-inset ring-white/50' : ''"
+                    :style="{ width: `${animationClipWidth(layer, 'in')}px`, backgroundColor: getLayerColor(layer), opacity: layer.animIn === 'none' && !layer.wordPop ? 0.45 : 1 }"
+                  >
+                    <BannerTimelineAnimationPicker :layer="layer" direction="in" :compact="animationClipWidth(layer, 'in') < 74" />
+                  </div>
+                  <div
+                    class="absolute top-0 right-0 z-10 h-full overflow-visible rounded-r-sm"
+                    :class="state.selectedLayerId === layer.id ? 'ring-1 ring-inset ring-white/50' : ''"
+                    :style="{ width: `${animationClipWidth(layer, 'out')}px`, backgroundColor: getLayerColor(layer), filter: 'brightness(0.78)', opacity: layer.animOut === 'none' ? 0.45 : 1 }"
+                  >
+                    <BannerTimelineAnimationPicker :layer="layer" direction="out" :compact="animationClipWidth(layer, 'out') < 74" />
+                  </div>
+                </template>
+                <UButton
+                  v-else-if="hasKeyframes(layer)"
+                  icon="i-lucide-diamond"
+                  label="Keyframes"
+                  color="neutral"
+                  variant="ghost"
+                  size="xs"
+                  class="absolute left-1 top-0 z-10 h-5 max-w-[calc(100%-0.5rem)] overflow-hidden rounded-sm px-1 text-[9px]"
+                  :aria-label="`Edit keyframes for ${layer.name}`"
+                  @mousedown.stop
+                  @click.stop="openAnimationDetails(layer)"
                 />
-                <span class="absolute inset-0 flex items-center gap-2 overflow-hidden px-2 text-[10px] font-medium text-default pointer-events-none whitespace-nowrap">
-                  {{ layer.type === 'audio' ? 'Audio' : hasKeyframes(layer) ? 'Keyframes' : layer.animIn !== 'none' ? layer.animIn : layer.name }}
+                <span
+                  v-if="!hasKeyframes(layer)"
+                  class="absolute inset-0 flex items-center overflow-hidden px-2 text-[10px] font-medium text-default pointer-events-none whitespace-nowrap"
+                  :style="layer.type === 'audio' ? {} : { left: `${animationClipWidth(layer, 'in')}px`, right: `${animationClipWidth(layer, 'out')}px` }"
+                >
+                  {{ layer.name }}
                 </span>
                 <!-- Left edge handle -->
                 <div
-                  class="absolute top-0 left-0 w-[6px] h-full cursor-col-resize hover:bg-white/20 rounded-l-sm"
+                  class="absolute top-0 left-0 z-20 w-[6px] h-full cursor-col-resize hover:bg-white/20 rounded-l-sm"
                   @mousedown="onPresenceMouseDown($event, layer.id, 'start')"
                 />
                 <!-- Right edge handle -->
                 <div
-                  class="absolute top-0 right-0 w-[6px] h-full cursor-col-resize hover:bg-white/20 rounded-r-sm"
+                  class="absolute top-0 right-0 z-20 w-[6px] h-full cursor-col-resize hover:bg-white/20 rounded-r-sm"
                   @mousedown="onPresenceMouseDown($event, layer.id, 'end')"
                 />
               </div>

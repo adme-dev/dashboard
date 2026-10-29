@@ -9,11 +9,18 @@ const { seekTo, playTimeline, pauseTimeline } = useBannerTimeline()
 
 function set(key: string, val: any) {
   if (!selectedLayer.value) return
-  updateLayer(selectedLayer.value.id, { [key]: val })
+  updateLayer(selectedLayer.value.id, { [key]: val, ...(key === 'animIn' ? { wordPop: undefined } : {}) })
 }
 
 function setNum(key: string, val: string | number) {
   set(key, Number(val))
+}
+
+function setWordTiming(key: 'duration' | 'stagger', value: string | number) {
+  if (!selectedLayer.value?.wordPop) return
+  const number = Number(value)
+  if (!Number.isFinite(number)) return
+  set('wordPop', { ...selectedLayer.value.wordPop, [key]: Math.min(5, Math.max(key === 'duration' ? 0.05 : 0, number)) })
 }
 
 const CATEGORY_LABEL: Record<string, string> = { out: 'Ease out', in: 'Ease in', inOut: 'Ease in/out', special: '' }
@@ -173,6 +180,55 @@ function deleteSelectedKeyframe() {
       <UButton size="xs" variant="soft" icon="i-lucide-clipboard-paste" :disabled="!animClipboard" @click="pasteAnimation">Paste</UButton>
       <div class="flex-1" />
       <UButton size="xs" variant="soft" icon="i-lucide-play" @click="previewLayer">Preview</UButton>
+    </div>
+
+    <div v-if="selectedLayer.wordPop" class="rounded-md border border-primary/30 bg-primary/10 p-2.5 text-xs">
+      <div class="flex items-start justify-between gap-2">
+        <div>
+          <p class="font-semibold text-primary">
+            Words Pop
+          </p>
+          <p class="mt-1 text-muted">
+            Words enter one by one from the layer start.
+          </p>
+        </div>
+        <UButton
+          icon="i-lucide-x"
+          aria-label="Remove Words Pop animation"
+          color="neutral"
+          variant="ghost"
+          size="xs"
+          @click="set('wordPop', undefined)"
+        />
+      </div>
+      <div class="@container mt-3">
+        <div class="grid grid-cols-1 gap-4 @lg:grid-cols-2">
+          <UFormField label="Seconds per word">
+            <UInput
+              :model-value="selectedLayer.wordPop.duration"
+              type="number"
+              :min="0.05"
+              :max="5"
+              :step="0.05"
+              size="xs"
+              class="w-full"
+              @update:model-value="setWordTiming('duration', $event)"
+            />
+          </UFormField>
+          <UFormField label="Word stagger (seconds)">
+            <UInput
+              :model-value="selectedLayer.wordPop.stagger"
+              type="number"
+              :min="0"
+              :max="5"
+              :step="0.05"
+              size="xs"
+              class="w-full"
+              @update:model-value="setWordTiming('stagger', $event)"
+            />
+          </UFormField>
+        </div>
+      </div>
     </div>
 
     <!-- Keyframe Mode Toggle -->

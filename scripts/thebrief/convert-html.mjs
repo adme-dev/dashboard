@@ -504,7 +504,7 @@ export async function convertTheBriefHtml(html) {
           const textContainer = row.closest('.text-content')
           const containerCss = textContainer ? style(textContainer) : rowCss
           const textStroke = containerCss.getPropertyValue('-webkit-text-stroke') || ''
-          const textShadow = containerCss.textShadow || ''
+          const textShadow = (containerCss.textShadow || '').replace(/(^|\s)0(?=\s|$)/g, (_, space) => `${space}0px`)
           if (textStroke && !/^\d+(?:\.\d+)?px #[0-9a-f]{6}$/i.test(textStroke)) throw new Error('Unsupported text stroke')
           if (textShadow && !/^-?\d+(?:\.\d+)?px -?\d+(?:\.\d+)?px (?:\d+(?:\.\d+)?px|0) #[0-9a-f]{3,6}$/i.test(textShadow)) throw new Error('Unsupported text shadow')
           if (textStroke && !['stroke', ''].includes(containerCss.paintOrder)) throw new Error('Unsupported text paint order')

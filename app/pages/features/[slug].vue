@@ -2506,7 +2506,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Autosave and Keyboard Shortcuts',
-        content: 'Choose a light or dark workspace with an independent saved preference; artwork keeps its original colours. Find projects in the shared agency and full-screen library using visual previews, search, client filters, nested folder browsing with breadcrumbs, and grid or list views. Canvas and title edits save after a short pause. Saved status confirms the project and its versioned viewer snapshot are stored; the signed-in saved viewer refreshes as revisions arrive. Failed saves remain visible and retry without discarding local edits. Full keyboard shortcut support for professional workflows — arrow keys for pixel nudging, Shift+arrow for 10px jumps, Delete to remove layers, Cmd+D to duplicate, Cmd+Z/Shift+Cmd+Z for undo/redo, and bracket keys for layer reordering. Shortcuts are discoverable in the editor and match conventions from popular design tools so there is no learning curve.'
+        content: 'Choose a light or dark workspace with an independent saved preference; artwork keeps its original colours. Find projects in the shared agency and full-screen library using visual previews, searchable Clients, Folders and Tags tabs, pinned All clients and Unassigned entries, nested folder breadcrumbs, and grid or list views. Active filters stay visible when switching tabs. Canvas and title edits save after a short pause. Saved status confirms the project and its versioned viewer snapshot are stored; the signed-in saved viewer refreshes as revisions arrive. Failed saves remain visible and retry without discarding local edits. Full keyboard shortcut support for professional workflows — arrow keys for pixel nudging, Shift+arrow for 10px jumps, Delete to remove layers, Cmd+D to duplicate, Cmd+Z/Shift+Cmd+Z for undo/redo, and bracket keys for layer reordering. Shortcuts are discoverable in the editor and match conventions from popular design tools so there is no learning curve.'
       }
     ]
   },
@@ -2518,15 +2518,15 @@ const features: Record<string, Feature> = {
     categoryIcon: 'i-lucide-palette',
     categoryIconBg: 'bg-rose-50',
     categoryIconColor: 'text-rose-600',
-    description: 'GSAP-powered keyframe timeline with entry and exit animations, easing curves, and frame-accurate playback for rich HTML5 ad production.',
+    description: 'Choose entrance and exit transitions directly on the timeline, then refine timing, easing, and keyframes in the inspector.',
     details: [
       {
         title: 'Keyframe Timeline',
-        content: 'A full-width timeline at the bottom of the editor keeps layer names pinned on the left and the time ruler visible as you scroll. Named animation bars and a shared playhead make timing easy to scan; expand a layer to see its keyframe tracks. Drag keyframes to adjust timing, click between them to add new property changes, and use the playhead to scrub through the animation in real time. Each keyframe can animate position, scale, rotation, opacity, colour, and more — all rendered by GSAP for buttery smooth playback.'
+        content: 'A full-width timeline sits below the canvas with layer rows, a time ruler, and a shared playhead. Entrance and exit clips show their transition names and icons. Click a clip to open its preset picker; click the layer bar to open detailed animation controls in the inspector. Expand a layer to adjust its property keyframes, or scrub the ruler to preview the result.'
       },
       {
         title: 'Entry & Exit Animations',
-        content: 'Choose from 9 entry presets (fade in, slide from left/right/top/bottom, scale up, bounce, blur in, rotate in) and 9 matching exit presets. Each preset is configurable — adjust duration, delay, and easing independently. Entry animations fire on timeline start, exit animations fire before the banner loops or ends. This makes building "intro → hold → outro" sequences fast and intuitive.'
+        content: 'Choose an entrance or exit preset from the picker attached to its timeline clip. The same preset appears in the Animation inspector, where you can adjust start and end times, duration, and easing. The coloured clips show where the entrance and exit occur within each layer’s presence range.'
       },
       {
         title: 'Easing Library',

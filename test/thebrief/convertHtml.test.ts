@@ -206,3 +206,10 @@ describe('TheBrief single-slide native conversion pilot', () => {
     await expect(convertTheBriefHtml(html.replace('height:100%;background:', 'height:100%;border-radius:5px 10px;background:'))).rejects.toThrow(/legacy shape/)
   })
 })
+
+it('normalises unitless zero shadow offsets while rejecting unsupported shadow syntax', async () => {
+  const withShadow = (shadow: string) => source.replace('.row{', `.row{text-shadow:${shadow};`)
+  const result = await convertTheBriefHtml(withShadow('0 0 24px #ff8bbf'))
+  expect(result.canvasData.custom_300x250.layers.find(l => l.type === 'text').textShadow).toBe('0px 0px 24px #ff8bbf')
+  await expect(convertTheBriefHtml(withShadow('0 0 24px #ff8bbf, 0 0 2px #fff'))).rejects.toThrow('Unsupported text shadow')
+})
