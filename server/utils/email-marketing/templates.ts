@@ -2,7 +2,7 @@
 // DB layer for edm_templates. body_html is always (re)rendered from
 // body_source on write via the private rendering service.
 
-import { queryRows, queryOne, execute } from '~~/server/utils/db'
+import { queryRowsFresh, queryOneFresh, queryOne, execute } from '~~/server/utils/db'
 import { renderTemplateDocument } from './render'
 import { isFlyhubFormat } from '../../../shared/emailRendering/format'
 import type { EmailRendererClient } from '../../../shared/emailRendering/contract'
@@ -34,12 +34,13 @@ async function renderHtml(renderer: EmailRendererClient, bodySource: unknown, su
   }, renderer)
 }
 
+// Mutable library and ownership reads bypass Hyperdrive query caching.
 export async function listTemplates(clientIds?: EmailClientScope): Promise<EdmTemplate[]> {
   const conditions: string[] = []
   const params: unknown[] = []
   addEmailClientScopeCondition(conditions, params, 'client_id', clientIds)
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
-  return queryRows<EdmTemplate>(`
+  return queryRowsFresh<EdmTemplate>(`
     SELECT *
     FROM edm_templates
     ${where}
@@ -51,7 +52,7 @@ export async function listTemplates(clientIds?: EmailClientScope): Promise<EdmTe
 }
 
 export async function getTemplate(id: string): Promise<EdmTemplate | null> {
-  return queryOne<EdmTemplate>('SELECT * FROM edm_templates WHERE id = $1', [id])
+  return queryOneFresh<EdmTemplate>('SELECT * FROM edm_templates WHERE id = $1', [id])
 }
 
 export interface CreateTemplateInput {
@@ -91,6 +92,7 @@ export async function createTemplate(input: CreateTemplateInput, renderer: Email
 }
 
 export interface UpdateTemplateInput {
+  client_id?: string | null
   name?: string
   subject?: string | null
   preview_text?: string | null
@@ -99,10 +101,12 @@ export interface UpdateTemplateInput {
   folder_name?: string | null
 }
 
-export async function updateTemplate(id: string, patch: UpdateTemplateInput, renderer: EmailRendererClient): Promise<EdmTemplate | null> {
+export async function updateTemplate(id: string, patch: UpdateTemplateInput, renderer: EmailRendererClient, expectedClientId?: string | null): Promise<EdmTemplate | null> {
   const existing = await getTemplate(id)
   if (!existing) return null
 
+  if (expectedClientId !== undefined && (existing.client_id ?? null) !== expectedClientId) return null
+  const authorizedClientId = expectedClientId === undefined ? existing.client_id ?? null : expectedClientId
   const name = patch.name ?? existing.name
   const subject = patch.subject !== undefined ? patch.subject : existing.subject
   const previewText = patch.preview_text !== undefined ? patch.preview_text : existing.preview_text
@@ -124,12 +128,18 @@ export async function updateTemplate(id: string, patch: UpdateTemplateInput, ren
         body_html = $5,
         template_kind = $6,
         folder_name = $7,
+        client_id = $8,
         updated_at = NOW()
-    WHERE id = $8
+    WHERE id = $9 AND client_id IS NOT DISTINCT FROM $10::uuid
     RETURNING *
-  `, [name, subject, previewText, JSON.stringify(source), html, kind, folderName, id])
+  `, [name, subject, previewText, JSON.stringify(source), html, kind, folderName, patch.client_id !== undefined ? patch.client_id : existing.client_id, id, authorizedClientId])
 }
 
-export async function deleteTemplate(id: string): Promise<void> {
-  await execute('DELETE FROM edm_templates WHERE id = $1', [id])
+export async function deleteTemplate(id: string, expectedClientId?: string | null): Promise<boolean> {
+  if (expectedClientId === undefined) {
+    await execute('DELETE FROM edm_templates WHERE id = $1', [id])
+    return true
+  }
+  const deleted = await queryOne<{ id: string }>('DELETE FROM edm_templates WHERE id = $1 AND client_id IS NOT DISTINCT FROM $2::uuid RETURNING id', [id, expectedClientId])
+  return Boolean(deleted)
 }

@@ -81,8 +81,8 @@ describe('Email TemplatesPanel saved templates', () => {
 
     expect(html).toContain('email-template-gallery-shell')
     expect(html).toContain('email-template-gallery-sidebar')
-    expect(html).toContain('Recently Viewed')
-    expect(html).toContain('Image Library')
+    expect(html).toContain('Recently viewed')
+    expect(html).toContain('Image library')
     expect(html).toContain('email-starter-gallery-grid')
     expect(html).toContain('email-starter-card')
     expect(html).toContain('email-starter-preview-image')

@@ -414,7 +414,7 @@ describe('email client-scoped route policy', () => {
     mockGetRouterParam.mockReturnValueOnce('tpl-1')
     await expect(handler({} as never)).resolves.toEqual({ ok: true })
     expect(mockRequireWriteAccess).toHaveBeenCalled()
-    expect(mockDeleteTemplate).toHaveBeenCalledWith('tpl-1')
+    expect(mockDeleteTemplate).toHaveBeenCalledWith('tpl-1', CLIENT_1)
   })
 
   it('blocks template deletion across client scope', async () => {

@@ -46,7 +46,7 @@ describe('saved template deletion', () => {
   it('requires confirmation and cancel leaves the list unchanged', async () => {
     const host = await mount()
     openDelete(host); await flush()
-    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
     expect(host.querySelector('.modal')?.textContent).toContain('Delete me')
     Array.from(host.querySelectorAll<HTMLButtonElement>('.modal button')).find(b => b.textContent === 'Cancel')!.click()
     await flush()
@@ -59,7 +59,7 @@ describe('saved template deletion', () => {
     fetchMock.mockResolvedValueOnce({ ok: true })
     confirm(host); await flush()
     expect(fetchMock).toHaveBeenLastCalledWith('/api/email/templates/one', { method: 'DELETE' })
-    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(fetchMock).toHaveBeenCalledTimes(3)
     expect(host.querySelectorAll('.saved-template-card')).toHaveLength(1)
     expect(host.textContent).toContain('Keep me')
     expect(host.textContent).not.toContain('Only folder')
@@ -72,7 +72,7 @@ describe('saved template deletion', () => {
     let reject!: (error: Error) => void
     fetchMock.mockReturnValueOnce(new Promise((_resolve, fail) => { reject = fail }))
     confirm(host); confirm(host); await flush()
-    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(fetchMock).toHaveBeenCalledTimes(3)
     reject(new Error('Forbidden')); await flush()
     expect(host.querySelectorAll('.saved-template-card')).toHaveLength(2)
     expect(host.querySelector('.modal')).not.toBeNull()
