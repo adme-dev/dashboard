@@ -541,9 +541,9 @@ const { activeSize } = useBannerFileSize()
 
 <template>
   <UAlert v-if="projectLoadError" color="error" title="Could not load this banner" description="Return to the library and reopen the project." class="m-6" />
-  <div v-else class="@container flex flex-col min-w-0 h-[calc(100vh-0px)] overflow-hidden bg-[#1a1a1e]">
+  <div v-else class="@container flex flex-col min-w-0 h-[calc(100vh-0px)] overflow-hidden bg-default text-default">
     <!-- Top Toolbar -->
-    <div class="flex flex-wrap items-center gap-2 px-3 py-1.5 border-b border-[#3a3a3f] bg-[#2d2d32] shrink-0">
+    <div class="flex flex-wrap items-center gap-2 px-3 py-1.5 border-b border-default bg-default shrink-0">
       <UButton
         :to="route.path.startsWith('/creative/') ? '/creative/banner-studio' : '/agency/banner-studio'"
         icon="i-lucide-arrow-left"
@@ -617,6 +617,7 @@ const { activeSize } = useBannerFileSize()
 
       <!-- Essential actions remain visible; secondary actions also live in the menu. -->
       <div class="ml-auto flex items-center gap-1 shrink-0">
+        <BannerThemeToggle />
         <UButton v-if="state.project?.id" :to="`/creative/banner-studio/view/${state.project.id}`" target="_blank" icon="i-lucide-eye" color="neutral" variant="ghost" size="xs">Saved viewer</UButton>
         <UTooltip :text="state.isDirty ? 'Save — unsaved changes' : 'Save'" :kbds="['meta', 'S']">
           <UButton
@@ -630,7 +631,7 @@ const { activeSize } = useBannerFileSize()
           >
             <span
               v-if="state.isDirty && !state.isSaving"
-              class="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-warning ring-2 ring-[#2d2d32]"
+              class="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-warning ring-2 ring-default"
             />
           </UButton>
         </UTooltip>
@@ -671,7 +672,7 @@ const { activeSize } = useBannerFileSize()
     </div>
 
     <!-- Canvas controls wrap independently of project actions. -->
-    <div aria-label="Canvas controls" class="flex flex-wrap items-center gap-2 px-3 py-1.5 border-b border-[#3a3a3f] bg-[#252528] shrink-0">
+    <div aria-label="Canvas controls" class="flex flex-wrap items-center gap-2 px-3 py-1.5 border-b border-default bg-elevated shrink-0">
       <!-- Undo / Redo -->
       <div class="flex gap-0.5">
         <UTooltip text="Undo" :kbds="['meta', 'Z']">
@@ -682,14 +683,14 @@ const { activeSize } = useBannerFileSize()
         </UTooltip>
       </div>
 
-      <div class="h-4 w-px bg-[#3a3a3f]" />
+      <div class="h-4 w-px bg-accented" />
 
       <BannerLayoutControls />
 
       <!-- File size indicator -->
       <BannerFileSizeMeter :total="activeSize.total" class="w-24 hidden @4xl:block" />
 
-      <div class="h-4 w-px bg-[#3a3a3f]" />
+      <div class="h-4 w-px bg-accented" />
 
       <!-- Grid / Snap -->
       <div class="flex items-center gap-0.5">
@@ -746,7 +747,7 @@ const { activeSize } = useBannerFileSize()
         <UTooltip text="Fit all layouts"><UButton icon="i-lucide-layout-grid" variant="ghost" size="xs" aria-label="Fit all layouts" @click="canvasRef?.fitAllArtboards?.()" /></UTooltip>
       </div>
 
-      <div class="h-4 w-px bg-[#3a3a3f]" />
+      <div class="h-4 w-px bg-accented" />
 
       <UButton :label="tlCollapsed ? 'Show timeline' : 'Hide timeline'" icon="i-lucide-panel-bottom" variant="ghost" color="neutral" size="xs"
         :aria-expanded="!tlCollapsed" @click="onTlResizeDblClick" />
@@ -777,10 +778,10 @@ const { activeSize } = useBannerFileSize()
       <!-- Left Sidebar -->
       <aside
         aria-label="Banner tools"
-        class="shrink-0 min-h-0 border-r border-[#3a3a3f] flex flex-col bg-[#252528]"
+        class="shrink-0 min-h-0 border-r border-default flex flex-col bg-elevated"
         :class="leftPanelCollapsed ? 'w-12' : 'w-64'"
       >
-        <div class="flex shrink-0 items-center justify-between gap-2 border-b border-[#3a3a3f] p-1.5">
+        <div class="flex shrink-0 items-center justify-between gap-2 border-b border-default p-1.5">
           <span v-if="!leftPanelCollapsed" class="pl-1.5 text-xs font-medium text-muted">Tools & resources</span>
           <UTooltip :text="leftPanelCollapsed ? 'Expand sidebar' : 'Collapse sidebar'">
             <UButton
@@ -798,8 +799,8 @@ const { activeSize } = useBannerFileSize()
         </div>
         <!-- Left tabs (icon-only with tooltips) -->
         <div
-          class="flex bg-[#2a2a2e]"
-          :class="leftPanelCollapsed ? 'flex-col items-center gap-1 overflow-y-auto py-2' : 'shrink-0 items-center border-b border-[#3a3a3f]'"
+          class="flex bg-default"
+          :class="leftPanelCollapsed ? 'flex-col items-center gap-1 overflow-y-auto py-2' : 'shrink-0 items-center border-b border-default'"
         >
           <UTooltip v-for="tab in leftTabItems" :key="tab.id" :text="tab.label" :delay-duration="300">
             <UButton
@@ -844,19 +845,19 @@ const { activeSize } = useBannerFileSize()
       </div>
 
       <!-- Right Inspector -->
-      <div class="w-72 shrink-0 border-l border-[#3a3a3f] overflow-y-auto bg-[#252528]">
+      <div class="w-72 shrink-0 border-l border-default overflow-y-auto bg-elevated">
         <BannerInspector />
       </div>
     </div>
 
     <!-- Timeline resize handle -->
     <div
-      class="h-1.5 shrink-0 cursor-row-resize group relative border-t border-[#3a3a3f] hover:bg-[#4af0a2]/20 transition-colors"
+      class="h-1.5 shrink-0 cursor-row-resize group relative border-t border-default hover:bg-[#4af0a2]/20 transition-colors"
       :class="tlResizing ? 'bg-[#4af0a2]/30' : ''"
       @mousedown="onTlResizeStart"
       @dblclick="onTlResizeDblClick"
     >
-      <div class="absolute inset-x-0 top-1/2 -translate-y-1/2 h-0.5 mx-auto w-8 rounded transition-colors" :class="tlCollapsed ? 'bg-[#4af0a2]' : 'bg-[#555] group-hover:bg-[#4af0a2]'" />
+      <div class="absolute inset-x-0 top-1/2 -translate-y-1/2 h-0.5 mx-auto w-8 rounded transition-colors" :class="tlCollapsed ? 'bg-[#4af0a2]' : 'bg-accented group-hover:bg-[#4af0a2]'" />
     </div>
 
     <!-- Timeline -->
@@ -894,7 +895,7 @@ const { activeSize } = useBannerFileSize()
     <!-- Ad Preview Slideover -->
     <USlideover v-if="showPreview" v-model:open="showPreview" side="right" :ui="{ content: 'max-w-5xl' }">
       <template #content>
-        <div class="p-5 h-full overflow-y-auto bg-[#111114]">
+        <div class="p-5 h-full overflow-y-auto bg-default">
           <div class="flex items-center justify-between mb-5">
             <h2 class="text-lg font-bold">Ad Preview</h2>
             <div class="flex items-center gap-2">
@@ -909,7 +910,7 @@ const { activeSize } = useBannerFileSize()
           </div>
           <div class="flex flex-wrap gap-6 items-start justify-center">
             <div class="flex flex-col items-center">
-              <div class="text-xs text-[#888] mb-2 font-medium">Meta Feed</div>
+              <div class="text-xs text-muted mb-2 font-medium">Meta Feed</div>
               <AdPreviewMetaFeedPreview
                 :image="state.sets[state.activeKey]?.layers?.find(l => l.type === 'bg')?.src"
               :html="previewHtml" :html-width="previewFmt?.w" :html-height="previewFmt?.h"
@@ -932,7 +933,7 @@ const { activeSize } = useBannerFileSize()
               :page-name="state.project?.name"
             />
             <div class="flex flex-col items-center">
-              <div class="text-xs text-[#888] mb-2 font-medium">LinkedIn</div>
+              <div class="text-xs text-muted mb-2 font-medium">LinkedIn</div>
               <AdPreviewLinkedInPreview
                 :image="state.sets[state.activeKey]?.layers?.find(l => l.type === 'bg')?.src"
               :html="previewHtml" :html-width="previewFmt?.w" :html-height="previewFmt?.h"
@@ -945,7 +946,7 @@ const { activeSize } = useBannerFileSize()
               :page-name="state.project?.name"
             />
             <div class="flex flex-col items-center">
-              <div class="text-xs text-[#888] mb-2 font-medium">Pinterest</div>
+              <div class="text-xs text-muted mb-2 font-medium">Pinterest</div>
               <AdPreviewPinterestPreview
                 :image="state.sets[state.activeKey]?.layers?.find(l => l.type === 'bg')?.src"
               :html="previewHtml" :html-width="previewFmt?.w" :html-height="previewFmt?.h"
@@ -953,7 +954,7 @@ const { activeSize } = useBannerFileSize()
               />
             </div>
             <div class="flex flex-col items-center">
-              <div class="text-xs text-[#888] mb-2 font-medium">X (Twitter)</div>
+              <div class="text-xs text-muted mb-2 font-medium">X (Twitter)</div>
               <AdPreviewXPreview
                 :image="state.sets[state.activeKey]?.layers?.find(l => l.type === 'bg')?.src"
               :html="previewHtml" :html-width="previewFmt?.w" :html-height="previewFmt?.h"

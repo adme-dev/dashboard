@@ -62,7 +62,10 @@ onBeforeUnmount(() => { disposed = true; clearTimeout(timer) })
         <h1 class="text-lg font-semibold">{{ snapshot?.name || 'Saved banner viewer' }}</h1>
         <p class="text-sm text-muted">Latest saved layouts · Updates automatically</p>
       </div>
-      <UButton :to="`/creative/banner-studio/${projectId}`" icon="i-lucide-pencil" color="neutral" variant="outline">Open editor</UButton>
+      <div class="flex items-center gap-2">
+        <BannerThemeToggle />
+        <UButton :to="`/creative/banner-studio/${projectId}`" icon="i-lucide-pencil" color="neutral" variant="outline">Open editor</UButton>
+      </div>
     </header>
     <div class="space-y-6 p-4 sm:p-8">
       <UAlert v-if="unavailable" color="warning" title="Waiting for a saved preview" :description="snapshot ? 'Showing the last loaded version. The latest changes are not available yet; retrying automatically.' : 'Save the project in its editor. This viewer will refresh automatically when the snapshot is ready.'" />

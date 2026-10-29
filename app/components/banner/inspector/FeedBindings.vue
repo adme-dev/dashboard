@@ -97,10 +97,10 @@ watch(addProp, () => { addCol.value = '' })
   <div v-if="feedsState.feeds.length && selectedLayer" class="space-y-3">
     <div class="border-t border-(--ui-border) pt-3">
       <details open class="bs-section group">
-        <summary class="flex items-center gap-1.5 cursor-pointer select-none py-1.5 -mx-1 px-1 rounded hover:bg-white/[0.03]">
-          <UIcon name="i-lucide-chevron-right" class="w-3 h-3 text-[#555] transition-transform duration-150 group-open:rotate-90" />
-          <UIcon name="i-lucide-database" class="w-3.5 h-3.5 text-[#888]" />
-          <span class="text-[10px] font-semibold uppercase tracking-wider text-[#888]">Feed Bindings</span>
+        <summary class="flex items-center gap-1.5 cursor-pointer select-none py-1.5 -mx-1 px-1 rounded hover:bg-accented">
+          <UIcon name="i-lucide-chevron-right" class="w-3 h-3 text-dimmed transition-transform duration-150 group-open:rotate-90" />
+          <UIcon name="i-lucide-database" class="w-3.5 h-3.5 text-muted" />
+          <span class="text-[10px] font-semibold uppercase tracking-wider text-muted">Feed Bindings</span>
         </summary>
       <div class="pt-1.5">
 

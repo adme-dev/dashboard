@@ -212,9 +212,9 @@ function removeBgImage() {
   <div class="space-y-4">
     <!-- Background Color (artboard-level) -->
     <details open class="bs-section group">
-      <summary class="flex items-center gap-1.5 cursor-pointer select-none py-1.5 -mx-1 px-1 rounded hover:bg-white/[0.03]">
-        <UIcon name="i-lucide-chevron-right" class="w-3 h-3 text-[#555] transition-transform duration-150 group-open:rotate-90" />
-        <span class="text-[10px] font-semibold uppercase tracking-wider text-[#888]">Background</span>
+      <summary class="flex items-center gap-1.5 cursor-pointer select-none py-1.5 -mx-1 px-1 rounded hover:bg-accented">
+        <UIcon name="i-lucide-chevron-right" class="w-3 h-3 text-dimmed transition-transform duration-150 group-open:rotate-90" />
+        <span class="text-[10px] font-semibold uppercase tracking-wider text-muted">Background</span>
       </summary>
     <div class="pt-1.5 space-y-2">
       <div class="flex gap-1.5 flex-wrap">
@@ -241,9 +241,9 @@ function removeBgImage() {
 
     <!-- Bg Layer Tabs -->
     <details v-if="bgLayers.length" open class="bs-section group">
-      <summary class="flex items-center gap-1.5 cursor-pointer select-none py-1.5 -mx-1 px-1 rounded hover:bg-white/[0.03]">
-        <UIcon name="i-lucide-chevron-right" class="w-3 h-3 text-[#555] transition-transform duration-150 group-open:rotate-90" />
-        <span class="text-[10px] font-semibold uppercase tracking-wider text-[#888]">Bg Layers</span>
+      <summary class="flex items-center gap-1.5 cursor-pointer select-none py-1.5 -mx-1 px-1 rounded hover:bg-accented">
+        <UIcon name="i-lucide-chevron-right" class="w-3 h-3 text-dimmed transition-transform duration-150 group-open:rotate-90" />
+        <span class="text-[10px] font-semibold uppercase tracking-wider text-muted">Bg Layers</span>
       </summary>
     <div class="pt-1.5 space-y-2">
       <div class="flex items-center gap-1 flex-wrap">
@@ -549,9 +549,9 @@ function removeBgImage() {
 
       <!-- Background Animation -->
       <details open class="bs-section group">
-        <summary class="flex items-center gap-1.5 cursor-pointer select-none py-1.5 -mx-1 px-1 rounded hover:bg-white/[0.03]">
-          <UIcon name="i-lucide-chevron-right" class="w-3 h-3 text-[#555] transition-transform duration-150 group-open:rotate-90" />
-          <span class="text-[10px] font-semibold uppercase tracking-wider text-[#888]">Animation</span>
+        <summary class="flex items-center gap-1.5 cursor-pointer select-none py-1.5 -mx-1 px-1 rounded hover:bg-accented">
+          <UIcon name="i-lucide-chevron-right" class="w-3 h-3 text-dimmed transition-transform duration-150 group-open:rotate-90" />
+          <span class="text-[10px] font-semibold uppercase tracking-wider text-muted">Animation</span>
         </summary>
       <div class="pt-1.5 space-y-2">
 
@@ -594,27 +594,27 @@ function removeBgImage() {
             <label class="text-[10px] text-(--ui-text-muted) mb-1 block">Ease</label>
             <div class="flex gap-1">
               <UPopover v-model:open="bgEaseOpen">
-                <button class="flex-1 flex items-center gap-1.5 px-2 py-1 rounded border border-[#3a3a3f] hover:border-[#555] bg-[#1e1e22] transition-colors text-left min-w-0">
+                <button class="flex-1 flex items-center gap-1.5 px-2 py-1 rounded border border-default hover:border-accented bg-default transition-colors text-left min-w-0">
                   <svg viewBox="-1 -2 34 24" class="w-6 h-4 shrink-0">
                     <path
                       :d="easeSvgPath(findEase(activeBg.ease ?? 'power2.out')?.cp || [0, 0, 0.58, 1])"
                       fill="none" stroke="#4a8fe8" stroke-width="1.5" stroke-linecap="round"
                     />
                   </svg>
-                  <span class="text-[10px] text-[#ccc] truncate">{{ findEase(activeBg.ease ?? 'power2.out')?.label || activeBg.ease }}</span>
-                  <UIcon name="i-lucide-chevron-down" class="w-3 h-3 text-[#555] shrink-0 ml-auto" />
+                  <span class="text-[10px] text-default truncate">{{ findEase(activeBg.ease ?? 'power2.out')?.label || activeBg.ease }}</span>
+                  <UIcon name="i-lucide-chevron-down" class="w-3 h-3 text-dimmed shrink-0 ml-auto" />
                 </button>
                 <template #content>
                   <div class="p-2 w-[260px] max-h-[320px] overflow-y-auto space-y-2">
                     <template v-for="group in EASE_GROUPS" :key="group.label">
-                      <div class="text-[9px] text-[#555] uppercase tracking-wider font-semibold">{{ group.label }}</div>
+                      <div class="text-[9px] text-dimmed uppercase tracking-wider font-semibold">{{ group.label }}</div>
                       <div class="grid grid-cols-4 gap-1">
                         <button
                           v-for="ease in group.items" :key="ease.id"
                           class="flex flex-col items-center gap-0.5 p-1 rounded border transition-all"
                           :class="(activeBg.ease ?? 'power2.out') === ease.id
                             ? 'border-[#4a8fe8] bg-[#4a8fe8]/10'
-                            : 'border-transparent hover:bg-white/5'"
+                            : 'border-transparent hover:bg-accented'"
                           @click="selectBgEase(ease.id)"
                         >
                           <svg viewBox="-1 -4 34 28" class="w-7 h-4">
@@ -623,7 +623,7 @@ function removeBgImage() {
                               stroke-width="1.5" stroke-linecap="round" />
                           </svg>
                           <span class="text-[8px] font-medium truncate w-full text-center"
-                            :class="(activeBg.ease ?? 'power2.out') === ease.id ? 'text-[#4a8fe8]' : 'text-[#777]'"
+                            :class="(activeBg.ease ?? 'power2.out') === ease.id ? 'text-[#4a8fe8]' : 'text-muted'"
                           >{{ ease.label }}</span>
                         </button>
                       </div>
@@ -652,9 +652,9 @@ function removeBgImage() {
 
     <!-- Accent Color -->
     <details open class="bs-section group">
-      <summary class="flex items-center gap-1.5 cursor-pointer select-none py-1.5 -mx-1 px-1 rounded hover:bg-white/[0.03]">
-        <UIcon name="i-lucide-chevron-right" class="w-3 h-3 text-[#555] transition-transform duration-150 group-open:rotate-90" />
-        <span class="text-[10px] font-semibold uppercase tracking-wider text-[#888]">Accent</span>
+      <summary class="flex items-center gap-1.5 cursor-pointer select-none py-1.5 -mx-1 px-1 rounded hover:bg-accented">
+        <UIcon name="i-lucide-chevron-right" class="w-3 h-3 text-dimmed transition-transform duration-150 group-open:rotate-90" />
+        <span class="text-[10px] font-semibold uppercase tracking-wider text-muted">Accent</span>
       </summary>
     <div class="pt-1.5 space-y-2">
       <div class="flex gap-1.5 flex-wrap">

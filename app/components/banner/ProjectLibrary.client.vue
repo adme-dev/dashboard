@@ -204,6 +204,7 @@ function clearFilters() {
         </div>
       </div>
       <div class="flex flex-wrap items-center gap-2">
+        <BannerThemeToggle />
         <UButton
           to="/agency/banner-studio/custom-templates"
           color="neutral"

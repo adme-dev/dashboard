@@ -120,10 +120,10 @@ function onRemoveTween(index: number) {
 <template>
   <div v-if="selectedLayer && canHavePath">
     <details class="bs-section group" :open="hasPath || undefined">
-      <summary class="flex items-center gap-1.5 cursor-pointer select-none py-1.5 -mx-1 px-1 rounded hover:bg-white/[0.03]">
-        <UIcon name="i-lucide-chevron-right" class="w-3 h-3 text-[#555] transition-transform duration-150 group-open:rotate-90" />
-        <UIcon name="i-lucide-spline" class="w-3 h-3 text-[#4af0a2]" />
-        <span class="text-[10px] font-semibold uppercase tracking-wider text-[#888]">Motion Path</span>
+      <summary class="flex items-center gap-1.5 cursor-pointer select-none py-1.5 -mx-1 px-1 rounded hover:bg-accented">
+        <UIcon name="i-lucide-chevron-right" class="w-3 h-3 text-dimmed transition-transform duration-150 group-open:rotate-90" />
+        <UIcon name="i-lucide-spline" class="w-3 h-3 text-success" />
+        <span class="text-[10px] font-semibold uppercase tracking-wider text-muted">Motion Path</span>
       </summary>
       <div class="pt-1.5 space-y-3">
         <!-- Enable + options -->
@@ -180,7 +180,7 @@ function onRemoveTween(index: number) {
               >
                 <span
                   class="w-4 h-4 rounded-full shrink-0 flex items-center justify-center text-[8px] font-bold"
-                  :class="i === 0 ? 'bg-[#4af0a2] text-black' : (i === selectedLayer.motionPath!.length - 1 ? 'bg-[#f04a4a] text-white' : 'bg-white/20 text-white')"
+                  :class="i === 0 ? 'bg-[#4af0a2] text-black' : (i === selectedLayer.motionPath!.length - 1 ? 'bg-[#f04a4a] text-white' : 'bg-accented text-default')"
                 >{{ i }}</span>
                 <UInput
                   type="number"
@@ -225,10 +225,10 @@ function onRemoveTween(index: number) {
                 v-for="(tw, i) in tweens"
                 :key="i"
                 class="flex items-center gap-1 rounded px-1.5 py-1 cursor-pointer transition-colors"
-                :class="isTweenSelected(i) ? 'bg-[#4af0a2]/10 ring-1 ring-[#4af0a2]/60' : 'bg-white/[0.03] hover:bg-white/[0.05]'"
+                :class="isTweenSelected(i) ? 'bg-[#4af0a2]/10 ring-1 ring-[#4af0a2]/60' : 'bg-elevated hover:bg-accented'"
                 @click="selectTween(i)"
               >
-                <span class="text-[8px] text-[#4af0a2] font-mono shrink-0 w-3">{{ i + 1 }}</span>
+                <span class="text-[8px] text-success font-mono shrink-0 w-3">{{ i + 1 }}</span>
                 <div class="flex-1 space-y-1">
                   <div class="flex items-center gap-1">
                     <span class="text-[8px] text-(--ui-text-dimmed) w-8">Path</span>

@@ -39,10 +39,10 @@ function toggleTarget(layerId: number) {
 <template>
   <div v-if="selectedLayer && canBeMask">
     <details class="bs-section group" :open="selectedLayer.isMask || undefined">
-      <summary class="flex items-center gap-1.5 cursor-pointer select-none py-1.5 -mx-1 px-1 rounded hover:bg-white/[0.03]">
-        <UIcon name="i-lucide-chevron-right" class="w-3 h-3 text-[#555] transition-transform duration-150 group-open:rotate-90" />
+      <summary class="flex items-center gap-1.5 cursor-pointer select-none py-1.5 -mx-1 px-1 rounded hover:bg-accented">
+        <UIcon name="i-lucide-chevron-right" class="w-3 h-3 text-dimmed transition-transform duration-150 group-open:rotate-90" />
         <UIcon name="i-lucide-scan" class="w-3 h-3 text-[#e84aff]" />
-        <span class="text-[10px] font-semibold uppercase tracking-wider text-[#888]">Mask</span>
+        <span class="text-[10px] font-semibold uppercase tracking-wider text-muted">Mask</span>
       </summary>
       <div class="pt-1.5 space-y-3">
         <!-- Use as Mask toggle -->
@@ -90,7 +90,7 @@ function toggleTarget(layerId: number) {
           <!-- Masked Layers checklist -->
           <div>
             <label class="text-[10px] text-(--ui-text-muted) block mb-1">Masked Layers</label>
-            <div v-if="availableTargets.length === 0" class="text-[10px] text-[#555] italic">
+            <div v-if="availableTargets.length === 0" class="text-[10px] text-dimmed italic">
               No layers available
             </div>
             <div v-else class="space-y-1 max-h-32 overflow-y-auto">
