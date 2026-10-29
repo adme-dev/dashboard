@@ -2505,8 +2505,8 @@ const features: Record<string, Feature> = {
         content: 'Edit fonts, spacing, position, rotation and opacity. Text Effects preserves your font and animation with editable depth, bevel, lighting, shadows and reviewed AI textures. Transparency surrounds the lettering. Save client or agency recipes. Depth simulates 3D.'
       },
       {
-        title: 'Keyboard Shortcuts',
-        content: 'Full keyboard shortcut support for professional workflows — arrow keys for pixel nudging, Shift+arrow for 10px jumps, Delete to remove layers, Cmd+D to duplicate, Cmd+Z/Shift+Cmd+Z for undo/redo, and bracket keys for layer reordering. Shortcuts are discoverable in the editor and match conventions from popular design tools so there is no learning curve.'
+        title: 'Autosave and Keyboard Shortcuts',
+        content: 'Canvas and title edits save after a short pause. Saved status confirms the project and its versioned viewer snapshot are stored; the signed-in saved viewer refreshes as revisions arrive. Failed saves remain visible and retry without discarding local edits. Full keyboard shortcut support for professional workflows — arrow keys for pixel nudging, Shift+arrow for 10px jumps, Delete to remove layers, Cmd+D to duplicate, Cmd+Z/Shift+Cmd+Z for undo/redo, and bracket keys for layer reordering. Shortcuts are discoverable in the editor and match conventions from popular design tools so there is no learning curve.'
       }
     ]
   },

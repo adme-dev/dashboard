@@ -18,7 +18,8 @@ describe('Banner Studio revisions', () => {
   })
   it('keeps edits made during a save dirty', async () => {
     let finish!: () => void
-    fetchMock.mockImplementation(() => new Promise<void>((r) => {
+    fetchMock.mockResolvedValue({})
+    fetchMock.mockImplementationOnce(() => new Promise<void>((r) => {
       finish = r
     }))
     const studio = useBannerStudio()
@@ -32,7 +33,8 @@ describe('Banner Studio revisions', () => {
   })
   it('does not clear a different project when the previous save completes', async () => {
     let finish!: () => void
-    fetchMock.mockImplementation(() => new Promise<void>((r) => {
+    fetchMock.mockResolvedValue({})
+    fetchMock.mockImplementationOnce(() => new Promise<void>((r) => {
       finish = r
     }))
     const studio = useBannerStudio()
@@ -142,4 +144,31 @@ it('overview selection retains zoom and changing mode never mutates the saved de
   expect(studio.state.isDirty).toBe(false)
   studio.setLayoutView('single', 'missing')
   expect(studio.state.layoutView).toBe('all')
+})
+
+it('only marks saved after the bucket snapshot succeeds, and retains changes on storage failure', async () => {
+  const studio = useBannerStudio()
+  studio.loadProject(project())
+  studio.addLayer({ type: 'text', text: 'Needs storage' })
+  fetchMock.mockReset().mockResolvedValueOnce({}).mockRejectedValueOnce(new Error('Bucket unavailable'))
+  await expect(studio.saveProject()).rejects.toThrow('Bucket unavailable')
+  expect(studio.state.isDirty).toBe(true)
+  expect(studio.state.isSaving).toBe(false)
+  expect(fetchMock.mock.calls[1][0]).toBe('/api/agency/banner-studio/projects/one/snapshot')
+  fetchMock.mockResolvedValue({})
+  await studio.saveProject()
+  expect(studio.state.isDirty).toBe(false)
+})
+
+
+it('starts a fresh draft without autosaving into the previous project identity', () => {
+  const studio = useBannerStudio()
+  studio.loadProject(project('previous-client-project'))
+  studio.addLayer({ type: 'text', text: 'Previous client copy' })
+  studio.initDefault()
+  expect(studio.state.project?.id).toBeUndefined()
+  expect(studio.state.project?.name).toBe('Untitled Banner')
+  expect(studio.state.isDirty).toBe(false)
+  expect(studio.canUndo.value).toBe(false)
+  expect(JSON.stringify(studio.getCanvasData())).not.toContain('Previous client copy')
 })

@@ -254,12 +254,13 @@ provide('showSizePicker', showSizePicker)
 useBannerKeyboard({ showExportModal })
 
 // Load project from API (or init default for "new")
-const { data: projectData } = await useFetch(`/api/agency/banner-studio/projects/${projectId.value}`, {
+const { data: projectData, error: projectLoadError } = await useFetch(`/api/agency/banner-studio/projects/${projectId.value}`, {
   immediate: projectId.value !== 'new',
 })
 
 onMounted(() => {
-  if (projectId.value === 'new' || !projectData.value) {
+  if (projectId.value !== 'new' && !projectData.value) return
+  if (projectId.value === 'new') {
     initDefault()
   } else {
     loadProject(projectData.value as any)
@@ -312,6 +313,11 @@ watch(showProjectSettings, (open) => {
   settingsName.value = state.project?.name || ''
   settingsClientId.value = state.project?.clientId || 'none'
 })
+watch(settingsName, (name) => {
+  if (!showProjectSettings.value || !state.project || !name.trim() || name === state.project.name) return
+  state.project.name = name.trim()
+  state.isDirty = true
+})
 async function saveProjectSettings() {
   const nextClient = settingsClientId.value === 'none' ? null : settingsClientId.value
   const clientName = clientsForSettings.value?.find(c => c.id === nextClient)?.name
@@ -331,6 +337,7 @@ async function saveProjectSettings() {
       body: { name: settingsName.value.trim() || state.project.name, clientId: nextClient },
     }) as any
     state.project = { ...state.project, name: updated?.name ?? settingsName.value, clientId: nextClient, clientName }
+    state.isDirty = true
     showProjectSettings.value = false
     if (nextClient && nextClient !== prevClient) offerDefaultBrandKit(nextClient)
   } catch {
@@ -357,9 +364,37 @@ async function offerDefaultBrandKit(clientId: string) {
   } catch {}
 }
 
+// Canvas edits and title changes save after two idle seconds (ten seconds max).
+const autosave = useBannerAutosave(state, async () => {
+  if (projectLoadError.value) throw new Error('Project has not loaded')
+  if (state.project?.id) {
+    await saveProject()
+    if (projectId.value === 'new' && !state.isDirty) {
+      await navigateTo(`${route.path.startsWith('/creative/') ? '/creative/banner-studio' : '/agency/banner-studio'}/${state.project.id}`, { replace: true })
+    }
+  } else if (await handleSave() === false) throw new Error('First save failed')
+})
+onBeforeRouteLeave(async (to) => {
+  // First-save navigation is part of the in-flight create operation.
+  if (projectId.value === 'new' && state.project?.id && to.path.endsWith(`/${state.project.id}`)) return true
+  try {
+    await autosave.flush()
+    if (!state.isDirty) return true
+  } catch {}
+  toast.add({ title: 'Changes still need saving', description: 'Keep this editor open and retry Save before leaving.', color: 'error' })
+  return false
+})
+
+useEventListener(window, 'beforeunload', (event) => {
+  if (!state.isDirty && !state.isSaving) return
+  event.preventDefault()
+  event.returnValue = ''
+})
+
 // Auto-save indicator
 const saveStatus = computed(() => {
   if (state.isSaving) return 'Saving...'
+  if (autosave.error.value && state.isDirty) return 'Save failed · retrying'
   if (state.isDirty) return 'Unsaved changes'
   return 'Saved'
 })
@@ -403,27 +438,38 @@ async function handleSave() {
   try {
     // Auto-create project on first save when route is "new"
     if (!state.project?.id) {
+      const initialCanvas = JSON.stringify(state.sets)
+      const initialName = state.project?.name || 'Untitled Banner'
       const created = await $fetch('/api/agency/banner-studio/projects', {
         method: 'POST',
         headers: { 'Idempotency-Key': createProjectIdempotencyKey },
         body: {
-          name: state.project?.name || 'Untitled Banner',
+          name: initialName,
           clientId: state.project?.clientId || null,
-          canvasData: state.sets,
+          canvasData: JSON.parse(initialCanvas),
         },
       })
-      state.project = created as any
-      state.isDirty = false
+      const editedDuringCreate = JSON.stringify(state.sets) !== initialCanvas || (state.project?.name || 'Untitled Banner') !== initialName
+      state.project = { ...(created as any), ...(editedDuringCreate ? { name: state.project?.name || (created as any).name } : {}) }
+      await $fetch(`/api/agency/banner-studio/projects/${(created as any).id}/snapshot`, { method: 'POST' })
+      state.isDirty = JSON.stringify(state.sets) !== initialCanvas || state.project.name !== initialName
+      if (state.isDirty) {
+        await saveProject()
+        if (state.isDirty) return true // Keep later edits on this canvas; autosave will follow up.
+      }
       toast.add({ title: 'Created', description: 'Project created successfully', color: 'success' })
       // Redirect from /new to the real project ID
       await navigateTo(`${route.path.startsWith('/creative/') ? '/creative/banner-studio' : '/agency/banner-studio'}/${(created as any).id}`, { replace: true })
-      return
+      return true
     }
     await saveProject()
     toast.add({ title: 'Saved', description: 'Project saved successfully', color: 'success' })
+    return true
   } catch (error) {
+    state.isDirty = true
     if (!isAmbiguousApiFailure(error)) createProjectIdempotencyKey = crypto.randomUUID()
     toast.add({ title: 'Error', description: 'Failed to save project', color: 'error' })
+    return false
   } finally {
     state.isSaving = false
   }
@@ -493,7 +539,8 @@ const { activeSize } = useBannerFileSize()
 </script>
 
 <template>
-  <div class="@container flex flex-col min-w-0 h-[calc(100vh-0px)] overflow-hidden bg-[#1a1a1e]">
+  <UAlert v-if="projectLoadError" color="error" title="Could not load this banner" description="Return to the library and reopen the project." class="m-6" />
+  <div v-else class="@container flex flex-col min-w-0 h-[calc(100vh-0px)] overflow-hidden bg-[#1a1a1e]">
     <!-- Top Toolbar -->
     <div class="flex flex-wrap items-center gap-2 px-3 py-1.5 border-b border-[#3a3a3f] bg-[#2d2d32] shrink-0">
       <UButton
@@ -535,18 +582,18 @@ const { activeSize } = useBannerFileSize()
           </UTooltip>
           <template #content>
             <div class="p-4 w-80 space-y-4">
-              <UFormField label="Project name">
+              <UFormField label="Project name" help="Saves automatically as you type.">
                 <UInput v-model="settingsName" class="w-full" @keydown.enter="saveProjectSettings" />
               </UFormField>
               <UFormField label="Client" help="Sets which brand kit, feeds and billing this banner belongs to.">
                 <USelectMenu v-model="settingsClientId" :items="clientSelectItems" value-key="value" class="w-full" searchable />
               </UFormField>
               <div class="flex justify-end gap-2">
-                <UButton label="Cancel"
+                <UButton label="Close"
                          variant="ghost"
                          size="sm"
                          @click="() => { showProjectSettings = false }" />
-                <UButton label="Save" size="sm" :loading="settingsSaving" @click="saveProjectSettings" />
+                <UButton label="Apply client" size="sm" :loading="settingsSaving" @click="saveProjectSettings" />
               </div>
             </div>
           </template>
@@ -569,6 +616,7 @@ const { activeSize } = useBannerFileSize()
 
       <!-- Essential actions remain visible; secondary actions also live in the menu. -->
       <div class="ml-auto flex items-center gap-1 shrink-0">
+        <UButton v-if="state.project?.id" :to="`/creative/banner-studio/view/${state.project.id}`" target="_blank" icon="i-lucide-eye" color="neutral" variant="ghost" size="xs">Saved viewer</UButton>
         <UTooltip :text="state.isDirty ? 'Save — unsaved changes' : 'Save'" :kbds="['meta', 'S']">
           <UButton
             icon="i-lucide-save"
