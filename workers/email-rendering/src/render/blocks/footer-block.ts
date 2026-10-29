@@ -4,6 +4,7 @@ import type { FlyhubBlock, BlockRenderContext } from './types'
 import { formatPadding } from './types'
 import { escapeHtml } from './helpers'
 import { anchorIdAttribute } from '../../../../../app/utils/edmAnchor'
+import { safeCssColor } from '../../../../../app/utils/edmStyle'
 
 export const FOOTER_BLOCK_TYPE = 'footer'
 
@@ -14,6 +15,9 @@ registerBlock({
     const { data } = block
     const props = (data.props || {}) as Record<string, unknown>
     const style = data.style || {}
+    const textColor = safeCssColor(typeof props.textColor === 'string' ? props.textColor : undefined)
+      || safeCssColor(style.color)
+      || '#6b7280'
     const padding = formatPadding(style.padding)
     const bgColor
       = (props.backgroundColor as string) || (style.backgroundColor as string) || '#f5f5f5'
@@ -31,31 +35,31 @@ registerBlock({
 
     if (showAddress && dealerAddress) {
       parts.push(
-        boundedText(context.renderBudget)`<mj-text align="center" font-size="12px" color="#9ca3af" padding="4px 24px">${escapeHtml(dealerAddress)}</mj-text>`
+        boundedText(context.renderBudget)`<mj-text align="center" font-size="12px" color="${textColor}" padding="4px 24px">${escapeHtml(dealerAddress)}</mj-text>`
       )
     }
 
     if (dealerWebsite) {
       parts.push(
-        boundedText(context.renderBudget)`<mj-text align="center" font-size="12px" color="#9ca3af" padding="4px 24px"><a href="${escapeHtml(dealerWebsite)}" style="color:#6b7280;text-decoration:underline;" target="_blank">${escapeHtml(dealerWebsite)}</a></mj-text>`
+        boundedText(context.renderBudget)`<mj-text align="center" font-size="12px" color="${textColor}" padding="4px 24px"><a href="${escapeHtml(dealerWebsite)}" style="color:${textColor};text-decoration:underline;" target="_blank">${escapeHtml(dealerWebsite)}</a></mj-text>`
       )
     }
 
     if (dealerName) {
       parts.push(
-        boundedText(context.renderBudget)`<mj-text align="center" font-size="12px" color="#9ca3af" padding="4px 24px">&copy; ${escapeHtml(currentYear)} ${escapeHtml(dealerName)}. All rights reserved.</mj-text>`
+        boundedText(context.renderBudget)`<mj-text align="center" font-size="12px" color="${textColor}" padding="4px 24px">&copy; ${escapeHtml(currentYear)} ${escapeHtml(dealerName)}. All rights reserved.</mj-text>`
       )
     }
 
     if (additionalText) {
       parts.push(
-        boundedText(context.renderBudget)`<mj-text align="center" font-size="12px" color="#9ca3af" padding="4px 24px">${escapeHtml(additionalText)}</mj-text>`
+        boundedText(context.renderBudget)`<mj-text align="center" font-size="12px" color="${textColor}" padding="4px 24px">${escapeHtml(additionalText)}</mj-text>`
       )
     }
 
     if (showUnsubscribe) {
       parts.push(
-        boundedText(context.renderBudget)`<mj-text align="center" font-size="12px" color="#9ca3af" padding="4px 24px"><a href="${escapeHtml(unsubscribeUrl)}" style="color:#6b7280;text-decoration:underline;" target="_blank">Unsubscribe</a></mj-text>`
+        boundedText(context.renderBudget)`<mj-text align="center" font-size="12px" color="${textColor}" padding="4px 24px"><a href="${escapeHtml(unsubscribeUrl)}" style="color:${textColor};text-decoration:underline;" target="_blank">Unsubscribe</a></mj-text>`
       )
     }
 
@@ -71,6 +75,9 @@ registerBlock({
     const { data } = block
     const props = (data.props || {}) as Record<string, unknown>
     const style = data.style || {}
+    const textColor = safeCssColor(typeof props.textColor === 'string' ? props.textColor : undefined)
+      || safeCssColor(style.color)
+      || '#6b7280'
     const padding = formatPadding(style.padding)
     const bgColor
       = (props.backgroundColor as string) || (style.backgroundColor as string) || '#f5f5f5'
@@ -88,31 +95,31 @@ registerBlock({
 
     if (showAddress && dealerAddress) {
       lines.push(
-        boundedText(context.renderBudget)`<p style="margin:4px 0;font-size:12px;color:#9ca3af;">${escapeHtml(dealerAddress)}</p>`
+        boundedText(context.renderBudget)`<p style="margin:4px 0;font-size:12px;color:${textColor};">${escapeHtml(dealerAddress)}</p>`
       )
     }
 
     if (dealerWebsite) {
       lines.push(
-        boundedText(context.renderBudget)`<p style="margin:4px 0;font-size:12px;"><a href="${escapeHtml(dealerWebsite)}" style="color:#6b7280;text-decoration:underline;" target="_blank">${escapeHtml(dealerWebsite)}</a></p>`
+        boundedText(context.renderBudget)`<p style="margin:4px 0;font-size:12px;"><a href="${escapeHtml(dealerWebsite)}" style="color:${textColor};text-decoration:underline;" target="_blank">${escapeHtml(dealerWebsite)}</a></p>`
       )
     }
 
     if (dealerName) {
       lines.push(
-        boundedText(context.renderBudget)`<p style="margin:4px 0;font-size:12px;color:#9ca3af;">&copy; ${escapeHtml(currentYear)} ${escapeHtml(dealerName)}. All rights reserved.</p>`
+        boundedText(context.renderBudget)`<p style="margin:4px 0;font-size:12px;color:${textColor};">&copy; ${escapeHtml(currentYear)} ${escapeHtml(dealerName)}. All rights reserved.</p>`
       )
     }
 
     if (additionalText) {
       lines.push(
-        boundedText(context.renderBudget)`<p style="margin:4px 0;font-size:12px;color:#9ca3af;">${escapeHtml(additionalText)}</p>`
+        boundedText(context.renderBudget)`<p style="margin:4px 0;font-size:12px;color:${textColor};">${escapeHtml(additionalText)}</p>`
       )
     }
 
     if (showUnsubscribe) {
       lines.push(
-        boundedText(context.renderBudget)`<p style="margin:4px 0;font-size:12px;"><a href="${escapeHtml(unsubscribeUrl)}" style="color:#6b7280;text-decoration:underline;" target="_blank">Unsubscribe</a></p>`
+        boundedText(context.renderBudget)`<p style="margin:4px 0;font-size:12px;"><a href="${escapeHtml(unsubscribeUrl)}" style="color:${textColor};text-decoration:underline;" target="_blank">Unsubscribe</a></p>`
       )
     }
 

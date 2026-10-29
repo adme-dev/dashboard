@@ -55,12 +55,13 @@ registerBlock({
 
     if (!features.length) return ''
 
+    const stackOnMobile = block.data.mobile?.props?.columns === 1
     const colWidth = Math.floor(100 / columns)
 
     const cells = boundedJoin(features
       .map(
         f => boundedText(_context.renderBudget)`
-              <td style="width:${colWidth}%;padding:8px;text-align:center;vertical-align:top;">
+              <td${stackOnMobile ? ' class="edm-feature-stack"' : ''} style="width:${colWidth}%;padding:8px;text-align:center;vertical-align:top;">
                 <div style="font-size:32px;color:${iconColor};margin-bottom:8px;">${f.icon || ''}</div>
                 <p style="margin:0 0 4px;font-size:16px;font-weight:bold;color:#111827;">${escapeHtml(f.heading || '')}</p>
                 <p style="margin:0;font-size:14px;color:#6b7280;">${escapeHtml(f.description || '')}</p>

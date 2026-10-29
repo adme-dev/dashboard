@@ -43,9 +43,23 @@ function collectResponsiveCss(doc: FlyhubDocument, budget?: ReturnType<typeof cr
     const className = edmResponsiveClassForBlock(blockId)
     const hideClass = getHideClassForBlock(block)
     const mobileDeclarations = mobileStyleDeclarationsForBlock(block)
+    if (block.type === 'feature-grid' && block.data.mobile?.props?.columns === 1
+      && !mobileCss.some(rule => rule.includes('.edm-feature-stack'))) {
+      mobileCss.push('      .edm-feature-stack { display: block !important; width: 100% !important; box-sizing: border-box !important; }')
+    }
 
     if (mobileDeclarations.length > 0) {
       mobileCss.push(boundedText(budget)`      .${className} { ${boundedJoin(mobileDeclarations.map(([prop, value]) => boundedText(budget)`${prop}: ${value} !important;`), ' ', budget)} }`)
+      // Blocks render as table rows; visual declarations belong on their cell,
+      // while headings and buttons also have explicit inline typography.
+      if (block.type === 'Heading' || block.type === 'Button' || mobileDeclarations.some(([prop]) => prop === 'padding')) {
+        mobileCss.push(boundedText(budget)`      .${className} > td { ${boundedJoin(mobileDeclarations.map(([prop, value]) => boundedText(budget)`${prop}: ${value} !important;`), ' ', budget)} }`)
+      }
+      const typography = mobileDeclarations.filter(([prop]) => ['font-size', 'font-family', 'font-weight', 'font-style', 'line-height', 'letter-spacing', 'text-align', 'text-transform', 'color'].includes(prop))
+      if (typography.length && (block.type === 'Heading' || block.type === 'Button')) {
+        const selector = block.type === 'Button' ? `.${className} a` : ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].map(tag => `.${className} ${tag}`).join(', ')
+        mobileCss.push(boundedText(budget)`      ${selector} { ${boundedJoin(typography.map(([prop, value]) => boundedText(budget)`${prop}: ${value} !important;`), ' ', budget)} }`)
+      }
     }
     if (hideClass === 'edm-hide-desktop' || hideClass === 'edm-hide-all') {
       desktopCss.push(boundedText(budget)`    .${hideClass} { display: none !important; max-height: 0 !important; overflow: hidden !important; }`)

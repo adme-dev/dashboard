@@ -16,10 +16,11 @@ async function renderThumbnail(templateId: string, width?: number) {
 }
 
 describe('EdmTemplateThumbnail', () => {
-  it('keeps the existing starter library and appends imported Postcards templates', () => {
+  it('keeps approved designs and replaces legacy starter choices', () => {
     const ids = EDM_STARTER_TEMPLATES.map(template => template.id)
-    expect(ids).toContain('newsletter-digest')
-    expect(ids).toContain('flash-sale')
+    expect(ids).not.toContain('newsletter-digest')
+    expect(ids).not.toContain('flash-sale')
+    expect(ids).toHaveLength(8)
     expect(ids).toContain('postcards-glidex')
     expect(ids).toContain('postcards-futurax')
     expect(ids).toContain('postcards-aviro')

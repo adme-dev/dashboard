@@ -18,7 +18,7 @@ async function renderThumbnail(presetId: string) {
 
 describe('EdmSectionThumbnail', () => {
   it('adds imported Postcards sections to the module library', async () => {
-    const imported = EDM_SECTION_CATEGORIES.find(category => category.id === 'imported')
+    const imported = EDM_SECTION_CATEGORIES.find(category => category.id === 'content')
     expect(imported?.presets.map(preset => preset.id)).toContain('postcards-glidex-02-hero')
 
     const html = await renderThumbnail('postcards-glidex-02-hero')
@@ -51,7 +51,8 @@ describe('EdmSectionThumbnail', () => {
     const ids = allPresets.map(preset => preset.id)
     expect(ids).toContain('basic-container')
     expect(ids).toContain('basic-columns-container')
-    expect(ids).toContain('transactional-next-steps')
+    expect(ids).toContain('modern-booking-confirmation')
+    expect(ids).not.toContain('transactional-next-steps')
 
     for (const preset of allPresets) {
       const html = await renderThumbnail(preset.id)
