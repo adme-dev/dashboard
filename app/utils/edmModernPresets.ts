@@ -95,7 +95,7 @@ function footer(theme: Theme): EdmPresetBlockTemplate[] {
   return [navMenu({ items: [{ label: 'Contact', url: `${SITE}/contact` }, { label: 'Privacy', url: `${SITE}/privacy` }], separator: '|', color: '#526170', backgroundColor: '#F6F7F9', padding: pad(22, 0) }), legal]
 }
 
-const e = themes.electric!, p = themes.property!, h = themes.hospitality!, w = themes.wellness!, a = themes.advisory!
+const e = themes.electric!, p = themes.property!, hospitalityTheme = themes.hospitality!, w = themes.wellness!, a = themes.advisory!
 export const MODERN_EDM_SECTION_PRESETS: EdmSectionPreset[] = [
   section('modern-electric-header', 'header', 'Electric brand header', 'A confident dark wordmark with clean campaign navigation.', header(e, ['Explore', 'Test drive', 'Contact'], true), true),
   section('modern-electric-hero', 'content', 'Electric drive hero', 'Large automotive photography, crisp type and a test-drive action.', [
@@ -125,19 +125,19 @@ export const MODERN_EDM_SECTION_PRESETS: EdmSectionPreset[] = [
   section('modern-property-cta', 'call-to-action', 'Inspection invitation', 'A composed invitation for inspection bookings or private viewings.', cta(p, 'See how it feels in person.', 'Add your inspection date and time, or invite buyers to arrange a private viewing.', 'Arrange an inspection', 'book-inspection'), true),
   section('modern-property-footer', 'footer', 'Property editorial footer', 'An uncluttered legal footer that remains readable on any canvas.', footer(p)),
 
-  section('modern-hospitality-header', 'header', 'Coastal hospitality header', 'A warm editorial wordmark with stay and dining navigation.', header(h, ['Stay', 'Dine', 'Discover'])),
+  section('modern-hospitality-header', 'header', 'Coastal hospitality header', 'A warm editorial wordmark with stay and dining navigation.', header(hospitalityTheme, ['Stay', 'Dine', 'Discover'])),
   section('modern-hospitality-hero', 'content', 'A slower weekend hero', 'An inviting travel photograph with an image-led stay campaign.', [
     image(`${IMAGE_ROOT}hospitality-hero.jpg`, 'Breakfast on a boutique coastal hotel terrace overlooking the bay', '#FFFFFF'),
-    heading('A slower morning. A table by the water.', h, { size: 38 }),
-    text('Make a little room for a change of scene. Explore a coastal stay, discover what is on the menu and plan a weekend at your own pace.', h),
-    button('Explore your stay', `${SITE}/stays`, h)
+    heading('A slower morning. A table by the water.', hospitalityTheme, { size: 38 }),
+    text('Make a little room for a change of scene. Explore a coastal stay, discover what is on the menu and plan a weekend at your own pace.', hospitalityTheme),
+    button('Explore your stay', `${SITE}/stays`, hospitalityTheme)
   ]),
-  section('modern-hospitality-features', 'feature', 'Stay and dining highlights', 'Two complementary experiences for a hospitality newsletter.', features(h, 'Make the most of being here.', 'Bring the character of your property and local area into the invitation.', [
+  section('modern-hospitality-features', 'feature', 'Stay and dining highlights', 'Two complementary experiences for a hospitality newsletter.', features(hospitalityTheme, 'Make the most of being here.', 'Bring the character of your property and local area into the invitation.', [
     { heading: 'Find your favourite table', description: 'Introduce your seasonal menu, breakfast offering or a dining experience worth making time for.' },
     { heading: 'Take the scenic route', description: 'Share a coastal walk, a local maker or a nearby place your guests will love discovering.' }
   ])),
-  section('modern-hospitality-cta', 'call-to-action', 'Plan a coastal escape', 'A clear reservation action without invented prices or availability.', cta(h, 'Something to look forward to.', 'Add your package details, dates and booking conditions here, then invite guests to plan their visit.', 'Plan your visit', 'plan-your-visit'), true),
-  section('modern-hospitality-footer', 'footer', 'Hospitality campaign footer', 'Quiet contact details with native unsubscribe support.', footer(h)),
+  section('modern-hospitality-cta', 'call-to-action', 'Plan a coastal escape', 'A clear reservation action without invented prices or availability.', cta(hospitalityTheme, 'Something to look forward to.', 'Add your package details, dates and booking conditions here, then invite guests to plan their visit.', 'Plan your visit', 'plan-your-visit'), true),
+  section('modern-hospitality-footer', 'footer', 'Hospitality campaign footer', 'Quiet contact details with native unsubscribe support.', footer(hospitalityTheme)),
 
   section('modern-wellness-header', 'header', 'Wellness studio header', 'A relaxed studio wordmark with practical class navigation.', header(w, ['Classes', 'The studio', 'Contact'])),
   section('modern-wellness-hero', 'content', 'Make room for balance', 'A light-filled studio image and a welcoming class invitation.', [
@@ -177,9 +177,9 @@ export const MODERN_EDM_SECTION_PRESETS: EdmSectionPreset[] = [
     button('Explore what’s next', `${SITE}/welcome`, w, { bg: w.paper, buttonBg: w.deep, color: '#FFFFFF' })
   ]),
   section('modern-order-receipt', 'transactional', 'Order update', 'A clean order summary for retail or hospitality confirmations.', [
-    heading('Thanks. We have your order.', h, { bg: h.paper, size: 32 }),
-    text('Add the order number, purchased items, total and delivery or collection details here. Keep service information separate from promotional content.', h, { bg: h.paper }),
-    button('View your order', `${SITE}/order`, h, { bg: h.paper, buttonBg: h.deep, color: '#FFFFFF' })
+    heading('Thanks. We have your order.', hospitalityTheme, { bg: hospitalityTheme.paper, size: 32 }),
+    text('Add the order number, purchased items, total and delivery or collection details here. Keep service information separate from promotional content.', hospitalityTheme, { bg: hospitalityTheme.paper }),
+    button('View your order', `${SITE}/order`, hospitalityTheme, { bg: hospitalityTheme.paper, buttonBg: hospitalityTheme.deep, color: '#FFFFFF' })
   ])
 ]
 
