@@ -102,3 +102,25 @@ The operator wants familiar TheBrief workflows, including All layouts / Single e
 ### Follow-up validation record
 
 The layout/timeline work starts from freshly fetched main `7ec1cf527bd123f8e82a931d4391480fde8bb5bb`. The final full build passed the unchanged worker-size limits (raw 25,013,311 bytes; gzip 7,196,275 bytes). Focused validation: 311 tests passed and one was skipped across 46 files, covering scope/undo, mounted canvas transitions, imported media, Play All and deployment guards. The built local preview used the real three-size JAC package and real Nuxt UI/Canvas/Timeline components. Browser checks verified the named picker, single-size visibility, overview return, ruler pinned at scrollTop 294, layer labels pinned at scrollLeft 431.5, and paused audio after switching layouts. The preview shell is isolated and does not prove a production deployment or saved-data round trip. Final review and release evidence belong in the follow-up PR. This paragraph is not a claim that the follow-up has been deployed.
+
+
+## Expanded release review — 29 October 2026
+
+The workspace candidate was reconciled with `origin/main` at `e538898e9a46c54133e4fd3b23d905933e35510e` (email work through PR #742). The four failing first-save checks were stale test extraction paths left behind when the page became the shared `StudioEditor.client.vue`; they now exercise the current component. The broadened Banner Studio, QR and deployment suite passes 778 tests, with 10 skipped across 108 files (105 passed files; 3 skipped). Skipped database integrations are not claimed as verified.
+
+A second localhost preview mounts the complete, unchanged `BannerStudioEditor` component and original library pages with an isolated local JAC fixture API. This exposes the real Sets, Templates, Elements, Assets, Feeds, Brand, History, inspector and timeline controls; the earlier canvas-only harness omitted most of them. Publishing, AI, production permissions, collaboration and server-rendered exports are unavailable in this fixture and are not proved by it.
+
+Browser checks on the full editor: a side-panel CTA edit reaches all three linked sizes; local save/reopen retains it and preserves independent positions. Single-edit Story text affects only Story; returning to All layouts and undo restores the three shared values. Direct canvas editing in All layouts also propagates. Active-layout playback starts its audio while other layouts remain paused; pause stops all six media elements. These checks are local-component evidence, not production writes or audible final-file acceptance.
+
+### Additional migration blockers from current work and supplied screenshots
+
+- Werribee Toyota bZ4X (`7803q0j`, Monday `13402062842`) has three six-second sizes, MP3 sound and tracking/letter-spacing entrances. All three fail the converter's unsupported-custom-animation guard. No Toyota native project was created, and no successful like-for-like Toyota editing/export comparison is claimed.
+- Gendore's legacy two-slide example (`m51dqz7`) reconstructs two five-second visibility intervals, but four fractional opacity pulses are unsupported; the package builder blocks import. This is a legacy regression example, not recent work.
+- True slides, named build-in/mid/out effect blocks, an animation builder/presets, audio fades, MP4 mixing and selected-frame JPG output remain open.
+- Adding a new element currently targets only the active artboard, even in All layouts. Existing linked text/media changes propagate; linked insertion, duplicate/delete scope and whole-set undo need separate implementation.
+- TheBrief uses main layouts per orientation and secondary sizes below. The workspace's visual rows are not a persistent main/secondary hierarchy or a Push Changes implementation.
+- The agency library already has search, sorting, client filters, grid/list views and imported source-folder filters. The standalone Creative library is simpler. Folder labels are imported tags, not a nested editable folder system. The supplied Recents/Chery screens require a shared library with real create/rename/move/copy/pin workflows, breadcrumbs, size counts and consistent row actions. Do not describe tag filtering as folder-management parity.
+- Current Blood Hyundai work requests a fifth ordered carousel card; Knox GWM has distinct audience variants. Carousel cards, timed slides, size variants and campaign variants must remain distinct.
+- MotorStack returned Toyota/JAC/GWM logos, colours and font metadata. Extend existing brand kits with a brand asset browser and deliberate kit application, dealer overrides and secure retained files. Metadata availability is not proof of usable fonts or final exports. Selecting a kit must not silently restyle a campaign.
+
+The operator authorized releasing the verified workspace change, while requesting broader comparison and home-screen checks. This authorization does not make the migration blockers complete. Keep release evidence separate from full transition acceptance.

@@ -2,8 +2,9 @@ import { readFileSync } from 'node:fs'
 import { transpileModule, ScriptTarget, ModuleKind } from 'typescript'
 import { describe, expect, it, vi } from 'vitest'
 
-// Exercise the page's actual save handlers without mounting the canvas/timeline.
-const source = readFileSync('app/pages/agency/banner-studio/[id].client.vue', 'utf8')
+// Both agency and full-screen routes render this shared editor. Exercise its
+// actual save handlers without mounting the canvas/timeline.
+const source = readFileSync('app/components/banner/StudioEditor.client.vue', 'utf8')
 const settingsHandler = source.slice(source.indexOf('async function saveProjectSettings()'), source.indexOf('/** If the client has a default brand kit'))
 const saveHandler = source.slice(source.indexOf('async function handleSave()'), source.indexOf('// Save version'))
 
