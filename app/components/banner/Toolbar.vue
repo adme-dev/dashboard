@@ -67,15 +67,15 @@ function toolIcon(tool: ToolbarTool): string {
 </script>
 
 <template>
-  <div class="w-10 shrink-0 bg-[#2a2a2e] border-r border-[#3a3a3f] flex flex-col items-center pt-2 gap-0.5">
+  <div class="w-10 shrink-0 bg-default border-r border-default flex flex-col items-center pt-2 gap-0.5">
     <template v-for="tool in tools" :key="tool.id">
-      <div v-if="isSeparator(tool)" class="h-px w-6 bg-[#3a3a3f] my-1" />
+      <div v-if="isSeparator(tool)" class="h-px w-6 bg-accented my-1" />
       <UTooltip v-else :text="toolTooltip(tool)" :delay-duration="300" side="right">
         <button
           class="w-8 h-8 flex items-center justify-center rounded transition-all"
           :class="isActive(tool.id)
             ? 'bg-[#4a8fe8] text-white shadow-[0_0_8px_rgba(74,143,232,0.3)]'
-            : 'text-[#888] hover:text-white hover:bg-[#3a3a3f]'"
+            : 'text-muted hover:text-highlighted hover:bg-accented'"
           @click="handleToolClick(tool.id)"
         >
           <UIcon :name="toolIcon(tool)" class="w-4 h-4" />

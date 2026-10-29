@@ -27,7 +27,7 @@ watch(selectedLayer, (layer) => {
     <!-- No selection: show Background tab directly -->
     <template v-if="!selectedLayer">
       <!-- Tab bar with only Background active -->
-      <div class="flex border-b border-[#3a3a3f] shrink-0">
+      <div class="flex border-b border-default shrink-0">
         <button
           class="flex-1 text-[10px] font-semibold uppercase tracking-wider py-2 px-1 text-center text-[#4a8fe8] bg-[#4a8fe8]/8 border-b-2 border-[#4a8fe8]"
         >
@@ -101,7 +101,7 @@ watch(selectedLayer, (layer) => {
    so panels don't need to sprinkle their own dividers. */
 :deep(details.bs-section) {
   padding-bottom: 0.75rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid var(--ui-border);
 }
 :deep(details.bs-section:last-child) { border-bottom: 0; padding-bottom: 0; }
 :deep(details.bs-section > summary) {
@@ -114,7 +114,7 @@ watch(selectedLayer, (layer) => {
   cursor: pointer;
   user-select: none;
 }
-:deep(details.bs-section > summary:hover) { background: rgba(255, 255, 255, 0.03); }
+:deep(details.bs-section > summary:hover) { background: var(--ui-bg-accented); }
 
 /* === FIELD LABELS ===
    Labels always sit above their control with one consistent gap — never inline. */
@@ -152,7 +152,7 @@ watch(selectedLayer, (layer) => {
 :deep(input[type="range"]::-webkit-slider-runnable-track) {
   height: 2px;
   border-radius: 1px;
-  background: rgba(255, 255, 255, 0.14);
+  background: var(--ui-border-accented);
 }
 :deep(input[type="range"]::-webkit-slider-thumb) {
   -webkit-appearance: none;
@@ -161,8 +161,8 @@ watch(selectedLayer, (layer) => {
   margin-top: -5px;
   border-radius: 50%;
   background: #4a8fe8;
-  border: 2px solid #1a1a1e;
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.15);
+  border: 2px solid var(--ui-bg);
+  box-shadow: 0 0 0 1px var(--ui-border-accented);
 }
 :deep(input[type="range"]:focus-visible::-webkit-slider-thumb) { box-shadow: 0 0 0 2px #4a8fe8; }
 
@@ -179,39 +179,8 @@ watch(selectedLayer, (layer) => {
 :deep(input[type="color"]::-webkit-color-swatch-wrapper) { padding: 2px; }
 :deep(input[type="color"]::-webkit-color-swatch) { border: 0; border-radius: 2px; }
 
-/* === INSPECTOR THEME OVERRIDES === */
-/* Override Nuxt UI CSS vars so inputs/selects stand out against #252528 panel */
-.inspector-content {
-  --ui-bg: #1a1a1e;
-  --ui-bg-elevated: #222225;
-  --ui-border: #444;
-  --ui-border-accented: #555;
-  --ui-text: #e0e0e0;
-  --ui-text-highlighted: #fff;
-  --ui-text-muted: #999;
-  --ui-text-dimmed: #666;
-  color: #e0e0e0;
-}
-
-/* === FORCE LIGHT TEXT IN ALL INPUTS === */
-:deep(input:not([type="color"]):not([type="range"]):not([type="checkbox"]):not([type="file"])) {
-  color: #e0e0e0 !important;
-  -webkit-text-fill-color: #e0e0e0 !important;
-}
-:deep(input::placeholder) {
-  color: #666 !important;
-  -webkit-text-fill-color: #666 !important;
-}
-/* USelectMenu trigger text */
-:deep(button[role="combobox"]),
-:deep(button[aria-haspopup="listbox"]),
-:deep(button[aria-haspopup="menu"]) {
-  color: #e0e0e0 !important;
-}
-:deep(button[role="combobox"] span),
-:deep(button[aria-haspopup="listbox"] span) {
-  color: #e0e0e0 !important;
-}
+/* Inputs inherit the active Nuxt UI theme. Artwork swatches keep their values. */
+.inspector-content { color: var(--ui-text); }
 
 /* === TYPOGRAPHY === */
 :deep(input[type="number"]) {
@@ -226,7 +195,7 @@ watch(selectedLayer, (layer) => {
   appearance: none !important;
   height: 6px !important;
   border-radius: 3px;
-  background: #333;
+  background: var(--ui-bg-accented);
   outline: none;
   cursor: pointer;
 }
@@ -253,15 +222,15 @@ watch(selectedLayer, (layer) => {
 :deep(input[type="range"]::-moz-range-track) {
   height: 6px;
   border-radius: 3px;
-  background: #333;
+  background: var(--ui-bg-accented);
 }
 
 /* === NATIVE SELECT ELEMENTS (FeedBindings) === */
 :deep(select) {
-  background-color: #1a1a1e;
-  border: 1px solid #444;
+  background-color: var(--ui-bg);
+  border: 1px solid var(--ui-border);
   border-radius: 6px;
-  color: #ddd;
+  color: var(--ui-text);
   padding: 4px 8px;
   font-size: 11px;
   cursor: pointer;
@@ -271,15 +240,15 @@ watch(selectedLayer, (layer) => {
   outline: none;
 }
 :deep(select option) {
-  background-color: #1a1a1e;
-  color: #ddd;
+  background-color: var(--ui-bg);
+  color: var(--ui-text);
 }
 
 /* === COLOR INPUT ENHANCEMENT === */
 :deep(input[type="color"]) {
-  border-color: #444;
+  border-color: var(--ui-border);
 }
 :deep(input[type="color"]:hover) {
-  border-color: #555;
+  border-color: var(--ui-border-accented);
 }
 </style>

@@ -28,16 +28,16 @@ function platformColor(key: string): string {
   <div class="p-3 space-y-4">
     <!-- Quick Sets -->
     <div>
-      <h4 class="text-xs font-bold uppercase tracking-wider text-[#888] mb-2">Quick Sets</h4>
+      <h4 class="text-xs font-bold uppercase tracking-wider text-muted mb-2">Quick Sets</h4>
       <div class="space-y-1.5">
         <button
           v-for="set in BANNER_SETS"
           :key="set.id"
-          class="w-full text-left rounded-md px-3 py-2 border border-[#3a3a3f] hover:bg-white/[0.04] transition-colors"
+          class="w-full text-left rounded-md px-3 py-2 border border-default hover:bg-accented transition-colors"
           @click="handleLoadSet(set)"
         >
-          <div class="text-sm font-medium text-[#e0e0e0]">{{ set.name }}</div>
-          <div class="text-[11px] text-[#888] mt-0.5">{{ set.desc }}</div>
+          <div class="text-sm font-medium text-default">{{ set.name }}</div>
+          <div class="text-[11px] text-muted mt-0.5">{{ set.desc }}</div>
         </button>
       </div>
     </div>
@@ -45,8 +45,8 @@ function platformColor(key: string): string {
     <!-- Active Sizes -->
     <div>
       <div class="flex items-center justify-between mb-2">
-        <h4 class="text-xs font-bold uppercase tracking-wider text-[#888]">Active Sizes</h4>
-        <span class="text-[11px] text-[#888]">{{ state.setKeys.length }} sizes</span>
+        <h4 class="text-xs font-bold uppercase tracking-wider text-muted">Active Sizes</h4>
+        <span class="text-[11px] text-muted">{{ state.setKeys.length }} sizes</span>
       </div>
 
       <div class="space-y-0.5">
@@ -54,7 +54,7 @@ function platformColor(key: string): string {
           v-for="key in state.setKeys"
           :key="key"
           class="w-full group flex items-center gap-2 rounded-md px-2.5 py-1.5 text-left transition-colors"
-          :class="state.activeKey === key ? 'bg-[#4af0a2]/10 ring-1 ring-[#4af0a2]/30' : 'hover:bg-white/[0.04]'"
+          :class="state.activeKey === key ? 'bg-[#4af0a2]/10 ring-1 ring-[#4af0a2]/30' : 'hover:bg-accented'"
           @click="setActiveArtboard(key)"
         >
           <span
@@ -62,8 +62,8 @@ function platformColor(key: string): string {
             :style="{ backgroundColor: platformColor(key) }"
           />
           <div class="flex-1 min-w-0">
-            <div class="text-xs font-medium text-[#e0e0e0] truncate">{{ layoutName(FORMATS[key]) }}</div>
-            <div class="text-[10px] text-[#777] font-mono">{{ FORMATS[key]?.w }}x{{ FORMATS[key]?.h }}</div>
+            <div class="text-xs font-medium text-default truncate">{{ layoutName(FORMATS[key]) }}</div>
+            <div class="text-[10px] text-muted font-mono">{{ FORMATS[key]?.w }}x{{ FORMATS[key]?.h }}</div>
           </div>
           <UBadge v-if="state.activeKey === key" color="primary" variant="subtle" size="xs">Editing</UBadge>
           <UButton

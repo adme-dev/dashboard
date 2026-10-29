@@ -67,9 +67,9 @@ function setStrokePreset(v: string) {
 <template>
   <div v-if="selectedLayer" class="@container space-y-3">
     <details open class="bs-section group">
-      <summary class="flex items-center gap-1.5 cursor-pointer select-none py-1.5 -mx-1 px-1 rounded hover:bg-white/[0.03]">
-        <UIcon name="i-lucide-chevron-right" class="w-3 h-3 text-[#555] transition-transform duration-150 group-open:rotate-90" />
-        <span class="text-[10px] font-semibold uppercase tracking-wider text-[#888]">Button</span>
+      <summary class="flex items-center gap-1.5 cursor-pointer select-none py-1.5 -mx-1 px-1 rounded hover:bg-accented">
+        <UIcon name="i-lucide-chevron-right" class="w-3 h-3 text-dimmed transition-transform duration-150 group-open:rotate-90" />
+        <span class="text-[10px] font-semibold uppercase tracking-wider text-muted">Button</span>
       </summary>
       <div class="pt-1.5 space-y-3">
     <div>
@@ -159,9 +159,9 @@ function setStrokePreset(v: string) {
 
     <!-- Effects -->
     <details open class="bs-section group">
-      <summary class="flex items-center gap-1.5 cursor-pointer select-none py-1.5 -mx-1 px-1 rounded hover:bg-white/[0.03]">
-        <UIcon name="i-lucide-chevron-right" class="w-3 h-3 text-[#555] transition-transform duration-150 group-open:rotate-90" />
-        <span class="text-[10px] font-semibold uppercase tracking-wider text-[#888]">Effects</span>
+      <summary class="flex items-center gap-1.5 cursor-pointer select-none py-1.5 -mx-1 px-1 rounded hover:bg-accented">
+        <UIcon name="i-lucide-chevron-right" class="w-3 h-3 text-dimmed transition-transform duration-150 group-open:rotate-90" />
+        <span class="text-[10px] font-semibold uppercase tracking-wider text-muted">Effects</span>
       </summary>
       <div class="pt-1.5 space-y-3">
     <!-- Style + Shadow + Stroke on one rhythm: toggle | preset | preset -->

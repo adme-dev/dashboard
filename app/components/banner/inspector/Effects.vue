@@ -40,8 +40,8 @@ function clearReferences() {
 
 <template>
   <div class="space-y-4 min-w-0 text-xs">
-    <div class="rounded-lg border border-white/10 bg-white/[0.03] p-3 space-y-1">
-      <div class="flex items-center gap-2 font-medium text-white">
+    <div class="rounded-lg border border-default bg-elevated p-3 space-y-1">
+      <div class="flex items-center gap-2 font-medium text-highlighted">
         <UIcon name="i-lucide-sparkles" class="text-primary size-4" /> Layer effects
       </div>
       <p class="text-muted leading-relaxed">
@@ -75,7 +75,7 @@ function clearReferences() {
         />
       </UFormField>
       <section v-if="selectedLayer?.type === 'text'" class="space-y-2">
-        <h3 class="font-medium text-white">
+        <h3 class="font-medium text-highlighted">
           Editable text looks
         </h3>
         <div class="grid grid-cols-2 gap-2">
@@ -127,7 +127,7 @@ function clearReferences() {
           Restore original
         </UButton>
       </div>
-      <div v-if="isArtwork && sourceText" class="space-y-2 border-t border-white/10 pt-3">
+      <div v-if="isArtwork && sourceText" class="space-y-2 border-t border-default pt-3">
         <p class="text-muted leading-relaxed">
           Source text: {{ sourceText.text }}
         </p>
@@ -165,8 +165,8 @@ function clearReferences() {
       >
         Remove AI texture
       </UButton>
-      <section v-if="sourceText" class="space-y-3 border-t border-white/10 pt-4">
-        <h3 class="font-medium text-white">
+      <section v-if="sourceText" class="space-y-3 border-t border-default pt-4">
+        <h3 class="font-medium text-highlighted">
           {{ selectedLayer?.textTexture ? 'Refine AI texture' : 'Create AI text texture' }}
         </h3>
         <UFormField label="Model">
@@ -207,7 +207,7 @@ function clearReferences() {
           Attach {{ files.length }} {{ files.length === 1 ? 'file' : 'files' }}
         </UButton>
         <ul v-if="references.length" class="space-y-2">
-          <li v-for="reference in references" :key="reference.id" class="flex items-center gap-2 rounded border border-white/10 p-2 min-w-0">
+          <li v-for="reference in references" :key="reference.id" class="flex items-center gap-2 rounded border border-default p-2 min-w-0">
             <UIcon :name="reference.kind === 'image' ? 'i-lucide-image' : 'i-lucide-file-text'" class="shrink-0 text-muted" />
             <span class="min-w-0 flex-1 break-words">{{ reference.name }}</span>
             <UButton
@@ -245,7 +245,7 @@ function clearReferences() {
         >
           {{ preview ? 'Generate again' : 'Generate preview' }}
         </UButton>
-        <div v-if="preview" class="space-y-2 rounded-lg border border-white/10 p-2">
+        <div v-if="preview" class="space-y-2 rounded-lg border border-default p-2">
           <BannerInspectorTextEffectPreview v-if="recipe.artworkMode === 'keep-font'" :layer="{ ...sourceText, ...recipe.style, hidden: false, textTexture: preview.url }" />
           <img
             v-else
@@ -297,8 +297,8 @@ function clearReferences() {
         color="error"
         variant="subtle"
       />
-      <section class="space-y-3 border-t border-white/10 pt-4">
-        <h3 class="font-medium text-white">
+      <section class="space-y-3 border-t border-default pt-4">
+        <h3 class="font-medium text-highlighted">
           Save this recipe
         </h3>
         <UFormField label="Preset name">

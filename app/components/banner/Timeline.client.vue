@@ -865,7 +865,7 @@ onUnmounted(() => {
               />
               <UButton color="neutral" variant="ghost" size="xs"
                 class="p-0 w-4 h-4 flex items-center justify-center shrink-0"
-                :class="layer.hidden ? 'text-[#555]' : 'text-[#888] hover:text-white'"
+                :class="layer.hidden ? 'text-dimmed' : 'text-muted hover:text-highlighted'"
                 :aria-label="`${layer.hidden ? 'Show' : 'Hide'} ${layer.name}`"
                 @click.stop="updateLayer(layer.id, { hidden: !layer.hidden })"
               >
@@ -873,7 +873,7 @@ onUnmounted(() => {
               </UButton>
               <UButton color="neutral" variant="ghost" size="xs"
                 class="p-0 w-4 h-4 flex items-center justify-center shrink-0"
-                :class="layer.locked ? 'text-[#e8884a]' : 'text-[#555] hover:text-white'"
+                :class="layer.locked ? 'text-[#e8884a]' : 'text-dimmed hover:text-highlighted'"
                 :aria-label="`${layer.locked ? 'Unlock' : 'Lock'} ${layer.name}`"
                 @click.stop="updateLayer(layer.id, { locked: !layer.locked })"
               >
@@ -884,7 +884,7 @@ onUnmounted(() => {
               <!-- Mask indicator -->
               <UIcon v-if="layer.isMask" name="i-lucide-scan" class="w-3 h-3 text-[#e84aff] shrink-0" />
               <!-- Motion path indicator -->
-              <UIcon v-if="layer.motionPath?.length" name="i-lucide-spline" class="w-3 h-3 text-[#4af0a2] shrink-0" />
+              <UIcon v-if="layer.motionPath?.length" name="i-lucide-spline" class="w-3 h-3 text-success shrink-0" />
               <!-- Remote lock indicator -->
               <template v-if="remoteLocks.get(layer.id)">
                 <UIcon name="i-lucide-lock" class="w-3 h-3 shrink-0" :style="{ color: remoteLocks.get(layer.id)!.color }" />
@@ -903,7 +903,7 @@ onUnmounted(() => {
               <!-- Path sub-label (when motion path active) -->
               <div
                 v-if="layer.motionPath?.length >= 2"
-                class="flex items-center gap-1 pl-6 pr-2 border-b border-(--ui-border)/20 text-[9px] text-[#4af0a2]"
+                class="flex items-center gap-1 pl-6 pr-2 border-b border-(--ui-border)/20 text-[9px] text-success"
                 :style="{ height: `${KF_TRACK_H}px` }"
               >
                 <UIcon name="i-lucide-spline" class="w-3 h-3 shrink-0" />
@@ -1090,7 +1090,7 @@ onUnmounted(() => {
                     <!-- Path range label -->
                     <span
                       v-if="(tw.endTime - tw.startTime) * pxPerSec > 40"
-                      class="absolute inset-0 flex items-center justify-center text-[7px] font-mono text-[#4af0a2] pointer-events-none select-none"
+                      class="absolute inset-0 flex items-center justify-center text-[7px] font-mono text-success pointer-events-none select-none"
                     >{{ Math.round(tw.pathStart * 100) }}–{{ Math.round(tw.pathEnd * 100) }}%</span>
                   </div>
                   <!-- Left edge handle -->
@@ -1124,7 +1124,7 @@ onUnmounted(() => {
                   @click.stop="addMotionPathTween(layer.id)"
                 >
                   <div class="w-full h-full rounded-full bg-[#4af0a2]/20 border border-[#4af0a2]/40 flex items-center justify-center group-hover:bg-[#4af0a2]/40 transition-colors">
-                    <span class="text-[7px] text-[#4af0a2] font-bold leading-none">+</span>
+                    <span class="text-[7px] text-success font-bold leading-none">+</span>
                   </div>
                 </div>
               </div>
