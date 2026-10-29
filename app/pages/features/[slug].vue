@@ -1604,15 +1604,15 @@ const features: Record<string, Feature> = {
     categoryIcon: 'i-lucide-message-circle',
     categoryIconBg: 'bg-violet-50',
     categoryIconColor: 'text-violet-600',
-    description: 'A visual, section-based email builder — drop in pre-designed sections, launch from a gallery of 12 starter templates, fine-tune every block, and render to bulletproof email HTML that looks right in every inbox.',
+    description: 'A visual, section-based email builder — drop in pre-designed sections, launch from eight curated starter templates, fine-tune every block, and render to bulletproof email HTML that looks right in every inbox.',
     details: [
       {
         title: 'Sections and Building Blocks',
-        content: 'Build emails from a rich library of pre-designed sections organised by purpose — Header, Content, Feature, Call to action, E-Commerce, Transactional, and Footer — alongside basic blocks like headings, text, buttons, images, dividers, spacers, columns, and containers. Drop a whole section onto the canvas and you get a polished, on-brand layout in one click instead of assembling it element by element. Reorder, duplicate, or delete with a click, use the insert zones between blocks to slot new content exactly where you want it, and edit headings and body copy directly on the canvas — click the text and type, WYSIWYG.'
+        content: 'Build emails from 47 current design sections organised by purpose — Header, Content, Feature, Call to action, E-Commerce, Transactional, and Footer — alongside basic blocks like headings, text, buttons, images, dividers, spacers, columns, and containers. Drop a whole section onto the canvas and you get a polished, on-brand layout in one click instead of assembling it element by element. Reorder, duplicate, or delete with a click, use the insert zones between blocks to slot new content exactly where you want it, and edit headings and body copy directly on the canvas — click the text and type, WYSIWYG.'
       },
       {
         title: 'Live Section Previews',
-        content: 'The section palette shows each preset as a live-rendered thumbnail, not a vague icon, so you can see exactly what a section looks like before you add it. Hover any category and a flyout reveals miniature previews of every section inside it — pick the right header, hero, or footer at a glance, then click to drop it in.'
+        content: 'The section palette shows each preset as a live-rendered thumbnail, not a vague icon, so you can see exactly what a section looks like before you add it. Hover any category and a flyout reveals miniature previews of every section inside it — identify each design by its actual module name, then click to drop in the right header, hero or footer. Module previews preserve their email backgrounds, and native footer colours stay consistent between the editor and rendered HTML.'
       },
       {
         title: 'Save Your Own Custom Modules',
@@ -1620,7 +1620,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Starter Templates and a Visual Gallery',
-        content: 'Skip the blank canvas with a library of 12 curated starter templates — newsletters, promotions, product launches, welcome and onboarding emails, event invites, order confirmations, case-study spotlights, and more — each pre-assembled from coordinated sections and rendered as a live full-email preview, not a flat thumbnail. Filter the gallery by usage (Newsletter, Promotion, Announcement, Welcome, Event, Transactional) and by style (Editorial, Bold, Minimal, Corporate, Retail, Utility), or search by name, and freshly added designs are flagged with a NEW badge. A blank-start card sits alongside the starters, so anyone on the team can launch a properly structured email in a single click and customise from there.'
+        content: 'Start with GlideX, FuturaX and Aviro, or choose a coordinated industry design for automotive, property, hospitality, health and wellness, or professional services. The eight-template gallery includes locally hosted preview images and filters for industry, email type and design style, plus name and industry search. Each new industry starter contains editable headers, image-led content, features, a clear call to action and an unsubscribe footer. A blank-start option remains available, and saved team templates and drafts are preserved.'
       },
       {
         title: 'Per-Block Styling and Bulletproof HTML',

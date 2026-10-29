@@ -522,7 +522,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { dividerLineThickness } from '~~/app/utils/edmDivider'
-import { extendedStyleVue } from '~~/app/utils/edmStyle'
+import { extendedStyleVue, safeCssColor } from '~~/app/utils/edmStyle'
 import { sanitizeInlineHtml, extractPlainText, safeInlineHref } from '~~/app/utils/edmInlineText'
 import {
   annotateHtmlEditables,
@@ -1141,11 +1141,12 @@ const featureColumnCount = computed(() => {
   if (!Number.isFinite(raw)) return 3
   return Math.max(1, Math.min(6, Math.trunc(raw)))
 })
+const plainFeatureCards = computed(() => blockProps.value.cardStyle === 'plain')
 const featureGridStyle = computed(() => ({
   ...buildBaseStyle(props.style),
   display: 'grid',
   gridTemplateColumns: `repeat(${featureColumnCount.value}, minmax(0, 1fr))`,
-  gap: '12px',
+  gap: plainFeatureCards.value ? '0' : '12px',
   boxSizing: 'border-box'
 }))
 const featureItems = computed(() => asArray<{ icon?: string, heading?: string, description?: string }>(blockProps.value.features)
@@ -1155,36 +1156,38 @@ const featureItems = computed(() => asArray<{ icon?: string, heading?: string, d
     description: asString(feature.description)
   })))
 const featureIconColor = computed(() => (blockProps.value.iconColor as string) || '#3b82f6')
-const featureCardStyle = {
+const featureCardStyle = computed(() => ({
   display: 'flex',
   flexDirection: 'column' as const,
   alignItems: 'center',
   textAlign: 'center' as const,
-  gap: '6px',
-  padding: '12px',
-  border: '1px solid #e5e7eb',
-  borderRadius: '6px',
-  backgroundColor: '#ffffff',
+  gap: plainFeatureCards.value ? '0' : '6px',
+  padding: plainFeatureCards.value ? '8px' : '12px',
+  border: plainFeatureCards.value ? '0' : '1px solid #e5e7eb',
+  borderRadius: plainFeatureCards.value ? '0' : '6px',
+  backgroundColor: plainFeatureCards.value ? 'transparent' : '#ffffff',
   boxSizing: 'border-box'
-}
+}))
 const featureIconStyle = computed(() => ({
-  fontSize: '28px',
+  fontSize: plainFeatureCards.value ? '32px' : '28px',
+  marginBottom: plainFeatureCards.value ? '8px' : undefined,
   lineHeight: '1',
   color: featureIconColor.value
 }))
-const featureHeadingStyle = {
-  fontSize: '15px',
-  lineHeight: '1.35',
+const featureHeadingStyle = computed(() => ({
+  fontSize: plainFeatureCards.value ? '16px' : '15px',
+  marginBottom: plainFeatureCards.value ? '4px' : undefined,
+  lineHeight: plainFeatureCards.value ? 'normal' : '1.35',
   fontWeight: '700',
   color: '#111827',
   wordBreak: 'break-word' as const
-}
-const featureDescriptionStyle = {
-  fontSize: '13px',
-  lineHeight: '1.45',
+}))
+const featureDescriptionStyle = computed(() => ({
+  fontSize: plainFeatureCards.value ? '14px' : '13px',
+  lineHeight: plainFeatureCards.value ? 'normal' : '1.45',
   color: '#6b7280',
   wordBreak: 'break-word' as const
-}
+}))
 
 const ctaBannerStyle = computed(() => ({
   ...buildBaseStyle(props.style),
@@ -1235,8 +1238,14 @@ const ctaTextStyle = computed(() => ({
   whiteSpace: 'nowrap' as const
 }))
 
+const footerTextColor = computed(() =>
+  safeCssColor(typeof blockProps.value.textColor === 'string' ? blockProps.value.textColor : undefined)
+  || safeCssColor(typeof props.style?.color === 'string' ? props.style.color : undefined)
+  || '#6b7280'
+)
 const footerStyle = computed(() => ({
   ...buildBaseStyle(props.style),
+  color: footerTextColor.value,
   display: 'flex',
   flexDirection: 'column' as const,
   alignItems: 'center',
@@ -1249,18 +1258,18 @@ const footerAdditionalText = computed(() =>
   asString(blockProps.value.additionalText) || 'You are receiving this email because you subscribed to updates.'
 )
 const footerShowUnsubscribe = computed(() => blockProps.value.showUnsubscribe !== false)
-const footerAdditionalTextStyle = {
+const footerAdditionalTextStyle = computed(() => ({
   fontSize: '12px',
   lineHeight: '1.45',
-  color: '#6b7280',
+  color: footerTextColor.value,
   wordBreak: 'break-word' as const
-}
-const footerUnsubscribeStyle = {
+}))
+const footerUnsubscribeStyle = computed(() => ({
   fontSize: '12px',
   lineHeight: '1.45',
-  color: '#6b7280',
+  color: footerTextColor.value,
   textDecoration: 'underline'
-}
+}))
 
 // Next steps — mirrors server next-steps block (heading + steps[{title, description}])
 const nextStepsItems = computed(() =>

@@ -50,6 +50,7 @@ const stubs: Record<string, unknown> = {
   UButton: { name: 'UButton', props: ['label', 'icon'], template: '<button :data-icon="icon"><slot />{{ label }}</button>' },
   UIcon: { name: 'UIcon', props: ['name'], template: '<i :data-icon="name" />' },
   UBadge: { name: 'UBadge', props: ['label'], template: '<span>{{ label }}<slot /></span>' },
+  USelect: { name: 'USelect', props: ['modelValue', 'items'], template: '<select><option v-for="item in items" :key="item.value" :value="item.value">{{ item.label }}</option></select>' },
   UInput: { name: 'UInput', props: ['modelValue'], template: '<input />' },
   UTooltip: { name: 'UTooltip', props: ['text'], template: '<div>{{ text }}<slot /></div>' },
   UModal: passthrough('UModal'),
@@ -87,9 +88,11 @@ describe('Email TemplatesPanel saved templates', () => {
     expect(html).toContain('email-starter-preview-image')
     expect(html).toContain('Create Blank Template')
     expect(html).toContain('Industry')
-    expect(html).toContain('Usage')
-    expect(html).toContain('Season')
-    expect(html).toContain('Brand')
+    expect(html).toContain('Email type')
+    expect(html).toContain('Design style')
+    expect(html).not.toContain('All seasons')
+    expect(html).not.toContain('Weekly Digest')
+    expect(html).not.toContain('Product Offer')
   })
 
   it('renders saved templates as preview cards instead of a divided row list', async () => {

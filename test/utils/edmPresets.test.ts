@@ -60,7 +60,6 @@ describe('edmPresets', () => {
   it('includes basic scratch blocks and Postcards-style section categories', () => {
     expect(EDM_SECTION_CATEGORIES.map(category => category.id)).toEqual([
       'basic',
-      'imported',
       'header',
       'content',
       'feature',
@@ -114,9 +113,15 @@ describe('edmPresets', () => {
     }
   })
 
-  it('builds starter template HTML that passes campaign identity preflight', () => {
+  it('builds sendable starter HTML after the sender identity is filled', () => {
     for (const starter of EDM_STARTER_TEMPLATES) {
       const document = buildStarterTemplateDocument(starter.id)
+      // New starters require the real sender address instead of inventing one.
+      {
+        const footer = Object.values(document).find(block => block.type === 'footer')
+        expect(footer?.data.props?.additionalText).toContain('Your business postal address')
+        footer!.data.props!.additionalText = 'Example Studio · 12 Example Street, Melbourne VIC 3000, Australia.'
+      }
       const html = renderTemplateDocument(document, {
         subjectLine: starter.subject,
         previewText: starter.previewText
@@ -139,13 +144,13 @@ describe('edmPresets', () => {
     }
   })
 
-  it('exposes a rich section library with at least six presets per non-basic category', () => {
+  it('exposes current design modules in every non-basic category', () => {
     for (const category of nonBasicCategories) {
       const categorySectionPresets = category.presets.filter(preset => preset.kind === 'section')
       expect(
         categorySectionPresets.length,
-        `category ${category.id} should have >= 6 section presets`
-      ).toBeGreaterThanOrEqual(6)
+        `category ${category.id} should contain current design sections`
+      ).toBeGreaterThan(0)
     }
   })
 
@@ -250,15 +255,18 @@ describe('edmPresets', () => {
     expect(findStarterTemplate('missing-starter')).toBeNull()
   })
 
-  it('keeps the existing starter library and appends imported Postcards templates', () => {
+  it('replaces legacy gallery starters while retaining their compatibility lookups', () => {
     const starterIds = EDM_STARTER_TEMPLATES.map(starter => starter.id)
 
     for (const id of ['newsletter-digest', 'product-offer', 'confirmation-update', 'flash-sale']) {
-      expect(starterIds, `expected existing starter ${id} to remain`).toContain(id)
+      expect(starterIds, `legacy starter ${id} should be hidden`).not.toContain(id)
+      expect(findStarterTemplate(id)).not.toBeNull()
+      expect(buildStarterTemplateDocument(id).root.type).toBe('EmailLayout')
     }
     for (const id of ['postcards-glidex', 'postcards-futurax', 'postcards-aviro']) {
       expect(starterIds, `expected imported starter ${id} to be added`).toContain(id)
     }
+    expect(starterIds).toHaveLength(8)
     expect(starterIds).not.toContain('postcards-metahome')
   })
 

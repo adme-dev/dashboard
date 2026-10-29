@@ -23,6 +23,8 @@ import {
   IMPORTED_POSTCARDS_STARTER_TEMPLATES
 } from '~~/app/utils/edmImportedPostcards'
 
+import { MODERN_EDM_SECTION_IDS, MODERN_EDM_SECTION_PRESETS, MODERN_EDM_STARTER_TEMPLATES } from '~~/app/utils/edmModernPresets'
+
 export type EdmSectionCategoryId
   = | 'basic'
     | 'imported'
@@ -156,7 +158,8 @@ export const EDM_SECTION_PRESET_IDS = [
   'footer-dark-social',
   'footer-app-download',
   'footer-newsletter-signup',
-  ...IMPORTED_POSTCARDS_SECTION_IDS
+  ...IMPORTED_POSTCARDS_SECTION_IDS,
+  ...MODERN_EDM_SECTION_IDS
 ] as const
 
 export type EdmSectionPresetId = typeof EDM_SECTION_PRESET_IDS[number]
@@ -1594,7 +1597,7 @@ const FOOTER_PRESETS: EdmSectionPreset[] = [
   }
 ]
 
-export const EDM_SECTION_CATEGORIES: EdmSectionCategory[] = [
+const LEGACY_EDM_SECTION_CATEGORIES: EdmSectionCategory[] = [
   { id: 'basic', label: 'Basic Modules', icon: 'i-lucide-box', presets: BASIC_PRESETS },
   {
     id: 'imported',
@@ -1625,6 +1628,25 @@ export const EDM_SECTION_CATEGORIES: EdmSectionCategory[] = [
   },
   { id: 'footer', label: 'Footer', icon: 'i-lucide-panel-bottom', presets: FOOTER_PRESETS }
 ]
+
+// The public picker is curated; legacy definitions remain available only to old IDs.
+const IMPORTED_CATEGORY_BY_ID: Record<string, EdmSectionCategoryId> = {
+  'postcards-glidex-01-brand': 'header', 'postcards-futurax-01-hero': 'header', 'postcards-aviro-01-nav': 'header',
+  'postcards-glidex-02-hero': 'content', 'postcards-futurax-02-model': 'content', 'postcards-aviro-02-hero': 'content',
+  'postcards-glidex-04-connectivity': 'feature', 'postcards-glidex-05-safety': 'feature', 'postcards-futurax-03-design': 'feature', 'postcards-aviro-04-benefits': 'feature',
+  'postcards-glidex-06-cta': 'call-to-action', 'postcards-futurax-04-reserve': 'call-to-action', 'postcards-aviro-05-cta': 'call-to-action',
+  'postcards-glidex-03-offer': 'e-commerce', 'postcards-aviro-06-categories': 'e-commerce',
+  'postcards-aviro-03-cart': 'transactional',
+  'postcards-glidex-07-footer': 'footer', 'postcards-futurax-05-footer': 'footer', 'postcards-aviro-07-footer': 'footer'
+}
+const MODERN_LIBRARY_SECTIONS: EdmSectionPreset[] = [
+  ...IMPORTED_POSTCARDS_SECTION_PRESETS.map(preset => ({ ...preset, categoryId: IMPORTED_CATEGORY_BY_ID[preset.id] ?? preset.categoryId })),
+  ...MODERN_EDM_SECTION_PRESETS
+]
+export const EDM_SECTION_CATEGORIES: EdmSectionCategory[] = LEGACY_EDM_SECTION_CATEGORIES
+  .filter(category => category.id !== 'imported')
+  .map(category => ({ ...category, presets: category.id === 'basic' ? BASIC_PRESETS : MODERN_LIBRARY_SECTIONS.filter(preset => preset.categoryId === category.id) }))
+  .filter(category => category.presets.length > 0)
 
 const LEGACY_EDM_STARTER_TEMPLATES: EdmStarterTemplate[] = [
   {
@@ -1849,18 +1871,23 @@ const LEGACY_EDM_STARTER_TEMPLATES: EdmStarterTemplate[] = [
 ]
 
 export const EDM_STARTER_TEMPLATES: EdmStarterTemplate[] = [
-  ...LEGACY_EDM_STARTER_TEMPLATES,
-  ...IMPORTED_POSTCARDS_STARTER_TEMPLATES
+  ...IMPORTED_POSTCARDS_STARTER_TEMPLATES.map(template => ({ ...template, isNew: false })),
+  ...MODERN_EDM_STARTER_TEMPLATES
 ]
 
-const ALL_SECTION_PRESETS = EDM_SECTION_CATEGORIES.flatMap(category => category.presets)
+const ALL_SECTION_PRESETS = [
+  ...EDM_SECTION_CATEGORIES.flatMap(category => category.presets),
+  ...LEGACY_EDM_SECTION_CATEGORIES.flatMap(category => category.presets)
+]
 
 export function findSectionPreset(id: string): EdmSectionPreset | null {
   return ALL_SECTION_PRESETS.find(preset => preset.id === id) ?? null
 }
 
 export function findStarterTemplate(id: string): EdmStarterTemplate | null {
-  return EDM_STARTER_TEMPLATES.find(template => template.id === id) ?? null
+  return EDM_STARTER_TEMPLATES.find(template => template.id === id)
+    ?? LEGACY_EDM_STARTER_TEMPLATES.find(template => template.id === id)
+    ?? null
 }
 
 export function buildSectionDocumentFragment(sectionPresetId: string): EdmDocumentFragment {

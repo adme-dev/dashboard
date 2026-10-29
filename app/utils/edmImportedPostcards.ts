@@ -18,7 +18,7 @@ function importedHtmlBlock(contents: string) {
   }
 }
 
-function importedLegalFooterBlock() {
+function importedLegalFooterBlock(brand: string) {
   return {
     type: 'footer',
     data: {
@@ -29,7 +29,7 @@ function importedLegalFooterBlock() {
       props: {
         showUnsubscribe: true,
         showAddress: false,
-        additionalText: 'The Agency · 100 George St, Sydney NSW 2000, Australia. You are receiving this email because you subscribed to updates.',
+        additionalText: `${brand} · Your business postal address. You are receiving this email because you subscribed to updates.`,
         backgroundColor: '#f5f5f5'
       }
     }
@@ -129,7 +129,7 @@ export const IMPORTED_POSTCARDS_SECTION_PRESETS: EdmSectionPreset[] = [
     previewTone: "light",
     blocks: [
       importedHtmlBlock(POSTCARDS_IMPORTED_HTML["postcards-glidex-07-footer"] || ''),
-      importedLegalFooterBlock()
+      importedLegalFooterBlock('GlideX')
     ]
   },
   {
@@ -182,7 +182,7 @@ export const IMPORTED_POSTCARDS_SECTION_PRESETS: EdmSectionPreset[] = [
     previewTone: "light",
     blocks: [
       importedHtmlBlock(POSTCARDS_IMPORTED_HTML["postcards-futurax-05-footer"] || ''),
-      importedLegalFooterBlock()
+      importedLegalFooterBlock('FuturaX')
     ]
   },
   {
@@ -255,7 +255,7 @@ export const IMPORTED_POSTCARDS_SECTION_PRESETS: EdmSectionPreset[] = [
     previewTone: "dark",
     blocks: [
       importedHtmlBlock(POSTCARDS_IMPORTED_HTML["postcards-aviro-07-footer"] || ''),
-      importedLegalFooterBlock()
+      importedLegalFooterBlock('Aviro')
     ]
   }
 ]

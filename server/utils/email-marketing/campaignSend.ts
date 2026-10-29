@@ -152,11 +152,18 @@ function preflightCheck(
 
 function hasPhysicalSenderIdentity(html: string): boolean {
   const text = html
+    .replace(/<!--[\s\S]*?-->/g, ' ')
     .replace(/<style[\s\S]*?<\/style>/gi, ' ')
     .replace(/<script[\s\S]*?<\/script>/gi, ' ')
     .replace(/<[^>]+>/g, ' ')
+    .replace(/&#(?:x([0-9a-f]{1,6})|([0-9]{1,7}));/gi, (_entity, hex, decimal) => {
+      const code = Number.parseInt(hex || decimal, hex ? 16 : 10)
+      return code <= 0x10ffff && !(code >= 0xd800 && code <= 0xdfff) ? String.fromCodePoint(code) : ' '
+    })
+    .replace(/&(?:nbsp|ensp|emsp);|[\u200b-\u200d\ufeff]/gi, ' ')
     .replace(/\s+/g, ' ')
     .trim()
+  if (/\byour business postal address\b/i.test(text)) return false
   return (STREET_ADDRESS_RE.test(text) || PO_BOX_RE.test(text)) && LOCALITY_RE.test(text)
 }
 

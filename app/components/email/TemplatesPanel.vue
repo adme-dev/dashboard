@@ -100,39 +100,36 @@ const usageOptions = computed(() =>
 const styleOptions = computed(() =>
   Array.from(new Set(EDM_STARTER_TEMPLATES.map(t => t.style)))
 )
-const seasonOptions = ['Spring', 'Summer', 'Autumn', 'Winter']
 
-const selectedIndustry = ref('')
-const selectedUsage = ref('')
-const selectedStyle = ref('')
-const selectedSeason = ref('')
+const selectedIndustry = ref('all')
+const selectedUsage = ref('all')
+const selectedStyle = ref('all')
 const starterSearch = ref('')
 
 function resetFilters() {
-  selectedIndustry.value = ''
-  selectedUsage.value = ''
-  selectedStyle.value = ''
-  selectedSeason.value = ''
+  selectedIndustry.value = 'all'
+  selectedUsage.value = 'all'
+  selectedStyle.value = 'all'
   starterSearch.value = ''
 }
 
 const hasActiveFilters = computed(() =>
-  selectedIndustry.value.length > 0
-  || selectedUsage.value.length > 0
-  || selectedStyle.value.length > 0
-  || selectedSeason.value.length > 0
+  selectedIndustry.value !== 'all'
+  || selectedUsage.value !== 'all'
+  || selectedStyle.value !== 'all'
   || starterSearch.value.trim().length > 0
 )
 
 const filteredStarters = computed(() => {
   const q = starterSearch.value.trim().toLowerCase()
   return EDM_STARTER_TEMPLATES.filter((t) => {
-    const industryOk = !selectedIndustry.value || (t.industry || 'General') === selectedIndustry.value
-    const usageOk = !selectedUsage.value || t.usage === selectedUsage.value
-    const styleOk = !selectedStyle.value || t.style === selectedStyle.value
+    const industryOk = selectedIndustry.value === 'all' || (t.industry || 'General') === selectedIndustry.value
+    const usageOk = selectedUsage.value === 'all' || t.usage === selectedUsage.value
+    const styleOk = selectedStyle.value === 'all' || t.style === selectedStyle.value
     const searchOk = !q
       || t.name.toLowerCase().includes(q)
       || t.description.toLowerCase().includes(q)
+      || (t.industry || '').toLowerCase().includes(q)
     return industryOk && usageOk && styleOk && searchOk
   })
 })
@@ -244,12 +241,9 @@ function templateDocument(row: TemplateRow): EdmFlyhubDocument | null {
         </p>
       </div>
       <div class="border-b border-default p-4">
-        <UInput
-          v-model="starterSearch"
-          icon="i-lucide-search"
-          placeholder="Search"
-          class="w-full"
-        />
+        <UFormField label="Search templates">
+          <UInput v-model="starterSearch" icon="i-lucide-search" placeholder="Name or industry" class="w-full" />
+        </UFormField>
       </div>
       <nav class="space-y-1 p-3 text-sm">
         <button type="button" class="email-template-nav-item">
@@ -303,52 +297,16 @@ function templateDocument(row: TemplateRow): EdmFlyhubDocument | null {
 
       <div class="space-y-10 p-6">
         <section class="space-y-5">
-          <div class="flex flex-wrap items-center gap-4 text-sm text-muted">
-            <label class="email-template-filter">
-              <span>Industry</span>
-              <select v-model="selectedIndustry">
-                <option value="">
-                  All industries
-                </option>
-                <option v-for="industry in industryOptions" :key="industry" :value="industry">
-                  {{ industry }}
-                </option>
-              </select>
-            </label>
-            <label class="email-template-filter">
-              <span>Usage</span>
-              <select v-model="selectedUsage">
-                <option value="">
-                  All usage
-                </option>
-                <option v-for="usage in usageOptions" :key="usage" :value="usage">
-                  {{ usage }}
-                </option>
-              </select>
-            </label>
-            <label class="email-template-filter">
-              <span>Season</span>
-              <select v-model="selectedSeason">
-                <option value="">
-                  All seasons
-                </option>
-                <option v-for="season in seasonOptions" :key="season" :value="season">
-                  {{ season }}
-                </option>
-              </select>
-            </label>
-            <label class="email-template-filter">
-              <span>Brand</span>
-              <select v-model="selectedStyle">
-                <option value="">
-                  All brands
-                </option>
-                <option v-for="style in styleOptions" :key="style" :value="style">
-                  {{ style }}
-                </option>
-              </select>
-            </label>
-            <UIcon name="i-lucide-search" class="size-5 text-muted" />
+          <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <UFormField label="Industry">
+              <USelect value-key="value" v-model="selectedIndustry" :items="[{ label: 'All industries', value: 'all' }, ...industryOptions.map(value => ({ label: value, value }))]" class="w-full" />
+            </UFormField>
+            <UFormField label="Email type">
+              <USelect value-key="value" v-model="selectedUsage" :items="[{ label: 'All types', value: 'all' }, ...usageOptions.map(value => ({ label: value, value }))]" class="w-full" />
+            </UFormField>
+            <UFormField label="Design style">
+              <USelect value-key="value" v-model="selectedStyle" :items="[{ label: 'All styles', value: 'all' }, ...styleOptions.map(value => ({ label: value, value }))]" class="w-full" />
+            </UFormField>
           </div>
 
           <div class="email-starter-gallery-grid grid gap-x-5 gap-y-10 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
@@ -611,24 +569,4 @@ function templateDocument(row: TemplateRow): EdmFlyhubDocument | null {
   color: var(--ui-text);
 }
 
-.email-template-filter {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-}
-
-.email-template-filter span {
-  color: var(--ui-text);
-  font-weight: 500;
-}
-
-.email-template-filter select {
-  max-width: 11rem;
-  border: 0;
-  background: transparent;
-  color: var(--ui-text-muted);
-  cursor: pointer;
-  font-size: 0.875rem;
-  outline: none;
-}
 </style>

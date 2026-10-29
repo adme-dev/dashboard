@@ -5,6 +5,7 @@ import EdmCategoryFlyoutPanel from '~~/app/components/email/builder/EdmCategoryF
 import { EDM_SECTION_CATEGORIES } from '~~/app/utils/edmPresets'
 
 const stubs = {
+  UButton: { name: 'UButton', template: '<button><slot /></button>' },
   UIcon: { name: 'UIcon', props: ['name'], template: '<i :data-icon="name" />' },
   EmailBuilderEdmSectionThumbnail: {
     name: 'EmailBuilderEdmSectionThumbnail',
@@ -31,12 +32,12 @@ describe('EdmCategoryFlyoutPanel', () => {
     expect(html).toContain('data-edm-category-flyout')
     expect(html).toContain('data-layout="top-docked"')
     expect(html).toContain('Header')
-    expect(html).toContain('HEADER 1')
-    expect(html).toContain('HEADER 2')
-    expect(html).toContain('data-preset="header-logo-menu"')
+    expect(html).toContain('GlideX Brand Header')
+    expect(html).toContain('Aviro Navigation Header')
+    expect(html).toContain('data-preset="postcards-glidex-01-brand"')
     expect(html).toContain('data-width="384"')
     expect(html).toContain('data-max-height="420"')
-    expect(html).toContain('data-surface="transparent"')
+    expect(html).toContain('data-surface="white"')
     expect(html).not.toContain('overflow-hidden bg-white')
   })
 

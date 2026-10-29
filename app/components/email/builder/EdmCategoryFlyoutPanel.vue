@@ -15,10 +15,6 @@ defineEmits<{
 
 const RICH_THUMBNAIL_WIDTH = 384
 
-function presetLabel(category: EdmSectionCategory, index: number) {
-  const base = category.id === 'basic' ? 'Module' : category.label
-  return `${base} ${index + 1}`.toUpperCase()
-}
 </script>
 
 <template>
@@ -30,34 +26,29 @@ function presetLabel(category: EdmSectionCategory, index: number) {
   >
     <div class="flex-1 overflow-auto bg-elevated/40 px-4 py-3">
       <div v-if="category.id === 'basic'" class="grid grid-cols-2 gap-2">
-        <button
-          v-for="(preset, index) in category.presets"
+        <UButton color="neutral" variant="ghost"
+          v-for="preset in category.presets"
           :key="preset.id"
           type="button"
           class="group flex min-h-24 flex-col items-start justify-between rounded-md border border-default bg-default p-3 text-left transition hover:border-primary hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
           @click="$emit('insert', preset)"
         >
-          <span class="text-[10px] font-semibold uppercase text-muted">
-            {{ presetLabel(category, index) }}
-          </span>
           <UIcon :name="preset.icon" class="mt-3 h-5 w-5 text-muted transition group-hover:text-primary" />
           <span class="mt-2 text-xs font-semibold leading-tight text-default">
             {{ preset.name }}
           </span>
-        </button>
+        </UButton>
       </div>
 
       <div v-else class="space-y-4">
-        <button
-          v-for="(preset, index) in category.presets"
+        <UButton color="neutral" variant="ghost"
+          v-for="preset in category.presets"
           :key="preset.id"
           type="button"
           class="group block w-full text-left focus-visible:outline-none"
           @click="$emit('insert', preset)"
         >
-          <span class="mb-1 block text-[10px] font-semibold uppercase text-muted">
-            {{ presetLabel(category, index) }}
-          </span>
+          <span class="mb-2 block text-xs font-medium text-default">{{ preset.name }}</span>
           <span
             class="block overflow-hidden rounded-md border border-default bg-default shadow-sm transition group-hover:border-primary group-hover:shadow-md group-focus-visible:ring-2 group-focus-visible:ring-primary"
           >
@@ -66,11 +57,11 @@ function presetLabel(category: EdmSectionCategory, index: number) {
                 :preset="preset"
                 :width="RICH_THUMBNAIL_WIDTH"
                 :max-height="420"
-                surface="transparent"
+                surface="white"
               />
             </span>
           </span>
-        </button>
+        </UButton>
       </div>
     </div>
   </aside>
