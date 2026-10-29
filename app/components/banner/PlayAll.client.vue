@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import gsap from 'gsap'
+import { syncTimelineAudio, pauseTimelineAudio, disposeTimelineAudio } from '~/utils/bannerTimelineAudio'
 import { resolveBannerPlayback } from '~/utils/banner-playback'
 import { FORMATS, PLATFORM_META } from '~/utils/banner-constants'
 
@@ -11,10 +12,10 @@ const emit = defineEmits<{
 }>()
 
 const { state } = useBannerStudio()
-const { buildTimelineForKey } = useBannerTimeline()
+const { buildTimelineForKey, pauseTimeline } = useBannerTimeline()
 
 const artboardRefs = ref<Record<string, any>>({})
-const timelines = ref<gsap.core.Timeline[]>([])
+const timelines = shallowRef<gsap.core.Timeline[]>([])
 const isPlaying = ref(false)
 const isLooping = ref(true)
 const playbackSpeed = ref(1)
@@ -37,11 +38,13 @@ function artboardScale(key: string): number {
 
 function buildAll() {
   // Kill old timelines
-  timelines.value.forEach(tl => tl.kill())
+  timelines.value.forEach(tl => { disposeTimelineAudio(tl); tl.kill() })
   timelines.value = []
   let maxEnd = 0
 
   nextTick(() => {
+    if (!props.open) return
+    const audioKey = state.setKeys.includes(state.activeKey) ? state.activeKey : state.setKeys[0]
     state.setKeys.forEach(key => {
       const ref = artboardRefs.value[key]
       const artboardEl = ref?.artboardEl || ref?.$el
@@ -49,17 +52,21 @@ function buildAll() {
 
       const layers = state.sets[key]?.layers ?? []
       const playback = resolveBannerPlayback(state.sets[key]?.playback)
-      const tl = buildTimelineForKey(artboardEl, layers, playback)
+      const tl = buildTimelineForKey(artboardEl, layers, playback, key === audioKey)
 
       // Override onComplete for synced loop behavior
       tl.eventCallback('onComplete', () => {
+        pauseTimelineAudio(tl)
         if (playback) {
           if (timelines.value.every(t => t.repeat() !== -1 && t.totalProgress() === 1)) {
             isPlaying.value = false
             stopTimePoller()
           }
         } else if (isLooping.value) {
-          timelines.value.filter(t => !t.data?.importedPlayback).forEach(t => t.restart())
+          const legacy = timelines.value.filter(t => !t.data?.importedPlayback)
+          if (legacy.every(t => t.totalProgress() >= 1)) {
+            legacy.forEach(t => { t.restart(); syncTimelineAudio(t, true) })
+          }
         } else if (!timelines.value.some(t => t.data?.importedPlayback) || timelines.value.every(t => t.repeat() !== -1 && t.totalProgress() === 1)) {
           isPlaying.value = false
           stopTimePoller()
@@ -91,14 +98,16 @@ function playAll() {
   isPlaying.value = true
   timelines.value.forEach(tl => {
     tl.timeScale(playbackSpeed.value)
+    if (tl.repeat() !== -1 && tl.totalProgress() >= 1) tl.totalTime(0)
     tl.play()
+    syncTimelineAudio(tl, true)
   })
   startTimePoller()
 }
 
 function pauseAll() {
   isPlaying.value = false
-  timelines.value.forEach(tl => tl.pause())
+  timelines.value.forEach(tl => { tl.pause(); pauseTimelineAudio(tl); syncTimelineAudio(tl, true) })
   stopTimePoller()
   if (timelines.value.length > 0) {
     currentTime.value = timelines.value[0].time()
@@ -118,7 +127,9 @@ function restartAll() {
   currentTime.value = 0
   timelines.value.forEach(tl => {
     tl.timeScale(playbackSpeed.value)
+    pauseTimelineAudio(tl)
     tl.restart()
+    syncTimelineAudio(tl, true)
   })
   startTimePoller()
 }
@@ -147,18 +158,20 @@ const speedOptions = [
 
 watch(() => props.open, (val) => {
   if (val) {
+    pauseTimeline()
+    isPlaying.value = false
     nextTick(() => buildAll())
   } else {
     stopTimePoller()
-    timelines.value.forEach(tl => tl.kill())
+    timelines.value.forEach(tl => { disposeTimelineAudio(tl); tl.kill() })
     timelines.value = []
     currentTime.value = 0
   }
-})
+}, { immediate: true })
 
 onUnmounted(() => {
   stopTimePoller()
-  timelines.value.forEach(tl => tl.kill())
+  timelines.value.forEach(tl => { disposeTimelineAudio(tl); tl.kill() })
 })
 </script>
 
@@ -178,6 +191,7 @@ onUnmounted(() => {
         <!-- Playback controls -->
         <div class="flex items-center gap-2 mb-4 px-2 py-2 rounded-lg bg-(--ui-bg) border border-(--ui-border)">
           <UButton
+            :aria-label="isPlaying ? 'Pause all formats' : 'Play all formats'"
             :icon="isPlaying ? 'i-lucide-pause' : 'i-lucide-play'"
             variant="soft"
             size="xs"
@@ -206,7 +220,9 @@ onUnmounted(() => {
 
           <!-- Speed control -->
           <div class="ml-auto flex items-center gap-1">
-            <button
+            <UButton
+              variant="ghost"
+              size="xs"
               v-for="sp in speedOptions"
               :key="sp.value"
               class="text-[10px] px-2 py-0.5 rounded font-mono transition-colors"
@@ -214,9 +230,11 @@ onUnmounted(() => {
                 ? 'bg-(--ui-primary)/15 text-(--ui-primary) font-bold'
                 : 'text-(--ui-text-dimmed) hover:text-(--ui-text)'"
               @click="setSpeed(sp.value)"
-            >{{ sp.label }}</button>
+            >{{ sp.label }}</UButton>
           </div>
         </div>
+
+        <p class="text-xs text-muted mb-3">Sound plays from the selected layout only, so shared tracks are heard once.</p>
 
         <!-- Artboards grid -->
         <div class="grid gap-4 max-h-[65vh] overflow-auto" style="grid-template-columns: repeat(auto-fill, minmax(280px, 1fr))">
