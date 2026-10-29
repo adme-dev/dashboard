@@ -175,6 +175,30 @@ function deleteSelectedKeyframe() {
       <UButton size="xs" variant="soft" icon="i-lucide-play" @click="previewLayer">Preview</UButton>
     </div>
 
+    <div v-if="selectedLayer.wordPop" class="rounded-md border border-primary/30 bg-primary/10 p-2.5 text-xs">
+      <div class="flex items-start justify-between gap-2">
+        <div>
+          <p class="font-semibold text-primary">
+            Words Pop
+          </p>
+          <p class="mt-1 text-muted">
+            Words enter one by one from the layer start.
+          </p>
+        </div>
+        <UButton
+          icon="i-lucide-x"
+          aria-label="Remove Words Pop animation"
+          color="neutral"
+          variant="ghost"
+          size="xs"
+          @click="set('wordPop', undefined)"
+        />
+      </div>
+      <p class="mt-2 font-mono text-[10px] text-muted">
+        {{ selectedLayer.wordPop.duration }}s per word · {{ selectedLayer.wordPop.stagger }}s stagger
+      </p>
+    </div>
+
     <!-- Keyframe Mode Toggle -->
     <div class="flex gap-1.5">
       <UButton
