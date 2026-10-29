@@ -28,8 +28,8 @@ const CRM_WRITES = ['propose_opportunity', 'log_crm_activity', 'propose_quote']
 const CRM_READS = ['draft_followup']
 // Finance / Bookkeeper pack (PRD §7): 3 writes (expense approve, EOM generate rich_confirm, expense classify).
 const FINANCE_WRITES = ['propose_set_campaign_budget', 'propose_bulk_set_campaign_budgets', 'propose_expense_approval', 'propose_eom_generate', 'propose_expense_classify']
-// Creative pack (PRD §7): queue read + proof-status write.
-const CREATIVE_READS = ['get_my_creative_queue']
+// Creative pack (PRD §7): queue/workspace reads + proof-status write.
+const CREATIVE_READS = ['get_my_creative_queue', 'get_creative_workspace_capabilities', 'search_creative_workspace']
 const CREATIVE_WRITES = ['propose_proof_status']
 // Cross-cutting: promote a fact to department-shared memory (MANAGEMENT-gated).
 const SHARED_MEMORY_WRITES = ['propose_team_memory']
@@ -41,7 +41,7 @@ const READ_COVERAGE_TOOLS = ['search_crm', 'get_crm_pipeline', 'get_leads', 'get
 const ALL = [...READ_TOOLS, ...SLICE2_TOOLS, ...MEDIA_BUYER_TOOLS, ...MEDIA_BUYER_OPERATIONS, ...WRITE_TOOLS, ...DELIVERY_TOOLS, ...DELIVERY_READS, ...CRM_WRITES, ...CRM_READS, ...FINANCE_WRITES, ...CREATIVE_READS, ...CREATIVE_WRITES, ...SHARED_MEMORY_WRITES, ...OPS_AUTOPILOT_READS, ...READ_COVERAGE_TOOLS, 'remember']
 
 describe('assembled tool registry (Slices 1–2 + memory + media-buyer + Phase-2 writes)', () => {
-  it('contains the 15 read tools + the write tools + remember', () => {
+  it('contains the 17 read tools + the write tools + remember', () => {
     expect(registry.map(t => t.name).sort()).toEqual([...ALL].sort())
   })
 

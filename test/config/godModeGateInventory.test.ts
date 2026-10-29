@@ -335,12 +335,27 @@ describe('God mode gate inventory', () => {
     expect(inventory.rows).toContain('server/api/agency/social/publishing/accounts/index.get.ts\tconst canPublish = context.permissionGroups?.includes(\'CREATIVE\') === true\tordinary_user_behavior')
     // Department client and KPI boundaries add fresh role reads and retain native manager gates.
     // Exact reviewed diff: root-gate-inventory-release-diff.json; classifier and seed counts unchanged.
-    expect(inventory.rows).toHaveLength(1688)
+    // 2026-10-30 review against 938a774f5: five added rows, none removed. Import and
+    // banner snapshot write gates stay mandatory application controls (+2). Creative
+    // workspace CREATIVE/ADMIN checks and the MCP requiredPermission admission stay
+    // ordinary permission wiring (+3). None is a reviewed God mode read, a Task 5
+    // delegated target, or a registered mutation family, so canBypassApplicationControl
+    // stays false. Classifier and seed counts are unchanged.
+    const reviewedGateRows20261030 = [
+      'server/api/email/templates/import.post.ts\tconst user = await requireWriteAccess(event)\tapplication_governance_bypass',
+      'server/utils/ai/creativeWorkspace/search.ts\tif (!UUID.test(scope.actorUserId) || scope.actorUserId !== ctx.userId || (!scope.ownerVerified && !scope.permissionGroups.includes(\'CREATIVE\'))) {\tordinary_user_behavior',
+      'server/utils/ai/creativeWorkspace/search.ts\tif (source === \'video_assets\' && !scope.ownerVerified && !scope.permissionGroups.includes(\'ADMIN\')) {\tordinary_user_behavior',
+      'server/utils/ai/mcp/marketingPolicy.ts\tif (entry.requiredPermission && !ctx.permissionGroups?.includes(entry.requiredPermission)) {\tordinary_user_behavior',
+      'server/utils/banner/viewerSnapshot.ts\tconst user = write ? await requireWriteAccess(event) : await requireAuth(event)\tapplication_governance_bypass'
+    ] as const
+    expect(reviewedGateRows20261030).toHaveLength(5)
+    for (const row of reviewedGateRows20261030) expect(inventory.rows).toContain(row)
+    expect(inventory.rows).toHaveLength(1693)
     expect(inventory.counts).toEqual({
       identity_tenant_hard_boundary: 133,
       provider_infrastructure_availability: 222,
-      application_governance_bypass: 1607,
-      ordinary_user_behavior: 294,
+      application_governance_bypass: 1609,
+      ordinary_user_behavior: 297,
       unrelated_configuration: 431
     })
     // Removing the session KV shortcut removes four auth middleware rows:
@@ -364,7 +379,7 @@ describe('God mode gate inventory', () => {
     // to shared services. Email dispatch now reads request-bound provider config.
     // The classifier and owner bypass registrations remain unchanged; the reviewed
     // row diff is recorded in the marketing-management verification ledger.
-    expect(inventory.digest).toBe('6dea82a15a9098f93fe1b2ea5b6c2937389f35c3bb7f20cd73174de4ae4515ff')
+    expect(inventory.digest).toBe('a0aa845f0e44f8b9f3de4192174bcd800375762cc4e1638a978cefdbbecb003b')
     expect(inventory.rows).toContain(
       'app/composables/usePageStudioLauncher.ts\tconst config = useRuntimeConfig()\tunrelated_configuration'
     )
