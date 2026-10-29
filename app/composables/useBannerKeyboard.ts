@@ -21,7 +21,7 @@ export function useBannerKeyboard(opts: {
     sendToBack,
     updateLayer,
   } = useBannerStudio()
-  const { seekTo } = useBannerTimeline()
+  const { seekTo, togglePlay } = useBannerTimeline()
 
   const toast = useToast()
 
@@ -169,8 +169,9 @@ export function useBannerKeyboard(opts: {
 
     // Space — play/pause
     if (e.key === ' ') {
+      if (target.closest('button, [role=button], [role=dialog]')) return
       e.preventDefault()
-      state.isPlaying = !state.isPlaying
+      if (!e.repeat) togglePlay()
       return
     }
 

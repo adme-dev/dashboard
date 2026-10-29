@@ -19,6 +19,7 @@ it.each([0, 1, 3])('editor preserves source duration and %i plays despite legacy
   const timeline = studio.buildTimeline(artboard, layers)
   expect(state.duration).toBe(4)
   expect(timeline.repeat()).toBe(loopCount === 0 ? -1 : loopCount - 1)
+  studio.playTimeline()
   const end = loopCount ? loopCount * 4 : 11.9
   for (let tick = 1; tick <= Math.round(end * 10); tick++) timeline.totalTime(tick / 10, false)
   expect(Number((artboard.firstElementChild as HTMLElement).style.opacity)).toBeCloseTo(0.4)
@@ -28,7 +29,7 @@ it.each([0, 1, 3])('editor preserves source duration and %i plays despite legacy
   expect(standalone.repeat()).toBe(loopCount === 0 ? -1 : loopCount - 1)
   expect(standalone.duration()).toBe(4)
   standalone.kill()
-  timeline.kill()
+  studio.destroyTimeline()
   artboard.remove()
 })
 

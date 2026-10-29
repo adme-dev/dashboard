@@ -778,6 +778,7 @@ onUnmounted(() => {
     <!-- Timeline header -->
     <div class="flex items-center gap-2 px-3 py-1.5 border-b border-[#3a3a3f] bg-[#2a2a2e] shrink-0">
       <UButton
+        :aria-label="state.isPlaying ? 'Pause playback' : 'Play playback'"
         :icon="state.isPlaying ? 'i-lucide-pause' : 'i-lucide-play'"
         variant="ghost"
         size="xs"

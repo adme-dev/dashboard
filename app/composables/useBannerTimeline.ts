@@ -1,5 +1,6 @@
 import { applyBannerPlayback, resolveBannerPlayback } from '~/utils/banner-playback'
 import gsap from 'gsap'
+import { registerTimelineAudio, syncTimelineAudio, pauseTimelineAudio, disposeTimelineAudio } from '~/utils/bannerTimelineAudio'
 import { MotionPathPlugin } from 'gsap/MotionPathPlugin'
 import { CustomEase } from 'gsap/CustomEase'
 import { parseCubicEase, cubicEaseToSvg } from '~/utils/banner-ease'
@@ -338,35 +339,15 @@ function addVideoSync(tl: gsap.core.Timeline, el: HTMLElement, layer: Layer) {
   }
 }
 
-/** Add audio sync proxy to timeline */
+/** Audio follows the timeline clock, with an explicit lifecycle for pause/seek/kill. */
 function addAudioSync(tl: gsap.core.Timeline, el: HTMLElement, layer: Layer) {
-  if (layer.type !== 'audio') return
-  const audioEl = el.querySelector('audio') as HTMLAudioElement
-  if (!audioEl) return
-  audioEl.pause()
-  const startTime = layer.startTime || 0
-  const endTime = layer.endTime || (startTime + 3)
-  const presenceDur = endTime - startTime
-  const volume = layer.muted ? 0 : (layer.volume ?? 1)
-  const proxy = { t: 0 }
-  audioEl.volume = volume
-  tl.to(proxy, {
-    t: Math.min(presenceDur, audioEl.duration || presenceDur),
-    duration: presenceDur,
-    ease: 'none',
-    onUpdate() {
-      if (tl.paused()) {
-        audioEl.pause()
-        audioEl.currentTime = proxy.t
-      } else {
-        // Repeated seeks on every animation frame interrupt audible playback.
-        if (Math.abs(audioEl.currentTime - proxy.t) > 0.3) audioEl.currentTime = proxy.t
-        if (audioEl.paused) audioEl.play().catch(() => {})
-      }
-    },
-    onStart() { if (!tl.paused()) audioEl.play().catch(() => {}) },
-    onComplete() { audioEl.pause() },
-  }, startTime)
+  const audio = el.querySelector('audio')
+  if (!audio) return
+  const start = layer.startTime || 0
+  const end = layer.endTime || start + 3
+  registerTimelineAudio(tl, audio, { start, end, volume: layer.muted ? 0 : (layer.volume ?? 1), loop: !!layer.loopAudio })
+  // Keep audio-only banners and delayed tracks in the timeline's duration.
+  tl.to({}, { duration: Math.max(0, end - start) }, start)
 }
 
 function addWordPop(tl: gsap.core.Timeline, el: HTMLElement, layer: Layer) {
@@ -528,6 +509,7 @@ export function useBannerTimeline() {
           if (state.currentTime >= state.loopOut) {
             masterTl.seek(state.loopIn)
             updateTimelineMasks(masterTl)
+            syncTimelineAudio(masterTl, true)
             state.currentTime = state.loopIn
           }
         }
@@ -540,11 +522,8 @@ export function useBannerTimeline() {
   }
 
   function buildTimeline(artboardEl: HTMLElement, layers: Layer[]) {
-    // Kill previous timeline and clear its influence
-    if (masterTl) {
-      masterTl.kill()
-      masterTl = null
-    }
+    // Stop the old artboard before replacing its DOM ownership.
+    destroyTimeline()
     clearGsap(artboardEl, layers)
 
     lastArtboardEl = artboardEl
@@ -555,12 +534,14 @@ export function useBannerTimeline() {
       paused: true,
       onComplete() {
         stopTimePoller()
+        if (masterTl) pauseTimelineAudio(masterTl)
         state.currentTime = state.duration
         if (!playback && state.isLooping) {
           const loopStart = state.loopIn != null ? state.loopIn : 0
           masterTl?.seek(loopStart)
           if (masterTl) updateTimelineMasks(masterTl)
           masterTl?.play()
+          if (masterTl) syncTimelineAudio(masterTl, true)
           startTimePoller()
         } else {
           state.isPlaying = false
@@ -592,8 +573,13 @@ export function useBannerTimeline() {
 
   function playTimeline() {
     if (!masterTl) return
+    if (masterTl.repeat() !== -1 && masterTl.totalProgress() >= 1) {
+      masterTl.totalTime(0)
+      updateTimelineMasks(masterTl)
+    }
     state.isPlaying = true
     masterTl.play()
+    syncTimelineAudio(masterTl, true)
     startTimePoller()
   }
 
@@ -603,19 +589,15 @@ export function useBannerTimeline() {
     state.isPlaying = false
     state.currentTime = masterTl.time()
     masterTl.pause()
+    pauseTimelineAudio(masterTl)
+    syncTimelineAudio(masterTl, true)
   }
 
   function togglePlay() {
     if (state.isPlaying) {
       pauseTimeline()
     } else {
-      if (masterTl) {
-        masterTl.totalTime(0)
-        updateTimelineMasks(masterTl)
-        state.isPlaying = true
-        masterTl.play()
-        startTimePoller()
-      }
+      playTimeline()
     }
   }
 
@@ -623,9 +605,10 @@ export function useBannerTimeline() {
     if (!masterTl) return
     pauseTimeline()
     masterTl.seek(time)
+    syncTimelineAudio(masterTl, true)
     updateTimelineMasks(masterTl)
     state.currentTime = time
-    // Manually sync video and audio elements to the seeked time
+    // Videos are scrubbed separately; audio is owned by the timeline transport.
     if (lastArtboardEl) {
       lastLayers.forEach(layer => {
         if ((layer.type === 'bg' && layer.srcType === 'video') || layer.type === 'video') {
@@ -634,19 +617,6 @@ export function useBannerTimeline() {
             const startTime = layer.startTime || 0
             const videoTime = Math.max(0, time - startTime)
             el.currentTime = Math.min(videoTime, el.duration || videoTime)
-          }
-        }
-        if (layer.type === 'audio') {
-          const el = lastArtboardEl!.querySelector(`#lyr-${layer.id} audio`) as HTMLAudioElement
-          if (el) {
-            const startTime = layer.startTime || 0
-            const endTime = layer.endTime || (startTime + 3)
-            if (time >= startTime && time <= endTime) {
-              el.currentTime = Math.min(time - startTime, el.duration || (time - startTime))
-            } else {
-              el.pause()
-              el.currentTime = 0
-            }
           }
         }
       })
@@ -664,19 +634,39 @@ export function useBannerTimeline() {
     stopTimePoller()
     state.isPlaying = false
     state.currentTime = 0
-    if (masterTl) masterTl.pause(0)
+    if (masterTl) {
+      masterTl.pause(0)
+      pauseTimelineAudio(masterTl)
+      syncTimelineAudio(masterTl, true)
+    }
     if (lastArtboardEl) clearGsap(lastArtboardEl, lastLayers)
   }
 
   function restartTimeline() {
     if (!masterTl) return
+    pauseTimelineAudio(masterTl)
     masterTl.restart()
+    syncTimelineAudio(masterTl, true)
     state.isPlaying = true
     startTimePoller()
   }
 
+  function destroyTimeline() {
+    stopTimePoller()
+    state.isPlaying = false
+    state.currentTime = 0
+    if (masterTl) {
+      disposeTimelineAudio(masterTl)
+      masterTl.kill()
+      masterTl = null
+    }
+    if (lastArtboardEl) clearGsap(lastArtboardEl, lastLayers)
+    lastArtboardEl = null
+    lastLayers = []
+  }
+
   // Build a standalone timeline for a specific artboard key (for PlayAll)
-  function buildTimelineForKey(artboardEl: HTMLElement, layers: Layer[], playback?: BannerPlayback): gsap.core.Timeline {
+  function buildTimelineForKey(artboardEl: HTMLElement, layers: Layer[], playback?: BannerPlayback, audible = true): gsap.core.Timeline {
     const tl = gsap.timeline({
       paused: true,
       onComplete() {
@@ -689,7 +679,8 @@ export function useBannerTimeline() {
     layers.forEach(layer => {
       const el = artboardEl.querySelector(`#lyr-${layer.id}`) as HTMLElement
       if (!el) return
-      addLayerToTimeline(tl, el, layer, null, playback?.duration)
+      if (layer.type !== 'audio' || audible) addLayerToTimeline(tl, el, layer, null, playback?.duration)
+      else tl.to({}, { duration: layer.endTime || 3 }, 0)
       addMaskAnimation(tl, el, layer, layers)
     })
 
@@ -707,6 +698,7 @@ export function useBannerTimeline() {
     restartTimeline,
     stopTimeline,
     buildTimelineForKey,
+    destroyTimeline,
     get masterTl() { return masterTl },
   }
 }

@@ -43,7 +43,7 @@ const {
 } = useBannerStudio()
 
 // Timeline integration
-const { togglePlay, restartTimeline, stopTimeline, buildTimeline } = useBannerTimeline()
+const { togglePlay, restartTimeline, stopTimeline, buildTimeline, destroyTimeline, pauseTimeline } = useBannerTimeline()
 const canvasRef = ref<any>(null)
 
 // Realtime collaboration
@@ -91,6 +91,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('mouseup', onTlResizeEnd)
 })
 
+let disposed = false
 let rebuildTimer: ReturnType<typeof setTimeout> | null = null
 function rebuildTimeline() {
   if (state.isPlaying) return
@@ -98,6 +99,7 @@ function rebuildTimeline() {
   if (rebuildTimer) clearTimeout(rebuildTimer)
   rebuildTimer = setTimeout(() => {
     nextTick(() => {
+      if (state.isPlaying || disposed) return
       const el = canvasRef.value?.getActiveArtboardEl?.()
       if (el) {
         buildTimeline(el, activeLayers.value)
@@ -110,7 +112,7 @@ function rebuildTimeline() {
 // updateLayer() mutates layers in place (Object.assign), so nested edits like
 // motionPath / motionPathTweens / keyframes never fire a shallow watch and play
 // would run a stale timeline. rebuildTimeline() is debounced and skipped while playing.
-watch(() => state.activeKey, rebuildTimeline)
+watch(() => state.activeKey, () => { destroyTimeline(); rebuildTimeline() })
 watch(activeLayers, rebuildTimeline, { deep: true })
 watch(() => state.soloMotionPath, rebuildTimeline)
 onMounted(() => nextTick(rebuildTimeline))
@@ -178,6 +180,7 @@ async function prepareAssistantSocial(suggestion: { caption?: string, suggestedS
   }
 }
 watch(showExportModal, (open) => {
+  if (open) pauseTimeline()
   if (!open) {
     exportInitialType.value = 'html5'
     socialSuggestion.value = undefined
@@ -193,6 +196,7 @@ const showAnalytics = ref(false)
 const showABTests = ref(false)
 const showAdPublish = ref(false)
 const showPreview = ref(false)
+watch(showPreview, (open) => { if (open) pauseTimeline() })
 const previewFmt = computed(() => FORMATS[state.activeKey])
 const previewHtml = computed(() => {
   if (!showPreview.value) return ''
@@ -287,6 +291,9 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  disposed = true
+  if (rebuildTimer) clearTimeout(rebuildTimer)
+  destroyTimeline()
   disconnectRealtime()
 })
 
@@ -710,6 +717,7 @@ const { activeSize } = useBannerFileSize()
       <div class="flex gap-0.5">
         <UTooltip :text="state.isPlaying ? 'Pause' : 'Play'" :kbds="['space']">
           <UButton
+            :aria-label="state.isPlaying ? 'Pause playback' : 'Play playback'"
             :icon="state.isPlaying ? 'i-lucide-pause' : 'i-lucide-play'"
             :variant="state.isPlaying ? 'solid' : 'ghost'"
             size="xs"
