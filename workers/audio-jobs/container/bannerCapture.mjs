@@ -3,15 +3,19 @@
 // Ported from the former server/api/agency/banner-studio/export-video.post.ts loop.
 // Uses Puppeteer Core to drive the Chromium binary installed in the container.
 import { spawn } from 'node:child_process'
-import { mkdirSync, rmSync, readFileSync } from 'node:fs'
+import { mkdirSync, rmSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { createPageDiagnostics, resolveFrameRuntime, seekFrameRuntime } from './frameRuntime.mjs'
 
-const MAX_FRAMES = 600
+import { readBannerAudioManifest, buildBannerAudioMixArgs } from './bannerAudioRender.mjs'
+import { downloadBannerAudio } from './bannerAudioDownload.mjs'
+
+const MAX_FRAMES = 1800
 
 export async function captureBannerMp4({ html, width, height, fps, crf, quality }) {
+  const audioTracks = readBannerAudioManifest(html)
   const vpW = width * (quality || 1)
   const vpH = height * (quality || 1)
   const puppeteer = (await import('puppeteer-core')).default
@@ -49,12 +53,33 @@ export async function captureBannerMp4({ html, width, height, fps, crf, quality 
       })
     }
 
+    const renderedDuration = totalFrames / fps
+    const tracks = audioTracks.filter(t => t.volume > 0 && t.start < renderedDuration)
+    const paths = []
+    const downloaded = new Map()
+    let audioBytes = 0
+    for (const track of tracks) {
+      let path = downloaded.get(track.src)
+      if (!path) {
+        const bytes = await downloadBannerAudio(track.src)
+        audioBytes += bytes.length
+        if (audioBytes > 80 * 1024 * 1024) throw new Error('Banner soundtrack exceeds 80 MB')
+        path = join(tmp, `audio_${downloaded.size}`)
+        writeFileSync(path, bytes)
+        downloaded.set(track.src, path)
+      }
+      paths.push(path)
+    }
+    const mix = buildBannerAudioMixArgs(tracks, paths, renderedDuration)
     const out = join(tmp, 'out.mp4')
     await new Promise((resolve, reject) => {
       const ff = spawn('ffmpeg', [
         '-y',
         '-framerate', String(fps),
         '-i', join(tmp, 'frame_%05d.png'),
+        ...mix.inputs,
+        ...mix.output,
+        '-t', String(renderedDuration),
         '-c:v', 'libx264',
         '-crf', String(crf),
         '-pix_fmt', 'yuv420p',
@@ -63,7 +88,7 @@ export async function captureBannerMp4({ html, width, height, fps, crf, quality 
         out,
       ], { timeout: 120000 })
       let stderr = ''
-      ff.stderr?.on('data', d => { stderr += d.toString() })
+      ff.stderr?.on('data', d => { stderr = (stderr + d.toString()).slice(-4000) })
       ff.on('close', (code) => code === 0 ? resolve() : reject(new Error(`ffmpeg exit ${code}: ${stderr.slice(-800)}`)))
       ff.on('error', reject)
     })

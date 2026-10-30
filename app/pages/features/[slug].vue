@@ -2602,23 +2602,23 @@ const features: Record<string, Feature> = {
     categoryIcon: 'i-lucide-palette',
     categoryIconBg: 'bg-rose-50',
     categoryIconColor: 'text-rose-600',
-    description: 'Export banner animations as MP4 video with frame-by-frame GSAP capture and ffmpeg encoding.',
+    description: 'Export banner animations as MP4 video with timed music and sound effects.',
     details: [
       {
         title: 'Frame-by-Frame Capture',
-        content: 'The video export pipeline uses headless Chromium to render each frame individually. GSAP timeline.seek() positions the animation at precise timestamps, and a full-page screenshot captures the result. This approach guarantees frame-accurate output that matches exactly what you see in the editor preview — no dropped frames or timing drift.'
+        content: 'The video export pipeline uses headless Chromium to render each frame individually. GSAP timeline.seek() positions the animation at precise timestamps, and a full-page screenshot captures the result. Exports capture one animation cycle, up to 30 seconds, at the selected frame rate. Review the rendered file before delivering campaign artwork.'
       },
       {
-        title: 'ffmpeg Encoding',
-        content: 'Captured frames are piped into ffmpeg for MP4 encoding with H.264 compression. The output is optimised for web delivery with a small file size and broad compatibility. Configurable frame rate and quality settings let you balance file size against visual fidelity depending on whether the video is for social media, email, or client presentation.'
+        title: 'Music and Sound Effects',
+        content: 'Audio layers are mixed into an AAC soundtrack alongside H.264 video. Each track follows its timeline start and end, volume, mute and loop settings. Silence before and after a cue is retained. An unavailable or invalid soundtrack fails the export with an error instead of silently dropping the sound. Video backgrounds remain muted; add an audio layer for their soundtrack.'
       },
       {
         title: 'Social Media Ready',
         content: 'MP4 exports are formatted for direct upload to social platforms. The container format, codec, and pixel format are chosen for maximum compatibility with Meta, LinkedIn, Twitter, and YouTube upload requirements. This extends Banner Studio beyond traditional display ads into short-form video content for social campaigns.'
       },
       {
-        title: 'R2 Storage',
-        content: 'Exported videos are uploaded to Cloudflare R2 with a stable URL so they can be shared with clients or embedded in presentations. Each export includes metadata about the source project, format dimensions, duration, and frame rate for easy reference.'
+        title: 'Private Downloads',
+        content: 'Completed videos are retained in shared object storage and downloaded through an authenticated project route. Export status reports progress and errors, and failed jobs can be retried. The finished file can then be delivered through your normal client approval process.'
       }
     ]
   },

@@ -12,7 +12,7 @@ WORKDIR /app
 # Puppeteer Core drives the Chromium binary installed above. The Cloudflare
 # Browser Rendering package expects a remote browser binding with fetch().
 RUN npm install puppeteer-core@25.5.0
-COPY server.mjs render.mjs timelineFiltergraph.mjs videoCompositeGraph.mjs frameRuntime.mjs overlayCapture.mjs bannerCapture.mjs ./
+COPY server.mjs render.mjs timelineFiltergraph.mjs videoCompositeGraph.mjs frameRuntime.mjs overlayCapture.mjs bannerCapture.mjs bannerAudioDownload.mjs bannerAudioRender.mjs ./
 
 EXPOSE 8080
 CMD ["node", "server.mjs"]

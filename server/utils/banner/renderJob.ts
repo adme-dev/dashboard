@@ -1,3 +1,4 @@
+import { readBannerAudioManifest } from '~~/shared/bannerAudioRender.mjs'
 import { hasRenderLintErrors, lintBannerRenderFormat } from './renderLinter'
 import type { RenderLintFinding } from '~~/app/utils/banner-render-runtime'
 
@@ -45,8 +46,8 @@ export async function enqueueBannerRender(input: BannerRenderInput, deps: Enqueu
   const { fps, crf, quality } = clampRenderParams(input.fps, input.crf, input.quality)
 
   for (const f of input.formats) {
-    if (/<audio\b/i.test(f.html)) {
-      throw new BannerRenderError('MP4 export cannot include audio yet. Download HTML5 for sound playback.')
+    try { readBannerAudioManifest(f.html) } catch (error) {
+      throw new BannerRenderError(error instanceof Error ? error.message : 'Invalid banner soundtrack')
     }
     const findings = lintBannerRenderFormat(f, { fps, crf, quality, maxDimension: CAPS.MAX_DIMENSION })
     if (hasRenderLintErrors(findings)) {
