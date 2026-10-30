@@ -12,7 +12,6 @@ const { decomposingLayerId, decomposeFromUrl } = useDecompose()
 const { isEditing: isAiEditing, openEdit: openAiEdit } = useAiLayerEdit()
 const { isMerging, mergeLayers } = useMergeLayers()
 const { openGenerate: openAiGenerate } = useAiImageGenerate()
-const { inspectorTab } = useBannerInspector()
 
 // ── Layer context menu ──
 const contextMenuLayer = ref<Layer | null>(null)
@@ -308,9 +307,10 @@ function animationClipWidth(layer: Layer, direction: 'in' | 'out'): number {
   return Math.min(width / 2, Math.max(28, duration * pxPerSec.value))
 }
 
-function openAnimationDetails(layer: Layer) {
-  selectLayer(layer.id)
-  inspectorTab.value = 'animation'
+const animationPickers = new Map<number, { openPicker: () => void }>()
+function setAnimationPicker(id: number, picker: unknown) {
+  if (picker) animationPickers.set(id, picker as { openPicker: () => void })
+  else animationPickers.delete(id)
 }
 
 function onPresenceBarClick(layer: Layer) {
@@ -318,7 +318,7 @@ function onPresenceBarClick(layer: Layer) {
     justFinishedDrag = false
     return
   }
-  openAnimationDetails(layer)
+  animationPickers.get(layer.id)?.openPicker()
 }
 
 // ── Ruler / Playhead drag ─────────────
@@ -446,6 +446,7 @@ function onPresenceMouseMove(e: MouseEvent) {
   if (!d) return
 
   const dx = e.clientX - d.startX
+  if (Math.abs(dx) <= 3) return
   const dt = dx / pxPerSec.value
 
   let newStart = d.origStart
@@ -511,12 +512,18 @@ function onPresenceMouseUp(e: MouseEvent) {
     newStart = Math.round(newStart * 100) / 100
     newEnd = Math.round(newEnd * 100) / 100
 
-    updateLayer(d.layerId, { startTime: newStart, endTime: newEnd })
+    // A click opens the pop-up; it must not snap fractional imported times or dirty the project.
+    if (Math.abs(dx) <= 3) {
+      newStart = d.origStart
+      newEnd = d.origEnd
+    } else if (newStart !== d.origStart || newEnd !== d.origEnd) {
+      updateLayer(d.layerId, { startTime: newStart, endTime: newEnd })
+    }
 
-    // Reset direct DOM mutation
+    // Keep the final geometry even when Vue has no reactive change to patch.
     if (d.barEl) {
-      d.barEl.style.left = ''
-      d.barEl.style.width = ''
+      d.barEl.style.left = `${newStart * pxPerSec.value}px`
+      d.barEl.style.width = `${(newEnd - newStart) * pxPerSec.value}px`
     }
 
     justFinishedDrag = Math.abs(dx) > 3
@@ -786,6 +793,8 @@ function onTweenDragEnd(e: MouseEvent) {
 
 // ── Delete selected keyframe ──────────
 function onKeydown(e: KeyboardEvent) {
+  const target = e.target as HTMLElement | null
+  if (target?.closest('input, textarea, select, [contenteditable="true"], [role="combobox"]')) return
   if (e.key === 'Delete' || e.key === 'Backspace') {
     const s = state.selectedKeyframe
     if (!s) return
@@ -1074,7 +1083,7 @@ onUnmounted(() => {
                     :class="state.selectedLayerId === layer.id ? 'ring-1 ring-inset ring-white/50' : ''"
                     :style="{ width: `${animationClipWidth(layer, 'in')}px`, backgroundColor: getLayerColor(layer), opacity: layer.animIn === 'none' && !layer.wordPop ? 0.45 : 1 }"
                   >
-                    <BannerTimelineAnimationPicker :layer="layer" direction="in" :compact="animationClipWidth(layer, 'in') < 74" />
+                    <BannerTimelineAnimationPicker :ref="(el) => setAnimationPicker(layer.id, el)" :layer="layer" direction="in" :compact="animationClipWidth(layer, 'in') < 74" />
                   </div>
                   <div
                     class="absolute top-0 right-0 z-10 h-full overflow-visible rounded-r-sm"
@@ -1084,18 +1093,9 @@ onUnmounted(() => {
                     <BannerTimelineAnimationPicker :layer="layer" direction="out" :compact="animationClipWidth(layer, 'out') < 74" />
                   </div>
                 </template>
-                <UButton
-                  v-else-if="hasKeyframes(layer)"
-                  icon="i-lucide-diamond"
-                  label="Keyframes"
-                  color="neutral"
-                  variant="ghost"
-                  size="xs"
-                  class="absolute left-1 top-0 z-10 h-5 max-w-[calc(100%-0.5rem)] overflow-hidden rounded-sm px-1 text-[9px]"
-                  :aria-label="`Edit keyframes for ${layer.name}`"
-                  @mousedown.stop
-                  @click.stop="openAnimationDetails(layer)"
-                />
+                <div v-else-if="hasKeyframes(layer) || layer.type === 'audio'" class="absolute left-1 top-0 z-10 h-5 max-w-[calc(100%-0.5rem)]">
+                  <BannerTimelineAnimationPicker :ref="(el) => setAnimationPicker(layer.id, el)" :layer="layer" direction="in" />
+                </div>
                 <span
                   v-if="!hasKeyframes(layer)"
                   class="absolute inset-0 flex items-center overflow-hidden px-2 text-[10px] font-medium text-default pointer-events-none whitespace-nowrap"

@@ -162,7 +162,7 @@ const categories = [
     iconColor: 'text-rose-600',
     features: [
       { title: 'Visual Editor', slug: 'banner-editor', icon: 'i-lucide-pen-tool', description: 'Work in light or dark mode across named layouts on a full-screen canvas, focus on a single size, animate with a full-width timeline, autosave edits to a saved viewer, and find projects in a visual library with searchable Clients, Folders and Tags tabs.' },
-      { title: 'Animation & Timeline', slug: 'banner-animation', icon: 'i-lucide-clapperboard', description: 'Click entrance and exit clips on the timeline to pick transitions, then refine timing, easing, and keyframes in the inspector.' },
+      { title: 'Animation & Timeline', slug: 'banner-animation', icon: 'i-lucide-clapperboard', description: 'Edit transitions, imported keyframes and audio in a floating timeline panel, with searchable presets, timing controls and a detailed inspector.' },
       { title: 'Motion Paths', slug: 'motion-paths', icon: 'i-lucide-spline', description: 'SVG-based motion path editor with draggable waypoints, curviness control, and auto-rotate.' },
       { title: 'Static & GIF Export', slug: 'banner-export', icon: 'i-lucide-image', description: 'Export to PNG/JPG at 1x/2x via headless Chromium, or animated GIF with configurable FPS.' },
       { title: 'Video Export', slug: 'video-export', icon: 'i-lucide-film', description: 'Export animated MP4s with timed music and sound effects, including volume, mute and looping.' },
