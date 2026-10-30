@@ -398,42 +398,51 @@ function templateDocument(row: TemplateRow): EdmFlyhubDocument | null {
     </aside>
 
     <main class="min-w-0 flex-1 bg-default">
-      <div class="flex h-16 items-center justify-between border-b border-default px-6">
+      <div class="flex min-h-16 flex-wrap items-center justify-between gap-3 border-b border-default px-4 py-3 sm:px-6">
         <p class="text-sm font-semibold">
           {{ libraryTitle }}
         </p>
-        <UButton label="Import template" icon="i-lucide-upload" variant="outline" @click="showImport = true" />
-        <UButton
-          v-if="hasActiveFilters"
-          variant="ghost"
-          color="neutral"
-          size="xs"
-          icon="i-lucide-x"
-          label="Clear filters"
-          @click="resetFilters()"
-        />
+        <div class="flex items-center gap-2">
+          <UButton
+            v-if="hasActiveFilters"
+            variant="ghost"
+            color="neutral"
+            size="xs"
+            icon="i-lucide-x"
+            label="Clear filters"
+            @click="resetFilters()"
+          />
+          <UButton label="Import template" icon="i-lucide-upload" variant="outline" @click="showImport = true" />
+        </div>
       </div>
 
-      <div class="space-y-10 p-6">
+      <div class="space-y-6 p-4 sm:p-6">
         <UAlert v-if="libraryError" color="error" :title="libraryError" :actions="[{ label: 'Retry', onClick: refresh }]" />
         <UAlert v-if="clientsError" color="warning" :title="clientsError" :actions="[{ label: 'Retry', onClick: refreshClients }]" />
-        <UFormField label="Client" help="Choose a client to browse its templates and start a client copy of a default.">
-          <USelect v-model="selectedClient" :items="clientOptions" value-key="value" class="w-full max-w-md" />
-        </UFormField>
-        <UFormField v-if="makeOptions.length > 1" label="OEM make"><USelect v-model="selectedMake" :items="makeOptions" value-key="value" class="w-full max-w-md" /></UFormField>
-        <section v-if="showStarters && selectedMake === 'all'" class="space-y-5">
-          <h2 class="text-sm font-semibold">XeroFlow defaults</h2>
-          <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <UFormField label="Industry">
-              <USelect value-key="value" v-model="selectedIndustry" :items="[{ label: 'All industries', value: 'all' }, ...industryOptions.map(value => ({ label: value, value }))]" class="w-full" />
+        <section aria-label="Template filters" class="@container border-b border-default pb-5">
+          <div class="grid grid-cols-1 gap-4 @lg:grid-cols-2 @2xl:grid-cols-3 @5xl:grid-cols-5">
+            <UFormField label="Client">
+              <USelect v-model="selectedClient" :items="clientOptions" value-key="value" class="w-full" />
             </UFormField>
-            <UFormField label="Email type">
-              <USelect value-key="value" v-model="selectedUsage" :items="[{ label: 'All types', value: 'all' }, ...usageOptions.map(value => ({ label: value, value }))]" class="w-full" />
+            <UFormField v-if="makeOptions.length > 1" label="OEM make">
+              <USelect v-model="selectedMake" :items="makeOptions" value-key="value" class="w-full" />
             </UFormField>
-            <UFormField label="Design style">
-              <USelect value-key="value" v-model="selectedStyle" :items="[{ label: 'All styles', value: 'all' }, ...styleOptions.map(value => ({ label: value, value }))]" class="w-full" />
-            </UFormField>
+            <template v-if="showStarters && selectedMake === 'all'">
+              <UFormField label="Industry">
+                <USelect value-key="value" v-model="selectedIndustry" :items="[{ label: 'All industries', value: 'all' }, ...industryOptions.map(value => ({ label: value, value }))]" class="w-full" />
+              </UFormField>
+              <UFormField label="Email type">
+                <USelect value-key="value" v-model="selectedUsage" :items="[{ label: 'All types', value: 'all' }, ...usageOptions.map(value => ({ label: value, value }))]" class="w-full" />
+              </UFormField>
+              <UFormField label="Design style">
+                <USelect value-key="value" v-model="selectedStyle" :items="[{ label: 'All styles', value: 'all' }, ...styleOptions.map(value => ({ label: value, value }))]" class="w-full" />
+              </UFormField>
+            </template>
           </div>
+          <p class="mt-3 text-xs text-muted">Choose a client to browse its templates or create a copy of a shared default.</p>
+        </section>
+        <section v-if="showStarters && selectedMake === 'all'" class="space-y-4">
+          <h2 class="text-sm font-semibold">XeroFlow defaults</h2>
 
           <div class="email-starter-gallery-grid grid gap-x-5 gap-y-10 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
             <UButton
