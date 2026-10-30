@@ -13,17 +13,17 @@ export default defineEventHandler(async (event) => {
   }
 
   // Validate token
-  const link = await queryOne(`
+  const link = await queryOne<{ id: string, projectId: string, expiresAt: string | null, revoked: boolean }>(`
     SELECT id, project_id AS "projectId", expires_at AS "expiresAt", revoked
     FROM banner_review_links
-    WHERE token = $1
+    WHERE token = $1 AND LENGTH(token) = 32
   `, [token])
 
   if (!link) {
     throw createError({ statusCode: 404, statusMessage: 'Review link not found' })
   }
 
-  const linkData = link as any
+  const linkData = link
 
   if (linkData.revoked) {
     throw createError({ statusCode: 410, statusMessage: 'This review link has been revoked' })
@@ -69,7 +69,7 @@ export default defineEventHandler(async (event) => {
     text.trim(),
     name.trim(),
     email?.trim() || null,
-    parentId || null,
+    parentId || null
   ])
 
   return row

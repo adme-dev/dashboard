@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import type { BannerProject, ArtboardState } from '~/types/banner-studio'
+import type { BannerProject, ArtboardState, BannerFolder } from '~/types/banner-studio'
+import { bannerFolderPath } from '~/utils/banner-folders'
 import { importTags, packageFile, sameImportedCanvas } from '~/utils/thebrief-import'
 import { readImportBatch, type TheBriefImportRow } from '~/utils/thebrief-import-batch'
 import { beginImportAttempt, finishImportAttempt, importAttemptKey } from '~/utils/thebrief-import-attempt'
@@ -10,6 +11,7 @@ const emit = defineEmits<{ imported: [] }>()
 const api = $fetch as <T>(url: string, options?: Record<string, unknown>) => Promise<T>
 const { uploadCustomFont, refreshCustomFonts } = useBannerFonts()
 const clients = ref<Array<{ id: string, name: string }>>([])
+const folders = ref<BannerFolder[]>([])
 const files = ref<File[]>([])
 const rows = ref<TheBriefImportRow[]>([])
 const filesValid = ref(true)
@@ -19,12 +21,18 @@ const progress = ref('')
 // Reuse acknowledged uploads within this modal; uncertain attempts are held separately.
 const uploaded = new Map<string, string>()
 const options = computed(() => [{ label: 'Choose client', value: '__unassigned__' }, ...clients.value.map(c => ({ label: c.name, value: c.id }))])
+const folderOptions = computed(() => [{ label: 'Unfiled', value: '__unfiled__' }, ...folders.value.map(folder => ({ label: bannerFolderPath(folders.value, folder.id).map(part => part.name).join(' / '), value: folder.id }))])
 const ready = computed(() => filesValid.value && rows.value.some(r => r.clientId !== '__unassigned__' && !r.projectId))
 
 watch(open, async (value) => {
   if (!value) return
   try {
-    clients.value = await api('/api/agency/clients')
+    const [availableClients, availableFolders] = await Promise.all([
+      api<Array<{ id: string, name: string }>>('/api/agency/clients'),
+      api<BannerFolder[]>('/api/agency/banner-studio/folders')
+    ])
+    clients.value = availableClients
+    folders.value = availableFolders
   } catch {
     error.value = 'Could not load clients. Close and reopen to retry.'
   }
@@ -36,7 +44,7 @@ async function readPackages() {
   busy.value = true
   try {
     // Commit the new selection only after every added package is validated.
-    rows.value = await readImportBatch(files.value, rows.value, clients.value)
+    rows.value = await readImportBatch(files.value, rows.value, clients.value, folders.value)
     filesValid.value = true
   } catch (cause) {
     filesValid.value = false
@@ -63,6 +71,7 @@ async function importDrafts() {
     for (const row of rows.value) {
       if (row.projectId || row.clientId === '__unassigned__') continue
       if (!clients.value.some(c => c.id === row.clientId)) throw new Error('Select an existing client')
+      if (row.folderId !== '__unfiled__' && !folders.value.some(folder => folder.id === row.folderId)) throw new Error('Select an existing folder')
       const pkg = row.pkg
       const duplicate = existing.find(p => p.clientId === row.clientId && p.tags?.includes(`source-sha256:${pkg.source.sha256}`))
       if (duplicate) {
@@ -94,11 +103,11 @@ async function importDrafts() {
         }
         const project = await api<BannerProject>('/api/agency/banner-studio/projects', {
           method: 'POST', headers: { 'Idempotency-Key': `thebrief-project:${row.clientId}:${pkg.source.sha256}` },
-          body: { name: pkg.name, clientId: row.clientId, canvasData, tags: importTags(pkg) }
+          body: { name: pkg.name, clientId: row.clientId, folderId: row.folderId === '__unfiled__' ? null : row.folderId, canvasData, tags: importTags(pkg) }
         })
         // A write response alone is insufficient: verify persisted owner and layer data.
         const saved = await api<BannerProject>(`/api/agency/banner-studio/projects/${project.id}`)
-        if (saved.clientId !== row.clientId || !sameImportedCanvas(saved.canvasData, canvasData)) throw new Error('Saved project needs a persistence check before retrying')
+        if (saved.clientId !== row.clientId || saved.folderId !== (row.folderId === '__unfiled__' ? null : row.folderId) || !sameImportedCanvas(saved.canvasData, canvasData)) throw new Error('Saved project needs a persistence check before retrying')
         finishImportAttempt(localStorage, attemptKey)
         row.projectId = saved.id
         row.status = 'Saved as draft · needs visual review'
@@ -183,6 +192,15 @@ async function importDrafts() {
               <USelectMenu
                 v-model="row.clientId"
                 :items="options"
+                value-key="value"
+                class="w-full"
+                :disabled="busy || !!row.projectId"
+              />
+            </UFormField>
+            <UFormField label="Folder" help="Choose where this design appears in the banner library. You can move it later.">
+              <USelectMenu
+                v-model="row.folderId"
+                :items="folderOptions"
                 value-key="value"
                 class="w-full"
                 :disabled="busy || !!row.projectId"

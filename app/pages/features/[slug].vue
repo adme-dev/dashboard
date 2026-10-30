@@ -2482,6 +2482,22 @@ const features: Record<string, Feature> = {
   },
 
   // ─── Banner Studio ──────────────────────────────────────────────
+  'banner-library-sharing': {
+    title: 'Banner Library & Client Sharing',
+    slug: 'banner-library-sharing',
+    icon: 'i-lucide-share-2',
+    category: 'Banner Studio',
+    categoryIcon: 'i-lucide-palette',
+    categoryIconBg: 'bg-rose-50',
+    categoryIconColor: 'text-rose-600',
+    description: 'Keep client banners organized and send view-only previews from one shared production library.',
+    details: [
+      { title: 'Editable TheBrief Imports', content: 'Bring verified HTML5 exports into Banner Studio as editable layers across the sizes in a design set. Confirm the client, source folder, fonts and assets before saving a draft for production review.' },
+      { title: 'Folder Placement', content: 'Choose a folder during import or move a saved project from its library menu. Nested folder browsing and Unfiled keep placement independent of client ownership and source provenance.' },
+      { title: 'Client Preview Links', content: 'Create a view-only link for a client to see the current saved layouts and play their animation. Links expire after a chosen period and can be revoked from the project’s Share menu.' },
+      { title: 'Team Viewer', content: 'Team members with client access can open the signed-in saved viewer without creating a public link. The project remains in the agency library for ongoing production.' }
+    ]
+  },
   'banner-editor': {
     title: 'Visual Editor',
     slug: 'banner-editor',

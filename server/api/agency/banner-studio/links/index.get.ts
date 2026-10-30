@@ -1,12 +1,13 @@
 /**
- * List review links for a project
+ * List client preview links for a project
  * GET /api/agency/banner-studio/links?projectId=xxx
  */
-import { queryRows } from '~~/server/utils/db'
+import { queryRowsFresh } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
+import { requireBannerShareAccess } from '~~/server/utils/banner/shareAccess'
 
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
+  const user = await requireAuth(event)
 
   const { projectId } = getQuery(event) as { projectId?: string }
 
@@ -14,7 +15,9 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'projectId is required' })
   }
 
-  return queryRows(`
+  await requireBannerShareAccess(event, user, projectId)
+  setHeader(event, 'Cache-Control', 'private, no-store')
+  return queryRowsFresh(`
     SELECT
       id, project_id AS "projectId", token,
       reviewer_name AS "reviewerName", reviewer_email AS "reviewerEmail",
@@ -22,7 +25,7 @@ export default defineEventHandler(async (event) => {
       created_by AS "createdBy",
       created_at AS "createdAt"
     FROM banner_review_links
-    WHERE project_id = $1
+    WHERE project_id = $1 AND LEFT(token, 2) = 'p_'
     ORDER BY created_at DESC
   `, [projectId])
 })

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { BannerProject, BannerFolder } from '~/types/banner-studio'
-import { bannerFolderPath, bannerFolderRows, bannerProjectInFolder } from '~/utils/banner-folders'
+import { bannerFolderPath, bannerFolderRows, bannerProjectFolderId, bannerProjectInFolder } from '~/utils/banner-folders'
 import { isAmbiguousApiFailure } from '~/utils/apiError'
 import { bannerDimensions, bannerLibraryFacets, filterBannerProjects, sortLibrary } from '~/utils/banner-library'
 import type { LibrarySort } from '~/utils/banner-library'
@@ -34,6 +34,15 @@ const showImportModal = ref(false)
 const statusFilter = ref<'all' | 'draft' | 'published'>('all')
 const showDeleteModal = ref(false)
 const deleteTarget = ref<BannerProject | null>(null)
+const moveTarget = ref<BannerProject | null>(null)
+const moveFolderId = ref('__unfiled__')
+const moveBusy = ref(false)
+const moveError = ref('')
+const shareTarget = ref<BannerProject | null>(null)
+const renameTarget = ref<BannerProject | null>(null)
+const renameValue = ref('')
+const renameBusy = ref(false)
+const renameError = ref('')
 
 const apiFetch = $fetch as <T = unknown>(
   request: string,
@@ -98,6 +107,7 @@ const clientProjects = computed(() => filterBannerProjects(allProjects.value, { 
 const facets = computed(() => bannerLibraryFacets(clientProjects.value))
 const folderRows = computed(() => bannerFolderRows(folderData.value, expandedFolders.value, folderSearch.value))
 const selectedFolderPath = computed(() => bannerFolderPath(folderData.value, folderFilter.value))
+const folderOptions = computed(() => [{ label: 'Unfiled', value: '__unfiled__' }, ...folderData.value.map(folder => ({ label: bannerFolderPath(folderData.value, folder.id).map(part => part.name).join(' / '), value: folder.id }))])
 const childFolders = computed(() => folderData.value.filter(f => f.parentId === (folderFilter.value === 'all' ? null : folderFilter.value)))
 function toggleFolder(id: string) {
   const next = new Set(expandedFolders.value)
@@ -140,6 +150,54 @@ function newProject() {
 
 function editProject(p: BannerProject) {
   router.push(`${editorBase.value}/${p.id}`)
+}
+
+function moveProject(p: BannerProject) {
+  moveTarget.value = p
+  moveFolderId.value = bannerProjectFolderId(p, folderData.value) || '__unfiled__'
+  moveError.value = ''
+}
+
+function renameProject(p: BannerProject) {
+  renameTarget.value = p
+  renameValue.value = p.name
+  renameError.value = ''
+}
+
+async function saveProjectName() {
+  if (!renameTarget.value || renameBusy.value) return
+  renameBusy.value = true
+  renameError.value = ''
+  try {
+    const saved = await apiFetch<{ id: string, name: string }>(`/api/agency/banner-studio/projects/${renameTarget.value.id}/rename`, { method: 'PATCH', body: { name: renameValue.value.trim() } })
+    if (saved.id !== renameTarget.value.id || saved.name !== renameValue.value.trim()) throw new Error('The new name could not be verified')
+    renameTarget.value = null
+    toast.add({ title: 'Banner renamed', color: 'success' })
+    await refresh()
+  } catch (cause) {
+    renameError.value = cause instanceof Error ? cause.message : 'Could not rename banner'
+  } finally {
+    renameBusy.value = false
+  }
+}
+
+async function saveProjectFolder() {
+  if (!moveTarget.value || moveBusy.value) return
+  moveBusy.value = true
+  moveError.value = ''
+  try {
+    const folderId = moveFolderId.value === '__unfiled__' ? null : moveFolderId.value
+    if (folderId && !folderData.value.some(folder => folder.id === folderId)) throw new Error('Choose an existing folder')
+    const saved = await apiFetch<{ id: string, folderId: string | null }>(`/api/agency/banner-studio/projects/${moveTarget.value.id}/folder`, { method: 'PATCH', body: { folderId } })
+    if (saved.id !== moveTarget.value.id || saved.folderId !== folderId) throw new Error('The folder change could not be verified')
+    toast.add({ title: 'Moved banner', description: folderId ? `Saved in ${bannerFolderPath(folderData.value, folderId).map(part => part.name).join(' / ')}` : 'Saved in Unfiled', color: 'success' })
+    moveTarget.value = null
+    await refresh()
+  } catch (cause) {
+    moveError.value = cause instanceof Error ? cause.message : 'Could not move banner'
+  } finally {
+    moveBusy.value = false
+  }
 }
 
 async function duplicateProject(p: BannerProject) {
@@ -193,6 +251,9 @@ const statusItems = [
 const dropdownItems = (p: BannerProject) => [
   [
     { label: 'Edit', icon: 'i-lucide-pencil', onSelect: () => editProject(p) },
+    { label: 'Share', icon: 'i-lucide-share-2', onSelect: () => { shareTarget.value = p } },
+    { label: 'Move to folder', icon: 'i-lucide-folder-input', onSelect: () => moveProject(p) },
+    { label: 'Rename', icon: 'i-lucide-pencil-line', onSelect: () => renameProject(p) },
     { label: 'Duplicate', icon: 'i-lucide-copy', onSelect: () => duplicateProject(p) }
   ],
   [
@@ -647,6 +708,89 @@ function clearFilters() {
       </main>
     </div>
     <BannerTheBriefImportModal v-model:open="showImportModal" @imported="refresh" />
+    <BannerProjectShareModal :open="!!shareTarget" :project="shareTarget" @update:open="value => { if (!value) shareTarget = null }" />
+    <UModal
+      :open="!!renameTarget"
+      title="Rename banner"
+      :description="renameTarget?.name"
+      @update:open="value => { if (!value && !renameBusy) renameTarget = null }"
+    >
+      <template #body>
+        <UFormField label="Banner name">
+          <UInput
+            v-model="renameValue"
+            class="w-full"
+            :disabled="renameBusy"
+            @keydown.enter="saveProjectName"
+          />
+        </UFormField>
+        <UAlert
+          v-if="renameError"
+          color="error"
+          variant="subtle"
+          title="Could not rename banner"
+          :description="renameError"
+          class="mt-3"
+        />
+      </template>
+      <template #footer>
+        <div class="flex w-full justify-end gap-2">
+          <UButton
+            color="neutral"
+            variant="ghost"
+            :disabled="renameBusy"
+            @click="renameTarget = null"
+          >
+            Cancel
+          </UButton>
+          <UButton :loading="renameBusy" :disabled="renameBusy || !renameValue.trim() || renameValue.trim().length > 200" @click="saveProjectName">
+            Save name
+          </UButton>
+        </div>
+      </template>
+    </UModal>
+    <UModal
+      :open="!!moveTarget"
+      title="Move banner"
+      :description="moveTarget?.name"
+      @update:open="value => { if (!value && !moveBusy) moveTarget = null }"
+    >
+      <template #body>
+        <div class="space-y-4">
+          <UFormField label="Folder" help="Moving changes where the banner appears. Its client and artwork stay with the project.">
+            <USelectMenu
+              v-model="moveFolderId"
+              :items="folderOptions"
+              value-key="value"
+              class="w-full"
+              :disabled="moveBusy"
+            />
+          </UFormField>
+          <UAlert
+            v-if="moveError"
+            color="error"
+            variant="subtle"
+            title="Could not move banner"
+            :description="moveError"
+          />
+        </div>
+      </template>
+      <template #footer>
+        <div class="flex w-full justify-end gap-2">
+          <UButton
+            color="neutral"
+            variant="ghost"
+            :disabled="moveBusy"
+            @click="moveTarget = null"
+          >
+            Cancel
+          </UButton>
+          <UButton :loading="moveBusy" :disabled="moveBusy" @click="saveProjectFolder">
+            Move banner
+          </UButton>
+        </div>
+      </template>
+    </UModal>
     <!-- Delete Confirmation Modal -->
     <UModal v-model:open="showDeleteModal">
       <template #content>

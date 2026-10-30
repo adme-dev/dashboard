@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { readImportBatch } from '../../app/utils/thebrief-import-batch'
+import type { BannerFolder } from '../../app/types/banner-studio'
 
 function file(name: string, hash: string) {
   return new File([JSON.stringify({
@@ -43,5 +44,15 @@ describe('TheBrief batch selection', () => {
     const rows = await readImportBatch([file('First', 'a')], [], [])
     expect(await readImportBatch([], rows, [])).toEqual([])
     await expect(readImportBatch(Array.from({ length: 11 }, () => file('First', 'a')), rows, [])).rejects.toThrow('up to 10')
+  })
+
+  it('suggests only a unique exact source folder and keeps manual moves', async () => {
+    const source = file('First', 'a')
+    const folders = [{ id: 'exact', name: 'Updates', parentId: null, position: 0, sourcePath: ['Updates'] }] as BannerFolder[]
+    const rows = await readImportBatch([source], [], [], folders)
+    expect(rows[0]?.folderId).toBe('exact')
+    rows[0]!.folderId = '__unfiled__'
+    expect((await readImportBatch([source], rows, [], folders))[0]?.folderId).toBe('__unfiled__')
+    expect((await readImportBatch([file('Second', 'b')], [], [], [...folders, { ...folders[0]!, id: 'duplicate' }]))[0]?.folderId).toBe('__unfiled__')
   })
 })

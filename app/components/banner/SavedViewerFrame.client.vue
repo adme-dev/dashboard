@@ -7,6 +7,15 @@ const scale = computed(() => availableWidth.value / props.width)
 
 <template>
   <div ref="container" class="relative w-full overflow-hidden bg-black" :style="{ aspectRatio: `${width} / ${height}` }">
-    <iframe :srcdoc="html" :title="title" sandbox="allow-scripts" class="absolute left-0 top-0 origin-top-left border-0" :width="width" :height="height" :style="{ transform: `scale(${scale})` }" />
+    <iframe
+      :srcdoc="html"
+      :title="title"
+      sandbox="allow-scripts"
+      referrerpolicy="no-referrer"
+      class="absolute left-0 top-0 origin-top-left border-0"
+      :width="width"
+      :height="height"
+      :style="{ transform: `scale(${scale})` }"
+    />
   </div>
 </template>

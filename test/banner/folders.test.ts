@@ -24,8 +24,9 @@ describe('persistent Banner Studio folders', () => {
   it('keeps same-name folders distinct and includes descendants in parent browsing', () => {
     expect(bannerProjectInFolder(project('old'), 'root', folders)).toBe(true)
     expect(bannerProjectInFolder(project('old'), 'new', folders)).toBe(false)
-    expect(bannerProjectInFolder(project(undefined, ['source-folder:Social Media Templates/Archived Templates/Updates']), 'archive', folders)).toBe(true)
+    expect(bannerProjectInFolder(project(undefined, ['source-folder:Social Media Templates/Archived Templates/Updates']), 'archive', folders)).toBe(false)
     expect(bannerProjectInFolder(project(undefined, ['source-folder:Social Media Templates/Archived Templates/Updates']), 'new', folders)).toBe(false)
+    expect(bannerProjectInFolder(project(undefined, ['source-folder:Social Media Templates/Archived Templates/Updates']), 'unfiled', folders)).toBe(true)
     expect(bannerProjectInFolder(project(), 'all', folders)).toBe(true)
   })
   it('bounds traversal if a corrupt record creates a cycle', () => {
