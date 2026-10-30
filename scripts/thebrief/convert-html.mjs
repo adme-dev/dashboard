@@ -212,7 +212,7 @@ function easedFraction(easing, fraction) {
 function sampleRepeatedFrames(cycle, at, duration, visibleEnd) {
   const sampleCount = Math.ceil((visibleEnd - at) * 60)
   if (sampleCount > 480) throw new Error('Repeated effect exceeds the native keyframe budget')
-  const valueAt = time => {
+  const valueAt = (time) => {
     const elapsed = Math.max(0, time - at)
     const phase = elapsed - Math.floor(elapsed / duration) * duration
     const target = at + phase
@@ -252,7 +252,7 @@ function sourceWordPop(element, sourceId, style, rules) {
     ['0%', 'translateY(0) scale(.6)', 'blur(10px)', '0'],
     ['40%', '', '', '1'],
     ['70%', 'translateY(0) scale(1.05)', '', ''],
-    ['100%', 'translateY(0) scale(1)', 'blur(0px)', ''],
+    ['100%', 'translateY(0) scale(1)', 'blur(0px)', '']
   ])) throw new Error('Unsupported word animation keyframes')
   return { duration: first.duration, stagger, ease: first.ease }
 }
@@ -474,7 +474,8 @@ export async function convertTheBriefHtml(html) {
         if (sources.length !== 1 || !['audio/mp3', 'audio/mpeg'].includes(sources[0].getAttribute('type'))) throw new Error('Unsupported audio source')
         const audio = element.querySelector('audio')
         if (!audio || audio.hasAttribute('loop')) throw new Error('Unsupported audio playback')
-        layers.push({ ...layerBase, id: id++, type: 'audio', name: `Audio ${sourceId}`, src: localAsset(sources[0].getAttribute('src')), x: 0, y: 0, w: 1, h: 1, volume: Number.isFinite(audio.volume) ? audio.volume : 1 })
+        const audioConfig = source.audioElements?.find(item => item.elementId === sourceId && item.slideId === slide.id)
+        layers.push({ ...layerBase, id: id++, type: 'audio', name: `Audio ${sourceId}`, src: localAsset(sources[0].getAttribute('src')), x: 0, y: 0, w: 1, h: 1, volume: Number.isFinite(audio.volume) ? audio.volume : 1, ...(audioConfig?.shouldPlay === false ? { muted: true } : {}) })
       } else if (type === 'text') {
         const rows = [...element.querySelectorAll('.row')]
         if (!rows.length) throw new Error('Unsupported text layout')
@@ -496,8 +497,10 @@ export async function convertTheBriefHtml(html) {
           // can report an empty computed colour in offline CSS parsing. Compare
           // the painted leaf spans, not both a wrapper and its child.
           const runs = [...row.querySelectorAll('span')].filter(item => item.textContent.trim() && !item.children.length)
-          const signature = node => ['fontSize', 'fontFamily', 'fontWeight', 'fontStyle', 'color', 'letterSpacing'].map(key => style(node)[key]).join('|')
-          if (new Set(runs.filter(item => !item.closest('sup')).map(signature)).size > 1) throw new Error('Mixed styled text within a line needs an adapter')
+          const signature = node => ['fontFamily', 'fontWeight', 'fontStyle', 'color', 'letterSpacing'].map(key => style(node)[key]).join('|')
+          const plainRuns = runs.filter(item => !item.closest('sup'))
+          if (new Set(plainRuns.map(signature)).size > 1) throw new Error('Mixed styled text within a line needs an adapter')
+          const hasInlineSizes = new Set(plainRuns.map(item => style(item).fontSize)).size > 1
           const paintedCss = style(runs.find(item => !item.closest('sup')) || span)
           const textTransform = paintedCss.textTransform || textCss.textTransform || rowCss.textTransform || 'none'
           if (!['none', 'uppercase', 'lowercase', 'capitalize'].includes(textTransform)) throw new Error('Unsupported text transform')
@@ -509,7 +512,7 @@ export async function convertTheBriefHtml(html) {
           if (textShadow && !/^-?\d+(?:\.\d+)?px -?\d+(?:\.\d+)?px (?:\d+(?:\.\d+)?px|0) #[0-9a-f]{3,6}$/i.test(textShadow)) throw new Error('Unsupported text shadow')
           if (textStroke && !['stroke', ''].includes(containerCss.paintOrder)) throw new Error('Unsupported text paint order')
           const textRuns = []
-          if (row.querySelector('sup')) {
+          if (row.querySelector('sup') || hasInlineSizes) {
             const walk = (node) => {
               if (node.nodeType === 3 && node.textContent) {
                 const parent = node.parentElement
@@ -521,8 +524,7 @@ export async function convertTheBriefHtml(html) {
                   if (supCss.position !== 'relative' || supCss.verticalAlign !== 'baseline' || !Number.isFinite(px(supCss.top))) throw new Error('Unsupported superscript positioning')
                   textRuns.push({ text: node.textContent, fontSize: px(runCss.fontSize), top: px(supCss.top) })
                 } else {
-                  if (runCss.fontSize !== textCss.fontSize) throw new Error('Mixed styled text within a line needs an adapter')
-                  textRuns.push({ text: node.textContent })
+                  textRuns.push({ text: node.textContent, ...(runCss.fontSize !== textCss.fontSize ? { fontSize: px(runCss.fontSize) } : {}) })
                 }
               } else for (const child of node.childNodes) walk(child)
             }
@@ -574,19 +576,38 @@ export async function convertTheBriefHtml(html) {
         const content = document.getElementById(`c-${sourceId}`) || legacyLayerContent(element, style, 'shape')
         const transforms = [...element.querySelectorAll('div')].map(div => style(div).transform).filter(t => t && t !== 'none')
         if (transforms.some(t => !/^rotate\(-?[\d.]+deg\)$/.test(t))) throw new Error('Unsupported static shape transform')
-        const rotation = transforms.reduce((sum, t) => sum + Number.parseFloat(t.slice(7)), 0)
+        let rotation = transforms.reduce((sum, t) => sum + Number.parseFloat(t.slice(7)), 0)
         const contentCss = style(content)
         const radii = ['borderTopLeftRadius', 'borderTopRightRadius', 'borderBottomLeftRadius', 'borderBottomRightRadius'].map(key => contentCss[key] || '0px')
         let borderRadius
         if (new Set(radii).size === 1 && Number.isFinite(px(radii[0])) && px(radii[0]) >= 0) borderRadius = px(radii[0])
         else warnings.push(`${element.id}: unequal or non-pixel corner radii are not converted`)
-        if (rotation && (keyframes.scaleX || keyframes.scaleY || keyframes.rotation)) throw new Error('Nested static rotation with animated scale/rotation needs an adapter')
         // happy-dom can omit a shorthand gradient from computed backgroundImage.
         // Read only the bounded inline gradient value in that case; the strict
         // composition checks below still decide whether it is representable.
         const inlineGradient = content?.getAttribute('style')?.match(/(?:^|;)\s*background\s*:\s*((?:linear|radial)-gradient\([^;]+\))/i)?.[1]
         const backgroundImage = contentCss.backgroundImage || inlineGradient || ''
         const borders = ['Top', 'Right', 'Bottom', 'Left'].map(side => px(contentCss[`border${side}Width`] || '0px'))
+        if (rotation && (keyframes.scaleX || keyframes.scaleY || keyframes.rotation)) {
+          // A 90-degree solid divider can be represented as a swapped rectangle.
+          // Keep the outer scale origin in canvas coordinates while baking the
+          // inner static rotation into its geometry. Other compositions still
+          // require a matrix-aware adapter.
+          const canBake = Math.abs(rotation) === 90 && !keyframes.rotation
+            && keyframes.scaleY?.length && (keyframes.scaleX || []).every(frame => frame.value === 1)
+            && (!backgroundImage || backgroundImage === 'none') && borderRadius === 0
+            && borders.every(width => width === 0) && /^#[0-9a-f]{3,8}$/i.test(contentCss.backgroundColor)
+          if (!canBake) throw new Error(`${element.id}: nested static rotation with animated scale/rotation needs an adapter`)
+          const { x, y, w, h } = layerBase
+          const origin = layerBase.transformOrigin || { x: w / 2, y: h / 2 }
+          layerBase.x = x + (w - h) / 2
+          layerBase.y = y + (h - w) / 2
+          layerBase.w = h
+          layerBase.h = w
+          layerBase.transformOrigin = { x: origin.x - (w - h) / 2, y: origin.y - (h - w) / 2 }
+          rotation = 0
+          warnings.push(`${element.id}: 90-degree solid divider rotation baked into native geometry; review its entrance motion`)
+        }
         if (/^(linear|radial)-gradient\(/.test(backgroundImage)) {
           if (!/^[\w\s#(),.%+-]+$/.test(backgroundImage)
             || !['', 'initial', 'auto', 'auto auto'].includes(contentCss.backgroundSize)

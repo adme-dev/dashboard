@@ -20,23 +20,29 @@ const canvasData = {}
 const assets = new Map()
 const fonts = new Map()
 for (const pkg of packages) {
+  const fontAliases = new Map()
+  for (const font of pkg.fonts) {
+    const identity = `${font.sha256}:${font.weight}:${font.style}`
+    let canonical = fonts.get(identity)
+    if (!canonical) {
+      const aliasHash = createHash('sha256').update(identity).digest('hex')
+      canonical = { ...font, path: `./fonts/${aliasHash}-${font.fileName}` }
+      fonts.set(identity, canonical)
+    }
+    const old = fontAliases.get(font.family)
+    if (old && old !== canonical.family) throw new Error(`Ambiguous font alias: ${font.family}`)
+    fontAliases.set(font.family, canonical.family)
+  }
   for (const [key, board] of Object.entries(pkg.canvasData)) {
     if (Object.hasOwn(canvasData, key)) throw new Error(`Duplicate design size: ${key}`)
-    canvasData[key] = board
+    canvasData[key] = { ...board, layers: board.layers.map(layer => ({
+      ...layer, fontFamily: layer.fontFamily ? fontAliases.get(layer.fontFamily) || layer.fontFamily : layer.fontFamily
+    })) }
   }
   for (const item of pkg.assets) {
     const existing = assets.get(item.path)
     if (existing && existing.sha256 !== item.sha256) throw new Error(`Conflicting packaged asset: ${item.path}`)
     assets.set(item.path, item)
-  }
-  for (const font of pkg.fonts) {
-    const identity = `${font.family}:${font.weight}:${font.style}`
-    const existing = fonts.get(identity)
-    if (existing && existing.sha256 !== font.sha256) throw new Error(`Conflicting packaged font: ${font.family}`)
-    if (!existing) {
-      const aliasHash = createHash('sha256').update(identity).digest('hex')
-      fonts.set(identity, { ...font, path: `./fonts/${aliasHash}-${font.fileName}` })
-    }
   }
 }
 const digest = createHash('sha256')
@@ -45,7 +51,7 @@ const merged = parseTheBriefPackage({
   kind: 'xeroflow-thebrief-import', version: 1, name,
   source: { ...source, designHash, sha256: digest.digest('hex') },
   canvasData, assets: [...assets.values()], fonts: [...fonts.values()],
-  warnings: [...new Set(packages.flatMap(pkg => pkg.warnings))],
+  warnings: [...new Set(packages.flatMap(pkg => pkg.warnings))]
 })
 await writeFile(output, JSON.stringify(merged), { mode: 0o600 })
 console.log(JSON.stringify({ output, sizes: Object.keys(merged.canvasData), assets: merged.assets.length, fonts: merged.fonts.length }))

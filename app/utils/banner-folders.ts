@@ -13,6 +13,16 @@ export function bannerFolderPath(folders: BannerFolder[], id: string): BannerFol
   return path
 }
 
+/** Source paths are provenance; only an exact, unique path can suggest placement. */
+export function bannerFolderForSource(folders: BannerFolder[], sourceFolder: string): string | null {
+  const matches = folders.filter(folder => folder.sourcePath?.join('/') === sourceFolder)
+  return matches.length === 1 ? matches[0]!.id : null
+}
+
+export function bannerProjectFolderId(project: BannerProject, folders: BannerFolder[]): string | null {
+  return project.folderId && folders.some(folder => folder.id === project.folderId) ? project.folderId : null
+}
+
 export function bannerFolderRows(folders: BannerFolder[], expanded: Set<string>, search = '') {
   const query = search.trim().toLocaleLowerCase()
   const matching = new Set<string>()
@@ -38,9 +48,7 @@ export function bannerFolderRows(folders: BannerFolder[], expanded: Set<string>,
 
 export function bannerProjectInFolder(project: BannerProject, id: string, folders: BannerFolder[]): boolean {
   if (id === 'all') return true
-  if (id === 'unfiled') return !project.folderId && !(project.tags || []).some(tag => tag.startsWith('source-folder:'))
+  if (id === 'unfiled') return !project.folderId
   if (project.folderId) return bannerFolderPath(folders, project.folderId).some(folder => folder.id === id)
-  // Newly imported legacy packages retain their exact source path until assigned a folder.
-  const matches = folders.filter(folder => folder.sourcePath && project.tags?.includes(`source-folder:${folder.sourcePath.join('/')}`))
-  return matches.length === 1 && bannerFolderPath(folders, matches[0]!.id).some(parent => parent.id === id)
+  return false
 }

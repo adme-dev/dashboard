@@ -2,17 +2,17 @@
  * Get project data for public review (token-based, no auth)
  * GET /api/public/banner-review/:token
  */
-import { queryOne, queryRows } from '~~/server/utils/db'
+import { queryOneFresh, queryRowsFresh } from '~~/server/utils/db'
 
 export default defineEventHandler(async (event) => {
   const token = getRouterParam(event, 'token')
 
-  if (!token) {
+  if (!token || !/^[0-9a-f]{32}$/i.test(token)) {
     throw createError({ statusCode: 400, statusMessage: 'Review token is required' })
   }
 
   // Validate token
-  const link = await queryOne(`
+  const link = await queryOneFresh<{ id: string, projectId: string, expiresAt: string | null, revoked: boolean }>(`
     SELECT id, project_id AS "projectId", expires_at AS "expiresAt", revoked
     FROM banner_review_links
     WHERE token = $1
@@ -22,7 +22,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 404, statusMessage: 'Review link not found' })
   }
 
-  const linkData = link as any
+  const linkData = link
 
   if (linkData.revoked) {
     throw createError({ statusCode: 410, statusMessage: 'This review link has been revoked' })
@@ -33,7 +33,7 @@ export default defineEventHandler(async (event) => {
   }
 
   // Get project data
-  const project = await queryOne(`
+  const project = await queryOneFresh(`
     SELECT
       id, name,
       canvas_data AS "canvasData",
@@ -48,7 +48,7 @@ export default defineEventHandler(async (event) => {
   }
 
   // Get existing comments
-  const comments = await queryRows(`
+  const comments = await queryRowsFresh(`
     SELECT
       c.id, c.format_key AS "formatKey", c.x, c.y, c.text,
       c.reviewer_name AS "reviewerName", c.reviewer_email AS "reviewerEmail",
@@ -61,9 +61,11 @@ export default defineEventHandler(async (event) => {
     ORDER BY c.created_at ASC
   `, [linkData.projectId])
 
+  setHeader(event, 'Cache-Control', 'no-store')
+  setHeader(event, 'Referrer-Policy', 'no-referrer')
   return {
     project,
     comments,
-    linkId: linkData.id,
+    linkId: linkData.id
   }
 })

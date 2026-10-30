@@ -14,8 +14,8 @@ function sizePackage(size: string, sha: string): TheBriefPackage {
     canvasData: { [`custom_${size}`]: { playback: { duration: 8, loopCount: 0 }, layers: [{
       id: 1, type: 'text', name: 'Offer', linkId: 'source:offer', text: 'Drive away',
       x: 10, y: 20, w: 200, h: 50, zIndex: 1, opacity: 1,
-      animIn: 'none', animInDur: 0, startTime: 0, endTime: 8,
-    }] } }, warnings: [], assets: [], fonts: [],
+      animIn: 'none', animInDur: 0, startTime: 0, endTime: 8
+    }] } }, warnings: [], assets: [], fonts: []
   }
 }
 
@@ -27,7 +27,7 @@ describe('TheBrief design set packaging', () => {
       writeFileSync(first, JSON.stringify(sizePackage('1200x1200', 'a'.repeat(64))))
       writeFileSync(second, JSON.stringify(sizePackage('1080x1920', 'b'.repeat(64))))
       execFileSync(process.execPath, ['--import', 'tsx', 'scripts/thebrief/merge-packages.mjs', '1nz5y6q', 'Hunter set', output, first, second], {
-        cwd: resolve('.'), env: { ...process.env, TSX_TSCONFIG_PATH: 'scripts/thebrief/tsconfig.json' }, timeout: 10000,
+        cwd: resolve('.'), env: { ...process.env, TSX_TSCONFIG_PATH: 'scripts/thebrief/tsconfig.json' }, timeout: 10000
       })
       const result = parseTheBriefPackage(JSON.parse(readFileSync(output, 'utf8')))
       expect(Object.keys(result.canvasData)).toEqual(['custom_1200x1200', 'custom_1080x1920'])
@@ -38,7 +38,7 @@ describe('TheBrief design set packaging', () => {
   })
 })
 
-it('retains every independently managed font alias when source paths and bytes match', () => {
+it('deduplicates identical font bytes and remaps every size to the retained alias', () => {
   const dir = mkdtempSync(join(tmpdir(), 'thebrief-font-merge-'))
   try {
     const paths = ['1200x1200', '1080x1920'].map((size, index) => {
@@ -55,8 +55,8 @@ it('retains every independently managed font alias when source paths and bytes m
       cwd: resolve('.'), env: { ...process.env, TSX_TSCONFIG_PATH: 'scripts/thebrief/tsconfig.json' }, timeout: 10000
     })
     const merged = parseTheBriefPackage(JSON.parse(readFileSync(output, 'utf8')))
-    expect(merged.fonts).toHaveLength(2)
-    expect(new Set(merged.fonts.map(font => font.path)).size).toBe(2)
-    for (const board of Object.values(merged.canvasData)) expect(merged.fonts.some(font => font.family === board.layers[0].fontFamily)).toBe(true)
+    expect(merged.fonts).toHaveLength(1)
+    expect(merged.fonts[0]?.family).toBe('Campaign XF source0')
+    for (const board of Object.values(merged.canvasData)) expect(board.layers[0]?.fontFamily).toBe(merged.fonts[0]?.family)
   } finally { rmSync(dir, { recursive: true, force: true }) }
 })

@@ -29,8 +29,9 @@ describe('TheBrief single-slide native conversion pilot', () => {
     expect(result.warnings.join(' ')).toMatch(/effMid1/)
   })
 
-  it('rejects mixed styled runs rather than silently flattening typography', async () => {
-    await expect(convertTheBriefHtml(source.replace('Hello world', '<span style="font-size:20px">Hello</span><span style="font-size:30px">world</span>'))).rejects.toThrow(/Mixed styled/)
+  it('retains different font sizes within one editable line', async () => {
+    const result = await convertTheBriefHtml(source.replace('Hello world', '<span style="font-size:20px">Hello </span><span style="font-size:30px">world</span>'))
+    expect(result.canvasData.custom_300x250.layers.find(l => l.type === 'text')?.textRuns).toEqual([{ text: 'Hello ' }, { text: 'world', fontSize: 30 }])
   })
 
   it('does not evaluate executable expressions in design data', async () => {
@@ -124,6 +125,18 @@ describe('TheBrief single-slide native conversion pilot', () => {
     expect(board.bgColor).toBe('#131e29')
     expect(board.layers.find(l => l.type === 'rect').rotation).toBe(90)
     expect(board.layers.find(l => l.type === 'rect').borderRadius).toBe(23)
+  })
+
+  it('bakes a rotated solid divider into geometry while retaining its vertical reveal pivot', async () => {
+    const html = source.replace('data-eltype="text"', 'data-eltype="shape"')
+      .replace('<div class="row">Hello world</div>', '<div style="transform:rotate(90deg)"><div id="c-1" style="background-color:#fff;border-radius:0px"></div></div>')
+      .replace('transform:translateX(-100px) translateY(0);opacity:0', 'transform:scaleX(1) scaleY(0);transform-origin:center top;opacity:1')
+      .replace('transform:translateX(0) translateY(0);opacity:1', 'transform:scaleX(1) scaleY(1);transform-origin:center top;opacity:1')
+    const result = await convertTheBriefHtml(html)
+    expect(result.canvasData.custom_300x250.layers.find(l => l.type === 'rect')).toMatchObject({
+      x: 70, y: -40, w: 80, h: 200, rotation: 0, transformOrigin: { x: 40, y: 60 }
+    })
+    expect(result.warnings.join(' ')).toMatch(/rotation baked into native geometry/)
   })
 
   it('preserves a local root background image and transparent fallback', async () => {

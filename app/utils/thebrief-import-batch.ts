@@ -1,14 +1,17 @@
 import { packageFile, parseTheBriefPackage, suggestImportClient, type TheBriefPackage } from './thebrief-import'
+import { bannerFolderForSource } from './banner-folders'
+import type { BannerFolder } from '~/types/banner-studio'
 
 export interface TheBriefImportRow {
   file: File
   pkg: TheBriefPackage
   clientId: string
+  folderId: string
   status: string
   projectId?: string
 }
 
-export async function readImportBatch(files: File[], previous: TheBriefImportRow[], clients: Array<{ id: string, name: string }>): Promise<TheBriefImportRow[]> {
+export async function readImportBatch(files: File[], previous: TheBriefImportRow[], clients: Array<{ id: string, name: string }>, folders: BannerFolder[] = []): Promise<TheBriefImportRow[]> {
   if (files.length > 10) throw new Error('Choose up to 10 prepared packages at a time.')
   const rows: TheBriefImportRow[] = []
   for (const file of files) {
@@ -22,7 +25,7 @@ export async function readImportBatch(files: File[], previous: TheBriefImportRow
     if (file.size > 45 * 1024 * 1024) throw new Error(`${file.name} exceeds the 45 MB package limit`)
     const pkg = parseTheBriefPackage(JSON.parse(await file.text()))
     for (const asset of [...pkg.assets, ...pkg.fonts]) await packageFile(asset)
-    rows.push({ file, pkg, clientId: suggestImportClient(pkg.name, clients) || '__unassigned__', status: 'Ready for draft import' })
+    rows.push({ file, pkg, clientId: suggestImportClient(pkg.name, clients) || '__unassigned__', folderId: bannerFolderForSource(folders, pkg.source.folder) || '__unfiled__', status: 'Ready for draft import' })
   }
   return rows
 }
