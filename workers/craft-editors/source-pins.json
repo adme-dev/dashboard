@@ -1,0 +1,82 @@
+{
+  "effectcraft": {
+    "commit": "362474a843ddb67555d4c2d19ad6a590388aad0e",
+    "version": "0.17.0",
+    "source_archive_sha256": "ffc0bb252f71a1d291743f588a78784fddd1e93e65b9df43d8c772ae8386509e",
+    "branding_patch": "patches/effectflow-branding.patch",
+    "branding_patch_sha256": "522aea898038ffdbf6e0c9e3fd36f2587707077719208564f6cd988fdbd56874",
+    "cargo_lock_sha256": "57950832aa31f7e660804be25d59a156c0946ffc5e300d9c097378305bd30110",
+    "additional_patches": [
+      {
+        "path": "patches/effectflow-xf-mark.patch",
+        "sha256": "14fc17e96284b56a30a9eb4635f3f59b78905a3c4214b91258173739934b1b30"
+      }
+    ]
+  },
+  "filmcraft": {
+    "commit": "30536bc5d0ddf690f2181b7b97182db8658a6038",
+    "version": "0.13.0",
+    "source_archive_sha256": "c745f45abeecacc23b483c954060225407481c07ff5734e7b59c426f551d7738",
+    "branding_patch": "patches/filmflow-branding.patch",
+    "branding_patch_sha256": "66ec0748f5188854cf807eb076cae38a5125eefaec06c969c5247ffbe0016f8e",
+    "cargo_lock_sha256": "de03a57ae05724d3eb2321db9577ad115939ed99f70dccfcfd43ab23eb9285fa"
+  },
+  "photocraft": {
+    "commit": "b1794c6e0608ccfc887213dcf58398977c5cb75e",
+    "version": "0.16.0",
+    "source_archive_sha256": "511d22ee6386c8b994f5e9ec3e925a571b6fbe85ac4fe582bb72fb09835691a9",
+    "branding_patch": "patches/photoflow-branding.patch",
+    "branding_patch_sha256": "60dddd1891d888cacc4842951600c3d460018aa79cc9ca6d935d215371d9861e",
+    "cargo_lock_sha256": "cba5a29b64ab1fe7f89d0368f215dea97cd472c7550064cf9e9b10f083ab5177",
+    "additional_patches": [
+      {
+        "path": "patches/photoflow-xf-mark.patch",
+        "sha256": "42e230efcae27f3dfc320631bcdd4d66d7ddb1635a71442a8034d74022fa1243"
+      }
+    ]
+  },
+  "vectorcraft": {
+    "commit": "43313f9451de7ab5b909801006b8881458f2bf04",
+    "version": "0.17.0",
+    "source_archive_sha256": "e09f4431af6e8811d2e207ed2a7f55c6329c744c1d19a9a555e8122e8cff376d",
+    "branding_patch": "patches/vectorflow-branding.patch",
+    "branding_patch_sha256": "9c8ca0e626e47b9dd72abe528bbfd2ef0fbfa6bc2166bc61d94b2aba0a0131d5",
+    "cargo_lock_sha256": "4e5da6dcba24b385663dfd2ee0b8c3ddf93385187fa354f10b7b50b248af059b",
+    "additional_patches": [
+      {
+        "path": "patches/vectorflow-xf-mark.patch",
+        "sha256": "bc97c33627b9e27d8a690f6f11fb7cccf9243b460caf55b7997882af819337ef"
+      }
+    ]
+  },
+  "soundcraft": {
+    "commit": "01b39850ad16e84b45904ba07bd5cec7cf96c4b7",
+    "version": "0.13.1",
+    "source_archive_sha256": "522e138af3942b3466d59b7e30004f5c4ccbdffd57a630e0dc56321dcd55865e",
+    "branding_patch": "patches/soundflow-branding.patch",
+    "branding_patch_sha256": "a16064cd739678be03cb1c1f059dac81dfcf445ce0dca90faea846617c137e4d",
+    "cargo_lock_sha256": "7ed79f3eee546eb7ecc30de9e5ee3f7a0d871a1b1bed55895fbbd19980ae5d50"
+  },
+  "figcraft": {
+    "commit": "d4a303d4708602a9df1738960852d18b185a616b",
+    "version": "0.11.2",
+    "source_archive_sha256": "04710e7815266580083267103d3fe93218c4dee02415e7016574ee866a09aaa6",
+    "branding_patch": "patches/figflow-branding.patch",
+    "branding_patch_sha256": "f5198f5f6235c82047268910d343dd3d3fb8c1e74a62b1a106a49a63dafe60b9",
+    "cargo_lock_sha256": "539397203fa01e0f460ab2fad69b32003b838828751a7373e833d23b56e35b94",
+    "additional_patches": [
+      {
+        "path": "patches/figflow-browser-save.patch",
+        "sha256": "c48d5d59e2956da33ef593cf6179ce3c287c97a27da6082aa6e2eb3a741273eb"
+      },
+      {
+        "path": "patches/figflow-xf-mark.patch",
+        "sha256": "c2ee7ae4d4490b4361b0a8e776d8b8c3d7d21c0f57a2bf4af36115afdc50464c"
+      },
+      {
+        "path": "patches/figflow-browser-export-bound.patch",
+        "sha256": "5dc626e63fb1ace0ad96b0a840b2b070e8d72f4b72d3df2fd3785815cfebf09e"
+      }
+    ]
+  }
+}

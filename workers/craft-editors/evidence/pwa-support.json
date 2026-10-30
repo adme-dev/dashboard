@@ -1,0 +1,26 @@
+{
+  "helper": {
+    "stable_manifests": 7,
+    "editor_versions": 12,
+    "idempotent": true,
+    "integrity_preserved": true
+  },
+  "chrome": {
+    "prompt_only_on_click": true,
+    "one_use_event": true,
+    "help": true,
+    "escape_and_focus": true,
+    "late_dock_button": true,
+    "installed_status": true
+  },
+  "standalone": {
+    "mocked": true,
+    "install_button_hidden": true
+  },
+  "safari": {
+    "user_agent_mocked": true,
+    "instructions": true
+  },
+  "os_app_install_attempted": false,
+  "page_errors": []
+}

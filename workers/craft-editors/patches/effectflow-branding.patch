@@ -1,0 +1,2311 @@
+diff -ruN a/apps/effectcraft-web/js/host.js b/apps/effectcraft-web/js/host.js
+--- a/apps/effectcraft-web/js/host.js	2026-10-26 00:31:11
++++ b/apps/effectcraft-web/js/host.js	2026-10-28 11:29:44
+@@ -696,7 +696,7 @@
+   title.textContent = "The graphics device was lost";
+   const text = document.createElement("p");
+   text.textContent =
+-    "EffectCraft can't update the display any more. Your project is still open. " +
++    "EffectFlow can't update the display any more. Your project is still open. " +
+     (kept ? "Reload to continue: the project and its unsaved changes come back." : "This session isn't kept in browser storage: save the project before you reload.");
+   const detail = document.createElement("small");
+   detail.textContent = message;
+diff -ruN a/apps/effectcraft-web/src/api.rs b/apps/effectcraft-web/src/api.rs
+--- a/apps/effectcraft-web/src/api.rs	2026-10-26 00:31:11
++++ b/apps/effectcraft-web/src/api.rs	2026-10-28 11:29:44
+@@ -52,7 +52,7 @@
+         let (req, rx) = ControlRequest::new(method.clone(), params.clone());
+         let sent = TX.with(|t| t.borrow().as_ref().is_some_and(|tx| tx.send(req).is_ok()));
+         if !sent {
+-            let _ = reject.call1(&JsValue::NULL, &JsValue::from_str("EffectCraft is not running yet"));
++            let _ = reject.call1(&JsValue::NULL, &JsValue::from_str("EffectFlow is not running yet"));
+             return;
+         }
+         PENDING.with(|p| p.borrow_mut().push((rx, resolve, reject)));
+diff -ruN a/apps/effectcraft-web/web/index.html b/apps/effectcraft-web/web/index.html
+--- a/apps/effectcraft-web/web/index.html	2026-10-26 00:31:11
++++ b/apps/effectcraft-web/web/index.html	2026-10-28 11:29:44
+@@ -5,8 +5,8 @@
+   <meta name="viewport" content="width=device-width, initial-scale=1">
+   <meta name="color-scheme" content="dark">
+   <meta name="theme-color" content="#1b1c1f">
+-  <meta name="description" content="EffectCraft: motion graphics and visual effects in the browser">
+-  <title>EffectCraft</title>
++  <meta name="description" content="EffectFlow: motion graphics and visual effects in the browser">
++  <title>EffectFlow</title>
+   <link rel="icon" href="favicon.svg" type="image/svg+xml">
+   <link rel="manifest" href="manifest.webmanifest">
+   <link rel="apple-touch-icon" href="icon-256.png">
+@@ -41,7 +41,7 @@
+ </head>
+ <body>
+   <canvas id="effectcraft_canvas"></canvas>
+-  <div id="loading"><img src="favicon.svg" alt=""><div id="status">Loading EffectCraft…</div></div>
++  <div id="loading"><img src="favicon.svg" alt=""><div id="status">Loading EffectFlow…</div></div>
+   <script type="module">
+     import init, * as ec from "./effectcraft_web.js";
+     const t0 = performance.now();
+@@ -114,7 +114,7 @@
+       window.effectcraftLoad.readyMs = performance.now() - t0;
+     } catch (e) {
+       const s = document.getElementById("status");
+-      if (s) { s.className = "err"; s.textContent = "EffectCraft failed to start:\n" + (e && e.stack || e); }
++      if (s) { s.className = "err"; s.textContent = "EffectFlow failed to start:\n" + (e && e.stack || e); }
+       window.effectcraftLoad.error = String(e);
+       throw e;
+     }
+diff -ruN a/apps/effectcraft-web/web/manifest.webmanifest b/apps/effectcraft-web/web/manifest.webmanifest
+--- a/apps/effectcraft-web/web/manifest.webmanifest	2026-10-26 00:31:11
++++ b/apps/effectcraft-web/web/manifest.webmanifest	2026-10-28 11:29:44
+@@ -1,6 +1,6 @@
+ {
+-  "name": "EffectCraft",
+-  "short_name": "EffectCraft",
++  "name": "EffectFlow",
++  "short_name": "EffectFlow",
+   "description": "Motion graphics and visual effects compositor, in the browser",
+   "id": "./",
+   "start_url": "./",
+diff -ruN a/crates/effects/src/catalog.rs b/crates/effects/src/catalog.rs
+--- a/crates/effects/src/catalog.rs	2026-10-26 00:31:11
++++ b/crates/effects/src/catalog.rs	2026-10-28 11:29:44
+@@ -131,7 +131,7 @@
+     let float = r.iter().filter(|e| e.float).count();
+     let partial = r.iter().filter(|e| PARTIAL.iter().any(|(id, _)| *id == e.id)).count();
+     s.push_str(&format!(
+-        "EffectCraft ships {} effects with {} parameters in total, grouped into the same categories as the Effects & Presets \
++        "EffectFlow ships {} effects with {} parameters in total, grouped into the same categories as the Effects & Presets \
+          panel. Every effect is our own implementation, written from public behaviour descriptions and standard \
+          image-processing literature. Parameter names, order, popup options, units, defaults and ranges follow the \
+          reference application so that projects, expressions and muscle memory carry over.\n\n",
+diff -ruN a/crates/effects/src/ocio.rs b/crates/effects/src/ocio.rs
+--- a/crates/effects/src/ocio.rs	2026-10-26 00:31:11
++++ b/crates/effects/src/ocio.rs	2026-10-28 11:29:44
+@@ -689,7 +689,7 @@
+ 
+ /// Configuration popup: the built-in config, or a custom `.ocio` file (Config File: a path or
+ /// the config's text; spaces chosen by name, see [`crate::ocio_config`]).
+-pub const CONFIGS: &[&str] = &["Built-in (EffectCraft minimal)", "Custom (.ocio file)"];
++pub const CONFIGS: &[&str] = &["Built-in (EffectFlow minimal)", "Custom (.ocio file)"];
+ 
+ /// Built-in looks: CDLs applied in ACEScct.
+ pub fn looks() -> Vec<(&'static str, Cdl)> {
+@@ -1471,7 +1471,7 @@
+             "OCIO Look Transform",
+             cc,
+             vec![
+-                p("config", "Configuration", Value::Enum(0), popup(&["Built-in (EffectCraft minimal)"])),
++                p("config", "Configuration", Value::Enum(0), popup(&["Built-in (EffectFlow minimal)"])),
+                 space_param("source", "Source", acescg),
+                 space_param("destination", "Destination", acescg),
+                 p("look", "Look", Value::Enum(0), popup(&look_opts)),
+diff -ruN a/crates/engine/src/commands/animation.rs b/crates/engine/src/commands/animation.rs
+--- a/crates/engine/src/commands/animation.rs	2026-10-26 00:31:11
++++ b/crates/engine/src/commands/animation.rs	2026-10-28 11:29:44
+@@ -98,7 +98,7 @@
+         _ => return Err(bad("anim.applyPreset", "missing `path` (or inline `preset`)")),
+     };
+     if doc.get(PRESET_TAG).is_none() {
+-        return Err(bad("anim.applyPreset", "not an EffectCraft animation preset"));
++        return Err(bad("anim.applyPreset", "not an EffectFlow animation preset"));
+     }
+     let (cid, ids) = layers_p(s, p)?;
+     if ids.is_empty() {
+diff -ruN a/crates/engine/src/commands/app_more.rs b/crates/engine/src/commands/app_more.rs
+--- a/crates/engine/src/commands/app_more.rs	2026-10-26 00:31:11
++++ b/crates/engine/src/commands/app_more.rs	2026-10-28 11:29:44
+@@ -416,7 +416,7 @@
+         issues.push("Export is not available in this build.".to_string());
+     }
+     json!({
+-        "app": format!("EffectCraft {}", env!("CARGO_PKG_VERSION")),
++        "app": format!("EffectFlow {}", env!("CARGO_PKG_VERSION")),
+         "os": crate::sysinfo::os_version(),
+         "arch": std::env::consts::ARCH,
+         "cpu": crate::sysinfo::cpu_name(),
+diff -ruN a/crates/engine/src/commands/essential.rs b/crates/engine/src/commands/essential.rs
+--- a/crates/engine/src/commands/essential.rs	2026-10-26 00:31:11
++++ b/crates/engine/src/commands/essential.rs	2026-10-28 11:29:44
+@@ -878,12 +878,12 @@
+     let entries = effectcraft_lottie::zip::read_stored(bytes);
+     let get = |n: &str| entries.iter().find(|(k, _)| k == n).map(|(_, v)| v.clone());
+     let manifest: Value =
+-        serde_json::from_slice(&get("manifest.json").ok_or("not an EffectCraft template (no manifest.json)")?).map_err(|e| format!("manifest.json: {e}"))?;
++        serde_json::from_slice(&get("manifest.json").ok_or("not an EffectFlow template (no manifest.json)")?).map_err(|e| format!("manifest.json: {e}"))?;
+     if manifest.get("format").and_then(Value::as_str) != Some(TEMPLATE_FORMAT) {
+-        return Err("not an EffectCraft template".into());
++        return Err("not an EffectFlow template".into());
+     }
+     if manifest.get("version").and_then(Value::as_u64).unwrap_or(0) > TEMPLATE_VERSION as u64 {
+-        return Err("the template was made by a newer EffectCraft".into());
++        return Err("the template was made by a newer EffectFlow".into());
+     }
+     let text = String::from_utf8(get("project.ecproj").ok_or("template has no project.ecproj")?).map_err(|e| e.to_string())?;
+     let mut project = Project::from_json(&text).map_err(|e| e.to_string())?;
+diff -ruN a/crates/engine/src/commands/file.rs b/crates/engine/src/commands/file.rs
+--- a/crates/engine/src/commands/file.rs	2026-10-26 00:31:11
++++ b/crates/engine/src/commands/file.rs	2026-10-28 11:29:44
+@@ -47,7 +47,7 @@
+     // XML copies (File ▸ Save a Copy As XML…) open like the JSON project.
+     let text = if crate::xml_project::is_xml(&text) { crate::xml_project::from_xml(&text).map_err(EngineError::Other)? } else { text };
+     let (mut proj, repaired) =
+-        Project::from_json_repaired(&text).map_err(|e| EngineError::Other(format!("{path} is not a project EffectCraft can open: {e}")))?;
++        Project::from_json_repaired(&text).map_err(|e| EngineError::Other(format!("{path} is not a project EffectFlow can open: {e}")))?;
+     // Footage saved with a relative path (imported by the CLI or an agent as `clip.mp4`, or
+     // written by hand) is found next to the project file, as After Effects looks for footage
+     // relative to the project (#652).
+@@ -61,7 +61,7 @@
+         let more = repaired.len().saturating_sub(3);
+         let shown = repaired.iter().take(3).cloned().collect::<Vec<_>>().join("; ");
+         let more = if more > 0 { format!(" and {more} more") } else { String::new() };
+-        s.toast(format!("This project had values outside EffectCraft's limits, corrected when it opened: {shown}{more}."));
++        s.toast(format!("This project had values outside EffectFlow's limits, corrected when it opened: {shown}{more}."));
+     }
+     if let Some((_, first, why)) = refused.first() {
+         let n = refused.len();
+@@ -71,7 +71,7 @@
+     let saved_by = effectcraft_project::saved_by(&text);
+     if let Some(v) = saved_by.as_deref().filter(|v| effectcraft_project::is_newer_version(v, effectcraft_project::APP_VERSION)) {
+         s.toast(format!(
+-            "This project was saved by EffectCraft {v}, newer than this version ({}). Settings this version doesn't know are lost if you save it.",
++            "This project was saved by EffectFlow {v}, newer than this version ({}). Settings this version doesn't know are lost if you save it.",
+             effectcraft_project::APP_VERSION
+         ));
+     }
+diff -ruN a/crates/engine/src/commands/frontend.rs b/crates/engine/src/commands/frontend.rs
+--- a/crates/engine/src/commands/frontend.rs	2026-10-26 00:31:11
++++ b/crates/engine/src/commands/frontend.rs	2026-10-28 11:29:44
+@@ -17,7 +17,7 @@
+ pub fn specs() -> Vec<CommandSpec> {
+     vec![
+         // Application.
+-        fe!("app.about", "About EffectCraft...", [], None, "{}", always),
++        fe!("app.about", "About EffectFlow...", [], None, "{}", always),
+         fe!("layer.style.options", "Layer Style Options...", ["Layer", "Layer Styles"], None, "{layer?, style?: blendingOptions|dropShadow|…}", has_layers),
+         fe!(
+             "app.settings",
+@@ -28,11 +28,11 @@
+             always
+         ),
+         fe!("app.gpuInfo", "GPU Information...", [], None, "{}", always),
+-        fe!("app.hide", "Hide EffectCraft", [], None, "{}", always),
++        fe!("app.hide", "Hide EffectFlow", [], None, "{}", always),
+         // macOS: the native menu's Hide Others / Show All (the desktop app hides the other apps).
+         fe!("app.hideOthers", "Hide Others", [], None, "{}", always),
+         fe!("app.showAll", "Show All", [], None, "{}", always),
+-        fe!("app.quit", "Quit EffectCraft", [], Some("Cmd+Q"), "{}", always),
++        fe!("app.quit", "Quit EffectFlow", [], Some("Cmd+Q"), "{}", always),
+         fe!("app.commandPalette", "Quick Apply...", ["Edit"], Some("Cmd+Shift+Space"), "{query?}", always),
+         fe!("app.keyboardShortcuts", "Keyboard Shortcuts", ["Edit"], Some("Cmd+Alt+'"), "{}", always),
+         fe!("app.templates", "Templates", [], None, "{kind: renderSettings|outputModule}", always),
+diff -ruN a/crates/engine/src/commands/help.rs b/crates/engine/src/commands/help.rs
+--- a/crates/engine/src/commands/help.rs	2026-10-26 00:31:11
++++ b/crates/engine/src/commands/help.rs	2026-10-28 11:29:44
+@@ -13,7 +13,7 @@
+ 
+ fn sibling(s: &mut Session, p: &Value) -> Result<Value> {
+     let slug = str_p(p, "app").unwrap_or("photocraft").to_ascii_lowercase();
+-    if str_p(p, "kind") == Some("github") { open(s, links::github_of(&slug)) } else { open(s, links::page_of(&slug)) }
++    if str_p(p, "kind") == Some("github") { open(s, links::github_of(&slug)) } else { open(s, links::LAUNCHER.into()) }
+ }
+ 
+ /// Help ▸ EffectCraft Help / Scripting Help / Expression Reference / Effect Reference.
+@@ -30,24 +30,24 @@
+ 
+ pub fn specs() -> Vec<CommandSpec> {
+     vec![
+-        cmd!("help.docs", "EffectCraft Help...", [], Some("F1"), "{page?: help|scripting|expressions|effects|agents}", always, docs),
+-        cmd!("help.discord", "Join the ArtCraft Discord...", ["Help"], None, "{}", always, |s, _| open(s, links::DISCORD.into())),
+-        cmd!("help.website", "ArtCraft Website", ["Help"], None, "{}", always, |s, _| open(s, links::WEBSITE.into())),
+-        cmd!("help.appPage", "EffectCraft Home Page", ["Help"], None, "{}", always, |s, _| open(s, links::APP_PAGE.into())),
+-        cmd!("help.github", "EffectCraft on GitHub", ["Help"], None, "{}", always, |s, _| open(s, links::GITHUB.into())),
+-        cmd!("help.onlineTutorials", "Online Tutorials...", ["Help"], None, "{}", always, |s, _| open(s, links::APP_PAGE.into())),
++        cmd!("help.docs", "Upstream Documentation...", [], Some("F1"), "{page?: help|scripting|expressions|effects|agents}", always, docs),
++        cmd!("help.discord", "Upstream Community...", ["Help"], None, "{}", always, |s, _| open(s, links::DISCORD.into())),
++        cmd!("help.website", "XeroFlow Creative Tools", ["Help"], None, "{}", always, |s, _| open(s, links::LAUNCHER.into())),
++        cmd!("help.appPage", "Upstream Home Page", ["Help"], None, "{}", always, |s, _| open(s, links::APP_PAGE.into())),
++        cmd!("help.github", "Upstream source on GitHub", ["Help"], None, "{}", always, |s, _| open(s, links::GITHUB.into())),
++        cmd!("help.onlineTutorials", "Upstream Tutorials...", ["Help"], None, "{}", always, |s, _| open(s, links::APP_PAGE.into())),
+         cmd!("help.inAppTutorials", "In-App Tutorials...", ["Help"], None, "{} → the Home screen's Learn tab", always, |s, p| super::frontend(
+             s,
+             "help.inAppTutorials",
+             p
+         )),
+-        cmd!("help.reportIssue", "Provide Feedback...", ["Help"], None, "{}", always, |s, _| open(s, links::ISSUES.into())),
++        cmd!("help.reportIssue", "Upstream Issue Tracker...", ["Help"], None, "{}", always, |s, _| open(s, links::ISSUES.into())),
+         cmd!(
+             "help.sibling",
+-            "Other ArtCraft Apps",
++            "Other XeroFlow Apps",
+             [],
+             None,
+-            "{app: photocraft|vectorcraft|filmcraft|lightcraft|pdfcraft|designcraft, kind?: page|github}",
++            "{app: photocraft|vectorcraft|filmcraft, kind?: page|github} → page: the XeroFlow Creative Tools launcher; github: the upstream source",
+             always,
+             sibling
+         ),
+diff -ruN a/crates/engine/src/commands/import_project.rs b/crates/engine/src/commands/import_project.rs
+--- a/crates/engine/src/commands/import_project.rs	2026-10-26 00:31:11
++++ b/crates/engine/src/commands/import_project.rs	2026-10-28 11:29:44
+@@ -23,7 +23,7 @@
+     let bytes = s.services.read_file(path).map_err(|e| EngineError::Other(format!("cannot read {path}: {e}")))?;
+     let text = String::from_utf8(bytes).map_err(|_| bad(C, format!("{path} is not a text project file")))?;
+     let text = if crate::xml_project::is_xml(&text) { crate::xml_project::from_xml(&text).map_err(EngineError::Other)? } else { text };
+-    let project = Project::from_json(&text).map_err(|e| bad(C, format!("{path} is not a project EffectCraft can open: {e}")))?;
++    let project = Project::from_json(&text).map_err(|e| bad(C, format!("{path} is not a project EffectFlow can open: {e}")))?;
+     Ok((project, effectcraft_project::saved_by(&text)))
+ }
+ 
+@@ -97,7 +97,7 @@
+     let primary = if let [one] = roots.as_slice() { Some(one.0) } else { None };
+     let mut warnings = vec![];
+     if let Some(v) = saved_by.as_deref().filter(|v| effectcraft_project::is_newer_version(v, effectcraft_project::APP_VERSION)) {
+-        warnings.push(format!("saved by EffectCraft {v}, newer than this version ({})", effectcraft_project::APP_VERSION));
++        warnings.push(format!("saved by EffectFlow {v}, newer than this version ({})", effectcraft_project::APP_VERSION));
+     }
+     if !missing.is_empty() {
+         warnings.push(format!("{} footage file{} missing", missing.len(), if missing.len() == 1 { " is" } else { "s are" }));
+@@ -117,7 +117,7 @@
+ pub fn specs() -> Vec<CommandSpec> {
+     vec![cmd!(
+         "file.importProject",
+-        "EffectCraft Project...",
++        "EffectFlow Project...",
+         ["File", "Import"],
+         None,
+         "{path (.ecproj or .ecprojx)} — merges the project into a folder named after the file; returns {folder, items, comps, rootComps, primaryComp (the only root comp, else null), missingMedia, warnings}",
+diff -ruN a/crates/engine/src/commands/mod.rs b/crates/engine/src/commands/mod.rs
+--- a/crates/engine/src/commands/mod.rs	2026-10-26 00:31:11
++++ b/crates/engine/src/commands/mod.rs	2026-10-28 11:29:44
+@@ -409,13 +409,13 @@
+ /// none are left, kept for future stubs).
+ #[allow(dead_code)]
+ pub(crate) fn not_yet(_: &Session) -> std::result::Result<(), String> {
+-    Err("not available yet in EffectCraft".into())
++    Err("not available yet in EffectFlow".into())
+ }
+ 
+ /// `run` of a not-yet-available command.
+ #[allow(dead_code)]
+ pub(crate) fn not_yet_run(_: &mut Session, _: &Value) -> Result<Value> {
+-    Err(EngineError::Other("not available yet in EffectCraft".into()))
++    Err(EngineError::Other("not available yet in EffectFlow".into()))
+ }
+ 
+ /// Hand a frontend-only command to the UI ([`crate::Event::Frontend`]).
+diff -ruN a/crates/engine/src/commands/scripts.rs b/crates/engine/src/commands/scripts.rs
+--- a/crates/engine/src/commands/scripts.rs	2026-10-26 00:31:11
++++ b/crates/engine/src/commands/scripts.rs	2026-10-28 11:29:44
+@@ -370,7 +370,7 @@
+             "Restore ScriptUI Panels",
+             [],
+             None,
+-            "{} → reopens the ScriptUI panels open when EffectCraft last quit (frontends call it at launch) → {opened: [name], failed: [{name, error}]}",
++            "{} → reopens the ScriptUI panels open when EffectFlow last quit (frontends call it at launch) → {opened: [name], failed: [{name, error}]}",
+             always,
+             restore_panels
+         ),
+diff -ruN a/crates/engine/src/commands/vpe.rs b/crates/engine/src/commands/vpe.rs
+--- a/crates/engine/src/commands/vpe.rs	2026-10-26 00:31:11
++++ b/crates/engine/src/commands/vpe.rs	2026-10-28 11:29:44
+@@ -10,7 +10,7 @@
+ 
+ /// Why the entry is disabled (shown as its tooltip).
+ pub const WHY: &str =
+-    "Vanishing Point Exchange (.vpe) files can't be imported: the format has no public specification, and EffectCraft only implements documented formats";
++    "Vanishing Point Exchange (.vpe) files can't be imported: the format has no public specification, and EffectFlow only implements documented formats";
+ 
+ fn import(_: &mut Session, _: &Value) -> Result<Value> {
+     Err(bad("file.importVanishingPoint", WHY))
+diff -ruN a/crates/engine/src/demo.rs b/crates/engine/src/demo.rs
+--- a/crates/engine/src/demo.rs	2026-10-26 00:31:11
++++ b/crates/engine/src/demo.rs	2026-10-28 11:29:44
+@@ -11,7 +11,7 @@
+ use effectcraft_project::{Comp, ItemId, ItemKind, Layer, LayerSource, Project, PropGroup, Solid};
+ use effectcraft_time::{FrameRate, Tick};
+ 
+-pub const MAIN_COMP: &str = "EffectCraft Intro";
++pub const MAIN_COMP: &str = "EffectFlow Intro";
+ pub const SHOWCASE_3D: &str = "3D Showcase";
+ 
+ /// Seconds → the nearest frame of the demo's 29.97 fps comps (AE keeps times frame-aligned).
+@@ -116,8 +116,8 @@
+     let mut title = text_layer(
+         p,
+         &c,
+-        "Built with EffectCraft",
+-        TextDoc { text: "Built with EffectCraft".into(), size: 40.0, style: "SemiBold".into(), justify: Justify::Center, ..Default::default() },
++        "Built with EffectFlow",
++        TextDoc { text: "Built with EffectFlow".into(), size: 40.0, style: "SemiBold".into(), justify: Justify::Center, ..Default::default() },
+         [440.0, 914.0],
+     );
+     anim(&mut title, "transform/opacity", keys(&[(0.4, Value::Scalar(0.0)), (0.9, Value::Scalar(100.0))]));
+diff -ruN a/crates/engine/src/links.rs b/crates/engine/src/links.rs
+--- a/crates/engine/src/links.rs	2026-10-26 00:31:11
++++ b/crates/engine/src/links.rs	2026-10-28 11:29:44
+@@ -1,22 +1,23 @@
+ //! Community and project links (shown in Help ▸, the About dialog, the start screen and the
+ //! header's Discord button).
+ 
+-pub const APP_NAME: &str = "EffectCraft";
++pub const APP_NAME: &str = "EffectFlow";
+ pub const APP_SLUG: &str = "effectcraft";
+ pub const DISCORD: &str = "https://discord.gg/artcraft";
+ pub const WEBSITE: &str = "https://getartcraft.com";
+ pub const APP_PAGE: &str = "https://getartcraft.com/apps/effectcraft";
+ pub const GITHUB: &str = "https://github.com/storytold/effectcraft";
+ pub const ISSUES: &str = "https://github.com/storytold/effectcraft/issues";
++/// XeroFlow Creative Tools, the launcher for the XeroFlow apps (Help ▸ XeroFlow Creative Tools,
++/// the About dialog, the start screen, the header and the sibling apps open it).
++pub const LAUNCHER: &str = "https://xeroflow-creative-tools.adme-dev.workers.dev/";
+ 
+-/// Sibling apps of the ArtCraft family: (name, what it is, GitHub repo, app page).
++/// The other XeroFlow apps: (display name, upstream slug). Their links open the [`LAUNCHER`];
++/// the slug still names the upstream repository for `help.sibling {kind: "github"}`.
+ pub const SIBLINGS: &[(&str, &str)] = &[
+-    ("PhotoCraft", "photocraft"),
+-    ("VectorCraft", "vectorcraft"),
+-    ("FilmCraft", "filmcraft"),
+-    ("LightCraft", "lightcraft"),
+-    ("PdfCraft", "pdfcraft"),
+-    ("DesignCraft", "designcraft"),
++    ("PhotoFlow", "photocraft"),
++    ("VectorFlow", "vectorcraft"),
++    ("FilmFlow", "filmcraft"),
+ ];
+ 
+ pub fn github_of(slug: &str) -> String {
+diff -ruN a/crates/engine/src/menus/tests.rs b/crates/engine/src/menus/tests.rs
+--- a/crates/engine/src/menus/tests.rs	2026-10-26 00:31:11
++++ b/crates/engine/src/menus/tests.rs	2026-10-28 11:29:44
+@@ -27,7 +27,7 @@
+ fn top_level_order_matches_after_effects() {
+     let mac: Vec<String> =
+         parse(TREE, true).unwrap().iter().filter_map(|n| if let MenuNode::Submenu { label, .. } = n { Some(label.clone()) } else { None }).collect();
+-    assert_eq!(mac, ["EffectCraft", "File", "Edit", "Composition", "Layer", "Effect", "Animation", "View", "Window", "Help"]);
++    assert_eq!(mac, ["EffectFlow", "File", "Edit", "Composition", "Layer", "Effect", "Animation", "View", "Window", "Help"]);
+     let other: Vec<String> =
+         parse(TREE, false).unwrap().iter().filter_map(|n| if let MenuNode::Submenu { label, .. } = n { Some(label.clone()) } else { None }).collect();
+     assert_eq!(other, ["File", "Edit", "Composition", "Layer", "Effect", "Animation", "View", "Window", "Help"]);
+diff -ruN a/crates/engine/src/menus.rs b/crates/engine/src/menus.rs
+--- a/crates/engine/src/menus.rs	2026-10-26 00:31:11
++++ b/crates/engine/src/menus.rs	2026-10-28 11:29:43
+@@ -485,8 +485,8 @@
+ 
+ /// The After Effects menu layout. Labels use "..." like AE's macOS menus.
+ pub const TREE: &str = r#"
+-[mac] EffectCraft
+-  About EffectCraft... | app.about
++[mac] EffectFlow
++  About EffectFlow... | app.about
+   ---
+   Settings...
+     General... | app.settings {"page":"general"} | Cmd+Alt+;
+@@ -507,11 +507,11 @@
+     3D... | app.settings {"page":"3d"}
+     Scripting & Expressions... | app.settings {"page":"scripting"}
+   ---
+-  Hide EffectCraft | app.hide
++  Hide EffectFlow | app.hide
+   Hide Others | app.hideOthers
+   Show All | app.showAll
+   ---
+-  Quit EffectCraft | app.quit
++  Quit EffectFlow | app.quit
+ File
+   New
+     New Project | file.newProject
+@@ -538,7 +538,7 @@
+     File... | file.import
+     Multiple Files... | file.importMultiple
+     Adobe Premiere Pro Project... | file.importTimeline
+-    EffectCraft Project... | file.importProject
++    EffectFlow Project... | file.importProject
+     Placeholder... | file.importPlaceholder
+     Solid... | file.importSolid
+     Lottie... | file.importLottie
+@@ -1231,7 +1231,7 @@
+   VR Comp Editor | window.panel {"panel":"vrCompEditor"}
+   @dynamic:scriptPanels
+ Help
+-  EffectCraft Help... | help.docs {"page":"help"} | F1
++  Upstream Documentation... | help.docs {"page":"help"} | F1
+   Scripting Help... | help.docs {"page":"scripting"}
+   Expression Reference... | help.docs {"page":"expressions"}
+   Effect Reference... | help.docs {"page":"effects"}
+@@ -1239,21 +1239,21 @@
+   Keyboard Shortcuts... | app.keyboardShortcuts
+   ---
+   In-App Tutorials... | help.inAppTutorials
+-  Online Tutorials... | help.onlineTutorials
++  Upstream Tutorials... | help.onlineTutorials
+   ---
+   System Compatibility Report... | help.systemReport
+   Enable Logging | help.enableLogging
+   Reveal Logging File | help.revealLogFile
+   ---
+-  Join the ArtCraft Discord... | help.discord
+-  Provide Feedback... | help.reportIssue
++  Upstream Community... | help.discord
++  Upstream Issue Tracker... | help.reportIssue
+   ---
+-  ArtCraft Website | help.website
+-  EffectCraft Home Page | help.appPage
+-  EffectCraft on GitHub | help.github
++  XeroFlow Creative Tools | help.website
++  Upstream Home Page | help.appPage
++  Upstream source on GitHub | help.github
+   Open Demo Project | file.openDemoProject
+   [!mac] ---
+-  [!mac] About EffectCraft... | app.about
++  [!mac] About EffectFlow... | app.about
+ "#;
+ 
+ #[cfg(test)]
+diff -ruN a/crates/engine/src/prefs.rs b/crates/engine/src/prefs.rs
+--- a/crates/engine/src/prefs.rs	2026-10-26 00:31:11
++++ b/crates/engine/src/prefs.rs	2026-10-28 11:29:44
+@@ -1183,7 +1183,7 @@
+                 s("general.expressionPickWhipCompact", "Expression Pick Whip Writes Compact English", B, true),
+                 s("general.createSplitLayersAbove", "Create Split Layers Above Original Layer", B, true),
+                 s("general.useSystemColorPicker", "Use System Color Picker", B, false),
+-                Note("EffectCraft always uses its own colour picker (the same on every platform and the web)."),
++                Note("EffectFlow always uses its own colour picker (the same on every platform and the web)."),
+             ],
+         },
+         Page {
+@@ -1195,7 +1195,7 @@
+                 s("startup.offerCrashRecovery", "Offer to Open the Latest Auto-Save After a Crash", B, true),
+                 s("startup.windowGraphics", "Window Graphics", Kind::Choice(WINDOW_GRAPHICS), true),
+                 Note(
+-                    "Window Graphics applies from the next launch. When the graphics driver stops EffectCraft as its window opens, the next launch switches to OpenGL.",
++                    "Window Graphics applies from the next launch. When the graphics driver stops EffectFlow as its window opens, the next launch switches to OpenGL.",
+                 ),
+                 Section("Repair"),
+                 Button { label: "Reset Settings", command: "prefs.reset", params: "{}" },
+diff -ruN a/crates/engine/src/tests_limits.rs b/crates/engine/src/tests_limits.rs
+--- a/crates/engine/src/tests_limits.rs	2026-10-26 00:31:11
++++ b/crates/engine/src/tests_limits.rs	2026-10-28 11:29:44
+@@ -53,7 +53,7 @@
+         let r = s.execute("file.open", json!({"path": path})).unwrap();
+         let repaired = r["repaired"].as_array().unwrap();
+         assert!(repaired.iter().any(|n| n.as_str().unwrap().contains("4000000000 × 0 px → 30000 × 1 px")), "{path}: {repaired:?}");
+-        let toast = s.drain_events().into_iter().any(|e| matches!(e, Event::Toast { message, .. } if message.contains("outside EffectCraft's limits")));
++        let toast = s.drain_events().into_iter().any(|e| matches!(e, Event::Toast { message, .. } if message.contains("outside EffectFlow's limits")));
+         assert!(toast, "{path}");
+         let (cid, c) = s.project.comps().next().map(|(id, c)| (*id, c.clone())).unwrap();
+         assert_eq!((c.width, c.height), (limits::MAX_SIZE, 1));
+diff -ruN a/crates/engine/src/tests_menu_cmds.rs b/crates/engine/src/tests_menu_cmds.rs
+--- a/crates/engine/src/tests_menu_cmds.rs	2026-10-26 00:31:11
++++ b/crates/engine/src/tests_menu_cmds.rs	2026-10-28 11:29:44
+@@ -1293,7 +1293,7 @@
+     let junk = tmp("Junk.ecproj");
+     std::fs::write(&junk, "{ not json").unwrap();
+     let e = s.execute("file.open", json!({"path": junk})).unwrap_err().to_string();
+-    assert!(e.contains("is not a project EffectCraft can open"), "{e}");
++    assert!(e.contains("is not a project EffectFlow can open"), "{e}");
+ }
+ 
+ #[test]
+diff -ruN a/crates/engine/src/xml_project.rs b/crates/engine/src/xml_project.rs
+--- a/crates/engine/src/xml_project.rs	2026-10-26 00:31:11
++++ b/crates/engine/src/xml_project.rs	2026-10-28 11:29:44
+@@ -249,7 +249,7 @@
+     let mut p = P { s: text.trim_start_matches('\u{feff}'), i: 0 };
+     let (root, _, _) = p.open()?;
+     if root != ROOT {
+-        return Err(format!("not an EffectCraft XML project (root <{root}>)"));
++        return Err(format!("not an EffectFlow XML project (root <{root}>)"));
+     }
+     let v = p.value(0)?;
+     p.close(ROOT)?;
+diff -ruN a/crates/script/src/prelude.js b/crates/script/src/prelude.js
+--- a/crates/script/src/prelude.js	2026-10-26 00:31:11
++++ b/crates/script/src/prelude.js	2026-10-28 11:29:44
+@@ -166,7 +166,7 @@
+   this.onTimeout = null;
+ }
+ BridgeTalk.prototype.send = function () {
+-  throw __err("BridgeTalk: sending messages to other applications is not supported in EffectCraft");
++  throw __err("BridgeTalk: sending messages to other applications is not supported in EffectFlow");
+ };
+ BridgeTalk.prototype.sendResult = BridgeTalk.prototype.send;
+ BridgeTalk.prototype.toString = function () { return "[object BridgeTalk]"; };
+diff -ruN a/crates/script/src/runtime.rs b/crates/script/src/runtime.rs
+--- a/crates/script/src/runtime.rs	2026-10-26 00:31:11
++++ b/crates/script/src/runtime.rs	2026-10-28 11:29:44
+@@ -460,7 +460,7 @@
+                 Ok(json!(r.is_ok()))
+             }
+             "network" => Err(if s.prefs.scripting.allow_scripts_write_files {
+-                "network access from scripts is not supported in EffectCraft".to_string()
++                "network access from scripts is not supported in EffectFlow".to_string()
+             } else {
+                 format!("scripts can't access the network unless {GATE} is on")
+             }),
+diff -ruN a/crates/script/src/socket.rs b/crates/script/src/socket.rs
+--- a/crates/script/src/socket.rs	2026-10-26 00:31:11
++++ b/crates/script/src/socket.rs	2026-10-28 11:29:44
+@@ -41,7 +41,7 @@
+         match op {
+             "connected" | "eof" => json!({"value": op == "eof"}),
+             "close" => json!({}),
+-            _ => err("sockets are not available in the web version of EffectCraft"),
++            _ => err("sockets are not available in the web version of EffectFlow"),
+         }
+     }
+ }
+diff -ruN a/crates/ui-egui/src/header.rs b/crates/ui-egui/src/header.rs
+--- a/crates/ui-egui/src/header.rs	2026-10-26 00:31:11
++++ b/crates/ui-egui/src/header.rs	2026-10-28 11:29:44
+@@ -27,9 +27,9 @@
+     let brand = Rect::from_min_size(pos2(x, cy - 12.0), vec2(24.0, 24.0));
+     paint_logo(&p, brand);
+     let bresp = ui.interact(brand, egui::Id::new("brand"), Sense::click());
+-    app.auto.add_response("header.about", &bresp, "About EffectCraft");
++    app.auto.add_response("header.about", &bresp, "About EffectFlow");
+     widgets::focus_outline(ui, &bresp, &t);
+-    if bresp.on_hover_text(tr("About EffectCraft")).clicked() {
++    if bresp.on_hover_text(tr("About EffectFlow")).clicked() {
+         app.dialog = Some(Dialog::About);
+     }
+     x += 32.0;
+@@ -193,13 +193,13 @@
+     p.rect_filled(discord, 13.0, if dresp.hovered() { dc.gamma_multiply(1.2) } else { dc });
+     icons::paint(&p, Rect::from_center_size(pos2(discord.min.x + 17.0, cy), vec2(14.0, 14.0)), Icon::Chat, Color32::WHITE);
+     p.galley(pos2(discord.min.x + 30.0, cy - label.size().y / 2.0), label, Color32::WHITE);
+-    app.auto.add("header.discord", discord, "Join the ArtCraft Discord");
+-    if dresp.on_hover_text(tr("Join the ArtCraft community on Discord")).clicked() {
++    app.auto.add("header.discord", discord, "Upstream community");
++    if dresp.on_hover_text(tr("Upstream community on Discord")).clicked() {
+         let _ = app.session.execute("help.discord", json!({}));
+     }
+     rx = discord.min.x - 6.0;
+     for (id, icon, tip, cmd) in
+-        [("hdr-github", Icon::Code, "EffectCraft on GitHub", "help.github"), ("hdr-web", Icon::Globe, "EffectCraft on getartcraft.com", "help.appPage")]
++        [("hdr-github", Icon::Code, "Upstream source on GitHub", "help.github"), ("hdr-web", Icon::Globe, "XeroFlow Creative Tools", "help.website")]
+     {
+         let r = Rect::from_min_max(pos2(rx - 26.0, cy - 13.0), pos2(rx, cy + 13.0));
+         if widgets::icon_button(ui, r, icon, false, &t, egui::Id::new(id)).on_hover_text(tip).clicked() {
+@@ -660,27 +660,13 @@
+     }
+ }
+ 
+-/// The ArtCraft mark as supplied in `docs/brand` (the README's and getartcraft.com's logo; used
+-/// unmodified, see `docs/brand/LICENSE-brand.txt`).
+-static ARTCRAFT_MARK: &[u8] = include_bytes!("../../../docs/brand/artcraft-mark.png");
+-
+-/// The ArtCraft mark in `r` (decoded once into a mipmapped texture, so it stays crisp from the
+-/// 24 px Tools bar to the About dialog). Nothing is drawn if it can't be decoded.
++/// The XeroFlow mark: a rounded tile with an "X", painted from plain shapes and text. (Upstream drew
++/// the ArtCraft mark from `docs/brand/`; the ArtCraft marks are trademarks a modified version must
++/// not use, see `docs/brand/LICENSE-brand.txt`, so this fork paints its own mark instead. The files
++/// in `docs/brand/` are left untouched and are no longer compiled in.)
+ pub fn paint_logo(p: &egui::Painter, r: Rect) {
+-    let ctx = p.ctx();
+-    let id = egui::Id::new("artcraft-mark");
+-    let tex = ctx.data(|d| d.get_temp::<Option<egui::TextureHandle>>(id)).unwrap_or_else(|| {
+-        let tex = image::load_from_memory_with_format(ARTCRAFT_MARK, image::ImageFormat::Png).ok().map(|img| {
+-            let img = img.to_rgba8();
+-            let ci = egui::ColorImage::from_rgba_unmultiplied([img.width() as usize, img.height() as usize], img.as_raw());
+-            ctx.load_texture("artcraft-mark", ci, egui::TextureOptions::LINEAR.with_mipmap_mode(Some(egui::TextureFilter::Linear)))
+-        });
+-        ctx.data_mut(|d| d.insert_temp(id, tex.clone()));
+-        tex
+-    });
+-    if let Some(t) = tex {
+-        p.image(t.id(), r, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
+-    }
++    p.rect_filled(r, r.height() * 0.22, Color32::from_rgb(0x4f, 0x46, 0xe5));
++    p.text(r.center(), Align2::CENTER_CENTER, "X", egui::FontId::proportional(r.height() * 0.62), Color32::WHITE);
+ }
+ 
+ #[cfg(test)]
+diff -ruN a/crates/ui-egui/src/i18n/ui.rs b/crates/ui-egui/src/i18n/ui.rs
+--- a/crates/ui-egui/src/i18n/ui.rs	2026-10-26 00:31:11
++++ b/crates/ui-egui/src/i18n/ui.rs	2026-10-28 11:29:43
+@@ -173,10 +173,10 @@
+     ("360 View Orientation", "360度ビューの方向"),
+     ("3:2 Pulldown: {}", "3:2プルダウン：{}"),
+     (
+-        "A clean-room, open-source compositor for motion graphics and visual effects: native on macOS, Windows and Linux, and in the browser. Part of the ArtCraft family of creative apps.",
+-        "モーショングラフィックスとビジュアルエフェクト向けの、クリーンルーム方式で開発されたオープンソースのコンポジットソフトウェアです。macOS、Windows、Linuxでネイティブに動作し、ブラウザーでも使えます。ArtCraftクリエイティブアプリファミリーの一員です。",
++        "A clean-room, open-source compositor for motion graphics and visual effects: native on macOS, Windows and Linux, and in the browser. Based on the original EffectCraft project by the ArtCraft team.",
++        "モーショングラフィックスとビジュアルエフェクト向けの、クリーンルーム方式で開発されたオープンソースのコンポジットソフトウェアです。macOS、Windows、Linuxでネイティブに動作し、ブラウザーでも使えます。ArtCraftチームによるオリジナルのEffectCraftプロジェクトをもとにしています。",
+     ),
+-    ("About EffectCraft", "EffectCraftについて"),
++    ("About EffectFlow", "EffectFlowについて"),
+     ("About...", "情報..."),
+     ("Active", "使用中"),
+     ("Active Camera", "アクティブカメラ"),
+@@ -305,7 +305,7 @@
+     ("Edit Gradient…", "グラデーションを編集…"),
+     ("Edit Target: {}", "編集対象：{}"),
+     ("Edit in the Timeline", "タイムラインで編集"),
+-    ("EffectCraft didn't quit normally last time.", "EffectCraftは前回正常に終了しませんでした。"),
++    ("EffectFlow didn't quit normally last time.", "EffectFlowは前回正常に終了しませんでした。"),
+     ("Effects", "エフェクト"),
+     ("Effects & Presets options", "エフェクト＆プリセットのオプション"),
+     ("Copy Presets Folder Path", "プリセットフォルダーのパスをコピー"),
+@@ -362,7 +362,7 @@
+     ("Install from File…", "ファイルからインストール…"),
+     ("Intensity", "強度"),
+     ("Inverted", "反転"),
+-    ("Join the ArtCraft community on Discord", "DiscordでArtCraftコミュニティに参加"),
++    ("Upstream community on Discord", "Discordのアップストリームコミュニティ"),
+     ("Key: {}", "キー：{}"),
+     ("LEARN", "学習"),
+     ("Label", "ラベル"),
+@@ -402,7 +402,7 @@
+     ("Models folder: {}", "モデルフォルダー：{}"),
+     ("Modifiers:", "修飾キー:"),
+     ("More", "その他"),
+-    ("More ArtCraft apps", "ほかのArtCraftアプリ"),
++    ("More XeroFlow apps", "ほかのXeroFlowアプリ"),
+     ("More tutorials", "ほかのチュートリアル"),
+     ("Motion Blur", "モーションブラー"),
+     ("Motion Blur: {}", "モーションブラー：{}"),
+@@ -618,7 +618,7 @@
+     ("Variable Font Axes", "可変フォントの軸"),
+     ("Video Codec: {}", "ビデオコーデック：{}"),
+     ("View:", "表示:"),
+-    ("Welcome to EffectCraft", "EffectCraftへようこそ"),
++    ("Welcome to EffectFlow", "EffectFlowへようこそ"),
+     ("Width:", "幅:"),
+     ("You can undo this.", "この操作は取り消せます。"),
+     ("You can't undo this.", "この操作は取り消せません。"),
+@@ -672,7 +672,7 @@
+     ("Import PDF / Illustrator File", "PDF / Illustratorファイルを読み込み"),
+     ("Import Photoshop File", "Photoshopファイルを読み込み"),
+     ("Interpret Unlabeled Alpha As", "ラベルのないアルファを変換"),
+-    ("Join the ArtCraft Discord", "ArtCraftのDiscordに参加"),
++    ("Upstream community", "アップストリームのコミュニティ"),
+     ("Mercury GPU Acceleration ({})", "Mercury GPUアクセラレーション（{}）"),
+     ("Mercury Software Only", "Mercuryソフトウェアのみ"),
+     ("OCIO (built-in ACES config)", "OCIO（組み込みACES設定）"),
+@@ -688,8 +688,8 @@
+     ("New Project", "新規プロジェクト"),
+     ("Open Project…", "プロジェクトを開く…"),
+     ("Templates", "テンプレート"),
+-    ("EffectCraft home page", "EffectCraftのホームページ"),
+-    ("EffectCraft on GitHub", "GitHubのEffectCraft"),
++    ("Upstream home page", "アップストリームプロジェクトのホームページ"),
++    ("Upstream source on GitHub", "GitHubのアップストリームのソースコード"),
+     ("Motion graphics and visual effects · version {}", "モーショングラフィックスとビジュアルエフェクト · バージョン{}"),
+     ("New Composition", "新規コンポジション"),
+     ("Open Demo Project", "デモプロジェクトを開く"),
+@@ -711,7 +711,7 @@
+     ("{} hours ago", "{}時間前"),
+     ("{} day ago", "{}日前"),
+     ("{} days ago", "{}日前"),
+-    ("EffectCraft project", "EffectCraftプロジェクト"),
++    ("EffectFlow project", "EffectFlowプロジェクト"),
+     ("After Effects project", "After Effectsプロジェクト"),
+     ("Lottie animation", "Lottieアニメーション"),
+     ("Project", "プロジェクト"),
+@@ -731,8 +731,8 @@
+     ("Create Split Layers Above Original Layer", "元のレイヤーの上に分割したレイヤーを作成"),
+     ("Use System Color Picker", "システムのカラーピッカーを使用"),
+     (
+-        "EffectCraft always uses its own colour picker (the same on every platform and the web).",
+-        "EffectCraftは常に独自のカラーピッカーを使用します（すべてのプラットフォームとWeb版で同じです）。",
++        "EffectFlow always uses its own colour picker (the same on every platform and the web).",
++        "EffectFlowは常に独自のカラーピッカーを使用します（すべてのプラットフォームとWeb版で同じです）。",
+     ),
+     ("Startup & Repair", "起動と修復"),
+     ("Show Home Screen When Launching", "起動時にホーム画面を表示"),
+@@ -741,8 +741,8 @@
+     ("Window Graphics", "ウィンドウグラフィックス"),
+     ("Automatic", "自動"),
+     (
+-        "Window Graphics applies from the next launch. When the graphics driver stops EffectCraft as its window opens, the next launch switches to OpenGL.",
+-        "ウィンドウグラフィックスは次回の起動から適用されます。ウィンドウを開くときにグラフィックスドライバーがEffectCraftを停止させた場合、次回の起動ではOpenGLに切り替わります。",
++        "Window Graphics applies from the next launch. When the graphics driver stops EffectFlow as its window opens, the next launch switches to OpenGL.",
++        "ウィンドウグラフィックスは次回の起動から適用されます。ウィンドウを開くときにグラフィックスドライバーがEffectFlowを停止させた場合、次回の起動ではOpenGLに切り替わります。",
+     ),
+     ("Repair", "修復"),
+     ("Reset Settings", "設定をリセット"),
+@@ -914,10 +914,10 @@
+     ("360 View Orientation", "360 视图方向"),
+     ("3:2 Pulldown: {}", "3:2 折叠：{}"),
+     (
+-        "A clean-room, open-source compositor for motion graphics and visual effects: native on macOS, Windows and Linux, and in the browser. Part of the ArtCraft family of creative apps.",
+-        "一款从零编写、开源的动态图形与视觉效果合成软件：原生支持 macOS、Windows 和 Linux，也可在浏览器中运行。属于 ArtCraft 创意应用家族。",
++        "A clean-room, open-source compositor for motion graphics and visual effects: native on macOS, Windows and Linux, and in the browser. Based on the original EffectCraft project by the ArtCraft team.",
++        "一款从零编写、开源的动态图形与视觉效果合成软件：原生支持 macOS、Windows 和 Linux，也可在浏览器中运行。基于 ArtCraft 团队的原始 EffectCraft 项目。",
+     ),
+-    ("About EffectCraft", "关于 EffectCraft"),
++    ("About EffectFlow", "关于 EffectFlow"),
+     ("About...", "关于..."),
+     ("Active", "使用中"),
+     ("Active Camera", "活动摄像机"),
+@@ -1040,7 +1040,7 @@
+     ("Edit Gradient…", "编辑渐变…"),
+     ("Edit Target: {}", "编辑目标：{}"),
+     ("Edit in the Timeline", "在时间轴中编辑"),
+-    ("EffectCraft didn't quit normally last time.", "EffectCraft 上次未正常退出。"),
++    ("EffectFlow didn't quit normally last time.", "EffectFlow 上次未正常退出。"),
+     ("Effects", "效果"),
+     ("Effects & Presets options", "效果和预设选项"),
+     ("Copy Presets Folder Path", "复制预设文件夹路径"),
+@@ -1097,7 +1097,7 @@
+     ("Install from File…", "从文件安装…"),
+     ("Intensity", "强度"),
+     ("Inverted", "反转"),
+-    ("Join the ArtCraft community on Discord", "加入 ArtCraft 的 Discord 社区"),
++    ("Upstream community on Discord", "Discord 上的上游社区"),
+     ("Key: {}", "按键：{}"),
+     ("LEARN", "学习"),
+     ("Label", "标签"),
+@@ -1137,7 +1137,7 @@
+     ("Models folder: {}", "模型文件夹：{}"),
+     ("Modifiers:", "修饰键："),
+     ("More", "更多"),
+-    ("More ArtCraft apps", "更多 ArtCraft 应用"),
++    ("More XeroFlow apps", "更多 XeroFlow 应用"),
+     ("More tutorials", "更多教程"),
+     ("Motion Blur", "运动模糊"),
+     ("Motion Blur: {}", "运动模糊：{}"),
+@@ -1347,7 +1347,7 @@
+     ("Variable Font Axes", "可变字体轴"),
+     ("Video Codec: {}", "视频编解码器：{}"),
+     ("View:", "视图："),
+-    ("Welcome to EffectCraft", "欢迎使用 EffectCraft"),
++    ("Welcome to EffectFlow", "欢迎使用 EffectFlow"),
+     ("Width:", "宽度："),
+     ("You can undo this.", "您可以撤销此操作。"),
+     ("You can't undo this.", "此操作无法撤销。"),
+@@ -1408,7 +1408,7 @@
+     ("Import PDF / Illustrator File", "导入 PDF / Illustrator 文件"),
+     ("Import Photoshop File", "导入 Photoshop 文件"),
+     ("Interpret Unlabeled Alpha As", "将未标记的 Alpha 解释为"),
+-    ("Join the ArtCraft Discord", "加入 ArtCraft Discord"),
++    ("Upstream community", "上游社区"),
+     ("Mercury GPU Acceleration ({})", "Mercury GPU 加速（{}）"),
+     ("Mercury Software Only", "仅 Mercury 软件"),
+     ("OCIO (built-in ACES config)", "OCIO（内置 ACES 配置）"),
+@@ -1425,8 +1425,8 @@
+     ("New Project", "新建项目"),
+     ("Open Project…", "打开项目…"),
+     ("Templates", "模板"),
+-    ("EffectCraft home page", "EffectCraft 主页"),
+-    ("EffectCraft on GitHub", "GitHub 上的 EffectCraft"),
++    ("Upstream home page", "上游项目主页"),
++    ("Upstream source on GitHub", "GitHub 上的上游源代码"),
+     ("Motion graphics and visual effects · version {}", "动态图形和视觉效果 · 版本 {}"),
+     ("New Composition", "新建合成"),
+     ("Open Demo Project", "打开示例项目"),
+@@ -1448,7 +1448,7 @@
+     ("{} hours ago", "{} 小时前"),
+     ("{} day ago", "{} 天前"),
+     ("{} days ago", "{} 天前"),
+-    ("EffectCraft project", "EffectCraft 项目"),
++    ("EffectFlow project", "EffectFlow 项目"),
+     ("After Effects project", "After Effects 项目"),
+     ("Lottie animation", "Lottie 动画"),
+     ("Project", "项目"),
+@@ -1469,8 +1469,8 @@
+     ("Create Split Layers Above Original Layer", "在原始图层上方创建拆分图层"),
+     ("Use System Color Picker", "使用系统拾色器"),
+     (
+-        "EffectCraft always uses its own colour picker (the same on every platform and the web).",
+-        "EffectCraft 始终使用自己的拾色器（在所有平台和网页版中都相同）。",
++        "EffectFlow always uses its own colour picker (the same on every platform and the web).",
++        "EffectFlow 始终使用自己的拾色器（在所有平台和网页版中都相同）。",
+     ),
+     ("Startup & Repair", "启动和修复"),
+     ("Show Home Screen When Launching", "启动时显示主屏幕"),
+@@ -1479,8 +1479,8 @@
+     ("Window Graphics", "窗口图形"),
+     ("Automatic", "自动"),
+     (
+-        "Window Graphics applies from the next launch. When the graphics driver stops EffectCraft as its window opens, the next launch switches to OpenGL.",
+-        "窗口图形从下次启动起生效。如果图形驱动程序在窗口打开时导致 EffectCraft 停止运行，下次启动将切换为 OpenGL。",
++        "Window Graphics applies from the next launch. When the graphics driver stops EffectFlow as its window opens, the next launch switches to OpenGL.",
++        "窗口图形从下次启动起生效。如果图形驱动程序在窗口打开时导致 EffectFlow 停止运行，下次启动将切换为 OpenGL。",
+     ),
+     ("Repair", "修复"),
+     ("Reset Settings", "重置设置"),
+@@ -1637,7 +1637,7 @@
+     ),
+     ("Match System", "跟随系统"),
+     ("Default", "默认"),
+-    ("Stored, but not used by EffectCraft yet", "已保存，但 EffectCraft 尚未使用"),
++    ("Stored, but not used by EffectFlow yet", "已保存，但 EffectFlow 尚未使用"),
+     ("Total Offset", "总偏移"),
+     ("Per Layer", "每个图层"),
+     ("Track", "跟踪"),
+@@ -1654,10 +1654,10 @@
+     ("360 View Orientation", "360 檢視方向"),
+     ("3:2 Pulldown: {}", "3:2 摺疊：{}"),
+     (
+-        "A clean-room, open-source compositor for motion graphics and visual effects: native on macOS, Windows and Linux, and in the browser. Part of the ArtCraft family of creative apps.",
+-        "一款從零編寫、開源的動態圖形與視覺效果合成軟件：原生支援 macOS、Windows 和 Linux，也可在瀏覽器中執行。屬於 ArtCraft 創意應用家族。",
++        "A clean-room, open-source compositor for motion graphics and visual effects: native on macOS, Windows and Linux, and in the browser. Based on the original EffectCraft project by the ArtCraft team.",
++        "一款從零編寫、開源的動態圖形與視覺效果合成軟件：原生支援 macOS、Windows 和 Linux，也可在瀏覽器中執行。基於 ArtCraft 團隊的原始 EffectCraft 專案。",
+     ),
+-    ("About EffectCraft", "關於 EffectCraft"),
++    ("About EffectFlow", "關於 EffectFlow"),
+     ("About...", "關於..."),
+     ("Active", "使用中"),
+     ("Active Camera", "活動攝影機"),
+@@ -1780,7 +1780,7 @@
+     ("Edit Gradient…", "編輯漸變…"),
+     ("Edit Target: {}", "編輯目標：{}"),
+     ("Edit in the Timeline", "在時間軸中編輯"),
+-    ("EffectCraft didn't quit normally last time.", "EffectCraft 上次未正常結束。"),
++    ("EffectFlow didn't quit normally last time.", "EffectFlow 上次未正常結束。"),
+     ("Effects", "效果"),
+     ("Effects & Presets options", "效果和預設集選項"),
+     ("Copy Presets Folder Path", "複製預設集資料夾路徑"),
+@@ -1837,7 +1837,7 @@
+     ("Install from File…", "從文件安裝…"),
+     ("Intensity", "強度"),
+     ("Inverted", "反轉"),
+-    ("Join the ArtCraft community on Discord", "加入 ArtCraft 的 Discord 社區"),
++    ("Upstream community on Discord", "Discord 上的上游社群"),
+     ("Key: {}", "按鍵：{}"),
+     ("LEARN", "學習"),
+     ("Label", "標籤"),
+@@ -1877,7 +1877,7 @@
+     ("Models folder: {}", "模型資料夾：{}"),
+     ("Modifiers:", "修飾鍵："),
+     ("More", "更多"),
+-    ("More ArtCraft apps", "更多 ArtCraft 應用"),
++    ("More XeroFlow apps", "更多 XeroFlow 應用"),
+     ("More tutorials", "更多教學"),
+     ("Motion Blur", "運動模糊"),
+     ("Motion Blur: {}", "動態模糊：{}"),
+@@ -2087,7 +2087,7 @@
+     ("Variable Font Axes", "可變字型軸"),
+     ("Video Codec: {}", "視訊轉碼器：{}"),
+     ("View:", "檢視："),
+-    ("Welcome to EffectCraft", "歡迎使用 EffectCraft"),
++    ("Welcome to EffectFlow", "歡迎使用 EffectFlow"),
+     ("Width:", "寬度："),
+     ("You can undo this.", "您可以復原此操作。"),
+     ("You can't undo this.", "此操作無法復原。"),
+@@ -2105,14 +2105,14 @@
+     ("⚠ {} is used by:", "⚠ {} 已被以下專案使用："),
+     ("Blue", "藍色"),
+     ("Green", "綠色"),
+-    ("Join the ArtCraft Discord", "加入 ArtCraft Discord"),
++    ("Upstream community", "上游社群"),
+     ("Red", "紅色"),
+     // The Home screen (#574).
+     ("New Project", "新增專案"),
+     ("Open Project…", "開啟專案…"),
+     ("Templates", "範本"),
+-    ("EffectCraft home page", "EffectCraft 首頁"),
+-    ("EffectCraft on GitHub", "GitHub 上的 EffectCraft"),
++    ("Upstream home page", "上游專案首頁"),
++    ("Upstream source on GitHub", "GitHub 上的上游原始碼"),
+     ("Motion graphics and visual effects · version {}", "動態圖形與視覺效果 · 版本 {}"),
+     ("New Composition", "新增合成"),
+     ("Open Demo Project", "開啟範例專案"),
+@@ -2134,7 +2134,7 @@
+     ("{} hours ago", "{} 小時前"),
+     ("{} day ago", "{} 天前"),
+     ("{} days ago", "{} 天前"),
+-    ("EffectCraft project", "EffectCraft 專案"),
++    ("EffectFlow project", "EffectFlow 專案"),
+     ("After Effects project", "After Effects 專案"),
+     ("Lottie animation", "Lottie 動畫"),
+     ("Project", "專案"),
+@@ -2155,8 +2155,8 @@
+     ("Create Split Layers Above Original Layer", "在原始圖層上方建立分割圖層"),
+     ("Use System Color Picker", "使用系統檢色器"),
+     (
+-        "EffectCraft always uses its own colour picker (the same on every platform and the web).",
+-        "EffectCraft 一律使用自己的檢色器（在所有平台和網頁版中皆相同）。",
++        "EffectFlow always uses its own colour picker (the same on every platform and the web).",
++        "EffectFlow 一律使用自己的檢色器（在所有平台和網頁版中皆相同）。",
+     ),
+     ("Startup & Repair", "啟動和修復"),
+     ("Show Home Screen When Launching", "啟動時顯示首頁畫面"),
+@@ -2165,8 +2165,8 @@
+     ("Window Graphics", "視窗圖形"),
+     ("Automatic", "自動"),
+     (
+-        "Window Graphics applies from the next launch. When the graphics driver stops EffectCraft as its window opens, the next launch switches to OpenGL.",
+-        "視窗圖形自下次啟動起生效。如果圖形驅動程式在視窗開啟時導致 EffectCraft 停止執行，下次啟動會切換為 OpenGL。",
++        "Window Graphics applies from the next launch. When the graphics driver stops EffectFlow as its window opens, the next launch switches to OpenGL.",
++        "視窗圖形自下次啟動起生效。如果圖形驅動程式在視窗開啟時導致 EffectFlow 停止執行，下次啟動會切換為 OpenGL。",
+     ),
+     ("Repair", "修復"),
+     ("Reset Settings", "重設設定"),
+@@ -2323,7 +2323,7 @@
+     ),
+     ("Match System", "跟隨系統"),
+     ("Default", "預設"),
+-    ("Stored, but not used by EffectCraft yet", "已儲存，但 EffectCraft 尚未使用"),
++    ("Stored, but not used by EffectFlow yet", "已儲存，但 EffectFlow 尚未使用"),
+     ("Total Offset", "總偏移"),
+     ("Per Layer", "每個圖層"),
+     ("Track", "追蹤"),
+@@ -2342,10 +2342,10 @@
+     ("360 View Orientation", "Орієнтація огляду 360°"),
+     ("3:2 Pulldown: {}", "Перетворення кадрів 3:2: {}"),
+     (
+-        "A clean-room, open-source compositor for motion graphics and visual effects: native on macOS, Windows and Linux, and in the browser. Part of the ArtCraft family of creative apps.",
+-        "Незалежно розроблена програма з відкритим кодом для компонування анімованої графіки та візуальних ефектів: працює на macOS, Windows і Linux, а також у браузері. Належить до родини творчих програм ArtCraft.",
++        "A clean-room, open-source compositor for motion graphics and visual effects: native on macOS, Windows and Linux, and in the browser. Based on the original EffectCraft project by the ArtCraft team.",
++        "Незалежно розроблена програма з відкритим кодом для компонування анімованої графіки та візуальних ефектів: працює на macOS, Windows і Linux, а також у браузері. Створено на основі оригінального проєкту EffectCraft від команди ArtCraft.",
+     ),
+-    ("About EffectCraft", "Про EffectCraft"),
++    ("About EffectFlow", "Про EffectFlow"),
+     ("About...", "Про програму..."),
+     ("Active", "Активна"),
+     ("Active Camera", "Активна камера"),
+@@ -2474,7 +2474,7 @@
+     ("Edit Gradient…", "Редагувати градієнт…"),
+     ("Edit Target: {}", "Ціль редагування: {}"),
+     ("Edit in the Timeline", "Редагувати на шкалі часу"),
+-    ("EffectCraft didn't quit normally last time.", "Минулого разу EffectCraft завершив роботу некоректно."),
++    ("EffectFlow didn't quit normally last time.", "Минулого разу EffectFlow завершив роботу некоректно."),
+     ("Effects", "Ефекти"),
+     ("Effects & Presets options", "Параметри ефектів і наборів"),
+     ("Copy Presets Folder Path", "Копіювати шлях до папки наборів"),
+@@ -2531,7 +2531,7 @@
+     ("Install from File…", "Встановити з файлу…"),
+     ("Intensity", "Інтенсивність"),
+     ("Inverted", "Інвертовано"),
+-    ("Join the ArtCraft community on Discord", "Приєднайтеся до спільноти ArtCraft у Discord"),
++    ("Upstream community on Discord", "Спільнота оригінального проєкту в Discord"),
+     ("Key: {}", "Клавіша: {}"),
+     ("LEARN", "НАВЧАННЯ"),
+     ("Label", "Мітка"),
+@@ -2571,7 +2571,7 @@
+     ("Models folder: {}", "Тека моделей: {}"),
+     ("Modifiers:", "Модифікатори:"),
+     ("More", "Більше"),
+-    ("More ArtCraft apps", "Інші програми ArtCraft"),
++    ("More XeroFlow apps", "Інші програми XeroFlow"),
+     ("More tutorials", "Інші уроки"),
+     ("Motion Blur", "Розмиття руху"),
+     ("Motion Blur: {}", "Розмиття руху: {}"),
+@@ -2792,7 +2792,7 @@
+     ("Variable Font Axes", "Осі змінного шрифту"),
+     ("Video Codec: {}", "Відеокодек: {}"),
+     ("View:", "Вигляд:"),
+-    ("Welcome to EffectCraft", "Ласкаво просимо до EffectCraft"),
++    ("Welcome to EffectFlow", "Ласкаво просимо до EffectFlow"),
+     ("Width:", "Ширина:"),
+     ("You can undo this.", "Це можна скасувати."),
+     ("You can't undo this.", "Це не можна скасувати."),
+@@ -2854,7 +2854,7 @@
+     ("Import PDF / Illustrator File", "Імпорт файлу PDF / Illustrator"),
+     ("Import Photoshop File", "Імпорт файлу Photoshop"),
+     ("Interpret Unlabeled Alpha As", "Інтерпретувати непозначену альфу як"),
+-    ("Join the ArtCraft Discord", "Приєднатися до Discord ArtCraft"),
++    ("Upstream community", "Спільнота оригінального проєкту"),
+     ("Mercury GPU Acceleration ({})", "Прискорення Mercury GPU ({})"),
+     ("Mercury Software Only", "Лише програмний Mercury"),
+     ("OCIO (built-in ACES config)", "OCIO (вбудована конфігурація ACES)"),
+@@ -2871,8 +2871,8 @@
+     ("New Project", "Новий проєкт"),
+     ("Open Project…", "Відкрити проєкт…"),
+     ("Templates", "Шаблони"),
+-    ("EffectCraft home page", "Домашня сторінка EffectCraft"),
+-    ("EffectCraft on GitHub", "EffectCraft на GitHub"),
++    ("Upstream home page", "Домашня сторінка оригінального проєкту"),
++    ("Upstream source on GitHub", "Вихідний код оригінального проєкту на GitHub"),
+     ("Motion graphics and visual effects · version {}", "Анімована графіка та візуальні ефекти · версія {}"),
+     ("New Composition", "Нова композиція"),
+     ("Open Demo Project", "Відкрити демонстраційний проєкт"),
+@@ -2896,7 +2896,7 @@
+     ("{} hours ago", "{} год тому"),
+     ("{} day ago", "{} дн. тому"),
+     ("{} days ago", "{} дн. тому"),
+-    ("EffectCraft project", "Проєкт EffectCraft"),
++    ("EffectFlow project", "Проєкт EffectFlow"),
+     ("After Effects project", "Проєкт After Effects"),
+     ("Lottie animation", "Анімація Lottie"),
+     ("Project", "Проєкт"),
+@@ -2913,10 +2913,10 @@
+     ("360 View Orientation", "Orientação da vista 360°"),
+     ("3:2 Pulldown: {}", "Pulldown 3:2: {}"),
+     (
+-        "A clean-room, open-source compositor for motion graphics and visual effects: native on macOS, Windows and Linux, and in the browser. Part of the ArtCraft family of creative apps.",
+-        "Um compositor de código aberto, desenvolvido em clean-room, para motion graphics e efeitos visuais: nativo no macOS, Windows e Linux, e no navegador. Parte da família de aplicativos criativos ArtCraft.",
++        "A clean-room, open-source compositor for motion graphics and visual effects: native on macOS, Windows and Linux, and in the browser. Based on the original EffectCraft project by the ArtCraft team.",
++        "Um compositor de código aberto, desenvolvido em clean-room, para motion graphics e efeitos visuais: nativo no macOS, Windows e Linux, e no navegador. Baseado no projeto original EffectCraft da equipe ArtCraft.",
+     ),
+-    ("About EffectCraft", "Sobre o EffectCraft"),
++    ("About EffectFlow", "Sobre o EffectFlow"),
+     ("About...", "Sobre..."),
+     ("Active Camera", "Câmera ativa"),
+     ("Adapt Feature On Every Frame", "Adaptar o recurso em cada quadro"),
+@@ -3034,7 +3034,7 @@
+     ("Edit Gradient…", "Editar gradiente…"),
+     ("Edit Target: {}", "Editar destino: {}"),
+     ("Edit in the Timeline", "Editar na linha do tempo"),
+-    ("EffectCraft didn't quit normally last time.", "O EffectCraft não foi encerrado normalmente da última vez."),
++    ("EffectFlow didn't quit normally last time.", "O EffectFlow não foi encerrado normalmente da última vez."),
+     ("Effects", "Efeitos"),
+     ("Effects & Presets options", "Opções de Efeitos e predefinições"),
+     ("Copy Presets Folder Path", "Copiar caminho da pasta de predefinições"),
+@@ -3089,7 +3089,7 @@
+     ("Install from File…", "Instalar a partir de arquivo…"),
+     ("Intensity", "Intensidade"),
+     ("Inverted", "Invertido"),
+-    ("Join the ArtCraft community on Discord", "Entre na comunidade ArtCraft no Discord"),
++    ("Upstream community on Discord", "Comunidade do projeto original no Discord"),
+     ("Key: {}", "Tecla: {}"),
+     ("LEARN", "APRENDER"),
+     ("Label", "Rótulo"),
+@@ -3126,7 +3126,7 @@
+     ("Models folder: {}", "Pasta de modelos: {}"),
+     ("Modifiers:", "Modificadores:"),
+     ("More", "Mais"),
+-    ("More ArtCraft apps", "Mais aplicativos ArtCraft"),
++    ("More XeroFlow apps", "Mais aplicativos XeroFlow"),
+     ("More tutorials", "Mais tutoriais"),
+     ("Motion Blur", "Desfoque de movimento"),
+     ("Motion Blur: {}", "Desfoque de movimento: {}"),
+@@ -3336,7 +3336,7 @@
+     ("Variable Font Axes", "Eixos da fonte variável"),
+     ("Video Codec: {}", "Codec de vídeo: {}"),
+     ("View:", "Exibição:"),
+-    ("Welcome to EffectCraft", "Boas-vindas ao EffectCraft"),
++    ("Welcome to EffectFlow", "Boas-vindas ao EffectFlow"),
+     ("Width:", "Largura:"),
+     ("You can undo this.", "Você pode desfazer isto."),
+     ("Your changes will be lost if you don't save them.", "Suas alterações serão perdidas se você não as salvar."),
+@@ -3364,10 +3364,10 @@
+     ("360 View Orientation", "Orientace zobrazení 360°"),
+     ("3:2 Pulldown: {}", "Převod 3:2 pulldown: {}"),
+     (
+-        "A clean-room, open-source compositor for motion graphics and visual effects: native on macOS, Windows and Linux, and in the browser. Part of the ArtCraft family of creative apps.",
+-        "Kompoziční nástroj s otevřeným zdrojovým kódem pro pohyblivou grafiku a vizuální efekty, vyvinutý nezávisle metodou clean-room. Běží nativně na macOS, Windows a Linuxu i v prohlížeči. Patří do rodiny kreativních aplikací ArtCraft.",
++        "A clean-room, open-source compositor for motion graphics and visual effects: native on macOS, Windows and Linux, and in the browser. Based on the original EffectCraft project by the ArtCraft team.",
++        "Kompoziční nástroj s otevřeným zdrojovým kódem pro pohyblivou grafiku a vizuální efekty, vyvinutý nezávisle metodou clean-room. Běží nativně na macOS, Windows a Linuxu i v prohlížeči. Vychází z původního projektu EffectCraft od týmu ArtCraft.",
+     ),
+-    ("About EffectCraft", "O aplikaci EffectCraft"),
++    ("About EffectFlow", "O aplikaci EffectFlow"),
+     ("About...", "O aplikaci…"),
+     ("Active", "Aktivní"),
+     ("Active Camera", "Aktivní kamera"),
+@@ -3492,7 +3492,7 @@
+     ("Edit Gradient…", "Upravit přechod…"),
+     ("Edit Target: {}", "Upravit cíl: {}"),
+     ("Edit in the Timeline", "Upravit na časové ose"),
+-    ("EffectCraft didn't quit normally last time.", "EffectCraft nebyl při posledním použití ukončen běžným způsobem."),
++    ("EffectFlow didn't quit normally last time.", "EffectFlow nebyl při posledním použití ukončen běžným způsobem."),
+     ("Effects", "Efekty"),
+     ("Effects & Presets options", "Možnosti efektů a přednastavení"),
+     ("Copy Presets Folder Path", "Kopírovat cestu ke složce přednastavení"),
+@@ -3548,7 +3548,7 @@
+     ("Install from File…", "Nainstalovat ze souboru…"),
+     ("Intensity", "Intenzita"),
+     ("Inverted", "Invertovaná"),
+-    ("Join the ArtCraft community on Discord", "Připojit se ke komunitě ArtCraft na Discordu"),
++    ("Upstream community on Discord", "Komunita původního projektu na Discordu"),
+     ("Key: {}", "Klávesa: {}"),
+     ("LEARN", "VÝUKA"),
+     ("Label", "Štítek"),
+@@ -3587,7 +3587,7 @@
+     ("Models folder: {}", "Složka modelů: {}"),
+     ("Modifiers:", "Modifikátory:"),
+     ("More", "Další"),
+-    ("More ArtCraft apps", "Další aplikace ArtCraft"),
++    ("More XeroFlow apps", "Další aplikace XeroFlow"),
+     ("More tutorials", "Další výukové lekce"),
+     ("Motion Blur", "Rozostření pohybem"),
+     ("Motion Blur: {}", "Rozostření pohybem: {}"),
+@@ -3799,7 +3799,7 @@
+     ("Variable Font Axes", "Osy variabilního písma"),
+     ("Video Codec: {}", "Video kodek: {}"),
+     ("View:", "Zobrazení:"),
+-    ("Welcome to EffectCraft", "Vítejte v EffectCraft"),
++    ("Welcome to EffectFlow", "Vítejte v EffectFlow"),
+     ("Width:", "Šířka:"),
+     ("You can undo this.", "Tuto akci lze vrátit zpět."),
+     ("Your changes will be lost if you don't save them.", "Pokud změny neuložíte, budou ztraceny."),
+@@ -3852,7 +3852,7 @@
+     ("Import PDF / Illustrator File", "Importovat soubor PDF / Illustrator"),
+     ("Import Photoshop File", "Importovat soubor Photoshop"),
+     ("Interpret Unlabeled Alpha As", "Interpretovat neoznačenou alfu jako"),
+-    ("Join the ArtCraft Discord", "Připojit se na Discord ArtCraft"),
++    ("Upstream community", "Komunita původního projektu"),
+     ("Mercury GPU Acceleration ({})", "GPU akcelerace Mercury ({})"),
+     ("Mercury Software Only", "Pouze softwarové zpracování Mercury"),
+     ("OCIO (built-in ACES config)", "OCIO (vestavěná konfigurace ACES)"),
+@@ -3868,8 +3868,8 @@
+     ("New Project", "Nový projekt"),
+     ("Open Project…", "Otevřít projekt…"),
+     ("Templates", "Šablony"),
+-    ("EffectCraft home page", "Domovská stránka EffectCraft"),
+-    ("EffectCraft on GitHub", "EffectCraft na GitHubu"),
++    ("Upstream home page", "Domovská stránka původního projektu"),
++    ("Upstream source on GitHub", "Zdrojový kód původního projektu na GitHubu"),
+     ("Motion graphics and visual effects · version {}", "Pohyblivá grafika a vizuální efekty · verze {}"),
+     ("New Composition", "Nová kompozice"),
+     ("Open Demo Project", "Otevřít ukázkový projekt"),
+@@ -3891,7 +3891,7 @@
+     ("{} hours ago", "Před {} hodinami"),
+     ("{} day ago", "Před {} dnem"),
+     ("{} days ago", "Před {} dny"),
+-    ("EffectCraft project", "Projekt EffectCraft"),
++    ("EffectFlow project", "Projekt EffectFlow"),
+     ("After Effects project", "Projekt After Effects"),
+     ("Lottie animation", "Animace Lottie"),
+     ("Project", "Projekt"),
+@@ -3922,10 +3922,10 @@
+     ("360 View Orientation", "Orientación de la vista 360°"),
+     ("3:2 Pulldown: {}", "Pulldown 3:2: {}"),
+     (
+-        "A clean-room, open-source compositor for motion graphics and visual effects: native on macOS, Windows and Linux, and in the browser. Part of the ArtCraft family of creative apps.",
+-        "Un compositor de código abierto y desarrollado en sala limpia para gráficos en movimiento y efectos visuales: nativo en macOS, Windows y Linux, y en el navegador. Forma parte de la familia de aplicaciones creativas ArtCraft.",
++        "A clean-room, open-source compositor for motion graphics and visual effects: native on macOS, Windows and Linux, and in the browser. Based on the original EffectCraft project by the ArtCraft team.",
++        "Un compositor de código abierto y desarrollado en sala limpia para gráficos en movimiento y efectos visuales: nativo en macOS, Windows y Linux, y en el navegador. Basado en el proyecto original EffectCraft del equipo de ArtCraft.",
+     ),
+-    ("About EffectCraft", "Acerca de EffectCraft"),
++    ("About EffectFlow", "Acerca de EffectFlow"),
+     ("About...", "Acerca de..."),
+     ("Active", "Activo"),
+     ("Active Camera", "Cámara activa"),
+@@ -4057,7 +4057,7 @@
+     ("Edit Gradient…", "Editar degradado…"),
+     ("Edit Target: {}", "Destino de la edición: {}"),
+     ("Edit in the Timeline", "Editar en la cronología"),
+-    ("EffectCraft didn't quit normally last time.", "EffectCraft no se cerró normalmente la última vez."),
++    ("EffectFlow didn't quit normally last time.", "EffectFlow no se cerró normalmente la última vez."),
+     ("Effects", "Efectos"),
+     ("Effects & Presets options", "Opciones de Efectos y ajustes preestablecidos"),
+     ("Effects: {}", "Efectos: {}"),
+@@ -4111,7 +4111,7 @@
+     ("Install from File…", "Instalar desde archivo…"),
+     ("Intensity", "Intensidad"),
+     ("Inverted", "Invertida"),
+-    ("Join the ArtCraft community on Discord", "Únete a la comunidad de ArtCraft en Discord"),
++    ("Upstream community on Discord", "Comunidad del proyecto original en Discord"),
+     ("Key: {}", "Tecla: {}"),
+     ("LEARN", "APRENDER"),
+     ("Label", "Etiqueta"),
+@@ -4150,7 +4150,7 @@
+     ("Models folder: {}", "Carpeta de modelos: {}"),
+     ("Modifiers:", "Modificadores:"),
+     ("More", "Más"),
+-    ("More ArtCraft apps", "Más aplicaciones de ArtCraft"),
++    ("More XeroFlow apps", "Más aplicaciones de XeroFlow"),
+     ("More tutorials", "Más tutoriales"),
+     ("Motion Blur", "Desenfoque de movimiento"),
+     ("Motion Blur: {}", "Desenfoque de movimiento: {}"),
+@@ -4367,7 +4367,7 @@
+     ("Variable Font Axes", "Ejes de fuente variable"),
+     ("Video Codec: {}", "Códec de vídeo: {}"),
+     ("View:", "Vista:"),
+-    ("Welcome to EffectCraft", "Te damos la bienvenida a EffectCraft"),
++    ("Welcome to EffectFlow", "Te damos la bienvenida a EffectFlow"),
+     ("Width:", "Ancho:"),
+     ("You can undo this.", "Puedes deshacer esto."),
+     ("Your changes will be lost if you don't save them.", "Tus cambios se perderán si no los guardas."),
+@@ -4420,7 +4420,7 @@
+     ("Import PDF / Illustrator File", "Importar archivo PDF / Illustrator"),
+     ("Import Photoshop File", "Importar archivo de Photoshop"),
+     ("Interpret Unlabeled Alpha As", "Interpretar alfa sin etiquetar como"),
+-    ("Join the ArtCraft Discord", "Únete al Discord de ArtCraft"),
++    ("Upstream community", "Comunidad del proyecto original"),
+     ("Mercury GPU Acceleration ({})", "Aceleración por GPU Mercury ({})"),
+     ("Mercury Software Only", "Solo software Mercury"),
+     ("OCIO (built-in ACES config)", "OCIO (configuración ACES integrada)"),
+@@ -4436,8 +4436,8 @@
+     ("New Project", "Nuevo proyecto"),
+     ("Open Project…", "Abrir proyecto…"),
+     ("Templates", "Plantillas"),
+-    ("EffectCraft home page", "Página de inicio de EffectCraft"),
+-    ("EffectCraft on GitHub", "EffectCraft en GitHub"),
++    ("Upstream home page", "Página de inicio del proyecto original"),
++    ("Upstream source on GitHub", "Código fuente del proyecto original en GitHub"),
+     ("Motion graphics and visual effects · version {}", "Gráficos en movimiento y efectos visuales · versión {}"),
+     ("New Composition", "Nueva composición"),
+     ("Open Demo Project", "Abrir proyecto de demostración"),
+@@ -4459,7 +4459,7 @@
+     ("{} hours ago", "Hace {} horas"),
+     ("{} day ago", "Hace {} día"),
+     ("{} days ago", "Hace {} días"),
+-    ("EffectCraft project", "Proyecto de EffectCraft"),
++    ("EffectFlow project", "Proyecto de EffectFlow"),
+     ("After Effects project", "Proyecto de After Effects"),
+     ("Lottie animation", "Animación de Lottie"),
+     ("Project", "Proyecto"),
+@@ -4477,10 +4477,10 @@
+     ("360 View Orientation", "360° ხედის ორიენტაცია"),
+     ("3:2 Pulldown: {}", "3:2 Pulldown: {}"),
+     (
+-        "A clean-room, open-source compositor for motion graphics and visual effects: native on macOS, Windows and Linux, and in the browser. Part of the ArtCraft family of creative apps.",
+-        "სუფთა ოთახის მეთოდით შექმნილი, ღია კოდის კომპოზიტორი მოძრავი გრაფიკისა და ვიზუალური ეფექტებისთვის: ნატიურად მუშაობს macOS-ზე, Windows-სა და Linux-ზე, ასევე ბრაუზერში. ArtCraft-ის შემოქმედებითი აპების ოჯახის ნაწილი.",
++        "A clean-room, open-source compositor for motion graphics and visual effects: native on macOS, Windows and Linux, and in the browser. Based on the original EffectCraft project by the ArtCraft team.",
++        "სუფთა ოთახის მეთოდით შექმნილი, ღია კოდის კომპოზიტორი მოძრავი გრაფიკისა და ვიზუალური ეფექტებისთვის: ნატიურად მუშაობს macOS-ზე, Windows-სა და Linux-ზე, ასევე ბრაუზერში. დაფუძნებულია ArtCraft-ის გუნდის ორიგინალურ EffectCraft პროექტზე.",
+     ),
+-    ("About EffectCraft", "EffectCraft-ის შესახებ"),
++    ("About EffectFlow", "EffectFlow-ის შესახებ"),
+     ("About...", "პროგრამის შესახებ..."),
+     ("Active", "აქტიური"),
+     ("Active Camera", "აქტიური კამერა"),
+@@ -4606,7 +4606,7 @@
+     ("Edit Gradient…", "გრადიენტის რედაქტირება…"),
+     ("Edit Target: {}", "რედაქტირების სამიზნე: {}"),
+     ("Edit in the Timeline", "რედაქტირება დროის ხაზზე"),
+-    ("EffectCraft didn't quit normally last time.", "EffectCraft ბოლოს ნორმალურად არ დახურულა."),
++    ("EffectFlow didn't quit normally last time.", "EffectFlow ბოლოს ნორმალურად არ დახურულა."),
+     ("Effects", "ეფექტები"),
+     ("Effects & Presets options", "ეფექტებისა და პრესეტების პარამეტრები"),
+     ("Copy Presets Folder Path", "პრესეტების საქაღალდის მისამართის კოპირება"),
+@@ -4662,7 +4662,7 @@
+     ("Install from File…", "ფაილიდან დაყენება…"),
+     ("Intensity", "ინტენსივობა"),
+     ("Inverted", "შებრუნებული"),
+-    ("Join the ArtCraft community on Discord", "შემოუერთდით ArtCraft-ის საზოგადოებას Discord-ზე"),
++    ("Upstream community on Discord", "ორიგინალური პროექტის საზოგადოება Discord-ზე"),
+     ("Key: {}", "გასაღები: {}"),
+     ("LEARN", "სწავლა"),
+     ("Label", "იარლიყი"),
+@@ -4702,7 +4702,7 @@
+     ("Models folder: {}", "მოდელების საქაღალდე: {}"),
+     ("Modifiers:", "მოდიფიკატორები:"),
+     ("More", "მეტი"),
+-    ("More ArtCraft apps", "ArtCraft-ის სხვა აპლიკაციები"),
++    ("More XeroFlow apps", "XeroFlow-ის სხვა აპლიკაციები"),
+     ("More tutorials", "მეტი გაკვეთილი"),
+     ("Motion Blur", "მოძრაობის გაბუნდოვნება"),
+     ("Motion Blur: {}", "მოძრაობის გაბუნდოვნება: {}"),
+@@ -4924,7 +4924,7 @@
+     ("Variable Font Axes", "ცვლადი შრიფტის ღერძები"),
+     ("Video Codec: {}", "ვიდეო კოდეკი: {}"),
+     ("View:", "ხედი:"),
+-    ("Welcome to EffectCraft", "მოგესალმებათ EffectCraft"),
++    ("Welcome to EffectFlow", "მოგესალმებათ EffectFlow"),
+     ("Width:", "სიგანე:"),
+     ("You can undo this.", "ამის დაბრუნება შეგიძლიათ."),
+     ("You can't undo this.", "ამის დაბრუნება შეუძლებელია."),
+@@ -4978,7 +4978,7 @@
+     ("Import PDF / Illustrator File", "PDF / Illustrator ფაილის იმპორტი"),
+     ("Import Photoshop File", "Photoshop ფაილის იმპორტი"),
+     ("Interpret Unlabeled Alpha As", "არამონიშნული ალფას ინტერპრეტაცია როგორც"),
+-    ("Join the ArtCraft Discord", "შემოუერთდით ArtCraft-ის Discord-ს"),
++    ("Upstream community", "ორიგინალური პროექტის საზოგადოება"),
+     ("Mercury GPU Acceleration ({})", "Mercury GPU აჩქარება ({})"),
+     ("Mercury Software Only", "მხოლოდ Mercury Software"),
+     ("OCIO (built-in ACES config)", "OCIO (ჩაშენებული ACES კონფიგურაცია)"),
+@@ -4994,8 +4994,8 @@
+     ("New Project", "ახალი პროექტი"),
+     ("Open Project…", "პროექტის გახსნა…"),
+     ("Templates", "შაბლონები"),
+-    ("EffectCraft home page", "EffectCraft-ის საწყისი გვერდი"),
+-    ("EffectCraft on GitHub", "EffectCraft GitHub-ზე"),
++    ("Upstream home page", "ორიგინალური პროექტის საწყისი გვერდი"),
++    ("Upstream source on GitHub", "ორიგინალური პროექტის წყაროს კოდი GitHub-ზე"),
+     ("Motion graphics and visual effects · version {}", "მოძრავი გრაფიკა და ვიზუალური ეფექტები · ვერსია {}"),
+     ("New Composition", "ახალი კომპოზიცია"),
+     ("Open Demo Project", "სადემონსტრაციო პროექტის გახსნა"),
+@@ -5017,7 +5017,7 @@
+     ("{} hours ago", "{} საათის წინ"),
+     ("{} day ago", "{} დღის წინ"),
+     ("{} days ago", "{} დღის წინ"),
+-    ("EffectCraft project", "EffectCraft-ის პროექტი"),
++    ("EffectFlow project", "EffectFlow-ის პროექტი"),
+     ("After Effects project", "After Effects-ის პროექტი"),
+     ("Lottie animation", "Lottie ანიმაცია"),
+     ("Project", "პროექტი"),
+@@ -5040,8 +5040,8 @@
+     ("Create Split Layers Above Original Layer", "დაყოფილი შრეების შექმნა საწყისი შრის ზემოთ"),
+     ("Use System Color Picker", "სისტემის ფერის ამომრჩევის გამოყენება"),
+     (
+-        "EffectCraft always uses its own colour picker (the same on every platform and the web).",
+-        "EffectCraft ყოველთვის საკუთარ ფერის ამომრჩევს იყენებს (ერთნაირს ყველა პლატფორმაზე და ვებში).",
++        "EffectFlow always uses its own colour picker (the same on every platform and the web).",
++        "EffectFlow ყოველთვის საკუთარ ფერის ამომრჩევს იყენებს (ერთნაირს ყველა პლატფორმაზე და ვებში).",
+     ),
+     ("Startup & Repair", "გაშვება და აღდგენა"),
+     ("Show Home Screen When Launching", "საწყისი ეკრანის ჩვენება გაშვებისას"),
+@@ -5050,8 +5050,8 @@
+     ("Window Graphics", "ფანჯრის გრაფიკა"),
+     ("Automatic", "ავტომატური"),
+     (
+-        "Window Graphics applies from the next launch. When the graphics driver stops EffectCraft as its window opens, the next launch switches to OpenGL.",
+-        "ფანჯრის გრაფიკა მოქმედებს შემდეგი გაშვებიდან. თუ გრაფიკის დრაივერი EffectCraft-ს ფანჯრის გახსნისას აჩერებს, შემდეგი გაშვება OpenGL-ზე გადაერთვება.",
++        "Window Graphics applies from the next launch. When the graphics driver stops EffectFlow as its window opens, the next launch switches to OpenGL.",
++        "ფანჯრის გრაფიკა მოქმედებს შემდეგი გაშვებიდან. თუ გრაფიკის დრაივერი EffectFlow-ს ფანჯრის გახსნისას აჩერებს, შემდეგი გაშვება OpenGL-ზე გადაერთვება.",
+     ),
+     ("Repair", "აღდგენა"),
+     ("Reset Settings", "პარამეტრების ჩამოყრა"),
+@@ -5208,7 +5208,7 @@
+     ),
+     ("Match System", "სისტემის მიხედვით"),
+     ("Default", "ნაგულისხმევი"),
+-    ("Stored, but not used by EffectCraft yet", "შენახულია, მაგრამ EffectCraft ჯერ არ იყენებს"),
++    ("Stored, but not used by EffectFlow yet", "შენახულია, მაგრამ EffectFlow ჯერ არ იყენებს"),
+     ("Total Offset", "ჯამური წანაცვლება"),
+     ("Per Layer", "შრიდან შრემდე"),
+     ("Track", "ტრეკინგი"),
+diff -ruN a/crates/ui-egui/src/i18n.rs b/crates/ui-egui/src/i18n.rs
+--- a/crates/ui-egui/src/i18n.rs	2026-10-26 00:31:11
++++ b/crates/ui-egui/src/i18n.rs	2026-10-28 11:29:43
+@@ -393,8 +393,8 @@
+ /// Chinese After Effects documentation and the catalogs the sibling Craft apps ship; see the
+ /// pull request for the rows taken from #321.
+ const SIMPLIFIED_CHINESE: &[(&str, &str, &str)] = &[
+-    ("", "EffectCraft", "EffectCraft"),
+-    ("app.about", "About EffectCraft...", "关于 EffectCraft..."),
++    ("", "EffectFlow", "EffectFlow"),
++    ("app.about", "About EffectFlow...", "关于 EffectFlow..."),
+     ("", "Settings...", "设置..."),
+     ("app.settings", "General...", "常规..."),
+     ("app.settings", "Startup & Repair...", "启动和修复..."),
+@@ -413,10 +413,10 @@
+     ("app.settings", "Video...", "视频..."),
+     ("app.settings", "3D...", "3D..."),
+     ("app.settings", "Scripting & Expressions...", "脚本和表达式..."),
+-    ("app.hide", "Hide EffectCraft", "隐藏 EffectCraft"),
++    ("app.hide", "Hide EffectFlow", "隐藏 EffectFlow"),
+     ("app.hideOthers", "Hide Others", "隐藏其他"),
+     ("app.showAll", "Show All", "全部显示"),
+-    ("app.quit", "Quit EffectCraft", "退出 EffectCraft"),
++    ("app.quit", "Quit EffectFlow", "退出 EffectFlow"),
+     ("", "File", "文件"),
+     ("", "New", "新建"),
+     ("file.newProject", "New Project", "新建项目"),
+@@ -439,7 +439,7 @@
+     ("file.import", "File...", "文件..."),
+     ("file.importMultiple", "Multiple Files...", "多个文件..."),
+     ("file.importTimeline", "Adobe Premiere Pro Project...", "Adobe Premiere Pro 项目..."),
+-    ("file.importProject", "EffectCraft Project...", "EffectCraft 项目..."),
++    ("file.importProject", "EffectFlow Project...", "EffectFlow 项目..."),
+     ("file.importPlaceholder", "Placeholder...", "占位符..."),
+     ("file.importSolid", "Solid...", "纯色..."),
+     ("file.importLottie", "Lottie...", "Lottie..."),
+@@ -1005,22 +1005,22 @@
+     ("window.panel", "Create Nulls From Paths", "从路径创建空对象"),
+     ("window.panel", "VR Comp Editor", "VR 合成编辑器"),
+     ("", "Help", "帮助"),
+-    ("help.docs", "EffectCraft Help...", "EffectCraft 帮助..."),
++    ("help.docs", "Upstream Documentation...", "上游项目文档..."),
+     ("help.docs", "Scripting Help...", "脚本帮助..."),
+     ("help.docs", "Expression Reference...", "表达式引用..."),
+     ("help.docs", "Effect Reference...", "效果参考..."),
+     ("anim.browsePresets", "Animation Presets...", "动画预设..."),
+     ("app.keyboardShortcuts", "Keyboard Shortcuts...", "键盘快捷键..."),
+     ("help.inAppTutorials", "In-App Tutorials...", "应用内教程..."),
+-    ("help.onlineTutorials", "Online Tutorials...", "在线教程..."),
++    ("help.onlineTutorials", "Upstream Tutorials...", "上游项目教程..."),
+     ("help.systemReport", "System Compatibility Report...", "系统兼容性报告..."),
+     ("help.enableLogging", "Enable Logging", "启用日志记录"),
+     ("help.revealLogFile", "Reveal Logging File", "显示日志记录文件"),
+-    ("help.discord", "Join the ArtCraft Discord...", "加入 ArtCraft 的 Discord 社区..."),
+-    ("help.reportIssue", "Provide Feedback...", "提供反馈..."),
+-    ("help.website", "ArtCraft Website", "ArtCraft 网站"),
+-    ("help.appPage", "EffectCraft Home Page", "EffectCraft 主页"),
+-    ("help.github", "EffectCraft on GitHub", "GitHub 上的 EffectCraft"),
++    ("help.discord", "Upstream Community...", "上游社区..."),
++    ("help.reportIssue", "Upstream Issue Tracker...", "上游问题跟踪..."),
++    ("help.website", "XeroFlow Creative Tools", "XeroFlow Creative Tools"),
++    ("help.appPage", "Upstream Home Page", "上游项目主页"),
++    ("help.github", "Upstream source on GitHub", "GitHub 上的上游源代码"),
+     ("file.openDemoProject", "Open Demo Project", "打开示例项目"),
+ ];
+ 
+@@ -1028,8 +1028,8 @@
+ /// entry per fixed menu row of the engine's menu tree, mirroring `SIMPLIFIED_CHINESE` in the
+ /// vocabulary the sibling Craft apps' zh-hant catalogs use.
+ const TRADITIONAL_CHINESE: &[(&str, &str, &str)] = &[
+-    ("", "EffectCraft", "EffectCraft"),
+-    ("app.about", "About EffectCraft...", "關於 EffectCraft..."),
++    ("", "EffectFlow", "EffectFlow"),
++    ("app.about", "About EffectFlow...", "關於 EffectFlow..."),
+     ("", "Settings...", "設定..."),
+     ("app.settings", "General...", "一般..."),
+     ("app.settings", "Startup & Repair...", "啟動和修復..."),
+@@ -1048,10 +1048,10 @@
+     ("app.settings", "Video...", "視訊..."),
+     ("app.settings", "3D...", "3D..."),
+     ("app.settings", "Scripting & Expressions...", "指令碼和運算式..."),
+-    ("app.hide", "Hide EffectCraft", "隱藏 EffectCraft"),
++    ("app.hide", "Hide EffectFlow", "隱藏 EffectFlow"),
+     ("app.hideOthers", "Hide Others", "隱藏其他"),
+     ("app.showAll", "Show All", "全部顯示"),
+-    ("app.quit", "Quit EffectCraft", "結束 EffectCraft"),
++    ("app.quit", "Quit EffectFlow", "結束 EffectFlow"),
+     ("", "File", "檔案"),
+     ("", "New", "新增"),
+     ("file.newProject", "New Project", "新增專案"),
+@@ -1074,7 +1074,7 @@
+     ("file.import", "File...", "檔案..."),
+     ("file.importMultiple", "Multiple Files...", "多個檔案..."),
+     ("file.importTimeline", "Adobe Premiere Pro Project...", "Adobe Premiere Pro 專案..."),
+-    ("file.importProject", "EffectCraft Project...", "EffectCraft 專案..."),
++    ("file.importProject", "EffectFlow Project...", "EffectFlow 專案..."),
+     ("file.importPlaceholder", "Placeholder...", "預留位置..."),
+     ("file.importSolid", "Solid...", "純色..."),
+     ("file.importLottie", "Lottie...", "Lottie..."),
+@@ -1640,28 +1640,28 @@
+     ("window.panel", "Create Nulls From Paths", "從路徑建立空物件"),
+     ("window.panel", "VR Comp Editor", "VR 合成編輯器"),
+     ("", "Help", "說明"),
+-    ("help.docs", "EffectCraft Help...", "EffectCraft 說明..."),
++    ("help.docs", "Upstream Documentation...", "上游專案文件..."),
+     ("help.docs", "Scripting Help...", "指令碼說明..."),
+     ("help.docs", "Expression Reference...", "運算式參考..."),
+     ("help.docs", "Effect Reference...", "效果參考..."),
+     ("anim.browsePresets", "Animation Presets...", "動畫預設集..."),
+     ("app.keyboardShortcuts", "Keyboard Shortcuts...", "鍵盤快速鍵..."),
+     ("help.inAppTutorials", "In-App Tutorials...", "應用程式內教學課程..."),
+-    ("help.onlineTutorials", "Online Tutorials...", "線上教學課程..."),
++    ("help.onlineTutorials", "Upstream Tutorials...", "上游專案教學課程..."),
+     ("help.systemReport", "System Compatibility Report...", "系統相容性報告..."),
+     ("help.enableLogging", "Enable Logging", "啟用日誌記錄"),
+     ("help.revealLogFile", "Reveal Logging File", "顯示日誌檔案"),
+-    ("help.discord", "Join the ArtCraft Discord...", "加入 ArtCraft 的 Discord 社群..."),
+-    ("help.reportIssue", "Provide Feedback...", "提供意見..."),
+-    ("help.website", "ArtCraft Website", "ArtCraft 網站"),
+-    ("help.appPage", "EffectCraft Home Page", "EffectCraft 首頁"),
+-    ("help.github", "EffectCraft on GitHub", "GitHub 上的 EffectCraft"),
++    ("help.discord", "Upstream Community...", "上游社群..."),
++    ("help.reportIssue", "Upstream Issue Tracker...", "上游問題追蹤..."),
++    ("help.website", "XeroFlow Creative Tools", "XeroFlow Creative Tools"),
++    ("help.appPage", "Upstream Home Page", "上游專案首頁"),
++    ("help.github", "Upstream source on GitHub", "GitHub 上的上游原始碼"),
+     ("file.openDemoProject", "Open Demo Project", "開啟範例專案"),
+ ];
+ 
+ const JAPANESE: &[(&str, &str, &str)] = &[
+-    ("", "EffectCraft", "EffectCraft"),
+-    ("app.about", "About EffectCraft...", "EffectCraftについて..."),
++    ("", "EffectFlow", "EffectFlow"),
++    ("app.about", "About EffectFlow...", "EffectFlowについて..."),
+     ("", "Settings...", "設定..."),
+     ("app.settings", "General...", "一般..."),
+     ("app.settings", "Startup & Repair...", "起動と修復..."),
+@@ -1680,10 +1680,10 @@
+     ("app.settings", "Video...", "ビデオ..."),
+     ("app.settings", "3D...", "3D..."),
+     ("app.settings", "Scripting & Expressions...", "スクリプトとエクスプレッション..."),
+-    ("app.hide", "Hide EffectCraft", "EffectCraftを隠す"),
++    ("app.hide", "Hide EffectFlow", "EffectFlowを隠す"),
+     ("app.hideOthers", "Hide Others", "ほかを隠す"),
+     ("app.showAll", "Show All", "すべてを表示"),
+-    ("app.quit", "Quit EffectCraft", "EffectCraftを終了"),
++    ("app.quit", "Quit EffectFlow", "EffectFlowを終了"),
+     ("", "File", "ファイル"),
+     ("", "New", "新規"),
+     ("file.newProject", "New Project", "新規プロジェクト"),
+@@ -1709,7 +1709,7 @@
+     ("file.importPlaceholder", "Placeholder...", "プレースホルダー..."),
+     ("file.importSolid", "Solid...", "平面..."),
+     ("file.importLottie", "Lottie...", "Lottie..."),
+-    ("file.importProject", "EffectCraft Project...", "EffectCraftプロジェクト..."),
++    ("file.importProject", "EffectFlow Project...", "EffectFlowプロジェクト..."),
+     ("file.importVanishingPoint", "Vanishing Point (.vpe)...", "Vanishing Point (.vpe)..."),
+     ("essential.importTemplate", "Essential Graphics Template...", "エッセンシャルグラフィックステンプレート..."),
+     ("", "Import Recent Footage", "最近使用したフッテージを読み込み"),
+@@ -2272,22 +2272,22 @@
+     ("window.panel", "Create Nulls From Paths", "パスからヌルを作成"),
+     ("window.panel", "VR Comp Editor", "VRコンポジションエディター"),
+     ("", "Help", "ヘルプ"),
+-    ("help.docs", "EffectCraft Help...", "EffectCraftヘルプ..."),
++    ("help.docs", "Upstream Documentation...", "アップストリームプロジェクトのドキュメント..."),
+     ("help.docs", "Scripting Help...", "スクリプトヘルプ..."),
+     ("help.docs", "Expression Reference...", "エクスプレッションリファレンス..."),
+     ("help.docs", "Effect Reference...", "エフェクトリファレンス..."),
+     ("anim.browsePresets", "Animation Presets...", "アニメーションプリセット..."),
+     ("app.keyboardShortcuts", "Keyboard Shortcuts...", "キーボードショートカット..."),
+     ("help.inAppTutorials", "In-App Tutorials...", "アプリ内チュートリアル..."),
+-    ("help.onlineTutorials", "Online Tutorials...", "オンラインチュートリアル..."),
++    ("help.onlineTutorials", "Upstream Tutorials...", "アップストリームプロジェクトのチュートリアル..."),
+     ("help.systemReport", "System Compatibility Report...", "システム互換性レポート..."),
+     ("help.enableLogging", "Enable Logging", "ログ記録を有効化"),
+     ("help.revealLogFile", "Reveal Logging File", "ログファイルを表示"),
+-    ("help.discord", "Join the ArtCraft Discord...", "ArtCraft Discordに参加..."),
+-    ("help.reportIssue", "Provide Feedback...", "フィードバックを送信..."),
+-    ("help.website", "ArtCraft Website", "ArtCraftウェブサイト"),
+-    ("help.appPage", "EffectCraft Home Page", "EffectCraftホームページ"),
+-    ("help.github", "EffectCraft on GitHub", "GitHubのEffectCraft"),
++    ("help.discord", "Upstream Community...", "アップストリームのコミュニティ..."),
++    ("help.reportIssue", "Upstream Issue Tracker...", "アップストリームの問題トラッカー..."),
++    ("help.website", "XeroFlow Creative Tools", "XeroFlow Creative Tools"),
++    ("help.appPage", "Upstream Home Page", "アップストリームプロジェクトのホームページ"),
++    ("help.github", "Upstream source on GitHub", "GitHubのアップストリームのソースコード"),
+     ("file.openDemoProject", "Open Demo Project", "デモプロジェクトを開く"),
+ ];
+ 
+@@ -2295,8 +2295,8 @@
+ /// Ukrainian motion-graphics vocabulary. Product names and technical identifiers stay verbatim.
+ /// The (command, source) keys match the other catalogs; no proprietary localization was used.
+ const UKRAINIAN: &[(&str, &str, &str)] = &[
+-    ("", "EffectCraft", "EffectCraft"),
+-    ("app.about", "About EffectCraft...", "Про EffectCraft..."),
++    ("", "EffectFlow", "EffectFlow"),
++    ("app.about", "About EffectFlow...", "Про EffectFlow..."),
+     ("", "Settings...", "Налаштування..."),
+     ("app.settings", "General...", "Загальні..."),
+     ("app.settings", "Startup & Repair...", "Запуск і відновлення..."),
+@@ -2315,10 +2315,10 @@
+     ("app.settings", "Video...", "Відео..."),
+     ("app.settings", "3D...", "3D..."),
+     ("app.settings", "Scripting & Expressions...", "Скрипти та вирази..."),
+-    ("app.hide", "Hide EffectCraft", "Приховати EffectCraft"),
++    ("app.hide", "Hide EffectFlow", "Приховати EffectFlow"),
+     ("app.hideOthers", "Hide Others", "Приховати решту"),
+     ("app.showAll", "Show All", "Показати все"),
+-    ("app.quit", "Quit EffectCraft", "Вийти з EffectCraft"),
++    ("app.quit", "Quit EffectFlow", "Вийти з EffectFlow"),
+     ("", "File", "Файл"),
+     ("", "New", "Створити"),
+     ("file.newProject", "New Project", "Новий проєкт"),
+@@ -2341,7 +2341,7 @@
+     ("file.import", "File...", "Файл..."),
+     ("file.importMultiple", "Multiple Files...", "Кілька файлів..."),
+     ("file.importTimeline", "Adobe Premiere Pro Project...", "Проєкт Adobe Premiere Pro..."),
+-    ("file.importProject", "EffectCraft Project...", "Проєкт EffectCraft..."),
++    ("file.importProject", "EffectFlow Project...", "Проєкт EffectFlow..."),
+     ("file.importPlaceholder", "Placeholder...", "Заповнювач..."),
+     ("file.importSolid", "Solid...", "Суцільний колір..."),
+     ("file.importLottie", "Lottie...", "Lottie..."),
+@@ -2907,22 +2907,22 @@
+     ("window.panel", "Create Nulls From Paths", "Створення нульових об’єктів із контурів"),
+     ("window.panel", "VR Comp Editor", "Редактор композицій VR"),
+     ("", "Help", "Довідка"),
+-    ("help.docs", "EffectCraft Help...", "Довідка EffectCraft..."),
++    ("help.docs", "Upstream Documentation...", "Документація оригінального проєкту..."),
+     ("help.docs", "Scripting Help...", "Довідка зі скриптів..."),
+     ("help.docs", "Expression Reference...", "Довідник виразів..."),
+     ("help.docs", "Effect Reference...", "Довідник ефектів..."),
+     ("anim.browsePresets", "Animation Presets...", "Набори анімації..."),
+     ("app.keyboardShortcuts", "Keyboard Shortcuts...", "Клавіатурні скорочення..."),
+     ("help.inAppTutorials", "In-App Tutorials...", "Уроки в програмі..."),
+-    ("help.onlineTutorials", "Online Tutorials...", "Онлайн-уроки..."),
++    ("help.onlineTutorials", "Upstream Tutorials...", "Уроки оригінального проєкту..."),
+     ("help.systemReport", "System Compatibility Report...", "Звіт про сумісність системи..."),
+     ("help.enableLogging", "Enable Logging", "Увімкнути журналювання"),
+     ("help.revealLogFile", "Reveal Logging File", "Показати файл журналу"),
+-    ("help.discord", "Join the ArtCraft Discord...", "Приєднатися до Discord ArtCraft..."),
+-    ("help.reportIssue", "Provide Feedback...", "Надіслати відгук..."),
+-    ("help.website", "ArtCraft Website", "Вебсайт ArtCraft"),
+-    ("help.appPage", "EffectCraft Home Page", "Домашня сторінка EffectCraft"),
+-    ("help.github", "EffectCraft on GitHub", "EffectCraft на GitHub"),
++    ("help.discord", "Upstream Community...", "Спільнота оригінального проєкту..."),
++    ("help.reportIssue", "Upstream Issue Tracker...", "Трекер проблем оригінального проєкту..."),
++    ("help.website", "XeroFlow Creative Tools", "XeroFlow Creative Tools"),
++    ("help.appPage", "Upstream Home Page", "Домашня сторінка оригінального проєкту"),
++    ("help.github", "Upstream source on GitHub", "Вихідний код оригінального проєкту на GitHub"),
+     ("file.openDemoProject", "Open Demo Project", "Відкрити демонстраційний проєкт"),
+ ];
+ 
+@@ -2931,8 +2931,8 @@
+ /// Wording follows Adobe's Spanish After Effects documentation (helpx.adobe.com/es) where it
+ /// names the feature, and macOS Spanish for the app menu.
+ const SPANISH: &[(&str, &str, &str)] = &[
+-    ("", "EffectCraft", "EffectCraft"),
+-    ("app.about", "About EffectCraft...", "Acerca de EffectCraft..."),
++    ("", "EffectFlow", "EffectFlow"),
++    ("app.about", "About EffectFlow...", "Acerca de EffectFlow..."),
+     ("", "Settings...", "Ajustes..."),
+     ("app.settings", "General...", "General..."),
+     ("app.settings", "Startup & Repair...", "Inicio y reparación..."),
+@@ -2951,10 +2951,10 @@
+     ("app.settings", "Video...", "Vídeo..."),
+     ("app.settings", "3D...", "3D..."),
+     ("app.settings", "Scripting & Expressions...", "Scripts y expresiones..."),
+-    ("app.hide", "Hide EffectCraft", "Ocultar EffectCraft"),
++    ("app.hide", "Hide EffectFlow", "Ocultar EffectFlow"),
+     ("app.hideOthers", "Hide Others", "Ocultar otros"),
+     ("app.showAll", "Show All", "Mostrar todo"),
+-    ("app.quit", "Quit EffectCraft", "Salir de EffectCraft"),
++    ("app.quit", "Quit EffectFlow", "Salir de EffectFlow"),
+     ("", "File", "Archivo"),
+     ("", "New", "Nuevo"),
+     ("file.newProject", "New Project", "Nuevo proyecto"),
+@@ -2977,7 +2977,7 @@
+     ("file.import", "File...", "Archivo..."),
+     ("file.importMultiple", "Multiple Files...", "Varios archivos..."),
+     ("file.importTimeline", "Adobe Premiere Pro Project...", "Proyecto de Adobe Premiere Pro..."),
+-    ("file.importProject", "EffectCraft Project...", "Proyecto de EffectCraft..."),
++    ("file.importProject", "EffectFlow Project...", "Proyecto de EffectFlow..."),
+     ("file.importPlaceholder", "Placeholder...", "Marcador de posición..."),
+     ("file.importSolid", "Solid...", "Sólido..."),
+     ("file.importLottie", "Lottie...", "Lottie..."),
+@@ -3543,30 +3543,30 @@
+     ("window.panel", "Create Nulls From Paths", "Crear nulos a partir de trazados"),
+     ("window.panel", "VR Comp Editor", "Editor de composición de RV"),
+     ("", "Help", "Ayuda"),
+-    ("help.docs", "EffectCraft Help...", "Ayuda de EffectCraft..."),
++    ("help.docs", "Upstream Documentation...", "Documentación del proyecto original..."),
+     ("help.docs", "Scripting Help...", "Ayuda de scripts..."),
+     ("help.docs", "Expression Reference...", "Referencia de expresiones..."),
+     ("help.docs", "Effect Reference...", "Referencia de efectos..."),
+     ("anim.browsePresets", "Animation Presets...", "Ajustes preestablecidos de animación..."),
+     ("app.keyboardShortcuts", "Keyboard Shortcuts...", "Métodos abreviados de teclado..."),
+     ("help.inAppTutorials", "In-App Tutorials...", "Tutoriales en la aplicación..."),
+-    ("help.onlineTutorials", "Online Tutorials...", "Tutoriales en línea..."),
++    ("help.onlineTutorials", "Upstream Tutorials...", "Tutoriales del proyecto original..."),
+     ("help.systemReport", "System Compatibility Report...", "Informe de compatibilidad del sistema..."),
+     ("help.enableLogging", "Enable Logging", "Habilitar registro"),
+     ("help.revealLogFile", "Reveal Logging File", "Mostrar archivo de registro"),
+-    ("help.discord", "Join the ArtCraft Discord...", "Unirse al Discord de ArtCraft..."),
+-    ("help.reportIssue", "Provide Feedback...", "Enviar comentarios..."),
+-    ("help.website", "ArtCraft Website", "Sitio web de ArtCraft"),
+-    ("help.appPage", "EffectCraft Home Page", "Página de inicio de EffectCraft"),
+-    ("help.github", "EffectCraft on GitHub", "EffectCraft en GitHub"),
++    ("help.discord", "Upstream Community...", "Comunidad del proyecto original..."),
++    ("help.reportIssue", "Upstream Issue Tracker...", "Seguimiento de incidencias del proyecto original..."),
++    ("help.website", "XeroFlow Creative Tools", "XeroFlow Creative Tools"),
++    ("help.appPage", "Upstream Home Page", "Página de inicio del proyecto original"),
++    ("help.github", "Upstream source on GitHub", "Código fuente del proyecto original en GitHub"),
+     ("file.openDemoProject", "Open Demo Project", "Abrir proyecto de demostración"),
+ ];
+ 
+ /// Brazilian Portuguese: the same (command, English label) keys as `JAPANESE`, one entry
+ /// per fixed menu row of the engine's menu tree.
+ const PORTUGUESE: &[(&str, &str, &str)] = &[
+-    ("", "EffectCraft", "EffectCraft"),
+-    ("app.about", "About EffectCraft...", "Sobre o EffectCraft..."),
++    ("", "EffectFlow", "EffectFlow"),
++    ("app.about", "About EffectFlow...", "Sobre o EffectFlow..."),
+     ("", "Settings...", "Configurações..."),
+     ("app.settings", "General...", "Geral..."),
+     ("app.settings", "Startup & Repair...", "Inicialização e reparo..."),
+@@ -3585,10 +3585,10 @@
+     ("app.settings", "Video...", "Vídeo..."),
+     ("app.settings", "3D...", "3D..."),
+     ("app.settings", "Scripting & Expressions...", "Scripts e expressões..."),
+-    ("app.hide", "Hide EffectCraft", "Ocultar EffectCraft"),
++    ("app.hide", "Hide EffectFlow", "Ocultar EffectFlow"),
+     ("app.hideOthers", "Hide Others", "Ocultar outros"),
+     ("app.showAll", "Show All", "Mostrar tudo"),
+-    ("app.quit", "Quit EffectCraft", "Sair do EffectCraft"),
++    ("app.quit", "Quit EffectFlow", "Sair do EffectFlow"),
+     ("", "File", "Arquivo"),
+     ("", "New", "Novo"),
+     ("file.newProject", "New Project", "Novo projeto"),
+@@ -3611,7 +3611,7 @@
+     ("file.import", "File...", "Arquivo..."),
+     ("file.importMultiple", "Multiple Files...", "Vários arquivos..."),
+     ("file.importTimeline", "Adobe Premiere Pro Project...", "Projeto do Adobe Premiere Pro..."),
+-    ("file.importProject", "EffectCraft Project...", "Projeto do EffectCraft..."),
++    ("file.importProject", "EffectFlow Project...", "Projeto do EffectFlow..."),
+     ("file.importPlaceholder", "Placeholder...", "Espaço reservado..."),
+     ("file.importSolid", "Solid...", "Sólido..."),
+     ("file.importLottie", "Lottie...", "Lottie..."),
+@@ -4177,22 +4177,22 @@
+     ("window.panel", "Create Nulls From Paths", "Criar nulls a partir de caminhos"),
+     ("window.panel", "VR Comp Editor", "Editor de composição VR"),
+     ("", "Help", "Ajuda"),
+-    ("help.docs", "EffectCraft Help...", "Ajuda do EffectCraft..."),
++    ("help.docs", "Upstream Documentation...", "Documentação do projeto original..."),
+     ("help.docs", "Scripting Help...", "Ajuda de scripting..."),
+     ("help.docs", "Expression Reference...", "Referência de expressões..."),
+     ("help.docs", "Effect Reference...", "Referência de efeitos..."),
+     ("anim.browsePresets", "Animation Presets...", "Predefinições de animação..."),
+     ("app.keyboardShortcuts", "Keyboard Shortcuts...", "Atalhos de teclado..."),
+     ("help.inAppTutorials", "In-App Tutorials...", "Tutoriais no aplicativo..."),
+-    ("help.onlineTutorials", "Online Tutorials...", "Tutoriais online..."),
++    ("help.onlineTutorials", "Upstream Tutorials...", "Tutoriais do projeto original..."),
+     ("help.systemReport", "System Compatibility Report...", "Relatório de compatibilidade do sistema..."),
+     ("help.enableLogging", "Enable Logging", "Ativar registro em log"),
+     ("help.revealLogFile", "Reveal Logging File", "Revelar arquivo de log"),
+-    ("help.discord", "Join the ArtCraft Discord...", "Entrar no Discord do ArtCraft..."),
+-    ("help.reportIssue", "Provide Feedback...", "Enviar comentários..."),
+-    ("help.website", "ArtCraft Website", "Site do ArtCraft"),
+-    ("help.appPage", "EffectCraft Home Page", "Página inicial do EffectCraft"),
+-    ("help.github", "EffectCraft on GitHub", "EffectCraft no GitHub"),
++    ("help.discord", "Upstream Community...", "Comunidade do projeto original..."),
++    ("help.reportIssue", "Upstream Issue Tracker...", "Rastreador de problemas do projeto original..."),
++    ("help.website", "XeroFlow Creative Tools", "XeroFlow Creative Tools"),
++    ("help.appPage", "Upstream Home Page", "Página inicial do projeto original"),
++    ("help.github", "Upstream source on GitHub", "Código-fonte do projeto original no GitHub"),
+     ("file.openDemoProject", "Open Demo Project", "Abrir projeto de demonstração"),
+ ];
+ 
+@@ -4207,8 +4207,8 @@
+     ("", "Side", "Боковая грань"),
+     ("", "Back", "Задняя грань"),
+     ("layer.addTextAnimator", "Color", "Цвет"),
+-    ("", "EffectCraft", "EffectCraft"),
+-    ("app.about", "About EffectCraft...", "О EffectCraft..."),
++    ("", "EffectFlow", "EffectFlow"),
++    ("app.about", "About EffectFlow...", "О EffectFlow..."),
+     ("", "Settings...", "Настройки..."),
+     ("app.settings", "General...", "Общие..."),
+     ("app.settings", "Startup & Repair...", "Запуск и восстановление..."),
+@@ -4227,10 +4227,10 @@
+     ("app.settings", "Video...", "Видео..."),
+     ("app.settings", "3D...", "3D..."),
+     ("app.settings", "Scripting & Expressions...", "Скрипты и выражения..."),
+-    ("app.hide", "Hide EffectCraft", "Скрыть EffectCraft"),
++    ("app.hide", "Hide EffectFlow", "Скрыть EffectFlow"),
+     ("app.hideOthers", "Hide Others", "Скрыть остальные"),
+     ("app.showAll", "Show All", "Показать все"),
+-    ("app.quit", "Quit EffectCraft", "Выйти из EffectCraft"),
++    ("app.quit", "Quit EffectFlow", "Выйти из EffectFlow"),
+     ("", "File", "Файл"),
+     ("", "New", "Создать"),
+     ("file.newProject", "New Project", "Новый проект"),
+@@ -4253,7 +4253,7 @@
+     ("file.import", "File...", "Файл..."),
+     ("file.importMultiple", "Multiple Files...", "Несколько файлов..."),
+     ("file.importTimeline", "Adobe Premiere Pro Project...", "Проект Adobe Premiere Pro..."),
+-    ("file.importProject", "EffectCraft Project...", "Проект EffectCraft..."),
++    ("file.importProject", "EffectFlow Project...", "Проект EffectFlow..."),
+     ("file.importPlaceholder", "Placeholder...", "Заполнитель..."),
+     ("file.importSolid", "Solid...", "Сплошной цвет..."),
+     ("file.importLottie", "Lottie...", "Lottie..."),
+@@ -4813,22 +4813,22 @@
+     ("window.panel", "Create Nulls From Paths", "Создание нулевых объектов из контуров"),
+     ("window.panel", "VR Comp Editor", "Редактор VR-композиций"),
+     ("", "Help", "Справка"),
+-    ("help.docs", "EffectCraft Help...", "Справка EffectCraft..."),
++    ("help.docs", "Upstream Documentation...", "Документация оригинального проекта..."),
+     ("help.docs", "Scripting Help...", "Справка по скриптам..."),
+     ("help.docs", "Expression Reference...", "Справочник по выражениям..."),
+     ("help.docs", "Effect Reference...", "Справочник по эффектам..."),
+     ("anim.browsePresets", "Animation Presets...", "Заготовки анимации..."),
+     ("app.keyboardShortcuts", "Keyboard Shortcuts...", "Сочетания клавиш..."),
+     ("help.inAppTutorials", "In-App Tutorials...", "Уроки в приложении..."),
+-    ("help.onlineTutorials", "Online Tutorials...", "Онлайн-уроки..."),
++    ("help.onlineTutorials", "Upstream Tutorials...", "Уроки оригинального проекта..."),
+     ("help.systemReport", "System Compatibility Report...", "Отчет о совместимости системы..."),
+     ("help.enableLogging", "Enable Logging", "Включить ведение журнала"),
+     ("help.revealLogFile", "Reveal Logging File", "Показать файл журнала"),
+-    ("help.discord", "Join the ArtCraft Discord...", "Присоединяйтесь к Discord ArtCraft..."),
+-    ("help.reportIssue", "Provide Feedback...", "Оставить отзыв..."),
+-    ("help.website", "ArtCraft Website", "Сайт ArtCraft"),
+-    ("help.appPage", "EffectCraft Home Page", "Главная страница EffectCraft"),
+-    ("help.github", "EffectCraft on GitHub", "EffectCraft на GitHub"),
++    ("help.discord", "Upstream Community...", "Сообщество оригинального проекта..."),
++    ("help.reportIssue", "Upstream Issue Tracker...", "Трекер ошибок оригинального проекта..."),
++    ("help.website", "XeroFlow Creative Tools", "XeroFlow Creative Tools"),
++    ("help.appPage", "Upstream Home Page", "Главная страница оригинального проекта"),
++    ("help.github", "Upstream source on GitHub", "Исходный код оригинального проекта на GitHub"),
+     ("file.openDemoProject", "Open Demo Project", "Открыть демонстрационный проект"),
+ ];
+ 
+@@ -4841,8 +4841,8 @@
+     ("", "Side", "Côté"),
+     ("", "Back", "Arrière"),
+     ("layer.addTextAnimator", "Color", "Couleur"),
+-    ("", "EffectCraft", "EffectCraft"),
+-    ("app.about", "About EffectCraft...", "À propos d’EffectCraft..."),
++    ("", "EffectFlow", "EffectFlow"),
++    ("app.about", "About EffectFlow...", "À propos d’EffectFlow..."),
+     ("", "Settings...", "Préférences..."),
+     ("app.settings", "General...", "Général..."),
+     ("app.settings", "Startup & Repair...", "Démarrage et réparation..."),
+@@ -4861,10 +4861,10 @@
+     ("app.settings", "Video...", "Vidéo..."),
+     ("app.settings", "3D...", "3D..."),
+     ("app.settings", "Scripting & Expressions...", "Scripts et expressions..."),
+-    ("app.hide", "Hide EffectCraft", "Masquer EffectCraft"),
++    ("app.hide", "Hide EffectFlow", "Masquer EffectFlow"),
+     ("app.hideOthers", "Hide Others", "Masquer les autres"),
+     ("app.showAll", "Show All", "Tout afficher"),
+-    ("app.quit", "Quit EffectCraft", "Quitter EffectCraft"),
++    ("app.quit", "Quit EffectFlow", "Quitter EffectFlow"),
+     ("", "File", "Fichier"),
+     ("", "New", "Nouveau"),
+     ("file.newProject", "New Project", "Nouveau projet"),
+@@ -4887,7 +4887,7 @@
+     ("file.import", "File...", "Fichier..."),
+     ("file.importMultiple", "Multiple Files...", "Plusieurs fichiers..."),
+     ("file.importTimeline", "Adobe Premiere Pro Project...", "Projet Adobe Premiere Pro..."),
+-    ("file.importProject", "EffectCraft Project...", "Projet EffectCraft..."),
++    ("file.importProject", "EffectFlow Project...", "Projet EffectFlow..."),
+     ("file.importPlaceholder", "Placeholder...", "Espace réservé..."),
+     ("file.importSolid", "Solid...", "Solide..."),
+     ("file.importLottie", "Lottie...", "Lottie..."),
+@@ -5447,22 +5447,22 @@
+     ("window.panel", "Create Nulls From Paths", "Créer des nuls à partir des tracés"),
+     ("window.panel", "VR Comp Editor", "Éditeur de composition VR"),
+     ("", "Help", "Aide"),
+-    ("help.docs", "EffectCraft Help...", "Aide EffectCraft..."),
++    ("help.docs", "Upstream Documentation...", "Documentation du projet d’origine..."),
+     ("help.docs", "Scripting Help...", "Aide sur les scripts..."),
+     ("help.docs", "Expression Reference...", "Référence des expressions..."),
+     ("help.docs", "Effect Reference...", "Référence des effets..."),
+     ("anim.browsePresets", "Animation Presets...", "Programmes d’animation..."),
+     ("app.keyboardShortcuts", "Keyboard Shortcuts...", "Raccourcis clavier..."),
+     ("help.inAppTutorials", "In-App Tutorials...", "Tutoriels dans l’application..."),
+-    ("help.onlineTutorials", "Online Tutorials...", "Tutoriels en ligne..."),
++    ("help.onlineTutorials", "Upstream Tutorials...", "Tutoriels du projet d’origine..."),
+     ("help.systemReport", "System Compatibility Report...", "Rapport de compatibilité du système..."),
+     ("help.enableLogging", "Enable Logging", "Activer la journalisation"),
+     ("help.revealLogFile", "Reveal Logging File", "Révéler le fichier journal"),
+-    ("help.discord", "Join the ArtCraft Discord...", "Rejoindre le Discord ArtCraft..."),
+-    ("help.reportIssue", "Provide Feedback...", "Envoyer des commentaires..."),
+-    ("help.website", "ArtCraft Website", "Site web ArtCraft"),
+-    ("help.appPage", "EffectCraft Home Page", "Page d’accueil EffectCraft"),
+-    ("help.github", "EffectCraft on GitHub", "EffectCraft sur GitHub"),
++    ("help.discord", "Upstream Community...", "Communauté du projet d’origine..."),
++    ("help.reportIssue", "Upstream Issue Tracker...", "Suivi des problèmes du projet d’origine..."),
++    ("help.website", "XeroFlow Creative Tools", "XeroFlow Creative Tools"),
++    ("help.appPage", "Upstream Home Page", "Page d’accueil du projet d’origine"),
++    ("help.github", "Upstream source on GitHub", "Code source du projet d’origine sur GitHub"),
+     ("file.openDemoProject", "Open Demo Project", "Ouvrir le projet de démonstration"),
+ ];
+ 
+@@ -5475,8 +5475,8 @@
+     ("", "Side", "Seite"),
+     ("", "Back", "Rückseite"),
+     ("layer.addTextAnimator", "Color", "Farbe"),
+-    ("", "EffectCraft", "EffectCraft"),
+-    ("app.about", "About EffectCraft...", "Über EffectCraft..."),
++    ("", "EffectFlow", "EffectFlow"),
++    ("app.about", "About EffectFlow...", "Über EffectFlow..."),
+     ("", "Settings...", "Voreinstellungen..."),
+     ("app.settings", "General...", "Allgemein..."),
+     ("app.settings", "Startup & Repair...", "Start und Reparatur..."),
+@@ -5495,10 +5495,10 @@
+     ("app.settings", "Video...", "Video..."),
+     ("app.settings", "3D...", "3D..."),
+     ("app.settings", "Scripting & Expressions...", "Skripting und Ausdrücke..."),
+-    ("app.hide", "Hide EffectCraft", "EffectCraft ausblenden"),
++    ("app.hide", "Hide EffectFlow", "EffectFlow ausblenden"),
+     ("app.hideOthers", "Hide Others", "Andere ausblenden"),
+     ("app.showAll", "Show All", "Alle einblenden"),
+-    ("app.quit", "Quit EffectCraft", "EffectCraft beenden"),
++    ("app.quit", "Quit EffectFlow", "EffectFlow beenden"),
+     ("", "File", "Datei"),
+     ("", "New", "Neu"),
+     ("file.newProject", "New Project", "Neues Projekt"),
+@@ -5521,7 +5521,7 @@
+     ("file.import", "File...", "Datei..."),
+     ("file.importMultiple", "Multiple Files...", "Mehrere Dateien..."),
+     ("file.importTimeline", "Adobe Premiere Pro Project...", "Adobe Premiere Pro-Projekt..."),
+-    ("file.importProject", "EffectCraft Project...", "EffectCraft-Projekt..."),
++    ("file.importProject", "EffectFlow Project...", "EffectFlow-Projekt..."),
+     ("file.importPlaceholder", "Placeholder...", "Platzhalter..."),
+     ("file.importSolid", "Solid...", "Farbfläche..."),
+     ("file.importLottie", "Lottie...", "Lottie..."),
+@@ -6081,22 +6081,22 @@
+     ("window.panel", "Create Nulls From Paths", "Null-Objekte aus Pfaden erstellen"),
+     ("window.panel", "VR Comp Editor", "VR-Kompositionseditor"),
+     ("", "Help", "Hilfe"),
+-    ("help.docs", "EffectCraft Help...", "EffectCraft-Hilfe..."),
++    ("help.docs", "Upstream Documentation...", "Dokumentation des Originalprojekts..."),
+     ("help.docs", "Scripting Help...", "Hilfe zu Skripts..."),
+     ("help.docs", "Expression Reference...", "Ausdrucksreferenz..."),
+     ("help.docs", "Effect Reference...", "Effektreferenz..."),
+     ("anim.browsePresets", "Animation Presets...", "Animations-Presets..."),
+     ("app.keyboardShortcuts", "Keyboard Shortcuts...", "Tastenkürzel..."),
+     ("help.inAppTutorials", "In-App Tutorials...", "In-App-Tutorials..."),
+-    ("help.onlineTutorials", "Online Tutorials...", "Online-Tutorials..."),
++    ("help.onlineTutorials", "Upstream Tutorials...", "Tutorials des Originalprojekts..."),
+     ("help.systemReport", "System Compatibility Report...", "Bericht zur Systemkompatibilität..."),
+     ("help.enableLogging", "Enable Logging", "Protokollierung aktivieren"),
+     ("help.revealLogFile", "Reveal Logging File", "Protokolldatei anzeigen"),
+-    ("help.discord", "Join the ArtCraft Discord...", "ArtCraft-Discord beitreten..."),
+-    ("help.reportIssue", "Provide Feedback...", "Feedback senden..."),
+-    ("help.website", "ArtCraft Website", "ArtCraft-Website"),
+-    ("help.appPage", "EffectCraft Home Page", "EffectCraft-Startseite"),
+-    ("help.github", "EffectCraft on GitHub", "EffectCraft auf GitHub"),
++    ("help.discord", "Upstream Community...", "Community des Originalprojekts..."),
++    ("help.reportIssue", "Upstream Issue Tracker...", "Issue-Tracker des Originalprojekts..."),
++    ("help.website", "XeroFlow Creative Tools", "XeroFlow Creative Tools"),
++    ("help.appPage", "Upstream Home Page", "Startseite des Originalprojekts"),
++    ("help.github", "Upstream source on GitHub", "Quellcode des Originalprojekts auf GitHub"),
+     ("file.openDemoProject", "Open Demo Project", "Demoprojekt öffnen"),
+ ];
+ 
+@@ -6109,8 +6109,8 @@
+     ("", "Side", "Boční strana"),
+     ("", "Back", "Zadní strana"),
+     ("layer.addTextAnimator", "Color", "Barva"),
+-    ("", "EffectCraft", "EffectCraft"),
+-    ("app.about", "About EffectCraft...", "O aplikaci EffectCraft..."),
++    ("", "EffectFlow", "EffectFlow"),
++    ("app.about", "About EffectFlow...", "O aplikaci EffectFlow..."),
+     ("", "Settings...", "Nastavení..."),
+     ("app.settings", "General...", "Obecné..."),
+     ("app.settings", "Startup & Repair...", "Spuštění a oprava..."),
+@@ -6129,10 +6129,10 @@
+     ("app.settings", "Video...", "Video..."),
+     ("app.settings", "3D...", "3D..."),
+     ("app.settings", "Scripting & Expressions...", "Skripty a výrazy..."),
+-    ("app.hide", "Hide EffectCraft", "Skrýt EffectCraft"),
++    ("app.hide", "Hide EffectFlow", "Skrýt EffectFlow"),
+     ("app.hideOthers", "Hide Others", "Skrýt ostatní"),
+     ("app.showAll", "Show All", "Zobrazit vše"),
+-    ("app.quit", "Quit EffectCraft", "Ukončit EffectCraft"),
++    ("app.quit", "Quit EffectFlow", "Ukončit EffectFlow"),
+     ("", "File", "Soubor"),
+     ("", "New", "Nový"),
+     ("file.newProject", "New Project", "Nový projekt"),
+@@ -6155,7 +6155,7 @@
+     ("file.import", "File...", "Soubor..."),
+     ("file.importMultiple", "Multiple Files...", "Více souborů..."),
+     ("file.importTimeline", "Adobe Premiere Pro Project...", "Projekt Adobe Premiere Pro..."),
+-    ("file.importProject", "EffectCraft Project...", "Projekt EffectCraft..."),
++    ("file.importProject", "EffectFlow Project...", "Projekt EffectFlow..."),
+     ("file.importPlaceholder", "Placeholder...", "Zástupný záznam..."),
+     ("file.importSolid", "Solid...", "Plná vrstva..."),
+     ("file.importLottie", "Lottie...", "Lottie..."),
+@@ -6716,22 +6716,22 @@
+     ("window.panel", "Create Nulls From Paths", "Vytvořit prázdné objekty z cest"),
+     ("window.panel", "VR Comp Editor", "Editor kompozice VR"),
+     ("", "Help", "Nápověda"),
+-    ("help.docs", "EffectCraft Help...", "Nápověda k EffectCraft..."),
++    ("help.docs", "Upstream Documentation...", "Dokumentace původního projektu..."),
+     ("help.docs", "Scripting Help...", "Nápověda ke skriptování..."),
+     ("help.docs", "Expression Reference...", "Referenční příručka výrazů..."),
+     ("help.docs", "Effect Reference...", "Referenční příručka efektů..."),
+     ("anim.browsePresets", "Animation Presets...", "Přednastavení animace..."),
+     ("app.keyboardShortcuts", "Keyboard Shortcuts...", "Klávesové zkratky..."),
+     ("help.inAppTutorials", "In-App Tutorials...", "Výukové lekce v aplikaci..."),
+-    ("help.onlineTutorials", "Online Tutorials...", "Výukové lekce online..."),
++    ("help.onlineTutorials", "Upstream Tutorials...", "Výukové lekce původního projektu..."),
+     ("help.systemReport", "System Compatibility Report...", "Zpráva o kompatibilitě systému..."),
+     ("help.enableLogging", "Enable Logging", "Povolit protokolování"),
+     ("help.revealLogFile", "Reveal Logging File", "Zobrazit soubor protokolu"),
+-    ("help.discord", "Join the ArtCraft Discord...", "Připojit se na Discord ArtCraft..."),
+-    ("help.reportIssue", "Provide Feedback...", "Poskytnout zpětnou vazbu..."),
+-    ("help.website", "ArtCraft Website", "Web ArtCraft"),
+-    ("help.appPage", "EffectCraft Home Page", "Domovská stránka EffectCraft"),
+-    ("help.github", "EffectCraft on GitHub", "EffectCraft na GitHubu"),
++    ("help.discord", "Upstream Community...", "Komunita původního projektu..."),
++    ("help.reportIssue", "Upstream Issue Tracker...", "Hlášení chyb původního projektu..."),
++    ("help.website", "XeroFlow Creative Tools", "XeroFlow Creative Tools"),
++    ("help.appPage", "Upstream Home Page", "Domovská stránka původního projektu"),
++    ("help.github", "Upstream source on GitHub", "Zdrojový kód původního projektu na GitHubu"),
+     ("file.openDemoProject", "Open Demo Project", "Otevřít ukázkový projekt"),
+ ];
+ 
+@@ -6740,8 +6740,8 @@
+ /// the other Craft apps' Georgian catalogs (შრე, საკვანძო კადრი, კომპოზიცია, ნიღაბი); commands are
+ /// verbal nouns (შენახვა, გახსნა) and Georgian has no capital letters.
+ const GEORGIAN: &[(&str, &str, &str)] = &[
+-    ("", "EffectCraft", "EffectCraft"),
+-    ("app.about", "About EffectCraft...", "EffectCraft-ის შესახებ..."),
++    ("", "EffectFlow", "EffectFlow"),
++    ("app.about", "About EffectFlow...", "EffectFlow-ის შესახებ..."),
+     ("", "Settings...", "პარამეტრები..."),
+     ("app.settings", "General...", "ზოგადი..."),
+     ("app.settings", "Startup & Repair...", "გაშვება და აღდგენა..."),
+@@ -6760,10 +6760,10 @@
+     ("app.settings", "Video...", "ვიდეო..."),
+     ("app.settings", "3D...", "3D..."),
+     ("app.settings", "Scripting & Expressions...", "სკრიპტები და ექსპრესიები..."),
+-    ("app.hide", "Hide EffectCraft", "EffectCraft-ის დამალვა"),
++    ("app.hide", "Hide EffectFlow", "EffectFlow-ის დამალვა"),
+     ("app.hideOthers", "Hide Others", "სხვების დამალვა"),
+     ("app.showAll", "Show All", "ყველას ჩვენება"),
+-    ("app.quit", "Quit EffectCraft", "EffectCraft-იდან გასვლა"),
++    ("app.quit", "Quit EffectFlow", "EffectFlow-იდან გასვლა"),
+     ("", "File", "ფაილი"),
+     ("", "New", "ახალი"),
+     ("file.newProject", "New Project", "ახალი პროექტი"),
+@@ -6786,7 +6786,7 @@
+     ("file.import", "File...", "ფაილი..."),
+     ("file.importMultiple", "Multiple Files...", "რამდენიმე ფაილი..."),
+     ("file.importTimeline", "Adobe Premiere Pro Project...", "Adobe Premiere Pro-ს პროექტი..."),
+-    ("file.importProject", "EffectCraft Project...", "EffectCraft-ის პროექტი..."),
++    ("file.importProject", "EffectFlow Project...", "EffectFlow-ის პროექტი..."),
+     ("file.importPlaceholder", "Placeholder...", "ჩანაცვლების ობიექტი..."),
+     ("file.importSolid", "Solid...", "სოლიდი..."),
+     ("file.importLottie", "Lottie...", "Lottie..."),
+@@ -7351,22 +7351,22 @@
+     ("window.panel", "Create Nulls From Paths", "ნულოვანი ობიექტების შექმნა ტრაექტორიებიდან"),
+     ("window.panel", "VR Comp Editor", "VR კომპოზიციის რედაქტორი"),
+     ("", "Help", "დახმარება"),
+-    ("help.docs", "EffectCraft Help...", "EffectCraft-ის დახმარება..."),
++    ("help.docs", "Upstream Documentation...", "ორიგინალური პროექტის დოკუმენტაცია..."),
+     ("help.docs", "Scripting Help...", "სკრიპტების დახმარება..."),
+     ("help.docs", "Expression Reference...", "ექსპრესიების ცნობარი..."),
+     ("help.docs", "Effect Reference...", "ეფექტების ცნობარი..."),
+     ("anim.browsePresets", "Animation Presets...", "ანიმაციის პრესეტები..."),
+     ("app.keyboardShortcuts", "Keyboard Shortcuts...", "კლავიატურის მალსახმობები..."),
+     ("help.inAppTutorials", "In-App Tutorials...", "აპის შიგნით გაკვეთილები..."),
+-    ("help.onlineTutorials", "Online Tutorials...", "ონლაინ გაკვეთილები..."),
++    ("help.onlineTutorials", "Upstream Tutorials...", "ორიგინალური პროექტის გაკვეთილები..."),
+     ("help.systemReport", "System Compatibility Report...", "სისტემის თავსებადობის ანგარიში..."),
+     ("help.enableLogging", "Enable Logging", "ჟურნალის ჩართვა"),
+     ("help.revealLogFile", "Reveal Logging File", "ჟურნალის ფაილის ჩვენება"),
+-    ("help.discord", "Join the ArtCraft Discord...", "შემოუერთდით ArtCraft-ის Discord-ს..."),
+-    ("help.reportIssue", "Provide Feedback...", "გამოხმაურების გაგზავნა..."),
+-    ("help.website", "ArtCraft Website", "ArtCraft-ის ვებსაიტი"),
+-    ("help.appPage", "EffectCraft Home Page", "EffectCraft-ის საწყისი გვერდი"),
+-    ("help.github", "EffectCraft on GitHub", "EffectCraft GitHub-ზე"),
++    ("help.discord", "Upstream Community...", "ორიგინალური პროექტის საზოგადოება..."),
++    ("help.reportIssue", "Upstream Issue Tracker...", "ორიგინალური პროექტის პრობლემების ტრეკერი..."),
++    ("help.website", "XeroFlow Creative Tools", "XeroFlow Creative Tools"),
++    ("help.appPage", "Upstream Home Page", "ორიგინალური პროექტის საწყისი გვერდი"),
++    ("help.github", "Upstream source on GitHub", "ორიგინალური პროექტის წყაროს კოდი GitHub-ზე"),
+     ("file.openDemoProject", "Open Demo Project", "სადემონსტრაციო პროექტის გახსნა"),
+ ];
+ 
+diff -ruN a/crates/ui-egui/src/menus.rs b/crates/ui-egui/src/menus.rs
+--- a/crates/ui-egui/src/menus.rs	2026-10-26 00:31:11
++++ b/crates/ui-egui/src/menus.rs	2026-10-28 11:29:44
+@@ -865,7 +865,7 @@
+ /// hold something: with nothing on it, the windowing layer sends no paste event for Ctrl+V.
+ fn clipboard_note(s: &effectcraft_engine::Session) -> String {
+     let st = &s.state;
+-    let n = |n: usize, one: &str, many: &str| format!("EffectCraft: {n} {}", if n == 1 { one } else { many });
++    let n = |n: usize, one: &str, many: &str| format!("EffectFlow: {n} {}", if n == 1 { one } else { many });
+     if st.clip_is_keys && !st.key_clipboard.is_empty() {
+         n(st.key_clipboard.iter().map(|c| c.keys.len()).sum(), "keyframe", "keyframes")
+     } else if !st.effect_clipboard.is_empty() {
+@@ -873,7 +873,7 @@
+     } else if !st.contents_clipboard.is_empty() {
+         n(st.contents_clipboard.len(), "shape item", "shape items")
+     } else if st.link_clipboard.is_some() {
+-        "EffectCraft: property links".into()
++        "EffectFlow: property links".into()
+     } else {
+         n(st.clipboard.len(), "layer", "layers")
+     }
+diff -ruN a/crates/ui-egui/src/native_menu.rs b/crates/ui-egui/src/native_menu.rs
+--- a/crates/ui-egui/src/native_menu.rs	2026-10-26 00:31:11
++++ b/crates/ui-egui/src/native_menu.rs	2026-10-28 11:29:43
+@@ -468,7 +468,7 @@
+         }
+         let mut translated = vec![];
+         labels(&build(&app).menus, &mut translated);
+-        assert_eq!(translated, ["Служби", "Приховати EffectCraft", "Приховати решту", "Показати все"]);
++        assert_eq!(translated, ["Служби", "Приховати EffectFlow", "Приховати решту", "Показати все"]);
+     }
+ 
+     #[test]
+@@ -489,7 +489,7 @@
+         }
+         let mut translated = vec![];
+         labels(&build(&app).menus, &mut translated);
+-        assert_eq!(translated, ["Služby", "Skrýt EffectCraft", "Skrýt ostatní", "Zobrazit vše"]);
++        assert_eq!(translated, ["Služby", "Skrýt EffectFlow", "Skrýt ostatní", "Zobrazit vše"]);
+     }
+ 
+     #[test]
+@@ -510,7 +510,7 @@
+         }
+         let mut translated = vec![];
+         labels(&build(&app).menus, &mut translated);
+-        assert_eq!(translated, ["სერვისები", "EffectCraft-ის დამალვა", "სხვების დამალვა", "ყველას ჩვენება"]);
++        assert_eq!(translated, ["სერვისები", "EffectFlow-ის დამალვა", "სხვების დამალვა", "ყველას ჩვენება"]);
+     }
+ 
+     #[test]
+diff -ruN a/crates/ui-egui/src/panels/dialogs.rs b/crates/ui-egui/src/panels/dialogs.rs
+--- a/crates/ui-egui/src/panels/dialogs.rs	2026-10-26 00:31:11
++++ b/crates/ui-egui/src/panels/dialogs.rs	2026-10-28 11:29:44
+@@ -277,7 +277,7 @@
+     let mut close = false;
+     let mut cmd: Option<&str> = None;
+     let tab_id = egui::Id::new("about_tab");
+-    modal(ctx, "About EffectCraft", vec2(680.0, 520.0), t, |ui| {
++    modal(ctx, "About EffectFlow", vec2(680.0, 520.0), t, |ui| {
+         let mut tab = ui.data_mut(|d| d.get_temp::<usize>(tab_id)).unwrap_or(0);
+         ui.horizontal(|ui| {
+             for (i, (label, id)) in ABOUT_TABS.iter().enumerate() {
+@@ -324,13 +324,13 @@
+     }
+ }
+ 
+-/// The About tab: logo, version, blurb and community links.
++/// The About tab: mark, version, blurb (with the upstream attribution) and links.
+ fn about_main(app: &mut EffectcraftApp, ui: &mut egui::Ui, t: &Tokens, cmd: &mut Option<&'static str>) {
+     let (r, _) = ui.allocate_exact_size(vec2(ui.available_width(), 96.0), Sense::hover());
+     let p = ui.painter();
+     p.rect_filled(r, 10.0, Color32::from_rgb(0x1b, 0x22, 0x3c));
+     crate::header::paint_logo(p, Rect::from_min_size(r.min + vec2(18.0, 20.0), vec2(56.0, 56.0)));
+-    p.text(r.min + vec2(90.0, 34.0), Align2::LEFT_CENTER, "EffectCraft", Tokens::semibold(24.0), Color32::WHITE);
++    p.text(r.min + vec2(90.0, 34.0), Align2::LEFT_CENTER, "EffectFlow", Tokens::semibold(24.0), Color32::WHITE);
+     p.text(
+         r.min + vec2(90.0, 62.0),
+         Align2::LEFT_CENTER,
+@@ -339,13 +339,13 @@
+         t.text_dim,
+     );
+     ui.add_space(12.0);
+-    ui.label(tr("A clean-room, open-source compositor for motion graphics and visual effects: native on macOS, Windows and Linux, and in the browser. Part of the ArtCraft family of creative apps."));
++    ui.label(tr("A clean-room, open-source compositor for motion graphics and visual effects: native on macOS, Windows and Linux, and in the browser. Based on the original EffectCraft project by the ArtCraft team."));
+     ui.add_space(14.0);
+     let links: [(Icon, &str, &str, &'static str); 4] = [
+-        (Icon::Chat, "Join the ArtCraft Discord", effectcraft_engine::links::DISCORD, "help.discord"),
+-        (Icon::Globe, "ArtCraft website", effectcraft_engine::links::WEBSITE, "help.website"),
+-        (Icon::Sparkle, "EffectCraft home page", effectcraft_engine::links::APP_PAGE, "help.appPage"),
+-        (Icon::Code, "Source code on GitHub", effectcraft_engine::links::GITHUB, "help.github"),
++        (Icon::Chat, "Upstream community", effectcraft_engine::links::DISCORD, "help.discord"),
++        (Icon::Globe, "XeroFlow Creative Tools", effectcraft_engine::links::LAUNCHER, "help.website"),
++        (Icon::Sparkle, "Upstream home page", effectcraft_engine::links::APP_PAGE, "help.appPage"),
++        (Icon::Code, "Upstream source on GitHub", effectcraft_engine::links::GITHUB, "help.github"),
+     ];
+     for (icon, label, url, c) in links {
+         let (r, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 30.0), Sense::click());
+diff -ruN a/crates/ui-egui/src/panels/effect_controls.rs b/crates/ui-egui/src/panels/effect_controls.rs
+--- a/crates/ui-egui/src/panels/effect_controls.rs	2026-10-26 00:31:11
++++ b/crates/ui-egui/src/panels/effect_controls.rs	2026-10-28 11:29:44
+@@ -1246,7 +1246,7 @@
+             let lines = vec![
+                 crate::i18n::effects::name(spec.id, spec.name),
+                 format!("Category: {}", crate::i18n::effects::category(spec.category)),
+-                "EffectCraft built-in effect (MIT OR Apache-2.0)".to_string(),
++                "EffectFlow built-in effect (MIT OR Apache-2.0)".to_string(),
+             ];
+             let _ = widgets::popup_menu(ui, apop, about.left_bottom(), &lines, None);
+         }
+diff -ruN a/crates/ui-egui/src/panels/home.rs b/crates/ui-egui/src/panels/home.rs
+--- a/crates/ui-egui/src/panels/home.rs	2026-10-26 00:31:11
++++ b/crates/ui-egui/src/panels/home.rs	2026-10-28 11:29:44
+@@ -128,7 +128,7 @@
+ /// The Kind column: what a recent file is, by its extension, in the interface language.
+ fn kind_of(path: &str) -> &'static str {
+     tr(match std::path::Path::new(path).extension().and_then(|e| e.to_str()).map(str::to_ascii_lowercase).as_deref() {
+-        Some("ecproj") => "EffectCraft project",
++        Some("ecproj") => "EffectFlow project",
+         Some("aep" | "aepx") => "After Effects project",
+         Some("json" | "lottie") => "Lottie animation",
+         _ => "Project",
+@@ -285,10 +285,10 @@
+     }
+     // Community links at the foot (below the pages when the window is short).
+     let links = [
+-        (Icon::Chat, "Join the ArtCraft Discord", "help.discord"),
+-        (Icon::Globe, "getartcraft.com", "help.website"),
+-        (Icon::Globe, "EffectCraft home page", "help.appPage"),
+-        (Icon::Code, "EffectCraft on GitHub", "help.github"),
++        (Icon::Chat, "Upstream community", "help.discord"),
++        (Icon::Globe, "XeroFlow Creative Tools", "help.website"),
++        (Icon::Globe, "Upstream home page", "help.appPage"),
++        (Icon::Code, "Upstream source on GitHub", "help.github"),
+     ];
+     let sib = effectcraft_engine::links::SIBLINGS;
+     let sib_rows = sib.len().div_ceil(2) as f32;
+@@ -315,7 +315,7 @@
+         }
+         cy += 30.0;
+     }
+-    p.text(pos2(x0, cy + 8.0), Align2::LEFT_CENTER, tr("More ArtCraft apps"), Tokens::ui(11.0), t.text_faint);
++    p.text(pos2(x0, cy + 8.0), Align2::LEFT_CENTER, tr("More XeroFlow apps"), Tokens::ui(11.0), t.text_faint);
+     cy += 20.0;
+     let sw = (w - 6.0) / 2.0;
+     for (i, (name, slug)) in sib.iter().enumerate() {
+@@ -342,7 +342,7 @@
+     let t = app.tokens;
+     let (x0, w) = (area.min.x, area.width());
+     let mut y = area.min.y;
+-    p.text(pos2(x0, y + 14.0), Align2::LEFT_CENTER, tr("Welcome to EffectCraft"), Tokens::semibold(26.0), t.tab_text_active);
++    p.text(pos2(x0, y + 14.0), Align2::LEFT_CENTER, tr("Welcome to EffectFlow"), Tokens::semibold(26.0), t.tab_text_active);
+     y += 40.0;
+     p.text(
+         pos2(x0, y + 8.0),
+@@ -557,7 +557,7 @@
+         assert_eq!(format_ago(now, now - 30 * 86_400), "2026-08-22");
+         assert_eq!(format_ago(now, now + 100), "Just now");
+         assert_eq!((format_size(900), format_size(13_000), format_size(3_500_000)), ("900 B".into(), "13 KB".into(), "3.3 MB".into()));
+-        assert_eq!((kind_of("/a/B.ecproj"), kind_of("c.AEP"), kind_of("x")), ("EffectCraft project", "After Effects project", "Project"));
++        assert_eq!((kind_of("/a/B.ecproj"), kind_of("c.AEP"), kind_of("x")), ("EffectFlow project", "After Effects project", "Project"));
+         // After a week it is the date, whole even for a five-digit year.
+         assert_eq!(format_ago(i64::MAX, 253_402_300_800), "10000-01-01");
+     }
+@@ -569,7 +569,7 @@
+         let now = 1_790_000_000;
+         crate::i18n::set_current("zh-hans");
+         let shown = (format_ago(now, now - 5), format_ago(now, now - 3 * 3_600), format_ago(now, now - 90_000), kind_of("/a/B.ecproj"));
+-        let catalog = (tr("Just now").to_string(), tr_args("{} hours ago", &[&3]), tr("Yesterday").to_string(), tr("EffectCraft project"));
++        let catalog = (tr("Just now").to_string(), tr_args("{} hours ago", &[&3]), tr("Yesterday").to_string(), tr("EffectFlow project"));
+         crate::i18n::set_current("en");
+         assert_eq!(shown, catalog);
+         assert_eq!(tr("Filter recent files"), "Filter recent files");
+diff -ruN a/crates/ui-egui/src/panels/learn.rs b/crates/ui-egui/src/panels/learn.rs
+--- a/crates/ui-egui/src/panels/learn.rs	2026-10-26 00:31:11
++++ b/crates/ui-egui/src/panels/learn.rs	2026-10-28 11:29:44
+@@ -18,7 +18,7 @@
+     p.text(
+         pos2(x, y + 26.0),
+         Align2::LEFT_CENTER,
+-        "Hands-on tutorials that run inside EffectCraft. Do each step yourself, or press Show me.",
++        "Hands-on tutorials that run inside EffectFlow. Do each step yourself, or press Show me.",
+         Tokens::ui(11.5),
+         t.text_faint,
+     );
+diff -ruN a/crates/ui-egui/src/panels/settings.rs b/crates/ui-egui/src/panels/settings.rs
+--- a/crates/ui-egui/src/panels/settings.rs	2026-10-26 00:31:11
++++ b/crates/ui-egui/src/panels/settings.rs	2026-10-28 11:29:44
+@@ -101,7 +101,7 @@
+             Item::Setting { key, label, kind, live } => {
+                 let v = get(key);
+                 let id = format!("settings.{key}");
+-                let tip = (!live).then(|| tr("Stored, but not used by EffectCraft yet"));
++                let tip = (!live).then(|| tr("Stored, but not used by EffectFlow yet"));
+                 let mut resp: Option<egui::Response> = None;
+                 match kind {
+                     Kind::Bool => {
+@@ -779,7 +779,7 @@
+     };
+     let mut choice: Option<&str> = None;
+     super::dialogs::modal(ctx, "Recover Project", vec2(560.0, 230.0), t, |ui| {
+-        ui.label(tr("EffectCraft didn't quit normally last time."));
++        ui.label(tr("EffectFlow didn't quit normally last time."));
+         ui.add_space(6.0);
+         if let Some(p) = &r.project {
+             ui.label(tr_args("Project: {}", &[&p]));
+diff -ruN a/crates/ui-egui/src/panels/unsaved.rs b/crates/ui-egui/src/panels/unsaved.rs
+--- a/crates/ui-egui/src/panels/unsaved.rs	2026-10-26 00:31:11
++++ b/crates/ui-egui/src/panels/unsaved.rs	2026-10-28 11:29:44
+@@ -71,7 +71,7 @@
+ /// The window title: the project's path (or name) and `*` while it has unsaved changes.
+ pub fn window_title(app: &EffectcraftApp) -> String {
+     let doc = app.session.path.clone().unwrap_or_else(|| project_name(app));
+-    format!("EffectCraft - {doc}{}", if app.session.is_dirty() { " *" } else { "" })
++    format!("EffectFlow - {doc}{}", if app.session.is_dirty() { " *" } else { "" })
+ }
+ 
+ /// Whether the prompt is Revert Project (Revert / Cancel) instead of Unsaved Changes.
+diff -ruN a/crates/ui-egui/tests/it/ui_keyframes.rs b/crates/ui-egui/tests/it/ui_keyframes.rs
+--- a/crates/ui-egui/tests/it/ui_keyframes.rs	2026-10-26 00:31:11
++++ b/crates/ui-egui/tests/it/ui_keyframes.rs	2026-10-28 11:29:44
+@@ -105,11 +105,11 @@
+             _ => None,
+         })
+         .collect();
+-    assert_eq!(copied, ["EffectCraft: 1 keyframe"], "the system clipboard is filled, so Ctrl+V sends a paste event");
++    assert_eq!(copied, ["EffectFlow: 1 keyframe"], "the system clipboard is filled, so Ctrl+V sends a paste event");
+     assert!(h.state().session.state.clip_is_keys);
+     // Move to 3 s, Ctrl+V: the key lands there.
+     h.state_mut().session.set_time(effectcraft_engine::time::Tick::from_seconds_f64(3.0));
+-    h.input_mut().events.push(Event::Paste("EffectCraft: 1 keyframe".into()));
++    h.input_mut().events.push(Event::Paste("EffectFlow: 1 keyframe".into()));
+     h.run_steps(2);
+     assert_eq!(key_times(&h, id), vec![0.0, 1.0, 3.0]);
+ }
+@@ -190,7 +190,7 @@
+             assert_eq!(h.state().session.state.selected_props.len(), 3);
+             h.input_mut().events.push(Event::Copy);
+             h.step();
+-            let note = format!("EffectCraft: {count} keyframes");
++            let note = format!("EffectFlow: {count} keyframes");
+             assert!(h.output().platform_output.commands.iter().any(|command| matches!(command, egui::OutputCommand::CopyText(text) if text == &note)));
+             h.state_mut().session.set_time(effectcraft_engine::time::Tick::from_seconds_f64(2.0));
+             let undo_steps = h.state().session.history.undo.len();
+diff -ruN a/crates/ui-egui/tests/it/ui_timeline_shapes.rs b/crates/ui-egui/tests/it/ui_timeline_shapes.rs
+--- a/crates/ui-egui/tests/it/ui_timeline_shapes.rs	2026-10-26 00:31:11
++++ b/crates/ui-egui/tests/it/ui_timeline_shapes.rs	2026-10-28 11:29:44
+@@ -199,7 +199,7 @@
+     h.step();
+     click(&mut h, &format!("timeline.layer.{b}.row"));
+     assert_eq!(h.state().session.state.selected_layers, vec![LayerId(b)]);
+-    h.input_mut().events.push(Event::Paste("EffectCraft: 1 shape item".into()));
++    h.input_mut().events.push(Event::Paste("EffectFlow: 1 shape item".into()));
+     h.run_steps(3);
+     assert_eq!(h.state().session.active_comp().unwrap().layers.len(), 2, "no new layer");
+     assert_eq!(contents_names(&h, b), ["Rectangle 1", "Ellipse 1"]);
+@@ -300,7 +300,7 @@
+     assert_eq!(top.props.sub("contents").unwrap().groups().count(), 2);
+     assert_eq!(h.state().session.state.selected_layers, vec![top.id]);
+     // The app's own clipboard note pastes the copied layer as before.
+-    h.input_mut().events.push(Event::Paste("EffectCraft: 1 layer".into()));
++    h.input_mut().events.push(Event::Paste("EffectFlow: 1 layer".into()));
+     h.run_steps(3);
+     let c = h.state().session.active_comp().unwrap();
+     assert_eq!(c.layers.len(), 4);
+diff -ruN a/xtask/src/bench.rs b/xtask/src/bench.rs
+--- a/xtask/src/bench.rs	2026-10-26 00:31:11
++++ b/xtask/src/bench.rs	2026-10-28 11:29:44
+@@ -462,7 +462,7 @@
+         start: 0.0,
+     };
+     match name {
+-        "demo" => Ok(Scenario { name: name.into(), source: vec!["--demo".into()], comp: "EffectCraft Intro".into(), fps: 30_000.0 / 1001.0, start: 0.0 }),
++        "demo" => Ok(Scenario { name: name.into(), source: vec!["--demo".into()], comp: "EffectFlow Intro".into(), fps: 30_000.0 / 1001.0, start: 0.0 }),
+         "layers" => {
+             build_project(bin, &layers_cmds(), &projects.join("layers.ecproj"))?;
+             Ok(project("layers.ecproj", "Layers"))

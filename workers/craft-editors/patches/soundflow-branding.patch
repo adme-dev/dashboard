@@ -1,0 +1,361 @@
+diff -ruN a/apps/soundcraft/src/main.rs b/apps/soundcraft/src/main.rs
+--- a/apps/soundcraft/src/main.rs	2026-10-26 00:29:18
++++ b/apps/soundcraft/src/main.rs	2026-10-28 11:22:14
+@@ -76,13 +76,13 @@
+         // title carries them; elsewhere the egui menu bar already does.
+         let title = if self.0.native_menu_bar {
+             format!(
+-                "{}{} — SoundCraft — {}",
++                "{}{} — SoundFlow — {}",
+                 self.0.engine.session().name,
+                 if self.0.engine.is_dirty() { " *" } else { "" },
+                 if self.0.ui.window == soundcraft_ui_egui::MainWindow::Edit { "Edit" } else { "Mix" }
+             )
+         } else {
+-            format!("{} — SoundCraft", self.0.engine.session().name)
++            format!("{} — SoundFlow", self.0.engine.session().name)
+         };
+         set_title(ctx, title);
+     }
+@@ -166,7 +166,7 @@
+         pick_open: Some(Box::new(|purpose: &str, _exts: &[&str]| {
+             let d = rfd::FileDialog::new();
+             let d = match purpose {
+-                "session.open" => d.add_filter("SoundCraft Session", &["scraft"]),
++                "session.open" => d.add_filter("SoundFlow Session", &["scraft"]),
+                 "file.import_midi" => d.add_filter("MIDI", &["mid", "midi", "smf"]),
+                 _ => d.add_filter(
+                     "Audio",
+@@ -179,7 +179,7 @@
+             let path = std::path::Path::new(default);
+             let mut d = match purpose {
+                 "file.bounce_mix" => rfd::FileDialog::new().add_filter("Audio", &["wav", "aif", "aiff", "flac"]),
+-                _ => rfd::FileDialog::new().add_filter("SoundCraft Session", &["scraft"]),
++                _ => rfd::FileDialog::new().add_filter("SoundFlow Session", &["scraft"]),
+             };
+             if let Some(dir) = path.parent().filter(|dir| dir.is_dir()) {
+                 d = d.set_directory(dir);
+@@ -211,7 +211,7 @@
+     let logger = logging::install();
+     let args: Vec<String> = std::env::args().skip(1).collect();
+     if args.iter().any(|a| a == "--version" || a == "-V") {
+-        println!("SoundCraft {}", env!("CARGO_PKG_VERSION"));
++        println!("SoundFlow {}", env!("CARGO_PKG_VERSION"));
+         return Ok(());
+     }
+     let demo = args.iter().any(|a| a == "--demo" || a == "--sample");
+@@ -251,7 +251,7 @@
+     let prefs = load_prefs().unwrap_or_default();
+     let mut options = eframe::NativeOptions {
+         viewport: egui::ViewportBuilder::default()
+-            .with_title("SoundCraft")
++            .with_title("SoundFlow")
+             .with_inner_size(sane_window_size(prefs.window_size))
+             .with_maximized(prefs.window_maximized)
+             .with_min_inner_size([960.0, 600.0])
+@@ -323,8 +323,8 @@
+             out.textures_delta.clear();
+             out.viewport_output.values().flat_map(|v| &v.commands).filter(|c| matches!(c, egui::ViewportCommand::Title(_))).count()
+         };
+-        assert_eq!(titles("Song — SoundCraft"), 1);
+-        assert_eq!(titles("Song — SoundCraft"), 0);
+-        assert_eq!(titles("Song * — SoundCraft"), 1);
++        assert_eq!(titles("Song — SoundFlow"), 1);
++        assert_eq!(titles("Song — SoundFlow"), 0);
++        assert_eq!(titles("Song * — SoundFlow"), 1);
+     }
+ }
+diff -ruN a/apps/soundcraft/src/native_menu.rs b/apps/soundcraft/src/native_menu.rs
+--- a/apps/soundcraft/src/native_menu.rs	2026-10-26 00:29:18
++++ b/apps/soundcraft/src/native_menu.rs	2026-10-28 11:22:14
+@@ -31,19 +31,19 @@
+         let menu = Menu::new();
+         let (tx, events) = channel();
+         let mut native = Self { menu, entries: Vec::new(), events, last_sync: None };
+-        let app_menu = Submenu::new("SoundCraft", true);
+-        native.add_item(app, &app_menu, "About SoundCraft", "", Some("window.about".into()))?;
++        let app_menu = Submenu::new("SoundFlow", true);
++        native.add_item(app, &app_menu, "About SoundFlow", "", Some("window.about".into()))?;
+         native.add_item(app, &app_menu, "Session Info", "", Some("window.session_info".into()))?;
+         native.add_item(app, &app_menu, "Session Audio Health", "", Some("window.audio_health".into()))?;
+         app_menu.append(&PredefinedMenuItem::separator())?;
+         app_menu.append(&PredefinedMenuItem::services(None))?;
+         app_menu.append(&PredefinedMenuItem::separator())?;
+         // muda's own Hide items take ⌘H and ⌥⌘H, which are Heal Separation and Copy to Send.
+-        app_menu.append(&MenuItem::with_id("hide", "Hide SoundCraft", true, None))?;
++        app_menu.append(&MenuItem::with_id("hide", "Hide SoundFlow", true, None))?;
+         app_menu.append(&MenuItem::with_id("hide_others", "Hide Others", true, None))?;
+         app_menu.append(&PredefinedMenuItem::show_all(None))?;
+         app_menu.append(&PredefinedMenuItem::separator())?;
+-        native.add_item(app, &app_menu, "Quit SoundCraft", "", Some("app.quit".into()))?;
++        native.add_item(app, &app_menu, "Quit SoundFlow", "", Some("app.quit".into()))?;
+         native.menu.append(&app_menu)?;
+         let aliases = menus::ui_aliases();
+         for root in menus::tree() {
+diff -ruN a/apps/soundcraft-cli/src/main.rs b/apps/soundcraft-cli/src/main.rs
+--- a/apps/soundcraft-cli/src/main.rs	2026-10-26 00:29:18
++++ b/apps/soundcraft-cli/src/main.rs	2026-10-28 11:22:14
+@@ -118,7 +118,7 @@
+     let rest: Vec<String> = args.iter().skip(1).cloned().collect();
+     let code = match cmd.as_str() {
+         "--version" | "-V" | "version" => {
+-            outln!("SoundCraft CLI {}", env!("CARGO_PKG_VERSION"));
++            outln!("SoundFlow CLI {}", env!("CARGO_PKG_VERSION"));
+             ExitCode::SUCCESS
+         }
+         "--help" | "-h" | "help" => {
+diff -ruN a/apps/soundcraft-web/index.html b/apps/soundcraft-web/index.html
+--- a/apps/soundcraft-web/index.html	2026-10-26 00:29:18
++++ b/apps/soundcraft-web/index.html	2026-10-28 11:22:14
+@@ -3,7 +3,7 @@
+ <head>
+   <meta charset="utf-8">
+   <meta name="viewport" content="width=device-width, initial-scale=1">
+-  <title>SoundCraft</title>
++  <title>SoundFlow</title>
+   <link data-trunk rel="icon" type="image/png" href="../../assets/app-icon/hicolor/64x64/apps/ai.storyteller.soundcraft.png" />
+   <link data-trunk rel="rust" data-bin="soundcraft-web" data-wasm-opt="z" data-weak-refs />
+   <style>
+@@ -36,6 +36,6 @@
+       });
+     })();
+   </script>
+-  <div id="soundcraft_loading">Loading SoundCraft&hellip;</div>
++  <div id="soundcraft_loading">Loading SoundFlow&hellip;</div>
+ </body>
+ </html>
+diff -ruN a/apps/soundcraft-web/src/web.rs b/apps/soundcraft-web/src/web.rs
+--- a/apps/soundcraft-web/src/web.rs	2026-10-26 00:29:18
++++ b/apps/soundcraft-web/src/web.rs	2026-10-28 11:22:14
+@@ -48,7 +48,7 @@
+         if let Some(el) = document.get_element_by_id(LOADING_ID) {
+             match result {
+                 Ok(()) => el.remove(),
+-                Err(e) => el.set_inner_html(&format!("<p>SoundCraft failed to start: {e:?}</p><p>A browser with WebGPU or WebGL2 is required.</p>")),
++                Err(e) => el.set_inner_html(&format!("<p>SoundFlow failed to start: {e:?}</p><p>A browser with WebGPU or WebGL2 is required.</p>")),
+             }
+         }
+     });
+@@ -96,7 +96,7 @@
+ 
+     fn filter(self) -> (&'static str, &'static [&'static str]) {
+         match self {
+-            Self::Session => ("SoundCraft Session", SESSION_EXTS),
++            Self::Session => ("SoundFlow Session", SESSION_EXTS),
+             Self::Audio => ("Audio", AUDIO_EXTS),
+             Self::Midi => ("MIDI", MIDI_EXTS),
+         }
+diff -ruN a/crates/automation/src/lib.rs b/crates/automation/src/lib.rs
+--- a/crates/automation/src/lib.rs	2026-10-26 00:29:18
++++ b/crates/automation/src/lib.rs	2026-10-28 11:22:14
+@@ -109,7 +109,7 @@
+                 Err(e) => last = e.to_string(),
+             }
+         }
+-        let s = stream.ok_or_else(|| format!("cannot reach SoundCraft at {}: {last}", self.addr))?;
++        let s = stream.ok_or_else(|| format!("cannot reach SoundFlow at {}: {last}", self.addr))?;
+         s.set_read_timeout(Some(Duration::from_secs(120))).map_err(|e| e.to_string())?;
+         let r = s.try_clone().map_err(|e| e.to_string())?;
+         self.conn = Some((s, BufReader::new(r)));
+@@ -164,7 +164,7 @@
+         true
+     }
+     fn describe(&self) -> String {
+-        format!("SoundCraft app at {}", self.addr)
++        format!("SoundFlow app at {}", self.addr)
+     }
+ }
+ 
+diff -ruN a/crates/automation/src/mcp.rs b/crates/automation/src/mcp.rs
+--- a/crates/automation/src/mcp.rs	2026-10-26 00:29:18
++++ b/crates/automation/src/mcp.rs	2026-10-28 11:22:14
+@@ -8,7 +8,7 @@
+ const SUPPORTED: &[&str] = &["2025-06-18", "2025-03-26", "2024-11-05"];
+ const MAX_BATCH_CALLS: usize = 1000;
+ 
+-const INSTRUCTIONS: &str = "SoundCraft is a digital audio workstation (Pro Tools-class). Everything a user can do is a \
++const INSTRUCTIONS: &str = "SoundFlow is a digital audio workstation (Pro Tools-class). Everything a user can do is a \
+ command: call `list_commands` to discover ids and their params, then `execute` (or `batch`). Positions are samples \
+ (integers), `{\"seconds\": x}`, or time strings like \"bars_beats:5|1|000\" / \"0:12.500\". Tracks are referenced by id \
+ or name. Verify your work with `inspect_session` (tracks, clips, mixer, automation, markers, selection). Programmatic \
+@@ -26,7 +26,7 @@
+     vec![
+         tool(
+             "list_commands",
+-            "List SoundCraft commands (id, label, menu path, shortcut, params doc, enabled).",
++            "List SoundFlow commands (id, label, menu path, shortcut, params doc, enabled).",
+             json!({"filter": {"type": "string", "description": "substring of id or label"}}),
+             &[],
+         ),
+diff -ruN a/crates/clap-host/src/ffi.rs b/crates/clap-host/src/ffi.rs
+--- a/crates/clap-host/src/ffi.rs	2026-10-26 00:29:18
++++ b/crates/clap-host/src/ffi.rs	2026-10-28 11:22:14
+@@ -831,7 +831,7 @@
+             if hostwin::SUPPORTED && unsafe { supported(g.plugin, api.as_ptr(), false) } {
+                 return self.open_embedded(&mut g, vt, api, title);
+             }
+-            return Err("this plugin offers only an embedded editor, which SoundCraft hosts on Windows only".into());
++            return Err("this plugin offers only an embedded editor, which SoundFlow hosts on Windows only".into());
+         }
+         self.host.gui_closed.store(false, Ordering::Relaxed);
+         self.host.gui_destroyed.store(false, Ordering::Relaxed);
+diff -ruN a/crates/engine/src/autosave.rs b/crates/engine/src/autosave.rs
+--- a/crates/engine/src/autosave.rs	2026-10-26 00:29:18
++++ b/crates/engine/src/autosave.rs	2026-10-28 11:22:14
+@@ -372,14 +372,14 @@
+     }
+     let folder = path.parent().and_then(|d| std::fs::canonicalize(d).ok());
+     if !folder.is_some_and(|d| folders.contains(&d)) {
+-        return Err(refuse("not in a folder SoundCraft records into"));
++        return Err(refuse("not in a folder SoundFlow records into"));
+     }
+     let header = |frames| soundcraft_audio_io::wav_float_header(channels, rate, frames).map_err(std::io::Error::other);
+     let expected = header(0)?;
+     let mut f = std::fs::OpenOptions::new().read(true).write(true).open(path)?;
+     let mut head = vec![0u8; expected.len()];
+     if std::io::Read::read_exact(&mut f, &mut head).is_err() || !is_take_header(&head, &expected) {
+-        return Err(refuse("not a take SoundCraft recorded"));
++        return Err(refuse("not a take SoundFlow recorded"));
+     }
+     let audio = f.metadata()?.len().saturating_sub(expected.len() as u64);
+     let frames = audio / (channels.max(1) as u64 * 4);
+diff -ruN a/crates/engine/src/clip_group_file.rs b/crates/engine/src/clip_group_file.rs
+--- a/crates/engine/src/clip_group_file.rs	2026-10-26 00:29:18
++++ b/crates/engine/src/clip_group_file.rs	2026-10-28 11:22:14
+@@ -117,7 +117,7 @@
+     let text = crate::io::read_text(path)?;
+     let file: GroupFile = serde_json::from_str(&text).map_err(|err| EngineError::BadParams(id.into(), format!("not a clip group file: {err}")))?;
+     if file.format != FORMAT {
+-        return Err(EngineError::BadParams(id.into(), "not a SoundCraft clip group file".into()));
++        return Err(EngineError::BadParams(id.into(), "not a SoundFlow clip group file".into()));
+     }
+     if file.lanes.iter().map(|l| l.len().max(1)).sum::<usize>() > MAX_CLIPS || file.audio.len() > MAX_CLIPS {
+         return Err(EngineError::BadParams(id.into(), "clip group file has too many clips".into()));
+diff -ruN a/crates/engine/src/cmd/track_more.rs b/crates/engine/src/cmd/track_more.rs
+--- a/crates/engine/src/cmd/track_more.rs	2026-10-26 00:29:18
++++ b/crates/engine/src/cmd/track_more.rs	2026-10-28 11:22:14
+@@ -274,7 +274,7 @@
+     let text = crate::io::read_text(&path)?;
+     let v: Value = serde_json::from_str(&text).map_err(|err| EngineError::Io(format!("{path}: {err}")))?;
+     if v.get("format").and_then(Value::as_str) != Some(PRESET_FORMAT) {
+-        return Err(EngineError::Io(format!("{path}: not a SoundCraft track preset")));
++        return Err(EngineError::Io(format!("{path}: not a SoundFlow track preset")));
+     }
+     let mut mixer: soundcraft_model::Mixer =
+         serde_json::from_value(v.get("mixer").cloned().unwrap_or(Value::Null)).map_err(|err| EngineError::Io(format!("{path}: {err}")))?;
+diff -ruN a/crates/engine/src/io.rs b/crates/engine/src/io.rs
+--- a/crates/engine/src/io.rs	2026-10-26 00:29:18
++++ b/crates/engine/src/io.rs	2026-10-28 11:22:14
+@@ -1557,7 +1557,7 @@
+         read_bundle(bytes, BUNDLE_LIMITS)?
+     } else {
+         (
+-            String::from_utf8(bytes.to_vec()).map_err(|_| EngineError::Io(format!("{name}: not a SoundCraft session")))?,
++            String::from_utf8(bytes.to_vec()).map_err(|_| EngineError::Io(format!("{name}: not a SoundFlow session")))?,
+             std::collections::HashMap::new(),
+         )
+     };
+diff -ruN a/crates/model/src/session.rs b/crates/model/src/session.rs
+--- a/crates/model/src/session.rs	2026-10-26 00:29:18
++++ b/crates/model/src/session.rs	2026-10-28 11:22:14
+@@ -15,9 +15,9 @@
+ 
+ #[derive(Debug, Clone, PartialEq, thiserror::Error)]
+ pub enum SessionError {
+-    #[error("not a SoundCraft session: {0}")]
++    #[error("not a SoundFlow session: {0}")]
+     Format(String),
+-    #[error("session file version {0} is newer than this SoundCraft supports")]
++    #[error("session file version {0} is newer than this SoundFlow supports")]
+     Version(u32),
+     #[error("{0}")]
+     Invalid(String),
+diff -ruN a/crates/ui-egui/src/lib.rs b/crates/ui-egui/src/lib.rs
+--- a/crates/ui-egui/src/lib.rs	2026-10-26 00:29:18
++++ b/crates/ui-egui/src/lib.rs	2026-10-28 11:22:14
+@@ -822,9 +822,9 @@
+         self.panic_rev = self.engine.revision;
+         let saved = self.engine.is_dirty() && self.write_autosave();
+         self.ui.status = if saved {
+-            "SoundCraft hit an internal error (see the log). Your changes were autosaved: save them, then restart SoundCraft.".into()
++            "SoundFlow hit an internal error (see the log). Your changes were autosaved: save them, then restart SoundFlow.".into()
+         } else {
+-            "SoundCraft hit an internal error (see the log). Restart SoundCraft to be safe.".into()
++            "SoundFlow hit an internal error (see the log). Restart SoundFlow to be safe.".into()
+         };
+     }
+ 
+@@ -925,7 +925,7 @@
+         let (cause, then) = match trouble {
+             OutputTrouble::Bug => (
+                 "the audio engine hit an internal error (see the log)".to_string(),
+-                "Use Reconnect audio device in Setup ▸ Playback Engine, or restart SoundCraft.",
++                "Use Reconnect audio device in Setup ▸ Playback Engine, or restart SoundFlow.",
+             ),
+             OutputTrouble::Gone => {
+                 (format!("“{name}” was disconnected"), "Plug it back in, then use Reconnect audio device in Setup ▸ Playback Engine.")
+diff -ruN a/crates/ui-egui/src/menus.rs b/crates/ui-egui/src/menus.rs
+--- a/crates/ui-egui/src/menus.rs	2026-10-26 00:29:18
++++ b/crates/ui-egui/src/menus.rs	2026-10-28 11:22:14
+@@ -23,7 +23,7 @@
+     ("window.narrow_mix", "Narrow Mix", "View > Narrow Mix", Some("Cmd+Alt+M")),
+     ("window.session_info", "Session Info", "", None),
+     ("window.audio_health", "Session Audio Health", "", None),
+-    ("window.about", "About SoundCraft", "", None),
++    ("window.about", "About SoundFlow", "", None),
+     ("window.close", "Close Window", "Window > Close Window", Some("Cmd+W")),
+     ("window.hide_floating", "Hide All Floating Windows", "Window > Hide All Floating Windows", Some("Cmd+Ctrl+W")),
+     ("window.midi_editor", "MIDI Editor", "Window > MIDI Editor", None),
+@@ -228,8 +228,8 @@
+         ui,
+         |ui| {
+             egui::MenuBar::new().ui(ui, |ui| {
+-                ui.menu_button("SoundCraft", |ui| {
+-                    if ui.button("About SoundCraft").clicked() {
++                ui.menu_button("SoundFlow", |ui| {
++                    if ui.button("About SoundFlow").clicked() {
+                         app.ui.show_about = true;
+                     }
+                     if ui.button("Session Info").clicked() {
+diff -ruN a/crates/ui-egui/src/panels.rs b/crates/ui-egui/src/panels.rs
+--- a/crates/ui-egui/src/panels.rs	2026-10-26 00:29:18
++++ b/crates/ui-egui/src/panels.rs	2026-10-28 11:22:14
+@@ -664,7 +664,7 @@
+         return;
+     }
+     let tab_id = egui::Id::new("about_tab");
+-    egui::Window::new("About SoundCraft").open(&mut open).default_size(vec2(640.0, 420.0)).collapsible(false).show(ctx, |ui| {
++    egui::Window::new("About SoundFlow").open(&mut open).default_size(vec2(640.0, 420.0)).collapsible(false).show(ctx, |ui| {
+         let mut tab = ui.data_mut(|d| d.get_temp::<u8>(tab_id)).unwrap_or(0);
+         ui.horizontal(|ui| {
+             for (i, l) in (0u8..).zip(["About", "Contributors", "Models"]) {
+@@ -679,12 +679,13 @@
+             1 => crate::credits::contributors_ui(ui),
+             2 => crate::credits::models_ui(ui),
+             _ => {
+-                ui.label(egui::RichText::new("SoundCraft").font(bold(22.0)));
++                ui.label(egui::RichText::new("SoundFlow").font(bold(22.0)));
+                 ui.label(format!("Version {}", env!("CARGO_PKG_VERSION")));
+-                ui.label("An open-source digital audio workstation from the ArtCraft team.");
++                ui.label("An open-source digital audio workstation, part of XeroFlow Creative Tools.");
++                ui.label("Based on the original SoundCraft project by the ArtCraft team.");
+                 ui.label("Dual-licensed MIT OR Apache-2.0. Made with Rust and egui.");
+-                ui.hyperlink_to("getartcraft.com/apps/soundcraft", "https://getartcraft.com/apps/soundcraft");
+-                ui.hyperlink_to("Join us on Discord", "https://discord.gg/artcraft");
++                ui.hyperlink_to("XeroFlow Creative Tools", "https://xeroflow-creative-tools.adme-dev.workers.dev/");
++                ui.hyperlink_to("Upstream community", "https://discord.gg/artcraft");
+             }
+         }
+     });
+diff -ruN a/crates/video/src/movie.rs b/crates/video/src/movie.rs
+--- a/crates/video/src/movie.rs	2026-10-26 00:29:18
++++ b/crates/video/src/movie.rs	2026-10-28 11:22:14
+@@ -255,7 +255,7 @@
+             None => (Codec::Unsupported("the video track has no sample description".into()), "unknown", "unknown".into()),
+         };
+         if u64::from(width) * u64::from(height) > MAX_PIXELS {
+-            return Err(VideoError::Unsupported(format!("{width}x{height} is larger than SoundCraft decodes")));
++            return Err(VideoError::Unsupported(format!("{width}x{height} is larger than SoundFlow decodes")));
+         }
+         let info = MovieInfo {
+             width,

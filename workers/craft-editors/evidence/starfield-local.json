@@ -1,0 +1,24 @@
+{
+  "url": "http://127.0.0.1:8841",
+  "at": "2026-10-28T00:36:23.294Z",
+  "results": [
+    {
+      "mode": "reduce",
+      "start": 0,
+      "frames": 0,
+      "canvas": true,
+      "pointer": "none",
+      "hidden": "true",
+      "errors": []
+    },
+    {
+      "mode": "no-preference",
+      "start": 36,
+      "frames": 66,
+      "canvas": true,
+      "pointer": "none",
+      "hidden": "true",
+      "errors": []
+    }
+  ]
+}

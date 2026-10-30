@@ -1,0 +1,60 @@
+{
+  "url": "https://xeroflow-creative-tools.adme-dev.workers.dev/",
+  "at": "2026-10-28T00:47:48.112Z",
+  "results": [
+    {
+      "app": "photoflow",
+      "title": "PhotoFlow",
+      "logo": "url(\"https://xeroflow-creative-tools.adme-dev.workers.dev/photoflow/0.16.0/xeroflow-logo.svg\")",
+      "width": "56px",
+      "height": "56px",
+      "favicon": "./xeroflow-logo.svg",
+      "oldIcons": 0
+    },
+    {
+      "app": "vectorflow",
+      "title": "VectorFlow",
+      "logo": "url(\"https://xeroflow-creative-tools.adme-dev.workers.dev/vectorflow/0.17.0/xeroflow-logo.svg\")",
+      "width": "56px",
+      "height": "56px",
+      "favicon": "./xeroflow-logo.svg",
+      "oldIcons": 0
+    },
+    {
+      "app": "effectflow",
+      "title": "EffectFlow",
+      "logo": "url(\"https://xeroflow-creative-tools.adme-dev.workers.dev/effectflow/0.17.0/xeroflow-logo.svg\")",
+      "width": "56px",
+      "height": "56px",
+      "favicon": "./xeroflow-logo.svg",
+      "oldIcons": 0
+    },
+    {
+      "app": "filmflow",
+      "title": "FilmFlow",
+      "logo": "url(\"https://xeroflow-creative-tools.adme-dev.workers.dev/filmflow/0.13.0/xeroflow-logo.svg\")",
+      "width": "56px",
+      "height": "56px",
+      "favicon": "./xeroflow-logo.svg",
+      "oldIcons": 0
+    },
+    {
+      "app": "soundflow",
+      "title": "SoundFlow",
+      "logo": "url(\"https://xeroflow-creative-tools.adme-dev.workers.dev/soundflow/0.13.1/xeroflow-logo.svg\")",
+      "width": "56px",
+      "height": "56px",
+      "favicon": "./xeroflow-logo.svg",
+      "oldIcons": 0
+    },
+    {
+      "app": "figflow",
+      "title": "FigFlow",
+      "logo": "url(\"https://xeroflow-creative-tools.adme-dev.workers.dev/figflow/0.11.2/xeroflow-logo.svg\")",
+      "width": "56px",
+      "height": "56px",
+      "favicon": "./xeroflow-logo.svg",
+      "oldIcons": 0
+    }
+  ]
+}

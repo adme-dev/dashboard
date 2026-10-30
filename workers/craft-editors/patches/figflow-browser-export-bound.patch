@@ -1,0 +1,114 @@
+--- a/crates/engine/src/cmd/file.rs
++++ b/crates/engine/src/cmd/file.rs
+@@ -77,7 +77,7 @@
+         spec!(
+             "file.exportLayers",
+             "Export layers",
+-            "{ids? (default the selection, else every layer on the page with export settings), assets? (true: the Inspect tab's assets in and under them instead: layers with export settings, icons as SVG, images as PNG), dir? (folder to write into; else each file comes back as base64 `data`), bleed? (PDF: points, or with a unit: \"3mm\", \"0.125in\", \"9pt\"), cropMarks?, bleedMarks?, cmyk? (PDF print options): for every PDF instead of each setting's own}  every layer once per export setting, named `<layer><suffix>.<format>` (\"@2x\" when a scaled export has no suffix; repeats get \" 2\"; slashes in a layer name make folders). Returns {files: [{name, id, bytes, path | data}], skipped (layers without settings)}",
++            "{ids? (default the selection, else every layer on the page with export settings), assets? (true: the Inspect tab's assets in and under them instead: layers with export settings, icons as SVG, images as PNG), dir? (folder to write into; else each file comes back as base64 `data`), maxBytes? (in-memory output only: positive integer up to 536870912; stop before retaining outputs exceeding this total byte count), bleed? (PDF: points, or with a unit: \"3mm\", \"0.125in\", \"9pt\"), cropMarks?, bleedMarks?, cmyk? (PDF print options): for every PDF instead of each setting's own}  every layer once per export setting, named `<layer><suffix>.<format>` (\"@2x\" when a scaled export has no suffix; repeats get \" 2\"; slashes in a layer name make folders). Returns {files: [{name, id, bytes, path | data}], skipped (layers without settings)}",
+             false,
+             export_layers
+         ),
+@@ -1267,6 +1267,20 @@
+         return Err(EngineError::Disabled(cmd.into(), "no export settings (add one with export.add)".into()));
+     }
+     let dir = string(p, "dir");
++    // Browser archives must stop while generating, before retaining Base64 for every job. This
++    // bounds retained output, not render transients, Base64 overhead or the final zip's memory.
++    let max_bytes = match p.get("maxBytes") {
++        None => None,
++        Some(v) => {
++            if dir.is_some() {
++                return Err(bad(cmd, "maxBytes applies only to in-memory output (omit dir)"));
++            }
++            let bytes = v.as_u64().filter(|n| (1..=536_870_912).contains(n))
++                .ok_or_else(|| bad(cmd, "maxBytes must be a positive integer no greater than 536870912"))?;
++            Some(bytes as usize)
++        }
++    };
++    let mut retained_bytes = 0usize;
+     // Print options passed here stand in for every PDF setting's own.
+     let print = has_print_param(p).then(|| print_param(cmd, p, PrintSettings::default())).transpose()?;
+     let mut files = Vec::with_capacity(jobs.len());
+@@ -1274,6 +1288,12 @@
+         let setting = ExportSetting { print: print.unwrap_or(job.setting.print), ..job.setting.clone() };
+         let scale = export_scale(doc, &[job.id], &setting);
+         let bytes = export_bytes_with(doc, &[job.id], &setting, scale)?;
++        if let Some(max) = max_bytes {
++            if bytes.len() > max.saturating_sub(retained_bytes) {
++                return Err(bad(cmd, format!("export exceeds maxBytes ({max} bytes): export fewer layers at a time")));
++            }
++            retained_bytes += bytes.len();
++        }
+         let mut f = json!({"name": job.file, "id": job.id, "bytes": bytes.len()});
+         match &dir {
+             Some(d) => {
+--- a/crates/engine/src/export_behaviour_tests.rs
++++ b/crates/engine/src/export_behaviour_tests.rs
+@@ -367,3 +367,44 @@
+     let css = crate::codegen::code_for(doc, a, crate::codegen::CodeLang::Css);
+     assert!(css.contains("background: #FF0000;"), "Copy as CSS is the layer's CSS from Inspect");
+ }
++
++#[test]
++fn browser_export_bound_counts_all_files_and_accepts_the_exact_total() {
++    let mut s = Session::new();
++    let r = rect(&mut s, 0.0, 0.0, 32.0, 24.0, "#FF0000", None);
++    for suffix in ["-first", "-second"] {
++        ex(&mut s, "export.add", json!({"ids": [r], "setting": {"format": "svg", "suffix": suffix}}));
++    }
++    let unbounded = ex(&mut s, "file.exportLayers", json!({"ids": [r]}));
++    let files = unbounded["files"].as_array().unwrap();
++    assert_eq!(files.len(), 2);
++    let sizes: Vec<u64> = files.iter().map(|f| f["bytes"].as_u64().unwrap()).collect();
++    let total: u64 = sizes.iter().sum();
++    assert!(sizes.iter().all(|n| *n < total - 1), "each file fits by itself, but their total does not");
++    let exact = ex(&mut s, "file.exportLayers", json!({"ids": [r], "maxBytes": total}));
++    assert_eq!(exact, unbounded, "a bounded export preserves every output byte and name");
++    let error = s.execute("file.exportLayers", &json!({"ids": [r], "maxBytes": total - 1})).unwrap_err().to_string();
++    assert!(error.contains("export exceeds maxBytes"), "{error}");
++    // Refusal leaves the document and its export settings intact, so retrying with room succeeds.
++    assert_eq!(ex(&mut s, "file.exportLayers", json!({"ids": [r], "maxBytes": total})), unbounded);
++}
++
++#[test]
++fn browser_export_bound_rejects_invalid_limits_and_never_bounds_directory_writes() {
++    let mut s = Session::new();
++    let r = rect(&mut s, 0.0, 0.0, 16.0, 16.0, "#000000", None);
++    ex(&mut s, "export.add", json!({"ids": [r], "setting": {"format": "svg"}}));
++    for limit in [json!(0), json!(-1), json!(1.5), json!("1024"), Value::Null, json!(536_870_913u64)] {
++        let error = s.execute("file.exportLayers", &json!({"ids": [r], "maxBytes": limit})).unwrap_err().to_string();
++        assert!(error.contains("maxBytes must be a positive integer"), "{limit}: {error}");
++    }
++    let dir = std::env::temp_dir().join(format!("figcraft-export-bound-{}", std::process::id()));
++    let _ = std::fs::remove_dir_all(&dir);
++    let error = s.execute("file.exportLayers", &json!({"ids": [r], "dir": dir.to_string_lossy(), "maxBytes": 1})).unwrap_err().to_string();
++    assert!(error.contains("maxBytes applies only to in-memory output"), "{error}");
++    assert!(!dir.exists(), "invalid bounded directory requests do not write partial files");
++    let written = ex(&mut s, "file.exportLayers", json!({"ids": [r], "dir": dir.to_string_lossy()}));
++    let path = written["files"][0]["path"].as_str().unwrap();
++    assert!(std::path::Path::new(path).is_file(), "the existing unbounded desktop export still writes files");
++    let _ = std::fs::remove_dir_all(&dir);
++}
+--- a/crates/ui-egui/src/export_panel.rs
++++ b/crates/ui-egui/src/export_panel.rs
+@@ -340,8 +340,8 @@
+     }
+ }
+ 
+-/// Most bytes one archive download of several exported files may hold, as for a file the browser
+-/// opens: past it the archive and its files would not fit the page's memory together.
++/// Most payload bytes retained for a multi-file browser export. The engine checks this while
++/// generating files; render transients, Base64 overhead and the zip still need additional memory.
+ const MAX_ARCHIVE_BYTES: usize = 512 * 1024 * 1024;
+ 
+ /// Several files of one export as a single `.zip` download (named after the file; a layer's
+@@ -349,7 +349,7 @@
+ /// writing them into a folder.
+ fn download_archive(app: &mut FigApp, ids: &[NodeId], assets: bool) {
+     use base64::Engine as _;
+-    let Some(mut r) = app.run("file.exportLayers", json!({"ids": ids, "assets": assets})) else { return };
++    let Some(mut r) = app.run("file.exportLayers", json!({"ids": ids, "assets": assets, "maxBytes": MAX_ARCHIVE_BYTES})) else { return };
+     let stem = app.session.doc().map(|d| figcraft_engine::cmd::file::safe_file_name(d.name.trim())).unwrap_or_default();
+     let name = format!("{}.zip", if stem.is_empty() { "Export" } else { stem.as_str() });
+     let mut files = Vec::new();

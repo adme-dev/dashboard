@@ -1,0 +1,155 @@
+diff -ruN a/crates/ui-egui/src/layers.rs b/crates/ui-egui/src/layers.rs
+--- a/crates/ui-egui/src/layers.rs	2026-10-28 11:50:54
++++ b/crates/ui-egui/src/layers.rs	2026-10-28 11:51:41
+@@ -85,7 +85,7 @@
+     if lresp.hovered() || app.ui.main_menu {
+         ui.painter().rect_filled(lr, CornerRadius::same(6), t.hover);
+     }
+-    icons::paint(ui.painter(), Rect::from_center_size(lr.center(), vec2(18.0, 18.0)), Icon::Logo, t.icon);
++    crate::theme::paint_xf_mark(ui.painter(), Rect::from_center_size(lr.center(), vec2(24.0, 24.0)));
+     if lresp.clicked() {
+         app.ui.main_menu = !app.ui.main_menu;
+     }
+diff -ruN a/crates/ui-egui/src/lib.rs b/crates/ui-egui/src/lib.rs
+--- a/crates/ui-egui/src/lib.rs	2026-10-28 11:50:54
++++ b/crates/ui-egui/src/lib.rs	2026-10-28 11:52:54
+@@ -241,6 +241,8 @@
+ mod windows_qa_tests;
+ #[cfg(test)]
+ mod windows_tests;
++#[cfg(test)]
++mod xf_mark_tests;
+ 
+ use std::collections::BTreeSet;
+ use std::ffi::OsStr;
+diff -ruN a/crates/ui-egui/src/theme.rs b/crates/ui-egui/src/theme.rs
+--- a/crates/ui-egui/src/theme.rs	2026-10-28 11:50:54
++++ b/crates/ui-egui/src/theme.rs	2026-10-28 11:51:41
+@@ -1,6 +1,6 @@
+ //! Design tokens (UI3 light and dark) and fonts.
+ 
+-use std::sync::{Arc, OnceLock};
++use std::sync::Arc;
+ 
+ use egui::{Color32, Context, FontData, FontDefinitions, FontFamily, FontId, Stroke, TextStyle, Visuals};
+ 
+@@ -394,34 +394,31 @@
+     FontId::new(size, FontFamily::Name("brand".into()))
+ }
+ 
+-/// The two-tone Archivo wordmark used in the home sidebar and About window.
++/// The XeroFlow wordmark beside the mark in the home sidebar and the About window: "XeroFlow" in the
++/// regular face, in the theme's text colour (white on the default dark theme).
+ pub fn paint_wordmark(painter: &egui::Painter, left_center: egui::Pos2, size: f32, t: &Tokens) {
+-    let font = brand(size);
+-    let fig = painter.layout_no_wrap("Fig".into(), font.clone(), t.text);
+-    let fig_width = fig.size().x;
+-    painter.galley(egui::pos2(left_center.x, left_center.y - fig.size().y / 2.0), fig, t.text);
+-    painter.text(egui::pos2(left_center.x + fig_width, left_center.y), egui::Align2::LEFT_CENTER, "Flow", font, t.accent_text);
++    painter.text(left_center, egui::Align2::LEFT_CENTER, "XeroFlow", regular(size), t.text);
+ }
+ 
+-/// Paint the owner's original chameleon icon from the existing app asset.
++/// The near-black of the XeroFlow mark's letters.
++const XF_INK: Color32 = Color32::from_rgb(0x12, 0x13, 0x17);
++
++/// The XeroFlow mark, centred in `rect`: "XF" in near-black semibold letters on a white rounded
++/// square, in the XeroFlow site's proportions (a 36 px square has 8 px corners and 14 px letters);
++/// the letters stay at least 10 px, so the mark reads at the 24 px of the editor's corner button.
++/// A faint edge keeps the square visible on light themes.
++pub fn paint_xf_mark(painter: &egui::Painter, rect: egui::Rect) {
++    let side = rect.width().min(rect.height());
++    let square = egui::Rect::from_center_size(rect.center(), egui::vec2(side, side));
++    let corner = egui::CornerRadius::same((side * 8.0 / 36.0).round().clamp(2.0, 255.0) as u8);
++    painter.rect_filled(square, corner, Color32::WHITE);
++    painter.rect_stroke(square, corner, egui::Stroke::new(1.0, Color32::from_black_alpha(28)), egui::StrokeKind::Inside);
++    painter.text(square.center(), egui::Align2::CENTER_CENTER, "XF", semibold((side * 0.4).max(10.0)), XF_INK);
++}
++
++/// The app's mark where the home sidebar and the About window show it: the XeroFlow mark.
+ pub fn paint_app_icon(ui: &egui::Ui, rect: egui::Rect) {
+-    static ICON: OnceLock<Option<egui::ColorImage>> = OnceLock::new();
+-    let image = ICON.get_or_init(|| {
+-        let rgba = image::load_from_memory(include_bytes!("../../../assets/app-icon/figcraft-64.png")).ok()?.to_rgba8();
+-        Some(egui::ColorImage::from_rgba_unmultiplied([rgba.width() as usize, rgba.height() as usize], rgba.as_raw()))
+-    });
+-    let Some(image) = image else {
+-        ui.painter().rect_filled(rect, egui::CornerRadius::same(5), BRAND);
+-        crate::icons::paint(ui.painter(), rect.shrink(rect.width() * 0.22), crate::icons::Icon::Logo, ACCENT_ON);
+-        return;
+-    };
+-    let id = egui::Id::new("figcraft_original_app_icon");
+-    let texture = ui.ctx().data(|data| data.get_temp::<egui::TextureHandle>(id)).unwrap_or_else(|| {
+-        let texture = ui.ctx().load_texture("figcraft-original-app-icon", image.clone(), egui::TextureOptions::LINEAR);
+-        ui.ctx().data_mut(|data| data.insert_temp(id, texture.clone()));
+-        texture
+-    });
+-    ui.painter().image(texture.id(), rect, egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), Color32::WHITE);
++    paint_xf_mark(ui.painter(), rect);
+ }
+ 
+ pub fn regular(size: f32) -> FontId {
+diff -ruN a/crates/ui-egui/src/xf_mark_tests.rs b/crates/ui-egui/src/xf_mark_tests.rs
+--- a/crates/ui-egui/src/xf_mark_tests.rs	1970-01-01 10:00:00
++++ b/crates/ui-egui/src/xf_mark_tests.rs	2026-10-28 11:52:54
+@@ -0,0 +1,60 @@
++//! The XeroFlow mark in the editor's top-left corner (the main menu button) and beside the
++//! "XeroFlow" wordmark in the home sidebar: "XF" in near-black letters on a white rounded square,
++//! drawn in code at a legible size.
++
++use egui::{Color32, Pos2, Rect, Shape};
++use figcraft_engine::Session;
++
++use crate::layers_drag_tests::Ui;
++use crate::live_tests::{flat, texts};
++
++/// Everything one settled frame paints.
++fn painted(u: &mut Ui) -> Vec<Shape> {
++    u.frame(vec![]);
++    flat(&u.frame_output(vec![]).shapes)
++}
++
++/// The "XF" letters painted within `area`: their colour and on-screen height.
++fn marks_in(shapes: &[Shape], area: Rect) -> Vec<(Color32, f32)> {
++    shapes
++        .iter()
++        .filter_map(|s| match s {
++            Shape::Text(t) if t.galley.text() == "XF" && area.contains(t.pos) => Some((t.fallback_color, t.galley.size().y)),
++            _ => None,
++        })
++        .collect()
++}
++
++/// A white rounded square painted within `area`.
++fn white_square_in(shapes: &[Shape], area: Rect) -> bool {
++    shapes.iter().any(|s| matches!(s, Shape::Rect(r) if r.fill == Color32::WHITE && area.contains_rect(r.rect) && r.corner_radius.nw > 0))
++}
++
++#[test]
++fn the_editor_corner_shows_the_xf_mark() {
++    let mut u = Ui::new(Session::new());
++    u.app.ui.home = false;
++    let s = painted(&mut u);
++    // The rail's first button, under the title bar where there is one.
++    let corner = Rect::from_min_max(Pos2::ZERO, Pos2::new(64.0, 140.0));
++    let marks = marks_in(&s, corner);
++    let [(ink, height)] = marks.as_slice() else { panic!("one XF mark in the corner, got {marks:?}") };
++    assert_eq!(*ink, Color32::from_rgb(0x12, 0x13, 0x17), "near-black letters");
++    assert!(*height >= 10.0, "legible at the corner button ({height} px)");
++    assert!(white_square_in(&s, corner), "on a white rounded square");
++}
++
++#[test]
++fn the_home_sidebar_shows_the_mark_and_the_xeroflow_wordmark() {
++    let mut s = Session::empty();
++    s.prefs.getting_started_dismissed = true;
++    let mut u = Ui::new(s);
++    u.app.ui.home = true;
++    let shapes = painted(&mut u);
++    let sidebar = Rect::from_min_max(Pos2::ZERO, Pos2::new(240.0, 120.0));
++    assert_eq!(marks_in(&shapes, sidebar).len(), 1, "the XF mark tops the sidebar");
++    assert!(white_square_in(&shapes, sidebar));
++    let words: Vec<String> = texts(&shapes).into_iter().filter(|(_, p, _)| sidebar.contains(*p)).map(|(t, _, _)| t).collect();
++    assert!(words.iter().any(|w| w == "XeroFlow"), "the wordmark reads XeroFlow: {words:?}");
++    assert!(!words.iter().any(|w| w == "Fig" || w == "Flow"), "no two-tone app wordmark: {words:?}");
++}
