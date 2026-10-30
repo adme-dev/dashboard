@@ -1,3 +1,4 @@
+import { buildBannerAudioManifest } from '~~/shared/bannerAudioRender.mjs'
 import { bannerImageCropCss } from '~~/shared/bannerImageCrop'
 import { bannerWordTokens } from '~~/shared/bannerWordPop'
 import { bannerEffectCss, bannerTextDepthShadow, bannerTextMarkup, safeBannerTextTexture } from '~~/shared/bannerEffects'
@@ -539,6 +540,7 @@ ${buildCustomFontFaces(layers, customFonts)}
 <div class="ad">
     ${layerDivs}
 </div>
+${includeAnimations ? buildBannerAudioManifest(layers) : ''}
 ${animScript}
 ${runtimeScript}
 ${feedScript}

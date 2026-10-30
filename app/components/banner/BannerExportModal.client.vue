@@ -358,11 +358,6 @@ async function exportVideos() {
   const keys = [...selected.value]
   if (!keys.length) return
 
-  if (keys.some(key => state.sets[key]?.layers.some(layer => layer.type === 'audio' && layer.src))) {
-    toast.add({ title: 'Audio in MP4 is not ready', description: 'Download HTML5 to keep sound playback. MP4 exports currently contain video only.', color: 'warning' })
-    return
-  }
-
   if (!state.project?.id) {
     toast.add({ title: 'Save first', description: 'Save the project before exporting videos', color: 'warning' })
     return

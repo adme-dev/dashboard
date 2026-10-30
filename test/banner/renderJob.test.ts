@@ -63,8 +63,14 @@ describe('enqueueBannerRender', () => {
     await expect(enqueueBannerRender({
       projectId: 'p1', formats: [{ ...fmt('sound'), html: `<audio src="/sound.mp3"></audio>${validHtml}` }],
       fps: 30, quality: 1, crf: 23, userId: 'u1',
-    }, d)).rejects.toThrow(/cannot include audio/i)
+    }, d)).rejects.toThrow(/Regenerate.*audio timing/i)
     expect(d.putSourceHtml).not.toHaveBeenCalled()
+  })
+
+  it('queues audio only when a matching validated soundtrack manifest is present', async () => {
+    const d = deps()
+    const html = validHtml + '<audio src="https://assets.example.com/sound.mp3"></audio><script type="application/json" id="banner-audio">{"version":1,"tracks":[{"src":"https://assets.example.com/sound.mp3","start":0,"end":5,"volume":1,"loop":false}]}</script>'
+    await expect(enqueueBannerRender({ projectId: 'p1', formats: [{ ...fmt('sound'), html }], fps: 30, quality: 1, crf: 23, userId: 'u1' }, d)).resolves.toEqual({ jobIds: ['job0'] })
   })
 
   it('preflights every format before creating any partial render side effects', async () => {
