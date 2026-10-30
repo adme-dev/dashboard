@@ -5,6 +5,8 @@
   <div
     :class="['edm-render-shell', { 'edm-hidden-on-device': hiddenOnDevice }]"
     :data-hidden-on-device="hiddenOnDevice ? 'true' : undefined"
+    @click="preventEditorLinkNavigation"
+    @auxclick.capture="preventEditorLinkNavigation"
   >
     <!-- Heading -->
     <component
@@ -812,6 +814,12 @@ function onHtmlTextToolbarColor(e: Event) {
   const el = e.target as HTMLInputElement | null
   if (!el) return
   updateHtmlTextStyle({ color: el.value || '#000000' })
+}
+
+// Protect the first click before a block is selected/annotated, including
+// linked images and modified or middle clicks. Keep propagation for selection.
+function preventEditorLinkNavigation(event: MouseEvent) {
+  if (props.editable && closestHtmlAnchor(event.target)) event.preventDefault()
 }
 
 function onHtmlEditableClick(event: MouseEvent) {
