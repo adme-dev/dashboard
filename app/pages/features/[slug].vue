@@ -2518,15 +2518,15 @@ const features: Record<string, Feature> = {
     categoryIcon: 'i-lucide-palette',
     categoryIconBg: 'bg-rose-50',
     categoryIconColor: 'text-rose-600',
-    description: 'Choose entrance and exit transitions directly on the timeline, then refine timing, easing, and keyframes in the inspector.',
+    description: 'Edit transitions, imported keyframes and audio directly in a floating timeline panel.',
     details: [
       {
         title: 'Keyframe Timeline',
-        content: 'A full-width timeline sits below the canvas with layer rows, a time ruler, and a shared playhead. Entrance and exit clips show their transition names and icons. Click a clip to open its preset picker; click the layer bar to open detailed animation controls in the inspector. Expand a layer to adjust its property keyframes, or scrub the ruler to preview the result.'
+        content: 'A full-width timeline sits below the canvas with layer rows, a time ruler, and a shared playhead. Entrance and exit clips show their transition names and icons. Click a clip or its layer bar to open a floating editor. Search presets, adjust native duration and easing, or edit an imported keyframe’s property, time and value in Build. Audio clips expose volume, mute and loop controls. Open details continues in the sidebar. Expand a layer to adjust its property keyframes, or scrub the ruler to preview the result.'
       },
       {
         title: 'Entry & Exit Animations',
-        content: 'Choose an entrance or exit preset from the picker attached to its timeline clip. The same preset appears in the Animation inspector, where you can adjust start and end times, duration, and easing. The coloured clips show where the entrance and exit occur within each layer’s presence range.'
+        content: 'Choose an entrance or exit preset from the picker attached to its timeline clip. Imported motion stays intact until you explicitly replace it; Undo restores the previous keyframes and motion path. The same settings appear in the Animation inspector. The coloured clips show where the entrance and exit occur within each layer’s presence range.'
       },
       {
         title: 'Easing Library',
