@@ -8,8 +8,8 @@ const commit = process.argv[2]
 if (!/^[a-f0-9]{40}$/.test(commit || '')) throw new Error('Pass the full reviewed current-main commit')
 const manifest = JSON.parse(readFileSync(root + 'dist/manifest.json', 'utf8'))
 if (manifest.account !== 'a5b299b3ad15c1b5b895dc66f9357b17' || manifest.script !== 'xeroflow-creative-tools') throw new Error('Immutable target mismatch')
-const routingBaseline = JSON.parse(readFileSync(root + 'source/public-routing-baseline.json', 'utf8'))
-if (JSON.stringify(manifest.modules) !== JSON.stringify(routingBaseline.submittedModuleHashes)) throw new Error('Configuration-only release requires byte-identical current Worker modules')
+const routingBaseline = JSON.parse(readFileSync(root + 'source/media-release-baseline.json', 'utf8'))
+if (JSON.stringify(manifest.modules) !== JSON.stringify(routingBaseline.candidateModuleHashes)) throw new Error('Media release requires exact reviewed candidate modules')
 const config = {
   name: manifest.script, account_id: manifest.account, main: 'worker.js',
   compatibility_date: '2026-10-27', compatibility_flags: ['global_fetch_strictly_public'], no_bundle: true, find_additional_modules: true,
@@ -18,7 +18,7 @@ const config = {
   unsafe: { metadata: {
     keep_assets: true, usage_model: 'standard',
     bindings: ['ASSETS', 'CREATIVE_AUTH_KEY', 'MOTORSTACK_API_KEY'].map(name => ({ name, type: 'inherit' })),
-    annotations: { 'workers/commit_sha': commit, 'workers/message': 'Public routing for MotorStack RPC from ' + commit }
+    annotations: { 'workers/commit_sha': commit, 'workers/message': 'MotorStack media connection from ' + commit }
   } }
 }
 writeFileSync(root + 'dist/wrangler.release.json', JSON.stringify(config, null, 2) + '\n')

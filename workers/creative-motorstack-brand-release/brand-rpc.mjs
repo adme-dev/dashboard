@@ -29,7 +29,7 @@ export function createPrivateMotorstackFetch(fetcher = (...args) => fetch(...arg
 }
 
 // Private service-binding adapter. No HTTP route, arbitrary URL, or tool forwarding.
-export function createBrandService({ rpc, binary, safeURL, extension, MIME, idFor, boundedBody, AdapterError, fetcher = (...args) => fetch(...args) }, env) {
+export function createBrandService({ rpc, binary, catalog, safeURL, extension, MIME, idFor, boundedBody, AdapterError, fetcher = (...args) => fetch(...args) }, env) {
   const fail = (status, code) => { throw new AdapterError(status, code) }
   const key = env?.MOTORSTACK_API_KEY
   const configured = () => {
@@ -106,6 +106,36 @@ export function createBrandService({ rpc, binary, safeURL, extension, MIME, idFo
     if (!item) fail(404, 'asset_not_found')
     return item.mime === 'image/x-icon' ? iconBinary(item) : binary(key, item)
   }
+  function mediaInput(input, withAsset = false) {
+    const fields = withAsset ? ['brandId', 'model', 'assetId'] : ['brandId', 'model']
+    if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).some(field => !fields.includes(field))) fail(400, 'invalid_media_query')
+    slug(input.brandId)
+    if (Object.hasOwn(input, 'model') && (typeof input.model !== 'string' || !input.model.trim() || input.model.length > 100 || /[\u0000-\u001f\u007f]/.test(input.model))) fail(400, 'invalid_media_query')
+    if (withAsset && (typeof input.assetId !== 'string' || !/^[a-f0-9]{64}$/.test(input.assetId))) fail(400, 'invalid_asset_id')
+    configured()
+    if (input.model?.includes(key)) fail(400, 'invalid_media_query')
+    return { brandId: input.brandId, model: input.model ?? '' }
+  }
+  async function listMedia(input) {
+    const { brandId, model } = mediaInput(input)
+    const data = await catalog(key, brandId, 'media', model)
+    return {
+      schemaVersion: 1,
+      brand: { id: data.brand.id, name: clean(data.brand.name) || data.brand.id },
+      assets: data.assets.map(item => ({ id: item.id, name: clean(item.name) || 'MotorStack asset', type: item.type, mime: item.mime, importable: item.importable })),
+      models: data.models.map(value => clean(value, 100)).filter(Boolean),
+      warnings: data.warnings.map(value => clean(value)).filter(Boolean)
+    }
+  }
+  async function getMediaAsset(input) {
+    const { brandId, model } = mediaInput(input, true)
+    // Rebind the opaque asset ID to this currently available brand/model catalog.
+    // Never accept a caller URL or reuse a differently scoped catalog result.
+    const data = await catalog(key, brandId, 'media', model)
+    const item = data.assets.find(asset => asset.id === input.assetId)
+    if (!item) fail(404, 'asset_not_found')
+    return binary(key, item)
+  }
   // ICO support is private to this new adapter; the existing HTTP catalog is unchanged.
   async function iconBinary(item) {
     let url = safeURL(item.original)
@@ -135,5 +165,5 @@ export function createBrandService({ rpc, binary, safeURL, extension, MIME, idFo
       throw new Error(error instanceof AdapterError ? error.code : 'motorstack_unavailable')
     }
   }
-  return { listBrands: guarded(listBrands), getBrandKit: guarded(getBrandKit), getBrandAsset: guarded(getBrandAsset) }
+  return { listBrands: guarded(listBrands), getBrandKit: guarded(getBrandKit), getBrandAsset: guarded(getBrandAsset), listMedia: guarded(listMedia), getMediaAsset: guarded(getMediaAsset) }
 }

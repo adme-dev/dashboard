@@ -12,12 +12,21 @@ for (const [name, hash] of Object.entries(baseModules)) {
   if (sha(readFileSync(root + 'source/' + name)) !== hash) throw new Error('Verified current Worker source hash mismatch: ' + name)
 }
 const changes = [
+  // get_media_library supplies public hero/gallery files on this exact CDN.
+  // The existing binary adapter still validates each redirect and sends the
+  // MotorStack credential only to ORIGIN, never to this host or R2.
+  ['[new URL(ORIGIN).hostname, R2_HOST].includes(url.hostname)', '[new URL(ORIGIN).hostname, R2_HOST, "motorstackmedia.driveagent.io"].includes(url.hostname)'],
+  // The provider has already filtered brochures using the supplied model.
+  // Its verified display labels differ (H7 query returns "Haval H7").
+  ['        if (model && !matches(item.model || item.model_name || item.modelName)) continue;\n', ''],
+  ['return { handleMotorstack: handleMotorstack2, rpc, binary };', 'return { handleMotorstack: handleMotorstack2, rpc, binary, catalog };'],
   ['import { createBrandService } from "./brand-rpc.mjs";', 'import { createBrandService, createPrivateMotorstackFetch } from "./brand-rpc.mjs";'],
-  ['    const { rpc, binary } = createMotorstack();\n    return createBrandService({ rpc, binary, safeURL, extension, MIME, idFor, boundedBody, AdapterError }, this.env);', '    const fetcher = createPrivateMotorstackFetch();\n    const { rpc, binary } = createMotorstack({ fetcher });\n    return createBrandService({ rpc, binary, safeURL, extension, MIME, idFor, boundedBody, AdapterError, fetcher }, this.env);']
+  ['    const { rpc, binary } = createMotorstack();\n    return createBrandService({ rpc, binary, safeURL, extension, MIME, idFor, boundedBody, AdapterError }, this.env);', '    const fetcher = createPrivateMotorstackFetch();\n    const { rpc, binary, catalog } = createMotorstack({ fetcher });\n    return createBrandService({ rpc, binary, catalog, safeURL, extension, MIME, idFor, boundedBody, AdapterError, fetcher }, this.env);'],
+  ['  getBrandAsset(input) { return this.#service().getBrandAsset(input); }', '  getBrandAsset(input) { return this.#service().getBrandAsset(input); }\n  listMedia(input) { return this.#service().listMedia(input); }\n  getMediaAsset(input) { return this.#service().getMediaAsset(input); }']
 ]
 let worker = source
 for (const [before, after] of changes) {
-  if (worker.split(before).length !== 2) throw new Error('Private diagnostic patch anchor mismatch')
+  if (worker.split(before).length !== 2) throw new Error('Reviewed Worker patch anchor mismatch')
   worker = worker.replace(before, after)
 }
 mkdirSync(root + 'dist', { recursive: true })

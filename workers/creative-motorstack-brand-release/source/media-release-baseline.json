@@ -1,0 +1,69 @@
+{
+  "worker": "xeroflow-creative-tools",
+  "activeVersion": "02026280-47fc-4dbc-93c3-3f2b546e47ce",
+  "activeDeployment": "07380698-c215-490c-848f-70954eeb6598",
+  "uploadCommit": "4794ae06d07d25ac68e840d2f5339cd109e95104",
+  "script": {
+    "etag": "e6c9667e1da3ba00778db266f858846613c987313b31115a7e067d6b4c7663c3",
+    "handlers": [
+      "fetch"
+    ],
+    "named_handlers": [
+      {
+        "name": "MotorstackBrandAssets",
+        "handlers": [
+          "listBrands",
+          "getBrandKit",
+          "getBrandAsset"
+        ]
+      }
+    ],
+    "last_deployed_from": "wrangler"
+  },
+  "runtime": {
+    "assets": {
+      "headers": {
+        "version": 2,
+        "rules": {
+          "/*": {
+            "set": {
+              "cache-control": "no-cache",
+              "content-security-policy": "frame-ancestors 'self' https://app.xeroflow.io",
+              "referrer-policy": "strict-origin-when-cross-origin",
+              "x-content-type-options": "nosniff"
+            },
+            "unset": []
+          }
+        }
+      },
+      "raw_headers": "/*\n  X-Content-Type-Options: nosniff\n  Referrer-Policy: strict-origin-when-cross-origin\n  Cache-Control: no-cache\n  Content-Security-Policy: frame-ancestors 'self' https://app.xeroflow.io\n",
+      "serve_directly": false,
+      "raw_run_worker_first": true,
+      "base_path": "/"
+    },
+    "compatibility_date": "2026-10-27",
+    "compatibility_flags": [
+      "global_fetch_strictly_public"
+    ],
+    "usage_model": "standard"
+  },
+  "bindings": [
+    {
+      "name": "ASSETS",
+      "type": "assets"
+    },
+    {
+      "name": "CREATIVE_AUTH_KEY",
+      "type": "secret_text"
+    },
+    {
+      "name": "MOTORSTACK_API_KEY",
+      "type": "secret_text"
+    }
+  ],
+  "candidateModuleHashes": {
+    "worker.js": "a5ef169c72020f6118f9b26c73e8a679af1074d62265fbd92f88220b95dbe813",
+    "brand-rpc.mjs": "2ffeaaf654fbffff63891297cef6278f10a2c5c5488bc1ced28ad744e4235609"
+  },
+  "sourceProof": "Current baseline from normal Wrangler CLI; candidate exact generated modules reviewed with public handler/auth/assets preservation and media boundary tests."
+}
