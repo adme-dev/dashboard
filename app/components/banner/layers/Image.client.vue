@@ -16,7 +16,7 @@ const displaySrc = computed(() => getFeedOverride(props.layer.id, 'src') ?? prop
 <template>
   <div
     class="relative w-full h-full overflow-hidden"
-    :style="{ opacity: layer.opacity, filter: effects.visualFilter }"
+    :style="{ opacity: layer.keyframes?.opacity?.length ? 1 : layer.opacity, filter: effects.visualFilter }"
   >
     <img
       v-if="displaySrc"

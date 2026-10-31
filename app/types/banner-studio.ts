@@ -104,7 +104,8 @@ export interface Layer {
   textDepth?: import('../../shared/bannerEffects').BannerTextDepth
   /** Generated material clipped through the native font, not raster lettering. */
   textTexture?: string
-  visualFilter?: 'none' | 'grayscale(1)' | 'saturate(1.5)' | 'brightness(1.2)' | 'blur(2px)'
+  /** Static CSS filter chain, validated by the shared bounded filter contract. */
+  visualFilter?: string
   effectOrigin?: { sourceLayerId: number, text: string, recipe: import('../../shared/bannerEffects').BannerEffectRecipe }
   // Background (for bg layer or text badges)
   bgColor?: string

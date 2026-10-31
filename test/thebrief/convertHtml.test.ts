@@ -4,6 +4,11 @@ import { convertTheBriefHtml } from '../../scripts/thebrief/convert-html.mjs'
 import { source } from './fixture'
 
 describe('TheBrief single-slide native conversion pilot', () => {
+  it('preserves intentional nonbreaking spacing beside price labels', async () => {
+    const result = await convertTheBriefHtml(source.replace('Hello world', '&nbsp;incl GST*'))
+    expect(result.canvasData.custom_300x250.layers.find(l => l.type === 'text').text).toBe('\u00a0incl GST*')
+  })
+
   it('recreates editable text and delayed opacity/position tracks without executing source', async () => {
     const result = await convertTheBriefHtml(source)
     const layer = result.canvasData.custom_300x250.layers.find(l => l.type === 'text')

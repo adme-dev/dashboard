@@ -129,9 +129,13 @@ function buildKeyframeAnimLines(l: Layer, cycleEnd?: number): string[] {
       const from = sorted[i]
       const to = sorted[i + 1]
       const dur = to.time - from.time
-      if (dur <= 0) continue
+      if (dur === 0) {
+        lines.push(`  tl.set(${sel}, { ${gProp}: ${to.value}, immediateRender: false }, ${to.time});`)
+        continue
+      }
       const ease = from.easing || 'power2.out'
-      lines.push(`  tl.to(${sel}, { ${gProp}: ${to.value}, duration: ${dur.toFixed(3)}, ease: ${easeToExportExpr(ease)} }, ${from.time});`)
+      const exactDuration = Number(dur.toFixed(3)) === dur ? dur.toFixed(3) : String(dur)
+      lines.push(`  tl.to(${sel}, { ${gProp}: ${to.value}, duration: ${exactDuration}, ease: ${easeToExportExpr(ease)} }, ${from.time});`)
     }
   }
 

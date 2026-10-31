@@ -1,5 +1,6 @@
 import { parse } from 'acorn'
 import { Window } from 'happy-dom'
+import { isSafeBannerImageFilter } from '../../shared/bannerImageFilters.mjs'
 
 function literal(node, depth = 0) {
   if (!node || depth > 40) throw new Error('Unsupported design literal')
@@ -191,43 +192,54 @@ function reverseEase(value) {
 const identityValue = property => property === 'opacity' || property.startsWith('scale') ? 1 : 0
 const sameTime = (a, b) => Math.abs(a - b) < 1e-9
 
-function easedFraction(easing, fraction) {
-  if (easing === 'linear' || easing === 'none') return fraction
-  const match = /^cubic-bezier\(\s*([\d.-]+)\s*,\s*([\d.-]+)\s*,\s*([\d.-]+)\s*,\s*([\d.-]+)\s*\)$/.exec(easing || '')
+// Preserve fractional cycles with exact segment boundaries and clipped easing.
+function clippedEase(easing, fraction) {
+  if (easing === 'linear' || easing === 'none') return { value: fraction, easing }
+  const match = /^cubic-bezier\(\s*([\d.-]+)\s*,\s*([\d.-]+)\s*,\s*([\d.-]+)\s*,\s*([\d.-]+)\s*\)$/.exec(easing)
   if (!match) throw new Error('Unsupported repeated animation easing')
   const [, x1, y1, x2, y2] = match.map(Number)
+  if (![x1, y1, x2, y2].every(Number.isFinite) || x1 < 0 || x1 > 1 || x2 < 0 || x2 > 1) throw new Error('Invalid repeated animation easing')
   const cubic = (a, b, t) => 3 * a * t * (1 - t) ** 2 + 3 * b * t ** 2 * (1 - t) + t ** 3
   let low = 0, high = 1
-  for (let i = 0; i < 24; i++) {
-    const middle = (low + high) / 2
-    if (cubic(x1, x2, middle) < fraction) low = middle
-    else high = middle
+  for (let i = 0; i < 52; i++) {
+    const t = (low + high) / 2
+    if (cubic(x1, x2, t) < fraction) low = t
+    else high = t
   }
-  return cubic(y1, y2, (low + high) / 2)
+  const t = (low + high) / 2, value = cubic(y1, y2, t)
+  // de Casteljau subdivision retains the original curve over the shortened
+  // segment. Sampling or reusing the full easing would change its motion.
+  if (Math.abs(value) < 1e-12) throw new Error('Degenerate clipped easing needs an adapter')
+  const n = v => Number(v.toFixed(12))
+  return { value, easing: `cubic-bezier(${n(t * x1 / fraction)},${n(t * y1 / value)},${n((2 * t * (1 - t) * x1 + t * t * x2) / fraction)},${n((2 * t * (1 - t) * y1 + t * t * y2) / value)})` }
 }
 
-// Fractional/slide-clipped repetitions cannot be represented as whole cycles.
-// Bound them to one linear native keyframe per 60 Hz source frame. This keeps
-// the visible phase and easing while leaving the source loop reset to playback.
-function sampleRepeatedFrames(cycle, at, duration, visibleEnd) {
-  const sampleCount = Math.ceil((visibleEnd - at) * 60)
-  if (sampleCount > 480) throw new Error('Repeated effect exceeds the native keyframe budget')
-  const valueAt = (time) => {
-    const elapsed = Math.max(0, time - at)
-    const phase = elapsed - Math.floor(elapsed / duration) * duration
-    const target = at + phase
-    const nextIndex = cycle.findIndex(frame => frame.time >= target - 1e-9)
-    if (nextIndex <= 0) return cycle[0].value
-    const previous = cycle[nextIndex - 1], next = cycle[nextIndex]
-    const fraction = Math.max(0, Math.min(1, (target - previous.time) / (next.time - previous.time)))
-    return previous.value + (next.value - previous.value) * easedFraction(previous.easing || 'linear', fraction)
+function boundedRepeatedFrames(cycle, at, duration, visibleEnd, identity, reset, intermediate) {
+  const n = value => Number(value.toFixed(9))
+  const frames = intermediate && cycle[0].value !== identity ? [{ time: at, value: identity, easing: 'linear' }] : []
+  for (let iteration = 0; at + iteration * duration < visibleEnd - 1e-9; iteration++) {
+    const offset = iteration * duration
+    const first = { ...cycle[0], time: n(cycle[0].time + offset) }
+    if (frames.length && sameTime(frames.at(-1).time, first.time) && frames.at(-1).value === first.value) frames.pop()
+    frames.push(first)
+    for (let i = 1; i < cycle.length; i++) {
+      const previous = cycle[i - 1], next = cycle[i]
+      const time = n(next.time + offset)
+      if (time <= visibleEnd + 1e-9) {
+        frames.push({ ...next, time: Math.min(time, visibleEnd) })
+        if (sameTime(time, visibleEnd)) break
+      } else {
+        const fraction = (visibleEnd - (previous.time + offset)) / (next.time - previous.time)
+        const clipped = clippedEase(previous.easing || 'linear', fraction)
+        frames.at(-1).easing = clipped.easing
+        frames.push({ time: visibleEnd, value: previous.value + (next.value - previous.value) * clipped.value })
+        break
+      }
+    }
+    if (frames.length > 498) throw new Error('Repeated effect exceeds the native keyframe budget')
   }
-  const frames = []
-  for (let i = 0; i <= sampleCount; i++) {
-    const time = Number(Math.min(visibleEnd, at + i / 60).toFixed(9))
-    if (!frames.length || !sameTime(frames.at(-1).time, time)) frames.push({ time, value: valueAt(time), easing: 'linear' })
-  }
-  if (!sameTime(frames.at(-1).time, visibleEnd)) frames.push({ time: visibleEnd, value: valueAt(visibleEnd), easing: 'linear' })
+  // Equal-time frames are intentional CSS jumps, preserved by both renderers.
+  if (reset && frames.at(-1).value !== identity) frames.push({ time: visibleEnd, value: identity })
   delete frames.at(-1).easing
   return frames
 }
@@ -290,9 +302,10 @@ function effectTracks(effect, style, rules, start, end, warnings, geometry, inte
   if (!rule) throw new Error(`Missing animation ${css.animationName}`)
   const iterations = Number(css.animationIterationCount || 1)
   if (!Number.isFinite(iterations) || iterations < 1 || iterations > 50 || !['normal', 'reverse', ''].includes(css.animationDirection)) throw new Error('Unsupported repeated/reversed animation')
+  if (!intermediate && !Number.isInteger(iterations)) throw new Error('Fractional non-intermediate repetitions need an adapter')
   const animationEnd = at + duration * iterations
+  if (![at, duration, animationEnd].every(Number.isFinite)) throw new Error('Invalid animation timing')
   if (at < 0 || duration <= 0 || (!intermediate && animationEnd > end + 1e-9)) throw new Error('Animation crosses slide boundary')
-  if (!Number.isInteger(iterations) && animationEnd < end - 1e-9) throw new Error('Partial animation reset needs an adapter')
   if ((intermediate || iterations > 1) && ((!['', 'none'].includes(css.transform)) || !['', '1'].includes(css.opacity))) throw new Error('Intermediate effect has nonidentity underlying styles')
   const tracks = {}
   const parsedFrames = []
@@ -303,7 +316,9 @@ function effectTracks(effect, style, rules, start, end, warnings, geometry, inte
     const fractions = selectors.map(selector => selector === 'from' ? 0 : selector === 'to' ? 1 : Number.parseFloat(selector) / 100)
     if (fractions.some(fraction => !Number.isFinite(fraction) || fraction < 0 || fraction > 1)) throw new Error('Unsupported keyframe selector')
     const properties = Array.from({ length: frame.style.length }, (_, index) => frame.style.item(index))
-    if (properties.some(p => !['transform', 'transform-origin', 'opacity', 'animation-timing-function'].includes(p))) throw new Error(`Unsupported animated properties: ${properties.join(', ')}`)
+    const noOpBlur = /^blur\(0(?:\.0+)?(?:px)?\)$/.test(frame.style.filter)
+    if (noOpBlur && css.filter && css.filter !== 'none' && !/^blur\(0(?:\.0+)?(?:px)?\)$/.test(css.filter)) throw new Error('Unsupported underlying filter')
+    if (properties.some(p => !['transform', 'transform-origin', 'opacity', 'animation-timing-function'].includes(p) && !(p === 'filter' && noOpBlur))) throw new Error(`Unsupported animated properties: ${properties.join(', ')}`)
     const values = transformValues(frame.style.transform || '')
     if (frame.style.opacity !== '') values.opacity = Number(frame.style.opacity)
     if (fractions.includes(0) || fractions.includes(1) || frame.style.transformOrigin) {
@@ -332,7 +347,7 @@ function effectTracks(effect, style, rules, start, end, warnings, geometry, inte
     if (intermediate || iterations > 1) {
       if (!sameTime(frames[0].time, at)) frames.unshift({ time: at, value: identityValue(property), easing: cssEase(css.animationTimingFunction) })
       if (!sameTime(frames.at(-1).time, at + duration)) frames.push({ time: at + duration, value: identityValue(property) })
-      if (frames[0].value !== identityValue(property) || frames.at(-1).value !== identityValue(property)) throw new Error('Intermediate effect must return to identity')
+      if ((!intermediate && frames[0].value !== identityValue(property)) || frames.at(-1).value !== identityValue(property)) throw new Error('Intermediate effect must return to identity')
     }
     if (frames.length < 2 || !sameTime(frames[0].time, at) || !sameTime(frames.at(-1).time, at + duration)) throw new Error('Keyframes need explicit start and end values')
     if (css.animationDirection === 'reverse') {
@@ -343,8 +358,9 @@ function effectTracks(effect, style, rules, start, end, warnings, geometry, inte
       })))
     }
     if (!intermediate && frames.at(-1).value !== identityValue(property) && !['forwards', 'both'].includes(css.animationFillMode)) throw new Error('Animation reset after completion needs an adapter')
-    if (iterations > 1 && (intermediate && (!Number.isInteger(iterations) || animationEnd > end + 1e-9))) {
-      frames.splice(0, frames.length, ...sampleRepeatedFrames(frames, at, duration, Math.min(end, animationEnd)))
+    if (intermediate && ((iterations > 1 && (!Number.isInteger(iterations) || animationEnd > end + 1e-9)) || frames[0].value !== identityValue(property))) {
+      if (!['none', 'backwards', '', 'forwards', 'both'].includes(css.animationFillMode)) throw new Error('Unsupported animation fill mode')
+      frames.splice(0, frames.length, ...boundedRepeatedFrames(frames, at, duration, Number(Math.min(end, animationEnd).toFixed(9)), identityValue(property), animationEnd < end - 1e-9 && !['forwards', 'both'].includes(css.animationFillMode), true))
     } else if (iterations > 1) {
       if (frames[0].value !== frames.at(-1).value) throw new Error('Repeated animation reset needs an adapter')
       const cycle = structuredClone(frames)
@@ -404,6 +420,7 @@ export async function convertTheBriefHtml(html) {
     const externalFontStylesheets = [...document.querySelectorAll('link[rel="stylesheet"][href]')].map(link => link.getAttribute('href')).filter(href => /^https:\/\/fonts\.googleapis\.com\//i.test(href))
     if (source.hasClickTag || document.querySelector('a[href], [onclick]')) warnings.push('Click destinations are not migrated by this pilot')
     const layers = []
+    const imageTransforms = []
     const sourceElements = []
     let id = 1
     const holdOpacity = (start, end) => [{ time: start, value: 1, easing: 'linear' }, { time: end, value: 1 }]
@@ -535,7 +552,7 @@ export async function convertTheBriefHtml(html) {
           const lineHeight = /^\d*\.?\d+$/.test(rowCss.lineHeight) ? Number(rowCss.lineHeight) : px(rowCss.lineHeight) / fontSize
           const height = lineBoxFontSize * lineHeight
           if (!Number.isFinite(height)) throw new Error('Unsupported text line height')
-          if (row.textContent.trim()) layers.push({ ...layerBase, linkId: `source:${sourceId}:row:${rowIndex}`, id: id++, type: 'text', name: row.textContent.trim().slice(0, 60), y, h: height, ...(layerBase.transformOrigin ? { transformOrigin: { x: layerBase.transformOrigin.x, y: layerBase.transformOrigin.y - (y - layerBase.y) } } : {}), text: row.textContent.trim(), ...(textRuns.length ? { text: row.textContent, textRuns } : {}), ...(wordPop ? { wordPop } : {}), textTransform, fontFamily: textCss.fontFamily.replace(/["']/g, ''), fontStyle: textCss.fontStyle === 'italic' ? 'italic' : 'normal', fontSize, lineBoxFontSize, textAntialias: style(document.documentElement).getPropertyValue('-webkit-font-smoothing') === 'antialiased', fontWeight: Number(textCss.fontWeight) || 400, lineHeight, color: paintedCss.color || textCss.color || '#fff', ...(textStroke ? { textStroke } : {}), ...(textShadow ? { textShadow } : {}), textAlign: textCss.textAlign || 'left', letterSpacing: !textCss.letterSpacing || textCss.letterSpacing === 'normal' ? '0px' : textCss.letterSpacing })
+          if (row.textContent.trim()) layers.push({ ...layerBase, linkId: `source:${sourceId}:row:${rowIndex}`, id: id++, type: 'text', name: row.textContent.trim().slice(0, 60), y, h: height, ...(layerBase.transformOrigin ? { transformOrigin: { x: layerBase.transformOrigin.x, y: layerBase.transformOrigin.y - (y - layerBase.y) } } : {}), text: row.textContent.replace(/^[ \t\r\n]+|[ \t\r\n]+$/g, ''), ...(textRuns.length ? { text: row.textContent, textRuns } : {}), ...(wordPop ? { wordPop } : {}), textTransform, fontFamily: textCss.fontFamily.replace(/["']/g, ''), fontStyle: textCss.fontStyle === 'italic' ? 'italic' : 'normal', fontSize, lineBoxFontSize, textAntialias: style(document.documentElement).getPropertyValue('-webkit-font-smoothing') === 'antialiased', fontWeight: Number(textCss.fontWeight) || 400, lineHeight, color: paintedCss.color || textCss.color || '#fff', ...(textStroke ? { textStroke } : {}), ...(textShadow ? { textShadow } : {}), textAlign: textCss.textAlign || 'left', letterSpacing: !textCss.letterSpacing || textCss.letterSpacing === 'normal' ? '0px' : textCss.letterSpacing })
           y += height
         }
         if (new Set(rows.map(row => style(row).fontSize)).size > 1) warnings.push(`${element.id}: mixed-size text split into editable lines; baseline alignment needs visual review`)
@@ -569,8 +586,33 @@ export async function convertTheBriefHtml(html) {
             fit = contentCss.backgroundSize
           }
         }
-        const rotated = [...element.querySelectorAll('div')].map(div => style(div).transform).filter(t => t && t !== 'none')
-        if (rotated.some(t => !/^rotate\(-?[\d.]+deg\)$/.test(t))) throw new Error('Unsupported static transform')
+        const transformed = [...element.querySelectorAll('div')].filter(div => style(div).transform && style(div).transform !== 'none')
+        const mirrored = transformed.filter(div => /^rotate\(0(?:deg)?\)\s+scale\(-1,\s*1\)$/.test(style(div).transform))
+        const rotated = transformed.filter(div => !mirrored.includes(div)).map(div => style(div).transform)
+        if (rotated.some(t => !/^rotate\(-?[\d.]+deg\)$/.test(t)) || mirrored.length > 1
+          || (mirrored.length && (rotated.some(t => Number.parseFloat(t.slice(7)) !== 0)
+            || style(mirrored[0]).width !== '100%' || style(mirrored[0]).height !== '100%'
+            || !['', '50% 50%', 'center center', 'center'].includes(style(mirrored[0]).transformOrigin)))) throw new Error('Unsupported static transform')
+        if (mirrored.length) imageTransforms.push({ layerId: id, operation: 'flop' })
+        let contentOpacity = 1
+        const imageFilters = []
+        for (let node = image || content; node && element.contains(node); node = node.parentElement) {
+          const nodeCss = style(node)
+          const opacity = nodeCss.opacity === '' ? 1 : Number(nodeCss.opacity)
+          if (!Number.isFinite(opacity) || opacity < 0 || opacity > 1) throw new Error('Unsupported image opacity')
+          if (nodeCss.animationName && nodeCss.animationName !== 'none' && opacity !== 1) throw new Error('Animated image with nonidentity underlying opacity needs an adapter')
+          contentOpacity *= opacity
+          if (nodeCss.filter && nodeCss.filter !== 'none') imageFilters.push(nodeCss.filter)
+          if (node === element) break
+        }
+        layerBase.opacity = contentOpacity
+        layerBase.keyframes = { ...layerBase.keyframes, opacity: layerBase.keyframes.opacity.map(frame => ({ ...frame, value: frame.value * contentOpacity })) }
+        const visualFilter = imageFilters.join(' ')
+        if (visualFilter) {
+          if (!isSafeBannerImageFilter(visualFilter)) throw new Error('Unsupported static image filter')
+          if (mirrored.length && visualFilter.includes('drop-shadow(')) throw new Error('Mirrored nested image shadow needs an adapter')
+          layerBase.visualFilter = visualFilter
+        }
         layers.push({ ...layerBase, id: id++, type: 'image', name: `Artwork ${sourceId}`, src: localAsset(raw), fit, rotation: rotated.reduce((sum, t) => sum + Number.parseFloat(t.slice(7)), 0) })
       } else if (type === 'shape') {
         const content = document.getElementById(`c-${sourceId}`) || legacyLayerContent(element, style, 'shape')
@@ -631,14 +673,14 @@ export async function convertTheBriefHtml(html) {
           }
           layers.push({ ...layerBase, id: id++, type: 'image', name: `Shape ${sourceId}`, rotation, src: localAsset(asset[1]), fit: 'cover' })
         } else {
-          layers.push({ ...layerBase, id: id++, type: 'rect', name: `Shape ${sourceId}`, rotation, ...(borderRadius !== undefined ? { borderRadius } : {}), fillColor: contentCss.backgroundColor })
+          layers.push({ ...layerBase, id: id++, type: 'rect', name: `Shape ${sourceId}`, rotation, ...(borderRadius !== undefined ? { borderRadius } : {}), fillColor: contentCss.backgroundColor || 'transparent' })
         }
       } else {
         throw new Error(`Unsupported layer type: ${type}`)
       }
       sourceElements.push({ sourceId, slideId: slide.id, type, nativeLayerIds: layers.slice(before).map(layer => layer.id), start, end })
     }
-    return { schemaVersion: 1, adapter: slides.length === 1 ? 'thebrief-css-single-slide-pilot' : 'thebrief-css-hard-cut-slides', fidelityVerified: false, fonts, externalFontStylesheets, source: { designHash: source.designHash || null, width: source.width, height: source.height, duration, loopCount: source.loopCount, elementCount: elements.length }, canvasData: { [`custom_${source.width}x${source.height}`]: { playback: { duration, loopCount: source.loopCount }, layers, bgColor: background } }, sourceElements, warnings }
+    return { schemaVersion: 1, adapter: slides.length === 1 ? 'thebrief-css-single-slide-pilot' : 'thebrief-css-hard-cut-slides', fidelityVerified: false, fonts, externalFontStylesheets, imageTransforms, source: { designHash: source.designHash || null, width: source.width, height: source.height, duration, loopCount: source.loopCount, elementCount: elements.length }, canvasData: { [`custom_${source.width}x${source.height}`]: { playback: { duration, loopCount: source.loopCount }, layers, bgColor: background } }, sourceElements, warnings }
   } finally {
     await window.happyDOM.close()
   }

@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { isSafeBannerImageFilter } from './bannerImageFilters.mjs'
 
 const hex = z.string().regex(/^#(?:[a-f\d]{3}|[a-f\d]{4}|[a-f\d]{6}|[a-f\d]{8})$/i)
 export const bannerTextDepthSchema = z.object({
@@ -18,7 +19,7 @@ export const bannerEffectStyleSchema = z.object({
   textStroke: z.string().max(40).regex(/^(?:[\d.]+px #[a-f\d]{6})?$/i).optional(),
   gradientColors: z.array(hex).max(6).optional(),
   textDepth: bannerTextDepthSchema.optional(),
-  visualFilter: z.enum(['none', 'grayscale(1)', 'saturate(1.5)', 'brightness(1.2)', 'blur(2px)']).optional()
+  visualFilter: z.string().max(500).refine(isSafeBannerImageFilter).optional()
 }).strict()
 export type BannerEffectStyle = z.infer<typeof bannerEffectStyleSchema>
 export const bannerEffectRecipeSchema = z.object({

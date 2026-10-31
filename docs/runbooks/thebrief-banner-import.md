@@ -24,7 +24,21 @@ TSX_TSCONFIG_PATH=scripts/thebrief/tsconfig.json node --import tsx scripts/thebr
 
 Use every verified child package in the final merge. The source design hash must come from the design URL, and the source folder must match the actual TheBrief location.
 
+The Recents thumbnail and HTML export can identify an individual size rather than its parent design. Record the parent hash from the editor URL and use it for the final package, including single-size designs. Compare existing `source-design` tags before downloading again; retry deduplication uses the selected client and `source-sha256`, so a fresh export with different bytes is not automatically the same import. Leave an unverified destination folder unfiled.
+
+For an outer design-set archive above 20 MB, use `node scripts/thebrief/inspect.mjs /private/tmp/design/set.zip --design-set`. This profile accepts only a container of child ZIPs, capped at 64 MB compressed, 128 MB total expansion, 1,500 entries and one nesting level. Each child is independently checked with the standard 20 MB archive, 10 MB file, 40 MB expansion and 500-entry limits. Literal offer percentages in child ZIP filenames are permitted; encoded paths, traversal, symlinks and unsafe asset paths remain rejected. Keep the original archive and its checksum.
+
+## Conversion and review boundaries
+
+The converter retains supported hard-cut slide timing as editable layers. It does not create a Slides editor. Bounded intermediate pulse and bounce effects preserve cycle boundaries, fractional endings and instantaneous resets; these packages require the matching native and HTML playback release that handles equal-time keyframes. Do not validate their playback against an older deployment.
+
+Centered horizontal image reflections are baked into managed image bytes, leaving original assets in the archive. Static image opacity and bounded CSS filter chains retain source brightness, contrast, hue rotation and drop-shadow geometry in both the editor and exports; filters are not rasterized. Transparent shapes remain transparent. Full static Google font faces, including normal and italic variants, can be snapshotted through the allowlisted preparation resolver with checksums. Font subsets, animated blur, unsupported 3D motion, video layers and custom animation data remain review holds. A successful package conversion still requires visual, audio and final-output checks for every size.
+
 ## Organizing and sharing
+
+### Correcting an existing imported draft
+
+Use **Update imported draft** when a corrected package comes from the same source checksum and client. Review the sizes that will be replaced before confirming. The operation creates a mandatory version backup, retains the existing project identity, client and folder, and rejects published, reviewed or concurrently changed drafts. A package from a different source export is not an in-place repair. Reopen every replaced size and repeat its visual/playback review after the update.
 
 Use the project menu’s **Move to folder** action to change an existing design’s location, including **Unfiled**. The source-folder tag remains as provenance. **Share** opens the signed-in team viewer and can create a view-only client link. Client links can be opened by anyone who has the URL, expire after 7, 30 or 90 days, and can be revoked. Creating a client link does not send it to anyone automatically.
 

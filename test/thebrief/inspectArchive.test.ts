@@ -23,8 +23,15 @@ describe('TheBrief export preflight (no script execution)', () => {
     expect(report.creatives.map(c => c.entry)).toEqual(['one.zip!/index.html', 'two.zip!/index.html'])
   })
 
-  it.each(['../escape.html', '/absolute.html', 'a/../escape.html', 'a\\escape.html', 'C:/escape.html'])('rejects unsafe entry %s', (name) => {
+  it.each(['../escape.html', '/absolute.html', 'a/../escape.html', 'a\\escape.html', 'C:/escape.html', '%2e%2e/evil.zip', 'sale%2fimage.zip', 'sale%252e.zip', 'sale%u002e.zip', 'asset%20name.png'])('rejects unsafe entry %s', (name) => {
     expect(() => inspectArchive(zip({ [name]: html }))).toThrow(/path/i)
+  })
+
+  it('accepts literal offer percentages only in nested archive names without decoding paths', () => {
+    const report = inspectArchive(zip({ 'General usage/Offer 0.99% Finance-1200x1200-px.zip': zip({ 'index.html': html }), 'Offer 2.88%-600x900-px.zip': zip({ 'index.html': html }) }))
+    expect(report.creatives).toHaveLength(2)
+    expect(report.creatives[0].entry).toBe('General usage/Offer 0.99% Finance-1200x1200-px.zip!/index.html')
+    expect(() => inspectArchive(zip({ '../Offer 2.88%-600x900-px.zip': zip({ 'index.html': html }) }))).toThrow(/path/i)
   })
 
   it('rejects ambiguous case-insensitive paths', () => {
@@ -54,6 +61,15 @@ describe('TheBrief export preflight (no script execution)', () => {
     expect(() => inspectArchive(zip({ 'a.zip': zip({ 'b.zip': zip({ 'index.html': html }) }) }))).toThrow(/nesting/i)
   })
 
+  it('keeps default per-creative expansion limits inside the larger outer-container profile', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'thebrief-large-container-'))
+    try {
+      const filename = join(directory, 'set.zip')
+      writeFileSync(filename, zip({ 'size.zip': zip({ 'image.bin': new Uint8Array(10 * 1024 * 1024 + 1) }) }))
+      expect(() => execFileSync(process.execPath, ['scripts/thebrief/inspect.mjs', filename, '--design-set'], { stdio: 'pipe' })).toThrow()
+    } finally { rmSync(directory, { recursive: true, force: true }) }
+  })
+
   it('reports external-resource hints without fetching URLs or claiming completeness', () => {
     const report = inspectArchive(zip({ 'index.html': '<script src="https://example.com/runtime.js"></script>' }))
     expect(report.resourceHints).toContainEqual({ file: 'index.html', url: 'https://example.com/runtime.js' })
@@ -77,6 +93,11 @@ describe('TheBrief export preflight (no script execution)', () => {
       writeFileSync(filename, zip({ 'index.html': html }))
       const output = execFileSync(process.execPath, ['scripts/thebrief/inspect.mjs', filename], { encoding: 'utf8' })
       expect(JSON.parse(output).creatives[0].dimensions).toEqual({ width: 300, height: 250 })
+      expect(() => execFileSync(process.execPath, ['scripts/thebrief/inspect.mjs', filename, '--design-set'], { stdio: 'pipe' })).toThrow()
+      const container = join(directory, 'design-set.zip')
+      writeFileSync(container, zip({ 'size.zip': zip({ 'index.html': html }) }))
+      const nested = execFileSync(process.execPath, ['scripts/thebrief/inspect.mjs', container, '--design-set'], { encoding: 'utf8' })
+      expect(JSON.parse(nested).creatives[0].entry).toBe('size.zip!/index.html')
       expect(() => execFileSync(process.execPath, ['scripts/thebrief/inspect.mjs', join(directory, 'missing.zip')], { stdio: 'pipe' })).toThrow()
     } finally {
       rmSync(directory, { recursive: true, force: true })

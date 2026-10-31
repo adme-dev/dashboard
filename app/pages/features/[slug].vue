@@ -2492,7 +2492,7 @@ const features: Record<string, Feature> = {
     categoryIconColor: 'text-rose-600',
     description: 'Keep client banners organized and send view-only previews from one shared production library.',
     details: [
-      { title: 'Editable TheBrief Imports', content: 'Bring verified HTML5 exports into Banner Studio as editable layers across the sizes in a design set. Confirm the client, source folder, fonts and assets before saving a draft for production review.' },
+      { title: 'Editable TheBrief Imports', content: 'Bring supported HTML5 exports into Banner Studio as editable layers across a design set, retaining source fonts, supported animation timing and validated static image effects. Confirm the client, folder and assets before saving a draft. A corrected package can explicitly update an imported draft while preserving its previous version; published projects and conflicting edits are protected. Unsupported effects remain held for review. Compare every layout and final output with the original before production use.' },
       { title: 'Folder Placement', content: 'Choose a folder during import or move a saved project from its library menu. Nested folder browsing and Unfiled keep placement independent of client ownership and source provenance.' },
       { title: 'Client Preview Links', content: 'Create a view-only link for a client to see the current saved layouts and play their animation. Links expire after a chosen period and can be revoked from the project’s Share menu.' },
       { title: 'Team Viewer', content: 'Team members with client access can open the signed-in saved viewer without creating a public link. The project remains in the agency library for ongoing production.' }

@@ -7,6 +7,33 @@ import sharp from 'sharp'
 import { expect, it } from 'vitest'
 import { source } from './fixture'
 
+it('bakes a centered horizontal reflection without changing another use of the same original asset', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'thebrief-mirror-'))
+  try {
+    const pixels = Buffer.from([255, 0, 0, 0, 0, 255])
+    const png = await sharp(pixels, { raw: { width: 2, height: 1, channels: 3 } }).png().toBuffer()
+    const html = source.replace('background:#fff', 'background:#fff;background-image:url(./art.png);background-size:cover;background-position:center')
+      .replace('designData:{', 'designData:{designHash:"mirror1",')
+      .replace('data-eltype="text"', 'data-eltype="image"')
+      .replace('<div class="row">Hello world</div>', '<div style="width:100%;height:100%;transform:rotate(0) scale(-1,1)"><img src="./art.png"></div>')
+    const entries = { 'index.html': strToU8(html), 'art.png': png }
+    for (const [name, bytes] of Object.entries(entries)) writeFileSync(join(directory, name), bytes)
+    const archive = join(directory, 'source.zip'), output = join(directory, 'package.json')
+    writeFileSync(archive, zipSync(entries))
+    execFileSync(process.execPath, ['--import', 'tsx', 'scripts/thebrief/package-import.mjs', directory, archive, 'Mirrored artwork', output], {
+      cwd: resolve('.'), env: { ...process.env, TSX_TSCONFIG_PATH: 'scripts/thebrief/tsconfig.json' }, timeout: 20000
+    })
+    const result = JSON.parse(readFileSync(output, 'utf8'))
+    expect(result.assets).toHaveLength(2)
+    for (const layer of result.canvasData.custom_300x250.layers) {
+      const asset = result.assets.find(a => a.path === layer.src)
+      const actual = await sharp(Buffer.from(asset.base64, 'base64')).removeAlpha().raw().toBuffer()
+      expect(actual).toEqual(layer.type === 'bg' ? pixels : Buffer.from([0, 0, 255, 255, 0, 0]))
+    }
+    expect(readFileSync(join(directory, 'art.png'))).toEqual(png)
+  } finally { rmSync(directory, { recursive: true, force: true }) }
+}, 25000)
+
 it('packages identical image bytes at different source paths only once', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'thebrief-assets-'))
   try {
@@ -60,4 +87,46 @@ it('preserves namespaced font bytes and exact weights without colliding with a s
     expect(text.map(layer => [layer.fontFamily, layer.fontWeight])).toEqual(result.fonts.map(font => [font.family, font.weight]))
     expect(text.map(layer => layer.fontWeight)).toEqual([325, 700])
   } finally { rmSync(directory, { recursive: true, force: true }) }
+}, 25000)
+
+it('keeps normal and italic faces separate at the same weight in packages and comparison previews', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'thebrief-italic-'))
+  const preview = mkdtempSync(join(tmpdir(), 'thebrief-italic-preview-'))
+  try {
+    const html = source.replace('<style>', `<style>@font-face{font-family:'Demo';font-weight:700;font-style:normal;src:url('./normal.ttf') format('truetype')}@font-face{font-family:'Demo';font-weight:700;font-style:italic;src:url('./italic.ttf') format('truetype')}`)
+      .replace('designData:{', 'designData:{designHash:"italic-fixture",')
+      .replace('font-family:Arial', 'font-family:Demo')
+      .replace('Hello world</div>', 'Normal</div><div class="row" style="font-style:italic">Italic</div>')
+    const normal = Buffer.from('000100000000000000000001', 'hex'), italic = Buffer.from('000100000000000000000002', 'hex')
+    const entries = { 'index.html': strToU8(html), 'normal.ttf': normal, 'italic.ttf': italic }
+    for (const [name, bytes] of Object.entries(entries)) writeFileSync(join(directory, name), bytes)
+    const archive = join(directory, 'source.zip'), output = join(directory, 'package.json')
+    writeFileSync(archive, zipSync(entries))
+    const options = { cwd: resolve('.'), env: { ...process.env, TSX_TSCONFIG_PATH: 'scripts/thebrief/tsconfig.json' }, timeout: 20000 }
+    execFileSync(process.execPath, ['--import', 'tsx', 'scripts/thebrief/package-import.mjs', directory, archive, 'Italic faces', output], options)
+    const result = JSON.parse(readFileSync(output, 'utf8'))
+    expect(result.fonts.map(font => font.style)).toEqual(['normal', 'normal'])
+    expect(result.fonts[1].family).toContain(' Italic XF ')
+    expect(result.fonts[0].family).not.toBe(result.fonts[1].family)
+    expect(result.canvasData.custom_300x250.layers.filter(layer => layer.type === 'text').map(layer => layer.fontFamily)).toEqual(result.fonts.map(font => font.family))
+    execFileSync(process.execPath, ['--import', 'tsx', 'scripts/thebrief/preview-pilot.mjs', directory, preview], options)
+    const native = readFileSync(join(preview, 'native.html'), 'utf8')
+    expect(native).toContain('font-family: \'Source 0 Demo\'')
+    expect(native).toContain('font-family: \'Source 1 Demo\'')
+    expect(native).not.toContain('font-style:italic;')
+    const reference = readFileSync(join(preview, 'reference.html'), 'utf8')
+    expect(reference).toContain('font-style:italic')
+    expect(reference).not.toContain('url(\'./normal.ttf\')')
+    expect(reference).toContain('await readiness')
+    expect(native).toContain('await readiness')
+    expect(readFileSync(join(preview, 'index.html'), 'utf8')).toContain('Testing not ready: ')
+    for (const bytes of [normal, italic]) {
+      const embedded = `data:font/ttf;base64,${bytes.toString('base64')}`
+      expect(native).toContain(embedded)
+      expect(reference).toContain(embedded)
+    }
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+    rmSync(preview, { recursive: true, force: true })
+  }
 }, 25000)
