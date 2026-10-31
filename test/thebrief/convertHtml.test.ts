@@ -189,6 +189,18 @@ describe('TheBrief single-slide native conversion pilot', () => {
     await expect(convertTheBriefHtml(html.replace('border-radius:0', 'border-radius:12px'))).rejects.toThrow(/shape background/)
   })
 
+  it('preserves nested static shape opacity in geometry and every opacity keyframe', async () => {
+    const html = source.replace('data-eltype="text"', 'data-eltype="shape"')
+      .replace('<div class="row">Hello world</div>', '<div style="opacity:.5"><div id="c-1" style="opacity:.54;background:linear-gradient(0deg,rgba(0,0,0,0) 0,#000 96%);border-radius:0"></div></div>')
+    const result = await convertTheBriefHtml(html)
+    const shape = result.canvasData.custom_300x250.layers.find(l => l.type === 'rect')
+    expect(shape.opacity).toBe(0.27)
+    expect(shape.keyframes.opacity.map(frame => frame.value)).toEqual([0, 0.27, 0.27])
+    expect(shape.keyframes.x.map(frame => frame.value)).toEqual([-100, 0])
+    const invalid = html.replace('opacity:.54;', 'opacity:.54;animation-name:enter;animation-duration:1s;')
+    await expect(convertTheBriefHtml(invalid)).rejects.toThrow(/Animated shape with nonidentity underlying opacity/)
+  })
+
   it('preserves gradient shape fills and their motion without flattening artwork', async () => {
     const gradient = 'linear-gradient(0deg, rgba(1,43,94,0) 0, #012c5f 100%)'
     const html = source.replace('data-eltype="text"', 'data-eltype="shape"')
