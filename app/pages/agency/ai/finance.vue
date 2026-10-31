@@ -347,8 +347,8 @@ function fmtAUD(n: number) { return '$' + Math.round(n).toLocaleString('en-AU') 
 </script>
 
 <template>
-  <div class="flex-1 min-w-0">
-    <UDashboardPanel>
+  <div class="flex flex-1 min-w-0 min-h-0 flex-col">
+    <UDashboardPanel class="flex-1 min-h-0">
       <UDashboardNavbar title="Finance AI">
         <template #right>
           <UTabs v-model="activeTab" :items="tabs" size="sm" />
@@ -356,7 +356,7 @@ function fmtAUD(n: number) { return '$' + Math.round(n).toLocaleString('en-AU') 
       </UDashboardNavbar>
 
       <!-- ═══ Chat Tab — Two Column Layout ═══ -->
-      <div v-if="activeTab === 'chat'" class="flex flex-1 overflow-hidden" style="height: calc(100vh - 64px)">
+      <div v-if="activeTab === 'chat'" class="flex flex-1 min-h-0 overflow-hidden">
 
         <!-- Left Sidebar: Conversation History -->
         <div class="w-64 shrink-0 border-r border-[var(--ui-border-accented)] flex flex-col bg-[var(--ui-bg)]">
@@ -525,7 +525,7 @@ function fmtAUD(n: number) { return '$' + Math.round(n).toLocaleString('en-AU') 
       </div>
 
       <!-- ═══ Advisor Tab — AI-Driven Analysis with Chat ═══ -->
-      <div v-else-if="activeTab === 'advisor'" class="flex-1 flex flex-col" style="height: calc(100vh - 64px)">
+      <div v-else-if="activeTab === 'advisor'" class="flex-1 min-h-0 flex flex-col">
         <!-- Scrollable content area -->
         <div class="flex-1 overflow-y-auto p-4 sm:p-6">
           <div class="max-w-4xl mx-auto space-y-6">
@@ -629,7 +629,7 @@ function fmtAUD(n: number) { return '$' + Math.round(n).toLocaleString('en-AU') 
       </div>
 
       <!-- ═══ Embeddings Tab ═══ -->
-      <div v-else-if="activeTab === 'embeddings'" class="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
+      <div v-else-if="activeTab === 'embeddings'" class="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 space-y-4">
         <div class="flex items-center justify-between">
           <div>
             <h3 class="text-lg font-semibold">Financial Embedding Status</h3>
