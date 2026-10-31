@@ -1,3 +1,4 @@
+import { mediaRepairPatches } from './media-repair-patches.mjs'
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
@@ -25,7 +26,7 @@ const changes = [
   ['  getBrandAsset(input) { return this.#service().getBrandAsset(input); }', '  getBrandAsset(input) { return this.#service().getBrandAsset(input); }\n  listMedia(input) { return this.#service().listMedia(input); }\n  getMediaAsset(input) { return this.#service().getMediaAsset(input); }']
 ]
 let worker = source
-for (const [before, after] of changes) {
+for (const [before, after] of [...changes, ...mediaRepairPatches]) {
   if (worker.split(before).length !== 2) throw new Error('Reviewed Worker patch anchor mismatch')
   worker = worker.replace(before, after)
 }

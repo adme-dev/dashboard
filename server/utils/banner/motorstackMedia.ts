@@ -35,13 +35,14 @@ export async function readMedia(binding: MediaBinding, input: Selection) {
   const asset = catalog.assets.find(asset => asset.id === input.assetId)
   if (!asset) throw createError({ statusCode: 404, statusMessage: 'MotorStack media is no longer available' })
   const file = await readMotorstackAsset({ listBrands: async () => null, getBrandKit: async () => null, getBrandAsset: () => binding.getMediaAsset(input) }, input.brandId, input.assetId, 20 * 1024 * 1024)
-  if (file.mimeType !== asset.mime) throw createError({ statusCode: 502, statusMessage: 'MotorStack media type changed; refresh the library' })
-  const filename = `motorstack-${asset.name.replace(/[^\p{L}\p{N} ._-]/gu, '-').slice(0, 150)}.${EXTENSIONS[asset.mime]}`
+  const rasterMimes = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif'])
+  if (file.mimeType !== asset.mime && !(rasterMimes.has(file.mimeType) && rasterMimes.has(asset.mime))) throw createError({ statusCode: 502, statusMessage: 'MotorStack media type changed; refresh the library' })
+  const filename = `motorstack-${asset.name.replace(/[^\p{L}\p{N} ._-]/gu, '-').slice(0, 150)}.${EXTENSIONS[file.mimeType]}`
   if (asset.mime === 'application/pdf') {
     if (file.bytes.subarray(0, 5).toString() !== '%PDF-') throw createError({ statusCode: 502, statusMessage: 'MotorStack document is invalid' })
   } else {
     try {
-      validateBannerAssetUpload({ filename, type: asset.mime, data: file.bytes })
+      validateBannerAssetUpload({ filename, type: file.mimeType, data: file.bytes })
     } catch {
       throw createError({ statusCode: 502, statusMessage: 'MotorStack image is invalid or unsupported' })
     }

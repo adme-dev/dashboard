@@ -41,6 +41,17 @@ describe('MotorStack media boundaries', () => {
     await expect(readMedia(service(metadata(), Buffer.from('<html>bad</html>')), selection)).rejects.toMatchObject({ statusCode: 502 })
     await expect(readMedia(service(metadata(), Buffer.from('bad'), 'text/html'), selection)).rejects.toMatchObject({ statusCode: 502 })
   })
+  it('accepts verified WebP bytes behind a PNG catalog path and uses the delivered extension', async () => {
+    const bytes = Buffer.from('RIFF\x04\x00\x00\x00WEBP', 'binary')
+    const file = await readMedia(service(metadata(), bytes, 'image/webp'), selection)
+    expect(file.mimeType).toBe('image/webp')
+    expect(file.filename).toBe('motorstack-GWM H7.webp')
+    await expect(readMedia(service(metadata(), Buffer.from('invalid'), 'image/webp'), selection)).rejects.toMatchObject({ statusCode: 502 })
+    await expect(readMedia(service(metadata(), Buffer.from('<svg/>'), 'image/svg+xml'), selection)).rejects.toMatchObject({ statusCode: 502 })
+    const document = metadata()
+    document.assets[0]!.mime = 'application/pdf'
+    await expect(readMedia(service(document, bytes, 'image/webp'), selection)).rejects.toMatchObject({ statusCode: 502 })
+  })
   it('allows valid PDF downloads but never persists PDF as an image layer asset', async () => {
     const data = metadata()
     Object.assign(data.assets[0]!, { mime: 'application/pdf', type: 'document', importable: true })
