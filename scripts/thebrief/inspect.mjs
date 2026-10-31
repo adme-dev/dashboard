@@ -3,7 +3,9 @@ import { inspectArchive } from './inspect-archive.mjs'
 
 const path = process.argv[2]
 const designSet = process.argv[3] === '--design-set'
-const maxArchiveBytes = (designSet ? 64 : 20) * 1024 * 1024
+// A single creative may exceed 20 MB only through verified MP4 entries; inspectArchive
+// enforces the per-content limits.
+const maxArchiveBytes = 64 * 1024 * 1024
 if (!path || (process.argv.length !== 3 && !(process.argv.length === 4 && designSet))) {
   console.error('Usage: node scripts/thebrief/inspect.mjs /path/to/banner.zip [--design-set]')
   process.exitCode = 1

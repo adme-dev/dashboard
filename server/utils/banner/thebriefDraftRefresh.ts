@@ -42,6 +42,7 @@ export function readTheBriefDraftRefresh(body: unknown) {
     const input = requestSchema.parse(body)
     const canvas = structuredClone(input.canvasData) as Record<string, { layers?: Array<{ src?: unknown, type?: unknown, fontAssetId?: unknown }> }>
     const urls: string[] = []
+    const videoUrls = new Set<string>()
     const fontReferences: Array<string | undefined> = []
     for (const board of Object.values(canvas)) {
       if (!board || !Array.isArray(board.layers)) throw new Error('Invalid artboard')
@@ -52,7 +53,8 @@ export function readTheBriefDraftRefresh(body: unknown) {
         if (layer.src === undefined) continue
         if (typeof layer.src !== 'string' || layer.src.length > 2048 || !/^https:\/\//.test(layer.src)) throw new Error('Managed asset URL required')
         if (!urls.includes(layer.src)) urls.push(layer.src)
-        layer.src = `./media/asset-${urls.indexOf(layer.src)}.png`
+        if (layer.type === 'video') videoUrls.add(layer.src)
+        layer.src = `./media/asset-${urls.indexOf(layer.src)}.${layer.type === 'video' ? 'mp4' : 'png'}`
       }
     }
     // Synthetic local references let the shared parser check geometry, tracks, effects and timing.
@@ -60,13 +62,15 @@ export function readTheBriefDraftRefresh(body: unknown) {
     const parsed = parseTheBriefPackage({
       kind: 'xeroflow-thebrief-import', version: 1, name: 'Draft refresh', source: input.source,
       canvasData: canvas, warnings: [], fonts: [],
-      assets: urls.map((_url, i) => ({ path: `./media/asset-${i}.png`, fileName: `asset-${i}.png`, sha256: '0'.repeat(64), base64: '', mimeType: 'image/png' }))
+      assets: urls.map((url, i) => videoUrls.has(url)
+        ? { path: `./media/asset-${i}.mp4`, fileName: `asset-${i}.mp4`, sha256: '0'.repeat(64), base64: '', mimeType: 'video/mp4' }
+        : { path: `./media/asset-${i}.png`, fileName: `asset-${i}.png`, sha256: '0'.repeat(64), base64: '', mimeType: 'image/png' })
     })
     let fontIndex = 0
     for (const board of Object.values(parsed.canvasData)) for (const layer of board.layers) {
       const fontAssetId = fontReferences[fontIndex++]
       if (fontAssetId) Object.assign(layer, { fontAssetId })
-      if (layer.src) layer.src = urls[Number(/^\.\/media\/asset-(\d+)\.png$/.exec(layer.src)![1])]!
+      if (layer.src) layer.src = urls[Number(/^\.\/media\/asset-(\d+)\.(?:png|mp4)$/.exec(layer.src)![1])]!
     }
     return { ...input, clientId: input.clientId.toLowerCase(), canvasData: parsed.canvasData, assetUrls: urls }
   } catch {

@@ -104,3 +104,30 @@ describe('TheBrief export preflight (no script execution)', () => {
     }
   })
 })
+
+describe('bounded MP4 allowance', () => {
+  const mp4 = (bytes: number) => {
+    const data = new Uint8Array(bytes)
+    data.set(strToU8('ftypisom'), 4)
+    for (let i = 12; i < bytes; i++) data[i] = (i * 2654435761) >>> 24 // incompressible enough for a size test
+    return data
+  }
+
+  it('accepts a verified clip above the standard file limit but within the video allowance', () => {
+    const report = inspectArchive(zip({ 'index.html': '<video src="./media/a.mp4"></video>', 'media/a.mp4': mp4(12 * 1024 * 1024) }))
+    expect(report.files.find(file => file.path === 'media/a.mp4')?.bytes).toBe(12 * 1024 * 1024)
+  })
+
+  it('keeps the standard limits for every other file type', () => {
+    expect(() => inspectArchive(zip({ 'index.html': '<p></p>', 'media/a.png': mp4(12 * 1024 * 1024) }))).toThrow('ZIP expansion exceeds limit')
+  })
+
+  it('rejects a .mp4 entry that is not an MP4 file', () => {
+    expect(() => inspectArchive(zip({ 'index.html': '<p></p>', 'media/a.mp4': strToU8('not a video') }))).toThrow('MP4 entry is not an MP4 file')
+  })
+
+  it('bounds each clip and the total video allowance', () => {
+    expect(() => inspectArchive(zip({ 'index.html': '<p></p>', 'media/a.mp4': mp4(22 * 1024 * 1024) }))).toThrow('ZIP expansion exceeds limit')
+    expect(() => inspectArchive(zip({ 'index.html': '<p></p>', 'media/a.mp4': mp4(3 * 1024 * 1024), 'media/b.mp4': mp4(3 * 1024 * 1024) }), { maxVideoTotalBytes: 5 * 1024 * 1024 })).toThrow('ZIP expansion exceeds limit')
+  })
+})
