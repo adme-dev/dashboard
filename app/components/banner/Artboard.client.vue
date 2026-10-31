@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { layerTransformOrigin } from '~/utils/banner-transform'
+import { layerTransformOrigin, layerFlipTransform } from '~/utils/banner-transform'
 import type { Layer } from '~/types/banner-studio'
 import { FORMATS } from '~/utils/banner-constants'
 import { computeClipPath } from '~/utils/banner-mask'
@@ -29,6 +29,7 @@ function onLayerContextMenu(event: MouseEvent, layer: Layer) {
 const { remoteLocks } = useBannerRealtime()
 const artboardEl = ref<HTMLElement | null>(null)
 const { dragState, guides, onLayerMouseDown, onResizeHandleMouseDown } = useBannerDrag(artboardEl)
+const { onRotatePointerDown, onRotateKeyDown } = useBannerRotation()
 
 const format = computed(() => FORMATS[props.formatKey])
 
@@ -165,7 +166,7 @@ const motionPathTweenOverlay = computed(() => {
       w: layer.w,
       h: layer.h,
       angle: layer.motionPathAutoRotate ? g.pos!.angle : 0,
-      active: !!sel && (Math.abs(g.f - sel.pathStart) < 1e-6 || Math.abs(g.f - sel.pathEnd) < 1e-6),
+      active: !!sel && (Math.abs(g.f - sel.pathStart) < 1e-6 || Math.abs(g.f - sel.pathEnd) < 1e-6)
     }))
   const selectedD = sel ? motionPathSliceSvg(pts, curv, sel.pathStart, sel.pathEnd) : ''
   return { ghosts, selectedD }
@@ -199,7 +200,7 @@ function onPathPointDragStart(e: MouseEvent, pointIndex: number) {
     startX: e.clientX,
     startY: e.clientY,
     origX: pt.x,
-    origY: pt.y,
+    origY: pt.y
   }
   window.addEventListener('mousemove', onPathPointDragMove)
   window.addEventListener('mouseup', onPathPointDragEnd)
@@ -246,7 +247,7 @@ function handleStyle(handle: string) {
     border: '1px solid #4a8fe8',
     borderRadius: '50%',
     boxShadow: '0 1px 3px rgba(0,0,0,0.4)',
-    zIndex: '9999',
+    zIndex: '9999'
   }
   const offset = `${-6 / state.wsScale}px`
   // Position
@@ -265,7 +266,7 @@ function handleStyle(handle: string) {
   // Cursor
   const cursorMap: Record<string, string> = {
     tl: 'nw-resize', tr: 'ne-resize', bl: 'sw-resize', br: 'se-resize',
-    tc: 'n-resize', bc: 's-resize', ml: 'w-resize', mr: 'e-resize',
+    tc: 'n-resize', bc: 's-resize', ml: 'w-resize', mr: 'e-resize'
   }
   base.cursor = cursorMap[handle] || 'pointer'
   return base
@@ -286,7 +287,7 @@ const safeZoneInsets = computed(() => {
     top: Math.round(zone.insets.top * sy),
     bottom: Math.round(zone.insets.bottom * sy),
     left: Math.round(zone.insets.left * sx),
-    right: Math.round(zone.insets.right * sx),
+    right: Math.round(zone.insets.right * sx)
   }
 })
 
@@ -297,214 +298,253 @@ defineExpose({ artboardEl })
 <template>
   <div
     ref="artboardEl"
-    class="relative overflow-hidden"
+    class="relative"
     :style="{
       width: `${format?.w || 300}px`,
       height: `${format?.h || 250}px`,
-      backgroundColor: state.sets[formatKey]?.bgColor || state.bgColor || '#0a0a10',
+      backgroundColor: state.sets[formatKey]?.bgColor || state.bgColor || '#0a0a10'
     }"
     @click="onBackgroundClick"
   >
-    <!-- Grid overlay -->
-    <svg
-      v-if="state.showGrid"
-      class="absolute inset-0 pointer-events-none"
-      :width="format?.w || 300"
-      :height="format?.h || 250"
-      style="z-index: 9990; opacity: 0.15;"
-    >
-      <defs>
-        <pattern :id="`grid-${formatKey}`" :width="state.gridSize" :height="state.gridSize" patternUnits="userSpaceOnUse">
-          <path :d="`M ${state.gridSize} 0 L 0 0 0 ${state.gridSize}`" fill="none" stroke="currentColor" stroke-width="0.5" />
-        </pattern>
-      </defs>
-      <rect width="100%" height="100%" :fill="`url(#grid-${formatKey})`" />
-    </svg>
-
-    <!-- Motion path overlay -->
-    <svg
-      v-if="motionPathSvg && !state.isPlaying"
-      class="absolute inset-0 pointer-events-none"
-      :width="format?.w || 300"
-      :height="format?.h || 250"
-      style="z-index: 9991;"
-    >
-      <path
-        :d="motionPathSvg.d"
-        fill="none"
-        stroke="#4af0a2"
-        stroke-width="2"
-        stroke-dasharray="6 3"
-        opacity="0.8"
-      />
-      <!-- Selected tween's segment -->
-      <path
-        v-if="motionPathTweenOverlay?.selectedD"
-        :d="motionPathTweenOverlay.selectedD"
-        fill="none"
-        stroke="#4af0a2"
-        stroke-width="3.5"
-        stroke-linecap="round"
-        opacity="0.95"
-      />
-      <!-- Onion-skin ghosts at tween boundaries -->
-      <g
-        v-for="(g, gi) in motionPathTweenOverlay?.ghosts || []"
-        :key="`ghost-${gi}`"
-        :transform="`translate(${g.x} ${g.y}) rotate(${g.angle})`"
+    <div class="absolute inset-0 overflow-hidden" data-artboard-content>
+      <!-- Grid overlay -->
+      <svg
+        v-if="state.showGrid"
+        class="absolute inset-0 pointer-events-none"
+        :width="format?.w || 300"
+        :height="format?.h || 250"
+        style="z-index: 9990; opacity: 0.15;"
       >
-        <rect
-          :width="g.w"
-          :height="g.h"
-          fill="#4af0a2"
-          :fill-opacity="g.active ? 0.12 : 0.05"
+        <defs>
+          <pattern
+            :id="`grid-${formatKey}`"
+            :width="state.gridSize"
+            :height="state.gridSize"
+            patternUnits="userSpaceOnUse"
+          >
+            <path
+              :d="`M ${state.gridSize} 0 L 0 0 0 ${state.gridSize}`"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="0.5"
+            />
+          </pattern>
+        </defs>
+        <rect width="100%" height="100%" :fill="`url(#grid-${formatKey})`" />
+      </svg>
+
+      <!-- Motion path overlay -->
+      <svg
+        v-if="motionPathSvg && !state.isPlaying"
+        class="absolute inset-0 pointer-events-none"
+        :width="format?.w || 300"
+        :height="format?.h || 250"
+        style="z-index: 9991;"
+      >
+        <path
+          :d="motionPathSvg.d"
+          fill="none"
           stroke="#4af0a2"
-          :stroke-opacity="g.active ? 0.9 : 0.35"
-          stroke-width="1"
-          stroke-dasharray="3 2"
-          rx="2"
+          stroke-width="2"
+          stroke-dasharray="6 3"
+          opacity="0.8"
         />
+        <!-- Selected tween's segment -->
+        <path
+          v-if="motionPathTweenOverlay?.selectedD"
+          :d="motionPathTweenOverlay.selectedD"
+          fill="none"
+          stroke="#4af0a2"
+          stroke-width="3.5"
+          stroke-linecap="round"
+          opacity="0.95"
+        />
+        <!-- Onion-skin ghosts at tween boundaries -->
+        <g
+          v-for="(g, gi) in motionPathTweenOverlay?.ghosts || []"
+          :key="`ghost-${gi}`"
+          :transform="`translate(${g.x} ${g.y}) rotate(${g.angle})`"
+        >
+          <rect
+            :width="g.w"
+            :height="g.h"
+            fill="#4af0a2"
+            :fill-opacity="g.active ? 0.12 : 0.05"
+            stroke="#4af0a2"
+            :stroke-opacity="g.active ? 0.9 : 0.35"
+            stroke-width="1"
+            stroke-dasharray="3 2"
+            rx="2"
+          />
+          <text
+            :x="g.w / 2"
+            :y="-3"
+            text-anchor="middle"
+            fill="#4af0a2"
+            :fill-opacity="g.active ? 1 : 0.5"
+            font-size="8"
+            font-family="monospace"
+          >{{ Math.round(g.f * 100) }}%</text>
+        </g>
+        <circle
+          v-for="(pt, i) in motionPathSvg.points"
+          :key="i"
+          :cx="pt.x"
+          :cy="pt.y"
+          r="5"
+          :fill="i === 0 ? '#4af0a2' : (i === motionPathSvg.points.length - 1 ? '#f04a4a' : '#fff')"
+          stroke="#4af0a2"
+          stroke-width="1.5"
+          class="cursor-move pointer-events-auto"
+          @mousedown.stop="onPathPointDragStart($event, i)"
+        />
+        <!-- Start label -->
         <text
-          :x="g.w / 2"
-          :y="-3"
+          v-if="motionPathSvg.points.length >= 2"
+          :x="motionPathSvg.points[0].x"
+          :y="motionPathSvg.points[0].y - 9"
           text-anchor="middle"
           fill="#4af0a2"
-          :fill-opacity="g.active ? 1 : 0.5"
-          font-size="8"
-          font-family="monospace"
-        >{{ Math.round(g.f * 100) }}%</text>
-      </g>
-      <circle
-        v-for="(pt, i) in motionPathSvg.points"
-        :key="i"
-        :cx="pt.x"
-        :cy="pt.y"
-        r="5"
-        :fill="i === 0 ? '#4af0a2' : (i === motionPathSvg.points.length - 1 ? '#f04a4a' : '#fff')"
-        stroke="#4af0a2"
-        stroke-width="1.5"
-        class="cursor-move pointer-events-auto"
-        @mousedown.stop="onPathPointDragStart($event, i)"
-      />
-      <!-- Start label -->
-      <text
-        v-if="motionPathSvg.points.length >= 2"
-        :x="motionPathSvg.points[0].x"
-        :y="motionPathSvg.points[0].y - 9"
-        text-anchor="middle"
-        fill="#4af0a2"
-        font-size="9"
-        font-weight="bold"
-      >S</text>
-      <!-- End label -->
-      <text
-        v-if="motionPathSvg.points.length >= 2"
-        :x="motionPathSvg.points[motionPathSvg.points.length - 1].x"
-        :y="motionPathSvg.points[motionPathSvg.points.length - 1].y - 9"
-        text-anchor="middle"
-        fill="#f04a4a"
-        font-size="9"
-        font-weight="bold"
-      >E</text>
-    </svg>
+          font-size="9"
+          font-weight="bold"
+        >S</text>
+        <!-- End label -->
+        <text
+          v-if="motionPathSvg.points.length >= 2"
+          :x="motionPathSvg.points[motionPathSvg.points.length - 1].x"
+          :y="motionPathSvg.points[motionPathSvg.points.length - 1].y - 9"
+          text-anchor="middle"
+          fill="#f04a4a"
+          font-size="9"
+          font-weight="bold"
+        >E</text>
+      </svg>
 
-    <!-- Safe zone overlay -->
-    <svg
-      v-if="safeZoneInsets"
-      class="absolute inset-0 pointer-events-none"
-      :width="format?.w || 300"
-      :height="format?.h || 250"
-      style="z-index: 9992;"
-    >
-      <!-- Top danger zone -->
-      <rect x="0" y="0" :width="format.w" :height="safeZoneInsets.top" fill="rgba(255,0,0,0.15)" />
-      <!-- Bottom danger zone -->
-      <rect x="0" :y="format.h - safeZoneInsets.bottom" :width="format.w" :height="safeZoneInsets.bottom" fill="rgba(255,0,0,0.15)" />
-      <!-- Left danger zone -->
-      <rect x="0" :y="safeZoneInsets.top" :width="safeZoneInsets.left" :height="format.h - safeZoneInsets.top - safeZoneInsets.bottom" fill="rgba(255,0,0,0.15)" />
-      <!-- Right danger zone -->
-      <rect :x="format.w - safeZoneInsets.right" :y="safeZoneInsets.top" :width="safeZoneInsets.right" :height="format.h - safeZoneInsets.top - safeZoneInsets.bottom" fill="rgba(255,0,0,0.15)" />
-      <!-- Safe area border -->
-      <rect
-        :x="safeZoneInsets.left"
-        :y="safeZoneInsets.top"
-        :width="format.w - safeZoneInsets.left - safeZoneInsets.right"
-        :height="format.h - safeZoneInsets.top - safeZoneInsets.bottom"
-        fill="none"
-        stroke="rgba(0,255,0,0.5)"
-        stroke-width="1"
-        stroke-dasharray="4 2"
-      />
-    </svg>
-
-    <!-- Layers -->
-    <div
-      v-for="layer in layers"
-      :id="`lyr-${layer.id}`"
-      :key="layer.id"
-      class="absolute"
-      :style="{
-        left: `${layer.x}px`,
-        top: `${layer.y}px`,
-        width: layer.type === 'audio' ? '0px' : (layer.type === 'bg' ? '100%' : `${layer.w}px`),
-        height: layer.type === 'audio' ? '0px' : (layer.type === 'bg' ? '100%' : `${layer.h}px`),
-        zIndex: layer.zIndex,
-        mixBlendMode: layer.mixBlendMode || 'normal',
-        pointerEvents: isActive && !layer.locked && layer.type !== 'bg' && layer.type !== 'audio' ? 'auto' : 'none',
-        display: layer.hidden && layer.type !== 'audio' ? 'none' : undefined,
-        transformOrigin: layerTransformOrigin(layer.transformOrigin),
-        cursor: isActive && !layer.locked && layer.type !== 'bg' && layer.type !== 'audio' ? 'move' : 'default',
-        clipPath: maskClipPaths.get(layer.id) || undefined,
-        outline: layer.isMask ? '2px dashed #e84aff' : undefined,
-        outlineOffset: layer.isMask ? '-1px' : undefined,
-      }"
-      @click="onLayerClick($event, layer)"
-      @contextmenu="onLayerContextMenu($event, layer)"
-      @mousedown="$event.button === 0 && isActive && !layer.locked && layer.type !== 'bg' ? onLayerMouseDown($event, layer.id) : undefined"
-    >
-      <!-- Layer type renderers -->
-      <BannerLayersBg v-if="layer.type === 'bg'" :layer="layer" :is-active="isActive" />
-      <BannerLayersText
-        v-else-if="layer.type === 'text'"
-        :client-id="state.project?.clientId"
-        :layer="layer"
-        :is-active="isActive"
-      />
-      <BannerLayersImage v-else-if="layer.type === 'image'" :layer="layer" :is-active="isActive" />
-      <BannerLayersVideo v-else-if="layer.type === 'video'" :layer="layer" :is-active="isActive" />
-      <BannerLayersButton
-        v-else-if="layer.type === 'button'"
-        :client-id="state.project?.clientId"
-        :layer="layer"
-        :is-active="isActive"
-      />
-      <BannerLayersRect v-else-if="layer.type === 'rect'" :layer="layer" :is-active="isActive" />
-      <BannerLayersAudio v-else-if="layer.type === 'audio'" :layer="layer" :is-active="isActive" />
-
-      <!-- Remote lock indicator -->
-      <template v-if="getRemoteLock(layer.id) && !isSelected(layer)">
-        <div
-          class="absolute inset-0 pointer-events-none"
-          :style="{
-            border: `2px dashed ${getRemoteLock(layer.id)!.color}`,
-            zIndex: 9997,
-          }"
+      <!-- Safe zone overlay -->
+      <svg
+        v-if="safeZoneInsets"
+        class="absolute inset-0 pointer-events-none"
+        :width="format?.w || 300"
+        :height="format?.h || 250"
+        style="z-index: 9992;"
+      >
+        <!-- Top danger zone -->
+        <rect
+          x="0"
+          y="0"
+          :width="format.w"
+          :height="safeZoneInsets.top"
+          fill="rgba(255,0,0,0.15)"
         />
-        <!-- Name badge -->
-        <div
-          class="absolute -top-5 left-0 px-1.5 py-0.5 rounded text-[8px] font-medium text-white pointer-events-none whitespace-nowrap"
-          :style="{ backgroundColor: getRemoteLock(layer.id)!.color, zIndex: 9998 }"
-        >
-          {{ getRemoteLock(layer.id)!.userName }}
-        </div>
-      </template>
-    </div>
+        <!-- Bottom danger zone -->
+        <rect
+          x="0"
+          :y="format.h - safeZoneInsets.bottom"
+          :width="format.w"
+          :height="safeZoneInsets.bottom"
+          fill="rgba(255,0,0,0.15)"
+        />
+        <!-- Left danger zone -->
+        <rect
+          x="0"
+          :y="safeZoneInsets.top"
+          :width="safeZoneInsets.left"
+          :height="format.h - safeZoneInsets.top - safeZoneInsets.bottom"
+          fill="rgba(255,0,0,0.15)"
+        />
+        <!-- Right danger zone -->
+        <rect
+          :x="format.w - safeZoneInsets.right"
+          :y="safeZoneInsets.top"
+          :width="safeZoneInsets.right"
+          :height="format.h - safeZoneInsets.top - safeZoneInsets.bottom"
+          fill="rgba(255,0,0,0.15)"
+        />
+        <!-- Safe area border -->
+        <rect
+          :x="safeZoneInsets.left"
+          :y="safeZoneInsets.top"
+          :width="format.w - safeZoneInsets.left - safeZoneInsets.right"
+          :height="format.h - safeZoneInsets.top - safeZoneInsets.bottom"
+          fill="none"
+          stroke="rgba(0,255,0,0.5)"
+          stroke-width="1"
+          stroke-dasharray="4 2"
+        />
+      </svg>
 
-    <Teleport to="body">
-      <UDropdownMenu :items="effectMenuItems" :open="!!effectMenu" @update:open="value => { if (!value) effectMenu = null }">
-        <span v-if="effectMenu" class="fixed w-px h-px pointer-events-none" :style="{ left: `${effectMenu.x}px`, top: `${effectMenu.y}px` }" />
-      </UDropdownMenu>
-    </Teleport>
+      <!-- Layers -->
+      <div
+        v-for="layer in layers"
+        :id="`lyr-${layer.id}`"
+        :key="layer.id"
+        class="absolute"
+        :style="{
+          left: `${layer.x}px`,
+          top: `${layer.y}px`,
+          width: layer.type === 'audio' ? '0px' : (layer.type === 'bg' ? '100%' : `${layer.w}px`),
+          height: layer.type === 'audio' ? '0px' : (layer.type === 'bg' ? '100%' : `${layer.h}px`),
+          zIndex: layer.zIndex,
+          mixBlendMode: layer.mixBlendMode || 'normal',
+          pointerEvents: isActive && !layer.locked && layer.type !== 'bg' && layer.type !== 'audio' ? 'auto' : 'none',
+          display: layer.hidden && layer.type !== 'audio' ? 'none' : undefined,
+          transformOrigin: layerTransformOrigin(layer.transformOrigin),
+          cursor: isActive && !layer.locked && layer.type !== 'bg' && layer.type !== 'audio' ? 'move' : 'default',
+          clipPath: maskClipPaths.get(layer.id) || undefined,
+          outline: layer.isMask ? '2px dashed #e84aff' : undefined,
+          outlineOffset: layer.isMask ? '-1px' : undefined
+        }"
+        @click="onLayerClick($event, layer)"
+        @contextmenu="onLayerContextMenu($event, layer)"
+        @mousedown="$event.button === 0 && isActive && !layer.locked && layer.type !== 'bg' ? onLayerMouseDown($event, layer.id) : undefined"
+      >
+        <!-- Content flips independently of animated position/rotation/scale. -->
+        <div data-layer-content class="h-full w-full" :style="{ transform: layerFlipTransform(layer) }">
+          <!-- Layer type renderers -->
+          <BannerLayersBg v-if="layer.type === 'bg'" :layer="layer" :is-active="isActive" />
+          <BannerLayersText
+            v-else-if="layer.type === 'text'"
+            :client-id="state.project?.clientId"
+            :layer="layer"
+            :is-active="isActive"
+          />
+          <BannerLayersImage v-else-if="layer.type === 'image'" :layer="layer" :is-active="isActive" />
+          <BannerLayersVideo v-else-if="layer.type === 'video'" :layer="layer" :is-active="isActive" />
+          <BannerLayersButton
+            v-else-if="layer.type === 'button'"
+            :client-id="state.project?.clientId"
+            :layer="layer"
+            :is-active="isActive"
+          />
+          <BannerLayersRect v-else-if="layer.type === 'rect'" :layer="layer" :is-active="isActive" />
+          <BannerLayersAudio v-else-if="layer.type === 'audio'" :layer="layer" :is-active="isActive" />
+        </div>
+
+        <!-- Remote lock indicator -->
+        <template v-if="getRemoteLock(layer.id) && !isSelected(layer)">
+          <div
+            class="absolute inset-0 pointer-events-none"
+            :style="{
+              border: `2px dashed ${getRemoteLock(layer.id)!.color}`,
+              zIndex: 9997
+            }"
+          />
+          <!-- Name badge -->
+          <div
+            class="absolute -top-5 left-0 px-1.5 py-0.5 rounded text-[8px] font-medium text-white pointer-events-none whitespace-nowrap"
+            :style="{ backgroundColor: getRemoteLock(layer.id)!.color, zIndex: 9998 }"
+          >
+            {{ getRemoteLock(layer.id)!.userName }}
+          </div>
+        </template>
+      </div>
+
+      <Teleport to="body">
+        <UDropdownMenu :items="effectMenuItems" :open="!!effectMenu" @update:open="value => { if (!value) effectMenu = null }">
+          <span v-if="effectMenu" class="fixed w-px h-px pointer-events-none" :style="{ left: `${effectMenu.x}px`, top: `${effectMenu.y}px` }" />
+        </UDropdownMenu>
+      </Teleport>
+    </div>
     <!-- Selection belongs to the editor, outside layer stacking and clip paths. -->
     <div
       v-if="isActive && !state.isPlaying && selectedLayerObj && !selectedLayerObj.hidden && !selectedLayerObj.locked && !['bg', 'audio'].includes(selectedLayerObj.type)"
@@ -522,6 +562,27 @@ defineExpose({ artboardEl })
       }"
       @click.stop
     >
+      <span
+        data-rotation-pivot
+        class="absolute size-0"
+        :style="{
+          left: selectedLayerObj.transformOrigin ? `${selectedLayerObj.transformOrigin.x}px` : '50%',
+          top: selectedLayerObj.transformOrigin ? `${selectedLayerObj.transformOrigin.y}px` : '50%'
+        }"
+      />
+      <span class="absolute left-1/2 border-l border-primary" :style="{ top: `${-28 / state.wsScale}px`, height: `${28 / state.wsScale}px` }" />
+      <UButton
+        aria-label="Rotate selected layer"
+        title="Drag to rotate. Hold Shift for 15° steps. Arrow keys rotate by 1°."
+        icon="i-lucide-rotate-cw"
+        color="neutral"
+        variant="outline"
+        class="absolute pointer-events-auto rounded-full p-0 justify-center bg-default cursor-grab touch-none"
+        :style="{ left: '50%', top: `${-40 / state.wsScale}px`, width: `${24 / state.wsScale}px`, height: `${24 / state.wsScale}px`, transform: 'translateX(-50%)', fontSize: `${14 / state.wsScale}px` }"
+        @pointerdown="onRotatePointerDown($event, selectedLayerObj.id)"
+        @mousedown.stop
+        @keydown="onRotateKeyDown($event, selectedLayerObj.id)"
+      />
       <div
         v-for="handle in RESIZE_HANDLES"
         :key="handle"
@@ -543,7 +604,7 @@ defineExpose({ artboardEl })
           height: '100%',
           background: '#e84aff',
           zIndex: 9997,
-          opacity: 0.7,
+          opacity: 0.7
         }"
       />
       <div
@@ -556,7 +617,7 @@ defineExpose({ artboardEl })
           width: '100%',
           background: '#e84aff',
           zIndex: 9997,
-          opacity: 0.7,
+          opacity: 0.7
         }"
       />
     </template>

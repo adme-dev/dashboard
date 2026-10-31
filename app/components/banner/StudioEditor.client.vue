@@ -828,7 +828,7 @@ const { activeSize } = useBannerFileSize()
           <BannerElementsPanel v-else-if="leftTab === 'elements'" />
           <BannerAssetsPanel v-else-if="leftTab === 'assets'" />
           <BannerFeedsPanel v-else-if="leftTab === 'feeds'" />
-          <BannerBrandPanel v-else-if="leftTab === 'brand'" />
+          <BannerBrandPanel v-else-if="leftTab === 'brand'" @browse-assets="openLeftPanel('assets')" />
           <BannerVersionHistoryPanel v-else-if="leftTab === 'history'" :project-id="projectId" />
         </div>
       </aside>

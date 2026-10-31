@@ -1,65 +1,77 @@
 <script setup lang="ts">
 const { selectedLayer, updateLayer } = useBannerStudio()
-
-function set(key: string, val: string | number) {
-  if (!selectedLayer.value) return
-  updateLayer(selectedLayer.value.id, { [key]: Number(val) })
+const { isLayerLockedByOther } = useBannerRealtime()
+const locked = computed(() => !!selectedLayer.value?.locked || isLayerLockedByOther(selectedLayer.value?.id ?? -1))
+const dimensions = [
+  { key: 'x', label: 'X' }, { key: 'y', label: 'Y' },
+  { key: 'w', label: 'Width' }, { key: 'h', label: 'Height' },
+  { key: 'rotation', label: 'Rotation' }, { key: 'zIndex', label: 'Layer order' }
+] as const
+function set(key: string, value: string | number) {
+  if (!selectedLayer.value || locked.value || value === '') return
+  const number = Number(value)
+  if (!Number.isFinite(number) || (['w', 'h'].includes(key) && number <= 0)) return
+  updateLayer(selectedLayer.value.id, { [key]: number })
+}
+function flip(key: 'flipX' | 'flipY') {
+  if (!selectedLayer.value || locked.value) return
+  updateLayer(selectedLayer.value.id, { [key]: !selectedLayer.value[key] })
 }
 </script>
 
 <template>
-  <div v-if="selectedLayer">
-    <details open class="bs-section group">
-      <summary class="flex items-center gap-1.5 cursor-pointer select-none py-1.5 -mx-1 px-1 rounded hover:bg-accented">
-        <UIcon name="i-lucide-chevron-right" class="w-3 h-3 text-dimmed transition-transform duration-150 group-open:rotate-90" />
-        <span class="text-[10px] font-semibold uppercase tracking-wider text-muted">Position & Size</span>
-      </summary>
-      <div class="pt-1.5 space-y-2">
-    <div class="grid grid-cols-2 gap-1.5">
-      <div>
-        <label class="text-[10px] text-(--ui-text-muted)">X</label>
-        <UInput type="number" size="xs" :model-value="selectedLayer.x" @update:model-value="v => set('x', v)" />
+  <details v-if="selectedLayer" open class="bs-section group @container">
+    <summary class="flex items-center gap-1.5 cursor-pointer select-none py-1.5 -mx-1 px-1 rounded hover:bg-accented">
+      <UIcon name="i-lucide-chevron-right" class="size-3 text-dimmed transition-transform group-open:rotate-90" />
+      <span class="text-xs font-medium text-muted">Layer</span>
+    </summary>
+    <div class="pt-1.5 space-y-4">
+      <div class="grid grid-cols-1 @min-[14rem]:grid-cols-2 gap-4">
+        <UFormField v-for="field in dimensions" :key="field.key" :label="field.label">
+          <UInput
+            type="number"
+            size="sm"
+            class="w-full"
+            :disabled="locked"
+            :model-value="selectedLayer[field.key] ?? 0"
+            @update:model-value="value => set(field.key, value)"
+          />
+        </UFormField>
       </div>
-      <div>
-        <label class="text-[10px] text-(--ui-text-muted)">Y</label>
-        <UInput type="number" size="xs" :model-value="selectedLayer.y" @update:model-value="v => set('y', v)" />
-      </div>
-      <div>
-        <label class="text-[10px] text-(--ui-text-muted)">W</label>
-        <UInput type="number" size="xs" :model-value="selectedLayer.w" @update:model-value="v => set('w', v)" />
-      </div>
-      <div>
-        <label class="text-[10px] text-(--ui-text-muted)">H</label>
-        <UInput type="number" size="xs" :model-value="selectedLayer.h" @update:model-value="v => set('h', v)" />
-      </div>
+      <UFormField v-if="!selectedLayer.isMask && selectedLayer.type !== 'audio'" label="Flip layer">
+        <div class="flex flex-wrap gap-2">
+          <UButton
+            icon="i-lucide-flip-horizontal-2"
+            label="Horizontal"
+            size="xs"
+            color="neutral"
+            :variant="selectedLayer.flipX ? 'soft' : 'outline'"
+            :aria-pressed="!!selectedLayer.flipX"
+            :disabled="locked"
+            @click="flip('flipX')"
+          />
+          <UButton
+            icon="i-lucide-flip-vertical-2"
+            label="Vertical"
+            size="xs"
+            color="neutral"
+            :variant="selectedLayer.flipY ? 'soft' : 'outline'"
+            :aria-pressed="!!selectedLayer.flipY"
+            :disabled="locked"
+            @click="flip('flipY')"
+          />
+        </div>
+      </UFormField>
+      <UFormField :label="`Opacity · ${Math.round(selectedLayer.opacity * 100)}%`">
+        <USlider
+          :model-value="selectedLayer.opacity"
+          :min="0"
+          :max="1"
+          :step="0.05"
+          :disabled="locked"
+          @update:model-value="value => set('opacity', Number(value))"
+        />
+      </UFormField>
     </div>
-
-    <div class="grid grid-cols-2 gap-1.5">
-      <div>
-        <label class="text-[10px] text-(--ui-text-muted)">Rotation</label>
-        <UInput type="number" size="xs" :model-value="selectedLayer.rotation ?? 0" @update:model-value="v => set('rotation', v)" />
-      </div>
-      <div>
-        <label class="text-[10px] text-(--ui-text-muted)">Z-Index</label>
-        <UInput type="number" size="xs" :model-value="selectedLayer.zIndex" @update:model-value="v => set('zIndex', v)" />
-      </div>
-    </div>
-
-    <div>
-      <div class="flex items-center justify-between mb-1">
-              <label class="mb-0">Opacity</label>
-              <span class="font-mono text-[9px] text-(--ui-text-dimmed) tabular-nums">{{ (selectedLayer.opacity * 100).toFixed(0) }}%</span>
-            </div>
-      <input
-        type="range"
-        min="0"
-        max="1"
-        step="0.05"
-        :value="selectedLayer.opacity"
-        @input="(e: Event) => set('opacity', (e.target as HTMLInputElement).value)"
-      >
-    </div>
-      </div>
-    </details>
-  </div>
+  </details>
 </template>

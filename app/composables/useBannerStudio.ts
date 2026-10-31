@@ -1,3 +1,4 @@
+import { layerRotationChange } from '~/utils/banner-transform'
 import type { Layer, ArtboardState, BannerProject, UndoAction, BannerBrandKit, AnimInType, AnimOutType, MotionPathPoint, MotionPathTween } from '~/types/banner-studio'
 import { toRaw } from 'vue'
 import { FORMATS, TEMPLATES, migrateLayer, DEFAULT_BG, resolveBannerFormat } from '~/utils/banner-constants'
@@ -166,6 +167,10 @@ export function useBannerStudio() {
   function updateLayer(id: number, props: Partial<Layer>) {
     const layer = activeLayers.value.find(l => l.id === id)
     if (!layer) return
+    if (props.rotation !== undefined && Number.isFinite(props.rotation)
+      && !Object.prototype.hasOwnProperty.call(props, 'keyframes')) {
+      props = { ...props, ...layerRotationChange(layer, props.rotation) }
+    }
     if (!Object.prototype.hasOwnProperty.call(props, 'fontAssetId')
       && ((props.fontFamily !== undefined && props.fontFamily !== layer.fontFamily)
         || (props.fontWeight !== undefined && props.fontWeight !== layer.fontWeight))) {
@@ -199,6 +204,10 @@ export function useBannerStudio() {
       return
     }
     const before = { ...layer }
+    // Undo must clear newly introduced properties, not leave them on the layer.
+    for (const key of Object.keys(props)) {
+      if (!Object.prototype.hasOwnProperty.call(before, key)) (before as Record<string, unknown>)[key] = undefined
+    }
     Object.assign(layer, props)
     pushUndo({ type: 'updateLayer', before, after: { ...layer } })
     state.isDirty = true

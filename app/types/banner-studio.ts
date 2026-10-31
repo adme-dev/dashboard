@@ -71,6 +71,8 @@ export interface Layer {
   zIndex: number
   opacity: number
   rotation?: number
+  flipX?: boolean
+  flipY?: boolean
   /** Local pixel pivot; may lie outside a split text row. Defaults to CSS centre. */
   transformOrigin?: { x: number, y: number }
   mixBlendMode?: 'normal' | 'multiply' | 'screen' | 'overlay' | 'darken' | 'lighten' | 'color-dodge' | 'color-burn' | 'hard-light' | 'soft-light' | 'difference' | 'exclusion' | 'hue' | 'saturation' | 'color' | 'luminosity'
