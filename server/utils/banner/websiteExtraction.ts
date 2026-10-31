@@ -232,7 +232,7 @@ function stripSvgEditorMetadata(nodes: Element[], svg: Element) {
 }
 
 /** The accepted stylesheet grammar is class selectors and static paint only. */
-function validateSvgPaintStyle(style: string, rootStyle = false) {
+function validateSvgPaintStyle(style: string, rootStyle = false, maskStyle = false) {
   if (style.length > 32768 || /[\\@{}]/.test(style)) throw new Error('Unsupported SVG logo styles')
   const properties = new Set(['fill', 'stroke', 'opacity', 'fill-opacity', 'stroke-opacity', 'stroke-width', 'fill-rule', 'clip-rule', 'stroke-linecap', 'stroke-linejoin', 'stroke-miterlimit', 'stroke-dasharray', 'stroke-dashoffset', 'clip-path'])
   for (const declaration of style.split(';').filter(value => value.trim())) {
@@ -245,8 +245,11 @@ function validateSvgPaintStyle(style: string, rootStyle = false) {
       if (coordinates.shift() !== 'new' || coordinates.length !== 4 || coordinates.some(number => !/^[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[-+]?\d+)?$/i.test(number) || !Number.isFinite(Number(number)))) throw new Error('Unsupported SVG background geometry')
       continue
     }
+    if (maskStyle && property === 'mask-type' && ['luminance', 'alpha'].includes(value)) continue
     if (!properties.has(property)) throw new Error('Unsupported SVG logo styles')
-    if (['fill', 'stroke', 'clip-path'].includes(property) && /^url\(\s*["']?#[\w-]+["']?\s*\)$/.test(value)) continue
+    const rgb = /^(?:rgb)\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*\)$/i.exec(value)
+    if (['fill', 'stroke'].includes(property) && rgb && rgb.slice(1).every(channel => Number(channel) <= 255)) continue
+    if (['fill', 'stroke', 'clip-path'].includes(property) && /^url\(\s*(["']?)#[\p{L}\p{N}\p{M}_-]+\1\s*\)$/iu.test(value)) continue
     if (!/^[-\w\s#.,%]+$/.test(value)) throw new Error('Unsupported SVG logo styles')
   }
 }
@@ -275,7 +278,7 @@ export function validateBrandLogoResource<T extends { bytes: Buffer, mimeType: s
     const fragment = parseFragment(source)
     let nodes = elements(fragment)
     const allowed = new Set(['svg', 'g', 'path', 'rect', 'circle', 'ellipse', 'line', 'polyline', 'polygon', 'defs', 'linearGradient', 'radialGradient', 'stop', 'title', 'desc', 'clipPath', 'mask', 'use', 'symbol', 'pattern', 'image', 'style'])
-    const attributes = new Set(['xmlns', 'id', 'class', 'viewBox', 'width', 'height', 'preserveAspectRatio', 'x', 'y', 'x1', 'y1', 'x2', 'y2', 'cx', 'cy', 'r', 'rx', 'ry', 'd', 'points', 'fill', 'fill-rule', 'fill-opacity', 'stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin', 'stroke-miterlimit', 'stroke-opacity', 'stroke-dasharray', 'stroke-dashoffset', 'opacity', 'transform', 'gradientTransform', 'gradientUnits', 'offset', 'stop-color', 'stop-opacity', 'clip-path', 'clipPathUnits', 'clip-rule', 'mask', 'maskUnits', 'maskContentUnits', 'href', 'style', 'version', 'role', 'aria-hidden', 'aria-label', 'focusable'])
+    const attributes = new Set(['xmlns', 'id', 'class', 'viewBox', 'width', 'height', 'preserveAspectRatio', 'x', 'y', 'x1', 'y1', 'x2', 'y2', 'cx', 'cy', 'r', 'rx', 'ry', 'd', 'points', 'fill', 'fill-rule', 'fill-opacity', 'stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin', 'stroke-miterlimit', 'stroke-opacity', 'stroke-dasharray', 'stroke-dashoffset', 'opacity', 'transform', 'gradientTransform', 'gradientUnits', 'offset', 'stop-color', 'stop-opacity', 'clip-path', 'clipPathUnits', 'clip-rule', 'mask', 'maskUnits', 'maskContentUnits', 'href', 'style', 'version', 'role', 'aria-hidden', 'aria-label', 'aria-labelledby', 'focusable'])
     const svg = nodes[0]
     if (!svg || svg.tagName !== 'svg' || fragment.childNodes.some(node => node !== svg && ('tagName' in node || text(node).trim()))) throw new Error('Invalid SVG logo')
     stripSvgEditorMetadata(nodes, svg)
@@ -309,8 +312,8 @@ export function validateBrandLogoResource<T extends { bytes: Buffer, mimeType: s
           validateBrandLogoResource({ bytes: imageBytes, mimeType: match[1]! })
           continue
         }
-        if (!attributes.has(attr.name) || /[\\@]/.test(attr.value) || (attr.name === 'href' && !attr.value.startsWith('#')) || /url\(/i.test(attr.value.replace(/url\(\s*["']?#[-\w]+["']?\s*\)/gi, ''))) throw new Error('External or active SVG logos are not supported')
-        if (attr.name === 'style') validateSvgPaintStyle(attr.value, node === svg)
+        if (!attributes.has(attr.name) || /[\\@]/.test(attr.value) || (attr.name === 'href' && !attr.value.startsWith('#')) || /url\(/i.test(attr.value.replace(/url\(\s*(["']?)#[\p{L}\p{N}\p{M}_-]+\1\s*\)/giu, ''))) throw new Error('External or active SVG logos are not supported')
+        if (attr.name === 'style') validateSvgPaintStyle(attr.value, node === svg, node.tagName === 'mask')
       }
     }
     return { ...resource, bytes: Buffer.from(serializeOuter(svg)) }

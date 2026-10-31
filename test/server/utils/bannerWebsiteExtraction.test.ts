@@ -90,6 +90,34 @@ describe('website logo mirroring boundary', () => {
   const validateSvg = (svg: string) => validateBrandLogoResource({ bytes: Buffer.from(svg), mimeType: 'image/svg+xml' })
   const editorNamespaces = 'xmlns="http://www.w3.org/2000/svg" xmlns:svg="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"'
   const rdfNamespaces = 'xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:cc="http://creativecommons.org/ns#" xmlns:dc="http://purl.org/dc/elements/1.1/"'
+  it('retains bounded static RGB paint without accepting arbitrary CSS functions', () => {
+    expect(validateSvg('<svg style="fill: rgb(0, 30, 80);"><path d="M0 0"/></svg>').bytes.toString()).toContain('fill: rgb(0, 30, 80);')
+    for (const value of ['rgb(256,0,0)', 'rgb(-1,0,0)', 'rgb(NaN,0,0)', 'rgb(calc(1),0,0)', 'rgb(0,0,0) url(https://evil.example/)', 'expression(evil())']) {
+      expect(() => validateSvg(`<svg style="fill:${value}"/>`)).toThrow()
+    }
+  })
+  it('retains static mask modes and Unicode local gradient references', () => {
+    const svg = '<svg aria-labelledby="title"><title id="title">Brand</title><defs><linearGradient id="名称未設定グラデーション_11"><stop offset="0" stop-color="#fff"/></linearGradient><mask id="mask" style="mask-type:luminance"><rect width="10" height="10" fill="#fff"/></mask><mask id="alpha" style="mask-type:alpha"/><style>.mark{fill:url(#名称未設定グラデーション_11);}</style></defs><path class="mark" mask="url(#mask)" fill="url(#名称未設定グラデーション_11)"/></svg>'
+    const output = validateSvg(svg).bytes.toString()
+    expect(output).toContain('mask-type:luminance')
+    expect(output).toContain('mask-type:alpha')
+    expect(output).toContain('fill:url(#名称未設定グラデーション_11)')
+    expect(output).toContain('fill="url(#名称未設定グラデーション_11)"')
+    expect(output).toContain('aria-labelledby="title"')
+  })
+  it.each([
+    '<mask style="mask-type:url(https://evil.example/)"/>',
+    '<mask style="mask-type:expression(evil())"/>',
+    '<mask style="mask-type:unknown"/>',
+    '<path style="mask-type:luminance"/>',
+    '<style>.x{fill:url(https://evil.example/#名称);}</style>',
+    '<style>.x{fill:url(#名称%2fimage);}</style>',
+    '<path fill="url(//evil.example/#名称)"/>',
+    '<path fill="url(#名称) url(https://evil.example/)"/>',
+    '<path fill="url(#名称\\2fimage)"/>'
+  ])('keeps mask properties and Unicode paint references strictly static/local', (content) => {
+    expect(() => validateSvg(`<svg>${content}</svg>`)).toThrow()
+  })
   it('preserves class paint rules, their cascade order and local clip paths', () => {
     const css = '.cls-1{clip-path:url(#clippath-1);}.cls-2{fill:#0071ce;}.cls-2{fill:#ffffff;}.cls-3,.cls-4{fill:none;}'
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" data-name="Layer 1" style="enable-background:new 0 0 1000 160;"><defs><style type="text/css">${css}</style><clipPath id="clippath-1"><rect width="10" height="10"/></clipPath></defs><g class="cls-1"><path class="cls-2" d="M0 0h10v10z"/></g></svg>`
