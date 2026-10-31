@@ -8,6 +8,36 @@ const layer = (id: number, startTime: number, endTime: number, extra: Partial<La
 const source = (): ArtboardState => ({ bgColor: '#ffffff', playback: { duration: 10, loopCount: 0 }, layers: [layer(1, 0, 6), layer(2, 6, 10), layer(3, 0, 10, { type: 'bg', clipToPresence: false }), layer(4, 0, 10, { type: 'audio', clipToPresence: false })] })
 
 describe('slide structure and retiming', () => {
+  it('recovers a hard cut behind transparent import pre-roll and keeps the incoming artwork with its scene', () => {
+    const board = source()
+    const incoming = board.layers[1]!
+    incoming.startTime = 5.96
+    incoming.keyframes!.x = [{ time: 6, value: 50, easing: 'power2.out' }, { time: 7, value: 0 }]
+    const before = JSON.stringify(board)
+    expect(resolveSlides(board).map(slide => slide.duration)).toEqual([6, 4])
+    expect(layerSlideId(board, incoming)).toBe('slide-2')
+    expect(slidePoster(board, 'slide-1').layers.some(layer => layer.id === incoming.id)).toBe(false)
+    expect(JSON.stringify(board)).toBe(before)
+    const moved = edit(board, { type: 'move', index: 1, to: 0 }).layers.find(layer => layer.id === incoming.id)!
+    expect(moved).toMatchObject({ startTime: 0, endTime: 4, slideId: 'slide-2' })
+    expect(moved.keyframes!.x).toEqual([{ time: 0, value: 50, easing: 'power2.out' }, { time: 1, value: 0 }])
+    const resized = edit(board, { type: 'duration', index: 1, duration: 8 }).layers.find(layer => layer.id === incoming.id)!
+    expect(resized.keyframes!.x!.map(frame => frame.time)).toEqual([6, 8])
+    const copied = edit(board, { type: 'duplicate', index: 1, id: 'copy' }).layers.find(layer => layer.slideId === 'copy')!
+    expect(copied.keyframes!.x!.map(frame => frame.time)).toEqual([10, 11])
+  })
+  it('keeps overlapping visible artwork and pre-roll with earlier animation as a single scene', () => {
+    for (const unsafe of [
+      { keyframes: { opacity: [{ time: 6, value: 1 }, { time: 7, value: 1 }] } },
+      { keyframes: { opacity: [{ time: 6, value: 0 }, { time: 7, value: 1 }], x: [{ time: 5.96, value: 50 }, { time: 7, value: 0 }] } },
+      { animIn: 'fadeIn' },
+      { motionPath: [{ x: 0, y: 0 }, { x: 100, y: 100 }] }
+    ]) {
+      const board = source()
+      Object.assign(board.layers[1]!, { startTime: 5.96 }, unsafe)
+      expect(resolveSlides(board)).toHaveLength(1)
+    }
+  })
   it('recovers 6s + 4s hard cuts without mutating old projects or confusing layouts with slides', () => {
     const board = source(), before = JSON.stringify(board)
     expect(resolveSlides(board).map(slide => slide.duration)).toEqual([6, 4])

@@ -75,6 +75,10 @@ const uploading = ref(false)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 
 const filteredFonts = computed(() => searchFonts(fontSearch.value, fontCategory.value))
+const filteredCustomFonts = computed(() => {
+  const search = fontSearch.value.trim().toLowerCase()
+  return customFonts.value.filter(face => face.name.toLowerCase().includes(search))
+})
 const fontWeightOptions = computed(() => bannerFontWeightOptions(
   getFont(selectedLayer.value?.fontFamily ?? 'Barlow Condensed')?.weights,
   selectedLayer.value?.fontWeight ?? 400
@@ -286,14 +290,22 @@ function toggleGradient() {
             variant="outline"
             class="w-full justify-between font-normal"
             trailing-icon="i-lucide-chevron-down"
-                @click="() => { showFontPicker = !showFontPicker }"
           >
             <span class="truncate text-xs">{{ selectedLayer.fontFamily ?? 'Barlow Condensed' }}</span>
           </UButton>
           <template #content>
             <div class="w-72 max-h-80 flex flex-col">
               <div class="p-2 border-b border-(--ui-border)">
-                <UInput v-model="fontSearch" icon="i-lucide-search" placeholder="Search fonts..." size="xs" autofocus />
+                    <UFormField label="Search fonts">
+                      <UInput
+                        v-model="fontSearch"
+                        icon="i-lucide-search"
+                        placeholder="Search fonts..."
+                        size="xs"
+                        autofocus
+                        class="w-full"
+                      />
+                    </UFormField>
                 <div class="flex gap-0.5 mt-1.5 flex-wrap">
                   <UButton
                     v-for="cat in [{ l: 'All', v: 'all' }, { l: 'Custom', v: 'custom' }, { l: 'Sans', v: 'sans-serif' }, { l: 'Serif', v: 'serif' }, { l: 'Display', v: 'display' }, { l: 'Script', v: 'handwriting' }, { l: 'Mono', v: 'monospace' }]"
@@ -325,9 +337,9 @@ function toggleGradient() {
 
                 <!-- Custom fonts section (in Custom tab) -->
                 <template v-if="fontCategory === 'custom'">
-                  <template v-if="customFonts.length">
+                  <template v-if="filteredCustomFonts.length">
                     <div
-                      v-for="cf in customFonts"
+                      v-for="cf in filteredCustomFonts"
                       :key="cf.id"
                       class="w-full px-3 py-1.5 text-xs hover:bg-(--ui-bg-elevated) transition-colors flex items-center justify-between group"
                       :class="selectedLayer?.fontFamily === (cf.name) ? 'text-(--ui-primary) bg-(--ui-primary)/5' : ''"
@@ -353,7 +365,7 @@ function toggleGradient() {
                     </div>
                   </template>
                   <div v-else class="p-4 text-center text-xs text-(--ui-text-muted)">
-                    No custom fonts yet. Upload one above.
+                    {{ fontSearch.trim() ? 'No matching uploaded fonts.' : 'No custom fonts yet. Upload one above.' }}
                   </div>
                 </template>
 
