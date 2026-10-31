@@ -42,7 +42,7 @@ async function transaction(_event: unknown, create: (db: GodModeTransactionDb) =
         return { rows: [] }
       }
       if (sql.includes('FROM agency_clients')) return { rows: [CLIENT_A, CLIENT_B].includes(String(params[0])) ? [{ id: params[0] }] : [] }
-      if (sql.includes('FROM banner_projects')) return { rows: rows.filter(row => row.clientId === params[0] && row.tags.includes('source:thebrief') && row.tags.some(tag => tag.toLowerCase() === params[1])).slice(0, 1) }
+      if (sql.includes('FROM banner_projects')) return { rows: rows.filter(row => row.clientId === params[0] && row.tags.includes('source:thebrief') && row.tags.some(tag => tag.toLowerCase() === params[1] || (params[2] !== null && tag.toLowerCase() === params[2]))).slice(0, 1) }
       if (sql.includes('INSERT INTO banner_projects')) {
         await Promise.resolve()
         const row = { id: `project-${rows.length + 1}`, clientId: params[1] as string | null, name: String(params[0]), canvasData: JSON.parse(String(params[2])), tags: params[3] as string[] }
@@ -58,8 +58,8 @@ async function transaction(_event: unknown, create: (db: GodModeTransactionDb) =
     release?.()
   }
 }
-function request(clientId: string | null = CLIENT_A, sourceHash = hash) {
-  return { body: { name: 'Imported banner', clientId, tags: ['source:thebrief', `source-sha256:${sourceHash}`], canvasData: { source: 'original' } } } as never
+function request(clientId: string | null = CLIENT_A, sourceHash = hash, design?: string) {
+  return { body: { name: 'Imported banner', clientId, tags: ['source:thebrief', `source-sha256:${sourceHash}`, ...(design ? [`source-design:${design}`] : [])], canvasData: { source: 'original' } } } as never
 }
 beforeEach(() => {
   rows.length = 0
@@ -139,6 +139,30 @@ describe('TheBrief project deduplication', () => {
   ])('rejects %s before a transaction starts', async (_name, clientId, tags) => {
     await expect(createProject({ body: { name: 'Import', clientId, tags } } as never)).rejects.toMatchObject({ statusCode: 400 })
     expect(coordinator).not.toHaveBeenCalled()
+  })
+
+  it('returns the existing project for a fresh export of the same TheBrief design', async () => {
+    const first = await createProject(request(CLIENT_A, hash, 'jr3q5lx'))
+    const second = await createProject(request(CLIENT_A, 'c'.repeat(64), 'JR3Q5LX'))
+    expect(second).toEqual(first)
+    expect(rows).toHaveLength(1)
+    expect(await createProject(request(CLIENT_B, 'c'.repeat(64), 'jr3q5lx'))).not.toEqual(first)
+    expect(rows).toHaveLength(2)
+  })
+
+  it('serialises concurrent imports of different exports of one design into a single project', async () => {
+    const results = await Promise.all([
+      createProject(request(CLIENT_A, 'd'.repeat(64), 'm1wzrng')),
+      createProject(request(CLIENT_A, 'e'.repeat(64), 'm1wzrng')),
+      createProject(request(CLIENT_A, 'f'.repeat(64), 'm1wzrng'))
+    ])
+    expect(new Set(results.map(row => (row as { id: string }).id)).size).toBe(1)
+    expect(rows).toHaveLength(1)
+  })
+
+  it('rejects malformed or repeated source design tags', async () => {
+    expect(() => readTheBriefProjectIdentity(CLIENT_A, ['source:thebrief', `source-sha256:${hash}`, 'source-design:a', 'source-design:b'])).toThrow('one valid source design tag')
+    expect(() => readTheBriefProjectIdentity(CLIENT_A, ['source:thebrief', `source-sha256:${hash}`, 'source-design:bad tag'])).toThrow('one valid source design tag')
   })
 
   it('rejects a nonexistent client without inserting', async () => {
