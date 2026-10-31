@@ -2710,23 +2710,23 @@ const features: Record<string, Feature> = {
     categoryIcon: 'i-lucide-palette',
     categoryIconBg: 'bg-rose-50',
     categoryIconColor: 'text-rose-600',
-    description: 'Save designs as reusable templates. Browse a categorised gallery with search, tags, and usage tracking.',
+    description: 'Start from a format or a complete design set, then save your artwork as reusable templates for the team.',
     details: [
       {
-        title: 'Save from Project',
-        content: 'Turn any banner project into a template with one click. The template captures all layers, animations, formats, and brand settings as a snapshot. Add a description, tags, and category to make it discoverable. Saving a template does not affect the original project — it creates an independent copy that can be instantiated into new projects.'
+        title: 'Formats and Design Sets',
+        content: 'Browse Display, Social, Print, Digital and Video starting canvases. Grouped presets include 23 display sizes, three Performance Max sizes, eight social campaign sizes, five social post sizes and six video sizes. Review the dimensions and select the layouts you need before creating a draft. Digital presentation and slideshow presets start a single timeline canvas; print presets provide pixel dimensions.'
       },
       {
-        title: 'Category Gallery',
-        content: 'Browse templates in a visual gallery organised by category — social media ads, display banners, email headers, promotional, and more. Each template card shows a preview thumbnail, format count, and usage statistics. Filter by category, search by name or tag, and sort by newest or most used.'
+        title: 'Save and Reuse Every Layout',
+        content: 'Save a project as a template to capture its layouts, artwork and animation timing together. The editor saves your latest changes first. Use a saved template to create an independent project, choosing all its layouts or a subset and assigning the new draft to a client and folder.'
       },
       {
-        title: 'Usage Tracking',
-        content: 'Every time a template is used to create a new project, the usage counter increments. This helps your team identify which templates are most popular and which might need updating. Template creators can see how widely their designs are being adopted across the organisation.'
+        title: 'Find Your Saved Designs',
+        content: 'Switch between grid and list views, search by name or tag, filter by category and template type, and sort by date or name. The Sets tab brings grouped starting formats and saved designs with multiple layouts together. Native designs remain editable, while custom HTML templates create banners in the HTML editor.'
       },
       {
-        title: 'Custom HTML Templates',
-        content: 'Beyond the visual editor templates, support for custom HTML templates lets developers create advanced banner layouts with custom code. Upload HTML files that integrate with the Banner Studio layer system, enabling effects and interactions that go beyond the standard editor capabilities.'
+        title: 'Manage the Shared Gallery',
+        content: 'Delete saved templates directly from their cards after confirmation. Creators can remove their own templates; administrators can manage other creators’ and system templates. Existing native projects retain their copied artwork. HTML templates with dependent banners are protected from deletion.'
       }
     ]
   },

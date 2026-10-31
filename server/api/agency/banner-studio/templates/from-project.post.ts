@@ -1,8 +1,8 @@
-import { queryOne } from '~~/server/utils/db'
-import { requireAuth } from '~~/server/utils/auth'
+import { queryOneFresh as queryOne } from '~~/server/utils/db'
+import { requireWriteAccess } from '~~/server/utils/auth'
 
 export default defineEventHandler(async (event) => {
-  const user = await requireAuth(event)
+  const user = await requireWriteAccess(event)
   const body = await readBody(event)
 
   const { projectId, name, category, description, tags } = body
@@ -54,7 +54,7 @@ export default defineEventHandler(async (event) => {
     description || null,
     tags || [],
     formats,
-    user.id,
+    user.id
   ])
 
   return row
