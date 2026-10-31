@@ -7,6 +7,8 @@ import TextLayer from '../../app/components/banner/layers/Text.client.vue'
 import ImageLayer from '../../app/components/banner/layers/Image.client.vue'
 import BgLayer from '../../app/components/banner/layers/Bg.client.vue'
 import VideoLayer from '../../app/components/banner/layers/Video.client.vue'
+import Position from '../../app/components/banner/inspector/Position.vue'
+import { buildBannerHTML } from '../../app/utils/banner-html-builder'
 import { useBannerTimeline as createTimelineController } from '../../app/composables/useBannerTimeline'
 import type { Layer } from '../../app/types/banner-studio'
 
@@ -56,12 +58,13 @@ beforeAll(async () => {
   } }))
   vi.stubGlobal('useToast', () => ({ add() {
   } }))
-  vi.stubGlobal('useBannerTimeline', () => ({ seekTo() {} }))
+  vi.stubGlobal('useBannerTimeline', () => ({ seekTo() {}, pauseTimeline() {} }))
   useKeyboard = (await import('../../app/composables/useBannerKeyboard')).useBannerKeyboard
   const { useBannerStudio } = await import('../../app/composables/useBannerStudio')
   const { useBannerDrag } = await import('../../app/composables/useBannerDrag')
   vi.stubGlobal('useBannerStudio', useBannerStudio)
   vi.stubGlobal('useBannerDrag', useBannerDrag)
+  vi.stubGlobal('useBannerRotation', (await import('../../app/composables/useBannerRotation')).useBannerRotation)
   studio = useBannerStudio()
 })
 beforeEach(() => {
@@ -179,6 +182,75 @@ describe('padding gestures', () => {
   })
 })
 describe('canvas resize handles', () => {
+  it('rotates with a canvas handle at zoom, rebases imported motion, and commits one undo', async () => {
+    layer().rotation = 10
+    layer().keyframes = { rotation: [{ time: 0, value: 10 }, { time: 5, value: 30 }], opacity: [{ time: 0, value: 1 }, { time: 5, value: 1 }] }
+    studio.state.currentTime = 4
+    mount(Artboard, { formatKey: 'mrec', isActive: true })
+    await Vue.nextTick()
+    const pivot = host.querySelector<HTMLElement>('[data-rotation-pivot]')!
+    vi.spyOn(pivot, 'getBoundingClientRect').mockReturnValue({ left: 200, top: 300 } as DOMRect)
+    const handle = host.querySelector<HTMLElement>('[aria-label="Rotate selected layer"]')!
+    handle.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 7, button: 0, clientX: 200, clientY: 250, bubbles: true }))
+    window.dispatchEvent(new PointerEvent('pointermove', { pointerId: 7, clientX: 250, clientY: 300 }))
+    expect(layer().rotation).toBe(100)
+    expect(studio.canUndo.value).toBe(false)
+    window.dispatchEvent(new PointerEvent('pointerup', { pointerId: 7, clientX: 250, clientY: 300 }))
+    expect(layer().keyframes!.rotation!.map(frame => frame.value)).toEqual([100, 120])
+    expect(studio.state.currentTime).toBe(4)
+    studio.undo()
+    expect(layer().rotation).toBe(10)
+    expect(layer().keyframes!.rotation!.map(frame => frame.value)).toEqual([10, 30])
+    expect(studio.canUndo.value).toBe(false)
+    studio.redo()
+    expect(layer().rotation).toBe(100)
+  })
+  it('cancels rotation and supports keyboard steps without moving the object', async () => {
+    mount(Artboard, { formatKey: 'mrec', isActive: true })
+    const handle = host.querySelector<HTMLElement>('[aria-label="Rotate selected layer"]')!
+    handle.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 1, button: 0, clientX: 0, clientY: -50, bubbles: true }))
+    window.dispatchEvent(new PointerEvent('pointermove', { pointerId: 1, clientX: 50, clientY: 0 }))
+    expect(layer().rotation).toBe(90)
+    window.dispatchEvent(new Event('blur'))
+    expect(layer().rotation).toBeUndefined()
+    expect(studio.canUndo.value).toBe(false)
+    handle.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', shiftKey: true, bubbles: true }))
+    expect(layer().rotation).toBe(15)
+    expect(layer().x).toBe(40)
+    expect(layer().y).toBe(40)
+    studio.undo()
+    locked.value = true
+    handle.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))
+    expect(layer().rotation).toBeUndefined()
+  })
+  it('keeps flips in canvas, animation rebuilds, export and undo', async () => {
+    studio.updateLayer(1, { flipX: true, flipY: true })
+    mount(Artboard, { formatKey: 'mrec', isActive: true })
+    const element = host.querySelector<HTMLElement>('#lyr-1')!
+    expect(element.querySelector<HTMLElement>('[data-layer-content]')!.style.transform).toBe('scale(-1, -1)')
+    const controller = createTimelineController()
+    controller.buildTimeline(host.firstElementChild as HTMLElement, studio.activeLayers.value)
+    controller.seekTo(1)
+    expect(element.querySelector<HTMLElement>('[data-layer-content]')!.style.transform).toBe('scale(-1, -1)')
+    expect(buildBannerHTML('mrec', studio.activeLayers.value)).toContain('transform:scale(-1, -1);')
+    controller.destroyTimeline()
+    studio.undo()
+    await Vue.nextTick()
+    expect(element.querySelector<HTMLElement>('[data-layer-content]')!.style.transform).toBe('')
+  })
+  it('offers labelled rotation and flip controls in the inspector', async () => {
+    mount(Position)
+    const fields = [...host.querySelectorAll('label')]
+    const rotation = fields.find(field => field.textContent?.startsWith('Rotation'))!.querySelector('input')!
+    rotation.value = '25'
+    rotation.dispatchEvent(new Event('input', { bubbles: true }))
+    expect(layer().rotation).toBe(25)
+    const horizontal = host.querySelector<HTMLButtonElement>('button[icon="i-lucide-flip-horizontal-2"]')!
+    horizontal.click()
+    expect(layer().flipX).toBe(true)
+    studio.undo()
+    expect(layer().flipX).toBeUndefined()
+  })
   it.each(['video', 'bg'] as const)('silently scrubs inactive %s media forward and backward', async (type) => {
     studio.state.sets.mrec!.playback = { duration: 10, loopCount: 0 }
     studio.state.sets.mrec!.layers = [{ id: 1, type, srcType: 'video', src: '/test.mp4',

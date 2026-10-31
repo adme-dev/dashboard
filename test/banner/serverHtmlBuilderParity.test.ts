@@ -13,6 +13,20 @@ describe('server banner builder parity', () => {
   it('matches the client builder byte-for-byte (absolute srcs)', () => {
     expect(server('fb_story', layers as any)).toBe(client('fb_story', layers as any))
   })
+  it('preserves content flips on client and server exports independently of animation', () => {
+    const flipped = [
+      { ...layers[0], flipX: true, rotation: 25, keyframes: { rotation: [{ time: 0, value: 25 }, { time: 2, value: 50 }] } },
+      { ...layers[1], flipY: true },
+      { id: 'gradient', type: 'rect', x: 0, y: 0, w: 100, h: 100, fillColor: 'linear-gradient(red, blue)', flipY: true }
+    ]
+    for (const includeAnimations of [true, false]) {
+      const html = client('fb_story', flipped, { includeAnimations })
+      expect(server('fb_story', flipped, { includeAnimations })).toBe(html)
+      expect(html).toContain('transform:scale(-1, 1)')
+      expect(html).toContain('background:linear-gradient(red, blue);transform:scale(1, -1)')
+      expect(html).toContain('transform:rotate(25deg)')
+    }
+  })
   it('injects the render runtime contract for animated exports', () => {
     const html = server('fb_story', layers as any)
     expect(html).toContain('window.__engagrTimeline = tl')

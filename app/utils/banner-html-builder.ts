@@ -4,7 +4,7 @@ import { bannerImageCropCss } from '~~/shared/bannerImageCrop'
 import { bannerWordTokens } from '~~/shared/bannerWordPop'
 import { bannerEffectCss, bannerTextDepthShadow, bannerTextMarkup, safeBannerTextTexture } from '~~/shared/bannerEffects'
 import { resolveBannerPlayback, bannerPlaybackRepeat } from '~/utils/banner-playback'
-import { layerTransformOrigin } from '~/utils/banner-transform'
+import { layerTransformOrigin, layerFlipTransform } from '~/utils/banner-transform'
 import { ANIM_IN, ANIM_OUT, resolveBannerFormat } from '~/utils/banner-constants'
 import type { Layer, KeyframeProperty, Keyframe, BannerPlayback } from '~/types/banner-studio'
 import { computeClipPathPx } from '~/utils/banner-mask'
@@ -208,6 +208,14 @@ export function buildBannerHTML(
   const layerDivs = [...layers]
     .sort((a, b) => a.zIndex - b.zIndex)
     .map((l) => {
+      function visualLayer(style: string, content = '') {
+        const flip = !l.isMask && layerFlipTransform(l)
+        if (flip) {
+          content = `<div data-layer-content style="width:100%;height:100%;box-sizing:border-box;${style.slice(frameStyle.length)}transform:${flip};">${content}</div>`
+          style = frameStyle
+        }
+        return `<div class="layer" data-id="${l.id}" style="${style}">${content}</div>`
+      }
       let style = `position:absolute;left:${l.x}px;top:${l.y}px;width:${l.w}px;height:${l.h}px;opacity:${l.opacity};`
       const transformOrigin = layerTransformOrigin(l.transformOrigin)
       if (transformOrigin) style += `transform-origin:${transformOrigin};`
@@ -226,21 +234,22 @@ export function buildBannerHTML(
         style += `clip-path:${computeClipPathPx(maskLayer, l, maskLayer.maskShape || 'rect', maskLayer.maskInvert || false)};`
       }
 
+      const frameStyle = style
       if (l.type === 'bg') {
         if (l.src && l.srcType === 'video') {
           const objPos = `${l.focalX ?? 50}% ${l.focalY ?? 50}%`
-          return `<div class="layer" data-id="${l.id}" style="${style}background:${l.bgColor || '#000'};"><video src="${escapeHtml(l.src)}" muted playsinline preload="auto" style="width:100%;height:100%;object-fit:${l.fit || 'cover'};object-position:${objPos};display:block;" /></div>`
+          return visualLayer(`${style}background:${l.bgColor || '#000'};`, `<video src="${escapeHtml(l.src)}" muted playsinline preload="auto" style="width:100%;height:100%;object-fit:${l.fit || 'cover'};object-position:${objPos};display:block;" />`)
         }
         if (l.src) {
           const objPos = `${l.focalX ?? 50}% ${l.focalY ?? 50}%`
-          return `<div class="layer" data-id="${l.id}" style="${style}background:${l.bgColor || '#000'};"><img src="${escapeHtml(l.src)}" style="width:100%;height:100%;object-fit:${l.fit || 'cover'};object-position:${objPos};display:block;" /></div>`
+          return visualLayer(`${style}background:${l.bgColor || '#000'};`, `<img src="${escapeHtml(l.src)}" style="width:100%;height:100%;object-fit:${l.fit || 'cover'};object-position:${objPos};display:block;" />`)
         }
-        return `<div class="layer" data-id="${l.id}" style="${style}background:${l.bgColor || '#000'};"></div>`
+        return visualLayer(`${style}background:${l.bgColor || '#000'};`)
       }
       if (l.type === 'rect') {
         style += `background:${l.fillColor || 'transparent'};`
         if (l.borderRadius) style += `border-radius:${l.borderRadius}px;`
-        return `<div class="layer" data-id="${l.id}" style="${style}"></div>`
+        return visualLayer(style)
       }
       if (l.type === 'text') {
         style += 'white-space:pre-wrap;word-break:break-word;'
@@ -263,7 +272,7 @@ export function buildBannerHTML(
             ? l.textRuns.map(run => `<span style="${run.fontSize ? `font-size:${run.fontSize}px;` : ''}${run.top !== undefined ? `position:relative;top:${run.top}px;` : ''}">${escapeHtml(run.text)}</span>`).join('')
             : escapeHtml(l.text || '')
         const content = `${textMarkup}${lineStrut}`
-        return `<div class="layer" data-id="${l.id}" style="${style}">${bannerTextMarkup(content, l as unknown as Record<string, unknown>)}</div>`
+        return visualLayer(style, bannerTextMarkup(content, l as unknown as Record<string, unknown>))
       }
       if (l.type === 'button') {
         style += `font-size:${l.fontSize || 12}px;font-weight:${l.fontWeight || 700};font-family:'${bannerFontFamily(l.fontFamily, l.fontAssetId)}',sans-serif;`
@@ -273,15 +282,15 @@ export function buildBannerHTML(
         if (l.borderRadius) style += `border-radius:${l.borderRadius}px;`
         if (l.textTransform) style += `text-transform:${l.textTransform};`
         if (l.letterSpacing) style += `letter-spacing:${l.letterSpacing};`
-        return `<div class="layer" data-id="${l.id}" style="${style}">${escapeHtml(l.text || '')}</div>`
+        return visualLayer(style, escapeHtml(l.text || ''))
       }
       if (l.type === 'image') {
         style += 'overflow:hidden;' + bannerEffectCss({ visualFilter: l.visualFilter })
-        return `<div class="layer" data-id="${l.id}" style="${style}"><img src="${escapeHtml(l.src || '')}" style="${bannerImageCropCss(l.imageCrop) || `width:100%;height:100%;object-fit:${l.fit || 'cover'};`}" /></div>`
+        return visualLayer(style, `<img src="${escapeHtml(l.src || '')}" style="${bannerImageCropCss(l.imageCrop) || `width:100%;height:100%;object-fit:${l.fit || 'cover'};`}" />`)
       }
       if (l.type === 'video') {
         const objPos = `${l.focalX ?? 50}% ${l.focalY ?? 50}%`
-        return `<div class="layer" data-id="${l.id}" style="${style}"><video src="${escapeHtml(l.src || '')}" muted playsinline preload="auto" style="width:100%;height:100%;object-fit:${l.fit || 'cover'};object-position:${objPos};" /></div>`
+        return visualLayer(style, `<video src="${escapeHtml(l.src || '')}" muted playsinline preload="auto" style="width:100%;height:100%;object-fit:${l.fit || 'cover'};object-position:${objPos};" />`)
       }
       if (l.type === 'audio') {
         if (!l.src) return ''

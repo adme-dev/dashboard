@@ -2510,7 +2510,7 @@ const features: Record<string, Feature> = {
     details: [
       {
         title: 'Layer-Based Design',
-        content: 'Build banners by stacking layers — text, images, buttons, rectangles, and background elements. Each layer has its own position, size, rotation, opacity, and animation properties. Reorder layers by drag-and-drop in the sidebar, lock layers to prevent accidental edits, and toggle visibility to focus on specific elements. The layer system mirrors what designers expect from tools like Figma or Photoshop, but outputs production-ready HTML5.'
+        content: 'Build banners by stacking layers — text, images, buttons, rectangles, and background elements. Each layer has its own position, size, rotation, opacity, and animation properties. Drag the canvas rotation handle, hold Shift for 15-degree steps, or flip a visual layer horizontally or vertically in the properties panel. Rotation and flips support undo and remain in exported artwork. Reorder layers by drag-and-drop in the sidebar, lock layers to prevent accidental edits, and toggle visibility to focus on specific elements. The layer system mirrors what designers expect from tools like Figma or Photoshop, but outputs production-ready HTML5.'
       },
       {
         title: 'Multi-Format Artboards',
@@ -2680,6 +2680,10 @@ const features: Record<string, Feature> = {
     categoryIconColor: 'text-rose-600',
     description: 'Build client brand kits with colour roles, uploaded fonts, logos and written guidelines. Import shared OEM fonts, logos and colours from MotorStack with source notes, then review before applying.',
     details: [
+      {
+        title: 'Brand Assets Beside Your Canvas',
+        content: 'Choose a kit from the searchable editor sidebar, then browse Logos, Colours and Fonts. Add a logo to the current layout, apply a colour to the selected layer, or choose an uploaded font for selected text. Applying the complete kit remains a separate, undoable action across all layouts.'
+      },
       {
         title: 'Colours With Roles, Not Just Swatches',
         content: 'Every colour in a kit has a job — primary, secondary, accent, background, text — plus as many extras as the brand needs. Roles are what make one-click apply predictable: the primary lands on headlines, the accent on call-to-action buttons (with button text flipped for contrast), the background on every artboard. Add a label like "Leapmotor Green" so the team talks about colours the way the client does.'
