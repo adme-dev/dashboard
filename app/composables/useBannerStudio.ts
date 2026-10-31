@@ -1,3 +1,5 @@
+import { retimeLayerPresence } from '~/utils/banner-timeline-edit'
+import { editSlides, layerSlideId, resolveSlides, slideAtTime, slideRanges, type SlideEdit } from '~/utils/banner-slides'
 import { layerRotationChange } from '~/utils/banner-transform'
 import type { Layer, ArtboardState, BannerProject, UndoAction, BannerBrandKit, AnimInType, AnimOutType, MotionPathPoint, MotionPathTween } from '~/types/banner-studio'
 import { toRaw } from 'vue'
@@ -79,6 +81,54 @@ export function useBannerStudio() {
     return state.sets[state.activeKey]?.layers ?? []
   })
 
+  const activeSlides = computed(() => slideRanges(resolveSlides(state.sets[state.activeKey])))
+  const currentSlide = computed(() => slideAtTime(state.sets[state.activeKey], state.currentTime))
+
+  function changeSlides(edit: SlideEdit) {
+    const peers = typeof useBannerRealtime === 'function' ? useBannerRealtime().remoteUsers?.value : []
+    if (peers?.length) throw new Error('Another designer is editing this project. Finish that session before changing the slide sequence.')
+    const keys = state.layoutView === 'all' ? state.setKeys : [state.activeKey]
+    const sequence = JSON.stringify(activeSlides.value.map(slide => [slide.name, slide.duration]))
+    if (keys.some(key => JSON.stringify(resolveSlides(state.sets[key]).map(slide => [slide.name, slide.duration])) !== sequence)) {
+      throw new Error('Layouts have different slide sequences. Choose Single edit to change this layout.')
+    }
+    const replacements = Object.fromEntries(keys.map((key) => {
+      const format = resolveBannerFormat(key)
+      if (!format) throw new Error('This layout has no valid dimensions.')
+      return [key, editSlides(state.sets[key], edit, nextId, format)]
+    }))
+    withCanvasUndo(() => {
+      Object.assign(state.sets, replacements)
+    })
+    if (!activeLayers.value.some(layer => layer.id === state.selectedLayerId)) state.selectedLayerId = null
+  }
+
+  function setLayerSlide(id: number, slideId: string | null) {
+    const layer = activeLayers.value.find(layer => layer.id === id)
+    if (!layer || layer.slideTransitionFor) return
+    const peers = typeof useBannerRealtime === 'function' ? useBannerRealtime().remoteUsers?.value : []
+    if (peers?.length) throw new Error('Another designer is editing this project. Finish that session before changing slide ownership.')
+    const index = slideId === null ? -1 : activeSlides.value.findIndex(slide => slide.id === slideId)
+    if (slideId !== null && index < 0) return
+    const replacements: Record<string, ArtboardState> = {}
+    for (const key of state.layoutView === 'all' && layer.linkId ? state.setKeys : [state.activeKey]) {
+      const board: ArtboardState = JSON.parse(JSON.stringify(state.sets[key]))
+      const items = board.layers.filter(item => key === state.activeKey ? item.id === id : item.linkId === layer.linkId)
+      if (!items.length) continue
+      const ranges = slideRanges(resolveSlides(board))
+      board.slides ||= JSON.parse(JSON.stringify(resolveSlides(board)))
+      const target = ranges[index]
+      if (index >= 0 && !target) throw new Error('A linked layout is missing this slide. Choose Single edit to change this layout.')
+      for (const item of items) {
+        Object.assign(item, retimeLayerPresence(item, target?.start || 0, target?.end || ranges.at(-1)!.end), { slideId: target?.id, clipToPresence: !!target })
+      }
+      replacements[key] = board
+    }
+    withCanvasUndo(() => {
+      Object.assign(state.sets, replacements)
+    })
+  }
+
   const activeFormat = computed(() => {
     return FORMATS[state.activeKey] || null
   })
@@ -102,16 +152,33 @@ export function useBannerStudio() {
   }
 
   function addLayer(partial: Partial<Layer>): Layer {
+    const board = state.sets[state.activeKey]
+    if (board && !board.slides && activeSlides.value.length > 1) {
+      let added: Layer
+      withCanvasUndo(() => {
+        board.slides = JSON.parse(JSON.stringify(resolveSlides(board)))
+        added = addLayer(partial)
+      })
+      return added!
+    }
+    const slide = state.sets[state.activeKey]?.slides?.length || activeSlides.value.length > 1 ? currentSlide.value : undefined
     const layer = migrateLayer({
-      id: nextId(),
-      zIndex: activeLayers.value.length ? Math.max(...activeLayers.value.map(l => l.zIndex)) + 1 : 1,
+      ...(slide ? { slideId: slide.id, startTime: slide.start, endTime: slide.end, clipToPresence: true } : {}),
+      zIndex: activeLayers.value.length ? Math.max(0, ...activeLayers.value.filter(l => !l.slideTransitionFor).map(l => l.zIndex)) + 1 : 1,
       opacity: 1,
       x: 0,
       y: 0,
       w: 100,
       h: 40,
       ...partial,
+      id: partial.id ?? nextId(),
     })
+    if (slide) {
+      const localStart = partial.slideId ? 0 : partial.startTime ?? partial.delay ?? 0
+      const start = slide.start + Math.min(Math.max(0, localStart), Math.max(0, slide.duration - 0.1))
+      const end = partial.endTime === undefined ? slide.end : Math.min(slide.end, start + Math.max(0.1, partial.endTime - (partial.startTime || 0)))
+      Object.assign(layer, retimeLayerPresence(layer, start, end), { slideId: slide.id, clipToPresence: true })
+    }
 
     if (!state.sets[state.activeKey]) {
       state.sets[state.activeKey] = { layers: [] }
@@ -169,6 +236,27 @@ export function useBannerStudio() {
   function updateLayer(id: number, props: Partial<Layer>) {
     const layer = activeLayers.value.find(l => l.id === id)
     if (!layer) return
+    const board = state.sets[state.activeKey]
+    if (board && !board.slides && activeSlides.value.length > 1 && (props.startTime !== undefined || props.endTime !== undefined || props.keyframes)) {
+      withCanvasUndo(() => {
+        board.slides = JSON.parse(JSON.stringify(resolveSlides(board)))
+        updateLayer(id, props)
+      })
+      return
+    }
+    const owner = board && (board.slides?.length || activeSlides.value.length > 1)
+      ? activeSlides.value.find(slide => slide.id === layerSlideId(board, layer))
+      : undefined
+    if (owner) {
+      props = { ...props }
+      if (props.startTime !== undefined || props.endTime !== undefined) {
+        const start = Math.max(owner.start, Math.min(owner.end - 0.1, Number.isFinite(props.startTime) ? props.startTime! : layer.startTime))
+        const end = Math.max(start + 0.1, Math.min(owner.end, Number.isFinite(props.endTime) ? props.endTime! : layer.endTime))
+        if (!props.keyframes) Object.assign(props, retimeLayerPresence(layer, start, end))
+        else Object.assign(props, { startTime: start, endTime: end })
+      }
+      if (props.keyframes) props.keyframes = Object.fromEntries(Object.entries(props.keyframes).map(([key, frames]) => [key, frames?.map(frame => ({ ...frame, time: Math.max(owner.start, Math.min(owner.end, frame.time)) })).sort((a, b) => a.time - b.time)]))
+    }
     if (props.rotation !== undefined && Number.isFinite(props.rotation)
       && !Object.prototype.hasOwnProperty.call(props, 'keyframes')) {
       props = { ...props, ...layerRotationChange(layer, props.rotation) }
@@ -230,7 +318,7 @@ export function useBannerStudio() {
   }
 
   function bringToFront(id: number) {
-    const maxZ = activeLayers.value.length ? Math.max(...activeLayers.value.map(l => l.zIndex)) : 0
+    const maxZ = activeLayers.value.length ? Math.max(0, ...activeLayers.value.filter(l => !l.slideTransitionFor).map(l => l.zIndex)) : 0
     reorderLayer(id, maxZ + 1)
   }
 
@@ -285,8 +373,9 @@ export function useBannerStudio() {
     }
     // Proportionally scale from active artboard
     const srcFmt = FORMATS[state.activeKey]
-    const tgtFmt = FORMATS[key]
+    const tgtFmt = resolveBannerFormat(key)
     if (!srcFmt || !tgtFmt) return
+    FORMATS[key] = tgtFmt
 
     const srcLayers = state.sets[state.activeKey]?.layers ?? []
     const idMap = new Map<number, number>()
@@ -300,6 +389,10 @@ export function useBannerStudio() {
       n.y = Math.round(l.y * sy)
       n.w = Math.round(l.w * sx)
       n.h = Math.round(l.h * sy)
+      if (n.keyframes) {
+        if (n.keyframes.x) n.keyframes.x = n.keyframes.x.map(frame => ({ ...frame, value: frame.value * sx }))
+        if (n.keyframes.y) n.keyframes.y = n.keyframes.y.map(frame => ({ ...frame, value: frame.value * sy }))
+      }
       if (n.type === 'bg') { n.w = tgtFmt.w; n.h = tgtFmt.h }
       if (n.fontSize) n.fontSize = Math.max(7, Math.round(n.fontSize * Math.min(sx, sy)))
       // Scale motion path offsets proportionally
@@ -318,7 +411,8 @@ export function useBannerStudio() {
       }
     })
 
-    state.sets[key] = { layers: scaled }
+    const source = state.sets[state.activeKey]
+    state.sets[key] = { ...JSON.parse(JSON.stringify(source)), layers: scaled }
     state.setKeys.push(key)
     setActiveArtboard(key)
     state.isDirty = true
@@ -360,15 +454,21 @@ export function useBannerStudio() {
       const sx = tgtFmt.w / srcFmt.w
       const sy = tgtFmt.h / srcFmt.h
       const idMap = new Map<number, number>()
+      const usedIds = new Set<number>()
       const scaled = srcLayers.map(l => {
-        const existing = state.sets[key]?.layers?.find(x => x.name === l.name)
+        const existing = state.sets[key]?.layers?.find(x => !usedIds.has(x.id) && (l.linkId ? x.linkId === l.linkId : x.name === l.name && x.slideId === l.slideId))
         const newId = existing?.id ?? nextId()
+        usedIds.add(newId)
         idMap.set(l.id, newId)
         const n: Layer = { ...JSON.parse(JSON.stringify(l)), id: newId }
         n.x = Math.round(l.x * sx)
         n.y = Math.round(l.y * sy)
         n.w = Math.round(l.w * sx)
         n.h = Math.round(l.h * sy)
+        if (n.keyframes) {
+          if (n.keyframes.x) n.keyframes.x = n.keyframes.x.map(frame => ({ ...frame, value: frame.value * sx }))
+          if (n.keyframes.y) n.keyframes.y = n.keyframes.y.map(frame => ({ ...frame, value: frame.value * sy }))
+        }
         if (n.type === 'bg') { n.w = tgtFmt.w; n.h = tgtFmt.h }
         if (n.fontSize) n.fontSize = Math.max(7, Math.round(n.fontSize * Math.min(sx, sy)))
         // Scale motion path offsets proportionally
@@ -386,7 +486,7 @@ export function useBannerStudio() {
           n.maskTargetIds = n.maskTargetIds.map(oldId => idMap.get(oldId) ?? oldId)
         }
       })
-      state.sets[key] = { layers: scaled }
+      state.sets[key] = { ...JSON.parse(JSON.stringify(state.sets[state.activeKey])), layers: scaled }
     })
     state.isDirty = true
   }
@@ -446,8 +546,8 @@ export function useBannerStudio() {
       locked: true,
       animIn: 'fadeIn' as AnimInType,
       animInDur: 0.5,
-      startTime: bgCount > 0 ? lastEnd - 0.5 : 0,
-      endTime: bgCount > 0 ? lastEnd + 2.5 : 3,
+      startTime: activeSlides.value.length > 1 ? 0 : bgCount > 0 ? lastEnd - 0.5 : 0,
+      endTime: activeSlides.value.length > 1 ? currentSlide.value!.duration : bgCount > 0 ? lastEnd + 2.5 : 3,
     })
 
     // Don't auto-select bg layers — keep current selection
@@ -714,6 +814,10 @@ export function useBannerStudio() {
 
       let logoApplied = false
       artboard.layers.forEach((layer) => {
+        if (layer.slideTransitionFor) {
+          layer.fillColor = artboard.bgColor || state.bgColor
+          return
+        }
         if (layer.type === 'bg' && background) layer.bgColor = background
         if (layer.type === 'text') {
           const isHeadline = layer === headline
@@ -993,6 +1097,10 @@ export function useBannerStudio() {
     activeFormat,
     selectedLayer,
     allFormats,
+    activeSlides,
+    currentSlide,
+    changeSlides,
+    setLayerSlide,
     canUndo,
     canRedo,
     // Layer ops

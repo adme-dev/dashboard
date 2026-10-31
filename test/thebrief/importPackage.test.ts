@@ -86,3 +86,21 @@ describe('upload contract and playback boundaries', () => {
     expect(result.canvasData.custom_300x250.layers[0].fontWeight).toBe(weight)
   })
 })
+
+it('preserves explicit slide metadata and rejects missing identities, mismatched totals and crossing artwork', () => {
+  const input = fixture()
+  const board = input.canvasData.custom_300x250
+  const slides = [{ id: 'source-slide:1', name: 'Slide 1', duration: 4 }]
+  Object.assign(board, { slides })
+  const item = Object.assign(board.layers[0], { slideId: 'source-slide:1' })
+  const parsed = parseTheBriefPackage(input)
+  expect(parsed.canvasData.custom_300x250!.slides).toEqual(slides)
+  expect(parsed.canvasData.custom_300x250!.layers[0]!.slideId).toBe('source-slide:1')
+  item.slideId = 'missing'
+  expect(() => parseTheBriefPackage(input)).toThrow('missing slide')
+  item.slideId = 'source-slide:1'
+  slides[0]!.duration = 3
+  expect(() => parseTheBriefPackage(input)).toThrow('source timing')
+  slides.push({ id: 'source-slide:2', name: 'Slide 2', duration: 1 })
+  expect(() => parseTheBriefPackage(input)).toThrow('crosses its slide')
+})

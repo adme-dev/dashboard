@@ -48,9 +48,9 @@ it('opens the clicked imported phase at its changing property without replacing 
     opacity: [{ time: 0, value: 0.15 }, { time: 10, value: 0.15 }],
     scaleX: [{ time: 5, value: 8 }, { time: 6, value: 1 }, { time: 10, value: 1 }]
   }
-  const { studio, host } = await mount({ startTime: 5, endTime: 10, keyframes }, { kind: 'entry', start: 5, end: 6, label: 'Entry · Keyframes', direction: 'in' })
+  const { studio, host } = await mount({ startTime: 5, endTime: 10, keyframes }, { kind: 'entry', start: 5, end: 6, label: 'Entry · Fade in + Scale down', direction: 'in' })
   await Vue.nextTick()
-  expect(host.textContent).toContain('Entry · Keyframes · 5.00–6.00s')
+  expect(host.textContent).toContain('Entry · Fade in + Scale down · 5.00–6.00s')
   expect(host.querySelector('select')!.value).toBe('scaleX')
   expect(studio.state.selectedLayerId).toBe(1)
   expect(studio.activeLayers.value[0]!.keyframes).toEqual(keyframes)
@@ -147,4 +147,11 @@ it('offers Stop preview for a running isolated animation', async () => {
   await click('Stop preview')
   expect(stopAnimationPreview).toHaveBeenCalledOnce()
   expect(previewAnimation).not.toHaveBeenCalled()
+})
+
+it('shows the actual imported motion in a block without a supplied phase', async () => {
+  const { host } = await mount({ keyframes: { opacity: [{ time: 0, value: 0 }, { time: 3, value: 1 }], rotation: [{ time: 0, value: 0 }, { time: 3, value: 90 }] } })
+  const button = host.querySelector('button[aria-label^="Edit "]')!
+  expect(button.getAttribute('aria-label')).toBe('Edit Fade in + Rotate for Imported heading')
+  expect(button.textContent).toContain('Fade in + Rotate')
 })

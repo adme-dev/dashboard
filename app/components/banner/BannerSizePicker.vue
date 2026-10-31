@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { resolveSlides } from '~/utils/banner-slides'
 import { FORMATS, BANNER_SETS, PLATFORM_META } from '~/utils/banner-constants'
 import type { Layer } from '~/types/banner-studio'
 
@@ -11,6 +12,7 @@ const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: s
 
 const selected = ref<Set<string>>(new Set())
 const useSmartResize = ref(true)
+const hasSlides = computed(() => resolveSlides(state.sets[state.activeKey]).length > 1)
 const isResizing = ref(false)
 const resizeProgress = ref(0)
 
@@ -45,7 +47,7 @@ async function apply() {
     return
   }
 
-  if (useSmartResize.value && newSizes.value.length > 0) {
+  if (useSmartResize.value && !hasSlides.value && newSizes.value.length > 0) {
     await applySmartResize()
   } else {
     newSizes.value.forEach(key => addSizeToSet(key))
@@ -173,7 +175,7 @@ function cancel() {
 
         <!-- Smart Resize Toggle -->
         <div
-          v-if="newSizes.length > 0"
+          v-if="newSizes.length > 0 && !hasSlides"
           class="mt-4 flex items-center gap-2 rounded-lg px-3 py-2.5 border transition-colors"
           :class="useSmartResize ? 'border-(--ui-primary)/30 bg-(--ui-primary)/5' : 'border-(--ui-border) bg-(--ui-bg)'"
         >
@@ -188,6 +190,14 @@ function cancel() {
             </p>
           </div>
         </div>
+
+        <UAlert
+          v-if="newSizes.length > 0 && hasSlides"
+          class="mt-4"
+          color="neutral"
+          variant="subtle"
+          description="New layouts scale the artwork and preserve every slide and animation timing."
+        />
 
         <!-- Resize Progress -->
         <div v-if="isResizing" class="mt-3">

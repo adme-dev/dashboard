@@ -8,13 +8,16 @@ export function retimeLayerPresence(layer: Layer, start: number, end: number): P
   const from = layer.startTime ?? 0, to = layer.endTime ?? from + 3
   const scale = (end - start) / Math.max(0.001, to - from)
   const time = (value: number) => value < from ? Math.min(value, start) : round(Math.max(0, start + (value - from) * scale))
-  const change: Partial<Layer> = { startTime: start, endTime: end }
+  const change: Partial<Layer> = { startTime: start, endTime: end, delay: start }
   if (layer.keyframes) change.keyframes = Object.fromEntries(Object.entries(layer.keyframes).map(([property, frames]) => [property, frames?.map(frame => ({ ...frame, time: time(frame.time) }))]))
   if (layer.animationClips) change.animationClips = layer.animationClips.map(clip => ({ ...clip, start: time(clip.start), end: time(clip.end) }))
   if (layer.motionPathTweens) change.motionPathTweens = layer.motionPathTweens.map(tween => ({ ...tween, startTime: time(tween.startTime), endTime: time(tween.endTime) }))
   if (layer.animInStart !== undefined) change.animInStart = time(layer.animInStart)
   if (layer.animOutStart !== undefined) change.animOutStart = time(layer.animOutStart)
-  if (layer.animInDur) change.animInDur = round(layer.animInDur * scale)
+  if (layer.animInDur !== undefined) {
+    change.animInDur = round(layer.animInDur * scale)
+    change.dur = change.animInDur
+  }
   if (layer.outDur) change.outDur = round(layer.outDur * scale)
   if (layer.wordPop) change.wordPop = { ...layer.wordPop, duration: layer.wordPop.duration * scale, stagger: layer.wordPop.stagger * scale }
   return change

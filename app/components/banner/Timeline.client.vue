@@ -5,6 +5,7 @@ import { LAYER_COLORS } from '~/utils/banner-constants'
 import type { KeyframeProperty, Keyframe, Layer } from '~/types/banner-studio'
 import { hasKeyframes, presetToKeyframes } from '~/composables/useBannerTimeline'
 import { insertTimelineKeyframe, retimeLayerPresence } from '~/utils/banner-timeline-edit'
+import { layerSlideId, resolveSlides, slideRanges } from '~/utils/banner-slides'
 import { timelinePhases } from '~/utils/banner-timeline-phases'
 
 const { state, activeLayers, activeFormat, selectLayer, updateLayer, duplicateLayer, removeLayer, bringToFront, sendToBack, getMotionPathTweens, updateMotionPathTween, addMotionPathTween, removeMotionPathTween } = useBannerStudio()
@@ -201,9 +202,15 @@ function getVisibleKfProperties(layer: { motionPath?: any[] }) {
   return KF_PROPERTIES
 }
 
+function sceneBounds(layer: Layer) {
+  const board = state.sets[state.activeKey]
+  const owner = slideRanges(resolveSlides(board)).find(slide => slide.id === layerSlideId(board, layer))
+  return owner || { start: 0, end: state.duration }
+}
+
 // Layers sorted by zIndex descending for lane display
 const sortedLayers = computed(() => {
-  return [...activeLayers.value].sort((a, b) => b.zIndex - a.zIndex)
+  return activeLayers.value.filter(layer => !layer.slideTransitionFor).sort((a, b) => b.zIndex - a.zIndex)
 })
 
 // Check if a layer is targeted by any mask
@@ -515,6 +522,15 @@ function onPresenceMouseMove(e: MouseEvent) {
     newEnd = newStart + duration
   }
 
+  const bounds = sceneBounds(d.original)
+  if (d.mode === 'move') {
+    newStart = Math.max(bounds.start, Math.min(bounds.end - (d.origEnd - d.origStart), newStart))
+    newEnd = newStart + d.origEnd - d.origStart
+  } else {
+    newStart = Math.max(bounds.start, newStart)
+    newEnd = Math.min(bounds.end, newEnd)
+  }
+
   // Direct DOM mutation for 60fps during drag
   if (d.barEl) {
     d.barEl.style.left = `${newStart * pxPerSec.value}px`
@@ -558,6 +574,15 @@ function onPresenceMouseUp(e: MouseEvent) {
       const duration = d.origEnd - d.origStart
       newStart = Math.max(0, Math.min(state.duration - duration, snapTime(Math.max(0, d.origStart + dt))))
       newEnd = newStart + duration
+    }
+
+    const bounds = sceneBounds(d.original)
+    if (d.mode === 'move') {
+      newStart = Math.max(bounds.start, Math.min(bounds.end - (d.origEnd - d.origStart), newStart))
+      newEnd = newStart + d.origEnd - d.origStart
+    } else {
+      newStart = Math.max(bounds.start, newStart)
+      newEnd = Math.min(bounds.end, newEnd)
     }
 
     // Round to 2 decimal places for clean values
@@ -914,6 +939,7 @@ onUnmounted(() => {
 
 <template>
   <div aria-label="Animation timeline" class="flex min-h-0 flex-col h-full bg-default select-none" @wheel="onWheelZoom">
+    <BannerSlideStrip />
     <!-- Timeline header -->
     <div class="flex flex-wrap items-center gap-2 px-3 py-1.5 border-b border-default bg-elevated shrink-0">
       <span class="text-sm font-semibold mr-2">Timeline</span>
@@ -935,7 +961,7 @@ onUnmounted(() => {
       <UButton
         icon="i-lucide-repeat"
         :disabled="!!state.sets[state.activeKey]?.playback"
-        :title="state.sets[state.activeKey]?.playback ? 'Uses imported playback count' : 'Loop preview'"
+        :title="state.sets[state.activeKey]?.playback ? 'Loop count is set in Slides' : 'Loop preview'"
         :variant="state.isLooping ? 'soft' : 'ghost'"
         size="xs"
         :color="state.isLooping ? 'primary' : undefined"
