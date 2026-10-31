@@ -6,19 +6,19 @@ import { resolveBannerFormat } from '~/utils/banner-constants'
 definePageMeta({ layout: false, middleware: ['role-creative'] })
 const route = useRoute()
 const projectId = String(route.params.id)
-const snapshot = shallowRef<{ name: string, canvasData: Record<string, ArtboardState>, revision: string } | null>(null)
+const snapshot = shallowRef<{ clientId?: string | null, name: string, canvasData: Record<string, ArtboardState>, revision: string } | null>(null)
 const unavailable = ref(false)
 const loading = ref(true)
 const playing = ref<string | null>(null)
 const fontsReady = ref(false)
-const { fetchCustomFonts, getExportCustomFonts } = useBannerFonts()
+const { fetchCustomFonts, getExportCustomFonts } = useBannerFonts(() => snapshot.value?.clientId ?? null)
 let disposed = false
 let timer: ReturnType<typeof setTimeout> | undefined
 async function refresh() {
   try {
     const next = await $fetch<typeof snapshot.value>(`/api/agency/banner-studio/projects/${projectId}/snapshot`)
     if (!disposed && next) {
-      if (snapshot.value?.revision !== next.revision) {
+      if (snapshot.value?.revision !== next.revision || snapshot.value?.clientId !== next.clientId) {
         snapshot.value = next
         playing.value = null
         await fetchCustomFonts()

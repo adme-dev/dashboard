@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { FONT_FAMILIES, TEXT_SHADOW_PRESETS, TEXT_STROKE_PRESETS } from '~/utils/banner-constants'
+import { parseBannerFontTags as parseFontTags } from '~~/shared/banner/fonts'
 import { bannerFontWeightOptions } from '~/utils/banner-font-weights'
 
-const { selectedLayer, updateLayer } = useBannerStudio()
-const { getFont, fetchCustomFonts } = useBannerFonts()
+const { state, selectedLayer, updateLayer } = useBannerStudio()
+const { getFont, customFonts, fetchCustomFonts } = useBannerFonts(() => state.project?.clientId ?? null)
 onMounted(() => {
   void fetchCustomFonts()
 })
@@ -14,7 +15,12 @@ const fontWeightOptions = computed(() => bannerFontWeightOptions(
 
 function set(key: string, val: any) {
   if (!selectedLayer.value) return
-  updateLayer(selectedLayer.value.id, { [key]: val })
+  if (key === 'fontFamily' || key === 'fontWeight') {
+    const family = key === 'fontFamily' ? String(val) : selectedLayer.value.fontFamily
+    const weight = key === 'fontWeight' ? Number(val) : selectedLayer.value.fontWeight ?? 700
+    const face = customFonts.value.find(face => face.name === family && parseFontTags(face.tags).weight === weight)
+    updateLayer(selectedLayer.value.id, { [key]: val, fontAssetId: face?.id })
+  } else updateLayer(selectedLayer.value.id, { [key]: val })
 }
 
 function setNum(key: string, val: string | number) {

@@ -1,3 +1,4 @@
+import { resolveCanvasExportFonts } from '~~/server/utils/banner/fontAssets'
 /**
  * Marketing department Banner Studio creative production over MCP. Reuses native Banner Studio
  * storage (banner_projects/banner_versions/banner_templates/banner_assets), the native HTML
@@ -116,8 +117,9 @@ async function renderableFormat(ctx: ToolContext, row: ProjectRow, format: strin
   ])
   // Native runner order (app URL, then R2 public URL), each read request-binding first, then process env.
   const baseUrl = runtimeString(ctx, 'NUXT_PUBLIC_APP_URL') ?? runtimeString(ctx, 'R2_PUBLIC_URL') ?? ''
+  const customFonts = await resolveCanvasExportFonts(ctx.event, { [format]: artboard }, row.client_id)
   const html = buildBannerHTML(format, artboard.layers as never, {
-    baseUrl, ...(artboard.bgColor ? { bgColor: artboard.bgColor } : {}), ...(artboard.playback ? { playback: artboard.playback as never } : {})
+    baseUrl, customFonts, ...(artboard.bgColor ? { bgColor: artboard.bgColor } : {}), ...(artboard.playback ? { playback: artboard.playback as never } : {})
   })
   const findings = lintBannerRenderFormat({ key: format, html, width: size.w, height: size.h }, { fps: 30, quality: 1, crf: 23, maxDimension: CAPS.MAX_DIMENSION })
   return { html, width: size.w, height: size.h, layerCount: artboard.layers.length, findings, renderable: !hasRenderLintErrors(findings) }

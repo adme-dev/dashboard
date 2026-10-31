@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { H3Event } from 'h3'
 const m = vi.hoisted(() => ({ user: { id: 'owner' }, project: null as any, access: vi.fn(), fallbackWrite: vi.fn() }))
@@ -25,9 +26,27 @@ describe('Saved banner snapshots', () => {
   it('roundtrips all content through the request bucket without exposing its URL', async () => {
     const e = bucketEvent(); const s = bannerViewerSnapshot(project)
     await storeBannerSnapshot(e.event, s)
-    expect(await readBannerSnapshot(e.event, s)).toEqual({ ...s.document, revision: s.revision })
+    expect(await readBannerSnapshot(e.event, s)).toEqual({ ...s.document, clientId: null, revision: s.revision })
     expect(m.fallbackWrite).not.toHaveBeenCalled()
   })
+  it('reads an existing schema-1 object at its original key and attaches only current authorized client context', async () => {
+    const e = bucketEvent()
+    const legacyBytes = Buffer.from(JSON.stringify({ canvasData: project.canvasData, name: project.name, projectId: project.id, schema: 1 }))
+    const legacyHash = createHash('sha256').update(legacyBytes).digest('hex')
+    const key = `banner-snapshots/${project.id}/${legacyHash}.json`
+    e.objects.set(key, legacyBytes)
+    const snapshot = bannerViewerSnapshot({ ...project, clientId: 'current-client' })
+    expect(snapshot.key).toBe(key)
+    const result = await readBannerSnapshot(e.event, snapshot)
+    expect(result.clientId).toBe('current-client')
+    expect(result.revision).toBe(legacyHash)
+    expect(bannerViewerSnapshot({ ...project, clientId: 'another-client' }).key).toBe(key)
+    const tampered = Buffer.from(legacyBytes)
+    tampered[0] = 32
+    e.objects.set(key, tampered)
+    await expect(readBannerSnapshot(e.event, snapshot)).rejects.toMatchObject({ statusCode: 503 })
+  })
+
   it('older requests cannot overwrite newer content and missing latest revisions do not serve stale data', async () => {
     const e = bucketEvent(); const old = bannerViewerSnapshot(project); const latest = bannerViewerSnapshot({ ...project, name: 'Latest' })
     await storeBannerSnapshot(e.event, latest); await storeBannerSnapshot(e.event, old)

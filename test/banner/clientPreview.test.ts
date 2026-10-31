@@ -40,7 +40,7 @@ describe('view-only client banner preview', () => {
     expect(result).toMatchObject({ project, fonts: [{ name: 'Managed Font' }] })
     expect(result).not.toHaveProperty('comments')
     expect(JSON.stringify(result)).not.toContain('reviewerEmail')
-    expect(mocks.rows.mock.calls[0]?.[1]).toEqual([['Managed Font']])
+    expect(mocks.rows.mock.calls[0]?.[1]).toEqual([['Managed Font'], null])
     expect(mocks.headers).toHaveBeenCalledWith(expect.anything(), 'Cache-Control', 'no-store')
   })
 
@@ -54,7 +54,7 @@ describe('view-only client banner preview', () => {
     }])
     const result = await preview({ token } as never)
     expect(result.fonts[0]?.url).toMatch(/^https:\/\/app\.xeroflow\.test\/api\/public\/banner-assets\/v1\./)
-    expect(Object.keys(result.fonts[0]!)).toEqual(['name', 'url', 'tags'])
-    expect(mocks.rows.mock.calls[0]?.[1]).toEqual([['Managed Font']])
+    expect(Object.keys(result.fonts[0]!)).toEqual(['id', 'name', 'url', 'tags', 'clientId', 'sha256'])
+    expect(mocks.rows.mock.calls[0]?.[1]).toEqual([['Managed Font'], null])
   })
 })

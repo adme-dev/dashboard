@@ -17,7 +17,7 @@ const emit = defineEmits<{
   'generate-image': []
 }>()
 const { state, getCanvasData, applyAssistantCanvas, canUndo, undo } = useBannerStudio()
-const { getExportCustomFonts } = useBannerFonts()
+const { getExportCustomFonts } = useBannerFonts(() => state.project?.clientId ?? null)
 const prompt = ref('')
 const brief = ref('')
 const messages = ref<Message[]>([])

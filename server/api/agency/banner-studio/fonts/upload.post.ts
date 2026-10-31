@@ -1,6 +1,11 @@
 import { readMultipartFormData } from 'h3'
-import { queryOne } from '~~/server/utils/db'
-import { requireAuth } from '~~/server/utils/auth'
+import { transactionWithoutRetry, getTransactionFailureStage } from '~~/server/utils/db'
+import { createHash } from 'node:crypto'
+import { PERMISSIONS } from '~~/server/utils/permissions'
+import { requireBrandKitWriteAccess } from '~~/server/utils/banner/brandKitAccess'
+import { FONT_ASSET_SELECT, fontAssetMetadata, type FontAssetRow } from '~~/server/utils/banner/fontAssets'
+import { withBannerFontDelivery } from '~~/server/utils/banner/fontDelivery'
+import { requireRole } from '~~/server/utils/auth'
 import { uploadBannerAsset, createBannerAssetId, createBannerAssetStorageKey, bannerAssetDeliveryUrl, deleteBannerFile } from '~~/server/utils/bannerStorage'
 import { resolveBannerAssetDelivery } from '~~/server/utils/banner/assetDelivery'
 import { getAppUrl } from '~~/server/utils/appUrl'
@@ -29,7 +34,7 @@ function fontFormatFromExt(ext: string): string {
 }
 
 export default defineEventHandler(async (event) => {
-  const user = await requireAuth(event)
+  const user = await requireRole(event, PERMISSIONS.CREATIVE)
 
   const formData = await readMultipartFormData(event)
   if (!formData || formData.length === 0) {
@@ -44,6 +49,10 @@ export default defineEventHandler(async (event) => {
   // Optional custom font-family name
   const familyField = formData.find(f => f.name === 'family')
   const weightField = formData.find(f => f.name === 'weight')
+  const clientField = formData.find(f => f.name === 'clientId')
+  const clientId = clientField ? clientField.data.toString().trim().toLowerCase() : null
+  if (clientField && !/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(clientId!)) throw createError({ statusCode: 400, statusMessage: 'Invalid clientId' })
+  await requireBrandKitWriteAccess(event, clientId)
 
   const fileName = file.filename || 'unnamed.woff2'
   const ext = fileName.split('.').pop()?.toLowerCase() || ''
@@ -79,45 +88,36 @@ export default defineEventHandler(async (event) => {
   }
   const fontFormat = fontFormatFromExt(ext)
 
+  const sha256 = createHash('sha256').update(buffer).digest('hex')
   const assetId = createBannerAssetId()
   const storageKey = createBannerAssetStorageKey(fileName, user.id)
   const { nativeUpload, signingSecret } = resolveBannerAssetDelivery(event)
   const deliveryUrl = signingSecret ? await bannerAssetDeliveryUrl(assetId, getAppUrl(event), signingSecret) : undefined
   let stored = false
   try {
-    const { key, url, size } = await uploadBannerAsset(buffer, fileName, mimeType, user.id, storageKey,
-      nativeUpload ? { bucket: nativeUpload.bucket, assetUrl: deliveryUrl! } : undefined, deliveryUrl)
-    stored = true
-
-    // Store in banner_assets with font metadata as TEXT[] tags
-    // Tags: ['font', 'weight:400', 'format:woff2'] — queryable via '= ANY(tags)'
-    const tags = ['font', `weight:${fontWeight}`, `format:${fontFormat}`]
-
-    const row = await queryOne(`
-      INSERT INTO banner_assets (name, mime_type, file_size, r2_key, url, tags, uploaded_by, id)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-      RETURNING
-        id, name,
-        mime_type AS "mimeType",
-        file_size AS "fileSize",
-        r2_key AS "r2Key",
-        url, tags,
-        uploaded_by AS "uploadedBy",
-        created_at AS "createdAt"
-    `, [
-      fontFamily,
-      mimeType,
-      size,
-      key,
-      url,
-      tags,
-      user.id,
-      assetId
-    ])
-
-    return row
+    const row = await transactionWithoutRetry(async (db) => {
+      // Serialize equal uploads without a migration; the lock covers lookup and insert.
+      await db.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [`banner-font:${clientId || 'shared'}:${fontFamily}:${fontWeight}:${sha256}`])
+      const existing = await db.query<FontAssetRow>(`SELECT ${FONT_ASSET_SELECT} FROM banner_assets
+        WHERE 'font' = ANY(tags) AND client_id IS NOT DISTINCT FROM $1::uuid AND name = $2
+          AND $3 = ANY(tags) AND $4 = ANY(tags) ORDER BY created_at, id LIMIT 1 FOR SHARE`,
+      [clientId, fontFamily, `weight:${fontWeight}`, `sha256:${sha256}`])
+      if (existing.rows[0]) return existing.rows[0]
+      const { key, url, size } = await uploadBannerAsset(buffer, fileName, mimeType, user.id, storageKey,
+        nativeUpload ? { bucket: nativeUpload.bucket, assetUrl: deliveryUrl! } : undefined, deliveryUrl)
+      stored = true
+      const tags = ['font', `weight:${fontWeight}`, `format:${fontFormat}`, `sha256:${sha256}`]
+      const result = await db.query<FontAssetRow>(`
+        INSERT INTO banner_assets (name, mime_type, file_size, r2_key, url, tags, uploaded_by, id, client_id)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        RETURNING ${FONT_ASSET_SELECT}
+      `, [fontFamily, mimeType, size, key, url, tags, user.id, assetId, clientId])
+      if (!result.rows[0]) throw new Error('Font insert returned no row')
+      return result.rows[0]
+    })
+    return fontAssetMetadata((await withBannerFontDelivery(event, [row]))[0]!)
   } catch (error) {
-    if (stored) await deleteBannerFile(storageKey, nativeUpload?.bucket).catch(() => {})
+    if (stored && getTransactionFailureStage(error) === 'definite_rollback') await deleteBannerFile(storageKey, nativeUpload?.bucket).catch(() => {})
     if (error && typeof error === 'object' && 'statusCode' in error) throw error
     console.error('Failed to upload font:', error)
     throw createError({ statusCode: 500, statusMessage: 'Failed to upload font' })

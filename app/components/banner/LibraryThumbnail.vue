@@ -2,7 +2,7 @@
 import type { ArtboardState } from '~/types/banner-studio'
 import { hasBannerPreview } from '~/utils/banner-library'
 
-const props = defineProps<{ thumbnailUrl?: string | null, canvasData?: Record<string, ArtboardState> }>()
+const props = defineProps<{ clientId?: string | null, thumbnailUrl?: string | null, canvasData?: Record<string, ArtboardState> }>()
 const hasCanvas = computed(() => hasBannerPreview(props.canvasData))
 const imageFailed = ref(false)
 watch(() => props.thumbnailUrl, () => { imageFailed.value = false })
@@ -18,7 +18,7 @@ const { stop } = useIntersectionObserver(container, ([entry]) => {
 
 <template>
   <div ref="container" class="flex items-center justify-center overflow-hidden bg-elevated" aria-hidden="true">
-    <BannerThumbnail v-if="visible && hasCanvas" :canvas-data="canvasData!" />
+    <BannerThumbnail v-if="visible && hasCanvas" :canvas-data="canvasData!" :client-id="clientId" />
     <img
       v-else-if="!hasCanvas && !imageFailed && safeMediaUrl(thumbnailUrl)"
       :src="safeMediaUrl(thumbnailUrl)"

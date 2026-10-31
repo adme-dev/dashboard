@@ -198,13 +198,20 @@ describe('dispatchBannerConfirm', () => {
     const r = await dispatchBannerConfirm(payload, ctx, d)
     expect(r.ok).toBe(true)
     expect((r as any).data.jobIds).toEqual(['job1'])
-    expect((d.loadLayers as any).mock.calls[0]).toEqual(['p1', 'mrec'])
+    expect((d.loadLayers as any).mock.calls[0]).toEqual(['p1', 'mrec', ctx.event])
     expect((d.buildHtml as any).mock.calls[0][0]).toBe('mrec')             // format FIRST
     expect((d.buildHtml as any).mock.calls[0][1]).toEqual([{ id: 'l1' }])  // then layers
     const enqArg = (d.enqueue as any).mock.calls[0][0]
     expect(enqArg).toMatchObject({ projectId: 'p1', fps: 30, quality: 1, userId: 'u1' })
     expect(enqArg.formats[0]).toMatchObject({ key: 'mrec', html: '<div>banner</div>', width: 300, height: 250 })
   })
+  it('passes resolved custom font identities into server HTML export', async () => {
+    const customFonts = [{ id: 'font-id', family: 'Brand', weight: 700, format: 'woff2', url: 'https://app.test/font' }]
+    const d = deps({ loadLayers: vi.fn().mockResolvedValue({ layers: [], width: 300, height: 250, customFonts }) })
+    expect((await dispatchBannerConfirm(payload, ctx, d)).ok).toBe(true)
+    expect(d.buildHtml).toHaveBeenCalledWith('mrec', [], expect.objectContaining({ customFonts }))
+  })
+
   it('fails gracefully (no enqueue) when the project/format cannot load', async () => {
     const d = deps({ loadLayers: vi.fn().mockRejectedValue(new Error('no format')) })
     const r = await dispatchBannerConfirm(payload, ctx, d)

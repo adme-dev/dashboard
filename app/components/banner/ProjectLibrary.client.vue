@@ -122,7 +122,7 @@ const projects = computed(() => sortLibrary(filterBannerProjects(clientProjects.
 }).filter(p => bannerProjectInFolder(p, folderFilter.value, folderData.value)), sort.value))
 const visibleProjects = computed(() => projects.value.slice((page.value - 1) * pageSize, page.value * pageSize))
 const libraryItems = computed(() => visibleProjects.value.map(p => ({
-  id: p.id, name: p.name, client: p.clientName || (p.clientId ? 'Unnamed client' : 'Unassigned'),
+  id: p.id, name: p.name, clientId: p.clientId, client: p.clientName || (p.clientId ? 'Unnamed client' : 'Unassigned'),
   category: p.tags?.includes('import:needs-review') ? `${p.status} · Import needs review` : p.status, dimensions: bannerDimensions(p.canvasData), type: `${Object.keys(p.canvasData || {}).length} size${Object.keys(p.canvasData || {}).length === 1 ? '' : 's'} · Editable`,
   date: p.updatedAt || p.createdAt, thumbnailUrl: p.thumbnailUrl, canvasData: p.canvasData,
   to: `${editorBase.value}/${p.id}`

@@ -1,13 +1,18 @@
 <script setup lang="ts">
 import type { Layer } from '~/types/banner-studio'
+import { useBannerFonts } from '~/composables/useBannerFonts'
 import { bannerFontFamily } from '~/utils/banner-font-family'
 
 const props = defineProps<{
   layer: Layer
   isActive: boolean
+  clientId?: string | null
 }>()
 
 const { getFeedOverride } = useBannerFeeds()
+const { getCustomFont } = useBannerFonts(() => props.clientId ?? null)
+const resolvedFontId = computed(() => props.layer.fontAssetId || getCustomFont(props.layer.fontFamily || 'Barlow Condensed', props.layer.fontWeight || 700)?.id)
+
 const displayText = computed(() => getFeedOverride(props.layer.id, 'text') ?? props.layer.text ?? 'Button')
 const displayBgColor = computed(() => getFeedOverride(props.layer.id, 'bgColor') ?? props.layer.bgColor ?? '#e8c84a')
 const displayTextColor = computed(() => getFeedOverride(props.layer.id, 'color') ?? props.layer.textColor ?? '#000')
@@ -27,8 +32,8 @@ const displayTextColor = computed(() => getFeedOverride(props.layer.id, 'color')
     <span
       :style="{
         fontSize: `${layer.fontSize || 12}px`,
-        fontWeight: layer.fontWeight || 800,
-        fontFamily: bannerFontFamily(layer.fontFamily),
+        fontWeight: layer.fontWeight || 700,
+        fontFamily: bannerFontFamily(layer.fontFamily, resolvedFontId),
         color: displayTextColor,
         fontStyle: layer.fontStyle || 'normal',
         textShadow: layer.textShadow || 'none',

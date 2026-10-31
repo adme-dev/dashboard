@@ -53,3 +53,13 @@ Once the imported draft has passed artwork review, use **Actions → Save as tem
 Selecting artwork highlights the matching timeline label and row and brings the row into view. Animation blocks show entry, continuing motion, hold and exit intervals. Click a block to inspect its relevant keyframes; expand the row for individual property tracks. Imported effects are labelled as keyframes unless a native preset identity is known. These labels describe the preserved timing, not proof of source playback fidelity.
 
 TheBrief's `shouldPlay` field is playback retry state, not an authored mute setting. Audio review must compare the source editor's mute, volume, trim and fade settings with the actual exported media. Exported audio may already be trimmed; applying the original-track offset again can discard the clip. Unsupported or unreconciled audio settings hold the conversion for review.
+
+## Imported font identity
+
+The importer matches uploaded fonts by checksum, family, exact weight and authorized client/shared scope. A family name alone is not proof that two files are the same face. New imported text layers retain the managed font asset ID; selecting a client does not change the artwork or automatically create or apply a brand kit. Legacy fonts without a stored checksum remain shared legacy assets and are not reassigned during import. Keep any needed font files available in the client’s brand kit, with explicit heading/body defaults.
+
+## Brand-kit typography and website drafts
+
+Brand-kit typography stores exact uploaded face references and a default weight for each role. The client picker filters owned and shared faces; moving a kit to another client requires replacing incompatible references or returning to the original client. Applying a kit updates face and weight together as one undo step. Used fonts cannot be deleted while current designs, kits or retained versions reference them. Legacy family-only artwork remains supported through scoped face resolution.
+
+**From a website** reads a public homepage and a bounded set of linked/imported stylesheets, then presents colours, detected families and validated logo candidates as a draft. It does not save a kit automatically or download custom font binaries. Warnings distinguish incomplete extraction and unavailable font files; upload the licensed faces or choose an available font before applying those roles. Every document, stylesheet and logo request uses the public URL policy and bounded redirects/body limits.

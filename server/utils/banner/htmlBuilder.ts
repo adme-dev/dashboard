@@ -1,3 +1,4 @@
+import { bannerFontFamily } from '~~/shared/banner/fonts'
 import { buildBannerAudioManifest } from '~~/shared/bannerAudioRender.mjs'
 import { bannerEffectCss, bannerTextDepthShadow, bannerTextMarkup, safeBannerTextTexture } from '~~/shared/bannerEffects'
 import { bannerImageCropCss } from '~~/shared/bannerImageCrop'
@@ -25,6 +26,7 @@ const SYSTEM_FONTS = new Set(['Arial', 'Helvetica', 'Georgia', 'Times New Roman'
 
 /** Custom font data for HTML export */
 export interface ExportCustomFont {
+  id?: string
   family: string
   url: string
   format: string // woff2, woff, truetype, opentype
@@ -35,7 +37,7 @@ export interface ExportCustomFont {
 function buildFontLink(layers: Layer[], customFontFamilies: Set<string>): string {
   const fonts = new Map<string, Set<number>>()
   for (const l of layers) {
-    if (!l.fontFamily || SYSTEM_FONTS.has(l.fontFamily)) continue
+    if (!l.fontFamily || l.fontAssetId || SYSTEM_FONTS.has(l.fontFamily)) continue
     if (customFontFamilies.has(l.fontFamily)) continue // handled by @font-face
     if (!fonts.has(l.fontFamily)) fonts.set(l.fontFamily, new Set())
     fonts.get(l.fontFamily)!.add(l.fontWeight || 400)
@@ -66,13 +68,21 @@ function isSafeCssUrl(url: string): boolean {
 /** Build @font-face CSS rules for custom fonts */
 function buildCustomFontFaces(layers: Layer[], customFonts: ExportCustomFont[]): string {
   if (!customFonts.length) return ''
-  const usedFamilies = new Set(layers.filter(l => l.fontFamily).map(l => l.fontFamily!))
-  const used = customFonts.filter(cf => usedFamilies.has(cf.family) && isSafeCssUrl(cf.url))
+  const usedFamilies = new Set(layers.filter(l => !l.fontAssetId && l.fontFamily).map(l => l.fontFamily!))
+  const usedIds = new Set(layers.map(l => l.fontAssetId?.toLowerCase()).filter(Boolean))
+  const used = customFonts.filter(cf => (usedFamilies.has(cf.family) || (cf.id && usedIds.has(cf.id.toLowerCase()))) && isSafeCssUrl(cf.url))
   if (!used.length) return ''
-  return used.map(cf => {
-    const family = cf.family.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
-    const format = ['woff2', 'woff', 'truetype', 'opentype'].includes(cf.format) ? cf.format : 'woff2'
-    return `@font-face { font-family: '${family}'; src: url('${cf.url}') format('${format}'); font-weight: ${cf.weight}; font-display: swap; }`
+  return used.flatMap(cf => {
+    const names = new Set<string>()
+    if (cf.id && usedIds.has(cf.id.toLowerCase())) names.add(bannerFontFamily(cf.family, cf.id))
+    const legacyWinner = used.find(face => !face.id && face.family === cf.family && face.weight === cf.weight)
+      || used.find(face => face.family === cf.family && face.weight === cf.weight)
+    if (usedFamilies.has(cf.family) && legacyWinner === cf) names.add(cf.family)
+    return [...names].map(name => {
+      const family = name.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+      const format = ['woff2', 'woff', 'truetype', 'opentype'].includes(cf.format) ? cf.format : 'woff2'
+      return `@font-face { font-family: '${family}'; src: url('${cf.url}') format('${format}'); font-weight: ${cf.weight}; font-display: swap; }`
+    })
   }).join('\n')
 }
 
@@ -245,7 +255,7 @@ export function buildBannerHTML(
       if (l.type === 'text') {
         style += 'white-space:pre-wrap;word-break:break-word;'
         if (l.textAntialias) style += '-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;'
-        style += `font-size:${l.fontSize || 16}px;font-weight:${l.fontWeight || 400};font-family:'${l.fontFamily || 'Barlow Condensed'}',sans-serif;color:${l.color || '#fff'};`
+        style += `font-size:${l.fontSize || 16}px;font-weight:${l.fontWeight || 400};font-family:'${bannerFontFamily(l.fontFamily, l.fontAssetId)}',sans-serif;color:${l.color || '#fff'};`
         if (l.textTransform) style += `text-transform:${l.textTransform};`
         if (l.letterSpacing) style += `letter-spacing:${l.letterSpacing};`
         style += `line-height:${l.lineHeight || 1.2};`
@@ -266,7 +276,7 @@ export function buildBannerHTML(
         return `<div class="layer" data-id="${l.id}" style="${style}">${bannerTextMarkup(content, l as unknown as Record<string, unknown>)}</div>`
       }
       if (l.type === 'button') {
-        style += `font-size:${l.fontSize || 12}px;font-weight:${l.fontWeight || 700};font-family:'${l.fontFamily || 'Barlow Condensed'}',sans-serif;`
+        style += `font-size:${l.fontSize || 12}px;font-weight:${l.fontWeight || 700};font-family:'${bannerFontFamily(l.fontFamily, l.fontAssetId)}',sans-serif;`
         style += `background:${l.bgColor || '#e8c84a'};color:${l.textColor || '#000'};`
         style += `display:flex;align-items:center;justify-content:center;cursor:pointer;box-sizing:border-box;white-space:nowrap;line-height:${l.lineHeight || 1};`
         if (l.borderWidth !== undefined) style += `border:${l.borderWidth}px solid ${l.borderColor || 'transparent'};`

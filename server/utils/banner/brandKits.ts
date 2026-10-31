@@ -20,7 +20,9 @@ export const brandKitColorSchema = z.object({
 export const brandKitFontSchema = z.object({
   role: z.enum(FONT_ROLES),
   family: z.string().trim().min(1).max(120),
-  weights: z.array(z.number().int().min(100).max(900)).max(9).default([400, 700])
+  weights: z.array(z.number().int().min(1).max(1000)).min(1).max(32).default([400, 700]),
+  defaultWeight: z.number().int().min(1).max(1000).optional(),
+  assets: z.array(z.object({ id: z.string().uuid(), weight: z.number().int().min(1).max(1000) }).strict()).max(32).optional()
 })
 
 export const brandKitLogoSchema = z.object({

@@ -5,6 +5,7 @@ import { importTags, packageFile, sameImportedCanvas } from '~/utils/thebrief-im
 import { readImportBatch, type TheBriefImportRow } from '~/utils/thebrief-import-batch'
 import { beginImportAttempt, finishImportAttempt, importAttemptKey } from '~/utils/thebrief-import-attempt'
 import { prepareBannerUploadRequest } from '~/utils/bannerUpload'
+import { bindImportedFontFace, findImportedFontFace } from '~/utils/thebrief-font-bindings'
 
 const open = defineModel<boolean>('open', { default: false })
 const emit = defineEmits<{ imported: [] }>()
@@ -64,14 +65,18 @@ function startNextBatch() {
   error.value = ''
 }
 
-async function prepareCanvas(row: TheBriefImportRow, fonts: Awaited<ReturnType<typeof refreshCustomFonts>>) {
-  for (const font of row.pkg.fonts) {
-    if (fonts.some(f => f.name === font.family && f.tags.includes(`weight:${font.weight}`))) continue
-    const stored = await uploadCustomFont(await packageFile(font), font.family, font.weight)
-    if (!stored || stored.name !== font.family || !stored.tags.includes(`weight:${font.weight}`)) throw new Error('Stored font differs from the prepared package')
-    fonts.push(stored)
-  }
+async function prepareCanvas(row: TheBriefImportRow) {
+  const fonts = await refreshCustomFonts(row.clientId)
   const canvasData = structuredClone(toRaw(row.pkg.canvasData)) as Record<string, ArtboardState>
+  for (const font of row.pkg.fonts) {
+    let stored = findImportedFontFace(fonts, font, row.clientId)
+    if (!stored) {
+      stored = await uploadCustomFont(await packageFile(font), font.family, font.weight, row.clientId) || undefined
+      if (stored) fonts.push(stored)
+    }
+    if (!stored) throw new Error('Could not store the prepared font')
+    bindImportedFontFace(canvasData, font, stored, row.clientId)
+  }
   for (const asset of row.pkg.assets) {
     const identity = `${row.clientId}:${asset.sha256}`
     if (!uploaded.has(identity)) {
@@ -114,7 +119,7 @@ async function updateImportedDraft() {
   progress.value = `Updating ${selection.project.name}`
   try {
     // Keep the same canvas and expected revision on a retry after an uncertain response.
-    selection.canvasData ??= await prepareCanvas(selection.row, await refreshCustomFonts())
+    selection.canvasData ??= await prepareCanvas(selection.row)
     const updated = await api<BannerProject & { refreshed: boolean }>(`/api/agency/banner-studio/projects/${selection.project.id}/thebrief-refresh`, {
       method: 'PATCH', body: {
         clientId: selection.row.clientId, expectedUpdatedAt: selection.project.updatedAt,
@@ -147,7 +152,6 @@ async function importDrafts() {
   let changed = false
   try {
     const existing = await api<BannerProject[]>('/api/agency/banner-studio/projects')
-    const fonts = await refreshCustomFonts()
     for (const row of rows.value) {
       if (row.projectId || row.clientId === '__unassigned__') continue
       if (!clients.value.some(c => c.id === row.clientId)) throw new Error('Select an existing client')
@@ -164,7 +168,7 @@ async function importDrafts() {
       const attemptKey = importAttemptKey(row.clientId, pkg.source.sha256)
       try {
         beginImportAttempt(localStorage, attemptKey)
-        const canvasData = await prepareCanvas(row, fonts)
+        const canvasData = await prepareCanvas(row)
         const project = await api<BannerProject>('/api/agency/banner-studio/projects', {
           method: 'POST', headers: { 'Idempotency-Key': `thebrief-project:${row.clientId}:${pkg.source.sha256}` },
           body: { name: pkg.name, clientId: row.clientId, folderId: row.folderId === '__unfiled__' ? null : row.folderId, canvasData, tags: importTags(pkg) }

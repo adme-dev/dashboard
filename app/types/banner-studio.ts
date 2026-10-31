@@ -88,6 +88,8 @@ export interface Layer {
   fontSize?: number
   fontWeight?: number
   fontFamily?: string
+  /** Exact managed face; family remains the readable label. */
+  fontAssetId?: string
   /** Imported text can include a larger whitespace run that determines its baseline. */
   lineBoxFontSize?: number
   textAntialias?: boolean
@@ -243,6 +245,8 @@ export interface BrandKitFont {
   role: BrandFontRole
   family: string
   weights: number[]
+  defaultWeight?: number
+  assets?: Array<{ id: string, weight: number }>
 }
 
 export interface BrandKitLogo {
@@ -282,6 +286,9 @@ export interface BrandKitVersion {
 
 /** What "Extract from website" returns before the user confirms */
 export interface BrandKitExtraction {
+  draft?: boolean
+  warnings?: string[]
+  stylesheetsRead?: number
   name: string
   sourceUrl: string
   colors: BrandKitColor[]

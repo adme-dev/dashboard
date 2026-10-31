@@ -15,12 +15,14 @@ function canonical(value: unknown): string {
   return JSON.stringify(value)
 }
 
-export function bannerViewerSnapshot(project: { id: string, name: string, canvasData: unknown }) {
+export function bannerViewerSnapshot(project: { id: string, name: string, canvasData: unknown, clientId?: string | null }) {
   const document = { schema: 1, projectId: project.id, name: project.name, canvasData: project.canvasData }
   const bytes = Buffer.from(canonical(document))
   if (bytes.length > MAX_BYTES) throw createError({ statusCode: 413, statusMessage: 'Banner is too large for the saved viewer' })
   const revision = createHash('sha256').update(bytes).digest('hex')
-  return { document, bytes, revision, key: `banner-snapshots/${project.id}/${revision}.json` }
+  // Client scope is authorized response metadata, not immutable artwork content.
+  // Keep the original schema-1 hash/key so existing saved viewers remain readable.
+  return { document, bytes, revision, clientId: project.clientId ?? null, key: `banner-snapshots/${project.id}/${revision}.json` }
 }
 
 export async function authorizedBannerSnapshot(event: H3Event, write = false) {
@@ -59,5 +61,5 @@ export async function readBannerSnapshot(event: H3Event, snapshot: ReturnType<ty
   if (object.size !== snapshot.bytes.length) throw createError({ statusCode: 503, statusMessage: 'Viewer snapshot is incomplete' })
   const bytes = Buffer.from(await new Response(object.body).arrayBuffer())
   if (createHash('sha256').update(bytes).digest('hex') !== snapshot.revision) throw createError({ statusCode: 503, statusMessage: 'Viewer snapshot could not be verified' })
-  return { ...JSON.parse(bytes.toString('utf8')), revision: snapshot.revision }
+  return { ...JSON.parse(bytes.toString('utf8')), clientId: snapshot.clientId, revision: snapshot.revision }
 }
