@@ -2,7 +2,7 @@
 import type { BannerProject, BannerFolder } from '~/types/banner-studio'
 import { bannerFolderPath, bannerFolderRows, bannerProjectFolderId, bannerProjectInFolder } from '~/utils/banner-folders'
 import { isAmbiguousApiFailure } from '~/utils/apiError'
-import { bannerDimensions, bannerLibraryFacets, filterBannerProjects, sortLibrary } from '~/utils/banner-library'
+import { bannerDimensions, bannerLibraryFacets, filterBannerProjects, sortLibrary, theBriefCreatedDate } from '~/utils/banner-library'
 import type { LibrarySort } from '~/utils/banner-library'
 
 const props = withDefaults(defineProps<{ fullScreen?: boolean }>(), { fullScreen: false })
@@ -125,6 +125,7 @@ const libraryItems = computed(() => visibleProjects.value.map(p => ({
   id: p.id, name: p.name, clientId: p.clientId, client: p.clientName || (p.clientId ? 'Unnamed client' : 'Unassigned'),
   category: p.tags?.includes('import:needs-review') ? `${p.status} · Import needs review` : p.status, dimensions: bannerDimensions(p.canvasData), type: `${Object.keys(p.canvasData || {}).length} size${Object.keys(p.canvasData || {}).length === 1 ? '' : 's'} · Editable`,
   date: p.updatedAt || p.createdAt, thumbnailUrl: p.thumbnailUrl, canvasData: p.canvasData,
+  sourceCreatedDate: p.tags?.includes('source:thebrief') ? theBriefCreatedDate(p.tags) : undefined,
   to: `${editorBase.value}/${p.id}`
 })))
 const projectById = computed(() => new Map(allProjects.value.map(p => [p.id, p])))
@@ -140,6 +141,7 @@ watch(projects, (list) => {
 })
 const sortItems = [
   { label: 'Recently modified', value: 'modified' },
+  { label: 'Oldest created', value: 'created' },
   { label: 'Name A–Z', value: 'name' },
   { label: 'Oldest modified', value: 'oldest' }
 ]

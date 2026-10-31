@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest'
 import { readImportBatch } from '../../app/utils/thebrief-import-batch'
 import type { BannerFolder } from '../../app/types/banner-studio'
 
-function file(name: string, hash: string) {
+function file(name: string, hash: string, createdDate?: string) {
   return new File([JSON.stringify({
     kind: 'xeroflow-thebrief-import', version: 1, name,
-    source: { designHash: name, sha256: hash.repeat(64), folder: 'Updates', duration: 4, loopCount: 0 },
+    source: { designHash: name, sha256: hash.repeat(64), folder: 'Updates', duration: 4, loopCount: 0, ...(createdDate ? { createdDate } : {}) },
     canvasData: { custom_300x250: { layers: [{ id: 1, type: 'text', name: 'Title', text: 'Hello', x: 0, y: 0, w: 300, h: 50, zIndex: 1, opacity: 1, animIn: 'none', animInDur: 0, startTime: 0, endTime: 4 }] } },
     assets: [], fonts: [], warnings: []
   })], `${name}.json`, { type: 'application/json' })
@@ -21,6 +21,15 @@ describe('TheBrief batch selection', () => {
     expect(next[0]).toBe(rows[0])
     expect(next[0]).toMatchObject({ clientId: 'manual-client', projectId: 'saved-project', status: 'Saved as draft' })
     expect(next[1]).toMatchObject({ clientId: '__unassigned__', status: 'Ready for draft import' })
+  })
+
+  it('prefills a verified source date without replacing a manual correction', async () => {
+    const source = file('First', 'a', '2020-06-12')
+    const rows = await readImportBatch([source], [], [])
+    expect(rows[0]?.sourceCreatedDate).toBe('2020-06-12')
+    rows[0]!.sourceCreatedDate = '2020-06-11'
+    expect((await readImportBatch([source], rows, []))[0]?.sourceCreatedDate).toBe('2020-06-11')
+    expect((await readImportBatch([file('Second', 'b')], [], []))[0]?.sourceCreatedDate).toBe('')
   })
 
   it('does not retain saved state for a replaced file with the same name', async () => {
@@ -43,7 +52,9 @@ describe('TheBrief batch selection', () => {
   it('removes deselected files and enforces the batch limit', async () => {
     const rows = await readImportBatch([file('First', 'a')], [], [])
     expect(await readImportBatch([], rows, [])).toEqual([])
-    await expect(readImportBatch(Array.from({ length: 11 }, () => file('First', 'a')), rows, [])).rejects.toThrow('up to 10')
+    const fifty = Array.from({ length: 50 }, (_, index) => file(`Design-${index}`, 'a'))
+    expect(await readImportBatch(fifty, [], [])).toHaveLength(50)
+    await expect(readImportBatch([...fifty, file('Overflow', 'b')], rows, [])).rejects.toThrow('up to 50')
   })
 
   it('suggests only a unique exact source folder and keeps manual moves', async () => {

@@ -10,8 +10,8 @@ if (!/^[\w-]{1,100}$/.test(designHash || '') || !name || !output || inputs.lengt
 }
 const packages = await Promise.all(inputs.map(async path => parseTheBriefPackage(JSON.parse(await readFile(path, 'utf8')))))
 const [{ source }] = packages
-if (packages.some(pkg => pkg.source.duration !== source.duration || pkg.source.loopCount !== source.loopCount || pkg.source.folder !== source.folder)) {
-  throw new Error('Source sizes have different playback or folder metadata')
+if (packages.some(pkg => pkg.source.duration !== source.duration || pkg.source.loopCount !== source.loopCount || pkg.source.folder !== source.folder || pkg.source.createdDate !== source.createdDate)) {
+  throw new Error('Source sizes have different playback, folder or creation-date metadata')
 }
 if (packages.some(pkg => pkg.warnings.some(w => /animation not converted|additional effects are not converted/.test(w)))) {
   throw new Error('Import held: a source size still has unsupported animation')

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { parseDate } from '@internationalized/date'
+import type { DateValue } from '@internationalized/date'
 import type { BannerProject, ArtboardState, BannerFolder } from '~/types/banner-studio'
 import { bannerFolderPath } from '~/utils/banner-folders'
 import { importTags, packageFile, sameImportedCanvas } from '~/utils/thebrief-import'
@@ -27,7 +29,22 @@ const draftUpdateConflict = ref(false)
 const uploaded = new Map<string, string>()
 const options = computed(() => [{ label: 'Choose client', value: '__unassigned__' }, ...clients.value.map(c => ({ label: c.name, value: c.id }))])
 const folderOptions = computed(() => [{ label: 'Unfiled', value: '__unfiled__' }, ...folders.value.map(folder => ({ label: bannerFolderPath(folders.value, folder.id).map(part => part.name).join(' / '), value: folder.id }))])
-const ready = computed(() => filesValid.value && rows.value.some(r => r.clientId !== '__unassigned__' && !r.projectId))
+const assignedRows = computed(() => rows.value.filter(row => !row.projectId && row.clientId !== '__unassigned__'))
+const ready = computed(() => filesValid.value && assignedRows.value.length > 0)
+
+function calendarDate(value: string): DateValue | null {
+  if (!value) return null
+  try {
+    return parseDate(value)
+  } catch {
+    return null
+  }
+}
+
+function displayDate(value: string): string {
+  const date = calendarDate(value)
+  return date ? new Intl.DateTimeFormat('en-AU', { day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(date.year, date.month - 1, date.day)) : ''
+}
 
 watch(open, async (value) => {
   if (!value) return
@@ -152,8 +169,8 @@ async function importDrafts() {
   let changed = false
   try {
     const existing = await api<BannerProject[]>('/api/agency/banner-studio/projects')
-    for (const row of rows.value) {
-      if (row.projectId || row.clientId === '__unassigned__') continue
+    const assigned = assignedRows.value
+    for (const [index, row] of assigned.entries()) {
       if (!clients.value.some(c => c.id === row.clientId)) throw new Error('Select an existing client')
       if (row.folderId !== '__unfiled__' && !folders.value.some(folder => folder.id === row.folderId)) throw new Error('Select an existing folder')
       const pkg = row.pkg
@@ -163,7 +180,11 @@ async function importDrafts() {
         row.status = 'Already imported · open for review or explicitly update this draft'
         continue
       }
-      progress.value = `Preparing ${pkg.name}`
+      if (!calendarDate(row.sourceCreatedDate)) {
+        row.status = 'Held · verify the original creation date in TheBrief before importing'
+        continue
+      }
+      progress.value = `Preparing ${index + 1} of ${assigned.length}: ${pkg.name}`
       row.status = 'Uploading assets and fonts…'
       const attemptKey = importAttemptKey(row.clientId, pkg.source.sha256)
       try {
@@ -171,7 +192,7 @@ async function importDrafts() {
         const canvasData = await prepareCanvas(row)
         const project = await api<BannerProject>('/api/agency/banner-studio/projects', {
           method: 'POST', headers: { 'Idempotency-Key': `thebrief-project:${row.clientId}:${pkg.source.sha256}` },
-          body: { name: pkg.name, clientId: row.clientId, folderId: row.folderId === '__unfiled__' ? null : row.folderId, canvasData, tags: importTags(pkg) }
+          body: { name: pkg.name, clientId: row.clientId, folderId: row.folderId === '__unfiled__' ? null : row.folderId, canvasData, tags: importTags(pkg, row.sourceCreatedDate) }
         })
         // A write response alone is insufficient: verify persisted owner and layer data.
         const saved = await api<BannerProject>(`/api/agency/banner-studio/projects/${project.id}`)
@@ -212,7 +233,7 @@ async function importDrafts() {
           title="Prepared native packages"
           description="This pilot accepts .xeroflow.json files prepared from HTML5 exports. Original ZIP upload is not yet supported here. Imports retain editable layers; playback, fonts and loop behaviour still need visual review."
         />
-        <UFormField label="Import packages" help="Up to 10 packages. Keep the original HTML5 archives for reference.">
+        <UFormField label="Import packages" help="Up to 50 prepared packages per batch. Keep the original HTML5 archives for reference.">
           <UFileUpload
             v-model="files"
             multiple
@@ -240,6 +261,13 @@ async function importDrafts() {
           variant="subtle"
           title="Import needs attention"
           :description="error"
+        />
+        <UAlert
+          v-if="assignedRows.some(row => !row.sourceCreatedDate)"
+          color="warning"
+          variant="subtle"
+          title="Original dates needed"
+          description="Existing projects can be reconciled now. New drafts without a verified TheBrief creation date will be held."
         />
         <div class="max-h-[45vh] space-y-3 overflow-y-auto">
           <section v-for="(row, index) in rows" :key="`${row.pkg.source.sha256}:${index}`" class="space-y-3 rounded-lg border border-default p-4">
@@ -273,6 +301,37 @@ async function importDrafts() {
                 class="w-full"
                 :disabled="busy || !!row.projectId"
               />
+            </UFormField>
+            <UFormField label="Original creation date" help="Use the Created date in TheBrief's Info panel. The export or last-updated date is different.">
+              <UPopover>
+                <UButton
+                  color="neutral"
+                  variant="outline"
+                  icon="i-lucide-calendar"
+                  class="w-full justify-start font-normal"
+                  :class="!row.sourceCreatedDate && 'text-muted'"
+                  :disabled="busy || !!row.projectId"
+                >
+                  {{ displayDate(row.sourceCreatedDate) || 'Choose TheBrief creation date' }}
+                </UButton>
+                <template #content>
+                  <UCalendar
+                    :model-value="calendarDate(row.sourceCreatedDate)"
+                    class="p-2"
+                    @update:model-value="value => { row.sourceCreatedDate = value?.toString() || '' }"
+                  />
+                  <div v-if="row.sourceCreatedDate" class="flex justify-end border-t border-default p-2">
+                    <UButton
+                      size="xs"
+                      variant="ghost"
+                      color="neutral"
+                      @click="row.sourceCreatedDate = ''"
+                    >
+                      Clear
+                    </UButton>
+                  </div>
+                </template>
+              </UPopover>
             </UFormField>
             <details v-if="row.pkg.warnings.length" class="text-sm text-muted">
               <summary class="cursor-pointer">
@@ -321,7 +380,7 @@ async function importDrafts() {
     <template #footer>
       <div class="flex w-full flex-wrap items-center justify-between gap-3">
         <p class="text-xs text-muted">
-          All imports stay as drafts. Nothing is published.
+          All imports stay as drafts. Verify each original creation date before importing.
         </p>
         <UButton
           :loading="busy"

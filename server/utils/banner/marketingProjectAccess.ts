@@ -17,7 +17,7 @@ export interface MarketingBannerProject {
   review_status?: string | null
 }
 
-export const isBannerProvenanceTag = (tag: unknown) => typeof tag === 'string' && /^source(:|-sha256)/i.test(tag)
+export const isBannerProvenanceTag = (tag: unknown) => typeof tag === 'string' && /^source(?::|-sha256|-created-date)/i.test(tag)
 
 export function isMarketingPortfolioUser(user: Pick<User, 'role' | 'permissionGroups'>): boolean {
   return user.permissionGroups?.includes('MARKETING_MANAGEMENT') === true && !hasAllSocialClientAccess(user)
