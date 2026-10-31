@@ -12,8 +12,8 @@ const tabs = [
 ]
 
 // When a layer is selected, switch to properties if on background tab
-watch(selectedLayer, (layer) => {
-  if (layer && activeTab.value === 'background') {
+watch(selectedLayer, (layer, previous) => {
+  if (layer && (activeTab.value === 'background' || (layer.type === 'video' && layer.id !== previous?.id))) {
     activeTab.value = 'properties'
   }
   if (!layer) {

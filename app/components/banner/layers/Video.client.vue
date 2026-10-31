@@ -9,7 +9,7 @@ defineProps<{
 
 <template>
   <div
-    class="absolute overflow-hidden"
+    class="absolute inset-0 overflow-hidden"
     :style="{ opacity: layer.opacity }"
   >
     <video
@@ -21,7 +21,7 @@ defineProps<{
       class="w-full h-full pointer-events-none"
       :style="{
         objectFit: layer.fit || 'cover',
-        objectPosition: `${layer.focalX ?? 50}% ${layer.focalY ?? 50}%`,
+        objectPosition: `${layer.focalX ?? 50}% ${layer.focalY ?? 50}%`
       }"
     />
     <div
