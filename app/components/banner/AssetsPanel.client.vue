@@ -15,6 +15,7 @@ const apiFetch = $fetch as <T = unknown>(request: string, options?: {
 }) => Promise<T>
 
 const searchQuery = ref('')
+const motorstackOpen = ref(false)
 const isDragging = ref(false)
 const fileInput = ref<HTMLInputElement | null>(null)
 const uploadSession = createBannerUploadSession()
@@ -104,11 +105,11 @@ const voiceoverData = ref<{ assets: AudioAsset[] }>({ assets: [] })
 const musicData = ref<{ assets: AudioAsset[] }>({ assets: [] })
 
 apiFetch<{ assets: AudioAsset[] }>('/api/agency/audio/assets', { query: { kind: 'voiceover' } })
-  .then(result => { voiceoverData.value = result })
+  .then((result) => { voiceoverData.value = result })
   .catch(() => { voiceoverData.value = { assets: [] } })
 
 apiFetch<{ assets: AudioAsset[] }>('/api/agency/audio/assets', { query: { kind: 'music' } })
-  .then(result => { musicData.value = result })
+  .then((result) => { musicData.value = result })
   .catch(() => { musicData.value = { assets: [] } })
 
 // Only playable assets (a master uploaded) belong in the picker — in-progress
@@ -193,6 +194,17 @@ async function deleteAsset(asset: BannerAsset) {
       placeholder="Search assets..."
       size="xs"
     />
+
+    <UButton
+      label="Browse MotorStack"
+      icon="i-lucide-images"
+      color="neutral"
+      variant="outline"
+      size="xs"
+      class="w-full justify-center"
+      @click="motorstackOpen = true"
+    />
+    <BannerMotorStackMediaPicker v-model:open="motorstackOpen" @imported="refreshAssets" />
 
     <!-- Upload Zone -->
     <div

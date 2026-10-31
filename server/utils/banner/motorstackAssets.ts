@@ -5,6 +5,15 @@ import { validateBrandLogoResource } from '~~/server/utils/banner/websiteExtract
 import { boundedMotorstackCall, motorstackKitSchema, readMotorstackAsset, type MotorstackBinding, type MotorstackKit } from './motorstackClient'
 
 const EXTENSIONS: Record<string, string> = { 'image/svg+xml': 'svg', 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/gif': 'gif', 'image/x-icon': 'ico', 'image/vnd.microsoft.icon': 'ico' }
+/** Provider filenames can disagree with their font container. Validate the detected
+ * container fully, then store matching extension/MIME/format; never infer weight. */
+export function normalizeMotorstackFont(bytes: Buffer, sourceName: string) {
+  const magic = bytes.subarray(0, 4).toString('hex')
+  const ext = ({ '00010000': 'ttf', '4f54544f': 'otf', '774f4646': 'woff', '774f4632': 'woff2' } as Record<string, string>)[magic]
+  if (!ext || !isBannerFontBytes(bytes, `font.${ext}`)) throw createError({ statusCode: 502, statusMessage: 'MotorStack font bytes are invalid; no partial kit was saved' })
+  const fileName = sourceName.replace(/\.[^.]+$/, `.${ext}`)
+  return { fileName, mimeType: bannerFontMimeType(fileName)!, format: ext === 'ttf' ? 'truetype' : ext === 'otf' ? 'opentype' : ext, normalized: sourceName.split('.').pop()?.toLowerCase() !== ext }
+}
 export function validMotorstackIcon(bytes: Buffer) {
   if (bytes.length < 22 || bytes.readUInt16LE(0) !== 0 || bytes.readUInt16LE(2) !== 1) return false
   const count = bytes.readUInt16LE(4)
@@ -81,13 +90,11 @@ export async function prepareMotorstackBrand(binding: MotorstackBinding, brandId
       warnings.push(`${font.role}: ${font.family} has no available font file or declared weight; no substitute was assigned.`)
       continue
     }
-    const fileName = font.file
-    const mimeType = bannerFontMimeType(fileName)
-    if (!fileName.length || fileName.length > 255 || /[/\\]/.test(fileName) || [...fileName].some(value => value.charCodeAt(0) < 32 || value.charCodeAt(0) === 127) || !mimeType) throw createError({ statusCode: 422, statusMessage: 'MotorStack font filename or format is unsupported; no partial kit was saved' })
+    const sourceName = font.file
+    if (!sourceName.length || sourceName.length > 255 || /[/\\]/.test(sourceName) || [...sourceName].some(value => value.charCodeAt(0) < 32 || value.charCodeAt(0) === 127) || !bannerFontMimeType(sourceName)) throw createError({ statusCode: 422, statusMessage: 'MotorStack font filename or format is unsupported; no partial kit was saved' })
     const file = await read(font.assetId, 5 * 1024 * 1024)
-    if (!isBannerFontBytes(file.bytes, fileName)) throw createError({ statusCode: 502, statusMessage: 'MotorStack font bytes are invalid; no partial kit was saved' })
-    const ext = fileName.split('.').pop()!.toLowerCase()
-    const format = ext === 'ttf' ? 'truetype' : ext === 'otf' ? 'opentype' : ext
+    const { fileName, mimeType, format, normalized } = normalizeMotorstackFont(file.bytes, sourceName)
+    if (normalized) warnings.push(`${font.role}: font format normalized from ${sourceName} to ${fileName} to match the validated file contents. The source family and declared weight were retained.`)
     const assetKey = add({ sourceId: font.assetId, name: font.family, fileName, mimeType, bytes: file.bytes, font: { family: font.family, weight: font.weight, format } })
     fonts.push({ sourceIndex, assetKey })
   }

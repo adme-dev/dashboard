@@ -11,6 +11,12 @@ export default {
     assert(file.headers.get('Content-Type') === 'font/woff2', 'RPC MIME lost')
     assert(file.headers.get('Cache-Control') === 'private, no-store', 'RPC privacy headers lost')
     assert([...new Uint8Array(await file.arrayBuffer())].join(',') === '119,79,70,50', 'RPC binary stream changed')
+    const media = await rpc.listMedia({brandId:'ford',model:'Ranger'})
+    assert(media.assets.length === 1 && media.models[0] === 'Ranger', 'Media metadata lost across RPC')
+    assert(!JSON.stringify(media).includes('https://'), 'Media RPC exposed provider URL')
+    const image = await rpc.getMediaAsset({brandId:'ford',model:'Ranger',assetId:media.assets[0].id})
+    assert(image instanceof Response && image.headers.get('Content-Type') === 'image/png', 'Media Response lost across RPC')
+    assert([...new Uint8Array(await image.arrayBuffer())].join(',') === '137,80,78,71', 'Media Response bytes changed')
     let denied = false
     try { await rpc.getBrandKit('missing') } catch (error) { denied = error.message.includes('brand_not_available') }
     assert(denied, 'RPC denied-brand error did not survive')

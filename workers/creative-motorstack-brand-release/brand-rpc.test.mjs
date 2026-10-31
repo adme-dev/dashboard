@@ -83,10 +83,10 @@ test('invalid config does not call provider', async () => {
   const { api, calls } = service(fixture,{key:'invalid'})
   await assert.rejects(api.listBrands(),/motorstack_not_configured/); assert.equal(calls.length,0)
 })
-test('build preserves the complete current Worker except private diagnostic wiring', () => {
+test('build preserves the complete current Worker except reviewed diagnostics, exact media CDN and additive media RPC', () => {
   const candidate=readFileSync(new URL('./dist/worker.js',import.meta.url),'utf8')
-  const restored=candidate.replace('import { createBrandService, createPrivateMotorstackFetch } from "./brand-rpc.mjs";', 'import { createBrandService } from "./brand-rpc.mjs";').replace('    const fetcher = createPrivateMotorstackFetch();\n    const { rpc, binary } = createMotorstack({ fetcher });\n    return createBrandService({ rpc, binary, safeURL, extension, MIME, idFor, boundedBody, AdapterError, fetcher }, this.env);', '    const { rpc, binary } = createMotorstack();\n    return createBrandService({ rpc, binary, safeURL, extension, MIME, idFor, boundedBody, AdapterError }, this.env);')
-  assert.equal(restored,source)
+  const restored=candidate.replace('import { createBrandService, createPrivateMotorstackFetch } from "./brand-rpc.mjs";', 'import { createBrandService } from "./brand-rpc.mjs";').replace('    const fetcher = createPrivateMotorstackFetch();\n    const { rpc, binary, catalog } = createMotorstack({ fetcher });\n    return createBrandService({ rpc, binary, catalog, safeURL, extension, MIME, idFor, boundedBody, AdapterError, fetcher }, this.env);', '    const { rpc, binary } = createMotorstack();\n    return createBrandService({ rpc, binary, safeURL, extension, MIME, idFor, boundedBody, AdapterError }, this.env);')
+  assert.equal(restored.replace('      for (const item of Array.isArray(data.brochures) ? data.brochures : []) {\n', '      for (const item of Array.isArray(data.brochures) ? data.brochures : []) {\n        if (model && !matches(item.model || item.model_name || item.modelName)) continue;\n').replace('return { handleMotorstack: handleMotorstack2, rpc, binary, catalog };', 'return { handleMotorstack: handleMotorstack2, rpc, binary };').replace('  listMedia(input) { return this.#service().listMedia(input); }\n  getMediaAsset(input) { return this.#service().getMediaAsset(input); }\n', '').replace('[new URL(ORIGIN).hostname, R2_HOST, "motorstackmedia.driveagent.io"].includes(url.hostname)', '[new URL(ORIGIN).hostname, R2_HOST].includes(url.hostname)'),source)
   assert.equal((candidate.match(/export class MotorstackBrandAssets/g)||[]).length,1)
 })
 

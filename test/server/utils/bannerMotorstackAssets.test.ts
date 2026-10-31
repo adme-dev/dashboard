@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { prepareMotorstackBrand, validMotorstackIcon } from '~~/server/utils/banner/motorstackAssets'
+import { normalizeMotorstackFont, prepareMotorstackBrand, validMotorstackIcon } from '~~/server/utils/banner/motorstackAssets'
 import { motorstackBinding, motorstackBrandId, motorstackKitSchema, readMotorstackAsset, type MotorstackBinding, type MotorstackKit } from '~~/server/utils/banner/motorstackClient'
 
 function fontBytes() {
@@ -22,6 +22,37 @@ function binding(data = metadata(), bytes = fontBytes(), mime = 'font/woff2'): M
 }
 
 describe('MotorStack exact source asset preparation', () => {
+  it('normalizes a mislabeled provider WOFF filename to validated TTF without changing family or declared weight', async () => {
+    const bytes = Buffer.alloc(32)
+    bytes.writeUInt32BE(0x00010000, 0)
+    bytes.writeUInt16BE(1, 4)
+    bytes.write('head', 12)
+    bytes.writeUInt32BE(28, 20)
+    bytes.writeUInt32BE(4, 24)
+    const data = metadata()
+    data.fonts = [{ ...data.fonts[0]!, file: 'GEELY-Bold.woff', family: 'GEELY Bold', weight: 600, sourceWeight: 600 }]
+    const result = await prepareMotorstackBrand(binding(data, bytes, 'font/woff'), 'ford')
+    expect(result.assets[0]).toMatchObject({ fileName: 'GEELY-Bold.ttf', mimeType: 'font/ttf', font: { family: 'GEELY Bold', weight: 600, format: 'truetype' } })
+    expect(result.metadata.fonts[0]?.file).toBe('GEELY-Bold.woff')
+    expect(result.warnings.join(' ')).toContain('font format normalized from GEELY-Bold.woff to GEELY-Bold.ttf')
+    bytes.writeUInt32BE(1000, 20)
+    expect(() => normalizeMotorstackFont(bytes, 'misnamed.woff')).toThrow('invalid')
+  })
+  it('normalizes all supported container identities only after their header validation', () => {
+    const woff2 = fontBytes()
+    expect(normalizeMotorstackFont(woff2, 'face.ttf')).toMatchObject({ fileName: 'face.woff2', mimeType: 'font/woff2', format: 'woff2' })
+    const woff = Buffer.from(woff2)
+    woff.write('wOFF')
+    expect(normalizeMotorstackFont(woff, 'face.otf')).toMatchObject({ fileName: 'face.woff', mimeType: 'font/woff', format: 'woff' })
+    const otf = Buffer.alloc(32)
+    otf.write('OTTO')
+    otf.writeUInt16BE(1, 4)
+    otf.writeUInt32BE(28, 20)
+    otf.writeUInt32BE(4, 24)
+    expect(normalizeMotorstackFont(otf, 'face.ttf')).toMatchObject({ fileName: 'face.otf', mimeType: 'font/otf', format: 'opentype' })
+    expect(() => normalizeMotorstackFont(Buffer.from('wOF2invalid'), 'face.woff2')).toThrow('invalid')
+    expect(() => normalizeMotorstackFont(Buffer.from('<html>evil</html>'), 'face.woff2')).toThrow('invalid')
+  })
   it('uses declared weight instead of misleading filename and retains repeated source roles', async () => {
     const service = binding()
     const result = await prepareMotorstackBrand(service, 'ford')
