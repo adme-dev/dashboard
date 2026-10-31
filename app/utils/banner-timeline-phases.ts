@@ -1,5 +1,5 @@
 import { bannerAnimationTiming } from '~/utils/banner-animation-timing'
-import type { Layer } from '~/types/banner-studio'
+import type { KeyframeProperty, Layer } from '~/types/banner-studio'
 import { ANIM_IN, ANIM_OUT } from '~/utils/banner-constants'
 
 export interface TimelinePhase {
@@ -8,6 +8,43 @@ export interface TimelinePhase {
   end: number
   label: string
   direction: 'in' | 'out'
+}
+
+/** Describe changing properties, without guessing a preset from imported samples. */
+export function describeKeyframeMotion(layer: Layer, start = layer.startTime ?? 0, end = layer.endTime ?? start + 3): string {
+  const deltas = (property: KeyframeProperty) => {
+    if ((property === 'x' || property === 'y') && (layer.motionPath?.length ?? 0) >= 2) return []
+    const frames = [...(layer.keyframes?.[property] || [])].sort((a, b) => a.time - b.time)
+    return frames.slice(1).flatMap((frame, index) => {
+      const previous = frames[index]!
+      const overlaps = frame.time === previous.time
+        ? frame.time > start + 1e-6 && frame.time < end - 1e-6
+        : frame.time > start + 1e-6 && previous.time < end - 1e-6
+      const difference = frame.value - previous.value
+      return overlaps && difference !== 0 && Number.isFinite(difference) ? [difference] : []
+    })
+  }
+  const direction = (values: number[]) => values.every(value => value > 0) ? 1 : values.every(value => value < 0) ? -1 : 0
+  const labels: string[] = []
+  const opacity = deltas('opacity')
+  if (opacity.length) labels.push(direction(opacity) === 1 ? 'Fade in' : direction(opacity) === -1 ? 'Fade out' : 'Fade')
+  const x = deltas('x'), y = deltas('y')
+  if (x.length || y.length) {
+    labels.push(x.length && y.length
+      ? 'Move'
+      : x.length
+        ? direction(x) === 1 ? 'Move right' : direction(x) === -1 ? 'Move left' : 'Move horizontally'
+        : direction(y) === 1 ? 'Move down' : direction(y) === -1 ? 'Move up' : 'Move vertically')
+  }
+  const scale = [...deltas('scaleX'), ...deltas('scaleY')]
+  if (scale.length) {
+    const negativeScale = [...(layer.keyframes?.scaleX || []), ...(layer.keyframes?.scaleY || [])].some(frame => frame.value < 0)
+    labels.push(negativeScale ? 'Scale' : direction(scale) === 1 ? 'Scale up' : direction(scale) === -1 ? 'Scale down' : 'Scale')
+  }
+  const rotation = deltas('rotation')
+  if (rotation.length) labels.push('Rotate')
+  if ((layer.motionPath?.length ?? 0) >= 2 && (!layer.motionPathTweens?.length || layer.motionPathTweens.some(tween => tween.startTime < end && tween.endTime > start && tween.pathStart !== tween.pathEnd))) labels.push('Motion path')
+  return labels.join(' + ') || 'Animation'
 }
 
 /** A read-only timing summary. Imported motion is never assigned a guessed preset. */
@@ -50,7 +87,7 @@ export function timelinePhases(layer: Layer): TimelinePhase[] {
       if (range.start > cursor) phases.push({ kind: 'hold', start: cursor, end: range.start, label: holdLabel, direction: 'in' })
       const kind = range.start === start && range.end < end ? 'entry' : range.end === end && range.start > start ? 'exit' : 'motion'
       const authored = layer.animationClips?.find(clip => Math.abs(clip.start - range.start) < 0.0001 && Math.abs(clip.end - range.end) < 0.0001)
-      phases.push({ ...range, kind, label: authored?.label || `${kind === 'entry' ? 'Entry' : kind === 'exit' ? 'Exit' : 'Motion'} · Keyframes`, direction: kind === 'exit' ? 'out' : 'in' })
+      phases.push({ ...range, kind, label: authored?.label || `${kind === 'entry' ? 'Entry' : kind === 'exit' ? 'Exit' : 'Motion'} · ${describeKeyframeMotion(layer, range.start, range.end)}`, direction: kind === 'exit' ? 'out' : 'in' })
       cursor = range.end
     }
     if (cursor < end) phases.push({ kind: 'hold', start: cursor, end, label: holdLabel, direction: 'in' })

@@ -451,6 +451,11 @@ function addLayerToTimeline(tl: gsap.core.Timeline, el: HTMLElement, layer: Laye
     buildLayerKeyframes(tl, el, layer, cycleEnd)
   } else {
     buildPresetLayer(tl, el, layer)
+    if (layer.clipToPresence) {
+      tl.set(el, { visibility: layer.startTime === 0 ? 'visible' : 'hidden', immediateRender: false }, 0)
+      if (layer.startTime > 0) tl.set(el, { visibility: 'visible', immediateRender: false }, layer.startTime)
+      if (layer.endTime !== cycleEnd) tl.set(el, { visibility: 'hidden', immediateRender: false }, layer.endTime)
+    }
   }
 
   addWordPop(tl, el, layer)
@@ -530,7 +535,7 @@ export function useBannerTimeline() {
       position: 'absolute', left: '0', top: '0', margin: '0', pointerEvents: 'none',
       zIndex: String(Math.max(20000, ...lastLayers.map(layer => layer.zIndex + 2)))
     })
-    overlay.querySelectorAll('[data-testid="banner-selection"], [data-banner-animation-preview]').forEach(element => element.remove())
+    overlay.querySelectorAll('[data-testid="banner-selection"], [data-banner-animation-preview], [data-slide-transition]').forEach(element => element.remove())
     const sourceVideos = [...artboard.querySelectorAll('video')]
     const positionVideos: Array<() => void> = []
     overlay.querySelectorAll('video').forEach((video, index) => {
@@ -798,9 +803,11 @@ export function useBannerTimeline() {
   function destroyTimeline({ preserveTime = false }: { preserveTime?: boolean } = {}) {
     stopAnimationPreview()
     stopTimePoller()
+    // Running transport can lead the poller. Paused UI seeks may instead be
+    // beyond the old clock while a newly extended sequence awaits its rebuild.
+    const time = state.isPlaying ? masterTl?.time() ?? state.currentTime : state.currentTime
     state.isPlaying = false
-    // Read the exact transport position, which can be ahead of the UI poller.
-    state.currentTime = preserveTime ? (masterTl?.time() ?? state.currentTime) : 0
+    state.currentTime = preserveTime ? time : 0
     if (masterTl) {
       disposeTimelineAudio(masterTl)
       masterTl.kill()

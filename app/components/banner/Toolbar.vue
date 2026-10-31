@@ -58,7 +58,7 @@ function isSeparator(tool: ToolbarTool): boolean {
 }
 
 function toolTooltip(tool: ToolbarTool): string {
-  return 'label' in tool ? `${tool.label} (${tool.shortcut})` : ''
+  return 'label' in tool ? tool.group === 'mode' ? `${tool.label} (${tool.shortcut})` : tool.label : ''
 }
 
 function toolIcon(tool: ToolbarTool): string {
@@ -71,7 +71,10 @@ function toolIcon(tool: ToolbarTool): string {
     <template v-for="tool in tools" :key="tool.id">
       <div v-if="isSeparator(tool)" class="h-px w-6 bg-accented my-1" />
       <UTooltip v-else :text="toolTooltip(tool)" :delay-duration="300" side="right">
-        <button
+        <UButton
+          :aria-label="'label' in tool ? tool.label : undefined"
+          color="neutral"
+          variant="ghost"
           class="w-8 h-8 flex items-center justify-center rounded transition-all"
           :class="isActive(tool.id)
             ? 'bg-[#4a8fe8] text-white shadow-[0_0_8px_rgba(74,143,232,0.3)]'
@@ -79,7 +82,7 @@ function toolIcon(tool: ToolbarTool): string {
           @click="handleToolClick(tool.id)"
         >
           <UIcon :name="toolIcon(tool)" class="w-4 h-4" />
-        </button>
+        </UButton>
       </UTooltip>
     </template>
   </div>

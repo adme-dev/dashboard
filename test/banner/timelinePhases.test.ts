@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { timelinePhases } from '~/utils/banner-timeline-phases'
+import { describeKeyframeMotion, timelinePhases } from '~/utils/banner-timeline-phases'
 import type { Layer } from '~/types/banner-studio'
 
 describe('read-only timeline phase summaries', () => {
@@ -10,9 +10,9 @@ describe('read-only timeline phase summaries', () => {
     } } as Layer
     const original = JSON.stringify(layer)
     expect(timelinePhases(layer)).toEqual([
-      { kind: 'entry', start: 5, end: 6, label: 'Entry · Keyframes', direction: 'in' },
+      { kind: 'entry', start: 5, end: 6, label: 'Entry · Fade in + Scale down', direction: 'in' },
       { kind: 'hold', start: 6, end: 9, label: 'Hold', direction: 'in' },
-      { kind: 'exit', start: 9, end: 10, label: 'Exit · Keyframes', direction: 'out' }
+      { kind: 'exit', start: 9, end: 10, label: 'Exit · Fade out', direction: 'out' }
     ])
     expect(JSON.stringify(layer)).toBe(original)
   })
@@ -20,7 +20,7 @@ describe('read-only timeline phase summaries', () => {
     const layer = { type: 'image', startTime: 0, endTime: 3, keyframes: {
       opacity: [{ time: 0, value: 0 }, { time: 1, value: 1 }, { time: 1, value: 0 }, { time: 2, value: 1 }, { time: 2, value: 0 }, { time: 3, value: 1 }]
     } } as Layer
-    expect(timelinePhases(layer)).toEqual([{ kind: 'motion', start: 0, end: 3, label: 'Motion · Keyframes', direction: 'in' }])
+    expect(timelinePhases(layer)).toEqual([{ kind: 'motion', start: 0, end: 3, label: 'Motion · Fade', direction: 'in' }])
     expect(layer.keyframes!.opacity).toHaveLength(6)
   })
   it('keeps static keyframes and audio as full presence ranges', () => {
@@ -43,4 +43,33 @@ describe('read-only timeline phase summaries', () => {
       ['Entry · Words Pop', 0, 3], ['Exit · Fade', 2.75, 3]
     ])
   })
+})
+
+it('names only the properties changing within the clicked interval and keeps the source untouched', () => {
+  const layer = { startTime: 0, endTime: 6, keyframes: {
+    opacity: [{ time: 0, value: 0 }, { time: 1, value: 1 }, { time: 5, value: 1 }, { time: 6, value: 0 }],
+    x: [{ time: 0, value: -100 }, { time: 1, value: 0 }, { time: 6, value: 0 }],
+    scaleX: [{ time: 0, value: 0.5 }, { time: 1, value: 1 }, { time: 6, value: 1 }],
+    rotation: [{ time: 0, value: 0 }, { time: 1, value: 45 }, { time: 6, value: 45 }]
+  } } as Layer
+  const before = JSON.stringify(layer)
+  expect(describeKeyframeMotion(layer, 0, 1)).toBe('Fade in + Move right + Scale up + Rotate')
+  expect(describeKeyframeMotion(layer, 5, 6)).toBe('Fade out')
+  expect(JSON.stringify(layer)).toBe(before)
+})
+
+it.each([
+  ['x', [100, 0], 'Move left'], ['y', [100, 0], 'Move up'], ['y', [-100, 0], 'Move down'],
+  ['scaleY', [2, 1], 'Scale down'], ['scaleX', [1, -1], 'Scale'], ['rotation', [0, 90], 'Rotate']
+] as const)('describes %s changes with a useful property label', (property, values, expected) => {
+  expect(describeKeyframeMotion({ startTime: 0, endTime: 1, keyframes: { [property]: [{ time: 0, value: values[0] }, { time: 1, value: values[1] }] } } as Layer)).toBe(expected)
+})
+
+it('keeps named authored blocks and ignores XY keyframes overridden by a motion path', () => {
+  const layer = { startTime: 0, endTime: 4, motionPath: [{ x: 0, y: 0 }, { x: 100, y: 100 }],
+    keyframes: { x: [{ time: 0, value: 0 }, { time: 4, value: 100 }], opacity: [{ time: 0, value: 0 }, { time: 1, value: 1 }, { time: 4, value: 1 }] },
+    animationClips: [{ start: 1, end: 3, label: 'Blink' }]
+  } as Layer
+  expect(describeKeyframeMotion(layer, 0, 1)).toBe('Fade in + Motion path')
+  expect(timelinePhases(layer).some(phase => phase.label === 'Blink')).toBe(true)
 })

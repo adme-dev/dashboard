@@ -36,8 +36,10 @@ const format = computed(() => FORMATS[props.formatKey])
 const layers = computed(() => {
   const artboard = state.sets[props.formatKey]
   if (!artboard) return []
-  return [...artboard.layers].sort((a, b) => a.zIndex - b.zIndex)
+  return [...artboard.layers].sort((a, b) => Number(!!a.slideTransitionFor) - Number(!!b.slideTransitionFor) || a.zIndex - b.zIndex)
 })
+
+const transitionZIndex = computed(() => Math.max(0, ...layers.value.filter(layer => !layer.slideTransitionFor).map(layer => layer.zIndex)) + 1)
 
 // Inactive layouts share the playhead, but never own the audio transport. Using
 // the same timeline renderer preserves imported opacity, scale and presence.
@@ -478,13 +480,14 @@ defineExpose({ artboardEl })
         v-for="layer in layers"
         :id="`lyr-${layer.id}`"
         :key="layer.id"
+        :data-slide-transition="layer.slideTransitionFor || undefined"
         class="absolute"
         :style="{
           left: `${layer.x}px`,
           top: `${layer.y}px`,
           width: layer.type === 'audio' ? '0px' : (layer.type === 'bg' ? '100%' : `${layer.w}px`),
           height: layer.type === 'audio' ? '0px' : (layer.type === 'bg' ? '100%' : `${layer.h}px`),
-          zIndex: layer.zIndex,
+          zIndex: layer.slideTransitionFor ? transitionZIndex : layer.zIndex,
           mixBlendMode: layer.mixBlendMode || 'normal',
           pointerEvents: isActive && !layer.locked && layer.type !== 'bg' && layer.type !== 'audio' ? 'auto' : 'none',
           display: layer.hidden && layer.type !== 'audio' ? 'none' : undefined,

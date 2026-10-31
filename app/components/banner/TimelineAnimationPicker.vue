@@ -4,7 +4,7 @@ import { ANIM_IN, ANIM_OUT, EASES } from '~/utils/banner-constants'
 import { hasKeyframes, presetToKeyframes } from '~/composables/useBannerTimeline'
 import type { AnimInType, AnimOutType, KeyframeProperty, Layer } from '~/types/banner-studio'
 import { insertTimelineKeyframe, keyframeDefault, MIDDLE_ANIMATIONS, addMiddleAnimation } from '~/utils/banner-timeline-edit'
-import type { TimelinePhase } from '~/utils/banner-timeline-phases'
+import { describeKeyframeMotion, type TimelinePhase } from '~/utils/banner-timeline-phases'
 
 const emit = defineEmits<{ dragStart: [event: MouseEvent] }>()
 const props = defineProps<{ layer: Layer, direction: 'in' | 'out', compact?: boolean, phase?: TimelinePhase }>()
@@ -29,7 +29,7 @@ const title = computed(() => isAudio.value ? 'Audio' : isMiddle.value ? 'Middle'
 const directionLabel = computed(() => isMiddle.value ? 'middle' : props.direction === 'in' ? 'entrance' : 'exit')
 const presets = computed(() => (isMiddle.value ? MIDDLE_ANIMATIONS.filter(preset => !props.layer.motionPath?.length || !preset.properties.some(property => property === 'x' || property === 'y')) : props.direction === 'in' ? ANIM_IN : ANIM_OUT).filter(p => p.label.toLowerCase().includes(search.value.trim().toLowerCase())))
 const selectedId = computed(() => props.direction === 'in' && props.layer.wordPop ? 'wordPop' : props.direction === 'in' ? props.layer.animIn : (props.layer.animOut ?? 'fadeOut'))
-const selectedLabel = computed(() => isAudio.value ? 'Sound' : isKeyframe.value ? 'Keyframes' : selectedId.value === 'wordPop' ? 'Words Pop' : ([...ANIM_IN, ...ANIM_OUT].find(p => p.id === selectedId.value)?.label ?? 'None'))
+const selectedLabel = computed(() => isAudio.value ? 'Sound' : isKeyframe.value ? describeKeyframeMotion(props.layer) : selectedId.value === 'wordPop' ? 'Words Pop' : ([...ANIM_IN, ...ANIM_OUT].find(p => p.id === selectedId.value)?.label ?? 'None'))
 const blockLabel = computed(() => props.phase?.label ?? selectedLabel.value)
 const blockDescription = computed(() => props.phase ? `${blockLabel.value} · ${props.phase.start.toFixed(2)}–${props.phase.end.toFixed(2)}s` : blockLabel.value)
 const foreground = computed(() => props.phase?.kind === 'hold' ? 'var(--ui-text)' : '#ffffff')
@@ -180,7 +180,7 @@ onBeforeUnmount(() => {
 <template>
   <UPopover v-model:open="open" :content="{ side: 'top', align: direction === 'in' ? 'start' : 'end', sideOffset: 8 }">
     <UButton
-      :aria-label="phase ? `Edit ${blockDescription} for ${layer.name}` : isAudio ? `Edit audio for ${layer.name}` : isKeyframe ? `Edit keyframes for ${layer.name}` : `Edit ${directionLabel} animation for ${layer.name}: ${selectedLabel}`"
+      :aria-label="phase ? `Edit ${blockDescription} for ${layer.name}` : isAudio ? `Edit audio for ${layer.name}` : isKeyframe ? `Edit ${selectedLabel} for ${layer.name}` : `Edit ${directionLabel} animation for ${layer.name}: ${selectedLabel}`"
       :title="blockDescription"
       :aria-expanded="open"
       color="neutral"

@@ -185,3 +185,11 @@ describe('selected animation preview', () => {
     expect(root.querySelector('[data-banner-animation-preview]')).toBeNull()
   })
 })
+
+it('keeps global slide fades out of a selected-layer animation preview', () => {
+  setup([visual(1), visual(2, { slideTransitionFor: 'first' })])
+  root.querySelector('#lyr-2')!.setAttribute('data-slide-transition', 'first')
+  controller.previewAnimation(1, { start: 0, end: 0.8 })
+  expect(root.querySelector('[data-banner-animation-preview] #lyr-2')).toBeNull()
+  expect(root.querySelector('#lyr-2')).not.toBeNull()
+})

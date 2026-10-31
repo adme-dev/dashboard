@@ -16,6 +16,7 @@ const layer = z.object({
   animIn: z.literal('none'), animOut: z.literal('none').optional(), animInDur: z.literal(0),
   startTime: z.number().min(0).max(300), endTime: z.number().positive().max(300),
   clipToPresence: z.boolean().optional(),
+  slideId: z.string().max(100).regex(/^[a-zA-Z0-9:_-]+$/).optional(),
   textRuns: z.array(z.object({ text: z.string().max(10000), fontSize: number.positive().optional(), top: number.optional() }).strict()).max(100).optional(),
   borderWidth: number.nonnegative().max(100).optional(), borderColor: css.optional(), textColor: css.optional(),
   rotation: number.optional(), borderRadius: number.nonnegative().optional(), transformOrigin: z.object({ x: number, y: number }).optional(),
@@ -39,7 +40,7 @@ const binary = z.object({ path: local, fileName: z.string().max(150).regex(/^[\w
 const schema = z.object({
   kind: z.literal('xeroflow-thebrief-import'), version: z.literal(1), name: z.string().trim().min(1).max(200),
   source: z.object({ designHash: z.string().regex(/^[\w-]+$/).max(100), sha256: sha, folder: z.string().max(250), duration: z.number().positive().max(300), loopCount: z.number().int().min(0).max(1000) }),
-  canvasData: z.record(z.string(), z.object({ layers: z.array(layer).min(1).max(200), bgColor: css.optional(), playback: z.object({ duration: z.number().positive().max(300), loopCount: z.number().int().min(0).max(1000) }).optional() })),
+  canvasData: z.record(z.string(), z.object({ layers: z.array(layer).min(1).max(200), bgColor: css.optional(), slides: z.array(z.object({ id: z.string().max(100).regex(/^[a-zA-Z0-9:_-]+$/), name: z.string().min(1).max(100), duration: z.number().finite().min(0.1).max(300) }).strict()).min(1).max(50).optional(), playback: z.object({ duration: z.number().positive().max(300), loopCount: z.number().int().min(0).max(1000) }).optional() })),
   warnings: z.array(z.string().max(1000)).max(250),
   assets: z.array(binary.extend({ mimeType: z.enum(['image/png', 'image/jpeg', 'image/webp', 'audio/mpeg']) })).max(100),
   fonts: z.array(binary.extend({ family: z.string().min(1).max(100).regex(/^[\w .-]+$/), weight: z.number().int().min(1).max(1000), style: z.literal('normal'), format: z.enum(['truetype', 'opentype', 'woff', 'woff2']) })).max(32)
@@ -61,12 +62,23 @@ export function parseTheBriefPackage(input: unknown): TheBriefPackage {
   if (binaries.reduce((size, a) => size + a.base64.length, 0) > 40 * 1024 * 1024) throw new Error('Package exceeds 40 MB limit')
   for (const [format, board] of boards) {
     if (board.playback && (board.playback.duration !== result.source.duration || board.playback.loopCount !== result.source.loopCount)) throw new Error('Playback differs from source timing')
+    if (board.slides) {
+      if (new Set(board.slides.map(slide => slide.id)).size !== board.slides.length) throw new Error('Duplicate slide identity')
+      if (Math.abs(board.slides.reduce((sum, slide) => sum + slide.duration, 0) - result.source.duration) > 0.0001) throw new Error('Slide sequence differs from source timing')
+    }
     const match = /^custom_([1-9]\d*)x([1-9]\d*)$/.exec(format)
     if (!match || match.slice(1).some(v => +v < 1 || +v > 4096)) throw new Error('Invalid import dimensions')
     if (new Set(board.layers.map(l => l.id)).size !== board.layers.length) throw new Error('Duplicate layer identity')
     const links = board.layers.map(l => l.linkId).filter(Boolean)
     if (new Set(links).size !== links.length) throw new Error('Duplicate linked content identity in one size')
     for (const item of board.layers) {
+      if (item.slideId) {
+        const index = board.slides?.findIndex(slide => slide.id === item.slideId) ?? -1
+        if (index < 0) throw new Error('Artwork references a missing slide')
+        const start = board.slides!.slice(0, index).reduce((sum, slide) => sum + slide.duration, 0)
+        const end = start + board.slides![index]!.duration
+        if (item.startTime < start - 0.0001 || item.endTime > end + 0.0001) throw new Error('Artwork crosses its slide boundary')
+      }
       if (item.src && !result.assets.some(a => a.path === item.src)) throw new Error('Missing packaged asset')
       if (item.textRuns && item.textRuns.map(run => run.text).join('') !== item.text) throw new Error('Text runs differ from layer text')
       if (item.wordPop && (item.type !== 'text' || item.textRuns)) throw new Error('Word animation requires plain text')

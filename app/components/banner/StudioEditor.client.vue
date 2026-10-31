@@ -52,7 +52,7 @@ const { connect: connectRealtime, disconnect: disconnectRealtime, remoteUsers } 
 const timelineHeight = ref(360)
 const tlCollapsed = ref(false)
 let tlHeightBeforeCollapse = 360
-const MIN_TL_HEIGHT = 100
+const MIN_TL_HEIGHT = 180
 const MAX_TL_HEIGHT = 600
 const tlResizing = ref(false)
 let tlResizeStartY = 0
@@ -114,6 +114,7 @@ function rebuildTimeline() {
 watch(() => state.activeKey, () => { destroyTimeline({ preserveTime: true }); rebuildTimeline() })
 watch(() => state.layoutView, () => { pauseTimeline(); rebuildTimeline() })
 watch(activeLayers, rebuildTimeline, { deep: true })
+watch(() => state.sets[state.activeKey]?.playback, rebuildTimeline, { deep: true })
 watch(() => state.soloMotionPath, rebuildTimeline)
 onMounted(() => nextTick(rebuildTimeline))
 
@@ -131,7 +132,7 @@ watch(() => activeLayers.value, (layers) => {
 }, { immediate: true })
 
 // Left panel tab state
-const leftTab = ref<'sets' | 'templates' | 'elements' | 'assets' | 'feeds' | 'brand' | 'history'>('sets')
+const leftTab = ref<'sets' | 'templates' | 'elements' | 'assets' | 'feeds' | 'brand' | 'history' | 'slides'>('sets')
 const leftPanelCollapsed = useCookie<boolean>('banner-studio-sidebar-collapsed', {
   default: () => false,
   maxAge: 60 * 60 * 24 * 365,
@@ -144,6 +145,7 @@ const leftTabItems = [
   { id: 'assets' as const, label: 'Assets', icon: 'i-lucide-image' },
   { id: 'feeds' as const, label: 'Feeds', icon: 'i-lucide-database' },
   { id: 'brand' as const, label: 'Brand', icon: 'i-lucide-palette' },
+  { id: 'slides' as const, label: 'Slides', icon: 'i-lucide-gallery-horizontal-end' },
   { id: 'history' as const, label: 'History', icon: 'i-lucide-history' },
 ]
 function openLeftPanel(tab: string) {
@@ -824,6 +826,7 @@ const { activeSize } = useBannerFileSize()
         <!-- Left panel content -->
         <div v-show="!leftPanelCollapsed" id="banner-tools-content" class="flex-1 min-h-0 overflow-y-auto">
           <BannerSetsPanel v-if="leftTab === 'sets'" />
+          <BannerSlidesPanel v-else-if="leftTab === 'slides'" />
           <BannerTemplatesPanel v-else-if="leftTab === 'templates'" />
           <BannerElementsPanel v-else-if="leftTab === 'elements'" />
           <BannerAssetsPanel v-else-if="leftTab === 'assets'" />

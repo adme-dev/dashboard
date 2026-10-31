@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import JSZip from 'jszip'
+import { resolveSlides, slideAtTime, slidePoster } from '~/utils/banner-slides'
 import { apiErrorDescription, apiErrorStatus } from '~/utils/apiError'
 import { FORMATS, PLATFORM_META } from '~/utils/banner-constants'
 import { buildBannerHTML } from '~/utils/banner-html-builder'
@@ -13,7 +14,7 @@ import { bannerRenderSuggestions, snapshotBannerSocialSuggestion } from '~/utils
 const props = defineProps<{ open: boolean, initialType?: 'html5' | 'png' | 'jpg' | 'gif' | 'mp4', socialSuggestion?: { caption?: string, suggestedSchedule?: string } }>()
 const emit = defineEmits<{ 'update:open': [value: boolean] }>()
 
-const { state, activeLayers } = useBannerStudio()
+const { state, activeLayers, activeSlides } = useBannerStudio()
 const { estimateSize } = useBannerFileSize()
 const { getExportCustomFonts } = useBannerFonts(() => state.project?.clientId ?? null)
 const toast = useToast()
@@ -25,6 +26,8 @@ const apiFetch = $fetch as <T = unknown>(request: string, options?: {
 }) => Promise<T>
 
 const selected = ref<Set<string>>(new Set(state.setKeys))
+const imageSlideIndex = ref(String(Math.max(0, activeSlides.value.findIndex(slide => slide.id === slideAtTime(state.sets[state.activeKey], state.currentTime)?.id))))
+const imageSlideOptions = computed(() => activeSlides.value.map((slide, index) => ({ label: `${index + 1} · ${slide.name}`, value: String(index) })))
 const isExporting = ref(false)
 const exportProgress = ref(0)
 const currentJobs = ref<ExportJob[]>([])
@@ -36,6 +39,7 @@ const currentVideoBlocked = computed(() => videoJobsUnavailable.value || videoPe
 watch(() => props.open, (open) => {
   if (open) {
     selected.value = new Set(state.setKeys)
+    imageSlideIndex.value = String(Math.max(0, activeSlides.value.findIndex(slide => slide.id === slideAtTime(state.sets[state.activeKey], state.currentTime)?.id)))
     if (props.initialType) exportType.value = props.initialType
   }
 })
@@ -96,6 +100,13 @@ function toggleSize(key: string) {
 }
 
 function buildExportHTML(fmtKey: string, layers: Layer[]): string {
+  const board = state.sets[fmtKey] || state.sets[state.activeKey]
+  const slides = resolveSlides(board)
+  if (isImageExport.value && (slides.length > 1 || board?.slides?.length)) {
+    const slide = slides[Number(imageSlideIndex.value)]
+    if (!slide) throw new Error('A selected layout does not contain this slide. Export matching layouts together.')
+    layers = slidePoster({ ...board, layers }, slide.id).layers
+  }
   return buildBannerHTML(fmtKey, layers, {
     playback: state.sets[fmtKey]?.playback || state.sets[state.activeKey]?.playback,
     includeAnimations: !isImageExport.value,
@@ -483,6 +494,9 @@ const exportButtonLabel = computed(() => {
 
         <!-- Image export options -->
         <div v-if="isImageExport" class="space-y-3 mb-4 p-3 bg-(--ui-bg) rounded-lg">
+          <UFormField v-if="activeSlides.length > 1" label="Slide" help="PNG and JPG export this slide. Animated formats include the full sequence.">
+            <USelect v-model="imageSlideIndex" :items="imageSlideOptions" class="w-full" />
+          </UFormField>
           <!-- Resolution -->
           <UFormField label="Resolution">
             <div class="flex gap-2">

@@ -63,6 +63,10 @@ export interface Layer {
   name: string
   /** Shared content identity across independently positioned sizes in one design set. */
   linkId?: string
+  /** Scene ownership; absent layers can span the whole sequence. */
+  slideId?: string
+  /** Generated, locked fade-through-background overlay. */
+  slideTransitionFor?: string
   // Position & size
   x: number
   y: number
@@ -174,7 +178,16 @@ export interface BannerPlayback {
   loopCount: number
 }
 
+export interface BannerSlide {
+  id: string
+  name: string
+  duration: number
+  /** Transition after this slide; its duration is contained within the sequence. */
+  transition?: { type: 'fade', duration: number }
+}
+
 export interface ArtboardState {
+  slides?: BannerSlide[]
   playback?: BannerPlayback
   layers: Layer[]
   bgColor?: string

@@ -207,7 +207,7 @@ export function buildBannerHTML(
   if (!fmt) return ''
 
   const layerDivs = [...layers]
-    .sort((a, b) => a.zIndex - b.zIndex)
+    .sort((a, b) => Number(!!a.slideTransitionFor) - Number(!!b.slideTransitionFor) || a.zIndex - b.zIndex)
     .map((l) => {
       function visualLayer(style: string, content = '') {
         const flip = !l.isMask && layerFlipTransform(l)
@@ -336,6 +336,12 @@ export function buildBannerHTML(
       }
 
       const isBg = l.type === 'bg'
+      if (l.clipToPresence) {
+        const target = `'[data-id="${l.id}"]'`
+        lines.push(`  tl.set(${target}, { visibility: '${l.startTime === 0 ? 'visible' : 'hidden'}' }, 0);`)
+        if (l.startTime > 0) lines.push(`  tl.set(${target}, { visibility: 'visible' }, ${l.startTime});`)
+        if (l.endTime !== playback?.duration) lines.push(`  tl.set(${target}, { visibility: 'hidden' }, ${l.endTime});`)
+      }
       const sel = `'[data-id="${l.id}"]'`
       const timing = bannerAnimationTiming(l)
       const startTime = timing.entryStart
