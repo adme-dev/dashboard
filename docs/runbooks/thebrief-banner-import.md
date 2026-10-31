@@ -63,3 +63,19 @@ The importer matches uploaded fonts by checksum, family, exact weight and author
 Brand-kit typography stores exact uploaded face references and a default weight for each role. The client picker filters owned and shared faces; moving a kit to another client requires replacing incompatible references or returning to the original client. Applying a kit updates face and weight together as one undo step. Used fonts cannot be deleted while current designs, kits or retained versions reference them. Legacy family-only artwork remains supported through scoped face resolution.
 
 **From a website** reads a public homepage and a bounded set of linked/imported stylesheets, then presents colours, detected families and validated logo candidates as a draft. It does not save a kit automatically or download custom font binaries. Warnings distinguish incomplete extraction and unavailable font files; upload the licensed faces or choose an available font before applying those roles. Every document, stylesheet and logo request uses the public URL policy and bounded redirects/body limits.
+
+## Retaining original TheBrief exports
+
+Every per-size child ZIP from a TheBrief bulk HTML5 export, including held designs, is retained privately in the agency R2 bucket so conversion can be retried without re-exporting. Objects are content-addressed at `thebrief-sources/<clientId|unassigned>/<designHash>/<sha256>.zip` and recorded in `banner_source_archives` (migration 491) with the TheBrief design and child hashes, size, folder, batch SHA-256, conversion status (`imported`, `held`, `pending`), hold reason and any linked project. There is no public URL. The bulk-export containers themselves are not stored; keep them and their `.sha256` files in the migration workspace.
+
+- `POST /api/agency/banner-studio/source-archives` takes the raw ZIP body (max 64 MB) with metadata in the query string. It needs write access and client access; unassigned archives need all-client access. It is idempotent by SHA-256 and R2 rejects a body whose digest does not match the declared SHA-256.
+- `GET /api/agency/banner-studio/source-archives?clientId=<uuid|unassigned>&designHash=…` lists, `GET …/<id>` reads, `GET …/<id>/download` streams the original privately (`cache-control: private, no-store`), and `PATCH …/<id>` links a project of the same client, updates the status or hold reason, or assigns an unassigned archive to a client. The R2 key keeps the client segment it was uploaded with.
+
+Upload the migration workspace with the signed-in user's own session token (never printed or committed). Run a dry run first; it makes no network calls and writes nothing:
+
+```bash
+node scripts/thebrief/upload-source-archives.mjs --dry-run
+XEROFLOW_AUTH_TOKEN=… node scripts/thebrief/upload-source-archives.mjs
+```
+
+The script verifies each batch against its `.sha256`, reads child ZIPs from the container in memory, maps each to its parent design through `ledger/prepare-log.jsonl` (falling back to the TheBrief hash embedded in `index.html` and the folder crawl), assigns a client only for `exact`/`confirmed` decisions in `ledger/clients.json`, and links projects from `ledger/import-log.jsonl`. It only appends receipts to `ledger/r2-archive-log.jsonl`; completed SHA-256s are skipped on rerun.
