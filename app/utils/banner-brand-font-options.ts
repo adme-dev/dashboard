@@ -6,6 +6,15 @@ interface FontFaceChoice {
   clientId: string | null
   tags: string[]
 }
+
+/** Keep another OEM's uploaded faces out of this kit's typography picker. */
+export function selectableBrandKitFontFaces<T extends FontFaceChoice>(faces: T[], brandId: string | null, linkedAssetIds: ReadonlySet<string>): T[] {
+  return faces.filter((face) => {
+    const sourceBrand = face.tags.find(tag => tag.startsWith('motorstack-brand:'))?.slice('motorstack-brand:'.length)
+    if (sourceBrand) return sourceBrand === brandId
+    return !brandId || linkedAssetIds.has(face.id.toLowerCase())
+  })
+}
 export interface BrandFontOption {
   label: string
   value: string

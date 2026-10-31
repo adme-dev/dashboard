@@ -9,7 +9,7 @@ import { BRAND_COLOR_ROLES, BRAND_FONT_ROLES, normaliseHex, brandFontSelection }
 import { parseBannerFontTags as parseFontTags } from '~~/shared/banner/fonts'
 import { bannerFontFamily } from '~/utils/banner-font-family'
 import { createBannerUploadSession } from '~/utils/bannerUpload'
-import { brandFontOptions, fontOptionIncludes } from '~/utils/banner-brand-font-options'
+import { brandFontOptions, fontOptionIncludes, selectableBrandKitFontFaces } from '~/utils/banner-brand-font-options'
 import { motorstackBrandId } from '~~/shared/bannerBrandGuides'
 import { brandStyleProfile } from '~~/shared/bannerBrandProfiles'
 import { chooseMotorstackPreview, type MotorstackPreviewCatalog } from '~/utils/banner-brand-preview-media'
@@ -104,6 +104,9 @@ async function refreshAfterMotorStackImport() {
   }
 }
 const fontGroups = computed(() => {
+  const brandId = motorstackBrandId(form.sourceUrl)
+  const linkedAssetIds = new Set(form.fonts.flatMap(font => font.assets?.map(asset => asset.id.toLowerCase()) || []))
+  const selectableFonts = selectableBrandKitFontFaces(customFonts.value, brandId, linkedAssetIds)
   const sourceNames = new Map<string, string>()
   for (const kit of brandKits.value) {
     if (!kit.sourceUrl?.startsWith('https://oem-variants.pages.dev/api/mcp#brand=')) continue
@@ -112,21 +115,26 @@ const fontGroups = computed(() => {
       if (brandId && !sourceNames.has(brandId)) sourceNames.set(brandId, kit.name)
     } catch { /* An older malformed source label must not hide a usable font. */ }
   }
-  const groups = brandFontOptions(customFonts.value, sourceNames)
+  const groups = brandFontOptions(selectableFonts, sourceNames)
+  if (brandId) {
+    const provenance = ` · ${sourceNames.get(brandId) || brandId} · MotorStack`
+    for (const group of groups) group.label = group.label.replace(provenance, '')
+  }
   for (const font of form.fonts) {
     if (!font.assets?.length || groups.some(group => fontOptionIncludes(group, font))) continue
-    if (font.assets.every(asset => customFonts.value.some(face => face.id.toLowerCase() === asset.id.toLowerCase()))) {
+    if (font.assets.every(asset => selectableFonts.some(face => face.id.toLowerCase() === asset.id.toLowerCase()))) {
       groups.push({ label: `${font.family} · Saved kit files`, value: `saved:${font.role}`, family: font.family, assets: font.assets.map(asset => ({ ...asset })) })
     }
   }
   return groups
 })
-const missingFontAssets = computed(() => !fontLoading.value && form.fonts.some(font => font.assets?.some(asset => !customFonts.value.some(face => face.id.toLowerCase() === asset.id.toLowerCase()))))
+const missingFontAssets = computed(() => !fontLoading.value && form.fonts.some(font => font.assets?.some(asset => !fontGroups.value.some(group => group.assets.some(face => face.id.toLowerCase() === asset.id.toLowerCase())))))
+const availableLibraryFonts = computed(() => allFonts.value.filter(font => font.category !== 'custom' && (!previewBrandId.value || form.fonts.some(saved => saved.family === font.family))))
 const fontItems = computed(() => [
   ...form.fonts.filter(font => !font.assets?.length && !allFonts.value.some(item => item.category !== 'custom' && item.family === font.family)).map(font => ({ label: `${font.family} · ${detectedFontFamilies.value.includes(font.family) ? 'Detected font — upload file or choose available font' : 'Saved family — upload file or choose available font'}`, value: `library:${font.family}` })),
   ...form.fonts.filter(font => font.assets?.length && !fontGroups.value.some(group => fontOptionIncludes(group, font))).map(font => ({ label: `${font.family} · Linked font unavailable`, value: `saved:${font.role}`, disabled: true })),
   ...fontGroups.value.map(group => ({ label: group.label, value: group.value })),
-  ...allFonts.value.filter(font => font.category !== 'custom').map(font => ({ label: font.family, value: `library:${font.family}` }))
+  ...availableLibraryFonts.value.map(font => ({ label: font.family, value: `library:${font.family}` }))
 ])
 function fontOption(role: BrandFontRole) {
   const font = fontFor(role)
@@ -672,7 +680,7 @@ function kitMenu(kit: BannerBrandKit) {
               <h2 class="text-base font-bold">
                 {{ editing ? 'Edit brand kit' : 'New brand kit' }}
               </h2>
-              <p v-if="form.sourceUrl" class="text-xs text-(--ui-text-muted)">
+              <p v-if="form.sourceUrl && !previewBrandId" class="text-xs text-(--ui-text-muted)">
                 Extracted from {{ form.sourceUrl }}
               </p>
             </div>
@@ -709,7 +717,7 @@ function kitMenu(kit: BannerBrandKit) {
                     Banner example
                   </h3>
                   <p class="text-xs text-muted">
-                    Real kit colours, fonts and buttons with MotorStack vehicle imagery when available.
+                    See this kit's colours, type, buttons and vehicle imagery in a sample banner.
                   </p>
                 </div>
                 <div class="grid grid-cols-1 @lg:grid-cols-[minmax(0,1fr)_170px] gap-4 items-start">
@@ -730,7 +738,7 @@ function kitMenu(kit: BannerBrandKit) {
                   </div>
                 </div>
                 <p v-if="previewLoading" class="text-xs text-muted">
-                  Loading a MotorStack vehicle image…
+                  Loading a vehicle image…
                 </p>
                 <p v-else-if="previewBrandId && !previewImage" class="text-xs text-muted">
                   No vehicle image is available for this brand; the layout uses its brand surface.
@@ -886,7 +894,7 @@ function kitMenu(kit: BannerBrandKit) {
                   :description="`${unavailableFonts.map(font => font.family).join(', ')}: detected names only. Upload the font files or choose an available font before using them in artwork.`"
                 />
                 <UAlert v-if="fontError" color="error" :description="fontError" />
-                <UAlert v-else-if="missingFontAssets" color="warning" description="A linked font is unavailable for this client. Choose a permitted font or restore the original client before saving. Existing files have not been moved." />
+                <UAlert v-else-if="missingFontAssets" color="warning" description="A linked font is unavailable for this kit. Choose one of this kit's available faces before saving. Existing files have not been moved." />
                 <div v-for="role in BRAND_FONT_ROLES" :key="role.role" class="space-y-3 border-b border-default pb-4">
                   <div class="grid grid-cols-1 @lg:grid-cols-[minmax(0,1fr)_9rem] gap-4">
                     <UFormField :label="`${role.label} font`" :help="role.hint">

@@ -1,8 +1,15 @@
 import { describe, expect, it } from 'vitest'
-import { brandFontOptions, fontOptionIncludes } from '../../app/utils/banner-brand-font-options'
+import { brandFontOptions, fontOptionIncludes, selectableBrandKitFontFaces } from '../../app/utils/banner-brand-font-options'
 
 const face = (id: string, weight: number, brand = 'gwm') => ({ id, name: 'Montserrat', clientId: null, tags: [`weight:${weight}`, `motorstack-brand:${brand}`] })
 describe('brand font picker identities', () => {
+  it('shows only the current OEM files and unbranded files already linked to that kit', () => {
+    const own = face('a', 400, 'gwm')
+    const foreign = face('b', 400, 'kia')
+    const shared = { id: 'c', name: 'Open Sans', clientId: null, tags: ['weight:400'] }
+    expect(selectableBrandKitFontFaces([own, foreign, shared], 'gwm', new Set(['c'])).map(item => item.id)).toEqual(['a', 'c'])
+    expect(selectableBrandKitFontFaces([own, foreign, shared], null, new Set()).map(item => item.id)).toEqual(['c'])
+  })
   it('separates two OEMs with equal family and weight into named choices', () => {
     const choices = brandFontOptions([face('a', 400), face('b', 400, 'kia')], new Map([['gwm', 'GWM'], ['kia', 'Kia']]))
     expect(choices.map(choice => choice.label)).toEqual(['Montserrat · GWM · MotorStack', 'Montserrat · Kia · MotorStack'])

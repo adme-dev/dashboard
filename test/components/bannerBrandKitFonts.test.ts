@@ -49,7 +49,7 @@ async function mount(options: { fonts?: CustomFont[], kits?: BannerBrandKit[], e
   app.component('USlideover', overlay)
   app.component('UModal', overlay)
   app.component('UAlert', Vue.defineComponent({ props: ['description'], setup: (props, { slots }) => () => Vue.h('aside', [props.description, slots.default?.()]) }))
-  for (const name of ['UIcon', 'UTooltip', 'UDropdownMenu', 'BannerBrandKitPreview', 'USwitch', 'UTextarea', 'UTabs', 'UBadge']) app.component(name, Vue.defineComponent({ setup: (_props, { slots }) => () => Vue.h('div', slots.default?.()) }))
+  for (const name of ['UIcon', 'UTooltip', 'UDropdownMenu', 'BannerBrandKitPreview', 'BannerBrandKitIdentity', 'BannerBrandStyleGuide', 'USwitch', 'UTextarea', 'UTabs', 'UBadge']) app.component(name, Vue.defineComponent({ setup: (_props, { slots }) => () => Vue.h('div', slots.default?.()) }))
   app.mount(host)
   await settle()
   if (!options.kits) {
@@ -109,7 +109,7 @@ describe('brand kit font form', () => {
     expect(refreshFonts).toHaveBeenCalledTimes(previousRefreshes + 1)
     expect(api.mock.calls.filter(call => call[0] === '/api/agency/banner-studio/brand-kits' && !call[1]?.method)).toHaveLength(2)
   })
-  it('keeps two OEM uploads with the same family and weight selectable and preserves exact IDs on edit/save', async () => {
+  it('shows only the current OEM face and preserves its exact ID on edit/save', async () => {
     const shared = (brand: string, id: string): CustomFont => ({ ...face(400), id, clientId: null, name: 'Montserrat', tags: ['font', 'weight:400', `motorstack-brand:${brand}`] })
     const first = shared('gwm', '11111111-1111-4111-8111-111111111111')
     const second = shared('kia', '22222222-2222-4222-8222-222222222222')
@@ -121,13 +121,17 @@ describe('brand kit font form', () => {
     })
     const kits = [kit('gwm', 'GWM OEM', first), kit('kia', 'Kia OEM', second)]
     const { api } = await mount({ fonts: [first, second], kits })
-    ;(host.querySelectorAll('.cursor-pointer')[1] as HTMLElement).click()
+    host.querySelector<HTMLButtonElement>('button[aria-label="Edit Kia OEM"]')!.click()
     await settle()
-    expect(host.textContent).toContain('Montserrat · GWM OEM · MotorStack')
-    expect(host.textContent).toContain('Montserrat · Kia OEM · MotorStack')
+    expect(host.textContent).not.toContain('Extracted from https://oem-variants.pages.dev')
+    expect(host.textContent).not.toContain('Montserrat · GWM OEM · MotorStack')
+    expect(host.textContent).not.toContain('Montserrat · Kia OEM · MotorStack')
     expect(host.textContent).not.toContain('Linked font unavailable')
     const heading = host.querySelector('[data-field="Heading font"]')!
     expect(heading.querySelector('[data-current]')?.getAttribute('data-current')).toBe('uploaded:agency:Montserrat:motorstack:kia')
+    expect(heading.querySelector('[data-value="uploaded:agency:Montserrat:motorstack:kia"]')?.textContent).toBe('Montserrat')
+    expect(heading.querySelector('[data-value="uploaded:agency:Montserrat:motorstack:gwm"]')).toBeNull()
+    expect(heading.querySelector('[data-value="library:Arial"]')).toBeNull()
     // Some select components emit the existing choice again on focus/open: this must be a no-op.
     ;(heading.querySelector('[data-value="uploaded:agency:Montserrat:motorstack:kia"]') as HTMLButtonElement).click()
     await settle()
