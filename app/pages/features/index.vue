@@ -161,7 +161,7 @@ const categories = [
     iconBg: 'bg-rose-50 dark:bg-rose-500/10',
     iconColor: 'text-rose-600',
     features: [
-      { title: 'Visual Editor', slug: 'banner-editor', icon: 'i-lucide-pen-tool', description: 'Work in light or dark mode across named layouts on a full-screen canvas, focus on a single size, animate with a full-width timeline, browse MotorStack OEM media, autosave edits to a saved viewer, and find projects in a visual library with searchable Clients, Folders and Tags tabs.' },
+      { title: 'Visual Editor', slug: 'banner-editor', icon: 'i-lucide-pen-tool', description: 'Work in light or dark mode across named layouts on a full-screen canvas, focus on a single size, animate with a full-width timeline, insert images, videos and audio, crop or replace images, load matching MotorStack brand fonts, autosave edits to a saved viewer, and find projects in a visual library with searchable Clients, Folders and Tags tabs.' },
       { title: 'Banner Library & Client Sharing', slug: 'banner-library-sharing', icon: 'i-lucide-share-2', description: 'Import supported TheBrief HTML5 designs, update imported drafts with a version backup, organize folders, and create expiring client preview links.' },
       { title: 'Animation & Timeline', slug: 'banner-animation', icon: 'i-lucide-clapperboard', description: 'Arrange slides with thumbnails, durations, looping and fade transitions. Drag animation blocks, preview a selected animation, and add keyframes at the playhead.' },
       { title: 'Motion Paths', slug: 'motion-paths', icon: 'i-lucide-spline', description: 'SVG-based motion path editor with draggable waypoints, curviness control, and auto-rotate.' },

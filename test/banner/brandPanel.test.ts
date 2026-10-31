@@ -2,10 +2,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import * as Vue from 'vue'
 import BrandPanel from '../../app/components/banner/BrandPanel.vue'
+import { useBannerProjectBrand } from '../../app/composables/useBannerProjectBrand'
 import { bannerFontFamily } from '../../app/utils/banner-font-family'
 
 const kits = [{ id: 'gwm', name: 'GWM Australia', clientId: null, logos: [{ name: 'GWM mark', url: '/logo.svg', variant: 'dark' }], colors: [{ role: 'primary', hex: '#e60012' }], fonts: [{ role: 'heading', family: 'Helvetica Now', weights: [700], assets: [{ id: '11111111-1111-4111-8111-111111111111', weight: 700 }] }] }]
-const state = Vue.reactive({ project: { clientId: 'dealer' }, duration: 8 })
+const state = Vue.reactive({ project: { id: 'brand-test', clientId: 'dealer' }, duration: 8 })
 const selectedLayer = Vue.ref<{ id: number, type: string }>({ id: 1, type: 'text' })
 const updateLayer = vi.fn(), addLayer = vi.fn(), applyBrandKit = vi.fn(), loadUsedFonts = vi.fn(), fetcher = vi.fn()
 const locked = Vue.ref(false)
@@ -33,6 +34,28 @@ async function click(text: string) {
 beforeEach(async () => {
   vi.clearAllMocks()
   for (const [name, value] of Object.entries(Vue)) vi.stubGlobal(name, value)
+  state.project.id = 'brand-test'
+  vi.stubGlobal('useState', () => Vue.ref({}))
+  vi.stubGlobal('useFetch', (url, options) => {
+    const data = Vue.ref([]), error = Vue.ref(), status = Vue.ref('idle')
+    let generation = 0
+    const refresh = async () => {
+      const token = ++generation
+      error.value = undefined
+      status.value = 'pending'
+      try {
+        const result = await fetcher(url, { query: Vue.toValue(options.query) })
+        if (token === generation) data.value = result
+      } catch (failure) {
+        if (token === generation) error.value = failure
+      } finally {
+        if (token === generation) status.value = error.value ? 'error' : 'success'
+      }
+    }
+    Vue.watch(options.query, refresh, { immediate: true })
+    return { data, error, status, refresh }
+  })
+  vi.stubGlobal('useBannerProjectBrand', useBannerProjectBrand)
   vi.stubGlobal('useBannerStudio', () => ({ state, selectedLayer, activeFormat: Vue.ref({ w: 300, h: 250 }), updateLayer, addLayer, applyBrandKit }))
   vi.stubGlobal('useBannerRealtime', () => ({ isLayerLockedByOther: () => locked.value }))
   vi.stubGlobal('useBannerFonts', () => ({ fetchCustomFonts: async () => {}, loadUsedFonts, getFont: () => undefined }))

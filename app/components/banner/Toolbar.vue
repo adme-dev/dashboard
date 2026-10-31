@@ -1,5 +1,6 @@
 <script setup lang="ts">
-const { state, addLayer, toggleMask } = useBannerStudio()
+const { state } = useBannerStudio()
+const { insertElement } = useBannerInsert()
 const emit = defineEmits<{ (e: 'switch-tab', tab: string): void }>()
 
 const tools = [
@@ -10,34 +11,20 @@ const tools = [
   { id: 'rect', icon: 'i-lucide-square', label: 'Rectangle', shortcut: 'R', group: 'create' },
   { id: 'button', icon: 'i-lucide-mouse-pointer-click', label: 'Button', shortcut: 'B', group: 'create' },
   { id: 'image', icon: 'i-lucide-image', label: 'Image', shortcut: 'I', group: 'create' },
+  { id: 'video', icon: 'i-lucide-video', label: 'Video', shortcut: '', group: 'create' },
   { id: 'audio', icon: 'i-lucide-music', label: 'Audio', shortcut: 'A', group: 'create' },
   { id: 'mask', icon: 'i-lucide-scan', label: 'Mask', shortcut: 'K', group: 'create' },
   { id: 'sep2', separator: true },
-  { id: 'comment', icon: 'i-lucide-message-circle', label: 'Comment', shortcut: 'M', group: 'mode' },
+  { id: 'comment', icon: 'i-lucide-message-circle', label: 'Comment', shortcut: 'M', group: 'mode' }
 ] as const
 
 type ToolbarTool = (typeof tools)[number]
 
-const LAYER_DEFAULTS: Record<string, Record<string, any>> = {
-  text: { type: 'text', name: 'Text', text: 'Text', fontSize: 24, fontWeight: 700, fontFamily: 'Barlow Condensed', color: '#fff', textAlign: 'left', w: 200, h: 40, animIn: 'fadeIn' },
-  rect: { type: 'rect', name: 'Rectangle', fillColor: 'rgba(255,255,255,0.1)', w: 120, h: 80, animIn: 'fadeIn' },
-  button: { type: 'button', name: 'Button', text: 'CLICK HERE', fontSize: 12, fontWeight: 800, fontFamily: 'Barlow Condensed', bgColor: '#e8c84a', textColor: '#000', borderRadius: 2, textTransform: 'uppercase', letterSpacing: '0.1em', w: 140, h: 36, animIn: 'slideU', delay: 1 },
-  mask: { type: 'rect', name: 'Mask', fillColor: 'rgba(255,255,255,0.3)', w: 120, h: 80, animIn: 'fadeIn' },
-}
-
 function handleToolClick(toolId: string) {
-  if (toolId === 'mask') {
-    const layer = addLayer(LAYER_DEFAULTS.mask)
-    // Auto-select all non-bg/audio/mask layers below as targets
-    toggleMask(layer.id)
-    state.activeTool = 'select'
-    return
-  }
-  if (toolId in LAYER_DEFAULTS) {
-    addLayer(LAYER_DEFAULTS[toolId])
-    state.activeTool = 'select'
-  } else if (toolId === 'image' || toolId === 'audio') {
-    emit('switch-tab', 'assets')
+  if (['text', 'rect', 'button', 'mask'].includes(toolId)) {
+    insertElement(toolId)
+  } else if (['image', 'video', 'audio'].includes(toolId)) {
+    emit('switch-tab', toolId)
     state.activeTool = 'select'
   } else if (toolId === 'comment') {
     state.activeTool = state.activeTool === 'comment' ? 'select' : 'comment'
@@ -70,7 +57,12 @@ function toolIcon(tool: ToolbarTool): string {
   <div class="w-10 shrink-0 bg-default border-r border-default flex flex-col items-center pt-2 gap-0.5">
     <template v-for="tool in tools" :key="tool.id">
       <div v-if="isSeparator(tool)" class="h-px w-6 bg-accented my-1" />
-      <UTooltip v-else :text="toolTooltip(tool)" :delay-duration="300" side="right">
+      <UTooltip
+        v-else
+        :text="toolTooltip(tool)"
+        :delay-duration="300"
+        side="right"
+      >
         <UButton
           :aria-label="'label' in tool ? tool.label : undefined"
           color="neutral"

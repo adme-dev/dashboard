@@ -2,8 +2,11 @@
 import type { BannerAsset } from '~/types/banner-studio'
 import type { AudioAsset } from '~/types'
 import { createBannerUploadSession } from '~/utils/bannerUpload'
+import { bannerAssetLayer, bannerAssetType, type BannerMediaType } from '~/utils/banner-media'
 
-const { addLayer, nextId, activeLayers } = useBannerStudio()
+const props = withDefaults(defineProps<{ mediaType?: BannerMediaType, selectionOnly?: boolean }>(), { mediaType: 'all', selectionOnly: false })
+const emit = defineEmits<{ select: [asset: BannerAsset] }>()
+const { addLayer, activeFormat, activeLayers, currentSlide, state } = useBannerStudio()
 const { decomposingAssetId, decomposeFromUrl } = useDecompose()
 const { openGenerate } = useAiImageGenerate()
 const toast = useToast()
@@ -17,7 +20,15 @@ const apiFetch = $fetch as <T = unknown>(request: string, options?: {
 const searchQuery = ref('')
 const motorstackOpen = ref(false)
 const isDragging = ref(false)
-const fileInput = ref<HTMLInputElement | null>(null)
+const fileInput = ref<{ inputRef?: HTMLInputElement } | null>(null)
+const uploading = ref(false)
+const acceptedTypes = computed(() => props.mediaType === 'all' ? 'image/*,video/*,audio/*' : `${props.mediaType}/*`)
+function openUpload() {
+  if (!uploading.value) fileInput.value?.inputRef?.click()
+}
+defineExpose({ openUpload, openMotorStack: () => {
+  motorstackOpen.value = true
+} })
 const uploadSession = createBannerUploadSession()
 
 // AI Image Suggestions
@@ -62,18 +73,13 @@ function applySuggestionToSearch(keyword: string) {
   searchQuery.value = keyword
 }
 
-const assetsData = ref<{ assets: BannerAsset[] }>({ assets: [] })
-async function refreshAssets() {
-  assetsData.value = await apiFetch<{ assets: BannerAsset[] }>('/api/agency/banner-studio/assets')
-    .catch(() => ({ assets: [] }))
-}
-refreshAssets()
-
+const { data: assetsData, error: assetsError, status: assetsStatus, refresh: refreshAssets } = useFetch<{ assets: BannerAsset[] }>('/api/agency/banner-studio/assets')
 const assets = computed(() => {
-  const list = assetsData.value?.assets || []
-  if (!searchQuery.value) return list
-  const q = searchQuery.value.toLowerCase()
-  return list.filter(a => a.name.toLowerCase().includes(q))
+  const q = searchQuery.value.trim().toLowerCase()
+  return (assetsData.value?.assets || []).filter((asset) => {
+    const type = bannerAssetType(asset)
+    return type && (props.mediaType === 'all' || type === props.mediaType) && (!q || asset.name.toLowerCase().includes(q))
+  })
 })
 
 function formatSize(bytes: number): string {
@@ -83,21 +89,17 @@ function formatSize(bytes: number): string {
 }
 
 function handleAssetClick(asset: BannerAsset) {
-  const isAudio = asset.mimeType?.startsWith('audio')
-  addLayer({
-    id: nextId(),
-    type: isAudio ? 'audio' : 'image',
-    src: asset.url,
-    name: asset.name,
-    x: isAudio ? 0 : 10,
-    y: isAudio ? 0 : 10,
-    w: isAudio ? 0 : 200,
-    h: isAudio ? 0 : 150,
-    fit: isAudio ? undefined : 'cover',
-    volume: isAudio ? 1 : undefined,
-    animIn: isAudio ? 'none' : 'fadeIn'
-  })
-  toast.add({ title: 'Asset added', description: `"${asset.name}" added`, color: 'success' })
+  if (props.selectionOnly) {
+    emit('select', asset)
+    return
+  }
+  if (!activeFormat.value) return
+  try {
+    addLayer({ ...bannerAssetLayer(asset, activeFormat.value), startTime: 0, endTime: currentSlide.value?.duration || state.duration })
+    toast.add({ title: 'Media added', description: asset.name, color: 'success' })
+  } catch (error) {
+    toast.add({ title: 'Could not add media', description: error instanceof Error ? error.message : 'Choose another file.', color: 'error' })
+  }
 }
 
 // Audio Studio — owned, generated audio (voiceover + music) reusable as a layer.
@@ -130,7 +132,6 @@ function addAudioLayer(a: AudioAsset) {
   }
   const name = audioLayerName(a)
   addLayer({
-    id: nextId(),
     type: 'audio',
     src: a.streamUrl,
     name,
@@ -140,24 +141,36 @@ function addAudioLayer(a: AudioAsset) {
     h: 0,
     fit: undefined,
     volume: 1,
-    animIn: 'none'
+    animIn: 'none',
+    animOut: 'none',
+    startTime: 0,
+    endTime: currentSlide.value?.duration || state.duration
   })
   toast.add({ title: 'Audio added', description: `"${name}" added`, color: 'success' })
 }
 
 async function uploadFiles(files: FileList | File[]) {
-  const outcomes = await uploadSession.attemptFiles(files, async (request) => {
-    return await apiFetch('/api/agency/banner-studio/assets/upload', {
-      method: 'POST',
-      ...request
+  if (uploading.value) return
+  const accepted = [...files].filter(file => props.mediaType === 'all' || file.type.startsWith(`${props.mediaType}/`))
+  if (accepted.length !== files.length) toast.add({ title: 'Choose matching media', description: `This picker accepts ${props.mediaType} files.`, color: 'warning' })
+  if (!accepted.length) return
+  uploading.value = true
+  try {
+    const outcomes = await uploadSession.attemptFiles(accepted, async (request) => {
+      return await apiFetch('/api/agency/banner-studio/assets/upload', {
+        method: 'POST',
+        ...request
+      })
     })
-  })
-  for (const outcome of outcomes) {
-    toast.add(outcome.ok
-      ? { title: 'Uploaded', description: `${outcome.file.name} uploaded`, color: 'success' }
-      : { title: 'Upload failed', description: `Failed to upload ${outcome.file.name}`, color: 'error' })
+    for (const outcome of outcomes) {
+      toast.add(outcome.ok
+        ? { title: 'Uploaded', description: `${outcome.file.name} uploaded`, color: 'success' }
+        : { title: 'Upload failed', description: `Failed to upload ${outcome.file.name}`, color: 'error' })
+    }
+    await refreshAssets()
+  } finally {
+    uploading.value = false
   }
-  await refreshAssets()
 }
 
 async function onFileSelect(e: Event) {
@@ -187,24 +200,33 @@ async function deleteAsset(asset: BannerAsset) {
 
 <template>
   <div class="p-3 space-y-3">
-    <!-- Search -->
-    <UInput
-      v-model="searchQuery"
-      icon="i-lucide-search"
-      placeholder="Search assets..."
-      size="xs"
+    <UFormField label="Search media">
+      <UInput
+        v-model="searchQuery"
+        icon="i-lucide-search"
+        placeholder="Search media..."
+        size="sm"
+        class="w-full"
+      />
+    </UFormField>
+    <UAlert
+      v-if="assetsError"
+      title="Could not load media"
+      color="error"
+      :actions="[{ label: 'Retry', onClick: () => refreshAssets() }]"
     />
 
     <UButton
+      v-if="mediaType === 'all' || mediaType === 'image'"
       label="Browse MotorStack"
       icon="i-lucide-images"
       color="neutral"
       variant="outline"
       size="xs"
       class="w-full justify-center"
-      @click="motorstackOpen = true"
+      @click="() => { motorstackOpen = true }"
     />
-    <BannerMotorStackMediaPicker v-model:open="motorstackOpen" @imported="refreshAssets" />
+    <BannerMotorStackMediaPicker v-model:open="motorstackOpen" @imported="() => refreshAssets()" />
 
     <!-- Upload Zone -->
     <div
@@ -213,24 +235,32 @@ async function deleteAsset(asset: BannerAsset) {
       @dragover.prevent="isDragging = true"
       @dragleave="isDragging = false"
       @drop.prevent="onDrop"
-      @click="fileInput?.click()"
     >
       <UIcon name="i-lucide-upload-cloud" class="w-6 h-6 text-(--ui-text-muted) mx-auto mb-1" />
-      <p class="text-xs text-(--ui-text-muted)">
-        Drop files or click to upload
+      <UButton
+        label="Upload media"
+        variant="ghost"
+        color="neutral"
+        size="sm"
+        :loading="uploading"
+        @click="openUpload"
+      />
+      <p class="text-xs text-muted">
+        Drop files here, then choose one below.
       </p>
-      <input
+      <UInput
         ref="fileInput"
         type="file"
         multiple
-        accept="image/*,video/*,audio/*"
+        :accept="acceptedTypes"
+        :disabled="uploading"
         class="hidden"
         @change="onFileSelect"
-      >
+      />
     </div>
 
     <!-- AI Actions -->
-    <div class="flex gap-1.5">
+    <div v-if="!selectionOnly" class="flex gap-1.5">
       <UButton
         label="Generate with AI"
         icon="i-lucide-sparkles"
@@ -243,7 +273,7 @@ async function deleteAsset(asset: BannerAsset) {
     </div>
 
     <!-- Audio Studio — owned voiceover + music -->
-    <div v-if="audioStudioAssets.length" class="space-y-1.5">
+    <div v-if="!selectionOnly && audioStudioAssets.length && (mediaType === 'all' || mediaType === 'audio')" class="space-y-1.5">
       <p class="text-[10px] font-semibold uppercase tracking-wider text-(--ui-text-muted)">
         Audio Studio
       </p>
@@ -260,7 +290,7 @@ async function deleteAsset(asset: BannerAsset) {
     </div>
 
     <!-- AI Image Suggestions -->
-    <div>
+    <div v-if="!selectionOnly && (mediaType === 'all' || mediaType === 'image')">
       <button
         class="w-full flex items-center gap-1.5 text-xs text-(--ui-primary) hover:text-(--ui-primary)/80 transition-colors py-1"
         @click="fetchImageSuggestions"
@@ -301,29 +331,44 @@ async function deleteAsset(asset: BannerAsset) {
         v-for="asset in assets"
         :key="asset.id"
         class="group relative rounded-md border border-(--ui-border) overflow-hidden cursor-pointer hover:ring-2 hover:ring-(--ui-primary)/30 transition-all"
-        @click="handleAssetClick(asset)"
       >
-        <div class="aspect-square bg-(--ui-bg) flex items-center justify-center">
-          <img
-            v-if="asset.mimeType?.startsWith('image') && (safeMediaUrl(asset.thumbnailUrl) || safeMediaUrl(asset.url))"
-            :src="safeMediaUrl(asset.thumbnailUrl) || safeMediaUrl(asset.url)"
-            :alt="asset.name"
-            class="w-full h-full object-cover"
-          >
-          <UIcon v-else-if="asset.mimeType?.startsWith('audio')" name="i-lucide-music" class="w-8 h-8 text-(--ui-text-muted)" />
-          <UIcon v-else name="i-lucide-file" class="w-8 h-8 text-(--ui-text-muted)" />
-        </div>
-        <div class="px-1.5 py-1 bg-(--ui-bg-elevated)">
-          <div class="text-[10px] font-medium truncate text-(--ui-text)">
-            {{ asset.name }}
+        <UButton
+          :aria-label="`${selectionOnly ? 'Choose' : 'Insert'} ${asset.name}`"
+          variant="ghost"
+          color="neutral"
+          class="w-full block p-0 rounded-none text-left"
+          @click="handleAssetClick(asset)"
+        >
+          <div class="aspect-square bg-(--ui-bg) flex items-center justify-center">
+            <img
+              v-if="asset.mimeType?.startsWith('image') && (safeMediaUrl(asset.thumbnailUrl) || safeMediaUrl(asset.url))"
+              :src="safeMediaUrl(asset.thumbnailUrl) || safeMediaUrl(asset.url)"
+              :alt="asset.name"
+              class="w-full h-full object-cover"
+            >
+            <video
+              v-else-if="asset.mimeType?.startsWith('video')"
+              :src="safeMediaUrl(asset.url)"
+              muted
+              playsinline
+              preload="metadata"
+              class="w-full h-full object-contain pointer-events-none"
+            />
+            <UIcon v-else-if="asset.mimeType?.startsWith('audio')" name="i-lucide-music" class="w-8 h-8 text-(--ui-text-muted)" />
+            <UIcon v-else name="i-lucide-file" class="w-8 h-8 text-(--ui-text-muted)" />
           </div>
-          <div class="text-[9px] text-(--ui-text-muted)">
-            {{ formatSize(asset.fileSize) }}
+          <div class="px-1.5 py-1 bg-(--ui-bg-elevated)">
+            <div class="text-[10px] font-medium truncate text-(--ui-text)">
+              {{ asset.name }}
+            </div>
+            <div class="text-[9px] text-(--ui-text-muted)">
+              {{ formatSize(asset.fileSize) }}
+            </div>
           </div>
-        </div>
+        </UButton>
         <!-- Decompose overlay (image assets only) -->
         <div
-          v-if="asset.mimeType?.startsWith('image')"
+          v-if="!selectionOnly && asset.mimeType?.startsWith('image')"
           class="absolute top-1 left-1 opacity-0 group-hover:opacity-100 transition-opacity"
         >
           <UButton
@@ -333,11 +378,11 @@ async function deleteAsset(asset: BannerAsset) {
             size="xs"
             :loading="decomposingAssetId === asset.id"
             :disabled="!!decomposingAssetId"
-            @click.stop="decomposeFromUrl(asset.url, asset.name, asset.id, 'asset')"
+            @click.stop="() => { decomposeFromUrl(asset.url, asset.name, asset.id, 'asset') }"
           />
         </div>
         <!-- Delete overlay -->
-        <div class="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div v-if="!selectionOnly" class="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity">
           <UButton
             icon="i-lucide-trash-2"
             variant="solid"
@@ -350,7 +395,7 @@ async function deleteAsset(asset: BannerAsset) {
     </div>
 
     <div v-else class="text-center py-6 text-xs text-(--ui-text-muted)">
-      No assets uploaded yet
+      {{ assetsStatus === 'pending' ? 'Loading media…' : searchQuery ? 'No matching media. Try another search.' : 'No media here yet. Upload a file or browse MotorStack.' }}
     </div>
   </div>
 </template>

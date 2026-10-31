@@ -272,6 +272,12 @@ export function useBannerStudio() {
       'textShadow', 'textStroke', 'src', 'fit', 'volume', 'muted', 'loopAudio',
       'bgColor', 'fillColor', 'borderColor', 'borderWidth', 'borderRadius',
     ]
+    // Source replacement clears the previous image crop in every linked layout.
+    // Crop-only edits remain local because layout frame ratios can differ.
+    if (Object.prototype.hasOwnProperty.call(props, 'src')) {
+      props = { imageCrop: undefined, ...props }
+      sharedFields.push('imageCrop')
+    }
     const shared = Object.fromEntries(sharedFields
       .filter(key => Object.prototype.hasOwnProperty.call(props, key))
       .map(key => [key, props[key]])) as Partial<Layer>
