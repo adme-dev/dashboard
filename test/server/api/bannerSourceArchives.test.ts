@@ -251,10 +251,15 @@ function fakeDb(options: { projectClient?: string | null, failComplete?: number 
         failComplete -= 1
         throw new Error('connection terminated')
       }
-      const found = rows.find(item => item.id === params[0])
+      // Mirrors `WHERE id = $1 AND stored_at IS NULL`: only the first completion applies.
+      const found = rows.find(item => item.id === params[0] && item.storedAt === null)
       if (!found) return null
-      found.storedAt ??= '2026-10-31T00:00:00Z'
+      Object.assign(found, { projectId: params[7] ?? null, status: params[8], holdReason: params[9] ?? null, storedAt: '2026-10-31T00:00:00Z' })
       return { ...found }
+    }
+    if (sql.includes('WHERE id = $1')) {
+      const found = rows.find(item => item.id === params[0])
+      return found ? { ...found } : null
     }
     if (sql.includes('source_design_hash = $2 AND sha256 = $3')) {
       const found = identityOf(params)
@@ -262,11 +267,8 @@ function fakeDb(options: { projectClient?: string | null, failComplete?: number 
     }
     throw new Error(`unexpected SQL: ${sql}`)
   })
-  execute.mockImplementation(async (sql: string, params: unknown[]) => {
-    if (!sql.startsWith('DELETE')) throw new Error(`unexpected SQL: ${sql}`)
-    const at = rows.findIndex(item => item.id === params[0] && item.storedAt === null)
-    if (at >= 0) rows.splice(at, 1)
-    return at >= 0 ? 1 : 0
+  execute.mockImplementation(async (sql: string) => {
+    throw new Error(`upload must not delete or execute: ${sql}`)
   })
   return rows
 }
@@ -339,12 +341,18 @@ describe('POST /source-archives', () => {
     expect(r2.put).not.toHaveBeenCalled()
   })
 
-  it('releases its own reservation when R2 rejects the bytes', async () => {
+  it('keeps a reservation retryable when R2 rejects the bytes', async () => {
     const rows = fakeDb()
-    const { event, r2 } = uploadEvent({}, new Uint8Array([...ZIP.slice(0, -1), 99]))
-    await expect(upload(event)).rejects.toMatchObject({ statusCode: 422 })
+    const r2 = bucket()
+    const rejected = uploadEvent({}, new Uint8Array([...ZIP.slice(0, -1), 99]), r2)
+    await expect(upload(rejected.event)).rejects.toMatchObject({ statusCode: 422 })
     expect(r2.objects.size).toBe(0)
-    expect(rows).toHaveLength(0)
+    expect(rows).toHaveLength(1)
+    expect(rows[0]!.storedAt).toBeNull()
+
+    await expect(upload(uploadEvent({}, ZIP, r2).event)).resolves.toMatchObject({ alreadyPresent: false, archive: { id: rows[0]!.id } })
+    expect(rows).toHaveLength(1)
+    expect(rows[0]!.storedAt).not.toBeNull()
   })
 
   it('keeps the reservation when the R2 outcome is unknown', async () => {
@@ -354,6 +362,74 @@ describe('POST /source-archives', () => {
     await expect(upload(event)).rejects.toThrow('network reset')
     expect(rows).toHaveLength(1)
     expect(execute).not.toHaveBeenCalled()
+  })
+
+  it('does not drop a reservation a concurrent writer is storing when another request fails', async () => {
+    const rows = fakeDb()
+    const r2 = bucket()
+    const store = r2.put.getMockImplementation()!
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    let reachedPut!: () => void
+    const atPut = new Promise<void>((resolve) => {
+      reachedPut = resolve
+    })
+    r2.put.mockImplementationOnce(async (...args: Parameters<typeof store>) => {
+      reachedPut()
+      await gate
+      return store(...args)
+    })
+
+    const good = upload(uploadEvent({}, ZIP, r2).event)
+    await atPut
+    const bad = uploadEvent({}, new Uint8Array([...ZIP.slice(0, -1), 99]), r2)
+    await expect(upload(bad.event)).rejects.toMatchObject({ statusCode: 422 })
+    expect(rows).toHaveLength(1)
+    release()
+
+    await expect(good).resolves.toMatchObject({ alreadyPresent: false })
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({ r2Key: `thebrief-sources/${CLIENT}/q1gd37z/${SHA}.zip` })
+    expect(rows[0]!.storedAt).not.toBeNull()
+    expect(r2.objects.has(rows[0]!.r2Key as string)).toBe(true)
+  })
+
+  it('lets the first of two concurrent uploads of one identity keep its project and status', async () => {
+    const rows = fakeDb({ projectClient: CLIENT })
+    const r2 = bucket()
+    const store = r2.put.getMockImplementation()!
+    let arrived = 0
+    let release!: () => void
+    const bothWriting = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    r2.put.mockImplementation(async (...args: Parameters<typeof store>) => {
+      arrived += 1
+      if (arrived === 2) release()
+      await bothWriting
+      return store(...args)
+    })
+
+    const held = uploadEvent({ status: 'held', holdReason: 'Unsupported layer type: video' }, ZIP, r2)
+    const imported = uploadEvent({ status: 'imported', projectId: PROJECT, holdReason: '' }, ZIP, r2)
+    const results = await Promise.all([upload(held.event), upload(imported.event)]) as Array<{
+      alreadyPresent: boolean
+      archive: { id: string, status: string, projectId: string | null }
+    }>
+
+    expect(r2.put).toHaveBeenCalledTimes(2)
+    expect(rows).toHaveLength(1)
+    expect(results.map(result => result.alreadyPresent).sort()).toEqual([false, true])
+    const winner = results.find(result => !result.alreadyPresent)!
+    const loser = results.find(result => result.alreadyPresent)!
+    expect(rows[0]).toMatchObject({ status: winner.archive.status, projectId: winner.archive.projectId })
+    expect(loser.archive).toMatchObject({ id: winner.archive.id, status: winner.archive.status, projectId: winner.archive.projectId })
+    // The guard lives in SQL; the fake above only mirrors it.
+    expect(queryOneFresh.mock.calls.some(([sql]) => /UPDATE[\s\S]*WHERE id = \$1 AND stored_at IS NULL/.test(String(sql)))).toBe(true)
+    // The first completion (the held upload) is preserved, not overwritten by the second.
+    expect(rows[0]).toMatchObject({ status: 'held', projectId: null, holdReason: 'Unsupported layer type: video' })
   })
 
   it('completes a reservation another upload left behind', async () => {
