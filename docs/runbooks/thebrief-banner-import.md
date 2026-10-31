@@ -29,3 +29,7 @@ Use every verified child package in the final merge. The source design hash must
 Use the project menu’s **Move to folder** action to change an existing design’s location, including **Unfiled**. The source-folder tag remains as provenance. **Share** opens the signed-in team viewer and can create a view-only client link. Client links can be opened by anyone who has the URL, expire after 7, 30 or 90 days, and can be revoked. Creating a client link does not send it to anyone automatically.
 
 Review/comment links and view-only client links use separate token formats. The public client endpoint returns current artwork and only the fonts needed to render it; it does not return comments or reviewer identities.
+
+## Reusing an imported design
+
+Once the imported draft has passed artwork review, use **Actions → Save as template** in the editor to capture all its layouts as one reusable set. The [template gallery](banner-template-gallery.md) can copy all layouts or a selected subset into a new draft, with a client and folder chosen before creation. Starting-format presets in the gallery are blank canvases; they do not import stock artwork from TheBrief.

@@ -1,9 +1,10 @@
-import { queryRows } from '~~/server/utils/db'
+import { queryRowsFresh } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
 import { CUSTOM_TEMPLATE_CATEGORIES } from '~~/server/utils/customTemplateUtils'
 
 export default defineEventHandler(async (event) => {
   await requireAuth(event)
+  setHeader(event, 'Cache-Control', 'private, no-store')
 
   const { search, category, tag, limit, offset } = getQuery(event) as {
     search?: string
@@ -14,10 +15,10 @@ export default defineEventHandler(async (event) => {
   }
 
   const conditions: string[] = []
-  const params: any[] = []
+  const params: unknown[] = []
   let paramIdx = 1
 
-  if (category && CUSTOM_TEMPLATE_CATEGORIES.includes(category as any)) {
+  if (category && CUSTOM_TEMPLATE_CATEGORIES.includes(category as typeof CUSTOM_TEMPLATE_CATEGORIES[number])) {
     conditions.push(`category = $${paramIdx}`)
     params.push(category)
     paramIdx++
@@ -42,7 +43,7 @@ export default defineEventHandler(async (event) => {
 
   params.push(rowLimit, rowOffset)
 
-  const rows = await queryRows(`
+  const rows = await queryRowsFresh(`
     SELECT id, name, category, description, tags,
       width, height, thumbnail_url AS "thumbnailUrl",
       preview_url AS "previewUrl",

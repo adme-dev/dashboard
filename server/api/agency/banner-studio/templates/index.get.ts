@@ -1,8 +1,9 @@
-import { queryRows } from '~~/server/utils/db'
+import { queryRowsFresh } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
 
 export default defineEventHandler(async (event) => {
   await requireAuth(event)
+  setHeader(event, 'Cache-Control', 'private, no-store')
 
   const query = getQuery(event)
   const { category, search, tag } = query
@@ -24,7 +25,7 @@ export default defineEventHandler(async (event) => {
       WHERE 1=1
     `
 
-    const params: any[] = []
+    const params: unknown[] = []
     let paramIndex = 1
 
     if (category && category !== 'all') {
@@ -49,8 +50,8 @@ export default defineEventHandler(async (event) => {
 
     sql += ' ORDER BY is_system DESC, usage_count DESC NULLS LAST, created_at DESC'
 
-    return await queryRows(sql, params)
-  } catch (error: any) {
+    return await queryRowsFresh(sql, params)
+  } catch (error) {
     console.error('Failed to fetch banner templates:', error)
     throw createError({ statusCode: 500, statusMessage: 'Failed to fetch banner templates' })
   }
