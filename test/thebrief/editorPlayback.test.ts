@@ -57,24 +57,29 @@ it.each(['keyframes', 'fadeIn', 'slideL', 'spinIn'] as const)('preserves static 
   document.body.append(artboard)
   const studio = useBannerTimeline()
   const timeline = studio.buildTimeline(artboard, [layer])
-  const expectRestingTransform = () => {
+  const expectTransform = (y = 0) => {
     expect(Number(gsap.getProperty(element, 'rotation'))).toBeCloseTo(90)
     expect(Number(gsap.getProperty(element, 'x'))).toBeCloseTo(0)
-    expect(Number(gsap.getProperty(element, 'y'))).toBeCloseTo(0)
+    expect(Number(gsap.getProperty(element, 'y'))).toBeCloseTo(y)
     expect(Number(gsap.getProperty(element, 'scaleX'))).toBeCloseTo(1)
     expect(element.style.transformOrigin).toBe('42.5px 1.5px')
     expect(element.style.transform).toContain('rotate(90deg)')
   }
+  const expectInitialTransform = () => {
+    expectTransform(animation === 'keyframes' ? -50 : 0)
+    expect(Number(gsap.getProperty(element, 'opacity'))).toBeCloseTo(0)
+  }
   try {
-    expectRestingTransform()
+    expectInitialTransform()
     timeline.totalTime(1.5, false)
-    expectRestingTransform()
+    expectTransform()
+    expect(Number(gsap.getProperty(element, 'opacity'))).toBeCloseTo(1)
     studio.stopTimeline()
-    expectRestingTransform()
+    expectTransform()
     const rebuilt = studio.buildTimeline(artboard, [layer])
-    expectRestingTransform()
+    expectInitialTransform()
     rebuilt.totalTime(1.5, false)
-    expectRestingTransform()
+    expectTransform()
     // Rotation edits must replace the old GSAP cache when rebuilding.
     layer.rotation = 45
     const edited = studio.buildTimeline(artboard, [layer])

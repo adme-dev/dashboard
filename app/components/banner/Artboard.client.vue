@@ -5,6 +5,8 @@ import { FORMATS } from '~/utils/banner-constants'
 import { computeClipPath } from '~/utils/banner-mask'
 import { catmullRomToSvgPath, motionPathToAbsolute, motionPathPositionAt, motionPathSliceSvg, tweenIndexForWaypoint } from '~/utils/banner-motion-path'
 import { SAFE_ZONE_MAP, FORMAT_SAFE_ZONE_MAP } from '~/utils/banner-safe-zones'
+import { useBannerTimeline } from '~/composables/useBannerTimeline'
+import { updateTimelineMasks } from '~/utils/bannerTimelineMasks'
 
 const props = defineProps<{
   formatKey: string
@@ -35,6 +37,39 @@ const layers = computed(() => {
   if (!artboard) return []
   return [...artboard.layers].sort((a, b) => a.zIndex - b.zIndex)
 })
+
+// Inactive layouts share the playhead, but never own the audio transport. Using
+// the same timeline renderer preserves imported opacity, scale and presence.
+const { buildTimelineForKey } = useBannerTimeline()
+let overviewTimeline: ReturnType<typeof buildTimelineForKey> | undefined
+function clearOverviewTimeline() {
+  overviewTimeline?.kill()
+  overviewTimeline = undefined
+}
+function seekOverview(time: number) {
+  if (!overviewTimeline) return
+  // Suppress completion callbacks: a silent preview must not start its own loop.
+  overviewTimeline.seek(time, true)
+  updateTimelineMasks(overviewTimeline)
+  // Suppressed callbacks also skip the video proxy's onUpdate. Scrub explicitly
+  // while paused so inactive layouts never become independent media players.
+  for (const layer of layers.value) {
+    if (layer.type !== 'video' && !(layer.type === 'bg' && layer.srcType === 'video')) continue
+    const video = artboardEl.value?.querySelector<HTMLVideoElement>(`#lyr-${layer.id} video`)
+    if (!video) continue
+    video.pause()
+    const videoTime = Math.max(0, time - (layer.startTime || 0))
+    video.currentTime = Math.min(videoTime, video.duration || videoTime)
+  }
+}
+watch([artboardEl, () => props.isActive, layers, () => state.sets[props.formatKey]?.playback], () => {
+  clearOverviewTimeline()
+  if (props.isActive || !artboardEl.value) return
+  overviewTimeline = buildTimelineForKey(artboardEl.value, layers.value, state.sets[props.formatKey]?.playback, false)
+  seekOverview(state.currentTime)
+}, { deep: true, flush: 'post' })
+watch(() => state.currentTime, seekOverview, { flush: 'post' })
+onBeforeUnmount(clearOverviewTimeline)
 
 // Compute clip-path for masked layers based on mask positions
 const maskClipPaths = computed(() => {
@@ -417,9 +452,7 @@ defineExpose({ artboardEl })
         mixBlendMode: layer.mixBlendMode || 'normal',
         pointerEvents: isActive && !layer.locked && layer.type !== 'bg' && layer.type !== 'audio' ? 'auto' : 'none',
         display: layer.hidden && layer.type !== 'audio' ? 'none' : undefined,
-        visibility: (layer.hidden && layer.type !== 'audio') || (layer.clipToPresence && (state.currentTime < layer.startTime || (state.currentTime >= layer.endTime && layer.endTime !== state.sets[formatKey]?.playback?.duration))) ? 'hidden' : 'visible',
         transformOrigin: layerTransformOrigin(layer.transformOrigin),
-        transform: layer.rotation ? `rotate(${layer.rotation}deg)` : undefined,
         cursor: isActive && !layer.locked && layer.type !== 'bg' && layer.type !== 'audio' ? 'move' : 'default',
         clipPath: maskClipPaths.get(layer.id) || undefined,
         outline: layer.isMask ? '2px dashed #e84aff' : undefined,

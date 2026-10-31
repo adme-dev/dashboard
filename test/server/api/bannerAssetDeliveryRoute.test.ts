@@ -101,12 +101,61 @@ describe('GET /api/public/banner-assets/:token', () => {
     expect(response.status).toBe(200)
     await expect(response.text()).resolves.toBe('image-bytes')
     expect(response.headers.get('content-type')).toBe('image/jpeg')
+    expect(response.headers.get('content-disposition')).toBeNull()
+    expect(response.headers.get('content-security-policy')).toBeNull()
     expect(response.headers.get('etag')).toBe('"etag-1"')
     expect(response.headers.get('cache-control')).toBe('private, max-age=300, must-revalidate')
     expect(response.headers.get('access-control-allow-origin')).toBe('*')
     expect(response.headers.get('x-content-type-options')).toBe('nosniff')
     expect(queryOne).toHaveBeenCalledWith(expect.stringContaining('FROM banner_assets'), [ASSET_ID])
     expect(bucket.get).toHaveBeenCalledWith(KEY, undefined)
+  })
+
+  it('delivers managed font bytes with CORS for an opaque sandbox origin', async () => {
+    const key = KEY.replace('launch-car.jpg', 'brand.ttf')
+    queryOne.mockResolvedValue({ id: ASSET_ID, r2Key: key, uploadedBy: UPLOADER_ID })
+    const font = { ...objectBody('font-bytes'), writeHttpMetadata(headers: Headers) {
+      headers.set('content-type', 'font/ttf')
+    } }
+    const bucket = { get: vi.fn(async () => font), head: vi.fn(async () => font) }
+    const handler = await loadHandler()
+    expect(handler).toBeTypeOf('function')
+    if (!handler) return
+    const response = await handler(await request({ bucket, headers: { origin: 'null' } }))
+    expect(response.status).toBe(200)
+    expect(response.headers.get('content-type')).toBe('font/ttf')
+    expect(response.headers.get('access-control-allow-origin')).toBe('*')
+    expect(response.headers.get('cross-origin-resource-policy')).toBe('cross-origin')
+    await expect(response.text()).resolves.toBe('font-bytes')
+    expect(bucket.get).toHaveBeenCalledWith(key, undefined)
+  })
+
+  it.each(['GET', 'HEAD'] as const)('neutralizes legacy font HTML metadata for %s delivery', async (method) => {
+    const key = KEY.replace('launch-car.jpg', 'payload.ttf')
+    queryOne.mockResolvedValue({ id: ASSET_ID, r2Key: key, uploadedBy: UPLOADER_ID, tags: ['font'] })
+    const font = { ...objectBody('<script>attack()</script>'), writeHttpMetadata(headers: Headers) {
+      headers.set('content-type', 'text/html')
+      headers.set('content-disposition', 'inline')
+    } }
+    const bucket = { get: vi.fn(async () => font), head: vi.fn(async () => font) }
+    const handler = await loadHandler()
+    expect(handler).toBeTypeOf('function')
+    if (!handler) return
+    const response = await handler(await request({ bucket, method }))
+    expect(response.headers.get('content-type')).toBe('font/ttf')
+    expect(response.headers.get('content-disposition')).toBe('attachment')
+    expect(response.headers.get('content-security-policy')).toBe('sandbox; default-src \'none\'')
+    expect(response.headers.get('x-content-type-options')).toBe('nosniff')
+  })
+
+  it('refuses a legacy font tag on a non-font object key', async () => {
+    queryOne.mockResolvedValue({ id: ASSET_ID, r2Key: KEY, uploadedBy: UPLOADER_ID, tags: ['font'] })
+    const bucket = { get: vi.fn(), head: vi.fn() }
+    const handler = await loadHandler()
+    expect(handler).toBeTypeOf('function')
+    if (!handler) return
+    await expect(handler(await request({ bucket }))).rejects.toMatchObject({ statusCode: 404 })
+    expect(bucket.head).not.toHaveBeenCalled()
   })
 
   it('serves HEAD metadata without reading the object body', async () => {
