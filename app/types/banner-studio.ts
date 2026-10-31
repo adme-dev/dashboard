@@ -139,6 +139,8 @@ export interface Layer {
   paddingV?: number
   // Rect
   fillColor?: string
+  /** Ellipse inscribed in the layer box (CSS 50% radii); borderRadius applies to rectangles only. */
+  rectShape?: 'rect' | 'ellipse'
   // Audio
   volume?: number       // 0-1, default 1
   muted?: boolean       // default false

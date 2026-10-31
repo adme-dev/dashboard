@@ -27,7 +27,7 @@ const layer = z.object({
   fontStyle: z.enum(['normal', 'italic']).optional(),
   lineBoxFontSize: number.positive().optional(), textAntialias: z.boolean().optional(), lineHeight: z.number().positive().max(10).optional(),
   textAlign: z.enum(['left', 'center', 'right', 'justify', 'start', 'end']).optional(), letterSpacing: css.optional(),
-  color: css.optional(), bgColor: css.optional(), fillColor: css.optional(),
+  color: css.optional(), bgColor: css.optional(), fillColor: css.optional(), rectShape: z.literal('ellipse').optional(),
   textShadow: z.string().max(100).regex(/^-?\d+(?:\.\d+)?px -?\d+(?:\.\d+)?px (?:\d+(?:\.\d+)?px|0) (?:#[0-9a-f]{3,6}|rgba?\(\d{1,3},\d{1,3},\d{1,3}(?:,(?:0|1|0?\.\d+))?\))$/i).optional(),
   textStroke: z.string().max(40).regex(/^\d+(?:\.\d+)?px #[0-9a-f]{6}$/i).optional(),
   src: local.optional(), fit: z.enum(['fill', 'contain', 'cover']).optional(),
@@ -89,6 +89,7 @@ export function parseTheBriefPackage(input: unknown): TheBriefPackage {
       if ((item.type === 'video') !== (mime === 'video/mp4')) throw new Error('Video layers must reference MP4 assets, and only video layers may')
       if (item.type !== 'video' && (item.mediaStart !== undefined || item.mediaEnd !== undefined || item.mediaLoop !== undefined)) throw new Error('Media clock is only valid on video layers')
       if (item.mediaEnd !== undefined && item.mediaEnd <= (item.mediaStart ?? 0)) throw new Error('Invalid video clip timing')
+      if (item.rectShape && (item.type !== 'rect' || item.borderRadius !== undefined)) throw new Error('Ellipse shape is only valid on rectangle layers without a corner radius')
       if (item.endTime <= item.startTime || item.endTime > result.source.duration) throw new Error('Invalid layer timing')
       for (const frames of Object.values(item.keyframes || {})) {
         if (frames?.some((f, i) => f.time > result.source.duration || (i > 0 && f.time < frames[i - 1]!.time))) throw new Error('Invalid animation timing')

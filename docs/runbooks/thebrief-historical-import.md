@@ -15,3 +15,9 @@ The original creation date is stored as a `source-created-date:YYYY-MM-DD` prove
 Muted, autoplaying TheBrief video converts to an editable native video layer. The original H.264 MP4 bytes are packaged unchanged; `package-import.mjs` uses `ffprobe` to confirm the codec, that the source clip end falls within the file, and that a cover-cropped frame matches the file's aspect. The layer keeps a media clock (`mediaStart`, `mediaEnd`, `mediaLoop`) shared by editor playback, scrubbing, overview and both HTML exporters (`shared/bannerVideoClock.ts`): clips play at normal speed, looping clips restart at their out-point and non-looping clips hold their last frame. TheBrief's cover-crop framing (an oversized `<video>` shifted inside a clipping box) becomes native cover fit with a focal point.
 
 These remain explicit holds: non-zero clip start, click-to-play, sound on hover, playback past the slide, audible video, delays that differ from the layer's presence, rotation or zoom beyond cover, rounded video and non-H.264 files. MP4 entries have a separate inspection allowance (21 MB per clip, 64 MB per archive); every other file keeps the standard limits, and a clip above the package asset limit is held.
+
+## Soft shapes
+
+A shape with uniform corner radii of 50% or more becomes a native ellipse (`rectShape: 'ellipse'`), and a static CSS filter on the shape, such as the `blur(8px)` TheBrief uses for ground shadows, carries across as the layer's `visualFilter`. Both are editable in the rectangle inspector and render identically in the editor and both HTML exporters. Partial-percentage or unequal corner radii, shape box shadows, shape borders and unsafe filters are held for an adapter rather than imported as a hard-edged rectangle.
+
+A successful upload is not a motion pass: compare every size with the original HTML5 export at entry, mid-point, just before the loop and just after it before marking a design verified.

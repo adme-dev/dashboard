@@ -709,8 +709,23 @@ export async function convertTheBriefHtml(html) {
         const contentCss = style(content)
         const radii = ['borderTopLeftRadius', 'borderTopRightRadius', 'borderBottomLeftRadius', 'borderBottomRightRadius'].map(key => contentCss[key] || '0px')
         let borderRadius
+        let rectShape
+        // Uniform percentages of 50% or more resolve to the inscribed ellipse in CSS.
+        // Any other corner geometry would be flattened, so it is held for an adapter.
+        const percent = /^(\d+(?:\.\d+)?)%$/.exec(radii[0])
         if (new Set(radii).size === 1 && Number.isFinite(px(radii[0])) && px(radii[0]) >= 0) borderRadius = px(radii[0])
-        else warnings.push(`${element.id}: unequal or non-pixel corner radii are not converted`)
+        else if (new Set(radii).size === 1 && percent && Number(percent[1]) >= 50) rectShape = 'ellipse'
+        else throw new Error(`${element.id}: unequal or partial-percentage corner radii need an adapter`)
+        const shapeFilters = []
+        for (let node = content; node && element.contains(node); node = node.parentElement) {
+          const nodeCss = style(node)
+          if (nodeCss.filter && nodeCss.filter !== 'none') shapeFilters.push(nodeCss.filter)
+          if (nodeCss.boxShadow && nodeCss.boxShadow !== 'none') throw new Error(`${element.id}: shape box shadow needs an adapter`)
+          if (node === element) break
+        }
+        const visualFilter = shapeFilters.join(' ')
+        if (visualFilter && !isSafeBannerImageFilter(visualFilter)) throw new Error('Unsupported static shape filter')
+        const shapeEffects = { ...(rectShape ? { rectShape } : {}), ...(visualFilter ? { visualFilter } : {}) }
         // happy-dom can omit a shorthand gradient from computed backgroundImage.
         // Read only the bounded inline gradient value in that case; the strict
         // composition checks below still decide whether it is representable.
@@ -743,24 +758,25 @@ export async function convertTheBriefHtml(html) {
             || !['', 'initial', '0% 0%'].includes(contentCss.backgroundPosition)
             || !['', 'initial', 'repeat'].includes(contentCss.backgroundRepeat)
             || !['', 'initial', 'normal'].includes(contentCss.getPropertyValue('background-blend-mode'))
-            || borders.some(width => width !== 0) || borderRadius === undefined) {
+            || borders.some(width => width !== 0)) {
             throw new Error('Unsupported gradient shape composition')
           }
           const color = contentCss.backgroundColor
           const fillColor = `${backgroundImage}${color && color !== 'initial' ? ` ${color}` : ''}`
-          layers.push({ ...layerBase, id: id++, type: 'rect', name: `Shape ${sourceId}`, rotation, borderRadius, fillColor })
+          layers.push({ ...layerBase, id: id++, type: 'rect', name: `Shape ${sourceId}`, rotation, ...(borderRadius !== undefined ? { borderRadius } : {}), ...shapeEffects, fillColor })
         } else if (backgroundImage && backgroundImage !== 'none') {
           const asset = /^url\(["']?([^"')]+)["']?\)$/.exec(backgroundImage)
           // The native image layer reproduces only a centred, borderless frame
           // with cover sizing. Other CSS backgrounds need their own adapter.
           if (!asset || contentCss.backgroundSize !== 'cover' || contentCss.backgroundPosition !== '50% 50%'
-            || contentCss.backgroundRepeat !== 'no-repeat' || borderRadius !== 0 || borders.some(width => width !== 0)
+            || contentCss.backgroundRepeat !== 'no-repeat' || borderRadius !== 0 || visualFilter || borders.some(width => width !== 0)
             || (contentCss.backgroundColor && !['transparent', 'rgba(0, 0, 0, 0)'].includes(contentCss.backgroundColor))) {
             throw new Error('Unsupported shape background composition')
           }
           layers.push({ ...layerBase, id: id++, type: 'image', name: `Shape ${sourceId}`, rotation, src: localAsset(asset[1]), fit: 'cover' })
         } else {
-          layers.push({ ...layerBase, id: id++, type: 'rect', name: `Shape ${sourceId}`, rotation, ...(borderRadius !== undefined ? { borderRadius } : {}), fillColor: contentCss.backgroundColor || 'transparent' })
+          if (borders.some(width => width !== 0)) throw new Error(`${element.id}: shape border needs an adapter`)
+          layers.push({ ...layerBase, id: id++, type: 'rect', name: `Shape ${sourceId}`, rotation, ...(borderRadius !== undefined ? { borderRadius } : {}), ...shapeEffects, fillColor: contentCss.backgroundColor || 'transparent' })
         }
       } else {
         throw new Error(`Unsupported layer type: ${type}`)
