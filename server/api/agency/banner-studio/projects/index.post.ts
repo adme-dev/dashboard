@@ -17,7 +17,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const folderId = await resolveBannerFolderId(body.folderId)
-  const importIdentity = readTheBriefProjectIdentity(clientId, tags)
+  const importIdentity = readTheBriefProjectIdentity(clientId, tags, canvasData)
   if (importIdentity) {
     // Deduplication can return saved canvas data, including on coordinator replay.
     // Check current write and client authority before either path can run.
@@ -33,7 +33,7 @@ export default defineEventHandler(async (event) => {
     const row = await executeGodModeBannerProjectCreation(event, async (db) => {
       if (importIdentity) {
         const existing = await findExistingTheBriefProject(db, importIdentity)
-        if (existing) return existing
+        if (existing) return { ...existing, importOutcome: 'existing' as const }
       }
       await validateCanvasFontAssets(canvasData, clientId || null, db)
       const result = await db.query(`
@@ -63,10 +63,11 @@ export default defineEventHandler(async (event) => {
       return result.rows[0]
     })
     if (!row) throw new Error('Banner project insert returned no row')
-    return row
+    // Lets the import dialog tell a new draft from a retry that resolved to a saved one.
+    return importIdentity && !('importOutcome' in row) ? { ...row, importOutcome: 'created' } : row
   } catch (error) {
     const status = (error as { statusCode?: number })?.statusCode
-    if (status === 400 || status === 403) throw error
+    if (status === 400 || status === 403 || status === 409) throw error
     console.error('Failed to create banner project:', error)
     throw createError({ statusCode: 500, statusMessage: 'Failed to create banner project' })
   }

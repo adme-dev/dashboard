@@ -42,7 +42,11 @@ async function transaction(_event: unknown, create: (db: GodModeTransactionDb) =
         return { rows: [] }
       }
       if (sql.includes('FROM agency_clients')) return { rows: [CLIENT_A, CLIENT_B].includes(String(params[0])) ? [{ id: params[0] }] : [] }
-      if (sql.includes('FROM banner_projects')) return { rows: rows.filter(row => row.clientId === params[0] && row.tags.includes('source:thebrief') && row.tags.some(tag => tag.toLowerCase() === params[1] || (params[2] !== null && tag.toLowerCase() === params[2]))).slice(0, 1) }
+      if (sql.includes('FROM banner_projects')) {
+        const matches = rows.filter(row => row.clientId === params[0] && row.tags.includes('source:thebrief') && row.tags.some(tag => tag.toLowerCase() === params[1] || (params[2] !== null && tag.toLowerCase() === params[2])))
+          .map(row => ({ ...row, sameExport: row.tags.some(tag => tag.toLowerCase() === params[1]) }))
+        return { rows: matches.sort((a, b) => Number(b.sameExport) - Number(a.sameExport)).slice(0, 1) }
+      }
       if (sql.includes('INSERT INTO banner_projects')) {
         await Promise.resolve()
         const row = { id: `project-${rows.length + 1}`, clientId: params[1] as string | null, name: String(params[0]), canvasData: JSON.parse(String(params[2])), tags: params[3] as string[] }
@@ -58,9 +62,10 @@ async function transaction(_event: unknown, create: (db: GodModeTransactionDb) =
     release?.()
   }
 }
-function request(clientId: string | null = CLIENT_A, sourceHash = hash, design?: string) {
-  return { body: { name: 'Imported banner', clientId, tags: ['source:thebrief', `source-sha256:${sourceHash}`, ...(design ? [`source-design:${design}`] : [])], canvasData: { source: 'original' } } } as never
+function request(clientId: string | null = CLIENT_A, sourceHash = hash, design?: string, canvasData: Record<string, unknown> = { source: 'original' }) {
+  return { body: { name: 'Imported banner', clientId, tags: ['source:thebrief', `source-sha256:${sourceHash}`, ...(design ? [`source-design:${design}`] : [])], canvasData } } as never
 }
+const withoutOutcome = ({ importOutcome: _outcome, ...project }: Record<string, unknown>) => project
 beforeEach(() => {
   rows.length = 0
   queries.length = 0
@@ -97,7 +102,8 @@ describe('TheBrief project deduplication', () => {
     rows[0].name = 'Edited name'
     rows[0].canvasData = { edited: true }
     const second = await createProject(request())
-    expect(second).toEqual({ ...first, name: 'Edited name', canvasData: { edited: true } })
+    expect(first.importOutcome).toBe('created')
+    expect(second).toEqual({ ...first, name: 'Edited name', canvasData: { edited: true }, importOutcome: 'existing' })
     expect(rows).toHaveLength(1)
     expect(coordinator).toHaveBeenCalledTimes(2)
   })
@@ -144,9 +150,9 @@ describe('TheBrief project deduplication', () => {
   it('returns the existing project for a fresh export of the same TheBrief design', async () => {
     const first = await createProject(request(CLIENT_A, hash, 'jr3q5lx'))
     const second = await createProject(request(CLIENT_A, 'c'.repeat(64), 'JR3Q5LX'))
-    expect(second).toEqual(first)
+    expect(withoutOutcome(second)).toEqual(withoutOutcome(first))
     expect(rows).toHaveLength(1)
-    expect(await createProject(request(CLIENT_B, 'c'.repeat(64), 'jr3q5lx'))).not.toEqual(first)
+    expect(withoutOutcome(await createProject(request(CLIENT_B, 'c'.repeat(64), 'jr3q5lx')))).not.toEqual(withoutOutcome(first))
     expect(rows).toHaveLength(2)
   })
 
@@ -157,6 +163,47 @@ describe('TheBrief project deduplication', () => {
       createProject(request(CLIENT_A, 'f'.repeat(64), 'm1wzrng'))
     ])
     expect(new Set(results.map(row => (row as { id: string }).id)).size).toBe(1)
+    expect(rows).toHaveLength(1)
+  })
+
+  it('resolves a retry after a lost response to the saved draft, whatever its idempotency key', async () => {
+    const sizes = { custom_300x250: { layers: [] }, custom_1080x1920: { layers: [] } }
+    const first = await createProject(request(CLIENT_A, hash, 'retry01', sizes))
+    // The client lost the response. A Retry sends a new key, so only source identity can match.
+    const retry = await createProject(request(CLIENT_A, hash, 'retry01', sizes))
+    expect(retry).toMatchObject({ id: first.id, importOutcome: 'existing' })
+    expect(rows).toHaveLength(1)
+    expect(queries.filter(sql => sql.includes('INSERT INTO banner_projects'))).toHaveLength(1)
+  })
+
+  it('matches a fresh export by client, design and size without touching an edited draft', async () => {
+    const first = await createProject(request(CLIENT_A, hash, 'sized01', { custom_300x250: { layers: [] }, custom_1080x1920: { layers: [] } }))
+    rows[0].canvasData = { custom_300x250: { edited: true }, custom_1080x1920: { edited: true } }
+    const subset = await createProject(request(CLIENT_A, 'c'.repeat(64), 'sized01', { custom_300x250: { layers: [] } }))
+    expect(subset).toMatchObject({ id: first.id, importOutcome: 'existing', canvasData: { custom_300x250: { edited: true } } })
+
+    // A fresh export that adds a size is neither merged in nor created as a second draft.
+    const failure = await createProject(request(CLIENT_A, 'd'.repeat(64), 'sized01', { custom_300x250: { layers: [] }, custom_1200x1200: { layers: [] } })).catch(error => error)
+    expect(failure).toMatchObject({ statusCode: 409, data: { projectId: first.id, missingSizes: ['custom_1200x1200'] } })
+    expect(failure.statusMessage).toContain('without 1200x1200')
+    expect(rows).toHaveLength(1)
+    expect(rows[0].canvasData).toEqual({ custom_300x250: { edited: true }, custom_1080x1920: { edited: true } })
+  })
+
+  it('returns the same draft for an identical checksum even when its sizes were edited away', async () => {
+    const first = await createProject(request(CLIENT_A, hash, 'trimmed', { custom_300x250: { layers: [] }, custom_1080x1920: { layers: [] } }))
+    rows[0].canvasData = { custom_300x250: { layers: [] } }
+    expect(await createProject(request(CLIENT_A, hash, 'trimmed', { custom_300x250: { layers: [] }, custom_1080x1920: { layers: [] } }))).toMatchObject({ id: first.id, importOutcome: 'existing' })
+  })
+
+  it('collapses a double submit of fresh exports of one design and size into one draft', async () => {
+    const sizes = { custom_300x250: { layers: [] } }
+    const results = await Promise.all([
+      createProject(request(CLIENT_A, 'd'.repeat(64), 'double1', sizes)),
+      createProject(request(CLIENT_A, 'e'.repeat(64), 'double1', sizes))
+    ])
+    expect(new Set(results.map(row => row.id)).size).toBe(1)
+    expect(results.map(row => row.importOutcome).sort()).toEqual(['created', 'existing'])
     expect(rows).toHaveLength(1)
   })
 

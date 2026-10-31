@@ -5,7 +5,7 @@ import { computed, createApp, defineComponent, h, nextTick, reactive, ref, shall
 const api = vi.fn()
 const readBatch = vi.fn()
 const refreshFonts = vi.fn(async () => [])
-vi.mock('~/utils/thebrief-import-batch', () => ({ readImportBatch: (...args: unknown[]) => readBatch(...args) }))
+vi.mock('~/utils/thebrief-import-batch', async importOriginal => ({ ...await importOriginal<object>(), readImportBatch: (...args: unknown[]) => readBatch(...args) }))
 let app: App | undefined, host: HTMLDivElement
 const clientId = '11111111-1111-4111-8111-111111111111'
 const hash = 'a'.repeat(64)
@@ -39,8 +39,11 @@ async function flush() {
 function button(label: string) {
   return [...host.querySelectorAll('button')].find(el => el.textContent?.trim() === label)!
 }
+function importButton() {
+  return [...host.querySelectorAll('button')].find(el => /^Import (\d+ )?ready/.test(el.textContent?.trim() || ''))!
+}
 async function click(label: string) {
-  const el = button(label)
+  const el = label === 'Import' ? importButton() : button(label)
   expect(el).toBeDefined()
   el.click()
   await flush()
@@ -58,14 +61,14 @@ async function mountModal() {
   props.open = true
   await flush()
   await click('Load packages')
-  await click('Import assigned drafts')
+  await click('Import')
 }
 beforeEach(() => {
   patched = false
   patchFailure = null
   imported = vi.fn()
   localStorage.clear()
-  readBatch.mockReset().mockImplementation(async () => [{ file: new File(['{}'], 'prepared.json'), pkg: structuredClone(pkg), clientId, folderId: '__unfiled__', status: 'Ready' }])
+  readBatch.mockReset().mockImplementation(async () => [{ file: new File(['{}'], 'prepared.json'), pkg: structuredClone(pkg), clientId, folderId: '__unfiled__', sourceCreatedDate: '' }])
   api.mockReset().mockImplementation(async (url: string, options?: { method?: string }) => {
     if (url.endsWith('/clients')) return [{ id: clientId, name: 'Blood Motor Group' }]
     if (url.endsWith('/folders')) return []
@@ -95,7 +98,8 @@ describe('explicit imported draft update', () => {
       throw new Error(`Unexpected request ${url}`)
     })
     await mountModal()
-    expect(host.textContent).toContain('verify the original creation date in TheBrief before importing')
+    expect(host.textContent).toContain('Verify the original creation date in TheBrief before importing')
+    expect(importButton().disabled).toBe(true)
     expect(api.mock.calls.some(([, options]) => options?.method)).toBe(false)
   })
 
@@ -115,7 +119,7 @@ describe('explicit imported draft update', () => {
     await mountModal()
     expect(posted).toBeUndefined()
     await click('Import undated drafts and backfill the date later')
-    await click('Import assigned drafts')
+    await click('Import')
     expect(posted?.tags).toContain('import:created-date-pending')
     expect(posted?.tags.some(tag => tag.startsWith('source-created-date:'))).toBe(false)
     expect(host.textContent).toContain('creation date pending backfill')

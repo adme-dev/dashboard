@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { readImportBatch } from '../../app/utils/thebrief-import-batch'
+import { importRowStates, readImportBatch, reconcileImportRows, summariseImport } from '../../app/utils/thebrief-import-batch'
 import type { BannerFolder } from '../../app/types/banner-studio'
 
 function file(name: string, hash: string, createdDate?: string, clientName?: string) {
@@ -16,11 +16,12 @@ describe('TheBrief batch selection', () => {
     const first = file('First', 'a')
     const second = file('Second', 'b')
     const rows = await readImportBatch([first], [], [])
-    Object.assign(rows[0], { clientId: 'manual-client', projectId: 'saved-project', status: 'Saved as draft' })
+    Object.assign(rows[0], { clientId: 'manual-client', projectId: 'saved-project', result: { state: 'saved', message: 'Saved as draft' } })
     const next = await readImportBatch([first, second], rows, [])
     expect(next[0]).toBe(rows[0])
-    expect(next[0]).toMatchObject({ clientId: 'manual-client', projectId: 'saved-project', status: 'Saved as draft' })
-    expect(next[1]).toMatchObject({ clientId: '__unassigned__', status: 'Ready for draft import' })
+    expect(next[0]).toMatchObject({ clientId: 'manual-client', projectId: 'saved-project', result: { state: 'saved' } })
+    expect(next[1]).toMatchObject({ clientId: '__unassigned__' })
+    expect(next[1]?.result).toBeUndefined()
   })
 
   it('prefills a verified source date without replacing a manual correction', async () => {
@@ -46,13 +47,15 @@ describe('TheBrief batch selection', () => {
     expect(next[0].pkg.source.sha256).toBe('b'.repeat(64))
   })
 
-  it('preserves the previous batch if an added file is invalid', async () => {
+  it('marks an invalid added file without discarding the rest of the batch', async () => {
     const first = file('First', 'a')
     const rows = await readImportBatch([first], [], [])
     rows[0].clientId = 'manual-client'
-    await expect(readImportBatch([first, new File(['broken'], 'broken.json')], rows, [])).rejects.toThrow()
-    expect(rows).toHaveLength(1)
-    expect(rows[0].clientId).toBe('manual-client')
+    const next = await readImportBatch([first, new File(['broken'], 'broken.json')], rows, [])
+    expect(next[0]).toBe(rows[0])
+    expect(next[0]?.clientId).toBe('manual-client')
+    expect(next[1]).toMatchObject({ invalidReason: 'Not a readable JSON package' })
+    expect(next[1]?.pkg).toBeUndefined()
   })
 
   it('removes deselected files and enforces the batch limit', async () => {
@@ -71,5 +74,38 @@ describe('TheBrief batch selection', () => {
     rows[0]!.folderId = '__unfiled__'
     expect((await readImportBatch([source], rows, [], folders))[0]?.folderId).toBe('__unfiled__')
     expect((await readImportBatch([file('Second', 'b')], [], [], [...folders, { ...folders[0]!, id: 'duplicate' }]))[0]?.folderId).toBe('__unfiled__')
+  })
+
+  it('classifies a mixed selection independently as ready, needs attention or invalid', async () => {
+    const clients = [{ id: 'blood', name: 'Blood' }]
+    const rows = await readImportBatch([
+      file('Ready', 'a', '2021-01-02', 'Blood'),
+      new File(['{"kind":"other"}'], 'wrong-kind.json'),
+      file('NoClient', 'b', '2021-01-02'),
+      file('Undated', 'c', undefined, 'Blood'),
+      file('Ready', 'd', '2021-01-02', 'Blood')
+    ], [], clients)
+    expect(rows).toHaveLength(5)
+    expect(rows[1]?.invalidReason).toMatch(/^Package format: kind /)
+    const states = importRowStates(rows)
+    expect(states.map(state => state.state)).toEqual(['ready', 'invalid', 'attention', 'attention', 'attention'])
+    expect(states[2]?.message).toContain('Choose the client')
+    expect(states[3]?.message).toContain('creation date')
+    expect(states[4]?.message).toContain('same TheBrief design')
+    expect(importRowStates(rows, { importUndated: true })[3]?.state).toBe('ready')
+    expect(summariseImport(states)).toMatchObject({ ready: 1, attention: 3, invalid: 1 })
+  })
+
+  it('restores saved progress from the library by checksum, or by design when its sizes are present', async () => {
+    const clients = [{ id: 'blood', name: 'Blood' }]
+    const rows = await readImportBatch([file('Same', 'a', '2021-01-02', 'Blood'), file('Fresh', 'b', '2021-01-02', 'Blood'), file('Grown', 'c', '2021-01-02', 'Blood'), file('New', 'e', '2021-01-02', 'Blood')], [], clients)
+    reconcileImportRows(rows, [
+      { id: 'p1', clientId: 'blood', tags: ['source:thebrief', `source-sha256:${'a'.repeat(64)}`], canvasData: {} },
+      { id: 'p2', clientId: 'blood', tags: ['source:thebrief', `source-sha256:${'f'.repeat(64)}`, 'source-design:fresh'], canvasData: { custom_300x250: {}, custom_1200x1200: {} } },
+      { id: 'p3', clientId: 'blood', tags: ['source:thebrief', `source-sha256:${'9'.repeat(64)}`, 'source-design:grown'], canvasData: { custom_1200x1200: {} } },
+      { id: 'p4', clientId: 'other', tags: ['source:thebrief', `source-sha256:${'e'.repeat(64)}`], canvasData: {} }
+    ])
+    expect(rows.map(row => [row.projectId, row.result?.state])).toEqual([['p1', 'saved'], ['p2', 'saved'], ['p3', 'attention'], [undefined, undefined]])
+    expect(rows[2]?.result?.message).toContain('without 300x250')
   })
 })
