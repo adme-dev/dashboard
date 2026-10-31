@@ -10,7 +10,7 @@ import { timelinePhases } from '~/utils/banner-timeline-phases'
 const { state, activeLayers, activeFormat, selectLayer, updateLayer, duplicateLayer, removeLayer, bringToFront, sendToBack, getMotionPathTweens, updateMotionPathTween, addMotionPathTween, removeMotionPathTween } = useBannerStudio()
 const { remoteLocks, isLayerLockedByOther } = useBannerRealtime()
 const { inspectorTab } = useBannerInspector()
-const { togglePlay, seekTo, restartTimeline, buildTimeline, pauseTimeline, currentLayerValue } = useBannerTimeline()
+const { togglePlay, seekTo, restartTimeline, buildTimeline, pauseTimeline, currentLayerValue, animationPreview } = useBannerTimeline()
 const { decomposingLayerId, decomposeFromUrl } = useDecompose()
 const { isEditing: isAiEditing, openEdit: openAiEdit } = useAiLayerEdit()
 const { isMerging, mergeLayers } = useMergeLayers()
@@ -919,8 +919,8 @@ onUnmounted(() => {
       <span class="text-sm font-semibold mr-2">Timeline</span>
       <span class="hidden sm:inline text-xs text-muted max-w-64 truncate">{{ layoutName(activeFormat || undefined) }} · {{ activeFormat?.w }} × {{ activeFormat?.h }}</span>
       <UButton
-        :aria-label="state.isPlaying ? 'Pause playback' : 'Play playback'"
-        :icon="state.isPlaying ? 'i-lucide-pause' : 'i-lucide-play'"
+        :aria-label="animationPreview ? 'Stop animation preview' : state.isPlaying ? 'Pause playback' : 'Play playback'"
+        :icon="animationPreview ? 'i-lucide-square' : state.isPlaying ? 'i-lucide-pause' : 'i-lucide-play'"
         variant="ghost"
         size="xs"
         @click="togglePlay"

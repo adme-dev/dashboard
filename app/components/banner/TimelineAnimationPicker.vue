@@ -10,7 +10,8 @@ const emit = defineEmits<{ dragStart: [event: MouseEvent] }>()
 const props = defineProps<{ layer: Layer, direction: 'in' | 'out', compact?: boolean, phase?: TimelinePhase }>()
 const { state, selectLayer, updateLayer } = useBannerStudio()
 const { inspectorTab } = useBannerInspector()
-const { pauseTimeline, seekTo, playTimeline, currentLayerValue } = useBannerTimeline()
+const { pauseTimeline, seekTo, currentLayerValue, previewAnimation, stopAnimationPreview, animationPreview } = useBannerTimeline()
+const isPreviewing = computed(() => animationPreview?.value?.layerId === props.layer.id)
 const open = ref(false)
 const tab = ref('presets')
 const search = ref('')
@@ -51,6 +52,7 @@ const pendingLabel = computed(() => pending.value === 'wordPop' ? 'Words Pop' : 
 watch(open, async (value) => {
   if (!value) {
     pending.value = null
+    if (isPreviewing.value) stopAnimationPreview()
     return
   }
   tab.value = (isKeyframe.value && !isMiddle.value) || isAudio.value ? 'build' : 'presets'
@@ -167,10 +169,12 @@ function addKeyframe() {
   state.selectedKeyframe = { layerId: props.layer.id, property: property.value, index: next.index }
 }
 function preview() {
-  pauseTimeline()
-  seekTo(Math.max(0, (props.phase?.start ?? props.layer.startTime ?? 0) - 0.1))
-  nextTick(() => playTimeline())
+  if (isPreviewing.value) stopAnimationPreview()
+  else previewAnimation(props.layer.id, props.phase ? { start: props.phase.start, end: props.phase.end } : undefined)
 }
+onBeforeUnmount(() => {
+  if (isPreviewing.value) stopAnimationPreview()
+})
 </script>
 
 <template>
@@ -406,8 +410,9 @@ function preview() {
         </div>
         <div class="flex shrink-0 items-center justify-between gap-2 border-t border-default p-3">
           <UButton
-            label="Preview"
-            icon="i-lucide-play"
+            :label="isPreviewing ? 'Stop preview' : 'Preview'"
+            :icon="isPreviewing ? 'i-lucide-square' : 'i-lucide-play'"
+            title="Preview only this animation"
             color="neutral"
             variant="soft"
             size="xs"

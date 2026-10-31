@@ -1,3 +1,4 @@
+import { ref, readonly, watch } from 'vue'
 import { bannerAnimationTiming } from '~/utils/banner-animation-timing'
 import { applyBannerPlayback, resolveBannerPlayback } from '~/utils/banner-playback'
 import gsap from 'gsap'
@@ -23,6 +24,8 @@ let masterTl: gsap.core.Timeline | null = null
 let lastArtboardEl: HTMLElement | null = null
 let lastLayers: Layer[] = []
 let timePoller: ReturnType<typeof setInterval> | null = null
+const animationPreviewState = ref<{ layerId: number, start: number, end: number } | null>(null)
+let animationPreviewSession: { timeline: gsap.core.Timeline, stop: () => void } | null = null
 
 // Keyframe property → GSAP property mapping
 const KF_GSAP_MAP: Record<KeyframeProperty, string> = {
@@ -429,7 +432,7 @@ function addMaskAnimation(tl: gsap.core.Timeline, el: HTMLElement, layer: Layer,
 }
 
 /** Add a layer's animation to a GSAP timeline (keyframes or preset) */
-function addLayerToTimeline(tl: gsap.core.Timeline, el: HTMLElement, layer: Layer, soloPathLayerId?: number | null, cycleEnd?: number) {
+function addLayerToTimeline(tl: gsap.core.Timeline, el: HTMLElement, layer: Layer, soloPathLayerId?: number | null, cycleEnd?: number, syncVideo = true) {
   if (layer.type === 'audio') {
     // Audio layers skip visual animation — only sync playback
     addAudioSync(tl, el, layer)
@@ -477,7 +480,7 @@ function addLayerToTimeline(tl: gsap.core.Timeline, el: HTMLElement, layer: Laye
     }
   }
 
-  addVideoSync(tl, el, layer)
+  if (syncVideo) addVideoSync(tl, el, layer)
 }
 
 /** Get the latest end time from a layer's keyframes */
@@ -501,6 +504,110 @@ export function useBannerTimeline() {
   }
 
   const { state, activeLayers } = useBannerStudio()
+
+  function stopAnimationPreview() {
+    animationPreviewSession?.stop()
+  }
+
+  /** Play one layer on a temporary canvas snapshot; the project transport stays paused. */
+  function previewAnimation(layerId: number, range?: { start: number, end: number }): boolean {
+    stopAnimationPreview()
+    if (!masterTl || !lastArtboardEl) return false
+    const layer = lastLayers.find(layer => layer.id === layerId)
+    if (!layer) return false
+    const start = Math.max(0, range?.start ?? layer.startTime ?? 0)
+    const end = range?.end ?? layer.endTime ?? getKeyframeEndTime(layer)
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return false
+    pauseTimeline()
+
+    const artboard = lastArtboardEl
+    const overlay = artboard.cloneNode(true) as HTMLElement
+    overlay.removeAttribute('id')
+    overlay.setAttribute('aria-hidden', 'true')
+    overlay.inert = true
+    overlay.dataset.bannerAnimationPreview = String(layerId)
+    Object.assign(overlay.style, {
+      position: 'absolute', left: '0', top: '0', margin: '0', pointerEvents: 'none',
+      zIndex: String(Math.max(20000, ...lastLayers.map(layer => layer.zIndex + 2)))
+    })
+    overlay.querySelectorAll('[data-testid="banner-selection"], [data-banner-animation-preview]').forEach(element => element.remove())
+    const sourceVideos = [...artboard.querySelectorAll('video')]
+    const positionVideos: Array<() => void> = []
+    overlay.querySelectorAll('video').forEach((video, index) => {
+      video.removeAttribute('autoplay')
+      video.muted = true
+      video.pause()
+      const time = sourceVideos[index]?.currentTime ?? 0
+      const position = () => {
+        if (!overlay.isConnected) return
+        try {
+          video.currentTime = time
+        } catch { /* Metadata can still be loading. */ }
+      }
+      video.addEventListener('loadedmetadata', position, { once: true })
+      positionVideos.push(position)
+    })
+    overlay.querySelectorAll('audio').forEach((audio) => {
+      audio.removeAttribute('autoplay')
+      audio.pause()
+    })
+    const element = overlay.querySelector<HTMLElement>(`#lyr-${layerId}`)
+    if (!element) return false
+    artboard.append(overlay)
+    // Seed clone transform caches from the paused source, including mask targets.
+    // This also preserves percentage offsets without relying on matrix reparsing.
+    for (const contextLayer of lastLayers) {
+      const source = artboard.querySelector<HTMLElement>(`#lyr-${contextLayer.id}`)
+      const copy = overlay.querySelector<HTMLElement>(`#lyr-${contextLayer.id}`)
+      if (!source || !copy || contextLayer.type === 'audio') continue
+      const frame: Record<string, number> = {}
+      for (const property of ['x', 'y', 'xPercent', 'yPercent', 'scaleX', 'scaleY', 'rotation', 'opacity']) {
+        const value = Number(gsap.getProperty(source, property))
+        if (Number.isFinite(value)) frame[property] = value
+      }
+      gsap.set(copy, { clearProps: 'transform' })
+      gsap.set(copy, frame)
+    }
+    positionVideos.forEach(position => position())
+    gsap.set(element, { clearProps: 'transform,opacity,visibility,clipPath' })
+    gsap.set(element, { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: layer.rotation || 0 })
+    let stopWatching = () => {}
+    const timeline = gsap.timeline({
+      paused: true,
+      onUpdate() {
+        if (animationPreviewSession?.timeline === timeline && timeline.time() >= end) finish()
+      },
+      onComplete() { finish() }
+    })
+    function finish() {
+      if (animationPreviewSession?.timeline !== timeline) return
+      animationPreviewSession = null
+      animationPreviewState.value = null
+      stopWatching()
+      timeline.pause(Math.min(timeline.time(), end), true)
+      disposeTimelineAudio(timeline)
+      timeline.kill()
+      overlay.querySelectorAll('audio, video').forEach(media => (media as HTMLMediaElement).pause())
+      overlay.remove()
+    }
+    animationPreviewSession = { timeline, stop: finish }
+    animationPreviewState.value = { layerId, start, end }
+    addLayerToTimeline(timeline, element, layer, null, state.sets[state.activeKey]?.playback?.duration, false)
+    // Keep masks in the frozen scene, updating only their clipping calculations.
+    for (const mask of lastLayers.filter(mask => mask.isMask && (mask.id === layerId || mask.maskTargetIds?.includes(layerId)))) {
+      const maskElement = overlay.querySelector<HTMLElement>(`#lyr-${mask.id}`)
+      if (maskElement) addMaskAnimation(timeline, maskElement, mask, lastLayers)
+    }
+    timeline.to({}, { duration: end }, 0)
+    timeline.addPause(end, finish)
+    renderInitialFrame(timeline)
+    timeline.seek(start, true)
+    updateTimelineMasks(timeline)
+    stopWatching = watch(() => [state.activeKey, state.selectedLayerId, state.project?.id, activeLayers.value], finish, { deep: true })
+    timeline.play()
+    syncTimelineAudio(timeline, true)
+    return true
+  }
 
   /** Clear all GSAP influence from layer elements so they return to natural Vue-rendered state */
   function clearGsap(artboardEl: HTMLElement, layers: Layer[]) {
@@ -601,6 +708,7 @@ export function useBannerTimeline() {
   }
 
   function playTimeline() {
+    stopAnimationPreview()
     if (!masterTl) return
     if (masterTl.repeat() !== -1 && masterTl.totalProgress() >= 1) {
       masterTl.totalTime(0)
@@ -613,6 +721,7 @@ export function useBannerTimeline() {
   }
 
   function pauseTimeline() {
+    stopAnimationPreview()
     if (!masterTl) return
     stopTimePoller()
     state.isPlaying = false
@@ -623,6 +732,10 @@ export function useBannerTimeline() {
   }
 
   function togglePlay() {
+    if (animationPreviewSession) {
+      stopAnimationPreview()
+      return
+    }
     if (state.isPlaying) {
       pauseTimeline()
     } else {
@@ -660,6 +773,7 @@ export function useBannerTimeline() {
 
   /** Stop: pause, rewind to 0 and return the canvas to its editable (un-animated) state */
   function stopTimeline() {
+    stopAnimationPreview()
     stopTimePoller()
     state.isPlaying = false
     state.currentTime = 0
@@ -672,6 +786,7 @@ export function useBannerTimeline() {
   }
 
   function restartTimeline() {
+    stopAnimationPreview()
     if (!masterTl) return
     pauseTimelineAudio(masterTl)
     masterTl.restart()
@@ -681,6 +796,7 @@ export function useBannerTimeline() {
   }
 
   function destroyTimeline({ preserveTime = false }: { preserveTime?: boolean } = {}) {
+    stopAnimationPreview()
     stopTimePoller()
     state.isPlaying = false
     // Read the exact transport position, which can be ahead of the UI poller.
@@ -720,6 +836,10 @@ export function useBannerTimeline() {
   }
 
   return {
+    animationPreview: readonly(animationPreviewState),
+    previewAnimation,
+    stopAnimationPreview,
+    get animationPreviewTimeline() { return animationPreviewSession?.timeline ?? null },
     currentLayerValue,
     buildTimeline,
     playTimeline,

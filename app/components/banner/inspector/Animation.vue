@@ -5,7 +5,8 @@ import type { AnimInType, AnimOutType, KeyframeProperty } from '~/types/banner-s
 import { hasKeyframes, presetToKeyframes } from '~/composables/useBannerTimeline'
 
 const { state, selectedLayer, updateLayer, copyAnimation, pasteAnimation, animClipboard } = useBannerStudio()
-const { seekTo, playTimeline, pauseTimeline } = useBannerTimeline()
+const { previewAnimation, stopAnimationPreview, animationPreview } = useBannerTimeline()
+const isPreviewing = computed(() => !!selectedLayer.value && animationPreview.value?.layerId === selectedLayer.value.id)
 
 function set(key: string, val: any) {
   if (!selectedLayer.value) return
@@ -64,11 +65,12 @@ function selectEaseOut(id: string) {
 // Preview the layer's animation
 function previewLayer() {
   if (!selectedLayer.value) return
-  pauseTimeline()
-  const startAt = Math.max(0, (selectedLayer.value.startTime || 0) - 0.1)
-  seekTo(startAt)
-  nextTick(() => playTimeline())
+  if (isPreviewing.value) stopAnimationPreview()
+  else previewAnimation(selectedLayer.value.id)
 }
+onBeforeUnmount(() => {
+  if (isPreviewing.value) stopAnimationPreview()
+})
 
 // ═══ KEYFRAME MODE ═══
 const KF_PROP_LABELS: Record<KeyframeProperty, string> = {
@@ -179,7 +181,7 @@ function deleteSelectedKeyframe() {
       <UButton size="xs" variant="soft" icon="i-lucide-copy" @click="copyAnimation">Copy</UButton>
       <UButton size="xs" variant="soft" icon="i-lucide-clipboard-paste" :disabled="!animClipboard" @click="pasteAnimation">Paste</UButton>
       <div class="flex-1" />
-      <UButton size="xs" variant="soft" icon="i-lucide-play" @click="previewLayer">Preview</UButton>
+      <UButton size="xs" variant="soft" :icon="isPreviewing ? 'i-lucide-square' : 'i-lucide-play'" @click="previewLayer">{{ isPreviewing ? 'Stop preview' : 'Preview' }}</UButton>
     </div>
 
     <div v-if="selectedLayer.wordPop" class="rounded-md border border-primary/30 bg-primary/10 p-2.5 text-xs">

@@ -42,7 +42,7 @@ const {
 } = useBannerStudio()
 
 // Timeline integration
-const { togglePlay, restartTimeline, stopTimeline, buildTimeline, destroyTimeline, pauseTimeline } = useBannerTimeline()
+const { togglePlay, restartTimeline, stopTimeline, buildTimeline, destroyTimeline, pauseTimeline, animationPreview } = useBannerTimeline()
 const canvasRef = ref<any>(null)
 
 // Realtime collaboration
@@ -757,10 +757,10 @@ const { activeSize } = useBannerFileSize()
 
       <!-- Timeline controls -->
       <div class="flex gap-0.5">
-        <UTooltip :text="state.isPlaying ? 'Pause' : 'Play'" :kbds="['space']">
+        <UTooltip :text="animationPreview ? 'Stop animation preview' : state.isPlaying ? 'Pause' : 'Play'" :kbds="['space']">
           <UButton
-            :aria-label="state.isPlaying ? 'Pause playback' : 'Play playback'"
-            :icon="state.isPlaying ? 'i-lucide-pause' : 'i-lucide-play'"
+            :aria-label="animationPreview ? 'Stop animation preview' : state.isPlaying ? 'Pause playback' : 'Play playback'"
+            :icon="animationPreview ? 'i-lucide-square' : state.isPlaying ? 'i-lucide-pause' : 'i-lucide-play'"
             :variant="state.isPlaying ? 'solid' : 'ghost'"
             size="xs"
             @click="togglePlay"
