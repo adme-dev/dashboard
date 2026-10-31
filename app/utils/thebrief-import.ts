@@ -39,7 +39,7 @@ const layer = z.object({
 const binary = z.object({ path: local, fileName: z.string().max(150).regex(/^[\w .-]+$/), sha256: sha, base64: z.string().max(28 * 1024 * 1024).regex(/^[A-Za-z0-9+/]*={0,2}$/), mimeType: z.string().max(100) })
 const schema = z.object({
   kind: z.literal('xeroflow-thebrief-import'), version: z.literal(1), name: z.string().trim().min(1).max(200),
-  source: z.object({ designHash: z.string().regex(/^[\w-]+$/).max(100), sha256: sha, folder: z.string().max(250), duration: z.number().positive().max(300), loopCount: z.number().int().min(0).max(1000) }),
+  source: z.object({ designHash: z.string().regex(/^[\w-]+$/).max(100), sha256: sha, folder: z.string().max(250), duration: z.number().positive().max(300), loopCount: z.number().int().min(0).max(1000), createdDate: z.iso.date().optional() }),
   canvasData: z.record(z.string(), z.object({ layers: z.array(layer).min(1).max(200), bgColor: css.optional(), slides: z.array(z.object({ id: z.string().max(100).regex(/^[a-zA-Z0-9:_-]+$/), name: z.string().min(1).max(100), duration: z.number().finite().min(0.1).max(300) }).strict()).min(1).max(50).optional(), playback: z.object({ duration: z.number().positive().max(300), loopCount: z.number().int().min(0).max(1000) }).optional() })),
   warnings: z.array(z.string().max(1000)).max(250),
   assets: z.array(binary.extend({ mimeType: z.enum(['image/png', 'image/jpeg', 'image/webp', 'audio/mpeg']) })).max(100),
@@ -100,10 +100,12 @@ export function suggestImportClient(title: string, clients: Array<{ id: string, 
   return matches.length === 1 ? matches[0]!.id : null
 }
 
-export function importTags(pkg: TheBriefPackage): string[] {
+export function importTags(pkg: TheBriefPackage, createdDate = pkg.source.createdDate): string[] {
+  if (createdDate && !z.iso.date().safeParse(createdDate).success) throw new Error('Invalid TheBrief creation date')
   return ['source:thebrief', `source-design:${pkg.source.designHash}`, `source-sha256:${pkg.source.sha256}`,
     `source-folder:${pkg.source.folder}`, `category:${pkg.source.folder.split('/').at(-1) || 'Imported'}`,
-    `source-duration:${pkg.source.duration}`, `source-loops:${pkg.source.loopCount}`, 'import:needs-review']
+    `source-duration:${pkg.source.duration}`, `source-loops:${pkg.source.loopCount}`,
+    ...(createdDate ? [`source-created-date:${createdDate}`] : []), 'import:needs-review']
 }
 
 export async function packageFile(asset: { base64: string, sha256: string, fileName: string, mimeType: string }): Promise<File> {

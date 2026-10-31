@@ -152,13 +152,14 @@ describe('browser Banner Studio PATCH for the marketing-management portfolio', (
   })
 
   it('preserves provenance tags exactly and never accepts supplied provenance', async () => {
-    m.project!.tags = ['source:thebrief', SHA, 'old']
+    m.project!.tags = ['source:thebrief', SHA, 'source-created-date:2020-04-05', 'old']
     await expect(call(patch, { tags: ['source:thebrief'] })).rejects.toMatchObject({ statusCode: 400 })
     await expect(call(patch, { tags: [`source-sha256:${'b'.repeat(64)}`] })).rejects.toMatchObject({ statusCode: 400 })
+    await expect(call(patch, { tags: ['source-created-date:2026-10-31'] })).rejects.toMatchObject({ statusCode: 400 })
     await expect(call(patch, { tags: 'not-a-list' })).rejects.toMatchObject({ statusCode: 400 })
     expect(writes()).toHaveLength(0)
     await call(patch, { tags: ['fresh'] })
-    expect(m.project!.tags).toEqual(['source:thebrief', SHA, 'fresh'])
+    expect(m.project!.tags).toEqual(['source:thebrief', SHA, 'source-created-date:2020-04-05', 'fresh'])
   })
 
   it('keeps the legacy path unchanged for non-marketing staff and all-client roles', async () => {

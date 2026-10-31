@@ -133,7 +133,9 @@ describe('TheBrief project deduplication', () => {
     ['multiple hashes', CLIENT_A, ['source:thebrief', `source-sha256:${hash}`, `source-sha256:${'b'.repeat(64)}`]],
     ['missing source', CLIENT_A, [`source-sha256:${hash}`]],
     ['malformed hash key', CLIENT_A, ['source:thebrief', `source-sha256=${hash}`]],
-    ['non-string tag', CLIENT_A, ['source:thebrief', `source-sha256:${hash}`, 7]]
+    ['non-string tag', CLIENT_A, ['source:thebrief', `source-sha256:${hash}`, 7]],
+    ['invalid creation date', CLIENT_A, ['source:thebrief', `source-sha256:${hash}`, 'source-created-date:2021-02-30']],
+    ['duplicate creation date', CLIENT_A, ['source:thebrief', `source-sha256:${hash}`, 'source-created-date:2021-02-28', 'source-created-date:2021-02-28']]
   ])('rejects %s before a transaction starts', async (_name, clientId, tags) => {
     await expect(createProject({ body: { name: 'Import', clientId, tags } } as never)).rejects.toMatchObject({ statusCode: 400 })
     expect(coordinator).not.toHaveBeenCalled()

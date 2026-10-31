@@ -11,8 +11,8 @@ import { parseTheBriefPackage } from '../../app/utils/thebrief-import.ts'
 
 // Offline preparation. The studio imports only validated native data and binary
 // assets, never the original HTML/JavaScript. Preserve the original ZIP separately.
-const [directory, archive, name, output, folder = 'Social Media Templates/Updates'] = process.argv.slice(2)
-if (!directory || !archive || !name || !output) throw new Error('Usage: package-import.mjs <source directory> <source ZIP> <design name> <output.json> [source folder]')
+const [directory, archive, name, output, folder = 'Social Media Templates/Updates', createdDate] = process.argv.slice(2)
+if (!directory || !archive || !name || !output) throw new Error('Usage: package-import.mjs <source directory> <source ZIP> <design name> <output.json> [source folder] [verified TheBrief created date YYYY-MM-DD]')
 const root = await realpath(directory)
 const inspection = inspectArchive(await readFile(archive))
 const hash = bytes => createHash('sha256').update(bytes).digest('hex')
@@ -111,7 +111,7 @@ for (const font of [...(candidate.fonts || []), ...external.fonts]) {
   fonts.push({ ...font, style: 'normal', format, path, family, fileName: `${sha256}${extname(path)}`, mimeType: { truetype: 'font/ttf', opentype: 'font/otf', woff: 'font/woff', woff2: 'font/woff2' }[format], sha256, base64: bytes.toString('base64') })
 }
 const pkg = parseTheBriefPackage({ kind: 'xeroflow-thebrief-import', version: 1, name,
-  source: { designHash: candidate.source.designHash, sha256: inspection.sha256, folder, duration: candidate.source.duration, loopCount: candidate.source.loopCount },
+  source: { designHash: candidate.source.designHash, sha256: inspection.sha256, folder, duration: candidate.source.duration, loopCount: candidate.source.loopCount, ...(createdDate ? { createdDate } : {}) },
   canvasData: candidate.canvasData, warnings: candidate.warnings, assets, fonts })
 await writeFile(output, JSON.stringify(pkg), { mode: 0o600 })
 await writeFile(`${output}.font-receipts.json`, JSON.stringify({ sourceArchiveSha256: inspection.sha256, retrievedAt: new Date().toISOString(), resources: external.receipts, transformations: fontTransformations }, null, 2), { mode: 0o600 })

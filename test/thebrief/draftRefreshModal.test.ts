@@ -23,6 +23,8 @@ let imported: ReturnType<typeof vi.fn>
 const stubs = {
   UModal: defineComponent({ props: ['open', 'title'], setup: (p, { slots }) => () => p.open ? h('section', { 'aria-label': p.title }, [slots.body?.(), slots.footer?.()]) : null }),
   UFormField: defineComponent({ setup: (_, { slots }) => () => h('div', slots.default?.()) }),
+  UPopover: defineComponent({ setup: (_, { slots }) => () => h('div', [slots.default?.(), slots.content?.()]) }),
+  UCalendar: defineComponent({ setup: () => () => h('div') }),
   UFileUpload: defineComponent({ props: ['disabled'], emits: ['update:modelValue'], setup: (p, { emit }) => () => h('button', { disabled: p.disabled, onClick: () => emit('update:modelValue', [new File(['{}'], 'prepared.json')]) }, 'Load packages') }),
   USelectMenu: defineComponent({ props: ['modelValue'], setup: p => () => h('span', String(p.modelValue)) }),
   UBadge: defineComponent({ setup: (_, { slots }) => () => h('span', slots.default?.()) }),
@@ -84,6 +86,18 @@ afterEach(() => {
 })
 
 describe('explicit imported draft update', () => {
+  it('holds a new draft when its original TheBrief creation date is missing', async () => {
+    api.mockImplementation(async (url: string) => {
+      if (url.endsWith('/clients')) return [{ id: clientId, name: 'Blood Motor Group' }]
+      if (url.endsWith('/folders')) return []
+      if (url.endsWith('/projects')) return []
+      throw new Error(`Unexpected request ${url}`)
+    })
+    await mountModal()
+    expect(host.textContent).toContain('verify the original creation date in TheBrief before importing')
+    expect(api.mock.calls.some(([, options]) => options?.method)).toBe(false)
+  })
+
   it('does not overwrite a duplicate during import and shows a concrete version-backup confirmation', async () => {
     await mountModal()
     expect(host.textContent).toContain('Already imported')

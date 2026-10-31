@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { BannerProject } from '../../app/types/banner-studio'
-import { bannerDimensions, hasBannerPreview, bannerLibraryFacets, filterBannerProjects, libraryDate, sortLibrary } from '../../app/utils/banner-library'
+import { bannerDimensions, hasBannerPreview, bannerLibraryFacets, filterBannerProjects, libraryDate, sortLibrary, theBriefCreatedDate } from '../../app/utils/banner-library'
 
 const project = (id: string, clientId: string | null, tags: string[] = []): BannerProject => ({
   id, name: `Banner ${id}`, clientId, clientName: clientId === 'news' ? 'DriveAgent News' : 'DriveAgent', tags,
@@ -51,5 +51,17 @@ describe('banner library browsing', () => {
     expect(sortLibrary(items, 'name').map(p => p.name)).toEqual(['Banner 2', 'Banner 10'])
     expect(items[0].name).toBe('Banner 10')
     expect(libraryDate('invalid')).toBe('Date unavailable')
+  })
+
+  it('shows the original TheBrief date only when its provenance tag is valid', () => {
+    expect(theBriefCreatedDate(['source:thebrief', 'source-created-date:2019-07-08'])).toBe('2019-07-08')
+    expect(theBriefCreatedDate(['source:thebrief'])).toBeNull()
+    expect(theBriefCreatedDate(['source-created-date:2019-02-30'])).toBeNull()
+    expect(theBriefCreatedDate(['source-created-date:2019-07-08', 'source-created-date:2019-07-09'])).toBeNull()
+    expect(libraryDate('2019-07-08')).toBe('8 July 2019')
+    const recentImport = { ...project('recent', 'driveagent', ['source:thebrief', 'source-created-date:2021-01-01']), updatedAt: '2026-10-31T00:00:00Z' }
+    const oldImport = { ...project('old', 'driveagent', ['source:thebrief', 'source-created-date:2018-01-01']), updatedAt: '2026-10-31T00:00:00Z' }
+    const unknownImport = project('unknown', 'driveagent', ['source:thebrief'])
+    expect(sortLibrary([recentImport, unknownImport, oldImport], 'created').map(item => item.id)).toEqual(['old', 'recent', 'unknown'])
   })
 })

@@ -16,6 +16,16 @@ describe('reviewed TheBrief native package', () => {
     expect(importTags(result)).toContain('import:needs-review')
   })
 
+  it('retains only a verified calendar creation date as provenance', () => {
+    const input = fixture()
+    Object.assign(input.source, { createdDate: '2021-04-09' })
+    const result = parseTheBriefPackage(input)
+    expect(importTags(result)).toContain('source-created-date:2021-04-09')
+    expect(importTags(parseTheBriefPackage(fixture())).some(tag => tag.startsWith('source-created-date:'))).toBe(false)
+    Object.assign(input.source, { createdDate: '2021-02-30' })
+    expect(() => parseTheBriefPackage(input)).toThrow()
+  })
+
   it('accepts a linked multi-size design and validates every board', () => {
     const input = fixture()
     const first = input.canvasData.custom_300x250.layers[0]

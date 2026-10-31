@@ -12,6 +12,7 @@ export function readTheBriefProjectIdentity(clientId: unknown, tags: unknown): T
   const tagList = Array.isArray(tags) ? tags : []
   const isImport = tagList.includes('source:thebrief')
   const sourceTags = tagList.filter(tag => typeof tag === 'string' && tag.toLowerCase().startsWith('source-sha256'))
+  const createdDateTags = tagList.filter(tag => typeof tag === 'string' && tag.toLowerCase().startsWith('source-created-date'))
   if (!isImport && !sourceTags.length) return null
   if (!isImport || tagList.some(tag => typeof tag !== 'string') || sourceTags.length !== 1 || !/^source-sha256:[a-f0-9]{64}$/i.test(sourceTags[0])) {
     throw createError({ statusCode: 400, statusMessage: 'TheBrief imports require one valid source SHA-256 tag' })
@@ -19,8 +20,18 @@ export function readTheBriefProjectIdentity(clientId: unknown, tags: unknown): T
   if (typeof clientId !== 'string' || !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(clientId)) {
     throw createError({ statusCode: 400, statusMessage: 'TheBrief imports require a valid client' })
   }
+  if (createdDateTags.length > 1 || (createdDateTags.length === 1 && !validCreatedDateTag(createdDateTags[0]))) {
+    throw createError({ statusCode: 400, statusMessage: 'TheBrief creation date must be one valid YYYY-MM-DD source tag' })
+  }
   const sourceHashTag = sourceTags[0].toLowerCase()
   return { clientId: clientId.toLowerCase(), sourceHashTag, tags: tagList.map(tag => tag === sourceTags[0] ? sourceHashTag : tag) }
+}
+
+function validCreatedDateTag(tag: string): boolean {
+  const match = /^source-created-date:(\d{4}-\d{2}-\d{2})$/.exec(tag)
+  if (!match) return false
+  const date = new Date(`${match[1]}T00:00:00Z`)
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === match[1]
 }
 
 /** Must run inside the project creation transaction, before its INSERT. */
