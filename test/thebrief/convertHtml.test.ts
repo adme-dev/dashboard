@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import { BrowserWindow } from 'happy-dom'
 import { convertTheBriefHtml } from '../../scripts/thebrief/convert-html.mjs'
 
 import { source } from './fixture'
@@ -80,6 +81,8 @@ describe('TheBrief single-slide native conversion pilot', () => {
     const html = source.replace('translateX(-100px) translateY(0)', 'scale(8) translateX(0) translateY(0)')
       .replace('translateX(0) translateY(0);opacity:1', 'scale(1);opacity:1')
       .replace('Hello world</div>', 'First line</div><div class="row">Second line</div>')
+      // Two 28.8px line boxes; a taller source box would mean a row soft-wraps.
+      .replace('height:80px', 'height:57.6px')
     const result = await convertTheBriefHtml(html)
     const lines = result.canvasData.custom_300x250.layers.filter(l => l.type === 'text')
     expect(result.warnings.join(' ')).not.toMatch(/animation not converted/)
@@ -87,7 +90,7 @@ describe('TheBrief single-slide native conversion pilot', () => {
       expect(line.keyframes.scaleX.map(frame => frame.value)).toEqual([8, 1])
       expect(line.keyframes.scaleY.map(frame => frame.value)).toEqual([8, 1])
       expect(line.transformOrigin.x).toBe(100)
-      expect(line.y + line.transformOrigin.y).toBeCloseTo(60)
+      expect(line.y + line.transformOrigin.y).toBeCloseTo(48.8)
     }
   })
 
@@ -192,11 +195,76 @@ describe('TheBrief single-slide native conversion pilot', () => {
       .replace('<div class="row">Hello world</div>', `<div id="c-1" style="background:${gradient};border:0 solid #000;border-radius:0"></div>`)
     const result = await convertTheBriefHtml(html)
     const shape = result.canvasData.custom_300x250.layers.find(l => l.name === 'Shape 1')
-    expect(shape).toMatchObject({ type: 'rect', fillColor: gradient })
+    expect(shape.type).toBe('rect')
+    expect(shape.fillColor.replace(/\s/g, '')).toBe(gradient.replace(/\s/g, ''))
     expect(shape.keyframes.x.map(f => f.value)).toEqual([-100, 0])
     await expect(convertTheBriefHtml(html.replace('border:0', 'border:2px'))).rejects.toThrow(/gradient shape/)
     await expect(convertTheBriefHtml(html.replace('border:0', 'background-size:50%;border:0'))).rejects.toThrow(/gradient shape/)
     await expect(convertTheBriefHtml(html.replace('border:0', 'background-blend-mode:multiply;border:0'))).rejects.toThrow(/gradient shape/)
+  })
+
+  it('recovers a class-rule gradient fill that the offline DOM drops instead of exporting transparent', async () => {
+    // From a GWS Kia export: the glow's rgba() stop is lost by happy-dom in both
+    // computed style and CSSOM, which previously produced a transparent rect.
+    const gradient = 'linear-gradient(0deg,#f0c 27%,rgba(0,0,0,0) 72%)'
+    const html = source.replace('</style>', `.glow{background:${gradient};border-radius:0}</style>`)
+      .replace('data-eltype="text"', 'data-eltype="shape"')
+      .replace('<div class="row">Hello world</div>', '<div id="c-1" class="glow"></div>')
+    // Reproduce the parser defect explicitly: newer happy-dom versions retain
+    // this gradient. The fallback must still be tested when computed CSS loses it.
+    const original = BrowserWindow.prototype.getComputedStyle
+    const dropped = vi.spyOn(BrowserWindow.prototype, 'getComputedStyle').mockImplementation(function (element) {
+      const css = original.call(this, element)
+      if (element.classList.contains('glow')) return new Proxy(css, {
+        get(target, key) {
+          if (key === 'backgroundImage') return ''
+          const value = Reflect.get(target, key, target)
+          return typeof value === 'function' ? value.bind(target) : value
+        }
+      })
+      return css
+    })
+    try {
+      const shape = (await convertTheBriefHtml(html)).canvasData.custom_300x250.layers.find(l => l.name === 'Shape 1')
+      expect(shape.type).toBe('rect')
+      expect(shape.fillColor.replace(/\s/g, '')).toBe(gradient.replace(/\s/g, ''))
+      // TheBrief's shared shape frame paints a size-less gradient over the whole box.
+      const framed = await convertTheBriefHtml(html.replace('</style>', '.glow{background-position:50% 50%;background-repeat:no-repeat;background-size:cover}</style>'))
+      expect(framed.canvasData.custom_300x250.layers.find(l => l.name === 'Shape 1').fillColor.replace(/\s/g, '')).toBe(gradient.replace(/\s/g, ''))
+      await expect(convertTheBriefHtml(html.replace(`background:${gradient}`, `background:${gradient} no-repeat 10px 0`))).rejects.toThrow(/gradient shape/)
+      await expect(convertTheBriefHtml(html.replace('</style>', `.glow{background-image:${gradient.replace('#f0c', '#fff')}}</style>`))).rejects.toThrow(/gradient shape/)
+    } finally {
+      dropped.mockRestore()
+    }
+  })
+
+  it('holds gradient-clipped text instead of replacing the fill with its plain colour', async () => {
+    const clipped = 'background:radial-gradient(circle at center center,#fff 0,#8ddcf2 53%,#3b679c 100%);background-clip:text;-webkit-text-fill-color:transparent'
+    await expect(convertTheBriefHtml(source.replace('Hello world', `<span style="${clipped}">EOFY</span>`))).rejects.toThrow('Gradient or clipped text fill needs an adapter')
+    await expect(convertTheBriefHtml(source.replace('</style>', `.fill{${clipped}}</style>`).replace('Hello world', '<span class="fill">EOFY</span>'))).rejects.toThrow('Gradient or clipped text fill needs an adapter')
+    const sameFill = await convertTheBriefHtml(source.replace('Hello world', '<span style="color:#123456;-webkit-text-fill-color:#123456">Plain</span>'))
+    expect(sameFill.canvasData.custom_300x250.layers.find(l => l.type === 'text').color).toBe('#123456')
+  })
+
+  it('holds struck-through or underlined text instead of dropping the decoration', async () => {
+    await expect(convertTheBriefHtml(source.replace('Hello world', '<span style="text-decoration:line-through">Was $62,967</span>'))).rejects.toThrow('Text decoration needs an adapter')
+    await expect(convertTheBriefHtml(source.replace('</style>', '.was{text-decoration-line:underline}</style>').replace('Hello world', '<span class="was">Was</span>'))).rejects.toThrow('Text decoration needs an adapter')
+    const plain = await convertTheBriefHtml(source.replace('Hello world', '<span style="text-decoration:none">Plain</span>'))
+    expect(plain.canvasData.custom_300x250.layers.find(l => l.type === 'text').text).toBe('Plain')
+  })
+
+  it('holds stacked rows when the source box shows a row soft-wrapping', async () => {
+    // One line box is 24px x 1.2 = 28.8px; two rows stack to 57.6px.
+    const twoRows = source.replace('<div class="row">Hello world</div>', '<div class="row">Massive Savings</div><div class="row">on Sportage</div>')
+    const fits = await convertTheBriefHtml(twoRows.replace('height:80px', 'height:58px'))
+    expect(fits.canvasData.custom_300x250.layers.filter(l => l.type === 'text').map(l => l.y)).toEqual([20, 48.8])
+    await expect(convertTheBriefHtml(twoRows.replace('height:80px', 'height:87px'))).rejects.toThrow('Wrapped text across stacked rows needs an adapter')
+    // Only the last row wraps when the extra height is whole lines of it alone.
+    const lastWraps = twoRows.replace('<div class="row">on Sportage</div>', '<div class="row" style="font-size:12px">on Sportage</div>')
+    expect((await convertTheBriefHtml(lastWraps.replace('height:80px', 'height:57.6px'))).canvasData.custom_300x250.layers.filter(l => l.type === 'text')).toHaveLength(2)
+    // A single row may wrap: the native text box wraps to the same width.
+    const single = await convertTheBriefHtml(source.replace('height:80px', 'height:87px'))
+    expect(single.canvasData.custom_300x250.layers.find(l => l.type === 'text').text).toBe('Hello world')
   })
 
   it('retains uppercase styling while keeping raw text editable', async () => {
