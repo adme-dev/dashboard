@@ -49,9 +49,9 @@ const canvasRef = ref<any>(null)
 const { connect: connectRealtime, disconnect: disconnectRealtime, remoteUsers } = useBannerRealtime()
 
 // Timeline resize
-const timelineHeight = ref(280)
+const timelineHeight = ref(360)
 const tlCollapsed = ref(false)
-let tlHeightBeforeCollapse = 280
+let tlHeightBeforeCollapse = 360
 const MIN_TL_HEIGHT = 100
 const MAX_TL_HEIGHT = 600
 const tlResizing = ref(false)

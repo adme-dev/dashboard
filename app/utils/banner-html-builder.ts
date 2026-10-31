@@ -1,3 +1,4 @@
+import { bannerAnimationTiming } from '~/utils/banner-animation-timing'
 import { bannerFontFamily } from '~~/shared/banner/fonts'
 import { buildBannerAudioManifest } from '~~/shared/bannerAudioRender.mjs'
 import { bannerImageCropCss } from '~~/shared/bannerImageCrop'
@@ -181,7 +182,7 @@ function buildKeyframeAnimLines(l: Layer, cycleEnd?: number): string[] {
 function buildWordPopAnimLines(l: Layer): string[] {
   if (!l.wordPop) return []
   const { duration, stagger, ease } = l.wordPop
-  const at = l.startTime || 0
+  const at = l.animInStart ?? l.startTime ?? 0
   return [`  (function() { var words = document.querySelectorAll('[data-id="${l.id}"] [data-banner-word]'); var ease = ${easeToExportExpr(ease)}; words.forEach(function(word, index) { var at = ${at} + index * ${stagger}; tl.set(word, { opacity: 0, scale: 0.6, filter: 'blur(10px)', y: 0 }, 0); tl.to(word, { opacity: 1, duration: ${duration * 0.4}, ease: ease }, at); tl.to(word, { scale: 1.05, duration: ${duration * 0.7}, ease: ease }, at); tl.to(word, { scale: 1, duration: ${duration * 0.3}, ease: ease }, at + ${duration * 0.7}); tl.to(word, { filter: 'blur(0px)', duration: ${duration}, ease: ease }, at); }); })();`]
 }
 
@@ -336,10 +337,11 @@ export function buildBannerHTML(
 
       const isBg = l.type === 'bg'
       const sel = `'[data-id="${l.id}"]'`
-      const startTime = l.startTime || 0
-      const endTime = l.endTime || (startTime + 3)
-      const animDur = l.animInDur || 0.6
-      const outDur = l.outDur || (isBg ? 0.5 : 0.25)
+      const timing = bannerAnimationTiming(l)
+      const startTime = timing.entryStart
+      const endTime = l.endTime || ((l.startTime || 0) + 3)
+      const animDur = timing.entryDuration
+      const outDur = timing.exitDuration
       const ease = l.ease || 'power2.out'
       const preset = ANIM_IN.find((a: any) => a.id === l.animIn)
       const hasMP = (l.motionPath?.length ?? 0) >= 2
@@ -390,7 +392,7 @@ export function buildBannerHTML(
       }
 
       // Exit animation — use ANIM_OUT presets
-      const outStart = Math.max(startTime + animDur, endTime - outDur)
+      const outStart = timing.exitStart
       if (outStart < endTime) {
         const outPreset = ANIM_OUT.find((a: any) => a.id === l.animOut) || ANIM_OUT.find((a: any) => a.id === 'fadeOut')!
         const outEase = l.animOutEase || 'power1.in'

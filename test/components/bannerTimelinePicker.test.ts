@@ -13,6 +13,7 @@ async function mount(layer: Partial<Layer>, phase?: TimelinePhase) {
   const studio = useBannerStudio()
   studio.loadProject({ id: 'picker-test', canvasData: { mrec: { layers: [{ id: 1, name: 'Imported heading', type: 'text', text: 'Hello', x: 0, y: 0, w: 100, h: 30, opacity: 1, zIndex: 1, startTime: 0, endTime: 3, animIn: 'fadeIn', animInDur: 0.5, ...layer }] } } } as any)
   vi.stubGlobal('useBannerStudio', () => studio)
+  vi.stubGlobal('useBannerRealtime', () => ({ isLayerLockedByOther: () => false }))
   vi.stubGlobal('useBannerInspector', () => ({ inspectorTab: Vue.ref('background') }))
   vi.stubGlobal('useBannerTimeline', () => ({ pauseTimeline: vi.fn(), seekTo: vi.fn(), playTimeline: vi.fn() }))
   const host = document.createElement('div'); document.body.append(host)
@@ -103,4 +104,27 @@ it('opens audio controls instead of visual animation presets and clamps volume',
   expect(studio.activeLayers.value[0].volume).toBe(0.5)
   await change('Volume (%)', '150')
   expect(studio.activeLayers.value[0].volume).toBe(1)
+})
+
+it('inserts a boundary keyframe in a native preset instead of leaving a non-playing single frame', async () => {
+  const { studio, click } = await mount({})
+  await click('Build')
+  await click('Add keyframe at 0.00s')
+  expect(studio.activeLayers.value[0]!.keyframes?.opacity?.length).toBeGreaterThanOrEqual(2)
+  expect(studio.state.selectedKeyframe).toMatchObject({ layerId: 1, property: 'opacity', index: 0 })
+})
+
+it('adds a middle Blink without replacing entrance, exit or other property tracks', async () => {
+  const keyframes = { opacity: [{ time: 0, value: 0 }, { time: 1, value: 1 }, { time: 4, value: 1 }, { time: 5, value: 0 }], x: [{ time: 0, value: -50 }, { time: 1, value: 0 }] }
+  const { studio, click, host } = await mount({ endTime: 5, keyframes }, { kind: 'hold', start: 1, end: 4, label: 'Hold', direction: 'in' })
+  expect(host.textContent).toContain('Middle')
+  expect(host.textContent).not.toContain('Replace custom motion')
+  await click('Blink')
+  const result = studio.activeLayers.value[0]!
+  expect(result.keyframes?.x).toEqual(keyframes.x)
+  expect(result.keyframes?.opacity?.at(-1)).toEqual({ time: 5, value: 0 })
+  expect(result.keyframes?.opacity?.some(frame => frame.time > 1 && frame.time < 2.2 && frame.value < 1)).toBe(true)
+  expect(result.animationClips).toEqual([{ start: 1, end: 2.2, label: 'Blink' }])
+  studio.undo()
+  expect(studio.activeLayers.value[0]!.keyframes).toEqual(keyframes)
 })

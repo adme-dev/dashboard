@@ -87,6 +87,15 @@ afterEach(() => {
   host.remove()
 })
 describe('padding gestures', () => {
+  it('protects the layer when Delete belongs to a selected keyframe', () => {
+    mount(NumericField, { property: 'paddingH', label: 'Padding', defaultValue: 10 })
+    studio.state.selectedKeyframe = { layerId: 1, property: 'opacity', index: 1 }
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true }))
+    expect(studio.activeLayers.value).toHaveLength(1)
+    studio.selectLayer(null)
+    expect(studio.state.selectedKeyframe).toBeNull()
+  })
+
   it.each(['paddingH', 'paddingV'] as const)('scrubs %s in both directions and commits one undo operation', async (property) => {
     mount(NumericField, { property, label: property, defaultValue: 10 })
     const handle = host.querySelector('button')!

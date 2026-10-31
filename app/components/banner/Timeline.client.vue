@@ -1,14 +1,16 @@
 <script setup lang="ts">
 import { computed, ref, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { layoutName } from '~/utils/banner-workspace'
-import { LAYER_COLORS, LAYER_TYPE_COLORS } from '~/utils/banner-constants'
+import { LAYER_COLORS } from '~/utils/banner-constants'
 import type { KeyframeProperty, Keyframe, Layer } from '~/types/banner-studio'
-import { hasKeyframes } from '~/composables/useBannerTimeline'
+import { hasKeyframes, presetToKeyframes } from '~/composables/useBannerTimeline'
+import { insertTimelineKeyframe, retimeLayerPresence } from '~/utils/banner-timeline-edit'
 import { timelinePhases } from '~/utils/banner-timeline-phases'
 
 const { state, activeLayers, activeFormat, selectLayer, updateLayer, duplicateLayer, removeLayer, bringToFront, sendToBack, getMotionPathTweens, updateMotionPathTween, addMotionPathTween, removeMotionPathTween } = useBannerStudio()
-const { remoteLocks } = useBannerRealtime()
-const { togglePlay, seekTo, restartTimeline, buildTimeline } = useBannerTimeline()
+const { remoteLocks, isLayerLockedByOther } = useBannerRealtime()
+const { inspectorTab } = useBannerInspector()
+const { togglePlay, seekTo, restartTimeline, buildTimeline, pauseTimeline, currentLayerValue } = useBannerTimeline()
 const { decomposingLayerId, decomposeFromUrl } = useDecompose()
 const { isEditing: isAiEditing, openEdit: openAiEdit } = useAiLayerEdit()
 const { isMerging, mergeLayers } = useMergeLayers()
@@ -154,10 +156,10 @@ watch(
       // Wait a tick for canvas to mount
       await nextTick()
       const canvas = waveformCanvases.value.get(al.id)
-      if (canvas) drawWaveform(canvas, peaks, 'rgba(232, 200, 74, 0.5)')
+      if (canvas) drawWaveform(canvas, peaks, 'rgba(255, 255, 255, 0.5)')
     }
   },
-  { immediate: true, deep: true },
+  { immediate: true, deep: true }
 )
 
 const timelineEl = ref<HTMLElement | null>(null)
@@ -176,13 +178,13 @@ watch(() => state.selectedLayerId, async (id) => {
 })
 
 // Keyframe property labels
-const KF_PROPERTIES: { key: KeyframeProperty; label: string; icon: string }[] = [
+const KF_PROPERTIES: { key: KeyframeProperty, label: string, icon: string }[] = [
   { key: 'opacity', label: 'Opacity', icon: 'O' },
   { key: 'x', label: 'X', icon: 'X' },
   { key: 'y', label: 'Y', icon: 'Y' },
   { key: 'scaleX', label: 'Scale X', icon: 'Sx' },
   { key: 'scaleY', label: 'Scale Y', icon: 'Sy' },
-  { key: 'rotation', label: 'Rotation', icon: 'R' },
+  { key: 'rotation', label: 'Rotation', icon: 'R' }
 ]
 
 /** Unique tween boundary times for a layer's motion path (keyframe diamonds) */
@@ -239,7 +241,7 @@ function centerOnPlayhead() {
 }
 
 // ── Loop range drag ──────────────────
-const loopDrag = ref<{ startTime: number; active: boolean } | null>(null)
+const loopDrag = ref<{ startTime: number, active: boolean } | null>(null)
 
 function clearLoopRange() {
   state.loopIn = null
@@ -247,7 +249,7 @@ function clearLoopRange() {
 }
 
 // ── Stretch indicator ────────────────
-const stretchLabel = ref<{ x: number; y: number; text: string } | null>(null)
+const stretchLabel = ref<{ x: number, y: number, text: string } | null>(null)
 
 // ── Constants ─────────────────────────
 const LANE_H = 36
@@ -281,14 +283,14 @@ const timelineWidth = computed(() => Math.max(600, state.duration * pxPerSec.val
 
 // Time ruler marks
 const rulerMarks = computed(() => {
-  const marks: { time: number; x: number; label: string | null }[] = []
-  const step = 0.5
+  const marks: { time: number, x: number, label: string | null }[] = []
+  const step = 0.1
   for (let t = 0; t <= state.duration + 0.5; t += step) {
     const rounded = Math.round(t * 10) / 10
     marks.push({
       time: rounded,
       x: rounded * pxPerSec.value,
-      label: rounded % 1 === 0 ? `${rounded}s` : null,
+      label: rounded % 1 === 0 ? `${rounded}s` : null
     })
   }
   return marks
@@ -298,11 +300,42 @@ const rulerMarks = computed(() => {
 const playheadX = computed(() => state.currentTime * pxPerSec.value)
 
 function getLayerColor(layer: { type: string }): string {
-  return LAYER_TYPE_COLORS[layer.type] || LAYER_COLORS[0]
+  return ({ text: '#7963ca', image: '#705318', rect: '#4578b9', button: '#7963ca', bg: '#777b85', video: '#705318', audio: '#b66c8f' } as Record<string, string>)[layer.type] || LAYER_COLORS[0]
 }
 
 const phasesByLayer = computed(() => new Map(activeLayers.value.map(layer => [layer.id, timelinePhases(layer)])))
+const { startPhaseDrag, phaseClick, nudgePhase, timingHint } = useBannerPhaseDrag(pxPerSec, phasesByLayer)
+const selectedTimelineLayer = computed(() => activeLayers.value.find(layer => layer.id === state.selectedLayerId))
+const keyframeProperty = ref<KeyframeProperty>('opacity')
+const keyframeMenuOpen = ref(false)
+function canEditTiming(layer: Layer) {
+  return !layer.locked && !isLayerLockedByOther(layer.id)
+}
+function insertKeyframe(layer: Layer, prop: KeyframeProperty, at: number) {
+  if (!canEditTiming(layer) || layer.type === 'audio') return
+  pauseTimeline()
+  const time = Math.round(Math.max(layer.startTime ?? 0, Math.min(layer.endTime ?? state.duration, at)) * 100) / 100
+  seekTo(time)
+  const value = currentLayerValue(layer, prop)
+  const source = hasKeyframes(layer) ? layer.keyframes : presetToKeyframes(layer)
+  const next = insertTimelineKeyframe(layer, prop, time, value, source)
+  if (next.changed || !hasKeyframes(layer)) updateLayer(layer.id, { keyframes: next.keyframes })
+  selectLayer(layer.id)
+  state.expandedKeyframeLayers.add(layer.id)
+  state.selectedKeyframe = { layerId: layer.id, property: prop, index: next.index }
+  inspectorTab.value = 'animation'
+  keyframeMenuOpen.value = false
+}
 
+function onPhaseClick(event: MouseEvent) {
+  if (justFinishedDrag) {
+    event.preventDefault()
+    event.stopImmediatePropagation()
+    justFinishedDrag = false
+    return
+  }
+  phaseClick(event)
+}
 const animationPickers = new Map<number, { openPicker: () => void }>()
 function setAnimationPicker(id: number, picker: unknown) {
   if (picker) animationPickers.set(id, picker as { openPicker: () => void })
@@ -414,6 +447,8 @@ const presenceDrag = ref<{
   origEnd: number
   startX: number
   barEl: HTMLElement | null
+  original: Layer
+  key: string
 } | null>(null)
 
 let justFinishedDrag = false
@@ -423,25 +458,44 @@ function onPresenceMouseDown(e: MouseEvent, layerId: number, mode: 'start' | 'en
   e.stopPropagation()
   e.preventDefault()
   const layer = activeLayers.value.find(l => l.id === layerId)
-  if (!layer) return
+  if (!layer || !canEditTiming(layer) || e.button !== 0) return
+  pauseTimeline()
+  selectLayer(layer.id)
 
   presenceDrag.value = {
     layerId,
+    original: structuredClone(toRaw(layer)),
+    key: state.activeKey,
     mode,
     origStart: layer.startTime || 0,
     origEnd: layer.endTime || 3,
     startX: e.clientX,
-    barEl: (e.currentTarget as HTMLElement).closest('.presence-bar-group') as HTMLElement,
+    barEl: (e.currentTarget as HTMLElement).closest('.presence-bar-group') as HTMLElement
   }
 
+  window.addEventListener('blur', cancelPresence)
   window.addEventListener('mousemove', onPresenceMouseMove)
   window.addEventListener('mouseup', onPresenceMouseUp)
 }
 
+function cancelPresence() {
+  const d = presenceDrag.value
+  if (d?.barEl) {
+    d.barEl.style.left = `${d.origStart * pxPerSec.value}px`
+    d.barEl.style.width = `${(d.origEnd - d.origStart) * pxPerSec.value}px`
+  }
+  presenceDrag.value = null
+  stretchLabel.value = null
+  window.removeEventListener('mousemove', onPresenceMouseMove)
+  window.removeEventListener('mouseup', onPresenceMouseUp)
+  window.removeEventListener('blur', cancelPresence)
+}
+watch(() => [state.activeKey, state.project?.id], cancelPresence)
 function onPresenceMouseMove(e: MouseEvent) {
   const d = presenceDrag.value
   if (!d) return
 
+  if (state.activeKey !== d.key || !canEditTiming(d.original)) return cancelPresence()
   const dx = e.clientX - d.startX
   if (Math.abs(dx) <= 3) return
   const dt = dx / pxPerSec.value
@@ -453,11 +507,11 @@ function onPresenceMouseMove(e: MouseEvent) {
     newStart = snapTime(Math.max(0, d.origStart + dt))
     if (newStart > newEnd - 0.1) newStart = newEnd - 0.1
   } else if (d.mode === 'end') {
-    newEnd = snapTime(Math.max(d.origStart + 0.1, d.origEnd + dt))
+    newEnd = Math.min(state.duration, snapTime(Math.max(d.origStart + 0.1, d.origEnd + dt)))
   } else {
     // move — shift both equally
     const duration = d.origEnd - d.origStart
-    newStart = snapTime(Math.max(0, d.origStart + dt))
+    newStart = Math.min(state.duration - duration, snapTime(Math.max(0, d.origStart + dt)))
     newEnd = newStart + duration
   }
 
@@ -477,7 +531,7 @@ function onPresenceMouseMove(e: MouseEvent) {
       stretchLabel.value = {
         x: edgePx,
         y: 0, // positioned via template
-        text: `\u00d7${ratio.toFixed(1)}`,
+        text: `\u00d7${ratio.toFixed(1)}`
       }
     } else {
       stretchLabel.value = null
@@ -487,6 +541,7 @@ function onPresenceMouseMove(e: MouseEvent) {
 
 function onPresenceMouseUp(e: MouseEvent) {
   const d = presenceDrag.value
+  if (d && (state.activeKey !== d.key || !canEditTiming(activeLayers.value.find(layer => layer.id === d.layerId) || d.original))) return cancelPresence()
   if (d) {
     const dx = e.clientX - d.startX
     const dt = dx / pxPerSec.value
@@ -498,10 +553,10 @@ function onPresenceMouseUp(e: MouseEvent) {
       newStart = snapTime(Math.max(0, d.origStart + dt))
       if (newStart > newEnd - 0.1) newStart = newEnd - 0.1
     } else if (d.mode === 'end') {
-      newEnd = snapTime(Math.max(d.origStart + 0.1, d.origEnd + dt))
+      newEnd = Math.min(state.duration, snapTime(Math.max(d.origStart + 0.1, d.origEnd + dt)))
     } else {
       const duration = d.origEnd - d.origStart
-      newStart = snapTime(Math.max(0, d.origStart + dt))
+      newStart = Math.max(0, Math.min(state.duration - duration, snapTime(Math.max(0, d.origStart + dt))))
       newEnd = newStart + duration
     }
 
@@ -514,7 +569,7 @@ function onPresenceMouseUp(e: MouseEvent) {
       newStart = d.origStart
       newEnd = d.origEnd
     } else if (newStart !== d.origStart || newEnd !== d.origEnd) {
-      updateLayer(d.layerId, { startTime: newStart, endTime: newEnd })
+      updateLayer(d.layerId, retimeLayerPresence(d.original, newStart, newEnd))
     }
 
     // Keep the final geometry even when Vue has no reactive change to patch.
@@ -534,6 +589,7 @@ function onPresenceMouseUp(e: MouseEvent) {
   stretchLabel.value = null
   window.removeEventListener('mousemove', onPresenceMouseMove)
   window.removeEventListener('mouseup', onPresenceMouseUp)
+  window.removeEventListener('blur', cancelPresence)
 }
 
 // ── Crossfade zones ───────────────────
@@ -541,7 +597,7 @@ const crossfadeZones = computed(() => {
   const bgs = sortedLayers.value
     .filter(l => l.type === 'bg')
     .sort((a, b) => (a.startTime || 0) - (b.startTime || 0))
-  const zones: { start: number; end: number }[] = []
+  const zones: { start: number, end: number }[] = []
   for (let i = 0; i < bgs.length - 1; i++) {
     const a = bgs[i], b = bgs[i + 1]
     const overlapStart = Math.max(a.startTime || 0, b.startTime || 0)
@@ -576,8 +632,9 @@ function isKeyframeSelected(layerId: number, prop: string, idx: number): boolean
 
 function selectKeyframe(layerId: number, prop: string, idx: number, e: MouseEvent) {
   e.stopPropagation()
-  state.selectedKeyframe = { layerId, property: prop, index: idx }
   selectLayer(layerId)
+  state.selectedKeyframe = { layerId, property: prop, index: idx }
+  inspectorTab.value = 'animation'
 }
 
 function addKeyframeAtClick(e: MouseEvent, layerId: number, prop: KeyframeProperty) {
@@ -588,32 +645,7 @@ function addKeyframeAtClick(e: MouseEvent, layerId: number, prop: KeyframeProper
   const time = Math.round(Math.max(0, x / pxPerSec.value) * 100) / 100
 
   const layer = activeLayers.value.find(l => l.id === layerId)
-  if (!layer) return
-
-  // Get default value for this property
-  const defaultValues: Record<KeyframeProperty, number> = {
-    opacity: layer.opacity,
-    x: 0,
-    y: 0,
-    scaleX: 1,
-    scaleY: 1,
-    rotation: layer.rotation || 0,
-  }
-
-  const existing = layer.keyframes?.[prop] || []
-  const newKf: Keyframe = { time, value: defaultValues[prop], easing: 'power2.out' }
-  const updated = [...existing, newKf].sort((a, b) => a.time - b.time)
-
-  updateLayer(layerId, {
-    keyframes: {
-      ...(layer.keyframes || {}),
-      [prop]: updated,
-    },
-  })
-
-  // Select the newly added keyframe
-  const newIdx = updated.findIndex(kf => kf.time === time)
-  state.selectedKeyframe = { layerId, property: prop, index: newIdx }
+  if (layer) insertKeyframe(layer, prop, time)
 }
 
 // ── Keyframe drag ─────────────────────
@@ -622,6 +654,8 @@ const kfDrag = ref<{
   prop: KeyframeProperty
   index: number
   origTime: number
+  sourceIndex: number
+  key: string
   startX: number
   diamondEl: HTMLElement | null
 } | null>(null)
@@ -629,6 +663,9 @@ const kfDrag = ref<{
 function onKeyframeDragStart(e: MouseEvent, layerId: number, prop: KeyframeProperty, idx: number) {
   e.stopPropagation()
   e.preventDefault()
+  const layer = activeLayers.value.find(layer => layer.id === layerId)
+  if (!layer || !canEditTiming(layer)) return
+  pauseTimeline()
   const kfs = getLayerKeyframes(layerId, prop)
   if (!kfs[idx]) return
 
@@ -637,40 +674,58 @@ function onKeyframeDragStart(e: MouseEvent, layerId: number, prop: KeyframePrope
     prop,
     index: idx,
     origTime: kfs[idx].time,
+    sourceIndex: layer.keyframes![prop]!.indexOf(kfs[idx]),
+    key: state.activeKey,
     startX: e.clientX,
-    diamondEl: e.currentTarget as HTMLElement,
+    diamondEl: e.currentTarget as HTMLElement
   }
 
+  selectLayer(layerId)
   state.selectedKeyframe = { layerId, property: prop, index: idx }
+  inspectorTab.value = 'animation'
+  window.addEventListener('blur', cancelKeyframeDrag)
   window.addEventListener('mousemove', onKeyframeDragMove)
   window.addEventListener('mouseup', onKeyframeDragEnd)
 }
 
+function cancelKeyframeDrag() {
+  const d = kfDrag.value
+  if (d?.diamondEl) d.diamondEl.style.left = `${d.origTime * pxPerSec.value - 5}px`
+  kfDrag.value = null
+  window.removeEventListener('mousemove', onKeyframeDragMove)
+  window.removeEventListener('mouseup', onKeyframeDragEnd)
+  window.removeEventListener('blur', cancelKeyframeDrag)
+}
+watch(() => [state.activeKey, state.project?.id], cancelKeyframeDrag)
 function onKeyframeDragMove(e: MouseEvent) {
   const d = kfDrag.value
   if (!d || !d.diamondEl) return
+  const layer = activeLayers.value.find(layer => layer.id === d.layerId)
+  if (state.activeKey !== d.key || !layer || !canEditTiming(layer)) return cancelKeyframeDrag()
   const dx = e.clientX - d.startX
   const dt = dx / pxPerSec.value
-  const newTime = snapTime(Math.max(0, d.origTime + dt))
+  const newTime = snapTime(Math.max(0, Math.min(state.duration, d.origTime + dt)))
   // Direct DOM move for smooth 60fps
   d.diamondEl.style.left = `${newTime * pxPerSec.value - 5}px`
 }
 
 function onKeyframeDragEnd(e: MouseEvent) {
   const d = kfDrag.value
+  if (d && (state.activeKey !== d.key || !activeLayers.value.some(layer => layer.id === d.layerId && canEditTiming(layer)))) return cancelKeyframeDrag()
   if (d) {
     const dx = e.clientX - d.startX
     const dt = dx / pxPerSec.value
-    const newTime = Math.round(snapTime(Math.max(0, d.origTime + dt)) * 100) / 100
+    const newTime = Math.round(snapTime(Math.max(0, Math.min(state.duration, d.origTime + dt))) * 100) / 100
 
     const layer = activeLayers.value.find(l => l.id === d.layerId)
     if (layer?.keyframes?.[d.prop]) {
       const updated = [...layer.keyframes[d.prop]!]
-      if (updated[d.index]) {
-        updated[d.index] = { ...updated[d.index], time: newTime }
+      const index = d.sourceIndex
+      if (Math.abs(dx) > 3 && newTime !== d.origTime && index >= 0 && !updated.some((frame, i) => i !== index && Math.abs(frame.time - newTime) < 0.0001)) {
+        updated[index] = { ...updated[index], time: newTime }
         updated.sort((a, b) => a.time - b.time)
         updateLayer(d.layerId, {
-          keyframes: { ...layer.keyframes, [d.prop]: updated },
+          keyframes: { ...layer.keyframes, [d.prop]: updated }
         })
         // Update selected index after sort
         const newIdx = updated.findIndex(kf => kf.time === newTime)
@@ -684,6 +739,24 @@ function onKeyframeDragEnd(e: MouseEvent) {
   kfDrag.value = null
   window.removeEventListener('mousemove', onKeyframeDragMove)
   window.removeEventListener('mouseup', onKeyframeDragEnd)
+  window.removeEventListener('blur', cancelKeyframeDrag)
+}
+
+function nudgeKeyframe(event: KeyboardEvent, layerId: number, prop: KeyframeProperty, index: number) {
+  if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return
+  event.preventDefault()
+  event.stopPropagation()
+  const layer = activeLayers.value.find(layer => layer.id === layerId)
+  if (!layer || !canEditTiming(layer)) return
+  const frames = getLayerKeyframes(layerId, prop)
+  const frame = frames[index]
+  if (!frame) return
+  const time = Math.round(Math.max(0, Math.min(state.duration, frame.time + (event.key === 'ArrowRight' ? 1 : -1) * (event.shiftKey ? 0.5 : 0.05))) * 100) / 100
+  if (time === frame.time) return
+  if (frames.some((other, i) => i !== index && Math.abs(other.time - time) < 0.0001)) return
+  const updated = frames.map((other, i) => i === index ? { ...other, time } : { ...other }).sort((a, b) => a.time - b.time)
+  updateLayer(layerId, { keyframes: { ...layer.keyframes, [prop]: updated } })
+  state.selectedKeyframe = { layerId, property: prop, index: updated.findIndex(frame => frame.time === time) }
 }
 
 // ── Motion path tween drag ──────────
@@ -700,7 +773,7 @@ const tweenDrag = ref<{
 // Tween selection lives in shared state so the canvas waypoints + inspector stay in sync
 const selectedTween = computed({
   get: () => state.selectedTween,
-  set: (v) => { state.selectedTween = v },
+  set: (v) => { state.selectedTween = v }
 })
 
 function onTweenDragStart(e: MouseEvent, layerId: number, tweenIndex: number, mode: 'start' | 'end' | 'move') {
@@ -719,7 +792,7 @@ function onTweenDragStart(e: MouseEvent, layerId: number, tweenIndex: number, mo
     origStart: tw.startTime,
     origEnd: tw.endTime,
     startX: e.clientX,
-    barEl: (e.currentTarget as HTMLElement).closest('.tween-bar') as HTMLElement,
+    barEl: (e.currentTarget as HTMLElement).closest('.tween-bar') as HTMLElement
   }
   selectedTween.value = { layerId, tweenIndex }
   selectLayer(layerId)
@@ -792,17 +865,26 @@ function onTweenDragEnd(e: MouseEvent) {
 function onKeydown(e: KeyboardEvent) {
   const target = e.target as HTMLElement | null
   if (target?.closest('input, textarea, select, [contenteditable="true"], [role="combobox"]')) return
+  if (e.key === 'Escape' && kfDrag.value) {
+    cancelKeyframeDrag()
+    return
+  }
+  if (e.key === 'Escape' && presenceDrag.value) {
+    cancelPresence()
+    return
+  }
   if (e.key === 'Delete' || e.key === 'Backspace') {
+    if (kfDrag.value) cancelKeyframeDrag()
     const s = state.selectedKeyframe
     if (!s) return
     e.preventDefault()
     const layer = activeLayers.value.find(l => l.id === s.layerId)
-    if (!layer?.keyframes?.[s.property as KeyframeProperty]) return
+    if (!layer || !canEditTiming(layer) || !layer.keyframes?.[s.property as KeyframeProperty]) return
     const kfs = [...layer.keyframes[s.property as KeyframeProperty]!]
     if (kfs.length <= 2) return // need at least 2 keyframes to be valid
     kfs.splice(s.index, 1)
     updateLayer(s.layerId, {
-      keyframes: { ...layer.keyframes, [s.property]: kfs },
+      keyframes: { ...layer.keyframes, [s.property]: kfs }
     })
     state.selectedKeyframe = null
   }
@@ -813,6 +895,8 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  cancelKeyframeDrag()
+  cancelPresence()
   if (dragClickReset) clearTimeout(dragClickReset)
   window.removeEventListener('keydown', onKeydown)
   window.removeEventListener('mousemove', onPlayheadDrag)
@@ -873,11 +957,56 @@ onUnmounted(() => {
         />
       </UTooltip>
 
+      <UPopover v-model:open="keyframeMenuOpen">
+        <UButton
+          label="Add keyframe"
+          icon="i-lucide-diamond-plus"
+          color="neutral"
+          variant="outline"
+          size="xs"
+          :disabled="!selectedTimelineLayer || !canEditTiming(selectedTimelineLayer) || selectedTimelineLayer.type === 'audio'"
+        />
+        <template #content>
+          <div class="@container w-72 space-y-3 p-3">
+            <p class="text-sm font-medium">
+              Keyframe at {{ state.currentTime.toFixed(2) }}s
+            </p>
+            <UFormField label="Animated property">
+              <USelect v-model="keyframeProperty" :items="KF_PROPERTIES.map(prop => ({ label: prop.label, value: prop.key }))" class="w-full" />
+            </UFormField>
+            <p class="text-xs text-muted">
+              Captures the current value. Double-click a property track to add at another time.
+            </p>
+            <UButton
+              label="Insert keyframe"
+              icon="i-lucide-diamond-plus"
+              size="sm"
+              class="w-full justify-center"
+              @click="selectedTimelineLayer && insertKeyframe(selectedTimelineLayer, keyframeProperty, state.currentTime)"
+            />
+          </div>
+        </template>
+      </UPopover>
+      <span v-if="timingHint" role="status" class="text-xs tabular-nums text-muted">{{ timingHint }}</span>
       <!-- Zoom controls -->
       <div class="ml-auto flex items-center gap-1">
-        <UButton aria-label="Zoom timeline out" icon="i-lucide-minus" variant="ghost" size="xs" @click="zoomOut" :disabled="pxPerSec <= ZOOM_MIN" />
+        <UButton
+          aria-label="Zoom timeline out"
+          icon="i-lucide-minus"
+          variant="ghost"
+          size="xs"
+          :disabled="pxPerSec <= ZOOM_MIN"
+          @click="zoomOut"
+        />
         <span class="text-[10px] text-(--ui-text-muted) w-8 text-center font-mono">{{ zoomPercent }}%</span>
-        <UButton aria-label="Zoom timeline in" icon="i-lucide-plus" variant="ghost" size="xs" @click="zoomIn" :disabled="pxPerSec >= ZOOM_MAX" />
+        <UButton
+          aria-label="Zoom timeline in"
+          icon="i-lucide-plus"
+          variant="ghost"
+          size="xs"
+          :disabled="pxPerSec >= ZOOM_MAX"
+          @click="zoomIn"
+        />
       </div>
     </div>
 
@@ -887,16 +1016,18 @@ onUnmounted(() => {
         <!-- Layer labels column -->
         <div class="sticky left-0 z-30 shrink-0 border-r border-default bg-default" :style="{ width: `${LABEL_W}px` }">
           <!-- Ruler spacer -->
-          <div class="sticky top-0 z-40 flex items-center border-b border-default bg-elevated px-3 text-xs font-medium text-muted" :style="{ height: `${RULER_H}px` }">Layers</div>
+          <div class="sticky top-0 z-40 flex items-center border-b border-default bg-elevated px-3 text-xs font-medium text-muted" :style="{ height: `${RULER_H}px` }">
+            Layers
+          </div>
           <!-- Layer labels + keyframe sub-labels -->
           <template v-for="(layer, i) in sortedLayers" :key="layer.id">
             <!-- Main layer label -->
             <div
-              class="flex items-center gap-1 px-1 border-b border-(--ui-border)/30 cursor-pointer hover:bg-(--ui-bg-accented) transition-colors"
+              class="group/label flex items-center gap-1 px-1 border-b border-(--ui-border)/30 cursor-pointer hover:bg-(--ui-bg-accented) transition-colors"
               :class="[
-                state.selectedLayerId === layer.id ? 'bg-primary/15 text-highlighted ring-1 ring-inset ring-primary/40' : '',
+                state.selectedLayerId === layer.id ? 'bg-[#f5dfd9] dark:bg-[#553d38] text-highlighted' : '',
                 isMaskedLayer(layer.id) ? 'border-l-2 border-l-[#e84aff]/40' : '',
-                isMultiSelected(layer.id) ? 'ring-1 ring-inset ring-(--ui-primary)/50' : '',
+                isMultiSelected(layer.id) ? 'ring-1 ring-inset ring-(--ui-primary)/50' : ''
               ]"
               :style="{ height: `${LANE_H}px` }"
               :data-layer-label="layer.id"
@@ -905,7 +1036,10 @@ onUnmounted(() => {
               @contextmenu.prevent="onLayerContextMenu($event, layer)"
             >
               <!-- Expand chevron -->
-              <UButton color="neutral" variant="ghost" size="xs"
+              <UButton
+                color="neutral"
+                variant="ghost"
+                size="xs"
                 class="p-0 w-4 h-4 flex items-center justify-center text-[10px] text-(--ui-text-dimmed) hover:text-(--ui-text) shrink-0 transition-transform"
                 :class="state.expandedKeyframeLayers.has(layer.id) ? 'rotate-90' : ''"
                 :aria-label="`Keyframe tracks for ${layer.name}`"
@@ -915,24 +1049,30 @@ onUnmounted(() => {
                 <UIcon name="i-lucide-chevron-right" class="w-3 h-3" />
               </UButton>
               <UIcon :name="LAYER_ICONS[layer.type]" class="w-3 h-3 shrink-0" :style="{ color: getLayerColor(layer) }" />
-              <UButton color="neutral" variant="ghost" size="xs"
+              <UIcon v-if="decomposingLayerId === layer.id" name="i-lucide-loader-2" class="w-3 h-3 animate-spin text-(--ui-primary) shrink-0" />
+              <span class="min-w-0 flex-1 text-xs truncate text-default" :class="state.selectedLayerId === layer.id ? 'font-semibold' : ''">{{ layer.name }}</span>
+              <UButton
+                color="neutral"
+                variant="ghost"
+                size="xs"
                 class="p-0 w-4 h-4 flex items-center justify-center shrink-0"
-                :class="layer.hidden ? 'text-dimmed' : 'text-muted hover:text-highlighted'"
+                :class="layer.hidden ? 'text-dimmed' : 'text-muted hover:text-highlighted opacity-0 group-hover/label:opacity-100 group-focus-within/label:opacity-100'"
                 :aria-label="`${layer.hidden ? 'Show' : 'Hide'} ${layer.name}`"
                 @click.stop="updateLayer(layer.id, { hidden: !layer.hidden })"
               >
                 <UIcon :name="layer.hidden ? 'i-lucide-eye-off' : 'i-lucide-eye'" class="w-3 h-3" />
               </UButton>
-              <UButton color="neutral" variant="ghost" size="xs"
+              <UButton
+                color="neutral"
+                variant="ghost"
+                size="xs"
                 class="p-0 w-4 h-4 flex items-center justify-center shrink-0"
-                :class="layer.locked ? 'text-[#e8884a]' : 'text-dimmed hover:text-highlighted'"
+                :class="layer.locked ? 'text-[#e8884a]' : 'text-dimmed hover:text-highlighted opacity-0 group-hover/label:opacity-100 group-focus-within/label:opacity-100'"
                 :aria-label="`${layer.locked ? 'Unlock' : 'Lock'} ${layer.name}`"
                 @click.stop="updateLayer(layer.id, { locked: !layer.locked })"
               >
                 <UIcon :name="layer.locked ? 'i-lucide-lock' : 'i-lucide-unlock'" class="w-3 h-3" />
               </UButton>
-              <UIcon v-if="decomposingLayerId === layer.id" name="i-lucide-loader-2" class="w-3 h-3 animate-spin text-(--ui-primary) shrink-0" />
-              <span class="text-xs truncate text-default" :class="state.selectedLayerId === layer.id ? 'font-semibold' : ''">{{ layer.name }}</span>
               <!-- Mask indicator -->
               <UIcon v-if="layer.isMask" name="i-lucide-scan" class="w-3 h-3 text-[#e84aff] shrink-0" />
               <!-- Motion path indicator -->
@@ -968,8 +1108,17 @@ onUnmounted(() => {
                 class="flex items-center gap-1 pl-6 pr-2 border-b border-(--ui-border)/20 text-[9px] text-(--ui-text-dimmed)"
                 :style="{ height: `${KF_TRACK_H}px` }"
               >
-                <span class="font-mono w-5 text-right">{{ prop.icon }}</span>
                 <span class="truncate">{{ prop.label }}</span>
+                <UButton
+                  icon="i-lucide-diamond-plus"
+                  :aria-label="`Add ${prop.label} keyframe at playhead for ${layer.name}`"
+                  color="neutral"
+                  variant="ghost"
+                  size="xs"
+                  class="ml-auto size-4 p-0"
+                  :disabled="!canEditTiming(layer) || layer.type === 'audio'"
+                  @click.stop="insertKeyframe(layer, prop.key, state.currentTime)"
+                />
                 <span
                   v-if="layer.keyframes?.[prop.key]?.length"
                   class="ml-auto text-[8px] text-(--ui-text-muted) font-mono"
@@ -984,7 +1133,8 @@ onUnmounted(() => {
           <!-- Ruler -->
           <div
             ref="rulerEl"
-            aria-label="Time ruler" class="sticky top-0 z-20 border-b border-default bg-elevated cursor-pointer"
+            aria-label="Time ruler"
+            class="sticky top-0 z-20 border-b border-default bg-elevated cursor-pointer"
             :style="{ height: `${RULER_H}px` }"
             @mousedown="onRulerMouseDown"
           >
@@ -999,7 +1149,7 @@ onUnmounted(() => {
                 :style="{
                   width: '1px',
                   height: mark.label ? '12px' : '6px',
-                  marginTop: mark.label ? '20px' : '26px',
+                  marginTop: mark.label ? '20px' : '26px'
                 }"
               />
               <span
@@ -1008,8 +1158,8 @@ onUnmounted(() => {
               >{{ mark.label }}</span>
             </div>
             <div class="absolute top-0 bottom-0 pointer-events-none" :style="{ left: `${playheadX}px` }">
-              <div class="h-full w-px bg-primary" />
-              <div class="absolute top-0 -left-1 h-2 w-2 rotate-45 bg-primary" />
+              <div class="h-full w-px bg-inverted" />
+              <div class="absolute top-0 -left-1 h-2 w-2 rotate-45 bg-inverted" />
             </div>
             <!-- Loop range overlay -->
             <div
@@ -1017,7 +1167,7 @@ onUnmounted(() => {
               class="absolute top-0 h-full bg-[#4a8fe8]/20 border-x border-[#4a8fe8]/50 cursor-pointer"
               :style="{
                 left: `${state.loopIn * pxPerSec}px`,
-                width: `${(state.loopOut! - state.loopIn) * pxPerSec}px`,
+                width: `${(state.loopOut! - state.loopIn) * pxPerSec}px`
               }"
               @dblclick.stop="clearLoopRange"
             />
@@ -1036,7 +1186,7 @@ onUnmounted(() => {
               background: 'repeating-linear-gradient(45deg, transparent, transparent 3px, rgba(232,200,74,0.08) 3px, rgba(232,200,74,0.08) 6px)',
               borderLeft: '1px dashed rgba(232,200,74,0.25)',
               borderRight: '1px dashed rgba(232,200,74,0.25)',
-              zIndex: 1,
+              zIndex: 1
             }"
           />
 
@@ -1045,28 +1195,29 @@ onUnmounted(() => {
             <!-- Main layer lane (presence bar) -->
             <div
               class="relative border-b border-(--ui-border)/30 cursor-pointer"
-              :class="state.selectedLayerId === layer.id ? 'bg-primary/10 ring-1 ring-inset ring-primary/30' : ''"
+              :class="state.selectedLayerId === layer.id ? 'bg-[#f5dfd9] dark:bg-[#553d38]' : ''"
               :data-layer-lane="layer.id"
               :data-selected="state.selectedLayerId === layer.id"
               :style="{ height: `${LANE_H}px`, zIndex: 2 }"
               @click="selectLayer(layer.id); onTrackClick($event)"
+              @dblclick="addKeyframeAtClick($event, layer.id, keyframeProperty)"
             >
               <!-- Presence bar group (draggable) -->
               <div
-                class="presence-bar-group absolute top-1"
+                class="presence-bar-group group/presence absolute top-1"
                 :style="{
                   left: `${(layer.startTime || 0) * pxPerSec}px`,
                   width: `${((layer.endTime || 3) - (layer.startTime || 0)) * pxPerSec}px`,
-                  height: `${LANE_H - 8}px`,
+                  height: `${LANE_H - 8}px`
                 }"
               >
                 <!-- Full presence bar -->
                 <div
-                  class="absolute inset-0 rounded-sm cursor-grab active:cursor-grabbing"
+                  class="absolute inset-0 rounded-lg cursor-grab active:cursor-grabbing"
                   :title="`Drag to move ${layer.name}`"
                   :style="{
                     backgroundColor: getLayerColor(layer),
-                    opacity: 0.35,
+                    opacity: 0.2
                   }"
                   @mousedown="onPresenceMouseDown($event, layer.id, 'move')"
                   @click.stop="onPresenceBarClick(layer)"
@@ -1083,7 +1234,7 @@ onUnmounted(() => {
                 <div
                   v-for="(phase, phaseIndex) in phasesByLayer.get(layer.id) || []"
                   :key="`${phase.start}-${phase.kind}`"
-                  class="absolute top-0 z-10 h-[calc(100%-6px)] overflow-visible rounded-sm border-x border-black/10"
+                  class="group/phase absolute top-0 z-10 h-full overflow-visible rounded-lg"
                   :data-animation-phase="phase.kind"
                   :style="{
                     left: `${(phase.start - (layer.startTime ?? 0)) * pxPerSec}px`,
@@ -1091,6 +1242,8 @@ onUnmounted(() => {
                     backgroundColor: phase.kind === 'hold' ? 'transparent' : getLayerColor(layer),
                     filter: phase.kind === 'exit' ? 'brightness(0.85)' : undefined
                   }"
+                  @click.capture="onPhaseClick"
+                  @mousedown="phase.kind === 'hold' || phase.kind === 'audio' ? onPresenceMouseDown($event, layer.id, 'move') : undefined"
                 >
                   <BannerTimelineAnimationPicker
                     :ref="(el) => { if (phaseIndex === 0) setAnimationPicker(layer.id, el) }"
@@ -1098,16 +1251,37 @@ onUnmounted(() => {
                     :phase="phase"
                     :direction="phase.direction"
                     :compact="(phase.end - phase.start) * pxPerSec < 66"
+                    @drag-start="phase.kind === 'hold' || phase.kind === 'audio' ? onPresenceMouseDown($event, layer.id, 'move') : startPhaseDrag($event, layer, phase, 'move')"
                   />
+                  <template v-if="phase.kind !== 'hold' && phase.kind !== 'audio'">
+                    <UButton
+                      v-for="edge in (['start', 'end'] as const)"
+                      :key="edge"
+                      :aria-label="`Resize ${phase.label} ${edge} for ${layer.name}`"
+                      :title="`Drag to resize ${edge}; arrow keys adjust by 0.05s`"
+                      icon="i-lucide-grip-vertical"
+                      color="neutral"
+                      variant="ghost"
+                      size="xs"
+                      class="absolute inset-y-0 z-30 w-2.5 p-0 cursor-ew-resize rounded-sm text-white/80 opacity-50 hover:opacity-100 focus:opacity-100"
+                      :class="edge === 'start' ? 'left-0' : 'right-0'"
+                      :disabled="!canEditTiming(layer)"
+                      @mousedown.stop="startPhaseDrag($event, layer, phase, edge)"
+                      @click.stop.prevent
+                      @keydown="nudgePhase($event, layer, phase, edge)"
+                    />
+                  </template>
                 </div>
                 <!-- Left edge handle -->
                 <div
-                  class="absolute top-0 left-0 z-20 w-[6px] h-full cursor-col-resize hover:bg-white/20 rounded-l-sm"
+                  class="absolute bottom-0 left-0 z-20 w-2 h-1.5 cursor-ew-resize rounded-bl-lg bg-current/30"
+                  :title="`Resize layer start for ${layer.name}`"
                   @mousedown="onPresenceMouseDown($event, layer.id, 'start')"
                 />
                 <!-- Right edge handle -->
                 <div
-                  class="absolute top-0 right-0 z-20 w-[6px] h-full cursor-col-resize hover:bg-white/20 rounded-r-sm"
+                  class="absolute bottom-0 right-0 z-20 w-2 h-1.5 cursor-ew-resize rounded-br-lg bg-current/30"
+                  :title="`Resize layer end for ${layer.name}`"
                   @mousedown="onPresenceMouseDown($event, layer.id, 'end')"
                 />
               </div>
@@ -1127,7 +1301,7 @@ onUnmounted(() => {
                   class="absolute top-0 h-full bg-[#4af0a2]/8 rounded-sm"
                   :style="{
                     left: `${(layer.startTime || 0) * pxPerSec}px`,
-                    width: `${((layer.endTime || 3) - (layer.startTime || 0)) * pxPerSec}px`,
+                    width: `${((layer.endTime || 3) - (layer.startTime || 0)) * pxPerSec}px`
                   }"
                 />
                 <!-- Tween bars -->
@@ -1139,12 +1313,12 @@ onUnmounted(() => {
                     left: `${tw.startTime * pxPerSec}px`,
                     width: `${(tw.endTime - tw.startTime) * pxPerSec}px`,
                     top: '2px',
-                    height: `${KF_TRACK_H - 4}px`,
+                    height: `${KF_TRACK_H - 4}px`
                   }"
                 >
                   <!-- Tween fill -->
                   <div
-                    class="absolute inset-0 rounded-sm cursor-grab active:cursor-grabbing transition-colors"
+                    class="absolute inset-0 rounded-lg cursor-grab active:cursor-grabbing transition-colors"
                     :class="selectedTween?.layerId === layer.id && selectedTween?.tweenIndex === ti
                       ? 'bg-[#4af0a2]/50 ring-1 ring-[#4af0a2]'
                       : 'bg-[#4af0a2]/25 hover:bg-[#4af0a2]/35'"
@@ -1183,7 +1357,7 @@ onUnmounted(() => {
                     left: `${getMotionPathTweens(layer)[getMotionPathTweens(layer).length - 1].endTime * pxPerSec + 2}px`,
                     top: `${KF_TRACK_H / 2 - 5}px`,
                     width: '10px',
-                    height: '10px',
+                    height: '10px'
                   }"
                   @click.stop="addMotionPathTween(layer.id)"
                 >
@@ -1196,6 +1370,7 @@ onUnmounted(() => {
                 v-for="prop in getVisibleKfProperties(layer)"
                 :key="`track-${layer.id}-${prop.key}`"
                 class="relative border-b border-(--ui-border)/20 cursor-crosshair"
+                :aria-label="`${prop.label} keyframe track for ${layer.name}`"
                 :style="{ height: `${KF_TRACK_H}px`, zIndex: 2 }"
                 @dblclick="addKeyframeAtClick($event, layer.id, prop.key)"
               >
@@ -1211,24 +1386,29 @@ onUnmounted(() => {
                       left: `${kf.time * pxPerSec}px`,
                       width: `${(getLayerKeyframes(layer.id, prop.key)[ki + 1].time - kf.time) * pxPerSec}px`,
                       backgroundColor: getLayerColor(layer),
-                      opacity: 0.4,
+                      opacity: 0.4
                     }"
                   />
                 </template>
 
                 <!-- Keyframe diamonds -->
-                <div
+                <UButton
                   v-for="(kf, ki) in getLayerKeyframes(layer.id, prop.key)"
                   :key="`kf-${ki}`"
-                  class="absolute cursor-pointer"
+                  :aria-label="`${prop.label} keyframe at ${kf.time.toFixed(2)}s for ${layer.name}`"
+                  color="neutral"
+                  variant="ghost"
+                  class="absolute min-h-0 p-0 cursor-pointer"
                   :style="{
                     left: `${kf.time * pxPerSec - 5}px`,
                     top: `${KF_TRACK_H / 2 - 5}px`,
                     width: '10px',
-                    height: '10px',
+                    height: '10px'
                   }"
                   @mousedown="onKeyframeDragStart($event, layer.id, prop.key, ki)"
                   @click="selectKeyframe(layer.id, prop.key, ki, $event)"
+                  @dblclick.stop
+                  @keydown="nudgeKeyframe($event, layer.id, prop.key, ki)"
                 >
                   <!-- Diamond shape -->
                   <div
@@ -1238,7 +1418,7 @@ onUnmounted(() => {
                       : 'bg-(--ui-bg-elevated) border-current hover:bg-(--ui-bg-accented)'"
                     :style="{ color: getLayerColor(layer) }"
                   />
-                </div>
+                </UButton>
               </div>
             </template>
           </template>
@@ -1250,17 +1430,19 @@ onUnmounted(() => {
             :style="{
               left: `${stretchLabel.x}px`,
               top: `${RULER_H - 20}px`,
-              transform: 'translateX(-50%)',
+              transform: 'translateX(-50%)'
             }"
-          >{{ stretchLabel.text }}</div>
+          >
+            {{ stretchLabel.text }}
+          </div>
 
           <!-- Playhead -->
           <div
             class="absolute top-0 bottom-0 pointer-events-none"
             :style="{ left: `${playheadX}px`, zIndex: 50 }"
           >
-            <div class="w-px h-full bg-primary" />
-            <div class="absolute -top-0 -left-[4px] w-[9px] h-3 bg-primary rounded-b-sm" />
+            <div class="w-px h-full bg-inverted" />
+            <div class="absolute -top-0 -left-[4px] w-[9px] h-3 bg-inverted rounded-b-sm" />
           </div>
         </div>
       </div>

@@ -13,6 +13,8 @@ let pendingSave: Promise<void> | null = null
 const animClipboard = ref<{
   animIn: AnimInType
   animInDur: number
+  animInStart?: number
+  animOutStart?: number
   ease: string
   startTime: number
   endTime: number
@@ -243,6 +245,7 @@ export function useBannerStudio() {
   }
 
   function selectLayer(id: number | null) {
+    if (id !== state.selectedLayerId) state.selectedKeyframe = null
     state.selectedLayerId = id
 
     // Broadcast selection (acquires/releases soft lock)
@@ -462,6 +465,8 @@ export function useBannerStudio() {
     animClipboard.value = {
       animIn: l.animIn,
       animInDur: l.animInDur,
+      animInStart: l.animInStart,
+      animOutStart: l.animOutStart,
       ease: l.ease || 'power2.out',
       startTime: l.startTime,
       endTime: l.endTime,
