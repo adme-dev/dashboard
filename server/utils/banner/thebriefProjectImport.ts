@@ -4,6 +4,8 @@ import type { GodModeTransactionDb } from '~~/server/utils/godMode/transactionCo
 export interface TheBriefProjectIdentity {
   clientId: string
   sourceHashTag: string
+  /** Lower-cased `source-design:<hash>` when present: one TheBrief design is one project per client. */
+  designTag: string | null
   tags: string[]
 }
 
@@ -13,6 +15,7 @@ export function readTheBriefProjectIdentity(clientId: unknown, tags: unknown): T
   const isImport = tagList.includes('source:thebrief')
   const sourceTags = tagList.filter(tag => typeof tag === 'string' && tag.toLowerCase().startsWith('source-sha256'))
   const createdDateTags = tagList.filter(tag => typeof tag === 'string' && tag.toLowerCase().startsWith('source-created-date'))
+  const designTags = tagList.filter(tag => typeof tag === 'string' && tag.toLowerCase().startsWith('source-design'))
   if (!isImport && !sourceTags.length) return null
   if (!isImport || tagList.some(tag => typeof tag !== 'string') || sourceTags.length !== 1 || !/^source-sha256:[a-f0-9]{64}$/i.test(sourceTags[0])) {
     throw createError({ statusCode: 400, statusMessage: 'TheBrief imports require one valid source SHA-256 tag' })
@@ -23,8 +26,12 @@ export function readTheBriefProjectIdentity(clientId: unknown, tags: unknown): T
   if (createdDateTags.length > 1 || (createdDateTags.length === 1 && !validCreatedDateTag(createdDateTags[0]))) {
     throw createError({ statusCode: 400, statusMessage: 'TheBrief creation date must be one valid YYYY-MM-DD source tag' })
   }
+  if (designTags.length > 1 || (designTags.length === 1 && !/^source-design:[\w-]{1,100}$/.test(designTags[0]))) {
+    throw createError({ statusCode: 400, statusMessage: 'TheBrief imports allow one valid source design tag' })
+  }
   const sourceHashTag = sourceTags[0].toLowerCase()
-  return { clientId: clientId.toLowerCase(), sourceHashTag, tags: tagList.map(tag => tag === sourceTags[0] ? sourceHashTag : tag) }
+  const designTag = designTags[0]?.toLowerCase() || null
+  return { clientId: clientId.toLowerCase(), sourceHashTag, designTag, tags: tagList.map(tag => tag === sourceTags[0] ? sourceHashTag : tag) }
 }
 
 function validCreatedDateTag(tag: string): boolean {
@@ -37,8 +44,10 @@ function validCreatedDateTag(tag: string): boolean {
 /** Must run inside the project creation transaction, before its INSERT. */
 export async function findExistingTheBriefProject(db: GodModeTransactionDb, identity: TheBriefProjectIdentity) {
   // The transaction-scoped lock also covers ordinary authenticated requests. It is held through commit/rollback.
+  // Keyed on the TheBrief design when known, so concurrent imports of different exports
+  // (different archive bytes) of one design serialise and resolve to a single project.
   await db.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
-    `banner-thebrief-import:${identity.clientId}:${identity.sourceHashTag}`
+    `banner-thebrief-import:${identity.clientId}:${identity.designTag || identity.sourceHashTag}`
   ])
   const client = await db.query('SELECT id FROM agency_clients WHERE id = $1 FOR KEY SHARE', [identity.clientId])
   if (!client.rows.length) throw createError({ statusCode: 400, statusMessage: 'TheBrief import client does not exist' })
@@ -48,9 +57,9 @@ export async function findExistingTheBriefProject(db: GodModeTransactionDb, iden
       created_at AS "createdAt", updated_at AS "updatedAt"
     FROM banner_projects
     WHERE client_id = $1 AND 'source:thebrief' = ANY(tags)
-      AND EXISTS (SELECT 1 FROM unnest(tags) AS source_tag WHERE lower(source_tag) = $2)
+      AND EXISTS (SELECT 1 FROM unnest(tags) AS source_tag WHERE lower(source_tag) = $2 OR lower(source_tag) = $3)
     ORDER BY created_at ASC, id ASC
     LIMIT 1
-  `, [identity.clientId, identity.sourceHashTag])
+  `, [identity.clientId, identity.sourceHashTag, identity.designTag])
   return existing.rows[0]
 }
