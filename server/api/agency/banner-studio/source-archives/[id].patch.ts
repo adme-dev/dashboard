@@ -22,7 +22,7 @@ export default defineEventHandler(async (event) => {
   if (!body || typeof body !== 'object') throw createError({ statusCode: 400, statusMessage: 'Invalid body' })
 
   const archive = await queryOneFresh<SourceArchiveRow>(
-    `SELECT ${SOURCE_ARCHIVE_COLUMNS} FROM banner_source_archives WHERE id = $1`,
+    `SELECT ${SOURCE_ARCHIVE_COLUMNS} FROM banner_source_archives WHERE id = $1 AND stored_at IS NOT NULL`,
     [id]
   )
   if (!archive) throw createError({ statusCode: 404, statusMessage: 'Source archive not found' })
@@ -67,7 +67,13 @@ export default defineEventHandler(async (event) => {
        SET client_id = $2, project_id = $3, conversion_status = $4, hold_reason = $5, updated_at = NOW()
      WHERE id = $1 AND client_id IS NOT DISTINCT FROM $6::uuid
      RETURNING ${SOURCE_ARCHIVE_COLUMNS}
-  `, [id, clientId, projectId, status, holdReason, archive.clientId])
+  `, [id, clientId, projectId, status, holdReason, archive.clientId]).catch((error: { code?: string }) => {
+    // Assigning a client can collide with that client's own copy of the same design bytes.
+    if (error?.code === '23505') {
+      throw createError({ statusCode: 409, statusMessage: 'This client already retains these bytes for this design' })
+    }
+    throw error
+  })
   if (!updated) throw createError({ statusCode: 409, statusMessage: 'Archive changed concurrently; reload and retry' })
   return { archive: updated }
 })

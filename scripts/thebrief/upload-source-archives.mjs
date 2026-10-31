@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 // Uploads every original TheBrief per-size child ZIP from the migration workspace
 // to private Banner Studio source-archive storage, with its design, client and
-// project links. Resumable: completed SHA-256s in the receipt log are skipped and
-// the server is idempotent by SHA-256.
+// project links. Resumable: an archive's identity is (client, design, SHA-256);
+// identities completed in the receipt log are skipped, and the server is
+// idempotent by the same identity. Identical bytes for another client or design
+// are uploaded as their own archive.
 //
 // Read-only on the workspace except for appending ledger/r2-archive-log.jsonl.
 // Child ZIPs are read from the bulk export in memory; nothing is extracted.
@@ -26,6 +28,9 @@ const CHILD_ENTRY = /^General usage\/([^/]+-(\d{1,5})x(\d{1,5})-px(?:-\d{1,3})?\
 const DESIGN_HASH = /^[0-9a-z]{4,32}$/
 
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex')
+
+/** Resume and idempotency key; matches the server's (client, design, SHA-256) identity. */
+export const archiveIdentity = ({ clientId, designHash, sha256: digest }) => `${clientId || 'unassigned'}/${designHash}/${digest}`
 
 export function parseArgs(argv) {
   const args = { dryRun: false, workspace: join(homedir(), 'Documents/XeroFlow Imports/TheBrief Migration'), only: null }
@@ -189,10 +194,13 @@ async function findExisting(baseUrl, headers, metadata) {
   const url = new URL(ROUTE, baseUrl)
   url.searchParams.set('sha256', metadata.sha256)
   url.searchParams.set('clientId', metadata.clientId ?? 'unassigned')
+  url.searchParams.set('designHash', metadata.designHash)
   const response = await fetch(url, { headers: { ...headers, accept: 'application/json' } })
   if (!response.ok) return null
   const body = await response.json()
-  return body.archives?.find(archive => archive.sha256 === metadata.sha256) ?? null
+  return body.archives?.find(archive => archive.sha256 === metadata.sha256
+    && archive.designHash === metadata.designHash
+    && (archive.clientId ?? null) === (metadata.clientId ?? null)) ?? null
 }
 
 async function upload(baseUrl, headers, metadata, bytes) {
@@ -243,7 +251,8 @@ export async function main(argv = process.argv.slice(2), env = process.env) {
   })
   const done = new Set((await readJsonl(logPath))
     .filter(line => line.result === 'uploaded' || line.result === 'already-present')
-    .map(line => line.sha256))
+    .filter(line => line.sha256 && line.designHash)
+    .map(archiveIdentity))
 
   const counts = { uploaded: 0, alreadyPresent: 0, skippedFromLog: 0, failed: 0, unassignedClient: 0, planned: 0 }
   const receipt = async (line) => {
@@ -272,10 +281,6 @@ export async function main(argv = process.argv.slice(2), env = process.env) {
       const childBytes = unzipSync(container, { filter: file => file.name === entryName })[entryName]
       const sha = sha256(childBytes)
       const base = { batch: batchRef, batchSha256, entry: entryName, sha256: sha, bytes: childBytes.byteLength }
-      if (done.has(sha)) {
-        counts.skippedFromLog += 1
-        continue
-      }
       if (childBytes.byteLength > MAX_BYTES) {
         counts.failed += 1
         await receipt({ ...base, result: 'failed', error: 'Child ZIP exceeds 64 MB' })
@@ -289,6 +294,11 @@ export async function main(argv = process.argv.slice(2), env = process.env) {
         continue
       }
       const { metadata, clientName } = described
+      const identity = archiveIdentity(metadata)
+      if (done.has(identity)) {
+        counts.skippedFromLog += 1
+        continue
+      }
       if (!metadata.clientId) counts.unassignedClient += 1
       const summary = {
         ...base,
@@ -310,7 +320,7 @@ export async function main(argv = process.argv.slice(2), env = process.env) {
         const result = await upload(baseUrl, headers, metadata, childBytes)
         const outcome = result.alreadyPresent ? 'already-present' : 'uploaded'
         counts[result.alreadyPresent ? 'alreadyPresent' : 'uploaded'] += 1
-        done.add(sha)
+        done.add(identity)
         await receipt({ ...summary, result: outcome, archiveId: result.archive?.id, r2Key: result.archive?.r2Key })
         console.log(`${outcome.toUpperCase()} ${metadata.designHash} ${metadata.sizeLabel}`)
       } catch (error) {

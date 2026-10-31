@@ -4,8 +4,9 @@ import { hasAllSocialClientAccess, requireSocialClientAccess } from '~~/server/u
 
 /**
  * Private retention of original TheBrief HTML5 export ZIPs (one per size).
- * Objects are content-addressed under `thebrief-sources/` and are only ever
- * served through the authenticated download route; no public URL is stored.
+ * An archive's identity is (client, design, SHA-256); its R2 key encodes exactly
+ * that identity, under `thebrief-sources/`, and is only ever served through the
+ * authenticated download route. No public URL is stored.
  */
 
 export const SOURCE_ARCHIVE_PREFIX = 'thebrief-sources'
@@ -53,6 +54,8 @@ export interface SourceArchiveRow {
   holdReason: string | null
   uploadedBy: string
   createdAt: string
+  /** NULL while the row is only a reservation: the R2 write has not been confirmed. */
+  storedAt: string | null
   updatedAt: string
 }
 
@@ -62,7 +65,15 @@ export const SOURCE_ARCHIVE_COLUMNS = `
   sha256, bytes::float8 AS bytes, original_filename AS filename, source_folder_path AS "folderPath",
   size_label AS "sizeLabel", source_batch_sha256 AS "batchSha256", r2_key AS "r2Key",
   project_id AS "projectId", conversion_status AS status, hold_reason AS "holdReason",
-  uploaded_by AS "uploadedBy", created_at AS "createdAt", updated_at AS "updatedAt"`
+  uploaded_by AS "uploadedBy", created_at AS "createdAt", stored_at AS "storedAt", updated_at AS "updatedAt"`
+
+/** ON CONFLICT target matching banner_source_archives_identity_idx. */
+export const SOURCE_ARCHIVE_IDENTITY_CONFLICT
+  = `((COALESCE(client_id, '00000000-0000-0000-0000-000000000000'::uuid)), source_design_hash, sha256)`
+
+/** WHERE clause for one archive identity: $1 client (nullable), $2 design hash, $3 SHA-256. */
+export const SOURCE_ARCHIVE_IDENTITY_WHERE
+  = 'client_id IS NOT DISTINCT FROM $1::uuid AND source_design_hash = $2 AND sha256 = $3'
 
 function invalid(message: string): never {
   throw createError({ statusCode: 400, statusMessage: message })

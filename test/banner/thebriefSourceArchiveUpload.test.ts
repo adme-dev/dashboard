@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { zipSync } from 'fflate'
 import { describe, expect, it } from 'vitest'
-import { buildIndex, describeChild } from '../../scripts/thebrief/upload-source-archives.mjs'
+import { archiveIdentity, buildIndex, describeChild } from '../../scripts/thebrief/upload-source-archives.mjs'
 
 const CLIENT_ID = '11111111-1111-4111-8111-111111111111'
 const PROJECT_ID = '22222222-2222-4222-8222-222222222222'
@@ -57,6 +57,17 @@ describe('TheBrief source archive uploader mapping', () => {
 
     const unknown = child('<p>nothing</p>')
     expect(describeChild(input({ sha: sha(unknown), childBytes: unknown }), index()).error).toMatch(/unresolved/)
+  })
+
+  it('resumes by client, design and SHA-256, not SHA alone', () => {
+    const digest = 'a'.repeat(64)
+    const keys = new Set([
+      archiveIdentity({ clientId: CLIENT_ID, designHash: 'heldone', sha256: digest }),
+      archiveIdentity({ clientId: null, designHash: 'heldone', sha256: digest }),
+      archiveIdentity({ clientId: CLIENT_ID, designHash: 'prepone', sha256: digest })
+    ])
+    expect(keys.size).toBe(3)
+    expect(archiveIdentity({ clientId: null, designHash: 'heldone', sha256: digest })).toBe(`unassigned/heldone/${digest}`)
   })
 
   it('refuses entries that are not General usage size ZIPs', () => {

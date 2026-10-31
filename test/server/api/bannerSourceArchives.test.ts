@@ -47,9 +47,11 @@ vi.mock('~~/server/utils/auth', () => ({
 
 const queryOneFresh = vi.fn()
 const queryFresh = vi.fn()
+const execute = vi.fn()
 vi.mock('~~/server/utils/db', () => ({
   queryOneFresh: (...args: unknown[]) => queryOneFresh(...args),
-  queryFresh: (...args: unknown[]) => queryFresh(...args)
+  queryFresh: (...args: unknown[]) => queryFresh(...args),
+  execute: (...args: unknown[]) => execute(...args)
 }))
 
 const clientAccess = vi.fn()
@@ -154,6 +156,7 @@ beforeEach(() => {
   allClientAccess.mockReset().mockReturnValue(false)
   queryOneFresh.mockReset()
   queryFresh.mockReset().mockResolvedValue([])
+  execute.mockReset().mockResolvedValue(1)
 })
 
 describe('source archive key layout', () => {
@@ -224,44 +227,144 @@ describe('storeSourceArchive', () => {
   })
 })
 
+type Stored = Record<string, unknown> & { id: string, clientId: string | null, designHash: string, sha256: string, storedAt: string | null }
+
+/** In-memory banner_source_archives honouring the (client, design, SHA-256) identity index. */
+function fakeDb(options: { projectClient?: string | null, failComplete?: number } = {}) {
+  const rows: Stored[] = []
+  let failComplete = options.failComplete ?? 0
+  const identityOf = (params: unknown[]) => rows.find(item =>
+    item.clientId === (params[0] ?? null) && item.designHash === params[1] && item.sha256 === params[2])
+  queryOneFresh.mockImplementation(async (sql: string, params: unknown[]) => {
+    if (sql.includes('FROM banner_projects')) return options.projectClient === undefined ? null : { clientId: options.projectClient }
+    if (sql.includes('INSERT INTO banner_source_archives')) {
+      if (identityOf(params)) return null
+      const created: Stored = {
+        id: `archive-${rows.length + 1}`, clientId: (params[0] as string | null) ?? null, designHash: params[1] as string,
+        sha256: params[2] as string, r2Key: params[3] as string, storedAt: null
+      }
+      rows.push(created)
+      return { ...created }
+    }
+    if (sql.includes('UPDATE banner_source_archives')) {
+      if (failComplete > 0) {
+        failComplete -= 1
+        throw new Error('connection terminated')
+      }
+      const found = rows.find(item => item.id === params[0])
+      if (!found) return null
+      found.storedAt ??= '2026-10-31T00:00:00Z'
+      return { ...found }
+    }
+    if (sql.includes('source_design_hash = $2 AND sha256 = $3')) {
+      const found = identityOf(params)
+      return found ? { ...found } : null
+    }
+    throw new Error(`unexpected SQL: ${sql}`)
+  })
+  execute.mockImplementation(async (sql: string, params: unknown[]) => {
+    if (!sql.startsWith('DELETE')) throw new Error(`unexpected SQL: ${sql}`)
+    const at = rows.findIndex(item => item.id === params[0] && item.storedAt === null)
+    if (at >= 0) rows.splice(at, 1)
+    return at >= 0 ? 1 : 0
+  })
+  return rows
+}
+
 describe('POST /source-archives', () => {
-  it('stores a new archive and records it', async () => {
-    queryOneFresh.mockResolvedValueOnce(null).mockResolvedValueOnce(row())
+  it('reserves the row before writing R2, then completes it', async () => {
+    const rows = fakeDb()
     const { event, r2 } = uploadEvent()
+    r2.put.mockImplementation(async (key: string, value: Uint8Array) => {
+      expect(rows).toHaveLength(1)
+      expect(rows[0]!.storedAt).toBeNull()
+      r2.objects.set(key, value)
+    })
     const result = await upload(event) as { alreadyPresent: boolean }
     expect(result.alreadyPresent).toBe(false)
     expect(event.status).toBe(201)
     expect([...r2.objects.keys()]).toEqual([`thebrief-sources/${CLIENT}/q1gd37z/${SHA}.zip`])
+    expect(rows[0]!.storedAt).not.toBeNull()
     expect(clientAccess).toHaveBeenCalledWith(event, CLIENT)
-    const insertParams = queryOneFresh.mock.calls[1]?.[1] as unknown[]
-    expect(insertParams).toContain(SHA)
-    expect(insertParams).toContain('user-1')
   })
 
-  it('is idempotent by SHA-256 and never reads or stores the body again', async () => {
-    queryOneFresh.mockResolvedValueOnce(row())
+  it('is idempotent by client, design and SHA-256 and never stores the body again', async () => {
+    fakeDb()
+    await upload(uploadEvent().event)
     const { event, r2 } = uploadEvent()
-    const result = await upload(event) as { alreadyPresent: boolean }
-    expect(result.alreadyPresent).toBe(true)
+    await expect(upload(event)).resolves.toMatchObject({ alreadyPresent: true })
     expect(r2.put).not.toHaveBeenCalled()
   })
 
-  it('returns the winner when a concurrent upload of the same bytes inserts first', async () => {
-    queryOneFresh.mockResolvedValueOnce(null).mockResolvedValueOnce(null).mockResolvedValueOnce(row())
-    const { event } = uploadEvent()
-    await expect(upload(event)).resolves.toMatchObject({ alreadyPresent: true })
+  it('keeps identical bytes for different clients or designs as separate archives', async () => {
+    const rows = fakeDb()
+    const first = uploadEvent()
+    const otherClient = uploadEvent({ clientId: OTHER_CLIENT })
+    const otherDesign = uploadEvent({ designHash: 'z2ke50n' })
+    for (const { event } of [first, otherClient, otherDesign]) {
+      await expect(upload(event)).resolves.toMatchObject({ alreadyPresent: false })
+    }
+    expect(rows.map(item => `${item.clientId}/${item.designHash}`)).toEqual([
+      `${CLIENT}/q1gd37z`, `${OTHER_CLIENT}/q1gd37z`, `${CLIENT}/z2ke50n`
+    ])
+    expect(new Set(rows.map(item => item.r2Key)).size).toBe(3)
+    expect([...otherClient.r2.objects.keys()]).toEqual([`thebrief-sources/${OTHER_CLIENT}/q1gd37z/${SHA}.zip`])
+    expect([...otherDesign.r2.objects.keys()]).toEqual([`thebrief-sources/${CLIENT}/z2ke50n/${SHA}.zip`])
   })
 
-  it('does not disclose an archive retained under a client the uploader cannot access', async () => {
-    queryOneFresh.mockResolvedValueOnce(row({ clientId: OTHER_CLIENT }))
-    clientAccess.mockImplementation(async (_event: unknown, clientId: string) => {
-      if (clientId === OTHER_CLIENT) throw Object.assign(new Error('No access'), { statusCode: 403 })
+  it('never leaves an R2 object without a row when recording fails, and a retry completes it', async () => {
+    const rows = fakeDb({ failComplete: 1 })
+    const r2 = bucket()
+    const failed = uploadEvent({}, ZIP, r2)
+    await expect(upload(failed.event)).rejects.toThrow('connection terminated')
+    expect(r2.objects.size).toBe(1)
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({ r2Key: [...r2.objects.keys()][0], storedAt: null })
+
+    const retry = uploadEvent({}, ZIP, r2)
+    await expect(upload(retry.event)).resolves.toMatchObject({ alreadyPresent: false, archive: { id: rows[0]!.id } })
+    expect(rows).toHaveLength(1)
+    expect(rows[0]!.storedAt).not.toBeNull()
+  })
+
+  it('never writes R2 when the reservation insert fails', async () => {
+    fakeDb()
+    const insertFailure = queryOneFresh.getMockImplementation()!
+    queryOneFresh.mockImplementation(async (sql: string, params: unknown[]) => {
+      if (sql.includes('INSERT INTO banner_source_archives')) throw new Error('database unavailable')
+      return insertFailure(sql, params)
     })
-    const { event } = uploadEvent()
-    await expect(upload(event)).rejects.toMatchObject({ statusCode: 409 })
+    const { event, r2 } = uploadEvent()
+    await expect(upload(event)).rejects.toThrow('database unavailable')
+    expect(r2.put).not.toHaveBeenCalled()
   })
 
-  it('requires client access before storing anything', async () => {
+  it('releases its own reservation when R2 rejects the bytes', async () => {
+    const rows = fakeDb()
+    const { event, r2 } = uploadEvent({}, new Uint8Array([...ZIP.slice(0, -1), 99]))
+    await expect(upload(event)).rejects.toMatchObject({ statusCode: 422 })
+    expect(r2.objects.size).toBe(0)
+    expect(rows).toHaveLength(0)
+  })
+
+  it('keeps the reservation when the R2 outcome is unknown', async () => {
+    const rows = fakeDb()
+    const { event, r2 } = uploadEvent()
+    r2.put.mockRejectedValue(new Error('network reset'))
+    await expect(upload(event)).rejects.toThrow('network reset')
+    expect(rows).toHaveLength(1)
+    expect(execute).not.toHaveBeenCalled()
+  })
+
+  it('completes a reservation another upload left behind', async () => {
+    const rows = fakeDb()
+    rows.push({ id: 'archive-old', clientId: CLIENT, designHash: 'q1gd37z', sha256: SHA, r2Key: `thebrief-sources/${CLIENT}/q1gd37z/${SHA}.zip`, storedAt: null })
+    const { event, r2 } = uploadEvent()
+    await expect(upload(event)).resolves.toMatchObject({ alreadyPresent: false, archive: { id: 'archive-old' } })
+    expect(r2.objects.size).toBe(1)
+  })
+
+  it('requires client access before touching the database or R2', async () => {
     clientAccess.mockRejectedValue(Object.assign(new Error('No access'), { statusCode: 403 }))
     const { event, r2 } = uploadEvent()
     await expect(upload(event)).rejects.toMatchObject({ statusCode: 403 })
@@ -273,7 +376,7 @@ describe('POST /source-archives', () => {
     const { event } = uploadEvent({ clientId: '' })
     await expect(upload(event)).rejects.toMatchObject({ statusCode: 403 })
     allClientAccess.mockReturnValue(true)
-    queryOneFresh.mockResolvedValueOnce(null).mockResolvedValueOnce(row({ clientId: null }))
+    fakeDb()
     const second = uploadEvent({ clientId: '' })
     await upload(second.event)
     expect([...second.r2.objects.keys()]).toEqual([`thebrief-sources/unassigned/q1gd37z/${SHA}.zip`])
@@ -290,14 +393,16 @@ describe('POST /source-archives', () => {
     const lying = uploadEvent()
     lying.event.headers = { 'content-length': '999' }
     await expect(upload(lying.event)).rejects.toMatchObject({ statusCode: 400 })
+    expect(queryOneFresh).not.toHaveBeenCalled()
     expect(big.r2.put).not.toHaveBeenCalled()
     expect(lying.r2.put).not.toHaveBeenCalled()
   })
 
-  it('rejects a project that belongs to another client', async () => {
-    queryOneFresh.mockResolvedValueOnce(null).mockResolvedValueOnce({ clientId: OTHER_CLIENT })
+  it('rejects a project that belongs to another client before reserving', async () => {
+    const rows = fakeDb({ projectClient: OTHER_CLIENT })
     const { event, r2 } = uploadEvent({ projectId: PROJECT, status: 'imported' })
     await expect(upload(event)).rejects.toMatchObject({ statusCode: 400 })
+    expect(rows).toHaveLength(0)
     expect(r2.put).not.toHaveBeenCalled()
   })
 })
@@ -308,6 +413,13 @@ describe('GET /source-archives', () => {
     await list(event)
     expect(clientAccess).toHaveBeenCalledWith(event, CLIENT)
     expect(queryFresh.mock.calls[0]?.[1]).toEqual([CLIENT, 'q1gd37z', 200])
+    expect(queryFresh.mock.calls[0]?.[0]).toContain('stored_at IS NOT NULL')
+  })
+
+  it('lists unconfirmed reservations only on request', async () => {
+    await list({ query: { clientId: CLIENT, reserved: 'true' } })
+    expect(queryFresh.mock.calls[0]?.[0]).toContain('stored_at IS NULL')
+    expect(queryFresh.mock.calls[0]?.[0]).not.toContain('stored_at IS NOT NULL')
   })
 
   it('requires all-client access to list across clients or unassigned', async () => {

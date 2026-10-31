@@ -25,7 +25,7 @@ export default defineEventHandler(async (event) => {
   if (!isSourceArchiveId(id)) notFound()
 
   const archive = await queryOneFresh<SourceArchiveRow>(
-    `SELECT ${SOURCE_ARCHIVE_COLUMNS} FROM banner_source_archives WHERE id = $1`,
+    `SELECT ${SOURCE_ARCHIVE_COLUMNS} FROM banner_source_archives WHERE id = $1 AND stored_at IS NOT NULL`,
     [id]
   )
   if (!archive || !isSourceArchiveKey(archive.r2Key)) notFound()

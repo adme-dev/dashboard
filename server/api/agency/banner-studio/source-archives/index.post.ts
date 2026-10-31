@@ -1,8 +1,10 @@
 import { getRequestWebStream } from 'h3'
 import { requireWriteAccess } from '~~/server/utils/auth'
-import { queryOneFresh } from '~~/server/utils/db'
+import { execute, queryOneFresh } from '~~/server/utils/db'
 import {
   SOURCE_ARCHIVE_COLUMNS,
+  SOURCE_ARCHIVE_IDENTITY_CONFLICT,
+  SOURCE_ARCHIVE_IDENTITY_WHERE,
   parseSourceArchiveMetadata,
   requireSourceArchiveClientAccess,
   sourceArchiveBucket,
@@ -11,10 +13,17 @@ import {
   type SourceArchiveRow
 } from '~~/server/utils/banner/sourceArchives'
 
+/** Validation failures raised before R2 committed anything: the object cannot exist. */
+const NOTHING_WRITTEN = new Set([400, 413, 422])
+
 /**
  * Retains one original TheBrief size ZIP. The raw `application/zip` body is the
- * archive; metadata travels in the query string. Idempotent by SHA-256: an
- * archive already retained is returned without reading or storing the body.
+ * archive; metadata travels in the query string.
+ *
+ * Idempotent by (client, design, SHA-256). The row is reserved before the R2
+ * write and completed after it, so an object never exists without a row. A
+ * reservation left by a failed attempt is completed by retrying the same upload;
+ * identical bytes for another client or design are a separate archive.
  */
 export default defineEventHandler(async (event) => {
   const user = await requireWriteAccess(event)
@@ -27,22 +36,6 @@ export default defineEventHandler(async (event) => {
 
   await requireSourceArchiveClientAccess(event, user, metadata.clientId)
 
-  const findExisting = () => queryOneFresh<SourceArchiveRow>(
-    `SELECT ${SOURCE_ARCHIVE_COLUMNS} FROM banner_source_archives WHERE sha256 = $1`,
-    [metadata.sha256]
-  )
-  const present = async (row: SourceArchiveRow) => {
-    try {
-      await requireSourceArchiveClientAccess(event, user, row.clientId)
-    } catch {
-      throw createError({ statusCode: 409, statusMessage: 'This archive is already retained under another client' })
-    }
-    return { archive: row, alreadyPresent: true }
-  }
-
-  const existing = await findExisting()
-  if (existing) return present(existing)
-
   if (metadata.projectId) {
     const project = await queryOneFresh<{ clientId: string | null }>(
       'SELECT client_id AS "clientId" FROM banner_projects WHERE id = $1',
@@ -54,42 +47,74 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  const body = getRequestWebStream(event)
-  if (!body) throw createError({ statusCode: 400, statusMessage: 'Archive body is required' })
+  const identity = [metadata.clientId, metadata.designHash, metadata.sha256]
+  const findIdentity = () => queryOneFresh<SourceArchiveRow>(
+    `SELECT ${SOURCE_ARCHIVE_COLUMNS} FROM banner_source_archives WHERE ${SOURCE_ARCHIVE_IDENTITY_WHERE}`,
+    identity
+  )
   const key = sourceArchiveKey(metadata.clientId, metadata.designHash, metadata.sha256)
-  await storeSourceArchive(sourceArchiveBucket(event), key, body, metadata)
-
-  const inserted = await queryOneFresh<SourceArchiveRow>(`
-    INSERT INTO banner_source_archives (
-      client_id, source_design_hash, source_child_hash, sha256, bytes, original_filename,
-      source_folder_path, size_label, source_batch_sha256, r2_key, project_id,
-      conversion_status, hold_reason, uploaded_by
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-    ON CONFLICT (sha256) DO NOTHING
-    RETURNING ${SOURCE_ARCHIVE_COLUMNS}
-  `, [
-    metadata.clientId,
-    metadata.designHash,
+  const descriptive = [
     metadata.childHash,
-    metadata.sha256,
     metadata.bytes,
     metadata.filename,
     metadata.folderPath,
     metadata.sizeLabel,
     metadata.batchSha256,
-    key,
     metadata.projectId,
     metadata.status,
     metadata.holdReason,
     user.id
-  ])
-  if (!inserted) {
-    // A concurrent upload of the same bytes won the insert.
-    const winner = await findExisting()
-    if (!winner) throw createError({ statusCode: 500, statusMessage: 'Failed to record source archive' })
-    return present(winner)
+  ]
+
+  let reservation = await findIdentity()
+  if (reservation?.storedAt) return { archive: reservation, alreadyPresent: true }
+  let reservedHere = false
+  if (!reservation) {
+    reservation = await queryOneFresh<SourceArchiveRow>(`
+      INSERT INTO banner_source_archives (
+        client_id, source_design_hash, sha256, r2_key,
+        source_child_hash, bytes, original_filename, source_folder_path, size_label,
+        source_batch_sha256, project_id, conversion_status, hold_reason, uploaded_by
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+      ON CONFLICT ${SOURCE_ARCHIVE_IDENTITY_CONFLICT} DO NOTHING
+      RETURNING ${SOURCE_ARCHIVE_COLUMNS}
+    `, [...identity, key, ...descriptive])
+    reservedHere = Boolean(reservation)
+    if (!reservation) {
+      // A concurrent upload of the same identity reserved first.
+      reservation = await findIdentity()
+      if (!reservation) throw createError({ statusCode: 500, statusMessage: 'Failed to reserve source archive' })
+      if (reservation.storedAt) return { archive: reservation, alreadyPresent: true }
+    }
   }
 
+  const body = getRequestWebStream(event)
+  try {
+    if (!body) throw createError({ statusCode: 400, statusMessage: 'Archive body is required' })
+    // Content-addressed: a retry or concurrent writer puts identical, R2-verified bytes.
+    await storeSourceArchive(sourceArchiveBucket(event), reservation.r2Key, body, metadata)
+  } catch (error) {
+    const status = (error as { statusCode?: number })?.statusCode
+    if (reservedHere && status && NOTHING_WRITTEN.has(status)) {
+      await execute(
+        'DELETE FROM banner_source_archives WHERE id = $1 AND stored_at IS NULL',
+        [reservation.id]
+      ).catch(() => undefined)
+    }
+    throw error
+  }
+
+  // If this fails the row stays reserved over a stored object; retrying completes it.
+  const completed = await queryOneFresh<SourceArchiveRow>(`
+    UPDATE banner_source_archives
+       SET source_child_hash = $2, bytes = $3, original_filename = $4, source_folder_path = $5,
+           size_label = $6, source_batch_sha256 = $7, project_id = $8, conversion_status = $9,
+           hold_reason = $10, uploaded_by = $11, stored_at = COALESCE(stored_at, NOW()), updated_at = NOW()
+     WHERE id = $1
+     RETURNING ${SOURCE_ARCHIVE_COLUMNS}
+  `, [reservation.id, ...descriptive])
+  if (!completed) throw createError({ statusCode: 500, statusMessage: 'Archive stored but not recorded; retry the upload' })
+
   setResponseStatus(event, 201)
-  return { archive: inserted, alreadyPresent: false }
+  return { archive: completed, alreadyPresent: false }
 })

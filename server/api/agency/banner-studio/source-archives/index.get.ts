@@ -13,7 +13,9 @@ import {
 
 /**
  * Lists retained source archives. `clientId` is a client UUID or `unassigned`;
- * omitting it lists every client and needs all-client access.
+ * omitting it lists every client and needs all-client access. Only completed
+ * archives are listed unless `reserved=true`, which lists upload reservations
+ * whose R2 write was never confirmed (retry the same upload to complete them).
  */
 export default defineEventHandler(async (event) => {
   const user = await requireAuth(event)
@@ -25,6 +27,7 @@ export default defineEventHandler(async (event) => {
     filters.push(sql.replace('?', `$${params.length}`))
   }
   const one = (value: unknown) => (typeof value === 'string' && value.trim() ? value.trim() : undefined)
+  filters.push(one(query.reserved) === 'true' ? 'stored_at IS NULL' : 'stored_at IS NOT NULL')
 
   const clientId = one(query.clientId)?.toLowerCase()
   if (clientId === SOURCE_ARCHIVE_UNASSIGNED) {

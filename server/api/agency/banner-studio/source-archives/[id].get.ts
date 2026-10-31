@@ -13,7 +13,7 @@ export default defineEventHandler(async (event) => {
   if (!isSourceArchiveId(id)) throw createError({ statusCode: 404, statusMessage: 'Source archive not found' })
 
   const archive = await queryOneFresh<SourceArchiveRow>(
-    `SELECT ${SOURCE_ARCHIVE_COLUMNS} FROM banner_source_archives WHERE id = $1`,
+    `SELECT ${SOURCE_ARCHIVE_COLUMNS} FROM banner_source_archives WHERE id = $1 AND stored_at IS NOT NULL`,
     [id]
   )
   if (!archive) throw createError({ statusCode: 404, statusMessage: 'Source archive not found' })
