@@ -7,7 +7,7 @@ import { brandGuideText, motorstackBrandId } from '~~/shared/bannerBrandGuides'
 const kit = {
   id: 'ldv-kit', name: 'LDV Australia', clientId: null, sourceUrl: 'https://oem-variants.pages.dev/api/mcp#brand=ldv',
   colors: [{ role: 'primary', hex: '#bc3219' }, { role: 'accent', hex: '#bc3219' }],
-  fonts: [{ role: 'heading', family: 'Knockout-28', weights: [400], defaultWeight: 400 }, { role: 'body', family: 'Open Sans', weights: [400] }],
+  fonts: [{ role: 'heading', family: 'Knockout-28', weights: [400], defaultWeight: 400 }, { role: 'body', family: 'Open Sans', weights: [400] }, { role: 'extra', family: 'Knockout-68', weights: [400] }],
   logos: [{ name: 'LDV dark mark', url: '/dark.png', r2Key: 'dark', variant: 'dark' }, { name: 'LDV light mark', url: '/light.png', r2Key: 'light', variant: 'light' }]
 } as BannerBrandKit
 
@@ -28,6 +28,7 @@ describe('brand templates', () => {
     const light = buildBrandTemplateLayers(kit, { w: 300, h: 250 }, 'hero')
     const dark = buildBrandTemplateLayers(kit, { w: 300, h: 250 }, 'dual-cta')
     expect(light.find(layer => layer.type === 'bg')?.bgColor).toBe('#ffffff')
+    expect(light.find(layer => layer.name === 'Headline')?.fontFamily).toBe('Knockout-28')
     expect(light.find(layer => layer.type === 'image')?.src).toBe('/light.png')
     expect(light.find(layer => layer.name === 'Primary CTA')).toMatchObject({ bgColor: '#bc3219', textColor: '#ffffff', borderRadius: 0, fontFamily: 'Open Sans', fontWeight: 700 })
     expect(dark.find(layer => layer.type === 'bg')?.bgColor).toBe('#000000')
