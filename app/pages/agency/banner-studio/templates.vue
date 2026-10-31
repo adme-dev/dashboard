@@ -230,6 +230,7 @@ const dropdownItems = (tpl: LibraryTemplate): DropdownMenuItem[][] => [
           :content="false"
           variant="link"
           class="max-w-full overflow-x-auto"
+          :ui="{ root: 'items-start', list: 'w-max min-w-full', trigger: 'shrink-0' }"
           aria-label="Template library sections"
         />
         <UFormField label="Search formats and templates" class="w-full sm:w-72">
