@@ -9,14 +9,9 @@ const { isLayerLockedByOther } = useBannerRealtime()
 const toast = useToast()
 const clientId = computed(() => state.project?.clientId || undefined)
 const { fetchCustomFonts, loadUsedFonts, getFont } = useBannerFonts(() => clientId.value ?? null)
-const brandKits = ref<BannerBrandKit[]>([])
-const kitId = ref('__choose__')
+const { brandKits, kit, kitId, loading, error, refresh } = useBannerProjectBrand()
 const activeTab = ref('logos')
-const loading = ref(false)
-const error = ref(false)
 const showManagerModal = ref(false)
-let request = 0
-const kit = computed(() => brandKits.value.find(kit => kit.id === kitId.value))
 const kitItems = computed(() => [{ label: 'Choose a brand kit', value: '__choose__' }, ...brandKits.value.map(kit => ({ label: kit.name, value: kit.id }))])
 const tabs = [{ label: 'Logos', value: 'logos' }, { label: 'Colours', value: 'colours' }, { label: 'Fonts', value: 'fonts' }]
 const editable = computed(() => !!selectedLayer.value && !selectedLayer.value.locked && !isLayerLockedByOther(selectedLayer.value.id))
@@ -25,29 +20,11 @@ const colourProperty = computed(() => {
   if (!editable.value) return undefined
   return ({ text: 'color', rect: 'fillColor', button: 'bgColor', bg: 'bgColor' } as const)[selectedLayer.value!.type as 'text' | 'rect' | 'button' | 'bg']
 })
-async function refresh() {
-  const version = ++request
-  loading.value = true
-  error.value = false
-  brandKits.value = []
-  try {
-    const kits = await $fetch<BannerBrandKit[]>('/api/agency/banner-studio/brand-kits', { query: clientId.value ? { clientId: clientId.value } : undefined })
-    if (version !== request) return
-    brandKits.value = kits
-    if (!kits.some(kit => kit.id === kitId.value)) kitId.value = kits.find(kit => kit.isDefault && kit.clientId === clientId.value)?.id || '__choose__'
+watch(showManagerModal, async (open) => {
+  if (!open) {
+    await refresh()
     await fetchCustomFonts()
-  } catch {
-    if (version === request) error.value = true
-  } finally {
-    if (version === request) loading.value = false
   }
-}
-watch(clientId, refresh, { immediate: true })
-watch(showManagerModal, (open) => {
-  if (!open) refresh()
-})
-onBeforeUnmount(() => {
-  request++
 })
 watch(kit, (kit) => {
   if (kit) loadUsedFonts(kit.fonts.filter(font => font.assets?.length || getFont(font.family)).map(brandFontSelection))
@@ -93,7 +70,7 @@ function addLogo(logo: BrandKitLogo, event: MouseEvent) {
         variant="ghost"
         color="neutral"
         size="xs"
-        @click="showManagerModal = true"
+        @click="() => { showManagerModal = true }"
       />
     </div>
     <UFormField label="Brand kit">
@@ -117,7 +94,7 @@ function addLogo(logo: BrandKitLogo, event: MouseEvent) {
       label="Retry"
       size="xs"
       variant="outline"
-      @click="refresh"
+      @click="() => refresh()"
     />
     <p v-if="!kit && !loading" class="text-xs text-muted leading-relaxed">
       Choose a kit to browse its logos, colours and fonts. Adding an individual asset keeps the rest of your design intact.
@@ -241,7 +218,7 @@ function addLogo(logo: BrandKitLogo, event: MouseEvent) {
               aria-label="Close brand kit manager"
               variant="ghost"
               size="sm"
-              @click="showManagerModal = false"
+              @click="() => { showManagerModal = false }"
             />
           </div>
           <BannerBrandKitManager :client-id="clientId" @apply="value => { handleApply(value); showManagerModal = false }" />

@@ -41,6 +41,9 @@ const {
   sendToBack,
 } = useBannerStudio()
 
+// Load the matched MotorStack/client kit and its actual font faces on project open.
+useBannerProjectBrand(true)
+
 // Timeline integration
 const { togglePlay, restartTimeline, stopTimeline, buildTimeline, destroyTimeline, pauseTimeline, animationPreview } = useBannerTimeline()
 const canvasRef = ref<any>(null)
@@ -131,6 +134,8 @@ watch(() => activeLayers.value, (layers) => {
   if (layers.length) loadUsedFonts(layers)
 }, { immediate: true })
 
+const assetMediaType = ref<'all' | 'image' | 'video' | 'audio'>('all')
+
 // Left panel tab state
 const leftTab = ref<'sets' | 'templates' | 'elements' | 'assets' | 'feeds' | 'brand' | 'history' | 'slides'>('sets')
 const leftPanelCollapsed = useCookie<boolean>('banner-studio-sidebar-collapsed', {
@@ -141,7 +146,7 @@ const leftPanelCollapsed = useCookie<boolean>('banner-studio-sidebar-collapsed',
 const leftTabItems = [
   { id: 'sets' as const, label: 'Sets', icon: 'i-lucide-layers' },
   { id: 'templates' as const, label: 'Templates', icon: 'i-lucide-layout-template' },
-  { id: 'elements' as const, label: 'Elements', icon: 'i-lucide-shapes' },
+  { id: 'elements' as const, label: 'Insert', icon: 'i-lucide-circle-plus' },
   { id: 'assets' as const, label: 'Assets', icon: 'i-lucide-image' },
   { id: 'feeds' as const, label: 'Feeds', icon: 'i-lucide-database' },
   { id: 'brand' as const, label: 'Brand', icon: 'i-lucide-palette' },
@@ -149,6 +154,8 @@ const leftTabItems = [
   { id: 'history' as const, label: 'History', icon: 'i-lucide-history' },
 ]
 function openLeftPanel(tab: string) {
+  assetMediaType.value = ['image', 'video', 'audio'].includes(tab) ? tab as 'image' | 'video' | 'audio' : 'all'
+  if (assetMediaType.value !== 'all') tab = 'assets'
   const item = leftTabItems.find(item => item.id === tab)
   if (!item) return
   leftTab.value = item.id
@@ -828,8 +835,8 @@ const { activeSize } = useBannerFileSize()
           <BannerSetsPanel v-if="leftTab === 'sets'" />
           <BannerSlidesPanel v-else-if="leftTab === 'slides'" />
           <BannerTemplatesPanel v-else-if="leftTab === 'templates'" />
-          <BannerElementsPanel v-else-if="leftTab === 'elements'" />
-          <BannerAssetsPanel v-else-if="leftTab === 'assets'" />
+          <BannerInsertPanel v-else-if="leftTab === 'elements'" />
+          <BannerAssetsPanel v-else-if="leftTab === 'assets'" :media-type="assetMediaType" />
           <BannerFeedsPanel v-else-if="leftTab === 'feeds'" />
           <BannerBrandPanel v-else-if="leftTab === 'brand'" @browse-assets="openLeftPanel('assets')" />
           <BannerVersionHistoryPanel v-else-if="leftTab === 'history'" :project-id="projectId" />

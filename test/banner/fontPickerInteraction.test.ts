@@ -11,7 +11,7 @@ afterEach(() => {
   cleanup()
   vi.restoreAllMocks()
 })
-async function mount() {
+async function mount(kit?: unknown) {
   const studio = useBannerStudio()
   const original = { id: 1, type: 'text', name: 'Finance rate', text: '0.09', x: 83, y: 247, w: 736, h: 301, zIndex: 10, opacity: 1, fontFamily: 'GEELY Imported', fontAssetId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', fontWeight: 400, linkId: 'source:rate' } as Layer
   studio.loadProject({ id: 'font-test', clientId: 'client', canvasData: { mrec: { layers: [original] }, fb_story: { layers: [{ ...original, id: 2 }] } } } as BannerProject)
@@ -19,6 +19,7 @@ async function mount() {
   const selectFont = vi.fn()
   const faces = [{ id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', name: 'Brand Face', tags: ['font', 'weight:700'], fileSize: 1024 }, { id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', name: 'Other Face', tags: ['font', 'weight:400'], fileSize: 1024 }]
   vi.stubGlobal('useBannerStudio', () => studio)
+  vi.stubGlobal('useBannerProjectBrand', () => ({ kit: Vue.ref(kit) }))
   vi.stubGlobal('useBannerRealtime', () => ({ remoteUsers: Vue.ref([]) }))
   vi.stubGlobal('$fetch', vi.fn())
   vi.stubGlobal('useToast', () => ({ add: vi.fn() }))
@@ -98,4 +99,28 @@ it('filters uploaded faces by search and explains an empty result', async () => 
   input.dispatchEvent(new Event('input', { bubbles: true }))
   await Vue.nextTick()
   expect(host.textContent).toContain('No matching uploaded fonts.')
+})
+
+it('opens with the detected brand kit and selects its exact managed font face', async () => {
+  const { studio, host, click } = await mount({ name: 'Geely Auto Australia', fonts: [{ role: 'heading', family: 'Brand Face', weights: [700], assets: [{ id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', weight: 700 }] }] })
+  await click('GEELY Imported', host.querySelector('[data-field="Font"]')!)
+  expect(host.textContent).toContain('Geely Auto Australia')
+  expect(host.textContent).toContain('Brand Face · 700')
+  await click('Brand Face · 700')
+  expect(studio.selectedLayer.value).toMatchObject({ fontFamily: 'Brand Face', fontWeight: 700, fontAssetId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' })
+})
+
+it('uses the kit weight for a web font without a managed asset', async () => {
+  const { studio, host, click } = await mount({ name: 'Web brand', fonts: [{ role: 'heading', family: 'Inter', weights: [700] }] })
+  await click('GEELY Imported', host.querySelector('[data-field="Font"]')!)
+  await click('Inter · 700')
+  expect(studio.selectedLayer.value).toMatchObject({ fontFamily: 'Inter', fontWeight: 700 })
+  expect(studio.selectedLayer.value!.fontAssetId).toBeUndefined()
+})
+
+it('does not substitute another font while a kit asset is unavailable', async () => {
+  const { studio, host, click } = await mount({ name: 'Unloaded kit', fonts: [{ role: 'heading', family: 'Brand Face', weights: [700], assets: [{ id: 'missing-asset', weight: 700 }] }] })
+  await click('GEELY Imported', host.querySelector('[data-field="Font"]')!)
+  await click('Brand Face · 700')
+  expect(studio.selectedLayer.value!.fontAssetId).toBe('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')
 })

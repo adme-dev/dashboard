@@ -2517,12 +2517,12 @@ const features: Record<string, Feature> = {
         content: 'See named sizes together on a dotted overview canvas, with square and portrait layouts above landscape formats. Choose Edit size or Single edit to focus on one artboard; return to All layouts from the toolbar or Escape. Single edit changes only that size, while All layouts updates linked content across sizes. Each artboard keeps its own position, size and timing. When imported layers share a source identity, text, fonts, colours and asset choices update across those sizes as one undoable edit. The full-screen editor opens without the agency dashboard navigation and keeps the timeline and inspector close to the canvas. Add formats at any time, and use AI auto-resize when a new layout needs a starting point.'
       },
       {
-        title: 'MotorStack Media Library',
-        content: 'Browse available OEM images and documents from the Assets panel. Filter by brand and model, then search names and asset types. Add a supported image to the library with an explicit action, or download a PDF separately. Source warnings and failed imports remain visible with retry controls. Importing media does not assign it to a dealership or change existing artwork; choose a library image when you want to place it on the canvas.'
+        title: 'Insert Media and MotorStack Assets',
+        content: 'Use Insert to upload or choose images, videos and audio, add text, buttons and shapes, or browse MotorStack. Videos become playable video layers and audio becomes a timeline track. Replace images while retaining their layout and animation. Crop images with draggable corner handles or arrow keys, apply the crop to the current layout, and undo or cancel. Browse available OEM images and documents from the Assets panel. Filter by brand and model, then search names and asset types. Add a supported image to the library with an explicit action, or download a PDF separately. Source warnings and failed imports remain visible with retry controls. Importing media does not assign it to a dealership or change existing artwork; choose a library image when you want to place it on the canvas.'
       },
       {
         title: 'Properties Panel',
-        content: 'Edit fonts, spacing, position, rotation and opacity. Text Effects preserves your font and animation with editable depth, bevel, lighting, shadows and reviewed AI textures. Transparency surrounds the lettering. Save client or agency recipes. Depth simulates 3D.'
+        content: 'Edit fonts, spacing, position, rotation and opacity. The editor selects an unambiguous matching client or MotorStack brand kit when a project opens, with manual kit selection available. Its Brand font tab uses the managed font files and declared weights; new text and buttons start with that kit’s heading font. Existing artwork is styled only when you apply a font or kit. Text Effects preserves your font and animation with editable depth, bevel, lighting, shadows and reviewed AI textures. Transparency surrounds the lettering. Save client or agency recipes. Depth simulates 3D.'
       },
       {
         title: 'Autosave and Keyboard Shortcuts',

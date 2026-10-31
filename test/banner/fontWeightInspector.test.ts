@@ -14,6 +14,7 @@ describe('editable imported font weights', () => {
     const updateLayer = vi.fn((_id, change) => Object.assign(selectedLayer.value, change))
     for (const [name, value] of Object.entries({
       computed, ref, onMounted, watch, $fetch: vi.fn(), useToast: () => ({ add: vi.fn() }),
+      useBannerProjectBrand: () => ({ kit: ref(undefined) }),
       useBannerStudio: () => ({ state: {}, selectedLayer, updateLayer }),
       useBannerFonts: () => ({
         getFont: () => ({ weights: available.value }), fetchCustomFonts: async () => {},

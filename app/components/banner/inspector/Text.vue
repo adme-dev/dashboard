@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { FORMATS, TEXT_SHADOW_PRESETS, TEXT_STROKE_PRESETS } from '~/utils/banner-constants'
+import { brandFontSelection } from '~/utils/banner-brand-kit'
 import { bannerFontWeightOptions } from '~/utils/banner-font-weights'
 import { parseBannerFontTags as parseFontTags } from '~~/shared/banner/fonts'
 import type { FontCategory } from '~/composables/useBannerFonts'
@@ -9,6 +10,11 @@ const {
   searchFonts, selectFont, recentFonts, loadFont, getFont,
   customFonts, isCustomFont, fetchCustomFonts, uploadCustomFont, deleteCustomFont,
 } = useBannerFonts(() => state.project?.clientId ?? null)
+const { kit: projectBrandKit } = useBannerProjectBrand()
+const brandFonts = computed(() => (projectBrandKit.value?.fonts || []).flatMap((font, index) => {
+  const faces = font.assets?.length ? font.assets.map(asset => ({ fontFamily: font.family, fontWeight: asset.weight, fontAssetId: asset.id })) : [brandFontSelection(font)]
+  return faces.map(face => ({ ...face, key: `${index}:${face.fontAssetId || face.fontWeight}`, role: font.role }))
+}).filter(face => face.fontFamily.toLowerCase().includes(fontSearch.value.trim().toLowerCase())))
 const toast = useToast()
 const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string; body?: unknown }) => Promise<T>
 
@@ -69,12 +75,15 @@ const TONE_COLORS: Record<string, string> = {
 
 // Font picker state
 const fontSearch = ref('')
-const fontCategory = ref<FontCategory>('all')
+const fontCategory = ref<FontCategory | 'brand'>('all')
 const showFontPicker = ref(false)
+watch(showFontPicker, (open) => {
+  if (open && projectBrandKit.value) fontCategory.value = 'brand'
+})
 const uploading = ref(false)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 
-const filteredFonts = computed(() => searchFonts(fontSearch.value, fontCategory.value))
+const filteredFonts = computed(() => searchFonts(fontSearch.value, fontCategory.value === 'brand' ? 'all' : fontCategory.value))
 const filteredCustomFonts = computed(() => {
   const search = fontSearch.value.trim().toLowerCase()
   return customFonts.value.filter(face => face.name.toLowerCase().includes(search))
@@ -84,11 +93,11 @@ const fontWeightOptions = computed(() => bannerFontWeightOptions(
   selectedLayer.value?.fontWeight ?? 400
 ))
 
-function pickFont(family: string, assetId?: string) {
-  if (!selectedLayer.value) return
+function pickFont(family: string, assetId?: string, requestedWeight?: number) {
+  if (!selectedLayer.value || (assetId && !customFonts.value.some(face => face.id === assetId))) return
   selectFont(family)
   const explicit = customFonts.value.find(face => face.id === assetId)
-  const weight = explicit ? parseFontTags(explicit.tags).weight : selectedLayer.value.fontWeight ?? 400
+  const weight = explicit ? parseFontTags(explicit.tags).weight : requestedWeight ?? selectedLayer.value.fontWeight ?? 400
   const face = explicit || customFonts.value.find(face => face.name === family && parseFontTags(face.tags).weight === weight) || customFonts.value.find(face => face.name === family)
   updateLayer(selectedLayer.value.id, { fontFamily: family, fontWeight: face ? parseFontTags(face.tags).weight : weight, fontAssetId: face?.id })
   showFontPicker.value = false
@@ -308,11 +317,11 @@ function toggleGradient() {
                     </UFormField>
                 <div class="flex gap-0.5 mt-1.5 flex-wrap">
                   <UButton
-                    v-for="cat in [{ l: 'All', v: 'all' }, { l: 'Custom', v: 'custom' }, { l: 'Sans', v: 'sans-serif' }, { l: 'Serif', v: 'serif' }, { l: 'Display', v: 'display' }, { l: 'Script', v: 'handwriting' }, { l: 'Mono', v: 'monospace' }]"
+                    v-for="cat in [...(projectBrandKit ? [{ l: 'Brand', v: 'brand' }] : []), { l: 'All', v: 'all' }, { l: 'Custom', v: 'custom' }, { l: 'Sans', v: 'sans-serif' }, { l: 'Serif', v: 'serif' }, { l: 'Display', v: 'display' }, { l: 'Script', v: 'handwriting' }, { l: 'Mono', v: 'monospace' }]"
                     :key="cat.v"
                     size="xs"
                     :variant="fontCategory === cat.v ? 'solid' : 'ghost'"
-                        @click="() => { fontCategory = cat.v as FontCategory }"
+                        @click="() => { fontCategory = cat.v as FontCategory | 'brand' }"
                   >
                     {{ cat.l }}
                   </UButton>
@@ -334,6 +343,25 @@ function toggleGradient() {
                   </UButton>
                   <div class="text-[10px] text-(--ui-text-dimmed) mt-1 text-center">.woff2, .woff, .ttf, .otf — max 5MB</div>
                 </div>
+
+                    <div v-if="fontCategory === 'brand'" class="p-2 space-y-1">
+                      <p class="px-1 py-1 text-xs text-muted">
+                        {{ projectBrandKit?.name }}
+                      </p>
+                      <UButton
+                        v-for="font in brandFonts"
+                        :key="font.key"
+                        :label="`${font.fontFamily} · ${font.fontWeight}`"
+                        variant="ghost"
+                        color="neutral"
+                        class="w-full justify-start text-left"
+                        :disabled="font.fontAssetId ? !customFonts.some(face => face.id === font.fontAssetId) : !getFont(font.fontFamily)"
+                        @click="pickFont(font.fontFamily, font.fontAssetId, font.fontWeight)"
+                      />
+                      <p v-if="!brandFonts.length" class="p-2 text-xs text-muted">
+                        No matching fonts in this kit.
+                      </p>
+                    </div>
 
                 <!-- Custom fonts section (in Custom tab) -->
                 <template v-if="fontCategory === 'custom'">
@@ -370,7 +398,7 @@ function toggleGradient() {
                 </template>
 
                 <!-- Recently used -->
-                <template v-if="fontCategory !== 'custom'">
+                <template v-if="fontCategory !== 'custom' && fontCategory !== 'brand'">
                   <template v-if="!fontSearch && fontCategory === 'all' && recentFonts.length">
                     <div class="px-2 pt-2 pb-1 text-[10px] font-bold uppercase tracking-wider text-(--ui-text-muted)">Recent</div>
                     <button
