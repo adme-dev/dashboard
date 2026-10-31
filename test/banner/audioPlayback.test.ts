@@ -37,6 +37,48 @@ afterEach(() => {
 })
 
 describe('editor audio transport', () => {
+  it('preserves the exact playhead across layout replacement and paused rebuilds', () => {
+    const { controller, state } = studio()
+    cleanup = controller.destroyTimeline
+    const first = board()
+    const oldTimeline = controller.buildTimeline(first.root, [layer])
+    controller.playTimeline()
+    oldTimeline.time(4.8, false)
+    // The layout watcher releases the owner before the replacement DOM mounts.
+    controller.destroyTimeline({ preserveTime: true })
+    expect(state.currentTime).toBeCloseTo(4.8)
+    expect(first.audio.paused).toBe(true)
+    const second = board()
+    const replacement = controller.buildTimeline(second.root, [layer])
+    expect(replacement.time()).toBeCloseTo(4.8)
+    expect(second.audio.currentTime).toBeCloseTo(4.8)
+    expect(second.audio.paused).toBe(true)
+    expect(state.isPlaying).toBe(false)
+    const rebuilt = controller.buildTimeline(second.root, [layer])
+    expect(rebuilt.time()).toBeCloseTo(4.8)
+    expect(state.currentTime).toBeCloseTo(4.8)
+    controller.playTimeline()
+    expect(second.audio.paused).toBe(false)
+    controller.stopTimeline()
+    expect(state.currentTime).toBe(0)
+    expect(second.audio.currentTime).toBe(0)
+  })
+
+  it('clamps preserved time to a shorter layout and resets on editor disposal', () => {
+    const { controller, state } = studio()
+    cleanup = controller.destroyTimeline
+    controller.buildTimeline(board().root, [layer])
+    controller.seekTo(7)
+    controller.destroyTimeline({ preserveTime: true })
+    state.sets.square.playback.duration = 3
+    const short = controller.buildTimeline(board().root, [{ ...layer, endTime: 3 }])
+    expect(state.currentTime).toBe(3)
+    expect(short.time()).toBe(3)
+    expect(state.isPlaying).toBe(false)
+    controller.destroyTimeline()
+    expect(state.currentTime).toBe(0)
+  })
+
   it('pauses all tracks immediately and resumes from the paused position', async () => {
     const { controller, state } = studio()
     cleanup = controller.destroyTimeline

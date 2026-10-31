@@ -111,7 +111,7 @@ function rebuildTimeline() {
 // updateLayer() mutates layers in place (Object.assign), so nested edits like
 // motionPath / motionPathTweens / keyframes never fire a shallow watch and play
 // would run a stale timeline. rebuildTimeline() is debounced and skipped while playing.
-watch(() => state.activeKey, () => { destroyTimeline(); rebuildTimeline() })
+watch(() => state.activeKey, () => { destroyTimeline({ preserveTime: true }); rebuildTimeline() })
 watch(() => state.layoutView, () => { pauseTimeline(); rebuildTimeline() })
 watch(activeLayers, rebuildTimeline, { deep: true })
 watch(() => state.soloMotionPath, rebuildTimeline)
