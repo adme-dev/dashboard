@@ -1,4 +1,4 @@
-import { createError, type H3Event } from 'h3'
+import { createError, H3Error, type H3Event } from 'h3'
 import { z } from 'zod'
 
 export const motorstackBrandId = z.string().regex(/^[a-z0-9-]{1,40}$/)
@@ -34,6 +34,24 @@ export async function boundedMotorstackCall<T>(work: Promise<T>, milliseconds = 
     return await Promise.race([work, new Promise<never>((_, reject) => {
       timer = setTimeout(() => reject(createError({ statusCode: 504, statusMessage: 'MotorStack request timed out; retry this brand' })), milliseconds)
     })])
+  } catch (error) {
+    // Only locally constructed HTTP errors retain their status/message. RPC errors
+    // are remote input and must never expose provider payloads, URLs or credentials.
+    if (error instanceof H3Error) throw error
+    const code = error instanceof Error ? error.message : ''
+    let statusCode = 502
+    let statusMessage = 'MotorStack could not complete the request. Retry; if it continues, ask an administrator to check the connection.'
+    if (code === 'motorstack_not_configured') {
+      statusCode = 503
+      statusMessage = 'MotorStack is not configured. Ask an administrator to check the connection, then retry.'
+    } else if (code === 'motorstack_unavailable') {
+      statusMessage = 'MotorStack is temporarily unavailable. Retry; if it continues, ask an administrator to check the connection.'
+    } else if (['asset_not_found', 'asset_unavailable', 'brand_not_available'].includes(code)) {
+      statusMessage = 'The MotorStack brand or asset is unavailable. Retry this brand; if it continues, check the source files in MotorStack.'
+    } else if (['asset_host_not_supported', 'asset_redirect_refused', 'asset_type_refused', 'provider_response_too_large'].includes(code)) {
+      statusMessage = 'The MotorStack asset could not be safely imported. Check its source file, then retry this brand.'
+    }
+    throw createError({ statusCode, statusMessage })
   } finally { clearTimeout(timer) }
 }
 export function motorstackSourceUrl(id: string) {

@@ -1,27 +1,32 @@
 {
   "worker": "xeroflow-creative-tools",
-  "deploymentId": "0ddd8bf0-96c3-4855-94fd-c2e85e9bf6f1",
-  "createdOn": "2026-10-30T04:23:05.588877Z",
+  "deploymentId": "3219f175-ee7d-41f8-b3e9-520c2ec0b3d2",
+  "createdOn": "2026-10-31T03:24:45.333206Z",
   "versions": [
     {
-      "version_id": "4ac68720-79ab-450a-a38f-6a5c81294269",
+      "version_id": "5ed78b26-e678-48c2-9617-bef4304dd199",
       "percentage": 100
     }
   ],
   "sourceParts": [
     {
-      "version": "4ac68720-79ab-450a-a38f-6a5c81294269",
+      "version": "5ed78b26-e678-48c2-9617-bef4304dd199",
+      "name": "brand-rpc.mjs",
+      "bytes": 7752,
+      "sha256": "da1fbfb349ece1e5854d7064486a551c067af9bcfaef9ec5e4824186ad79fc57"
+    },
+    {
+      "version": "5ed78b26-e678-48c2-9617-bef4304dd199",
       "name": "worker.js",
-      "bytes": 284719,
-      "sha256": "845b46f54c8a7584827a83b10e903b4f5035b4368d38460b4352d84fd7cdfe4f",
-      "path": "/private/tmp/thebrief-current-creative-worker-20261031/4ac68720-79ab-450a-a38f-6a5c81294269-worker.js"
+      "bytes": 285362,
+      "sha256": "1461ce3b66e6b9914c75dd3fece63023b0d81d578f3c5844966095c106595080"
     }
   ],
   "versionMetadata": [
     {
-      "id": "4ac68720-79ab-450a-a38f-6a5c81294269",
+      "id": "5ed78b26-e678-48c2-9617-bef4304dd199",
       "metadata": {
-        "created_on": "2026-10-30T04:22:04.531487Z",
+        "created_on": "2026-10-31T03:20:17.614961Z",
         "source": "api"
       },
       "bindings": [
@@ -63,13 +68,23 @@
         "usage_model": "standard"
       },
       "script": {
-        "etag": "2035fb99fef0486c818bbba9dd3355088ea793724d467d09158a507bca9f8382",
+        "etag": "13e2d26a8fdafd61804b03c438e35f7b4d47089e649f96f3c6886e9480e59f2e",
         "handlers": [
           "fetch"
+        ],
+        "named_handlers": [
+          {
+            "name": "MotorstackBrandAssets",
+            "handlers": [
+              "listBrands",
+              "getBrandKit",
+              "getBrandAsset"
+            ]
+          }
         ],
         "last_deployed_from": "api"
       }
     }
   ],
-  "contentEndpointNote": "The documented /content/v2 endpoint returns latest uploaded content and does not accept a version selector. Baseline source was captured before the candidate upload while this immutable version was active and latest."
+  "contentEndpointNote": "Latest uploaded source was read only while the expected version was confirmed latest both before and after download; hashes matched the original upload receipt."
 }

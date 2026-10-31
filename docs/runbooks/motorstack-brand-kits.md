@@ -24,3 +24,12 @@ All 32 authorized brands returned metadata. There are 114 logo-role mappings and
 Source gaps: Honda and MG have no font metadata. Foton heading/body fonts, LDV body and Leapmotor body have no downloadable file. No substitute face is assigned. All 32 brands have colours and logos in the source catalog.
 
 Local browser verification exercised 32 fixture rows, stop/resume, a failed-brand retry, an existing-kit response and a skipped-brand response. Fixture outcomes are not production import counts.
+
+## Live release verification — 31 October 2026
+
+- Pages source/current main: `da1a597f517b0bd80b59a4c0c29f748bdd5551e8`; production `agency-dashboard/main` deployment `44cb6cb8-b579-47ca-9a24-02379bcdbe42`. Guarded build passed; raw Worker size 25,416,630 / 25,468,928 bytes.
+- Creative Worker version `5ed78b26-e678-48c2-9617-bef4304dd199`, deployment `3219f175-ee7d-41f8-b3e9-520c2ec0b3d2` at 100%. Uploaded from `7712494e04ae7506bf214ed38713f694b1527122`, released from current main `da1a597f517b0bd80b59a4c0c29f748bdd5551e8`; candidate module hashes were unchanged between those commits.
+- All 35 public Creative Suite checks matched the baseline. Authenticated PhotoFlow and VectorFlow rendered; EffectFlow rendered after reloading a browser GPU-device-loss message. These checks do not establish complete editor functionality.
+- Website extraction now reads the GWM homepage and opens a review draft with detected fonts, colours and logo. Font files were not downloaded and the draft was not saved. Detected website colours still require review; they are not an authoritative OEM palette.
+- The deployed Pages service binding was verified through the authenticated Wrangler CLI: `xeroflow-creative-tools` / `MotorstackBrandAssets`. Wrangler 4.110's generated TOML omits the entrypoint; its underlying project response retains it.
+- Initial production catalog request failed with `motorstack_unavailable`. No OEM kits were created in that attempt. Provider-side tail observed no `/api/mcp` request for the failed private RPC, while reloading the existing authenticated HTTP catalog produced two successful provider requests. Diagnose the private call before claiming import completion.

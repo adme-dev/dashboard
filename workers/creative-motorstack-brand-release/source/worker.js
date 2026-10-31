@@ -1,3 +1,5 @@
+import { WorkerEntrypoint } from "cloudflare:workers";
+import { createBrandService } from "./brand-rpc.mjs";
 var __defProp = Object.defineProperty;
 var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
 
@@ -588,7 +590,7 @@ function createMotorstack({ fetcher = /* @__PURE__ */ __name((...args) => fetch(
     }
   }
   __name(handleMotorstack2, "handleMotorstack");
-  return { handleMotorstack: handleMotorstack2 };
+  return { handleMotorstack: handleMotorstack2, rpc, binary };
 }
 __name(createMotorstack, "createMotorstack");
 var handleMotorstack = createMotorstack().handleMotorstack;
@@ -707,3 +709,14 @@ var worker_default = {
 export {
   worker_default as default
 };
+
+// Private RPC only; the default HTTP handler above remains unchanged.
+export class MotorstackBrandAssets extends WorkerEntrypoint {
+  #service() {
+    const { rpc, binary } = createMotorstack();
+    return createBrandService({ rpc, binary, safeURL, extension, MIME, idFor, boundedBody, AdapterError }, this.env);
+  }
+  listBrands() { return this.#service().listBrands(); }
+  getBrandKit(brandId) { return this.#service().getBrandKit(brandId); }
+  getBrandAsset(input) { return this.#service().getBrandAsset(input); }
+}

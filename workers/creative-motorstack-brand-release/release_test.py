@@ -21,7 +21,7 @@ class ReleaseGuards(unittest.TestCase):
         if path.startswith('/versions/'): return {'resources': {'bindings':self.evidence['versionMetadata'][0]['bindings'], 'script_runtime':self.evidence['versionMetadata'][0]['runtime'], 'script':self.evidence['versionMetadata'][0]['script']}}
         self.fail('Unexpected request ' + path)
     def test_verified_baseline_readonly(self):
-        with patch.object(r,'request',self.fake), patch.object(r,'module_hashes',return_value={'worker.js':self.manifest['baseSha256']}):
+        with patch.object(r,'request',self.fake), patch.object(r,'module_hashes',return_value=self.manifest['baseModules']):
             r.verify_baseline(self.manifest)
         self.assertTrue(all(not args for _,args in self.calls))
     def test_new_latest_version_rejects_inherit_even_if_current_deployment_unchanged(self):
@@ -43,6 +43,18 @@ class ReleaseGuards(unittest.TestCase):
                 return res
             with patch.object(r,'request',fake), self.assertRaisesRegex(RuntimeError,'Bindings or complete runtime'):
                 r.verify_runtime(self.manifest['baseVersion'])
+    def test_empty_cli_flags_equivalent_but_new_flags_rejected(self):
+        def fake(path, *args, **kwargs):
+            result = self.fake(path, *args, **kwargs)
+            result['resources']['script_runtime'] = {**result['resources']['script_runtime'], 'compatibility_flags': []}
+            return result
+        with patch.object(r, 'request', fake): r.verify_runtime(self.manifest['baseVersion'])
+        def changed(path, *args, **kwargs):
+            result = fake(path, *args, **kwargs)
+            result['resources']['script_runtime']['compatibility_flags'] = ['global_fetch_strictly_public']
+            return result
+        with patch.object(r, 'request', changed), self.assertRaisesRegex(RuntimeError, 'runtime/assets'):
+            r.verify_runtime(self.manifest['baseVersion'])
     def test_current_source_hash_drift_rejected(self):
         with patch.object(r,'request',self.fake), patch.object(r,'module_hashes',return_value={'worker.js':'different'}), self.assertRaisesRegex(RuntimeError,'Latest baseline source'):
             r.verify_baseline(self.manifest)
