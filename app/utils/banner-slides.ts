@@ -15,12 +15,23 @@ export function slideRanges(slides: BannerSlide[]) {
   })
 }
 
+/** Ignore a transparent import pre-roll only when trimming it cannot retime a tween. */
+function scenePresence(layer: Layer) {
+  const firstOpacity = [...(layer.keyframes?.opacity || [])].sort((a, b) => a.time - b.time)[0]
+  const canTrim = layer.clipToPresence && layer.type !== 'audio'
+    && firstOpacity?.value === 0 && firstOpacity.time > layer.startTime && firstOpacity.time < layer.endTime
+    && !layer.motionPath?.length && !layer.motionPathTweens?.length && !layer.animationClips?.length
+    && (!layer.animIn || layer.animIn === 'none') && (!layer.animOut || layer.animOut === 'none')
+    && Object.values(layer.keyframes || {}).every(frames => !frames?.some(frame => frame.time < firstOpacity.time))
+  return { startTime: canTrim ? firstOpacity.time : layer.startTime, endTime: layer.endTime }
+}
+
 /** Recover only unambiguous hard cuts; overlapping scene artwork stays a single slide. */
 export function resolveSlides(board?: ArtboardState): BannerSlide[] {
   if (!board) return []
   if (board.slides?.length) return board.slides
   const duration = board.playback?.duration || Math.max(0.1, ...board.layers.map(layer => layer.endTime || 3))
-  const clipped = board.layers.filter(layer => layer.clipToPresence && !layer.slideTransitionFor)
+  const clipped = board.layers.filter(layer => layer.clipToPresence && !layer.slideTransitionFor).map(scenePresence)
   const cuts = [...new Set(clipped.map(layer => layer.endTime))].filter(time => time > 0 && time < duration
     && clipped.some(layer => Math.abs(layer.startTime - time) < 0.0001)
     && !clipped.some(layer => layer.startTime < time - 0.0001 && layer.endTime > time + 0.0001)).sort((a, b) => a - b)
@@ -38,7 +49,8 @@ export function layerSlideId(board: ArtboardState, layer: Layer): string | undef
   if (layer.slideId) return layer.slideId
   // A full-cycle background stays behind every slide.
   if (layer.type === 'bg' && !layer.clipToPresence) return undefined
-  return slideRanges(resolveSlides(board)).find(slide => layer.startTime >= slide.start - 0.0001 && layer.endTime <= slide.end + 0.0001)?.id
+  const presence = scenePresence(layer)
+  return slideRanges(resolveSlides(board)).find(slide => presence.startTime >= slide.start - 0.0001 && presence.endTime <= slide.end + 0.0001)?.id
 }
 
 export function slidePoster(board: ArtboardState, slideId: string): ArtboardState {
