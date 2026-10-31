@@ -5,7 +5,7 @@ import { computed, readonly, ref } from 'vue'
 import type { CustomFont } from '../../app/composables/useBannerFonts'
 
 const font = (id: number, weight: number): CustomFont => ({
-  id, name: 'Imported Brand', mimeType: 'font/woff2', fileSize: 12, r2Key: `font-${id}.woff2`,
+  id: `00000000-0000-4000-8000-${String(id).padStart(12, '0')}`, clientId: null, sha256: null, name: 'Imported Brand', mimeType: 'font/woff2', fileSize: 12, r2Key: `font-${id}.woff2`,
   url: `https://media.example.com/font-${id}.woff2`, tags: ['font', `weight:${weight}`, 'format:woff2'],
   uploadedBy: 'test', createdAt: '2026-10-05T00:00:00Z'
 })
@@ -68,15 +68,16 @@ describe('custom font catalog', () => {
     expect(fonts.getExportCustomFonts([{ fontFamily: 'Imported Brand' }])[0].weight).toBe(300)
   })
 
-  it('replaces an uploaded family weight without affecting another weight', async () => {
+  it('preserves the old exact face while updating the legacy family selection', async () => {
     fetchMock.mockResolvedValueOnce([font(1, 400), font(2, 700)]).mockResolvedValueOnce(font(3, 700))
     const fonts = await catalog()
     await fonts.fetchCustomFonts()
     await fonts.uploadCustomFont(new File(['font'], 'replacement.woff2'), 'Imported Brand', 700)
     expect(fonts.getExportCustomFonts([{ fontFamily: 'Imported Brand' }]).map(f => f.url)).toEqual([font(3, 700).url, font(1, 400).url])
-    expect(document.head.querySelectorAll('style')).toHaveLength(2)
+    expect(document.head.querySelectorAll('style')).toHaveLength(3)
     expect(document.head.textContent).toContain(font(3, 700).url)
-    expect(document.head.textContent).not.toContain(font(2, 700).url)
+    expect(document.head.textContent).toContain(font(2, 700).url)
+    expect(fonts.getExportCustomFonts([{ fontFamily: 'Imported Brand', fontAssetId: font(2, 700).id }])[0]?.url).toBe(font(2, 700).url)
   })
 
   it('preserves the existing upload call without a weight and removes only the deleted face', async () => {
@@ -85,7 +86,7 @@ describe('custom font catalog', () => {
     await fonts.fetchCustomFonts()
     await fonts.uploadCustomFont(new File(['font'], 'brand.woff2'))
     expect((fetchMock.mock.calls[1][1].body as FormData).has('weight')).toBe(false)
-    await fonts.deleteCustomFont(2)
+    await fonts.deleteCustomFont(font(2, 700).id)
     expect(fonts.getExportCustomFonts([{ fontFamily: 'Imported Brand' }]).map(f => f.weight)).toEqual([400])
     expect(document.head.querySelectorAll('style')).toHaveLength(1)
     expect(document.head.textContent).toContain('font-weight: 400;')
@@ -122,5 +123,50 @@ describe('custom font catalog', () => {
     expect(document.head.querySelectorAll('style')).toHaveLength(1)
     expect(document.head.textContent).not.toContain(font(1, 400).url)
     expect(document.head.textContent).toContain(font(3, 700).url)
+  })
+  it('switches scoped legacy aliases while preserving exact IDs and one style per face', async () => {
+    const a = { ...font(1, 400), clientId: 'client-a' }
+    const b = { ...font(2, 400), clientId: 'client-b' }
+    fetchMock.mockResolvedValueOnce([a]).mockResolvedValueOnce([b]).mockResolvedValueOnce([a])
+    const scope = ref('client-a')
+    const fonts = (await import('../../app/composables/useBannerFonts')).useBannerFonts(() => scope.value)
+    await fonts.refreshCustomFonts()
+    scope.value = 'client-b'
+    await fonts.refreshCustomFonts()
+    const rawFace = () => [...document.head.querySelectorAll('style')].filter(style => style.textContent.includes('font-family: \'Imported Brand\';'))
+    expect(rawFace()).toHaveLength(1)
+    expect(rawFace()[0]?.textContent).toContain(b.url)
+    expect(fonts.customFonts.value.map(face => face.id)).toEqual([b.id])
+    expect(fonts.getExportCustomFonts([{ fontFamily: a.name, fontAssetId: a.id }])[0]?.url).toBe(a.url)
+    scope.value = 'client-a'
+    await fonts.refreshCustomFonts()
+    await fonts.loadCustomFont(a)
+    await fonts.loadCustomFont(a)
+    expect(rawFace()).toHaveLength(1)
+    expect(rawFace()[0]?.textContent).toContain(a.url)
+    expect(document.head.querySelectorAll('style')).toHaveLength(2)
+    expect(fetchMock.mock.calls.map(call => call[1].query.clientId)).toEqual(['client-a', 'client-b', 'client-a'])
+  })
+  it('emits exact and legacy CSS names when the same face serves both layers', async () => {
+    const face = font(1, 400)
+    fetchMock.mockResolvedValueOnce([face])
+    const fonts = await catalog()
+    await fonts.fetchCustomFonts()
+    const css = fonts.buildCustomFontsCss([{ fontFamily: face.name }, { fontFamily: face.name, fontAssetId: face.id.toUpperCase() }])
+    expect(css).toContain('font-family: \'Imported Brand\';')
+    expect(css).toContain('font-family: \'XeroFlowFont_00000000000040008000000000000001\';')
+  })
+  it('exports legacy client-owned faces before newer shared faces after another client refresh', async () => {
+    const a = { ...font(1, 400), clientId: 'client-a' }
+    const b = { ...font(2, 400), clientId: 'client-b' }
+    const shared = font(3, 400)
+    fetchMock.mockResolvedValueOnce([shared, a]).mockResolvedValueOnce([shared, b])
+    const create = (await import('../../app/composables/useBannerFonts')).useBannerFonts
+    const catalogA = create(() => 'client-a')
+    const catalogB = create(() => 'client-b')
+    await catalogA.refreshCustomFonts()
+    await catalogB.refreshCustomFonts()
+    expect(catalogA.getExportCustomFonts([{ fontFamily: a.name }])[0]?.url).toBe(a.url)
+    expect(catalogB.getExportCustomFonts([{ fontFamily: b.name }])[0]?.url).toBe(b.url)
   })
 })

@@ -7,7 +7,7 @@ definePageMeta({ layout: false, auth: false })
 useHead({ meta: [{ name: 'referrer', content: 'no-referrer' }] })
 const route = useRoute()
 const token = String(route.params.token)
-const data = shallowRef<{ project: { name: string, canvasData: Record<string, ArtboardState> | string }, fonts: Array<{ name: string, url: string, tags: string[] }> } | null>(null)
+const data = shallowRef<{ project: { name: string, canvasData: Record<string, ArtboardState> | string }, fonts: Array<{ id?: string, name: string, url: string, tags: string[] }> } | null>(null)
 const error = ref('')
 const playing = ref<string | null>(null)
 
@@ -29,7 +29,7 @@ const canvas = computed<Record<string, ArtboardState>>(() => {
 const customFonts = computed<ExportCustomFont[]>(() => (data.value?.fonts || []).flatMap((font) => {
   const weight = Number(font.tags.find(tag => tag.startsWith('weight:'))?.slice(7) || 400)
   const format = font.tags.find(tag => tag.startsWith('format:'))?.slice(7) || 'woff2'
-  return /^https?:\/\//.test(font.url) ? [{ family: font.name, url: font.url, format, weight }] : []
+  return /^https?:\/\//.test(font.url) ? [{ id: font.id, family: font.name, url: font.url, format, weight }] : []
 }))
 const layouts = computed(() => Object.entries(canvas.value).flatMap(([key, board]) => {
   const format = resolveBannerFormat(key)

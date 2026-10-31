@@ -464,10 +464,20 @@ defineExpose({ artboardEl })
     >
       <!-- Layer type renderers -->
       <BannerLayersBg v-if="layer.type === 'bg'" :layer="layer" :is-active="isActive" />
-      <BannerLayersText v-else-if="layer.type === 'text'" :layer="layer" :is-active="isActive" />
+      <BannerLayersText
+        v-else-if="layer.type === 'text'"
+        :client-id="state.project?.clientId"
+        :layer="layer"
+        :is-active="isActive"
+      />
       <BannerLayersImage v-else-if="layer.type === 'image'" :layer="layer" :is-active="isActive" />
       <BannerLayersVideo v-else-if="layer.type === 'video'" :layer="layer" :is-active="isActive" />
-      <BannerLayersButton v-else-if="layer.type === 'button'" :layer="layer" :is-active="isActive" />
+      <BannerLayersButton
+        v-else-if="layer.type === 'button'"
+        :client-id="state.project?.clientId"
+        :layer="layer"
+        :is-active="isActive"
+      />
       <BannerLayersRect v-else-if="layer.type === 'rect'" :layer="layer" :is-active="isActive" />
       <BannerLayersAudio v-else-if="layer.type === 'audio'" :layer="layer" :is-active="isActive" />
 

@@ -1,3 +1,4 @@
+import { validateCanvasFontAssets, FONT_UUID } from '~~/server/utils/banner/fontAssets'
 import { createError } from 'h3'
 import { z } from 'zod'
 import { parseTheBriefPackage, sameImportedCanvas } from '~~/app/utils/thebrief-import'
@@ -39,11 +40,15 @@ const canonical = (value: unknown): string => {
 export function readTheBriefDraftRefresh(body: unknown) {
   try {
     const input = requestSchema.parse(body)
-    const canvas = structuredClone(input.canvasData) as Record<string, { layers?: Array<{ src?: unknown, type?: unknown }> }>
+    const canvas = structuredClone(input.canvasData) as Record<string, { layers?: Array<{ src?: unknown, type?: unknown, fontAssetId?: unknown }> }>
     const urls: string[] = []
+    const fontReferences: Array<string | undefined> = []
     for (const board of Object.values(canvas)) {
       if (!board || !Array.isArray(board.layers)) throw new Error('Invalid artboard')
       for (const layer of board.layers) {
+        if (layer.fontAssetId !== undefined && (typeof layer.fontAssetId !== 'string' || !FONT_UUID.test(layer.fontAssetId))) throw new Error('Invalid font asset id')
+        fontReferences.push(layer.fontAssetId as string | undefined)
+        delete layer.fontAssetId
         if (layer.src === undefined) continue
         if (typeof layer.src !== 'string' || layer.src.length > 2048 || !/^https:\/\//.test(layer.src)) throw new Error('Managed asset URL required')
         if (!urls.includes(layer.src)) urls.push(layer.src)
@@ -57,7 +62,10 @@ export function readTheBriefDraftRefresh(body: unknown) {
       canvasData: canvas, warnings: [], fonts: [],
       assets: urls.map((_url, i) => ({ path: `./media/asset-${i}.png`, fileName: `asset-${i}.png`, sha256: '0'.repeat(64), base64: '', mimeType: 'image/png' }))
     })
+    let fontIndex = 0
     for (const board of Object.values(parsed.canvasData)) for (const layer of board.layers) {
+      const fontAssetId = fontReferences[fontIndex++]
+      if (fontAssetId) Object.assign(layer, { fontAssetId })
       if (layer.src) layer.src = urls[Number(/^\.\/media\/asset-(\d+)\.png$/.exec(layer.src)![1])]!
     }
     return { ...input, clientId: input.clientId.toLowerCase(), canvasData: parsed.canvasData, assetUrls: urls }
@@ -102,6 +110,7 @@ export async function refreshTheBriefDraft(db: RefreshDb, id: string, actorId: s
     const owned = new Set(assets.rows.map(asset => asset.url))
     if (input.assetUrls.some(url => !owned.has(url))) throw createError({ statusCode: 400, statusMessage: 'All imported assets must belong to the selected client' })
   }
+  await validateCanvasFontAssets(input.canvasData, input.clientId, db)
   if (sameImportedCanvas(project.canvasData, input.canvasData)) return { ...project, refreshed: false }
   await db.query(`
     INSERT INTO banner_versions (project_id, version_number, canvas_data, label, created_by)

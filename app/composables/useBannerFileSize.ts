@@ -5,7 +5,7 @@ const assetSizes = ref<Map<string, number>>(new Map())
 
 export function useBannerFileSize() {
   const { state } = useBannerStudio()
-  const { getExportCustomFonts } = useBannerFonts()
+  const { getExportCustomFonts } = useBannerFonts(() => state.project?.clientId ?? null)
 
   function registerAssetSize(url: string, bytes: number) {
     assetSizes.value.set(url, bytes)

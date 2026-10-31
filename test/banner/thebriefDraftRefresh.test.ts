@@ -14,6 +14,7 @@ const replacement = { custom_300x250: { layers: [{ ...layer, opacity: 0.6, visua
 let project: any
 let versions: any[]
 let owned: string[]
+let fontRows: any[]
 let active: boolean
 let failAt: 'backup' | 'update' | 'version-conflict' | null
 let queries: string[]
@@ -36,6 +37,7 @@ const db = {
     queries.push(sql)
     if (sql.includes('FROM banner_projects')) return { rows: project ? [structuredClone(project)] : [] }
     if (sql.includes('FROM agency_clients')) return { rows: active ? [{ id: CLIENT }] : [] }
+    if (sql.includes('FROM banner_assets') && sql.includes("'font' = ANY(tags)")) return { rows: fontRows }
     if (sql.includes('FROM banner_assets')) return { rows: owned.map(url => ({ url })) }
     if (sql.includes('INSERT INTO banner_versions')) {
       if (failAt === 'backup') throw new Error('Backup storage unavailable')
@@ -74,6 +76,7 @@ beforeEach(() => {
   }
   versions = []
   owned = [ASSET]
+  fontRows = []
   active = true
   failAt = null
   queries = []
@@ -84,6 +87,20 @@ beforeEach(() => {
 })
 
 describe('TheBrief imported draft refresh boundary', () => {
+  it('preserves managed font IDs through strict refresh validation and checks client ownership', async () => {
+    const fontId = '44444444-4444-4444-8444-444444444444'
+    const canvas = structuredClone(replacement)
+    Object.assign(canvas.custom_300x250.layers[0], { type: 'text', fontFamily: 'Imported Brand', fontWeight: 700, fontAssetId: fontId, text: 'Brand' })
+    delete (canvas.custom_300x250.layers[0] as any).src
+    fontRows = [{ id: fontId, name: 'Imported Brand', clientId: OTHER, tags: ['font', 'weight:700'] }]
+    await expect(endpoint(request({ canvasData: canvas }))).rejects.toMatchObject({ statusCode: 400 })
+    expect(versions).toHaveLength(0)
+    fontRows[0].clientId = CLIENT
+    const result: any = await endpoint(request({ canvasData: canvas }))
+    expect(result.canvasData.custom_300x250.layers[0].fontAssetId).toBe(fontId)
+    expect(queries.some(sql => sql.includes('FROM banner_assets') && sql.includes('FOR SHARE'))).toBe(true)
+  })
+
   it('snapshots the old canvas and saves corrected effects while preserving project identity', async () => {
     const previous = structuredClone(project)
     const saved: any = await endpoint(request())

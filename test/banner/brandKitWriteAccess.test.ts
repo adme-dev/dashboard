@@ -17,7 +17,7 @@ const restore = (await import('../../server/api/agency/banner-studio/brand-kits/
 const remove = (await import('../../server/api/agency/banner-studio/brand-kits/[id].delete')).default as unknown as (event: unknown) => Promise<unknown>
 beforeEach(() => {
   vi.resetAllMocks()
-  mocks.query.mockResolvedValue({ rows: [{ client_id: 'client-a' }] })
+  mocks.query.mockResolvedValue({ rows: [{ client_id: 'client-a', fonts: [] }] })
   mocks.clientAccess.mockRejectedValue(Object.assign(new Error('No access to this client'), { statusCode: 403 }))
 })
 describe('shared Brand Kit mutations', () => {

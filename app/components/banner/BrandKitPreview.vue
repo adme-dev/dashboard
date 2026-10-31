@@ -4,10 +4,11 @@
  * Pure CSS; scales to its container via an aspect box. Used on cards, in the editor and in the studio panel.
  */
 import type { BannerBrandKit } from '~/types/banner-studio'
-import { brandColor, brandFont, isDarkColor } from '~/utils/banner-brand-kit'
+import { bannerFontFamily } from '~/utils/banner-font-family'
+import { brandColor, brandFont, brandFontSelection, isDarkColor } from '~/utils/banner-brand-kit'
 
 const props = withDefaults(defineProps<{
-  kit: Pick<BannerBrandKit, 'name' | 'colors' | 'fonts' | 'logos'>
+  kit: Pick<BannerBrandKit, 'name' | 'colors' | 'fonts' | 'logos'> & { clientId?: string | null }
   /** Aspect ratio of the mock artboard */
   ratio?: number
   headline?: string
@@ -29,17 +30,23 @@ const onBg = computed(() => (isDarkColor(bg.value) ? '#ffffff' : '#111111'))
 const primary = computed(() => brandColor(props.kit, 'primary') || onBg.value)
 const secondary = computed(() => brandColor(props.kit, 'secondary') || brandColor(props.kit, 'text') || (isDarkColor(bg.value) ? '#b5b8c0' : '#55585f'))
 const accent = computed(() => brandColor(props.kit, 'accent') || primary.value)
-const heading = computed(() => brandFont(props.kit, 'heading')?.family)
-const body = computed(() => brandFont(props.kit, 'body')?.family)
+const { loadUsedFonts, getCustomFont, getFont } = useBannerFonts(() => props.kit.clientId ?? null)
+function resolvedRoleFont(role: 'heading' | 'body') {
+  const font = brandFont(props.kit, role)
+  if (!font) return undefined
+  const selection = brandFontSelection(font)
+  return { ...selection, fontAssetId: selection.fontAssetId || getCustomFont(selection.fontFamily, selection.fontWeight)?.id }
+}
+const missingFonts = computed(() => props.kit.fonts.filter(font => !font.assets?.length && !getFont(font.family)))
+const heading = computed(() => resolvedRoleFont('heading'))
+const body = computed(() => resolvedRoleFont('body'))
 const logo = computed(() => {
   const dark = isDarkColor(bg.value)
   return props.kit.logos.find(l => (dark ? l.variant !== 'light' : l.variant !== 'dark')) || props.kit.logos[0]
 })
 const ctaText = computed(() => (isDarkColor(accent.value) ? '#ffffff' : '#111111'))
-const { loadFont } = useBannerFonts()
 watch([heading, body], ([h, b]) => {
-  if (h) loadFont(h).catch(() => {})
-  if (b) loadFont(b).catch(() => {})
+  loadUsedFonts([h, b].filter((font): font is NonNullable<typeof font> => !!font && (!!font.fontAssetId || !!getFont(font.fontFamily))))
 }, { immediate: true })
 </script>
 
@@ -48,6 +55,9 @@ watch([heading, body], ([h, b]) => {
     class="relative w-full overflow-hidden rounded-md select-none"
     :style="{ aspectRatio: String(ratio), backgroundColor: bg }"
   >
+    <div v-if="missingFonts.length" class="absolute inset-x-0 top-0 z-10 bg-default/95 px-2 py-1 text-[10px] text-muted">
+      Font preview pending upload
+    </div>
     <!-- Subtle brand-coloured wash so flat backgrounds don't look dead -->
     <div
       class="absolute inset-0 opacity-20"
@@ -64,26 +74,26 @@ watch([heading, body], ([h, b]) => {
         <span
           v-else
           class="text-[9px] font-bold tracking-[0.2em] uppercase truncate max-w-[55%]"
-          :style="{ color: primary, fontFamily: heading }"
+          :style="{ color: primary, fontFamily: bannerFontFamily(heading?.fontFamily, heading?.fontAssetId), fontWeight: heading?.fontWeight }"
         >{{ kit.name }}</span>
       </div>
       <div class="space-y-[3%]">
         <div
           class="font-bold leading-[1.05] text-[clamp(11px,7cqw,22px)] line-clamp-2"
-          :style="{ color: primary, fontFamily: heading }"
+          :style="{ color: primary, fontFamily: bannerFontFamily(heading?.fontFamily, heading?.fontAssetId), fontWeight: heading?.fontWeight }"
         >
           {{ headline }}
         </div>
         <div
           v-if="!compact"
           class="text-[clamp(8px,3.6cqw,12px)] leading-snug line-clamp-1"
-          :style="{ color: secondary, fontFamily: body }"
+          :style="{ color: secondary, fontFamily: bannerFontFamily(body?.fontFamily, body?.fontAssetId), fontWeight: body?.fontWeight }"
         >
           {{ sub }}
         </div>
         <span
           class="inline-block rounded-sm px-[7%] py-[2.5%] text-[clamp(7px,3.2cqw,11px)] font-semibold uppercase tracking-wide"
-          :style="{ backgroundColor: accent, color: ctaText, fontFamily: heading }"
+          :style="{ backgroundColor: accent, color: ctaText, fontFamily: bannerFontFamily(heading?.fontFamily, heading?.fontAssetId), fontWeight: heading?.fontWeight }"
         >{{ cta }}</span>
       </div>
     </div>

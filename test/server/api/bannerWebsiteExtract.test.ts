@@ -1,0 +1,50 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+const m = vi.hoisted(() => ({ extract: vi.fn(), logo: vi.fn(), store: vi.fn(), upload: vi.fn(), query: vi.fn() }))
+vi.mock('~~/server/utils/auth', () => ({ requireRole: async () => ({ id: 'staff' }) }))
+vi.mock('~~/server/utils/banner/websiteExtraction', () => ({ extractBrandWebsite: m.extract, fetchBrandWebsiteLogo: m.logo }))
+vi.mock('~~/server/utils/db', () => ({ queryOne: m.query }))
+vi.mock('~~/server/utils/appUrl', () => ({ getAppUrl: () => 'https://app.xeroflow.io' }))
+vi.mock('~~/server/utils/bannerStorage', () => ({ uploadBannerAsset: m.upload, createBannerAssetStorageKey: () => 'banner/logo.png', createBannerAssetId: () => 'asset-1', bannerAssetDeliveryUrl: async () => 'https://app.xeroflow.io/logo', deleteBannerFile: vi.fn() }))
+vi.mock('~~/server/utils/banner/assetDelivery', () => ({ resolveBannerAssetDelivery: () => ({ nativeUpload: null, signingSecret: null }) }))
+vi.mock('~~/server/utils/banner/godModeAssetUpload', () => ({ executeGodModeBannerAssetUpload: m.store }))
+vi.stubGlobal('defineEventHandler', (handler: unknown) => handler)
+vi.stubGlobal('readBody', (event: { body: unknown }) => event.body)
+vi.stubGlobal('createError', (input: { statusMessage: string }) => Object.assign(new Error(input.statusMessage), input))
+const handler = (await import('~~/server/api/agency/banner-studio/brand-kits/extract.post')).default
+const page = () => ({ url: 'https://brand.example/home', title: 'Brand', brandName: 'Brand', themeColor: '#123', primaryColors: ['#abcdef'], fonts: [{ role: 'heading', family: 'Brand Sans', weights: [600] }], logoCandidates: ['https://brand.example/logo.png'], warnings: ['Review before saving; no font files downloaded.'], stylesheetsRead: 1 })
+beforeEach(() => {
+  vi.clearAllMocks()
+  m.extract.mockResolvedValue(page())
+  m.logo.mockResolvedValue({ bytes: Buffer.from('verified-logo'), mimeType: 'image/png' })
+  m.store.mockResolvedValue({ url: 'https://app.xeroflow.io/logo', r2Key: 'banner/logo.png' })
+})
+describe('website extraction draft contract', () => {
+  it('retains the managed logo pipeline and returns a reviewable draft without creating a kit', async () => {
+    const result = await handler({ body: { url: 'brand.example' } } as never)
+    expect(m.extract).toHaveBeenCalledWith('https://brand.example')
+    expect(m.logo).toHaveBeenCalledWith('https://brand.example/logo.png')
+    expect(m.store).toHaveBeenCalledTimes(1)
+    expect(result).toMatchObject({ draft: true, sourceUrl: 'https://brand.example/home', stylesheetsRead: 1, fonts: page().fonts, logos: [{ url: 'https://app.xeroflow.io/logo', r2Key: 'banner/logo.png' }] })
+    expect(result.fonts[0]).not.toHaveProperty('assets')
+    expect(m.query).not.toHaveBeenCalled()
+  })
+  it('does not store an unsafe logo and reports a partial result', async () => {
+    m.logo.mockRejectedValue(new Error('Unsafe redirect'))
+    const result = await handler({ body: { url: 'https://brand.example' } } as never)
+    expect(m.store).not.toHaveBeenCalled()
+    expect(result.logos).toEqual([])
+    expect(result.warnings.some(warning => warning.includes('logo could not be safely imported'))).toBe(true)
+    expect(result.fonts).toEqual(page().fonts)
+  })
+  it('returns a safe actionable error when the public fetch fails', async () => {
+    m.extract.mockRejectedValue(new Error('Private DNS 10.0.0.1'))
+    await expect(handler({ body: { url: 'https://brand.example' } } as never)).rejects.toMatchObject({ statusCode: 422, statusMessage: 'Could not safely read that public website. Check the URL and try again.' })
+    expect(m.logo).not.toHaveBeenCalled()
+  })
+  it('accepts a font-only readable page and rejects non-string inputs', async () => {
+    m.extract.mockResolvedValue({ ...page(), title: '', primaryColors: [], logoCandidates: [] })
+    expect((await handler({ body: { url: 'https://brand.example' } } as never)).fonts).toEqual(page().fonts)
+    await expect(handler({ body: { url: {} } } as never)).rejects.toMatchObject({ statusCode: 400 })
+  })
+})

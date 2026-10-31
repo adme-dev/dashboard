@@ -9,7 +9,7 @@ const emit = defineEmits<{ 'update:open': [value: boolean]; generated: [] }>()
 
 const { state, activeLayers } = useBannerStudio()
 const { feedsState } = useBannerFeeds()
-const { getExportCustomFonts } = useBannerFonts()
+const { getExportCustomFonts } = useBannerFonts(() => state.project?.clientId ?? null)
 const toast = useToast()
 const apiFetch = $fetch as <T = unknown>(
   request: string,

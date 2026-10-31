@@ -1,3 +1,4 @@
+import { validateBrandKitFontAssets } from '~~/server/utils/banner/fontAssets'
 import { transaction } from '~~/server/utils/db'
 import { requireRole } from '~~/server/utils/auth'
 import { PERMISSIONS } from '~~/server/utils/permissions'
@@ -10,17 +11,21 @@ export default defineEventHandler(async (event) => {
   const existing = await getBrandKit(id)
   if (!existing) throw createError({ statusCode: 404, statusMessage: 'Brand kit not found' })
 
-  const parsed = brandKitInputSchema.partial().safeParse(await readBody(event))
+  const body = await readBody(event)
+  const parsed = brandKitInputSchema.partial().safeParse(body)
   if (!parsed.success) {
     throw createError({ statusCode: 400, statusMessage: parsed.error.issues[0]?.message || 'Invalid brand kit' })
   }
-  const input = parsed.data
+  // Zod defaults must not turn an omitted patch field into an empty collection.
+  const input = Object.fromEntries(Object.entries(parsed.data).filter(([key]) => Object.hasOwn(body, key))) as typeof parsed.data
   const contentChanged = ['name', 'colors', 'fonts', 'logos', 'guidelines'].some(k => k in input)
 
   await transaction(async (db) => {
     const currentClient = await lockBrandKitForWrite(event, db, id)
     const nextClient = 'clientId' in input ? input.clientId ?? null : currentClient
     if (nextClient !== currentClient) await requireBrandKitWriteAccess(event, nextClient)
+    const current = await db.query('SELECT fonts FROM brand_kits WHERE id = $1', [id])
+    await validateBrandKitFontAssets(input.fonts ?? current.rows[0].fonts, nextClient, db)
     // Snapshot before changing content so every edit is recoverable
     if (contentChanged) await snapshotBrandKitVersion(db, id, user.id)
     await db.query(`

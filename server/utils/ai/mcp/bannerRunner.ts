@@ -3,7 +3,7 @@ import type { BannerPlayback } from '~~/app/types/banner-studio'
 import type { ToolContext } from '~~/server/utils/ai/toolContext'
 import { escapeLike } from '~~/server/utils/ai/toolContext'
 import { loadBannerLayers } from '~~/server/utils/audio/bannerOverlay'
-import { buildBannerHTML } from '~~/server/utils/banner/htmlBuilder'
+import { buildBannerHTML, type ExportCustomFont } from '~~/server/utils/banner/htmlBuilder'
 import { enqueueBannerRender, projectJobStatus, type BannerJobRow, type BannerRenderInput } from '~~/server/utils/banner/renderJob'
 import { proposeAction } from '~~/server/utils/ai/pendingActions'
 import { queryRows, queryOne, execute } from '~~/server/utils/db'
@@ -146,17 +146,17 @@ export function buildBannerProposeDeps(): BannerProposeDeps {
 }
 
 export interface BannerConfirmDeps {
-  loadLayers: (projectId: string, format: string) => Promise<{ layers: any[], width: number, height: number, playback?: BannerPlayback }>
-  buildHtml: (format: string, layers: any[], options: { baseUrl: string, playback?: BannerPlayback }) => string
+  loadLayers: (projectId: string, format: string, event?: import('h3').H3Event) => Promise<{ layers: any[], width: number, height: number, playback?: BannerPlayback, customFonts?: ExportCustomFont[] }>
+  buildHtml: (format: string, layers: any[], options: { baseUrl: string, playback?: BannerPlayback, customFonts?: ExportCustomFont[] }) => string
   enqueue: (input: BannerRenderInput, deps: any) => Promise<{ jobIds: string[] }>
   execution?: TrustedSupplementalExecutionServices
 }
 
 export async function dispatchBannerConfirm(payload: BannerRenderPendingPayload, ctx: ToolContext, deps: BannerConfirmDeps): Promise<{ ok: true, data: { jobIds: string[] } } | { ok: false, error: string, code: 'handler_error' }> {
   try {
-    const { layers, width, height, playback } = await deps.loadLayers(payload.projectId, payload.format)
+    const { layers, width, height, playback, customFonts } = await deps.loadLayers(payload.projectId, payload.format, ctx.event)
     const baseUrl = process.env.NUXT_PUBLIC_APP_URL ?? process.env.R2_PUBLIC_URL ?? ''
-    const html = deps.buildHtml(payload.format, layers, { baseUrl, ...(playback ? { playback } : {}) })
+    const html = deps.buildHtml(payload.format, layers, { baseUrl, ...(playback ? { playback } : {}), ...(customFonts ? { customFonts } : {}) })
     const enqueueDeps = {
       genId: () => randomUUID(),
       putSourceHtml: async (key: string, h: string) => { await uploadFile(Buffer.from(h, 'utf8'), key, 'text/html') },

@@ -1,4 +1,5 @@
-import { queryOne } from '~~/server/utils/db'
+import { validateBrandKitFontAssets } from '~~/server/utils/banner/fontAssets'
+import { transaction } from '~~/server/utils/db'
 import { requireRole } from '~~/server/utils/auth'
 import { PERMISSIONS } from '~~/server/utils/permissions'
 import { getBrandKit } from '~~/server/utils/banner/brandKits'
@@ -11,12 +12,16 @@ export default defineEventHandler(async (event) => {
   const src = await getBrandKit(id)
   if (!src) throw createError({ statusCode: 404, statusMessage: 'Brand kit not found' })
   await requireBrandKitWriteAccess(event, src.clientId)
-  const row = await queryOne(`
+  const row = await transaction(async (db) => {
+    await validateBrandKitFontAssets(src.fonts, src.clientId || null, db)
+    const result = await db.query(`
     INSERT INTO brand_kits (name, client_id, colors, fonts, logos, guidelines, source_url, created_by)
     VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id
   `, [
-    `${src.name} (copy)`, src.clientId, JSON.stringify(src.colors), JSON.stringify(src.fonts),
-    JSON.stringify(src.logos), src.guidelines, src.sourceUrl || null, user.id
-  ]) as { id: string }
+      `${src.name} (copy)`, src.clientId, JSON.stringify(src.colors), JSON.stringify(src.fonts),
+      JSON.stringify(src.logos), src.guidelines, src.sourceUrl || null, user.id
+    ])
+    return result.rows[0] as { id: string }
+  })
   return await getBrandKit(row.id)
 })

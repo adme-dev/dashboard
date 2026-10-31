@@ -2674,7 +2674,7 @@ const features: Record<string, Feature> = {
     categoryIcon: 'i-lucide-palette',
     categoryIconBg: 'bg-rose-50',
     categoryIconColor: 'text-rose-600',
-    description: 'Per-client brand kits with colour roles, heading and body fonts, light/dark logos and written guidelines — extracted from a website in a minute, applied with one undoable click, enforced at export.',
+    description: 'Per-client brand kits with colour roles, uploaded font files, heading and body weights, light/dark logos and written guidelines. Apply a kit in one undoable step.',
     details: [
       {
         title: 'Colours With Roles, Not Just Swatches',
@@ -2682,7 +2682,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Heading & Body Typography',
-        content: 'Pick a heading face and a body face from the studio font library or your uploaded brand fonts, with the weights the brand is licensed for. Applying a kit sets headlines and buttons in the heading face and subheads and body copy in the body face, and loads the fonts so the canvas renders correctly straight away.'
+        content: 'Upload brand font files into the kit and choose from their available weights. Set a default weight for headings and body copy. Applying the kit updates each text role with its chosen face and weight, while editor previews and exports retain the same uploaded file. Shared agency fonts remain reusable without changing their ownership.'
       },
       {
         title: 'Logos For Light and Dark',
@@ -2690,7 +2690,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Extract From a Website',
-        content: 'Paste the client\'s homepage and the studio pulls the palette, the fonts it loads, and the logo into a draft kit for you to confirm. Or start from a client record and their saved logo comes with it. Either way a brand kit takes a minute, not an afternoon of eyedroppering.'
+        content: 'Enter a public homepage to detect colours, font families and logo candidates from the page and its linked stylesheets. Review the draft and any extraction warnings before saving. Detected custom font names still need their licensed font files uploaded; extraction does not copy those files automatically.'
       },
       {
         title: 'Default Kit Per Client',

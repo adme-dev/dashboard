@@ -5,7 +5,7 @@
  */
 import { requireRole } from '~~/server/utils/auth'
 import { PERMISSIONS } from '~~/server/utils/permissions'
-import { scrapeUrl } from '~~/server/utils/urlScraper'
+import { extractBrandWebsite, fetchBrandWebsiteLogo } from '~~/server/utils/banner/websiteExtraction'
 import { queryOne } from '~~/server/utils/db'
 import { getAppUrl } from '~~/server/utils/appUrl'
 import { uploadBannerAsset, createBannerAssetStorageKey, createBannerAssetId, bannerAssetDeliveryUrl, deleteBannerFile } from '~~/server/utils/bannerStorage'
@@ -26,12 +26,17 @@ function luminance(hex: string): number {
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, PERMISSIONS.CREATIVE)
   const body = await readBody(event) as { url?: string }
-  const raw = (body?.url || '').trim()
+  const raw = typeof body?.url === 'string' ? body.url.trim() : ''
   if (!raw) throw createError({ statusCode: 400, statusMessage: 'url is required' })
   const url = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`
 
-  const page = await scrapeUrl(url) // SSRF-guarded inside
-  if (!page.title && !page.primaryColors.length && !page.logoCandidates.length) {
+  let page: Awaited<ReturnType<typeof extractBrandWebsite>>
+  try {
+    page = await extractBrandWebsite(url)
+  } catch {
+    throw createError({ statusCode: 422, statusMessage: 'Could not safely read that public website. Check the URL and try again.' })
+  }
+  if (!page.title && !page.primaryColors.length && !page.logoCandidates.length && !page.fonts.length) {
     throw createError({ statusCode: 422, statusMessage: 'Could not read that page — check the URL is public' })
   }
 
@@ -40,14 +45,20 @@ export default defineEventHandler(async (event) => {
   const hexes: string[] = []
   for (const c of [page.themeColor, ...page.primaryColors]) {
     const h = c ? toHex6(c) : null
-    if (h && !seen.has(h)) { seen.add(h); hexes.push(h) }
+    if (h && !seen.has(h)) {
+      seen.add(h)
+      hexes.push(h)
+    }
   }
   const sorted = [...hexes]
   const dark = sorted.filter(h => luminance(h) < 0.25)
   const light = sorted.filter(h => luminance(h) > 0.85)
   const mid = sorted.filter(h => !dark.includes(h) && !light.includes(h))
   const colors: { role: string, hex: string }[] = []
-  const take = (arr: string[], role: string) => { const h = arr.shift(); if (h) colors.push({ role, hex: h }) }
+  const take = (arr: string[], role: string) => {
+    const h = arr.shift()
+    if (h) colors.push({ role, hex: h })
+  }
   take(mid, 'primary')
   take(mid, 'accent')
   take(light.length ? light : dark, 'background')
@@ -55,25 +66,16 @@ export default defineEventHandler(async (event) => {
   take(mid, 'secondary')
   for (const h of [...mid, ...dark, ...light]) if (!colors.some(c => c.hex === h) && colors.length < 8) colors.push({ role: 'extra', hex: h })
 
-  const fonts = page.fontFamilies.slice(0, 2).map((family, i) => ({
-    role: i === 0 ? 'heading' : 'body', family, weights: [400, 700]
-  }))
+  const fonts = page.fonts
 
   // Mirror up to 2 logo candidates through the normal asset pipeline (R2 + signed delivery URL + banner_assets row)
   const logos: { name: string, url: string, r2Key: string }[] = []
   const { nativeUpload, signingSecret } = resolveBannerAssetDelivery(event)
-  const host = new URL(url).hostname.replace(/^www\./, '')
+  const host = new URL(page.url).hostname.replace(/^www\./, '')
   for (const cand of page.logoCandidates.slice(0, 3)) {
     if (logos.length >= 2) break
     try {
-      const controller = new AbortController()
-      const t = setTimeout(() => controller.abort(), 6000)
-      const res = await fetch(cand, { signal: controller.signal, headers: { 'User-Agent': 'Mozilla/5.0 (XeroFlow brand extractor)' } })
-      clearTimeout(t)
-      const type = (res.headers.get('content-type') || '').split(';')[0].trim()
-      if (!res.ok || !type.startsWith('image/')) continue
-      const buffer = Buffer.from(await res.arrayBuffer())
-      if (buffer.length === 0 || buffer.length > 2 * 1024 * 1024) continue
+      const { bytes: buffer, mimeType: type } = await fetchBrandWebsiteLogo(cand)
       const ext = type.includes('svg') ? 'svg' : type.includes('png') ? 'png' : type.includes('webp') ? 'webp' : type.includes('gif') ? 'gif' : 'jpg'
       const fileName = `${host}-logo-${logos.length + 1}.${ext}`
       const assetId = createBannerAssetId()
@@ -108,13 +110,16 @@ export default defineEventHandler(async (event) => {
       })
       logos.push({ name: `${page.brandName || host} logo`, url: stored.url, r2Key: stored.r2Key })
     } catch {
-      // best effort — a failed candidate just isn't offered
+      page.warnings.push('A logo could not be safely imported. Upload the original logo file if needed.')
     }
   }
 
   return {
     name: page.brandName || page.title || new URL(url).hostname,
-    sourceUrl: url,
+    sourceUrl: page.url,
+    draft: true,
+    warnings: [...new Set(page.warnings)],
+    stylesheetsRead: page.stylesheetsRead,
     colors,
     fonts,
     logos

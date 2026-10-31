@@ -1,5 +1,8 @@
 import { describe, it, expect, vi } from 'vitest'
 const queryOneMock = vi.fn()
+const fontMocks = vi.hoisted(() => ({ resolve: vi.fn(), access: vi.fn() }))
+vi.mock('~~/server/utils/banner/fontAssets', () => ({ resolveCanvasExportFonts: fontMocks.resolve }))
+vi.mock('~~/server/utils/social/clientAccess', () => ({ requireSocialClientAccess: fontMocks.access }))
 vi.mock('~~/server/utils/db', () => ({ queryOne: (...a: any[]) => queryOneMock(...a) }))
 import { resolveOverlayFormatKey, loadBannerLayers } from '~~/server/utils/audio/bannerOverlay'
 
@@ -21,6 +24,19 @@ describe('loadBannerLayers', () => {
     queryOneMock.mockResolvedValue({ canvasData: { custom_1200x1200: { layers: [], playback } } })
     expect(await loadBannerLayers('proj', 'custom_1200x1200')).toEqual({ layers: [], width: 1200, height: 1200, playback })
   })
+  it('loads exact font faces using the project client and authenticated request', async () => {
+    const event = { context: {} } as never
+    const face = { id: 'font-id', family: 'Brand', weight: 700, format: 'woff2', url: 'https://app.test/font' }
+    const board = { layers: [{ fontFamily: 'Brand', fontWeight: 700, fontAssetId: 'font-id' }] }
+    queryOneMock.mockResolvedValue({ clientId: 'client-a', canvasData: { fb_story: board } })
+    fontMocks.resolve.mockResolvedValue([face])
+    const result = await loadBannerLayers('project', 'fb_story', event)
+    expect(fontMocks.access).toHaveBeenCalledWith(event, 'client-a')
+    expect(fontMocks.resolve).toHaveBeenCalledWith(event, { fb_story: board }, 'client-a')
+    expect(result.customFonts).toEqual([face])
+    await expect(loadBannerLayers('project', 'fb_story')).rejects.toThrow('authenticated request context')
+  })
+
   it('throws when the project or format is missing', async () => {
     queryOneMock.mockResolvedValue(null)
     await expect(loadBannerLayers('nope', 'fb_story')).rejects.toThrow()

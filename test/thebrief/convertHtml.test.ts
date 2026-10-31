@@ -9,6 +9,28 @@ describe('TheBrief single-slide native conversion pilot', () => {
     expect(result.canvasData.custom_300x250.layers.find(l => l.type === 'text').text).toBe('\u00a0incl GST*')
   })
 
+  it.each(['\r', '\r\n', '\n'])('preserves source headline line breaks from %j HTML input', async (newline) => {
+    const html = source.replace('.row{', '.row{white-space:pre-line;')
+      .replace('Hello world', `Do you want your ${newline}equipment to perform${newline}like new?`)
+    const result = await convertTheBriefHtml(html)
+    const layer = result.canvasData.custom_300x250.layers.find(l => l.type === 'text')
+    expect(layer.text).toBe('Do you want your \nequipment to perform\nlike new?')
+    expect(layer.text).not.toContain('\r')
+    expect(layer.keyframes.opacity).toEqual((await convertTheBriefHtml(source)).canvasData.custom_300x250.layers.find(l => l.type === 'text').keyframes.opacity)
+  })
+
+  it('normalizes raw line endings consistently in styled text runs without rewriting character references', async () => {
+    const html = source.replace('.row{', '.row{white-space:pre-line;')
+      .replace('Hello world', '<span style="font-size:24px">First\r\nline</span><span style="font-size:30px">\rSecond&nbsp;line</span>')
+    const result = await convertTheBriefHtml(html)
+    const layer = result.canvasData.custom_300x250.layers.find(l => l.type === 'text')
+    expect(layer.text).toBe('First\nline\nSecond\u00a0line')
+    expect(layer.textRuns).toEqual([{ text: 'First\nline' }, { text: '\nSecond\u00a0line', fontSize: 30 }])
+    expect(layer.textRuns.map(run => run.text).join('')).toBe(layer.text)
+    const referenced = await convertTheBriefHtml(source.replace('Hello world', 'Literal&#13;reference'))
+    expect(referenced.canvasData.custom_300x250.layers.find(l => l.type === 'text').text).toBe('Literal\rreference')
+  })
+
   it('recreates editable text and delayed opacity/position tracks without executing source', async () => {
     const result = await convertTheBriefHtml(source)
     const layer = result.canvasData.custom_300x250.layers.find(l => l.type === 'text')

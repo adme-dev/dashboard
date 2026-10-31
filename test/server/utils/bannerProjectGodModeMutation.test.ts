@@ -201,6 +201,7 @@ describe('God mode banner project creation coordination', () => {
     expect(JSON.parse((params as string[])[2]).mrec.layers[2]).toMatchObject({ type: 'button', text: 'BOOK A TEST DRIVE' })
     expect(mockExecuteGodModeBannerProjectCreation).toHaveBeenCalledWith(expect.anything(), expect.any(Function))
     expect([...projectCreationRouteSource.matchAll(/^import\s+[^'"\n]+from\s+['"]([^'"]+)['"]/gm)].map(([, source]) => source)).toEqual([
+      '~~/server/utils/banner/fontAssets',
       '~~/server/utils/banner/folders',
       '~~/server/utils/auth',
       '~~/server/utils/banner/godModeProjectCreation',

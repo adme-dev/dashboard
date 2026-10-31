@@ -2,15 +2,20 @@
 import TextGlyphs from './TextGlyphs.client.vue'
 import type { Layer } from '~/types/banner-studio'
 import { effectStyleFromLayer, bannerTextBackdropShadow, safeBannerTextTexture } from '~~/shared/bannerEffects'
+import { useBannerFonts } from '~/composables/useBannerFonts'
 import { bannerFontFamily } from '~/utils/banner-font-family'
 
 const props = defineProps<{
   layer: Layer
   isActive: boolean
+  clientId?: string | null
 }>()
 
 const { updateLayer } = useBannerStudio()
 const { getFeedOverride } = useBannerFeeds()
+
+const { getCustomFont } = useBannerFonts(() => props.clientId ?? null)
+const resolvedFontId = computed(() => props.layer.fontAssetId || getCustomFont(props.layer.fontFamily || 'Barlow Condensed', props.layer.fontWeight || 400)?.id)
 
 const displayText = computed(() => getFeedOverride(props.layer.id, 'text') ?? props.layer.text ?? '')
 const displayColor = computed(() => getFeedOverride(props.layer.id, 'color') ?? props.layer.color ?? '#fff')
@@ -85,7 +90,7 @@ function onKeydown(e: KeyboardEvent) {
         v-if="depthShadow"
         aria-hidden="true"
         class="absolute inset-0 pointer-events-none"
-        :style="{ fontSize: `${layer.fontSize || 16}px`, fontWeight: layer.fontWeight || 400, fontFamily: bannerFontFamily(layer.fontFamily), fontStyle: layer.fontStyle || 'normal', textTransform: (layer.textTransform as any) || 'none', letterSpacing: layer.letterSpacing || 'normal', lineHeight: layer.lineHeight || 1.2, textAlign: (layer.textAlign as any) || 'left', whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: effects.textDepth?.color || displayColor, textShadow: depthShadow }"
+        :style="{ fontSize: `${layer.fontSize || 16}px`, fontWeight: layer.fontWeight || 400, fontFamily: bannerFontFamily(layer.fontFamily, resolvedFontId), fontStyle: layer.fontStyle || 'normal', textTransform: (layer.textTransform as any) || 'none', letterSpacing: layer.letterSpacing || 'normal', lineHeight: layer.lineHeight || 1.2, textAlign: (layer.textAlign as any) || 'left', whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: effects.textDepth?.color || displayColor, textShadow: depthShadow }"
       >
         <TextGlyphs
           :text="displayText"
@@ -102,7 +107,7 @@ function onKeydown(e: KeyboardEvent) {
           position: 'relative',
           fontSize: `${layer.fontSize || 16}px`,
           fontWeight: layer.fontWeight || 400,
-          fontFamily: bannerFontFamily(layer.fontFamily),
+          fontFamily: bannerFontFamily(layer.fontFamily, resolvedFontId),
           WebkitFontSmoothing: layer.textAntialias ? 'antialiased' : undefined,
           textRendering: layer.textAntialias ? 'optimizeLegibility' : undefined,
           color: texture || (effects.gradientColors?.length ?? 0) >= 2 ? 'transparent' : displayColor,

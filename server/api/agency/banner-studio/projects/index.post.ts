@@ -1,3 +1,4 @@
+import { validateCanvasFontAssets, canvasFontLayers } from '~~/server/utils/banner/fontAssets'
 import { resolveBannerFolderId } from '~~/server/utils/banner/folders'
 import { requireAuth, requireWriteAccess } from '~~/server/utils/auth'
 import { executeGodModeBannerProjectCreation } from '~~/server/utils/banner/godModeProjectCreation'
@@ -28,11 +29,13 @@ export default defineEventHandler(async (event) => {
   if (marketing && !importIdentity) await requireMarketingBannerProjectCreate(event, user, { clientId, tags })
 
   try {
+    if (canvasFontLayers(canvasData).some(layer => layer.fontAssetId) && clientId) await requireSocialClientAccess(event, clientId)
     const row = await executeGodModeBannerProjectCreation(event, async (db) => {
       if (importIdentity) {
         const existing = await findExistingTheBriefProject(db, importIdentity)
         if (existing) return existing
       }
+      await validateCanvasFontAssets(canvasData, clientId || null, db)
       const result = await db.query(`
         INSERT INTO banner_projects (name, client_id, canvas_data, tags, created_by, folder_id)
         ${marketing
@@ -63,7 +66,7 @@ export default defineEventHandler(async (event) => {
     return row
   } catch (error) {
     const status = (error as { statusCode?: number })?.statusCode
-    if (status === 400 || (marketing && status === 403)) throw error
+    if (status === 400 || status === 403) throw error
     console.error('Failed to create banner project:', error)
     throw createError({ statusCode: 500, statusMessage: 'Failed to create banner project' })
   }

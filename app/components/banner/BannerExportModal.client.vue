@@ -15,7 +15,7 @@ const emit = defineEmits<{ 'update:open': [value: boolean] }>()
 
 const { state, activeLayers } = useBannerStudio()
 const { estimateSize } = useBannerFileSize()
-const { getExportCustomFonts } = useBannerFonts()
+const { getExportCustomFonts } = useBannerFonts(() => state.project?.clientId ?? null)
 const toast = useToast()
 const videoExportSession = createBannerVideoExportSession()
 const apiFetch = $fetch as <T = unknown>(request: string, options?: {

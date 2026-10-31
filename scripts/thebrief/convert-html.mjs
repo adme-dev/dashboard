@@ -380,7 +380,11 @@ export async function convertTheBriefHtml(html) {
   if (Buffer.byteLength(html) > 2 * 1024 * 1024) throw new Error('HTML exceeds pilot limit')
   const window = new Window({ settings: { enableJavaScriptEvaluation: false, disableJavaScriptFileLoading: true, disableCSSFileLoading: true, disableIframePageLoading: true } })
   try {
-    window.document.write(html)
+    // HTML input preprocessing converts raw CR/CRLF to LF before tokenization.
+    // Happy DOM retains CR in text nodes; carrying those through JSON into the
+    // native editor can join words instead of preserving the source line break.
+    // Normalize the input, not decoded text, so &#13; and JS escapes stay intact.
+    window.document.write(html.replace(/\r\n?/g, '\n'))
     const document = window.document
     const source = sourceData(document)
     if (!source.animations?.length || source.animations.length > 50 || source.customAnimations?.length) throw new Error('Unsupported slide sequence or custom animations')

@@ -1,7 +1,7 @@
 import type { Layer, ArtboardState, BannerProject, UndoAction, BannerBrandKit, AnimInType, AnimOutType, MotionPathPoint, MotionPathTween } from '~/types/banner-studio'
 import { toRaw } from 'vue'
 import { FORMATS, TEMPLATES, migrateLayer, DEFAULT_BG, resolveBannerFormat } from '~/utils/banner-constants'
-import { brandColor, brandFont, isLogoLayer, isDarkColor } from '~/utils/banner-brand-kit'
+import { brandColor, brandFont, brandFontSelection, isLogoLayer, isDarkColor } from '~/utils/banner-brand-kit'
 
 // Module-scope singleton state
 let _uid = 1
@@ -166,8 +166,13 @@ export function useBannerStudio() {
   function updateLayer(id: number, props: Partial<Layer>) {
     const layer = activeLayers.value.find(l => l.id === id)
     if (!layer) return
+    if (!Object.prototype.hasOwnProperty.call(props, 'fontAssetId')
+      && ((props.fontFamily !== undefined && props.fontFamily !== layer.fontFamily)
+        || (props.fontWeight !== undefined && props.fontWeight !== layer.fontWeight))) {
+      props = { ...props, fontAssetId: undefined }
+    }
     const sharedFields: (keyof Layer)[] = [
-      'text', 'textRuns', 'fontFamily', 'fontWeight', 'fontStyle', 'color',
+      'text', 'textRuns', 'fontFamily', 'fontAssetId', 'fontWeight', 'fontStyle', 'color',
       'textTransform', 'letterSpacing', 'lineHeight', 'textAlign',
       'textShadow', 'textStroke', 'src', 'fit', 'volume', 'muted', 'loopAudio',
       'bgColor', 'fillColor', 'borderColor', 'borderWidth', 'borderRadius',
@@ -701,7 +706,7 @@ export function useBannerStudio() {
           if (isHeadline && primary) layer.color = primary
           else if (!isHeadline && (secondary || text)) layer.color = (secondary || text)!
           const f = isHeadline ? headingFont : bodyFont
-          if (f) layer.fontFamily = f.family
+          if (f) Object.assign(layer, brandFontSelection(f))
         }
         if (layer.type === 'button') {
           if (accent) {
@@ -709,7 +714,7 @@ export function useBannerStudio() {
             // keep the label legible against the new accent
             layer.textColor = isDarkColor(accent) ? (background && !isDarkColor(background) ? background : '#ffffff') : (text && isDarkColor(text) ? text : '#111111')
           }
-          if (headingFont) layer.fontFamily = headingFont.family
+          if (headingFont) Object.assign(layer, brandFontSelection(headingFont))
         }
         if (logo && isLogoLayer(layer)) {
           layer.src = logo.url
@@ -746,8 +751,8 @@ export function useBannerStudio() {
 
     // Make sure the kit's fonts are actually loaded so the canvas re-renders with them
     try {
-      const { loadFont } = useBannerFonts()
-      for (const f of [headingFont, bodyFont]) if (f) loadFont(f.family, f.weights)
+      const { loadUsedFonts } = useBannerFonts(() => state.project?.clientId ?? null)
+      loadUsedFonts(state.setKeys.flatMap(key => state.sets[key]?.layers || []))
     } catch {}
   }
 

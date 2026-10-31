@@ -36,11 +36,11 @@ The source Recents inventory contains 120 parent designs. 119 original HTML5 arc
 
 ## GWM priority
 
-The user selected `(ADVENTURE) Knox GWM Tradie Breakfast Cannon Hi4-T PHEV Launch Meta Lead Gen` (`plp15rw`) as the timeline reference. It contains three layouts, ten-second playback, and two audio clips per layout. Its corrected package retains all visual layers/keyframes and replaces only audio media/mute values. Source UI and PCM comparison establish the first clip is trimmed from 12.4–18.4 seconds and the second from 18.4–22.4 seconds of the original recording. Source fades are 1.0 seconds in and 0.9 seconds out. Original-track offsets must not be applied again to the already-trimmed clips. Live corrected-audio verification is pending.
+The user selected `(ADVENTURE) Knox GWM Tradie Breakfast Cannon Hi4-T PHEV Launch Meta Lead Gen` (`plp15rw`) as the timeline reference. It contains three layouts, ten-second playback, and two audio clips per layout. Its corrected package retains all visual layers/keyframes and replaces only audio media/mute values. Source UI and PCM comparison establish the first clip is trimmed from 12.4–18.4 seconds and the second from 18.4–22.4 seconds of the original recording. Source fades are 1.0 seconds in and 0.9 seconds out. Original-track offsets must not be applied again to the already-trimmed clips. The corrected package was refreshed in place with a version backup after release 88994ebc8. Live media checks confirmed six-second and four-second managed clips, 100% volume, mute off, the 6-second handover and loop restart, with only the active layout playing audio. Audible listening comparison remains a review requirement.
 
 | Source | Status |
 | --- | --- |
-| `plp15rw` | ADVENTURE draft saved; corrected audio awaiting live verification |
+| `plp15rw` | ADVENTURE corrected draft saved; live timeline/media checks passed; final creative/audio approval remains pending |
 | `r6pem2o` | TRADIES draft saved; audio reconciliation pending |
 | `d0x7g3e` | Knox web design saved as a complete three-size draft |
 | `rmrd00p` | Knox update draft saved |
@@ -63,4 +63,8 @@ The follow-up implementation synchronizes selected artwork and timeline rows, re
 
 Local browser checks used the real editor canvas/timeline components with the original-derived Knox package. Selection highlighted both label and lane, scrolled the selected row into view, opened entry/exit controls at 0.50/5.00 seconds, retained detailed tracks, and restarted the three layouts together. Light/dark mode were inspected. These checks are local implementation evidence, not live deployment acceptance.
 
-Previous production release: source `6ebc4311fceeca8d22d0cc81fc8429c1c9ca50b5`, deployment `67a1e870-6455-478d-97ed-097ea1c94b85`, target `agency-dashboard`. Follow-up release and live acceptance remain pending.
+Previous production release: source `6ebc4311fceeca8d22d0cc81fc8429c1c9ca50b5`, deployment `67a1e870-6455-478d-97ed-097ea1c94b85`, target `agency-dashboard`. Follow-up production release: source/main `88994ebc8f81161333c85136370dff37e8075864`, deployment `5dab1a71-c1f2-4784-9c04-f3805e4aaa8c`, target `agency-dashboard`, [PR 764](https://github.com/adme-dev/dashboard/pull/764). The production build and deployment guards passed. Live selection/phase controls, three-layout timing, audio transport and loop restart passed on the Knox reference. QR Codes navigation and existing cards passed. GWM, Hyundai and Gendore custom font load checks passed. Gendore Service still needs a carriage-return rendering correction: source separates “PERFORM LIKE”, while the imported text merges it. No design was marked approved.
+
+## Video import boundary
+
+No prepared/imported design in this batch contains a native video layer. Fourteen source designs remain held on unsupported video layers. AMM PMAX includes ten-second silent video clips with a separate soundtrack; Mornington Nissan includes seven-second muted video clips that loop through a ten-second design. The latter requires matching media-loop timing in the editor, scrubbing and HTML output. Video support is not established by animated image playback.

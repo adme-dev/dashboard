@@ -6,6 +6,7 @@ export interface BannerLibraryItem {
   id: string
   name: string
   client: string
+  clientId?: string | null
   category?: string
   dimensions: string
   type: string

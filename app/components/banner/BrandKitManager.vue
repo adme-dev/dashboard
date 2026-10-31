@@ -5,8 +5,9 @@
  * and compact inside the studio's Brand panel.
  */
 import type { BannerBrandKit, BrandKitColor, BrandKitFont, BrandKitLogo, BrandKitVersion, BrandKitExtraction, BrandColorRole, BrandFontRole } from '~/types/banner-studio'
-import { BRAND_COLOR_ROLES, BRAND_FONT_ROLES, normaliseHex } from '~/utils/banner-brand-kit'
-import { FONT_FAMILIES } from '~/utils/banner-constants'
+import { BRAND_COLOR_ROLES, BRAND_FONT_ROLES, normaliseHex, brandFontSelection } from '~/utils/banner-brand-kit'
+import { parseBannerFontTags as parseFontTags } from '~~/shared/banner/fonts'
+import { bannerFontFamily } from '~/utils/banner-font-family'
 import { createBannerUploadSession } from '~/utils/bannerUpload'
 
 const props = defineProps<{
@@ -21,7 +22,7 @@ const emit = defineEmits<{
 }>()
 
 const toast = useToast()
-const { customFonts, fetchCustomFonts } = useBannerFonts()
+const { customFonts, allFonts, refreshCustomFonts, uploadCustomFont } = useBannerFonts(() => form.clientId === 'none' ? null : form.clientId)
 // Typed-route $fetch can't see the new brand-kit sub-routes until nuxt prepare runs; keep calls untyped
 const api = $fetch as <T = unknown>(request: string, options?: Record<string, unknown>) => Promise<T>
 
@@ -41,22 +42,15 @@ async function refresh() {
   }
 }
 async function refreshClients() {
-  clients.value = await $fetch<any[]>('/api/agency/clients')
+  clients.value = await $fetch<typeof clients.value>('/api/agency/clients')
 }
 refresh()
 refreshClients()
-fetchCustomFonts()
 
 const clientOptions = computed(() => [
   { label: 'Agency-wide (no client)', value: 'none' },
   ...clients.value.map(c => ({ label: c.name, value: c.id }))
 ])
-const fontItems = computed(() => {
-  const custom = customFonts.value.map(f => ({ label: `${f.name} · uploaded`, value: f.name }))
-  const lib = FONT_FAMILIES.map(f => ({ label: f, value: f }))
-  return [...custom, ...lib]
-})
-
 // ── Editor state ───────────────────────────────────────────────────────
 const editorOpen = ref(false)
 const editorTab = ref<'design' | 'history'>('design')
@@ -72,9 +66,89 @@ const form = reactive({
   guidelines: ''
 })
 const saving = ref(false)
-const formKit = computed(() => ({ name: form.name || 'Brand', colors: form.colors, fonts: form.fonts, logos: form.logos }))
+const fontLoading = ref(false)
+const fontError = ref('')
+const extractionWarnings = ref<string[]>([])
+const detectedFontFamilies = ref<string[]>([])
+const unavailableFonts = computed(() => form.fonts.filter(font => !font.assets?.length && !allFonts.value.some(item => item.family === font.family)))
+let fontRequest = 0
+watch(() => form.clientId, async () => {
+  const request = ++fontRequest
+  fontLoading.value = true
+  fontError.value = ''
+  try {
+    await refreshCustomFonts()
+  } catch {
+    if (request !== fontRequest) return
+    fontError.value = 'Could not load this client’s fonts. Try again before choosing a font.'
+  } finally {
+    if (request === fontRequest) fontLoading.value = false
+  }
+}, { immediate: true })
+const fontGroups = computed(() => {
+  const groups = new Map<string, { label: string, value: string, family: string, assets: Array<{ id: string, weight: number }> }>()
+  for (const face of customFonts.value) {
+    const key = `uploaded:${face.clientId || 'agency'}:${face.name}`
+    if (!groups.has(key)) groups.set(key, { label: `${face.name} · ${face.clientId ? 'Client upload' : 'Shared upload'}`, value: key, family: face.name, assets: [] })
+    const group = groups.get(key)!
+    const weight = parseFontTags(face.tags).weight
+    if (!group.assets.some(asset => asset.weight === weight)) group.assets.push({ id: face.id, weight })
+  }
+  return [...groups.values()]
+})
+const missingFontAssets = computed(() => !fontLoading.value && form.fonts.some(font => font.assets?.some(asset => !customFonts.value.some(face => face.id.toLowerCase() === asset.id.toLowerCase()))))
+const fontItems = computed(() => [
+  ...form.fonts.filter(font => !font.assets?.length && !allFonts.value.some(item => item.category !== 'custom' && item.family === font.family)).map(font => ({ label: `${font.family} · ${detectedFontFamilies.value.includes(font.family) ? 'Detected font — upload file or choose available font' : 'Saved family — upload file or choose available font'}`, value: `library:${font.family}` })),
+  ...form.fonts.filter(font => font.assets?.length && !fontGroups.value.some(group => group.assets.some(asset => font.assets?.some(saved => saved.id.toLowerCase() === asset.id.toLowerCase())))).map(font => ({ label: `${font.family} · Linked font unavailable`, value: `saved:${font.role}`, disabled: true })),
+  ...fontGroups.value.map(group => ({ label: group.label, value: group.value })),
+  ...allFonts.value.filter(font => font.category !== 'custom').map(font => ({ label: font.family, value: `library:${font.family}` }))
+])
+function fontOption(role: BrandFontRole) {
+  const font = fontFor(role)
+  if (!font) return undefined
+  const group = fontGroups.value.find(item => item.family === font.family && item.assets.some(asset => font.assets?.some(saved => saved.id.toLowerCase() === asset.id.toLowerCase())))
+  return group?.value || (font.assets?.length ? `saved:${font.role}` : `library:${font.family}`)
+}
+function roleWeightItems(font: BrandKitFont) {
+  const available = font.assets?.length ? font.assets.map(asset => asset.weight) : allFonts.value.find(item => item.family === font.family && item.category !== 'custom')?.weights || font.weights
+  return [...new Set(available)].sort((a, b) => a - b).map(weight => ({ label: String(weight), value: weight }))
+}
+const uploadFile = ref<File | null>(null)
+const uploadFamily = ref('')
+const uploadWeight = ref(400)
+const uploadingFont = ref(false)
+async function addFontUpload() {
+  if (!uploadFile.value || !uploadFamily.value.trim()) return
+  uploadingFont.value = true
+  const clientId = form.clientId === 'none' ? null : form.clientId
+  try {
+    const face = await uploadCustomFont(uploadFile.value, uploadFamily.value.trim(), Number(uploadWeight.value), clientId)
+    if (!face) throw new Error('No font was returned')
+    if ((face.clientId ?? null) !== clientId) throw new Error('The font was saved to a different client')
+    const weight = parseFontTags(face.tags).weight
+    const existing = form.fonts.find(font => font.family === face.name)
+    if (existing) {
+      existing.assets = [...(existing.assets || []).filter(asset => asset.weight !== weight), { id: face.id, weight }]
+      existing.weights = [...new Set(existing.assets.map(asset => asset.weight))].sort((a, b) => a - b)
+      if (!existing.weights.includes(existing.defaultWeight ?? 0)) existing.defaultWeight = weight
+    } else {
+      form.fonts.push({ role: 'extra', family: face.name, weights: [weight], defaultWeight: weight, assets: [{ id: face.id, weight }] })
+    }
+    uploadFile.value = null
+    toast.add({ title: 'Font added to kit', description: `${face.name} · ${weight}`, color: 'success' })
+  } catch (cause) {
+    toast.add({ title: 'Could not upload font', description: cause instanceof Error ? cause.message : 'Try again', color: 'error' })
+  } finally { uploadingFont.value = false }
+}
+function fontSpecimen(font: BrandKitFont) {
+  const selection = brandFontSelection(font)
+  return { fontFamily: bannerFontFamily(selection.fontFamily, selection.fontAssetId), fontWeight: selection.fontWeight }
+}
+const formKit = computed(() => ({ name: form.name || 'Brand', clientId: form.clientId === 'none' ? null : form.clientId, colors: form.colors, fonts: form.fonts, logos: form.logos }))
 
 function resetForm() {
+  extractionWarnings.value = []
+  detectedFontFamilies.value = []
   form.name = ''
   form.clientId = props.clientId || 'none'
   form.isDefault = false
@@ -88,19 +162,23 @@ function resetForm() {
   form.guidelines = ''
 }
 function openBlank() {
+  if (uploadingFont.value) return
   editing.value = null
   resetForm()
   editorTab.value = 'design'
   editorOpen.value = true
 }
 function openEdit(kit: BannerBrandKit) {
+  if (uploadingFont.value) return
+  extractionWarnings.value = []
+  detectedFontFamilies.value = []
   editing.value = kit
   form.name = kit.name
   form.clientId = kit.clientId || 'none'
   form.isDefault = kit.isDefault
   form.sourceUrl = kit.sourceUrl || null
   form.colors = kit.colors.map(c => ({ ...c }))
-  form.fonts = kit.fonts.map(f => ({ ...f, weights: [...f.weights] }))
+  form.fonts = kit.fonts.map(f => ({ ...f, weights: [...f.weights], assets: f.assets?.map(asset => ({ ...asset })) }))
   form.logos = kit.logos.map(l => ({ ...l }))
   form.guidelines = kit.guidelines || ''
   editorTab.value = 'design'
@@ -128,10 +206,12 @@ async function extractFromWebsite(intoOpenForm = false) {
   if (!url) return
   extracting.value = true
   try {
-    const x = await api<BrandKitExtraction>('/api/agency/banner-studio/brand-kits/extract', { method: 'POST', body: { url } })
+    const x = await api<BrandKitExtraction>('/api/agency/banner-studio/brand-kits/extract', { method: 'POST', body: { url, clientId: intoOpenForm ? (form.clientId === 'none' ? undefined : form.clientId) : props.clientId || undefined } })
     if (!intoOpenForm) openBlank()
     if (!form.name || !intoOpenForm) form.name = x.name
     form.sourceUrl = x.sourceUrl
+    extractionWarnings.value = x.warnings || []
+    detectedFontFamilies.value = x.fonts.map(font => font.family)
     if (x.colors.length) form.colors = x.colors
     if (x.fonts.length) form.fonts = x.fonts
     if (x.logos.length) form.logos = [...x.logos, ...form.logos.filter(l => !x.logos.some(n => n.url === l.url))]
@@ -140,7 +220,8 @@ async function extractFromWebsite(intoOpenForm = false) {
       description: `${x.colors.length} colours, ${x.fonts.length} fonts, ${x.logos.length} logo${x.logos.length === 1 ? '' : 's'} found — check and adjust before saving.`,
       color: 'success'
     })
-  } catch (e: any) {
+  } catch (cause) {
+    const e = cause as { data?: { statusMessage?: string }, message?: string }
     toast.add({ title: 'Couldn’t read that site', description: e?.data?.statusMessage || e?.message || 'Try the homepage URL', color: 'error' })
   } finally {
     extracting.value = false
@@ -155,7 +236,10 @@ function setColor(role: BrandColorRole, hex: string, label?: string) {
   const n = normaliseHex(hex)
   if (!n) return
   const c = colorFor(role)
-  if (c) { c.hex = n; if (label !== undefined) c.label = label } else form.colors.push({ role, hex: n, label })
+  if (c) {
+    c.hex = n
+    if (label !== undefined) c.label = label
+  } else form.colors.push({ role, hex: n, label })
 }
 function clearColor(role: BrandColorRole) {
   form.colors = form.colors.filter(c => c.role !== role)
@@ -174,18 +258,19 @@ function onHexInput(c: BrandKitColor, v: string | number) {
 }
 
 // ── Fonts ──────────────────────────────────────────────────────────────
-const WEIGHTS = [300, 400, 500, 600, 700, 800, 900]
 function fontFor(role: BrandFontRole) {
   return form.fonts.find(f => f.role === role)
 }
-function setFontFamily(role: BrandFontRole, family: string) {
-  const f = fontFor(role)
-  if (f) f.family = family
-  else form.fonts.push({ role, family, weights: [400, 700] })
-}
-function toggleWeight(f: BrandKitFont, w: number) {
-  const i = f.weights.indexOf(w)
-  if (i >= 0) { if (f.weights.length > 1) f.weights.splice(i, 1) } else { f.weights.push(w); f.weights.sort((a, b) => a - b) }
+function setFontFamily(role: BrandFontRole, choice: string) {
+  const group = fontGroups.value.find(item => item.value === choice)
+  const family = group?.family || choice.replace(/^library:/, '')
+  const weights = group ? group.assets.map(asset => asset.weight).sort((a, b) => a - b) : allFonts.value.find(font => font.family === family && font.category !== 'custom')?.weights || [400, 700]
+  const previous = fontFor(role)
+  const preferred = previous?.defaultWeight ?? (role === 'heading' ? 700 : 400)
+  const defaultWeight = weights.includes(preferred) ? preferred : weights[0]!
+  const next: BrandKitFont = { role, family, weights: [...weights], defaultWeight, assets: group?.assets.map(asset => ({ ...asset })) }
+  if (previous) Object.assign(previous, next)
+  else form.fonts.push(next)
 }
 
 // ── Logos ──────────────────────────────────────────────────────────────
@@ -252,7 +337,8 @@ async function save() {
     }
     editorOpen.value = false
     await refresh()
-  } catch (e: any) {
+  } catch (cause) {
+    const e = cause as { data?: { statusMessage?: string }, message?: string }
     toast.add({ title: 'Couldn’t save', description: e?.data?.statusMessage || 'Check the fields and try again', color: 'error' })
   } finally {
     saving.value = false
@@ -300,7 +386,11 @@ const versionsLoading = ref(false)
 watch(editorTab, async (t) => {
   if (t !== 'history' || !editing.value) return
   versionsLoading.value = true
-  try { versions.value = await api<BrandKitVersion[]>(`/api/agency/banner-studio/brand-kits/${editing.value.id}/versions`) } finally { versionsLoading.value = false }
+  try {
+    versions.value = await api<BrandKitVersion[]>(`/api/agency/banner-studio/brand-kits/${editing.value.id}/versions`)
+  } finally {
+    versionsLoading.value = false
+  }
 })
 async function restore(v: BrandKitVersion) {
   if (!editing.value) return
@@ -325,7 +415,10 @@ function kitMenu(kit: BannerBrandKit) {
       kit.isDefault
         ? { label: 'Clear default', icon: 'i-lucide-star-off', onSelect: () => setDefault(kit, false) }
         : { label: kit.clientId ? 'Set as client default' : 'Set as agency default', icon: 'i-lucide-star', onSelect: () => setDefault(kit, true) },
-      { label: 'History', icon: 'i-lucide-history', onSelect: () => { openEdit(kit); editorTab.value = 'history' } }
+      { label: 'History', icon: 'i-lucide-history', onSelect: () => {
+        openEdit(kit)
+        editorTab.value = 'history'
+      } }
     ],
     [
       { label: 'Delete', icon: 'i-lucide-trash-2', color: 'error' as const, onSelect: () => { deleting.value = kit } }
@@ -520,6 +613,12 @@ function kitMenu(kit: BannerBrandKit) {
           <div class="flex-1 overflow-y-auto">
             <!-- Design tab -->
             <div v-if="editorTab === 'design'" class="p-5 space-y-7">
+              <UAlert
+                v-if="extractionWarnings.length"
+                color="warning"
+                title="Review detected brand assets"
+                :description="extractionWarnings.join(' ')"
+              />
               <!-- Live preview -->
               <div class="grid grid-cols-[1fr_auto] gap-4 items-start">
                 <BannerBrandKitPreview :kit="formKit" :ratio="300 / 160" />
@@ -536,13 +635,14 @@ function kitMenu(kit: BannerBrandKit) {
 
               <!-- Identity -->
               <section class="space-y-4">
-                <div class="grid grid-cols-2 gap-4">
+                <div class="@container grid grid-cols-1 @lg:grid-cols-2 gap-4">
                   <UFormField label="Name" required>
                     <UInput v-model="form.name" placeholder="e.g. Leapmotor master brand" class="w-full" />
                   </UFormField>
                   <UFormField label="Client">
                     <USelectMenu
                       v-model="form.clientId"
+                      :disabled="uploadingFont"
                       :items="clientOptions"
                       value-key="value"
                       searchable
@@ -665,51 +765,112 @@ function kitMenu(kit: BannerBrandKit) {
               </section>
 
               <!-- Typography -->
-              <section class="space-y-3">
-                <h3 class="text-xs font-bold uppercase tracking-wider text-(--ui-text-muted)">
-                  Typography
-                </h3>
-                <div class="space-y-3">
-                  <div v-for="r in BRAND_FONT_ROLES" :key="r.role" class="rounded-md border border-(--ui-border) p-3 space-y-2">
-                    <div class="grid grid-cols-[7rem_1fr] items-center gap-3">
-                      <div>
-                        <div class="text-sm font-medium leading-tight">
-                          {{ r.label }}
-                        </div>
-                        <div class="text-[11px] text-(--ui-text-dimmed) leading-tight">
-                          {{ r.hint }}
-                        </div>
-                      </div>
+              <section class="@container space-y-4">
+                <div>
+                  <h3 class="text-base font-semibold">
+                    Typography
+                  </h3>
+                  <p class="text-sm text-muted">
+                    Choose the exact face and weight for each role. Uploaded files stay with {{ form.clientId === 'none' ? 'the agency' : clients.find(client => client.id === form.clientId)?.name || 'this client' }}.
+                  </p>
+                </div>
+                <UAlert
+                  v-if="unavailableFonts.length"
+                  color="warning"
+                  title="Font files needed"
+                  :description="`${unavailableFonts.map(font => font.family).join(', ')}: detected names only. Upload the font files or choose an available font before using them in artwork.`"
+                />
+                <UAlert v-if="fontError" color="error" :description="fontError" />
+                <UAlert v-else-if="missingFontAssets" color="warning" description="A linked font is unavailable for this client. Choose a permitted font or restore the original client before saving. Existing files have not been moved." />
+                <div v-for="role in BRAND_FONT_ROLES" :key="role.role" class="space-y-3 border-b border-default pb-4">
+                  <div class="grid grid-cols-1 @lg:grid-cols-[minmax(0,1fr)_9rem] gap-4">
+                    <UFormField :label="`${role.label} font`" :help="role.hint">
                       <USelectMenu
-                        :model-value="fontFor(r.role)?.family"
+                        :model-value="fontOption(role.role)"
                         :items="fontItems"
                         value-key="value"
-                        searchable
+                        :loading="fontLoading"
+                        :disabled="fontLoading || uploadingFont"
                         placeholder="Choose a font"
                         class="w-full"
-                        @update:model-value="v => setFontFamily(r.role, String(v))"
+                        @update:model-value="value => setFontFamily(role.role, String(value))"
                       />
-                    </div>
-                    <div v-if="fontFor(r.role)" class="flex items-center gap-3">
-                      <span
-                        class="text-lg leading-none truncate flex-1"
-                        :style="{ fontFamily: fontFor(r.role)!.family, fontWeight: fontFor(r.role)!.weights[fontFor(r.role)!.weights.length - 1] }"
-                      >The quick brown fox</span>
-                      <div class="flex gap-1">
-                        <button
-                          v-for="w in WEIGHTS"
-                          :key="w"
-                          class="text-[10px] px-1.5 py-0.5 rounded border transition-colors"
-                          :class="fontFor(r.role)!.weights.includes(w)
-                            ? 'border-(--ui-primary) bg-(--ui-primary)/10 text-(--ui-primary)'
-                            : 'border-(--ui-border) text-(--ui-text-muted) hover:border-(--ui-primary)/40'"
-                          @click="toggleWeight(fontFor(r.role)!, w)"
-                        >
-                          {{ w }}
-                        </button>
-                      </div>
-                    </div>
+                    </UFormField>
+                    <UFormField label="Default weight">
+                      <USelect
+                        v-if="fontFor(role.role)"
+                        :model-value="brandFontSelection(fontFor(role.role)!).fontWeight"
+                        :items="roleWeightItems(fontFor(role.role)!)"
+                        class="w-full"
+                        @update:model-value="value => { fontFor(role.role)!.defaultWeight = Number(value) }"
+                      />
+                    </UFormField>
                   </div>
+                  <p v-if="fontFor(role.role) && !unavailableFonts.includes(fontFor(role.role)!)" class="text-2xl leading-snug break-words" :style="fontSpecimen(fontFor(role.role)!)">
+                    The quick brown fox
+                  </p>
+                  <p v-if="fontFor(role.role)?.assets?.length" class="text-xs text-muted">
+                    Uploaded weights: {{ fontFor(role.role)!.assets!.map(asset => asset.weight).sort((a, b) => a - b).join(', ') }}
+                  </p>
+                </div>
+                <div v-if="form.fonts.some(font => font.assets?.length)" class="space-y-2">
+                  <h4 class="text-sm font-medium">
+                    Files in this kit
+                  </h4>
+                  <div v-for="font in form.fonts.filter(item => item.assets?.length)" :key="`${font.role}-${font.family}`" class="flex items-center justify-between gap-3 text-sm">
+                    <span class="min-w-0 truncate">{{ font.family }} <span class="text-muted">· {{ font.assets!.map(asset => asset.weight).join(', ') }}</span></span>
+                    <UButton
+                      v-if="font.role === 'extra'"
+                      icon="i-lucide-x"
+                      variant="ghost"
+                      color="neutral"
+                      size="xs"
+                      :aria-label="`Remove ${font.family} from kit`"
+                      @click="form.fonts = form.fonts.filter(item => item !== font)"
+                    />
+                  </div>
+                </div>
+                <div class="rounded-lg border border-default bg-elevated/40 p-4 space-y-4">
+                  <h4 class="text-sm font-medium">
+                    Upload a font face
+                  </h4>
+                  <div class="grid grid-cols-1 @lg:grid-cols-[minmax(0,1fr)_9rem] gap-4">
+                    <UFormField label="Family name" required>
+                      <UInput
+                        v-model="uploadFamily"
+                        :maxlength="100"
+                        placeholder="e.g. Helvetica Neue"
+                        class="w-full"
+                        :disabled="uploadingFont"
+                      />
+                    </UFormField>
+                    <UFormField label="File weight" help="Exact weight, 1–1000" required>
+                      <UInput
+                        v-model="uploadWeight"
+                        type="number"
+                        :min="1"
+                        :max="1000"
+                        class="w-full"
+                        :disabled="uploadingFont"
+                      />
+                    </UFormField>
+                  </div>
+                  <UFormField label="Font file" help="WOFF2, WOFF, TTF or OTF · up to 5 MB">
+                    <UFileUpload
+                      v-model="uploadFile"
+                      accept=".woff2,.woff,.ttf,.otf"
+                      label="Choose font file"
+                      :disabled="uploadingFont"
+                      class="w-full min-h-24"
+                    />
+                  </UFormField>
+                  <UButton
+                    label="Upload and add to kit"
+                    icon="i-lucide-upload"
+                    :loading="uploadingFont"
+                    :disabled="!uploadFile || !uploadFamily.trim() || form.fonts.length >= 8"
+                    @click="addFontUpload"
+                  />
                 </div>
               </section>
 
@@ -833,6 +994,7 @@ function kitMenu(kit: BannerBrandKit) {
                 :label="editing ? 'Save changes' : 'Create kit'"
                 size="sm"
                 :loading="saving"
+                :disabled="uploadingFont || missingFontAssets"
                 @click="save"
               />
             </div>

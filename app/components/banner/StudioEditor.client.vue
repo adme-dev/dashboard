@@ -121,8 +121,11 @@ onMounted(() => nextTick(rebuildTimeline))
 const { feedsState } = useBannerFeeds()
 
 // Load fonts used in the project (including custom uploads)
-const { loadUsedFonts, fetchCustomFonts, getExportCustomFonts } = useBannerFonts()
-fetchCustomFonts()
+const { loadUsedFonts, fetchCustomFonts, getExportCustomFonts } = useBannerFonts(() => state.project?.clientId ?? null)
+watch(() => state.project?.clientId, async () => {
+  await fetchCustomFonts()
+  loadUsedFonts(state.setKeys.flatMap(key => state.sets[key]?.layers || []))
+}, { immediate: true })
 watch(() => activeLayers.value, (layers) => {
   if (layers.length) loadUsedFonts(layers)
 }, { immediate: true })
@@ -469,7 +472,7 @@ async function handleSave() {
   } catch (error) {
     state.isDirty = true
     if (!isAmbiguousApiFailure(error)) createProjectIdempotencyKey = crypto.randomUUID()
-    toast.add({ title: 'Error', description: 'Failed to save project', color: 'error' })
+    toast.add({ title: 'Could not save project', description: (error as { data?: { statusMessage?: string } })?.data?.statusMessage || 'Failed to save project', color: 'error' })
     return false
   } finally {
     state.isSaving = false

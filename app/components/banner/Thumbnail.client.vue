@@ -4,10 +4,11 @@ import { resolveBannerFormat } from '~/utils/banner-constants'
 import type { ArtboardState } from '~/types/banner-studio'
 
 const props = defineProps<{
+  clientId?: string | null
   canvasData: Record<string, ArtboardState>
 }>()
 
-const { fetchCustomFonts, getExportCustomFonts } = useBannerFonts()
+const { fetchCustomFonts, getExportCustomFonts } = useBannerFonts(() => props.clientId ?? null)
 const containerRef = ref<HTMLDivElement | null>(null)
 const fontsReady = ref(false)
 

@@ -23,7 +23,12 @@ defineEmits<{ open: [id: string] }>()
             :class="view === 'grid' ? 'flex w-full rounded-none' : 'shrink-0'"
             @click="!item.to && $emit('open', item.id)"
           >
-            <BannerLibraryThumbnail :thumbnail-url="item.thumbnailUrl" :canvas-data="item.canvasData" :class="view === 'grid' ? 'h-52 w-full border-b border-default' : 'h-12 w-20 rounded'" />
+            <BannerLibraryThumbnail
+              :thumbnail-url="item.thumbnailUrl"
+              :canvas-data="item.canvasData"
+              :client-id="item.clientId"
+              :class="view === 'grid' ? 'h-52 w-full border-b border-default' : 'h-12 w-20 rounded'"
+            />
           </UButton>
           <div class="min-w-0" :class="view === 'grid' ? 'px-3 pt-3' : ''">
             <UButton

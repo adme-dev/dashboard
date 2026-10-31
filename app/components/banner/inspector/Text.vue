@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { FORMATS, TEXT_SHADOW_PRESETS, TEXT_STROKE_PRESETS } from '~/utils/banner-constants'
 import { bannerFontWeightOptions } from '~/utils/banner-font-weights'
+import { parseBannerFontTags as parseFontTags } from '~~/shared/banner/fonts'
 import type { FontCategory } from '~/composables/useBannerFonts'
 
 const { state, selectedLayer, updateLayer } = useBannerStudio()
 const {
   searchFonts, selectFont, recentFonts, loadFont, getFont,
   customFonts, isCustomFont, fetchCustomFonts, uploadCustomFont, deleteCustomFont,
-} = useBannerFonts()
+} = useBannerFonts(() => state.project?.clientId ?? null)
 const toast = useToast()
 const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string; body?: unknown }) => Promise<T>
 
@@ -79,9 +80,13 @@ const fontWeightOptions = computed(() => bannerFontWeightOptions(
   selectedLayer.value?.fontWeight ?? 400
 ))
 
-function pickFont(family: string) {
+function pickFont(family: string, assetId?: string) {
+  if (!selectedLayer.value) return
   selectFont(family)
-  set('fontFamily', family)
+  const explicit = customFonts.value.find(face => face.id === assetId)
+  const weight = explicit ? parseFontTags(explicit.tags).weight : selectedLayer.value.fontWeight ?? 400
+  const face = explicit || customFonts.value.find(face => face.name === family && parseFontTags(face.tags).weight === weight) || customFonts.value.find(face => face.name === family)
+  updateLayer(selectedLayer.value.id, { fontFamily: family, fontWeight: face ? parseFontTags(face.tags).weight : weight, fontAssetId: face?.id })
   showFontPicker.value = false
   fontSearch.value = ''
 }
@@ -109,10 +114,10 @@ async function handleFontUpload(e: Event) {
 
   uploading.value = true
   try {
-    const cf = await uploadCustomFont(file)
+    const cf = await uploadCustomFont(file, undefined, undefined, state.project?.clientId)
     if (cf) {
       const family = cf.name
-      pickFont(family)
+      pickFont(family, cf.id)
       toast.add({ title: 'Font uploaded', description: family, color: 'success' })
     }
   } catch (err: any) {
@@ -122,7 +127,7 @@ async function handleFontUpload(e: Event) {
   }
 }
 
-async function handleDeleteFont(id: number, family: string) {
+async function handleDeleteFont(id: string, family: string) {
   try {
     await deleteCustomFont(id)
     toast.add({ title: 'Font deleted', description: family, color: 'success' })
@@ -130,6 +135,10 @@ async function handleDeleteFont(id: number, family: string) {
     toast.add({ title: 'Delete failed', color: 'error' })
   }
 }
+
+watch(() => state.project?.clientId, () => {
+  void fetchCustomFonts()
+})
 
 // Load the currently selected font + fetch custom fonts on mount
 onMounted(async () => {
@@ -144,7 +153,10 @@ onMounted(async () => {
 
 function set(key: string, val: any) {
   if (!selectedLayer.value) return
-  updateLayer(selectedLayer.value.id, { [key]: val })
+  if (key === 'fontWeight') {
+    const face = customFonts.value.find(face => face.name === selectedLayer.value!.fontFamily && parseFontTags(face.tags).weight === Number(val))
+    updateLayer(selectedLayer.value.id, { fontWeight: Number(val), fontAssetId: face?.id })
+  } else updateLayer(selectedLayer.value.id, { [key]: val })
 }
 
 function setNum(key: string, val: string | number) {
@@ -320,9 +332,13 @@ function toggleGradient() {
                       class="w-full px-3 py-1.5 text-xs hover:bg-(--ui-bg-elevated) transition-colors flex items-center justify-between group"
                       :class="selectedLayer?.fontFamily === (cf.name) ? 'text-(--ui-primary) bg-(--ui-primary)/5' : ''"
                     >
-                      <button class="flex-1 text-left truncate" @click="pickFont(cf.name)">
-                        {{ cf.name }}
-                      </button>
+                          <UButton
+                            class="flex-1 justify-start truncate"
+                            variant="ghost"
+                            color="neutral"
+                            :label="`${cf.name} · ${parseFontTags(cf.tags).weight}`"
+                            @click="pickFont(cf.name, cf.id)"
+                          />
                       <div class="flex items-center gap-1">
                         <span class="text-[10px] text-(--ui-text-dimmed)">{{ Math.round(cf.fileSize / 1024) }}KB</span>
                         <UButton

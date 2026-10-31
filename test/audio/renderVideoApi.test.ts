@@ -176,7 +176,7 @@ describe('POST /agency/audio/projects/:id/render-video — overlay resolution', 
     } as any)
 
     // loadBannerLayers called with the project id + the gsap_format_key from the clip
-    expect(mockLoadBannerLayers).toHaveBeenCalledWith('bp1', 'fb_story')
+    expect(mockLoadBannerLayers).toHaveBeenCalledWith('bp1', 'fb_story', expect.any(Object))
 
     // buildBannerHTML called with formatKey + layers
     expect(mockBuildBannerHTML).toHaveBeenCalledWith('fb_story', [{ id: 'l1', type: 'text', text: 'Hi' }], expect.any(Object))
@@ -242,7 +242,7 @@ describe('POST /agency/audio/projects/:id/render-video — overlay resolution', 
 
     // When gsap_format_key is null, resolveOverlayFormatKey is used
     expect(mockResolveOverlayFormatKey).toHaveBeenCalled()
-    expect(mockLoadBannerLayers).toHaveBeenCalledWith('bp2', 'fb_story')
+    expect(mockLoadBannerLayers).toHaveBeenCalledWith('bp2', 'fb_story', expect.any(Object))
   })
 
   it('resolves default overlay HTML separately for each requested render format', async () => {
@@ -290,8 +290,8 @@ describe('POST /agency/audio/projects/:id/render-video — overlay resolution', 
 
     expect(mockResolveOverlayFormatKey).toHaveBeenCalledWith(1080, 1920)
     expect(mockResolveOverlayFormatKey).toHaveBeenCalledWith(1920, 1080)
-    expect(mockLoadBannerLayers).toHaveBeenNthCalledWith(1, 'bp2', 'fb_story')
-    expect(mockLoadBannerLayers).toHaveBeenNthCalledWith(2, 'bp2', 'tt_land')
+    expect(mockLoadBannerLayers).toHaveBeenNthCalledWith(1, 'bp2', 'fb_story', expect.any(Object))
+    expect(mockLoadBannerLayers).toHaveBeenNthCalledWith(2, 'bp2', 'tt_land', expect.any(Object))
     expect(mockBuildBannerHTML).toHaveBeenNthCalledWith(1, 'fb_story', [{ id: 'portrait' }], expect.any(Object))
     expect(mockBuildBannerHTML).toHaveBeenNthCalledWith(2, 'tt_land', [{ id: 'landscape' }], expect.any(Object))
 

@@ -35,10 +35,16 @@ export function brandFont(kit: Pick<BannerBrandKit, 'fonts'>, role: BrandFontRol
   return byRole(role)
 }
 
+/** Resolve the kit's explicit default to the exact uploaded face when present. */
+export function brandFontSelection(font: BrandKitFont) {
+  const fontWeight = font.defaultWeight ?? (font.role === 'heading' ? (font.weights.length ? Math.max(...font.weights) : 400) : font.weights[0] ?? 400)
+  return { fontFamily: font.family, fontWeight, fontAssetId: font.assets?.find(asset => asset.weight === fontWeight)?.id }
+}
+
 /** Does this image layer look like a logo? Name match or explicit flag. */
 export function isLogoLayer(layer: Layer): boolean {
   if (layer.type !== 'image') return false
-  if ((layer as any).isLogo) return true
+  if (layer.isLogo) return true
   return /\b(logo|brand|wordmark|mark)\b/i.test(layer.name || '')
 }
 

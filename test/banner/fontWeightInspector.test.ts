@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { computed, createApp, defineComponent, h, nextTick, onMounted, ref } from 'vue'
+import { computed, createApp, defineComponent, h, nextTick, onMounted, ref, watch } from 'vue'
 import ButtonInspector from '../../app/components/banner/inspector/Button.vue'
 import TextInspector from '../../app/components/banner/inspector/Text.vue'
 
@@ -10,13 +10,14 @@ describe('editable imported font weights', () => {
   it.each([ButtonInspector, TextInspector])('keeps the exact weight visible as the catalog and selected layer change', async (component) => {
     const selectedLayer = ref({ id: 1, type: 'text', text: 'Brand', fontFamily: 'Imported Brand', fontWeight: 325 })
     const available = ref<number[]>()
+    const custom = ref<Array<{ id: string, name: string, tags: string[] }>>([])
     const updateLayer = vi.fn((_id, change) => Object.assign(selectedLayer.value, change))
     for (const [name, value] of Object.entries({
-      computed, ref, onMounted, $fetch: vi.fn(), useToast: () => ({ add: vi.fn() }),
+      computed, ref, onMounted, watch, $fetch: vi.fn(), useToast: () => ({ add: vi.fn() }),
       useBannerStudio: () => ({ state: {}, selectedLayer, updateLayer }),
       useBannerFonts: () => ({
         getFont: () => ({ weights: available.value }), fetchCustomFonts: async () => {},
-        searchFonts: () => [], recentFonts: ref([]), customFonts: ref([]), loadFont: vi.fn(), isCustomFont: () => true
+        searchFonts: () => [], recentFonts: ref([]), customFonts: custom, loadFont: vi.fn(), isCustomFont: () => true
       })
     })) vi.stubGlobal(name, value)
     const host = document.createElement('div')
@@ -39,8 +40,12 @@ describe('editable imported font weights', () => {
       expect(field().querySelector('[data-selected="700"]')).not.toBeNull()
       ;(field().querySelector('[data-weight="325"]') as HTMLElement).click()
       await nextTick()
-      expect(updateLayer).toHaveBeenLastCalledWith(2, { fontWeight: 325 })
+      expect(updateLayer).toHaveBeenLastCalledWith(2, { fontWeight: 325, fontAssetId: undefined })
       expect(field().querySelector('[data-selected="325"]')).not.toBeNull()
+      custom.value = [{ id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', name: 'Imported Brand', tags: ['font', 'weight:700'] }]
+      ;(field().querySelector('[data-weight="700"]') as HTMLElement).click()
+      await nextTick()
+      expect(updateLayer).toHaveBeenLastCalledWith(2, { fontWeight: 700, fontAssetId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' })
     } finally {
       app.unmount()
       host.remove()
