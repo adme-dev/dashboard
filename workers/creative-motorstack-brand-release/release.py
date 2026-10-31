@@ -60,8 +60,9 @@ def local_manifest():
     for name, digest in manifest['modules'].items():
         if sha((ROOT / 'dist' / name).read_bytes()) != digest:
             raise RuntimeError('Candidate module hash mismatch')
-    if sha((ROOT / 'source/worker.js').read_bytes()) != manifest['baseSha256']:
-        raise RuntimeError('Baseline source changed')
+    for name, digest in manifest['baseModules'].items():
+        if sha((ROOT / 'source' / name).read_bytes()) != digest:
+            raise RuntimeError('Baseline source changed')
     return manifest
 
 
@@ -92,7 +93,14 @@ def verify_runtime(version):
     expected = sorted((item['name'], item['type']) for item in evidence['bindings'])
     if version == evidence['id'] and resources.get('script', {}).get('etag') != evidence['script']['etag']:
         raise RuntimeError('Immutable baseline version script etag changed; stop and reconcile')
-    if bindings != expected or resources['script_runtime'] != evidence['runtime']:
+    # Wrangler serializes an empty compatibility_flags array; the API may omit it.
+    # Normalize only that exact empty/default representation, never real flags.
+    def normalized_runtime(value):
+        result = dict(value)
+        if result.get('compatibility_flags') == []:
+            result.pop('compatibility_flags')
+        return result
+    if bindings != expected or normalized_runtime(resources['script_runtime']) != normalized_runtime(evidence['runtime']):
         raise RuntimeError('Bindings or complete runtime/assets settings changed; stop and reconcile')
     return detail
 
@@ -115,7 +123,7 @@ def verify_baseline(manifest, latest_expected=None):
         raise RuntimeError('Latest uploaded version changed; refuse implicit inheritance')
     verify_runtime(manifest['baseVersion'])
     if latest_expected is None or latest_expected == manifest['baseVersion']:
-        if module_hashes(manifest['baseVersion']) != {'worker.js': manifest['baseSha256']}:
+        if module_hashes(manifest['baseVersion']) != manifest['baseModules']:
             raise RuntimeError('Latest baseline source no longer matches reviewed baseline')
     # After upload, the old immutable version is verified by ID, script etag,
     # runtime and unchanged active deployment. Downloading its source is unsupported;

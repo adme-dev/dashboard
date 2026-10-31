@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { createBrandService } from './brand-rpc.mjs'
+import { createBrandService, createPrivateMotorstackFetch, privateRpcErrorCategory } from './brand-rpc.mjs'
 const source = readFileSync(new URL('./source/worker.js', import.meta.url), 'utf8')
 const section = source.slice(source.indexOf('// motorstack.mjs'), source.indexOf('var handleMotorstack ='))
 const native = new Function('__name', section.replace('return { handleMotorstack: handleMotorstack2 };', 'return { handleMotorstack: handleMotorstack2, rpc, binary };') + '\nreturn { createMotorstack, safeURL, extension, MIME, idFor, boundedBody, AdapterError }')((fn) => fn)
@@ -83,10 +83,10 @@ test('invalid config does not call provider', async () => {
   const { api, calls } = service(fixture,{key:'invalid'})
   await assert.rejects(api.listBrands(),/motorstack_not_configured/); assert.equal(calls.length,0)
 })
-test('build preserves the entire existing default Worker source except internal return exposure', () => {
+test('build preserves the complete current Worker except private diagnostic wiring', () => {
   const candidate=readFileSync(new URL('./dist/worker.js',import.meta.url),'utf8')
-  const original=candidate.slice(candidate.indexOf(source.slice(0,80)),candidate.indexOf('\n// Private RPC only;')).replace('return { handleMotorstack: handleMotorstack2, rpc, binary };','return { handleMotorstack: handleMotorstack2 };')
-  assert.equal(original,source)
+  const restored=candidate.replace('import { createBrandService, createPrivateMotorstackFetch } from "./brand-rpc.mjs";', 'import { createBrandService } from "./brand-rpc.mjs";').replace('    const fetcher = createPrivateMotorstackFetch();\n    const { rpc, binary } = createMotorstack({ fetcher });\n    return createBrandService({ rpc, binary, safeURL, extension, MIME, idFor, boundedBody, AdapterError, fetcher }, this.env);', '    const { rpc, binary } = createMotorstack();\n    return createBrandService({ rpc, binary, safeURL, extension, MIME, idFor, boundedBody, AdapterError }, this.env);')
+  assert.equal(restored,source)
   assert.equal((candidate.match(/export class MotorstackBrandAssets/g)||[]).length,1)
 })
 
@@ -95,4 +95,21 @@ test('preserves ICO metadata and accepts equivalent icon MIME with bounded bytes
   const kit=await api.getBrandKit('ford'); assert.equal(kit.logos[0].mime,'image/x-icon')
   const file=await api.getBrandAsset({brandId:'ford',assetId:kit.logos[0].assetId})
   assert.equal(file.headers.get('Content-Type'),'image/x-icon'); assert.equal((await file.arrayBuffer()).byteLength,4)
+})
+
+test('private diagnostics preserve outbound arguments and log no credential or URL content', async () => {
+  const events=[]; const args=['https://private.invalid?key=DO_NOT_LOG',{headers:{Authorization:'DO_NOT_LOG'},body:'DO_NOT_LOG'}]
+  const res=new Response('DO_NOT_LOG',{status:403})
+  const fetcher=createPrivateMotorstackFetch(async (...received)=>{assert.deepEqual(received,args);return res},e=>events.push(e))
+  assert.equal(await fetcher(...args),res)
+  assert.deepEqual(events,[{stage:'fetch_started'},{stage:'fetch_response',status:403}])
+  assert.equal(JSON.stringify(events).includes('DO_NOT_LOG'),false)
+})
+test('private diagnostics categorize context failure without logging raw error', async () => {
+  const events=[];const error=new TypeError('Cannot perform I/O on behalf of a different request DO_NOT_LOG')
+  const fetcher=createPrivateMotorstackFetch(async()=>{throw error},e=>events.push(e))
+  await assert.rejects(fetcher('https://private.invalid'),e=>e===error)
+  assert.deepEqual(events[1],{stage:'fetch_failed',name:'TypeError',category:'cross_request_io'})
+  assert.equal(JSON.stringify(events).includes('DO_NOT_LOG'),false)
+  assert.deepEqual(privateRpcErrorCategory({name:'DO_NOT_LOG',message:'DO_NOT_LOG'}),{name:'OtherError',category:'other'})
 })

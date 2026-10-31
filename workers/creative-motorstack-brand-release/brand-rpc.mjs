@@ -1,3 +1,33 @@
+// Diagnostics are restricted to fixed enums and numeric HTTP status. Never log
+// URLs, request/response headers or bodies, credentials, or raw exception messages.
+export function privateRpcErrorCategory(error) {
+  const name = ['Error', 'TypeError', 'ReferenceError', 'AbortError', 'TimeoutError'].includes(error?.name) ? error.name : 'OtherError'
+  const message = typeof error?.message === 'string' ? error.message : ''
+  const category = name === 'TimeoutError' ? 'timeout'
+    : name === 'AbortError' ? 'aborted'
+      : /I\/O on behalf of a different request/i.test(message) ? 'cross_request_io'
+        : /global scope|outside.*request|request context/i.test(message) ? 'request_context'
+          : /illegal invocation/i.test(message) ? 'illegal_invocation'
+            : /fetch is not defined/i.test(message) ? 'missing_fetch'
+              : /1042/.test(message) ? 'cloudflare_1042'
+                : 'other'
+  return { name, category }
+}
+
+export function createPrivateMotorstackFetch(fetcher = (...args) => fetch(...args), report = event => console.info('[motorstack-rpc]', event)) {
+  return async (...args) => {
+    report({ stage: 'fetch_started' })
+    try {
+      const response = await fetcher(...args)
+      report({ stage: 'fetch_response', status: response.status })
+      return response
+    } catch (error) {
+      report({ stage: 'fetch_failed', ...privateRpcErrorCategory(error) })
+      throw error
+    }
+  }
+}
+
 // Private service-binding adapter. No HTTP route, arbitrary URL, or tool forwarding.
 export function createBrandService({ rpc, binary, safeURL, extension, MIME, idFor, boundedBody, AdapterError, fetcher = (...args) => fetch(...args) }, env) {
   const fail = (status, code) => { throw new AdapterError(status, code) }
@@ -100,7 +130,10 @@ export function createBrandService({ rpc, binary, safeURL, extension, MIME, idFo
   // Sanitize all unexpected failures crossing the RPC boundary.
   const guarded = operation => async (...args) => {
     try { return await operation(...args) }
-    catch (error) { throw new Error(error instanceof AdapterError ? error.code : 'motorstack_unavailable') }
+    catch (error) {
+      if (!(error instanceof AdapterError)) console.info('[motorstack-rpc]', { stage: 'helper_failed', ...privateRpcErrorCategory(error) })
+      throw new Error(error instanceof AdapterError ? error.code : 'motorstack_unavailable')
+    }
   }
   return { listBrands: guarded(listBrands), getBrandKit: guarded(getBrandKit), getBrandAsset: guarded(getBrandAsset) }
 }

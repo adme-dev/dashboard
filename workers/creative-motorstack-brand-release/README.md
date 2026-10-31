@@ -1,18 +1,18 @@
 # Private MotorStack brand asset RPC
 
-Adds only the named `MotorstackBrandAssets` WorkerEntrypoint to the current Creative Suite Worker. The default HTTP authentication, launcher, editor bundles and asset routing remain unchanged. No new public HTTP endpoint is added. Pages calls through production-only `MOTORSTACK_BRAND_ASSETS` service binding; the provider key stays in the Creative Worker.
+Adds private-only outbound diagnostics to the already deployed `MotorstackBrandAssets` WorkerEntrypoint. Logs contain fixed stage/error enums and numeric HTTP status only; no URL, headers, body, key or raw exception message is logged. The default HTTP authentication, launcher, editor bundles and asset routing remain unchanged. No new public HTTP endpoint is added. Pages calls through production-only `MOTORSTACK_BRAND_ASSETS` service binding; the provider key stays in the Creative Worker.
 
 ## Verified base
 
 - Account `a5b299b3ad15c1b5b895dc66f9357b17`, Worker `xeroflow-creative-tools`.
-- Active deployment `0ddd8bf0-96c3-4855-94fd-c2e85e9bf6f1`.
-- Active version `4ac68720-79ab-450a-a38f-6a5c81294269` (100%).
-- Source SHA256 `845b46f54c8a7584827a83b10e903b4f5035b4368d38460b4352d84fd7cdfe4f`.
+- Active deployment `3219f175-ee7d-41f8-b3e9-520c2ec0b3d2`.
+- Active version `5ed78b26-e678-48c2-9617-bef4304dd199` (100%).
+- Source SHA256 `1461ce3b66e6b9914c75dd3fece63023b0d81d578f3c5844966095c106595080`.
 - Compatibility date `2026-10-27`, usage model `standard`.
 - Bindings: `ASSETS` assets, `CREATIVE_AUTH_KEY` secret, `MOTORSTACK_API_KEY` secret.
 - Full runtime and asset-header baseline: `source/verification.json`.
 
-`release.py` deterministically rebuilds both ignored distribution modules and their manifest from tracked source before every check/upload/deploy, so an old self-consistent dist/manifest cannot be released under a newer commit. `build.mjs` verifies the baseline hash and a single exact patch anchor. It exposes the existing bounded provider RPC/binary functions internally and appends a named entrypoint. It does not replace or rebundle the default handler. The original source is pinned in `source/worker.js`; any upstream change requires a fresh read-only capture and reviewed reconciliation.
+`release.py` deterministically rebuilds both ignored distribution modules and their manifest from tracked source before every check/upload/deploy, so an old self-consistent dist/manifest cannot be released under a newer commit. `build.mjs` verifies the baseline hash and a single exact patch anchor. It changes only the private entrypoint import/fetcher wiring; the named entrypoint and HTTP adapter already exist in the verified baseline. Both baseline module hashes are pinned in the build. It does not replace or rebundle the default handler. The original source is pinned in `source/worker.js`; any upstream change requires a fresh read-only capture and reviewed reconciliation.
 
 ## Contract
 
@@ -79,3 +79,18 @@ The script repeats active deployment, immutable baseline etag, latest version, c
 - [Named RPC entrypoints](https://developers.cloudflare.com/workers/runtime-apis/bindings/service-bindings/rpc/) documents named WorkerEntrypoint classes coexisting with the default handler.
 
 - [Script content API](https://developers.cloudflare.com/api/resources/workers/subresources/scripts/subresources/content/methods/get/) has no version query parameter; observed old/new version queries both returned latest uploaded modules. [Version metadata](https://developers.cloudflare.com/api/resources/workers/subresources/scripts/subresources/versions/methods/get/) exposes each immutable version’s script etag separately.
+
+## Current release transport: normal Wrangler CLI
+
+Automatic approval review rejected a custom OAuth-file-reading API invocation during live diagnosis. Use normal Wrangler authentication for new network operations; do not use `release.py` API commands as a workaround. Offline `plan` and tests remain useful. No secret needs to be copied.
+
+After reviewing and merging current main, generate the CLI config:
+
+```sh
+node workers/creative-motorstack-brand-release/prepare-cli.mjs FULL_CURRENT_MAIN_COMMIT
+pnpm exec wrangler versions upload --config workers/creative-motorstack-brand-release/dist/wrangler.release.json --no-bundle --dry-run --outfile /private/tmp/creative-rpc-upload.bin
+```
+
+Inspect serialized multipart metadata and hash both module parts against `dist/manifest.json`. It must contain `keep_assets:true`, exact three inherited bindings, the expected date/usage model, and no assets manifest/JWT. `compatibility_flags:[]` is equivalent to an omitted empty flag list; no nonempty flags may change. The generated config has no asset directory, and `--no-bundle` plus explicit additional-module rules preserve exact reviewed bytes.
+
+Use normal CLI `versions view`, `versions list` and `deployments list` for read-only runtime/deployment checks. Wrangler 4.110 `init --from-dash` rejects Workers with Assets, so it cannot independently download this source. For the actual upload, keep `--outfile /private/tmp/creative-rpc-actual-upload.bin`, verify its submitted module hashes, and record the successful version receipt plus immutable script etag. This establishes submitted bytes and accepted version, not independently downloaded source bytes; do not claim the latter without an approved API/provider capability. Reapply all baseline/current-main/serialized-release guards documented above. `versions upload` without `--dry-run` creates a version only; `versions deploy VERSION@100%` is a separate activation. Record both actual IDs and verify GET readback and all public/authenticated acceptance checks before proceeding. Preparation is not authorization to skip those checks.
