@@ -80,6 +80,8 @@ describe('TheBrief single-slide native conversion pilot', () => {
     const html = source.replace('translateX(-100px) translateY(0)', 'scale(8) translateX(0) translateY(0)')
       .replace('translateX(0) translateY(0);opacity:1', 'scale(1);opacity:1')
       .replace('Hello world</div>', 'First line</div><div class="row">Second line</div>')
+      // Two 28.8px line boxes; a taller source box would mean a row soft-wraps.
+      .replace('height:80px', 'height:57.6px')
     const result = await convertTheBriefHtml(html)
     const lines = result.canvasData.custom_300x250.layers.filter(l => l.type === 'text')
     expect(result.warnings.join(' ')).not.toMatch(/animation not converted/)
@@ -87,7 +89,7 @@ describe('TheBrief single-slide native conversion pilot', () => {
       expect(line.keyframes.scaleX.map(frame => frame.value)).toEqual([8, 1])
       expect(line.keyframes.scaleY.map(frame => frame.value)).toEqual([8, 1])
       expect(line.transformOrigin.x).toBe(100)
-      expect(line.y + line.transformOrigin.y).toBeCloseTo(60)
+      expect(line.y + line.transformOrigin.y).toBeCloseTo(48.8)
     }
   })
 
@@ -221,6 +223,24 @@ describe('TheBrief single-slide native conversion pilot', () => {
     await expect(convertTheBriefHtml(source.replace('</style>', `.fill{${clipped}}</style>`).replace('Hello world', '<span class="fill">EOFY</span>'))).rejects.toThrow('Gradient or clipped text fill needs an adapter')
     const sameFill = await convertTheBriefHtml(source.replace('Hello world', '<span style="color:#123456;-webkit-text-fill-color:#123456">Plain</span>'))
     expect(sameFill.canvasData.custom_300x250.layers.find(l => l.type === 'text').color).toBe('#123456')
+  })
+
+  it('holds struck-through or underlined text instead of dropping the decoration', async () => {
+    await expect(convertTheBriefHtml(source.replace('Hello world', '<span style="text-decoration:line-through">Was $62,967</span>'))).rejects.toThrow('Text decoration needs an adapter')
+    await expect(convertTheBriefHtml(source.replace('</style>', '.was{text-decoration-line:underline}</style>').replace('Hello world', '<span class="was">Was</span>'))).rejects.toThrow('Text decoration needs an adapter')
+    const plain = await convertTheBriefHtml(source.replace('Hello world', '<span style="text-decoration:none">Plain</span>'))
+    expect(plain.canvasData.custom_300x250.layers.find(l => l.type === 'text').text).toBe('Plain')
+  })
+
+  it('holds stacked rows when the source box shows a row soft-wrapping', async () => {
+    // One line box is 24px x 1.2 = 28.8px; two rows stack to 57.6px.
+    const twoRows = source.replace('<div class="row">Hello world</div>', '<div class="row">Massive Savings</div><div class="row">on Sportage</div>')
+    const fits = await convertTheBriefHtml(twoRows.replace('height:80px', 'height:58px'))
+    expect(fits.canvasData.custom_300x250.layers.filter(l => l.type === 'text').map(l => l.y)).toEqual([20, 48.8])
+    await expect(convertTheBriefHtml(twoRows.replace('height:80px', 'height:87px'))).rejects.toThrow('Wrapped text across stacked rows needs an adapter')
+    // A single row may wrap: the native text box wraps to the same width.
+    const single = await convertTheBriefHtml(source.replace('height:80px', 'height:87px'))
+    expect(single.canvasData.custom_300x250.layers.find(l => l.type === 'text').text).toBe('Hello world')
   })
 
   it('retains uppercase styling while keeping raw text editable', async () => {

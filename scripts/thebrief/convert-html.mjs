@@ -541,6 +541,7 @@ export async function convertTheBriefHtml(html) {
           layerBase.transformOrigin = { x: layerBase.w / 2, y: layerBase.h / 2 }
         }
         let y = layerBase.y
+        let shortestRow = Infinity
         for (const [rowIndex, row] of rows.entries()) {
           const rowCss = style(row)
           const span = [...row.querySelectorAll('span')].find(item => item.textContent.trim() && !item.closest('sup')) || row
@@ -559,6 +560,12 @@ export async function convertTheBriefHtml(html) {
           if (!['none', 'uppercase', 'lowercase', 'capitalize'].includes(textTransform)) throw new Error('Unsupported text transform')
           const textContainer = row.closest('.text-content')
           const containerCss = textContainer ? style(textContainer) : rowCss
+          // Native text layers have no decoration; a struck-through price would lose its meaning.
+          for (const node of new Set([row, span, ...runs, ...(textContainer ? [textContainer] : [])])) {
+            const css = style(node)
+            const lines = [css.getPropertyValue('text-decoration-line'), css.getPropertyValue('text-decoration'), ...sourceDeclarations(document, node, 'text-decoration|text-decoration-line')]
+            if (lines.some(value => /line-through|underline|overline/i.test(value || ''))) throw new Error('Text decoration needs an adapter')
+          }
           const textStroke = containerCss.getPropertyValue('-webkit-text-stroke') || ''
           const textShadow = (containerCss.textShadow || '').replace(/(^|\s)0(?=\s|$)/g, (_, space) => `${space}0px`)
           if (textStroke && !/^\d+(?:\.\d+)?px #[0-9a-f]{6}$/i.test(textStroke)) throw new Error('Unsupported text stroke')
@@ -601,7 +608,12 @@ export async function convertTheBriefHtml(html) {
           if (!Number.isFinite(height)) throw new Error('Unsupported text line height')
           if (row.textContent.trim()) layers.push({ ...layerBase, linkId: `source:${sourceId}:row:${rowIndex}`, id: id++, type: 'text', name: row.textContent.trim().slice(0, 60), y, h: height, ...(layerBase.transformOrigin ? { transformOrigin: { x: layerBase.transformOrigin.x, y: layerBase.transformOrigin.y - (y - layerBase.y) } } : {}), text: row.textContent.replace(/^[ \t\r\n]+|[ \t\r\n]+$/g, ''), ...(textRuns.length ? { text: row.textContent, textRuns } : {}), ...(wordPop ? { wordPop } : {}), textTransform, fontFamily: textCss.fontFamily.replace(/["']/g, ''), fontStyle: textCss.fontStyle === 'italic' ? 'italic' : 'normal', fontSize, lineBoxFontSize, textAntialias: style(document.documentElement).getPropertyValue('-webkit-font-smoothing') === 'antialiased', fontWeight: Number(textCss.fontWeight) || 400, lineHeight, color: paintedCss.color || textCss.color || '#fff', ...(textStroke ? { textStroke } : {}), ...(textShadow ? { textShadow } : {}), textAlign: textCss.textAlign || 'left', letterSpacing: !textCss.letterSpacing || textCss.letterSpacing === 'normal' ? '0px' : textCss.letterSpacing })
           y += height
+          shortestRow = Math.min(shortestRow, height)
         }
+        // Rows are stacked one line box apart. When the source box is taller than
+        // that stack, a row soft-wraps and the next row would overlap its second line.
+        // A single wrapping row is safe: the native text box wraps to the same width.
+        if (rows.length > 1 && layerBase.h - (y - layerBase.y) > 0.4 * shortestRow) throw new Error('Wrapped text across stacked rows needs an adapter')
         if (new Set(rows.map(row => style(row).fontSize)).size > 1) warnings.push(`${element.id}: mixed-size text split into editable lines; baseline alignment needs visual review`)
       } else if (type === 'button') {
         const button = element.querySelector('button')
