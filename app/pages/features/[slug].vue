@@ -2682,7 +2682,7 @@ const features: Record<string, Feature> = {
     categoryIcon: 'i-lucide-palette',
     categoryIconBg: 'bg-rose-50',
     categoryIconColor: 'text-rose-600',
-    description: 'Build client brand kits with colour roles, uploaded fonts, logos and written guidelines. Import shared OEM fonts, logos and colours from MotorStack with source notes, then review before applying.',
+    description: 'Build client brand kits with colour roles, uploaded fonts, logos and written guidelines. Import shared OEM assets from MotorStack and use the selected kit to generate editable banner layouts.',
     details: [
       {
         title: 'Brand Assets Beside Your Canvas',
@@ -2703,6 +2703,14 @@ const features: Record<string, Feature> = {
       {
         title: 'Import Shared OEM Kits From MotorStack',
         content: 'Bring all available MotorStack brands into the shared agency library in one run. Each brand imports sequentially with a visible result, available font files, logos and colours, plus source notes and warnings for missing or unsupported assets. Existing kits remain unchanged. Stop after the current brand or retry failed imports; kits are never assigned to a dealership or applied to artwork automatically.'
+      },
+      {
+        title: 'Dealer Buttons, Fonts and Layout',
+        content: 'MotorStack kit previews show a real vehicle when available and reviewed button treatments for supported brands, including fill, border, corner shape, casing and type roles. LDV uses its 30 August 2026 guide for square red and white CTAs, Open Sans Bold, and content, heading, band and grid dimensions. These guide excerpts also inform AI design context for existing imported kits.'
+      },
+      {
+        title: 'Templates for the Selected Brand',
+        content: 'Select a brand kit in Banner Studio and open Templates to create an editable Hero + CTA or Two CTAs layout across every active artboard size. The layout uses reviewed button styling where available, the kit fonts and suitable logo variant. A MotorStack car image is imported into the project when one is available. Applying a generated layout can be undone.'
       },
       {
         title: 'Extract From a Website',

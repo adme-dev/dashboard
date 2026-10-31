@@ -134,6 +134,19 @@ describe('site intelligence URL policy', () => {
       .rejects.toThrowError('DNS resolution failed')
   })
 
+  it('uses an independent public resolver when Cloudflare DNS transport fails', async () => {
+    const fetcher = vi.fn(async (input: string | URL | Request) => {
+      if (String(input).startsWith('https://cloudflare-dns.com/')) throw new Error('network unavailable')
+      return new Response(JSON.stringify({ Status: 0, Answer: [{ type: 1, data: '1.1.1.1' }] }), {
+        status: 200,
+        headers: { 'content-type': 'application/dns-json' }
+      })
+    })
+    const resolver = createCloudflareDohResolver(fetcher as typeof fetch)
+    await expect(resolver.resolve4('dealer.example.com')).resolves.toEqual(['1.1.1.1'])
+    expect(fetcher).toHaveBeenCalledTimes(2)
+  })
+
   it('fails closed when DNS returns no addresses', async () => {
     const resolver = {
       resolve4: vi.fn().mockResolvedValue([]),

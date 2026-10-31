@@ -5,6 +5,7 @@
  */
 import { z } from 'zod'
 import { queryOneFresh, queryRowsFresh, transaction } from '~~/server/utils/db'
+import { brandGuideText, motorstackBrandId } from '~~/shared/bannerBrandGuides'
 
 export const COLOR_ROLES = ['primary', 'secondary', 'accent', 'background', 'text', 'extra'] as const
 export const FONT_ROLES = ['heading', 'body', 'extra'] as const
@@ -125,7 +126,7 @@ export async function setDefaultBrandKit(kitId: string, clientId: string | null,
  * Prompt block describing a brand for AI copy / image / code assistance.
  * Returns '' when there is nothing useful to say.
  */
-export function brandContextBlock(kit: { name: string, colors: any[], fonts: any[], guidelines: string | null } | null | undefined): string {
+export function brandContextBlock(kit: { name: string, colors: any[], fonts: any[], guidelines: string | null, sourceUrl?: string | null } | null | undefined): string {
   if (!kit) return ''
   const parts: string[] = [`Brand: ${kit.name}`]
   if (kit.colors?.length) {
@@ -137,6 +138,8 @@ export function brandContextBlock(kit: { name: string, colors: any[], fonts: any
   if (kit.guidelines?.trim()) {
     parts.push('Brand guidelines:\n' + kit.guidelines.trim().slice(0, 4000))
   }
+  const guide = brandGuideText(motorstackBrandId(kit.sourceUrl))
+  if (guide && !kit.guidelines?.includes(guide.split('\n')[0]!)) parts.push(guide)
   return parts.length > 1 ? `\n\n[Brand context — follow this]\n${parts.join('\n')}` : ''
 }
 

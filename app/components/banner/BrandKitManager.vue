@@ -10,6 +10,9 @@ import { parseBannerFontTags as parseFontTags } from '~~/shared/banner/fonts'
 import { bannerFontFamily } from '~/utils/banner-font-family'
 import { createBannerUploadSession } from '~/utils/bannerUpload'
 import { brandFontOptions, fontOptionIncludes } from '~/utils/banner-brand-font-options'
+import { motorstackBrandId } from '~~/shared/bannerBrandGuides'
+import { brandStyleProfile } from '~~/shared/bannerBrandProfiles'
+import { chooseMotorstackPreview, type MotorstackPreviewCatalog } from '~/utils/banner-brand-preview-media'
 
 const props = defineProps<{
   /** Compact list for the studio side panel */
@@ -166,7 +169,33 @@ function fontSpecimen(font: BrandKitFont) {
   const selection = brandFontSelection(font)
   return { fontFamily: bannerFontFamily(selection.fontFamily, selection.fontAssetId), fontWeight: selection.fontWeight }
 }
-const formKit = computed(() => ({ name: form.name || 'Brand', clientId: form.clientId === 'none' ? null : form.clientId, colors: form.colors, fonts: form.fonts, logos: form.logos }))
+const formKit = computed(() => ({ name: form.name || 'Brand', clientId: form.clientId === 'none' ? null : form.clientId, sourceUrl: form.sourceUrl, colors: form.colors, fonts: form.fonts, logos: form.logos }))
+const previewImage = ref<{ url: string, model: string | null } | null>(null)
+const previewLoading = ref(false)
+const previewBrandId = computed(() => motorstackBrandId(form.sourceUrl))
+const previewCache = new Map<string, { url: string, model: string | null } | null>()
+let previewRequest = 0
+watch([editorOpen, previewBrandId], async ([open, brandId]) => {
+  const request = ++previewRequest
+  previewImage.value = null
+  if (!open || !brandId) return
+  if (previewCache.has(brandId)) {
+    previewImage.value = previewCache.get(brandId) || null
+    return
+  }
+  previewLoading.value = true
+  try {
+    const catalog = await api<MotorstackPreviewCatalog>('/api/agency/banner-studio/motorstack/media', { query: { brandId } })
+    const chosen = chooseMotorstackPreview(catalog)
+    const result = chosen ? { url: chosen.asset.previewUrl, model: chosen.model } : null
+    previewCache.set(brandId, result)
+    if (request === previewRequest) previewImage.value = result
+  } catch {
+    // A brand kit remains editable while the optional MotorStack photo is unavailable.
+  } finally {
+    if (request === previewRequest) previewLoading.value = false
+  }
+})
 
 function resetForm() {
   extractionWarnings.value = []
@@ -591,6 +620,15 @@ function kitMenu(kit: BannerBrandKit) {
             <div class="text-xs text-(--ui-text-muted) truncate">
               {{ kit.clientName || 'Agency-wide' }}
             </div>
+            <UBadge
+              v-if="brandStyleProfile(motorstackBrandId(kit.sourceUrl))"
+              color="neutral"
+              variant="subtle"
+              size="xs"
+              class="mt-1"
+            >
+              Dealer style guide
+            </UBadge>
             <!-- Palette strip -->
             <div class="flex gap-1 mt-2">
               <UTooltip v-for="c in kit.colors.slice(0, 8)" :key="c.role + c.hex" :text="`${c.label || c.role} ${c.hex}`">
@@ -665,18 +703,40 @@ function kitMenu(kit: BannerBrandKit) {
                 :description="extractionWarnings.join(' ')"
               />
               <!-- Live preview -->
-              <div class="grid grid-cols-[1fr_auto] gap-4 items-start">
-                <BannerBrandKitPreview :kit="formKit" :ratio="300 / 160" />
-                <div class="w-28">
+              <section class="@container space-y-3">
+                <div>
+                  <h3 class="text-sm font-semibold">
+                    Banner example
+                  </h3>
+                  <p class="text-xs text-muted">
+                    Real kit colours, fonts and buttons with MotorStack vehicle imagery when available.
+                  </p>
+                </div>
+                <div class="grid grid-cols-1 @lg:grid-cols-[minmax(0,1fr)_170px] gap-4 items-start">
                   <BannerBrandKitPreview
                     :kit="formKit"
-                    :ratio="160 / 200"
-                    compact
-                    headline="Square"
-                    cta="Go"
+                    :ratio="300 / 160"
+                    :vehicle-image-url="previewImage?.url"
+                    :vehicle-name="previewImage?.model"
                   />
+                  <div class="w-full max-w-[170px]">
+                    <BannerBrandKitPreview
+                      :kit="formKit"
+                      :ratio="160 / 200"
+                      compact
+                      :vehicle-image-url="previewImage?.url"
+                      :vehicle-name="previewImage?.model"
+                    />
+                  </div>
                 </div>
-              </div>
+                <p v-if="previewLoading" class="text-xs text-muted">
+                  Loading a MotorStack vehicle image…
+                </p>
+                <p v-else-if="previewBrandId && !previewImage" class="text-xs text-muted">
+                  No vehicle image is available for this brand; the layout uses its brand surface.
+                </p>
+                <BannerBrandStyleGuide :kit="formKit" />
+              </section>
 
               <!-- Identity -->
               <section class="space-y-4">
@@ -992,11 +1052,9 @@ function kitMenu(kit: BannerBrandKit) {
                 <li v-for="v in versions" :key="v.id" class="py-3 flex items-center gap-3">
                   <div class="w-24 shrink-0">
                     <BannerBrandKitPreview
-                      :kit="v.snapshot"
-                      :ratio="3"
+                      :kit="{ ...v.snapshot, sourceUrl: form.sourceUrl }"
+                      :ratio="1.5"
                       compact
-                      headline=""
-                      cta="CTA"
                     />
                   </div>
                   <div class="flex-1 min-w-0">

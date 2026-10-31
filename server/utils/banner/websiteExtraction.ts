@@ -3,8 +3,12 @@ import { assertPublicSiteOrigin, createCloudflareDohResolver, type SiteIntellige
 
 type Node = DefaultTreeAdapterMap['node']
 type Element = DefaultTreeAdapterMap['element']
-export interface BrandWebsiteDependencies { fetcher?: typeof fetch, resolver?: SiteIntelligenceDnsResolver }
-const USER_AGENT = 'Mozilla/5.0 (XeroFlow brand extractor)'
+export interface BrandWebsiteDependencies {
+  fetcher?: typeof fetch
+  resolver?: SiteIntelligenceDnsResolver
+  browserResource?: (url: string, kind: 'html' | 'css' | 'logo') => Promise<{ url: string, mimeType: string, bytes: Buffer }>
+}
+const USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'
 const REDIRECTS = new Set([301, 302, 303, 307, 308])
 const HTML_LIMIT = 2 * 1024 * 1024
 const CSS_LIMIT = 256 * 1024
@@ -27,6 +31,7 @@ export async function fetchBrandWebsiteResource(input: string, kind: 'html' | 'c
       await assertPublicSiteOrigin(url.toString(), resolver)
       const response = await controlledFetch(url.toString(), { headers: {
         'User-Agent': USER_AGENT,
+        'Accept-Language': 'en-AU,en;q=0.9',
         'Accept': kind === 'html' ? 'text/html,application/xhtml+xml' : kind === 'css' ? 'text/css' : 'image/svg+xml,image/png,image/jpeg,image/webp,image/gif'
       } })
       if (REDIRECTS.has(response.status)) {
@@ -37,11 +42,15 @@ export async function fetchBrandWebsiteResource(input: string, kind: 'html' | 'c
         url.hash = ''
         continue
       }
+      if (response.status === 520 && deps.browserResource) {
+        await response.body?.cancel()
+        return await deps.browserResource(url.toString(), kind)
+      }
       const mimeType = (response.headers.get('content-type') || '').split(';')[0]!.trim().toLowerCase()
       const allowed = kind === 'html' ? ['text/html', 'application/xhtml+xml'] : kind === 'css' ? ['text/css'] : ['image/svg+xml', 'image/png', 'image/jpeg', 'image/webp', 'image/gif']
       if (!response.ok || !allowed.includes(mimeType)) {
         await response.body?.cancel()
-        throw new Error('Website resource was unavailable or had an unsupported content type')
+        throw new Error(!response.ok ? `Website returned HTTP ${response.status}` : 'Website resource had an unsupported content type')
       }
       if (Number(response.headers.get('content-length')) > limit || !response.body) {
         await response.body?.cancel()
@@ -99,7 +108,7 @@ export function readBrandCssSignals(css: string) {
     const family = /(?:^|;)\s*font-family\s*:\s*([^;{}]+)/i.exec(declarations)?.[1]
     if (!family) continue
     const name = family.replace(/\s*!important\s*$/i, '').split(',')[0]!.trim().replace(/^(['"])(.*)\1$/, '$2')
-    if (!name || name.length > 120 || /[()<>\\]/.test(name) || /^(inherit|initial|unset|serif|sans-serif|monospace|cursive|fantasy|system-ui|ui-.+|-apple-system|BlinkMacSystemFont)$/i.test(name)) continue
+    if (!name || name.length > 120 || /[()<>\\]/.test(name) || /^(inherit|initial|unset|serif|sans-serif|monospace|cursive|fantasy|system-ui|ui-.+|-apple-system|BlinkMacSystemFont)$/i.test(name) || /(?:^|[_\s-])(icons?|glyphs?)(?:$|[_\s-])/i.test(name)) continue
     const weightValue = /(?:^|;)\s*font-weight\s*:\s*(\d{1,4}|normal|bold)(?=\s*(?:;|$))/i.exec(declarations)?.[1]
     const weight = weightValue === 'bold' ? 700 : weightValue === 'normal' ? 400 : Number(weightValue)
     const entry = fonts.get(name) || { count: 0, weights: new Set<number>() }
@@ -159,9 +168,13 @@ export async function extractBrandWebsite(input: string, deps: BrandWebsiteDepen
   }
   if (stylesheetLimitReached) warnings.push('Only the first four linked stylesheets were checked; review the draft for missing brand details.')
   const signals = readBrandCssSignals(styles.join('\n'))
-  const fonts = [...signals.fonts].sort((a, b) => b[1].count - a[1].count).slice(0, 2).map(([family, signal], i) => ({
-    role: i === 0 ? 'heading' : 'body', family, weights: signal.weights.size ? [...signal.weights].sort((a, b) => a - b) : [400]
-  }))
+  const fonts = [...signals.fonts].sort((a, b) => b[1].count - a[1].count).slice(0, 2).map(([family, signal], i) => {
+    const weights = signal.weights.size ? [...signal.weights].sort((a, b) => a - b) : [400]
+    return { role: i === 0 ? 'heading' : 'body', family, weights, defaultWeight: weights.includes(i === 0 ? 700 : 400) ? (i === 0 ? 700 : 400) : weights[0] }
+  })
+  if (fonts.length === 1) {
+    fonts.push({ ...fonts[0]!, role: 'body', defaultWeight: fonts[0]!.weights.includes(400) ? 400 : fonts[0]!.weights[0] })
+  }
   const logoCandidates: string[] = []
   for (const node of nodes) {
     const candidate = node.tagName === 'img' && /logo|brand|wordmark/i.test([attribute(node, 'src'), attribute(node, 'alt'), attribute(node, 'class'), attribute(node, 'id')].join(' '))
@@ -234,7 +247,7 @@ function stripSvgEditorMetadata(nodes: Element[], svg: Element) {
 /** The accepted stylesheet grammar is class selectors and static paint only. */
 function validateSvgPaintStyle(style: string, rootStyle = false, maskStyle = false) {
   if (style.length > 32768 || /[\\@{}]/.test(style)) throw new Error('Unsupported SVG logo styles')
-  const properties = new Set(['fill', 'stroke', 'opacity', 'fill-opacity', 'stroke-opacity', 'stroke-width', 'fill-rule', 'clip-rule', 'stroke-linecap', 'stroke-linejoin', 'stroke-miterlimit', 'stroke-dasharray', 'stroke-dashoffset', 'clip-path'])
+  const properties = new Set(['fill', 'stroke', 'opacity', 'fill-opacity', 'stroke-opacity', 'stroke-width', 'fill-rule', 'clip-rule', 'stroke-linecap', 'stroke-linejoin', 'stroke-miterlimit', 'stroke-dasharray', 'stroke-dashoffset', 'clip-path', 'stop-color', 'stop-opacity'])
   for (const declaration of style.split(';').filter(value => value.trim())) {
     const parts = declaration.split(':')
     const property = parts[0]?.trim().toLowerCase()
@@ -277,7 +290,7 @@ export function validateBrandLogoResource<T extends { bytes: Buffer, mimeType: s
     if (/<!DOCTYPE|<!ENTITY/i.test(source)) throw new Error('Unsupported SVG logo')
     const fragment = parseFragment(source)
     let nodes = elements(fragment)
-    const allowed = new Set(['svg', 'g', 'path', 'rect', 'circle', 'ellipse', 'line', 'polyline', 'polygon', 'defs', 'linearGradient', 'radialGradient', 'stop', 'title', 'desc', 'clipPath', 'mask', 'use', 'symbol', 'pattern', 'image', 'style'])
+    const allowed = new Set(['svg', 'g', 'path', 'rect', 'circle', 'ellipse', 'line', 'polyline', 'polygon', 'defs', 'linearGradient', 'radialGradient', 'stop', 'title', 'desc', 'clipPath', 'mask', 'use', 'symbol', 'pattern', 'image', 'style', 'switch'])
     const attributes = new Set(['xmlns', 'id', 'class', 'viewBox', 'width', 'height', 'preserveAspectRatio', 'x', 'y', 'x1', 'y1', 'x2', 'y2', 'cx', 'cy', 'r', 'rx', 'ry', 'd', 'points', 'fill', 'fill-rule', 'fill-opacity', 'stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin', 'stroke-miterlimit', 'stroke-opacity', 'stroke-dasharray', 'stroke-dashoffset', 'opacity', 'transform', 'gradientTransform', 'gradientUnits', 'offset', 'stop-color', 'stop-opacity', 'clip-path', 'clipPathUnits', 'clip-rule', 'mask', 'maskUnits', 'maskContentUnits', 'href', 'style', 'version', 'role', 'aria-hidden', 'aria-label', 'aria-labelledby', 'focusable'])
     const svg = nodes[0]
     if (!svg || svg.tagName !== 'svg' || fragment.childNodes.some(node => node !== svg && ('tagName' in node || text(node).trim()))) throw new Error('Invalid SVG logo')
@@ -286,6 +299,7 @@ export function validateBrandLogoResource<T extends { bytes: Buffer, mimeType: s
     let embeddedBytes = 0
     for (const node of nodes) {
       if (!allowed.has(node.tagName)) throw new Error('Active SVG logos are not supported')
+      if (node.tagName === 'switch' && node.attrs.length) throw new Error('Unsupported SVG switch attributes')
       if (node.tagName === 'style') validateSvgClassRules(node)
       for (const attr of node.attrs) {
         if (node.tagName === 'style' && attr.name === 'type' && attr.value === 'text/css') continue
