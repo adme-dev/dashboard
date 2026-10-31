@@ -9,6 +9,19 @@ function set(key: string, val: any) {
 function setNum(key: string, val: string | number) {
   set(key, Number(val))
 }
+
+// The blur control edits only a plain blur; other imported filter chains stay as they are.
+const blur = computed(() => {
+  const filter = selectedLayer.value?.visualFilter
+  if (!filter || filter === 'none') return 0
+  const match = /^blur\((\d+(?:\.\d+)?)px\)$/.exec(filter)
+  return match ? Number(match[1]) : null
+})
+
+function setBlur(val: string | number) {
+  const amount = Math.min(100, Math.max(0, Number(val) || 0))
+  set('visualFilter', amount ? `blur(${amount}px)` : undefined)
+}
 </script>
 
 <template>
@@ -33,8 +46,25 @@ function setNum(key: string, val: string | number) {
     </div>
 
     <div>
+      <label class="text-[10px] text-(--ui-text-muted)">Shape</label>
+      <USelect
+        size="xs"
+        class="w-full"
+        :items="[{ label: 'Rectangle', value: 'rect' }, { label: 'Ellipse', value: 'ellipse' }]"
+        :model-value="selectedLayer.rectShape ?? 'rect'"
+        @update:model-value="v => set('rectShape', v === 'ellipse' ? 'ellipse' : undefined)"
+      />
+    </div>
+
+    <div v-if="selectedLayer.rectShape !== 'ellipse'">
       <label class="text-[10px] text-(--ui-text-muted)">Border Radius</label>
       <UInput type="number" size="xs" :model-value="selectedLayer.borderRadius ?? 0" @update:model-value="v => setNum('borderRadius', v)" />
+    </div>
+
+    <div>
+      <label class="text-[10px] text-(--ui-text-muted)">Blur (px)</label>
+      <UInput v-if="blur !== null" type="number" size="xs" min="0" max="100" :model-value="blur" @update:model-value="v => setBlur(v)" />
+      <p v-else class="text-[10px] text-(--ui-text-dimmed)">Imported filter: {{ selectedLayer.visualFilter }}</p>
     </div>
       </div>
     </details>
