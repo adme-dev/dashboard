@@ -2686,7 +2686,7 @@ const features: Record<string, Feature> = {
     details: [
       {
         title: 'Brand Assets Beside Your Canvas',
-        content: 'Choose a kit from the searchable editor sidebar, then browse Logos, Colours and Fonts. Add a logo to the current layout, apply a colour to the selected layer, or choose an uploaded font for selected text. Applying the complete kit remains a separate, undoable action across all layouts.'
+        content: 'The kit gallery shows larger logos on suitable backgrounds, readable heading and body font samples, and colour swatches in both light and dark themes. Choose a kit from the searchable editor sidebar, then browse Logos, Colours and Fonts. Add a logo to the current layout, apply a colour to the selected layer, or choose an uploaded font for selected text. Applying the complete kit remains a separate, undoable action across all layouts.'
       },
       {
         title: 'Colours With Roles, Not Just Swatches',

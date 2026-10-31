@@ -569,27 +569,32 @@ function kitMenu(kit: BannerBrandKit) {
       <div
         v-for="kit in brandKits"
         :key="kit.id"
-        class="group rounded-lg border border-(--ui-border) bg-(--ui-bg-elevated) overflow-hidden hover:ring-2 hover:ring-(--ui-primary)/30 transition-all"
+        class="group rounded-lg border border-default bg-default overflow-hidden hover:ring-2 hover:ring-primary/30 transition-all"
       >
-        <div class="p-2 pb-0 cursor-pointer" @click="openEdit(kit)">
-          <BannerBrandKitPreview :kit="kit" :compact="compact" :ratio="compact ? 3 : 300 / 200" />
-        </div>
+        <UButton
+          :aria-label="`Edit ${kit.name}`"
+          variant="ghost"
+          color="neutral"
+          class="block w-full p-0 text-left rounded-none border-b border-default"
+          @click="openEdit(kit)"
+        >
+          <BannerBrandKitIdentity :kit="kit" :compact="compact" />
+        </UButton>
         <div class="p-3 flex items-start gap-2">
           <div class="min-w-0 flex-1">
             <div class="flex items-center gap-1.5 min-w-0">
-              <span class="text-sm font-semibold truncate">{{ kit.name }}</span>
+              <span class="text-sm font-semibold text-highlighted break-words leading-snug">{{ kit.name }}</span>
               <UTooltip v-if="kit.isDefault" :text="kit.clientId ? 'Default for this client' : 'Agency default'">
                 <UIcon name="i-lucide-star" class="w-3.5 h-3.5 text-warning shrink-0" />
               </UTooltip>
             </div>
             <div class="text-xs text-(--ui-text-muted) truncate">
               {{ kit.clientName || 'Agency-wide' }}
-              <span v-if="kit.fonts.length"> · {{ kit.fonts.map(f => f.family).join(' / ') }}</span>
             </div>
             <!-- Palette strip -->
             <div class="flex gap-1 mt-2">
               <UTooltip v-for="c in kit.colors.slice(0, 8)" :key="c.role + c.hex" :text="`${c.label || c.role} ${c.hex}`">
-                <span class="w-4 h-4 rounded-sm border border-black/20" :style="{ backgroundColor: c.hex }" />
+                <span class="w-5 h-5 rounded-sm border border-default" :style="{ backgroundColor: c.hex }" />
               </UTooltip>
             </div>
           </div>
