@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { motorStackImportRows, runMotorStackImport } from '../../app/utils/banner-motorstack-import'
+import { motorStackImportRows, runMotorStackImport, motorStackImportErrorDescription } from '../../app/utils/banner-motorstack-import'
 import type { MotorStackImportResult } from '../../app/utils/banner-motorstack-import'
 
 const brands = [{ id: 'gwm', name: 'GWM', existingKitId: null }, { id: 'kia', name: 'Kia', existingKitId: 'kit-kia' }]
@@ -9,6 +9,20 @@ const result = (id: string, status: MotorStackImportResult['status'] = 'imported
 })
 
 describe('MotorStack brand import queue', () => {
+  it('shows fixed public reasons even when ofetch only exposes a generic HTTP message', async () => {
+    const rows = motorStackImportRows(brands.slice(0, 1))
+    await runMotorStackImport(rows, async () => {
+      throw { message: '[POST] /api/import: 502 Server Error', data: { data: { reasonCode: 'font_invalid' } } }
+    })
+    expect(rows[0]?.error).toContain('source font could not be validated')
+    expect(rows[0]?.error).not.toContain('[POST]')
+    expect(motorStackImportErrorDescription({ data: { reasonCode: 'logo_invalid' }, message: 'secret provider URL' })).toContain('source logo')
+  })
+  it('keeps saved-status guidance for uncertain outcomes and preserves the legacy fallback', () => {
+    expect(motorStackImportErrorDescription({ data: { data: { reasonCode: 'import_failed' } }, message: 'secret' })).toBe('The import could not be confirmed. Retry this brand to check its saved status.')
+    expect(motorStackImportErrorDescription({ data: { statusMessage: 'Legacy safe error', data: { reasonCode: 'constructor' } } })).toBe('Legacy safe error')
+    expect(motorStackImportErrorDescription(null)).toContain('check its saved status')
+  })
   it('awaits each brand, preserving source warnings and existing kit results', async () => {
     let finishFirst!: (value: MotorStackImportResult) => void
     const first = new Promise<MotorStackImportResult>((resolve) => {

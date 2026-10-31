@@ -25,6 +25,24 @@ export function motorStackImportRows(brands: MotorStackBrand[]): MotorStackImpor
   return brands.map(brand => ({ ...brand, status: 'pending' }))
 }
 
+const IMPORT_ERRORS: Record<string, string> = {
+  font_invalid: 'A source font could not be validated. Check the font file in MotorStack, then retry this brand. No partial kit was saved.',
+  logo_invalid: 'A source logo uses invalid or unsupported content. Check the logo file in MotorStack, then retry this brand. No partial kit was saved.',
+  source_timeout: 'MotorStack took too long to respond. Retry this brand.',
+  not_configured: 'The MotorStack connection is not configured. Ask an administrator to check it, then retry.',
+  limit_exceeded: 'This brand exceeds the supported file size or kit limits. Check its source assets before retrying.',
+  metadata_invalid: 'MotorStack returned inconsistent brand details. Refresh the source details, then retry this brand.',
+  source_unavailable: 'A MotorStack source file or connection is unavailable. Retry this brand; if it continues, check its source files.',
+  import_failed: 'The import could not be confirmed. Retry this brand to check its saved status.'
+}
+export function motorStackImportErrorDescription(error: unknown): string {
+  const payload = error && typeof error === 'object' && 'data' in error ? error.data : undefined
+  const details = payload && typeof payload === 'object' && 'data' in payload ? payload.data : payload
+  const reason = details && typeof details === 'object' && 'reasonCode' in details ? details.reasonCode : undefined
+  if (typeof reason === 'string' && Object.hasOwn(IMPORT_ERRORS, reason)) return IMPORT_ERRORS[reason]!
+  return apiErrorDescription(error, 'Import failed. Retry this brand to check its saved status.')
+}
+
 /** One write at a time. Stopping never aborts a write whose result may already be saved. */
 export async function runMotorStackImport(
   rows: MotorStackImportRow[],
@@ -47,7 +65,7 @@ export async function runMotorStackImport(
       if (result.kitId) row.existingKitId = result.kitId
     } catch (error) {
       row.status = 'failed'
-      row.error = apiErrorDescription(error, 'Import failed. Retry this brand to check its saved status.')
+      row.error = motorStackImportErrorDescription(error)
     }
   }
 }
