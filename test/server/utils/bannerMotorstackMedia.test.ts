@@ -52,6 +52,12 @@ describe('MotorStack media boundaries', () => {
     document.assets[0]!.mime = 'application/pdf'
     await expect(readMedia(service(document, bytes, 'image/webp'), selection)).rejects.toMatchObject({ statusCode: 502 })
   })
+  it('uses JPEG bytes when MotorStack labels a vehicle image as PNG', async () => {
+    const bytes = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10])
+    const file = await readMedia(service(metadata(), bytes, 'image/png'), selection)
+    expect(file.mimeType).toBe('image/jpeg')
+    expect(file.filename).toBe('motorstack-GWM H7.jpg')
+  })
   it('allows valid PDF downloads but never persists PDF as an image layer asset', async () => {
     const data = metadata()
     Object.assign(data.assets[0]!, { mime: 'application/pdf', type: 'document', importable: true })
