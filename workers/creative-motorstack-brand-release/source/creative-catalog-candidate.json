@@ -1,8 +1,8 @@
 {
-  "parentActiveVersion": "03af3c3f-c768-485e-8e70-641bca8b30dc",
-  "parentActiveDeployment": "0f8ba53b-1ff1-4579-aa18-e3bedc1c54d3",
+  "parentActiveVersion": "09923c96-b549-4b06-961d-ea23e378a767",
+  "parentActiveDeployment": "3ebe3253-f4db-4a09-9b4d-686c06c790d8",
   "candidateModuleHashes": {
     "worker.js": "9a4a9a44bf44dae92695f6bb69731cf4586c0f546e1562c7af6230c92ea52d8d",
-    "brand-rpc.mjs": "a294f2dea4948d4e943eb50bc7a878bb4e9498baba8ee263e6fd81cdc46a9bad"
+    "brand-rpc.mjs": "53bd8cd96907d296fe95cd9f8bb4999152277b65ade0eed36e932f825f15e754"
   }
 }

@@ -144,7 +144,9 @@ export function createBrandService({ rpc, binary, catalog, safeURL, extension, M
     const brand = brands.find(item => item.id === brandId)
     if (!brand) fail(403, 'brand_not_available')
     const data = await rpc(key, input.kind === 'variants' ? 'get_variants' : 'get_offers', { oem: brandId, ...input.kind === 'variants' ? { include_photos: false } : { include_disclaimers: true } })
-    const source = input.kind === 'variants' ? data.vehicles : data.offers
+    let source = input.kind === 'variants' ? data.vehicles : data.offers
+    // MotorStack omits `offers` when an OEM has no published offers.
+    if (input.kind === 'offers' && source === undefined && data.oem === brandId && data.matched === 0) source = []
     if (!Array.isArray(source) || source.length > 500) fail(502, 'invalid_motorstack_catalog')
     const value = (item, field, max = 180) => item[field] == null ? null : clean(item[field], max) || null
     const terms = (text, max = 12000) => typeof text === 'string' && text.length <= max && !/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(text) && !text.includes(key) ? text : null

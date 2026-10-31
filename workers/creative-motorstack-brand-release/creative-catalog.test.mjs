@@ -51,3 +51,14 @@ test('does not silently omit oversized offer terms', async () => {
   const { api } = service({ get_offers: { offers: [{ title: 'Offer', disclaimer: 'T'.repeat(12001) }] } })
   await assert.rejects(api.listCreativeCatalog({ brandId: 'geely', kind: 'offers' }), /invalid_motorstack_catalog/)
 })
+
+test('returns an empty catalogue for a brand with no published offers', async () => {
+  const { api } = service({ get_offers: { oem: 'geely', matched: 0, note: 'No live offers for this OEM.' } })
+  const result = await api.listCreativeCatalog({ brandId: 'geely', kind: 'offers' })
+  assert.deepEqual(result.items, [])
+})
+
+test('rejects an omitted offers array unless the provider explicitly reports zero matches', async () => {
+  const { api } = service({ get_offers: { oem: 'geely', matched: 2 } })
+  await assert.rejects(api.listCreativeCatalog({ brandId: 'geely', kind: 'offers' }), /invalid_motorstack_catalog/)
+})
