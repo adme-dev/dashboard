@@ -47,3 +47,9 @@ Review/comment links and view-only client links use separate token formats. The 
 ## Reusing an imported design
 
 Once the imported draft has passed artwork review, use **Actions → Save as template** in the editor to capture all its layouts as one reusable set. The [template gallery](banner-template-gallery.md) can copy all layouts or a selected subset into a new draft, with a client and folder chosen before creation. Starting-format presets in the gallery are blank canvases; they do not import stock artwork from TheBrief.
+
+## Timeline review
+
+Selecting artwork highlights the matching timeline label and row and brings the row into view. Animation blocks show entry, continuing motion, hold and exit intervals. Click a block to inspect its relevant keyframes; expand the row for individual property tracks. Imported effects are labelled as keyframes unless a native preset identity is known. These labels describe the preserved timing, not proof of source playback fidelity.
+
+TheBrief's `shouldPlay` field is playback retry state, not an authored mute setting. Audio review must compare the source editor's mute, volume, trim and fade settings with the actual exported media. Exported audio may already be trimmed; applying the original-track offset again can discard the clip. Unsupported or unreconciled audio settings hold the conversion for review.

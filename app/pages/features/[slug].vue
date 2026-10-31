@@ -2534,11 +2534,11 @@ const features: Record<string, Feature> = {
     categoryIcon: 'i-lucide-palette',
     categoryIconBg: 'bg-rose-50',
     categoryIconColor: 'text-rose-600',
-    description: 'Edit transitions, imported keyframes and audio directly in a floating timeline panel.',
+    description: 'Select artwork and edit its entry, motion, hold and exit blocks directly on the timeline.',
     details: [
       {
         title: 'Keyframe Timeline',
-        content: 'A full-width timeline sits below the canvas with layer rows, a time ruler, and a shared playhead. Entrance and exit clips show their transition names and icons. Click a clip or its layer bar to open a floating editor. Search presets, adjust native duration and easing, or edit an imported keyframe’s property, time and value in Build. Audio clips expose volume, mute and loop controls. Open details continues in the sidebar. Expand a layer to adjust its property keyframes, or scrub the ruler to preview the result.'
+        content: 'A full-width timeline sits below the canvas with layer rows, a time ruler, and a shared playhead. Selecting artwork highlights its label and full timeline row, bringing the selected row into view. Coloured blocks show entry, continuing motion, holds and exit timing. Imported blocks identify their keyframes without guessing a preset name; native presets retain their names. Click a block to open its floating editor at the relevant property and time. Search presets, adjust native duration and easing, or edit an imported keyframe’s property, time and value in Build. Audio clips expose volume, mute and loop controls. Open details continues in the sidebar. Expand a layer to adjust its property keyframes, or scrub the ruler to preview the result.'
       },
       {
         title: 'Entry & Exit Animations',

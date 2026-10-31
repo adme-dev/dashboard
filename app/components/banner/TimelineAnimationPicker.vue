@@ -3,8 +3,9 @@ import { computed, ref, watch, nextTick } from 'vue'
 import { ANIM_IN, ANIM_OUT, EASES } from '~/utils/banner-constants'
 import { hasKeyframes } from '~/composables/useBannerTimeline'
 import type { AnimInType, AnimOutType, KeyframeProperty, Layer } from '~/types/banner-studio'
+import type { TimelinePhase } from '~/utils/banner-timeline-phases'
 
-const props = defineProps<{ layer: Layer, direction: 'in' | 'out', compact?: boolean }>()
+const props = defineProps<{ layer: Layer, direction: 'in' | 'out', compact?: boolean, phase?: TimelinePhase }>()
 const { state, selectLayer, updateLayer } = useBannerStudio()
 const { inspectorTab } = useBannerInspector()
 const { pauseTimeline, seekTo, playTimeline } = useBannerTimeline()
@@ -22,7 +23,9 @@ const directionLabel = computed(() => props.direction === 'in' ? 'entrance' : 'e
 const presets = computed(() => (props.direction === 'in' ? ANIM_IN : ANIM_OUT).filter(p => p.label.toLowerCase().includes(search.value.trim().toLowerCase())))
 const selectedId = computed(() => props.direction === 'in' && props.layer.wordPop ? 'wordPop' : props.direction === 'in' ? props.layer.animIn : (props.layer.animOut ?? 'fadeOut'))
 const selectedLabel = computed(() => isAudio.value ? 'Sound' : isKeyframe.value ? 'Keyframes' : selectedId.value === 'wordPop' ? 'Words Pop' : ([...ANIM_IN, ...ANIM_OUT].find(p => p.id === selectedId.value)?.label ?? 'None'))
-const foreground = computed(() => ['text', 'image', 'button', 'audio'].includes(props.layer.type) ? '#111827' : '#ffffff')
+const blockLabel = computed(() => props.phase?.label ?? selectedLabel.value)
+const blockDescription = computed(() => props.phase ? `${blockLabel.value} · ${props.phase.start.toFixed(2)}–${props.phase.end.toFixed(2)}s` : blockLabel.value)
+const foreground = computed(() => props.phase?.kind === 'hold' ? 'var(--ui-text)' : ['text', 'image', 'button', 'audio'].includes(props.layer.type) ? '#111827' : '#ffffff')
 const iconFor = (id: string) => ({ none: 'circle-slash', fadeIn: 'blend', fadeOut: 'blend', slideL: 'arrow-left', slideR: 'arrow-right', slideU: 'arrow-up', slideD: 'arrow-down', zoomIn: 'zoom-in', zoomOut: 'zoom-out', spinIn: 'rotate-cw', spinOut: 'rotate-cw', bounceIn: 'corner-right-up', elastic: 'move-horizontal', kenBurns: 'scan', wordPop: 'whole-word' }[id] || 'sparkles')
 const propLabels: Record<KeyframeProperty, string> = { opacity: 'Opacity', x: 'Horizontal position', y: 'Vertical position', scaleX: 'Horizontal scale', scaleY: 'Vertical scale', rotation: 'Rotation' }
 const tracks = computed(() => (Object.keys(propLabels) as KeyframeProperty[]).filter(p => props.layer.keyframes?.[p]?.length).map(p => ({ label: propLabels[p], value: p })))
@@ -39,7 +42,7 @@ const canWordPop = computed(() => props.direction === 'in' && props.layer.type =
 const duration = computed(() => state.sets[state.activeKey]?.playback?.duration ?? Math.max(3, props.layer.endTime ?? 3))
 const pendingLabel = computed(() => pending.value === 'wordPop' ? 'Words Pop' : [...ANIM_IN, ...ANIM_OUT].find(p => p.id === pending.value)?.label)
 
-watch(open, (value) => {
+watch(open, async (value) => {
   if (!value) {
     pending.value = null
     return
@@ -48,6 +51,12 @@ watch(open, (value) => {
   search.value = ''
   property.value = tracks.value[0]?.value ?? 'opacity'
   frameIndex.value = '0'
+  if (props.phase && isKeyframe.value) {
+    const phase = props.phase
+    property.value = tracks.value.find(track => props.layer.keyframes?.[track.value]?.some((f, i, all) => i > 0 && f.value !== all[i - 1]!.value && f.time > phase.start && all[i - 1]!.time < phase.end))?.value ?? property.value
+    await nextTick()
+    if (open.value) frameIndex.value = String(Math.max(0, frames.value.findIndex(f => f.time >= phase.start)))
+  }
 })
 watch(property, () => {
   frameError.value = undefined
@@ -123,7 +132,7 @@ function setEase(value: string) {
 }
 function preview() {
   pauseTimeline()
-  seekTo(Math.max(0, (props.layer.startTime ?? 0) - 0.1))
+  seekTo(Math.max(0, (props.phase?.start ?? props.layer.startTime ?? 0) - 0.1))
   nextTick(() => playTimeline())
 }
 </script>
@@ -131,18 +140,19 @@ function preview() {
 <template>
   <UPopover v-model:open="open" :content="{ side: 'top', align: direction === 'in' ? 'start' : 'end', sideOffset: 8 }">
     <UButton
-      :aria-label="isAudio ? `Edit audio for ${layer.name}` : isKeyframe ? `Edit keyframes for ${layer.name}` : `Edit ${directionLabel} animation for ${layer.name}: ${selectedLabel}`"
+      :aria-label="phase ? `Edit ${blockDescription} for ${layer.name}` : isAudio ? `Edit audio for ${layer.name}` : isKeyframe ? `Edit keyframes for ${layer.name}` : `Edit ${directionLabel} animation for ${layer.name}: ${selectedLabel}`"
+      :title="blockDescription"
       :aria-expanded="open"
       color="neutral"
       variant="ghost"
       size="xs"
-      class="h-5 w-full min-w-0 justify-start gap-1 overflow-hidden rounded-sm px-1 text-[9px] font-semibold hover:bg-white/20"
+      class="h-full min-h-0 w-full min-w-0 justify-start gap-1 overflow-hidden rounded-sm px-1.5 text-[11px] font-medium hover:bg-white/20"
       :style="{ color: foreground }"
       @mousedown.stop
       @click.stop="focusAnimation"
     >
       <UIcon :name="`i-lucide-${isAudio ? 'volume-2' : isKeyframe ? 'diamond' : iconFor(selectedId)}`" class="size-3 shrink-0" />
-      <span v-if="!compact" class="truncate">{{ selectedLabel }}</span>
+      <span v-if="!compact" class="truncate">{{ blockLabel }}</span>
     </UButton>
     <template #content>
       <section
@@ -157,6 +167,9 @@ function preview() {
               {{ title }}
             </p><p class="truncate text-xs text-muted">
               {{ layer.name }} · {{ isAudio && state.layoutView === 'all' && layer.linkId ? 'Linked layouts' : 'Current layout' }}
+            </p>
+            <p v-if="phase" class="mt-1 text-xs text-muted">
+              {{ blockDescription }}
             </p>
           </div>
           <UButton

@@ -1,7 +1,10 @@
 import { readMultipartFormData } from 'h3'
 import { queryOne } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
-import { uploadBannerAsset } from '~~/server/utils/bannerStorage'
+import { uploadBannerAsset, createBannerAssetId, createBannerAssetStorageKey, bannerAssetDeliveryUrl, deleteBannerFile } from '~~/server/utils/bannerStorage'
+import { resolveBannerAssetDelivery } from '~~/server/utils/banner/assetDelivery'
+import { getAppUrl } from '~~/server/utils/appUrl'
+import { bannerFontMimeType, isBannerFontBytes } from '~~/server/utils/banner/fontValidation'
 
 const FONT_EXTENSIONS = new Set(['woff2', 'woff', 'ttf', 'otf'])
 
@@ -9,7 +12,7 @@ const FONT_EXTENSIONS = new Set(['woff2', 'woff', 'ttf', 'otf'])
 function deriveFontFamily(filename: string): string {
   return filename
     .replace(/\.[^/.]+$/, '') // strip extension
-    .replace(/[-_]/g, ' ')   // dashes/underscores → spaces
+    .replace(/[-_]/g, ' ') // dashes/underscores → spaces
     .replace(/([a-z])([A-Z])/g, '$1 $2') // camelCase → spaces
     .trim()
 }
@@ -49,16 +52,20 @@ export default defineEventHandler(async (event) => {
   if (!FONT_EXTENSIONS.has(ext)) {
     throw createError({
       statusCode: 400,
-      statusMessage: `Invalid font format: .${ext}. Supported: .woff2, .woff, .ttf, .otf`,
+      statusMessage: `Invalid font format: .${ext}. Supported: .woff2, .woff, .ttf, .otf`
     })
   }
 
-  const mimeType = file.type || 'application/octet-stream'
+  const mimeType = bannerFontMimeType(fileName)!
 
   // Max 5MB for fonts
   const buffer = Buffer.from(file.data)
   if (buffer.length > 5 * 1024 * 1024) {
     throw createError({ statusCode: 400, statusMessage: 'Font file too large (max 5MB)' })
+  }
+
+  if (!isBannerFontBytes(buffer, fileName)) {
+    throw createError({ statusCode: 400, statusMessage: 'Invalid font file bytes for its declared format' })
   }
 
   const rawFamily = familyField?.data?.toString().trim() || deriveFontFamily(fileName)
@@ -72,16 +79,23 @@ export default defineEventHandler(async (event) => {
   }
   const fontFormat = fontFormatFromExt(ext)
 
+  const assetId = createBannerAssetId()
+  const storageKey = createBannerAssetStorageKey(fileName, user.id)
+  const { nativeUpload, signingSecret } = resolveBannerAssetDelivery(event)
+  const deliveryUrl = signingSecret ? await bannerAssetDeliveryUrl(assetId, getAppUrl(event), signingSecret) : undefined
+  let stored = false
   try {
-    const { key, url, size } = await uploadBannerAsset(buffer, fileName, mimeType, user.id)
+    const { key, url, size } = await uploadBannerAsset(buffer, fileName, mimeType, user.id, storageKey,
+      nativeUpload ? { bucket: nativeUpload.bucket, assetUrl: deliveryUrl! } : undefined, deliveryUrl)
+    stored = true
 
     // Store in banner_assets with font metadata as TEXT[] tags
     // Tags: ['font', 'weight:400', 'format:woff2'] — queryable via '= ANY(tags)'
     const tags = ['font', `weight:${fontWeight}`, `format:${fontFormat}`]
 
     const row = await queryOne(`
-      INSERT INTO banner_assets (name, mime_type, file_size, r2_key, url, tags, uploaded_by)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      INSERT INTO banner_assets (name, mime_type, file_size, r2_key, url, tags, uploaded_by, id)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
       RETURNING
         id, name,
         mime_type AS "mimeType",
@@ -98,11 +112,13 @@ export default defineEventHandler(async (event) => {
       url,
       tags,
       user.id,
+      assetId
     ])
 
     return row
-  } catch (error: any) {
-    if (error.statusCode) throw error
+  } catch (error) {
+    if (stored) await deleteBannerFile(storageKey, nativeUpload?.bucket).catch(() => {})
+    if (error && typeof error === 'object' && 'statusCode' in error) throw error
     console.error('Failed to upload font:', error)
     throw createError({ statusCode: 500, statusMessage: 'Failed to upload font' })
   }

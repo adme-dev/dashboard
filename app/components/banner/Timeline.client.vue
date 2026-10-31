@@ -4,6 +4,7 @@ import { layoutName } from '~/utils/banner-workspace'
 import { LAYER_COLORS, LAYER_TYPE_COLORS } from '~/utils/banner-constants'
 import type { KeyframeProperty, Keyframe, Layer } from '~/types/banner-studio'
 import { hasKeyframes } from '~/composables/useBannerTimeline'
+import { timelinePhases } from '~/utils/banner-timeline-phases'
 
 const { state, activeLayers, activeFormat, selectLayer, updateLayer, duplicateLayer, removeLayer, bringToFront, sendToBack, getMotionPathTweens, updateMotionPathTween, addMotionPathTween, removeMotionPathTween } = useBannerStudio()
 const { remoteLocks } = useBannerRealtime()
@@ -163,6 +164,17 @@ const timelineEl = ref<HTMLElement | null>(null)
 const rulerEl = ref<HTMLElement | null>(null)
 const isDraggingPlayhead = ref(false)
 
+watch(() => state.selectedLayerId, async (id) => {
+  await nextTick()
+  const container = timelineEl.value
+  const row = container?.querySelector<HTMLElement>(`[data-layer-label="${id}"]`)
+  if (!container || !row) return
+  const viewport = container.getBoundingClientRect()
+  const bounds = row.getBoundingClientRect()
+  if (bounds.top < viewport.top + RULER_H) container.scrollTop += bounds.top - viewport.top - RULER_H
+  else if (bounds.bottom > viewport.bottom) container.scrollTop += bounds.bottom - viewport.bottom
+})
+
 // Keyframe property labels
 const KF_PROPERTIES: { key: KeyframeProperty; label: string; icon: string }[] = [
   { key: 'opacity', label: 'Opacity', icon: 'O' },
@@ -238,7 +250,7 @@ function clearLoopRange() {
 const stretchLabel = ref<{ x: number; y: number; text: string } | null>(null)
 
 // ── Constants ─────────────────────────
-const LANE_H = 32
+const LANE_H = 36
 const KF_TRACK_H = 20
 const RULER_H = 32
 const LABEL_W = 256
@@ -289,23 +301,7 @@ function getLayerColor(layer: { type: string }): string {
   return LAYER_TYPE_COLORS[layer.type] || LAYER_COLORS[0]
 }
 
-function presenceWidth(layer: Layer): number {
-  return Math.max(0.1, (layer.endTime || 3) - (layer.startTime || 0)) * pxPerSec.value
-}
-
-function animationClipWidth(layer: Layer, direction: 'in' | 'out'): number {
-  const width = presenceWidth(layer)
-  const start = layer.startTime || 0
-  const end = layer.endTime || 3
-  const outDur = layer.outDur || (layer.type === 'bg' ? 0.5 : 0.25)
-  const wordCount = layer.text?.trim() ? layer.text.trim().split(/\s+/).length : 1
-  const duration = direction === 'in'
-    ? layer.wordPop
-      ? layer.wordPop.duration + (wordCount - 1) * layer.wordPop.stagger
-      : layer.animInDur || 0.6
-    : end - Math.max(start + (layer.animInDur || 0.6), end - outDur)
-  return Math.min(width / 2, Math.max(28, duration * pxPerSec.value))
-}
+const phasesByLayer = computed(() => new Map(activeLayers.value.map(layer => [layer.id, timelinePhases(layer)])))
 
 const animationPickers = new Map<number, { openPicker: () => void }>()
 function setAnimationPicker(id: number, picker: unknown) {
@@ -318,6 +314,7 @@ function onPresenceBarClick(layer: Layer) {
     justFinishedDrag = false
     return
   }
+  selectLayer(layer.id)
   animationPickers.get(layer.id)?.openPicker()
 }
 
@@ -897,11 +894,13 @@ onUnmounted(() => {
             <div
               class="flex items-center gap-1 px-1 border-b border-(--ui-border)/30 cursor-pointer hover:bg-(--ui-bg-accented) transition-colors"
               :class="[
-                state.selectedLayerId === layer.id ? 'bg-(--ui-bg-accented)' : '',
+                state.selectedLayerId === layer.id ? 'bg-primary/15 text-highlighted ring-1 ring-inset ring-primary/40' : '',
                 isMaskedLayer(layer.id) ? 'border-l-2 border-l-[#e84aff]/40' : '',
                 isMultiSelected(layer.id) ? 'ring-1 ring-inset ring-(--ui-primary)/50' : '',
               ]"
               :style="{ height: `${LANE_H}px` }"
+              :data-layer-label="layer.id"
+              :data-selected="state.selectedLayerId === layer.id"
               @click="onLayerLabelClick($event, layer)"
               @contextmenu.prevent="onLayerContextMenu($event, layer)"
             >
@@ -933,7 +932,7 @@ onUnmounted(() => {
                 <UIcon :name="layer.locked ? 'i-lucide-lock' : 'i-lucide-unlock'" class="w-3 h-3" />
               </UButton>
               <UIcon v-if="decomposingLayerId === layer.id" name="i-lucide-loader-2" class="w-3 h-3 animate-spin text-(--ui-primary) shrink-0" />
-              <span class="text-xs truncate text-default">{{ layer.name }}</span>
+              <span class="text-xs truncate text-default" :class="state.selectedLayerId === layer.id ? 'font-semibold' : ''">{{ layer.name }}</span>
               <!-- Mask indicator -->
               <UIcon v-if="layer.isMask" name="i-lucide-scan" class="w-3 h-3 text-[#e84aff] shrink-0" />
               <!-- Motion path indicator -->
@@ -1046,6 +1045,9 @@ onUnmounted(() => {
             <!-- Main layer lane (presence bar) -->
             <div
               class="relative border-b border-(--ui-border)/30 cursor-pointer"
+              :class="state.selectedLayerId === layer.id ? 'bg-primary/10 ring-1 ring-inset ring-primary/30' : ''"
+              :data-layer-lane="layer.id"
+              :data-selected="state.selectedLayerId === layer.id"
               :style="{ height: `${LANE_H}px`, zIndex: 2 }"
               @click="selectLayer(layer.id); onTrackClick($event)"
             >
@@ -1061,6 +1063,7 @@ onUnmounted(() => {
                 <!-- Full presence bar -->
                 <div
                   class="absolute inset-0 rounded-sm cursor-grab active:cursor-grabbing"
+                  :title="`Drag to move ${layer.name}`"
                   :style="{
                     backgroundColor: getLayerColor(layer),
                     opacity: 0.35,
@@ -1076,33 +1079,27 @@ onUnmounted(() => {
                   :width="Math.round(((layer.endTime || 3) - (layer.startTime || 0)) * pxPerSec)"
                   :height="LANE_H - 8"
                 />
-                <!-- Clickable entrance and exit clips use the same presets as the inspector. -->
-                <template v-if="layer.type !== 'audio' && !hasKeyframes(layer)">
-                  <div
-                    class="absolute top-0 left-0 z-10 h-full overflow-visible rounded-l-sm"
-                    :class="state.selectedLayerId === layer.id ? 'ring-1 ring-inset ring-white/50' : ''"
-                    :style="{ width: `${animationClipWidth(layer, 'in')}px`, backgroundColor: getLayerColor(layer), opacity: layer.animIn === 'none' && !layer.wordPop ? 0.45 : 1 }"
-                  >
-                    <BannerTimelineAnimationPicker :ref="(el) => setAnimationPicker(layer.id, el)" :layer="layer" direction="in" :compact="animationClipWidth(layer, 'in') < 74" />
-                  </div>
-                  <div
-                    class="absolute top-0 right-0 z-10 h-full overflow-visible rounded-r-sm"
-                    :class="state.selectedLayerId === layer.id ? 'ring-1 ring-inset ring-white/50' : ''"
-                    :style="{ width: `${animationClipWidth(layer, 'out')}px`, backgroundColor: getLayerColor(layer), filter: 'brightness(0.78)', opacity: layer.animOut === 'none' ? 0.45 : 1 }"
-                  >
-                    <BannerTimelineAnimationPicker :layer="layer" direction="out" :compact="animationClipWidth(layer, 'out') < 74" />
-                  </div>
-                </template>
-                <div v-else-if="hasKeyframes(layer) || layer.type === 'audio'" class="absolute left-1 top-0 z-10 h-5 max-w-[calc(100%-0.5rem)]">
-                  <BannerTimelineAnimationPicker :ref="(el) => setAnimationPicker(layer.id, el)" :layer="layer" direction="in" />
-                </div>
-                <span
-                  v-if="!hasKeyframes(layer)"
-                  class="absolute inset-0 flex items-center overflow-hidden px-2 text-[10px] font-medium text-default pointer-events-none whitespace-nowrap"
-                  :style="layer.type === 'audio' ? {} : { left: `${animationClipWidth(layer, 'in')}px`, right: `${animationClipWidth(layer, 'out')}px` }"
+                <!-- Timing comes from the actual preset or imported keyframe intervals. -->
+                <div
+                  v-for="(phase, phaseIndex) in phasesByLayer.get(layer.id) || []"
+                  :key="`${phase.start}-${phase.kind}`"
+                  class="absolute top-0 z-10 h-[calc(100%-6px)] overflow-visible rounded-sm border-x border-black/10"
+                  :data-animation-phase="phase.kind"
+                  :style="{
+                    left: `${(phase.start - (layer.startTime ?? 0)) * pxPerSec}px`,
+                    width: `${(phase.end - phase.start) * pxPerSec}px`,
+                    backgroundColor: phase.kind === 'hold' ? 'transparent' : getLayerColor(layer),
+                    filter: phase.kind === 'exit' ? 'brightness(0.85)' : undefined
+                  }"
                 >
-                  {{ layer.name }}
-                </span>
+                  <BannerTimelineAnimationPicker
+                    :ref="(el) => { if (phaseIndex === 0) setAnimationPicker(layer.id, el) }"
+                    :layer="layer"
+                    :phase="phase"
+                    :direction="phase.direction"
+                    :compact="(phase.end - phase.start) * pxPerSec < 66"
+                  />
+                </div>
                 <!-- Left edge handle -->
                 <div
                   class="absolute top-0 left-0 z-20 w-[6px] h-full cursor-col-resize hover:bg-white/20 rounded-l-sm"

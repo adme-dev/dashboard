@@ -1,6 +1,7 @@
 import { createError, getRouterParam } from 'h3'
 import { getDevR2BucketAdapter } from '~~/server/utils/storage'
 
+import { bannerFontMimeType } from '~~/server/utils/banner/fontValidation'
 import { queryOne } from '~~/server/utils/db'
 import {
   isBannerAssetDeliveryKey,
@@ -11,6 +12,7 @@ interface BannerAssetRow {
   id: string
   r2Key: string
   uploadedBy: string
+  tags?: string[]
 }
 
 interface R2Range {
@@ -48,7 +50,7 @@ const PRIVATE_CACHE = 'private, max-age=300, must-revalidate'
 const BIGINT_ZERO = BigInt(0)
 const BIGINT_ONE = BigInt(1)
 
-function responseHeaders(object: NativeR2Object): Headers {
+function responseHeaders(object: NativeR2Object, fontMime?: string | null): Headers {
   const headers = new Headers()
   object.writeHttpMetadata(headers)
   headers.set('etag', object.httpEtag)
@@ -58,11 +60,16 @@ function responseHeaders(object: NativeR2Object): Headers {
   headers.set('cross-origin-resource-policy', 'cross-origin')
   headers.set('x-content-type-options', 'nosniff')
   headers.set('referrer-policy', 'no-referrer')
+  if (fontMime) {
+    headers.set('content-type', fontMime)
+    headers.set('content-security-policy', 'sandbox; default-src \'none\'')
+    headers.set('content-disposition', 'attachment')
+  }
   return headers
 }
 
-function rangeNotSatisfiable(object: NativeR2Object): Response {
-  const headers = responseHeaders(object)
+function rangeNotSatisfiable(object: NativeR2Object, fontMime?: string | null): Response {
+  const headers = responseHeaders(object, fontMime)
   headers.set('content-range', `bytes */${object.size}`)
   return new Response(null, { status: 416, headers })
 }
@@ -187,7 +194,7 @@ export default defineEventHandler(async (event) => {
   let asset: BannerAssetRow | null
   try {
     asset = await queryOne<BannerAssetRow>(
-      `SELECT id, r2_key AS "r2Key", uploaded_by AS "uploadedBy"
+      `SELECT id, r2_key AS "r2Key", uploaded_by AS "uploadedBy", tags
          FROM banner_assets
         WHERE id = $1`,
       [capability.assetId]
@@ -201,6 +208,11 @@ export default defineEventHandler(async (event) => {
     || typeof asset.uploadedBy !== 'string'
     || asset.id.toLowerCase() !== capability.assetId
     || !isBannerAssetDeliveryKey(asset.r2Key, asset.uploadedBy)) {
+    throw createError({ statusCode: 404, statusMessage: 'Banner asset not found' })
+  }
+
+  const fontMime = bannerFontMimeType(asset.r2Key)
+  if (asset.tags?.includes('font') && !fontMime) {
     throw createError({ statusCode: 404, statusMessage: 'Banner asset not found' })
   }
 
@@ -220,7 +232,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 503, statusMessage: 'Banner asset storage is unavailable' })
   }
 
-  const headers = responseHeaders(metadata)
+  const headers = responseHeaders(metadata, fontMime)
   const precondition = preconditionStatus(requestHeaders, metadata)
   if (precondition) return new Response(null, { status: precondition, headers })
 
@@ -228,7 +240,7 @@ export default defineEventHandler(async (event) => {
   const range = rangeHeader && ifRangeMatches(requestHeaders.get('if-range'), metadata)
     ? parseByteRange(rangeHeader, metadata.size)
     : undefined
-  if (rangeHeader && range === null) return rangeNotSatisfiable(metadata)
+  if (rangeHeader && range === null) return rangeNotSatisfiable(metadata, fontMime)
 
   if (range) {
     headers.set('content-range', `bytes ${range.offset}-${range.offset + range.length - 1}/${metadata.size}`)
@@ -245,7 +257,7 @@ export default defineEventHandler(async (event) => {
   try {
     object = await bucket.get(asset.r2Key, range ? { range: range.native } : undefined)
   } catch (error: unknown) {
-    if (isInvalidRangeError(error)) return rangeNotSatisfiable(metadata)
+    if (isInvalidRangeError(error)) return rangeNotSatisfiable(metadata, fontMime)
     throw createError({ statusCode: 503, statusMessage: 'Banner asset storage is unavailable' })
   }
   if (!object) throw createError({ statusCode: 404, statusMessage: 'Banner asset not found' })

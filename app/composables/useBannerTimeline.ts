@@ -45,6 +45,14 @@ function getDefaultValue(prop: KeyframeProperty, layer: Layer): number {
   }
 }
 
+function renderInitialFrame(timeline: gsap.core.Timeline) {
+  // A new paused timeline is already at zero, so seek(0) alone skips its
+  // immediateRender:false sets. Prime it without callbacks, then render zero.
+  timeline.totalTime(Math.min(0.0001, timeline.duration()), true)
+  timeline.totalTime(0, true)
+  updateTimelineMasks(timeline)
+}
+
 /** Check if layer uses keyframe animation (at least one property has 2+ keyframes) */
 export function hasKeyframes(layer: Layer): boolean {
   if (!layer.keyframes) return false
@@ -571,6 +579,7 @@ export function useBannerTimeline() {
     })
 
     applyBannerPlayback(masterTl, playback)
+    renderInitialFrame(masterTl)
     state.duration = Math.max(naturalEnd, playback?.duration || 0) || 5
     return masterTl
   }
@@ -689,6 +698,7 @@ export function useBannerTimeline() {
     })
 
     applyBannerPlayback(tl, playback)
+    renderInitialFrame(tl)
     return tl
   }
 

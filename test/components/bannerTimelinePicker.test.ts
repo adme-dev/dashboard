@@ -2,11 +2,14 @@
 import * as Vue from 'vue'
 import { afterEach, expect, it, vi } from 'vitest'
 import Picker from '~/components/banner/TimelineAnimationPicker.vue'
+import type { TimelinePhase } from '~/utils/banner-timeline-phases'
+import type { Layer } from '~/types/banner-studio'
+
 for (const [name, value] of Object.entries(Vue)) vi.stubGlobal(name, value)
 const { useBannerStudio } = await import('~/composables/useBannerStudio')
 let cleanup: (() => void) | undefined
 afterEach(() => { cleanup?.(); vi.restoreAllMocks() })
-async function mount(layer: any) {
+async function mount(layer: Partial<Layer>, phase?: TimelinePhase) {
   const studio = useBannerStudio()
   studio.loadProject({ id: 'picker-test', canvasData: { mrec: { layers: [{ id: 1, name: 'Imported heading', type: 'text', text: 'Hello', x: 0, y: 0, w: 100, h: 30, opacity: 1, zIndex: 1, startTime: 0, endTime: 3, animIn: 'fadeIn', animInDur: 0.5, ...layer }] } } } as any)
   vi.stubGlobal('useBannerStudio', () => studio)
@@ -14,7 +17,12 @@ async function mount(layer: any) {
   vi.stubGlobal('useBannerTimeline', () => ({ pauseTimeline: vi.fn(), seekTo: vi.fn(), playTimeline: vi.fn() }))
   const host = document.createElement('div'); document.body.append(host)
   let picker: any
-  const app = Vue.createApp({ setup: () => () => Vue.h(Picker, { ref: (v: any) => { picker = v }, layer: studio.activeLayers.value[0], direction: 'in' }) })
+  const app = Vue.createApp({ setup: () => () => Vue.h(Picker, {
+    ref: (value: unknown) => { picker = value },
+    layer: studio.activeLayers.value[0],
+    direction: phase?.direction ?? 'in',
+    phase
+  }) })
   app.component('UButton', { props: ['label'], setup: (p, { attrs, slots }) => () => Vue.h('button', attrs, p.label || slots.default?.()) })
   app.component('UPopover', { props: ['open'], setup: (p, { slots }) => () => Vue.h('div', [slots.default?.(), p.open ? slots.content?.() : null]) })
   app.component('UFormField', { props: ['label'], setup: (p, { slots }) => () => Vue.h('label', [p.label, slots.default?.()]) })
@@ -30,6 +38,25 @@ async function mount(layer: any) {
   const change = async (label: string, value: string) => { const control = [...host.querySelectorAll('label')].find(l => l.textContent?.startsWith(label))!.querySelector('input,select') as HTMLInputElement; control.value = value; control.dispatchEvent(new Event(control.tagName === 'SELECT' ? 'change' : 'input', { bubbles: true })); await Vue.nextTick() }
   return { studio, host, click, change }
 }
+
+it('opens the clicked imported phase at its changing property without replacing any frames', async () => {
+  const keyframes = {
+    opacity: [{ time: 0, value: 0.15 }, { time: 10, value: 0.15 }],
+    scaleX: [{ time: 5, value: 8 }, { time: 6, value: 1 }, { time: 10, value: 1 }]
+  }
+  const { studio, host } = await mount({ startTime: 5, endTime: 10, keyframes }, { kind: 'entry', start: 5, end: 6, label: 'Entry · Keyframes', direction: 'in' })
+  await Vue.nextTick()
+  expect(host.textContent).toContain('Entry · Keyframes · 5.00–6.00s')
+  expect(host.querySelector('select')!.value).toBe('scaleX')
+  expect(studio.state.selectedLayerId).toBe(1)
+  expect(studio.activeLayers.value[0]!.keyframes).toEqual(keyframes)
+})
+
+it('uses the theme foreground for transparent hold blocks', async () => {
+  const { host } = await mount({}, { kind: 'hold', start: 1, end: 2, label: 'Hold', direction: 'in' })
+  const trigger = host.querySelector<HTMLButtonElement>('button[aria-label^="Edit Hold"]')!
+  expect(trigger.style.color).toBe('var(--ui-text)')
+})
 
 it('edits imported keyframes in the pop-up without replacing the rest of the motion, and undo restores them', async () => {
   const keyframes = { opacity: [{ time: 0, value: 0 }, { time: 1, value: 1 }], x: [{ time: 0, value: -50 }, { time: 2, value: 0 }] }

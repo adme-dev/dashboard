@@ -492,7 +492,21 @@ export async function convertTheBriefHtml(html) {
         const audio = element.querySelector('audio')
         if (!audio || audio.hasAttribute('loop')) throw new Error('Unsupported audio playback')
         const audioConfig = source.audioElements?.find(item => item.elementId === sourceId && item.slideId === slide.id)
-        layers.push({ ...layerBase, id: id++, type: 'audio', name: `Audio ${sourceId}`, src: localAsset(sources[0].getAttribute('src')), x: 0, y: 0, w: 1, h: 1, volume: Number.isFinite(audio.volume) ? audio.volume : 1, ...(audioConfig?.shouldPlay === false ? { muted: true } : {}) })
+        // shouldPlay is the vendor player's autoplay-retry flag: it starts false,
+        // becomes true when play() is blocked, and resets on stop. It is not mute.
+        if (audioConfig?.volume !== undefined && typeof audioConfig.volume !== 'number') throw new Error(`Audio ${sourceId}: invalid source volume`)
+        const volume = audioConfig?.volume === undefined ? audio.volume : audioConfig.volume / 100
+        if (!Number.isFinite(volume) || volume < 0 || volume > 1) throw new Error(`Audio ${sourceId}: invalid source volume`)
+        const offset = audioConfig?.startTime === undefined ? 0 : audioConfig.startTime
+        if (!Number.isFinite(offset) || offset < 0) throw new Error(`Audio ${sourceId}: invalid source clip offset`)
+        if (offset !== 0) throw new Error(`Audio ${sourceId}: source clip offset ${offset}s requires exported-clip reconciliation`)
+        if (audioConfig?.soundOnHover) throw new Error(`Audio ${sourceId}: hover playback requires an audio adapter`)
+        const stages = [audioConfig?.buildIn, audioConfig?.buildMid, audioConfig?.buildOut].filter(Boolean)
+        if (stages.some(stage => stage.type === 'fadeAudio')) throw new Error(`Audio ${sourceId}: source fades require exported-clip reconciliation`)
+        if (stages.some(stage => !['none', 'instant', 'audio'].includes(stage.type))) throw new Error(`Audio ${sourceId}: unsupported source audio effect`)
+        const delay = audioConfig?.buildIn?.delay
+        if (delay !== undefined && (!Number.isFinite(delay) || delay < 0 || Math.abs(slide.start + delay - start) > 1e-6)) throw new Error(`Audio ${sourceId}: source audio presence requires reconciliation`)
+        layers.push({ ...layerBase, id: id++, type: 'audio', name: `Audio ${sourceId}`, src: localAsset(sources[0].getAttribute('src')), x: 0, y: 0, w: 1, h: 1, volume, ...(audio.muted || audio.hasAttribute('muted') || audioConfig?.muted === true ? { muted: true } : {}) })
       } else if (type === 'text') {
         const rows = [...element.querySelectorAll('.row')]
         if (!rows.length) throw new Error('Unsupported text layout')

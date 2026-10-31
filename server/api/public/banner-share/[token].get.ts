@@ -1,4 +1,5 @@
 import { queryOneFresh, queryRowsFresh } from '~~/server/utils/db'
+import { withBannerFontDelivery } from '~~/server/utils/banner/fontDelivery'
 
 /** Public, view-only canvas. Preview tokens cannot read or write review comments. */
 export default defineEventHandler(async (event) => {
@@ -22,11 +23,12 @@ export default defineEventHandler(async (event) => {
   const fontNames = [...new Set<string>(Object.values(canvas || {}).flatMap(board =>
     Array.isArray(board?.layers) ? board.layers.map(layer => layer.fontFamily).filter((name): name is string => typeof name === 'string') : []))]
   const fonts = fontNames.length
-    ? await queryRowsFresh<{ name: string, url: string, tags: string[] }>(`
-    SELECT DISTINCT ON (name, tags) name, url, tags FROM banner_assets
+    ? await queryRowsFresh<{ id: string, name: string, url: string, tags: string[], r2Key: string, uploadedBy: string }>(`
+    SELECT DISTINCT ON (name, tags) id, name, url, tags, r2_key AS "r2Key", uploaded_by AS "uploadedBy" FROM banner_assets
     WHERE 'font' = ANY(tags) AND name = ANY($1::text[])
     ORDER BY name, tags, created_at DESC
   `, [fontNames])
     : []
-  return { project, fonts }
+  const deliveredFonts = await withBannerFontDelivery(event, fonts)
+  return { project, fonts: deliveredFonts.map(({ name, url, tags }) => ({ name, url, tags })) }
 })

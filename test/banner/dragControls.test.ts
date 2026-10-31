@@ -4,6 +4,10 @@ import * as Vue from 'vue'
 import NumericField from '../../app/components/banner/inspector/NumericField.vue'
 import Artboard from '../../app/components/banner/Artboard.client.vue'
 import TextLayer from '../../app/components/banner/layers/Text.client.vue'
+import ImageLayer from '../../app/components/banner/layers/Image.client.vue'
+import BgLayer from '../../app/components/banner/layers/Bg.client.vue'
+import VideoLayer from '../../app/components/banner/layers/Video.client.vue'
+import { useBannerTimeline as createTimelineController } from '../../app/composables/useBannerTimeline'
 import type { Layer } from '../../app/types/banner-studio'
 
 let studio: ReturnType<typeof import('../../app/composables/useBannerStudio')['useBannerStudio']>
@@ -34,7 +38,7 @@ function mount(component: Vue.Component, props = {}) {
     useKeyboard({ showExportModal: Vue.ref(false) })
     return () => Vue.h(component, props)
   } }))
-  for (const [name, impl] of Object.entries({ UButton, UInput, UFormField, USlider, UDropdownMenu: blank, BannerLayersText: TextLayer, BannerLayersRect: blank }))
+  for (const [name, impl] of Object.entries({ UButton, UInput, UFormField, USlider, UDropdownMenu: blank, BannerLayersText: TextLayer, BannerLayersRect: blank, BannerLayersImage: ImageLayer, BannerLayersBg: BgLayer, BannerLayersAudio: blank, BannerLayersVideo: VideoLayer, BannerLayersButton: blank }))
     app.component(name, impl)
   app.mount(host)
 }
@@ -71,6 +75,7 @@ beforeEach(() => {
   studio.state.selectedLayerId = 1
   studio.state.wsScale = 0.22
   studio.state.isPlaying = false
+  studio.state.currentTime = 0
   studio.state.sets = { mrec: { layers: [{ id: 1, type: 'text', text: 'Test', x: 40, y: 40, w: 100, h: 80, zIndex: 1, bgColor: '#fff', opacity: 1 } as Layer] } }
 })
 afterEach(() => {
@@ -174,6 +179,105 @@ describe('padding gestures', () => {
   })
 })
 describe('canvas resize handles', () => {
+  it.each(['video', 'bg'] as const)('silently scrubs inactive %s media forward and backward', async (type) => {
+    studio.state.sets.mrec!.playback = { duration: 10, loopCount: 0 }
+    studio.state.sets.mrec!.layers = [{ id: 1, type, srcType: 'video', src: '/test.mp4',
+      x: 0, y: 0, w: 300, h: 250, zIndex: 1, opacity: 1, startTime: 2, endTime: 8
+    } as Layer]
+    mount(Artboard, { formatKey: 'mrec', isActive: false })
+    await Vue.nextTick()
+    const video = host.querySelector('video')!
+    Object.defineProperty(video, 'duration', { configurable: true, value: 4 })
+    const play = vi.spyOn(video, 'play')
+    const pause = vi.spyOn(video, 'pause')
+    for (const [time, expected] of [[5, 3], [9, 4], [3, 1], [1, 0]]) {
+      studio.state.currentTime = time!
+      await Vue.nextTick()
+      expect(video.currentTime).toBe(expected)
+      expect(video.paused).toBe(true)
+    }
+    expect(pause).toHaveBeenCalledTimes(4)
+    expect(play).not.toHaveBeenCalled()
+  })
+  it('keeps the previous active layout synchronized after the editor switches its timeline owner', async () => {
+    const imported = {
+      playback: { duration: 10, loopCount: 0 },
+      layers: [{ id: 1, type: 'image', name: 'Texture', x: 0, y: 0, w: 100, h: 100,
+        zIndex: 1, opacity: 0.15, startTime: 0, endTime: 10, clipToPresence: true,
+        keyframes: { opacity: [{ time: 0, value: 0 }, { time: 4, value: 0.4, easing: 'none' }, { time: 10, value: 0.4 }] } } as Layer]
+    }
+    studio.state.sets = { mrec: JSON.parse(JSON.stringify(imported)), leader: JSON.parse(JSON.stringify(imported)) }
+    studio.state.setKeys = ['mrec', 'leader']
+    const controller = createTimelineController()
+    let rebuilding: Promise<void> = Promise.resolve()
+    const wrapper = Vue.defineComponent({ setup() {
+      async function rebuild() {
+        await Vue.nextTick()
+        await new Promise(resolve => setTimeout(resolve, 10))
+        controller.buildTimeline(host.querySelector<HTMLElement>(`[data-board="${studio.state.activeKey}"]`)!, studio.activeLayers.value)
+      }
+      // StudioEditor releases the master in pre-flush, before overview ownership.
+      Vue.watch(() => studio.state.activeKey, () => {
+        controller.destroyTimeline()
+        rebuilding = rebuild()
+      })
+      Vue.onMounted(() => {
+        rebuilding = rebuild()
+      })
+      Vue.onBeforeUnmount(controller.destroyTimeline)
+      return () => Vue.h('div', ['mrec', 'leader'].map(key => Vue.h(Artboard, { key, 'data-board': key, 'formatKey': key, 'isActive': studio.state.activeKey === key })))
+    } })
+    mount(wrapper)
+    await rebuilding
+    studio.state.activeKey = 'leader'
+    await Vue.nextTick()
+    await rebuilding
+    controller.seekTo(2)
+    await Vue.nextTick()
+    const previous = host.querySelector<HTMLElement>('[data-board="mrec"] #lyr-1')!
+    const firstOpacity = Number(previous.style.opacity)
+    controller.seekTo(4)
+    await Vue.nextTick()
+    expect(Number(previous.style.opacity)).toBeCloseTo(0.4)
+    expect(firstOpacity).toBeLessThan(Number(previous.style.opacity))
+  })
+  it('renders inactive imported layouts at the shared playhead with opacity and presence intact', async () => {
+    studio.state.sets.mrec!.playback = { duration: 10, loopCount: 0 }
+    studio.state.sets.mrec!.layers = [{
+      id: 1, type: 'image', name: 'Background texture', x: 0, y: 0, w: 300, h: 250,
+      zIndex: 1, opacity: 0.15, src: '/texture.png', startTime: 0, endTime: 5,
+      clipToPresence: true,
+      keyframes: { opacity: [{ time: 0, value: 0.15 }, { time: 5, value: 0.15 }] }
+    } as Layer, {
+      id: 2, type: 'image', name: 'Second slide', x: 0, y: 0, w: 100, h: 100,
+      zIndex: 2, opacity: 1, startTime: 5, endTime: 10, clipToPresence: true,
+      keyframes: { opacity: [{ time: 5, value: 0 }, { time: 6, value: 1 }, { time: 10, value: 1 }] }
+    } as Layer]
+    mount(Artboard, { formatKey: 'mrec', isActive: false })
+    await Vue.nextTick()
+    const element = host.querySelector<HTMLElement>('#lyr-1')!
+    expect(host.querySelector<HTMLElement>('#lyr-2')!.style.visibility).toBe('hidden')
+    studio.state.currentTime = 3.1
+    await Vue.nextTick()
+    expect(Number(element.style.opacity)).toBeCloseTo(0.15)
+    expect(element.style.visibility).toBe('visible')
+    studio.state.currentTime = 6
+    await Vue.nextTick()
+    expect(element.style.visibility).toBe('hidden')
+    studio.state.currentTime = 1
+    await Vue.nextTick()
+    expect(element.style.visibility).toBe('visible')
+    expect(Number(element.style.opacity)).toBeCloseTo(0.15)
+  })
+  it('retains timeline transforms when the imported playhead updates Vue', async () => {
+    Object.assign(layer(), { clipToPresence: true, startTime: 0, endTime: 10 })
+    mount(Artboard, { formatKey: 'mrec', isActive: true })
+    const element = host.querySelector<HTMLElement>('#lyr-1')!
+    element.style.transform = 'translate(20px, 0px) scale(4)'
+    studio.state.currentTime = 5.1
+    await Vue.nextTick()
+    expect(element.style.transform).toBe('translate(20px, 0px) scale(4)')
+  })
   it('keeps handles 12 screen pixels at low zoom and outside clipped/overlapping layers', async () => {
     studio.state.sets.mrec!.layers.push({ id: 2, type: 'rect', x: 100, y: 60, w: 100, h: 100, zIndex: 20000 } as Layer)
     mount(Artboard, { formatKey: 'mrec', isActive: true })
