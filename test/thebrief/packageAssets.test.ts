@@ -72,6 +72,7 @@ it('preserves namespaced font bytes and exact weights without colliding with a s
       .replace('font-family:Arial', `font-family:'${namespaced}'`)
       .replace('font-weight:700;color:', 'font-weight:325;color:')
       .replace('Hello world</div>', `First</div><div class="row" style="font-family:'${similar}';font-weight:700">Second</div>`)
+      .replace('height:80px', 'height:57.6px')
     const entries = { 'index.html': strToU8(html), 'one.ttf': firstFont, 'two.ttf': secondFont }
     for (const [name, bytes] of Object.entries(entries)) writeFileSync(join(directory, name), bytes)
     const archive = join(directory, 'source.zip'), output = join(directory, 'package.json')
@@ -96,7 +97,7 @@ it('keeps normal and italic faces separate at the same weight in packages and co
     const html = source.replace('<style>', `<style>@font-face{font-family:'Demo';font-weight:700;font-style:normal;src:url('./normal.ttf') format('truetype')}@font-face{font-family:'Demo';font-weight:700;font-style:italic;src:url('./italic.ttf') format('truetype')}`)
       .replace('designData:{', 'designData:{designHash:"italic-fixture",')
       .replace('font-family:Arial', 'font-family:Demo')
-      .replace('Hello world</div>', 'Normal</div><div class="row" style="font-style:italic">Italic</div>')
+      .replace('Hello world</div>', 'Normal</div><div class="row" style="font-style:italic">Italic</div>').replace('height:80px', 'height:57.6px')
     const normal = Buffer.from('000100000000000000000001', 'hex'), italic = Buffer.from('000100000000000000000002', 'hex')
     const entries = { 'index.html': strToU8(html), 'normal.ttf': normal, 'italic.ttf': italic }
     for (const [name, bytes] of Object.entries(entries)) writeFileSync(join(directory, name), bytes)
