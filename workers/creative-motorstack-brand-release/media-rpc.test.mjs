@@ -141,3 +141,27 @@ test('CDN bytes retain MIME and size validation', async () => {
     await assert.rejects(api.getMediaAsset({ brandId: 'gwm', model: '300', assetId: assets[0].id }), /asset_type_refused|provider_response_too_large/)
   }
 })
+
+
+test('accepts CDN WebP conversion behind PNG paths only with matching raster signature', async () => {
+  const bytes = new Uint8Array([82,73,70,70,4,0,0,0,87,69,66,80]);
+  const { api } = setup({ assetResponse: () => new Response(bytes, { headers: { 'Content-Type': 'image/webp' } }) })
+  const { assets } = await api.listMedia({ brandId: 'gwm' })
+  const file = await api.getMediaAsset({ brandId: 'gwm', assetId: assets.find(a => a.mime === 'image/png').id })
+  assert.equal(file.headers.get('Content-Type'), 'image/webp')
+  assert.match(file.headers.get('Content-Disposition'), /webp/)
+  assert.deepEqual(new Uint8Array(await file.arrayBuffer()), bytes)
+  for (const [mime, body] of [['image/webp','bad'], ['text/html','<html/>'], ['image/svg+xml','<svg/>']]) {
+    const { adapter } = setup({ assetResponse: () => new Response(body, { headers: { 'Content-Type': mime } }) })
+    await assert.rejects(adapter.binary(key, { original: imageH7, mime: 'image/png', name: 'H7' }), /asset_type_refused/)
+  }
+})
+
+test('brand browsing includes colour heroes; model browsing includes named gallery images', async () => {
+  const { api, calls } = setup({ variants: { vehicles: [{model:'H7', title:'GWM H7 Lux', colours:[{name:'Hamilton White',main_photo_url:imageH7,photos:[cdn+'/gwm/images/h7/white-side.png']}]}] } })
+  const all = await api.listMedia({brandId:'gwm'})
+  assert.ok(all.assets.some(a => a.name.includes('Hamilton White')))
+  await api.listMedia({brandId:'gwm',model:'H7'})
+  const args = calls.filter(c=>c.url===provider+'/api/mcp').map(c=>JSON.parse(c.options.body).params).filter(c=>c.name==='get_variants').map(c=>c.arguments)
+  assert.deepEqual(args, [{oem:'gwm',include_photos:false},{oem:'gwm',model:'H7',include_photos:true}])
+})

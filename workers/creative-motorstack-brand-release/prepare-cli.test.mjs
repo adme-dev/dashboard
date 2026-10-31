@@ -9,7 +9,7 @@ test('media release pins reviewed modules and retains runtime/assets/bindings', 
   assert.equal(run.status, 0, run.stderr)
   const config = JSON.parse(readFileSync(root + 'dist/wrangler.release.json', 'utf8'))
   const manifest = JSON.parse(readFileSync(root + 'dist/manifest.json', 'utf8'))
-  const baseline = JSON.parse(readFileSync(root + 'source/media-release-baseline.json', 'utf8'))
+  const baseline = JSON.parse(readFileSync(root + 'source/media-repair-baseline.json', 'utf8'))
   assert.deepEqual(manifest.modules, baseline.candidateModuleHashes)
   assert.deepEqual(config.compatibility_flags, ['global_fetch_strictly_public'])
   assert.equal(config.compatibility_date, baseline.runtime.compatibility_date)

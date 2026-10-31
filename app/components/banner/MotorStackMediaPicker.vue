@@ -23,6 +23,8 @@ const allModels = '__all_models__'
 const brandId = ref<string>()
 const model = ref(allModels)
 const search = ref('')
+const assetType = ref('images')
+const typeItems = [{ label: 'Images', value: 'images' }, { label: 'Documents', value: 'documents' }, { label: 'All media', value: 'all' }]
 const media = ref<MotorStackMediaResponse | null>(null)
 const modelNames = ref<string[]>([])
 const loadingMedia = ref(false)
@@ -44,8 +46,13 @@ const { data: mediaData, error: mediaFetchError, execute: fetchMedia } = useFetc
 const brandItems = computed(() => (brandsData.value?.brands || []).map(brand => ({ label: brand.name, value: brand.id })))
 const modelItems = computed(() => [{ label: 'All models', value: allModels }, ...modelNames.value.map(name => ({ label: name, value: name }))])
 const filteredAssets = computed(() => {
-  const query = search.value.trim().toLowerCase()
-  return (media.value?.assets || []).filter(asset => !query || `${asset.name} ${asset.type}`.toLowerCase().includes(query))
+  const terms = search.value.trim().toLowerCase().split(/\s+/).filter(Boolean)
+  return (media.value?.assets || []).filter((asset) => {
+    if (assetType.value === 'images' && !isImage(asset)) return false
+    if (assetType.value === 'documents' && !isPdf(asset)) return false
+    const text = `${asset.name} ${asset.type} ${formatLabel(asset)}`.toLowerCase()
+    return terms.every(term => text.includes(term))
+  })
 })
 const busy = computed(() => importing.value !== null)
 
@@ -67,6 +74,7 @@ async function loadMedia() {
     if (generation !== requestGeneration) return
     if (mediaFetchError.value) throw mediaFetchError.value
     if (!mediaData.value || mediaData.value.brand.id !== selectedBrand) throw new Error('The media list did not match the selected brand. Try again.')
+    previewErrors.value = {}
     media.value = mediaData.value
     modelNames.value = [...new Set([...modelNames.value, ...mediaData.value.models.filter(name => name.trim() && name !== allModels)])]
   } catch (error) {
@@ -140,7 +148,7 @@ async function importAsset(asset: MotorStackMediaAsset) {
           :description="apiErrorDescription(brandsError, 'Try loading the brand list again.')"
           :actions="[{ label: 'Retry loading', color: 'error', variant: 'soft', onClick: () => loadBrands() }]"
         />
-        <div class="grid grid-cols-1 gap-4 @lg:grid-cols-3">
+        <div class="grid grid-cols-1 gap-4 @lg:grid-cols-2">
           <UFormField label="Brand">
             <USelectMenu
               :model-value="brandId"
@@ -162,15 +170,26 @@ async function importAsset(asset: MotorStackMediaAsset) {
               class="w-full"
             />
           </UFormField>
+          <UFormField label="Media type">
+            <USelectMenu
+              v-model="assetType"
+              :items="typeItems"
+              value-key="value"
+              class="w-full"
+            />
+          </UFormField>
           <UFormField label="Search media">
             <UInput
               v-model="search"
               icon="i-lucide-search"
-              placeholder="Name or asset type"
+              placeholder="Model, grade, colour or image name"
               class="w-full"
             />
           </UFormField>
         </div>
+        <p v-if="brandId" class="text-sm text-muted">
+          {{ model === allModels ? 'Browse colour images across this brand. Choose a model to include its gallery and interior photos.' : 'Search this model’s colour images, gallery and interior photos.' }}
+        </p>
         <UAlert
           v-for="warning in brandsData?.warnings || []"
           :key="warning"
@@ -209,7 +228,7 @@ async function importAsset(asset: MotorStackMediaAsset) {
             </p>
           </div>
           <div v-if="!filteredAssets.length" class="py-16 text-center text-sm text-muted">
-            {{ media.assets.length ? 'No media matches this search. Try another name or asset type.' : 'No media is available for this selection. Try another model or brand.' }}
+            {{ media.assets.length ? 'No media matches these filters. Try another model, colour or media type.' : 'No media is available for this selection. Try another model or brand.' }}
           </div>
           <ul v-else class="grid max-h-[min(55vh,38rem)] grid-cols-1 gap-4 overflow-y-auto @sm:grid-cols-2 @2xl:grid-cols-3" aria-label="MotorStack media assets">
             <li v-for="asset in filteredAssets" :key="asset.id" class="flex min-w-0 flex-col overflow-hidden rounded-lg border border-default">
@@ -227,6 +246,14 @@ async function importAsset(asset: MotorStackMediaAsset) {
                   <p class="text-xs">
                     {{ isPdf(asset) ? 'PDF document' : 'Preview unavailable' }}
                   </p>
+                  <UButton
+                    v-if="isImage(asset) && asset.previewUrl && previewErrors[assetKey(asset)]"
+                    label="Retry preview"
+                    color="neutral"
+                    variant="outline"
+                    size="xs"
+                    @click="previewErrors[assetKey(asset)] = false"
+                  />
                 </div>
               </div>
               <div class="flex flex-1 flex-col gap-3 p-3">

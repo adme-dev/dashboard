@@ -76,6 +76,14 @@ describe('MotorStack media picker', () => {
     const addLayer = vi.fn()
     const api = vi.fn(async (_url: string) => ({ assets: [] }))
     vi.stubGlobal('$fetch', api)
+    vi.stubGlobal('useFetch', (url: string) => {
+      const data = Vue.ref({ assets: [] })
+      const refresh = async () => {
+        data.value = await api(url)
+      }
+      refresh()
+      return { data, error: Vue.ref(null), status: Vue.ref('success'), refresh }
+    })
     vi.stubGlobal('useBannerStudio', () => ({ addLayer, nextId: () => 1, activeLayers: Vue.ref([]) }))
     vi.stubGlobal('useDecompose', () => ({ decomposingAssetId: Vue.ref(null), decomposeFromUrl: vi.fn() }))
     vi.stubGlobal('useAiImageGenerate', () => ({ openGenerate: vi.fn() }))
@@ -99,6 +107,9 @@ describe('MotorStack media picker', () => {
     choose('Brand', 'gwm')
     await settle()
     expect(write).not.toHaveBeenCalled()
+    expect(host.querySelector('a')).toBeNull()
+    choose('Media type', 'all')
+    await settle()
     expect(host.querySelector('a')?.getAttribute('href')).toBe('/preview/doc-1')
     expect([...host.querySelectorAll('button')].filter(item => item.textContent === 'Add to library')).toHaveLength(1)
     expect(host.textContent).toContain('This file cannot be added as an image.')
@@ -117,12 +128,32 @@ describe('MotorStack media picker', () => {
     await settle()
     expect(queries).toEqual([{ brandId: 'gwm' }, { brandId: 'gwm', model: 'Cannon' }])
     expect(host.querySelector('[data-field="Model"]')?.textContent).toContain('Tank')
+    choose('Media type', 'all')
+    await settle()
     const search = host.querySelector('input')!
     search.value = 'brochure'
     search.dispatchEvent(new Event('input', { bubbles: true }))
     await settle()
     expect(host.textContent).toContain('1 of 3 assets')
     expect(host.textContent).not.toContain('Cannon exterior')
+    expect(write).not.toHaveBeenCalled()
+  })
+
+  it('matches words in any order and retries failed previews without importing', async () => {
+    const { write } = await mount()
+    choose('Brand', 'gwm')
+    await settle()
+    const input = host.querySelector('input')!
+    input.value = 'exterior cannon JPG'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    await settle()
+    expect(host.textContent).toContain('1 of 3 assets')
+    host.querySelector('img')!.dispatchEvent(new Event('error'))
+    await settle()
+    expect(host.textContent).toContain('Preview unavailable')
+    button('Retry preview').click()
+    await settle()
+    expect(host.querySelector('img')?.getAttribute('src')).toBe(image.previewUrl)
     expect(write).not.toHaveBeenCalled()
   })
 
