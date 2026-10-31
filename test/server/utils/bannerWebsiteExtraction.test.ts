@@ -6,6 +6,30 @@ const response = (body: string | Uint8Array, type = 'text/html', status = 200, h
 const dependencies = (handler: (url: string) => Response) => ({ resolver, fetcher: vi.fn(async (url: string | URL | Request) => handler(String(url))) as unknown as typeof fetch })
 
 describe('bounded public brand website extraction', () => {
+  it('uses a guarded browser resource for Cloudflare 520 HTML and CSS responses', async () => {
+    const browserResource = vi.fn(async (url: string, kind: 'html' | 'css' | 'logo') => ({
+      url,
+      mimeType: kind === 'html' ? 'text/html' : kind === 'css' ? 'text/css' : 'image/svg+xml',
+      bytes: Buffer.from(kind === 'html'
+        ? '<title>BMW</title><link rel="stylesheet" href="/brand.css"><img alt="BMW logo" src="/logo.svg">'
+        : kind === 'css' ? 'body{font-family:"BMW Type";color:#003399}' : '<svg xmlns="http://www.w3.org/2000/svg"><switch><g><path fill="#003399" d="M0 0h10v10z"/></g></switch></svg>')
+    }))
+    const deps = {
+      resolver,
+      fetcher: vi.fn(async () => response('edge error', 'text/plain', 520)) as unknown as typeof fetch,
+      browserResource
+    }
+    const page = await extractBrandWebsite('https://www.bmw.com.au/en/home.html', deps)
+    expect(page.title).toBe('BMW')
+    expect(page.fonts[0]?.family).toBe('BMW Type')
+    expect(page.primaryColors).toContain('#003399')
+    expect(page.logoCandidates).toContain('https://www.bmw.com.au/logo.svg')
+    expect(browserResource).toHaveBeenCalledTimes(2)
+    const logo = await fetchBrandWebsiteLogo('https://www.bmw.com.au/logo.svg', deps)
+    expect(logo.mimeType).toBe('image/svg+xml')
+    expect(browserResource).toHaveBeenCalledTimes(3)
+  })
+
   it('reads larger OEM homepages while enforcing the 2 MiB streamed HTML bound', async () => {
     const html = '<title>OEM homepage</title><!--' + ' '.repeat(620 * 1024) + '-->'
     const page = await extractBrandWebsite('https://brand.example/', dependencies(() => response(html)))
@@ -25,7 +49,7 @@ describe('bounded public brand website extraction', () => {
     const page = await extractBrandWebsite('https://brand.example/', deps)
     expect(page.url).toBe('https://brand.example/shop/')
     expect(page.brandName).toBe('Example Brand')
-    expect(page.fonts).toEqual([{ role: 'heading', family: 'Dealer Sans', weights: [400, 600] }, { role: 'body', family: 'Dealer Display', weights: [700] }])
+    expect(page.fonts).toEqual([{ role: 'heading', family: 'Dealer Sans', weights: [400, 600], defaultWeight: 400 }, { role: 'body', family: 'Dealer Display', weights: [700], defaultWeight: 700 }])
     expect(page.primaryColors).toEqual(expect.arrayContaining(['#aabbcc', '#abcdef', '#ff9900']))
     expect(page.logoCandidates).toEqual(['https://brand.example/logo.svg'])
     expect(page.stylesheetsRead).toBe(2)
@@ -82,6 +106,18 @@ describe('bounded public brand website extraction', () => {
     expect([...signals.colors.keys()]).toEqual(['#112233'])
     expect([...signals.fonts.keys()]).toEqual(['Another Brand'])
   })
+
+  it('ignores icon fonts and assigns a single text family to both type roles', async () => {
+    const css = '@font-face{font-family:"bmw_next_icons";font-weight:400}body{font-family:"bmwTypeNextWeb";font-weight:400}h1{font-family:"bmwTypeNextWeb";font-weight:700}'
+    const signals = readBrandCssSignals(css)
+    expect([...signals.fonts.keys()]).toEqual(['bmwTypeNextWeb'])
+    const deps = dependencies(url => url.endsWith('.css') ? response(css, 'text/css') : response('<title>BMW</title><link rel="stylesheet" href="/brand.css">'))
+    const page = await extractBrandWebsite('https://brand.example/', deps)
+    expect(page.fonts).toEqual([
+      { role: 'heading', family: 'bmwTypeNextWeb', weights: [400, 700], defaultWeight: 700 },
+      { role: 'body', family: 'bmwTypeNextWeb', weights: [400, 700], defaultWeight: 400 }
+    ])
+  })
 })
 
 describe('website logo mirroring boundary', () => {
@@ -95,6 +131,12 @@ describe('website logo mirroring boundary', () => {
     for (const value of ['rgb(256,0,0)', 'rgb(-1,0,0)', 'rgb(NaN,0,0)', 'rgb(calc(1),0,0)', 'rgb(0,0,0) url(https://evil.example/)', 'expression(evil())']) {
       expect(() => validateSvg(`<svg style="fill:${value}"/>`)).toThrow()
     }
+  })
+  it('accepts inert SVG switch groups and static gradient stop colours only', () => {
+    const safe = validateSvg('<svg><switch><g><linearGradient><stop style="stop-color:#e6e6ea;stop-opacity:0.5"/></linearGradient></g></switch></svg>')
+    expect(safe.bytes.toString()).toContain('<switch>')
+    expect(() => validateSvg('<svg><switch requiredFeatures="x"><path d="M0 0"/></switch></svg>')).toThrow('switch attributes')
+    expect(() => validateSvg('<svg><switch><foreignObject><script>bad()</script></foreignObject></switch></svg>')).toThrow()
   })
   it('retains static mask modes and Unicode local gradient references', () => {
     const svg = '<svg aria-labelledby="title"><title id="title">Brand</title><defs><linearGradient id="名称未設定グラデーション_11"><stop offset="0" stop-color="#fff"/></linearGradient><mask id="mask" style="mask-type:luminance"><rect width="10" height="10" fill="#fff"/></mask><mask id="alpha" style="mask-type:alpha"/><style>.mark{fill:url(#名称未設定グラデーション_11);}</style></defs><path class="mark" mask="url(#mask)" fill="url(#名称未設定グラデーション_11)"/></svg>'

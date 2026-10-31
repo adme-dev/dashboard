@@ -17,6 +17,10 @@ export default {
     const image = await rpc.getMediaAsset({brandId:'ford',model:'Ranger',assetId:media.assets[0].id})
     assert(image instanceof Response && image.headers.get('Content-Type') === 'image/png', 'Media Response lost across RPC')
     assert([...new Uint8Array(await image.arrayBuffer())].join(',') === '137,80,78,71', 'Media Response bytes changed')
+    const variants = await rpc.listCreativeCatalog({brandId:'ford',kind:'variants'})
+    assert(variants.items[0].title === 'Ranger XLT' && variants.items[0].egcPrice === 59990, 'Variant catalogue lost across RPC')
+    const offers = await rpc.listCreativeCatalog({brandId:'ford',kind:'offers'})
+    assert(offers.items[0].disclaimer === 'Terms apply.' && offers.items[0].endDate === '2026-11-30', 'Offer terms lost across RPC')
     let denied = false
     try { await rpc.getBrandKit('missing') } catch (error) { denied = error.message.includes('brand_not_available') }
     assert(denied, 'RPC denied-brand error did not survive')

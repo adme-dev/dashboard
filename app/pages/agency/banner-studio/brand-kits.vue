@@ -43,7 +43,7 @@ function openProject(p: BannerProject) {
           Brand kits
         </h1>
         <p class="text-sm text-(--ui-text-muted)">
-          Shared OEM and client kits: colour roles, uploaded fonts, logos for light and dark, and brand guidance.
+          Shared OEM and client kits with colours, fonts, logos and layout guidance. Use a kit in Banner Studio to start from matching banner templates.
         </p>
       </div>
     </div>

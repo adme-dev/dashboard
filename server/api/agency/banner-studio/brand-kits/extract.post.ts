@@ -6,6 +6,7 @@
 import { requireRole } from '~~/server/utils/auth'
 import { PERMISSIONS } from '~~/server/utils/permissions'
 import { extractBrandWebsite, fetchBrandWebsiteLogo } from '~~/server/utils/banner/websiteExtraction'
+import { browserWebsiteResource } from '~~/server/utils/banner/browserWebsiteFallback'
 import { queryOne } from '~~/server/utils/db'
 import { getAppUrl } from '~~/server/utils/appUrl'
 import { uploadBannerAsset, createBannerAssetStorageKey, createBannerAssetId, bannerAssetDeliveryUrl, deleteBannerFile } from '~~/server/utils/bannerStorage'
@@ -31,10 +32,21 @@ export default defineEventHandler(async (event) => {
   const url = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`
 
   let page: Awaited<ReturnType<typeof extractBrandWebsite>>
+  const browserResource = browserWebsiteResource(event)
   try {
-    page = await extractBrandWebsite(url)
-  } catch {
-    throw createError({ statusCode: 422, statusMessage: 'Could not safely read that public website. Check the URL and try again.' })
+    page = await extractBrandWebsite(url, { browserResource })
+  } catch (cause) {
+    const detail = cause instanceof Error ? cause.message : ''
+    const statusMessage = detail === 'Public HTTP(S) origin required'
+      ? 'Could not verify that URL as a public website. Check the address and try again.'
+      : /^Website returned HTTP (403|429)$/.test(detail)
+        ? 'That website blocked automated reading. Try its public homepage or import a MotorStack brand kit.'
+        : /^Website returned HTTP \d+$/.test(detail)
+          ? `The website could not be read (${detail}). Check the address and try again.`
+          : detail === 'Website resource had an unsupported content type'
+            ? 'That URL did not return a readable web page. Try the public homepage.'
+            : 'Could not read that website. Check the URL and try again.'
+    throw createError({ statusCode: 422, statusMessage })
   }
   if (!page.title && !page.primaryColors.length && !page.logoCandidates.length && !page.fonts.length) {
     throw createError({ statusCode: 422, statusMessage: 'Could not read that page — check the URL is public' })
@@ -75,7 +87,7 @@ export default defineEventHandler(async (event) => {
   for (const cand of page.logoCandidates.slice(0, 3)) {
     if (logos.length >= 2) break
     try {
-      const { bytes: buffer, mimeType: type } = await fetchBrandWebsiteLogo(cand)
+      const { bytes: buffer, mimeType: type } = await fetchBrandWebsiteLogo(cand, { browserResource })
       const ext = type.includes('svg') ? 'svg' : type.includes('png') ? 'png' : type.includes('webp') ? 'webp' : type.includes('gif') ? 'gif' : 'jpg'
       const fileName = `${host}-logo-${logos.length + 1}.${ext}`
       const assetId = createBannerAssetId()

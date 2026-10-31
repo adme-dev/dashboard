@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { transactionWithoutRetry, getTransactionFailureStage } from '~~/server/utils/db'
 import { getAppUrl } from '~~/server/utils/appUrl'
 import { bannerAssetDeliveryUrl, createBannerAssetId, createBannerAssetStorageKey, deleteBannerFile, uploadBannerAsset } from '~~/server/utils/bannerStorage'
+import { detectBannerAssetMime } from '~~/shared/utils/bannerAssetIdentity'
 import { resolveBannerAssetDelivery } from './assetDelivery'
 import { validateBannerAssetUpload } from './assetUploadValidation'
 import { boundedMotorstackCall, motorstackBrandId, readMotorstackAsset } from './motorstackClient'
@@ -37,17 +38,19 @@ export async function readMedia(binding: MediaBinding, input: Selection) {
   const file = await readMotorstackAsset({ listBrands: async () => null, getBrandKit: async () => null, getBrandAsset: () => binding.getMediaAsset(input) }, input.brandId, input.assetId, 20 * 1024 * 1024)
   const rasterMimes = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif'])
   if (file.mimeType !== asset.mime && !(rasterMimes.has(file.mimeType) && rasterMimes.has(asset.mime))) throw createError({ statusCode: 502, statusMessage: 'MotorStack media type changed; refresh the library' })
-  const filename = `motorstack-${asset.name.replace(/[^\p{L}\p{N} ._-]/gu, '-').slice(0, 150)}.${EXTENSIONS[file.mimeType]}`
+  const detectedMime = asset.mime === 'application/pdf' ? null : detectBannerAssetMime(file.bytes)
+  const mimeType = detectedMime && rasterMimes.has(detectedMime) ? detectedMime : file.mimeType
+  const filename = `motorstack-${asset.name.replace(/[^\p{L}\p{N} ._-]/gu, '-').slice(0, 150)}.${EXTENSIONS[mimeType]}`
   if (asset.mime === 'application/pdf') {
     if (file.bytes.subarray(0, 5).toString() !== '%PDF-') throw createError({ statusCode: 502, statusMessage: 'MotorStack document is invalid' })
   } else {
     try {
-      validateBannerAssetUpload({ filename, type: file.mimeType, data: file.bytes })
+      validateBannerAssetUpload({ filename, type: mimeType, data: file.bytes })
     } catch {
       throw createError({ statusCode: 502, statusMessage: 'MotorStack image is invalid or unsupported' })
     }
   }
-  return { ...file, asset, filename }
+  return { ...file, mimeType, asset, filename }
 }
 export async function importMedia(event: H3Event, binding: MediaBinding, input: Selection, userId: string) {
   const file = await readMedia(binding, input)

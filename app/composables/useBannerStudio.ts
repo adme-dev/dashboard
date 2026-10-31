@@ -5,6 +5,7 @@ import type { Layer, ArtboardState, BannerProject, UndoAction, BannerBrandKit, A
 import { toRaw } from 'vue'
 import { FORMATS, TEMPLATES, migrateLayer, DEFAULT_BG, resolveBannerFormat } from '~/utils/banner-constants'
 import { brandColor, brandFont, brandFontSelection, isLogoLayer, isDarkColor } from '~/utils/banner-brand-kit'
+import { buildBrandTemplateLayers, type BrandTemplateVariant } from '~/utils/banner-brand-templates'
 
 // Module-scope singleton state
 let _uid = 1
@@ -529,6 +530,30 @@ export function useBannerStudio() {
     })
     state.selectedLayerId = null
     state.isDirty = true
+  }
+
+  function loadBrandTemplate(kit: BannerBrandKit, variant: BrandTemplateVariant, vehicleImageUrl?: string | null) {
+    const before = JSON.parse(JSON.stringify(state.sets))
+    const beforeAccent = state.accentColor
+    const beforeBg = state.bgColor
+    state.setKeys.forEach(key => {
+      const fmt = FORMATS[key]
+      if (!fmt) return
+      state.sets[key] = { layers: buildBrandTemplateLayers(kit, fmt, variant, vehicleImageUrl).map(layer => migrateLayer({ ...layer, id: nextId() })) }
+    })
+    state.accentColor = brandColor(kit, 'accent') || state.accentColor
+    state.bgColor = state.sets[state.activeKey]?.layers.find(layer => layer.type === 'bg')?.bgColor || state.bgColor
+    state.selectedLayerId = null
+    state.isDirty = true
+    pushUndo({
+      type: 'applyBrandKit',
+      before: { sets: before, accentColor: beforeAccent, bgColor: beforeBg },
+      after: { sets: JSON.parse(JSON.stringify(state.sets)), accentColor: state.accentColor, bgColor: state.bgColor }
+    })
+    try {
+      const { loadUsedFonts } = useBannerFonts(() => state.project?.clientId ?? null)
+      loadUsedFonts(state.setKeys.flatMap(key => state.sets[key]?.layers || []))
+    } catch {}
   }
 
   // ── Background layer operations ──────
@@ -1128,6 +1153,7 @@ export function useBannerStudio() {
     syncAllFromActive,
     loadBannerSet,
     loadTemplate,
+    loadBrandTemplate,
     // Background
     addBgLayer,
     // Animation clipboard

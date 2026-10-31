@@ -1,8 +1,14 @@
 <script setup lang="ts">
 import type { BannerTemplateDB } from '~/types/banner-studio'
 import { TEMPLATES, FORMATS, migrateLayer } from '~/utils/banner-constants'
+import { motorstackBrandId } from '~~/shared/bannerBrandGuides'
+import { chooseMotorstackPreview, type MotorstackPreviewCatalog } from '~/utils/banner-brand-preview-media'
 
-const { loadTemplate, state } = useBannerStudio()
+const { loadTemplate, loadBrandTemplate, state } = useBannerStudio()
+const { kit, kitId, brandKits } = useBannerProjectBrand()
+const oemKits = computed(() => (brandKits.value || [])
+  .filter(item => motorstackBrandId(item.sourceUrl))
+  .sort((a, b) => a.name.localeCompare(b.name)))
 const toast = useToast()
 const router = useRouter()
 const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string }) => Promise<T>
@@ -18,6 +24,31 @@ function applyTemplate(id: string) {
   loadTemplate(id)
   const tpl = TEMPLATES.find(t => t.id === id)
   toast.add({ title: 'Template applied', description: `${tpl?.name || id} loaded to all artboards`, color: 'success' })
+}
+
+const applyingBrandTemplate = ref(false)
+async function applySelectedBrandTemplate(variant: 'hero' | 'dual-cta') {
+  const selectedKit = kit.value
+  if (!selectedKit || applyingBrandTemplate.value) return
+  applyingBrandTemplate.value = true
+  let vehicleImageUrl: string | null = null
+  try {
+    const brandId = motorstackBrandId(selectedKit.sourceUrl)
+    if (brandId) {
+      const catalog = await $fetch<MotorstackPreviewCatalog>('/api/agency/banner-studio/motorstack/media', { query: { brandId } })
+      const selected = chooseMotorstackPreview(catalog)
+      if (selected) {
+        const imported = await $fetch<{ asset: { url: string } }>('/api/agency/banner-studio/motorstack/media', { method: 'POST', body: { brandId, assetId: selected.asset.id } })
+        vehicleImageUrl = imported.asset.url
+      }
+    }
+  } catch {
+    toast.add({ title: 'Vehicle image unavailable', description: 'The brand layout will use its colour background.', color: 'warning' })
+  } finally {
+    loadBrandTemplate(selectedKit, variant, vehicleImageUrl)
+    toast.add({ title: 'Brand template applied', description: `${selectedKit.name} layout loaded to all artboards. Undo to restore.`, color: 'success' })
+    applyingBrandTemplate.value = false
+  }
 }
 
 // DB templates
@@ -80,13 +111,37 @@ async function applyDbTemplate(tpl: BannerTemplateDB) {
 
 <template>
   <div class="p-3">
+    <div class="mb-5">
+      <h4 class="text-xs font-bold uppercase tracking-wider text-muted mb-2">Brand templates</h4>
+      <p class="text-xs text-muted mb-3">Choose an OEM below or use the selected client kit to build editable layouts.</p>
+      <div v-if="oemKits.length" class="mb-3 max-h-36 overflow-y-auto rounded-md border border-default p-2 flex flex-wrap gap-1.5" aria-label="OEM brand templates">
+        <UButton
+          v-for="brand in oemKits"
+          :key="brand.id"
+          :label="brand.name"
+          size="xs"
+          color="neutral"
+          :variant="kitId === brand.id ? 'solid' : 'soft'"
+          :disabled="applyingBrandTemplate"
+          @click="kitId = brand.id"
+        />
+      </div>
+      <div v-if="kit" class="grid grid-cols-2 gap-2">
+        <UButton label="Hero + CTA" icon="i-lucide-panel-top" variant="soft" size="xs" block :loading="applyingBrandTemplate" @click="applySelectedBrandTemplate('hero')" />
+        <UButton label="Two CTAs" icon="i-lucide-panels-top-left" variant="soft" size="xs" block :loading="applyingBrandTemplate" @click="applySelectedBrandTemplate('dual-cta')" />
+      </div>
+      <p v-else class="text-xs text-muted rounded-md border border-default p-2">No brand kit selected.</p>
+      <p v-if="kit" class="text-[11px] text-muted mt-2">{{ kit.name }} · generated for every active size</p>
+    </div>
     <!-- Built-in Templates -->
     <h4 class="text-xs font-bold uppercase tracking-wider text-(--ui-text-muted) mb-3">Built-in</h4>
     <div class="grid grid-cols-2 gap-2">
-      <button
+      <UButton
         v-for="tpl in TEMPLATES"
         :key="tpl.id"
-        class="rounded-lg border border-(--ui-border) overflow-hidden hover:ring-2 hover:ring-(--ui-primary)/40 transition-all"
+        color="neutral"
+        variant="outline"
+        :ui="{ base: 'block h-auto rounded-lg overflow-hidden p-0 text-left hover:ring-2 hover:ring-(--ui-primary)/40' }"
         @click="applyTemplate(tpl.id)"
       >
         <div
@@ -119,17 +174,19 @@ async function applyDbTemplate(tpl: BannerTemplateDB) {
         <div class="px-2 py-1.5 text-xs font-medium text-(--ui-text) text-center bg-(--ui-bg-elevated)">
           {{ tpl.name }}
         </div>
-      </button>
+      </UButton>
     </div>
 
     <!-- Saved (DB) Templates -->
     <template v-if="dbTemplates.length">
       <h4 class="text-xs font-bold uppercase tracking-wider text-(--ui-text-muted) mt-5 mb-3">Saved Templates</h4>
       <div class="space-y-1.5">
-        <button
+        <UButton
           v-for="tpl in dbTemplates"
           :key="tpl.id"
-          class="w-full flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-(--ui-bg-elevated) transition-colors text-left"
+          color="neutral"
+          variant="ghost"
+          :ui="{ base: 'w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-left' }"
           @click="applyDbTemplate(tpl)"
         >
           <div class="min-w-0 flex-1">
@@ -142,8 +199,8 @@ async function applyDbTemplate(tpl: BannerTemplateDB) {
               </span>
             </div>
           </div>
-          <UButton label="Load" variant="soft" size="xs" @click.stop="applyDbTemplate(tpl)" />
-        </button>
+          <span class="rounded bg-elevated px-2 py-1 text-xs">Load</span>
+        </UButton>
       </div>
     </template>
 
