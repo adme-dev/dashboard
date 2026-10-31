@@ -26,19 +26,23 @@ async function resolveCloudflareDoh(
   recordType: 'A' | 'AAAA',
   fetcher: typeof fetch
 ): Promise<string[]> {
-  const url = new URL('https://cloudflare-dns.com/dns-query')
-  url.searchParams.set('name', hostname)
-  url.searchParams.set('type', recordType)
-
-  const response = await fetcher(url.toString(), {
-    headers: { accept: 'application/dns-json' }
-  })
-  if (!response.ok) throw new Error('DNS resolution failed')
-
-  const payload = await response.json() as CloudflareDohResponse
-  if (payload.Status !== 0 || payload.TC === true) {
-    throw new Error('DNS resolution failed')
+  let payload: CloudflareDohResponse | undefined
+  for (const endpoint of ['https://cloudflare-dns.com/dns-query', 'https://dns.google/resolve']) {
+    try {
+      const url = new URL(endpoint)
+      url.searchParams.set('name', hostname)
+      url.searchParams.set('type', recordType)
+      const response = await fetcher(url.toString(), { headers: { accept: 'application/dns-json' } })
+      if (!response.ok) continue
+      const candidate = await response.json() as CloudflareDohResponse
+      if (candidate.Status !== 0 || candidate.TC === true) continue
+      payload = candidate
+      break
+    } catch {
+      // A second independent public resolver may be reachable from this Worker.
+    }
   }
+  if (!payload) throw new Error('DNS resolution failed')
 
   const expectedType = recordType === 'A' ? 1 : 28
   return (payload.Answer || [])

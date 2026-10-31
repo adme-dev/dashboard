@@ -89,6 +89,7 @@ function addLogo(logo: BrandKitLogo, event: MouseEvent) {
       color="error"
       variant="subtle"
     />
+    <BannerBrandStyleGuide v-if="kit" :kit="kit" />
     <UButton
       v-if="error"
       label="Retry"

@@ -7,6 +7,7 @@ import { brandKitInputSchema } from '~~/server/utils/banner/brandKits'
 import { bannerAssetDeliveryUrl, createBannerAssetId, createBannerAssetStorageKey, deleteBannerFile, uploadBannerAsset } from '~~/server/utils/bannerStorage'
 import { boundedMotorstackCall, motorstackListSchema, motorstackSourceUrl, type MotorstackBinding } from './motorstackClient'
 import { motorstackAssetKey, prepareMotorstackBrand, type PreparedMotorstackBrand } from './motorstackAssets'
+import { brandGuideText } from '~~/shared/bannerBrandGuides'
 
 interface ExistingKit { id: string, name: string, source_url: string, fonts: Array<{ assets?: Array<{ id: string }> }>, logos: unknown[], colors: unknown[], guidelines: string | null }
 export interface MotorstackImportResult {
@@ -35,6 +36,8 @@ function motorstackSourceNotes(prepared: PreparedMotorstackBrand) {
   lines.push('', 'Colours:')
   for (const color of metadata.colors) lines.push(`- ${color.name}: ${color.value}.`)
   if (!metadata.colors.length) lines.push('- No colours supplied.')
+  const guide = brandGuideText(metadata.brand.id)
+  if (guide) lines.push('', guide)
   lines.push('', 'Import warnings:', ...(warnings.length ? warnings.map(warning => `- ${warning}`) : ['None.']))
   return lines.join('\n')
 }

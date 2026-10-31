@@ -63,6 +63,12 @@ describe('AI brand context', () => {
   it('is empty without a kit', () => {
     expect(brandContextBlock(null)).toBe('')
   })
+  it('adds the LDV CTA guide to an existing imported kit without rewriting its notes', () => {
+    const block = brandContextBlock({ ...kit, sourceUrl: 'https://oem-variants.pages.dev/api/mcp#brand=ldv' })
+    expect(block).toContain('LDV Dealer Style Guide')
+    expect(block).toContain('red outline on white')
+    expect(block).toContain('Never abbreviate')
+  })
 })
 
 describe('brand drift lint', () => {
