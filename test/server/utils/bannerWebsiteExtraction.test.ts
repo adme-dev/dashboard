@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { extractBrandWebsite, fetchBrandWebsiteLogo, fetchBrandWebsiteResource, readBrandCssSignals } from '~~/server/utils/banner/websiteExtraction'
+import { extractBrandWebsite, fetchBrandWebsiteLogo, fetchBrandWebsiteResource, readBrandCssSignals, validateBrandLogoResource } from '~~/server/utils/banner/websiteExtraction'
 
 const resolver = { resolve4: async () => ['93.184.215.14'], resolve6: async () => [] }
 const response = (body: string | Uint8Array, type = 'text/html', status = 200, headers = {}) => new Response(body, { status, headers: { 'content-type': type, ...headers } })
@@ -85,6 +85,43 @@ describe('bounded public brand website extraction', () => {
 })
 
 describe('website logo mirroring boundary', () => {
+  const tinyPng = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aXioAAAAASUVORK5CYII='
+  const embedded = (href: string, tag = 'image') => `<svg xmlns="http://www.w3.org/2000/svg"><${tag} href="${href}"/></svg>`
+  const validateSvg = (svg: string) => validateBrandLogoResource({ bytes: Buffer.from(svg), mimeType: 'image/svg+xml' })
+  it('preserves static pattern geometry and an embedded PNG through local use references', () => {
+    const svg = `<svg width="65" height="65" viewBox="0 0 65 65" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"><rect width="65" height="65" fill="url(#pattern0)"/><defs><pattern id="pattern0" patternContentUnits="objectBoundingBox" patternUnits="objectBoundingBox" patternTransform="translate(0 0) scale(1)" width="1" height="1"><use xlink:href="#image0" transform="translate(0.00984615 0.00797546) scale(0.000490346)"/></pattern><image id="image0" width="2008" height="2008" xlink:href="data:image/png;base64,${tinyPng}"/></defs></svg>`
+    const result = validateSvg(svg).bytes.toString()
+    expect(result).toContain(`xlink:href="data:image/png;base64,${tinyPng}"`)
+    expect(result).toContain('patternContentUnits="objectBoundingBox"')
+    expect(result).toContain('translate(0.00984615 0.00797546) scale(0.000490346)')
+    expect(result).toContain('fill="url(#pattern0)"')
+    expect(result).toContain('patternTransform="translate(0 0) scale(1)"')
+  })
+  it.each([
+    'data:image/svg+xml;base64,' + Buffer.from('<svg><script>evil()</script></svg>').toString('base64'),
+    'data:text/html;base64,' + Buffer.from('<script>evil()</script>').toString('base64'),
+    'data:image/png;base64,' + Buffer.from('<script>evil()</script>').toString('base64'),
+    'data:image/png,%89PNG',
+    `data:image/png;base64,${tinyPng.slice(0, -1)}`,
+    `data:image/png;base64,${tinyPng.slice(0, -1)}!`,
+    'https://evil.example/image.png',
+    '//evil.example/image.png',
+    'javascript:evil()'
+  ])('rejects active, external, malformed or mislabeled embedded image %s', (href) => {
+    expect(() => validateSvg(embedded(href))).toThrow()
+  })
+  it('allows embedded raster bytes only on image, never on use or CSS', () => {
+    const href = `data:image/png;base64,${tinyPng}`
+    expect(() => validateSvg(embedded(href, 'use'))).toThrow()
+    expect(() => validateSvg(`<svg><rect fill="url(${href})"/></svg>`)).toThrow()
+    expect(() => validateSvg(`<svg><image href="${href}" onload="evil()"/></svg>`)).toThrow()
+  })
+  it.each(['<pattern patternUnits="url(https://evil.example/)"/>', '<pattern patternTransform="url(https://evil.example/)"/>', '<pattern patternTransform="translate(1) garbage"/>', '<pattern><animate attributeName="href" values="https://evil.example/"/></pattern>'])('rejects non-static pattern content %s', (content) => {
+    expect(() => validateSvg(`<svg>${content}</svg>`)).toThrow()
+  })
+  it('bounds the whole SVG and embedded data before raster decoding', () => {
+    expect(() => validateSvg(embedded('data:image/png;base64,' + 'A'.repeat(3 * 1024 * 1024)))).toThrow('size limit')
+  })
   it('accepts a static SVG with internal references and validates bytes for raster images', async () => {
     const svg = '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" viewBox="0 0 20 20"><defs><path id="mark" d="M0 0h10v10z"/></defs><use xlink:href="#mark" fill="#123456"/></svg>'
     const result = await fetchBrandWebsiteLogo('https://brand.example/logo.svg', dependencies(() => response(svg, 'image/svg+xml')))

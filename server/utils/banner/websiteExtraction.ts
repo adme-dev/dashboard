@@ -185,21 +185,43 @@ export async function fetchBrandWebsiteLogo(url: string, deps: BrandWebsiteDepen
 export function validateBrandLogoResource<T extends { bytes: Buffer, mimeType: string }>(resource: T): T {
   const bytes = resource.bytes
   const type = resource.mimeType
+  if (!bytes.length || bytes.length > LOGO_LIMIT) throw new Error('Logo exceeds the size limit or is empty')
   if (!['image/svg+xml', 'image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(type)) throw new Error('Unsupported logo image type')
   if (type === 'image/svg+xml') {
     const source = bytes.toString('utf8')
     if (/<!DOCTYPE|<!ENTITY/i.test(source)) throw new Error('Unsupported SVG logo')
     const fragment = parseFragment(source)
     const nodes = elements(fragment)
-    const allowed = new Set(['svg', 'g', 'path', 'rect', 'circle', 'ellipse', 'line', 'polyline', 'polygon', 'defs', 'linearGradient', 'radialGradient', 'stop', 'title', 'desc', 'clipPath', 'mask', 'use', 'symbol'])
+    const allowed = new Set(['svg', 'g', 'path', 'rect', 'circle', 'ellipse', 'line', 'polyline', 'polygon', 'defs', 'linearGradient', 'radialGradient', 'stop', 'title', 'desc', 'clipPath', 'mask', 'use', 'symbol', 'pattern', 'image'])
     const attributes = new Set(['xmlns', 'id', 'class', 'viewBox', 'width', 'height', 'preserveAspectRatio', 'x', 'y', 'x1', 'y1', 'x2', 'y2', 'cx', 'cy', 'r', 'rx', 'ry', 'd', 'points', 'fill', 'fill-rule', 'fill-opacity', 'stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin', 'stroke-miterlimit', 'stroke-opacity', 'stroke-dasharray', 'stroke-dashoffset', 'opacity', 'transform', 'gradientTransform', 'gradientUnits', 'offset', 'stop-color', 'stop-opacity', 'clip-path', 'clipPathUnits', 'clip-rule', 'mask', 'maskUnits', 'maskContentUnits', 'href', 'style', 'version', 'role', 'aria-hidden', 'aria-label', 'focusable'])
     const svg = nodes[0]
     if (!svg || svg.tagName !== 'svg' || fragment.childNodes.some(node => node !== svg && ('tagName' in node || text(node).trim()))) throw new Error('Invalid SVG logo')
+    let embeddedBytes = 0
     for (const node of nodes) {
       if (!allowed.has(node.tagName)) throw new Error('Active SVG logos are not supported')
       for (const attr of node.attrs) {
         if (attr.prefix === 'xmlns' && attr.name === 'xlink' && attr.value === 'http://www.w3.org/1999/xlink') continue
         if (attr.prefix === 'xml' && attr.name === 'space' && ['preserve', 'default'].includes(attr.value)) continue
+        if (node.tagName === 'pattern' && ['patternUnits', 'patternContentUnits'].includes(attr.name)) {
+          if (!['objectBoundingBox', 'userSpaceOnUse'].includes(attr.value)) throw new Error('Unsupported SVG pattern units')
+          continue
+        }
+        if (node.tagName === 'pattern' && attr.name === 'patternTransform') {
+          const transforms = attr.value.trim().split(')')
+          if (attr.value.length > 2048 || transforms.pop() !== '' || !transforms.length || transforms.length > 64 || transforms.some(value => !/^(?:matrix|translate|scale|rotate|skewX|skewY)\([-+\d.eE,\s]+$/.test(value.trim()))) throw new Error('Unsupported SVG pattern transform')
+          continue
+        }
+        if (node.tagName === 'image' && attr.name === 'href' && attr.value.startsWith('data:')) {
+          // Embedded images are raster bytes only. Never permit SVG, HTML, external
+          // references, URL-encoded payloads or arbitrary data MIME types.
+          const match = /^data:(image\/(?:png|jpeg|gif|webp));base64,([A-Za-z0-9+/]+={0,2})$/.exec(attr.value)
+          if (!match || match[2]!.length % 4 !== 0 || match[2]!.length > Math.ceil(LOGO_LIMIT / 3) * 4) throw new Error('Unsupported embedded SVG image')
+          const imageBytes = Buffer.from(match[2]!, 'base64')
+          embeddedBytes += imageBytes.length
+          if (embeddedBytes > LOGO_LIMIT || imageBytes.toString('base64') !== match[2]) throw new Error('Invalid or oversized embedded SVG image')
+          validateBrandLogoResource({ bytes: imageBytes, mimeType: match[1]! })
+          continue
+        }
         if (!attributes.has(attr.name) || /[\\@]/.test(attr.value) || (attr.name === 'href' && !attr.value.startsWith('#')) || /url\(/i.test(attr.value.replace(/url\(\s*["']?#[-\w]+["']?\s*\)/gi, ''))) throw new Error('External or active SVG logos are not supported')
         if (attr.name === 'style' && attr.value.split(';').filter(value => value.trim()).some(value => !/^\s*(?:fill|stroke|opacity|fill-opacity|stroke-opacity|stroke-width|fill-rule|clip-rule|stroke-linecap|stroke-linejoin|stroke-miterlimit|stroke-dasharray|stroke-dashoffset)\s*:\s*[-\w\s#.,%]+\s*$/.test(value))) throw new Error('Unsupported SVG logo styles')
       }
