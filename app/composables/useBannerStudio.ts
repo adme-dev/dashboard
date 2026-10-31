@@ -278,6 +278,12 @@ export function useBannerStudio() {
     if (Object.prototype.hasOwnProperty.call(props, 'src')) {
       props = { imageCrop: undefined, ...props }
       sharedFields.push('imageCrop')
+      // A replacement source must not inherit an out-of-range trim in another size.
+      // Trimming by itself stays local, like image crop, because sources can differ.
+      if (layer.type === 'video') {
+        props = { ...props, mediaStart: 0, mediaEnd: undefined }
+        sharedFields.push('mediaStart', 'mediaEnd')
+      }
     }
     const shared = Object.fromEntries(sharedFields
       .filter(key => Object.prototype.hasOwnProperty.call(props, key))

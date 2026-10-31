@@ -76,6 +76,7 @@ function handleContextGenerateImage() {
 const multiSelectedLayers = ref<number[]>([])
 
 function onLayerLabelClick(e: MouseEvent, layer: Layer) {
+  if (layer.type === 'video') inspectorTab.value = 'properties'
   if (e.shiftKey) {
     // Toggle in multi-select
     const idx = multiSelectedLayers.value.indexOf(layer.id)
@@ -260,6 +261,7 @@ const stretchLabel = ref<{ x: number, y: number, text: string } | null>(null)
 
 // ── Constants ─────────────────────────
 const LANE_H = 36
+const laneHeight = (layer: Layer) => layer.type === 'video' ? 48 : LANE_H
 const KF_TRACK_H = 20
 const RULER_H = 32
 const LABEL_W = 256
@@ -275,14 +277,15 @@ const LAYER_ICONS: Record<Layer['type'], string> = {
 
 /** Get height for a layer lane (main + expanded keyframe tracks) */
 function getLaneHeight(layerId: number): number {
+  const layer = activeLayers.value.find(l => l.id === layerId)
+  const height = layer ? laneHeight(layer) : LANE_H
   if (state.expandedKeyframeLayers.has(layerId)) {
-    const layer = activeLayers.value.find(l => l.id === layerId)
     const props = layer ? getVisibleKfProperties(layer) : KF_PROPERTIES
     // Add 1 extra track for "Path" sub-track when motion path is active
     const extraTrack = (layer?.motionPath?.length ?? 0) >= 2 ? 1 : 0
-    return LANE_H + (props.length + extraTrack) * KF_TRACK_H
+    return height + (props.length + extraTrack) * KF_TRACK_H
   }
-  return LANE_H
+  return height
 }
 
 // Total timeline width
@@ -355,6 +358,10 @@ function onPresenceBarClick(layer: Layer) {
     return
   }
   selectLayer(layer.id)
+  if (layer.type === 'video') {
+    inspectorTab.value = 'properties'
+    return
+  }
   animationPickers.get(layer.id)?.openPicker()
 }
 
@@ -1055,7 +1062,7 @@ onUnmounted(() => {
                 isMaskedLayer(layer.id) ? 'border-l-2 border-l-[#e84aff]/40' : '',
                 isMultiSelected(layer.id) ? 'ring-1 ring-inset ring-(--ui-primary)/50' : ''
               ]"
-              :style="{ height: `${LANE_H}px` }"
+              :style="{ height: `${laneHeight(layer)}px` }"
               :data-layer-label="layer.id"
               :data-selected="state.selectedLayerId === layer.id"
               @click="onLayerLabelClick($event, layer)"
@@ -1224,7 +1231,7 @@ onUnmounted(() => {
               :class="state.selectedLayerId === layer.id ? 'bg-[#f5dfd9] dark:bg-[#553d38]' : ''"
               :data-layer-lane="layer.id"
               :data-selected="state.selectedLayerId === layer.id"
-              :style="{ height: `${LANE_H}px`, zIndex: 2 }"
+              :style="{ height: `${laneHeight(layer)}px`, zIndex: 2 }"
               @click="selectLayer(layer.id); onTrackClick($event)"
               @dblclick="addKeyframeAtClick($event, layer.id, keyframeProperty)"
             >
@@ -1234,7 +1241,7 @@ onUnmounted(() => {
                 :style="{
                   left: `${(layer.startTime || 0) * pxPerSec}px`,
                   width: `${((layer.endTime || 3) - (layer.startTime || 0)) * pxPerSec}px`,
-                  height: `${LANE_H - 8}px`
+                  height: `${laneHeight(layer) - 8}px`
                 }"
               >
                 <!-- Full presence bar -->
@@ -1248,6 +1255,13 @@ onUnmounted(() => {
                   @mousedown="onPresenceMouseDown($event, layer.id, 'move')"
                   @click.stop="onPresenceBarClick(layer)"
                 />
+                <BannerVideoFilmstrip
+                  v-if="layer.type === 'video' && layer.src"
+                  class="absolute inset-0 pointer-events-none"
+                  :src="layer.src"
+                  :clock="layer"
+                  :span="layer.endTime - layer.startTime"
+                />
                 <!-- Waveform canvas for audio layers -->
                 <canvas
                   v-if="layer.type === 'audio' && layer.src"
@@ -1260,18 +1274,29 @@ onUnmounted(() => {
                 <div
                   v-for="(phase, phaseIndex) in phasesByLayer.get(layer.id) || []"
                   :key="`${phase.start}-${phase.kind}`"
-                  class="group/phase absolute top-0 z-10 h-full overflow-visible rounded-lg"
+                  class="group/phase absolute top-0 z-10 overflow-visible rounded-lg"
                   :data-animation-phase="phase.kind"
                   :style="{
                     left: `${(phase.start - (layer.startTime ?? 0)) * pxPerSec}px`,
                     width: `${(phase.end - phase.start) * pxPerSec}px`,
+                    height: layer.type === 'video' && phase.kind !== 'hold' ? '18px' : '100%',
                     backgroundColor: phase.kind === 'hold' ? 'transparent' : getLayerColor(layer),
                     filter: phase.kind === 'exit' ? 'brightness(0.85)' : undefined
                   }"
                   @click.capture="onPhaseClick"
                   @mousedown="phase.kind === 'hold' || phase.kind === 'audio' ? onPresenceMouseDown($event, layer.id, 'move') : undefined"
                 >
+                  <UButton
+                    v-if="layer.type === 'video' && phase.kind === 'hold'"
+                    :aria-label="`Edit video ${layer.name}`"
+                    :title="`${layer.name} · Select to trim or replace in the sidebar`"
+                    color="neutral"
+                    variant="ghost"
+                    class="size-full cursor-grab rounded-md p-0 hover:bg-transparent focus-visible:ring-inset"
+                    @click.stop="onPresenceBarClick(layer)"
+                  />
                   <BannerTimelineAnimationPicker
+                    v-else
                     :ref="(el) => { if (phaseIndex === 0) setAnimationPicker(layer.id, el) }"
                     :layer="layer"
                     :phase="phase"
