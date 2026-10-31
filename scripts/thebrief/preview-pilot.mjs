@@ -2,6 +2,9 @@ import { readFile, writeFile, mkdir, copyFile, realpath } from 'node:fs/promises
 import { resolve, dirname, sep } from 'node:path'
 import { createRequire } from 'node:module'
 import { Window } from 'happy-dom'
+import sharp from 'sharp'
+import { transformImage } from './image-transforms.mjs'
+import { resolveGoogleFonts } from './google-fonts.mjs'
 import { convertTheBriefHtml } from './convert-html.mjs'
 import { buildBannerHTML } from '../../app/utils/banner-html-builder.ts'
 
@@ -14,8 +17,20 @@ const output = resolve(outputDirectory)
 if (output === source || output.startsWith(source + sep)) throw new Error('Use a separate output directory')
 const html = await readFile(resolve(source, 'index.html'), 'utf8')
 const candidate = await convertTheBriefHtml(html)
+const external = await resolveGoogleFonts(candidate.externalFontStylesheets || [])
+const fonts = [...(candidate.fonts || []), ...external.fonts].map(font => ({ ...font }))
 const [format, artboard] = Object.entries(candidate.canvasData)[0]
 await mkdir(output, { recursive: true })
+for (const font of fonts) {
+  if (!font.bytes) {
+    const original = await realpath(resolve(source, font.path))
+    if (!original.startsWith(source + sep)) throw new Error('Font outside export directory')
+    font.bytes = await readFile(original)
+  }
+  const mime = { truetype: 'font/ttf', opentype: 'font/otf', woff: 'font/woff', woff2: 'font/woff2' }[font.format]
+  font.dataUrl = `data:${mime};base64,${font.bytes.toString('base64')}`
+}
+await writeFile(resolve(output, 'font-receipts.json'), JSON.stringify(external.receipts, null, 2))
 for (const asset of [...artboard.layers.filter(layer => layer.src).map(layer => layer.src), ...(candidate.fonts || []).map(font => font.path)]) {
   const path = asset.replace(/^\.\//, '')
   const original = await realpath(resolve(source, path))
@@ -36,6 +51,12 @@ const referenceWindow = new Window({ settings: { enableJavaScriptEvaluation: fal
 referenceWindow.document.write(html)
 // Keep CSS and artwork as exported. No vendor runtime or event handlers execute.
 for (const node of referenceWindow.document.querySelectorAll('script,iframe,object,embed,base,meta[http-equiv]')) node.remove()
+for (const node of referenceWindow.document.querySelectorAll('link[rel="stylesheet"]')) node.remove()
+// Opaque sandbox origins cannot load ordinary font URLs without CORS. Embed
+// the same verified bytes in both views, preserving source family/style here.
+const fontStyle = referenceWindow.document.createElement('style')
+fontStyle.textContent = fonts.map(font => `@font-face{font-family:'${font.family}';font-weight:${font.weight};font-style:${font.style};src:url('${font.dataUrl}') format('${font.format}')}`).join('\n')
+referenceWindow.document.head.append(fontStyle)
 for (const node of referenceWindow.document.querySelectorAll('*')) {
   for (const attribute of [...node.attributes]) if (/^on/i.test(attribute.name)) node.removeAttribute(attribute.name)
 }
@@ -45,7 +66,28 @@ await referenceWindow.happyDOM.close()
 const receiver = body => `<script>addEventListener('message',async function(e){if(e.source!==parent||e.data?.token!==${json(token)}||!Number.isFinite(e.data.time))return;const time=Math.max(0,Math.min(${candidate.source.duration}-0.001,e.data.time));await document.fonts.ready;${body}});</script>`
 const referenceSeek = `const elements=${json(candidate.sourceElements)};for(const item of elements){const el=document.getElementById('element-'+item.sourceId);el.style.display='';el.style.visibility=time<item.start||time>=item.end?'hidden':'visible';const effects=[el,...el.querySelectorAll('*')].filter(node=>getComputedStyle(node).animationName!=='none');const originals=effects.map(node=>node.style.animationName);for(const node of effects)node.style.animationName='none';void el.offsetWidth;effects.forEach((node,index)=>{node.style.animationName=originals[index]});void el.offsetWidth;for(const animation of el.getAnimations({subtree:true})){animation.pause();animation.currentTime=Math.max(0,(time-item.start)*1000);}}`
 await writeFile(resolve(output, 'reference.html'), reference.replace('</body>', receiver(referenceSeek) + '</body>'))
-let native = buildBannerHTML(format, artboard.layers, { bgColor: artboard.bgColor, playback: artboard.playback, customFonts: (candidate.fonts || []).map(font => ({ family: font.family, weight: font.weight, format: font.format, url: font.path })) })
+const nativeLayers = structuredClone(artboard.layers)
+// Match packaged import semantics: italic bytes get their own normal-style
+// family so neither preview nor the catalog synthesizes a second slant.
+const nativeFonts = fonts.map((font, index) => ({ ...font, family: `Source ${index} ${font.family}` }))
+for (const [index, font] of fonts.entries()) {
+  for (const layer of nativeLayers) {
+    if (layer.fontFamily === font.family && (layer.fontWeight || 400) === font.weight && (layer.fontStyle || 'normal') === font.style) {
+      layer.fontFamily = nativeFonts[index].family
+      layer.fontStyle = 'normal'
+    }
+  }
+}
+for (const layer of nativeLayers.filter(item => candidate.imageTransforms?.some(operation => operation.layerId === item.id))) {
+  const operations = candidate.imageTransforms.filter(item => item.layerId === layer.id).map(item => ({ operation: item.operation }))
+  const original = await realpath(resolve(source, layer.src))
+  if (!original.startsWith(source + sep)) throw new Error('Asset outside export directory')
+  layer.src = `./native-image-${layer.id}.png`
+  const bytes = await sharp(original, { density: 192, limitInputPixels: 4096 * 4096 }).png().toBuffer()
+  await writeFile(resolve(output, layer.src), await transformImage(bytes, operations))
+}
+let native = buildBannerHTML(format, nativeLayers, { bgColor: artboard.bgColor, playback: artboard.playback, customFonts: nativeFonts.map(font => ({ family: font.family, weight: font.weight, format: font.format, url: font.path })) })
+for (const font of nativeFonts) native = native.replaceAll(`url('${font.path}')`, `url('${font.dataUrl}')`)
 native = native.replace(/https:\/\/cdnjs.cloudflare.com\/ajax\/libs\/gsap\/[^/]+\//g, './vendor/')
 native = native.replace('</body>', receiver('await window.__engagrFrame.seek(time);') + '</body>')
 await writeFile(resolve(output, 'native.html'), native)

@@ -18,6 +18,10 @@ const filesValid = ref(true)
 const busy = ref(false)
 const error = ref('')
 const progress = ref('')
+const showDraftUpdate = ref(false)
+const draftUpdate = shallowRef<{ row: TheBriefImportRow, project: BannerProject, canvasData?: Record<string, ArtboardState> } | null>(null)
+const draftUpdateError = ref('')
+const draftUpdateConflict = ref(false)
 // Reuse acknowledged uploads within this modal; uncertain attempts are held separately.
 const uploaded = new Map<string, string>()
 const options = computed(() => [{ label: 'Choose client', value: '__unassigned__' }, ...clients.value.map(c => ({ label: c.name, value: c.id }))])
@@ -60,6 +64,82 @@ function startNextBatch() {
   error.value = ''
 }
 
+async function prepareCanvas(row: TheBriefImportRow, fonts: Awaited<ReturnType<typeof refreshCustomFonts>>) {
+  for (const font of row.pkg.fonts) {
+    if (fonts.some(f => f.name === font.family && f.tags.includes(`weight:${font.weight}`))) continue
+    const stored = await uploadCustomFont(await packageFile(font), font.family, font.weight)
+    if (!stored || stored.name !== font.family || !stored.tags.includes(`weight:${font.weight}`)) throw new Error('Stored font differs from the prepared package')
+    fonts.push(stored)
+  }
+  const canvasData = structuredClone(toRaw(row.pkg.canvasData)) as Record<string, ArtboardState>
+  for (const asset of row.pkg.assets) {
+    const identity = `${row.clientId}:${asset.sha256}`
+    if (!uploaded.has(identity)) {
+      const request = await prepareBannerUploadRequest(await packageFile(asset), `thebrief-asset:${identity}`, row.clientId)
+      const stored = await api<{ url: string, clientId: string }>('/api/agency/banner-studio/assets/upload', { method: 'POST', ...request })
+      if (!stored.url || stored.clientId !== row.clientId) throw new Error('Upload did not return a managed asset for the selected client')
+      uploaded.set(identity, stored.url)
+    }
+    for (const board of Object.values(canvasData)) for (const layer of board.layers) if (layer.src === asset.path) layer.src = uploaded.get(identity)!
+  }
+  return canvasData
+}
+
+async function openDraftUpdate(row: TheBriefImportRow) {
+  if (busy.value || !row.projectId || !filesValid.value) return
+  busy.value = true
+  error.value = ''
+  try {
+    const project = await api<BannerProject>(`/api/agency/banner-studio/projects/${row.projectId}`)
+    if (project.clientId !== row.clientId || project.status !== 'draft' || !project.tags.includes('import:needs-review')
+      || !project.tags.includes(`source-sha256:${row.pkg.source.sha256}`) || !project.tags.includes(`source-design:${row.pkg.source.designHash}`)) {
+      throw new Error('Only an unreviewed draft from this exact source and client can be updated')
+    }
+    draftUpdate.value = { row, project }
+    draftUpdateError.value = ''
+    draftUpdateConflict.value = false
+    showDraftUpdate.value = true
+  } catch (cause) {
+    error.value = cause instanceof Error ? cause.message : 'Could not load the imported draft'
+  } finally {
+    busy.value = false
+  }
+}
+
+async function updateImportedDraft() {
+  const selection = draftUpdate.value
+  if (busy.value || !selection || draftUpdateConflict.value) return
+  busy.value = true
+  draftUpdateError.value = ''
+  progress.value = `Updating ${selection.project.name}`
+  try {
+    // Keep the same canvas and expected revision on a retry after an uncertain response.
+    selection.canvasData ??= await prepareCanvas(selection.row, await refreshCustomFonts())
+    const updated = await api<BannerProject & { refreshed: boolean }>(`/api/agency/banner-studio/projects/${selection.project.id}/thebrief-refresh`, {
+      method: 'PATCH', body: {
+        clientId: selection.row.clientId, expectedUpdatedAt: selection.project.updatedAt,
+        source: selection.row.pkg.source, canvasData: selection.canvasData
+      }
+    })
+    const saved = await api<BannerProject>(`/api/agency/banner-studio/projects/${updated.id}`)
+    if (saved.clientId !== selection.row.clientId || saved.updatedAt !== updated.updatedAt || !sameImportedCanvas(saved.canvasData, selection.canvasData)) {
+      throw new Error('The saved draft needs a persistence check. Retry this update to check the same revision safely.')
+    }
+    selection.row.status = updated.refreshed ? 'Draft updated · previous canvas saved in version history · needs visual review' : 'Draft matches this package · needs visual review'
+    finishImportAttempt(localStorage, importAttemptKey(selection.row.clientId, selection.row.pkg.source.sha256))
+    showDraftUpdate.value = false
+    draftUpdate.value = null
+    emit('imported')
+  } catch (cause) {
+    const failure = cause as { statusCode?: number, status?: number, data?: { statusMessage?: string }, statusMessage?: string }
+    draftUpdateConflict.value = failure?.statusCode === 409 || failure?.status === 409
+    draftUpdateError.value = failure?.data?.statusMessage || failure?.statusMessage || (cause instanceof Error ? cause.message : 'Draft update failed')
+  } finally {
+    busy.value = false
+    progress.value = ''
+  }
+}
+
 async function importDrafts() {
   if (busy.value || !ready.value) return
   busy.value = true
@@ -76,7 +156,7 @@ async function importDrafts() {
       const duplicate = existing.find(p => p.clientId === row.clientId && p.tags?.includes(`source-sha256:${pkg.source.sha256}`))
       if (duplicate) {
         row.projectId = duplicate.id
-        row.status = 'Already imported — open the original for review'
+        row.status = 'Already imported · open for review or explicitly update this draft'
         continue
       }
       progress.value = `Preparing ${pkg.name}`
@@ -84,23 +164,7 @@ async function importDrafts() {
       const attemptKey = importAttemptKey(row.clientId, pkg.source.sha256)
       try {
         beginImportAttempt(localStorage, attemptKey)
-        for (const font of pkg.fonts) {
-          if (fonts.some(f => f.name === font.family && f.tags.includes(`weight:${font.weight}`))) continue
-          const stored = await uploadCustomFont(await packageFile(font), font.family, font.weight)
-          if (!stored || stored.name !== font.family || !stored.tags.includes(`weight:${font.weight}`)) throw new Error('Stored font differs from the prepared package')
-          fonts.push(stored)
-        }
-        const canvasData = structuredClone(toRaw(pkg.canvasData)) as Record<string, ArtboardState>
-        for (const asset of pkg.assets) {
-          const identity = `${row.clientId}:${asset.sha256}`
-          if (!uploaded.has(identity)) {
-            const request = await prepareBannerUploadRequest(await packageFile(asset), `thebrief-asset:${identity}`, row.clientId)
-            const stored = await api<{ url: string, clientId: string }>('/api/agency/banner-studio/assets/upload', { method: 'POST', ...request })
-            if (!stored.url || stored.clientId !== row.clientId) throw new Error('Upload did not return a managed asset for the selected client')
-            uploaded.set(identity, stored.url)
-          }
-          for (const board of Object.values(canvasData)) for (const layer of board.layers) if (layer.src === asset.path) layer.src = uploaded.get(identity)!
-        }
+        const canvasData = await prepareCanvas(row, fonts)
         const project = await api<BannerProject>('/api/agency/banner-studio/projects', {
           method: 'POST', headers: { 'Idempotency-Key': `thebrief-project:${row.clientId}:${pkg.source.sha256}` },
           body: { name: pkg.name, clientId: row.clientId, folderId: row.folderId === '__unfiled__' ? null : row.folderId, canvasData, tags: importTags(pkg) }
@@ -219,15 +283,25 @@ async function importDrafts() {
             <p class="text-sm" role="status">
               {{ row.status }}
             </p>
-            <UButton
-              v-if="row.projectId"
-              :to="`/agency/banner-studio/${row.projectId}`"
-              variant="outline"
-              color="neutral"
-              icon="i-lucide-arrow-up-right"
-            >
-              Open in Banner Studio
-            </UButton>
+            <div v-if="row.projectId" class="flex flex-wrap gap-2">
+              <UButton
+                :to="`/agency/banner-studio/${row.projectId}`"
+                variant="outline"
+                color="neutral"
+                icon="i-lucide-arrow-up-right"
+              >
+                Open in Banner Studio
+              </UButton>
+              <UButton
+                variant="outline"
+                color="neutral"
+                icon="i-lucide-history"
+                :disabled="busy || !filesValid"
+                @click="openDraftUpdate(row)"
+              >
+                Update imported draft
+              </UButton>
+            </div>
           </section>
         </div>
         <p
@@ -252,6 +326,68 @@ async function importDrafts() {
           @click="importDrafts"
         >
           Import assigned drafts
+        </UButton>
+      </div>
+    </template>
+  </UModal>
+  <UModal
+    v-model:open="showDraftUpdate"
+    title="Update imported draft"
+    description="Replace the imported canvas with this prepared package and retain a version backup."
+    :dismissible="!busy"
+    :ui="{ content: 'sm:max-w-xl' }"
+  >
+    <template #body>
+      <div v-if="draftUpdate" class="space-y-4">
+        <div class="space-y-1">
+          <p class="font-medium">
+            {{ draftUpdate.project.name }}
+          </p>
+          <p class="text-sm text-muted">
+            {{ clients.find(client => client.id === draftUpdate?.row.clientId)?.name }} ·
+            {{ Object.keys(draftUpdate.row.pkg.canvasData).length }} prepared size(s)
+          </p>
+        </div>
+        <UAlert
+          color="warning"
+          variant="subtle"
+          icon="i-lucide-history"
+          title="The current canvas will be replaced"
+          description="This includes any edits in the draft. The current canvas is saved in version history before replacement. The project name, client and folder stay the same. If the draft changes while this update is prepared, the update stops."
+        />
+        <p class="text-sm text-muted">
+          Replacing sizes: {{ Object.keys(draftUpdate.project.canvasData).map(key => key.replace('custom_', '')).join(' · ') }}.
+          Prepared sizes: {{ Object.keys(draftUpdate.row.pkg.canvasData).map(key => key.replace('custom_', '')).join(' · ') }}.
+        </p>
+        <UAlert
+          v-if="draftUpdateError"
+          color="error"
+          variant="subtle"
+          title="Draft update needs attention"
+          :description="draftUpdateError"
+        />
+        <p v-if="draftUpdateConflict" class="text-sm text-muted">
+          Close this confirmation and reopen the draft update to review its latest revision.
+        </p>
+      </div>
+    </template>
+    <template #footer>
+      <div class="flex w-full flex-wrap justify-end gap-2">
+        <UButton
+          color="neutral"
+          variant="ghost"
+          :disabled="busy"
+          @click="showDraftUpdate = false"
+        >
+          Cancel
+        </UButton>
+        <UButton
+          icon="i-lucide-history"
+          :loading="busy"
+          :disabled="busy || draftUpdateConflict"
+          @click="updateImportedDraft"
+        >
+          {{ draftUpdateError && !draftUpdateConflict ? 'Retry same update' : 'Back up and update draft' }}
         </UButton>
       </div>
     </template>

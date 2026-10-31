@@ -20,3 +20,12 @@ it('rejects other hosts, subsets and invalid binary content', async () => {
   await expect(resolveGoogleFonts([url], async () => new Response(css.replace('fonts.gstatic.com', 'localhost')))).rejects.toThrow(/Unapproved/)
   await expect(resolveGoogleFonts([url], async () => new Response(css.replace('font-style:normal;', 'unicode-range:U+0000-00FF;font-style:normal;')))).rejects.toThrow(/subset/)
 })
+
+it('retains separate full normal and italic faces at the same weight', async () => {
+  const italic = css.replace('font-style:normal', 'font-style:italic').replace('font.ttf', 'italic.ttf')
+  const result = await resolveGoogleFonts([url], async address => new Response(address === url ? italic + css : font))
+  expect(result.fonts.map(face => [face.family, face.weight, face.style])).toEqual([['Poppins', 600, 'italic'], ['Poppins', 600, 'normal']])
+  expect(result.receipts.map(face => face.style)).toEqual(['italic', 'normal'])
+  await expect(resolveGoogleFonts([url], async address => new Response(address === url ? italic + italic : font))).rejects.toThrow(/Ambiguous/)
+  await expect(resolveGoogleFonts([url], async () => new Response(css.replace('font-style:normal', 'font-style:oblique')))).rejects.toThrow(/Unsupported/)
+})

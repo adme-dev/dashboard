@@ -10,7 +10,10 @@ const fail = (message) => {
 }
 
 function safePath(name) {
-  if (!name || /[\\:]/.test(name) || [...name].some(char => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127) || name.startsWith('/') || name.includes('%')) fail('Unsafe ZIP path')
+  // Vendor design-set filenames may contain literal offer percentages. Permit
+  // only "% " or "%-" in container ZIP names; encoded paths/assets stay blocked.
+  const unsafePercent = name.includes('%') && (!/\.zip$/i.test(name) || /%(?![ -])/.test(name))
+  if (!name || /[\\:]/.test(name) || [...name].some(char => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127) || name.startsWith('/') || unsafePercent) fail('Unsafe ZIP path')
   const parts = name.replace(/\/$/, '').split('/')
   if (parts.some(part => !part || part === '.' || part === '..' || part.trim() !== part)) fail('Unsafe ZIP path')
 }
@@ -119,6 +122,9 @@ export function inspectArchive(input, options = {}) {
   const budget = { files: 0, bytes: 0 }
   function visit(archive, prefix, depth) {
     if (depth > limits.maxDepth) fail('ZIP nesting exceeds limit')
+    // Larger outer containers never relax a creative's default limits. This
+    // independent bounded pass also rejects another ZIP level in a child.
+    if (depth > 0 && limits.requireDefaultChildLimits === 1) inspectArchive(archive, { maxDepth: 0 })
     const unpacked = entries(archive, limits, budget)
     const texts = unpacked.filter(({ name }) => /\.(?:html?|css|m?js|json|svg)$/i.test(name))
       .map(({ name, data }) => ({ name, text: data.toString('utf8') }))

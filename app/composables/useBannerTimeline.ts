@@ -200,7 +200,11 @@ function addKeyframeTrack(
     const from = sorted[i]
     const to = sorted[i + 1]
     const duration = to.time - from.time
-    if (duration <= 0) continue
+    if (duration === 0) {
+      // Ordered equal-time frames encode CSS repeat/reset discontinuities.
+      tl.set(el, { [gsapProp]: to.value, immediateRender: false }, to.time)
+      continue
+    }
 
     tl.to(el, {
       [gsapProp]: to.value,

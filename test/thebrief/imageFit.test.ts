@@ -15,3 +15,14 @@ it('holds offset image composition that cannot be expressed by the import schema
   await expect(convertTheBriefHtml(image + '<style>#c-1{background-image:url(./media/art.png);background-size:contain;background-position:20% 50%;background-repeat:no-repeat}</style>'))
     .rejects.toThrow('Unsupported image background fit/position')
 })
+
+it.each([
+  ['rotate(0) scale(-1,1)', '20% 50%'],
+  ['rotate(20deg) scale(-1,1)', '50% 50%'],
+  ['translateZ(-800px) rotateX(90deg)', '50% 50%'],
+  ['rotate(0) scale(-1,2)', '50% 50%']
+])('holds image transform %s with origin %s', async (transform, origin) => {
+  const html = source.replace('data-eltype="text"', 'data-eltype="image"')
+    .replace('<div class="row">Hello world</div>', `<div style="width:100%;height:100%;transform:${transform};transform-origin:${origin}"><img src="./art.png"></div>`)
+  await expect(convertTheBriefHtml(html)).rejects.toThrow('Unsupported static transform')
+})

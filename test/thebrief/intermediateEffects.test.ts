@@ -23,13 +23,12 @@ it('keeps a repeated pulse editable with grouped selectors, implicit endpoints a
   expect(layer.keyframes.x.at(-1).value).toBe(0)
 })
 
-it('samples a fractional repeated effect to the visible slide boundary', async () => {
+it('preserves a fractional repeated effect with exact cycle anchors to the visible slide boundary', async () => {
   const html = pulse.replace('animation-iteration-count:2;', 'animation-iteration-count:2.8;')
   const result = await convertTheBriefHtml(html)
   expect(result.warnings.join(' ')).not.toMatch(/animation not converted/)
   const frames = result.canvasData.custom_300x250.layers.find(l => l.type === 'text').keyframes.scaleX
   expect(frames.at(-1).time).toBe(4)
-  expect(frames.length).toBeGreaterThan(160)
   expect(frames.length).toBeLessThan(500)
   expect(frames.find(frame => Math.abs(frame.time - 1.3) < 0.001)?.value).toBeCloseTo(0.91, 2)
 })
@@ -41,8 +40,8 @@ it('converts bounded translate(x,y) vibration cycles', async () => {
   const result = await convertTheBriefHtml(html)
   expect(result.warnings.join(' ')).not.toMatch(/animation not converted/)
   const layer = result.canvasData.custom_300x250.layers.find(l => l.type === 'text')
-  expect(layer.keyframes.x.find(frame => Math.abs(frame.time - 1.316666667) < 0.001)?.value).toBeLessThan(-1.8)
-  expect(layer.keyframes.y.find(frame => Math.abs(frame.time - 1.316666667) < 0.001)?.value).toBeGreaterThan(1.8)
+  expect(layer.keyframes.x.find(frame => Math.abs(frame.time - 1.32) < 0.001)?.value).toBe(-2)
+  expect(layer.keyframes.y.find(frame => Math.abs(frame.time - 1.32) < 0.001)?.value).toBe(2)
 })
 
 it('preserves sequential entrance, pulse and visible exit without interpolating the resting hold', async () => {

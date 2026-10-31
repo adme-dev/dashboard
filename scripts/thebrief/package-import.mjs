@@ -6,6 +6,7 @@ import { resolveGoogleFonts } from './google-fonts.mjs'
 import { convertTheBriefHtml } from './convert-html.mjs'
 import { inspectArchive } from './inspect-archive.mjs'
 import { packSfntAsWoff } from './woff-font.mjs'
+import { transformImage } from './image-transforms.mjs'
 import { parseTheBriefPackage } from '../../app/utils/thebrief-import.ts'
 
 // Offline preparation. The studio imports only validated native data and binary
@@ -39,7 +40,9 @@ for (const board of Object.values(candidate.canvasData)) {
   for (const layer of board.layers) {
     if (!layer.src) continue
     const originalPath = layer.src
-    let asset = sourceAssets.get(originalPath)
+    const operations = (candidate.imageTransforms || []).filter(item => item.layerId === layer.id).map(item => ({ operation: item.operation }))
+    const assetKey = `${originalPath}:${JSON.stringify(operations)}`
+    let asset = sourceAssets.get(assetKey)
     if (!asset) {
       let bytes = await sourceFile(originalPath)
       if (extname(originalPath).toLowerCase() === '.mp3') {
@@ -50,7 +53,7 @@ for (const board of Object.values(candidate.canvasData)) {
           asset = { originalPath, path: `./media/${sha256}.mp3`, fileName: `${sha256}.mp3`, mimeType: 'audio/mpeg', sha256, base64: bytes.toString('base64') }
           assets.push(asset)
         }
-        sourceAssets.set(originalPath, asset)
+        sourceAssets.set(assetKey, asset)
         layer.src = asset.path
         continue
       }
@@ -63,13 +66,14 @@ for (const board of Object.values(candidate.canvasData)) {
       } else {
         bytes = await sharp(bytes, { limitInputPixels: 4096 * 4096 }).png().toBuffer()
       }
+      bytes = await transformImage(bytes, operations)
       const sha256 = hash(bytes)
       asset = assets.find(item => item.sha256 === sha256)
       if (!asset) {
         asset = { originalPath, path: `./media/${sha256}.png`, fileName: `${sha256}.png`, mimeType: 'image/png', sha256, base64: bytes.toString('base64') }
         assets.push(asset)
       }
-      sourceAssets.set(originalPath, asset)
+      sourceAssets.set(assetKey, asset)
     }
     layer.src = asset.path
   }

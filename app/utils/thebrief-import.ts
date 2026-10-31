@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { isSafeBannerImageFilter } from '../../shared/bannerImageFilters.mjs'
 
 const number = z.number().finite().min(-100000).max(100000)
 const css = z.string().max(500).regex(/^[\w\s#(),.%+-]+$/)
@@ -30,6 +31,7 @@ const layer = z.object({
   textStroke: z.string().max(40).regex(/^\d+(?:\.\d+)?px #[0-9a-f]{6}$/i).optional(),
   src: local.optional(), fit: z.enum(['fill', 'contain', 'cover']).optional(),
   volume: z.number().min(0).max(1).optional(),
+  visualFilter: z.string().max(500).refine(isSafeBannerImageFilter).optional(),
   muted: z.boolean().optional(),
   keyframes: z.object({ opacity: track.optional(), x: track.optional(), y: track.optional(), scaleX: track.optional(), scaleY: track.optional(), rotation: track.optional() }).optional()
 }).strict()

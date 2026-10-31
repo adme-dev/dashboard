@@ -44,18 +44,19 @@ export async function resolveGoogleFonts(stylesheets, fetcher = fetch) {
         const css = rule.style
         const family = css.fontFamily.replace(/^["']|["']$/g, '')
         const weight = Number(css.fontWeight)
-        if (!/^[\w -]{1,80}$/.test(family) || !Number.isInteger(weight) || weight < 100 || weight > 900 || weight % 100 || css.fontStyle !== 'normal' || css.getPropertyValue('unicode-range')) throw new Error('Unsupported external font face or subset')
+        const style = css.fontStyle
+        if (!/^[\w -]{1,80}$/.test(family) || !Number.isInteger(weight) || weight < 100 || weight > 900 || weight % 100 || !['normal', 'italic'].includes(style) || css.getPropertyValue('unicode-range')) throw new Error('Unsupported external font face or subset')
         const match = /^url\(["']?([^"')]+)["']?\)\s+format\(["'](truetype|opentype|woff2?)["']\)$/.exec(css.getPropertyValue('src').trim())
         if (!match) throw new Error('Unsupported external font source')
         const resource = allowedUrl(match[1], 'fonts.gstatic.com', /^\/s\/[a-zA-Z0-9/_-]+\.(ttf|otf|woff2?)$/)
-        if (fonts.some(font => font.family === family && font.weight === weight)) throw new Error('Ambiguous external font face')
+        if (fonts.some(font => font.family === family && font.weight === weight && font.style === style)) throw new Error('Ambiguous external font face')
         if (fonts.length >= 32) throw new Error('Too many external font faces')
         const data = await boundedFetch(resource, 5 * 1024 * 1024, fetcher)
         const signature = { truetype: '00010000', opentype: '4f54544f', woff: '774f4646', woff2: '774f4632' }[match[2]]
         if (data.length < 12 || data.subarray(0, 4).toString('hex') !== signature) throw new Error('Font bytes do not match declared format')
         const sha256 = hash(data), extension = { truetype: 'ttf', opentype: 'otf', woff: 'woff', woff2: 'woff2' }[match[2]]
-        fonts.push({ family, weight, style: 'normal', format: match[2], path: `./external-fonts/${sha256}.${extension}`, bytes: data })
-        receipts.push({ stylesheet: url, stylesheetSha256: hash(bytes), url: resource, family, weight, sha256, bytes: data.length })
+        fonts.push({ family, weight, style, format: match[2], path: `./external-fonts/${sha256}.${extension}`, bytes: data })
+        receipts.push({ stylesheet: url, stylesheetSha256: hash(bytes), url: resource, family, weight, style, sha256, bytes: data.length })
       }
       element.remove()
     }

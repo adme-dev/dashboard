@@ -1,5 +1,11 @@
 # Banner Studio change log
 
+## Recents import compatibility — release candidate (31 October 2026)
+
+Offline preparation now retains centered horizontal image reflections, transparent shapes and full normal/italic Google font faces. Static image opacity and bounded filter chains preserve source brightness, hue and shadows in the editor and exports. Supported intermediate pulse and bounce effects preserve exact cycle/reset timestamps and clipped easing curves. Native playback and both HTML exporters handle ordered keyframes at the same timestamp, including forward and backward seeks after saving. Larger outer design-set ZIPs have a separate bounded inspection profile; child archives retain the standard limits.
+
+Animated blur, unsupported 3D/custom animation and source-video imports remain held. The private Recents ledger distinguishes prepared packages, existing drafts and conversion holds; preparation is not proof of a completed library migration or production artwork approval. The first Blood Hyundai comparison identified missing image opacity and filters; its corrected packages require renewed visual review and a guarded refresh of the existing drafts. These changes are a local release candidate until deployment and live acceptance are recorded. See the [import runbook](../runbooks/thebrief-banner-import.md).
+
 ## Timeline picker and compact library navigation (30 October 2026)
 
 - Search Clients, Folders and Tags in separate sidebar tabs. All clients and Unassigned stay pinned, names wrap, and each list scrolls within the screen. Active filters remain visible above projects when changing tabs.
