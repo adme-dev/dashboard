@@ -137,6 +137,9 @@ export interface Layer {
   loopAudio?: boolean   // loop the audio source within presence range
   // Animation
   animIn: AnimInType
+  /** Absolute start of a directly positioned entrance or exit block. */
+  animInStart?: number
+  animOutStart?: number
   animInDur: number
   startTime: number
   endTime: number
@@ -146,6 +149,8 @@ export interface Layer {
   outDur?: number
   // Keyframe animation (Phase 4b) — overrides preset when present
   keyframes?: Partial<Record<KeyframeProperty, Keyframe[]>>
+  /** Labels only for motion deliberately authored in the editor. */
+  animationClips?: Array<{ start: number, end: number, label: string }>
   // Feed bindings (Phase 3a)
   feedBindings?: FeedBinding[]
   // Mask properties

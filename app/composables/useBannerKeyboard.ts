@@ -95,6 +95,8 @@ export function useBannerKeyboard(opts: {
 
     // Delete/Backspace — delete selected layer
     if ((e.key === 'Delete' || e.key === 'Backspace') && state.selectedLayerId) {
+      // The timeline owns deletion while a keyframe is selected.
+      if (state.selectedKeyframe?.layerId === state.selectedLayerId) return
       e.preventDefault()
       removeLayer(state.selectedLayerId)
       return

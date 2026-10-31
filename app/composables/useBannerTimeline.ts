@@ -1,3 +1,4 @@
+import { bannerAnimationTiming } from '~/utils/banner-animation-timing'
 import { applyBannerPlayback, resolveBannerPlayback } from '~/utils/banner-playback'
 import gsap from 'gsap'
 import { registerTimelineAudio, syncTimelineAudio, pauseTimelineAudio, disposeTimelineAudio } from '~/utils/bannerTimelineAudio'
@@ -63,11 +64,12 @@ export function hasKeyframes(layer: Layer): boolean {
 export function presetToKeyframes(layer: Layer): Partial<Record<KeyframeProperty, Keyframe[]>> {
   const preset = ANIM_IN.find(a => a.id === layer.animIn)
   const outPreset = ANIM_OUT.find(a => a.id === layer.animOut) || ANIM_OUT.find(a => a.id === 'fadeOut')!
-  const startTime = layer.startTime || 0
+  const timing = bannerAnimationTiming(layer)
+  const startTime = timing.entryStart
   const endTime = layer.endTime || (startTime + 3)
-  const animDur = layer.animInDur || 0.6
+  const animDur = timing.entryDuration
   const ease = layer.ease || 'power2.out'
-  const outDur = layer.outDur || 0.25
+  const outDur = timing.exitDuration
   const outEase = layer.animOutEase || 'power1.in'
 
   const result: Partial<Record<KeyframeProperty, Keyframe[]>> = {}
@@ -77,7 +79,7 @@ export function presetToKeyframes(layer: Layer): Partial<Record<KeyframeProperty
     result.opacity = [
       { time: startTime, value: 0, easing: 'power1.out' },
       { time: startTime + 0.4, value: layer.opacity },
-      { time: endTime - 0.05, value: layer.opacity, easing: 'none' },
+      { time: timing.exitStart, value: layer.opacity, easing: outEase },
       { time: endTime, value: 0 },
     ]
     result.scaleX = [
@@ -88,6 +90,10 @@ export function presetToKeyframes(layer: Layer): Partial<Record<KeyframeProperty
       { time: startTime, value: 1, easing: 'none' },
       { time: endTime, value: 1.08 },
     ]
+    if (!(layer.motionPath?.length)) {
+      result.x = [{ time: startTime, value: 0, easing: 'none' }, { time: endTime, value: -(layer.w || 0) * 0.02 }]
+      result.y = [{ time: startTime, value: 0, easing: 'none' }, { time: endTime, value: -(layer.h || 0) * 0.01 }]
+    }
     return result
   }
 
@@ -105,10 +111,10 @@ export function presetToKeyframes(layer: Layer): Partial<Record<KeyframeProperty
 
   // Always include opacity track
   const opFrom = fromProps.opacity !== undefined ? fromProps.opacity : (Object.keys(fromProps).length > 0 ? 0 : layer.opacity)
-  const inTime = startTime + animDur
+  const inTime = startTime + (Object.keys(fromProps).length ? animDur : 0.1)
 
   // Exit values
-  const outStart = Math.max(inTime, endTime - outDur)
+  const outStart = outPreset.id === 'none' ? endTime - 0.05 : timing.exitStart
   const outProps = outPreset && outPreset.id !== 'none' ? outPreset.to : {}
 
   // Opacity track
@@ -125,7 +131,7 @@ export function presetToKeyframes(layer: Layer): Partial<Record<KeyframeProperty
   }
   // Exit
   const outOpacity = outProps.opacity !== undefined ? outProps.opacity : 0
-  opacityKfs.push({ time: endTime, value: outOpacity })
+  opacityKfs.push({ time: Math.min(endTime, timing.exitStart + outDur), value: outOpacity })
   result.opacity = opacityKfs
 
   // X track
@@ -136,7 +142,7 @@ export function presetToKeyframes(layer: Layer): Partial<Record<KeyframeProperty
     ]
     if (outProps.x !== undefined) {
       xKfs.push({ time: outStart, value: 0, easing: outEase })
-      xKfs.push({ time: endTime, value: outProps.x })
+      xKfs.push({ time: Math.min(endTime, timing.exitStart + outDur), value: outProps.x })
     }
     result.x = xKfs
   }
@@ -149,7 +155,7 @@ export function presetToKeyframes(layer: Layer): Partial<Record<KeyframeProperty
     ]
     if (outProps.y !== undefined) {
       yKfs.push({ time: outStart, value: 0, easing: outEase })
-      yKfs.push({ time: endTime, value: outProps.y })
+      yKfs.push({ time: Math.min(endTime, timing.exitStart + outDur), value: outProps.y })
     }
     result.y = yKfs
   }
@@ -157,12 +163,12 @@ export function presetToKeyframes(layer: Layer): Partial<Record<KeyframeProperty
   // Scale tracks (presets use unified `scale`, keyframes use scaleX/scaleY)
   if (fromProps.scale !== undefined || outProps.scale !== undefined) {
     const sKfs: Keyframe[] = [
-      { time: startTime, value: fromProps.scale || 1, easing: ease },
+      { time: startTime, value: fromProps.scale ?? 1, easing: ease },
       { time: inTime, value: 1 },
     ]
     if (outProps.scale !== undefined) {
       sKfs.push({ time: outStart, value: 1, easing: outEase })
-      sKfs.push({ time: endTime, value: outProps.scale })
+      sKfs.push({ time: Math.min(endTime, timing.exitStart + outDur), value: outProps.scale })
     }
     result.scaleX = sKfs
     result.scaleY = sKfs.map(kf => ({ ...kf })) // clone for independence
@@ -176,7 +182,7 @@ export function presetToKeyframes(layer: Layer): Partial<Record<KeyframeProperty
     ]
     if (outProps.rotation !== undefined) {
       rKfs.push({ time: outStart, value: layer.rotation || 0, easing: outEase })
-      rKfs.push({ time: endTime, value: outProps.rotation })
+      rKfs.push({ time: Math.min(endTime, timing.exitStart + outDur), value: outProps.rotation })
     }
     result.rotation = rKfs
   }
@@ -267,11 +273,12 @@ function buildPresetLayer(tl: gsap.core.Timeline, el: HTMLElement, layer: Layer)
   const isBg = layer.type === 'bg'
   const hasMP = (layer.motionPath?.length ?? 0) >= 2
   const preset = ANIM_IN.find(a => a.id === layer.animIn)
-  const startTime = layer.startTime || 0
+  const timing = bannerAnimationTiming(layer)
+  const startTime = timing.entryStart
   const endTime = layer.endTime || (startTime + 3)
-  const animDur = layer.animInDur || 0.6
+  const animDur = timing.entryDuration
   const ease = resolveEase(layer.ease || 'power2.out')
-  const outDur = layer.outDur || (isBg ? 0.5 : 0.25)
+  const outDur = timing.exitDuration
   const opKey = isBg ? 'autoAlpha' : 'opacity'
 
   // Initial hidden state — skip x/y when motion path drives position
@@ -312,7 +319,7 @@ function buildPresetLayer(tl: gsap.core.Timeline, el: HTMLElement, layer: Layer)
   }
 
   // Exit animation — strip x/y from exit preset when motion path active
-  const outStart = Math.max(startTime + animDur, endTime - outDur)
+  const outStart = timing.exitStart
   if (outStart < endTime) {
     const outPreset = ANIM_OUT.find(a => a.id === layer.animOut) || ANIM_OUT.find(a => a.id === 'fadeOut')!
     const outEase = resolveEase(layer.animOutEase || 'power1.in')
@@ -367,7 +374,7 @@ function addWordPop(tl: gsap.core.Timeline, el: HTMLElement, layer: Layer) {
   const { duration, stagger, ease } = layer.wordPop
   const curve = resolveEase(ease)
   el.querySelectorAll<HTMLElement>('[data-banner-word]').forEach((word, index) => {
-    const at = (layer.startTime || 0) + index * stagger
+    const at = (layer.animInStart ?? layer.startTime ?? 0) + index * stagger
     tl.set(word, { opacity: 0, scale: 0.6, filter: 'blur(10px)', y: 0, immediateRender: false }, 0)
     tl.to(word, { opacity: 1, duration: duration * 0.4, ease: curve, immediateRender: false }, at)
     tl.to(word, { scale: 1.05, duration: duration * 0.7, ease: curve, immediateRender: false }, at)
@@ -487,6 +494,12 @@ function getKeyframeEndTime(layer: Layer): number {
 }
 
 export function useBannerTimeline() {
+  function currentLayerValue(layer: Layer, property: KeyframeProperty): number {
+    const element = lastArtboardEl?.querySelector<HTMLElement>(`#lyr-${layer.id}`)
+    const value = element ? Number(gsap.getProperty(element, property)) : NaN
+    return Number.isFinite(value) ? value : getDefaultValue(property, layer)
+  }
+
   const { state, activeLayers } = useBannerStudio()
 
   /** Clear all GSAP influence from layer elements so they return to natural Vue-rendered state */
@@ -707,6 +720,7 @@ export function useBannerTimeline() {
   }
 
   return {
+    currentLayerValue,
     buildTimeline,
     playTimeline,
     pauseTimeline,

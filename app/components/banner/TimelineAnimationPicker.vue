@@ -1,14 +1,16 @@
 <script setup lang="ts">
 import { computed, ref, watch, nextTick } from 'vue'
 import { ANIM_IN, ANIM_OUT, EASES } from '~/utils/banner-constants'
-import { hasKeyframes } from '~/composables/useBannerTimeline'
+import { hasKeyframes, presetToKeyframes } from '~/composables/useBannerTimeline'
 import type { AnimInType, AnimOutType, KeyframeProperty, Layer } from '~/types/banner-studio'
+import { insertTimelineKeyframe, keyframeDefault, MIDDLE_ANIMATIONS, addMiddleAnimation } from '~/utils/banner-timeline-edit'
 import type { TimelinePhase } from '~/utils/banner-timeline-phases'
 
+const emit = defineEmits<{ dragStart: [event: MouseEvent] }>()
 const props = defineProps<{ layer: Layer, direction: 'in' | 'out', compact?: boolean, phase?: TimelinePhase }>()
 const { state, selectLayer, updateLayer } = useBannerStudio()
 const { inspectorTab } = useBannerInspector()
-const { pauseTimeline, seekTo, playTimeline } = useBannerTimeline()
+const { pauseTimeline, seekTo, playTimeline, currentLayerValue } = useBannerTimeline()
 const open = ref(false)
 const tab = ref('presets')
 const search = ref('')
@@ -16,19 +18,23 @@ const pending = ref<string | null>(null)
 const property = ref<KeyframeProperty>('opacity')
 const frameIndex = ref('0')
 const frameError = ref<string>()
+const { isLayerLockedByOther } = useBannerRealtime()
+const editable = computed(() => !props.layer.locked && !isLayerLockedByOther(props.layer.id))
+const isMiddle = computed(() => props.phase?.kind === 'hold')
+const keyframeTime = computed(() => Math.max(props.layer.startTime ?? 0, Math.min(props.layer.endTime ?? state.duration, state.currentTime)))
 const isAudio = computed(() => props.layer.type === 'audio')
 const isKeyframe = computed(() => hasKeyframes(props.layer))
-const title = computed(() => isAudio.value ? 'Audio' : isKeyframe.value ? 'Animation' : props.direction === 'in' ? 'Build In' : 'Build Out')
-const directionLabel = computed(() => props.direction === 'in' ? 'entrance' : 'exit')
-const presets = computed(() => (props.direction === 'in' ? ANIM_IN : ANIM_OUT).filter(p => p.label.toLowerCase().includes(search.value.trim().toLowerCase())))
+const title = computed(() => isAudio.value ? 'Audio' : isMiddle.value ? 'Middle' : isKeyframe.value ? 'Animation' : props.direction === 'in' ? 'Build In' : 'Build Out')
+const directionLabel = computed(() => isMiddle.value ? 'middle' : props.direction === 'in' ? 'entrance' : 'exit')
+const presets = computed(() => (isMiddle.value ? MIDDLE_ANIMATIONS.filter(preset => !props.layer.motionPath?.length || !preset.properties.some(property => property === 'x' || property === 'y')) : props.direction === 'in' ? ANIM_IN : ANIM_OUT).filter(p => p.label.toLowerCase().includes(search.value.trim().toLowerCase())))
 const selectedId = computed(() => props.direction === 'in' && props.layer.wordPop ? 'wordPop' : props.direction === 'in' ? props.layer.animIn : (props.layer.animOut ?? 'fadeOut'))
 const selectedLabel = computed(() => isAudio.value ? 'Sound' : isKeyframe.value ? 'Keyframes' : selectedId.value === 'wordPop' ? 'Words Pop' : ([...ANIM_IN, ...ANIM_OUT].find(p => p.id === selectedId.value)?.label ?? 'None'))
 const blockLabel = computed(() => props.phase?.label ?? selectedLabel.value)
 const blockDescription = computed(() => props.phase ? `${blockLabel.value} · ${props.phase.start.toFixed(2)}–${props.phase.end.toFixed(2)}s` : blockLabel.value)
-const foreground = computed(() => props.phase?.kind === 'hold' ? 'var(--ui-text)' : ['text', 'image', 'button', 'audio'].includes(props.layer.type) ? '#111827' : '#ffffff')
+const foreground = computed(() => props.phase?.kind === 'hold' ? 'var(--ui-text)' : '#ffffff')
 const iconFor = (id: string) => ({ none: 'circle-slash', fadeIn: 'blend', fadeOut: 'blend', slideL: 'arrow-left', slideR: 'arrow-right', slideU: 'arrow-up', slideD: 'arrow-down', zoomIn: 'zoom-in', zoomOut: 'zoom-out', spinIn: 'rotate-cw', spinOut: 'rotate-cw', bounceIn: 'corner-right-up', elastic: 'move-horizontal', kenBurns: 'scan', wordPop: 'whole-word' }[id] || 'sparkles')
 const propLabels: Record<KeyframeProperty, string> = { opacity: 'Opacity', x: 'Horizontal position', y: 'Vertical position', scaleX: 'Horizontal scale', scaleY: 'Vertical scale', rotation: 'Rotation' }
-const tracks = computed(() => (Object.keys(propLabels) as KeyframeProperty[]).filter(p => props.layer.keyframes?.[p]?.length).map(p => ({ label: propLabels[p], value: p })))
+const tracks = computed(() => (Object.keys(propLabels) as KeyframeProperty[]).filter(p => !(props.layer.motionPath?.length && ['x', 'y'].includes(p))).map(p => ({ label: propLabels[p], value: p })))
 const frames = computed(() => props.layer.keyframes?.[property.value] ?? [])
 const frame = computed(() => frames.value[Number(frameIndex.value)])
 const frameOptions = computed(() => frames.value.map((f, i) => ({ label: `${i + 1} · ${f.time.toFixed(2)}s`, value: String(i) })))
@@ -38,7 +44,7 @@ const easeOptions = computed(() => {
   if (current && !options.some(e => e.value === current)) options.unshift({ label: `Custom · ${current}`, value: current })
   return options
 })
-const canWordPop = computed(() => props.direction === 'in' && props.layer.type === 'text' && !props.layer.textRuns?.length && 'words pop'.includes(search.value.trim().toLowerCase()))
+const canWordPop = computed(() => !isMiddle.value && props.direction === 'in' && props.layer.type === 'text' && !props.layer.textRuns?.length && 'words pop'.includes(search.value.trim().toLowerCase()))
 const duration = computed(() => state.sets[state.activeKey]?.playback?.duration ?? Math.max(3, props.layer.endTime ?? 3))
 const pendingLabel = computed(() => pending.value === 'wordPop' ? 'Words Pop' : [...ANIM_IN, ...ANIM_OUT].find(p => p.id === pending.value)?.label)
 
@@ -47,9 +53,9 @@ watch(open, async (value) => {
     pending.value = null
     return
   }
-  tab.value = isKeyframe.value || isAudio.value ? 'build' : 'presets'
+  tab.value = (isKeyframe.value && !isMiddle.value) || isAudio.value ? 'build' : 'presets'
   search.value = ''
-  property.value = tracks.value[0]?.value ?? 'opacity'
+  property.value = tracks.value.find(track => props.layer.keyframes?.[track.value]?.length)?.value ?? tracks.value[0]?.value ?? 'opacity'
   frameIndex.value = '0'
   if (props.phase && isKeyframe.value) {
     const phase = props.phase
@@ -73,6 +79,7 @@ defineExpose({ openPicker: () => {
   open.value = true
 } })
 function setVolume(value: string | number) {
+  if (!editable.value) return
   const n = Number(value)
   if (value === '' || !Number.isFinite(n)) return
   updateLayer(props.layer.id, { volume: Math.min(1, Math.max(0, n / 100)) })
@@ -83,6 +90,7 @@ function focusAnimation() {
   inspectorTab.value = isAudio.value ? 'properties' : 'animation'
 }
 function applyPreset(id: string) {
+  if (!editable.value) return
   const reset = isKeyframe.value ? { keyframes: undefined, motionPath: undefined, motionPathTweens: undefined, wordPop: undefined, animIn: 'none' as const, animOut: 'none' as const } : {}
   const change = id === 'wordPop'
     ? { animIn: 'none' as const, wordPop: props.layer.wordPop ?? { duration: 0.5, stagger: 0.1, ease: 'cubic-bezier(.21,.79,.09,.97)' } }
@@ -93,6 +101,17 @@ function applyPreset(id: string) {
   focusAnimation()
 }
 function choosePreset(id: string) {
+  if (isMiddle.value && props.phase && editable.value) {
+    const at = Math.max(props.phase.start, Math.min(props.phase.end - 0.1, keyframeTime.value))
+    pauseTimeline()
+    seekTo(at)
+    const source = hasKeyframes(props.layer) ? props.layer.keyframes! : presetToKeyframes(props.layer)
+    updateLayer(props.layer.id, addMiddleAnimation(props.layer, props.phase, id, at, source, property => currentLayerValue?.(props.layer, property) ?? keyframeDefault(props.layer, property)))
+    state.expandedKeyframeLayers.add(props.layer.id)
+    state.selectedKeyframe = null
+    open.value = false
+    return
+  }
   if (isKeyframe.value) {
     pending.value = id
     return
@@ -100,17 +119,20 @@ function choosePreset(id: string) {
   applyPreset(id)
 }
 function setTiming(value: string | number) {
+  if (!editable.value) return
   const n = Number(value)
   if (value === '' || !Number.isFinite(n)) return
   const bounded = Math.min(Math.max(0.05, n), Math.max(0.05, (props.layer.endTime ?? 3) - (props.layer.startTime ?? 0)))
   updateLayer(props.layer.id, props.direction === 'in' ? props.layer.wordPop ? { wordPop: { ...props.layer.wordPop, duration: bounded } } : { animInDur: bounded } : { outDur: bounded })
 }
 function setStagger(value: string | number) {
+  if (!editable.value) return
   const n = Number(value)
   if (value === '' || !Number.isFinite(n) || !props.layer.wordPop) return
   updateLayer(props.layer.id, { wordPop: { ...props.layer.wordPop, stagger: Math.min(5, Math.max(0, n)) } })
 }
 function setFrame(key: 'time' | 'value' | 'easing', value: string | number) {
+  if (!editable.value) return
   if (!frame.value || value === '') return
   const number = Number(value)
   if (key !== 'easing' && !Number.isFinite(number)) return
@@ -127,8 +149,22 @@ function setFrame(key: 'time' | 'value' | 'easing', value: string | number) {
   state.selectedKeyframe = { layerId: props.layer.id, property: property.value, index: Number(frameIndex.value) }
 }
 function setEase(value: string) {
+  if (!editable.value) return
   if (isKeyframe.value) setFrame('easing', value)
   else updateLayer(props.layer.id, props.direction === 'in' ? props.layer.wordPop ? { wordPop: { ...props.layer.wordPop, ease: value } } : { ease: value } : { animOutEase: value })
+}
+function addKeyframe() {
+  if (!editable.value || isAudio.value) return
+  pauseTimeline()
+  const at = Math.round(keyframeTime.value * 100) / 100
+  seekTo(at)
+  const value = currentLayerValue?.(props.layer, property.value) ?? keyframeDefault(props.layer, property.value)
+  const source = hasKeyframes(props.layer) ? props.layer.keyframes : presetToKeyframes(props.layer)
+  const next = insertTimelineKeyframe(props.layer, property.value, at, value, source)
+  if (next.changed || !hasKeyframes(props.layer)) updateLayer(props.layer.id, { keyframes: next.keyframes })
+  frameIndex.value = String(next.index)
+  state.expandedKeyframeLayers.add(props.layer.id)
+  state.selectedKeyframe = { layerId: props.layer.id, property: property.value, index: next.index }
 }
 function preview() {
   pauseTimeline()
@@ -146,13 +182,14 @@ function preview() {
       color="neutral"
       variant="ghost"
       size="xs"
-      class="h-full min-h-0 w-full min-w-0 justify-start gap-1 overflow-hidden rounded-sm px-1.5 text-[11px] font-medium hover:bg-white/20"
+      class="h-full min-h-0 w-full min-w-0 justify-start gap-1 overflow-hidden rounded-lg px-3 text-[11px] font-medium hover:bg-white/20 cursor-grab active:cursor-grabbing"
       :style="{ color: foreground }"
-      @mousedown.stop
+      :class="phase?.kind === 'hold' && phase.label === 'Hold' ? 'opacity-0 hover:opacity-100 focus:opacity-100' : ''"
+      @mousedown.stop="emit('dragStart', $event)"
       @click.stop="focusAnimation"
     >
       <UIcon :name="`i-lucide-${isAudio ? 'volume-2' : isKeyframe ? 'diamond' : iconFor(selectedId)}`" class="size-3 shrink-0" />
-      <span v-if="!compact" class="truncate">{{ blockLabel }}</span>
+      <span v-if="!compact" class="truncate">{{ blockLabel.replace(/^(Entry|Exit|Motion) · /, '') }}</span>
     </UButton>
     <template #content>
       <section
@@ -178,7 +215,7 @@ function preview() {
             color="neutral"
             variant="ghost"
             size="xs"
-            @click="open = false"
+            @click="() => { open = false }"
           />
         </div>
         <div class="min-h-0 overflow-y-auto p-3">
@@ -201,7 +238,7 @@ function preview() {
               />
             </UFormField>
             <UAlert
-              v-if="isKeyframe"
+              v-if="isKeyframe && !isMiddle"
               title="Custom keyframe animation"
               description="Selecting a preset asks before replacing this layer’s keyframes and motion path. Build lets you edit the existing motion."
               color="neutral"
@@ -229,10 +266,11 @@ function preview() {
                 />
               </div>
             </div>
-            <div class="grid grid-cols-3 gap-2">
+            <div class="grid grid-cols-4 gap-2">
               <UButton
-                v-if="canWordPop"
+                v-if="canWordPop && !isMiddle"
                 aria-label="Words Pop entrance animation"
+                :disabled="!editable"
                 :aria-pressed="!isKeyframe && selectedId === 'wordPop'"
                 color="neutral"
                 variant="ghost"
@@ -246,6 +284,7 @@ function preview() {
                 v-for="preset in presets"
                 :key="preset.id"
                 :aria-label="`${preset.label} ${directionLabel} animation`"
+                :disabled="!editable"
                 :aria-pressed="!isKeyframe && selectedId === preset.id"
                 color="neutral"
                 variant="ghost"
@@ -253,7 +292,7 @@ function preview() {
                 :class="!isKeyframe && selectedId === preset.id ? 'ring-1 ring-primary text-primary' : ''"
                 @click="choosePreset(preset.id)"
               >
-                <UIcon :name="`i-lucide-${iconFor(preset.id)}`" class="size-6" /><span class="w-full truncate text-[11px]">{{ preset.label }}</span>
+                <UIcon :name="'icon' in preset && String(preset.icon).startsWith('i-lucide-') ? preset.icon : `i-lucide-${iconFor(preset.id)}`" class="size-6" /><span class="w-full truncate text-[11px]">{{ preset.label }}</span>
               </UButton>
             </div>
             <p v-if="!presets.length && !canWordPop" class="py-5 text-center text-sm text-muted">
@@ -280,16 +319,17 @@ function preview() {
                 <UCheckbox :model-value="!!layer.loopAudio" @update:model-value="updateLayer(layer.id, { loopAudio: !!$event })" />
               </UFormField>
             </template>
-            <template v-else-if="isKeyframe">
+            <template v-else-if="isKeyframe || isMiddle">
               <UFormField label="Animated property">
                 <USelect v-model="property" :items="tracks" class="w-full" />
               </UFormField>
-              <UFormField label="Keyframe">
+              <UFormField v-if="frameOptions.length" label="Keyframe">
                 <USelect v-model="frameIndex" :items="frameOptions" class="w-full" />
               </UFormField>
               <template v-if="frame">
                 <UFormField label="Time (seconds)" :error="frameError">
                   <UInput
+                    :disabled="!editable"
                     :model-value="frame.time"
                     type="number"
                     :min="0"
@@ -301,6 +341,7 @@ function preview() {
                 </UFormField>
                 <UFormField :label="`${propLabels[property]} value`">
                   <UInput
+                    :disabled="!editable"
                     :model-value="frame.value"
                     type="number"
                     :step="0.01"
@@ -313,6 +354,7 @@ function preview() {
             <template v-else>
               <UFormField :label="layer.wordPop && direction === 'in' ? 'Seconds per word' : 'Duration (seconds)'">
                 <UInput
+                  :disabled="!editable"
                   :model-value="direction === 'in' ? layer.wordPop?.duration ?? layer.animInDur ?? 0.6 : layer.outDur ?? 0.25"
                   type="number"
                   :min="0.05"
@@ -323,6 +365,7 @@ function preview() {
               </UFormField>
               <UFormField v-if="layer.wordPop && direction === 'in'" label="Word stagger (seconds)">
                 <UInput
+                  :disabled="!editable"
                   :model-value="layer.wordPop.stagger"
                   type="number"
                   :min="0"
@@ -333,7 +376,7 @@ function preview() {
                 />
               </UFormField>
             </template>
-            <UFormField v-if="!isAudio" label="Easing" class="@lg:col-span-2">
+            <UFormField v-if="!isAudio && (!isMiddle || frame)" label="Easing" class="@lg:col-span-2">
               <USelect
                 :model-value="isKeyframe ? frame?.easing || 'none' : direction === 'in' ? layer.wordPop?.ease || layer.ease || 'power2.out' : layer.animOutEase || 'power1.in'"
                 :items="easeOptions"
@@ -342,6 +385,24 @@ function preview() {
               />
             </UFormField>
           </div>
+        </div>
+        <div v-if="!isAudio && tab === 'build'" class="space-y-2 border-t border-default p-3">
+          <UFormField v-if="!isKeyframe && !isMiddle" label="Animated property">
+            <USelect v-model="property" :items="tracks" class="w-full" />
+          </UFormField>
+          <UButton
+            :label="`Add keyframe at ${keyframeTime.toFixed(2)}s`"
+            icon="i-lucide-diamond-plus"
+            size="sm"
+            color="neutral"
+            variant="outline"
+            class="w-full justify-center"
+            :disabled="!editable"
+            @click="addKeyframe"
+          />
+          <p class="text-xs text-muted">
+            Captures this property’s current value. Drag diamonds on the expanded track to change their time.
+          </p>
         </div>
         <div class="flex shrink-0 items-center justify-between gap-2 border-t border-default p-3">
           <UButton
