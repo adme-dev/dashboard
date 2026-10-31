@@ -541,7 +541,7 @@ export async function convertTheBriefHtml(html) {
           layerBase.transformOrigin = { x: layerBase.w / 2, y: layerBase.h / 2 }
         }
         let y = layerBase.y
-        let shortestRow = Infinity
+        const rowHeights = []
         for (const [rowIndex, row] of rows.entries()) {
           const rowCss = style(row)
           const span = [...row.querySelectorAll('span')].find(item => item.textContent.trim() && !item.closest('sup')) || row
@@ -608,12 +608,18 @@ export async function convertTheBriefHtml(html) {
           if (!Number.isFinite(height)) throw new Error('Unsupported text line height')
           if (row.textContent.trim()) layers.push({ ...layerBase, linkId: `source:${sourceId}:row:${rowIndex}`, id: id++, type: 'text', name: row.textContent.trim().slice(0, 60), y, h: height, ...(layerBase.transformOrigin ? { transformOrigin: { x: layerBase.transformOrigin.x, y: layerBase.transformOrigin.y - (y - layerBase.y) } } : {}), text: row.textContent.replace(/^[ \t\r\n]+|[ \t\r\n]+$/g, ''), ...(textRuns.length ? { text: row.textContent, textRuns } : {}), ...(wordPop ? { wordPop } : {}), textTransform, fontFamily: textCss.fontFamily.replace(/["']/g, ''), fontStyle: textCss.fontStyle === 'italic' ? 'italic' : 'normal', fontSize, lineBoxFontSize, textAntialias: style(document.documentElement).getPropertyValue('-webkit-font-smoothing') === 'antialiased', fontWeight: Number(textCss.fontWeight) || 400, lineHeight, color: paintedCss.color || textCss.color || '#fff', ...(textStroke ? { textStroke } : {}), ...(textShadow ? { textShadow } : {}), textAlign: textCss.textAlign || 'left', letterSpacing: !textCss.letterSpacing || textCss.letterSpacing === 'normal' ? '0px' : textCss.letterSpacing })
           y += height
-          shortestRow = Math.min(shortestRow, height)
+          rowHeights.push(height)
         }
         // Rows are stacked one line box apart. When the source box is taller than
-        // that stack, a row soft-wraps and the next row would overlap its second line.
-        // A single wrapping row is safe: the native text box wraps to the same width.
-        if (rows.length > 1 && layerBase.h - (y - layerBase.y) > 0.4 * shortestRow) throw new Error('Wrapped text across stacked rows needs an adapter')
+        // that stack, a row soft-wraps and any row below it would overlap its extra
+        // lines. Only the last row may wrap safely (the native box wraps to the same
+        // width); accept that only when the extra height is a whole number of its
+        // line boxes and of no other row's, so the wrapping row is unambiguous.
+        const extra = layerBase.h - (y - layerBase.y)
+        if (rows.length > 1 && extra > 0.4 * Math.min(...rowHeights)) {
+          const wholeLines = height => extra / height >= 0.9 && Math.abs(extra / height - Math.round(extra / height)) < 0.1
+          if (!wholeLines(rowHeights.at(-1)) || rowHeights.slice(0, -1).some(wholeLines)) throw new Error('Wrapped text across stacked rows needs an adapter')
+        }
         if (new Set(rows.map(row => style(row).fontSize)).size > 1) warnings.push(`${element.id}: mixed-size text split into editable lines; baseline alignment needs visual review`)
       } else if (type === 'button') {
         const button = element.querySelector('button')

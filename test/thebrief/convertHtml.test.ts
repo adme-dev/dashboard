@@ -238,6 +238,9 @@ describe('TheBrief single-slide native conversion pilot', () => {
     const fits = await convertTheBriefHtml(twoRows.replace('height:80px', 'height:58px'))
     expect(fits.canvasData.custom_300x250.layers.filter(l => l.type === 'text').map(l => l.y)).toEqual([20, 48.8])
     await expect(convertTheBriefHtml(twoRows.replace('height:80px', 'height:87px'))).rejects.toThrow('Wrapped text across stacked rows needs an adapter')
+    // Only the last row wraps when the extra height is whole lines of it alone.
+    const lastWraps = twoRows.replace('<div class="row">on Sportage</div>', '<div class="row" style="font-size:12px">on Sportage</div>')
+    expect((await convertTheBriefHtml(lastWraps.replace('height:80px', 'height:57.6px'))).canvasData.custom_300x250.layers.filter(l => l.type === 'text')).toHaveLength(2)
     // A single row may wrap: the native text box wraps to the same width.
     const single = await convertTheBriefHtml(source.replace('height:80px', 'height:87px'))
     expect(single.canvasData.custom_300x250.layers.find(l => l.type === 'text').text).toBe('Hello world')
