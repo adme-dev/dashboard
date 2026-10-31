@@ -375,6 +375,24 @@ function effectTracks(effect, style, rules, start, end, warnings, geometry, inte
   return { tracks, transformOrigin }
 }
 
+// happy-dom can drop a valid declaration (e.g. a class-rule gradient with
+// rgba() stops) from both computed style and the CSSOM, leaving no trace.
+// Read the raw source rules of the element's own classes so a dropped
+// declaration is recovered or held, never silently replaced by a default.
+function sourceDeclarations(document, element, property) {
+  const classes = [...element.classList]
+  const values = new Set()
+  if (!classes.length) return values
+  const declaration = new RegExp(`(?:^|;)\\s*(?:${property})\\s*:\\s*([^;]*)`, 'gi')
+  for (const sheet of document.querySelectorAll('style')) {
+    for (const [, selectors, body] of sheet.textContent.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+      if (!selectors.split(',').some(selector => classes.some(name => selector.trim() === `.${name}`))) continue
+      for (const [, value] of body.matchAll(declaration)) values.add(value.trim())
+    }
+  }
+  return values
+}
+
 /** Offline CSS export adapter for bounded, hard-cut slide sequences. Source scripts are parsed, never run. */
 export async function convertTheBriefHtml(html) {
   if (Buffer.byteLength(html) > 2 * 1024 * 1024) throw new Error('HTML exceeds pilot limit')
@@ -546,6 +564,17 @@ export async function convertTheBriefHtml(html) {
           if (textStroke && !/^\d+(?:\.\d+)?px #[0-9a-f]{6}$/i.test(textStroke)) throw new Error('Unsupported text stroke')
           if (textShadow && !/^-?\d+(?:\.\d+)?px -?\d+(?:\.\d+)?px (?:\d+(?:\.\d+)?px|0) #[0-9a-f]{3,6}$/i.test(textShadow)) throw new Error('Unsupported text shadow')
           if (textStroke && !['stroke', ''].includes(containerCss.paintOrder)) throw new Error('Unsupported text paint order')
+          // Text clipped to a background paints that background, not its colour.
+          // Keeping only the colour would silently replace a gradient fill.
+          for (const node of new Set([row, span, ...runs, ...(textContainer ? [textContainer] : [])])) {
+            const css = style(node)
+            const plainFills = ['', 'currentcolor', 'inherit', (css.color || '').toLowerCase()]
+            const fills = [css.getPropertyValue('-webkit-text-fill-color'), ...sourceDeclarations(document, node, '-webkit-text-fill-color')]
+            if ([css.getPropertyValue('background-clip'), css.getPropertyValue('-webkit-background-clip'), ...sourceDeclarations(document, node, 'background-clip|-webkit-background-clip')].includes('text')
+              || fills.some(fill => !plainFills.includes((fill || '').toLowerCase()))) {
+              throw new Error('Gradient or clipped text fill needs an adapter')
+            }
+          }
           const textRuns = []
           if (row.querySelector('sup') || hasInlineSizes) {
             const walk = (node) => {
@@ -646,7 +675,16 @@ export async function convertTheBriefHtml(html) {
         // Read only the bounded inline gradient value in that case; the strict
         // composition checks below still decide whether it is representable.
         const inlineGradient = content?.getAttribute('style')?.match(/(?:^|;)\s*background\s*:\s*((?:linear|radial)-gradient\([^;]+\))/i)?.[1]
-        const backgroundImage = contentCss.backgroundImage || inlineGradient || ''
+        let backgroundImage = contentCss.backgroundImage || inlineGradient || ''
+        const declaredGradients = [...sourceDeclarations(document, content, 'background|background-image')].filter(value => /gradient\(/i.test(value))
+        if (declaredGradients.length && !/gradient\(/.test(backgroundImage)) {
+          // Only a single bare gradient is recoverable; position, size or layered
+          // backgrounds in the dropped shorthand cannot be checked below.
+          if (declaredGradients.length > 1 || !/^(?:linear|radial)-gradient\((?:[^()]|\([^()]*\))*\)$/.test(declaredGradients[0])) {
+            throw new Error('Unsupported gradient shape composition')
+          }
+          backgroundImage = declaredGradients[0]
+        }
         const borders = ['Top', 'Right', 'Bottom', 'Left'].map(side => px(contentCss[`border${side}Width`] || '0px'))
         if (rotation && (keyframes.scaleX || keyframes.scaleY || keyframes.rotation)) {
           // A 90-degree solid divider can be represented as a swapped rectangle.
@@ -670,9 +708,11 @@ export async function convertTheBriefHtml(html) {
         }
         if (/^(linear|radial)-gradient\(/.test(backgroundImage)) {
           if (!/^[\w\s#(),.%+-]+$/.test(backgroundImage)
-            || !['', 'initial', 'auto', 'auto auto'].includes(contentCss.backgroundSize)
-            || !['', 'initial', '0% 0%'].includes(contentCss.backgroundPosition)
-            || !['', 'initial', 'repeat'].includes(contentCss.backgroundRepeat)
+            // A gradient has no intrinsic size, so TheBrief's shared shape frame
+            // (cover, centred, no-repeat) paints exactly the default full box.
+            || !['', 'initial', 'auto', 'auto auto', 'cover'].includes(contentCss.backgroundSize)
+            || !['', 'initial', '0% 0%', '50% 50%'].includes(contentCss.backgroundPosition)
+            || !['', 'initial', 'repeat', 'no-repeat'].includes(contentCss.backgroundRepeat)
             || !['', 'initial', 'normal'].includes(contentCss.getPropertyValue('background-blend-mode'))
             || borders.some(width => width !== 0) || borderRadius === undefined) {
             throw new Error('Unsupported gradient shape composition')

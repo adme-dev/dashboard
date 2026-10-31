@@ -199,6 +199,30 @@ describe('TheBrief single-slide native conversion pilot', () => {
     await expect(convertTheBriefHtml(html.replace('border:0', 'background-blend-mode:multiply;border:0'))).rejects.toThrow(/gradient shape/)
   })
 
+  it('recovers a class-rule gradient fill that the offline DOM drops instead of exporting transparent', async () => {
+    // From a GWS Kia export: the glow's rgba() stop is lost by happy-dom in both
+    // computed style and CSSOM, which previously produced a transparent rect.
+    const gradient = 'linear-gradient(0deg,#f0c 27%,rgba(0,0,0,0) 72%)'
+    const html = source.replace('</style>', `.glow{background:${gradient};border-radius:0}</style>`)
+      .replace('data-eltype="text"', 'data-eltype="shape"')
+      .replace('<div class="row">Hello world</div>', '<div id="c-1" class="glow"></div>')
+    const shape = (await convertTheBriefHtml(html)).canvasData.custom_300x250.layers.find(l => l.name === 'Shape 1')
+    expect(shape).toMatchObject({ type: 'rect', fillColor: gradient })
+    // TheBrief's shared shape frame paints a size-less gradient over the whole box.
+    const framed = await convertTheBriefHtml(html.replace('</style>', '.glow{background-position:50% 50%;background-repeat:no-repeat;background-size:cover}</style>'))
+    expect(framed.canvasData.custom_300x250.layers.find(l => l.name === 'Shape 1').fillColor).toBe(gradient)
+    await expect(convertTheBriefHtml(html.replace(`background:${gradient}`, `background:${gradient} no-repeat 10px 0`))).rejects.toThrow(/gradient shape/)
+    await expect(convertTheBriefHtml(html.replace('</style>', `.glow{background-image:${gradient.replace('#f0c', '#fff')}}</style>`))).rejects.toThrow(/gradient shape/)
+  })
+
+  it('holds gradient-clipped text instead of replacing the fill with its plain colour', async () => {
+    const clipped = 'background:radial-gradient(circle at center center,#fff 0,#8ddcf2 53%,#3b679c 100%);background-clip:text;-webkit-text-fill-color:transparent'
+    await expect(convertTheBriefHtml(source.replace('Hello world', `<span style="${clipped}">EOFY</span>`))).rejects.toThrow('Gradient or clipped text fill needs an adapter')
+    await expect(convertTheBriefHtml(source.replace('</style>', `.fill{${clipped}}</style>`).replace('Hello world', '<span class="fill">EOFY</span>'))).rejects.toThrow('Gradient or clipped text fill needs an adapter')
+    const sameFill = await convertTheBriefHtml(source.replace('Hello world', '<span style="color:#123456;-webkit-text-fill-color:#123456">Plain</span>'))
+    expect(sameFill.canvasData.custom_300x250.layers.find(l => l.type === 'text').color).toBe('#123456')
+  })
+
   it('retains uppercase styling while keeping raw text editable', async () => {
     const result = await convertTheBriefHtml(source.replace('font-weight:700', 'font-weight:700;text-transform:uppercase'))
     expect(result.canvasData.custom_300x250.layers.find(l => l.type === 'text')).toMatchObject({ text: 'Hello world', textTransform: 'uppercase' })
