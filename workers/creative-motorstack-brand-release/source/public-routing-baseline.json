@@ -1,0 +1,96 @@
+{
+  "worker": "xeroflow-creative-tools",
+  "activeVersion": "01deb944-d20a-4987-a9c9-b66faa64f9a9",
+  "activeDeployment": "25d1ac45-9b4e-40b0-8d62-d96841d61698",
+  "uploadCommit": "9fc0eb4738571889045c0246b7c23dd0396c1ca5",
+  "script": {
+    "etag": "7c933cba28ab32e347136987bc80dacf3ac8460aad114d6e71eda70a4a23511b",
+    "handlers": [
+      "fetch"
+    ],
+    "named_handlers": [
+      {
+        "name": "MotorstackBrandAssets",
+        "handlers": [
+          "listBrands",
+          "getBrandKit",
+          "getBrandAsset"
+        ]
+      }
+    ],
+    "last_deployed_from": "wrangler"
+  },
+  "bindings": [
+    {
+      "name": "ASSETS",
+      "type": "assets"
+    },
+    {
+      "name": "CREATIVE_AUTH_KEY",
+      "type": "secret_text"
+    },
+    {
+      "name": "MOTORSTACK_API_KEY",
+      "type": "secret_text"
+    }
+  ],
+  "runtime": {
+    "assets": {
+      "headers": {
+        "version": 2,
+        "rules": {
+          "/*": {
+            "set": {
+              "cache-control": "no-cache",
+              "content-security-policy": "frame-ancestors 'self' https://app.xeroflow.io",
+              "referrer-policy": "strict-origin-when-cross-origin",
+              "x-content-type-options": "nosniff"
+            },
+            "unset": []
+          }
+        }
+      },
+      "raw_headers": "/*\n  X-Content-Type-Options: nosniff\n  Referrer-Policy: strict-origin-when-cross-origin\n  Cache-Control: no-cache\n  Content-Security-Policy: frame-ancestors 'self' https://app.xeroflow.io\n",
+      "serve_directly": false,
+      "raw_run_worker_first": true,
+      "base_path": "/"
+    },
+    "compatibility_date": "2026-10-27",
+    "usage_model": "standard"
+  },
+  "submittedModuleHashes": {
+    "worker.js": "2dfdd70d979a41c30cd738d340f2bc53e3caeaaf50990c36a0aee9b1336d70fa",
+    "brand-rpc.mjs": "6fc5bf8b65db7b56310f7d222738ac10f6a3bc7252ba0122bb8eaaa163795138"
+  },
+  "sourceProof": "Actual submitted normal-Wrangler multipart hashes equal current deterministic build, combined with successful version metadata and deployment readback; no independent download of source bytes claimed.",
+  "observedFailure": {
+    "rpc": "fetch_started then fetch_response HTTP522 within8-38ms; no provider invocation",
+    "http": "authenticated existing HTTP catalog succeeds with provider200"
+  },
+  "allowedRuntimeDelta": {
+    "compatibility_flags": [
+      "global_fetch_strictly_public"
+    ]
+  },
+  "outboundTargets": [
+    {
+      "target": "https://app.xeroflow.io/api/auth/me",
+      "purpose": "existing public session authority; no Creative host fetch"
+    },
+    {
+      "target": "https://oem-variants.pages.dev/api/mcp",
+      "purpose": "provider tool calls; fixed public endpoint"
+    },
+    {
+      "target": "https://oem-variants.pages.dev/api/logos/ or /api/fonts/ or /r2/",
+      "purpose": "allowlisted public provider assets and redirects"
+    },
+    {
+      "target": "https://pub-150d4c02365b4ffe9e158d72b3b048a1.r2.dev/",
+      "purpose": "allowlisted public R2 assets; no Bearer credential forwarded"
+    }
+  ],
+  "bindingFetch": "env.ASSETS.fetch remains binding-routed and is unaffected",
+  "officialBasis": "https://developers.cloudflare.com/workers/configuration/compatibility-flags/#global-fetch-strictly-public",
+  "diagnosisStatus": "Public-routing hypothesis supported by522-before-provider evidence; requires live RPC retry after configuration activation."
+}
