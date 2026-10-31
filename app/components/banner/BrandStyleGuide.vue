@@ -42,7 +42,7 @@ const secondaryStyle = computed(() => profile.value
           {{ kit.name }} dealer style guide
         </h3>
         <p class="text-[11px] text-muted">
-          {{ brandId === 'ldv' ? 'Updated 30 August 2026 · MotorStack' : 'MotorStack button and type reference' }}
+          {{ brandId === 'ldv' ? 'Updated 30 August 2026' : 'Button and type reference' }}
         </p>
       </div>
       <a
@@ -50,7 +50,7 @@ const secondaryStyle = computed(() => profile.value
         target="_blank"
         rel="noopener noreferrer"
         class="text-[11px] text-primary underline"
-      >Open MotorStack</a>
+      >View full guide</a>
     </div>
     <template v-if="profile">
       <div class="flex flex-wrap gap-2 p-3" :style="{ backgroundColor: profile.surface }">
@@ -85,7 +85,7 @@ const secondaryStyle = computed(() => profile.value
       </dl>
     </template>
     <p v-else class="text-xs text-muted">
-      The full guide is in MotorStack. This brand has no reviewed button profile in the current source snapshot; the preview uses the saved kit colours and fonts.
+      No reviewed button profile is available for this brand yet. The preview uses the saved kit colours and fonts; view the full source guide for more detail.
     </p>
   </section>
 </template>
