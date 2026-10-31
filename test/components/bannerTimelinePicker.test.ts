@@ -15,7 +15,10 @@ async function mount(layer: Partial<Layer>, phase?: TimelinePhase) {
   vi.stubGlobal('useBannerStudio', () => studio)
   vi.stubGlobal('useBannerRealtime', () => ({ isLayerLockedByOther: () => false }))
   vi.stubGlobal('useBannerInspector', () => ({ inspectorTab: Vue.ref('background') }))
-  vi.stubGlobal('useBannerTimeline', () => ({ pauseTimeline: vi.fn(), seekTo: vi.fn(), playTimeline: vi.fn() }))
+  const previewAnimation = vi.fn()
+  const stopAnimationPreview = vi.fn()
+  const animationPreview = Vue.ref<{ layerId: number, start: number, end: number } | null>(null)
+  vi.stubGlobal('useBannerTimeline', () => ({ pauseTimeline: vi.fn(), seekTo: vi.fn(), playTimeline: vi.fn(), previewAnimation, animationPreview, stopAnimationPreview }))
   const host = document.createElement('div'); document.body.append(host)
   let picker: any
   const app = Vue.createApp({ setup: () => () => Vue.h(Picker, {
@@ -37,7 +40,7 @@ async function mount(layer: Partial<Layer>, phase?: TimelinePhase) {
   cleanup = () => { app.unmount(); host.remove() }
   const click = async (name: string) => { const b = [...host.querySelectorAll('button')].find(b => b.textContent === name); expect(b, name).toBeTruthy(); b!.click(); await Vue.nextTick() }
   const change = async (label: string, value: string) => { const control = [...host.querySelectorAll('label')].find(l => l.textContent?.startsWith(label))!.querySelector('input,select') as HTMLInputElement; control.value = value; control.dispatchEvent(new Event(control.tagName === 'SELECT' ? 'change' : 'input', { bubbles: true })); await Vue.nextTick() }
-  return { studio, host, click, change }
+  return { studio, host, click, change, previewAnimation, animationPreview, stopAnimationPreview }
 }
 
 it('opens the clicked imported phase at its changing property without replacing any frames', async () => {
@@ -127,4 +130,21 @@ it('adds a middle Blink without replacing entrance, exit or other property track
   expect(result.animationClips).toEqual([{ start: 1, end: 2.2, label: 'Blink' }])
   studio.undo()
   expect(studio.activeLayers.value[0]!.keyframes).toEqual(keyframes)
+})
+
+it('previews exactly the clicked block through the isolated animation transport', async () => {
+  const { studio, click, previewAnimation } = await mount({ endTime: 10 }, { kind: 'entry', start: 0, end: 0.8, label: 'Entry · Keyframes', direction: 'in' })
+  studio.state.currentTime = 5
+  await click('Preview')
+  expect(previewAnimation).toHaveBeenCalledWith(1, { start: 0, end: 0.8 })
+  expect(studio.state.currentTime).toBe(5)
+})
+
+it('offers Stop preview for a running isolated animation', async () => {
+  const { click, animationPreview, stopAnimationPreview, previewAnimation } = await mount({})
+  animationPreview.value = { layerId: 1, start: 0, end: 0.5 }
+  await Vue.nextTick()
+  await click('Stop preview')
+  expect(stopAnimationPreview).toHaveBeenCalledOnce()
+  expect(previewAnimation).not.toHaveBeenCalled()
 })
