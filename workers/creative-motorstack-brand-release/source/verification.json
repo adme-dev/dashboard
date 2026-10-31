@@ -1,0 +1,67 @@
+{
+  "worker": "xeroflow-creative-tools",
+  "deploymentId": "0ddd8bf0-96c3-4855-94fd-c2e85e9bf6f1",
+  "createdOn": "2026-10-30T04:23:05.588877Z",
+  "versions": [
+    {
+      "version_id": "4ac68720-79ab-450a-a38f-6a5c81294269",
+      "percentage": 100
+    }
+  ],
+  "sourceParts": [
+    {
+      "version": "4ac68720-79ab-450a-a38f-6a5c81294269",
+      "name": "worker.js",
+      "bytes": 284719,
+      "sha256": "845b46f54c8a7584827a83b10e903b4f5035b4368d38460b4352d84fd7cdfe4f",
+      "path": "/private/tmp/thebrief-current-creative-worker-20261031/4ac68720-79ab-450a-a38f-6a5c81294269-worker.js"
+    }
+  ],
+  "versionMetadata": [
+    {
+      "id": "4ac68720-79ab-450a-a38f-6a5c81294269",
+      "metadata": {
+        "created_on": "2026-10-30T04:22:04.531487Z",
+        "source": "api"
+      },
+      "bindings": [
+        {
+          "name": "ASSETS",
+          "type": "assets"
+        },
+        {
+          "name": "CREATIVE_AUTH_KEY",
+          "type": "secret_text"
+        },
+        {
+          "name": "MOTORSTACK_API_KEY",
+          "type": "secret_text"
+        }
+      ],
+      "runtime": {
+        "assets": {
+          "headers": {
+            "version": 2,
+            "rules": {
+              "/*": {
+                "set": {
+                  "cache-control": "no-cache",
+                  "content-security-policy": "frame-ancestors 'self' https://app.xeroflow.io",
+                  "referrer-policy": "strict-origin-when-cross-origin",
+                  "x-content-type-options": "nosniff"
+                },
+                "unset": []
+              }
+            }
+          },
+          "raw_headers": "/*\n  X-Content-Type-Options: nosniff\n  Referrer-Policy: strict-origin-when-cross-origin\n  Cache-Control: no-cache\n  Content-Security-Policy: frame-ancestors 'self' https://app.xeroflow.io\n",
+          "serve_directly": false,
+          "raw_run_worker_first": true,
+          "base_path": "/"
+        },
+        "compatibility_date": "2026-10-27",
+        "usage_model": "standard"
+      }
+    }
+  ]
+}

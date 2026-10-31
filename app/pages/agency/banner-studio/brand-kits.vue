@@ -30,7 +30,7 @@ function openProject(p: BannerProject) {
 </script>
 
 <template>
-  <div class="max-w-6xl mx-auto p-6 space-y-6">
+  <div class="h-full min-h-0 w-full max-w-6xl mx-auto overflow-y-auto p-6 space-y-6">
     <div class="flex items-center gap-3">
       <UButton
         icon="i-lucide-arrow-left"
@@ -44,7 +44,7 @@ function openProject(p: BannerProject) {
           Brand kits
         </h1>
         <p class="text-sm text-(--ui-text-muted)">
-          One kit per client: colours with roles, heading and body fonts, logos for light and dark, and the guidelines the AI follows.
+          Shared OEM and client kits: colour roles, uploaded fonts, logos for light and dark, and brand guidance.
         </p>
       </div>
     </div>

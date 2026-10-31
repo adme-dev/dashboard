@@ -9,6 +9,7 @@ import { BRAND_COLOR_ROLES, BRAND_FONT_ROLES, normaliseHex, brandFontSelection }
 import { parseBannerFontTags as parseFontTags } from '~~/shared/banner/fonts'
 import { bannerFontFamily } from '~/utils/banner-font-family'
 import { createBannerUploadSession } from '~/utils/bannerUpload'
+import { brandFontOptions, fontOptionIncludes } from '~/utils/banner-brand-font-options'
 
 const props = defineProps<{
   /** Compact list for the studio side panel */
@@ -30,6 +31,7 @@ const api = $fetch as <T = unknown>(request: string, options?: Record<string, un
 const brandKits = ref<BannerBrandKit[]>([])
 const clients = ref<Array<{ id: string, name: string, logo_url?: string | null, logoUrl?: string | null, website?: string | null }>>([])
 const loading = ref(true)
+const motorstackOpen = ref(false)
 
 async function refresh() {
   loading.value = true
@@ -85,28 +87,48 @@ watch(() => form.clientId, async () => {
     if (request === fontRequest) fontLoading.value = false
   }
 }, { immediate: true })
-const fontGroups = computed(() => {
-  const groups = new Map<string, { label: string, value: string, family: string, assets: Array<{ id: string, weight: number }> }>()
-  for (const face of customFonts.value) {
-    const key = `uploaded:${face.clientId || 'agency'}:${face.name}`
-    if (!groups.has(key)) groups.set(key, { label: `${face.name} · ${face.clientId ? 'Client upload' : 'Shared upload'}`, value: key, family: face.name, assets: [] })
-    const group = groups.get(key)!
-    const weight = parseFontTags(face.tags).weight
-    if (!group.assets.some(asset => asset.weight === weight)) group.assets.push({ id: face.id, weight })
+async function refreshAfterMotorStackImport() {
+  const request = ++fontRequest
+  fontLoading.value = true
+  fontError.value = ''
+  const results = await Promise.allSettled([refresh(), refreshCustomFonts()])
+  if (request === fontRequest) {
+    fontLoading.value = false
+    if (results[1].status === 'rejected') fontError.value = 'Could not load the imported fonts. Reopen the brand kit library to try again.'
   }
-  return [...groups.values()]
+  if (results.some(result => result.status === 'rejected')) {
+    toast.add({ title: 'Library refresh incomplete', description: 'Reopen the brand kit library before reviewing imported kits.', color: 'warning' })
+  }
+}
+const fontGroups = computed(() => {
+  const sourceNames = new Map<string, string>()
+  for (const kit of brandKits.value) {
+    if (!kit.sourceUrl?.startsWith('https://oem-variants.pages.dev/api/mcp#brand=')) continue
+    try {
+      const brandId = new URLSearchParams(new URL(kit.sourceUrl).hash.slice(1)).get('brand')
+      if (brandId && !sourceNames.has(brandId)) sourceNames.set(brandId, kit.name)
+    } catch { /* An older malformed source label must not hide a usable font. */ }
+  }
+  const groups = brandFontOptions(customFonts.value, sourceNames)
+  for (const font of form.fonts) {
+    if (!font.assets?.length || groups.some(group => fontOptionIncludes(group, font))) continue
+    if (font.assets.every(asset => customFonts.value.some(face => face.id.toLowerCase() === asset.id.toLowerCase()))) {
+      groups.push({ label: `${font.family} · Saved kit files`, value: `saved:${font.role}`, family: font.family, assets: font.assets.map(asset => ({ ...asset })) })
+    }
+  }
+  return groups
 })
 const missingFontAssets = computed(() => !fontLoading.value && form.fonts.some(font => font.assets?.some(asset => !customFonts.value.some(face => face.id.toLowerCase() === asset.id.toLowerCase()))))
 const fontItems = computed(() => [
   ...form.fonts.filter(font => !font.assets?.length && !allFonts.value.some(item => item.category !== 'custom' && item.family === font.family)).map(font => ({ label: `${font.family} · ${detectedFontFamilies.value.includes(font.family) ? 'Detected font — upload file or choose available font' : 'Saved family — upload file or choose available font'}`, value: `library:${font.family}` })),
-  ...form.fonts.filter(font => font.assets?.length && !fontGroups.value.some(group => group.assets.some(asset => font.assets?.some(saved => saved.id.toLowerCase() === asset.id.toLowerCase())))).map(font => ({ label: `${font.family} · Linked font unavailable`, value: `saved:${font.role}`, disabled: true })),
+  ...form.fonts.filter(font => font.assets?.length && !fontGroups.value.some(group => fontOptionIncludes(group, font))).map(font => ({ label: `${font.family} · Linked font unavailable`, value: `saved:${font.role}`, disabled: true })),
   ...fontGroups.value.map(group => ({ label: group.label, value: group.value })),
   ...allFonts.value.filter(font => font.category !== 'custom').map(font => ({ label: font.family, value: `library:${font.family}` }))
 ])
 function fontOption(role: BrandFontRole) {
   const font = fontFor(role)
   if (!font) return undefined
-  const group = fontGroups.value.find(item => item.family === font.family && item.assets.some(asset => font.assets?.some(saved => saved.id.toLowerCase() === asset.id.toLowerCase())))
+  const group = fontGroups.value.find(item => fontOptionIncludes(item, font))
   return group?.value || (font.assets?.length ? `saved:${font.role}` : `library:${font.family}`)
 }
 function roleWeightItems(font: BrandKitFont) {
@@ -210,10 +232,12 @@ async function extractFromWebsite(intoOpenForm = false) {
     if (!intoOpenForm) openBlank()
     if (!form.name || !intoOpenForm) form.name = x.name
     form.sourceUrl = x.sourceUrl
-    extractionWarnings.value = x.warnings || []
+    extractionWarnings.value = [...(x.warnings || [])]
     detectedFontFamilies.value = x.fonts.map(font => font.family)
-    if (x.colors.length) form.colors = x.colors
-    if (x.fonts.length) form.fonts = x.fonts
+    if (!intoOpenForm || x.colors.length) form.colors = x.colors
+    else extractionWarnings.value.push('No colours were detected; the existing kit colours were kept.')
+    if (!intoOpenForm || x.fonts.length) form.fonts = x.fonts
+    else extractionWarnings.value.push('No fonts were detected; the existing kit fonts were kept.')
     if (x.logos.length) form.logos = [...x.logos, ...form.logos.filter(l => !x.logos.some(n => n.url === l.url))]
     toast.add({
       title: 'Brand extracted',
@@ -262,6 +286,7 @@ function fontFor(role: BrandFontRole) {
   return form.fonts.find(f => f.role === role)
 }
 function setFontFamily(role: BrandFontRole, choice: string) {
+  if (choice === fontOption(role)) return
   const group = fontGroups.value.find(item => item.value === choice)
   const family = group?.family || choice.replace(/^library:/, '')
   const weights = group ? group.assets.map(asset => asset.weight).sort((a, b) => a - b) : allFonts.value.find(font => font.family === family && font.category !== 'custom')?.weights || [400, 700]
@@ -437,13 +462,28 @@ function kitMenu(kit: BannerBrandKit) {
       <p v-else class="text-sm text-(--ui-text-muted)">
         {{ brandKits.length ? `${brandKits.length} kit${brandKits.length === 1 ? '' : 's'}` : 'Nothing saved yet' }}
       </p>
-      <UButton
-        icon="i-lucide-plus"
-        :label="compact ? undefined : 'New kit'"
-        :size="compact ? 'xs' : 'sm'"
-        @click="openBlank"
-      />
+      <div class="flex flex-wrap justify-end gap-2">
+        <UTooltip text="Import OEM kits from MotorStack">
+          <UButton
+            icon="i-lucide-download"
+            :label="compact ? undefined : 'Import from MotorStack'"
+            aria-label="Import OEM kits from MotorStack"
+            color="neutral"
+            variant="outline"
+            :size="compact ? 'xs' : 'sm'"
+            @click="motorstackOpen = true"
+          />
+        </UTooltip>
+        <UButton
+          icon="i-lucide-plus"
+          :label="compact ? undefined : 'New kit'"
+          :size="compact ? 'xs' : 'sm'"
+          @click="openBlank"
+        />
+      </div>
     </div>
+
+    <BannerMotorStackBrandKitImport v-model:open="motorstackOpen" @complete="refreshAfterMotorStackImport" />
 
     <!-- Starters (always available in full mode; in compact only when empty) -->
     <div
