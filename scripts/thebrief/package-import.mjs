@@ -1,5 +1,8 @@
-import { readFile, writeFile, realpath } from 'node:fs/promises'
-import { resolve, sep, basename, extname } from 'node:path'
+import { readFile, writeFile, realpath, mkdtemp, rm } from 'node:fs/promises'
+import { resolve, sep, basename, extname, join } from 'node:path'
+import { tmpdir } from 'node:os'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
 import { createHash } from 'node:crypto'
 import sharp from 'sharp'
 import { resolveGoogleFonts } from './google-fonts.mjs'
@@ -33,6 +36,20 @@ if (external.fonts.length) {
   candidate.warnings.push('External Google fonts snapshotted with source URLs and checksums; original historical font version requires visual review')
 }
 const assets = []
+async function probeVideo(bytes) {
+  const dir = await mkdtemp(join(tmpdir(), 'thebrief-video-'))
+  const file = join(dir, 'clip.mp4')
+  try {
+    await writeFile(file, bytes, { mode: 0o600 })
+    const { stdout } = await promisify(execFile)('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=codec_name,width,height:format=duration', '-of', 'json', file], { timeout: 30000, maxBuffer: 1024 * 1024 })
+    const probe = JSON.parse(stdout)
+    return { codec: probe.streams?.[0]?.codec_name, width: Number(probe.streams?.[0]?.width), height: Number(probe.streams?.[0]?.height), duration: Number(probe.format?.duration) }
+  } catch (cause) {
+    throw new Error('Video preparation requires ffprobe to verify the clip', { cause })
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+}
 const sourceAssets = new Map()
 const fonts = []
 const fontTransformations = []
@@ -51,6 +68,26 @@ for (const board of Object.values(candidate.canvasData)) {
         asset = assets.find(item => item.sha256 === sha256)
         if (!asset) {
           asset = { originalPath, path: `./media/${sha256}.mp3`, fileName: `${sha256}.mp3`, mimeType: 'audio/mpeg', sha256, base64: bytes.toString('base64') }
+          assets.push(asset)
+        }
+        sourceAssets.set(assetKey, asset)
+        layer.src = asset.path
+        continue
+      }
+      if (extname(originalPath).toLowerCase() === '.mp4') {
+        // Original bytes are kept: no transcoding or flattening. ffprobe only reads
+        // container metadata; the clip must be H.264 and cover the source clip end.
+        if (layer.type !== 'video') throw new Error('Video is used by a non-video layer')
+        if (bytes.subarray(4, 8).toString('latin1') !== 'ftyp') throw new Error('Video is not an MP4 file')
+        const media = await probeVideo(bytes)
+        if (media.codec !== 'h264') throw new Error(`Video ${basename(originalPath)}: ${media.codec || 'unknown'} codec requires an adapter`)
+        if (!(media.duration > 0) || layer.mediaEnd > media.duration + 0.05) throw new Error(`Video ${basename(originalPath)}: source clip end ${layer.mediaEnd}s exceeds the ${media.duration}s file`)
+        const frame = (candidate.videoFrames || []).find(item => item.layerId === layer.id)
+        if (frame && !(media.width > 0 && media.height > 0 && Math.abs(media.width / media.height - frame.aspect) / frame.aspect <= 0.01)) throw new Error(`Video ${basename(originalPath)}: file aspect does not match its source framing`)
+        const sha256 = hash(bytes)
+        asset = assets.find(item => item.sha256 === sha256)
+        if (!asset) {
+          asset = { originalPath, path: `./media/${sha256}.mp4`, fileName: `${sha256}.mp4`, mimeType: 'video/mp4', sha256, base64: bytes.toString('base64') }
           assets.push(asset)
         }
         sourceAssets.set(assetKey, asset)
