@@ -18,7 +18,7 @@ class ReleaseGuards(unittest.TestCase):
         self.calls.append((path,args))
         if path == '/deployments': return {'deployments': [{'id': self.manifest['baseDeployment'], 'created_on':'2026-10-30', 'versions':[{'version_id':self.manifest['baseVersion'],'percentage':100}]}]}
         if path == '/versions': return {'items':[{'id':self.manifest['baseVersion'],'metadata':{'created_on':'2026-10-30'}}]}
-        if path.startswith('/versions/'): return {'resources': {'bindings':self.evidence['versionMetadata'][0]['bindings'], 'script_runtime':self.evidence['versionMetadata'][0]['runtime']}}
+        if path.startswith('/versions/'): return {'resources': {'bindings':self.evidence['versionMetadata'][0]['bindings'], 'script_runtime':self.evidence['versionMetadata'][0]['runtime'], 'script':self.evidence['versionMetadata'][0]['script']}}
         self.fail('Unexpected request ' + path)
     def test_verified_baseline_readonly(self):
         with patch.object(r,'request',self.fake), patch.object(r,'module_hashes',return_value={'worker.js':self.manifest['baseSha256']}):
@@ -44,7 +44,7 @@ class ReleaseGuards(unittest.TestCase):
             with patch.object(r,'request',fake), self.assertRaisesRegex(RuntimeError,'Bindings or complete runtime'):
                 r.verify_runtime(self.manifest['baseVersion'])
     def test_current_source_hash_drift_rejected(self):
-        with patch.object(r,'request',self.fake), patch.object(r,'module_hashes',return_value={'worker.js':'different'}), self.assertRaisesRegex(RuntimeError,'Live source'):
+        with patch.object(r,'request',self.fake), patch.object(r,'module_hashes',return_value={'worker.js':'different'}), self.assertRaisesRegex(RuntimeError,'Latest baseline source'):
             r.verify_baseline(self.manifest)
     def test_metadata_preserves_assets_and_exact_secret_bindings(self):
         meta=r.metadata('a'*40)
@@ -96,6 +96,51 @@ class ReleaseGuards(unittest.TestCase):
                 return result
             with patch.object(r.subprocess, 'run', mismatch), self.assertRaises(RuntimeError):
                 r.verify_source_commit(commit)
+    def test_post_upload_baseline_uses_immutable_version_metadata_not_latest_content(self):
+        candidate = 'new-candidate'
+        def fake(path, *args, **kwargs):
+            if path == '/versions': return {'items': [{'id': candidate, 'metadata': {'created_on': '2026-10-31'}}]}
+            return self.fake(path, *args, **kwargs)
+        with patch.object(r, 'request', fake), patch.object(r, 'module_hashes', side_effect=AssertionError('Cannot download old version content')):
+            r.verify_baseline(self.manifest, latest_expected=candidate)
+    def test_immutable_baseline_script_etag_drift_fails(self):
+        def fake(path, *args, **kwargs):
+            result = self.fake(path, *args, **kwargs)
+            if path.startswith('/versions/'):
+                result['resources']['script'] = {'etag': 'unexpected'}
+            return result
+        with patch.object(r, 'request', fake), self.assertRaisesRegex(RuntimeError, 'script etag changed'):
+            r.verify_runtime(self.manifest['baseVersion'])
+    def test_latest_source_download_has_no_version_selector_and_is_bracketed(self):
+        meta = r.metadata('a' * 40)
+        body, mime = r.multipart(meta)
+        # Real content downloads contain modules only, not upload metadata.
+        from email.parser import BytesParser
+        from email.policy import default
+        parsed = BytesParser(policy=default).parsebytes(b'Content-Type: ' + mime.encode() + b'\r\n\r\n' + body)
+        parts = []
+        for part in parsed.iter_parts():
+            if part.get_filename():
+                parts.append(b'--test\r\nContent-Disposition: form-data; name="' + part.get_filename().encode() + b'"; filename="' + part.get_filename().encode() + b'"\r\n\r\n' + part.get_payload(decode=True) + b'\r\n')
+        content = b''.join(parts) + b'--test--\r\n'
+        with patch.object(r, 'latest_version', side_effect=['candidate', 'candidate']), patch.object(r, 'request', return_value=(content, 'multipart/form-data; boundary=test')) as request:
+            self.assertEqual(r.module_hashes('candidate'), self.manifest['modules'])
+            request.assert_called_once_with('/content/v2', raw=True)
+        with patch.object(r, 'latest_version', side_effect=['candidate', 'other']), patch.object(r, 'request', return_value=(content, 'multipart/form-data; boundary=test')), self.assertRaisesRegex(RuntimeError, 'during source download'):
+            r.module_hashes('candidate')
+        with patch.object(r, 'latest_version', return_value='other'), patch.object(r, 'request') as request, self.assertRaisesRegex(RuntimeError, 'before source download'):
+            r.module_hashes('candidate')
+        request.assert_not_called()
+    def test_verified_receipt_preserves_original_upload_commit_for_current_source_match(self):
+        receipt = {'versionId': 'candidate', 'commit': 'a' * 40, 'modules': self.manifest['modules']}
+        detail = {'annotations': {'workers/commit_sha': 'a' * 40}}
+        with patch.object(r, 'verify_runtime', return_value=detail), patch.object(r, 'module_hashes', return_value=self.manifest['modules']):
+            self.assertEqual(r.verify_uploaded_candidate(self.manifest, receipt, 'candidate'), 'a' * 40)
+        for bad in [{**receipt, 'commit': 'b' * 40}, {**receipt, 'versionId': 'other'}, {**receipt, 'modules': {'worker.js': 'stale'}}]:
+            with patch.object(r, 'verify_runtime', return_value=detail), patch.object(r, 'module_hashes', return_value=self.manifest['modules']), self.assertRaises(RuntimeError):
+                r.verify_uploaded_candidate(self.manifest, bad, 'candidate')
+        with patch.object(r, 'verify_runtime', return_value=detail), patch.object(r, 'module_hashes', return_value={'worker.js': 'unexpected'}), self.assertRaisesRegex(RuntimeError, 'Candidate latest source'):
+            r.verify_uploaded_candidate(self.manifest, receipt, 'candidate')
     def test_upload_requires_explicit_mutation_flag_before_network(self):
         from argparse import Namespace
         with patch.object(r,'request',side_effect=AssertionError('network not permitted')), self.assertRaisesRegex(RuntimeError,'explicit'):

@@ -6,7 +6,7 @@ import { validateBrandKitFontAssets } from '~~/server/utils/banner/fontAssets'
 import { brandKitInputSchema } from '~~/server/utils/banner/brandKits'
 import { bannerAssetDeliveryUrl, createBannerAssetId, createBannerAssetStorageKey, deleteBannerFile, uploadBannerAsset } from '~~/server/utils/bannerStorage'
 import { boundedMotorstackCall, motorstackListSchema, motorstackSourceUrl, type MotorstackBinding } from './motorstackClient'
-import { motorstackAssetKey, prepareMotorstackBrand } from './motorstackAssets'
+import { motorstackAssetKey, prepareMotorstackBrand, type PreparedMotorstackBrand } from './motorstackAssets'
 
 interface ExistingKit { id: string, name: string, source_url: string, fonts: Array<{ assets?: Array<{ id: string }> }>, logos: unknown[], colors: unknown[], guidelines: string | null }
 export interface MotorstackImportResult {
@@ -18,12 +18,39 @@ export interface MotorstackImportResult {
   counts: { fonts: number, logos: number, colors: number }
 }
 const EXISTING_SELECT = 'id, name, source_url, fonts, logos, colors, guidelines'
+function motorstackSourceNotes(prepared: PreparedMotorstackBrand) {
+  const { metadata, warnings } = prepared
+  const lines = [
+    'MotorStack source notes',
+    `Brand: ${metadata.brand.name}`,
+    'Use the declared font weights below. Numbers in filenames do not determine the weight.',
+    'The source medium font is available under the extra font role.',
+    '', 'Fonts:'
+  ]
+  for (const font of metadata.fonts) lines.push(`- ${font.role}: ${font.family || 'Family not supplied'}; declared weight: ${font.sourceWeight ?? 'not supplied'}; file: ${font.file || 'not supplied'}${!font.assetId ? '; unavailable' : ''}.`)
+  if (!metadata.fonts.length) lines.push('- No font details supplied.')
+  lines.push('', 'Logos:')
+  for (const logo of metadata.logos) lines.push(`- ${logo.role || 'Unspecified role'}${logo.variant ? ` (${logo.variant})` : ''}: ${logo.file || logo.name}; ${logo.onDark === true ? 'for dark backgrounds' : logo.onDark === false ? 'for light backgrounds' : 'background use not specified'}${!logo.assetId ? '; unavailable' : ''}.`)
+  if (!metadata.logos.length) lines.push('- No logos supplied.')
+  lines.push('', 'Colours:')
+  for (const color of metadata.colors) lines.push(`- ${color.name}: ${color.value}.`)
+  if (!metadata.colors.length) lines.push('- No colours supplied.')
+  lines.push('', 'Import warnings:', ...(warnings.length ? warnings.map(warning => `- ${warning}`) : ['None.']))
+  return lines.join('\n')
+}
 function existingResult(brandId: string, kit: ExistingKit): MotorstackImportResult {
   let warnings: string[] = []
   try {
     const provenance = JSON.parse(kit.guidelines || '')
     if (provenance.provider === 'MotorStack' && Array.isArray(provenance.warnings)) warnings = provenance.warnings.filter((value: unknown): value is string => typeof value === 'string').slice(0, 100)
-  } catch { /* A user may have edited the kit guidelines; never replace them. */ }
+  } catch {
+    // Read our human-readable warning section, while retaining any user edits verbatim.
+    const notes = kit.guidelines || ''
+    if (notes.startsWith('MotorStack source notes\n')) {
+      const section = notes.split('\nImport warnings:\n')[1]?.split('\n\n')[0] || ''
+      warnings = section.split('\n').filter(line => line.startsWith('- ')).map(line => line.slice(2)).filter(Boolean).slice(0, 100)
+    }
+  }
   return { status: 'existing', brandId, brandName: kit.name, kitId: kit.id, warnings: [...warnings, 'The existing shared source kit was retained without changes.'], counts: {
     fonts: new Set((kit.fonts || []).flatMap(font => font.assets?.map(asset => asset.id) || [])).size,
     logos: kit.logos?.length || 0, colors: kit.colors?.length || 0
@@ -89,8 +116,8 @@ export async function importMotorstackBrand(event: H3Event, binding: MotorstackB
         const asset = managed.get(ref.assetKey)!
         return { name: `${source.variant || source.role}: ${source.name}`.slice(0, 120), url: asset.url, r2Key: asset.r2Key, variant: source.onDark === true ? 'dark' : source.onDark === false ? 'light' : 'any' }
       })
-      // Keep role/file/declared weight evidence, including unavailable roles, without remote URLs or credentials.
-      const guidelines = JSON.stringify({ provider: 'MotorStack', schemaVersion: 1, brandId, sourceUrl, note: 'Imported source metadata. Medium maps to the extra role. Source weights are authoritative; filenames do not determine weights. No designs or client defaults were changed.', fonts: metadata.fonts, logos: metadata.logos, colors: metadata.colors, warnings })
+      // Usable style notes retain source roles and filenames; opaque IDs remain in asset tags.
+      const guidelines = motorstackSourceNotes(prepared)
       const input = brandKitInputSchema.safeParse({ name: metadata.brand.name, clientId: null, fonts, logos, colors: prepared.colors, guidelines, sourceUrl })
       if (!input.success) throw createError({ statusCode: 422, statusMessage: 'MotorStack metadata exceeds native kit limits; no partial kit was saved' })
       await validateBrandKitFontAssets(input.data.fonts, null, db)
