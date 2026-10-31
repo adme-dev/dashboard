@@ -197,6 +197,7 @@ async function importAsset(asset: MotorStackMediaAsset) {
             v-for="warning in media.warnings"
             :key="warning"
             color="warning"
+            variant="soft"
             :description="warning"
           />
           <div class="flex items-center justify-between gap-3 text-sm">
