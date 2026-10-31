@@ -23,7 +23,8 @@ const changes = [
   ['return { handleMotorstack: handleMotorstack2, rpc, binary };', 'return { handleMotorstack: handleMotorstack2, rpc, binary, catalog };'],
   ['import { createBrandService } from "./brand-rpc.mjs";', 'import { createBrandService, createPrivateMotorstackFetch } from "./brand-rpc.mjs";'],
   ['    const { rpc, binary } = createMotorstack();\n    return createBrandService({ rpc, binary, safeURL, extension, MIME, idFor, boundedBody, AdapterError }, this.env);', '    const fetcher = createPrivateMotorstackFetch();\n    const { rpc, binary, catalog } = createMotorstack({ fetcher });\n    return createBrandService({ rpc, binary, catalog, safeURL, extension, MIME, idFor, boundedBody, AdapterError, fetcher }, this.env);'],
-  ['  getBrandAsset(input) { return this.#service().getBrandAsset(input); }', '  getBrandAsset(input) { return this.#service().getBrandAsset(input); }\n  listMedia(input) { return this.#service().listMedia(input); }\n  getMediaAsset(input) { return this.#service().getMediaAsset(input); }']
+  ['  getBrandAsset(input) { return this.#service().getBrandAsset(input); }', '  getBrandAsset(input) { return this.#service().getBrandAsset(input); }\n  listMedia(input) { return this.#service().listMedia(input); }\n  getMediaAsset(input) { return this.#service().getMediaAsset(input); }\n  listCreativeCatalog(input) { return this.#service().listCreativeCatalog(input); }'],
+  ['"get_brand_assets", "get_variants"].includes(name)', '"get_brand_assets", "get_variants", "get_offers"].includes(name)']
 ]
 let worker = source
 for (const [before, after] of [...changes, ...mediaRepairPatches]) {

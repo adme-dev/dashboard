@@ -136,6 +136,43 @@ export function createBrandService({ rpc, binary, catalog, safeURL, extension, M
     if (!item) fail(404, 'asset_not_found')
     return binary(key, item)
   }
+  async function listCreativeCatalog(input) {
+    if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).some(field => !['brandId', 'kind'].includes(field))) fail(400, 'invalid_catalog_query')
+    const brandId = slug(input.brandId)
+    if (!['variants', 'offers'].includes(input.kind)) fail(400, 'invalid_catalog_query')
+    const { brands } = await listBrands()
+    const brand = brands.find(item => item.id === brandId)
+    if (!brand) fail(403, 'brand_not_available')
+    const data = await rpc(key, input.kind === 'variants' ? 'get_variants' : 'get_offers', { oem: brandId, ...input.kind === 'variants' ? { include_photos: false } : { include_disclaimers: true } })
+    const source = input.kind === 'variants' ? data.vehicles : data.offers
+    if (!Array.isArray(source) || source.length > 500) fail(502, 'invalid_motorstack_catalog')
+    const value = (item, field, max = 180) => item[field] == null ? null : clean(item[field], max) || null
+    const terms = (text, max = 12000) => typeof text === 'string' && text.length <= max && !/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(text) && !text.includes(key) ? text : null
+    const amount = value => typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 10000000 ? value : null
+    const items = source.map(item => {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) fail(502, 'invalid_motorstack_catalog')
+      if (input.kind === 'offers') {
+        if (item.disclaimer != null && terms(item.disclaimer) === null) fail(502, 'invalid_motorstack_catalog')
+        if (item.offer != null && terms(item.offer, 2000) === null) fail(502, 'invalid_motorstack_catalog')
+        if (item.end_date != null && (typeof item.end_date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(item.end_date))) fail(502, 'invalid_motorstack_catalog')
+        return {
+          title: value(item, 'title', 255), model: value(item, 'model'), variant: value(item, 'variant'),
+          price: amount(item.price), priceLabel: value(item, 'price_label'), offer: item.offer == null ? null : terms(item.offer, 2000),
+          endDate: item.end_date ?? null,
+          disclaimer: item.disclaimer == null ? null : terms(item.disclaimer), hasImage: Boolean(item.image_url)
+        }
+      }
+      if (!Array.isArray(item.colours) || item.colours.length > 100) fail(502, 'invalid_motorstack_catalog')
+      if (item.price_disclaimer != null && terms(item.price_disclaimer, 4000) === null) fail(502, 'invalid_motorstack_catalog')
+      return {
+        title: value(item, 'title', 255), model: value(item, 'model'), badge: value(item, 'badge'), year: Number.isInteger(item.build_year) && item.build_year >= 1900 && item.build_year <= 2200 ? item.build_year : null,
+        driveawayPrice: amount(item.driveaway_price), egcPrice: amount(item.egc_price), priceScope: value(item, 'price_scope'),
+        priceDisclaimer: item.price_disclaimer == null ? null : terms(item.price_disclaimer, 4000),
+        colours: item.colours.map(colour => ({ name: value(colour || {}, 'name'), hex: typeof colour?.hex === 'string' && /^#[a-f0-9]{6}$/i.test(colour.hex) ? colour.hex : null, hasImage: Boolean(colour?.main_photo_url) }))
+      }
+    })
+    return { schemaVersion: 1, brand, kind: input.kind, updatedAt: typeof data.updatedAt === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(data.updatedAt) ? data.updatedAt : null, items }
+  }
   // ICO support is private to this new adapter; the existing HTTP catalog is unchanged.
   async function iconBinary(item) {
     let url = safeURL(item.original)
@@ -165,5 +202,5 @@ export function createBrandService({ rpc, binary, catalog, safeURL, extension, M
       throw new Error(error instanceof AdapterError ? error.code : 'motorstack_unavailable')
     }
   }
-  return { listBrands: guarded(listBrands), getBrandKit: guarded(getBrandKit), getBrandAsset: guarded(getBrandAsset), listMedia: guarded(listMedia), getMediaAsset: guarded(getMediaAsset) }
+  return { listBrands: guarded(listBrands), getBrandKit: guarded(getBrandKit), getBrandAsset: guarded(getBrandAsset), listMedia: guarded(listMedia), getMediaAsset: guarded(getMediaAsset), listCreativeCatalog: guarded(listCreativeCatalog) }
 }

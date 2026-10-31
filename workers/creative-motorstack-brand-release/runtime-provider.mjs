@@ -11,7 +11,8 @@ export default {
       const {params} = await request.json()
       if (params.name === 'list_oems') return Response.json({result:{structuredContent:{oems:[{oem:'ford',name:'Ford Australia'}]}}})
       if (params.name === 'get_media_library' && params.arguments.oem === 'ford') return Response.json({result:{structuredContent:{models:[{model:'Ranger',heroImage:'https://motorstackmedia.driveagent.io/ford/images/ranger/hero.png',colours:[]}]}}})
-      if (params.name === 'get_variants' && params.arguments.oem === 'ford') return Response.json({result:{structuredContent:{vehicles:[]}}})
+      if (params.name === 'get_variants' && params.arguments.oem === 'ford') return Response.json({result:{structuredContent:{vehicles:[{title:'Ranger XLT',model:'Ranger',badge:'XLT',egc_price:59990,colours:[]}]}}})
+      if (params.name === 'get_offers' && params.arguments.oem === 'ford') return Response.json({result:{structuredContent:{offers:[{title:'Ranger offer',model:'Ranger',offer:'Offer copy',end_date:'2026-11-30',disclaimer:'Terms apply.'}]}}})
       if (params.name !== 'get_brand_assets' || params.arguments.oem !== 'ford') throw new Error('Unexpected provider method')
       return Response.json({result:{structuredContent:{oem:'ford',fonts:{heading:{family:'FordBold',weight:700,file:'FordBold-400.woff2',url:'https://oem-variants.pages.dev/api/fonts/ford/FordBold-400.woff2'}},logos:[],colours:{primaryColor:'#066fef'}}}})
     }
