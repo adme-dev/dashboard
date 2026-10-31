@@ -1,0 +1,141 @@
+name: FigFlow native source build
+
+on:
+  push:
+    branches:
+      - adme-dev/figflow-edm-release-20261101
+    paths:
+      - .github/workflows/figflow-native-build.yml
+      - workers/craft-editors/source-pins.json
+      - workers/craft-editors/ci-setup.py
+      - workers/craft-editors/ci-build-browser.sh
+      - workers/craft-editors/build-browser.sh
+      - workers/craft-editors/patches/figflow-*.patch
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/figflow-native-build.yml
+      - workers/craft-editors/source-pins.json
+      - workers/craft-editors/ci-setup.py
+      - workers/craft-editors/ci-build-browser.sh
+      - workers/craft-editors/build-browser.sh
+      - workers/craft-editors/patches/figflow-*.patch
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate FigFlow source inputs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - name: Check scripts, scoped pins, patch hashes and workflow boundaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n workers/craft-editors/ci-build-browser.sh
+          bash -n workers/craft-editors/build-browser.sh
+          python3 - <<'PY'
+          import ast
+          import hashlib
+          import json
+          from pathlib import Path
+          import re
+
+          root = Path('workers/craft-editors').resolve()
+          pins = json.loads((root / 'source-pins.json').read_text())
+          assert set(pins) == {'figcraft'}, 'Only figcraft pins are allowed'
+          pin = pins['figcraft']
+          assert pin['commit'] == 'd4a303d4708602a9df1738960852d18b185a616b'
+          assert pin['source_archive_sha256'] == '04710e7815266580083267103d3fe93218c4dee02415e7016574ee866a09aaa6'
+          assert pin['cargo_lock_sha256'] == '539397203fa01e0f460ab2fad69b32003b838828751a7373e833d23b56e35b94'
+          applied = [
+              {'path': pin['branding_patch'], 'sha256': pin['branding_patch_sha256']},
+              *pin['additional_patches'],
+          ]
+          expected = [
+              'patches/figflow-branding.patch',
+              'patches/figflow-browser-save.patch',
+              'patches/figflow-xf-mark.patch',
+              'patches/figflow-browser-export-bound.patch',
+              'patches/figflow-browser-bridge.patch',
+          ]
+          assert [patch['path'] for patch in applied] == expected
+          for patch in applied:
+              path = (root / patch['path']).resolve()
+              assert root in path.parents and path.is_file()
+              assert hashlib.sha256(path.read_bytes()).hexdigest() == patch['sha256']
+
+          bridge = (root / 'patches/figflow-browser-bridge.patch').read_text()
+          assert '["status", "inspect", "get_node", "create_node", "update_node"]' in bridge
+          assert '"exports": false' in bridge, 'Export actions must stay explicitly unsupported'
+          assert 'create(&status, "refused-engine-0001")' in bridge
+          assert 'create(&status, "refused-0002")' not in bridge
+
+          setup = (root / 'ci-setup.py').read_text()
+          ast.parse(setup)
+          assert "if engine != 'figcraft':" in setup
+          build = (root / 'ci-build-browser.sh').read_text()
+          assert 'Linux:x86_64' in build
+          assert 'case "$engine:$mode" in figcraft:web|figcraft:test)' in build
+          assert re.search(r'for filter in [^;]*\bbrowser_bridge\b[^;]*; do', build)
+          assert 'cargo test --locked' in build
+          assert 'len(matched) != len(expected) or set(matched) != expected' in build
+          assert 'Expected exactly seven passing browser_bridge tests' in build
+          package = (root / 'build-browser.sh').read_text()
+          assert 'case "$engine" in figcraft)' in package
+          assert 'Cargo.lock differs from pinned source' in package
+
+          workflow = Path('.github/workflows/figflow-native-build.yml').read_text()
+          assert 'adme-dev/figflow-edm-release-20261101' in workflow
+          assert 'pull_request:' in workflow and 'workflow_dispatch:' in workflow
+          assert 'contents: read' in workflow
+          assert 'sec' + 'rets.' not in workflow
+          assert 'wran' + 'gler' not in workflow.lower()
+          assert 'de' + 'ploy' not in workflow.lower()
+          PY
+
+  native-tests:
+    name: FigFlow native tests
+    needs: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - name: Test pinned FigFlow sources
+        run: bash workers/craft-editors/ci-build-browser.sh figcraft test
+      - name: Upload native test receipts and logs
+        if: always()
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: figflow-native-tests-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/creative-artifacts/figcraft-test/
+          retention-days: 7
+          if-no-files-found: warn
+
+  browser-package:
+    name: FigFlow browser package
+    needs: native-tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - name: Build pinned FigFlow browser package
+        run: bash workers/craft-editors/ci-build-browser.sh figcraft web
+      - name: Upload browser package, receipts and logs
+        if: always()
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: figflow-browser-package-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/creative-artifacts/figcraft-web/
+          retention-days: 7
+          if-no-files-found: warn
