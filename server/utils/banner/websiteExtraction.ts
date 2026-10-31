@@ -6,7 +6,7 @@ type Element = DefaultTreeAdapterMap['element']
 export interface BrandWebsiteDependencies { fetcher?: typeof fetch, resolver?: SiteIntelligenceDnsResolver }
 const USER_AGENT = 'Mozilla/5.0 (XeroFlow brand extractor)'
 const REDIRECTS = new Set([301, 302, 303, 307, 308])
-const HTML_LIMIT = 512 * 1024
+const HTML_LIMIT = 2 * 1024 * 1024
 const CSS_LIMIT = 256 * 1024
 const LOGO_LIMIT = 2 * 1024 * 1024
 const MAX_STYLESHEETS = 4
@@ -178,8 +178,14 @@ export async function extractBrandWebsite(input: string, deps: BrandWebsiteDepen
 /** Reject active/external SVG content before mirroring it onto our asset origin. */
 export async function fetchBrandWebsiteLogo(url: string, deps: BrandWebsiteDependencies = {}) {
   const resource = await fetchBrandWebsiteResource(url, 'logo', deps)
+  return validateBrandLogoResource(resource)
+}
+
+/** Pure byte/content boundary, shared by authenticated provider imports. */
+export function validateBrandLogoResource<T extends { bytes: Buffer, mimeType: string }>(resource: T): T {
   const bytes = resource.bytes
   const type = resource.mimeType
+  if (!['image/svg+xml', 'image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(type)) throw new Error('Unsupported logo image type')
   if (type === 'image/svg+xml') {
     const source = bytes.toString('utf8')
     if (/<!DOCTYPE|<!ENTITY/i.test(source)) throw new Error('Unsupported SVG logo')

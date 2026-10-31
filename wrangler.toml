@@ -525,3 +525,10 @@ entrypoint = "EmailRenderer"
 binding = "EMAIL_RENDERER"
 service = "xeroflow-email-rendering-production"
 entrypoint = "EmailRenderer"
+
+# Read-only OEM brand assets through the existing Creative Suite connection.
+# MotorStack credentials remain on that Worker; preview has no production binding.
+[[env.production.services]]
+binding = "MOTORSTACK_BRAND_ASSETS"
+service = "xeroflow-creative-tools"
+entrypoint = "MotorstackBrandAssets"

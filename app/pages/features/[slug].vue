@@ -2674,7 +2674,7 @@ const features: Record<string, Feature> = {
     categoryIcon: 'i-lucide-palette',
     categoryIconBg: 'bg-rose-50',
     categoryIconColor: 'text-rose-600',
-    description: 'Per-client brand kits with colour roles, uploaded font files, heading and body weights, light/dark logos and written guidelines. Apply a kit in one undoable step.',
+    description: 'Build client brand kits with colour roles, uploaded fonts, logos and written guidelines. Import shared OEM fonts, logos and colours from MotorStack with source notes, then review before applying.',
     details: [
       {
         title: 'Colours With Roles, Not Just Swatches',
@@ -2687,6 +2687,10 @@ const features: Record<string, Feature> = {
       {
         title: 'Logos For Light and Dark',
         content: 'Upload the marks the client actually uses and tag each one for light or dark backgrounds. When a kit is applied the right variant replaces any layer flagged as a logo — or is placed top-left if the banner has none — so the artwork is on-brand before anyone touches a layer.'
+      },
+      {
+        title: 'Import Shared OEM Kits From MotorStack',
+        content: 'Bring all available MotorStack brands into the shared agency library in one run. Each brand imports sequentially with a visible result, available font files, logos and colours, plus source notes and warnings for missing or unsupported assets. Existing kits remain unchanged. Stop after the current brand or retry failed imports; kits are never assigned to a dealership or applied to artwork automatically.'
       },
       {
         title: 'Extract From a Website',

@@ -6,6 +6,14 @@ const response = (body: string | Uint8Array, type = 'text/html', status = 200, h
 const dependencies = (handler: (url: string) => Response) => ({ resolver, fetcher: vi.fn(async (url: string | URL | Request) => handler(String(url))) as unknown as typeof fetch })
 
 describe('bounded public brand website extraction', () => {
+  it('reads larger OEM homepages while enforcing the 2 MiB streamed HTML bound', async () => {
+    const html = '<title>OEM homepage</title><!--' + ' '.repeat(620 * 1024) + '-->'
+    const page = await extractBrandWebsite('https://brand.example/', dependencies(() => response(html)))
+    expect(page.title).toBe('OEM homepage')
+    await expect(fetchBrandWebsiteResource('https://brand.example/', 'html', dependencies(() => response(new Uint8Array(2 * 1024 * 1024 + 1)))))
+      .rejects.toThrow('size limit')
+  })
+
   it('reads external CSS and imports relative to final response URLs without downloading fonts', async () => {
     const deps = dependencies((url) => {
       if (url === 'https://brand.example/') return response('', 'text/html', 302, { location: '/shop/' })
