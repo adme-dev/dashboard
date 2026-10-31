@@ -4,8 +4,8 @@ import type { DateValue } from '@internationalized/date'
 import type { BannerProject, ArtboardState, BannerFolder } from '~/types/banner-studio'
 import { bannerFolderPath } from '~/utils/banner-folders'
 import { importTags, packageFile, sameImportedCanvas } from '~/utils/thebrief-import'
-import { readImportBatch, type TheBriefImportRow } from '~/utils/thebrief-import-batch'
-import { beginImportAttempt, finishImportAttempt, importAttemptKey } from '~/utils/thebrief-import-attempt'
+import { importRowStates, readImportBatch, reconcileImportRows, summariseImport, UNASSIGNED_CLIENT, UNFILED_FOLDER, type TheBriefImportRow, type TheBriefImportState } from '~/utils/thebrief-import-batch'
+import { finishImportAttempt, importAttemptKey } from '~/utils/thebrief-import-attempt'
 import { prepareBannerUploadRequest } from '~/utils/bannerUpload'
 import { bindImportedFontFace, findImportedFontFace } from '~/utils/thebrief-font-bindings'
 
@@ -17,10 +17,10 @@ const clients = ref<Array<{ id: string, name: string }>>([])
 const folders = ref<BannerFolder[]>([])
 const files = ref<File[]>([])
 const rows = ref<TheBriefImportRow[]>([])
-const filesValid = ref(true)
 const busy = ref(false)
 const error = ref('')
 const progress = ref('')
+const attempted = ref(false)
 // Explicit, per-batch operator choice: import undated drafts and mark them for a
 // later Created-date backfill instead of holding them. Never substitutes a date.
 const importUndated = ref(false)
@@ -28,12 +28,23 @@ const showDraftUpdate = ref(false)
 const draftUpdate = shallowRef<{ row: TheBriefImportRow, project: BannerProject, canvasData?: Record<string, ArtboardState> } | null>(null)
 const draftUpdateError = ref('')
 const draftUpdateConflict = ref(false)
-// Reuse acknowledged uploads within this modal; uncertain attempts are held separately.
+// Reuse acknowledged uploads within this modal. Asset and font uploads are keyed by checksum.
 const uploaded = new Map<string, string>()
-const options = computed(() => [{ label: 'Choose client', value: '__unassigned__' }, ...clients.value.map(c => ({ label: c.name, value: c.id }))])
-const folderOptions = computed(() => [{ label: 'Unfiled', value: '__unfiled__' }, ...folders.value.map(folder => ({ label: bannerFolderPath(folders.value, folder.id).map(part => part.name).join(' / '), value: folder.id }))])
-const assignedRows = computed(() => rows.value.filter(row => !row.projectId && row.clientId !== '__unassigned__'))
-const ready = computed(() => filesValid.value && assignedRows.value.length > 0)
+const options = computed(() => [{ label: 'Choose client', value: UNASSIGNED_CLIENT }, ...clients.value.map(c => ({ label: c.name, value: c.id }))])
+const folderOptions = computed(() => [{ label: 'Unfiled', value: UNFILED_FOLDER }, ...folders.value.map(folder => ({ label: bannerFolderPath(folders.value, folder.id).map(part => part.name).join(' / '), value: folder.id }))])
+const states = computed(() => importRowStates(rows.value, { importUndated: importUndated.value }))
+const counts = computed(() => summariseImport(states.value))
+const readyRows = computed(() => rows.value.filter((_, index) => states.value[index]?.state === 'ready'))
+// After an import the summary leads with outcomes: Saved, Needs attention, Failed.
+const summaryOrder = computed<TheBriefImportState[]>(() => attempted.value ? ['saved', 'attention', 'failed', 'invalid', 'ready'] : ['ready', 'attention', 'invalid', 'saved', 'failed'])
+const stateBadges: Record<TheBriefImportState, { label: string, color: 'neutral' | 'success' | 'warning' | 'error' | 'info' }> = {
+  ready: { label: 'Ready', color: 'neutral' },
+  attention: { label: 'Needs attention', color: 'warning' },
+  invalid: { label: 'Invalid', color: 'error' },
+  importing: { label: 'Importing', color: 'info' },
+  saved: { label: 'Saved', color: 'success' },
+  failed: { label: 'Failed', color: 'error' }
+}
 
 function calendarDate(value: string): DateValue | null {
   if (!value) return null
@@ -47,6 +58,15 @@ function calendarDate(value: string): DateValue | null {
 function displayDate(value: string): string {
   const date = calendarDate(value)
   return date ? new Intl.DateTimeFormat('en-AU', { day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(date.year, date.month - 1, date.day)) : ''
+}
+
+function failureOf(cause: unknown) {
+  const failure = cause as { statusCode?: number, status?: number, data?: { statusMessage?: string, data?: { projectId?: string } }, statusMessage?: string }
+  return {
+    status: failure?.statusCode || failure?.status,
+    message: failure?.data?.statusMessage || failure?.statusMessage || (cause instanceof Error ? cause.message : 'Import failed'),
+    projectId: failure?.data?.data?.projectId
+  }
 }
 
 watch(open, async (value) => {
@@ -63,17 +83,26 @@ watch(open, async (value) => {
   }
 })
 
+async function reconcileWithLibrary() {
+  // Saved drafts carry their source identity, so the library is the durable record of progress.
+  reconcileImportRows(rows.value, await api<BannerProject[]>('/api/agency/banner-studio/projects'))
+}
+
 async function readPackages() {
   if (busy.value) return
   error.value = ''
   busy.value = true
   try {
-    // Commit the new selection only after every added package is validated.
     rows.value = await readImportBatch(files.value, rows.value, clients.value, folders.value)
-    filesValid.value = true
   } catch (cause) {
-    filesValid.value = false
-    error.value = cause instanceof Error ? cause.message : 'Could not read import package'
+    error.value = cause instanceof Error ? cause.message : 'Could not read import packages'
+    busy.value = false
+    return
+  }
+  try {
+    await reconcileWithLibrary()
+  } catch {
+    // Not fatal: the import reconciles again and the server deduplicates every write.
   } finally { busy.value = false }
 }
 
@@ -81,14 +110,15 @@ function startNextBatch() {
   if (busy.value) return
   files.value = []
   rows.value = []
-  filesValid.value = true
+  attempted.value = false
   error.value = ''
 }
 
 async function prepareCanvas(row: TheBriefImportRow) {
+  const pkg = row.pkg!
   const fonts = await refreshCustomFonts(row.clientId)
-  const canvasData = structuredClone(toRaw(row.pkg.canvasData)) as Record<string, ArtboardState>
-  for (const font of row.pkg.fonts) {
+  const canvasData = structuredClone(toRaw(pkg.canvasData)) as Record<string, ArtboardState>
+  for (const font of pkg.fonts) {
     let stored = findImportedFontFace(fonts, font, row.clientId)
     if (!stored) {
       stored = await uploadCustomFont(await packageFile(font), font.family, font.weight, row.clientId) || undefined
@@ -97,7 +127,7 @@ async function prepareCanvas(row: TheBriefImportRow) {
     if (!stored) throw new Error('Could not store the prepared font')
     bindImportedFontFace(canvasData, font, stored, row.clientId)
   }
-  for (const asset of row.pkg.assets) {
+  for (const asset of pkg.assets) {
     const identity = `${row.clientId}:${asset.sha256}`
     if (!uploaded.has(identity)) {
       const request = await prepareBannerUploadRequest(await packageFile(asset), `thebrief-asset:${identity}`, row.clientId)
@@ -111,7 +141,7 @@ async function prepareCanvas(row: TheBriefImportRow) {
 }
 
 async function openDraftUpdate(row: TheBriefImportRow) {
-  if (busy.value || !row.projectId || !filesValid.value) return
+  if (busy.value || !row.projectId || !row.pkg) return
   busy.value = true
   error.value = ''
   try {
@@ -143,87 +173,105 @@ async function updateImportedDraft() {
     const updated = await api<BannerProject & { refreshed: boolean }>(`/api/agency/banner-studio/projects/${selection.project.id}/thebrief-refresh`, {
       method: 'PATCH', body: {
         clientId: selection.row.clientId, expectedUpdatedAt: selection.project.updatedAt,
-        source: selection.row.pkg.source, canvasData: selection.canvasData
+        source: selection.row.pkg!.source, canvasData: selection.canvasData
       }
     })
     const saved = await api<BannerProject>(`/api/agency/banner-studio/projects/${updated.id}`)
     if (saved.clientId !== selection.row.clientId || saved.updatedAt !== updated.updatedAt || !sameImportedCanvas(saved.canvasData, selection.canvasData)) {
       throw new Error('The saved draft needs a persistence check. Retry this update to check the same revision safely.')
     }
-    selection.row.status = updated.refreshed ? 'Draft updated · previous canvas saved in version history · needs visual review' : 'Draft matches this package · needs visual review'
-    finishImportAttempt(localStorage, importAttemptKey(selection.row.clientId, selection.row.pkg.source.sha256))
+    selection.row.result = { state: 'saved', message: updated.refreshed ? 'Draft updated · previous canvas saved in version history · needs visual review' : 'Draft matches this package · needs visual review' }
+    finishImportAttempt(localStorage, importAttemptKey(selection.row.clientId, selection.row.pkg!.source.sha256))
     showDraftUpdate.value = false
     draftUpdate.value = null
     emit('imported')
   } catch (cause) {
-    const failure = cause as { statusCode?: number, status?: number, data?: { statusMessage?: string }, statusMessage?: string }
-    draftUpdateConflict.value = failure?.statusCode === 409 || failure?.status === 409
-    draftUpdateError.value = failure?.data?.statusMessage || failure?.statusMessage || (cause instanceof Error ? cause.message : 'Draft update failed')
+    const failure = failureOf(cause)
+    draftUpdateConflict.value = failure.status === 409
+    draftUpdateError.value = failure.message
   } finally {
     busy.value = false
     progress.value = ''
   }
 }
 
+/** Imports one design. Every outcome is recorded on the row; nothing here stops the batch. */
+async function importRow(row: TheBriefImportRow): Promise<boolean> {
+  const pkg = row.pkg!
+  const folderId = row.folderId === UNFILED_FOLDER ? null : row.folderId
+  const datePending = !calendarDate(row.sourceCreatedDate)
+  row.result = { state: 'importing', message: 'Uploading assets and fonts…' }
+  try {
+    if (!clients.value.some(c => c.id === row.clientId)) throw new Error('Select an existing client')
+    if (folderId && !folders.value.some(folder => folder.id === folderId)) throw new Error('Select an existing folder')
+    const canvasData = await prepareCanvas(row)
+    row.result = { state: 'importing', message: 'Saving draft…' }
+    // A fresh key per attempt: the server resolves retries and double submits by source identity,
+    // so a retry after a lost response returns the saved draft instead of creating another.
+    const project = await api<BannerProject & { importOutcome?: 'created' | 'existing' }>('/api/agency/banner-studio/projects', {
+      method: 'POST', headers: { 'Idempotency-Key': `thebrief:${pkg.source.sha256.slice(0, 16)}:${crypto.randomUUID()}` },
+      body: { name: pkg.name, clientId: row.clientId, folderId, canvasData, tags: importTags(pkg, row.sourceCreatedDate, { datePending }) }
+    })
+    // A write response alone is insufficient: verify persisted owner and layer data.
+    const saved = await api<BannerProject>(`/api/agency/banner-studio/projects/${project.id}`)
+    if (saved.clientId !== row.clientId) throw new Error('Saved project belongs to another client; check the library before retrying')
+    row.projectId = saved.id
+    finishImportAttempt(localStorage, importAttemptKey(row.clientId, pkg.source.sha256))
+    if (project.importOutcome === 'existing') {
+      // The existing draft may have been edited or moved since; it is kept exactly as it is.
+      row.result = { state: 'saved', message: 'Already imported · existing draft kept · open for review' }
+      return false
+    }
+    if (saved.folderId !== folderId || !sameImportedCanvas(saved.canvasData, canvasData)) throw new Error('Saved project needs a persistence check. Retry to resolve it to the saved draft.')
+    row.result = { state: 'saved', message: datePending ? 'Saved as draft · creation date pending backfill · needs visual review' : 'Saved as draft · needs visual review' }
+    return true
+  } catch (cause) {
+    const failure = failureOf(cause)
+    if (failure.status === 409 && failure.projectId) {
+      row.projectId = failure.projectId
+      row.result = { state: 'attention', message: failure.message }
+    } else {
+      row.result = { state: 'failed', message: failure.message }
+    }
+    return false
+  }
+}
+
 async function importDrafts() {
-  if (busy.value || !ready.value) return
+  if (busy.value || !readyRows.value.length) return
   busy.value = true
   error.value = ''
+  attempted.value = true
   let changed = false
   try {
-    const existing = await api<BannerProject[]>('/api/agency/banner-studio/projects')
-    const assigned = assignedRows.value
-    for (const [index, row] of assigned.entries()) {
-      if (!clients.value.some(c => c.id === row.clientId)) throw new Error('Select an existing client')
-      if (row.folderId !== '__unfiled__' && !folders.value.some(folder => folder.id === row.folderId)) throw new Error('Select an existing folder')
-      const pkg = row.pkg
-      const duplicate = existing.find(p => p.clientId === row.clientId && p.tags?.includes(`source-sha256:${pkg.source.sha256}`))
-      if (duplicate) {
-        row.projectId = duplicate.id
-        row.status = 'Already imported · open for review or explicitly update this draft'
-        continue
-      }
-      // A fresh export of the same TheBrief design has different archive bytes.
-      // Never create a second draft for it; corrections use the explicit update flow.
-      const sameDesign = existing.find(p => p.clientId === row.clientId && p.tags?.includes(`source-design:${pkg.source.designHash}`))
-      if (sameDesign) {
-        row.projectId = sameDesign.id
-        row.status = 'Already imported from this TheBrief design · open for review or explicitly update this draft'
-        continue
-      }
-      const datePending = !calendarDate(row.sourceCreatedDate)
-      if (datePending && !importUndated.value) {
-        row.status = 'Held · verify the original creation date in TheBrief before importing'
-        continue
-      }
-      progress.value = `Preparing ${index + 1} of ${assigned.length}: ${pkg.name}`
-      row.status = 'Uploading assets and fonts…'
-      const attemptKey = importAttemptKey(row.clientId, pkg.source.sha256)
-      try {
-        beginImportAttempt(localStorage, attemptKey)
-        const canvasData = await prepareCanvas(row)
-        const project = await api<BannerProject>('/api/agency/banner-studio/projects', {
-          method: 'POST', headers: { 'Idempotency-Key': `thebrief-project:${row.clientId}:${pkg.source.sha256}` },
-          body: { name: pkg.name, clientId: row.clientId, folderId: row.folderId === '__unfiled__' ? null : row.folderId, canvasData, tags: importTags(pkg, row.sourceCreatedDate, { datePending }) }
-        })
-        // A write response alone is insufficient: verify persisted owner and layer data.
-        const saved = await api<BannerProject>(`/api/agency/banner-studio/projects/${project.id}`)
-        if (saved.clientId !== row.clientId || saved.folderId !== (row.folderId === '__unfiled__' ? null : row.folderId) || !sameImportedCanvas(saved.canvasData, canvasData)) throw new Error('Saved project needs a persistence check before retrying')
-        finishImportAttempt(localStorage, attemptKey)
-        row.projectId = saved.id
-        row.status = datePending ? 'Saved as draft · creation date pending backfill · needs visual review' : 'Saved as draft · needs visual review'
-        existing.push(saved)
-        changed = true
-      } catch (cause) {
-        row.status = cause instanceof Error ? cause.message : 'Import failed'
-        // Retain the durable attempt marker on failure: a lost response may have committed.
-        throw new Error(`${pkg.name}: ${row.status}`, { cause })
-      }
+    await reconcileWithLibrary()
+  } catch (cause) {
+    error.value = `Could not check the banner library, so nothing was imported. ${failureOf(cause).message}`
+    busy.value = false
+    return
+  }
+  try {
+    const queue = readyRows.value
+    for (const [index, row] of queue.entries()) {
+      progress.value = `Importing ${index + 1} of ${queue.length}: ${row.pkg!.name}`
+      if (await importRow(row)) changed = true
     }
-  } catch (cause) { error.value = cause instanceof Error ? cause.message : 'Import failed' } finally {
+  } finally {
     busy.value = false
     progress.value = ''
     if (changed) emit('imported')
+  }
+}
+
+async function retryRow(row: TheBriefImportRow) {
+  if (busy.value || row.result?.state !== 'failed') return
+  busy.value = true
+  progress.value = `Retrying ${row.pkg!.name}`
+  try {
+    if (await importRow(row)) emit('imported')
+  } finally {
+    busy.value = false
+    progress.value = ''
   }
 }
 </script>
@@ -275,11 +323,11 @@ async function importDrafts() {
           :description="error"
         />
         <UAlert
-          v-if="assignedRows.some(row => !row.sourceCreatedDate)"
+          v-if="rows.some(row => row.pkg && !row.result && row.clientId !== UNASSIGNED_CLIENT && !row.sourceCreatedDate)"
           color="warning"
           variant="subtle"
           title="Original dates needed"
-          :description="importUndated ? 'Drafts without a verified TheBrief creation date will be saved and marked for a later date backfill. No date is assigned.' : 'Existing projects can be reconciled now. New drafts without a verified TheBrief creation date will be held.'"
+          :description="importUndated ? 'Drafts without a verified TheBrief creation date will be saved and marked for a later date backfill. No date is assigned.' : 'New drafts without a verified TheBrief creation date need attention and are not imported.'"
         >
           <template #actions>
             <UCheckbox
@@ -289,85 +337,119 @@ async function importDrafts() {
             />
           </template>
         </UAlert>
+        <div
+          v-if="rows.length"
+          class="flex flex-wrap items-center gap-2"
+          role="status"
+          aria-label="Batch summary"
+        >
+          <template v-for="state in summaryOrder" :key="state">
+            <UBadge
+              v-if="counts[state]"
+              :color="stateBadges[state].color"
+              variant="subtle"
+            >
+              {{ stateBadges[state].label }}: {{ counts[state] }}
+            </UBadge>
+          </template>
+        </div>
         <div class="max-h-[45vh] space-y-3 overflow-y-auto">
-          <section v-for="(row, index) in rows" :key="`${row.pkg.source.sha256}:${index}`" class="space-y-3 rounded-lg border border-default p-4">
+          <section v-for="(row, index) in rows" :key="`${row.file.name}:${index}`" class="space-y-3 rounded-lg border border-default p-4">
             <div class="flex flex-wrap items-start justify-between gap-2">
               <div class="min-w-0">
                 <h3 class="break-words font-medium">
-                  {{ row.pkg.name }}
+                  {{ row.pkg?.name || row.file.name }}
                 </h3>
-                <p class="text-xs text-muted">
+                <p v-if="row.pkg" class="text-xs text-muted">
                   {{ row.pkg.source.folder }} · {{ row.pkg.source.duration }} seconds · {{ row.pkg.source.loopCount === 0 ? 'Source loops continuously' : `Source plays ${row.pkg.source.loopCount} time(s)` }}
                 </p>
               </div>
-              <UBadge color="neutral" variant="subtle">
-                {{ Object.keys(row.pkg.canvasData).map(key => key.replace('custom_', '')).join(' · ') }}
-              </UBadge>
+              <div class="flex flex-wrap gap-2">
+                <UBadge v-if="row.pkg" color="neutral" variant="outline">
+                  {{ Object.keys(row.pkg.canvasData).map(key => key.replace('custom_', '')).join(' · ') }}
+                </UBadge>
+                <UBadge :color="stateBadges[states[index]!.state].color" variant="subtle">
+                  {{ stateBadges[states[index]!.state].label }}
+                </UBadge>
+              </div>
             </div>
-            <UFormField label="Client" help="Confirm ownership before importing. Unassigned designs are skipped.">
-              <USelectMenu
-                v-model="row.clientId"
-                :items="options"
-                value-key="value"
-                class="w-full"
-                :disabled="busy || !!row.projectId"
-              />
-            </UFormField>
-            <UFormField label="Folder" help="Choose where this design appears in the banner library. You can move it later.">
-              <USelectMenu
-                v-model="row.folderId"
-                :items="folderOptions"
-                value-key="value"
-                class="w-full"
-                :disabled="busy || !!row.projectId"
-              />
-            </UFormField>
-            <UFormField label="Original creation date" help="Use the Created date in TheBrief's Info panel. The export or last-updated date is different.">
-              <UPopover>
-                <UButton
-                  color="neutral"
-                  variant="outline"
-                  icon="i-lucide-calendar"
-                  class="w-full justify-start font-normal"
-                  :class="!row.sourceCreatedDate && 'text-muted'"
+            <template v-if="row.pkg">
+              <UFormField label="Client" help="Confirm ownership before importing. Designs without a client are not imported.">
+                <USelectMenu
+                  v-model="row.clientId"
+                  :items="options"
+                  value-key="value"
+                  class="w-full"
                   :disabled="busy || !!row.projectId"
-                >
-                  {{ displayDate(row.sourceCreatedDate) || 'Choose TheBrief creation date' }}
-                </UButton>
-                <template #content>
-                  <UCalendar
-                    :model-value="calendarDate(row.sourceCreatedDate)"
-                    class="p-2"
-                    @update:model-value="value => { row.sourceCreatedDate = value?.toString() || '' }"
-                  />
-                  <div v-if="row.sourceCreatedDate" class="flex justify-end border-t border-default p-2">
-                    <UButton
-                      size="xs"
-                      variant="ghost"
-                      color="neutral"
-                      @click="row.sourceCreatedDate = ''"
-                    >
-                      Clear
-                    </UButton>
-                  </div>
-                </template>
-              </UPopover>
-            </UFormField>
-            <details v-if="row.pkg.warnings.length" class="text-sm text-muted">
-              <summary class="cursor-pointer">
-                {{ row.pkg.warnings.length }} conversion notes
-              </summary>
-              <ul class="mt-2 list-disc space-y-1 pl-5">
-                <li v-for="note in row.pkg.warnings" :key="note">
-                  {{ note }}
-                </li>
-              </ul>
-            </details>
-            <p class="text-sm" role="status">
-              {{ row.status }}
+                />
+              </UFormField>
+              <UFormField label="Folder" help="Choose where this design appears in the banner library. You can move it later.">
+                <USelectMenu
+                  v-model="row.folderId"
+                  :items="folderOptions"
+                  value-key="value"
+                  class="w-full"
+                  :disabled="busy || !!row.projectId"
+                />
+              </UFormField>
+              <UFormField label="Original creation date" help="Use the Created date in TheBrief's Info panel. The export or last-updated date is different.">
+                <UPopover>
+                  <UButton
+                    color="neutral"
+                    variant="outline"
+                    icon="i-lucide-calendar"
+                    class="w-full justify-start font-normal"
+                    :class="!row.sourceCreatedDate && 'text-muted'"
+                    :disabled="busy || !!row.projectId"
+                  >
+                    {{ displayDate(row.sourceCreatedDate) || 'Choose TheBrief creation date' }}
+                  </UButton>
+                  <template #content>
+                    <UCalendar
+                      :model-value="calendarDate(row.sourceCreatedDate)"
+                      class="p-2"
+                      @update:model-value="value => { row.sourceCreatedDate = value?.toString() || '' }"
+                    />
+                    <div v-if="row.sourceCreatedDate" class="flex justify-end border-t border-default p-2">
+                      <UButton
+                        size="xs"
+                        variant="ghost"
+                        color="neutral"
+                        @click="row.sourceCreatedDate = ''"
+                      >
+                        Clear
+                      </UButton>
+                    </div>
+                  </template>
+                </UPopover>
+              </UFormField>
+              <details v-if="row.pkg.warnings.length" class="text-sm text-muted">
+                <summary class="cursor-pointer">
+                  {{ row.pkg.warnings.length }} conversion notes
+                </summary>
+                <ul class="mt-2 list-disc space-y-1 pl-5">
+                  <li v-for="note in row.pkg.warnings" :key="note">
+                    {{ note }}
+                  </li>
+                </ul>
+              </details>
+            </template>
+            <p class="text-sm" :class="['invalid', 'failed'].includes(states[index]!.state) && 'text-error'" role="status">
+              {{ states[index]!.message }}
             </p>
-            <div v-if="row.projectId" class="flex flex-wrap gap-2">
+            <div v-if="row.projectId || states[index]!.state === 'failed'" class="flex flex-wrap gap-2">
               <UButton
+                v-if="states[index]!.state === 'failed'"
+                color="neutral"
+                variant="outline"
+                icon="i-lucide-rotate-cw"
+                :disabled="busy"
+                @click="retryRow(row)"
+              >
+                Retry
+              </UButton>
+              <UButton
+                v-if="row.projectId"
                 :to="`/agency/banner-studio/${row.projectId}`"
                 variant="outline"
                 color="neutral"
@@ -376,10 +458,11 @@ async function importDrafts() {
                 Open in Banner Studio
               </UButton>
               <UButton
+                v-if="row.projectId && row.pkg"
                 variant="outline"
                 color="neutral"
                 icon="i-lucide-history"
-                :disabled="busy || !filesValid"
+                :disabled="busy"
                 @click="openDraftUpdate(row)"
               >
                 Update imported draft
@@ -400,15 +483,15 @@ async function importDrafts() {
     <template #footer>
       <div class="flex w-full flex-wrap items-center justify-between gap-3">
         <p class="text-xs text-muted">
-          All imports stay as drafts. Verify each original creation date before importing.
+          All imports stay as drafts. Designs import one at a time; a failure does not stop the rest.
         </p>
         <UButton
           :loading="busy"
-          :disabled="!ready || busy"
+          :disabled="!readyRows.length || busy"
           icon="i-lucide-download"
           @click="importDrafts"
         >
-          Import assigned drafts
+          {{ readyRows.length ? `Import ${readyRows.length} ready ${readyRows.length === 1 ? 'draft' : 'drafts'}` : 'Import ready drafts' }}
         </UButton>
       </div>
     </template>
