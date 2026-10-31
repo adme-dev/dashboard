@@ -28,7 +28,8 @@ const stubs = {
   UFileUpload: defineComponent({ props: ['disabled'], emits: ['update:modelValue'], setup: (p, { emit }) => () => h('button', { disabled: p.disabled, onClick: () => emit('update:modelValue', [new File(['{}'], 'prepared.json')]) }, 'Load packages') }),
   USelectMenu: defineComponent({ props: ['modelValue'], setup: p => () => h('span', String(p.modelValue)) }),
   UBadge: defineComponent({ setup: (_, { slots }) => () => h('span', slots.default?.()) }),
-  UAlert: defineComponent({ props: ['title', 'description'], setup: p => () => h('p', `${p.title}: ${p.description}`) }),
+  UAlert: defineComponent({ props: ['title', 'description'], setup: (p, { slots }) => () => h('div', [h('p', `${p.title}: ${p.description}`), slots.actions?.()]) }),
+  UCheckbox: defineComponent({ props: ['modelValue', 'label', 'disabled'], emits: ['update:modelValue'], setup: (p, { emit }) => () => h('button', { disabled: p.disabled, onClick: () => emit('update:modelValue', !p.modelValue) }, p.label) }),
   UButton: defineComponent({ props: ['disabled', 'loading', 'to'], emits: ['click'], setup: (p, { slots, emit }) => () => h('button', { 'disabled': p.disabled || p.loading, 'data-to': p.to, 'onClick': () => emit('click') }, slots.default?.()) })
 }
 async function flush() {
@@ -95,6 +96,40 @@ describe('explicit imported draft update', () => {
     })
     await mountModal()
     expect(host.textContent).toContain('verify the original creation date in TheBrief before importing')
+    expect(api.mock.calls.some(([, options]) => options?.method)).toBe(false)
+  })
+
+  it('imports an undated draft only after the explicit backfill choice and never assigns a date', async () => {
+    let posted: { tags: string[] } | undefined
+    api.mockImplementation(async (url: string, options?: { method?: string, body?: { tags: string[], canvasData: unknown } }) => {
+      if (url.endsWith('/clients')) return [{ id: clientId, name: 'Blood Motor Group' }]
+      if (url.endsWith('/folders')) return []
+      if (url.endsWith('/projects') && options?.method === 'POST') {
+        posted = options.body
+        return { id: 'new-draft' }
+      }
+      if (url.endsWith('/projects')) return []
+      if (url.endsWith('/projects/new-draft')) return { id: 'new-draft', clientId, folderId: null, canvasData: posted ? (posted as { canvasData: unknown }).canvasData : null }
+      throw new Error(`Unexpected request ${url}`)
+    })
+    await mountModal()
+    expect(posted).toBeUndefined()
+    await click('Import undated drafts and backfill the date later')
+    await click('Import assigned drafts')
+    expect(posted?.tags).toContain('import:created-date-pending')
+    expect(posted?.tags.some(tag => tag.startsWith('source-created-date:'))).toBe(false)
+    expect(host.textContent).toContain('creation date pending backfill')
+  })
+
+  it('skips a fresh export of a TheBrief design that is already imported for the client', async () => {
+    api.mockImplementation(async (url: string) => {
+      if (url.endsWith('/clients')) return [{ id: clientId, name: 'Blood Motor Group' }]
+      if (url.endsWith('/folders')) return []
+      if (url.endsWith('/projects')) return [{ ...structuredClone(original), tags: ['source:thebrief', `source-sha256:${'b'.repeat(64)}`, 'source-design:blood-oct'] }]
+      throw new Error(`Unexpected request ${url}`)
+    })
+    await mountModal()
+    expect(host.textContent).toContain('Already imported from this TheBrief design')
     expect(api.mock.calls.some(([, options]) => options?.method)).toBe(false)
   })
 
