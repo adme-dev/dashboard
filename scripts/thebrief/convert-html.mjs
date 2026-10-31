@@ -442,6 +442,7 @@ export async function convertTheBriefHtml(html) {
     if (source.hasClickTag || document.querySelector('a[href], [onclick]')) warnings.push('Click destinations are not migrated by this pilot')
     const layers = []
     const imageTransforms = []
+    const videoFrames = []
     const sourceElements = []
     let id = 1
     const holdOpacity = (start, end) => [{ time: start, value: 1, easing: 'linear' }, { time: end, value: 1 }]
@@ -528,6 +529,58 @@ export async function convertTheBriefHtml(html) {
         const delay = audioConfig?.buildIn?.delay
         if (delay !== undefined && (!Number.isFinite(delay) || delay < 0 || Math.abs(slide.start + delay - start) > 1e-6)) throw new Error(`Audio ${sourceId}: source audio presence requires reconciliation`)
         layers.push({ ...layerBase, id: id++, type: 'audio', name: `Audio ${sourceId}`, src: localAsset(sources[0].getAttribute('src')), x: 0, y: 0, w: 1, h: 1, volume, ...(audio.muted || audio.hasAttribute('muted') || audioConfig?.muted === true ? { muted: true } : {}) })
+      } else if (type === 'video') {
+        // Bounded video adapter: one local muted autoplay clip that starts at media
+        // time zero with its layer. Trim starts, sound, hover playback, playback past
+        // the slide and non-centred or transformed framing remain explicit holds.
+        const videos = [...element.querySelectorAll('video')]
+        if (videos.length !== 1 || !videos[0].getAttribute('src')) throw new Error(`Video ${sourceId}: unsupported video source`)
+        const video = videos[0]
+        const src = localAsset(video.getAttribute('src'))
+        if (!/\.mp4$/i.test(src)) throw new Error(`Video ${sourceId}: only MP4 video is supported`)
+        const config = source.videoElements?.find(item => item.elementId === sourceId && item.slideId === slide.id)
+        if (!config || localAsset(String(config.src || '')) !== src) throw new Error(`Video ${sourceId}: missing or mismatched source video settings`)
+        if (config.autoplay !== true) throw new Error(`Video ${sourceId}: click-to-play video requires an adapter`)
+        if (config.soundOnHover) throw new Error(`Video ${sourceId}: hover playback requires an adapter`)
+        if (config.keepPlayingPastSlide) throw new Error(`Video ${sourceId}: playback past its slide requires an adapter`)
+        if (typeof config.volume !== 'number' || config.volume < 0 || config.volume > 100) throw new Error(`Video ${sourceId}: invalid source volume`)
+        if (config.volume > 0 && !(video.muted || video.hasAttribute('muted'))) throw new Error(`Video ${sourceId}: audible video requires an audio adapter`)
+        const mediaStart = config.startTime ?? 0
+        const mediaEnd = config.endTime
+        if (!Number.isFinite(mediaStart) || mediaStart !== 0) throw new Error(`Video ${sourceId}: source clip start ${mediaStart}s requires exported-clip reconciliation`)
+        if (!Number.isFinite(mediaEnd) || mediaEnd <= mediaStart || mediaEnd > 300) throw new Error(`Video ${sourceId}: invalid source clip end`)
+        const delay = config.delay ?? 0
+        if (!Number.isFinite(delay) || delay < 0 || Math.abs(slide.start + delay - start) > 1e-3) throw new Error(`Video ${sourceId}: source video start requires reconciliation with its layer`)
+        if (typeof config.loop !== 'boolean') throw new Error(`Video ${sourceId}: invalid source loop setting`)
+        const videoCss = style(video)
+        let fit = videoCss.objectFit || 'fill'
+        if (!['cover', 'contain', 'fill'].includes(fit)) throw new Error(`Video ${sourceId}: unsupported video fit ${fit}`)
+        if (videoCss.objectPosition && !['50% 50%', 'center', 'center center'].includes(videoCss.objectPosition)) throw new Error(`Video ${sourceId}: unsupported video position`)
+        for (const node of [element, ...element.querySelectorAll('div')]) {
+          const nodeCss = style(node)
+          if (nodeCss.transform && nodeCss.transform !== 'none') throw new Error(`Video ${sourceId}: transformed video requires an adapter`)
+          if (nodeCss.borderRadius && !/^0(px)?( 0(px)?)*$/.test(nodeCss.borderRadius)) throw new Error(`Video ${sourceId}: rounded video requires an adapter`)
+        }
+        if (videoCss.borderRadius && !/^0(px)?( 0(px)?)*$/.test(videoCss.borderRadius)) throw new Error(`Video ${sourceId}: rounded video requires an adapter`)
+        // TheBrief frames a clip by sizing the <video> to cover its clipping wrapper and
+        // shifting it. That is native cover framing with a focal point; any zoom beyond
+        // cover, rotation or scale stays held. The packager checks the file's aspect.
+        let focalX = 50, focalY = 50
+        const boxW = px(videoCss.width), boxH = px(videoCss.height)
+        const shift = /^(?:translate\((-?[\d.]+)px,\s*(-?[\d.]+)px\))?(?:\s*rotate\(0(?:deg)?\))?$/.exec((videoCss.transform && videoCss.transform !== 'none') ? videoCss.transform.trim() : '')
+        if (!shift) throw new Error(`Video ${sourceId}: transformed video requires an adapter`)
+        const left = (px(videoCss.left) || 0) + Number(shift[1] || 0), top = (px(videoCss.top) || 0) + Number(shift[2] || 0)
+        if (Number.isFinite(boxW) && Number.isFinite(boxH) && (Math.abs(boxW - layerBase.w) > 1 || Math.abs(boxH - layerBase.h) > 1 || Math.abs(left) > 1 || Math.abs(top) > 1)) {
+          const coversWidth = Math.abs(boxW - layerBase.w) <= 1 && boxH >= layerBase.h - 1
+          const coversHeight = Math.abs(boxH - layerBase.h) <= 1 && boxW >= layerBase.w - 1
+          if (!(coversWidth || coversHeight) || left > 1 || top > 1 || left + boxW < layerBase.w - 1 || top + boxH < layerBase.h - 1) throw new Error(`Video ${sourceId}: cropped video framing requires an adapter`)
+          const percent = (offset, free) => Math.abs(free) <= 1 ? 50 : Math.min(100, Math.max(0, Math.round(offset / free * 10000) / 100))
+          focalX = percent(left, layerBase.w - boxW)
+          focalY = percent(top, layerBase.h - boxH)
+          fit = 'cover'
+          videoFrames.push({ layerId: id, src, aspect: boxW / boxH })
+        }
+        layers.push({ ...layerBase, id: id++, type: 'video', name: `Video ${sourceId}`, src, fit, focalX, focalY, mediaStart, mediaEnd, ...(config.loop ? { mediaLoop: true } : {}) })
       } else if (type === 'text') {
         const rows = [...element.querySelectorAll('.row')]
         if (!rows.length) throw new Error('Unsupported text layout')
@@ -621,13 +674,13 @@ export async function convertTheBriefHtml(html) {
           }
         }
         const transformed = [...element.querySelectorAll('div')].filter(div => style(div).transform && style(div).transform !== 'none')
-        const mirrored = transformed.filter(div => /^rotate\(0(?:deg)?\)\s+scale\(-1,\s*1\)$/.test(style(div).transform))
+        const mirrored = transformed.filter(div => /^rotate\(0(?:deg)?\)\s+scale\((?:-1,\s*1|1,\s*-1)\)$/.test(style(div).transform))
         const rotated = transformed.filter(div => !mirrored.includes(div)).map(div => style(div).transform)
         if (rotated.some(t => !/^rotate\(-?[\d.]+deg\)$/.test(t)) || mirrored.length > 1
           || (mirrored.length && (rotated.some(t => Number.parseFloat(t.slice(7)) !== 0)
             || style(mirrored[0]).width !== '100%' || style(mirrored[0]).height !== '100%'
             || !['', '50% 50%', 'center center', 'center'].includes(style(mirrored[0]).transformOrigin)))) throw new Error('Unsupported static transform')
-        if (mirrored.length) imageTransforms.push({ layerId: id, operation: 'flop' })
+        if (mirrored.length) imageTransforms.push({ layerId: id, operation: /scale\(-1/.test(style(mirrored[0]).transform) ? 'flop' : 'flip' })
         let contentOpacity = 1
         const imageFilters = []
         for (let node = image || content; node && element.contains(node); node = node.parentElement) {
@@ -714,7 +767,7 @@ export async function convertTheBriefHtml(html) {
       }
       sourceElements.push({ sourceId, slideId: slide.id, type, nativeLayerIds: layers.slice(before).map(layer => layer.id), start, end })
     }
-    return { schemaVersion: 1, adapter: slides.length === 1 ? 'thebrief-css-single-slide-pilot' : 'thebrief-css-hard-cut-slides', fidelityVerified: false, fonts, externalFontStylesheets, imageTransforms, source: { designHash: source.designHash || null, width: source.width, height: source.height, duration, loopCount: source.loopCount, elementCount: elements.length }, canvasData: { [`custom_${source.width}x${source.height}`]: { slides: slides.map((slide, index) => ({ id: `source-slide:${slide.id}`, name: `Slide ${index + 1}`, duration: slide.end - slide.start })), playback: { duration, loopCount: source.loopCount }, layers, bgColor: background } }, sourceElements, warnings }
+    return { schemaVersion: 1, adapter: slides.length === 1 ? 'thebrief-css-single-slide-pilot' : 'thebrief-css-hard-cut-slides', fidelityVerified: false, fonts, externalFontStylesheets, imageTransforms, source: { designHash: source.designHash || null, width: source.width, height: source.height, duration, loopCount: source.loopCount, elementCount: elements.length }, videoFrames, canvasData: { [`custom_${source.width}x${source.height}`]: { slides: slides.map((slide, index) => ({ id: `source-slide:${slide.id}`, name: `Slide ${index + 1}`, duration: slide.end - slide.start })), playback: { duration, loopCount: source.loopCount }, layers, bgColor: background } }, sourceElements, warnings }
   } finally {
     await window.happyDOM.close()
   }

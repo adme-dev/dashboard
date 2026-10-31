@@ -130,3 +130,63 @@ it('keeps normal and italic faces separate at the same weight in packages and co
     rmSync(preview, { recursive: true, force: true })
   }
 }, 25000)
+
+it('bakes a centered vertical reflection', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'thebrief-flip-'))
+  try {
+    const pixels = Buffer.from([255, 0, 0, 0, 0, 255])
+    const png = await sharp(pixels, { raw: { width: 1, height: 2, channels: 3 } }).png().toBuffer()
+    const html = source.replace('designData:{', 'designData:{designHash:"flip1",')
+      .replace('data-eltype="text"', 'data-eltype="image"')
+      .replace('<div class="row">Hello world</div>', '<div style="width:100%;height:100%;transform:rotate(0) scale(1,-1)"><img src="./art.png"></div>')
+    const entries = { 'index.html': strToU8(html), 'art.png': png }
+    for (const [name, bytes] of Object.entries(entries)) writeFileSync(join(directory, name), bytes)
+    const archive = join(directory, 'source.zip'), output = join(directory, 'package.json')
+    writeFileSync(archive, zipSync(entries))
+    execFileSync(process.execPath, ['--import', 'tsx', 'scripts/thebrief/package-import.mjs', directory, archive, 'Flipped artwork', output], {
+      cwd: resolve('.'), env: { ...process.env, TSX_TSCONFIG_PATH: 'scripts/thebrief/tsconfig.json' }, timeout: 20000
+    })
+    const result = JSON.parse(readFileSync(output, 'utf8'))
+    const layer = result.canvasData.custom_300x250.layers.find(l => l.type === 'image')
+    const asset = result.assets.find(a => a.path === layer.src)
+    expect(await sharp(Buffer.from(asset.base64, 'base64')).removeAlpha().raw().toBuffer()).toEqual(Buffer.from([0, 0, 255, 255, 0, 0]))
+  } finally { rmSync(directory, { recursive: true, force: true }) }
+}, 25000)
+
+const hasFfmpeg = (() => {
+  try {
+    execFileSync('ffmpeg', ['-version'], { stdio: 'ignore' })
+    execFileSync('ffprobe', ['-version'], { stdio: 'ignore' })
+    return true
+  } catch { return false }
+})()
+
+it.skipIf(!hasFfmpeg)('packages the original H.264 bytes for a video layer and holds a clip end beyond the file', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'thebrief-video-'))
+  try {
+    const clip = join(directory, 'clip.mp4')
+    execFileSync('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', 'color=c=red:s=64x36:d=1', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', clip])
+    const bytes = readFileSync(clip)
+    const build = (endTime: number) => source.replace('designData:{', 'designData:{designHash:"video1",')
+      .replace('customAnimations:[]', `customAnimations:[],videoElements:[{elementId:1,slideId:1,volume:0,startTime:0,endTime:${endTime},soundOnHover:false,delay:0.2,autoplay:true,loop:true,keepPlayingPastSlide:false,src:"./clip.mp4"}]`)
+      .replace('data-eltype="text"', 'data-eltype="video"')
+      .replace('<div class="row">Hello world</div>', '<video src="./clip.mp4" muted autoplay playsinline style="width:100%;height:100%;object-fit:cover"></video>')
+    const run = (endTime: number) => {
+      const entries = { 'index.html': strToU8(build(endTime)), 'clip.mp4': new Uint8Array(bytes) }
+      writeFileSync(join(directory, 'index.html'), entries['index.html'])
+      const archive = join(directory, 'source.zip'), output = join(directory, 'package.json')
+      writeFileSync(archive, zipSync(entries))
+      execFileSync(process.execPath, ['--import', 'tsx', 'scripts/thebrief/package-import.mjs', directory, archive, 'Video artwork', output], {
+        cwd: resolve('.'), env: { ...process.env, TSX_TSCONFIG_PATH: 'scripts/thebrief/tsconfig.json' }, timeout: 30000, stdio: 'pipe'
+      })
+      return JSON.parse(readFileSync(output, 'utf8'))
+    }
+    const result = run(1)
+    const layer = result.canvasData.custom_300x250.layers.find(l => l.type === 'video')
+    expect(layer).toMatchObject({ mediaStart: 0, mediaEnd: 1, mediaLoop: true })
+    const asset = result.assets.find(a => a.path === layer.src)
+    expect(asset.mimeType).toBe('video/mp4')
+    expect(Buffer.from(asset.base64, 'base64')).toEqual(bytes)
+    expect(() => run(5)).toThrow(/exceeds the .*s file/)
+  } finally { rmSync(directory, { recursive: true, force: true }) }
+}, 60000)

@@ -1,3 +1,4 @@
+import { bannerVideoMediaTime } from '~~/shared/bannerVideoClock'
 import { ref, readonly, watch } from 'vue'
 import { bannerAnimationTiming } from '~/utils/banner-animation-timing'
 import { applyBannerPlayback, resolveBannerPlayback } from '~/utils/banner-playback'
@@ -350,12 +351,14 @@ function addVideoSync(tl: gsap.core.Timeline, el: HTMLElement, layer: Layer) {
       const startTime = layer.startTime || 0
       const endTime = layer.endTime || (startTime + 3)
       const presenceDur = endTime - startTime
+      // Elapsed presence time drives the shared media clock: normal speed,
+      // clip in/out points and looping match both HTML exporters.
       const proxy = { t: 0 }
       tl.to(proxy, {
-        t: Math.min(presenceDur, videoEl.duration || presenceDur),
+        t: presenceDur,
         duration: presenceDur,
         ease: 'none',
-        onUpdate() { videoEl.currentTime = proxy.t },
+        onUpdate() { videoEl.currentTime = bannerVideoMediaTime(proxy.t, layer, videoEl.duration) },
       }, startTime)
     }
   }
@@ -761,9 +764,7 @@ export function useBannerTimeline() {
         if ((layer.type === 'bg' && layer.srcType === 'video') || layer.type === 'video') {
           const el = lastArtboardEl!.querySelector(`#lyr-${layer.id} video`) as HTMLVideoElement
           if (el) {
-            const startTime = layer.startTime || 0
-            const videoTime = Math.max(0, time - startTime)
-            el.currentTime = Math.min(videoTime, el.duration || videoTime)
+            el.currentTime = bannerVideoMediaTime(time - (layer.startTime || 0), layer, el.duration)
           }
         }
       })

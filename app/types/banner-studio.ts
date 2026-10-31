@@ -126,6 +126,10 @@ export interface Layer {
   isLogo?: boolean
   focalX?: number // 0-100, default 50 (center)
   focalY?: number // 0-100, default 50 (center)
+  /** Video media clock (see shared/bannerVideoClock): clip in/out points in seconds and clip looping. */
+  mediaStart?: number
+  mediaEnd?: number
+  mediaLoop?: boolean
   // Button
   textColor?: string
   borderRadius?: number

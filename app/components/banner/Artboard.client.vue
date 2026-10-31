@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { bannerVideoMediaTime } from '~~/shared/bannerVideoClock'
 import { layerTransformOrigin, layerFlipTransform } from '~/utils/banner-transform'
 import type { Layer } from '~/types/banner-studio'
 import { FORMATS } from '~/utils/banner-constants'
@@ -61,8 +62,7 @@ function seekOverview(time: number) {
     const video = artboardEl.value?.querySelector<HTMLVideoElement>(`#lyr-${layer.id} video`)
     if (!video) continue
     video.pause()
-    const videoTime = Math.max(0, time - (layer.startTime || 0))
-    video.currentTime = Math.min(videoTime, video.duration || videoTime)
+    video.currentTime = bannerVideoMediaTime(time - (layer.startTime || 0), layer, video.duration)
   }
 }
 watch([artboardEl, () => props.isActive, layers, () => state.sets[props.formatKey]?.playback], () => {

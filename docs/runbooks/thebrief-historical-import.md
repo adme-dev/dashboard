@@ -9,3 +9,9 @@ Updated 31 October 2026. TheBrief support recommends selecting about 50 designs 
 5. Record source design ID/hash, folder, original creation date and evidence location, source last-modified date and user, ZIP hash, package hash, saved project ID, review outcome and any blocker in the migration ledger. Continue with the next folder or batch.
 
 The original creation date is stored as a `source-created-date:YYYY-MM-DD` provenance tag. XeroFlow's `created_at` remains the actual project creation timestamp. The library shows both source creation and last modification, and offers an oldest-created sort. Earlier TheBrief imports without a verified source date display **date unverified**; reconcile and backfill them separately against TheBrief Info evidence. Do not replace missing dates with the last-updated or upload date.
+
+## Video layers
+
+Muted, autoplaying TheBrief video converts to an editable native video layer. The original H.264 MP4 bytes are packaged unchanged; `package-import.mjs` uses `ffprobe` to confirm the codec, that the source clip end falls within the file, and that a cover-cropped frame matches the file's aspect. The layer keeps a media clock (`mediaStart`, `mediaEnd`, `mediaLoop`) shared by editor playback, scrubbing, overview and both HTML exporters (`shared/bannerVideoClock.ts`): clips play at normal speed, looping clips restart at their out-point and non-looping clips hold their last frame. TheBrief's cover-crop framing (an oversized `<video>` shifted inside a clipping box) becomes native cover fit with a focal point.
+
+These remain explicit holds: non-zero clip start, click-to-play, sound on hover, playback past the slide, audible video, delays that differ from the layer's presence, rotation or zoom beyond cover, rounded video and non-H.264 files. MP4 entries have a separate inspection allowance (21 MB per clip, 64 MB per archive); every other file keeps the standard limits, and a clip above the package asset limit is held.
