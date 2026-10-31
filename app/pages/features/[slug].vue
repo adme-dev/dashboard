@@ -2682,7 +2682,7 @@ const features: Record<string, Feature> = {
     categoryIcon: 'i-lucide-palette',
     categoryIconBg: 'bg-rose-50',
     categoryIconColor: 'text-rose-600',
-    description: 'Build client brand kits with colour roles, uploaded fonts, logos and written guidelines. Import shared OEM assets from MotorStack and use the selected kit to generate editable banner layouts.',
+    description: 'Build client brand kits with colour roles, uploaded fonts, logos and written guidelines. Import shared OEM assets from MotorStack, browse published vehicle variants and national offers, and generate editable banner layouts.',
     details: [
       {
         title: 'Brand Assets Beside Your Canvas',
@@ -2711,6 +2711,10 @@ const features: Record<string, Feature> = {
       {
         title: 'Templates for the Selected Brand',
         content: 'Select a brand kit in Banner Studio and open Templates to create an editable Hero + CTA or Two CTAs layout across every active artboard size. The layout uses reviewed button styling where available, the kit fonts and suitable logo variant. A MotorStack car image is imported into the project when one is available. Applying a generated layout can be undone.'
+      },
+      {
+        title: 'Vehicle Variants and National Offers',
+        content: 'When an imported MotorStack kit is selected, its editor sidebar also shows published vehicle grades, prices and colours, plus national offer copy, end dates and full terms. Browse matching vehicle imagery through the MotorStack media library. Review offer details before adding copy to artwork; this reference view does not change an existing design.'
       },
       {
         title: 'Extract From a Website',
