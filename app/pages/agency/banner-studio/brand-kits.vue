@@ -38,7 +38,6 @@ function openProject(p: BannerProject) {
         size="sm"
         to="/agency/banner-studio"
       />
-      <BrandCube color="purple" :size="32" :animated="false" />
       <div class="min-w-0">
         <h1 class="text-xl font-bold">
           Brand kits
