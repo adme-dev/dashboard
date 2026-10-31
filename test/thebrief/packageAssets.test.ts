@@ -116,6 +116,10 @@ it('keeps normal and italic faces separate at the same weight in packages and co
     expect(native).not.toContain('font-style:italic;')
     const reference = readFileSync(join(preview, 'reference.html'), 'utf8')
     expect(reference).toContain('font-style:italic')
+    expect(reference).not.toContain('url(\'./normal.ttf\')')
+    expect(reference).toContain('await readiness')
+    expect(native).toContain('await readiness')
+    expect(readFileSync(join(preview, 'index.html'), 'utf8')).toContain('Testing not ready: ')
     for (const bytes of [normal, italic]) {
       const embedded = `data:font/ttf;base64,${bytes.toString('base64')}`
       expect(native).toContain(embedded)
