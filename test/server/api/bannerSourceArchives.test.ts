@@ -428,8 +428,12 @@ describe('POST /source-archives', () => {
     expect(loser.archive).toMatchObject({ id: winner.archive.id, status: winner.archive.status, projectId: winner.archive.projectId })
     // The guard lives in SQL; the fake above only mirrors it.
     expect(queryOneFresh.mock.calls.some(([sql]) => /UPDATE[\s\S]*WHERE id = \$1 AND stored_at IS NULL/.test(String(sql)))).toBe(true)
-    // The first completion (the held upload) is preserved, not overwritten by the second.
-    expect(rows[0]).toMatchObject({ status: 'held', projectId: null, holdReason: 'Unsupported layer type: video' })
+    // Whichever request completed first, the row carries exactly that request's metadata.
+    const expected = [
+      { status: 'held', projectId: null, holdReason: 'Unsupported layer type: video' },
+      { status: 'imported', projectId: PROJECT, holdReason: null }
+    ][results.indexOf(winner)]
+    expect(rows[0]).toMatchObject(expected!)
   })
 
   it('completes a reservation another upload left behind', async () => {
