@@ -146,3 +146,27 @@ describe('migration ledger hints and undated imports', () => {
     }
   })
 })
+
+describe('video packages', () => {
+  const withVideo = (mimeType = 'video/mp4', layer: Record<string, unknown> = {}) => {
+    const input = fixture()
+    const board = Object.values(input.canvasData)[0] as { layers: Array<Record<string, unknown>> }
+    board.layers.push({ ...board.layers[0], id: 99, type: 'video', name: 'Video', text: undefined, src: './media/clip.mp4', fit: 'cover', focalX: 50, focalY: 25, mediaStart: 0, mediaEnd: 3, mediaLoop: true, ...layer })
+    input.assets.push({ path: './media/clip.mp4', fileName: 'clip.mp4', sha256: 'c'.repeat(64), base64: 'AAAA', mimeType })
+    return input
+  }
+
+  it('accepts an MP4-backed video layer with its media clock', () => {
+    const pkg = parseTheBriefPackage(withVideo())
+    expect(Object.values(pkg.canvasData)[0]!.layers.find(layer => layer.type === 'video')).toMatchObject({ mediaEnd: 3, mediaLoop: true, focalY: 25 })
+  })
+
+  it('rejects video layers without MP4 assets and media clocks on other layers', () => {
+    expect(() => parseTheBriefPackage(withVideo('image/png'))).toThrow('Video layers must reference MP4 assets')
+    expect(() => parseTheBriefPackage(withVideo('video/mp4', { mediaStart: 3, mediaEnd: 2 }))).toThrow('Invalid video clip timing')
+    const input = fixture()
+    const board = Object.values(input.canvasData)[0] as { layers: Array<Record<string, unknown>> }
+    board.layers[0]!.mediaLoop = true
+    expect(() => parseTheBriefPackage(input)).toThrow('Media clock is only valid on video layers')
+  })
+})

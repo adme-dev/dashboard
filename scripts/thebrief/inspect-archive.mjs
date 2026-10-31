@@ -3,7 +3,10 @@ import { inflateRawSync } from 'node:zlib'
 
 // Offline preflight only. Never evaluate imported code, fetch resources, or write
 // archive paths to disk. This is not an approval to execute or publish a package.
-const defaults = { maxArchiveBytes: 20 * 1024 * 1024, maxFileBytes: 10 * 1024 * 1024, maxTotalBytes: 40 * 1024 * 1024, maxFiles: 500, maxDepth: 1 }
+const defaults = { maxArchiveBytes: 20 * 1024 * 1024, maxFileBytes: 10 * 1024 * 1024, maxTotalBytes: 40 * 1024 * 1024, maxFiles: 500, maxDepth: 1,
+  // Separate, bounded allowance for verified MP4 entries only (per-clip cap matches the
+  // package asset limit). Non-video content keeps the limits above.
+  maxVideoFileBytes: 21 * 1024 * 1024, maxVideoTotalBytes: 64 * 1024 * 1024, maxVideoArchiveBytes: 64 * 1024 * 1024 }
 const digest = bytes => createHash('sha256').update(bytes).digest('hex')
 const fail = (message) => {
   throw new Error(message)
@@ -28,7 +31,8 @@ function crc32(bytes) {
 }
 
 function entries(bytes, limits, budget) {
-  if (bytes.length > limits.maxArchiveBytes) fail('ZIP exceeds archive limit')
+  if (bytes.length > Math.max(limits.maxArchiveBytes, limits.maxVideoArchiveBytes)) fail('ZIP exceeds archive limit')
+  let nonVideoCompressed = 0
   let end = -1
   for (let i = bytes.length - 22; i >= Math.max(0, bytes.length - 65557); i--) {
     if (bytes.readUInt32LE(i) === 0x06054b50 && i + 22 + bytes.readUInt16LE(i + 20) === bytes.length) {
@@ -75,7 +79,9 @@ function entries(bytes, limits, budget) {
     const key = name.normalize('NFC').toLowerCase().replace(/\/$/, '')
     if (names.has(key)) fail('Duplicate ZIP path')
     names.add(key)
-    if (expanded > limits.maxFileBytes || budget.bytes + expanded > limits.maxTotalBytes) fail('ZIP expansion exceeds limit')
+    const isVideo = /\.mp4$/i.test(name)
+    if (isVideo ? (expanded > limits.maxVideoFileBytes || budget.videoBytes + expanded > limits.maxVideoTotalBytes) : (expanded > limits.maxFileBytes || budget.bytes + expanded > limits.maxTotalBytes)) fail('ZIP expansion exceeds limit')
+    if (!isVideo) nonVideoCompressed += compressed
     if (local + 30 > start || bytes.readUInt32LE(local) !== 0x04034b50) fail('Invalid ZIP local header')
     const localNameLength = bytes.readUInt16LE(local + 26)
     const dataStart = local + 30 + localNameLength + bytes.readUInt16LE(local + 28)
@@ -85,15 +91,19 @@ function entries(bytes, limits, budget) {
     if (ranges.some(([a, b]) => local < b && dataEnd > a)) fail('Overlapping ZIP entries')
     ranges.push([local, dataEnd])
     const packed = bytes.subarray(dataStart, dataEnd)
-    const cap = Math.min(limits.maxFileBytes, limits.maxTotalBytes - budget.bytes)
+    const cap = isVideo ? Math.min(limits.maxVideoFileBytes, limits.maxVideoTotalBytes - budget.videoBytes) : Math.min(limits.maxFileBytes, limits.maxTotalBytes - budget.bytes)
     if (cap <= 0) fail('ZIP expansion exceeds limit')
     const data = method === 8 ? inflateRawSync(packed, { maxOutputLength: cap }) : packed
     if (data.length > cap || data.length !== expanded || crc32(data) !== crc) fail('ZIP size or checksum mismatch')
-    budget.bytes += data.length
+    if (isVideo && data.subarray(4, 8).toString('latin1') !== 'ftyp') fail('MP4 entry is not an MP4 file')
+    if (isVideo) budget.videoBytes += data.length
+    else budget.bytes += data.length
     if (!name.endsWith('/')) results.push({ name, data })
     cursor = next
   }
   if (cursor !== end) fail('Invalid ZIP directory size')
+  // An archive above the standard size is accepted only for its verified video entries.
+  if (bytes.length > limits.maxArchiveBytes && nonVideoCompressed > limits.maxArchiveBytes) fail('ZIP exceeds archive limit')
   return results
 }
 
@@ -119,7 +129,7 @@ export function inspectArchive(input, options = {}) {
       'Editable layer/timeline conversion and visual fidelity have not been verified.'
     ]
   }
-  const budget = { files: 0, bytes: 0 }
+  const budget = { files: 0, bytes: 0, videoBytes: 0 }
   function visit(archive, prefix, depth) {
     if (depth > limits.maxDepth) fail('ZIP nesting exceeds limit')
     // Larger outer containers never relax a creative's default limits. This
@@ -152,5 +162,5 @@ export function inspectArchive(input, options = {}) {
     }
   }
   visit(bytes, '', 0)
-  return { ...report, expandedBytes: budget.bytes }
+  return { ...report, expandedBytes: budget.bytes + budget.videoBytes }
 }

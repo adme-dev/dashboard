@@ -10,7 +10,7 @@ const track = z.array(z.object({
   easing: z.string().max(100).regex(/^(linear|none|cubic-bezier\([\d.,\s-]+\))$/).optional()
 })).min(2).max(500)
 const layer = z.object({
-  id: z.number().int().positive(), type: z.enum(['bg', 'image', 'text', 'rect', 'button', 'audio']), name: z.string().max(250),
+  id: z.number().int().positive(), type: z.enum(['bg', 'image', 'video', 'text', 'rect', 'button', 'audio']), name: z.string().max(250),
   linkId: z.string().max(80).regex(/^source:[a-z0-9:]+$/).optional(),
   x: number, y: number, w: number.positive(), h: number.positive(), zIndex: number, opacity: z.number().min(0).max(1),
   animIn: z.literal('none'), animOut: z.literal('none').optional(), animInDur: z.literal(0),
@@ -34,6 +34,8 @@ const layer = z.object({
   volume: z.number().min(0).max(1).optional(),
   visualFilter: z.string().max(500).refine(isSafeBannerImageFilter).optional(),
   muted: z.boolean().optional(),
+  focalX: z.number().min(0).max(100).optional(), focalY: z.number().min(0).max(100).optional(),
+  mediaStart: z.number().min(0).max(300).optional(), mediaEnd: z.number().positive().max(300).optional(), mediaLoop: z.boolean().optional(),
   keyframes: z.object({ opacity: track.optional(), x: track.optional(), y: track.optional(), scaleX: track.optional(), scaleY: track.optional(), rotation: track.optional() }).optional()
 }).strict()
 const binary = z.object({ path: local, fileName: z.string().max(150).regex(/^[\w .-]+$/), sha256: sha, base64: z.string().max(28 * 1024 * 1024).regex(/^[A-Za-z0-9+/]*={0,2}$/), mimeType: z.string().max(100) })
@@ -42,7 +44,7 @@ const schema = z.object({
   source: z.object({ designHash: z.string().regex(/^[\w-]+$/).max(100), sha256: sha, folder: z.string().max(250), duration: z.number().positive().max(300), loopCount: z.number().int().min(0).max(1000), createdDate: z.iso.date().optional(), clientName: z.string().trim().min(1).max(200).optional() }),
   canvasData: z.record(z.string(), z.object({ layers: z.array(layer).min(1).max(200), bgColor: css.optional(), slides: z.array(z.object({ id: z.string().max(100).regex(/^[a-zA-Z0-9:_-]+$/), name: z.string().min(1).max(100), duration: z.number().finite().min(0.1).max(300) }).strict()).min(1).max(50).optional(), playback: z.object({ duration: z.number().positive().max(300), loopCount: z.number().int().min(0).max(1000) }).optional() })),
   warnings: z.array(z.string().max(1000)).max(250),
-  assets: z.array(binary.extend({ mimeType: z.enum(['image/png', 'image/jpeg', 'image/webp', 'audio/mpeg']) })).max(100),
+  assets: z.array(binary.extend({ mimeType: z.enum(['image/png', 'image/jpeg', 'image/webp', 'audio/mpeg', 'video/mp4']) })).max(100),
   fonts: z.array(binary.extend({ family: z.string().min(1).max(100).regex(/^[\w .-]+$/), weight: z.number().int().min(1).max(1000), style: z.literal('normal'), format: z.enum(['truetype', 'opentype', 'woff', 'woff2']) })).max(32)
 })
 export type TheBriefPackage = z.infer<typeof schema>
@@ -82,7 +84,11 @@ export function parseTheBriefPackage(input: unknown): TheBriefPackage {
       if (item.src && !result.assets.some(a => a.path === item.src)) throw new Error('Missing packaged asset')
       if (item.textRuns && item.textRuns.map(run => run.text).join('') !== item.text) throw new Error('Text runs differ from layer text')
       if (item.wordPop && (item.type !== 'text' || item.textRuns)) throw new Error('Word animation requires plain text')
-      if (['image', 'audio'].includes(item.type) && !item.src) throw new Error('Image or audio layer is missing its asset')
+      if (['image', 'audio', 'video'].includes(item.type) && !item.src) throw new Error('Image, audio or video layer is missing its asset')
+      const mime = item.src ? result.assets.find(a => a.path === item.src)?.mimeType : undefined
+      if ((item.type === 'video') !== (mime === 'video/mp4')) throw new Error('Video layers must reference MP4 assets, and only video layers may')
+      if (item.type !== 'video' && (item.mediaStart !== undefined || item.mediaEnd !== undefined || item.mediaLoop !== undefined)) throw new Error('Media clock is only valid on video layers')
+      if (item.mediaEnd !== undefined && item.mediaEnd <= (item.mediaStart ?? 0)) throw new Error('Invalid video clip timing')
       if (item.endTime <= item.startTime || item.endTime > result.source.duration) throw new Error('Invalid layer timing')
       for (const frames of Object.values(item.keyframes || {})) {
         if (frames?.some((f, i) => f.time > result.source.duration || (i > 0 && f.time < frames[i - 1]!.time))) throw new Error('Invalid animation timing')
