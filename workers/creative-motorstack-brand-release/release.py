@@ -65,8 +65,11 @@ def local_manifest():
     return manifest
 
 
-def module_hashes(version):
-    body, mime = request('/content/v2?version=' + version, raw=True)
+def module_hashes(expected_latest_version):
+    # This API returns latest uploaded source; there is no version query selector.
+    if latest_version() != expected_latest_version:
+        raise RuntimeError('Latest uploaded version changed before source download')
+    body, mime = request('/content/v2', raw=True)
     message = email.parser.BytesParser(policy=email.policy.default).parsebytes(b'Content-Type: ' + mime.encode() + b'\r\nMIME-Version: 1.0\r\n\r\n' + body)
     if not message.is_multipart():
         raise RuntimeError('Expected multipart Worker source')
@@ -76,6 +79,8 @@ def module_hashes(version):
         if not name or name in result:
             raise RuntimeError('Unexpected source part')
         result[name] = sha(part.get_payload(decode=True))
+    if latest_version() != expected_latest_version:
+        raise RuntimeError('Latest uploaded version changed during source download')
     return result
 
 
@@ -85,6 +90,8 @@ def verify_runtime(version):
     resources = detail['resources']
     bindings = sorted((item['name'], item['type']) for item in resources['bindings'])
     expected = sorted((item['name'], item['type']) for item in evidence['bindings'])
+    if version == evidence['id'] and resources.get('script', {}).get('etag') != evidence['script']['etag']:
+        raise RuntimeError('Immutable baseline version script etag changed; stop and reconcile')
     if bindings != expected or resources['script_runtime'] != evidence['runtime']:
         raise RuntimeError('Bindings or complete runtime/assets settings changed; stop and reconcile')
     return detail
@@ -107,8 +114,12 @@ def verify_baseline(manifest, latest_expected=None):
     if latest_version() != (latest_expected or manifest['baseVersion']):
         raise RuntimeError('Latest uploaded version changed; refuse implicit inheritance')
     verify_runtime(manifest['baseVersion'])
-    if module_hashes(manifest['baseVersion']) != {'worker.js': manifest['baseSha256']}:
-        raise RuntimeError('Live source no longer matches reviewed baseline')
+    if latest_expected is None or latest_expected == manifest['baseVersion']:
+        if module_hashes(manifest['baseVersion']) != {'worker.js': manifest['baseSha256']}:
+            raise RuntimeError('Latest baseline source no longer matches reviewed baseline')
+    # After upload, the old immutable version is verified by ID, script etag,
+    # runtime and unchanged active deployment. Downloading its source is unsupported;
+    # the candidate latest source is verified separately against the upload receipt.
 
 
 def verify_source_commit(commit):
@@ -132,6 +143,20 @@ def metadata(commit):
     return {'main_module': 'worker.js', 'keep_assets': True, 'compatibility_date': '2026-10-27', 'usage_model': 'standard', 'bindings': [{'name': name, 'type': 'inherit'} for name in ['ASSETS', 'CREATIVE_AUTH_KEY', 'MOTORSTACK_API_KEY']], 'annotations': {'workers/message': 'Private MotorStack brand RPC from ' + commit, 'workers/commit_sha': commit}}
 
 
+def verify_uploaded_candidate(manifest, receipt, version):
+    if receipt.get('modules') != manifest['modules'] or receipt.get('versionId') != version:
+        raise RuntimeError('Explicit version does not match current-source module hashes and upload receipt')
+    upload_commit = receipt.get('commit', '')
+    if len(upload_commit) != 40 or any(c not in '0123456789abcdef' for c in upload_commit):
+        raise RuntimeError('Upload receipt has invalid original source commit')
+    detail = verify_runtime(version)
+    if detail.get('annotations', {}).get('workers/commit_sha') != upload_commit:
+        raise RuntimeError('Cloudflare upload provenance does not match the original receipt commit')
+    if module_hashes(version) != manifest['modules']:
+        raise RuntimeError('Candidate latest source differs from current-source modules')
+    return upload_commit
+
+
 def multipart(meta):
     boundary = 'motorstack-' + uuid.uuid4().hex
     parts = [('metadata', None, 'application/json', json.dumps(meta).encode())]
@@ -148,6 +173,11 @@ def run(args):
     if args.command == 'plan':
         return {'target': SCRIPT, 'baseVersion': manifest['baseVersion'], 'modules': manifest['modules'], 'keep_assets': True, 'mutations': False}
     if args.command == 'check':
+        if args.version:
+            receipt = json.loads((ROOT / 'upload-receipt.json').read_text())
+            verify_baseline(manifest, latest_expected=args.version)
+            upload_commit = verify_uploaded_candidate(manifest, receipt, args.version)
+            return {'baselineVerified': True, 'candidateVerified': args.version, 'uploadCommit': upload_commit, 'modules': manifest['modules'], 'mutations': False}
         verify_baseline(manifest)
         return {'baselineVerified': True, 'mutations': False}
     if not args.allow_mutation:
@@ -168,14 +198,14 @@ def run(args):
         return receipt
     if args.command == 'deploy':
         receipt = json.loads((ROOT / 'upload-receipt.json').read_text())
-        if receipt['modules'] != manifest['modules'] or receipt['versionId'] != args.version or receipt['commit'] != args.commit:
-            raise RuntimeError('Explicit version/commit do not match verified upload receipt')
         verify_baseline(manifest, latest_expected=args.version)
-        verify_runtime(args.version)
-        if module_hashes(args.version) != manifest['modules']:
-            raise RuntimeError('Candidate source changed')
+        upload_commit = verify_uploaded_candidate(manifest, receipt, args.version)
+        ancestry = subprocess.run(['git', '-C', str(ROOT), 'merge-base', '--is-ancestor', upload_commit, args.commit], capture_output=True)
+        if ancestry.returncode:
+            raise RuntimeError('Original upload commit is not an ancestor of reviewed current main')
         result = request('/deployments', 'POST', json.dumps({'strategy':'percentage','versions':[{'version_id':args.version,'percentage':100}], 'annotations':{'workers/message':'Private MotorStack brand RPC from ' + args.commit}}).encode(), 'application/json')
         result = {key: result.get(key) for key in ['id', 'versions', 'created_on']}
+        result.update({'uploadCommit': upload_commit, 'releaseCommit': args.commit, 'modules': manifest['modules']})
         (ROOT / 'deployment-receipt.json').write_text(json.dumps(result, indent=2) + '\n')
         return result
 

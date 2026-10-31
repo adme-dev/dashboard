@@ -61,7 +61,15 @@
         },
         "compatibility_date": "2026-10-27",
         "usage_model": "standard"
+      },
+      "script": {
+        "etag": "2035fb99fef0486c818bbba9dd3355088ea793724d467d09158a507bca9f8382",
+        "handlers": [
+          "fetch"
+        ],
+        "last_deployed_from": "api"
       }
     }
-  ]
+  ],
+  "contentEndpointNote": "The documented /content/v2 endpoint returns latest uploaded content and does not accept a version selector. Baseline source was captured before the candidate upload while this immutable version was active and latest."
 }

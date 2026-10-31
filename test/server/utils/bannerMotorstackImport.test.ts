@@ -68,7 +68,8 @@ describe('MotorStack atomic shared imports', () => {
       { role: 'heading', family: 'Ford', weights: [700], defaultWeight: 700, assets: [{ id: '22222222-2222-4222-8222-222222222222', weight: 700 }] },
       { role: 'extra', family: 'Ford', weights: [700], defaultWeight: 700, assets: [{ id: '22222222-2222-4222-8222-222222222222', weight: 700 }] }
     ])
-    expect(JSON.parse(saved?.guidelines as string).fonts[1]).toMatchObject({ role: 'medium', file: 'FordBold-400.woff2', weight: 700 })
+    expect(saved?.guidelines).toContain('medium: Ford; declared weight: 700; file: FordBold-400.woff2')
+    expect(saved?.guidelines).not.toMatch(/schemaVersion|assetId|aaaaaaaaaaaaaaaa/)
     expect(mocks.validate).toHaveBeenCalledWith(saved?.fonts, null, expect.anything())
     expect(mocks.query.mock.calls.some(([sql]) => /UPDATE|banner_projects|is_default/.test(sql))).toBe(false)
   })
@@ -91,12 +92,33 @@ describe('MotorStack atomic shared imports', () => {
     const result = await importMotorstackBrand(event, service, 'ford', 'staff')
     expect(result.counts.logos).toBe(3)
     expect((saved?.logos as { name: string }[]).map(logo => logo.name)).toEqual(['main: main.png', 'on-dark: on-dark.png', 'favicon: favicon.png'])
-    expect(JSON.parse(saved?.guidelines as string).logos.map((logo: { role: string }) => logo.role)).toEqual(['favicon', 'on-dark', 'main'])
+    expect(saved?.guidelines).toContain('favicon (favicon): favicon.png; for light backgrounds')
+    expect(saved?.guidelines).toContain('on-dark (on-dark): on-dark.png; for dark backgrounds')
   })
   it('retains a user-edited source kit without fetching or replacing source assets', async () => {
     mocks.read.mockResolvedValue([{ id: kitId, name: 'Custom Ford', fonts: [], logos: [], colors: [], guidelines: 'Our edited guidelines' }])
     expect(await importMotorstackBrand(event, service, 'ford', 'staff')).toMatchObject({ status: 'existing', brandName: 'Custom Ford', kitId })
     expect(mocks.prepare).not.toHaveBeenCalled()
+    expect(mocks.transaction).not.toHaveBeenCalled()
+  })
+  it('reopens readable missing-source warnings without replacing edited notes', async () => {
+    const data = prepared()
+    data.warnings = ['Body font has no downloadable file; no substitute was assigned.']
+    data.metadata.colors = [{ name: 'primaryColor', value: '#123456' }]
+    mocks.prepare.mockResolvedValue(data)
+    await importMotorstackBrand(event, service, 'ford', 'staff')
+    expect(saved?.guidelines).toContain('primaryColor: #123456')
+    const edited = `${saved?.guidelines}\n\nProducer note: use the light logo on white.`
+    mocks.read.mockResolvedValue([{ ...saved, guidelines: edited }])
+    const result = await importMotorstackBrand(event, service, 'ford', 'staff')
+    expect(result.warnings).toContain(data.warnings[0])
+    expect(mocks.query.mock.calls.filter(([sql]) => sql.includes('INSERT INTO brand_kits'))).toHaveLength(1)
+    expect(mocks.prepare).toHaveBeenCalledTimes(1)
+  })
+  it('still reads legacy JSON warnings without rewriting the existing kit', async () => {
+    mocks.read.mockResolvedValue([{ id: kitId, name: 'Ford', fonts: [], logos: [], colors: [], guidelines: JSON.stringify({ provider: 'MotorStack', warnings: ['Legacy missing file warning.'], schemaVersion: 1 }) }])
+    const result = await importMotorstackBrand(event, service, 'ford', 'staff')
+    expect(result.warnings).toContain('Legacy missing file warning.')
     expect(mocks.transaction).not.toHaveBeenCalled()
   })
   it('reuses exact shared font checksums under the generic font upload lock', async () => {

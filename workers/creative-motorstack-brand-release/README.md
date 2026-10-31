@@ -49,7 +49,7 @@ The installed workerd is `1.20260708.1`, so local RPC smoke tests use its latest
 
 1. Integrate reviewed source/tests with Pages on current main. Fetch again immediately before release and prove the candidate contains current main. Build and run the commands above. Record source commit, baseline deployment/version and module hashes from `dist/manifest.json`.
 2. Serialize Creative Worker releases: do not run another upload concurrently. The legacy script API's `inherit` and `keep_assets` use the latest uploaded version, which can differ from active deployment. API preflight is not an atomic compare-and-swap; release serialization is necessary.
-3. Run `python3 workers/creative-motorstack-brand-release/release.py check`. This makes only GET requests and verifies the active deployment, latest uploaded version, original module SHA, all binding names/types, complete runtime and asset header/routing settings. Stop on any drift. Never update baseline IDs just to bypass a failure.
+3. Run `python3 workers/creative-motorstack-brand-release/release.py check`. This makes only GET requests and verifies the active deployment, latest uploaded version, original module SHA, all binding names/types, complete runtime and asset header/routing settings. The source download is explicitly for the latest uploaded version, with latest-version checks before and after downloading; the API has no version selector. Stop on any drift. Never update baseline IDs just to bypass a failure.
 4. On the exact merged current-main commit, run the explicit upload command:
 
 ```sh
@@ -58,13 +58,15 @@ python3 workers/creative-motorstack-brand-release/release.py upload --commit FUL
 
 This POSTs `/versions?bindings_inherit=strict`; it **does not deploy**. Multipart metadata uses `keep_assets: true`, inherits exactly `ASSETS`, `CREATIVE_AUTH_KEY`, `MOTORSTACK_API_KEY`, and retains compatibility/usage model. There is no asset manifest/JWT upload and no secret copy. The script verifies the uploaded source modules and complete runtime before writing `upload-receipt.json`.
 
-5. Review that receipt. With the same unchanged main commit and no intervening upload, activate only its verified version:
+5. Review that receipt. Before deployment, `python3 workers/creative-motorstack-brand-release/release.py check --version VERIFIED_UPLOAD_VERSION_UUID` performs a read-only post-upload verification. It checks the original active deployment, immutable original-version script etag and runtime, latest candidate identity and bytes, and the receipt's original upload commit against Cloudflare's version annotation. It never tries to fetch old-version content using an unsupported query parameter.
+
+With no intervening upload, activate only that verified version:
 
 ```sh
 python3 workers/creative-motorstack-brand-release/release.py deploy --commit FULL_REVIEWED_MAIN_SHA --version VERIFIED_UPLOAD_VERSION_UUID --allow-mutation
 ```
 
-The script repeats active deployment, latest version, complete runtime and candidate source checks. It also requires `HEAD == origin/main == remote main` and no uncommitted files in this release directory. It then POSTs a 100% version deployment and records `deployment-receipt.json`. The tool uses existing local Wrangler OAuth authentication; tokens never appear in command arguments or output. **Never use a partial asset-directory Wrangler deploy.**
+The script repeats active deployment, immutable baseline etag, latest version, complete runtime and candidate source checks. It also requires `HEAD == origin/main == remote main` and no uncommitted files in this release directory. A later current-main release-tool-only fix may activate the existing upload only when its current deterministic build is byte-identical to the original receipt, that receipt commit matches Cloudflare provenance, and the upload commit is an ancestor of current main. Never edit the receipt to relabel an old upload. The script then POSTs a 100% version deployment and records both original `uploadCommit` and current `releaseCommit` in `deployment-receipt.json`. The tool uses existing local Wrangler OAuth authentication; tokens never appear in command arguments or output. **Never use a partial asset-directory Wrangler deploy.**
 
 6. Verify live deployment metadata, default HTTP authentication, seven launcher cards and all six editor asset sets before Pages activation. Inspect denied and permitted authentication paths, load actual editor bundles, and compare recorded launcher/asset hashes where available. Then deploy Pages via the repository's guarded `pnpm deploy:production` workflow and test the production binding through authenticated Banner Studio. Keep source, configuration, transport and rendered outcome evidence distinct.
 7. Rollback, if needed, is an explicitly reviewed deployment of the recorded original version at 100%; preserve its original assets/bindings. This tool deliberately has no automatic rollback or blind retry. Reconcile newer source before any later release.
@@ -75,3 +77,5 @@ The script repeats active deployment, latest version, complete runtime and candi
 - [Upload Version API](https://developers.cloudflare.com/api/resources/workers/subresources/scripts/subresources/versions/methods/create/) separates upload from deployment.
 - [Bindings API reference](https://developers.cloudflare.com/api/typescript/resources/workers/) documents `inherit` defaulting to latest and the legacy script API restriction on explicit version IDs.
 - [Named RPC entrypoints](https://developers.cloudflare.com/workers/runtime-apis/bindings/service-bindings/rpc/) documents named WorkerEntrypoint classes coexisting with the default handler.
+
+- [Script content API](https://developers.cloudflare.com/api/resources/workers/subresources/scripts/subresources/content/methods/get/) has no version query parameter; observed old/new version queries both returned latest uploaded modules. [Version metadata](https://developers.cloudflare.com/api/resources/workers/subresources/scripts/subresources/versions/methods/get/) exposes each immutable version’s script etag separately.
