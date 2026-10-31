@@ -249,7 +249,7 @@ function boundedZipStream(expectedBytes: number) {
   })
 }
 
-async function readBounded(body: ReadableStream, expectedBytes: number): Promise<Uint8Array> {
+async function readBounded(body: ReadableStream, expectedBytes: number): Promise<Uint8Array<ArrayBuffer>> {
   const reader = body.pipeThrough(boundedZipStream(expectedBytes)).getReader()
   const output = new Uint8Array(expectedBytes)
   let offset = 0
