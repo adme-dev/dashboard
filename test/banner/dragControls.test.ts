@@ -218,7 +218,7 @@ describe('canvas resize handles', () => {
       }
       // StudioEditor releases the master in pre-flush, before overview ownership.
       Vue.watch(() => studio.state.activeKey, () => {
-        controller.destroyTimeline()
+        controller.destroyTimeline({ preserveTime: true })
         rebuilding = rebuild()
       })
       Vue.onMounted(() => {
@@ -229,10 +229,12 @@ describe('canvas resize handles', () => {
     } })
     mount(wrapper)
     await rebuilding
+    controller.seekTo(2)
     studio.state.activeKey = 'leader'
     await Vue.nextTick()
     await rebuilding
-    controller.seekTo(2)
+    expect(studio.state.currentTime).toBe(2)
+    expect(controller.masterTl!.time()).toBe(2)
     await Vue.nextTick()
     const previous = host.querySelector<HTMLElement>('[data-board="mrec"] #lyr-1')!
     const firstOpacity = Number(previous.style.opacity)

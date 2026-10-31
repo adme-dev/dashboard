@@ -534,8 +534,10 @@ export function useBannerTimeline() {
   }
 
   function buildTimeline(artboardEl: HTMLElement, layers: Layer[]) {
-    // Stop the old artboard before replacing its DOM ownership.
-    destroyTimeline()
+    // Rebuilding edits or changing layout must not rewind the shared playhead.
+    // Release the previous DOM/audio owner, then render the new owner at that time.
+    destroyTimeline({ preserveTime: true })
+    const previousTime = state.currentTime
     clearGsap(artboardEl, layers)
 
     lastArtboardEl = artboardEl
@@ -581,6 +583,7 @@ export function useBannerTimeline() {
     applyBannerPlayback(masterTl, playback)
     renderInitialFrame(masterTl)
     state.duration = Math.max(naturalEnd, playback?.duration || 0) || 5
+    seekTo(Math.min(previousTime, state.duration))
     return masterTl
   }
 
@@ -664,10 +667,11 @@ export function useBannerTimeline() {
     startTimePoller()
   }
 
-  function destroyTimeline() {
+  function destroyTimeline({ preserveTime = false }: { preserveTime?: boolean } = {}) {
     stopTimePoller()
     state.isPlaying = false
-    state.currentTime = 0
+    // Read the exact transport position, which can be ahead of the UI poller.
+    state.currentTime = preserveTime ? (masterTl?.time() ?? state.currentTime) : 0
     if (masterTl) {
       disposeTimelineAudio(masterTl)
       masterTl.kill()
