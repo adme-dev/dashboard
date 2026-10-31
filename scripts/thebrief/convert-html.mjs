@@ -375,6 +375,23 @@ function effectTracks(effect, style, rules, start, end, warnings, geometry, inte
   return { tracks, transformOrigin }
 }
 
+// One static text shadow with a hex or rgb()/rgba() colour, in either CSS order.
+// Multiple shadows, named colours and other units remain explicit holds.
+export function normaliseTextShadow(value) {
+  const css = String(value || '').trim()
+  if (!css || css === 'none') return ''
+  const colors = css.match(/#[0-9a-f]+\b|rgba?\([^)]*\)/gi) || []
+  if (colors.length !== 1) throw new Error('Unsupported text shadow')
+  const lengths = css.replace(colors[0], ' ').trim().split(/\s+/).map(token => token === '0' ? '0px' : token)
+  if (lengths.length < 2 || lengths.length > 3 || !lengths.every(token => /^-?\d+(?:\.\d+)?px$/.test(token)) || lengths[2]?.startsWith('-')) throw new Error('Unsupported text shadow')
+  const [x, y, blur = '0px'] = lengths
+  const hex = /^#[0-9a-f]{3}$|^#[0-9a-f]{6}$/i.test(colors[0]) ? colors[0] : null
+  const rgb = colors[0].replace(/\s+/g, '').match(/^rgba?\((\d{1,3}),(\d{1,3}),(\d{1,3})(?:,(0|1|0?\.\d+|1\.0+))?\)$/i)
+  if (!hex && (!rgb || rgb.slice(1, 4).some(channel => Number(channel) > 255))) throw new Error('Unsupported text shadow')
+  const color = hex || (rgb[4] === undefined ? `rgb(${rgb[1]},${rgb[2]},${rgb[3]})` : `rgba(${rgb[1]},${rgb[2]},${rgb[3]},${Number(rgb[4])})`)
+  return `${x} ${y} ${blur} ${color}`
+}
+
 /** Offline CSS export adapter for bounded, hard-cut slide sequences. Source scripts are parsed, never run. */
 export async function convertTheBriefHtml(html) {
   if (Buffer.byteLength(html) > 2 * 1024 * 1024) throw new Error('HTML exceeds pilot limit')
@@ -542,9 +559,8 @@ export async function convertTheBriefHtml(html) {
           const textContainer = row.closest('.text-content')
           const containerCss = textContainer ? style(textContainer) : rowCss
           const textStroke = containerCss.getPropertyValue('-webkit-text-stroke') || ''
-          const textShadow = (containerCss.textShadow || '').replace(/(^|\s)0(?=\s|$)/g, (_, space) => `${space}0px`)
+          const textShadow = normaliseTextShadow(containerCss.textShadow)
           if (textStroke && !/^\d+(?:\.\d+)?px #[0-9a-f]{6}$/i.test(textStroke)) throw new Error('Unsupported text stroke')
-          if (textShadow && !/^-?\d+(?:\.\d+)?px -?\d+(?:\.\d+)?px (?:\d+(?:\.\d+)?px|0) #[0-9a-f]{3,6}$/i.test(textShadow)) throw new Error('Unsupported text shadow')
           if (textStroke && !['stroke', ''].includes(containerCss.paintOrder)) throw new Error('Unsupported text paint order')
           const textRuns = []
           if (row.querySelector('sup') || hasInlineSizes) {

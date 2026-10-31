@@ -21,6 +21,9 @@ const filesValid = ref(true)
 const busy = ref(false)
 const error = ref('')
 const progress = ref('')
+// Explicit, per-batch operator choice: import undated drafts and mark them for a
+// later Created-date backfill instead of holding them. Never substitutes a date.
+const importUndated = ref(false)
 const showDraftUpdate = ref(false)
 const draftUpdate = shallowRef<{ row: TheBriefImportRow, project: BannerProject, canvasData?: Record<string, ArtboardState> } | null>(null)
 const draftUpdateError = ref('')
@@ -180,7 +183,16 @@ async function importDrafts() {
         row.status = 'Already imported · open for review or explicitly update this draft'
         continue
       }
-      if (!calendarDate(row.sourceCreatedDate)) {
+      // A fresh export of the same TheBrief design has different archive bytes.
+      // Never create a second draft for it; corrections use the explicit update flow.
+      const sameDesign = existing.find(p => p.clientId === row.clientId && p.tags?.includes(`source-design:${pkg.source.designHash}`))
+      if (sameDesign) {
+        row.projectId = sameDesign.id
+        row.status = 'Already imported from this TheBrief design · open for review or explicitly update this draft'
+        continue
+      }
+      const datePending = !calendarDate(row.sourceCreatedDate)
+      if (datePending && !importUndated.value) {
         row.status = 'Held · verify the original creation date in TheBrief before importing'
         continue
       }
@@ -192,14 +204,14 @@ async function importDrafts() {
         const canvasData = await prepareCanvas(row)
         const project = await api<BannerProject>('/api/agency/banner-studio/projects', {
           method: 'POST', headers: { 'Idempotency-Key': `thebrief-project:${row.clientId}:${pkg.source.sha256}` },
-          body: { name: pkg.name, clientId: row.clientId, folderId: row.folderId === '__unfiled__' ? null : row.folderId, canvasData, tags: importTags(pkg, row.sourceCreatedDate) }
+          body: { name: pkg.name, clientId: row.clientId, folderId: row.folderId === '__unfiled__' ? null : row.folderId, canvasData, tags: importTags(pkg, row.sourceCreatedDate, { datePending }) }
         })
         // A write response alone is insufficient: verify persisted owner and layer data.
         const saved = await api<BannerProject>(`/api/agency/banner-studio/projects/${project.id}`)
         if (saved.clientId !== row.clientId || saved.folderId !== (row.folderId === '__unfiled__' ? null : row.folderId) || !sameImportedCanvas(saved.canvasData, canvasData)) throw new Error('Saved project needs a persistence check before retrying')
         finishImportAttempt(localStorage, attemptKey)
         row.projectId = saved.id
-        row.status = 'Saved as draft · needs visual review'
+        row.status = datePending ? 'Saved as draft · creation date pending backfill · needs visual review' : 'Saved as draft · needs visual review'
         existing.push(saved)
         changed = true
       } catch (cause) {
@@ -267,8 +279,16 @@ async function importDrafts() {
           color="warning"
           variant="subtle"
           title="Original dates needed"
-          description="Existing projects can be reconciled now. New drafts without a verified TheBrief creation date will be held."
-        />
+          :description="importUndated ? 'Drafts without a verified TheBrief creation date will be saved and marked for a later date backfill. No date is assigned.' : 'Existing projects can be reconciled now. New drafts without a verified TheBrief creation date will be held.'"
+        >
+          <template #actions>
+            <UCheckbox
+              v-model="importUndated"
+              label="Import undated drafts and backfill the date later"
+              :disabled="busy"
+            />
+          </template>
+        </UAlert>
         <div class="max-h-[45vh] space-y-3 overflow-y-auto">
           <section v-for="(row, index) in rows" :key="`${row.pkg.source.sha256}:${index}`" class="space-y-3 rounded-lg border border-default p-4">
             <div class="flex flex-wrap items-start justify-between gap-2">

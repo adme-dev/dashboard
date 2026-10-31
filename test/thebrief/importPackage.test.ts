@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseTheBriefPackage, suggestImportClient, importTags, sameImportedCanvas } from '../../app/utils/thebrief-import'
+import { clientFromHint, parseTheBriefPackage, suggestImportClient, importTags, sameImportedCanvas } from '../../app/utils/thebrief-import'
 
 const fixture = () => ({
   kind: 'xeroflow-thebrief-import', version: 1, name: 'DriveAgent News Update',
@@ -113,4 +113,36 @@ it('preserves explicit slide metadata and rejects missing identities, mismatched
   expect(() => parseTheBriefPackage(input)).toThrow('source timing')
   slides.push({ id: 'source-slide:2', name: 'Slide 2', duration: 1 })
   expect(() => parseTheBriefPackage(input)).toThrow('crosses its slide')
+})
+
+describe('migration ledger hints and undated imports', () => {
+  it('preselects only one exactly named client from the package hint', () => {
+    const clients = [{ id: 'a', name: 'Brighton Auto Group' }, { id: 'b', name: 'Brighton GWM' }, { id: 'c', name: 'Twin' }, { id: 'd', name: 'twin' }]
+    expect(clientFromHint('Brighton Auto Group', clients)).toBe('a')
+    expect(clientFromHint('brighton  auto group', clients)).toBe('a')
+    expect(clientFromHint('Brighton', clients)).toBeNull()
+    expect(clientFromHint('Twin', clients)).toBeNull()
+    expect(clientFromHint(undefined, clients)).toBeNull()
+  })
+
+  it('tags an undated import for backfill without inventing a source date', () => {
+    const pkg = parseTheBriefPackage(fixture())
+    expect(importTags(pkg, '', { datePending: true })).toContain('import:created-date-pending')
+    expect(importTags(pkg, '2021-04-09', { datePending: true })).not.toContain('import:created-date-pending')
+    expect(importTags(pkg).some(tag => tag.startsWith('source-created-date:') || tag === 'import:created-date-pending')).toBe(false)
+  })
+
+  it('accepts one rgb or rgba text shadow and rejects unsafe shadow values', () => {
+    const withShadow = (textShadow: string) => {
+      const input = fixture()
+      const board = Object.values(input.canvasData)[0] as { layers: Array<Record<string, unknown>> }
+      board.layers.find(layer => layer.type === 'text')!.textShadow = textShadow
+      return input
+    }
+    expect(() => parseTheBriefPackage(withShadow('2px 2px 22px rgba(98,29,0,0.83)'))).not.toThrow()
+    expect(() => parseTheBriefPackage(withShadow('2px 2px 22px rgb(98,29,0)'))).not.toThrow()
+    for (const bad of ['2px 2px 22px rgba(98,29,0,2)', '2px 2px 22px rgba(98,29,0,.5);color:red', '2px 2px 22px red', '1px 1px 1px #fff, 2px 2px 2px #000']) {
+      expect(() => parseTheBriefPackage(withShadow(bad))).toThrow()
+    }
+  })
 })

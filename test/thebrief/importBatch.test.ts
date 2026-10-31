@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest'
 import { readImportBatch } from '../../app/utils/thebrief-import-batch'
 import type { BannerFolder } from '../../app/types/banner-studio'
 
-function file(name: string, hash: string, createdDate?: string) {
+function file(name: string, hash: string, createdDate?: string, clientName?: string) {
   return new File([JSON.stringify({
     kind: 'xeroflow-thebrief-import', version: 1, name,
-    source: { designHash: name, sha256: hash.repeat(64), folder: 'Updates', duration: 4, loopCount: 0, ...(createdDate ? { createdDate } : {}) },
+    source: { designHash: name, sha256: hash.repeat(64), folder: 'Updates', duration: 4, loopCount: 0, ...(createdDate ? { createdDate } : {}), ...(clientName ? { clientName } : {}) },
     canvasData: { custom_300x250: { layers: [{ id: 1, type: 'text', name: 'Title', text: 'Hello', x: 0, y: 0, w: 300, h: 50, zIndex: 1, opacity: 1, animIn: 'none', animInDur: 0, startTime: 0, endTime: 4 }] } },
     assets: [], fonts: [], warnings: []
   })], `${name}.json`, { type: 'application/json' })
@@ -30,6 +30,12 @@ describe('TheBrief batch selection', () => {
     rows[0]!.sourceCreatedDate = '2020-06-11'
     expect((await readImportBatch([source], rows, []))[0]?.sourceCreatedDate).toBe('2020-06-11')
     expect((await readImportBatch([file('Second', 'b')], [], []))[0]?.sourceCreatedDate).toBe('')
+  })
+
+  it('preselects the ledger client hint only when exactly one client has that name', async () => {
+    const clients = [{ id: 'bag', name: 'Brighton Auto Group' }, { id: 'gwm', name: 'Brighton GWM' }]
+    expect((await readImportBatch([file('ForthingUpdate', 'a', undefined, 'Brighton Auto Group')], [], clients))[0]?.clientId).toBe('bag')
+    expect((await readImportBatch([file('ForthingUpdate', 'b', undefined, 'Brighton')], [], clients))[0]?.clientId).toBe('__unassigned__')
   })
 
   it('does not retain saved state for a replaced file with the same name', async () => {
