@@ -7,6 +7,8 @@
 **Tech stack:** Nuxt 4/Vue/Nuxt UI, TypeScript/Zod, Neon Postgres, existing Cloudflare rendering/storage infrastructure; pinned Rust/WASM FigFlow source after ownership verification.
 **Spec:** [PRD and design](../specs/2026-10-30-figflow-edm-design.md).
 
+**Current release:** [Disabled foundation deployment and contributor handoff](../../email-builder/figflow-developer-handoff.md). PR #801 is deployed; this does not close the product tasks below.
+
 ## Global constraints
 
 - This is a tracked delivery plan; F01/F02 must refine exact bridge paths and contract signatures before implementation. Proposed paths below do not imply those files already exist.
@@ -45,11 +47,17 @@ Statuses: `not-started`, `in-progress`, `blocked`, `in-review`, `done`. Only use
 | F10 | End-to-end and real-client acceptance | F06–F09 | not-started | unassigned | — |
 | F11 | Documentation, rollout and rollback | F10 | not-started | unassigned | — |
 | F12 | Production verification and workspace retirement | F11,R01 | not-started | unassigned | — |
-| R01 | Restore Pages release headroom without weakening validation | — | in-progress | Codex / Grok review | ec0dcd39e main has 2,078 raw bytes remaining; measured foundation adds 36,800. Fixed size guard blocks release. Evidence and latest-main caveat below |
+| R01 | Fit the disabled foundation within the unchanged Pages budget | — | done | Codex / Kimi review | PR #801 deployed at a193e82a5; 690 raw bytes remain. Existing template writes stay local. Restoring design transport requires a fresh size check; this is not general release headroom. |
 
 ## Execution conventions
 
-For each code task: define the failing acceptance fixture/test; run and record the failure; implement the smallest scoped change; run focused tests plus affected existing regression suites; reread every modified file and apply AGENTS.md pre-commit checks; commit only owned files and attach the PR/commit/evidence. Do not write tests that only mirror implementation. No installing dependencies or adding worktrees for this documentation task.
+Owner instruction, 1 November: keep development tight and do not run further
+tests until the end. Implement small, explicitly owned changes, review source
+as work proceeds, and defer automated test runs to final implementation
+verification. This supersedes the earlier per-task red/green convention.
+Record unverified work and outstanding final checks. Required deployment guards
+remain mandatory; do not bypass them or label untested work accepted.
+
 
 Suggested Vitest invocation for new test files: `pnpm exec vitest run <test-file>`; F01 must confirm the correct repository config and runtime before treating that command as authoritative. Rust/WASM build and test commands must be recorded from the actual owning pipeline, not guessed. Integration/real-client tests have separate explicit prerequisites.
 
@@ -921,3 +929,20 @@ EMAIL_DESIGN binding absent. The fresh candidate build is 25,468,238 raw bytes
 Pre-release browser checks confirm the existing signed-in FuturaX composer and
 QR Codes page load. These are baseline observations, not post-release or save
 round-trip acceptance. Production release identity and live results follow below.
+
+
+### Contributor-ready production handoff — 1 November 2026
+
+The disabled foundation is merged in PR #801 and deployed from exact current
+main a193e82a52ba107cb1a42db2b55f3f518b9c7caf to agency-dashboard/main,
+deployment 77a1835c-c48d-4f72-aaa6-f589307fe225. Cloudflare readback matched.
+Live composer and QR Codes read checks passed; no production save/delete round
+trip was performed. The hosted FigFlow package and full EDM workflow were not
+activated. The current handoff records release/rollback identities, independent
+contribution boundaries, activation prerequisites and final verification gates:
+[developer handoff](../../email-builder/figflow-developer-handoff.md).
+
+No tests were run for this documentation update. The owner's request to defer
+further tests until the end is now recorded in the execution conventions and
+handoff. Earlier append-only checkpoints remain historical evidence; use this
+handoff and the current task table for present status.
