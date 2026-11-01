@@ -18,6 +18,14 @@ describe('Imported native artwork rendering', () => {
     expect(server('mrec', [unsafe])).not.toContain('mix-blend-mode:')
   })
 
+  it('preserves safe video colour filters in both exporters and rejects remote filters', () => {
+    const video: Layer = { ...layer, type: 'video', src: '/clip.mp4', opacity: 0.5, visualFilter: 'brightness(1.12) contrast(1.12)' }
+    const html = client('mrec', [video])
+    expect(html).toContain('filter:brightness(1.12) contrast(1.12);')
+    expect(server('mrec', [video])).toBe(html)
+    for (const render of [client, server]) expect(render('mrec', [{ ...video, visualFilter: 'url(https://example.com/filter.svg)' }])).not.toContain('filter:url(')
+  })
+
   it('preserves finite local pixel origins in both exports and drops unsafe origins', () => {
     const pivot = { ...layer, transformOrigin: { x: 100, y: -28.8 } }
     expect(client('mrec', [pivot])).toContain('transform-origin:100px -28.8px;')

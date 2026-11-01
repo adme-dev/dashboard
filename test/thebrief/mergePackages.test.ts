@@ -60,3 +60,32 @@ it('deduplicates identical font bytes and remaps every size to the retained alia
     for (const board of Object.values(merged.canvasData)) expect(board.layers[0]?.fontFamily).toBe(merged.fonts[0]?.family)
   } finally { rmSync(dir, { recursive: true, force: true }) }
 })
+
+it('retains a size-specific font weight when another weight shares bytes across sizes', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'thebrief-weight-merge-'))
+  try {
+    const paths = ['1200x1200', '1080x1920'].map((size, index) => {
+      const pkg = sizePackage(size, String(index + 1).repeat(64))
+      const family = `Avenir XF source${index}`
+      const regular = { path: './fonts/regular.ttf', fileName: 'regular.ttf', family, weight: 400, style: 'normal' as const, format: 'truetype' as const, mimeType: 'font/ttf' as const, sha256: 'a'.repeat(64), base64: 'YQ==' }
+      pkg.fonts = [regular]
+      Object.assign(pkg.canvasData[`custom_${size}`].layers[0]!, { fontFamily: family, fontWeight: 400 })
+      if (index) {
+        pkg.fonts.push({ ...regular, path: './fonts/light.ttf', fileName: 'light.ttf', weight: 300, sha256: 'b'.repeat(64), base64: 'Yg==' })
+        pkg.canvasData[`custom_${size}`].layers.push({ ...pkg.canvasData[`custom_${size}`].layers[0]!, id: 2, linkId: 'source:light', fontWeight: 300 })
+      }
+      const file = join(dir, `${index}.json`)
+      writeFileSync(file, JSON.stringify(pkg))
+      return file
+    })
+    const output = join(dir, 'set.json')
+    execFileSync(process.execPath, ['--import', 'tsx', 'scripts/thebrief/merge-packages.mjs', 'campaign', 'Campaign set', output, ...paths], {
+      cwd: resolve('.'), env: { ...process.env, TSX_TSCONFIG_PATH: 'scripts/thebrief/tsconfig.json' }, timeout: 10000
+    })
+    const merged = parseTheBriefPackage(JSON.parse(readFileSync(output, 'utf8')))
+    expect(merged.fonts).toHaveLength(2)
+    const story = merged.canvasData.custom_1080x1920.layers
+    expect(story[0]).toMatchObject({ fontFamily: 'Avenir XF source0', fontWeight: 400 })
+    expect(story[1]).toMatchObject({ fontFamily: 'Avenir XF source1', fontWeight: 300 })
+  } finally { rmSync(dir, { recursive: true, force: true }) }
+})

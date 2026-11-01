@@ -1,6 +1,6 @@
 # TheBrief historical import dates and batches
 
-Updated 31 October 2026. TheBrief support recommends selecting about 50 designs per bulk HTML5 export to avoid browser timeouts. Banner Studio accepts up to 50 **prepared** `.xeroflow.json` packages per import batch; it does not accept the export ZIPs directly. A package remains limited to 45 MB. Repeat batches for the full archive.
+Updated 1 November 2026. TheBrief support recommends selecting about 50 designs per bulk HTML5 export to avoid browser timeouts. Banner Studio accepts up to 50 **prepared** `.xeroflow.json` packages per import batch; it does not accept the export ZIPs directly. A package remains limited to 45 MB. Repeat batches for the full archive.
 
 1. Inventory one TheBrief workspace or folder at a time. Reconcile every design set and size against Banner Studio and the saved migration ledger before exporting or importing. Preserve existing projects and edits.
 2. Record the **Created** date for each design from TheBrief's design Info panel, alongside its design identity and folder. The [TheBrief design Info guide](https://help.thebrief.ai/hc/en-us/articles/22638477185948-How-to-preview-comment-on-designs) identifies this as the source of the creator and creation date. Preserve the folder list's **Last modified** date and user in the migration ledger too, as separate source metadata for a later library update. ZIP timestamps, export filenames and download time are not creation dates.
@@ -10,11 +10,21 @@ Updated 31 October 2026. TheBrief support recommends selecting about 50 designs 
 
 The original creation date is stored as a `source-created-date:YYYY-MM-DD` provenance tag. XeroFlow's `created_at` remains the actual project creation timestamp. The library shows both source creation and last modification, and offers an oldest-created sort. Earlier TheBrief imports without a verified source date display **date unverified**; reconcile and backfill them separately against TheBrief Info evidence. Do not replace missing dates with the last-updated or upload date.
 
+The importer waits for the client and folder lists before accepting packages, so a quick file selection keeps its source assignments. Managed asset uploads run three at a time. On failure, queued uploads stop and in-flight requests finish before the error appears; acknowledged uploads remain reusable within that dialog. Existing duplicate and uncertain-project checks still apply.
+
+After verifying a new draft, the importer creates its saved viewer from the accepted database revision and reads it back before showing **Open saved viewer**. A storage failure retains the draft and lets the batch continue. **Prepare saved viewer** retries that snapshot without creating another project or uploading the media again; it also prepares an existing accessible draft selected by duplicate reconciliation. All viewers still need a comparison with the original before production use.
+
+Multi-size packages resolve each managed font alias by family, weight and style. Shared font bytes are deduplicated without forcing another size's additional weight onto the wrong face.
+
 ## Video layers
 
-Muted, autoplaying TheBrief video converts to an editable native video layer. The original H.264 MP4 bytes are packaged unchanged; `package-import.mjs` uses `ffprobe` to confirm the codec, that the source clip end falls within the file, and that a cover-cropped frame matches the file's aspect. The layer keeps a media clock (`mediaStart`, `mediaEnd`, `mediaLoop`) shared by editor playback, scrubbing, overview and both HTML exporters (`shared/bannerVideoClock.ts`): clips play at normal speed, looping clips restart at their out-point and non-looping clips hold their last frame. TheBrief's cover-crop framing (an oversized `<video>` shifted inside a clipping box) becomes native cover fit with a focal point.
+Muted, autoplaying TheBrief video converts to an editable native video layer. Static video colour filters and nested opacity are preserved with the outer layer blend mode; nested blend groups, spatial filters and animated filter composition remain held. The original H.264 MP4 bytes are packaged unchanged; `package-import.mjs` uses `ffprobe` to confirm the codec, that the source clip end falls within the file, and that a cover-cropped frame matches the file's aspect. The layer keeps a media clock (`mediaStart`, `mediaEnd`, `mediaLoop`) shared by editor playback, scrubbing, overview and both HTML exporters (`shared/bannerVideoClock.ts`): clips play at normal speed, looping clips restart at their out-point and non-looping clips hold their last frame. TheBrief's cover-crop framing (an oversized `<video>` shifted inside a clipping box) becomes native cover fit with a focal point.
 
 These remain explicit holds: non-zero clip start, click-to-play, sound on hover, playback past the slide, audible video, delays that differ from the layer's presence, rotation or zoom beyond cover, rounded video and non-H.264 files. MP4 entries have a separate inspection allowance (21 MB per clip, 64 MB per archive); every other file keeps the standard limits, and a clip above the package asset limit is held.
+
+## Text outlines
+
+Outlined text preserves the source paint order as `textPaintOrder`: `fill` paints the stroke over the glyph fill, while `stroke` paints the fill over the stroke. The importer accepts either order and carries it through editable text and both HTML exporters. Existing Banner Studio text without this property retains its previous stroke-first appearance. Other source paint sequences remain held. Compare outlined lettering at each affected slide as part of the motion audit.
 
 ## Soft shapes
 

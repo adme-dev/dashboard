@@ -270,7 +270,7 @@ export function useBannerStudio() {
     const sharedFields: (keyof Layer)[] = [
       'text', 'textRuns', 'fontFamily', 'fontAssetId', 'fontWeight', 'fontStyle', 'color',
       'textTransform', 'letterSpacing', 'lineHeight', 'textAlign',
-      'textShadow', 'textStroke', 'src', 'fit', 'volume', 'muted', 'loopAudio',
+      'textShadow', 'textStroke', 'textPaintOrder', 'src', 'fit', 'volume', 'muted', 'loopAudio',
       'bgColor', 'fillColor', 'borderColor', 'borderWidth', 'borderRadius',
     ]
     // Source replacement clears the previous image crop in every linked layout.

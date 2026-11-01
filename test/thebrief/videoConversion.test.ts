@@ -11,6 +11,24 @@ function videoSource(config: Record<string, unknown> = {}, { attributes = 'muted
 }
 
 const videoLayer = async (html: string) => (await convertTheBriefHtml(html)).canvasData.custom_300x250.layers.find(layer => layer.type === 'video')
+const videoComposition = (css: string) => videoSource().replace('#v1{', `#composition{${css}}#v1{`).replace('<video ', '<div id="composition"><video ').replace('</video>', '</video></div>')
+
+it('preserves nested video opacity and colour filtering with its outer blend mode', async () => {
+  const html = videoComposition('opacity:.5;filter:brightness(1.12) contrast(1.12) saturate(1.12) hue-rotate(0deg)').replace('#v1{', '#element-1{mix-blend-mode:screen}#v1{')
+  const layer = await videoLayer(html)
+  expect(layer).toMatchObject({ opacity: 0.5, mixBlendMode: 'screen', visualFilter: 'brightness(1.12) contrast(1.12) saturate(1.12) hue-rotate(0deg)' })
+  expect(Math.max(...layer.keyframes.opacity.map(frame => frame.value))).toBe(0.5)
+  expect(layer.keyframes.opacity.at(-1).value).toBe(0.5)
+})
+
+it.each([
+  ['mix-blend-mode:overlay', 'nested blend mode'],
+  ['filter:url(https://example.com/filter.svg)', 'unsupported static filter'],
+  ['filter:blur(2px)', 'spatial or nested filters'],
+  ['opacity:.5;animation-name:fadeIn;animation-duration:1s', 'animated underlying opacity']
+])('holds video composition that cannot be flattened: %s', async (css, reason) => {
+  await expect(videoLayer(videoComposition(css))).rejects.toThrow(reason)
+})
 
 it('converts a muted autoplay clip into an editable video layer with its media clock', async () => {
   expect(await videoLayer(videoSource())).toMatchObject({ type: 'video', src: './media/clip.mp4', fit: 'cover', focalX: 50, focalY: 50, mediaStart: 0, mediaEnd: 8, startTime: 0.2, endTime: 4, x: 10, y: 20, w: 200, h: 80 })
@@ -33,6 +51,7 @@ it.each([
   [{ soundOnHover: true }, {}, 'hover playback'],
   [{ keepPlayingPastSlide: true }, {}, 'playback past its slide'],
   [{ autoplay: false }, {}, 'click-to-play'],
+  [{}, { attributes: 'muted autoplay playsinline controls' }, 'player controls'],
   [{ volume: 60 }, { attributes: 'autoplay playsinline' }, 'audible video requires an audio adapter'],
   [{ delay: 1.5 }, {}, 'source video start requires reconciliation'],
   [{ endTime: 0 }, {}, 'invalid source clip end'],
