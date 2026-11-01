@@ -1,0 +1,126 @@
+{
+  "source": "b63cd1e59bebcbc6f88d698f7eac62ee52953924",
+  "recordedAt": "2026-11-01",
+  "featureEnabled": false,
+  "pages": {
+    "id": "41fd8581-10e0-4d4a-ac7b-dc1bacf8fdcd",
+    "url": "https://41fd8581.agency-dashboard-6cm.pages.dev",
+    "created_on": "2026-11-01T10:34:18.719634Z"
+  },
+  "pagesBytes": {
+    "raw": 25468500,
+    "rawBudget": 25468928,
+    "remaining": 428,
+    "gzip": 7338358
+  },
+  "privateDesign": {
+    "source": "b63cd1e59bebcbc6f88d698f7eac62ee52953924",
+    "deployment": "1ffef326-eb2b-4eba-a5ef-7e9617b67243",
+    "versions": [
+      {
+        "version_id": "29ab0af9-7309-4ee2-82d7-ee473b4fc5de",
+        "percentage": 100
+      }
+    ],
+    "annotations": {
+      "workers/message": "Dashboard source b63cd1e59bebcbc6f88d698f7eac62ee52953924",
+      "workers/tag": "b63cd1e59bebcbc6f88d698f7eac62ee52953924",
+      "workers/triggered_by": "upload"
+    },
+    "workersDev": {
+      "enabled": false,
+      "previews_enabled": false
+    },
+    "bindings": [
+      {
+        "name": "CACHE",
+        "type": "kv_namespace"
+      },
+      {
+        "name": "EMAIL_DESIGN_ENVIRONMENT",
+        "type": "plain_text"
+      },
+      {
+        "name": "EMAIL_RENDERER",
+        "type": "service"
+      },
+      {
+        "name": "FIGFLOW_EDM_DRAFT_SAVES_ENABLED",
+        "type": "plain_text"
+      },
+      {
+        "name": "HYPERDRIVE",
+        "type": "hyperdrive"
+      },
+      {
+        "name": "HYPERDRIVE_FRESH",
+        "type": "hyperdrive"
+      },
+      {
+        "name": "PAGE_STUDIO_RELEASE_ENVIRONMENT",
+        "type": "plain_text"
+      }
+    ],
+    "draftFlag": "false",
+    "jwtSecretPresent": false
+  },
+  "migrations": {
+    "source": "b63cd1e59bebcbc6f88d698f7eac62ee52953924",
+    "appliedAt": "2026-11-01T10:26:19.204Z",
+    "hyperdrive": "900b4b74ec41462cbbabebd0aa8775aa",
+    "committed": true,
+    "migrations": [
+      {
+        "name": "491_email_design_revisions.sql",
+        "sha256": "202c0350d39140f85a30f2d04b6bcccaa0762cecae77c9a8cfe6676d4c40201e"
+      },
+      {
+        "name": "492_email_design_revision_metadata.sql",
+        "sha256": "a839de86d4145950116508e6e49fad4bef69a325d44b90776abbe7affb99c5ef"
+      },
+      {
+        "name": "493_email_design_handoffs.sql",
+        "sha256": "dd5c4a95f820267e077de0815138499d22fb7c98db255631772587f143416d0c"
+      }
+    ],
+    "schema": {
+      "documents_present": true,
+      "handoffs_present": true,
+      "receipts_present": true
+    }
+  },
+  "native": {
+    "source": "018c306c366e3e9cc1d6a02cb51dddbefec65a6b",
+    "runId": "41296329622",
+    "archive": {
+      "name": "figcraft-web-0.11.2-edm1.zip",
+      "size": 9107059,
+      "sha256": "91f09af7f0e59a8a3f353afa67ad736ba1e7b1ec215c7b7c329191449026c27c"
+    },
+    "assetVersion": "86f446f6-f9de-4ce1-b6af-10a0bf722cb1",
+    "creativeVersion": "595f31ce-abd5-4e3d-ba7c-b9e1f3f59fce",
+    "creativeDeployment": "89c76119-d31d-4dfe-b438-b778a9235399",
+    "modules": {
+      "worker.js": "ca7c0b1d0ce3bae634b2e4bd653e6012bdc0a473f2e66c7ae19e6040c1f40ae9",
+      "brand-rpc.mjs": "53bd8cd96907d296fe95cd9f8bb4999152277b65ade0eed36e932f825f15e754"
+    },
+    "previousCreativeVersion": "e5de27cd-41cd-456f-a7f7-9a91e0276777"
+  },
+  "verification": {
+    "nativeTestsPassed": 43,
+    "relayTestsPassed": 15,
+    "actualWasmRoundtripPassed": true,
+    "browserScope": "Isolated Chromium, real WASM, real private Worker/PostgreSQL and composer flow; native edits via bridge; UI controls stubbed; no production requests",
+    "browserScreenshotSha256": "82351bae984bf0d7464e90c67f08b6a36f7a4d10197a56cf9b34affde760c66c",
+    "hostedRoundtripAccepted": false,
+    "staffBrowserAccepted": false,
+    "emailClientCompatibilityAccepted": false,
+    "browserHarnessSource": "ca5987b7048c393a50a394c7bd64435acf3cc478",
+    "publicRuntimeFigflowEdmEnabled": false
+  },
+  "remaining": [
+    "Provision matching existing Pages JWT_SECRET securely to private design Worker",
+    "Complete authenticated staging and production acceptance with a reviewed activation change",
+    "Verify signed-in composer and QR Codes navigation"
+  ]
+}

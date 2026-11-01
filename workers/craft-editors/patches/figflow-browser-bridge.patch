@@ -19,16 +19,16 @@
  #[cfg(test)]
 --- a/apps/figcraft-web/src/web.rs
 +++ b/apps/figcraft-web/src/web.rs
-@@ -46,6 +46,9 @@
-                     if let Some(link) = crate::query::join_link(&hash) {
+@@ -47,6 +47,9 @@
                          let link = js_sys::decode_uri_component(link).ok().and_then(|s| s.as_string()).unwrap_or_else(|| link.to_string());
                          figcraft_ui_egui::live::open_invite(&mut fig, &link);
-+                    }
+                     }
 +                    if let Err(error) = crate::bridge_web::install(cc.egui_ctx.clone()) {
 +                        log::warn!("FigFlow local automation bridge unavailable: {error:?}");
-                     }
++                    }
                      Ok(Box::new(WebShell { fig }))
                  }),
+             )
 @@ -71,6 +74,7 @@
  impl eframe::App for WebShell {
      // `FigApp::ui` runs its own per-frame logic first (fonts, theme), like the desktop app.
@@ -42,7 +42,7 @@
 @@ -0,0 +1,95 @@
 +//! Browser-local Promise transport. It does not grant remote, tenant or project authority.
 +use figcraft_engine::Session;
-+use figcraft_ui_egui::browser_bridge::{Bridge, MAX_REQUEST_BYTES};
++use figcraft_ui_egui::browser_bridge::{Bridge, MAX_EDM_REQUEST_BYTES};
 +use std::cell::RefCell;
 +use std::collections::VecDeque;
 +use wasm_bindgen::{JsValue, closure::Closure};
@@ -71,7 +71,7 @@
 +    js_sys::Promise::new(&mut move |resolve, _reject| {
 +        STATE.with(|slot| {
 +            let mut state = slot.borrow_mut();
-+            let refusal = if input.len() > MAX_REQUEST_BYTES {
++            let refusal = if input.len() > MAX_EDM_REQUEST_BYTES {
 +                Some("request_too_large")
 +            } else if state.as_ref().is_none_or(|s| s.queue.len() >= MAX_QUEUE) {
 +                Some("bridge_busy")
@@ -135,6 +135,792 @@
 +        }
 +    });
 +}
+--- a/crates/engine/src/cmd/edm.rs
++++ b/crates/engine/src/cmd/edm.rs
+@@ -0,0 +1,728 @@
++//! Bounded XeroFlow email handoffs on a real native document.
++//!
++//! The canonical document is retained verbatim. A snapshot patches only approved
++//! content fields after proving that every other native/document field is unchanged.
++use std::collections::{BTreeMap, BTreeSet};
++
++use base64::Engine as _;
++use figcraft_color::{Paint, PaintKind};
++use figcraft_doc::{Document, ImageData, Node, NodeId, NodeKind, TextData};
++use serde_json::{Value, json};
++
++use super::CommandSpec;
++use crate::{DocState, Result, Session, bad, spec};
++
++const MAX_DESIGN_BYTES: usize = 2 * 1024 * 1024;
++const MAX_BLOCKS: usize = 300;
++const MAX_CONTENT: usize = 8192;
++const MAX_IMAGE_BYTES: usize = 10 * 1024 * 1024;
++const MAX_TOTAL_IMAGE_BYTES: usize = 32 * 1024 * 1024;
++const BLOCK_ID: &str = "xeroflow.edm.blockId";
++const ROLE: &str = "xeroflow.edm.role";
++const URL: &str = "xeroflow.edm.url";
++const ALT: &str = "xeroflow.edm.alt";
++const LINK: &str = "xeroflow.edm.linkHref";
++
++#[derive(Clone, Copy, Debug, PartialEq, Eq)]
++enum Role {
++    Text,
++    Button,
++    ButtonText,
++    Image,
++    Other,
++}
++
++#[derive(Clone, Debug)]
++struct BlockMap {
++    root: NodeId,
++    text: Option<NodeId>,
++    role: Role,
++}
++
++/// The immutable canonical baseline and current native fingerprint retained on
++/// the actual document tab. This is never a JavaScript model or overlay editor.
++#[derive(Clone, Debug)]
++pub struct EdmHandoff {
++    canonical: Value,
++    native: Document,
++    blocks: BTreeMap<String, BlockMap>,
++    editable: BTreeSet<String>,
++}
++
++impl EdmHandoff {
++    pub fn allows(&self, block_id: &str, field: &str) -> bool {
++        self.editable.contains(&format!("{block_id}.data.props.{field}"))
++    }
++}
++
++#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
++pub struct ImageRequest {
++    pub block_id: String,
++    pub url: String,
++}
++
++#[derive(Clone)]
++struct Replacement {
++    hash: String,
++    data: ImageData,
++}
++
++fn prop<'a>(block: &'a Value, field: &str) -> Option<&'a Value> {
++    block.get("data")?.get("props")?.get(field)
++}
++
++fn string_prop(block: &Value, field: &str) -> Option<String> {
++    prop(block, field).and_then(Value::as_str).map(str::to_owned)
++}
++
++fn valid_url(value: &str, image: bool) -> bool {
++    if value.len() > MAX_CONTENT || value.bytes().any(|b| b <= 0x20 || matches!(b, b'<' | b'>' | b'"' | b'\'')) {
++        return false;
++    }
++    if image {
++        return value.starts_with("https://");
++    }
++    value.is_empty()
++        || value.starts_with('#')
++        || ["https://", "http://", "mailto:", "tel:"].iter().any(|prefix| value.starts_with(prefix))
++}
++
++fn child_ids(block: &Value) -> Result<Vec<String>> {
++    let mut result = Vec::new();
++    if let Some(children) = block.get("data").and_then(|d| d.get("childrenIds")) {
++        let Some(children) = children.as_array() else { return Err(bad("edm_import", "childrenIds must be an array")) };
++        for id in children {
++            let Some(id) = id.as_str() else { return Err(bad("edm_import", "child id must be a string")) };
++            result.push(id.to_owned());
++        }
++    }
++    if block.get("type").and_then(Value::as_str) == Some("ColumnsContainer") {
++        let Some(columns) = prop(block, "columns").and_then(Value::as_array) else {
++            return Err(bad("edm_import", "columns must be an array"));
++        };
++        for column in columns {
++            if let Some(children) = column.get("childrenIds") {
++                let Some(children) = children.as_array() else { return Err(bad("edm_import", "column childrenIds must be an array")) };
++                for id in children {
++                    let Some(id) = id.as_str() else { return Err(bad("edm_import", "child id must be a string")) };
++                    result.push(id.to_owned());
++                }
++            }
++        }
++    }
++    Ok(result)
++}
++
++fn editable_paths(design: &Value) -> Result<BTreeSet<String>> {
++    let Some(paths) = design.get("policy").and_then(|p| p.get("editableFields")).and_then(Value::as_array) else {
++        return Err(bad("edm_import", "policy.editableFields must be an array"));
++    };
++    let mut result = BTreeSet::new();
++    for path in paths {
++        let Some(path) = path.as_str() else { return Err(bad("edm_import", "editable field must be a string")) };
++        let parts: Vec<_> = path.split('.').collect();
++        if parts.len() != 4 || parts[1] != "data" || parts[2] != "props" {
++            return Err(bad("edm_import", "unsupported editable field"));
++        }
++        let Some(block) = design.get("blocks").and_then(|b| b.get(parts[0])) else {
++            return Err(bad("edm_import", "editable block is missing"));
++        };
++        let kind = block.get("type").and_then(Value::as_str).unwrap_or_default();
++        let supported = matches!((kind, parts[3]), ("Text" | "Heading", "text") | ("Button", "text" | "url") | ("Image", "url" | "alt" | "linkHref"));
++        let Some(value) = string_prop(block, parts[3]) else {
++            return Err(bad("edm_import", "editable value must be a string"));
++        };
++        if !supported || value.len() > MAX_CONTENT {
++            return Err(bad("edm_import", "unsupported editable field"));
++        }
++        if parts[3] == "text" && value.bytes().any(|b| matches!(b, b'<' | b'>' | b'&')) {
++            return Err(bad("edm_import", "rich text is locked"));
++        }
++        if matches!(parts[3], "url" | "linkHref") && !valid_url(&value, kind == "Image" && parts[3] == "url") {
++            return Err(bad("edm_import", "invalid content URL"));
++        }
++        result.insert(path.to_owned());
++    }
++    Ok(result)
++}
++
++fn validate_design(design: &Value) -> Result<BTreeSet<String>> {
++    if design.to_string().len() > MAX_DESIGN_BYTES
++        || design.get("schemaVersion").and_then(Value::as_u64) != Some(1)
++        || design.get("kind").and_then(Value::as_str) != Some("template")
++        || design.get("policy").and_then(|p| p.get("version")).and_then(Value::as_u64) != Some(1)
++        || design.get("source").and_then(|s| s.get("editor")).and_then(Value::as_str) != Some("composer")
++        || !design.get("source").and_then(|s| s.get("nativeArtifact")).is_some_and(Value::is_null)
++        || !design.get("assets").and_then(Value::as_array).is_some_and(Vec::is_empty)
++        || !design.get("dependencies").and_then(Value::as_array).is_some_and(Vec::is_empty)
++        || !design.get("moduleInstances").and_then(Value::as_array).is_some_and(Vec::is_empty)
++        || design.get("rootChildrenIds").and_then(Value::as_array).map(Vec::len) != Some(1)
++        || design.get("rootChildrenIds").and_then(Value::as_array).and_then(|r| r.first()).and_then(Value::as_str) != Some("root")
++        || design.get("blocks").and_then(|b| b.get("root")).and_then(|b| b.get("type")).and_then(Value::as_str) != Some("EmailLayout")
++    {
++        return Err(bad("edm_import", "unsupported canonical handoff"));
++    }
++    let Some(blocks) = design.get("blocks").and_then(Value::as_object) else {
++        return Err(bad("edm_import", "blocks must be an object"));
++    };
++    if blocks.is_empty() || blocks.len() > MAX_BLOCKS {
++        return Err(bad("edm_import", "block limit exceeded"));
++    }
++    let editable = editable_paths(design)?;
++    let mut visited = BTreeSet::new();
++    let mut pending = vec![("root".to_owned(), 1usize)];
++    while let Some((id, depth)) = pending.pop() {
++        if depth > 32 || !visited.insert(id.clone()) {
++            return Err(bad("edm_import", "invalid block graph"));
++        }
++        let Some(block) = blocks.get(&id) else { return Err(bad("edm_import", "missing block")) };
++        for child in child_ids(block)? {
++            pending.push((child, depth + 1));
++        }
++    }
++    if visited.len() != blocks.len() {
++        return Err(bad("edm_import", "orphan block"));
++    }
++    Ok(editable)
++}
++
++/// Image URLs the browser must resolve before import. No URL is fetched by the
++/// engine, and no Base64 is admitted into the canonical document.
++pub fn required_images(design: &Value) -> Result<Vec<ImageRequest>> {
++    validate_design(design)?;
++    let Some(blocks) = design.get("blocks").and_then(Value::as_object) else {
++        return Err(bad("edm_import", "blocks must be an object"));
++    };
++    let mut result = Vec::new();
++    for (id, block) in blocks {
++        if block.get("type").and_then(Value::as_str) == Some("Image") {
++            let Some(url) = string_prop(block, "url") else { return Err(bad("edm_import", "image URL is required")) };
++            if !valid_url(&url, true) {
++                return Err(bad("edm_import", "image URL must be public HTTPS"));
++            }
++            result.push(ImageRequest { block_id: id.clone(), url });
++        }
++    }
++    Ok(result)
++}
++
++/// Changed image URLs whose new bytes the browser relay must resolve before a
++/// snapshot. Unchanged URLs reuse the current native content hash.
++pub fn required_snapshot_images(session: &Session) -> Result<Vec<ImageRequest>> {
++    let ds = session.ds()?;
++    let Some(handoff) = ds.edm.as_ref() else { return Err(bad("edm_snapshot", "handoff missing")) };
++    let mut result = Vec::new();
++    for (id, block) in &handoff.blocks {
++        if block.role != Role::Image {
++            continue;
++        }
++        let current = ds.doc.node(block.root).ok_or_else(|| bad("edm_snapshot", "image node missing"))?;
++        let before = handoff.native.node(block.root).ok_or_else(|| bad("edm_snapshot", "baseline image missing"))?;
++        let url = current.plugin_data.get(URL).cloned().unwrap_or_default();
++        let old = before.plugin_data.get(URL).cloned().unwrap_or_default();
++        if url != old {
++            if !valid_url(&url, true) {
++                return Err(bad("edm_snapshot", "image URL must be public HTTPS"));
++            }
++            result.push(ImageRequest { block_id: id.clone(), url });
++        }
++    }
++    Ok(result)
++}
++
++fn metadata(node: &mut Node, block_id: &str, role: &str) {
++    node.plugin_data.insert(BLOCK_ID.into(), block_id.into());
++    node.plugin_data.insert(ROLE.into(), role.into());
++}
++
++fn base_node(doc: &mut Document, parent: NodeId, kind: NodeKind, name: &str, x: f64, y: f64, width: f64, height: f64) -> Result<NodeId> {
++    doc.create(parent, kind, name, x, y, width, height).map_err(|e| bad("edm_import", e.to_string()))
++}
++
++fn text_height(text: &str, width: f64, minimum: f64) -> f64 {
++    let per_line = (width / 8.0).max(8.0) as usize;
++    let lines = text.split('\n').map(|line| line.chars().count().max(1).div_ceil(per_line)).sum::<usize>().clamp(1, 1024);
++    minimum.max(24.0 + lines as f64 * 20.0)
++}
++
++#[allow(clippy::too_many_arguments)]
++fn import_block(
++    doc: &mut Document,
++    blocks: &serde_json::Map<String, Value>,
++    id: &str,
++    parent: NodeId,
++    y: f64,
++    width: f64,
++    images: &BTreeMap<String, String>,
++    editable: &BTreeSet<String>,
++    mapping: &mut BTreeMap<String, BlockMap>,
++) -> Result<(NodeId, f64)> {
++    let Some(block) = blocks.get(id) else { return Err(bad("edm_import", "missing block")) };
++    let kind = block.get("type").and_then(Value::as_str).unwrap_or_default();
++    let text_role = matches!(kind, "Text" | "Heading");
++    let content = string_prop(block, "text").unwrap_or_default();
++    let mut height = match kind {
++        "Heading" => text_height(&content, width, 64.0),
++        "Text" => text_height(&content, width, 48.0),
++        "Button" => 64.0,
++        "Image" => 240.0,
++        "EmailLayout" | "Container" | "ColumnsContainer" => 64.0,
++        _ => 48.0,
++    };
++    let node_kind = if text_role {
++        NodeKind::Text(TextData { auto_resize: figcraft_doc::TextAutoResize::None, ..TextData::new(content) })
++    } else if kind == "Image" {
++        NodeKind::Rectangle
++    } else {
++        NodeKind::Frame
++    };
++    let root = base_node(doc, parent, node_kind, kind, 0.0, y, width, height)?;
++    let role = if text_role { Role::Text } else if kind == "Button" { Role::Button } else if kind == "Image" { Role::Image } else { Role::Other };
++    let role_name = match role { Role::Text => "text", Role::Button => "button", Role::Image => "image", Role::Other => "locked", Role::ButtonText => "button.text" };
++    let image = if role == Role::Image {
++        let Some(encoded) = images.get(id) else { return Err(bad("edm_import", "image bytes are required")) };
++        let bytes = base64::engine::general_purpose::STANDARD.decode(encoded).map_err(|_| bad("edm_import", "invalid image Base64"))?;
++        if bytes.is_empty() || bytes.len() > MAX_IMAGE_BYTES {
++            return Err(bad("edm_import", "image byte limit exceeded"));
++        }
++        let (hash, width, height) = figcraft_format::add_image(doc, bytes).map_err(|_| bad("edm_import", "unsupported image bytes"))?;
++        if width > 8192 || height > 8192 || u64::from(width) * u64::from(height) > 16_777_216 {
++            return Err(bad("edm_import", "image dimension limit exceeded"));
++        }
++        Some((hash, width, height))
++    } else {
++        None
++    };
++    {
++        let node = doc.get_mut(root).map_err(|e| bad("edm_import", e.to_string()))?;
++        metadata(node, id, role_name);
++        node.locked = match role {
++            Role::Text => !editable.contains(&format!("{id}.data.props.text")),
++            Role::Button | Role::Image => false,
++            // Locked ancestors suppress descendant hit-testing in the canvas.
++            Role::Other => !matches!(kind, "EmailLayout" | "Container" | "ColumnsContainer"),
++            Role::ButtonText => true,
++        };
++        match role {
++            Role::Button => {
++                if let Some(value) = string_prop(block, "url") {
++                    node.plugin_data.insert(URL.into(), value);
++                }
++            }
++            Role::Image => {
++                if let Some(value) = string_prop(block, "url") { node.plugin_data.insert(URL.into(), value); }
++                if let Some(value) = string_prop(block, "alt") { node.plugin_data.insert(ALT.into(), value); }
++                if let Some(value) = string_prop(block, "linkHref") { node.plugin_data.insert(LINK.into(), value); }
++                let Some((hash, _, _)) = image else { return Err(bad("edm_import", "image bytes are required")) };
++                node.fills = vec![Paint::image(hash, figcraft_color::ImageScaleMode::Fill)];
++            }
++            _ => {}
++        }
++    }
++    let mut text = None;
++    if role == Role::Button {
++        let child = base_node(doc, root, NodeKind::Text(TextData { auto_resize: figcraft_doc::TextAutoResize::None, ..TextData::new(string_prop(block, "text").unwrap_or_default()) }), "Button text", 16.0, 16.0, (width - 32.0).max(32.0), 32.0)?;
++        let node = doc.get_mut(child).map_err(|e| bad("edm_import", e.to_string()))?;
++        metadata(node, id, "button.text");
++        node.locked = !editable.contains(&format!("{id}.data.props.text"));
++        text = Some(child);
++    }
++    mapping.insert(id.to_owned(), BlockMap { root, text, role });
++    if kind == "ColumnsContainer" {
++        let columns = prop(block, "columns").and_then(Value::as_array).cloned().unwrap_or_default();
++        let column_width = width / columns.len().max(1) as f64;
++        let mut tallest = 0.0f64;
++        for (index, column) in columns.iter().enumerate() {
++            let frame = base_node(doc, root, NodeKind::Frame, "Email column", index as f64 * column_width, 0.0, column_width, 64.0)?;
++            let mut child_y = 0.0;
++            if let Some(children) = column.get("childrenIds").and_then(Value::as_array) {
++                for child in children {
++                    let Some(child_id) = child.as_str() else { return Err(bad("edm_import", "child id must be a string")) };
++                    let (_, child_height) = import_block(doc, blocks, child_id, frame, child_y, column_width, images, editable, mapping)?;
++                    child_y += child_height + 16.0;
++                }
++            }
++            tallest = tallest.max(child_y);
++            doc.get_mut(frame).map_err(|e| bad("edm_import", e.to_string()))?.height = child_y.max(64.0);
++        }
++        height = height.max(tallest);
++    } else {
++        let mut child_y = 0.0;
++        for child_id in child_ids(block)? {
++            let (_, child_height) = import_block(doc, blocks, &child_id, root, child_y, width, images, editable, mapping)?;
++            child_y += child_height + 16.0;
++        }
++        height = height.max(child_y);
++    }
++    doc.get_mut(root).map_err(|e| bad("edm_import", e.to_string()))?.height = height;
++    Ok((root, height))
++}
++
++fn import(s: &mut Session, p: &Value) -> Result<Value> {
++    if s.docs.iter().any(|d| d.edm.is_some()) {
++        return Err(bad("edm_import", "an EDM handoff already exists"));
++    }
++    let Some(design) = p.get("design") else { return Err(bad("edm_import", "design is required")) };
++    let editable = validate_design(design)?;
++    let required = required_images(design)?;
++    let supplied = p.get("images").and_then(Value::as_object).cloned().unwrap_or_default();
++    let mut images = BTreeMap::new();
++    let mut total = 0usize;
++    for request in required {
++        let Some(encoded) = supplied.get(&request.block_id).and_then(Value::as_str) else {
++            return Err(bad("edm_import", "image bytes are required"));
++        };
++        let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(encoded) else {
++            return Err(bad("edm_import", "invalid image Base64"));
++        };
++        if bytes.is_empty() || bytes.len() > MAX_IMAGE_BYTES || total + bytes.len() > MAX_TOTAL_IMAGE_BYTES {
++            return Err(bad("edm_import", "image byte limit exceeded"));
++        }
++        total += bytes.len();
++        images.insert(request.block_id, encoded.to_owned());
++    }
++    if supplied.len() != images.len() {
++        return Err(bad("edm_import", "unexpected image envelope"));
++    }
++    let Some(blocks) = design.get("blocks").and_then(Value::as_object) else {
++        return Err(bad("edm_import", "blocks must be an object"));
++    };
++    let mut doc = Document::new("XeroFlow email");
++    let page = doc.first_page().ok_or_else(|| bad("edm_import", "page unavailable"))?;
++    let mut mapping = BTreeMap::new();
++    import_block(&mut doc, blocks, "root", page, 0.0, 600.0, &images, &editable, &mut mapping)?;
++    if doc.nodes().count() > 500 {
++        return Err(bad("edm_import", "native node limit exceeded"));
++    }
++    let mut state = DocState::new(doc, None);
++    let native = state.doc.as_ref().clone();
++    state.edm = Some(EdmHandoff { canonical: design.clone(), native, blocks: mapping, editable });
++    s.docs.push(state);
++    s.active = s.docs.len() - 1;
++    Ok(json!({"imported": true}))
++}
++
++fn structural_node(node: &Node, role: &Role, replaced_image: bool) -> Result<Value> {
++    let mut copy = node.clone();
++    match role {
++        Role::Text | Role::ButtonText => {
++            if let NodeKind::Text(text) = &mut copy.kind {
++                text.characters.clear();
++            }
++            // node.set characters also records this content-derived override.
++            copy.overrides.remove("characters");
++        }
++        Role::Button => {
++            copy.plugin_data.remove(URL);
++        }
++        Role::Image => {
++            copy.plugin_data.remove(URL);
++            copy.plugin_data.remove(ALT);
++            copy.plugin_data.remove(LINK);
++            if replaced_image {
++                copy.fills.clear();
++            }
++        }
++        Role::Other => {}
++    }
++    serde_json::to_value(copy).map_err(|_| bad("edm_snapshot", "native projection failed"))
++}
++
++fn document_shell(doc: &Document) -> Result<Value> {
++    let mut value = serde_json::to_value(doc).map_err(|_| bad("edm_snapshot", "document projection failed"))?;
++    if let Some(shell) = value.as_object_mut() {
++        shell.remove("nodes");
++        shell.remove("current_page");
++        shell.remove("next_id");
++    }
++    Ok(value)
++}
++
++fn assert_structure(handoff: &EdmHandoff, current: &Document, replacements: &BTreeMap<String, Replacement>) -> Result<()> {
++    let mut expected_images = handoff.native.images.clone();
++    for replacement in replacements.values() {
++        expected_images.insert(replacement.hash.clone(), replacement.data.clone());
++    }
++    if handoff.native.pages != current.pages || expected_images != current.images || document_shell(&handoff.native)? != document_shell(current)? {
++        return Err(bad("edm_snapshot", "native structure changed"));
++    }
++    let before: BTreeMap<_, _> = handoff.native.nodes().map(|n| (n.id, n)).collect();
++    let after: BTreeMap<_, _> = current.nodes().map(|n| (n.id, n)).collect();
++    if before.len() != after.len() || before.keys().ne(after.keys()) {
++        return Err(bad("edm_snapshot", "native nodes changed"));
++    }
++    for (id, block) in &handoff.blocks {
++        let Some(before_node) = before.get(&block.root) else { return Err(bad("edm_snapshot", "mapped node missing")) };
++        let Some(after_node) = after.get(&block.root) else { return Err(bad("edm_snapshot", "mapped node missing")) };
++        let replaced = replacements.contains_key(id);
++        if before_node.plugin_data.get(BLOCK_ID) != Some(id) || after_node.plugin_data.get(BLOCK_ID) != Some(id)
++            || structural_node(before_node, &block.role, replaced)? != structural_node(after_node, &block.role, replaced)?
++        {
++            return Err(bad("edm_snapshot", "unsupported native change"));
++        }
++        if let Some(text) = block.text {
++            let Some(before_text) = before.get(&text) else { return Err(bad("edm_snapshot", "button text missing")) };
++            let Some(after_text) = after.get(&text) else { return Err(bad("edm_snapshot", "button text missing")) };
++            if structural_node(before_text, &Role::ButtonText, false)? != structural_node(after_text, &Role::ButtonText, false)? {
++                return Err(bad("edm_snapshot", "unsupported button change"));
++            }
++        }
++    }
++    let mapped: BTreeSet<NodeId> = handoff.blocks.values().flat_map(|block| [Some(block.root), block.text].into_iter().flatten()).collect();
++    for (id, before_node) in &before {
++        if mapped.contains(id) {
++            continue;
++        }
++        let Some(after_node) = after.get(id) else { return Err(bad("edm_snapshot", "native node missing")) };
++        if structural_node(before_node, &Role::Other, false)? != structural_node(after_node, &Role::Other, false)? {
++            return Err(bad("edm_snapshot", "unsupported native change"));
++        }
++    }
++    Ok(())
++}
++
++fn set_content(handoff: &EdmHandoff, proposal: &mut Value, id: &str, field: &str, after: String) -> Result<()> {
++    let Some(block) = handoff.canonical.get("blocks").and_then(|b| b.get(id)) else {
++        return Err(bad("edm_snapshot", "canonical block missing"));
++    };
++    let before = string_prop(block, field);
++    if before.as_deref() == Some(after.as_str()) {
++        return Ok(());
++    }
++    if !handoff.allows(id, field) || before.is_none() {
++        return Err(bad("edm_snapshot", "content is not editable"));
++    }
++    let kind = block.get("type").and_then(Value::as_str).unwrap_or_default();
++    if after.len() > MAX_CONTENT
++        || (field == "text" && after.bytes().any(|b| matches!(b, b'<' | b'>' | b'&')))
++        || (matches!(field, "url" | "linkHref") && !valid_url(&after, kind == "Image" && field == "url"))
++    {
++        return Err(bad("edm_snapshot", "invalid content"));
++    }
++    let Some(props) = proposal.get_mut("blocks").and_then(|b| b.get_mut(id)).and_then(|b| b.get_mut("data")).and_then(|d| d.get_mut("props")).and_then(Value::as_object_mut) else {
++        return Err(bad("edm_snapshot", "canonical props missing"));
++    };
++    props.insert(field.into(), Value::String(after));
++    Ok(())
++}
++
++fn native_text(node: &Node) -> Result<String> {
++    let NodeKind::Text(text) = &node.kind else { return Err(bad("edm_snapshot", "text kind changed")) };
++    Ok(text.characters.clone())
++}
++
++fn image_hash(node: &Node) -> Option<String> {
++    node.fills.iter().find_map(|paint| match &paint.kind {
++        PaintKind::Image(image) => Some(image.image.clone()),
++        _ => None,
++    })
++}
++
++fn snapshot(s: &mut Session, p: &Value) -> Result<Value> {
++    let supplied = p.get("images").and_then(Value::as_object).cloned().unwrap_or_default();
++    let required = required_snapshot_images(s)?;
++    if supplied.len() != required.len() || required.iter().any(|request| !supplied.contains_key(&request.block_id)) {
++        return Err(bad("edm_snapshot", "changed image bytes are required"));
++    }
++    let ds = s.ds_mut()?;
++    if ds.interaction.is_some() || ds.text_edit.is_some() {
++        return Err(bad("edm_snapshot", "editor busy"));
++    }
++    let Some(handoff) = ds.edm.clone() else { return Err(bad("edm_snapshot", "handoff missing")) };
++    let mut replacements = BTreeMap::new();
++    let mut total = 0usize;
++    for request in required {
++        let Some(encoded) = supplied.get(&request.block_id).and_then(Value::as_str) else {
++            return Err(bad("edm_snapshot", "changed image bytes are required"));
++        };
++        let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(encoded) else {
++            return Err(bad("edm_snapshot", "invalid image Base64"));
++        };
++        if bytes.is_empty() || bytes.len() > MAX_IMAGE_BYTES || total + bytes.len() > MAX_TOTAL_IMAGE_BYTES {
++            return Err(bad("edm_snapshot", "image byte limit exceeded"));
++        }
++        total += bytes.len();
++        let block = handoff.blocks.get(&request.block_id).ok_or_else(|| bad("edm_snapshot", "image mapping missing"))?;
++        let baseline_node = handoff.native.node(block.root).ok_or_else(|| bad("edm_snapshot", "baseline image missing"))?;
++        let current_node = ds.doc.node(block.root).ok_or_else(|| bad("edm_snapshot", "image node missing"))?;
++        if current_node.fills != baseline_node.fills {
++            return Err(bad("edm_snapshot", "image fills changed before URL replacement"));
++        }
++        let (hash, width, height) = figcraft_format::add_image(ds.doc_mut(), bytes.clone()).map_err(|_| bad("edm_snapshot", "unsupported image bytes"))?;
++        if width > 8192 || height > 8192 || u64::from(width) * u64::from(height) > 16_777_216 {
++            return Err(bad("edm_snapshot", "image dimension limit exceeded"));
++        }
++        let node = ds.doc_mut().get_mut(block.root).map_err(|e| bad("edm_snapshot", e.to_string()))?;
++        node.fills = vec![Paint::image(hash.clone(), figcraft_color::ImageScaleMode::Fill)];
++        replacements.insert(request.block_id, Replacement { hash, data: ImageData { bytes: std::sync::Arc::new(bytes), width, height } });
++    }
++    assert_structure(&handoff, &ds.doc, &replacements)?;
++    let mut proposal = handoff.canonical.clone();
++    for (id, block) in &handoff.blocks {
++        let node = ds.doc.node(block.root).ok_or_else(|| bad("edm_snapshot", "mapped node missing"))?;
++        match block.role {
++            Role::Text => set_content(&handoff, &mut proposal, id, "text", native_text(node)?)?,
++            Role::Button => {
++                let url = node.plugin_data.get(URL).cloned().unwrap_or_default();
++                set_content(&handoff, &mut proposal, id, "url", url)?;
++                let text_id = block.text.ok_or_else(|| bad("edm_snapshot", "button text missing"))?;
++                let text_node = ds.doc.node(text_id).ok_or_else(|| bad("edm_snapshot", "button text missing"))?;
++                set_content(&handoff, &mut proposal, id, "text", native_text(text_node)?)?;
++            }
++            Role::Image => {
++                let url = node.plugin_data.get(URL).cloned().unwrap_or_default();
++                let expected_hash = replacements.get(id).map(|r| r.hash.clone()).or_else(|| handoff.native.node(block.root).and_then(image_hash));
++                if image_hash(node) != expected_hash {
++                    return Err(bad("edm_snapshot", "image paint has no matching durable URL"));
++                }
++                set_content(&handoff, &mut proposal, id, "url", url)?;
++                if let Some(alt) = node.plugin_data.get(ALT) {
++                    set_content(&handoff, &mut proposal, id, "alt", alt.clone())?;
++                } else if string_prop(handoff.canonical["blocks"].get(id).ok_or_else(|| bad("edm_snapshot", "canonical block missing"))?, "alt").is_some() {
++                    return Err(bad("edm_snapshot", "image alt removed"));
++                }
++                if let Some(link) = node.plugin_data.get(LINK) {
++                    set_content(&handoff, &mut proposal, id, "linkHref", link.clone())?;
++                } else if string_prop(handoff.canonical["blocks"].get(id).ok_or_else(|| bad("edm_snapshot", "canonical block missing"))?, "linkHref").is_some() {
++                    return Err(bad("edm_snapshot", "image link removed"));
++                }
++            }
++            Role::Other | Role::ButtonText => {}
++        }
++    }
++    let mut current = handoff;
++    current.native = ds.doc.as_ref().clone();
++    ds.edm = Some(current);
++    Ok(proposal)
++}
++
++pub fn specs() -> Vec<CommandSpec> {
++    vec![
++        spec!("edm_import", "Import XeroFlow email", "{design, images?}", false, |s, p| import(s, p)),
++        spec!("edm_snapshot", "Snapshot XeroFlow email", "{images?}", true, |s, p| snapshot(s, p)),
++    ]
++}
++
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    const PNG: &str = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
++    const PNG_ALT: &str = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgZGJmAQAAGQAL51pGpAAAAABJRU5ErkJggg==";
++
++    fn design() -> Value {
++        json!({
++            "schemaVersion": 1,
++            "kind": "template",
++            "scope": {"clientId": null},
++            "source": {"editor": "composer", "nativeArtifact": null},
++            "rootChildrenIds": ["root"],
++            "blocks": {
++                "root": {"type": "EmailLayout", "data": {"childrenIds": ["text-1", "button-1", "image-1"], "props": {"locked": "keep-me"}}},
++                "text-1": {"type": "Text", "data": {"props": {"text": "Original", "mobileText": "locked-mobile"}}},
++                "button-1": {"type": "Button", "data": {"props": {"text": "Open", "url": "https://example.invalid/start"}}},
++                "image-1": {"type": "Image", "data": {"props": {"url": "https://example.invalid/one.png", "alt": "One", "linkHref": "https://example.invalid/"}}}
++            },
++            "lineage": [],
++            "dependencies": [],
++            "moduleInstances": [],
++            "assets": [],
++            "policy": {"version": 1, "editableFields": [
++                "text-1.data.props.text", "button-1.data.props.text", "button-1.data.props.url",
++                "image-1.data.props.url", "image-1.data.props.alt", "image-1.data.props.linkHref"
++            ]}
++        })
++    }
++
++    fn import_design(session: &mut Session) {
++        session.execute("edm_import", &json!({"design": design(), "images": {"image-1": PNG}})).unwrap();
++    }
++
++    fn mapped(session: &Session, block_id: &str, role: &str) -> NodeId {
++        session.doc().unwrap().nodes().find(|node| {
++            node.plugin_data.get(BLOCK_ID).map(String::as_str) == Some(block_id)
++                && node.plugin_data.get(ROLE).map(String::as_str) == Some(role)
++        }).map(|node| node.id).unwrap()
++    }
++
++    #[test]
++    fn edm_content_roundtrip_preserves_canonical_identity_and_locked_fields() {
++        let mut session = Session::new();
++        import_design(&mut session);
++        let text = mapped(&session, "text-1", "text");
++        let button = mapped(&session, "button-1", "button");
++        session.execute("node.set", &json!({"ids": [text], "props": {"characters": "Edited"}})).unwrap();
++        session.execute("node.set", &json!({"ids": [button], "props": {"pluginData": {URL: "mailto:team@example.invalid"}}})).unwrap();
++        let proposal = session.execute("edm_snapshot", &json!({})).unwrap();
++        assert_eq!(proposal["blocks"]["text-1"]["data"]["props"]["text"], "Edited");
++        assert_eq!(proposal["blocks"]["text-1"]["data"]["props"]["mobileText"], "locked-mobile");
++        assert_eq!(proposal["blocks"]["button-1"]["data"]["props"]["url"], "mailto:team@example.invalid");
++        assert_eq!(proposal["blocks"]["root"]["data"]["props"]["locked"], "keep-me");
++        assert_eq!(proposal["rootChildrenIds"], design()["rootChildrenIds"]);
++    }
++
++    #[test]
++    fn edm_snapshot_rejects_native_additions_and_style_changes() {
++        let mut session = Session::new();
++        import_design(&mut session);
++        let text = mapped(&session, "text-1", "text");
++        session.execute("node.set", &json!({"ids": [text], "props": {"fontSize": 30}})).unwrap();
++        assert!(session.execute("edm_snapshot", &json!({})).is_err());
++        let page = session.page().unwrap();
++        session.execute("node.create", &json!({"type": "rectangle", "parent": page, "x": 0, "y": 0, "width": 10, "height": 10})).unwrap();
++        assert!(session.execute("edm_snapshot", &json!({})).is_err());
++    }
++
++    #[test]
++    fn edm_image_url_change_requires_bytes_then_reopens_current_paint() {
++        let mut session = Session::new();
++        import_design(&mut session);
++        assert_eq!(session.execute("edm_snapshot", &json!({})).unwrap()["blocks"]["image-1"]["data"]["props"]["url"], "https://example.invalid/one.png");
++        let image = mapped(&session, "image-1", "image");
++        let before_hash = image_hash(session.doc().unwrap().node(image).unwrap()).unwrap();
++        session.execute("node.set", &json!({"ids": [image], "props": {"pluginData": {URL: "https://example.invalid/two.png"}}})).unwrap();
++        assert!(session.execute("edm_snapshot", &json!({})).is_err());
++        let proposal = session.execute("edm_snapshot", &json!({"images": {"image-1": PNG_ALT}})).unwrap();
++        let after_hash = image_hash(session.doc().unwrap().node(image).unwrap()).unwrap();
++        assert_ne!(before_hash, after_hash, "replacement must use different valid image bytes");
++        assert_eq!(proposal["blocks"]["image-1"]["data"]["props"]["url"], "https://example.invalid/two.png");
++        assert!(required_snapshot_images(&session).unwrap().is_empty());
++        assert_eq!(session.execute("edm_snapshot", &json!({})).unwrap()["blocks"]["image-1"]["data"]["props"]["url"], "https://example.invalid/two.png");
++
++        session.execute("node.set", &json!({"ids": [image], "props": {"pluginData": {URL: "https://example.invalid/three.png"}}})).unwrap();
++        session.execute("node.set", &json!({"ids": [image], "props": {"fill": "#ff0000"}})).unwrap();
++        assert!(session.execute("edm_snapshot", &json!({"images": {"image-1": PNG_ALT}})).is_err(), "URL replacement must not hide an unsupported fill edit");
++        session.doc_mut().unwrap().get_mut(image).unwrap().fills = vec![Paint::image(after_hash, figcraft_color::ImageScaleMode::Fill)];
++        let restored = session.execute("edm_snapshot", &json!({"images": {"image-1": PNG_ALT}})).unwrap();
++        assert_eq!(restored["blocks"]["image-1"]["data"]["props"]["url"], "https://example.invalid/three.png");
++    }
++
++    #[test]
++    fn edm_policy_and_column_geometry_stay_bounded_and_non_overlapping() {
++        let mut session = Session::new();
++        let mut input = design();
++        input["policy"]["editableFields"] = json!([]);
++        session.execute("edm_import", &json!({"design": input, "images": {"image-1": PNG}})).unwrap();
++        let text = mapped(&session, "text-1", "text");
++        session.execute("node.set", &json!({"ids": [text], "props": {"characters": "Not allowed"}})).unwrap();
++        assert!(session.execute("edm_snapshot", &json!({})).is_err());
++
++        let mut columns = design();
++        columns["blocks"]["root"]["data"]["childrenIds"] = json!(["columns"]);
++        columns["blocks"]["columns"] = json!({"type": "ColumnsContainer", "data": {"props": {"columnsCount": 2, "columns": [
++            {"childrenIds": ["text-1"]}, {"childrenIds": ["button-1"]}
++        ]}}});
++        columns["blocks"]["root"]["data"]["childrenIds"] = json!(["columns", "image-1"]);
++        let mut second = Session::new();
++        second.execute("edm_import", &json!({"design": columns, "images": {"image-1": PNG}})).unwrap();
++        let text = mapped(&second, "text-1", "text");
++        let button = mapped(&second, "button-1", "button");
++        assert!(!crate::tools::locked_in(second.doc().unwrap(), text), "text must remain reachable through structural containers");
++        assert!(!crate::tools::locked_in(second.doc().unwrap(), button), "button must remain reachable through structural containers");
++        let text_x = second.doc().unwrap().world_transform(text).as_coeffs()[4];
++        let button_x = second.doc().unwrap().world_transform(button).as_coeffs()[4];
++        assert!(text_x < button_x, "columns must preserve different world-space x positions");
++        assert!(second.doc().unwrap().nodes().all(|node| node.width.is_finite() && node.height.is_finite() && (node.is_page() || node.height > 0.0)));
++    }
++}
+--- a/crates/engine/src/cmd/mod.rs
++++ b/crates/engine/src/cmd/mod.rs
+@@ -5,6 +5,7 @@
+ pub mod component;
+ pub mod create;
+ pub mod edit;
++pub mod edm;
+ pub mod file;
+ pub mod image;
+ pub mod layout;
+@@ -77,6 +78,7 @@
+         list.extend(section::specs());
+         list.extend(layout::specs());
+         list.extend(file::specs());
++        list.extend(edm::specs());
+         list.extend(page::specs());
+         list.extend(view::specs());
+         list.extend(text::specs());
+--- a/crates/engine/src/lib.rs
++++ b/crates/engine/src/lib.rs
+@@ -345,6 +345,8 @@
+ #[derive(Clone, Debug)]
+ pub struct DocState {
+     pub doc: Arc<Document>,
++    /// XeroFlow's immutable canonical baseline and native mapping for this tab.
++    pub edm: Option<cmd::edm::EdmHandoff>,
+     pub selection: Vec<NodeId>,
+     pub page: NodeId,
+     pub history: History,
+@@ -426,6 +428,7 @@
+             checkpoint: None,
+             saved_doc: doc.clone(),
+             doc,
++            edm: None,
+             selection: Vec::new(),
+             page,
+             history: History { limit: 1000, ..Default::default() },
+@@ -821,6 +824,8 @@
+ fn command_carries_import_bytes(id: &str, params: &Value) -> bool {
+     match id {
+         "file.import" => params::get(params, "data").is_some(),
++        // Canonical content and browser-only image envelopes stay out of logs/repeat.
++        "edm_import" | "edm_snapshot" => true,
+         "command.batch" => params.get("commands").and_then(Value::as_array).is_some_and(|commands| {
+             commands.iter().any(|c| {
+                 c.get("command").and_then(Value::as_str).zip(c.get("params")).is_some_and(|(id, params)| command_carries_import_bytes(id, params))
+@@ -981,7 +986,7 @@
+             Ok(_) => {
+                 self.after_command(spec, before);
+                 self.apply_view_prefs();
+-                if spec.history && id != "edit.repeat" {
++                if spec.history && id != "edit.repeat" && !command_carries_import_bytes(id, params) {
+                     self.last_command = Some((id.to_string(), params.clone()));
+                 }
+                 // Imported bytes already live in the document: a Base64 copy in the log would stay
 --- a/crates/ui-egui/src/lib.rs
 +++ b/crates/ui-egui/src/lib.rs
 @@ -9,6 +9,8 @@
@@ -146,9 +932,17 @@
  pub mod branch_ui;
  pub mod canvas;
  pub mod cjk;
+@@ -21,6 +23,7 @@
+ pub mod dev_compare;
+ pub mod dev_mode;
+ pub mod dialogs;
++pub mod edm_panel;
+ pub mod export_panel;
+ pub mod field_math;
+ pub mod font_preview;
 --- a/crates/ui-egui/src/browser_bridge.rs
 +++ b/crates/ui-egui/src/browser_bridge.rs
-@@ -0,0 +1,311 @@
+@@ -0,0 +1,335 @@
 +//! Narrow browser automation, independent of MCP transport and remote authority.
 +//! The browser shell calls this on the real UI session at a frame boundary.
 +use std::collections::BTreeMap;
@@ -158,6 +952,8 @@
 +
 +pub const MAX_REQUEST_BYTES: usize = 16 * 1024;
 +pub const MAX_REPLY_BYTES: usize = 256 * 1024;
++pub const MAX_EDM_REQUEST_BYTES: usize = 48 * 1024 * 1024;
++pub const MAX_EDM_REPLY_BYTES: usize = 3 * 1024 * 1024;
 +const MAX_MUTATIONS: usize = 128;
 +const MAX_DOCUMENT_NODES: usize = 500;
 +const MAX_RETAINED_BYTES: usize = 8 * 1024 * 1024;
@@ -252,10 +1048,12 @@
 +    pub fn execute(&mut self, session: &mut Session, input: &str) -> String {
 +        let result = self.execute_value(session, input);
 +        let encoded = result.to_string();
-+        if encoded.len() > MAX_REPLY_BYTES { error("reply_too_large").to_string() } else { encoded }
++        if encoded.len() > MAX_EDM_REPLY_BYTES { error("reply_too_large").to_string() } else { encoded }
 +    }
 +    fn execute_value(&mut self, session: &mut Session, input: &str) -> Value {
-+        if input.len() > MAX_REQUEST_BYTES {
++        if input.len() > MAX_EDM_REQUEST_BYTES
++            || (input.len() > MAX_REQUEST_BYTES && !input.contains("\"edm_import\"") && !input.contains("\"edm_snapshot\""))
++        {
 +            return error("request_too_large");
 +        }
 +        let Ok(request) = serde_json::from_str::<Value>(input) else {
@@ -267,19 +1065,23 @@
 +        let Some(id) = token(&request, "requestId") else {
 +            return error("invalid_request");
 +        };
++        let Some(action) = request.get("action").and_then(Value::as_str) else {
++            return error("invalid_request");
++        };
++        let edm = matches!(action, "edm_import" | "edm_snapshot");
 +        let canonical = request.to_string();
 +        if let Some((old, result)) = self.completed.get(&id) {
-+            return if old == &canonical {
++            return if old == &canonical || (edm && old.len() == 64 && old == &figcraft_format::image_hash(canonical.as_bytes())) {
 +                serde_json::from_str(result).unwrap_or_else(|_| error("receipt_unavailable"))
 +            } else {
 +                error("request_id_conflict")
 +            };
 +        }
-+        let Some(action) = request.get("action").and_then(Value::as_str) else {
-+            return error("invalid_request");
-+        };
-+        let mutation = matches!(action, "create_node" | "update_node");
-+        if !["status", "inspect", "get_node", "create_node", "update_node"].contains(&action) {
++        if !edm && input.len() > MAX_REQUEST_BYTES {
++            return error("request_too_large");
++        }
++        let mutation = matches!(action, "create_node" | "update_node" | "edm_import" | "edm_snapshot");
++        if !["status", "inspect", "get_node", "create_node", "update_node", "edm_import", "edm_required_snapshot_images", "edm_snapshot"].contains(&action) {
 +            return error("unsupported_action");
 +        }
 +        let p = request.get("params").cloned().unwrap_or_else(|| json!({}));
@@ -303,7 +1105,9 @@
 +        if mutation && (ds.interaction.is_some() || ds.text_edit.is_some()) {
 +            return error("editor_busy");
 +        }
-+        if mutation && (self.completed.len() >= MAX_MUTATIONS || self.retained_bytes + canonical.len() + MAX_REPLY_BYTES > MAX_RETAINED_BYTES) {
++        let request_retained = if edm { 64 } else { canonical.len() };
++        let reply_limit = if edm { MAX_EDM_REPLY_BYTES } else { MAX_REPLY_BYTES };
++        if mutation && (self.completed.len() >= MAX_MUTATIONS || self.retained_bytes + request_retained + reply_limit > MAX_RETAINED_BYTES) {
 +            return error("receipt_capacity_reached");
 +        }
 +        if action != "status" && ds.doc.nodes().take(MAX_DOCUMENT_NODES + 1).count() > MAX_DOCUMENT_NODES {
@@ -311,7 +1115,7 @@
 +        }
 +        let result = match action {
 +            "status" if keys(&p, &[]) => Ok(
-+                json!({"currentPage": ds.page.0.to_string(), "dirty": ds.is_dirty(), "supportedActions": ["inspect", "get_node", "create_node", "update_node"], "exports": false}),
++                json!({"currentPage": ds.page.0.to_string(), "dirty": ds.is_dirty(), "supportedActions": ["inspect", "get_node", "create_node", "update_node", "edm_import", "edm_required_snapshot_images", "edm_snapshot"], "exports": false}),
 +            ),
 +            "inspect" if keys(&p, &["depth"]) => {
 +                let depth = match p.get("depth") {
@@ -347,23 +1151,37 @@
 +                    session.execute("node.set", &json!({"ids": [p["id"].clone()], "props": p["props"].clone()})).map_err(|_| "engine_refused")
 +                }
 +            }
++            "edm_import" if keys(&p, &["design", "images"]) => session.execute("edm_import", &p).map_err(|_| "engine_refused"),
++            "edm_required_snapshot_images" if keys(&p, &[]) => figcraft_engine::cmd::edm::required_snapshot_images(session).map(|images| json!({"images": images})).map_err(|_| "engine_refused"),
++            "edm_snapshot" if keys(&p, &["images"]) => session.execute("edm_snapshot", &p).map_err(|_| "engine_refused"),
 +            _ => Err("invalid_params"),
 +        };
-+        let after = session.ds().map(|d| d.revision).unwrap_or(before);
++        let after_state = session.ds().ok();
++        let after = after_state.as_ref().map(|d| d.revision).unwrap_or(before);
++        let response_document = if action == "edm_import" {
++            after_state.as_ref().map(|d| d.uid.to_string()).unwrap_or(document)
++        } else {
++            document
++        };
 +        let mut response = match result {
 +            Ok(value) => {
-+                json!({"ok": true, "instanceId": self.instance, "documentId": document, "revisionBefore": before.to_string(), "revision": after.to_string(), "result": value})
++                json!({"ok": true, "instanceId": self.instance, "documentId": response_document, "revisionBefore": before.to_string(), "revision": after.to_string(), "result": value})
 +            }
 +            Err(code) => error(code),
 +        };
-+        project(&mut response);
-+        if response.to_string().len() > MAX_REPLY_BYTES {
++        // EDM canonical JSON is not native inspection: removing a composer `path`
++        // property here would silently change locked source. Canonical IDs already strings.
++        if !edm {
++            project(&mut response);
++        }
++        if response.to_string().len() > reply_limit {
 +            response = error("reply_too_large");
 +        }
 +        if mutation {
 +            let encoded = response.to_string();
-+            self.retained_bytes += canonical.len() + encoded.len();
-+            self.completed.insert(id, (canonical, encoded));
++            let receipt = if edm { figcraft_format::image_hash(canonical.as_bytes()) } else { canonical };
++            self.retained_bytes += request_retained + encoded.len();
++            self.completed.insert(id, (receipt, encoded));
 +        }
 +        response
 +    }
@@ -460,3 +1278,87 @@
 +        assert!(!result.contains("/private/client"));
 +    }
 +}
+--- a/crates/ui-egui/src/edm_panel.rs
++++ b/crates/ui-egui/src/edm_panel.rs
+@@ -0,0 +1,47 @@
++//! XeroFlow email metadata controls on the actual mapped native selection.
++use egui::{Id, Ui};
++use figcraft_doc::{Document, NodeId};
++use serde_json::{Map, Value, json};
++
++use crate::{FigApp, theme::Tokens, widgets};
++
++const BLOCK_ID: &str = "xeroflow.edm.blockId";
++const ROLE: &str = "xeroflow.edm.role";
++const URL: &str = "xeroflow.edm.url";
++const ALT: &str = "xeroflow.edm.alt";
++const LINK: &str = "xeroflow.edm.linkHref";
++
++/// Compact Design-panel fields for content native FigCraft does not otherwise
++/// model: email links and alternative text. Canvas text remains ordinary text.
++pub fn section(app: &mut FigApp, ui: &mut Ui, doc: &Document, selection: &[NodeId]) -> bool {
++    let [id] = selection else { return false };
++    let Ok(ds) = app.session.ds() else { return false };
++    let Some(handoff) = ds.edm.as_ref() else { return false };
++    let Some(node) = doc.node(*id) else { return false };
++    let Some(block_id) = node.plugin_data.get(BLOCK_ID).cloned() else { return false };
++    let role = node.plugin_data.get(ROLE).map(String::as_str);
++    let fields: Vec<(&str, &str, &str)> = match role {
++        Some("button") => vec![("Button URL", URL, "url")],
++        Some("image") => vec![("Image URL", URL, "url"), ("Image alt text", ALT, "alt"), ("Image link", LINK, "linkHref")],
++        _ => return false,
++    };
++    widgets::section_header(ui, "Email content", &[], false);
++    let t = Tokens::get(ui.ctx());
++    let mut updates = Map::new();
++    for (label, key, field) in fields {
++        let allowed = handoff.allows(&block_id, field);
++        let current = node.plugin_data.get(key).cloned().unwrap_or_default();
++        ui.add_enabled_ui(allowed, |ui| {
++            ui.horizontal(|ui| {
++                widgets::label(ui, label, t.text);
++                if let Some(value) = widgets::text_field(ui, Id::new(("xeroflow-edm", *id, key)), &current, ui.available_width().max(80.0), label) {
++                    updates.insert(key.to_owned(), Value::String(value));
++                }
++            });
++        });
++    }
++    if !updates.is_empty() {
++        app.set_props(&[*id], json!({"pluginData": updates}));
++    }
++    true
++}
+--- a/crates/ui-egui/src/right.rs
++++ b/crates/ui-egui/src/right.rs
+@@ -347,6 +347,9 @@
+     }
+     header(app, ui, &doc, &sel);
+     widgets::separator(ui);
++    if crate::edm_panel::section(app, ui, &doc, &sel) {
++        widgets::separator(ui);
++    }
+     // Editing a vector with points selected, the points' fields stand in for the layer's position
+     // and dimensions.
+     let points_selected = vector_edit.as_ref().is_some_and(|ve| !ve.vertices.is_empty() || !ve.segments.is_empty());
+--- a/packaging/web/package.sh
++++ b/packaging/web/package.sh
+@@ -46,6 +46,19 @@
+ rm -rf "$WORK"
+ mkdir -p "$WORK/$NAME"
+ cp -R "$SITE/." "$WORK/$NAME/"
++if [[ -f "$HERE/figflow-edm-relay.mjs" ]]; then
++  cp "$HERE/figflow-edm-relay.mjs" "$WORK/$NAME/"
++  python3 - "$WORK/$NAME/index.html" <<'PY_RELAY'
++from pathlib import Path
++import sys
++path = Path(sys.argv[1])
++text = path.read_text()
++tag = '<script type="module" src="./figflow-edm-relay.mjs"></script>'
++if text.count('</body>') != 1 or 'figflow-edm-relay.mjs' in text:
++    raise SystemExit('Unexpected browser relay injection point')
++path.write_text(text.replace('</body>', f'  {tag}\n</body>'))
++PY_RELAY
++fi
+ # Sample server configs (MIME type, caching, compression); harmless where unused.
+ cp "$HERE/_headers" "$HERE/.htaccess" "$WORK/$NAME/"
+ cp "$HERE/README.md" "$WORK/$NAME/HOSTING.md"

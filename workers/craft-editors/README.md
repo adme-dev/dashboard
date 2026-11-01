@@ -3,10 +3,16 @@
 This directory builds the pinned FigFlow source and its browser-local bridge.
 It does not deploy an editor or enable the EDM feature.
 
-The bridge supports status, inspection, and explicit node creation/updates.
-Snapshot, export, EDM conversion, authenticated relay sessions, and durable
-template/module saves are not implemented by this bridge. Existing manual
-download/export controls are separate capabilities.
+The bridge supports status, inspection, explicit node creation/updates, and a
+bounded composer EDM import/content-snapshot round trip. Canonical identity and
+locked fields are retained while unsupported native structural edits fail closed.
+Image bytes are resolved only by the packaged relay into a browser-only envelope;
+they never enter canonical JSON or become durable native asset uploads.
+
+The `0.11.2-edm1` package injects the separately pinned `figflow-edm-relay.mjs`.
+Native file snapshot/export, authenticated server relay sessions, durable native
+artifacts, arbitrary layout conversion, and template/module publication remain
+unimplemented. Existing manual download/export controls are separate capabilities.
 
 `source-pins.json` fixes the upstream source, Cargo.lock, patch order and hashes.
 The four established patches come from dashboard commit

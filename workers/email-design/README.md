@@ -1,19 +1,20 @@
 # Private email design service
 
-This Worker prepares four FigFlow draft routes and the canonical template
+This Worker prepares five FigFlow draft/handoff routes and the canonical template
 update/delete handlers for a future private-service rollout. It has no public
 route, workers.dev URL, preview URL, cron or email-send capability.
 
-**Current release is a disabled foundation.** Pages excludes every
-`/api/email/design/**` handler, including the forwarding route, and has no
-`EMAIL_DESIGN` binding. Existing template PATCH/DELETE execute their canonical
-handlers locally in Pages with normal authentication, RBAC and client scope.
-They do not depend on provisioning this Worker or copying the signing key.
-Setting the draft flag alone cannot activate the excluded endpoints.
+**Current release is deployed but disabled.** Pages mounts only the bounded
+`/api/email/design/**` forwarding route and production EMAIL_DESIGN binding.
+Heavy route implementations remain excluded from Pages. Existing template
+PATCH/DELETE execute locally with normal authentication, RBAC and client scope.
 
-The FigFlow draft flag remains **false** in both Worker configurations. The
-Worker is not deployed by the Pages release. Its local runtime evidence remains
-useful preparation, not hosted acceptance or an enabled staff feature.
+Production version `29ab0af9-7309-4ee2-82d7-ee473b4fc5de` was deployed from main
+`b63cd1e59bebcbc6f88d698f7eac62ee52953924`; migrations 491–493 are applied.
+The Worker has no public endpoint, its flag is false, and JWT_SECRET is absent.
+Both Worker configurations still require false flags. Matching session authority
+and a reviewed activation change are prerequisites; local runtime evidence is
+not hosted acceptance. See `docs/email-builder/figflow-developer-handoff.md`.
 
 ## Routes and boundaries
 
@@ -23,6 +24,7 @@ useful preparation, not hosted acceptance or an enabled staff feature.
 | PATCH | `/api/email/design/drafts/:id` | Canonical revision save |
 | PATCH | `/api/email/design/drafts/:id/metadata` | Canonical metadata save |
 | POST | `/api/email/design/drafts/initialize` | Immutable legacy initialization |
+| POST | `/api/email/design/roundtrip` | Actor-bound open/resume and durable proposal/apply/cancel |
 | PATCH | `/api/email/templates/:id` | Existing template update handler |
 | DELETE | `/api/email/templates/:id` | Existing template delete handler |
 
@@ -68,7 +70,7 @@ pnpm exec vitest run test/integration/emailDesignWorker.database.test.ts --maxWo
 That fixture requires the disposable local cluster on port 55483, unix socket
 and loopback TCP, role `figflow_test`, and admin database `figflow_design_test`.
 It creates and drops its own uniquely named database. It tests the actual
-renderer RPC, all six routes, immutable/replayed revisions, metadata source
+renderer RPC, all seven routes, immutable/replayed revisions, metadata source
 preservation, legacy flag-off behavior, viewer denial, conflict responses,
 session revocation and connection cleanup. Outbound HTTP is blocked and counted.
 Without both environment variables it skips; a skipped run is not runtime proof.
@@ -76,13 +78,13 @@ Without both environment variables it skips; a skipped run is not runtime proof.
 These local checks do not establish hosted Hyperdrive behavior, browser editing
 or compatibility with Apple Mail, Outlook and Gmail.
 
-## Future private-service activation order
+## Activation procedure (production steps 1–3 completed for the recorded release)
 
 1. Review and validate a clean source commit containing current main. Production
    requires exact fetched `origin/main`; `deploy.mjs` rejects a different account,
    Worker, renderer, database, public entry point, capability or enabled flag.
-2. Apply migrations 491 and 492 together to the identified target database after
-   the repository's database procedure. Both revision writers require 492.
+2. Apply migrations 491, 492 and 493 together to the identified target database after
+   the repository's database procedure. Both revision writers require 492; handoffs and their immutable operation receipts require 493.
 3. Deploy the private service through `pnpm deploy:staging` or
    `pnpm deploy:production` in this directory. The script rebuilds the checked
    source before invoking Wrangler. It does not deploy Pages.
@@ -94,10 +96,11 @@ or compatibility with Apple Mail, Outlook and Gmail.
 5. Verify hosted private-service authentication and draft operations in staging.
    Keep existing template writes local unless an explicitly reviewed later
    release moves them; the prepared Worker endpoints alone do not redirect Pages.
-6. In a reviewed activation change, allow only the design transport route back
-   into the Pages build, add the matching `EMAIL_DESIGN` bindings, set the exact
-   allowed app origin, and recheck bundle size and hosted authentication. Keep
-   draft saves disabled until the staff/native workflows and acceptance gates pass.
+6. In a reviewed activation change, retain the design-only transport and production
+   binding; add staging wiring where needed. Review flag/configuration guard
+   changes, exact app origin, bundle size and hosted authentication together.
+   Existing deployment scripts intentionally accept false flags only; do not
+   bypass them. Verify the staff/native workflow in staging before production.
 7. Deploy Pages only through the repository's guarded `pnpm deploy:*` commands,
    after `pnpm deploy:check`, and record source/deployment identities. Verify
    existing template editing/deletion and QR navigation on the real host.

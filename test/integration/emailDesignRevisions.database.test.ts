@@ -1,3 +1,6 @@
+import { executeDesignRoundtrip } from '../../server/utils/email-marketing/designHandoffs'
+import type { DesignHandoff, RoundtripRequest } from '../../shared/emailRendering/designRoundtrip'
+import { validateEmailDesign } from '../../shared/emailRendering/designContract'
 import { saveTemplateDraftMetadata } from '../../server/utils/email-marketing/designMetadata'
 import { initializeTemplateDesignDraft } from '../../server/utils/email-marketing/designInitialization'
 import fs from 'node:fs'
@@ -865,6 +868,165 @@ describe('immutable email design revisions in PostgreSQL', () => {
       ).rejects.toMatchObject({ code: 'INVALID_DESIGN' })
     }
   )
+  const handoffAuthority = () => ({
+    actorId,
+    authorize: async (clientId: string | null) => {
+      if (clientId !== scope) throw new Error('scope denied')
+      return 'designer' as const
+    }
+  })
+  async function roundtrip(request: RoundtripRequest, renderer = testEmailRenderer) {
+    const result = await executeDesignRoundtrip(request, handoffAuthority(), renderer, transaction)
+    if (!('handoff' in result)) throw new Error('handoff expected')
+    return result.handoff
+  }
+  async function openHandoff(): Promise<DesignHandoff> {
+    const saved = await saveTemplateDesignDraft({ documentId, actorId, operationId: crypto.randomUUID(), expectedRevisionId: baselineRevisionId, design: structuredDesign() }, async () => {}, testEmailRenderer, transaction)
+    return roundtrip({ command: 'open', operationId: crypto.randomUUID(), draftId: documentId, expectedRevisionId: saved.revisionId })
+  }
+  function proposal(handoff: DesignHandoff, text: string): RoundtripRequest {
+    const design = validateEmailDesign(handoff.source)
+    design.blocks.heading.data.props!.text = text
+    return { command: 'propose', handoffId: handoff.id, action: {
+      version: 1, action: 'propose-return', operationId: crypto.randomUUID(), scope: design.scope,
+      draftId: documentId, baseRevisionId: handoff.baseRevisionId, design
+    } }
+  }
+  function apply(handoff: DesignHandoff): RoundtripRequest {
+    return { command: 'apply', handoffId: handoff.id, action: {
+      version: 1, action: 'apply-return', operationId: crypto.randomUUID(), scope: handoff.source.scope,
+      proposalId: handoff.id, expectedProposalRevisionId: handoff.proposalRevisionId!, expectedDraftRevisionId: handoff.baseRevisionId
+    } }
+  }
+  databaseTest('returns a durable proposal without changing the live draft, then applies one rendered revision with replay', async () => {
+    const opened = await openHandoff()
+    const proposed = await roundtrip(proposal(opened, 'Returned from FigFlow'))
+    expect((await getTemplateDesignDraft(documentId, async () => {}, admin)).headRevisionId).toBe(opened.baseRevisionId)
+    const action = apply(proposed)
+    const applied = await roundtrip(action)
+    const retry = await roundtrip(action)
+    expect(retry.appliedRevisionId).toBe(applied.appliedRevisionId)
+    expect(retry.state).toBe('applied')
+    const owner = (await admin.query('SELECT body_source, body_html, email_design_revision_id FROM edm_templates WHERE id=$1', [templateId])).rows[0]
+    expect(owner.email_design_revision_id).toBe(applied.appliedRevisionId)
+    expect(owner.body_source.heading.data.props.text).toBe('Returned from FigFlow')
+    expect(owner.body_html).toContain('Returned from FigFlow')
+    expect((await admin.query('SELECT count(*)::int AS count FROM email_design_revisions WHERE parent_revision_id=$1', [opened.baseRevisionId])).rows[0].count).toBe(1)
+  })
+  databaseTest('preserves newer staff edits and leaves a conflicting proposal unapplied', async () => {
+    const opened = await openHandoff()
+    const proposed = await roundtrip(proposal(opened, 'Stale native return'))
+    const newer = validateEmailDesign(opened.source)
+    newer.blocks.heading.data.props!.text = 'Newer staff edit'
+    const saved = await saveStaffTemplateDesignDraft({ documentId, actorId, operationId: crypto.randomUUID(), expectedRevisionId: opened.baseRevisionId, design: newer }, async () => {}, testEmailRenderer, transaction)
+    await expect(roundtrip(apply(proposed))).rejects.toMatchObject({ code: 'REVISION_CONFLICT' })
+    expect((await getTemplateDesignDraft(documentId, async () => {}, admin)).headRevisionId).toBe(saved.revisionId)
+    expect((await roundtrip({ command: 'resume', handoffId: opened.id })).state).toBe('proposed')
+  })
+  databaseTest('rolls back the proposal effect and canonical revision when rendering fails', async () => {
+    const opened = await openHandoff()
+    const proposed = await roundtrip(proposal(opened, 'Renderer unavailable'))
+    const action = apply(proposed)
+    await expect(roundtrip(action, { ...testEmailRenderer, renderDocument: async () => { throw new Error('render failed') } })).rejects.toThrow('render failed')
+    expect((await roundtrip({ command: 'resume', handoffId: opened.id })).state).toBe('proposed')
+    expect((await getTemplateDesignDraft(documentId, async () => {}, admin)).headRevisionId).toBe(opened.baseRevisionId)
+    expect((await roundtrip(action)).state).toBe('applied')
+  })
+  databaseTest('binds a proposal operation to its full payload and handoff and denies another actor', async () => {
+    const opened = await openHandoff()
+    const action = proposal(opened, 'First content')
+    await roundtrip(action)
+    const changed = structuredClone(action)
+    if (changed.command !== 'propose') throw new Error('expected proposal')
+    changed.action.design.blocks.heading.data.props!.text = 'Different content'
+    await expect(roundtrip(changed)).rejects.toMatchObject({ code: 'IDEMPOTENCY_CONFLICT' })
+    await expect(executeDesignRoundtrip({ command: 'resume', handoffId: opened.id }, { ...handoffAuthority(), actorId: crypto.randomUUID() }, testEmailRenderer, transaction)).rejects.toMatchObject({ code: 'NOT_FOUND' })
+  })
+  databaseTest('keeps proposal state and live content when write authority is revoked during rendering', async () => {
+    const opened = await openHandoff()
+    const proposed = await roundtrip(proposal(opened, 'Revoked return'))
+    let revoked = false
+    await expect(executeDesignRoundtrip(apply(proposed), {
+      actorId,
+      authorize: async () => { if (revoked) throw new Error('revoked'); return 'designer' }
+    }, { ...testEmailRenderer, renderDocument: async () => { revoked = true; return '<p>rendered</p>' } }, transaction)).rejects.toThrow('revoked')
+    expect((await roundtrip({ command: 'resume', handoffId: opened.id })).state).toBe('proposed')
+    expect((await getTemplateDesignDraft(documentId, async () => {}, admin)).headRevisionId).toBe(opened.baseRevisionId)
+  })
+  databaseTest('serializes concurrent apply and cancel so exactly one terminal action wins', async () => {
+    const opened = await openHandoff()
+    const proposed = await roundtrip(proposal(opened, 'Concurrent return'))
+    const cancel: RoundtripRequest = { command: 'cancel', handoffId: proposed.id, action: {
+      version: 1, action: 'cancel-return', operationId: crypto.randomUUID(), scope: proposed.source.scope,
+      proposalId: proposed.id, expectedProposalRevisionId: proposed.proposalRevisionId!
+    } }
+    const results = await Promise.allSettled([roundtrip(apply(proposed)), roundtrip(cancel)])
+    expect(results.filter(item => item.status === 'fulfilled')).toHaveLength(1)
+    const final = await roundtrip({ command: 'resume', handoffId: proposed.id })
+    expect(['applied', 'cancelled']).toContain(final.state)
+    const current = await getTemplateDesignDraft(documentId, async () => {}, admin)
+    expect(current.headRevisionId).toBe(final.state === 'applied' ? final.appliedRevisionId : final.baseRevisionId)
+  })
+  databaseTest('converts a legacy draft and creates its handoff atomically with unchanged canonical source', async () => {
+    // The ordinary fixture already took an immutable schema-0 snapshot. Create a
+    // separate legacy owner with content before initialization, like the composer.
+    const legacyId = crypto.randomUUID()
+    const blocks = structuredDesign().blocks
+    await admin.query('INSERT INTO edm_templates(id,client_id,body_source,body_html) VALUES($1,$2,$3::jsonb,$4)', [legacyId, scope, JSON.stringify(blocks), '<p>legacy</p>'])
+    const initialized = await initializeTemplateDesignDraft({ templateId: legacyId, actorId, expectedClientId: scope }, async () => {}, transaction)
+    const request: RoundtripRequest = { command: 'open', operationId: crypto.randomUUID(), draftId: initialized.documentId, expectedRevisionId: initialized.revisionId }
+    const opened = await roundtrip(request)
+    expect(opened.source.blocks).toEqual(blocks)
+    expect(opened.baseRevisionId).not.toBe(initialized.revisionId)
+    expect((await roundtrip(request)).baseRevisionId).toBe(opened.baseRevisionId)
+    const read = await getTemplateDesignDraft(initialized.documentId, async () => {}, admin)
+    expect(read).toMatchObject({ state: 'structured', projection: { state: 'current' } })
+  })
+  databaseTest('rolls back initialization when start fails and allows a later composer save and retry', async () => {
+    const legacyId = crypto.randomUUID()
+    const blocks = structuredDesign().blocks
+    await admin.query('INSERT INTO edm_templates(id,client_id,body_source,body_html) VALUES($1,$2,$3::jsonb,$4)', [legacyId, scope, JSON.stringify(blocks), '<p>legacy</p>'])
+    const request: RoundtripRequest = { command: 'start', operationId: crypto.randomUUID(), templateId: legacyId, clientId: scope }
+    await expect(roundtrip(request, { ...testEmailRenderer, renderDocument: async () => { throw new Error('failed open') } })).rejects.toThrow('failed open')
+    expect((await admin.query('SELECT id FROM email_design_documents WHERE template_id=$1', [legacyId])).rows).toHaveLength(0)
+    blocks.heading.data.props!.text = 'Saved after a failed open'
+    await admin.query('UPDATE edm_templates SET body_source=$2::jsonb,updated_at=clock_timestamp() WHERE id=$1', [legacyId, JSON.stringify(blocks)])
+    const opened = await roundtrip(request)
+    expect(opened.source.blocks.heading.data.props!.text).toBe('Saved after a failed open')
+    expect((await roundtrip(request)).id).toBe(opened.id)
+    expect((await admin.query('SELECT count(*)::int AS count FROM email_design_handoffs WHERE document_id=$1', [opened.draftId])).rows[0].count).toBe(1)
+  })
+  databaseTest('rejects expired proposals without invoking the renderer or changing the head', async () => {
+    const opened = await openHandoff()
+    // Insert an already-expired fixture instead of weakening the immutable
+    // identity trigger to edit a real session expiry.
+    const expiredId = crypto.randomUUID()
+    const proposalId = crypto.randomUUID()
+    await admin.query(`INSERT INTO email_design_handoffs(id,actor_id,document_id,base_revision_id,open_revision_id,editor_origin,state,
+      proposal_revision_id,proposal_payload_text,created_at,expires_at)
+      VALUES($1,$2,$3,$4,$4,'https://creative.xeroflow.io','proposed',$5,$6,clock_timestamp()-interval '2 days',clock_timestamp()-interval '1 day')`,
+    [expiredId, actorId, documentId, opened.baseRevisionId, proposalId, JSON.stringify(opened.source)])
+    const expired = { ...opened, id: expiredId, proposalRevisionId: proposalId }
+    let rendered = false
+    await expect(roundtrip(apply(expired), { ...testEmailRenderer, renderDocument: async () => { rendered = true; return '' } })).rejects.toMatchObject({ code: 'PROPOSAL_EXPIRED' })
+    expect(rendered).toBe(false)
+    expect((await getTemplateDesignDraft(documentId, async () => {}, admin)).headRevisionId).toBe(opened.baseRevisionId)
+  })
+  databaseTest('starts a second round trip from intervening staff changes and preserves the other CTA fields', async () => {
+    const first = await openHandoff()
+    const returned = await roundtrip(proposal(first, 'First return'))
+    const applied = await roundtrip(apply(returned))
+    const design = validateEmailDesign(applied.proposal)
+    design.blocks.cta.data.props!.text = 'Staff CTA'
+    const staff = await saveStaffTemplateDesignDraft({ documentId, actorId, operationId: crypto.randomUUID(), expectedRevisionId: applied.appliedRevisionId, design }, async () => {}, testEmailRenderer, transaction)
+    const second = await roundtrip({ command: 'open', operationId: crypto.randomUUID(), draftId: documentId, expectedRevisionId: staff.revisionId })
+    expect(second.source.blocks.cta.data.props!.text).toBe('Staff CTA')
+    const secondReturn = await roundtrip(proposal(second, 'Second return'))
+    const final = await roundtrip(apply(secondReturn))
+    expect(final.proposal!.blocks.cta.data.props!.text).toBe('Staff CTA')
+    expect(final.proposal!.lineage).toEqual(first.source.lineage)
+  })
+
   beforeAll(async () => {
     if (!socket) return
     if (!socket.startsWith('/private/tmp/figflow-postgres-'))
@@ -907,6 +1069,9 @@ describe('immutable email design revisions in PostgreSQL', () => {
         'utf8'
       )
     )
+    const handoffs = fs.readFileSync(new URL('../../server/database/migrations/493_email_design_handoffs.sql', import.meta.url), 'utf8')
+    await admin.query(handoffs)
+    await admin.query(handoffs)
     await admin.query('INSERT INTO agency_clients VALUES ($1)', [scope])
   })
   beforeEach(async () => {

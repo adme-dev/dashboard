@@ -91,7 +91,7 @@ beforeAll(async () => {
     CREATE TABLE edm_custom_modules(id uuid PRIMARY KEY, client_id uuid, blocks jsonb);
     CREATE TABLE campaigns(id uuid PRIMARY KEY, client_id uuid, status text);
   `)
-  for (const file of ['491_email_design_revisions.sql', '492_email_design_revision_metadata.sql'])
+  for (const file of ['491_email_design_revisions.sql', '492_email_design_revision_metadata.sql', '493_email_design_handoffs.sql'])
     await db.query(readFileSync(resolve('server/database/migrations', file), 'utf8'))
   await db.query('INSERT INTO team_members VALUES($1,\'synthetic@example.invalid\',\'Synthetic\',\'admin\',true,null,null,null)', [actor])
   await db.query('INSERT INTO edm_templates(id, body_html, subject) VALUES($1,\'<p>Synthetic original</p>\',\'Synthetic\')', [template])
@@ -192,6 +192,35 @@ runtimeTest('renders through the real private RPC service and atomically saves a
   expect((await db!.query('SELECT count(*)::int AS count FROM email_design_revisions')).rows[0].count).toBe(3)
 }, 30_000)
 
+runtimeTest('persists and applies a FigFlow content proposal through actual authenticated Worker and renderer RPC', async () => {
+  const id = randomUUID()
+  await db!.query('INSERT INTO edm_templates(id,body_source,subject) VALUES($1,$2::jsonb,$3)', [id, JSON.stringify(structuredDesign().blocks), 'Round trip'])
+  const endpoint = '/api/email/design/roundtrip'
+  const opened = await request(endpoint, { command: 'start', operationId: randomUUID(), templateId: id, clientId: null })
+  expect(opened.status).toBe(200)
+  const handoff = opened.body.handoff as any
+  const design = JSON.parse(JSON.stringify(handoff.source))
+  design.blocks.heading.data.props.text = 'Actual Worker round trip'
+  const proposed = await request(endpoint, { command: 'propose', handoffId: handoff.id, action: {
+    version: 1, action: 'propose-return', operationId: randomUUID(), scope: { clientId: null }, draftId: handoff.draftId, baseRevisionId: handoff.baseRevisionId, design
+  } })
+  expect(proposed.status).toBe(200)
+  const proposal = proposed.body.handoff as any
+  expect((await db!.query('SELECT email_design_revision_id FROM edm_templates WHERE id=$1', [id])).rows[0].email_design_revision_id).toBe(handoff.baseRevisionId)
+  const action = { command: 'apply', handoffId: handoff.id, action: {
+    version: 1, action: 'apply-return', operationId: randomUUID(), scope: { clientId: null }, proposalId: handoff.id,
+    expectedProposalRevisionId: proposal.proposalRevisionId, expectedDraftRevisionId: handoff.baseRevisionId
+  } }
+  const applied = await request(endpoint, action)
+  expect(applied.status).toBe(200)
+  expect(await request(endpoint, action)).toEqual(applied)
+  const row = (await db!.query('SELECT body_source,body_html,email_design_revision_id FROM edm_templates WHERE id=$1', [id])).rows[0]
+  expect(row.body_source).toEqual(design.blocks)
+  expect(row.body_html).toContain('Actual Worker round trip')
+  expect(row.email_design_revision_id).toBe((applied.body.handoff as any).appliedRevisionId)
+  expect(outboundRequests).toBe(0)
+}, 30_000)
+
 runtimeTest('preserves ordinary template edits/deletes, read-only denial and versioned-history conflicts', async () => {
   configuration.workers![0]!.bindings!.FIGFLOW_EDM_DRAFT_SAVES_ENABLED = 'false'
   await bounded(runtime!.setOptions(configuration))
@@ -232,6 +261,31 @@ runtimeTest('uses the configured signing key and immediately observes session de
   expect((await request('invalid', undefined, secret, 'GET', oldIssuedAt)).status).toBe(401)
   expect((await request('invalid')).status).toBe(400)
 }, 30_000)
+
+const nativeBrowserTest = socket && artifact && process.env.FIGFLOW_EDM_NATIVE_PACKAGE ? it : it.skip
+nativeBrowserTest('completes two actual native browser returns with explicit preview/apply and composer undo', async () => {
+  const { exerciseNativeRoundtrip } = await import('../helpers/figflowBrowserRoundtrip')
+  const { handleEmailRender } = await import('../../workers/email-rendering/src/handleRender')
+  const id = randomUUID()
+  const blocks = structuredDesign().blocks
+  await db!.query('INSERT INTO edm_templates(id,body_source,subject) VALUES($1,$2::jsonb,$3)', [id, JSON.stringify(blocks), 'Native browser fixture'])
+  const result = await exerciseNativeRoundtrip({
+    packageDirectory: process.env.FIGFLOW_EDM_NATIVE_PACKAGE!,
+    evidenceDirectory: resolve('.verification/figflow-native-browser'), templateId: id, blocks,
+    request: (path, body, method) => request(path, body, secret, method),
+    render: async body => {
+      const result = handleEmailRender({ version: 1, expectedEnvironment: 'staging', operation: 'document', document: body.body_source, options: {} }, 'staging')
+      if (!result.ok || result.operation !== 'document') throw new Error('Browser preview render failed')
+      return result.value.html
+    }
+  })
+  const row = (await db!.query('SELECT body_source,body_html,email_design_revision_id FROM edm_templates WHERE id=$1', [id])).rows[0]
+  expect(row.body_source).toEqual(result.final.blocks)
+  expect(row.body_html).toContain('Second real native return')
+  expect(row.body_html).toContain('Staff CTA preserved')
+  expect(row.email_design_revision_id).toBe(result.final.handoff.appliedRevisionId)
+  expect(outboundRequests).toBe(0)
+}, 180_000)
 
 runtimeTest('closes request and transaction clients after responses', async () => {
   expect(outboundRequests).toBe(0)

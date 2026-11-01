@@ -45,6 +45,11 @@ export default defineNitroConfig({
   nodeModulesDirs: [join(repoRoot, 'node_modules')],
   handlers: [
     {
+      route: '/api/email/design/roundtrip',
+      method: 'post',
+      handler: fromRepo('server/api/email/design/roundtrip.post.ts')
+    },
+    {
       route: '/api/email/design/drafts/:id',
       method: 'get',
       handler: fromRepo('server/api/email/design/drafts/[id].get.ts')
