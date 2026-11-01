@@ -80,6 +80,8 @@ beforeEach(() => {
       return structuredClone(saved)
     }
     if (url.endsWith('/projects/draft-id')) return structuredClone(patched ? saved : original)
+    if (url.endsWith('/snapshot') && options?.method === 'POST') return { revision: 'updated-revision' }
+    if (url.endsWith('/snapshot')) return { projectId: 'draft-id', revision: 'updated-revision' }
     throw new Error(`Unexpected request ${url}`)
   })
 })
@@ -90,6 +92,75 @@ afterEach(() => {
 })
 
 describe('explicit imported draft update', () => {
+  function newDraftWithViewer({ failWrite = false, mismatch = false } = {}) {
+    let posted: { tags: string[], canvasData: unknown } | undefined
+    let failed = false
+    api.mockImplementation(async (url: string, options?: { method?: string, body?: { tags: string[], canvasData: unknown } }) => {
+      if (url.endsWith('/clients')) return [{ id: clientId, name: 'Blood Motor Group' }]
+      if (url.endsWith('/folders')) return []
+      if (url.endsWith('/projects') && options?.method === 'POST') {
+        posted = options.body
+        return { id: 'new-draft' }
+      }
+      if (url.endsWith('/projects')) return []
+      if (url.endsWith('/projects/new-draft')) return { id: 'new-draft', status: 'draft', clientId, folderId: null, canvasData: posted?.canvasData }
+      if (url.endsWith('/snapshot') && options?.method === 'POST') {
+        expect(options.body).toBeUndefined()
+        if (failWrite && !failed) {
+          failed = true
+          throw new Error('Storage unavailable')
+        }
+        return { revision: 'current-revision' }
+      }
+      if (url.endsWith('/snapshot')) return { projectId: 'new-draft', revision: mismatch ? 'other-revision' : 'current-revision' }
+      throw new Error(`Unexpected request ${url}`)
+    })
+  }
+
+  it('creates and reads the canonical saved viewer after verifying a new draft', async () => {
+    newDraftWithViewer()
+    await mountModal()
+    await click('Import undated drafts and backfill the date later')
+    await click('Import assigned drafts')
+    expect(host.textContent).toContain('saved viewer ready')
+    expect(button('Open saved viewer').getAttribute('data-to')).toBe('/creative/banner-studio/view/new-draft')
+    const projectWrites = api.mock.calls.filter(([url, options]) => url.endsWith('/projects') && options?.method === 'POST')
+    expect(projectWrites).toHaveLength(1)
+    const snapshotCalls = api.mock.calls.filter(([url]) => url.endsWith('/snapshot'))
+    expect(snapshotCalls.map(([, options]) => options?.method || 'GET')).toEqual(['POST', 'GET'])
+  })
+
+  it('retains a committed draft and retries only its viewer after a snapshot failure', async () => {
+    newDraftWithViewer({ failWrite: true })
+    await mountModal()
+    await click('Import undated drafts and backfill the date later')
+    await click('Import assigned drafts')
+    expect(host.textContent).toContain('viewer pending')
+    expect(button('Open in Banner Studio').getAttribute('data-to')).toBe('/agency/banner-studio/new-draft')
+    await click('Prepare saved viewer')
+    expect(host.textContent).toContain('saved viewer ready')
+    expect(api.mock.calls.filter(([url, options]) => url.endsWith('/projects') && options?.method === 'POST')).toHaveLength(1)
+    expect(api.mock.calls.filter(([url, options]) => url.endsWith('/snapshot') && options?.method === 'POST')).toHaveLength(2)
+  })
+
+  it('does not claim the viewer ready when its stored and current revisions differ', async () => {
+    newDraftWithViewer({ mismatch: true })
+    await mountModal()
+    await click('Import undated drafts and backfill the date later')
+    await click('Import assigned drafts')
+    expect(host.textContent).toContain('viewer pending')
+    expect(button('Open saved viewer')).toBeUndefined()
+  })
+
+  it('does not write a viewer for a published project during draft reconciliation', async () => {
+    const previous = api.getMockImplementation()!
+    api.mockImplementation((url: string, options?: { method?: string }) => url.endsWith('/projects/draft-id') ? { ...original, status: 'published' } : previous(url, options))
+    await mountModal()
+    await click('Prepare saved viewer')
+    expect(api.mock.calls.some(([, options]) => options?.method)).toBe(false)
+    expect(host.textContent).toContain('Project retained')
+  })
+
   it('holds a new draft when its original TheBrief creation date is missing', async () => {
     api.mockImplementation(async (url: string) => {
       if (url.endsWith('/clients')) return [{ id: clientId, name: 'Blood Motor Group' }]
@@ -149,8 +220,10 @@ describe('explicit imported draft update', () => {
     expect(api.mock.calls.some(([, options]) => options?.method)).toBe(false)
     await click('Back up and update draft')
     const writes = api.mock.calls.filter(([, options]) => options?.method)
-    expect(writes).toHaveLength(1)
+    expect(writes).toHaveLength(2)
     expect(writes[0]?.[1]).toEqual({ method: 'PATCH', body: { clientId, expectedUpdatedAt: original.updatedAt, source, canvasData: canvas } })
+    expect(writes[1]).toEqual(['/api/agency/banner-studio/projects/draft-id/snapshot', { method: 'POST' }])
+    expect(button('Open saved viewer')).toBeDefined()
     expect(imported).toHaveBeenCalledOnce()
     expect(host.textContent).toContain('previous canvas saved in version history')
   })

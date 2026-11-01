@@ -111,10 +111,13 @@ const API_INVENTORY = {
   // the name query to assigned clients unless the caller already has agency scope.
   // Import POST is the one new inline guarded mutation: requireWriteAccess, then
   // resolveEmailWriteClientId. It has no transaction() call and registers no bypass.
-  totalRouteFiles: 2298,
-  mutationRouteFiles: 1254,
-  explicitlyGuardedMutationFiles: 399,
-  guardedMutationFilesWithTransactionCall: 51
+  // Reviewed Banner additions: 12 routes, five mutations; strengthened existing
+  // mutations bring nine inline guards and four transaction calls. Native access
+  // remains mandatory; see the 2026-11-01 inventory evidence.
+  totalRouteFiles: 2310,
+  mutationRouteFiles: 1259,
+  explicitlyGuardedMutationFiles: 408,
+  guardedMutationFilesWithTransactionCall: 55
 } as const
 
 const EMAIL_TEMPLATE_ROUTE_ADDITIONS = {
@@ -162,11 +165,21 @@ describe('God mode route isolation inventory', () => {
   it('records the full mechanical API and mutation inventory reviewed before implementation', () => {
     expect(mechanicalInventory()).toEqual(API_INVENTORY)
     expect(API_INVENTORY).toEqual({
-      totalRouteFiles: 2298,
-      mutationRouteFiles: 1254,
-      explicitlyGuardedMutationFiles: 399,
-      guardedMutationFilesWithTransactionCall: 51
+      totalRouteFiles: 2310,
+      mutationRouteFiles: 1259,
+      explicitlyGuardedMutationFiles: 408,
+      guardedMutationFilesWithTransactionCall: 55
     })
+  })
+
+  it('pins released Banner route inventory to native scope and read-only share boundaries', () => {
+    const review = JSON.parse(readFileSync('docs/runbooks/thebrief-ci-inventory-review-20261101.json', 'utf8')) as { newRoutes: Record<string, string[]> }
+    expect(Object.keys(review.newRoutes)).toHaveLength(12)
+    for (const [file, gates] of Object.entries(review.newRoutes)) {
+      const source = readFileSync(file, 'utf8')
+      for (const gate of gates) expect(source).toContain(gate)
+      expect(source).not.toContain('registerGodModeMutationFamily')
+    }
   })
 
   it('pins Task5 creator reads and reconciliation to existing authority boundaries', () => {
@@ -210,8 +223,8 @@ describe('God mode route isolation inventory', () => {
 
   it('pins transfer and verification bootstrap routes to native authority without a bypass', () => {
     const routes = {
-      'server/api/agency/page-studio/sites/[siteId]/transfer-requests/[requestId]/recovery/admission.post.ts': "handleTransferOperatorHttp(event, 'POST', 'recovery-admission')",
-      'server/api/agency/page-studio/sites/[siteId]/transfer-requests/[requestId]/recovery/review.post.ts': "handleTransferOperatorHttp(event, 'POST', 'recovery-review')",
+      'server/api/agency/page-studio/sites/[siteId]/transfer-requests/[requestId]/recovery/admission.post.ts': 'handleTransferOperatorHttp(event, \'POST\', \'recovery-admission\')',
+      'server/api/agency/page-studio/sites/[siteId]/transfer-requests/[requestId]/recovery/review.post.ts': 'handleTransferOperatorHttp(event, \'POST\', \'recovery-review\')',
       'server/api/portal/page-studio/customer/sites/[siteId]/transfer-requests/[requestId]/recovery/review.post.ts': 'handleTransferReviewOwnerHttp(event)',
       'server/api/agency/page-studio/sites/[siteId]/adoption-grant.get.ts': 'handleTransferOperatorHttp(event, \'GET\', \'adoption-grant\')',
       'server/api/agency/page-studio/sites/[siteId]/adoption-grant.post.ts': 'handleTransferOperatorHttp(event, \'POST\', \'adoption-grant\')',
