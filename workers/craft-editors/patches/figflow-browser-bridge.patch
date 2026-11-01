@@ -861,7 +861,7 @@
 +        let text_x = second.doc().unwrap().world_transform(text).as_coeffs()[4];
 +        let button_x = second.doc().unwrap().world_transform(button).as_coeffs()[4];
 +        assert!(text_x < button_x, "columns must preserve different world-space x positions");
-+        assert!(second.doc().unwrap().nodes().all(|node| node.width.is_finite() && node.height.is_finite() && node.height > 0.0));
++        assert!(second.doc().unwrap().nodes().all(|node| node.width.is_finite() && node.height.is_finite() && (node.is_page() || node.height > 0.0)));
 +    }
 +}
 --- a/crates/engine/src/cmd/mod.rs
@@ -1278,13 +1278,13 @@
 +}
 --- a/crates/ui-egui/src/edm_panel.rs
 +++ b/crates/ui-egui/src/edm_panel.rs
-@@ -0,0 +1,46 @@
+@@ -0,0 +1,47 @@
 +//! XeroFlow email metadata controls on the actual mapped native selection.
 +use egui::{Id, Ui};
 +use figcraft_doc::{Document, NodeId};
 +use serde_json::{Map, Value, json};
 +
-+use crate::{FigApp, widgets};
++use crate::{FigApp, theme::Tokens, widgets};
 +
 +const BLOCK_ID: &str = "xeroflow.edm.blockId";
 +const ROLE: &str = "xeroflow.edm.role";
@@ -1307,13 +1307,14 @@
 +        _ => return false,
 +    };
 +    widgets::section_header(ui, "Email content", &[], false);
++    let t = Tokens::get(ui.ctx());
 +    let mut updates = Map::new();
 +    for (label, key, field) in fields {
 +        let allowed = handoff.allows(&block_id, field);
 +        let current = node.plugin_data.get(key).cloned().unwrap_or_default();
 +        ui.add_enabled_ui(allowed, |ui| {
 +            ui.horizontal(|ui| {
-+                widgets::label(ui, label);
++                widgets::label(ui, label, t.text);
 +                if let Some(value) = widgets::text_field(ui, Id::new(("xeroflow-edm", *id, key)), &current, ui.available_width().max(80.0), label) {
 +                    updates.insert(key.to_owned(), Value::String(value));
 +                }

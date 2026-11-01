@@ -141,3 +141,15 @@ Grok reviewed private native asset release helpers without finding a concrete
 blocker. A local `creative-release.py plan` reproduces the verified creative base
 and prepares only its authenticated immutable-prefix routing addition, retaining
 assets and the existing secrets. It performs no remote mutation.
+
+PR #807 contains the integrated packet at `5e9a33898`. Native run 41294278097
+passed source and relay validation, then stopped on a missing theme-colour
+argument in the native inspector (E0061); no native tests or WASM package passed.
+The exact correction and a page-geometry fixture correction are being pinned
+for the next run. Superseded run 41294060281 and duplicate PR run 41294300314 were
+cancelled to avoid duplicate builds.
+
+Private email-design production dry-run passed (no upload): 1,072.06 KiB raw,
+243.41 KiB gzip, expected renderer/Hyperdrive/KV bindings, feature flag false.
+Evidence retained outside the checkout at
+`/private/tmp/figflow-email-design-dry-run-evidence-20261101`.
