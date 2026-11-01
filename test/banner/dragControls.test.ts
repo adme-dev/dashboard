@@ -86,6 +86,14 @@ afterEach(() => {
   app = undefined
   host.remove()
 })
+
+it('applies video filtering without multiplying animated opacity twice', () => {
+  const video = { id: 1, type: 'video', src: '/clip.mp4', opacity: 0.5, visualFilter: 'brightness(1.12)', keyframes: { opacity: [{ time: 0, value: 0.5 }, { time: 2, value: 0.5 }] } } as Layer
+  mount(VideoLayer, { layer: video, isActive: false })
+  const frame = host.querySelector('video')!.parentElement!
+  expect(frame.style.opacity).toBe('1')
+  expect(frame.style.filter).toBe('brightness(1.12)')
+})
 describe('padding gestures', () => {
   it('protects the layer when Delete belongs to a selected keyframe', () => {
     mount(NumericField, { property: 'paddingH', label: 'Padding', defaultValue: 10 })

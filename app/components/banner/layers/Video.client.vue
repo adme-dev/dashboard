@@ -1,16 +1,18 @@
 <script setup lang="ts">
 import type { Layer } from '~/types/banner-studio'
+import { effectStyleFromLayer } from '~~/shared/bannerEffects'
 
-defineProps<{
+const props = defineProps<{
   layer: Layer
   isActive: boolean
 }>()
+const effects = computed(() => effectStyleFromLayer(props.layer as unknown as Record<string, unknown>))
 </script>
 
 <template>
   <div
     class="absolute inset-0 overflow-hidden"
-    :style="{ opacity: layer.opacity }"
+    :style="{ opacity: layer.keyframes?.opacity?.length ? 1 : layer.opacity, filter: effects.visualFilter }"
   >
     <video
       v-if="layer.src"

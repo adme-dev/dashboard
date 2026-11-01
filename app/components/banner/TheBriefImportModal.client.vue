@@ -25,6 +25,7 @@ let catalogLoad: Promise<void> | null = null
 let catalogGeneration = 0
 const error = ref('')
 const progress = ref('')
+const readyViewers = ref(new Set<string>())
 // Explicit, per-batch operator choice: import undated drafts and mark them for a
 // later Created-date backfill instead of holding them. Never substitutes a date.
 const importUndated = ref(false)
@@ -58,6 +59,7 @@ watch(open, (value) => {
   catalogReady.value = false
   catalogLoad = null
   if (!value) return
+  readyViewers.value.clear()
   error.value = ''
   clients.value = []
   folders.value = []
@@ -94,6 +96,7 @@ function startNextBatch() {
   if (busy.value) return
   files.value = []
   rows.value = []
+  readyViewers.value.clear()
   filesValid.value = true
   error.value = ''
 }
@@ -164,6 +167,13 @@ async function updateImportedDraft() {
       throw new Error('The saved draft needs a persistence check. Retry this update to check the same revision safely.')
     }
     selection.row.status = updated.refreshed ? 'Draft updated · previous canvas saved in version history · needs visual review' : 'Draft matches this package · needs visual review'
+    readyViewers.value.delete(saved.id)
+    try {
+      await storeViewer(saved.id)
+      selection.row.status += ' · saved viewer ready'
+    } catch {
+      selection.row.status += ' · viewer pending; prepare its saved viewer to retry'
+    }
     finishImportAttempt(localStorage, importAttemptKey(selection.row.clientId, selection.row.pkg.source.sha256))
     showDraftUpdate.value = false
     draftUpdate.value = null
@@ -176,6 +186,27 @@ async function updateImportedDraft() {
     busy.value = false
     progress.value = ''
   }
+}
+
+async function storeViewer(projectId: string) {
+  const url = `/api/agency/banner-studio/projects/${projectId}/snapshot`
+  const stored = await api<{ revision: string }>(url, { method: 'POST' })
+  const current = await api<{ projectId: string, revision: string }>(url)
+  if (current.projectId !== projectId || !stored.revision || current.revision !== stored.revision) throw new Error('Saved viewer revision needs a retry')
+  readyViewers.value.add(projectId)
+}
+
+async function prepareSavedViewer(row: TheBriefImportRow) {
+  if (busy.value || !row.projectId) return
+  busy.value = true
+  try {
+    const saved = await api<BannerProject>(`/api/agency/banner-studio/projects/${row.projectId}`)
+    if (saved.status !== 'draft' || saved.clientId !== row.clientId) throw new Error('Only an accessible draft can be prepared here')
+    await storeViewer(saved.id)
+    row.status = 'Draft and saved viewer ready · needs visual review'
+  } catch {
+    row.status = 'Project retained · saved viewer is not ready. Open the draft or retry preparing its viewer.'
+  } finally { busy.value = false }
 }
 
 async function importDrafts() {
@@ -227,6 +258,14 @@ async function importDrafts() {
         row.status = datePending ? 'Saved as draft · creation date pending backfill · needs visual review' : 'Saved as draft · needs visual review'
         existing.push(saved)
         changed = true
+        try {
+          await storeViewer(saved.id)
+          row.status += ' · saved viewer ready'
+        } catch {
+          // The project is already verified and committed. A failed R2 snapshot
+          // must never turn a retry into another project or repeat asset uploads.
+          row.status += ' · viewer pending; prepare its saved viewer to retry'
+        }
       } catch (cause) {
         row.status = cause instanceof Error ? cause.message : 'Import failed'
         // Retain the durable attempt marker on failure: a lost response may have committed.
@@ -380,6 +419,25 @@ async function importDrafts() {
               {{ row.status }}
             </p>
             <div v-if="row.projectId" class="flex flex-wrap gap-2">
+              <UButton
+                v-if="readyViewers.has(row.projectId)"
+                :to="`/creative/banner-studio/view/${row.projectId}`"
+                variant="outline"
+                color="neutral"
+                icon="i-lucide-play"
+              >
+                Open saved viewer
+              </UButton>
+              <UButton
+                v-else
+                variant="outline"
+                color="neutral"
+                icon="i-lucide-refresh-cw"
+                :disabled="busy"
+                @click="prepareSavedViewer(row)"
+              >
+                Prepare saved viewer
+              </UButton>
               <UButton
                 :to="`/agency/banner-studio/${row.projectId}`"
                 variant="outline"
