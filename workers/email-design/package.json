@@ -1,0 +1,16 @@
+{
+  "name": "@xeroflow/email-design",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": "24.18.0"
+  },
+  "scripts": {
+    "build": "node ../../node_modules/nitropack/dist/cli/index.mjs build && node build.mjs",
+    "test:admission": "node --import tsx test-admission.mjs",
+    "deploy:check": "node deploy.mjs production --check-only",
+    "deploy:staging": "node deploy.mjs staging",
+    "deploy:production": "node deploy.mjs production",
+    "deploy:production:dry-run": "node deploy.mjs production --dry-run"
+  }
+}

@@ -1,0 +1,51 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "xeroflow-email-design-production",
+  "account_id": "a5b299b3ad15c1b5b895dc66f9357b17",
+  "main": "dist/worker.mjs",
+  "compatibility_date": "2026-07-08",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [],
+  "triggers": {
+    "crons": []
+  },
+  "observability": {
+    "enabled": false,
+    "logs": {
+      "enabled": false,
+      "invocation_logs": false
+    }
+  },
+  "vars": {
+    "EMAIL_DESIGN_ENVIRONMENT": "production",
+    "PAGE_STUDIO_RELEASE_ENVIRONMENT": "production",
+    "FIGFLOW_EDM_DRAFT_SAVES_ENABLED": "false"
+  },
+  "services": [
+    {
+      "binding": "EMAIL_RENDERER",
+      "service": "xeroflow-email-rendering-production",
+      "entrypoint": "EmailRenderer"
+    }
+  ],
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE",
+      "id": "900b4b74ec41462cbbabebd0aa8775aa"
+    },
+    {
+      "binding": "HYPERDRIVE_FRESH",
+      "id": "90228af3e2cc461bbc09accc3b47bd9f"
+    }
+  ],
+  "kv_namespaces": [
+    {
+      "binding": "CACHE",
+      "id": "7d5db1c489cb40f4b809d611e1408acd"
+    }
+  ]
+}

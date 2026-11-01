@@ -526,6 +526,16 @@ binding = "EMAIL_RENDERER"
 service = "xeroflow-email-rendering-production"
 entrypoint = "EmailRenderer"
 
+# Private template writes and opt-in design drafts. Deploy and provision the
+# matching JWT_SECRET on this service before deploying the Pages caller.
+[[env.preview.services]]
+binding = "EMAIL_DESIGN"
+service = "xeroflow-email-design-staging"
+
+[[env.production.services]]
+binding = "EMAIL_DESIGN"
+service = "xeroflow-email-design-production"
+
 # Read-only OEM brand assets through the existing Creative Suite connection.
 # MotorStack credentials remain on that Worker; preview has no production binding.
 [[env.production.services]]

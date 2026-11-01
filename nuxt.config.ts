@@ -416,6 +416,9 @@ export default defineNuxtConfig({
 
   nitro: {
     preset: 'cloudflare_pages',
+    // These handlers are built into the private email-design Worker. Pages keeps
+    // only the sibling transport route, avoiding a second bundled service graph.
+    ignore: ['**/api/email/design/drafts/**'],
     // Database helpers resolve Cloudflare bindings from Nitro's active request.
     // Without async context, useEvent() throws and Hyperdrive silently falls
     // through to the local-only DATABASE_URL path.

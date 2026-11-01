@@ -11,7 +11,7 @@ vi.mock('~~/server/utils/email-marketing/access', async (original) => ({ ...awai
 vi.mock('~~/server/utils/email-marketing/templates', () => ({ getTemplate: mocks.get, updateTemplate: mocks.update }))
 vi.mock('~~/server/utils/email-marketing/render/client', () => ({ createEmailRenderer: () => ({}) }))
 import choices from '../../server/api/email/template-clients.get'
-import patch from '../../server/api/email/templates/[id].patch'
+import patch from '../../server/utils/email-marketing/templateUpdateHandler'
 const a = '11111111-1111-4111-8111-111111111111'
 const b = '22222222-2222-4222-8222-222222222222'
 const event = { context: {} } as any
