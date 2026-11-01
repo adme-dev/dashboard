@@ -416,6 +416,9 @@ export default defineNuxtConfig({
 
   nitro: {
     preset: 'cloudflare_pages',
+    // Design endpoints are excluded until the private service is provisioned.
+    // Existing template writes stay local; activating drafts requires a release.
+    ignore: ['**/api/email/design/**'],
     // Database helpers resolve Cloudflare bindings from Nitro's active request.
     // Without async context, useEvent() throws and Hyperdrive silently falls
     // through to the local-only DATABASE_URL path.

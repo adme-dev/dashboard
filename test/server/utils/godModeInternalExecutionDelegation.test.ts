@@ -375,6 +375,8 @@ describe('God mode internal execution delegation', () => {
     ['POST', '/api/crm/search'],
     ['GET', '/api/email/campaigns/not-a-uuid/events'],
     ['POST', '/api/xero/invoices'],
+    ['PATCH', `/api/email/templates/${READ_ID}`],
+    ['DELETE', `/api/email/templates/${READ_ID}`],
     ['GET', '/api/crm/ai/draft-followup']
   ])('rejects an unregistered or widened delegated read target: %s %s', (method, path) => {
     expect(isAllowedGodModeInternalExecutionTarget(method, path)).toBe(false)
