@@ -109,7 +109,7 @@ beforeAll(async () => {
     modules: true,
     scriptPath,
     compatibilityDate: '2026-07-08',
-    compatibilityFlags: ['nodejs_compat'],
+    compatibilityFlags: ['nodejs_compat', 'global_fetch_strictly_public'],
     bindings: {
       EMAIL_DESIGN_SESSION_AUTHORITY: 'pages-auth-me-v1',
       FIGFLOW_EDM_DRAFT_SAVES_ENABLED: 'true',

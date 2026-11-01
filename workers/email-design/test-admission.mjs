@@ -37,7 +37,7 @@ async function scenario(name, bindings, run) {
     modules: true,
     scriptPath: resolve('dist/worker.mjs'),
     compatibilityDate: '2026-07-08',
-    compatibilityFlags: ['nodejs_compat'],
+    compatibilityFlags: ['nodejs_compat', 'global_fetch_strictly_public'],
     bindings,
     outboundService: async (req) => {
       assert.equal(req.url, 'https://preview.agency-dashboard-6cm.pages.dev/api/auth/me')

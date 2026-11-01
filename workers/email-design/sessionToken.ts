@@ -58,7 +58,7 @@ export async function verifyJwt(token: string): Promise<Record<string, unknown> 
     const payload = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(data), c => c.charCodeAt(0))))
     if (payload.userId !== authority.user.id || (payload.exp && Date.now() > payload.exp)) return null
     return payload
-  } catch { throw authorityUnavailable('transport') }
+  } catch { throw authorityUnavailable('invalid_response') }
 }
 
 function authorityUnavailable(code: string): Error {
