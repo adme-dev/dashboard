@@ -11,21 +11,11 @@ function app(env: Record<string, unknown>) {
 }
 
 describe('private design service forwarding', () => {
-  it.each(['PATCH', 'DELETE'])('keeps existing template %s available while design drafts are disabled', async (method) => {
-    const fetch = vi.fn(async (request: Request) => {
-      expect(request.method).toBe(method)
-      expect(request.url).toBe(`https://app.xeroflow.io/api/email/templates/${id}`)
-      return Response.json({ ok: true })
-    })
-    const response = await app({ EMAIL_DESIGN: { fetch } })(new Request(`https://app.xeroflow.io/api/email/templates/${id}`, { method }))
-    expect(response.status).toBe(200)
-    expect(response.headers.get('cache-control')).toBe('no-store')
-    expect(fetch).toHaveBeenCalledTimes(1)
-  })
-  it.each(['PATCH', 'DELETE'])('fails closed for existing template %s without its binding', async (method) => {
-    const response = await app({})(new Request(`https://app.xeroflow.io/api/email/templates/${id}`, { method }))
-    expect(response.status).toBe(503)
-    expect(response.headers.get('cache-control')).toBe('no-store')
+  it.each(['PATCH', 'DELETE'])('never forwards existing template %s through the design-only transport', async (method) => {
+    const fetch = vi.fn()
+    const response = await app({ FIGFLOW_EDM_DRAFT_SAVES_ENABLED: 'true', EMAIL_DESIGN: { fetch } })(new Request(`https://app.xeroflow.io/api/email/templates/${id}`, { method }))
+    expect(response.status).toBe(404)
+    expect(fetch).not.toHaveBeenCalled()
   })
   it('stays disabled without contacting a binding', async () => {
     const fetch = vi.fn()

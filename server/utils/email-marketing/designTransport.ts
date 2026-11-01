@@ -15,12 +15,10 @@ export default defineEventHandler(async (event) => {
   const env = event.context.cloudflare?.env ?? {}
   const path = getRequestURL(event).pathname
   const draft = /^\/api\/email\/design\/drafts\/[0-9a-f-]{36}(\/metadata)?$/i.exec(path)
-  const template = /^\/api\/email\/templates\/[0-9a-f-]{36}$/i.test(path)
-    && (event.method === 'PATCH' || event.method === 'DELETE')
   const allowed = (draft && (event.method === 'PATCH' || (!draft[1] && event.method === 'GET')))
     || (['/api/email/design/drafts/initialize', '/api/email/design/roundtrip'].includes(path) && event.method === 'POST')
-  // Existing template CRUD remains available when new draft saves are disabled.
-  if (!template && (env.FIGFLOW_EDM_DRAFT_SAVES_ENABLED !== 'true' || !allowed))
+  // Existing template CRUD has its own local handlers; this route is design-only.
+  if (env.FIGFLOW_EDM_DRAFT_SAVES_ENABLED !== 'true' || !allowed)
     throw createError({ statusCode: 404, statusMessage: 'not_found' })
   const service = env.EMAIL_DESIGN
   const environment = env.PAGE_STUDIO_RELEASE_ENVIRONMENT

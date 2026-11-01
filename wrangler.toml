@@ -342,6 +342,7 @@ MCP_WORKER_ORIGIN = "https://mcp-server.adme-dev.workers.dev"
 MCP_SUITE_CONFIG = '{"generation":true,"writes":true,"financial":false,"video":true,"videoGeneration":false,"banners":true,"feeds":true,"googleAdsRead":true,"googleAdsWrite":true,"googleAdsAutomation":false,"googleAdsDestructive":false}'
 CRM_SEARCH_RELEASE_ENVIRONMENT = "production"
 PAGE_STUDIO_RELEASE_ENVIRONMENT = "production"
+FIGFLOW_EDM_DRAFT_SAVES_ENABLED = "false"
 PAGE_STUDIO_PROVISIONING_ENVIRONMENT = "production"
 PAGE_STUDIO_CONTENT_ENVIRONMENT = "production"
 PAGE_STUDIO_CONTENT_ATTACHMENT_RUNTIME_DIGEST = "2dd87c86b6d909889e4fa2dc60dbca45b660144d5169d054e8a1fcd8b737ce83"
@@ -525,6 +526,12 @@ entrypoint = "EmailRenderer"
 binding = "EMAIL_RENDERER"
 service = "xeroflow-email-rendering-production"
 entrypoint = "EmailRenderer"
+
+# Private design transport remains disabled until matching session authority and
+# hosted acceptance are verified. Provision this service before deploying Pages.
+[[env.production.services]]
+binding = "EMAIL_DESIGN"
+service = "xeroflow-email-design-production"
 
 # Read-only OEM brand assets through the existing Creative Suite connection.
 # MotorStack credentials remain on that Worker; preview has no production binding.

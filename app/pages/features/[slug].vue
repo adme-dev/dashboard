@@ -1604,31 +1604,23 @@ const features: Record<string, Feature> = {
     categoryIcon: 'i-lucide-message-circle',
     categoryIconBg: 'bg-violet-50',
     categoryIconColor: 'text-violet-600',
-    description: 'Build emails from reusable sections and eleven starter templates, edit content and styles, and preview the rendered email. FigFlow content handoff is in development and remains disabled.',
+    description: 'Build from reusable sections and eleven starters, edit content and styles, and preview email HTML. FigFlow content handoff is in development and disabled.',
     details: [
       {
-        title: 'Sections and Building Blocks',
-        content: 'Build emails from 60 current design sections organised by purpose — Header, Content, Feature, Call to action, E-Commerce, Transactional, and Footer — alongside basic blocks like headings, text, buttons, images, dividers, spacers, columns, and containers. Drop a whole section onto the canvas and you get a polished, on-brand layout in one click instead of assembling it element by element. Reorder, duplicate, or delete with a click, use the insert zones between blocks to slot new content exactly where you want it, and edit headings and body copy directly on the canvas — click the text and type, WYSIWYG.'
+        title: 'Sections and Custom Modules',
+        content: 'Choose from 60 sections across Header, Content, Feature, Call to action, E-Commerce, Transactional and Footer, or assemble headings, text, buttons, images, dividers, spacers, columns and containers. Live thumbnails show each named section with its email background. Insert, reorder, duplicate or delete blocks and edit text on the canvas. Save selected blocks as shared Custom Modules with thumbnails; rename or remove them from the palette.'
       },
       {
-        title: 'Live Section Previews',
-        content: 'The section palette shows each preset as a live-rendered thumbnail, not a vague icon, so you can see exactly what a section looks like before you add it. Hover any category and a flyout reveals miniature previews of every section inside it — identify each design by its actual module name, then click to drop in the right header, hero or footer. Module previews preserve their email backgrounds, and native footer colours stay consistent between the editor and rendered HTML.'
+        title: 'Eleven Starter Templates',
+        content: 'Start with GlideX, FuturaX, Aviro or an industry design for automotive, property, hospitality, health and wellness, or professional services. Automotive starters cover vehicle interest, sale weekends and launch RSVPs. Browse local previews, filter by industry, email type or style, and search by name or industry. Starters include editable content, calls to action and unsubscribe footers. Blank starts and saved team templates remain available.'
       },
       {
-        title: 'Save Your Own Custom Modules',
-        content: 'Built a header, footer, or promo block you want to reuse? Select it and save it as a Custom Module — it joins its own category in the palette with a live thumbnail, ready to drop into any email. Saved modules are shared across your team and can be renamed or removed at any time, so your house style becomes a reusable kit instead of something you rebuild every send.'
+        title: 'Client Libraries and Import',
+        content: 'Organise authorised client templates and drafts into categories; copy shared defaults independently. Recent, draft and category views, scoped search and the email image library support daily work. Import HTML or XeroFlow JSON through a sanitised preview. HTML retains tables, basic inline styles and public HTTPS images; active content and style sheets are removed. OEM source records retain make, date, file hash and review notes; originals open as copies. JSON backups preserve design, subject, preview text, category and draft status. Make and provider filters retain client scope. Failed loads block editing; retries reconcile the same save. Import does not imply campaign approval.'
       },
       {
-        title: 'Starter Templates and a Visual Gallery',
-        content: 'Start with GlideX, FuturaX and Aviro, or choose a coordinated industry design for automotive, property, hospitality, health and wellness, or professional services. Dealership campaigns include upcoming-vehicle interest registration, sale weekends and launch-event RSVPs. The eleven-template gallery includes locally hosted preview images and filters for industry, email type and design style, plus name and industry search. Each new industry starter contains editable headers, image-led content, features, a clear call to action and an unsubscribe footer. A blank-start option remains available, and saved team templates and drafts are preserved.'
-      },
-      {
-        title: 'Client Libraries, Categories and Import',
-        content: 'Keep reusable XeroFlow defaults alongside client-owned templates and drafts. Choose an authorised platform client when saving, organise saved templates into categories, and make an independent client copy of a shared default. The library includes working recent, draft and category views, scoped client search, and the existing email image library. Import an HTML email or XeroFlow document JSON, review a sanitised preview, then save it to a client and category. HTML imports retain tables, basic inline styles and public HTTPS images; active content and style sheets are removed. Recorded OEM source details include make, import date, original file hash and review notes. Source originals open as independent copies by default, and portable JSON backups preserve the design, subject, preview text, category and draft status for re-import. Make filters and provider search combine with client scope; failed loads block editing, and import retries reconcile the same save. Imported source information does not certify a campaign as approved.'
-      },
-      {
-        title: 'Content Editing and Email Preview',
-        content: 'Edit block spacing, typography, borders and backgrounds, then switch between Editor, Preview and HTML. Save reusable templates for the team. The FigFlow content handoff is in development: supported text, image and button edits return for review and explicit Apply, with revision conflicts protecting newer staff edits. Hosted access remains disabled. Shared-module handoff and Apple Mail, Gmail and Outlook acceptance remain separate work.'
+        title: 'Editing, Preview and FigFlow',
+        content: 'Edit spacing, typography, borders and backgrounds; switch between Editor, Preview and HTML. FigFlow content handoff is in development and disabled: supported text, image and button edits return for rendered review and explicit Apply, with revision conflicts protecting newer staff edits. Shared-module handoff and Apple Mail, Gmail and Outlook acceptance remain separate work.'
       }
     ]
   },

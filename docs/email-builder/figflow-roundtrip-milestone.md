@@ -153,3 +153,33 @@ Private email-design production dry-run passed (no upload): 1,072.06 KiB raw,
 243.41 KiB gzip, expected renderer/Hyperdrive/KV bindings, feature flag false.
 Evidence retained outside the checkout at
 `/private/tmp/figflow-email-design-dry-run-evidence-20261101`.
+
+Latest verification checkpoint: source `018c306c366e3e9cc1d6a02cb51dddbefec65a6b`
+contains the native character-override correction. Run 41295066084 compiled and
+passed all original native groups, including exactly seven bridge tests, plus
+three of four EDM tests. The remaining content-edit test identified the engine's
+derived `characters` override marker. Only that marker is now excluded for mapped
+text/button text; all other structure/style checks remain. Independent review
+confirmed the scope. Run 41296329622 verifies this correction; its browser package
+must pass before the opt-in actual-WASM case can run.
+
+The first explicit Pages transport build measured 25,469,479 raw bytes, 551 over
+the unchanged budget, so it is not releasable. The unused template-dispatch branch
+was removed from the design-only transport; existing template writes remain local.
+Email Builder marketing copy was condensed while preserving capabilities and the
+explicit disabled status. All 18 transport cases and targeted lint pass. A second
+full build is running. The candidate also adds the production private-service
+binding with its flag explicitly false; the service must be deployed before Pages.
+Heavy design implementations remain excluded. Independent review found no new
+reachability through the transport and no change to release or size guards.
+
+Production database preflight at 2026-11-01T10:12:18Z matched the local connection
+to Hyperdrive `900b4b74ec41462cbbabebd0aa8775aa` by host/database/user and confirmed
+existing templates with no design documents or handoffs tables. This was read-only;
+no production migrations or releases have occurred in this milestone.
+
+Final Pages transport build passed: raw 25,468,495 / 25,468,928 bytes (433
+remaining), gzip 7,338,317 / 9,750,000 bytes. Emitted JavaScript contains the
+transport error marker and no handoff-table or operation-conflict implementation
+markers. Both capability flags remain false. This candidate is ready for source
+integration only after native/browser verification; it is not deployed.
