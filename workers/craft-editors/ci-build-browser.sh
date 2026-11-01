@@ -83,6 +83,20 @@ matched = re.findall(
 if len(matched) != len(expected) or set(matched) != expected:
     raise SystemExit(f'Expected exactly seven passing browser_bridge tests; matched {len(matched)}: {matched}')
 PY
+  cargo test --locked -p figcraft-engine --lib edm_ > "$evidence/test-edm.log" 2>&1
+  python3 - "$evidence/test-edm.log" <<'PY'
+import re,sys
+from pathlib import Path
+expected = {
+    'edm_content_roundtrip_preserves_canonical_identity_and_locked_fields',
+    'edm_snapshot_rejects_native_additions_and_style_changes',
+    'edm_image_url_change_requires_bytes_then_reopens_current_paint',
+    'edm_policy_and_column_geometry_stay_bounded_and_non_overlapping',
+}
+matched = re.findall(r'^test (?:cmd::edm::tests::)?(edm_[A-Za-z0-9_]+) \.\.\. ok$', Path(sys.argv[1]).read_text(), re.M)
+if len(matched) != len(expected) or set(matched) != expected:
+    raise SystemExit(f'Expected exactly four passing EDM tests; matched {len(matched)}: {matched}')
+PY
   cargo test --locked -p figcraft-engine --lib browser_export_bound > "$evidence/test-browser-export-bound.log" 2>&1
   cargo test --locked -p figcraft-format --lib zip_files > "$evidence/test-zip-files.log" 2>&1
 fi

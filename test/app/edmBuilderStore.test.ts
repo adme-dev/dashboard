@@ -7,6 +7,38 @@ describe('useEdmBuilder store', () => {
     useEdmBuilder().resetDocument()
   })
 
+  it('applies a FigFlow proposal as one undo action and refuses a stale local baseline', () => {
+    const s = useEdmBuilder()
+    const source = {
+      root: { type: 'EmailLayout', data: { childrenIds: ['text'] } },
+      text: { type: 'Text', data: { props: { text: 'Original' } } }
+    }
+    s.resetDocument(source)
+    const next = JSON.parse(JSON.stringify(source))
+    next.text.data.props.text = 'From FigFlow'
+    expect(s.applyDesignReturn(source, next)).toBe(true)
+    expect(s.past.value).toHaveLength(1)
+    s.undo()
+    expect(s.document.value.text.data.props!.text).toBe('Original')
+    s.redo()
+    expect(s.document.value.text.data.props!.text).toBe('From FigFlow')
+    expect(s.applyDesignReturn(source, next)).toBe(false)
+    expect(s.past.value).toHaveLength(1)
+  })
+
+  it('keeps a proposal separate from edits recorded in the same microtask', () => {
+    const s = useEdmBuilder()
+    const id = s.addBlock('Heading', 'root')
+    const source = JSON.parse(JSON.stringify(s.document.value))
+    const next = JSON.parse(JSON.stringify(source))
+    next[id].data.props.text = 'Proposal'
+    const count = s.past.value.length
+    expect(s.applyDesignReturn(source, next)).toBe(true)
+    expect(s.past.value).toHaveLength(count + 1)
+    s.undo()
+    expect(s.document.value).toEqual(source)
+  })
+
   it('starts with an empty root EmailLayout', () => {
     const s = useEdmBuilder()
     expect(s.document.value.root.type).toBe('EmailLayout')

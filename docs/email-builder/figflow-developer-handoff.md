@@ -4,6 +4,16 @@ Updated 1 November 2026. This is an entry point for contributors, not a feature
 completion certificate. The [task ledger](../superpowers/plans/2026-10-30-figflow-edm.md)
 and [PRD](../superpowers/specs/2026-10-30-figflow-edm-design.md) remain canonical.
 
+## Active contribution
+
+[PR #807](https://github.com/adme-dev/dashboard/pull/807) implements the first
+content round-trip subset on `adme-dev/figflow-roundtrip-20261101` in the isolated
+`figflow-edm-release-20261101` checkout. Codex owns integration, Kimi native code,
+and Grok relay/review. Read the [active milestone ledger](figflow-roundtrip-milestone.md)
+before claiming overlapping files. Backend, composer, relay and bundle checks
+pass locally; final native/browser acceptance and hosted activation remain
+open. The production receipt below is still the disabled foundation.
+
 ## What is merged and deployed
 
 - Native source/build prerequisites: [PR #798](https://github.com/adme-dev/dashboard/pull/798).
@@ -25,6 +35,13 @@ Existing template PATCH/DELETE still execute locally in Pages through
 `nuxt.config.ts`. Pages has no `EMAIL_DESIGN` binding. Setting a flag cannot
 activate those excluded routes. Keep this release shape until an explicit,
 reviewed activation change is ready.
+
+PR #807 now prepares a design-only forwarding route and production EMAIL_DESIGN
+binding with the flag explicitly false. Its full Pages build passes at
+25,468,495 raw bytes (433 remaining). Heavy design implementations stay in the
+private Worker; template writes stay local. Provision the private service before
+releasing that Pages configuration. These are candidate facts, not a new live
+deployment receipt.
 
 The foundation contains canonical contracts, capability checks, immutable draft
 revision/receipt services, metadata/legacy initialization, paired schema files,
@@ -63,11 +80,11 @@ canvas-to-HTML export should be presented as send-ready email.
 
 | Work package | Owner status | Files / boundary | Concrete next action |
 |---|---|---|---|
-| Canonical/native conversion (F02/F05) | Unassigned; claim before editing | `shared/emailRendering/designAdapter.ts`, `designContract.ts`, capability matrix; coordinate contract edits with all consumers | Define supported node/field mappings against the pinned native source; implement forward and reverse conversion preserving lineage, links, locks and responsive structure. Reject unsupported conversions explicitly. |
-| FigFlow EDM mode and bridge (F01/F06) | Unassigned; can contribute alongside conversion after mapping agreement | `workers/craft-editors/source-pins.json`, native patches and build recipe; `designSessions.ts`/session routes when introduced | Add bounded EDM operations to the actual document instance. Preserve current command/path/output restrictions; bind server sessions to actor, scope, document, revision and exact origin. |
+| Canonical/native conversion (F02/F05) | Codex; content subset in review in PR #807 | `shared/emailRendering/designAdapter.ts`, `designContract.ts`, capability matrix; coordinate contract edits with all consumers | Verify the first content mapping in `designComposer.ts` and the pinned native patch against the actual WASM package. Extend mappings only as a separately reviewed follow-up with preservation fixtures. |
+| FigFlow EDM mode and bridge (F01/F06) | Kimi / Grok; native/relay packet in CI | `workers/craft-editors/source-pins.json`, native patches and build recipe; `designHandoffs.ts` and `/api/email/design/roundtrip` | Finish native compilation and actual-WASM acceptance for the authored EDM operations, then promote the immutable package through the guarded private asset service. Keep the existing authority and receipt boundaries. |
 | Durable assets and publication (F03/F04) | Unassigned; coordinate with conversion owner | Proposed `designAssets.ts`, `designPublishing.ts`, publish route and additive schema | Implement private staging and reconciled storage/database state, source-read/destination-write authorization, immutable publication and payload-bound receipts. Reuse canonical libraries and renderer. |
 | Shared modules (F07) | Unassigned; depends on publication and bridge contracts | Existing custom-module service/composable and module menu; FigFlow library panel | Expose the same scoped library in both editors, preserve immutable pins and overrides, and require explicit update/conflict choices. |
-| Staff controls and return flow (F08/F09) | Unassigned; depends on conversion/bridge contracts | Existing EDM builder/property panels, proposed handoff component, native preflight/sendability owner | Keep normal edits in composer; persist before handoff; preview/apply return as one undoable action with CAS conflicts. Add only controls required by supported mappings. |
+| Staff controls and return flow (F08/F09) | Codex; content return implemented, acceptance open | Existing EDM builder/property panels, proposed handoff component, native preflight/sendability owner | Keep normal edits in composer; persist before handoff; preview/apply return as one undoable action with CAS conflicts. Add only controls required by supported mappings. |
 
 No contributor owns unrelated source files by implication. Native and conversion
 contributors must agree the mapping before independently changing either format.
@@ -79,8 +96,8 @@ its presence does not mean publishing/proposal persistence is implemented.
 | Hurdle | Required resolution | Does it block independent implementation? |
 |---|---|---|
 | Matching service signing key | Operator must identify the approved source of the existing Pages JWT_SECRET or provision the same value securely. Local checked env files, GitHub repository secrets and shared Cloudflare Secrets Store did not contain it. Do not print or rotate it. | No; blocks service authentication/activation. |
-| Design schema | Apply migrations 491 and 492 together to the explicitly verified environment before activating current revision writers. Neither has been applied to production. Existing local template CRUD does not require them. | No; existing disposable database fixtures support final verification. |
-| Pages size | Current release has only 690 raw bytes remaining. Restoring transport adds code: remeasure and solve that specific size change without raising the budget. | No; standalone service/native development can continue. |
+| Design schema | Apply migrations 491, 492 and 493 together to the explicitly verified environment before activating current revision writers. None has been applied to production. Existing local template CRUD does not require them. | No; existing disposable database fixtures support final verification. |
+| Pages transport | Candidate build includes forwarding within the existing budget, with 433 raw bytes remaining. Provision the private service before Pages and retain disabled flags pending hosted acceptance. | No; final release rebuild and live verification remain. |
 | Native hosted bridge | The pinned native build prerequisites are merged, but the new browser package has not been deployed/accepted as an EDM bridge. | Blocks real round-trip acceptance. |
 | Cross-client email proof | Obtain designated test recipients or rendering-service access; cover the exact Apple Mail, Gmail and Outlook variants in F10. No customer sends. | No; blocks compatibility acceptance and ready-to-send claims. |
 

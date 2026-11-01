@@ -1,6 +1,6 @@
 # Private email design service
 
-This Worker prepares four FigFlow draft routes and the canonical template
+This Worker prepares five FigFlow draft/handoff routes and the canonical template
 update/delete handlers for a future private-service rollout. It has no public
 route, workers.dev URL, preview URL, cron or email-send capability.
 
@@ -23,6 +23,7 @@ useful preparation, not hosted acceptance or an enabled staff feature.
 | PATCH | `/api/email/design/drafts/:id` | Canonical revision save |
 | PATCH | `/api/email/design/drafts/:id/metadata` | Canonical metadata save |
 | POST | `/api/email/design/drafts/initialize` | Immutable legacy initialization |
+| POST | `/api/email/design/roundtrip` | Actor-bound open/resume and durable proposal/apply/cancel |
 | PATCH | `/api/email/templates/:id` | Existing template update handler |
 | DELETE | `/api/email/templates/:id` | Existing template delete handler |
 
@@ -68,7 +69,7 @@ pnpm exec vitest run test/integration/emailDesignWorker.database.test.ts --maxWo
 That fixture requires the disposable local cluster on port 55483, unix socket
 and loopback TCP, role `figflow_test`, and admin database `figflow_design_test`.
 It creates and drops its own uniquely named database. It tests the actual
-renderer RPC, all six routes, immutable/replayed revisions, metadata source
+renderer RPC, all seven routes, immutable/replayed revisions, metadata source
 preservation, legacy flag-off behavior, viewer denial, conflict responses,
 session revocation and connection cleanup. Outbound HTTP is blocked and counted.
 Without both environment variables it skips; a skipped run is not runtime proof.
@@ -81,8 +82,8 @@ or compatibility with Apple Mail, Outlook and Gmail.
 1. Review and validate a clean source commit containing current main. Production
    requires exact fetched `origin/main`; `deploy.mjs` rejects a different account,
    Worker, renderer, database, public entry point, capability or enabled flag.
-2. Apply migrations 491 and 492 together to the identified target database after
-   the repository's database procedure. Both revision writers require 492.
+2. Apply migrations 491, 492 and 493 together to the identified target database after
+   the repository's database procedure. Both revision writers require 492; handoffs and their immutable operation receipts require 493.
 3. Deploy the private service through `pnpm deploy:staging` or
    `pnpm deploy:production` in this directory. The script rebuilds the checked
    source before invoking Wrangler. It does not deploy Pages.

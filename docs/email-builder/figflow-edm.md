@@ -5,6 +5,7 @@ Status: the disabled foundation is merged and deployed (PR #801, source
 partial; the FigFlow bridge, staff round trip and shared-module publishing
 remain unfinished and are not activated.
 
+- [Active first round-trip milestone](figflow-roundtrip-milestone.md)
 - [Current deployment, blockers and developer handoff](figflow-developer-handoff.md)
 - [Source inventory and discovery evidence](figflow-integration-inventory.md)
 - [Product requirements and design](../superpowers/specs/2026-10-30-figflow-edm-design.md)
