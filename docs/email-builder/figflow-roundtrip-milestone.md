@@ -131,3 +131,10 @@ found no important blocker. The Worker build now explicitly rejects an artifact
 that retains the local signing verifier. Production activation is reviewed true;
 staging stays disabled. No new production text binding is introduced for the UI.
 Pages build and hosted acceptance remain pending at this checkpoint.
+
+Hosted diagnosis: content-free Worker tail identifies HTTP 522 when calling the
+canonical auth owner, while the signed-in browser reaches that endpoint (200).
+This is same-zone origin routing: the caller lacks the public-fetch compatibility
+flag already present on Creative Suite. Add `global_fetch_strictly_public` to the
+private Worker's exact guarded configuration so its fixed auth URL traverses the
+public hostname. No actor/session check is relaxed and no alternate host is added.

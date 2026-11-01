@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { validateEmailDesignTarget } from '../../workers/email-design/deploy.mjs'
 
 interface Config {
+  compatibility_flags: string[]
   account_id: string
   name: string
   main: string
@@ -23,6 +24,7 @@ describe('private email design deployment targets', () => {
     expect(() => validateEmailDesignTarget(config(environment), environment)).not.toThrow()
   })
   it.each([
+    ['public auth routing', (value: Config) => { value.compatibility_flags = ['nodejs_compat'] }],
     ['account', (value: Config) => { value.account_id = 'another-account' }],
     ['name', (value: Config) => { value.name = 'agency-dashboard' }],
     ['artifact', (value: Config) => { value.main = '../../dist/_worker.js/index.js' }],

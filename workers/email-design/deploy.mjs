@@ -14,7 +14,7 @@ export function validateEmailDesignTarget(config, environment) {
     account_id: 'a5b299b3ad15c1b5b895dc66f9357b17',
     main: 'dist/worker.mjs',
     compatibility_date: '2026-07-08',
-    compatibility_flags: ['nodejs_compat'],
+    compatibility_flags: ['nodejs_compat', 'global_fetch_strictly_public'],
     workers_dev: false,
     preview_urls: false,
     routes: [],
