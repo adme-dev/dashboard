@@ -12,9 +12,11 @@ existing output directory, unsafe archives, missing relay/WASM and oversized
 assets. Generated output lives under ignored `dist/`; retain its receipt with
 the release evidence. Preparation is separate from deployment.
 
-No production release has occurred. Matching source/native tests, browser
-acceptance, current-main checks and a guarded creative-host binding change are
-required before activation. See the active round-trip milestone ledger.
+Production asset version `86f446f6-f9de-4ce1-b6af-10a0bf722cb1` and creative
+gateway version `595f31ce-abd5-4e3d-ba7c-b9e1f3f59fce` were deployed from main
+`b63cd1e59bebcbc6f88d698f7eac62ee52953924` after native CI and isolated actual-WASM
+acceptance. Hosted staff acceptance is still pending and composer access remains
+disabled. See the active milestone and release receipt.
 
 Release order after final verification:
 
@@ -34,5 +36,10 @@ Release order after final verification:
    creative version for rollback. Enable composer/backend flags only after the
    separate private email service and schema prerequisites are verified.
 
-These commands have not yet been run for this milestone. No native or hosted
-acceptance is implied by their presence.
+Steps 1–4 completed for the recorded release. Step 5 has Cloudflare and
+unauthenticated boundary readback; authenticated host verification is pending.
+The promotion script is pinned
+to its previous creative baseline; after successful deployment it must refuse
+that old baseline. Reconcile the current source/version before another release.
+Cloudflare and unauthenticated boundary readback passed; authenticated hosted
+acceptance remains separate.

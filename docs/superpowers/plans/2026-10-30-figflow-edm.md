@@ -7,9 +7,9 @@
 **Tech stack:** Nuxt 4/Vue/Nuxt UI, TypeScript/Zod, Neon Postgres, existing Cloudflare rendering/storage infrastructure; pinned Rust/WASM FigFlow source after ownership verification.
 **Spec:** [PRD and design](../specs/2026-10-30-figflow-edm-design.md).
 
-**Current release:** [Disabled foundation deployment and contributor handoff](../../email-builder/figflow-developer-handoff.md). PR #801 is deployed; this does not close the product tasks below.
+**Current release:** [Disabled content-round-trip deployment and contributor handoff](../../email-builder/figflow-developer-handoff.md). PR #807 and its production services/assets/schema are deployed; hosted activation remains open and this does not close the product tasks below.
 
-**Active milestone:** [First content round trip](../../email-builder/figflow-roundtrip-milestone.md), [PR #807](https://github.com/adme-dev/dashboard/pull/807). Codex owns integration; Kimi native code, Grok relay/review. Local backend/composer verification passes; native CI and hosted acceptance remain open. This content-only subset does not close publication, shared modules or real email-client acceptance.
+**Active milestone:** [First content round trip](../../email-builder/figflow-roundtrip-milestone.md), [PR #807](https://github.com/adme-dev/dashboard/pull/807). Codex owns integration; Kimi native code, Grok relay/review. Native CI and isolated actual-WASM round trips pass; production is deployed disabled and hosted activation remains open. This content-only subset does not close publication, shared modules or real email-client acceptance.
 
 ## Global constraints
 
@@ -42,12 +42,12 @@ Statuses: `not-started`, `in-progress`, `blocked`, `in-review`, `done`. Only use
 | F03 | Immutable revisions and legacy migration | F02 | in-progress | Codex | Local PostgreSQL foundation: migration 491, immutable snapshots, CAS, retry receipts; [evidence](../../email-builder/figflow-revision-persistence.md). Existing CRUD integration and remaining F02 contracts open |
 | F04 | Secure asset/publish services | F03,F05 | not-started | unassigned | — |
 | F05 | Deterministic conversion and renderer coverage | F02 | in-progress | Codex | Canonical-envelope adapter reuses private renderer; six tests pass. Native FigFlow conversion, crop/assets and actual-client spike remain open |
-| F06 | FigFlow EDM mode and scoped bridge | F01,F02,F04,F05 | in-progress | Kimi / Codex / Grok | PR #807 adds actual native content import/snapshot, scoped durable handoff and bounded relay; native build/browser verification pending. Publication and native artifacts remain separate. |
+| F06 | FigFlow EDM mode and scoped bridge | F01,F02,F04,F05 | in-progress | Kimi / Codex / Grok | PR #807 adds actual native content import/snapshot, scoped durable handoff and bounded relay; 43 native tests and isolated WASM round trips pass; deployed disabled. Hosted activation and publication remain open. |
 | F07 | Shared module browser, insert and publication | F03–F06 | not-started | unassigned | — |
-| F08 | Composer editing and round-trip handoff | F05–F07 | in-progress | Codex | PR #807 adds save/open/reconcile, durable proposal preview/apply, CAS and one undo step. Local checks pass; hosted round trip and shared-module controls remain open. |
+| F08 | Composer editing and round-trip handoff | F05–F07 | in-progress | Codex | PR #807 adds save/open/reconcile, durable proposal preview/apply, CAS and one undo step. Local real-WASM round trips pass, including staff-edit preservation; hosted round trip and shared-module controls remain open. |
 | F09 | Preflight, compatibility UX and test-send gates | F04,F05,F08 | not-started | unassigned | — |
 | F10 | End-to-end and real-client acceptance | F06–F09 | not-started | unassigned | — |
-| F11 | Documentation, rollout and rollback | F10 | in-progress | Codex / Grok review | Active milestone ledger and guarded immutable native-asset promotion helpers in PR #807; no milestone production deployment yet. |
+| F11 | Documentation, rollout and rollback | F10 | in-progress | Codex / Grok review | PR #807 merged; Pages/private services/schema/native assets deployed disabled. Exact receipts and remaining activation gates are in the milestone ledger. |
 | F12 | Production verification and workspace retirement | F11,R01 | not-started | unassigned | — |
 | R01 | Fit the disabled foundation within the unchanged Pages budget | — | done | Codex / Kimi review | PR #801 deployed at a193e82a5; 690 raw bytes remain. Existing template writes stay local. Restoring design transport requires a fresh size check; this is not general release headroom. |
 
