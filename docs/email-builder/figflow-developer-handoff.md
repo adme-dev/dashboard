@@ -1,6 +1,6 @@
 # FigFlow EDM developer handoff
 
-Updated 1 November 2026. The content-round-trip implementation is merged and
+Updated 2 November 2026. The content-round-trip implementation is merged and
 production artifacts are deployed, **with the feature disabled**. The next step
 is authenticated hosted activation, not another rewrite of the editor or draft
 storage. Read the [milestone ledger](figflow-roundtrip-milestone.md) and
@@ -28,8 +28,9 @@ larger module/publication/send-readiness work.
 Existing template PATCH/DELETE remain local in Pages. Heavy design endpoints run
 only in the private Worker. Both frontend and backend capabilities remain off.
 An uploaded/deployed package is not proof that a staff member can complete the
-hosted workflow. Current browser verification is signed out. Public route and
-Cloudflare configuration checks passed; authenticated composer/QR checks remain.
+hosted workflow. Signed-in composer save/reload, QR Codes/navigation and hosted native startup
+passed on 2 November. The temporary verification draft was removed. The canonical
+hosted round trip remains blocked by the missing matching signing key.
 
 Rollback references: previous Pages deployment
 `77a1835c-c48d-4f72-aaa6-f589307fe225`; previous creative version
@@ -44,7 +45,7 @@ the one-time creative promotion script against a changed baseline.
 | Matching session key | Operator must identify the approved source of the existing Pages JWT_SECRET or provision the same value securely to the private Worker. Existing checked env files, GitHub secrets and shared Secrets Store did not supply it. Never print/rotate it or extract browser tokens. |
 | Reviewed activation | Release developer verifies staging schema/service/key, adds staging caller binding where needed, and reviews capability/configuration guard changes. Current scripts intentionally accept false flags only. No ad hoc guard bypass. |
 | Hosted round trip | Signed-in staff opens a supported saved draft, edits actual native content, returns, previews/applies, undoes/redoes and saves; a second handoff retains staff edits. Verify client scope, revoked access, stale revisions and uncertain-write recovery on the actual hosts. |
-| Established UI | Verify signed-in composer Save/modules and QR Codes/navigation. An Orca tab is waiting at sign-in; route HTTP 200 alone is insufficient. |
+| Established UI | Passed on 2 November: signed-in composer/modules, temporary draft save/reload/delete and QR Codes navigation/records. Hosted native canvas/bridge startup also passed; canonical round-trip acceptance remains open. |
 | Full product acceptance | Shared modules/publication and Apple Mail/Gmail/Outlook acceptance remain separate PRD tasks; do not claim send readiness. |
 
 ## Contribution boundaries
