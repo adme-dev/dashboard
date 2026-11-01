@@ -29,14 +29,15 @@ for (const pkg of packages) {
       canonical = { ...font, path: `./fonts/${aliasHash}-${font.fileName}` }
       fonts.set(identity, canonical)
     }
-    const old = fontAliases.get(font.family)
+    const face = `${font.family}:${font.weight}:${font.style}`
+    const old = fontAliases.get(face)
     if (old && old !== canonical.family) throw new Error(`Ambiguous font alias: ${font.family}`)
-    fontAliases.set(font.family, canonical.family)
+    fontAliases.set(face, canonical.family)
   }
   for (const [key, board] of Object.entries(pkg.canvasData)) {
     if (Object.hasOwn(canvasData, key)) throw new Error(`Duplicate design size: ${key}`)
     canvasData[key] = { ...board, layers: board.layers.map(layer => ({
-      ...layer, fontFamily: layer.fontFamily ? fontAliases.get(layer.fontFamily) || layer.fontFamily : layer.fontFamily
+      ...layer, fontFamily: layer.fontFamily ? fontAliases.get(`${layer.fontFamily}:${layer.fontWeight || 400}:${layer.fontStyle || 'normal'}`) || layer.fontFamily : layer.fontFamily
     })) }
   }
   for (const item of pkg.assets) {

@@ -12,6 +12,10 @@ The original creation date is stored as a `source-created-date:YYYY-MM-DD` prove
 
 The importer waits for the client and folder lists before accepting packages, so a quick file selection keeps its source assignments. Managed asset uploads run three at a time. On failure, queued uploads stop and in-flight requests finish before the error appears; acknowledged uploads remain reusable within that dialog. Existing duplicate and uncertain-project checks still apply.
 
+After verifying a new draft, the importer creates its saved viewer from the accepted database revision and reads it back before showing **Open saved viewer**. A storage failure retains the draft and lets the batch continue. **Prepare saved viewer** retries that snapshot without creating another project or uploading the media again; it also prepares an existing accessible draft selected by duplicate reconciliation. All viewers still need a comparison with the original before production use.
+
+Multi-size packages resolve each managed font alias by family, weight and style. Shared font bytes are deduplicated without forcing another size's additional weight onto the wrong face.
+
 ## Video layers
 
 Muted, autoplaying TheBrief video converts to an editable native video layer. The original H.264 MP4 bytes are packaged unchanged; `package-import.mjs` uses `ffprobe` to confirm the codec, that the source clip end falls within the file, and that a cover-cropped frame matches the file's aspect. The layer keeps a media clock (`mediaStart`, `mediaEnd`, `mediaLoop`) shared by editor playback, scrubbing, overview and both HTML exporters (`shared/bannerVideoClock.ts`): clips play at normal speed, looping clips restart at their out-point and non-looping clips hold their last frame. TheBrief's cover-crop framing (an oversized `<video>` shifted inside a clipping box) becomes native cover fit with a focal point.
