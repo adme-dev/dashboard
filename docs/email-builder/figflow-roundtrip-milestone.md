@@ -1,185 +1,95 @@
 # First structured FigFlow round trip
 
-Started 1 November 2026 from main `81b039bb4`, branch
-`adme-dev/figflow-roundtrip-20261101`. Owner: Codex; Kimi native integration
-research, Grok persistence/authority review. No test runs until the complete
-milestone implementation is ready for final verification.
+Updated 1 November 2026. **Implemented, merged and deployed with access disabled;
+hosted acceptance is incomplete.** [PR #807](https://github.com/adme-dev/dashboard/pull/807)
+contains the implementation. Exact deployment identities, hashes and proof limits
+are in [the release receipt](figflow-release-20261101.json).
 
-Acceptance: an existing supported template draft is saved, opened in the actual
-FigFlow document, edited, returned as a durable proposal, previewed and explicitly
-applied through revision CAS and the canonical renderer. Applying is one composer
-undo action. A second round trip includes intervening staff content edits.
-A conflicting newer revision must remain intact. No send or module publication.
+## Acceptance and scope
 
-- [x] Canonical composer conversion with stable lineage and restricted content edits.
-- [ ] Native import/snapshot bridge with unsupported edits rejected.
+A supported saved composer draft opens as actual native FigFlow content. Supported
+text, image and button edits return as a durable proposal, require a rendered
+preview and explicit Apply, and save through canonical revision CAS. Apply is one
+composer undo step. A second handoff retains intervening staff edits. Conflicting
+newer revisions remain intact. This milestone does not include sending, arbitrary
+canvas conversion, module publication or real email-client compatibility.
+
+- [x] Canonical composer conversion, stable lineage and restricted content edits.
+- [x] Actual native import/snapshot bridge; unsupported structure/style rejected.
 - [x] Durable actor/document/revision-bound handoff and proposal lifecycle.
-- [ ] Composer open/resume/preview/apply controls and revision-aware saves.
-- [ ] Final source review, focused unit/database/native/browser verification.
-- [ ] Hosted activation prerequisites, guarded merge/deploy, live round-trip evidence.
+- [x] Composer open/resume/reconcile/preview/apply, revision saves and one undo step.
+- [x] Final source review and focused application/database/native/browser checks.
+- [x] Merge, production migrations, private services and disabled Pages deployment.
+- [ ] Provision the private service's matching session-signing key.
+- [ ] Reviewed activation and authenticated hosted round-trip acceptance.
+- [ ] Signed-in composer and QR Codes/navigation verification.
 
-Parent owns shared canonical conversion, backend integration, composer controls
-and this ledger. Native files stay unchanged until Kimi's mapping is agreed.
-Unrelated original-worktree edits and shared dependencies remain untouched.
+## Production release
 
-Ruling: the first milestone supports content changes to mapped text, images and
-buttons, preserving layout/mobile/legacy data. Native structural changes that
-cannot be represented must produce an actionable conflict, never silent loss.
-This bounds the initial usable workflow; arbitrary canvas conversion remains a
-separate task in the parent PRD.
+All runtime releases below used clean current main
+`b63cd1e59bebcbc6f88d698f7eac62ee52953924`.
 
-Release prerequisite still pending: securely provision the existing matching
-Pages JWT secret to the private design Worker. A question is pending with the
-owner; no key rotation, extraction from browser state, or alternate auth path.
+| Surface | Verified release |
+|---|---|
+| Pages `agency-dashboard` | `41fd8581-10e0-4d4a-ac7b-dc1bacf8fdcd`; app.xeroflow.io alias; raw 25,468,500 bytes, 428 below unchanged budget |
+| Private email design | Version `29ab0af9-7309-4ee2-82d7-ee473b4fc5de`; no public endpoint; flag false; JWT_SECRET absent |
+| Database | Migrations 491–493 committed together against the verified production Hyperdrive target at 10:26 UTC |
+| Private native assets | Version `86f446f6-f9de-4ce1-b6af-10a0bf722cb1`; ASSETS only; no public endpoint |
+| Creative gateway | Version `595f31ce-abd5-4e3d-ba7c-b9e1f3f59fce`, deployment `89c76119-d31d-4dfe-b438-b778a9235399`, 100% active |
 
-Implementation checkpoint: parent has authored canonical composer conversion,
-content-return restrictions, handoff/proposal persistence and route, native
-message consumer, revision-aware composer save/open/review/apply controls and one
-undo-action application. These are unverified; no tests/builds have run. Kimi now
-owns the native patches/relay and pinned packaging changes. Grok is reviewing the
-new persistence boundary read-only. Migration 493 will be applied to the isolated
-fixture database during final verification; production activation is separate.
+Pages mounts only the bounded design transport and has the production
+EMAIL_DESIGN binding. Heavy design handlers remain in the private Worker;
+existing template PATCH/DELETE stay local. Both capability flags remain false.
+The gateway adds only `/figflow/0.11.2-edm1/` after existing authentication,
+preserving old editor assets, runtime settings, secrets and MotorStack RPC.
+The old creative version is `e5de27cd-41cd-456f-a7f7-9a91e0276777`; prior Pages
+artifact is `77a1835c-c48d-4f72-aaa6-f589307fe225`.
 
-Ruling: proposals reuse `EmailDesignDocument` and the existing revision saver.
-No native artifact store or second live template writer is added. For this content
-milestone, reopen reconstructs the supported native scene from canonical content.
-Unsupported native structural edits must be rejected before a proposal is saved.
+## Verification
 
-Source-review corrections before final tests: reject unsafe integer conversion;
-serialize reactive values before cross-window messaging; retain and reconcile
-uncertain operation payloads; bind operation IDs to complete handoff commands;
-acquire operation locks before handoff/owner locks; preserve local edits across
-remote apply; and refuse stale/unprojected canonical baselines. Draft-copy creation
-has an explicit unknown-outcome state and cannot be blindly retried in the panel.
+- 73 PostgreSQL/private-Worker checks and 259 existing design/security/deploy
+  regressions passed. Focused composer/recovery/panel/inventory checks passed.
+- All 18 design-transport cases and targeted lint passed. The Pages build and
+  target/source guards passed without changing budgets or minifier guards.
+- [Native CI run 41296329622](https://github.com/adme-dev/dashboard/actions/runs/41296329622)
+  passed 43 native tests, including the original seven bridge tests and all four
+  EDM tests, plus 15 relay checks and browser packaging. Native source is
+  `018c306c366e3e9cc1d6a02cb51dddbefec65a6b`; subsequent runtime changes did not
+  alter those native inputs. The archive SHA is in the release receipt.
+- The actual-WASM browser case passed against the real private Worker and
+  disposable PostgreSQL: native edit, persisted proposal, rendered preview,
+  explicit Apply, one undo/redo action, staff CTA edit/save and a second native
+  return preserving that edit. No request reached production. Native edits used
+  the real bridge; this is not mouse/keyboard, full-dashboard visual or hosted
+  acceptance. The screenshot shows native content, not email-client rendering.
+- The browser harness needed Buffer conversion when serving esbuild bytes;
+  before that fix it timed out loading its fixture. The corrected run passed in
+  5.57 seconds; six unrelated cases were intentionally filtered, not failed.
+- Cloudflare readback verified Pages source/alias/binding/false flag and both
+  private service identities. Creative source hashes and retained runtime/assets
+  settings match the guarded promotion. Public launcher returns 200; old/new
+  editor paths redirect to the existing sign-in flow. The Email Builder page
+  returns 200 and states disabled status. Composer/QR app routes return 200, but
+  the verification browser is signed out; staff content is not accepted.
 
-Grok source review found separate initialization could strand a legacy snapshot.
-The composer now starts initialization, conversion and handoff in one transaction;
-failed opens roll back all three. Unknown replies have an explicit retained-action
-reconciliation path, and further Save actions are blocked until it resolves.
-Native unsaved edits require an explicit discard confirmation on leaving the panel.
-Linked-module designs are refused for this first content milestone; reusable module
-import/save remains in the parent PRD and is not represented as delivered here.
+## Remaining actions and ownership
 
-Grok follow-up (`/private/tmp/figflow-roundtrip-grok-recovery-review.md`) confirms
-those recovery fixes by source inspection. A separate bounded template-proposal
-validator now reuses the existing envelope while retaining the original campaign
-kind restriction. The review panel renders the proposed email through the existing
-preview route and requires a successful preview before Apply. Tests are authored,
-not yet run.
+1. **Operator:** securely provision the existing Pages JWT_SECRET to
+   `xeroflow-email-design-production` (and the correct staging secret for staging).
+   Its approved source has not been identified. Do not rotate Pages credentials,
+   print secrets, extract browser tokens or add an alternate authentication path.
+2. **Release developer:** make a reviewed activation change after secret/schema/
+   service prerequisites are verified. Current deployment guards intentionally
+   require false flags; do not bypass them with ad hoc configuration. Exercise
+   staging authentication, client scope, revoked access, conflict and retry paths,
+   then perform the exact hosted staff workflow before production enablement.
+3. **Signed-in reviewer:** verify composer Save/modules, QR Codes/navigation and
+   the actual creative-host round trip. An Orca verification tab is waiting at
+   sign-in. Hosted proof is separate from the isolated browser fixture.
 
-Native ownership split: Kimi owns Rust engine/bridge/controls, additive patches,
-pins, packaging and CI. Grok owns only `figflow-edm-relay.mjs` and its relay tests.
-The parent owns composer/backend integration and final cross-boundary verification.
-
-Creative host readback on 1 November: `xeroflow-creative-tools` currently serves
-version `e5de27cd-41cd-456f-a7f7-9a91e0276777` at 100%, deployment
-`d75c00fc-5168-4ddf-b410-aaf9967c1457`. Static `ASSETS` and both existing creative
-secrets are present. The old temporary full asset checkout is no longer available.
-Publishing only the new editor asset folder over this Worker would remove the
-existing editor assets; native promotion must retain the complete active asset
-set or use a separately bound private asset service. No upload was performed.
-
-An opt-in actual-WASM browser fixture is authored in
-`test/helpers/figflowBrowserRoundtrip.ts`, invoked by the existing real Worker/PG
-suite when `FIGFLOW_EDM_NATIVE_PACKAGE` points to the extracted immutable native
-package. It exercises real store/flow/panel logic and native bridge changes with
-all network requests intercepted into the isolated Worker fixture. It does not
-claim full-dashboard styling, native mouse/keyboard controls or hosted acceptance.
-The fixture is still unrun. The private native asset service and guarded creative
-version-upload path are also authored under `workers/figflow-edm-assets/`; no
-preparation, tests, build, upload or deployment has run.
-
-Final verification started 1 November after the implementation packet was ready.
-The initial focused run had 67 passing checks and one expected inventory update:
-the sole added lexical row is the composer presentation toggle. Removing that
-row reproduces the previous inventory digest exactly; all existing classifications,
-seeds and authority assertions are unchanged. The updated inventory passes.
-
-Current local evidence (not hosted acceptance):
-
-- Private email-design Worker build passed.
-- PostgreSQL revisions plus actual private Worker fixtures: 73 passed, one native
-  browser case intentionally pending the real WASM package. Migrations 491–493
-  were applied in disposable fixture databases; production remains untouched.
-- Existing email-design/security/deploy regressions: 259 passed across 18 files.
-- Post-review conversion/route/composable/panel/inventory checks: 33 passed.
-- Asset-service boundaries: two Node checks passed; archive preparation: three
-  Python checks passed. No real package preparation or upload yet.
-- Relay startup test was corrected to await its observable ready message; Grok
-  reported 12 passing relay checks. Further snapshot recovery/race corrections
-  and their focused checks are in progress.
-
-Native final review found locked ancestors prevented real canvas hit-testing.
-Kimi is correcting container selection and strengthening world-coordinate/image
-replacement assertions. Linux native tests, actual WASM browser verification,
-full Pages bundle verification and hosted activation remain open. The signing-key
-provisioning question remains unanswered; do not turn on either feature flag.
-
-End-stage update: all 15 relay checks now pass, including exact unresolved
-snapshot replay and rejecting image bytes when the native revision changes while
-they load. Production-file lint passes. Native container selection and the image
-replacement/world-coordinate tests are corrected; Linux compilation is pending.
-
-The full Pages build passed: raw Worker 25,468,603 / 25,468,928 bytes
-(325 remaining); gzip 7,338,848 / 9,750,000 bytes. This still excludes every
-`/api/email/design/**` handler, including the proxy, and has no EMAIL_DESIGN
-binding. Hosted activation also requires a separately verified proxy/binding
-release within the existing bundle budget; do not raise that budget.
-
-Independent review found confirmed-save/readback failures cleared recovery too
-early. The flow now keeps the original operation until the required revision
-read succeeds; all nine focused recovery cases pass. Unsupported native image
-fill changes must be rejected before URL image replacement; that correction is
-being incorporated into the native packet.
-
-Native packet `15cae76de` was pushed for Linux CI. Run 41293959364 stopped before
-Rust because setup-node attempted unnecessary pnpm caching. Commit `b597764f3`
-disables that cache without adding an install; run 41294060281 passes validation
-and is running native tests. Neither run is browser or hosted acceptance.
-
-Grok reviewed private native asset release helpers without finding a concrete
-blocker. A local `creative-release.py plan` reproduces the verified creative base
-and prepares only its authenticated immutable-prefix routing addition, retaining
-assets and the existing secrets. It performs no remote mutation.
-
-PR #807 contains the integrated packet at `5e9a33898`. Native run 41294278097
-passed source and relay validation, then stopped on a missing theme-colour
-argument in the native inspector (E0061); no native tests or WASM package passed.
-The exact correction and a page-geometry fixture correction are being pinned
-for the next run. Superseded run 41294060281 and duplicate PR run 41294300314 were
-cancelled to avoid duplicate builds.
-
-Private email-design production dry-run passed (no upload): 1,072.06 KiB raw,
-243.41 KiB gzip, expected renderer/Hyperdrive/KV bindings, feature flag false.
-Evidence retained outside the checkout at
-`/private/tmp/figflow-email-design-dry-run-evidence-20261101`.
-
-Latest verification checkpoint: source `018c306c366e3e9cc1d6a02cb51dddbefec65a6b`
-contains the native character-override correction. Run 41295066084 compiled and
-passed all original native groups, including exactly seven bridge tests, plus
-three of four EDM tests. The remaining content-edit test identified the engine's
-derived `characters` override marker. Only that marker is now excluded for mapped
-text/button text; all other structure/style checks remain. Independent review
-confirmed the scope. Run 41296329622 verifies this correction; its browser package
-must pass before the opt-in actual-WASM case can run.
-
-The first explicit Pages transport build measured 25,469,479 raw bytes, 551 over
-the unchanged budget, so it is not releasable. The unused template-dispatch branch
-was removed from the design-only transport; existing template writes remain local.
-Email Builder marketing copy was condensed while preserving capabilities and the
-explicit disabled status. All 18 transport cases and targeted lint pass. A second
-full build is running. The candidate also adds the production private-service
-binding with its flag explicitly false; the service must be deployed before Pages.
-Heavy design implementations remain excluded. Independent review found no new
-reachability through the transport and no change to release or size guards.
-
-Production database preflight at 2026-11-01T10:12:18Z matched the local connection
-to Hyperdrive `900b4b74ec41462cbbabebd0aa8775aa` by host/database/user and confirmed
-existing templates with no design documents or handoffs tables. This was read-only;
-no production migrations or releases have occurred in this milestone.
-
-Final Pages transport build passed: raw 25,468,495 / 25,468,928 bytes (433
-remaining), gzip 7,338,317 / 9,750,000 bytes. Emitted JavaScript contains the
-transport error marker and no handoff-table or operation-conflict implementation
-markers. Both capability flags remain false. This candidate is ready for source
-integration only after native/browser verification; it is not deployed.
+Kimi owned native implementation; Grok supplied relay/persistence review; Codex
+integrated and released, with independent source review. Shared modules,
+publication and Apple Mail/Gmail/Outlook acceptance remain in the parent PRD.
+The original dirty worktree and shared node_modules were preserved. The release
+checkout and native evidence are retained for activation/handoff, not as a stale
+future release base; fetch current main before continuing.
