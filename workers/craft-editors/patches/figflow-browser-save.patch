@@ -1,0 +1,930 @@
+diff -ruN a/apps/figcraft-web/src/main.rs b/apps/figcraft-web/src/main.rs
+--- a/apps/figcraft-web/src/main.rs	2026-10-26 00:44:44
++++ b/apps/figcraft-web/src/main.rs	2026-10-28 11:43:35
+@@ -6,7 +6,10 @@
+ //!
+ //! Differences from the desktop app:
+ //! - no TCP control server (browsers can't listen on sockets);
+-//! - no native file dialogs yet: the session starts with one new document;
++//! - no file system: the session starts with one new document; Open and Import read the file the
++//!   browser's file picker hands over, and Save, Save as and every export arrive as downloads
++//!   (a `.figcraft` file, the exported file, or one `.zip` when an export makes several files);
++//!   a download counts as saving the file, but nothing is saved in place or automatically;
+ //! - links open in a new browser tab;
+ //! - live sessions: it joins sessions a desktop app hosts (File ▸ Join live session…) but can't
+ //!   host one. A page served over `https://` can only reach sessions on the same computer
+diff -ruN a/crates/engine/src/cmd/file.rs b/crates/engine/src/cmd/file.rs
+--- a/crates/engine/src/cmd/file.rs	2026-10-28 11:33:40
++++ b/crates/engine/src/cmd/file.rs	2026-10-28 11:47:46
+@@ -816,10 +816,30 @@
+     /// as of the snapshot, and edits since stay unsaved. False (nothing written) when the document
+     /// was closed, saved, reverted or given another path since: the bytes are out of date.
+     pub fn save(self, s: &mut Session, bytes: &[u8]) -> Result<bool> {
+-        let Some(ds) = s.docs.iter_mut().find(|d| d.uid == self.uid && d.path == self.path && Arc::ptr_eq(&d.saved_doc, &self.saved)) else {
+-            return Ok(false);
+-        };
++        let Some(i) = self.tab(s) else { return Ok(false) };
+         write(self.path.as_deref().ok_or(EngineError::NoDocument)?, bytes)?;
++        self.saved_in(s, i);
++        Ok(true)
++    }
++
++    /// The snapshot's bytes were handed over where there is no file system to write them to (a
++    /// browser download): the document is saved as of the snapshot, with no path, and edits since
++    /// stay unsaved. False (nothing marked) when the bytes are out of date, as for
++    /// [`save`](Self::save).
++    pub fn delivered(self, s: &mut Session) -> bool {
++        let Some(i) = self.tab(s) else { return false };
++        self.saved_in(s, i);
++        true
++    }
++
++    /// The tab this snapshot was taken of, while it is still the file as last saved then.
++    fn tab(&self, s: &Session) -> Option<usize> {
++        s.docs.iter().position(|d| d.uid == self.uid && d.path == self.path && Arc::ptr_eq(&d.saved_doc, &self.saved))
++    }
++
++    /// Tab `i` is saved as of this snapshot.
++    fn saved_in(self, s: &mut Session, i: usize) {
++        let Some(ds) = s.docs.get_mut(i) else { return };
+         // The history or branches may have changed since: then they still count as unsaved.
+         if ds.revision == self.revision {
+             ds.versions_changed = false;
+@@ -827,8 +847,25 @@
+         ds.saved_doc = self.doc;
+         ds.revision += 1;
+         branch_tabs_saved(s, self.uid);
+-        Ok(true)
+     }
++}
++
++/// Save where there is no file system (the browser hands files over as downloads): the file of the
++/// active tab (the main file for a branch tab, with its branches), encoded in memory exactly as
++/// `file.save` writes it, and the file name to deliver it under. As before a native save, a live
++/// text or version preview ends first. Nothing is marked saved yet: once the bytes were handed
++/// over, [`FileSnapshot::delivered`] does that, so a download that never happened leaves the file
++/// unsaved.
++pub fn save_in_memory(s: &mut Session) -> Result<(FileSnapshot, String, Vec<u8>)> {
++    crate::branches::sync(s);
++    crate::textpreview::end(s);
++    s.ds_mut()?.end_preview();
++    let ds = s.docs.get(crate::branches::file_tab(s)).ok_or(EngineError::NoDocument)?;
++    let snapshot = FileSnapshot::of(ds);
++    let bytes = snapshot.encode()?;
++    let stem = safe_file_name(snapshot.doc.name.trim());
++    let name = format!("{}.figcraft", if stem.is_empty() { "Untitled" } else { stem.as_str() });
++    Ok((snapshot, name, bytes))
+ }
+ 
+ /// The branch tabs of the file in tab `uid` were saved with it.
+diff -ruN a/crates/format/src/lib.rs b/crates/format/src/lib.rs
+--- a/crates/format/src/lib.rs	2026-10-28 11:33:40
++++ b/crates/format/src/lib.rs	2026-10-28 11:47:51
+@@ -444,6 +444,30 @@
+     Ok(())
+ }
+ 
++/// Several exported files as one `.zip` archive, each member under its name (a `/` makes a folder),
++/// for platforms that hand files over one at a time (a browser download) instead of writing them
++/// into a folder. Raster images are stored as they are (they are compressed already); anything else
++/// is deflated. A repeated name is refused.
++pub fn zip_files<'a>(files: impl IntoIterator<Item = (&'a str, &'a [u8])>) -> Result<Vec<u8>, FormatError> {
++    let mut buf = std::io::Cursor::new(Vec::new());
++    {
++        let mut z = zip::ZipWriter::new(&mut buf);
++        let stored = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
++        let deflated = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
++        let mut names = BTreeSet::new();
++        for (name, bytes) in files {
++            if !names.insert(name) {
++                return Err(FormatError::Io(format!("`{name}` is in the archive twice")));
++            }
++            let ext = name.rsplit_once('.').map(|(_, e)| e.to_ascii_lowercase()).unwrap_or_default();
++            let opts = if matches!(ext.as_str(), "png" | "jpg" | "jpeg" | "webp" | "gif") { stored } else { deflated };
++            put(&mut z, name, opts, bytes)?;
++        }
++        z.finish().map_err(io_err)?;
++    }
++    Ok(buf.into_inner())
++}
++
+ /// Read a `.figcraft` archive (or bare JSON) from bytes. Returns the document and any repairs made.
+ pub fn load_bytes(bytes: &[u8]) -> Result<(Document, Vec<String>), FormatError> {
+     load_bytes_with_versions(bytes).map(|l| (l.doc, l.issues))
+@@ -796,6 +820,26 @@
+         let mut out = Vec::new();
+         img.write_to(&mut std::io::Cursor::new(&mut out), image::ImageFormat::Png).unwrap();
+         out
++    }
++
++    #[test]
++    fn zip_files_keeps_each_file_under_its_name_and_refuses_repeats() {
++        use std::io::Read as _;
++        let svg = b"<svg xmlns=\"http://www.w3.org/2000/svg\"/>".repeat(40);
++        let png = png();
++        let zip = zip_files([("Icons/Star.svg", svg.as_slice()), ("Star@2x.png", png.as_slice())]).unwrap();
++        let mut z = zip::ZipArchive::new(std::io::Cursor::new(zip)).unwrap();
++        assert_eq!(z.len(), 2);
++        let mut read = |name: &str| {
++            let mut f = z.by_name(name).unwrap();
++            let method = f.compression();
++            let mut out = Vec::new();
++            f.read_to_end(&mut out).unwrap();
++            (out, method)
++        };
++        assert_eq!(read("Icons/Star.svg"), (svg.clone(), zip::CompressionMethod::Deflated));
++        assert_eq!(read("Star@2x.png"), (png.clone(), zip::CompressionMethod::Stored), "compressed images are stored as they are");
++        assert!(zip_files([("a.png", png.as_slice()), ("a.png", png.as_slice())]).is_err());
+     }
+ 
+     #[test]
+diff -ruN a/crates/ui-egui/locales/bn.toml b/crates/ui-egui/locales/bn.toml
+--- a/crates/ui-egui/locales/bn.toml	2026-10-28 11:33:40
++++ b/crates/ui-egui/locales/bn.toml	2026-10-28 11:43:06
+@@ -327,6 +327,8 @@
+ "Corner radius" = "কোণার ব্যাসার্ধ (Corner radius)"
+ "Corner smoothing" = "কোণা মসৃণকরণ"
+ "Couldn't download the variables" = "ভেরিয়েবলগুলো ডাউনলোড করা যায়নি"
++"Couldn't download {name}" = "{name} ডাউনলোড করা যায়নি"
++"{name} is too large to download in the browser (over 512 MB): export fewer layers at a time." = "{name} ব্রাউজারে ডাউনলোড করার জন্য খুব বড় (512 MB-এর বেশি): একবারে কম লেয়ার এক্সপোর্ট করুন।"
+ "Couldn't reach {server}: showing what this computer remembers." = "{server}-এ পৌঁছানো যায়নি: এই কম্পিউটার যা মনে রেখেছে তা দেখানো হচ্ছে।"
+ "Couldn't save automatically: {error}" = "স্বয়ংক্রিয়ভাবে সেভ করা যায়নি: {error}"
+ "Count" = "গণনা"
+diff -ruN a/crates/ui-egui/locales/cs.toml b/crates/ui-egui/locales/cs.toml
+--- a/crates/ui-egui/locales/cs.toml	2026-10-28 11:33:40
++++ b/crates/ui-egui/locales/cs.toml	2026-10-28 11:43:16
+@@ -319,6 +319,7 @@
+ "Corner smoothing" = "Vyhlazení rohů"
+ "Couldn't reach {server}: showing what this computer remembers." = "Server {server} není dostupný: zobrazuje se stav uložený v tomto počítači."
+ "Couldn't read {name}." = "Soubor {name} se nepodařilo přečíst."
++"Couldn't download {name}" = "Soubor {name} se nepodařilo stáhnout"
+ "Count" = "Počet"
+ "Create" = "Vytvořit"
+ "Create a variable collection first" = "Nejprve vytvořte kolekci proměnných"
+@@ -1668,6 +1669,7 @@
+ "{name} is on the server." = "{name} je na serveru."
+ "{name} is spotlighting" = "{name} sdílí pohled"
+ "{name} is too large to open in the browser (over 512 MB)." = "Soubor {name} je příliš velký na otevření v prohlížeči (více než 512 MB)."
++"{name} is too large to download in the browser (over 512 MB): export fewer layers at a time." = "Soubor {name} je příliš velký na stažení v prohlížeči (více než 512 MB): exportujte méně vrstev najednou."
+ "{name}\nClick to apply to the selection" = "{name}\nKliknutím použijete na výběr"
+ "{name}\nDrag onto the canvas, or click to place in the middle of the view.\nHold Alt (Option) while dropping onto an instance to swap it." = "{name}\nPřetáhněte na plátno nebo kliknutím umístěte doprostřed zobrazení.\nPři puštění na instanci podržte Alt (Option) a vyměňte ji."
+ "{name} (from {library})" = "{name} (z {library})"
+diff -ruN a/crates/ui-egui/locales/de.toml b/crates/ui-egui/locales/de.toml
+--- a/crates/ui-egui/locales/de.toml	2026-10-28 11:33:40
++++ b/crates/ui-egui/locales/de.toml	2026-10-28 11:43:09
+@@ -314,6 +314,7 @@
+ "Corner radius" = "Eckenradius"
+ "Corner smoothing" = "Eckenglättung"
+ "Couldn't download the variables" = "Die Variablen konnten nicht heruntergeladen werden"
++"Couldn't download {name}" = "{name} konnte nicht heruntergeladen werden"
+ "Couldn't reach {server}: showing what this computer remembers." = "{server} war nicht erreichbar: Es wird angezeigt, was dieser Computer gespeichert hat."
+ "Couldn't read {name}." = "{name} konnte nicht gelesen werden."
+ "Couldn't save automatically: {error}" = "Automatisches Speichern fehlgeschlagen: {error}"
+@@ -1631,6 +1632,7 @@
+ "{name} is on the server." = "{name} liegt auf dem Server."
+ "{name} is spotlighting" = "{name} hat das Spotlight"
+ "{name} is too large to open in the browser (over 512 MB)." = "{name} ist zu groß, um im Browser geöffnet zu werden (über 512 MB)."
++"{name} is too large to download in the browser (over 512 MB): export fewer layers at a time." = "{name} ist zu groß, um im Browser heruntergeladen zu werden (über 512 MB): Exportiere weniger Ebenen auf einmal."
+ "{name} was removed from the server" = "{name} wurde vom Server entfernt"
+ "{name} · deleted on main" = "{name} · in der Hauptdatei gelöscht"
+ "{name} · deleted on the branch" = "{name} · im Branch gelöscht"
+diff -ruN a/crates/ui-egui/locales/en.toml b/crates/ui-egui/locales/en.toml
+--- a/crates/ui-egui/locales/en.toml	2026-10-28 11:33:40
++++ b/crates/ui-egui/locales/en.toml	2026-10-28 11:43:09
+@@ -328,6 +328,7 @@
+ "Corner radius" = "Corner radius"
+ "Corner smoothing" = "Corner smoothing"
+ "Couldn't download the variables" = "Couldn't download the variables"
++"Couldn't download {name}" = "Couldn't download {name}"
+ "Couldn't reach {server}: showing what this computer remembers." = "Couldn't reach {server}: showing what this computer remembers."
+ "Couldn't read {name}." = "Couldn't read {name}."
+ "Couldn't save automatically: {error}" = "Couldn't save automatically: {error}"
+@@ -1732,6 +1733,7 @@
+ "{name} is on the server." = "{name} is on the server."
+ "{name} is spotlighting" = "{name} is spotlighting"
+ "{name} is too large to open in the browser (over 512 MB)." = "{name} is too large to open in the browser (over 512 MB)."
++"{name} is too large to download in the browser (over 512 MB): export fewer layers at a time." = "{name} is too large to download in the browser (over 512 MB): export fewer layers at a time."
+ "{name}\nClick to apply to the selection" = "{name}\nClick to apply to the selection"
+ "{name}\nDrag onto the canvas, or click to place in the middle of the view.\nHold Alt (Option) while dropping onto an instance to swap it." = "{name}\nDrag onto the canvas, or click to place in the middle of the view.\nHold Alt (Option) while dropping onto an instance to swap it."
+ "{name} (from {library})" = "{name} (from {library})"
+diff -ruN a/crates/ui-egui/locales/es.toml b/crates/ui-egui/locales/es.toml
+--- a/crates/ui-egui/locales/es.toml	2026-10-28 11:33:40
++++ b/crates/ui-egui/locales/es.toml	2026-10-28 11:43:09
+@@ -20,6 +20,7 @@
+ "Compatibility notes" = "Notas de compatibilidad"
+ "Connector" = "Conector"
+ "Couldn't download the variables" = "No se pudieron descargar las variables"
++"Couldn't download {name}" = "No se pudo descargar {name}"
+ 
+ "% of all commits" = "% del total de commits"
+ "(no longer published)" = "(ya no publicado)"
+@@ -1728,6 +1729,7 @@
+ "{name} is on the server." = "{name} está en el servidor."
+ "{name} is spotlighting" = "{name} está en el foco"
+ "{name} is too large to open in the browser (over 512 MB)." = "{name} es demasiado grande para abrirlo en el navegador (más de 512 MB)."
++"{name} is too large to download in the browser (over 512 MB): export fewer layers at a time." = "{name} es demasiado grande para descargarlo en el navegador (más de 512 MB): exporta menos capas a la vez."
+ "{name}\nClick to apply to the selection" = "{name}\nHaz clic para aplicarlo a la selección"
+ "{name}\nDrag onto the canvas, or click to place in the middle of the view.\nHold Alt (Option) while dropping onto an instance to swap it." = "{name}\nArrastra al lienzo o haz clic para colocarlo en el centro de la vista.\nMantén Alt (Opción) al soltar sobre una instancia para intercambiarla."
+ "{name} (from {library})" = "{name} (de {library})"
+diff -ruN a/crates/ui-egui/locales/fi.toml b/crates/ui-egui/locales/fi.toml
+--- a/crates/ui-egui/locales/fi.toml	2026-10-28 11:33:40
++++ b/crates/ui-egui/locales/fi.toml	2026-10-28 11:43:09
+@@ -328,6 +328,7 @@
+ "Corner radius" = "Kulman säde"
+ "Corner smoothing" = "Kulman pehmennys"
+ "Couldn't download the variables" = "Muuttujia ei voitu ladata"
++"Couldn't download {name}" = "Tiedostoa {name} ei voitu ladata"
+ "Couldn't reach {server}: showing what this computer remembers." = "Palvelimeen {server} ei saatu yhteyttä. Näytetään tämän tietokoneen muistamat tiedot."
+ "Couldn't read {name}." = "Tiedostoa {name} ei voitu lukea."
+ "Couldn't save automatically: {error}" = "Automaattinen tallennus epäonnistui: {error}"
+@@ -1716,6 +1717,7 @@
+ "{name} is on the server." = "{name} on palvelimella."
+ "{name} is spotlighting" = "{name} nostaa näkymäänsä esiin"
+ "{name} is too large to open in the browser (over 512 MB)." = "{name} on liian suuri avattavaksi selaimessa (yli 512 Mt)."
++"{name} is too large to download in the browser (over 512 MB): export fewer layers at a time." = "{name} on liian suuri ladattavaksi selaimessa (yli 512 Mt): vie vähemmän tasoja kerralla."
+ "{name} was removed from the server" = "{name} poistettiin palvelimelta"
+ "{name} · deleted on main" = "{name} · poistettu päähaarassa"
+ "{name} · deleted on the branch" = "{name} · poistettu haarassa"
+diff -ruN a/crates/ui-egui/locales/fr.toml b/crates/ui-egui/locales/fr.toml
+--- a/crates/ui-egui/locales/fr.toml	2026-10-28 11:33:40
++++ b/crates/ui-egui/locales/fr.toml	2026-10-28 11:43:09
+@@ -326,6 +326,7 @@
+ "Corner radius" = "Rayon d’angle"
+ "Corner smoothing" = "Lissage des angles"
+ "Couldn't download the variables" = "Impossible de télécharger les variables"
++"Couldn't download {name}" = "Impossible de télécharger {name}"
+ "Couldn't reach {server}: showing what this computer remembers." = "Impossible de joindre {server} : affichage de ce dont cet ordinateur se souvient."
+ "Couldn't read {name}." = "Impossible de lire {name}."
+ "Couldn't save automatically: {error}" = "Impossible d’enregistrer automatiquement : {error}"
+@@ -1717,6 +1718,7 @@
+ "{name} is on the server." = "{name} est sur le serveur."
+ "{name} is spotlighting" = "{name} est sous les projecteurs"
+ "{name} is too large to open in the browser (over 512 MB)." = "{name} est trop volumineux pour être ouvert dans le navigateur (plus de 512 Mo)."
++"{name} is too large to download in the browser (over 512 MB): export fewer layers at a time." = "{name} est trop volumineux pour être téléchargé dans le navigateur (plus de 512 Mo) : exportez moins de calques à la fois."
+ "{name} was removed from the server" = "{name} a été retiré du serveur"
+ "{name} · deleted on main" = "{name} · supprimé dans le principal"
+ "{name} · deleted on the branch" = "{name} · supprimé dans la branche"
+diff -ruN a/crates/ui-egui/locales/id.toml b/crates/ui-egui/locales/id.toml
+--- a/crates/ui-egui/locales/id.toml	2026-10-28 11:33:40
++++ b/crates/ui-egui/locales/id.toml	2026-10-28 11:43:09
+@@ -323,6 +323,7 @@
+ "Corner smoothing" = "Penghalusan sudut"
+ "Couldn't reach {server}: showing what this computer remembers." = "Tidak dapat terhubung ke {server}: menampilkan data yang diingat komputer ini."
+ "Couldn't read {name}." = "Tidak dapat membaca {name}."
++"Couldn't download {name}" = "Tidak dapat mengunduh {name}"
+ "Count" = "Jumlah"
+ "Create" = "Buat"
+ "Create a variable collection first" = "Buat koleksi variabel terlebih dahulu"
+@@ -1672,6 +1673,7 @@
+ "{name} is on the server." = "{name} ada di server."
+ "{name} is spotlighting" = "{name} sedang spotlight"
+ "{name} is too large to open in the browser (over 512 MB)." = "{name} terlalu besar untuk dibuka di browser (lebih dari 512 MB)."
++"{name} is too large to download in the browser (over 512 MB): export fewer layers at a time." = "{name} terlalu besar untuk diunduh di browser (lebih dari 512 MB): ekspor lebih sedikit layer sekaligus."
+ "{name}\nClick to apply to the selection" = "{name}\nKlik untuk menerapkan ke pilihan"
+ "{name}\nDrag onto the canvas, or click to place in the middle of the view.\nHold Alt (Option) while dropping onto an instance to swap it." = "{name}\nSeret ke kanvas, atau klik untuk menaruh di tengah tampilan.\nTahan Alt (Option) saat melepas di atas instance untuk menukarnya."
+ "{name} (from {library})" = "{name} (dari {library})"
+diff -ruN a/crates/ui-egui/locales/ja.toml b/crates/ui-egui/locales/ja.toml
+--- a/crates/ui-egui/locales/ja.toml	2026-10-28 11:33:40
++++ b/crates/ui-egui/locales/ja.toml	2026-10-28 11:43:09
+@@ -326,6 +326,7 @@
+ "Corner smoothing" = "角のスムージング"
+ "Couldn't reach {server}: showing what this computer remembers." = "{server} に接続できない：このコンピューターが覚えている内容を表示中。"
+ "Couldn't read {name}." = "{name} を読み込めませんでした。"
++"Couldn't download {name}" = "{name} をダウンロードできませんでした"
+ "Couldn't save automatically: {error}" = "自動保存できませんでした：{error}"
+ "Count" = "数"
+ "Create" = "作成"
+@@ -1698,6 +1699,7 @@
+ "{name} is on the server." = "{name} はサーバーにある。"
+ "{name} is spotlighting" = "{name} がスポットライト中"
+ "{name} is too large to open in the browser (over 512 MB)." = "{name} は大きすぎるため、ブラウザーで開けません（512 MB 超）。"
++"{name} is too large to download in the browser (over 512 MB): export fewer layers at a time." = "{name} は大きすぎるため、ブラウザーでダウンロードできません（512 MB 超）。一度に書き出すレイヤーを減らしてください。"
+ "{name} was removed from the server" = "{name} をサーバーから削除済み"
+ "{name} · deleted on main" = "{name} · メインで削除"
+ "{name} · deleted on the branch" = "{name} · ブランチで削除"
+diff -ruN a/crates/ui-egui/locales/ka.toml b/crates/ui-egui/locales/ka.toml
+--- a/crates/ui-egui/locales/ka.toml	2026-10-28 11:33:40
++++ b/crates/ui-egui/locales/ka.toml	2026-10-28 11:43:09
+@@ -329,6 +329,8 @@
+ "Corner radius" = "კუთხის რადიუსი"
+ "Corner smoothing" = "კუთხეების დარბილება"
+ "Couldn't download the variables" = "ცვლადების ჩამოტვირთვა ვერ მოხერხდა"
++"Couldn't download {name}" = "{name}-ის ჩამოტვირთვა ვერ მოხერხდა"
++"{name} is too large to download in the browser (over 512 MB): export fewer layers at a time." = "{name} ზედმეტად დიდია ბრაუზერში ჩამოსატვირთად (512 MB-ზე მეტი): ერთდროულად ნაკლები შრის ექსპორტირება სცადეთ."
+ "Couldn't reach {server}: showing what this computer remembers." = "{server}-თან დაკავშირება ვერ მოხერხდა: ნაჩვენებია ის, რაც ამ კომპიუტერს ახსოვს."
+ "Couldn't save automatically: {error}" = "ავტომატურად შენახვა ვერ მოხერხდა: {error}"
+ "Count" = "რაოდენობა"
+diff -ruN a/crates/ui-egui/locales/ko.toml b/crates/ui-egui/locales/ko.toml
+--- a/crates/ui-egui/locales/ko.toml	2026-10-28 11:33:40
++++ b/crates/ui-egui/locales/ko.toml	2026-10-28 11:43:09
+@@ -315,6 +315,7 @@
+ "Corner smoothing" = "모서리 스무딩"
+ "Couldn't reach {server}: showing what this computer remembers." = "{server}에 연결할 수 없음: 이 컴퓨터가 기억하는 내용을 표시함."
+ "Couldn't read {name}." = "{name}을(를) 읽을 수 없습니다."
++"Couldn't download {name}" = "{name}을(를) 다운로드할 수 없습니다"
+ "Couldn't save automatically: {error}" = "자동으로 저장할 수 없음: {error}"
+ "Count" = "개수"
+ "Create" = "만들기"
+@@ -1622,6 +1623,7 @@
+ "{name} is on the server." = "{name}이(가) 서버에 있음."
+ "{name} is spotlighting" = "{name} 님이 스포트라이트 중"
+ "{name} is too large to open in the browser (over 512 MB)." = "{name}은(는) 너무 커서 브라우저에서 열 수 없습니다(512MB 초과)."
++"{name} is too large to download in the browser (over 512 MB): export fewer layers at a time." = "{name}은(는) 너무 커서 브라우저에서 다운로드할 수 없습니다(512MB 초과). 한 번에 내보내는 레이어 수를 줄이세요."
+ "{name} was removed from the server" = "{name}을(를) 서버에서 제거함"
+ "{name} · deleted on main" = "{name} · 메인에서 삭제됨"
+ "{name} · deleted on the branch" = "{name} · 브랜치에서 삭제됨"
+diff -ruN a/crates/ui-egui/locales/nl.toml b/crates/ui-egui/locales/nl.toml
+--- a/crates/ui-egui/locales/nl.toml	2026-10-28 11:33:40
++++ b/crates/ui-egui/locales/nl.toml	2026-10-28 11:43:09
+@@ -328,6 +328,7 @@
+ "Corner radius" = "Hoekradius"
+ "Corner smoothing" = "Hoekafvlakking"
+ "Couldn't download the variables" = "De variabelen konden niet worden gedownload"
++"Couldn't download {name}" = "Kon {name} niet downloaden"
+ "Couldn't reach {server}: showing what this computer remembers." = "Kon {server} niet bereiken: toont wat deze computer onthoudt."
+ "Couldn't read {name}." = "Kon {name} niet lezen."
+ "Couldn't save automatically: {error}" = "Kan niet automatisch opslaan: {error}"
+@@ -1713,6 +1714,7 @@
+ "{name} is on the server." = "{name} staat op de server."
+ "{name} is spotlighting" = "{name} staat in de spotlight"
+ "{name} is too large to open in the browser (over 512 MB)." = "{name} is te groot om in de browser te openen (meer dan 512 MB)."
++"{name} is too large to download in the browser (over 512 MB): export fewer layers at a time." = "{name} is te groot om in de browser te downloaden (meer dan 512 MB): exporteer minder lagen tegelijk."
+ "{name} was removed from the server" = "{name} is van de server verwijderd"
+ "{name} · deleted on main" = "{name} · verwijderd op main"
+ "{name} · deleted on the branch" = "{name} · verwijderd op de branch"
+diff -ruN a/crates/ui-egui/locales/pl.toml b/crates/ui-egui/locales/pl.toml
+--- a/crates/ui-egui/locales/pl.toml	2026-10-28 11:33:40
++++ b/crates/ui-egui/locales/pl.toml	2026-10-28 11:43:09
+@@ -325,6 +325,7 @@
+ "Corner radius" = "Zaokrąglenie rogów"
+ "Corner smoothing" = "Wygładzanie narożników (Corner smoothing)"
+ "Couldn't download the variables" = "Nie udało się pobrać zmiennych"
++"Couldn't download {name}" = "Nie udało się pobrać pliku {name}"
+ "Couldn't reach {server}: showing what this computer remembers." = "Nie udało się połączyć z {server}: pokazywanie zawartości zapamiętanej przez ten komputer."
+ "Couldn't read {name}." = "Nie udało się odczytać pliku {name}."
+ "Couldn't save automatically: {error}" = "Nie udało się zapisać automatycznie: {error}"
+@@ -1704,6 +1705,7 @@
+ "{name} is on the server." = "{name} znajduje się na serwerze."
+ "{name} is spotlighting" = "{name} prezentuje widok (spotlight)"
+ "{name} is too large to open in the browser (over 512 MB)." = "Plik {name} jest za duży, aby otworzyć go w przeglądarce (ponad 512 MB)."
++"{name} is too large to download in the browser (over 512 MB): export fewer layers at a time." = "Plik {name} jest za duży, aby pobrać go w przeglądarce (ponad 512 MB): eksportuj mniej warstw naraz."
+ "{name}\nClick to apply to the selection" = "{name}\nKliknij, aby zastosować do zaznaczenia"
+ "{name}\nDrag onto the canvas, or click to place in the middle of the view.\nHold Alt (Option) while dropping onto an instance to swap it." = "{name}\nPrzeciągnij na płótno lub kliknij, aby umieścić na środku widoku.\nPrzytrzymaj klawisz Alt (Option) podczas upuszczania na instancję, aby ją zamienić."
+ "{name} (from {library})" = "{name} (z biblioteki {library})"
+diff -ruN a/crates/ui-egui/locales/pt-BR.toml b/crates/ui-egui/locales/pt-BR.toml
+--- a/crates/ui-egui/locales/pt-BR.toml	2026-10-28 11:33:40
++++ b/crates/ui-egui/locales/pt-BR.toml	2026-10-28 11:43:09
+@@ -312,6 +312,7 @@
+ "Corner radius" = "Raio do canto"
+ "Corner smoothing" = "Suavização de cantos"
+ "Couldn't download the variables" = "Não foi possível baixar as variáveis"
++"Couldn't download {name}" = "Não foi possível baixar {name}"
+ "Couldn't reach {server}: showing what this computer remembers." = "Não foi possível alcançar {server}: mostrando o que este computador lembra."
+ "Couldn't read {name}." = "Não foi possível ler {name}."
+ "Couldn't save automatically: {error}" = "Não foi possível salvar automaticamente: {error}"
+@@ -1621,6 +1622,7 @@
+ "{name} is on the server." = "{name} está no servidor."
+ "{name} is spotlighting" = "{name} está em destaque"
+ "{name} is too large to open in the browser (over 512 MB)." = "{name} é grande demais para abrir no navegador (mais de 512 MB)."
++"{name} is too large to download in the browser (over 512 MB): export fewer layers at a time." = "{name} é grande demais para baixar no navegador (mais de 512 MB): exporte menos camadas por vez."
+ "{name} was removed from the server" = "{name} foi removido do servidor"
+ "{name} · deleted on main" = "{name} · excluído no principal"
+ "{name} · deleted on the branch" = "{name} · excluído na branch"
+diff -ruN a/crates/ui-egui/locales/ru.toml b/crates/ui-egui/locales/ru.toml
+--- a/crates/ui-egui/locales/ru.toml	2026-10-28 11:33:40
++++ b/crates/ui-egui/locales/ru.toml	2026-10-28 11:43:09
+@@ -327,6 +327,7 @@
+ "Corner radius" = "Радиус углов"
+ "Corner smoothing" = "Сглаживание углов"
+ "Couldn't download the variables" = "Не удалось загрузить переменные"
++"Couldn't download {name}" = "Не удалось загрузить {name}"
+ "Couldn't reach {server}: showing what this computer remembers." = "Не удалось связаться с {server}: показаны данные, сохранённые на этом компьютере."
+ "Couldn't read {name}." = "Не удалось прочитать {name}."
+ "Couldn't save automatically: {error}" = "Не удалось сохранить автоматически: {error}"
+@@ -1719,6 +1720,7 @@
+ "{name} is on the server." = "{name} находится на сервере."
+ "{name} is spotlighting" = "{name} показывает экран всем"
+ "{name} is too large to open in the browser (over 512 MB)." = "Файл {name} слишком велик для открытия в браузере (больше 512 МБ)."
++"{name} is too large to download in the browser (over 512 MB): export fewer layers at a time." = "Файл {name} слишком велик для загрузки в браузере (больше 512 МБ): экспортируйте меньше слоёв за раз."
+ "{name}\nClick to apply to the selection" = "{name}\nНажмите, чтобы применить к выделению"
+ "{name}\nDrag onto the canvas, or click to place in the middle of the view.\nHold Alt (Option) while dropping onto an instance to swap it." = "{name}\nПеретащите на холст или нажмите, чтобы разместить в центре вида.\nУдерживайте Alt (Option) при переносе на экземпляр, чтобы заменить его."
+ "{name} (from {library})" = "{name} (из {library})"
+diff -ruN a/crates/ui-egui/locales/sv.toml b/crates/ui-egui/locales/sv.toml
+--- a/crates/ui-egui/locales/sv.toml	2026-10-28 11:33:40
++++ b/crates/ui-egui/locales/sv.toml	2026-10-28 11:43:09
+@@ -322,6 +322,7 @@
+ "Corner radius" = "Hörnradie"
+ "Corner smoothing" = "Hörnutjämning"
+ "Couldn't download the variables" = "Det gick inte att hämta variablerna"
++"Couldn't download {name}" = "Det gick inte att hämta {name}"
+ "Couldn't reach {server}: showing what this computer remembers." = "Det gick inte att nå {server}: visar det som den här datorn minns."
+ "Couldn't read {name}." = "Det gick inte att läsa {name}."
+ "Couldn't save automatically: {error}" = "Det gick inte att spara automatiskt: {error}"
+@@ -1690,6 +1691,7 @@
+ "{name} is on the server." = "{name} finns på servern."
+ "{name} is spotlighting" = "{name} har spotlight"
+ "{name} is too large to open in the browser (over 512 MB)." = "{name} är för stor för att öppnas i webbläsaren (över 512 MB)."
++"{name} is too large to download in the browser (over 512 MB): export fewer layers at a time." = "{name} är för stor för att hämtas i webbläsaren (över 512 MB): exportera färre lager åt gången."
+ "{name}\nClick to apply to the selection" = "{name}\nKlicka för att använda på markeringen"
+ "{name}\nDrag onto the canvas, or click to place in the middle of the view.\nHold Alt (Option) while dropping onto an instance to swap it." = "{name}\nDra till arbetsytan, eller klicka för att placera i mitten av vyn.\nHåll ned Alt (Option) när du släpper på en instans för att byta ut den."
+ "{name} (from {library})" = "{name} (från {library})"
+diff -ruN a/crates/ui-egui/locales/tr.toml b/crates/ui-egui/locales/tr.toml
+--- a/crates/ui-egui/locales/tr.toml	2026-10-28 11:33:40
++++ b/crates/ui-egui/locales/tr.toml	2026-10-28 11:43:09
+@@ -323,6 +323,7 @@
+ "Corner smoothing" = "Köşe yumuşatma"
+ "Couldn't reach {server}: showing what this computer remembers." = "{server} sunucusuna ulaşılamadı: bu bilgisayarın hatırladıkları gösteriliyor."
+ "Couldn't read {name}." = "{name} okunamadı."
++"Couldn't download {name}" = "{name} indirilemedi"
+ "Count" = "Sayı"
+ "Create" = "Oluştur"
+ "Create a variable collection first" = "Önce bir değişken koleksiyonu oluşturun"
+@@ -1672,6 +1673,7 @@
+ "{name} is on the server." = "{name} sunucuda."
+ "{name} is spotlighting" = "{name} öne çıkarıyor"
+ "{name} is too large to open in the browser (over 512 MB)." = "{name}, tarayıcıda açılamayacak kadar büyük (512 MB'tan fazla)."
++"{name} is too large to download in the browser (over 512 MB): export fewer layers at a time." = "{name}, tarayıcıda indirilemeyecek kadar büyük (512 MB'tan fazla): tek seferde daha az katman dışa aktarın."
+ "{name}\nClick to apply to the selection" = "{name}\nSeçime uygulamak için tıklayın"
+ "{name}\nDrag onto the canvas, or click to place in the middle of the view.\nHold Alt (Option) while dropping onto an instance to swap it." = "{name}\nTuvale sürükleyin veya görünümün ortasına yerleştirmek için tıklayın.\nBir örneği değiştirmek için üzerine bırakırken Alt (Option) tuşunu basılı tutun."
+ "{name} (from {library})" = "{name} ({library} kitaplığından)"
+diff -ruN a/crates/ui-egui/locales/zh-Hans.toml b/crates/ui-egui/locales/zh-Hans.toml
+--- a/crates/ui-egui/locales/zh-Hans.toml	2026-10-28 11:33:40
++++ b/crates/ui-egui/locales/zh-Hans.toml	2026-10-28 11:43:09
+@@ -316,6 +316,7 @@
+ "Corner smoothing" = "圆角平滑"
+ "Couldn't reach {server}: showing what this computer remembers." = "无法连接 {server}：显示的是这台电脑记录的内容。"
+ "Couldn't read {name}." = "无法读取 {name}。"
++"Couldn't download {name}" = "无法下载 {name}"
+ "Couldn't save automatically: {error}" = "无法自动保存：{error}"
+ "Count" = "数量"
+ "Create" = "创建"
+@@ -1616,6 +1617,7 @@
+ "{name} is on the server." = "{name} 已在服务器上。"
+ "{name} is spotlighting" = "{name} 正在聚焦"
+ "{name} is too large to open in the browser (over 512 MB)." = "{name} 太大，无法在浏览器中打开（超过 512 MB）。"
++"{name} is too large to download in the browser (over 512 MB): export fewer layers at a time." = "{name} 太大，无法在浏览器中下载（超过 512 MB）：请一次导出较少的图层。"
+ "{name}\nClick to apply to the selection" = "{name}\n点击应用于所选项"
+ "{name}\nDrag onto the canvas, or click to place in the middle of the view.\nHold Alt (Option) while dropping onto an instance to swap it." = "{name}\n拖到画布上，或点击放置在视图中央。\n拖放到实例上时按住 Alt（Option）可替换该实例。"
+ "{name} (from {library})" = "{name}（来自 {library}）"
+diff -ruN a/crates/ui-egui/src/browser_save_tests.rs b/crates/ui-egui/src/browser_save_tests.rs
+--- a/crates/ui-egui/src/browser_save_tests.rs	1970-01-01 10:00:00
++++ b/crates/ui-egui/src/browser_save_tests.rs	2026-10-28 11:47:05
+@@ -0,0 +1,212 @@
++//! Save, Save as and export where the platform saves by downloads (the browser, which has no file
++//! system or save dialogs): each one arrives as a download of what the desktop app would write,
++//! instead of doing nothing.
++
++use std::sync::{Arc, Mutex};
++
++use figcraft_doc::{ExportFormat, ExportSetting, NodeId};
++use figcraft_engine::Session;
++use serde_json::json;
++
++use crate::export_panel::{export_layers, save_one};
++use crate::present_tests::id;
++use crate::{FigApp, Services, menus};
++
++type Downloads = Arc<Mutex<Vec<(String, Vec<u8>)>>>;
++
++/// Services that save by downloads and keep them (`deliver` false: the browser refused).
++struct Browser {
++    got: Downloads,
++    deliver: bool,
++}
++
++impl Services for Browser {
++    fn downloads(&self) -> bool {
++        true
++    }
++    fn download(&mut self, name: &str, bytes: &[u8]) -> bool {
++        self.got.lock().unwrap().push((name.to_string(), bytes.to_vec()));
++        self.deliver
++    }
++}
++
++/// Services with save dialogs that are cancelled, counting any download asked of them.
++struct Desktop(Downloads);
++
++impl Services for Desktop {
++    fn download(&mut self, name: &str, bytes: &[u8]) -> bool {
++        self.0.lock().unwrap().push((name.to_string(), bytes.to_vec()));
++        true
++    }
++}
++
++/// A file called "Prototype" with a frame holding a rectangle; the frame's id.
++fn session() -> (Session, NodeId) {
++    let mut s = Session::new();
++    s.doc_mut().unwrap().name = "Prototype".into();
++    let frame = id(&s.execute("frame.create", &json!({"x": 0, "y": 0, "width": 200, "height": 120})).unwrap());
++    s.execute("shape.rectangle", &json!({"x": 20, "y": 20, "width": 100, "height": 80, "parent": frame})).unwrap();
++    (s, frame)
++}
++
++fn browser(deliver: bool) -> (FigApp, NodeId, Downloads) {
++    let (s, frame) = session();
++    let got = Downloads::default();
++    (FigApp::new(s, Box::new(Browser { got: got.clone(), deliver })), frame, got)
++}
++
++fn toast(app: &FigApp) -> String {
++    app.ui.toast.as_ref().map(|t| t.0.clone()).unwrap_or_default()
++}
++
++fn one(got: &Downloads) -> (String, Vec<u8>) {
++    let got = got.lock().unwrap();
++    let [d] = got.as_slice() else { panic!("one download, got {}", got.len()) };
++    d.clone()
++}
++
++fn dirty(app: &FigApp) -> bool {
++    app.session.ds().unwrap().is_dirty()
++}
++
++#[test]
++fn save_downloads_the_native_file_and_counts_as_saved() {
++    let (mut app, _, got) = browser(true);
++    assert!(dirty(&app));
++    menus::invoke(&mut app, "file.save");
++    let (name, bytes) = one(&got);
++    assert_eq!(name, "Prototype.figcraft");
++    // The .figcraft file the desktop app writes: it opens again with the same layers.
++    let (doc, _) = figcraft_format::load_bytes(&bytes).unwrap();
++    let ours = app.session.doc().unwrap();
++    assert_eq!(doc.name, "Prototype");
++    assert_eq!(doc.nodes().count(), ours.nodes().count());
++    assert!(!dirty(&app), "a delivered download saves the file");
++    assert!(app.session.ds().unwrap().path.is_none(), "no path is made up for it");
++    assert_eq!(toast(&app), "Saved Prototype.figcraft");
++    assert!(app.pending_dialog.is_none());
++}
++
++#[test]
++fn save_as_and_a_second_save_download_again() {
++    let (mut app, _, got) = browser(true);
++    menus::invoke(&mut app, "file.saveAs");
++    app.session.execute("shape.ellipse", &json!({"x": 300, "y": 0, "width": 40, "height": 40})).unwrap();
++    assert!(dirty(&app), "edits after the download are unsaved");
++    menus::invoke(&mut app, "file.save");
++    let got = got.lock().unwrap();
++    assert_eq!(got.len(), 2);
++    assert!(got.iter().all(|(n, _)| n == "Prototype.figcraft"));
++    let (later, _) = figcraft_format::load_bytes(&got[1].1).unwrap();
++    let (first, _) = figcraft_format::load_bytes(&got[0].1).unwrap();
++    assert_eq!(later.nodes().count(), first.nodes().count() + 1, "the second download has the new layer");
++    drop(got);
++    assert!(!dirty(&app));
++}
++
++#[test]
++fn a_refused_download_leaves_the_file_unsaved_and_says_so() {
++    let (mut app, _, got) = browser(false);
++    menus::invoke(&mut app, "file.save");
++    assert_eq!(got.lock().unwrap().len(), 1);
++    assert!(dirty(&app), "nothing was delivered: the changes are still unsaved");
++    assert_eq!(toast(&app), "Couldn't download Prototype.figcraft");
++}
++
++#[test]
++fn a_version_preview_ends_before_saving_as_on_the_desktop() {
++    let (mut app, _, got) = browser(true);
++    app.session.execute("file.saveVersion", &json!({"name": "Before"})).unwrap();
++    app.session.execute("shape.ellipse", &json!({"x": 300, "y": 0, "width": 40, "height": 40})).unwrap();
++    let with_ellipse = app.session.doc().unwrap().nodes().count();
++    app.session.execute("version.preview", &json!({"index": 0})).unwrap();
++    assert!(app.session.ds().unwrap().preview.is_some());
++    menus::invoke(&mut app, "file.save");
++    let (_, bytes) = one(&got);
++    let (doc, _) = figcraft_format::load_bytes(&bytes).unwrap();
++    assert_eq!(doc.nodes().count(), with_ellipse, "the file itself is saved, not the version shown");
++    assert!(app.session.ds().unwrap().preview.is_none());
++}
++
++#[test]
++fn export_page_as_png_downloads_the_png() {
++    let (mut app, _, got) = browser(true);
++    let doc = app.session.doc().unwrap().clone();
++    let page = app.session.page().unwrap();
++    // What the page's "Export page as PNG" button does.
++    let all = doc.node(page).unwrap().children.clone();
++    let page_name = doc.node(page).unwrap().name.clone();
++    save_one(&mut app, &all, &ExportSetting::default(), &format!("{page_name}.png"));
++    let (name, bytes) = one(&got);
++    assert_eq!(name, format!("{page_name}.png"));
++    assert!(bytes.starts_with(b"\x89PNG\r\n\x1a\n"), "a PNG");
++    assert_eq!(toast(&app), format!("Exported {page_name}.png"));
++    assert!(dirty(&app), "an export doesn't save the file");
++}
++
++#[test]
++fn svg_and_pdf_exports_download_their_files() {
++    for format in [ExportFormat::Svg, ExportFormat::Pdf] {
++        let (mut app, frame, got) = browser(true);
++        let setting = ExportSetting { format, ..Default::default() };
++        save_one(&mut app, &[frame], &setting, &format!("Frame.{}", format.ext()));
++        let (name, bytes) = one(&got);
++        assert_eq!(name, format!("Frame.{}", format.ext()));
++        let text = String::from_utf8_lossy(&bytes);
++        let kind = if format == ExportFormat::Svg { text.trim_start().starts_with('<') && text.contains("<svg") } else { bytes.starts_with(b"%PDF") };
++        assert!(kind, "{format:?}: {}", text.chars().take(40).collect::<String>());
++        assert!(app.ui.last_error.is_none(), "{:?}", app.ui.last_error);
++    }
++}
++
++#[test]
++fn several_files_download_as_one_zip() {
++    let (mut app, frame, got) = browser(true);
++    let settings = [
++        ExportSetting::default(),
++        ExportSetting { format: ExportFormat::Svg, ..Default::default() },
++        ExportSetting { format: ExportFormat::Pdf, ..Default::default() },
++    ];
++    app.session.execute("node.set", &json!({"ids": [frame], "props": {"exports": settings}})).unwrap();
++    let jobs = figcraft_engine::cmd::file::export_jobs(app.session.doc().unwrap(), &[frame]);
++    assert_eq!(jobs.len(), 3);
++    export_layers(&mut app, &[frame], false);
++    let (name, bytes) = one(&got);
++    assert_eq!(name, "Prototype.zip");
++    assert!(bytes.starts_with(b"PK\x03\x04"), "a zip archive");
++    // Each member's name is in its local header.
++    for j in &jobs {
++        assert!(bytes.windows(j.file.len()).any(|w| w == j.file.as_bytes()), "{} is in the archive", j.file);
++    }
++    assert_eq!(toast(&app), "Exported Prototype.zip");
++}
++
++#[test]
++fn frames_pdf_and_fig_export_download() {
++    let (mut app, _, got) = browser(true);
++    menus::invoke(&mut app, "file.exportFramesPdf");
++    crate::dialogs::save_fig(&mut app, "Prototype");
++    let got = got.lock().unwrap();
++    let [(pdf_name, pdf), (fig_name, fig)] = got.as_slice() else { panic!("two downloads, got {}", got.len()) };
++    assert_eq!(pdf_name, "Prototype.pdf");
++    assert!(pdf.starts_with(b"%PDF"));
++    assert_eq!(fig_name, "Prototype.fig");
++    assert!(fig.starts_with(b"fig-kiwi") || fig.starts_with(b"PK"), "a .fig file");
++    drop(got);
++    assert!(toast(&app).starts_with("Exported Prototype.fig"), "{}", toast(&app));
++    assert!(dirty(&app), "a .fig copy is an export, not a save");
++}
++
++#[test]
++fn platforms_with_save_dialogs_keep_them() {
++    let (s, frame) = session();
++    let got = Downloads::default();
++    let mut app = FigApp::new(s, Box::new(Desktop(got.clone())));
++    menus::invoke(&mut app, "file.save");
++    assert!(app.pending_dialog.is_some(), "Save asks where with the platform's dialog");
++    app.pending_dialog = None;
++    save_one(&mut app, &[frame], &ExportSetting::default(), "Frame.png");
++    assert!(app.pending_dialog.is_some(), "Export asks where with the platform's dialog");
++    assert!(got.lock().unwrap().is_empty(), "nothing is downloaded");
++    assert!(dirty(&app));
++}
+diff -ruN a/crates/ui-egui/src/dialogs.rs b/crates/ui-egui/src/dialogs.rs
+--- a/crates/ui-egui/src/dialogs.rs	2026-10-28 11:33:40
++++ b/crates/ui-egui/src/dialogs.rs	2026-10-28 11:45:42
+@@ -702,7 +702,11 @@
+ 
+ /// The `.fig` result stays an export: native save state is unchanged, and omissions are reported.
+ pub(crate) fn fig_exported(app: &mut FigApp, result: &Value) {
+-    let file = result_file_name(result);
++    fig_exported_as(app, &result_file_name(result), result);
++}
++
++/// [`fig_exported`] for the `.fig` file named `file`.
++fn fig_exported_as(app: &mut FigApp, file: &str, result: &Value) {
+     let left_out = result["warnings"].as_array().map_or(0, Vec::len);
+     app.toast(match left_out {
+         0 => trf("Exported {name}", &[("name", &file)]),
+@@ -710,9 +714,18 @@
+     });
+ }
+ 
+-/// Save the whole file as `.fig`; the toast says how much was left out.
+-fn save_fig(app: &mut FigApp, name: &str) {
++/// Save the whole file as `.fig` (a download, where there are no save dialogs); the toast says how
++/// much was left out.
++pub(crate) fn save_fig(app: &mut FigApp, name: &str) {
+     let filename = format!("{name}.fig");
++    if app.services.downloads() {
++        if let Some(r) = app.run("file.export", json!({"format": "fig"}))
++            && app.deliver_data(&filename, &r)
++        {
++            fig_exported_as(app, &filename, &r);
++        }
++        return;
++    }
+     app.pick_save(tr("Export"), &filename, &["fig"], |app, p| {
+         if let Some(r) = app.run("file.export", json!({"format": "fig", "path": p.to_string_lossy()})) {
+             fig_exported(app, &r);
+diff -ruN a/crates/ui-egui/src/export_panel.rs b/crates/ui-egui/src/export_panel.rs
+--- a/crates/ui-egui/src/export_panel.rs	2026-10-26 00:44:44
++++ b/crates/ui-egui/src/export_panel.rs	2026-10-28 11:47:46
+@@ -315,7 +315,8 @@
+ }
+ 
+ /// Export `ids` with their export settings (`assets`: the Inspect tab's assets in and under them):
+-/// one file through a save dialog, several into a folder.
++/// one file through a save dialog, several into a folder (or, where files are saved as downloads,
++/// one `.zip` download holding them all).
+ pub(crate) fn export_layers(app: &mut FigApp, ids: &[NodeId], assets: bool) {
+     let jobs = match app.session.doc() {
+         Ok(doc) if assets => figcraft_engine::devinspect::asset_jobs(doc, ids),
+@@ -326,6 +327,7 @@
+         [] => {}
+         // The suggested name keeps only the file's own name (a layer's folders apply to folders).
+         [one] => save_one(app, &[one.id], &one.setting, one.file.rsplit('/').next().unwrap_or(&one.file)),
++        _ if app.services.downloads() => download_archive(app, ids, assets),
+         _ => {
+             let ids = ids.to_vec();
+             app.pick_folder(tr("Export"), move |app, dir| {
+@@ -338,11 +340,60 @@
+     }
+ }
+ 
+-/// Export `ids` together as one file with `setting`, through a save dialog suggesting `file`.
++/// Most bytes one archive download of several exported files may hold, as for a file the browser
++/// opens: past it the archive and its files would not fit the page's memory together.
++const MAX_ARCHIVE_BYTES: usize = 512 * 1024 * 1024;
++
++/// Several files of one export as a single `.zip` download (named after the file; a layer's
++/// folders stay folders inside it), for platforms that hand files over as downloads rather than
++/// writing them into a folder.
++fn download_archive(app: &mut FigApp, ids: &[NodeId], assets: bool) {
++    use base64::Engine as _;
++    let Some(mut r) = app.run("file.exportLayers", json!({"ids": ids, "assets": assets})) else { return };
++    let stem = app.session.doc().map(|d| figcraft_engine::cmd::file::safe_file_name(d.name.trim())).unwrap_or_default();
++    let name = format!("{}.zip", if stem.is_empty() { "Export" } else { stem.as_str() });
++    let mut files = Vec::new();
++    let mut total = 0;
++    // Each file's Base64 copy goes once it is decoded.
++    for mut f in r["files"].as_array_mut().map(std::mem::take).unwrap_or_default() {
++        let data = f.get_mut("data").map(Value::take).unwrap_or_default();
++        let (Some(file), Some(Ok(bytes))) = (f["name"].as_str(), data.as_str().map(|d| base64::engine::general_purpose::STANDARD.decode(d))) else {
++            app.toast(trf("Couldn't download {name}", &[("name", &name)]));
++            return;
++        };
++        total += bytes.len();
++        if total > MAX_ARCHIVE_BYTES {
++            app.toast(trf("{name} is too large to download in the browser (over 512 MB): export fewer layers at a time.", &[("name", &name)]));
++            return;
++        }
++        files.push((file.to_string(), bytes));
++    }
++    let zip = figcraft_format::zip_files(files.iter().map(|(f, b)| (f.as_str(), b.as_slice())));
++    drop(files);
++    match zip {
++        Ok(zip) => {
++            if app.deliver(&name, &zip) {
++                app.toast(trf("Exported {name}", &[("name", &name)]));
++            }
++        }
++        Err(e) => app.show_error(e.to_string()),
++    }
++}
++
++/// Export `ids` together as one file with `setting`, through a save dialog suggesting `file` (or
++/// as a download named `file`, where there are no save dialogs).
+ pub(crate) fn save_one(app: &mut FigApp, ids: &[NodeId], setting: &ExportSetting, file: &str) {
+     let ext = setting.format.ext();
+     let mut params = setting_params(setting);
+     params["ids"] = json!(ids);
++    if app.services.downloads() {
++        if let Some(r) = app.run("file.export", params)
++            && app.deliver_data(file, &r)
++        {
++            app.toast(trf("Exported {name}", &[("name", &file)]));
++        }
++        return;
++    }
+     app.pick_save(tr("Export"), file, &[ext], move |app, p| {
+         params["path"] = json!(p.to_string_lossy());
+         if app.run("file.export", params).is_some() {
+diff -ruN a/crates/ui-egui/src/lib.rs b/crates/ui-egui/src/lib.rs
+--- a/crates/ui-egui/src/lib.rs	2026-10-26 00:44:44
++++ b/crates/ui-egui/src/lib.rs	2026-10-28 11:45:42
+@@ -82,6 +82,8 @@
+ #[cfg(test)]
+ mod branch_ui_tests;
+ #[cfg(test)]
++mod browser_save_tests;
++#[cfg(test)]
+ mod canvas_double_click_tests;
+ #[cfg(test)]
+ mod canvas_drag_tests;
+@@ -1191,6 +1193,11 @@
+ 
+     pub fn save_as_dialog(&mut self) {
+         let Ok(name) = self.session.doc().map(|d| d.name.clone()) else { return };
++        // No save dialogs (the browser): the file arrives as a .figcraft download.
++        if self.services.downloads() {
++            self.download_file();
++            return;
++        }
+         self.pick_save(i18n::tr("Save as"), &format!("{name}.figcraft"), &["figcraft", "fig"], |app, mut p| {
+             if p.extension().is_none_or(OsStr::is_empty) {
+                 if !p.set_extension("figcraft") {
+@@ -1220,6 +1227,11 @@
+     }
+ 
+     pub fn save(&mut self) {
++        // Where files are saved as downloads (the browser has no file system), every save is one.
++        if self.services.downloads() {
++            self.download_file();
++            return;
++        }
+         // A branch tab saves its main file.
+         let tab = figcraft_engine::branches::file_tab(&self.session);
+         // A path ending in .fig is never saved over silently: a .fig destination is an export copy.
+@@ -1235,6 +1247,48 @@
+             }
+         } else {
+             self.save_as_dialog();
++        }
++    }
++
++    /// Save the file in front as a `.figcraft` download, encoded as `file.save` writes it; it counts
++    /// as saved once the download was handed over (a refused one leaves it unsaved and says so).
++    fn download_file(&mut self) {
++        if self.session.doc().is_err() {
++            return;
++        }
++        let (snapshot, name, bytes) = match figcraft_engine::cmd::file::save_in_memory(&mut self.session) {
++            Ok(saved) => saved,
++            Err(e) => {
++                self.failed("file.save", &e);
++                return;
++            }
++        };
++        if self.deliver(&name, &bytes) {
++            snapshot.delivered(&mut self.session);
++            self.toast(i18n::trf("Saved {name}", &[("name", &name)]));
++        }
++    }
++
++    /// Hand `bytes` over as a download named `name` (platforms without save dialogs); false, and a
++    /// toast saying so, when nothing was delivered.
++    pub(crate) fn deliver(&mut self, name: &str, bytes: &[u8]) -> bool {
++        let delivered = self.services.download(name, bytes);
++        if !delivered {
++            self.toast(i18n::trf("Couldn't download {name}", &[("name", &name)]));
++        }
++        delivered
++    }
++
++    /// [`deliver`](Self::deliver) a command result's base64 `data` (what `file.export` and
++    /// `file.exportFramesPdf` return without a path).
++    pub(crate) fn deliver_data(&mut self, name: &str, result: &Value) -> bool {
++        use base64::Engine as _;
++        match result["data"].as_str().map(|d| base64::engine::general_purpose::STANDARD.decode(d)) {
++            Some(Ok(bytes)) => self.deliver(name, &bytes),
++            _ => {
++                self.toast(i18n::trf("Couldn't download {name}", &[("name", &name)]));
++                false
++            }
+         }
+     }
+ 
+diff -ruN a/crates/ui-egui/src/menus.rs b/crates/ui-egui/src/menus.rs
+--- a/crates/ui-egui/src/menus.rs	2026-10-26 00:44:44
++++ b/crates/ui-egui/src/menus.rs	2026-10-28 11:42:12
+@@ -278,9 +278,19 @@
+     }
+ }
+ 
+-/// Every visible top-level frame of the page as one PDF page each, through a save dialog.
++/// Every visible top-level frame of the page as one PDF page each, through a save dialog (or as a
++/// download, where there are no save dialogs).
+ fn export_frames_pdf(app: &mut FigApp) {
+     let name = app.session.doc().map(|d| d.name.clone()).unwrap_or_else(|_| "Untitled".into());
++    if app.services.downloads() {
++        let file = format!("{name}.pdf");
++        if let Some(r) = app.run("file.exportFramesPdf", json!({}))
++            && app.deliver_data(&file, &r)
++        {
++            app.toast(trf("Exported {name}", &[("name", &file)]));
++        }
++        return;
++    }
+     app.pick_save(tr("Export"), &format!("{name}.pdf"), &["pdf"], |app, p| {
+         if app.run("file.exportFramesPdf", json!({"path": p.to_string_lossy()})).is_some() {
+             app.toast(trf("Exported {name}", &[("name", &p.file_name().map(|f| f.to_string_lossy().to_string()).unwrap_or_default())]));
+diff -ruN a/crates/ui-egui/src/windows.rs b/crates/ui-egui/src/windows.rs
+--- a/crates/ui-egui/src/windows.rs	2026-10-28 11:33:40
++++ b/crates/ui-egui/src/windows.rs	2026-10-28 11:42:18
+@@ -422,8 +422,12 @@
+             app.ui.close_after_save_as = Some(uid);
+             app.save_as_dialog();
+             if app.pending_dialog.is_none() {
+-                // No dialog could start: stay open.
+                 app.ui.close_after_save_as = None;
++                // Saved without a dialog (a browser download): go on with the other files.
++                if app.session.docs.iter().find(|d| d.uid == uid).is_some_and(|d| !d.is_dirty()) {
++                    continue;
++                }
++                // No dialog could start: stay open.
+             }
+             ctx.request_repaint();
+             return;
