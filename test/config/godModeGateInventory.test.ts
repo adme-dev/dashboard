@@ -410,10 +410,12 @@ describe('God mode gate inventory', () => {
     expect(inventory.rows).not.toContain('server/api/agency/banner-studio/custom-templates/[id].delete.ts\tif (existing.createdBy !== user.id && ![\'admin\', \'owner\'].includes(user.role)) {\tordinary_user_behavior')
     // One new presentation flag; server authority and all existing gates are unchanged.
     expect(inventory.rows).toContain("app/components/email/builder/EdmFlyhubBuilder.client.vue\tconst figflowEnabled = useRuntimeConfig().public.figflowEdmEnabled === true\tapplication_governance_bypass")
-    expect(inventory.rows).toHaveLength(1719)
+    // The unchanged signing verifier moved from excluded auth.ts into its build-time port.
+    expect(inventory.rows).toContain("server/utils/sessionToken.ts\tconst JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production'\tprovider_infrastructure_availability")
+    expect(inventory.rows).toHaveLength(1720)
     expect(inventory.counts).toEqual({
       identity_tenant_hard_boundary: 135,
-      provider_infrastructure_availability: 222,
+      provider_infrastructure_availability: 223,
       application_governance_bypass: 1629,
       ordinary_user_behavior: 301,
       unrelated_configuration: 431
@@ -439,7 +441,7 @@ describe('God mode gate inventory', () => {
     // to shared services. Email dispatch now reads request-bound provider config.
     // The classifier and owner bypass registrations remain unchanged; the reviewed
     // row diff is recorded in the marketing-management verification ledger.
-    expect(inventory.digest).toBe('69493f2081a007d0b441afe04b34c0adf3a2e6946c28ab31d77e5a212a8b7974')
+    expect(inventory.digest).toBe('cb41911da1dc0bf50bbad1ddf534de6f8313448d492bedd7d524f600b548e4cb')
     expect(inventory.rows).toContain(
       'app/composables/usePageStudioLauncher.ts\tconst config = useRuntimeConfig()\tunrelated_configuration'
     )
