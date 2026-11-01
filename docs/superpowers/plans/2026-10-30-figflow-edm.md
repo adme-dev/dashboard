@@ -892,3 +892,32 @@ old inventory assertions, both passing in the subsequent focused rerun.
 This is combined full-run plus repaired-file evidence, not a claim that the
 original full run was green. Logs: `/private/tmp/figflow-current-full-suite.log`
 and `/private/tmp/figflow-repaired-ci-tests.log`.
+
+
+### Revised release: disabled foundation, existing writes stay on Pages
+
+The matching JWT secret remains unavailable. To avoid making existing template
+editing depend on that prerequisite, this release restores template PATCH/DELETE
+to their canonical local handlers and excludes all `api/email/design/**` routes,
+including the transport catch-all, from Pages. New EMAIL_DESIGN service bindings
+are omitted. This supersedes the earlier private-service cutover requirement for
+this foundation release only. No credentials or authentication policy change.
+
+Activating the design endpoints requires a separate reviewed release restoring
+the transport route and bindings after service provisioning, paired migrations,
+matching key/origin setup and hosted acceptance. A flag alone cannot activate
+excluded endpoints. The full staff/native/module feature remains unfinished.
+
+Regression checks now exercise the actual legacy route exports without the new
+service binding: 54 tests across five files pass. The combined focused run passes
+398 tests across 24 files; focused lint and whitespace checks pass. A new release
+configuration assertion requires every design route to remain excluded and the
+EMAIL_DESIGN binding absent. The fresh candidate build is 25,468,238 raw bytes
+(690 remaining) and 7,338,615 gzip; budget unchanged. Logs:
+`/private/tmp/figflow-disabled-foundation-build.log`,
+`/private/tmp/figflow-disabled-foundation-tests.log`, and
+`/private/tmp/figflow-local-legacy-green.log`.
+
+Pre-release browser checks confirm the existing signed-in FuturaX composer and
+QR Codes page load. These are baseline observations, not post-release or save
+round-trip acceptance. Production release identity and live results follow below.

@@ -217,7 +217,7 @@ describe('God mode route isolation inventory', () => {
       }
     } as const
     for (const [route, { handler, scope }] of Object.entries(legacy)) {
-      expect(readFileSync(route, 'utf8').trim()).toBe('export { default } from \'~~/server/utils/email-marketing/designTransport\'')
+      expect(readFileSync(route, 'utf8').trim()).toBe(`export { default } from '~~/${handler.slice(0, -3)}'`)
       const source = readFileSync(handler, 'utf8')
       expect(source).toContain('const user = await requireWriteAccess(event)')
       for (const check of scope) expect(source).toContain(check)

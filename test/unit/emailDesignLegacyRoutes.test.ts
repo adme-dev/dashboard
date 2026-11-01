@@ -22,9 +22,9 @@ vi.stubGlobal('defineEventHandler', (f: unknown) => f)
 vi.stubGlobal('createError', createError)
 vi.stubGlobal('getRouterParam', () => 'template')
 vi.stubGlobal('readBody', async () => ({ name: 'Renamed' }))
-const patch = (await import('../../server/utils/email-marketing/templateUpdateHandler'))
+const patch = (await import('../../server/api/email/templates/[id].patch'))
   .default
-const remove = (await import('../../server/utils/email-marketing/templateDeleteHandler'))
+const remove = (await import('../../server/api/email/templates/[id].delete'))
   .default
 const event = { context: {} } as Parameters<typeof patch>[0]
 describe('existing template routes with versioned history', () => {

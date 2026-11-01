@@ -1,1 +1,1 @@
-export { default } from '~~/server/utils/email-marketing/designTransport'
+export { default } from '~~/server/utils/email-marketing/templateUpdateHandler'

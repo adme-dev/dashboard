@@ -1,14 +1,19 @@
 # Private email design service
 
-This Worker owns the existing template update/delete handlers and four opt-in
-FigFlow draft routes. Pages keeps its normal authentication and RBAC middleware
-and forwards the original request through the private `EMAIL_DESIGN` binding.
-The Worker repeats canonical session, permission and client-scope checks. It has
-no public route, workers.dev URL, preview URL, cron or email-send capability.
+This Worker prepares four FigFlow draft routes and the canonical template
+update/delete handlers for a future private-service rollout. It has no public
+route, workers.dev URL, preview URL, cron or email-send capability.
 
-The FigFlow draft flag remains **false** in both deployment configurations.
-Existing template PATCH/DELETE do not use that flag. Deploying the Pages caller
-therefore requires a working service even while the new draft feature is off.
+**Current release is a disabled foundation.** Pages excludes every
+`/api/email/design/**` handler, including the forwarding route, and has no
+`EMAIL_DESIGN` binding. Existing template PATCH/DELETE execute their canonical
+handlers locally in Pages with normal authentication, RBAC and client scope.
+They do not depend on provisioning this Worker or copying the signing key.
+Setting the draft flag alone cannot activate the excluded endpoints.
+
+The FigFlow draft flag remains **false** in both Worker configurations. The
+Worker is not deployed by the Pages release. Its local runtime evidence remains
+useful preparation, not hosted acceptance or an enabled staff feature.
 
 ## Routes and boundaries
 
@@ -71,7 +76,7 @@ Without both environment variables it skips; a skipped run is not runtime proof.
 These local checks do not establish hosted Hyperdrive behavior, browser editing
 or compatibility with Apple Mail, Outlook and Gmail.
 
-## Release order
+## Future private-service activation order
 
 1. Review and validate a clean source commit containing current main. Production
    requires exact fetched `origin/main`; `deploy.mjs` rejects a different account,
@@ -86,19 +91,21 @@ or compatibility with Apple Mail, Outlook and Gmail.
    source, logs or chat. Cloudflare secret metadata confirms presence only; it
    does not reveal a value or prove matching keys. Missing/fallback keys fail
    closed. Staging uses the isolated staging database and renderer.
-5. Verify hosted private-service authentication and template CRUD before the
-   Pages cutover. Keep the prior Pages deployment available for rollback.
-6. Deploy Pages only through the repository's guarded `pnpm deploy:*` commands,
+5. Verify hosted private-service authentication and draft operations in staging.
+   Keep existing template writes local unless an explicitly reviewed later
+   release moves them; the prepared Worker endpoints alone do not redirect Pages.
+6. In a reviewed activation change, allow only the design transport route back
+   into the Pages build, add the matching `EMAIL_DESIGN` bindings, set the exact
+   allowed app origin, and recheck bundle size and hosted authentication. Keep
+   draft saves disabled until the staff/native workflows and acceptance gates pass.
+7. Deploy Pages only through the repository's guarded `pnpm deploy:*` commands,
    after `pnpm deploy:check`, and record source/deployment identities. Verify
    existing template editing/deletion and QR navigation on the real host.
 
-The prepared Pages configuration adds `EMAIL_DESIGN` for preview and production.
-Do not deploy that caller before the matching service and signing key are ready:
-existing template writes would otherwise return 503 or 401. No public HTTP
-fallback or automatic mutation retry exists. For an uncertain draft-save reply, reconcile using the retained operation
-identity and receipt. For a legacy template mutation, re-read its current state
-before deciding whether another mutation is necessary; legacy CRUD does not
-provide the draft operation-receipt contract.
+No public HTTP fallback or automatic mutation retry exists. For an uncertain
+draft-save reply, reconcile using the retained operation identity and receipt.
+For a legacy template mutation, re-read its current state before deciding whether
+another mutation is necessary; legacy CRUD has no draft receipt contract.
 
 Feature enablement remains a separate milestone: the staff UI, native EDM
 bridge, module library workflow and real email-client acceptance are still open

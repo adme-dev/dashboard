@@ -45,3 +45,13 @@ describe('private email design deployment targets', () => {
     expect(() => validateEmailDesignTarget(config('staging'), 'production')).toThrow()
   })
 })
+
+
+describe('disabled Pages foundation release', () => {
+  it('excludes all design routes and omits an unprovisioned service binding', () => {
+    const nuxt = readFileSync(new URL('../../nuxt.config.ts', import.meta.url), 'utf8')
+    const pages = readFileSync(new URL('../../wrangler.toml', import.meta.url), 'utf8')
+    expect(nuxt).toContain("ignore: ['**/api/email/design/**']")
+    expect(pages).not.toMatch(/binding\s*=\s*["']EMAIL_DESIGN["']/)
+  })
+})
