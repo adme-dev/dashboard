@@ -15,8 +15,9 @@ the release evidence. Preparation is separate from deployment.
 Production asset version `86f446f6-f9de-4ce1-b6af-10a0bf722cb1` and creative
 gateway version `595f31ce-abd5-4e3d-ba7c-b9e1f3f59fce` were deployed from main
 `b63cd1e59bebcbc6f88d698f7eac62ee52953924` after native CI and isolated actual-WASM
-acceptance. Hosted staff acceptance is still pending and composer access remains
-disabled. See the active milestone and release receipt.
+acceptance. Hosted staff acceptance passed on 2 November, including native mouse/keyboard
+edits and two saved composer round trips. See the completed milestone and
+`docs/email-builder/figflow-production-activation-20261102.json`.
 
 Release order after final verification:
 
@@ -36,10 +37,10 @@ Release order after final verification:
    creative version for rollback. Enable composer/backend flags only after the
    separate private email service and schema prerequisites are verified.
 
-Steps 1–4 completed for the recorded release. Step 5 has Cloudflare and
-unauthenticated boundary readback; authenticated host verification is pending.
+Steps 1–5 completed for the recorded release, including authenticated hosted
+editing and persistence acceptance on 2 November.
 The promotion script is pinned
 to its previous creative baseline; after successful deployment it must refuse
 that old baseline. Reconcile the current source/version before another release.
-Cloudflare and unauthenticated boundary readback passed; authenticated hosted
-acceptance remains separate.
+Cloudflare, authentication-boundary and authenticated hosted acceptance passed;
+real email-client rendering remains separate.

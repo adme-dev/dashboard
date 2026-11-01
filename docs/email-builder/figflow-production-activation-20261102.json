@@ -1,0 +1,121 @@
+{
+  "date": "2026-11-02",
+  "milestone": "Supported saved-draft native FigFlow content round trip",
+  "status": "live-and-accepted",
+  "featureEnabled": true,
+  "pages": {
+    "id": "e2a2ff7e-96ea-4fa8-94f0-922bb00c4720",
+    "url": "https://e2a2ff7e.agency-dashboard-6cm.pages.dev",
+    "source": "ad9f18d6f6952a9587b5e03f1ad850041198d63b",
+    "flag": {
+      "type": "plain_text",
+      "value": "true"
+    },
+    "binding": {
+      "service": "xeroflow-email-design-production",
+      "environment": ""
+    },
+    "rawBytes": 25468436,
+    "rawBudget": 25468928,
+    "rawRemaining": 492,
+    "gzipBytes": 7338149
+  },
+  "privateDesign": {
+    "source": "0dc1274f85b2ea99d9104dd7cf4538c43088dbca",
+    "version": "bbc8fb52-01cc-456d-9a1c-2b58728cf4fb",
+    "deployment": "77f917b1-8536-41aa-94da-9767923ee5c9",
+    "flags": [
+      "nodejs_compat",
+      "global_fetch_strictly_public"
+    ],
+    "authority": "pages-auth-me-v1",
+    "enabled": "true"
+  },
+  "authority": {
+    "owner": "Existing Pages /api/auth/me",
+    "fixedProductionOrigin": "https://app.xeroflow.io",
+    "signingKeyCopied": false,
+    "signingKeyRotated": false,
+    "privateWorkerNeedsSigningKey": false,
+    "freshChecks": [
+      "session",
+      "active staff",
+      "revocation",
+      "roles",
+      "client scope"
+    ],
+    "bounded": {
+      "timeoutMilliseconds": 8000,
+      "responseBytes": 32768,
+      "redirects": false,
+      "cachedVerdicts": false
+    }
+  },
+  "native": {
+    "ciRun": "41296329622",
+    "source": "018c306c366e3e9cc1d6a02cb51dddbefec65a6b",
+    "assetVersion": "86f446f6-f9de-4ce1-b6af-10a0bf722cb1",
+    "creativeVersion": "595f31ce-abd5-4e3d-ba7c-b9e1f3f59fce",
+    "nativeInputsUnchanged": true
+  },
+  "hostedAcceptance": {
+    "signedIn": true,
+    "nativeMouseAndKeyboardEdit": true,
+    "proposalDoesNotChangeDraft": true,
+    "renderedReviewRequired": true,
+    "explicitApply": true,
+    "oneUndoAndRedo": true,
+    "composerEditSaved": true,
+    "secondNativeReturnPreservesComposerEdit": true,
+    "reloadPreservesFinalContent": true,
+    "conflict": {
+      "staleSaveStatus": 409,
+      "headPreserved": true,
+      "contentPreserved": true,
+      "reason": "REVISION_CONFLICT"
+    },
+    "anonymousStatus": 401,
+    "verificationTemplateId": "06733e70-0758-4138-9238-7ecaa2e22990",
+    "verificationTemplateKind": "draft",
+    "verificationTemplateRetained": "Synthetic verification draft retained with immutable revision/handoff evidence; no email sent",
+    "handoffs": [
+      "68105a32-8206-4e29-800e-fc24107d9419",
+      "c179dd15-d0f7-4b66-a7e9-2147a315ca5b"
+    ],
+    "final": {
+      "heading": "Second production FigFlow return",
+      "cta": "Staff CTA preserved in production",
+      "revision": "fd0e0921-b3cb-4273-9a35-7579271e8f96",
+      "rendered": true
+    },
+    "browserAnimationNote": "Orca kept finite modal animations at time zero; their existing animations were advanced to completion for subsequent UI checks."
+  },
+  "screenshots": {
+    "nativeFirstEdit": "da04a173c962e5bef3a8793ed141edc5fca742f23656a55f2a608c2e61a6659b",
+    "renderedReview": "0a2e8bfd36d73a656ac036b14fbc78e49a3332d02246959201cb01c34627c229",
+    "nativeSecondEdit": "7bd688970eff27d5cc25e374f90b37b72cba900030cab799677a15c59a8b465d",
+    "composerAfterReload": "091b6751758d27bf90f5a5b1887ced9e2a7139e4ebc921fd5e9cefab41e10b73"
+  },
+  "verification": {
+    "canonicalAuthAndAuthorityChecks": 96,
+    "focusedRouteComposerTransportChecks": 57,
+    "realWorkerPostgresNativeCases": 7,
+    "admissionCases": 12,
+    "inventoryCases": 8,
+    "routingAuthorityDeployChecks": 26,
+    "routingRuntimeAndDeployChecks": 25,
+    "independentSourceReview": "passed",
+    "pagesBudgetUnchanged": true
+  },
+  "scopeLimitations": [
+    "Content edits only: text, image and button; native layout/style changes rejected",
+    "Shared-module publication remains parent PRD work",
+    "Apple Mail, Gmail and Outlook client-rendering acceptance remains parent PRD work",
+    "Staging remains disabled"
+  ],
+  "rollback": {
+    "pagesDisabledDeployment": "41fd8581-10e0-4d4a-ac7b-dc1bacf8fdcd",
+    "privateDisabledVersion": "29ab0af9-7309-4ee2-82d7-ee473b4fc5de",
+    "procedure": "Reconcile current source and use guarded rollback/configuration release; retain additive schema and immutable history"
+  }
+}

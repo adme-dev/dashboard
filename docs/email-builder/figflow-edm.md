@@ -1,12 +1,12 @@
 # FigFlow EDM project — start here
 
-Status: the disabled foundation is merged and deployed (PR #801, source
-`a193e82a5`). Existing template writes remain on Pages. F01/F02/F03/F05 are
-partial; the FigFlow bridge, staff round trip and shared-module publishing
-remain unfinished and are not activated.
+Status (2 November 2026): the supported saved-draft content round trip is live
+and accepted in production. Staff can open FigFlow, edit supported content,
+review/apply returns and continue in the composer. Shared-module publication,
+broader conversion and real email-client acceptance remain parent-project work.
 
-- [Active first round-trip milestone](figflow-roundtrip-milestone.md)
-- [Current deployment, blockers and developer handoff](figflow-developer-handoff.md)
+- [Completed first round-trip milestone](figflow-roundtrip-milestone.md)
+- [Current production deployment and next developer tasks](figflow-developer-handoff.md)
 - [Source inventory and discovery evidence](figflow-integration-inventory.md)
 - [Product requirements and design](../superpowers/specs/2026-10-30-figflow-edm-design.md)
 - [Execution plan, task ledger and review record](../superpowers/plans/2026-10-30-figflow-edm.md)

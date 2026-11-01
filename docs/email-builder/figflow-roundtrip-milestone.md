@@ -1,140 +1,103 @@
 # First structured FigFlow round trip
 
-Updated 2 November 2026. **Implemented, merged and deployed with access disabled;
-hosted acceptance is incomplete.** [PR #807](https://github.com/adme-dev/dashboard/pull/807)
-contains the implementation. Exact deployment identities, hashes and proof limits
-are in [the release receipt](figflow-release-20261101.json).
+**Completed and live — 2 November 2026.** The supported saved-draft content
+workflow passed authenticated production acceptance. Exact source, deployments,
+proof limits and screenshot hashes are in the
+[activation receipt](figflow-production-activation-20261102.json). The earlier
+[disabled release receipt](figflow-release-20261101.json) is historical.
 
-## Acceptance and scope
+## Acceptance
 
-A supported saved composer draft opens as actual native FigFlow content. Supported
-text, image and button edits return as a durable proposal, require a rendered
-preview and explicit Apply, and save through canonical revision CAS. Apply is one
-composer undo step. A second handoff retains intervening staff edits. Conflicting
-newer revisions remain intact. This milestone does not include sending, arbitrary
-canvas conversion, module publication or real email-client compatibility.
+- [x] Canonical conversion with stable lineage and restricted content edits.
+- [x] Actual native import/snapshot; unsupported structure/style rejected.
+- [x] Durable actor/document/revision-bound proposals and explicit Apply.
+- [x] Composer save/open/resume/reconciliation/rendered preview and one undo step.
+- [x] Final application, auth, database, native and browser verification.
+- [x] Merge, production migrations, private services, native assets and activation.
+- [x] Existing session authority reused; no signing-key copy or rotation.
+- [x] Signed-in production native editing, preview/Apply and persistence/reload.
+- [x] Second round trip preserves intervening composer edits.
+- [x] Stale revisions rejected; existing composer/modules and QR navigation checked.
 
-- [x] Canonical composer conversion, stable lineage and restricted content edits.
-- [x] Actual native import/snapshot bridge; unsupported structure/style rejected.
-- [x] Durable actor/document/revision-bound handoff and proposal lifecycle.
-- [x] Composer open/resume/reconcile/preview/apply, revision saves and one undo step.
-- [x] Final source review and focused application/database/native/browser checks.
-- [x] Merge, production migrations, private services and disabled Pages deployment.
-- [ ] Provision the private service's matching session-signing key.
-- [ ] Reviewed activation and authenticated hosted round-trip acceptance.
-- [x] Signed-in composer save/reload and QR Codes/navigation verification (2 November).
+Scope: content edits to supported text, images and buttons, preserving canonical
+layout/mobile/lineage. This milestone does not deliver arbitrary canvas conversion,
+shared-module publication, email sending or real email-client compatibility.
+Those remain explicit tasks in the parent PRD.
 
-## Production release
+## Live release
 
-All runtime releases below used clean current main
-`b63cd1e59bebcbc6f88d698f7eac62ee52953924`.
-
-| Surface | Verified release |
+| Surface | Receipt |
 |---|---|
-| Pages `agency-dashboard` | `41fd8581-10e0-4d4a-ac7b-dc1bacf8fdcd`; app.xeroflow.io alias; raw 25,468,500 bytes, 428 below unchanged budget |
-| Private email design | Version `29ab0af9-7309-4ee2-82d7-ee473b4fc5de`; no public endpoint; flag false; JWT_SECRET absent |
-| Database | Migrations 491–493 committed together against the verified production Hyperdrive target at 10:26 UTC |
-| Private native assets | Version `86f446f6-f9de-4ce1-b6af-10a0bf722cb1`; ASSETS only; no public endpoint |
-| Creative gateway | Version `595f31ce-abd5-4e3d-ba7c-b9e1f3f59fce`, deployment `89c76119-d31d-4dfe-b438-b778a9235399`, 100% active |
+| Pages | `e2a2ff7e-96ea-4fa8-94f0-922bb00c4720`, source `ad9f18d6f6952a9587b5e03f1ad850041198d63b`, serving app.xeroflow.io |
+| Private design Worker | Version `bbc8fb52-01cc-456d-9a1c-2b58728cf4fb`, source `0dc1274f85b2ea99d9104dd7cf4538c43088dbca`; capability true, no public endpoint |
+| Database | Migrations 491–493 applied 1 November to verified production Hyperdrive |
+| Native private assets | Version `86f446f6-f9de-4ce1-b6af-10a0bf722cb1` |
+| Creative gateway | Version `595f31ce-abd5-4e3d-ba7c-b9e1f3f59fce`, authenticated `/figflow/0.11.2-edm1/` prefix |
 
-Pages mounts only the bounded design transport and has the production
-EMAIL_DESIGN binding. Heavy design handlers remain in the private Worker;
-existing template PATCH/DELETE stay local. Both capability flags remain false.
-The gateway adds only `/figflow/0.11.2-edm1/` after existing authentication,
-preserving old editor assets, runtime settings, secrets and MotorStack RPC.
-The old creative version is `e5de27cd-41cd-456f-a7f7-9a91e0276777`; prior Pages
-artifact is `77a1835c-c48d-4f72-aaa6-f589307fe225`.
+Pages raw Worker size: 25,468,436 / 25,468,928 bytes (492 remaining); gzip
+7,338,149 / 9,750,000. No size/target/source guard was relaxed. Subsequent source
+changes affect only the private Worker, its fixtures and documentation; Pages
+runtime source remains the recorded activation commit. Existing template writes
+stay local, heavy design handlers stay private, and staging remains disabled.
 
-## Verification
+## Authentication and hosted correction
 
-- 73 PostgreSQL/private-Worker checks and 259 existing design/security/deploy
-  regressions passed. Focused composer/recovery/panel/inventory checks passed.
-- All 18 design-transport cases and targeted lint passed. The Pages build and
-  target/source guards passed without changing budgets or minifier guards.
-- [Native CI run 41296329622](https://github.com/adme-dev/dashboard/actions/runs/41296329622)
-  passed 43 native tests, including the original seven bridge tests and all four
-  EDM tests, plus 15 relay checks and browser packaging. Native source is
-  `018c306c366e3e9cc1d6a02cb51dddbefec65a6b`; subsequent runtime changes did not
-  alter those native inputs. The archive SHA is in the release receipt.
-- The actual-WASM browser case passed against the real private Worker and
-  disposable PostgreSQL: native edit, persisted proposal, rendered preview,
-  explicit Apply, one undo/redo action, staff CTA edit/save and a second native
-  return preserving that edit. No request reached production. Native edits used
-  the real bridge; this is not mouse/keyboard, full-dashboard visual or hosted
-  acceptance. The screenshot shows native content, not email-client rendering.
-- The browser harness needed Buffer conversion when serving esbuild bytes;
-  before that fix it timed out loading its fixture. The corrected run passed in
-  5.57 seconds; six unrelated cases were intentionally filtered, not failed.
-- Cloudflare readback verified Pages source/alias/binding/false flag and both
-  private service identities. Creative source hashes and retained runtime/assets
-  settings match the guarded promotion. Public launcher returns 200; old/new
-  editor paths redirect to the existing sign-in flow. The Email Builder page
-  returns 200 and states disabled status. Composer/QR app routes return 200, but
-  the initial verification browser was signed out; the dated checkpoint below records subsequent signed-in checks.
+PR #810 extracted the unchanged Pages signature verifier behind a build-time
+port. The private Worker aliases that port to XeroFlow's existing `/api/auth/me`
+authority, as Creative Suite already does. The request uses only the exact bearer
+token and a fixed environment host: no cookies, redirects or cached verdicts;
+8-second request and 32 KiB response bounds. An active authoritative user must
+match the original token before claims are returned. Fresh database session,
+revocation, role and client checks remain in their existing owners.
 
-## Remaining actions and ownership
+The first hosted lookup returned503. PR #811 added content-free diagnostics,
+which identified auth-owner HTTP522 while browser auth returned200. The private
+Worker lacked `global_fetch_strictly_public`; without it, same-zone requests
+bypassed Pages and hit the zone origin. PR #812 added the flag already used by
+Creative Suite, pinned it in the exact deployment guard and matched fixtures.
+The corrected hosted lookup returned200. The original pending action was
+reconciled using its retained identity, then completed normally. No key was
+copied or rotated, no caller identity grant or public fallback was added.
 
-1. **Operator:** securely provision the existing Pages JWT_SECRET to
-   `xeroflow-email-design-production` (and the correct staging secret for staging).
-   Its approved source has not been identified. Do not rotate Pages credentials,
-   print secrets, extract browser tokens or add an alternate authentication path.
-2. **Release developer:** make a reviewed activation change after secret/schema/
-   service prerequisites are verified. Current deployment guards intentionally
-   require false flags; do not bypass them with ad hoc configuration. Exercise
-   staging authentication, client scope, revoked access, conflict and retry paths,
-   then perform the exact hosted staff workflow before production enablement.
-3. **Signed-in reviewer:** verify composer Save/modules, QR Codes/navigation and
-   the actual creative-host round trip. Existing composer save/reload and QR
-   navigation passed on 2 November; the canonical hosted round trip remains open.
+## Production acceptance
 
-Kimi owned native implementation; Grok supplied relay/persistence review; Codex
-integrated and released, with independent source review. Shared modules,
-publication and Apple Mail/Gmail/Outlook acceptance remain in the parent PRD.
-The original dirty worktree and shared node_modules were preserved. The release
-checkout and native evidence are retained for activation/handoff, not as a stale
-future release base; fetch current main before continuing.
+The signed-in owner session opened synthetic draft
+`06733e70-0758-4138-9238-7ecaa2e22990`, clearly named
+`[Verification] FigFlow live activation 2026-11-02`.
 
-## Live acceptance checkpoint — 2 November
+1. Opened the actual hosted native editor from the composer and changed its
+   heading with mouse/keyboard input on the native canvas.
+2. Returned a durable proposal. A canonical read still showed the original
+   heading before Apply. The rendered review showed the new content.
+3. Applied explicitly. Canonical source and HTML advanced together. One Undo
+   restored the original heading; one Redo restored the native edit.
+4. Edited CTA text in the composer and saved it through the versioned save path.
+5. Opened a second native session, verified that CTA was present, edited the
+   heading again, returned/reviewed/applied, and reloaded the saved composer.
+   Both content and HTML retained the second heading and staff CTA edit.
+6. Submitted a stale revision against the same owned verification draft:
+   `409 REVISION_CONFLICT`; current head and content remained unchanged.
+   Anonymous lookup returned 401. No email was sent.
 
-The owner completed sign-in in the verification browser. Production composer
-modules and Save rendered; a uniquely named temporary shared draft was saved
-from the FuturaX starter and reloaded by its persisted ID with content intact.
-The owned draft was then deleted (200), and a fresh read returned 404. No email
-was sent. QR Codes navigation and existing records rendered. The authenticated
-`/figflow/0.11.2-edm1/` editor loaded a canvas and its actual native bridge returned
-status including EDM import, required-image and snapshot operations.
+This is real hosted acceptance, including native mouse/keyboard editing, not the
+prior isolated-WASM fixture. Orca paused finite modal animations at time zero;
+existing animations were advanced to their end before subsequent UI checks.
+Screenshots are hashed in the receipt and retained under `/private/tmp/figflow-*`.
+The synthetic versioned draft remains as acceptance evidence with immutable
+history. It is a draft, not a library template or campaign.
 
-This closes the established staff UI check and verifies hosted native startup.
-It does not close the canonical hosted round trip: the private design Worker's
-JWT_SECRET is absent and both backend flags remain false. Pages has the encrypted
-JWT_SECRET entry but its management API returns no value. A fresh bounded search
-of dashboard env/dev-vars files found no stored key, and no connected secret-manager
-provider is available. The operator has been asked for the original secure source;
-no replacement key, credential rotation or authentication bypass was introduced.
+## Validation and next work
 
-## Activation work — 2 November
+Canonical auth/authority/deploy/binding checks passed (96); focused route/composer/
+transport checks passed (57); real Worker/PostgreSQL/native suite passed all seven
+cases; twelve admission checks and eight gate-inventory checks passed. Routing
+verification passed 26 authority/deploy checks and 25 runtime/deploy checks. Native
+CI 41296329622 previously passed 43 native tests, 15 relay checks and package build;
+those inputs did not change. Targeted lint and independent source reviews passed.
+Counts overlap and must not be added into a unique total.
 
-Ruling: reuse the existing fixed-origin `/api/auth/me` session authority, as the
-Creative gateway does. Extract the unchanged Pages signature verifier behind a
-build-time port; only the private design Worker aliases that port to the live
-session authority. No signing key is copied or rotated. Each access check retains
-fresh active-user, revocation, role/client and revision enforcement. Redirects,
-timeouts, malformed/oversized responses and unknown environments fail closed.
-Implementation and activation checks are in progress; no tests until this packet
-is ready for final verification, per the owner's instruction.
-
-Final activation verification: 96 canonical-auth/authority/target/config checks
-passed; 57 focused route/composer/transport checks passed; the real Worker/PG
-suite including actual-WASM two-return browser acceptance passed all seven cases.
-Twelve admission scenarios passed. Targeted lint passed. Independent source review
-found no important blocker. The Worker build now explicitly rejects an artifact
-that retains the local signing verifier. Production activation is reviewed true;
-staging stays disabled. No new production text binding is introduced for the UI.
-Pages build and hosted acceptance remain pending at this checkpoint.
-
-Hosted diagnosis: content-free Worker tail identifies HTTP 522 when calling the
-canonical auth owner, while the signed-in browser reaches that endpoint (200).
-This is same-zone origin routing: the caller lacks the public-fetch compatibility
-flag already present on Creative Suite. Add `global_fetch_strictly_public` to the
-private Worker's exact guarded configuration so its fixed auth URL traverses the
-public hostname. No actor/session check is relaxed and no alternate host is added.
+The signing-key blocker is closed. Further work belongs to the parent PRD:
+shared modules/publication, durable asset lifecycle extensions and the exact
+Apple Mail/Gmail/Outlook acceptance matrix. No send-readiness claim is made here.
+Do not rerun unchanged suites or rebuild/redeploy old source as a new release.
+Fetch current main and check live receipts before taking the next task.
