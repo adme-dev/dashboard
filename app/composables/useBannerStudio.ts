@@ -14,6 +14,7 @@ let pendingSave: Promise<void> | null = null
 
 // Animation clipboard (module-scope singleton)
 const animClipboard = ref<{
+  imageEntrance?: Layer['imageEntrance']
   animIn: AnimInType
   animInDur: number
   animInStart?: number
@@ -235,6 +236,7 @@ export function useBannerStudio() {
   }
 
   function updateLayer(id: number, props: Partial<Layer>) {
+    if (Object.prototype.hasOwnProperty.call(props, 'animIn') && !Object.prototype.hasOwnProperty.call(props, 'imageEntrance')) props = { ...props, imageEntrance: undefined }
     const layer = activeLayers.value.find(l => l.id === id)
     if (!layer) return
     const board = state.sets[state.activeKey]
@@ -600,6 +602,7 @@ export function useBannerStudio() {
     const l = selectedLayer.value
     if (!l) return
     animClipboard.value = {
+      imageEntrance: l.imageEntrance ? { ...l.imageEntrance } : undefined,
       animIn: l.animIn,
       animInDur: l.animInDur,
       animInStart: l.animInStart,
@@ -616,7 +619,7 @@ export function useBannerStudio() {
   function pasteAnimation() {
     const l = selectedLayer.value
     if (!l || !animClipboard.value) return
-    updateLayer(l.id, { ...animClipboard.value })
+    updateLayer(l.id, { ...animClipboard.value, imageEntrance: l.type === 'image' ? animClipboard.value.imageEntrance : undefined })
   }
 
   // ── Clipboard ─────────────────────────

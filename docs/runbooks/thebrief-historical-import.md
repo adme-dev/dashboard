@@ -31,3 +31,11 @@ Outlined text preserves the source paint order as `textPaintOrder`: `fill` paint
 A shape with uniform corner radii of 50% or more becomes a native ellipse (`rectShape: 'ellipse'`), and a static CSS filter on the shape, such as the `blur(8px)` TheBrief uses for ground shadows, carries across as the layer's `visualFilter`. Both are editable in the rectangle inspector and render identically in the editor and both HTML exporters. Partial-percentage or unequal corner radii, shape box shadows, shape borders and unsafe filters are held for an adapter rather than imported as a hard-edged rectangle.
 
 A successful upload is not a motion pass: compare every size with the original HTML5 export at entry, mid-point, just before the loop and just after it before marking a design verified.
+
+## Split-image entrances and exported audio
+
+Supported Split Slam and soft wipe image entrances retain their fixed source clipping, easing and effect timing as native image entrance data. The editor, saved viewer and both HTML builders use the same paused CSS animation driven by the GSAP transport, including reverse scrubbing. Timeline presence and slide retiming preserve the entrance. Changed custom-property keyframes or mask compositions remain held.
+
+`package-import.mjs` reconciles audio only when ffprobe establishes either the complete original track or an already trimmed clip with the expected duration. Source fades are baked into the managed MP3; the original remains unchanged in its retained ZIP. Ambiguous lengths, hover audio and unknown effects remain held.
+
+For ambiguous stacked text, `THEBRIEF_ROW_METRICS` may point to an operator-captured JSON map from the original child ZIP SHA-256 to source element IDs and measured row heights. Measure a local script-free copy with animations disabled after its source fonts load. Measurements must cover every row, fit the source box, and be retained with comparison evidence. A measurement for another ZIP cannot unlock a layout. Missing measurements retain the normal hold.

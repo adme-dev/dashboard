@@ -1,4 +1,5 @@
 import { parse } from 'acorn'
+import { sourceImageEntrance } from './split-slam.mjs'
 import { Window } from 'happy-dom'
 import { isSafeBannerImageFilter } from '../../shared/bannerImageFilters.mjs'
 
@@ -411,7 +412,7 @@ function sourceDeclarations(document, element, property) {
 }
 
 /** Offline CSS export adapter for bounded, hard-cut slide sequences. Source scripts are parsed, never run. */
-export async function convertTheBriefHtml(html) {
+export async function convertTheBriefHtml(html, { reconcileAudio, textRowMetrics = {} } = {}) {
   if (Buffer.byteLength(html) > 2 * 1024 * 1024) throw new Error('HTML exceeds pilot limit')
   const window = new Window({ settings: { enableJavaScriptEvaluation: false, disableJavaScriptFileLoading: true, disableCSSFileLoading: true, disableIframePageLoading: true } })
   try {
@@ -493,9 +494,11 @@ export async function convertTheBriefHtml(html) {
       }
       let keyframes = {}
       let wordPop = null
+      const imageEntrance = sourceImageEntrance(element, sourceId, style, rules, start, end)
+      if (imageEntrance) layerBase.imageEntrance = imageEntrance
       try {
         wordPop = sourceWordPop(element, sourceId, style, rules)
-        let effect = wordPop ? {} : effectTracks(document.getElementById(`effIn${sourceId}`), style, rules, start, end, warnings, layerBase)
+        let effect = wordPop || imageEntrance ? {} : effectTracks(document.getElementById(`effIn${sourceId}`), style, rules, start, end, warnings, layerBase)
         const middle = document.getElementById(`effMid${sourceId}`)
         if (middle) {
           try {
@@ -539,11 +542,23 @@ export async function convertTheBriefHtml(html) {
         if (!Number.isFinite(volume) || volume < 0 || volume > 1) throw new Error(`Audio ${sourceId}: invalid source volume`)
         const offset = audioConfig?.startTime === undefined ? 0 : audioConfig.startTime
         if (!Number.isFinite(offset) || offset < 0) throw new Error(`Audio ${sourceId}: invalid source clip offset`)
-        if (offset !== 0) throw new Error(`Audio ${sourceId}: source clip offset ${offset}s requires exported-clip reconciliation`)
         if (audioConfig?.soundOnHover) throw new Error(`Audio ${sourceId}: hover playback requires an audio adapter`)
         const stages = [audioConfig?.buildIn, audioConfig?.buildMid, audioConfig?.buildOut].filter(Boolean)
-        if (stages.some(stage => stage.type === 'fadeAudio')) throw new Error(`Audio ${sourceId}: source fades require exported-clip reconciliation`)
-        if (stages.some(stage => !['none', 'instant', 'audio'].includes(stage.type))) throw new Error(`Audio ${sourceId}: unsupported source audio effect`)
+        if (stages.some(stage => !['none', 'instant', 'audio', 'fadeAudio'].includes(stage.type))) throw new Error(`Audio ${sourceId}: unsupported source audio effect`)
+        const fades = stages.some(stage => stage.type === 'fadeAudio')
+        if (offset !== 0 || fades) {
+          if (!reconcileAudio) throw new Error(offset !== 0 ? `Audio ${sourceId}: source clip offset ${offset}s requires exported-clip reconciliation` : `Audio ${sourceId}: source fades require exported-clip reconciliation`)
+          const fadeIn = audioConfig?.buildIn?.type === 'fadeAudio' ? audioConfig.buildIn.duration : 0
+          const fadeOut = audioConfig?.buildOut?.type === 'fadeAudio' ? audioConfig.buildOut.duration : 0
+          const clipEnd = audioConfig?.endTime
+          const span = end - start
+          if (!Number.isFinite(audioConfig.duration) || audioConfig.duration < clipEnd || !Number.isFinite(clipEnd) || Math.abs(clipEnd - offset - span) > 0.0001
+            || ![fadeIn, fadeOut].every(v => Number.isFinite(v) && v >= 0 && v <= span)
+            || fadeIn + fadeOut > span || audioConfig?.buildMid?.type === 'fadeAudio'
+            || (fades && Math.abs((audioConfig.buildIn.duration || 0) + (audioConfig.buildMid.duration || 0) + (audioConfig.buildOut.duration || 0) - span) > 0.0001)) throw new Error(`Audio ${sourceId}: ambiguous source clip/fades`)
+          await reconcileAudio({ src: localAsset(sources[0].getAttribute('src')), offset, clipEnd, duration: span, originalDuration: audioConfig.duration, fadeIn, fadeOut })
+          warnings.push(`Audio ${sourceId}: source clip reconciled and fades retained in the managed MP3; original audio remains in the source ZIP`)
+        }
         const delay = audioConfig?.buildIn?.delay
         if (delay !== undefined && (!Number.isFinite(delay) || delay < 0 || Math.abs(slide.start + delay - start) > 1e-6)) throw new Error(`Audio ${sourceId}: source audio presence requires reconciliation`)
         layers.push({ ...layerBase, id: id++, type: 'audio', name: `Audio ${sourceId}`, src: localAsset(sources[0].getAttribute('src')), x: 0, y: 0, w: 1, h: 1, volume, ...(audio.muted || audio.hasAttribute('muted') || audioConfig?.muted === true ? { muted: true } : {}) })
@@ -638,6 +653,8 @@ export async function convertTheBriefHtml(html) {
           layerBase.rotation = rotation
           layerBase.transformOrigin = { x: layerBase.w / 2, y: layerBase.h / 2 }
         }
+        const measured = textRowMetrics[String(sourceId)]
+        if (measured && (measured.length !== rows.length || measured.some(v => !Number.isFinite(v) || v <= 0 || v > layerBase.h + 1) || measured.reduce((sum, v) => sum + v, 0) > layerBase.h + 2)) throw new Error('Invalid measured source row layout')
         let y = layerBase.y
         const rowHeights = []
         for (const [rowIndex, row] of rows.entries()) {
@@ -703,8 +720,9 @@ export async function convertTheBriefHtml(html) {
           const fontSize = px(textCss.fontSize)
           const lineBoxFontSize = Math.max(fontSize, ...[...row.querySelectorAll('span')].map(item => px(style(item).fontSize)))
           const lineHeight = /^\d*\.?\d+$/.test(rowCss.lineHeight) ? Number(rowCss.lineHeight) : px(rowCss.lineHeight) / fontSize
-          const height = lineBoxFontSize * lineHeight
+          const height = measured?.[rowIndex] ?? lineBoxFontSize * lineHeight
           if (!Number.isFinite(height)) throw new Error('Unsupported text line height')
+          if (measured && (height < lineBoxFontSize * lineHeight * 0.98 || Math.abs(height / (lineBoxFontSize * lineHeight) - Math.round(height / (lineBoxFontSize * lineHeight))) > 0.03)) throw new Error('Invalid measured source row layout')
           if (row.textContent.trim()) layers.push({ ...layerBase, linkId: `source:${sourceId}:row:${rowIndex}`, id: id++, type: 'text', name: row.textContent.trim().slice(0, 60), y, h: height, ...(layerBase.transformOrigin ? { transformOrigin: { x: layerBase.transformOrigin.x, y: layerBase.transformOrigin.y - (y - layerBase.y) } } : {}), text: row.textContent.replace(/^[ \t\r\n]+|[ \t\r\n]+$/g, ''), ...(textRuns.length ? { text: row.textContent, textRuns } : {}), ...(wordPop ? { wordPop } : {}), textTransform, fontFamily: textCss.fontFamily.replace(/["']/g, ''), fontStyle: textCss.fontStyle === 'italic' ? 'italic' : 'normal', fontSize, lineBoxFontSize, textAntialias: style(document.documentElement).getPropertyValue('-webkit-font-smoothing') === 'antialiased', fontWeight: Number(textCss.fontWeight) || 400, lineHeight, color: paintedCss.color || textCss.color || '#fff', ...(textStroke ? { textStroke, textPaintOrder } : {}), ...(textShadow ? { textShadow } : {}), textAlign: textCss.textAlign || 'left', letterSpacing: !textCss.letterSpacing || textCss.letterSpacing === 'normal' ? '0px' : textCss.letterSpacing })
           y += height
           rowHeights.push(height)
@@ -717,7 +735,7 @@ export async function convertTheBriefHtml(html) {
         const extra = layerBase.h - (y - layerBase.y)
         if (rows.length > 1 && extra > 0.4 * Math.min(...rowHeights)) {
           const wholeLines = height => extra / height >= 0.9 && Math.abs(extra / height - Math.round(extra / height)) < 0.1
-          if (!wholeLines(rowHeights.at(-1)) || rowHeights.slice(0, -1).some(wholeLines)) throw new Error('Wrapped text across stacked rows needs an adapter')
+          if (!wholeLines(rowHeights.at(-1)) || rowHeights.slice(0, -1).some(wholeLines)) throw new Error(`Wrapped text across stacked rows needs an adapter: ${element.id} (${layerBase.h}; rows ${rowHeights.join(',')})`)
         }
         if (new Set(rows.map(row => style(row).fontSize)).size > 1) warnings.push(`${element.id}: mixed-size text split into editable lines; baseline alignment needs visual review`)
       } else if (type === 'button') {
@@ -750,13 +768,14 @@ export async function convertTheBriefHtml(html) {
             fit = contentCss.backgroundSize
           }
         }
-        const transformed = [...element.querySelectorAll('div')].filter(div => style(div).transform && style(div).transform !== 'none')
+        const transformed = [...element.querySelectorAll('div')].filter(div => !(imageEntrance && div === content) && style(div).transform && style(div).transform !== 'none')
         const mirrored = transformed.filter(div => /^rotate\(0(?:deg)?\)\s+scale\((?:-1,\s*1|1,\s*-1)\)$/.test(style(div).transform))
         const rotated = transformed.filter(div => !mirrored.includes(div)).map(div => style(div).transform)
         if (rotated.some(t => !/^rotate\(-?[\d.]+deg\)$/.test(t)) || mirrored.length > 1
           || (mirrored.length && (rotated.some(t => Number.parseFloat(t.slice(7)) !== 0)
             || style(mirrored[0]).width !== '100%' || style(mirrored[0]).height !== '100%'
             || !['', '50% 50%', 'center center', 'center'].includes(style(mirrored[0]).transformOrigin)))) throw new Error('Unsupported static transform')
+        if (imageEntrance && rotated.some(t => Number.parseFloat(t.slice(7)) !== 0)) throw new Error('Rotated image entrances require a composition adapter')
         if (mirrored.length) imageTransforms.push({ layerId: id, operation: /scale\(-1/.test(style(mirrored[0]).transform) ? 'flop' : 'flip' })
         let contentOpacity = 1
         const imageFilters = []
@@ -766,7 +785,7 @@ export async function convertTheBriefHtml(html) {
           if (!Number.isFinite(opacity) || opacity < 0 || opacity > 1) throw new Error('Unsupported image opacity')
           if (nodeCss.animationName && nodeCss.animationName !== 'none' && opacity !== 1) throw new Error('Animated image with nonidentity underlying opacity needs an adapter')
           contentOpacity *= opacity
-          if (nodeCss.filter && nodeCss.filter !== 'none') imageFilters.push(nodeCss.filter)
+          if (nodeCss.filter && nodeCss.filter !== 'none' && !(imageEntrance && node === content)) imageFilters.push(nodeCss.filter)
           if (node === element) break
         }
         layerBase.opacity = contentOpacity

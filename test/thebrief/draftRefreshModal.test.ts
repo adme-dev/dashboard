@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { readTheBriefDraftRefresh } from '../../server/utils/banner/thebriefDraftRefresh'
 import { computed, createApp, defineComponent, h, nextTick, reactive, ref, shallowRef, toRaw, watch, type App } from 'vue'
 
 const api = vi.fn()
@@ -159,6 +160,17 @@ describe('explicit imported draft update', () => {
     await click('Prepare saved viewer')
     expect(api.mock.calls.some(([, options]) => options?.method)).toBe(false)
     expect(host.textContent).toContain('Project retained')
+  })
+
+  it('projects real package metadata into the strict server refresh contract', async () => {
+    readBatch.mockResolvedValueOnce([{ file: new File(['{}'], 'prepared.json'), pkg: { ...structuredClone(pkg), source: { ...source, clientName: 'Blood Motor Group', createdDate: '2024-11-01' } }, clientId, folderId: '__unfiled__', status: 'Ready' }])
+    await mountModal()
+    await click('Update imported draft')
+    await click('Back up and update draft')
+    const request = api.mock.calls.find(([url]) => url.endsWith('/thebrief-refresh'))![1].body
+    expect(readTheBriefDraftRefresh(request).source).toEqual(source)
+    expect(request.source).not.toHaveProperty('clientName')
+    expect(request.source).not.toHaveProperty('createdDate')
   })
 
   it('holds a new draft when its original TheBrief creation date is missing', async () => {

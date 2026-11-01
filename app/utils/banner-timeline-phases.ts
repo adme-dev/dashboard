@@ -26,6 +26,7 @@ export function describeKeyframeMotion(layer: Layer, start = layer.startTime ?? 
   }
   const direction = (values: number[]) => values.every(value => value > 0) ? 1 : values.every(value => value < 0) ? -1 : 0
   const labels: string[] = []
+  if (layer.imageEntrance && layer.imageEntrance.start < end && layer.imageEntrance.start + layer.imageEntrance.duration > start) labels.push(layer.imageEntrance.kind === 'splitSlam' ? 'Split Slam' : 'Soft wipe')
   const opacity = deltas('opacity')
   if (opacity.length) labels.push(direction(opacity) === 1 ? 'Fade in' : direction(opacity) === -1 ? 'Fade out' : 'Fade')
   const x = deltas('x'), y = deltas('y')
@@ -70,6 +71,7 @@ export function timelinePhases(layer: Layer): TimelinePhase[] {
       const from = Math.max(start, clip.start), to = Math.min(end, clip.end)
       if (to > from) changes.push({ start: from, end: to })
     }
+    if (layer.imageEntrance) changes.push({ start: Math.max(start, layer.imageEntrance.start), end: Math.min(end, layer.imageEntrance.start + layer.imageEntrance.duration) })
     changes.sort((a, b) => a.start - b.start)
     const merged: typeof changes = []
     for (const range of changes) {

@@ -36,3 +36,16 @@ it('holds already-clipped exports with unresolved original offsets or fades inst
 it.each([-1, 101, 'loud', null])('rejects invalid source volume %j', async (volume) => {
   await expect(convertTheBriefHtml(audioSource({ volume }))).rejects.toThrow('invalid source volume')
 })
+
+it('requires an explicit byte-reconciliation boundary before retaining a clipped faded soundtrack', async () => {
+  const calls: unknown[] = []
+  const html = audioSource({ startTime: 12.4, endTime: 16.2, duration: 130, buildIn: { type: 'fadeAudio', duration: 1, delay: 0.2 }, buildMid: { type: 'none', duration: 1.8 }, buildOut: { type: 'fadeAudio', duration: 1 } })
+  const result = await convertTheBriefHtml(html, { reconcileAudio: async (value) => {
+    calls.push(value)
+  } })
+  expect(calls).toEqual([{ src: './clip.mp3', offset: 12.4, clipEnd: 16.2, duration: 3.8, originalDuration: 130, fadeIn: 1, fadeOut: 1 }])
+  expect(result.canvasData.custom_300x250.layers.find(layer => layer.type === 'audio')).toMatchObject({ startTime: 0.2, endTime: 4, src: './clip.mp3' })
+  await expect(convertTheBriefHtml(html, { reconcileAudio: async () => {
+    throw new Error('Clip length was not established')
+  } })).rejects.toThrow('Clip length was not established')
+})

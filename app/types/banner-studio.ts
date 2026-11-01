@@ -115,6 +115,8 @@ export interface Layer {
   textTexture?: string
   /** Static CSS filter chain, validated by the shared bounded filter contract. */
   visualFilter?: string
+  /** Bounded split-image entrance, synchronized to the native transport. */
+  imageEntrance?: { kind: 'splitSlam' | 'softWipe', start: number, duration: number, ease: string }
   effectOrigin?: { sourceLayerId: number, text: string, recipe: import('../../shared/bannerEffects').BannerEffectRecipe }
   // Background (for bg layer or text badges)
   bgColor?: string
