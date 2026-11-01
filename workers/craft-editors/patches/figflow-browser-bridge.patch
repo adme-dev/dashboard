@@ -137,7 +137,7 @@
 +}
 --- a/crates/engine/src/cmd/edm.rs
 +++ b/crates/engine/src/cmd/edm.rs
-@@ -0,0 +1,714 @@
+@@ -0,0 +1,726 @@
 +//! Bounded XeroFlow email handoffs on a real native document.
 +//!
 +//! The canonical document is retained verbatim. A snapshot patches only approved
@@ -681,6 +681,11 @@
 +        }
 +        total += bytes.len();
 +        let block = handoff.blocks.get(&request.block_id).ok_or_else(|| bad("edm_snapshot", "image mapping missing"))?;
++        let baseline_node = handoff.native.node(block.root).ok_or_else(|| bad("edm_snapshot", "baseline image missing"))?;
++        let current_node = ds.doc.node(block.root).ok_or_else(|| bad("edm_snapshot", "image node missing"))?;
++        if current_node.fills != baseline_node.fills {
++            return Err(bad("edm_snapshot", "image fills changed before URL replacement"));
++        }
 +        let (hash, width, height) = figcraft_format::add_image(ds.doc_mut(), bytes.clone()).map_err(|_| bad("edm_snapshot", "unsupported image bytes"))?;
 +        if width > 8192 || height > 8192 || u64::from(width) * u64::from(height) > 16_777_216 {
 +            return Err(bad("edm_snapshot", "image dimension limit exceeded"));
@@ -822,6 +827,13 @@
 +        assert_eq!(proposal["blocks"]["image-1"]["data"]["props"]["url"], "https://example.invalid/two.png");
 +        assert!(required_snapshot_images(&session).unwrap().is_empty());
 +        assert_eq!(session.execute("edm_snapshot", &json!({})).unwrap()["blocks"]["image-1"]["data"]["props"]["url"], "https://example.invalid/two.png");
++
++        session.execute("node.set", &json!({"ids": [image], "props": {"pluginData": {URL: "https://example.invalid/three.png"}}})).unwrap();
++        session.execute("node.set", &json!({"ids": [image], "props": {"fill": "#ff0000"}})).unwrap();
++        assert!(session.execute("edm_snapshot", &json!({"images": {"image-1": PNG_ALT}})).is_err(), "URL replacement must not hide an unsupported fill edit");
++        session.doc_mut().unwrap().get_mut(image).unwrap().fills = vec![Paint::image(after_hash, figcraft_color::ImageScaleMode::Fill)];
++        let restored = session.execute("edm_snapshot", &json!({"images": {"image-1": PNG_ALT}})).unwrap();
++        assert_eq!(restored["blocks"]["image-1"]["data"]["props"]["url"], "https://example.invalid/three.png");
 +    }
 +
 +    #[test]
