@@ -45,7 +45,7 @@ async function click(label: string) {
   el.click()
   await flush()
 }
-async function mountModal() {
+async function mountModal(loadPackages = true) {
   for (const [name, value] of Object.entries({ ref, shallowRef, computed, watch, toRaw, $fetch: api })) vi.stubGlobal(name, value)
   vi.stubGlobal('useBannerFonts', () => ({ uploadCustomFont: vi.fn(), refreshCustomFonts: refreshFonts }))
   const { default: Modal } = await import('../../app/components/banner/TheBriefImportModal.client.vue')
@@ -57,8 +57,11 @@ async function mountModal() {
   app.mount(host)
   props.open = true
   await flush()
-  await click('Load packages')
-  await click('Import assigned drafts')
+  if (loadPackages) {
+    await click('Load packages')
+    await click('Import assigned drafts')
+  }
+  return props
 }
 beforeEach(() => {
   patched = false
@@ -180,5 +183,67 @@ describe('explicit imported draft update', () => {
     await click('Cancel')
     expect(host.querySelector('[aria-label="Update imported draft"]')).toBeNull()
     expect(api.mock.calls.some(([, options]) => options?.method)).toBe(false)
+  })
+})
+
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  let reject!: (reason: unknown) => void
+  const promise = new Promise<T>((yes, no) => {
+    resolve = yes
+    reject = no
+  })
+  return { promise, resolve, reject }
+}
+
+describe('client and folder loading before package selection', () => {
+  it('waits for both catalogs and parses files with the loaded client and folder choices', async () => {
+    const clientGate = deferred<Array<{ id: string, name: string }>>()
+    const folderGate = deferred<Array<{ id: string, name: string }>>()
+    const clients = [{ id: clientId, name: 'Blood Motor Group' }]
+    const folders = [{ id: 'source-folder', name: 'Blood' }]
+    api.mockImplementation((url: string) => url.endsWith('/clients') ? clientGate.promise : folderGate.promise)
+    await mountModal(false)
+    expect(button('Load packages').disabled).toBe(true)
+    clientGate.resolve(clients)
+    await flush()
+    expect(button('Load packages').disabled).toBe(true)
+    expect(readBatch).not.toHaveBeenCalled()
+    folderGate.resolve(folders)
+    await flush()
+    expect(button('Load packages').disabled).toBe(false)
+    await click('Load packages')
+    expect(readBatch.mock.calls[0]?.slice(2)).toEqual([clients, folders])
+  })
+
+  it('keeps package selection disabled when loading fails and explains how to retry', async () => {
+    api.mockRejectedValue(new Error('Service unavailable'))
+    await mountModal(false)
+    expect(button('Load packages').disabled).toBe(true)
+    expect(button('Import assigned drafts').disabled).toBe(true)
+    expect(host.textContent).toContain('Could not load clients or folders. Close and reopen to retry.')
+    expect(readBatch).not.toHaveBeenCalled()
+  })
+
+  it('ignores an older catalog response after the dialog is reopened', async () => {
+    const oldClients = deferred<Array<{ id: string, name: string }>>()
+    const oldFolders = deferred<Array<{ id: string, name: string }>>()
+    const currentClients = [{ id: clientId, name: 'Current client' }]
+    let clientCalls = 0, folderCalls = 0
+    api.mockImplementation((url: string) => {
+      if (url.endsWith('/clients')) return ++clientCalls === 1 ? oldClients.promise : Promise.resolve(currentClients)
+      if (url.endsWith('/folders')) return ++folderCalls === 1 ? oldFolders.promise : Promise.resolve([])
+      throw new Error('Unexpected request')
+    })
+    const props = await mountModal(false)
+    props.open = false
+    await flush()
+    props.open = true
+    await flush()
+    oldClients.resolve([{ id: 'stale-client', name: 'Stale client' }])
+    oldFolders.resolve([{ id: 'stale-folder', name: 'Stale folder' }])
+    await flush()
+    await click('Load packages')
+    expect(readBatch.mock.calls[0]?.slice(2)).toEqual([currentClients, []])
   })
 })
