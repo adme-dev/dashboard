@@ -14,7 +14,7 @@ export async function verifyJwt(token: string): Promise<Record<string, unknown> 
   const env = useEvent().context.cloudflare?.env
   const environment = env?.EMAIL_DESIGN_ENVIRONMENT as keyof typeof ORIGINS
   if (env?.EMAIL_DESIGN_SESSION_AUTHORITY !== 'pages-auth-me-v1' || !Object.hasOwn(ORIGINS, environment))
-    throw new Error('Session authority unavailable')
+    throw authorityUnavailable('configuration')
   if (typeof token !== 'string' || !token || token.length > 4096 || /[\r\n]/.test(token)) return null
   let response: Response
   try {
@@ -22,14 +22,14 @@ export async function verifyJwt(token: string): Promise<Record<string, unknown> 
       method: 'GET', headers: { 'Authorization': 'Bearer ' + token, 'Accept': 'application/json', 'Cache-Control': 'no-cache' },
       redirect: 'manual', cache: 'no-store', signal: AbortSignal.timeout(8000)
     })
-  } catch { throw new Error('Session authority unavailable') }
+  } catch { throw authorityUnavailable('transport') }
   if (response.status === 401 || response.status === 403) {
     await response.body?.cancel()
     return null
   }
   if (response.status !== 200 || !response.headers.get('content-type')?.includes('application/json')) {
     await response.body?.cancel()
-    throw new Error('Session authority unavailable')
+    throw authorityUnavailable('http_' + response.status)
   }
   const reader = response.body?.getReader()
   if (!reader) throw new Error('Session authority unavailable')
@@ -58,5 +58,11 @@ export async function verifyJwt(token: string): Promise<Record<string, unknown> 
     const payload = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(data), c => c.charCodeAt(0))))
     if (payload.userId !== authority.user.id || (payload.exp && Date.now() > payload.exp)) return null
     return payload
-  } catch { throw new Error('Session authority unavailable') }
+  } catch { throw authorityUnavailable('transport') }
+}
+
+function authorityUnavailable(code: string): Error {
+  // Content-free deployment diagnosis; no token, headers or authority payload.
+  console.warn('[email-design-session]', code)
+  return new Error('Session authority unavailable')
 }
