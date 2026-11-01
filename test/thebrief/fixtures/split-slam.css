@@ -1,0 +1,13 @@
+@property --split-slam-k{syntax:'<number>';inherits:true;initial-value:1}
+@property --split-slam-inv-k{syntax:'<number>';inherits:true;initial-value:1}
+@property --split-slam-blur{syntax:'<length>';inherits:true;initial-value:0px}
+@property --split-slam-flash{syntax:'<number>';inherits:true;initial-value:1}
+@property --split-slam-scale{syntax:'<number>';inherits:true;initial-value:1}
+@property --split-slam-top-x{syntax:'<percentage>';inherits:true;initial-value:0%}
+@property --split-slam-bottom-x{syntax:'<percentage>';inherits:true;initial-value:0%}
+#effIn1 #c-1{visibility:hidden;position:relative;transform:scaleX(var(--split-slam-k));filter:blur(var(--split-slam-blur)) brightness(var(--split-slam-flash))}
+#effIn1 #c-1::after,#effIn1 #c-1::before{content:'';inset:0;visibility:visible;border-radius:inherit;pointer-events:none;position:absolute}
+#effIn1 #c-1::after,#effIn1 #c-1::before{background:inherit;background-image:var(--split-slam-artwork,url(./media/fbcb222503574d48f75313c5f676676d.jpg));transform-origin:center}
+#effIn1 #c-1::before{clip-path:inset(0 max(0%,calc(50% - (50% - var(--split-slam-top-x))/ var(--split-slam-scale))) calc(50% - 0.5px) max(0%,calc(50% + (-50% - var(--split-slam-top-x))/ var(--split-slam-scale))));transform:scaleX(var(--split-slam-inv-k)) translateX(var(--split-slam-top-x)) scale(var(--split-slam-scale))}
+#effIn1 #c-1::after{clip-path:inset(50% max(0%,calc(50% - (50% - var(--split-slam-bottom-x))/ var(--split-slam-scale))) 0 max(0%,calc(50% + (-50% - var(--split-slam-bottom-x))/ var(--split-slam-scale))));transform:scaleX(var(--split-slam-inv-k)) translateX(var(--split-slam-bottom-x)) scale(var(--split-slam-scale))}
+@keyframes kARzSI{0%{--split-slam-k:8;--split-slam-inv-k:0.125;--split-slam-blur:5px;--split-slam-flash:1;--split-slam-scale:1.3;--split-slam-top-x:-115%;--split-slam-bottom-x:115%}52%{--split-slam-k:8;--split-slam-inv-k:0.125;--split-slam-blur:2.25px;--split-slam-flash:1.5;--split-slam-scale:1.18;--split-slam-top-x:0%;--split-slam-bottom-x:0%}70%{--split-slam-k:8;--split-slam-inv-k:0.125;--split-slam-blur:0.6px;--split-slam-flash:1.08;--split-slam-scale:1.051;--split-slam-top-x:0%;--split-slam-bottom-x:0%}100%{--split-slam-k:8;--split-slam-inv-k:0.125;--split-slam-blur:0px;--split-slam-flash:1;--split-slam-scale:1;--split-slam-top-x:0%;--split-slam-bottom-x:0%}}

@@ -54,7 +54,7 @@ export function layerSlideId(board: ArtboardState, layer: Layer): string | undef
 }
 
 export function slidePoster(board: ArtboardState, slideId: string): ArtboardState {
-  return { bgColor: board.bgColor, layers: board.layers.filter(layer => layer.type !== 'audio' && !layer.slideTransitionFor && (!layerSlideId(board, layer) || layerSlideId(board, layer) === slideId)).map(layer => ({ ...layer, clipToPresence: false, animIn: 'none', animOut: 'none', keyframes: undefined })) }
+  return { bgColor: board.bgColor, layers: board.layers.filter(layer => layer.type !== 'audio' && !layer.slideTransitionFor && (!layerSlideId(board, layer) || layerSlideId(board, layer) === slideId)).map(layer => ({ ...layer, clipToPresence: false, animIn: 'none', animOut: 'none', keyframes: undefined, imageEntrance: undefined })) }
 }
 
 export type SlideEdit
@@ -68,6 +68,7 @@ export type SlideEdit
     | { type: 'loop', loopCount: number }
 
 function mapLayerTime(layer: Layer, time: (value: number) => number, scale: number) {
+  if (layer.imageEntrance) layer.imageEntrance = { ...layer.imageEntrance, start: time(layer.imageEntrance.start), duration: round(layer.imageEntrance.duration * scale) }
   layer.startTime = time(layer.startTime)
   layer.endTime = time(layer.endTime)
   if (layer.keyframes) for (const frames of Object.values(layer.keyframes)) {

@@ -159,7 +159,13 @@ async function updateImportedDraft() {
     const updated = await api<BannerProject & { refreshed: boolean }>(`/api/agency/banner-studio/projects/${selection.project.id}/thebrief-refresh`, {
       method: 'PATCH', body: {
         clientId: selection.row.clientId, expectedUpdatedAt: selection.project.updatedAt,
-        source: selection.row.pkg.source, canvasData: selection.canvasData
+        source: {
+          designHash: selection.row.pkg.source.designHash,
+          sha256: selection.row.pkg.source.sha256,
+          folder: selection.row.pkg.source.folder,
+          duration: selection.row.pkg.source.duration,
+          loopCount: selection.row.pkg.source.loopCount
+        }, canvasData: selection.canvasData
       }
     })
     const saved = await api<BannerProject>(`/api/agency/banner-studio/projects/${updated.id}`)

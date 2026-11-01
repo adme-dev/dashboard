@@ -28,7 +28,31 @@ async function sourceFile(path) {
   if (!retained || retained.sha256 !== hash(bytes)) throw new Error(`Source differs from archive: ${path}`)
   return bytes
 }
-const candidate = await convertTheBriefHtml((await sourceFile('index.html')).toString('utf8'))
+const textRowMetrics = process.env.THEBRIEF_ROW_METRICS
+  ? JSON.parse(await readFile(process.env.THEBRIEF_ROW_METRICS, 'utf8'))[inspection.sha256] || {}
+  : {}
+const reconciledAudio = new Map()
+const candidate = await convertTheBriefHtml((await sourceFile('index.html')).toString('utf8'), { textRowMetrics, reconcileAudio: async (info) => {
+  const bytes = await sourceFile(info.src)
+  const probe = await probeVideo(bytes, 'a:0')
+  if (probe.codec !== 'mp3') throw new Error('Audio reconciliation requires a source MP3')
+  const alreadyClipped = Math.abs(probe.duration - info.duration) <= 0.05
+  const fullSource = Number.isFinite(info.originalDuration) && Math.abs(probe.duration - info.originalDuration) <= 0.05 && probe.duration >= info.clipEnd
+  if (!alreadyClipped && !fullSource) throw new Error('Audio export duration does not establish the source clip')
+  const directory = await mkdtemp(join(tmpdir(), 'thebrief-audio-'))
+  try {
+    const input = join(directory, 'source.mp3'), output = join(directory, 'native.mp3')
+    await writeFile(input, bytes, { mode: 0o600 })
+    const filters = []
+    if (info.fadeIn) filters.push(`afade=t=in:st=0:d=${info.fadeIn}`)
+    if (info.fadeOut) filters.push(`afade=t=out:st=${info.duration - info.fadeOut}:d=${info.fadeOut}`)
+    await promisify(execFile)('ffmpeg', ['-v', 'error', '-nostdin', '-ss', String(alreadyClipped ? 0 : info.offset), '-protocol_whitelist', 'file,pipe', '-format_whitelist', 'mp3', '-i', input, '-t', String(info.duration), ...(filters.length ? ['-af', filters.join(',')] : []), '-vn', '-codec:a', 'libmp3lame', '-q:a', '2', output], { timeout: 30000, maxBuffer: 1024 * 1024 })
+    const derived = await readFile(output)
+    const previous = reconciledAudio.get(info.src)
+    if (previous && hash(previous) !== hash(derived)) throw new Error('Shared audio has conflicting clip/fade settings')
+    reconciledAudio.set(info.src, derived)
+  } finally { await rm(directory, { recursive: true, force: true }) }
+} })
 if (candidate.warnings.some(warning => /animation not converted|additional effects are not converted/.test(warning))) throw new Error('Import held: source animation requires an adapter; no package was created')
 const external = await resolveGoogleFonts(candidate.externalFontStylesheets || [])
 if (external.fonts.length) {
@@ -36,12 +60,12 @@ if (external.fonts.length) {
   candidate.warnings.push('External Google fonts snapshotted with source URLs and checksums; original historical font version requires visual review')
 }
 const assets = []
-async function probeVideo(bytes) {
+async function probeVideo(bytes, stream = 'v:0') {
   const dir = await mkdtemp(join(tmpdir(), 'thebrief-video-'))
   const file = join(dir, 'clip.mp4')
   try {
     await writeFile(file, bytes, { mode: 0o600 })
-    const { stdout } = await promisify(execFile)('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=codec_name,width,height:format=duration', '-of', 'json', file], { timeout: 30000, maxBuffer: 1024 * 1024 })
+    const { stdout } = await promisify(execFile)('ffprobe', ['-v', 'error', '-protocol_whitelist', 'file,pipe', '-format_whitelist', stream === 'a:0' ? 'mp3' : 'mov,mp4,m4a,3gp,3g2,mj2', '-select_streams', stream, '-show_entries', 'stream=codec_name,width,height:format=duration', '-of', 'json', file], { timeout: 30000, maxBuffer: 1024 * 1024 })
     const probe = JSON.parse(stdout)
     return { codec: probe.streams?.[0]?.codec_name, width: Number(probe.streams?.[0]?.width), height: Number(probe.streams?.[0]?.height), duration: Number(probe.format?.duration) }
   } catch (cause) {
@@ -61,7 +85,7 @@ for (const board of Object.values(candidate.canvasData)) {
     const assetKey = `${originalPath}:${JSON.stringify(operations)}`
     let asset = sourceAssets.get(assetKey)
     if (!asset) {
-      let bytes = await sourceFile(originalPath)
+      let bytes = reconciledAudio.get(originalPath) || await sourceFile(originalPath)
       if (extname(originalPath).toLowerCase() === '.mp3') {
         if (layer.type !== 'audio') throw new Error('Audio is used by a non-audio layer')
         const sha256 = hash(bytes)

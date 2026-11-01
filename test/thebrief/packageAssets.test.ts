@@ -191,3 +191,41 @@ it.skipIf(!hasFfmpeg)('packages the original H.264 bytes for a video layer and h
     expect(() => run(5)).toThrow(/exceeds the .*s file/)
   } finally { rmSync(directory, { recursive: true, force: true }) }
 }, 60000)
+
+it.skipIf(!hasFfmpeg)('verifies an already trimmed soundtrack, retains its original bytes and bakes source fades', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'thebrief-audio-reconcile-'))
+  try {
+    const audio = join(directory, 'clip.mp3')
+    execFileSync('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=3.8', '-c:a', 'libmp3lame', audio])
+    const original = readFileSync(audio)
+    const html = source.replace('designData:{', 'designData:{designHash:"audio1",')
+      .replace('customAnimations:[]', 'customAnimations:[],audioElements:[{slideId:1,elementId:1,startTime:12.4,endTime:16.2,duration:130,volume:100,buildIn:{type:"fadeAudio",duration:1,delay:0.2},buildMid:{type:"none",duration:1.8},buildOut:{type:"fadeAudio",duration:1}}]')
+      .replace('data-eltype="text"', 'data-eltype="audio"')
+      .replace('<div id="effIn1"><div class="row">Hello world</div></div>', '<audio><source src="./clip.mp3" type="audio/mpeg"></audio>')
+    const entries = { 'index.html': strToU8(html), 'clip.mp3': original }
+    writeFileSync(join(directory, 'index.html'), entries['index.html'])
+    const archive = join(directory, 'source.zip'), output = join(directory, 'package.json')
+    writeFileSync(archive, zipSync(entries))
+    const args = ['--import', 'tsx', 'scripts/thebrief/package-import.mjs', directory, archive, 'Soundtrack', output]
+    const options = { cwd: resolve('.'), env: { ...process.env, TSX_TSCONFIG_PATH: 'scripts/thebrief/tsconfig.json' }, timeout: 30000, stdio: 'pipe' as const }
+    execFileSync(process.execPath, args, options)
+    const pkg = JSON.parse(readFileSync(output, 'utf8'))
+    const managed = Buffer.from(pkg.assets[0].base64, 'base64')
+    expect(managed).not.toEqual(original)
+    expect(readFileSync(audio)).toEqual(original)
+    const native = join(directory, 'native.mp3')
+    writeFileSync(native, managed)
+    const pcm = execFileSync('ffmpeg', ['-v', 'error', '-i', native, '-ac', '1', '-ar', '12000', '-f', 'f32le', 'pipe:1'])
+    const rms = (at: number) => {
+      let sum = 0
+      for (let i = Math.round(at * 12000); i < Math.round((at + 0.1) * 12000); i++) sum += pcm.readFloatLE(i * 4) ** 2
+      return Math.sqrt(sum / 1200)
+    }
+    expect(rms(0) / rms(2)).toBeLessThan(0.2)
+    expect(rms(3.7) / rms(2)).toBeLessThan(0.2)
+    // A different-duration export cannot silently be interpreted as the requested slice.
+    writeFileSync(join(directory, 'index.html'), html.replace('endTime:16.2', 'endTime:17.2'))
+    writeFileSync(archive, zipSync({ ...entries, 'index.html': strToU8(html.replace('endTime:16.2', 'endTime:17.2')) }))
+    expect(() => execFileSync(process.execPath, args, options)).toThrow()
+  } finally { rmSync(directory, { recursive: true, force: true }) }
+}, 30000)

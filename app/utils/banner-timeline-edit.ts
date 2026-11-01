@@ -19,6 +19,7 @@ export function retimeLayerPresence(layer: Layer, start: number, end: number): P
     change.dur = change.animInDur
   }
   if (layer.outDur) change.outDur = round(layer.outDur * scale)
+  if (layer.imageEntrance) change.imageEntrance = { ...layer.imageEntrance, start: time(layer.imageEntrance.start), duration: round(layer.imageEntrance.duration * scale) }
   if (layer.wordPop) change.wordPop = { ...layer.wordPop, duration: layer.wordPop.duration * scale, stagger: layer.wordPop.stagger * scale }
   return change
 }
@@ -43,7 +44,10 @@ export function retimeAnimationPhase(layer: Layer, phase: TimelinePhase, start: 
       }).sort((a, b) => a.time - b.time)
       return [property, updated]
     }))
-    return { animationClips: layer.animationClips?.map(clip => clip.start >= phase.start - 1e-6 && clip.end <= phase.end + 1e-6 ? { ...clip, start: time(clip.start), end: time(clip.end) } : { ...clip }), keyframes }
+    const imageEntrance = layer.imageEntrance && layer.imageEntrance.start >= phase.start - 1e-6 && layer.imageEntrance.start + layer.imageEntrance.duration <= phase.end + 1e-6
+      ? { ...layer.imageEntrance, start: time(layer.imageEntrance.start), duration: round(time(layer.imageEntrance.start + layer.imageEntrance.duration) - time(layer.imageEntrance.start)) }
+      : layer.imageEntrance
+    return { imageEntrance, animationClips: layer.animationClips?.map(clip => clip.start >= phase.start - 1e-6 && clip.end <= phase.end + 1e-6 ? { ...clip, start: time(clip.start), end: time(clip.end) } : { ...clip }), keyframes }
   }
   if (phase.kind === 'entry') {
     if (layer.wordPop) {

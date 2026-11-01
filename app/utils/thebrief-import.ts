@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { validImageEntrance } from '../../shared/bannerImageEntrance.mjs'
 import { isSafeBannerImageFilter } from '../../shared/bannerImageFilters.mjs'
 
 const number = z.number().finite().min(-100000).max(100000)
@@ -9,6 +10,7 @@ const track = z.array(z.object({
   time: z.number().min(0).max(300), value: number,
   easing: z.string().max(100).regex(/^(linear|none|cubic-bezier\([\d.,\s-]+\))$/).optional()
 })).min(2).max(500)
+const imageEntrance = z.object({ kind: z.enum(['splitSlam', 'softWipe']), start: z.number().finite().min(0).max(300), duration: z.number().finite().positive().max(300), ease: z.string().max(100) }).strict().refine(validImageEntrance, 'Invalid image entrance')
 const layer = z.object({
   id: z.number().int().positive(), type: z.enum(['bg', 'image', 'video', 'text', 'rect', 'button', 'audio']), name: z.string().max(250),
   linkId: z.string().max(80).regex(/^source:[a-z0-9:]+$/).optional(),
@@ -22,6 +24,7 @@ const layer = z.object({
   rotation: number.optional(), borderRadius: number.nonnegative().optional(), transformOrigin: z.object({ x: number, y: number }).optional(),
   mixBlendMode: z.enum(['normal', 'multiply', 'screen', 'overlay', 'darken', 'lighten', 'color-dodge', 'color-burn', 'hard-light', 'soft-light', 'difference', 'exclusion', 'hue', 'saturation', 'color', 'luminosity']).optional(),
   text: z.string().max(10000).optional(), textTransform: z.enum(['uppercase', 'lowercase', 'capitalize', 'none']).optional(), fontFamily: z.string().max(150).regex(/^[\w ,.-]+$/).optional(),
+  imageEntrance: imageEntrance.optional(),
   wordPop: z.object({ duration: z.number().positive().max(5), stagger: z.number().min(0).max(5), ease: z.string().regex(/^cubic-bezier\([\d.,\s-]+\)$/) }).strict().optional(),
   fontSize: number.positive().optional(), fontWeight: z.number().int().min(1).max(1000).optional(),
   fontStyle: z.enum(['normal', 'italic']).optional(),
@@ -84,6 +87,7 @@ export function parseTheBriefPackage(input: unknown): TheBriefPackage {
       }
       if (item.src && !result.assets.some(a => a.path === item.src)) throw new Error('Missing packaged asset')
       if (item.textRuns && item.textRuns.map(run => run.text).join('') !== item.text) throw new Error('Text runs differ from layer text')
+      if (item.imageEntrance && (item.type !== 'image' || (item.imageEntrance.kind === 'splitSlam' && item.fit !== 'cover') || item.imageEntrance.start < item.startTime || item.imageEntrance.start + item.imageEntrance.duration > item.endTime)) throw new Error('Invalid Split Slam image timing/composition')
       if (item.wordPop && (item.type !== 'text' || item.textRuns)) throw new Error('Word animation requires plain text')
       if (['image', 'audio', 'video'].includes(item.type) && !item.src) throw new Error('Image, audio or video layer is missing its asset')
       const mime = item.src ? result.assets.find(a => a.path === item.src)?.mimeType : undefined

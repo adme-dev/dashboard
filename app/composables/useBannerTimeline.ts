@@ -1,3 +1,4 @@
+import { addImageEntranceTimeline } from '~~/shared/bannerImageEntrance.mjs'
 import { bannerVideoMediaTime } from '~~/shared/bannerVideoClock'
 import { ref, readonly, watch } from 'vue'
 import { bannerAnimationTiming } from '~/utils/banner-animation-timing'
@@ -462,6 +463,7 @@ function addLayerToTimeline(tl: gsap.core.Timeline, el: HTMLElement, layer: Laye
   }
 
   addWordPop(tl, el, layer)
+  if (layer.imageEntrance) addImageEntranceTimeline(tl, el, layer.imageEntrance)
 
   // Motion path animation — drives position along a curved trajectory
   if (layer.motionPath && layer.motionPath.length >= 2) {
