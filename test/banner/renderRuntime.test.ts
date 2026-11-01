@@ -1,4 +1,7 @@
 import { describe, expect, it } from 'vitest'
+import gsap from 'gsap'
+import type { Layer } from '~/types/banner-studio'
+import type { EngagrFrameRuntime } from '~~/app/utils/banner-render-runtime'
 import {
   buildEngagrFrameRuntimeScript,
   buildVisibleElementManifest,
@@ -6,7 +9,7 @@ import {
   estimateBannerDuration,
   formatFpsForFfmpeg,
   fpsToNumber,
-  parseRenderFps,
+  parseRenderFps
 } from '~~/app/utils/banner-render-runtime'
 
 describe('render FPS helpers', () => {
@@ -27,24 +30,54 @@ describe('render FPS helpers', () => {
 
 describe('banner runtime script helpers', () => {
   it('estimates duration from layer timing and keyframes', () => {
-    const layers: any[] = [
+    const layers = [
       { id: 'a', type: 'text', startTime: 0, endTime: 2 },
-      { id: 'b', type: 'text', startTime: 1, keyframes: { opacity: [{ time: 0, value: 0 }, { time: 4, value: 1 }] } },
-    ]
+      { id: 'b', type: 'text', startTime: 1, keyframes: { opacity: [{ time: 0, value: 0 }, { time: 4, value: 1 }] } }
+    ] as Layer[]
     expect(estimateBannerDuration(layers)).toBe(4)
   })
 
   it('builds a runtime script with contract and visible element manifest', () => {
-    const layers: any[] = [{ id: 'a', type: 'text', startTime: 1, endTime: 3 }]
+    const layers = [{ id: 'a', type: 'text', startTime: 1, endTime: 3 }] as Layer[]
     const script = buildEngagrFrameRuntimeScript({
       durationSec: estimateBannerDuration(layers),
       fps: { num: 30, den: 1 },
-      visibleElements: buildVisibleElementManifest(layers),
+      visibleElements: buildVisibleElementManifest(layers)
     })
     expect(script).toContain('window.__engagrFrame')
     expect(script).toContain('totalDuration')
     expect(script).toContain('"id":"a"')
     expect(script).toContain('"num":30')
+  })
+
+  it('seeks to the new cycle at repeating boundaries, including decimal cycle lengths', () => {
+    for (const duration of [9, 3.1]) {
+      const target = { x: 0 }
+      const tl = gsap.timeline({ paused: true, repeat: -1 }).to(target, { x: 100, duration, ease: 'none' })
+      const window = { __engagrTimeline: tl, __engagrFrame: undefined as EngagrFrameRuntime | undefined }
+      const script = buildEngagrFrameRuntimeScript({ durationSec: duration, fixedCycleDuration: true }).replace(/^<script>|<\/script>$/g, '')
+      new Function('window', 'document', script)(window, { querySelectorAll: () => [] })
+      window.__engagrFrame!.seek(duration)
+      expect(target.x).toBeLessThan(0.001)
+      window.__engagrFrame!.seek(duration * 3)
+      expect(target.x).toBeLessThan(0.001)
+      window.__engagrFrame!.seek(duration + duration / 2)
+      expect(target.x).toBeCloseTo(50, 4)
+      tl.kill()
+    }
+  })
+
+  it('retains the final frame when finite repeats are exhausted', () => {
+    const target = { x: 0 }
+    const tl = gsap.timeline({ paused: true, repeat: 1 }).to(target, { x: 100, duration: 9, ease: 'none' })
+    const window = { __engagrTimeline: tl, __engagrFrame: undefined as EngagrFrameRuntime | undefined }
+    const script = buildEngagrFrameRuntimeScript({ durationSec: 9, fixedCycleDuration: true }).replace(/^<script>|<\/script>$/g, '')
+    new Function('window', 'document', script)(window, { querySelectorAll: () => [] })
+    window.__engagrFrame!.seek(9)
+    expect(target.x).toBeLessThan(0.001)
+    window.__engagrFrame!.seek(18)
+    expect(target.x).toBe(100)
+    tl.kill()
   })
 
   it('escapes visible element JSON for script context', () => {

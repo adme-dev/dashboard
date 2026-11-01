@@ -123,6 +123,7 @@ export function buildEngagrFrameRuntimeScript(args: {
       var tl = timeline();
       try {
         if (tl && typeof tl.pause === 'function') tl.pause();
+        if (fixedCycleDuration&&seekTime>0&&tl&&typeof tl.repeat==='function'&&tl.repeat()&&typeof tl.totalDuration==='function'&&seekTime<tl.totalDuration()&&Math.abs(seekTime/fallbackDuration-Math.round(seekTime/fallbackDuration))<1e-9) seekTime+=1e-6;
         if (tl && typeof tl.seek === 'function') tl.seek(seekTime, false);
         if (typeof window.__engagrUpdateMasks === 'function') window.__engagrUpdateMasks();
         pauseMedia();
