@@ -137,7 +137,7 @@
 +}
 --- a/crates/engine/src/cmd/edm.rs
 +++ b/crates/engine/src/cmd/edm.rs
-@@ -0,0 +1,726 @@
+@@ -0,0 +1,728 @@
 +//! Bounded XeroFlow email handoffs on a real native document.
 +//!
 +//! The canonical document is retained verbatim. A snapshot patches only approved
@@ -549,6 +549,8 @@
 +            if let NodeKind::Text(text) = &mut copy.kind {
 +                text.characters.clear();
 +            }
++            // node.set characters also records this content-derived override.
++            copy.overrides.remove("characters");
 +        }
 +        Role::Button => {
 +            copy.plugin_data.remove(URL);
