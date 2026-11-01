@@ -11,7 +11,7 @@ content round-trip subset on `adme-dev/figflow-roundtrip-20261101` in the isolat
 `figflow-edm-release-20261101` checkout. Codex owns integration, Kimi native code,
 and Grok relay/review. Read the [active milestone ledger](figflow-roundtrip-milestone.md)
 before claiming overlapping files. Backend, composer, relay and bundle checks
-pass locally; native compilation/browser acceptance and hosted activation remain
+pass locally; final native/browser acceptance and hosted activation remain
 open. The production receipt below is still the disabled foundation.
 
 ## What is merged and deployed
@@ -35,6 +35,13 @@ Existing template PATCH/DELETE still execute locally in Pages through
 `nuxt.config.ts`. Pages has no `EMAIL_DESIGN` binding. Setting a flag cannot
 activate those excluded routes. Keep this release shape until an explicit,
 reviewed activation change is ready.
+
+PR #807 now prepares a design-only forwarding route and production EMAIL_DESIGN
+binding with the flag explicitly false. Its full Pages build passes at
+25,468,495 raw bytes (433 remaining). Heavy design implementations stay in the
+private Worker; template writes stay local. Provision the private service before
+releasing that Pages configuration. These are candidate facts, not a new live
+deployment receipt.
 
 The foundation contains canonical contracts, capability checks, immutable draft
 revision/receipt services, metadata/legacy initialization, paired schema files,
@@ -90,7 +97,7 @@ its presence does not mean publishing/proposal persistence is implemented.
 |---|---|---|
 | Matching service signing key | Operator must identify the approved source of the existing Pages JWT_SECRET or provision the same value securely. Local checked env files, GitHub repository secrets and shared Cloudflare Secrets Store did not contain it. Do not print or rotate it. | No; blocks service authentication/activation. |
 | Design schema | Apply migrations 491, 492 and 493 together to the explicitly verified environment before activating current revision writers. None has been applied to production. Existing local template CRUD does not require them. | No; existing disposable database fixtures support final verification. |
-| Pages size | Current release has only 690 raw bytes remaining. Restoring transport adds code: remeasure and solve that specific size change without raising the budget. | No; standalone service/native development can continue. |
+| Pages transport | Candidate build includes forwarding within the existing budget, with 433 raw bytes remaining. Provision the private service before Pages and retain disabled flags pending hosted acceptance. | No; final release rebuild and live verification remain. |
 | Native hosted bridge | The pinned native build prerequisites are merged, but the new browser package has not been deployed/accepted as an EDM bridge. | Blocks real round-trip acceptance. |
 | Cross-client email proof | Obtain designated test recipients or rendering-service access; cover the exact Apple Mail, Gmail and Outlook variants in F10. No customer sends. | No; blocks compatibility acceptance and ready-to-send claims. |
 
