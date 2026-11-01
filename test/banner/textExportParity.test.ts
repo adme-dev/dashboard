@@ -132,3 +132,26 @@ it('exports a new text layer before any text or runs have been set', () => {
   expect(() => buildBannerHTML('mrec', [layer], { includeAnimations: false })).not.toThrow()
   expect(serverBuilder('mrec', [layer], { includeAnimations: false })).toBe(buildBannerHTML('mrec', [layer], { includeAnimations: false }))
 })
+
+it.each([undefined, 'fill', 'stroke'] as const)('keeps outline order %j identical in editor, static and animated exports', (textPaintOrder) => {
+  vi.stubGlobal('computed', computed)
+  vi.stubGlobal('ref', ref)
+  vi.stubGlobal('nextTick', nextTick)
+  vi.stubGlobal('useBannerStudio', () => ({ updateLayer: vi.fn() }))
+  vi.stubGlobal('useBannerFeeds', () => ({ getFeedOverride: () => undefined }))
+  const layer = { id: 1, type: 'text', text: 'EV & Hybrid', textStroke: '2px #112b4e', textPaintOrder, x: 0, y: 0, w: 200, h: 40, zIndex: 1 } as Layer
+  const root = document.createElement('div')
+  const editor = createApp(TextLayer, { layer, isActive: true })
+  editor.mount(root)
+  try {
+    const editable = root.querySelector('[contenteditable]') as HTMLElement
+    expect(editable.style.paintOrder).toBe(textPaintOrder || 'stroke')
+    for (const includeAnimations of [true, false]) {
+      const html = buildBannerHTML('mrec', [layer], { includeAnimations })
+      expect(serverBuilder('mrec', [layer], { includeAnimations })).toBe(html)
+      const exported = new DOMParser().parseFromString(html, 'text/html').querySelector('[data-id="1"]') as HTMLElement
+      expect(exported.style.paintOrder).toBe(editable.style.paintOrder)
+      expect(exported.style.webkitTextStroke).toBe(editable.style.webkitTextStroke)
+    }
+  } finally { editor.unmount() }
+})

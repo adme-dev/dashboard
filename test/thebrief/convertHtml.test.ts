@@ -5,6 +5,21 @@ import { convertTheBriefHtml } from '../../scripts/thebrief/convert-html.mjs'
 import { source } from './fixture'
 
 describe('TheBrief single-slide native conversion pilot', () => {
+  it.each([
+    ['', 'fill'], ['normal', 'fill'], ['fill', 'fill'], ['fill stroke', 'fill'],
+    ['stroke', 'stroke'], ['stroke fill', 'stroke']
+  ])('preserves text outline paint order %j without changing motion', async (order, expected) => {
+    const html = source.replace('.row{', `.row{-webkit-text-stroke:2px #112b4e;paint-order:${order || 'normal'};`)
+    const layer = (await convertTheBriefHtml(html)).canvasData.custom_300x250.layers.find(l => l.type === 'text')
+    expect(layer).toMatchObject({ textStroke: '2px #112b4e', textPaintOrder: expected })
+    expect(layer.keyframes).toEqual((await convertTheBriefHtml(source)).canvasData.custom_300x250.layers.find(l => l.type === 'text').keyframes)
+  })
+
+  it('holds unsupported text paint sequences instead of guessing', async () => {
+    const html = source.replace('.row{', '.row{-webkit-text-stroke:2px #112b4e;paint-order:markers stroke;')
+    await expect(convertTheBriefHtml(html)).rejects.toThrow('Unsupported text paint order')
+  })
+
   it('preserves intentional nonbreaking spacing beside price labels', async () => {
     const result = await convertTheBriefHtml(source.replace('Hello world', '&nbsp;incl GST*'))
     expect(result.canvasData.custom_300x250.layers.find(l => l.type === 'text').text).toBe('\u00a0incl GST*')

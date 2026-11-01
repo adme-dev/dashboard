@@ -82,67 +82,67 @@ export function buildEngagrFrameRuntimeScript(args: {
   const fps = args.fps ? JSON.stringify(normalizeRenderFps(args.fps)) : 'undefined'
   return `<script>
 (function(){
-  var diagnostics = [];
-  var visibleElements = ${visibleElements};
-  var fixedCycleDuration = ${Boolean(args.fixedCycleDuration)};
-  var fallbackDuration = ${duration.toFixed(3)};
-  function record(code, message) {
-    diagnostics.push({ code: code, message: String(message || ''), at: Date.now() });
-    if (diagnostics.length > 50) diagnostics.shift();
-  }
-  function timeline() {
-    if (window.__engagrTimeline) return window.__engagrTimeline;
-    var g = window.gsap;
-    var children = g && g.globalTimeline && g.globalTimeline.getChildren ? g.globalTimeline.getChildren(false) : null;
-    return children && children[0] ? children[0] : null;
-  }
-  function readDuration() {
-    if (fixedCycleDuration) return fallbackDuration;
-    var tl = timeline();
-    var d = null;
-    try {
-      if (tl && typeof tl.totalDuration === 'function') d = tl.totalDuration();
-      if (!(typeof d === 'number' && isFinite(d) && d > 0) && tl && typeof tl.duration === 'function') d = tl.duration();
-    } catch (err) {
-      record('duration_failed', err && err.message ? err.message : err);
-    }
-    return (typeof d === 'number' && isFinite(d) && d > 0) ? d : fallbackDuration;
-  }
-  function pauseMedia() {
-    document.querySelectorAll('video,audio').forEach(function(el) {
-      try { if (typeof el.pause === 'function') el.pause(); } catch (err) { record('media_pause_failed', err && err.message ? err.message : err); }
-    });
-  }
-  var runtime = {
-    ready: false,
-    duration: fallbackDuration,
-    fps: ${fps},
-    seek: function(timeSeconds) {
-      var seekTime = Number(timeSeconds);
-      if (!isFinite(seekTime) || seekTime < 0) throw new Error('Invalid seek time');
-      var tl = timeline();
-      try {
-        if (tl && typeof tl.pause === 'function') tl.pause();
-        if (fixedCycleDuration&&seekTime>0&&tl&&typeof tl.repeat==='function'&&tl.repeat()&&typeof tl.totalDuration==='function'&&seekTime<tl.totalDuration()&&Math.abs(seekTime/fallbackDuration-Math.round(seekTime/fallbackDuration))<1e-9) seekTime+=1e-6;
-        if (tl && typeof tl.seek === 'function') tl.seek(seekTime, false);
-        if (typeof window.__engagrUpdateMasks === 'function') window.__engagrUpdateMasks();
-        pauseMedia();
-        runtime.duration = readDuration();
-      } catch (err) {
-        record('seek_failed', err && err.message ? err.message : err);
-        throw err;
-      }
-    },
-    getDiagnostics: function() {
-      return { events: diagnostics.slice(), duration: runtime.duration, hasTimeline: !!timeline() };
-    },
-    getVisibleElements: function() {
-      return visibleElements.slice();
-    }
-  };
-  window.__engagrFrame = runtime;
-  runtime.duration = readDuration();
-  runtime.ready = true;
+var diagnostics = [];
+var visibleElements = ${visibleElements};
+var fixedCycleDuration = ${Boolean(args.fixedCycleDuration)};
+var fallbackDuration = ${duration.toFixed(3)};
+function record(code, message) {
+diagnostics.push({ code: code, message: String(message || ''), at: Date.now() });
+if (diagnostics.length > 50) diagnostics.shift();
+}
+function timeline() {
+if (window.__engagrTimeline) return window.__engagrTimeline;
+var g = window.gsap;
+var children = g && g.globalTimeline && g.globalTimeline.getChildren ? g.globalTimeline.getChildren(false) : null;
+return children && children[0] ? children[0] : null;
+}
+function readDuration() {
+if (fixedCycleDuration) return fallbackDuration;
+var tl = timeline();
+var d = null;
+try {
+if (tl && typeof tl.totalDuration === 'function') d = tl.totalDuration();
+if (!(typeof d === 'number' && isFinite(d) && d > 0) && tl && typeof tl.duration === 'function') d = tl.duration();
+} catch (err) {
+record('duration_failed', err && err.message ? err.message : err);
+}
+return (typeof d === 'number' && isFinite(d) && d > 0) ? d : fallbackDuration;
+}
+function pauseMedia() {
+document.querySelectorAll('video,audio').forEach(function(el) {
+try { if (typeof el.pause === 'function') el.pause(); } catch (err) { record('media_pause_failed', err && err.message ? err.message : err); }
+});
+}
+var runtime = {
+ready: false,
+duration: fallbackDuration,
+fps: ${fps},
+seek: function(timeSeconds) {
+var seekTime = Number(timeSeconds);
+if (!isFinite(seekTime) || seekTime < 0) throw new Error('Invalid seek time');
+var tl = timeline();
+try {
+if (tl && typeof tl.pause === 'function') tl.pause();
+if (fixedCycleDuration&&seekTime>0&&tl&&typeof tl.repeat==='function'&&tl.repeat()&&typeof tl.totalDuration==='function'&&seekTime<tl.totalDuration()&&Math.abs(seekTime/fallbackDuration-Math.round(seekTime/fallbackDuration))<1e-9) seekTime+=1e-6;
+if (tl && typeof tl.seek === 'function') tl.seek(seekTime, false);
+if (typeof window.__engagrUpdateMasks === 'function') window.__engagrUpdateMasks();
+pauseMedia();
+runtime.duration = readDuration();
+} catch (err) {
+record('seek_failed', err && err.message ? err.message : err);
+throw err;
+}
+},
+getDiagnostics: function() {
+return { events: diagnostics.slice(), duration: runtime.duration, hasTimeline: !!timeline() };
+},
+getVisibleElements: function() {
+return visibleElements.slice();
+}
+};
+window.__engagrFrame = runtime;
+runtime.duration = readDuration();
+runtime.ready = true;
 })();
 </script>`
 }

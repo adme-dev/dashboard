@@ -16,6 +16,10 @@ Muted, autoplaying TheBrief video converts to an editable native video layer. Th
 
 These remain explicit holds: non-zero clip start, click-to-play, sound on hover, playback past the slide, audible video, delays that differ from the layer's presence, rotation or zoom beyond cover, rounded video and non-H.264 files. MP4 entries have a separate inspection allowance (21 MB per clip, 64 MB per archive); every other file keeps the standard limits, and a clip above the package asset limit is held.
 
+## Text outlines
+
+Outlined text preserves the source paint order as `textPaintOrder`: `fill` paints the stroke over the glyph fill, while `stroke` paints the fill over the stroke. The importer accepts either order and carries it through editable text and both HTML exporters. Existing Banner Studio text without this property retains its previous stroke-first appearance. Other source paint sequences remain held. Compare outlined lettering at each affected slide as part of the motion audit.
+
 ## Soft shapes
 
 A shape with uniform corner radii of 50% or more becomes a native ellipse (`rectShape: 'ellipse'`), and a static CSS filter on the shape, such as the `blur(8px)` TheBrief uses for ground shadows, carries across as the layer's `visualFilter`. Both are editable in the rectangle inspector and render identically in the editor and both HTML exporters. Partial-percentage or unequal corner radii, shape box shadows, shape borders and unsafe filters are held for an adapter rather than imported as a hard-edged rectangle.

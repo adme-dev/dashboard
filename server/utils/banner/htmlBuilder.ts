@@ -275,7 +275,7 @@ export function buildBannerHTML(
         if (l.textAlign) style += `text-align:${l.textAlign};`
         if (l.bgColor) style += `background:${l.bgColor};padding:${l.paddingV ?? 4}px ${l.paddingH ?? 10}px;`
         if (l.fontStyle === 'italic') style += 'font-style:italic;'
-        if (l.textStroke) style += 'paint-order:stroke;'
+        if (l.textStroke) style += `paint-order:${l.textPaintOrder === 'fill' ? 'fill' : 'stroke'};`
         if (!bannerTextDepthShadow(l as unknown as Record<string, unknown>) && !safeBannerTextTexture(l.textTexture)) style += bannerEffectCss(l as unknown as Record<string, unknown>)
         const lineStrut = Number.isFinite(l.lineBoxFontSize) && l.lineBoxFontSize! > (l.fontSize || 16)
           ? `<span aria-hidden="true" style="font-size:${l.lineBoxFontSize}px">&#160;</span>`
