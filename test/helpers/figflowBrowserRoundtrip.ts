@@ -82,7 +82,7 @@ export async function exerciseNativeRoundtrip(options: {
       if (url.origin === 'https://app.xeroflow.io') {
         if (url.pathname === '/fixture') return route.fulfill({ contentType: 'text/html', body: '<style>body{font:14px system-ui}iframe{width:100%;height:750px}button{padding:12px;margin:8px}</style><div id="app"></div><script src="/fixture.js"></script>' })
         if (url.pathname === '/favicon.ico') return route.fulfill({ status: 404, body: '' })
-        if (url.pathname === '/fixture.js') return route.fulfill({ contentType: 'application/javascript', body: bundled.outputFiles[0].contents })
+        if (url.pathname === '/fixture.js') return route.fulfill({ contentType: 'application/javascript', body: Buffer.from(bundled.outputFiles[0].contents) })
         if (url.pathname === '/api/email/templates/render') return route.fulfill({ json: { html: await options.render(request.postDataJSON()) } })
         if (url.pathname.startsWith('/api/email/design/')) {
           const response = await options.request(url.pathname, request.postDataJSON(), request.method())
