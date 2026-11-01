@@ -3,13 +3,15 @@ name: FigFlow native source build
 on:
   push:
     branches:
-      - adme-dev/figflow-edm-release-20261101
+      - adme-dev/figflow-roundtrip-20261101
     paths:
       - .github/workflows/figflow-native-build.yml
       - workers/craft-editors/source-pins.json
       - workers/craft-editors/ci-setup.py
       - workers/craft-editors/ci-build-browser.sh
       - workers/craft-editors/build-browser.sh
+      - workers/craft-editors/figflow-edm-relay.mjs
+      - workers/craft-editors/figflow-edm-relay.test.mjs
       - workers/craft-editors/patches/figflow-*.patch
   pull_request:
     branches: [main]
@@ -19,6 +21,8 @@ on:
       - workers/craft-editors/ci-setup.py
       - workers/craft-editors/ci-build-browser.sh
       - workers/craft-editors/build-browser.sh
+      - workers/craft-editors/figflow-edm-relay.mjs
+      - workers/craft-editors/figflow-edm-relay.test.mjs
       - workers/craft-editors/patches/figflow-*.patch
   workflow_dispatch:
 
@@ -54,6 +58,9 @@ jobs:
           assert pin['commit'] == 'd4a303d4708602a9df1738960852d18b185a616b'
           assert pin['source_archive_sha256'] == '04710e7815266580083267103d3fe93218c4dee02415e7016574ee866a09aaa6'
           assert pin['cargo_lock_sha256'] == '539397203fa01e0f460ab2fad69b32003b838828751a7373e833d23b56e35b94'
+          assert pin['release_version'] == '0.11.2-edm1'
+          relay = root / 'figflow-edm-relay.mjs'
+          assert relay.is_file() and hashlib.sha256(relay.read_bytes()).hexdigest() == pin['browser_relay_sha256']
           applied = [
               {'path': pin['branding_patch'], 'sha256': pin['branding_patch_sha256']},
               *pin['additional_patches'],
@@ -72,7 +79,14 @@ jobs:
               assert hashlib.sha256(path.read_bytes()).hexdigest() == patch['sha256']
 
           bridge = (root / 'patches/figflow-browser-bridge.patch').read_text()
-          assert '["status", "inspect", "get_node", "create_node", "update_node"]' in bridge
+          assert '"edm_import"' in bridge and '"edm_snapshot"' in bridge
+          assert 'MAX_EDM_REQUEST_BYTES: usize = 48 * 1024 * 1024' in bridge
+          assert 'Email content' in bridge
+          assert 'required_snapshot_images' in bridge
+          assert 'edm_content_roundtrip_preserves_canonical_identity_and_locked_fields' in bridge
+          assert 'edm_snapshot_rejects_native_additions_and_style_changes' in bridge
+          assert 'edm_image_url_change_requires_bytes_then_reopens_current_paint' in bridge
+          assert 'edm_policy_and_column_geometry_stay_bounded_and_non_overlapping' in bridge
           assert '"exports": false' in bridge, 'Export actions must stay explicitly unsupported'
           assert 'create(&status, "refused-engine-0001")' in bridge
           assert 'create(&status, "refused-0002")' not in bridge
@@ -87,18 +101,31 @@ jobs:
           assert 'cargo test --locked' in build
           assert 'len(matched) != len(expected) or set(matched) != expected' in build
           assert 'Expected exactly seven passing browser_bridge tests' in build
+          assert 'cargo test --locked -p figcraft-engine --lib edm_' in build
+          assert 'Expected exactly four passing EDM tests' in build
           package = (root / 'build-browser.sh').read_text()
           assert 'case "$engine" in figcraft)' in package
           assert 'Cargo.lock differs from pinned source' in package
+          assert 'Browser relay differs from pinned source' in package
+          assert '0.11.2-edm1' in package
+          assert 'figflow-edm-relay.mjs' in bridge
 
           workflow = Path('.github/workflows/figflow-native-build.yml').read_text()
-          assert 'adme-dev/figflow-edm-release-20261101' in workflow
+          assert 'adme-dev/figflow-roundtrip-20261101' in workflow
           assert 'pull_request:' in workflow and 'workflow_dispatch:' in workflow
           assert 'contents: read' in workflow
+          assert 'actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444' in workflow
+          assert 'node-version: 24.18.0' in workflow
+          assert 'node --test workers/craft-editors/figflow-edm-relay.test.mjs' in workflow
           assert 'sec' + 'rets.' not in workflow
           assert 'wran' + 'gler' not in workflow.lower()
           assert 'de' + 'ploy' not in workflow.lower()
           PY
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 24.18.0
+      - name: Test browser EDM relay
+        run: node --test workers/craft-editors/figflow-edm-relay.test.mjs
 
   native-tests:
     name: FigFlow native tests

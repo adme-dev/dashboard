@@ -2,10 +2,12 @@
   "figcraft": {
     "commit": "d4a303d4708602a9df1738960852d18b185a616b",
     "version": "0.11.2",
+    "release_version": "0.11.2-edm1",
     "source_archive_sha256": "04710e7815266580083267103d3fe93218c4dee02415e7016574ee866a09aaa6",
     "branding_patch": "patches/figflow-branding.patch",
     "branding_patch_sha256": "f5198f5f6235c82047268910d343dd3d3fb8c1e74a62b1a106a49a63dafe60b9",
     "cargo_lock_sha256": "539397203fa01e0f460ab2fad69b32003b838828751a7373e833d23b56e35b94",
+    "browser_relay_sha256": "5d290162b286bb12e1fd269abfd74c5e9664a160cdde1da03c6180353c709eb6",
     "additional_patches": [
       {
         "path": "patches/figflow-browser-save.patch",
@@ -21,7 +23,7 @@
       },
       {
         "path": "patches/figflow-browser-bridge.patch",
-        "sha256": "740926943894d81caa62ee4be951c4bec92e8f6eef3b1e7864aa3480c51c80ff"
+        "sha256": "862233d7f3b0998c8aaedbe6e2e7268816c2faf32e59c59fba75452919e0d724"
       }
     ]
   }
