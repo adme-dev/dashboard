@@ -304,6 +304,7 @@ export function buildBannerHTML(
       }
       if (l.type === 'video') {
         const objPos = `${l.focalX ?? 50}% ${l.focalY ?? 50}%`
+        style += bannerEffectCss({ visualFilter: l.visualFilter })
         return visualLayer(style, `<video src="${escapeHtml(absSrc(l.src, options.baseUrl))}" muted playsinline preload="auto" style="width:100%;height:100%;object-fit:${l.fit || 'cover'};object-position:${objPos};" />`)
       }
       if (l.type === 'audio') {

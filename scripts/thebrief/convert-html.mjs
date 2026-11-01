@@ -554,6 +554,7 @@ export async function convertTheBriefHtml(html) {
         const videos = [...element.querySelectorAll('video')]
         if (videos.length !== 1 || !videos[0].getAttribute('src')) throw new Error(`Video ${sourceId}: unsupported video source`)
         const video = videos[0]
+        if (video.hasAttribute('controls')) throw new Error(`Video ${sourceId}: player controls require an adapter`)
         const src = localAsset(video.getAttribute('src'))
         if (!/\.mp4$/i.test(src)) throw new Error(`Video ${sourceId}: only MP4 video is supported`)
         const config = source.videoElements?.find(item => item.elementId === sourceId && item.slideId === slide.id)
@@ -571,6 +572,33 @@ export async function convertTheBriefHtml(html) {
         if (!Number.isFinite(delay) || delay < 0 || Math.abs(slide.start + delay - start) > 1e-3) throw new Error(`Video ${sourceId}: source video start requires reconciliation with its layer`)
         if (typeof config.loop !== 'boolean') throw new Error(`Video ${sourceId}: invalid source loop setting`)
         const videoCss = style(video)
+        // Preserve composition on the actual media ancestry. Flattening these
+        // wrappers without their alpha/filter makes blended video too bright.
+        const ancestry = []
+        for (let node = video; node; node = node.parentElement) {
+          ancestry.push(node)
+          if (node === element) break
+        }
+        let videoOpacity = 1
+        const videoFilters = []
+        for (const node of ancestry) {
+          const nodeCss = style(node)
+          const opacity = nodeCss.opacity === '' ? 1 : Number(nodeCss.opacity)
+          if (!Number.isFinite(opacity) || opacity < 0 || opacity > 1) throw new Error(`Video ${sourceId}: unsupported opacity`)
+          if (nodeCss.animationName && nodeCss.animationName !== 'none' && opacity !== 1) throw new Error(`Video ${sourceId}: animated underlying opacity requires an adapter`)
+          videoOpacity *= opacity
+          if (node !== element && nodeCss.mixBlendMode && nodeCss.mixBlendMode !== 'normal') throw new Error(`Video ${sourceId}: nested blend mode requires an adapter`)
+          if (nodeCss.filter && nodeCss.filter !== 'none') {
+            if (nodeCss.animationName && nodeCss.animationName !== 'none') throw new Error(`Video ${sourceId}: animated filter requires an adapter`)
+            videoFilters.push(nodeCss.filter)
+          }
+        }
+        const videoFilter = videoFilters.join(' ')
+        if (videoFilter && !isSafeBannerImageFilter(videoFilter)) throw new Error(`Video ${sourceId}: unsupported static filter`)
+        if (videoFilters.length > 1 || /(?:blur|drop-shadow)\(/.test(videoFilter)) throw new Error(`Video ${sourceId}: spatial or nested filters require an adapter`)
+        layerBase.opacity = videoOpacity
+        layerBase.keyframes = { ...layerBase.keyframes, opacity: layerBase.keyframes.opacity.map(frame => ({ ...frame, value: frame.value * videoOpacity })) }
+        if (videoFilter) layerBase.visualFilter = videoFilter
         let fit = videoCss.objectFit || 'fill'
         if (!['cover', 'contain', 'fill'].includes(fit)) throw new Error(`Video ${sourceId}: unsupported video fit ${fit}`)
         if (videoCss.objectPosition && !['50% 50%', 'center', 'center center'].includes(videoCss.objectPosition)) throw new Error(`Video ${sourceId}: unsupported video position`)
