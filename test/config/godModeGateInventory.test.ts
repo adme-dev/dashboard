@@ -381,13 +381,38 @@ describe('God mode gate inventory', () => {
       'shared/bannerTemplatePermissions.ts\tconst isAdmin = [\'owner\', \'admin\'].includes(user.role) || user.permissionGroups?.includes(\'ADMIN\') === true\tordinary_user_behavior'
     ] as const
     for (const row of releasedBannerGateRows20261101) expect(inventory.rows).toContain(row)
+    // FigFlow adds three fresh session/role/scope rows. The two legacy write
+    // gates move unchanged into canonical handlers; no bypass is registered.
+    const reviewedFigFlowGateRows20261101 = {
+      added: [
+        'server/utils/email-marketing/designAccess.ts\tSELECT tm.user_role::text AS role, tm.custom_role_id,\tidentity_tenant_hard_boundary',
+        'server/utils/email-marketing/designAccess.ts\tOR (tm.custom_role_id IS NULL AND cr.is_system=TRUE AND cr.slug=tm.user_role::text)\tidentity_tenant_hard_boundary',
+        'server/utils/email-marketing/designAccess.ts\t|| (access === \'write\' && (isReadOnlyRole(row.role) || row.is_read_only))\tapplication_governance_bypass',
+        'server/utils/email-marketing/templateDeleteHandler.ts\tconst user = await requireWriteAccess(event)\tapplication_governance_bypass',
+        'server/utils/email-marketing/templateUpdateHandler.ts\tconst user = await requireWriteAccess(event)\tapplication_governance_bypass'
+      ],
+      removed: [
+        'server/api/email/templates/[id].delete.ts\tconst user = await requireWriteAccess(event)\tapplication_governance_bypass',
+        'server/api/email/templates/[id].patch.ts\tconst user = await requireWriteAccess(event)\tapplication_governance_bypass'
+      ]
+    } as const
+    expect(reviewedFigFlowGateRows20261101.added).toHaveLength(5)
+    expect(reviewedFigFlowGateRows20261101.removed).toHaveLength(2)
+    for (const row of reviewedFigFlowGateRows20261101.added) expect(inventory.rows).toContain(row)
+    for (const row of reviewedFigFlowGateRows20261101.removed) expect(inventory.rows).not.toContain(row)
+    const designAccessSource = readFileSync('server/utils/email-marketing/designAccess.ts', 'utf8')
+    expect(designAccessSource).toContain('const user = await validateSession(token)')
+    expect(designAccessSource).toContain('if (!user || user.id !== actorId)')
+    expect(designAccessSource).toContain('WHERE tm.id=$1 AND tm.is_active=TRUE')
+    expect(designAccessSource).toContain('if (!agency && !(clientId !== null && row.assigned) && !marketingClient)')
+    expect(designAccessSource).not.toMatch(/isApplicationCapabilityEnabled|registerGodModeMutationFamily/)
     expect(inventory.rows).not.toContain('server/api/agency/banner-studio/custom-templates/[id].delete.ts\tif (existing.isSystem && ![\'admin\', \'owner\'].includes(user.role)) {\tordinary_user_behavior')
     expect(inventory.rows).not.toContain('server/api/agency/banner-studio/custom-templates/[id].delete.ts\tif (existing.createdBy !== user.id && ![\'admin\', \'owner\'].includes(user.role)) {\tordinary_user_behavior')
-    expect(inventory.rows).toHaveLength(1715)
+    expect(inventory.rows).toHaveLength(1718)
     expect(inventory.counts).toEqual({
-      identity_tenant_hard_boundary: 133,
+      identity_tenant_hard_boundary: 135,
       provider_infrastructure_availability: 222,
-      application_governance_bypass: 1627,
+      application_governance_bypass: 1628,
       ordinary_user_behavior: 301,
       unrelated_configuration: 431
     })
@@ -412,7 +437,7 @@ describe('God mode gate inventory', () => {
     // to shared services. Email dispatch now reads request-bound provider config.
     // The classifier and owner bypass registrations remain unchanged; the reviewed
     // row diff is recorded in the marketing-management verification ledger.
-    expect(inventory.digest).toBe('cace1e9a913cb7e9c97c58d4eb86516c8b93f99206ed6add1b0c2fe81f971eaa')
+    expect(inventory.digest).toBe('71bd85521112871f03cca79e6028264c68e674a7f4b84583505fe241ae25543c')
     expect(inventory.rows).toContain(
       'app/composables/usePageStudioLauncher.ts\tconst config = useRuntimeConfig()\tunrelated_configuration'
     )

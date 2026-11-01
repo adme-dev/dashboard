@@ -114,9 +114,12 @@ const API_INVENTORY = {
   // Reviewed Banner additions: 12 routes, five mutations; strengthened existing
   // mutations bring nine inline guards and four transaction calls. Native access
   // remains mandatory; see the 2026-11-01 inventory evidence.
-  totalRouteFiles: 2310,
-  mutationRouteFiles: 1259,
-  explicitlyGuardedMutationFiles: 408,
+  // FigFlow adds five routes and three mutations with delegated fresh authority.
+  // Legacy PATCH/DELETE retain requireWriteAccess in canonical handlers, moving
+  // two inline guards out of route files. No transaction call or bypass is added.
+  totalRouteFiles: 2315,
+  mutationRouteFiles: 1262,
+  explicitlyGuardedMutationFiles: 406,
   guardedMutationFilesWithTransactionCall: 55
 } as const
 
@@ -165,11 +168,61 @@ describe('God mode route isolation inventory', () => {
   it('records the full mechanical API and mutation inventory reviewed before implementation', () => {
     expect(mechanicalInventory()).toEqual(API_INVENTORY)
     expect(API_INVENTORY).toEqual({
-      totalRouteFiles: 2310,
-      mutationRouteFiles: 1259,
-      explicitlyGuardedMutationFiles: 408,
+      totalRouteFiles: 2315,
+      mutationRouteFiles: 1262,
+      explicitlyGuardedMutationFiles: 406,
       guardedMutationFilesWithTransactionCall: 55
     })
+  })
+
+  it('pins FigFlow route additions and relocated legacy guards to canonical authority', () => {
+    const additions = [
+      'server/api/email/design/[...path].ts',
+      'server/api/email/design/drafts/[id].get.ts',
+      'server/api/email/design/drafts/[id].patch.ts',
+      'server/api/email/design/drafts/[id]/metadata.patch.ts',
+      'server/api/email/design/drafts/initialize.post.ts'
+    ] as const
+    const files = listApiFiles()
+    expect(additions).toHaveLength(5)
+    for (const file of additions) {
+      expect(files).toContain(file)
+      expect(readFileSync(file, 'utf8')).not.toMatch(/isApplicationCapabilityEnabled|registerGodModeMutationFamily/)
+    }
+    const mutations = additions.filter(file => /\.(post|patch)\.ts$/.test(file))
+    expect(mutations).toEqual([
+      'server/api/email/design/drafts/[id].patch.ts',
+      'server/api/email/design/drafts/[id]/metadata.patch.ts',
+      'server/api/email/design/drafts/initialize.post.ts'
+    ])
+    for (const file of mutations) {
+      const source = readFileSync(file, 'utf8')
+      expect(source).toContain('assertDesignMutationRequest(')
+      expect(source).toContain('assertFreshDesignAccess(')
+      expect(source).toContain('await validateSession(token)')
+      expect(source).not.toMatch(/\btransaction\s*\(/)
+    }
+    const read = readFileSync('server/api/email/design/drafts/[id].get.ts', 'utf8')
+    expect(read).toContain('await validateSession(token)')
+    expect(read).toContain('assertFreshDesignAccess(token, user.id, clientId, \'read\')')
+
+    const legacy = {
+      'server/api/email/templates/[id].patch.ts': {
+        handler: 'server/utils/email-marketing/templateUpdateHandler.ts',
+        scope: ['resolveEmailClientScope(event, user)', 'assertEmailClientIdInScope(scope, existing.client_id)']
+      },
+      'server/api/email/templates/[id].delete.ts': {
+        handler: 'server/utils/email-marketing/templateDeleteHandler.ts',
+        scope: ['assertEmailClientAccess(event, user, existing.client_id)']
+      }
+    } as const
+    for (const [route, { handler, scope }] of Object.entries(legacy)) {
+      expect(readFileSync(route, 'utf8').trim()).toBe('export { default } from \'~~/server/utils/email-marketing/designTransport\'')
+      const source = readFileSync(handler, 'utf8')
+      expect(source).toContain('const user = await requireWriteAccess(event)')
+      for (const check of scope) expect(source).toContain(check)
+      expect(source).not.toMatch(/isApplicationCapabilityEnabled|registerGodModeMutationFamily/)
+    }
   })
 
   it('pins released Banner route inventory to native scope and read-only share boundaries', () => {

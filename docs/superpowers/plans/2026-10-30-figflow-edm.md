@@ -850,3 +850,45 @@ After that source snapshot, only this ledger and the service README changed:
 the README now distinguishes draft receipt reconciliation from legacy CRUD
 state rereads after an uncertain response. Review archives are preserved as
 written, rather than rewritten to imply later evidence was reviewer-observed.
+
+
+### Current-main reconciliation and native merge — 1 November 2026
+
+Native PR #798 merged as `a0535275dbff02c99e53965dce5f3096fa91d1d9`.
+Its native inputs are byte-identical to successful run 41256272649, which passed
+source validation, native tests and browser packaging. After incorporating
+6bca8f20b, all 24 tests in the three previously failing full-suite files passed
+locally in the native worktree. A newly triggered complete CI run was not claimed
+as passed at merge time. This merges build prerequisites only, not a native EDM
+product or deployed browser acceptance.
+
+The backend branch incorporates current main at local merge a202cbd89. Its
+376 focused non-database tests pass across 22 files. Existing database/runtime
+source remains unchanged from the recorded 430-test run; those integration
+cases were not rerun in this checkpoint. A fresh Pages build passes at
+25,467,440 raw bytes, 1,488 below the immutable limit, and 7,338,679 gzip.
+Build began on the 6bca8f20b-based candidate; the native-only main merge during
+that build changed no Pages application source. This is candidate evidence,
+not a clean integrated production artifact. The guarded deployment check passes
+with source a202cbd89 and main a0535275d. Logs are
+`/private/tmp/figflow-main-6bca-build.log`,
+`/private/tmp/figflow-current-foundation-tests.log`, and
+`/private/tmp/figflow-current-deploy-check.log`.
+
+Read-only discovery found no JWT_SECRET in GitHub repository secrets or the
+account's shared Cloudflare Secrets Store. The existing Pages secret name was
+previously verified, but its matching value still needs an approved source.
+No key was printed, changed or rotated. Production migrations, private-service
+provisioning, hosted verification and Pages cutover remain outstanding.
+
+
+Kimi audited and repaired the two FigFlow inventory assertions; exact additions,
+relocations, authority assertions and hashes are recorded in
+`reviews/2026-11-01-kimi-ci-inventory.md`. Parent reran all three previously
+failing files: **25 tests pass**. Focused lint and whitespace checks pass.
+The full local suite started before the inventory edits: **21,318 passed,
+2 failed, 4,050 skipped**, across 2,796 files. Its only failures are the two
+old inventory assertions, both passing in the subsequent focused rerun.
+This is combined full-run plus repaired-file evidence, not a claim that the
+original full run was green. Logs: `/private/tmp/figflow-current-full-suite.log`
+and `/private/tmp/figflow-repaired-ci-tests.log`.
