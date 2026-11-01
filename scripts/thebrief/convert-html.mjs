@@ -764,12 +764,19 @@ export async function convertTheBriefHtml(html) {
         else if (new Set(radii).size === 1 && percent && Number(percent[1]) >= 50) rectShape = 'ellipse'
         else throw new Error(`${element.id}: unequal or partial-percentage corner radii need an adapter`)
         const shapeFilters = []
+        let shapeOpacity = 1
         for (let node = content; node && element.contains(node); node = node.parentElement) {
           const nodeCss = style(node)
+          const opacity = nodeCss.opacity === '' ? 1 : Number(nodeCss.opacity)
+          if (!Number.isFinite(opacity) || opacity < 0 || opacity > 1) throw new Error('Unsupported shape opacity')
+          if (nodeCss.animationName && nodeCss.animationName !== 'none' && opacity !== 1) throw new Error('Animated shape with nonidentity underlying opacity needs an adapter')
+          shapeOpacity *= opacity
           if (nodeCss.filter && nodeCss.filter !== 'none') shapeFilters.push(nodeCss.filter)
           if (nodeCss.boxShadow && nodeCss.boxShadow !== 'none') throw new Error(`${element.id}: shape box shadow needs an adapter`)
           if (node === element) break
         }
+        layerBase.opacity = shapeOpacity
+        layerBase.keyframes = { ...layerBase.keyframes, opacity: layerBase.keyframes.opacity.map(frame => ({ ...frame, value: frame.value * shapeOpacity })) }
         const visualFilter = shapeFilters.join(' ')
         if (visualFilter && !isSafeBannerImageFilter(visualFilter)) throw new Error('Unsupported static shape filter')
         const shapeEffects = { ...(rectShape ? { rectShape } : {}), ...(visualFilter ? { visualFilter } : {}) }
