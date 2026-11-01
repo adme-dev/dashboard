@@ -9,6 +9,17 @@ const fixture = () => ({
 })
 
 describe('reviewed TheBrief native package', () => {
+  it('preserves bounded outline paint order through package parsing and canvas comparison', () => {
+    const input = fixture()
+    const layer = input.canvasData.custom_300x250.layers[0]
+    Object.assign(layer, { textStroke: '2px #112b4e', textPaintOrder: 'fill' })
+    const parsed = parseTheBriefPackage(input)
+    expect(parsed.canvasData.custom_300x250.layers[0].textPaintOrder).toBe('fill')
+    expect(sameImportedCanvas(parsed.canvasData, input.canvasData)).toBe(true)
+    Object.assign(layer, { textPaintOrder: 'fill;position:fixed' })
+    expect(() => parseTheBriefPackage(input)).toThrow()
+  })
+
   it('preserves editable keyframes and original source identity', () => {
     const result = parseTheBriefPackage(fixture())
     expect(result.canvasData.custom_300x250.layers[0].keyframes.opacity).toHaveLength(2)

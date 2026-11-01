@@ -29,6 +29,7 @@ const layer = z.object({
   textAlign: z.enum(['left', 'center', 'right', 'justify', 'start', 'end']).optional(), letterSpacing: css.optional(),
   color: css.optional(), bgColor: css.optional(), fillColor: css.optional(), rectShape: z.literal('ellipse').optional(),
   textShadow: z.string().max(100).regex(/^-?\d+(?:\.\d+)?px -?\d+(?:\.\d+)?px (?:\d+(?:\.\d+)?px|0) (?:#[0-9a-f]{3,6}|rgba?\(\d{1,3},\d{1,3},\d{1,3}(?:,(?:0|1|0?\.\d+))?\))$/i).optional(),
+  textPaintOrder: z.enum(['fill', 'stroke']).optional(),
   textStroke: z.string().max(40).regex(/^\d+(?:\.\d+)?px #[0-9a-f]{6}$/i).optional(),
   src: local.optional(), fit: z.enum(['fill', 'contain', 'cover']).optional(),
   volume: z.number().min(0).max(1).optional(),
