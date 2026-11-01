@@ -285,7 +285,7 @@ export default defineNuxtConfig({
 
     // Public keys (exposed to client-side)
     public: {
-      figflowEdmEnabled: process.env.NUXT_PUBLIC_FIGFLOW_EDM_ENABLED === 'true',
+      figflowEdmEnabled: process.env.NUXT_PUBLIC_FIGFLOW_EDM_ENABLED !== 'false',
       appName: process.env.APP_NAME || 'XeroFlow Agency',
       appUrl: process.env.APP_URL || 'http://localhost:3000',
       pageStudioEditorUrl: process.env.NUXT_PUBLIC_PAGE_STUDIO_EDITOR_URL || '',

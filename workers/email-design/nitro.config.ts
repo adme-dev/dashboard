@@ -41,7 +41,10 @@ export default defineNitroConfig({
       }
     ]
   },
-  alias: { '~~': repoRoot },
+  alias: {
+    '~~': repoRoot,
+    '~~/server/utils/sessionToken': fromRepo('workers/email-design/sessionToken.ts')
+  },
   nodeModulesDirs: [join(repoRoot, 'node_modules')],
   handlers: [
     {

@@ -30,7 +30,7 @@ describe('private email design deployment targets', () => {
     ['public preview URL', (value: Config) => { value.preview_urls = true }],
     ['public route', (value: Config) => { value.routes = ['app.xeroflow.io/*'] }],
     ['cron', (value: Config) => { value.triggers.crons = ['* * * * *'] }],
-    ['flag activation', (value: Config) => { value.vars.FIGFLOW_EDM_DRAFT_SAVES_ENABLED = 'true' }],
+    ['unreviewed authority', (value: Config) => { value.vars.EMAIL_DESIGN_SESSION_AUTHORITY = 'another' }],
     ['environment', (value: Config) => { value.vars.EMAIL_DESIGN_ENVIRONMENT = 'staging' }],
     ['renderer', (value: Config) => { value.services[0].service = 'xeroflow-email-rendering-staging' }],
     ['fresh database', (value: Config) => { value.hyperdrive[1].id = value.hyperdrive[0].id }],
@@ -47,11 +47,11 @@ describe('private email design deployment targets', () => {
 })
 
 
-describe('disabled Pages foundation release', () => {
-  it('excludes all design routes and omits an unprovisioned service binding', () => {
+describe('Pages private transport release', () => {
+  it('excludes heavy design routes while mounting its provisioned private transport', () => {
     const nuxt = readFileSync(new URL('../../nuxt.config.ts', import.meta.url), 'utf8')
     const pages = readFileSync(new URL('../../wrangler.toml', import.meta.url), 'utf8')
     expect(nuxt).toContain("ignore: ['**/api/email/design/**']")
-    expect(pages).not.toMatch(/binding\s*=\s*["']EMAIL_DESIGN["']/)
+    expect(pages).toMatch(/binding\s*=\s*["']EMAIL_DESIGN["']/)
   })
 })

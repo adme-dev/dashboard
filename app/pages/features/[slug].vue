@@ -1604,7 +1604,7 @@ const features: Record<string, Feature> = {
     categoryIcon: 'i-lucide-message-circle',
     categoryIconBg: 'bg-violet-50',
     categoryIconColor: 'text-violet-600',
-    description: 'Build from reusable sections and eleven starters, edit content and styles, and preview email HTML. FigFlow content handoff is in development and disabled.',
+    description: 'Build from reusable sections and eleven starters, edit content and styles, and preview email HTML. Review and apply supported content edits from FigFlow.',
     details: [
       {
         title: 'Sections and Custom Modules',
@@ -1620,7 +1620,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Editing, Preview and FigFlow',
-        content: 'Edit spacing, typography, borders and backgrounds; switch between Editor, Preview and HTML. FigFlow content handoff is in development and disabled: supported text, image and button edits return for rendered review and explicit Apply, with revision conflicts protecting newer staff edits. Shared-module handoff and Apple Mail, Gmail and Outlook acceptance remain separate work.'
+        content: 'Edit spacing, typography, borders and backgrounds; switch between Editor, Preview and HTML. Open supported saved drafts in FigFlow to edit text, images and buttons. Returns require rendered review and explicit Apply, with revision conflicts protecting newer staff edits. Shared-module handoff and Apple Mail, Gmail and Outlook acceptance remain separate work.'
       }
     ]
   },

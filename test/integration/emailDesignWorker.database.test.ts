@@ -111,7 +111,7 @@ beforeAll(async () => {
     compatibilityDate: '2026-07-08',
     compatibilityFlags: ['nodejs_compat'],
     bindings: {
-      JWT_SECRET: secret,
+      EMAIL_DESIGN_SESSION_AUTHORITY: 'pages-auth-me-v1',
       FIGFLOW_EDM_DRAFT_SAVES_ENABLED: 'true',
       EMAIL_DESIGN_ENVIRONMENT: 'staging',
       PAGE_STUDIO_RELEASE_ENVIRONMENT: 'staging'
@@ -122,7 +122,20 @@ beforeAll(async () => {
       HYPERDRIVE_FRESH: `postgres://figflow_test:synthetic@127.0.0.1:55483/${database}`
     },
     // No network fallback or hosted database is allowed in this fixture.
-    outboundService: blockOutbound
+    outboundService: async (req) => {
+      // Isolated canonical authority fixture; no production request is permitted.
+      if (req.url !== 'https://preview.agency-dashboard-6cm.pages.dev/api/auth/me' || req.method !== 'GET') return blockOutbound()
+      const supplied = req.headers.get('authorization')?.slice(7) ?? ''
+      const [data, signature] = supplied.split('.')
+      try {
+        const payload = Buffer.from(data, 'base64')
+        if (createHmac('sha256', secret).update(payload).digest('base64') !== signature) return LocalResponse.json({}, { status: 401 })
+        const claims = JSON.parse(payload.toString())
+        const row = (await db!.query('SELECT id,is_active,sessions_invalidated_at FROM team_members WHERE id=$1', [claims.userId])).rows[0]
+        if (!row?.is_active || claims.exp < Date.now() || (row.sessions_invalidated_at && claims.iat < new Date(row.sessions_invalidated_at).getTime())) return LocalResponse.json({}, { status: 401 })
+        return LocalResponse.json({ success: true, user: { id: row.id, is_active: true } })
+      } catch { return LocalResponse.json({}, { status: 401 }) }
+    }
   }, {
     name: 'renderer', modules: true, scriptPath: rendererFile,
     compatibilityDate: '2026-07-08', bindings: { EMAIL_RENDER_ENVIRONMENT: 'staging' },

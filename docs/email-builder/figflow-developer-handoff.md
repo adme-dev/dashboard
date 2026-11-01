@@ -87,3 +87,11 @@ from freshly fetched main, claim files, and preserve the original dirty
 `xeroflow-email-builder-20261030` worktree and shared node_modules. The owned
 `figflow-edm-release-20261101` checkout is retained for the remaining activation
 and evidence handoff; it is not a permanent release base.
+
+
+Activation branch checkpoint (2 November): the original key-copy requirement is
+being replaced by the existing fixed-origin `/api/auth/me` verifier, as Creative
+Suite already uses. The private Worker will not require a signing key. Source
+review and local real Worker/PG/native verification pass; follow the dated
+milestone ledger for the production build and hosted acceptance before relying
+on the older blocker table above.
