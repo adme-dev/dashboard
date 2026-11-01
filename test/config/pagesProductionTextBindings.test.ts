@@ -209,7 +209,7 @@ describe('production Pages text binding budget', () => {
 
   it('distinguishes the historic snapshot from compact source capacity and conditional enrollment', () => {
     const declaredTextBindings = Object.keys(config.env.production.vars).length
-    expect(declaredTextBindings).toBe(42)
+    expect(declaredTextBindings).toBe(43)
     expect(config.env.production.vars).not.toHaveProperty('APP_NAME')
     const declaredNames = Object.keys(config.env.production.vars)
     const textCount = (secretNames: readonly string[]) => {
@@ -219,20 +219,20 @@ describe('production Pages text binding budget', () => {
       return all.length
     }
     expect(observedSecretNames).toHaveLength(102)
-    // Historic source had 43 vars; compact suite/provider configuration saves one net slot.
+    // Historic source had 43 vars; compact configuration freed a slot, now used by the design gate.
     expect(43 + observedSecretNames.length + generatedTextNames.length).toBe(149)
-    expect(textCount(observedSecretNames)).toBe(148)
+    expect(textCount(observedSecretNames)).toBe(149)
     // The 28 October names-only observation adds the staff grant, with no other secret changes.
-    expect(textCount([...observedSecretNames, 'MCP_MARKETING_STAFF_GRANTS'])).toBe(149)
+    expect(textCount([...observedSecretNames, 'MCP_MARKETING_STAFF_GRANTS'])).toBe(150)
     for (const name of conditionalRemovals) expect(observedSecretNames).toContain(name)
     for (const name of conditionalAdditions) expect(observedSecretNames).not.toContain(name)
-    expect(textCount([...observedSecretNames, ...conditionalAdditions])).toBe(151)
+    expect(textCount([...observedSecretNames, ...conditionalAdditions])).toBe(152)
     // Only after exact public-ID equality/runtime pairing verification may the operator remove these.
     const conditionalSecrets = [...observedSecretNames.filter(name => !conditionalRemovals.includes(name)), ...conditionalAdditions]
-    expect(textCount(conditionalSecrets)).toBe(149)
+    expect(textCount(conditionalSecrets)).toBe(150)
     expect(textCount(conditionalSecrets)).toBeLessThanOrEqual(150)
-    expect(textCount([...conditionalSecrets, 'LINKEDIN_ORGANIC_SCOPES'])).toBe(150)
-    expect(textCount([...conditionalSecrets, 'TIKTOK_CONTENT_CLIENT_KEY', 'TIKTOK_CONTENT_CLIENT_SECRET'])).toBe(151)
+    expect(textCount([...conditionalSecrets, 'LINKEDIN_ORGANIC_SCOPES'])).toBe(151)
+    expect(textCount([...conditionalSecrets, 'TIKTOK_CONTENT_CLIENT_KEY', 'TIKTOK_CONTENT_CLIENT_SECRET'])).toBe(152)
     // Task 5 code completion adds no binding while TikTok stays unavailable.
     expect(config.env.production.vars).not.toHaveProperty('TIKTOK_CONTENT_CLIENT_KEY')
     expect(config.env.production.vars).not.toHaveProperty('TIKTOK_CONTENT_CLIENT_SECRET')

@@ -1,7 +1,6 @@
 import { DESIGN_ACTION_LIMITS } from '../../shared/emailRendering/designActions'
 import { MAX_RENDER_REQUEST_BYTES } from '../../shared/emailRendering/bounds'
 
-const INSECURE_JWT_FALLBACK = 'your-secret-key-change-in-production'
 const ENVIRONMENTS = new Set(['staging', 'production'])
 const LEGACY_TEMPLATE_PATH = /^\/api\/email\/templates\/[^/]+$/
 
@@ -68,11 +67,8 @@ export default {
       return rejection(503, 'email_design_environment_unavailable')
     if (request.headers.get('x-xeroflow-email-design-environment') !== environment)
       return rejection(403, 'email_design_environment_mismatch')
-    if (
-      typeof env.JWT_SECRET !== 'string'
-      || !env.JWT_SECRET.trim()
-      || env.JWT_SECRET === INSECURE_JWT_FALLBACK
-    ) return rejection(503, 'email_design_secret_unavailable')
+    if (env.EMAIL_DESIGN_SESSION_AUTHORITY !== 'pages-auth-me-v1')
+      return rejection(503, 'email_design_authority_unavailable')
 
     const admitted = await admitBody(request)
     if (admitted.error) return admitted.error

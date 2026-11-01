@@ -13,7 +13,7 @@ const legacyBodyLimit = MAX_RENDER_REQUEST_BYTES + DESIGN_ACTION_LIMITS.envelope
 const validSecret = 'synthetic-miniflare-secret'
 const validBindings = {
   EMAIL_DESIGN_ENVIRONMENT: 'staging',
-  JWT_SECRET: validSecret,
+  EMAIL_DESIGN_SESSION_AUTHORITY: 'pages-auth-me-v1',
   FIGFLOW_EDM_DRAFT_SAVES_ENABLED: 'true'
 }
 const environmentHeader = { 'x-xeroflow-email-design-environment': 'staging' }
@@ -38,7 +38,13 @@ async function scenario(name, bindings, run) {
     scriptPath: resolve('dist/worker.mjs'),
     compatibilityDate: '2026-07-08',
     compatibilityFlags: ['nodejs_compat'],
-    bindings
+    bindings,
+    outboundService: async (req) => {
+      assert.equal(req.url, 'https://preview.agency-dashboard-6cm.pages.dev/api/auth/me')
+      const supplied = req.headers.get('authorization')?.slice(7) ?? ''
+      if (supplied !== canonicalToken(validSecret)) return Response.json({}, { status: 401 })
+      return Response.json({ success: true, user: { id: '10000000-0000-4000-8000-000000000001', is_active: true } })
+    }
   })
   try {
     await deadline(run(worker), 15_000, name)
@@ -53,12 +59,13 @@ async function expectStatus(response, status, message) {
   assert.match(await response.text(), new RegExp(message))
 }
 
+const issuedAt = Date.now()
 function canonicalToken(secret) {
   const json = JSON.stringify({
     userId: '10000000-0000-4000-8000-000000000001',
     jti: 'synthetic-token',
-    iat: Date.now(),
-    exp: Date.now() + 60_000
+    iat: issuedAt,
+    exp: issuedAt + 60_000
   })
   const payload = Buffer.from(json).toString('base64')
   const signature = createHmac('sha256', secret).update(json).digest('base64')
@@ -67,7 +74,7 @@ function canonicalToken(secret) {
 
 await scenario('disabled flag remains closed', {
   EMAIL_DESIGN_ENVIRONMENT: 'staging',
-  JWT_SECRET: validSecret
+  EMAIL_DESIGN_SESSION_AUTHORITY: 'pages-auth-me-v1'
 }, async (worker) => {
   const response = await worker.dispatchFetch(draftUrl, { headers: environmentHeader })
   await expectStatus(response, 404, 'not_found')
@@ -102,16 +109,12 @@ for (const [name, bindings, headers, status, message] of [
   })
 }
 
-for (const [name, secret] of [
-  ['missing JWT secret', undefined],
-  ['canonical insecure JWT fallback', 'your-secret-key-change-in-production']
-]) {
+for (const mode of [undefined, 'unreviewed']) {
   const bindings = { ...validBindings }
-  if (secret === undefined) delete bindings.JWT_SECRET
-  else bindings.JWT_SECRET = secret
-  await scenario(name, bindings, async (worker) => {
-    const response = await worker.dispatchFetch(draftUrl, { headers: environmentHeader })
-    await expectStatus(response, 503, 'email_design_secret_unavailable')
+  if (mode === undefined) delete bindings.EMAIL_DESIGN_SESSION_AUTHORITY
+  else bindings.EMAIL_DESIGN_SESSION_AUTHORITY = mode
+  await scenario('missing or invalid session authority', bindings, async (worker) => {
+    await expectStatus(await worker.dispatchFetch(draftUrl, { headers: environmentHeader }), 503, 'email_design_authority_unavailable')
   })
 }
 
@@ -146,7 +149,7 @@ await scenario('missing token reaches canonical auth denial', validBindings, asy
   await expectStatus(response, 401, 'design_session_invalid')
 })
 
-await scenario('configured JWT key reaches DB boundary and wrong key is denied', validBindings, async (worker) => {
+await scenario('canonical session authority reaches DB boundary and rejects an invalid token', validBindings, async (worker) => {
   const wrong = await worker.dispatchFetch(draftUrl, {
     headers: {
       ...environmentHeader,
@@ -166,7 +169,7 @@ await scenario('configured JWT key reaches DB boundary and wrong key is denied',
 
 await scenario('legacy template routes need no draft flag and preserve auth denial', {
   EMAIL_DESIGN_ENVIRONMENT: 'staging',
-  JWT_SECRET: validSecret
+  EMAIL_DESIGN_SESSION_AUTHORITY: 'pages-auth-me-v1'
 }, async (worker) => {
   const patched = await worker.dispatchFetch(templateUrl, {
     method: 'PATCH',

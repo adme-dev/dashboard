@@ -23,7 +23,8 @@ export function validateEmailDesignTarget(config, environment) {
     vars: {
       EMAIL_DESIGN_ENVIRONMENT: environment,
       PAGE_STUDIO_RELEASE_ENVIRONMENT: environment,
-      FIGFLOW_EDM_DRAFT_SAVES_ENABLED: 'false'
+      FIGFLOW_EDM_DRAFT_SAVES_ENABLED: production ? 'true' : 'false',
+      EMAIL_DESIGN_SESSION_AUTHORITY: 'pages-auth-me-v1'
     },
     services: [{ binding: 'EMAIL_RENDERER', service: `xeroflow-email-rendering-${environment}`, entrypoint: 'EmailRenderer' }],
     hyperdrive: [

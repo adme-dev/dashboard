@@ -23,7 +23,8 @@
   "vars": {
     "EMAIL_DESIGN_ENVIRONMENT": "production",
     "PAGE_STUDIO_RELEASE_ENVIRONMENT": "production",
-    "FIGFLOW_EDM_DRAFT_SAVES_ENABLED": "false"
+    "FIGFLOW_EDM_DRAFT_SAVES_ENABLED": "true",
+    "EMAIL_DESIGN_SESSION_AUTHORITY": "pages-auth-me-v1"
   },
   "services": [
     {

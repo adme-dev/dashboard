@@ -111,3 +111,23 @@ JWT_SECRET entry but its management API returns no value. A fresh bounded search
 of dashboard env/dev-vars files found no stored key, and no connected secret-manager
 provider is available. The operator has been asked for the original secure source;
 no replacement key, credential rotation or authentication bypass was introduced.
+
+## Activation work — 2 November
+
+Ruling: reuse the existing fixed-origin `/api/auth/me` session authority, as the
+Creative gateway does. Extract the unchanged Pages signature verifier behind a
+build-time port; only the private design Worker aliases that port to the live
+session authority. No signing key is copied or rotated. Each access check retains
+fresh active-user, revocation, role/client and revision enforcement. Redirects,
+timeouts, malformed/oversized responses and unknown environments fail closed.
+Implementation and activation checks are in progress; no tests until this packet
+is ready for final verification, per the owner's instruction.
+
+Final activation verification: 96 canonical-auth/authority/target/config checks
+passed; 57 focused route/composer/transport checks passed; the real Worker/PG
+suite including actual-WASM two-return browser acceptance passed all seven cases.
+Twelve admission scenarios passed. Targeted lint passed. Independent source review
+found no important blocker. The Worker build now explicitly rejects an artifact
+that retains the local signing verifier. Production activation is reviewed true;
+staging stays disabled. No new production text binding is introduced for the UI.
+Pages build and hosted acceptance remain pending at this checkpoint.
