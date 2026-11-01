@@ -1,0 +1,462 @@
+--- a/apps/figcraft-web/Cargo.toml
++++ b/apps/figcraft-web/Cargo.toml
+@@ -26,4 +26,4 @@
+ wasm-bindgen = "0.2"
+ js-sys = "0.3"
+ wasm-bindgen-futures = "0.4"
+-web-sys = { version = "0.3", features = ["Window", "Document", "Element", "HtmlCanvasElement", "HtmlElement", "HtmlAnchorElement", "Node", "Blob", "BlobPropertyBag", "File", "FileList", "HtmlInputElement", "EventTarget", "Url", "Location", "MediaQueryList", "Navigator", "Gamepad", "GamepadButton", "GamepadMappingType"] }
++web-sys = { version = "0.3", features = ["Window", "Crypto", "Performance", "Document", "Element", "HtmlCanvasElement", "HtmlElement", "HtmlAnchorElement", "Node", "Blob", "BlobPropertyBag", "File", "FileList", "HtmlInputElement", "EventTarget", "Url", "Location", "MediaQueryList", "Navigator", "Gamepad", "GamepadButton", "GamepadMappingType"] }
+--- a/apps/figcraft-web/src/main.rs
++++ b/apps/figcraft-web/src/main.rs
+@@ -23,6 +23,8 @@
+ //! The link carries the session's secret; a fragment is never sent to the web host, but the address
+ //! bar and the browser history keep it, so the URL is as private as the link itself.
+ 
++#[cfg(target_arch = "wasm32")]
++mod bridge_web;
+ #[cfg(any(target_arch = "wasm32", test))]
+ mod query;
+ #[cfg(test)]
+--- a/apps/figcraft-web/src/web.rs
++++ b/apps/figcraft-web/src/web.rs
+@@ -46,6 +46,9 @@
+                     if let Some(link) = crate::query::join_link(&hash) {
+                         let link = js_sys::decode_uri_component(link).ok().and_then(|s| s.as_string()).unwrap_or_else(|| link.to_string());
+                         figcraft_ui_egui::live::open_invite(&mut fig, &link);
++                    }
++                    if let Err(error) = crate::bridge_web::install(cc.egui_ctx.clone()) {
++                        log::warn!("FigFlow local automation bridge unavailable: {error:?}");
+                     }
+                     Ok(Box::new(WebShell { fig }))
+                 }),
+@@ -71,6 +74,7 @@
+ impl eframe::App for WebShell {
+     // `FigApp::ui` runs its own per-frame logic first (fonts, theme), like the desktop app.
+     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
++        crate::bridge_web::drain(&mut self.fig.session);
+         self.fig.ui(ui);
+     }
+ }
+--- a/apps/figcraft-web/src/bridge_web.rs
++++ b/apps/figcraft-web/src/bridge_web.rs
+@@ -0,0 +1,95 @@
++//! Browser-local Promise transport. It does not grant remote, tenant or project authority.
++use figcraft_engine::Session;
++use figcraft_ui_egui::browser_bridge::{Bridge, MAX_REQUEST_BYTES};
++use std::cell::RefCell;
++use std::collections::VecDeque;
++use wasm_bindgen::{JsValue, closure::Closure};
++
++const MAX_QUEUE: usize = 8;
++const MAX_WAIT_MS: f64 = 2_000.;
++struct Pending {
++    input: String,
++    resolve: js_sys::Function,
++    deadline: f64,
++}
++struct State {
++    bridge: Bridge,
++    queue: VecDeque<Pending>,
++    ctx: egui::Context,
++}
++thread_local! { static STATE: RefCell<Option<State>> = const { RefCell::new(None) }; }
++fn reply(code: &str) -> String {
++    format!(r#"{{"ok":false,"error":{{"code":"{code}"}}}}"#)
++}
++fn now() -> f64 {
++    web_sys::window().and_then(|w| w.performance()).map(|p| p.now()).unwrap_or(0.)
++}
++#[wasm_bindgen::prelude::wasm_bindgen]
++pub fn xeroflow_fig_request(input: String) -> js_sys::Promise {
++    js_sys::Promise::new(&mut move |resolve, _reject| {
++        STATE.with(|slot| {
++            let mut state = slot.borrow_mut();
++            let refusal = if input.len() > MAX_REQUEST_BYTES {
++                Some("request_too_large")
++            } else if state.as_ref().is_none_or(|s| s.queue.len() >= MAX_QUEUE) {
++                Some("bridge_busy")
++            } else {
++                None
++            };
++            if let Some(code) = refusal {
++                let _ = resolve.call1(&JsValue::NULL, &JsValue::from_str(&reply(code)));
++                return;
++            }
++            if let Some(state) = state.as_mut() {
++                state.queue.push_back(Pending { input: input.clone(), resolve, deadline: now() + MAX_WAIT_MS });
++                state.ctx.request_repaint();
++            }
++        });
++    })
++}
++/// Called once after the real editor exists. A random instance dies with this page generation.
++pub fn install(ctx: egui::Context) -> Result<(), JsValue> {
++    let window = web_sys::window().ok_or_else(|| JsValue::from_str("no window"))?;
++    if window.performance().is_none() {
++        return Err(JsValue::from_str("monotonic clock unavailable"));
++    }
++    let mut bytes = [0u8; 16];
++    window.crypto()?.get_random_values_with_u8_array(&mut bytes)?;
++    let instance: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
++    STATE.with(|slot| {
++        *slot.borrow_mut() = Some(State { bridge: Bridge::new(instance), queue: VecDeque::new(), ctx });
++    });
++    let request = Closure::<dyn FnMut(String) -> js_sys::Promise>::new(xeroflow_fig_request);
++    let api = js_sys::Object::new();
++    js_sys::Reflect::set(&api, &JsValue::from_str("protocolVersion"), &JsValue::from_str("1"))?;
++    js_sys::Reflect::set(&api, &JsValue::from_str("request"), request.as_ref())?;
++    // The closure is owned by the page-global object for this browser generation.
++    request.forget();
++    js_sys::Object::freeze(&api);
++    js_sys::Reflect::set(window.as_ref(), &JsValue::from_str("__xfFigBridge"), &api)?;
++    Ok(())
++}
++/// Runs only at the frame boundary and never blocks the UI waiting for a socket or Promise.
++pub fn drain(session: &mut Session) {
++    for _ in 0..2 {
++        let pending = STATE.with(|slot| slot.borrow_mut().as_mut().and_then(|s| s.queue.pop_front()));
++        let Some(pending) = pending else {
++            break;
++        };
++        let response = if now() > pending.deadline {
++            reply("request_expired_not_applied")
++        } else {
++            STATE.with(|slot| {
++                slot.borrow_mut().as_mut().map(|s| s.bridge.execute(session, &pending.input)).unwrap_or_else(|| reply("bridge_unavailable"))
++            })
++        };
++        let _ = pending.resolve.call1(&JsValue::NULL, &JsValue::from_str(&response));
++    }
++    STATE.with(|slot| {
++        if let Some(state) = slot.borrow().as_ref() {
++            if !state.queue.is_empty() {
++                state.ctx.request_repaint();
++            }
++        }
++    });
++}
+--- a/crates/ui-egui/src/lib.rs
++++ b/crates/ui-egui/src/lib.rs
+@@ -9,6 +9,8 @@
+ pub mod assets_panel;
+ pub mod bidi;
+ pub mod board_bar;
++#[cfg(any(target_arch = "wasm32", test))]
++pub mod browser_bridge;
+ pub mod branch_ui;
+ pub mod canvas;
+ pub mod cjk;
+--- a/crates/ui-egui/src/browser_bridge.rs
++++ b/crates/ui-egui/src/browser_bridge.rs
+@@ -0,0 +1,311 @@
++//! Narrow browser automation, independent of MCP transport and remote authority.
++//! The browser shell calls this on the real UI session at a frame boundary.
++use std::collections::BTreeMap;
++
++use figcraft_engine::Session;
++use serde_json::{Value, json};
++
++pub const MAX_REQUEST_BYTES: usize = 16 * 1024;
++pub const MAX_REPLY_BYTES: usize = 256 * 1024;
++const MAX_MUTATIONS: usize = 128;
++const MAX_DOCUMENT_NODES: usize = 500;
++const MAX_RETAINED_BYTES: usize = 8 * 1024 * 1024;
++
++pub struct Bridge {
++    instance: String,
++    // Never evict mutation receipts: forgetting one would permit a repeated write.
++    completed: BTreeMap<String, (String, String)>,
++    retained_bytes: usize,
++}
++
++fn error(code: &str) -> Value {
++    json!({"ok": false, "error": {"code": code}})
++}
++fn keys(v: &Value, allowed: &[&str]) -> bool {
++    v.as_object().is_some_and(|o| o.keys().all(|k| allowed.contains(&k.as_str())))
++}
++fn token(v: &Value, key: &str) -> Option<String> {
++    v.get(key)?
++        .as_str()
++        .filter(|s| (8..=96).contains(&s.len()) && s.bytes().all(|c| c.is_ascii_alphanumeric() || matches!(c, b'-' | b'_')))
++        .map(str::to_owned)
++}
++fn decimal(v: &Value) -> Option<u64> {
++    let s = v.as_str()?;
++    if s.is_empty() || s.len() > 20 || !s.bytes().all(|c| c.is_ascii_digit()) {
++        return None;
++    }
++    s.parse().ok()
++}
++fn small_text(v: &Value, max: usize) -> bool {
++    v.as_str().is_some_and(|s| s.len() <= max)
++}
++fn number(v: &Value, low: f64, high: f64) -> bool {
++    v.as_f64().is_some_and(|x| x.is_finite() && (low..=high).contains(&x))
++}
++fn colour(v: &Value) -> bool {
++    v.as_str().is_some_and(|s| s == "none" || ((s.len() == 7 || s.len() == 9) && s.starts_with('#') && s[1..].bytes().all(|c| c.is_ascii_hexdigit())))
++}
++fn properties(v: &Value) -> bool {
++    let Some(p) = v.as_object() else {
++        return false;
++    };
++    !p.is_empty()
++        && p.len() <= 20
++        && p.iter().all(|(k, v)| match k.as_str() {
++            "name" => small_text(v, 256),
++            "characters" => small_text(v, 8192),
++            "fontFamily" | "fontStyle" => small_text(v, 128),
++            "x" | "y" => number(v, -100_000., 100_000.),
++            "width" | "height" => number(v, 0.01, 10_000.),
++            "rotation" => number(v, -360., 360.),
++            "opacity" => number(v, 0., 1.),
++            "fontSize" => number(v, 1., 512.),
++            "cornerRadius" => number(v, 0., 5_000.),
++            "fill" | "stroke" => colour(v),
++            "strokeWeight" => number(v, 0., 512.),
++            "visible" => v.is_boolean(),
++            "textAlign" => v.as_str().is_some_and(|s| ["left", "center", "right"].contains(&s)),
++            _ => false,
++        })
++}
++/// Do not project paths or platform-sensitive document fields. Preserve u64 identifiers as text.
++fn project(v: &mut Value) {
++    match v {
++        Value::Object(o) => {
++            o.remove("path");
++            for (key, item) in o.iter_mut() {
++                if matches!(key.as_str(), "id" | "currentPage" | "parent") && item.is_u64() {
++                    *item = Value::String(item.to_string());
++                } else {
++                    project(item);
++                }
++            }
++        }
++        Value::Array(a) => {
++            for item in a {
++                project(item);
++            }
++        }
++        Value::Number(n) if n.as_u64().is_some_and(|n| n > 9_007_199_254_740_991) => {
++            *v = Value::String(n.to_string());
++        }
++        _ => {}
++    }
++}
++impl Bridge {
++    pub fn new(instance: String) -> Self {
++        Self { instance, completed: BTreeMap::new(), retained_bytes: 0 }
++    }
++
++    pub fn execute(&mut self, session: &mut Session, input: &str) -> String {
++        let result = self.execute_value(session, input);
++        let encoded = result.to_string();
++        if encoded.len() > MAX_REPLY_BYTES { error("reply_too_large").to_string() } else { encoded }
++    }
++    fn execute_value(&mut self, session: &mut Session, input: &str) -> Value {
++        if input.len() > MAX_REQUEST_BYTES {
++            return error("request_too_large");
++        }
++        let Ok(request) = serde_json::from_str::<Value>(input) else {
++            return error("invalid_request");
++        };
++        if !keys(&request, &["requestId", "action", "instanceId", "documentId", "expectedRevision", "params"]) {
++            return error("invalid_request");
++        }
++        let Some(id) = token(&request, "requestId") else {
++            return error("invalid_request");
++        };
++        let canonical = request.to_string();
++        if let Some((old, result)) = self.completed.get(&id) {
++            return if old == &canonical {
++                serde_json::from_str(result).unwrap_or_else(|_| error("receipt_unavailable"))
++            } else {
++                error("request_id_conflict")
++            };
++        }
++        let Some(action) = request.get("action").and_then(Value::as_str) else {
++            return error("invalid_request");
++        };
++        let mutation = matches!(action, "create_node" | "update_node");
++        if !["status", "inspect", "get_node", "create_node", "update_node"].contains(&action) {
++            return error("unsupported_action");
++        }
++        let p = request.get("params").cloned().unwrap_or_else(|| json!({}));
++        if !p.is_object() {
++            return error("invalid_params");
++        }
++        let Ok(ds) = session.ds() else {
++            return error("document_unavailable");
++        };
++        let document = ds.uid.to_string();
++        let before = ds.revision;
++        if action != "status"
++            && (request.get("instanceId").and_then(Value::as_str) != Some(self.instance.as_str())
++                || request.get("documentId").and_then(Value::as_str) != Some(document.as_str()))
++        {
++            return error("document_conflict");
++        }
++        if mutation && request.get("expectedRevision").and_then(decimal) != Some(before) {
++            return error("revision_conflict");
++        }
++        if mutation && (ds.interaction.is_some() || ds.text_edit.is_some()) {
++            return error("editor_busy");
++        }
++        if mutation && (self.completed.len() >= MAX_MUTATIONS || self.retained_bytes + canonical.len() + MAX_REPLY_BYTES > MAX_RETAINED_BYTES) {
++            return error("receipt_capacity_reached");
++        }
++        if action != "status" && ds.doc.nodes().take(MAX_DOCUMENT_NODES + 1).count() > MAX_DOCUMENT_NODES {
++            return error("document_too_large");
++        }
++        let result = match action {
++            "status" if keys(&p, &[]) => Ok(
++                json!({"currentPage": ds.page.0.to_string(), "dirty": ds.is_dirty(), "supportedActions": ["inspect", "get_node", "create_node", "update_node"], "exports": false}),
++            ),
++            "inspect" if keys(&p, &["depth"]) => {
++                let depth = match p.get("depth") {
++                    None => Some(2),
++                    Some(v) => v.as_u64().filter(|n| *n <= 4).map(|n| n as usize),
++                };
++                depth.map(|d| figcraft_engine::inspect::document(session, d, false)).ok_or("invalid_params")
++            }
++            "get_node" if keys(&p, &["id"]) => match p.get("id").and_then(decimal) {
++                Some(n) => {
++                    let Some(node_id) = figcraft_engine::params::id_of(&json!(n)) else {
++                        return error("invalid_params");
++                    };
++                    let node = figcraft_engine::inspect::node_json(&ds.doc, node_id, 0);
++                    if node.is_null() { Err("node_unavailable") } else { Ok(node) }
++                }
++                None => Err("invalid_params"),
++            },
++            "create_node" if keys(&p, &["type", "parent", "name", "text", "x", "y", "width", "height", "props"]) => {
++                let valid = p.get("type").and_then(Value::as_str).is_some_and(|s| ["frame", "rectangle", "ellipse", "text"].contains(&s))
++                    && p.get("parent").and_then(decimal).is_some()
++                    && ["x", "y"].iter().all(|k| p.get(k).is_some_and(|v| number(v, -100_000., 100_000.)))
++                    && ["width", "height"].iter().all(|k| p.get(k).is_some_and(|v| number(v, 0.01, 10_000.)))
++                    && p.get("name").is_none_or(|v| small_text(v, 256))
++                    && p.get("text").is_none_or(|v| small_text(v, 8192))
++                    && p.get("props").is_none_or(properties);
++                if !valid { Err("invalid_params") } else { session.execute("node.create", &p).map_err(|_| "engine_refused") }
++            }
++            "update_node" if keys(&p, &["id", "props"]) => {
++                if p.get("id").and_then(decimal).is_none() || !p.get("props").is_some_and(properties) {
++                    Err("invalid_params")
++                } else {
++                    session.execute("node.set", &json!({"ids": [p["id"].clone()], "props": p["props"].clone()})).map_err(|_| "engine_refused")
++                }
++            }
++            _ => Err("invalid_params"),
++        };
++        let after = session.ds().map(|d| d.revision).unwrap_or(before);
++        let mut response = match result {
++            Ok(value) => {
++                json!({"ok": true, "instanceId": self.instance, "documentId": document, "revisionBefore": before.to_string(), "revision": after.to_string(), "result": value})
++            }
++            Err(code) => error(code),
++        };
++        project(&mut response);
++        if response.to_string().len() > MAX_REPLY_BYTES {
++            response = error("reply_too_large");
++        }
++        if mutation {
++            let encoded = response.to_string();
++            self.retained_bytes += canonical.len() + encoded.len();
++            self.completed.insert(id, (canonical, encoded));
++        }
++        response
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    fn parse(s: String) -> Value {
++        serde_json::from_str(&s).unwrap()
++    }
++    fn setup() -> (Bridge, Session, Value) {
++        let mut bridge = Bridge::new("test-instance-123".into());
++        let mut session = Session::new();
++        let status = parse(bridge.execute(&mut session, r#"{"requestId":"status-0001","action":"status"}"#));
++        assert_eq!(status["ok"], true);
++        (bridge, session, status)
++    }
++    fn create(status: &Value, id: &str) -> Value {
++        json!({"requestId":id,"action":"create_node","instanceId":status["instanceId"],"documentId":status["documentId"],"expectedRevision":status["revision"],"params":{"type":"rectangle","parent":status["result"]["currentPage"],"x":0,"y":0,"width":100,"height":50}})
++    }
++    #[test]
++    fn browser_bridge_create_replay_and_id_conflict() {
++        let (mut b, mut s, status) = setup();
++        let request = create(&status, "create-0001");
++        let first = b.execute(&mut s, &request.to_string());
++        let revision = s.ds().unwrap().revision;
++        assert_eq!(parse(first.clone())["ok"], true);
++        assert_eq!(b.execute(&mut s, &request.to_string()), first);
++        assert_eq!(s.ds().unwrap().revision, revision);
++        let mut changed = request;
++        changed["params"]["width"] = json!(200);
++        assert_eq!(parse(b.execute(&mut s, &changed.to_string()))["error"]["code"], "request_id_conflict");
++    }
++    #[test]
++    fn browser_bridge_rejects_stale_and_wrong_document() {
++        let (mut b, mut s, status) = setup();
++        let first = create(&status, "create-0001");
++        assert_eq!(parse(b.execute(&mut s, &first.to_string()))["ok"], true);
++        assert_eq!(parse(b.execute(&mut s, &create(&status, "create-0002").to_string()))["error"]["code"], "revision_conflict");
++        let mut wrong = create(&status, "create-0003");
++        wrong["documentId"] = json!("other");
++        assert_eq!(parse(b.execute(&mut s, &wrong.to_string()))["error"]["code"], "document_conflict");
++    }
++    #[test]
++    fn browser_bridge_rejects_arbitrary_commands_paths_and_nested_properties() {
++        let (mut b, mut s, status) = setup();
++        for (index, params) in [json!({"path":"/tmp/escape"}), json!({"fill":{"url":"https://example.invalid"}}), json!({"pluginData":{"x":"y"}})]
++            .into_iter()
++            .enumerate()
++        {
++            let mut request = create(&status, &format!("refused-{index:04}"));
++            request["params"]["props"] = params;
++            assert_eq!(parse(b.execute(&mut s, &request.to_string()))["error"]["code"], "invalid_params");
++        }
++        let mut request = create(&status, "refused-engine-0001");
++        request["action"] = json!("engine.execute");
++        assert_eq!(parse(b.execute(&mut s, &request.to_string()))["error"]["code"], "unsupported_action");
++        assert_eq!(parse(b.execute(&mut s, &" ".repeat(MAX_REQUEST_BYTES + 1)))["error"]["code"], "request_too_large");
++    }
++    #[test]
++    fn browser_bridge_update_targets_explicit_node() {
++        let (mut b, mut s, status) = setup();
++        let created = parse(b.execute(&mut s, &create(&status, "create-0001").to_string()));
++        let update = json!({"requestId":"update-0001","action":"update_node","instanceId":status["instanceId"],"documentId":status["documentId"],"expectedRevision":created["revision"],"params":{"id":created["result"]["id"],"props":{"fill":"#ff0000","name":"AI rectangle"}}});
++        assert_eq!(parse(b.execute(&mut s, &update.to_string()))["ok"], true);
++    }
++    #[test]
++    fn browser_bridge_mutation_requires_revision_and_receipts_never_evict() {
++        let (mut b, mut s, status) = setup();
++        let mut missing = create(&status, "revision-missing");
++        missing.as_object_mut().unwrap().remove("expectedRevision");
++        assert_eq!(parse(b.execute(&mut s, &missing.to_string()))["error"]["code"], "revision_conflict");
++        for n in 0..MAX_MUTATIONS {
++            b.completed.insert(format!("reserved-{n}"), ("{}".into(), "{}".into()));
++        }
++        assert_eq!(parse(b.execute(&mut s, &create(&status, "capacity-001").to_string()))["error"]["code"], "receipt_capacity_reached");
++    }
++    #[test]
++    fn browser_bridge_large_integer_identifiers_are_lossless() {
++        let mut value = json!({"id":u64::MAX,"currentPage":42,"nested":{"path":"private","id":43}});
++        project(&mut value);
++        assert_eq!(value["id"], u64::MAX.to_string());
++        assert_eq!(value["currentPage"], "42");
++        assert!(value["nested"].get("path").is_none());
++    }
++    #[test]
++    fn browser_bridge_status_and_inspect_strip_paths() {
++        let (mut b, mut s, status) = setup();
++        s.ds_mut().unwrap().path = Some("/private/client/file.figcraft".into());
++        let request = json!({"requestId":"inspect-001","action":"inspect","instanceId":status["instanceId"],"documentId":status["documentId"]});
++        let result = b.execute(&mut s, &request.to_string());
++        assert_eq!(parse(result.clone())["ok"], true);
++        assert!(!result.contains("/private/client"));
++    }
++}
