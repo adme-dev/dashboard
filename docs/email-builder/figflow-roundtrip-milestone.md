@@ -1,6 +1,6 @@
 # First structured FigFlow round trip
 
-Updated 1 November 2026. **Implemented, merged and deployed with access disabled;
+Updated 2 November 2026. **Implemented, merged and deployed with access disabled;
 hosted acceptance is incomplete.** [PR #807](https://github.com/adme-dev/dashboard/pull/807)
 contains the implementation. Exact deployment identities, hashes and proof limits
 are in [the release receipt](figflow-release-20261101.json).
@@ -22,7 +22,7 @@ canvas conversion, module publication or real email-client compatibility.
 - [x] Merge, production migrations, private services and disabled Pages deployment.
 - [ ] Provision the private service's matching session-signing key.
 - [ ] Reviewed activation and authenticated hosted round-trip acceptance.
-- [ ] Signed-in composer and QR Codes/navigation verification.
+- [x] Signed-in composer save/reload and QR Codes/navigation verification (2 November).
 
 ## Production release
 
@@ -70,7 +70,7 @@ artifact is `77a1835c-c48d-4f72-aaa6-f589307fe225`.
   settings match the guarded promotion. Public launcher returns 200; old/new
   editor paths redirect to the existing sign-in flow. The Email Builder page
   returns 200 and states disabled status. Composer/QR app routes return 200, but
-  the verification browser is signed out; staff content is not accepted.
+  the initial verification browser was signed out; the dated checkpoint below records subsequent signed-in checks.
 
 ## Remaining actions and ownership
 
@@ -84,8 +84,8 @@ artifact is `77a1835c-c48d-4f72-aaa6-f589307fe225`.
    staging authentication, client scope, revoked access, conflict and retry paths,
    then perform the exact hosted staff workflow before production enablement.
 3. **Signed-in reviewer:** verify composer Save/modules, QR Codes/navigation and
-   the actual creative-host round trip. An Orca verification tab is waiting at
-   sign-in. Hosted proof is separate from the isolated browser fixture.
+   the actual creative-host round trip. Existing composer save/reload and QR
+   navigation passed on 2 November; the canonical hosted round trip remains open.
 
 Kimi owned native implementation; Grok supplied relay/persistence review; Codex
 integrated and released, with independent source review. Shared modules,
@@ -93,3 +93,21 @@ publication and Apple Mail/Gmail/Outlook acceptance remain in the parent PRD.
 The original dirty worktree and shared node_modules were preserved. The release
 checkout and native evidence are retained for activation/handoff, not as a stale
 future release base; fetch current main before continuing.
+
+## Live acceptance checkpoint — 2 November
+
+The owner completed sign-in in the verification browser. Production composer
+modules and Save rendered; a uniquely named temporary shared draft was saved
+from the FuturaX starter and reloaded by its persisted ID with content intact.
+The owned draft was then deleted (200), and a fresh read returned 404. No email
+was sent. QR Codes navigation and existing records rendered. The authenticated
+`/figflow/0.11.2-edm1/` editor loaded a canvas and its actual native bridge returned
+status including EDM import, required-image and snapshot operations.
+
+This closes the established staff UI check and verifies hosted native startup.
+It does not close the canonical hosted round trip: the private design Worker's
+JWT_SECRET is absent and both backend flags remain false. Pages has the encrypted
+JWT_SECRET entry but its management API returns no value. A fresh bounded search
+of dashboard env/dev-vars files found no stored key, and no connected secret-manager
+provider is available. The operator has been asked for the original secure source;
+no replacement key, credential rotation or authentication bypass was introduced.

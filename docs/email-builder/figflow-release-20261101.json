@@ -113,14 +113,22 @@
     "browserScope": "Isolated Chromium, real WASM, real private Worker/PostgreSQL and composer flow; native edits via bridge; UI controls stubbed; no production requests",
     "browserScreenshotSha256": "82351bae984bf0d7464e90c67f08b6a36f7a4d10197a56cf9b34affde760c66c",
     "hostedRoundtripAccepted": false,
-    "staffBrowserAccepted": false,
+    "staffBrowserAccepted": true,
     "emailClientCompatibilityAccepted": false,
     "browserHarnessSource": "ca5987b7048c393a50a394c7bd64435acf3cc478",
-    "publicRuntimeFigflowEdmEnabled": false
+    "publicRuntimeFigflowEdmEnabled": false,
+    "hostedNativeEditorLoaded": true,
+    "staffBrowserEvidence": {
+      "date": "2026-11-02",
+      "scope": "Signed-in production composer/modules/Save, temporary draft save and reload, QR Codes navigation and existing records; authenticated native editor canvas and EDM bridge status",
+      "temporaryDraftDeleted": true,
+      "deleteStatus": 200,
+      "readAfterDelete": 404,
+      "hostedCanonicalRoundtripAccepted": false
+    }
   },
   "remaining": [
     "Provision matching existing Pages JWT_SECRET securely to private design Worker",
-    "Complete authenticated staging and production acceptance with a reviewed activation change",
-    "Verify signed-in composer and QR Codes navigation"
+    "Complete authenticated staging and production acceptance with a reviewed activation change"
   ]
 }
