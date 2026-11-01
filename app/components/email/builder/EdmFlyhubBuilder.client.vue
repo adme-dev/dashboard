@@ -42,6 +42,16 @@ import {
 import type { EdmCustomModule } from '~~/app/composables/useEdmCustomModules'
 
 const store = useEdmBuilder()
+const designFlow = useEdmDesignRoundtrip()
+const figflowEnabled = useRuntimeConfig().public.figflowEdmEnabled === true
+const showFigflow = ref(false)
+const showDiscardFigflow = ref(false)
+const showDesignDraftCopy = ref(false)
+const draftCopyUnconfirmed = ref(false)
+const designLocalConflict = ref(false)
+const designServiceUnavailable = ref(false)
+const designRevisionRequired = ref(false)
+const loadedDesignRevisionId = ref<string | null>(null)
 const route = useRoute()
 const router = useRouter()
 const toast = useToast()
@@ -568,8 +578,16 @@ const TEMPLATE_KIND_OPTIONS: { label: string, value: TemplateKind }[] = [
   { label: 'Draft', value: 'draft' }
 ]
 
-async function save() {
-  if (templateLoading.value || templateLoadError.value) return
+async function save(): Promise<boolean> {
+  if (templateLoading.value || templateLoadError.value) return false
+  if (designRevisionRequired.value && (designServiceUnavailable.value || designFlow.draft.value?.state !== 'structured')) {
+    designFlow.error.value = 'The design service is unavailable. Your content is kept; reconnect it before saving this versioned draft.'
+    return false
+  }
+  if (designFlow.hasPending.value) {
+    designFlow.error.value = 'Reconcile the saved action before saving more changes.'
+    return false
+  }
   saving.value = true
   try {
     // Campaign mode: the campaign already exists (its name is managed in the
@@ -578,16 +596,16 @@ async function save() {
       await saveCampaignContent()
       toast.add({ title: 'Saved', description: 'Campaign content saved.', color: 'success' })
       showSaveModal.value = false
-      return
+      return true
     }
 
     if (!name.value.trim() || name.value.trim().length > 200) {
       toast.add({ title: 'Name required', description: 'Give the template a name up to 200 characters.', color: 'error' })
-      return
+      return false
     }
     if (loadingTemplateClients.value || templateClientsError.value || !hasValidTemplateClient.value) {
       toast.add({ title: 'Client required', description: 'Choose an available client or shared default before saving.', color: 'error' })
-      return
+      return false
     }
     const body = {
       client_id: templateClient.value === '__shared__' ? null : templateClient.value,
@@ -598,7 +616,10 @@ async function save() {
       template_kind: templateKind.value,
       folder_name: templateFolderName.value.trim() || null
     }
-    if (templateId.value) {
+    if (designFlow.draft.value?.state === 'structured') {
+      await designFlow.saveStructured(store.document.value)
+      await designFlow.saveMetadata(body.subject, body.preview_text)
+    } else if (templateId.value) {
       await apiFetch(`/api/email/templates/${templateId.value}`, { method: 'PATCH', body })
     } else {
       const res = await apiFetch<{ template: { id: string } }>('/api/email/templates', {
@@ -616,15 +637,154 @@ async function save() {
     }
     toast.add({ title: 'Saved', description: 'Template saved.', color: 'success' })
     showSaveModal.value = false
+    return true
   } catch {
     toast.add({
       title: 'Save failed',
-      description: campaignId.value ? 'Could not save the campaign.' : 'Could not save the template.',
+      description: campaignId.value ? 'Could not save the campaign.' : designFlow.draft.value?.state === 'structured' ? 'The draft could not finish saving. Your local changes are kept; retry the same save or reload to resolve a newer revision.' : 'Could not save the template.',
       color: 'error'
     })
+    return false
   } finally {
     saving.value = false
   }
+}
+
+// FigFlow edits an independent template draft; campaigns and library originals
+// keep their identities. The server owns scope, revisions and proposal effects.
+async function beginFigflow(createDraft = false) {
+  if (designFlow.hasPending.value) {
+    await reconcileDesignAction()
+    return
+  }
+  try {
+    await designFlow.run(async () => {
+      const openingSource = JSON.stringify(store.document.value)
+      if (!hasValidTemplateClient.value || !name.value.trim()) {
+        showSaveModal.value = true
+        throw new Error('Name and client required')
+      }
+      if (createDraft) {
+        if (draftCopyUnconfirmed.value) throw new Error('Check the draft library before creating another copy.')
+        const draftName = `${name.value.slice(0, 180)} (design draft)`
+        draftCopyUnconfirmed.value = true
+        const result = await apiFetch<{ template: { id: string } }>('/api/email/templates', {
+          method: 'POST', body: {
+            name: draftName, subject: subject.value || null, preview_text: previewText.value || null,
+            body_source: store.document.value, template_kind: 'draft', folder_name: templateFolderName.value || null,
+            client_id: templateClient.value === '__shared__' ? null : templateClient.value
+          }
+        })
+        draftCopyUnconfirmed.value = false
+        templateId.value = result.template.id
+        templateKind.value = 'draft'
+        name.value = draftName
+        designFlow.draft.value = null
+        showDesignDraftCopy.value = false
+        await router.replace({ query: { id: result.template.id } })
+      } else if (!await save()) return
+      if (!templateId.value) return
+      if (JSON.stringify(store.document.value) !== openingSource) throw new Error('The composer changed while saving. Save again before opening FigFlow.')
+      const result = await designFlow.open(templateId.value, templateClient.value === '__shared__' ? null : templateClient.value!)
+      designRevisionRequired.value = true
+      designServiceUnavailable.value = false
+      designLocalConflict.value = false
+      showFigflow.value = true
+      await router.replace({ query: { ...route.query, designSession: result.id } })
+    })
+  } catch { /* The flow retains the failed operation and displays recovery. */ }
+}
+function sameDesignSource(a: unknown, b: unknown): boolean {
+  if (a === b) return true
+  if (!a || !b || typeof a !== 'object' || typeof b !== 'object') return false
+  const keys = Object.keys(a)
+  return keys.length === Object.keys(b).length && keys.every(key => Object.hasOwn(b, key) && sameDesignSource((a as Record<string, unknown>)[key], (b as Record<string, unknown>)[key]))
+}
+async function reconnectDesignService() {
+  if (!templateId.value) return
+  try {
+    const expected = designFlow.draft.value?.headRevisionId ?? loadedDesignRevisionId.value ?? undefined
+    const current = await designFlow.lookup(templateId.value, expected)
+    if (designRevisionRequired.value && current?.state !== 'structured') throw new Error('Versioned draft unavailable')
+    if (!expected && current?.state === 'structured' && !sameDesignSource(store.document.value, current.source.blocks)) {
+      designFlow.draft.value = null
+      designRevisionRequired.value = true
+      throw new Error('The draft changed; reload before saving')
+    }
+    if (current?.state === 'structured' && current.projection.state !== 'current') throw new Error('Design projection needs reconciliation')
+    designRevisionRequired.value = current?.state === 'structured'
+    designServiceUnavailable.value = false
+  } catch { designServiceUnavailable.value = true }
+}
+function closeFigflow() {
+  if (designFlow.handoff.value?.state === 'open') showDiscardFigflow.value = true
+  else showFigflow.value = false
+}
+function editInFigflow() {
+  if (designFlow.handoff.value?.state === 'open' || designFlow.handoff.value?.state === 'proposed') {
+    showFigflow.value = true
+  } else if (!templateId.value || templateKind.value !== 'draft') {
+    showDesignDraftCopy.value = true
+  } else void beginFigflow()
+}
+async function proposeFigflow(design: import('~~/shared/emailRendering/designContract').EmailDesignDocument) {
+  try {
+    await designFlow.run(() => designFlow.propose(design))
+  } catch { /* Shown in panel. */ }
+}
+async function applyFigflow() {
+  const handoff = designFlow.handoff.value
+  if (!handoff?.proposal) return
+  // Compare without touching undo history before committing remotely. Compare
+  // again after the response to preserve any edits made while awaiting it.
+
+  if (!sameDesignSource(store.document.value, handoff.source.blocks)) {
+    designLocalConflict.value = true
+    return
+  }
+  try {
+    await designFlow.run(async () => {
+      const result = await designFlow.finish('apply')
+      const current = designFlow.draft.value
+      if (!current || current.headRevisionId !== result.appliedRevisionId || !store.applyDesignReturn(handoff.source.blocks, handoff.proposal!.blocks)) {
+        designLocalConflict.value = true
+        throw new Error('Current draft changed; local edits kept')
+      }
+      showFigflow.value = false
+      toast.add({ title: 'Design changes saved', description: 'Applied as one undoable change.', color: 'success' })
+    })
+  } catch { /* The server conflicts or the local draft is preserved. */ }
+}
+async function cancelFigflow() {
+  try {
+    await designFlow.run(async () => {
+      await designFlow.finish('cancel')
+      showFigflow.value = false
+    })
+  } catch { /* Shown in panel. */ }
+}
+async function reconcileDesignAction() {
+  try {
+    await designFlow.run(async () => {
+      const result = await designFlow.reconcile()
+      if (!result) return
+      if (result.templateId !== templateId.value) throw new Error('Design draft mismatch')
+      if (result.state === 'applied' && result.proposal) {
+        const current = designFlow.draft.value
+        designLocalConflict.value = current?.headRevisionId !== result.appliedRevisionId
+          || !store.applyDesignReturn(result.source.blocks, result.proposal.blocks)
+      }
+      showFigflow.value = true
+      await router.replace({ query: { ...route.query, designSession: result.id } })
+    })
+  } catch { /* Keep original payload pending until its receipt is confirmed. */ }
+}
+async function resumeFigflow() {
+  const id = designFlow.handoff.value?.id
+  if (!id) return
+  try {
+    await designFlow.run(() => designFlow.resume(id))
+  } catch { /* Shown in panel. */ }
 }
 
 // ── Save selection as a custom module ────────────────────────────────────
@@ -825,6 +985,7 @@ onMounted(async () => {
             template_kind?: TemplateKind | null
             folder_name?: string | null
             client_id: string | null
+            email_design_revision_id?: string | null
           }
         }>(`/api/email/templates/${id}`)
         if (res.template?.body_source) {
@@ -837,6 +998,22 @@ onMounted(async () => {
         templateKind.value = res.template.template_kind === 'draft' ? 'draft' : 'template'
         templateFolderName.value = copying ? templateCopyCategory(res.template.body_source, res.template.folder_name) : res.template.folder_name || ''
         if (!copying) templateClient.value = res.template.client_id ?? '__shared__'
+        loadedDesignRevisionId.value = copying ? null : res.template.email_design_revision_id ?? null
+        designRevisionRequired.value = !!loadedDesignRevisionId.value
+        if (figflowEnabled && !copying) {
+          await reconnectDesignService()
+          const sessionId = route.query.designSession
+          if (!designServiceUnavailable.value && typeof sessionId === 'string') {
+            try {
+              const session = await designFlow.resume(sessionId)
+              if (session.templateId !== res.template.id) throw new Error('Design draft mismatch')
+              showFigflow.value = session.state === 'open' || session.state === 'proposed'
+            } catch {
+              designFlow.handoff.value = null
+              designFlow.error.value = 'The saved FigFlow handoff could not be reopened. Your composer content is kept.'
+            }
+          }
+        } else designServiceUnavailable.value = designRevisionRequired.value
       } catch {
         templateLoadError.value = 'Could not load this template. Retry before editing.'
         toast.add({ title: 'Load failed', description: 'Could not load that template.', color: 'error' })
@@ -854,9 +1031,21 @@ onMounted(async () => {
 
 <template>
   <div v-if="templateLoading || templateLoadError" class="space-y-4 p-6" role="status">
-    <p v-if="templateLoading" class="text-sm text-muted">Loading your email workspace…</p>
-    <UAlert v-else color="error" :title="templateLoadError" :actions="[{ label: 'Retry', onClick: () => retryInitialLoad?.() }]" />
-    <UButton to="/agency/email?tab=templates" label="Back to templates" variant="outline" color="neutral" />
+    <p v-if="templateLoading" class="text-sm text-muted">
+      Loading your email workspace…
+    </p>
+    <UAlert
+      v-else
+      color="error"
+      :title="templateLoadError"
+      :actions="[{ label: 'Retry', onClick: () => retryInitialLoad?.() }]"
+    />
+    <UButton
+      to="/agency/email?tab=templates"
+      label="Back to templates"
+      variant="outline"
+      color="neutral"
+    />
   </div>
   <div v-show="!templateLoading && !templateLoadError" class="flex flex-col h-full">
     <!-- Toolbar -->
@@ -948,6 +1137,17 @@ onMounted(async () => {
         @click="openTestSend()"
       />
       <UButton
+        v-if="figflowEnabled && !campaignId"
+        icon="i-lucide-pen-tool"
+        label="Edit in FigFlow"
+        variant="outline"
+        color="neutral"
+        size="sm"
+        :loading="designFlow.busy.value"
+        :disabled="saving"
+        @click="editInFigflow"
+      />
+      <UButton
         icon="i-lucide-save"
         color="primary"
         size="sm"
@@ -956,6 +1156,21 @@ onMounted(async () => {
       />
     </header>
 
+    <UAlert
+      v-if="designServiceUnavailable"
+      color="warning"
+      title="FigFlow is temporarily unavailable"
+      :description="designRevisionRequired ? 'Your content is kept. Reconnect the design service before saving this versioned draft.' : 'You can continue editing and saving this template in the composer.'"
+      :actions="[{ label: 'Reconnect design service', onClick: reconnectDesignService }]"
+      class="m-3"
+    />
+    <UAlert
+      v-if="(designFlow.error.value || designFlow.hasPending.value) && !showFigflow"
+      color="error"
+      :title="designFlow.error.value || 'The last save is unconfirmed. Reconcile it before making another save.'"
+      class="m-3"
+      :actions="designFlow.hasPending.value ? [{ label: 'Reconcile saved action', onClick: reconcileDesignAction }] : []"
+    />
     <!-- Body -->
     <div class="flex-1 overflow-hidden">
       <!-- Editor -->
@@ -1197,7 +1412,13 @@ onMounted(async () => {
             recipients from the Campaigns tab.
           </p>
           <UFormField v-if="!campaignId" label="Name" required>
-            <UInput v-model="name" :maxlength="200" placeholder="e.g. Monthly newsletter" class="w-full" />
+            <UInput
+              v-model="name"
+              :disabled="designFlow.draft.value?.state === 'structured'"
+              :maxlength="200"
+              placeholder="e.g. Monthly newsletter"
+              class="w-full"
+            />
           </UFormField>
           <UFormField
             v-if="!campaignId"
@@ -1212,7 +1433,7 @@ onMounted(async () => {
               value-key="value"
               placeholder="Choose a client"
               :loading="loadingTemplateClients"
-              :disabled="loadingTemplateClients || templateClientsError"
+              :disabled="loadingTemplateClients || templateClientsError || designFlow.draft.value?.state === 'structured'"
               class="w-full"
             />
           </UFormField>
@@ -1220,13 +1441,19 @@ onMounted(async () => {
             <UFormField label="Save as">
               <USelect
                 v-model="templateKind"
+                :disabled="designFlow.draft.value?.state === 'structured'"
                 :items="TEMPLATE_KIND_OPTIONS"
                 value-key="value"
                 class="w-full"
               />
             </UFormField>
             <UFormField label="Category">
-              <UInput v-model="templateFolderName" placeholder="e.g. Newsletters" class="w-full" />
+              <UInput
+                v-model="templateFolderName"
+                :disabled="designFlow.draft.value?.state === 'structured'"
+                placeholder="e.g. Newsletters"
+                class="w-full"
+              />
             </UFormField>
           </div>
           <UFormField label="Subject line">
@@ -1446,6 +1673,101 @@ onMounted(async () => {
             />
           </div>
         </div>
+      </template>
+    </UModal>
+
+    <UModal v-model:open="showDesignDraftCopy" title="Create a design draft">
+      <template #body>
+        <UAlert
+          v-if="draftCopyUnconfirmed"
+          color="warning"
+          title="Draft creation is unconfirmed"
+          description="Check the template library for the design draft before creating another copy. The request may have succeeded."
+        />
+        <p class="text-sm text-muted">
+          Create an independent draft from the current composer content, then open it in FigFlow. The library template remains available for other emails.
+        </p>
+      </template>
+      <template #footer>
+        <UButton
+          label="Cancel"
+          color="neutral"
+          variant="outline"
+          @click="showDesignDraftCopy = false"
+        />
+        <UButton
+          label="Create draft and open FigFlow"
+          :disabled="draftCopyUnconfirmed"
+          :loading="designFlow.busy.value"
+          @click="beginFigflow(true)"
+        />
+      </template>
+    </UModal>
+    <UModal
+      v-model:open="showFigflow"
+      fullscreen
+      :dismissible="false"
+      title="Edit email in FigFlow"
+    >
+      <template #content>
+        <div class="flex h-full min-h-0 flex-col gap-4 p-4 sm:p-6">
+          <header class="flex items-center justify-between gap-4">
+            <div>
+              <h2 class="text-lg font-semibold">
+                {{ name }}
+              </h2><p class="text-sm text-muted">
+                FigFlow email design · changes are reviewed before applying
+              </p>
+            </div>
+            <UButton
+              icon="i-lucide-x"
+              label="Back to composer"
+              color="neutral"
+              variant="ghost"
+              :disabled="designFlow.busy.value"
+              @click="closeFigflow"
+            />
+          </header>
+          <UButton
+            v-if="designFlow.hasPending.value"
+            label="Reconcile saved action"
+            color="neutral"
+            variant="outline"
+            :loading="designFlow.busy.value"
+            @click="reconcileDesignAction"
+          />
+          <EmailBuilderEdmFigflowHandoff
+            v-if="designFlow.handoff.value"
+            :key="designFlow.handoff.value.id"
+            :handoff="designFlow.handoff.value"
+            :busy="designFlow.busy.value"
+            :error="designFlow.error.value"
+            :conflict="designLocalConflict"
+            :subject="subject"
+            :preview-text="previewText"
+            @propose="proposeFigflow"
+            @apply="applyFigflow"
+            @cancel="cancelFigflow"
+            @resume="resumeFigflow"
+          />
+        </div>
+      </template>
+    </UModal>
+
+    <UModal v-model:open="showDiscardFigflow" title="Leave FigFlow without returning?">
+      <template #body>
+        <p class="text-sm text-muted">
+          Changes inside FigFlow are saved only after Return for review. Leaving now discards those unsaved edits. Your saved composer draft stays available.
+        </p>
+      </template>
+      <template #footer>
+        <UButton
+          label="Keep editing"
+          color="neutral"
+          variant="outline"
+          @click="showDiscardFigflow = false"
+        />
+        <UButton label="Discard unsaved FigFlow edits" color="error" @click="showDiscardFigflow = false; showFigflow = false" />
       </template>
     </UModal>
 

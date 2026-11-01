@@ -18,7 +18,7 @@ export default defineEventHandler(async (event) => {
   const template = /^\/api\/email\/templates\/[0-9a-f-]{36}$/i.test(path)
     && (event.method === 'PATCH' || event.method === 'DELETE')
   const allowed = (draft && (event.method === 'PATCH' || (!draft[1] && event.method === 'GET')))
-    || (path === '/api/email/design/drafts/initialize' && event.method === 'POST')
+    || (['/api/email/design/drafts/initialize', '/api/email/design/roundtrip'].includes(path) && event.method === 'POST')
   // Existing template CRUD remains available when new draft saves are disabled.
   if (!template && (env.FIGFLOW_EDM_DRAFT_SAVES_ENABLED !== 'true' || !allowed))
     throw createError({ statusCode: 404, statusMessage: 'not_found' })

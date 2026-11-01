@@ -40,7 +40,7 @@ describe('private design service forwarding', () => {
   })
   it.each([
     ['GET', `drafts/${id}`], ['PATCH', `drafts/${id}`],
-    ['PATCH', `drafts/${id}/metadata`], ['POST', 'drafts/initialize']
+    ['PATCH', `drafts/${id}/metadata`], ['POST', 'drafts/initialize'], ['POST', 'roundtrip']
   ])('forwards %s %s with original authority and exact content', async (method, path) => {
     const body = method === 'GET' ? undefined : '{"subject":"你好","actorId":"untrusted"}'
     const fetch = vi.fn(async (request: Request) => {
@@ -60,7 +60,7 @@ describe('private design service forwarding', () => {
     expect(await response.json()).toEqual({ revisionId: 'receipt' })
     expect(fetch).toHaveBeenCalledTimes(1)
   })
-  it.each([['DELETE', `drafts/${id}`], ['GET', 'drafts/initialize'], ['POST', 'publish'], ['GET', `drafts/${id}/secret`]])('does not forward unsupported %s %s', async (method, path) => {
+  it.each([['GET', 'roundtrip'], ['DELETE', `drafts/${id}`], ['GET', 'drafts/initialize'], ['POST', 'publish'], ['GET', `drafts/${id}/secret`]])('does not forward unsupported %s %s', async (method, path) => {
     const fetch = vi.fn()
     const response = await app({ FIGFLOW_EDM_DRAFT_SAVES_ENABLED: 'true', EMAIL_DESIGN: { fetch } })(new Request(`${base}${path}`, { method }))
     expect(response.status).toBe(404)

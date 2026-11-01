@@ -440,6 +440,17 @@ export function validateDesignAction(input: unknown): DesignAction {
   })
 }
 
+/** Template handoffs use the same proposal envelope with a template baseline.
+ * Keep campaign proposal admission unchanged at the existing public boundary. */
+export function validateTemplateDesignReturnAction(input: unknown): ProposeReturnAction {
+  return parseBounded(input, (snapshot) => {
+    const action = ProposeReturnActionSchema.parse(snapshot)
+    validateDesignScope(action.scope, action.design)
+    if (action.design.kind !== 'template' || action.sourceDraft) invalid()
+    return action
+  })
+}
+
 /** Parse a server success receipt. An idempotent replay returns the original
  * receipt, including its original IDs and timestamps. */
 export function validateDesignActionResult(input: unknown): DesignActionResult {

@@ -192,6 +192,22 @@ function createStore() {
     }
   }
 
+  /** A proposal is one undo step, including when another edit happened in the
+   * same microtask. Compare before mutation so stale returns keep local edits. */
+  function applyDesignReturn(expected: EdmFlyhubDocument, next: EdmFlyhubDocument): boolean {
+    const stable = (value: unknown): string => {
+      if (value === null || typeof value !== 'object') return JSON.stringify(value)
+      if (Array.isArray(value)) return `[${value.map(stable).join(',')}]`
+      return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${stable((value as Record<string, unknown>)[key])}`).join(',')}}`
+    }
+    if (stable(document.value) !== stable(expected)) return false
+    past.value = [...past.value.slice(-(HISTORY_LIMIT - 1)), takeSnapshot()]
+    future.value = []
+    document.value = JSON.parse(JSON.stringify(next))
+    selectedHtmlEditable.value = null
+    return true
+  }
+
   function getBlock(blockId: string): EdmFlyhubBlock | undefined {
     return document.value[blockId]
   }
@@ -806,6 +822,7 @@ function createStore() {
     // Document Management
     setDocument,
     resetDocument,
+    applyDesignReturn,
     getBlock,
     updateBlock,
     updateBlockData,

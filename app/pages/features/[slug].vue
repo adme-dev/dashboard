@@ -1604,7 +1604,7 @@ const features: Record<string, Feature> = {
     categoryIcon: 'i-lucide-message-circle',
     categoryIconBg: 'bg-violet-50',
     categoryIconColor: 'text-violet-600',
-    description: 'A visual, section-based email builder — drop in pre-designed sections, launch from eleven curated starter templates, fine-tune every block, and render to bulletproof email HTML that looks right in every inbox.',
+    description: 'Build emails from reusable sections and eleven starter templates, edit content and styles, and preview the rendered email. FigFlow content handoff is in development and remains disabled.',
     details: [
       {
         title: 'Sections and Building Blocks',
@@ -1627,8 +1627,8 @@ const features: Record<string, Feature> = {
         content: 'Keep reusable XeroFlow defaults alongside client-owned templates and drafts. Choose an authorised platform client when saving, organise saved templates into categories, and make an independent client copy of a shared default. The library includes working recent, draft and category views, scoped client search, and the existing email image library. Import an HTML email or XeroFlow document JSON, review a sanitised preview, then save it to a client and category. HTML imports retain tables, basic inline styles and public HTTPS images; active content and style sheets are removed. Recorded OEM source details include make, import date, original file hash and review notes. Source originals open as independent copies by default, and portable JSON backups preserve the design, subject, preview text, category and draft status for re-import. Make filters and provider search combine with client scope; failed loads block editing, and import retries reconcile the same save. Imported source information does not certify a campaign as approved.'
       },
       {
-        title: 'Per-Block Styling and Bulletproof HTML',
-        content: 'Select any block to open a rich, grouped inspector — Spacing, Typography (line height, letter spacing, text transform), and Border & effects (border, corner radius, shadow, opacity), plus background colour and image — alongside document-level settings for width, background, and spacing, with every change reflected on the canvas instantly. Behind the friendly editor, a server-side renderer turns your design into table-based, inline-styled HTML that survives Outlook, Gmail, Apple Mail, and everything in between. Flip between Editor, live Preview, and raw HTML at any time, and save any design as a reusable template your team can open, duplicate, rename, and reuse across campaigns.'
+        title: 'Content Editing and Email Preview',
+        content: 'Edit block spacing, typography, borders and backgrounds, then switch between Editor, Preview and HTML. Save reusable templates for the team. The FigFlow content handoff is in development: supported text, image and button edits return for review and explicit Apply, with revision conflicts protecting newer staff edits. Hosted access remains disabled. Shared-module handoff and Apple Mail, Gmail and Outlook acceptance remain separate work.'
       }
     ]
   },
