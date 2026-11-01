@@ -1,6 +1,6 @@
 # TheBrief historical import dates and batches
 
-Updated 31 October 2026. TheBrief support recommends selecting about 50 designs per bulk HTML5 export to avoid browser timeouts. Banner Studio accepts up to 50 **prepared** `.xeroflow.json` packages per import batch; it does not accept the export ZIPs directly. A package remains limited to 45 MB. Repeat batches for the full archive.
+Updated 1 November 2026. TheBrief support recommends selecting about 50 designs per bulk HTML5 export to avoid browser timeouts. Banner Studio accepts up to 50 **prepared** `.xeroflow.json` packages per import batch; it does not accept the export ZIPs directly. A package remains limited to 45 MB. Repeat batches for the full archive.
 
 1. Inventory one TheBrief workspace or folder at a time. Reconcile every design set and size against Banner Studio and the saved migration ledger before exporting or importing. Preserve existing projects and edits.
 2. Record the **Created** date for each design from TheBrief's design Info panel, alongside its design identity and folder. The [TheBrief design Info guide](https://help.thebrief.ai/hc/en-us/articles/22638477185948-How-to-preview-comment-on-designs) identifies this as the source of the creator and creation date. Preserve the folder list's **Last modified** date and user in the migration ledger too, as separate source metadata for a later library update. ZIP timestamps, export filenames and download time are not creation dates.
@@ -9,6 +9,8 @@ Updated 31 October 2026. TheBrief support recommends selecting about 50 designs 
 5. Record source design ID/hash, folder, original creation date and evidence location, source last-modified date and user, ZIP hash, package hash, saved project ID, review outcome and any blocker in the migration ledger. Continue with the next folder or batch.
 
 The original creation date is stored as a `source-created-date:YYYY-MM-DD` provenance tag. XeroFlow's `created_at` remains the actual project creation timestamp. The library shows both source creation and last modification, and offers an oldest-created sort. Earlier TheBrief imports without a verified source date display **date unverified**; reconcile and backfill them separately against TheBrief Info evidence. Do not replace missing dates with the last-updated or upload date.
+
+The importer waits for the client and folder lists before accepting packages, so a quick file selection keeps its source assignments. Managed asset uploads run three at a time. On failure, queued uploads stop and in-flight requests finish before the error appears; acknowledged uploads remain reusable within that dialog. Existing duplicate and uncertain-project checks still apply.
 
 ## Video layers
 

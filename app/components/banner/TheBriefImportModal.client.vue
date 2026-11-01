@@ -5,6 +5,7 @@ import type { BannerProject, ArtboardState, BannerFolder } from '~/types/banner-
 import { bannerFolderPath } from '~/utils/banner-folders'
 import { importTags, packageFile, sameImportedCanvas } from '~/utils/thebrief-import'
 import { readImportBatch, type TheBriefImportRow } from '~/utils/thebrief-import-batch'
+import { uploadTheBriefAssets } from '~/utils/thebrief-asset-uploads'
 import { beginImportAttempt, finishImportAttempt, importAttemptKey } from '~/utils/thebrief-import-attempt'
 import { prepareBannerUploadRequest } from '~/utils/bannerUpload'
 import { bindImportedFontFace, findImportedFontFace } from '~/utils/thebrief-font-bindings'
@@ -19,6 +20,9 @@ const files = ref<File[]>([])
 const rows = ref<TheBriefImportRow[]>([])
 const filesValid = ref(true)
 const busy = ref(false)
+const catalogReady = ref(false)
+let catalogLoad: Promise<void> | null = null
+let catalogGeneration = 0
 const error = ref('')
 const progress = ref('')
 // Explicit, per-batch operator choice: import undated drafts and mark them for a
@@ -33,7 +37,7 @@ const uploaded = new Map<string, string>()
 const options = computed(() => [{ label: 'Choose client', value: '__unassigned__' }, ...clients.value.map(c => ({ label: c.name, value: c.id }))])
 const folderOptions = computed(() => [{ label: 'Unfiled', value: '__unfiled__' }, ...folders.value.map(folder => ({ label: bannerFolderPath(folders.value, folder.id).map(part => part.name).join(' / '), value: folder.id }))])
 const assignedRows = computed(() => rows.value.filter(row => !row.projectId && row.clientId !== '__unassigned__'))
-const ready = computed(() => filesValid.value && assignedRows.value.length > 0)
+const ready = computed(() => catalogReady.value && filesValid.value && assignedRows.value.length > 0)
 
 function calendarDate(value: string): DateValue | null {
   if (!value) return null
@@ -49,18 +53,25 @@ function displayDate(value: string): string {
   return date ? new Intl.DateTimeFormat('en-AU', { day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(date.year, date.month - 1, date.day)) : ''
 }
 
-watch(open, async (value) => {
+watch(open, (value) => {
+  const generation = ++catalogGeneration
+  catalogReady.value = false
+  catalogLoad = null
   if (!value) return
-  try {
-    const [availableClients, availableFolders] = await Promise.all([
-      api<Array<{ id: string, name: string }>>('/api/agency/clients'),
-      api<BannerFolder[]>('/api/agency/banner-studio/folders')
-    ])
+  error.value = ''
+  clients.value = []
+  folders.value = []
+  catalogLoad = Promise.all([
+    api<Array<{ id: string, name: string }>>('/api/agency/clients'),
+    api<BannerFolder[]>('/api/agency/banner-studio/folders')
+  ]).then(([availableClients, availableFolders]) => {
+    if (generation !== catalogGeneration) return
     clients.value = availableClients
     folders.value = availableFolders
-  } catch {
-    error.value = 'Could not load clients. Close and reopen to retry.'
-  }
+    catalogReady.value = true
+  }).catch(() => {
+    if (generation === catalogGeneration) error.value = 'Could not load clients or folders. Close and reopen to retry.'
+  })
 })
 
 async function readPackages() {
@@ -68,6 +79,8 @@ async function readPackages() {
   error.value = ''
   busy.value = true
   try {
+    await catalogLoad
+    if (!catalogReady.value) throw new Error('Wait for clients and folders to finish loading, then choose your packages again.')
     // Commit the new selection only after every added package is validated.
     rows.value = await readImportBatch(files.value, rows.value, clients.value, folders.value)
     filesValid.value = true
@@ -97,16 +110,16 @@ async function prepareCanvas(row: TheBriefImportRow) {
     if (!stored) throw new Error('Could not store the prepared font')
     bindImportedFontFace(canvasData, font, stored, row.clientId)
   }
-  for (const asset of row.pkg.assets) {
-    const identity = `${row.clientId}:${asset.sha256}`
-    if (!uploaded.has(identity)) {
-      const request = await prepareBannerUploadRequest(await packageFile(asset), `thebrief-asset:${identity}`, row.clientId)
-      const stored = await api<{ url: string, clientId: string }>('/api/agency/banner-studio/assets/upload', { method: 'POST', ...request })
-      if (!stored.url || stored.clientId !== row.clientId) throw new Error('Upload did not return a managed asset for the selected client')
-      uploaded.set(identity, stored.url)
+  const assetUrls = await uploadTheBriefAssets(row.pkg.assets, row.clientId, uploaded, async (asset, identity) => {
+    const request = await prepareBannerUploadRequest(await packageFile(asset), `thebrief-asset:${identity}`, row.clientId)
+    return await api<{ url: string, clientId: string }>('/api/agency/banner-studio/assets/upload', { method: 'POST', ...request })
+  })
+  for (const board of Object.values(canvasData)) {
+    for (const layer of board.layers) {
+      if (layer.src && assetUrls.has(layer.src)) layer.src = assetUrls.get(layer.src)!
     }
-    for (const board of Object.values(canvasData)) for (const layer of board.layers) if (layer.src === asset.path) layer.src = uploaded.get(identity)!
   }
+
   return canvasData
 }
 
@@ -251,9 +264,9 @@ async function importDrafts() {
             multiple
             :preview="false"
             accept=".json"
-            label="Choose prepared banner packages"
+            :label="catalogReady ? 'Choose prepared banner packages' : 'Loading clients and folders…'"
             class="w-full"
-            :disabled="busy"
+            :disabled="busy || !catalogReady"
             @update:model-value="readPackages"
           />
         </UFormField>
