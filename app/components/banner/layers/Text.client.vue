@@ -115,7 +115,7 @@ function onKeydown(e: KeyboardEvent) {
           filter: effects.visualFilter,
           textShadow: texture ? 'none' : effects.textShadow || 'none',
           WebkitTextStroke: effects.textStroke || 'unset',
-          paintOrder: effects.textStroke ? 'stroke' : undefined,
+          paintOrder: effects.textStroke ? (layer.textPaintOrder === 'fill' ? 'fill' : 'stroke') : undefined,
           textTransform: (layer.textTransform as any) || 'none',
           letterSpacing: layer.letterSpacing || 'normal',
           lineHeight: layer.lineHeight || 1.2,

@@ -21,9 +21,9 @@ beforeEach(() => {
 })
 describe('website extraction draft contract', () => {
   it('retains the managed logo pipeline and returns a reviewable draft without creating a kit', async () => {
-    const result = await handler({ body: { url: 'brand.example' } } as never)
-    expect(m.extract).toHaveBeenCalledWith('https://brand.example')
-    expect(m.logo).toHaveBeenCalledWith('https://brand.example/logo.png')
+    const result = await handler({ context: {}, body: { url: 'brand.example' } } as never)
+    expect(m.extract).toHaveBeenCalledWith('https://brand.example', { browserResource: undefined })
+    expect(m.logo).toHaveBeenCalledWith('https://brand.example/logo.png', { browserResource: undefined })
     expect(m.store).toHaveBeenCalledTimes(1)
     expect(result).toMatchObject({ draft: true, sourceUrl: 'https://brand.example/home', stylesheetsRead: 1, fonts: page().fonts, logos: [{ url: 'https://app.xeroflow.io/logo', r2Key: 'banner/logo.png' }] })
     expect(result.fonts[0]).not.toHaveProperty('assets')
@@ -31,7 +31,7 @@ describe('website extraction draft contract', () => {
   })
   it('does not store an unsafe logo and reports a partial result', async () => {
     m.logo.mockRejectedValue(new Error('Unsafe redirect'))
-    const result = await handler({ body: { url: 'https://brand.example' } } as never)
+    const result = await handler({ context: {}, body: { url: 'https://brand.example' } } as never)
     expect(m.store).not.toHaveBeenCalled()
     expect(result.logos).toEqual([])
     expect(result.warnings.some(warning => warning.includes('logo could not be safely imported'))).toBe(true)
@@ -39,12 +39,12 @@ describe('website extraction draft contract', () => {
   })
   it('returns a safe actionable error when the public fetch fails', async () => {
     m.extract.mockRejectedValue(new Error('Private DNS 10.0.0.1'))
-    await expect(handler({ body: { url: 'https://brand.example' } } as never)).rejects.toMatchObject({ statusCode: 422, statusMessage: 'Could not safely read that public website. Check the URL and try again.' })
+    await expect(handler({ context: {}, body: { url: 'https://brand.example' } } as never)).rejects.toMatchObject({ statusCode: 422, statusMessage: 'Could not read that website. Check the URL and try again.' })
     expect(m.logo).not.toHaveBeenCalled()
   })
   it('accepts a font-only readable page and rejects non-string inputs', async () => {
     m.extract.mockResolvedValue({ ...page(), title: '', primaryColors: [], logoCandidates: [] })
-    expect((await handler({ body: { url: 'https://brand.example' } } as never)).fonts).toEqual(page().fonts)
-    await expect(handler({ body: { url: {} } } as never)).rejects.toMatchObject({ statusCode: 400 })
+    expect((await handler({ context: {}, body: { url: 'https://brand.example' } } as never)).fonts).toEqual(page().fonts)
+    await expect(handler({ context: {}, body: { url: {} } } as never)).rejects.toMatchObject({ statusCode: 400 })
   })
 })

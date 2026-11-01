@@ -1,0 +1,98 @@
+{
+  "baseline": "42fd53872bfd6f019b5e22c9d4de00f91d0833f1",
+  "main": "bfaff3510d54b55043803d88dd7ca6cfebe7bb62",
+  "rows": 1715,
+  "counts": {
+    "identity_tenant_hard_boundary": 133,
+    "provider_infrastructure_availability": 222,
+    "application_governance_bypass": 1627,
+    "ordinary_user_behavior": 301,
+    "unrelated_configuration": 431
+  },
+  "digest": "cace1e9a913cb7e9c97c58d4eb86516c8b93f99206ed6add1b0c2fe81f971eaa",
+  "additions": [
+    "server/api/agency/banner-studio/brand-kits/motorstack.get.ts\tawait requireRole(event, PERMISSIONS.CREATIVE)\tapplication_governance_bypass",
+    "server/api/agency/banner-studio/brand-kits/motorstack.post.ts\tconst user = await requireRole(event, PERMISSIONS.CREATIVE)\tapplication_governance_bypass",
+    "server/api/agency/banner-studio/fonts/[id].delete.ts\tawait requireRole(event, PERMISSIONS.CREATIVE)\tapplication_governance_bypass",
+    "server/api/agency/banner-studio/fonts/index.get.ts\tif (user.permissionGroups?.includes('MARKETING_MANAGEMENT')) {\tordinary_user_behavior",
+    "server/api/agency/banner-studio/fonts/upload.post.ts\tconst user = await requireRole(event, PERMISSIONS.CREATIVE)\tapplication_governance_bypass",
+    "server/api/agency/banner-studio/links/[id].delete.ts\tconst user = await requireWriteAccess(event)\tapplication_governance_bypass",
+    "server/api/agency/banner-studio/links/index.post.ts\tconst user = await requireWriteAccess(event)\tapplication_governance_bypass",
+    "server/api/agency/banner-studio/motorstack/brands.get.ts\tawait requireRole(event, PERMISSIONS.CREATIVE)\tapplication_governance_bypass",
+    "server/api/agency/banner-studio/motorstack/creative-catalog.get.ts\tawait requireRole(event, PERMISSIONS.CREATIVE)\tapplication_governance_bypass",
+    "server/api/agency/banner-studio/motorstack/file.get.ts\tawait requireRole(event, PERMISSIONS.CREATIVE)\tapplication_governance_bypass",
+    "server/api/agency/banner-studio/motorstack/media.get.ts\tawait requireRole(event, PERMISSIONS.CREATIVE)\tapplication_governance_bypass",
+    "server/api/agency/banner-studio/motorstack/media.post.ts\tconst user = await requireRole(event, PERMISSIONS.CREATIVE)\tapplication_governance_bypass",
+    "server/api/agency/banner-studio/motorstack/media.post.ts\tawait requireWriteAccess(event)\tapplication_governance_bypass",
+    "server/api/agency/banner-studio/projects/[id]/folder.patch.ts\tconst user = await requireWriteAccess(event)\tapplication_governance_bypass",
+    "server/api/agency/banner-studio/projects/[id]/rename.patch.ts\tconst user = await requireWriteAccess(event)\tapplication_governance_bypass",
+    "server/api/agency/banner-studio/projects/[id]/thebrief-refresh.patch.ts\tconst user = await requireWriteAccess(event)\tapplication_governance_bypass",
+    "server/api/agency/banner-studio/templates/from-project.post.ts\tconst user = await requireWriteAccess(event)\tapplication_governance_bypass",
+    "server/utils/banner/brandKitAccess.ts\tif (user.permissionGroups?.includes('MARKETING_MANAGEMENT')) {\tordinary_user_behavior",
+    "server/utils/banner/deleteTemplate.ts\tconst user = await requireWriteAccess(event)\tapplication_governance_bypass",
+    "server/utils/banner/deleteTemplate.ts\tawait requireRole(event, PERMISSIONS.CREATIVE)\tapplication_governance_bypass",
+    "shared/bannerTemplatePermissions.ts\tpermissionGroups?: readonly string[]\tordinary_user_behavior",
+    "shared/bannerTemplatePermissions.ts\tif (!user || !template || user.isCustomReadOnly || ['viewer', 'guest'].includes(user.role)) return false\tordinary_user_behavior",
+    "shared/bannerTemplatePermissions.ts\tconst hasCreativeAccess = creativeRoles.includes(user.role) || user.permissionGroups?.includes('CREATIVE') === true\tordinary_user_behavior",
+    "shared/bannerTemplatePermissions.ts\tconst isAdmin = ['owner', 'admin'].includes(user.role) || user.permissionGroups?.includes('ADMIN') === true\tordinary_user_behavior"
+  ],
+  "removals": [
+    "server/api/agency/banner-studio/custom-templates/[id].delete.ts\tif (existing.isSystem && !['admin', 'owner'].includes(user.role)) {\tordinary_user_behavior",
+    "server/api/agency/banner-studio/custom-templates/[id].delete.ts\tif (existing.createdBy !== user.id && !['admin', 'owner'].includes(user.role)) {\tordinary_user_behavior"
+  ],
+  "review": "All deltas are already-released Banner Studio source changes. Inventory classifiers, seeded counts, runtime auth, route guards and mutation registrations are unchanged by this test repair.",
+  "newRoutes": {
+    "server/api/agency/banner-studio/brand-kits/motorstack.get.ts": [
+      "await requireRole(event, PERMISSIONS.CREATIVE)",
+      "await requireBrandKitWriteAccess(event, null)"
+    ],
+    "server/api/agency/banner-studio/brand-kits/motorstack.post.ts": [
+      "await requireRole(event, PERMISSIONS.CREATIVE)",
+      "await requireBrandKitWriteAccess(event, null)"
+    ],
+    "server/api/agency/banner-studio/folders/index.get.ts": [
+      "await requireAuth(event)",
+      "!hasAllSocialClientAccess(user) && !hasSocialClientPermission(user)"
+    ],
+    "server/api/agency/banner-studio/motorstack/brands.get.ts": [
+      "await requireRole(event, PERMISSIONS.CREATIVE)"
+    ],
+    "server/api/agency/banner-studio/motorstack/creative-catalog.get.ts": [
+      "await requireRole(event, PERMISSIONS.CREATIVE)",
+      "await requireBrandKitReadAccess(event, kit.clientId)"
+    ],
+    "server/api/agency/banner-studio/motorstack/file.get.ts": [
+      "await requireRole(event, PERMISSIONS.CREATIVE)",
+      "mediaSelectionSchema.safeParse"
+    ],
+    "server/api/agency/banner-studio/motorstack/media.get.ts": [
+      "await requireRole(event, PERMISSIONS.CREATIVE)",
+      "mediaQuerySchema.safeParse"
+    ],
+    "server/api/agency/banner-studio/motorstack/media.post.ts": [
+      "await requireRole(event, PERMISSIONS.CREATIVE)",
+      "await requireWriteAccess(event)",
+      "mediaSelectionSchema.safeParse"
+    ],
+    "server/api/agency/banner-studio/projects/[id]/folder.patch.ts": [
+      "await requireWriteAccess(event)",
+      "await requireSocialClientAccess(event, project.client_id)",
+      "AND ${ACTIVE_PROJECT_CLIENT_SQL}"
+    ],
+    "server/api/agency/banner-studio/projects/[id]/rename.patch.ts": [
+      "await requireWriteAccess(event)",
+      "await requireBannerShareAccess(event, user, id)",
+      "AND ${ACTIVE_PROJECT_CLIENT_SQL}"
+    ],
+    "server/api/agency/banner-studio/projects/[id]/thebrief-refresh.patch.ts": [
+      "await requireWriteAccess(event)",
+      "await requireSocialClientAccess(event, input.clientId)",
+      "transaction(db => refreshTheBriefDraft"
+    ],
+    "server/api/public/banner-share/[token].get.ts": [
+      "!/^p_[0-9a-f]{32}$/i.test(token)",
+      "if (link.revoked || (link.expiresAt",
+      "WHERE token = $1"
+    ]
+  }
+}

@@ -108,6 +108,7 @@ export interface Layer {
   fontStyle?: 'normal' | 'italic'
   textShadow?: string
   textStroke?: string
+  textPaintOrder?: 'fill' | 'stroke'
   gradientColors?: string[]
   textDepth?: import('../../shared/bannerEffects').BannerTextDepth
   /** Generated material clipped through the native font, not raster lettering. */

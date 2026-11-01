@@ -554,6 +554,7 @@ export async function convertTheBriefHtml(html) {
         const videos = [...element.querySelectorAll('video')]
         if (videos.length !== 1 || !videos[0].getAttribute('src')) throw new Error(`Video ${sourceId}: unsupported video source`)
         const video = videos[0]
+        if (video.hasAttribute('controls')) throw new Error(`Video ${sourceId}: player controls require an adapter`)
         const src = localAsset(video.getAttribute('src'))
         if (!/\.mp4$/i.test(src)) throw new Error(`Video ${sourceId}: only MP4 video is supported`)
         const config = source.videoElements?.find(item => item.elementId === sourceId && item.slideId === slide.id)
@@ -571,6 +572,33 @@ export async function convertTheBriefHtml(html) {
         if (!Number.isFinite(delay) || delay < 0 || Math.abs(slide.start + delay - start) > 1e-3) throw new Error(`Video ${sourceId}: source video start requires reconciliation with its layer`)
         if (typeof config.loop !== 'boolean') throw new Error(`Video ${sourceId}: invalid source loop setting`)
         const videoCss = style(video)
+        // Preserve composition on the actual media ancestry. Flattening these
+        // wrappers without their alpha/filter makes blended video too bright.
+        const ancestry = []
+        for (let node = video; node; node = node.parentElement) {
+          ancestry.push(node)
+          if (node === element) break
+        }
+        let videoOpacity = 1
+        const videoFilters = []
+        for (const node of ancestry) {
+          const nodeCss = style(node)
+          const opacity = nodeCss.opacity === '' ? 1 : Number(nodeCss.opacity)
+          if (!Number.isFinite(opacity) || opacity < 0 || opacity > 1) throw new Error(`Video ${sourceId}: unsupported opacity`)
+          if (nodeCss.animationName && nodeCss.animationName !== 'none' && opacity !== 1) throw new Error(`Video ${sourceId}: animated underlying opacity requires an adapter`)
+          videoOpacity *= opacity
+          if (node !== element && nodeCss.mixBlendMode && nodeCss.mixBlendMode !== 'normal') throw new Error(`Video ${sourceId}: nested blend mode requires an adapter`)
+          if (nodeCss.filter && nodeCss.filter !== 'none') {
+            if (nodeCss.animationName && nodeCss.animationName !== 'none') throw new Error(`Video ${sourceId}: animated filter requires an adapter`)
+            videoFilters.push(nodeCss.filter)
+          }
+        }
+        const videoFilter = videoFilters.join(' ')
+        if (videoFilter && !isSafeBannerImageFilter(videoFilter)) throw new Error(`Video ${sourceId}: unsupported static filter`)
+        if (videoFilters.length > 1 || /(?:blur|drop-shadow)\(/.test(videoFilter)) throw new Error(`Video ${sourceId}: spatial or nested filters require an adapter`)
+        layerBase.opacity = videoOpacity
+        layerBase.keyframes = { ...layerBase.keyframes, opacity: layerBase.keyframes.opacity.map(frame => ({ ...frame, value: frame.value * videoOpacity })) }
+        if (videoFilter) layerBase.visualFilter = videoFilter
         let fit = videoCss.objectFit || 'fill'
         if (!['cover', 'contain', 'fill'].includes(fit)) throw new Error(`Video ${sourceId}: unsupported video fit ${fit}`)
         if (videoCss.objectPosition && !['50% 50%', 'center', 'center center'].includes(videoCss.objectPosition)) throw new Error(`Video ${sourceId}: unsupported video position`)
@@ -639,7 +667,9 @@ export async function convertTheBriefHtml(html) {
           const textStroke = containerCss.getPropertyValue('-webkit-text-stroke') || ''
           const textShadow = normaliseTextShadow(containerCss.textShadow)
           if (textStroke && !/^\d+(?:\.\d+)?px #[0-9a-f]{6}$/i.test(textStroke)) throw new Error('Unsupported text stroke')
-          if (textStroke && !['stroke', ''].includes(containerCss.paintOrder)) throw new Error('Unsupported text paint order')
+          const paintOrder = (containerCss.paintOrder || 'normal').trim().replace(/\s+/g, ' ')
+          if (textStroke && !['normal', 'fill', 'fill stroke', 'stroke', 'stroke fill'].includes(paintOrder)) throw new Error('Unsupported text paint order')
+          const textPaintOrder = paintOrder.startsWith('stroke') ? 'stroke' : 'fill'
           // Text clipped to a background paints that background, not its colour.
           // Keeping only the colour would silently replace a gradient fill.
           for (const node of new Set([row, span, ...runs, ...(textContainer ? [textContainer] : [])])) {
@@ -675,7 +705,7 @@ export async function convertTheBriefHtml(html) {
           const lineHeight = /^\d*\.?\d+$/.test(rowCss.lineHeight) ? Number(rowCss.lineHeight) : px(rowCss.lineHeight) / fontSize
           const height = lineBoxFontSize * lineHeight
           if (!Number.isFinite(height)) throw new Error('Unsupported text line height')
-          if (row.textContent.trim()) layers.push({ ...layerBase, linkId: `source:${sourceId}:row:${rowIndex}`, id: id++, type: 'text', name: row.textContent.trim().slice(0, 60), y, h: height, ...(layerBase.transformOrigin ? { transformOrigin: { x: layerBase.transformOrigin.x, y: layerBase.transformOrigin.y - (y - layerBase.y) } } : {}), text: row.textContent.replace(/^[ \t\r\n]+|[ \t\r\n]+$/g, ''), ...(textRuns.length ? { text: row.textContent, textRuns } : {}), ...(wordPop ? { wordPop } : {}), textTransform, fontFamily: textCss.fontFamily.replace(/["']/g, ''), fontStyle: textCss.fontStyle === 'italic' ? 'italic' : 'normal', fontSize, lineBoxFontSize, textAntialias: style(document.documentElement).getPropertyValue('-webkit-font-smoothing') === 'antialiased', fontWeight: Number(textCss.fontWeight) || 400, lineHeight, color: paintedCss.color || textCss.color || '#fff', ...(textStroke ? { textStroke } : {}), ...(textShadow ? { textShadow } : {}), textAlign: textCss.textAlign || 'left', letterSpacing: !textCss.letterSpacing || textCss.letterSpacing === 'normal' ? '0px' : textCss.letterSpacing })
+          if (row.textContent.trim()) layers.push({ ...layerBase, linkId: `source:${sourceId}:row:${rowIndex}`, id: id++, type: 'text', name: row.textContent.trim().slice(0, 60), y, h: height, ...(layerBase.transformOrigin ? { transformOrigin: { x: layerBase.transformOrigin.x, y: layerBase.transformOrigin.y - (y - layerBase.y) } } : {}), text: row.textContent.replace(/^[ \t\r\n]+|[ \t\r\n]+$/g, ''), ...(textRuns.length ? { text: row.textContent, textRuns } : {}), ...(wordPop ? { wordPop } : {}), textTransform, fontFamily: textCss.fontFamily.replace(/["']/g, ''), fontStyle: textCss.fontStyle === 'italic' ? 'italic' : 'normal', fontSize, lineBoxFontSize, textAntialias: style(document.documentElement).getPropertyValue('-webkit-font-smoothing') === 'antialiased', fontWeight: Number(textCss.fontWeight) || 400, lineHeight, color: paintedCss.color || textCss.color || '#fff', ...(textStroke ? { textStroke, textPaintOrder } : {}), ...(textShadow ? { textShadow } : {}), textAlign: textCss.textAlign || 'left', letterSpacing: !textCss.letterSpacing || textCss.letterSpacing === 'normal' ? '0px' : textCss.letterSpacing })
           y += height
           rowHeights.push(height)
         }

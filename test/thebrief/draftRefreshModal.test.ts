@@ -45,7 +45,7 @@ async function click(label: string) {
   el.click()
   await flush()
 }
-async function mountModal() {
+async function mountModal(loadPackages = true) {
   for (const [name, value] of Object.entries({ ref, shallowRef, computed, watch, toRaw, $fetch: api })) vi.stubGlobal(name, value)
   vi.stubGlobal('useBannerFonts', () => ({ uploadCustomFont: vi.fn(), refreshCustomFonts: refreshFonts }))
   const { default: Modal } = await import('../../app/components/banner/TheBriefImportModal.client.vue')
@@ -57,8 +57,11 @@ async function mountModal() {
   app.mount(host)
   props.open = true
   await flush()
-  await click('Load packages')
-  await click('Import assigned drafts')
+  if (loadPackages) {
+    await click('Load packages')
+    await click('Import assigned drafts')
+  }
+  return props
 }
 beforeEach(() => {
   patched = false
@@ -77,6 +80,8 @@ beforeEach(() => {
       return structuredClone(saved)
     }
     if (url.endsWith('/projects/draft-id')) return structuredClone(patched ? saved : original)
+    if (url.endsWith('/snapshot') && options?.method === 'POST') return { revision: 'updated-revision' }
+    if (url.endsWith('/snapshot')) return { projectId: 'draft-id', revision: 'updated-revision' }
     throw new Error(`Unexpected request ${url}`)
   })
 })
@@ -87,6 +92,75 @@ afterEach(() => {
 })
 
 describe('explicit imported draft update', () => {
+  function newDraftWithViewer({ failWrite = false, mismatch = false } = {}) {
+    let posted: { tags: string[], canvasData: unknown } | undefined
+    let failed = false
+    api.mockImplementation(async (url: string, options?: { method?: string, body?: { tags: string[], canvasData: unknown } }) => {
+      if (url.endsWith('/clients')) return [{ id: clientId, name: 'Blood Motor Group' }]
+      if (url.endsWith('/folders')) return []
+      if (url.endsWith('/projects') && options?.method === 'POST') {
+        posted = options.body
+        return { id: 'new-draft' }
+      }
+      if (url.endsWith('/projects')) return []
+      if (url.endsWith('/projects/new-draft')) return { id: 'new-draft', status: 'draft', clientId, folderId: null, canvasData: posted?.canvasData }
+      if (url.endsWith('/snapshot') && options?.method === 'POST') {
+        expect(options.body).toBeUndefined()
+        if (failWrite && !failed) {
+          failed = true
+          throw new Error('Storage unavailable')
+        }
+        return { revision: 'current-revision' }
+      }
+      if (url.endsWith('/snapshot')) return { projectId: 'new-draft', revision: mismatch ? 'other-revision' : 'current-revision' }
+      throw new Error(`Unexpected request ${url}`)
+    })
+  }
+
+  it('creates and reads the canonical saved viewer after verifying a new draft', async () => {
+    newDraftWithViewer()
+    await mountModal()
+    await click('Import undated drafts and backfill the date later')
+    await click('Import assigned drafts')
+    expect(host.textContent).toContain('saved viewer ready')
+    expect(button('Open saved viewer').getAttribute('data-to')).toBe('/creative/banner-studio/view/new-draft')
+    const projectWrites = api.mock.calls.filter(([url, options]) => url.endsWith('/projects') && options?.method === 'POST')
+    expect(projectWrites).toHaveLength(1)
+    const snapshotCalls = api.mock.calls.filter(([url]) => url.endsWith('/snapshot'))
+    expect(snapshotCalls.map(([, options]) => options?.method || 'GET')).toEqual(['POST', 'GET'])
+  })
+
+  it('retains a committed draft and retries only its viewer after a snapshot failure', async () => {
+    newDraftWithViewer({ failWrite: true })
+    await mountModal()
+    await click('Import undated drafts and backfill the date later')
+    await click('Import assigned drafts')
+    expect(host.textContent).toContain('viewer pending')
+    expect(button('Open in Banner Studio').getAttribute('data-to')).toBe('/agency/banner-studio/new-draft')
+    await click('Prepare saved viewer')
+    expect(host.textContent).toContain('saved viewer ready')
+    expect(api.mock.calls.filter(([url, options]) => url.endsWith('/projects') && options?.method === 'POST')).toHaveLength(1)
+    expect(api.mock.calls.filter(([url, options]) => url.endsWith('/snapshot') && options?.method === 'POST')).toHaveLength(2)
+  })
+
+  it('does not claim the viewer ready when its stored and current revisions differ', async () => {
+    newDraftWithViewer({ mismatch: true })
+    await mountModal()
+    await click('Import undated drafts and backfill the date later')
+    await click('Import assigned drafts')
+    expect(host.textContent).toContain('viewer pending')
+    expect(button('Open saved viewer')).toBeUndefined()
+  })
+
+  it('does not write a viewer for a published project during draft reconciliation', async () => {
+    const previous = api.getMockImplementation()!
+    api.mockImplementation((url: string, options?: { method?: string }) => url.endsWith('/projects/draft-id') ? { ...original, status: 'published' } : previous(url, options))
+    await mountModal()
+    await click('Prepare saved viewer')
+    expect(api.mock.calls.some(([, options]) => options?.method)).toBe(false)
+    expect(host.textContent).toContain('Project retained')
+  })
+
   it('holds a new draft when its original TheBrief creation date is missing', async () => {
     api.mockImplementation(async (url: string) => {
       if (url.endsWith('/clients')) return [{ id: clientId, name: 'Blood Motor Group' }]
@@ -146,8 +220,10 @@ describe('explicit imported draft update', () => {
     expect(api.mock.calls.some(([, options]) => options?.method)).toBe(false)
     await click('Back up and update draft')
     const writes = api.mock.calls.filter(([, options]) => options?.method)
-    expect(writes).toHaveLength(1)
+    expect(writes).toHaveLength(2)
     expect(writes[0]?.[1]).toEqual({ method: 'PATCH', body: { clientId, expectedUpdatedAt: original.updatedAt, source, canvasData: canvas } })
+    expect(writes[1]).toEqual(['/api/agency/banner-studio/projects/draft-id/snapshot', { method: 'POST' }])
+    expect(button('Open saved viewer')).toBeDefined()
     expect(imported).toHaveBeenCalledOnce()
     expect(host.textContent).toContain('previous canvas saved in version history')
   })
@@ -180,5 +256,67 @@ describe('explicit imported draft update', () => {
     await click('Cancel')
     expect(host.querySelector('[aria-label="Update imported draft"]')).toBeNull()
     expect(api.mock.calls.some(([, options]) => options?.method)).toBe(false)
+  })
+})
+
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  let reject!: (reason: unknown) => void
+  const promise = new Promise<T>((yes, no) => {
+    resolve = yes
+    reject = no
+  })
+  return { promise, resolve, reject }
+}
+
+describe('client and folder loading before package selection', () => {
+  it('waits for both catalogs and parses files with the loaded client and folder choices', async () => {
+    const clientGate = deferred<Array<{ id: string, name: string }>>()
+    const folderGate = deferred<Array<{ id: string, name: string }>>()
+    const clients = [{ id: clientId, name: 'Blood Motor Group' }]
+    const folders = [{ id: 'source-folder', name: 'Blood' }]
+    api.mockImplementation((url: string) => url.endsWith('/clients') ? clientGate.promise : folderGate.promise)
+    await mountModal(false)
+    expect(button('Load packages').disabled).toBe(true)
+    clientGate.resolve(clients)
+    await flush()
+    expect(button('Load packages').disabled).toBe(true)
+    expect(readBatch).not.toHaveBeenCalled()
+    folderGate.resolve(folders)
+    await flush()
+    expect(button('Load packages').disabled).toBe(false)
+    await click('Load packages')
+    expect(readBatch.mock.calls[0]?.slice(2)).toEqual([clients, folders])
+  })
+
+  it('keeps package selection disabled when loading fails and explains how to retry', async () => {
+    api.mockRejectedValue(new Error('Service unavailable'))
+    await mountModal(false)
+    expect(button('Load packages').disabled).toBe(true)
+    expect(button('Import assigned drafts').disabled).toBe(true)
+    expect(host.textContent).toContain('Could not load clients or folders. Close and reopen to retry.')
+    expect(readBatch).not.toHaveBeenCalled()
+  })
+
+  it('ignores an older catalog response after the dialog is reopened', async () => {
+    const oldClients = deferred<Array<{ id: string, name: string }>>()
+    const oldFolders = deferred<Array<{ id: string, name: string }>>()
+    const currentClients = [{ id: clientId, name: 'Current client' }]
+    let clientCalls = 0, folderCalls = 0
+    api.mockImplementation((url: string) => {
+      if (url.endsWith('/clients')) return ++clientCalls === 1 ? oldClients.promise : Promise.resolve(currentClients)
+      if (url.endsWith('/folders')) return ++folderCalls === 1 ? oldFolders.promise : Promise.resolve([])
+      throw new Error('Unexpected request')
+    })
+    const props = await mountModal(false)
+    props.open = false
+    await flush()
+    props.open = true
+    await flush()
+    oldClients.resolve([{ id: 'stale-client', name: 'Stale client' }])
+    oldFolders.resolve([{ id: 'stale-folder', name: 'Stale folder' }])
+    await flush()
+    await click('Load packages')
+    expect(readBatch.mock.calls[0]?.slice(2)).toEqual([currentClients, []])
   })
 })

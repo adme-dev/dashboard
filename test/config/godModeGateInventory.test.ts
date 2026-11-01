@@ -282,7 +282,7 @@ describe('God mode gate inventory', () => {
     expect(inventory.rows).toContain('server/utils/pageStudio/sessionVerificationKeyHttp.ts\t: process.env.PAGE_STUDIO_SESSION_ISSUER\tunrelated_configuration')
     // Existing-source adoption exposes only a validated configured customer origin.
     // This presentation URL read does not register an authority bypass.
-    expect(inventory.rows).toContain("server/utils/pageStudio/transferControlsHttp.ts\tconst origin = CustomerAdoptionCustomerOriginSchema.safeParse(Object.hasOwn(env, 'PAGE_STUDIO_CUSTOMER_ORIGIN') ? env.PAGE_STUDIO_CUSTOMER_ORIGIN : process.env.PAGE_STUDIO_CUSTOMER_ORIGIN)\tunrelated_configuration")
+    expect(inventory.rows).toContain('server/utils/pageStudio/transferControlsHttp.ts\tconst origin = CustomerAdoptionCustomerOriginSchema.safeParse(Object.hasOwn(env, \'PAGE_STUDIO_CUSTOMER_ORIGIN\') ? env.PAGE_STUDIO_CUSTOMER_ORIGIN : process.env.PAGE_STUDIO_CUSTOMER_ORIGIN)\tunrelated_configuration')
     // LinkedIn Ads OAuth credentials (connect, callback, insights refresh, spend
     // sync) now resolve through getLinkedInAdsOAuthConfig in socialOAuth/env.ts.
     // Four direct runtime-config reads collapse into its one; no gate or bypass.
@@ -350,12 +350,45 @@ describe('God mode gate inventory', () => {
     ] as const
     expect(reviewedGateRows20261030).toHaveLength(5)
     for (const row of reviewedGateRows20261030) expect(inventory.rows).toContain(row)
-    expect(inventory.rows).toHaveLength(1693)
+    // Banner Studio routes released since 42fd53872 retain native creative/write
+    // and client/owner checks. Pin all 24 added lexical rows and both delegated
+    // template checks, rather than relaxing the inventory. No bypass is added.
+    // Exact source review: docs/runbooks/thebrief-ci-inventory-review-20261101.json.
+    const releasedBannerGateRows20261101 = [
+      'server/api/agency/banner-studio/brand-kits/motorstack.get.ts\tawait requireRole(event, PERMISSIONS.CREATIVE)\tapplication_governance_bypass',
+      'server/api/agency/banner-studio/brand-kits/motorstack.post.ts\tconst user = await requireRole(event, PERMISSIONS.CREATIVE)\tapplication_governance_bypass',
+      'server/api/agency/banner-studio/fonts/[id].delete.ts\tawait requireRole(event, PERMISSIONS.CREATIVE)\tapplication_governance_bypass',
+      'server/api/agency/banner-studio/fonts/index.get.ts\tif (user.permissionGroups?.includes(\'MARKETING_MANAGEMENT\')) {\tordinary_user_behavior',
+      'server/api/agency/banner-studio/fonts/upload.post.ts\tconst user = await requireRole(event, PERMISSIONS.CREATIVE)\tapplication_governance_bypass',
+      'server/api/agency/banner-studio/links/[id].delete.ts\tconst user = await requireWriteAccess(event)\tapplication_governance_bypass',
+      'server/api/agency/banner-studio/links/index.post.ts\tconst user = await requireWriteAccess(event)\tapplication_governance_bypass',
+      'server/api/agency/banner-studio/motorstack/brands.get.ts\tawait requireRole(event, PERMISSIONS.CREATIVE)\tapplication_governance_bypass',
+      'server/api/agency/banner-studio/motorstack/creative-catalog.get.ts\tawait requireRole(event, PERMISSIONS.CREATIVE)\tapplication_governance_bypass',
+      'server/api/agency/banner-studio/motorstack/file.get.ts\tawait requireRole(event, PERMISSIONS.CREATIVE)\tapplication_governance_bypass',
+      'server/api/agency/banner-studio/motorstack/media.get.ts\tawait requireRole(event, PERMISSIONS.CREATIVE)\tapplication_governance_bypass',
+      'server/api/agency/banner-studio/motorstack/media.post.ts\tconst user = await requireRole(event, PERMISSIONS.CREATIVE)\tapplication_governance_bypass',
+      'server/api/agency/banner-studio/motorstack/media.post.ts\tawait requireWriteAccess(event)\tapplication_governance_bypass',
+      'server/api/agency/banner-studio/projects/[id]/folder.patch.ts\tconst user = await requireWriteAccess(event)\tapplication_governance_bypass',
+      'server/api/agency/banner-studio/projects/[id]/rename.patch.ts\tconst user = await requireWriteAccess(event)\tapplication_governance_bypass',
+      'server/api/agency/banner-studio/projects/[id]/thebrief-refresh.patch.ts\tconst user = await requireWriteAccess(event)\tapplication_governance_bypass',
+      'server/api/agency/banner-studio/templates/from-project.post.ts\tconst user = await requireWriteAccess(event)\tapplication_governance_bypass',
+      'server/utils/banner/brandKitAccess.ts\tif (user.permissionGroups?.includes(\'MARKETING_MANAGEMENT\')) {\tordinary_user_behavior',
+      'server/utils/banner/deleteTemplate.ts\tconst user = await requireWriteAccess(event)\tapplication_governance_bypass',
+      'server/utils/banner/deleteTemplate.ts\tawait requireRole(event, PERMISSIONS.CREATIVE)\tapplication_governance_bypass',
+      'shared/bannerTemplatePermissions.ts\tpermissionGroups?: readonly string[]\tordinary_user_behavior',
+      'shared/bannerTemplatePermissions.ts\tif (!user || !template || user.isCustomReadOnly || [\'viewer\', \'guest\'].includes(user.role)) return false\tordinary_user_behavior',
+      'shared/bannerTemplatePermissions.ts\tconst hasCreativeAccess = creativeRoles.includes(user.role) || user.permissionGroups?.includes(\'CREATIVE\') === true\tordinary_user_behavior',
+      'shared/bannerTemplatePermissions.ts\tconst isAdmin = [\'owner\', \'admin\'].includes(user.role) || user.permissionGroups?.includes(\'ADMIN\') === true\tordinary_user_behavior'
+    ] as const
+    for (const row of releasedBannerGateRows20261101) expect(inventory.rows).toContain(row)
+    expect(inventory.rows).not.toContain('server/api/agency/banner-studio/custom-templates/[id].delete.ts\tif (existing.isSystem && ![\'admin\', \'owner\'].includes(user.role)) {\tordinary_user_behavior')
+    expect(inventory.rows).not.toContain('server/api/agency/banner-studio/custom-templates/[id].delete.ts\tif (existing.createdBy !== user.id && ![\'admin\', \'owner\'].includes(user.role)) {\tordinary_user_behavior')
+    expect(inventory.rows).toHaveLength(1715)
     expect(inventory.counts).toEqual({
       identity_tenant_hard_boundary: 133,
       provider_infrastructure_availability: 222,
-      application_governance_bypass: 1609,
-      ordinary_user_behavior: 297,
+      application_governance_bypass: 1627,
+      ordinary_user_behavior: 301,
       unrelated_configuration: 431
     })
     // Removing the session KV shortcut removes four auth middleware rows:
@@ -379,7 +412,7 @@ describe('God mode gate inventory', () => {
     // to shared services. Email dispatch now reads request-bound provider config.
     // The classifier and owner bypass registrations remain unchanged; the reviewed
     // row diff is recorded in the marketing-management verification ledger.
-    expect(inventory.digest).toBe('a0aa845f0e44f8b9f3de4192174bcd800375762cc4e1638a978cefdbbecb003b')
+    expect(inventory.digest).toBe('cace1e9a913cb7e9c97c58d4eb86516c8b93f99206ed6add1b0c2fe81f971eaa')
     expect(inventory.rows).toContain(
       'app/composables/usePageStudioLauncher.ts\tconst config = useRuntimeConfig()\tunrelated_configuration'
     )
