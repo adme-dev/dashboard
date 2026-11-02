@@ -4,7 +4,7 @@
     "apps/figcraft-web/src/main.rs": "4d2724eaecc4a0fe68ba536df6868662dbe137c42af1c05d4b6fff19426542af",
     "apps/figcraft-web/src/web.rs": "e586f93cc0dfeffc37626e1976a064c9d7f56afd16a33b711116613df053dce0",
     "apps/figcraft-web/src/bridge_web.rs": "addc6fd5fcb8c8d8f67a8d1424fe513cce4486cc75bb6c161f99e495c119c3f7",
-    "crates/engine/src/cmd/edm.rs": "530a33cf1d2b5e7a7c102ec9fa257a720ef18592f54ebe5bd62728c64f2f2d47",
+    "crates/engine/src/cmd/edm.rs": "dbc49902ad077a25ee45f368ad0c96e337a4f3e69e5bd98b62c056b93346c4a1",
     "crates/engine/src/cmd/mod.rs": "81a810c46bf1e40839811672ec97f600bba7009fc87e4bd00f59421c6a198cdb",
     "crates/engine/src/lib.rs": "12893dfd9c8d9b8d72bcab2453ed9295b9c6be1da15a2e8cc70c013ffff1939a",
     "crates/ui-egui/src/lib.rs": "327ebc6f1b968dfc30e363618b53da88ea1908becd4792864c80d3fca84f7627",
@@ -16,6 +16,14 @@
     "crates/ui-egui/src/shortcuts.rs": "42cbe06f79417a35a1b627dde57e162086b9d377dec82b27fabc26b122af8552"
   },
   "engineTests": [
+    "edm_campaign_content_noop_preserves_exact_kind_and_baseline",
+    "edm_campaign_content_edit_preserves_kind_metadata_and_locks",
+    "edm_campaign_designer_noop_preserves_exact_kind_and_baseline",
+    "edm_campaign_designer_edits_and_history_preserve_kind_metadata_and_locks",
+    "edm_campaign_modes_reject_module_arbitrary_and_missing_kinds",
+    "edm_campaign_content_retains_manifest_policy_and_native_change_refusals",
+    "edm_campaign_designer_retains_lock_token_asset_and_capability_refusals",
+    "edm_campaign_designer_retains_linked_module_pins_and_locks",
     "edm_content_roundtrip_preserves_canonical_identity_and_locked_fields",
     "edm_snapshot_rejects_native_additions_and_style_changes",
     "edm_snapshot_rejects_deletions_and_unexpected_metadata",
@@ -70,7 +78,7 @@
     "edm_panel_structural_emission_matches_shared_targets_and_engine_admits_it",
     "edm_panel_field_commit_logs_only_a_changed_value"
   ],
-  "patchSha256": "b4db2b0d4e97e8440a78d952d9a67efe84a80a760411e1220995c4d9dfc102b6",
+  "patchSha256": "ae19af3b9ddd8f625e52782c9a99c2394f968fa34edcf6a7290f6dc5d76b1754",
   "relaySha256": "f433cee45f211b8fb21587626c11af07411689cfcf4878f3a958a5beec31ea7d",
   "release": "0.11.2-edm2",
   "status": "source-frozen-awaiting-linux-and-wasm"

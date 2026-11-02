@@ -137,7 +137,7 @@
 +}
 --- /dev/null
 +++ b/crates/engine/src/cmd/edm.rs
-@@ -0,0 +1,3513 @@
+@@ -0,0 +1,3725 @@
 +//! Bounded XeroFlow email handoffs on a real native document.
 +//!
 +//! The canonical document is retained verbatim. A snapshot patches only approved
@@ -437,7 +437,7 @@
 +fn validate_design(design: &Value) -> Result<BTreeSet<String>> {
 +    if design.to_string().len() > MAX_DESIGN_BYTES
 +        || design.get("schemaVersion").and_then(Value::as_u64) != Some(1)
-+        || design.get("kind").and_then(Value::as_str) != Some("template")
++        || !matches!(design.get("kind").and_then(Value::as_str), Some("template" | "campaign-draft"))
 +        || design.get("policy").and_then(|p| p.get("version")).and_then(Value::as_u64) != Some(1)
 +        || design.get("source").and_then(|s| s.get("editor")).and_then(Value::as_str) != Some("composer")
 +        || !design.get("source").and_then(|s| s.get("nativeArtifact")).is_some_and(Value::is_null)
@@ -1654,7 +1654,7 @@
 +fn validate_designer_design(design: &Value) -> Result<()> {
 +    if design.to_string().len() > MAX_DESIGN_BYTES
 +        || design.get("schemaVersion").and_then(Value::as_u64) != Some(1)
-+        || design.get("kind").and_then(Value::as_str) != Some("template")
++        || !matches!(design.get("kind").and_then(Value::as_str), Some("template" | "campaign-draft"))
 +        || design.get("policy").and_then(|p| p.get("version")).and_then(Value::as_u64) != Some(1)
 +        || !design.get("policy").and_then(|p| p.get("editableFields")).is_some_and(Value::is_array)
 +        || !design.get("source").and_then(|s| s.get("nativeArtifact")).is_some_and(Value::is_null)
@@ -2468,6 +2468,218 @@
 +#[cfg(test)]
 +mod tests {
 +    use super::*;
++
++    fn campaign_content_design() -> Value {
++        let mut input = design();
++        input["kind"] = json!("campaign-draft");
++        input["scope"]["clientId"] = json!("123e4567-e89b-42d3-a456-426614174003");
++        input["source"]["brand"] = designer_design()["source"]["brand"].clone();
++        input["policy"]["designerLocks"] = json!({"blockIds": ["image-1"], "styleFields": ["button-1.data.style.color"]});
++        input["lineage"] = json!([{"blockId": "text-1", "nodeId": "campaign-node-1", "fields": {"text": "campaign-field-1"}}]);
++        input
++    }
++
++    fn campaign_designer_design() -> Value {
++        let mut input = designer_design();
++        input["kind"] = json!("campaign-draft");
++        input["scope"]["clientId"] = json!("123e4567-e89b-42d3-a456-426614174003");
++        input["policy"]["designerLocks"] = json!({"blockIds": ["empty-image"], "styleFields": ["button-1.data.style.color"]});
++        input["lineage"] = json!([{"blockId": "text-1", "nodeId": "campaign-node-1", "fields": {"text": "campaign-field-1"}}]);
++        input
++    }
++
++    #[test]
++    fn edm_campaign_content_noop_preserves_exact_kind_and_baseline() {
++        let input = campaign_content_design();
++        let mut session = Session::new();
++        session.execute("edm_import", &json!({"design": input.clone(), "images": {"image-1": PNG}})).unwrap();
++        assert_eq!(session.ds().unwrap().edm.as_ref().unwrap().canonical, input);
++        for _ in 0..2 {
++            let snapshot = session.execute("edm_snapshot", &json!({})).unwrap();
++            assert_eq!(snapshot["kind"], "campaign-draft");
++            assert_eq!(snapshot, input);
++        }
++    }
++
++    #[test]
++    fn edm_campaign_content_edit_preserves_kind_metadata_and_locks() {
++        let input = campaign_content_design();
++        let mut expected = input.clone();
++        expected["blocks"]["text-1"]["data"]["props"]["text"] = json!("Edited campaign copy");
++        expected["blocks"]["button-1"]["data"]["props"]["url"] = json!("mailto:campaign@example.invalid");
++        let mut session = Session::new();
++        session.execute("edm_import", &json!({"design": input.clone(), "images": {"image-1": PNG}})).unwrap();
++        let text = mapped(&session, "text-1", "text");
++        let button = mapped(&session, "button-1", "button");
++        session.execute("node.set", &json!({"ids": [text], "props": {"characters": "Edited campaign copy"}})).unwrap();
++        session.execute("node.set", &json!({"ids": [button], "props": {"pluginData": {URL: "mailto:campaign@example.invalid"}}})).unwrap();
++        let snapshot = session.execute("edm_snapshot", &json!({})).unwrap();
++        assert_eq!(snapshot["kind"], "campaign-draft");
++        assert_eq!(snapshot, expected, "only the two granted fields may change; scope, brand, locks, lineage and other metadata remain exact");
++        assert_eq!(session.execute("edm_snapshot", &json!({})).unwrap(), expected);
++    }
++
++    #[test]
++    fn edm_campaign_designer_noop_preserves_exact_kind_and_baseline() {
++        let input = campaign_designer_design();
++        let mut session = Session::new();
++        import_designer_with(&mut session, input.clone(), json!({}));
++        let expected = json!({"operationId": DESIGNER_OPERATION_ID, "operations": []});
++        assert_eq!(session.execute("edm_designer_snapshot", &json!({})).unwrap(), expected);
++        assert_eq!(session.execute("edm_designer_snapshot", &json!({})).unwrap(), expected);
++        let designer = session.ds().unwrap().edm_designer.as_ref().unwrap();
++        assert_eq!(designer.baseline, input);
++        assert_eq!(designer.current, input);
++        assert_eq!(designer.current["kind"], "campaign-draft");
++    }
++
++    #[test]
++    fn edm_campaign_designer_edits_and_history_preserve_kind_metadata_and_locks() {
++        let input = campaign_designer_design();
++        let mut expected = input.clone();
++        expected["blocks"]["text-1"]["data"]["props"]["text"] = json!("Campaign {{firstName}}");
++        let content_only = expected.clone();
++        expected["blocks"]["text-1"]["data"]["style"]["color"] = json!("#123456");
++        let operations = json!([
++            {"op": "set-props", "blockId": "text-1", "props": {"text": "Campaign {{firstName}}"}},
++            {"op": "set-style", "blockId": "text-1", "style": {"color": "#123456"}}
++        ]);
++        let mut session = Session::new();
++        import_designer_with(&mut session, input.clone(), json!({}));
++        apply_designer(&mut session, operations.clone()).unwrap();
++        assert_eq!(session.execute("edm_designer_snapshot", &json!({})).unwrap(), json!({"operationId": DESIGNER_OPERATION_ID, "operations": operations.clone()}));
++        {
++            let designer = session.ds().unwrap().edm_designer.as_ref().unwrap();
++            assert_eq!(designer.baseline, input);
++            assert_eq!(designer.current, expected, "only the requested text/style fields change; canonical kind and all saved metadata remain exact");
++            assert_eq!(designer.current["kind"], "campaign-draft");
++        }
++        session.execute("edm_designer_undo", &json!({})).unwrap();
++        assert_eq!(session.ds().unwrap().edm_designer.as_ref().unwrap().current, content_only);
++        session.execute("edm_designer_undo", &json!({})).unwrap();
++        assert_eq!(session.ds().unwrap().edm_designer.as_ref().unwrap().current, input);
++        assert_eq!(session.execute("edm_designer_snapshot", &json!({})).unwrap()["operations"], json!([]));
++        for _ in 0..2 {
++            session.execute("edm_designer_redo", &json!({})).unwrap();
++        }
++        let designer = session.ds().unwrap().edm_designer.as_ref().unwrap();
++        assert_eq!(designer.baseline, input);
++        assert_eq!(designer.current, expected);
++        assert_eq!(session.execute("edm_designer_snapshot", &json!({})).unwrap(), json!({"operationId": DESIGNER_OPERATION_ID, "operations": operations}));
++    }
++
++    #[test]
++    fn edm_campaign_modes_reject_module_arbitrary_and_missing_kinds() {
++        let kinds = [Some(json!("module")), Some(json!("campaign")), Some(json!("Campaign-draft")), Some(json!("template ")), Some(json!("arbitrary")), Some(json!("")), Some(Value::Null), Some(json!(7)), Some(json!({})), None];
++        for kind in kinds {
++            let mut content = design();
++            let mut designer = designer_design();
++            for input in [&mut content, &mut designer] {
++                match &kind {
++                    Some(value) => { input["kind"] = value.clone(); }
++                    None => { input.as_object_mut().unwrap().remove("kind"); }
++                }
++            }
++            let mut content_session = Session::new();
++            let before = content_session.docs.len();
++            let error = content_session.execute("edm_import", &json!({"design": content, "images": {"image-1": PNG}})).unwrap_err();
++            assert!(matches!(&error, crate::EngineError::BadParams { cmd, msg } if cmd.as_str() == "edm_import" && msg.as_str() == "unsupported canonical handoff"), "content kind {kind:?}: {error}");
++            assert_eq!(content_session.docs.len(), before);
++            let capabilities = designer_capabilities(&designer);
++            let mut designer_session = Session::new();
++            let before = designer_session.docs.len();
++            let error = designer_session.execute("edm_designer_import", &json!({"design": designer, "images": {}, "operationId": DESIGNER_OPERATION_ID, "capabilities": capabilities})).unwrap_err();
++            assert!(matches!(&error, crate::EngineError::BadParams { cmd, msg } if cmd.as_str() == "edm_designer" && msg.as_str() == "unsupported canonical designer handoff"), "designer kind {kind:?}: {error}");
++            assert_eq!(designer_session.docs.len(), before);
++        }
++    }
++
++    #[test]
++    fn edm_campaign_content_retains_manifest_policy_and_native_change_refusals() {
++        let baseline = campaign_content_design();
++        for (field, value) in [("assets", json!([{"id": "unresolved"}])), ("dependencies", json!([{"moduleId": "unresolved"}])), ("moduleInstances", json!([{"instanceId": "unresolved"}]))] {
++            let mut input = baseline.clone();
++            input[field] = value;
++            let mut session = Session::new();
++            let before = session.docs.len();
++            let error = session.execute("edm_import", &json!({"design": input, "images": {"image-1": PNG}})).unwrap_err();
++            assert!(matches!(&error, crate::EngineError::BadParams { cmd, msg } if cmd.as_str() == "edm_import" && msg.as_str() == "unsupported canonical handoff"), "nonempty {field}: {error}");
++            assert_eq!(session.docs.len(), before, "nonempty {field} must not add a document");
++        }
++        let mut input = baseline.clone();
++        input["policy"]["editableFields"] = json!([]);
++        let mut session = Session::new();
++        session.execute("edm_import", &json!({"design": input.clone(), "images": {"image-1": PNG}})).unwrap();
++        let text = mapped(&session, "text-1", "text");
++        session.execute("node.set", &json!({"ids": [text], "props": {"characters": "Ungrantable edit"}})).unwrap();
++        let native_before_refusal = serde_json::to_value(session.doc().unwrap()).unwrap();
++        let error = session.execute("edm_snapshot", &json!({})).unwrap_err();
++        assert!(matches!(&error, crate::EngineError::BadParams { cmd, msg } if cmd.as_str() == "edm_snapshot" && msg.as_str() == "content is not editable"), "ungranted content: {error}");
++        assert_eq!(serde_json::to_value(session.doc().unwrap()).unwrap(), native_before_refusal, "a refused snapshot must retain the user's native edit");
++        assert_eq!(session.ds().unwrap().edm.as_ref().unwrap().canonical, input);
++        let mut native_change = Session::new();
++        native_change.execute("edm_import", &json!({"design": baseline.clone(), "images": {"image-1": PNG}})).unwrap();
++        let text = mapped(&native_change, "text-1", "text");
++        native_change.execute("node.set", &json!({"ids": [text], "props": {"fontSize": 80}})).unwrap();
++        let native_before_refusal = serde_json::to_value(native_change.doc().unwrap()).unwrap();
++        let error = native_change.execute("edm_snapshot", &json!({})).unwrap_err();
++        assert!(matches!(&error, crate::EngineError::BadParams { cmd, msg } if cmd.as_str() == "edm_snapshot" && msg.as_str() == "unsupported native content change"), "native fontSize change: {error}");
++        assert_eq!(serde_json::to_value(native_change.doc().unwrap()).unwrap(), native_before_refusal, "a refused snapshot must retain the native font edit");
++        assert_eq!(native_change.ds().unwrap().edm.as_ref().unwrap().canonical, baseline);
++    }
++
++    #[test]
++    fn edm_campaign_designer_retains_lock_token_asset_and_capability_refusals() {
++        let mut input = campaign_designer_design();
++        input["policy"]["designerLocks"] = json!({"blockIds": ["button-1"], "styleFields": ["text-1.data.style.color"]});
++        for (operation, expected_error) in [
++            (json!({"op": "set-props", "blockId": "button-1", "props": {"text": "Locked"}}), "block is locked"),
++            (json!({"op": "set-style", "blockId": "text-1", "style": {"color": "#123456"}}), "style field is locked"),
++            (json!({"op": "set-props", "blockId": "text-1", "props": {"text": "Missing merge token"}}), "merge tokens must be preserved"),
++            (json!({"op": "set-props", "blockId": "empty-image", "props": {"url": "https://example.invalid/new.png"}}), "new image assets require server-owned selection"),
++        ] {
++            let mut session = Session::new();
++            import_designer_with(&mut session, input.clone(), json!({}));
++            let native = serde_json::to_value(session.doc().unwrap()).unwrap();
++            let error = apply_designer(&mut session, json!([operation.clone()])).unwrap_err();
++            assert!(matches!(&error, crate::EngineError::BadParams { cmd, msg } if cmd.as_str() == "edm_designer" && msg.as_str() == expected_error), "operation {operation}: {error}");
++            assert_eq!(session.ds().unwrap().edm_designer.as_ref().unwrap().baseline, input);
++            assert_eq!(session.ds().unwrap().edm_designer.as_ref().unwrap().current, input);
++            assert!(session.ds().unwrap().edm_designer.as_ref().unwrap().redo_operations.is_empty());
++            assert_eq!(serde_json::to_value(session.doc().unwrap()).unwrap(), native);
++            assert_eq!(session.execute("edm_designer_snapshot", &json!({})).unwrap()["operations"], json!([]));
++        }
++        let mut capabilities = designer_capabilities(&input);
++        let locked = capabilities["blocks"].as_array_mut().unwrap().iter_mut().find(|block| block["blockId"] == "button-1").unwrap();
++        locked["editable"] = json!(true);
++        let mut session = Session::new();
++        let before = session.docs.len();
++        let error = session.execute("edm_designer_import", &json!({"design": input, "images": {}, "operationId": DESIGNER_OPERATION_ID, "capabilities": capabilities})).unwrap_err();
++        assert!(matches!(&error, crate::EngineError::BadParams { cmd, msg } if cmd.as_str() == "edm_designer" && msg.as_str() == "capability block mismatch"), "forged editable capability: {error}");
++        assert_eq!(session.docs.len(), before);
++    }
++
++    #[test]
++    fn edm_campaign_designer_retains_linked_module_pins_and_locks() {
++        let mut input = shared_vector_design();
++        input["kind"] = json!("campaign-draft");
++        input["scope"]["clientId"] = json!("123e4567-e89b-42d3-a456-426614174003");
++        for operation in [
++            json!({"op": "set-props", "blockId": "module-text", "props": {"text": "Changed linked module"}}),
++            json!({"op": "remove-section", "blockId": "module"}),
++        ] {
++            let mut session = Session::new();
++            import_designer_with(&mut session, input.clone(), json!({}));
++            let native_before_refusal = serde_json::to_value(session.doc().unwrap()).unwrap();
++            let error = apply_designer(&mut session, json!([operation.clone()])).unwrap_err();
++            assert!(matches!(&error, crate::EngineError::BadParams { cmd, msg } if cmd.as_str() == "edm_designer" && msg.as_str() == "block is locked"), "linked operation {operation}: {error}");
++            assert_eq!(session.ds().unwrap().edm_designer.as_ref().unwrap().baseline, input);
++            assert_eq!(session.ds().unwrap().edm_designer.as_ref().unwrap().current, input);
++            assert_eq!(serde_json::to_value(session.doc().unwrap()).unwrap(), native_before_refusal);
++            assert!(session.ds().unwrap().edm_designer.as_ref().unwrap().redo_operations.is_empty());
++            assert_eq!(session.execute("edm_designer_snapshot", &json!({})).unwrap()["operations"], json!([]));
++        }
++    }
 +
 +    const PNG: &str = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
 +    const PNG_ALT: &str = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgZGJmAQAAGQAL51pGpAAAAABJRU5ErkJggg==";

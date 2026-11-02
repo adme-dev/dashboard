@@ -108,6 +108,14 @@ PY
 import re,sys
 from pathlib import Path
 expected = {
+    'edm_campaign_content_noop_preserves_exact_kind_and_baseline',
+    'edm_campaign_content_edit_preserves_kind_metadata_and_locks',
+    'edm_campaign_designer_noop_preserves_exact_kind_and_baseline',
+    'edm_campaign_designer_edits_and_history_preserve_kind_metadata_and_locks',
+    'edm_campaign_modes_reject_module_arbitrary_and_missing_kinds',
+    'edm_campaign_content_retains_manifest_policy_and_native_change_refusals',
+    'edm_campaign_designer_retains_lock_token_asset_and_capability_refusals',
+    'edm_campaign_designer_retains_linked_module_pins_and_locks',
     'edm_content_roundtrip_preserves_canonical_identity_and_locked_fields',
     'edm_snapshot_rejects_native_additions_and_style_changes',
     'edm_snapshot_rejects_deletions_and_unexpected_metadata',
@@ -143,7 +151,7 @@ expected = {
 }
 matched = re.findall(r'^test (?:cmd::edm::tests::)?(edm_[A-Za-z0-9_]+) \.\.\. ok$', Path(sys.argv[1]).read_text(), re.M)
 if len(matched) != len(expected) or set(matched) != expected:
-    raise SystemExit(f'Expected exactly 32 passing EDM tests; matched {len(matched)}: {matched}')
+    raise SystemExit(f'Expected exactly 40 passing EDM tests; matched {len(matched)}: {matched}')
 PY
   cargo test --locked -p figcraft-engine --lib browser_export_bound > "$evidence/test-browser-export-bound.log" 2>&1
   cargo test --locked -p figcraft-format --lib zip_files > "$evidence/test-zip-files.log" 2>&1

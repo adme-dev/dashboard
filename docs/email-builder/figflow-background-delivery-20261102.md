@@ -943,3 +943,66 @@ open. Freshly fetched origin/main052eefaf9 is an ancestor. This is implementatio
 and local verification, not merge/deployment/activation. Remaining08b slice5 is
 owner-aware campaign handoff/UI/recovery, followed by40/9/8 native CI and actual
 two-campaign runtime. No real email was sent.
+
+## 3 November — next-slice dispatch and independent native review
+
+Pushedc22a8b2295f4120b6c4bbb39c1fa93c318c420ea includes backend0bd plus the
+repaired exact-head fixture and current local acceptance report. PR827 remains
+draft; no expanded authoring deployment. ctx_16d42df69286 implements approved
+campaign UI/handoff/recovery slice5, ctx_314996cb2585 monitors exactc22 CI/budgets,
+and Opus ctx_d9bb69088656 has settled its independent native source review.
+
+Native review report `.verification/native-campaign-independent-review-20261103.md`
+confirms exact two production guards, original32 tests unchanged plus8 new tests,
+no candidate drift, and no P0/P1 in that source scope. P2s are the expected32→40
+CI name/pin integration, weaker is_err-only refusal assertions, and absent
+campaign-kind bridge/WASM execution. Parent independently read the full report
+and verified the generator still asserts32. No Rust build has run;40/9/8 Linux
+CI, matching package and campaign actual-WASM remain acceptance gates. Preserve
+the reviewed isolated candidate and its hashes when refining test assertions.
+
+## 3 November — refined native refusal tests and tracked integration preparation
+
+ctx_fea8e0baa103 refined only four of eight campaign test bodies in a NEW isolated
+copy. Refusals now assert exact BadParams command/message and justified preserved
+native/canonical/log state; four success/history tests and original32 bodies/order
+remain unchanged. Parent read the complete diff, tests and source-error provenance.
+Refined engine SHAdbc49902ad077a25ee45f368ad0c96e337a4f3e69e5bd98b62c056b93346c4a1;
+source-only report `native-campaign-admission-refinement-20261103.md`.
+
+Parent copied the accepted work tree to a new integration folder rather than
+changing it, selected refined engine bytes, and regenerated tracked patch/pins,
+CI exact-name sets and source evidence. Current patch
+ae19af3b9ddd8f625e52782c9a99c2394f968fa34edcf6a7290f6dc5d76b1754 has14 native files;
+source counts40 engine/9 bridge/8 UI. Workflow inline static validation, shell
+syntax, exact name-set equality, all patch hashes, Cargo.lock equality and patch
+dry-run pass. Actual relay21/21 passes, zero skips. Parent independently rehashed
+all1042 accepted work files and8 original candidate files unchanged. Receipt:
+`.verification/figflow-native-campaign-source-20261103/integration-checks.json`.
+These tracked changes are UNCOMMITTED/UNCOMPILED pending independent integration
+review; no native tests/package/runtime pass is implied. No native release or
+shared gateway change.
+
+UI worker status reports owner-aware campaign start/lookup/project/Apply/recovery
+and composer/template selection integration, with an initial10/10 real-PG run.
+The worker explicitly has not frozen/completed its source: behavioral edge tests,
+types and regression checks remain in progress. This status is not campaign
+actual-WASM/hosted acceptance or permission to stage its dirty work.
+
+Independent Opus follow-up ctx_f25e5539f184 settled: no P0/P1 in refined native
+source or five-file integration. Exact error provenance/ordering and unchanged
+state assertions are verified; prior P2 CI-count and weak-refusal findings are
+resolved in source. Report:
+`.verification/native-campaign-integration-independent-20261103.md`. Parent
+rehashed all five final files against the integration receipt before staging.
+Linux40/9/8, new matching package and real campaign WASM remain open. The reused
+edm2 artifact label is never authority by itself: the new package must bind patch
+ae19af3b, engine dbc49902 and its own CI receipt; preserve frozen9f/edm2 bytes
+and shared hostededm1. Any future hosted publication must avoid overwriting a
+frozen version path and record a unique immutable artifact target.
+
+Currentc22 general41478150698/native41478150476 are both still in progress.
+Parent stages the reviewed native checkpoint locally, excluding all concurrent
+UI/server/test edits and historical08a harness adaptations. Do not push yet and
+cancel the active general CI before its new backend size check settles. This
+source-only checkpoint activates/deploys nothing.
