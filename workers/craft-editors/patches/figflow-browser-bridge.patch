@@ -137,7 +137,7 @@
 +}
 --- /dev/null
 +++ b/crates/engine/src/cmd/edm.rs
-@@ -0,0 +1,3434 @@
+@@ -0,0 +1,3513 @@
 +//! Bounded XeroFlow email handoffs on a real native document.
 +//!
 +//! The canonical document is retained verbatim. A snapshot patches only approved
@@ -1827,6 +1827,31 @@
 +    Ok(json!({"operationId": designer.operation_id, "operations": designer.operations}))
 +}
 +
++/// Read-only, checked against the actual native selection and canonical log.
++fn designer_context(s: &mut Session) -> Result<Value> {
++    let snapshot = designer_snapshot(s)?;
++    let ds = s.ds()?;
++    let designer = ds.edm_designer.as_ref().ok_or_else(|| designer_bad("designer handoff missing"))?;
++    let mut selected = BTreeSet::new();
++    for node_id in &ds.selection {
++        let node = ds.doc.node(*node_id).ok_or_else(|| designer_bad("selection missing"))?;
++        let block_id = node.plugin_data.get(BLOCK_ID).ok_or_else(|| designer_bad("unmapped selection"))?;
++        if designer.block(block_id).is_none() { return Err(designer_bad("unmapped selection")); }
++        selected.insert(block_id.clone());
++    }
++    let selected: Vec<String> = selected.into_iter().collect();
++    let mut result = snapshot;
++    result["selectedBlockIds"] = json!(selected);
++    if selected.len() == 1 {
++        if let Some(target) = designer.insertion_target(Some(&selected[0])) {
++            let mut value = json!({"parentId": target.parent_id, "index": target.index});
++            if let Some(column) = target.column_index { value["columnIndex"] = json!(column); }
++            result["insertionTarget"] = value;
++        }
++    }
++    Ok(result)
++}
++
 +fn designer_child_ids_at(block: &Value, column_index: Option<usize>) -> Result<Vec<String>> {
 +    if let Some(column_index) = column_index {
 +        let column = prop(block, "columns").and_then(Value::as_array).and_then(|columns| columns.get(column_index)).ok_or_else(|| designer_bad("column index missing"))?;
@@ -2432,6 +2457,7 @@
 +        spec!("edm_snapshot", "Snapshot XeroFlow email", "{images?}", true, |s, p| snapshot(s, p)),
 +        spec!("edm_designer_import", "Import XeroFlow email designer", "{design, images, operationId, capabilities}", false, |s, p| designer_import(s, p)),
 +        spec!("edm_designer_apply", "Apply bounded email designer operations", "{operations}", false, |s, p| designer_apply(s, p)),
++        spec!("edm_designer_context", "Read canonical email selection and operation context", "{}", false, |s, _| designer_context(s)),
 +        spec!("edm_designer_snapshot", "Snapshot XeroFlow email designer operations", "{}", false, |s, _| designer_snapshot(s)),
 +        spec!("edm_designer_undo", "Undo canonical email designer operation", "{}", false, |s, p| designer_history(s, p, false)),
 +        spec!("edm_designer_redo", "Redo canonical email designer operation", "{}", false, |s, p| designer_history(s, p, true)),
@@ -2786,6 +2812,59 @@
 +
 +    fn apply_designer(session: &mut Session, operations: Value) -> Result<Value> {
 +        session.execute("edm_designer_apply", &json!({"operations": operations}))
++    }
++
++    #[test]
++    fn edm_designer_context_maps_selection_without_saving_or_inventing_target() {
++        let mut session = Session::new();
++        import_designer(&mut session);
++        let before = session.execute("edm_designer_snapshot", &json!({})).unwrap();
++        let empty = session.execute("edm_designer_context", &json!({})).unwrap();
++        assert_eq!(empty["selectedBlockIds"], json!([]));
++        assert!(empty.get("insertionTarget").is_none());
++        let node = mapped(&session, "text-1", "text");
++        session.ds_mut().unwrap().selection = vec![node];
++        let context = session.execute("edm_designer_context", &json!({})).unwrap();
++        assert_eq!(context["selectedBlockIds"], json!(["text-1"]));
++        assert_eq!(context["insertionTarget"]["parentId"], "root");
++        assert!(context["insertionTarget"].get("columnIndex").is_none());
++        assert_eq!(session.execute("edm_designer_snapshot", &json!({})).unwrap(), before);
++        let mut nested = designer_design();
++        nested["blocks"]["root"]["data"]["childrenIds"] = json!(["cols", "button-1", "empty-image"]);
++        nested["blocks"]["cols"] = json!({"type": "ColumnsContainer", "data": {"props": {"columnsCount": 2, "columns": [{"childrenIds": ["text-1"]}, {"childrenIds": []}]}}});
++        let mut nested_session = Session::new();
++        import_designer_with(&mut nested_session, nested, json!({}));
++        let before = nested_session.execute("edm_designer_snapshot", &json!({})).unwrap();
++        let node = mapped(&nested_session, "text-1", "text");
++        nested_session.ds_mut().unwrap().selection = vec![node];
++        let context = nested_session.execute("edm_designer_context", &json!({})).unwrap();
++        assert_eq!(context["selectedBlockIds"], json!(["text-1"]));
++        assert_eq!(context["insertionTarget"], json!({"parentId": "cols", "columnIndex": 0, "index": 1}));
++        assert_eq!(nested_session.execute("edm_designer_snapshot", &json!({})).unwrap(), before);
++    }
++
++    #[test]
++    fn edm_designer_context_rejects_unmapped_and_unlogged_selection() {
++        let mut session = Session::new();
++        import_designer(&mut session);
++        let page = session.page().unwrap();
++        session.ds_mut().unwrap().selection = vec![page];
++        assert!(session.execute("edm_designer_context", &json!({})).unwrap_err().to_string().contains("unmapped selection"));
++        let node = mapped(&session, "text-1", "text");
++        session.ds_mut().unwrap().selection = vec![node];
++        session.execute("node.set", &json!({"ids": [node], "props": {"fontSize": 80}})).unwrap();
++        assert!(session.execute("edm_designer_context", &json!({})).unwrap_err().to_string().contains("unsupported native change"));
++        let mut deleted = Session::new();
++        import_designer(&mut deleted);
++        // Remove the last block so deterministic rebuild IDs cannot recycle
++        // the stale selection into a different surviving block.
++        let node = mapped(&deleted, "empty-image", "compound.text");
++        apply_designer(&mut deleted, json!([{"op": "remove-section", "blockId": "empty-image"}])).unwrap();
++        assert!(deleted.doc().unwrap().node(node).is_none());
++        let before = deleted.execute("edm_designer_snapshot", &json!({})).unwrap();
++        deleted.ds_mut().unwrap().selection = vec![node];
++        assert!(deleted.execute("edm_designer_context", &json!({})).unwrap_err().to_string().contains("selection missing"));
++        assert_eq!(deleted.execute("edm_designer_snapshot", &json!({})).unwrap(), before);
 +    }
 +
 +    #[test]
@@ -3651,7 +3730,7 @@
  pub mod font_preview;
 --- /dev/null
 +++ b/crates/ui-egui/src/browser_bridge.rs
-@@ -0,0 +1,386 @@
+@@ -0,0 +1,399 @@
 +//! Narrow browser automation, independent of MCP transport and remote authority.
 +//! The browser shell calls this on the real UI session at a frame boundary.
 +use std::collections::BTreeMap;
@@ -3777,7 +3856,7 @@
 +        let Some(action) = request.get("action").and_then(Value::as_str) else {
 +            return error("invalid_request");
 +        };
-+        let edm = matches!(action, "edm_import" | "edm_snapshot" | "edm_designer_import" | "edm_designer_snapshot");
++        let edm = matches!(action, "edm_import" | "edm_snapshot" | "edm_designer_import" | "edm_designer_snapshot" | "edm_designer_context");
 +        let canonical = request.to_string();
 +        if let Some((old, result)) = self.completed.get(&id) {
 +            return if old == &canonical || (edm && old.len() == 64 && old == &figcraft_format::image_hash(canonical.as_bytes())) {
@@ -3790,7 +3869,7 @@
 +            return error("request_too_large");
 +        }
 +        let mutation = matches!(action, "create_node" | "update_node" | "edm_import" | "edm_snapshot" | "edm_designer_import" | "edm_designer_snapshot");
-+        if !["status", "inspect", "get_node", "create_node", "update_node", "edm_import", "edm_required_snapshot_images", "edm_snapshot", "edm_designer_import", "edm_designer_snapshot"].contains(&action) {
++        if !["status", "inspect", "get_node", "create_node", "update_node", "edm_import", "edm_required_snapshot_images", "edm_snapshot", "edm_designer_import", "edm_designer_snapshot", "edm_designer_context"].contains(&action) {
 +            return error("unsupported_action");
 +        }
 +        let p = request.get("params").cloned().unwrap_or_else(|| json!({}));
@@ -3808,10 +3887,10 @@
 +        {
 +            return error("document_conflict");
 +        }
-+        if mutation && request.get("expectedRevision").and_then(decimal) != Some(before) {
++        if (mutation || action == "edm_designer_context") && request.get("expectedRevision").and_then(decimal) != Some(before) {
 +            return error("revision_conflict");
 +        }
-+        if mutation && (ds.interaction.is_some() || ds.text_edit.is_some()) {
++        if (mutation || action == "edm_designer_context") && (ds.interaction.is_some() || ds.text_edit.is_some()) {
 +            return error("editor_busy");
 +        }
 +        let request_retained = if edm { 64 } else { canonical.len() };
@@ -3824,7 +3903,7 @@
 +        }
 +        let result = match action {
 +            "status" if keys(&p, &[]) => Ok(
-+                json!({"currentPage": ds.page.0.to_string(), "dirty": ds.is_dirty(), "supportedActions": ["inspect", "get_node", "create_node", "update_node", "edm_import", "edm_required_snapshot_images", "edm_snapshot", "edm_designer_import", "edm_designer_snapshot"], "exports": false}),
++                json!({"currentPage": ds.page.0.to_string(), "dirty": ds.is_dirty(), "supportedActions": ["inspect", "get_node", "create_node", "update_node", "edm_import", "edm_required_snapshot_images", "edm_snapshot", "edm_designer_import", "edm_designer_snapshot", "edm_designer_context"], "exports": false}),
 +            ),
 +            "inspect" if keys(&p, &["depth"]) => {
 +                let depth = match p.get("depth") {
@@ -3864,6 +3943,7 @@
 +            "edm_required_snapshot_images" if keys(&p, &[]) => figcraft_engine::cmd::edm::required_snapshot_images(session).map(|images| json!({"images": images})).map_err(|_| "engine_refused"),
 +            "edm_snapshot" if keys(&p, &["images"]) => session.execute("edm_snapshot", &p).map_err(|_| "engine_refused"),
 +            "edm_designer_import" if keys(&p, &["design", "images", "operationId", "capabilities"]) => session.execute("edm_designer_import", &p).map_err(|_| "engine_refused"),
++            "edm_designer_context" if keys(&p, &[]) => session.execute("edm_designer_context", &p).map_err(|_| "engine_refused"),
 +            "edm_designer_snapshot" if keys(&p, &[]) => session.execute("edm_designer_snapshot", &p).map_err(|_| "engine_refused"),
 +            _ => Err("invalid_params"),
 +        };
@@ -3979,6 +4059,18 @@
 +        assert_eq!(value["currentPage"], "42");
 +        assert!(value["nested"].get("path").is_none());
 +    }
++    #[test]
++    fn browser_bridge_designer_context_requires_exact_revision_and_empty_params() {
++        let (mut bridge, mut session, status) = setup();
++        assert!(status["result"]["supportedActions"].as_array().unwrap().contains(&json!("edm_designer_context")));
++        let mut request = json!({"requestId":"context-0001", "action":"edm_designer_context", "instanceId":status["instanceId"], "documentId":status["documentId"], "params":{}});
++        assert_eq!(parse(bridge.execute(&mut session, &request.to_string()))["error"]["code"], "revision_conflict");
++        request["expectedRevision"] = status["revision"].clone();
++        request["params"] = json!({"action":"node.delete"});
++        assert_eq!(parse(bridge.execute(&mut session, &request.to_string()))["error"]["code"], "invalid_params");
++        assert!(bridge.completed.is_empty());
++    }
++
 +    #[test]
 +    fn browser_bridge_status_and_inspect_strip_paths() {
 +        let (mut b, mut s, status) = setup();

@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { snapshotRenderInput, RenderBoundaryError } from './bounds'
 import { designChildIds, DESIGN_LIMITS, EmailDesignError, validateEmailDesign, type EmailDesignDocument } from './designContract'
 import { designStructureLocked } from './designBrand'
+import { applyDesignerOperations, assertLibraryImageReplaceable } from './designDesigner'
 
 const Uuid = z.string().uuid()
 const Id = z.string().min(1).max(128).regex(/^[A-Za-z0-9_-]+$/)
@@ -17,11 +18,32 @@ const Request = z.discriminatedUnion('command', [
   z.object({ command: z.literal('insert-module'), ...identity, ...source, ...Pin, ...target }).strict(),
   z.object({ command: z.literal('update-module-instance'), ...identity, ...source, instanceId: Id, revisionId: Uuid, overrides: z.enum(['preserve', 'discard']) }).strict(),
   z.object({ command: z.literal('detach-module-instance'), ...identity, ...source, instanceId: Id }).strict(),
-  z.object({ command: z.literal('insert-published-image'), ...identity, ...source, assetId: Uuid, ...target }).strict()
+  z.object({ command: z.literal('insert-published-image'), ...identity, ...source, assetId: Uuid, ...target }).strict(),
+  z.object({ command: z.literal('replace-published-image'), ...identity, ...source, assetId: Uuid, blockId: Id }).strict()
 ])
 export type DesignModuleRequest = z.infer<typeof Request>
 export type ModulePublicationRequest = Extract<DesignModuleRequest, { command: 'publish-module' | 'revise-module' }>
-export type ModuleInstanceRequest = Exclude<DesignModuleRequest, ModulePublicationRequest | { command: 'insert-published-image' }>
+export type ModuleInstanceRequest = Exclude<DesignModuleRequest, ModulePublicationRequest | { command: 'insert-published-image' | 'replace-published-image' }>
+
+const NativeContext = z.object({
+  operationId: Uuid, operations: z.array(z.unknown()).max(300),
+  selectedBlockIds: z.array(Id).max(300), insertionTarget: z.object(target).strict().optional()
+}).strict()
+export type NativeLibraryContext = z.infer<typeof NativeContext>
+/** Native selection is a bounded hint, never authority. Validate it against the
+ * exact canonical operation log before exposing publication or insertion UI. */
+export function parseNativeLibraryContext(base: unknown, input: unknown, operationId: string): NativeLibraryContext {
+  const context = NativeContext.parse(snapshotRenderInput(input, DESIGN_LIMITS.documentBytes))
+  if (context.operationId !== operationId || new Set(context.selectedBlockIds).size !== context.selectedBlockIds.length) throw new EmailDesignError('INVALID_DESIGN')
+  const design = applyDesignerOperations(base, context.operations, operationId)
+  if (context.selectedBlockIds.some(id => !Object.hasOwn(design.blocks, id))) throw new EmailDesignError('INVALID_DESIGN')
+  context.selectedBlockIds = orderedDesignSelection(design, context.selectedBlockIds)
+  if (context.insertionTarget) {
+    const list = insertionList(design, context.insertionTarget.parentId, context.insertionTarget.columnIndex)
+    if (context.insertionTarget.index > list.length) throw new EmailDesignError('INVALID_DESIGN', 'index')
+  }
+  return context
+}
 export function parseDesignModuleRequest(input: unknown): DesignModuleRequest {
   try {
     return Request.parse(snapshotRenderInput(input, DESIGN_LIMITS.documentBytes))
@@ -55,6 +77,20 @@ export function subtreeIds(design: EmailDesignDocument, roots: string[]): Set<st
   }
   return ids
 }
+/** Native multi-selection is unordered. Publication follows canonical reading
+ * order; overlapping ancestor/descendant selections are explicitly refused. */
+function orderedDesignSelection(design: EmailDesignDocument, roots: string[]): string[] {
+  subtreeIds(design, roots)
+  const selected = new Set(roots)
+  const ordered: string[] = []
+  const visit = (id: string) => {
+    if (selected.has(id)) ordered.push(id)
+    for (const child of designChildIds(design.blocks[id])) visit(child)
+  }
+  for (const root of design.rootChildrenIds) visit(root)
+  if (ordered.length !== roots.length) throw new DesignModuleError('CLOSED_SELECTION_REQUIRED')
+  return ordered
+}
 export type ModuleRecord = { moduleId: string, revisionId: string, design: EmailDesignDocument }
 export function refreshModuleDependencies(design: EmailDesignDocument, records: ModuleRecord[]): void {
   const pins = new Map<string, { moduleId: string, revisionId: string }>()
@@ -69,7 +105,7 @@ export function refreshModuleDependencies(design: EmailDesignDocument, records: 
  * Asset descriptors are deliberately supplied by the server, never the caller. */
 export function extractDesignModule(input: unknown, roots: string[] | undefined, records: ModuleRecord[], includedOverridePaths: string[]): EmailDesignDocument {
   const design = validateEmailDesign(input)
-  const selected = roots ?? designChildIds(design.blocks.root!)
+  const selected = orderedDesignSelection(design, roots ?? designChildIds(design.blocks.root!))
   const ids = subtreeIds(design, selected)
   if (!selected.length || ids.has('root')) throw new DesignModuleError('CLOSED_SELECTION_REQUIRED')
   const instances = design.moduleInstances.filter((instance) => {
@@ -153,6 +189,19 @@ export function insertDesignImage(input: unknown, asset: EmailDesignDocument['as
   if (!previous) design.assets.push(asset)
   list.splice(target.index, 0, id)
   design.source.nativeArtifact = null
+  return validateEmailDesign(design)
+}
+/** The server supplies both descriptor and URL after registered-byte checks.
+ * Replacement keeps identity/content/layout, and retains referenced old assets. */
+export function replaceDesignImage(input: unknown, asset: EmailDesignDocument['assets'][number], url: string, blockId: string, verifiedLibraryUrl = false): EmailDesignDocument {
+  const design = validateEmailDesign(input)
+  const block = design.blocks[blockId]
+  assertLibraryImageReplaceable(design, blockId, verifiedLibraryUrl)
+  if (design.moduleInstances.some(instance => subtreeIds(design, instance.rootBlockIds).has(blockId))) throw new EmailDesignError('EDIT_FORBIDDEN', blockId)
+  const previous = design.assets.find(a => a.id === asset.id)
+  if (previous && stableDesignJson(previous) !== stableDesignJson(asset)) throw new DesignModuleError('ASSET_NOT_READY')
+  if (!previous) design.assets.push(asset)
+  block.data.props = { ...block.data.props, url }
   return validateEmailDesign(design)
 }
 export function applyModuleInstance(input: unknown, request: ModuleInstanceRequest, records: ModuleRecord[]): EmailDesignDocument {

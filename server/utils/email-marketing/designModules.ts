@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { transactionWithoutRetry } from '~~/server/utils/db'
 import { validateEmailDesign, type EmailDesignDocument } from '../../../shared/emailRendering/designContract'
 import { designToRendererDocument } from '../../../shared/emailRendering/designAdapter'
-import { applyModuleInstance, DesignModuleError, designDigest, extractDesignModule, insertDesignImage, parseDesignModuleRequest, moduleLocalOverrides, type ModuleRecord, stableDesignJson } from '../../../shared/emailRendering/designModules'
+import { applyModuleInstance, DesignModuleError, designDigest, extractDesignModule, insertDesignImage, replaceDesignImage, parseDesignModuleRequest, moduleLocalOverrides, type ModuleRecord, stableDesignJson } from '../../../shared/emailRendering/designModules'
 import type { EmailRendererClient } from '../../../shared/emailRendering/contract'
 import { ensureLegacyDesignDocument, type DesignDb, type DesignTransaction } from './designRevisions'
 import { getTemplateDesignDraft } from './designReads'
@@ -59,6 +59,44 @@ export async function renderDraft(renderer: EmailRendererClient, design: EmailDe
   } finally {
     clearTimeout(timer)
   }
+}
+/** Prove the narrow alt-only library exception from an immutable insertion
+ * receipt, not an ID shape, valid URL or asset membership alone. */
+async function hasLibraryImageInsertion(design: EmailDesignDocument, documentId: string, blockId: string, db: DesignDb, authority: ModuleAuthority, storage: DesignAssetStorage): Promise<boolean> {
+  const operationId = /^img_([0-9a-f-]{36})$/i.exec(blockId)?.[1]
+  if (!operationId || !z.string().uuid().safeParse(operationId).success) return false
+  const lineage = { blockId, nodeId: `imgn_${operationId}`, fields: { alt: `imgf_${operationId}` } }
+  if (stableDesignJson(design.lineage.find(item => item.blockId === blockId) ?? null) !== stableDesignJson(lineage)) return false
+  const rows = (await db.query(`SELECT r.payload,r.parent_revision_id,c.payload_sha256 FROM email_design_revision_receipts c
+    JOIN email_design_revisions r ON r.id=c.revision_id AND r.document_id=c.document_id
+    WHERE c.document_id=$1 AND c.operation_id=$2`, [documentId, operationId])).rows as Array<{ payload: unknown, parent_revision_id: string, payload_sha256: string }>
+  for (const row of rows) {
+    const original = validateEmailDesign(row.payload)
+    if (original.scope.clientId !== design.scope.clientId || stableDesignJson(original.lineage.find(item => item.blockId === blockId) ?? null) !== stableDesignJson(lineage)) continue
+    const originalUrl = original.blocks[blockId]?.data.props?.url
+    if (typeof originalUrl !== 'string' || original.blocks[blockId]?.type !== 'Image') continue
+    const originalAssetId = await storage.identifyUrl(originalUrl)
+    if (!originalAssetId) continue
+    const published = await readPublishedEmailAsset(originalAssetId, design.scope.clientId, db, authority.read, storage)
+    if (published.url !== originalUrl || !original.assets.some(asset => stableDesignJson(asset) === stableDesignJson(published.asset))) continue
+    for (const [parentId, block] of Object.entries(original.blocks)) {
+      const lists = block.type === 'ColumnsContainer'
+        ? ((block.data.props?.columns ?? []) as { childrenIds?: string[] }[]).map((column, columnIndex) => ({ ids: column.childrenIds ?? [], columnIndex }))
+        : [{ ids: block.data.childrenIds ?? [], columnIndex: undefined }]
+      for (const { ids, columnIndex } of lists) {
+        const index = ids.indexOf(blockId)
+        if (index < 0) continue
+        const request = { version: 1, command: 'insert-published-image', operationId, draftId: documentId, expectedDraftRevisionId: row.parent_revision_id, assetId: originalAssetId, parentId, index, ...(columnIndex !== undefined ? { columnIndex } : {}) }
+        if (await designDigest({ boundary: 'email-modules-v1', request }) !== row.payload_sha256) continue
+        const currentUrl = design.blocks[blockId]?.data.props?.url
+        const currentAssetId = typeof currentUrl === 'string' ? await storage.identifyUrl(currentUrl) : null
+        if (!currentAssetId) return false
+        const current = await readPublishedEmailAsset(currentAssetId, design.scope.clientId, db, authority.read, storage)
+        return current.url === currentUrl && design.assets.some(asset => stableDesignJson(asset) === stableDesignJson(current.asset))
+      }
+    }
+  }
+  return false
 }
 /** No automatic retry. Reconcile an uncertain acknowledgement by submitting the
  * SAME request/operationId. Its receipt is committed with the one canonical head. */
@@ -140,10 +178,15 @@ export async function executeDesignModules(input: unknown, authority: ModuleAuth
       revisionId = await appendModuleOrDraft(db, documentId, baseline, result, authority.actorId)
       await db.query('UPDATE edm_custom_modules SET name=$2,description=$3,category=$4,preview_tone=$5,blocks=$6::jsonb,updated_at=NOW() WHERE id=$1', [moduleId, request.name, request.description, request.category, request.previewTone, JSON.stringify({ blocks: result.blocks, rootChildrenIds: result.rootChildrenIds })])
     } else {
-      if (request.command === 'insert-published-image') {
+      if (request.command === 'insert-published-image' || request.command === 'replace-published-image') {
         if (!storage) throw new DesignModuleError('ASSET_STORAGE_UNAVAILABLE')
         const verified = await readPublishedEmailAsset(request.assetId, current.scope.clientId, db, authority.read, storage)
-        result = insertDesignImage(current, verified.asset, verified.url, request.operationId, request)
+        result = request.command === 'insert-published-image'
+          ? insertDesignImage(current, verified.asset, verified.url, request.operationId, request)
+          : replaceDesignImage(current, verified.asset, verified.url, request.blockId,
+              current.policy.editableFields.includes(`${request.blockId}.data.props.url`)
+                ? false
+                : await hasLibraryImageInsertion(current, request.draftId, request.blockId, db, authority, storage))
       } else {
         if (request.command !== 'detach-module-instance') {
           const id = request.command === 'insert-module' ? request.moduleId : current.moduleInstances.find(i => i.instanceId === request.instanceId)?.moduleId

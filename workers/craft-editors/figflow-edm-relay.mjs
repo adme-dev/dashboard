@@ -502,11 +502,24 @@ export function createEdmRelay(bridge, parent, options = {}) {
     }
   }
 
+  async function onContext(message) {
+    if (!handoffId || message.channel !== boundChannel || authoringMode !== 'designer' || unresolvedImport || unresolvedSnapshot || message.payload !== undefined) throw relayError('rejected')
+    const original = { ...binding }
+    if (!supported(await call('status', {}), 'edm_designer_context') || binding.instanceId !== original.instanceId || binding.documentId !== original.documentId) throw relayError('native_refused')
+    const context = await call('edm_designer_context', {})
+    if (!context || context.operationId !== designerOperationId || !Array.isArray(context.operations) || context.operations.length > 300
+      || !Array.isArray(context.selectedBlockIds) || context.selectedBlockIds.length > 300
+      || context.selectedBlockIds.some(id => typeof id !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(id))
+      || Object.keys(context).some(key => !['operationId', 'operations', 'selectedBlockIds', 'insertionTarget'].includes(key))
+      || byteLength(context) > MAX_DESIGN_BYTES) throw relayError('native_refused')
+    reply(message, 'context', context)
+  }
+
   async function handleMessage(event) {
     if (!event || event.origin !== PARENT_ORIGIN || event.source !== parent) return
     const message = event.data
     if (!message || message.protocol !== PROTOCOL || typeof message.channel !== 'string' || typeof message.requestId !== 'string') return
-    if (message.type !== 'connect' && message.type !== 'snapshot') return
+    if (message.type !== 'connect' && message.type !== 'snapshot' && message.type !== 'context') return
     if (boundChannel && message.channel !== boundChannel) {
       reply(message, 'error', { code: 'rejected' })
       return
@@ -520,6 +533,8 @@ export function createEdmRelay(bridge, parent, options = {}) {
       if (message.type === 'connect') {
         await onConnect(message)
         reply(message, 'ready')
+      } else if (message.type === 'context') {
+        await onContext(message)
       } else {
         await onSnapshot(message)
       }

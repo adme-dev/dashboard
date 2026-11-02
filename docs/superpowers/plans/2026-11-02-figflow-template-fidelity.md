@@ -163,3 +163,55 @@ References reviewed 2 November 2026: [Emailify overview](https://www.hypermatic.
 and [email HTML export](https://www.hypermatic.com/emailify/figma-to-html-email/).
 This acceptance sequence reflects the owner's approved PRD rather than a claim
 that Emailify's Figma plugin runs inside FigFlow.
+
+## Remaining original-owner bridges — 08a / 08b
+
+The original PRD journeys remain in scope after the bounded local core3/3 gate.
+Implement through existing owners in this order; no second library, campaign
+draft store, sender or finance/workflow engine.
+
+1. **Native workspace library (08a):** reuse the Nuxt library/image panels beside
+   the canvas. Add one exact read-only native context action, bound to current
+   mode/origin/channel/native document/revision, returning mapped selected blocks
+   and insertion target. Capture operations without a generic native command.
+   Cancelled reads do not save. Before any library mutation, existing design
+   edits go through durable propose, compiled desktop/mobile review and explicit
+   Apply; no automatic save/publish or active-handoff guard bypass. After exact
+   canonical receipt/readback, reopen the same owner at its new saved head.
+2. **Registered imagery (08a):** retain existing scoped upload/publication and
+   image insert. Add only strict replace-published-image to the existing command
+   family, taking asset ID/block ID/head/operation ID. Server derives actual
+   bytes/hash/MIME/dimensions/delivery URL and preserves IDs/alt/link/layout/locks
+   and referenced assets. No URL/descriptor/base64 authority or Rust catalog fetch.
+3. **Owner-aware writer (08b):** migration491 already has a unique campaign_id
+   document slot. Generalize current template-only owner reads/projections and
+   immutable writer, not hidden template copies or new campaign-draft tables.
+   Use existing lock order/CAS/fresh authority/operation receipts; canonical head
+   and campaign projection commit together. Additive498 is proposed, after a
+   fresh collision check;497 stays reserved for independent M06.
+4. **Exact template selection (08b):** existing campaign creation uses an exact
+   authorized published template revision with complete pins, metadata and scope.
+   One atomic existing-owner operation creates the campaign and initial canonical
+   revision; lost reply returns that same campaign. Existing REST/MCP edits use
+   the same writer for opted-in campaigns. Preserve existing MCP hash semantics
+   alongside canonical UUID revisions. Legacy campaigns and frozen send snapshots
+   are untouched; send preparation must not silently rewrite canonical HTML.
+5. **Campaign-owned handoff (08b):** owner-discriminated start/lookup with stored
+   owner validation; native admission adds campaign-draft while preserving kind.
+   Campaign controls appear only with trusted availability. Save staff edits,
+   open the exact campaign head, review/Apply, reload, staff edit and reopen twice.
+   Keep current, restart or explicitly create a new campaign from a retained
+   proposal; no implicit copy, forced overwrite or recipient/status/approval clone.
+
+Required local vertical checks include actual selected-section publish/insert
+ twice/update conflict/cancel/detach; verified image replacement; native nested
+column0 and stale/revoked/unknown-write cases; two independent campaigns fromR1
+remaining pinned after template/module heads advance; and real campaign-kind
+native structural/staff round trips. Matching Linux/package/WASM and later hosted
+checks are separate. No unexecuted test or seeded pin closes these user journeys.
+
+M06 remains isolated until its reviewed security/rollback/digest defects are
+fixed, migration497 verified/applied and current-source integration passes.
+Its web-version picker and public documentation still need wiring; flag stays off.
+Opaque native-artifact staging, known HTML conversion, full-template tolerances,
+real email clients and AM/job/brief/budget research retain their recorded gates.

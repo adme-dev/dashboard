@@ -74,7 +74,7 @@ function descendants(design: EmailDesignDocument, id: string): string[] {
   if (!Object.hasOwn(design.blocks, id)) return deny('blockId')
   return [id, ...designChildIds(design.blocks[id]).flatMap(child => descendants(design, child))]
 }
-function ownLocked(design: EmailDesignDocument, id: string): boolean {
+function ownLocked(design: EmailDesignDocument, id: string, verifiedLibraryUrl = false): boolean {
   const block = design.blocks[id]
   if (!supported.has(block.type) || design.policy.designerLocks?.blockIds.includes(id)) return true
   // Preserve legacy lock metadata and unknown block extensions conservatively.
@@ -84,17 +84,28 @@ function ownLocked(design: EmailDesignDocument, id: string): boolean {
   // A missing content grant is an existing brand/content lock, not permission
   // for a designer to delete or clone the protected field through structure.
   return (content[block.type] ?? []).some(field => Object.hasOwn(block.data.props ?? {}, field)
+    && !(verifiedLibraryUrl && block.type === 'Image' && field === 'url')
     && !design.policy.editableFields.includes(`${id}.data.props.${field}`))
 }
-function locked(design: EmailDesignDocument, id: string): boolean {
-  return descendants(design, id).some(child => ownLocked(design, child))
+function locked(design: EmailDesignDocument, id: string, verifiedLibraryUrl = false): boolean {
+  return descendants(design, id).some(child => ownLocked(design, child, verifiedLibraryUrl && child === id))
 }
-function assertEditable(design: EmailDesignDocument, id: string): void {
-  if (locked(design, id)) deny(id)
+function assertEditable(design: EmailDesignDocument, id: string, verifiedLibraryUrl = false): void {
+  if (locked(design, id, verifiedLibraryUrl)) deny(id)
   // A parent lock protects all descendants, including inherited brand styles.
   for (const parent of Object.keys(design.blocks)) {
     if (parent !== id && ownLocked(design, parent) && descendants(design, parent).includes(id)) deny(id)
   }
+}
+/** A URL-grant exception requires server-verified immutable insertion receipt
+ * and registered asset provenance. Client selection/URLs/alt grants alone are
+ * never provenance. All canonical own/inherited locks still apply. */
+export function assertLibraryImageReplaceable(design: EmailDesignDocument, id: string, verifiedLibraryUrl = false): void {
+  if (design.blocks[id]?.type !== 'Image') deny(id)
+  const grants = design.policy.editableFields
+  if (!grants.includes(`${id}.data.props.url`) && !(verifiedLibraryUrl && grants.includes(`${id}.data.props.alt`))) deny(id)
+  assertEditable(design, id, verifiedLibraryUrl)
+  if (designStructureLocked(design, id) || lockedStylePath(design, id, `${id}.data.props.url`)) deny(id)
 }
 function childList(design: EmailDesignDocument, parentId: string, columnIndex?: number): string[] {
   if (!Object.hasOwn(design.blocks, parentId)) return deny('parentId')

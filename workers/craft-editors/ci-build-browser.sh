@@ -73,6 +73,7 @@ expected = {
     'browser_bridge_update_targets_explicit_node',
     'browser_bridge_mutation_requires_revision_and_receipts_never_evict',
     'browser_bridge_large_integer_identifiers_are_lossless',
+    'browser_bridge_designer_context_requires_exact_revision_and_empty_params',
     'browser_bridge_status_and_inspect_strip_paths',
     'browser_bridge_designer_import_snapshot_replay_and_revision_fence',
 }
@@ -82,7 +83,7 @@ matched = re.findall(
     re.M,
 )
 if len(matched) != len(expected) or set(matched) != expected:
-    raise SystemExit(f'Expected exactly eight passing browser_bridge tests; matched {len(matched)}: {matched}')
+    raise SystemExit(f'Expected exactly nine passing browser_bridge tests; matched {len(matched)}: {matched}')
 PY
   cargo test --locked -p figcraft-ui-egui --lib edm_ > "$evidence/test-edm-ui.log" 2>&1
   python3 - "$evidence/test-edm-ui.log" <<'PY'
@@ -114,6 +115,8 @@ expected = {
     'edm_policy_and_column_geometry_stay_bounded_and_non_overlapping',
     'edm_modern_styled_import_is_visible_semantic_and_noop_lossless',
     'edm_content_edit_reflows_once_without_phantom_or_compound_edits',
+    'edm_designer_context_maps_selection_without_saving_or_inventing_target',
+    'edm_designer_context_rejects_unmapped_and_unlogged_selection',
     'edm_designer_noop_and_empty_image_preserve_exact_baseline',
     'edm_designer_combined_mobile_style_structure_and_reflow_stays_canonical',
     'edm_designer_duplicate_ids_remap_dfs_and_same_list_reordering',
@@ -140,7 +143,7 @@ expected = {
 }
 matched = re.findall(r'^test (?:cmd::edm::tests::)?(edm_[A-Za-z0-9_]+) \.\.\. ok$', Path(sys.argv[1]).read_text(), re.M)
 if len(matched) != len(expected) or set(matched) != expected:
-    raise SystemExit(f'Expected exactly 30 passing EDM tests; matched {len(matched)}: {matched}')
+    raise SystemExit(f'Expected exactly 32 passing EDM tests; matched {len(matched)}: {matched}')
 PY
   cargo test --locked -p figcraft-engine --lib browser_export_bound > "$evidence/test-browser-export-bound.log" 2>&1
   cargo test --locked -p figcraft-format --lib zip_files > "$evidence/test-zip-files.log" 2>&1

@@ -14,6 +14,8 @@ import { EDM_SECTION_CATEGORIES, findStarterTemplate } from '~~/app/utils/edmPre
 import { figflowTemplateCapability } from '~~/app/utils/edmFigflowLibrary'
 import type { EdmSectionPreset } from '~~/app/utils/edmPresets'
 import type { EdmFlyhubBlock, EdmFlyhubDocument } from '~~/app/types/edm'
+import type { NativeLibraryIntent } from '~~/app/composables/useEdmNativeLibrary'
+import type { NativeLibraryContext } from '~~/shared/emailRendering/designModules'
 import { extractFragment, reidFragment } from '~~/app/utils/edmModuleFragment'
 import { resolveRootDropIndex, type EdmRootDropPlacement } from '~~/app/utils/edmDragReorder'
 import { getBlockForDevice, isHiddenOnDevice, type EdmDevice } from '~~/app/utils/edmResponsive'
@@ -60,6 +62,8 @@ watch(() => designFlow.draft.value, (draft) => {
 })
 const figflowEnabled = useRuntimeConfig().public.figflowEdmEnabled === true
 const showFigflow = ref(false)
+const nativeLibrary = designFlow.nativeLibrary
+let nativeLibraryWorkspace: string | null = null
 const showDiscardFigflow = ref(false)
 const showDesignDraftCopy = ref(false)
 const designDraftName = ref('')
@@ -944,8 +948,13 @@ async function reconnectDesignService() {
   } catch { designServiceUnavailable.value = true }
 }
 function closeFigflow() {
+  if (nativeLibrary.state.value && designFlow.hasPending.value) return
   if (designFlow.handoff.value?.state === 'open') showDiscardFigflow.value = true
-  else showFigflow.value = false
+  else {
+    showFigflow.value = false
+    nativeLibrary.clear()
+    nativeLibraryWorkspace = null
+  }
 }
 function editInFigflow() {
   if (conditionSaving.value || conditionPending.value || brandFlow.busy.value || brandFlow.hasPending.value) return
@@ -976,13 +985,55 @@ async function proposeFigflowDesigner(operations: import('~~/shared/emailRenderi
     await designFlow.run(() => designFlow.proposeDesigner(operations, operationId))
   } catch { /* Shown in the review panel; the saved draft is unchanged. */ }
 }
+async function prepareNativeLibrary(context: NativeLibraryContext, intent: NativeLibraryIntent) {
+  const handoff = designFlow.handoff.value
+  if (!handoff || !designFlow.designerOperationId.value || !designFlow.libraryAuthoring.value.available || workspaceBusy.value) return
+  if (!sameDesignSource(store.document.value, handoff.source.blocks)) {
+    designLocalConflict.value = true
+    return
+  }
+  try {
+    nativeLibrary.capture(handoff, context, designFlow.designerOperationId.value, intent)
+    nativeLibraryWorkspace = workspaceSnapshot()
+    await designFlow.run(async () => {
+      await designFlow.proposeDesigner(context.operations as import('~~/shared/emailRendering/designDesigner').DesignerOperation[], context.operationId)
+      if (!context.operations.length) {
+        await designFlow.finish('cancel')
+        if (workspaceSnapshot() !== nativeLibraryWorkspace) throw new Error('The composer changed. Reopen FigFlow before using this selection.')
+        nativeLibrary.saved(designFlow.draft.value, handoff.baseRevisionId)
+      }
+    })
+  } catch { /* Captured work and any pending action remain recoverable. */ }
+}
+async function reopenNativeLibrary() {
+  const selection = nativeLibrary.state.value
+  if (!selection?.ready) return
+  nativeLibrary.requireReopen()
+  if (designLocalConflict.value) return
+  const current = designFlow.draft.value
+  if (current?.state !== 'structured' || current.documentId !== selection.documentId || current.templateId !== selection.templateId
+    || !sameDesignSource(store.document.value, current.source.blocks) || workspaceSnapshot() !== workspaceSavedSnapshot.value) throw new Error('The saved design changed. Reopen it before continuing.')
+  const result = await designFlow.reopenLibraryDraft(selection.templateId, selection.documentId, current.headRevisionId)
+  if (result.draftId !== selection.documentId || result.templateId !== selection.templateId) throw new Error('Design draft mismatch')
+  nativeLibrary.clear()
+  nativeLibraryWorkspace = null
+  showFigflow.value = true
+  await router.replace({ query: { ...route.query, designSession: result.id, designMode: designFlow.mode.value } })
+}
+async function returnFromNativeLibrary() {
+  if (workspaceBusy.value) return
+  try {
+    await designFlow.run(reopenNativeLibrary)
+  } catch { /* Exact reopen request is retained. */ }
+}
+
 async function applyFigflow() {
   const handoff = designFlow.handoff.value
   if (!handoff?.proposal) return
   // Compare without touching undo history before committing remotely. Compare
   // again after the response to preserve any edits made while awaiting it.
 
-  if (!sameDesignSource(store.document.value, handoff.source.blocks)) {
+  if ((nativeLibrary.state.value && nativeLibraryWorkspace !== workspaceSnapshot()) || !sameDesignSource(store.document.value, handoff.source.blocks)) {
     designLocalConflict.value = true
     return
   }
@@ -994,8 +1045,11 @@ async function applyFigflow() {
         designLocalConflict.value = true
         throw new Error('Current draft changed; local edits kept')
       }
-      showFigflow.value = false
       markWorkspaceDocumentSaved()
+      if (nativeLibrary.state.value) {
+        nativeLibrary.saved(current, result.appliedRevisionId!)
+        nativeLibraryWorkspace = workspaceSnapshot()
+      } else showFigflow.value = false
       toast.add({ title: 'Design changes saved', description: 'Applied as one undoable change.', color: 'success' })
     })
   } catch { /* The server conflicts or the local draft is preserved. */ }
@@ -1004,6 +1058,8 @@ async function cancelFigflow() {
   try {
     await designFlow.run(async () => {
       await designFlow.finish('cancel')
+      nativeLibrary.clear()
+      nativeLibraryWorkspace = null
       showFigflow.value = false
     })
   } catch { /* Shown in panel. */ }
@@ -1014,6 +1070,7 @@ async function reconcileDesignAction() {
       const result = await designFlow.reconcile()
       if (!result) {
         acceptLibraryAction()
+        if (designFlow.nativeLibrary.state.value?.ready && !designFlow.hasPending.value && !designLocalConflict.value && !libraryBaseline) await reopenNativeLibrary()
         return
       }
       if (result.templateId !== templateId.value) throw new Error('Design draft mismatch')
@@ -1021,8 +1078,13 @@ async function reconcileDesignAction() {
         const current = designFlow.draft.value
         designLocalConflict.value = current?.headRevisionId !== result.appliedRevisionId
           || !store.applyDesignReturn(result.source.blocks, result.proposal.blocks)
-        if (!designLocalConflict.value) markWorkspaceDocumentSaved()
+        if (!designLocalConflict.value) {
+          markWorkspaceDocumentSaved()
+          if (designFlow.nativeLibrary.state.value) designFlow.nativeLibrary.saved(current, result.appliedRevisionId!)
+        }
       }
+      if (designFlow.nativeLibrary.state.value && result.state === 'cancelled') designFlow.nativeLibrary.saved(designFlow.draft.value, result.baseRevisionId)
+      if (designFlow.nativeLibrary.state.value?.ready && result.state === 'open') designFlow.nativeLibrary.clear()
       showFigflow.value = true
       await router.replace({ query: { ...route.query, designSession: result.id, designMode: designFlow.mode.value } })
     })
@@ -1275,12 +1337,13 @@ function acceptLibraryAction() {
   toast.add({ title: receipt.published ? 'Published to the library' : 'Saved design updated', color: 'success' })
 }
 async function executeLibraryAction(action: () => Promise<unknown>) {
-  if (!canonicalReady.value) return
+  if (!canonicalReady.value || nativeLibrary.state.value?.reopenRequired) return
   libraryBaseline = { snapshot: workspaceSnapshot(), blocks: JSON.parse(JSON.stringify(store.document.value)) }
   designFlow.lastLibraryReceipt.value = null
   try {
     await designFlow.run(action)
     acceptLibraryAction()
+    if (nativeLibrary.state.value?.ready && !libraryBaseline && !designLocalConflict.value) await designFlow.run(reopenNativeLibrary)
   } catch {
     if (!designFlow.hasPending.value) libraryBaseline = null
   }
@@ -2442,6 +2505,9 @@ onMounted(async () => {
             :mode="designFlow.mode.value"
             :capabilities="designFlow.designerCapabilities.value"
             :operation-id="designFlow.designerOperationId.value"
+            :library-available="designFlow.libraryAuthoring.value.available"
+            :library-publisher="designFlow.libraryAuthoring.value.publisher"
+            :library-ready="nativeLibrary.state.value?.ready === true"
             :busy="designFlow.busy.value"
             :error="designFlow.error.value"
             :conflict="designLocalConflict"
@@ -2452,7 +2518,37 @@ onMounted(async () => {
             @apply="applyFigflow"
             @cancel="cancelFigflow"
             @resume="resumeFigflow"
-          />
+            @library-request="prepareNativeLibrary"
+          >
+            <template #library>
+              <div v-if="nativeLibrary.state.value?.ready" class="flex min-h-0 flex-1 flex-col overflow-hidden rounded border border-default">
+                <div class="flex items-center justify-between gap-3 border-b border-default p-4">
+                  <p class="text-sm font-medium">
+                    Saved design library
+                  </p>
+                  <UButton
+                    label="Return to design"
+                    color="neutral"
+                    variant="outline"
+                    :disabled="workspaceBusy"
+                    @click="returnFromNativeLibrary"
+                  />
+                </div>
+                <EmailBuilderEdmDesignLibraryPanel
+                  :flow="designFlow"
+                  :blocked="canonicalBlocked || nativeLibrary.state.value.reopenRequired"
+                  :saved="canonicalSaved"
+                  :selected-id="nativeLibrary.state.value.context.selectedBlockIds.length === 1 ? nativeLibrary.state.value.context.selectedBlockIds[0]! : null"
+                  :selected-roots="nativeLibrary.state.value.context.selectedBlockIds"
+                  :insertion-target="nativeLibrary.state.value.context.insertionTarget ?? null"
+                  :initial-section="nativeLibrary.state.value.intent"
+                  @module="command => executeLibraryAction(() => designFlow.library(command))"
+                  @publish-template="publishCanonicalTemplate"
+                  @publish-image="assetId => executeLibraryAction(() => designFlow.publishImage(assetId))"
+                />
+              </div>
+            </template>
+          </EmailBuilderEdmFigflowHandoff>
         </div>
       </template>
     </UModal>

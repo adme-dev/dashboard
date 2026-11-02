@@ -1,4 +1,5 @@
 import { ref } from 'vue'
+import { useEdmNativeLibrary } from './useEdmNativeLibrary'
 import type { EdmFlyhubDocument } from '~~/app/types/edm'
 import { validateEmailDesign, type EmailDesignDocument } from '~~/shared/emailRendering/designContract'
 import { applyDesignerOperations, type DesignerCapabilities, type DesignerOperation } from '~~/shared/emailRendering/designDesigner'
@@ -17,6 +18,7 @@ interface DesignerAvailability { available: boolean, endpoint: string, capabilit
 /** Keeps operation payloads after uncertain replies. Retry uses the same action;
  * editing a pending write requires reconciliation before a new operation. */
 export function useEdmDesignRoundtrip() {
+  const nativeLibrary = useEdmNativeLibrary()
   const libraryAuthoring = ref({ available: false, publisher: false })
   const mode = ref<'content' | 'designer'>('content')
   const designerAuthoring = ref<DesignerAvailability>({ available: false, endpoint: designerEndpoint, capabilities: null })
@@ -138,6 +140,15 @@ export function useEdmDesignRoundtrip() {
     mode.value = authoring ? 'designer' : 'content'
     const result = await $fetch<HandoffResult>(endpoint(), { method: 'POST', body: { command: 'resume', handoffId: id } })
     return adoptHandoff(result)
+  }
+  async function reopenLibraryDraft(templateId: string, documentId: string, expectedRevisionId: string) {
+    if (!pending) {
+      if (!designerAuthoring.value.available || draft.value?.documentId !== documentId || draft.value.templateId !== templateId) throw new Error('Reopen the same saved design draft before continuing.')
+      mode.value = 'designer'
+      designerOperationId.value = null
+    }
+    const body = operation(endpoint(), () => ({ command: 'open', operationId: crypto.randomUUID(), draftId: documentId, expectedRevisionId }))
+    return adoptHandoff(await mutate<HandoffResult>(endpoint(), 'POST', body, result => lookup(templateId, result.handoff.baseRevisionId)))
   }
   async function propose(design: EmailDesignDocument) {
     const current = handoff.value
@@ -281,5 +292,5 @@ export function useEdmDesignRoundtrip() {
       throw cause
     } finally { busy.value = false }
   }
-  return { libraryAuthoring, library, template, restoreRevision, publishImage, lastLibraryReceipt, mode, designerAuthoring, designerCapabilities, designerOperationId, proposeDesigner, draft, handoff, busy, error, hasPending, reconcile, lookup, saveStructured, saveMetadata, open, resume, propose, finish, run }
+  return { nativeLibrary, reopenLibraryDraft, libraryAuthoring, library, template, restoreRevision, publishImage, lastLibraryReceipt, mode, designerAuthoring, designerCapabilities, designerOperationId, proposeDesigner, draft, handoff, busy, error, hasPending, reconcile, lookup, saveStructured, saveMetadata, open, resume, propose, finish, run }
 }

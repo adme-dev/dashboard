@@ -472,6 +472,44 @@ const designerConnect = () => connect('designer-channel', {
   operationId: designerOperationId, capabilities: { version: 1, operations: ['set-style'], blocks: [] }
 })
 
+test('designer context is an exact read-only action bound to frame, mode and native revision', async () => {
+  const context = { operationId: designerOperationId, operations: [], selectedBlockIds: ['heading'], insertionTarget: { parentId: 'root', index: 1 } }
+  const fixture = relayFixture({ onRequest(envelope, native) {
+    if (envelope.action === 'status') return ok(native, { supportedActions: ['edm_designer_import', 'edm_designer_snapshot', 'edm_designer_context'] })
+    if (envelope.action === 'edm_designer_import') return ok(native, { imported: true })
+    assert.equal(envelope.action, 'edm_designer_context')
+    assert.equal(envelope.expectedRevision, native.revision)
+    assert.deepEqual(envelope.params, {})
+    return ok(native, context)
+  } })
+  await fixture.send(designerConnect())
+  await fixture.send({ ...designerConnect(), requestId: 'context-1', type: 'context', payload: undefined })
+  assert.deepEqual(fixture.posted.at(-1).message.payload, context)
+  const calls = fixture.calls.length
+  await fixture.send({ ...designerConnect(), requestId: 'context-2', type: 'context', payload: { action: 'node.delete' } })
+  assert.equal(fixture.calls.length, calls)
+  assert.equal(fixture.posted.at(-1).message.type, 'error')
+  await fixture.send({ ...designerConnect(), requestId: 'context-3', type: 'context', payload: undefined }, { source: {} })
+  assert.equal(fixture.calls.length, calls)
+})
+
+test('context refuses content mode, a switched native document and forged operation identity', async () => {
+  const ordinary = relayFixture()
+  await ordinary.send(connect())
+  await ordinary.send({ ...connect(), requestId: 'context-1', type: 'context', payload: undefined })
+  assert.equal(ordinary.calls.some(call => call.action === 'edm_designer_context'), false)
+  for (const switched of [false, true]) {
+    const fixture = relayFixture({ onRequest(envelope, native) {
+      if (envelope.action === 'status') return ok(native, { supportedActions: ['edm_designer_import', 'edm_designer_snapshot', 'edm_designer_context'] })
+      if (envelope.action === 'edm_designer_import') return ok(native, { imported: true })
+      return ok({ ...native, documentId: switched ? '999' : native.documentId }, { operationId: 'foreign', operations: [], selectedBlockIds: [] })
+    } })
+    await fixture.send(designerConnect())
+    await fixture.send({ ...designerConnect(), requestId: 'context-1', type: 'context', payload: undefined })
+    assert.equal(fixture.posted.at(-1).message.type, 'error')
+  }
+})
+
 test('designer mode refuses a native package without explicit designer capabilities', async () => {
   const fixture = relayFixture()
   await fixture.send(designerConnect())

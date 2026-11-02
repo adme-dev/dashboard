@@ -7,7 +7,7 @@
     "branding_patch": "patches/figflow-branding.patch",
     "branding_patch_sha256": "f5198f5f6235c82047268910d343dd3d3fb8c1e74a62b1a106a49a63dafe60b9",
     "cargo_lock_sha256": "539397203fa01e0f460ab2fad69b32003b838828751a7373e833d23b56e35b94",
-    "browser_relay_sha256": "438b71f2ead434fcb41a60d0c98bff67ba8ba18068cf7f45aee9c185901b7211",
+    "browser_relay_sha256": "f433cee45f211b8fb21587626c11af07411689cfcf4878f3a958a5beec31ea7d",
     "additional_patches": [
       {
         "path": "patches/figflow-browser-save.patch",
@@ -23,7 +23,7 @@
       },
       {
         "path": "patches/figflow-browser-bridge.patch",
-        "sha256": "55560f141fb053a66705c5d9665b4fe99f15af99780122e9e6b09fe392a66ab2"
+        "sha256": "b4db2b0d4e97e8440a78d952d9a67efe84a80a760411e1220995c4d9dfc102b6"
       }
     ]
   }

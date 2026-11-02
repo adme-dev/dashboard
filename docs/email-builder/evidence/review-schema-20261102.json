@@ -1,0 +1,26 @@
+{
+  "at": "2026-11-02T12:57:14.242Z",
+  "source": "b9eb69390ff8a6e97ce3e1b11eb7491493f422da",
+  "reviewedCandidate": "6c55231e6e812ff0be6a29dfa92223af7a55fcff",
+  "configuredEnvFile": "/Users/paulgiurin/Documents/Projects/dashboard/.env",
+  "host": "ep-lively-fog-a4dum154-pooler.us-east-1.aws.neon.tech",
+  "database": "neondb",
+  "serverVersion": "170011",
+  "applied": {
+    "file": "server/database/migrations/497_email_review_workflow.sql",
+    "sha256": "d5832157b84b475ba6f7ec546e35f8204d151c65788d7d6d834f8c5133f9ef4d"
+  },
+  "applicationsInTransaction": 2,
+  "existingCampaigns": 0,
+  "existingTemplates": 21,
+  "existingRowContentUnchanged": true,
+  "readback": {
+    "states": true,
+    "comments": true,
+    "operations": true,
+    "gated_campaigns": 0,
+    "independent_approval_check": true,
+    "triggers": 10
+  },
+  "scope": "Additive schema only; no review enrollment, feature activation, application deployment or provider send"
+}

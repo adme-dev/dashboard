@@ -11,6 +11,9 @@ const props = defineProps<{
   blocked: boolean
   saved: boolean
   selectedId: string | null
+  selectedRoots?: string[]
+  insertionTarget?: { parentId: string, columnIndex?: number, index: number } | null
+  initialSection?: 'library' | 'images' | 'section' | 'template'
 }>()
 type ModuleCommand = Parameters<typeof props.flow.library>[0]
 const emit = defineEmits<{
@@ -27,7 +30,7 @@ const error = ref('')
 const name = ref('')
 const category = ref('custom')
 const description = ref('')
-const selectionOnly = ref(true)
+const selectionOnly = ref(props.initialSection !== 'template')
 const reviewedPaths = ref<string[]>([])
 const overrides = ref<'preserve' | 'discard'>('preserve')
 const instanceReviewed = ref(false)
@@ -45,6 +48,18 @@ const ready = computed(
     && !loading.value
     && !error.value
 )
+const roots = computed(() => props.selectedRoots ?? (props.selectedId ? [props.selectedId] : []))
+const insertion = computed(() => props.insertionTarget === undefined && draft.value
+  ? { parentId: 'root', index: draft.value.source.blocks.root?.data.childrenIds?.length ?? 0 }
+  : props.insertionTarget)
+const selectedImage = computed(() => props.selectedId && draft.value?.source.blocks[props.selectedId]?.type === 'Image' ? props.selectedId : null)
+const validSelection = computed(() => {
+  if (!draft.value || !roots.value.length || roots.value.includes('root')) return false
+  try {
+    subtreeIds(draft.value.source, roots.value)
+    return true
+  } catch { return false }
+})
 const canonical = computed(() =>
   catalog.modules.value.filter(
     m =>
@@ -71,8 +86,9 @@ const localPaths = computed(() => {
   })
 })
 const publicationPaths = computed(() => {
-  if (!selectionOnly.value || !props.selectedId || !draft.value) return localPaths.value
-  const ids = subtreeIds(draft.value.source, [props.selectedId])
+  if (!selectionOnly.value || !draft.value || (props.selectedRoots === undefined && !props.selectedId)) return localPaths.value
+  if (!validSelection.value) return []
+  const ids = subtreeIds(draft.value.source, roots.value)
   return localPaths.value.filter(path => ids.has(path.split('.')[0]!))
 })
 const previewDocument = computed(() =>
@@ -127,6 +143,7 @@ function publish(revise = false) {
   if (
     !ready.value
     || !props.flow.libraryAuthoring.value.publisher
+    || (props.selectedRoots !== undefined && selectionOnly.value && !validSelection.value)
     || !name.value.trim()
     || !category.value.trim()
     || publicationPaths.value.some(path => !reviewedPaths.value.includes(path))
@@ -138,7 +155,7 @@ function publish(revise = false) {
     description: description.value.trim() || null,
     previewTone: 'light' as const,
     includedOverridePaths: [...publicationPaths.value],
-    ...(selectionOnly.value && props.selectedId ? { rootBlockIds: [props.selectedId] } : {})
+    ...(selectionOnly.value && roots.value.length ? { rootBlockIds: roots.value } : {})
   }
   if (revise && selectedOwner.value)
     emit('module', {
@@ -150,15 +167,23 @@ function publish(revise = false) {
   else emit('module', { command: 'publish-module', ...metadata })
 }
 function insert() {
-  if (!ready.value || !selection.value || !draft.value) return
+  if (!ready.value || !selection.value || !draft.value || !insertion.value) return
   emit('module', {
     command: 'insert-module',
     moduleId: selection.value.moduleId,
     revisionId: selection.value.revisionId,
-    parentId: 'root',
-    index: draft.value.source.blocks.root?.data.childrenIds?.length ?? 0
+    ...insertion.value
   })
 }
+function insertImage() {
+  if (ready.value && image.value?.emailPublication && insertion.value)
+    emit('module', { command: 'insert-published-image', assetId: image.value.id, ...insertion.value })
+}
+function replaceImage() {
+  if (ready.value && image.value?.emailPublication && selectedImage.value)
+    emit('module', { command: 'replace-published-image', assetId: image.value.id, blockId: selectedImage.value })
+}
+
 watch(
   () => props.flow.busy.value,
   async (busy) => {
@@ -209,7 +234,7 @@ watch(
         color="warning"
         :actions="[{ label: 'Reload library', onClick: refresh }]"
       />
-      <section class="space-y-4" aria-label="Published modules">
+      <section v-if="!initialSection || initialSection === 'library'" class="space-y-4" aria-label="Published modules">
         <h3 class="text-lg font-semibold tracking-tight">
           Published modules
         </h3>
@@ -242,12 +267,12 @@ watch(
         <UButton
           label="Insert selected version"
           icon="i-lucide-plus"
-          :disabled="!ready || !selection"
+          :disabled="!ready || !selection || !insertion"
           @click="insert"
         />
       </section>
       <section
-        v-if="selectedInstance"
+        v-if="selectedInstance && (!initialSection || initialSection === 'library')"
         class="space-y-4 border-t border-default pt-5"
         aria-label="Selected linked instance"
       >
@@ -307,7 +332,7 @@ watch(
         </div>
       </section>
       <section
-        v-if="flow.libraryAuthoring.value.publisher"
+        v-if="flow.libraryAuthoring.value.publisher && initialSection !== 'images'"
         class="space-y-4 border-t border-default pt-5"
         aria-label="Publish from this draft"
       >
@@ -328,7 +353,7 @@ watch(
         <UCheckbox
           v-model="selectionOnly"
           label="Use the selected block for module publication"
-          :disabled="!ready || !selectedId"
+          :disabled="!ready || (selectedRoots !== undefined ? !validSelection : !selectedId)"
         />
         <div v-if="localPaths.length" class="space-y-2">
           <p class="text-sm font-medium">
@@ -350,7 +375,7 @@ watch(
           <UButton
             label="Publish module"
             :disabled="
-              !ready || !name.trim() || !category.trim() || publicationPaths.some((p) => !reviewedPaths.includes(p))
+              !ready || (selectedRoots !== undefined && selectionOnly && !validSelection) || !name.trim() || !category.trim() || publicationPaths.some((p) => !reviewedPaths.includes(p))
             "
             @click="publish()"
           />
@@ -382,7 +407,7 @@ watch(
           />
         </div>
       </section>
-      <section class="space-y-4 border-t border-default pt-5" aria-label="Registered images">
+      <section v-if="!initialSection || initialSection === 'library' || initialSection === 'images'" class="space-y-4 border-t border-default pt-5" aria-label="Registered images">
         <h3 class="text-lg font-semibold tracking-tight">
           Registered images
         </h3>
@@ -407,16 +432,14 @@ watch(
           />
           <UButton
             label="Insert published image"
+            :disabled="!ready || !image.emailPublication || !insertion"
+            @click="insertImage"
+          />
+          <UButton
+            v-if="selectedImage"
+            label="Replace selected image"
             :disabled="!ready || !image.emailPublication"
-            @click="
-              draft
-                && emit('module', {
-                  command: 'insert-published-image',
-                  assetId: image.id,
-                  parentId: 'root',
-                  index: draft.source.blocks.root?.data.childrenIds?.length ?? 0
-                })
-            "
+            @click="replaceImage"
           />
           <p v-if="!image.emailPublication" class="text-xs text-muted">
             An agency publisher must publish this registered image before it can be inserted.

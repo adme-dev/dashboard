@@ -495,3 +495,113 @@ and guarded existing workflow_dispatch source-deploy41440731702 is in progress.
 No release result/hosted fix is claimed until its deployment and browser checks.
 Read-only worker monitors that exact release; Codex plans the smallest campaign/
 library owner bridges and Opus reviews isolated M06 before reconciliation.
+
+M06 read-only review found no P0 but four bounded P1s before497 application/
+activation: self-approval, audience retarget without invalidation, flag-off
+stranded gated drafts, and broad counter-update digest work. Source findings
+were inspected in review.ts/reviewHttp.ts/unapplied497; existing scheduled legacy
+rows stay ungated. Opus fixes these in the isolated M06 checkout with unique-
+schema local PG proof only; root configured497 remains unapplied. Raw cancelled
+status bypass and durable flag-off web links also require bounded dispositions.
+
+08a/08b owner-bridge plan is source-backed and complete. Existing491 already has
+a campaign_id document slot; no parallel campaign draft table is justified.
+Codex now implements08a only: reusable Nuxt host library/image surfaces, a bound
+read-only native selection/context action, explicit design review/Apply before
+canonical library writes and strict registered-image replacement. Parent alone
+owns native patch/pins/Linux build/release. Campaign-owner08b follows using the
+existing revision writer and an owner-aware projection adapter. Full original
+acceptance, unsupported HTML/native artifacts and client tests stay open.
+
+M06 isolated fixes reported red-first proof:10 new regressions failed on the
+old source while25 existing tests passed, then86 M06 checks including30 local
+PostgreSQL tests passed with zero skips; unique schemas were removed. Changes
+include service/UI/SQL independent approval, row-typed NEW-content plus audience
+review digest, deferred list invalidation and frozen-list protection, flag-off
+existing-gated recovery/durable signed views, narrow triggers, cancelled dispatch
+checks and pure asset preparation with command-transaction DB projection.
+Existing content digest remains separate for recipient-free web signing.
+No configured497 application or activation yet. Independent Codex reviewer
+ctx_7d9d901f0be3 is checking the fixed isolated source before parent integration;
+known root fixture/inventory/picker/binding/hosted work stays open.
+
+08a implementation status (not acceptance): Codex reports native bound context,
+selected-target host library, explicit saved-design boundary/reopen and registered
+image replacement implemented. Latest96 checks/15 files and21 relay tests pass;
+lint/types and unique-schema PG image proof are finishing. Parent has not yet
+regenerated native patch/pins or run matching-package08a actual-WASM acceptance.
+The previously accepted3/3 gate is for prior bytes and cannot close08a.
+
+08a native source freeze reviewed by parent: engine edm.rs and UI browser_bridge
+only changed beyond accepted920b. Context reuses canonical snapshot validation,
+maps actual selected plugin block IDs without invented root fallback, and
+requires current native instance/document/revision plus empty params. No new
+generic mutation is exposed. Parent regenerated14-file patch and pins with32
+engine/9 bridge/8 UI expected names; strict workflow pins, shell syntax, patch
+dry run and diff checks pass. No new Rust/WASM success is claimed until Linux
+execution; application/image proof is still completing before coherent push.
+
+M06 source fixes passed independent review with no remaining requested P0/P1
+source counterexample; exact20-file diff hash1d6c8ff68f75c161a1f409b5b191b0b9b2837ed5eeb366ced991333da847c70e
+matched prior receipts. Parent committed the fixed isolated candidate6c55231e6
+and merged it into rootb9eb69390, preserving08a work. Activation remains off.
+
+Configured migration497 applied twice within one transaction using the exact
+reviewed SQLhashd5832157b84b475ba6f7ec546e35f8204d151c65788d7d6d834f8c5133f9ef4d.
+Target matched prior verified Neon env/database. Before/after row fingerprints
+were compared only in memory: all existing campaign/template content unchanged.
+Readback confirms three review tables, independent approval CHECK,10 triggers
+and zero gated campaigns. Sanitized receipt: evidence/review-schema-20261102.json.
+No review enrollment, feature activation, deployment or email send occurred.
+
+M06 authoring integration found an actual unavailable-web-token defect: final
+missing:empty can erase web_version_url before final inspection. Assigned fix
+is a pre-substitution guard after conditional resolution plus structured
+preflight, preserving existing merge/tracking/claim-release owners. Root picker,
+fixture/inventory and this regression are still in progress; no send was used.
+
+3 November checkpoint: exact-source hotfix release41440731702 succeeded. CI and
+source_deploy both checked out052eefaf992b8a6bd419b069f544c6aec7da64bb; current-main
+and immutable agency-dashboard/main guards passed. Cloudflare production
+deployment0228410c-3589-4cbd-b5a3-f6982fcc5fa5 is confirmed at
+https://0228410c.agency-dashboard-6cm.pages.dev. Raw bundle25295559 bytes and
+gzip7294353 bytes passed budgets;320 assets uploaded. Worker verified25 evidence
+checksums in `.verification/hotfix-release-052eefaf9/`. This releases only the
+save-warning hotfix, not local authoring work. Hosted browser acceptance remains
+open, and the user's existing Safari draft has not been reloaded or changed.
+
+08a follow-up reports ten permission bypass regressions reproduced red before
+fixes, then passed (five unit and five unique-schema PG cases with no revision,
+projection or receipt changes on refusal). The URL exception now verifies the
+original immutable registered-image insertion receipt and lineage/descriptors;
+canonical designer locks are reused. Independent Opus follow-up ctx_65377477d725
+is checking this claim before acceptance. Native nested test now uses a fresh
+Session. Parent regenerated final patchb4db2b0d4e97e8440a78d952d9a67efe84a80a760411e1220995c4d9dfc102b6
+with32 engine/9 bridge/8 UI expected tests; Linux execution is still pending.
+
+M06 integration worker reports picker save/reopen and unavailable-web-token
+preflight/final checks passing, including zero provider dispatch and released
+claims on refusal, and enabled/gated success. Native token-edit restrictions
+remain unchanged. Security API/mutation inventories are audited against actual
+new routes; lint/type/regression report remains pending. No email was sent.
+
+Independent Opus follow-up ctx_65377477d725 found no remaining P0/P1 in the named
+08a snapshot; report `.verification/native-library-p1-followup-review-20261103.md`
+records exact hashes and verifies tracked patch/pins reproduce final native
+files. Native compilation and actual-WASM08a remain open. Provenance after
+copy/detach intentionally fails closed; ordinary staff authority remains08b.
+
+Parent hosted hotfix check completed in a separate Chrome owner tab: existing
+Geely draft loads without the idle unconfirmed-save banner, correct imported-HTML
+guidance disables native editing, and preview/mobile load the existing image.
+Populated QR Codes and established navigation also load. No saves or public QR
+redirects were performed; original Safari draft remains untouched. Detailed
+limits are in `hotfix-hosted-check-20261103.md`, including Super Admin session and
+no induced live uncertain write. Queue00 closes this narrow hotfix only.
+
+Campaign foundation ctx_1a68325c2f55 now implements approved08b slice3 through
+existing491 campaign_id/revision/renderer owners;498 reserved within that task.
+Only disposable unique-schema PG execution is delegated. Parent retains reviewed
+configured migration application and integration. Exact-template creation,
+raw-write interception, native campaign admission/UI and actual browser round
+trip remain subsequent acceptance steps, not implied by the foundation.

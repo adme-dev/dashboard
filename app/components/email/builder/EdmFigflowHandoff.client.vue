@@ -3,15 +3,18 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { FIGFLOW_EDM_EDITOR_URL, FIGFLOW_EDM_ORIGIN, FIGFLOW_EDM_PROTOCOL, type DesignHandoff } from '~~/shared/emailRendering/designRoundtrip'
 import { validateContentReturn } from '~~/shared/emailRendering/designComposer'
 import { applyDesignerOperations, type DesignerCapabilities, type DesignerOperation } from '~~/shared/emailRendering/designDesigner'
+import { parseNativeLibraryContext, type NativeLibraryContext } from '~~/shared/emailRendering/designModules'
+import type { NativeLibraryIntent } from '~~/app/composables/useEdmNativeLibrary'
 import type { EmailDesignDocument } from '~~/shared/emailRendering/designContract'
 
-const props = defineProps<{ handoff: DesignHandoff, busy: boolean, error?: string, conflict?: boolean, subject?: string, previewText?: string, mode?: 'content' | 'designer', capabilities?: DesignerCapabilities | null, operationId?: string | null }>()
+const props = defineProps<{ handoff: DesignHandoff, busy: boolean, error?: string, conflict?: boolean, subject?: string, previewText?: string, mode?: 'content' | 'designer', capabilities?: DesignerCapabilities | null, operationId?: string | null, libraryAvailable?: boolean, libraryReady?: boolean, libraryPublisher?: boolean }>()
 const emit = defineEmits<{
   propose: [design: EmailDesignDocument]
   proposeDesigner: [operations: DesignerOperation[], operationId: string]
   apply: []
   cancel: []
   resume: []
+  libraryRequest: [context: NativeLibraryContext, intent: NativeLibraryIntent]
 }>()
 const frame = ref<HTMLIFrameElement | null>(null)
 const channel = crypto.randomUUID()
@@ -22,10 +25,14 @@ const previewHtml = ref('')
 const previewLoading = ref(false)
 const previewDevice = ref<'desktop' | 'mobile'>('desktop')
 const previewError = ref('')
+const libraryIntent = ref<NativeLibraryIntent | null>(null)
+const libraryContext = ref<NativeLibraryContext | null>(null)
 let previewSequence = 0
 async function renderProposal() {
-  const proposal = props.handoff.proposal
-  if (!proposal || props.handoff.state !== 'proposed') return
+  const proposal = props.handoff.state === 'proposed'
+    ? props.handoff.proposal
+    : libraryContext.value && props.operationId ? applyDesignerOperations(props.handoff.source, libraryContext.value.operations, props.operationId) : null
+  if (!proposal) return
   const sequence = ++previewSequence
   previewLoading.value = true
   previewHtml.value = ''
@@ -98,6 +105,34 @@ function requestReturn() {
     bridgeError.value = 'FigFlow did not confirm a snapshot. Keep this window open and retry Return for review.'
   }, 15_000)
 }
+function cancelLibraryRead() {
+  requestId = null
+  clearTimeout(timer)
+  requesting.value = false
+  libraryIntent.value = null
+  libraryContext.value = null
+  ++previewSequence
+  previewHtml.value = ''
+  previewError.value = ''
+}
+function requestLibrary(intent: NativeLibraryIntent) {
+  if (!ready.value || props.busy || requesting.value || !props.libraryAvailable || props.mode !== 'designer') return
+  libraryIntent.value = intent
+  libraryContext.value = null
+  requesting.value = true
+  bridgeError.value = ''
+  send('context')
+  clearTimeout(timer)
+  timer = setTimeout(() => {
+    cancelLibraryRead()
+    bridgeError.value = 'The selection could not be confirmed. Finish editing in FigFlow and choose the library again.'
+  }, 15_000)
+}
+function confirmLibrary() {
+  if (!libraryContext.value || !libraryIntent.value || props.busy || previewLoading.value || !previewHtml.value) return
+  emit('libraryRequest', libraryContext.value, libraryIntent.value)
+}
+
 function receive(event: MessageEvent) {
   if (event.source !== frame.value?.contentWindow || event.origin !== FIGFLOW_EDM_ORIGIN) return
   const message = event.data
@@ -107,6 +142,20 @@ function receive(event: MessageEvent) {
     clearTimeout(timer)
     ready.value = true
     bridgeError.value = ''
+  } else if (message.type === 'context') {
+    requestId = null
+    clearTimeout(timer)
+    requesting.value = false
+    try {
+      if (!props.operationId || !libraryIntent.value || props.mode !== 'designer' || !props.libraryAvailable) throw new Error('Selection unavailable')
+      const context = parseNativeLibraryContext(props.handoff.source, message.payload, props.operationId)
+      if (libraryIntent.value === 'section' && (!context.selectedBlockIds.length || context.selectedBlockIds.includes('root'))) throw new Error('Choose a complete section')
+      libraryContext.value = context
+      void renderProposal()
+    } catch {
+      cancelLibraryRead()
+      bridgeError.value = 'Choose a mapped email section in FigFlow before opening the library. Your edits are kept.'
+    }
   } else if (message.type === 'snapshot') {
     requestId = null
     clearTimeout(timer)
@@ -125,6 +174,7 @@ function receive(event: MessageEvent) {
     requestId = null
     clearTimeout(timer)
     requesting.value = false
+    if (libraryIntent.value) cancelLibraryRead()
     bridgeError.value = 'FigFlow cannot return these changes safely. Undo unsupported changes, finish editing any active text, then retry.'
   }
 }
@@ -148,14 +198,64 @@ onBeforeUnmount(() => {
       title="Your composer has newer edits"
       description="Keep your current draft. Save it and start a new FigFlow handoff; this proposal will not overwrite those edits."
     />
+    <template v-if="libraryReady">
+      <slot name="library" />
+    </template>
     <UAlert
-      v-if="handoff.state === 'open' && mode !== 'designer' && !handoff.source.policy.editableFields.length"
+      v-else-if="handoff.state === 'open' && mode !== 'designer' && !handoff.source.policy.editableFields.length"
       color="warning"
       title="This template supports composer editing only"
       description="FigFlow cannot edit its HTML or locked sections yet. Return to the composer to continue; your saved draft is kept."
     />
     <template v-else-if="handoff.state === 'open'">
-      <div class="min-h-96 flex-1 overflow-hidden rounded-lg border border-default">
+      <section v-if="libraryIntent" class="flex min-h-0 flex-col gap-3 rounded border border-default bg-elevated p-4" aria-label="Review selection for library">
+        <UAlert
+          :title="libraryContext ? 'Review the current design' : 'Confirming FigFlow selection'"
+          color="info"
+          :description="libraryContext?.operations.length ? 'Save these design changes before inserting or publishing library content.' : 'Opening the library does not publish or change this saved design.'"
+        />
+        <iframe
+          v-if="libraryContext && previewHtml"
+          :srcdoc="previewHtml"
+          sandbox=""
+          referrerpolicy="no-referrer"
+          title="Captured email preview"
+          :class="['mx-auto block h-[320px] w-full rounded border border-default bg-white', previewDevice === 'mobile' ? 'max-w-[390px]' : 'max-w-[1000px]']"
+        />
+        <UAlert
+          v-if="previewError"
+          :title="previewError"
+          color="error"
+          :actions="[{ label: 'Retry preview', onClick: renderProposal }]"
+        />
+        <div class="flex flex-wrap justify-end gap-2">
+          <UButton
+            label="Desktop"
+            color="neutral"
+            variant="ghost"
+            @click="previewDevice = 'desktop'"
+          />
+          <UButton
+            label="Mobile"
+            color="neutral"
+            variant="ghost"
+            @click="previewDevice = 'mobile'"
+          />
+          <UButton
+            label="Continue editing"
+            color="neutral"
+            variant="outline"
+            :disabled="busy"
+            @click="cancelLibraryRead"
+          />
+          <UButton
+            :label="libraryContext?.operations.length ? 'Review and save for library' : 'Use saved design in library'"
+            :disabled="!libraryContext || busy || previewLoading || !previewHtml"
+            @click="confirmLibrary"
+          />
+        </div>
+      </section>
+      <div :inert="libraryIntent !== null || undefined" class="min-h-96 flex-1 overflow-hidden rounded-lg border border-default">
         <iframe
           ref="frame"
           :src="FIGFLOW_EDM_EDITOR_URL"
@@ -166,14 +266,44 @@ onBeforeUnmount(() => {
           @load="connect"
         />
       </div>
-      <div class="flex justify-end">
+      <div class="flex flex-wrap justify-end gap-2">
         <UButton
           label="Return for review"
           icon="i-lucide-arrow-left-right"
-          :disabled="!ready || busy"
+          :disabled="!ready || busy || !!libraryIntent"
           :loading="requesting"
           @click="requestReturn"
         />
+        <template v-if="libraryAvailable && mode === 'designer'">
+          <UButton
+            label="Library"
+            color="neutral"
+            variant="outline"
+            :disabled="!ready || busy || requesting || !!libraryIntent"
+            @click="requestLibrary('library')"
+          />
+          <UButton
+            label="Images"
+            color="neutral"
+            variant="outline"
+            :disabled="!ready || busy || requesting || !!libraryIntent"
+            @click="requestLibrary('images')"
+          />
+          <UButton
+            label="Save selected section"
+            color="neutral"
+            variant="outline"
+            :disabled="!libraryPublisher || !ready || busy || requesting || !!libraryIntent"
+            @click="requestLibrary('section')"
+          />
+          <UButton
+            label="Publish template"
+            color="neutral"
+            variant="outline"
+            :disabled="!libraryPublisher || !ready || busy || requesting || !!libraryIntent"
+            @click="requestLibrary('template')"
+          />
+        </template>
       </div>
     </template>
     <template v-else-if="handoff.state === 'proposed'">
