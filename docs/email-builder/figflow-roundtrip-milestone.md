@@ -6,6 +6,12 @@ proof limits and screenshot hashes are in the
 [activation receipt](figflow-production-activation-20261102.json). The earlier
 [disabled release receipt](figflow-release-20261101.json) is historical.
 
+**Real-template beta qualification:** the later [beta](figflow-beta-20261102.md)
+passes an Electric Drive native heading round trip, but FuturaX opens blank with
+zero editable fields. Six of eleven starters have zero editable fields in local
+source preflight. This completed limited milestone does not mean the catalog or
+standalone template browser is ready. B01–B05 in the beta report remain open.
+
 ## Acceptance
 
 - [x] Canonical conversion with stable lineage and restricted content edits.

@@ -6,6 +6,13 @@
 The [parent plan](../superpowers/plans/2026-10-30-figflow-edm.md) and
 [PRD](../superpowers/specs/2026-10-30-figflow-edm-design.md) track the larger scope.
 
+**Read the [real-template beta](figflow-beta-20261102.md) before the next task.**
+Electric Drive passes native heading edit/review/Apply/reload; FuturaX opens blank
+with zero editable fields. Six of eleven starters have zero editable fields in
+local preflight. The standalone `/0.11.2-flow1/` build has no template browser.
+Next bounded package: B01, an honest zero-editable-field admission guard and
+composer fallback. B02–B05 track mapping, library, mobile triage and client proof.
+
 ## Staff workflow
 
 Open a supported saved draft in the email composer and choose **Edit in FigFlow**.
