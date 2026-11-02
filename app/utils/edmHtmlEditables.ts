@@ -1,3 +1,4 @@
+import { publicEmailUrl } from '../../shared/emailRendering/importedDocument'
 import { extractPlainText, sanitizeInlineHtml } from './edmInlineText'
 
 export type EdmHtmlEditableKind = 'text' | 'link' | 'image'
@@ -31,10 +32,10 @@ export interface EdmHtmlEditableSelection {
   }
 }
 
-export type EdmHtmlEditableUpdate =
-  | { kind: 'text', text?: string, html?: string, color?: string, fontFamily?: string, fontSize?: string, fontWeight?: string, textAlign?: string, padding?: EdmHtmlEditablePadding }
-  | { kind: 'link', text?: string, html?: string, href?: string, color?: string, fontFamily?: string, fontSize?: string, fontWeight?: string, textAlign?: string, padding?: EdmHtmlEditablePadding }
-  | { kind: 'image', src?: string, alt?: string, linkHref?: string, padding?: EdmHtmlEditablePadding }
+export type EdmHtmlEditableUpdate
+  = | { kind: 'text', text?: string, html?: string, color?: string, fontFamily?: string, fontSize?: string, fontWeight?: string, textAlign?: string, padding?: EdmHtmlEditablePadding }
+    | { kind: 'link', text?: string, html?: string, href?: string, color?: string, fontFamily?: string, fontSize?: string, fontWeight?: string, textAlign?: string, padding?: EdmHtmlEditablePadding }
+    | { kind: 'image', src?: string, alt?: string, linkHref?: string, padding?: EdmHtmlEditablePadding }
 
 const SKIP_TAGS = new Set([
   'STYLE', 'SCRIPT', 'NOSCRIPT', 'TEMPLATE', 'TEXTAREA', 'TITLE',
@@ -45,11 +46,22 @@ function canUseDom(): boolean {
   return typeof document !== 'undefined' && typeof document.createElement === 'function'
 }
 
+const fullDocuments = new WeakMap<Element, Document>()
 function parseHtml(html: string): HTMLElement | null {
   if (!canUseDom()) return null
   const root = document.createElement('div')
-  root.innerHTML = html || ''
+  if (/^\s*(?:<!doctype\s+html|<html\b)/i.test(html) && typeof DOMParser !== 'undefined') {
+    const parsed = new DOMParser().parseFromString(html, 'text/html')
+    root.append(...Array.from(parsed.body.childNodes))
+    fullDocuments.set(root, parsed)
+  } else root.innerHTML = html || ''
   return root
+}
+function serializeHtml(root: Element): string {
+  const parsed = fullDocuments.get(root)
+  if (!parsed) return root.innerHTML
+  parsed.body.replaceChildren(...Array.from(root.childNodes).map(node => node.cloneNode(true)))
+  return '<!DOCTYPE html>\n' + parsed.documentElement.outerHTML
 }
 
 function normaliseText(value: string | null | undefined): string {
@@ -373,7 +385,12 @@ function stripEditorAttributes(root: Element) {
 
 function serialise(root: Element): string {
   stripEditorAttributes(root)
-  return root.innerHTML
+  if (fullDocuments.has(root)) {
+    for (const link of root.querySelectorAll('a[href]')) {
+      if (!publicEmailUrl(link.getAttribute('href') || '', true)) link.removeAttribute('href')
+    }
+  }
+  return serializeHtml(root)
 }
 
 export function annotateHtmlEditables(
@@ -404,7 +421,7 @@ export function annotateHtmlEditables(
     }
   }
 
-  return root.innerHTML
+  return serializeHtml(root)
 }
 
 export function getHtmlEditableSelection(html: string, id: string): EdmHtmlEditableSelection | null {
@@ -469,6 +486,13 @@ export function updateHtmlEditable(
   if (!found || found.kind !== update.kind) return html || ''
 
   const { el } = found
+  if (fullDocuments.has(root)) {
+    // Retain the original value when an editor replacement violates the same
+    // durable public-HTTPS policy used by import and the isolated preview.
+    if (update.kind === 'image' && update.src !== undefined && !publicEmailUrl(update.src)) return html
+    const href = update.kind === 'link' ? update.href : update.kind === 'image' ? update.linkHref : undefined
+    if (href && !publicEmailUrl(href, true)) return html
+  }
   if (update.kind === 'text') {
     if (typeof update.html === 'string') {
       ;(el as HTMLElement).innerHTML = sanitizeInlineHtml(update.html)

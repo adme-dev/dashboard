@@ -198,7 +198,17 @@
     <!-- Spacer -->
     <div v-else-if="type === 'Spacer'" :style="{ height: ((blockProps.height as number) || 24) + 'px' }" />
 
-    <!-- Html -->
+    <!-- Full imported emails keep their own CSS and responsive viewport. -->
+    <EmailBuilderEdmImportedDocument
+      v-else-if="type === 'Html' && blockProps.documentMode === 'email'"
+      :contents="String(blockProps.contents || '')"
+      :editable="editable"
+      :selected-id="selectedHtmlEditableId"
+      @update:contents="contents => emit('update:props', { contents })"
+      @select="selection => emit('select:html-editable', selection)"
+      @request-image="selection => emit('request:html-image-library', selection)"
+    />
+    <!-- Html fragments -->
     <div
       v-else-if="type === 'Html'"
       ref="htmlEditableWrapEl"

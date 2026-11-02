@@ -1,3 +1,5 @@
+import { assertImportedDocumentIdentity } from '../../../shared/emailRendering/importedDocument'
+import { sanitizeImportedEmailDocument } from './importedEmailDocument'
 import { readTemplateBackup } from '../../../shared/emailRendering/templateBackup'
 import { redactTemplateProvenance } from '../../../shared/emailRendering/templateProvenance'
 import { parse, parseFragment } from 'parse5'
@@ -72,10 +74,15 @@ function sanitizeNativeProps(value: unknown, imageBlock = false): void {
 export function prepareTemplateImport(format: 'html' | 'json', content: string): EdmFlyhubDocument {
   if (!content.trim()) throw new Error('Choose a file or paste email content')
   if (new TextEncoder().encode(content).byteLength > MAX_TEMPLATE_IMPORT_BYTES) throw new Error('Import must be 512 KB or smaller')
+  if (format === 'html' && /^\s*(?:<!doctype\s+html|<html\b)/i.test(content)) {
+    const imported = sanitizeImportedEmailDocument(content)
+    return { root: { type: 'EmailLayout', data: { childrenIds: ['imported'], props: { contentWidth: imported.width } } }, imported: { type: 'Html', data: { props: { contents: imported.html, documentMode: 'email' } } } }
+  }
   if (format === 'html') return { root: { type: 'EmailLayout', data: { childrenIds: ['imported'] } }, imported: { type: 'Html', data: { props: { contents: sanitizeImportedHtml(content) } } } }
   const parsed = JSON.parse(content)
   const document = snapshotRenderInput(redactTemplateProvenance(readTemplateBackup(parsed)?.document ?? parsed), MAX_TEMPLATE_IMPORT_BYTES) as EdmFlyhubDocument
   validateDocumentGraph(document)
+  assertImportedDocumentIdentity(document)
   // Validate disconnected blocks as well, and reject dangling references.
   for (const [id, block] of Object.entries(document)) {
     if (['__proto__', 'constructor', 'prototype'].includes(id)) throw new Error('Invalid block identifier')
@@ -84,11 +91,15 @@ export function prepareTemplateImport(format: 'html' | 'json', content: string):
     if (refs.some(ref => !Object.hasOwn(document, ref))) throw new Error('Document contains a missing block')
     if (block.type === 'Html') {
       if (typeof block.data.props?.contents !== 'string') throw new Error('Html blocks require contents')
-      block.data.props.contents = sanitizeImportedHtml(block.data.props.contents)
+      block.data.props.contents = block.data.props.documentMode === 'email'
+        ? sanitizeImportedEmailDocument(block.data.props.contents).html
+        : sanitizeImportedHtml(block.data.props.contents)
       const mobileContents = block.data.mobile?.props?.contents
       if (mobileContents !== undefined) {
         if (typeof mobileContents !== 'string') throw new Error('Invalid mobile Html contents')
-        block.data.mobile!.props!.contents = sanitizeImportedHtml(mobileContents)
+        block.data.mobile!.props!.contents = block.data.props.documentMode === 'email'
+          ? sanitizeImportedEmailDocument(mobileContents).html
+          : sanitizeImportedHtml(mobileContents)
       }
     }
     for (const variant of [block.data, block.data.mobile]) {
