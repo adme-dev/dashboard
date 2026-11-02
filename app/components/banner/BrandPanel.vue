@@ -6,6 +6,7 @@ import { apiErrorDescription } from '~/utils/apiError'
 import { matchesMotorStackPaint, motorStackPaintName, motorStackPaintNames } from '~/utils/banner-motorstack-colours'
 import { loadedImageMetadata } from '~/utils/banner-image-metadata'
 import type { BannerMotorStackOffer } from '~/utils/banner-offer'
+import { startBannerMediaDrag, endBannerMediaDrag } from '~/utils/banner-media-drag'
 
 interface MotorStackImage {
   id: string
@@ -21,6 +22,7 @@ interface MotorStackImages {
   warnings: string[]
 }
 
+const props = withDefaults(defineProps<{ initialTab?: 'logos' | 'variants' | 'offers' }>(), { initialTab: 'logos' })
 const emit = defineEmits<{ browseAssets: [] }>()
 const { state, selectedLayer, activeFormat, applyBrandKit, updateLayer, addLayer, addMotorStackImageToAllLayouts, addMotorStackOfferToAllLayouts, addBrandGuideButton } = useBannerStudio()
 const { isLayerLockedByOther } = useBannerRealtime()
@@ -28,7 +30,7 @@ const toast = useToast()
 const clientId = computed(() => state.project?.clientId || undefined)
 const { fetchCustomFonts, loadUsedFonts, getFont } = useBannerFonts(() => clientId.value ?? null)
 const { brandKits, kit, kitId, loading, error, refresh } = useBannerProjectBrand()
-const activeTab = ref('logos')
+const activeTab = ref<string>(props.initialTab)
 const showManagerModal = ref(false)
 const kitItems = computed(() => [{ label: 'Choose a brand kit', value: '__choose__' }, ...brandKits.value.map(kit => ({ label: kit.name, value: kit.id }))])
 const motorStackBrandId = computed(() => kit.value?.sourceUrl?.match(/^https:\/\/oem-variants\.pages\.dev\/api\/mcp#brand=([a-z0-9-]{1,40})$/)?.[1])
@@ -452,12 +454,17 @@ function addLogo(logo: BrandKitLogo, event: MouseEvent) {
               :loading="addingImage === image.id"
               :disabled="!!addingImage"
               :aria-label="`Add ${image.name} to all layouts`"
+              :draggable="!addingImage"
+              title="Drag onto a canvas or click to add to all layouts"
+              @dragstart="startBannerMediaDrag($event, { kind: 'motorstack', brandId: motorStackBrandId!, ...(imageModel === '__all_models__' ? {} : { model: imageModel }), assetId: image.id }, state.project?.id)"
+              @dragend="endBannerMediaDrag"
               @click="addVehicleImage(image)"
             >
               <span class="flex aspect-square items-center justify-center overflow-hidden rounded bg-default"><img
                 v-if="image.previewUrl"
                 :src="image.previewUrl"
                 :alt="image.name"
+                draggable="false"
                 loading="lazy"
                 decoding="async"
                 class="h-full w-full object-contain"

@@ -6,7 +6,7 @@ import { brandStyleProfile } from '~~/shared/bannerBrandProfiles'
 import { BRAND_BUTTON_DRAG_TYPE, brandButtonDragData } from '~/utils/banner-brand-buttons'
 import type { BrandButtonVariant } from '~/utils/banner-brand-kit'
 
-const props = withDefaults(defineProps<{ kit: Pick<BannerBrandKit, 'sourceUrl' | 'name' | 'fonts'> & { id?: string }, interactive?: boolean }>(), { interactive: false })
+const props = withDefaults(defineProps<{ kit: Pick<BannerBrandKit, 'sourceUrl' | 'name' | 'fonts'> & { id?: string }, interactive?: boolean, compact?: boolean }>(), { interactive: false, compact: false })
 const emit = defineEmits<{ addButton: [variant: BrandButtonVariant] }>()
 const brandId = computed(() => motorstackBrandId(props.kit.sourceUrl))
 const profile = computed(() => brandStyleProfile(brandId.value))
@@ -47,13 +47,14 @@ function startButtonDrag(event: DragEvent, variant: BrandButtonVariant) {
     <div class="flex items-start justify-between gap-3">
       <div>
         <h3 class="text-xs font-semibold text-highlighted">
-          {{ kit.name }} dealer style guide
+          {{ compact ? `${kit.name} buttons` : `${kit.name} dealer style guide` }}
         </h3>
         <p class="text-[11px] text-muted">
-          {{ brandId === 'ldv' ? 'Updated 30 August 2026' : 'Button and type reference' }}
+          {{ compact ? 'Drag onto a canvas or click to add' : brandId === 'ldv' ? 'Updated 30 August 2026' : 'Button and type reference' }}
         </p>
       </div>
       <a
+        v-if="!compact"
         :href="`https://oem-variants.pages.dev/app/#/media?oem=${brandId}`"
         target="_blank"
         rel="noopener noreferrer"
@@ -113,13 +114,13 @@ function startButtonDrag(event: DragEvent, variant: BrandButtonVariant) {
         </UButton>
         <span v-else class="inline-flex items-center justify-center bg-white text-black uppercase" :style="{ fontFamily: 'Open Sans, sans-serif', fontWeight: 700, fontSize: '13px', minWidth: '170px', padding: '12px 10px' }">Download brochure</span>
       </div>
-      <p v-if="interactive && kit.id" class="text-xs leading-relaxed text-muted">
+      <p v-if="!compact && interactive && kit.id" class="text-xs leading-relaxed text-muted">
         Drag a button onto a canvas, or click it to add to the selected size. Edit its label in the inspector.
       </p>
-      <p class="text-xs leading-relaxed text-muted">
+      <p v-if="!compact" class="text-xs leading-relaxed text-muted">
         {{ profile.note }}
       </p>
-      <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[11px] leading-snug">
+      <dl v-if="!compact" class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[11px] leading-snug">
         <dt class="text-muted">
           Heading
         </dt><dd>{{ headingFace?.family || 'No heading font saved' }}</dd>

@@ -1,13 +1,16 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { FORMATS } from '~/utils/banner-constants'
 import { BRAND_BUTTON_DRAG_TYPE, brandButtonDropPoint, parseBrandButtonDragData } from '~/utils/banner-brand-buttons'
+import { BANNER_MEDIA_DRAG_TYPE, takeBannerMediaDrag } from '~/utils/banner-media-drag'
+import { apiErrorDescription } from '~/utils/apiError'
+import type { BannerAsset } from '~/types/banner-studio'
 
 import { layoutName, layoutRows, fitLayoutRows, WORKSPACE_GAP, WORKSPACE_FOOTER } from '~/utils/banner-workspace'
 
 const props = defineProps<{ projectId?: string }>()
 
-const { state, setActiveArtboard, selectLayer, zoomToFitFormat, setLayoutView, addBrandGuideButton } = useBannerStudio()
+const { state, currentSlide, setActiveArtboard, selectLayer, zoomToFitFormat, setLayoutView, addBrandGuideButton, addMediaToLayouts } = useBannerStudio()
 const { kit } = useBannerProjectBrand()
 const toast = useToast()
 const { sendCursorMove } = useBannerRealtime()
@@ -17,6 +20,9 @@ const canvasEl = ref<HTMLElement | null>(null)
 const isPanning = ref(false)
 const panStart = ref({ x: 0, y: 0, scrollX: 0, scrollY: 0 })
 const dropTargetKey = ref<string | null>(null)
+const importingMedia = ref(false)
+let disposed = false
+onBeforeUnmount(() => { disposed = true })
 
 const rows = computed(() => layoutRows(state.setKeys.map(key => FORMATS[key]).filter(Boolean)))
 const isOverview = computed(() => state.layoutView === 'all')
@@ -90,21 +96,53 @@ function isBrandButtonDrag(event: DragEvent) {
   return Array.from(event.dataTransfer?.types || []).includes(BRAND_BUTTON_DRAG_TYPE)
 }
 
-function onBrandButtonDragOver(event: DragEvent, key: string) {
-  if (!kit.value || !isBrandButtonDrag(event)) return
+function onCanvasDragOver(event: DragEvent, key: string) {
+  const isMedia = Array.from(event.dataTransfer?.types || []).includes(BANNER_MEDIA_DRAG_TYPE)
+  if (importingMedia.value || (!isMedia && (!kit.value || !isBrandButtonDrag(event)))) return
   event.preventDefault()
   event.stopPropagation()
   if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy'
   dropTargetKey.value = key
 }
 
-function onBrandButtonDragLeave(event: DragEvent, key: string) {
+function onCanvasDragLeave(event: DragEvent, key: string) {
   const target = event.currentTarget as HTMLElement
   if (event.relatedTarget instanceof Node && target.contains(event.relatedTarget)) return
   if (dropTargetKey.value === key) dropTargetKey.value = null
 }
 
-function onBrandButtonDrop(event: DragEvent, key: string) {
+async function onCanvasDrop(event: DragEvent, key: string) {
+  if (Array.from(event.dataTransfer?.types || []).includes(BANNER_MEDIA_DRAG_TYPE)) {
+    event.preventDefault()
+    event.stopPropagation()
+    dropTargetKey.value = null
+    const source = takeBannerMediaDrag(event.dataTransfer?.getData(BANNER_MEDIA_DRAG_TYPE) || '', state.project?.id)
+    if (!source || importingMedia.value) return
+    const point = brandButtonDropPoint(event.clientX, event.clientY, (event.currentTarget as HTMLElement).getBoundingClientRect(), state.wsScale)
+    const project = state.project
+    const slideId = currentSlide.value?.id
+    const activeKey = state.activeKey
+    const view = state.layoutView
+    importingMedia.value = true
+    try {
+      const asset = source.kind === 'library' ? source.asset : (await $fetch<{ asset: BannerAsset }>('/api/agency/banner-studio/motorstack/media', {
+        method: 'POST', body: { brandId: source.brandId, assetId: source.assetId, ...(source.model ? { model: source.model } : {}), ...(source.colour ? { colour: source.colour } : {}) }
+      })).asset
+      if (disposed) return
+      if (state.project !== project || currentSlide.value?.id !== slideId || state.activeKey !== activeKey || state.layoutView !== view) {
+        toast.add({ title: 'Design selection changed', description: 'The image is saved in Assets. Drag it onto the canvas again.', color: 'warning' })
+        return
+      }
+      if (!asset?.url || !asset.mimeType) throw new Error('The media could not be verified. Try again.')
+      const count = addMediaToLayouts(asset, key, point, view === 'all')
+      toast.add({ title: 'Media added', description: `${asset.name} · ${count} ${count === 1 ? 'layout' : 'layouts'}`, color: 'success' })
+    } catch (error) {
+      toast.add({ title: 'Could not add media', description: apiErrorDescription(error, 'Drag the image onto the canvas again.'), color: 'error' })
+    } finally {
+      importingMedia.value = false
+    }
+    return
+  }
   if (!isBrandButtonDrag(event)) return
   event.preventDefault()
   event.stopPropagation()
@@ -153,6 +191,7 @@ function onCanvasCursorMove(e: MouseEvent) {
     @mouseup="onCanvasMouseUp"
     @mouseleave="onCanvasMouseUp"
   >
+    <p v-if="importingMedia" role="status" class="sticky top-0 z-20 mx-auto w-fit rounded-lg bg-elevated px-3 py-2 text-sm shadow">Adding media…</p>
     <div class="flex min-w-fit flex-col" :style="{ gap: `${WORKSPACE_GAP}px` }" @click.self="onCanvasClick">
       <div v-for="(row, rowIndex) in rows" :key="rowIndex"
         v-show="isOverview || row.some(format => format.key === state.activeKey)"
@@ -178,9 +217,9 @@ function onCanvasCursorMove(e: MouseEvent) {
             height: `${(format.h || 250) * state.wsScale}px`,
           }"
           @click.stop="state.activeKey !== format.key ? setActiveArtboard(format.key) : undefined"
-          @dragover="onBrandButtonDragOver($event, format.key)"
-          @dragleave="onBrandButtonDragLeave($event, format.key)"
-          @drop="onBrandButtonDrop($event, format.key)"
+          @dragover="onCanvasDragOver($event, format.key)"
+          @dragleave="onCanvasDragLeave($event, format.key)"
+          @drop="onCanvasDrop($event, format.key)"
         >
           <!-- Inner at full resolution, scaled down -->
           <div

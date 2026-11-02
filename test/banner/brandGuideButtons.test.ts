@@ -75,3 +75,24 @@ it('makes the guide preview draggable and clickable in the editor', async () => 
     host.remove()
   }
 })
+
+it('keeps compact button presets interactive without the full guide details', () => {
+  const host = document.createElement('div')
+  document.body.append(host)
+  const onAddButton = vi.fn()
+  const app = Vue.createApp(BrandStyleGuide, { kit: renault, compact: true, interactive: true, onAddButton })
+  app.component('UButton', { setup: (_, { attrs, slots }) => () => Vue.h('button', attrs, slots.default?.()) })
+  app.mount(host)
+  try {
+    expect(host.textContent).toContain('Renault buttons')
+    expect(host.textContent).not.toContain('View full guide')
+    expect(host.textContent).not.toContain('Heading')
+    const buttons = host.querySelectorAll('button')
+    expect(buttons).toHaveLength(2)
+    buttons[1]!.click()
+    expect(onAddButton).toHaveBeenCalledWith('secondary')
+  } finally {
+    app.unmount()
+    host.remove()
+  }
+})

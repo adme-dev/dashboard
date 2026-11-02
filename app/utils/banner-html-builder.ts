@@ -356,11 +356,12 @@ export function buildBannerHTML(
       const preset = ANIM_IN.find((a: any) => a.id === l.animIn)
       const hasMP = (l.motionPath?.length ?? 0) >= 2
 
-      // Initial hidden state
+      // Static layers must also be visible when the renderer requests frame zero.
+      const initialOpacity = (l.animIn === 'none' || !l.animIn) && startTime === 0 ? l.opacity : 0
       if (isBg) {
-        lines.push(`  tl.set(${sel}, { autoAlpha: 0 }, 0);`)
+        lines.push(`  tl.set(${sel}, { autoAlpha: ${initialOpacity} }, 0);`)
       } else {
-        lines.push(`  tl.set(${sel}, { opacity: 0 }, 0);`)
+        lines.push(`  tl.set(${sel}, { opacity: ${initialOpacity} }, 0);`)
       }
 
       // Animate in
@@ -393,12 +394,8 @@ export function buildBannerHTML(
           lines.push(`  tl.to(${sel}, { ${opReveal}: ${l.opacity}, duration: 0.1 }, ${startTime});`)
         }
       } else if (l.animIn === 'none' || !l.animIn) {
-        // Just appear
-        if (isBg) {
-          lines.push(`  tl.to(${sel}, { autoAlpha: ${l.opacity}, duration: 0.1 }, ${startTime});`)
-        } else {
-          lines.push(`  tl.to(${sel}, { opacity: ${l.opacity}, duration: 0.1 }, ${startTime});`)
-        }
+        const opKey = isBg ? 'autoAlpha' : 'opacity'
+        lines.push(`  tl.set(${sel}, { ${opKey}: ${l.opacity} }, ${startTime});`)
       }
 
       // Exit animation — use ANIM_OUT presets
