@@ -1,5 +1,7 @@
 # FigFlow background delivery ledger — 2 November 2026
 
+**Current next action and short queue:** [FigFlow EDM — resume here](figflow-current-task-list.md). The sections below are chronological evidence; earlier “Active” rows describe their checkpoint, not current worker state.
+
 Owner instruction: run background agents and complete the approved Emailify-style
 email authoring flow plus the adopted R&D roadmap. Integration/coordinator: Codex,
 `term_217a450d-d4cf-47bf-b6ff-16fcc544c260`.
@@ -273,3 +275,81 @@ Durable working files now live in ignored `.verification/figflow-native-source-
 PostgreSQL fixture was likewise recreated; this did not reapply configured
 production migrations or modify customer data. Parent must regenerate source
 pins/test receipts only after remediation freezes, then run Linux/WASM CI.
+
+## Short queue and final-check wave — 2 November 2026, 07:55 UTC
+
+The user requested a micro task list to retain exact position. The linked
+figflow-current-task-list.md is the current next-action index; this ledger
+remains the evidence/decision owner. Earlier Active tables are historical.
+No independent GSD project or competing ledger was initialized. Installed
+gsd-progress and gsd-resume-work were inspected as available task skills;
+existing project scope/acceptance and Orca lifecycle records remain authoritative.
+
+Library/history worker2636b6faf settled and was released after its report and
+commit were verified. Its implementation is staged in the parent, not committed
+or deployed yet. Parent added the three exact template/history routes to the
+existing design-only transport and private Nitro owner. The proxy test first
+failed on exactly those three missing routes; all78 focused tests/7 files then
+passed with the repaired draft-dialog harness. The private Worker builds and
+all22 actual Workerd admission scenarios pass, including missing/false library
+gates and enabled unauthenticated denial. The combined focused authoring/library
+suite passes564 tests/61 files on Node24.18.0. Scoped parent lint and diff checks
+pass. Build retains existing bundled nullish-coalescing warnings; these are not
+a whole-repository type/lint pass.
+
+New bounded final-check workers, same supervised run:
+- Codex task_0c9462fb0b28 / ctx_763e48631ee0: real isolated PostgreSQL publication,
+  exact copy, history/CAS/unknown-reply and receipt namespace verification. Owns
+  only its new integration suite and report.
+- Anthropic Opus task_450ca450200d / ctx_9a12322680f5: read-only adversarial native
+  parity/Undo/compile-hazard review. Owns only its review report.
+
+Kimi source remediation settled and was released; the regenerated patch includes
+13 source paths and22 named engine tests plus8 browser-bridge tests. Patch dry
+run, workflow offline pin validation and19 relay tests pass. No Rust test or
+WASM build is claimed. Opus final review still precedes the native-source commit
+and Linux CI. The new feature branch push trigger was removed so a mergeable PR
+does not start duplicate push+PR native builds.
+
+M06 Opus candidate7bcc64db3 settled and was released with its report preserved in
+the isolated workflow branch. It has not been integrated or activated; migration
+497 has not been applied. Core bridge acceptance remains its integration gate.
+Fresh main is ed7a92f28; the candidate must reconcile the one known Banner image
+opacity test conflict and retain main's current MotorStack changes before CI or
+release. The conflict is not permission to alter the unrelated Banner runtime.
+
+## Verified library transactions, native blockers and reported Geely warning
+
+Parent reran the7 new isolated PostgreSQL library/history tests together with
+the6 designer database tests and8 repaired draft-dialog tests:21/21 passed. The
+new suite applies migrations491–496 twice, exercises real immutable/deferred
+triggers, exact template copy/pins/assets/metadata, concurrent CAS, committed
+lost-reply reconciliation and cross asset/revision operation namespaces. Synthetic
+authority and storage remain limitations. The Codex worker settled and was
+released; its report is library-history-postgres-20261102.md.
+
+Opus's read-only native review found H1 (a Result/Vec assertion that would prevent
+the engine test module compiling) plus5 medium legal/URL/keyboard parity issues.
+Those source counterexamples are blockers, not successful native execution.
+Worker ctx_e8ffac59fc2a / task_71ae85312bc3 now owns only the reviewed native fixes
+and focused fixtures. Pins must be regenerated again after its freeze. The
+reviewer settled and was released; the report preserves8 low findings for bounded
+disposition rather than an unbounded cleanup pass.
+
+The user's18:59 Safari screenshot showed the generic unconfirmed-save banner.
+Parent inspected the existing live Safari window without reload or draft edits.
+It now displayed the specific NO_EDITABLE_CONTENT warning for Geely draft
+b18c0164-65d7-4e1e-ba2c-5e997fdafc90. A scoped read-only transaction confirmed
+EmailLayout + imported Html + footer, no design document/head/projection, zero
+revision receipts and zero native handoffs. This does not reconstruct the original
+network response; it confirms the current native admission failure and preserved
+legacy draft. Source review also shows hasPending is set during normal requests,
+while the red generic banner ignores the busy/saving state. Codex task_b8d588bc5b62
+/ ctx_7c5f8a383152 owns the minimal UI/admission regression fix. No automatic HTML
+conversion, source flattening or policy relaxation is authorized by that symptom.
+
+Owner requested online R&D around AM/user → job/task → brief/budget → template →
+workflow/sending/MCP. The source-backed audit and online findings are linked from
+the current queue and R&D adoption note. Existing tools/services own that journey;
+three small reference/context gaps are research follow-ups, not a new finance,
+sending or orchestration system. The audit worker settled and was released.

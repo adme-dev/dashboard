@@ -83,3 +83,55 @@ intentional raw-ampersand encoding correction. The same failure reproduced
 locally (10 passing / 1 failing); direct and RPC tests now share the explicit
 expected fixture contract while preserving the frozen historical golden file.
 This is test alignment to reviewed behavior, not a runtime rollback of escaping.
+
+## Job-to-email workflow and current online R&D — 2 November, 08:05 UTC
+
+Owner steering: retain the working documents and MCP journey from the account
+manager/user through job/task, brief, budget, template, sending and workflow.
+The [source-backed owner audit](email-job-mcp-owner-audit-2026-11-02.md) maps the
+existing PRDs and actual implementations. Old unchecked PRD boxes are not evidence
+that shipped owners must be recreated. XeroFlow Send is file transfer, not the
+EDM campaign sender. Media-spend allocations and proposed job budgets are also
+different records; neither grants authority over the other.
+
+Online primary references checked on 2 November:
+
+- [Emailify fundamentals](https://docs.hypermatic.com/emailify/design/fundamentals)
+  uses email components and responsive overrides for HTML generation. Adopt the
+  component constraint and existing renderer boundary; do not build an arbitrary
+  canvas exporter or copy the vendor's components.
+- [Emailify MCP contract](https://docs.hypermatic.com/emailify/design/figma-mcp)
+  requires recognizable linked components, preserved overrides/locked content,
+  explicit subject/preheader metadata and validation before adoption. This is
+  evidence for bounded typed design actions. FigFlow must use its own canonical
+  IDs/revisions and policy; the vendor's Figma naming/metadata API is not our API.
+- [Emailify preview](https://docs.hypermatic.com/emailify/design/preview) separates
+  responsive HTML preview, production preflight and manual inbox testing; its
+  approximate dark preview is explicitly not client emulation. Preserve that
+  distinction in our existing preview and preflight surfaces.
+- [Mailchimp campaign checklist](https://mailchimp.com/help/create-and-send-regular-email/)
+  brings recipients, sender, subject/preview, time and content together before
+  sending. [Sending](https://mailchimp.com/help/send-regular-email/) is a separate
+  action after checklist completion. Reuse our campaign checklist, frozen send
+  proposal/review/execute and existing provider delivery records.
+- [MCP tools specification, 2026-07-28](https://modelcontextprotocol.io/specification/2026-07-28/server/tools)
+  describes schema-based tools and authorization-sensitive discovery. Retain
+  current staff/client/board admission and explicit consequential-action review;
+  no protocol migration or additional permission dialogs are inferred here.
+
+Coordinator recommendation (an inference from those patterns and our source):
+keep one connected journey: account-manager brief/job context → existing task
+and budget owners → exact template revision → FigFlow proposal/review/Apply →
+existing campaign/audience/sender checklist → frozen approved sending → existing
+recipient/provider event status linked back to the task. An agent uses the same
+application service boundaries as a person; it does not write these tables or
+send through a parallel route.
+
+The minimum candidate follow-ups are (1) server-validated campaign-to-project/task
+references with readback, (2) immutable template-revision discovery/selection in
+existing MCP campaign creation, and (3) authorized brief detail plus clearly
+labelled proposed job-budget context. Existing MCP already provides task/brief
+assignment and exact-revision campaign propose/review/execute. No new scheduler,
+agent runtime, finance engine, file-transfer dependency or workflow database is
+justified by this R&D. These follow-ups are research, not implemented or deployed
+claims, and must not displace the core FigFlow acceptance gate.
