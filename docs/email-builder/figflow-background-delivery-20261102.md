@@ -225,3 +225,51 @@ structured worker was released with transcript captured. New rendering task
 owns a new worker in the preserved checkout. Condition task was likewise settled
 and released before the new library/history dispatch; no settled lifecycle ID
 was reused as a new task.
+
+## Delivery discipline and recovery — 2 November 2026, 07:30 UTC checkpoint
+
+User clarified that the concern is architectural/PRD discipline, delivery order,
+honest claims and avoiding unnecessary engineering. There is no agreed dated
+milestone schedule. Task ordering and explicit acceptance gates are the current
+planning contract; do not describe this as being on a dated schedule.
+
+**Next integration gate is the core bridge:** save one draft → open its exact
+revision in FigFlow → edit through approved controls → review compiler output →
+explicit Apply → reopen in both editors. Prove unchanged identity, protected
+content/policy, module/asset pins and metadata, exact revision readback, no-op,
+conflict/unknown-result recovery and preservation of the imported full-document
+path. Source/fixture preparation is not a passed bridge acceptance test.
+
+Adjacent M06 work may finish in its isolated branch, but must not be merged or
+activated ahead of this core gate. No additional scope is to be added merely
+because the component or an agent is available. Existing renderer, template,
+module, asset and sending owners remain authoritative.
+
+The committed integration checkpoint2251b9a17 was pushed and is reviewable in
+[draft PR827](https://github.com/adme-dev/dashboard/pull/827). It includes main
+c1dd2d27f. The expanded authoring release has not been merged/deployed and its
+rollout flags remain disabled. PR823 is an older foundation checkpoint and is
+not an independently releasable alternative to the combined candidate.
+
+An Orca/host restart interrupted workers and cleared temporary build/test
+fixtures. Source changes survived in their worktrees. Execution-host observations
+proved the library and Opus workers exited; both were explicitly stopped and
+retried against their existing files without resetting their branches:
+
+| Work | Preserved task | Recovered active dispatch |
+| --- | --- | --- |
+| Library/templates/history | task_b7b8b8350040 | ctx_47abad1f134b (Codex) |
+| Comments/approval/web version | task_261627595c6f | ctx_6ac4720f9b72 (Anthropic Opus) |
+| Native parity remediation/Undo | task_69ec3ae73811 | ctx_c40d8011e964 (Kimi) |
+
+Kimi's prior native review settled with five concrete findings, including stale
+bytes after image reuse and legal-token lock divergence. Parent also identified
+a native panel borrow hazard. These are recorded in native-parity-recovery-
+20261102.md; the old source/patch is not release-ready. Native source was restored
+from its verified upstream tarball and preserved checksummed patches with exact
+engine hash77a53f07329e1c76fe916a283f4ddf9b4cebccfda53713fce850cc7ee3edafbd.
+Durable working files now live in ignored `.verification/figflow-native-source-
+20261102/`; compatibility temp aliases do not own the only copy. The isolated
+PostgreSQL fixture was likewise recreated; this did not reapply configured
+production migrations or modify customer data. Parent must regenerate source
+pins/test receipts only after remediation freezes, then run Linux/WASM CI.

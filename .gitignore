@@ -50,3 +50,7 @@ server/uploads/
 
 # Graphify knowledge-graph output (generated locally; not source)
 graphify-out/
+
+# Local verification artifacts and reconstructed native build sources
+.verification/
+__pycache__/
