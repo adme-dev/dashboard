@@ -12,6 +12,8 @@ import { describeEmailActionError } from '~~/app/utils/emailActionError'
 
 const props = defineProps<{
   open?: boolean
+  canonical?: boolean
+  clientId?: string | null
 }>()
 
 const emit = defineEmits<{
@@ -52,10 +54,11 @@ const imageAssets = computed(() => {
   const q = search.value.trim().toLowerCase()
   return (data.value?.assets || [])
     .filter(asset => isAllowedEmailImageMime(asset.mimeType))
+    .filter(asset => !props.canonical || (['image/png', 'image/jpeg', 'image/gif'].includes(asset.mimeType) && asset.fileSize <= 10 * 1024 * 1024 && (asset.clientId === null || asset.clientId === props.clientId)))
     .filter(asset => !q || asset.name.toLowerCase().includes(q))
 })
 
-const maxSizeLabel = computed(() => formatEmailImageAssetSize(EMAIL_IMAGE_ASSET_MAX_BYTES))
+const maxSizeLabel = computed(() => formatEmailImageAssetSize(props.canonical ? 10 * 1024 * 1024 : EMAIL_IMAGE_ASSET_MAX_BYTES))
 
 function close() {
   isOpen.value = false
@@ -67,6 +70,7 @@ function pick(asset: EdmImageAsset) {
 }
 
 function validateFile(file: File): string {
+  if (props.canonical && (!['image/png', 'image/jpeg', 'image/gif'].includes(file.type) || file.size > 10 * 1024 * 1024)) return 'Published email images must be JPEG, PNG or GIF and 10 MB or smaller.'
   if (!isAllowedEmailImageMime(file.type)) return 'Use a JPEG, PNG, GIF, or WebP image.'
   if (!isWithinEmailImageAssetLimit(file.size)) return `Images must be ${maxSizeLabel.value} or smaller.`
   return ''
@@ -85,6 +89,7 @@ async function uploadFile(file: File) {
   try {
     const formData = new FormData()
     formData.append('file', file)
+    if (props.clientId) formData.append('client_id', props.clientId)
     const { asset } = await apiFetch<{ asset: EdmImageAsset }>('/api/agency/email/assets/upload', {
       method: 'POST',
       body: formData
@@ -132,12 +137,14 @@ function onFileSelect(event: Event) {
         </div>
 
         <div class="space-y-3 border-b border-default p-4">
-          <UInput
-            v-model="search"
-            icon="i-lucide-search"
-            placeholder="Search images"
-            class="w-full"
-          />
+          <UFormField label="Search images">
+            <UInput
+              v-model="search"
+              icon="i-lucide-search"
+              placeholder="Search images"
+              class="w-full"
+            />
+          </UFormField>
           <div class="flex items-center gap-2">
             <UButton
               icon="i-lucide-upload"
@@ -148,12 +155,12 @@ function onFileSelect(event: Event) {
               :loading="isUploading"
               @click="fileInput?.click()"
             />
-            <span class="text-xs text-muted">JPEG, PNG, GIF, WebP</span>
+            <span class="text-xs text-muted">{{ canonical ? 'JPEG, PNG, GIF · 10 MB max' : 'JPEG, PNG, GIF, WebP' }}</span>
             <input
               ref="fileInput"
               type="file"
               class="hidden"
-              :accept="EMAIL_IMAGE_ASSET_ACCEPT"
+              :accept="canonical ? 'image/jpeg,image/png,image/gif' : EMAIL_IMAGE_ASSET_ACCEPT"
               @change="onFileSelect"
             >
           </div>
@@ -180,11 +187,12 @@ function onFileSelect(event: Event) {
           </div>
 
           <div v-else class="grid grid-cols-2 gap-3">
-            <button
+            <UButton
               v-for="asset in imageAssets"
               :key="asset.id"
-              type="button"
-              class="group overflow-hidden rounded-lg border border-default bg-default text-left transition hover:border-primary hover:shadow-sm"
+              color="neutral"
+              variant="outline"
+              class="group block p-0 overflow-hidden rounded-lg border border-default bg-default text-left transition hover:border-primary hover:shadow-sm"
               @click="pick(asset)"
             >
               <div class="aspect-square bg-elevated/40">
@@ -202,7 +210,7 @@ function onFileSelect(event: Event) {
                   {{ formatEmailImageAssetSize(asset.fileSize) }}
                 </p>
               </div>
-            </button>
+            </UButton>
           </div>
         </div>
       </div>

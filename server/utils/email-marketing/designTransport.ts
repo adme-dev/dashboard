@@ -16,12 +16,13 @@ export default defineEventHandler(async (event) => {
   const path = getRequestURL(event).pathname
   const draft = /^\/api\/email\/design\/drafts\/[0-9a-f-]{36}(\/metadata)?$/i.exec(path)
   const moduleRevision = /^\/api\/email\/design\/modules\/[0-9a-f-]{36}\/[0-9a-f-]{36}$/i.test(path)
+  const templateRevision = /^\/api\/email\/design\/templates\/[0-9a-f-]{36}\/[0-9a-f-]{36}$/i.test(path)
   const brand = /^\/api\/email\/design\/drafts\/[0-9a-f-]{36}\/(brand|locks)$/i.exec(path)
   const allowed = (brand && (event.method === 'POST' || (brand[1] === 'brand' && event.method === 'GET')))
     || (path === '/api/email/design/conditions' && ['GET', 'POST'].includes(event.method))
-    || (moduleRevision && event.method === 'GET')
+    || ((moduleRevision || templateRevision) && event.method === 'GET')
     || (draft && (event.method === 'PATCH' || (!draft[1] && event.method === 'GET')))
-    || (['/api/email/design/drafts/initialize', '/api/email/design/roundtrip', '/api/email/design/designer', '/api/email/design/modules', '/api/email/design/assets/publish'].includes(path) && event.method === 'POST')
+    || (['/api/email/design/drafts/initialize', '/api/email/design/roundtrip', '/api/email/design/designer', '/api/email/design/modules', '/api/email/design/assets/publish', '/api/email/design/templates', '/api/email/design/history'].includes(path) && event.method === 'POST')
   // Existing template CRUD has its own local handlers; this route is design-only.
   if (env.FIGFLOW_EDM_DRAFT_SAVES_ENABLED !== 'true' || !allowed)
     throw createError({ statusCode: 404, statusMessage: 'not_found' })

@@ -30,6 +30,11 @@ function harness() {
   const db = { query: async (sql: string, p: unknown[] = []) => {
     queries.push(sql)
     if (sql.includes('pg_advisory_xact_lock')) return rows()
+    if (sql.startsWith('SELECT operation_id FROM email_asset_publication_receipts')) return rows()
+    if (sql.startsWith('SELECT payload FROM email_design_revisions')) {
+      const r = state.revisions[String(p[1])]
+      return r?.document_id === p[0] ? rows(r) : rows()
+    }
     if (sql.startsWith('SELECT * FROM banner_assets')) return state.assets[String(p[0])] ? rows(state.assets[String(p[0])]) : rows()
     if (sql.startsWith('SELECT template_id,client_id')) return state.documents[String(p[0])] ? rows(state.documents[String(p[0])]) : rows()
     if (sql.startsWith('SELECT id FROM edm_templates')) return rows({ id: p[0] })
@@ -219,5 +224,24 @@ describe('canonical module publication transaction boundary', () => {
     await expect(h.run({ version: 1, command: 'update-module-instance', operationId: crypto.randomUUID(), draftId, expectedDraftRevisionId: inserted.revisionId, instanceId: instance.instanceId, revisionId: module.revisionId, overrides: 'preserve' }, h.transaction, testEmailRenderer, storage)).rejects.toMatchObject({ code: 'ASSET_NOT_READY' })
     const discarded = await h.run({ version: 1, command: 'update-module-instance', operationId: crypto.randomUUID(), draftId, expectedDraftRevisionId: inserted.revisionId, instanceId: instance.instanceId, revisionId: module.revisionId, overrides: 'discard' }, h.transaction, testEmailRenderer, storage)
     expect(h.state.revisions[discarded.revisionId].payload.blocks[instance.rootBlockIds[0]].data.props.url).toBe(url)
+  })
+})
+
+describe('module publication preserves pinned source authority', () => {
+  it('retains the brand snapshot when extracting a published module', async () => {
+    const h = harness()
+    const brand = { kitId: crypto.randomUUID(), versionId: crypto.randomUUID(), version: 1, name: 'Dealer', defaults: { primaryColor: '#123456', fontFamily: 'MODERN_SANS', contentWidth: 600, fontFallback: false, requestedFont: null } }
+    h.state.revisions[initial].payload.source.brand = brand
+    const published = await h.run(h.publish())
+    expect(h.state.revisions[published.revisionId].payload.source.brand).toEqual(brand)
+  })
+  it('reauthorizes immutable module selection on receipt replay', async () => {
+    const h = harness(), request = h.publish()
+    await h.run(request)
+    let reads = 0
+    h.authority.read = async () => {
+      if (++reads > 1) throw new Error('module read revoked')
+    }
+    await expect(h.run(request)).rejects.toThrow('module read revoked')
   })
 })

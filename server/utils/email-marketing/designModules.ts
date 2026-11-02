@@ -1,3 +1,4 @@
+import { assertLibraryOperationNamespace } from './designLibraryOperations'
 import { z } from 'zod'
 import { transactionWithoutRetry } from '~~/server/utils/db'
 import { validateEmailDesign, type EmailDesignDocument } from '../../../shared/emailRendering/designContract'
@@ -30,23 +31,23 @@ export async function readImmutableDesignModule(moduleId: string, revisionId: st
   if (design.kind !== 'module' || design.scope.clientId !== row.client_id) throw new DesignModuleError('SCOPE_MISMATCH')
   return { moduleId, revisionId, design }
 }
-async function lockDraft(db: DesignDb, draftId: string) {
+export async function lockDraft(db: DesignDb, draftId: string) {
   const row = (await db.query('SELECT template_id,client_id FROM email_design_documents WHERE id=$1', [draftId])).rows[0] as { template_id: string | null, client_id: string | null } | undefined
   if (!row?.template_id) throw new DesignModuleError('NOT_FOUND')
   await db.query('SELECT id FROM edm_templates WHERE id=$1 FOR UPDATE', [row.template_id])
   await db.query('SELECT head_revision_id FROM email_design_documents WHERE id=$1 FOR UPDATE', [draftId])
   return row
 }
-async function appendModuleOrDraft(db: DesignDb, documentId: string, parent: string, design: EmailDesignDocument, actor: string, subject: string | null = null, preview: string | null = null) {
+export async function appendModuleOrDraft(db: DesignDb, documentId: string, parent: string, design: EmailDesignDocument, actor: string, subject: string | null = null, preview: string | null = null) {
   const row = (await db.query(`INSERT INTO email_design_revisions(document_id,parent_revision_id,schema_version,payload_text,created_by,subject,preview_text)
     VALUES ($1,$2,1,$3,$4,$5,$6) RETURNING id`, [documentId, parent, JSON.stringify(validateEmailDesign(design)), actor, subject, preview])).rows[0] as { id: string }
   await db.query('UPDATE email_design_documents SET head_revision_id=$2 WHERE id=$1', [documentId, row.id])
   return row.id
 }
-async function dependencyRecords(design: EmailDesignDocument, db: DesignDb, authority: ModuleAuthority): Promise<ModuleRecord[]> {
+export async function dependencyRecords(design: EmailDesignDocument, db: DesignDb, authority: ModuleAuthority): Promise<ModuleRecord[]> {
   return resolveStoredDesignDependencies(design, db, (_id, scope) => authority.read(scope))
 }
-async function renderDraft(renderer: EmailRendererClient, design: EmailDesignDocument, subject: string | null, preview: string | null) {
+export async function renderDraft(renderer: EmailRendererClient, design: EmailDesignDocument, subject: string | null, preview: string | null) {
   let timer: ReturnType<typeof setTimeout> | undefined
   try {
     return await Promise.race([
@@ -67,6 +68,7 @@ export async function executeDesignModules(input: unknown, authority: ModuleAuth
   const digest = await designDigest({ boundary: 'email-modules-v1', request })
   return transaction(async (db) => {
     await db.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [`${authority.actorId}:${request.operationId}`])
+    await assertLibraryOperationNamespace(db, authority.actorId, request.operationId, 'revision')
     // Resolve original persisted source scope even for a replay. A receipt never
     // bypasses revocation and never obtains authority from JSON declarations.
     const identity = await lockDraft(db, request.draftId)
@@ -79,6 +81,22 @@ export async function executeDesignModules(input: unknown, authority: ModuleAuth
     if (prior) {
       if (prior.payload_sha256 !== digest) throw new DesignModuleError('IDEMPOTENCY_CONFLICT')
       await (publish ? authority.publisher : authority.designer)(prior.client_id)
+      if (prior.module_id) {
+        const selected = await readImmutableDesignModule(prior.module_id, prior.revision_id, authority.read, db)
+        await dependencyRecords(selected.design, db, authority)
+        const assets = await verifyDesignModuleAssets(selected.design, db, authority.read, storage)
+        if (stableDesignJson(assets) !== stableDesignJson(selected.design.assets)) throw new DesignModuleError('ASSET_NOT_READY')
+      } else {
+        const row = (await db.query('SELECT payload FROM email_design_revisions WHERE document_id=$1 AND id=$2', [prior.document_id, prior.revision_id])).rows[0] as { payload: unknown } | undefined
+        if (!row) throw new DesignModuleError('NOT_FOUND')
+        const saved = validateEmailDesign(row.payload)
+        await dependencyRecords(saved, db, authority)
+        for (const asset of saved.assets) {
+          if (!storage) throw new DesignModuleError('ASSET_STORAGE_UNAVAILABLE')
+          const verified = await readPublishedEmailAsset(asset.id, saved.scope.clientId, db, authority.read, storage)
+          if (stableDesignJson(verified.asset) !== stableDesignJson(asset)) throw new DesignModuleError('ASSET_NOT_READY')
+        }
+      }
       return { documentId: prior.document_id, revisionId: prior.revision_id, ...(prior.module_id ? { moduleId: prior.module_id } : {}), published: publish }
     }
     const draft = await getTemplateDesignDraft(request.draftId, authority.read, db)

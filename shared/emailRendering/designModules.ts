@@ -86,7 +86,7 @@ export function extractDesignModule(input: unknown, roots: string[] | undefined,
   const actualOverrides = selectedInstances.flatMap(i => Object.keys(i.overrides))
   if (stableDesignJson([...new Set(actualOverrides)].sort()) !== stableDesignJson([...new Set(includedOverridePaths)].sort())) throw new DesignModuleError('LOCAL_OVERRIDE_REVIEW_REQUIRED')
   const result: EmailDesignDocument = {
-    ...design, kind: 'module', source: { editor: 'composer', nativeArtifact: null },
+    ...design, kind: 'module', source: { ...design.source, editor: 'composer', nativeArtifact: null },
     blocks: Object.fromEntries(Object.entries(design.blocks).filter(([id]) => ids.has(id))), rootChildrenIds: selected,
     lineage: design.lineage.filter(item => ids.has(item.blockId)), moduleInstances: selectedInstances,
     assets: [], policy: {

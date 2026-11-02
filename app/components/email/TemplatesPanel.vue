@@ -13,6 +13,9 @@ import type { EdmFlyhubDocument } from '~~/app/types/edm'
 
 interface TemplateRow {
   id: string
+  design_document_id?: string | null
+  head_revision_id?: string | null
+  revision_schema_version?: number | null
   name: string
   subject: string | null
   preview_text?: string | null
@@ -118,6 +121,10 @@ function mergeSavedTemplate(template: TemplateRow) {
   data.value = { items: [template, ...data.value.items.filter(row => row.id !== template.id)] }
 }
 function openCopyTemplate(row: TemplateRow) {
+  if (row.design_document_id) {
+    navigateTo({ path: '/agency/email', query: { tab: 'templates', workspace: 'figflow', copyTemplate: row.id, ...(targetClient.value ? { client: targetClient.value } : {}) } })
+    return
+  }
   rememberTemplate(row.id)
   const query = new URLSearchParams({ copy: row.id })
   const clientId = targetClient.value || (clientChoices.value.clients.some(client => client.id === row.client_id) ? row.client_id : '')
@@ -129,7 +136,9 @@ const detailsTarget = ref<TemplateRow | null>(null)
 const sourceDetails = computed(() => templateSourceDetails(detailsTarget.value?.body_source))
 const showDetails = ref(false)
 function openDetails(row: TemplateRow) { detailsTarget.value = row; showDetails.value = true }
-function usesClientCopy(row: TemplateRow) { return !row.client_id || (!!templateSourceDetails(row.body_source) && !isTemplateClientCopy(row.body_source)) }
+function usesClientCopy(row: TemplateRow) {
+  return (!!row.design_document_id && row.template_kind !== 'draft') || !row.client_id || (!!templateSourceDetails(row.body_source) && !isTemplateClientCopy(row.body_source))
+}
 async function exportTemplate(row: TemplateRow) {
   busyId.value = row.id
   try {
@@ -308,6 +317,10 @@ async function doRename() {
 
 // ── Duplicate ───────────────────────────────────────────────────────────────
 async function duplicate(row: TemplateRow) {
+  if (row.design_document_id) {
+    openCopyTemplate(row)
+    return
+  }
   busyId.value = row.id
   try {
     const { template } = await apiFetch<{ template: FullTemplate }>(`/api/email/templates/${row.id}`)

@@ -2,7 +2,8 @@ import { ref } from 'vue'
 import type { EdmFlyhubDocument } from '~~/app/types/edm'
 import { validateEmailDesign, type EmailDesignDocument } from '~~/shared/emailRendering/designContract'
 import { applyDesignerOperations, type DesignerCapabilities, type DesignerOperation } from '~~/shared/emailRendering/designDesigner'
-import type { DesignModuleRequest } from '~~/shared/emailRendering/designModules'
+import type { DesignTemplateRequest, DesignLibraryReceipt } from '~~/shared/emailRendering/designTemplates'
+import { stableDesignJson, type DesignModuleRequest } from '~~/shared/emailRendering/designModules'
 import type { DesignHandoff } from '~~/shared/emailRendering/designRoundtrip'
 import type { TemplateDesignDraftRead } from '~~/server/utils/email-marketing/designReads'
 
@@ -33,12 +34,13 @@ export function useEdmDesignRoundtrip() {
   const busy = ref(false)
   const error = ref('')
   const hasPending = ref(false)
-  let pending: { url: string, method: 'POST' | 'PATCH', body: unknown } | null = null
+  const lastLibraryReceipt = ref<DesignLibraryReceipt | null>(null)
+  let pending: { url: string, method: 'POST' | 'PATCH', body: Record<string, unknown>, uncertain: boolean, readback?: (result: unknown) => Promise<unknown> } | null = null
 
-  async function mutate<T>(url: string, method: 'POST' | 'PATCH', body: unknown, readback?: (result: T) => Promise<unknown>): Promise<T> {
+  async function mutate<T>(url: string, method: 'POST' | 'PATCH', body: Record<string, unknown>, readback?: (result: T) => Promise<unknown>): Promise<T> {
     if (pending && (pending.url !== url || pending.method !== method || JSON.stringify(pending.body) !== JSON.stringify(body)))
       throw new Error('A previous save needs reconciliation. Retry that action before making another change.')
-    pending ??= { url, method, body: JSON.parse(JSON.stringify(body)) }
+    pending ??= { url, method, body: JSON.parse(JSON.stringify(body)), uncertain: false, readback: readback as ((result: unknown) => Promise<unknown>) | undefined }
     hasPending.value = true
     let result: T
     try {
@@ -48,15 +50,16 @@ export function useEdmDesignRoundtrip() {
       const status = cause?.statusCode ?? cause?.status
       // A definite rejected request did not commit. Transport/server errors are
       // unknown outcomes and retain the exact operation until reconciled.
-      if (status !== undefined && status >= 400 && status < 500) {
+      if (!pending.uncertain && status !== undefined && status >= 400 && status < 500) {
         pending = null
         hasPending.value = false
-      }
+      } else pending.uncertain = true
       throw cause
     }
     // A confirmed mutation still needs its exact revision readback before the
     // composer may issue another write. Read failures never erase that receipt.
-    await readback?.(result)
+    pending.uncertain = true
+    await (pending.readback ?? readback)?.(result)
     pending = null
     hasPending.value = false
     return result
@@ -152,8 +155,54 @@ export function useEdmDesignRoundtrip() {
     if (!current || current.state !== 'structured' || !libraryAuthoring.value.available) throw new Error('Open a saved design draft to use shared modules.')
     const url = '/api/email/design/modules'
     const body = operation(url, () => ({ ...command, version: 1, operationId: crypto.randomUUID(), draftId: current.documentId, expectedDraftRevisionId: current.headRevisionId }))
-    return mutate<{ documentId: string, revisionId: string, moduleId?: string, published: boolean }>(url, 'POST', body,
-      result => lookup(current.templateId, result.published ? current.headRevisionId : result.revisionId))
+    return mutate<DesignLibraryReceipt>(url, 'POST', body, async (result) => {
+      if (result.published) {
+        if (!result.moduleId) throw new Error('Module receipt is incomplete.')
+        const selected = await $fetch<{ moduleId: string, revisionId: string }>(`/api/email/design/modules/${result.moduleId}/${result.revisionId}`)
+        if (selected.moduleId !== result.moduleId || selected.revisionId !== result.revisionId) throw new Error('Module receipt readback mismatch.')
+      } else await lookup(current.templateId, result.revisionId)
+      lastLibraryReceipt.value = result
+    })
+  }
+
+  type TemplateCommand = DesignTemplateRequest extends infer Request ? Request extends DesignTemplateRequest ? Omit<Request, 'version' | 'operationId'> : never : never
+  async function template(command: TemplateCommand) {
+    if (!libraryAuthoring.value.available) throw new Error('The design library is unavailable.')
+    const url = '/api/email/design/templates'
+    const body = operation(url, () => ({ ...command, version: 1, operationId: crypto.randomUUID() }))
+    return mutate<DesignLibraryReceipt>(url, 'POST', body, async (result) => {
+      if (!result.templateId) throw new Error('Template receipt is incomplete.')
+      if (result.published) {
+        const selected = await $fetch<{ templateId: string, revisionId: string }>(`/api/email/design/templates/${result.templateId}/${result.revisionId}`)
+        if (selected.templateId !== result.templateId || selected.revisionId !== result.revisionId) throw new Error('Template receipt readback mismatch.')
+      } else {
+        // A copy creates a different owner. Validate its exact head without
+        // replacing the composer's current source before explicit navigation.
+        const selected = await $fetch<{ draft: TemplateDesignDraftRead }>(contentEndpoint, { method: 'POST', body: { command: 'lookup', templateId: result.templateId } })
+        if (selected.draft?.documentId !== result.documentId || selected.draft.headRevisionId !== result.revisionId) throw new Error('The draft changed in another editor. Reload before continuing.')
+      }
+      lastLibraryReceipt.value = result
+    })
+  }
+  async function restoreRevision(revisionId: string) {
+    const current = draft.value
+    if (current?.state !== 'structured' || !libraryAuthoring.value.available) throw new Error('Open a saved design draft before restoring a revision.')
+    const url = '/api/email/design/history'
+    const body = operation(url, () => ({ version: 1, command: 'restore-revision', draftId: current.documentId, expectedRevisionId: current.headRevisionId, revisionId, operationId: crypto.randomUUID() }))
+    return mutate<DesignLibraryReceipt & { subject?: string | null, previewText?: string | null }>(url, 'POST', body, async (result) => {
+      await lookup(current.templateId, result.revisionId)
+      lastLibraryReceipt.value = result
+    })
+  }
+  async function publishImage(assetId: string) {
+    if (!libraryAuthoring.value.available || !libraryAuthoring.value.publisher) throw new Error('Agency publishing access is required.')
+    const url = '/api/email/design/assets/publish'
+    const body = operation(url, () => ({ version: 1, operationId: crypto.randomUUID(), assetId }))
+    return mutate<{ asset: { id: string } }>(url, 'POST', body, async (result) => {
+      if (result.asset.id !== assetId) throw new Error('Image receipt readback mismatch.')
+      const library = await $fetch<{ assets: Array<{ id: string, emailPublication?: unknown }> }>('/api/agency/email/assets')
+      if (!library.assets.some(asset => asset.id === assetId && stableDesignJson(asset.emailPublication) === stableDesignJson(result.asset))) throw new Error('Image receipt readback mismatch.')
+    })
   }
   async function proposeDesigner(operations: DesignerOperation[], operationId: string) {
     const current = handoff.value
@@ -202,25 +251,35 @@ export function useEdmDesignRoundtrip() {
     } catch (failure: unknown) {
       const cause = failure as RequestFailure
       const code = cause?.data?.statusMessage ?? cause?.statusMessage
-      error.value = code === 'REVISION_CONFLICT' || code === 'LEGACY_CONTENT_CHANGED'
-        ? 'The draft changed after this design was opened. Keep the current draft and reopen FigFlow from it.'
-        : code === 'NO_EDITABLE_CONTENT'
-          ? 'This template has no content FigFlow can edit yet. Continue editing in the composer; your saved draft is unchanged.'
-          : code === 'UNSUPPORTED_NATIVE_DESIGN'
-            ? 'This design uses linked modules or a native source this content handoff cannot edit yet. Continue editing in the composer.'
-            : code === 'DESIGNER_REQUIRED' || cause?.statusCode === 403
-              ? 'You need design access for this client to open or return a FigFlow design.'
-              : cause?.statusCode === 413
-                ? 'This draft exceeds the FigFlow handoff limit. Reduce its content before opening FigFlow.'
-                : code === 'invalid_design_request'
-                  ? 'This draft contains content the FigFlow handoff cannot preserve yet. Continue editing in the composer.'
-                  : code === 'PROPOSAL_EXPIRED'
-                    ? 'This proposal expired. Your saved draft is unchanged; reopen FigFlow to continue.'
-                    : cause?.message?.startsWith('A previous save') || cause?.message?.startsWith('The composer changed while saving') || cause?.message?.startsWith('The draft changed in another editor')
-                      ? cause.message
-                      : 'The action could not be confirmed. Retry the same action to reconcile it; your current composer content is kept.'
+      const libraryErrors: Record<string, string> = {
+        LOCAL_OVERRIDE_REVIEW_REQUIRED: 'Review every local override before publishing this saved design.',
+        CLOSED_SELECTION_REQUIRED: 'Choose a complete section or linked instance before publishing a module.',
+        OVERRIDE_CONFLICT: 'The selected module version cannot preserve these local changes. Review them and choose whether to discard them.',
+        ASSET_NOT_READY: 'Use a published registered image whose scope and bytes can be verified.',
+        PUBLISHER_REQUIRED: 'Agency publishing access is required to publish library content.',
+        SAVED_DRAFT_REQUIRED: 'Save the current draft before using the design library.'
+      }
+      error.value = code && libraryErrors[code]
+        ? libraryErrors[code]
+        : code === 'REVISION_CONFLICT' || code === 'LEGACY_CONTENT_CHANGED'
+          ? 'The draft changed after this design was opened. Keep the current draft and reopen FigFlow from it.'
+          : code === 'NO_EDITABLE_CONTENT'
+            ? 'This template has no content FigFlow can edit yet. Continue editing in the composer; your saved draft is unchanged.'
+            : code === 'UNSUPPORTED_NATIVE_DESIGN'
+              ? 'This design uses linked modules or a native source this content handoff cannot edit yet. Continue editing in the composer.'
+              : code === 'DESIGNER_REQUIRED' || cause?.statusCode === 403
+                ? 'You need design access for this client to open or return a FigFlow design.'
+                : cause?.statusCode === 413
+                  ? 'This draft exceeds the FigFlow handoff limit. Reduce its content before opening FigFlow.'
+                  : code === 'invalid_design_request'
+                    ? 'This draft contains content the FigFlow handoff cannot preserve yet. Continue editing in the composer.'
+                    : code === 'PROPOSAL_EXPIRED'
+                      ? 'This proposal expired. Your saved draft is unchanged; reopen FigFlow to continue.'
+                      : cause?.message?.startsWith('A previous save') || cause?.message?.startsWith('The composer changed while saving') || cause?.message?.startsWith('The draft changed in another editor')
+                        ? cause.message
+                        : 'The action could not be confirmed. Retry the same action to reconcile it; your current composer content is kept.'
       throw cause
     } finally { busy.value = false }
   }
-  return { libraryAuthoring, library, mode, designerAuthoring, designerCapabilities, designerOperationId, proposeDesigner, draft, handoff, busy, error, hasPending, reconcile, lookup, saveStructured, saveMetadata, open, resume, propose, finish, run }
+  return { libraryAuthoring, library, template, restoreRevision, publishImage, lastLibraryReceipt, mode, designerAuthoring, designerCapabilities, designerOperationId, proposeDesigner, draft, handoff, busy, error, hasPending, reconcile, lookup, saveStructured, saveMetadata, open, resume, propose, finish, run }
 }

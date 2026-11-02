@@ -11,6 +11,7 @@ import { onBeforeRouteLeave } from 'vue-router'
 import { diagnoseEmailContent, type EmailDiagnosticReference, type EmailDiagnosticImageAsset } from '../../../../shared/emailRendering/contentDiagnostics'
 import { templateCopyCategory, markTemplateClientCopy, templateCopyName } from '~~/app/utils/edmTemplateProvenance'
 import { EDM_SECTION_CATEGORIES, findStarterTemplate } from '~~/app/utils/edmPresets'
+import { figflowTemplateCapability } from '~~/app/utils/edmFigflowLibrary'
 import type { EdmSectionPreset } from '~~/app/utils/edmPresets'
 import type { EdmFlyhubBlock, EdmFlyhubDocument } from '~~/app/types/edm'
 import { extractFragment, reidFragment } from '~~/app/utils/edmModuleFragment'
@@ -51,6 +52,8 @@ const store = useEdmBuilder()
 const designFlow = useEdmDesignRoundtrip()
 const brandFlow = useEdmDesignBrand()
 const showBrand = ref(false)
+const showLibrary = ref(false)
+const showHistory = ref(false)
 let brandExpectedBlocks: EdmFlyhubDocument | null = null
 watch(() => designFlow.draft.value, (draft) => {
   store.setBrandSnapshot(draft?.state === 'structured' ? draft.source.source.brand ?? null : null)
@@ -726,6 +729,9 @@ const TEMPLATE_KIND_OPTIONS: { label: string, value: TemplateKind }[] = [
 ]
 
 async function save(): Promise<boolean> {
+  // Opening FigFlow saves inside designFlow.run(). Only a concurrent canonical
+  // library/history action owns this latch and must block that existing save.
+  if (designFlow.busy.value && libraryBaseline) return false
   if (conditionSaving.value || conditionPending.value) return false
   if (templateLoading.value || templateLoadError.value) return false
   if (brandFlow.busy.value || brandFlow.hasPending.value) {
@@ -808,6 +814,14 @@ async function save(): Promise<boolean> {
 
 // FigFlow edits an independent template draft; campaigns and library originals
 // keep their identities. The server owns scope, revisions and proposal effects.
+const figflowSourceUnsupported = computed(() => {
+  // Source admission is separate from server-authorized structural authoring.
+  if (designFlow.designerAuthoring.value.available) return false
+  const current = designFlow.draft.value
+  // Never derive a new policy for an existing versioned design.
+  if (current?.state === 'structured') return current.source.policy.editableFields.length === 0
+  return !figflowTemplateCapability(store.document.value).canOpen
+})
 async function beginFigflow(createDraft = false) {
   if (conditionSaving.value || conditionPending.value || brandFlow.busy.value || brandFlow.hasPending.value) return
   if (saving.value || designFlow.busy.value || templateLoading.value || templateLoadError.value) return
@@ -815,6 +829,7 @@ async function beginFigflow(createDraft = false) {
     await reconcileDesignAction()
     return
   }
+  if (figflowSourceUnsupported.value) return
   try {
     await designFlow.run(async () => {
       const openingSource = JSON.stringify(store.document.value)
@@ -937,6 +952,8 @@ function editInFigflow() {
   if (saving.value || designFlow.busy.value || templateLoading.value || templateLoadError.value) return
   if (designFlow.handoff.value?.state === 'open' || designFlow.handoff.value?.state === 'proposed') {
     showFigflow.value = true
+  } else if (figflowSourceUnsupported.value) {
+    return
   } else if (!templateId.value || templateKind.value !== 'draft') {
     showSaveModal.value = false
     // Collect copy metadata here; opening the Save modal underneath this modal
@@ -993,7 +1010,10 @@ async function reconcileDesignAction() {
   try {
     await designFlow.run(async () => {
       const result = await designFlow.reconcile()
-      if (!result) return
+      if (!result) {
+        acceptLibraryAction()
+        return
+      }
       if (result.templateId !== templateId.value) throw new Error('Design draft mismatch')
       if (result.state === 'applied' && result.proposal) {
         const current = designFlow.draft.value
@@ -1031,6 +1051,11 @@ const moduleCategoryOptions = computed(() => [
 ])
 
 function openSaveModule() {
+  if (designRevisionRequired.value || designFlow.draft.value?.state === 'structured') {
+    openCanonicalPanel('library')
+    return
+  }
+  if (workspaceBusy.value) return
   if (!selectedBlock.value) return
   moduleName.value = ''
   moduleDescription.value = ''
@@ -1046,6 +1071,11 @@ function openSaveModuleForBlock(blockId: string) {
 }
 
 async function saveModule() {
+  if (designRevisionRequired.value || designFlow.draft.value?.state === 'structured') {
+    openCanonicalPanel('library')
+    return
+  }
+  if (workspaceBusy.value) return
   const block = selectedBlock.value
   if (!block) return
   if (!moduleName.value.trim()) {
@@ -1073,6 +1103,19 @@ async function saveModule() {
 // Insert a saved module: re-ID its fragment so ids never collide with blocks
 // already in the document, then splice it in at the given position.
 function insertCustomModule(module: EdmCustomModule, position?: number) {
+  if (module.design_document_id || module.head_revision_id || module.revision_schema_version === 1) {
+    if (!canonicalReady.value || module.revision_schema_version !== 1 || !module.head_revision_id) {
+      openCanonicalPanel('library')
+      return
+    }
+    void executeLibraryAction(() => designFlow.library({ command: 'insert-module', moduleId: module.id, revisionId: module.head_revision_id!, parentId: 'root', index: position ?? (store.document.value.root?.data.childrenIds?.length ?? 0) }))
+    return
+  }
+  if (designRevisionRequired.value || designFlow.draft.value?.state === 'structured') {
+    openCanonicalPanel('library')
+    return
+  }
+  if (workspaceBusy.value) return
   if (!canInsertBlocks()) return
   const fragment = reidFragment(module.blocks)
   store.insertBlocks(fragment.blocks, fragment.rootChildrenIds, 'root', position)
@@ -1090,6 +1133,11 @@ const renamingModule = ref(false)
 const deletingModule = ref(false)
 
 function openRenameModule(module: EdmCustomModule) {
+  if (module.design_document_id || module.head_revision_id) {
+    openCanonicalPanel('library')
+    return
+  }
+  if (workspaceBusy.value) return
   moduleBeingManaged.value = module
   renameModuleName.value = module.name
   renameModuleDescription.value = module.description ?? ''
@@ -1124,6 +1172,11 @@ async function confirmRenameModule() {
 }
 
 function openDeleteModule(module: EdmCustomModule) {
+  if (module.design_document_id || module.head_revision_id) {
+    openCanonicalPanel('library')
+    return
+  }
+  if (workspaceBusy.value) return
   moduleBeingManaged.value = module
   showDeleteModuleModal.value = true
 }
@@ -1157,6 +1210,91 @@ function markWorkspaceDocumentSaved() {
   workspaceSavedSnapshot.value = JSON.stringify(saved)
 }
 const workspaceBusy = computed(() => conditionSaving.value || !!conditionPending.value || saving.value || designFlow.busy.value || designFlow.hasPending.value || brandFlow.busy.value || brandFlow.hasPending.value)
+const canonicalSaved = computed(
+  () =>
+    designFlow.draft.value?.state === 'structured'
+    && designFlow.draft.value.projection.state === 'current'
+    && sameDesignSource(store.document.value, designFlow.draft.value.source.blocks)
+    && workspaceSnapshot() === workspaceSavedSnapshot.value
+)
+const canonicalBlocked = computed(
+  () =>
+    workspaceBusy.value
+    || designLocalConflict.value
+    || designServiceUnavailable.value
+    || !!templateLoadError.value
+    || templateLoading.value
+    || ['open', 'proposed'].includes(designFlow.handoff.value?.state ?? '')
+)
+const canonicalReady = computed(() => canonicalSaved.value && !canonicalBlocked.value && designFlow.libraryAuthoring.value.available)
+let libraryBaseline: { snapshot: string, blocks: EdmFlyhubDocument } | null = null
+function openCanonicalPanel(panel: 'library' | 'history') {
+  if (canonicalBlocked.value) return
+  if (!designFlow.libraryAuthoring.value.available || designFlow.draft.value?.state !== 'structured') {
+    toast.add({
+      title: 'Open a saved design draft first',
+      description: 'The versioned library requires current design access and an available saved draft.',
+      color: 'info'
+    })
+    return
+  }
+  if (panel === 'library') showLibrary.value = true
+  else showHistory.value = true
+}
+function acceptLibraryAction() {
+  if (!libraryBaseline) return
+  const receipt = designFlow.lastLibraryReceipt.value
+  if (!receipt) {
+    libraryBaseline = null
+    return
+  }
+  if (!receipt.published) {
+    const current = designFlow.draft.value
+    if (
+      workspaceSnapshot() !== libraryBaseline.snapshot
+      || current?.state !== 'structured'
+      || current.headRevisionId !== receipt.revisionId
+      || !store.applyDesignReturn(libraryBaseline.blocks, current.source.blocks)
+    ) {
+      designLocalConflict.value = true
+      designFlow.error.value
+        = 'The composer changed while saving. Your newer local edits are kept. Reload the saved draft before saving again.'
+      return
+    }
+    loadedDesignRevisionId.value = current.headRevisionId
+    const metadata = receipt as typeof receipt & { subject?: string | null, previewText?: string | null }
+    if (metadata.subject !== undefined) subject.value = metadata.subject ?? ''
+    if (metadata.previewText !== undefined) previewText.value = metadata.previewText ?? ''
+    store.setBrandSnapshot(current.source.source.brand ?? null)
+    workspaceSavedSnapshot.value = workspaceSnapshot()
+  }
+  libraryBaseline = null
+  void customModules.load(true).catch(() => {})
+  toast.add({ title: receipt.published ? 'Published to the library' : 'Saved design updated', color: 'success' })
+}
+async function executeLibraryAction(action: () => Promise<unknown>) {
+  if (!canonicalReady.value) return
+  libraryBaseline = { snapshot: workspaceSnapshot(), blocks: JSON.parse(JSON.stringify(store.document.value)) }
+  designFlow.lastLibraryReceipt.value = null
+  try {
+    await designFlow.run(action)
+    acceptLibraryAction()
+  } catch {
+    if (!designFlow.hasPending.value) libraryBaseline = null
+  }
+}
+function publishCanonicalTemplate(metadata: { name: string, category: string | null, includedOverridePaths: string[] }) {
+  const current = designFlow.draft.value
+  if (current?.state !== 'structured') return
+  void executeLibraryAction(() =>
+    designFlow.template({
+      command: 'publish-template',
+      draftId: current.documentId,
+      expectedRevisionId: current.headRevisionId,
+      ...metadata
+    })
+  )
+}
 const workspaceLeave = useEdmWorkspaceLeave({
   hasChanges: () => !!workspaceSavedSnapshot.value && workspaceSnapshot() !== workspaceSavedSnapshot.value,
   isBusy: () => workspaceBusy.value,
@@ -1238,8 +1376,21 @@ onMounted(async () => {
             folder_name?: string | null
             client_id: string | null
             email_design_revision_id?: string | null
+            design_document_id?: string | null
+            head_revision_id?: string | null
+            revision_schema_version?: number | null
           }
         }>(`/api/email/templates/${id}`)
+        if (copying && res.template.design_document_id) {
+          // Canonical copying must select an immutable source and destination;
+          // never hydrate a raw fragment that drops modules/assets/policy.
+          await navigateTo({ path: '/agency/email', query: { tab: 'templates', workspace: 'figflow', copyTemplate: id, ...(typeof route.query.client === 'string' ? { client: route.query.client } : {}) } })
+          return
+        }
+        if (!copying && res.template.design_document_id && res.template.template_kind !== 'draft') {
+          await navigateTo({ path: '/agency/email', query: { tab: 'templates', workspace: 'figflow', copyTemplate: id } })
+          return
+        }
         if (res.template?.body_source) {
           store.resetDocument((copying ? markTemplateClientCopy(res.template.body_source, res.template.id) : res.template.body_source) as EdmFlyhubDocument)
         }
@@ -1423,7 +1574,7 @@ onMounted(async () => {
         color="neutral"
         size="sm"
         :loading="designFlow.busy.value"
-        :disabled="workspaceBusy"
+        :disabled="workspaceBusy || (figflowSourceUnsupported && !['open', 'proposed'].includes(designFlow.handoff.value?.state ?? ''))"
         @click="editInFigflow"
       />
       <UButton
@@ -1435,6 +1586,26 @@ onMounted(async () => {
         size="sm"
         :disabled="workspaceBusy"
         @click="openBrandControls"
+      />
+      <UButton
+        v-if="!campaignId && designFlow.libraryAuthoring.value.available"
+        label="Design library"
+        icon="i-lucide-library"
+        color="neutral"
+        variant="outline"
+        size="sm"
+        :disabled="canonicalBlocked"
+        @click="openCanonicalPanel('library')"
+      />
+      <UButton
+        v-if="!campaignId && designFlow.libraryAuthoring.value.available"
+        label="Version history"
+        icon="i-lucide-history"
+        color="neutral"
+        variant="outline"
+        size="sm"
+        :disabled="canonicalBlocked"
+        @click="openCanonicalPanel('history')"
       />
       <UButton
         icon="i-lucide-save"
@@ -1461,7 +1632,14 @@ onMounted(async () => {
       class="m-3"
     />
     <UAlert
-      v-if="(designFlow.error.value || designFlow.hasPending.value) && !showFigflow"
+      v-if="figflowEnabled && !campaignId && !templateLoading && !templateLoadError && figflowSourceUnsupported && !showFigflow"
+      color="info"
+      title="Continue editing this source in the composer"
+      description="FigFlow content editing needs supported structured content and editable fields. Imported HTML cannot open as native editable content. Choose a structured starter for native editing, or keep editing and saving here."
+      class="m-3"
+    />
+    <UAlert
+      v-if="(designFlow.error.value || designFlow.hasPending.value) && !designFlow.busy.value && !saving && !showFigflow"
       color="error"
       :title="designFlow.error.value || 'The last save is unconfirmed. Reconcile it before making another save.'"
       class="m-3"
@@ -1488,6 +1666,43 @@ onMounted(async () => {
           :draft-id="designFlow.draft.value.documentId"
           :blocked="conditionSaving || !!conditionPending || saving || designFlow.busy.value || designFlow.hasPending.value || designLocalConflict"
           @saved="acceptBrandDraft"
+        />
+      </template>
+    </USlideover>
+    <USlideover
+      v-model:open="showLibrary"
+      title="Design library"
+      :dismissible="!designFlow.busy.value"
+      :close="!designFlow.busy.value"
+      :ui="{ content: 'max-w-xl', body: 'flex min-h-0 p-0' }"
+    >
+      <template #body>
+        <EmailBuilderEdmDesignLibraryPanel
+          v-if="showLibrary"
+          :flow="designFlow"
+          :blocked="canonicalBlocked"
+          :saved="canonicalSaved"
+          :selected-id="selectedBlock?.id ?? null"
+          @module="command => executeLibraryAction(() => designFlow.library(command))"
+          @publish-template="publishCanonicalTemplate"
+          @publish-image="assetId => executeLibraryAction(() => designFlow.publishImage(assetId))"
+        />
+      </template>
+    </USlideover>
+    <USlideover
+      v-model:open="showHistory"
+      title="Version history"
+      :dismissible="!designFlow.busy.value"
+      :close="!designFlow.busy.value"
+      :ui="{ content: 'max-w-xl', body: 'flex min-h-0 p-0' }"
+    >
+      <template #body>
+        <EmailBuilderEdmDesignHistoryPanel
+          v-if="showHistory"
+          :flow="designFlow"
+          :blocked="canonicalBlocked"
+          :saved="canonicalSaved"
+          @restore="revisionId => executeLibraryAction(() => designFlow.restoreRevision(revisionId))"
         />
       </template>
     </USlideover>

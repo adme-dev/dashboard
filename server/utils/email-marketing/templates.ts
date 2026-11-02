@@ -12,6 +12,9 @@ import { addEmailClientScopeCondition, type EmailClientScope } from './access'
 export type EdmTemplateKind = 'template' | 'draft'
 
 export interface EdmTemplate {
+  design_document_id?: string | null
+  head_revision_id?: string | null
+  revision_schema_version?: number | null
   id: string
   name: string
   subject: string | null
@@ -39,21 +42,22 @@ async function renderHtml(renderer: EmailRendererClient, bodySource: unknown, su
 export async function listTemplates(clientIds?: EmailClientScope): Promise<EdmTemplate[]> {
   const conditions: string[] = []
   const params: unknown[] = []
-  addEmailClientScopeCondition(conditions, params, 'client_id', clientIds)
+  addEmailClientScopeCondition(conditions, params, 't.client_id', clientIds)
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
   return queryRowsFresh<EdmTemplate>(`
-    SELECT *
-    FROM edm_templates
+    SELECT t.*, d.id AS design_document_id, d.head_revision_id, r.schema_version AS revision_schema_version
+    FROM edm_templates t LEFT JOIN email_design_documents d ON d.template_id=t.id
+    LEFT JOIN email_design_revisions r ON r.document_id=d.id AND r.id=d.head_revision_id
     ${where}
     ORDER BY
       CASE WHEN template_kind = 'draft' THEN 0 ELSE 1 END,
       COALESCE(folder_name, ''),
-      updated_at DESC
+      t.updated_at DESC
   `, params)
 }
 
 export async function getTemplate(id: string): Promise<EdmTemplate | null> {
-  return queryOneFresh<EdmTemplate>('SELECT * FROM edm_templates WHERE id = $1', [id])
+  return queryOneFresh<EdmTemplate>(`SELECT t.*,d.id AS design_document_id,d.head_revision_id,r.schema_version AS revision_schema_version FROM edm_templates t LEFT JOIN email_design_documents d ON d.template_id=t.id LEFT JOIN email_design_revisions r ON r.document_id=d.id AND r.id=d.head_revision_id WHERE t.id=$1`, [id])
 }
 
 export interface CreateTemplateInput {

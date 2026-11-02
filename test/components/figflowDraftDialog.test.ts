@@ -45,6 +45,7 @@ async function mount() {
   }
   const args = {
     computed, designFlow, conditionSaving: ref(false), conditionPending: ref(null), brandFlow: { busy: ref(false), hasPending: ref(false) }, saving: ref(false), templateLoading: ref(false), templateLoadError: ref(''),
+    figflowSourceUnsupported: ref(false), // Source eligibility is covered by emailComposerSaveWarning.test.ts.
     loadingTemplateClients: ref(false), templateClientsError: ref(false),
     templateClientOptions: ref([{ label: 'Allowed client', value: 'allowed' }, { label: 'Shared default', value: '__shared__' }]),
     templateId: ref<string | null>('library-original'), templateKind: ref('template'),

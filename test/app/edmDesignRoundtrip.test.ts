@@ -171,3 +171,67 @@ describe('composer handoff reconciliation', () => {
     expect(fetch.mock.calls[3][1].body.action).toBe('save-draft')
   })
 })
+
+describe('library exact receipt recovery', () => {
+  beforeEach(() => {
+    fetch.mockReset()
+    vi.stubGlobal('$fetch', fetch)
+  })
+  it('retains an unknown action through a rejected retry until exact readback succeeds', async () => {
+    const flow = useEdmDesignRoundtrip()
+    flow.draft.value = draft()
+    flow.libraryAuthoring.value = { available: true, publisher: false }
+    fetch.mockRejectedValueOnce(new Error('lost commit reply'))
+    await expect(flow.restoreRevision(revision)).rejects.toThrow()
+    const original = fetch.mock.calls[0][1].body
+    fetch.mockRejectedValueOnce(Object.assign(new Error('access revoked'), { statusCode: 403 }))
+    await expect(flow.reconcile()).rejects.toThrow('access revoked')
+    expect(flow.hasPending.value).toBe(true)
+    await expect(flow.library({ command: 'detach-module-instance', instanceId: 'other' })).rejects.toThrow('reconciliation')
+    fetch.mockResolvedValueOnce({ documentId: id, revisionId: revision, published: false })
+      .mockResolvedValueOnce({ draft: draft() })
+    await flow.reconcile()
+    expect(fetch.mock.calls[2][1].body).toEqual(original)
+    expect(flow.hasPending.value).toBe(false)
+  })
+  it('reads a published module receipt through its immutable selection, even with an intervening draft head', async () => {
+    const flow = useEdmDesignRoundtrip()
+    flow.draft.value = draft()
+    flow.libraryAuthoring.value = { available: true, publisher: true }
+    const receipt = { documentId: id, revisionId: revision, moduleId: id, published: true }
+    fetch.mockRejectedValueOnce(new Error('reply lost'))
+    await expect(flow.library({ command: 'publish-module', name: 'Hero', description: null, category: 'hero', previewTone: 'light', includedOverridePaths: [] })).rejects.toThrow('reply lost')
+    const original = fetch.mock.calls[0][1].body
+    fetch.mockResolvedValueOnce(receipt).mockResolvedValueOnce({ moduleId: id, revisionId: revision, design: source() })
+    await flow.reconcile()
+    expect(fetch.mock.calls[1][1].body).toEqual(original)
+    expect(fetch.mock.calls[2][0]).toBe(`/api/email/design/modules/${id}/${revision}`)
+    expect(flow.draft.value.headRevisionId).toBe(revision)
+    expect(flow.hasPending.value).toBe(false)
+  })
+  it('retains a restore action after readback failure and rejects another history command', async () => {
+    const flow = useEdmDesignRoundtrip()
+    flow.draft.value = draft()
+    flow.libraryAuthoring.value = { available: true, publisher: false }
+    fetch.mockResolvedValueOnce({ documentId: id, revisionId: revision, published: false }).mockRejectedValueOnce(new Error('readback lost'))
+    await expect(flow.restoreRevision(revision)).rejects.toThrow('readback lost')
+    const original = fetch.mock.calls[0][1].body
+    expect(original).not.toHaveProperty('design')
+    await expect(flow.library({ command: 'detach-module-instance', instanceId: 'instance' })).rejects.toThrow('reconciliation')
+    fetch.mockResolvedValueOnce({ documentId: id, revisionId: revision, published: false }).mockResolvedValueOnce({ draft: draft() })
+    await flow.reconcile()
+    expect(fetch.mock.calls[2][1].body).toEqual(original)
+    expect(flow.hasPending.value).toBe(false)
+  })
+})
+
+it('confirms image publication readback independent of JSONB property order', async () => {
+  fetch.mockReset()
+  vi.stubGlobal('$fetch', fetch)
+  const flow = useEdmDesignRoundtrip()
+  flow.libraryAuthoring.value = { available: true, publisher: true }
+  const asset = { id, sha256: 'a'.repeat(64), mimeType: 'image/png', bytes: 123, width: 1, height: 1 }
+  fetch.mockResolvedValueOnce({ asset }).mockResolvedValueOnce({ assets: [{ id, emailPublication: { height: 1, width: 1, bytes: 123, mimeType: 'image/png', sha256: 'a'.repeat(64), id } }] })
+  await expect(flow.publishImage(id)).resolves.toEqual({ asset })
+  expect(flow.hasPending.value).toBe(false)
+})

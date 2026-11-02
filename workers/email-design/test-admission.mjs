@@ -103,11 +103,21 @@ for (const enabled of [undefined, 'false']) {
   const bindings = { ...validBindings, FIGFLOW_EDM_DESIGNER_ENABLED: 'true' }
   if (enabled !== undefined) bindings.FIGFLOW_EDM_LIBRARY_ENABLED = enabled
   await scenario(`library gate ${enabled ?? 'missing'} stays closed independently`, bindings, async (worker) => {
-    await expectStatus(await worker.dispatchFetch(`${origin}/api/email/design/modules`, {
+    for (const route of ['modules', 'templates', 'history']) await expectStatus(await worker.dispatchFetch(`${origin}/api/email/design/${route}`, {
       method: 'POST', headers: { ...environmentHeader, origin: 'https://app.xeroflow.io', 'content-type': 'application/json' }, body: '{"command":"publish-module"}'
     }), 404, 'not_found')
+    await expectStatus(await worker.dispatchFetch(`${origin}/api/email/design/templates/d0000000-0000-4000-8000-000000000001/d0000000-0000-4000-8000-000000000002`, { headers: environmentHeader }), 404, 'not_found')
   })
 }
+
+await scenario('enabled library template and history routes require session authority', {
+  ...validBindings, FIGFLOW_EDM_DESIGNER_ENABLED: 'true', FIGFLOW_EDM_LIBRARY_ENABLED: 'true'
+}, async (worker) => {
+  for (const route of ['templates', 'history']) await expectStatus(await worker.dispatchFetch(`${origin}/api/email/design/${route}`, {
+    method: 'POST', headers: { ...environmentHeader, origin: 'https://app.xeroflow.io', 'content-type': 'application/json' }, body: '{}'
+  }), 401, 'design_session_invalid')
+  await expectStatus(await worker.dispatchFetch(`${origin}/api/email/design/templates/d0000000-0000-4000-8000-000000000001/d0000000-0000-4000-8000-000000000002`, { headers: environmentHeader }), 401, 'design_session_invalid')
+})
 
 for (const enabled of [undefined, 'false']) {
   const bindings = { ...validBindings, FIGFLOW_EDM_DESIGNER_ENABLED: 'true' }
