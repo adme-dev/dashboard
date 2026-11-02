@@ -42,11 +42,15 @@ function fixture(blocks = structuredDesign().blocks) {
   const state = {
     designFlow: flow, store: { document: Vue.ref(blocks) }, computed: Vue.computed, figflowTemplateCapability,
     saving: Vue.ref(false), showFigflow: Vue.ref(false), workspaceBusy: Vue.computed(() => flow.busy.value || flow.hasPending.value),
+    canonicalSaved: Vue.ref(false),
     figflowEnabled: true, campaignId: Vue.ref(null), templateLoading: Vue.ref(false), templateLoadError: Vue.ref(''),
     conditionSaving: Vue.ref(false), conditionPending: Vue.ref(null), brandFlow: { busy: Vue.ref(false), hasPending: Vue.ref(false) },
     templateId: Vue.ref('10000000-0000-4000-8000-000000000003'), templateKind: Vue.ref('draft'),
     hasValidTemplateClient: Vue.ref(true), name: Vue.ref('Synthetic draft'), showSaveModal: Vue.ref(false),
     templateClient: Vue.ref('__shared__'), save: vi.fn(async () => true), toast: { add: vi.fn() },
+    draftCopyUnconfirmed: Vue.ref(false), loadingTemplateClients: Vue.ref(false),
+    templateClientsError: Vue.ref(false), hasValidDesignDraftClient: Vue.ref(true),
+    designDraftName: Vue.ref('Synthetic copy'), designDraftClient: Vue.ref('__shared__'),
     reconcileDesignAction: vi.fn(async () => {}), showDesignDraftCopy: Vue.ref(false),
     designRevisionRequired: Vue.ref(false), designServiceUnavailable: Vue.ref(false), designLocalConflict: Vue.ref(false),
     route: { query: {} }, router: { replace: vi.fn(async () => {}) }
@@ -153,14 +157,30 @@ describe('composer distinguishes active saves from unconfirmed outcomes', () => 
     const h = fixture()
     const design = structuredDesign()
     design.policy.editableFields = []
-    h.designFlow.draft.value = { state: 'structured', documentId: crypto.randomUUID(), templateId: h.templateId.value,
-      headRevisionId: crypto.randomUUID(), projectionRevisionId: null, source: design as never, projection: { state: 'current' } }
+    design.scope.clientId = null
+    const documentId = crypto.randomUUID()
+    const revisionId = crypto.randomUUID()
+    const saved = { state: 'structured' as const, documentId, templateId: h.templateId.value,
+      headRevisionId: revisionId, projectionRevisionId: revisionId, source: design, projection: { state: 'current' as const } }
+    h.designFlow.draft.value = saved
+    h.canonicalSaved.value = true
     h.designFlow.designerAuthoring.value.available = designer
+    const fetch = vi.fn().mockResolvedValueOnce({ handoff: {
+      id: 'handoff-one', templateId: h.templateId.value, draftId: documentId,
+      baseRevisionId: revisionId, source: design
+    } }).mockResolvedValueOnce({ draft: saved })
+    vi.stubGlobal('$fetch', fetch)
     await flush()
     expect(h.host.querySelector('button')!.disabled).toBe(!designer)
     await h.beginFigflow()
-    expect(h.save.mock.calls.length).toBe(designer ? 1 : 0)
+    expect(h.save).not.toHaveBeenCalled()
     expect(h.showFigflow.value).toBe(designer)
+    expect(h.designFlow.draft.value?.source.policy.editableFields).toEqual([])
+    if (designer) {
+      expect(fetch.mock.calls[0]![1].body).toMatchObject({ command: 'open', draftId: documentId, expectedRevisionId: revisionId })
+      expect(fetch.mock.calls.some(([, options]) => options?.method === 'PATCH')).toBe(false)
+      expect(h.designFlow.hasPending.value).toBe(false)
+    } else expect(fetch).not.toHaveBeenCalled()
   })
   it('never blocks an already server-authorized designer because the blocks are imported HTML', async () => {
     const h = fixture(legacy)

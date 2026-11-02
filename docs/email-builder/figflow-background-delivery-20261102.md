@@ -792,3 +792,154 @@ socket inspection found no public citext, so no local rerun/public-schema mutati
 occurred; final PG proof remains pending fresh CI. Prior16/80 receipts remain
 unchanged/source-bounded. Parent now stages only reviewed app/fixture/harness/
 evidence docs for a coherent checkpoint, leaving all dirty backend source out.
+
+Parent verified24 CI-fixture,400 failed08a and94 protected-core manifest hashes
+plus seven frozen app/test file hashes, committed reviewed reopen/fixture/harness/
+receipt docs as9f09d3f874e37e42bf72594efa0e404c781debf5 and pushed it. Fresh main
+remains052eefaf9 and is an ancestor. Native41465049486 and general41465049639
+execute this exact head; ctx_8bf2467557e0 monitors them. Neither is yet passed.
+Dirty campaign backend changes were excluded from commit/build/CI claims.
+
+New frozen9f runtime archiveb6b8c5cb0ed845a7b446c67e76f58c8b8d71acb5bcbcc3b5bf4aeef16033a94c
+captures6851 source files, all unchanged after compile. Private Worker
+df443e855bca7ef090cef5ff34c50e6da1f688f0ae286165696735b02165f89c
+(1343769 bytes) builds/passes22 admission cases; renderer remains1a095948fe07110d
+(full hash in receipt),733961 bytes/132 inputs. Nine checksums recorded in
+`.verification/frozen-email-runtime-9f09d3f87/`; five native inputs are byte-equal
+to956, which does not substitute for new exact-head CI. ctx_272f99d31b5e adapts
+the fixture to frozen498/campaign schema and awaits matching9f package before
+strict rerun in a new evidence root. Old400/94 manifests remain immutable.
+
+Backend integration worker reports its latest matrix passed142 real-PG and495
+unit/inventory cases with zero skips. Implemented scope includes persisted-owner
+library adapters, exact template-revision campaign creation, REST/MCP canonical
+updates and O-1 registered-asset/readiness handling. Its explicit inventory audit
+adds only POST design/campaigns and one existing-authority lexical predicate,
+without classifier exclusions or bypass registration. Final lint/types, owned-
+file review, hashes and cleanup report are still completing; this source remains
+uncommitted and excluded from9f CI/frozen runtime. Parent independent review and
+integration remain before any campaign UI/native/hosted acceptance claim.
+
+New9f actual08a fixture preparation settled successfully without claiming runtime
+execution: exact six frozen migrations including498 e8fdd367 applied in an owned
+schema and dropped, omitted/changed498 input guards passed,6851 source hashes and
+Workerdf443e85/renderer1a095948 verified,23-SFC compile/lint/types pass. Fifteen new
+safe evidence files are hashed separately; old24/400/94 manifests remain unchanged.
+Exactnative41465049486 package/receipt is the sole pending runtime input.
+
+Independent Opus backend review ctx_037f0446ae0f now reads the new backend diff,
+approved adapters/exact-copy/write-path plan and O-1 boundaries while the author
+finishes source freeze. Any source/hash drift must be recorded and rechecked;
+142PG/495unit reports are not campaign UI/native/hosted acceptance. No source
+integration/activation is implied by starting review.
+
+Backend final-matrix correction: the worker reports532 unit/REST/MCP/inventory/
+template cases across51 suites green, plus lint/0owned TS diagnostics. A legacy
+REST convention regression was repaired and included. Its final PG repeat omitted
+the M06 fixture opt-in and actually ran112 passed/30 skipped, despite an earlier
+142/0 run. The worker caught this while auditing logs and is rerunning with the
+assigned disposable-socket opt-in. Do not count that final PG gate green until
+all142 execute; earlier results remain source-bounded. Final source/report and
+independent review are still pending.
+
+Backend author final freeze completed142 PG/532 regressions with zero skips,
+lint/0owned TS diagnostics (89 retained transitive diagnostics), clean schemas;
+reportb437ae2344bf91e63c0d0e0f1ce28d2658484ddf631f25817786c52361773bab.
+Independent review and final-freeze follow-up found0 drift but one activation P1:
+new MCP canonical create/update bypasses draft-save/library release gates. Live
+052 and pushed9f do not include those new MCP branches; configured498 is already
+applied with zero opt-ins, so this blocks integration/deployment of the new
+backend, not a claim of an observed production bypass or reason to undo schema.
+
+Review also found P2 receipt readiness before replay, unpublished draft selection,
+unmeasured Pages bundle cost, transient failures mislabelled as image correction,
+and R2 I/O under review locks. Follow-up ctx_f55f830b26aa owns bounded source/test
+fixes for all but bundle measurement. Parent policy: only published templateowners
+are eligible, retaining exact immutable publicationR1 afterR2; working drafts are
+not eligible. Preserve fresh actor/source/destination authority, existing denial
+audit and MCP ledgers, no new registry/service. Bundle risk must be measured in
+exact candidate CI before architecture changes or guard changes.
+
+Isolated native campaign admission source task completed separately: only a copy
+under `.verification/native-campaign-admission-20261103/edm.rs` changes, production
+diff accepts exact template/campaign-draft in two guards. Eight fresh-Session test
+sources add to the intact32 for40 expected engine names.18 text/hash assertions
+pass; NO Rust compilation/tests ran. CandidateSHA9954fc0dd7bb85d246ba049e2b2e977f5be10bb691d4d5a9f964aed025a59615.
+Old native work/pins/956/9f runtime and backend freeze were preserved. Parent
+source review, patch/pin integration, Linux/package and campaign UI/runtime
+remain required; report `native-campaign-admission-20261103.md` is uncompiled work.
+
+Backend review-fix status: six intended real-PG failures and gate/readiness unit
+reds were reproduced. Fixes now cover persisted-owner gate admission before MCP
+replay, published-owner selection, receipt-first reconciliation and DB-only locked
+review recheck after external readiness. Actual495 forbids unpublishing/deleting
+registered published assets; the revised test proves that immutable refusal,
+then uses unavailable registered bytes/withdrawn library owner to exercise real
+lost-reply replay without bypassing guards. New operations still require readiness.
+Unconfigured/unavailable storage is503, distinct from actionable content409.
+Final complete verification/source review remains pending; these status claims
+do not close the P1 or overall backend acceptance yet.
+
+Backend review-fix source freeze now reports151 real-PG cases/5 files and542
+unit/REST/MCP regressions/52 files with zero failures/skips, lint/0owned TS
+diagnostics (89 retained transitive diagnostics), and all five owned-schema
+prefixes absent. Four production and four test/inventory files changed, recorded
+in `.verification/campaign-backend-review-fixes/source-freeze.json`; no497/498,
+native/pins or parent evidence changed. Final report is still being written.
+Independent Opus follow-up is dispatched to compare the exact final bytes with
+P1/P2 findings before integration. Bundle measurement and campaign UI/native/
+hosted acceptance remain open, independent of these scoped green counts.
+
+Parent located the monitor's completed package handoff files and independently
+verified all46 native/56 package checks, exact32/9/8 (81 named) outcomes, checkout
+ec7ac47a551f573389c67787f26aa3df0e492555 with direct052/9f parents, and actual
+ZIP/WASM bytes. Matching9f ZIPd81ccce0f6ada158df8835c8d8872efbc201c213f4024efd42ece58132e8a579;
+WASM remains18a31d0079c72f0ed07bb678c0ca548098c81d06c8bf05deb94c25c782457c59.
+Native41465049486 is successful. Package handed to strict runtime worker
+ctx_b88dba4ae7b7 immediately, without waiting for general CI. Frozen9f runtime
+and all six migrations are ready; new evidence root protects old400/94 files.
+General41465049639 and actual9f runtime outcome are still pending.
+
+Backend review-fix author final report settled at
+e694ba0a008f6480d350227a5f47113a15dc92a710eef40cfbc435f2bdb600e8;
+source-freeze manifest5cb8c6d91495b3be429179c4eb4485e409dcdd5a2d110353c939a3a8b59ba18a.
+Final151PG/542regressions0skip and cleanup stand; independent follow-up
+ctx_dde829380595 has final hashes. Source remains unintegrated pending that review
+and measured Pages build/size; no UI/native/hosted completion is implied.
+
+## 3 November — strict library pass, reviewed backend checkpoint and CI fixture repair
+
+Strict frozen9f actual-WASM library journey completed1/1 in26.48s. Parent
+independently verified all123 evidence hashes and inspected the compiled mobile
+review. The final detached/reopened canonical snapshots and revision
+478a8458-c74d-497c-8934-1867ed3c73b4 are identical. Report:
+`native-library-browser-20261103.md`. This closes the bounded local08a gate only:
+identical1px image fixtures prove registered identity/reference preservation,
+not changed-pixel fidelity or public signed delivery. Hosted/RBAC/campaign/full
+OEM/inbox acceptance remains open. Old24/400/94 manifests are preserved.
+
+General9f CI41465049639 settled failed: one stale shallow save-warning fixture,
+21,870 full-suite passes/4,150 skips; PG82 passed. Worker build/isolation passed.
+Raw25,362,671/25,468,928 and gzip7,319,367/9,750,000 budgets passed on9f, not on
+the new backend. Final CI report is `.verification/ci-followup-9f09d3f87/REPORT.md`.
+
+The shallow zero-field-policy fixture declared a current projection but supplied
+no projection revision and a mismatched client, then expected an unnecessary
+save. Existing exact-head product checks correctly rejected it. Parent reproduced
+the original1 failure/7 passes, supplied a valid shared-scope exact-head baseline
+and receipt/readback, and now asserts no save/PATCH, preserved policy and exact
+open revision. Explicit missing render-state refs remove shallow fixture warnings;
+no application guard changed. Final fresh Node24 fixture8/8 and lint exit0, then
+all9 neighboring suites79/79 exit0 (no skips). An intermediate broader command
+matched only4 files/36 tests because several paths were wrong; it is not counted
+as the final9-file result. Final command used the actual test/app and
+test/components paths.
+
+Backend independent follow-up found no P0/P1 in the reviewed gate/replay/selection/
+readiness fixes. Parent verified final source hashes and committed23 backend
+files as0bd0c9e190a9e69369fe7a284762c0a2eba7207b. Its151 real-PG/542 regression
+results remain source-bounded; lower review items and new bundle measurement are
+open. Freshly fetched origin/main052eefaf9 is an ancestor. This is implementation
+and local verification, not merge/deployment/activation. Remaining08b slice5 is
+owner-aware campaign handoff/UI/recovery, followed by40/9/8 native CI and actual
+two-campaign runtime. No real email was sent.
