@@ -89,11 +89,12 @@ describe('canEnterSending', () => {
 describe('buildCampaignPreflight', () => {
   const cleanCampaign = {
     subject: 'June offers',
+    preview_text: 'Explore the latest offers',
     from_email: 'sales@example.com',
     body_html: [
-      '<!doctype html><html><body>',
+      '<!doctype html><html lang="en"><body><h1>June offers</h1>',
       '<p>Latest offer</p>',
-      '<img src="https://cdn.example.com/car.png">',
+      '<img src="https://cdn.example.com/car.png" alt="Car on road">',
       '<a href="{{ unsubscribe_url }}">Unsubscribe</a>',
       '<footer>XeroFlow Agency, 1 Market Street, Melbourne VIC 3000</footer>',
       '</body></html>'

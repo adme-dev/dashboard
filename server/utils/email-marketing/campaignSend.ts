@@ -5,6 +5,7 @@
 
 import { resolveEmailMergeTags } from '../../../shared/emailRendering/mergeTags'
 import type { BridgeCommunicationInput } from '~~/server/utils/crm/commsDb'
+import { diagnoseEmailContent, type EmailDiagnosticCode, type EmailDiagnosticReference, type EmailDiagnosticImageAsset } from '../../../shared/emailRendering/contentDiagnostics'
 import { rewriteHtmlLinksForTracking, type RewriteTrackingInput } from './trackingLinks'
 
 export const CAMPAIGN_STATUSES = [
@@ -71,6 +72,7 @@ export type CampaignPreflightCode
     | 'html_size'
     | 'footer_identity'
     | 'recipients'
+    | EmailDiagnosticCode
 
 export interface CampaignPreflightCheck {
   code: CampaignPreflightCode
@@ -78,6 +80,8 @@ export interface CampaignPreflightCheck {
   status: CampaignPreflightStatus
   message: string
   value?: string | number | boolean | null
+  id?: string
+  reference?: EmailDiagnosticReference
 }
 
 export interface CampaignPreflightResult {
@@ -111,7 +115,7 @@ const NON_HTTPS_MEDIA_RE = /\b(?:src|background)\s*=\s*["']http:\/\/[^"']+["']|u
 const STREET_ADDRESS_RE = /\b\d+[a-z]?(?:\s*[-/]\s*\d+[a-z]?)?\s+[\w\s,'.-]{2,80}\b(?:street|st\b|road|rd\b|avenue|ave\b|drive|dr\b|lane|ln\b|court|ct\b|place|pl\b|parade|pde\b|crescent|cres\b|highway|hwy\b|boulevard|blvd\b|terrace|tce\b|way\b)\b/i
 const PO_BOX_RE = /\b(?:p\.?\s*o\.?\s*box|po\s+box|locked\s+bag|private\s+bag)\s+\d+\b/i
 const LOCALITY_RE = /\b(?:melbourne|sydney|brisbane|perth|adelaide|hobart|darwin|canberra|australia|vic|nsw|qld|wa|sa|tas|act|nt)\b|\b\d{4}\b/i
-const PREFLIGHT_LABELS: Record<CampaignPreflightCode, string> = {
+const PREFLIGHT_LABELS = {
   unsubscribe: 'Unsubscribe',
   sender: 'Sender',
   auth_readiness: 'Authentication readiness',
@@ -142,7 +146,7 @@ export function isSenderDomainAllowed(
 }
 
 function preflightCheck(
-  code: CampaignPreflightCode,
+  code: keyof typeof PREFLIGHT_LABELS,
   status: CampaignPreflightStatus,
   message: string,
   value?: CampaignPreflightCheck['value']
@@ -173,6 +177,7 @@ export function buildCampaignPreflight(input: {
     subject?: string | null
     from_email?: string | null
     body_html?: string | null
+    preview_text?: string | null
   }
   toSend: number
   sendingConfigured: boolean
@@ -180,6 +185,7 @@ export function buildCampaignPreflight(input: {
   allowedSenderDomains?: string[]
   checkedAt?: string
   maxHtmlBytes?: number
+  imageAssets?: readonly EmailDiagnosticImageAsset[]
 }): CampaignPreflightResult {
   const html = input.campaign.body_html || ''
   const htmlBytes = Buffer.byteLength(html, 'utf8')
@@ -250,6 +256,15 @@ export function buildCampaignPreflight(input: {
       input.toSend
     ))
   }
+
+  // Inspect the frozen HTML, never regenerate a scheduled/sent campaign here.
+  // Content guidance stays advisory; sender/auth/recipient/footer gates above own readiness.
+  checks.push(...diagnoseEmailContent({
+    html,
+    subject: input.campaign.subject,
+    previewText: input.campaign.preview_text,
+    imageAssets: input.imageAssets
+  }))
 
   const blocked = checks.some(check => check.status === 'blocked')
   return {

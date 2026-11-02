@@ -16,6 +16,7 @@
           <div
             v-for="childId in column.childrenIds"
             :key="childId"
+            :data-diagnostic-block="childId"
             class="column-child"
             :class="{ 'is-selected': store.selectedBlockId.value === childId }"
             @click.stop="store.setSelectedBlockId(childId)"

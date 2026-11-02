@@ -1,12 +1,14 @@
+// @vitest-environment happy-dom
 import { describe, expect, it } from 'vitest'
-import { createSSRApp, h } from 'vue'
+import { createApp, createSSRApp, h, nextTick } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import CampaignPreflightPanel from '~~/app/components/email/CampaignPreflightPanel.vue'
 
 const stubs = {
   UIcon: { name: 'UIcon', props: ['name'], template: '<i :data-icon="name" />' },
   UBadge: { name: 'UBadge', props: ['label'], template: '<span><slot />{{ label }}</span>' },
-  USkeleton: { name: 'USkeleton', template: '<div class="skeleton" />' }
+  USkeleton: { name: 'USkeleton', template: '<div class="skeleton" />' },
+  UButton: { name: 'UButton', props: ['label'], template: '<button type="button">{{ label }}</button>' }
 }
 
 async function renderPanel(props: Record<string, unknown>) {
@@ -94,5 +96,44 @@ describe('CampaignPreflightPanel', () => {
 
     expect(html).toContain('Authentication readiness')
     expect(html).toContain('From domain is not allowed')
+  })
+
+  it('separates blockers from advisory warnings and preserves unique entries with the same code', async () => {
+    const html = await renderPanel({
+      preflight: { ok: false, blocked: true, checks: [
+        { code: 'image_alt', id: 'alt:a', status: 'warning', message: 'Image A needs a description', reference: { blockId: 'a' } },
+        { code: 'image_alt', id: 'alt:b', status: 'warning', message: 'Image B needs a description', reference: { blockId: 'b' } },
+        { code: 'sender', status: 'blocked', message: 'Choose a sender' }
+      ] }, contentOnly: true, canSelectIssue: true
+    })
+    expect(html.indexOf('Resolve before sending')).toBeLessThan(html.indexOf('Review warnings'))
+    expect(html).toContain('Image A needs a description')
+    expect(html).toContain('Image B needs a description')
+    expect(html).toContain('aria-label="Review image alt in editor"')
+    expect(html).toContain('overflow-y-auto')
+    expect(html).not.toContain('Selected lists')
+    expect(html).toContain('do not certify email-client rendering')
+  })
+
+  it('emits the stable reference from a keyboard-accessible real button', async () => {
+    const reference = { blockId: 'imported', regionId: 'image:table[0]/tbody[0]/tr[0]/td[0]/img[0]' }
+    const received: unknown[] = []
+    const app = createApp({ render: () => h(CampaignPreflightPanel, {
+      preflight: { ok: true, blocked: false, checks: [{ code: 'image_alt', status: 'warning', message: 'Missing alt', reference }] },
+      contentOnly: true, canSelectIssue: true,
+      onSelectIssue: (value: unknown) => received.push(value)
+    }) })
+    Object.entries(stubs).forEach(([name, component]) => app.component(name, component))
+    const host = document.createElement('div')
+    document.body.append(host)
+    try {
+      app.mount(host)
+      host.querySelector('button')!.click()
+      await nextTick()
+      expect(received).toEqual([reference])
+    } finally {
+      app.unmount()
+      host.remove()
+    }
   })
 })

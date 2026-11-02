@@ -4,6 +4,7 @@
      Loads an existing template via ?id= or a starter layout via ?starter=. -->
 <script setup lang="ts">
 import { onBeforeRouteLeave } from 'vue-router'
+import { diagnoseEmailContent, type EmailDiagnosticReference, type EmailDiagnosticImageAsset } from '../../../../shared/emailRendering/contentDiagnostics'
 import { templateCopyCategory, markTemplateClientCopy, templateCopyName } from '~~/app/utils/edmTemplateProvenance'
 import { EDM_SECTION_CATEGORIES, findStarterTemplate } from '~~/app/utils/edmPresets'
 import type { EdmSectionPreset } from '~~/app/utils/edmPresets'
@@ -65,6 +66,54 @@ const apiFetch = $fetch as <T = unknown>(
 ) => Promise<T>
 
 const layout = computed(() => store.getLayoutSettings())
+const showContentChecks = ref(false)
+const pendingDiagnosticJump = ref<EmailDiagnosticReference | null>(null)
+const diagnosticField = ref<string | null>(null)
+const knownDiagnosticAssets = ref<EmailDiagnosticImageAsset[]>([])
+// Computed from current edits, never a persisted approval or a client-rendering claim.
+const contentPreflight = computed(() => ({
+  ok: true,
+  blocked: false,
+  checks: diagnoseEmailContent({
+    document: Object.fromEntries(Object.entries(store.document.value).map(([id, block]) => [id, {
+      ...block, data: getBlockForDevice({ id, ...block }, activeDevice.value).data
+    }])),
+    subject: subject.value,
+    previewText: previewText.value,
+    imageAssets: knownDiagnosticAssets.value
+  })
+}))
+
+function queueDiagnosticJump(reference: EmailDiagnosticReference) {
+  pendingDiagnosticJump.value = reference
+  showContentChecks.value = false
+}
+
+async function jumpToDiagnostic() {
+  const reference = pendingDiagnosticJump.value
+  pendingDiagnosticJump.value = null
+  if (!reference) return
+  viewMode.value = 'editor'
+  const blockId = reference.blockId
+  if (blockId && store.document.value[blockId]) {
+    store.setSelectedBlockId(blockId)
+    const block = store.document.value[blockId]!
+    const selection = block.type === 'Html' && reference.regionId
+      ? getHtmlEditableSelection(String(block.data.props?.contents || ''), reference.regionId)
+      : null
+    store.selectHtmlEditable(selection ? { ...selection, blockId } : null)
+    await nextTick()
+    // Compare IDs rather than interpolating untrusted block IDs into a selector.
+    const target = Array.from(document.querySelectorAll<HTMLElement>('[data-diagnostic-block]'))
+      .find(element => element.dataset.diagnosticBlock === blockId)
+    target?.scrollIntoView({ block: 'center', behavior: 'auto' })
+  } else if (reference.field === 'subject' || reference.field === 'previewText') {
+    diagnosticField.value = reference.field
+    showSaveModal.value = true
+  } else {
+    store.clearSelection()
+  }
+}
 
 // ── Palette ───────────────────────────────────────────────────────────────
 // Slim category list; each category opens a single top-docked flyout panel
@@ -322,7 +371,9 @@ function applyImageLibraryAsset(asset: EdmImageAsset) {
   if (!target) return
   const selection = selectedHtmlEditableFor(target.blockId)
   if (!selection || selection.id !== target.selectionId || selection.kind !== 'image') return
-  updateSelectedHtmlEditable({ kind: 'image', src: normaliseEmailImageAssetUrl(asset.url), alt: selection.alt || asset.name })
+  const url = normaliseEmailImageAssetUrl(asset.url)
+  knownDiagnosticAssets.value = [...knownDiagnosticAssets.value.filter(item => item.url !== url), { url, fileSize: asset.fileSize }].slice(-2048)
+  updateSelectedHtmlEditable({ kind: 'image', src: url, alt: selection.alt ?? '' })
   imageLibraryOpen.value = false
   imageLibraryTarget.value = null
 }
@@ -1136,9 +1187,9 @@ onMounted(async () => {
       color="neutral"
     />
   </div>
-  <div v-show="!templateLoading && !templateLoadError" class="flex flex-col h-full">
+  <div v-show="!templateLoading && !templateLoadError" class="flex min-h-0 flex-col h-full">
     <!-- Toolbar -->
-    <header class="flex items-center gap-2 px-4 py-2 border-b border-default">
+    <header class="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-default">
       <div class="flex items-center gap-1">
         <UButton
           icon="i-lucide-undo-2"
@@ -1209,6 +1260,14 @@ onMounted(async () => {
         @click="renderPreview()"
       />
       <UButton
+        icon="i-lucide-list-checks"
+        variant="outline"
+        color="neutral"
+        size="sm"
+        label="Content checks"
+        @click="showContentChecks = true"
+      />
+      <UButton
         v-if="campaignId"
         icon="i-lucide-calendar-clock"
         variant="outline"
@@ -1261,7 +1320,7 @@ onMounted(async () => {
       :actions="designFlow.hasPending.value ? [{ label: 'Reconcile saved action', onClick: reconcileDesignAction }] : []"
     />
     <!-- Body -->
-    <div class="flex-1 overflow-hidden">
+    <div class="flex-1 min-h-0 overflow-hidden">
       <!-- Editor -->
       <div v-show="viewMode === 'editor'" class="flex h-full">
         <!-- Left: slim category rail with a top-docked flyout panel. -->
@@ -1336,6 +1395,7 @@ onMounted(async () => {
             <!-- Block list -->
             <template v-for="(block, index) in childBlocks" :key="block.id">
               <EmailBuilderEditorBlockWrapper
+                :data-diagnostic-block="block.id"
                 :block-id="block.id"
                 :is-drag-source="draggedRootBlockId === block.id"
                 :drop-placement="rootDropPreview?.targetBlockId === block.id ? rootDropPreview.placement : null"
@@ -1415,7 +1475,7 @@ onMounted(async () => {
         </main>
 
         <!-- Right: block inspector when a block is selected, else email settings -->
-        <aside class="w-80 border-l border-default p-3 overflow-auto">
+        <aside class="w-80 min-h-0 border-l border-default p-3 overflow-y-auto">
           <template v-if="selectedBlock">
             <div class="flex items-center justify-between mb-3">
               <p class="text-xs font-semibold uppercase text-muted">
@@ -1546,7 +1606,12 @@ onMounted(async () => {
             </UFormField>
           </div>
           <UFormField label="Subject line">
-            <UInput v-model="subject" placeholder="Subject shown in the inbox" class="w-full" />
+            <UInput
+              v-model="subject"
+              :autofocus="diagnosticField === 'subject'"
+              placeholder="Subject shown in the inbox"
+              class="w-full"
+            />
           </UFormField>
           <UFormField
             v-if="campaignId"
@@ -1562,7 +1627,12 @@ onMounted(async () => {
             />
           </UFormField>
           <UFormField label="Preview text" help="The snippet shown after the subject in most inboxes.">
-            <UInput v-model="previewText" placeholder="Preview text" class="w-full" />
+            <UInput
+              v-model="previewText"
+              :autofocus="diagnosticField === 'previewText'"
+              placeholder="Preview text"
+              class="w-full"
+            />
           </UFormField>
           <div class="flex justify-end gap-2 pt-2">
             <UButton
@@ -1705,6 +1775,32 @@ onMounted(async () => {
               label="Send test"
               :loading="testSending"
               @click="sendTestEmail()"
+            />
+          </div>
+        </div>
+      </template>
+    </UModal>
+
+    <UModal
+      v-model:open="showContentChecks"
+      title="Email content checks"
+      :ui="{ content: 'max-w-2xl' }"
+      @after:leave="jumpToDiagnostic"
+    >
+      <template #content>
+        <div class="max-h-[85svh] min-h-0 overflow-y-auto p-4">
+          <EmailCampaignPreflightPanel
+            :preflight="contentPreflight"
+            content-only
+            can-select-issue
+            @select-issue="queueDiagnosticJump"
+          />
+          <div class="mt-4 flex justify-end">
+            <UButton
+              label="Close"
+              color="neutral"
+              variant="ghost"
+              @click="showContentChecks = false"
             />
           </div>
         </div>
