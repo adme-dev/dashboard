@@ -15,6 +15,14 @@ describe('composer handoff reconciliation', () => {
     fetch.mockReset()
     vi.stubGlobal('$fetch', fetch)
   })
+  it('explains zero-editable-content rejection without retaining a pending mutation', async () => {
+    const flow = useEdmDesignRoundtrip()
+    fetch.mockRejectedValueOnce({ statusCode: 409, data: { statusMessage: 'NO_EDITABLE_CONTENT' } })
+    await expect(flow.run(() => flow.open(id, null))).rejects.toBeDefined()
+    expect(flow.error.value).toContain('no content FigFlow can edit')
+    expect(flow.hasPending.value).toBe(false)
+    expect(flow.handoff.value).toBe(null)
+  })
   it('retries an uncertain proposal with the original operation and refuses to silently substitute another command', async () => {
     const flow = useEdmDesignRoundtrip()
     flow.handoff.value = handoff()

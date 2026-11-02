@@ -124,7 +124,13 @@ onBeforeUnmount(() => {
       title="Your composer has newer edits"
       description="Keep your current draft. Save it and start a new FigFlow handoff; this proposal will not overwrite those edits."
     />
-    <template v-if="handoff.state === 'open'">
+    <UAlert
+      v-if="handoff.state === 'open' && !handoff.source.policy.editableFields.length"
+      color="warning"
+      title="This template supports composer editing only"
+      description="FigFlow cannot edit its HTML or locked sections yet. Return to the composer to continue; your saved draft is kept."
+    />
+    <template v-else-if="handoff.state === 'open'">
       <div class="min-h-96 flex-1 overflow-hidden rounded-lg border border-default">
         <iframe
           ref="frame"

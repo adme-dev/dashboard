@@ -7,6 +7,7 @@ editable fields in local source preflight. The standalone FigFlow URL has no
 email template browser. Full template readiness has not passed.
 
 - [Real-template beta results and open fixes](figflow-beta-20261102.md)
+- [Email template browser implementation and verification](figflow-template-browser.md)
 - [Completed first round-trip milestone](figflow-roundtrip-milestone.md)
 - [Current production deployment and next developer tasks](figflow-developer-handoff.md)
 - [Source inventory and discovery evidence](figflow-integration-inventory.md)

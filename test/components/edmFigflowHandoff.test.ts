@@ -9,8 +9,9 @@ import { structuredDesign } from '../fixtures/email-design/structured'
 let dispose: (() => void) | undefined
 const flush = async () => { for (let i = 0; i < 5; i++) { await Promise.resolve(); await nextTick() } }
 afterEach(() => { dispose?.(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
-async function mount(review = false) {
+async function mount(review = false, empty = false) {
   const source = composerToDesignDraft(structuredDesign().blocks, structuredDesign().scope.clientId)
+  if (empty) source.policy.editableFields = []
   const proposed = vi.fn()
   const applied = vi.fn()
   const host = document.createElement('div')
@@ -22,7 +23,7 @@ async function mount(review = false) {
   app.component('UAlert', { props: ['title'], template: '<div role="alert">{{ title }}</div>' })
   app.mount(host)
   dispose = () => app.unmount()
-  if (review) { await flush(); return { host, applied } }
+  if (review || empty) { await flush(); return { host, applied } }
   const iframe = host.querySelector('iframe')!
   const send = vi.fn()
   const remote = { postMessage: send }
@@ -38,6 +39,12 @@ async function mount(review = false) {
 }
 
 describe('FigFlow frame return boundary', () => {
+  it('keeps an old zero-field session readable without reopening a blank native editor', async () => {
+    const { host } = await mount(false, true)
+    expect(host.querySelector('iframe')).toBe(null)
+    expect(host.textContent).toContain('composer editing only')
+    expect(Array.from(host.querySelectorAll('button')).some(button => button.textContent === 'Return for review')).toBe(false)
+  })
   it('requires a rendered preview and an explicit click before applying a durable proposal', async () => {
     let complete!: (value: { html: string }) => void
     vi.stubGlobal('$fetch', vi.fn(() => new Promise(resolve => { complete = resolve })))

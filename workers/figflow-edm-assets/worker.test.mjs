@@ -10,11 +10,26 @@ test('native assets have no public route and reject other creative paths', async
   assert.throws(() => validateTarget({ ...config, workers_dev: true }))
   let calls = 0
   const env = { ASSETS: { fetch: async () => { calls++; return new Response('native') } } }
-  for (const url of ['https://creative.xeroflow.io/', 'https://creative.xeroflow.io/figflow/0.11.2-flow1/', 'https://other.example' + PREFIX, 'https://creative.xeroflow.io' + PREFIX + '%2e%2e/private']) {
+  for (const url of ['https://creative.xeroflow.io/', 'https://creative.xeroflow.io/figflow/0.11.2-flow1/other', 'https://other.example' + PREFIX, 'https://creative.xeroflow.io' + PREFIX + '%2e%2e/private']) {
     assert.equal((await worker.fetch(new Request(url), env)).status, 404)
   }
   assert.equal((await worker.fetch(new Request('https://creative.xeroflow.io' + PREFIX, { method: 'POST' }), env)).status, 405)
   assert.equal(calls, 0)
+})
+
+test('library shell keeps the old canvas mounted and uses the authenticated app library', async () => {
+  let calls = 0
+  const response = await worker.fetch(new Request('https://creative.xeroflow.io/figflow/0.11.2-flow1/'), { ASSETS: { fetch: () => { calls++; throw Error('unexpected asset read') } } })
+  const html = await response.text()
+  assert.equal(response.status, 200)
+  assert.equal(calls, 0)
+  assert.match(html, /href="#email-templates"/)
+  assert.match(html, /src="\/figflow\/0.11.2-flow1\/\?canvas=1"/)
+  assert.match(html, /src="https:\/\/app.xeroflow.io\/agency\/email\?tab=templates&amp;workspace=figflow"/)
+  assert.match(html, /visibility:hidden/)
+  assert.doesNotMatch(html, /<script|postMessage|auth_token/)
+  assert.equal(response.headers.get('cache-control'), 'private, no-store')
+  assert.match(response.headers.get('content-security-policy'), /default-src 'none'/)
 })
 
 test('serves only the immutable package without forwarding staff credentials', async () => {

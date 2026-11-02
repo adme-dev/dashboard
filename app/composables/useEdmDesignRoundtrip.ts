@@ -153,19 +153,21 @@ export function useEdmDesignRoundtrip() {
       const code = cause?.data?.statusMessage ?? cause?.statusMessage
       error.value = code === 'REVISION_CONFLICT' || code === 'LEGACY_CONTENT_CHANGED'
         ? 'The draft changed after this design was opened. Keep the current draft and reopen FigFlow from it.'
-        : code === 'UNSUPPORTED_NATIVE_DESIGN'
-          ? 'This design uses linked modules or a native source this content handoff cannot edit yet. Continue editing in the composer.'
-          : code === 'DESIGNER_REQUIRED' || cause?.statusCode === 403
-            ? 'You need design access for this client to open or return a FigFlow design.'
-            : cause?.statusCode === 413
-              ? 'This draft exceeds the FigFlow handoff limit. Reduce its content before opening FigFlow.'
-              : code === 'invalid_design_request'
-                ? 'This draft contains content the FigFlow handoff cannot preserve yet. Continue editing in the composer.'
-                : code === 'PROPOSAL_EXPIRED'
-                  ? 'This proposal expired. Your saved draft is unchanged; reopen FigFlow to continue.'
-                  : cause?.message?.startsWith('A previous save') || cause?.message?.startsWith('The composer changed while saving') || cause?.message?.startsWith('The draft changed in another editor')
-                    ? cause.message
-                    : 'The action could not be confirmed. Retry the same action to reconcile it; your current composer content is kept.'
+        : code === 'NO_EDITABLE_CONTENT'
+          ? 'This template has no content FigFlow can edit yet. Continue editing in the composer; your saved draft is unchanged.'
+          : code === 'UNSUPPORTED_NATIVE_DESIGN'
+            ? 'This design uses linked modules or a native source this content handoff cannot edit yet. Continue editing in the composer.'
+            : code === 'DESIGNER_REQUIRED' || cause?.statusCode === 403
+              ? 'You need design access for this client to open or return a FigFlow design.'
+              : cause?.statusCode === 413
+                ? 'This draft exceeds the FigFlow handoff limit. Reduce its content before opening FigFlow.'
+                : code === 'invalid_design_request'
+                  ? 'This draft contains content the FigFlow handoff cannot preserve yet. Continue editing in the composer.'
+                  : code === 'PROPOSAL_EXPIRED'
+                    ? 'This proposal expired. Your saved draft is unchanged; reopen FigFlow to continue.'
+                    : cause?.message?.startsWith('A previous save') || cause?.message?.startsWith('The composer changed while saving') || cause?.message?.startsWith('The draft changed in another editor')
+                      ? cause.message
+                      : 'The action could not be confirmed. Retry the same action to reconcile it; your current composer content is kept.'
       throw cause
     } finally { busy.value = false }
   }
