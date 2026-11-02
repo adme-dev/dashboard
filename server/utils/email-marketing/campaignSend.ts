@@ -3,6 +3,7 @@
 // sender (2b-2) and the campaign endpoints compose these. Kept side-effect-free
 // so the send-gate + pacing logic is unit-testable without a DB or Resend.
 
+import { resolveEmailMergeTags } from '../../../shared/emailRendering/mergeTags'
 import type { BridgeCommunicationInput } from '~~/server/utils/crm/commsDb'
 import { rewriteHtmlLinksForTracking, type RewriteTrackingInput } from './trackingLinks'
 
@@ -288,12 +289,9 @@ export function unsubscribeUrl(
   return token ? `${base}&t=${token}` : base
 }
 
-const MERGE_TAG = /\{\{\s*([a-z_]+)\s*\}\}/gi
-
-// Replace {{ key }} tokens (any spacing, case-insensitive) from vars; unknown
-// tags resolve to '' so no literal braces leak into the sent email.
+// Final HTML formatting clears unresolved tags and escapes recipient data.
 export function substituteMergeTags(html: string, vars: Record<string, string>): string {
-  return html.replace(MERGE_TAG, (_match, key: string) => vars[key.toLowerCase()] ?? '')
+  return resolveEmailMergeTags(html, vars, { missing: 'empty' })
 }
 
 export function recipientVars(
@@ -331,7 +329,7 @@ export function buildBatchEmail(
   const email: BatchEmail = {
     from,
     to: [recipient.email],
-    subject: substituteMergeTags(campaign.subject || '', vars),
+    subject: resolveEmailMergeTags(campaign.subject || '', vars, { context: 'text', missing: 'empty' }),
     html: substituteMergeTags(campaign.body_html || '', vars),
     headers: {
       'List-Unsubscribe': `<${unsubUrl}>`,

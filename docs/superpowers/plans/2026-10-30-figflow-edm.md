@@ -9,6 +9,25 @@
 
 **Current release:** [Live content-round-trip deployment and contributor handoff](../../email-builder/figflow-developer-handoff.md). PRs #810–812 activate the content round trip and fix hosted auth routing; production acceptance passes. This does not close the larger product tasks below.
 
+**Current checkpoint, 2 November:** the owner confirmed the Emailify-style native
+email authoring flow and approved the R&D roadmap adoption. Full editor status:
+**in progress, not complete**. The [fidelity acceptance checklist](2026-11-02-figflow-template-fidelity.md)
+defines the remaining native work; the [roadmap adoption record](../../research/email-builder-roadmap-adoption-2026-11-02.md)
+maps the supplied R&D into that work. The earlier beta below is historical.
+
+The [HTML import repair](../../email-builder/html-import-repair-20261102.md) is
+live: PR821, Pages `802602e9-99f4-4027-8fa3-e0b36f12196e`, source
+`0147807dcbc9a66819d40c3e32adb959723ac5f5`. Ford, Nissan and the 4x4 draft were
+repaired using their original IDs and imported assets, with source/readback and
+600/680px + 390px browser evidence. This closes that composer-import defect,
+not native FigFlow authoring.
+
+PR823 implements the first merge-tag foundation, with 100 focused checks,
+TypeScript/lint and independent review. Its first CI failed one historical RPC
+expectation for deliberate ampersand escaping; that failure reproduced locally.
+The corrected direct/RPC contract now passes 19 checks in actual Workerd and
+unit parity. Updated CI and integration/release remain pending. No real sends.
+
 **Real-template beta, 2 November:** [results and B01–B05 follow-up tasks](../../email-builder/figflow-beta-20261102.md).
 Electric Drive passes a real native heading round trip; FuturaX fails native editing
 with a blank canvas and zero editable fields. Source preflight admits six of eleven
@@ -50,15 +69,48 @@ Statuses: `not-started`, `in-progress`, `blocked`, `in-review`, `done`. Only use
 | F02 | Shared contract, capability matrix and fixtures | F01 | in-progress | Codex | Canonical source validation and capability assessment implemented; 58 new cases pass; [matrix](../../email-builder/figflow-capability-matrix.md); Kimi findings addressed; Grok regressions fixed with remaining mapping/media work recorded; native/action contracts remain open |
 | F03 | Immutable revisions and legacy migration | F02 | in-progress | Codex | Local PostgreSQL foundation: migration 491, immutable snapshots, CAS, retry receipts; [evidence](../../email-builder/figflow-revision-persistence.md). Existing CRUD integration and remaining F02 contracts open |
 | F04 | Secure asset/publish services | F03,F05 | not-started | unassigned | — |
-| F05 | Deterministic conversion and renderer coverage | F02 | in-progress | Codex | Canonical-envelope adapter reuses private renderer; six tests pass. Native FigFlow conversion, crop/assets and actual-client spike remain open |
-| F06 | FigFlow EDM mode and scoped bridge | F01,F02,F04,F05 | in-progress | Kimi / Codex / Grok | PR #807 adds actual native content import/snapshot, scoped durable handoff and bounded relay; 43 native tests, isolated WASM and real hosted native editing pass; activated in production. Publication remains open. |
-| F07 | Shared module browser, insert and publication | F03–F06 | not-started | unassigned | — |
+| F05 | Deterministic conversion and renderer coverage | F02 | in-progress | Codex | PR821 fixes full-document HTML import and private compilation; three same-ID drafts repaired with original/repaired browser parity. Native styled conversion, crop/assets and real-client acceptance remain open. [Receipt](../../email-builder/html-import-repair-20261102.md) |
+| F06 | FigFlow EDM mode and scoped bridge | F01,F02,F04,F05 | in-progress | Codex / Kimi | Content-only round trip is live. Kimi prepared a styled native projection increment; tracked patch/pins, Linux compile/tests, new immutable package and actual-WASM acceptance are outstanding. Full structural/style authoring and publication remain open. [Checklist](2026-11-02-figflow-template-fidelity.md) |
+| F07 | Shared module browser, insert and publication | F03–F06 | in-progress | Codex | PR817 template browser is live; scoped templates/starters/drafts can be opened. Native module insertion, Save as module, immutable publication and explicit version updates remain open. [Browser record](../../email-builder/figflow-template-browser.md) |
 | F08 | Composer editing and round-trip handoff | F05–F07 | in-progress | Codex | PR #807 adds save/open/reconcile, durable proposal preview/apply, CAS and one undo step. Real hosted round trips pass, including staff-edit preservation, preview/Apply and undo. Shared-module controls remain open. |
 | F09 | Preflight, compatibility UX and test-send gates | F04,F05,F08 | not-started | unassigned | — |
 | F10 | End-to-end and real-client acceptance | F06–F09 | not-started | unassigned | — |
-| F11 | Documentation, rollout and rollback | F10 | in-progress | Codex / Grok review | Content workflow activated and accepted through PRs #810–812. Exact receipts, rollback references and broader remaining work are in the milestone ledger. |
+| F11 | Documentation, rollout and rollback | F10 | in-progress | Codex / Kimi review | Content round trip and PR819 dialog fix are live; PR821 import repair has source/deployment/readback evidence. PR823 contains current closeout and roadmap records, awaiting integration. Full native release and client acceptance remain open. |
 | F12 | Production verification and workspace retirement | F11,R01 | not-started | unassigned | — |
 | R01 | Fit the disabled foundation within the unchanged Pages budget | — | done | Codex / Kimi review | PR #801 deployed at a193e82a5; 690 raw bytes remain. Existing template writes stay local. Activation now includes the transport at 25,468,436 raw bytes (492 remaining); this is not general release headroom. |
+
+## R&D roadmap progression — owner approved 2 November
+
+These are phase records, not six additional completed features. A passing
+foundation test does not complete its containing phase. Update status, next
+acceptance step and evidence together at each checkpoint.
+
+| ID | Phase | Status | Owner | Accepted subset / next acceptance |
+| --- | --- | --- | --- | --- |
+| M01 | Merge tags | in-progress | Codex | Shared bounded resolver, fallback and encoding implemented/reviewed in PR823; latest CI/integration/release pending. Client tag definitions, chips/picker and Preview as remain open. |
+| M02 | Conditional content | not-started | Codex | Typed predicate and shared preview/send evaluation contract required before UI or activation. |
+| M03 | Brand defaults and locking | not-started | Codex | Reuse scoped brand sources; define server-enforced roles and version-pinned module update/detach. |
+| M04 | Pre-send checks | not-started | Codex | Existing campaign checks retained. Alt-text, typography/contrast, heading/metadata diagnostics and jump-to-block acceptance remain open. |
+| M05 | Rendering quality | in-progress | Codex | Full-document import repair is live. Native faithful projection, responsive authoring, generated dark mode/VML and real-client acceptance remain open. |
+| M06 | Workflow | in-progress | Codex | Existing draft revisions/CAS and explicit content Apply are live. Shared publication, comments/approval and hosted web-version workflow remain open. |
+
+### Completion and evidence rules
+
+- **Implemented:** source exists on the recorded branch; no test/deployment claim.
+- **Verified:** named checks and results are attached to that source.
+- **Integrated:** PR merge commit is recorded against current main.
+- **Deployed:** exact service/host, source commit and deployment/version ID recorded.
+- **Accepted / done:** the task's complete user journey passes its acceptance
+  criteria, including save/reopen and real clients where required.
+- An R&D document, passing unit suite or deployed shell does not satisfy full
+  Emailify-style authoring. Never tick F06/F07/F08/F10 from those alone.
+
+**Next bounded implementation:** finish M01 transport verification and integrate
+PR823, then promote/review the F05/F06 styled native projection. Native source
+working file currently lives at
+`/private/tmp/figflow-roundtrip-native-work-20261101/crates/engine/src/cmd/edm.rs`;
+it is an unbuilt working increment, not canonical release source. Parent must
+regenerate/review the tracked patch and hashes before any native CI/publication.
 
 ## Execution conventions
 

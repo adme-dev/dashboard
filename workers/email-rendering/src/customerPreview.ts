@@ -57,7 +57,7 @@ export function renderCustomerEmailPreview(input: EmailTemplate, context: Custom
   }
   const subject = header(template.subject)
   const preheader = header(template.preheader)
-  const html = renderFlyhubDocumentToHtml(doc, { subjectLine: escapeHtml(subject, budget), previewText: escapeHtml(preheader, budget), primaryColor: template.accentColor, renderBudget: budget })
+  const html = renderFlyhubDocumentToHtml(doc, { subjectLine: subject, previewText: preheader, primaryColor: template.accentColor, renderBudget: budget })
     .replace('<head>', '<head><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'; img-src data:; form-action \'none\'; base-uri \'none\'">')
   return { subject, preheader, html, sample: true as const }
 }

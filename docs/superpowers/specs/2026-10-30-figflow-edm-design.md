@@ -1,8 +1,13 @@
 # PRD: FigFlow EDM design and the shared XeroFlow email library
 
 Date: 2026-10-30
-Status: Design draft; implementation not started. User requested this PRD, task tracking, composer capability recommendations, and Kimi/Grok assistance. Approval of documentation work does not establish implementation or release acceptance.
-Product owner: Paul. Implementation owners: unassigned until task claim.
+Status: Owner-approved scope; implementation in progress. On 2 November the owner
+confirmed adoption of the R&D roadmap and the Emailify-style component-authoring,
+responsive-preview and compiled-email workflow inside FigFlow. The full editor is
+not complete. Implemented, tested, integrated, deployed and accepted states remain
+separate in the task ledger.
+Product owner: Paul. Integration owner: Codex; bounded native implementation/review:
+Kimi. Exact task claims and remaining work are recorded in the ledger.
 Execution plan and live task ledger: [FigFlow EDM implementation plan](../plans/2026-10-30-figflow-edm.md).
 
 ## 1. Outcome and agreed scope
