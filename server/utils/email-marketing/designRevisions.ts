@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { lockDesignDraftOwner, writeDesignDraftProjection, type LockedDesignDraftOwner, type DesignDraftMetadata } from './designDraftOwners'
 import { composerToDesignDraft } from '../../../shared/emailRendering/designComposer'
 import { assertDesignerOperationsResult, type DesignerOperation } from '../../../shared/emailRendering/designDesigner'
 import {
@@ -51,6 +52,7 @@ export class DesignRevisionError extends Error {
       | 'DEPENDENCY_AUTHORITY_REQUIRED'
       | 'TEMPLATE_DRAFT_REQUIRED'
       | 'RENDER_TIMEOUT'
+      | 'BASE_TEMPLATE_REVISION_CONFLICT'
   ) {
     super(code)
   }
@@ -87,12 +89,20 @@ async function payloadDigest(
   ).join('')
 }
 
+export async function digestDesignRequest(value: unknown): Promise<string> {
+  return digestDesignHtml(canonical(value))
+}
+export async function digestDesignHtml(html: string): Promise<string> {
+  const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(html))
+  return Array.from(new Uint8Array(hash), byte => byte.toString(16).padStart(2, '0')).join('')
+}
+
 /** Append only to a pre-established document identity. The caller must derive
  * actorId from auth and supply fresh authority checks, not trust browser scope.
  * No automatic transaction retry: after unknown commit acknowledgement, callers
  * must reconcile with the SAME operation ID and payload. This is a saved-source
  * receipt, never a publish, render, send or asset-readiness certificate. */
-interface DesignDependencyAuthority {
+export interface DesignDependencyAuthority {
   authorizeModuleRead?: (
     moduleId: string,
     clientId: string | null
@@ -189,6 +199,59 @@ export function saveDesignerTemplateDesignDraft(
     (current, candidate) => assertDesignerOperationsResult(current, candidate, input.operations, input.proposalOperationId))
 }
 
+const CampaignInput = Identity.extend({
+  design: z.unknown(),
+  subject: z.string().max(300).nullable(),
+  previewText: z.string().max(300).nullable()
+}).strict()
+export interface SaveCampaignDesignDraftInput extends AppendDesignRevisionInput, DesignDraftMetadata {}
+/** Server-only selection authority. No browser source-template hint is trusted. */
+export interface CampaignDesignWriteOptions extends DesignDependencyAuthority {
+  baseTemplateRevisionId?: string | null
+  authorizeTemplateRead?: (templateId: string, clientId: string | null) => Promise<void>
+}
+
+/** Server structural boundary: authorize must grant fresh designer access.
+ * Derive canonical input server-side; never expose arbitrary browser JSON here. */
+export async function saveCampaignDesignDraft(
+  input: SaveCampaignDesignDraftInput,
+  authorize: (clientId: string | null) => Promise<void>,
+  renderer: EmailRendererClient,
+  runTransaction?: DesignTransaction,
+  options: CampaignDesignWriteOptions = {}
+): Promise<DesignRevisionReceipt> {
+  const request = CampaignInput.parse(input) as SaveCampaignDesignDraftInput
+  return appendRevision(request, authorize, runTransaction, options, false, renderer, undefined, false, undefined,
+    { metadata: { subject: request.subject, previewText: request.previewText }, options })
+}
+
+/** Ordinary content and subject/preheader commit as one checked successor. */
+export async function saveStaffCampaignDesignDraft(
+  input: SaveCampaignDesignDraftInput,
+  authorize: (clientId: string | null) => Promise<void>,
+  renderer: EmailRendererClient,
+  runTransaction?: DesignTransaction,
+  options: CampaignDesignWriteOptions = {}
+): Promise<DesignRevisionReceipt> {
+  const request = CampaignInput.parse(input) as SaveCampaignDesignDraftInput
+  return appendRevision(request, authorize, runTransaction, options, true, renderer, undefined, false, undefined,
+    { metadata: { subject: request.subject, previewText: request.previewText }, options })
+}
+
+export async function saveDesignerCampaignDesignDraft(
+  input: SaveCampaignDesignDraftInput & { operations: DesignerOperation[], proposalOperationId: string },
+  authorize: (clientId: string | null) => Promise<void>,
+  renderer: EmailRendererClient,
+  runTransaction?: DesignTransaction,
+  options: CampaignDesignWriteOptions = {}
+): Promise<DesignRevisionReceipt> {
+  const { operations, proposalOperationId, ...rest } = input
+  const request = CampaignInput.parse(rest) as SaveCampaignDesignDraftInput
+  return appendRevision(request, authorize, runTransaction, options, false, renderer,
+    (current, candidate) => assertDesignerOperationsResult(current, candidate, operations, proposalOperationId), false, undefined,
+    { metadata: { subject: request.subject, previewText: request.previewText }, options, command: 'reviewed-designer', action: { operations, proposalOperationId } })
+}
+
 async function appendRevision(
   input: AppendDesignRevisionInput,
   authorize: (clientId: string | null) => Promise<void>,
@@ -199,7 +262,8 @@ async function appendRevision(
   templateDraftRenderer?: EmailRendererClient,
   validateDesignerEdit?: (current: EmailDesignDocument, next: EmailDesignDocument) => void,
   allowLegacyConversion = false,
-  serverActionDigest?: string
+  serverActionDigest?: string,
+  campaign?: { metadata: DesignDraftMetadata, options: CampaignDesignWriteOptions, command?: string, action?: unknown }
 ): Promise<DesignRevisionReceipt> {
   const identity = Identity.parse({
     documentId: input.documentId,
@@ -207,8 +271,11 @@ async function appendRevision(
     operationId: input.operationId,
     expectedRevisionId: input.expectedRevisionId
   })
+  if (!campaign && ['subject', 'previewText', 'baseTemplateRevisionId'].some(key => Object.hasOwn(input, key)))
+    throw new DesignRevisionError('KIND_MISMATCH')
+  if (campaign?.options.baseTemplateRevisionId != null) z.string().uuid().parse(campaign.options.baseTemplateRevisionId)
   const design = validateEmailDesign(input.design)
-  const digest = serverActionDigest ?? await payloadDigest(
+  let digest = serverActionDigest ?? await payloadDigest(
     identity.documentId,
     identity.expectedRevisionId,
     design,
@@ -241,31 +308,44 @@ async function appendRevision(
         : 'campaigns'
     const ownerId
       = document.template_id ?? document.module_id ?? document.campaign_id
-    const owner = (
-      await db.query(
-        `SELECT client_id${kind === 'campaign-draft' ? ', status' : kind === 'template' ? ', template_kind, subject, preview_text' : ''} FROM ${table} WHERE id=$1 FOR UPDATE`,
-        [ownerId]
-      )
-    ).rows[0] as
-    | {
-      client_id: string | null
-      status?: string
-      template_kind?: string
-      subject?: string | null
-      preview_text?: string | null
+    let draftOwner: LockedDesignDraftOwner | undefined
+    let owner: { client_id: string | null, status?: string, template_kind?: string, subject?: string | null, preview_text?: string | null }
+    if (kind !== 'module') {
+      draftOwner = await lockDesignDraftOwner(db, identity.documentId)
+      owner = draftOwner
+      document.head_revision_id = draftOwner.document.head_revision_id
+    } else {
+      const row = (await db.query(`SELECT client_id FROM ${table} WHERE id=$1 FOR UPDATE`, [ownerId])).rows[0] as typeof owner | undefined
+      if (!row) throw new DesignRevisionError('NOT_FOUND')
+      owner = row
+      const locked = (await db.query('SELECT head_revision_id FROM email_design_documents WHERE id=$1 FOR UPDATE', [identity.documentId])).rows[0] as { head_revision_id: string | null } | undefined
+      if (!locked) throw new DesignRevisionError('NOT_FOUND')
+      document.head_revision_id = locked.head_revision_id
     }
-    | undefined
-    if (!owner) throw new DesignRevisionError('NOT_FOUND')
-    const locked = (
-      await db.query(
-        'SELECT head_revision_id FROM email_design_documents WHERE id=$1 FOR UPDATE',
-        [identity.documentId]
-      )
-    ).rows[0] as { head_revision_id: string | null } | undefined
-    if (!locked) throw new DesignRevisionError('NOT_FOUND')
-    document.head_revision_id = locked.head_revision_id
-    if (owner.client_id !== document.client_id)
-      throw new DesignRevisionError('SCOPE_MISMATCH')
+    if (owner.client_id !== document.client_id) throw new DesignRevisionError('SCOPE_MISMATCH')
+    if (campaign && kind !== 'campaign-draft') throw new DesignRevisionError('KIND_MISMATCH')
+    let baseTemplateRevisionId: string | null = null
+    const checkBaseTemplate = async () => {
+      if (!baseTemplateRevisionId) return
+      const pin = (await db.query(`SELECT d.template_id, d.client_id FROM email_design_revisions r
+        JOIN email_design_documents d ON d.id=r.document_id
+        WHERE r.id=$1 AND r.schema_version=1 AND d.template_id IS NOT NULL`, [baseTemplateRevisionId])).rows[0] as { template_id: string, client_id: string | null } | undefined
+      if (!pin || (pin.client_id !== null && pin.client_id !== document.client_id)) throw new DesignRevisionError('SCOPE_MISMATCH')
+      if (!campaign?.options.authorizeTemplateRead) throw new DesignRevisionError('DEPENDENCY_AUTHORITY_REQUIRED')
+      await campaign.options.authorizeTemplateRead(pin.template_id, pin.client_id)
+    }
+    if (kind === 'campaign-draft') {
+      const parent = (await db.query(`SELECT schema_version, to_jsonb(r)->>'base_template_revision_id' AS base_template_revision_id
+        FROM email_design_revisions r WHERE document_id=$1 AND id=$2`, [identity.documentId, identity.expectedRevisionId])).rows[0] as { schema_version: number, base_template_revision_id: string | null } | undefined
+      const inheritedPin = parent?.base_template_revision_id ?? null
+      baseTemplateRevisionId = campaign?.options.baseTemplateRevisionId !== undefined ? campaign.options.baseTemplateRevisionId : inheritedPin
+      if (parent?.schema_version === 1 && baseTemplateRevisionId !== inheritedPin) throw new DesignRevisionError('BASE_TEMPLATE_REVISION_CONFLICT')
+      if (campaign) digest = await digestDesignRequest({
+        owner: draftOwner!.owner, command: campaign.command ?? (staffOnly ? 'campaign-staff' : 'campaign-designer'),
+        documentId: identity.documentId, expectedRevisionId: identity.expectedRevisionId,
+        design, metadata: campaign.metadata, baseTemplateRevisionId, action: campaign.action ?? null
+      })
+    }
     if (design.kind !== kind) throw new DesignRevisionError('KIND_MISMATCH')
     // Revalidate authority after waiting for both database locks.
     await authorize(document.client_id)
@@ -286,6 +366,8 @@ async function appendRevision(
     ).rows[0] as
     | { document_id: string, revision_id: string, payload_sha256: string }
     | undefined
+    await checkBaseTemplate()
+    await authorize(document.client_id)
     if (prior) {
       if (
         prior.payload_sha256 !== digest
@@ -298,6 +380,7 @@ async function appendRevision(
       throw new DesignRevisionError('CAMPAIGN_FROZEN')
     if (
       templateDraftRenderer
+      && !campaign
       && (kind !== 'template' || owner.template_kind !== 'draft')
     )
       throw new DesignRevisionError('TEMPLATE_DRAFT_REQUIRED')
@@ -305,10 +388,19 @@ async function appendRevision(
       throw new DesignRevisionError('LEGACY_SNAPSHOT_REQUIRED')
     if (document.head_revision_id !== identity.expectedRevisionId)
       throw new DesignRevisionError('REVISION_CONFLICT')
+    // 498 adds only a null projection marker to old campaign rows. Do not
+    // mistake that additive column for an edit to an immutable legacy snapshot.
+    const legacySource = kind === 'campaign-draft'
+      ? `(CASE WHEN NOT (r.payload ? 'email_design_revision_id')
+          AND to_jsonb(source_record)->>'email_design_revision_id' IS NULL
+          THEN to_jsonb(source_record)-'email_design_revision_id' ELSE to_jsonb(source_record) END)`
+      : 'to_jsonb(source_record)'
     const current = (
       await db.query(
         `SELECT r.schema_version, r.payload,
-          CASE WHEN r.schema_version=0 THEN to_jsonb(source_record)=r.payload ELSE TRUE END AS legacy_unchanged
+          CASE WHEN r.schema_version=0 THEN
+            ${legacySource}=r.payload
+          ELSE TRUE END AS legacy_unchanged
          FROM email_design_revisions r CROSS JOIN ${table} source_record
          WHERE r.document_id=$1 AND r.id=$2 AND source_record.id=$3`,
         [identity.documentId, document.head_revision_id, ownerId]
@@ -326,7 +418,7 @@ async function appendRevision(
         // Only the server's deterministic first conversion is accepted. The
         // HTTP caller must retain fresh designer authority through commit.
         const legacy = current.payload as { body_source?: unknown }
-        const converted = composerToDesignDraft(legacy.body_source, document.client_id)
+        const converted = composerToDesignDraft(legacy.body_source, document.client_id, kind === 'campaign-draft' ? 'campaign-draft' : 'template')
         if (canonical(converted) !== canonical(design)) throw new DesignRevisionError('STRUCTURED_REVISION_REQUIRED')
       } else {
         if (current.schema_version !== 1) throw new DesignRevisionError('STRUCTURED_REVISION_REQUIRED')
@@ -338,13 +430,15 @@ async function appendRevision(
       validateDesignerEdit(validateEmailDesign(current.payload), design)
     }
     let projection: { source: unknown, html: string } | undefined
+    let htmlHash: string | null = null
+    const metadata = campaign?.metadata ?? { subject: owner.subject ?? null, previewText: owner.preview_text ?? null }
     if (templateDraftRenderer) {
       const { document: source } = designToRendererDocument(design)
       let deadline: ReturnType<typeof setTimeout> | undefined
       const render = templateDraftRenderer.renderDocument(source, {
-        ...(owner.subject != null ? { subjectLine: owner.subject } : {}),
-        ...(owner.preview_text != null
-          ? { previewText: owner.preview_text }
+        ...(metadata.subject != null ? { subjectLine: metadata.subject } : {}),
+        ...(metadata.previewText != null
+          ? { previewText: metadata.previewText }
           : {})
       })
       let html: string
@@ -361,6 +455,7 @@ async function appendRevision(
       } finally {
         clearTimeout(deadline)
       }
+      if (campaign) htmlHash = await digestDesignHtml(html)
       // Rendering is asynchronous: access must still be valid at commit time.
       await authorize(document.client_id)
       if (dependencies.authorizeModuleRead)
@@ -369,19 +464,22 @@ async function appendRevision(
           db,
           dependencies.authorizeModuleRead
         )
+      await checkBaseTemplate()
+      await authorize(document.client_id)
       projection = { source, html }
     }
     const revision = (
       await db.query(
-        `INSERT INTO email_design_revisions(document_id, parent_revision_id, schema_version, payload_text, created_by, subject, preview_text)
-      VALUES ($1,$2,1,$3,$4,$5,$6) RETURNING id`,
+        `INSERT INTO email_design_revisions(document_id, parent_revision_id, schema_version, payload_text, created_by, subject, preview_text${kind === 'campaign-draft' ? ', base_template_revision_id, rendered_html_sha256' : ''})
+      VALUES ($1,$2,1,$3,$4,$5,$6${kind === 'campaign-draft' ? ', $7, $8' : ''}) RETURNING id`,
         [
           identity.documentId,
           identity.expectedRevisionId,
           JSON.stringify(design),
           identity.actorId,
-          owner.subject ?? null,
-          owner.preview_text ?? null
+          metadata.subject,
+          metadata.previewText,
+          ...(kind === 'campaign-draft' ? [baseTemplateRevisionId, htmlHash] : [])
         ]
       )
     ).rows[0] as { id: string }
@@ -390,15 +488,7 @@ async function appendRevision(
       [identity.documentId, revision.id]
     )
     if (projection) {
-      await db.query(
-        'UPDATE edm_templates SET body_source=$2::jsonb, body_html=$3, email_design_revision_id=$4, updated_at=NOW() WHERE id=$1',
-        [
-          document.template_id,
-          JSON.stringify(projection.source),
-          projection.html,
-          revision.id
-        ]
-      )
+      await writeDesignDraftProjection(db, draftOwner!, revision.id, design, projection.html, campaign?.metadata)
     }
     await db.query(
       `INSERT INTO email_design_revision_receipts(actor_id, operation_id, document_id, payload_sha256, revision_id)
