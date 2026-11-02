@@ -12,7 +12,7 @@ const effects = computed(() => effectStyleFromLayer(props.layer as unknown as Re
 <template>
   <div
     class="absolute inset-0 overflow-hidden"
-    :style="{ opacity: layer.keyframes?.opacity?.length ? 1 : layer.opacity, filter: effects.visualFilter }"
+    :style="{ filter: effects.visualFilter }"
   >
     <video
       v-if="layer.src"

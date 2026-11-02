@@ -4,7 +4,7 @@ import { layerRotationChange } from '~/utils/banner-transform'
 import type { Layer, ArtboardState, BannerProject, UndoAction, BannerBrandKit, AnimInType, AnimOutType, MotionPathPoint, MotionPathTween } from '~/types/banner-studio'
 import { toRaw } from 'vue'
 import { FORMATS, TEMPLATES, migrateLayer, DEFAULT_BG, resolveBannerFormat } from '~/utils/banner-constants'
-import { brandColor, brandFont, brandFontSelection, isLogoLayer, isDarkColor } from '~/utils/banner-brand-kit'
+import { brandButtonStyle, brandColor, brandFont, brandFontSelection, isLogoLayer, isDarkColor } from '~/utils/banner-brand-kit'
 import { buildBrandTemplateLayers, type BrandTemplateVariant } from '~/utils/banner-brand-templates'
 
 // Module-scope singleton state
@@ -237,6 +237,24 @@ export function useBannerStudio() {
   function updateLayer(id: number, props: Partial<Layer>) {
     const layer = activeLayers.value.find(l => l.id === id)
     if (!layer) return
+    if (props.opacity !== undefined && !Object.prototype.hasOwnProperty.call(props, 'keyframes') && layer.keyframes?.opacity?.length >= 2) {
+      const source = layer.opacityTrackSource || {
+        opacity: layer.opacity,
+        frames: layer.keyframes.opacity.map(frame => ({ ...frame }))
+      }
+      const reference = source.opacity > 0 ? source.opacity : 1
+      const scale = Math.max(0, Math.min(1, props.opacity)) / reference
+      props = {
+        ...props,
+        opacityTrackSource: source,
+        keyframes: {
+          ...layer.keyframes,
+          opacity: source.frames.map(frame => ({ ...frame, value: Math.max(0, Math.min(1, frame.value * scale)) }))
+        }
+      }
+    } else if (Object.prototype.hasOwnProperty.call(props, 'keyframes') && layer.opacityTrackSource && !Object.prototype.hasOwnProperty.call(props, 'opacityTrackSource')) {
+      props = { ...props, opacityTrackSource: undefined }
+    }
     const board = state.sets[state.activeKey]
     if (board && !board.slides && activeSlides.value.length > 1 && (props.startTime !== undefined || props.endTime !== undefined || props.keyframes)) {
       withCanvasUndo(() => {
@@ -816,9 +834,10 @@ export function useBannerStudio() {
    * Apply a brand kit across every artboard. Role-based:
    *   primary   → headline text colour (largest text layer per artboard)
    *   secondary → other text layers
-   *   accent    → button backgrounds; button text flips to background/text for contrast
+   *   reviewed CTA profile → button fill, text, corners, case and font when available
+   *   accent    → fallback button background when there is no reviewed profile
    *   background→ artboard + bg layers
-   *   heading font → headlines + buttons; body font → other text
+   *   heading font → headlines; body font → other text and reviewed CTA defaults
    *   logo      → replaces image layers flagged/named as logo; inserts one top-left if none
    * Fully undoable as a single step.
    */
@@ -863,14 +882,7 @@ export function useBannerStudio() {
           const f = isHeadline ? headingFont : bodyFont
           if (f) Object.assign(layer, brandFontSelection(f))
         }
-        if (layer.type === 'button') {
-          if (accent) {
-            layer.bgColor = accent
-            // keep the label legible against the new accent
-            layer.textColor = isDarkColor(accent) ? (background && !isDarkColor(background) ? background : '#ffffff') : (text && isDarkColor(text) ? text : '#111111')
-          }
-          if (headingFont) Object.assign(layer, brandFontSelection(headingFont))
-        }
+        if (layer.type === 'button') Object.assign(layer, brandButtonStyle(kit))
         if (logo && isLogoLayer(layer)) {
           layer.src = logo.url
           layer.isLogo = true

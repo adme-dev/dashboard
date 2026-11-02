@@ -1,4 +1,6 @@
 import type { BannerBrandKit, BrandColorRole, BrandFontRole, BrandKitColor, BrandKitFont, Layer } from '~/types/banner-studio'
+import { motorstackBrandId } from '~~/shared/bannerBrandGuides'
+import { brandStyleProfile } from '~~/shared/bannerBrandProfiles'
 
 export const BRAND_COLOR_ROLES: { role: BrandColorRole, label: string, hint: string }[] = [
   { role: 'primary', label: 'Primary', hint: 'Headlines, key accents' },
@@ -39,6 +41,36 @@ export function brandFont(kit: Pick<BannerBrandKit, 'fonts'>, role: BrandFontRol
 export function brandFontSelection(font: BrandKitFont) {
   const fontWeight = font.defaultWeight ?? (font.role === 'heading' ? (font.weights.length ? Math.max(...font.weights) : 400) : font.weights[0] ?? 400)
   return { fontFamily: font.family, fontWeight, fontAssetId: font.assets?.find(asset => asset.weight === fontWeight)?.id }
+}
+
+/** The primary CTA used by the selected kit's reviewed dealer guide. */
+export function brandButtonStyle(kit: BannerBrandKit): Partial<Layer> {
+  const profile = brandStyleProfile(motorstackBrandId(kit.sourceUrl))
+  const font = brandFont(kit, profile?.ctaFontRole || (profile ? 'body' : 'heading'))
+  const fill = profile?.ctaFill || brandColor(kit, 'accent') || brandColor(kit, 'primary')
+  const background = brandColor(kit, 'background')
+  const kitText = brandColor(kit, 'text')
+  let text: string | undefined = profile?.ctaText
+  if (!text && fill) {
+    if (isDarkColor(fill)) text = background && !isDarkColor(background)
+      ? background
+      : '#ffffff'
+    else text = kitText && isDarkColor(kitText)
+      ? kitText
+      : '#111111'
+  }
+  return {
+    ...(font ? brandFontSelection(font) : {}),
+    ...(fill ? { bgColor: fill } : {}),
+    ...(text ? { textColor: text } : {}),
+    ...(profile ? {
+      borderRadius: profile.ctaRadius,
+      borderWidth: profile.ctaBorder ? 1 : 0,
+      borderColor: profile.ctaBorder,
+      textTransform: profile.ctaCase,
+      letterSpacing: profile.ctaCase === 'lowercase' ? '0' : '0.1em'
+    } : {})
+  }
 }
 
 /** Does this image layer look like a logo? Name match or explicit flag. */

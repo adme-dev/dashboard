@@ -1,5 +1,5 @@
 import type { Layer } from '~/types/banner-studio'
-import { brandFont, brandFontSelection } from '~/utils/banner-brand-kit'
+import { brandButtonStyle, brandFont, brandFontSelection } from '~/utils/banner-brand-kit'
 
 const defaults: Record<string, Partial<Layer>> = {
   text: { type: 'text', name: 'Text', text: 'Text', fontSize: 24, fontWeight: 700, fontFamily: 'Barlow Condensed', color: '#fff', textAlign: 'left', w: 200, h: 40, animIn: 'fadeIn' },
@@ -14,8 +14,9 @@ export function useBannerInsert() {
   function insertElement(type: string) {
     const item = defaults[type], format = activeFormat.value
     if (!item || !format) return
-    const font = kit.value && ['text', 'button'].includes(type) ? brandFont(kit.value, 'heading') : undefined
-    const layer = addLayer({ ...item, ...(font ? brandFontSelection(font) : {}), x: Math.max(0, (format.w - item.w!) / 2), y: Math.max(0, (format.h - item.h!) / 2) })
+    const font = kit.value && type === 'text' ? brandFont(kit.value, 'heading') : undefined
+    const brandStyle = kit.value && type === 'button' ? brandButtonStyle(kit.value) : {}
+    const layer = addLayer({ ...item, ...(font ? brandFontSelection(font) : {}), ...brandStyle, x: Math.max(0, (format.w - item.w!) / 2), y: Math.max(0, (format.h - item.h!) / 2) })
     if (type === 'mask') toggleMask(layer.id)
     state.activeTool = 'select'
   }

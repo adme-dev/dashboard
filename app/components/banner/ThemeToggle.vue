@@ -5,6 +5,14 @@ const preference = useCookie(bannerThemeCookie, bannerThemeCookieOptions)
 const colorMode = useColorMode()
 const route = useRoute()
 const dark = computed(() => resolveBannerTheme(preference.value) === 'dark')
+// The agency user menu can change the shared preference while the gallery is
+// mounted. Keep the Banner Studio cookie in step before navigating to an editor.
+watch(() => colorMode.preference, (value) => {
+  const next = resolveBannerTheme(value)
+  preference.value = next
+  route.meta.colorMode = next
+  colorMode.value = next
+})
 function toggleTheme() {
   const next = dark.value ? 'light' : 'dark'
   preference.value = next
