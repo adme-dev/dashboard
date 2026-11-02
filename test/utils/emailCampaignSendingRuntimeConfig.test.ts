@@ -155,15 +155,17 @@ describe('native sender uses the request bindings', () => {
 })
 
 describe('GET /api/email/campaigns/config', () => {
-  it('reports only the boolean (no key, binding or config values)', async () => {
+  it('reports only booleans (no key, binding or config values)', async () => {
     const g = globalThis as Record<string, unknown>
     g.defineEventHandler = (fn: unknown) => fn
     vi.doMock('~~/server/utils/auth', () => ({ requireAuth: vi.fn(async () => ({ id: 'u1' })) }))
     const { default: handler } = await import('../../server/api/email/campaigns/config.get')
     const body = await (handler as (e: unknown) => Promise<unknown>)(event({ MARKETING_PROVIDER_CONFIG: compact({ emailSending: true }), RESEND_API_KEY: 're_secret_value' }))
-    expect(body).toEqual({ sending_enabled: true })
+    expect(body).toEqual({ sending_enabled: true, review_workflow_enabled: false })
     expect(JSON.stringify(body)).not.toContain('re_secret_value')
     const closed = await (handler as (e: unknown) => Promise<unknown>)(event({ EMAIL_SENDING_ENABLED: 'false', RESEND_API_KEY: 're_secret_value' }))
-    expect(closed).toEqual({ sending_enabled: false })
+    expect(closed).toEqual({ sending_enabled: false, review_workflow_enabled: false })
+    const review = await (handler as (e: unknown) => Promise<unknown>)(event({ EMAIL_SENDING_ENABLED: 'false', FIGFLOW_EDM_WORKFLOW_ENABLED: 'true' }))
+    expect(review).toEqual({ sending_enabled: false, review_workflow_enabled: true })
   })
 })

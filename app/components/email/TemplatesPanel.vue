@@ -135,6 +135,19 @@ function openCopyTemplate(row: TemplateRow) {
 const detailsTarget = ref<TemplateRow | null>(null)
 const sourceDetails = computed(() => templateSourceDetails(detailsTarget.value?.body_source))
 const showDetails = ref(false)
+// M06 review drawer; hidden unless FIGFLOW_EDM_WORKFLOW_ENABLED is on.
+const reviewEnabled = ref(false)
+const reviewTarget = ref<TemplateRow | null>(null)
+const showReview = ref(false)
+function openReview(row: TemplateRow) {
+  reviewTarget.value = row
+  showReview.value = true
+}
+onMounted(() => {
+  apiFetch<{ review_workflow_enabled?: boolean }>('/api/email/campaigns/config')
+    .then((config) => { reviewEnabled.value = config.review_workflow_enabled === true })
+    .catch(() => { reviewEnabled.value = false })
+})
 function openDetails(row: TemplateRow) { detailsTarget.value = row; showDetails.value = true }
 function usesClientCopy(row: TemplateRow) {
   return (!!row.design_document_id && row.template_kind !== 'draft') || !row.client_id || (!!templateSourceDetails(row.body_source) && !isTemplateClientCopy(row.body_source))
@@ -604,6 +617,16 @@ function templateDocument(row: TemplateRow): EdmFlyhubDocument | null {
                       @click="openComposer(row.id)"
                     />
                     <UTooltip text="Template details"><UButton icon="i-lucide-info" aria-label="Template details" variant="ghost" color="neutral" size="xs" @click="openDetails(row)" /></UTooltip>
+                    <UTooltip v-if="reviewEnabled" text="Comments and approval">
+                      <UButton
+                        icon="i-lucide-message-square-text"
+                        aria-label="Review template"
+                        variant="ghost"
+                        color="neutral"
+                        size="xs"
+                        @click="openReview(row)"
+                      />
+                    </UTooltip>
                     <UTooltip text="Export JSON"><UButton icon="i-lucide-download" aria-label="Export template JSON" variant="ghost" color="neutral" size="xs" :loading="busyId === row.id" @click="exportTemplate(row)" /></UTooltip>
                     <UTooltip text="Duplicate">
                       <UButton
@@ -685,6 +708,14 @@ function templateDocument(row: TemplateRow): EdmFlyhubDocument | null {
         </div>
       </template>
     </UModal>
+    <EmailReviewDrawer
+      v-if="reviewEnabled"
+      v-model:open="showReview"
+      kind="template"
+      :target-id="reviewTarget?.id || null"
+      :title="reviewTarget?.name"
+      :client-id="reviewTarget?.client_id ?? null"
+    />
     <EmailBuilderEdmImageLibraryPicker v-if="showImageLibrary" v-model:open="showImageLibrary" @pick="selectLibraryImage" />
     <UModal v-model:open="showImageDetails" title="Image library">
       <template #content><div v-if="chosenImage" class="space-y-4 p-5"><h2 class="font-semibold">{{ chosenImage.name }}</h2><img :src="chosenImage.url" :alt="chosenImage.name" class="max-h-80 w-full object-contain" /><UFormField label="Image link"><UInput :model-value="chosenImage.url" readonly class="w-full" /></UFormField><div class="flex justify-end gap-2"><UButton label="Close" variant="ghost" color="neutral" @click="showImageDetails = false" /><UButton label="Copy link" icon="i-lucide-copy" @click="copyImageUrl" /></div></div></template>

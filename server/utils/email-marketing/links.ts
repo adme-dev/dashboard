@@ -14,7 +14,9 @@
 
 import { getCachedBinding } from '~~/server/utils/email'
 
-export type EmailLinkPurpose = 'unsub' | 'confirm' | 'click'
+/** `webview` is bound to a campaign and its frozen content digest only (no
+ * subscriber), so it can never stand in for an unsubscribe or click token. */
+export type EmailLinkPurpose = 'unsub' | 'confirm' | 'click' | 'webview'
 
 /**
  * The signing secret. Dedicated env var so rotating it doesn't disturb other

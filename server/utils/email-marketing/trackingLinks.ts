@@ -27,15 +27,54 @@ export interface RewriteTrackingInput {
 const HREF_RE = /\bhref\s*=\s*(["'])(.*?)\1/gi
 const SKIP_PROTOCOL_RE = /^(?:mailto:|tel:|sms:)/i
 
+/** Editable per-campaign UTM values (M06). Absent keys keep the historical
+ * defaults (email/email/<campaignId>); author-set link parameters always win. */
+export interface EmailUtmSettings {
+  source?: string
+  medium?: string
+  campaign?: string
+  term?: string
+  content?: string
+}
+
+export const EMAIL_UTM_KEYS = ['source', 'medium', 'campaign', 'term', 'content'] as const
+const UTM_VALUE = /^[A-Za-z0-9 ._+-]{1,100}$/
+
+/** Strict parse of stored or submitted settings; null means "defaults". */
+export function parseEmailUtmSettings(input: unknown): EmailUtmSettings | null {
+  if (input == null) return null
+  if (typeof input !== 'object' || Array.isArray(input)) throw new Error('INVALID_UTM_SETTINGS')
+  const out: EmailUtmSettings = {}
+  for (const [key, value] of Object.entries(input as Record<string, unknown>)) {
+    if (!(EMAIL_UTM_KEYS as readonly string[]).includes(key)) throw new Error('INVALID_UTM_SETTINGS')
+    if (value == null || value === '') continue
+    if (typeof value !== 'string' || !UTM_VALUE.test(value.trim())) throw new Error('INVALID_UTM_SETTINGS')
+    out[key as keyof EmailUtmSettings] = value.trim()
+  }
+  return Object.keys(out).length ? out : null
+}
+
+/** Lenient read of a frozen stored value: malformed data falls back to defaults. */
+export function storedEmailUtmSettings(input: unknown): EmailUtmSettings | null {
+  try {
+    return parseEmailUtmSettings(input)
+  } catch {
+    return null
+  }
+}
+
 export function appendEmailUtm(
   destinationUrl: string,
   campaignId: string,
-  emailClickId?: string | null
+  emailClickId?: string | null,
+  settings?: EmailUtmSettings | null
 ): string {
   const url = new URL(destinationUrl)
-  if (!url.searchParams.has('utm_source')) url.searchParams.set('utm_source', 'email')
-  if (!url.searchParams.has('utm_medium')) url.searchParams.set('utm_medium', 'email')
-  if (!url.searchParams.has('utm_campaign')) url.searchParams.set('utm_campaign', campaignId)
+  if (!url.searchParams.has('utm_source')) url.searchParams.set('utm_source', settings?.source || 'email')
+  if (!url.searchParams.has('utm_medium')) url.searchParams.set('utm_medium', settings?.medium || 'email')
+  if (!url.searchParams.has('utm_campaign')) url.searchParams.set('utm_campaign', settings?.campaign || campaignId)
+  if (settings?.term && !url.searchParams.has('utm_term')) url.searchParams.set('utm_term', settings.term)
+  if (settings?.content && !url.searchParams.has('utm_content')) url.searchParams.set('utm_content', settings.content)
   if (emailClickId && !url.searchParams.has('email_click_id')) url.searchParams.set('email_click_id', emailClickId)
   return url.toString()
 }
@@ -48,6 +87,9 @@ export function isTrackableEmailHref(href: string): boolean {
   if (/unsubscribe/i.test(trimmed)) return false
   try {
     const url = new URL(trimmed)
+    // The hosted web version link is a recipient-free capability URL; wrapping
+    // it would attach a subscriber identity, so it stays exactly as signed.
+    if (url.pathname === '/email/view' && url.searchParams.has('t')) return false
     return url.protocol === 'https:' || url.protocol === 'http:'
   } catch {
     return false
@@ -78,9 +120,11 @@ export async function verifyEmailClickToken(input: EmailClickVerifyInput): Promi
   )
 }
 
-export async function rewriteHtmlLinksForTracking(
+/** Single owner of href rewriting: reads each logical URL exactly as an HTML
+ * client does and serializes the replacement once as HTML. */
+export async function rewriteTrackableHrefs(
   html: string,
-  input: RewriteTrackingInput
+  mapHref: (logicalHref: string) => string | Promise<string>
 ): Promise<string> {
   const replacements: Array<{ start: number, end: number, value: string }> = []
   for (const match of html.matchAll(HREF_RE)) {
@@ -91,14 +135,11 @@ export async function rewriteHtmlLinksForTracking(
     const href = node && 'attrs' in node ? node.attrs.find(attribute => attribute.name === 'href')?.value || '' : ''
     if (!isTrackableEmailHref(href) || match.index == null) continue
     const quote = match[1] ?? '"'
-    const clickUrl = await buildEmailClickUrl({
-      ...input,
-      destinationUrl: href
-    })
+    const next = await mapHref(href)
     replacements.push({
       start: match.index,
       end: match.index + match[0].length,
-      value: `href=${quote}${clickUrl.replaceAll('&', '&amp;')}${quote}`
+      value: `href=${quote}${next.replaceAll('&', '&amp;')}${quote}`
     })
   }
 
@@ -110,4 +151,21 @@ export async function rewriteHtmlLinksForTracking(
     cursor = replacement.end
   }
   return out + html.slice(cursor)
+}
+
+export async function rewriteHtmlLinksForTracking(
+  html: string,
+  input: RewriteTrackingInput
+): Promise<string> {
+  return rewriteTrackableHrefs(html, destinationUrl => buildEmailClickUrl({ ...input, destinationUrl }))
+}
+
+/** Hosted web version: no recipient exists, so links carry campaign UTM only
+ * (never a click/subscriber identity). Same parse/serialize contract. */
+export async function decorateHtmlLinksWithUtm(
+  html: string,
+  campaignId: string,
+  settings?: EmailUtmSettings | null
+): Promise<string> {
+  return rewriteTrackableHrefs(html, href => appendEmailUtm(href, campaignId, null, settings))
 }

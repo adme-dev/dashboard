@@ -80,6 +80,35 @@ describe('email click redirect route', () => {
     expect(mockSendRedirect).toHaveBeenCalledWith(expect.anything(), redirectedUrl, 302)
   })
 
+  it('applies the frozen campaign UTM settings (M06) without overriding authored parameters', async () => {
+    const handler = (await import('~~/server/api/public/email/click.get')).default
+    const destination = 'https://dealer.example.com/offers?utm_medium=sms'
+    const token = await signEmailToken('secret', 'click', 'camp-1', 'sub-1', destination)
+    mockGetQuery.mockReturnValue({ c: 'camp-1', s: 'sub-1', u: destination, t: token })
+    mockQueryOne.mockResolvedValue({ sent_at: null, utm_settings: { source: 'newsletter', medium: 'email', campaign: 'spring-26', content: 'hero' } })
+
+    await handler({ node: { req: { headers: { 'user-agent': 'Vitest' } } } } as never)
+
+    const redirected = new URL(mockSendRedirect.mock.calls[0]?.[1])
+    expect(redirected.searchParams.get('utm_source')).toBe('newsletter')
+    expect(redirected.searchParams.get('utm_medium')).toBe('sms')
+    expect(redirected.searchParams.get('utm_campaign')).toBe('spring-26')
+    expect(redirected.searchParams.get('utm_content')).toBe('hero')
+    expect(mockQueryOne).toHaveBeenCalledWith(expect.stringContaining('utm_settings'), ['camp-1', 'sub-1'])
+  })
+
+  it('falls back to the historical defaults when stored UTM settings are malformed', async () => {
+    const handler = (await import('~~/server/api/public/email/click.get')).default
+    const destination = 'https://dealer.example.com/offers'
+    const token = await signEmailToken('secret', 'click', 'camp-1', 'sub-1', destination)
+    mockGetQuery.mockReturnValue({ c: 'camp-1', s: 'sub-1', u: destination, t: token })
+    mockQueryOne.mockResolvedValue({ sent_at: null, utm_settings: { source: '<script>' } })
+
+    await handler({ node: { req: { headers: { 'user-agent': 'Vitest' } } } } as never)
+
+    expect(mockSendRedirect.mock.calls[0]?.[1]).toMatch(/^https:\/\/dealer\.example\.com\/offers\?utm_source=email&utm_medium=email&utm_campaign=camp-1&email_click_id=/)
+  })
+
   it('serves the generated clean /email/click tracking URL', async () => {
     const handler = (await import('~~/server/routes/email/click.get')).default
     const destination = 'https://dealer.example.com/offers'

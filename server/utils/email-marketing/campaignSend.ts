@@ -282,6 +282,9 @@ export interface CampaignContent {
   from_email: string | null
   reply_to: string | null
   body_html: string | null
+  /** Signed hosted web-version URL for opted-in reviewed campaigns (M06). Same
+   * for every recipient: it carries no subscriber identity. */
+  web_version_url?: string | null
 }
 
 // Per-recipient unsubscribe URL. `token` is the HMAC signature over
@@ -306,11 +309,14 @@ export function substituteMergeTags(html: string, vars: Record<string, string>):
 
 export function recipientVars(
   recipient: { email: string, name: string | null },
-  unsubUrl: string
+  unsubUrl: string,
+  webVersionUrl?: string | null
 ): Record<string, string> {
   const name = (recipient.name || '').trim()
   const firstName = name.split(/\s+/)[0] || ''
-  return { email: recipient.email, name, first_name: firstName, unsubscribe_url: unsubUrl }
+  const vars: Record<string, string> = { email: recipient.email, name, first_name: firstName, unsubscribe_url: unsubUrl }
+  if (webVersionUrl) vars.web_version_url = webVersionUrl
+  return vars
 }
 
 export interface BatchEmail {
@@ -333,7 +339,7 @@ export function buildBatchEmail(
   unsubToken?: string
 ): BatchEmail {
   const unsubUrl = unsubscribeUrl(appUrl, campaignId, recipient.subscriber_id, unsubToken)
-  const vars = recipientVars(recipient, unsubUrl)
+  const vars = recipientVars(recipient, unsubUrl, campaign.web_version_url)
   const from = campaign.from_name
     ? `${campaign.from_name} <${campaign.from_email}>`
     : (campaign.from_email || '')

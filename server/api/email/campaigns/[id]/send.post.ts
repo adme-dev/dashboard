@@ -11,6 +11,7 @@ import { isCampaignSendingEnabled, runCampaignSend } from '~~/server/utils/email
 import { isEmailConfigured } from '~~/server/utils/email'
 import { getAppUrl } from '~~/server/utils/appUrl'
 import { resolveCampaignSenderDomains } from '~~/server/utils/email-marketing/senderIdentity'
+import { assertCampaignApprovalCurrent } from '~~/server/utils/email-marketing/review'
 
 function emailSendUserId(user: unknown): string {
   const value = user as { id?: string, email?: string }
@@ -37,6 +38,9 @@ export default defineEventHandler(async (event) => {
   if (!campaign.from_email) {
     throw createError({ statusCode: 422, statusMessage: 'missing_from_email' })
   }
+  // Exact-content approval for reviewed campaigns, before any preparation or
+  // provider work. The database trigger enforces the same rule on the status change.
+  await assertCampaignApprovalCurrent(campaign)
   campaign = await prepareCampaignHtmlForSend(campaign, {
     appUrl: getAppUrl(event),
     userId: emailSendUserId(user)
