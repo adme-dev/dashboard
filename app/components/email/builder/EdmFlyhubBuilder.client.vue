@@ -49,6 +49,12 @@ import type { EdmCustomModule } from '~~/app/composables/useEdmCustomModules'
 
 const store = useEdmBuilder()
 const designFlow = useEdmDesignRoundtrip()
+const brandFlow = useEdmDesignBrand()
+const showBrand = ref(false)
+let brandExpectedBlocks: EdmFlyhubDocument | null = null
+watch(() => designFlow.draft.value, (draft) => {
+  store.setBrandSnapshot(draft?.state === 'structured' ? draft.source.source.brand ?? null : null)
+})
 const figflowEnabled = useRuntimeConfig().public.figflowEdmEnabled === true
 const showFigflow = ref(false)
 const showDiscardFigflow = ref(false)
@@ -722,6 +728,10 @@ const TEMPLATE_KIND_OPTIONS: { label: string, value: TemplateKind }[] = [
 async function save(): Promise<boolean> {
   if (conditionSaving.value || conditionPending.value) return false
   if (templateLoading.value || templateLoadError.value) return false
+  if (brandFlow.busy.value || brandFlow.hasPending.value) {
+    brandFlow.error.value = 'Reconcile the brand or lock action before saving more changes.'
+    return false
+  }
   if (designRevisionRequired.value && (designServiceUnavailable.value || designFlow.draft.value?.state !== 'structured')) {
     designFlow.error.value = 'The design service is unavailable. Your content is kept; reconnect it before saving this versioned draft.'
     return false
@@ -799,7 +809,7 @@ async function save(): Promise<boolean> {
 // FigFlow edits an independent template draft; campaigns and library originals
 // keep their identities. The server owns scope, revisions and proposal effects.
 async function beginFigflow(createDraft = false) {
-  if (conditionSaving.value || conditionPending.value) return
+  if (conditionSaving.value || conditionPending.value || brandFlow.busy.value || brandFlow.hasPending.value) return
   if (saving.value || designFlow.busy.value || templateLoading.value || templateLoadError.value) return
   if (designFlow.hasPending.value) {
     await reconcileDesignAction()
@@ -873,6 +883,35 @@ function sameDesignSource(a: unknown, b: unknown): boolean {
   const keys = Object.keys(a)
   return keys.length === Object.keys(b).length && keys.every(key => Object.hasOwn(b, key) && sameDesignSource((a as Record<string, unknown>)[key], (b as Record<string, unknown>)[key]))
 }
+function openBrandControls() {
+  if (workspaceBusy.value || !templateId.value || campaignId.value) return
+  if (designFlow.draft.value?.state !== 'structured') {
+    toast.add({ title: 'Save a versioned design first', description: 'Open this draft in FigFlow once to initialize its saved design, then return to brand controls.', color: 'info' })
+    return
+  }
+  if (!sameDesignSource(store.document.value, designFlow.draft.value.source.blocks)) {
+    toast.add({ title: 'Save content changes first', description: 'Brand and lock actions apply to the saved revision. Save your local content changes, then reopen these controls.', color: 'info' })
+    return
+  }
+  brandExpectedBlocks = JSON.parse(JSON.stringify(store.document.value))
+  showBrand.value = true
+}
+function acceptBrandDraft(draft: Extract<import('~~/server/utils/email-marketing/designReads').TemplateDesignDraftRead, { state: 'structured' }>) {
+  if (!brandExpectedBlocks || !store.applyDesignReturn(brandExpectedBlocks, draft.source.blocks)) {
+    designLocalConflict.value = true
+    brandFlow.error.value = 'The saved design changed while local edits were made. Reload this draft before saving again.'
+    return
+  }
+  designFlow.draft.value = draft
+  loadedDesignRevisionId.value = draft.headRevisionId
+  brandExpectedBlocks = JSON.parse(JSON.stringify(draft.source.blocks))
+  store.setBrandSnapshot(draft.source.source.brand ?? null)
+  markWorkspaceDocumentSaved()
+}
+async function reconcileBrandAction() {
+  const draft = await brandFlow.reconcile()
+  if (draft) acceptBrandDraft(draft)
+}
 async function reconnectDesignService() {
   if (!templateId.value) return
   try {
@@ -894,7 +933,7 @@ function closeFigflow() {
   else showFigflow.value = false
 }
 function editInFigflow() {
-  if (conditionSaving.value || conditionPending.value) return
+  if (conditionSaving.value || conditionPending.value || brandFlow.busy.value || brandFlow.hasPending.value) return
   if (saving.value || designFlow.busy.value || templateLoading.value || templateLoadError.value) return
   if (designFlow.handoff.value?.state === 'open' || designFlow.handoff.value?.state === 'proposed') {
     showFigflow.value = true
@@ -1117,7 +1156,7 @@ function markWorkspaceDocumentSaved() {
   saved.document = store.document.value
   workspaceSavedSnapshot.value = JSON.stringify(saved)
 }
-const workspaceBusy = computed(() => conditionSaving.value || !!conditionPending.value || saving.value || designFlow.busy.value || designFlow.hasPending.value)
+const workspaceBusy = computed(() => conditionSaving.value || !!conditionPending.value || saving.value || designFlow.busy.value || designFlow.hasPending.value || brandFlow.busy.value || brandFlow.hasPending.value)
 const workspaceLeave = useEdmWorkspaceLeave({
   hasChanges: () => !!workspaceSavedSnapshot.value && workspaceSnapshot() !== workspaceSavedSnapshot.value,
   isBusy: () => workspaceBusy.value,
@@ -1384,8 +1423,18 @@ onMounted(async () => {
         color="neutral"
         size="sm"
         :loading="designFlow.busy.value"
-        :disabled="saving"
+        :disabled="workspaceBusy"
         @click="editInFigflow"
+      />
+      <UButton
+        v-if="figflowEnabled && !campaignId && templateKind === 'draft' && designFlow.draft.value?.state === 'structured'"
+        icon="i-lucide-palette"
+        label="Brand and locks"
+        variant="outline"
+        color="neutral"
+        size="sm"
+        :disabled="workspaceBusy"
+        @click="openBrandControls"
       />
       <UButton
         icon="i-lucide-save"
@@ -1419,6 +1468,29 @@ onMounted(async () => {
       :actions="designFlow.hasPending.value ? [{ label: 'Reconcile saved action', onClick: reconcileDesignAction }] : []"
     />
     <!-- Body -->
+    <UAlert
+      v-if="brandFlow.error.value || brandFlow.hasPending.value"
+      color="warning"
+      :title="brandFlow.error.value || 'A brand or lock action needs reconciliation.'"
+      class="m-3"
+      :actions="brandFlow.hasPending.value ? [{ label: 'Reconcile brand action', onClick: reconcileBrandAction }] : []"
+    />
+    <USlideover
+      v-model:open="showBrand"
+      title="Brand and design locks"
+      :dismissible="!brandFlow.busy.value"
+      :close="!brandFlow.busy.value"
+    >
+      <template #body>
+        <EmailBuilderEdmBrandPanel
+          v-if="designFlow.draft.value?.state === 'structured'"
+          :flow="brandFlow"
+          :draft-id="designFlow.draft.value.documentId"
+          :blocked="conditionSaving || !!conditionPending || saving || designFlow.busy.value || designFlow.hasPending.value || designLocalConflict"
+          @saved="acceptBrandDraft"
+        />
+      </template>
+    </USlideover>
     <div class="flex flex-col flex-1 min-h-0 overflow-hidden">
       <!-- Editor -->
       <div v-show="viewMode === 'editor'" class="flex h-full">

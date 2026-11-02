@@ -19,6 +19,7 @@ import {
   type EditorSnapshot
 } from '~~/app/types/edm'
 import type { EdmHtmlEditableSelection } from '~~/app/utils/edmHtmlEditables'
+import { EmailBrandSnapshotSchema, newEmailBlockDefaults, type EmailBrandSnapshot } from '~~/shared/emailRendering/designBrandDefaults'
 import {
   buildSectionDocumentFragment,
   buildStarterTemplateDocument
@@ -32,6 +33,13 @@ const HISTORY_LIMIT = 50
 function createStore() {
   // Core document state
   const document = ref<EdmFlyhubDocument>(createEmptyDocument())
+  const brandSnapshot = ref<EmailBrandSnapshot | null>(null)
+  function setBrandSnapshot(snapshot: EmailBrandSnapshot | null) {
+    brandSnapshot.value = snapshot === null ? null : EmailBrandSnapshotSchema.parse(snapshot)
+  }
+  function newBlockTheme(blockType: string) {
+    return newEmailBlockDefaults(blockType, { blocks: document.value, source: { editor: 'composer', nativeArtifact: null, ...(brandSnapshot.value ? { brand: brandSnapshot.value } : {}) } })
+  }
 
   // UI state
   const selectedBlockId = ref<string | null>(null)
@@ -166,6 +174,7 @@ function createStore() {
   }
 
   function resetDocument(newDocument?: EdmFlyhubDocument) {
+    brandSnapshot.value = null
     document.value = newDocument || createEmptyDocument()
     past.value = []
     future.value = []
@@ -428,12 +437,13 @@ function createStore() {
     }
 
     // Create the new block
+    const theme = newBlockTheme(blockType)
     const newBlock: EdmFlyhubBlock = {
       type: blockType,
       data: {
-        style: getDefaultBlockStyle(blockType),
-        props: {},
-        ...initialData
+        ...initialData,
+        style: { ...(initialData?.style ?? getDefaultBlockStyle(blockType)), ...theme.style },
+        props: { ...initialData?.props, ...theme.props }
       }
     }
 
@@ -616,6 +626,8 @@ function createStore() {
       style: block.data.style ? { ...block.data.style } : undefined,
       props: block.data.props ? { ...block.data.props } : undefined
     })
+    // A duplicate preserves authored styling, never reapplies current defaults.
+    document.value[newBlockId] = JSON.parse(JSON.stringify(block))
 
     return newBlockId
   }
@@ -628,12 +640,13 @@ function createStore() {
     initialData?: Partial<EdmFlyhubBlock['data']>
   ) {
     recordHistory()
+    const theme = newBlockTheme(blockType)
     const newBlock: EdmFlyhubBlock = {
       type: blockType,
       data: {
-        style: getDefaultDetachedBlockStyle(blockType),
-        props: {},
-        ...initialData
+        ...initialData,
+        style: { ...(initialData?.style ?? getDefaultDetachedBlockStyle(blockType)), ...theme.style },
+        props: { ...initialData?.props, ...theme.props }
       }
     }
 
@@ -827,6 +840,7 @@ function createStore() {
     setDocument,
     resetDocument,
     applyDesignReturn,
+    setBrandSnapshot,
     getBlock,
     updateBlock,
     updateBlockData,

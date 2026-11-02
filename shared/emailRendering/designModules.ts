@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { snapshotRenderInput, RenderBoundaryError } from './bounds'
 import { designChildIds, DESIGN_LIMITS, EmailDesignError, validateEmailDesign, type EmailDesignDocument } from './designContract'
+import { designStructureLocked } from './designBrand'
 
 const Uuid = z.string().uuid()
 const Id = z.string().min(1).max(128).regex(/^[A-Za-z0-9_-]+$/)
@@ -130,6 +131,7 @@ export function moduleLocalOverrides(design: EmailDesignDocument, instanceId: st
 }
 function insertionList(design: EmailDesignDocument, parentId: string, columnIndex?: number): string[] {
   const parent = design.blocks[parentId]
+  if (designStructureLocked(design, parentId)) throw new EmailDesignError('EDIT_FORBIDDEN', 'designerLocks')
   if (!parent || design.policy.designerLocks?.blockIds.includes(parentId) || design.moduleInstances.some(i => subtreeIds(design, i.rootBlockIds).has(parentId))) throw new EmailDesignError('EDIT_FORBIDDEN', parentId)
   if ((parent.type === 'EmailLayout' || parent.type === 'Container') && columnIndex === undefined) return parent.data.childrenIds ??= []
   const columns = parent.data.props?.columns as { childrenIds?: string[] }[] | undefined
@@ -171,6 +173,7 @@ export function applyModuleInstance(input: unknown, request: ModuleInstanceReque
       design.source.nativeArtifact = null
       return validateEmailDesign(design)
     }
+    if (instance.rootBlockIds.some(id => designStructureLocked(design, id, true))) throw new EmailDesignError('EDIT_FORBIDDEN', 'designerLocks')
     const old = records.find(r => r.moduleId === instance.moduleId && r.revisionId === instance.revisionId)
     if (!old) throw new DesignModuleError('NOT_FOUND')
     if (request.overrides === 'preserve') priorOverrides = moduleLocalOverrides(design, instanceId, old.design)

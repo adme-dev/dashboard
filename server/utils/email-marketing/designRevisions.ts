@@ -140,6 +140,21 @@ export function saveTemplateDesignDraft(
   )
 }
 
+/** Server-derived theme/policy actions bind the existing immutable receipt to
+ * their strict action payload. Never expose this entrypoint to canonical JSON
+ * from the browser; its caller derives the design from a named saved revision. */
+export function saveDerivedTemplateDesignDraft(
+  input: AppendDesignRevisionInput,
+  authorize: (clientId: string | null) => Promise<void>,
+  renderer: EmailRendererClient,
+  actionDigest: string,
+  runTransaction: DesignTransaction,
+  dependencies: DesignDependencyAuthority = {}
+): Promise<DesignRevisionReceipt> {
+  z.string().regex(/^[a-f0-9]{64}$/).parse(actionDigest)
+  return appendRevision(input, authorize, runTransaction, dependencies, false, renderer, undefined, false, actionDigest)
+}
+
 /** Same atomic draft projection with persisted staff content-edit policy. */
 export function saveStaffTemplateDesignDraft(
   input: AppendDesignRevisionInput,
@@ -183,7 +198,8 @@ async function appendRevision(
   staffOnly: boolean,
   templateDraftRenderer?: EmailRendererClient,
   validateDesignerEdit?: (current: EmailDesignDocument, next: EmailDesignDocument) => void,
-  allowLegacyConversion = false
+  allowLegacyConversion = false,
+  serverActionDigest?: string
 ): Promise<DesignRevisionReceipt> {
   const identity = Identity.parse({
     documentId: input.documentId,
@@ -192,7 +208,7 @@ async function appendRevision(
     expectedRevisionId: input.expectedRevisionId
   })
   const design = validateEmailDesign(input.design)
-  const digest = await payloadDigest(
+  const digest = serverActionDigest ?? await payloadDigest(
     identity.documentId,
     identity.expectedRevisionId,
     design,

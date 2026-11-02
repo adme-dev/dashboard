@@ -128,7 +128,7 @@ describe('useEdmBuilder store', () => {
 
     s.updateBlockMobileStyle(id, { color: '#222222', fontSize: 14 })
 
-    expect(s.document.value[id].data.style).toEqual({ color: '#111111' })
+    expect(s.document.value[id].data.style).toEqual({ color: '#111111', fontFamily: 'MODERN_SANS' })
     expect(s.document.value[id].data.mobile?.style).toEqual({ color: '#222222', fontSize: 14 })
     expect(s.canUndo.value).toBe(true)
   })

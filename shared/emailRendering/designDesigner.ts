@@ -4,6 +4,8 @@ import { RenderBoundaryError, snapshotRenderInput } from './bounds'
 import { designChildIds, DESIGN_LIMITS, EmailDesignError, validateEmailDesign, type EmailDesignDocument } from './designContract'
 import { designToRendererDocument } from './designAdapter'
 import { FONT_FAMILY_MAP } from './fonts'
+import { newEmailBlockDefaults } from './designBrandDefaults'
+import { designStructureLocked } from './designBrand'
 import { parseRoundtripRequest, type RoundtripRequest, type DesignHandoff } from './designRoundtrip'
 
 function boundedSnapshot(input: unknown): unknown {
@@ -96,6 +98,7 @@ function assertEditable(design: EmailDesignDocument, id: string): void {
 }
 function childList(design: EmailDesignDocument, parentId: string, columnIndex?: number): string[] {
   if (!Object.hasOwn(design.blocks, parentId)) return deny('parentId')
+  if (designStructureLocked(design, parentId)) deny('designerLocks')
   if (ownLocked(design, parentId)) deny(parentId)
   for (const parent of Object.keys(design.blocks)) {
     if (parent !== parentId && ownLocked(design, parent) && descendants(design, parent).includes(parentId)) deny(parentId)
@@ -131,6 +134,35 @@ function stable(value: unknown): string {
 function tokens(value: unknown): string[] {
   return typeof value === 'string' ? (value.match(/\{\{[^{}]+\}\}/g) ?? []).sort() : []
 }
+/** Desktop style restrictions inherit through containers and also cover mobile
+ * overrides. Root semantic colours/fonts map to their materialized block keys. */
+function lockedStylePath(design: EmailDesignDocument, blockId: string, path: string): boolean {
+  const canonical = path.replace('.data.mobile.', '.data.')
+  const semantic = (suffix: string) => suffix
+    .replace(/^\.data\.props\.fontFamily$/, '.data.style.fontFamily')
+    .replace(/^\.data\.props\.(?:textColor|buttonTextColor)$/, '.data.style.color')
+    .replace(/^\.data\.props\.(?:canvasColor|backdropColor|buttonBackgroundColor)$/, '.data.style.backgroundColor')
+  return (design.policy.designerLocks?.styleFields ?? []).some((field) => {
+    field = field.replace('.data.mobile.', '.data.')
+    const owner = field.split('.')[0]
+    if (owner === blockId) return [canonical, path].some(candidate => candidate === field || candidate.startsWith(`${field}.`) || field.startsWith(`${candidate}.`))
+    if (!descendants(design, owner).includes(blockId)) {
+      // An inherited value cannot be changed indirectly at an ancestor while
+      // its descendant field is locked (including a mobile-only persisted field).
+      if (!descendants(design, blockId).includes(owner)) return false
+      const before = semantic(field.slice(owner.length))
+      const candidate = semantic(canonical.slice(blockId.length))
+      return before === candidate || before.startsWith(`${candidate}.`) || candidate.startsWith(`${before}.`)
+    }
+    let suffix = field.slice(owner.length).replace('.data.mobile.', '.data.')
+    if (suffix === '.data.props.fontFamily') suffix = '.data.style.fontFamily'
+    if (['.data.props.textColor', '.data.style.color'].includes(suffix)) return /\.data\.(?:style\.color|props\.buttonTextColor)$/.test(canonical)
+    if (['.data.props.canvasColor', '.data.props.backdropColor', '.data.style.backgroundColor'].includes(suffix)) return /\.data\.(?:style\.backgroundColor|props\.buttonBackgroundColor)$/.test(canonical)
+    if (suffix === '.data.props.primaryColor') return /\.data\.(?:style\.color|props\.(?:buttonBackgroundColor|lineColor))$/.test(canonical)
+    const inherited = `${blockId}${suffix}`
+    return canonical === inherited || canonical.startsWith(`${inherited}.`) || inherited.startsWith(`${canonical}.`)
+  })
+}
 function safeLink(value: unknown, image: boolean): boolean {
   if (typeof value !== 'string' || value.length > 8192 || /[\s<>"'\x00-\x1f]/.test(value)) return false
   if (!image && (value === '' || /^#[A-Za-z0-9_.:-]*$/.test(value))) return true
@@ -142,7 +174,7 @@ function safeLink(value: unknown, image: boolean): boolean {
   }
 }
 const propsByType: Record<string, z.ZodType> = {
-  EmailLayout: z.object({ contentWidth: z.number().int().min(320).max(960).optional(), backdropColor: Color.optional(), canvasColor: Color.optional(), textColor: Color.optional(), fontFamily: z.enum(Object.keys(FONT_FAMILY_MAP) as [string, ...string[]]).optional(), borderColor: Color.optional(), borderRadius: z.number().int().min(0).max(100).optional() }).strict(),
+  EmailLayout: z.object({ primaryColor: Color.optional(), contentWidth: z.number().int().min(320).max(960).optional(), backdropColor: Color.optional(), canvasColor: Color.optional(), textColor: Color.optional(), fontFamily: z.enum(Object.keys(FONT_FAMILY_MAP) as [string, ...string[]]).optional(), borderColor: Color.optional(), borderRadius: z.number().int().min(0).max(100).optional() }).strict(),
   Heading: z.object({ text: z.string().max(8192).optional(), level: z.enum(['h1', 'h2', 'h3']).optional() }).strict(),
   Text: z.object({ text: z.string().max(8192).optional() }).strict(),
   Button: z.object({ text: z.string().max(8192).optional(), url: z.string().max(8192).optional(), buttonBackgroundColor: Color.optional(), buttonTextColor: Color.optional(), buttonStyle: z.enum(['rounded', 'pill', 'square']).optional(), size: z.enum(['x-small', 'small', 'medium', 'large']).optional(), fullWidth: z.boolean().optional() }).strict(),
@@ -180,7 +212,7 @@ export function applyDesignerOperations(input: unknown, operations: unknown, ope
       const patch = op.op === 'set-style' ? op.style : propsByType[block.type].parse(op.props) as Record<string, unknown>
       for (const key of Object.keys(patch)) {
         const path = `${op.blockId}.data.${op.mobile ? 'mobile.' : ''}${op.op === 'set-style' ? 'style' : 'props'}.${key}`
-        if (design.policy.designerLocks?.styleFields.some(field => [path, path.replace('.data.mobile.', '.data.')].some(candidate => candidate === field || candidate.startsWith(`${field}.`) || field.startsWith(`${candidate}.`)))) deny(path)
+        if (lockedStylePath(design, op.blockId, path)) deny(path)
       }
       if (op.op === 'set-props') {
         for (const [key, value] of Object.entries(patch)) {
@@ -212,7 +244,8 @@ export function applyDesignerOperations(input: unknown, operations: unknown, ope
       const blockId = designerBlockId(operationId, operationIndex)
       if (linked.has(op.parentId) || Object.hasOwn(design.blocks, blockId)) deny('blockId')
       const defaults: Record<string, Record<string, unknown>> = { Heading: { text: 'Heading' }, Text: { text: 'Text' }, Button: { text: 'Button', url: '#' }, Image: { url: '', alt: '', linkHref: '' }, Spacer: { height: 24 }, Divider: {}, Container: {}, ColumnsContainer: { columnsCount: 2, columns: [{ childrenIds: [] }, { childrenIds: [] }] } }
-      design.blocks[blockId] = { type: op.sectionType, data: { props: defaults[op.sectionType], ...(['Container'].includes(op.sectionType) ? { childrenIds: [] } : {}) } }
+      const theme = newEmailBlockDefaults(op.sectionType, design)
+      design.blocks[blockId] = { type: op.sectionType, data: { style: theme.style, props: { ...defaults[op.sectionType], ...theme.props }, ...(['Container'].includes(op.sectionType) ? { childrenIds: [] } : {}) } }
       insert(list, op.index, blockId)
       for (const field of content[op.sectionType] ?? []) design.policy.editableFields.push(`${blockId}.data.props.${field}`)
       // Canonical identity is a deterministic server derivation, not client lineage.
@@ -220,6 +253,12 @@ export function applyDesignerOperations(input: unknown, operations: unknown, ope
     } else {
       if (op.blockId === 'root') deny('root')
       assertMutable(op.blockId)
+      // Moving/cloning a subtree out of inherited restrictions or deleting a
+      // locked style is an indirect relaxation, not a structural edit grant.
+      if (design.policy.designerLocks?.styleFields.some((path) => {
+        const owner = path.split('.')[0]
+        return descendants(design, op.blockId).includes(owner) || descendants(design, owner).includes(op.blockId)
+      })) deny('designerLocks')
       if (op.op === 'remove-section' && design.policy.designerLocks?.styleFields.some(path => descendants(design, op.blockId).includes(path.split('.')[0]))) deny('designerLocks')
       const ids = descendants(design, op.blockId)
       if (op.op === 'remove-section') {
@@ -275,7 +314,7 @@ export function designerCapabilities(input: unknown) {
     blocks: Object.keys(design.blocks).map((blockId) => {
       const inheritedLock = Object.keys(design.blocks).some(parent => parent !== blockId && ownLocked(design, parent) && descendants(design, parent).includes(blockId))
       const editable = !inheritedLock && !locked(design, blockId) && !design.moduleInstances.some(instance => instance.rootBlockIds.some(root => descendants(design, root).includes(blockId) || descendants(design, blockId).includes(root)))
-      return { blockId, editable, canInsert: ['EmailLayout', 'Container', 'ColumnsContainer'].includes(design.blocks[blockId].type) && !ownLocked(design, blockId) && !inheritedLock && !design.moduleInstances.some(instance => instance.rootBlockIds.some(root => descendants(design, root).includes(blockId))), lockedStyleFields: (design.policy.designerLocks?.styleFields ?? []).filter(path => path.startsWith(`${blockId}.`)) }
+      return { blockId, editable, canInsert: ['EmailLayout', 'Container', 'ColumnsContainer'].includes(design.blocks[blockId].type) && !designStructureLocked(design, blockId) && !ownLocked(design, blockId) && !inheritedLock && !design.moduleInstances.some(instance => instance.rootBlockIds.some(root => descendants(design, root).includes(blockId))), lockedStyleFields: (design.policy.designerLocks?.styleFields ?? []).filter(path => path.startsWith(`${blockId}.`)) }
     }),
     nativeSource: { state: 'canonical-only' as const, artifact: null, reason: 'PRIVATE_NATIVE_STAGING_UNAVAILABLE' as const }
   }

@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { assertDocumentConditions, conditionPolicyLockIds } from './conditionProtection'
 import { RenderBoundaryError, snapshotRenderInput } from './bounds'
+import { EmailBrandSnapshotSchema } from './designBrandDefaults'
 
 // New authoring boundary only. Legacy documents continue through their existing
 // paths until revision migration explicitly snapshots and validates them.
@@ -55,6 +56,7 @@ const DesignSchema = z
     source: z
       .object({
         editor: z.enum(['composer', 'figflow', 'legacy']),
+        brand: EmailBrandSnapshotSchema.optional(),
         nativeArtifact: z
           .object({ id: Id, sha256: Digest })
           .strict()
