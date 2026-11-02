@@ -9,6 +9,12 @@
 
 **Current release:** [Live content-round-trip deployment and contributor handoff](../../email-builder/figflow-developer-handoff.md). PRs #810–812 activate the content round trip and fix hosted auth routing; production acceptance passes. This does not close the larger product tasks below.
 
+**Real-template beta, 2 November:** [results and B01–B05 follow-up tasks](../../email-builder/figflow-beta-20261102.md).
+Electric Drive passes a real native heading round trip; FuturaX fails native editing
+with a blank canvas and zero editable fields. Source preflight admits six of eleven
+starters with zero editable fields. Their canonical content is preserved, but full
+template readiness has not passed. B01 is the next bounded implementation package.
+
 **Completed production milestone:** [First content round trip](../../email-builder/figflow-roundtrip-milestone.md), [PR #807](https://github.com/adme-dev/dashboard/pull/807). Codex owns integration; Kimi native code, Grok relay/review. Native CI, isolated actual-WASM checks and authenticated production round trips pass, including native mouse/keyboard edits, undo, staff edits and stale-revision protection. This content-only subset does not close publication, shared modules or real email-client acceptance.
 
 The dated implementation checkpoints below are historical; the current milestone

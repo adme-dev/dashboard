@@ -1,0 +1,390 @@
+{
+  "date": "2026-11-02",
+  "timezone": "Australia/Melbourne",
+  "verdict": "partial-pass; full-template workflow not ready",
+  "sourceAuditCommit": "e28e38951106f0f029eee3907672a85e39012d2c",
+  "liveHosts": [
+    "https://app.xeroflow.io",
+    "https://creative.xeroflow.io"
+  ],
+  "editorPaths": {
+    "standalone": "/figflow/0.11.2-flow1/",
+    "embeddedEdm": "/figflow/0.11.2-edm1/"
+  },
+  "releaseIdentityReference": "figflow-production-activation-20261102.json",
+  "futura": {
+    "templateId": "68982578-7fbf-4a08-a1ee-97d85a34f143",
+    "name": "[Beta] FuturaX real template 2026-11-02",
+    "baseline": {
+      "id": "68982578-7fbf-4a08-a1ee-97d85a34f143",
+      "name": "[Beta] FuturaX real template 2026-11-02",
+      "kind": "draft",
+      "category": "Verification",
+      "blocks": 7,
+      "types": {
+        "EmailLayout": 1,
+        "Html": 5,
+        "footer": 1
+      },
+      "htmlBytes": 69017,
+      "sourceBytes": 69140,
+      "htmlContainsFutura": true
+    },
+    "native": {
+      "status": 200,
+      "handoffId": "ed0635b4-3be5-497a-9202-d4dde89655fc",
+      "state": "open",
+      "editableFields": [],
+      "blockTypes": [
+        "EmailLayout",
+        "Html",
+        "Html",
+        "Html",
+        "Html",
+        "footer",
+        "Html"
+      ],
+      "returnReady": true
+    },
+    "proposalPreservation": {
+      "state": "proposed",
+      "proposalUnchanged": true,
+      "ownerSourcePreserved": true,
+      "ownerSourceSha256": "84900ec26503b9b475280bb04bc9b53f820d63a1f0bf6ae70873435f6bb36e18",
+      "htmlSha256": "99c7c11515ecc43648fb9c60afa8a945c1d7227a6e28f9c22808d4849396c49a",
+      "htmlBytes": 69017,
+      "applyReady": true,
+      "previewHasFutura": true
+    }
+  },
+  "electric": {
+    "templateId": "5c2865dd-57c6-4d35-bd1f-763a62f1169f",
+    "name": "[Beta] Electric Drive real template 2026-11-02",
+    "baseline": {
+      "id": "c7341e53-eba2-4992-9d26-1764f703c9a8",
+      "state": "open",
+      "fields": [
+        "block-1793579124775-4it0btx.data.props.text",
+        "block-1793579124775-f16hmvb.data.props.text",
+        "block-1793579124775-fpalrqs.data.props.text",
+        "block-1793579124775-quts2hy.data.props.url",
+        "block-1793579124775-quts2hy.data.props.alt",
+        "block-1793579124775-rkh907l.data.props.text",
+        "block-1793579124775-rkh907l.data.props.url",
+        "block-1793579124775-xto67ud.data.props.text",
+        "block-1793579124775-yxzp1vh.data.props.text"
+      ],
+      "blocks": 13,
+      "htmlBytes": 13348
+    },
+    "proposal": {
+      "state": "proposed",
+      "proposalRevisionId": "94846cf6-3c2e-462e-89d1-318a2579a36b",
+      "sourceUnchanged": true,
+      "htmlUnchanged": true,
+      "edits": [
+        {
+          "id": "block-1793579124775-xto67ud",
+          "type": "Heading",
+          "before": {
+            "text": "A new perspective on electric.",
+            "level": "h2"
+          },
+          "after": {
+            "level": "h2",
+            "text": "Electric Drive beta: native edit confirmed."
+          }
+        }
+      ]
+    },
+    "reloadMobile": {
+      "url": "https://app.xeroflow.io/agency/email/compose?id=5c2865dd-57c6-4d35-bd1f-763a62f1169f",
+      "iframes": [
+        {
+          "title": "Email preview",
+          "width": 390,
+          "height": 1581,
+          "containsEdit": true,
+          "hasUnsubscribe": true,
+          "hasVehicleImage": true,
+          "srcdocBytes": 13361
+        }
+      ],
+      "outerDocumentContainsEditedText": false,
+      "note": "Preview text lives in the sandboxed iframe; containsEdit in iframes is the preview assertion."
+    },
+    "reloadedComposerHasEditedHeading": true,
+    "nativeImageLoadedVisually": true
+  },
+  "finalReadback": {
+    "electric": {
+      "state": "applied",
+      "appliedRevisionId": "c399a409-1e44-4a53-ae44-8ae19a825dc4",
+      "head": "c399a409-1e44-4a53-ae44-8ae19a825dc4",
+      "oneHeadingChange": true,
+      "canonicalMatchesProjection": true,
+      "htmlContainsEdit": true,
+      "htmlSha256": "2e91ac12939dbaaa099c3e409e3572a8f8c44ea6660d86e6c698edb83d3c0fd8",
+      "protectedFieldsPreserved": true,
+      "sourceSha256": "7daee9f00b4bf65c97fc3bc10d19bd8206abe4e2fa71934aacfc6441f20e357d"
+    },
+    "futura": {
+      "state": "cancelled",
+      "ownerSourceSha256": "84900ec26503b9b475280bb04bc9b53f820d63a1f0bf6ae70873435f6bb36e18",
+      "htmlSha256": "99c7c11515ecc43648fb9c60afa8a945c1d7227a6e28f9c22808d4849396c49a"
+    }
+  },
+  "catalogSourcePreflight": {
+    "source": "e28e38951106f0f029eee3907672a85e39012d2c",
+    "kind": "local source preflight, not hosted browser proof",
+    "rows": [
+      {
+        "id": "postcards-glidex",
+        "name": "GlideX",
+        "blocks": 9,
+        "types": {
+          "EmailLayout": 1,
+          "Html": 7,
+          "footer": 1
+        },
+        "editableFields": 0,
+        "preflight": "accepted"
+      },
+      {
+        "id": "postcards-futurax",
+        "name": "FuturaX",
+        "blocks": 7,
+        "types": {
+          "EmailLayout": 1,
+          "Html": 5,
+          "footer": 1
+        },
+        "editableFields": 0,
+        "preflight": "accepted"
+      },
+      {
+        "id": "postcards-aviro",
+        "name": "Aviro",
+        "blocks": 9,
+        "types": {
+          "EmailLayout": 1,
+          "Html": 7,
+          "footer": 1
+        },
+        "editableFields": 0,
+        "preflight": "accepted"
+      },
+      {
+        "id": "modern-electric-drive",
+        "name": "Electric Drive",
+        "blocks": 13,
+        "types": {
+          "EmailLayout": 1,
+          "Heading": 3,
+          "menu": 2,
+          "Text": 2,
+          "Button": 1,
+          "Image": 1,
+          "feature-grid": 1,
+          "Html": 1,
+          "footer": 1
+        },
+        "editableFields": 9,
+        "preflight": "accepted"
+      },
+      {
+        "id": "modern-open-house",
+        "name": "The Open House",
+        "blocks": 13,
+        "types": {
+          "EmailLayout": 1,
+          "Heading": 3,
+          "menu": 2,
+          "Image": 1,
+          "Text": 2,
+          "Button": 1,
+          "feature-grid": 1,
+          "Html": 1,
+          "footer": 1
+        },
+        "editableFields": 9,
+        "preflight": "accepted"
+      },
+      {
+        "id": "modern-weekend-edit",
+        "name": "The Weekend Edit",
+        "blocks": 13,
+        "types": {
+          "EmailLayout": 1,
+          "Heading": 3,
+          "menu": 2,
+          "Image": 1,
+          "Text": 2,
+          "Button": 1,
+          "feature-grid": 1,
+          "Html": 1,
+          "footer": 1
+        },
+        "editableFields": 9,
+        "preflight": "accepted"
+      },
+      {
+        "id": "modern-studio-welcome",
+        "name": "A Little More Balance",
+        "blocks": 13,
+        "types": {
+          "EmailLayout": 1,
+          "Heading": 3,
+          "menu": 2,
+          "Image": 1,
+          "Text": 2,
+          "Button": 1,
+          "feature-grid": 1,
+          "Html": 1,
+          "footer": 1
+        },
+        "editableFields": 9,
+        "preflight": "accepted"
+      },
+      {
+        "id": "modern-better-brief",
+        "name": "The Better Brief",
+        "blocks": 12,
+        "types": {
+          "EmailLayout": 1,
+          "Heading": 3,
+          "menu": 2,
+          "Text": 2,
+          "Image": 1,
+          "feature-grid": 1,
+          "Html": 1,
+          "footer": 1
+        },
+        "editableFields": 6,
+        "preflight": "accepted"
+      },
+      {
+        "id": "oem-launch-interest",
+        "name": "Register your interest",
+        "blocks": 6,
+        "types": {
+          "EmailLayout": 1,
+          "Html": 4,
+          "footer": 1
+        },
+        "editableFields": 0,
+        "preflight": "accepted"
+      },
+      {
+        "id": "oem-sale-weekend",
+        "name": "Grand Automotive Sale Weekend",
+        "blocks": 8,
+        "types": {
+          "EmailLayout": 1,
+          "Html": 6,
+          "footer": 1
+        },
+        "editableFields": 0,
+        "preflight": "accepted"
+      },
+      {
+        "id": "oem-launch-rsvp",
+        "name": "Vehicle Launch RSVP",
+        "blocks": 7,
+        "types": {
+          "EmailLayout": 1,
+          "Html": 5,
+          "footer": 1
+        },
+        "editableFields": 0,
+        "preflight": "accepted"
+      }
+    ]
+  },
+  "standaloneObservation": {
+    "canvasCount": 1,
+    "emailTemplateLibraryVisible": false,
+    "bridgeType": "undefined"
+  },
+  "mobileObservation": {
+    "width": 390,
+    "topNavigationAppearsClipped": true,
+    "rootCauseVerified": false
+  },
+  "actions": {
+    "emailsSent": 0,
+    "campaignsCreated": 0,
+    "originalTemplatesEdited": 0,
+    "futuraApplied": false,
+    "runtimeChanges": false,
+    "deployments": false,
+    "testDraftsRetained": true
+  },
+  "notVerified": [
+    "Apple Mail/Gmail/Outlook application rendering",
+    "email delivery",
+    "image replacement",
+    "shared-module publication",
+    "nine remaining starters in hosted browser"
+  ],
+  "screenshots": [
+    {
+      "path": "/private/tmp/figflow-beta-futura-composer.png",
+      "sha256": "c8a1de0590b72b82b3a8ba8dbf5406c7ebe101c25a5a8f97870454980d8b6e31",
+      "bytes": 554566,
+      "availability": "local temporary evidence only"
+    },
+    {
+      "path": "/private/tmp/figflow-beta-futura-native-blank.png",
+      "sha256": "23639b647e91c9d9436dfdd7826cf781330877c897a4a6bf067d2aa8341b9a19",
+      "bytes": 62305,
+      "availability": "local temporary evidence only"
+    },
+    {
+      "path": "/private/tmp/figflow-beta-futura-preview-full.png",
+      "sha256": "50ba94ae0da9ec77a8d4fe2368d0259ff4a652a0522fdb3ceb5972bb50e9d915",
+      "bytes": 379212,
+      "availability": "local temporary evidence only"
+    },
+    {
+      "path": "/private/tmp/figflow-beta-electric-native.png",
+      "sha256": "d367f89814d78db764ee79254be1df415d925abff6bd1b8466a2d27df293e40b",
+      "bytes": 160072,
+      "availability": "local temporary evidence only"
+    },
+    {
+      "path": "/private/tmp/figflow-beta-electric-native-edited.png",
+      "sha256": "11049f0f1edb06671808aaff559bfbb8cd46cc94d83325b1ad2a9c0cdf416d13",
+      "bytes": 182043,
+      "availability": "local temporary evidence only"
+    },
+    {
+      "path": "/private/tmp/figflow-beta-electric-review.png",
+      "sha256": "e7b4955eefe79e8c1392f18cc537223a8cb1c947745e2033c48908fd4d0647fc",
+      "bytes": 136878,
+      "availability": "local temporary evidence only"
+    },
+    {
+      "path": "/private/tmp/figflow-beta-electric-desktop.png",
+      "sha256": "dce05c2e4a30addb2b43c645417ad1649df71fae37737cb6ae2d068bf5d21854",
+      "bytes": 587955,
+      "availability": "local temporary evidence only"
+    },
+    {
+      "path": "/private/tmp/figflow-beta-electric-mobile-final.png",
+      "sha256": "4361b4e33b02da795193b3ccc0ea30da071d04ba3a5cdb8acdc526e655a291ae",
+      "bytes": 464580,
+      "availability": "local temporary evidence only"
+    },
+    {
+      "path": "/private/tmp/figflow-beta-standalone.png",
+      "sha256": "d8de9c76459c4cd033ea18d1b6ef60b139b6410ec3d87e6610152d338ca21c39",
+      "bytes": 44009,
+      "availability": "local temporary evidence only"
+    }
+  ],
+  "hashConventions": {
+    "source": "SHA-256 of UTF-8 JSON with recursively sorted object keys; array order retained",
+    "html": "SHA-256 of exact UTF-8 HTML"
+  }
+}

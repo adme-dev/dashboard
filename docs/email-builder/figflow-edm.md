@@ -1,10 +1,12 @@
 # FigFlow EDM project — start here
 
-Status (2 November 2026): the supported saved-draft content round trip is live
-and accepted in production. Staff can open FigFlow, edit supported content,
-review/apply returns and continue in the composer. Shared-module publication,
-broader conversion and real email-client acceptance remain parent-project work.
+Status (2 November 2026): the limited saved-draft content round trip is live.
+The real-template beta passes Electric Drive heading editing/save/reload, but
+FuturaX opens blank with zero editable fields. Six of eleven starters have zero
+editable fields in local source preflight. The standalone FigFlow URL has no
+email template browser. Full template readiness has not passed.
 
+- [Real-template beta results and open fixes](figflow-beta-20261102.md)
 - [Completed first round-trip milestone](figflow-roundtrip-milestone.md)
 - [Current production deployment and next developer tasks](figflow-developer-handoff.md)
 - [Source inventory and discovery evidence](figflow-integration-inventory.md)
