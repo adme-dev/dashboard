@@ -134,6 +134,8 @@ export interface Layer {
   mediaEnd?: number
   mediaLoop?: boolean
   // Button
+  /** Style-guide treatment to retain when a brand kit is reapplied. */
+  brandButtonVariant?: 'primary' | 'secondary' | 'dark-secondary'
   textColor?: string
   borderRadius?: number
   borderWidth?: number

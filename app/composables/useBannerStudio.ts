@@ -7,6 +7,8 @@ import { FORMATS, TEMPLATES, migrateLayer, DEFAULT_BG, resolveBannerFormat } fro
 import { brandButtonStyle, brandColor, brandFont, brandFontSelection, isLogoLayer, isDarkColor } from '~/utils/banner-brand-kit'
 import { buildBrandTemplateLayers, type BrandTemplateVariant } from '~/utils/banner-brand-templates'
 import { bannerAssetLayer } from '~/utils/banner-media'
+import { brandGuideButtonLayer } from '~/utils/banner-brand-buttons'
+import type { BrandButtonVariant } from '~/utils/banner-brand-kit'
 
 // Module-scope singleton state
 let _uid = 1
@@ -238,6 +240,17 @@ export function useBannerStudio() {
       }
     }
     return added.length
+  }
+
+  function addBrandGuideButton(kit: BannerBrandKit, variant: BrandButtonVariant, formatKey = state.activeKey, point?: { x: number, y: number }): Layer | null {
+    const format = resolveBannerFormat(formatKey)
+    if (!state.sets[formatKey] || !format) return null
+    const partial = brandGuideButtonLayer(kit, variant, format, point)
+    if (!partial) return null
+    if (state.activeKey !== formatKey) setActiveArtboard(formatKey)
+    const layer = addLayer({ ...partial, startTime: 0, endTime: state.duration })
+    state.activeTool = 'select'
+    return layer
   }
 
   function removeLayer(id: number) {
@@ -927,7 +940,7 @@ export function useBannerStudio() {
           const f = isHeadline ? headingFont : bodyFont
           if (f) Object.assign(layer, brandFontSelection(f))
         }
-        if (layer.type === 'button') Object.assign(layer, brandButtonStyle(kit))
+        if (layer.type === 'button') Object.assign(layer, brandButtonStyle(kit, layer.brandButtonVariant || 'primary'))
         if (logo && isLogoLayer(layer)) {
           layer.src = logo.url
           layer.isLogo = true
@@ -1200,6 +1213,7 @@ export function useBannerStudio() {
     // Layer ops
     addLayer,
     addMotorStackImageToAllLayouts,
+    addBrandGuideButton,
     removeLayer,
     duplicateLayer,
     updateLayer,

@@ -3,8 +3,11 @@ import type { BannerBrandKit } from '~/types/banner-studio'
 import { brandFont } from '~/utils/banner-brand-kit'
 import { motorstackBrandId } from '~~/shared/bannerBrandGuides'
 import { brandStyleProfile } from '~~/shared/bannerBrandProfiles'
+import { BRAND_BUTTON_DRAG_TYPE, brandButtonDragData } from '~/utils/banner-brand-buttons'
+import type { BrandButtonVariant } from '~/utils/banner-brand-kit'
 
-const props = defineProps<{ kit: Pick<BannerBrandKit, 'sourceUrl' | 'name' | 'fonts'> }>()
+const props = withDefaults(defineProps<{ kit: Pick<BannerBrandKit, 'sourceUrl' | 'name' | 'fonts'> & { id?: string }, interactive?: boolean }>(), { interactive: false })
+const emit = defineEmits<{ addButton: [variant: BrandButtonVariant] }>()
 const brandId = computed(() => motorstackBrandId(props.kit.sourceUrl))
 const profile = computed(() => brandStyleProfile(brandId.value))
 const buttonFace = computed(() => brandFont(props.kit, profile.value?.ctaFontRole || 'body'))
@@ -32,6 +35,11 @@ const secondaryStyle = computed(() => profile.value
       padding: brandId.value === 'ldv' ? '12px 10px' : undefined
     })
   : {})
+function startButtonDrag(event: DragEvent, variant: BrandButtonVariant) {
+  if (!props.interactive || !props.kit.id || !event.dataTransfer) return
+  event.dataTransfer.setData(BRAND_BUTTON_DRAG_TYPE, brandButtonDragData(props.kit.id, variant))
+  event.dataTransfer.effectAllowed = 'copy'
+}
 </script>
 
 <template>
@@ -54,13 +62,60 @@ const secondaryStyle = computed(() => profile.value
     </div>
     <template v-if="profile">
       <div class="flex flex-wrap gap-2 p-3" :style="{ backgroundColor: profile.surface }">
-        <span class="inline-flex min-h-9 items-center justify-center px-3 text-xs" :style="buttonStyle">Book a test drive</span>
-        <span class="inline-flex min-h-9 items-center justify-center px-3 text-xs" :style="secondaryStyle">Explore models</span>
+        <template v-if="interactive && kit.id">
+          <UButton
+            aria-label="Add primary brand button; drag onto a canvas or click to add to the selected size"
+            title="Drag onto a canvas or click to add"
+            draggable="true"
+            color="neutral"
+            variant="ghost"
+            class="min-h-9 cursor-grab justify-center px-3 text-xs active:cursor-grabbing"
+            :style="buttonStyle"
+            @dragstart="startButtonDrag($event, 'primary')"
+            @click="emit('addButton', 'primary')"
+          >
+            Book a test drive
+          </UButton>
+          <UButton
+            aria-label="Add secondary brand button; drag onto a canvas or click to add to the selected size"
+            title="Drag onto a canvas or click to add"
+            draggable="true"
+            color="neutral"
+            variant="ghost"
+            class="min-h-9 cursor-grab justify-center px-3 text-xs active:cursor-grabbing"
+            :style="secondaryStyle"
+            @dragstart="startButtonDrag($event, 'secondary')"
+            @click="emit('addButton', 'secondary')"
+          >
+            Explore models
+          </UButton>
+        </template>
+        <template v-else>
+          <span class="inline-flex min-h-9 items-center justify-center px-3 text-xs" :style="buttonStyle">Book a test drive</span>
+          <span class="inline-flex min-h-9 items-center justify-center px-3 text-xs" :style="secondaryStyle">Explore models</span>
+        </template>
       </div>
       <div v-if="brandId === 'ldv'" class="flex flex-wrap gap-2 bg-black p-3">
         <span class="inline-flex items-center justify-center bg-[#bc3219] text-white uppercase" :style="{ fontFamily: 'Open Sans, sans-serif', fontWeight: 700, fontSize: '13px', minWidth: '170px', padding: '12px 10px' }">Book a test drive</span>
-        <span class="inline-flex items-center justify-center bg-white text-black uppercase" :style="{ fontFamily: 'Open Sans, sans-serif', fontWeight: 700, fontSize: '13px', minWidth: '170px', padding: '12px 10px' }">Download brochure</span>
+        <UButton
+          v-if="interactive && kit.id"
+          aria-label="Add LDV on-dark button; drag onto a canvas or click to add to the selected size"
+          title="Drag onto a canvas or click to add"
+          draggable="true"
+          color="neutral"
+          variant="ghost"
+          class="cursor-grab justify-center uppercase active:cursor-grabbing"
+          :style="{ backgroundColor: '#ffffff', color: '#000000', fontFamily: 'Open Sans, sans-serif', fontWeight: 700, fontSize: '13px', minWidth: '170px', padding: '12px 10px', borderRadius: '0px' }"
+          @dragstart="startButtonDrag($event, 'dark-secondary')"
+          @click="emit('addButton', 'dark-secondary')"
+        >
+          Download brochure
+        </UButton>
+        <span v-else class="inline-flex items-center justify-center bg-white text-black uppercase" :style="{ fontFamily: 'Open Sans, sans-serif', fontWeight: 700, fontSize: '13px', minWidth: '170px', padding: '12px 10px' }">Download brochure</span>
       </div>
+      <p v-if="interactive && kit.id" class="text-xs leading-relaxed text-muted">
+        Drag a button onto a canvas, or click it to add to the selected size. Edit its label in the inspector.
+      </p>
       <p class="text-xs leading-relaxed text-muted">
         {{ profile.note }}
       </p>

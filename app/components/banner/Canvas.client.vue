@@ -1,18 +1,22 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import { FORMATS } from '~/utils/banner-constants'
+import { BRAND_BUTTON_DRAG_TYPE, brandButtonDropPoint, parseBrandButtonDragData } from '~/utils/banner-brand-buttons'
 
 import { layoutName, layoutRows, fitLayoutRows, WORKSPACE_GAP, WORKSPACE_FOOTER } from '~/utils/banner-workspace'
 
 const props = defineProps<{ projectId?: string }>()
 
-const { state, setActiveArtboard, selectLayer, zoomToFitFormat, setLayoutView } = useBannerStudio()
+const { state, setActiveArtboard, selectLayer, zoomToFitFormat, setLayoutView, addBrandGuideButton } = useBannerStudio()
+const { kit } = useBannerProjectBrand()
+const toast = useToast()
 const { sendCursorMove } = useBannerRealtime()
 
 const artboardRefs = ref<Record<string, any>>({})
 const canvasEl = ref<HTMLElement | null>(null)
 const isPanning = ref(false)
 const panStart = ref({ x: 0, y: 0, scrollX: 0, scrollY: 0 })
+const dropTargetKey = ref<string | null>(null)
 
 const rows = computed(() => layoutRows(state.setKeys.map(key => FORMATS[key]).filter(Boolean)))
 const isOverview = computed(() => state.layoutView === 'all')
@@ -82,6 +86,39 @@ function onCanvasMouseUp() {
   isPanning.value = false
 }
 
+function isBrandButtonDrag(event: DragEvent) {
+  return Array.from(event.dataTransfer?.types || []).includes(BRAND_BUTTON_DRAG_TYPE)
+}
+
+function onBrandButtonDragOver(event: DragEvent, key: string) {
+  if (!kit.value || !isBrandButtonDrag(event)) return
+  event.preventDefault()
+  event.stopPropagation()
+  if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy'
+  dropTargetKey.value = key
+}
+
+function onBrandButtonDragLeave(event: DragEvent, key: string) {
+  const target = event.currentTarget as HTMLElement
+  if (event.relatedTarget instanceof Node && target.contains(event.relatedTarget)) return
+  if (dropTargetKey.value === key) dropTargetKey.value = null
+}
+
+function onBrandButtonDrop(event: DragEvent, key: string) {
+  if (!isBrandButtonDrag(event)) return
+  event.preventDefault()
+  event.stopPropagation()
+  dropTargetKey.value = null
+  const data = parseBrandButtonDragData(event.dataTransfer?.getData(BRAND_BUTTON_DRAG_TYPE) || '')
+  if (!data || !kit.value || data.kitId !== kit.value.id) {
+    toast.add({ title: 'Brand kit changed', description: 'Choose the button again from the current kit.', color: 'warning' })
+    return
+  }
+  const point = brandButtonDropPoint(event.clientX, event.clientY, (event.currentTarget as HTMLElement).getBoundingClientRect(), state.wsScale)
+  if (!addBrandGuideButton(kit.value, data.variant, key, point)) return
+  toast.add({ title: 'Brand button added', description: 'Edit its label in the inspector.', color: 'success' })
+}
+
 // Collaboration: track cursor position over active artboard
 function onCanvasCursorMove(e: MouseEvent) {
   if (isPanning.value || state.activeTool === 'hand') return
@@ -132,14 +169,18 @@ function onCanvasCursorMove(e: MouseEvent) {
         <!-- Artboard wrapper with scale -->
         <div
           class="relative cursor-pointer rounded transition-shadow"
-          :class="state.activeKey === format.key
-            ? 'ring-2 ring-primary'
-            : 'ring-1 ring-default hover:ring-primary/50'"
+          :class="[
+            state.activeKey === format.key ? 'ring-2 ring-primary' : 'ring-1 ring-default hover:ring-primary/50',
+            dropTargetKey === format.key ? 'outline outline-2 outline-primary outline-offset-2' : ''
+          ]"
           :style="{
             width: `${(format.w || 300) * state.wsScale}px`,
             height: `${(format.h || 250) * state.wsScale}px`,
           }"
           @click.stop="state.activeKey !== format.key ? setActiveArtboard(format.key) : undefined"
+          @dragover="onBrandButtonDragOver($event, format.key)"
+          @dragleave="onBrandButtonDragLeave($event, format.key)"
+          @drop="onBrandButtonDrop($event, format.key)"
         >
           <!-- Inner at full resolution, scaled down -->
           <div
