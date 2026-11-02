@@ -365,3 +365,27 @@ prepared actual-WASM designer harness has lint/type evidence only.
 
 Live save-warning PR828 uses current-main ef81a20d and38 tests/5 files; full CI
 run41413045976 is pending. No merge/deployment or live fix is claimed.
+
+## Exact CI outcomes and follow-up
+
+Native41414219457 at1b73ccff8 compiled and passed8 bridge/6 UI tests, but engine
+EDM tests were20 passed/7 failed. Browser packaging was skipped. General
+CI41414219523 failed14 tests across5 files (21696 passed). Evidence and verified
+artifact hashes are retained under `.verification/ci-followup-20261102/REPORT.md`.
+Opus task236d4ebb8d85 / ctx_45dadf7b3587 owns only native edm.rs and a bounded
+report. Codex taskac874cbf75be / ctx_c5f5b821039a owns five general test fixtures
+and an exact security-inventory audit. Neither may weaken app contracts, build
+native locally, commit, deploy or touch the pending browser fixtures.
+
+Hotfix CI41413045976 succeeded at ef81a20d. Fresh main advanced to7b8818c83;
+PR828 was reconciled as a0d96def3 and pushed.54 tests/11 files and the Pages
+target/source guard pass on that source. Fresh exact-source CI is required;
+no merge or deployment has occurred. Monitoring worker settled and released.
+
+General fixture worker has settled and was released. It reproduced all14 failures,
+then passed62 tests in the five repaired files and108 across14 related suites.
+The inventory delta was audited against main7b8818c83:20 added routes,14 mutations,
+six added inline gates, no removed/reclassified gates. Production authorization
+is unchanged. Parent reviewed the fixture/auth/inventory diff; see
+`general-ci-remediation-20261102.md` and retained local logs. Full exact-head CI
+remains required after native corrections are integrated.

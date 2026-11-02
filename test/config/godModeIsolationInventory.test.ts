@@ -120,9 +120,12 @@ const API_INVENTORY = {
   // The released FigFlow roundtrip POST adds one route/mutation after the five
   // draft endpoints. It retains session/origin and delegated fresh scope checks,
   // adding no inline guard/transaction count or God mode bypass.
-  totalRouteFiles: 2316,
-  mutationRouteFiles: 1263,
-  explicitlyGuardedMutationFiles: 406,
+  // 2026-11-02 authoring review adds 20 routes: 14 mutations, six inline
+  // write gates. Delegated session/origin/publisher gates remain independent;
+  // no mutation-family registration or inline transaction() is added.
+  totalRouteFiles: 2336,
+  mutationRouteFiles: 1277,
+  explicitlyGuardedMutationFiles: 412,
   guardedMutationFilesWithTransactionCall: 55
 } as const
 
@@ -171,11 +174,63 @@ describe('God mode route isolation inventory', () => {
   it('records the full mechanical API and mutation inventory reviewed before implementation', () => {
     expect(mechanicalInventory()).toEqual(API_INVENTORY)
     expect(API_INVENTORY).toEqual({
-      totalRouteFiles: 2316,
-      mutationRouteFiles: 1263,
-      explicitlyGuardedMutationFiles: 406,
+      totalRouteFiles: 2336,
+      mutationRouteFiles: 1277,
+      explicitlyGuardedMutationFiles: 412,
       guardedMutationFilesWithTransactionCall: 55
     })
+  })
+
+  it('pins all twenty authoring additions to scoped authentication without a God mode bypass', () => {
+    const additions: Record<string, string[]> = {
+      'server/api/agency/email/conditions/[id].delete.ts': ['await requireWriteAccess(event)', 'await assertEmailClientAccess(event, user,'],
+      'server/api/agency/email/conditions/[id].patch.ts': ['await requireWriteAccess(event)', 'await assertEmailClientAccess(event, user,'],
+      'server/api/agency/email/conditions/index.get.ts': ['await requireAuth(event)', 'await assertEmailClientAccess(event, user,'],
+      'server/api/agency/email/conditions/index.post.ts': ['await requireWriteAccess(event)', 'await assertEmailClientAccess(event, user,'],
+      'server/api/agency/email/merge-tags/[id].delete.ts': ['await requireWriteAccess(event)', 'await assertEmailClientAccess(event, user,'],
+      'server/api/agency/email/merge-tags/[id].patch.ts': ['await requireWriteAccess(event)', 'await assertEmailClientAccess(event, user,'],
+      'server/api/agency/email/merge-tags/index.get.ts': ['await requireAuth(event)', 'await assertEmailClientAccess(event, user,'],
+      'server/api/agency/email/merge-tags/index.post.ts': ['await requireWriteAccess(event)', 'await assertEmailClientAccess(event, user,'],
+      'server/api/email/design/assets/publish.post.ts': ['await designLibrarySession(event, true)'],
+      'server/api/email/design/conditions.get.ts': ['await validateSession(token)', 'assertFreshDesignAccess(', 'env.FIGFLOW_EDM_DRAFT_SAVES_ENABLED !== \'true\'', 'env.FIGFLOW_EDM_DESIGNER_ENABLED !== \'true\''],
+      'server/api/email/design/conditions.post.ts': ['await validateSession(token)', 'assertFreshDesignAccess(', 'env.FIGFLOW_EDM_DRAFT_SAVES_ENABLED !== \'true\'', 'env.FIGFLOW_EDM_DESIGNER_ENABLED !== \'true\'', 'assertDesignMutationRequest(event, env.FIGFLOW_EDM_APP_ORIGIN)'],
+      'server/api/email/design/designer.post.ts': ['await validateSession(token)', 'assertFreshDesignAccess(', 'env.FIGFLOW_EDM_DRAFT_SAVES_ENABLED !== \'true\'', 'env.FIGFLOW_EDM_DESIGNER_ENABLED !== \'true\'', 'assertDesignMutationRequest(event, env.FIGFLOW_EDM_APP_ORIGIN)'],
+      'server/api/email/design/drafts/[id]/brand.get.ts': ['await designBrandSession(event, false)'],
+      'server/api/email/design/drafts/[id]/brand.post.ts': ['await designBrandSession(event, true)'],
+      'server/api/email/design/drafts/[id]/locks.post.ts': ['await designBrandSession(event, true)'],
+      'server/api/email/design/history.post.ts': ['await designLibrarySession(event, true)'],
+      'server/api/email/design/modules.post.ts': ['await designLibrarySession(event, true)'],
+      'server/api/email/design/modules/[moduleId]/[revisionId].get.ts': ['await designLibrarySession(event, false)'],
+      'server/api/email/design/templates.post.ts': ['await designLibrarySession(event, true)'],
+      'server/api/email/design/templates/[templateId]/[revisionId].get.ts': ['await designLibrarySession(event, false)']
+    }
+    expect(Object.keys(additions)).toHaveLength(20)
+    expect(Object.keys(additions).filter(file => /\.(post|put|patch|delete)\.ts$/.test(file))).toHaveLength(14)
+    for (const [file, gates] of Object.entries(additions)) {
+      const source = readFileSync(file, 'utf8')
+      for (const gate of gates) expect(source, file).toContain(gate)
+      expect(source, file).not.toMatch(/isApplicationCapabilityEnabled|registerGodModeMutationFamily/)
+    }
+    // Both delegated session owners derive genuine tokens and fresh authority;
+    // publication requires agency ADMIN/MANAGEMENT together with CREATIVE.
+    for (const owner of ['designLibraryHttp', 'designBrandHttp']) {
+      const source = readFileSync(`server/utils/email-marketing/${owner}.ts`, 'utf8')
+      for (const gate of ['await validateSession(token)', 'assertDesignMutationRequest(event, env.FIGFLOW_EDM_APP_ORIGIN)', 'assertFreshDesignAccess(token, user.id, scope,', 'assertFreshDesignPublisher(token, user.id, scope)']) expect(source).toContain(gate)
+      expect(source).not.toMatch(/isApplicationCapabilityEnabled|registerGodModeMutationFamily/)
+    }
+    const access = readFileSync('server/utils/email-marketing/designAccess.ts', 'utf8')
+    expect(access).toContain('if (publisher && (!agency || !groups.includes(\'CREATIVE\'))) return deny()')
+    expect(access).toContain('if (!user || user.id !== actorId)')
+    // Existing legacy module mutations gained fresh publisher checks without
+    // moving or removing their existing inline write and client-scope gates.
+    for (const route of ['index.post.ts', '[id].patch.ts', '[id].delete.ts']) {
+      const source = readFileSync(`server/api/agency/email/modules/${route}`, 'utf8')
+      expect(source).toContain('await requireWriteAccess(event)')
+      expect(source).toContain('await assertFreshLegacyModulePublisher(event, user.id,')
+    }
+    const publisher = readFileSync('server/utils/email-marketing/designModulePublisher.ts', 'utf8')
+    expect(publisher).toContain('await assertFreshDesignPublisher(token, actorId, storedScope)')
+    expect(publisher).toContain('if (!token) throw createError({ statusCode: 401, statusMessage: \'design_session_invalid\' })')
   })
 
   it('pins FigFlow route additions and relocated legacy guards to canonical authority', () => {

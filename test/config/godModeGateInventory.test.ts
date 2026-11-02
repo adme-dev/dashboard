@@ -409,14 +409,26 @@ describe('God mode gate inventory', () => {
     expect(inventory.rows).not.toContain('server/api/agency/banner-studio/custom-templates/[id].delete.ts\tif (existing.isSystem && ![\'admin\', \'owner\'].includes(user.role)) {\tordinary_user_behavior')
     expect(inventory.rows).not.toContain('server/api/agency/banner-studio/custom-templates/[id].delete.ts\tif (existing.createdBy !== user.id && ![\'admin\', \'owner\'].includes(user.role)) {\tordinary_user_behavior')
     // One new presentation flag; server authority and all existing gates are unchanged.
-    expect(inventory.rows).toContain("app/components/email/builder/EdmFlyhubBuilder.client.vue\tconst figflowEnabled = useRuntimeConfig().public.figflowEdmEnabled === true\tapplication_governance_bypass")
+    expect(inventory.rows).toContain('app/components/email/builder/EdmFlyhubBuilder.client.vue\tconst figflowEnabled = useRuntimeConfig().public.figflowEdmEnabled === true\tapplication_governance_bypass')
     // The unchanged signing verifier moved from excluded auth.ts into its build-time port.
-    expect(inventory.rows).toContain("server/utils/sessionToken.ts\tconst JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production'\tprovider_infrastructure_availability")
-    expect(inventory.rows).toHaveLength(1720)
+    expect(inventory.rows).toContain('server/utils/sessionToken.ts\tconst JWT_SECRET = process.env.JWT_SECRET || \'your-secret-key-change-in-production\'\tprovider_infrastructure_availability')
+    // Reviewed against origin/main 7b8818c83: six added inline write gates;
+    // no removed/reclassified rows. This lexical class does not register a bypass.
+    const authoringWriteGates = [
+      'server/api/agency/email/conditions/[id].delete.ts\tconst user = await requireWriteAccess(event)\tapplication_governance_bypass',
+      'server/api/agency/email/conditions/[id].patch.ts\tconst user = await requireWriteAccess(event)\tapplication_governance_bypass',
+      'server/api/agency/email/conditions/index.post.ts\tconst user = await requireWriteAccess(event)\tapplication_governance_bypass',
+      'server/api/agency/email/merge-tags/[id].delete.ts\tconst user = await requireWriteAccess(event)\tapplication_governance_bypass',
+      'server/api/agency/email/merge-tags/[id].patch.ts\tconst user = await requireWriteAccess(event)\tapplication_governance_bypass',
+      'server/api/agency/email/merge-tags/index.post.ts\tconst user = await requireWriteAccess(event)\tapplication_governance_bypass'
+    ]
+    for (const row of authoringWriteGates) expect(inventory.rows).toContain(row)
+    expect(authoringWriteGates).toHaveLength(6)
+    expect(inventory.rows).toHaveLength(1726)
     expect(inventory.counts).toEqual({
       identity_tenant_hard_boundary: 135,
       provider_infrastructure_availability: 223,
-      application_governance_bypass: 1629,
+      application_governance_bypass: 1635,
       ordinary_user_behavior: 301,
       unrelated_configuration: 431
     })
@@ -441,7 +453,7 @@ describe('God mode gate inventory', () => {
     // to shared services. Email dispatch now reads request-bound provider config.
     // The classifier and owner bypass registrations remain unchanged; the reviewed
     // row diff is recorded in the marketing-management verification ledger.
-    expect(inventory.digest).toBe('cb41911da1dc0bf50bbad1ddf534de6f8313448d492bedd7d524f600b548e4cb')
+    expect(inventory.digest).toBe('9f28f7a4004d448a7b9ef6e0f907862d501cb654c94493413beb9bd23767352d')
     expect(inventory.rows).toContain(
       'app/composables/usePageStudioLauncher.ts\tconst config = useRuntimeConfig()\tunrelated_configuration'
     )
