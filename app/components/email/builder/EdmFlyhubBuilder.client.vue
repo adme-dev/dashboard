@@ -48,6 +48,9 @@ const figflowEnabled = useRuntimeConfig().public.figflowEdmEnabled === true
 const showFigflow = ref(false)
 const showDiscardFigflow = ref(false)
 const showDesignDraftCopy = ref(false)
+const designDraftName = ref('')
+const designDraftClient = ref<string | undefined>()
+const designDraftError = ref('')
 const draftCopyUnconfirmed = ref(false)
 const designLocalConflict = ref(false)
 const designServiceUnavailable = ref(false)
@@ -556,6 +559,7 @@ const templateClientOptions = computed(() => [
   ...templateClients.value.map(client => ({ label: client.name, value: client.id }))
 ])
 const hasValidTemplateClient = computed(() => templateClientOptions.value.some(option => option.value === templateClient.value))
+const hasValidDesignDraftClient = computed(() => templateClientOptions.value.some(option => option.value === designDraftClient.value))
 
 async function loadTemplateClients() {
   loadingTemplateClients.value = true
@@ -658,6 +662,7 @@ async function save(): Promise<boolean> {
 // FigFlow edits an independent template draft; campaigns and library originals
 // keep their identities. The server owns scope, revisions and proposal effects.
 async function beginFigflow(createDraft = false) {
+  if (saving.value || designFlow.busy.value || templateLoading.value || templateLoadError.value) return
   if (designFlow.hasPending.value) {
     await reconcileDesignAction()
     return
@@ -665,31 +670,54 @@ async function beginFigflow(createDraft = false) {
   try {
     await designFlow.run(async () => {
       const openingSource = JSON.stringify(store.document.value)
-      if (!hasValidTemplateClient.value || !name.value.trim()) {
-        showSaveModal.value = true
-        throw new Error('Name and client required')
-      }
       if (createDraft) {
-        if (draftCopyUnconfirmed.value) throw new Error('Check the draft library before creating another copy.')
-        const draftName = `${name.value.slice(0, 180)} (design draft)`
+        if (draftCopyUnconfirmed.value) return
+        const draftName = designDraftName.value.trim()
+        const draftClient = designDraftClient.value
+        if (!draftName || draftName.length > 200 || loadingTemplateClients.value || templateClientsError.value || !hasValidDesignDraftClient.value) {
+          designDraftError.value = 'Enter a draft name up to 200 characters and choose an available client or shared default.'
+          return
+        }
+        designDraftError.value = ''
         draftCopyUnconfirmed.value = true
-        const result = await apiFetch<{ template: { id: string } }>('/api/email/templates', {
-          method: 'POST', body: {
-            name: draftName, subject: subject.value || null, preview_text: previewText.value || null,
-            body_source: store.document.value, template_kind: 'draft', folder_name: templateFolderName.value || null,
-            client_id: templateClient.value === '__shared__' ? null : templateClient.value
+        let result: { template: { id: string } }
+        try {
+          result = await apiFetch<{ template: { id: string } }>('/api/email/templates', {
+            method: 'POST', body: {
+              name: draftName, subject: subject.value || null, preview_text: previewText.value || null,
+              body_source: store.document.value, template_kind: 'draft', folder_name: templateFolderName.value || null,
+              client_id: draftClient === '__shared__' ? null : draftClient
+            }
+          })
+        } catch (cause) {
+          const failure = cause as { statusCode?: number, status?: number }
+          const status = failure?.statusCode ?? failure?.status
+          if (status !== undefined && status >= 400 && status < 500) {
+            // A definite rejection did not create a draft; let staff correct it.
+            // Transport/5xx outcomes retain the latch to prevent duplicate copies.
+            draftCopyUnconfirmed.value = false
+            designDraftError.value = 'The draft was rejected. Check the template details and client access, then try again.'
+            return
           }
-        })
+          throw cause
+        }
         draftCopyUnconfirmed.value = false
         templateId.value = result.template.id
         templateKind.value = 'draft'
         name.value = draftName
+        templateClient.value = draftClient
         workspaceSavedSnapshot.value = workspaceSnapshot()
         designFlow.draft.value = null
         showDesignDraftCopy.value = false
         await router.replace({ query: { id: result.template.id,
           ...(route.query.workspace === 'figflow' ? { workspace: 'figflow' } : {}) } })
-      } else if (!await save()) return
+      } else {
+        if (!hasValidTemplateClient.value || !name.value.trim()) {
+          showSaveModal.value = true
+          return
+        }
+        if (!await save()) return
+      }
       if (!templateId.value) return
       if (JSON.stringify(store.document.value) !== openingSource) throw new Error('The composer changed while saving. Save again before opening FigFlow.')
       const result = await designFlow.open(templateId.value, templateClient.value === '__shared__' ? null : templateClient.value!)
@@ -728,9 +756,16 @@ function closeFigflow() {
   else showFigflow.value = false
 }
 function editInFigflow() {
+  if (saving.value || designFlow.busy.value || templateLoading.value || templateLoadError.value) return
   if (designFlow.handoff.value?.state === 'open' || designFlow.handoff.value?.state === 'proposed') {
     showFigflow.value = true
   } else if (!templateId.value || templateKind.value !== 'draft') {
+    showSaveModal.value = false
+    // Collect copy metadata here; opening the Save modal underneath this modal
+    // traps the required client field and can save the wrong template identity.
+    designDraftName.value = name.value.trim() ? `${name.value.trim().slice(0, 185)} (design draft)` : ''
+    designDraftClient.value = templateClient.value
+    designDraftError.value = ''
     showDesignDraftCopy.value = true
   } else void beginFigflow()
 }
@@ -1755,7 +1790,12 @@ onMounted(async () => {
         <UButton label="Save and return" :disabled="workspaceBusy" @click="workspaceLeave.saveAndLeave()" />
       </template>
     </UModal>
-    <UModal v-model:open="showDesignDraftCopy" title="Create a design draft">
+    <UModal
+      v-model:open="showDesignDraftCopy"
+      title="Create a design draft"
+      :dismissible="!designFlow.busy.value"
+      :close="!designFlow.busy.value"
+    >
       <template #body>
         <UAlert
           v-if="draftCopyUnconfirmed"
@@ -1766,17 +1806,45 @@ onMounted(async () => {
         <p class="text-sm text-muted">
           Create an independent draft from the current composer content, then open it in FigFlow. The library template remains available for other emails.
         </p>
+        <div class="@container mt-4 grid grid-cols-1 gap-4">
+          <UFormField label="Draft name" required>
+            <UInput
+              v-model="designDraftName"
+              :maxlength="200"
+              :disabled="designFlow.busy.value || draftCopyUnconfirmed"
+              class="w-full"
+            />
+          </UFormField>
+          <UFormField
+            label="Client"
+            required
+            :error="templateClientsError ? 'Client choices could not load. Reload the builder to try again.' : undefined"
+            help="Choose the client for this independent draft, or use a shared default."
+          >
+            <USelect
+              v-model="designDraftClient"
+              :items="templateClientOptions"
+              value-key="value"
+              placeholder="Choose a client"
+              :loading="loadingTemplateClients"
+              :disabled="loadingTemplateClients || templateClientsError || designFlow.busy.value || draftCopyUnconfirmed"
+              class="w-full"
+            />
+          </UFormField>
+          <UAlert v-if="designDraftError" color="error" :title="designDraftError" />
+        </div>
       </template>
       <template #footer>
         <UButton
           label="Cancel"
           color="neutral"
           variant="outline"
+          :disabled="designFlow.busy.value"
           @click="showDesignDraftCopy = false"
         />
         <UButton
           label="Create draft and open FigFlow"
-          :disabled="draftCopyUnconfirmed"
+          :disabled="draftCopyUnconfirmed || loadingTemplateClients || templateClientsError || !hasValidDesignDraftClient || !designDraftName.trim() || designDraftName.trim().length > 200"
           :loading="designFlow.busy.value"
           @click="beginFigflow(true)"
         />
