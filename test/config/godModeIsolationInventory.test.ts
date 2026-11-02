@@ -117,8 +117,11 @@ const API_INVENTORY = {
   // FigFlow adds five routes and three mutations with delegated fresh authority.
   // Legacy PATCH/DELETE retain requireWriteAccess in canonical handlers, moving
   // two inline guards out of route files. No transaction call or bypass is added.
-  totalRouteFiles: 2315,
-  mutationRouteFiles: 1262,
+  // The released FigFlow roundtrip POST adds one route/mutation after the five
+  // draft endpoints. It retains session/origin and delegated fresh scope checks,
+  // adding no inline guard/transaction count or God mode bypass.
+  totalRouteFiles: 2316,
+  mutationRouteFiles: 1263,
   explicitlyGuardedMutationFiles: 406,
   guardedMutationFilesWithTransactionCall: 55
 } as const
@@ -168,8 +171,8 @@ describe('God mode route isolation inventory', () => {
   it('records the full mechanical API and mutation inventory reviewed before implementation', () => {
     expect(mechanicalInventory()).toEqual(API_INVENTORY)
     expect(API_INVENTORY).toEqual({
-      totalRouteFiles: 2315,
-      mutationRouteFiles: 1262,
+      totalRouteFiles: 2316,
+      mutationRouteFiles: 1263,
       explicitlyGuardedMutationFiles: 406,
       guardedMutationFilesWithTransactionCall: 55
     })
