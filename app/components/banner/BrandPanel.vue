@@ -4,6 +4,7 @@ import { brandFontSelection, type BrandButtonVariant } from '~/utils/banner-bran
 import { bannerFontFamily } from '~/utils/banner-font-family'
 import { apiErrorDescription } from '~/utils/apiError'
 import { matchesMotorStackPaint, motorStackPaintName, motorStackPaintNames } from '~/utils/banner-motorstack-colours'
+import type { BannerMotorStackOffer } from '~/utils/banner-offer'
 
 interface MotorStackImage {
   id: string
@@ -19,19 +20,8 @@ interface MotorStackImages {
   warnings: string[]
 }
 
-interface MotorStackOffer {
-  title: string | null
-  model: string | null
-  variant: string | null
-  price: number | null
-  priceLabel: string | null
-  offer: string | null
-  endDate: string | null
-  disclaimer: string | null
-  hasImage: boolean
-}
 const emit = defineEmits<{ browseAssets: [] }>()
-const { state, selectedLayer, activeFormat, applyBrandKit, updateLayer, addLayer, addMotorStackImageToAllLayouts, addBrandGuideButton } = useBannerStudio()
+const { state, selectedLayer, activeFormat, applyBrandKit, updateLayer, addLayer, addMotorStackImageToAllLayouts, addMotorStackOfferToAllLayouts, addBrandGuideButton } = useBannerStudio()
 const { isLayerLockedByOther } = useBannerRealtime()
 const toast = useToast()
 const clientId = computed(() => state.project?.clientId || undefined)
@@ -42,9 +32,11 @@ const showManagerModal = ref(false)
 const kitItems = computed(() => [{ label: 'Choose a brand kit', value: '__choose__' }, ...brandKits.value.map(kit => ({ label: kit.name, value: kit.id }))])
 const motorStackBrandId = computed(() => kit.value?.sourceUrl?.match(/^https:\/\/oem-variants\.pages\.dev\/api\/mcp#brand=([a-z0-9-]{1,40})$/)?.[1])
 const tabs = [{ label: 'Logos', value: 'logos' }, { label: 'Colours', value: 'colours' }, { label: 'Fonts', value: 'fonts' }]
-const catalog = ref<{ kitId: string, items: MotorStackOffer[] } | null>(null)
+const catalog = ref<{ kitId: string, items: BannerMotorStackOffer[] } | null>(null)
 const catalogLoading = ref(false)
 const catalogError = ref('')
+const addingOffer = ref<number | null>(null)
+const artworkErrors = ref<Record<string, boolean>>({})
 let catalogRequest = 0
 const money = (value: number) => new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', maximumFractionDigits: 0 }).format(value)
 const images = ref<MotorStackImages | null>(null)
@@ -123,15 +115,40 @@ async function loadCatalog() {
   const request = ++catalogRequest
   catalog.value = null
   catalogError.value = ''
+  artworkErrors.value = {}
   if (!motorStackBrandId.value || activeTab.value !== 'offers' || !kitId) return
   catalogLoading.value = true
   try {
-    const result = await $fetch<{ items: MotorStackOffer[] }>('/api/agency/banner-studio/motorstack/creative-catalog', { query: { kitId, kind: 'offers' } })
+    const result = await $fetch<{ items: BannerMotorStackOffer[] }>('/api/agency/banner-studio/motorstack/creative-catalog', { query: { kitId, kind: 'offers' } })
     if (request === catalogRequest) catalog.value = { ...result, kitId }
   } catch (error) {
     if (request === catalogRequest) catalogError.value = apiErrorDescription(error, 'Could not load MotorStack data. Try again.')
   } finally {
     if (request === catalogRequest) catalogLoading.value = false
+  }
+}
+async function addOffer(offer: BannerMotorStackOffer, index: number) {
+  const brandId = motorStackBrandId.value
+  const selectedKit = kit.value
+  if (!brandId || !selectedKit || addingOffer.value !== null) return
+  addingOffer.value = index
+  try {
+    let image: BannerAsset | undefined
+    if (offer.artworkAssetId) {
+      const result = await $fetch<{ asset: BannerAsset }>('/api/agency/banner-studio/motorstack/media', {
+        method: 'POST', body: { brandId, assetId: offer.artworkAssetId }
+      })
+      if (kit.value?.id !== selectedKit.id) return
+      if (!result.asset?.url || !result.asset.mimeType?.startsWith('image/')) throw new Error('The saved offer artwork could not be verified. Retry.')
+      image = result.asset
+    }
+    if (kit.value?.id !== selectedKit.id) return
+    const count = addMotorStackOfferToAllLayouts(offer, selectedKit, image)
+    toast.add({ title: 'Offer added', description: `${count} ${count === 1 ? 'layout' : 'layouts'} · Review the end date and fit of the supplied terms.`, color: 'success' })
+  } catch (error) {
+    toast.add({ title: 'Could not add offer', description: apiErrorDescription(error, 'Retry this offer.'), color: 'error' })
+  } finally {
+    addingOffer.value = null
   }
 }
 watch([() => kit.value?.id, activeTab], loadCatalog, { immediate: true })
@@ -440,7 +457,7 @@ function addLogo(logo: BrandKitLogo, event: MouseEvent) {
       </div>
       <div v-else-if="activeTab === 'offers'" class="space-y-3">
         <p class="text-xs leading-relaxed text-muted">
-          Published national offers from MotorStack. Check the end date and full terms before using offer copy in artwork.
+          Published national offers from MotorStack. Add the hero artwork, editable copy and supplied terms to every canvas size. Review the end date and terms before export.
         </p>
         <div v-if="catalogLoading" role="status" class="flex items-center gap-2 py-5 text-xs text-muted">
           <UIcon name="i-lucide-loader-circle" class="size-4 animate-spin" /> Loading offers…
@@ -460,6 +477,18 @@ function addLogo(logo: BrandKitLogo, event: MouseEvent) {
           <template v-else>
             <UCard v-for="(offer, index) in offers" :key="`${offer.title}-${index}`" :ui="{ body: 'p-3 sm:p-3' }">
               <div class="space-y-2">
+                <div v-if="offer.artworkPreviewUrl && !artworkErrors[offer.artworkAssetId || '']" class="overflow-hidden rounded-md border border-default bg-muted">
+                  <img
+                    :src="offer.artworkPreviewUrl"
+                    :alt="`${offer.title || offer.model || 'Offer'} hero artwork`"
+                    loading="lazy"
+                    class="aspect-video w-full object-contain"
+                    @error="artworkErrors[offer.artworkAssetId || ''] = true"
+                  >
+                </div>
+                <p v-else-if="offer.hasImage" class="text-xs text-warning">
+                  Offer artwork is unavailable; the offer text can still be added.
+                </p>
                 <p class="text-sm font-semibold leading-snug">
                   {{ offer.title || offer.offer || 'Untitled offer' }}
                 </p>
@@ -476,6 +505,17 @@ function addLogo(logo: BrandKitLogo, event: MouseEvent) {
                   Ends {{ offer.endDate }}
                 </UBadge>
                 <UAccordion v-if="offer.disclaimer" :items="[{ label: 'Terms and conditions', content: offer.disclaimer }]" :ui="{ body: 'whitespace-pre-line text-xs leading-relaxed text-muted' }" />
+                <UButton
+                  :label="offer.artworkAssetId ? 'Add offer and artwork to all layouts' : 'Add offer text to all layouts'"
+                  :aria-label="`Add ${offer.title || offer.model || 'offer'} to all layouts`"
+                  icon="i-lucide-plus"
+                  size="xs"
+                  variant="soft"
+                  class="w-full justify-center"
+                  :loading="addingOffer === index"
+                  :disabled="addingOffer !== null"
+                  @click="addOffer(offer, index)"
+                />
               </div>
             </UCard>
           </template>

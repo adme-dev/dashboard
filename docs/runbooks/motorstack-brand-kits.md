@@ -15,7 +15,7 @@ Missing source font files remain explicit warnings. A supplied file that cannot 
 - Fonts: 5 MiB per file, validated WOFF2/WOFF/TTF/OTF containers. Logos: 2 MiB per file, static SVG/raster or validated ICO. Each brand is bounded to 40 MiB and native kit limits (8 font roles, 12 logos, 24 colours).
 - Each brand uses a transaction advisory lock and a second source check. Font reuse requires shared scope plus matching family, declared weight and checksum. Source identity is `https://oem-variants.pages.dev/api/mcp#brand=<id>`; it is API provenance, not a public brand homepage.
 
-Release the narrow current-source Creative Worker first, following [its guarded release procedure](../../workers/creative-motorstack-brand-release/README.md). Then release current main to `agency-dashboard` using `pnpm deploy:check` and `pnpm deploy:production`. Verify the authenticated catalog, imports, persisted font faces, logo variants and QR navigation. Record both source and deployment identifiers.
+Release the narrow current-source Creative Worker first, following the [offer artwork release procedure](../../workers/creative-offer-artwork-release/README.md) when changing offer media. The earlier [brand RPC procedure](../../workers/creative-motorstack-brand-release/README.md) remains historical context and must not replace the newer FigFlow gateway. Then release current main to `agency-dashboard` using `pnpm deploy:check` and `pnpm deploy:production`. Verify the authenticated catalog, offer artwork and editable copy/terms, imports, persisted font faces, logo variants and QR navigation. Record both source and deployment identifiers.
 
 ## Source inventory — 31 October 2026
 

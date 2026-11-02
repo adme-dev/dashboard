@@ -19,14 +19,14 @@ describe('MotorStack editor catalogue boundary', () => {
     vi.clearAllMocks()
     mocks.query.mockReturnValue({ kitId, kind: 'offers' })
     mocks.kit.mockResolvedValue({ id: kitId, clientId: null, sourceUrl: 'https://oem-variants.pages.dev/api/mcp#brand=geely' })
-    mocks.catalog.mockResolvedValue({ schemaVersion: 1, brand: { id: 'geely', name: 'Geely Auto Australia' }, kind: 'offers', updatedAt: null, items: [{ title: 'Offer', model: 'EX5', variant: null, price: null, priceLabel: null, offer: 'Offer', endDate: '2026-10-31', disclaimer: 'Terms apply.', hasImage: true }] })
+    mocks.catalog.mockResolvedValue({ schemaVersion: 1, brand: { id: 'geely', name: 'Geely Auto Australia' }, kind: 'offers', updatedAt: null, items: [{ title: 'Offer', model: 'EX5', variant: null, price: null, priceLabel: null, offer: 'Offer', endDate: '2026-10-31', disclaimer: 'Terms apply.', hasImage: true, artworkAssetId: 'a'.repeat(64) }] })
   })
 
   it('scopes the request through the saved kit and returns validated offer terms', async () => {
     const result = await handler(event)
     expect(mocks.access).toHaveBeenCalledWith(event, null)
     expect(mocks.catalog).toHaveBeenCalledWith({ brandId: 'geely', kind: 'offers' })
-    expect(result.items[0]).toMatchObject({ endDate: '2026-10-31', disclaimer: 'Terms apply.' })
+    expect(result.items[0]).toMatchObject({ endDate: '2026-10-31', disclaimer: 'Terms apply.', artworkPreviewUrl: `/api/agency/banner-studio/motorstack/file?brandId=geely&assetId=${'a'.repeat(64)}` })
   })
 
   it('never calls MotorStack if kit access is denied or provenance is absent', async () => {
@@ -39,6 +39,11 @@ describe('MotorStack editor catalogue boundary', () => {
 
   it('rejects a response for a different OEM', async () => {
     mocks.catalog.mockResolvedValueOnce({ schemaVersion: 1, brand: { id: 'ford', name: 'Ford' }, kind: 'offers', updatedAt: null, items: [] })
+    await expect(handler(event)).rejects.toMatchObject({ statusCode: 502 })
+  })
+
+  it('rejects malformed artwork IDs from the private catalogue', async () => {
+    mocks.catalog.mockResolvedValueOnce({ schemaVersion: 1, brand: { id: 'geely', name: 'Geely Auto Australia' }, kind: 'offers', updatedAt: null, items: [{ title: 'Offer', model: null, variant: null, price: null, priceLabel: null, offer: null, endDate: null, disclaimer: null, hasImage: true, artworkAssetId: 'https://localhost/private.png' }] })
     await expect(handler(event)).rejects.toMatchObject({ statusCode: 502 })
   })
 })
