@@ -1,6 +1,6 @@
 # FigFlow draft dialog correction — 2 November 2026
 
-Status: implemented; focused checks passed; independent review and production
+Status: implemented; focused checks passed; Kimi source review accepted; production
 integration pending. This fixes the composer draft-creation dialog, not broader
 HTML-to-native mapping or module publication.
 
@@ -36,6 +36,9 @@ blocked while creation is pending.
 - The pre-existing API inventory correction accounts for the already released
   roundtrip POST (2,316 routes / 1,263 mutations). Guard and transaction counts stay
   406 / 55. This does not add or relax a runtime endpoint.
+
+Kimi re-read both review corrections and reported no remaining scoped blocker.
+Its source review does not establish hosted acceptance.
 
 ## Release ownership
 
