@@ -126,6 +126,32 @@ describe('campaign test-send preflight', () => {
     expect(mockEmailsSend.mock.calls[0]?.[0]?.html).not.toContain('/email/postcards/car.png')
   })
 
+  it('returns a content validation error when a gated draft has no frozen View online URL', async () => {
+    const handler = (await import('~~/server/api/email/campaigns/[id]/test-send.post')).default
+    mockGetCampaign.mockResolvedValue({
+      id: 'camp-1',
+      status: 'draft',
+      subject: 'Subject',
+      from_name: 'XeroFlow',
+      from_email: 'sales@example.com',
+      reply_to: null,
+      client_id: null,
+      review_required: true,
+      web_version_enabled: true,
+      body_html: [
+        '<a href="{{web_version_url}}">View online</a>',
+        '<a href="{{unsubscribe_url}}">Unsubscribe</a>',
+        '<footer>XeroFlow Agency, 1 Market Street, Melbourne VIC 3000</footer>'
+      ].join('')
+    })
+
+    await expect(handler({} as never)).rejects.toMatchObject({
+      statusCode: 422,
+      statusMessage: 'campaign_final_content_blocked'
+    })
+    expect(mockEmailsSend).not.toHaveBeenCalled()
+  })
+
   it('trims explicit recipients before sending campaign test emails', async () => {
     const handler = (await import('~~/server/api/email/campaigns/[id]/test-send.post')).default
     mockReadBody.mockResolvedValue({ to: '  Buyer@Example.COM  ' })

@@ -210,10 +210,10 @@ export async function sendCampaignChunk(campaign: Campaign, event?: H3Event): Pr
   const recipients = await claimPendingChunk(campaign.id, RESEND_BATCH_LIMIT)
   if (recipients.length === 0) return { sent: 0, failed: 0, rateLimited: false, retryAfterSec: 0 }
 
-  const appUrl = getAppUrl(event)
-  const secret = emailLinkSecret()
   let payload: Awaited<ReturnType<typeof buildTrackedBatchEmail>>[]
   try {
+    const appUrl = getAppUrl(event)
+    const secret = emailLinkSecret()
     const webVersionUrl = await frozenWebVersionUrl(campaign, appUrl, secret)
     const content = webVersionUrl ? { ...campaign, web_version_url: webVersionUrl } : campaign
     payload = await Promise.all(recipients.map(async r =>
@@ -232,8 +232,9 @@ export async function sendCampaignChunk(campaign: Campaign, event?: H3Event): Pr
       )
     ))
   } catch {
-    // No provider request has started. A malformed marker or final recipient
-    // blocker must not strand claims or be misreported as a provider failure.
+    // No provider request has started. Configuration loss, a malformed marker
+    // or a final recipient blocker must not strand claims or be misreported as
+    // a provider failure.
     await releaseClaims(recipients.map(r => r.id))
     throw createError({ statusCode: 422, statusMessage: 'campaign_final_content_blocked' })
   }

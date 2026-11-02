@@ -424,11 +424,20 @@ describe('God mode gate inventory', () => {
     ]
     for (const row of authoringWriteGates) expect(inventory.rows).toContain(row)
     expect(authoringWriteGates).toHaveLength(6)
-    expect(inventory.rows).toHaveLength(1726)
+    // Exact source-row audit from 46e74e04c (1726 rows, digest 9f28f7a4):
+    // M06 adds only these two lexical rows; none is removed or reclassified.
+    // The first is a comment counted by the unchanged mechanical pattern.
+    // The second is the existing binding/env flag owner, not a bypass grant.
+    const m06GateRows = [
+      'server/utils/email-marketing/review.ts\t* (including \'false\'); then the per-request cached binding; then process.env. */\tprovider_infrastructure_availability',
+      'server/utils/email-marketing/review.ts\tconst value = fromRequest ?? getCachedBinding(\'FIGFLOW_EDM_WORKFLOW_ENABLED\') ?? process.env.FIGFLOW_EDM_WORKFLOW_ENABLED\tapplication_governance_bypass'
+    ]
+    expect(inventory.rows.filter(row => row.startsWith('server/utils/email-marketing/review.ts\t'))).toEqual(m06GateRows)
+    expect(inventory.rows).toHaveLength(1728)
     expect(inventory.counts).toEqual({
       identity_tenant_hard_boundary: 135,
-      provider_infrastructure_availability: 223,
-      application_governance_bypass: 1635,
+      provider_infrastructure_availability: 224,
+      application_governance_bypass: 1636,
       ordinary_user_behavior: 301,
       unrelated_configuration: 431
     })
@@ -453,7 +462,7 @@ describe('God mode gate inventory', () => {
     // to shared services. Email dispatch now reads request-bound provider config.
     // The classifier and owner bypass registrations remain unchanged; the reviewed
     // row diff is recorded in the marketing-management verification ledger.
-    expect(inventory.digest).toBe('9f28f7a4004d448a7b9ef6e0f907862d501cb654c94493413beb9bd23767352d')
+    expect(inventory.digest).toBe('9f8c344829d51230c1147d080d246f5e054632a19461cea1988602fc7356487f')
     expect(inventory.rows).toContain(
       'app/composables/usePageStudioLauncher.ts\tconst config = useRuntimeConfig()\tunrelated_configuration'
     )

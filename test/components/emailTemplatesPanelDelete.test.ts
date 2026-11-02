@@ -11,14 +11,25 @@ const rows = [
 ]
 let cleanup: () => void
 beforeEach(() => {
-  fetchMock.mockReset().mockResolvedValue({ items: rows })
+  fetchMock.mockReset().mockImplementation((url: string, options?: { method?: string }) => {
+    if (url === '/api/email/templates' && !options?.method) return Promise.resolve({ items: rows })
+    if (url === '/api/email/template-clients') return Promise.resolve([])
+    if (url === '/api/email/campaigns/config') return Promise.resolve({ review_workflow_enabled: false })
+    throw new Error(`Unexpected request: ${options?.method || 'GET'} ${url}`)
+  })
   toast.mockReset()
   vi.stubGlobal('$fetch', fetchMock)
   vi.stubGlobal('useToast', () => ({ add: toast }))
 })
-afterEach(() => { cleanup?.(); vi.unstubAllGlobals() })
+afterEach(() => {
+  cleanup?.()
+  vi.unstubAllGlobals()
+})
 async function flush() {
-  for (let i = 0; i < 6; i++) { await Promise.resolve(); await nextTick() }
+  for (let i = 0; i < 6; i++) {
+    await Promise.resolve()
+    await nextTick()
+  }
 }
 async function mount() {
   const host = document.createElement('div')
@@ -45,8 +56,10 @@ function confirm(host: HTMLElement) {
 describe('saved template deletion', () => {
   it('requires confirmation and cancel leaves the list unchanged', async () => {
     const host = await mount()
-    openDelete(host); await flush()
-    expect(fetchMock).toHaveBeenCalledTimes(2)
+    openDelete(host)
+    await flush()
+    expect(fetchMock.mock.calls.filter(([, options]) => options?.method === 'DELETE')).toHaveLength(0)
+    expect(fetchMock).toHaveBeenCalledWith('/api/email/campaigns/config')
     expect(host.querySelector('.modal')?.textContent).toContain('Delete me')
     Array.from(host.querySelectorAll<HTMLButtonElement>('.modal button')).find(b => b.textContent === 'Cancel')!.click()
     await flush()
@@ -55,11 +68,14 @@ describe('saved template deletion', () => {
   })
   it('removes only the confirmed card and empty group without a list refetch', async () => {
     const host = await mount()
-    openDelete(host); await flush()
+    openDelete(host)
+    await flush()
     fetchMock.mockResolvedValueOnce({ ok: true })
-    confirm(host); await flush()
+    confirm(host)
+    await flush()
     expect(fetchMock).toHaveBeenLastCalledWith('/api/email/templates/one', { method: 'DELETE' })
-    expect(fetchMock).toHaveBeenCalledTimes(3)
+    expect(fetchMock.mock.calls.filter(([, options]) => options?.method === 'DELETE')).toHaveLength(1)
+    expect(fetchMock.mock.calls.filter(([url]) => url === '/api/email/templates')).toHaveLength(1)
     expect(host.querySelectorAll('.saved-template-card')).toHaveLength(1)
     expect(host.textContent).toContain('Keep me')
     expect(host.textContent).not.toContain('Only folder')
@@ -68,17 +84,25 @@ describe('saved template deletion', () => {
   })
   it('keeps failed deletions available for retry and prevents duplicate requests', async () => {
     const host = await mount()
-    openDelete(host); await flush()
+    openDelete(host)
+    await flush()
     let reject!: (error: Error) => void
-    fetchMock.mockReturnValueOnce(new Promise((_resolve, fail) => { reject = fail }))
-    confirm(host); confirm(host); await flush()
-    expect(fetchMock).toHaveBeenCalledTimes(3)
-    reject(new Error('Forbidden')); await flush()
+    fetchMock.mockReturnValueOnce(new Promise((_resolve, fail) => {
+      reject = fail
+    }))
+    confirm(host)
+    confirm(host)
+    await flush()
+    expect(fetchMock.mock.calls.filter(([, options]) => options?.method === 'DELETE')).toHaveLength(1)
+    expect(fetchMock.mock.calls.filter(([url]) => url === '/api/email/templates')).toHaveLength(1)
+    reject(new Error('Forbidden'))
+    await flush()
     expect(host.querySelectorAll('.saved-template-card')).toHaveLength(2)
     expect(host.querySelector('.modal')).not.toBeNull()
     expect(toast).toHaveBeenCalledWith(expect.objectContaining({ title: 'Delete failed' }))
     fetchMock.mockResolvedValueOnce({ ok: true })
-    confirm(host); await flush()
+    confirm(host)
+    await flush()
     expect(host.querySelectorAll('.saved-template-card')).toHaveLength(1)
   })
 })

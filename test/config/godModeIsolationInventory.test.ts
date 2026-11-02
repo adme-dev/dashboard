@@ -123,8 +123,11 @@ const API_INVENTORY = {
   // 2026-11-02 authoring review adds 20 routes: 14 mutations, six inline
   // write gates. Delegated session/origin/publisher gates remain independent;
   // no mutation-family registration or inline transaction() is added.
-  totalRouteFiles: 2336,
-  mutationRouteFiles: 1277,
+  // M06 (7bcc64db3 + 6c55231e6) adds three review API routes, one POST.
+  // All delegate genuine session and fresh scope/reviewer authority. The POST
+  // also checks origin; no inline role/transaction count or bypass is added.
+  totalRouteFiles: 2339,
+  mutationRouteFiles: 1278,
   explicitlyGuardedMutationFiles: 412,
   guardedMutationFilesWithTransactionCall: 55
 } as const
@@ -174,11 +177,38 @@ describe('God mode route isolation inventory', () => {
   it('records the full mechanical API and mutation inventory reviewed before implementation', () => {
     expect(mechanicalInventory()).toEqual(API_INVENTORY)
     expect(API_INVENTORY).toEqual({
-      totalRouteFiles: 2336,
-      mutationRouteFiles: 1277,
+      totalRouteFiles: 2339,
+      mutationRouteFiles: 1278,
       explicitlyGuardedMutationFiles: 412,
       guardedMutationFilesWithTransactionCall: 55
     })
+  })
+
+  it('pins the three M06 review routes to independent session, scope and mutation gates', () => {
+    const routes = [
+      'server/api/email/review/[kind]/[id].get.ts',
+      'server/api/email/review/[kind]/[id]/commands.post.ts',
+      'server/api/email/review/operations/[operationId].get.ts'
+    ]
+    expect(routes.filter(file => /\.post\.ts$/.test(file))).toHaveLength(1)
+    for (const file of routes) {
+      const source = readFileSync(file, 'utf8')
+      expect(source).toContain('const session = await requireReviewSession(event)')
+      expect(source).toContain('reviewWorkflowEnabled(event)')
+      expect(source).toContain('reviewAuthorizer(session)')
+      expect(source).not.toMatch(/registerGodModeMutationFamily|canBypassApplicationControl/)
+    }
+    const command = readFileSync(routes[1]!, 'utf8')
+    expect(command).toContain('assertDesignMutationRequest(event, reviewEnv(event).FIGFLOW_EDM_APP_ORIGIN)')
+    expect(command).toContain('runReviewCommand(')
+    const boundary = readFileSync('server/utils/email-marketing/reviewHttp.ts', 'utf8')
+    expect(boundary).toContain('await validateSession(token)')
+    expect(boundary).toContain('if (authority === \'review\') return assertFreshDesignPublisher(session.token, session.userId, clientId)')
+    expect(boundary).toContain('assertFreshDesignAccess(')
+    // The signed public view is a server/routes endpoint, outside API counts.
+    const publicView = readFileSync('server/routes/email/view.get.ts', 'utf8')
+    expect(publicView).toContain('verifyWebVersionRequest(')
+    expect(publicView).toContain('webVersionAvailable(')
   })
 
   it('pins all twenty authoring additions to scoped authentication without a God mode bypass', () => {

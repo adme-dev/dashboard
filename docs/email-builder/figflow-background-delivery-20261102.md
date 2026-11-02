@@ -605,3 +605,24 @@ Only disposable unique-schema PG execution is delegated. Parent retains reviewed
 configured migration application and integration. Exact-template creation,
 raw-write interception, native campaign admission/UI and actual browser round
 trip remain subsequent acceptance steps, not implied by the foundation.
+
+Parent committed08a/native context/image source and reviewed pins as
+e615f5baaf01bd5c9cf6dc26a19145029eed2b02, with named29-file staged scope and clean
+diff checks, preserving dirty M06/foundation work. This commit is local/unpushed.
+M06 authoring task completed196 tests/21 files,0owned TS diagnostics,2 SFCs and
+clean lint; its configuration-loss claim cleanup reproduced two failures first.
+Independent Opus ctx_31508f574ffc reviews the frozen13 implementation/test files
+before coherent push. Actual08a full-builder acceptance fixture preparation is
+assigned ctx_edadda5ab08a; it must await matching package/private-runtime inputs
+and cannot reuse old WASM as proof. Foundation remains ctx_1a68325c2f55. No
+authoring flags, artifact URLs or production features were activated.
+
+M06 authoring independent review ctx_31508f574ffc matched all13 hashes and found
+no P0/P1. It confirmed one P2: enabled gated draft test-send lacks a frozen web
+URL and batch construction threw outside the existing validation catch. Parent
+added a real-route mocked regression, observed1 failure/5 passes with the actual
+WEB_VERSION_UNAVAILABLE error, then moved construction/signing inside the
+existing final-content try/catch. It now returns422 campaign_final_content_blocked
+before dispatch. Combined197/21 pass with no skips, parent-file lint and diff
+checks pass; no real send or new draft URL. Review report remains separately
+bounded from parent red/green follow-up, full CI and hosted acceptance.

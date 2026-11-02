@@ -4,6 +4,7 @@
      layers/edm/.../BlockSettingsPanel.vue, re-skinned shadcn→Nuxt UI; the CMS media
      library + automotive deps are stripped (image is a plain URL input). -->
 <script setup lang="ts">
+import EdmLinkTargetMenu from './EdmLinkTargetMenu.vue'
 import type { ContentCondition } from '~~/shared/emailRendering/conditions'
 import { dividerLineThickness } from '~~/app/utils/edmDivider'
 import { getEdmSectionSettings } from '~~/app/utils/edmSectionSettings'
@@ -406,11 +407,10 @@ function updateColumnWidth(index: number, value: string | number) {
         />
       </UFormField>
 
-      <UFormField label="Url">
-        <UInput
+      <UFormField label="URL">
+        <EdmLinkTargetMenu
+          :key="`${block.id}:url`"
           :model-value="(block.data?.props?.url as string) || ''"
-          placeholder="https://"
-          class="w-full"
           @update:model-value="updateProp('url', $event)"
         />
       </UFormField>
@@ -571,10 +571,9 @@ function updateColumnWidth(index: number, value: string | number) {
       </UFormField>
 
       <UFormField label="Link URL (optional)">
-        <UInput
+        <EdmLinkTargetMenu
+          :key="`${block.id}:linkHref`"
           :model-value="(block.data?.props?.linkHref as string) || ''"
-          placeholder="https://"
-          class="w-full"
           @update:model-value="updateProp('linkHref', $event)"
         />
       </UFormField>

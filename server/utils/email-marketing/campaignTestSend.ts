@@ -46,15 +46,16 @@ export async function sendCampaignTestEmail(event: H3Event, input: CampaignTestS
     })
   }
 
-  const email = buildBatchEmail(
-    preparedCampaign,
-    { email: input.to, name: input.name ?? null, subscriber_id: 'test' },
-    campaign.id,
-    appUrl,
-    await signEmailToken(emailLinkSecret(), 'unsub', campaign.id, 'test')
-  )
+  let email: ReturnType<typeof buildBatchEmail>
   let plaintext: string
   try {
+    email = buildBatchEmail(
+      preparedCampaign,
+      { email: input.to, name: input.name ?? null, subscriber_id: 'test' },
+      campaign.id,
+      appUrl,
+      await signEmailToken(emailLinkSecret(), 'unsub', campaign.id, 'test')
+    )
     plaintext = deliveryPlainText(assertFinalCampaignEmail(email))
   } catch {
     throw createError({ statusCode: 422, statusMessage: 'campaign_final_content_blocked' })

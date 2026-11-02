@@ -1,3 +1,4 @@
+import { resolveEmailMergeTags } from '../../../shared/emailRendering/mergeTags'
 import { deliveryHasUnsubscribe } from '../../../shared/emailRendering/deliveryContent'
 
 export type SendabilitySeverity = 'error' | 'warning'
@@ -124,4 +125,18 @@ export function htmlToPlainText(html: string): string {
     .replace(/[ \t]+\n/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim()
+}
+
+/** Probe bounded token slices with the delivery resolver's own key/fallback
+ * grammar. The exact reserved key consumes distinct sentinel values; unrelated
+ * keys and fallback text return identical output. No recipient merge runs here. */
+export function hasWebVersionMergeTag(value: string | null | undefined): boolean {
+  if (!value || !/web_version_url/i.test(value)) return false
+  const options = { missing: 'preserve', fallbackEncoding: 'html' } as const
+  for (const [token] of value.matchAll(/\{\{[^{}]{1,2304}\}\}/g)) {
+    if (!/web_version_url/i.test(token)) continue
+    if (resolveEmailMergeTags(token, { web_version_url: 'web-version-present-a' }, options)
+      !== resolveEmailMergeTags(token, { web_version_url: 'web-version-present-b' }, options)) return true
+  }
+  return false
 }

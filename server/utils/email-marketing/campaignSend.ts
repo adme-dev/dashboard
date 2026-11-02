@@ -1,11 +1,12 @@
 // server/utils/email-marketing/campaignSend.ts
-// Pure helpers for the campaign sending engine (Phase 2b). No I/O — the chunked
-// sender (2b-2) and the campaign endpoints compose these. Kept side-effect-free
-// so the send-gate + pacing logic is unit-testable without a DB or Resend.
+// Payload helpers for the campaign sending engine (Phase 2b). No DB or provider
+// I/O. Preflight checks signing readiness through the existing email-link owner;
+// payload construction remains pure and never signs a hosted URL.
 
 import { resolveConditionalHtml } from '../../../shared/emailRendering/conditions'
 import { deliveryHasUnsubscribe, deliveryPlainText, inspectDeliveryContent, isUsableUnsubscribeHref } from '../../../shared/emailRendering/deliveryContent'
-import { checkEmailSendability } from './sendability'
+import { checkEmailSendability, hasWebVersionMergeTag } from './sendability'
+import { emailLinkSecret } from './links'
 import { resolveEmailMergeTags } from '../../../shared/emailRendering/mergeTags'
 import type { BridgeCommunicationInput } from '~~/server/utils/crm/commsDb'
 import { diagnoseEmailContent, type EmailDiagnosticCode, type EmailDiagnosticReference, type EmailDiagnosticImageAsset } from '../../../shared/emailRendering/contentDiagnostics'
@@ -68,6 +69,7 @@ export type CampaignPreflightCode
   = | 'unsubscribe'
     | 'sender'
     | 'auth_readiness'
+    | 'web_version'
     | 'media_urls'
     | 'html_size'
     | 'footer_identity'
@@ -119,6 +121,7 @@ const PREFLIGHT_LABELS = {
   unsubscribe: 'Unsubscribe',
   sender: 'Sender',
   auth_readiness: 'Authentication readiness',
+  web_version: 'View online',
   media_urls: 'Media URLs',
   html_size: 'HTML size',
   footer_identity: 'Footer identity',
@@ -173,6 +176,8 @@ export function buildCampaignPreflight(input: {
     from_email?: string | null
     body_html?: string | null
     preview_text?: string | null
+    review_required?: boolean | null
+    web_version_enabled?: boolean | null
   }
   toSend: number
   sendingConfigured: boolean
@@ -215,6 +220,18 @@ export function buildCampaignPreflight(input: {
       : 'Sending transport is not configured or the From domain is not allowed.',
     senderDomainReady
   ))
+
+  if ([html, input.campaign.subject, input.campaign.preview_text].some(hasWebVersionMergeTag)) {
+    let signingConfigured = false
+    try {
+      signingConfigured = !!emailLinkSecret()
+    } catch { /* Existing signing owner fails closed. */ }
+    const available = input.campaign.review_required === true && input.campaign.web_version_enabled === true
+      && input.sendingConfigured && signingConfigured
+    checks.push(preflightCheck('web_version', available ? 'pass' : 'blocked', available
+      ? 'View online will use the server-issued URL for this reviewed campaign after its content is frozen.'
+      : 'View online requires a review-gated campaign with web version enabled and email/link signing configured. Complete independent review before sending, or replace the View online token with a normal URL.'))
+  }
 
   const hasUnsafeMedia = RELATIVE_MEDIA_RE.test(html) || NON_HTTPS_MEDIA_RE.test(html)
   checks.push(preflightCheck(
@@ -282,6 +299,7 @@ export interface CampaignContent {
   from_email: string | null
   reply_to: string | null
   body_html: string | null
+  preview_text?: string | null
   /** Signed hosted web-version URL for opted-in reviewed campaigns (M06). Same
    * for every recipient: it carries no subscriber identity. */
   web_version_url?: string | null
@@ -340,6 +358,19 @@ export function buildBatchEmail(
 ): BatchEmail {
   const unsubUrl = unsubscribeUrl(appUrl, campaignId, recipient.subscriber_id, unsubToken)
   const vars = recipientVars(recipient, unsubUrl, campaign.web_version_url)
+  const html = resolveConditionalHtml(campaign.body_html || '', vars)
+  // A false frozen branch is not delivered. Check the remaining content before
+  // missing:empty (or an authored fallback) can conceal an unavailable link.
+  if ([html, campaign.subject, campaign.preview_text].some(hasWebVersionMergeTag)) {
+    let available = false
+    try {
+      const url = new URL(campaign.web_version_url || '')
+      available = ['https:', 'http:'].includes(url.protocol) && !url.username && !url.password
+        && url.hostname !== 'example.invalid' && url.pathname === '/email/view'
+        && ['c', 'v', 't'].every(key => !!url.searchParams.get(key))
+    } catch { /* No server-issued hosted URL. */ }
+    if (!available) throw new Error('WEB_VERSION_UNAVAILABLE: Enable web version on a reviewed campaign and configure email/link signing, or replace the View online token.')
+  }
   const from = campaign.from_name
     ? `${campaign.from_name} <${campaign.from_email}>`
     : (campaign.from_email || '')
@@ -347,7 +378,7 @@ export function buildBatchEmail(
     from,
     to: [recipient.email],
     subject: resolveEmailMergeTags(campaign.subject || '', vars, { context: 'text', missing: 'empty' }),
-    html: substituteMergeTags(resolveConditionalHtml(campaign.body_html || '', vars), vars),
+    html: substituteMergeTags(html, vars),
     headers: {
       'List-Unsubscribe': `<${unsubUrl}>`,
       'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click'
