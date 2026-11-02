@@ -3,11 +3,13 @@ import { handleEmailRender } from '../../workers/email-rendering/src/handleRende
 import { documentFixtures, customerFixture } from '../fixtures/emailRendering'
 import golden from '../fixtures/emailRenderingGolden.json'
 
-describe('private renderer output parity with the captured pre-extraction artifact', () => {
-  it.each(documentFixtures)('preserves $name HTML exactly across independent requests', (fixture) => {
+describe('private renderer parity with captured HTML and deliberate merge-value escaping', () => {
+  it.each(documentFixtures)('preserves $name HTML apart from the reviewed encoding correction', (fixture) => {
     const request = { version: 1, expectedEnvironment: 'staging', operation: 'document', document: fixture.document, options: fixture.options }
+    const captured = golden.documents[fixture.name as keyof typeof golden.documents]
+    const expected = fixture.name === 'html-and-unknown' ? captured.replace('Ari & Team', 'Ari &amp; Team') : captured
     for (let i = 0; i < 2; i++) {
-      expect(handleEmailRender(request, 'staging')).toMatchObject({ ok: true, value: { html: golden.documents[fixture.name as keyof typeof golden.documents] } })
+      expect(handleEmailRender(request, 'staging')).toMatchObject({ ok: true, value: { html: expected } })
     }
   })
   it('preserves the restricted customer preview including inline media and CSP', () => {

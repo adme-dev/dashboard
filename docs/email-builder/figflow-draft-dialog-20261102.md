@@ -1,7 +1,7 @@
 # FigFlow draft dialog correction — 2 November 2026
 
-Status: implemented; focused checks passed; Kimi source review accepted; production
-integration pending. This fixes the composer draft-creation dialog, not broader
+Status: live; focused checks passed; Kimi source review accepted; hosted dialog
+acceptance confirmed. This fixes the composer draft-creation dialog, not broader
 HTML-to-native mapping or module publication.
 
 ## Trigger and correction
@@ -48,3 +48,12 @@ Page Studio/Management operations. Sequence reviewed changes into one current-ma
 Dashboard release; no competing Page Studio CI/deploy/browser/provider operations.
 Record exact source, deployment identity and hosted dialog acceptance before
 claiming this correction is live. No customer email sends are required.
+
+## Production closeout
+
+PR819 source `af8c7e4deac8cf070f093ccb3dfeffc93b86b0c6` deployed as Pages
+`5f983868-e194-41b3-8856-6699d0953ca4`. Hosted verification of the original
+Geely copy showed one Create a design draft dialog with reachable name/client
+fields; selecting the shared destination enabled creation. Cancel closed the
+single dialog without creating a copy. The separate HTML import correction is
+recorded in `html-import-repair-20261102.md`; native template fidelity remains open.

@@ -18,7 +18,7 @@ import type { createRenderBudget } from '../../../../shared/emailRendering/bound
 import { BLOCKS_LOADED } from './blocks'
 import { renderBlock } from './block-registry'
 import { resolveFontFamily } from './blocks/types'
-import { escapeFontFamilyForHtml } from './blocks/helpers'
+import { escapeHtml, escapeFontFamilyForHtml } from './blocks/helpers'
 import {
   edmBlockHasResponsiveRules,
   edmResponsiveClassForBlock,
@@ -204,7 +204,7 @@ export function renderFlyhubDocumentToHtml(
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
-  <title>${options.subjectLine || 'Email Preview'}</title>
+  <title>${escapeHtml(options.subjectLine || 'Email Preview', options.renderBudget)}</title>
   <!--[if mso]>
   <noscript>
     <xml>
@@ -229,7 +229,7 @@ ${responsiveCss.desktopCss.length ? boundedText(options.renderBudget)`${boundedJ
   </style>
 </head>
 <body style="margin: 0; padding: 0; background-color: ${backdropColor}; font-family: ${htmlFontFamily}; color: ${textColor};">
-  ${options.previewText ? boundedText(options.renderBudget)`<div style="display: none; font-size: 1px; color: ${backdropColor}; line-height: 1px; max-height: 0; max-width: 0; opacity: 0; overflow: hidden;">${options.previewText}</div>` : ''}
+  ${options.previewText ? boundedText(options.renderBudget)`<div style="display: none; font-size: 1px; color: ${backdropColor}; line-height: 1px; max-height: 0; max-width: 0; opacity: 0; overflow: hidden;">${escapeHtml(options.previewText, options.renderBudget)}</div>` : ''}
 
   <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color: ${backdropColor};">
     <tr>

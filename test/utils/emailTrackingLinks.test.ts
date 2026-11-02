@@ -1,3 +1,4 @@
+import { parseFragment } from 'parse5'
 import { describe, expect, it } from 'vitest'
 import {
   appendEmailUtm,
@@ -66,5 +67,16 @@ describe('email tracking links', () => {
     expect(rewritten).toContain('href="mailto:sales@example.com"')
     expect(rewritten).toContain('href="tel:+61000000000"')
     expect(rewritten).toContain('href="#terms"')
+  })
+  it('signs the decoded logical URL once and serializes the tracking href as HTML', async () => {
+    const expected = 'https://dealer.example.com/offers?name=A&B&literal=&amp;'
+    const html = '<a href="https://dealer.example.com/offers?name=A&amp;B&amp;literal=&amp;amp;">Offer</a>'
+    const rewritten = await rewriteHtmlLinksForTracking(html, { ...context, secret: 'secret' })
+    const element = parseFragment(rewritten).childNodes[0]!
+    const href = 'attrs' in element ? element.attrs.find(attribute => attribute.name === 'href')!.value : ''
+    const link = new URL(href)
+    expect(rewritten).toContain('&amp;')
+    expect(link.searchParams.get('u')).toBe(expected)
+    expect(await verifyEmailClickToken({ campaignId: context.campaignId, subscriberId: context.subscriberId, destinationUrl: expected, token: link.searchParams.get('t'), secret: 'secret' })).toBe(true)
   })
 })

@@ -1580,7 +1580,7 @@ const features: Record<string, Feature> = {
     details: [
       {
         title: 'Build and Target',
-        content: 'Create a campaign, design its body in the drag-and-drop email builder, and point it at one or more subscriber lists. XeroFlow materialises the recipient set for you — deduplicating people who appear on multiple lists, and automatically excluding anyone who has unsubscribed, hard-bounced, or been suppressed. Merge tags like first name and email personalise each message, so a single campaign reaches everyone with their own details filled in.'
+        content: 'Create a campaign, design its body in the drag-and-drop email builder, and point it at one or more subscriber lists. XeroFlow materialises the recipient set for you — deduplicating people who appear on multiple lists, and automatically excluding anyone who has unsubscribed, hard-bounced, or been suppressed. Merge tags like first name and email personalise each message, with fallback copy when recipient details are missing. Preview and sending share the same tag and fallback rules; recipient values stay as text within the email design.'
       },
       {
         title: 'Reliable, Paced Sending',
@@ -1616,7 +1616,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Client Libraries and Import',
-        content: 'Organise authorised client templates and drafts into categories; copy shared defaults independently. Recent, draft and category views, scoped search and the email image library support daily work. Import HTML or XeroFlow JSON through a sanitised preview. HTML retains tables, basic inline styles and public HTTPS images; active content and style sheets are removed. OEM source records retain make, date, file hash and review notes; originals open as copies. JSON backups preserve design, subject, preview text, category and draft status. Make and provider filters retain client scope. Failed loads block editing; retries reconcile the same save. Import does not imply campaign approval.'
+        content: 'Organise authorised client templates and drafts into categories; copy shared defaults independently. Recent, draft and category views, scoped search and the email image library support daily work. Import HTML or XeroFlow JSON through a sanitised preview. Complete HTML emails retain responsive layouts, background images and desktop/mobile alternatives. Edit text, links and images within the imported design; it remains one complete email. Active content is removed and public HTTPS assets are retained. OEM source records retain make, date, file hash and review notes; originals open as copies. JSON backups preserve design, subject, preview text, category and draft status. Make and provider filters retain client scope. Failed loads block editing; retries reconcile the same save. Import does not imply campaign approval.'
       },
       {
         title: 'Editing, Preview and FigFlow',

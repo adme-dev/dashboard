@@ -1,3 +1,4 @@
+import { parseFragment } from 'parse5'
 import { signEmailToken, verifyEmailToken } from './links'
 
 export interface EmailClickLinkInput {
@@ -83,7 +84,11 @@ export async function rewriteHtmlLinksForTracking(
 ): Promise<string> {
   const replacements: Array<{ start: number, end: number, value: string }> = []
   for (const match of html.matchAll(HREF_RE)) {
-    const href = match[2] ?? ''
+    // Read the logical URL exactly as an HTML client does. Merge values and
+    // compiled native buttons encode ampersands; signing '&amp;' as URL data
+    // would change destination query keys and invalidate recipient links.
+    const node = parseFragment(`<a ${match[0]}></a>`).childNodes[0]
+    const href = node && 'attrs' in node ? node.attrs.find(attribute => attribute.name === 'href')?.value || '' : ''
     if (!isTrackableEmailHref(href) || match.index == null) continue
     const quote = match[1] ?? '"'
     const clickUrl = await buildEmailClickUrl({
@@ -93,7 +98,7 @@ export async function rewriteHtmlLinksForTracking(
     replacements.push({
       start: match.index,
       end: match.index + match[0].length,
-      value: `href=${quote}${clickUrl}${quote}`
+      value: `href=${quote}${clickUrl.replaceAll('&', '&amp;')}${quote}`
     })
   }
 
