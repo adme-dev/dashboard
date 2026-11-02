@@ -7043,6 +7043,7 @@ var BuilderReleaseSealReferenceSchema = object({
 
 // packages/protocol/src/runtime-capabilities.ts
 var RUNTIME_CAPABILITIES = [
+  "form-protection",
   "forms",
   "motion",
   "navigation",
@@ -7773,6 +7774,28 @@ var BuilderInstanceReferenceSchema = object({
   version: literal(1),
 }).strict();
 
+// packages/protocol/src/page-presentation.ts
+var color = string2().regex(/^#[0-9a-fA-F]{6}$/);
+var PageFontSchema = _enum(["system-sans", "system-serif", "system-mono"]);
+var PagePresentationSchema = object({
+  "color.accent": color.optional(),
+  "color.background": color.optional(),
+  "color.brand": color.optional(),
+  "color.brandContrast": color.optional(),
+  "color.footerBackground": color.optional(),
+  "color.footerText": color.optional(),
+  "color.surface": color.optional(),
+  "color.text": color.optional(),
+  "color.textMuted": color.optional(),
+  "font.body": PageFontSchema.optional(),
+  "font.display": PageFontSchema.optional(),
+})
+  .strict()
+  .refine(
+    (value) => Object.values(value).some((item) => item !== void 0),
+    "Page presentation must not be empty"
+  );
+
 // packages/protocol/src/page.ts
 var DUPLICATE_SLASHES_RE = /\/{2,}/g;
 var TRAILING_SLASH_RE = /\/$/;
@@ -8020,6 +8043,7 @@ var PageManifestV1Schema = object({
 var PageManifestV2Schema = object({
   ...PageManifestBaseShape,
   parentPageId: StableIdSchema.nullable().default(null),
+  presentation: PagePresentationSchema.optional(),
   schemaVersion: literal(2),
   shell: object({
     footer: _enum(["inherit", "hidden"]),
@@ -9909,11 +9933,25 @@ var AnalyticsSettingsSchema = object({
       events.add(event.id);
     });
   });
+var TURNSTILE_SITE_KEY_PATTERN = /^[0-3]x[A-Za-z0-9_-]{20,64}$/;
+var FORM_PROTECTION_SECRET_BINDING_PATTERN =
+  /^PUBLIC_FORM_TURNSTILE_SECRET(?:_[A-Z0-9]{1,32})?$/;
+var FormProtectionSettingsSchema = object({
+  enabled: boolean2().default(false),
+  provider: literal("turnstile"),
+  secretBinding: string2().regex(FORM_PROTECTION_SECRET_BINDING_PATTERN),
+  siteKey: string2().regex(TURNSTILE_SITE_KEY_PATTERN),
+}).strict();
+var PublicFormProtectionSchema = FormProtectionSettingsSchema.omit({
+  enabled: true,
+});
 var SiteIntegrationsSchema = object({
   analytics: AnalyticsSettingsSchema.optional(),
+  formProtection: FormProtectionSettingsSchema.optional(),
 }).strict();
 var PublicSiteRuntimeSchema = object({
   analytics: AnalyticsSettingsSchema.optional(),
+  formProtection: PublicFormProtectionSchema.optional(),
   forms: array(
     object({
       form: PageFormSchema,
@@ -10245,6 +10283,7 @@ var FooterManifestSchema = object({
   })
     .strict()
     .optional(),
+  contentPolicy: literal("explicit").optional(),
   copyright: string2().trim().max(240).optional(),
   enabled: boolean2(),
   layout: _enum([
@@ -11168,6 +11207,17 @@ function validateSiteManifest(input) {
         severity: "error",
       });
     }
+  }
+  if (
+    parsed.data.schemaVersion !== 2 &&
+    parsed.data.integrations?.formProtection?.enabled
+  ) {
+    issues.push({
+      code: "form_protection_unsupported",
+      message: "Form protection requires a version 2 site",
+      path: "/integrations/formProtection/enabled",
+      severity: "error",
+    });
   }
   const presentation = parsed.data.theme.tokens[SITE_PRESENTATION_TOKEN];
   if (
