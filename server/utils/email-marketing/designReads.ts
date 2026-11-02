@@ -191,6 +191,7 @@ export async function getDesignDraft(
 }
 
 export type DesignDraftRead = Omit<TemplateDesignDraftIdentity, 'templateId'> & {
+  templateId?: never
   owner: DesignDraftOwner
   baseTemplateRevisionId: string | null
   metadata: DesignDraftMetadata
@@ -211,3 +212,7 @@ export async function getTemplateDesignDraft(
   const { owner, baseTemplateRevisionId: _pin, metadata: _metadata, ...draft } = result
   return { ...draft, templateId: owner.id }
 }
+
+/** Legacy template responses retain their shape; new campaign responses name
+ * the persisted owner rather than fabricating a template ID. */
+export type HandoffDraftRead = TemplateDesignDraftRead | DesignDraftRead

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { applyModuleInstance, extractDesignModule, moduleLocalOverrides, parseDesignModuleRequest, type ModuleInstanceRequest } from '../../shared/emailRendering/designModules'
+import { applyModuleInstance, extractDesignModule, insertDesignImage, replaceDesignImage, moduleLocalOverrides, parseDesignModuleRequest, type ModuleInstanceRequest } from '../../shared/emailRendering/designModules'
 import { validateEmailDesign } from '../../shared/emailRendering/designContract'
 import { structuredDesign } from '../fixtures/email-design/structured'
 
@@ -15,6 +15,20 @@ const insertion = (operationId = op): ModuleInstanceRequest => ({ ...identity, o
 const update = (overrides: 'preserve' | 'discard' = 'preserve'): ModuleInstanceRequest => ({ ...identity, command: 'update-module-instance', instanceId: op, revisionId: rev2, overrides })
 
 describe('immutable reusable canonical sections', () => {
+  it('grants a newly registered image its explicit typed replacement field without changing old policies', () => {
+    const source = validateEmailDesign(structuredDesign())
+    const original = structuredClone(source)
+    const asset = { id: moduleId, mimeType: 'image/png' as const, sha256: 'a'.repeat(64), bytes: 24, width: 1, height: 1 }
+    const inserted = insertDesignImage(source, asset, 'https://example.invalid/one.png', op, { parentId: 'root', index: 0 })
+    const blockId = `img_${op}`
+    expect(source).toEqual(original)
+    expect(inserted.policy.editableFields).toEqual([...original.policy.editableFields, `${blockId}.data.props.alt`, `${blockId}.data.props.url`])
+    expect(inserted.lineage.find(item => item.blockId === blockId)).toEqual({ blockId, nodeId: `imgn_${op}`, fields: { alt: `imgf_${op}`, url: `imgu_${op}` } })
+    const replaced = replaceDesignImage(inserted, { ...asset, id: rev2 }, 'https://example.invalid/two.png', blockId)
+    expect(replaced.policy).toEqual(inserted.policy)
+    expect(replaced.lineage).toEqual(inserted.lineage)
+    expect(replaced.blocks[blockId].data.props?.url).toBe('https://example.invalid/two.png')
+  })
   it('extracts a hero without subject/footer, preserving only the selected persisted policy and lineage', () => {
     const source = validateEmailDesign(structuredDesign())
     source.policy.designerLocks = { blockIds: ['heading', 'cta'], styleFields: ['heading.data.style.color'] }

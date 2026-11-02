@@ -14,8 +14,11 @@ const emit = defineEmits<{
   apply: []
   cancel: []
   resume: []
+  recover: [name: string]
+  restart: []
   libraryRequest: [context: NativeLibraryContext, intent: NativeLibraryIntent]
 }>()
+const recoveryName = ref('')
 const frame = ref<HTMLIFrameElement | null>(null)
 const channel = crypto.randomUUID()
 const ready = ref(false)
@@ -396,6 +399,35 @@ onBeforeUnmount(() => {
       :title="handoff.state === 'applied' ? 'Design changes saved' : handoff.state === 'expired' ? 'This handoff expired' : 'Current draft kept'"
       description="Close this panel to continue in the composer. Start a new handoff from the current saved draft for further design edits."
     />
+    <div v-if="handoff.owner?.kind === 'campaign' && handoff.proposal && ['proposed', 'expired'].includes(handoff.state)" class="@container space-y-3 border-t border-default pt-4">
+      <p class="text-sm text-muted">
+        Keep this saved proposal as a separate campaign. The current campaign stays unchanged.
+      </p>
+      <UFormField label="New campaign name">
+        <UInput
+          v-model="recoveryName"
+          :disabled="busy"
+          :maxlength="200"
+          class="w-full"
+        />
+      </UFormField>
+      <div class="flex flex-wrap justify-end gap-2">
+        <UButton
+          v-if="handoff.state === 'proposed'"
+          label="Restart from current draft"
+          color="neutral"
+          variant="outline"
+          :disabled="busy"
+          @click="emit('restart')"
+        />
+        <UButton
+          label="Save as new campaign"
+          :loading="busy"
+          :disabled="!recoveryName.trim() || recoveryName.trim().length > 200"
+          @click="emit('recover', recoveryName.trim())"
+        />
+      </div>
+    </div>
     <UButton
       v-if="error"
       label="Refresh saved handoff"

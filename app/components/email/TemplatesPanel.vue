@@ -40,6 +40,10 @@ interface TemplateGroup {
   rows: TemplateRow[]
 }
 
+const showTemplateCampaign = ref(false)
+function openCreatedCampaign(id: string) {
+  void navigateTo({ path: '/agency/email/compose', query: { campaign: id } })
+}
 const toast = useToast()
 const apiFetch = $fetch as <T = unknown>(
   request: string,
@@ -438,6 +442,12 @@ function templateDocument(row: TemplateRow): EdmFlyhubDocument | null {
             label="Clear filters"
             @click="resetFilters()"
           />
+          <UButton
+            label="Create campaign"
+            icon="i-lucide-mail-plus"
+            variant="outline"
+            @click="showTemplateCampaign = true"
+          />
           <UButton label="Import template" icon="i-lucide-upload" variant="outline" @click="showImport = true" />
         </div>
       </div>
@@ -786,6 +796,7 @@ function templateDocument(row: TemplateRow): EdmFlyhubDocument | null {
       </template>
     </UModal>
   </div>
+  <EmailCampaignTemplateCreateModal v-model:open="showTemplateCampaign" @created="openCreatedCampaign" />
 </template>
 
 <style scoped>

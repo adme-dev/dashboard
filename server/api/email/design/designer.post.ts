@@ -1,3 +1,7 @@
+import { DesignModuleError } from '~~/shared/emailRendering/designModules'
+import { rethrowLegacyDesignConflict, DESIGN_REVISION_CONSTRAINTS } from '~~/server/utils/email-marketing/designConflict'
+import { createDesignAssetStorage } from '~~/server/utils/email-marketing/designAssets'
+import { getAppUrl } from '~~/server/utils/appUrl'
 import { createError, defineEventHandler, getCookie, getHeader, setHeader } from 'h3'
 import { ZodError } from 'zod'
 import { validateSession } from '~~/server/utils/auth'
@@ -26,8 +30,10 @@ export default defineEventHandler(async (event) => {
     return await executeDesignerRoundtrip(request, {
       actorId: user.id,
       authorize: (clientId, access) => assertFreshDesignAccess(token, user.id, clientId, access)
-    }, createEmailRenderer(env))
+    }, createEmailRenderer(env), undefined, { read: key => createDesignAssetStorage(event, getAppUrl(event)).read(key), url: id => createDesignAssetStorage(event, getAppUrl(event)).url(id), identifyUrl: url => createDesignAssetStorage(event, getAppUrl(event)).identifyUrl(url) })
   } catch (error) {
+    if (error && typeof error === 'object' && 'constraint' in error && DESIGN_REVISION_CONSTRAINTS.has(String(error.constraint))) rethrowLegacyDesignConflict(error)
+    if (error instanceof DesignModuleError) throw createError({ statusCode: error.code.includes('STORAGE_UNAVAILABLE') ? 503 : 409, statusMessage: error.code })
     if (error instanceof ZodError || error instanceof EmailDesignActionError || error instanceof EmailDesignError)
       throw createError({ statusCode: 'code' in error && ['LIMIT_EXCEEDED', 'ACTION_LIMIT_EXCEEDED'].includes(error.code) ? 413 : error instanceof EmailDesignError && ['EDIT_FORBIDDEN', 'POLICY_CHANGE_FORBIDDEN'].includes(error.code) ? 403 : 400, statusMessage: 'invalid_design_request' })
     if (error instanceof DesignHandoffError || error instanceof DesignRevisionError || error instanceof DesignReadError)

@@ -5,6 +5,7 @@ import { assertDesignerOperationsResult, type DesignerOperation } from '../../..
 import {
   validateEmailDesign,
   assertStaffDesignEdit,
+  EmailDesignError,
   type EmailDesignDocument
 } from '../../../shared/emailRendering/designContract'
 import { transactionWithoutRetry } from '~~/server/utils/db'
@@ -425,7 +426,20 @@ async function appendRevision(
         if (canonical(converted) !== canonical(design)) throw new DesignRevisionError('STRUCTURED_REVISION_REQUIRED')
       } else {
         if (current.schema_version !== 1) throw new DesignRevisionError('STRUCTURED_REVISION_REQUIRED')
-        assertStaffDesignEdit(validateEmailDesign(current.payload), design)
+        const persisted = validateEmailDesign(current.payload)
+        assertStaffDesignEdit(persisted, design)
+        // Registered manifests belong to the locked saved source. A URL grant
+        // permits the typed asset-ID replacement owner, never a raw URL save.
+        // Preserve assetless legacy content handoffs and receipt replay above.
+        if (persisted.assets.length) {
+          for (const [id, block] of Object.entries(persisted.blocks)) {
+            if (!['Image', 'Avatar'].includes(block.type)) continue
+            for (const field of ['url', 'darkSrc']) {
+              if (block.data.props?.[field] !== design.blocks[id]?.data.props?.[field])
+                throw new EmailDesignError('EDIT_FORBIDDEN', `${id}.data.props.${field}`)
+            }
+          }
+        }
       }
     }
     if (validateDesignerEdit) {

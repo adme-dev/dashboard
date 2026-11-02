@@ -26,14 +26,14 @@ vi.mock('~~/server/utils/email-marketing/designReads', async original => ({
   ...(await original<
     typeof import('../../server/utils/email-marketing/designReads')
   >()),
-  getTemplateDesignDraft: mocks.read
+  getDesignDraft: mocks.read
 }))
 const event = () =>
   ({
     context: {
       cloudflare: { env: { FIGFLOW_EDM_DRAFT_SAVES_ENABLED: 'true' } }
     }
-  }) as Parameters<typeof handler>[0]
+  }) as unknown as Parameters<typeof handler>[0]
 describe('gated design draft read route', () => {
   beforeEach(() => {
     vi.clearAllMocks()

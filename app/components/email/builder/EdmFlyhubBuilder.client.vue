@@ -3,6 +3,11 @@
      undo/redo, Editor/Preview/HTML views, and Save to edm_templates (2a-ii-4).
      Loads an existing template via ?id= or a starter layout via ?starter=. -->
 <script setup lang="ts">
+import type { ReviewedTemplatePublication } from '~~/app/utils/edmTemplatePublication'
+import { designReadOwner } from '~~/shared/emailRendering/designRoundtrip'
+import { useEdmDesignBrand } from '~~/app/composables/useEdmDesignBrand'
+import { useEdmMergeTags } from '~~/app/composables/useEdmMergeTags'
+import { useEdmConditions } from '~~/app/composables/useEdmConditions'
 import { resolveEmailContentWidth } from '../../../../shared/emailRendering/layout'
 import { canConditionBlock, conditionPolicyLockIds } from '~~/shared/emailRendering/conditionProtection'
 import type { ContentCondition } from '~~/shared/emailRendering/conditions'
@@ -383,6 +388,27 @@ function openHtmlImageLibrary(blockId: string, selection: EdmHtmlEditableSelecti
   imageLibraryOpen.value = true
 }
 
+const campaignImageOpen = ref(false)
+async function replaceCampaignImage(asset: EdmImageAsset) {
+  const selected = selectedBlock.value
+  const current = designFlow.draft.value
+  if (!selected || current?.state !== 'structured' || !canonicalSaved.value || canonicalBlocked.value) return
+  if (!asset.emailPublication) {
+    designFlow.error.value = 'Choose a published registered image.'
+    return
+  }
+  libraryBaseline = { snapshot: workspaceSnapshot(), blocks: JSON.parse(JSON.stringify(store.document.value)) }
+  designFlow.lastLibraryReceipt.value = null
+  try {
+    await designFlow.run(async () => {
+      await designFlow.replaceCampaignImage(selected.id, asset.id)
+      acceptLibraryAction()
+      if (!designLocalConflict.value) campaignImageOpen.value = false
+    })
+  } catch {
+    if (!designFlow.hasPending.value) libraryBaseline = null
+  }
+}
 function applyImageLibraryAsset(asset: EdmImageAsset) {
   const target = imageLibraryTarget.value
   if (!target) return
@@ -509,15 +535,11 @@ function isEmailAddress(value: string): boolean {
 
 async function saveCampaignContent() {
   if (!campaignId.value) return
-  await apiFetch(`/api/email/campaigns/${campaignId.value}` as string, {
-    method: 'PATCH',
-    body: buildCampaignEditorPatch({
-      subject: subject.value,
-      previewText: previewText.value,
-      fromEmail: fromEmail.value,
-      bodySource: store.document.value
-    })
-  })
+  const patch = buildCampaignEditorPatch({ subject: subject.value, previewText: previewText.value, fromEmail: fromEmail.value, bodySource: store.document.value })
+  if (designRevisionRequired.value) {
+    if (designFlow.draft.value?.state !== 'structured' || designServiceUnavailable.value) throw new Error('Reconnect the saved campaign before saving.')
+    await designFlow.saveCampaign(patch)
+  } else await apiFetch(`/api/email/campaigns/${campaignId.value}`, { method: 'PATCH', body: patch })
 }
 
 function testSendSuccessDescription(result: NonNullable<typeof testSendResult.value>) {
@@ -651,6 +673,7 @@ const templateClientOptions = computed(() => [
 const hasValidTemplateClient = computed(() => templateClientOptions.value.some(option => option.value === templateClient.value))
 const hasValidDesignDraftClient = computed(() => templateClientOptions.value.some(option => option.value === designDraftClient.value))
 const campaignClientId = ref<string | null>(null)
+const campaignStatus = ref('draft')
 const mergeClientId = computed(() => campaignId.value ? campaignClientId.value : templateClient.value && templateClient.value !== '__shared__' ? templateClient.value : null)
 const mergeTags = useEdmMergeTags(mergeClientId)
 const conditionDocumentId = computed(() => designFlow.draft.value?.state === 'structured' ? designFlow.draft.value.documentId : null)
@@ -664,7 +687,7 @@ const conditionEligible = computed(() => {
 })
 const conditionReady = computed(() => {
   const current = designFlow.draft.value
-  return conditions.canEdit.value && current?.state === 'structured' && current.source.scope.clientId === mergeClientId.value
+  return !campaignId.value && conditions.canEdit.value && current?.state === 'structured' && current.source.scope.clientId === mergeClientId.value
     && JSON.stringify(current.source.blocks) === JSON.stringify(store.document.value)
     && !saving.value && !conditionSaving.value && !conditionPending.value && !designFlow.busy.value && !designFlow.hasPending.value
     && !['open', 'proposed'].includes(designFlow.handoff.value?.state ?? '') && !designServiceUnavailable.value && !designLocalConflict.value
@@ -682,7 +705,7 @@ async function saveCondition(value: ContentCondition | null) {
   conditionSaving.value = true
   try {
     const receipt = await $fetch<{ documentId: string, revisionId: string }>('/api/email/design/conditions', { method: 'POST', body: conditionPending.value })
-    const draft = await designFlow.lookup(current.templateId, receipt.revisionId)
+    const draft = await designFlow.lookup(designReadOwner(current), receipt.revisionId)
     if (draft?.state !== 'structured') throw new Error('Condition readback unavailable')
     if (JSON.stringify(store.document.value) === conditionBaseline) {
       store.resetDocument(draft.source.blocks as EdmFlyhubDocument)
@@ -757,6 +780,8 @@ async function save(): Promise<boolean> {
     // Campaigns tab), so we patch subject + body onto it — no name required.
     if (campaignId.value) {
       await saveCampaignContent()
+      workspaceSavedSnapshot.value = savedSnapshot
+      loadedDesignRevisionId.value = designFlow.draft.value?.headRevisionId ?? loadedDesignRevisionId.value
       toast.add({ title: 'Saved', description: 'Campaign content saved.', color: 'success' })
       showSaveModal.value = false
       return true
@@ -826,6 +851,36 @@ const figflowSourceUnsupported = computed(() => {
   if (current?.state === 'structured') return current.source.policy.editableFields.length === 0
   return !figflowTemplateCapability(store.document.value).canOpen
 })
+async function beginCampaignFigflow() {
+  if (!campaignId.value || !campaignClientId.value || !designFlow.campaignAuthoring.value.available || campaignStatus.value !== 'draft') return
+  if (designFlow.hasPending.value) {
+    await reconcileDesignAction()
+    return
+  }
+  if (workspaceBusy.value || templateLoading.value || templateLoadError.value) return
+  if (['open', 'proposed'].includes(designFlow.handoff.value?.state ?? '')) {
+    showFigflow.value = true
+    return
+  }
+  try {
+    await designFlow.run(async () => {
+      const target = { kind: 'campaign' as const, id: campaignId.value! }
+      const opening = workspaceSnapshot()
+      if (workspaceSnapshot() !== workspaceSavedSnapshot.value && !await save()) return
+      if (workspaceSnapshot() !== opening) throw new Error('The composer changed while saving. Save again before opening FigFlow.')
+      const current = designFlow.draft.value
+      const saved = current?.state === 'structured' ? { draftId: current.documentId, expectedRevisionId: current.headRevisionId } : undefined
+      const result = await designFlow.open(target, campaignClientId.value, true, saved)
+      if (result.owner?.kind !== 'campaign' || result.owner.id !== campaignId.value) throw new Error('Campaign handoff owner mismatch')
+      designFlow.setLocalBaseline(opening)
+      designRevisionRequired.value = true
+      loadedDesignRevisionId.value = result.baseRevisionId
+      designLocalConflict.value = workspaceSnapshot() !== opening || !sameDesignSource(store.document.value, result.source.blocks)
+      showFigflow.value = true
+      await router.replace({ query: { ...route.query, campaign: campaignId.value, designSession: result.id, designMode: designFlow.mode.value } })
+    })
+  } catch { /* Original operation and local edits remain available for reconciliation. */ }
+}
 async function beginFigflow(createDraft = false) {
   if (conditionSaving.value || conditionPending.value || brandFlow.busy.value || brandFlow.hasPending.value) return
   if (saving.value || designFlow.busy.value || templateLoading.value || templateLoadError.value) return
@@ -910,6 +965,7 @@ async function beginFigflow(createDraft = false) {
       designRevisionRequired.value = true
       designServiceUnavailable.value = false
       designLocalConflict.value = false
+      designFlow.setLocalBaseline?.(workspaceSnapshot())
       showFigflow.value = true
       await router.replace({ query: { ...route.query, designSession: result.id, designMode: designFlow.mode.value } })
     })
@@ -951,10 +1007,10 @@ async function reconcileBrandAction() {
   if (draft) acceptBrandDraft(draft)
 }
 async function reconnectDesignService() {
-  if (!templateId.value) return
+  if (!templateId.value && !campaignId.value) return
   try {
     const expected = designFlow.draft.value?.headRevisionId ?? loadedDesignRevisionId.value ?? undefined
-    const current = await designFlow.lookup(templateId.value, expected)
+    const current = await designFlow.lookup(campaignId.value ? { kind: 'campaign', id: campaignId.value } : templateId.value!, expected)
     if (designRevisionRequired.value && current?.state !== 'structured') throw new Error('Versioned draft unavailable')
     if (!expected && current?.state === 'structured' && !sameDesignSource(store.document.value, current.source.blocks)) {
       designFlow.draft.value = null
@@ -1030,10 +1086,10 @@ async function reopenNativeLibrary() {
   nativeLibrary.requireReopen()
   if (designLocalConflict.value) return
   const current = designFlow.draft.value
-  if (current?.state !== 'structured' || current.documentId !== selection.documentId || current.templateId !== selection.templateId
+  if (current?.state !== 'structured' || current.documentId !== selection.documentId || JSON.stringify(designReadOwner(current)) !== JSON.stringify(selection.owner)
     || !sameDesignSource(store.document.value, current.source.blocks) || workspaceSnapshot() !== workspaceSavedSnapshot.value) throw new Error('The saved design changed. Reopen it before continuing.')
-  const result = await designFlow.reopenLibraryDraft(selection.templateId, selection.documentId, current.headRevisionId)
-  if (result.draftId !== selection.documentId || result.templateId !== selection.templateId) throw new Error('Design draft mismatch')
+  const result = await designFlow.reopenLibraryDraft(selection.owner, selection.documentId, current.headRevisionId)
+  if (result.draftId !== selection.documentId || JSON.stringify(result.owner ?? { kind: 'template', id: result.templateId }) !== JSON.stringify(selection.owner)) throw new Error('Design draft mismatch')
   nativeLibrary.clear()
   nativeLibraryWorkspace = null
   showFigflow.value = true
@@ -1052,7 +1108,8 @@ async function applyFigflow() {
   // Compare without touching undo history before committing remotely. Compare
   // again after the response to preserve any edits made while awaiting it.
 
-  if ((nativeLibrary.state.value && nativeLibraryWorkspace !== workspaceSnapshot()) || !sameDesignSource(store.document.value, handoff.source.blocks)) {
+  const baseline = workspaceSnapshot()
+  if ((designFlow.localBaseline.value && designFlow.localBaseline.value !== baseline) || (nativeLibrary.state.value && nativeLibraryWorkspace !== baseline) || !sameDesignSource(store.document.value, handoff.source.blocks)) {
     designLocalConflict.value = true
     return
   }
@@ -1060,7 +1117,7 @@ async function applyFigflow() {
     await designFlow.run(async () => {
       const result = await designFlow.finish('apply')
       const current = designFlow.draft.value
-      if (!current || current.headRevisionId !== result.appliedRevisionId || !store.applyDesignReturn(handoff.source.blocks, handoff.proposal!.blocks)) {
+      if (!current || workspaceSnapshot() !== baseline || current.headRevisionId !== result.appliedRevisionId || !store.applyDesignReturn(handoff.source.blocks, handoff.proposal!.blocks)) {
         designLocalConflict.value = true
         throw new Error('Current draft changed; local edits kept')
       }
@@ -1072,6 +1129,48 @@ async function applyFigflow() {
       toast.add({ title: 'Design changes saved', description: 'Applied as one undoable change.', color: 'success' })
     })
   } catch { /* The server conflicts or the local draft is preserved. */ }
+}
+async function recoverFigflowCampaign(recoveryName: string) {
+  try {
+    await designFlow.run(async () => {
+      const result = await designFlow.recoverCampaign(recoveryName)
+      await navigateTo({ path: '/agency/email/compose', query: { campaign: result.recovery.campaignId } }, { external: true })
+    })
+  } catch { /* Retain the original recovery action until its receipt is reconciled. */ }
+}
+async function restartFigflow() {
+  if (workspaceBusy.value || (designFlow.localBaseline.value && designFlow.localBaseline.value !== workspaceSnapshot())) {
+    designFlow.error.value = 'Keep your newer composer edits. Save or recover them before restarting this handoff.'
+    return
+  }
+  const original = designFlow.handoff.value
+  if (!original) return
+  const snapshot = workspaceSnapshot()
+  try {
+    await designFlow.run(async () => {
+      // Explicit restart keeps the old immutable proposal and reads the current
+      // owner head. It never resets to the obsolete proposal's base revision.
+      const current = await designFlow.lookup(original.owner ?? original.templateId!)
+      if (workspaceSnapshot() !== snapshot || current?.state !== 'structured' || current.projection.state !== 'current') throw new Error('The current draft changed while restarting. Your local edits are kept.')
+      await designFlow.finish('cancel')
+      if (workspaceSnapshot() !== snapshot || !store.applyDesignReturn(original.source.blocks, current.source.blocks)) {
+        designLocalConflict.value = true
+        throw new Error('Local edits are kept. Reload the current saved draft before restarting.')
+      }
+      if ('metadata' in current) {
+        subject.value = current.metadata.subject ?? ''
+        previewText.value = current.metadata.previewText ?? ''
+      }
+      workspaceSavedSnapshot.value = workspaceSnapshot()
+      designLocalConflict.value = false
+      nativeLibrary.clear()
+      showFigflow.value = false
+    })
+    if (designFlow.handoff.value?.state === 'cancelled' && !designLocalConflict.value) {
+      if (campaignId.value) await beginCampaignFigflow()
+      else await beginFigflow()
+    }
+  } catch { /* Both the old proposal and local composer content remain retained. */ }
 }
 async function cancelFigflow() {
   try {
@@ -1087,15 +1186,20 @@ async function reconcileDesignAction() {
   try {
     await designFlow.run(async () => {
       const result = await designFlow.reconcile()
+      if (designFlow.lastRecovery.value) {
+        await navigateTo({ path: '/agency/email/compose', query: { campaign: designFlow.lastRecovery.value.campaignId } }, { external: true })
+        return
+      }
       if (!result) {
+        if (campaignId.value && designFlow.lastCampaignPatch.value && sameDesignSource(designFlow.lastCampaignPatch.value, buildCampaignEditorPatch({ subject: subject.value, previewText: previewText.value, fromEmail: fromEmail.value, bodySource: store.document.value }))) workspaceSavedSnapshot.value = workspaceSnapshot()
         acceptLibraryAction()
         if (designFlow.nativeLibrary.state.value?.ready && !designFlow.hasPending.value && !designLocalConflict.value && !libraryBaseline) await reopenNativeLibrary()
         return
       }
-      if (result.templateId !== templateId.value) throw new Error('Design draft mismatch')
+      if (campaignId.value ? result.owner?.kind !== 'campaign' || result.owner.id !== campaignId.value : result.templateId !== templateId.value) throw new Error('Design draft mismatch')
       if (result.state === 'applied' && result.proposal) {
         const current = designFlow.draft.value
-        designLocalConflict.value = current?.headRevisionId !== result.appliedRevisionId
+        designLocalConflict.value = (!!designFlow.localBaseline.value && designFlow.localBaseline.value !== workspaceSnapshot()) || current?.headRevisionId !== result.appliedRevisionId
           || !store.applyDesignReturn(result.source.blocks, result.proposal.blocks)
         if (!designLocalConflict.value) {
           markWorkspaceDocumentSaved()
@@ -1367,18 +1471,15 @@ async function executeLibraryAction(action: () => Promise<unknown>) {
     if (!designFlow.hasPending.value) libraryBaseline = null
   }
 }
-function publishCanonicalTemplate(metadata: { name: string, category: string | null, includedOverridePaths: string[] }) {
+function publishCanonicalTemplate(review: ReviewedTemplatePublication) {
   const current = designFlow.draft.value
-  if (current?.state !== 'structured') return
-  void executeLibraryAction(() =>
-    designFlow.template({
-      command: 'publish-template',
-      draftId: current.documentId,
-      expectedRevisionId: current.headRevisionId,
-      ...metadata
-    })
-  )
+  if (current?.state !== 'structured' || !designFlow.libraryAuthoring.value.publisher
+    || current.documentId !== review.request.draftId || current.headRevisionId !== review.request.expectedRevisionId
+    || JSON.stringify(current) !== review.sourceSnapshot) return
+  const request = JSON.parse(JSON.stringify(review.request)) as ReviewedTemplatePublication['request']
+  void executeLibraryAction(() => designFlow.template(request))
 }
+
 const workspaceLeave = useEdmWorkspaceLeave({
   hasChanges: () => !!workspaceSavedSnapshot.value && workspaceSnapshot() !== workspaceSavedSnapshot.value,
   isBusy: () => workspaceBusy.value,
@@ -1405,6 +1506,8 @@ onMounted(async () => {
               client_id: string | null
               preview_text: string | null
               body_source: unknown
+              status: string
+              email_design_revision_id?: string | null
               preflight_result?: EmailBuilderSchedulePreflight | null
               recipient_snapshot?: EmailBuilderScheduleRecipientSnapshot | null
             }
@@ -1413,6 +1516,9 @@ onMounted(async () => {
             store.resetDocument(res.campaign.body_source as EdmFlyhubDocument)
           }
           campaignClientId.value = res.campaign.client_id ?? null
+          campaignStatus.value = res.campaign.status
+          loadedDesignRevisionId.value = res.campaign.email_design_revision_id ?? null
+          designRevisionRequired.value = !!loadedDesignRevisionId.value
           name.value = res.campaign.name || ''
           subject.value = res.campaign.subject || ''
           fromEmail.value = res.campaign.from_email || ''
@@ -1421,6 +1527,17 @@ onMounted(async () => {
           campaignSnapshot.value = res.campaign.recipient_snapshot ?? null
           schedulePreflight.value = campaignPreflight.value
           scheduleSnapshot.value = campaignSnapshot.value
+          if (figflowEnabled) {
+            await reconnectDesignService()
+            const sessionId = route.query.designSession
+            if (!designServiceUnavailable.value && typeof sessionId === 'string') {
+              const session = await designFlow.resume(sessionId, route.query.designMode === 'designer')
+              if (session.owner?.kind !== 'campaign' || session.owner.id !== campaign) throw new Error('Campaign handoff owner mismatch')
+              designFlow.setLocalBaseline(workspaceSnapshot())
+              designLocalConflict.value = !sameDesignSource(store.document.value, session.source.blocks)
+              showFigflow.value = ['open', 'proposed'].includes(session.state)
+            }
+          } else designServiceUnavailable.value = designRevisionRequired.value
         } catch {
           templateLoadError.value = 'Could not load this campaign. Retry before editing.'
           toast.add({ title: 'Load failed', description: 'Could not load that campaign.', color: 'error' })
@@ -1651,7 +1768,7 @@ onMounted(async () => {
         @click="openTestSend()"
       />
       <UButton
-        v-if="figflowEnabled && !campaignId"
+        v-if="figflowEnabled && (!campaignId || designFlow.campaignAuthoring.value.available)"
         icon="i-lucide-pen-tool"
         label="Edit in FigFlow"
         variant="outline"
@@ -1659,7 +1776,7 @@ onMounted(async () => {
         size="sm"
         :loading="designFlow.busy.value"
         :disabled="conditionSaving || !!conditionPending || saving || designFlow.busy.value || brandFlow.busy.value || brandFlow.hasPending.value || (figflowSourceUnsupported && !designFlow.hasPending.value && !['open', 'proposed'].includes(designFlow.handoff.value?.state ?? ''))"
-        @click="editInFigflow"
+        @click="campaignId ? beginCampaignFigflow() : editInFigflow()"
       />
       <UButton
         v-if="figflowEnabled && !campaignId && templateKind === 'draft' && designFlow.draft.value?.state === 'structured'"
@@ -1672,7 +1789,7 @@ onMounted(async () => {
         @click="openBrandControls"
       />
       <UButton
-        v-if="!campaignId && designFlow.libraryAuthoring.value.available"
+        v-if="designFlow.libraryAuthoring.value.available"
         label="Design library"
         icon="i-lucide-library"
         color="neutral"
@@ -1682,7 +1799,7 @@ onMounted(async () => {
         @click="openCanonicalPanel('library')"
       />
       <UButton
-        v-if="!campaignId && designFlow.libraryAuthoring.value.available"
+        v-if="designFlow.libraryAuthoring.value.available"
         label="Version history"
         icon="i-lucide-history"
         color="neutral"
@@ -1756,8 +1873,8 @@ onMounted(async () => {
     <USlideover
       v-model:open="showLibrary"
       title="Design library"
-      :dismissible="!designFlow.busy.value"
-      :close="!designFlow.busy.value"
+      :dismissible="!designFlow.busy.value && !designFlow.hasPending.value"
+      :close="!designFlow.busy.value && !designFlow.hasPending.value"
       :ui="{ content: 'max-w-xl', body: 'flex min-h-0 p-0' }"
     >
       <template #body>
@@ -1769,6 +1886,7 @@ onMounted(async () => {
           :selected-id="selectedBlock?.id ?? null"
           @module="command => executeLibraryAction(() => designFlow.library(command))"
           @publish-template="publishCanonicalTemplate"
+          @reconcile-template="reconcileDesignAction"
           @publish-image="assetId => executeLibraryAction(() => designFlow.publishImage(assetId))"
         />
       </template>
@@ -1962,6 +2080,15 @@ onMounted(async () => {
                 />
               </UTooltip>
             </div>
+            <UButton
+              v-if="campaignId && selectedBlock.type === 'Image' && designFlow.campaignAuthoring.value.contentImagesAvailable && designFlow.draft.value?.state === 'structured' && designFlow.draft.value.source.policy.editableFields.includes(`${selectedBlock.id}.data.props.url`)"
+              label="Replace registered image"
+              color="neutral"
+              variant="outline"
+              class="mb-3 w-full"
+              :disabled="!canonicalSaved || canonicalBlocked"
+              @click="campaignImageOpen = true"
+            />
             <EmailBuilderBlockSettingsPanel
               :block="selectedBlock"
               :base-block="{ id: selectedBlock.id, type: selectedBlock.type, data: selectedBlock.baseData }"
@@ -2232,6 +2359,14 @@ onMounted(async () => {
     <EmailBuilderEdmImageLibraryPicker
       v-model:open="imageLibraryOpen"
       @pick="applyImageLibraryAsset"
+    />
+
+    <EmailBuilderEdmImageLibraryPicker
+      v-model:open="campaignImageOpen"
+      canonical
+      published-only
+      :client-id="campaignClientId"
+      @pick="replaceCampaignImage"
     />
 
     <!-- Send a single test email from the active builder context. -->
@@ -2537,6 +2672,8 @@ onMounted(async () => {
             @apply="applyFigflow"
             @cancel="cancelFigflow"
             @resume="resumeFigflow"
+            @recover="recoverFigflowCampaign"
+            @restart="restartFigflow"
             @library-request="prepareNativeLibrary"
           >
             <template #library>
@@ -2563,6 +2700,7 @@ onMounted(async () => {
                   :initial-section="nativeLibrary.state.value.intent"
                   @module="command => executeLibraryAction(() => designFlow.library(command))"
                   @publish-template="publishCanonicalTemplate"
+                  @reconcile-template="reconcileDesignAction"
                   @publish-image="assetId => executeLibraryAction(() => designFlow.publishImage(assetId))"
                 />
               </div>

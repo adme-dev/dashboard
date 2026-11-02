@@ -48,6 +48,10 @@ interface RecipientSnapshot {
   generatedAt?: string
 }
 
+const showTemplateCampaign = ref(false)
+function openCreatedCampaign(id: string) {
+  void navigateTo({ path: '/agency/email/compose', query: { campaign: id } })
+}
 const toast = useToast()
 const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string, body?: unknown }) => Promise<T>
 
@@ -355,6 +359,12 @@ const TERMINAL = new Set(['sent', 'cancelled'])
       <p class="text-sm text-muted">
         {{ data?.campaigns?.length ?? 0 }} campaign(s)
       </p>
+      <UButton
+        label="Create from template"
+        color="neutral"
+        variant="outline"
+        @click="showTemplateCampaign = true"
+      />
       <UButton icon="i-lucide-plus" label="New campaign" @click="openCreate" />
     </div>
 
@@ -650,4 +660,5 @@ const TERMINAL = new Set(['sent', 'cancelled'])
       @changed="refresh()"
     />
   </div>
+  <EmailCampaignTemplateCreateModal v-model:open="showTemplateCampaign" @created="openCreatedCampaign" />
 </template>

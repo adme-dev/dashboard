@@ -2,8 +2,10 @@
 import { computed, ref, watch } from 'vue'
 import type { useEdmDesignRoundtrip } from '~~/app/composables/useEdmDesignRoundtrip'
 import { useEdmCustomModules } from '~~/app/composables/useEdmCustomModules'
-import { moduleLocalOverrides, subtreeIds, type ModuleRecord } from '~~/shared/emailRendering/designModules'
+import { moduleLocalOverrides, subtreeIds, stableDesignJson, type ModuleRecord } from '~~/shared/emailRendering/designModules'
 import type { EdmImageAsset } from '~~/app/utils/edmImageAssets'
+import type { ReviewedTemplatePublication } from '~~/app/utils/edmTemplatePublication'
+import type { DesignHistoryPreview } from '~~/shared/emailRendering/designHistory'
 import type { EdmFlyhubDocument } from '~~/app/types/edm'
 
 const props = defineProps<{
@@ -18,7 +20,8 @@ const props = defineProps<{
 type ModuleCommand = Parameters<typeof props.flow.library>[0]
 const emit = defineEmits<{
   module: [command: ModuleCommand]
-  publishTemplate: [metadata: { name: string, category: string | null, includedOverridePaths: string[] }]
+  publishTemplate: [review: ReviewedTemplatePublication]
+  reconcileTemplate: []
   publishImage: [assetId: string]
 }>()
 const catalog = useEdmCustomModules()
@@ -36,6 +39,29 @@ const overrides = ref<'preserve' | 'discard'>('preserve')
 const instanceReviewed = ref(false)
 const imageOpen = ref(false)
 const image = ref<EdmImageAsset | null>(null)
+interface TemplateTarget {
+  id: string
+  name: string
+  client_id: string | null
+  template_kind: string
+  revision_schema_version: number | null
+  design_document_id: string | null
+  head_revision_id: string | null
+}
+const templateMode = ref<'new' | 'revise'>('new')
+const templateTargets = ref<TemplateTarget[]>([])
+const templateTargetId = ref('__none__')
+const templateTarget = ref<TemplateTarget | null>(null)
+const templateCatalogLoading = ref(false)
+const templateReviewLoading = ref(false)
+const templateReviewError = ref('')
+const templateConfirmed = ref(false)
+const templateReview = ref<(ReviewedTemplatePublication & { previewHtml: string, destinationName: string }) | null>(null)
+let submittedTemplateReview: {
+  review: NonNullable<typeof templateReview.value>
+  previousReceipt: typeof props.flow.lastLibraryReceipt.value
+  targetDocumentId: string | null
+} | null = null
 let generation = 0
 const draft = computed(() => (props.flow.draft.value?.state === 'structured' ? props.flow.draft.value : null))
 const ready = computed(
@@ -46,6 +72,8 @@ const ready = computed(
     && !props.flow.busy.value
     && !props.flow.hasPending.value
     && !loading.value
+    && !templateCatalogLoading.value
+    && !templateReviewLoading.value
     && !error.value
 )
 const roots = computed(() => props.selectedRoots ?? (props.selectedId ? [props.selectedId] : []))
@@ -99,6 +127,125 @@ const previewDocument = computed(() =>
       } as EdmFlyhubDocument)
     : null
 )
+const canonicalId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const eligibleTemplateTargets = computed(() => templateTargets.value.filter(target =>
+  target.template_kind === 'template' && target.revision_schema_version === 1
+  && [target.id, target.design_document_id, target.head_revision_id].every(id => typeof id === 'string' && canonicalId.test(id))
+  && typeof target.name === 'string' && !!target.name.trim()
+  && target.client_id === draft.value?.source.scope.clientId
+))
+const templateTargetOptions = computed(() => [
+  { label: 'Choose an existing template', value: '__none__' },
+  ...eligibleTemplateTargets.value.map(target => ({ label: target.name, value: target.id }))
+])
+const templateCanReview = computed(() => ready.value && props.flow.libraryAuthoring.value.publisher
+  && draft.value?.projection.state === 'current' && !!name.value.trim()
+  && localPaths.value.every(path => reviewedPaths.value.includes(path))
+  && (templateMode.value === 'new' || (templateTarget.value?.client_id === draft.value.source.scope.clientId
+    && eligibleTemplateTargets.value.some(target => target.id === templateTarget.value?.id))))
+function clearTemplateReview() {
+  if (props.flow.hasPending.value) return
+  templateReview.value = null
+  templateConfirmed.value = false
+  templateReviewError.value = ''
+}
+async function loadTemplateTargets() {
+  if (props.flow.busy.value || props.flow.hasPending.value || !props.flow.libraryAuthoring.value.publisher) return
+  templateCatalogLoading.value = true
+  templateReviewError.value = ''
+  try {
+    const result = await $fetch<{ items: TemplateTarget[] }>('/api/email/templates')
+    templateTargets.value = result.items
+    // The chosen target remains a copy of the displayed revision. Refreshing
+    // the catalog never substitutes a newer head into an existing review.
+  } catch {
+    templateReviewError.value = 'Template choices could not load. Reload choices to check your current access.'
+  } finally {
+    templateCatalogLoading.value = false
+  }
+}
+async function reviewTemplate() {
+  if (!templateCanReview.value || !draft.value) return
+  const current = draft.value
+  const sourceSnapshot = JSON.stringify(current)
+  const metadata = { draftId: current.documentId, expectedRevisionId: current.headRevisionId,
+    name: name.value.trim(), category: category.value.trim() || null, includedOverridePaths: [...localPaths.value] }
+  const target = templateTarget.value
+  const request: ReviewedTemplatePublication['request'] = templateMode.value === 'revise' && target
+    ? { ...metadata, command: 'revise-template', templateId: target.id, expectedTemplateRevisionId: target.head_revision_id! }
+    : { ...metadata, command: 'publish-template' }
+  const selection = JSON.stringify({ mode: templateMode.value, target: templateTarget.value, name: name.value, category: category.value, paths: localPaths.value })
+  templateReview.value = null
+  templateConfirmed.value = false
+  templateReviewLoading.value = true
+  templateReviewError.value = ''
+  try {
+    const preview = await $fetch<DesignHistoryPreview>('/api/email/design/history', { method: 'POST', body: {
+      version: 1, command: 'preview-revision', draftId: current.documentId, expectedRevisionId: current.headRevisionId, revisionId: current.headRevisionId
+    } })
+    if (!props.saved || props.blocked || !props.flow.libraryAuthoring.value.publisher
+      || JSON.stringify(draft.value) !== sourceSnapshot
+      || JSON.stringify({ mode: templateMode.value, target: templateTarget.value, name: name.value, category: category.value, paths: localPaths.value }) !== selection)
+      throw new Error('The source or selection changed. Review the saved version again before publishing.')
+    if (preview.draftId !== current.documentId || preview.revisionId !== current.headRevisionId || preview.expectedRevisionId !== current.headRevisionId
+      || !preview.previewHtml || !preview.design || stableDesignJson(preview.design) !== stableDesignJson(current.source))
+      throw new Error('The exact saved preview is unavailable. Reload the saved draft before publishing.')
+    templateReview.value = { request, sourceSnapshot, previewHtml: preview.previewHtml,
+      destinationName: request.command === 'revise-template' ? target!.name : request.name }
+  } catch (cause) {
+    templateReviewError.value = cause instanceof Error ? cause.message : 'The saved preview could not load. Review it again before publishing.'
+  } finally {
+    templateReviewLoading.value = false
+  }
+}
+function publishTemplate() {
+  const review = templateReview.value
+  if (!review || !templateConfirmed.value || !templateCanReview.value || JSON.stringify(draft.value) !== review.sourceSnapshot) return
+  const previousReceipt = props.flow.lastLibraryReceipt.value
+  const targetDocumentId = templateTarget.value?.design_document_id ?? null
+  emit('publishTemplate', { request: JSON.parse(JSON.stringify(review.request)), sourceSnapshot: review.sourceSnapshot })
+  // The existing builder/flow starts its serialized pending write synchronously.
+  // A refused adapter call must not arm consumption of another surface's receipt.
+  if (props.flow.busy.value && props.flow.hasPending.value)
+    submittedTemplateReview = { review, previousReceipt, targetDocumentId }
+}
+watch(
+  () => [props.flow.busy.value, props.flow.hasPending.value, props.flow.lastLibraryReceipt.value] as const,
+  ([busy, pending, receipt]) => {
+    const submitted = submittedTemplateReview
+    if (!submitted || busy || pending) return
+    submittedTemplateReview = null
+    const request = submitted.review.request
+    // lastLibraryReceipt is set only after the existing immutable readback.
+    // Keep unknown outcomes; close only this panel's completed template intent.
+    if (!receipt?.published || !receipt.templateId || receipt.moduleId || receipt === submitted.previousReceipt
+      || !canonicalId.test(receipt.documentId) || !canonicalId.test(receipt.revisionId)
+      || receipt.documentId === request.draftId) return
+    if (request.command === 'revise-template' && (receipt.templateId !== request.templateId
+      || receipt.documentId !== submitted.targetDocumentId || receipt.revisionId === request.expectedTemplateRevisionId)) return
+    if (templateReview.value === submitted.review) {
+      templateReview.value = null
+      templateConfirmed.value = false
+      templateReviewError.value = ''
+    }
+    if (request.command === 'revise-template' && templateTarget.value?.id === request.templateId
+      && templateTarget.value.head_revision_id === request.expectedTemplateRevisionId) {
+      templateTargetId.value = '__none__'
+      templateTarget.value = null
+    }
+  }
+)
+watch(templateMode, (mode) => {
+  clearTemplateReview()
+  if (mode === 'revise') void loadTemplateTargets()
+})
+watch(templateTargetId, (id) => {
+  if (props.flow.hasPending.value) return
+  const target = eligibleTemplateTargets.value.find(target => target.id === id)
+  templateTarget.value = target ? { ...target } : null
+  clearTemplateReview()
+})
+watch(() => [name.value, category.value, JSON.stringify(draft.value), props.saved, props.blocked, localPaths.value.join('|')], clearTemplateReview)
 async function refresh() {
   const token = ++generation
   loading.value = true
@@ -371,6 +518,42 @@ watch(
             "
           />
         </div>
+        <UFormField label="Template publication">
+          <USelect
+            v-model="templateMode"
+            :items="[{ label: 'New template', value: 'new' }, { label: 'New version of existing template', value: 'revise' }]"
+            class="w-full"
+            :disabled="!ready"
+          />
+        </UFormField>
+        <div v-if="templateMode === 'revise'" class="space-y-3">
+          <UFormField label="Existing template" help="Only published canonical templates in the same saved client or shared scope can be revised.">
+            <USelect
+              v-model="templateTargetId"
+              :items="templateTargetOptions"
+              class="w-full"
+              :disabled="!ready"
+            />
+          </UFormField>
+          <p v-if="templateTarget" class="break-all text-xs text-muted">
+            {{ templateTarget.name }} — selected version {{ templateTarget.head_revision_id }}
+          </p>
+          <p v-if="templateTarget && eligibleTemplateTargets.some(target => target.id === templateTarget.id && target.head_revision_id !== templateTarget.head_revision_id)" class="text-sm text-muted">
+            A newer version is listed. Clear this template choice and choose it again to review that version. This review keeps the displayed version.
+          </p>
+          <p v-if="!templateCatalogLoading && !eligibleTemplateTargets.length" class="text-sm text-muted">
+            No eligible published template is available in this saved scope.
+          </p>
+          <UButton
+            label="Reload template choices"
+            color="neutral"
+            variant="ghost"
+            :disabled="!ready"
+            @click="loadTemplateTargets"
+          />
+        </div>
+        <UAlert v-if="templateReviewError" color="warning" :title="templateReviewError" />
+        <UAlert v-if="flow.error.value" color="warning" :title="flow.error.value" />
         <div class="flex flex-wrap gap-2">
           <UButton
             label="Publish module"
@@ -393,19 +576,64 @@ watch(
             @click="publish(true)"
           />
           <UButton
-            label="Publish full template"
+            label="Review full template"
             color="neutral"
             variant="outline"
-            :disabled="!ready || !name.trim() || localPaths.some((p) => !reviewedPaths.includes(p))"
-            @click="
-              emit('publishTemplate', {
-                name: name.trim(),
-                category: category.trim() || null,
-                includedOverridePaths: localPaths
-              })
-            "
+            :loading="templateReviewLoading"
+            :disabled="!templateCanReview"
+            @click="reviewTemplate"
           />
         </div>
+        <section v-if="templateReview" class="space-y-4 border-t border-default pt-4" aria-label="Template publication review">
+          <h4 class="font-semibold">
+            {{ templateReview.request.command === 'revise-template' ? 'Publish a new version' : 'Publish a new template' }}
+          </h4>
+          <p class="text-sm">
+            Destination: {{ templateReview.destinationName }}
+          </p>
+          <p v-if="templateReview.request.command === 'revise-template'" class="break-all text-xs text-muted">
+            Template {{ templateReview.request.templateId }} — reviewed current version {{ templateReview.request.expectedTemplateRevisionId }}
+          </p>
+          <p class="break-all text-xs text-muted">
+            Saved source version {{ templateReview.request.expectedRevisionId }}
+          </p>
+          <p class="text-sm text-muted">
+            Publish as {{ templateReview.request.name }}. This publishes the saved design to the library and leaves the source campaign or draft unchanged.
+          </p>
+          <iframe
+            :srcdoc="templateReview.previewHtml"
+            sandbox=""
+            referrerpolicy="no-referrer"
+            title="Compiled saved template publication preview"
+            class="h-[420px] w-full rounded border border-default bg-white"
+          />
+          <p v-for="path in templateReview.request.includedOverridePaths" :key="path" class="break-all text-xs text-muted">
+            Included override: {{ path }}
+          </p>
+          <UCheckbox v-model="templateConfirmed" label="I reviewed this compiled preview and the included local overrides" :disabled="!ready" />
+          <div class="flex flex-wrap gap-2">
+            <UButton :label="templateReview.request.command === 'revise-template' ? 'Publish new version' : 'Publish full template'" :disabled="!templateCanReview || !templateConfirmed" @click="publishTemplate" />
+            <UButton
+              label="Cancel template review"
+              color="neutral"
+              variant="ghost"
+              :disabled="!ready"
+              @click="clearTemplateReview"
+            />
+          </div>
+          <UAlert
+            v-if="flow.hasPending.value"
+            color="warning"
+            title="Publication result unconfirmed"
+            description="Keep the reviewed versions until the original action is reconciled."
+          />
+          <UButton
+            v-if="flow.hasPending.value"
+            label="Reconcile original publication"
+            :disabled="flow.busy.value"
+            @click="emit('reconcileTemplate')"
+          />
+        </section>
       </section>
       <section v-if="!initialSection || initialSection === 'library' || initialSection === 'images'" class="space-y-4 border-t border-default pt-5" aria-label="Registered images">
         <h3 class="text-lg font-semibold tracking-tight">

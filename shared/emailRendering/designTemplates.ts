@@ -9,6 +9,18 @@ const request = z.discriminatedUnion('command', [
     .object({
       ...identity,
       ...metadata,
+      command: z.literal('revise-template'),
+      draftId: z.string().uuid(),
+      expectedRevisionId: z.string().uuid(),
+      templateId: z.string().uuid(),
+      expectedTemplateRevisionId: z.string().uuid(),
+      includedOverridePaths: z.array(z.string().min(1).max(512)).max(3000)
+    })
+    .strict(),
+  z
+    .object({
+      ...identity,
+      ...metadata,
       command: z.literal('publish-template'),
       draftId: z.string().uuid(),
       expectedRevisionId: z.string().uuid(),

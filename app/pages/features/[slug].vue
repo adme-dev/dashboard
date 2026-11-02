@@ -1580,7 +1580,7 @@ const features: Record<string, Feature> = {
     details: [
       {
         title: 'Build and Target',
-        content: 'Create a campaign, design its body in the drag-and-drop email builder, and point it at one or more subscriber lists. XeroFlow materialises the recipient set for you — deduplicating people who appear on multiple lists, and automatically excluding anyone who has unsubscribed, hard-bounced, or been suppressed. Merge tags like first name and email personalise each message, with fallback copy when recipient details are missing. Preview and sending share the same tag and fallback rules; recipient values stay as text within the email design.'
+        content: 'Create a campaign, design its body in the drag-and-drop email builder, and point it at one or more subscriber lists. XeroFlow materialises the recipient set for you — deduplicating people who appear on multiple lists, and automatically excluding anyone who has unsubscribed, hard-bounced, or been suppressed. Merge tags like first name and email personalise each message, with fallback copy when recipient details are missing. Preview and sending share the same tag and fallback rules; recipient values stay as text within the email design. Native FigFlow campaign editing and publishing new versions of shared templates are still being prepared for staff preview.'
       },
       {
         title: 'Reliable, Paced Sending',
@@ -1604,7 +1604,7 @@ const features: Record<string, Feature> = {
     categoryIcon: 'i-lucide-message-circle',
     categoryIconBg: 'bg-violet-50',
     categoryIconColor: 'text-violet-600',
-    description: 'Build from reusable sections and eleven starters, edit content and styles, and preview email HTML. Review and apply supported content edits from FigFlow.',
+    description: 'Build from reusable sections and eleven starters, edit content and preview table-based email HTML. FigFlow authoring and saved template versions are in staff preview validation; general release is pending.',
     details: [
       {
         title: 'Sections and Custom Modules',
@@ -1616,11 +1616,11 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Client Libraries and Import',
-        content: 'Organise authorised client templates and drafts into categories; copy shared defaults independently. Recent, draft and category views, scoped search and the email image library support daily work. Import HTML or XeroFlow JSON through a sanitised preview. Complete HTML emails retain responsive layouts, background images and desktop/mobile alternatives. Edit text, links and images within the imported design; it remains one complete email. Active content is removed and public HTTPS assets are retained. OEM source records retain make, date, file hash and review notes; originals open as copies. JSON backups preserve design, subject, preview text, category and draft status. Make and provider filters retain client scope. Failed loads block editing; retries reconcile the same save. Import does not imply campaign approval.'
+        content: 'Organise authorised client templates and drafts into categories; copy shared defaults independently. Recent, draft and category views, scoped search and the email image library support daily work. Import HTML or XeroFlow JSON through a sanitised preview. Supported HTML emails retain responsive layouts, background images and desktop/mobile alternatives. Edit text, links and images within the imported design; it remains one complete email. Imported HTML is not automatically converted into native FigFlow layers. Active content is removed and public HTTPS assets are retained. Keep OEM originals and review notes for comparison; open originals as independent copies. JSON backups preserve design, subject, preview text, category and draft status. Make and provider filters retain client scope. Failed loads block editing; retries reconcile the same save. Import does not imply campaign approval.'
       },
       {
-        title: 'Editing, Preview and FigFlow',
-        content: 'Edit spacing, typography, borders and backgrounds; switch between Editor, Preview and HTML. FigFlow’s Email templates browser shows authorised saved templates, drafts and starters with client filters and content-editing limits. Create an independent design draft before editing supported text, images and buttons; HTML-only templates retain composer editing. Returns require rendered review and explicit Apply, with revision conflicts protecting newer staff edits. Shared-module publication and Apple Mail, Gmail and Outlook acceptance remain separate work.'
+        title: 'Preview and FigFlow Rollout',
+        content: 'Edit spacing, typography, borders and backgrounds; switch between Editor, Preview and HTML to check table-based email output. FigFlow native authoring and reusable template and module versions are being validated for a controlled staff preview, with general release pending. Preview work includes independent design drafts, saved history and rendered review before explicit Apply; conflicts protect newer staff edits. Native campaign editing and publishing new versions of shared templates are still being completed. Wider rollout and Apple Mail, Gmail and Outlook acceptance remain separate gates.'
       }
     ]
   },

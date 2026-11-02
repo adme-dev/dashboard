@@ -13,6 +13,7 @@ import { describeEmailActionError } from '~~/app/utils/emailActionError'
 const props = defineProps<{
   open?: boolean
   canonical?: boolean
+  publishedOnly?: boolean
   clientId?: string | null
 }>()
 
@@ -55,6 +56,7 @@ const imageAssets = computed(() => {
   return (data.value?.assets || [])
     .filter(asset => isAllowedEmailImageMime(asset.mimeType))
     .filter(asset => !props.canonical || (['image/png', 'image/jpeg', 'image/gif'].includes(asset.mimeType) && asset.fileSize <= 10 * 1024 * 1024 && (asset.clientId === null || asset.clientId === props.clientId)))
+    .filter(asset => !props.publishedOnly || !!asset.emailPublication)
     .filter(asset => !q || asset.name.toLowerCase().includes(q))
 })
 
@@ -145,7 +147,7 @@ function onFileSelect(event: Event) {
               class="w-full"
             />
           </UFormField>
-          <div class="flex items-center gap-2">
+          <div v-if="!publishedOnly" class="flex items-center gap-2">
             <UButton
               icon="i-lucide-upload"
               label="Upload image"

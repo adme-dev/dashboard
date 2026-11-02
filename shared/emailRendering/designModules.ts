@@ -181,9 +181,10 @@ export function insertDesignImage(input: unknown, asset: EmailDesignDocument['as
   const id = `img_${operationId}`
   if (design.blocks[id]) throw new EmailDesignError('INVALID_DESIGN', 'collision')
   design.blocks[id] = { type: 'Image', data: { props: { url, alt: '' } } }
-  design.lineage.push({ blockId: id, nodeId: `imgn_${operationId}`, fields: { alt: `imgf_${operationId}` } })
-  // URL is a verified immutable publication; ordinary content editing gets alt only.
-  design.policy.editableFields.push(`${id}.data.props.alt`)
+  design.lineage.push({ blockId: id, nodeId: `imgn_${operationId}`, fields: { alt: `imgf_${operationId}`, url: `imgu_${operationId}` } })
+  // New registered images permit ID-only replacement through the content owner.
+  // Generic staff saves still cannot change registered image source URLs.
+  design.policy.editableFields.push(`${id}.data.props.alt`, `${id}.data.props.url`)
   const previous = design.assets.find(a => a.id === asset.id)
   if (previous && stableDesignJson(previous) !== stableDesignJson(asset)) throw new DesignModuleError('ASSET_NOT_READY')
   if (!previous) design.assets.push(asset)

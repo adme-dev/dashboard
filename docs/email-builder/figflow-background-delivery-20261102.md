@@ -1006,3 +1006,260 @@ Parent stages the reviewed native checkpoint locally, excluding all concurrent
 UI/server/test edits and historical08a harness adaptations. Do not push yet and
 cancel the active general CI before its new backend size check settles. This
 source-only checkpoint activates/deploys nothing.
+
+Campaign runtime preparation identified the actual staff-save transport boundary:
+`server/api/email/campaigns/[id].patch.ts` on Pages calls updateCampaign and the
+canonical writer. The private design Worker is not its owner. Parent explicitly
+preserved that architecture: no draft-PATCH normalization, fixture sender or
+new private handler/config to make a test pass. Final local campaign acceptance
+must include the coherent frozen actual Pages PATCH adapter/artifact with its
+existing middleware/session/asset authority alongside the private Worker.
+Private-Worker-only evidence cannot close that path; hosted ordinary-employee
+authentication remains an additional gate. Runtime preparation must fail closed
+if the Pages artifact is absent.
+
+## 3 November — preparation exposed two original-scope gaps
+
+Runtime preparer correctly refused to fabricate two assumptions. Parent source
+inspection confirms publish-template has no existing-target/revise shape and
+always inserts a new edm_templates owner; draft mutation and492 projection
+guards refuse normal published-row editing. Same published T/R2 publication
+therefore has no supported current API. Do not simulate that step using direct
+SQL, a draft PATCH or a second template identity. The runtime fixture can prepare
+the genuine R1 campaign round-trip while recording same-T successor publication
+as BLOCKED. PRD stable template ID/immutable revision requirements remain open;
+closing08b cannot imply complete original F04/F07/F08 acceptance. A bounded
+extension through the existing publication owner remains required, rather than
+a new library/version system or relaxed published-row guard.
+
+Second, insertDesignImage still grants alt only, despite explicit approved
+slice2/PRD125 default image replacement requirement. Parent sent this narrow
+correction to the current UI owner: new registered insertions gain the explicit
+URL content grant while retaining typed registered replacement, fresh authority,
+old locks/policies and raw-URL refusal. Add meaningful staff-role unit/PG
+coverage; do not widen legacy policies or manufacture browser-side grants. A
+legitimate old URL-granted conversion baseline is only legacy coverage, not
+proof of the missing new-image default. Both findings are actual gaps, not
+reasons to weaken the acceptance test.
+
+Before widening the new-image default, UI owner identified a related template
+raw-save bypass: appendRevision staffOnly currently uses assertStaffDesignEdit
+without registered-image URL-path enforcement, whereas campaign raw PATCH has
+that refusal already. Parent inspected both source paths and authorized minimal
+designRevisions.ts guard +real-PG regression for manifest-backed Image/Avatar URL
+changes through generic staff save. Bind locked persisted state, retain typed
+registered replacement/fresh authority and confirmed replay, leave assetless
+legacy conversion/content behavior and existing policies intact. The new default
+remains held until the refusal regression is red→green; no bypass flag, new
+service, migration or designer-authority widening was authorized.
+
+## 3 November — campaign fixture preparation and successor-publication assignment
+
+Campaign runtime preparation settled:13 preparation checks pass/1 actual case
+skipped, scoped lint/types/Node compile pass. No new browser/Workerd/PG runtime
+was launched. Report `campaign-native-browser-preparation-20261103.md` and32-file
+preparation manifest3e32c6e2cbef883e1cfc025bad4f1ad992e2aa90da5088527c02f5e26b438edd
+record actual pending source/package/Pages-auth/cohost/calibration inputs. The
+preparer fully reviewed815/301 historical08a lines and their128-line diff; no
+P0/P1 in that scope, frozen9f pins and24/400/94/123 evidence entries retained.
+Two new2px PNG fixtures have distinct red/blue pixels, but no visual/runtime
+acceptance is claimed from preparation.
+
+Fresh fetch still identifies main052eefaf9. Local migration inventory and current
+main have no499 migration; no499 reservation was found. Parent reserves499 ONLY
+for a narrowly validated published-template successor projection guard if needed
+by08c. Existing491–498 remain immutable. Backend worker will extend the existing
+designTemplates owner/strict command/receipt/CAS path, never create another
+version store, promote a working draft by raw PATCH, mutate campaign base pins or
+weaken old published-row refusal. Parent owns configured migration application
+after independent review/content-preservation receipt, before release. No
+configured mutation or feature activation has occurred for this new slice.
+
+## 3 November — exactc22 full CI and budgets PASS
+
+Native41478150476 and general41478150698 settled SUCCESS. Parent read the full
+report and independently verified94 SHA256SUMS entries, manifest
+bbf4d2c064d49ebbc29cecd18ee16dcb6b2adab46e457b9a51863a7f126d84e6,
+report0cdf8d3ee6821b41331c5227e8be7c606be7a11745b9888dfa6636c33342c0e3.
+Both actualcheckouts11c44b5fb11025826eee6d2e7ac2fc2e71a605ea have exact052/c22
+parents, tree4a83007dca97e4b87e23baf73ea9513997f6097b and backend0bd ancestry.
+Main suite21,883 passed/4,177 skipped/0failed, isolated70, PG82 including repaired
+fixture16/0skip, repairedwarning8, private renderer131+13, social930 and
+Pagesguards21 passed. Actual opted-in native/campaign PG/browser harnesses remain
+skipped in general CI; source-bound151PG and strict9f08a runtime evidence are
+separate. Build/isolation/admission-related stages passed.
+
+Actual emitted Pages raw25,409,806/25,468,928 leaves59,122 bytes;
+gzip7,332,726/9,750,000 leaves2,417,274. Limits/scripts were unchanged. Local
+native40 checkpoint6c7f and all dirty UI/499/harness changes are excluded.
+Nativec22 proves32/9/8 (81named),47native/56package integritychecks, WASM18a31d.
+This is not the new campaign package. Deployment/release jobs were skipped;
+PR827 remainsdraft. Final coherent source still needs freshCI/size and runtime.
+
+Successor author notes498 rejects campaign render metadata on non-campaign
+revisions. Proposed499 therefore adds narrowly constrained immutable
+template_rendered_html_sha256 to existing revisions for new published successors
+and binds exact compiled HTML to their projection; no existing campaign guard
+or registry/head store changes. Existing R1 bootstrap remains untouched. This
+is proposed/under implementation, not configured-applied or independently accepted.
+
+## 3 November — campaign source and successor backend ready for review
+
+Campaign slice5 settled on unchanged owned source:174 real-PG/7 files and613
+regressions/64 files, zero skips,0owned TS diagnostics, explicit retained lint/
+transitive baselines and no remaining schemas. Parent read full report and
+verified69 source/report/evidence/protected/migration hashes; all8 dependency
+snapshots match. Manifested253fd6b2edc37de67c960f0093054155fc8b3a822cc9a631d6ed9e46f950d3,
+report068e29b4dcd7a19546b73c244d2df5bfcc33c080ef3f3a608286bb5557275e48.
+Exact terminal historical campaign replay now has real-PG zero-write triggers
+and actor/op/payload/mode/client/read refusal tests. Registered new-image grant
+and generic staff rawURL guard are included. Independent review remains next;
+no actualPages/WASM/hosted acceptance is inferred from these local matrices.
+
+Successor08c backend also settled:40 new PG+3unit,74 PG regressions and86 unit
+regressions (overlappingcounts), zero skips; lint/0ownedtypes and cleaned schemas.
+Parent read report and verified all6 final-freeze entries. It proves sameT/doc
+R2, oldR1/A/B pins, real newC selection, races/replay/rollback/tamper boundaries
+in disposable PG. Migration499SHA31cad088418962141d990368cc2fb460fd030ee2eb2cb9530078d16f49f06453
+remains configured-PENDING and requires independent review; UI target/version
+review and actualT/R2 runtime are still open.
+
+Public sync settled as a six-line data-copy change in existing feature index/
+detail pages, plus report. Parent read full report/diff and verified exact
+source/report hashes. Scoped lint0/0,3SFC compile checks, unchanged templates/
+styles/navigation/QR and14categories/133catalog/132details are recorded; original
+page-studio duplicate/category mismatch stays baseline. FigFlow is explicitly
+controlled-staff-preview validation, with native campaign/successor/inbox work
+pending. Source grows267bytes, not a claimed bundle delta. No product activation.
+
+## 3 November — independent campaign review and bounded dispositions
+
+Opus ctx_e577b591109b reviewed all28 owned paths and8 dependencies with unchanged
+hashes, verified174PG/613unit evidence and the six-table write trap, and found
+no P0/P1 in that source scope. Three P2s are recorded in
+`.verification/campaign-ui-handoff-independent-review-20261103.md`. Parent read
+the full review and inspected actual content-route/recovery source.
+
+P2-1 is accepted as a release-gate mismatch: content-route campaign initialization/
+Open can currently opt in with only DRAFT_SAVES while trusted availability needs
+DESIGNER_ENABLED. Repair server-side using parsed or persisted campaign ownership;
+keep legacy-template paths and read-only availability behavior, and never infer
+owner from an untrusted hint. Do not loosen other release flags for replay.
+
+P2-2 is a clarification, not a new deduplication store: approved slice5 promises
+once per original operation. A deliberately new named-copy operation may create
+another independent campaign. Keep original-payload recovery for unknown replies,
+test/document operation-level semantics and prevent automatic duplicate retries;
+do not impose unapproved per-proposal uniqueness.
+
+P2-3 is accepted: confirmed recovery currently performs retention/creative/asset
+readiness before the receipt and cannot reconcile after role/storage/retention
+changes. Exact confirmed recovery must instead require matching global+canonical
+receipts and fresh stored source/destination read authority, return recorded C
+with zero writes, and run creation readiness/retention only for a new operation.
+Write-trap and changed-payload/actor/client/revoked-read tests are required. No
+new campaign may be created to reconcile an old action. These fixes return to
+the original author, then independent final-byte review before integration.
+
+## 3 November — confirmed P1 holds migration499
+
+Independent successor review ctx_57abbce7bdbf proved a compound invariant bypass
+in frozen49931cad088: schema0 child+head advance+published-owner demotion+
+source/HTML/pointer rewrite commits from both NULL-pointerR1 and hashedR2, with
+and without497 (4/4 missing refusals). Two head-only controls correctly refused.
+Owned schemas were dropped. Report
+`.verification/template-successor-independent-review-20261103.md`
+SHA60367baa702a1d861be6ec0dd2bb17ba7f893e9c6385426db551159afbf3d777.
+This is defensive database DML proof, not an observed HTTP/RBAC exploit.
+499 has NOT been applied to the configured DB and is blocked until repaired,
+refrozen and independently reverified. Old green individual-mutation tests do
+not disprove the compound case. Parent read full report and actual499: early
+return on newly selectedschema0 and finalowner-kind early return enable it.
+
+Repair must anchor prior structured/published identity/history before mutable
+head/kind early exits, preserve genuine schema0/draft bootstrap, and test compound
+R1/R2/two497 modes with rollback and zero lasting changes. No491–498 modification.
+Parent also identified an unnecessary compatibility restriction: canonical
+published name/folder labels should retain their existing metadata owner rather
+than require content republication. Permit pure label changes without rewriting
+pinned source/HTML/head; content/identity/projection tampering stays refused.
+Trace/test actual existing updateTemplate path if needed, preserving scope.
+
+Runtimepreparation correctly rejected active handoff drift; parent confirmed
+that drift is the separately assigned reviewfix, not permission to accept dirty
+bytes. Its499 oldhash remains historical/pending; no artifact build or runtime
+may use it as the final repaired migration. New explicit reviewed freeze needed.
+
+## 3 November — campaign P2s independently closed; schema re-review interrupted
+
+Opus ctx_f35a77bc9a7f completed exact-byte followup: allthreecampaignP2s resolved
+under recorded operation-level copy policy, noP0/P1 in reviewedscope. Fivefix
+files/8dependencies/23otherpriorownedpaths andevidence matched start/end.
+Report `.verification/campaign-ui-review-fixes-independent-20261103.md`.
+Parent read completed178PG/616unit logs and verified74fixed-source/report/
+evidence/protectedhashes with no dependencydrift beforedispatchingreview.
+Pages/privateWorker/native40/WASM/hosted andnewpublicationUI remain separate.
+
+Schema re-review ctx_88fb33a684e6/task_0e33187d09ca did NOT complete. Orca
+reported an automated possible-cybersecurity content flag for that worker turn;
+there is no worker_done or independent repaired499 PG acceptance. Read-only
+worker-show returned ready/input_accepted, active terminal, livenessunverifiable.
+No reset, stop, abandon, release, retry or alternative-agent routing was performed.
+Source-only parent reading is not substituted for the required completed review.
+Configured499 remains BLOCKED/NOT APPLIED. Preserve the original failure, repaired
+94e9candidate, existing independentP1 proof and all worker state. The error is
+automatic review/runtime interruption, not a new observed application defect or
+production SQL/HTTP event. Originalsource/testing/hosted acceptance boundaries stay.
+
+Publication UI independent review ctx_d6d9b112f1f1 found noP0/P1 and oneP2: a
+confirmed compiled review remains enabled after successful publication, so a
+repeat click can create a second new template with a new operation. Parent read
+full review and accepts bounded consume-on-confirmed-receipt fix; unknown/lost
+responses must retain originalreview/request for exact reconciliation. Add real
+component cases for normal success and reconciled success, secondclick0writes,
+and deliberatefreshreview required. Backend499flaggedre-review remains separate
+and blocked; the UIreview neither accepts nor reroutes that task.
+
+Narrowed schema task settled FAILED/INCOMPLETE, not passed. Read-only report
+`.verification/template-successor-independent-rereview-20261103/REPORT.md`
+SHAa25b3871e56ec66788932646c64ae68af5bff45ff21e882c2edb4c3a928219e6
+confirms originalPGverificationwasNOTRUN afterautomatedclassification; no SQL
+mutations/retries/alternativemodelrouting occurred. It also identifies an
+unexecuted source concern: schema1/bootstrap head with a schema0 parent does
+not prove first structured publication. Parent read full report and will narrow
+that predicate through source-only code work, keeping all independentPG checks
+and configured499BLOCKED. Do not call this a newly executed database defect or
+closeP1 from the authored103 checks.
+
+Publication review-consumption fix settled:631tests/65files0skip (15focused),
+0ownedlint/types with70unownedSFC diagnostics,177priorprotectedpathsunchanged
+atthatfreeze. Parent read completedreport andverified24source/report/evidence
+hashes. Panel820f435a/test3fc766aa; originalbuilder/helper/recovery/backend
+files unchanged. Opus exact-byte followup remains next; fullfeature/499/runtime
+acceptance remains open.
+
+## 3 November — coherent draft-source checkpoint preparation
+
+Opus ctx_ddeb8c368b7e closed the publication-consumption P2 on exactpanel820f435a/
+test3fc766aa, noP0/P1 in thatUI scope. Bothpublicationmountpoints/unknownoperation
+readback/explicitfreshreview andprotectedrecovery/backend inputs are unchanged.
+CurrentUI631/65 green matrix was independently read, then freshly rerun byparent
+with631passed0skip. Purecampaignpreparation17passed/1actualruntimeSKIPPED and
+8build-shape/config/syntaxchecks also freshly pass; no artifactbuild/browser/
+SQL/PG/database action occurred in these checks. Logs live under
+`.verification/coherent-email-candidate-20261103/`.
+
+Source-only bootstrap refinement settled:499SHA422555ef7e790504ab64e8476cdcee1c15759d7d4edf32a2e67eea953625128b
+now restricts its exception to originalimmutablelegacyroot directlyfollowedby
+first/currentstructuredhead, withnootherdocrevisions. Parent readone-hunkdiff
+andhelperprovenance; this is NOT a SQLparse/runtime pass and old103checks do
+notvalidate422555. RequiredindependentPGverificationremainsFAILED/INCOMPLETE,
+configured499BLOCKED/NOTAPPLIED; runtimebuildapprovalpinsremainnull.
+
+Parent freshly fetchedorigin/main052eefaf9, provedancestoroflocal6c7f, assembled
+all56changedfilesfromfinalsupersedingmanifests andverifiedeveryhashwithzero
+unaccountedfiles. This checkpointcombinesreviewedcampaignUI/recovery/image
+policy/publicationUI+publiccopy/native40 andpreparedtestcode, whileexplicitly
+retainingunapproved499source andopenDB/WASM/hosted/realinboxgates. Commit/push
+willbeadraftsourcecheckpointforCI, notmerge/deploy/migrationapplication.
+No raisedbudget, nativegatewayoverwrite, featureactivation or realemail.

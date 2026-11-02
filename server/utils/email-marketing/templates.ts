@@ -1,7 +1,8 @@
 import { redactTemplateProvenance } from '../../../shared/emailRendering/templateProvenance'
 // server/utils/email-marketing/templates.ts
 // DB layer for edm_templates. body_html is always (re)rendered from
-// body_source on write via the private rendering service.
+// body_source on content writes via the private rendering service. Canonical
+// published library-label edits preserve the exact saved projection.
 
 import { queryRowsFresh, queryOneFresh, queryOne, execute } from '~~/server/utils/db'
 import { renderTemplateDocument } from './render'
@@ -119,6 +120,27 @@ export async function updateTemplate(id: string, patch: UpdateTemplateInput, ren
 
   if (expectedClientId !== undefined && (existing.client_id ?? null) !== expectedClientId) return null
   const authorizedClientId = expectedClientId === undefined ? existing.client_id ?? null : expectedClientId
+  // Library labels have their existing mutable owner; they do not republish
+  // canonical content. Strictly exclude scope/kind/content and unknown keys.
+  const patchKeys = Object.keys(patch)
+  if (existing.template_kind === 'template' && existing.design_document_id && existing.revision_schema_version === 1
+    && patchKeys.length > 0 && patchKeys.every(key => key === 'name' || key === 'folder_name')) {
+    const fields: string[] = []
+    const params: unknown[] = []
+    if (patch.name !== undefined) {
+      params.push(patch.name)
+      fields.push(`name = $${params.length}`)
+    }
+    if (patch.folder_name !== undefined) {
+      params.push(patch.folder_name?.trim() || null)
+      fields.push(`folder_name = $${params.length}`)
+    }
+    if (fields.length) {
+      params.push(id, authorizedClientId)
+      return queryOne<EdmTemplate>(`UPDATE edm_templates SET ${fields.join(', ')}, updated_at = NOW()
+        WHERE id = $${params.length - 1} AND client_id IS NOT DISTINCT FROM $${params.length}::uuid RETURNING *`, params)
+    }
+  }
   const name = patch.name ?? existing.name
   const subject = patch.subject !== undefined ? patch.subject : existing.subject
   const previewText = patch.preview_text !== undefined ? patch.preview_text : existing.preview_text

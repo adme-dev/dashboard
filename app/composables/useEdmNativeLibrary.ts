@@ -1,8 +1,9 @@
+import { designReadOwner } from '~~/shared/emailRendering/designRoundtrip'
 import { ref } from 'vue'
 import { parseNativeLibraryContext, stableDesignJson, type NativeLibraryContext } from '~~/shared/emailRendering/designModules'
 import { applyDesignerOperations } from '~~/shared/emailRendering/designDesigner'
-import type { DesignHandoff } from '~~/shared/emailRendering/designRoundtrip'
-import type { TemplateDesignDraftRead } from '~~/server/utils/email-marketing/designReads'
+import type { DesignHandoff, DesignOwner } from '~~/shared/emailRendering/designRoundtrip'
+import type { HandoffDraftRead } from '~~/server/utils/email-marketing/designReads'
 
 export type NativeLibraryIntent = 'library' | 'images' | 'section' | 'template'
 /** Captured native hints survive proposal/Apply, but never authorize another
@@ -10,7 +11,8 @@ export type NativeLibraryIntent = 'library' | 'images' | 'section' | 'template'
 export function useEdmNativeLibrary() {
   const state = ref<{
     documentId: string
-    templateId: string
+    owner: DesignOwner
+    templateId?: string
     context: NativeLibraryContext
     expected: string
     intent: NativeLibraryIntent
@@ -22,15 +24,15 @@ export function useEdmNativeLibrary() {
     if (handoff.state !== 'open')
       throw new Error('Open the current design before choosing library content.')
     const context = parseNativeLibraryContext(handoff.source, input, operationId)
-    state.value = { documentId: handoff.draftId, templateId: handoff.templateId, context,
+    state.value = { documentId: handoff.draftId, owner: handoff.owner ?? { kind: 'template', id: handoff.templateId! }, ...(handoff.templateId ? { templateId: handoff.templateId } : {}), context,
       expected: stableDesignJson(applyDesignerOperations(handoff.source, context.operations, operationId)),
       intent, ready: false, reopenRequired: false, revisionId: null }
     return context
   }
-  function saved(draft: TemplateDesignDraftRead | null, revisionId: string) {
+  function saved(draft: HandoffDraftRead | null, revisionId: string) {
     const current = state.value
     if (!current || draft?.state !== 'structured' || draft.documentId !== current.documentId
-      || draft.templateId !== current.templateId || draft.headRevisionId !== revisionId
+      || stableDesignJson(designReadOwner(draft)) !== stableDesignJson(current.owner) || draft.headRevisionId !== revisionId
       || draft.projection.state !== 'current' || stableDesignJson(draft.source) !== current.expected)
       throw new Error('The saved design changed. Reopen FigFlow before using this selection.')
     current.ready = true

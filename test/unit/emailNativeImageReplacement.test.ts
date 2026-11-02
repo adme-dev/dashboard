@@ -22,6 +22,12 @@ async function setup() {
   const storage: DesignAssetStorage = { read: async () => png, url: async id => `https://app.test/${id}.png`, identifyUrl: async url => url.split('/').at(-1)!.replace('.png', '') }
   const inserted = await h.run({ version: 1, command: 'insert-published-image', operationId: crypto.randomUUID(), draftId, expectedDraftRevisionId: initial, assetId: old, parentId: 'root', index: 1 }, h.transaction, testEmailRenderer, storage)
   const blockId = h.state.revisions[inserted.revisionId].payload.blocks.root.data.childrenIds[1]
+  // Historical alt-only insertion fixture: these immutable outputs predate the
+  // new-image default and exercise the original verified-receipt exception.
+  const historical = h.state.revisions[inserted.revisionId].payload
+  historical.policy.editableFields = historical.policy.editableFields.filter((path: string) => path !== `${blockId}.data.props.url`)
+  delete historical.lineage.find((item: { blockId: string }) => item.blockId === blockId)!.fields.url
+
   const command = { version: 1 as const, command: 'replace-published-image' as const, operationId: crypto.randomUUID(), draftId, expectedDraftRevisionId: inserted.revisionId, assetId: fresh, blockId }
   return { h, storage, command, old, fresh }
 }

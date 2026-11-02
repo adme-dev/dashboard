@@ -8,7 +8,7 @@ import { resolve } from 'node:path'
 import pg from 'pg'
 import { Miniflare, Response as LocalResponse } from 'miniflare'
 import { afterAll, beforeAll, expect, it } from 'vitest'
-import { exerciseNativeLibraryBrowser, frozenReader, sha256, validateNativeLibraryReceipt, type NativeLibraryDraft, type NativeLibraryReceipt, type NativeLibraryUiPlan } from '../helpers/figflowNativeLibraryBrowser'
+import { exerciseNativeLibraryBrowser, frozenReader, sha256, validateNativeLibraryReceipt, NATIVE_LIBRARY_EVIDENCE_ROOT, NATIVE_LIBRARY_MIGRATIONS, type NativeLibraryDraft, type NativeLibraryReceipt, type NativeLibraryUiPlan } from '../helpers/figflowNativeLibraryBrowser'
 // PREPARED ONLY until the parent supplies the matching 32/9/8 package AND
 // frozen Worker/renderer receipt. No fallback to old core bytes or dirty source.
 const receiptPath = process.env.FIGFLOW_NATIVE_LIBRARY_RECEIPT
@@ -16,7 +16,7 @@ const planPath = process.env.FIGFLOW_NATIVE_LIBRARY_UI_PLAN
 const runtimeTest = receiptPath ? it : it.skip
 const actor = randomUUID(), templateId = randomUUID()
 const schema = `figflow_native_browser_${randomUUID().replaceAll('-', '')}`
-const evidence = resolve('.verification/figflow-native-library-browser', schema)
+const evidence = resolve(NATIVE_LIBRARY_EVIDENCE_ROOT, schema)
 const socket = '/private/tmp/figflow-postgres-20261102-recovered'
 const authSecret = 'synthetic-local-native-library-session-only'
 const assetA = randomUUID(), assetB = randomUUID()
@@ -63,14 +63,20 @@ async function workerRequest(path: string, body?: unknown, method = body === und
   return { status: response.status, body: result }
 }
 async function readDraft(): Promise<NativeLibraryDraft> {
-  const row = (await db!.query(`SELECT d.id,d.head_revision_id,r.payload,t.subject,t.preview_text,
+  const row = (await db!.query(`SELECT d.id,d.head_revision_id,r.payload,t.subject,t.preview_text,r.schema_version,
+    r.subject AS revision_subject,r.preview_text AS revision_preview_text,r.base_template_revision_id,r.rendered_html_sha256,
     t.body_source,t.email_design_revision_id FROM email_design_documents d
     JOIN email_design_revisions r ON r.document_id=d.id AND r.id=d.head_revision_id
     JOIN edm_templates t ON t.id=d.template_id WHERE t.id=$1`, [templateId])).rows[0]
   assert(row)
   assert.equal(row.email_design_revision_id, row.head_revision_id)
   assert.deepEqual(row.body_source, row.payload.blocks, 'Canonical projection is not the stored head')
-  return { documentId: row.id, templateId, revisionId: row.head_revision_id, blocks: row.payload.blocks, moduleInstances: row.payload.moduleInstances, assets: row.payload.assets, locks: row.payload.policy.designerLocks, dependencies: row.payload.dependencies, lineage: row.payload.lineage, scope: row.payload.scope, provenance: row.payload.source, subject: row.subject, previewText: row.preview_text }
+  assert.equal(row.schema_version, 1)
+  assert.equal(row.revision_subject, row.subject, 'Revision/owner subject readback diverged')
+  assert.equal(row.revision_preview_text, row.preview_text, 'Revision/owner preview readback diverged')
+  assert.equal(row.base_template_revision_id, null, 'A template draft acquired a campaign-only base pin')
+  assert.equal(row.rendered_html_sha256, null, 'A template draft acquired campaign-only render metadata')
+  return { documentId: row.id, templateId, revisionId: row.head_revision_id, blocks: row.payload.blocks, moduleInstances: row.payload.moduleInstances, assets: row.payload.assets, locks: row.payload.policy.designerLocks, dependencies: row.payload.dependencies, revisionMetadata: { schemaVersion: row.schema_version, subject: row.revision_subject, previewText: row.revision_preview_text, baseTemplateRevisionId: row.base_template_revision_id, renderedHtmlSha256: row.rendered_html_sha256 }, lineage: row.payload.lineage, scope: row.payload.scope, provenance: row.payload.source, subject: row.subject, previewText: row.preview_text }
 }
 /** Read-only Pages list/projection fixture, not a replacement write owner.
  * All canonical actions and preview rendering dispatch the actual local Worker.
@@ -116,6 +122,7 @@ beforeAll(async () => {
   assert.notEqual(plan.expectedEditedText, plan.expectedRevisedText)
   assert.notEqual(plan.expectedConcurrentText, plan.expectedRevisedText)
   await mkdir(evidence, { recursive: true })
+  await writeFile(resolve(evidence, 'fixture-inputs.json'), JSON.stringify({ receiptPath: resolve(receiptPath), receiptSha256: sha256(readFileSync(resolve(receiptPath))), planPath: resolve(planPath), planSha256: sha256(readFileSync(resolve(planPath))), expectedSource: receipt.sourceCommit }, null, 2))
   const config = { host: socket, port: 55483, user: 'figflow_test', database: 'figflow_design_test', connectionTimeoutMillis: 5000 }
   admin = new pg.Client(config)
   await admin.connect()
@@ -131,9 +138,9 @@ beforeAll(async () => {
     CREATE TABLE edm_templates(id uuid PRIMARY KEY,client_id uuid,name text,folder_name text,body_source jsonb,body_html text,subject text,preview_text text,template_kind text DEFAULT 'draft',updated_at timestamptz DEFAULT now());
     CREATE TABLE edm_custom_modules(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),client_id uuid,blocks jsonb,name text,description text,category text,preview_tone text,created_by uuid,created_at timestamptz DEFAULT now(),updated_at timestamptz DEFAULT now());
     CREATE TABLE banner_assets(id uuid PRIMARY KEY,client_id uuid,uploaded_by uuid,r2_key text,url text,mime_type text,file_size integer,name text);
-    CREATE TABLE campaigns(id uuid PRIMARY KEY,client_id uuid,status text);`)
+    CREATE TABLE campaigns(id uuid PRIMARY KEY,client_id uuid,status text,body_source jsonb,body_html text,subject text,preview_text text,updated_at timestamptz DEFAULT now());`)
   const source = frozenReader(receipt.sourceCommit)
-  const required = ['491_email_design_revisions.sql', '492_email_design_revision_metadata.sql', '493_email_design_handoffs.sql', '495_email_asset_publication.sql', '496_email_content_conditions.sql']
+  const required = NATIVE_LIBRARY_MIGRATIONS
   for (const name of required)
     assert(receipt.migrations.some(file => file.path === 'server/database/migrations/' + name), 'Missing fixture migration ' + name)
   for (const file of receipt.migrations)

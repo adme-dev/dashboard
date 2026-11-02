@@ -9,7 +9,11 @@ import { compileScript, parse } from '@vue/compiler-sfc'
 import { chromium, type Page } from 'playwright'
 
 export const REVIEWED_08A_SOURCE = 'e615f5baaf01bd5c9cf6dc26a19145029eed2b02'
-export const PREPARED_SOURCE = '956330e9b1131b50b368e8c236dea1e166f53a2f'
+export const PREPARED_SOURCE = '9f09d3f874e37e42bf72594efa0e404c781debf5'
+export const NATIVE_LIBRARY_EVIDENCE_ROOT = resolve('.verification/figflow-native-library-browser-9f09d3f87')
+export const EXPECTED_NATIVE_RUN = '41465049486'
+export const MIGRATION_498_SHA256 = 'e8fdd367968efe31eba4efb9af8bc4ecb381e16769efdbe12f88fedaca08e1fb'
+export const NATIVE_LIBRARY_MIGRATIONS = ['491_email_design_revisions.sql', '492_email_design_revision_metadata.sql', '493_email_design_handoffs.sql', '495_email_asset_publication.sql', '496_email_content_conditions.sql', '498_email_campaign_design_projection.sql'] as const
 export const ACCEPTED_CORE_WASM = '70bfa31a2d7d0752293a3db7594b722b3bc3da992ad01e7484406fbe365c6b08'
 export const NATIVE_08A_SOURCE = {
   engine: '530a33cf1d2b5e7a7c102ec9fa257a720ef18592f54ebe5bd62728c64f2f2d47',
@@ -109,6 +113,7 @@ export interface NativeLibraryDraft {
   }>
   locks: unknown
   dependencies: unknown
+  revisionMetadata: { schemaVersion: number, subject: string | null, previewText: string | null, baseTemplateRevisionId: string | null, renderedHtmlSha256: string | null }
   lineage: Array<{ blockId: string, nodeId: string, fields: unknown }>
   scope: unknown
   provenance: unknown
@@ -283,7 +288,7 @@ export async function validateNativeLibraryReceipt(receipt: NativeLibraryReceipt
   assert.equal(receipt.native.engineTests, 32)
   assert.equal(receipt.native.bridgeTests, 9)
   assert.equal(receipt.native.uiTests, 8)
-  assert(/^\d+$/.test(receipt.native.ciRun))
+  assert.equal(receipt.native.ciRun, EXPECTED_NATIVE_RUN, 'Require the matching new-checkpoint CI/package receipt')
   for (const artifact of [receipt.worker, receipt.renderer]) {
     const path = resolve(artifact.path)
     assert(path.startsWith(resolve('.verification') + sep), 'Only parent-supplied verification artifacts are allowed')
@@ -298,10 +303,16 @@ export async function validateNativeLibraryReceipt(receipt: NativeLibraryReceipt
   for (const path of ['workers/email-design/admission.mjs', 'workers/email-design/sessionToken.ts', 'server/utils/email-marketing/designRevisions.ts', 'server/utils/email-marketing/designReads.ts', 'server/utils/email-marketing/designModules.ts', 'shared/emailRendering/designDesigner.ts', 'workers/email-rendering/src/index.ts', 'workers/email-rendering/src/handleRender.ts']) assert(receipt.runtimeSourceFiles[path], 'Missing frozen runtime input ' + path)
   for (const [path, hash] of Object.entries(receipt.runtimeSourceFiles)) assert.equal(sha256(frozen.read(path)), hash, 'Mixed runtime source ' + path)
   assert.equal(sha256(frozen.read('workers/craft-editors/patches/figflow-browser-bridge.patch')), receipt.native.patchSha256)
-  assert(receipt.migrations.length > 0)
-  for (const file of receipt.migrations) {
-    assert(/^server\/database\/migrations\/49[1-7]_[a-z_]+\.sql$/.test(file.path), '498/dirty foundation is excluded from this prepared fixture')
+  validateNativeLibraryMigrations(receipt.sourceCommit, receipt.migrations)
+}
+/** Validate the schema independently of native/package availability. */
+export function validateNativeLibraryMigrations(sourceCommit: string, migrations: NativeLibraryReceipt['migrations']) {
+  assert.equal(sourceCommit, PREPARED_SOURCE)
+  const frozen = frozenReader(sourceCommit)
+  assert.deepEqual(migrations.map(file => file.path).sort(), NATIVE_LIBRARY_MIGRATIONS.map(name => 'server/database/migrations/' + name).sort(), 'Require the exact coherent fixture migrations including498')
+  for (const file of migrations) {
     assert.equal(sha256(frozen.read(file.path)), file.sha256)
+    if (file.path.endsWith('/498_email_campaign_design_projection.sql')) assert.equal(file.sha256, MIGRATION_498_SHA256, 'Require the reviewed frozen498 bytes')
   }
 }
 const fixtureCss = `body{margin:0;font:14px system-ui;color:#17212f;background:#f5f6f8}button,input,select,textarea{font:inherit;padding:8px;margin:3px}button:disabled{opacity:.45}.fixture-field{display:flex;flex-direction:column;gap:4px;margin:8px 0}.fixture-dialog{position:fixed;inset:0;z-index:40;padding:16px;margin:0;max-width:none;max-height:none;width:100%;height:100%;box-sizing:border-box;background:white;overflow:auto}.flex{display:flex}.flex-col{flex-direction:column}.flex-1{flex:1 1 0%}.min-h-0{min-height:0}.h-full{height:100%}.w-full{width:100%}.overflow-hidden{overflow:hidden}.overflow-y-auto{overflow-y:auto}.grid{display:grid}.grid-cols-2{grid-template-columns:repeat(2,minmax(0,1fr))}iframe{box-sizing:border-box;display:block;width:100%;height:520px;border:1px solid #ccd2db}iframe[title="FigFlow email design"]{height:820px;min-width:1000px}iframe[class*="1000px"]{max-width:1000px}iframe[class*="390px"]{max-width:390px}img{max-width:100%}#fixture-toasts{position:fixed;bottom:0;right:0;z-index:99;pointer-events:none}`
@@ -332,7 +343,7 @@ export async function exerciseNativeLibraryBrowser(options: {
   await validateNativeLibraryReceipt(options.receipt)
   const bundle = await compileNativeLibraryBuilder({ sourceCommit: options.receipt.sourceCommit, templateId: options.templateId })
   const evidence = resolve(options.evidenceDirectory)
-  assert(evidence.startsWith(resolve('.verification/figflow-native-library-browser') + sep), 'Use a new run-specific evidence directory')
+  assert(evidence.startsWith(NATIVE_LIBRARY_EVIDENCE_ROOT + sep), 'Use a new run-specific evidence directory')
   await mkdir(evidence, { recursive: true })
   await writeFile(resolve(evidence, 'source-receipt.json'), JSON.stringify({ ...options.receipt, browserBundleSha256: sha256(bundle.bytes), browserSourceFiles: bundle.sourceFiles, realComponents: bundle.components, fixtureLeaves: bundle.leaves, fixtureCssSha256: sha256(fixtureCss), plan: options.plan }, null, 2))
   const playwrightSource = await readFile(resolve('node_modules/playwright-core/lib/coreBundle.js'), 'utf8')

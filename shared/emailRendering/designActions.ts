@@ -387,10 +387,10 @@ function parseBounded<T>(input: unknown, parse: (snapshot: unknown) => T): T {
   }
 }
 function validateDesignScope(
-  scope: { clientId: string | null },
+  scope: { clientId?: string | null },
   design: EmailDesignDocument
 ): void {
-  if (scope.clientId !== design.scope.clientId) invalid()
+  if (!Object.hasOwn(scope, 'clientId') || scope.clientId !== design.scope.clientId) invalid()
 }
 function validateProposalSemantics(proposal: DesignProposal): void {
   if (proposal.design.kind !== 'campaign-draft') invalid()
@@ -436,6 +436,17 @@ export function validateDesignAction(input: unknown): DesignAction {
       !== action.includedOverridePaths.length
     )
       invalid()
+    return action
+  })
+}
+
+/** Owner is checked against the persisted handoff by the server. No source-draft
+ * replacement or module payload is admitted at this common proposal boundary. */
+export function validateHandoffDesignReturnAction(input: unknown): ProposeReturnAction {
+  return parseBounded(input, (snapshot) => {
+    const action = ProposeReturnActionSchema.parse(snapshot)
+    validateDesignScope(action.scope, action.design)
+    if (!['template', 'campaign-draft'].includes(action.design.kind) || action.sourceDraft) invalid()
     return action
   })
 }

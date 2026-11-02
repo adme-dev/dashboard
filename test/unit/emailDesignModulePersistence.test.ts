@@ -152,8 +152,8 @@ describe('canonical module publication transaction boundary', () => {
     expect(Object.keys(h.state.modules)).toHaveLength(0)
   })
   it('revises only the selected module with expected head, preserving exact old revision selection', async () => {
-    const h = harness(), pub = h.publish(), first = await h.run(pub)
-    const revisionRequest: DesignModuleRequest = { ...pub, command: 'revise-module', moduleId: first.moduleId!, expectedModuleRevisionId: first.revisionId, operationId: crypto.randomUUID(), name: 'Hero v2' }
+    const h = harness(), pub = h.publish() as Extract<DesignModuleRequest, { command: 'publish-module' }>, first = await h.run(pub)
+    const revisionRequest: Extract<DesignModuleRequest, { command: 'revise-module' }> = { ...pub, command: 'revise-module', moduleId: first.moduleId!, expectedModuleRevisionId: first.revisionId, operationId: crypto.randomUUID(), name: 'Hero v2' }
     const second = await h.run(revisionRequest)
     expect(second.moduleId).toBe(first.moduleId)
     expect(second.revisionId).not.toBe(first.revisionId)
@@ -210,10 +210,9 @@ describe('canonical module publication transaction boundary', () => {
     const current = h.state.revisions[image.revisionId].payload
     expect(current.assets).toEqual([asset])
     const imageRoot = current.blocks.root.data.childrenIds[0]
-    expect(current.policy.editableFields).not.toContain(`${imageRoot}.data.props.url`)
-    // A trusted persisted source can carry legacy URL edit grants. Publication
-    // preserves those grants but any later preserved URL must be checked again.
-    current.policy.editableFields.push(`${imageRoot}.data.props.url`)
+    expect(current.policy.editableFields).toContain(`${imageRoot}.data.props.url`)
+    // Publication preserves the explicit new-image replacement grant, while
+    // any later preserved URL still requires registered asset checks.
     const pub = { ...h.publish(), operationId: crypto.randomUUID(), expectedDraftRevisionId: image.revisionId, rootBlockIds: [imageRoot] } as DesignModuleRequest
     const module = await h.run(pub, h.transaction, testEmailRenderer, storage)
     const inserted = await h.run({ version: 1, command: 'insert-module', operationId: crypto.randomUUID(), draftId, expectedDraftRevisionId: image.revisionId, moduleId: module.moduleId!, revisionId: module.revisionId, parentId: 'root', index: 0 }, h.transaction, testEmailRenderer, storage)
