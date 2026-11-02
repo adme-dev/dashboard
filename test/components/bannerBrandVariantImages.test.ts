@@ -23,7 +23,7 @@ afterEach(() => {
 describe('brand kit vehicle images', () => {
   it('loads images for the selected MotorStack kit and adds a selected image to the canvas', async () => {
     for (const [name, value] of Object.entries(Vue)) vi.stubGlobal(name, value)
-    const addLayer = vi.fn()
+    const addMotorStackImageToAllLayouts = vi.fn(() => 3)
     const api = vi.fn(async (url: string, options: { method?: string, query?: { brandId: string }, body?: { brandId: string, assetId: string } }) => {
       if (options?.method === 'POST') return { asset: saved }
       return { brand: { id: 'renault', name: 'Renault' }, assets: [image], models: ['Duster'], warnings: [] }
@@ -32,7 +32,7 @@ describe('brand kit vehicle images', () => {
     vi.stubGlobal('useBannerStudio', () => ({
       state: Vue.reactive({ project: { clientId: null }, duration: 10 }),
       selectedLayer: Vue.ref(null), activeFormat: Vue.ref({ w: 1200, h: 628 }),
-      applyBrandKit: vi.fn(), updateLayer: vi.fn(), addLayer
+      applyBrandKit: vi.fn(), updateLayer: vi.fn(), addLayer: vi.fn(), addMotorStackImageToAllLayouts
     }))
     vi.stubGlobal('useBannerRealtime', () => ({ isLayerLockedByOther: () => false }))
     vi.stubGlobal('useBannerFonts', () => ({ fetchCustomFonts: vi.fn(), loadUsedFonts: vi.fn(), getFont: () => undefined }))
@@ -45,7 +45,7 @@ describe('brand kit vehicle images', () => {
     app = Vue.createApp(BrandPanel)
     app.component('UButton', Vue.defineComponent({ props: ['label'], setup: (props, { slots, attrs }) => () => Vue.h('button', attrs, props.label || slots.default?.()) }))
     app.component('UFormField', Vue.defineComponent({ props: ['label'], setup: (_, { slots }) => () => Vue.h('div', slots.default?.()) }))
-    app.component('USelectMenu', Vue.defineComponent({ setup: () => () => Vue.h('span') }))
+    app.component('USelectMenu', Vue.defineComponent({ props: ['items'], emits: ['update:modelValue'], setup: (props, { emit }) => () => Vue.h('div', props.items?.map((item: { label: string, value: string }) => Vue.h('button', { 'data-value': item.value, 'onClick': () => emit('update:modelValue', item.value) }, item.label))) }))
     app.component('UTabs', Vue.defineComponent({ setup: () => () => Vue.h('span') }))
     app.component('BannerBrandStyleGuide', Vue.defineComponent({ setup: () => () => Vue.h('span') }))
     app.component('BannerMotorStackLogo', Vue.defineComponent({ setup: () => () => Vue.h('span', 'MOTORSTACK') }))
@@ -59,17 +59,23 @@ describe('brand kit vehicle images', () => {
     await settle()
     expect(api).toHaveBeenCalledWith('/api/agency/banner-studio/motorstack/media', { query: { brandId: 'renault' } })
     expect(api.mock.calls.some(call => call[0].includes('creative-catalog'))).toBe(false)
-    expect(host.querySelector('img')?.getAttribute('src')).toBe(image.previewUrl)
-    host.querySelector<HTMLButtonElement>(`[aria-label="Add ${image.name} to layout"]`)!.click()
+    expect(host.textContent).toContain('Choose a model first.')
+    Array.from(host.querySelectorAll<HTMLButtonElement>('[data-value="Duster"]')).at(-1)!.click()
     await settle()
-    expect(api).toHaveBeenCalledWith('/api/agency/banner-studio/motorstack/media', { method: 'POST', body: { brandId: 'renault', assetId: image.id } })
-    expect(addLayer).toHaveBeenCalledWith(expect.objectContaining({ type: 'image', src: saved.url }))
+    expect(host.textContent).toContain('Choose a paint colour to show matching images.')
+    host.querySelector<HTMLButtonElement>('[data-value="white"]')!.click()
+    await settle()
+    expect(host.querySelector('img')?.getAttribute('src')).toBe(image.previewUrl)
+    host.querySelector<HTMLButtonElement>(`[aria-label="Add ${image.name} to all layouts"]`)!.click()
+    await settle()
+    expect(api).toHaveBeenCalledWith('/api/agency/banner-studio/motorstack/media', { method: 'POST', body: { brandId: 'renault', model: 'Duster', assetId: image.id } })
+    expect(addMotorStackImageToAllLayouts).toHaveBeenCalledWith(saved)
     const openModal = [...host.querySelectorAll('button')].find(button => button.textContent?.trim() === 'Open large image browser')!
     openModal.click()
     await settle()
     expect(host.querySelector('[data-brand="renault"]')).not.toBeNull()
     host.querySelector<HTMLButtonElement>('[data-brand="renault"]')!.click()
     await settle()
-    expect(addLayer).toHaveBeenCalledTimes(2)
+    expect(addMotorStackImageToAllLayouts).toHaveBeenCalledTimes(2)
   })
 })
