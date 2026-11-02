@@ -451,3 +451,47 @@ vectors cover root/nested/column targets. Expected Linux suites now30 engine,
 it; final hashes are pinned. Existing successful eb561 package cannot establish
 acceptance of these new bytes; matching Linux/package/browser verification must
 run again. Captured failing snapshot is retained unchanged.
+
+Actual-WASM taskbefd7d0c2e3c settled with partial failure and was released. The
+separate props/style case passed the complete local no-op/review/Apply/save/
+reload/staff/reopen/CAS-conflict sequence with real workerd/PostgreSQL, explicit
+CTA lock and nonempty module pin. Zero unknown requests/application errors;
+only the exact retained Playwright sandbox instrumentation stack is classified
+separately. Parent inspected desktop/mobile proposal screenshots.49 evidence
+files and served hashes are retained. Structural case remains a real failing
+acceptance test on old wasm a41e18d3, with original head/body unchanged; it is
+not normalized or relabelled expected-pass. Test/helper/report stay preserved
+uncommitted until accepted matching-package rerun. Full scope remains open.
+
+Independent original-goal audit completed read-only at920b25885 and was released.
+It maps every F/M goal to source/evidence and exposes still-unclosed PRD user
+journeys: native both-direction library/verified image controls, campaign-owned
+canonical handoff (current builder explicitly gates campaign controls), full
+template fidelity, M06 integration and hosted/real-client acceptance. These are
+tracked as08a/08b and existing subsequent gates, without inventing new storage,
+finance, sender or workflow owners. The small browser fixture cannot close them.
+
+Corrected native41433536391 passed30 engine/8 bridge/8UI plus package provenance.
+Actual worker ctx_9abef9b67b73 reports original full two-case gate passed2/2 on
+WASM70bfa31a: raw root insertion now omits columnIndex without normalization.
+Old failing bytes/report/evidence49-file manifest archived under
+`.verification/figflow-designer-browser-eb561e975/`. Separate native move/duplicate/
+remove/mobile-style case continues. This closes the observed serialization loop
+within that local fixture, not full original scope or hosted activation.
+
+Final corrected actual-WASM follow-up completed3/3 with zero skips; source920b25885
+and served wasm70bfa31a are recorded. Props/style, section insertion and seven-op
+structural/mobile cases cover compiled desktop/390px review, explicit Apply,
+exact revision save/reload, staff edit/save/reopen and actual409 CAS preservation
+with nonempty pins/locks. Parent reviewed helper/test boundaries and verified94
+current evidence hashes. Old49-file failing package evidence remains archived.
+Worker settled/released. This closes the bounded local core slice, not08a/08b,
+M06, hosted current-source or real-client acceptance.
+
+Full general CI41433536347 passed21734 tests on920b25885. Hotfix41431901700
+passed21404 tests on7c28120d1; fresh main remained8a39706eb and PR828 merged as
+052eefaf992b8a6bd419b069f544c6aec7da64bb. Exact-main target/source guard passed
+and guarded existing workflow_dispatch source-deploy41440731702 is in progress.
+No release result/hosted fix is claimed until its deployment and browser checks.
+Read-only worker monitors that exact release; Codex plans the smallest campaign/
+library owner bridges and Opus reviews isolated M06 before reconciliation.

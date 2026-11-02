@@ -39,6 +39,12 @@ template readiness has not passed. B01 is the next bounded implementation packag
 The dated implementation checkpoints below are historical; the current milestone
 and activation receipt supersede earlier disabled-state/blocker notes.
 
+## Current acceptance checkpoint — original goals remain open
+
+At source `920b25885`, corrected native CI41433536391 passes30 engine/8 bridge/8 UI tests and produces a verified package. The original two local actual-WASM cases pass with that package; additional native structural/mobile controls are still under test. Historical unbuilt/native-source notes below do not override these recorded results.
+
+An independent source/evidence audit found original PRD journeys still needing implementation/acceptance: both-direction native library/verified imagery, campaign-owned canonical handoff (currently the builder gates these controls off for campaigns), complete-template fidelity, isolated M06 integration and hosted/real-client validation. The existing [short queue](../../email-builder/figflow-current-task-list.md) records these explicitly. A seeded module pin proves retention, not native insertion/publication; a template draft is not a campaign-owned revision. No full-scope completion is claimed.
+
 ## Global constraints
 
 - This is a tracked delivery plan; F01/F02 must refine exact bridge paths and contract signatures before implementation. Proposed paths below do not imply those files already exist.
