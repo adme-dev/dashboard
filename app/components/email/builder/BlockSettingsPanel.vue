@@ -41,6 +41,11 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{ update: [updates: { style?: unknown, props?: unknown, visibility?: { hideOnMobile?: boolean, hideOnDesktop?: boolean }, htmlEditable?: EdmHtmlEditableUpdate }] }>()
 
+function appendMergeToken(token: string) {
+  const current = String(props.block.data?.props?.text || '')
+  updateProp('text', `${current}${current ? ' ' : ''}${token}`)
+}
+
 const FONT_OPTIONS = [
   { label: 'Modern Sans', value: 'MODERN_SANS' },
   { label: 'Book Sans', value: 'BOOK_SANS' },
@@ -233,6 +238,13 @@ function updateColumnWidth(index: number, value: string | number) {
         label="Hide on desktop"
         @update:model-value="updateVisibility('hideOnDesktop', !!$event)"
       />
+    </div>
+
+    <div v-if="['Text', 'Heading', 'Button'].includes(block.type)" class="space-y-2">
+      <EmailBuilderEdmMergeTagPicker @insert="appendMergeToken" />
+      <p class="text-xs text-muted">
+        Insert a tag at the end of this block, or use the text toolbar to replace a selection.
+      </p>
     </div>
 
     <!-- Text / Heading -->

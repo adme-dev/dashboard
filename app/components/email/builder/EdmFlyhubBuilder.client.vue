@@ -383,6 +383,10 @@ type ViewMode = 'editor' | 'preview' | 'html'
 const viewMode = ref<ViewMode>('editor')
 const activeDevice = ref<EdmDevice>('desktop')
 const previewHtml = ref('')
+const previewSubject = ref('')
+const previewPreheader = ref('')
+let previewGeneration = 0
+const showMergeTags = ref(false)
 const previewLoading = ref(false)
 const previewError = ref('')
 const showTestSendModal = ref(false)
@@ -432,6 +436,7 @@ const previewFrameClass = computed(() => {
 })
 
 async function renderPreview() {
+  const generation = ++previewGeneration
   previewLoading.value = true
   previewError.value = ''
   try {
@@ -440,15 +445,21 @@ async function renderPreview() {
       body: {
         body_source: store.document.value,
         subject: subject.value || null,
-        preview_text: previewText.value || null
+        preview_text: previewText.value || null,
+        variables: mergeTags.variables.value
       }
     })
+    if (generation !== previewGeneration) return
     previewHtml.value = res.html
+    const rendered = new DOMParser().parseFromString(res.html, 'text/html')
+    previewSubject.value = rendered.title
+    previewPreheader.value = rendered.querySelector('body > div[style*="display: none"]')?.textContent || ''
   } catch {
+    if (generation !== previewGeneration) return
     previewError.value = 'Failed to render preview.'
     toast.add({ title: 'Preview failed', description: 'Could not render the email.', color: 'error' })
   } finally {
-    previewLoading.value = false
+    if (generation === previewGeneration) previewLoading.value = false
   }
 }
 
@@ -622,6 +633,19 @@ const templateClientOptions = computed(() => [
 ])
 const hasValidTemplateClient = computed(() => templateClientOptions.value.some(option => option.value === templateClient.value))
 const hasValidDesignDraftClient = computed(() => templateClientOptions.value.some(option => option.value === designDraftClient.value))
+const campaignClientId = ref<string | null>(null)
+const mergeClientId = computed(() => campaignId.value ? campaignClientId.value : templateClient.value && templateClient.value !== '__shared__' ? templateClient.value : null)
+const mergeTags = useEdmMergeTags(mergeClientId)
+const sampleFieldLabels = [
+  { key: 'first_name', label: 'First name' }, { key: 'name', label: 'Full name' }, { key: 'email', label: 'Email address' }
+]
+watch([mergeTags.variables, mergeClientId], () => {
+  ++previewGeneration
+  previewHtml.value = ''
+  previewSubject.value = ''
+  previewPreheader.value = ''
+  if (viewMode.value !== 'editor') void renderPreview()
+}, { deep: true })
 
 async function loadTemplateClients() {
   loadingTemplateClients.value = true
@@ -1059,6 +1083,7 @@ onMounted(async () => {
               name: string
               subject: string | null
               from_email: string | null
+              client_id: string | null
               preview_text: string | null
               body_source: unknown
               preflight_result?: EmailBuilderSchedulePreflight | null
@@ -1068,6 +1093,7 @@ onMounted(async () => {
           if (res.campaign?.body_source) {
             store.resetDocument(res.campaign.body_source as EdmFlyhubDocument)
           }
+          campaignClientId.value = res.campaign.client_id ?? null
           name.value = res.campaign.name || ''
           subject.value = res.campaign.subject || ''
           fromEmail.value = res.campaign.from_email || ''
@@ -1260,6 +1286,14 @@ onMounted(async () => {
         @click="renderPreview()"
       />
       <UButton
+        icon="i-lucide-braces"
+        label="Merge tags"
+        color="neutral"
+        variant="outline"
+        size="sm"
+        @click="showMergeTags = true"
+      />
+      <UButton
         icon="i-lucide-list-checks"
         variant="outline"
         color="neutral"
@@ -1320,7 +1354,7 @@ onMounted(async () => {
       :actions="designFlow.hasPending.value ? [{ label: 'Reconcile saved action', onClick: reconcileDesignAction }] : []"
     />
     <!-- Body -->
-    <div class="flex-1 min-h-0 overflow-hidden">
+    <div class="flex flex-col flex-1 min-h-0 overflow-hidden">
       <!-- Editor -->
       <div v-show="viewMode === 'editor'" class="flex h-full">
         <!-- Left: slim category rail with a top-docked flyout panel. -->
@@ -1509,8 +1543,49 @@ onMounted(async () => {
         </aside>
       </div>
 
+      <div v-if="viewMode !== 'editor'" class="@container shrink-0 max-h-[40svh] overflow-y-auto border-b border-default bg-default p-3 space-y-2">
+        <div class="flex flex-wrap items-end gap-3">
+          <UFormField label="Preview as">
+            <USelect v-model="mergeTags.previewMode.value" :items="[{ label: 'Authored tokens and fallbacks', value: 'tokens' }, { label: 'Sample values', value: 'samples' }]" class="w-full min-w-52" />
+          </UFormField>
+          <UPopover v-if="mergeTags.previewMode.value === 'samples'">
+            <UButton
+              label="Edit samples"
+              color="neutral"
+              variant="soft"
+              size="sm"
+            />
+            <template #content>
+              <div class="w-80 max-h-96 overflow-y-auto p-4 space-y-4 bg-default text-default">
+                <p class="text-xs text-muted">
+                  Made-up values only. No subscribers are fetched and no email is sent.
+                </p>
+                <UFormField v-for="field in sampleFieldLabels" :key="field.key" :label="field.label">
+                  <UInput v-model="mergeTags.samples.value[field.key]" :maxlength="256" class="w-full" />
+                </UFormField>
+                <p class="text-xs text-muted">
+                  Unsubscribe uses example.invalid. Edit custom sample values in Merge tags.
+                </p>
+              </div>
+            </template>
+          </UPopover>
+        </div>
+        <p class="text-xs text-muted">
+          Sample preview only. Custom fields use their literal fallback at delivery; unsupported tags stay visible here and may be empty at delivery.
+        </p>
+        <p v-if="mergeTags.error.value" class="text-xs text-error">
+          {{ mergeTags.error.value }}
+        </p>
+        <p v-if="previewSubject" class="text-sm text-default">
+          <span class="text-muted">Subject:</span> {{ previewSubject }}
+        </p>
+        <p v-if="previewPreheader" class="text-sm text-default">
+          <span class="text-muted">Preview text:</span> {{ previewPreheader }}
+        </p>
+      </div>
+
       <!-- Preview -->
-      <div v-if="viewMode === 'preview'" class="h-full overflow-auto bg-elevated/30 p-6">
+      <div v-if="viewMode === 'preview'" class="flex-1 min-h-0 overflow-auto bg-elevated/30 p-6">
         <div v-if="previewError" class="mx-auto max-w-[600px]">
           <UAlert color="error" :title="previewError" />
         </div>
@@ -1527,7 +1602,7 @@ onMounted(async () => {
       </div>
 
       <!-- HTML -->
-      <div v-if="viewMode === 'html'" class="h-full overflow-auto p-6">
+      <div v-if="viewMode === 'html'" class="flex-1 min-h-0 overflow-auto p-6">
         <div class="mx-auto max-w-3xl space-y-3">
           <div class="flex justify-end">
             <UButton
@@ -1549,10 +1624,18 @@ onMounted(async () => {
       </div>
     </div>
 
+    <UModal v-model:open="showMergeTags" title="Client merge tags">
+      <template #body>
+        <div class="max-h-[70svh] min-h-0 overflow-y-auto">
+          <EmailBuilderEdmMergeTagManager />
+        </div>
+      </template>
+    </UModal>
+
     <!-- Save modal -->
     <UModal v-model:open="showSaveModal" :title="campaignId ? 'Save to campaign' : 'Save template'">
       <template #content>
-        <div class="@container p-4 space-y-4">
+        <div class="@container max-h-[85svh] min-h-0 overflow-y-auto p-4 space-y-4">
           <p class="text-sm font-semibold">
             {{ campaignId ? `Save content to “${name || 'campaign'}”` : (templateId ? 'Update template' : 'Save template') }}
           </p>
@@ -1613,6 +1696,7 @@ onMounted(async () => {
               class="w-full"
             />
           </UFormField>
+          <EmailBuilderEdmMergeTagPicker @insert="subject += (subject ? ' ' : '') + $event" />
           <UFormField
             v-if="campaignId"
             label="From email"
@@ -1634,6 +1718,7 @@ onMounted(async () => {
               class="w-full"
             />
           </UFormField>
+          <EmailBuilderEdmMergeTagPicker @insert="previewText += (previewText ? ' ' : '') + $event" />
           <div class="flex justify-end gap-2 pt-2">
             <UButton
               variant="ghost"
