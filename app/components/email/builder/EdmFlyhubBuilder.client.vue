@@ -6,6 +6,7 @@
 import { onBeforeRouteLeave } from 'vue-router'
 import { templateCopyCategory, markTemplateClientCopy, templateCopyName } from '~~/app/utils/edmTemplateProvenance'
 import { EDM_SECTION_CATEGORIES, findStarterTemplate } from '~~/app/utils/edmPresets'
+import { figflowTemplateCapability } from '~~/app/utils/edmFigflowLibrary'
 import type { EdmSectionPreset } from '~~/app/utils/edmPresets'
 import type { EdmFlyhubBlock, EdmFlyhubDocument } from '~~/app/types/edm'
 import { extractFragment, reidFragment } from '~~/app/utils/edmModuleFragment'
@@ -672,12 +673,20 @@ async function save(): Promise<boolean> {
 
 // FigFlow edits an independent template draft; campaigns and library originals
 // keep their identities. The server owns scope, revisions and proposal effects.
+const figflowSourceUnsupported = computed(() => {
+  const current = designFlow.draft.value
+  // Existing versioned designs keep their stored policy; local edits must not
+  // infer permission to edit fields the original handoff did not allow.
+  if (current?.state === 'structured') return current.source.policy.editableFields.length === 0
+  return !figflowTemplateCapability(store.document.value).canOpen
+})
 async function beginFigflow(createDraft = false) {
   if (saving.value || designFlow.busy.value || templateLoading.value || templateLoadError.value) return
   if (designFlow.hasPending.value) {
     await reconcileDesignAction()
     return
   }
+  if (figflowSourceUnsupported.value) return
   try {
     await designFlow.run(async () => {
       const openingSource = JSON.stringify(store.document.value)
@@ -770,6 +779,10 @@ function editInFigflow() {
   if (saving.value || designFlow.busy.value || templateLoading.value || templateLoadError.value) return
   if (designFlow.handoff.value?.state === 'open' || designFlow.handoff.value?.state === 'proposed') {
     showFigflow.value = true
+  } else if (designFlow.hasPending.value) {
+    void reconcileDesignAction()
+  } else if (figflowSourceUnsupported.value) {
+    return
   } else if (!templateId.value || templateKind.value !== 'draft') {
     showSaveModal.value = false
     // Collect copy metadata here; opening the Save modal underneath this modal
@@ -1233,7 +1246,7 @@ onMounted(async () => {
         color="neutral"
         size="sm"
         :loading="designFlow.busy.value"
-        :disabled="saving"
+        :disabled="saving || (figflowSourceUnsupported && !designFlow.hasPending.value && !['open', 'proposed'].includes(designFlow.handoff.value?.state ?? ''))"
         @click="editInFigflow"
       />
       <UButton
@@ -1254,7 +1267,14 @@ onMounted(async () => {
       class="m-3"
     />
     <UAlert
-      v-if="(designFlow.error.value || designFlow.hasPending.value) && !showFigflow"
+      v-if="figflowEnabled && !campaignId && !templateLoading && !templateLoadError && figflowSourceUnsupported && !showFigflow"
+      color="info"
+      title="Continue editing this source in the composer"
+      description="This source has no supported fields available for FigFlow content editing. Imported HTML cannot open as native editable content. Keep editing and saving here, or choose a structured starter for FigFlow."
+      class="m-3"
+    />
+    <UAlert
+      v-if="(designFlow.error.value || designFlow.hasPending.value) && !designFlow.busy.value && !saving && !showFigflow"
       color="error"
       :title="designFlow.error.value || 'The last save is unconfirmed. Reconcile it before making another save.'"
       class="m-3"
@@ -1856,7 +1876,7 @@ onMounted(async () => {
         />
         <UButton
           label="Create draft and open FigFlow"
-          :disabled="draftCopyUnconfirmed || loadingTemplateClients || templateClientsError || !hasValidDesignDraftClient || !designDraftName.trim() || designDraftName.trim().length > 200"
+          :disabled="figflowSourceUnsupported || draftCopyUnconfirmed || loadingTemplateClients || templateClientsError || !hasValidDesignDraftClient || !designDraftName.trim() || designDraftName.trim().length > 200"
           :loading="designFlow.busy.value"
           @click="beginFigflow(true)"
         />
