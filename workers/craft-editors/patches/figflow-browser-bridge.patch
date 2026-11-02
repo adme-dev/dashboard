@@ -137,7 +137,7 @@
 +}
 --- /dev/null
 +++ b/crates/engine/src/cmd/edm.rs
-@@ -0,0 +1,3251 @@
+@@ -0,0 +1,3316 @@
 +//! Bounded XeroFlow email handoffs on a real native document.
 +//!
 +//! The canonical document is retained verbatim. A snapshot patches only approved
@@ -1309,6 +1309,9 @@
 +    }
 +    assert_structure(&handoff, &ds.doc, &replacements)?;
 +    let mut proposal = handoff.canonical.clone();
++    // `build_native` (like `import`) keys image bytes by block ID. Each entry is the paint hash
++    // proven below (the verified replacement, else the unchanged native paint), never a guess.
++    let mut block_images = BTreeMap::new();
 +    for (id, block) in &handoff.blocks {
 +        let node = ds.doc.node(block.root).ok_or_else(|| bad("edm_snapshot", "mapped node missing"))?;
 +        match block.role {
@@ -1327,9 +1330,11 @@
 +                let paint = ds.doc.node(content).ok_or_else(|| bad("edm_snapshot", "image paint missing"))?;
 +                let url = node.plugin_data.get(URL).cloned().unwrap_or_default();
 +                let expected_hash = replacements.get(id).map(|r| r.hash.clone()).or_else(|| handoff.native.node(content).and_then(image_hash));
-+                if image_hash(paint) != expected_hash {
++                let Some(hash) = expected_hash.filter(|hash| image_hash(paint).as_ref() == Some(hash)) else {
 +                    return Err(bad("edm_snapshot", "image paint has no matching durable URL"));
-+                }
++                };
++                let data = ds.doc.images.get(&hash).cloned().ok_or_else(|| bad("edm_snapshot", "image store missing"))?;
++                block_images.insert(id.clone(), NativeImage { hash, data });
 +                set_content(&handoff, &mut proposal, id, "url", url)?;
 +                if let Some(alt) = node.plugin_data.get(ALT) {
 +                    set_content(&handoff, &mut proposal, id, "alt", alt.clone())?;
@@ -1346,8 +1351,7 @@
 +        }
 +    }
 +    let blocks = proposal.get("blocks").and_then(Value::as_object).ok_or_else(|| bad("edm_snapshot", "canonical blocks missing"))?;
-+    let images = ds.doc.images.iter().map(|(hash, data)| (hash.clone(), NativeImage { hash: hash.clone(), data: data.clone() })).collect::<BTreeMap<_, _>>();
-+    let (native, blocks) = build_native(blocks, &images, &handoff.editable).map_err(|error| bad("edm_snapshot", error.to_string()))?;
++    let (native, blocks) = build_native(blocks, &block_images, &handoff.editable).map_err(|error| bad("edm_snapshot", error.to_string()))?;
 +    ds.doc = std::sync::Arc::new(native);
 +    let mut current = handoff;
 +    current.native = ds.doc.as_ref().clone();
@@ -2029,7 +2033,9 @@
 +}
 +
 +fn assert_style_lock(design: &Value, block_id: &str, key: &str, mobile: bool, props: bool) -> Result<()> {
-+    let path = format!("{block_id}.data.{}.{}.{key}", if mobile { "mobile." } else { "" }, if props { "props" } else { "style" });
++    // Shared: `${blockId}.data.${mobile ? 'mobile.' : ''}${style|props}.${key}`. The mobile prefix
++    // carries its own dot; a second separator produced `.data..style.` and no lock ever matched.
++    let path = format!("{block_id}.data.{}{}.{key}", if mobile { "mobile." } else { "" }, if props { "props" } else { "style" });
 +    if locked_style_path(design, block_id, &path) {
 +        return Err(designer_bad("style field is locked"));
 +    }
@@ -2630,8 +2636,9 @@
 +        let button_x = second.doc().unwrap().world_transform(button).as_coeffs()[4];
 +        assert!(text_x < button_x, "columns must preserve different world-space x positions");
 +        let text_bottom = second.doc().unwrap().world_bounds(mapped(&second, "text-1", "block")).unwrap().y1;
-+        let button_bottom = second.doc().unwrap().world_bounds(mapped(&second, "button-1", "block")).unwrap().y1;
-+        assert_eq!(text_bottom, button_bottom, "bottom alignment uses the measured row height");
++        // A Button root keeps role `button` (not `block`): the panel keys its URL field on it.
++        let button_bottom = second.doc().unwrap().world_bounds(button).unwrap().y1;
++        assert!((text_bottom - button_bottom).abs() < 1e-9, "bottom alignment uses the measured row height: {text_bottom} vs {button_bottom}");
 +        assert!(second.doc().unwrap().nodes().all(|node| node.width.is_finite() && node.height.is_finite() && (node.is_page() || node.height > 0.0)));
 +
 +        columns["blocks"]["columns"]["data"]["props"]["fixedWidths"] = json!([900, 900]);
@@ -2871,7 +2878,7 @@
 +        let text_node = mapped(&text, "text-1", "text");
 +        text.execute("node.set", &json!({"ids": [text_node], "props": {"characters": "Unlogged edit"}})).unwrap();
 +        assert!(text.execute("edm_designer_snapshot", &json!({})).is_err());
-+        assert!(apply_designer(&mut text, json!([{"op": "set-props", "blockId": "text-1", "props": {"text": "Still forbidden"}}])).is_err());
++        assert!(apply_designer(&mut text, json!([{"op": "set-props", "blockId": "text-1", "props": {"text": "Still forbidden {{firstName}}"}}])).is_err());
 +
 +        let mut geometry = Session::new();
 +        import_designer(&mut geometry);
@@ -3114,7 +3121,8 @@
 +    fn edm_designer_history_failures_are_atomic_for_native_and_invalid_log_changes() {
 +        let mut native = Session::new();
 +        import_designer(&mut native);
-+        apply_designer(&mut native, json!([{"op": "set-props", "blockId": "text-1", "props": {"text": "Logged"}}])).unwrap();
++        // Shared and native both refuse a text edit that drops `{{firstName}}`; keep the token.
++        apply_designer(&mut native, json!([{"op": "set-props", "blockId": "text-1", "props": {"text": "Logged {{firstName}}"}}])).unwrap();
 +        let text = mapped(&native, "text-1", "text");
 +        native.execute("node.set", &json!({"ids": [text], "props": {"characters": "Unlogged"}})).unwrap();
 +        let before_native = serde_json::to_value(native.doc().unwrap()).unwrap();
@@ -3130,7 +3138,7 @@
 +        import_designer(&mut invalid_batch);
 +        let pristine = serde_json::to_value(invalid_batch.doc().unwrap()).unwrap();
 +        assert!(apply_designer(&mut invalid_batch, json!([
-+            {"op": "set-props", "blockId": "text-1", "props": {"text": "Must roll back"}},
++            {"op": "set-props", "blockId": "text-1", "props": {"text": "Must roll back {{firstName}}"}},
 +            {"op": "set-style", "blockId": "text-1", "style": {"color": "not-a-colour"}}
 +        ])).is_err());
 +        assert_eq!(invalid_batch.ds().unwrap().edm_designer.as_ref().unwrap().current, designer_design());
@@ -3139,7 +3147,7 @@
 +
 +        let mut invalid_redo = Session::new();
 +        import_designer(&mut invalid_redo);
-+        apply_designer(&mut invalid_redo, json!([{"op": "set-props", "blockId": "text-1", "props": {"text": "Undo me"}}])).unwrap();
++        apply_designer(&mut invalid_redo, json!([{"op": "set-props", "blockId": "text-1", "props": {"text": "Undo me {{firstName}}"}}])).unwrap();
 +        invalid_redo.execute("edm_designer_undo", &json!({})).unwrap();
 +        let designer = invalid_redo.ds_mut().unwrap().edm_designer.as_mut().unwrap();
 +        designer.redo_operations.clear();
@@ -3387,6 +3395,63 @@
 +        assert_eq!(logged_operations(&mut session), 1, "and leaves the canonical log alone");
 +        session.execute("edm_designer_undo", &json!({})).unwrap();
 +        assert_eq!(logged_operations(&mut session), 0);
++    }
++
++    #[test]
++    fn edm_snapshot_rebuild_keys_verified_image_bytes_by_block_and_drops_replaced_bytes() {
++        let mut input = design();
++        input["blocks"]["root"]["data"]["childrenIds"] = json!(["text-1", "button-1", "image-1", "image-2"]);
++        input["blocks"]["image-2"] = json!({"type": "Image", "data": {"props": {"url": "https://example.invalid/two.png"}}});
++        let mut session = Session::new();
++        session.execute("edm_import", &json!({"design": input.clone(), "images": {"image-1": PNG, "image-2": PNG_ALT}})).unwrap();
++        let one = designer_paint_hash(&session, "image-1");
++        let two = designer_paint_hash(&session, "image-2");
++        assert_ne!(one, two);
++        assert_eq!(session.execute("edm_snapshot", &json!({})).unwrap(), input, "a no-op snapshot rebuilds every image block from its own bytes");
++        assert_eq!((designer_paint_hash(&session, "image-1"), designer_paint_hash(&session, "image-2")), (one, two.clone()));
++        let image = mapped(&session, "image-1", "image");
++        session.execute("node.set", &json!({"ids": [image], "props": {"pluginData": {URL: "https://example.invalid/three.png"}}})).unwrap();
++        let proposal = session.execute("edm_snapshot", &json!({"images": {"image-1": PNG_ALT}})).unwrap();
++        assert_eq!(proposal["blocks"]["image-1"]["data"]["props"]["url"], "https://example.invalid/three.png");
++        assert_eq!(proposal["blocks"]["image-2"], input["blocks"]["image-2"]);
++        assert_eq!((designer_paint_hash(&session, "image-1"), designer_paint_hash(&session, "image-2")), (two.clone(), two.clone()), "the verified replacement paints image-1");
++        assert_eq!(session.doc().unwrap().images.keys().cloned().collect::<Vec<_>>(), vec![two], "bytes no block paints are not carried into the rebuilt store");
++        assert!(required_snapshot_images(&session).unwrap().is_empty());
++        assert_eq!(session.execute("edm_snapshot", &json!({})).unwrap(), proposal);
++    }
++
++    // `(styleFields lock, operation, accepted)`, produced on 2 November 2026 by the shared
++    // `applyDesignerOperations` (tsx) on `designer_design()` with only `designerLocks` changed.
++    // The same 14 operations are all accepted by shared without the lock.
++    const SHARED_STYLE_LOCK_VECTORS: [(&str, &str, bool); 14] = [
++        ("text-1.data.style.color", r##"{"op":"set-style","blockId":"text-1","style":{"color":"#000000"}}"##, false),
++        ("text-1.data.style.color", r##"{"op":"set-style","blockId":"text-1","style":{"color":"#000000"},"mobile":true}"##, false),
++        ("text-1.data.style.color", r##"{"op":"set-style","blockId":"text-1","style":{"backgroundColor":"#F0F0F0"}}"##, true),
++        ("text-1.data.style.color", r##"{"op":"set-style","blockId":"text-1","style":{"fontSize":18},"mobile":true}"##, true),
++        ("text-1.data.mobile.style.fontSize", r##"{"op":"set-style","blockId":"text-1","style":{"fontSize":18}}"##, false),
++        ("text-1.data.mobile.style.fontSize", r##"{"op":"set-style","blockId":"text-1","style":{"fontSize":18},"mobile":true}"##, false),
++        ("text-1.data.mobile.style.fontSize", r##"{"op":"set-style","blockId":"text-1","style":{"lineHeight":1.4}}"##, true),
++        ("root.data.props.textColor", r##"{"op":"set-props","blockId":"root","props":{"textColor":"#000000"}}"##, false),
++        ("root.data.props.textColor", r##"{"op":"set-style","blockId":"text-1","style":{"color":"#000000"}}"##, false),
++        ("root.data.props.textColor", r##"{"op":"set-style","blockId":"text-1","style":{"backgroundColor":"#F0F0F0"}}"##, true),
++        ("root.data.props.textColor", r##"{"op":"set-props","blockId":"root","props":{"canvasColor":"#FAFAFA"}}"##, true),
++        ("button-1.data.props.buttonBackgroundColor", r##"{"op":"set-props","blockId":"button-1","props":{"buttonBackgroundColor":"#AABBCC"}}"##, false),
++        ("button-1.data.props.buttonBackgroundColor", r##"{"op":"set-props","blockId":"root","props":{"canvasColor":"#FAFAFA"}}"##, false),
++        ("button-1.data.props.buttonBackgroundColor", r##"{"op":"set-props","blockId":"button-1","props":{"fullWidth":true}}"##, true),
++    ];
++
++    #[test]
++    fn edm_designer_style_locks_match_shared_desktop_mobile_and_inherited_paths() {
++        for (lock, operation, accepted) in SHARED_STYLE_LOCK_VECTORS {
++            let operation: Value = serde_json::from_str(operation).unwrap();
++            let mut design = designer_design();
++            design["policy"]["designerLocks"] = json!({"blockIds": [], "styleFields": [lock]});
++            let mut session = Session::new();
++            import_designer_with(&mut session, design, json!({}));
++            let result = apply_designer(&mut session, json!([operation.clone()]));
++            assert_eq!(result.is_ok(), accepted, "{lock}: {operation} agrees with shared applyDesignerOperations");
++            assert_eq!(logged_operations(&mut session), usize::from(accepted), "{lock}: {operation} logs only when accepted");
++        }
 +    }
 +}
 --- a/crates/engine/src/cmd/mod.rs

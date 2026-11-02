@@ -104,7 +104,7 @@ jobs:
           assert 'len(matched) != len(expected) or set(matched) != expected' in build
           assert 'Expected exactly eight passing browser_bridge tests' in build
           assert 'cargo test --locked -p figcraft-engine --lib edm_' in build
-          assert 'Expected exactly 27 passing EDM tests' in build
+          assert 'Expected exactly 29 passing EDM tests' in build
           assert 'cargo test --locked -p figcraft-ui-egui --lib edm_' in build
           assert 'Expected exactly 6 passing EDM UI tests' in build
           package = (root / 'build-browser.sh').read_text()

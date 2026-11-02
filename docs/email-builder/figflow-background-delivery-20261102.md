@@ -389,3 +389,16 @@ six added inline gates, no removed/reclassified gates. Production authorization
 is unchanged. Parent reviewed the fixture/auth/inventory diff; see
 `general-ci-remediation-20261102.md` and retained local logs. Full exact-head CI
 remains required after native corrections are integrated.
+
+Native failure follow-up source is frozen: Opus found two real defects (snapshot
+image maps keyed by hash rather than canonical block ID, and an extra dot in all
+style-lock paths) and two stale fixtures. Shared-derived14 lock vectors and an
+image-replacement/idempotence regression raise expected engine tests to29;
+bridge8/UI6 remain unchanged. Parent reviewed the source diff and regenerated
+the patch/pins; strict workflow pins, patch dry run, shell syntax and diff checks
+pass. No Rust execution is claimed before the next Linux run.
+
+General fixes are committed46e74e04c and current main7b8818c83 is reconciled.
+The merged local source passes78 tests in11 files covering repaired fixtures,
+security inventory and recent Banner Studio behavior. The three prepared designer
+browser acceptance files remain uncommitted/unexecuted pending a valid artifact.
