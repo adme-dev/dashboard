@@ -16,7 +16,8 @@ const variantSchema = z.object({
 const offerSchema = z.object({
   title: label.nullable(), model: label.nullable(), variant: label.nullable(), price: amount, priceLabel: label.nullable(),
   offer: z.string().max(2000).nullable(), endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
-  disclaimer: z.string().max(12000).nullable(), hasImage: z.boolean()
+  disclaimer: z.string().max(12000).nullable(), hasImage: z.boolean(),
+  artworkAssetId: z.string().regex(/^[a-f0-9]{64}$/).nullable()
 })
 const catalogSchema = z.object({ schemaVersion: z.literal(1), brand: z.object({ id: motorstackBrandId, name: label }), kind: z.enum(['variants', 'offers']), updatedAt: z.string().max(50).nullable(), items: z.array(z.unknown()).max(500) })
 
@@ -39,5 +40,14 @@ export default defineEventHandler(async (event) => {
   if (!response.success || response.data.brand.id !== brandId || response.data.kind !== input.data.kind) throw createError({ statusCode: 502, statusMessage: 'MotorStack returned invalid catalogue metadata' })
   const items = z.array(input.data.kind === 'variants' ? variantSchema : offerSchema).safeParse(response.data.items)
   if (!items.success) throw createError({ statusCode: 502, statusMessage: 'MotorStack returned invalid catalogue items' })
+  if (input.data.kind === 'offers') {
+    const offers = items.data as z.infer<typeof offerSchema>[]
+    return { ...response.data, items: offers.map(item => ({
+      ...item,
+      artworkPreviewUrl: item.artworkAssetId
+        ? `/api/agency/banner-studio/motorstack/file?${new URLSearchParams({ brandId, assetId: item.artworkAssetId })}`
+        : null
+    })) }
+  }
   return { ...response.data, items: items.data }
 })

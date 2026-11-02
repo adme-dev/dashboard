@@ -9,6 +9,7 @@ import { buildBrandTemplateLayers, type BrandTemplateVariant } from '~/utils/ban
 import { bannerAssetLayer } from '~/utils/banner-media'
 import { brandGuideButtonLayer } from '~/utils/banner-brand-buttons'
 import type { BrandButtonVariant } from '~/utils/banner-brand-kit'
+import { bannerOfferLayers, type BannerMotorStackOffer } from '~/utils/banner-offer'
 
 // Module-scope singleton state
 let _uid = 1
@@ -240,6 +241,51 @@ export function useBannerStudio() {
       }
     }
     return added.length
+  }
+
+  /** Add an offer's editable image, copy and supplied terms as one undoable design-set edit. */
+  function addMotorStackOfferToAllLayouts(offer: BannerMotorStackOffer, kit: BannerBrandKit, image?: BannerAsset): number {
+    if (image && (!image.url || !image.mimeType.startsWith('image/'))) throw new Error('The offer artwork is not an available image.')
+    const keys = [...state.setKeys]
+    if (!keys.length || !keys.includes(state.activeKey)) throw new Error('Open a banner design before adding an offer.')
+    const activeRanges = slideRanges(resolveSlides(state.sets[state.activeKey]))
+    const activeSlideIndex = Math.max(0, activeRanges.findIndex(slide => slide.id === currentSlide.value?.id))
+    const targets = keys.map((key) => {
+      const board = state.sets[key]
+      const format = resolveBannerFormat(key)
+      if (!board || !format) throw new Error('One canvas size has invalid dimensions. Retry after reopening the design.')
+      const ranges = slideRanges(resolveSlides(board))
+      const slide = ranges[Math.min(activeSlideIndex, ranges.length - 1)]
+      return { key, board, slide, pieces: bannerOfferLayers(offer, kit, format, image), hasMultipleSlides: ranges.length > 1 || !!board.slides?.length }
+    })
+    const linkBase = `motorstack-offer:${nextId()}`
+    const added: Array<{ key: string, layer: Layer }> = []
+    withCanvasUndo(() => {
+      for (const { key, board, slide, pieces, hasMultipleSlides } of targets) {
+        if (hasMultipleSlides && !board.slides?.length) board.slides = JSON.parse(JSON.stringify(resolveSlides(board)))
+        let zIndex = Math.max(0, ...board.layers.filter(item => !item.slideTransitionFor).map(item => item.zIndex))
+        for (const { role, layer: partial } of pieces) {
+          const layer = migrateLayer({
+            ...partial, id: nextId(), linkId: `${linkBase}:${role}`, zIndex: ++zIndex, opacity: 1,
+            startTime: hasMultipleSlides ? slide.start : 0,
+            endTime: hasMultipleSlides ? slide.end : Math.max(state.duration, slide.end),
+            ...(hasMultipleSlides ? { slideId: slide.id, clipToPresence: true } : {})
+          })
+          board.layers.push(layer)
+          added.push({ key, layer })
+          if (key === state.activeKey && role === 'headline') state.selectedLayerId = layer.id
+        }
+      }
+    })
+    state.activeTool = 'select'
+    for (const { key, layer } of added) {
+      try {
+        useBannerRealtime().sendLayerAdd(layer, key)
+      } catch {
+        // An offline collaborator receives the saved project on reconnect.
+      }
+    }
+    return keys.length
   }
 
   function addBrandGuideButton(kit: BannerBrandKit, variant: BrandButtonVariant, formatKey = state.activeKey, point?: { x: number, y: number }): Layer | null {
@@ -1213,6 +1259,7 @@ export function useBannerStudio() {
     // Layer ops
     addLayer,
     addMotorStackImageToAllLayouts,
+    addMotorStackOfferToAllLayouts,
     addBrandGuideButton,
     removeLayer,
     duplicateLayer,
