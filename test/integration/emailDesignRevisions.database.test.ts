@@ -884,6 +884,24 @@ describe('immutable email design revisions in PostgreSQL', () => {
     const saved = await saveTemplateDesignDraft({ documentId, actorId, operationId: crypto.randomUUID(), expectedRevisionId: baselineRevisionId, design: structuredDesign() }, async () => {}, testEmailRenderer, transaction)
     return roundtrip({ command: 'open', operationId: crypto.randomUUID(), draftId: documentId, expectedRevisionId: saved.revisionId })
   }
+  databaseTest('rejects HTML-only admission without retaining initialization or changing the template', async () => {
+    const legacyId = crypto.randomUUID()
+    const blocks = { root: { type: 'EmailLayout', data: { childrenIds: ['html'] } }, html: { type: 'Html', data: { props: { contents: '<p>Preserved HTML</p>' } } } }
+    await admin.query('INSERT INTO edm_templates(id,client_id,body_source,body_html) VALUES($1,$2,$3::jsonb,$4)', [legacyId, scope, JSON.stringify(blocks), '<p>Original rendered HTML</p>'])
+    await expect(roundtrip({ command: 'start', operationId: crypto.randomUUID(), templateId: legacyId, clientId: scope })).rejects.toMatchObject({ code: 'NO_EDITABLE_CONTENT' })
+    expect((await admin.query('SELECT id FROM email_design_documents WHERE template_id=$1', [legacyId])).rows).toHaveLength(0)
+    const owner = (await admin.query('SELECT body_source,body_html FROM edm_templates WHERE id=$1', [legacyId])).rows[0]
+    expect(owner.body_source).toEqual(blocks)
+    expect(owner.body_html).toBe('<p>Original rendered HTML</p>')
+  })
+  databaseTest('rejects a zero-field structured policy without advancing its current head', async () => {
+    const design = structuredDesign()
+    design.policy.editableFields = []
+    const saved = await saveTemplateDesignDraft({ documentId, actorId, operationId: crypto.randomUUID(), expectedRevisionId: baselineRevisionId, design }, async () => {}, testEmailRenderer, transaction)
+    await expect(roundtrip({ command: 'open', operationId: crypto.randomUUID(), draftId: documentId, expectedRevisionId: saved.revisionId })).rejects.toMatchObject({ code: 'NO_EDITABLE_CONTENT' })
+    expect((await getTemplateDesignDraft(documentId, async () => {}, admin)).headRevisionId).toBe(saved.revisionId)
+    expect((await admin.query('SELECT id FROM email_design_handoffs WHERE document_id=$1', [documentId])).rows).toHaveLength(0)
+  })
   function proposal(handoff: DesignHandoff, text: string): RoundtripRequest {
     const design = validateEmailDesign(handoff.source)
     design.blocks.heading.data.props!.text = text

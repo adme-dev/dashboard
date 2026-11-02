@@ -1,10 +1,19 @@
 # Immutable FigFlow EDM assets
 
-This private static service isolates `/figflow/0.11.2-edm1/` from the existing
-creative editor asset set. It has no public route, workers.dev address, secrets,
+This private service isolates `/figflow/0.11.2-edm1/` from the existing
+creative editor asset set and serves an exact standalone-index navigation shell.
+It has no public route, workers.dev address, secrets,
 database, or send capability. The creative host must retain its existing staff
 authentication before forwarding this prefix, and must retain its existing
 `ASSETS` binding with `keep_assets: true` when adding the service binding.
+
+The shell's Canvas/Email templates navigation keeps the old canvas mounted and
+loads the scoped app library in a separate frame. `?canvas=1` retains the original
+standalone assets behind the same creative authorization. No native archive is
+rebuilt for this navigation change. `creative-release.py` now reconciles against
+verified live gateway `595f31ce-abd5-4e3d-ba7c-b9e1f3f59fce`, preserving its
+existing native service, assets, runtime and secret bindings. New production
+receipt/hosted acceptance belongs in the template-browser report.
 
 `prepare.py ARCHIVE BUILD_RECEIPT COMMIT` accepts only the successful native CI
 browser archive with matching source, byte count and SHA-256. It refuses an

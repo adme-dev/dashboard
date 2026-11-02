@@ -1620,7 +1620,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Editing, Preview and FigFlow',
-        content: 'Edit spacing, typography, borders and backgrounds; switch between Editor, Preview and HTML. Open supported saved drafts in FigFlow to edit text, images and buttons. Returns require rendered review and explicit Apply, with revision conflicts protecting newer staff edits. Shared-module handoff and Apple Mail, Gmail and Outlook acceptance remain separate work.'
+        content: 'Edit spacing, typography, borders and backgrounds; switch between Editor, Preview and HTML. FigFlow’s Email templates browser shows authorised saved templates, drafts and starters with client filters and content-editing limits. Create an independent design draft before editing supported text, images and buttons; HTML-only templates retain composer editing. Returns require rendered review and explicit Apply, with revision conflicts protecting newer staff edits. Shared-module publication and Apple Mail, Gmail and Outlook acceptance remain separate work.'
       }
     ]
   },

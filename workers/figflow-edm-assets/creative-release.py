@@ -1,4 +1,4 @@
-"""Preserve the live creative assets; add one authenticated private-service prefix."""
+"""Preserve live creative assets; add authenticated FigFlow library navigation."""
 import argparse
 import importlib.util
 import json
@@ -9,10 +9,14 @@ import uuid
 ROOT = Path(__file__).resolve().parent
 REPO = ROOT.parent.parent
 LEGACY = ROOT.parent / 'creative-motorstack-brand-release'
-BASE_VERSION = 'e5de27cd-41cd-456f-a7f7-9a91e0276777'
-BASE_DEPLOYMENT = 'd75c00fc-5168-4ddf-b410-aaf9967c1457'
+BASE_VERSION = '595f31ce-abd5-4e3d-ba7c-b9e1f3f59fce'
+BASE_DEPLOYMENT = '89c76119-d31d-4dfe-b438-b778a9235399'
 SERVICE = 'xeroflow-figflow-edm-assets'
 BASE_HASHES = {
+    'worker.js': 'ca7c0b1d0ce3bae634b2e4bd653e6012bdc0a473f2e66c7ae19e6040c1f40ae9',
+    'brand-rpc.mjs': '53bd8cd96907d296fe95cd9f8bb4999152277b65ade0eed36e932f825f15e754',
+}
+BUILD_HASHES = {
     'worker.js': '9a4a9a44bf44dae92695f6bb69731cf4586c0f546e1562c7af6230c92ea52d8d',
     'brand-rpc.mjs': '53bd8cd96907d296fe95cd9f8bb4999152277b65ade0eed36e932f825f15e754',
 }
@@ -23,8 +27,8 @@ spec.loader.exec_module(transport)
 
 def candidate():
     subprocess.run(['node', str(LEGACY / 'build.mjs')], cwd=REPO, check=True, capture_output=True)
-    modules = {name: (LEGACY / 'dist' / name).read_bytes() for name in BASE_HASHES}
-    if {name: transport.sha(data) for name, data in modules.items()} != BASE_HASHES:
+    modules = {name: (LEGACY / 'dist' / name).read_bytes() for name in BUILD_HASHES}
+    if {name: transport.sha(data) for name, data in modules.items()} != BUILD_HASHES:
         raise RuntimeError('Current-source creative build differs from the verified live base')
     anchor = b'    const assetsResponse = await handleMotorstack(request, env);'
     addition = b'''    if (url.hostname === "creative.xeroflow.io" && url.pathname.startsWith("/figflow/0.11.2-edm1/")) {
@@ -39,6 +43,18 @@ def candidate():
     # This anchor is after the existing authorize() rejection and before the
     # old asset routing. No public or authentication route is changed.
     modules['worker.js'] = modules['worker.js'].replace(anchor, addition + anchor)
+    if {name: transport.sha(data) for name, data in modules.items()} != BASE_HASHES:
+        raise RuntimeError('Reproduced EDM gateway differs from current live base')
+    library = b'''    if (url.hostname === "creative.xeroflow.io"
+      && ["/figflow/0.11.2-flow1/", "/figflow/0.11.2-flow1/index.html"].includes(url.pathname)
+      && url.searchParams.get("canvas") !== "1") {
+      if (!env.FIGFLOW_EDM_ASSETS) return blocked(503, "Email library unavailable", false);
+      try {
+        return await env.FIGFLOW_EDM_ASSETS.fetch(new Request(url, { method: request.method }));
+      } catch { return blocked(503, "Email library unavailable", false); }
+    }
+'''
+    modules['worker.js'] = modules['worker.js'].replace(anchor, library + anchor)
     return modules
 
 
@@ -93,15 +109,16 @@ def metadata(commit, resources):
     if runtime.get('compatibility_date') != '2026-10-27' or runtime.get('compatibility_flags') != ['global_fetch_strictly_public']:
         raise RuntimeError('Creative runtime changed')
     names = sorted((item['name'], item['type']) for item in resources['bindings'])
-    if names != [('ASSETS', 'assets'), ('CREATIVE_AUTH_KEY', 'secret_text'), ('MOTORSTACK_API_KEY', 'secret_text')]:
+    if names != [('ASSETS', 'assets'), ('CREATIVE_AUTH_KEY', 'secret_text'), ('FIGFLOW_EDM_ASSETS', 'service'), ('MOTORSTACK_API_KEY', 'secret_text')]:
         raise RuntimeError('Creative bindings changed')
+    binding = next(item for item in resources['bindings'] if item['name'] == 'FIGFLOW_EDM_ASSETS')
+    if binding.get('service') != SERVICE or binding.get('environment') != 'production':
+        raise RuntimeError('Existing native asset service changed')
     return {
         'main_module': 'worker.js', 'keep_assets': True,
         'compatibility_date': runtime['compatibility_date'],
         'compatibility_flags': runtime['compatibility_flags'], 'usage_model': runtime['usage_model'],
-        'bindings': [{'name': name, 'type': 'inherit'} for name, _ in names] + [
-            {'name': 'FIGFLOW_EDM_ASSETS', 'type': 'service', 'service': SERVICE, 'environment': 'production'}
-        ],
+        'bindings': [{'name': name, 'type': 'inherit'} for name, _ in names],
         'annotations': {'workers/message': 'Immutable FigFlow EDM service from ' + commit, 'workers/commit_sha': commit}
     }
 
@@ -113,7 +130,7 @@ def verify_candidate(version, modules, resources, commit):
         raise RuntimeError('Creative source provenance differs')
     if actual['script_runtime'] != resources['script_runtime']:
         raise RuntimeError('Existing creative asset or runtime configuration changed')
-    expected = sorted([(item['name'], item['type']) for item in resources['bindings']] + [('FIGFLOW_EDM_ASSETS', 'service')])
+    expected = sorted((item['name'], item['type']) for item in resources['bindings'])
     if sorted((item['name'], item['type']) for item in actual['bindings']) != expected:
         raise RuntimeError('Creative binding inventory differs')
     binding = next(item for item in actual['bindings'] if item['name'] == 'FIGFLOW_EDM_ASSETS')

@@ -8,7 +8,7 @@ import { getTemplateDesignDraft } from './designReads'
 import { saveTemplateDesignDraft, saveStaffTemplateDesignDraft, type DesignDb, type DesignTransaction } from './designRevisions'
 
 export class DesignHandoffError extends Error {
-  constructor(public readonly code: 'NOT_FOUND' | 'REVISION_CONFLICT' | 'PROPOSAL_STATE_CONFLICT' | 'PROPOSAL_EXPIRED' | 'IDEMPOTENCY_CONFLICT' | 'DESIGNER_REQUIRED' | 'UNSUPPORTED_NATIVE_DESIGN') { super(code) }
+  constructor(public readonly code: 'NOT_FOUND' | 'REVISION_CONFLICT' | 'PROPOSAL_STATE_CONFLICT' | 'PROPOSAL_EXPIRED' | 'IDEMPOTENCY_CONFLICT' | 'DESIGNER_REQUIRED' | 'UNSUPPORTED_NATIVE_DESIGN' | 'NO_EDITABLE_CONTENT') { super(code) }
 }
 interface Authority {
   actorId: string
@@ -153,6 +153,9 @@ export async function executeDesignRoundtrip(
           if (!owner || current?.head_revision_id !== baseRevisionId) throw new DesignHandoffError('REVISION_CONFLICT')
         }
         assertNativeScope(design)
+        // Admission only: historical handoffs stay readable/cancellable. This
+        // rejection rolls initialization/conversion back with the transaction.
+        if (!design.policy.editableFields.length) throw new DesignHandoffError('NO_EDITABLE_CONTENT')
         if (await authority.authorize(design.scope.clientId, 'write') !== 'designer') throw new DesignHandoffError('DESIGNER_REQUIRED')
         await db.query(`INSERT INTO email_design_handoffs(id,actor_id,document_id,base_revision_id,open_revision_id,editor_origin)
           VALUES($1,$2,$3,$4,$5,$6)`, [request.operationId, authority.actorId, draftId, baseRevisionId, expectedRevisionId, FIGFLOW_EDM_ORIGIN])

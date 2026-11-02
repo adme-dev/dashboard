@@ -3,6 +3,7 @@
      undo/redo, Editor/Preview/HTML views, and Save to edm_templates (2a-ii-4).
      Loads an existing template via ?id= or a starter layout via ?starter=. -->
 <script setup lang="ts">
+import { onBeforeRouteLeave } from 'vue-router'
 import { templateCopyCategory, markTemplateClientCopy, templateCopyName } from '~~/app/utils/edmTemplateProvenance'
 import { EDM_SECTION_CATEGORIES, findStarterTemplate } from '~~/app/utils/edmPresets'
 import type { EdmSectionPreset } from '~~/app/utils/edmPresets'
@@ -589,6 +590,7 @@ async function save(): Promise<boolean> {
     return false
   }
   saving.value = true
+  const savedSnapshot = workspaceSnapshot()
   try {
     // Campaign mode: the campaign already exists (its name is managed in the
     // Campaigns tab), so we patch subject + body onto it — no name required.
@@ -631,10 +633,13 @@ async function save(): Promise<boolean> {
       query.id = res.template.id
       delete query.copy
       delete query.starter
-      void router.replace({ query }).catch(() => {
+      // The route-leave guard already owns a pending navigation to the library.
+      // A competing replace would cancel that navigation after a successful save.
+      if (!workspaceLeave.saving.value) void router.replace({ query }).catch(() => {
         toast.add({ title: 'Template saved', description: 'The address could not update. Reopen this template from the library before refreshing.', color: 'warning' })
       })
     }
+    workspaceSavedSnapshot.value = savedSnapshot
     toast.add({ title: 'Saved', description: 'Template saved.', color: 'success' })
     showSaveModal.value = false
     return true
@@ -679,9 +684,11 @@ async function beginFigflow(createDraft = false) {
         templateId.value = result.template.id
         templateKind.value = 'draft'
         name.value = draftName
+        workspaceSavedSnapshot.value = workspaceSnapshot()
         designFlow.draft.value = null
         showDesignDraftCopy.value = false
-        await router.replace({ query: { id: result.template.id } })
+        await router.replace({ query: { id: result.template.id,
+          ...(route.query.workspace === 'figflow' ? { workspace: 'figflow' } : {}) } })
       } else if (!await save()) return
       if (!templateId.value) return
       if (JSON.stringify(store.document.value) !== openingSource) throw new Error('The composer changed while saving. Save again before opening FigFlow.')
@@ -751,6 +758,7 @@ async function applyFigflow() {
         throw new Error('Current draft changed; local edits kept')
       }
       showFigflow.value = false
+      markWorkspaceDocumentSaved()
       toast.add({ title: 'Design changes saved', description: 'Applied as one undoable change.', color: 'success' })
     })
   } catch { /* The server conflicts or the local draft is preserved. */ }
@@ -773,6 +781,7 @@ async function reconcileDesignAction() {
         const current = designFlow.draft.value
         designLocalConflict.value = current?.headRevisionId !== result.appliedRevisionId
           || !store.applyDesignReturn(result.source.blocks, result.proposal.blocks)
+        if (!designLocalConflict.value) markWorkspaceDocumentSaved()
       }
       showFigflow.value = true
       await router.replace({ query: { ...route.query, designSession: result.id } })
@@ -915,6 +924,28 @@ async function confirmDeleteModule() {
   }
 }
 
+const workspaceSavedSnapshot = ref('')
+function workspaceSnapshot() {
+  return JSON.stringify({ document: store.document.value, name: name.value, subject: subject.value,
+    previewText: previewText.value, client: templateClient.value, kind: templateKind.value, category: templateFolderName.value })
+}
+function markWorkspaceDocumentSaved() {
+  // Native Apply writes content only. Preserve the last saved metadata baseline
+  // so a subject/preheader edit made while reviewing still prompts on leaving.
+  if (!workspaceSavedSnapshot.value) return
+  const saved = JSON.parse(workspaceSavedSnapshot.value)
+  saved.document = store.document.value
+  workspaceSavedSnapshot.value = JSON.stringify(saved)
+}
+const workspaceBusy = computed(() => saving.value || designFlow.busy.value || designFlow.hasPending.value)
+const workspaceLeave = useEdmWorkspaceLeave({
+  hasChanges: () => !!workspaceSavedSnapshot.value && workspaceSnapshot() !== workspaceSavedSnapshot.value,
+  isBusy: () => workspaceBusy.value,
+  save
+})
+onBeforeRouteLeave(() => route.query.workspace === 'figflow' ? workspaceLeave.request() : true)
+onBeforeUnmount(() => workspaceLeave.stay())
+
 onMounted(async () => {
   async function initialise() {
     templateLoading.value = true
@@ -1022,6 +1053,17 @@ onMounted(async () => {
       templateLoadError.value = 'The editor could not load its template or client choices. Retry before editing.'
     } finally {
       templateLoading.value = false
+      if (!templateLoadError.value) workspaceSavedSnapshot.value = workspaceSnapshot()
+    }
+    // This intent is supplied only after a confirmed library draft creation or
+    // explicit open. Consume it before opening; reload never creates a copy.
+    if (route.query.openDesign === '1' && route.query.workspace === 'figflow'
+      && !templateLoadError.value && templateId.value && templateKind.value === 'draft'
+      && figflowEnabled && !designServiceUnavailable.value) {
+      const query = { ...route.query }
+      delete query.openDesign
+      await router.replace({ query })
+      await beginFigflow()
     }
   }
   retryInitialLoad = initialise
@@ -1676,6 +1718,43 @@ onMounted(async () => {
       </template>
     </UModal>
 
+    <UModal
+      :open="workspaceLeave.open.value"
+      title="Keep your email changes?"
+      :dismissible="!workspaceBusy"
+      :close="!workspaceBusy"
+      @update:open="value => { if (!value) workspaceLeave.stay() }"
+    >
+      <template #body>
+        <p class="text-sm text-muted">
+          Save your changes before returning to the template library, or discard your local edits.
+        </p>
+        <UAlert
+          v-if="workspaceBusy"
+          class="mt-4"
+          color="warning"
+          title="A save needs confirmation"
+          description="Stay in the composer and reconcile the pending action before leaving."
+        />
+      </template>
+      <template #footer>
+        <UButton
+          label="Stay in composer"
+          color="neutral"
+          variant="ghost"
+          :disabled="saving || designFlow.busy.value"
+          @click="workspaceLeave.stay()"
+        />
+        <UButton
+          label="Discard local edits"
+          color="neutral"
+          variant="outline"
+          :disabled="workspaceBusy"
+          @click="workspaceLeave.discard()"
+        />
+        <UButton label="Save and return" :disabled="workspaceBusy" @click="workspaceLeave.saveAndLeave()" />
+      </template>
+    </UModal>
     <UModal v-model:open="showDesignDraftCopy" title="Create a design draft">
       <template #body>
         <UAlert
