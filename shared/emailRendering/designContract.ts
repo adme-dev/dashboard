@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { assertDocumentConditions, conditionPolicyLockIds } from './conditionProtection'
 import { RenderBoundaryError, snapshotRenderInput } from './bounds'
 
 // New authoring boundary only. Legacy documents continue through their existing
@@ -170,7 +171,7 @@ function unique(values: string[], field: string) {
 }
 function hasPath(blocks: EmailDesignDocument['blocks'], path: string): boolean {
   const parts = path.split('.')
-  if (parts.length < 3 || parts[1] !== 'data' || parts.includes('childrenIds'))
+  if (parts.length < 3 || parts[1] !== 'data' || (parts.includes('childrenIds') || parts.includes('visibilityCondition')))
     return false
   let value: unknown = blocks
   for (const part of parts) {
@@ -299,6 +300,7 @@ function parseEmailDesign(input: unknown): EmailDesignDocument {
         invalid('moduleInstances.overrides')
     }
   }
+  assertDocumentConditions(design.blocks, [...design.moduleInstances.flatMap(instance => instance.rootBlockIds), ...conditionPolicyLockIds(design.policy)])
   unique(
     design.assets.map(asset => asset.id),
     'assets'

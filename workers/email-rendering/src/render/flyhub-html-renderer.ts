@@ -1,5 +1,6 @@
 import { resolveEmailMergeTags } from '../../../../shared/emailRendering/mergeTags'
 import { resolveEmailContentWidth } from '../../../../shared/emailRendering/layout'
+import { resolveConditionalHtml } from '../../../../shared/emailRendering/conditions'
 import { assertImportedDocumentIdentity } from '../../../../shared/emailRendering/importedDocument'
 import { boundedText, boundedJoin } from './boundedText'
 import { replaceMergeFields } from './mergeFields'
@@ -136,6 +137,7 @@ function buildBlockRenderContext(
       vehicles: dynamicBlockVehicles || new Map(),
       offers: dynamicBlockOffers || new Map()
     },
+    conditionSequence: { value: 0 },
     mergeFields: {},
     baseUrl: '',
     primaryColor,
@@ -198,7 +200,8 @@ export function renderFlyhubDocumentToHtml(
   )
   blockCtx.renderBudget = options.renderBudget
   const authoredContent = renderRootChildrenHtml(rootBlock, doc, blockCtx)
-  const contentHtml = options.variables ? replaceMergeFields(authoredContent, options.variables, options.renderBudget) : authoredContent
+  const conditionalContent = options.variables ? resolveConditionalHtml(authoredContent, options.variables) : authoredContent
+  const contentHtml = options.variables ? replaceMergeFields(conditionalContent, options.variables, options.renderBudget) : conditionalContent
   const metadata = (value: string) => escapeHtml(options.variables
     ? resolveEmailMergeTags(value, options.variables, { context: 'text', budget: options.renderBudget })
     : value, options.renderBudget)

@@ -4,6 +4,9 @@
      Loads an existing template via ?id= or a starter layout via ?starter=. -->
 <script setup lang="ts">
 import { resolveEmailContentWidth } from '../../../../shared/emailRendering/layout'
+import { canConditionBlock, conditionPolicyLockIds } from '~~/shared/emailRendering/conditionProtection'
+import type { ContentCondition } from '~~/shared/emailRendering/conditions'
+import type { ConditionAction } from '~~/shared/emailRendering/conditionActions'
 import { onBeforeRouteLeave } from 'vue-router'
 import { diagnoseEmailContent, type EmailDiagnosticReference, type EmailDiagnosticImageAsset } from '../../../../shared/emailRendering/contentDiagnostics'
 import { templateCopyCategory, markTemplateClientCopy, templateCopyName } from '~~/app/utils/edmTemplateProvenance'
@@ -637,6 +640,52 @@ const hasValidDesignDraftClient = computed(() => templateClientOptions.value.som
 const campaignClientId = ref<string | null>(null)
 const mergeClientId = computed(() => campaignId.value ? campaignClientId.value : templateClient.value && templateClient.value !== '__shared__' ? templateClient.value : null)
 const mergeTags = useEdmMergeTags(mergeClientId)
+const conditionDocumentId = computed(() => designFlow.draft.value?.state === 'structured' ? designFlow.draft.value.documentId : null)
+const conditions = useEdmConditions(mergeClientId, conditionDocumentId)
+const conditionPending = ref<ConditionAction | null>(null)
+const conditionSaving = ref(false)
+const conditionEligible = computed(() => {
+  const current = designFlow.draft.value
+  return !!selectedBlock.value && canConditionBlock(store.document.value, selectedBlock.value.id,
+    current?.state === 'structured' ? [...current.source.moduleInstances.flatMap(instance => instance.rootBlockIds), ...conditionPolicyLockIds(current.source.policy)] : [])
+})
+const conditionReady = computed(() => {
+  const current = designFlow.draft.value
+  return conditions.canEdit.value && current?.state === 'structured' && current.source.scope.clientId === mergeClientId.value
+    && JSON.stringify(current.source.blocks) === JSON.stringify(store.document.value)
+    && !saving.value && !conditionSaving.value && !conditionPending.value && !designFlow.busy.value && !designFlow.hasPending.value
+    && !['open', 'proposed'].includes(designFlow.handoff.value?.state ?? '') && !designServiceUnavailable.value && !designLocalConflict.value
+})
+let conditionBaseline = ''
+async function saveCondition(value: ContentCondition | null) {
+  const current = designFlow.draft.value
+  if (!current || current.state !== 'structured' || conditionSaving.value) return
+  if (!conditionPending.value) {
+    if (!conditionReady.value || !conditionEligible.value || !selectedBlock.value) return
+    conditionPending.value = { documentId: current.documentId, expectedRevisionId: current.headRevisionId,
+      operationId: crypto.randomUUID(), blockId: selectedBlock.value.id, condition: value }
+    conditionBaseline = JSON.stringify(store.document.value)
+  }
+  conditionSaving.value = true
+  try {
+    const receipt = await $fetch<{ documentId: string, revisionId: string }>('/api/email/design/conditions', { method: 'POST', body: conditionPending.value })
+    const draft = await designFlow.lookup(current.templateId, receipt.revisionId)
+    if (draft?.state !== 'structured') throw new Error('Condition readback unavailable')
+    if (JSON.stringify(store.document.value) === conditionBaseline) {
+      store.resetDocument(draft.source.blocks as EdmFlyhubDocument)
+      markWorkspaceDocumentSaved()
+    } else {
+      designLocalConflict.value = true
+      toast.add({ title: 'Condition saved', description: 'Your newer local changes are kept. Reload the saved draft before editing conditions again.', color: 'warning' })
+    }
+    conditionPending.value = null
+  } catch (error) {
+    const failure = error as { statusCode?: number, status?: number }
+    const status = failure.statusCode ?? failure.status
+    if (status && status >= 400 && status < 500) conditionPending.value = null
+    toast.add({ title: 'Condition save unconfirmed', description: conditionPending.value ? 'Reconcile the same condition save before continuing. Your local content is kept.' : 'The condition was rejected. Reload the current draft and check designer access.', color: 'error' })
+  } finally { conditionSaving.value = false }
+}
 const sampleFieldLabels = [
   { key: 'first_name', label: 'First name' }, { key: 'name', label: 'Full name' }, { key: 'email', label: 'Email address' }
 ]
@@ -671,6 +720,7 @@ const TEMPLATE_KIND_OPTIONS: { label: string, value: TemplateKind }[] = [
 ]
 
 async function save(): Promise<boolean> {
+  if (conditionSaving.value || conditionPending.value) return false
   if (templateLoading.value || templateLoadError.value) return false
   if (designRevisionRequired.value && (designServiceUnavailable.value || designFlow.draft.value?.state !== 'structured')) {
     designFlow.error.value = 'The design service is unavailable. Your content is kept; reconnect it before saving this versioned draft.'
@@ -749,6 +799,7 @@ async function save(): Promise<boolean> {
 // FigFlow edits an independent template draft; campaigns and library originals
 // keep their identities. The server owns scope, revisions and proposal effects.
 async function beginFigflow(createDraft = false) {
+  if (conditionSaving.value || conditionPending.value) return
   if (saving.value || designFlow.busy.value || templateLoading.value || templateLoadError.value) return
   if (designFlow.hasPending.value) {
     await reconcileDesignAction()
@@ -843,6 +894,7 @@ function closeFigflow() {
   else showFigflow.value = false
 }
 function editInFigflow() {
+  if (conditionSaving.value || conditionPending.value) return
   if (saving.value || designFlow.busy.value || templateLoading.value || templateLoadError.value) return
   if (designFlow.handoff.value?.state === 'open' || designFlow.handoff.value?.state === 'proposed') {
     showFigflow.value = true
@@ -1065,7 +1117,7 @@ function markWorkspaceDocumentSaved() {
   saved.document = store.document.value
   workspaceSavedSnapshot.value = JSON.stringify(saved)
 }
-const workspaceBusy = computed(() => saving.value || designFlow.busy.value || designFlow.hasPending.value)
+const workspaceBusy = computed(() => conditionSaving.value || !!conditionPending.value || saving.value || designFlow.busy.value || designFlow.hasPending.value)
 const workspaceLeave = useEdmWorkspaceLeave({
   hasChanges: () => !!workspaceSavedSnapshot.value && workspaceSnapshot() !== workspaceSavedSnapshot.value,
   isBusy: () => workspaceBusy.value,
@@ -1345,6 +1397,13 @@ onMounted(async () => {
     </header>
 
     <UAlert
+      v-if="conditionPending"
+      title="Condition save needs reconciliation"
+      description="Retry the same saved condition before making another draft change. Your local content is kept."
+      color="warning"
+      :actions="[{ label: 'Reconcile condition save', onClick: () => conditionPending && saveCondition(conditionPending.condition) }]"
+    />
+    <UAlert
       v-if="designServiceUnavailable"
       color="warning"
       title="FigFlow is temporarily unavailable"
@@ -1536,7 +1595,12 @@ onMounted(async () => {
               :block="selectedBlock"
               :base-block="{ id: selectedBlock.id, type: selectedBlock.type, data: selectedBlock.baseData }"
               :device="activeDevice"
+              :condition-eligible="conditionEligible"
+              :condition-ready="conditionReady"
+              :condition-pending="!!conditionPending"
               :html-editable="selectedHtmlEditableFor(selectedBlock.id)"
+              @condition="saveCondition"
+              @reconcile-condition="conditionPending && saveCondition(conditionPending.condition)"
               @update="onBlockUpdate"
             />
           </template>

@@ -4,6 +4,7 @@
      layers/edm/.../BlockSettingsPanel.vue, re-skinned shadcn→Nuxt UI; the CMS media
      library + automotive deps are stripped (image is a plain URL input). -->
 <script setup lang="ts">
+import type { ContentCondition } from '~~/shared/emailRendering/conditions'
 import { dividerLineThickness } from '~~/app/utils/edmDivider'
 import { getEdmSectionSettings } from '~~/app/utils/edmSectionSettings'
 import { BORDER_STYLES, TEXT_TRANSFORMS, SHADOW_OPTIONS } from '~~/app/utils/edmStyle'
@@ -32,6 +33,9 @@ const props = withDefaults(defineProps<{
   block: { id: string, type: string, data: BlockData }
   baseBlock?: { id: string, type: string, data: BlockData } | null
   device?: EdmDevice
+  conditionEligible?: boolean
+  conditionReady?: boolean
+  conditionPending?: boolean
   htmlEditable?: EdmHtmlEditableSelection | null
 }>(), {
   baseBlock: null,
@@ -39,7 +43,7 @@ const props = withDefaults(defineProps<{
   htmlEditable: null
 })
 
-const emit = defineEmits<{ update: [updates: { style?: unknown, props?: unknown, visibility?: { hideOnMobile?: boolean, hideOnDesktop?: boolean }, htmlEditable?: EdmHtmlEditableUpdate }] }>()
+const emit = defineEmits<{ condition: [value: ContentCondition | null], reconcileCondition: [], update: [updates: { style?: unknown, props?: unknown, visibility?: { hideOnMobile?: boolean, hideOnDesktop?: boolean }, htmlEditable?: EdmHtmlEditableUpdate }] }>()
 
 function appendMergeToken(token: string) {
   const current = String(props.block.data?.props?.text || '')
@@ -223,6 +227,14 @@ function updateColumnWidth(index: number, value: string | number) {
 
 <template>
   <div class="space-y-4">
+    <EmailBuilderEdmConditionPicker
+      :condition="baseBlock?.data.props?.visibilityCondition ?? block.data.props?.visibilityCondition"
+      :eligible="!!conditionEligible"
+      :ready="!!conditionReady"
+      :pending="conditionPending"
+      @apply="emit('condition', $event)"
+      @reconcile="emit('reconcileCondition')"
+    />
     <UBadge v-if="isMobileEditing" color="primary" variant="soft">
       Mobile override
     </UBadge>

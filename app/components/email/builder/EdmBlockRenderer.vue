@@ -8,6 +8,15 @@
     @click="preventEditorLinkNavigation"
     @auxclick.capture="preventEditorLinkNavigation"
   >
+    <UBadge
+      v-if="conditionLabel"
+      icon="i-lucide-list-filter"
+      variant="soft"
+      size="sm"
+      class="pointer-events-none m-1"
+    >
+      {{ conditionLabel }}
+    </UBadge>
     <!-- Heading -->
     <component
       :is="headingTag"
@@ -721,6 +730,11 @@ function onEditableKeydown(e: KeyboardEvent) {
     ;(e.target as HTMLElement)?.blur()
   }
 }
+
+const conditionLabel = computed(() => {
+  const condition = props.props?.visibilityCondition as { name?: unknown } | undefined
+  return typeof condition?.name === 'string' ? condition.name : ''
+})
 
 const blockProps = computed(() => (props.props || {}) as Record<string, unknown>)
 const rawHtmlContents = computed(() => (blockProps.value.contents as string) || '')

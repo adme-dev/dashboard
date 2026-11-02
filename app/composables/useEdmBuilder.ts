@@ -271,6 +271,8 @@ function createStore() {
   }
 
   function updateBlockProps(blockId: string, propsUpdates: Record<string, unknown>) {
+    // Visibility rules are server-derived canonical snapshots, not generic props.
+    propsUpdates = Object.fromEntries(Object.entries(propsUpdates).filter(([key]) => key !== 'visibilityCondition'))
     recordHistory()
     const block = document.value[blockId]
     if (block) {
@@ -318,6 +320,8 @@ function createStore() {
   }
 
   function updateBlockMobileProps(blockId: string, propsUpdates: Record<string, unknown>) {
+    // Do not copy the inherited base condition into a mobile override.
+    propsUpdates = Object.fromEntries(Object.entries(propsUpdates).filter(([key]) => key !== 'visibilityCondition'))
     recordHistory()
     const block = document.value[blockId]
     if (!block) return
