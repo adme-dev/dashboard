@@ -62,7 +62,7 @@ describe('narrow canonical condition mutation service', () => {
     await expect(
       saveDesignCondition(request, authority, renderer, read, save)
     ).resolves.toEqual({ documentId: id, revisionId: id })
-    const [input, authorize, passedRenderer, , dependencies]
+    const [input, authorize, passedRenderer, actionDigest, , dependencies]
       = save.mock.calls[0]!
     expect(input.design.blocks.heading.data.props.visibilityCondition).toEqual(
       condition
@@ -73,6 +73,7 @@ describe('narrow canonical condition mutation service', () => {
     expect(read.mock.calls[0]![0]).toContain('r.id=$2')
     expect(read.mock.calls[0]![1]).toEqual([id, id])
     expect(passedRenderer).toBe(renderer)
+    expect(actionDigest).toMatch(/^[a-f0-9]{64}$/)
     await dependencies.authorizeModuleRead('module', client)
     expect(authority.authorize).toHaveBeenCalledWith(client, 'read')
     authority.authorize.mockResolvedValue('staff')
@@ -90,6 +91,17 @@ describe('narrow canonical condition mutation service', () => {
     expect(save.mock.calls[1]![0].expectedRevisionId).toBe(
       request.expectedRevisionId
     )
+  })
+  it('supports shared saved drafts and binds distinct no-op targets to distinct receipts', async () => {
+    const source = fixture()
+    source.scope.clientId = null
+    source.blocks.other = { type: 'Heading', data: { props: { text: 'Other' } } }
+    source.blocks.root.data.childrenIds!.push('other')
+    read.mockResolvedValue({ rows: [{ payload: source, schema_version: 1, client_id: null, owner_client_id: null, template_kind: 'draft' }] })
+    await saveDesignCondition({ ...request, condition: null }, authority, renderer, read, save)
+    await saveDesignCondition({ ...request, blockId: 'other', condition: null }, authority, renderer, read, save)
+    expect(authority.authorize).toHaveBeenCalledWith(null, 'write')
+    expect(save.mock.calls[0]![3]).not.toBe(save.mock.calls[1]![3])
   })
   it('requires fresh designer scope and rejects staff, forged source/policy/client and unsupported targets', async () => {
     authority.authorize.mockResolvedValueOnce('staff')

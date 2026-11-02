@@ -51,7 +51,7 @@ describe('buildBatchEmail', () => {
     from_name: 'XeroFlow',
     from_email: 'hi@xf.com',
     reply_to: null,
-    body_html: '<p>Hi {{ first_name }}</p><a href="{{ unsubscribe_url }}">stop</a>'
+    body_html: '<p>Hi {{ first_name }}</p><a href="{{ unsubscribe_url }}">stop</a><footer>Agency, 1 Market Street, Melbourne VIC 3000</footer>'
   }
   const recipient = { email: 'ada@x.com', name: 'Ada Lovelace', subscriber_id: 's9' }
 
@@ -86,7 +86,7 @@ describe('buildBatchEmail', () => {
     const email = await buildTrackedBatchEmail(
       {
         ...campaign,
-        body_html: '<p>Hi {{ first_name }}</p><a href="https://dealer.example.com/offers">Offer</a><a href="{{ unsubscribe_url }}">stop</a>'
+        body_html: '<p>Hi {{ first_name }}</p><a href="https://dealer.example.com/offers">Offer</a><a href="{{ unsubscribe_url }}">stop</a><footer>Agency, 1 Market Street, Melbourne VIC 3000</footer>'
       },
       recipient,
       'c9',

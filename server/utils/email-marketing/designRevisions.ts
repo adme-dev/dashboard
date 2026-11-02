@@ -148,7 +148,7 @@ export function saveDerivedTemplateDesignDraft(
   authorize: (clientId: string | null) => Promise<void>,
   renderer: EmailRendererClient,
   actionDigest: string,
-  runTransaction: DesignTransaction,
+  runTransaction?: DesignTransaction,
   dependencies: DesignDependencyAuthority = {}
 ): Promise<DesignRevisionReceipt> {
   z.string().regex(/^[a-f0-9]{64}$/).parse(actionDigest)

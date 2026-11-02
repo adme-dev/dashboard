@@ -34,6 +34,7 @@ describe('private email design deployment targets', () => {
     ['public route', (value: Config) => { value.routes = ['app.xeroflow.io/*'] }],
     ['cron', (value: Config) => { value.triggers.crons = ['* * * * *'] }],
     ['foreign media bucket', (value: Config) => { value.r2_buckets[0].bucket_name = 'another-project' }],
+    ['premature brand activation', (value: Config) => { value.vars.FIGFLOW_EDM_BRAND_ENABLED = 'true' }],
     ['premature library activation', (value: Config) => { value.vars.FIGFLOW_EDM_LIBRARY_ENABLED = 'true' }],
     ['premature designer activation', (value: Config) => { value.vars.FIGFLOW_EDM_DESIGNER_ENABLED = 'true' }],
     ['unreviewed authority', (value: Config) => { value.vars.EMAIL_DESIGN_SESSION_AUTHORITY = 'another' }],

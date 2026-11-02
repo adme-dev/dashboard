@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import pg from 'pg'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { executeDesignerRoundtrip, executeDesignRoundtrip } from '../../server/utils/email-marketing/designHandoffs'
-import { ensureLegacyDesignDocument, saveTemplateDesignDraft, saveStaffTemplateDesignDraft, type DesignTransaction } from '../../server/utils/email-marketing/designRevisions'
+import { ensureLegacyDesignDocument, saveDerivedTemplateDesignDraft, saveTemplateDesignDraft, saveStaffTemplateDesignDraft, type DesignTransaction } from '../../server/utils/email-marketing/designRevisions'
 import { getTemplateDesignDraft } from '../../server/utils/email-marketing/designReads'
 import type { DesignerOperation, DesignerRoundtripRequest } from '../../shared/emailRendering/designDesigner'
 import type { DesignHandoff } from '../../shared/emailRendering/designRoundtrip'
@@ -10,6 +10,8 @@ import { validateEmailDesign } from '../../shared/emailRendering/designContract'
 import { structuredDesign } from '../fixtures/email-design/structured'
 import { executeDesignModules, readImmutableDesignModule } from '../../server/utils/email-marketing/designModules'
 import { publishEmailAsset } from '../../server/utils/email-marketing/designAssets'
+import { executeDesignBrand, readDesignBrandOptions } from '../../server/utils/email-marketing/designBrand'
+import { saveDesignCondition } from '../../server/utils/email-marketing/designConditions'
 import { testEmailRenderer } from '../fixtures/emailRenderer'
 
 const socket = process.env.FIGFLOW_DESIGN_PG_SOCKET
@@ -64,10 +66,11 @@ describe('designer authority with real PostgreSQL transactions', () => {
     await admin.query(`CREATE SCHEMA ${schema}; SET search_path TO ${schema}, public`)
     await admin.query('CREATE TABLE agency_clients(id uuid PRIMARY KEY); CREATE TABLE edm_templates(id uuid PRIMARY KEY, client_id uuid, body_source jsonb, body_html text, subject text, preview_text text, template_kind text DEFAULT \'draft\', updated_at timestamptz DEFAULT now()); CREATE TABLE edm_custom_modules(id uuid PRIMARY KEY DEFAULT gen_random_uuid(), client_id uuid, blocks jsonb, name text, description text, category text, preview_tone text, created_by uuid, updated_at timestamptz DEFAULT now()); CREATE TABLE banner_assets(id uuid PRIMARY KEY, client_id uuid, uploaded_by uuid, r2_key text, url text, mime_type text, file_size integer); CREATE TABLE campaigns(id uuid PRIMARY KEY, client_id uuid, status text)')
     for (let repeat = 0; repeat < 2; repeat++) {
-      for (const file of ['491_email_design_revisions.sql', '492_email_design_revision_metadata.sql', '493_email_design_handoffs.sql', '494_email_merge_tag_definitions.sql', '495_email_asset_publication.sql']) {
+      for (const file of ['491_email_design_revisions.sql', '492_email_design_revision_metadata.sql', '493_email_design_handoffs.sql', '494_email_merge_tag_definitions.sql', '495_email_asset_publication.sql', '496_email_content_conditions.sql']) {
         await admin.query(fs.readFileSync(new URL(`../../server/database/migrations/${file}`, import.meta.url), 'utf8'))
       }
     }
+    await admin.query('CREATE TABLE brand_kits(id uuid PRIMARY KEY,client_id uuid,name text,colors jsonb,fonts jsonb,logos jsonb,guidelines text,is_default boolean); CREATE TABLE brand_kit_versions(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),brand_kit_id uuid,version integer,snapshot jsonb,note text,created_by uuid,UNIQUE(brand_kit_id,version))')
     await admin.query('INSERT INTO agency_clients VALUES($1)', [scope])
   })
   beforeEach(async () => {
@@ -86,6 +89,39 @@ describe('designer authority with real PostgreSQL transactions', () => {
     if (!admin) return
     await admin.query(`DROP SCHEMA ${schema} CASCADE`)
     await admin.end()
+  })
+  databaseTest('pins exact brand snapshots, applies locks atomically, and binds condition no-op receipts by target', async () => {
+    const access = {
+      actorId,
+      read: async (clientId: string | null) => { if (clientId !== scope) throw new Error('scope denied') },
+      designer: async (clientId: string | null) => { if (role !== 'designer' || clientId !== scope) throw new Error('designer denied') },
+      publisher: async (clientId: string | null) => { if (role !== 'designer' || clientId !== scope) throw new Error('publisher denied') }
+    }
+    const kitId = crypto.randomUUID()
+    await admin.query('INSERT INTO brand_kits(id,client_id,name,colors,fonts,logos,is_default) VALUES($1,$2,$3,$4,$5,$6,true)', [kitId, scope, 'Synthetic brand', JSON.stringify([{ role: 'primary', hex: '#112233' }]), JSON.stringify([{ role: 'body', family: 'Georgia' }]), '[]'])
+    const options = await readDesignBrandOptions(documentId, access, admin)
+    const request = { version: 1, command: 'apply-brand', operationId: crypto.randomUUID(), draftId: documentId, expectedRevisionId: head, kitId, kitDigest: options.kits.find(k => k.id === kitId)!.digest }
+    const brand = await executeDesignBrand(request, access, testEmailRenderer, transaction)
+    await admin.query('UPDATE brand_kits SET colors=$2 WHERE id=$1', [kitId, JSON.stringify([{ role: 'primary', hex: '#abcdef' }])])
+    expect(await executeDesignBrand(request, access, testEmailRenderer, transaction)).toEqual(brand)
+    const current = await getTemplateDesignDraft(documentId, access.read, admin)
+    if (current.state !== 'structured') throw new Error('Expected structured head')
+    expect(current.source.source.brand?.defaults.primaryColor).toBe('#112233')
+    expect(current.source.blocks.root.data.props?.fontFamily).toBeUndefined()
+    expect(current.source.blocks.heading).toEqual(structuredDesign().blocks.heading)
+    const clear = { documentId, expectedRevisionId: brand.revisionId, operationId: crypto.randomUUID(), blockId: 'heading', condition: null }
+    const save: typeof saveDerivedTemplateDesignDraft = (input, auth, render, digest, _tx, deps) => saveDerivedTemplateDesignDraft(input, auth, render, digest, transaction, deps)
+    const conditionAccess = { actorId, authorize: async (clientId: string | null) => {
+      await access.designer(clientId)
+      return 'designer' as const
+    } }
+    const cleared = await saveDesignCondition(clear, conditionAccess, testEmailRenderer, admin.query.bind(admin), save)
+    expect(await saveDesignCondition(clear, conditionAccess, testEmailRenderer, admin.query.bind(admin), save)).toEqual(cleared)
+    await expect(saveDesignCondition({ ...clear, blockId: 'cta' }, conditionAccess, testEmailRenderer, admin.query.bind(admin), save)).rejects.toMatchObject({ code: 'IDEMPOTENCY_CONFLICT' })
+    const locked = await executeDesignBrand({ version: 1, command: 'set-design-lock', operationId: crypto.randomUUID(), draftId: documentId, expectedRevisionId: cleared.revisionId, lock: { blockId: 'heading', target: 'block', locked: true } }, access, testEmailRenderer, transaction)
+    await expect(saveDesignCondition({ ...clear, expectedRevisionId: locked.revisionId, operationId: crypto.randomUUID(), condition: { version: 1, name: 'Name', predicate: { field: 'first_name', op: 'exists' } } }, conditionAccess, testEmailRenderer, admin.query.bind(admin), save)).rejects.toThrow('PROTECTED_CONDITION_TARGET')
+    role = 'staff'
+    await expect(executeDesignBrand(request, access, testEmailRenderer, transaction)).rejects.toThrow('designer denied')
   })
   databaseTest('publishes and pins modules without retroactively updating instances, then explicitly updates and detaches', async () => {
     const access = {

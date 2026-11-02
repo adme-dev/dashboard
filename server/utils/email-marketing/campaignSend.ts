@@ -3,6 +3,9 @@
 // sender (2b-2) and the campaign endpoints compose these. Kept side-effect-free
 // so the send-gate + pacing logic is unit-testable without a DB or Resend.
 
+import { resolveConditionalHtml } from '../../../shared/emailRendering/conditions'
+import { deliveryHasUnsubscribe, deliveryPlainText, inspectDeliveryContent, isUsableUnsubscribeHref } from '../../../shared/emailRendering/deliveryContent'
+import { checkEmailSendability } from './sendability'
 import { resolveEmailMergeTags } from '../../../shared/emailRendering/mergeTags'
 import type { BridgeCommunicationInput } from '~~/server/utils/crm/commsDb'
 import { diagnoseEmailContent, type EmailDiagnosticCode, type EmailDiagnosticReference, type EmailDiagnosticImageAsset } from '../../../shared/emailRendering/contentDiagnostics'
@@ -43,13 +46,10 @@ export function chunk<T>(items: T[], size: number = RESEND_BATCH_LIMIT): T[][] {
 }
 
 // Send gate (spec §2/§4): a campaign body MUST contain an unsubscribe affordance
-// before it can send — either the {{unsubscribe_url}} merge tag (substituted per
-// recipient at send time) or a literal link whose href mentions "unsubscribe".
+// before it can send: a visible labelled anchor using {{unsubscribe_url}} or
+// an absolute HTTPS unsubscribe endpoint. Comments and hidden decoys do not count.
 export function bodyHasUnsubscribe(html: string | null | undefined): boolean {
-  if (!html) return false
-  if (/\{\{\s*unsubscribe_url\s*\}\}/i.test(html)) return true
-  if (/href\s*=\s*["'][^"']*unsubscribe[^"']*["']/i.test(html)) return true
-  return false
+  return !!html && deliveryHasUnsubscribe(html, true)
 }
 
 export interface SendGateInput {
@@ -114,7 +114,7 @@ const RELATIVE_MEDIA_RE = /\b(?:src|background)\s*=\s*["'](?!https?:\/\/|cid:|da
 const NON_HTTPS_MEDIA_RE = /\b(?:src|background)\s*=\s*["']http:\/\/[^"']+["']|url\(\s*['"]?http:\/\/[^'")]+['"]?\s*\)/i
 const STREET_ADDRESS_RE = /\b\d+[a-z]?(?:\s*[-/]\s*\d+[a-z]?)?\s+[\w\s,'.-]{2,80}\b(?:street|st\b|road|rd\b|avenue|ave\b|drive|dr\b|lane|ln\b|court|ct\b|place|pl\b|parade|pde\b|crescent|cres\b|highway|hwy\b|boulevard|blvd\b|terrace|tce\b|way\b)\b/i
 const PO_BOX_RE = /\b(?:p\.?\s*o\.?\s*box|po\s+box|locked\s+bag|private\s+bag)\s+\d+\b/i
-const LOCALITY_RE = /\b(?:melbourne|sydney|brisbane|perth|adelaide|hobart|darwin|canberra|australia|vic|nsw|qld|wa|sa|tas|act|nt)\b|\b\d{4}\b/i
+const LOCALITY_RE = /\b(?:melbourne|sydney|brisbane|perth|adelaide|hobart|darwin|canberra|australia|vic|nsw|qld|wa|sa|tas|act|nt)\b|\b\d{4,6}(?:-\d{4})?\b/i
 const PREFLIGHT_LABELS = {
   unsubscribe: 'Unsubscribe',
   sender: 'Sender',
@@ -156,18 +156,13 @@ function preflightCheck(
 }
 
 function hasPhysicalSenderIdentity(html: string): boolean {
-  const text = html
-    .replace(/<!--[\s\S]*?-->/g, ' ')
-    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&#(?:x([0-9a-f]{1,6})|([0-9]{1,7}));/gi, (_entity, hex, decimal) => {
-      const code = Number.parseInt(hex || decimal, hex ? 16 : 10)
-      return code <= 0x10ffff && !(code >= 0xd800 && code <= 0xdfff) ? String.fromCodePoint(code) : ' '
-    })
-    .replace(/&(?:nbsp|ensp|emsp);|[\u200b-\u200d\ufeff]/gi, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
+  let text: string
+  try {
+    text = inspectDeliveryContent(html).text
+  } catch { return false }
+  return hasPhysicalSenderIdentityText(text)
+}
+function hasPhysicalSenderIdentityText(text: string): boolean {
   if (/\byour business postal address\b/i.test(text)) return false
   return (STREET_ADDRESS_RE.test(text) || PO_BOX_RE.test(text)) && LOCALITY_RE.test(text)
 }
@@ -323,6 +318,7 @@ export interface BatchEmail {
   to: string[]
   subject: string
   html: string
+  text?: string
   headers: Record<string, string>
   replyTo?: string
 }
@@ -345,7 +341,7 @@ export function buildBatchEmail(
     from,
     to: [recipient.email],
     subject: resolveEmailMergeTags(campaign.subject || '', vars, { context: 'text', missing: 'empty' }),
-    html: substituteMergeTags(campaign.body_html || '', vars),
+    html: substituteMergeTags(resolveConditionalHtml(campaign.body_html || '', vars), vars),
     headers: {
       'List-Unsubscribe': `<${unsubUrl}>`,
       'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click'
@@ -364,10 +360,21 @@ export async function buildTrackedBatchEmail(
   tracking: RewriteTrackingInput
 ): Promise<BatchEmail> {
   const email = buildBatchEmail(campaign, recipient, campaignId, appUrl, unsubToken)
-  return {
-    ...email,
-    html: await rewriteHtmlLinksForTracking(email.html, tracking)
+  const html = await rewriteHtmlLinksForTracking(email.html, tracking)
+  const content = assertFinalCampaignEmail({ ...email, html })
+  return { ...email, html, text: deliveryPlainText(content) }
+}
+
+/** Frozen body only: evaluate conditions, merge once, track, then inspect the
+ * exact recipient payload. No mutable template/catalog lookup or recompilation. */
+export function assertFinalCampaignEmail(email: BatchEmail): ReturnType<typeof inspectDeliveryContent> {
+  const report = checkEmailSendability({ html: email.html, subject: email.subject })
+  const content = inspectDeliveryContent(email.html)
+  if (!report.ok || !content.links.some(link => isUsableUnsubscribeHref(link.href)) || !hasPhysicalSenderIdentityText(content.text)
+    || /\{\{|\}\}/.test(email.html) || /\{\{|\}\}/.test(email.subject)) {
+    throw new Error('FINAL_CAMPAIGN_CONTENT_BLOCKED')
   }
+  return content
 }
 
 // ── Pure: rate-limit (429) handling ─────────────────────────────────────────

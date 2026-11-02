@@ -26,6 +26,7 @@ export function validateEmailDesignTarget(config, environment) {
       FIGFLOW_EDM_DRAFT_SAVES_ENABLED: production ? 'true' : 'false',
       FIGFLOW_EDM_DESIGNER_ENABLED: 'false',
       FIGFLOW_EDM_LIBRARY_ENABLED: 'false',
+      FIGFLOW_EDM_BRAND_ENABLED: 'false',
       EMAIL_DESIGN_SESSION_AUTHORITY: 'pages-auth-me-v1'
     },
     services: [{ binding: 'EMAIL_RENDERER', service: `xeroflow-email-rendering-${environment}`, entrypoint: 'EmailRenderer' }],

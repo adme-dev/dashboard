@@ -37,7 +37,7 @@ vi.mock(
     ...(await original<
       typeof import('../../server/utils/email-marketing/designRevisions')
     >()),
-    saveTemplateDesignDraft: mocks.save
+    saveDerivedTemplateDesignDraft: mocks.save
   })
 )
 vi.mock('~~/server/utils/email-marketing/designRequest', async original => ({
@@ -61,7 +61,7 @@ const request = {
 const event = () =>
   ({
     context: {
-      cloudflare: { env: { FIGFLOW_EDM_DRAFT_SAVES_ENABLED: 'true' } }
+      cloudflare: { env: { FIGFLOW_EDM_DRAFT_SAVES_ENABLED: 'true', FIGFLOW_EDM_DESIGNER_ENABLED: 'true' } }
     }
   }) as Parameters<typeof post>[0]
 beforeEach(() => {

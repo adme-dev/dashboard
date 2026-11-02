@@ -199,21 +199,29 @@ export async function sendCampaignChunk(campaign: Campaign, event?: H3Event): Pr
 
   const appUrl = getAppUrl(event)
   const secret = emailLinkSecret()
-  const payload = await Promise.all(recipients.map(async r =>
-    buildTrackedBatchEmail(
-      campaign,
-      { email: r.email, name: r.name, subscriber_id: r.subscriber_id },
-      campaign.id,
-      appUrl,
-      await signEmailToken(secret, 'unsub', campaign.id, r.subscriber_id),
-      {
+  let payload: Awaited<ReturnType<typeof buildTrackedBatchEmail>>[]
+  try {
+    payload = await Promise.all(recipients.map(async r =>
+      buildTrackedBatchEmail(
+        campaign,
+        { email: r.email, name: r.name, subscriber_id: r.subscriber_id },
+        campaign.id,
         appUrl,
-        campaignId: campaign.id,
-        subscriberId: r.subscriber_id,
-        secret
-      }
-    )
-  ))
+        await signEmailToken(secret, 'unsub', campaign.id, r.subscriber_id),
+        {
+          appUrl,
+          campaignId: campaign.id,
+          subscriberId: r.subscriber_id,
+          secret
+        }
+      )
+    ))
+  } catch {
+    // No provider request has started. A malformed marker or final recipient
+    // blocker must not strand claims or be misreported as a provider failure.
+    await releaseClaims(recipients.map(r => r.id))
+    throw createError({ statusCode: 422, statusMessage: 'campaign_final_content_blocked' })
+  }
 
   let sent = 0
   let failed = 0

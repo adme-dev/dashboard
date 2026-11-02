@@ -170,3 +170,58 @@ flags remain false; adding routes or schema does not activate publication.
 
 Fresh main moved from c47986245 to c1dd2d27f (MotorStack banner artwork #825).
 Reconcile the combined candidate with it before any integration/release.
+
+## Conditions, brand and final delivery integration checkpoint
+
+Condition commit `c7053e17e` integrated as `2d20fae1a`; brand/locks commit
+`a3579c831` as `3f4271900`. Parent preserves its single-pass metadata/body merge
+ordering: typed frozen regions resolve before recipient substitution, then
+tracking runs, then the exact recipient output is inspected. No scheduled body
+is recompiled and no mutable condition/merge-tag catalog is joined by send.
+Condition actions also support shared saved drafts after fresh agency authority;
+the trusted writer binds the entire action/target to its receipt, including two
+otherwise identical no-op clears on different blocks. Staff PATCH remains
+content-only even for creative administrators.
+
+Final campaign delivery checks reject comment/hidden/zero-size/class-hidden
+unsubscribe decoys, unusable endpoint URLs, hidden physical identity, unresolved
+tokens, unsafe markup and malformed reserved regions. They reuse the existing
+sender; failures before provider dispatch release every claimed recipient and
+preserve pending state. Plaintext derives from statically visible text and labelled
+URLs. This is bounded static inspection of common hiding, not a complete CSS
+cascade/layout engine, legal certification or real-client rendering proof.
+Template layout tests use explicit sample variables (empty defaults included),
+resolve conditional regions before sending, and retain their existing separate
+layout-test contract rather than claiming campaign readiness.
+
+Required Node24.18.0 evidence: 57 tests across8 condition/brand/database/route/UI
+files passed, including six real PostgreSQL scenarios;94 final delivery/proxy/
+deploy tests passed;27 template/campaign/merge tests passed. The wider56-file run
+had556 passes and one outdated tracking fixture without a required physical
+footer; the corrected fixture is included in the94 passing final checks.
+Private Nitro/admission build passed;21 actual Workerd admission scenarios pass.
+Native relay19 protocol tests pass, including empty Image placeholder admission,
+but remain uncommitted until the native source pins are regenerated.
+
+Migrations494,495,496 were applied atomically at2026-11-02T06:40:23.411Z to the
+configured existing Dashboard Neon database after checking all three known
+Ford/Nissan/BEE IDs and existing revision/asset owners. Readback confirms both
+authoring catalogs, the asset receipt table and all four protection triggers.
+Exact SQL hashes/target receipt: `evidence/authoring-schema-20261102.json`.
+No customer records were fabricated; no provider message, application deployment
+or feature activation occurred. Both environments keep designer/library/brand
+flags false until verified integration and guarded release.
+
+### Active completion wave
+
+| Work | Task / dispatch | Current scope |
+| --- | --- | --- |
+| Native component designer | `task_42ae435c6837` / `ctx_5e7a017e4cc1` | Same actual Kimi task; resumed after a provider maxSteps checkpoint, source defaults/locks final review. Linux CI remains parent-owned. |
+| Library, templates, history | `task_b7b8b8350040` / `ctx_b463229ea882` | New clean branch from3f4271900; canonical UI/publication/copy and policy-safe server restore. No migration497 needed per worker. |
+| Generated rendering quality | `task_0704d5730001` / `ctx_6979af13b28d` | Opt-in dark palette/variant, Outlook VML and reverse mobile columns; byte-verification for publication variants. Real-client tests remain open. |
+
+Brand task `task_29112103ee2a` / `ctx_f7d84d97caa6` settled succeeded and its
+structured worker was released with transcript captured. New rendering task
+owns a new worker in the preserved checkout. Condition task was likewise settled
+and released before the new library/history dispatch; no settled lifecycle ID
+was reused as a new task.

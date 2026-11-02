@@ -7,9 +7,10 @@ import { validateEmailDesign } from '~~/shared/emailRendering/designContract'
 import { EmailConditionError } from '~~/shared/emailRendering/conditions'
 import {
   DesignRevisionError,
-  saveTemplateDesignDraft,
+  saveDerivedTemplateDesignDraft,
   type DesignDb
 } from './designRevisions'
+import { designDigest } from '~~/shared/emailRendering/designModules'
 import type { EmailRendererClient } from '~~/shared/emailRendering/contract'
 
 export interface ConditionAuthority {
@@ -26,7 +27,7 @@ export async function saveDesignCondition(
   read: DesignDb['query'] = async (sql, params) => ({
     rows: [await queryOneFresh(sql, params)].filter(Boolean)
   }),
-  save = saveTemplateDesignDraft
+  save = saveDerivedTemplateDesignDraft
 ) {
   const action = ConditionActionSchema.parse(input)
   // Read the IMMUTABLE requested baseline, not current head. Unknown commit
@@ -58,8 +59,7 @@ export async function saveDesignCondition(
   }
   await authorize(row.client_id)
   if (
-    !row.client_id
-    || row.client_id !== row.owner_client_id
+    row.client_id !== row.owner_client_id
     || row.template_kind !== 'draft'
     || row.schema_version !== 1
   )
@@ -88,6 +88,7 @@ export async function saveDesignCondition(
     },
     authorize,
     renderer,
+    await designDigest({ boundary: 'email-condition-action-v1', action }),
     undefined,
     {
       authorizeModuleRead: async (_moduleId, clientId) => {

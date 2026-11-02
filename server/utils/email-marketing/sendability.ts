@@ -1,4 +1,4 @@
-import { bodyHasUnsubscribe } from './campaignSend'
+import { deliveryHasUnsubscribe } from '../../../shared/emailRendering/deliveryContent'
 
 export type SendabilitySeverity = 'error' | 'warning'
 
@@ -63,7 +63,7 @@ export function checkEmailSendability(input: SendabilityInput): SendabilityRepor
     issues.push(issue('error', 'unsafe_tag', `Remove unsupported or unsafe <${unsafeTag}> markup.`, unsafeTag))
   }
 
-  if (input.requireUnsubscribe && !bodyHasUnsubscribe(html)) {
+  if (input.requireUnsubscribe && !deliveryHasUnsubscribe(html, true)) {
     issues.push(issue('error', 'missing_unsubscribe', 'Campaign email HTML must include {{ unsubscribe_url }} or an unsubscribe link.'))
   }
 
@@ -120,7 +120,7 @@ export function htmlToPlainText(html: string): string {
     .replace(/&lt;/gi, '<')
     .replace(/&gt;/gi, '>')
     .replace(/&quot;/gi, '"')
-    .replace(/&#39;/gi, "'")
+    .replace(/&#39;/gi, '\'')
     .replace(/[ \t]+\n/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim()

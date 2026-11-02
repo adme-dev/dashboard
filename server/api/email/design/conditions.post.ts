@@ -21,7 +21,7 @@ import { EmailDesignError } from '~~/shared/emailRendering/designContract'
 export default defineEventHandler(async (event) => {
   setHeader(event, 'cache-control', 'no-store')
   const env = event.context.cloudflare?.env ?? {}
-  if (env.FIGFLOW_EDM_DRAFT_SAVES_ENABLED !== 'true')
+  if (env.FIGFLOW_EDM_DRAFT_SAVES_ENABLED !== 'true' || env.FIGFLOW_EDM_DESIGNER_ENABLED !== 'true')
     throw createError({ statusCode: 404, statusMessage: 'not_found' })
   try {
     assertDesignMutationRequest(event, env.FIGFLOW_EDM_APP_ORIGIN)

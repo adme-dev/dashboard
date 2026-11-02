@@ -36,8 +36,7 @@ export function applyConditionAction(
     ...conditionPolicyLockIds(design.policy)
   ]
   if (
-    !design.scope.clientId
-    || !canConditionBlock(design.blocks, action.blockId, linked)
+    !canConditionBlock(design.blocks, action.blockId, linked)
   )
     throw new Error('PROTECTED_CONDITION_TARGET')
   const block = design.blocks[action.blockId]!

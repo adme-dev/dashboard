@@ -15,7 +15,7 @@ import { assertFreshDesignAccess } from '~~/server/utils/email-marketing/designA
 export default defineEventHandler(async (event) => {
   setHeader(event, 'cache-control', 'no-store')
   const env = event.context.cloudflare?.env ?? {}
-  if (env.FIGFLOW_EDM_DRAFT_SAVES_ENABLED !== 'true')
+  if (env.FIGFLOW_EDM_DRAFT_SAVES_ENABLED !== 'true' || env.FIGFLOW_EDM_DESIGNER_ENABLED !== 'true')
     throw createError({ statusCode: 404, statusMessage: 'not_found' })
   const id = z.string().uuid().safeParse(getQuery(event).documentId)
   if (!id.success)
@@ -50,7 +50,6 @@ export default defineEventHandler(async (event) => {
   return {
     canEdit:
       mode === 'designer'
-      && !!row.client_id
       && row.client_id === row.owner_client_id
       && row.template_kind === 'draft',
     clientId: row.client_id
