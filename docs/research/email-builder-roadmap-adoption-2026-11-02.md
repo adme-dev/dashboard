@@ -70,3 +70,16 @@ is already live.
 Merge values are supported as text and quoted HTML attribute values. Tags inside
 CSS declarations need a separate CSS-context contract; this foundation does not
 introduce CSS-variable personalization or treat HTML encoding as CSS escaping.
+
+## Owner confirmation and transport check — 2 November
+
+The owner approved proceeding and reiterated that the native FigFlow editor must
+follow the component-authoring, responsive-preview and compiled-email workflow
+referenced by Emailify. The acceptance checklist lives in
+`../superpowers/plans/2026-11-02-figflow-template-fidelity.md`; the native editor is not complete.
+
+PR823's first CI run found one missed Workerd RPC fixture expectation for the
+intentional raw-ampersand encoding correction. The same failure reproduced
+locally (10 passing / 1 failing); direct and RPC tests now share the explicit
+expected fixture contract while preserving the frozen historical golden file.
+This is test alignment to reviewed behavior, not a runtime rollback of escaping.

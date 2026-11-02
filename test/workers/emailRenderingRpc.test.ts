@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, rm, readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Miniflare, Response as LocalResponse } from 'miniflare'
-import { customerFixture, documentFixtures } from '../fixtures/emailRendering'
+import { customerFixture, documentFixtures, expectedDocumentHtml } from '../fixtures/emailRendering'
 import golden from '../fixtures/emailRenderingGolden.json'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
@@ -45,8 +45,8 @@ describe('actual Workerd private renderer RPC', () => {
     expect(response.status).toBe(200)
     return response.json()
   }
-  it.each(documentFixtures)('preserves $name bytes across real RPC', async (fixture) => {
-    expect(await rpc({ version: 1, expectedEnvironment: 'staging', operation: 'document', document: fixture.document, options: fixture.options })).toMatchObject({ ok: true, value: { html: golden.documents[fixture.name as keyof typeof golden.documents] } })
+  it.each(documentFixtures)('matches the reviewed $name HTML contract across real RPC', async (fixture) => {
+    expect(await rpc({ version: 1, expectedEnvironment: 'staging', operation: 'document', document: fixture.document, options: fixture.options })).toMatchObject({ ok: true, value: { html: expectedDocumentHtml(fixture.name) } })
     expect(outboundRequests).toBe(0)
   })
   it('preserves restricted customer output across real RPC', async () => {
