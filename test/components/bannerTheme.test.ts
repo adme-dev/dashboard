@@ -1,10 +1,10 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { computed, createApp, h, nextTick, ref } from 'vue'
+import { computed, createApp, h, nextTick, reactive, ref, watch } from 'vue'
 import ThemeToggle from '../../app/components/banner/ThemeToggle.vue'
 
 const cookie = ref<unknown>(undefined)
-const mode = { value: 'light', preference: 'dark' }
+const mode = reactive({ value: 'light', preference: 'dark' })
 const route = { meta: { colorMode: 'light' } }
 const apps: ReturnType<typeof createApp>[] = []
 beforeEach(() => {
@@ -13,6 +13,7 @@ beforeEach(() => {
   mode.preference = 'dark'
   route.meta.colorMode = 'light'
   vi.stubGlobal('computed', computed)
+  vi.stubGlobal('watch', watch)
   vi.stubGlobal('useCookie', vi.fn(() => cookie))
   vi.stubGlobal('useColorMode', () => mode)
   vi.stubGlobal('useRoute', () => route)
@@ -70,4 +71,20 @@ it('toggles immediately, persists a Banner Studio cookie, and leaves the agency 
   expect(mode.value).toBe('light')
   expect(mode.preference).toBe('dark')
   expect(useCookie).toHaveBeenCalledWith('banner-studio-color-mode', { path: '/', sameSite: 'lax', maxAge: 31536000 })
+})
+
+it('keeps a light selection from the agency user menu when opening an editor', async () => {
+  const host = document.createElement('div')
+  document.body.append(host)
+  const app = createApp({ render: () => h(ThemeToggle) })
+  app.component('UButton', { template: '<button><slot /></button>' })
+  apps.push(app)
+  app.mount(host)
+  mode.preference = 'light'
+  await nextTick()
+  expect(cookie.value).toBe('light')
+  const middleware = (await import('../../app/middleware/banner-theme.global')).default
+  const editor = { path: '/agency/banner-studio/project-a', meta: {} as { colorMode?: string } }
+  await middleware(editor as never, {} as never)
+  expect(editor.meta.colorMode).toBe('light')
 })

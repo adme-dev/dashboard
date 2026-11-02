@@ -74,6 +74,8 @@ export interface Layer {
   h: number
   zIndex: number
   opacity: number
+  /** Original opacity track retained while the layer opacity slider rescales it. */
+  opacityTrackSource?: { opacity: number, frames: Keyframe[] }
   rotation?: number
   flipX?: boolean
   flipY?: boolean

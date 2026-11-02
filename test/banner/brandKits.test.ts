@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { brandColor, brandFont, isLogoLayer, isDarkColor, normaliseHex } from '~~/app/utils/banner-brand-kit'
+import { brandButtonStyle, brandColor, brandFont, isLogoLayer, isDarkColor, normaliseHex } from '~~/app/utils/banner-brand-kit'
 import { brandDriftRules } from '~~/server/utils/banner/brandDrift'
 import { brandContextBlock, normaliseKitRow, brandKitInputSchema } from '~~/server/utils/banner/brandKits'
 
@@ -36,6 +36,14 @@ describe('brand kit role lookup', () => {
     expect(normaliseHex('nope')).toBeNull()
     expect(isDarkColor('#0a0a10')).toBe(true)
     expect(isDarkColor('#ffffff')).toBe(false)
+  })
+  it('uses Renault’s reviewed primary button instead of the generic accent button', () => {
+    const renault = { ...kit, sourceUrl: 'https://oem-variants.pages.dev/api/mcp#brand=renault',
+      fonts: [{ role: 'heading', family: 'Headline', weights: [700] }, { role: 'body', family: 'Renault Life', weights: [500] }] } as any
+    expect(brandButtonStyle(renault)).toMatchObject({
+      bgColor: '#000000', textColor: '#ffffff', borderRadius: 0, borderWidth: 0,
+      textTransform: 'lowercase', letterSpacing: '0', fontFamily: 'Renault Life', fontWeight: 500
+    })
   })
 })
 

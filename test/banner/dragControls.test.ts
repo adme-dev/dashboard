@@ -91,8 +91,33 @@ it('applies video filtering without multiplying animated opacity twice', () => {
   const video = { id: 1, type: 'video', src: '/clip.mp4', opacity: 0.5, visualFilter: 'brightness(1.12)', keyframes: { opacity: [{ time: 0, value: 0.5 }, { time: 2, value: 0.5 }] } } as Layer
   mount(VideoLayer, { layer: video, isActive: false })
   const frame = host.querySelector('video')!.parentElement!
-  expect(frame.style.opacity).toBe('1')
+  expect(frame.style.opacity).toBe('')
   expect(frame.style.filter).toBe('brightness(1.12)')
+})
+it('updates animated image opacity on the canvas and export, including after zero and undo', () => {
+  const image = { id: 1, type: 'image', name: 'Artwork', src: '/art.png', x: 0, y: 0, w: 100, h: 100,
+    zIndex: 1, opacity: 1, startTime: 0, endTime: 2,
+    keyframes: { opacity: [{ time: 0, value: 0 }, { time: 1, value: 1 }, { time: 2, value: 1 }] } } as Layer
+  studio.state.sets.mrec.layers = [image]
+  studio.updateLayer(1, { opacity: 0.5 })
+  expect(layer().keyframes?.opacity?.map(frame => frame.value)).toEqual([0, 0.5, 0.5])
+  const artboard = document.createElement('div')
+  artboard.innerHTML = '<div id="lyr-1"></div>'
+  host.append(artboard)
+  const timeline = createTimelineController()
+  timeline.buildTimeline(artboard, [layer()])
+  timeline.seekTo(1)
+  expect(Number(artboard.querySelector<HTMLElement>('#lyr-1')!.style.opacity)).toBeCloseTo(0.5)
+  timeline.destroyTimeline()
+  expect(buildBannerHTML('mrec', [layer()])).toContain('opacity: 0.5')
+  studio.updateLayer(1, { opacity: 0 })
+  expect(layer().keyframes?.opacity?.map(frame => frame.value)).toEqual([0, 0, 0])
+  studio.updateLayer(1, { opacity: 0.25 })
+  expect(layer().keyframes?.opacity?.map(frame => frame.value)).toEqual([0, 0.25, 0.25])
+  studio.undo()
+  expect(layer().opacity).toBe(0)
+  studio.undo()
+  expect(layer().keyframes?.opacity?.map(frame => frame.value)).toEqual([0, 0.5, 0.5])
 })
 describe('padding gestures', () => {
   it('protects the layer when Delete belongs to a selected keyframe', () => {

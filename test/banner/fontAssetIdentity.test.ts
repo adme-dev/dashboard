@@ -63,6 +63,21 @@ describe('exact brand font identity', () => {
     studio.updateLayer(1, { fontFamily: 'Arial' })
     expect(studio.activeLayers.value[0]?.fontAssetId).toBeUndefined()
   })
+  it('applies Renault button styling to existing buttons and restores it with undo', async () => {
+    vi.resetModules()
+    for (const [key, value] of Object.entries(Vue)) vi.stubGlobal(key, value)
+    vi.stubGlobal('useBannerFonts', () => ({ loadUsedFonts: vi.fn() }))
+    const studio = (await import('../../app/composables/useBannerStudio')).useBannerStudio()
+    studio.state.activeKey = 'mrec'
+    studio.state.setKeys = ['mrec']
+    studio.state.sets = { mrec: { layers: [{ id: 1, type: 'button', text: 'Book now', bgColor: '#e8c84a', textColor: '#000000', borderRadius: 12, fontFamily: 'Old' } as Layer] } }
+    const renault = { name: 'Renault', sourceUrl: 'https://oem-variants.pages.dev/api/mcp#brand=renault', colors: [], logos: [],
+      fonts: [{ role: 'body', family: 'Renault Life', weights: [500], defaultWeight: 500 }] } as BannerBrandKit
+    studio.applyBrandKit(renault, { insertLogo: false })
+    expect(studio.activeLayers.value[0]).toMatchObject({ bgColor: '#000000', textColor: '#ffffff', borderRadius: 0, textTransform: 'lowercase', fontFamily: 'Renault Life' })
+    studio.undo()
+    expect(studio.activeLayers.value[0]).toMatchObject({ bgColor: '#e8c84a', textColor: '#000000', borderRadius: 12, fontFamily: 'Old' })
+  })
   it('renders two legacy client families with independent UUID aliases without editing the layers', async () => {
     vi.resetModules()
     for (const [key, value] of Object.entries(Vue)) vi.stubGlobal(key, value)
