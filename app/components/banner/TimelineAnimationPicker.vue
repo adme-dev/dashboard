@@ -6,7 +6,7 @@ import type { AnimInType, AnimOutType, KeyframeProperty, Layer } from '~/types/b
 import { addEndAnimation, insertTimelineKeyframe, keyframeDefault, MIDDLE_ANIMATIONS, addMiddleAnimation } from '~/utils/banner-timeline-edit'
 import { describeKeyframeMotion, type TimelinePhase } from '~/utils/banner-timeline-phases'
 
-const emit = defineEmits<{ dragStart: [event: MouseEvent] }>()
+const emit = defineEmits<{ dragStart: [event: MouseEvent], moveKey: [event: KeyboardEvent] }>()
 const props = defineProps<{ layer: Layer, direction: 'in' | 'out', compact?: boolean, phase?: TimelinePhase, addAtEnd?: boolean, triggerLabel?: string }>()
 const { state, selectLayer, updateLayer } = useBannerStudio()
 const { inspectorTab } = useBannerInspector()
@@ -114,7 +114,7 @@ function choosePreset(id: string) {
     return
   }
   if (isMiddle.value && props.phase && editable.value) {
-    const at = Math.max(props.phase.start, Math.min(props.phase.end - 0.1, keyframeTime.value))
+    const at = Math.max(props.phase.start, Math.min(props.phase.end - Math.min(1.2, props.phase.end - props.phase.start), keyframeTime.value))
     pauseTimeline()
     seekTo(at)
     const source = hasKeyframes(props.layer) ? props.layer.keyframes! : presetToKeyframes(props.layer)
@@ -191,16 +191,17 @@ onBeforeUnmount(() => {
   <UPopover v-model:open="open" :content="{ side: 'top', align: direction === 'in' ? 'start' : 'end', sideOffset: 8 }">
     <UButton
       :aria-label="triggerLabel ? `${triggerLabel} for ${layer.name}` : phase ? `Edit ${blockDescription} for ${layer.name}` : isAudio ? `Edit audio for ${layer.name}` : isKeyframe ? `Edit ${selectedLabel} for ${layer.name}` : `Edit ${directionLabel} animation for ${layer.name}: ${selectedLabel}`"
-      :title="triggerLabel || blockDescription"
+      :title="triggerLabel || (phase && phase.kind !== 'hold' && phase.kind !== 'audio' ? `${blockDescription} · Drag left or right to move; click to edit` : blockDescription)"
       :aria-expanded="open"
       color="neutral"
       :variant="triggerLabel ? 'outline' : 'ghost'"
       size="xs"
       :disabled="!!triggerLabel && !editable"
-      class="h-full min-h-0 w-full min-w-0 justify-start gap-1 overflow-hidden rounded-lg px-3 text-[11px] font-medium hover:bg-white/20 cursor-grab active:cursor-grabbing"
+      class="h-full min-h-0 w-full min-w-0 justify-start gap-1 overflow-hidden rounded-lg text-[11px] font-medium hover:bg-white/20 cursor-grab active:cursor-grabbing"
       :style="{ color: triggerLabel ? 'var(--ui-text)' : foreground }"
-      :class="triggerLabel ? 'w-auto cursor-pointer py-1' : phase?.kind === 'hold' && phase.label === 'Hold' ? 'opacity-0 hover:opacity-100 focus:opacity-100' : ''"
+      :class="[compact ? 'px-0' : 'px-3', triggerLabel ? 'w-auto cursor-pointer py-1' : phase?.kind === 'hold' && phase.label === 'Hold' ? 'opacity-0 hover:opacity-100 focus:opacity-100' : '']"
       @mousedown.stop="emit('dragStart', $event)"
+      @keydown="emit('moveKey', $event)"
       @click.stop="focusAnimation"
     >
       <UIcon :name="`i-lucide-${isAudio ? 'volume-2' : isKeyframe ? 'diamond' : iconFor(selectedId)}`" class="size-3 shrink-0" />

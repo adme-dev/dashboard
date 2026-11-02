@@ -89,8 +89,9 @@ export const MIDDLE_ANIMATIONS = [
 export function addMiddleAnimation(layer: Layer, phase: TimelinePhase, id: string, at: number, source: NonNullable<Layer['keyframes']>, sample: (property: KeyframeProperty) => number): Partial<Layer> {
   const preset = MIDDLE_ANIMATIONS.find(preset => preset.id === id)
   if (!preset || phase.end - phase.start < 0.1) return {}
-  const start = Math.max(phase.start, Math.min(phase.end - 0.1, at))
-  const end = Math.min(phase.end, start + 1.2)
+  const duration = Math.min(1.2, phase.end - phase.start)
+  const start = Math.max(phase.start, Math.min(phase.end - duration, at))
+  const end = start + duration
   const keyframes = { ...source }
   for (const property of preset.properties) {
     const resting = sample(property)

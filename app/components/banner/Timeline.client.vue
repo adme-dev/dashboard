@@ -1310,6 +1310,7 @@ onUnmounted(() => {
                     :phase="phase"
                     :direction="phase.direction"
                     :compact="(phase.end - phase.start) * pxPerSec < 66"
+                    @move-key="phase.kind !== 'hold' && phase.kind !== 'audio' && nudgePhase($event, layer, phase, 'move')"
                     @drag-start="phase.kind === 'hold' || phase.kind === 'audio' ? onPresenceMouseDown($event, layer.id, 'move') : startPhaseDrag($event, layer, phase, 'move')"
                   />
                   <template v-if="phase.kind !== 'hold' && phase.kind !== 'audio'">
@@ -1322,7 +1323,7 @@ onUnmounted(() => {
                       color="neutral"
                       variant="ghost"
                       size="xs"
-                      class="absolute inset-y-0 z-30 w-2.5 p-0 cursor-ew-resize rounded-sm text-white/80 opacity-50 hover:opacity-100 focus:opacity-100"
+                      class="absolute bottom-0 z-30 h-2 w-2.5 max-w-[25%] overflow-hidden p-0 cursor-ew-resize rounded-sm text-white/80 opacity-50 hover:opacity-100 focus:opacity-100"
                       :class="edge === 'start' ? 'left-0' : 'right-0'"
                       :disabled="!canEditTiming(layer)"
                       @mousedown.stop="startPhaseDrag($event, layer, phase, edge)"

@@ -98,7 +98,7 @@ export function useBannerPhaseDrag(pxPerSec: Ref<number>, phasesByLayer: Ref<Map
     event.preventDefault()
     event.stopImmediatePropagation()
   }
-  function nudgePhase(event: KeyboardEvent, layer: Layer, phase: TimelinePhase, edge: 'start' | 'end') {
+  function nudgePhase(event: KeyboardEvent, layer: Layer, phase: TimelinePhase, edge: 'start' | 'end' | 'move') {
     if (!['ArrowLeft', 'ArrowRight'].includes(event.key) || !editable(layer)) return
     event.preventDefault()
     event.stopPropagation()
