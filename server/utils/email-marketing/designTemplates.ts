@@ -14,7 +14,8 @@ import type { EmailRendererClient } from '../../../shared/emailRendering/contrac
 import { ensureLegacyDesignDocument, type DesignDb, type DesignTransaction } from './designRevisions'
 import { appendModuleOrDraft, dependencyRecords, lockDraft, renderDraft, type ModuleAuthority } from './designModules'
 import { verifyDesignModuleAssets, readPublishedEmailAsset, type DesignAssetStorage } from './designAssets'
-import { getTemplateDesignDraft } from './designReads'
+import { assertDesignDraftMutable } from './designDraftOwners'
+import { getDesignDraft } from './designReads'
 
 type TemplateIdentity = {
   id: string
@@ -152,7 +153,8 @@ export async function executeDesignTemplates(
       throw new DesignModuleError('IDEMPOTENCY_CONFLICT')
     if (publish) {
       if (!prior) {
-        const draft = await getTemplateDesignDraft(request.draftId, authority.read, db)
+        if (sourceIdentity!.locked) assertDesignDraftMutable(sourceIdentity!.locked)
+        const draft = await getDesignDraft(request.draftId, authority.read, db)
         if (draft.headRevisionId !== request.expectedRevisionId) throw new DesignModuleError('REVISION_CONFLICT')
         if (draft.state !== 'structured' || draft.projection.state !== 'current')
           throw new DesignModuleError('SAVED_DRAFT_REQUIRED')
@@ -167,9 +169,11 @@ export async function executeDesignTemplates(
         if (!row) throw new DesignModuleError('NOT_FOUND')
         source = validateEmailDesign(row.payload)
       }
-      const metadata = (
-        await db.query('SELECT subject,preview_text FROM edm_templates WHERE id=$1', [sourceIdentity!.template_id])
-      ).rows[0] as { subject: string | null, preview_text: string | null }
+      const metadata = sourceIdentity!.locked
+        ? { subject: sourceIdentity!.locked.subject ?? null, preview_text: sourceIdentity!.locked.preview_text ?? null }
+        : (
+            await db.query('SELECT subject,preview_text FROM edm_templates WHERE id=$1', [sourceIdentity!.template_id])
+          ).rows[0] as { subject: string | null, preview_text: string | null }
       subject = metadata.subject
       preview = metadata.preview_text
       const records = await dependencyRecords(source, db, authority)
@@ -189,8 +193,9 @@ export async function executeDesignTemplates(
       subject = selected.subject
       preview = selected.previewText
     }
-    if (publish && (source.kind !== 'template' || source.scope.clientId !== sourceIdentity!.client_id))
+    if (publish && (source.kind !== (sourceIdentity!.campaign_id ? 'campaign-draft' : 'template') || source.scope.clientId !== sourceIdentity!.client_id))
       throw new DesignModuleError('SCOPE_MISMATCH')
+    if (publish && source.kind === 'campaign-draft') source = validateEmailDesign({ ...source, kind: 'template' })
     await dependencyRecords(source, db, authority)
     await verifyExactDesignAssets(source, authority, db, storage)
     if (prior) {
@@ -255,6 +260,8 @@ export async function executeDesignTemplates(
         'UPDATE edm_templates SET body_source=$2::jsonb,body_html=$3,email_design_revision_id=$4,updated_at=NOW() WHERE id=$1',
         [owner.id, JSON.stringify(source.blocks), html, revisionId]
       )
+    await authority.read(sourceScope)
+    await authorize()
     await db.query(
       'INSERT INTO email_design_revision_receipts(actor_id,operation_id,document_id,payload_sha256,revision_id) VALUES ($1,$2,$3,$4,$5)',
       [authority.actorId, request.operationId, initialized.documentId, digest, revisionId]

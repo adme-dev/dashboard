@@ -433,12 +433,14 @@ describe('God mode gate inventory', () => {
       'server/utils/email-marketing/review.ts\tconst value = fromRequest ?? getCachedBinding(\'FIGFLOW_EDM_WORKFLOW_ENABLED\') ?? process.env.FIGFLOW_EDM_WORKFLOW_ENABLED\tapplication_governance_bypass'
     ]
     expect(inventory.rows.filter(row => row.startsWith('server/utils/email-marketing/review.ts\t'))).toEqual(m06GateRows)
-    expect(inventory.rows).toHaveLength(1728)
+    // Campaign selection adds one exact existing-department agency-template read predicate; no bypass is registered.
+    expect(inventory.rows).toContain('server/utils/ai/marketing/departmentEmailOperations.ts\tif (!fresh.permissionGroups?.some(group => [\'ADMIN\', \'MANAGEMENT\'].includes(group))) refuse(\'Agency template access required\', \'forbidden\')\tordinary_user_behavior')
+    expect(inventory.rows).toHaveLength(1730)
     expect(inventory.counts).toEqual({
       identity_tenant_hard_boundary: 135,
       provider_infrastructure_availability: 224,
-      application_governance_bypass: 1636,
-      ordinary_user_behavior: 301,
+      application_governance_bypass: 1637,
+      ordinary_user_behavior: 302,
       unrelated_configuration: 431
     })
     // Removing the session KV shortcut removes four auth middleware rows:
@@ -462,7 +464,12 @@ describe('God mode gate inventory', () => {
     // to shared services. Email dispatch now reads request-bound provider config.
     // The classifier and owner bypass registrations remain unchanged; the reviewed
     // row diff is recorded in the marketing-management verification ledger.
-    expect(inventory.digest).toBe('9f8c344829d51230c1147d080d246f5e054632a19461cea1988602fc7356487f')
+    const canonicalMcpGate = 'server/utils/ai/marketing/departmentEmailOperations.ts\tif (!enabled(\'FIGFLOW_EDM_DRAFT_SAVES_ENABLED\', process.env.FIGFLOW_EDM_DRAFT_SAVES_ENABLED) || (selection && !enabled(\'FIGFLOW_EDM_LIBRARY_ENABLED\', process.env.FIGFLOW_EDM_LIBRARY_ENABLED))) refuse(\'Canonical email drafts are unavailable for this environment\', \'not_found\')\tapplication_governance_bypass'
+    expect(inventory.rows).toContain(canonicalMcpGate)
+    expect(createHash('sha256').update(inventory.rows.filter(row => row !== canonicalMcpGate).join('\n')).digest('hex')).toBe('32f9ebab4bc8d326fd8bd41618e27d5150f70164c2f9003fb9ab53c3765aef11')
+    const campaignReadGate = 'server/utils/ai/marketing/departmentEmailOperations.ts\tif (!fresh.permissionGroups?.some(group => [\'ADMIN\', \'MANAGEMENT\'].includes(group))) refuse(\'Agency template access required\', \'forbidden\')\tordinary_user_behavior'
+    expect(createHash('sha256').update(inventory.rows.filter(row => row !== campaignReadGate && row !== canonicalMcpGate).join('\n')).digest('hex')).toBe('9f8c344829d51230c1147d080d246f5e054632a19461cea1988602fc7356487f')
+    expect(inventory.digest).toBe('72c5d301965562d2787ab7b975f610efed91fb48db89270845756898615cc584')
     expect(inventory.rows).toContain(
       'app/composables/usePageStudioLauncher.ts\tconst config = useRuntimeConfig()\tunrelated_configuration'
     )

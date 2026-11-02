@@ -4,7 +4,8 @@ import { queryOneFresh, transactionWithoutRetry } from '~~/server/utils/db'
 import { isStorageConfigured, readStoredObject, type R2BucketBinding } from '~~/server/utils/storage'
 import { isBannerAssetDeliveryKey } from '~~/server/utils/bannerStorage'
 import { detectBannerAssetMime } from '../../../shared/utils/bannerAssetIdentity'
-import type { EmailDesignDocument } from '../../../shared/emailRendering/designContract'
+import { DESIGN_LIMITS, type EmailDesignDocument } from '../../../shared/emailRendering/designContract'
+import { MAX_RENDER_OUTPUT_BYTES } from '../../../shared/emailRendering/bounds'
 import { DesignModuleError, designDigest, stableDesignJson } from '../../../shared/emailRendering/designModules'
 import type { DesignDb, DesignTransaction } from './designRevisions'
 
@@ -180,4 +181,23 @@ export async function verifyDesignModuleAssets(design: EmailDesignDocument, db: 
     }
   }
   return [...assets.values()]
+}
+
+/** Check media in the saved compiled output against the same registered owner.
+ * This is a bounded read, never mirroring or URL fetching. Source and output
+ * checks are separate so an unmanifested renderer reference cannot be sent. */
+export async function verifySavedDesignHtmlAssets(design: EmailDesignDocument, html: string, db: DesignDb,
+  authorizeRead: (scope: string | null) => Promise<void>, storage?: DesignAssetStorage): Promise<void> {
+  if (new TextEncoder().encode(html).byteLength > MAX_RENDER_OUTPUT_BYTES) throw new DesignModuleError('ASSET_NOT_READY')
+  const urls = new Set<string>()
+  for (const match of html.matchAll(/\b(?:src|background)\s*=\s*(["'])([^"']+)\1/gi)) urls.add(match[2])
+  for (const match of html.matchAll(/url\(\s*['"]?([^'"\s)]+)['"]?\s*\)/gi)) urls.add(match[1])
+  if (urls.size > DESIGN_LIMITS.assets) throw new DesignModuleError('ASSET_NOT_READY')
+  for (const url of urls) {
+    if (!storage) throw new DesignModuleError('ASSET_STORAGE_UNAVAILABLE')
+    const assetId = await storage.identifyUrl(url)
+    if (!assetId) throw new DesignModuleError('ASSET_NOT_READY')
+    const verified = await readPublishedEmailAsset(assetId, design.scope.clientId, db, authorizeRead, storage)
+    if (verified.url !== url || !design.assets.some(asset => stableDesignJson(asset) === stableDesignJson(verified.asset))) throw new DesignModuleError('ASSET_NOT_READY')
+  }
 }

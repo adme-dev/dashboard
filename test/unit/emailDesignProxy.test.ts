@@ -30,7 +30,7 @@ describe('private design service forwarding', () => {
   })
   it.each([
     ['GET', `drafts/${id}`], ['PATCH', `drafts/${id}`],
-    ['PATCH', `drafts/${id}/metadata`], ['POST', 'drafts/initialize'], ['POST', 'roundtrip'], ['POST', 'designer'], ['POST', 'modules'], ['POST', 'assets/publish'], ['GET', `modules/${id}/${id}`], ['POST', 'templates'], ['GET', `templates/${id}/${id}`], ['POST', 'history'], ['GET', 'conditions'], ['POST', 'conditions'], ['GET', `drafts/${id}/brand`], ['POST', `drafts/${id}/brand`], ['POST', `drafts/${id}/locks`]
+    ['PATCH', `drafts/${id}/metadata`], ['POST', 'drafts/initialize'], ['POST', 'roundtrip'], ['POST', 'designer'], ['POST', 'modules'], ['POST', 'assets/publish'], ['GET', `modules/${id}/${id}`], ['POST', 'templates'], ['POST', 'campaigns'], ['GET', `templates/${id}/${id}`], ['POST', 'history'], ['GET', 'conditions'], ['POST', 'conditions'], ['GET', `drafts/${id}/brand`], ['POST', `drafts/${id}/brand`], ['POST', `drafts/${id}/locks`]
   ])('forwards %s %s with original authority and exact content', async (method, path) => {
     const body = method === 'GET' ? undefined : '{"subject":"你好","actorId":"untrusted"}'
     const fetch = vi.fn(async (request: Request) => {

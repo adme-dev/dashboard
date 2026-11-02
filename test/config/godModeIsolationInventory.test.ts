@@ -126,8 +126,8 @@ const API_INVENTORY = {
   // M06 (7bcc64db3 + 6c55231e6) adds three review API routes, one POST.
   // All delegate genuine session and fresh scope/reviewer authority. The POST
   // also checks origin; no inline role/transaction count or bypass is added.
-  totalRouteFiles: 2339,
-  mutationRouteFiles: 1278,
+  totalRouteFiles: 2340,
+  mutationRouteFiles: 1279,
   explicitlyGuardedMutationFiles: 412,
   guardedMutationFilesWithTransactionCall: 55
 } as const
@@ -177,8 +177,8 @@ describe('God mode route isolation inventory', () => {
   it('records the full mechanical API and mutation inventory reviewed before implementation', () => {
     expect(mechanicalInventory()).toEqual(API_INVENTORY)
     expect(API_INVENTORY).toEqual({
-      totalRouteFiles: 2339,
-      mutationRouteFiles: 1278,
+      totalRouteFiles: 2340,
+      mutationRouteFiles: 1279,
       explicitlyGuardedMutationFiles: 412,
       guardedMutationFilesWithTransactionCall: 55
     })
@@ -211,7 +211,7 @@ describe('God mode route isolation inventory', () => {
     expect(publicView).toContain('webVersionAvailable(')
   })
 
-  it('pins all twenty authoring additions to scoped authentication without a God mode bypass', () => {
+  it('pins all twenty-one authoring additions to scoped authentication without a God mode bypass', () => {
     const additions: Record<string, string[]> = {
       'server/api/agency/email/conditions/[id].delete.ts': ['await requireWriteAccess(event)', 'await assertEmailClientAccess(event, user,'],
       'server/api/agency/email/conditions/[id].patch.ts': ['await requireWriteAccess(event)', 'await assertEmailClientAccess(event, user,'],
@@ -221,6 +221,7 @@ describe('God mode route isolation inventory', () => {
       'server/api/agency/email/merge-tags/[id].patch.ts': ['await requireWriteAccess(event)', 'await assertEmailClientAccess(event, user,'],
       'server/api/agency/email/merge-tags/index.get.ts': ['await requireAuth(event)', 'await assertEmailClientAccess(event, user,'],
       'server/api/agency/email/merge-tags/index.post.ts': ['await requireWriteAccess(event)', 'await assertEmailClientAccess(event, user,'],
+      'server/api/email/design/campaigns.post.ts': ['await designCampaignSession(event, true)'],
       'server/api/email/design/assets/publish.post.ts': ['await designLibrarySession(event, true)'],
       'server/api/email/design/conditions.get.ts': ['await validateSession(token)', 'assertFreshDesignAccess(', 'env.FIGFLOW_EDM_DRAFT_SAVES_ENABLED !== \'true\'', 'env.FIGFLOW_EDM_DESIGNER_ENABLED !== \'true\''],
       'server/api/email/design/conditions.post.ts': ['await validateSession(token)', 'assertFreshDesignAccess(', 'env.FIGFLOW_EDM_DRAFT_SAVES_ENABLED !== \'true\'', 'env.FIGFLOW_EDM_DESIGNER_ENABLED !== \'true\'', 'assertDesignMutationRequest(event, env.FIGFLOW_EDM_APP_ORIGIN)'],
@@ -234,8 +235,8 @@ describe('God mode route isolation inventory', () => {
       'server/api/email/design/templates.post.ts': ['await designLibrarySession(event, true)'],
       'server/api/email/design/templates/[templateId]/[revisionId].get.ts': ['await designLibrarySession(event, false)']
     }
-    expect(Object.keys(additions)).toHaveLength(20)
-    expect(Object.keys(additions).filter(file => /\.(post|put|patch|delete)\.ts$/.test(file))).toHaveLength(14)
+    expect(Object.keys(additions)).toHaveLength(21)
+    expect(Object.keys(additions).filter(file => /\.(post|put|patch|delete)\.ts$/.test(file))).toHaveLength(15)
     for (const [file, gates] of Object.entries(additions)) {
       const source = readFileSync(file, 'utf8')
       for (const gate of gates) expect(source, file).toContain(gate)

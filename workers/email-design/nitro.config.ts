@@ -47,6 +47,7 @@ export default defineNitroConfig({
   },
   nodeModulesDirs: [join(repoRoot, 'node_modules')],
   handlers: [
+    { route: '/api/email/design/campaigns', method: 'post', handler: fromRepo('server/api/email/design/campaigns.post.ts') },
     { route: '/api/email/design/templates', method: 'post', handler: fromRepo('server/api/email/design/templates.post.ts') },
     { route: '/api/email/design/templates/:templateId/:revisionId', method: 'get', handler: fromRepo('server/api/email/design/templates/[templateId]/[revisionId].get.ts') },
     { route: '/api/email/design/history', method: 'post', handler: fromRepo('server/api/email/design/history.post.ts') },

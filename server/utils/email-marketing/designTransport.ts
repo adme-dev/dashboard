@@ -22,7 +22,7 @@ export default defineEventHandler(async (event) => {
     || (path === '/api/email/design/conditions' && ['GET', 'POST'].includes(event.method))
     || ((moduleRevision || templateRevision) && event.method === 'GET')
     || (draft && (event.method === 'PATCH' || (!draft[1] && event.method === 'GET')))
-    || (['/api/email/design/drafts/initialize', '/api/email/design/roundtrip', '/api/email/design/designer', '/api/email/design/modules', '/api/email/design/assets/publish', '/api/email/design/templates', '/api/email/design/history'].includes(path) && event.method === 'POST')
+    || (['/api/email/design/drafts/initialize', '/api/email/design/roundtrip', '/api/email/design/designer', '/api/email/design/modules', '/api/email/design/assets/publish', '/api/email/design/templates', '/api/email/design/campaigns', '/api/email/design/history'].includes(path) && event.method === 'POST')
   // Existing template CRUD has its own local handlers; this route is design-only.
   if (env.FIGFLOW_EDM_DRAFT_SAVES_ENABLED !== 'true' || !allowed)
     throw createError({ statusCode: 404, statusMessage: 'not_found' })

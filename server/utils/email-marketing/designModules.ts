@@ -6,12 +6,15 @@ import { designToRendererDocument } from '../../../shared/emailRendering/designA
 import { applyModuleInstance, DesignModuleError, designDigest, extractDesignModule, insertDesignImage, replaceDesignImage, parseDesignModuleRequest, moduleLocalOverrides, type ModuleRecord, stableDesignJson } from '../../../shared/emailRendering/designModules'
 import type { EmailRendererClient } from '../../../shared/emailRendering/contract'
 import { ensureLegacyDesignDocument, type DesignDb, type DesignTransaction } from './designRevisions'
-import { getTemplateDesignDraft } from './designReads'
+import { lockDesignDraftOwner, assertDesignDraftMutable, writeDesignDraftProjection, type LockedDesignDraftOwner } from './designDraftOwners'
+import { digestDesignHtml } from './designRevisions'
+import { getDesignDraft } from './designReads'
 import { resolveStoredDesignDependencies } from './designDependencies'
 import { readPublishedEmailAsset, verifyDesignModuleAssets, type DesignAssetStorage } from './designAssets'
 
 export interface ModuleAuthority {
   actorId: string
+  contentWrite?(scope: string | null): Promise<'staff' | 'designer'>
   read(scope: string | null): Promise<void>
   designer(scope: string | null): Promise<void>
   publisher(scope: string | null): Promise<void>
@@ -31,17 +34,30 @@ export async function readImmutableDesignModule(moduleId: string, revisionId: st
   if (design.kind !== 'module' || design.scope.clientId !== row.client_id) throw new DesignModuleError('SCOPE_MISMATCH')
   return { moduleId, revisionId, design }
 }
-export async function lockDraft(db: DesignDb, draftId: string) {
-  const row = (await db.query('SELECT template_id,client_id FROM email_design_documents WHERE id=$1', [draftId])).rows[0] as { template_id: string | null, client_id: string | null } | undefined
-  if (!row?.template_id) throw new DesignModuleError('NOT_FOUND')
+export async function lockDraft(db: DesignDb, draftId: string): Promise<{ template_id: string | null, campaign_id?: string | null, client_id: string | null, locked?: LockedDesignDraftOwner }> {
+  const row = (await db.query('SELECT template_id,client_id FROM email_design_documents WHERE id=$1', [draftId])).rows[0] as { template_id: string | null, campaign_id?: string | null, client_id: string | null } | undefined
+  if (!row) throw new DesignModuleError('NOT_FOUND')
+  if (!row.template_id) {
+    const locked = await lockDesignDraftOwner(db, draftId)
+    if (locked.owner.kind !== 'campaign') throw new DesignModuleError('NOT_FOUND')
+    return { ...row, campaign_id: locked.owner.id, locked }
+  }
   await db.query('SELECT id FROM edm_templates WHERE id=$1 FOR UPDATE', [row.template_id])
   await db.query('SELECT head_revision_id FROM email_design_documents WHERE id=$1 FOR UPDATE', [draftId])
   return row
 }
-export async function appendModuleOrDraft(db: DesignDb, documentId: string, parent: string, design: EmailDesignDocument, actor: string, subject: string | null = null, preview: string | null = null) {
-  const row = (await db.query(`INSERT INTO email_design_revisions(document_id,parent_revision_id,schema_version,payload_text,created_by,subject,preview_text)
-    VALUES ($1,$2,1,$3,$4,$5,$6) RETURNING id`, [documentId, parent, JSON.stringify(validateEmailDesign(design)), actor, subject, preview])).rows[0] as { id: string }
+export async function appendModuleOrDraft(db: DesignDb, documentId: string, parent: string, design: EmailDesignDocument, actor: string, subject: string | null = null, preview: string | null = null, html?: string) {
+  const campaign = design.kind === 'campaign-draft'
+  const locked = campaign ? await lockDesignDraftOwner(db, documentId) : undefined
+  if (locked) assertDesignDraftMutable(locked)
+  if (campaign && html === undefined) throw new DesignModuleError('SAVED_DRAFT_REQUIRED')
+  const pin = campaign ? (await db.query('SELECT base_template_revision_id FROM email_design_revisions WHERE document_id=$1 AND id=$2', [documentId, parent])).rows[0] as { base_template_revision_id: string | null } : undefined
+  const hash = campaign ? await digestDesignHtml(html!) : null
+  const row = (await db.query(`INSERT INTO email_design_revisions(document_id,parent_revision_id,schema_version,payload_text,created_by,subject,preview_text${campaign ? ',base_template_revision_id,rendered_html_sha256' : ''})
+    VALUES ($1,$2,1,$3,$4,$5,$6${campaign ? ',$7,$8' : ''}) RETURNING id`, [documentId, parent, JSON.stringify(validateEmailDesign(design)), actor, subject, preview,
+    ...(campaign ? [pin?.base_template_revision_id ?? null, hash] : [])])).rows[0] as { id: string }
   await db.query('UPDATE email_design_documents SET head_revision_id=$2 WHERE id=$1', [documentId, row.id])
+  if (locked) await writeDesignDraftProjection(db, locked, row.id, design, html!, { subject, previewText: preview })
   return row.id
 }
 export async function dependencyRecords(design: EmailDesignDocument, db: DesignDb, authority: ModuleAuthority): Promise<ModuleRecord[]> {
@@ -111,14 +127,20 @@ export async function executeDesignModules(input: unknown, authority: ModuleAuth
     // bypasses revocation and never obtains authority from JSON declarations.
     const identity = await lockDraft(db, request.draftId)
     const publish = request.command === 'publish-module' || request.command === 'revise-module'
-    await (publish ? authority.publisher : authority.designer)(identity.client_id)
+    const contentReplacement = request.command === 'replace-published-image' && !!authority.contentWrite
+    const authorizeMutation = async (scope: string | null): Promise<'staff' | 'designer'> => {
+      if (contentReplacement) return authority.contentWrite!(scope)
+      await (publish ? authority.publisher : authority.designer)(scope)
+      return 'designer'
+    }
+    let replacementRole = await authorizeMutation(identity.client_id)
     await authority.read(identity.client_id)
     const prior = (await db.query(`SELECT c.document_id,c.revision_id,c.payload_sha256,d.module_id,d.template_id,d.client_id
       FROM email_design_revision_receipts c JOIN email_design_documents d ON d.id=c.document_id
       WHERE c.actor_id=$1 AND c.operation_id=$2`, [authority.actorId, request.operationId])).rows[0] as { document_id: string, revision_id: string, payload_sha256: string, module_id: string | null, template_id: string | null, client_id: string | null } | undefined
     if (prior) {
       if (prior.payload_sha256 !== digest) throw new DesignModuleError('IDEMPOTENCY_CONFLICT')
-      await (publish ? authority.publisher : authority.designer)(prior.client_id)
+      await authorizeMutation(prior.client_id)
       if (prior.module_id) {
         const selected = await readImmutableDesignModule(prior.module_id, prior.revision_id, authority.read, db)
         await dependencyRecords(selected.design, db, authority)
@@ -135,9 +157,12 @@ export async function executeDesignModules(input: unknown, authority: ModuleAuth
           if (stableDesignJson(verified.asset) !== stableDesignJson(asset)) throw new DesignModuleError('ASSET_NOT_READY')
         }
       }
+      await authorizeMutation(identity.client_id)
+      await authority.read(identity.client_id)
       return { documentId: prior.document_id, revisionId: prior.revision_id, ...(prior.module_id ? { moduleId: prior.module_id } : {}), published: publish }
     }
-    const draft = await getTemplateDesignDraft(request.draftId, authority.read, db)
+    if (identity.locked) assertDesignDraftMutable(identity.locked)
+    const draft = await getDesignDraft(request.draftId, authority.read, db)
     if (draft.headRevisionId !== request.expectedDraftRevisionId) throw new DesignModuleError('REVISION_CONFLICT')
     if (draft.state !== 'structured' || draft.projection.state !== 'current') throw new DesignModuleError('SAVED_DRAFT_REQUIRED')
     const current = draft.source
@@ -186,7 +211,7 @@ export async function executeDesignModules(input: unknown, authority: ModuleAuth
           : replaceDesignImage(current, verified.asset, verified.url, request.blockId,
               current.policy.editableFields.includes(`${request.blockId}.data.props.url`)
                 ? false
-                : await hasLibraryImageInsertion(current, request.draftId, request.blockId, db, authority, storage))
+                : replacementRole === 'designer' && await hasLibraryImageInsertion(current, request.draftId, request.blockId, db, authority, storage))
       } else {
         if (request.command !== 'detach-module-instance') {
           const id = request.command === 'insert-module' ? request.moduleId : current.moduleInstances.find(i => i.instanceId === request.instanceId)?.moduleId
@@ -213,14 +238,24 @@ export async function executeDesignModules(input: unknown, authority: ModuleAuth
         }
       }
       await dependencyRecords(result, db, authority)
-      const metadata = (await db.query('SELECT subject,preview_text FROM edm_templates WHERE id=$1', [draft.templateId])).rows[0] as { subject: string | null, preview_text: string | null }
+      const metadata = draft.owner.kind === 'campaign' ? { subject: draft.metadata.subject, preview_text: draft.metadata.previewText } : (await db.query('SELECT subject,preview_text FROM edm_templates WHERE id=$1', [draft.owner.id])).rows[0] as { subject: string | null, preview_text: string | null }
       const html = await renderDraft(renderer, result, metadata.subject, metadata.preview_text)
-      await authority.designer(identity.client_id)
+      replacementRole = await authorizeMutation(identity.client_id)
+      if (contentReplacement && replacementRole === 'staff' && request.command === 'replace-published-image' && !current.policy.editableFields.includes(`${request.blockId}.data.props.url`)) throw new DesignModuleError('DESIGNER_REQUIRED')
       await authority.read(identity.client_id)
       await dependencyRecords(result, db, authority)
-      revisionId = await appendModuleOrDraft(db, documentId, draft.headRevisionId, result, authority.actorId, metadata.subject, metadata.preview_text)
-      await db.query('UPDATE edm_templates SET body_source=$2::jsonb,body_html=$3,email_design_revision_id=$4,updated_at=NOW() WHERE id=$1', [draft.templateId, JSON.stringify(result.blocks), html, revisionId])
+      for (const asset of result.assets) {
+        if (!storage) throw new DesignModuleError('ASSET_STORAGE_UNAVAILABLE')
+        const verified = await readPublishedEmailAsset(asset.id, result.scope.clientId, db, authority.read, storage)
+        if (stableDesignJson(verified.asset) !== stableDesignJson(asset)) throw new DesignModuleError('ASSET_NOT_READY')
+      }
+      await authorizeMutation(identity.client_id)
+      revisionId = await appendModuleOrDraft(db, documentId, draft.headRevisionId, result, authority.actorId, metadata.subject, metadata.preview_text, html)
+      if (draft.owner.kind === 'template') await db.query('UPDATE edm_templates SET body_source=$2::jsonb,body_html=$3,email_design_revision_id=$4,updated_at=NOW() WHERE id=$1', [draft.owner.id, JSON.stringify(result.blocks), html, revisionId])
     }
+    replacementRole = await authorizeMutation(identity.client_id)
+    if (contentReplacement && replacementRole === 'staff' && request.command === 'replace-published-image' && !current.policy.editableFields.includes(`${request.blockId}.data.props.url`)) throw new DesignModuleError('DESIGNER_REQUIRED')
+    await authority.read(identity.client_id)
     await db.query(`INSERT INTO email_design_revision_receipts(actor_id,operation_id,document_id,payload_sha256,revision_id)
       VALUES ($1,$2,$3,$4,$5)`, [authority.actorId, request.operationId, documentId, digest, revisionId])
     return { documentId, revisionId, ...(moduleId ? { moduleId } : {}), published: publish }

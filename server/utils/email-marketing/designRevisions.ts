@@ -207,6 +207,8 @@ const CampaignInput = Identity.extend({
 export interface SaveCampaignDesignDraftInput extends AppendDesignRevisionInput, DesignDraftMetadata {}
 /** Server-only selection authority. No browser source-template hint is trusted. */
 export interface CampaignDesignWriteOptions extends DesignDependencyAuthority {
+  /** Server-derived strict command context, never an authority or native payload. */
+  requestContext?: unknown
   baseTemplateRevisionId?: string | null
   authorizeTemplateRead?: (templateId: string, clientId: string | null) => Promise<void>
 }
@@ -343,7 +345,8 @@ async function appendRevision(
       if (campaign) digest = await digestDesignRequest({
         owner: draftOwner!.owner, command: campaign.command ?? (staffOnly ? 'campaign-staff' : 'campaign-designer'),
         documentId: identity.documentId, expectedRevisionId: identity.expectedRevisionId,
-        design, metadata: campaign.metadata, baseTemplateRevisionId, action: campaign.action ?? null
+        design, metadata: campaign.metadata, baseTemplateRevisionId, action: campaign.action ?? null,
+        ...(campaign.options.requestContext !== undefined ? { requestContext: campaign.options.requestContext } : {})
       })
     }
     if (design.kind !== kind) throw new DesignRevisionError('KIND_MISMATCH')

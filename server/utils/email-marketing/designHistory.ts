@@ -7,7 +7,8 @@ import { designDigest, DesignModuleError } from '../../../shared/emailRendering/
 import type { EmailRendererClient } from '../../../shared/emailRendering/contract'
 import type { DesignTransaction, DesignDb } from './designRevisions'
 import { DesignRevisionError } from './designRevisions'
-import { getTemplateDesignDraft } from './designReads'
+import { assertDesignDraftMutable } from './designDraftOwners'
+import { getDesignDraft } from './designReads'
 import { appendModuleOrDraft, dependencyRecords, lockDraft, renderDraft, type ModuleAuthority } from './designModules'
 import { verifyExactDesignAssets } from './designTemplates'
 import type { DesignAssetStorage } from './designAssets'
@@ -51,7 +52,7 @@ export async function executeDesignHistory(
       await assertLibraryOperationNamespace(db, authority.actorId, request.operationId, 'revision')
     const identity = await lockDraft(db, request.draftId)
     await authority.read(identity.client_id)
-    const current = await getTemplateDesignDraft(request.draftId, authority.read, db)
+    const current = await getDesignDraft(request.draftId, authority.read, db)
     if (current.state === 'structured') await dependencyRecords(current.source, db, authority)
     if (request.command === 'list-revisions') {
       let start = current.headRevisionId
@@ -94,6 +95,8 @@ export async function executeDesignHistory(
       const design = validateEmailDesign(committed.payload)
       await dependencyRecords(design, db, authority)
       await verifyExactDesignAssets(design, authority, db, storage)
+      await dependencyRecords(design, db, authority)
+      await authority.read(identity.client_id)
       await authority.designer(identity.client_id)
       return {
         documentId: request.draftId,
@@ -103,6 +106,7 @@ export async function executeDesignHistory(
         previewText: committed.preview_text
       }
     }
+    if (restore && identity.locked) assertDesignDraftMutable(identity.locked)
     if (current.headRevisionId !== request.expectedRevisionId) throw new DesignModuleError('REVISION_CONFLICT')
     const chosen = await snapshot(db, request.draftId, request.revisionId)
     let candidate: EmailDesignDocument | null = null,
@@ -126,7 +130,7 @@ export async function executeDesignHistory(
       let design: EmailDesignDocument | null = null
       if (chosen.schema_version === 1) {
         design = validateEmailDesign(chosen.payload)
-        if (design.scope.clientId !== identity.client_id || design.kind !== 'template')
+        if (design.scope.clientId !== identity.client_id || design.kind !== (identity.campaign_id ? 'campaign-draft' : 'template'))
           throw new DesignModuleError('SCOPE_MISMATCH')
         await dependencyRecords(design, db, authority)
       }
@@ -167,12 +171,15 @@ export async function executeDesignHistory(
       candidate,
       authority.actorId,
       chosen.subject,
-      chosen.preview_text
+      chosen.preview_text,
+      html
     )
-    await db.query(
+    if (identity.template_id) await db.query(
       'UPDATE edm_templates SET subject=$2,preview_text=$3,body_source=$4::jsonb,body_html=$5,email_design_revision_id=$6,updated_at=NOW() WHERE id=$1',
       [identity.template_id, chosen.subject, chosen.preview_text, JSON.stringify(candidate.blocks), html, revisionId]
     )
+    await authority.designer(identity.client_id)
+    await authority.read(identity.client_id)
     await db.query(
       'INSERT INTO email_design_revision_receipts(actor_id,operation_id,document_id,payload_sha256,revision_id) VALUES ($1,$2,$3,$4,$5)',
       [authority.actorId, request.operationId, request.draftId, digest, revisionId]

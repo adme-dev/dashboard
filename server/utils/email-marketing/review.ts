@@ -7,6 +7,8 @@
 // No notifications, provider calls or sends happen here.
 
 import { createError } from 'h3'
+import type { CanonicalCampaignReadiness } from './designCampaigns'
+import type { DesignAssetStorage } from './designAssets'
 import { getCachedBinding } from '~~/server/utils/email'
 import { getTransactionFailureStage, queryOneFresh, transactionWithoutRetry } from '~~/server/utils/db'
 import { outlineReviewBlocks, REVIEW_BLOCK_ID, REVIEW_LIMITS, type ReviewBlock } from '../../../shared/emailRendering/reviewBlocks'
@@ -87,6 +89,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-
 
 const READABLE: Record<string, string> = {
   campaign_approval_required: 'Approve this exact campaign content and audience in Review before scheduling or sending.',
+  canonical_campaign_asset_correction_required: 'Reload the campaign and correct registered assets through its canonical draft before review or sending.',
   review_independent_reviewer_required: 'Another reviewer must approve this version; you submitted it.',
   campaign_content_frozen: 'This campaign has left draft; its approved content is frozen.',
   campaign_review_permanent: 'Review cannot be switched off for this campaign.'
@@ -123,7 +126,7 @@ export async function reviewPayloadSha256(input: Omit<ReviewCommandInput, 'actor
  * audience identity (segment rules and target list IDs). Templates have no
  * audience and bind their content and canonical revision. */
 const TARGET_SQL: Record<ReviewTargetKind, string> = {
-  campaign: `SELECT c.id, c.client_id, c.status, c.review_required, c.body_source, c.body_html, NULL::uuid AS revision_id,
+  campaign: `SELECT c.id, c.client_id, c.status, c.review_required, c.body_source, c.body_html, (to_jsonb(c)->>'email_design_revision_id')::uuid AS revision_id,
       email_campaign_review_digest_of(c) AS digest
     FROM campaigns c WHERE c.id = $1`,
   template: `SELECT t.id, t.client_id, NULL::text AS status, false AS review_required, t.body_source, NULL::text AS body_html,
@@ -233,10 +236,11 @@ async function applyCommand(
   db: ReviewDb,
   input: ReviewCommandInput,
   locked: ReviewTarget,
-  preparedHtml: string | null,
+  prepared: SubmissionPreparation | null,
   workflowEnabled: boolean
 ): Promise<Omit<ReviewCommandResult, 'operationId'>> {
   let target = locked
+  const preparedHtml = prepared?.html ?? null
   const state = await loadState(db, target.kind, target.id, true)
   if (state.version !== input.expectedVersion) fail(409, 'review_state_changed')
   // Every command binds what the actor saw; concurrent edits never get silently re-anchored.
@@ -268,13 +272,20 @@ async function applyCommand(
       return { ...base, state: state.state, version: state.version, commentId: p.commentId }
     }
     case 'submit': {
+      if (target.kind === 'campaign' && target.revisionId) {
+        if (!prepared?.canonical || prepared.digest !== target.digest) fail(409, 'canonical_campaign_asset_correction_required')
+        const { recheckCanonicalCampaignReadiness } = await import('./designCampaigns')
+        await recheckCanonicalCampaignReadiness({ id: target.id, client_id: target.clientId, email_design_revision_id: target.revisionId, body_html: target.bodyHtml } as import('./campaigns').Campaign, db, prepared.canonical)
+      }
       if (!editableCampaign) fail(409, 'review_target_frozen')
       if (state.state !== 'draft') fail(409, 'review_not_draft')
       // Sendable HTML prepared outside the transaction (no lock held during asset
       // I/O) from exactly the content verified above; it is written here, in the
       // same transaction as the state and receipt, so an attempt that does not
       // commit leaves no side effect and the identical retry prepares again.
-      if (preparedHtml !== null && target.kind === 'campaign' && preparedHtml !== target.bodyHtml) {
+      if (preparedHtml !== null && target.kind === 'campaign' && target.revisionId && preparedHtml !== target.bodyHtml)
+        fail(409, 'canonical_campaign_asset_correction_required')
+      if (preparedHtml !== null && target.kind === 'campaign' && !target.revisionId && preparedHtml !== target.bodyHtml) {
         const written = (await db.query('UPDATE campaigns SET body_html = $2, updated_at = now() WHERE id = $1 AND status = \'draft\' RETURNING id',
           [target.id, preparedHtml])).rows
         if (!written.length) fail(409, 'review_target_frozen')
@@ -310,6 +321,7 @@ async function applyCommand(
 }
 
 export interface ReviewServiceDeps {
+  designStorage?: DesignAssetStorage
   transaction?: ReviewTransaction
   readReceipt?: (actorId: string, operationId: string) => Promise<ReceiptRow | null>
   /** Fresh non-transactional reads used before submit preparation. */
@@ -328,7 +340,12 @@ const freshReadDb: ReviewDb = { query: async (sql, params) => ({ rows: [await qu
 /** Computes, but never writes, the sendable HTML for a fresh campaign submit.
  * Returns null when nothing should be prepared; the transaction re-verifies the
  * digest under lock, so the HTML always derives from the content it replaces. */
-async function prepareBeforeSubmit(input: ReviewCommandInput, authorize: ReviewAuthorizer, deps: ReviewServiceDeps, workflowEnabled: boolean): Promise<string | null> {
+interface SubmissionPreparation {
+  html: string | null
+  digest: string
+  canonical?: CanonicalCampaignReadiness
+}
+async function prepareBeforeSubmit(input: ReviewCommandInput, authorize: ReviewAuthorizer, deps: ReviewServiceDeps, workflowEnabled: boolean): Promise<SubmissionPreparation | null> {
   const db = deps.readDb ?? freshReadDb
   const target = await loadReviewTarget(db, input.kind, input.targetId, false)
   if (!target) fail(404, 'review_target_not_found')
@@ -340,7 +357,12 @@ async function prepareBeforeSubmit(input: ReviewCommandInput, authorize: ReviewA
   if (target.digest !== input.expectedContentDigest) fail(409, 'review_content_changed')
   if (target.status !== 'draft' || state.state !== 'draft' || !target.bodyHtml) return null
   try {
-    return await deps.prepareSubmission!(target)
+    if (target.revisionId) {
+      const { prepareCanonicalCampaignHtml } = await import('./campaigns')
+      const canonical = await prepareCanonicalCampaignHtml({ id: target.id, client_id: target.clientId, email_design_revision_id: target.revisionId, body_html: target.bodyHtml } as import('./campaigns').Campaign, { canonicalDb: db, designStorage: deps.designStorage })
+      return { html: canonical.html, digest: target.digest, canonical }
+    }
+    return deps.prepareSubmission ? { html: await deps.prepareSubmission(target), digest: target.digest } : null
   } catch (error) {
     if (error && typeof error === 'object' && 'statusCode' in error) throw error
     fail(502, 'campaign_asset_preparation_failed')
@@ -390,10 +412,10 @@ export async function runReviewCommand(
   const workflowEnabled = deps.workflowEnabled ?? true
   // The receipt hash always covers the actor's original request. Only a fresh
   // campaign submit prepares sendable HTML, which the transaction then writes.
-  let preparedHtml: string | null = null
-  if (input.payload.command === 'submit' && input.kind === 'campaign' && deps.prepareSubmission
+  let prepared: SubmissionPreparation | null = null
+  if (input.payload.command === 'submit' && input.kind === 'campaign'
     && !await readReceipt(input.actorId, input.operationId)) {
-    preparedHtml = await prepareBeforeSubmit(input, authorize, deps, workflowEnabled)
+    prepared = await prepareBeforeSubmit(input, authorize, deps, workflowEnabled)
   }
   try {
     return await tx(async (db) => {
@@ -407,7 +429,8 @@ export async function runReviewCommand(
       await authorize(prior ? 'read' : requireAuthority(input.payload.command), target.clientId)
       assertWorkflowReachable(target, workflowEnabled)
       if (prior) return replayOrReject(prior, input, payloadSha)
-      const outcome = await applyCommand(db, input, target, preparedHtml, workflowEnabled)
+      const outcome = await applyCommand(db, input, target, prepared, workflowEnabled)
+      await authorize(requireAuthority(input.payload.command), target.clientId)
       const result: ReviewCommandResult = { operationId: input.operationId, ...outcome }
       await db.query(`INSERT INTO email_review_operations (actor_id, operation_id, domain, command, target_kind, target_id, payload_sha256, result)
         VALUES ($1, $2, 'email_review', $3, $4, $5, $6, $7::jsonb)`,
@@ -559,13 +582,16 @@ async function defaultListComments(kind: ReviewTargetKind, id: string): Promise<
 // ── Campaign dispatch gate (application side; the DB trigger is authoritative) ──
 
 export const REVIEW_GATE_CONSTRAINTS = new Set([
-  'email_campaign_approval_required', 'email_campaign_content_frozen', 'email_campaign_review_permanent', 'email_review_reply_thread'
+  'email_campaign_approval_required', 'email_campaign_content_frozen', 'email_campaign_review_permanent', 'email_review_reply_thread', 'email_design_campaign_revision_required', 'email_design_campaign_projection_consistent', 'email_design_campaign_frozen'
 ])
 
 export function mapReviewDbError(error: unknown): unknown {
   const constraint = (error as { constraint?: unknown } | null)?.constraint
   if (typeof constraint !== 'string' || !REVIEW_GATE_CONSTRAINTS.has(constraint)) return error
   const CODES: Record<string, string> = {
+    email_design_campaign_revision_required: 'canonical_campaign_asset_correction_required',
+    email_design_campaign_projection_consistent: 'canonical_campaign_asset_correction_required',
+    email_design_campaign_frozen: 'campaign_content_frozen',
     email_campaign_approval_required: 'campaign_approval_required',
     email_campaign_content_frozen: 'campaign_content_frozen',
     email_review_reply_thread: 'review_thread_not_found',
