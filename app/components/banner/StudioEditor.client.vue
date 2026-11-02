@@ -143,6 +143,41 @@ const leftPanelCollapsed = useCookie<boolean>('banner-studio-sidebar-collapsed',
   maxAge: 60 * 60 * 24 * 365,
   sameSite: 'lax'
 })
+const sidebarWidth = useCookie<number>('banner-studio-sidebar-width', {
+  default: () => 320,
+  maxAge: 60 * 60 * 24 * 365,
+  sameSite: 'lax'
+})
+const MIN_SIDEBAR_WIDTH = 240
+const MAX_SIDEBAR_WIDTH = 560
+let resizeStartX = 0
+let resizeStartWidth = 0
+function clampSidebarWidth(width: number) {
+  return Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, width))
+}
+function resizeSidebar(event: PointerEvent) {
+  sidebarWidth.value = clampSidebarWidth(resizeStartWidth + event.clientX - resizeStartX)
+}
+function stopSidebarResize() {
+  window.removeEventListener('pointermove', resizeSidebar)
+  window.removeEventListener('pointerup', stopSidebarResize)
+  window.removeEventListener('pointercancel', stopSidebarResize)
+}
+function startSidebarResize(event: PointerEvent) {
+  if (leftPanelCollapsed.value) return
+  event.preventDefault()
+  resizeStartX = event.clientX
+  resizeStartWidth = clampSidebarWidth(Number(sidebarWidth.value) || 320)
+  window.addEventListener('pointermove', resizeSidebar)
+  window.addEventListener('pointerup', stopSidebarResize)
+  window.addEventListener('pointercancel', stopSidebarResize)
+}
+function onSidebarResizeKey(event: KeyboardEvent) {
+  if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+  event.preventDefault()
+  sidebarWidth.value = clampSidebarWidth((Number(sidebarWidth.value) || 320) + (event.key === 'ArrowRight' ? 24 : -24))
+}
+onBeforeUnmount(stopSidebarResize)
 const leftTabItems = [
   { id: 'sets' as const, label: 'Sets', icon: 'i-lucide-layers' },
   { id: 'templates' as const, label: 'Templates', icon: 'i-lucide-layout-template' },
@@ -790,8 +825,9 @@ const { activeSize } = useBannerFileSize()
       <!-- Left Sidebar -->
       <aside
         aria-label="Banner tools"
-        class="shrink-0 min-h-0 border-r border-default flex flex-col bg-elevated"
-        :class="leftPanelCollapsed ? 'w-12' : 'w-64'"
+        class="relative shrink-0 min-h-0 border-r border-default flex flex-col bg-elevated"
+        :class="leftPanelCollapsed ? 'w-12' : ''"
+        :style="leftPanelCollapsed ? undefined : { width: `min(${clampSidebarWidth(Number(sidebarWidth) || 320)}px, calc(100vw - 7rem))` }"
       >
         <div class="flex shrink-0 items-center justify-between gap-2 border-b border-default p-1.5">
           <span v-if="!leftPanelCollapsed" class="pl-1.5 text-xs font-medium text-muted">Tools & resources</span>
@@ -841,6 +877,19 @@ const { activeSize } = useBannerFileSize()
           <BannerBrandPanel v-else-if="leftTab === 'brand'" @browse-assets="openLeftPanel('assets')" />
           <BannerVersionHistoryPanel v-else-if="leftTab === 'history'" :project-id="projectId" />
         </div>
+        <div
+          v-if="!leftPanelCollapsed"
+          role="separator"
+          tabindex="0"
+          aria-label="Resize tools sidebar"
+          aria-orientation="vertical"
+          :aria-valuemin="MIN_SIDEBAR_WIDTH"
+          :aria-valuemax="MAX_SIDEBAR_WIDTH"
+          :aria-valuenow="clampSidebarWidth(Number(sidebarWidth) || 320)"
+          class="absolute inset-y-0 -right-1 z-10 w-2 cursor-col-resize touch-none hover:bg-primary/20 focus-visible:bg-primary/20 focus-visible:outline-2 focus-visible:outline-primary"
+          @pointerdown="startSidebarResize"
+          @keydown="onSidebarResizeKey"
+        />
       </aside>
 
       <!-- Vertical Toolbar -->
