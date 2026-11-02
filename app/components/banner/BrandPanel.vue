@@ -4,6 +4,7 @@ import { brandFontSelection, type BrandButtonVariant } from '~/utils/banner-bran
 import { bannerFontFamily } from '~/utils/banner-font-family'
 import { apiErrorDescription } from '~/utils/apiError'
 import { matchesMotorStackPaint, motorStackPaintName, motorStackPaintNames } from '~/utils/banner-motorstack-colours'
+import { loadedImageMetadata } from '~/utils/banner-image-metadata'
 import type { BannerMotorStackOffer } from '~/utils/banner-offer'
 
 interface MotorStackImage {
@@ -41,7 +42,7 @@ let catalogRequest = 0
 const money = (value: number) => new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', maximumFractionDigits: 0 }).format(value)
 const images = ref<MotorStackImages | null>(null)
 const imageModel = ref('__all_models__')
-const imageColour = ref('__choose_colour__')
+const imageColour = ref('__all_colours__')
 const imageSearch = ref('')
 const imageModalOpen = ref(false)
 const modalKitId = ref<string>()
@@ -49,12 +50,19 @@ const imageLoading = ref(false)
 const imageError = ref('')
 const addingImage = ref<string | null>(null)
 const imageModels = ref<string[]>([])
-const imageItems = computed(() => imageModel.value === '__all_models__' || imageColour.value === '__choose_colour__' ? [] : (images.value?.assets || []).filter(asset => asset.mime.startsWith('image/') && asset.importable && matchesMotorStackPaint(asset, imageColour.value) && imageSearch.value.trim().toLowerCase().split(/\s+/).filter(Boolean).every(word => asset.name.toLowerCase().includes(word))))
+const imageItems = computed(() => (images.value?.assets || []).filter(asset => asset.mime.startsWith('image/') && asset.importable && matchesMotorStackPaint(asset, imageColour.value) && imageSearch.value.trim().toLowerCase().split(/\s+/).filter(Boolean).every(word => asset.name.toLowerCase().includes(word))))
+const visibleImageCount = ref(24)
+const visibleImageItems = computed(() => imageItems.value.slice(0, visibleImageCount.value))
+const imageMetadata = ref<Record<string, string>>({})
+function rememberImageDimensions(event: Event, id: string) {
+  const details = loadedImageMetadata(event)
+  if (details) imageMetadata.value[id] = details
+}
 const modelItems = computed(() => [{ label: 'All models', value: '__all_models__' }, ...imageModels.value.map(name => ({ label: name, value: name }))])
 const colourItems = computed(() => {
   const assets = images.value?.assets || []
   return [
-    { label: 'Choose a colour', value: '__choose_colour__' },
+    { label: 'All colours', value: '__all_colours__' },
     ...motorStackPaintNames(assets).map(name => ({ label: name, value: name })),
     ...(assets.some(asset => asset.importable && asset.mime.startsWith('image/') && !motorStackPaintName(asset.name)) ? [{ label: 'Other images', value: '__other_images__' }] : [])
   ]
@@ -155,16 +163,19 @@ watch([() => kit.value?.id, activeTab], loadCatalog, { immediate: true })
 watch(motorStackBrandId, () => {
   imageModalOpen.value = false
   imageModel.value = '__all_models__'
-  imageColour.value = '__choose_colour__'
+  imageColour.value = '__all_colours__'
   imageModels.value = []
   imageSearch.value = ''
 })
 watch([motorStackBrandId, activeTab, imageModel], loadImages, { immediate: true })
 watch(imageModel, () => {
-  imageColour.value = '__choose_colour__'
+  imageColour.value = '__all_colours__'
 })
 watch(colourItems, (items) => {
-  if (!items.some(item => item.value === imageColour.value)) imageColour.value = '__choose_colour__'
+  if (!items.some(item => item.value === imageColour.value)) imageColour.value = '__all_colours__'
+})
+watch([imageModel, imageColour, imageSearch], () => {
+  visibleImageCount.value = 24
 })
 watch(motorStackBrandId, (value) => {
   if (!value && (activeTab.value === 'variants' || activeTab.value === 'offers')) activeTab.value = 'logos'
@@ -368,7 +379,7 @@ function addLogo(logo: BrandKitLogo, event: MouseEvent) {
       </div>
       <div v-else-if="activeTab === 'variants'" class="space-y-3">
         <p class="text-xs leading-relaxed text-muted">
-          Choose a model and paint colour, then add a vehicle image to every canvas size.
+          Browse vehicle images or narrow them by model and paint colour, then add one to every canvas size.
         </p>
         <UButton
           label="Open large image browser"
@@ -396,7 +407,7 @@ function addLogo(logo: BrandKitLogo, event: MouseEvent) {
           />
         </UFormField>
         <p v-if="!imageLoading && imageModel === '__all_models__'" class="text-xs text-muted">
-          Choose a model to see its paint colours.
+          Choose a model to see its full range of paint colours and gallery images.
         </p>
         <UFormField label="Search images">
           <UInput
@@ -419,7 +430,7 @@ function addLogo(logo: BrandKitLogo, event: MouseEvent) {
         />
         <template v-else-if="images">
           <p class="text-xs text-muted">
-            {{ imageItems.length }} images
+            {{ imageItems.length }} {{ imageItems.length === 1 ? 'image' : 'images' }}
           </p>
           <UAlert
             v-for="warning in images.warnings"
@@ -429,11 +440,11 @@ function addLogo(logo: BrandKitLogo, event: MouseEvent) {
             variant="subtle"
           />
           <p v-if="!imageItems.length" class="text-xs text-muted">
-            {{ imageModel === '__all_models__' ? 'Choose a model first.' : colourItems.length === 1 ? 'No vehicle images are available for this model.' : imageColour === '__choose_colour__' ? 'Choose a paint colour to show matching images.' : 'No images match this colour or search.' }}
+            {{ imageModel === '__all_models__' ? 'No vehicle images are available for this brand.' : 'No images match this model, colour or search.' }}
           </p>
           <div v-else class="grid grid-cols-2 gap-2 @lg:grid-cols-3">
             <UButton
-              v-for="image in imageItems"
+              v-for="image in visibleImageItems"
               :key="image.id"
               color="neutral"
               variant="outline"
@@ -448,11 +459,23 @@ function addLogo(logo: BrandKitLogo, event: MouseEvent) {
                 :src="image.previewUrl"
                 :alt="image.name"
                 loading="lazy"
+                decoding="async"
                 class="h-full w-full object-contain"
+                @load="rememberImageDimensions($event, image.id)"
               ></span>
               <span class="truncate text-[11px] font-normal" :title="image.name">{{ image.name }}</span>
+              <span v-if="imageMetadata[image.id]" class="truncate text-[10px] font-normal text-muted">{{ imageMetadata[image.id] }}</span>
             </UButton>
           </div>
+          <UButton
+            v-if="imageItems.length > visibleImageCount"
+            label="Show more images"
+            color="neutral"
+            variant="outline"
+            size="xs"
+            class="w-full justify-center"
+            @click="visibleImageCount += 24"
+          />
         </template>
       </div>
       <div v-else-if="activeTab === 'offers'" class="space-y-3">
@@ -585,7 +608,7 @@ function addLogo(logo: BrandKitLogo, event: MouseEvent) {
       v-model:open="imageModalOpen"
       :initial-brand-id="motorStackBrandId"
       :initial-model="imageModel === '__all_models__' ? undefined : imageModel"
-      :initial-colour="imageColour === '__choose_colour__' ? undefined : imageColour"
+      :initial-colour="imageColour === '__all_colours__' ? undefined : imageColour"
       :initial-models="imageModels"
       images-only
       add-to-canvas
