@@ -5,6 +5,7 @@ import { resolve } from 'node:path'
 import { createApp, computed, defineComponent, h, nextTick, ref } from 'vue'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import ts from 'typescript'
+import { figflowTemplateCapability } from '../../app/utils/edmFigflowLibrary'
 
 const source = readFileSync(resolve('app/components/email/builder/EdmFlyhubBuilder.client.vue'), 'utf8')
 const begin = source.slice(source.indexOf('async function beginFigflow('), source.indexOf('function sameDesignSource('))
@@ -15,6 +16,9 @@ const scriptAst = ts.createSourceFile('builder.ts', scriptSource, ts.ScriptTarge
 // between validation and the client-loader function.
 const validation = scriptAst.statements.filter(statement => ts.isVariableStatement(statement)
   && statement.declarationList.declarations.some(declaration => ['hasValidTemplateClient', 'hasValidDesignDraftClient'].includes(declaration.name.getText(scriptAst))))
+  .map(statement => statement.getText(scriptAst)).join('\n')
+const capability = scriptAst.statements.filter(statement => ts.isVariableStatement(statement)
+  && statement.declarationList.declarations.some(declaration => declaration.name.getText(scriptAst) === 'figflowSourceUnsupported'))
   .map(statement => statement.getText(scriptAst)).join('\n')
 const start = source.lastIndexOf('<UModal', source.indexOf('v-model:open="showDesignDraftCopy"'))
 const modal = source.slice(start, source.indexOf('</UModal>', start) + '</UModal>'.length)
@@ -44,8 +48,7 @@ async function mount() {
     }
   }
   const args = {
-    computed, designFlow, conditionSaving: ref(false), conditionPending: ref(null), brandFlow: { busy: ref(false), hasPending: ref(false) }, saving: ref(false), templateLoading: ref(false), templateLoadError: ref(''),
-    figflowSourceUnsupported: ref(false), // Source eligibility is covered by emailComposerSaveWarning.test.ts.
+    computed, figflowTemplateCapability, designFlow, conditionSaving: ref(false), conditionPending: ref(null), brandFlow: { busy: ref(false), hasPending: ref(false) }, saving: ref(false), templateLoading: ref(false), templateLoadError: ref(''),
     loadingTemplateClients: ref(false), templateClientsError: ref(false),
     templateClientOptions: ref([{ label: 'Allowed client', value: 'allowed' }, { label: 'Shared default', value: '__shared__' }]),
     templateId: ref<string | null>('library-original'), templateKind: ref('template'),
@@ -55,12 +58,12 @@ async function mount() {
     designDraftName: ref(''), designDraftClient: ref<string | undefined>(), designDraftError: ref(''), draftCopyUnconfirmed: ref(false),
     designRevisionRequired: ref(false), designServiceUnavailable: ref(false), designLocalConflict: ref(false),
     workspaceSavedSnapshot: ref('original'), workspaceSnapshot: () => 'saved-draft',
-    store: { document: ref({ root: { type: 'EmailLayout', data: { childrenIds: [] } } }) },
+    store: { document: ref<any>({ root: { type: 'EmailLayout', data: { childrenIds: ['heading'] } }, heading: { type: 'Heading', data: { props: { text: 'Editable copy' } } } }) },
     apiFetch: vi.fn(async () => ({ template: { id: 'confirmed-draft' } })),
     route: { query: { copy: 'library-original', workspace: 'figflow' } }, router: { replace: vi.fn(async () => {}) },
     save: vi.fn(async () => true), reconcileDesignAction: vi.fn()
   }
-  const script = ts.transpile(`${validation}\n${begin}\n${edit}\nreturn { beginFigflow, editInFigflow, hasValidDesignDraftClient }`, { target: ts.ScriptTarget.ES2022 })
+  const script = ts.transpile(`${validation}\n${capability}\n${begin}\n${edit}\nreturn { beginFigflow, editInFigflow, hasValidDesignDraftClient ${capability ? ', figflowSourceUnsupported' : ''} }`, { target: ts.ScriptTarget.ES2022 })
   const functions = new Function(...Object.keys(args), script)(...Object.values(args))
   const state = { ...args, ...functions }
   const app = createApp(defineComponent({
@@ -95,6 +98,17 @@ async function mount() {
 }
 
 describe('composer Create a design draft dialog', () => {
+  it('blocks creation if an open draft dialog no longer has supported source', async () => {
+    const { state: s, button, click } = await mount()
+    s.templateClient.value = 'allowed'
+    await click('Edit in FigFlow')
+    s.store.document.value = { root: { type: 'EmailLayout', data: { childrenIds: ['html'] } }, html: { type: 'Html', data: { props: { contents: '<p>HTML only</p>' } } } }
+    await flush()
+    expect(button('Create draft and open FigFlow').disabled).toBe(true)
+    await s.beginFigflow(true)
+    expect(s.apiFetch).not.toHaveBeenCalled()
+  })
+
   it('keeps the required client reachable in one dialog, then creates and opens only the independent draft', async () => {
     const { state: s, host, button, click } = await mount()
     s.showSaveModal.value = true

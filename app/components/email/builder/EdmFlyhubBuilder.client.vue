@@ -952,6 +952,8 @@ function editInFigflow() {
   if (saving.value || designFlow.busy.value || templateLoading.value || templateLoadError.value) return
   if (designFlow.handoff.value?.state === 'open' || designFlow.handoff.value?.state === 'proposed') {
     showFigflow.value = true
+  } else if (designFlow.hasPending.value) {
+    void reconcileDesignAction()
   } else if (figflowSourceUnsupported.value) {
     return
   } else if (!templateId.value || templateKind.value !== 'draft') {
@@ -1574,7 +1576,7 @@ onMounted(async () => {
         color="neutral"
         size="sm"
         :loading="designFlow.busy.value"
-        :disabled="workspaceBusy || (figflowSourceUnsupported && !['open', 'proposed'].includes(designFlow.handoff.value?.state ?? ''))"
+        :disabled="conditionSaving || !!conditionPending || saving || designFlow.busy.value || brandFlow.busy.value || brandFlow.hasPending.value || (figflowSourceUnsupported && !designFlow.hasPending.value && !['open', 'proposed'].includes(designFlow.handoff.value?.state ?? ''))"
         @click="editInFigflow"
       />
       <UButton
@@ -2394,7 +2396,7 @@ onMounted(async () => {
         />
         <UButton
           label="Create draft and open FigFlow"
-          :disabled="draftCopyUnconfirmed || loadingTemplateClients || templateClientsError || !hasValidDesignDraftClient || !designDraftName.trim() || designDraftName.trim().length > 200"
+          :disabled="figflowSourceUnsupported || draftCopyUnconfirmed || loadingTemplateClients || templateClientsError || !hasValidDesignDraftClient || !designDraftName.trim() || designDraftName.trim().length > 200"
           :loading="designFlow.busy.value"
           @click="beginFigflow(true)"
         />
