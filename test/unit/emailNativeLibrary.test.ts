@@ -6,6 +6,16 @@ import { structuredDesign } from '../fixtures/email-design/structured'
 const op = '50000000-0000-4000-8000-000000000001'
 const asset = { id: op, sha256: 'a'.repeat(64), mimeType: 'image/png' as const, bytes: 24, width: 1, height: 1 }
 const source = () => insertDesignImage(structuredDesign(), asset, 'https://app.test/image.png', op, { parentId: 'root', index: 1 })
+// Saved pre-URL-grant insertion output, independent of current new-image defaults.
+const legacySource = () => {
+  const design = validateEmailDesign(structuredDesign()), id = `img_${op}`
+  design.blocks[id] = { type: 'Image', data: { props: { url: 'https://app.test/image.png', alt: '' } } }
+  design.blocks.root.data.childrenIds!.splice(1, 0, id)
+  design.assets.push(asset)
+  design.lineage.push({ blockId: id, nodeId: `imgn_${op}`, fields: { alt: `imgf_${op}` } })
+  design.policy.editableFields.push(`${id}.data.props.alt`)
+  return validateEmailDesign(design)
+}
 describe('native library selection and verified image derivation', () => {
   it('orders multi-section publication by canonical reading order and refuses overlapping selection', () => {
     const base = structuredDesign()
@@ -69,12 +79,40 @@ describe('native library selection and verified image derivation', () => {
     expect(() => replaceDesignImage(base, { ...asset, sha256: 'b'.repeat(64) }, 'https://app.test/new.png', id, true)).toThrow()
   })
   it('allows explicitly URL-granted legacy content but never treats an alt grant as library provenance', () => {
-    const base = source(), id = `img_${op}`
+    const base = legacySource(), id = `img_${op}`
     base.lineage = base.lineage.filter(item => item.blockId !== id)
-    const fresh = { ...asset, id: crypto.randomUUID() }
-    expect(() => replaceDesignImage(base, fresh, 'https://app.test/new.png', id)).toThrow()
+    expect(base.policy.editableFields).toContain(`${id}.data.props.alt`)
+    expect(base.policy.editableFields).not.toContain(`${id}.data.props.url`)
+    const fresh = { ...asset, id: crypto.randomUUID() }, before = structuredClone(base)
+    expect(() => replaceDesignImage(base, fresh, 'https://app.test/new.png', id)).toThrowError(expect.objectContaining({ code: 'EDIT_FORBIDDEN' }))
+    expect(base).toEqual(before)
     base.policy.editableFields.push(`${id}.data.props.url`)
-    expect(replaceDesignImage(base, fresh, 'https://app.test/new.png', id).blocks[id].data.props?.url).toBe('https://app.test/new.png')
+    const next = replaceDesignImage(base, fresh, 'https://app.test/new.png', id)
+    expect(next.blocks[id].data.props?.url).toBe('https://app.test/new.png')
+    expect(next.policy).toEqual(base.policy)
+    expect(next.lineage).toEqual(base.lineage)
+  })
+  it('permits a new URL-granted insertion without claiming library-provenance authority', () => {
+    const base = source(), id = `img_${op}`, before = structuredClone(base)
+    expect(base.policy.editableFields).toContain(`${id}.data.props.url`)
+    expect(base.lineage.find(item => item.blockId === id)?.fields.url).toBe(`imgu_${op}`)
+    const next = replaceDesignImage(base, { ...asset, id: crypto.randomUUID() }, 'https://app.test/new.png', id)
+    expect(next.blocks[id].data.props?.url).toBe('https://app.test/new.png')
+    expect(next.policy).toEqual(base.policy)
+    expect(next.lineage).toEqual(base.lineage)
+    expect(base).toEqual(before)
+  })
+  it('inserting a new URL-granted image never backfills a saved alt-only policy or lineage', () => {
+    const base = legacySource(), id = `img_${op}`, before = structuredClone(base)
+    const newOp = '50000000-0000-4000-8000-000000000002', newId = `img_${newOp}`
+    const next = insertDesignImage(base, { ...asset, id: newOp }, 'https://app.test/second.png', newOp, { parentId: 'root', index: 2 })
+    expect(next.policy.editableFields.filter(path => path.startsWith(`${id}.`))).toEqual([`${id}.data.props.alt`])
+    expect(next.lineage.find(item => item.blockId === id)).toEqual(base.lineage.find(item => item.blockId === id))
+    expect(next.blocks[id]).toEqual(base.blocks[id])
+    expect(next.policy.editableFields).toContain(`${newId}.data.props.url`)
+    expect(next.lineage.find(item => item.blockId === newId)?.fields.url).toBe(`imgu_${newOp}`)
+    expect(() => replaceDesignImage(next, { ...asset, id: crypto.randomUUID() }, 'https://app.test/new.png', id)).toThrowError(expect.objectContaining({ code: 'EDIT_FORBIDDEN' }))
+    expect(base).toEqual(before)
   })
   it('retains present-content grants and inherited/mobile URL locks even with proven library provenance', () => {
     for (const kind of ['missing alt grant', 'missing link grant', 'inherited URL lock', 'mobile URL lock']) {
@@ -87,9 +125,13 @@ describe('native library selection and verified image derivation', () => {
     }
   })
   it.each(['ungranted logo', 'alt-only legacy logo', 'legal value', 'unknown own data', 'locked ancestor'])('refuses %s using canonical editability', (kind) => {
-    const base = source(), id = `img_${op}`
+    const base = kind === 'alt-only legacy logo' ? legacySource() : source(), id = `img_${op}`
     if (kind === 'ungranted logo') base.policy.editableFields = []
-    if (kind === 'alt-only legacy logo') base.lineage = base.lineage.filter(item => item.blockId !== id)
+    if (kind === 'alt-only legacy logo') {
+      base.lineage = base.lineage.filter(item => item.blockId !== id)
+      expect(base.policy.editableFields).not.toContain(`${id}.data.props.url`)
+      expect(base.policy.editableFields).toContain(`${id}.data.props.alt`)
+    }
     if (kind === 'legal value') base.blocks[id].data.props!.alt = 'postal address'
     if (kind === 'unknown own data') Object.assign(base.blocks[id].data, { extension: true })
     if (kind === 'locked ancestor') base.blocks.root.data.props = { brand: 'protected' }

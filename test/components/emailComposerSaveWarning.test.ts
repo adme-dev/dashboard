@@ -55,6 +55,9 @@ function fixture(blocks = structuredDesign().blocks) {
     designRevisionRequired: Vue.ref(false), designServiceUnavailable: Vue.ref(false), designLocalConflict: Vue.ref(false),
     route: { query: {} }, router: { replace: vi.fn(async () => {}) }
   }
+  // beginFigflow records the local Apply baseline from the component's real
+  // workspace snapshot owner; model it over the composer document and name.
+  Object.assign(state, { workspaceSnapshot: () => JSON.stringify({ blocks: state.store.document.value, name: state.name.value }) })
   const derived = new Function(...Object.keys(state), `${ts.transpile(capabilityDeclarations)}; return { ${capabilityDeclarations ? 'figflowSourceUnsupported' : ''} };`)(...Object.values(state))
   const args = { ...state, ...derived }
   const actions = new Function(...Object.keys(args), `${ts.transpile(begin + edit)}; return { beginFigflow, editInFigflow };`)(...Object.values(args))
@@ -74,7 +77,7 @@ function fixture(blocks = structuredDesign().blocks) {
   vi.stubGlobal('$fetch', vi.fn(async (_url, options) => options.body.command === 'lookup'
     ? { draft: { headRevisionId: 'revision-one' } }
     : { handoff: { id: 'handoff-one', templateId: state.templateId.value, baseRevisionId: 'revision-one' } }))
-  return { ...state, ...actions, host, reconcile }
+  return { ...state, ...actions, host, reconcile, snapshot: () => (state as typeof state & { workspaceSnapshot: () => string }).workspaceSnapshot() }
 }
 function deferred<T>() {
   let resolve!: (value: T) => void, reject!: (reason: unknown) => void
@@ -138,6 +141,7 @@ describe('composer distinguishes active saves from unconfirmed outcomes', () => 
     await h.beginFigflow()
     expect(h.save).toHaveBeenCalledOnce()
     expect(h.showFigflow.value).toBe(true)
+    expect(h.designFlow.localBaseline.value).toBe(h.snapshot())
     expect(h.designFlow.error.value).toBe('')
   })
   it('explains imported HTML before disabling open and refuses direct/automatic open without saving a copy', async () => {
@@ -175,6 +179,7 @@ describe('composer distinguishes active saves from unconfirmed outcomes', () => 
     await h.beginFigflow()
     expect(h.save).not.toHaveBeenCalled()
     expect(h.showFigflow.value).toBe(designer)
+    expect(h.designFlow.localBaseline.value).toBe(designer ? h.snapshot() : null)
     expect(h.designFlow.draft.value?.source.policy.editableFields).toEqual([])
     if (designer) {
       expect(fetch.mock.calls[0]![1].body).toMatchObject({ command: 'open', draftId: documentId, expectedRevisionId: revisionId })
@@ -191,6 +196,7 @@ describe('composer distinguishes active saves from unconfirmed outcomes', () => 
     await h.beginFigflow()
     expect(h.save).toHaveBeenCalledOnce()
     expect(h.showFigflow.value).toBe(true)
+    expect(h.designFlow.localBaseline.value).toBe(h.snapshot())
     expect(h.designFlow.mode.value).toBe('designer')
   })
   it('keeps an existing no-content handoff reopenable for review', async () => {

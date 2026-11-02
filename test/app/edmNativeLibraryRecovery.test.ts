@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { useEdmDesignRoundtrip } from '../../app/composables/useEdmDesignRoundtrip'
 import { designerCapabilities } from '../../shared/emailRendering/designDesigner'
 import { validateEmailDesign } from '../../shared/emailRendering/designContract'
+import { designReadOwner } from '../../shared/emailRendering/designRoundtrip'
 import { structuredDesign } from '../fixtures/email-design/structured'
 
 const id = '10000000-0000-4000-8000-000000000001'
@@ -42,8 +43,10 @@ describe('same-document library reopen and uncertain writes', () => {
     const builder = readFileSync('app/components/email/builder/EdmFlyhubBuilder.client.vue', 'utf8')
     const body = builder.slice(builder.indexOf('async function reopenNativeLibrary()'), builder.indexOf('async function returnFromNativeLibrary()'))
     const js = ts.transpile(body, { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext })
-    const reopen = new Function('nativeLibrary', 'designFlow', 'designLocalConflict', 'sameDesignSource', 'store', 'workspaceSnapshot', 'workspaceSavedSnapshot', `${js}; return reopenNativeLibrary`)(
-      flow.nativeLibrary, flow, { value: false }, () => true, { document: { value: source.blocks } }, () => 'saved', { value: 'saved' }
+    // The extracted body uses the component's module import for persisted-owner
+    // identity; bind the real shared implementation rather than a stub.
+    const reopen = new Function('nativeLibrary', 'designFlow', 'designLocalConflict', 'sameDesignSource', 'store', 'workspaceSnapshot', 'workspaceSavedSnapshot', 'designReadOwner', `${js}; return reopenNativeLibrary`)(
+      flow.nativeLibrary, flow, { value: false }, () => true, { document: { value: source.blocks } }, () => 'saved', { value: 'saved' }, designReadOwner
     ) as () => Promise<void>
     await expect(reopen()).rejects.toThrow(kind)
     expect(flow.nativeLibrary.state.value).toMatchObject({ ready: true, reopenRequired: true, documentId: id })

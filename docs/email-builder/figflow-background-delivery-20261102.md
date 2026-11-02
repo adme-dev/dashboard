@@ -1263,3 +1263,120 @@ policy/publicationUI+publiccopy/native40 andpreparedtestcode, whileexplicitly
 retainingunapproved499source andopenDB/WASM/hosted/realinboxgates. Commit/push
 willbeadraftsourcecheckpointforCI, notmerge/deploy/migrationapplication.
 No raisedbudget, nativegatewayoverwrite, featureactivation or realemail.
+
+Parent committed/pushed all56ownedchangedfiles as
+f13160e2706969c6d8420f6e4820644be120f5c4 (tree478f8ab8ad58daf3520ebcc57c3cbee5bc150d86),
+includingpreviouslocalnative6c7f. RemoteheadanddraftPR827headmatch;trackedtreewas
+cleanatcommitreceipt. SourcefreezeSHA dfbc90753b89034841b6ace793e6aa05a283e35914b014d7ee092735a9ea8114
+andcommitreceipt live under `.verification/coherent-email-candidate-20261103/`.
+Fresh parentchecks631core+13templateunits pass0skip, preparation17pass/1actual
+runtimeskipped, buildshape8pass. Source-only499422555 stays unapproved/
+NOTAPPLIED; no database/artifact/native/browser build or configured changes
+wereperformedbythese parentchecks. New exactsourceCI/native40 monitoring
+isnext; oldc22sizes/32nativecountsarenotnewcandidateevidence. These two
+statusdocsremainlocaluntilnextcoherentcheckpointtoavoidrestartingactiveCI.
+
+## 3 November — matching f131 native40 package verified
+
+Native41505334636 SUCCESS:40engine/9bridge/8UI,89namedRust and21relayNode
+passes,0skip. Exactcheckout2f1114b73356d1120cd172a5fd9160ebb4e4e8d0 has052/f131
+parents andtree478f8ab8. Parent readhandoff/checkouts/summary, hashedall5receipt
+files,checked47native/63package integritysummaries, independentlyhashedactual
+ZIP1b6a87e61253fc9efea2a024df4cf0b8faeb6800de73c58a4d97953e04be7d74
+(9157801bytes) and WASM58eabea2a64122848d7feadcd22a0994f7d05e5bc6c44a3a0be2b997b3ceac54
+(23508724bytes). NewpackagewasnotexecutedbyCImonitoranddoesnotapprove499.
+General41505334628 stillruns. Artifactpath/receipts in
+`.verification/ci-followup-f13160e27/`; sharedhostededm1 andoldedm2archivesunchanged.
+A distinct native-frame-only browser check may test thispackagewithsynthetic
+canonicalcampaign data, no DB/privateWorker/Pages/serverauthority. Thatbounded
+ABI/framecheckcannotcloseactualsameT/R2campaignworkflow, configured499, public
+assetdeliveryorhostedemployeeacceptance; runtimeapprovalpinsremainnull.
+
+
+## 3 November — native frame accepted within scope; full CI failed
+
+Parent read the complete [native frame report](native-campaign-frame-20261103.md),
+verified all260 files against SHA/byte entries with zero mismatches (manifest
+9925ee6892d134975afd244f8efd28d4c9223c6ba26d108007298357fcb990a7), and visually
+inspected both final committed-inspector screenshots. Eight actual-WASM frame
+cases pass0fail/0skip;21 Node relay checks pass separately. The content URL edit
+and designer text operation are visible; designer whole-document preservation
+is validated from its operations-only return, not private native state. Report
+SHA aeacfd805fb69b13545105888fecf2549fcfdafc023adb557f2cf2fcf17f55f7.
+This does not close08b/08c, Pages/Worker/DB, configured499, hosted or inbox gates.
+Calibration failures remain retained. No product bytes changed in this stage.
+
+General41505334628 finished FAILED at Full test suite:8 failures across
+emailComposerSaveWarning, emailNativeLibrary, edmNativeLibraryRecovery and
+emailDesignLibraryComposerRecovery;21,941 passed/4,255 skipped. Parent read
+completed failure output; causes are under investigation, not yet attributed
+to fixtures or product. Monitor reports production build/strict size check and
+renderer isolation passed:raw25,410,665/25,468,928 (58,263 remaining),
+gzip7,333,109/9,750,000 (2,416,891 remaining). These are exactf131 figures,
+not reused c22 sizes. Native41505334636 remains successful. No workflow retry,
+merge, deployment, SQL or migration application was performed. Independent499
+DB verification remains failed/incomplete; its blocked probes will not be
+rerouted through these unrelated source/test investigations.
+
+
+CI monitor ctx_05199ebcc263 settled task_329ed4d74463 with outcome FAILED,
+retaining the failed general CI result. Parent read its complete final report
+and independently verified all104 SHA256SUMS entries with zero mismatches.
+Manifest SHA1c2f69bdb602d09ead193617e1f90d0b9ff551a2523a63740d9737d201cf0e7b;
+report SHA6ab4f4cba28e9990f2ee0f185ab84556bbdcf4b33afc5e4251e13f5f308fd1d8.
+The serialized preliminary70/70 is separate from the failed full-suite count;
+social and Pages target checks were skipped after failure. Campaign backend,
+handoff, design, successor and actual-runtime optional cases were skipped in
+this CI invocation, so its successful earlier database steps do not validate
+499 or the campaign runtime. [Exact stage results and eight assertions](../../.verification/ci-followup-f13160e27/REPORT.md).
+
+Independent non-DB fixes are assigned:Opus ctx_7dec5c8cd1fd owns only the three
+UI recovery test files/report (six assertions), Codex ctx_78dca8bf9b4e owns the
+image-library test/source investigation (two assertions). Both must reproduce
+before fixes, retain refusal/authority assertions and leave499/probes untouched.
+No fix result is yet accepted; original f131 receipts remain frozen.
+
+
+## 3 November — six UI recovery CI failures repaired in harnesses
+
+Opus ctx_7dec5c8cd1fd/task_defd87a2ea33 succeeded within its three-test-file
+scope. Parent read the full report and diff, all completed red/green/mutation
+outputs, and verified all19 manifest hashes with zero mismatches (manifest
+83968440d118f78399ae85a5fcdff7706cb6db82a88bc5ad549ba273d021576d).
+The unchanged harnesses reproduced6failed/11passed, then corrected injections
+passed17/17,0skip; scopedlint passed. Missing designReadOwner/workspaceSnapshot/
+saved-snapshot identifiers in extracted-function harnesses caused the failures.
+The real component already supplies them. Original assertions are retained;
+new baseline/head assertions fail4/13 in deliberate mutation controls.
+No product source changed. [Report](ci-recovery-fixes-20261103.md).
+This closes only the six assigned local assertions; image tests, integrated
+regressions and exact committed full CI remain open. No green release claim,
+499 approval, SQL/database action or configured application follows.
+
+
+## 3 November — all eight assertions repaired locally; combined gate green
+
+Codex ctx_78dca8bf9b4e/task_d69abf463c98 completed the two image assertions
+with test-only explicit legacy fixtures; unchanged product grants/refusals.
+Parent read report/diff/completed15/15 and101/11 regression outputs and verified
+all27 final-freeze hashes, zero mismatches (manifest6a93a381ad760bbb0cb74ae8866d3e88cc3bdaffd7c2853db6cdb0f0b02ee71e).
+New assertions keep current URL-granted insertion separate from saved alt-only
+policy and prove inserting another image never backfills historical authority.
+[Report](ci-image-library-fixes-20261103.md).
+
+Parent freshly ran all14 combined recovery/image/library regression files:
+118passed/0failed/0skipped, exit0. Completed output and JSON live under
+`.verification/ci-fixture-integrated-20261103/`. Fresh origin/main remains052eefaf9,
+ancestor ofcurrentf131. Allfour fixes are test-only; generalCI41505334628 stays
+FAILED historically. Independent final test-diff review then coherentcommit/
+push/freshCI are next; no new runtime/499/hosted acceptance follows.
+
+
+Independent final review ctx_926ff84e3e89/task_332b4de4528a found noP0/P1/P2
+blocker in allfour complete testfiles/diffs againstf131; reportSHA
+da10af3198d134b79201d4d7f1cb69c0b3e783c856a58d8a47dea75d9ce4f670
+at `.verification/ci-fixture-review-20261103.md`. Parent readfullreport and
+reverified allfour reviewed sourcehashes. Parent scopedESLint passed for allfour
+withzero diagnostics, diffcheck clean, freshlyfetchedmain052 stillincluded.
+Nine-file checkpoint consists only offour tests plusfive status/evidence docs.
+Nextaction iscommit/push fornewexactsourceCI, notmerge/release or499acceptance.

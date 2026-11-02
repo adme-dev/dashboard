@@ -80,8 +80,10 @@ describe('composer applies canonical receipts against retained local baseline', 
   it('blocks Save during library writes without blocking the existing nested FigFlow save', async () => {
     const save = source.slice(source.indexOf('async function save(): Promise<boolean>'), source.indexOf('// FigFlow edits'))
     const saveCampaignContent = vi.fn(async () => {})
+    const workspaceSavedSnapshot = ref('before save'), loadedDesignRevisionId = ref<string | null>(null)
     const args = {
-      designFlow: { busy: ref(true), hasPending: ref(false) },
+      designFlow: { busy: ref(true), hasPending: ref(false), draft: ref({ headRevisionId: 'campaign-head-after-save' }) },
+      workspaceSavedSnapshot, loadedDesignRevisionId,
       conditionSaving: ref(false), conditionPending: ref(null), templateLoading: ref(false), templateLoadError: ref(''),
       brandFlow: { busy: ref(false), hasPending: ref(false) }, designRevisionRequired: ref(false),
       saving: ref(false), workspaceSnapshot: () => 'saved', campaignId: ref('existing-owner'), saveCampaignContent,
@@ -92,8 +94,12 @@ describe('composer applies canonical receipts against retained local baseline', 
     )(...Object.values(args), libraryBaseline) as () => Promise<boolean>
     expect(await makeSave(null)()).toBe(true)
     expect(saveCampaignContent).toHaveBeenCalledTimes(1)
+    expect(workspaceSavedSnapshot.value).toBe('saved')
+    expect(loadedDesignRevisionId.value).toBe('campaign-head-after-save')
+    workspaceSavedSnapshot.value = 'before blocked save'
     expect(await makeSave({ snapshot: 'pending library action' })()).toBe(false)
     expect(saveCampaignContent).toHaveBeenCalledTimes(1)
+    expect(workspaceSavedSnapshot.value).toBe('before blocked save')
   })
   it('applies an exact confirmed structural action as one undoable update', () => {
     const h = fixture()
