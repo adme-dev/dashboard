@@ -17,6 +17,13 @@ interface MotorStackMediaResponse {
   warnings: string[]
 }
 
+const props = withDefaults(defineProps<{
+  initialBrandId?: string
+  initialModel?: string
+  initialModels?: string[]
+  imagesOnly?: boolean
+  addToCanvas?: boolean
+}>(), { imagesOnly: false, addToCanvas: false })
 const open = defineModel<boolean>('open', { default: false })
 const emit = defineEmits<{ imported: [asset: BannerAsset] }>()
 const allModels = '__all_models__'
@@ -83,12 +90,22 @@ async function loadMedia() {
     if (generation === requestGeneration) loadingMedia.value = false
   }
 }
-watch(open, (value) => {
-  if (value && !brandsData.value && brandsStatus.value !== 'pending') loadBrands()
-}, { immediate: true })
 watch([brandId, model], () => {
   if (open.value) loadMedia()
 })
+watch(open, (value) => {
+  if (!value) return
+  if (props.initialBrandId) {
+    const nextModel = props.initialModel || allModels
+    const changed = brandId.value !== props.initialBrandId || model.value !== nextModel
+    brandId.value = props.initialBrandId
+    model.value = nextModel
+    modelNames.value = [...new Set(props.initialModels || [])]
+    assetType.value = 'images'
+    if (!changed) loadMedia()
+  }
+  if (!props.imagesOnly && !brandsData.value && brandsStatus.value !== 'pending') loadBrands()
+}, { immediate: true })
 onBeforeUnmount(() => {
   requestGeneration++
 })
@@ -112,7 +129,13 @@ function isPdf(asset: MotorStackMediaAsset) {
 async function importAsset(asset: MotorStackMediaAsset) {
   if (busy.value || !brandId.value || !canImport(asset)) return
   const key = assetKey(asset)
-  if (imported.value[key]) return
+  if (imported.value[key]) {
+    if (props.addToCanvas) {
+      emit('imported', imported.value[key])
+      open.value = false
+    }
+    return
+  }
   importing.value = key
   importErrors.value[key] = ''
   try {
@@ -122,6 +145,7 @@ async function importAsset(asset: MotorStackMediaAsset) {
     if (!result.asset?.id || !result.asset.url || !result.asset.mimeType.startsWith('image/')) throw new Error('Could not verify the saved image. Retry to check its library status.')
     imported.value[key] = result.asset
     emit('imported', result.asset)
+    if (props.addToCanvas) open.value = false
   } catch (error) {
     importErrors.value[key] = apiErrorDescription(error, 'Could not add this image. Try again.')
   } finally {
@@ -133,23 +157,24 @@ async function importAsset(asset: MotorStackMediaAsset) {
 <template>
   <UModal
     v-model:open="open"
-    title="MotorStack media"
-    description="Browse OEM images and documents. Add images to your asset library when you are ready."
+    :title="props.imagesOnly ? 'Vehicle images' : 'MotorStack media'"
+    :description="props.addToCanvas ? 'Choose a vehicle image for the current layout.' : 'Browse OEM images and documents. Add images to your asset library when you are ready.'"
     :dismissible="!busy"
     :close="!busy"
     :ui="{ content: 'sm:max-w-5xl', body: 'min-h-0' }"
   >
     <template #body>
       <div class="@container space-y-4">
+        <BannerMotorStackLogo />
         <UAlert
-          v-if="brandsError"
+          v-if="brandsError && !props.imagesOnly"
           color="error"
           title="Could not load brands"
           :description="apiErrorDescription(brandsError, 'Try loading the brand list again.')"
           :actions="[{ label: 'Retry loading', color: 'error', variant: 'soft', onClick: () => loadBrands() }]"
         />
         <div class="grid grid-cols-1 gap-4 @lg:grid-cols-2">
-          <UFormField label="Brand">
+          <UFormField v-if="!props.imagesOnly" label="Brand">
             <USelectMenu
               :model-value="brandId"
               :items="brandItems"
@@ -170,7 +195,7 @@ async function importAsset(asset: MotorStackMediaAsset) {
               class="w-full"
             />
           </UFormField>
-          <UFormField label="Media type">
+          <UFormField v-if="!props.imagesOnly" label="Media type">
             <USelectMenu
               v-model="assetType"
               :items="typeItems"
@@ -190,16 +215,18 @@ async function importAsset(asset: MotorStackMediaAsset) {
         <p v-if="brandId" class="text-sm text-muted">
           {{ model === allModels ? 'Browse colour images across this brand. Choose a model to include its gallery and interior photos.' : 'Search this model’s colour images, gallery and interior photos.' }}
         </p>
-        <UAlert
-          v-for="warning in brandsData?.warnings || []"
-          :key="warning"
-          color="warning"
-          variant="soft"
-          :description="warning"
-        />
+        <template v-if="!props.imagesOnly">
+          <UAlert
+            v-for="warning in brandsData?.warnings || []"
+            :key="warning"
+            color="warning"
+            variant="soft"
+            :description="warning"
+          />
+        </template>
         <div v-if="loadingMedia" role="status" class="flex items-center justify-center gap-2 py-16 text-sm text-muted">
           <UIcon name="i-lucide-loader-circle" class="animate-spin" />
-          Loading media…
+          {{ props.imagesOnly ? 'Loading images…' : 'Loading media…' }}
         </div>
         <UAlert
           v-else-if="mediaError"
@@ -209,7 +236,7 @@ async function importAsset(asset: MotorStackMediaAsset) {
           :actions="[{ label: 'Retry loading', color: 'error', variant: 'soft', onClick: loadMedia }]"
         />
         <div v-else-if="!brandId" class="py-16 text-center text-sm text-muted">
-          {{ brandsStatus === 'pending' ? 'Loading brands…' : brandItems.length ? 'Choose a brand to browse its images and documents.' : brandsError ? 'Retry loading the brand list to continue.' : 'No MotorStack brands are available.' }}
+          {{ props.imagesOnly ? 'No MotorStack brand is linked to this kit.' : brandsStatus === 'pending' ? 'Loading brands…' : brandItems.length ? 'Choose a brand to browse its images and documents.' : brandsError ? 'Retry loading the brand list to continue.' : 'No MotorStack brands are available.' }}
         </div>
         <template v-else-if="media">
           <UAlert
@@ -271,11 +298,11 @@ async function importAsset(asset: MotorStackMediaAsset) {
                 <div class="mt-auto">
                   <UButton
                     v-if="canImport(asset)"
-                    :label="imported[assetKey(asset)] ? 'Added to library' : importErrors[assetKey(asset)] ? 'Retry adding to library' : 'Add to library'"
-                    :icon="imported[assetKey(asset)] ? 'i-lucide-check' : 'i-lucide-plus'"
+                    :label="props.addToCanvas ? importErrors[assetKey(asset)] ? 'Retry adding to layout' : 'Add to layout' : imported[assetKey(asset)] ? 'Added to library' : importErrors[assetKey(asset)] ? 'Retry adding to library' : 'Add to library'"
+                    :icon="!props.addToCanvas && imported[assetKey(asset)] ? 'i-lucide-check' : 'i-lucide-plus'"
                     :loading="importing === assetKey(asset)"
-                    :disabled="busy || Boolean(imported[assetKey(asset)])"
-                    :color="imported[assetKey(asset)] ? 'success' : 'primary'"
+                    :disabled="busy || (!props.addToCanvas && Boolean(imported[assetKey(asset)]))"
+                    :color="!props.addToCanvas && imported[assetKey(asset)] ? 'success' : 'primary'"
                     variant="soft"
                     size="sm"
                     class="w-full justify-center"
@@ -307,7 +334,7 @@ async function importAsset(asset: MotorStackMediaAsset) {
     <template #footer>
       <div class="flex w-full items-center justify-between gap-3">
         <p role="status" aria-live="polite" class="text-xs text-muted">
-          {{ busy ? 'Adding the image to your library…' : 'Adding to the library does not change the artwork on your canvas.' }}
+          {{ busy ? 'Adding the image…' : props.addToCanvas ? 'Choose an image to add it to this layout.' : 'Adding to the library does not change the artwork on your canvas.' }}
         </p>
         <UButton
           color="neutral"
