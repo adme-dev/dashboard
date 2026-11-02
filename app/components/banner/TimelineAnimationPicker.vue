@@ -3,11 +3,11 @@ import { computed, ref, watch, nextTick } from 'vue'
 import { ANIM_IN, ANIM_OUT, EASES } from '~/utils/banner-constants'
 import { hasKeyframes, presetToKeyframes } from '~/composables/useBannerTimeline'
 import type { AnimInType, AnimOutType, KeyframeProperty, Layer } from '~/types/banner-studio'
-import { insertTimelineKeyframe, keyframeDefault, MIDDLE_ANIMATIONS, addMiddleAnimation } from '~/utils/banner-timeline-edit'
+import { addEndAnimation, insertTimelineKeyframe, keyframeDefault, MIDDLE_ANIMATIONS, addMiddleAnimation } from '~/utils/banner-timeline-edit'
 import { describeKeyframeMotion, type TimelinePhase } from '~/utils/banner-timeline-phases'
 
 const emit = defineEmits<{ dragStart: [event: MouseEvent] }>()
-const props = defineProps<{ layer: Layer, direction: 'in' | 'out', compact?: boolean, phase?: TimelinePhase }>()
+const props = defineProps<{ layer: Layer, direction: 'in' | 'out', compact?: boolean, phase?: TimelinePhase, addAtEnd?: boolean, triggerLabel?: string }>()
 const { state, selectLayer, updateLayer } = useBannerStudio()
 const { inspectorTab } = useBannerInspector()
 const { pauseTimeline, seekTo, currentLayerValue, previewAnimation, stopAnimationPreview, animationPreview } = useBannerTimeline()
@@ -25,9 +25,9 @@ const isMiddle = computed(() => props.phase?.kind === 'hold')
 const keyframeTime = computed(() => Math.max(props.layer.startTime ?? 0, Math.min(props.layer.endTime ?? state.duration, state.currentTime)))
 const isAudio = computed(() => props.layer.type === 'audio')
 const isKeyframe = computed(() => hasKeyframes(props.layer))
-const title = computed(() => isAudio.value ? 'Audio' : isMiddle.value ? 'Middle' : isKeyframe.value ? 'Animation' : props.direction === 'in' ? 'Build In' : 'Build Out')
+const title = computed(() => isAudio.value ? 'Audio' : isMiddle.value ? 'Middle' : props.addAtEnd ? 'Build Out' : isKeyframe.value ? 'Animation' : props.direction === 'in' ? 'Build In' : 'Build Out')
 const directionLabel = computed(() => isMiddle.value ? 'middle' : props.direction === 'in' ? 'entrance' : 'exit')
-const presets = computed(() => (isMiddle.value ? MIDDLE_ANIMATIONS.filter(preset => !props.layer.motionPath?.length || !preset.properties.some(property => property === 'x' || property === 'y')) : props.direction === 'in' ? ANIM_IN : ANIM_OUT).filter(p => p.label.toLowerCase().includes(search.value.trim().toLowerCase())))
+const presets = computed(() => (isMiddle.value ? MIDDLE_ANIMATIONS.filter(preset => !props.layer.motionPath?.length || !preset.properties.some(property => property === 'x' || property === 'y')) : props.direction === 'in' ? ANIM_IN : ANIM_OUT).filter(p => !(props.addAtEnd && p.id === 'none')).filter(p => p.label.toLowerCase().includes(search.value.trim().toLowerCase())))
 const selectedId = computed(() => props.direction === 'in' && props.layer.wordPop ? 'wordPop' : props.direction === 'in' ? props.layer.animIn : (props.layer.animOut ?? 'fadeOut'))
 const selectedLabel = computed(() => isAudio.value ? 'Sound' : isKeyframe.value ? describeKeyframeMotion(props.layer) : selectedId.value === 'wordPop' ? 'Words Pop' : ([...ANIM_IN, ...ANIM_OUT].find(p => p.id === selectedId.value)?.label ?? 'None'))
 const blockLabel = computed(() => props.phase?.label ?? selectedLabel.value)
@@ -55,7 +55,7 @@ watch(open, async (value) => {
     if (isPreviewing.value) stopAnimationPreview()
     return
   }
-  tab.value = (isKeyframe.value && !isMiddle.value) || isAudio.value ? 'build' : 'presets'
+  tab.value = (!props.addAtEnd && isKeyframe.value && !isMiddle.value) || isAudio.value ? 'build' : 'presets'
   search.value = ''
   property.value = tracks.value.find(track => props.layer.keyframes?.[track.value]?.length)?.value ?? tracks.value[0]?.value ?? 'opacity'
   frameIndex.value = '0'
@@ -103,6 +103,16 @@ function applyPreset(id: string) {
   focusAnimation()
 }
 function choosePreset(id: string) {
+  if (props.addAtEnd && editable.value) {
+    const start = Math.max(props.layer.startTime ?? 0, (props.layer.endTime ?? state.duration) - 0.5)
+    pauseTimeline()
+    seekTo(start)
+    updateLayer(props.layer.id, addEndAnimation(props.layer, id as AnimOutType, property => currentLayerValue(props.layer, property)))
+    state.selectedKeyframe = null
+    focusAnimation()
+    open.value = false
+    return
+  }
   if (isMiddle.value && props.phase && editable.value) {
     const at = Math.max(props.phase.start, Math.min(props.phase.end - 0.1, keyframeTime.value))
     pauseTimeline()
@@ -170,7 +180,7 @@ function addKeyframe() {
 }
 function preview() {
   if (isPreviewing.value) stopAnimationPreview()
-  else previewAnimation(props.layer.id, props.phase ? { start: props.phase.start, end: props.phase.end } : undefined)
+  else previewAnimation(props.layer.id, props.addAtEnd ? { start: Math.max(props.layer.startTime ?? 0, (props.layer.endTime ?? state.duration) - 0.5), end: props.layer.endTime ?? state.duration } : props.phase ? { start: props.phase.start, end: props.phase.end } : undefined)
 }
 onBeforeUnmount(() => {
   if (isPreviewing.value) stopAnimationPreview()
@@ -180,20 +190,21 @@ onBeforeUnmount(() => {
 <template>
   <UPopover v-model:open="open" :content="{ side: 'top', align: direction === 'in' ? 'start' : 'end', sideOffset: 8 }">
     <UButton
-      :aria-label="phase ? `Edit ${blockDescription} for ${layer.name}` : isAudio ? `Edit audio for ${layer.name}` : isKeyframe ? `Edit ${selectedLabel} for ${layer.name}` : `Edit ${directionLabel} animation for ${layer.name}: ${selectedLabel}`"
-      :title="blockDescription"
+      :aria-label="triggerLabel ? `${triggerLabel} for ${layer.name}` : phase ? `Edit ${blockDescription} for ${layer.name}` : isAudio ? `Edit audio for ${layer.name}` : isKeyframe ? `Edit ${selectedLabel} for ${layer.name}` : `Edit ${directionLabel} animation for ${layer.name}: ${selectedLabel}`"
+      :title="triggerLabel || blockDescription"
       :aria-expanded="open"
       color="neutral"
-      variant="ghost"
+      :variant="triggerLabel ? 'outline' : 'ghost'"
       size="xs"
+      :disabled="!!triggerLabel && !editable"
       class="h-full min-h-0 w-full min-w-0 justify-start gap-1 overflow-hidden rounded-lg px-3 text-[11px] font-medium hover:bg-white/20 cursor-grab active:cursor-grabbing"
-      :style="{ color: foreground }"
-      :class="phase?.kind === 'hold' && phase.label === 'Hold' ? 'opacity-0 hover:opacity-100 focus:opacity-100' : ''"
+      :style="{ color: triggerLabel ? 'var(--ui-text)' : foreground }"
+      :class="triggerLabel ? 'w-auto cursor-pointer py-1' : phase?.kind === 'hold' && phase.label === 'Hold' ? 'opacity-0 hover:opacity-100 focus:opacity-100' : ''"
       @mousedown.stop="emit('dragStart', $event)"
       @click.stop="focusAnimation"
     >
       <UIcon :name="`i-lucide-${isAudio ? 'volume-2' : isKeyframe ? 'diamond' : iconFor(selectedId)}`" class="size-3 shrink-0" />
-      <span v-if="!compact" class="truncate">{{ blockLabel.replace(/^(Entry|Exit|Motion) · /, '') }}</span>
+      <span v-if="!compact" class="truncate">{{ triggerLabel || blockLabel.replace(/^(Entry|Exit|Motion) · /, '') }}</span>
     </UButton>
     <template #content>
       <section
@@ -211,6 +222,12 @@ onBeforeUnmount(() => {
             </p>
             <p v-if="phase" class="mt-1 text-xs text-muted">
               {{ blockDescription }}
+            </p>
+            <p v-if="isMiddle" class="mt-1 text-xs text-muted">
+              Hold keeps the layer visible between animations. Use Add exit at the end of its timeline to animate it out.
+            </p>
+            <p v-else-if="addAtEnd" class="mt-1 text-xs text-muted">
+              Choose an exit effect, then drag its timeline block to adjust the timing.
             </p>
           </div>
           <UButton
@@ -242,7 +259,7 @@ onBeforeUnmount(() => {
               />
             </UFormField>
             <UAlert
-              v-if="isKeyframe && !isMiddle"
+              v-if="isKeyframe && !isMiddle && !addAtEnd"
               title="Custom keyframe animation"
               description="Selecting a preset asks before replacing this layer’s keyframes and motion path. Build lets you edit the existing motion."
               color="neutral"

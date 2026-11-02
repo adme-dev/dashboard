@@ -1,4 +1,5 @@
-import type { Keyframe, KeyframeProperty, Layer } from '~/types/banner-studio'
+import { ANIM_OUT } from '~/utils/banner-constants'
+import type { AnimOutType, Keyframe, KeyframeProperty, Layer } from '~/types/banner-studio'
 import type { TimelinePhase } from '~/utils/banner-timeline-phases'
 
 const round = (value: number) => Math.round(value * 10000) / 10000
@@ -99,4 +100,33 @@ export function addMiddleAnimation(layer: Layer, phase: TimelinePhase, id: strin
   }
   const animationClips = [...(layer.animationClips || []).filter(clip => clip.end <= start || clip.start >= end), { start, end, label: preset.label }]
   return { keyframes, animationClips }
+}
+
+/** Reuse exit presets at the layer end without replacing earlier custom motion. */
+export function addEndAnimation(layer: Layer, id: AnimOutType, sample: (property: KeyframeProperty) => number = property => keyframeDefault(layer, property)): Partial<Layer> {
+  const start = layer.startTime ?? 0
+  const end = layer.endTime ?? start + 3
+  const preset = ANIM_OUT.find(preset => preset.id === id)
+  if (!preset || layer.type === 'audio' || end <= start) return {}
+  const exitStart = Math.max(start, end - 0.5)
+  if (!Object.values(layer.keyframes || {}).some(track => track && track.length >= 2)) {
+    return { animOut: id, animOutStart: exitStart, outDur: end - exitStart, animOutEase: 'power1.in' }
+  }
+  if (id === 'none') return {}
+  const keyframes = { ...layer.keyframes }
+  for (const [key, value] of Object.entries(preset.to)) {
+    if ((key === 'x' || key === 'y') && (layer.motionPath?.length ?? 0) >= 2) continue
+    const properties: KeyframeProperty[] = key === 'scale' ? ['scaleX', 'scaleY'] : [key as KeyframeProperty]
+    for (const property of properties) {
+      const resting = sample(property)
+      const frames = (keyframes[property] || []).filter(frame => frame.time < exitStart).map(frame => ({ ...frame }))
+      if (!frames.length && exitStart > start) frames.push({ time: start, value: resting, easing: 'none' })
+      frames.push({ time: exitStart, value: resting, easing: 'power1.in' }, { time: end, value })
+      keyframes[property] = frames
+    }
+  }
+  return {
+    keyframes,
+    animationClips: [...(layer.animationClips || []).filter(clip => clip.end <= exitStart), { start: exitStart, end, label: `Exit · ${preset.label}` }]
+  }
 }

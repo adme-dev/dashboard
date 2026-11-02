@@ -9,6 +9,6 @@ export function bannerAnimationTiming(layer: Layer) {
   const exitDuration = layer.outDur || (layer.type === 'bg' ? 0.5 : 0.25)
   const exitStart = layer.animOutStart === undefined
     ? Math.max(entryStart + entryDuration, end - exitDuration)
-    : Math.min(end - Math.min(0.05, end - start), Math.max(entryStart + entryDuration, layer.animOutStart))
+    : Math.min(end - Math.min(0.05, end - start), Math.max(start, layer.animOutStart))
   return { entryStart, entryDuration, exitStart, exitDuration: layer.animOutStart === undefined ? exitDuration : Math.min(exitDuration, Math.max(0, end - exitStart)) }
 }

@@ -1020,6 +1020,14 @@ onUnmounted(() => {
           </div>
         </template>
       </UPopover>
+      <BannerTimelineAnimationPicker
+        v-if="selectedTimelineLayer && selectedTimelineLayer.type !== 'audio'"
+        :key="`exit-${selectedTimelineLayer.id}`"
+        :layer="selectedTimelineLayer"
+        direction="out"
+        add-at-end
+        trigger-label="Add exit animation"
+      />
       <span v-if="timingHint" role="status" class="text-xs tabular-nums text-muted">{{ timingHint }}</span>
       <!-- Zoom controls -->
       <div class="ml-auto flex items-center gap-1">
@@ -1322,6 +1330,17 @@ onUnmounted(() => {
                       @keydown="nudgePhase($event, layer, phase, edge)"
                     />
                   </template>
+                </div>
+                <div
+                  v-if="state.selectedLayerId === layer.id && layer.type !== 'audio' && !(phasesByLayer.get(layer.id) || []).some(phase => phase.kind === 'exit')"
+                  class="absolute right-1 top-0 z-30 h-full rounded-lg bg-elevated"
+                >
+                  <BannerTimelineAnimationPicker
+                    :layer="layer"
+                    direction="out"
+                    add-at-end
+                    trigger-label="Add exit"
+                  />
                 </div>
                 <!-- Left edge handle -->
                 <div
