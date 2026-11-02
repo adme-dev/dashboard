@@ -43,14 +43,28 @@ export function brandFontSelection(font: BrandKitFont) {
   return { fontFamily: font.family, fontWeight, fontAssetId: font.assets?.find(asset => asset.weight === fontWeight)?.id }
 }
 
-/** The primary CTA used by the selected kit's reviewed dealer guide. */
-export function brandButtonStyle(kit: BannerBrandKit): Partial<Layer> {
-  const profile = brandStyleProfile(motorstackBrandId(kit.sourceUrl))
+export type BrandButtonVariant = 'primary' | 'secondary' | 'dark-secondary'
+
+/** Native button styling for a reviewed dealer-guide treatment. */
+export function brandButtonStyle(kit: BannerBrandKit, variant: BrandButtonVariant = 'primary'): Partial<Layer> {
+  const brandId = motorstackBrandId(kit.sourceUrl)
+  const profile = brandStyleProfile(brandId)
   const font = brandFont(kit, profile?.ctaFontRole || (profile ? 'body' : 'heading'))
-  const fill = profile?.ctaFill || brandColor(kit, 'accent') || brandColor(kit, 'primary')
+  let fill = profile?.ctaFill || brandColor(kit, 'accent') || brandColor(kit, 'primary')
+  if (variant === 'secondary') fill = profile?.secondaryFill
+  if (variant === 'dark-secondary' && brandId === 'ldv') fill = '#ffffff'
   const background = brandColor(kit, 'background')
   const kitText = brandColor(kit, 'text')
   let text: string | undefined = profile?.ctaText
+  let border = profile?.ctaBorder
+  if (variant === 'secondary') {
+    text = profile?.secondaryText
+    border = profile?.secondaryBorder
+  }
+  if (variant === 'dark-secondary' && brandId === 'ldv') {
+    text = '#000000'
+    border = '#ffffff'
+  }
   if (!text && fill) {
     if (isDarkColor(fill)) text = background && !isDarkColor(background)
       ? background
@@ -61,15 +75,18 @@ export function brandButtonStyle(kit: BannerBrandKit): Partial<Layer> {
   }
   return {
     ...(font ? brandFontSelection(font) : {}),
+    ...(brandId === 'ldv' ? { fontFamily: 'Open Sans', fontWeight: 700, fontAssetId: undefined } : {}),
     ...(fill ? { bgColor: fill } : {}),
     ...(text ? { textColor: text } : {}),
-    ...(profile ? {
+    ...(profile && {
       borderRadius: profile.ctaRadius,
-      borderWidth: profile.ctaBorder ? 1 : 0,
-      borderColor: profile.ctaBorder,
+      borderWidth: border
+        ? 1
+        : 0,
+      borderColor: border,
       textTransform: profile.ctaCase,
       letterSpacing: profile.ctaCase === 'lowercase' ? '0' : '0.1em'
-    } : {})
+    })
   }
 }
 

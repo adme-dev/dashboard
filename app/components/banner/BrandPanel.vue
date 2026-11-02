@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { BannerAsset, BannerBrandKit, BrandKitFont, BrandKitLogo } from '~/types/banner-studio'
-import { brandFontSelection } from '~/utils/banner-brand-kit'
+import { brandFontSelection, type BrandButtonVariant } from '~/utils/banner-brand-kit'
 import { bannerFontFamily } from '~/utils/banner-font-family'
 import { apiErrorDescription } from '~/utils/apiError'
 import { matchesMotorStackPaint, motorStackPaintName, motorStackPaintNames } from '~/utils/banner-motorstack-colours'
@@ -31,7 +31,7 @@ interface MotorStackOffer {
   hasImage: boolean
 }
 const emit = defineEmits<{ browseAssets: [] }>()
-const { state, selectedLayer, activeFormat, applyBrandKit, updateLayer, addLayer, addMotorStackImageToAllLayouts } = useBannerStudio()
+const { state, selectedLayer, activeFormat, applyBrandKit, updateLayer, addLayer, addMotorStackImageToAllLayouts, addBrandGuideButton } = useBannerStudio()
 const { isLayerLockedByOther } = useBannerRealtime()
 const toast = useToast()
 const clientId = computed(() => state.project?.clientId || undefined)
@@ -175,6 +175,10 @@ function handleApply(value: BannerBrandKit) {
   applyBrandKit(value)
   toast.add({ title: 'Brand applied', description: `${value.name} applied to all layouts. Undo to restore.`, color: 'success' })
 }
+function addStyleButton(variant: BrandButtonVariant) {
+  if (!kit.value || !addBrandGuideButton(kit.value, variant)) return
+  toast.add({ title: 'Brand button added', description: 'Edit its label in the inspector.', color: 'success' })
+}
 function useFont(font: BrandKitFont) {
   if (!canUseFont.value || (!font.assets?.length && !getFont(font.family))) return
   const selection = brandFontSelection(font)
@@ -231,7 +235,12 @@ function addLogo(logo: BrandKitLogo, event: MouseEvent) {
       color="error"
       variant="subtle"
     />
-    <BannerBrandStyleGuide v-if="kit" :kit="kit" />
+    <BannerBrandStyleGuide
+      v-if="kit"
+      :kit="kit"
+      interactive
+      @add-button="addStyleButton"
+    />
     <UButton
       v-if="error"
       label="Retry"

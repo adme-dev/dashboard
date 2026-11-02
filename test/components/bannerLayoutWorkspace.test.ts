@@ -3,6 +3,8 @@ import * as Vue from 'vue'
 import { afterEach, expect, it, vi } from 'vitest'
 import Canvas from '~/components/banner/Canvas.client.vue'
 import Controls from '~/components/banner/LayoutControls.vue'
+import type { BannerBrandKit } from '~/types/banner-studio'
+
 for (const [name, value] of Object.entries(Vue)) vi.stubGlobal(name, value)
 const { useBannerStudio } = await import('~/composables/useBannerStudio')
 let clean: (() => void) | undefined
@@ -13,6 +15,9 @@ it('switches mounted artboards between overview and single edit without replacin
   studio.loadProject({ id: 'workspace', canvasData: Object.fromEntries(['custom_1080x1920', 'custom_1200x1200', 'custom_1920x1080'].map(key => [key, { layers: [] }])) } as any)
   vi.stubGlobal('useBannerStudio', () => studio)
   vi.stubGlobal('useBannerRealtime', () => ({ sendCursorMove: vi.fn() }))
+  const kit = Vue.ref<BannerBrandKit | undefined>(undefined)
+  vi.stubGlobal('useBannerProjectBrand', () => ({ kit }))
+  vi.stubGlobal('useToast', () => ({ add: vi.fn() }))
   vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1000)
   vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(700)
   HTMLElement.prototype.scrollTo = vi.fn()
@@ -45,4 +50,20 @@ it('switches mounted artboards between overview and single edit without replacin
   await canvas.fitAllArtboards(); await Vue.nextTick()
   expect(studio.state.wsScale).toBeLessThan(scale)
   expect(studio.state.isDirty).toBe(false)
+  kit.value = { id: 'renault-kit', name: 'Renault', sourceUrl: 'https://oem-variants.pages.dev/api/mcp#brand=renault', colors: [], fonts: [], logos: [] }
+  await Vue.nextTick()
+  const target = boards[1].querySelector('.relative.cursor-pointer') as HTMLElement
+  vi.spyOn(target, 'getBoundingClientRect').mockReturnValue({ left: 20, top: 30 } as DOMRect)
+  const drop = new Event('drop', { bubbles: true, cancelable: true }) as DragEvent
+  Object.defineProperties(drop, {
+    dataTransfer: { value: { types: ['application/x-xeroflow-brand-button'], getData: () => JSON.stringify({ kitId: 'renault-kit', variant: 'secondary' }) } },
+    clientX: { value: 20 + 200 * studio.state.wsScale },
+    clientY: { value: 30 + 300 * studio.state.wsScale }
+  })
+  target.dispatchEvent(drop)
+  expect(drop.defaultPrevented).toBe(true)
+  expect(studio.state.activeKey).toBe('custom_1080x1920')
+  expect(studio.state.sets.custom_1080x1920.layers).toEqual([expect.objectContaining({ brandButtonVariant: 'secondary', x: 110, y: 279 })])
+  expect(studio.state.sets.custom_1200x1200.layers).toHaveLength(0)
+  expect(studio.state.sets.custom_1920x1080.layers).toHaveLength(0)
 })
