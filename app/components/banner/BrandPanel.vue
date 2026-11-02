@@ -1,20 +1,24 @@
 <script setup lang="ts">
-import type { BannerBrandKit, BrandKitFont, BrandKitLogo } from '~/types/banner-studio'
+import type { BannerAsset, BannerBrandKit, BrandKitFont, BrandKitLogo } from '~/types/banner-studio'
 import { brandFontSelection } from '~/utils/banner-brand-kit'
 import { bannerFontFamily } from '~/utils/banner-font-family'
 import { apiErrorDescription } from '~/utils/apiError'
+import { bannerAssetLayer } from '~/utils/banner-media'
 
-interface MotorStackVariant {
-  title: string | null
-  model: string | null
-  badge: string | null
-  year: number | null
-  driveawayPrice: number | null
-  egcPrice: number | null
-  priceScope: string | null
-  priceDisclaimer: string | null
-  colours: Array<{ name: string | null, hex: string | null, hasImage: boolean }>
+interface MotorStackImage {
+  id: string
+  name: string
+  mime: string
+  importable: boolean
+  previewUrl: string | null
 }
+interface MotorStackImages {
+  brand: { id: string, name: string }
+  assets: MotorStackImage[]
+  models: string[]
+  warnings: string[]
+}
+
 interface MotorStackOffer {
   title: string | null
   model: string | null
@@ -26,8 +30,6 @@ interface MotorStackOffer {
   disclaimer: string | null
   hasImage: boolean
 }
-type CatalogKind = 'variants' | 'offers'
-
 const emit = defineEmits<{ browseAssets: [] }>()
 const { state, selectedLayer, activeFormat, applyBrandKit, updateLayer, addLayer } = useBannerStudio()
 const { isLayerLockedByOther } = useBannerRealtime()
@@ -40,24 +42,68 @@ const showManagerModal = ref(false)
 const kitItems = computed(() => [{ label: 'Choose a brand kit', value: '__choose__' }, ...brandKits.value.map(kit => ({ label: kit.name, value: kit.id }))])
 const motorStackBrandId = computed(() => kit.value?.sourceUrl?.match(/^https:\/\/oem-variants\.pages\.dev\/api\/mcp#brand=([a-z0-9-]{1,40})$/)?.[1])
 const tabs = [{ label: 'Logos', value: 'logos' }, { label: 'Colours', value: 'colours' }, { label: 'Fonts', value: 'fonts' }]
-const catalog = ref<{ kitId: string, kind: CatalogKind, items: MotorStackVariant[] | MotorStackOffer[], updatedAt: string | null } | null>(null)
+const catalog = ref<{ kitId: string, items: MotorStackOffer[] } | null>(null)
 const catalogLoading = ref(false)
 const catalogError = ref('')
 let catalogRequest = 0
 const money = (value: number) => new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', maximumFractionDigits: 0 }).format(value)
-const catalogKind = computed<CatalogKind | null>(() => activeTab.value === 'variants' || activeTab.value === 'offers' ? activeTab.value : null)
-const variants = computed(() => catalog.value?.kind === 'variants' && catalog.value.kitId === kit.value?.id ? catalog.value.items as MotorStackVariant[] : [])
-const offers = computed(() => catalog.value?.kind === 'offers' && catalog.value.kitId === kit.value?.id ? catalog.value.items as MotorStackOffer[] : [])
+const images = ref<MotorStackImages | null>(null)
+const imageModel = ref('__all_models__')
+const imageSearch = ref('')
+const imageLoading = ref(false)
+const imageError = ref('')
+const addingImage = ref<string | null>(null)
+const imageModels = ref<string[]>([])
+const imageItems = computed(() => (images.value?.assets || []).filter(asset => asset.mime.startsWith('image/') && asset.importable && imageSearch.value.trim().toLowerCase().split(/\s+/).filter(Boolean).every(word => asset.name.toLowerCase().includes(word))))
+const modelItems = computed(() => [{ label: 'All models', value: '__all_models__' }, ...imageModels.value.map(name => ({ label: name, value: name }))])
+let imageRequest = 0
+async function loadImages() {
+  const brandId = motorStackBrandId.value
+  const request = ++imageRequest
+  images.value = null
+  imageError.value = ''
+  if (activeTab.value !== 'variants' || !brandId) return
+  imageLoading.value = true
+  try {
+    const result = await $fetch<MotorStackImages>('/api/agency/banner-studio/motorstack/media', { query: { brandId, ...(imageModel.value === '__all_models__' ? {} : { model: imageModel.value }) } })
+    if (request !== imageRequest) return
+    if (result.brand.id !== brandId) throw new Error('The images did not match this brand kit. Retry.')
+    images.value = result
+    imageModels.value = [...new Set([...imageModels.value, ...result.models])]
+  } catch (error) {
+    if (request === imageRequest) imageError.value = apiErrorDescription(error, 'Could not load vehicle images. Try again.')
+  } finally {
+    if (request === imageRequest) imageLoading.value = false
+  }
+}
+async function addVehicleImage(image: MotorStackImage) {
+  const brandId = motorStackBrandId.value
+  const selectedKitId = kit.value?.id
+  const format = activeFormat.value
+  if (!brandId || !format || addingImage.value) return
+  addingImage.value = image.id
+  try {
+    const result = await $fetch<{ asset: BannerAsset }>('/api/agency/banner-studio/motorstack/media', { method: 'POST', body: { brandId, ...(imageModel.value === '__all_models__' ? {} : { model: imageModel.value }), assetId: image.id } })
+    if (kit.value?.id !== selectedKitId) return
+    if (!result.asset?.url || !result.asset.mimeType?.startsWith('image/')) throw new Error('The saved image could not be verified. Retry.')
+    addLayer({ ...bannerAssetLayer(result.asset, format), startTime: 0, endTime: state.duration })
+    toast.add({ title: 'Vehicle image added', description: image.name, color: 'success' })
+  } catch (error) {
+    toast.add({ title: 'Could not add vehicle image', description: apiErrorDescription(error, 'Try another image.'), color: 'error' })
+  } finally {
+    addingImage.value = null
+  }
+}
+const offers = computed(() => catalog.value?.kitId === kit.value?.id ? catalog.value.items : [])
 async function loadCatalog() {
-  const kind = catalogKind.value
   const kitId = kit.value?.id
   const request = ++catalogRequest
   catalog.value = null
   catalogError.value = ''
-  if (!motorStackBrandId.value || !kind || !kitId) return
+  if (!motorStackBrandId.value || activeTab.value !== 'offers' || !kitId) return
   catalogLoading.value = true
   try {
-    const result = await $fetch<{ kind: CatalogKind, items: MotorStackVariant[] | MotorStackOffer[], updatedAt: string | null }>('/api/agency/banner-studio/motorstack/creative-catalog', { query: { kitId, kind } })
+    const result = await $fetch<{ items: MotorStackOffer[] }>('/api/agency/banner-studio/motorstack/creative-catalog', { query: { kitId, kind: 'offers' } })
     if (request === catalogRequest) catalog.value = { ...result, kitId }
   } catch (error) {
     if (request === catalogRequest) catalogError.value = apiErrorDescription(error, 'Could not load MotorStack data. Try again.')
@@ -65,12 +111,19 @@ async function loadCatalog() {
     if (request === catalogRequest) catalogLoading.value = false
   }
 }
-watch([() => kit.value?.id, catalogKind], loadCatalog, { immediate: true })
+watch([() => kit.value?.id, activeTab], loadCatalog, { immediate: true })
+watch(motorStackBrandId, () => {
+  imageModel.value = '__all_models__'
+  imageModels.value = []
+  imageSearch.value = ''
+})
+watch([motorStackBrandId, activeTab, imageModel], loadImages, { immediate: true })
 watch(motorStackBrandId, (value) => {
-  if (!value && catalogKind.value) activeTab.value = 'logos'
+  if (!value && (activeTab.value === 'variants' || activeTab.value === 'offers')) activeTab.value = 'logos'
 })
 onBeforeUnmount(() => {
   catalogRequest++
+  imageRequest++
 })
 const editable = computed(() => !!selectedLayer.value && !selectedLayer.value.locked && !isLayerLockedByOther(selectedLayer.value.id))
 const canUseFont = computed(() => editable.value && ['text', 'button'].includes(selectedLayer.value!.type))
@@ -117,7 +170,7 @@ function addLogo(logo: BrandKitLogo, event: MouseEvent) {
 </script>
 
 <template>
-  <div class="p-3 space-y-4 min-w-0">
+  <div class="@container p-3 space-y-4 min-w-0">
     <div class="flex items-center justify-between gap-2">
       <h4 class="text-sm font-semibold">
         Brand kit
@@ -258,12 +311,81 @@ function addLogo(logo: BrandKitLogo, event: MouseEvent) {
           <span v-if="!font.assets?.length && !getFont(font.family)" class="text-xs text-muted">Font file unavailable</span>
         </UButton>
       </div>
-      <div v-else-if="catalogKind" class="space-y-3">
+      <div v-else-if="activeTab === 'variants'" class="space-y-3">
         <p class="text-xs leading-relaxed text-muted">
-          {{ catalogKind === 'variants' ? 'Published vehicle grades and colours from MotorStack. Browse media to add a vehicle image to this layout.' : 'Published national offers from MotorStack. Check the end date and full terms before using offer copy in artwork.' }}
+          Choose a model, then add a vehicle image to this layout.
+        </p>
+        <UFormField label="Model">
+          <USelectMenu
+            v-model="imageModel"
+            :items="modelItems"
+            value-key="value"
+            class="w-full"
+          />
+        </UFormField>
+        <UFormField label="Search images">
+          <UInput
+            v-model="imageSearch"
+            icon="i-lucide-search"
+            placeholder="Grade, colour or image"
+            class="w-full"
+          />
+        </UFormField>
+        <div v-if="imageLoading" role="status" class="flex items-center gap-2 py-5 text-xs text-muted">
+          <UIcon name="i-lucide-loader-circle" class="size-4 animate-spin" /> Loading images…
+        </div>
+        <UAlert
+          v-else-if="imageError"
+          title="Could not load vehicle images"
+          :description="imageError"
+          color="error"
+          variant="subtle"
+          :actions="[{ label: 'Retry', onClick: loadImages }]"
+        />
+        <template v-else-if="images">
+          <p class="text-xs text-muted">
+            {{ imageItems.length }} images
+          </p>
+          <UAlert
+            v-for="warning in images.warnings"
+            :key="warning"
+            :description="warning"
+            color="warning"
+            variant="subtle"
+          />
+          <p v-if="!imageItems.length" class="text-xs text-muted">
+            No images match this model or search.
+          </p>
+          <div v-else class="grid grid-cols-2 gap-2 @lg:grid-cols-3">
+            <UButton
+              v-for="image in imageItems"
+              :key="image.id"
+              color="neutral"
+              variant="outline"
+              class="min-w-0 flex-col items-stretch gap-1.5 p-1.5 text-left"
+              :loading="addingImage === image.id"
+              :disabled="!!addingImage"
+              :aria-label="`Add ${image.name} to layout`"
+              @click="addVehicleImage(image)"
+            >
+              <span class="flex aspect-square items-center justify-center overflow-hidden rounded bg-default"><img
+                v-if="image.previewUrl"
+                :src="image.previewUrl"
+                :alt="image.name"
+                loading="lazy"
+                class="h-full w-full object-contain"
+              ></span>
+              <span class="truncate text-[11px] font-normal" :title="image.name">{{ image.name }}</span>
+            </UButton>
+          </div>
+        </template>
+      </div>
+      <div v-else-if="activeTab === 'offers'" class="space-y-3">
+        <p class="text-xs leading-relaxed text-muted">
+          Published national offers from MotorStack. Check the end date and full terms before using offer copy in artwork.
         </p>
         <div v-if="catalogLoading" role="status" class="flex items-center gap-2 py-5 text-xs text-muted">
-          <UIcon name="i-lucide-loader-circle" class="size-4 animate-spin" /> Loading {{ catalogKind }}…
+          <UIcon name="i-lucide-loader-circle" class="size-4 animate-spin" /> Loading offers…
         </div>
         <UAlert
           v-else-if="catalogError"
@@ -275,49 +397,8 @@ function addLogo(logo: BrandKitLogo, event: MouseEvent) {
         />
         <template v-else-if="catalog">
           <p v-if="!catalog.items.length" class="text-xs text-muted">
-            No published {{ catalogKind }} are available for this brand.
+            No published offers are available for this brand.
           </p>
-          <template v-if="catalogKind === 'variants'">
-            <UCard v-for="(variant, index) in variants" :key="`${variant.title}-${index}`" :ui="{ body: 'p-3 sm:p-3' }">
-              <div class="space-y-2">
-                <div class="flex items-start justify-between gap-2">
-                  <div class="min-w-0">
-                    <p class="text-sm font-semibold leading-snug">
-                      {{ variant.title || [variant.model, variant.badge].filter(Boolean).join(' ') }}
-                    </p>
-                    <p class="text-xs text-muted">
-                      {{ [variant.year, variant.badge].filter(Boolean).join(' · ') }}
-                    </p>
-                  </div>
-                  <UBadge
-                    v-if="variant.driveawayPrice !== null || variant.egcPrice !== null"
-                    color="neutral"
-                    variant="soft"
-                    class="shrink-0"
-                  >
-                    {{ money((variant.driveawayPrice ?? variant.egcPrice)!) }} {{ variant.driveawayPrice !== null ? 'driveaway' : 'EGC' }}
-                  </UBadge>
-                </div>
-                <p v-if="variant.priceScope" class="text-xs text-muted">
-                  {{ variant.priceScope }}
-                </p>
-                <p v-if="variant.priceDisclaimer" class="whitespace-pre-line text-[11px] leading-relaxed text-muted">
-                  {{ variant.priceDisclaimer }}
-                </p>
-                <div v-if="variant.colours.length" class="flex flex-wrap gap-1.5" :aria-label="`Colours for ${variant.title}`">
-                  <UBadge
-                    v-for="(colour, colourIndex) in variant.colours"
-                    :key="`${colour.name}-${colourIndex}`"
-                    color="neutral"
-                    variant="outline"
-                    class="gap-1"
-                  >
-                    <span v-if="colour.hex" class="size-3 rounded-full border border-default" :style="{ backgroundColor: colour.hex }" />{{ colour.name || 'Unnamed colour' }}
-                  </UBadge>
-                </div>
-              </div>
-            </UCard>
-          </template>
           <template v-else>
             <UCard v-for="(offer, index) in offers" :key="`${offer.title}-${index}`" :ui="{ body: 'p-3 sm:p-3' }">
               <div class="space-y-2">

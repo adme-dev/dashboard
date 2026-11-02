@@ -2706,7 +2706,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Vehicle Variants and National Offers',
-        content: 'When an imported MotorStack kit is selected, its editor sidebar also shows published vehicle grades, prices and colours, plus national offer copy, end dates and full terms. Browse matching vehicle imagery through the MotorStack media library. Review offer details before adding copy to artwork; this reference view does not change an existing design.'
+        content: 'When an imported MotorStack kit is selected, its resizable editor sidebar shows vehicle images for that brand. Filter by model or search grade and colour, then add an image directly to the current layout. National offers remain a separate reference with end dates and full terms; review details before adding offer copy to artwork.'
       },
       {
         title: 'Extract From a Website',
