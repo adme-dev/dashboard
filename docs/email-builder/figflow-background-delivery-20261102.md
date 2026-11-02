@@ -353,3 +353,15 @@ workflow/sending/MCP. The source-backed audit and online findings are linked fro
 the current queue and R&D adoption note. Existing tools/services own that journey;
 three small reference/context gaps are research follow-ups, not a new finance,
 sending or orchestration system. The audit worker settled and was released.
+
+## Compile correction checkpoint
+
+Library/history source and database checks are integrated in8e7186534; eb5cd1d34
+reconciles current main70a0dc300, and e8600366b pins native source. PR827 is
+still draft. Native run41412341720 failed before Rust test execution with four
+engine type/lifetime errors; browser packaging was correctly skipped. The exact
+corrections and regenerated input hashes await Linux verification. The separately
+prepared actual-WASM designer harness has lint/type evidence only.
+
+Live save-warning PR828 uses current-main ef81a20d and38 tests/5 files; full CI
+run41413045976 is pending. No merge/deployment or live fix is claimed.

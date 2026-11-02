@@ -4,7 +4,7 @@
     "apps/figcraft-web/src/main.rs": "4d2724eaecc4a0fe68ba536df6868662dbe137c42af1c05d4b6fff19426542af",
     "apps/figcraft-web/src/web.rs": "e586f93cc0dfeffc37626e1976a064c9d7f56afd16a33b711116613df053dce0",
     "apps/figcraft-web/src/bridge_web.rs": "addc6fd5fcb8c8d8f67a8d1424fe513cce4486cc75bb6c161f99e495c119c3f7",
-    "crates/engine/src/cmd/edm.rs": "e665c48837cc4dd0336fe38e319da21d2d5c5cb5624d731856d09e04f0b4e065",
+    "crates/engine/src/cmd/edm.rs": "d5a7205cd08782a7d3307a21828af72ed69a09e58411b3979d1685d15ad9a97e",
     "crates/engine/src/cmd/mod.rs": "81a810c46bf1e40839811672ec97f600bba7009fc87e4bd00f59421c6a198cdb",
     "crates/engine/src/lib.rs": "12893dfd9c8d9b8d72bcab2453ed9295b9c6be1da15a2e8cc70c013ffff1939a",
     "crates/ui-egui/src/lib.rs": "327ebc6f1b968dfc30e363618b53da88ea1908becd4792864c80d3fca84f7627",
@@ -62,7 +62,7 @@
     "edm_cmd_z_while_editing_canvas_text_ends_the_edit_and_undoes_the_typing_generically",
     "edm_panel_field_commit_logs_only_a_changed_value"
   ],
-  "patchSha256": "2049dd77a06cd13eb020fb27bb6200bf5998e1f366cb4ed08ccc72a4fab2b57a",
+  "patchSha256": "c6ce160de138264d95e31a5f42ab08ca5a2e6fc1f5a69062c0c361e5f3e2bc18",
   "relaySha256": "438b71f2ead434fcb41a60d0c98bff67ba8ba18068cf7f45aee9c185901b7211",
   "release": "0.11.2-edm2",
   "status": "source-frozen-awaiting-linux-and-wasm"

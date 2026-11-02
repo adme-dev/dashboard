@@ -219,3 +219,18 @@ The earlier worker hash table describes its freeze, before this coordinator
 addition. Deferred lows L2-residual and L3–L7 remain recorded; none allows a server
 policy bypass. Full URL grammar, null-column normalization and performance still
 need their own evidence if encountered during actual-WASM acceptance.
+
+## Linux compile failure and scoped correction
+
+Native CI run41412341720 failed with exit101 before executing Rust tests; the
+browser package job was skipped. The downloaded `test-browser_save_tests.log`
+reported E0106 for the borrowed `style_string` return and three E0308 errors:
+a required column index passed as usize to an Option parameter and JSON arrays
+returned as Vec<Value> through a Vec<String> signature.
+
+The coordinator bound the return lifetime to the block, retained the explicit
+required-index check inside Some, and kept mutable child lists as JSON values,
+with string insertion and string extraction at the boundary. Existing structural
+fixtures exercise the add/move/remove/duplicate paths; their execution still
+depends on the next Linux run. Patch dry run, strict workflow pins, shell syntax,
+diff checks and19 relay tests pass. No Rust or WASM pass is claimed.

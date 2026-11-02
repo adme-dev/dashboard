@@ -273,7 +273,7 @@
 +    style_value(block, field).and_then(Value::as_f64).filter(|v| v.is_finite())
 +}
 +
-+fn style_string(block: &Value, field: &str) -> Option<&str> {
++fn style_string<'a>(block: &'a Value, field: &str) -> Option<&'a str> {
 +    style_value(block, field).and_then(Value::as_str)
 +}
 +
@@ -1856,7 +1856,7 @@
 +    let block = design.get("blocks").and_then(|b| b.get(parent_id)).ok_or_else(|| designer_bad("insert parent missing"))?;
 +    let kind = block.get("type").and_then(Value::as_str).unwrap_or_default();
 +    if kind == "ColumnsContainer" {
-+        designer_child_ids_at(block, column_index.ok_or_else(|| designer_bad("columnIndex is required"))?)?;
++        designer_child_ids_at(block, Some(column_index.ok_or_else(|| designer_bad("columnIndex is required"))?))?;
 +        return Ok(());
 +    }
 +    if !matches!(kind, "EmailLayout" | "Container") || column_index.is_some() {
@@ -1865,7 +1865,7 @@
 +    Ok(())
 +}
 +
-+fn designer_child_list_mut<'a>(design: &'a mut Value, parent_id: &str, column_index: Option<usize>) -> Result<&'a mut Vec<String>> {
++fn designer_child_list_mut<'a>(design: &'a mut Value, parent_id: &str, column_index: Option<usize>) -> Result<&'a mut Vec<Value>> {
 +    let parent = design.get_mut("blocks").and_then(|blocks| blocks.get_mut(parent_id)).ok_or_else(|| designer_bad("insert parent missing"))?;
 +    let is_columns = parent.get("type").and_then(Value::as_str) == Some("ColumnsContainer");
 +    let data = parent.get_mut("data").and_then(Value::as_object_mut).ok_or_else(|| designer_bad("parent data missing"))?;
@@ -1883,11 +1883,11 @@
 +    data.get_mut("childrenIds").and_then(Value::as_array_mut).ok_or_else(|| designer_bad("parent children missing"))
 +}
 +
-+fn insert_designer_child(list: &mut Vec<String>, index: usize, block_id: String) -> Result<()> {
++fn insert_designer_child(list: &mut Vec<Value>, index: usize, block_id: String) -> Result<()> {
 +    if index > list.len() {
 +        return Err(designer_bad("insert index out of bounds"));
 +    }
-+    list.insert(index, block_id);
++    list.insert(index, Value::String(block_id));
 +    Ok(())
 +}
 +
@@ -2228,7 +2228,7 @@
 +            if op == "remove-section" {
 +                let location = locate_designer_block(&state.current, block_id)?;
 +                let list = designer_child_list_mut(&mut state.current, &location.parent_id, location.column_index)?;
-+                if list.get(location.index).map(String::as_str) != Some(block_id) {
++                if list.get(location.index).and_then(Value::as_str) != Some(block_id) {
 +                    return Err(designer_bad("source location changed"));
 +                }
 +                list.remove(location.index);
@@ -2249,7 +2249,7 @@
 +                if op == "move-section" {
 +                    let location = locate_designer_block(&state.current, block_id)?;
 +                    let list = designer_child_list_mut(&mut state.current, &location.parent_id, location.column_index)?;
-+                    if list.get(location.index).map(String::as_str) != Some(block_id) {
++                    if list.get(location.index).and_then(Value::as_str) != Some(block_id) {
 +                        return Err(designer_bad("source location changed"));
 +                    }
 +                    list.remove(location.index);
