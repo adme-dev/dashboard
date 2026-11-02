@@ -23,7 +23,7 @@ function button(label: string) {
 function choose(field: string, value: string) {
   host.querySelector<HTMLButtonElement>(`[data-field="${field}"] [data-value="${value}"]`)!.click()
 }
-async function mount(options: { read?: (query: { brandId: string, model?: string }) => Promise<ReturnType<typeof response>>, write?: ReturnType<typeof vi.fn> } = {}) {
+async function mount(options: { read?: (query: { brandId: string, model?: string }) => Promise<ReturnType<typeof response>>, write?: ReturnType<typeof vi.fn>, props?: Record<string, unknown> } = {}) {
   const queries: Array<{ brandId: string, model?: string }> = []
   const write = options.write || vi.fn(async () => ({ asset: saved }))
   vi.stubGlobal('$fetch', write)
@@ -49,7 +49,8 @@ async function mount(options: { read?: (query: { brandId: string, model?: string
     } }
   })
   const imported = vi.fn()
-  app = Vue.createApp(Picker, { open: true, onImported: imported })
+  const closed = vi.fn()
+  app = Vue.createApp(Picker, { 'open': true, 'onImported': imported, 'onUpdate:open': closed, ...options.props })
   app.component('UModal', Vue.defineComponent({ props: ['open', 'dismissible'], setup: (props, { slots }) => () => props.open ? Vue.h('section', { 'data-dismissible': props.dismissible }, [slots.body?.(), slots.footer?.()]) : null }))
   app.component('UButton', Vue.defineComponent({ props: ['disabled', 'label', 'href'], setup: (props, { slots, attrs }) => () => Vue.h(props.href ? 'a' : 'button', { ...attrs, href: props.href, disabled: props.disabled }, props.label || slots.default?.()) }))
   app.component('UFormField', Vue.defineComponent({ props: ['label'], setup: (props, { slots }) => () => Vue.h('div', { 'data-field': props.label }, slots.default?.()) }))
@@ -57,9 +58,10 @@ async function mount(options: { read?: (query: { brandId: string, model?: string
   app.component('UInput', Vue.defineComponent({ props: ['modelValue'], emits: ['update:modelValue'], setup: (props, { emit }) => () => Vue.h('input', { value: props.modelValue, onInput: (event: Event) => emit('update:modelValue', (event.target as HTMLInputElement).value) }) }))
   app.component('UAlert', Vue.defineComponent({ props: ['title', 'description', 'actions'], setup: props => () => Vue.h('aside', [props.title, props.description, ...(props.actions || []).map((action: { label: string, onClick: () => void }) => Vue.h('button', { onClick: action.onClick }, action.label))]) }))
   app.component('UIcon', Vue.defineComponent({ setup: () => () => Vue.h('span') }))
+  app.component('BannerMotorStackLogo', Vue.defineComponent({ setup: () => () => Vue.h('span', 'MOTORSTACK') }))
   app.mount(host)
   await settle()
-  return { write, imported, queries }
+  return { write, imported, queries, closed }
 }
 beforeEach(() => {
   for (const [name, value] of Object.entries(Vue)) vi.stubGlobal(name, value)
@@ -72,6 +74,19 @@ afterEach(() => {
 })
 
 describe('MotorStack media picker', () => {
+  it('opens the selected kit in an image-only modal and adds the chosen image to the layout', async () => {
+    const { queries, write, imported, closed } = await mount({ props: { initialBrandId: 'gwm', initialModel: 'Cannon', initialModels: ['Cannon', 'Tank'], imagesOnly: true, addToCanvas: true } })
+    expect(queries).toEqual([{ brandId: 'gwm', model: 'Cannon' }])
+    expect(host.querySelector('[data-field="Brand"]')).toBeNull()
+    expect(host.querySelector('[data-field="Media type"]')).toBeNull()
+    expect(host.textContent).toContain('MOTORSTACK')
+    expect(host.textContent).not.toContain('Cannon brochure.pdf')
+    button('Add to layout').click()
+    await settle()
+    expect(write).toHaveBeenCalledWith('/api/agency/banner-studio/motorstack/media', { method: 'POST', body: { brandId: 'gwm', model: 'Cannon', assetId: image.id } })
+    expect(imported).toHaveBeenCalledWith(saved)
+    expect(closed).toHaveBeenCalledWith(false)
+  })
   it('refreshes the Assets panel library after import without adding a canvas layer', async () => {
     const addLayer = vi.fn()
     const api = vi.fn(async (_url: string) => ({ assets: [] }))

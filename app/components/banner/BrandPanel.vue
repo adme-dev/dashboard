@@ -50,6 +50,8 @@ const money = (value: number) => new Intl.NumberFormat('en-AU', { style: 'curren
 const images = ref<MotorStackImages | null>(null)
 const imageModel = ref('__all_models__')
 const imageSearch = ref('')
+const imageModalOpen = ref(false)
+const modalKitId = ref<string>()
 const imageLoading = ref(false)
 const imageError = ref('')
 const addingImage = ref<string | null>(null)
@@ -94,6 +96,16 @@ async function addVehicleImage(image: MotorStackImage) {
     addingImage.value = null
   }
 }
+function openImageModal() {
+  modalKitId.value = kit.value?.id
+  imageModalOpen.value = true
+}
+function addModalImage(asset: BannerAsset) {
+  const format = activeFormat.value
+  if (!format || kit.value?.id !== modalKitId.value || !asset.url || !asset.mimeType.startsWith('image/')) return
+  addLayer({ ...bannerAssetLayer(asset, format), startTime: 0, endTime: state.duration })
+  toast.add({ title: 'Vehicle image added', description: asset.name, color: 'success' })
+}
 const offers = computed(() => catalog.value?.kitId === kit.value?.id ? catalog.value.items : [])
 async function loadCatalog() {
   const kitId = kit.value?.id
@@ -113,6 +125,7 @@ async function loadCatalog() {
 }
 watch([() => kit.value?.id, activeTab], loadCatalog, { immediate: true })
 watch(motorStackBrandId, () => {
+  imageModalOpen.value = false
   imageModel.value = '__all_models__'
   imageModels.value = []
   imageSearch.value = ''
@@ -224,9 +237,7 @@ function addLogo(logo: BrandKitLogo, event: MouseEvent) {
         :ui="{ trigger: 'min-w-0 flex-1 px-2', list: 'w-full' }"
       />
       <div v-if="motorStackBrandId" class="space-y-2 border-t border-default pt-3">
-        <p class="text-[11px] font-semibold uppercase tracking-wide text-muted">
-          MotorStack
-        </p>
+        <BannerMotorStackLogo />
         <div class="grid grid-cols-2 gap-2">
           <UButton
             label="Variants"
@@ -315,6 +326,14 @@ function addLogo(logo: BrandKitLogo, event: MouseEvent) {
         <p class="text-xs leading-relaxed text-muted">
           Choose a model, then add a vehicle image to this layout.
         </p>
+        <UButton
+          label="Open large image browser"
+          icon="i-lucide-expand"
+          variant="soft"
+          size="xs"
+          class="w-full justify-center"
+          @click="openImageModal"
+        />
         <UFormField label="Model">
           <USelectMenu
             v-model="imageModel"
@@ -482,5 +501,15 @@ function addLogo(logo: BrandKitLogo, event: MouseEvent) {
         </div>
       </template>
     </UModal>
+    <BannerMotorStackMediaPicker
+      v-if="motorStackBrandId"
+      v-model:open="imageModalOpen"
+      :initial-brand-id="motorStackBrandId"
+      :initial-model="imageModel === '__all_models__' ? undefined : imageModel"
+      :initial-models="imageModels"
+      images-only
+      add-to-canvas
+      @imported="addModalImage"
+    />
   </div>
 </template>
