@@ -11,6 +11,35 @@ const { useBannerStudio } = await import('../../app/composables/useBannerStudio'
 const asset = { id: 'car', name: 'Renault · Duster · White', url: '/car.webp', mimeType: 'image/webp' } as BannerAsset
 
 describe('MotorStack image placement', () => {
+  it('drops media at the cursor in the target canvas and respects single edit', () => {
+    const studio = useBannerStudio()
+    studio.loadProject({ id: 'media-drop', name: 'Drop', canvasData: {
+      mrec: { layers: [] }, leader: { layers: [] }
+    } } as BannerProject)
+    studio.state.layoutView = 'single'
+    expect(studio.addMediaToLayouts(asset, 'leader', { x: 500, y: 45 })).toBe(1)
+    expect(studio.state.sets.mrec!.layers).toHaveLength(0)
+    const layer = studio.state.sets.leader!.layers[0]!
+    expect(layer.x + layer.w / 2).toBeCloseTo(500)
+    expect(layer.y + layer.h / 2).toBeCloseTo(45)
+    expect(studio.state.activeKey).toBe('leader')
+    studio.undo()
+    expect(studio.state.sets.leader!.layers).toHaveLength(0)
+    studio.redo()
+    expect(studio.state.activeKey).toBe('leader')
+    expect(studio.state.sets.leader!.layers).toHaveLength(1)
+  })
+
+  it('maps an all-layout drop proportionally and keeps media inside each canvas', () => {
+    const studio = useBannerStudio()
+    studio.loadProject({ id: 'media-drop-all', name: 'Drop all', canvasData: {
+      mrec: { layers: [] }, leader: { layers: [] }
+    } } as BannerProject)
+    studio.state.layoutView = 'all'
+    expect(studio.addMediaToLayouts(asset, 'mrec', { x: 0, y: 0 })).toBe(2)
+    expect(studio.state.setKeys.every(key => studio.state.sets[key]!.layers[0]!.x === 0 && studio.state.sets[key]!.layers[0]!.y === 0)).toBe(true)
+  })
+
   it('adds a linked, format-sized image to every canvas in one undo step from single edit view', () => {
     const studio = useBannerStudio()
     studio.loadProject({ id: 'motorstack-all', name: 'All layouts', canvasData: {

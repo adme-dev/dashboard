@@ -202,8 +202,16 @@ export function useBannerStudio() {
   /** Place one linked MotorStack image on every canvas size, regardless of edit view. */
   function addMotorStackImageToAllLayouts(asset: BannerAsset): number {
     if (!asset.url || !asset.mimeType.startsWith('image/')) throw new Error('Choose an available vehicle image.')
-    const keys = [...state.setKeys]
-    if (!keys.length || !keys.includes(state.activeKey)) throw new Error('Open a banner design before adding an image.')
+    return addMediaToLayouts(asset, state.activeKey, undefined, true)
+  }
+
+  function addMediaToLayouts(asset: BannerAsset, targetKey = state.activeKey, point?: { x: number, y: number }, allLayouts = state.layoutView === 'all'): number {
+    const origin = resolveBannerFormat(targetKey)
+    if (!origin || !state.setKeys.includes(targetKey)) throw new Error('Choose an available canvas.')
+    if (!asset.url) throw new Error('Choose available media.')
+    bannerAssetLayer(asset, origin)
+    const keys = allLayouts ? [...state.setKeys] : [targetKey]
+    if (!keys.length) throw new Error('Open a banner design before adding media.')
     const activeRanges = slideRanges(resolveSlides(state.sets[state.activeKey]))
     const activeSlideIndex = Math.max(0, activeRanges.findIndex(slide => slide.id === currentSlide.value?.id))
     const targets = keys.map((key) => {
@@ -214,13 +222,18 @@ export function useBannerStudio() {
       const slide = ranges[Math.min(activeSlideIndex, ranges.length - 1)]
       return { key, board, format, slide, hasMultipleSlides: ranges.length > 1 || !!board.slides?.length }
     })
-    const linkId = `motorstack:${nextId()}`
+    const linkId = `media:${nextId()}`
     const added: Array<{ key: string, layer: Layer }> = []
     withCanvasUndo(() => {
       for (const { key, board, format, slide, hasMultipleSlides } of targets) {
         if (hasMultipleSlides && !board.slides?.length) board.slides = JSON.parse(JSON.stringify(resolveSlides(board)))
+        const partial = bannerAssetLayer(asset, format)
+        if (point && partial.type !== 'audio') {
+          partial.x = Math.max(0, Math.min(format.w - partial.w!, point.x / origin.w * format.w - partial.w! / 2))
+          partial.y = Math.max(0, Math.min(format.h - partial.h!, point.y / origin.h * format.h - partial.h! / 2))
+        }
         const layer = migrateLayer({
-          ...bannerAssetLayer(asset, format),
+          ...partial,
           id: nextId(), linkId,
           zIndex: Math.max(0, ...board.layers.filter(item => !item.slideTransitionFor).map(item => item.zIndex)) + 1,
           opacity: 1,
@@ -230,9 +243,11 @@ export function useBannerStudio() {
         })
         board.layers.push(layer)
         added.push({ key, layer })
-        if (key === state.activeKey) state.selectedLayerId = layer.id
+        if (key === targetKey) state.selectedLayerId = layer.id
       }
+      state.activeKey = targetKey
     })
+    state.activeTool = 'select'
     for (const { key, layer } of added) {
       try {
         useBannerRealtime().sendLayerAdd(layer, key)
@@ -1259,6 +1274,7 @@ export function useBannerStudio() {
     // Layer ops
     addLayer,
     addMotorStackImageToAllLayouts,
+    addMediaToLayouts,
     addMotorStackOfferToAllLayouts,
     addBrandGuideButton,
     removeLayer,

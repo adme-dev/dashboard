@@ -3,6 +3,7 @@ import type { BannerAsset } from '~/types/banner-studio'
 import type { AudioAsset } from '~/types'
 import { createBannerUploadSession } from '~/utils/bannerUpload'
 import { bannerAssetLayer, bannerAssetType, type BannerMediaType } from '~/utils/banner-media'
+import { startBannerMediaDrag, endBannerMediaDrag } from '~/utils/banner-media-drag'
 
 const props = withDefaults(defineProps<{ mediaType?: BannerMediaType, selectionOnly?: boolean }>(), { mediaType: 'all', selectionOnly: false })
 const emit = defineEmits<{ select: [asset: BannerAsset] }>()
@@ -337,6 +338,10 @@ async function deleteAsset(asset: BannerAsset) {
           variant="ghost"
           color="neutral"
           class="w-full block p-0 rounded-none text-left"
+          :draggable="!selectionOnly"
+          :title="selectionOnly ? undefined : 'Drag onto a canvas or click to insert'"
+          @dragstart="startBannerMediaDrag($event, { kind: 'library', asset }, state.project?.id)"
+          @dragend="endBannerMediaDrag"
           @click="handleAssetClick(asset)"
         >
           <div class="aspect-square bg-(--ui-bg) flex items-center justify-center">
@@ -344,6 +349,7 @@ async function deleteAsset(asset: BannerAsset) {
               v-if="asset.mimeType?.startsWith('image') && (safeMediaUrl(asset.thumbnailUrl) || safeMediaUrl(asset.url))"
               :src="safeMediaUrl(asset.thumbnailUrl) || safeMediaUrl(asset.url)"
               :alt="asset.name"
+              draggable="false"
               class="w-full h-full object-cover"
             >
             <video

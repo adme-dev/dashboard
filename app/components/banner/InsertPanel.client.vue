@@ -1,7 +1,16 @@
 <script setup lang="ts">
 import type { BannerMediaType } from '~/utils/banner-media'
+import { motorstackBrandId } from '~~/shared/bannerBrandGuides'
+import { brandStyleProfile } from '~~/shared/bannerBrandProfiles'
+import type { BrandButtonVariant } from '~/utils/banner-brand-kit'
 
 const { insertElement } = useBannerInsert()
+const { addBrandGuideButton } = useBannerStudio()
+const { kit } = useBannerProjectBrand()
+const toast = useToast()
+const emit = defineEmits<{ browseBrand: [tab: 'logos' | 'variants' | 'offers'] }>()
+const brandId = computed(() => motorstackBrandId(kit.value?.sourceUrl))
+const hasButtonPresets = computed(() => !!kit.value?.id && !!brandStyleProfile(brandId.value))
 const view = ref<BannerMediaType | 'home' | 'elements'>('home')
 const assetsPanel = ref<{ openUpload: () => void, openMotorStack: () => void }>()
 const categories = [
@@ -20,10 +29,14 @@ async function motorstack() {
   await nextTick()
   assetsPanel.value?.openMotorStack()
 }
+function addStyleButton(variant: BrandButtonVariant) {
+  if (!kit.value || !addBrandGuideButton(kit.value, variant)) return
+  toast.add({ title: 'Brand button added', description: 'Edit its label in the inspector.', color: 'success' })
+}
 </script>
 
 <template>
-  <section aria-label="Insert panel" class="min-w-0">
+  <section aria-label="Insert panel" class="@container min-w-0">
     <div class="flex items-center gap-2 p-3 border-b border-default">
       <UButton
         v-if="view !== 'home'"
@@ -58,6 +71,53 @@ async function motorstack() {
         >
           <UIcon :name="item.icon" class="size-5" />{{ item.label }}
         </UButton>
+      </div>
+      <div class="space-y-2 border-t border-default pt-4">
+        <div class="flex items-center justify-between gap-2">
+          <h3 class="text-xs font-semibold text-highlighted">
+            Brand resources
+          </h3>
+          <span v-if="kit" class="truncate text-[11px] text-muted">{{ kit.name }}</span>
+        </div>
+        <BannerBrandStyleGuide
+          v-if="hasButtonPresets && kit"
+          :kit="kit"
+          compact
+          interactive
+          @add-button="addStyleButton"
+        />
+        <p v-else class="text-xs leading-relaxed text-muted">
+          {{ kit ? 'This kit has no reviewed button presets yet. Its logos, colours and fonts are ready in Brand.' : 'Choose a brand kit to load its saved design resources.' }}
+        </p>
+        <UButton
+          :label="kit ? 'Logos, colours & fonts' : 'Choose a brand kit'"
+          icon="i-lucide-swatch-book"
+          color="neutral"
+          variant="outline"
+          size="sm"
+          class="w-full justify-start"
+          @click="emit('browseBrand', 'logos')"
+        />
+        <div v-if="brandId" class="grid grid-cols-1 gap-2 @lg:grid-cols-2">
+          <UButton
+            label="Vehicle images"
+            icon="i-lucide-car-front"
+            color="neutral"
+            variant="outline"
+            size="sm"
+            class="justify-center"
+            @click="emit('browseBrand', 'variants')"
+          />
+          <UButton
+            label="Offer artwork"
+            icon="i-lucide-tags"
+            color="neutral"
+            variant="outline"
+            size="sm"
+            class="justify-center"
+            @click="emit('browseBrand', 'offers')"
+          />
+        </div>
       </div>
       <div class="space-y-1">
         <UButton

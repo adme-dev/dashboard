@@ -284,9 +284,10 @@ function buildPresetLayer(tl: gsap.core.Timeline, el: HTMLElement, layer: Layer)
   const ease = resolveEase(layer.ease || 'power2.out')
   const outDur = timing.exitDuration
   const opKey = isBg ? 'autoAlpha' : 'opacity'
+  const noEntrance = !preset?.special && (!preset || Object.keys(preset.from).length === 0)
 
-  // Initial hidden state — skip x/y when motion path drives position
-  const init: Record<string, any> = { [opKey]: 0, scale: 1, rotation: layer.rotation || 0, immediateRender: false }
+  // Static layers are visible on their first frame, including a paused playhead.
+  const init: Record<string, any> = { [opKey]: noEntrance && startTime === 0 ? layer.opacity : 0, scale: 1, rotation: layer.rotation || 0, immediateRender: false }
   if (!hasMP) { init.x = 0; init.y = 0 }
   tl.set(el, init, 0)
 
@@ -316,10 +317,7 @@ function buildPresetLayer(tl: gsap.core.Timeline, el: HTMLElement, layer: Layer)
       tl.to(el, { [opKey]: layer.opacity, duration: 0.1 }, startTime)
     }
   } else {
-    tl.to(el,
-      { [opKey]: layer.opacity, duration: 0.1 },
-      startTime,
-    )
+    tl.set(el, { [opKey]: layer.opacity, immediateRender: false }, startTime)
   }
 
   // Exit animation — strip x/y from exit preset when motion path active
