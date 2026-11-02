@@ -1,23 +1,9 @@
 <script setup lang="ts">
-import { resolveBannerTheme, bannerThemeCookie, bannerThemeCookieOptions } from '~/utils/banner-theme'
-
-const preference = useCookie(bannerThemeCookie, bannerThemeCookieOptions)
 const colorMode = useColorMode()
-const route = useRoute()
-const dark = computed(() => resolveBannerTheme(preference.value) === 'dark')
-// The agency user menu can change the shared preference while the gallery is
-// mounted. Keep the Banner Studio cookie in step before navigating to an editor.
-watch(() => colorMode.preference, (value) => {
-  const next = resolveBannerTheme(value)
-  preference.value = next
-  route.meta.colorMode = next
-  colorMode.value = next
-})
+const dark = computed(() => colorMode.value === 'dark')
+
 function toggleTheme() {
-  const next = dark.value ? 'light' : 'dark'
-  preference.value = next
-  route.meta.colorMode = next
-  colorMode.value = next
+  colorMode.preference = dark.value ? 'light' : 'dark'
 }
 </script>
 

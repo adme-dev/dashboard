@@ -6,6 +6,7 @@ import { apiErrorDescription } from '~/utils/apiError'
 import { matchesMotorStackPaint, motorStackPaintName, motorStackPaintNames } from '~/utils/banner-motorstack-colours'
 import { loadedImageMetadata } from '~/utils/banner-image-metadata'
 import type { BannerMotorStackOffer } from '~/utils/banner-offer'
+import { startBannerMediaDrag, endBannerMediaDrag } from '~/utils/banner-media-drag'
 
 interface MotorStackImage {
   id: string
@@ -453,12 +454,17 @@ function addLogo(logo: BrandKitLogo, event: MouseEvent) {
               :loading="addingImage === image.id"
               :disabled="!!addingImage"
               :aria-label="`Add ${image.name} to all layouts`"
+              :draggable="!addingImage"
+              title="Drag onto a canvas or click to add to all layouts"
+              @dragstart="startBannerMediaDrag($event, { kind: 'motorstack', brandId: motorStackBrandId!, ...(imageModel === '__all_models__' ? {} : { model: imageModel }), assetId: image.id }, state.project?.id)"
+              @dragend="endBannerMediaDrag"
               @click="addVehicleImage(image)"
             >
               <span class="flex aspect-square items-center justify-center overflow-hidden rounded bg-default"><img
                 v-if="image.previewUrl"
                 :src="image.previewUrl"
                 :alt="image.name"
+                draggable="false"
                 loading="lazy"
                 decoding="async"
                 class="h-full w-full object-contain"

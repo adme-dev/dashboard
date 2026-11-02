@@ -1,90 +1,55 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { computed, createApp, h, nextTick, reactive, ref, watch } from 'vue'
+import { computed, createApp, h, nextTick, reactive } from 'vue'
 import ThemeToggle from '../../app/components/banner/ThemeToggle.vue'
 
-const cookie = ref<unknown>(undefined)
-const mode = reactive({ value: 'light', preference: 'dark' })
-const route = { meta: { colorMode: 'light' } }
+const mode = reactive({ value: 'dark', preference: 'dark' })
 const apps: ReturnType<typeof createApp>[] = []
+
 beforeEach(() => {
-  cookie.value = undefined
-  mode.value = 'light'
+  mode.value = 'dark'
   mode.preference = 'dark'
-  route.meta.colorMode = 'light'
   vi.stubGlobal('computed', computed)
-  vi.stubGlobal('watch', watch)
-  vi.stubGlobal('useCookie', vi.fn(() => cookie))
   vi.stubGlobal('useColorMode', () => mode)
-  vi.stubGlobal('useRoute', () => route)
-  vi.stubGlobal('defineNuxtRouteMiddleware', (callback: unknown) => callback)
 })
+
 afterEach(() => {
   apps.splice(0).forEach(app => app.unmount())
   document.body.replaceChildren()
   vi.unstubAllGlobals()
 })
 
-it('defaults only Banner Studio routes to light and restores an explicit dark choice', async () => {
-  const middleware = (await import('../../app/middleware/banner-theme.global')).default
-  const to = { path: '/creative/banner-studio/project-a', meta: {} as { colorMode?: string } }
-  await middleware(to as never, {} as never)
-  expect(to.meta.colorMode).toBe('light')
-  cookie.value = 'dark'
-  await middleware(to as never, {} as never)
-  expect(to.meta.colorMode).toBe('dark')
-  cookie.value = 'invalid'
-  await middleware(to as never, {} as never)
-  expect(to.meta.colorMode).toBe('light')
-  const library = { path: '/agency/banner-studio', meta: {} as { colorMode?: string } }
-  await middleware(library as never, {} as never)
-  expect(library.meta.colorMode).toBe('light')
-  const viewer = { path: '/creative/banner-studio/view/one', meta: {} as { colorMode?: string } }
-  await middleware(viewer as never, {} as never)
-  expect(viewer.meta.colorMode).toBe('light')
-  const agency = { path: '/agency', meta: {} }
-  await middleware(agency as never, {} as never)
-  expect(agency.meta).toEqual({})
-  const other = { path: '/creative/banner-studio-other', meta: {} }
-  await middleware(other as never, {} as never)
-  expect(other.meta).toEqual({})
-})
-
-it('toggles immediately, persists a Banner Studio cookie, and leaves the agency preference alone', async () => {
+function mountToggle() {
   const host = document.createElement('div')
   document.body.append(host)
   const app = createApp({ render: () => h(ThemeToggle) })
   app.component('UButton', { template: '<button><slot /></button>' })
   apps.push(app)
   app.mount(host)
-  const button = host.querySelector('button')!
+  return host.querySelector('button')!
+}
+
+it('shows the user’s saved dark preference without forcing a light Banner theme', () => {
+  const button = mountToggle()
+  expect(button.getAttribute('aria-label')).toBe('Switch to light mode')
+})
+
+it('changes the shared appearance preference from Banner Studio', async () => {
+  const button = mountToggle()
+  button.click()
+  expect(mode.preference).toBe('light')
+  mode.value = 'light'
+  await nextTick()
   expect(button.getAttribute('aria-label')).toBe('Switch to dark mode')
   button.click()
-  await nextTick()
-  expect(cookie.value).toBe('dark')
-  expect(mode.value).toBe('dark')
-  expect(route.meta.colorMode).toBe('dark')
-  expect(button.getAttribute('aria-label')).toBe('Switch to light mode')
-  button.click()
-  await nextTick()
-  expect(cookie.value).toBe('light')
-  expect(mode.value).toBe('light')
   expect(mode.preference).toBe('dark')
-  expect(useCookie).toHaveBeenCalledWith('banner-studio-color-mode', { path: '/', sameSite: 'lax', maxAge: 31536000 })
 })
 
-it('keeps a light selection from the agency user menu when opening an editor', async () => {
-  const host = document.createElement('div')
-  document.body.append(host)
-  const app = createApp({ render: () => h(ThemeToggle) })
-  app.component('UButton', { template: '<button><slot /></button>' })
-  apps.push(app)
-  app.mount(host)
-  mode.preference = 'light'
-  await nextTick()
-  expect(cookie.value).toBe('light')
-  const middleware = (await import('../../app/middleware/banner-theme.global')).default
-  const editor = { path: '/agency/banner-studio/project-a', meta: {} as { colorMode?: string } }
-  await middleware(editor as never, {} as never)
-  expect(editor.meta.colorMode).toBe('light')
+it('uses the effective system appearance when choosing the next explicit preference', () => {
+  mode.preference = 'system'
+  mode.value = 'light'
+  const button = mountToggle()
+  expect(button.getAttribute('aria-label')).toBe('Switch to dark mode')
+  button.click()
+  expect(mode.preference).toBe('dark')
 })
