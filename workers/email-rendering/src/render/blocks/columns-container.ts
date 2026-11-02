@@ -98,7 +98,11 @@ registerBlock({
           .map((id) => {
             const childBlock = context._document && Object.hasOwn(context._document, id) ? context._document[id] : undefined
             if (!childBlock) return ''
-            return renderBlock(childBlock, 'html', context)
+            const parentWidth = context.contentWidth ?? 600
+            const usableWidth = parentWidth - (style.padding?.left ?? 24) - (style.padding?.right ?? 24)
+            const declaredWidth = fixedWidths[index]
+            const availableWidth = typeof declaredWidth === 'number' && Number.isFinite(declaredWidth) ? Math.min(parentWidth, declaredWidth) : Math.floor(usableWidth / columnsCount)
+            return renderBlock(childBlock, 'html', { ...context, darkTextEnabled: context.darkTextEnabled !== false && !bgColor, contentWidth: Math.max(32, availableWidth - columnsGap) })
           }), '\n', context.renderBudget)
 
         const fixedWidth = fixedWidths[index]
@@ -117,7 +121,7 @@ registerBlock({
         <tr${anchorIdAttribute(props)}>
           <td style="padding: ${padding}; ${bgColor ? boundedText(context.renderBudget)`background-color: ${bgColor};` : ''}${extendedStyleCss(style)}">
             <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-              <tr class="columns-row">
+              <tr class="columns-row${props.reverseStacking === true ? ' edm-reverse-stack' : ''}">
                 ${columnCells}
               </tr>
             </table>

@@ -6,6 +6,7 @@
  */
 
 import { ref, computed } from 'vue'
+import { isEmailRenderingQualityProperty } from '~~/shared/emailRendering/renderingQuality'
 import {
   createEmptyDocument,
   generateBlockId,
@@ -329,8 +330,8 @@ function createStore() {
   }
 
   function updateBlockMobileProps(blockId: string, propsUpdates: Record<string, unknown>) {
-    // Do not copy the inherited base condition into a mobile override.
-    propsUpdates = Object.fromEntries(Object.entries(propsUpdates).filter(([key]) => key !== 'visibilityCondition'))
+    // Do not copy inherited conditions or document-wide rendering flags into mobile overrides.
+    propsUpdates = Object.fromEntries(Object.entries(propsUpdates).filter(([key]) => key !== 'visibilityCondition' && !isEmailRenderingQualityProperty(key)))
     recordHistory()
     const block = document.value[blockId]
     if (!block) return
@@ -800,6 +801,11 @@ function createStore() {
     const props = (root?.data?.props || {}) as Record<string, unknown>
 
     return {
+      contentWidth: props.contentWidth as number | undefined,
+      darkMode: props.darkMode as boolean | undefined,
+      darkBackdropColor: props.darkBackdropColor as string | undefined,
+      darkCanvasColor: props.darkCanvasColor as string | undefined,
+      darkTextColor: props.darkTextColor as string | undefined,
       backdropColor: (props.backdropColor as string) || '#F5F5F5',
       canvasColor: (props.canvasColor as string) || '#FFFFFF',
       textColor: (props.textColor as string) || '#262626',

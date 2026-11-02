@@ -163,6 +163,9 @@ export interface PreviewOffer {
  * Everything a block renderer needs to produce output.
  */
 export interface BlockRenderContext {
+  contentWidth?: number
+  darkMode?: boolean
+  darkTextEnabled?: boolean
   conditionSequence?: { value: number }
   renderBudget?: ReturnType<typeof createRenderBudget>
   /** Dealer-level context (name, domain, colours, etc.) */

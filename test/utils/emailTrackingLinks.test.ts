@@ -1,3 +1,5 @@
+import { renderingQualityDocument } from '../fixtures/emailRenderingQuality'
+import { renderTemplateDocumentLocally } from '../../workers/email-rendering/src/render/document'
 import { parseFragment } from 'parse5'
 import { describe, expect, it } from 'vitest'
 import {
@@ -79,4 +81,16 @@ describe('email tracking links', () => {
     expect(link.searchParams.get('u')).toBe(expected)
     expect(await verifyEmailClickToken({ campaignId: context.campaignId, subscriberId: context.subscriberId, destinationUrl: expected, token: link.searchParams.get('t'), secret: 'secret' })).toBe(true)
   })
+})
+
+it('rewrites generated VML and HTML CTA destinations to the same signed tracking URL', async () => {
+  const html = renderTemplateDocumentLocally(renderingQualityDocument(), { variables: { name: 'Ari & Co' } })
+  const tracked = await rewriteHtmlLinksForTracking(html, {
+    appUrl: 'https://app.example.com', campaignId: 'campaign', subscriberId: 'subscriber', secret: 'synthetic-test-secret'
+  })
+  const vmlHref = tracked.match(/<v:roundrect[^>]*href="([^"]+)"/)?.[1]
+  const htmlHref = tracked.match(/<a href="([^"]+)" style="display:inline-block/)?.[1]
+  expect(vmlHref).toContain('https://app.example.com/email/click?')
+  expect(vmlHref).toBe(htmlHref)
+  expect(tracked).toContain('<!--[if mso]><v:roundrect')
 })

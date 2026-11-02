@@ -168,13 +168,16 @@ export async function verifyDesignModuleAssets(design: EmailDesignDocument, db: 
     if (/backgroundImage|background-image|data:|blob:|figcraft:|asset:\/\//i.test(data)) throw new DesignModuleError('ASSET_NOT_READY')
     if (block.type !== 'Image' && block.type !== 'Avatar') continue
     if (!storage) throw new DesignModuleError('ASSET_STORAGE_UNAVAILABLE')
-    const url = block.data.props?.url
-    const id = typeof url === 'string' ? await storage.identifyUrl(url) : null
-    if (!id) throw new DesignModuleError('ASSET_NOT_READY')
-    const verified = await readPublishedEmailAsset(id, design.scope.clientId, db, authorizeRead, storage)
-    // The persisted URL must equal canonical signed delivery; no URL fetching.
-    if (url !== verified.url) throw new DesignModuleError('ASSET_NOT_READY')
-    assets.set(id, verified.asset)
+    const urls = [block.data.props?.url]
+    if (block.type === 'Image' && block.data.props?.darkSrc) urls.push(block.data.props.darkSrc)
+    for (const url of urls) {
+      const id = typeof url === 'string' ? await storage.identifyUrl(url) : null
+      if (!id) throw new DesignModuleError('ASSET_NOT_READY')
+      const verified = await readPublishedEmailAsset(id, design.scope.clientId, db, authorizeRead, storage)
+      // Each light/dark reference must equal canonical signed delivery; no URL fetching.
+      if (url !== verified.url) throw new DesignModuleError('ASSET_NOT_READY')
+      assets.set(id, verified.asset)
+    }
   }
   return [...assets.values()]
 }

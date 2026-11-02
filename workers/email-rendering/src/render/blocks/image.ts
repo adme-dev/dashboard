@@ -93,6 +93,23 @@ registerBlock({
           </tr>`
     }
 
+    const darkSrc = _context.darkMode && typeof props.darkSrc === 'string' ? props.darkSrc : ''
+    if (darkSrc) {
+      const imageStyle = 'max-width: 100%; height: auto; display: block; margin: 0 auto;'
+      const light = boundedText(_context.renderBudget)`<img class="edm-light-image" src="${escapeHtml(imageUrl, _context.renderBudget)}" alt="${escapeHtml(imageAlt, _context.renderBudget)}" style="${imageStyle}" />`
+      // Word-based Outlook keeps the light logo; supporting clients reveal the
+      // dark variant through the generated head CSS only.
+      const dark = boundedText(_context.renderBudget)`<!--[if !mso]><!--><img class="edm-dark-image" src="${escapeHtml(darkSrc, _context.renderBudget)}" alt="${escapeHtml(imageAlt, _context.renderBudget)}" style="${imageStyle} display: none; max-height: 0; overflow: hidden; mso-hide: all;" /><!--<![endif]-->`
+      const images = boundedText(_context.renderBudget)`${light}${dark}`
+      const linked = imageLinkHref ? boundedText(_context.renderBudget)`<a href="${escapeHtml(imageLinkHref, _context.renderBudget)}">${images}</a>` : images
+      return boundedText(_context.renderBudget)`
+        <tr${anchorIdAttribute(props)}>
+          <td style="padding: ${padding}; text-align: ${contentAlignment}; ${bgColor ? boundedText(_context.renderBudget)`background-color: ${bgColor};` : ''}${extendedStyleCss(style)}">
+            ${linked}
+          </td>
+        </tr>`
+    }
+
     const imgTag = boundedText(_context.renderBudget)`<img src="${imageUrl}" alt="${escapeHtml(imageAlt)}" style="max-width: 100%; height: auto; display: block; margin: 0 auto;" />`
     const imageHtml = imageLinkHref ? boundedText(_context.renderBudget)`<a href="${imageLinkHref}">${imgTag}</a>` : imgTag
 

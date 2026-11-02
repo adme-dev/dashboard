@@ -230,4 +230,18 @@ describe('useEdmBuilder store', () => {
     expect(columns[0]?.childrenIds).toEqual([])
     expect(s.selectedBlockId.value).toBeNull()
   })
+  it('roundtrips explicit theme and width settings without materialising absent flags', () => {
+    const s = useEdmBuilder()
+    expect(s.getLayoutSettings().darkMode).toBeUndefined()
+    s.updateLayoutSettings({ darkMode: true, darkBackdropColor: '#101820', darkCanvasColor: '#182430', darkTextColor: '#f2f4f8', contentWidth: 700 })
+    expect(s.getLayoutSettings()).toMatchObject({ darkMode: true, darkCanvasColor: '#182430', contentWidth: 700 })
+    expect(s.document.value.root.data.props).toMatchObject({ darkMode: true, contentWidth: 700 })
+  })
+
+  it('does not copy document-wide rendering flags into mobile props when another field changes', () => {
+    const s = useEdmBuilder()
+    const id = s.addBlock('Button', 'root')
+    s.updateBlockMobileProps(id, { text: 'Mobile label', outlookVml: true, outlookWidth: 200 })
+    expect(s.document.value[id].data.mobile?.props).toEqual({ text: 'Mobile label' })
+  })
 })

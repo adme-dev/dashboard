@@ -6,6 +6,8 @@ import { fileURLToPath } from 'node:url'
 import { Miniflare, Response as LocalResponse } from 'miniflare'
 import { customerFixture, documentFixtures, expectedDocumentHtml } from '../fixtures/emailRendering'
 import golden from '../fixtures/emailRenderingGolden.json'
+import { renderingQualityDocument } from '../fixtures/emailRenderingQuality'
+import { renderTemplateDocumentLocally } from '../../workers/email-rendering/src/render/document'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 describe('actual Workerd private renderer RPC', () => {
@@ -47,6 +49,22 @@ describe('actual Workerd private renderer RPC', () => {
   }
   it.each(documentFixtures)('matches the reviewed $name HTML contract across real RPC', async (fixture) => {
     expect(await rpc({ version: 1, expectedEnvironment: 'staging', operation: 'document', document: fixture.document, options: fixture.options })).toMatchObject({ ok: true, value: { html: expectedDocumentHtml(fixture.name) } })
+    expect(outboundRequests).toBe(0)
+  })
+  it('matches opt-in dark/logo/VML/reversal output through actual RPC without outbound requests', async () => {
+    const document = renderingQualityDocument()
+    const options = { variables: { name: 'Ari & "{{other}}"', other: 'SECRET' } }
+    const expected = renderTemplateDocumentLocally(document, options)
+    expect(expected).toContain('<v:roundrect')
+    expect(expected).toContain('[data-ogsc] .edm-dark-image')
+    expect(expected).toContain('flex-direction: column-reverse')
+    expect(await rpc({ version: 1, expectedEnvironment: 'staging', operation: 'document', document, options })).toMatchObject({ ok: true, value: { html: expected } })
+    expect(outboundRequests).toBe(0)
+  })
+  it('preserves complete imported HTML bytes despite generated-theme settings across RPC', async () => {
+    const contents = '<!DOCTYPE html>\n<html><head><meta name="color-scheme" content="light"><style>@media(max-width:600px){.x{color:red}}</style></head><body><!--[if mso]>Office<![endif]-->Exact &amp; source</body></html>'
+    const document = { root: { type: 'EmailLayout', data: { props: renderingQualityDocument().root.data.props, childrenIds: ['html'] } }, html: { type: 'Html', data: { props: { documentMode: 'email', contents } } } }
+    expect(await rpc({ version: 1, expectedEnvironment: 'staging', operation: 'document', document, options: {} })).toMatchObject({ ok: true, value: { html: contents } })
     expect(outboundRequests).toBe(0)
   })
   it('preserves restricted customer output across real RPC', async () => {

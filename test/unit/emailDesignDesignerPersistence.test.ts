@@ -7,6 +7,7 @@ import { composerToDesignDraft } from '../../shared/emailRendering/designCompose
 import { validateEmailDesign } from '../../shared/emailRendering/designContract'
 import { structuredDesign } from '../fixtures/email-design/structured'
 import { testEmailRenderer } from '../fixtures/emailRenderer'
+import { renderingQualityDocument } from '../fixtures/emailRenderingQuality'
 
 const actorId = '10000000-0000-4000-8000-000000000001'
 const documentId = '20000000-0000-4000-8000-000000000001'
@@ -223,5 +224,21 @@ describe('designer proposal persistence boundary', () => {
     h.state.revisions[initial] = { body_source: structuredDesign().blocks }
     await expect(saveStaffTemplateDesignDraft({ documentId, actorId, operationId: crypto.randomUUID(), expectedRevisionId: initial, design: structuredDesign() }, async () => {}, testEmailRenderer, h.transaction, {}, true)).rejects.toMatchObject({ code: 'STRUCTURED_REVISION_REQUIRED' })
     expect(h.state.revisionCount).toBe(0)
+  })
+  it('preserves server-saved legacy dark logos but rejects differing browser variants before conversion append', async () => {
+    const h = harness()
+    h.state.schema = 0
+    const legacy = { body_source: renderingQualityDocument() }
+    h.state.revisions[initial] = legacy
+    const converted = composerToDesignDraft(legacy.body_source, h.state.source.scope.clientId)
+    expect(converted.blocks.logo.data.props?.darkSrc).toBe(legacy.body_source.logo.data.props.darkSrc)
+    expect(converted.assets).toEqual([])
+    const forged = clone(converted)
+    forged.blocks.logo.data.props!.darkSrc = 'https://other.example/changed.png'
+    await expect(saveStaffTemplateDesignDraft({ documentId, actorId, operationId: crypto.randomUUID(), expectedRevisionId: initial, design: forged }, async () => {}, testEmailRenderer, h.transaction, {}, true)).rejects.toMatchObject({ code: 'STRUCTURED_REVISION_REQUIRED' })
+    expect(h.state.revisionCount).toBe(0)
+    await expect(saveStaffTemplateDesignDraft({ documentId, actorId, operationId: crypto.randomUUID(), expectedRevisionId: initial, design: converted }, async () => {}, testEmailRenderer, h.transaction, {}, true)).resolves.toMatchObject({ documentId })
+    expect(h.state.source.blocks).toEqual(converted.blocks)
+    expect(h.state.source.assets).toEqual([])
   })
 })

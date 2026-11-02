@@ -51,6 +51,11 @@ export type EdmFlyhubDocument = Record<string, EdmFlyhubBlock>
 
 // Email layout settings derived from the root block.
 export interface EdmEmailLayoutSettings {
+  contentWidth?: number
+  darkMode?: boolean
+  darkBackdropColor?: string
+  darkCanvasColor?: string
+  darkTextColor?: string
   backdropColor: string
   canvasColor: string
   textColor: string

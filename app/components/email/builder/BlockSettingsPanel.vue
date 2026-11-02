@@ -378,6 +378,26 @@ function updateColumnWidth(index: number, value: string | number) {
 
     <!-- Button -->
     <template v-else-if="block.type === 'Button'">
+      <UFormField label="Outlook drawn button" help="Uses a fixed-size shape in classic Outlook. Edit from Desktop; review the final label and width in recipient apps.">
+        <UCheckbox
+          :model-value="block.data?.props?.outlookVml === true"
+          label="Enable Outlook fallback"
+          :disabled="isMobileEditing"
+          @update:model-value="updateProp('outlookVml', $event === true)"
+        />
+      </UFormField>
+      <UFormField v-if="block.data?.props?.outlookVml === true" label="Outlook button width" help="Follows Full/Auto until a custom pixel width is entered. Both versions are capped to the column.">
+        <UInput
+          type="number"
+          :min="32"
+          :max="960"
+          :disabled="isMobileEditing"
+          :model-value="(block.data?.props?.outlookWidth as number) || (block.data?.props?.fullWidth === true ? undefined : 200)"
+          placeholder="Auto"
+          class="w-full"
+          @update:model-value="updateProp('outlookWidth', Math.max(32, Math.min(960, Number($event) || 200)))"
+        />
+      </UFormField>
       <UFormField label="Text">
         <UInput
           :model-value="(block.data?.props?.text as string) || ''"
@@ -528,6 +548,16 @@ function updateColumnWidth(index: number, value: string | number) {
           placeholder="https://"
           class="w-full"
           @update:model-value="updateProp('url', $event)"
+        />
+      </UFormField>
+
+      <UFormField v-if="block.type === 'Image'" label="Dark logo URL" help="Optional public HTTPS image, shown when dark email styling is enabled. Edit from Desktop. Saved versioned references are read-only; published sections require a registered asset.">
+        <UInput
+          :disabled="isMobileEditing"
+          :model-value="(block.data?.props?.darkSrc as string) || ''"
+          placeholder="https://"
+          class="w-full"
+          @update:model-value="updateProp('darkSrc', $event)"
         />
       </UFormField>
 
@@ -837,6 +867,14 @@ function updateColumnWidth(index: number, value: string | number) {
 
     <!-- ColumnsContainer -->
     <template v-else-if="block.type === 'ColumnsContainer'">
+      <UFormField label="Reverse mobile stacking" help="Reverses visual order in supporting mobile email apps. Source and keyboard order stay unchanged. Edit from Desktop.">
+        <UCheckbox
+          :model-value="block.data?.props?.reverseStacking === true"
+          label="Last column first on mobile"
+          :disabled="isMobileEditing"
+          @update:model-value="updateProp('reverseStacking', $event === true)"
+        />
+      </UFormField>
       <UFormField label="Number of columns">
         <div class="grid grid-cols-2 gap-2">
           <UButton

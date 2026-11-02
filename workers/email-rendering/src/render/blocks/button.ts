@@ -1,3 +1,4 @@
+import { renderOutlookButton } from './outlook-button'
 import { boundedText } from '../boundedText'
 import { registerBlock } from '../block-registry'
 import type { FlyhubBlock, BlockRenderContext } from './types'
@@ -122,6 +123,7 @@ registerBlock({
   },
 
   renderHtml(block: FlyhubBlock, context: BlockRenderContext): string {
+    if (block.data.props?.outlookVml === true) return renderOutlookButton(block, context)
     const { data } = block
     const props = (data.props || {}) as Record<string, unknown>
     const style = data.style || {}

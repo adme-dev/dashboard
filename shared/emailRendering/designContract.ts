@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { validRenderingQualityProps } from './renderingQuality'
 import { assertDocumentConditions, conditionPolicyLockIds } from './conditionProtection'
 import { RenderBoundaryError, snapshotRenderInput } from './bounds'
 import { EmailBrandSnapshotSchema } from './designBrandDefaults'
@@ -200,6 +201,11 @@ function parseEmailDesign(input: unknown): EmailDesignDocument {
     invalid('scope.clientId')
   if (design.kind === 'module')
     snapshotRenderInput(snapshot, DESIGN_LIMITS.moduleBytes)
+  for (const block of Object.values(design.blocks)) {
+    if (!validRenderingQualityProps(block.type, block.data.props ?? {}, block.data.style)) invalid('renderingQuality')
+    const mobile = block.data.mobile as { props?: Record<string, unknown> } | undefined
+    if (mobile?.props && !validRenderingQualityProps('__mobile__', mobile.props)) invalid('mobile.renderingQuality')
+  }
   const ids = Object.keys(design.blocks)
   if (!ids.length || ids.length > DESIGN_LIMITS.blocks) invalid('blocks')
   if (

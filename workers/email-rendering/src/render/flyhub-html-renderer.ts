@@ -1,3 +1,4 @@
+import { emailDarkPalette } from '../../../../shared/emailRendering/renderingQuality'
 import { resolveEmailMergeTags } from '../../../../shared/emailRendering/mergeTags'
 import { resolveEmailContentWidth } from '../../../../shared/emailRendering/layout'
 import { resolveConditionalHtml } from '../../../../shared/emailRendering/conditions'
@@ -141,6 +142,9 @@ function buildBlockRenderContext(
     mergeFields: {},
     baseUrl: '',
     primaryColor,
+    contentWidth: resolveEmailContentWidth(rootProps.contentWidth),
+    darkMode: rootProps.darkMode === true,
+    darkTextEnabled: true,
     fontFamily,
     _document: document as unknown as Record<string, FlyhubBlock>
   }
@@ -188,6 +192,26 @@ export function renderFlyhubDocumentToHtml(
   const borderColor = (rootProps.borderColor as string) || ''
   const contentWidth = resolveEmailContentWidth(rootProps.contentWidth)
   const primaryColor = options.primaryColor || '#2f4574'
+  const dark = emailDarkPalette(rootProps)
+  const darkRules = dark
+    ? boundedText(options.renderBudget)`
+    .edm-dark-backdrop { background-color: ${dark.backdrop} !important; }
+    .edm-dark-canvas { background-color: ${dark.canvas} !important; color: ${dark.text} !important; }
+    .edm-dark-text { color: ${dark.text} !important; }
+    .edm-light-image { display: none !important; }
+    .edm-dark-image { display: block !important; max-height: none !important; overflow: visible !important; }`
+    : ''
+  const darkCss = dark
+    ? boundedText(options.renderBudget)`
+    :root { color-scheme: light dark; supported-color-schemes: light dark; }
+    @media (prefers-color-scheme: dark) {${darkRules}
+    }
+${boundedJoin(darkRules.trim().split('\n').map(rule => boundedText(options.renderBudget)`    [data-ogsc] ${rule.trim()}`), '\n', options.renderBudget)}
+`
+    : ''
+  const reverseCss = Object.values(doc).some(block => block.type === 'ColumnsContainer' && block.data.props?.reverseStacking === true)
+    ? '\n      .columns-row.edm-reverse-stack { display: flex !important; flex-direction: column-reverse !important; }'
+    : ''
   const responsiveCss = collectResponsiveCss(doc, options.renderBudget)
 
   // EmailLayout is the document root; render its children here so a stale dev
@@ -212,7 +236,7 @@ export function renderFlyhubDocumentToHtml(
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">${dark ? '\n  <meta name="color-scheme" content="light dark">\n  <meta name="supported-color-schemes" content="light dark">' : ''}
   <title>${metadata(options.subjectLine || 'Email Preview')}</title>
   <!--[if mso]>
   <noscript>
@@ -229,21 +253,21 @@ export function renderFlyhubDocumentToHtml(
     img { -ms-interpolation-mode: bicubic; border: 0; height: auto; line-height: 100%; outline: none; text-decoration: none; }
     body { height: 100% !important; margin: 0 !important; padding: 0 !important; width: 100% !important; }
     a[x-apple-data-detectors] { color: inherit !important; text-decoration: none !important; font-size: inherit !important; font-family: inherit !important; font-weight: inherit !important; line-height: inherit !important; }
-${responsiveCss.desktopCss.length ? boundedText(options.renderBudget)`${boundedJoin(responsiveCss.desktopCss, '\n', options.renderBudget)}\n` : ''}    @media only screen and (max-width: 620px) {
+${darkCss}${responsiveCss.desktopCss.length ? boundedText(options.renderBudget)`${boundedJoin(responsiveCss.desktopCss, '\n', options.renderBudget)}\n` : ''}    @media only screen and (max-width: 620px) {
       .email-container { width: 100% !important; max-width: 100% !important; }
       .fluid { max-width: 100% !important; height: auto !important; margin-left: auto !important; margin-right: auto !important; }
       .stack-column, .stack-column-center { display: block !important; width: 100% !important; max-width: 100% !important; direction: ltr !important; }
-      .columns-row { display: block !important; }${responsiveCss.mobileCss.length ? boundedText(options.renderBudget)`\n${boundedJoin(responsiveCss.mobileCss, '\n', options.renderBudget)}` : ''}
+      .columns-row { display: block !important; }${reverseCss}${responsiveCss.mobileCss.length ? boundedText(options.renderBudget)`\n${boundedJoin(responsiveCss.mobileCss, '\n', options.renderBudget)}` : ''}
     }
   </style>
 </head>
-<body style="margin: 0; padding: 0; background-color: ${backdropColor}; font-family: ${htmlFontFamily}; color: ${textColor};">
+<body${dark ? ' class="edm-dark-backdrop"' : ''} style="margin: 0; padding: 0; background-color: ${backdropColor}; font-family: ${htmlFontFamily}; color: ${textColor};">
   ${options.previewText ? boundedText(options.renderBudget)`<div style="display: none; font-size: 1px; color: ${backdropColor}; line-height: 1px; max-height: 0; max-width: 0; opacity: 0; overflow: hidden;">${metadata(options.previewText)}</div>` : ''}
 
-  <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color: ${backdropColor};">
+  <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%"${dark ? ' class="edm-dark-backdrop"' : ''} style="background-color: ${backdropColor};">
     <tr>
       <td align="center" style="padding: 20px 10px;">
-        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="${contentWidth}" class="email-container" style="max-width: ${contentWidth}px; background-color: ${canvasColor}; ${borderRadius ? boundedText(options.renderBudget)`border-radius: ${borderRadius}px;` : ''} ${borderColor ? boundedText(options.renderBudget)`border: 1px solid ${borderColor};` : ''} overflow: hidden;">
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="${contentWidth}" class="email-container${dark ? ' edm-dark-canvas' : ''}" style="max-width: ${contentWidth}px; background-color: ${canvasColor}; ${borderRadius ? boundedText(options.renderBudget)`border-radius: ${borderRadius}px;` : ''} ${borderColor ? boundedText(options.renderBudget)`border: 1px solid ${borderColor};` : ''} overflow: hidden;">
           ${contentHtml}
         </table>
       </td>

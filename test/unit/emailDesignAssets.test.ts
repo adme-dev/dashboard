@@ -121,4 +121,28 @@ describe('registered scoped media publication', () => {
     module.blocks.heading = { type: 'Html', data: { props: { html: '<img src="https://external/image.png">' } } }
     await expect(verifyDesignModuleAssets(module, h.db, h.publisher, h.storage)).rejects.toMatchObject({ code: 'ASSET_NOT_READY' })
   })
+  it('verifies dark variants independently with exact scoped immutable descriptors', async () => {
+    const h = harness(), module = extractDesignModule(structuredDesign(), ['heading'], [], [])
+    const light = await publishEmailAsset(h.request, actorId, h.publisher, h.storage, h.transaction)
+    const dark = await publishEmailAsset({ ...h.request, operationId: crypto.randomUUID(), assetId: otherAsset }, actorId, h.publisher, h.storage, h.transaction)
+    module.blocks.heading = { type: 'Image', data: { props: { url: await h.storage.url(assetId), darkSrc: await h.storage.url(otherAsset) } } }
+    module.policy.editableFields = []
+    const before = JSON.stringify(module)
+    expect(await verifyDesignModuleAssets(module, h.db, h.publisher, h.storage)).toEqual([light.asset, dark.asset])
+    expect(JSON.stringify(module)).toBe(before)
+    module.blocks.heading.data.props!.darkSrc = 'https://unknown.test/dark.png'
+    await expect(verifyDesignModuleAssets(module, h.db, h.publisher, h.storage)).rejects.toMatchObject({ code: 'ASSET_NOT_READY' })
+    module.blocks.heading.data.props!.darkSrc = await h.storage.url(otherAsset)
+    h.state.rows[otherAsset].client_id = crypto.randomUUID()
+    await expect(verifyDesignModuleAssets(module, h.db, h.publisher, h.storage)).rejects.toMatchObject({ code: 'SCOPE_MISMATCH' })
+    h.state.rows[otherAsset].client_id = null
+    const originalDigest = h.state.rows[otherAsset].email_publication.sha256
+    h.state.rows[otherAsset].email_publication.sha256 = '0'.repeat(64)
+    await expect(verifyDesignModuleAssets(module, h.db, h.publisher, h.storage)).rejects.toMatchObject({ code: 'ASSET_NOT_READY' })
+    h.state.rows[otherAsset].email_publication.sha256 = originalDigest
+    const changed = Uint8Array.from(png)
+    changed[changed.length - 1] ^= 1
+    h.storage.read = vi.fn(async key => key === h.state.rows[otherAsset].r2_key ? changed : png)
+    await expect(verifyDesignModuleAssets(module, h.db, h.publisher, h.storage)).rejects.toMatchObject({ code: 'ASSET_NOT_READY' })
+  })
 })

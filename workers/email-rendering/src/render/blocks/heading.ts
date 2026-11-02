@@ -87,7 +87,7 @@ registerBlock({
     return boundedText(_context.renderBudget)`
         <tr${anchorIdAttribute(props)}>
           <td style="padding: ${padding}; text-align: ${textAlign}; ${bgColor ? boundedText(_context.renderBudget)`background-color: ${bgColor};` : ''}">
-            <${level} style="margin: 0; color: ${textColor || '#111827'}; font-size: ${headingFontSize}; font-family: ${escapeFontFamilyForHtml(fontFamily)}; font-weight: bold; line-height: 1.3; ${extendedStyleCss(style)}">
+            <${level}${_context.darkMode && _context.darkTextEnabled !== false && !textColor && !bgColor ? ' class="edm-dark-text"' : ''} style="margin: 0; color: ${textColor || '#111827'}; font-size: ${headingFontSize}; font-family: ${escapeFontFamilyForHtml(fontFamily)}; font-weight: bold; line-height: 1.3; ${extendedStyleCss(style)}">
               ${escapeHtml(text)}
             </${level}>
           </td>
