@@ -4,7 +4,7 @@
 // re-inserted into any email. Agency-wide by default; optional client_id.
 
 import { z } from 'zod'
-import { queryRows, queryOne, execute } from '~~/server/utils/db'
+import { queryRowsFresh, queryOne, execute } from '~~/server/utils/db'
 import { addEmailClientScopeCondition, type EmailClientScope } from './access'
 
 export type EdmModulePreviewTone = 'light' | 'dark' | 'accent'
@@ -25,6 +25,9 @@ export interface EdmCustomModule {
   created_by: string | null
   created_at: string
   updated_at: string
+  design_document_id?: string | null
+  head_revision_id?: string | null
+  revision_schema_version?: number | null
 }
 
 // ── Validation ───────────────────────────────────────────────────────────────
@@ -100,13 +103,18 @@ export function validateModuleFragment(input: unknown): EdmModuleFragment {
 export async function listCustomModules(clientIds?: EmailClientScope): Promise<EdmCustomModule[]> {
   const conditions: string[] = []
   const params: unknown[] = []
-  addEmailClientScopeCondition(conditions, params, 'client_id', clientIds)
+  addEmailClientScopeCondition(conditions, params, 'm.client_id', clientIds)
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
-  return queryRows<EdmCustomModule>(`SELECT * FROM edm_custom_modules ${where} ORDER BY updated_at DESC`, params)
+  return queryRowsFresh<EdmCustomModule>(`SELECT m.*, d.id AS design_document_id, d.head_revision_id, r.schema_version AS revision_schema_version
+    FROM edm_custom_modules m LEFT JOIN email_design_documents d ON d.module_id=m.id
+    LEFT JOIN email_design_revisions r ON r.document_id=d.id AND r.id=d.head_revision_id
+    ${where} ORDER BY m.updated_at DESC`, params)
 }
 
 export async function getCustomModule(id: string): Promise<EdmCustomModule | null> {
-  return queryOne<EdmCustomModule>('SELECT * FROM edm_custom_modules WHERE id = $1', [id])
+  return queryOne<EdmCustomModule>(`SELECT m.*, d.id AS design_document_id, d.head_revision_id, r.schema_version AS revision_schema_version
+    FROM edm_custom_modules m LEFT JOIN email_design_documents d ON d.module_id=m.id
+    LEFT JOIN email_design_revisions r ON r.document_id=d.id AND r.id=d.head_revision_id WHERE m.id = $1`, [id])
 }
 
 export async function createCustomModule(input: {
@@ -151,11 +159,11 @@ export async function updateCustomModule(id: string, patch: {
   return queryOne<EdmCustomModule>(`
     UPDATE edm_custom_modules
     SET name = $1, description = $2, category = $3, preview_tone = $4, updated_at = NOW()
-    WHERE id = $5
+    WHERE id = $5 AND NOT EXISTS (SELECT 1 FROM email_design_documents WHERE module_id=$5)
     RETURNING *
   `, [name, description, category, previewTone, id])
 }
 
 export async function deleteCustomModule(id: string): Promise<void> {
-  await execute('DELETE FROM edm_custom_modules WHERE id = $1', [id])
+  await execute('DELETE FROM edm_custom_modules WHERE id = $1 AND NOT EXISTS (SELECT 1 FROM email_design_documents WHERE module_id=$1)', [id])
 }

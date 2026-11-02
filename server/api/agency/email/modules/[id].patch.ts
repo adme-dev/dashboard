@@ -24,6 +24,7 @@ export default defineEventHandler(async (event) => {
   const existing = await getCustomModule(id)
   if (!existing) throw createError({ statusCode: 404, statusMessage: 'not_found' })
   await assertEmailClientAccess(event, user, existing.client_id)
+  if (existing.design_document_id) throw createError({ statusCode: 409, statusMessage: 'immutable_module_revision_required' })
   const module = await updateCustomModule(id, parsed.data)
   if (!module) throw createError({ statusCode: 404, statusMessage: 'not_found' })
   return { module }

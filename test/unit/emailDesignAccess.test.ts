@@ -91,3 +91,21 @@ describe('fresh email design authority', () => {
     ).rejects.toMatchObject({ statusCode: 401 })
   })
 })
+
+// Publication has an independent gate; ordinary scoped designers cannot publish.
+describe('fresh agency publication authority', () => {
+  it('requires current agency ADMIN/MANAGEMENT and CREATIVE together', async () => {
+    const { assertFreshDesignPublisher } = await import('../../server/utils/email-marketing/designAccess')
+    mocks.session.mockResolvedValue({ id: actor })
+    for (const groups of [['CREATIVE'], ['ADMIN'], ['MANAGEMENT'], ['MARKETING_MANAGEMENT', 'CREATIVE']]) {
+      mocks.query.mockResolvedValue({ ...row(), permission_groups: groups })
+      await expect(assertFreshDesignPublisher('token', actor, client)).rejects.toMatchObject({ statusCode: 403 })
+    }
+    for (const groups of [['ADMIN', 'CREATIVE'], ['MANAGEMENT', 'CREATIVE']]) {
+      mocks.query.mockResolvedValue({ ...row(), permission_groups: groups })
+      await expect(assertFreshDesignPublisher('token', actor, null)).resolves.toBeUndefined()
+    }
+    mocks.query.mockResolvedValue({ ...row(), permission_groups: ['ADMIN', 'CREATIVE'], is_read_only: true })
+    await expect(assertFreshDesignPublisher('token', actor, client)).rejects.toMatchObject({ statusCode: 403 })
+  })
+})
