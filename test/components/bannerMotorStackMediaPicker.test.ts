@@ -74,11 +74,24 @@ afterEach(() => {
 })
 
 describe('MotorStack media picker', () => {
+  it('opens with images visible and loads further previews on demand', async () => {
+    const assets = Array.from({ length: 35 }, (_, index) => ({ ...image, id: `image-${index}`, name: `Vehicle ${index}` }))
+    await mount({ props: { initialBrandId: 'gwm', imagesOnly: true, addToCanvas: true }, read: async () => ({ ...response(), assets }) })
+    expect(host.querySelectorAll('img')).toHaveLength(30)
+    expect(host.textContent).toContain('Vehicle 0')
+    expect(host.textContent).not.toContain('Vehicle 34')
+    button('Show more media').click()
+    await settle()
+    expect(host.querySelectorAll('img')).toHaveLength(35)
+    expect(host.textContent).toContain('Vehicle 34')
+  })
+
   it('shows only the chosen paint colour before importing a vehicle image', async () => {
     const white = { ...image, id: 'white', name: 'Forester · AWD · Crystal White Pearl' }
     const grey = { ...image, id: 'grey', name: 'Forester · AWD · Magnetite Grey Metallic' }
     const { write } = await mount({ props: { initialBrandId: 'gwm', initialModel: 'Forester', imagesOnly: true, addToCanvas: true }, read: async () => ({ ...response('gwm', ['Forester']), assets: [white, grey] }) })
-    expect(host.textContent).toContain('Choose a paint colour to show matching images.')
+    expect(host.textContent).toContain(white.name)
+    expect(host.textContent).toContain(grey.name)
     choose('Paint colour', 'Crystal White Pearl')
     await settle()
     expect(host.textContent).toContain(white.name)
@@ -101,9 +114,7 @@ describe('MotorStack media picker', () => {
     expect(host.querySelector('[data-field="Media type"]')).toBeNull()
     expect(host.textContent).toContain('MOTORSTACK')
     expect(host.textContent).not.toContain('Cannon brochure.pdf')
-    expect(host.textContent).toContain('Choose a paint colour to show matching images.')
-    choose('Paint colour', '__other_images__')
-    await settle()
+    expect(host.textContent).toContain(image.name)
     button('Add to all layouts').click()
     await settle()
     expect(write).toHaveBeenCalledWith('/api/agency/banner-studio/motorstack/media', { method: 'POST', body: { brandId: 'gwm', model: 'Cannon', assetId: image.id } })

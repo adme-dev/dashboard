@@ -2,6 +2,7 @@
 import type { BannerAsset } from '~/types/banner-studio'
 import { apiErrorDescription } from '~/utils/apiError'
 import { matchesMotorStackPaint, motorStackPaintName, motorStackPaintNames } from '~/utils/banner-motorstack-colours'
+import { loadedImageMetadata } from '~/utils/banner-image-metadata'
 
 interface MotorStackMediaAsset {
   id: string
@@ -31,7 +32,7 @@ const emit = defineEmits<{ imported: [asset: BannerAsset] }>()
 const allModels = '__all_models__'
 const brandId = ref<string>()
 const model = ref(allModels)
-const colour = ref('__choose_colour__')
+const colour = ref('__all_colours__')
 const pendingInitialColour = ref<string>()
 const search = ref('')
 const assetType = ref('images')
@@ -59,14 +60,13 @@ const modelItems = computed(() => [{ label: 'All models', value: allModels }, ..
 const colourItems = computed(() => {
   const assets = media.value?.assets || []
   return [
-    { label: props.addToCanvas ? 'Choose a colour' : 'All colours', value: props.addToCanvas ? '__choose_colour__' : '__all_colours__' },
+    { label: 'All colours', value: '__all_colours__' },
     ...motorStackPaintNames(assets).map(name => ({ label: name, value: name })),
     ...(assets.some(asset => asset.importable && asset.mime.startsWith('image/') && !motorStackPaintName(asset.name)) ? [{ label: 'Other images', value: '__other_images__' }] : [])
   ]
 })
 const filteredAssets = computed(() => {
   const terms = search.value.trim().toLowerCase().split(/\s+/).filter(Boolean)
-  if (props.addToCanvas && (model.value === allModels || colour.value === '__choose_colour__')) return []
   return (media.value?.assets || []).filter((asset) => {
     if (assetType.value === 'images' && !isImage(asset)) return false
     if (assetType.value === 'documents' && !isPdf(asset)) return false
@@ -75,13 +75,20 @@ const filteredAssets = computed(() => {
     return terms.every(term => text.includes(term))
   })
 })
+const visibleAssetCount = ref(30)
+const visibleAssets = computed(() => filteredAssets.value.slice(0, visibleAssetCount.value))
+const imageMetadata = ref<Record<string, string>>({})
+function rememberImageDimensions(event: Event, id: string) {
+  const details = loadedImageMetadata(event)
+  if (details) imageMetadata.value[id] = details
+}
 const busy = computed(() => importing.value !== null)
 
 function selectBrand(value: string) {
   if (value === brandId.value) return
   brandId.value = value
   model.value = allModels
-  colour.value = props.addToCanvas ? '__choose_colour__' : '__all_colours__'
+  colour.value = '__all_colours__'
   pendingInitialColour.value = undefined
   modelNames.value = []
 }
@@ -101,7 +108,7 @@ async function loadMedia() {
     media.value = mediaData.value
     modelNames.value = [...new Set([...modelNames.value, ...mediaData.value.models.filter(name => name.trim() && name !== allModels)])]
     if (pendingInitialColour.value) {
-      colour.value = colourItems.value.find(item => item.value.toLocaleLowerCase() === pendingInitialColour.value!.toLocaleLowerCase())?.value || '__choose_colour__'
+      colour.value = colourItems.value.find(item => item.value.toLocaleLowerCase() === pendingInitialColour.value!.toLocaleLowerCase())?.value || '__all_colours__'
       pendingInitialColour.value = undefined
     }
   } catch (error) {
@@ -114,10 +121,13 @@ watch([brandId, model], () => {
   if (open.value) loadMedia()
 })
 watch(model, () => {
-  if (!pendingInitialColour.value) colour.value = props.addToCanvas ? '__choose_colour__' : '__all_colours__'
+  if (!pendingInitialColour.value) colour.value = '__all_colours__'
 })
 watch(colourItems, (items) => {
-  if (!items.some(item => item.value === colour.value)) colour.value = props.addToCanvas ? '__choose_colour__' : '__all_colours__'
+  if (!items.some(item => item.value === colour.value)) colour.value = '__all_colours__'
+})
+watch([model, colour, search, assetType], () => {
+  visibleAssetCount.value = 30
 })
 watch(open, (value) => {
   if (!value) return
@@ -126,7 +136,7 @@ watch(open, (value) => {
     const changed = brandId.value !== props.initialBrandId || model.value !== nextModel
     brandId.value = props.initialBrandId
     model.value = nextModel
-    colour.value = props.addToCanvas ? '__choose_colour__' : '__all_colours__'
+    colour.value = '__all_colours__'
     pendingInitialColour.value = props.initialColour
     modelNames.value = [...new Set(props.initialModels || [])]
     assetType.value = 'images'
@@ -250,7 +260,7 @@ async function importAsset(asset: MotorStackMediaAsset) {
           </UFormField>
         </div>
         <p v-if="brandId" class="text-sm text-muted">
-          {{ model === allModels ? 'Choose a model to browse its paint colours, gallery and interior photos.' : props.addToCanvas ? 'Pick a paint colour, then choose a vehicle image.' : 'Browse this model’s images and documents.' }}
+          {{ model === allModels ? 'Browse model heroes now, or choose a model for paint colours and gallery photos.' : 'Browse images and narrow them by paint colour.' }}
         </p>
         <template v-if="!props.imagesOnly">
           <UAlert
@@ -292,17 +302,19 @@ async function importAsset(asset: MotorStackMediaAsset) {
             </p>
           </div>
           <div v-if="!filteredAssets.length" class="py-16 text-center text-sm text-muted">
-            {{ props.addToCanvas && model === allModels ? 'Choose a model first.' : props.addToCanvas && colourItems.length === 1 ? 'No vehicle images are available for this model.' : props.addToCanvas && colour === '__choose_colour__' ? 'Choose a paint colour to show matching images.' : media.assets.length ? 'No media matches these filters. Try another model, colour or media type.' : 'No media is available for this selection. Try another model or brand.' }}
+            {{ media.assets.length ? 'No media matches these filters. Try another model, colour or media type.' : 'No media is available for this selection. Try another model or brand.' }}
           </div>
           <ul v-else class="grid max-h-[min(55vh,38rem)] grid-cols-1 gap-4 overflow-y-auto @sm:grid-cols-2 @2xl:grid-cols-3" aria-label="MotorStack media assets">
-            <li v-for="asset in filteredAssets" :key="asset.id" class="flex min-w-0 flex-col overflow-hidden rounded-lg border border-default">
+            <li v-for="asset in visibleAssets" :key="asset.id" class="flex min-w-0 flex-col overflow-hidden rounded-lg border border-default">
               <div class="relative flex aspect-[4/3] shrink-0 items-center justify-center overflow-hidden bg-elevated">
                 <img
                   v-if="isImage(asset) && asset.previewUrl && !previewErrors[assetKey(asset)]"
                   :src="asset.previewUrl"
                   :alt="asset.name"
                   loading="lazy"
+                  decoding="async"
                   class="absolute inset-0 h-full w-full object-contain"
+                  @load="rememberImageDimensions($event, asset.id)"
                   @error="previewErrors[assetKey(asset)] = true"
                 >
                 <div v-else class="space-y-2 p-4 text-center text-muted">
@@ -327,6 +339,9 @@ async function importAsset(asset: MotorStackMediaAsset) {
                   </p>
                   <p class="text-xs text-muted">
                     {{ asset.type }} · {{ formatLabel(asset) }}
+                  </p>
+                  <p v-if="imageMetadata[asset.id]" class="text-xs text-muted">
+                    {{ imageMetadata[asset.id] }}
                   </p>
                 </div>
                 <p v-if="importErrors[assetKey(asset)]" role="alert" class="text-xs text-error">
@@ -365,6 +380,14 @@ async function importAsset(asset: MotorStackMediaAsset) {
               </div>
             </li>
           </ul>
+          <UButton
+            v-if="filteredAssets.length > visibleAssetCount"
+            label="Show more media"
+            color="neutral"
+            variant="outline"
+            class="mt-4 w-full justify-center"
+            @click="visibleAssetCount += 30"
+          />
         </template>
       </div>
     </template>
