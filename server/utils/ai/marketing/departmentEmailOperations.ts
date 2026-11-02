@@ -137,6 +137,17 @@ async function campaignState(db: LedgerDb, campaignId: string, clientId: string,
 }
 
 /** Optimistic-concurrency token for draft edits and proposals. */
+/** M06: reviewed campaigns need an approval of their exact current content.
+ * Readable refusal here; the campaigns trigger is the authoritative gate. */
+async function assertReviewApproval(db: LedgerDb, campaign: Campaign): Promise<void> {
+  const { assertCampaignApprovalCurrent } = await import('~~/server/utils/email-marketing/review')
+  try {
+    await assertCampaignApprovalCurrent(campaign, db)
+  } catch {
+    refuse('Campaign content must be approved in the email review workflow first', 'conflict')
+  }
+}
+
 function draftRevision(c: Campaign, listIds: string[]): string {
   return sha256({
     status: c.status, name: c.name, subject: c.subject, from_name: c.from_name, from_email: c.from_email, reply_to: c.reply_to,
@@ -411,6 +422,7 @@ async function proposeSend(args: Args<'marketing_propose_email_campaign_send'>, 
     if (campaign.status !== 'draft') refuse('Only draft campaigns can be proposed for sending', 'conflict')
     if (!listIds.length) refuse('Select at least one of the client\'s lists first', 'bad_args')
     if (draftRevision(campaign, listIds) !== args.expectedRevision) refuse('Campaign changed since it was read; reload before applying', 'conflict')
+    await assertReviewApproval(db, campaign)
     const freeze = await freezeOf(db, campaign, listIds)
     const preflight = await preflightFor(campaign, freeze.recipientCount, actor.event, deps)
     if (preflight.blocked) preflightRefusal(preflight)
@@ -484,6 +496,7 @@ async function executeSend(args: Args<'marketing_execute_email_campaign_send'>, 
     const preflight = await preflightFor(campaign, freeze.recipientCount, fresh.event, deps)
     if (preflight.blocked) preflightRefusal(preflight)
     if (first) {
+      await assertReviewApproval(db, campaign)
       const { canEnterSending } = await import('~~/server/utils/email-marketing/campaignSend')
       const gate = canEnterSending({ status: campaign.status, toSend: freeze.recipientCount, bodyHtml: campaign.body_html })
       if (!gate.ok) refuse(gate.reason ?? 'Campaign cannot be sent', 'conflict')

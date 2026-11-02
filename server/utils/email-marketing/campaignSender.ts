@@ -19,6 +19,19 @@ import { signEmailToken, emailLinkSecret } from './links'
 import { getCampaign, prepareCampaignHtmlForSend, setCampaignStatus, type Campaign } from './campaigns'
 import { resolveCampaignSenderDomains } from './senderIdentity'
 import { resolveMarketingProviderConfig } from '~~/server/utils/marketingProviderConfig'
+import { buildWebVersionUrl } from './webVersion'
+
+/** Opted-in campaigns get one signed URL for the frozen content digest; the
+ * digest is recomputed by the database, never taken from cached state. */
+async function frozenWebVersionUrl(campaign: Campaign, appUrl: string, secret: string): Promise<string | null> {
+  if (campaign.web_version_enabled !== true) return null
+  const row = await queryOne<{ digest: string }>(`
+    SELECT email_campaign_content_digest(c.body_source, c.body_html, c.subject, c.preview_text,
+      c.from_name, c.from_email, c.reply_to, c.utm_settings, c.web_version_enabled) AS digest
+    FROM campaigns c WHERE c.id = $1
+  `, [campaign.id])
+  return row?.digest ? buildWebVersionUrl(appUrl, campaign.id, row.digest, secret) : null
+}
 
 export interface RecipientRow {
   id: string
@@ -201,9 +214,11 @@ export async function sendCampaignChunk(campaign: Campaign, event?: H3Event): Pr
   const secret = emailLinkSecret()
   let payload: Awaited<ReturnType<typeof buildTrackedBatchEmail>>[]
   try {
+    const webVersionUrl = await frozenWebVersionUrl(campaign, appUrl, secret)
+    const content = webVersionUrl ? { ...campaign, web_version_url: webVersionUrl } : campaign
     payload = await Promise.all(recipients.map(async r =>
       buildTrackedBatchEmail(
-        campaign,
+        content,
         { email: r.email, name: r.name, subscriber_id: r.subscriber_id },
         campaign.id,
         appUrl,

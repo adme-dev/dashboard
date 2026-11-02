@@ -8,6 +8,7 @@ import { isValidSegment } from '~~/server/utils/email-marketing/segment'
 import { isEmailConfigured } from '~~/server/utils/email'
 import { getAppUrl } from '~~/server/utils/appUrl'
 import { resolveCampaignSenderDomains } from '~~/server/utils/email-marketing/senderIdentity'
+import { isEmailReviewWorkflowEnabled } from '~~/server/utils/email-marketing/review'
 
 const OptionalEmail = z.preprocess((value) => {
   if (typeof value !== 'string') return value
@@ -25,7 +26,10 @@ const Body = z.object({
   body_source: z.any().optional(),
   template_id: z.string().uuid().optional().nullable(),
   scheduled_at: z.string().datetime().optional().nullable(),
-  filter_rules: z.any().optional().nullable()
+  filter_rules: z.any().optional().nullable(),
+  // M06 workflow settings (FIGFLOW_EDM_WORKFLOW_ENABLED only); validated again in updateCampaign.
+  utm_settings: z.record(z.string(), z.string().max(100).nullable()).optional().nullable(),
+  web_version_enabled: z.boolean().optional()
 })
 
 function emailSendUserId(user: unknown): string {
@@ -43,6 +47,10 @@ export default defineEventHandler(async (event) => {
   }
   if (parsed.data.filter_rules != null && !isValidSegment(parsed.data.filter_rules)) {
     throw createError({ statusCode: 400, statusMessage: 'invalid_segment' })
+  }
+  if ((parsed.data.utm_settings !== undefined || parsed.data.web_version_enabled !== undefined)
+    && !isEmailReviewWorkflowEnabled(event.context?.cloudflare?.env)) {
+    throw createError({ statusCode: 400, statusMessage: 'email_workflow_disabled' })
   }
   const existing = await getCampaign(id)
   if (!existing) throw createError({ statusCode: 404, statusMessage: 'not_found' })
