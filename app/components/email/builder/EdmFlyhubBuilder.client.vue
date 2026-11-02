@@ -74,9 +74,20 @@ const activeFlyoutCategory = computed(() => {
   return EDM_SECTION_CATEGORIES.find(category => category.id === activeFlyoutCategoryId.value) ?? null
 })
 
+const isImportedDocument = computed(() => Object.values(store.document.value).some(block => block.type === 'Html' && block.data.props?.documentMode === 'email'))
+function canInsertBlocks() {
+  if (!isImportedDocument.value) return true
+  toast.add({ title: 'Complete imported email', description: 'Edit the text, links and images within this email. Create a separate email to build with modules.', color: 'info' })
+  return false
+}
+function duplicateCanvasBlock(id: string) {
+  if (canInsertBlocks()) store.duplicateBlock(id)
+}
+
 // Insert by preset OBJECT so callers don't depend on the active category.
 // Handles both Basic blocks (kind:'block') and full sections (kind:'section').
 function insertPreset(preset: EdmSectionPreset, position?: number) {
+  if (!canInsertBlocks()) return
   if (preset.kind === 'block') {
     const block = preset.blocks[0]
     if (!block) return
@@ -890,6 +901,7 @@ async function saveModule() {
 // Insert a saved module: re-ID its fragment so ids never collide with blocks
 // already in the document, then splice it in at the given position.
 function insertCustomModule(module: EdmCustomModule, position?: number) {
+  if (!canInsertBlocks()) return
   const fragment = reidFragment(module.blocks)
   store.insertBlocks(fragment.blocks, fragment.rootChildrenIds, 'root', position)
 }
@@ -1291,8 +1303,8 @@ onMounted(async () => {
           @click="onCanvasClick()"
         >
           <div
-            class="mx-auto max-w-[600px] min-h-64 rounded shadow-sm"
-            :style="{ backgroundColor: layout.canvasColor, color: layout.textColor }"
+            class="mx-auto min-h-64 rounded shadow-sm"
+            :style="{ backgroundColor: layout.canvasColor, color: layout.textColor, width: '100%', maxWidth: (activeDevice === 'mobile' ? 390 : Math.max(320, Math.min(960, Number(store.document.value.root?.data.props?.contentWidth) || 600))) + 'px' }"
             @click.stop
           >
             <!-- Empty state: click to open the unified Add module bubble (opens
@@ -1329,7 +1341,7 @@ onMounted(async () => {
                 :drop-placement="rootDropPreview?.targetBlockId === block.id ? rootDropPreview.placement : null"
                 @move-up="moveBlock(block.id, 'up')"
                 @move-down="moveBlock(block.id, 'down')"
-                @duplicate="store.duplicateBlock(block.id)"
+                @duplicate="duplicateCanvasBlock(block.id)"
                 @save="openSaveModule()"
                 @delete="store.removeBlock(block.id)"
                 @insert-preset-above="(preset) => insertPreset(preset, index)"
@@ -1380,7 +1392,7 @@ onMounted(async () => {
 
             <!-- Add at end: category browser with live thumbnails, inserts at
                  the end of the block list (position = childBlocks.length). -->
-            <div v-if="childBlocks.length > 0" class="flex justify-center py-3">
+            <div v-if="childBlocks.length > 0 && !isImportedDocument" class="flex justify-center py-3">
               <UPopover v-model:open="addAtEndOpen" :content="{ side: 'bottom', align: 'center' }">
                 <UButton
                   icon="i-lucide-plus"

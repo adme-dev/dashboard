@@ -7,8 +7,6 @@ import { useElementSize } from '@vueuse/core'
 import EdmBlockRenderer from './EdmBlockRenderer.vue'
 import type { EdmFlyhubBlock, EdmFlyhubDocument } from '~~/app/types/edm'
 
-const EMAIL_WIDTH = 600
-
 interface ThumbnailBlockEntry {
   id: string
   block: EdmFlyhubBlock
@@ -23,6 +21,8 @@ const props = withDefaults(defineProps<{
   maxHeight: 360
 })
 
+const emailWidth = computed(() => Math.max(320, Math.min(960, Number(props.document?.root?.data.props?.contentWidth) || 600)))
+
 const blocks = computed<ThumbnailBlockEntry[]>(() => {
   const document = props.document
   const childrenIds = document?.root?.data?.childrenIds ?? []
@@ -33,7 +33,7 @@ const blocks = computed<ThumbnailBlockEntry[]>(() => {
 
 const thumbnailRoot = ref<HTMLElement | null>(null)
 const { width: measuredWidth } = useElementSize(thumbnailRoot, { width: props.width, height: 0 })
-const scale = computed(() => (measuredWidth.value || props.width) / EMAIL_WIDTH)
+const scale = computed(() => (measuredWidth.value || props.width) / emailWidth.value)
 
 const tileStyle = computed(() => ({
   width: '100%',
@@ -41,7 +41,7 @@ const tileStyle = computed(() => ({
 }))
 
 const innerStyle = computed(() => ({
-  width: EMAIL_WIDTH + 'px',
+  width: emailWidth.value + 'px',
   transform: `scale(${scale.value})`,
   transformOrigin: 'top left',
   pointerEvents: 'none' as const

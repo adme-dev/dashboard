@@ -1,3 +1,4 @@
+import { assertImportedDocumentIdentity } from '../../../../shared/emailRendering/importedDocument'
 import { boundedText, boundedJoin } from './boundedText'
 import { replaceMergeFields } from './mergeFields'
 import type { createRenderBudget } from '../../../../shared/emailRendering/bounds'
@@ -161,6 +162,18 @@ export function renderFlyhubDocumentToHtml(
 ): string {
   const rootBlock = doc.root
   const rootProps = (rootBlock.data.props || {}) as Record<string, unknown>
+
+  // Imported full emails already own their document/head, responsive rules and
+  // Outlook branches. Nesting them inside the generic 600px table changes their
+  // layout and lets the HTML parser move entire sections out of that wrapper.
+  assertImportedDocumentIdentity(doc)
+  const soleChild = rootBlock.data.childrenIds?.length === 1 ? doc[rootBlock.data.childrenIds[0]] : null
+  if (soleChild?.type === 'Html' && soleChild.data.props?.documentMode === 'email') {
+    const contents = soleChild.data.props.contents
+    if (typeof contents !== 'string') throw new Error('Imported email document is missing')
+    const html = boundedText(options.renderBudget)`${contents}`
+    return options.variables ? replaceMergeFields(html, options.variables, options.renderBudget) : html
+  }
 
   const backdropColor = (rootProps.backdropColor as string) || '#F5F5F5'
   const canvasColor = (rootProps.canvasColor as string) || '#FFFFFF'
