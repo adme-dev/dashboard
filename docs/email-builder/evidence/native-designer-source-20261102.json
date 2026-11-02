@@ -4,12 +4,12 @@
     "apps/figcraft-web/src/main.rs": "4d2724eaecc4a0fe68ba536df6868662dbe137c42af1c05d4b6fff19426542af",
     "apps/figcraft-web/src/web.rs": "e586f93cc0dfeffc37626e1976a064c9d7f56afd16a33b711116613df053dce0",
     "apps/figcraft-web/src/bridge_web.rs": "addc6fd5fcb8c8d8f67a8d1424fe513cce4486cc75bb6c161f99e495c119c3f7",
-    "crates/engine/src/cmd/edm.rs": "94ea7556bb168e2ad68b15441f8fc52c18ca2f095e0a53a7066818e88659653c",
+    "crates/engine/src/cmd/edm.rs": "6f6b23fe0207cd97b66e2e8e363b93e7c2c959a6fa482098e12a8d70a13915b2",
     "crates/engine/src/cmd/mod.rs": "81a810c46bf1e40839811672ec97f600bba7009fc87e4bd00f59421c6a198cdb",
     "crates/engine/src/lib.rs": "12893dfd9c8d9b8d72bcab2453ed9295b9c6be1da15a2e8cc70c013ffff1939a",
     "crates/ui-egui/src/lib.rs": "327ebc6f1b968dfc30e363618b53da88ea1908becd4792864c80d3fca84f7627",
     "crates/ui-egui/src/browser_bridge.rs": "ffe4f3ad6c1988b82352e2c4f59cbbfcf03613375f95c311fdef8bde54ac3a49",
-    "crates/ui-egui/src/edm_panel.rs": "29c04c475348e49464293b949ebe444424a7acfaea98aefd4f88c5c917961068",
+    "crates/ui-egui/src/edm_panel.rs": "9f1ee8f35e69386de59b9b31bbaabd21a5f8febc996103d9b2e70d4e1e8fdaff",
     "crates/ui-egui/src/right.rs": "424bef2260804a76a493ef4bb7788d03bb3fe7640f5112ac304f325b8a860fc9",
     "packaging/web/package.sh": "65e95a89bb128cc716db89b14f0ec82bdf34f72ea1954235418cb0b7247e06e9",
     "crates/ui-egui/src/menus.rs": "1272e84b412d794e5fecbc5111cc6a1b3a61342c6f1a693fc54af511b283a043",
@@ -44,7 +44,8 @@
     "edm_designer_shared_link_vectors_reject_authority_credentials_for_every_scheme",
     "edm_designer_native_match_tracks_unlogged_edits_and_their_generic_undo",
     "edm_snapshot_rebuild_keys_verified_image_bytes_by_block_and_drops_replaced_bytes",
-    "edm_designer_style_locks_match_shared_desktop_mobile_and_inherited_paths"
+    "edm_designer_style_locks_match_shared_desktop_mobile_and_inherited_paths",
+    "edm_designer_structural_column_index_follows_shared_optional_integer_target"
   ],
   "bridgeTests": [
     "browser_bridge_create_replay_and_id_conflict",
@@ -62,9 +63,11 @@
     "edm_canvas_cmd_z_undoes_an_unlogged_native_edit_generically_before_the_log",
     "edm_cmd_z_in_a_panel_field_or_the_palette_leaves_the_log_alone",
     "edm_cmd_z_while_editing_canvas_text_ends_the_edit_and_undoes_the_typing_generically",
+    "edm_panel_structural_targets_omit_absent_column_and_keep_column_zero",
+    "edm_panel_structural_emission_matches_shared_targets_and_engine_admits_it",
     "edm_panel_field_commit_logs_only_a_changed_value"
   ],
-  "patchSha256": "73db3a4bb210bb461e1f81940f389adbf75183a6289f6252a23067f23a554f4e",
+  "patchSha256": "55560f141fb053a66705c5d9665b4fe99f15af99780122e9e6b09fe392a66ab2",
   "relaySha256": "438b71f2ead434fcb41a60d0c98bff67ba8ba18068cf7f45aee9c185901b7211",
   "release": "0.11.2-edm2",
   "status": "source-frozen-awaiting-linux-and-wasm"

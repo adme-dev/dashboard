@@ -402,3 +402,52 @@ General fixes are committed46e74e04c and current main7b8818c83 is reconciled.
 The merged local source passes78 tests in11 files covering repaired fixtures,
 security inventory and recent Banner Studio behavior. The three prepared designer
 browser acceptance files remain uncommitted/unexecuted pending a valid artifact.
+
+## Linux and package gate passed; actual WASM started
+
+All assigned CI completed successfully: native41423274728 and general41423274750
+at eb561e975, hotfix41422348315 at a0d96def3. Engine29/bridge8/UI6 passed exactly.
+Verified edm2 ZIP sha25641a285661122950352eccc9a587c398b48b475388b0b6c48df829eb56b0075be;
+WASM sha256a41e18d33d3093217416c016b0f05ce5de4d24d5c50884d4df428fe8f9e1036e.
+Package and sanitized integrity/provenance reports are retained under
+`.verification/ci-followup-eb561e975/`. Initial GitHub transport interruption
+recovered; it was not a workflow failure. Monitoring worker settled/released.
+
+Actual-WASM taskbefd7d0c2e3c / ctx_4d5168dd53ac now owns the prepared browser
+helper, separate Worker/PG test and bounded report. Real native pointer/keyboard
+editing and nonempty locks/pins preservation are required; no internal Session
+shortcuts or unexecuted claims. Native source and the shared edm1 URL remain
+unchanged until this separate gate is accepted.
+
+Main advanced to8a39706eb. The narrow hotfix now reconciles that as7c28120d1,
+with57 tests/7 files and the Pages source/target guard passing. It was pushed for
+fresh exact-source CI; no merge/deployment yet. Prior hotfix run used main7b8818c83
+(as its actual Checkout log confirms), so it does not close this latest candidate.
+
+Actual-WASM partial checkpoint (ctx_4d5168dd53ac): verified edm2 bytes loaded
+under the intercepted actual edm1 handoff URL. Real Worker plus local PostgreSQL
+created a nonempty pinned module and explicit CTA lock. Native no-op, compiled
+desktop/mobile review and Keep current draft passed before pointer calibration.
+Actual native editing/Apply/save/reopen remain unverified. Cached headless
+Chromium and a fixture-only bridge to the Unix-socket database establish local
+acceptance only; no production URL promotion or real email-client claim.
+
+Actual-WASM structural counterexample: native Add section emitted
+`columnIndex:null` for root insertion. Shared Target permits an omitted field or
+an integer0..2, so the real review panel refused before sending an edited proposal.
+Raw snapshot is `.verification/figflow-designer-browser/native-edited.json`;
+last-state.png shows the warning and preserved open handoff. Native pointer/
+keyboard set-props/set-style and native Undo/Redo did execute successfully.
+A separate props/style-only case may continue, but cannot close structural
+acceptance. Opus is assigned panel emission plus strict native target admission;
+server parsing remains unchanged and captured operations must not be normalized.
+
+Structural target source correction reviewed and regenerated: the emitter omits
+absent columnIndex at creation, preserves column0, and engine admission rejects
+explicit null and invalid types rather than treating them as missing. Shared
+server parser remains unchanged.36 shared verdicts plus13 emitted operation
+vectors cover root/nested/column targets. Expected Linux suites now30 engine,
+8 bridge and8 UI. Parent caught a shadowed test-helper name before CI and fixed
+it; final hashes are pinned. Existing successful eb561 package cannot establish
+acceptance of these new bytes; matching Linux/package/browser verification must
+run again. Captured failing snapshot is retained unchanged.

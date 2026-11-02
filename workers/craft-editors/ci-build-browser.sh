@@ -94,11 +94,13 @@ expected = {
     'edm_canvas_cmd_z_undoes_an_unlogged_native_edit_generically_before_the_log',
     'edm_cmd_z_in_a_panel_field_or_the_palette_leaves_the_log_alone',
     'edm_cmd_z_while_editing_canvas_text_ends_the_edit_and_undoes_the_typing_generically',
+    'edm_panel_structural_targets_omit_absent_column_and_keep_column_zero',
+    'edm_panel_structural_emission_matches_shared_targets_and_engine_admits_it',
     'edm_panel_field_commit_logs_only_a_changed_value',
 }
 matched = re.findall(r'^test (?:[A-Za-z0-9_]+::)*(edm_[A-Za-z0-9_]+) \.\.\. ok$', Path(sys.argv[1]).read_text(), re.M)
 if len(matched) != len(expected) or set(matched) != expected:
-    raise SystemExit(f'Expected exactly 6 passing EDM UI tests; matched {len(matched)}: {matched}')
+    raise SystemExit(f'Expected exactly 8 passing EDM UI tests; matched {len(matched)}: {matched}')
 PY
   cargo test --locked -p figcraft-engine --lib edm_ > "$evidence/test-edm.log" 2>&1
   python3 - "$evidence/test-edm.log" <<'PY'
@@ -134,10 +136,11 @@ expected = {
     'edm_designer_native_match_tracks_unlogged_edits_and_their_generic_undo',
     'edm_snapshot_rebuild_keys_verified_image_bytes_by_block_and_drops_replaced_bytes',
     'edm_designer_style_locks_match_shared_desktop_mobile_and_inherited_paths',
+    'edm_designer_structural_column_index_follows_shared_optional_integer_target',
 }
 matched = re.findall(r'^test (?:cmd::edm::tests::)?(edm_[A-Za-z0-9_]+) \.\.\. ok$', Path(sys.argv[1]).read_text(), re.M)
 if len(matched) != len(expected) or set(matched) != expected:
-    raise SystemExit(f'Expected exactly 29 passing EDM tests; matched {len(matched)}: {matched}')
+    raise SystemExit(f'Expected exactly 30 passing EDM tests; matched {len(matched)}: {matched}')
 PY
   cargo test --locked -p figcraft-engine --lib browser_export_bound > "$evidence/test-browser-export-bound.log" 2>&1
   cargo test --locked -p figcraft-format --lib zip_files > "$evidence/test-zip-files.log" 2>&1

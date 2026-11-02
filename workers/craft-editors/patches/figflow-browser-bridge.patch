@@ -137,7 +137,7 @@
 +}
 --- /dev/null
 +++ b/crates/engine/src/cmd/edm.rs
-@@ -0,0 +1,3316 @@
+@@ -0,0 +1,3434 @@
 +//! Bounded XeroFlow email handoffs on a real native document.
 +//!
 +//! The canonical document is retained verbatim. A snapshot patches only approved
@@ -1853,6 +1853,19 @@
 +    Err(designer_bad("block parent missing"))
 +}
 +
++/// Shared `Target.columnIndex`: `z.number().int().min(0).max(2).optional()`. Only an absent key is
++/// "no column"; an explicit `null`, a string, a boolean, a fraction or a value outside 0..=2 is refused
++/// rather than read as absent. `1.0` is admitted because `JSON.parse` yields the integer 1. Whether the
++/// parent then requires (ColumnsContainer) or forbids (EmailLayout, Container) a column is
++/// [`assert_designer_target`]'s decision.
++fn designer_column_index(operation: &Value) -> Result<Option<usize>> {
++    match operation.get("columnIndex") {
++        None => Ok(None),
++        Some(value) if bounded_number(value, 0.0, 2.0, true) => Ok(value.as_f64().map(|index| index as usize)),
++        Some(_) => Err(designer_bad("invalid columnIndex")),
++    }
++}
++
 +fn assert_designer_target(design: &Value, parent_id: &str, column_index: Option<usize>) -> Result<()> {
 +    if !designer_capability(design, parent_id).is_some_and(|(_, can_insert, _)| can_insert) {
 +        return Err(designer_bad("insert parent is locked"));
@@ -2184,7 +2197,7 @@
 +            }
 +            let section_type = operation.get("sectionType").and_then(Value::as_str).filter(|kind| DESIGNER_SECTION_TYPES.contains(kind)).ok_or_else(|| designer_bad("invalid sectionType"))?;
 +            let parent_id = operation.get("parentId").and_then(Value::as_str).filter(|id| valid_id(id)).ok_or_else(|| designer_bad("invalid parentId"))?;
-+            let column_index = operation.get("columnIndex").and_then(Value::as_u64).map(|index| index as usize);
++            let column_index = designer_column_index(operation)?;
 +            let index = operation.get("index").and_then(Value::as_u64).filter(|index| *index <= 300).ok_or_else(|| designer_bad("invalid index"))? as usize;
 +            assert_designer_target(&state.current, parent_id, column_index)?;
 +            let new_id = designer_block_id(&operation_id, operation_index, 0);
@@ -2246,7 +2259,7 @@
 +                state.current["policy"]["editableFields"].as_array_mut().ok_or_else(|| designer_bad("editableFields missing"))?.retain(|path| path.as_str().and_then(|path| path.split('.').next()).is_some_and(|id| !ids.iter().any(|removed| removed == id)));
 +            } else {
 +                let parent_id = operation.get("parentId").and_then(Value::as_str).filter(|id| valid_id(id)).ok_or_else(|| designer_bad("invalid parentId"))?;
-+                let column_index = operation.get("columnIndex").and_then(Value::as_u64).map(|index| index as usize);
++                let column_index = designer_column_index(operation)?;
 +                let index = operation.get("index").and_then(Value::as_u64).filter(|index| *index <= 300).ok_or_else(|| designer_bad("invalid index"))? as usize;
 +                if ids.iter().any(|id| id == parent_id) {
 +                    return Err(designer_bad("cannot insert into descendants"));
@@ -3453,6 +3466,111 @@
 +            assert_eq!(logged_operations(&mut session), usize::from(accepted), "{lock}: {operation} logs only when accepted");
 +        }
 +    }
++
++    // Root, a nested Container and a two-column ColumnsContainer. The capabilities and every
++    // `(operation, accepted)` verdict were produced by the shared `designerCapabilities` and
++    // `applyDesignerOperations` (tsx, 2 November 2026). Shared `Target.columnIndex` is
++    // `z.number().int().min(0).max(2).optional()`: absent is allowed only where the parent forbids a
++    // column; `null`, strings, booleans, arrays, objects, fractions and out-of-range values are refused.
++    const SHARED_TARGET_DESIGN: &str = r#"
++{
++  "schemaVersion": 1,
++  "kind": "template",
++  "scope": {"clientId": null},
++  "source": {"editor": "composer", "nativeArtifact": null},
++  "rootChildrenIds": ["root"],
++  "blocks": {
++    "root": {"type": "EmailLayout", "data": {"childrenIds": ["text-1", "cols", "box"], "props": {"contentWidth": 600}}},
++    "text-1": {"type": "Text", "data": {"props": {"text": "Hello {{firstName}}"}}},
++    "cols": {"type": "ColumnsContainer", "data": {"props": {"columnsCount": 2, "columns": [{"childrenIds": ["c0-a", "c0-b"]}, {"childrenIds": []}]}}},
++    "c0-a": {"type": "Text", "data": {"props": {"text": "Left A"}}},
++    "c0-b": {"type": "Text", "data": {"props": {"text": "Left B"}}},
++    "box": {"type": "Container", "data": {"childrenIds": ["box-a", "box-b"], "props": {}}},
++    "box-a": {"type": "Text", "data": {"props": {"text": "Box A"}}},
++    "box-b": {"type": "Text", "data": {"props": {"text": "Box B"}}}
++  },
++  "lineage": [],
++  "dependencies": [],
++  "moduleInstances": [],
++  "assets": [],
++  "policy": {"version": 1, "editableFields": ["text-1.data.props.text", "c0-a.data.props.text", "c0-b.data.props.text", "box-a.data.props.text", "box-b.data.props.text"]}
++}
++"#;
++
++    const SHARED_TARGET_CAPABILITIES: &str = r#"
++{
++  "version": 1,
++  "operations": ["set-style", "set-props", "add-section", "move-section", "duplicate-section", "remove-section"],
++  "blocks": [
++    {"blockId": "root", "editable": true, "canInsert": true, "lockedStyleFields": []},
++    {"blockId": "text-1", "editable": true, "canInsert": false, "lockedStyleFields": []},
++    {"blockId": "cols", "editable": true, "canInsert": true, "lockedStyleFields": []},
++    {"blockId": "c0-a", "editable": true, "canInsert": false, "lockedStyleFields": []},
++    {"blockId": "c0-b", "editable": true, "canInsert": false, "lockedStyleFields": []},
++    {"blockId": "box", "editable": true, "canInsert": true, "lockedStyleFields": []},
++    {"blockId": "box-a", "editable": true, "canInsert": false, "lockedStyleFields": []},
++    {"blockId": "box-b", "editable": true, "canInsert": false, "lockedStyleFields": []}
++  ],
++  "nativeSource": {"state": "canonical-only", "artifact": null, "reason": "PRIVATE_NATIVE_STAGING_UNAVAILABLE"}
++}
++"#;
++
++    const SHARED_TARGET_VECTORS: [(&str, bool); 36] = [
++        (r#"{"op":"add-section","sectionType":"Text","parentId":"root","index":3}"#, true),
++        (r#"{"op":"add-section","sectionType":"Text","parentId":"root","index":1}"#, true),
++        (r#"{"op":"add-section","sectionType":"Text","parentId":"box","index":2}"#, true),
++        (r#"{"op":"add-section","sectionType":"Text","parentId":"box","index":1}"#, true),
++        (r#"{"op":"add-section","sectionType":"Text","parentId":"cols","columnIndex":0,"index":2}"#, true),
++        (r#"{"op":"add-section","sectionType":"Text","parentId":"cols","columnIndex":0,"index":1}"#, true),
++        (r#"{"op":"move-section","blockId":"text-1","parentId":"root","index":1}"#, true),
++        (r#"{"op":"move-section","blockId":"box-b","parentId":"box","index":0}"#, true),
++        (r#"{"op":"move-section","blockId":"c0-b","parentId":"cols","columnIndex":0,"index":0}"#, true),
++        (r#"{"op":"move-section","blockId":"c0-a","parentId":"cols","columnIndex":0,"index":1}"#, true),
++        (r#"{"op":"duplicate-section","blockId":"text-1","parentId":"root","index":1}"#, true),
++        (r#"{"op":"duplicate-section","blockId":"box-a","parentId":"box","index":1}"#, true),
++        (r#"{"op":"duplicate-section","blockId":"c0-a","parentId":"cols","columnIndex":0,"index":1}"#, true),
++        (r#"{"op":"add-section","sectionType":"Spacer","parentId":"root","columnIndex":null,"index":1}"#, false),
++        (r#"{"op":"add-section","sectionType":"Text","parentId":"box","columnIndex":null,"index":1}"#, false),
++        (r#"{"op":"add-section","sectionType":"Text","parentId":"cols","columnIndex":null,"index":0}"#, false),
++        (r#"{"op":"add-section","sectionType":"Text","parentId":"cols","index":0}"#, false),
++        (r#"{"op":"add-section","sectionType":"Text","parentId":"cols","columnIndex":"0","index":0}"#, false),
++        (r#"{"op":"add-section","sectionType":"Text","parentId":"cols","columnIndex":true,"index":0}"#, false),
++        (r#"{"op":"add-section","sectionType":"Text","parentId":"cols","columnIndex":-1,"index":0}"#, false),
++        (r#"{"op":"add-section","sectionType":"Text","parentId":"cols","columnIndex":0.5,"index":0}"#, false),
++        (r#"{"op":"add-section","sectionType":"Text","parentId":"cols","columnIndex":3,"index":0}"#, false),
++        (r#"{"op":"add-section","sectionType":"Text","parentId":"cols","columnIndex":2,"index":0}"#, false),
++        (r#"{"op":"add-section","sectionType":"Text","parentId":"cols","columnIndex":1,"index":0}"#, true),
++        (r#"{"op":"add-section","sectionType":"Text","parentId":"cols","columnIndex":1.0,"index":0}"#, true),
++        (r#"{"op":"add-section","sectionType":"Text","parentId":"root","columnIndex":0,"index":0}"#, false),
++        (r#"{"op":"add-section","sectionType":"Text","parentId":"box","columnIndex":0,"index":0}"#, false),
++        (r#"{"op":"move-section","blockId":"text-1","parentId":"root","columnIndex":null,"index":1}"#, false),
++        (r#"{"op":"move-section","blockId":"box-b","parentId":"box","columnIndex":null,"index":0}"#, false),
++        (r#"{"op":"move-section","blockId":"text-1","parentId":"cols","columnIndex":1,"index":0}"#, true),
++        (r#"{"op":"move-section","blockId":"text-1","parentId":"cols","columnIndex":"1","index":0}"#, false),
++        (r#"{"op":"move-section","blockId":"text-1","parentId":"cols","index":0}"#, false),
++        (r#"{"op":"duplicate-section","blockId":"text-1","parentId":"root","columnIndex":null,"index":1}"#, false),
++        (r#"{"op":"duplicate-section","blockId":"c0-a","parentId":"cols","columnIndex":null,"index":1}"#, false),
++        (r#"{"op":"duplicate-section","blockId":"c0-a","parentId":"cols","columnIndex":[0],"index":1}"#, false),
++        (r#"{"op":"duplicate-section","blockId":"box-a","parentId":"box","columnIndex":{},"index":1}"#, false),
++    ];
++
++    #[test]
++    fn edm_designer_structural_column_index_follows_shared_optional_integer_target() {
++        let design: Value = serde_json::from_str(SHARED_TARGET_DESIGN).unwrap();
++        let capabilities: Value = serde_json::from_str(SHARED_TARGET_CAPABILITIES).unwrap();
++        for (operation, accepted) in SHARED_TARGET_VECTORS {
++            let operation: Value = serde_json::from_str(operation).unwrap();
++            let mut session = Session::new();
++            let params = json!({"design": design.clone(), "images": {}, "operationId": DESIGNER_OPERATION_ID, "capabilities": capabilities.clone()});
++            session.execute("edm_designer_import", &params).unwrap();
++            let result = apply_designer(&mut session, json!([operation.clone()]));
++            assert_eq!(result.is_ok(), accepted, "{operation} agrees with shared applyDesignerOperations");
++            assert_eq!(logged_operations(&mut session), usize::from(accepted), "{operation} logs only when accepted");
++        }
++        assert_eq!(designer_column_index(&json!({})).unwrap(), None);
++        assert_eq!(designer_column_index(&json!({"columnIndex": 0})).unwrap(), Some(0), "column zero is a real column");
++        assert!(designer_column_index(&json!({"columnIndex": null})).is_err(), "explicit null is not an absent column");
++    }
 +}
 --- a/crates/engine/src/cmd/mod.rs
 +++ b/crates/engine/src/cmd/mod.rs
@@ -3922,12 +4040,13 @@
 +}
 --- /dev/null
 +++ b/crates/ui-egui/src/edm_panel.rs
-@@ -0,0 +1,361 @@
+@@ -0,0 +1,522 @@
 +//! XeroFlow email content and canonical designer controls on native selections.
 +use std::collections::BTreeSet;
 +
 +use egui::{Id, Ui};
 +use figcraft_doc::{Document, NodeId};
++use figcraft_engine::cmd::edm::DesignerLocation;
 +use serde_json::{Map, Value, json};
 +
 +use crate::right::{menu_item, menu_popup, row};
@@ -3944,6 +4063,35 @@
 +
 +fn apply_operation(app: &mut FigApp, operation: Value) {
 +    let _ = app.run("edm_designer_apply", json!({"operations": [operation]}));
++}
++
++/// A shared structural `Target`: `parentId`, `index` and `columnIndex` only for a column parent. The
++/// shared parser (`z.number().int().min(0).max(2).optional()`) refuses `null`, so "no column" is the
++/// absent key, never JSON `null`; a real column index, including 0, is always kept.
++fn structural_operation(op: &str, subject: (&str, &str), target: &DesignerLocation, index: usize) -> Value {
++    let mut operation = Map::new();
++    operation.insert("op".into(), json!(op));
++    operation.insert(subject.0.into(), json!(subject.1));
++    operation.insert("parentId".into(), json!(target.parent_id));
++    if let Some(column_index) = target.column_index {
++        operation.insert("columnIndex".into(), json!(column_index));
++    }
++    operation.insert("index".into(), json!(index));
++    Value::Object(operation)
++}
++
++fn add_section_operation(section_type: &str, target: &DesignerLocation) -> Value {
++    structural_operation("add-section", ("sectionType", section_type), target, target.index)
++}
++
++/// `index` is the destination within the block's current list (one up or one down).
++fn move_section_operation(block_id: &str, location: &DesignerLocation, index: usize) -> Value {
++    structural_operation("move-section", ("blockId", block_id), location, index)
++}
++
++/// The copy lands directly after its source, in the same list (and column).
++fn duplicate_section_operation(block_id: &str, location: &DesignerLocation) -> Value {
++    structural_operation("duplicate-section", ("blockId", block_id), location, location.index + 1)
 +}
 +
 +fn apply_props(app: &mut FigApp, block_id: &str, props: Map<String, Value>) {
@@ -4204,7 +4352,7 @@
 +            menu_popup(&response).show(|ui| {
 +                for section_type in SECTION_TYPES {
 +                    if menu_item(ui, section_type, "") {
-+                        apply_operation(app, json!({"op": "add-section", "sectionType": section_type, "parentId": target.parent_id, "columnIndex": target.column_index, "index": target.index}));
++                        apply_operation(app, add_section_operation(section_type, &target));
 +                        ui.close();
 +                    }
 +                }
@@ -4214,15 +4362,15 @@
 +    if let Some(location) = location {
 +        row(ui, 32.0, |ui| {
 +            if widgets::button(ui, "Move up", false, location.index > 0).clicked() {
-+                apply_operation(app, json!({"op": "move-section", "blockId": block_id, "parentId": location.parent_id, "columnIndex": location.column_index, "index": location.index - 1}));
++                apply_operation(app, move_section_operation(&block_id, &location, location.index - 1));
 +            }
 +            if widgets::button(ui, "Move down", false, location.index + 1 < list_len).clicked() {
-+                apply_operation(app, json!({"op": "move-section", "blockId": block_id, "parentId": location.parent_id, "columnIndex": location.column_index, "index": location.index + 1}));
++                apply_operation(app, move_section_operation(&block_id, &location, location.index + 1));
 +            }
 +        });
 +        row(ui, 32.0, |ui| {
 +            if widgets::button(ui, "Duplicate", false, capability.editable).clicked() {
-+                apply_operation(app, json!({"op": "duplicate-section", "blockId": block_id, "parentId": location.parent_id, "columnIndex": location.column_index, "index": location.index + 1}));
++                apply_operation(app, duplicate_section_operation(&block_id, &location));
 +            }
 +            if widgets::button(ui, "Remove", false, capability.editable).clicked() {
 +                apply_operation(app, json!({"op": "remove-section", "blockId": block_id}));
@@ -4275,7 +4423,138 @@
 +
 +#[cfg(test)]
 +mod tests {
-+    use super::changed;
++    use figcraft_engine::Session;
++    use figcraft_engine::cmd::edm::{DesignerLocation, EdmDesigner};
++    use serde_json::{Value, json};
++
++    use super::{add_section_operation, changed, duplicate_section_operation, move_section_operation};
++
++    // Root, a nested Container and a two-column ColumnsContainer. `TARGET_CAPABILITIES` is what the
++    // shared `designerCapabilities` returns for this design, and every `EXPECTED_STRUCTURAL` operation
++    // is accepted by the shared `applyDesignerOperations` (both generated with tsx on 2 November 2026).
++    // The captured browser failure was `{"op":"add-section","parentId":"root","columnIndex":null,…}`.
++    const TARGET_DESIGN: &str = r#"
++{
++  "schemaVersion": 1,
++  "kind": "template",
++  "scope": {"clientId": null},
++  "source": {"editor": "composer", "nativeArtifact": null},
++  "rootChildrenIds": ["root"],
++  "blocks": {
++    "root": {"type": "EmailLayout", "data": {"childrenIds": ["text-1", "cols", "box"], "props": {"contentWidth": 600}}},
++    "text-1": {"type": "Text", "data": {"props": {"text": "Hello {{firstName}}"}}},
++    "cols": {"type": "ColumnsContainer", "data": {"props": {"columnsCount": 2, "columns": [{"childrenIds": ["c0-a", "c0-b"]}, {"childrenIds": []}]}}},
++    "c0-a": {"type": "Text", "data": {"props": {"text": "Left A"}}},
++    "c0-b": {"type": "Text", "data": {"props": {"text": "Left B"}}},
++    "box": {"type": "Container", "data": {"childrenIds": ["box-a", "box-b"], "props": {}}},
++    "box-a": {"type": "Text", "data": {"props": {"text": "Box A"}}},
++    "box-b": {"type": "Text", "data": {"props": {"text": "Box B"}}}
++  },
++  "lineage": [],
++  "dependencies": [],
++  "moduleInstances": [],
++  "assets": [],
++  "policy": {"version": 1, "editableFields": ["text-1.data.props.text", "c0-a.data.props.text", "c0-b.data.props.text", "box-a.data.props.text", "box-b.data.props.text"]}
++}
++"#;
++
++    const TARGET_CAPABILITIES: &str = r#"
++{
++  "version": 1,
++  "operations": ["set-style", "set-props", "add-section", "move-section", "duplicate-section", "remove-section"],
++  "blocks": [
++    {"blockId": "root", "editable": true, "canInsert": true, "lockedStyleFields": []},
++    {"blockId": "text-1", "editable": true, "canInsert": false, "lockedStyleFields": []},
++    {"blockId": "cols", "editable": true, "canInsert": true, "lockedStyleFields": []},
++    {"blockId": "c0-a", "editable": true, "canInsert": false, "lockedStyleFields": []},
++    {"blockId": "c0-b", "editable": true, "canInsert": false, "lockedStyleFields": []},
++    {"blockId": "box", "editable": true, "canInsert": true, "lockedStyleFields": []},
++    {"blockId": "box-a", "editable": true, "canInsert": false, "lockedStyleFields": []},
++    {"blockId": "box-b", "editable": true, "canInsert": false, "lockedStyleFields": []}
++  ],
++  "nativeSource": {"state": "canonical-only", "artifact": null, "reason": "PRIVATE_NATIVE_STAGING_UNAVAILABLE"}
++}
++"#;
++
++    const EXPECTED_STRUCTURAL: [&str; 13] = [
++        r#"{"op":"add-section","sectionType":"Text","parentId":"root","index":3}"#,
++        r#"{"op":"add-section","sectionType":"Text","parentId":"root","index":1}"#,
++        r#"{"op":"add-section","sectionType":"Text","parentId":"box","index":2}"#,
++        r#"{"op":"add-section","sectionType":"Text","parentId":"box","index":1}"#,
++        r#"{"op":"add-section","sectionType":"Text","parentId":"cols","columnIndex":0,"index":2}"#,
++        r#"{"op":"add-section","sectionType":"Text","parentId":"cols","columnIndex":0,"index":1}"#,
++        r#"{"op":"move-section","blockId":"text-1","parentId":"root","index":1}"#,
++        r#"{"op":"move-section","blockId":"box-b","parentId":"box","index":0}"#,
++        r#"{"op":"move-section","blockId":"c0-b","parentId":"cols","columnIndex":0,"index":0}"#,
++        r#"{"op":"move-section","blockId":"c0-a","parentId":"cols","columnIndex":0,"index":1}"#,
++        r#"{"op":"duplicate-section","blockId":"text-1","parentId":"root","index":1}"#,
++        r#"{"op":"duplicate-section","blockId":"box-a","parentId":"box","index":1}"#,
++        r#"{"op":"duplicate-section","blockId":"c0-a","parentId":"cols","columnIndex":0,"index":1}"#,
++    ];
++
++    fn target_session() -> Session {
++        let mut session = Session::new();
++        let design: Value = serde_json::from_str(TARGET_DESIGN).unwrap();
++        let capabilities: Value = serde_json::from_str(TARGET_CAPABILITIES).unwrap();
++        let params = json!({"design": design, "images": {}, "operationId": "123e4567-e89b-42d3-a456-426614174000", "capabilities": capabilities});
++        session.execute("edm_designer_import", &params).unwrap();
++        session
++    }
++
++    fn target_designer(session: &Session) -> &EdmDesigner {
++        session.ds().unwrap().edm_designer.as_ref().unwrap()
++    }
++
++    fn location(parent_id: &str, column_index: Option<usize>, index: usize) -> DesignerLocation {
++        DesignerLocation { parent_id: parent_id.into(), column_index, index }
++    }
++
++    #[test]
++    fn edm_panel_structural_targets_omit_absent_column_and_keep_column_zero() {
++        for parent in ["root", "nested-container"] {
++            let target = location(parent, None, 1);
++            for operation in [add_section_operation("Spacer", &target), move_section_operation("block", &target, 0), duplicate_section_operation("block", &target)] {
++                assert!(operation.get("columnIndex").is_none(), "{operation}: no column means no key");
++                assert!(!operation.to_string().contains("null"), "{operation}: never JSON null");
++            }
++        }
++        assert_eq!(add_section_operation("Spacer", &location("root", None, 1)), json!({"op": "add-section", "sectionType": "Spacer", "parentId": "root", "index": 1}));
++        for column in [0usize, 1, 2] {
++            let target = location("columns", Some(column), 1);
++            assert_eq!(add_section_operation("Text", &target), json!({"op": "add-section", "sectionType": "Text", "parentId": "columns", "columnIndex": column, "index": 1}));
++            assert_eq!(move_section_operation("cell", &target, 0), json!({"op": "move-section", "blockId": "cell", "parentId": "columns", "columnIndex": column, "index": 0}));
++            assert_eq!(duplicate_section_operation("cell", &target), json!({"op": "duplicate-section", "blockId": "cell", "parentId": "columns", "columnIndex": column, "index": 2}));
++        }
++    }
++
++    #[test]
++    fn edm_panel_structural_emission_matches_shared_targets_and_engine_admits_it() {
++        let session = target_session();
++        let designer = target_designer(&session);
++        let insert = |block_id: &str| add_section_operation("Text", &designer.insertion_target(Some(block_id)).unwrap());
++        let at = |block_id: &str| designer.location(block_id).unwrap();
++        let emitted = [
++            insert("root"),
++            insert("text-1"),
++            insert("box"),
++            insert("box-a"),
++            insert("cols"),
++            insert("c0-a"),
++            move_section_operation("text-1", &at("text-1"), at("text-1").index + 1),
++            move_section_operation("box-b", &at("box-b"), at("box-b").index - 1),
++            move_section_operation("c0-b", &at("c0-b"), at("c0-b").index - 1),
++            move_section_operation("c0-a", &at("c0-a"), at("c0-a").index + 1),
++            duplicate_section_operation("text-1", &at("text-1")),
++            duplicate_section_operation("box-a", &at("box-a")),
++            duplicate_section_operation("c0-a", &at("c0-a")),
++        ];
++        for (operation, expected) in emitted.iter().zip(EXPECTED_STRUCTURAL) {
++            assert_eq!(*operation, serde_json::from_str::<Value>(expected).unwrap(), "panel emits the shared target");
++            let mut fresh = target_session();
++            fresh.execute("edm_designer_apply", &json!({"operations": [operation]})).unwrap();
++            assert_eq!(target_designer(&fresh).operation_count(), 1, "{operation} is admitted and logged once");
++        }
++    }
 +
 +    #[test]
 +    fn edm_panel_field_commit_logs_only_a_changed_value() {
