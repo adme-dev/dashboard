@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { BannerAsset } from '~/types/banner-studio'
 import { apiErrorDescription } from '~/utils/apiError'
+import { matchesMotorStackPaint, motorStackPaintName, motorStackPaintNames } from '~/utils/banner-motorstack-colours'
 
 interface MotorStackMediaAsset {
   id: string
@@ -20,6 +21,7 @@ interface MotorStackMediaResponse {
 const props = withDefaults(defineProps<{
   initialBrandId?: string
   initialModel?: string
+  initialColour?: string
   initialModels?: string[]
   imagesOnly?: boolean
   addToCanvas?: boolean
@@ -29,6 +31,8 @@ const emit = defineEmits<{ imported: [asset: BannerAsset] }>()
 const allModels = '__all_models__'
 const brandId = ref<string>()
 const model = ref(allModels)
+const colour = ref('__choose_colour__')
+const pendingInitialColour = ref<string>()
 const search = ref('')
 const assetType = ref('images')
 const typeItems = [{ label: 'Images', value: 'images' }, { label: 'Documents', value: 'documents' }, { label: 'All media', value: 'all' }]
@@ -52,11 +56,21 @@ const { data: mediaData, error: mediaFetchError, execute: fetchMedia } = useFetc
 )
 const brandItems = computed(() => (brandsData.value?.brands || []).map(brand => ({ label: brand.name, value: brand.id })))
 const modelItems = computed(() => [{ label: 'All models', value: allModels }, ...modelNames.value.map(name => ({ label: name, value: name }))])
+const colourItems = computed(() => {
+  const assets = media.value?.assets || []
+  return [
+    { label: props.addToCanvas ? 'Choose a colour' : 'All colours', value: props.addToCanvas ? '__choose_colour__' : '__all_colours__' },
+    ...motorStackPaintNames(assets).map(name => ({ label: name, value: name })),
+    ...(assets.some(asset => asset.importable && asset.mime.startsWith('image/') && !motorStackPaintName(asset.name)) ? [{ label: 'Other images', value: '__other_images__' }] : [])
+  ]
+})
 const filteredAssets = computed(() => {
   const terms = search.value.trim().toLowerCase().split(/\s+/).filter(Boolean)
+  if (props.addToCanvas && (model.value === allModels || colour.value === '__choose_colour__')) return []
   return (media.value?.assets || []).filter((asset) => {
     if (assetType.value === 'images' && !isImage(asset)) return false
     if (assetType.value === 'documents' && !isPdf(asset)) return false
+    if (assetType.value !== 'documents' && !matchesMotorStackPaint(asset, colour.value)) return false
     const text = `${asset.name} ${asset.type} ${formatLabel(asset)}`.toLowerCase()
     return terms.every(term => text.includes(term))
   })
@@ -67,6 +81,8 @@ function selectBrand(value: string) {
   if (value === brandId.value) return
   brandId.value = value
   model.value = allModels
+  colour.value = props.addToCanvas ? '__choose_colour__' : '__all_colours__'
+  pendingInitialColour.value = undefined
   modelNames.value = []
 }
 async function loadMedia() {
@@ -84,6 +100,10 @@ async function loadMedia() {
     previewErrors.value = {}
     media.value = mediaData.value
     modelNames.value = [...new Set([...modelNames.value, ...mediaData.value.models.filter(name => name.trim() && name !== allModels)])]
+    if (pendingInitialColour.value) {
+      colour.value = colourItems.value.find(item => item.value.toLocaleLowerCase() === pendingInitialColour.value!.toLocaleLowerCase())?.value || '__choose_colour__'
+      pendingInitialColour.value = undefined
+    }
   } catch (error) {
     if (generation === requestGeneration) mediaError.value = apiErrorDescription(error, 'Could not load this brand’s media. Try again.')
   } finally {
@@ -93,6 +113,12 @@ async function loadMedia() {
 watch([brandId, model], () => {
   if (open.value) loadMedia()
 })
+watch(model, () => {
+  if (!pendingInitialColour.value) colour.value = props.addToCanvas ? '__choose_colour__' : '__all_colours__'
+})
+watch(colourItems, (items) => {
+  if (!items.some(item => item.value === colour.value)) colour.value = props.addToCanvas ? '__choose_colour__' : '__all_colours__'
+})
 watch(open, (value) => {
   if (!value) return
   if (props.initialBrandId) {
@@ -100,6 +126,8 @@ watch(open, (value) => {
     const changed = brandId.value !== props.initialBrandId || model.value !== nextModel
     brandId.value = props.initialBrandId
     model.value = nextModel
+    colour.value = props.addToCanvas ? '__choose_colour__' : '__all_colours__'
+    pendingInitialColour.value = props.initialColour
     modelNames.value = [...new Set(props.initialModels || [])]
     assetType.value = 'images'
     if (!changed) loadMedia()
@@ -158,7 +186,7 @@ async function importAsset(asset: MotorStackMediaAsset) {
   <UModal
     v-model:open="open"
     :title="props.imagesOnly ? 'Vehicle images' : 'MotorStack media'"
-    :description="props.addToCanvas ? 'Choose a vehicle image for the current layout.' : 'Browse OEM images and documents. Add images to your asset library when you are ready.'"
+    :description="props.addToCanvas ? 'Choose a vehicle image for every canvas size.' : 'Browse OEM images and documents. Add images to your asset library when you are ready.'"
     :dismissible="!busy"
     :close="!busy"
     :ui="{ content: 'sm:max-w-5xl', body: 'min-h-0' }"
@@ -195,6 +223,15 @@ async function importAsset(asset: MotorStackMediaAsset) {
               class="w-full"
             />
           </UFormField>
+          <UFormField v-if="assetType !== 'documents'" label="Paint colour">
+            <USelectMenu
+              v-model="colour"
+              :items="colourItems"
+              value-key="value"
+              :disabled="busy || loadingMedia || colourItems.length === 1 || (props.addToCanvas && model === allModels)"
+              class="w-full"
+            />
+          </UFormField>
           <UFormField v-if="!props.imagesOnly" label="Media type">
             <USelectMenu
               v-model="assetType"
@@ -213,7 +250,7 @@ async function importAsset(asset: MotorStackMediaAsset) {
           </UFormField>
         </div>
         <p v-if="brandId" class="text-sm text-muted">
-          {{ model === allModels ? 'Browse colour images across this brand. Choose a model to include its gallery and interior photos.' : 'Search this model’s colour images, gallery and interior photos.' }}
+          {{ model === allModels ? 'Choose a model to browse its paint colours, gallery and interior photos.' : props.addToCanvas ? 'Pick a paint colour, then choose a vehicle image.' : 'Browse this model’s images and documents.' }}
         </p>
         <template v-if="!props.imagesOnly">
           <UAlert
@@ -255,7 +292,7 @@ async function importAsset(asset: MotorStackMediaAsset) {
             </p>
           </div>
           <div v-if="!filteredAssets.length" class="py-16 text-center text-sm text-muted">
-            {{ media.assets.length ? 'No media matches these filters. Try another model, colour or media type.' : 'No media is available for this selection. Try another model or brand.' }}
+            {{ props.addToCanvas && model === allModels ? 'Choose a model first.' : props.addToCanvas && colourItems.length === 1 ? 'No vehicle images are available for this model.' : props.addToCanvas && colour === '__choose_colour__' ? 'Choose a paint colour to show matching images.' : media.assets.length ? 'No media matches these filters. Try another model, colour or media type.' : 'No media is available for this selection. Try another model or brand.' }}
           </div>
           <ul v-else class="grid max-h-[min(55vh,38rem)] grid-cols-1 gap-4 overflow-y-auto @sm:grid-cols-2 @2xl:grid-cols-3" aria-label="MotorStack media assets">
             <li v-for="asset in filteredAssets" :key="asset.id" class="flex min-w-0 flex-col overflow-hidden rounded-lg border border-default">
@@ -298,7 +335,7 @@ async function importAsset(asset: MotorStackMediaAsset) {
                 <div class="mt-auto">
                   <UButton
                     v-if="canImport(asset)"
-                    :label="props.addToCanvas ? importErrors[assetKey(asset)] ? 'Retry adding to layout' : 'Add to layout' : imported[assetKey(asset)] ? 'Added to library' : importErrors[assetKey(asset)] ? 'Retry adding to library' : 'Add to library'"
+                    :label="props.addToCanvas ? importErrors[assetKey(asset)] ? 'Retry adding to all layouts' : 'Add to all layouts' : imported[assetKey(asset)] ? 'Added to library' : importErrors[assetKey(asset)] ? 'Retry adding to library' : 'Add to library'"
                     :icon="!props.addToCanvas && imported[assetKey(asset)] ? 'i-lucide-check' : 'i-lucide-plus'"
                     :loading="importing === assetKey(asset)"
                     :disabled="busy || (!props.addToCanvas && Boolean(imported[assetKey(asset)]))"
@@ -334,7 +371,7 @@ async function importAsset(asset: MotorStackMediaAsset) {
     <template #footer>
       <div class="flex w-full items-center justify-between gap-3">
         <p role="status" aria-live="polite" class="text-xs text-muted">
-          {{ busy ? 'Adding the image…' : props.addToCanvas ? 'Choose an image to add it to this layout.' : 'Adding to the library does not change the artwork on your canvas.' }}
+          {{ busy ? 'Adding the image…' : props.addToCanvas ? 'Choose an image to add it to every canvas size.' : 'Adding to the library does not change the artwork on your canvas.' }}
         </p>
         <UButton
           color="neutral"

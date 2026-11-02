@@ -3,7 +3,7 @@ import type { BannerAsset, BannerBrandKit, BrandKitFont, BrandKitLogo } from '~/
 import { brandFontSelection } from '~/utils/banner-brand-kit'
 import { bannerFontFamily } from '~/utils/banner-font-family'
 import { apiErrorDescription } from '~/utils/apiError'
-import { bannerAssetLayer } from '~/utils/banner-media'
+import { matchesMotorStackPaint, motorStackPaintName, motorStackPaintNames } from '~/utils/banner-motorstack-colours'
 
 interface MotorStackImage {
   id: string
@@ -31,7 +31,7 @@ interface MotorStackOffer {
   hasImage: boolean
 }
 const emit = defineEmits<{ browseAssets: [] }>()
-const { state, selectedLayer, activeFormat, applyBrandKit, updateLayer, addLayer } = useBannerStudio()
+const { state, selectedLayer, activeFormat, applyBrandKit, updateLayer, addLayer, addMotorStackImageToAllLayouts } = useBannerStudio()
 const { isLayerLockedByOther } = useBannerRealtime()
 const toast = useToast()
 const clientId = computed(() => state.project?.clientId || undefined)
@@ -49,6 +49,7 @@ let catalogRequest = 0
 const money = (value: number) => new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', maximumFractionDigits: 0 }).format(value)
 const images = ref<MotorStackImages | null>(null)
 const imageModel = ref('__all_models__')
+const imageColour = ref('__choose_colour__')
 const imageSearch = ref('')
 const imageModalOpen = ref(false)
 const modalKitId = ref<string>()
@@ -56,8 +57,16 @@ const imageLoading = ref(false)
 const imageError = ref('')
 const addingImage = ref<string | null>(null)
 const imageModels = ref<string[]>([])
-const imageItems = computed(() => (images.value?.assets || []).filter(asset => asset.mime.startsWith('image/') && asset.importable && imageSearch.value.trim().toLowerCase().split(/\s+/).filter(Boolean).every(word => asset.name.toLowerCase().includes(word))))
+const imageItems = computed(() => imageModel.value === '__all_models__' || imageColour.value === '__choose_colour__' ? [] : (images.value?.assets || []).filter(asset => asset.mime.startsWith('image/') && asset.importable && matchesMotorStackPaint(asset, imageColour.value) && imageSearch.value.trim().toLowerCase().split(/\s+/).filter(Boolean).every(word => asset.name.toLowerCase().includes(word))))
 const modelItems = computed(() => [{ label: 'All models', value: '__all_models__' }, ...imageModels.value.map(name => ({ label: name, value: name }))])
+const colourItems = computed(() => {
+  const assets = images.value?.assets || []
+  return [
+    { label: 'Choose a colour', value: '__choose_colour__' },
+    ...motorStackPaintNames(assets).map(name => ({ label: name, value: name })),
+    ...(assets.some(asset => asset.importable && asset.mime.startsWith('image/') && !motorStackPaintName(asset.name)) ? [{ label: 'Other images', value: '__other_images__' }] : [])
+  ]
+})
 let imageRequest = 0
 async function loadImages() {
   const brandId = motorStackBrandId.value
@@ -81,15 +90,14 @@ async function loadImages() {
 async function addVehicleImage(image: MotorStackImage) {
   const brandId = motorStackBrandId.value
   const selectedKitId = kit.value?.id
-  const format = activeFormat.value
-  if (!brandId || !format || addingImage.value) return
+  if (!brandId || addingImage.value) return
   addingImage.value = image.id
   try {
     const result = await $fetch<{ asset: BannerAsset }>('/api/agency/banner-studio/motorstack/media', { method: 'POST', body: { brandId, ...(imageModel.value === '__all_models__' ? {} : { model: imageModel.value }), assetId: image.id } })
     if (kit.value?.id !== selectedKitId) return
     if (!result.asset?.url || !result.asset.mimeType?.startsWith('image/')) throw new Error('The saved image could not be verified. Retry.')
-    addLayer({ ...bannerAssetLayer(result.asset, format), startTime: 0, endTime: state.duration })
-    toast.add({ title: 'Vehicle image added', description: image.name, color: 'success' })
+    const count = addMotorStackImageToAllLayouts(result.asset)
+    toast.add({ title: 'Vehicle image added', description: `${image.name} · ${count} ${count === 1 ? 'layout' : 'layouts'}`, color: 'success' })
   } catch (error) {
     toast.add({ title: 'Could not add vehicle image', description: apiErrorDescription(error, 'Try another image.'), color: 'error' })
   } finally {
@@ -101,10 +109,13 @@ function openImageModal() {
   imageModalOpen.value = true
 }
 function addModalImage(asset: BannerAsset) {
-  const format = activeFormat.value
-  if (!format || kit.value?.id !== modalKitId.value || !asset.url || !asset.mimeType.startsWith('image/')) return
-  addLayer({ ...bannerAssetLayer(asset, format), startTime: 0, endTime: state.duration })
-  toast.add({ title: 'Vehicle image added', description: asset.name, color: 'success' })
+  if (kit.value?.id !== modalKitId.value || !asset.url || !asset.mimeType.startsWith('image/')) return
+  try {
+    const count = addMotorStackImageToAllLayouts(asset)
+    toast.add({ title: 'Vehicle image added', description: `${asset.name} · ${count} ${count === 1 ? 'layout' : 'layouts'}`, color: 'success' })
+  } catch (error) {
+    toast.add({ title: 'Could not add vehicle image', description: apiErrorDescription(error, 'Try another image.'), color: 'error' })
+  }
 }
 const offers = computed(() => catalog.value?.kitId === kit.value?.id ? catalog.value.items : [])
 async function loadCatalog() {
@@ -127,10 +138,17 @@ watch([() => kit.value?.id, activeTab], loadCatalog, { immediate: true })
 watch(motorStackBrandId, () => {
   imageModalOpen.value = false
   imageModel.value = '__all_models__'
+  imageColour.value = '__choose_colour__'
   imageModels.value = []
   imageSearch.value = ''
 })
 watch([motorStackBrandId, activeTab, imageModel], loadImages, { immediate: true })
+watch(imageModel, () => {
+  imageColour.value = '__choose_colour__'
+})
+watch(colourItems, (items) => {
+  if (!items.some(item => item.value === imageColour.value)) imageColour.value = '__choose_colour__'
+})
 watch(motorStackBrandId, (value) => {
   if (!value && (activeTab.value === 'variants' || activeTab.value === 'offers')) activeTab.value = 'logos'
 })
@@ -324,7 +342,7 @@ function addLogo(logo: BrandKitLogo, event: MouseEvent) {
       </div>
       <div v-else-if="activeTab === 'variants'" class="space-y-3">
         <p class="text-xs leading-relaxed text-muted">
-          Choose a model, then add a vehicle image to this layout.
+          Choose a model and paint colour, then add a vehicle image to every canvas size.
         </p>
         <UButton
           label="Open large image browser"
@@ -342,6 +360,18 @@ function addLogo(logo: BrandKitLogo, event: MouseEvent) {
             class="w-full"
           />
         </UFormField>
+        <UFormField label="Paint colour">
+          <USelectMenu
+            v-model="imageColour"
+            :items="colourItems"
+            value-key="value"
+            :disabled="imageModel === '__all_models__' || imageLoading || colourItems.length === 1"
+            class="w-full"
+          />
+        </UFormField>
+        <p v-if="!imageLoading && imageModel === '__all_models__'" class="text-xs text-muted">
+          Choose a model to see its paint colours.
+        </p>
         <UFormField label="Search images">
           <UInput
             v-model="imageSearch"
@@ -373,7 +403,7 @@ function addLogo(logo: BrandKitLogo, event: MouseEvent) {
             variant="subtle"
           />
           <p v-if="!imageItems.length" class="text-xs text-muted">
-            No images match this model or search.
+            {{ imageModel === '__all_models__' ? 'Choose a model first.' : colourItems.length === 1 ? 'No vehicle images are available for this model.' : imageColour === '__choose_colour__' ? 'Choose a paint colour to show matching images.' : 'No images match this colour or search.' }}
           </p>
           <div v-else class="grid grid-cols-2 gap-2 @lg:grid-cols-3">
             <UButton
@@ -384,7 +414,7 @@ function addLogo(logo: BrandKitLogo, event: MouseEvent) {
               class="min-w-0 flex-col items-stretch gap-1.5 p-1.5 text-left"
               :loading="addingImage === image.id"
               :disabled="!!addingImage"
-              :aria-label="`Add ${image.name} to layout`"
+              :aria-label="`Add ${image.name} to all layouts`"
               @click="addVehicleImage(image)"
             >
               <span class="flex aspect-square items-center justify-center overflow-hidden rounded bg-default"><img
@@ -506,6 +536,7 @@ function addLogo(logo: BrandKitLogo, event: MouseEvent) {
       v-model:open="imageModalOpen"
       :initial-brand-id="motorStackBrandId"
       :initial-model="imageModel === '__all_models__' ? undefined : imageModel"
+      :initial-colour="imageColour === '__choose_colour__' ? undefined : imageColour"
       :initial-models="imageModels"
       images-only
       add-to-canvas

@@ -1,11 +1,12 @@
 import { retimeLayerPresence } from '~/utils/banner-timeline-edit'
 import { editSlides, layerSlideId, resolveSlides, slideAtTime, slideRanges, type SlideEdit } from '~/utils/banner-slides'
 import { layerRotationChange } from '~/utils/banner-transform'
-import type { Layer, ArtboardState, BannerProject, UndoAction, BannerBrandKit, AnimInType, AnimOutType, MotionPathPoint, MotionPathTween } from '~/types/banner-studio'
+import type { Layer, ArtboardState, BannerProject, BannerAsset, UndoAction, BannerBrandKit, AnimInType, AnimOutType, MotionPathPoint, MotionPathTween } from '~/types/banner-studio'
 import { toRaw } from 'vue'
 import { FORMATS, TEMPLATES, migrateLayer, DEFAULT_BG, resolveBannerFormat } from '~/utils/banner-constants'
 import { brandButtonStyle, brandColor, brandFont, brandFontSelection, isLogoLayer, isDarkColor } from '~/utils/banner-brand-kit'
 import { buildBrandTemplateLayers, type BrandTemplateVariant } from '~/utils/banner-brand-templates'
+import { bannerAssetLayer } from '~/utils/banner-media'
 
 // Module-scope singleton state
 let _uid = 1
@@ -193,6 +194,50 @@ export function useBannerStudio() {
     try { useBannerRealtime().sendLayerAdd(layer, state.activeKey) } catch {}
 
     return layer
+  }
+
+  /** Place one linked MotorStack image on every canvas size, regardless of edit view. */
+  function addMotorStackImageToAllLayouts(asset: BannerAsset): number {
+    if (!asset.url || !asset.mimeType.startsWith('image/')) throw new Error('Choose an available vehicle image.')
+    const keys = [...state.setKeys]
+    if (!keys.length || !keys.includes(state.activeKey)) throw new Error('Open a banner design before adding an image.')
+    const activeRanges = slideRanges(resolveSlides(state.sets[state.activeKey]))
+    const activeSlideIndex = Math.max(0, activeRanges.findIndex(slide => slide.id === currentSlide.value?.id))
+    const targets = keys.map((key) => {
+      const board = state.sets[key]
+      const format = resolveBannerFormat(key)
+      if (!board || !format) throw new Error('One canvas size has invalid dimensions. Retry after reopening the design.')
+      const ranges = slideRanges(resolveSlides(board))
+      const slide = ranges[Math.min(activeSlideIndex, ranges.length - 1)]
+      return { key, board, format, slide, hasMultipleSlides: ranges.length > 1 || !!board.slides?.length }
+    })
+    const linkId = `motorstack:${nextId()}`
+    const added: Array<{ key: string, layer: Layer }> = []
+    withCanvasUndo(() => {
+      for (const { key, board, format, slide, hasMultipleSlides } of targets) {
+        if (hasMultipleSlides && !board.slides?.length) board.slides = JSON.parse(JSON.stringify(resolveSlides(board)))
+        const layer = migrateLayer({
+          ...bannerAssetLayer(asset, format),
+          id: nextId(), linkId,
+          zIndex: Math.max(0, ...board.layers.filter(item => !item.slideTransitionFor).map(item => item.zIndex)) + 1,
+          opacity: 1,
+          startTime: hasMultipleSlides ? slide.start : 0,
+          endTime: hasMultipleSlides ? slide.end : Math.max(state.duration, slide.end),
+          ...(hasMultipleSlides ? { slideId: slide.id, clipToPresence: true } : {})
+        })
+        board.layers.push(layer)
+        added.push({ key, layer })
+        if (key === state.activeKey) state.selectedLayerId = layer.id
+      }
+    })
+    for (const { key, layer } of added) {
+      try {
+        useBannerRealtime().sendLayerAdd(layer, key)
+      } catch {
+        // An offline collaborator will receive the saved project on reconnect.
+      }
+    }
+    return added.length
   }
 
   function removeLayer(id: number) {
@@ -1154,6 +1199,7 @@ export function useBannerStudio() {
     canRedo,
     // Layer ops
     addLayer,
+    addMotorStackImageToAllLayouts,
     removeLayer,
     duplicateLayer,
     updateLayer,

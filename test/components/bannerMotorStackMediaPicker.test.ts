@@ -74,14 +74,37 @@ afterEach(() => {
 })
 
 describe('MotorStack media picker', () => {
-  it('opens the selected kit in an image-only modal and adds the chosen image to the layout', async () => {
+  it('shows only the chosen paint colour before importing a vehicle image', async () => {
+    const white = { ...image, id: 'white', name: 'Forester · AWD · Crystal White Pearl' }
+    const grey = { ...image, id: 'grey', name: 'Forester · AWD · Magnetite Grey Metallic' }
+    const { write } = await mount({ props: { initialBrandId: 'gwm', initialModel: 'Forester', imagesOnly: true, addToCanvas: true }, read: async () => ({ ...response('gwm', ['Forester']), assets: [white, grey] }) })
+    expect(host.textContent).toContain('Choose a paint colour to show matching images.')
+    choose('Paint colour', 'Crystal White Pearl')
+    await settle()
+    expect(host.textContent).toContain(white.name)
+    expect(host.textContent).not.toContain(grey.name)
+    button('Add to all layouts').click()
+    await settle()
+    expect(write).toHaveBeenCalledWith('/api/agency/banner-studio/motorstack/media', { method: 'POST', body: { brandId: 'gwm', model: 'Forester', assetId: white.id } })
+  })
+  it('opens with the paint colour already selected in the Brand Kit sidebar', async () => {
+    const white = { ...image, id: 'white', name: 'Forester · AWD · Crystal White Pearl' }
+    const grey = { ...image, id: 'grey', name: 'Forester · AWD · Magnetite Grey Metallic' }
+    await mount({ props: { initialBrandId: 'gwm', initialModel: 'Forester', initialColour: 'Crystal White Pearl', imagesOnly: true, addToCanvas: true }, read: async () => ({ ...response('gwm', ['Forester']), assets: [white, grey] }) })
+    expect(host.textContent).toContain(white.name)
+    expect(host.textContent).not.toContain(grey.name)
+  })
+  it('opens the selected kit in an image-only modal and adds the chosen image to all layouts', async () => {
     const { queries, write, imported, closed } = await mount({ props: { initialBrandId: 'gwm', initialModel: 'Cannon', initialModels: ['Cannon', 'Tank'], imagesOnly: true, addToCanvas: true } })
     expect(queries).toEqual([{ brandId: 'gwm', model: 'Cannon' }])
     expect(host.querySelector('[data-field="Brand"]')).toBeNull()
     expect(host.querySelector('[data-field="Media type"]')).toBeNull()
     expect(host.textContent).toContain('MOTORSTACK')
     expect(host.textContent).not.toContain('Cannon brochure.pdf')
-    button('Add to layout').click()
+    expect(host.textContent).toContain('Choose a paint colour to show matching images.')
+    choose('Paint colour', '__other_images__')
+    await settle()
+    button('Add to all layouts').click()
     await settle()
     expect(write).toHaveBeenCalledWith('/api/agency/banner-studio/motorstack/media', { method: 'POST', body: { brandId: 'gwm', model: 'Cannon', assetId: image.id } })
     expect(imported).toHaveBeenCalledWith(saved)
