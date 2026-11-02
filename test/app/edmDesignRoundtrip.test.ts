@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useEdmDesignRoundtrip } from '../../app/composables/useEdmDesignRoundtrip'
 import { structuredDesign } from '../fixtures/email-design/structured'
+import { designerCapabilities } from '../../shared/emailRendering/designDesigner'
 import { validateEmailDesign } from '../../shared/emailRendering/designContract'
 
 const fetch = vi.fn()
@@ -14,6 +15,56 @@ describe('composer handoff reconciliation', () => {
   beforeEach(() => {
     fetch.mockReset()
     vi.stubGlobal('$fetch', fetch)
+  })
+  it('requires trusted discovery before opening designer mode', async () => {
+    const flow = useEdmDesignRoundtrip()
+    await expect(flow.open(id, null, true)).rejects.toThrow('unavailable')
+    expect(fetch).not.toHaveBeenCalled()
+    fetch.mockResolvedValueOnce({ draft: draft(), designerAuthoring: { available: true, endpoint: 'https://untrusted.example', capabilities: designerCapabilities(source()) } })
+    await flow.lookup(id)
+    expect(flow.designerAuthoring.value.available).toBe(false)
+  })
+  it('returns bounded designer operations with the original proposal identity after a lost reply', async () => {
+    const flow = useEdmDesignRoundtrip()
+    const capabilities = designerCapabilities(source())
+    fetch.mockResolvedValueOnce({ draft: draft(), designerAuthoring: { available: true, endpoint: '/api/email/design/designer', capabilities } })
+    await flow.lookup(id)
+    fetch.mockResolvedValueOnce({ handoff: handoff(), capabilities }).mockResolvedValueOnce({ draft: draft() })
+    await flow.open(id, null, true)
+    expect(fetch.mock.calls[1][0]).toBe('/api/email/design/designer')
+    const operationId = flow.designerOperationId.value!
+    const operations = [{ op: 'set-style' as const, blockId: 'heading', style: { color: '#123456' } }]
+    fetch.mockRejectedValueOnce(new Error('reply lost'))
+    await expect(flow.proposeDesigner(operations, operationId)).rejects.toThrow('reply lost')
+    const payload = fetch.mock.calls.at(-1)![1].body
+    expect(payload.action.action).toBe('propose-designer-return')
+    expect(payload.action.operationId).toBe(operationId)
+    expect(payload.action).not.toHaveProperty('design')
+    expect(payload.action).not.toHaveProperty('policy')
+    await expect(flow.resume(id, false)).rejects.toThrow('reconciliation')
+    await expect(flow.proposeDesigner(operations, crypto.randomUUID())).rejects.toThrow('Open the designer')
+    fetch.mockResolvedValueOnce({ handoff: { ...handoff(), state: 'proposed', proposalRevisionId: revision, proposal: source() }, capabilities })
+    await flow.proposeDesigner(operations, operationId)
+    expect(fetch.mock.calls.at(-1)![1].body).toEqual(payload)
+    expect(flow.hasPending.value).toBe(false)
+    expect(flow.mode.value).toBe('designer')
+    expect(flow.designerCapabilities.value).toEqual(capabilities)
+  })
+  it('retains module commands across an uncertain reply and reads back the exact resulting revision', async () => {
+    const flow = useEdmDesignRoundtrip()
+    flow.draft.value = draft()
+    flow.libraryAuthoring.value = { available: true, publisher: true }
+    const command = { command: 'insert-module' as const, moduleId: id, revisionId: revision, parentId: 'root', index: 1 }
+    fetch.mockRejectedValueOnce(new Error('reply lost'))
+    await expect(flow.library(command)).rejects.toThrow('reply lost')
+    const original = fetch.mock.calls[0][1].body
+    expect(original.draftId).toBe(id)
+    expect(original.expectedDraftRevisionId).toBe(revision)
+    expect(original).not.toHaveProperty('design')
+    fetch.mockResolvedValueOnce({ documentId: id, revisionId: revision, published: false }).mockResolvedValueOnce({ draft: draft() })
+    await flow.reconcile()
+    expect(fetch.mock.calls[1][1].body).toEqual(original)
+    expect(flow.hasPending.value).toBe(false)
   })
   it('explains zero-editable-content rejection without retaining a pending mutation', async () => {
     const flow = useEdmDesignRoundtrip()

@@ -24,6 +24,8 @@ export function validateEmailDesignTarget(config, environment) {
       EMAIL_DESIGN_ENVIRONMENT: environment,
       PAGE_STUDIO_RELEASE_ENVIRONMENT: environment,
       FIGFLOW_EDM_DRAFT_SAVES_ENABLED: production ? 'true' : 'false',
+      FIGFLOW_EDM_DESIGNER_ENABLED: 'false',
+      FIGFLOW_EDM_LIBRARY_ENABLED: 'false',
       EMAIL_DESIGN_SESSION_AUTHORITY: 'pages-auth-me-v1'
     },
     services: [{ binding: 'EMAIL_RENDERER', service: `xeroflow-email-rendering-${environment}`, entrypoint: 'EmailRenderer' }],
@@ -31,6 +33,7 @@ export function validateEmailDesignTarget(config, environment) {
       { binding: 'HYPERDRIVE', id: production ? '900b4b74ec41462cbbabebd0aa8775aa' : '3865ea5568234fc7b0e9e3e595a30286' },
       { binding: 'HYPERDRIVE_FRESH', id: production ? '90228af3e2cc461bbc09accc3b47bd9f' : '3865ea5568234fc7b0e9e3e595a30286' }
     ],
+    r2_buckets: production ? [{ binding: 'MEDIA_BUCKET', bucket_name: 'agency-files' }] : [],
     kv_namespaces: production ? [{ binding: 'CACHE', id: '7d5db1c489cb40f4b809d611e1408acd' }] : []
   }, 'Private email service configuration differs from reviewed target')
 }

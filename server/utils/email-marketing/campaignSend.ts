@@ -306,7 +306,7 @@ export function unsubscribeUrl(
 
 // Final HTML formatting clears unresolved tags and escapes recipient data.
 export function substituteMergeTags(html: string, vars: Record<string, string>): string {
-  return resolveEmailMergeTags(html, vars, { missing: 'empty' })
+  return resolveEmailMergeTags(html, vars, { missing: 'empty', fallbackEncoding: 'html' })
 }
 
 export function recipientVars(

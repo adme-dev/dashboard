@@ -52,7 +52,9 @@ it('preserves ordered hue and shadow filters through package validation, editor 
     expect(node.style.filter).toBe(filter)
     // GSAP applies the opacity track on the outer artboard layer. The image
     // content must not multiply .3 by .3 for a second time.
-    expect(node.style.opacity).toBe('1')
+    // An omitted local opacity is the CSS default 1; explicit .3 would
+    // multiply the outer animation and must still fail this assertion.
+    expect(node.style.opacity || '1').toBe('1')
     expect(image.keyframes.opacity.at(-1).value).toBe(0.3)
   } finally {
     app.unmount()

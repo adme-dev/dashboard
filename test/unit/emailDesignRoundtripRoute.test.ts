@@ -3,10 +3,10 @@ import handler from '../../server/api/email/design/roundtrip.post'
 import { structuredDesign } from '../fixtures/email-design/structured'
 import { validateDesignAction } from '../../shared/emailRendering/designActions'
 
-const mocks = vi.hoisted(() => ({ session: vi.fn(), access: vi.fn(), execute: vi.fn(), body: vi.fn(), headers: {} as Record<string, string> }))
+const mocks = vi.hoisted(() => ({ session: vi.fn(), access: vi.fn(), publisher: vi.fn(), execute: vi.fn(), body: vi.fn(), headers: {} as Record<string, string> }))
 vi.mock('h3', async original => ({ ...(await original<typeof import('h3')>()), defineEventHandler: (f: unknown) => f, getCookie: () => 'token', getHeader: (_e: unknown, key: string) => mocks.headers[key], setHeader: vi.fn() }))
 vi.mock('~~/server/utils/auth', () => ({ validateSession: mocks.session }))
-vi.mock('~~/server/utils/email-marketing/designAccess', () => ({ assertFreshDesignAccess: mocks.access }))
+vi.mock('~~/server/utils/email-marketing/designAccess', () => ({ assertFreshDesignAccess: mocks.access, assertFreshDesignPublisher: mocks.publisher }))
 vi.mock('~~/server/utils/email-marketing/designHandoffs', async original => ({ ...(await original<typeof import('../../server/utils/email-marketing/designHandoffs')>()), executeDesignRoundtrip: mocks.execute }))
 vi.mock('~~/server/utils/email-marketing/render/client', () => ({ createEmailRenderer: () => ({}) }))
 vi.mock('~~/server/utils/email-marketing/designRequest', async original => ({ ...(await original<typeof import('../../server/utils/email-marketing/designRequest')>()), readBoundedJson: mocks.body }))
@@ -63,6 +63,18 @@ describe('durable FigFlow handoff HTTP boundary', () => {
     expect(await handler(enabled)).toMatchObject({ designerAuthoring: { available: false } })
     mocks.access.mockRejectedValue(Object.assign(new Error('denied'), { statusCode: 403 }))
     expect(await handler(enabled)).toMatchObject({ designerAuthoring: { available: false } })
+  })
+  it('discovers library publication separately from ordinary designer access', async () => {
+    mocks.body.mockResolvedValue({ command: 'lookup', templateId: id })
+    mocks.execute.mockResolvedValue({ draft: { state: 'structured', source: structuredDesign() } })
+    const enabled = event()
+    Object.assign(enabled.context.cloudflare!.env, { FIGFLOW_EDM_DESIGNER_ENABLED: 'true', FIGFLOW_EDM_LIBRARY_ENABLED: 'true' })
+    mocks.publisher.mockResolvedValue(undefined)
+    expect(await handler(enabled)).toMatchObject({ libraryAuthoring: { available: true, publisher: true } })
+    mocks.publisher.mockRejectedValue(Object.assign(new Error('denied'), { statusCode: 403 }))
+    expect(await handler(enabled)).toMatchObject({ libraryAuthoring: { available: true, publisher: false } })
+    mocks.access.mockResolvedValue('staff')
+    expect(await handler(enabled)).toMatchObject({ libraryAuthoring: { available: false, publisher: false } })
   })
   it('redacts database failures and preserves body bounds', async () => {
     mocks.execute.mockRejectedValue(new Error('private SQL payload'))

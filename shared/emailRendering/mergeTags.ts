@@ -3,8 +3,11 @@ import { createRenderBudget, RenderBoundaryError } from './bounds'
 type MergeOptions = {
   context?: 'html' | 'text'
   missing?: 'preserve' | 'empty'
+  /** Compiled HTML has already encoded authored fallback text once. */
+  fallbackEncoding?: 'html'
   budget?: { charge(value: string): void }
 }
+const compiledFallbackEntities: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"' }
 const entities: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', '\'': '&#039;' }
 
 /** One bounded pass over the authored template. Recipient values are literal
@@ -34,12 +37,18 @@ export function resolveEmailMergeTags(template: string, variables: Record<string
   let cursor = 0
   // Bound the entire token before trimming whitespace or parsing a fallback;
   // overlapping unbounded whitespace expressions can backtrack on malformed tags.
-  for (const match of template.matchAll(/\{\{([^{}]{1,384})\}\}/g)) {
+  const tokens = options.fallbackEncoding === 'html' ? /\{\{([^{}]{1,2304})\}\}/g : /\{\{([^{}]{1,384})\}\}/g
+  for (const match of template.matchAll(tokens)) {
     append(template.slice(cursor, match.index))
     const body = match[1]!
     const divider = body.indexOf('|')
     const key = (divider < 0 ? body : body.slice(0, divider)).trim().toLowerCase()
-    const fallback = divider < 0 ? undefined : body.slice(divider + 1).trim()
+    const authoredFallback = divider < 0 ? undefined : body.slice(divider + 1).trim()
+    // Decode only the compiler's five escape forms, exactly once. This is
+    // plain fallback data, never HTML parsing or recursive token evaluation.
+    const fallback = authoredFallback === undefined || options.fallbackEncoding !== 'html'
+      ? authoredFallback
+      : authoredFallback.replace(/&(amp|lt|gt|quot|#0*39|#x0*27);/gi, (_entity, name: string) => compiledFallbackEntities[name.toLowerCase()] ?? '\'')
     if (!key || key.length > 128 || (fallback !== undefined && fallback.length > 256)) {
       append(match[0])
     } else {

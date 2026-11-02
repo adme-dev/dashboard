@@ -3,6 +3,7 @@
      undo/redo, Editor/Preview/HTML views, and Save to edm_templates (2a-ii-4).
      Loads an existing template via ?id= or a starter layout via ?starter=. -->
 <script setup lang="ts">
+import { resolveEmailContentWidth } from '../../../../shared/emailRendering/layout'
 import { onBeforeRouteLeave } from 'vue-router'
 import { diagnoseEmailContent, type EmailDiagnosticReference, type EmailDiagnosticImageAsset } from '../../../../shared/emailRendering/contentDiagnostics'
 import { templateCopyCategory, markTemplateClientCopy, templateCopyName } from '~~/app/utils/edmTemplateProvenance'
@@ -806,12 +807,12 @@ async function beginFigflow(createDraft = false) {
       }
       if (!templateId.value) return
       if (JSON.stringify(store.document.value) !== openingSource) throw new Error('The composer changed while saving. Save again before opening FigFlow.')
-      const result = await designFlow.open(templateId.value, templateClient.value === '__shared__' ? null : templateClient.value!)
+      const result = await designFlow.open(templateId.value, templateClient.value === '__shared__' ? null : templateClient.value!, designFlow.designerAuthoring.value.available)
       designRevisionRequired.value = true
       designServiceUnavailable.value = false
       designLocalConflict.value = false
       showFigflow.value = true
-      await router.replace({ query: { ...route.query, designSession: result.id } })
+      await router.replace({ query: { ...route.query, designSession: result.id, designMode: designFlow.mode.value } })
     })
   } catch { /* The flow retains the failed operation and displays recovery. */ }
 }
@@ -860,6 +861,11 @@ async function proposeFigflow(design: import('~~/shared/emailRendering/designCon
     await designFlow.run(() => designFlow.propose(design))
   } catch { /* Shown in panel. */ }
 }
+async function proposeFigflowDesigner(operations: import('~~/shared/emailRendering/designDesigner').DesignerOperation[], operationId: string) {
+  try {
+    await designFlow.run(() => designFlow.proposeDesigner(operations, operationId))
+  } catch { /* Shown in the review panel; the saved draft is unchanged. */ }
+}
 async function applyFigflow() {
   const handoff = designFlow.handoff.value
   if (!handoff?.proposal) return
@@ -905,7 +911,7 @@ async function reconcileDesignAction() {
         if (!designLocalConflict.value) markWorkspaceDocumentSaved()
       }
       showFigflow.value = true
-      await router.replace({ query: { ...route.query, designSession: result.id } })
+      await router.replace({ query: { ...route.query, designSession: result.id, designMode: designFlow.mode.value } })
     })
   } catch { /* Keep original payload pending until its receipt is confirmed. */ }
 }
@@ -1160,7 +1166,7 @@ onMounted(async () => {
           const sessionId = route.query.designSession
           if (!designServiceUnavailable.value && typeof sessionId === 'string') {
             try {
-              const session = await designFlow.resume(sessionId)
+              const session = await designFlow.resume(sessionId, route.query.designMode === 'designer')
               if (session.templateId !== res.template.id) throw new Error('Design draft mismatch')
               showFigflow.value = session.state === 'open' || session.state === 'proposed'
             } catch {
@@ -1397,7 +1403,7 @@ onMounted(async () => {
         >
           <div
             class="mx-auto min-h-64 rounded shadow-sm"
-            :style="{ backgroundColor: layout.canvasColor, color: layout.textColor, width: '100%', maxWidth: (activeDevice === 'mobile' ? 390 : Math.max(320, Math.min(960, Number(store.document.value.root?.data.props?.contentWidth) || 600))) + 'px' }"
+            :style="{ backgroundColor: layout.canvasColor, color: layout.textColor, width: '100%', maxWidth: (activeDevice === 'mobile' ? 390 : resolveEmailContentWidth(store.document.value.root?.data.props?.contentWidth)) + 'px' }"
             @click.stop
           >
             <!-- Empty state: click to open the unified Add module bubble (opens
@@ -2080,12 +2086,16 @@ onMounted(async () => {
             v-if="designFlow.handoff.value"
             :key="designFlow.handoff.value.id"
             :handoff="designFlow.handoff.value"
+            :mode="designFlow.mode.value"
+            :capabilities="designFlow.designerCapabilities.value"
+            :operation-id="designFlow.designerOperationId.value"
             :busy="designFlow.busy.value"
             :error="designFlow.error.value"
             :conflict="designLocalConflict"
             :subject="subject"
             :preview-text="previewText"
             @propose="proposeFigflow"
+            @propose-designer="proposeFigflowDesigner"
             @apply="applyFigflow"
             @cancel="cancelFigflow"
             @resume="resumeFigflow"

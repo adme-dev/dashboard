@@ -49,6 +49,22 @@ describe('shared preview and campaign merge resolution', () => {
     expect(html).not.toContain('<img src=x')
   })
 
+  it('resolves quoted fallbacks before metadata encoding and decodes compiled body fallbacks once', () => {
+    const fallback = `Friend's "team" & more`
+    const heading = { root: { type: 'EmailLayout', data: { childrenIds: ['heading'] } }, heading: { type: 'Heading', data: { props: { text: `{{missing|${fallback}}}` } } } }
+    const html = renderFlyhubDocumentToHtml(heading, { subjectLine: `{{missing|${fallback}}}`, previewText: `{{missing|${fallback}}}`, variables: {} })
+    expect(html).toContain('<title>Friend&#039;s &quot;team&quot; &amp; more</title>')
+    expect(html.match(/Friend&#039;s &quot;team&quot; &amp; more/g)).toHaveLength(3)
+    expect(html).not.toContain('&amp;#039;')
+    expect(substituteMergeTags('<p>{{missing|Friend&#039;s &quot;team&quot; &amp; more}}</p>', {})).toBe('<p>Friend&#039;s &quot;team&quot; &amp; more</p>')
+    expect(replaceMergeFields('{{missing|&amp;quot;}}', {})).toBe('&amp;quot;')
+    expect(replaceMergeFields('{{missing|' + '&#039;'.repeat(256) + '}}', {})).toBe('&#039;'.repeat(256))
+  })
+  it('never re-evaluates tokens introduced through metadata values', () => {
+    const html = renderFlyhubDocumentToHtml(document, { subjectLine: '{{name}}', previewText: '{{name}}', variables: { name: '{{other}}', other: 'Should not appear' } })
+    expect(html).toContain('<title>{{other}}</title>')
+    expect(html).not.toContain('Should not appear')
+  })
   it('charges escaped chunks before joining and limits output in both contexts', () => {
     expect(() => resolveEmailMergeTags('{{name}}', { name: '<'.repeat(10) }, { budget: createRenderBudget(20) })).toThrowError(expect.objectContaining({ code: 'LIMIT_EXCEEDED' }))
     expect(() => resolveEmailMergeTags('{{x}}{{x}}{{x}}', { x: '1234567890' }, { context: 'text', budget: createRenderBudget(20) })).toThrow()

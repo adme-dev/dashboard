@@ -2,11 +2,13 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { FIGFLOW_EDM_EDITOR_URL, FIGFLOW_EDM_ORIGIN, FIGFLOW_EDM_PROTOCOL, type DesignHandoff } from '~~/shared/emailRendering/designRoundtrip'
 import { validateContentReturn } from '~~/shared/emailRendering/designComposer'
+import { applyDesignerOperations, type DesignerCapabilities, type DesignerOperation } from '~~/shared/emailRendering/designDesigner'
 import type { EmailDesignDocument } from '~~/shared/emailRendering/designContract'
 
-const props = defineProps<{ handoff: DesignHandoff, busy: boolean, error?: string, conflict?: boolean, subject?: string, previewText?: string }>()
+const props = defineProps<{ handoff: DesignHandoff, busy: boolean, error?: string, conflict?: boolean, subject?: string, previewText?: string, mode?: 'content' | 'designer', capabilities?: DesignerCapabilities | null, operationId?: string | null }>()
 const emit = defineEmits<{
   propose: [design: EmailDesignDocument]
+  proposeDesigner: [operations: DesignerOperation[], operationId: string]
   apply: []
   cancel: []
   resume: []
@@ -18,6 +20,7 @@ const bridgeError = ref('')
 const requesting = ref(false)
 const previewHtml = ref('')
 const previewLoading = ref(false)
+const previewDevice = ref<'desktop' | 'mobile'>('desktop')
 const previewError = ref('')
 let previewSequence = 0
 async function renderProposal() {
@@ -47,6 +50,18 @@ let expectedReply = ''
 const changes = computed(() => {
   const proposal = props.handoff.proposal
   if (!proposal) return []
+  if (props.mode === 'designer') {
+    const before = props.handoff.source.blocks
+    const after = proposal.blocks
+    const rows: Array<{ path: string, label: string, before: string, after: string }> = []
+    const label = (block: EmailDesignDocument['blocks'][string]) => String(block.data.props?.text ?? block.type).slice(0, 160)
+    for (const id of new Set([...Object.keys(before), ...Object.keys(after)])) {
+      if (!before[id]) rows.push({ path: id, label: `${after[id].type} added`, before: 'No section', after: label(after[id]) })
+      else if (!after[id]) rows.push({ path: id, label: `${before[id].type} removed`, before: label(before[id]), after: 'Section removed' })
+      else if (JSON.stringify(before[id]) !== JSON.stringify(after[id])) rows.push({ path: id, label: `${before[id].type} updated`, before: label(before[id]), after: label(after[id]) })
+    }
+    return rows
+  }
   return props.handoff.source.policy.editableFields.flatMap((path) => {
     const [id, , , field] = path.split('.')
     const before = props.handoff.source.blocks[id]?.data.props?.[field]
@@ -63,7 +78,11 @@ function connect() {
   ready.value = false
   bridgeError.value = ''
   clearTimeout(timer)
-  send('connect', { handoffId: props.handoff.id, design: props.handoff.source })
+  if (props.mode === 'designer' && (!props.operationId || !props.capabilities)) {
+    bridgeError.value = 'Design controls are unavailable. Close and reopen this draft to refresh your access.'
+    return
+  }
+  send('connect', { handoffId: props.handoff.id, design: props.handoff.source, ...(props.mode === 'designer' ? { mode: 'designer', operationId: props.operationId, capabilities: props.capabilities } : {}) })
   timer = setTimeout(() => {
     if (!ready.value) bridgeError.value = 'FigFlow could not open this email. Your saved draft is unchanged. Close and resume the design to reconnect.'
   }, 30_000)
@@ -93,7 +112,12 @@ function receive(event: MessageEvent) {
     clearTimeout(timer)
     requesting.value = false
     try {
-      emit('propose', validateContentReturn(props.handoff.source, message.payload))
+      if (props.mode === 'designer') {
+        const payload = message.payload
+        if (!payload || typeof payload !== 'object' || Object.keys(payload).sort().join(',') !== 'operationId,operations' || payload.operationId !== props.operationId) throw new Error('Invalid design return')
+        applyDesignerOperations(props.handoff.source, payload.operations, payload.operationId)
+        emit('proposeDesigner', payload.operations, payload.operationId)
+      } else emit('propose', validateContentReturn(props.handoff.source, message.payload))
     } catch {
       bridgeError.value = 'This design includes changes the email composer cannot preserve. Undo structural or unsupported edits in FigFlow, then return again.'
     }
@@ -115,7 +139,7 @@ onBeforeUnmount(() => {
 <template>
   <div class="flex min-h-0 flex-1 flex-col gap-4">
     <p class="text-sm text-muted">
-      Edit supported text, images and buttons in the content view. Return for review to see the rendered email before applying changes to your saved draft.
+      {{ mode === 'designer' ? 'Build your email with the design controls. Review the rendered desktop and mobile email before applying changes to this draft.' : 'Edit supported text, images and buttons in the content view. Return for review to see the rendered email before applying changes to your saved draft.' }}
     </p>
     <UAlert v-if="error || bridgeError" color="error" :title="error || bridgeError" />
     <UAlert
@@ -125,7 +149,7 @@ onBeforeUnmount(() => {
       description="Keep your current draft. Save it and start a new FigFlow handoff; this proposal will not overwrite those edits."
     />
     <UAlert
-      v-if="handoff.state === 'open' && !handoff.source.policy.editableFields.length"
+      v-if="handoff.state === 'open' && mode !== 'designer' && !handoff.source.policy.editableFields.length"
       color="warning"
       title="This template supports composer editing only"
       description="FigFlow cannot edit its HTML or locked sections yet. Return to the composer to continue; your saved draft is kept."
@@ -154,9 +178,27 @@ onBeforeUnmount(() => {
     </template>
     <template v-else-if="handoff.state === 'proposed'">
       <div class="min-h-0 flex-1 overflow-y-auto rounded-lg border border-default p-4">
-        <p class="mb-3 text-sm font-medium">
-          Rendered email
-        </p>
+        <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <p class="text-sm font-medium">
+            Rendered email
+          </p>
+          <div class="flex gap-1" role="group" aria-label="Email preview size">
+            <UButton
+              label="Desktop"
+              color="neutral"
+              :variant="previewDevice === 'desktop' ? 'solid' : 'ghost'"
+              :aria-pressed="previewDevice === 'desktop'"
+              @click="previewDevice = 'desktop'"
+            />
+            <UButton
+              label="Mobile"
+              color="neutral"
+              :variant="previewDevice === 'mobile' ? 'solid' : 'ghost'"
+              :aria-pressed="previewDevice === 'mobile'"
+              @click="previewDevice = 'mobile'"
+            />
+          </div>
+        </div>
         <p v-if="previewLoading" class="text-sm text-muted">
           Rendering the email preview…
         </p>
@@ -172,13 +214,13 @@ onBeforeUnmount(() => {
           sandbox=""
           referrerpolicy="no-referrer"
           title="Proposed email preview"
-          class="mx-auto mb-6 block h-[480px] w-full max-w-[760px] rounded border border-default bg-white"
+          :class="['mx-auto mb-6 block h-[480px] w-full rounded border border-default bg-white', previewDevice === 'mobile' ? 'max-w-[390px]' : 'max-w-[1000px]']"
         />
         <p class="mb-3 text-sm font-medium">
-          Content changes
+          {{ mode === 'designer' ? 'Design changes' : 'Content changes' }}
         </p>
         <p v-if="!changes.length" class="text-sm text-muted">
-          No content changes were returned.
+          No changes were returned.
         </p>
         <div v-for="change in changes" :key="change.path" class="border-b border-default py-4 first:pt-0 last:border-0">
           <p class="mb-2 text-sm font-medium">

@@ -197,8 +197,9 @@ describe('campaign test-send preflight', () => {
     expect(payload?.headers['List-Unsubscribe']).toMatch(
       /^<https:\/\/app\.test\/email\/unsubscribe\?c=camp-1&s=test&t=[a-f0-9]{32}>$/
     )
+    // Headers carry the raw URL; serialized HTML carries escaped attributes.
     expect(payload?.html).toMatch(
-      /https:\/\/app\.test\/email\/unsubscribe\?c=camp-1&s=test&t=[a-f0-9]{32}/
+      /https:\/\/app\.test\/email\/unsubscribe\?c=camp-1&amp;s=test&amp;t=[a-f0-9]{32}/
     )
   })
 })

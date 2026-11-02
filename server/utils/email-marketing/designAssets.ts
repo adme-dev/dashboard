@@ -1,9 +1,8 @@
 import { z } from 'zod'
 import type { H3Event } from 'h3'
-import { transactionWithoutRetry } from '~~/server/utils/db'
-import { isStorageConfigured, readStoredObject } from '~~/server/utils/storage'
-import { resolveBannerAssetDelivery } from '~~/server/utils/banner/assetDelivery'
-import { bannerAssetDeliveryUrl, isBannerAssetDeliveryKey, verifyBannerAssetToken } from '~~/server/utils/bannerStorage'
+import { queryOneFresh, transactionWithoutRetry } from '~~/server/utils/db'
+import { isStorageConfigured, readStoredObject, type R2BucketBinding } from '~~/server/utils/storage'
+import { isBannerAssetDeliveryKey } from '~~/server/utils/bannerStorage'
 import { detectBannerAssetMime } from '../../../shared/utils/bannerAssetIdentity'
 import type { EmailDesignDocument } from '../../../shared/emailRendering/designContract'
 import { DesignModuleError, designDigest, stableDesignJson } from '../../../shared/emailRendering/designModules'
@@ -19,28 +18,36 @@ export interface DesignAssetStorage {
 /** Existing signed delivery is publicly readable by token, including uploads
  * before this publication. This adapter claims no private staging boundary. */
 export function createDesignAssetStorage(event: H3Event, appOrigin: string): DesignAssetStorage {
-  const delivery = resolveBannerAssetDelivery(event)
-  const secret = delivery.signingSecret
-  if (!secret || (!delivery.nativeUpload && !isStorageConfigured())) throw new DesignModuleError('ASSET_STORAGE_UNAVAILABLE')
-  if (delivery.nativeUpload && !delivery.nativeUpload.bucket.get) throw new DesignModuleError('ASSET_STORAGE_UNAVAILABLE')
+  const cloudflare = event.context.cloudflare
+  const bucket = cloudflare?.env?.MEDIA_BUCKET as R2BucketBinding | undefined
+  if (cloudflare ? typeof bucket?.get !== 'function' : !isStorageConfigured()) throw new DesignModuleError('ASSET_STORAGE_UNAVAILABLE')
+  const origin = new URL(appOrigin).origin
+  const canonicalUrl = (value: unknown): string | null => {
+    if (typeof value !== 'string' || value.length > 1024) return null
+    try {
+      const url = new URL(value)
+      if (url.origin !== origin || url.protocol !== 'https:' || url.search || url.hash || url.username || url.password) return null
+      return /^\/api\/public\/banner-assets\/v1\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(url.pathname) ? value : null
+    } catch { return null }
+  }
   return {
-    url: id => bannerAssetDeliveryUrl(id, appOrigin, secret),
+    // The upload owner already signed this exact URL and stored it with the
+    // registered row. Reuse that immutable authority; this read service neither
+    // receives the Pages signing secret nor mints a parallel delivery token.
+    url: async (id) => {
+      const row = await queryOneFresh<{ url: string }>('SELECT url FROM banner_assets WHERE id=$1 AND email_publication IS NOT NULL', [id])
+      const url = canonicalUrl(row?.url)
+      if (!url) throw new DesignModuleError('ASSET_NOT_READY')
+      return url
+    },
     identifyUrl: async (value) => {
-      let url: URL
-      try {
-        url = new URL(value)
-      } catch {
-        return null
-      }
-      if (url.origin !== new URL(appOrigin).origin || url.search || url.hash || url.username || url.password) return null
-      const match = /^\/api\/public\/banner-assets\/([^/]+)$/.exec(url.pathname)
-      return match ? (await verifyBannerAssetToken(match[1]!, secret))?.assetId ?? null : null
+      if (!canonicalUrl(value)) return null
+      const row = await queryOneFresh<{ id: string }>('SELECT id FROM banner_assets WHERE url=$1 AND email_publication IS NOT NULL', [value])
+      return row?.id ?? null
     },
     read: async (key) => {
       // Avoid local-file fallback on hosted requests; use the actual request binding.
-      const object = delivery.nativeUpload
-        ? await delivery.nativeUpload.bucket.get!(key)
-        : await readStoredObject(key)
+      const object = bucket ? await bucket.get!(key) : await readStoredObject(key)
       if (!object || object.size <= 0 || object.size > 10 * 1024 * 1024) throw new DesignModuleError('ASSET_NOT_READY')
       const reader = object.body.getReader()
       const parts: Uint8Array[] = []

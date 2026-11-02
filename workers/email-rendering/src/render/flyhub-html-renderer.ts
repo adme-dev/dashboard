@@ -1,3 +1,5 @@
+import { resolveEmailMergeTags } from '../../../../shared/emailRendering/mergeTags'
+import { resolveEmailContentWidth } from '../../../../shared/emailRendering/layout'
 import { assertImportedDocumentIdentity } from '../../../../shared/emailRendering/importedDocument'
 import { boundedText, boundedJoin } from './boundedText'
 import { replaceMergeFields } from './mergeFields'
@@ -182,7 +184,7 @@ export function renderFlyhubDocumentToHtml(
   const htmlFontFamily = escapeFontFamilyForHtml(fontFamily)
   const borderRadius = (rootProps.borderRadius as number) || 0
   const borderColor = (rootProps.borderColor as string) || ''
-  const contentWidth = 600
+  const contentWidth = resolveEmailContentWidth(rootProps.contentWidth)
   const primaryColor = options.primaryColor || '#2f4574'
   const responsiveCss = collectResponsiveCss(doc, options.renderBudget)
 
@@ -195,16 +197,20 @@ export function renderFlyhubDocumentToHtml(
     options.dynamicBlockOffers
   )
   blockCtx.renderBudget = options.renderBudget
-  const contentHtml = renderRootChildrenHtml(rootBlock, doc, blockCtx)
+  const authoredContent = renderRootChildrenHtml(rootBlock, doc, blockCtx)
+  const contentHtml = options.variables ? replaceMergeFields(authoredContent, options.variables, options.renderBudget) : authoredContent
+  const metadata = (value: string) => escapeHtml(options.variables
+    ? resolveEmailMergeTags(value, options.variables, { context: 'text', budget: options.renderBudget })
+    : value, options.renderBudget)
 
-  let html = boundedText(options.renderBudget)`
+  const html = boundedText(options.renderBudget)`
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
-  <title>${escapeHtml(options.subjectLine || 'Email Preview', options.renderBudget)}</title>
+  <title>${metadata(options.subjectLine || 'Email Preview')}</title>
   <!--[if mso]>
   <noscript>
     <xml>
@@ -229,7 +235,7 @@ ${responsiveCss.desktopCss.length ? boundedText(options.renderBudget)`${boundedJ
   </style>
 </head>
 <body style="margin: 0; padding: 0; background-color: ${backdropColor}; font-family: ${htmlFontFamily}; color: ${textColor};">
-  ${options.previewText ? boundedText(options.renderBudget)`<div style="display: none; font-size: 1px; color: ${backdropColor}; line-height: 1px; max-height: 0; max-width: 0; opacity: 0; overflow: hidden;">${escapeHtml(options.previewText, options.renderBudget)}</div>` : ''}
+  ${options.previewText ? boundedText(options.renderBudget)`<div style="display: none; font-size: 1px; color: ${backdropColor}; line-height: 1px; max-height: 0; max-width: 0; opacity: 0; overflow: hidden;">${metadata(options.previewText)}</div>` : ''}
 
   <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color: ${backdropColor};">
     <tr>
@@ -243,11 +249,6 @@ ${responsiveCss.desktopCss.length ? boundedText(options.renderBudget)`${boundedJ
 </body>
 </html>
   `.trim()
-
-  // Replace variables if provided
-  if (options.variables) {
-    html = replaceMergeFields(html, options.variables, options.renderBudget)
-  }
 
   // Builders already charged each allocation; response admission validates final bytes.
   return html

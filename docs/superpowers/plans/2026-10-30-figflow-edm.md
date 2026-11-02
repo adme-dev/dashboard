@@ -59,6 +59,8 @@ and activation receipt supersede earlier disabled-state/blocker notes.
 4. A revoked user with an open FigFlow tab must not publish into the previous client (F04/F06).
 5. Missing images, long copy and classic Outlook fallback must remain usable or explicitly block publication (F05/F09/F10).
 
+**Background execution:** [supervised worker ledger](../../email-builder/figflow-background-delivery-20261102.md), Run `run_5e6b8d3c8775`. The owner explicitly requested background agents; native fidelity, designer authority and diagnostics are active in separate scopes. Parent owns integration and release.
+
 ## Task ledger — update in place
 
 Statuses: `not-started`, `in-progress`, `blocked`, `in-review`, `done`. Only use done after acceptance evidence and reviewer sign-off. Every row starts unassigned; no work is implied by a checkbox.
@@ -68,12 +70,12 @@ Statuses: `not-started`, `in-progress`, `blocked`, `in-review`, `done`. Only use
 | F01 | Source ownership and integration inventory | — | in-progress | Codex | [Inventory](../../email-builder/figflow-integration-inventory.md); 60 baseline tests pass; live JS/WASM hashes match pinned archive; native save/reopen/PNG export verified on 1 November; source/build ownership audited by Kimi; native bridge integration remains open |
 | F02 | Shared contract, capability matrix and fixtures | F01 | in-progress | Codex | Canonical source validation and capability assessment implemented; 58 new cases pass; [matrix](../../email-builder/figflow-capability-matrix.md); Kimi findings addressed; Grok regressions fixed with remaining mapping/media work recorded; native/action contracts remain open |
 | F03 | Immutable revisions and legacy migration | F02 | in-progress | Codex | Local PostgreSQL foundation: migration 491, immutable snapshots, CAS, retry receipts; [evidence](../../email-builder/figflow-revision-persistence.md). Existing CRUD integration and remaining F02 contracts open |
-| F04 | Secure asset/publish services | F03,F05 | not-started | unassigned | — |
+| F04 | Secure asset/publish services | F03,F05 | in-progress | Codex | Server module/registered-image publication implemented and locally checked; parent is integrating storage/routing/UI and real PostgreSQL checks. [Worker evidence](../../email-builder/worker-shared-modules-20261102.md). Hosted/native publication remains open. |
 | F05 | Deterministic conversion and renderer coverage | F02 | in-progress | Codex | PR821 fixes full-document HTML import and private compilation; three same-ID drafts repaired with original/repaired browser parity. Native styled conversion, crop/assets and real-client acceptance remain open. [Receipt](../../email-builder/html-import-repair-20261102.md) |
 | F06 | FigFlow EDM mode and scoped bridge | F01,F02,F04,F05 | in-progress | Codex / Kimi | Content-only round trip is live. Kimi prepared a styled native projection increment; tracked patch/pins, Linux compile/tests, new immutable package and actual-WASM acceptance are outstanding. Full structural/style authoring and publication remain open. [Checklist](2026-11-02-figflow-template-fidelity.md) |
 | F07 | Shared module browser, insert and publication | F03–F06 | in-progress | Codex | PR817 template browser is live; scoped templates/starters/drafts can be opened. Native module insertion, Save as module, immutable publication and explicit version updates remain open. [Browser record](../../email-builder/figflow-template-browser.md) |
 | F08 | Composer editing and round-trip handoff | F05–F07 | in-progress | Codex | PR #807 adds save/open/reconcile, durable proposal preview/apply, CAS and one undo step. Real hosted round trips pass, including staff-edit preservation, preview/Apply and undo. Shared-module controls remain open. |
-| F09 | Preflight, compatibility UX and test-send gates | F04,F05,F08 | not-started | unassigned | — |
+| F09 | Preflight, compatibility UX and test-send gates | F04,F05,F08 | in-progress | Codex | Expanded bounded diagnostics and editor issue navigation implemented; existing send gates preserved. Post-personalisation/tracking checks and hosted/client acceptance remain open. [Worker evidence](../../email-builder/worker-email-preflight-20261102.md). |
 | F10 | End-to-end and real-client acceptance | F06–F09 | not-started | unassigned | — |
 | F11 | Documentation, rollout and rollback | F10 | in-progress | Codex / Kimi review | Content round trip and PR819 dialog fix are live; PR821 import repair has source/deployment/readback evidence. PR823 contains current closeout and roadmap records, awaiting integration. Full native release and client acceptance remain open. |
 | F12 | Production verification and workspace retirement | F11,R01 | not-started | unassigned | — |
@@ -88,9 +90,9 @@ acceptance step and evidence together at each checkpoint.
 | ID | Phase | Status | Owner | Accepted subset / next acceptance |
 | --- | --- | --- | --- | --- |
 | M01 | Merge tags | in-progress | Codex | Shared bounded resolver, fallback and encoding implemented/reviewed in PR823; latest CI/integration/release pending. Client tag definitions, chips/picker and Preview as remain open. |
-| M02 | Conditional content | not-started | Codex | Typed predicate and shared preview/send evaluation contract required before UI or activation. |
-| M03 | Brand defaults and locking | not-started | Codex | Reuse scoped brand sources; define server-enforced roles and version-pinned module update/detach. |
-| M04 | Pre-send checks | not-started | Codex | Existing campaign checks retained. Alt-text, typography/contrast, heading/metadata diagnostics and jump-to-block acceptance remain open. |
+| M02 | Conditional content | in-progress | Codex / background worker | Typed predicate, reserved marker and shared preview/send evaluator are assigned in the supervised run; arbitrary provider template code is excluded. Integration/activation pending. |
+| M03 | Brand defaults and locking | in-progress | Codex / background worker | Scoped existing brand kits, explicit theme application and persisted design locks are assigned. Immutable module update/detach server operations are implemented; UI/hosted acceptance pending. |
+| M04 | Pre-send checks | in-progress | Codex | Diagnostic helper/current-edit UI implemented with 67 worker checks; integrated helper/route/selection checks pass. Hosted keyboard selection/scroll and complete asset-weight coverage remain open. |
 | M05 | Rendering quality | in-progress | Codex | Full-document import repair is live. Native faithful projection, responsive authoring, generated dark mode/VML and real-client acceptance remain open. |
 | M06 | Workflow | in-progress | Codex | Existing draft revisions/CAS and explicit content Apply are live. Shared publication, comments/approval and hosted web-version workflow remain open. |
 

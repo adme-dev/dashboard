@@ -1,7 +1,7 @@
 import { createError, defineEventHandler, getCookie, getHeader, setHeader } from 'h3'
 import { ZodError } from 'zod'
 import { validateSession } from '~~/server/utils/auth'
-import { assertFreshDesignAccess } from '~~/server/utils/email-marketing/designAccess'
+import { assertFreshDesignAccess, assertFreshDesignPublisher } from '~~/server/utils/email-marketing/designAccess'
 import { assertDesignMutationRequest, readBoundedJson } from '~~/server/utils/email-marketing/designRequest'
 import { DesignHandoffError, executeDesignRoundtrip } from '~~/server/utils/email-marketing/designHandoffs'
 import { DesignRevisionError } from '~~/server/utils/email-marketing/designRevisions'
@@ -39,7 +39,17 @@ export default defineEventHandler(async (event) => {
         if (!(error && typeof error === 'object' && 'statusCode' in error && error.statusCode === 403)) throw error
       }
     }
-    return { ...result, designerAuthoring: {
+    let publisher = false
+    const libraryAvailable = available && env.FIGFLOW_EDM_LIBRARY_ENABLED === 'true'
+    if (libraryAvailable && result.draft?.state === 'structured') {
+      try {
+        await assertFreshDesignPublisher(token, user.id, result.draft.source.scope.clientId)
+        publisher = true
+      } catch (error) {
+        if (!(error && typeof error === 'object' && 'statusCode' in error && error.statusCode === 403)) throw error
+      }
+    }
+    return { ...result, libraryAuthoring: { available: libraryAvailable, publisher }, designerAuthoring: {
       available, endpoint: '/api/email/design/designer' as const,
       capabilities: available && result.draft?.state === 'structured' ? designerCapabilities(result.draft.source) : null
     } }
