@@ -122,16 +122,30 @@ export function useEdmDesignRoundtrip() {
     }))
     await mutate<{ revisionId: string }>(url, 'PATCH', body, result => lookup(current.templateId, result.revisionId))
   }
-  async function open(templateId: string, clientId: string | null, authoring = false) {
-    // A pending write keeps its mode and exact endpoint until reconciled.
+  async function open(templateId: string, clientId: string | null, authoring = false, saved?: { draftId: string, expectedRevisionId: string }) {
+    if (saved) {
+      const current = draft.value
+      if (current?.state !== 'structured' || current.templateId !== templateId || current.documentId !== saved.draftId || current.source.scope.clientId !== clientId)
+        throw new Error('Reopen the same saved design owner and client before continuing.')
+      if (!pending && (current.headRevisionId !== saved.expectedRevisionId || current.projectionRevisionId !== saved.expectedRevisionId || current.projection.state !== 'current'))
+        throw new Error('The saved design head or projection changed. Reload before reopening.')
+    }
+    // A pending write keeps its mode, exact payload and readback closure.
     if (!pending) {
       if (authoring && !designerAuthoring.value.available) throw new Error('Designer authoring is unavailable for this draft.')
       mode.value = authoring ? 'designer' : 'content'
       designerOperationId.value = null
     }
-    // One transaction initializes, converts and opens the saved draft.
-    const body = operation(endpoint(), () => ({ command: 'start', operationId: crypto.randomUUID(), templateId, clientId }))
-    const result = await mutate<HandoffResult>(endpoint(), 'POST', body, result => lookup(templateId, result.handoff.appliedRevisionId ?? result.handoff.baseRevisionId))
+    // Confirmed structured drafts open by exact head. Legacy/new-copy starts
+    // retain the existing atomic initialization/conversion boundary.
+    const body = operation(endpoint(), () => saved
+      ? { command: 'open', operationId: crypto.randomUUID(), draftId: saved.draftId, expectedRevisionId: saved.expectedRevisionId }
+      : { command: 'start', operationId: crypto.randomUUID(), templateId, clientId })
+    const result = await mutate<HandoffResult>(endpoint(), 'POST', body, async (result) => {
+      if (saved && (result.handoff.draftId !== saved.draftId || result.handoff.templateId !== templateId || result.handoff.baseRevisionId !== saved.expectedRevisionId))
+        throw new Error('The saved design reopen receipt does not match its owner and head.')
+      await lookup(templateId, saved?.expectedRevisionId ?? result.handoff.appliedRevisionId ?? result.handoff.baseRevisionId)
+    })
     return adoptHandoff(result)
   }
   async function resume(id: string, authoring = mode.value === 'designer') {

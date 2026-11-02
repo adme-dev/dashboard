@@ -23,7 +23,7 @@ const validation = declarations(['hasValidTemplateClient', 'hasValidDesignDraftC
 const functions = (names: string[]) => ast.statements.filter(statement => ts.isFunctionDeclaration(statement)
   && statement.name && names.includes(statement.name.text)).map(statement => statement.getText(ast)).join('\n')
 const save = functions(['save'])
-const design = declarations(['figflowSourceUnsupported']) + '\n' + functions(['beginFigflow', 'editInFigflow', 'reconcileDesignAction', 'reconnectDesignService'])
+const design = declarations(['figflowSourceUnsupported', 'canonicalSaved']) + '\n' + functions(['beginFigflow', 'editInFigflow', 'reconcileDesignAction', 'reconnectDesignService', 'sameDesignSource'])
 const fetch = vi.fn()
 const apps: ReturnType<typeof createApp>[] = []
 const id = '10000000-0000-4000-8000-000000000001'
@@ -45,7 +45,7 @@ function deferred<T>() {
   })
   return { promise, resolve, reject }
 }
-function mount() {
+function mount(realWorkspace = false) {
   const flow = useEdmDesignRoundtrip()
   const args = {
     computed, figflowTemplateCapability, designFlow: flow,
@@ -64,7 +64,7 @@ function mount() {
     saveCampaignContent: vi.fn(), figflowEnabled: true, viewMode: ref('editor'), activeDevice: ref('desktop'), VIEW_TABS: [], DEVICE_TABS: []
   }
   const capabilityExport = source.includes('const figflowSourceUnsupported =') ? ', figflowSourceUnsupported' : ''
-  const script = ts.transpile(`${validation}\n${save}\n${design}\nreturn { save, beginFigflow, editInFigflow, reconcileDesignAction, reconnectDesignService ${capabilityExport} }`, { target: ts.ScriptTarget.ES2022 })
+  const script = ts.transpile(`${validation}\n${save}\n${design}\n${realWorkspace ? functions(['workspaceSnapshot']) : ''}\nreturn { save, beginFigflow, editInFigflow, reconcileDesignAction, reconnectDesignService, workspaceSnapshot ${capabilityExport} }`, { target: ts.ScriptTarget.ES2022 })
   const state = { ...args, ...new Function(...Object.keys(args), script)(...Object.values(args)) }
   const app = createApp(defineComponent({ setup: () => state, template: `<div>${toolbar}</div>` }))
   app.component('UBadge', defineComponent({ setup: () => () => h('span') }))
@@ -91,6 +91,70 @@ afterEach(() => {
 })
 
 describe('live FigFlow composer save and source admission', () => {
+  it('reopens an unchanged saved structured draft at the exact head without any PATCH', async () => {
+    const m = mount(true)
+    const current = draft()
+    current.source.scope.clientId = null
+    m.flow.draft.value = current
+    m.state.workspaceSavedSnapshot.value = m.state.workspaceSnapshot()
+    fetch.mockResolvedValueOnce({ handoff: { ...handoff(), source: current.source } }).mockResolvedValueOnce({ draft: current })
+    await m.state.beginFigflow()
+    expect(fetch.mock.calls[0]![1].body).toMatchObject({ command: 'open', draftId: id, expectedRevisionId: revision })
+    expect(fetch.mock.calls.some(([, options]) => options?.method === 'PATCH')).toBe(false)
+    expect(m.state.showFigflow.value).toBe(true)
+  })
+  it('refuses an unchanged saved draft whose remote head moved, retaining local content with no writes', async () => {
+    const m = mount(true)
+    const current = draft()
+    current.source.scope.clientId = null
+    m.flow.draft.value = current
+    m.state.workspaceSavedSnapshot.value = m.state.workspaceSnapshot()
+    const local = JSON.stringify(m.state.store.document.value)
+    fetch.mockRejectedValueOnce({ statusCode: 409, data: { statusMessage: 'REVISION_CONFLICT' } })
+    await m.state.beginFigflow()
+    expect(fetch.mock.calls[0]![1].body).toMatchObject({ command: 'open', expectedRevisionId: revision })
+    expect(fetch).toHaveBeenCalledTimes(1)
+    expect(JSON.stringify(m.state.store.document.value)).toBe(local)
+    expect(m.flow.draft.value?.headRevisionId).toBe(revision)
+    expect(m.state.showFigflow.value).toBe(false)
+  })
+
+  it.each(['content', 'metadata'] as const)('saves changed %s before reopening the confirmed resulting head', async (field) => {
+    const m = mount(true)
+    const current = draft()
+    current.source.scope.clientId = null
+    m.flow.draft.value = current
+    m.state.workspaceSavedSnapshot.value = m.state.workspaceSnapshot()
+    if (field === 'content') m.state.store.document.value.heading.data.props.text = 'Changed local content'
+    else m.state.subject.value = 'Changed local subject'
+    const contentHead = '20000000-0000-4000-8000-000000000002'
+    const metadataHead = '20000000-0000-4000-8000-000000000003'
+    const savedSource = validateEmailDesign({ ...current.source, blocks: m.state.store.document.value })
+    const savedContent = { ...current, source: savedSource, headRevisionId: contentHead, projectionRevisionId: contentHead }
+    const savedMetadata = { ...savedContent, headRevisionId: metadataHead, projectionRevisionId: metadataHead }
+    fetch.mockResolvedValueOnce({ revisionId: contentHead }).mockResolvedValueOnce({ draft: savedContent })
+      .mockResolvedValueOnce({ revisionId: metadataHead }).mockResolvedValueOnce({ draft: savedMetadata })
+      .mockResolvedValueOnce({ handoff: { ...handoff(), source: savedSource, baseRevisionId: metadataHead } }).mockResolvedValueOnce({ draft: savedMetadata })
+    await m.state.beginFigflow()
+    expect(fetch.mock.calls[0]![1].body).toMatchObject({ action: 'save-draft', expectedRevisionId: revision })
+    expect(fetch.mock.calls[2]![1].body).toMatchObject({ expectedRevisionId: contentHead, subject: m.state.subject.value })
+    expect(fetch.mock.calls[4]![1].body).toMatchObject({ command: 'open', draftId: id, expectedRevisionId: metadataHead })
+    expect(fetch.mock.calls.filter(([, options]) => options.method === 'PATCH')).toHaveLength(2)
+    expect(m.state.showFigflow.value).toBe(true)
+    expect(m.flow.draft.value?.headRevisionId).toBe(metadataHead)
+  })
+  it('does not save or initialize a foreign structured owner', async () => {
+    const m = mount(true)
+    const current = draft()
+    current.source.scope.clientId = null
+    current.templateId = '20000000-0000-4000-8000-000000000002'
+    m.flow.draft.value = current
+    m.state.workspaceSavedSnapshot.value = m.state.workspaceSnapshot()
+    await m.state.beginFigflow()
+    expect(fetch).not.toHaveBeenCalled()
+    expect(m.state.showFigflow.value).toBe(false)
+    expect(m.flow.error.value).not.toBe('')
+  })
   it('does not call an in-flight open or its readback unconfirmed, and prevents duplicate opens', async () => {
     const m = mount()
     const request = deferred<any>()

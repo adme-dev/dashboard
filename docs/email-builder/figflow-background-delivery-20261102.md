@@ -626,3 +626,169 @@ existing final-content try/catch. It now returns422 campaign_final_content_block
 before dispatch. Combined197/21 pass with no skips, parent-file lint and diff
 checks pass; no real send or new draft URL. Review report remains separately
 bounded from parent red/green follow-up, full CI and hosted acceptance.
+
+Parent committed M06 authoring/final-validation as956330e9b1131b50b368e8c236dea1e166f53a2f
+and pushed the coherent08a/M06 checkpoint, preserving all dirty foundation work.
+Freshly fetched main remains052eefaf9 and is an ancestor. Exact head now runs
+general CI41453139060 and native41453139103; neither has passed yet. Read-only
+monitor ctx_f06093e5a8dc owns terminal outcomes, safe receipts and matching native
+package hash validation. Draft PR827 description updated around this source and
+remaining original-goal gates. No authoring release/activation is implied.
+
+Binding-capacity inspection confirmed the Pages draft-save flag is actively
+enforced by the private-service transport; it is not redundant and must not be
+removed to make room for M06. No binding/configuration was changed. Capacity
+remains a release-time gate requiring fresh names-only provisioning evidence.
+
+08b foundation source completed in its assigned ten-file scope, uncommitted.
+Report `campaign-owner-foundation-20261103.md` records92 real-PG checks (24 new)
+and136 unit checks, zero skips, lint and0owned type diagnostics with9 untouched
+transitive diagnostics. Unique schemas were removed. Migration498 was applied
+twice only in disposable PG with497 absent; configured498 remains unapplied.
+Independent Opus ctx_7ea2e8c47f2b now reviews persisted-owner/CAS/receipt/projection
+invariants and explicitly investigates497+498 coexistence before parent database
+application. Foundation is not the exact-template selection, library adapters,
+REST/MCP write interception, native campaign handoff or hosted full journey.
+
+Parent prepared an isolated frozen956 runtime under
+`.verification/frozen-email-runtime-956330e9b/`: archive77d96d6687d3e172fa1fe2f964aeeacedd086d710f821745c60b03e2ef24cd4f,
+6849 source files hash-verified unchanged after compile. Existing dependencies
+only; no install, dirty foundation inputs, configured DB or release. Private
+Worker a663c9f70dd48ac1850539de43b960b744c8e5e5ee46c8ab7c1d111073417941
+(1338198 bytes) builds and passes22 admission scenarios. Canonical renderer
+1a095948fe07110d50b4994871c9d381eb2df1454f701e63a5bdfebb3536915b
+(733961 bytes) compiles from132 inputs. Eight evidence/artifact checksums recorded;
+browser worker has paths/receipts. Actual08a Worker/PG/WASM acceptance is pending.
+
+Opus foundation review found no slice3 P0/P1 and independently passed8 real-PG
+coexistence cases using491/492/497/498 twice: stale-approval invalidation,
+frozen refusal, atomic review-state rollback, legacy dispatch and both lock
+interleavings, with cleanup. Before application parent requested bounded O-2
+hot-path correction (ctx_4d174040581b): relevant-column/row-change triggers must
+avoid hashing full HTML on counter/status commits. Before any opt-in O-1 adds
+M06 submit preparation in review.ts to the existing send-preparation audit;
+canonical HTML cannot be rewritten outside its revision writer, and raw constraint
+failures need readable conflicts. Standalone legacy snapshots must be converted
+in the same transaction. These obligations are explicit remaining work, not
+evidence that the campaign round trip is complete. Configured498 remains pending.
+
+Parent verified final O-2 nine-file hashes and reran the independent real-PG
+497/498 coexistence probe against finalSQL e8fdd367968efe31eba4efb9af8bc4ecb381e16769efdbe12f88fedaca08e1fb:
+8/8 passed, zero skips. Foundation committed locally asbc8a3ba961c117b4a27efc61cd486af237339bac,
+preserving harness/other dirty work. Fresh main remained052eefaf9;498/499 had no
+remote collision. Configured498 then applied twice within one guarded transaction
+to the prior verified Neon target. Content fingerprints compared only in memory
+for campaigns/templates/documents/revisions/receipts/review state; all unchanged.
+Readback: zero campaign opt-ins, zero gated campaigns,6 enabled campaign guards,
+5-column/row-distinct hot-path checks, retained digest CHECK and10 review triggers.
+Sanitized receipt `evidence/campaign-schema-20261103.json`; no activation or send.
+
+956 native41453139103 passed32 engine/9 bridge/8 UI (81 named outcomes across9
+filters),47 native and56 package checks. Actual checkout2c4200953f597ee76bf3c499d96c4e4c1016ee86
+has direct052eefaf9/956330e9b parents. Package ZIPcadc8ea9e0b6e2088b8d339adce8a38f91b7d3e482254f2fc5bc4956118a2deb,
+WASM18a31d0079c72f0ed07bb678c0ca548098c81d06c8bf05deb94c25c782457c59
+verified with82 evidence checksums in `.verification/ci-followup-956330e9b/`.
+Full-builder fixture preparation compiles22 actual email components/23 SFCs from
+frozen956 source; ctx_cb7b07e348e0 now has exact package/runtime inputs to calibrate
+and execute actual08a, with old94 core hashes protected. No new runtime pass yet.
+
+General41453139060 failed8 department-email PG cases (74 passed/0 skipped), first
+create-draft response ok:false at test/ai/departmentEmailInboxPostgres.test.ts:280.
+The full suite, Worker build and raw/gzip budgets were not reached; earlier
+renderer target/type/transport checks passed separately. No source cause is
+claimed yet. Diagnosis/fix ctx_b8fa99463ace owns only the bounded fixture/helper;
+the newly used getCachedBinding missing from its email mock is a hypothesis to
+reproduce, not an accepted product cause. New backend ctx_981993d5d53e owns the
+approved library/creation/REST/MCP/preparation integrations, not that fixture.
+PR827 remains draft, no authoring release and no campaign opt-in.
+
+Actual08a runtime has started with matching WASM18a31d00 and frozen956
+Worker/renderer in unique-schema local Workerd/R2/PG. Browser response capture
+needed an owned64MB CDP Network session for the23.5MB WASM, and the read-only
+capability probe was corrected to the actual envelope. Worker reports served
+hash verified, zero outbound requests and teardown checks; visible-control
+calibration/full journeys remain in progress, not a passing acceptance result.
+
+Backend integration red test reproduced canonical preparation reaching the
+mirroring path before refusal. It is being replaced through the existing
+registered-asset/readiness owner with unchanged canonical HTML. A documented
+minimal foundation digest-context extension is permitted for mixed validated
+content/non-content patches, server-derived only and committed through the same
+transaction/receipt; absent context must preserve old digests exactly. Same-op
+changed-patch conflict and lost-reply replay are required proof. No extra owner,
+schema mutation, feature activation or provider action is authorized by that
+digest context.
+
+Actual08a attempt10 found a product counterexample after completing the preceding
+native/library journeys: final unchanged reload/Edit in FigFlow appended a no-op
+content revision then identical metadata revision instead of preserving the saved
+head. Evidence remains under
+`.verification/figflow-native-library-browser/figflow_native_browser_5f016cbb423241518859c3cf20befb1f/`.
+Served18a31d00 bytes, zero unexpected requests/errors and schema/proxy cleanup are
+recorded; this is a FAILED overall08a acceptance, not a completed gate. The earlier
+steps include compiled desktop/mobile explicit Apply, selected-section publication,
+two exact-version insertions, definite/committed-lost reopen recovery, registered
+image publication/insert/replace, module revision/update/cancel, real concurrent
+writer409 and detach. No exact-head assertion or product source was weakened to
+obtain those results.
+
+Parent inspected beginFigflow/save and authorized bounded builder/composable
+repair with red/green tests. Skipping writes must still open the exact stored
+document/head through existing command open, refuse a newer remote head and retain
+local work/pending original payloads; an unbound start must not silently adoptR2.
+Changed staff content/metadata and first legacy conversion still save through
+their existing owners. Worker owns only those two app files plus focused tests/
+harness; server/backend owner remains separate. New coherent frozen source/runtime
+proof is required after the source fix; no mixed-version result may be called956
+or full acceptance. Existing failed evidence and old94 core hashes are preserved.
+
+CI fixture repair completed: the original eight failures reproduce the exact
+missing getCachedBinding mock-export error, mapped by the department boundary to
+unavailable. Minimal undefined-binding fake retains the real default-off review
+gate. The fixture now uses a unique guarded namespace and restored env values;
+all134 prior assertions and16 test names/order remain, three checks added.
+Concurrent backend code introduced a separately reproduced42P01 design-document
+lookup dependency; real163/491 migrations were added to its fixture, retaining
+pre497 default-off proof. Final16 real-PG plus80 neighboring tests pass with no
+skips on recorded stable hashes, with source drift afterward explicitly recorded.
+No production source was changed by that worker. Report
+`department-email-ci-repair-20261103.md`; general956 CI is still failed.
+
+Exact-head reopen author reports71/8 focused tests pass after red10 failures/14
+passes. Clean structured opens bind existing document/head without PATCHes;
+dirty fields retain save/readback, both modes/legacy/new-copy/pending identity
+are covered. Lint/types/SFC/source report are finishing. Independent Opus
+ctx_ae2fe24a2c64 reviews these two app files/focused tests and the CI fixture,
+including citext's database-wide lifetime under concurrent schemas. Do not
+commit/rebuild/runtime-pass these changes until their source freeze/review.
+
+Independent reopen/CI review ctx_ae2fe24a2c64 found no P0/P1 in the two app files
+and fixture snapshot. Server document-lock CAS rejects cachedR1/remoteR2; pending
+mode/body/receipt/readback checks fail closed. Final harness/test hashes need
+refresh before attempt11. A newer readback may leave an orphaned confirmed
+handoff; this lower-priority recovery limit remains recorded, not silently
+counted as complete. The review's20 evidence hashes and134 assertions/16 names
+match; subsequent backend hash drift still prevents candidate-wide claims.
+
+Fixture P2: citext is a database-wide extension even in an owned namespace.
+Default CI currently has no concurrent user, but ephemeral ownership creates
+future/persistent-database risk. Follow-up ctx_1acfb1c92c1a restores explicit
+public-schema installation in fixture source, preserving existing/shared
+extensions and guarded test-schema cleanup. The local assigned cluster is not
+authorized for public-schema mutation just to rerun; if public citext is absent,
+record final PG proof pending fresh CI on its dedicated disposable database.
+Parent waits for final source/test/hash freeze, then commits only reviewed app/
+fixture files and prepares coherent runtime inputs; dirty backend stays separate.
+
+Reopen author settled the actual08a Task as FAILED, correctly retaining attempt10
+instead of marking overall acceptance green. Its reviewed two-file source fix,
+focused71/8 result and final helper/test/report hashes are frozen.400 safe evidence
+hashes cover the10 attempts/fix checks, with all schemas/proxies cleaned and old94
+core hashes retained. Source readiness does not change the failed runtime verdict.
+
+CI fixture public-citext follow-up is frozen atff4a6cdcaacae7641158afcb7b84ee4c5b4f349e646cdeabcdfcfbe6c9b353d7,
+with clean scoped lint and24 manifest entries verified by its worker. Read-only
+socket inspection found no public citext, so no local rerun/public-schema mutation
+occurred; final PG proof remains pending fresh CI. Prior16/80 receipts remain
+unchanged/source-bounded. Parent now stages only reviewed app/fixture/harness/
+evidence docs for a coherent checkpoint, leaving all dirty backend source out.

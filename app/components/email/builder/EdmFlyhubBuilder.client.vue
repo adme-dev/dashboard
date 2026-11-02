@@ -837,6 +837,7 @@ async function beginFigflow(createDraft = false) {
   try {
     await designFlow.run(async () => {
       const openingSource = JSON.stringify(store.document.value)
+      let savedBaseline: { draftId: string, expectedRevisionId: string } | undefined
       if (createDraft) {
         if (draftCopyUnconfirmed.value) return
         const draftName = designDraftName.value.trim()
@@ -883,11 +884,29 @@ async function beginFigflow(createDraft = false) {
           showSaveModal.value = true
           return
         }
-        if (!await save()) return
+        const current = designFlow.draft.value
+        const clientId = templateClient.value === '__shared__' ? null : templateClient.value
+        if (current?.state === 'structured') {
+          if (current.templateId !== templateId.value || current.source.scope.clientId !== clientId)
+            throw new Error('Reopen the same saved template and client before editing in FigFlow.')
+          if (current.projection.state !== 'current' || current.projectionRevisionId !== current.headRevisionId)
+            throw new Error('The saved design projection changed. Reload before editing in FigFlow.')
+          // A clean confirmed workspace needs no content or metadata revision.
+          // Dirty fields still pass through the existing save/readback owner.
+          if (!canonicalSaved.value && !await save()) return
+          const confirmed = designFlow.draft.value
+          if (confirmed?.state !== 'structured' || !canonicalSaved.value || confirmed.templateId !== templateId.value || confirmed.source.scope.clientId !== clientId
+            || confirmed.projectionRevisionId !== confirmed.headRevisionId)
+            throw new Error('The saved design changed while opening. Keep local edits and reload before continuing.')
+          savedBaseline = { draftId: confirmed.documentId, expectedRevisionId: confirmed.headRevisionId }
+        } else if (!await save()) return
       }
       if (!templateId.value) return
       if (JSON.stringify(store.document.value) !== openingSource) throw new Error('The composer changed while saving. Save again before opening FigFlow.')
-      const result = await designFlow.open(templateId.value, templateClient.value === '__shared__' ? null : templateClient.value!, designFlow.designerAuthoring.value.available)
+      const clientId = templateClient.value === '__shared__' ? null : templateClient.value!
+      const result = savedBaseline
+        ? await designFlow.open(templateId.value, clientId, designFlow.designerAuthoring.value.available, savedBaseline)
+        : await designFlow.open(templateId.value, clientId, designFlow.designerAuthoring.value.available)
       designRevisionRequired.value = true
       designServiceUnavailable.value = false
       designLocalConflict.value = false

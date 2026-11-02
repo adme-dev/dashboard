@@ -210,8 +210,14 @@ remaining pinned after template/module heads advance; and real campaign-kind
 native structural/staff round trips. Matching Linux/package/WASM and later hosted
 checks are separate. No unexecuted test or seeded pin closes these user journeys.
 
-M06 remains isolated until its reviewed security/rollback/digest defects are
-fixed, migration497 verified/applied and current-source integration passes.
-Its web-version picker and public documentation still need wiring; flag stays off.
+M06 reviewed corrections are integrated, configured497 is verified/applied, and
+the web-version picker/final-delivery checks are pushed in956330e9b. Full CI,
+hosted review/send acceptance and public documentation remain open; flag stays off.
 Opaque native-artifact staging, known HTML conversion, full-template tolerances,
 real email clients and AM/job/brief/budget research retain their recorded gates.
+
+### Campaign integration obligations from independent foundation review (3 November)
+
+Before any campaign opts into the canonical projection, slice4 must audit both `prepareCampaignHtmlForSend`/`preparedCampaignHtml` and the M06 `review.ts` submit preparation write. An opted-in campaign must retain its saved canonical HTML and registered assets; mirroring cannot issue an HTML-only UPDATE behind the revision owner. Return a readiness issue for assets needing canonical correction, and map `email_design_campaign_revision_required` to a readable conflict instead of500. Legacy preparation stays with its existing owner. Snapshot plus first conversion must share the caller's transaction, so non-content touches cannot strand an immutable baseline. No separate preparation, review or sender engine is introduced.
+
+Migration498's campaign triggers must use relevant-column and row-change guards so counter/webhook/status-only commits do not run full HTML hash checks. Retain initial pointer validation and document deferred consistency. Independent497/498 coexistence passed8 real-PG cases; the trigger-cost correction and preparation-path integration remain separate acceptance items.
