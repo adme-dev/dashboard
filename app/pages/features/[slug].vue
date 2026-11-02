@@ -2502,7 +2502,7 @@ const features: Record<string, Feature> = {
     details: [
       {
         title: 'Layer-Based Design',
-        content: 'Build banners by stacking layers — text, images, buttons, rectangles, and background elements. Each layer has its own position, size, rotation, opacity, and animation properties. Drag the canvas rotation handle, hold Shift for 15-degree steps, or flip a visual layer horizontally or vertically in the properties panel. Rotation and flips support undo and remain in exported artwork. Reorder layers by drag-and-drop in the sidebar, lock layers to prevent accidental edits, and toggle visibility to focus on specific elements. The layer system mirrors what designers expect from tools like Figma or Photoshop, but outputs production-ready HTML5.'
+        content: 'Select a layer and open Add exit animation to choose a fade, slide, zoom or spin for its final half-second, then resize the exit block to adjust the duration. Build banners by stacking layers — text, images, buttons, rectangles, and background elements. Each layer has its own position, size, rotation, opacity, and animation properties. Drag the canvas rotation handle, hold Shift for 15-degree steps, or flip a visual layer horizontally or vertically in the properties panel. Rotation and flips support undo and remain in exported artwork. Reorder layers by drag-and-drop in the sidebar, lock layers to prevent accidental edits, and toggle visibility to focus on specific elements. The layer system mirrors what designers expect from tools like Figma or Photoshop, but outputs production-ready HTML5.'
       },
       {
         title: 'Multi-Format Artboards',

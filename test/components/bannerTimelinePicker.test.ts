@@ -9,7 +9,7 @@ for (const [name, value] of Object.entries(Vue)) vi.stubGlobal(name, value)
 const { useBannerStudio } = await import('~/composables/useBannerStudio')
 let cleanup: (() => void) | undefined
 afterEach(() => { cleanup?.(); vi.restoreAllMocks() })
-async function mount(layer: Partial<Layer>, phase?: TimelinePhase) {
+async function mount(layer: Partial<Layer>, phase?: TimelinePhase, addAtEnd = false) {
   const studio = useBannerStudio()
   studio.loadProject({ id: 'picker-test', canvasData: { mrec: { layers: [{ id: 1, name: 'Imported heading', type: 'text', text: 'Hello', x: 0, y: 0, w: 100, h: 30, opacity: 1, zIndex: 1, startTime: 0, endTime: 3, animIn: 'fadeIn', animInDur: 0.5, ...layer }] } } } as any)
   vi.stubGlobal('useBannerStudio', () => studio)
@@ -18,13 +18,14 @@ async function mount(layer: Partial<Layer>, phase?: TimelinePhase) {
   const previewAnimation = vi.fn()
   const stopAnimationPreview = vi.fn()
   const animationPreview = Vue.ref<{ layerId: number, start: number, end: number } | null>(null)
-  vi.stubGlobal('useBannerTimeline', () => ({ pauseTimeline: vi.fn(), seekTo: vi.fn(), playTimeline: vi.fn(), previewAnimation, animationPreview, stopAnimationPreview }))
+  vi.stubGlobal('useBannerTimeline', () => ({ pauseTimeline: vi.fn(), seekTo: vi.fn(), playTimeline: vi.fn(), currentLayerValue: (_layer: Layer, property: string) => property === 'opacity' || property.startsWith('scale') ? 1 : 0, previewAnimation, animationPreview, stopAnimationPreview }))
   const host = document.createElement('div'); document.body.append(host)
   let picker: any
   const app = Vue.createApp({ setup: () => () => Vue.h(Picker, {
     ref: (value: unknown) => { picker = value },
     layer: studio.activeLayers.value[0],
-    direction: phase?.direction ?? 'in',
+    direction: addAtEnd ? 'out' : phase?.direction ?? 'in',
+    addAtEnd,
     phase
   }) })
   app.component('UButton', { props: ['label'], setup: (p, { attrs, slots }) => () => Vue.h('button', attrs, p.label || slots.default?.()) })
@@ -154,4 +155,30 @@ it('shows the actual imported motion in a block without a supplied phase', async
   const button = host.querySelector('button[aria-label^="Edit "]')!
   expect(button.getAttribute('aria-label')).toBe('Edit Fade in + Rotate for Imported heading')
   expect(button.textContent).toContain('Fade in + Rotate')
+})
+
+it('opens all existing exit options and adds the chosen preset at the end', async () => {
+  const { studio, host, click } = await mount({ animOut: 'none', endTime: 4.2 }, undefined, true)
+  expect(host.textContent).toContain('Build Out')
+  expect(host.textContent).toContain('Zoom Out')
+  expect(host.textContent).toContain('Spin')
+  expect(host.textContent).not.toContain('Blink')
+  await click('Fade')
+  expect(studio.activeLayers.value[0]).toMatchObject({ animIn: 'fadeIn', animOut: 'fadeOut', animOutStart: 3.7, outDur: 0.5 })
+  studio.undo()
+  expect(studio.activeLayers.value[0]!.animOut).toBe('none')
+})
+
+it('adds a zoom exit using existing keyframes without resetting imported entrance or motion', async () => {
+  const keyframes = { opacity: [{ time: 0, value: 0 }, { time: 1, value: 1 }, { time: 4, value: 1 }], x: [{ time: 0, value: -50 }, { time: 1, value: 0 }] }
+  const { studio, host, click } = await mount({ endTime: 4, keyframes }, undefined, true)
+  expect(host.textContent).not.toContain('Replace custom motion')
+  await click('Zoom Out')
+  const result = studio.activeLayers.value[0]!
+  expect(result.keyframes?.x).toEqual(keyframes.x)
+  expect(result.keyframes?.opacity?.slice(0, 2)).toEqual(keyframes.opacity.slice(0, 2))
+  expect(result.keyframes?.scaleX?.at(-1)).toEqual({ time: 4, value: 0.6 })
+  expect(result.keyframes?.opacity?.at(-1)).toEqual({ time: 4, value: 0 })
+  studio.undo()
+  expect(studio.activeLayers.value[0]!.keyframes).toEqual(keyframes)
 })
