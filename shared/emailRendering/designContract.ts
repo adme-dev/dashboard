@@ -35,7 +35,13 @@ const Block = z
 const Policy = z
   .object({
     version: z.literal(1),
-    editableFields: z.array(FieldPath).max(3000)
+    editableFields: z.array(FieldPath).max(3000),
+    // Persisted restrictions, never accepted from a designer proposal. Absence
+    // retains legacy content-policy semantics and conservative derived grants.
+    designerLocks: z.object({
+      blockIds: z.array(Id).max(300),
+      styleFields: z.array(FieldPath).max(3000)
+    }).strict().optional()
   })
   .strict()
 const DesignSchema = z

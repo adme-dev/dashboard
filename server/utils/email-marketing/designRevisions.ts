@@ -1,4 +1,6 @@
 import { z } from 'zod'
+import { composerToDesignDraft } from '../../../shared/emailRendering/designComposer'
+import { assertDesignerOperationsResult, type DesignerOperation } from '../../../shared/emailRendering/designDesigner'
 import {
   validateEmailDesign,
   assertStaffDesignEdit,
@@ -144,7 +146,8 @@ export function saveStaffTemplateDesignDraft(
   authorize: (clientId: string | null) => Promise<void>,
   renderer: EmailRendererClient,
   runTransaction?: DesignTransaction,
-  dependencies: DesignDependencyAuthority = {}
+  dependencies: DesignDependencyAuthority = {},
+  allowLegacyConversion = false
 ): Promise<DesignRevisionReceipt> {
   return appendRevision(
     input,
@@ -152,8 +155,23 @@ export function saveStaffTemplateDesignDraft(
     runTransaction,
     dependencies,
     true,
-    renderer
+    renderer,
+    undefined,
+    allowLegacyConversion
   )
+}
+
+/** Reviewed designer operations are re-evaluated against the locked head. A
+ * browser baseline, role claim or prepared canonical document grants no rights. */
+export function saveDesignerTemplateDesignDraft(
+  input: AppendDesignRevisionInput & { operations: DesignerOperation[], proposalOperationId: string },
+  authorize: (clientId: string | null) => Promise<void>,
+  renderer: EmailRendererClient,
+  runTransaction?: DesignTransaction,
+  dependencies: DesignDependencyAuthority = {}
+): Promise<DesignRevisionReceipt> {
+  return appendRevision(input, authorize, runTransaction, dependencies, false, renderer,
+    (current, candidate) => assertDesignerOperationsResult(current, candidate, input.operations, input.proposalOperationId))
 }
 
 async function appendRevision(
@@ -163,7 +181,9 @@ async function appendRevision(
     transactionWithoutRetry(db => callback(db)),
   dependencies: DesignDependencyAuthority,
   staffOnly: boolean,
-  templateDraftRenderer?: EmailRendererClient
+  templateDraftRenderer?: EmailRendererClient,
+  validateDesignerEdit?: (current: EmailDesignDocument, next: EmailDesignDocument) => void,
+  allowLegacyConversion = false
 ): Promise<DesignRevisionReceipt> {
   const identity = Identity.parse({
     documentId: input.documentId,
@@ -286,9 +306,20 @@ async function appendRevision(
     if (current.schema_version === 0 && !current.legacy_unchanged)
       throw new DesignRevisionError('LEGACY_CONTENT_CHANGED')
     if (staffOnly) {
-      if (current.schema_version !== 1)
-        throw new DesignRevisionError('STRUCTURED_REVISION_REQUIRED')
-      assertStaffDesignEdit(validateEmailDesign(current.payload), design)
+      if (current.schema_version === 0 && allowLegacyConversion) {
+        // Only the server's deterministic first conversion is accepted. The
+        // HTTP caller must retain fresh designer authority through commit.
+        const legacy = current.payload as { body_source?: unknown }
+        const converted = composerToDesignDraft(legacy.body_source, document.client_id)
+        if (canonical(converted) !== canonical(design)) throw new DesignRevisionError('STRUCTURED_REVISION_REQUIRED')
+      } else {
+        if (current.schema_version !== 1) throw new DesignRevisionError('STRUCTURED_REVISION_REQUIRED')
+        assertStaffDesignEdit(validateEmailDesign(current.payload), design)
+      }
+    }
+    if (validateDesignerEdit) {
+      if (current.schema_version !== 1) throw new DesignRevisionError('STRUCTURED_REVISION_REQUIRED')
+      validateDesignerEdit(validateEmailDesign(current.payload), design)
     }
     let projection: { source: unknown, html: string } | undefined
     if (templateDraftRenderer) {

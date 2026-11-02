@@ -7,6 +7,7 @@ import { DesignHandoffError, executeDesignRoundtrip } from '~~/server/utils/emai
 import { DesignRevisionError } from '~~/server/utils/email-marketing/designRevisions'
 import { DesignReadError } from '~~/server/utils/email-marketing/designReads'
 import { createEmailRenderer } from '~~/server/utils/email-marketing/render/client'
+import { designerCapabilities } from '~~/shared/emailRendering/designDesigner'
 import { parseRoundtripRequest } from '~~/shared/emailRendering/designRoundtrip'
 import { EmailDesignError } from '~~/shared/emailRendering/designContract'
 import { EmailDesignActionError } from '~~/shared/emailRendering/designActions'
@@ -23,10 +24,25 @@ export default defineEventHandler(async (event) => {
     const user = token ? await validateSession(token) : null
     if (!user || !token) throw createError({ statusCode: 401, statusMessage: 'design_session_invalid' })
     const request = parseRoundtripRequest(await readBoundedJson(event))
-    return await executeDesignRoundtrip(request, {
+    const result = await executeDesignRoundtrip(request, {
       actorId: user.id,
       authorize: (clientId, access) => assertFreshDesignAccess(token, user.id, clientId, access)
     }, createEmailRenderer(env))
+    if (request.command !== 'lookup' || !('draft' in result)) return result
+    let available = false
+    if (env.FIGFLOW_EDM_DESIGNER_ENABLED === 'true' && result.draft?.state === 'structured' && result.draft.source.source.nativeArtifact === null) {
+      try {
+        available = await assertFreshDesignAccess(token, user.id, result.draft.source.scope.clientId, 'write') === 'designer'
+      } catch (error) {
+        // A read-authorised staff member may discover the ordinary draft while
+        // structural authoring stays unavailable; other failures remain errors.
+        if (!(error && typeof error === 'object' && 'statusCode' in error && error.statusCode === 403)) throw error
+      }
+    }
+    return { ...result, designerAuthoring: {
+      available, endpoint: '/api/email/design/designer' as const,
+      capabilities: available && result.draft?.state === 'structured' ? designerCapabilities(result.draft.source) : null
+    } }
   } catch (error) {
     if (error instanceof ZodError || error instanceof EmailDesignActionError || error instanceof EmailDesignError)
       throw createError({ statusCode: 'code' in error && ['LIMIT_EXCEEDED', 'ACTION_LIMIT_EXCEEDED'].includes(error.code) ? 413 : 400, statusMessage: 'invalid_design_request' })

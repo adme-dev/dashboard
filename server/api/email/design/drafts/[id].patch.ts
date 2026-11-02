@@ -15,8 +15,7 @@ import { queryOneFresh } from '~~/server/utils/db'
 import { assertFreshDesignAccess } from '~~/server/utils/email-marketing/designAccess'
 import {
   DesignRevisionError,
-  saveStaffTemplateDesignDraft,
-  saveTemplateDesignDraft
+  saveStaffTemplateDesignDraft
 } from '~~/server/utils/email-marketing/designRevisions'
 import { createEmailRenderer } from '~~/server/utils/email-marketing/render/client'
 import {
@@ -77,11 +76,9 @@ export default defineEventHandler(async (event) => {
           statusMessage: 'design_permission_revoked'
         })
     }
-    const save
-      = mode === 'designer'
-        ? saveTemplateDesignDraft
-        : saveStaffTemplateDesignDraft
-    const receipt = await save(
+    // Structured documents always use the persisted content guard; creative
+    // structure/style authoring belongs to the separate reviewed operation path.
+    const receipt = await saveStaffTemplateDesignDraft(
       {
         documentId: action.draftId,
         actorId: user.id,
@@ -96,7 +93,8 @@ export default defineEventHandler(async (event) => {
         authorizeModuleRead: async (_moduleId, clientId) => {
           await assertFreshDesignAccess(token, user.id, clientId, 'read')
         }
-      }
+      },
+      mode === 'designer'
     )
     const revision = await queryOneFresh<{ created_at: string | Date }>(
       'SELECT created_at FROM email_design_revisions WHERE document_id=$1 AND id=$2',
