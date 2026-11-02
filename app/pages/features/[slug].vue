@@ -2698,7 +2698,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Dealer Buttons, Fonts and Layout',
-        content: 'MotorStack kit previews show a real vehicle when available and reviewed button treatments for supported brands, including fill, border, corner shape, casing and type roles. In Banner Studio, drag a primary or secondary guide button onto a specific canvas size, or click it to add to the selected size; its label and native layer properties remain editable. LDV also offers its white on-dark button, based on the 30 August 2026 guide. These guide excerpts also inform AI design context for existing imported kits.'
+        content: 'MotorStack kit previews show a real vehicle when available and reviewed button treatments for supported brands, including fill, border, corner shape, casing and type roles. Tools & Resources puts these presets in Insert beside direct links to kit assets, vehicle images and offer artwork. Drag a primary or secondary button onto a specific canvas size, or click it to add to the selected size; its label and native layer properties remain editable. LDV also offers its white on-dark button, based on the 30 August 2026 guide. These guide excerpts also inform AI design context for existing imported kits.'
       },
       {
         title: 'Templates for the Selected Brand',

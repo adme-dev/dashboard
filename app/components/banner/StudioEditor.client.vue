@@ -188,13 +188,18 @@ const leftTabItems = [
   { id: 'slides' as const, label: 'Slides', icon: 'i-lucide-gallery-horizontal-end' },
   { id: 'history' as const, label: 'History', icon: 'i-lucide-history' },
 ]
-function openLeftPanel(tab: string) {
+const brandPanelTab = ref<'logos' | 'variants' | 'offers'>('logos')
+function openLeftPanel(tab: string, brandTab: 'logos' | 'variants' | 'offers' = 'logos') {
   assetMediaType.value = ['image', 'video', 'audio'].includes(tab) ? tab as 'image' | 'video' | 'audio' : 'all'
   if (assetMediaType.value !== 'all') tab = 'assets'
   const item = leftTabItems.find(item => item.id === tab)
   if (!item) return
+  if (tab === 'brand') brandPanelTab.value = brandTab
   leftTab.value = item.id
   leftPanelCollapsed.value = false
+}
+function openBrandResource(tab: 'logos' | 'variants' | 'offers') {
+  openLeftPanel('brand', tab)
 }
 
 // Modals
@@ -871,10 +876,10 @@ const { activeSize } = useBannerFileSize()
           <BannerSetsPanel v-if="leftTab === 'sets'" />
           <BannerSlidesPanel v-else-if="leftTab === 'slides'" />
           <BannerTemplatesPanel v-else-if="leftTab === 'templates'" />
-          <BannerInsertPanel v-else-if="leftTab === 'elements'" />
+          <BannerInsertPanel v-else-if="leftTab === 'elements'" @browse-brand="openBrandResource" />
           <BannerAssetsPanel v-else-if="leftTab === 'assets'" :media-type="assetMediaType" />
           <BannerFeedsPanel v-else-if="leftTab === 'feeds'" />
-          <BannerBrandPanel v-else-if="leftTab === 'brand'" @browse-assets="openLeftPanel('assets')" />
+          <BannerBrandPanel v-else-if="leftTab === 'brand'" :initial-tab="brandPanelTab" @browse-assets="openLeftPanel('assets')" />
           <BannerVersionHistoryPanel v-else-if="leftTab === 'history'" :project-id="projectId" />
         </div>
         <div

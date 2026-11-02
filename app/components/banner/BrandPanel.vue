@@ -21,6 +21,7 @@ interface MotorStackImages {
   warnings: string[]
 }
 
+const props = withDefaults(defineProps<{ initialTab?: 'logos' | 'variants' | 'offers' }>(), { initialTab: 'logos' })
 const emit = defineEmits<{ browseAssets: [] }>()
 const { state, selectedLayer, activeFormat, applyBrandKit, updateLayer, addLayer, addMotorStackImageToAllLayouts, addMotorStackOfferToAllLayouts, addBrandGuideButton } = useBannerStudio()
 const { isLayerLockedByOther } = useBannerRealtime()
@@ -28,7 +29,7 @@ const toast = useToast()
 const clientId = computed(() => state.project?.clientId || undefined)
 const { fetchCustomFonts, loadUsedFonts, getFont } = useBannerFonts(() => clientId.value ?? null)
 const { brandKits, kit, kitId, loading, error, refresh } = useBannerProjectBrand()
-const activeTab = ref('logos')
+const activeTab = ref<string>(props.initialTab)
 const showManagerModal = ref(false)
 const kitItems = computed(() => [{ label: 'Choose a brand kit', value: '__choose__' }, ...brandKits.value.map(kit => ({ label: kit.name, value: kit.id }))])
 const motorStackBrandId = computed(() => kit.value?.sourceUrl?.match(/^https:\/\/oem-variants\.pages\.dev\/api\/mcp#brand=([a-z0-9-]{1,40})$/)?.[1])
