@@ -1,10 +1,12 @@
 // GET /email/view?c=<campaign>&v=<frozen content digest>&t=<webview signature>
-// Public, unauthenticated hosted web version of an opted-in frozen campaign.
-// Gated by FIGFLOW_EDM_WORKFLOW_ENABLED; never reads cookies or sets any.
+// Public, unauthenticated hosted web version of an opted-in, gated, frozen
+// campaign. Served whatever FIGFLOW_EDM_WORKFLOW_ENABLED says, so a rollback
+// never strands links that were already sent; new links only exist for gated
+// campaigns whose web version was enabled while the workflow was on. Never
+// reads cookies or sets any.
 import { defineEventHandler, getQuery, setResponseHeaders, setResponseStatus } from 'h3'
 import { queryOneFresh } from '~~/server/utils/db'
 import { emailLinkSecret } from '~~/server/utils/email-marketing/links'
-import { isEmailReviewWorkflowEnabled } from '~~/server/utils/email-marketing/review'
 import {
   renderFrozenWebVersion,
   verifyWebVersionRequest,
@@ -21,8 +23,6 @@ export default defineEventHandler(async (event) => {
     setResponseStatus(event, 404)
     return WEB_VERSION_UNAVAILABLE_HTML
   }
-  const env = (event.context as { cloudflare?: { env?: Record<string, unknown> } }).cloudflare?.env
-  if (!isEmailReviewWorkflowEnabled(env)) return unavailable()
   const request = await verifyWebVersionRequest(getQuery(event), emailLinkSecret())
   if (!request) return unavailable()
   const row = await queryOneFresh<FrozenWebVersionRow>(WEB_VERSION_ROW_SQL, [request.campaignId])

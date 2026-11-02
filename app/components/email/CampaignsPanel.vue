@@ -418,7 +418,7 @@ const TERMINAL = new Set(['sent', 'cancelled'])
             />
           </UTooltip>
           <UButton
-            v-if="cfg.review_workflow_enabled"
+            v-if="cfg.review_workflow_enabled || row.review_required"
             icon="i-lucide-message-square-text"
             variant="ghost"
             :color="row.review_required ? 'primary' : 'neutral'"
@@ -640,7 +640,7 @@ const TERMINAL = new Set(['sent', 'cancelled'])
       :campaign-name="reportTarget?.name"
     />
     <EmailReviewDrawer
-      v-if="cfg.review_workflow_enabled"
+      v-if="cfg.review_workflow_enabled || data.campaigns.some(row => row.review_required)"
       v-model:open="showReview"
       kind="campaign"
       :target-id="reviewTarget?.id || null"

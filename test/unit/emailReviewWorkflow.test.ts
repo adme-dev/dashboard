@@ -203,6 +203,7 @@ function frozenRow(overrides: Partial<FrozenWebVersionRow> = {}): FrozenWebVersi
     id: CAMPAIGN,
     status: 'sent',
     web_version_enabled: true,
+    review_required: true,
     subject: 'Spring',
     utm_settings: { source: 'newsletter', campaign: 'spring-26' },
     digest: DIGEST,
@@ -238,12 +239,15 @@ describe('hosted web version', () => {
     expect(await verifyWebVersionRequest({ c: [CAMPAIGN], v: DIGEST, t: 'zz' }, SECRET)).toBeNull()
   })
 
-  it('is available only for opted-in frozen campaigns whose current digest equals the signed version', () => {
+  it('is available only for opted-in, gated, frozen campaigns whose current digest equals the signed version', () => {
     const request = { campaignId: CAMPAIGN, contentDigest: DIGEST }
     expect(webVersionAvailable(frozenRow(), request)).toBe(true)
     expect(webVersionAvailable(frozenRow({ status: 'draft' }), request)).toBe(false)
     expect(webVersionAvailable(frozenRow({ status: 'cancelled' }), request)).toBe(false)
     expect(webVersionAvailable(frozenRow({ web_version_enabled: false }), request)).toBe(false)
+    // Ungated campaigns never have a web version: their content is not frozen.
+    expect(webVersionAvailable(frozenRow({ review_required: false }), request)).toBe(false)
+    expect(webVersionAvailable(frozenRow({ review_required: undefined }), request)).toBe(false)
     expect(webVersionAvailable(frozenRow({ digest: DIGEST2 }), request)).toBe(false)
     expect(webVersionAvailable(frozenRow({ body_html: '' }), request)).toBe(false)
     expect(webVersionAvailable(null, request)).toBe(false)

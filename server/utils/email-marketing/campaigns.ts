@@ -112,6 +112,23 @@ function campaignSendUserId(campaign: Campaign, fallback?: string): string {
   return fallback || campaign.created_by || campaign.id
 }
 
+/** The sendable form of the campaign's stored HTML (asset mirroring), without
+ * writing it. Review submit uses this so the review transaction owns the write. */
+export async function preparedCampaignHtml(
+  campaign: Campaign,
+  opts: CampaignHtmlPrepareOptions = {}
+): Promise<string> {
+  const html = campaign.body_html || ''
+  if (!html) return html
+  return prepareSendableHtmlWithMirroredAssets(html, {
+    appUrl: opts.appUrl || getAppUrl(),
+    userId: campaignSendUserId(campaign, opts.userId),
+    fetchAsset: opts.fetchAsset,
+    uploadAsset: opts.uploadAsset,
+    mirrorExternalAssets: opts.mirrorExternalAssets
+  })
+}
+
 export async function prepareCampaignHtmlForSend(
   campaign: Campaign,
   opts: CampaignHtmlPrepareOptions = {}
@@ -119,13 +136,7 @@ export async function prepareCampaignHtmlForSend(
   const html = campaign.body_html || ''
   if (!html || isFrozenReviewedCampaign(campaign)) return campaign
 
-  const prepared = await prepareSendableHtmlWithMirroredAssets(html, {
-    appUrl: opts.appUrl || getAppUrl(),
-    userId: campaignSendUserId(campaign, opts.userId),
-    fetchAsset: opts.fetchAsset,
-    uploadAsset: opts.uploadAsset,
-    mirrorExternalAssets: opts.mirrorExternalAssets
-  })
+  const prepared = await preparedCampaignHtml(campaign, opts)
   if (prepared === html) return campaign
 
   const row = await queryOne<Campaign>(`
@@ -338,6 +349,11 @@ export async function updateCampaign(id: string, patch: UpdateCampaignInput, ren
     }
     workflowParams.push(utm === null ? null : JSON.stringify(utm))
     workflowSet.push(`utm_settings = $${12 + workflowParams.length}::jsonb`)
+  }
+  if (patch.web_version_enabled === true && existing.review_required !== true) {
+    // The hosted web version is signed over approved, frozen content, which only
+    // a gated campaign guarantees; an ungated campaign may be re-prepared mid-send.
+    throw createError({ statusCode: 409, statusMessage: 'web_version_requires_review' })
   }
   if (patch.web_version_enabled !== undefined) {
     workflowParams.push(patch.web_version_enabled === true)

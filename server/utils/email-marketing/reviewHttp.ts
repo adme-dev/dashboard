@@ -18,9 +18,13 @@ export function reviewEnv(event: H3Event): Record<string, unknown> {
   return ((event.context as { cloudflare?: { env?: Record<string, unknown> } }).cloudflare?.env) ?? {}
 }
 
-export function assertReviewWorkflowEnabled(event: H3Event): void {
+/** Marks the response no-store and reports FIGFLOW_EDM_WORKFLOW_ENABLED. The
+ * flag does not hide the routes: with it off, the review service still serves
+ * campaigns that are already gated (authenticated, fresh authority) so a
+ * rollback never strands them, and refuses everything else and new enrollment. */
+export function reviewWorkflowEnabled(event: H3Event): boolean {
   setHeader(event, 'cache-control', 'no-store')
-  if (!isEmailReviewWorkflowEnabled(reviewEnv(event))) throw createError({ statusCode: 404, statusMessage: 'not_found' })
+  return isEmailReviewWorkflowEnabled(reviewEnv(event))
 }
 
 /** The token comes only from the authenticated HTTP boundary, never from JSON. */

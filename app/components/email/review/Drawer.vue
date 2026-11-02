@@ -18,6 +18,9 @@ const emit = defineEmits<{ changed: [] }>()
 const tab = ref<'review' | 'links'>('review')
 const panelKey = ref(0)
 const liveStatus = ref<string | null>(null)
+// Link settings are a workflow feature: read-only while the flag is off (an
+// already-gated campaign stays reviewable for recovery, but is not reconfigured).
+const workflowEnabled = ref(true)
 
 watch(() => props.targetId, () => {
   tab.value = 'review'
@@ -28,10 +31,11 @@ const tabs = computed(() => [
   { label: 'Review', value: 'review', icon: 'i-lucide-message-square-text' },
   ...(props.kind === 'campaign' ? [{ label: 'Links & web version', value: 'links', icon: 'i-lucide-link' }] : [])
 ])
-const editable = computed(() => (liveStatus.value ?? props.status ?? 'draft') === 'draft')
+const editable = computed(() => workflowEnabled.value && (liveStatus.value ?? props.status ?? 'draft') === 'draft')
 
 function onReviewChanged(view: ReviewView) {
   liveStatus.value = view.status
+  workflowEnabled.value = view.workflowEnabled
   emit('changed')
 }
 

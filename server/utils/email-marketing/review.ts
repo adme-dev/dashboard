@@ -34,6 +34,8 @@ export interface ReviewTarget {
   digest: string
   revisionId: string | null
   bodySource: unknown
+  /** Stored campaign HTML (null for templates); submit preparation starts from it. */
+  bodyHtml: string | null
 }
 
 export interface ReviewStateRow {
@@ -84,7 +86,8 @@ const DIGEST = /^[a-f0-9]{64}$/
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 const READABLE: Record<string, string> = {
-  campaign_approval_required: 'Approve this exact campaign content in Review before scheduling or sending.',
+  campaign_approval_required: 'Approve this exact campaign content and audience in Review before scheduling or sending.',
+  review_independent_reviewer_required: 'Another reviewer must approve this version; you submitted it.',
   campaign_content_frozen: 'This campaign has left draft; its approved content is frozen.',
   campaign_review_permanent: 'Review cannot be switched off for this campaign.'
 }
@@ -116,12 +119,14 @@ export async function reviewPayloadSha256(input: Omit<ReviewCommandInput, 'actor
   return [...new Uint8Array(hash)].map(byte => byte.toString(16).padStart(2, '0')).join('')
 }
 
+/** Campaign reviews bind the review digest: recipient-visible content plus the
+ * audience identity (segment rules and target list IDs). Templates have no
+ * audience and bind their content and canonical revision. */
 const TARGET_SQL: Record<ReviewTargetKind, string> = {
-  campaign: `SELECT c.id, c.client_id, c.status, c.review_required, c.body_source, NULL::uuid AS revision_id,
-      email_campaign_content_digest(c.body_source, c.body_html, c.subject, c.preview_text,
-        c.from_name, c.from_email, c.reply_to, c.utm_settings, c.web_version_enabled) AS digest
+  campaign: `SELECT c.id, c.client_id, c.status, c.review_required, c.body_source, c.body_html, NULL::uuid AS revision_id,
+      email_campaign_review_digest_of(c) AS digest
     FROM campaigns c WHERE c.id = $1`,
-  template: `SELECT t.id, t.client_id, NULL::text AS status, false AS review_required, t.body_source,
+  template: `SELECT t.id, t.client_id, NULL::text AS status, false AS review_required, t.body_source, NULL::text AS body_html,
       t.email_design_revision_id AS revision_id,
       email_template_content_digest(t.body_source, t.body_html, t.subject, t.preview_text, t.email_design_revision_id) AS digest
     FROM edm_templates t WHERE t.id = $1`
@@ -138,7 +143,8 @@ export async function loadReviewTarget(db: ReviewDb, kind: ReviewTargetKind, id:
     reviewRequired: row.review_required === true,
     digest: row.digest,
     revisionId: row.revision_id ?? null,
-    bodySource: row.body_source
+    bodySource: row.body_source,
+    bodyHtml: typeof row.body_html === 'string' ? row.body_html : null
   }
 }
 
@@ -159,6 +165,17 @@ export function approvalIsCurrent(state: Pick<ReviewStateRow, 'state' | 'content
 function assertScope(target: ReviewTarget, expectedClientId: string | null): void {
   // Do not reveal another client's target: a mismatch looks like absence.
   if ((target.clientId ?? null) !== (expectedClientId ?? null)) fail(404, 'review_target_not_found')
+}
+
+/** With FIGFLOW_EDM_WORKFLOW_ENABLED off, only campaigns that are already gated
+ * stay reviewable, so a rollback never strands them; everything else (templates,
+ * ungated campaigns, new enrollment) looks absent. */
+function assertWorkflowReachable(target: Pick<ReviewTarget, 'kind' | 'reviewRequired'>, workflowEnabled: boolean): void {
+  if (!workflowEnabled && !(target.kind === 'campaign' && target.reviewRequired)) fail(404, 'review_target_not_found')
+}
+
+function sameActor(left: string | null | undefined, right: string): boolean {
+  return !!left && left.toLowerCase() === right.toLowerCase()
 }
 
 function requireAuthority(command: ReviewCommandName): ReviewAuthority {
@@ -215,13 +232,15 @@ async function writeState(db: ReviewDb, target: ReviewTarget, current: ReviewSta
 async function applyCommand(
   db: ReviewDb,
   input: ReviewCommandInput,
-  target: ReviewTarget,
-  boundDigest: string
+  locked: ReviewTarget,
+  preparedHtml: string | null,
+  workflowEnabled: boolean
 ): Promise<Omit<ReviewCommandResult, 'operationId'>> {
+  let target = locked
   const state = await loadState(db, target.kind, target.id, true)
   if (state.version !== input.expectedVersion) fail(409, 'review_state_changed')
   // Every command binds what the actor saw; concurrent edits never get silently re-anchored.
-  if (target.digest !== boundDigest) fail(409, 'review_content_changed')
+  if (target.digest !== input.expectedContentDigest) fail(409, 'review_content_changed')
   const base = { command: input.payload.command, targetKind: target.kind, targetId: target.id, contentDigest: target.digest }
   const p = input.payload
   const editableCampaign = target.kind !== 'campaign' || target.status === 'draft'
@@ -251,12 +270,26 @@ async function applyCommand(
     case 'submit': {
       if (!editableCampaign) fail(409, 'review_target_frozen')
       if (state.state !== 'draft') fail(409, 'review_not_draft')
+      // Sendable HTML prepared outside the transaction (no lock held during asset
+      // I/O) from exactly the content verified above; it is written here, in the
+      // same transaction as the state and receipt, so an attempt that does not
+      // commit leaves no side effect and the identical retry prepares again.
+      if (preparedHtml !== null && target.kind === 'campaign' && preparedHtml !== target.bodyHtml) {
+        const written = (await db.query('UPDATE campaigns SET body_html = $2, updated_at = now() WHERE id = $1 AND status = \'draft\' RETURNING id',
+          [target.id, preparedHtml])).rows
+        if (!written.length) fail(409, 'review_target_frozen')
+        const reloaded = await loadReviewTarget(db, target.kind, target.id, true)
+        if (!reloaded) fail(404, 'review_target_not_found')
+        target = reloaded
+      }
       const version = await writeState(db, target, state, { state: 'in_review', contentDigest: target.digest, submittedBy: input.actorId })
-      return { ...base, state: 'in_review', version }
+      return { ...base, contentDigest: target.digest, state: 'in_review', version }
     }
     case 'approve': {
       if (!editableCampaign) fail(409, 'review_target_frozen')
       if (state.state !== 'in_review' || state.content_digest !== target.digest) fail(409, 'review_not_in_review')
+      // Independent approval: the submitter never approves their own version.
+      if (!state.submitted_by || sameActor(state.submitted_by, input.actorId)) fail(403, 'review_independent_reviewer_required')
       const version = await writeState(db, target, state, { state: 'approved', contentDigest: target.digest, decidedBy: input.actorId })
       return { ...base, state: 'approved', version }
     }
@@ -267,6 +300,8 @@ async function applyCommand(
       return { ...base, state: 'draft', version }
     }
     case 'require_review': {
+      // New enrollment is a workflow feature; with the flag off it does not exist.
+      if (!workflowEnabled) fail(404, 'review_target_not_found')
       if (target.status !== 'draft') fail(409, 'review_target_frozen')
       await db.query('UPDATE campaigns SET review_required = true, updated_at = now() WHERE id = $1 AND status = \'draft\'', [target.id])
       return { ...base, state: state.state, version: state.version, reviewRequired: true }
@@ -279,33 +314,37 @@ export interface ReviewServiceDeps {
   readReceipt?: (actorId: string, operationId: string) => Promise<ReceiptRow | null>
   /** Fresh non-transactional reads used before submit preparation. */
   readDb?: ReviewDb
-  /** Campaign submit only: make the stored HTML sendable (asset mirroring)
-   * BEFORE the digest is bound, so later idempotent preparation at schedule or
-   * test-send time cannot silently invalidate the approval. */
-  prepareSubmission?: (target: ReviewTarget) => Promise<void>
+  /** Campaign submit only: return the sendable form of `target.bodyHtml` (asset
+   * mirroring) WITHOUT writing it. The command transaction writes it before the
+   * digest is bound, so later idempotent preparation at schedule or test-send
+   * time cannot silently invalidate the approval. */
+  prepareSubmission?: (target: ReviewTarget) => Promise<string>
+  /** FIGFLOW_EDM_WORKFLOW_ENABLED for this request (defaults to enabled). */
+  workflowEnabled?: boolean
 }
 
 const freshReadDb: ReviewDb = { query: async (sql, params) => ({ rows: [await queryOneFresh(sql, params)].filter(Boolean) }) }
 
-async function prepareBeforeSubmit(input: ReviewCommandInput, authorize: ReviewAuthorizer, deps: ReviewServiceDeps): Promise<string> {
+/** Computes, but never writes, the sendable HTML for a fresh campaign submit.
+ * Returns null when nothing should be prepared; the transaction re-verifies the
+ * digest under lock, so the HTML always derives from the content it replaces. */
+async function prepareBeforeSubmit(input: ReviewCommandInput, authorize: ReviewAuthorizer, deps: ReviewServiceDeps, workflowEnabled: boolean): Promise<string | null> {
   const db = deps.readDb ?? freshReadDb
   const target = await loadReviewTarget(db, input.kind, input.targetId, false)
   if (!target) fail(404, 'review_target_not_found')
   assertScope(target, input.expectedClientId)
   await authorize('write', target.clientId)
+  assertWorkflowReachable(target, workflowEnabled)
   const state = await loadState(db, input.kind, input.targetId, false)
   if (state.version !== input.expectedVersion) fail(409, 'review_state_changed')
   if (target.digest !== input.expectedContentDigest) fail(409, 'review_content_changed')
-  if (target.status !== 'draft' || state.state !== 'draft') return target.digest
+  if (target.status !== 'draft' || state.state !== 'draft' || !target.bodyHtml) return null
   try {
-    await deps.prepareSubmission!(target)
+    return await deps.prepareSubmission!(target)
   } catch (error) {
     if (error && typeof error === 'object' && 'statusCode' in error) throw error
     fail(502, 'campaign_asset_preparation_failed')
   }
-  const prepared = await loadReviewTarget(db, input.kind, input.targetId, false)
-  if (!prepared) fail(404, 'review_target_not_found')
-  return prepared.digest
 }
 
 interface ReceiptRow {
@@ -348,12 +387,13 @@ export async function runReviewCommand(
   })
   const tx = deps.transaction ?? (transactionWithoutRetry as unknown as ReviewTransaction)
   const readReceipt = deps.readReceipt ?? readReceiptFresh
+  const workflowEnabled = deps.workflowEnabled ?? true
   // The receipt hash always covers the actor's original request. Only a fresh
-  // campaign submit re-binds the digest after server-side preparation.
-  let boundDigest = input.expectedContentDigest
+  // campaign submit prepares sendable HTML, which the transaction then writes.
+  let preparedHtml: string | null = null
   if (input.payload.command === 'submit' && input.kind === 'campaign' && deps.prepareSubmission
     && !await readReceipt(input.actorId, input.operationId)) {
-    boundDigest = await prepareBeforeSubmit(input, authorize, deps)
+    preparedHtml = await prepareBeforeSubmit(input, authorize, deps, workflowEnabled)
   }
   try {
     return await tx(async (db) => {
@@ -365,8 +405,9 @@ export async function runReviewCommand(
       assertScope(target, input.expectedClientId)
       // Fresh stored actor/client authority, even for replays, using the stored owner.
       await authorize(prior ? 'read' : requireAuthority(input.payload.command), target.clientId)
+      assertWorkflowReachable(target, workflowEnabled)
       if (prior) return replayOrReject(prior, input, payloadSha)
-      const outcome = await applyCommand(db, input, target, boundDigest)
+      const outcome = await applyCommand(db, input, target, preparedHtml, workflowEnabled)
       const result: ReviewCommandResult = { operationId: input.operationId, ...outcome }
       await db.query(`INSERT INTO email_review_operations (actor_id, operation_id, domain, command, target_kind, target_id, payload_sha256, result)
         VALUES ($1, $2, 'email_review', $3, $4, $5, $6, $7::jsonb)`,
@@ -393,12 +434,15 @@ export async function readReviewOperation(
   if (!UUID.test(actorId) || !UUID.test(operationId)) fail(400, 'invalid_review_operation')
   const receipt = await (deps.readReceipt ?? readReceiptFresh)(actorId, operationId)
   if (!receipt) return null
-  const owner = await queryOneFresh<{ client_id: string | null }>(
-    receipt.target_kind === 'campaign' ? 'SELECT client_id FROM campaigns WHERE id = $1' : 'SELECT client_id FROM edm_templates WHERE id = $1',
+  const owner = await queryOneFresh<{ client_id: string | null, review_required: boolean | null }>(
+    receipt.target_kind === 'campaign'
+      ? 'SELECT client_id, review_required FROM campaigns WHERE id = $1'
+      : 'SELECT client_id, false AS review_required FROM edm_templates WHERE id = $1',
     [receipt.target_id]
   )
   if (!owner) return null
   await authorize('read', owner.client_id)
+  assertWorkflowReachable({ kind: receipt.target_kind, reviewRequired: owner.review_required === true }, deps.workflowEnabled ?? true)
   return { ...receipt.result, replayed: true }
 }
 
@@ -436,6 +480,9 @@ export interface ReviewView {
   decidedBy: string | null
   decidedAt: string | null
   canReview: boolean
+  /** Review authority AND not the submitter of the version in review. */
+  canApprove: boolean
+  workflowEnabled: boolean
   blocks: ReviewBlock[]
   comments: ReviewCommentView[]
 }
@@ -446,15 +493,19 @@ export async function getReviewView(
   expectedClientId: string | null | undefined,
   authorize: ReviewAuthorizer,
   db: ReviewDb = freshReadDb,
-  listComments: (kind: ReviewTargetKind, id: string) => Promise<Array<Record<string, unknown>>> = defaultListComments
+  listComments: (kind: ReviewTargetKind, id: string) => Promise<Array<Record<string, unknown>>> = defaultListComments,
+  context: { actorId?: string, workflowEnabled?: boolean } = {}
 ): Promise<ReviewView> {
   if (!UUID.test(targetId)) fail(404, 'review_target_not_found')
+  const workflowEnabled = context.workflowEnabled ?? true
   const target = await loadReviewTarget(db, kind, targetId, false)
   if (!target) fail(404, 'review_target_not_found')
   if (expectedClientId !== undefined) assertScope(target, expectedClientId)
   await authorize('read', target.clientId)
+  assertWorkflowReachable(target, workflowEnabled)
   const state = await loadState(db, kind, targetId, false)
   const canReview = await authorize('review', target.clientId).then(() => true, () => false)
+  const selfSubmitted = state.state === 'in_review' && (!context.actorId || sameActor(state.submitted_by, context.actorId))
   const blocks = outlineReviewBlocks(target.bodySource)
   const present = new Set(blocks.map(block => block.id))
   const comments = (await listComments(kind, targetId)).map(row => ({
@@ -490,6 +541,8 @@ export async function getReviewView(
     decidedBy: state.decided_by,
     decidedAt: state.decided_at,
     canReview,
+    canApprove: canReview && state.state === 'in_review' && !selfSubmitted,
+    workflowEnabled,
     blocks,
     comments
   }
@@ -523,15 +576,18 @@ export function mapReviewDbError(error: unknown): unknown {
 }
 
 /** Early, readable refusal before any side effect (materialize, mirroring,
- * provider). Legacy campaigns (review_required = false) pass unchanged. */
+ * provider). Legacy campaigns (review_required = false) pass unchanged. Like the
+ * database gate, approval of the exact content and audience is required to
+ * leave draft or cancelled; a gated campaign already in flight (scheduled,
+ * sending, paused, sent) is frozen by the trigger and is not re-judged, so a
+ * later list-deletion cascade cannot strand its resume. Unknown status checks. */
 export async function assertCampaignApprovalCurrent(
-  campaign: { id: string, review_required?: boolean | null },
+  campaign: { id: string, review_required?: boolean | null, status?: string | null },
   db?: ReviewDb
 ): Promise<void> {
   if (campaign.review_required !== true) return
-  const sql = `SELECT s.state, s.content_digest,
-      email_campaign_content_digest(c.body_source, c.body_html, c.subject, c.preview_text,
-        c.from_name, c.from_email, c.reply_to, c.utm_settings, c.web_version_enabled) AS digest
+  if (campaign.status && !['draft', 'cancelled'].includes(campaign.status)) return
+  const sql = `SELECT s.state, s.content_digest, email_campaign_review_digest_of(c) AS digest
     FROM campaigns c LEFT JOIN email_review_states s ON s.target_kind = 'campaign' AND s.target_id = c.id
     WHERE c.id = $1`
   const row = db ? (await db.query(sql, [campaign.id])).rows[0] : await queryOneFresh(sql, [campaign.id])

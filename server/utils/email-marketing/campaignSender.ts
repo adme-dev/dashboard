@@ -21,14 +21,14 @@ import { resolveCampaignSenderDomains } from './senderIdentity'
 import { resolveMarketingProviderConfig } from '~~/server/utils/marketingProviderConfig'
 import { buildWebVersionUrl } from './webVersion'
 
-/** Opted-in campaigns get one signed URL for the frozen content digest; the
- * digest is recomputed by the database, never taken from cached state. */
-async function frozenWebVersionUrl(campaign: Campaign, appUrl: string, secret: string): Promise<string | null> {
-  if (campaign.web_version_enabled !== true) return null
+/** Opted-in gated campaigns get one signed URL for the frozen content digest;
+ * the digest is recomputed by the database, never taken from cached state. Only
+ * a gated campaign's content is frozen once it leaves draft, so only it can
+ * carry a link whose signed version stays valid for the whole send. */
+export async function frozenWebVersionUrl(campaign: Campaign, appUrl: string, secret: string): Promise<string | null> {
+  if (campaign.web_version_enabled !== true || campaign.review_required !== true || campaign.status === 'draft') return null
   const row = await queryOne<{ digest: string }>(`
-    SELECT email_campaign_content_digest(c.body_source, c.body_html, c.subject, c.preview_text,
-      c.from_name, c.from_email, c.reply_to, c.utm_settings, c.web_version_enabled) AS digest
-    FROM campaigns c WHERE c.id = $1
+    SELECT email_campaign_content_digest_of(c) AS digest FROM campaigns c WHERE c.id = $1
   `, [campaign.id])
   return row?.digest ? buildWebVersionUrl(appUrl, campaign.id, row.digest, secret) : null
 }

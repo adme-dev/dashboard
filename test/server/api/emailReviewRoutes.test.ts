@@ -1,8 +1,10 @@
 /**
- * M06 route boundaries: the public hosted web version (/email/view) and the
- * staff review routes are inert unless FIGFLOW_EDM_WORKFLOW_ENABLED is on, deny
- * bad signatures/versions without reading cookies, and always ship the
- * restrictive CSP. No provider or outbound calls are made.
+ * M06 route boundaries. The public hosted web version (/email/view) serves an
+ * already-signed link of a gated campaign whatever the workflow flag says (a
+ * rollback must not strand links), denies bad signatures/versions without
+ * reading cookies and always ships the restrictive CSP. Staff review routes
+ * always require a session; with the flag off they serve only existing gated
+ * campaigns (enforced by the review service). No provider or outbound calls.
  */
 import { IncomingMessage, ServerResponse } from 'node:http'
 import { Socket } from 'node:net'
@@ -53,13 +55,18 @@ describe('GET /email/view', () => {
     return { body: String(body), res }
   }
 
-  it('is unavailable (with CSP) while the workflow flag is off', async () => {
+  it('keeps serving an already-signed gated link while the workflow flag is off; never an ungated row', async () => {
     const signed = new URL(await buildWebVersionUrl('https://app.example', CAMPAIGN, DIGEST, 'secret'))
-    const { body, res } = await view(signed.pathname + signed.search, {})
-    expect(res.statusCode).toBe(404)
-    expect(res.getHeader('content-security-policy')).toBe(WEB_VERSION_CSP)
-    expect(body).toContain('not available')
-    expect(mockQueryOneFresh).not.toHaveBeenCalled()
+    const row = { id: CAMPAIGN, status: 'sent', web_version_enabled: true, review_required: true, body_html: '<p>Frozen</p>', subject: 's', utm_settings: null, digest: DIGEST }
+    mockQueryOneFresh.mockResolvedValueOnce(row)
+    const served = await view(signed.pathname + signed.search, {})
+    expect(served.res.statusCode).toBe(200)
+    expect(served.res.getHeader('content-security-policy')).toBe(WEB_VERSION_CSP)
+    expect(served.body).toContain('Frozen')
+    mockQueryOneFresh.mockResolvedValueOnce({ ...row, review_required: false })
+    const ungated = await view(signed.pathname + signed.search, {})
+    expect(ungated.res.statusCode).toBe(404)
+    expect(ungated.body).toContain('not available')
   })
 
   it('denies bad signatures before reading the database and ignores cookies', async () => {
@@ -72,16 +79,16 @@ describe('GET /email/view', () => {
 
   it('denies a valid link once the stored content no longer matches the signed version, and drafts', async () => {
     const signed = new URL(await buildWebVersionUrl('https://app.example', CAMPAIGN, DIGEST, 'secret'))
-    mockQueryOneFresh.mockResolvedValueOnce({ id: CAMPAIGN, status: 'sent', web_version_enabled: true, body_html: '<p>x</p>', subject: 's', utm_settings: null, digest: 'b'.repeat(64) })
+    mockQueryOneFresh.mockResolvedValueOnce({ id: CAMPAIGN, status: 'sent', web_version_enabled: true, review_required: true, body_html: '<p>x</p>', subject: 's', utm_settings: null, digest: 'b'.repeat(64) })
     expect((await view(signed.pathname + signed.search)).res.statusCode).toBe(404)
-    mockQueryOneFresh.mockResolvedValueOnce({ id: CAMPAIGN, status: 'draft', web_version_enabled: true, body_html: '<p>x</p>', subject: 's', utm_settings: null, digest: DIGEST })
+    mockQueryOneFresh.mockResolvedValueOnce({ id: CAMPAIGN, status: 'draft', web_version_enabled: true, review_required: true, body_html: '<p>x</p>', subject: 's', utm_settings: null, digest: DIGEST })
     expect((await view(signed.pathname + signed.search)).res.statusCode).toBe(404)
   })
 
   it('serves the frozen, recipient-free page for the exact signed version', async () => {
     const signed = new URL(await buildWebVersionUrl('https://app.example', CAMPAIGN, DIGEST, 'secret'))
     mockQueryOneFresh.mockResolvedValueOnce({
-      id: CAMPAIGN, status: 'sending', web_version_enabled: true, subject: 's', utm_settings: { source: 'news' }, digest: DIGEST,
+      id: CAMPAIGN, status: 'sending', web_version_enabled: true, review_required: true, subject: 's', utm_settings: { source: 'news' }, digest: DIGEST,
       body_html: '<p>Hi {{first_name | there}} {{email}}</p><a href="https://shop.example/">Shop</a><script>steal()</script>'
     })
     const { body, res } = await view(signed.pathname + signed.search)
@@ -96,16 +103,21 @@ describe('GET /email/view', () => {
 })
 
 describe('staff review routes', () => {
-  it('are hidden (404, no-store) while the workflow flag is off, before any session work', async () => {
+  it('still require a fresh session (no-store) while the workflow flag is off, for gated recovery', async () => {
     const get = (await import('~~/server/api/email/review/[kind]/[id].get')).default
     const post = (await import('~~/server/api/email/review/[kind]/[id]/commands.post')).default
     const readback = (await import('~~/server/api/email/review/operations/[operationId].get')).default
     for (const [handler, method] of [[get, 'GET'], [post, 'POST'], [readback, 'GET']] as const) {
-      const { event, res } = makeEvent(`/api/email/review/campaign/${CAMPAIGN}`, {}, { method, headers: { cookie: 'auth_token=x' } })
-      await expect(handler(event)).rejects.toMatchObject({ statusCode: 404 })
+      mockValidateSession.mockResolvedValueOnce(null)
+      const { event, res } = makeEvent(`/api/email/review/campaign/${CAMPAIGN}`, {}, {
+        method,
+        headers: { 'cookie': 'auth_token=x', 'content-type': 'application/json' }
+      })
+      ;(event.context as Record<string, unknown>).params = { kind: 'campaign', id: CAMPAIGN, operationId: CAMPAIGN }
+      await expect(handler(event)).rejects.toMatchObject({ statusCode: 401, statusMessage: 'review_session_invalid' })
       expect(res.getHeader('cache-control')).toBe('no-store')
     }
-    expect(mockValidateSession).not.toHaveBeenCalled()
+    expect(mockValidateSession).toHaveBeenCalledTimes(3)
   })
 
   it('require a valid session when enabled', async () => {

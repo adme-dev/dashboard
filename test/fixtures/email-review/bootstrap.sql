@@ -43,3 +43,13 @@ CREATE TABLE team_members (
   id uuid PRIMARY KEY,
   name text
 );
+CREATE TABLE email_lists (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  name text NOT NULL
+);
+-- Same shape as production (migration 136): FK cascades from both sides.
+CREATE TABLE campaign_lists (
+  campaign_id uuid NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+  list_id uuid NOT NULL REFERENCES email_lists(id) ON DELETE CASCADE,
+  PRIMARY KEY (campaign_id, list_id)
+);

@@ -3,10 +3,10 @@
 import { createError, defineEventHandler, getQuery, getRouterParam } from 'h3'
 import { z } from 'zod'
 import { getReviewView } from '~~/server/utils/email-marketing/review'
-import { assertReviewWorkflowEnabled, requireReviewSession, reviewAuthorizer, ReviewKind } from '~~/server/utils/email-marketing/reviewHttp'
+import { requireReviewSession, reviewAuthorizer, reviewWorkflowEnabled, ReviewKind } from '~~/server/utils/email-marketing/reviewHttp'
 
 export default defineEventHandler(async (event) => {
-  assertReviewWorkflowEnabled(event)
+  const workflowEnabled = reviewWorkflowEnabled(event)
   const session = await requireReviewSession(event)
   const kind = ReviewKind.safeParse(getRouterParam(event, 'kind'))
   const id = z.string().uuid().safeParse(getRouterParam(event, 'id'))
@@ -20,5 +20,5 @@ export default defineEventHandler(async (event) => {
     if (!parsed.success) throw createError({ statusCode: 400, statusMessage: 'invalid_client_scope' })
     expected = parsed.data
   }
-  return getReviewView(kind.data, id.data, expected, reviewAuthorizer(session))
+  return getReviewView(kind.data, id.data, expected, reviewAuthorizer(session), undefined, undefined, { actorId: session.userId, workflowEnabled })
 })

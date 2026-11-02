@@ -241,6 +241,7 @@ function formatDate(value: string | null): string {
           />
           <template v-if="view.canReview && view.state === 'in_review'">
             <UButton
+              v-if="view.canApprove"
               icon="i-lucide-badge-check"
               color="success"
               label="Approve this version"
@@ -267,7 +268,7 @@ function formatDate(value: string | null): string {
             @click="showChanges = true"
           />
           <UButton
-            v-if="kind === 'campaign' && !view.reviewRequired"
+            v-if="kind === 'campaign' && !view.reviewRequired && view.workflowEnabled"
             icon="i-lucide-shield-plus"
             color="neutral"
             variant="outline"
@@ -276,8 +277,8 @@ function formatDate(value: string | null): string {
             @click="act({ command: 'require_review' })"
           />
         </div>
-        <p v-if="!view.canReview && view.state === 'in_review'" class="text-sm text-muted">
-          Waiting for an agency creative lead to approve.
+        <p v-if="view.state === 'in_review' && !view.canApprove" class="text-sm text-muted">
+          {{ view.canReview ? 'You submitted this version; another reviewer must approve it.' : 'Waiting for an agency creative lead to approve.' }}
         </p>
       </section>
 

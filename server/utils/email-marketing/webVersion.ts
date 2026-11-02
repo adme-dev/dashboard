@@ -78,21 +78,26 @@ export interface FrozenWebVersionRow {
   id: string
   status: string
   web_version_enabled: boolean | null
+  review_required?: boolean | null
   body_html: string | null
   subject: string | null
   utm_settings: unknown
   digest: string
 }
 
-export const WEB_VERSION_ROW_SQL = `SELECT c.id, c.status, c.web_version_enabled, c.body_html, c.subject, c.utm_settings,
-    email_campaign_content_digest(c.body_source, c.body_html, c.subject, c.preview_text,
-      c.from_name, c.from_email, c.reply_to, c.utm_settings, c.web_version_enabled) AS digest
+/** The signed version is the recipient-visible content digest (not the review
+ * digest): the audience is not part of what a web-version reader sees. */
+export const WEB_VERSION_ROW_SQL = `SELECT c.id, c.status, c.web_version_enabled, c.review_required, c.body_html, c.subject, c.utm_settings,
+    email_campaign_content_digest_of(c) AS digest
   FROM campaigns c WHERE c.id = $1`
 
-/** True only for an opted-in, frozen (non-draft) campaign whose current
- * database digest is exactly the signed content version. */
+/** True only for an opted-in, gated, frozen (non-draft) campaign whose current
+ * database digest is exactly the signed content version. Only gated campaigns
+ * guarantee frozen content after leaving draft. Independent of the workflow
+ * flag: links already sent keep working through a rollback. */
 export function webVersionAvailable(row: FrozenWebVersionRow | null, request: WebVersionRequest): row is FrozenWebVersionRow {
   return !!row
+    && row.review_required === true
     && row.web_version_enabled === true
     && WEB_VERSION_STATUSES.has(row.status)
     && row.digest === request.contentDigest

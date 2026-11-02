@@ -35,6 +35,9 @@ const loading = ref(false)
 const saving = ref(false)
 const loadError = ref<string | null>(null)
 const webVersion = ref(false)
+// The hosted web version needs frozen approved content, which only a campaign
+// that requires review guarantees; the server refuses it otherwise.
+const gated = ref(false)
 const utm = reactive<Record<UtmKey, string>>({ source: '', medium: '', campaign: '', term: '', content: '' })
 const saved = ref('')
 
@@ -48,6 +51,7 @@ async function load() {
   try {
     const { campaign } = await apiFetch<{ campaign: CampaignWorkflowFields }>(`/api/email/campaigns/${props.campaignId}`)
     webVersion.value = campaign.web_version_enabled === true
+    gated.value = campaign.review_required === true
     for (const field of FIELDS) utm[field.key] = campaign.utm_settings?.[field.key] ?? ''
     saved.value = snapshot()
   } catch {
@@ -107,7 +111,7 @@ async function save() {
         color="neutral"
         variant="subtle"
         icon="i-lucide-lock"
-        description="This campaign has left draft. Its links and web version are frozen with the approved content."
+        description="Link settings can't change now: the campaign has left draft (they are frozen with the approved content) or the review workflow is switched off."
       />
 
       <section class="space-y-3">
@@ -121,8 +125,11 @@ async function save() {
               <code class="rounded bg-elevated px-1 text-default" v-text="'{{web_version_url}}'" />
               in a link to use it. The page shows no subscriber names or addresses.
             </p>
+            <p v-if="!gated" class="mt-1 text-sm text-muted">
+              Available once this campaign requires review before sending (Review tab).
+            </p>
           </div>
-          <USwitch v-model="webVersion" :disabled="!editable" aria-label="Enable hosted web version" />
+          <USwitch v-model="webVersion" :disabled="!editable || (!gated && !webVersion)" aria-label="Enable hosted web version" />
         </div>
       </section>
 

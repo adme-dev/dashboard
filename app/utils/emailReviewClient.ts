@@ -34,6 +34,10 @@ export interface ReviewView {
   submittedAt: string | null
   decidedAt: string | null
   canReview: boolean
+  /** Review authority and not the submitter of the version in review. */
+  canApprove: boolean
+  /** FIGFLOW_EDM_WORKFLOW_ENABLED; when off only already-gated campaigns load. */
+  workflowEnabled: boolean
   blocks: ReviewBlock[]
   comments: ReviewComment[]
 }
@@ -112,6 +116,8 @@ const MESSAGES: Record<string, string> = {
   review_not_in_review: 'This email is not waiting for review any more.',
   review_not_draft: 'This email is already in review or approved.',
   review_target_frozen: 'Scheduled and sent campaigns are frozen and cannot change review state.',
+  review_independent_reviewer_required: 'You submitted this version; another reviewer must approve it.',
+  campaign_approval_required: 'Approve this exact campaign content and audience in Review before scheduling or sending.',
   review_block_not_found: 'That block no longer exists in the saved email.',
   review_thread_not_found: 'That comment thread is no longer available.',
   design_access_denied: 'You no longer have access to review this email.',
