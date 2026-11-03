@@ -218,3 +218,15 @@ it('reopens an authored middle Bounce with middle presets', async () => {
   expect(host.querySelector('button[aria-label="Bounce middle animation"]')).toBeTruthy()
   expect(host.querySelector('button[aria-label="Elastic middle animation"]')).toBeTruthy()
 })
+
+it('removes a middle Pulse through the popup, keeps the layer, and supports Undo', async () => {
+  const keyframes = { opacity: [{ time: 0, value: 0 }, { time: 0.5, value: 1 }, { time: 2.5, value: 1 }, { time: 3, value: 0 }], scaleX: [{ time: 1, value: 1 }, { time: 1.6, value: 1.08 }, { time: 2.2, value: 1 }], scaleY: [{ time: 1, value: 1 }, { time: 1.6, value: 1.08 }, { time: 2.2, value: 1 }] }
+  const { studio, click } = await mount({ keyframes, animationClips: [{ start: 1, end: 2.2, label: 'Pulse' }] }, { kind: 'motion', start: 1, end: 2.2, label: 'Pulse', direction: 'in' })
+  await click('Remove animation')
+  expect(studio.activeLayers.value).toHaveLength(1)
+  expect(studio.activeLayers.value[0]!.keyframes!.scaleX!.every(frame => frame.value === 1)).toBe(true)
+  expect(studio.activeLayers.value[0]!.keyframes!.opacity).toEqual(keyframes.opacity)
+  studio.undo()
+  expect(studio.activeLayers.value[0]!.keyframes).toEqual(keyframes)
+  expect(studio.activeLayers.value[0]!.animationClips![0]!.label).toBe('Pulse')
+})

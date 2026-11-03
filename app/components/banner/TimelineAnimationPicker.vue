@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Button as ShadcnButton } from '~/components/ui/button'
 import { Tabs as ShadcnTabs, TabsList, TabsTrigger, TabsContent } from '~/components/ui/tabs'
+import { canRemoveTimelineAnimation, removalSampleTime, removeTimelineAnimation } from '~/utils/banner-timeline-remove'
 import { applyTimelineEntrance } from '~/utils/banner-timeline-presets'
 import { computed, ref, watch, nextTick } from 'vue'
 import { ANIM_IN, ANIM_OUT, EASES } from '~/utils/banner-constants'
@@ -34,6 +35,8 @@ const targetPhase = computed(() => {
   if (placement.value === 'middle') return phases.filter(phase => phase.kind === 'hold').sort((a, b) => Math.abs(a.start - state.currentTime) - Math.abs(b.start - state.currentTime))[0]
   return phases.find(phase => phase.kind === (placement.value === 'in' ? 'entry' : 'exit') || phase.label.startsWith(placement.value === 'in' ? 'Entry ·' : 'Exit ·'))
 })
+const removablePhase = computed(() => targetPhase.value ?? (!isMiddle.value ? timelinePhases(props.layer).find(phase => phase.kind === (selectedDirection.value === 'in' ? 'entry' : 'exit')) : undefined))
+const canRemove = computed(() => editable.value && canRemoveTimelineAnimation(props.layer, removablePhase.value))
 const isMiddle = computed(() => placement.value ? placement.value === 'middle' : phasePlacement.value === 'middle')
 const selectedPlacement = computed(() => isMiddle.value ? 'middle' : selectedDirection.value)
 function setPlacement(value: 'in' | 'middle' | 'out') {
@@ -210,6 +213,16 @@ function addKeyframe() {
   frameIndex.value = String(next.index)
   state.expandedKeyframeLayers.add(props.layer.id)
   state.selectedKeyframe = { layerId: props.layer.id, property: property.value, index: next.index }
+}
+function removeAnimation() {
+  const phase = removablePhase.value
+  if (!phase || !canRemove.value) return
+  if (isPreviewing.value) stopAnimationPreview()
+  pauseTimeline()
+  seekTo(removalSampleTime(phase))
+  updateLayer(props.layer.id, removeTimelineAnimation(props.layer, phase, property => currentLayerValue(props.layer, property)))
+  state.selectedKeyframe = null
+  open.value = false
 }
 function preview() {
   if (isPreviewing.value) stopAnimationPreview()
@@ -478,6 +491,19 @@ onBeforeUnmount(() => {
           />
           <p class="text-xs text-muted">
             Captures this property’s current value. Drag diamonds on the expanded track to change their time.
+          </p>
+        </div>
+        <div v-if="canRemove" class="border-t border-default px-3 py-2">
+          <ShadcnButton
+            variant="ghost"
+            size="sm"
+            class="w-full text-error hover:text-error"
+            @click="removeAnimation"
+          >
+            <UIcon name="i-lucide-trash-2" class="size-4" />Remove animation
+          </ShadcnButton>
+          <p class="text-center text-xs text-muted">
+            Keeps the layer and other animation blocks. Undo restores this effect.
           </p>
         </div>
         <div class="flex shrink-0 items-center justify-between gap-2 border-t border-default p-3">

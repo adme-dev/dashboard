@@ -3,6 +3,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { ref } from 'vue'
 import gsap from 'gsap'
 import { useBannerTimeline, presetToKeyframes } from '~/composables/useBannerTimeline'
+import { addMiddleAnimation } from '~/utils/banner-timeline-edit'
 import { applyTimelineEntrance } from '~/utils/banner-timeline-presets'
 import { buildBannerHTML } from '~/utils/banner-html-builder'
 import { buildBannerHTML as buildServerHTML } from '~~/server/utils/banner/htmlBuilder'
@@ -47,4 +48,19 @@ it('Elastic carries its overshooting easing through keyframe conversion', () => 
   expect(layer.ease).toBe('elastic.out(1,0.3)')
   expect(presetToKeyframes(layer).scaleX![0]!.easing).toBe('elastic.out(1,0.3)')
   expect(gsap.parseEase(layer.ease!)(0.4)).toBeGreaterThan(1)
+})
+
+it('Pulse grows and returns to its resting scale in actual editor playback', () => {
+  const layer = { ...base, ...addMiddleAnimation(base, { kind: 'hold', start: 0, end: 4, label: 'Hold', direction: 'in' }, 'pulse', 1, presetToKeyframes(base), () => 1) }
+  const state = { sets: { mrec: { layers: [layer] } }, activeKey: 'mrec', currentTime: 0, duration: 4, isPlaying: false, isLooping: false }
+  vi.stubGlobal('useBannerStudio', () => ({ state, activeLayers: ref([layer]) }))
+  const board = document.createElement('div'); board.innerHTML = '<div id="lyr-1"></div>'; document.body.append(board)
+  const controller = useBannerTimeline()
+  try {
+    controller.buildTimeline(board, [layer])
+    controller.seekTo(1.6)
+    expect(Number(gsap.getProperty(board.firstElementChild!, 'scaleX'))).toBeCloseTo(1.08)
+    controller.seekTo(2.2)
+    expect(Number(gsap.getProperty(board.firstElementChild!, 'scaleX'))).toBeCloseTo(1)
+  } finally { controller.destroyTimeline() }
 })
