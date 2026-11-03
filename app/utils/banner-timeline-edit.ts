@@ -79,13 +79,12 @@ export function insertTimelineKeyframe(layer: Layer, property: KeyframeProperty,
 }
 
 export const MIDDLE_ANIMATIONS = [
-  { id: 'pulsate', label: 'Pulsate', icon: 'i-lucide-sun-dim', properties: ['opacity'] },
   { id: 'bounce', label: 'Bounce', icon: 'i-lucide-corner-right-up', properties: ['y'] },
   { id: 'elastic', label: 'Elastic', icon: 'i-lucide-move-horizontal', properties: ['scaleX', 'scaleY'] },
   { id: 'blink', label: 'Blink', icon: 'i-lucide-eye', properties: ['opacity'] },
   { id: 'float', label: 'Float', icon: 'i-lucide-move-vertical', properties: ['y'] },
   { id: 'vibrate', label: 'Vibrate', icon: 'i-lucide-vibrate', properties: ['x'] },
-  { id: 'pulse', label: 'Pulse', icon: 'i-lucide-heart-pulse', properties: ['scaleX', 'scaleY'] }
+  { id: 'pulse', label: 'Pulsate', icon: 'i-lucide-heart-pulse', properties: ['scaleX', 'scaleY'] }
 ] as const
 
 /** Add authored middle motion inside a hold without replacing entry or exit. */
@@ -98,7 +97,7 @@ export function addMiddleAnimation(layer: Layer, phase: TimelinePhase, id: strin
   const keyframes = { ...source }
   for (const property of preset.properties) {
     const resting = sample(property)
-    const offsets = id === 'pulsate' ? [0, -resting * 0.8, 0, -resting * 0.8, 0] : id === 'vibrate' ? [0, -4, 4, -4, 4, -4, 4, 0] : [0, id === 'blink' ? -resting * 0.85 : id === 'float' ? -12 : id === 'bounce' ? -24 : id === 'elastic' ? resting * -0.25 : resting * 0.08, 0]
+    const offsets = id === 'blink' ? [0, -resting * 0.8, 0, -resting * 0.8, 0] : id === 'vibrate' ? [0, -4, 4, -4, 4, -4, 4, 0] : [0, id === 'float' ? -12 : id === 'bounce' ? -24 : id === 'elastic' ? resting * -0.25 : resting * 0.08, 0]
     const frames = offsets.map((offset, i) => ({ time: round(start + (end - start) * i / (offsets.length - 1)), value: resting + offset, easing: id === 'vibrate' ? 'none' : id === 'bounce' && i === 1 ? 'bounce.out' : id === 'elastic' && i === 1 ? 'elastic.out(1,0.3)' : 'power1.inOut' }))
     keyframes[property] = [...(source[property] || []).filter(frame => frame.time < start - 1e-6 || frame.time > end + 1e-6), ...frames].sort((a, b) => a.time - b.time)
   }

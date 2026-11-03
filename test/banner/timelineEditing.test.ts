@@ -141,12 +141,12 @@ describe('direct timeline timing edits', () => {
     const layer = base({ keyframes: { opacity: [{ time: 1, value: 0 }, { time: 2, value: 1 }, { time: 5.5, value: 1 }, { time: 6, value: 0 }] } })
     const middle = { kind: 'hold', start: 2, end: 5.5, label: 'Hold', direction: 'in' } as const
     const authored = { ...layer, ...addMiddleAnimation(layer, middle, 'pulse', 3, layer.keyframes!, () => 1) }
-    expect(timelinePhases(authored).some(phase => phase.label === 'Pulse')).toBe(true)
-    const phase = timelinePhases(authored).find(phase => phase.label === 'Pulse')!
+    expect(timelinePhases(authored).some(phase => phase.label === 'Pulsate')).toBe(true)
+    const phase = timelinePhases(authored).find(phase => phase.label === 'Pulsate')!
     const changed = retimeAnimationPhase(authored, phase, 3, 5)
-    expect(changed.animationClips).toEqual([{ start: 3, end: 5, label: 'Pulse' }])
+    expect(changed.animationClips).toEqual([{ start: 3, end: 5, label: 'Pulsate' }])
     expect(changed.keyframes?.scaleX?.at(-1)?.time).toBe(5)
-    expect(retimeLayerPresence(authored, 2, 12).animationClips?.[0]).toEqual({ start: 6, end: 8.4, label: 'Pulse' })
+    expect(retimeLayerPresence(authored, 2, 12).animationClips?.[0]).toEqual({ start: 6, end: 8.4, label: 'Pulsate' })
   })
   it('keeps shared entrance/exit anchors when moving a middle block', () => {
     const layer = base({ keyframes: {

@@ -14,13 +14,13 @@ it('removes Pulse and keeps the entrance, fade exit and independent tracks uncha
   const opacity = [{ time: 0, value: 0 }, { time: 0.6, value: 1 }, { time: 3.5, value: 1 }, { time: 4, value: 0 }]
   const source = { ...layer, keyframes: { opacity } }
   const animated = { ...source, ...addMiddleAnimation(source, { kind: 'hold', start: 0.6, end: 3.5, label: 'Hold', direction: 'in' }, 'pulse', 1, source.keyframes, () => 1) }
-  const pulse = timelinePhases(animated).find(phase => phase.label === 'Pulse')!
+  const pulse = timelinePhases(animated).find(phase => phase.label === 'Pulsate')!
   expect(pulse).toBeTruthy()
   const removed = { ...animated, ...removeTimelineAnimation(animated, pulse, () => 1) }
   expect(removed.keyframes.opacity).toEqual(opacity)
   expect(removed.keyframes.scaleX!.every(frame => frame.value === 1)).toBe(true)
   expect(removed.keyframes.scaleY!.every(frame => frame.value === 1)).toBe(true)
-  expect(timelinePhases(removed).some(phase => phase.label === 'Pulse')).toBe(false)
+  expect(timelinePhases(removed).some(phase => phase.label === 'Pulsate')).toBe(false)
   expect(timelinePhases(removed).at(-1)!.kind).toBe('exit')
 })
 it('removes custom entrance opacity without hiding the image or losing its exit', () => {
