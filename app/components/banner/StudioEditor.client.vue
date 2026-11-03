@@ -137,7 +137,7 @@ watch(() => activeLayers.value, (layers) => {
 const assetMediaType = ref<'all' | 'image' | 'video' | 'audio'>('all')
 
 // Left panel tab state
-const leftTab = ref<'sets' | 'templates' | 'elements' | 'assets' | 'feeds' | 'brand' | 'history' | 'slides'>('sets')
+const leftTab = ref<'sets' | 'templates' | 'elements' | 'assets' | 'feeds' | 'brand' | 'history' | 'slides'>('elements')
 const leftPanelCollapsed = useCookie<boolean>('banner-studio-sidebar-collapsed', {
   default: () => false,
   maxAge: 60 * 60 * 24 * 365,
