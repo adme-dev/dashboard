@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { Button as ShadcnButton } from '~/components/ui/button'
+import { timelineRows } from '~/utils/banner-timeline-rows'
 import { computed, ref, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { layoutName } from '~/utils/banner-workspace'
 import { LAYER_COLORS } from '~/utils/banner-constants'
@@ -74,10 +76,28 @@ function handleContextGenerateImage() {
 
 // ── Multi-select ──
 const multiSelectedLayers = ref<number[]>([])
+const collapsedGroups = ref(new Set<string>())
+const { groupLayers, ungroupLayers, canEditGroup } = useBannerTimelineGroups()
+const selectedForGrouping = computed(() => activeLayers.value.filter(layer => multiSelectedLayers.value.includes(layer.id)))
+function createTimelineGroup() {
+  const id = groupLayers(multiSelectedLayers.value)
+  if (id) multiSelectedLayers.value = []
+}
+function toggleGroup(id: string) {
+  const next = new Set(collapsedGroups.value)
+  if (next.has(id)) next.delete(id)
+  else next.add(id)
+  collapsedGroups.value = next
+}
+watch(() => [state.activeKey, state.project?.id], () => {
+  multiSelectedLayers.value = []
+  collapsedGroups.value = new Set()
+})
 
 function onLayerLabelClick(e: MouseEvent, layer: Layer) {
   if (layer.type === 'video') inspectorTab.value = 'properties'
-  if (e.shiftKey) {
+  if (e.shiftKey || e.metaKey || e.ctrlKey) {
+    if (!multiSelectedLayers.value.length && state.selectedLayerId != null) multiSelectedLayers.value = [state.selectedLayerId]
     // Toggle in multi-select
     const idx = multiSelectedLayers.value.indexOf(layer.id)
     if (idx >= 0) {
@@ -169,6 +189,8 @@ const rulerEl = ref<HTMLElement | null>(null)
 const isDraggingPlayhead = ref(false)
 
 watch(() => state.selectedLayerId, async (id) => {
+  const group = activeLayers.value.find(layer => layer.id === id)?.timelineGroup
+  if (group && collapsedGroups.value.has(group.id)) toggleGroup(group.id)
   await nextTick()
   const container = timelineEl.value
   const row = container?.querySelector<HTMLElement>(`[data-layer-label="${id}"]`)
@@ -213,6 +235,8 @@ function sceneBounds(layer: Layer) {
 const sortedLayers = computed(() => {
   return activeLayers.value.filter(layer => !layer.slideTransitionFor).sort((a, b) => b.zIndex - a.zIndex)
 })
+
+const displayRows = computed(() => timelineRows(sortedLayers.value, collapsedGroups.value))
 
 // Check if a layer is targeted by any mask
 function isMaskedLayer(layerId: number): boolean {
@@ -1024,10 +1048,18 @@ onUnmounted(() => {
         v-if="selectedTimelineLayer && selectedTimelineLayer.type !== 'audio'"
         :key="`exit-${selectedTimelineLayer.id}`"
         :layer="selectedTimelineLayer"
-        direction="out"
-        add-at-end
-        trigger-label="Add exit animation"
+        direction="in"
+        trigger-label="Add animation"
       />
+      <ShadcnButton
+        variant="outline"
+        size="xs"
+        :disabled="selectedForGrouping.length < 2 || !canEditGroup(selectedForGrouping)"
+        title="Shift-click layer names to select multiple layers"
+        @click="createTimelineGroup"
+      >
+        <UIcon name="i-lucide-group" class="size-3" /> Group<span v-if="selectedForGrouping.length"> ({{ selectedForGrouping.length }})</span>
+      </ShadcnButton>
       <span v-if="timingHint" role="status" class="text-xs tabular-nums text-muted">{{ timingHint }}</span>
       <!-- Zoom controls -->
       <div class="ml-auto flex items-center gap-1">
@@ -1061,110 +1093,135 @@ onUnmounted(() => {
             Layers
           </div>
           <!-- Layer labels + keyframe sub-labels -->
-          <template v-for="(layer, i) in sortedLayers" :key="layer.id">
-            <!-- Main layer label -->
-            <div
-              class="group/label flex items-center gap-1 px-1 border-b border-(--ui-border)/30 cursor-pointer hover:bg-(--ui-bg-accented) transition-colors"
-              :class="[
-                state.selectedLayerId === layer.id ? 'bg-[#f5dfd9] dark:bg-[#553d38] text-highlighted' : '',
-                isMaskedLayer(layer.id) ? 'border-l-2 border-l-[#e84aff]/40' : '',
-                isMultiSelected(layer.id) ? 'ring-1 ring-inset ring-(--ui-primary)/50' : ''
-              ]"
-              :style="{ height: `${laneHeight(layer)}px` }"
-              :data-layer-label="layer.id"
-              :data-selected="state.selectedLayerId === layer.id"
-              @click="onLayerLabelClick($event, layer)"
-              @contextmenu.prevent="onLayerContextMenu($event, layer)"
-            >
-              <!-- Expand chevron -->
-              <UButton
-                color="neutral"
+          <template v-for="row in displayRows" :key="row.id">
+            <div v-if="row.kind === 'group'" class="flex h-9 items-center gap-1 border-b border-default bg-elevated/70 px-2">
+              <ShadcnButton
                 variant="ghost"
-                size="xs"
-                class="p-0 w-4 h-4 flex items-center justify-center text-[10px] text-(--ui-text-dimmed) hover:text-(--ui-text) shrink-0 transition-transform"
-                :class="state.expandedKeyframeLayers.has(layer.id) ? 'rotate-90' : ''"
-                :aria-label="`Keyframe tracks for ${layer.name}`"
-                :aria-expanded="state.expandedKeyframeLayers.has(layer.id)"
-                @click.stop="toggleKeyframeLanes(layer.id)"
+                size="icon-xs"
+                :aria-label="`${collapsedGroups.has(row.id) ? 'Expand' : 'Collapse'} ${row.name}`"
+                :aria-expanded="!collapsedGroups.has(row.id)"
+                @click="toggleGroup(row.id)"
               >
-                <UIcon name="i-lucide-chevron-right" class="w-3 h-3" />
-              </UButton>
-              <UIcon :name="LAYER_ICONS[layer.type]" class="w-3 h-3 shrink-0" :style="{ color: getLayerColor(layer) }" />
-              <UIcon v-if="decomposingLayerId === layer.id" name="i-lucide-loader-2" class="w-3 h-3 animate-spin text-(--ui-primary) shrink-0" />
-              <span class="min-w-0 flex-1 text-xs truncate text-default" :class="state.selectedLayerId === layer.id ? 'font-semibold' : ''">{{ layer.name }}</span>
-              <UButton
-                color="neutral"
+                <UIcon :name="collapsedGroups.has(row.id) ? 'i-lucide-chevron-right' : 'i-lucide-chevron-down'" class="size-3" />
+              </ShadcnButton>
+              <UIcon name="i-lucide-group" class="size-3 text-muted" /><span class="min-w-0 flex-1 truncate text-xs font-medium">{{ row.name }}</span><span class="text-[10px] text-muted">{{ row.layers.length }}</span>
+              <ShadcnButton
                 variant="ghost"
-                size="xs"
-                class="p-0 w-4 h-4 flex items-center justify-center shrink-0"
-                :class="layer.hidden ? 'text-dimmed' : 'text-muted hover:text-highlighted opacity-0 group-hover/label:opacity-100 group-focus-within/label:opacity-100'"
-                :aria-label="`${layer.hidden ? 'Show' : 'Hide'} ${layer.name}`"
-                @click.stop="updateLayer(layer.id, { hidden: !layer.hidden })"
+                size="icon-xs"
+                :aria-label="`Ungroup ${row.name}`"
+                :disabled="!canEditGroup(row.layers)"
+                title="Ungroup layers"
+                @click="ungroupLayers(row.id)"
               >
-                <UIcon :name="layer.hidden ? 'i-lucide-eye-off' : 'i-lucide-eye'" class="w-3 h-3" />
-              </UButton>
-              <UButton
-                color="neutral"
-                variant="ghost"
-                size="xs"
-                class="p-0 w-4 h-4 flex items-center justify-center shrink-0"
-                :class="layer.locked ? 'text-[#e8884a]' : 'text-dimmed hover:text-highlighted opacity-0 group-hover/label:opacity-100 group-focus-within/label:opacity-100'"
-                :aria-label="`${layer.locked ? 'Unlock' : 'Lock'} ${layer.name}`"
-                @click.stop="updateLayer(layer.id, { locked: !layer.locked })"
-              >
-                <UIcon :name="layer.locked ? 'i-lucide-lock' : 'i-lucide-unlock'" class="w-3 h-3" />
-              </UButton>
-              <!-- Mask indicator -->
-              <UIcon v-if="layer.isMask" name="i-lucide-scan" class="w-3 h-3 text-[#e84aff] shrink-0" />
-              <!-- Motion path indicator -->
-              <UIcon v-if="layer.motionPath?.length" name="i-lucide-spline" class="w-3 h-3 text-success shrink-0" />
-              <!-- Remote lock indicator -->
-              <template v-if="remoteLocks.get(layer.id)">
-                <UIcon name="i-lucide-lock" class="w-3 h-3 shrink-0" :style="{ color: remoteLocks.get(layer.id)!.color }" />
-                <span class="text-[8px] shrink-0 font-medium" :style="{ color: remoteLocks.get(layer.id)!.color }">
-                  {{ remoteLocks.get(layer.id)!.userName.split(' ')[0] }}
-                </span>
-              </template>
-              <!-- Keyframe indicator -->
-              <span
-                v-if="hasKeyframes(layer)"
-                class="ml-auto text-[8px] text-(--ui-primary) font-mono shrink-0"
-              >KF</span>
+                <UIcon name="i-lucide-ungroup" class="size-3" />
+              </ShadcnButton>
             </div>
-            <!-- Keyframe property sub-labels (when expanded) -->
-            <template v-if="state.expandedKeyframeLayers.has(layer.id)">
-              <!-- Path sub-label (when motion path active) -->
+            <template v-for="layer in [row.layer]" v-else :key="layer.id">
+              <!-- Main layer label -->
               <div
-                v-if="layer.motionPath?.length >= 2"
-                class="flex items-center gap-1 pl-6 pr-2 border-b border-(--ui-border)/20 text-[9px] text-success"
-                :style="{ height: `${KF_TRACK_H}px` }"
+                class="group/label flex items-center gap-1 px-1 border-b border-(--ui-border)/30 cursor-pointer hover:bg-(--ui-bg-accented) transition-colors"
+                :class="[
+                  state.selectedLayerId === layer.id ? 'bg-primary/10 text-highlighted' : '',
+                  layer.timelineGroup ? 'pl-5' : '',
+                  isMaskedLayer(layer.id) ? 'border-l-2 border-l-[#e84aff]/40' : '',
+                  isMultiSelected(layer.id) ? 'ring-1 ring-inset ring-(--ui-primary)/50' : ''
+                ]"
+                :style="{ height: `${laneHeight(layer)}px` }"
+                :data-layer-label="layer.id"
+                :data-selected="state.selectedLayerId === layer.id"
+                @click="onLayerLabelClick($event, layer)"
+                @contextmenu.prevent="onLayerContextMenu($event, layer)"
               >
-                <UIcon name="i-lucide-spline" class="w-3 h-3 shrink-0" />
-                <span class="truncate">Path</span>
-                <span class="ml-auto text-[8px] font-mono">{{ getMotionPathTweens(layer).length }}tw</span>
-              </div>
-              <div
-                v-for="prop in getVisibleKfProperties(layer)"
-                :key="`${layer.id}-${prop.key}`"
-                class="flex items-center gap-1 pl-6 pr-2 border-b border-(--ui-border)/20 text-[9px] text-(--ui-text-dimmed)"
-                :style="{ height: `${KF_TRACK_H}px` }"
-              >
-                <span class="truncate">{{ prop.label }}</span>
+                <!-- Expand chevron -->
                 <UButton
-                  icon="i-lucide-diamond-plus"
-                  :aria-label="`Add ${prop.label} keyframe at playhead for ${layer.name}`"
                   color="neutral"
                   variant="ghost"
                   size="xs"
-                  class="ml-auto size-4 p-0"
-                  :disabled="!canEditTiming(layer) || layer.type === 'audio'"
-                  @click.stop="insertKeyframe(layer, prop.key, state.currentTime)"
-                />
+                  class="p-0 w-4 h-4 flex items-center justify-center text-[10px] text-(--ui-text-dimmed) hover:text-(--ui-text) shrink-0 transition-transform"
+                  :class="state.expandedKeyframeLayers.has(layer.id) ? 'rotate-90' : ''"
+                  :aria-label="`Keyframe tracks for ${layer.name}`"
+                  :aria-expanded="state.expandedKeyframeLayers.has(layer.id)"
+                  @click.stop="toggleKeyframeLanes(layer.id)"
+                >
+                  <UIcon name="i-lucide-chevron-right" class="w-3 h-3" />
+                </UButton>
+                <UIcon :name="LAYER_ICONS[layer.type]" class="w-3 h-3 shrink-0" :style="{ color: getLayerColor(layer) }" />
+                <UIcon v-if="decomposingLayerId === layer.id" name="i-lucide-loader-2" class="w-3 h-3 animate-spin text-(--ui-primary) shrink-0" />
+                <span class="min-w-0 flex-1 text-xs truncate text-default" :class="state.selectedLayerId === layer.id ? 'font-semibold' : ''">{{ layer.name }}</span>
+                <UButton
+                  color="neutral"
+                  variant="ghost"
+                  size="xs"
+                  class="p-0 w-4 h-4 flex items-center justify-center shrink-0"
+                  :class="layer.hidden ? 'text-dimmed' : 'text-muted hover:text-highlighted opacity-0 group-hover/label:opacity-100 group-focus-within/label:opacity-100'"
+                  :aria-label="`${layer.hidden ? 'Show' : 'Hide'} ${layer.name}`"
+                  @click.stop="updateLayer(layer.id, { hidden: !layer.hidden })"
+                >
+                  <UIcon :name="layer.hidden ? 'i-lucide-eye-off' : 'i-lucide-eye'" class="w-3 h-3" />
+                </UButton>
+                <UButton
+                  color="neutral"
+                  variant="ghost"
+                  size="xs"
+                  class="p-0 w-4 h-4 flex items-center justify-center shrink-0"
+                  :class="layer.locked ? 'text-[#e8884a]' : 'text-dimmed hover:text-highlighted opacity-0 group-hover/label:opacity-100 group-focus-within/label:opacity-100'"
+                  :aria-label="`${layer.locked ? 'Unlock' : 'Lock'} ${layer.name}`"
+                  @click.stop="updateLayer(layer.id, { locked: !layer.locked })"
+                >
+                  <UIcon :name="layer.locked ? 'i-lucide-lock' : 'i-lucide-unlock'" class="w-3 h-3" />
+                </UButton>
+                <!-- Mask indicator -->
+                <UIcon v-if="layer.isMask" name="i-lucide-scan" class="w-3 h-3 text-[#e84aff] shrink-0" />
+                <!-- Motion path indicator -->
+                <UIcon v-if="layer.motionPath?.length" name="i-lucide-spline" class="w-3 h-3 text-success shrink-0" />
+                <!-- Remote lock indicator -->
+                <template v-if="remoteLocks.get(layer.id)">
+                  <UIcon name="i-lucide-lock" class="w-3 h-3 shrink-0" :style="{ color: remoteLocks.get(layer.id)!.color }" />
+                  <span class="text-[8px] shrink-0 font-medium" :style="{ color: remoteLocks.get(layer.id)!.color }">
+                    {{ remoteLocks.get(layer.id)!.userName.split(' ')[0] }}
+                  </span>
+                </template>
+                <!-- Keyframe indicator -->
                 <span
-                  v-if="layer.keyframes?.[prop.key]?.length"
-                  class="ml-auto text-[8px] text-(--ui-text-muted) font-mono"
-                >{{ layer.keyframes[prop.key]!.length }}</span>
+                  v-if="hasKeyframes(layer)"
+                  class="ml-auto text-[8px] text-(--ui-primary) font-mono shrink-0"
+                >KF</span>
               </div>
+              <!-- Keyframe property sub-labels (when expanded) -->
+              <template v-if="state.expandedKeyframeLayers.has(layer.id)">
+                <!-- Path sub-label (when motion path active) -->
+                <div
+                  v-if="layer.motionPath?.length >= 2"
+                  class="flex items-center gap-1 pl-6 pr-2 border-b border-(--ui-border)/20 text-[9px] text-success"
+                  :style="{ height: `${KF_TRACK_H}px` }"
+                >
+                  <UIcon name="i-lucide-spline" class="w-3 h-3 shrink-0" />
+                  <span class="truncate">Path</span>
+                  <span class="ml-auto text-[8px] font-mono">{{ getMotionPathTweens(layer).length }}tw</span>
+                </div>
+                <div
+                  v-for="prop in getVisibleKfProperties(layer)"
+                  :key="`${layer.id}-${prop.key}`"
+                  class="flex items-center gap-1 pl-6 pr-2 border-b border-(--ui-border)/20 text-[9px] text-(--ui-text-dimmed)"
+                  :style="{ height: `${KF_TRACK_H}px` }"
+                >
+                  <span class="truncate">{{ prop.label }}</span>
+                  <UButton
+                    icon="i-lucide-diamond-plus"
+                    :aria-label="`Add ${prop.label} keyframe at playhead for ${layer.name}`"
+                    color="neutral"
+                    variant="ghost"
+                    size="xs"
+                    class="ml-auto size-4 p-0"
+                    :disabled="!canEditTiming(layer) || layer.type === 'audio'"
+                    @click.stop="insertKeyframe(layer, prop.key, state.currentTime)"
+                  />
+                  <span
+                    v-if="layer.keyframes?.[prop.key]?.length"
+                    class="ml-auto text-[8px] text-(--ui-text-muted) font-mono"
+                  >{{ layer.keyframes[prop.key]!.length }}</span>
+                </div>
+              </template>
             </template>
           </template>
         </div>
@@ -1232,265 +1289,276 @@ onUnmounted(() => {
           />
 
           <!-- Layer lanes + keyframe tracks -->
-          <template v-for="(layer, i) in sortedLayers" :key="layer.id">
-            <!-- Main layer lane (presence bar) -->
-            <div
-              class="relative border-b border-(--ui-border)/30 cursor-pointer"
-              :class="state.selectedLayerId === layer.id ? 'bg-[#f5dfd9] dark:bg-[#553d38]' : ''"
-              :data-layer-lane="layer.id"
-              :data-selected="state.selectedLayerId === layer.id"
-              :style="{ height: `${laneHeight(layer)}px`, zIndex: 2 }"
-              @click="selectLayer(layer.id); onTrackClick($event)"
-              @dblclick="addKeyframeAtClick($event, layer.id, keyframeProperty)"
-            >
-              <!-- Presence bar group (draggable) -->
+          <template v-for="row in displayRows" :key="row.id">
+            <BannerTimelineGroupBar
+              v-if="row.kind === 'group'"
+              :id="row.id"
+              :name="row.name"
+              :layers="row.layers"
+              :start="row.start"
+              :end="row.end"
+              :scale="pxPerSec"
+            />
+            <template v-for="layer in [row.layer]" v-else :key="layer.id">
+              <!-- Main layer lane (presence bar) -->
               <div
-                class="presence-bar-group group/presence absolute top-1"
-                :style="{
-                  left: `${(layer.startTime || 0) * pxPerSec}px`,
-                  width: `${((layer.endTime || 3) - (layer.startTime || 0)) * pxPerSec}px`,
-                  height: `${laneHeight(layer) - 8}px`
-                }"
+                class="relative border-b border-(--ui-border)/30 cursor-pointer"
+                :class="state.selectedLayerId === layer.id ? 'bg-primary/5' : ''"
+                :data-layer-lane="layer.id"
+                :data-selected="state.selectedLayerId === layer.id"
+                :style="{ height: `${laneHeight(layer)}px`, zIndex: 2 }"
+                @click="selectLayer(layer.id); onTrackClick($event)"
+                @dblclick="addKeyframeAtClick($event, layer.id, keyframeProperty)"
               >
-                <!-- Full presence bar -->
+                <!-- Presence bar group (draggable) -->
                 <div
-                  class="absolute inset-0 rounded-lg cursor-grab active:cursor-grabbing"
-                  :title="`Drag to move ${layer.name}`"
-                  :style="{
-                    backgroundColor: getLayerColor(layer),
-                    opacity: 0.2
-                  }"
-                  @mousedown="onPresenceMouseDown($event, layer.id, 'move')"
-                  @click.stop="onPresenceBarClick(layer)"
-                />
-                <BannerVideoFilmstrip
-                  v-if="layer.type === 'video' && layer.src"
-                  class="absolute inset-0 pointer-events-none"
-                  :src="layer.src"
-                  :clock="layer"
-                  :span="layer.endTime - layer.startTime"
-                />
-                <!-- Waveform canvas for audio layers -->
-                <canvas
-                  v-if="layer.type === 'audio' && layer.src"
-                  :ref="(el: any) => setWaveformCanvas(layer.id, el as HTMLCanvasElement)"
-                  class="absolute inset-0 pointer-events-none rounded-sm"
-                  :width="Math.round(((layer.endTime || 3) - (layer.startTime || 0)) * pxPerSec)"
-                  :height="LANE_H - 8"
-                />
-                <!-- Timing comes from the actual preset or imported keyframe intervals. -->
-                <div
-                  v-for="(phase, phaseIndex) in phasesByLayer.get(layer.id) || []"
-                  :key="`${phase.start}-${phase.kind}`"
-                  class="group/phase absolute top-0 z-10 overflow-visible rounded-lg"
-                  :data-animation-phase="phase.kind"
-                  :style="{
-                    left: `${(phase.start - (layer.startTime ?? 0)) * pxPerSec}px`,
-                    width: `${(phase.end - phase.start) * pxPerSec}px`,
-                    height: layer.type === 'video' && phase.kind !== 'hold' ? '18px' : '100%',
-                    backgroundColor: phase.kind === 'hold' ? 'transparent' : getLayerColor(layer),
-                    filter: phase.kind === 'exit' ? 'brightness(0.85)' : undefined
-                  }"
-                  @click.capture="onPhaseClick"
-                  @mousedown="phase.kind === 'hold' || phase.kind === 'audio' ? onPresenceMouseDown($event, layer.id, 'move') : undefined"
-                >
-                  <UButton
-                    v-if="layer.type === 'video' && phase.kind === 'hold'"
-                    :aria-label="`Edit video ${layer.name}`"
-                    :title="`${layer.name} · Select to trim or replace in the sidebar`"
-                    color="neutral"
-                    variant="ghost"
-                    class="size-full cursor-grab rounded-md p-0 hover:bg-transparent focus-visible:ring-inset"
-                    @click.stop="onPresenceBarClick(layer)"
-                  />
-                  <BannerTimelineAnimationPicker
-                    v-else
-                    :ref="(el) => { if (phaseIndex === 0) setAnimationPicker(layer.id, el) }"
-                    :layer="layer"
-                    :phase="phase"
-                    :direction="phase.direction"
-                    :compact="(phase.end - phase.start) * pxPerSec < 66"
-                    @move-key="phase.kind !== 'hold' && phase.kind !== 'audio' && nudgePhase($event, layer, phase, 'move')"
-                    @drag-start="phase.kind === 'hold' || phase.kind === 'audio' ? onPresenceMouseDown($event, layer.id, 'move') : startPhaseDrag($event, layer, phase, 'move')"
-                  />
-                  <template v-if="phase.kind !== 'hold' && phase.kind !== 'audio'">
-                    <UButton
-                      v-for="edge in (['start', 'end'] as const)"
-                      :key="edge"
-                      :aria-label="`Resize ${phase.label} ${edge} for ${layer.name}`"
-                      :title="`Drag to resize ${edge}; arrow keys adjust by 0.05s`"
-                      icon="i-lucide-grip-vertical"
-                      color="neutral"
-                      variant="ghost"
-                      size="xs"
-                      class="absolute bottom-0 z-30 h-2 w-2.5 max-w-[25%] overflow-hidden p-0 cursor-ew-resize rounded-sm text-white/80 opacity-50 hover:opacity-100 focus:opacity-100"
-                      :class="edge === 'start' ? 'left-0' : 'right-0'"
-                      :disabled="!canEditTiming(layer)"
-                      @mousedown.stop="startPhaseDrag($event, layer, phase, edge)"
-                      @click.stop.prevent
-                      @keydown="nudgePhase($event, layer, phase, edge)"
-                    />
-                  </template>
-                </div>
-                <div
-                  v-if="state.selectedLayerId === layer.id && layer.type !== 'audio' && !(phasesByLayer.get(layer.id) || []).some(phase => phase.kind === 'exit')"
-                  class="absolute right-1 top-0 z-30 h-full rounded-lg bg-elevated"
-                >
-                  <BannerTimelineAnimationPicker
-                    :layer="layer"
-                    direction="out"
-                    add-at-end
-                    trigger-label="Add exit"
-                  />
-                </div>
-                <!-- Left edge handle -->
-                <div
-                  class="absolute bottom-0 left-0 z-20 w-2 h-1.5 cursor-ew-resize rounded-bl-lg bg-current/30"
-                  :title="`Resize layer start for ${layer.name}`"
-                  @mousedown="onPresenceMouseDown($event, layer.id, 'start')"
-                />
-                <!-- Right edge handle -->
-                <div
-                  class="absolute bottom-0 right-0 z-20 w-2 h-1.5 cursor-ew-resize rounded-br-lg bg-current/30"
-                  :title="`Resize layer end for ${layer.name}`"
-                  @mousedown="onPresenceMouseDown($event, layer.id, 'end')"
-                />
-              </div>
-            </div>
-
-            <!-- Keyframe property sub-tracks (when expanded) -->
-            <template v-if="state.expandedKeyframeLayers.has(layer.id)">
-              <!-- Path sub-track (tween bars with draggable edges) -->
-              <div
-                v-if="layer.motionPath?.length >= 2"
-                class="relative border-b border-(--ui-border)/20"
-                :style="{ height: `${KF_TRACK_H}px`, zIndex: 2 }"
-              >
-                <div class="absolute inset-0 bg-[#4af0a2]/5" />
-                <!-- Presence range background -->
-                <div
-                  class="absolute top-0 h-full bg-[#4af0a2]/8 rounded-sm"
+                  class="presence-bar-group group/presence absolute top-1"
                   :style="{
                     left: `${(layer.startTime || 0) * pxPerSec}px`,
-                    width: `${((layer.endTime || 3) - (layer.startTime || 0)) * pxPerSec}px`
-                  }"
-                />
-                <!-- Tween bars -->
-                <div
-                  v-for="(tw, ti) in getMotionPathTweens(layer)"
-                  :key="`tw-${ti}`"
-                  class="tween-bar absolute rounded-sm"
-                  :style="{
-                    left: `${tw.startTime * pxPerSec}px`,
-                    width: `${(tw.endTime - tw.startTime) * pxPerSec}px`,
-                    top: '2px',
-                    height: `${KF_TRACK_H - 4}px`
+                    width: `${((layer.endTime || 3) - (layer.startTime || 0)) * pxPerSec}px`,
+                    height: `${laneHeight(layer) - 8}px`
                   }"
                 >
-                  <!-- Tween fill -->
+                  <!-- Full presence bar -->
                   <div
-                    class="absolute inset-0 rounded-lg cursor-grab active:cursor-grabbing transition-colors"
-                    :class="selectedTween?.layerId === layer.id && selectedTween?.tweenIndex === ti
-                      ? 'bg-[#4af0a2]/50 ring-1 ring-[#4af0a2]'
-                      : 'bg-[#4af0a2]/25 hover:bg-[#4af0a2]/35'"
-                    @mousedown="onTweenDragStart($event, layer.id, ti, 'move')"
-                    @click.stop="selectedTween = { layerId: layer.id, tweenIndex: ti }; selectLayer(layer.id)"
+                    class="absolute inset-0 rounded-lg cursor-grab active:cursor-grabbing"
+                    :title="`Drag to move ${layer.name}`"
+                    :style="{
+                      backgroundColor: getLayerColor(layer),
+                      opacity: 0.2
+                    }"
+                    @mousedown="onPresenceMouseDown($event, layer.id, 'move')"
+                    @click.stop="onPresenceBarClick(layer)"
+                  />
+                  <BannerVideoFilmstrip
+                    v-if="layer.type === 'video' && layer.src"
+                    class="absolute inset-0 pointer-events-none"
+                    :src="layer.src"
+                    :clock="layer"
+                    :span="layer.endTime - layer.startTime"
+                  />
+                  <!-- Waveform canvas for audio layers -->
+                  <canvas
+                    v-if="layer.type === 'audio' && layer.src"
+                    :ref="(el: any) => setWaveformCanvas(layer.id, el as HTMLCanvasElement)"
+                    class="absolute inset-0 pointer-events-none rounded-sm"
+                    :width="Math.round(((layer.endTime || 3) - (layer.startTime || 0)) * pxPerSec)"
+                    :height="LANE_H - 8"
+                  />
+                  <!-- Timing comes from the actual preset or imported keyframe intervals. -->
+                  <div
+                    v-for="(phase, phaseIndex) in phasesByLayer.get(layer.id) || []"
+                    :key="`${phase.start}-${phase.kind}`"
+                    class="group/phase absolute top-0 z-10 overflow-visible rounded-lg"
+                    :data-animation-phase="phase.kind"
+                    :style="{
+                      left: `${(phase.start - (layer.startTime ?? 0)) * pxPerSec}px`,
+                      width: `${(phase.end - phase.start) * pxPerSec}px`,
+                      height: layer.type === 'video' && phase.kind !== 'hold' ? '18px' : '100%',
+                      backgroundColor: phase.kind === 'hold' ? 'transparent' : getLayerColor(layer),
+                      filter: phase.kind === 'exit' ? 'brightness(0.85)' : undefined
+                    }"
+                    @click.capture="onPhaseClick"
+                    @mousedown="phase.kind === 'hold' || phase.kind === 'audio' ? onPresenceMouseDown($event, layer.id, 'move') : undefined"
                   >
-                    <!-- Path range label -->
-                    <span
-                      v-if="(tw.endTime - tw.startTime) * pxPerSec > 40"
-                      class="absolute inset-0 flex items-center justify-center text-[7px] font-mono text-success pointer-events-none select-none"
-                    >{{ Math.round(tw.pathStart * 100) }}–{{ Math.round(tw.pathEnd * 100) }}%</span>
+                    <UButton
+                      v-if="layer.type === 'video' && phase.kind === 'hold'"
+                      :aria-label="`Edit video ${layer.name}`"
+                      :title="`${layer.name} · Select to trim or replace in the sidebar`"
+                      color="neutral"
+                      variant="ghost"
+                      class="size-full cursor-grab rounded-md p-0 hover:bg-transparent focus-visible:ring-inset"
+                      @click.stop="onPresenceBarClick(layer)"
+                    />
+                    <BannerTimelineAnimationPicker
+                      v-else
+                      :ref="(el) => { if (phaseIndex === 0) setAnimationPicker(layer.id, el) }"
+                      :layer="layer"
+                      :phase="phase"
+                      :direction="phase.direction"
+                      :compact="(phase.end - phase.start) * pxPerSec < 66"
+                      @move-key="phase.kind !== 'hold' && phase.kind !== 'audio' && nudgePhase($event, layer, phase, 'move')"
+                      @drag-start="phase.kind === 'hold' || phase.kind === 'audio' ? onPresenceMouseDown($event, layer.id, 'move') : startPhaseDrag($event, layer, phase, 'move')"
+                    />
+                    <template v-if="phase.kind !== 'hold' && phase.kind !== 'audio'">
+                      <UButton
+                        v-for="edge in (['start', 'end'] as const)"
+                        :key="edge"
+                        :aria-label="`Resize ${phase.label} ${edge} for ${layer.name}`"
+                        :title="`Drag to resize ${edge}; arrow keys adjust by 0.05s`"
+                        icon="i-lucide-grip-vertical"
+                        color="neutral"
+                        variant="ghost"
+                        size="xs"
+                        class="absolute bottom-0 z-30 h-2 w-2.5 max-w-[25%] overflow-hidden p-0 cursor-ew-resize rounded-sm text-white/80 opacity-50 hover:opacity-100 focus:opacity-100"
+                        :class="edge === 'start' ? 'left-0' : 'right-0'"
+                        :disabled="!canEditTiming(layer)"
+                        @mousedown.stop="startPhaseDrag($event, layer, phase, edge)"
+                        @click.stop.prevent
+                        @keydown="nudgePhase($event, layer, phase, edge)"
+                      />
+                    </template>
+                  </div>
+                  <div
+                    v-if="state.selectedLayerId === layer.id && layer.type !== 'audio' && !(phasesByLayer.get(layer.id) || []).some(phase => phase.kind === 'exit')"
+                    class="absolute right-1 top-0 z-30 h-full rounded-lg bg-elevated"
+                  >
+                    <BannerTimelineAnimationPicker
+                      :layer="layer"
+                      direction="out"
+                      add-at-end
+                      trigger-label="Add exit"
+                    />
                   </div>
                   <!-- Left edge handle -->
                   <div
-                    class="absolute top-0 left-0 w-[5px] h-full cursor-col-resize hover:bg-[#4af0a2]/40 rounded-l-sm z-10"
-                    @mousedown="onTweenDragStart($event, layer.id, ti, 'start')"
+                    class="absolute bottom-0 left-0 z-20 w-2 h-1.5 cursor-ew-resize rounded-bl-lg bg-current/30"
+                    :title="`Resize layer start for ${layer.name}`"
+                    @mousedown="onPresenceMouseDown($event, layer.id, 'start')"
                   />
                   <!-- Right edge handle -->
                   <div
-                    class="absolute top-0 right-0 w-[5px] h-full cursor-col-resize hover:bg-[#4af0a2]/40 rounded-r-sm z-10"
-                    @mousedown="onTweenDragStart($event, layer.id, ti, 'end')"
+                    class="absolute bottom-0 right-0 z-20 w-2 h-1.5 cursor-ew-resize rounded-br-lg bg-current/30"
+                    :title="`Resize layer end for ${layer.name}`"
+                    @mousedown="onPresenceMouseDown($event, layer.id, 'end')"
                   />
                 </div>
-                <!-- Keyframe diamonds at tween boundaries (Flash-style) -->
-                <div
-                  v-for="(t, di) in tweenBoundaryTimes(layer)"
-                  :key="`twkf-${di}`"
-                  class="absolute w-[8px] h-[8px] rotate-45 bg-[#4af0a2] border border-[#0a0b0e] pointer-events-none"
-                  :style="{ left: `${t * pxPerSec - 4}px`, top: `${KF_TRACK_H / 2 - 4}px`, zIndex: 11 }"
-                />
-                <!-- Add tween button (shown at end of last tween) -->
-                <div
-                  v-if="getMotionPathTweens(layer).length > 0"
-                  class="absolute cursor-pointer group"
-                  :style="{
-                    left: `${getMotionPathTweens(layer)[getMotionPathTweens(layer).length - 1].endTime * pxPerSec + 2}px`,
-                    top: `${KF_TRACK_H / 2 - 5}px`,
-                    width: '10px',
-                    height: '10px'
-                  }"
-                  @click.stop="addMotionPathTween(layer.id)"
-                >
-                  <div class="w-full h-full rounded-full bg-[#4af0a2]/20 border border-[#4af0a2]/40 flex items-center justify-center group-hover:bg-[#4af0a2]/40 transition-colors">
-                    <span class="text-[7px] text-success font-bold leading-none">+</span>
-                  </div>
-                </div>
               </div>
-              <div
-                v-for="prop in getVisibleKfProperties(layer)"
-                :key="`track-${layer.id}-${prop.key}`"
-                class="relative border-b border-(--ui-border)/20 cursor-crosshair"
-                :aria-label="`${prop.label} keyframe track for ${layer.name}`"
-                :style="{ height: `${KF_TRACK_H}px`, zIndex: 2 }"
-                @dblclick="addKeyframeAtClick($event, layer.id, prop.key)"
-              >
-                <!-- Subtle track background -->
-                <div class="absolute inset-0 bg-(--ui-bg)/30" />
 
-                <!-- Connection lines between keyframes -->
-                <template v-for="(kf, ki) in getLayerKeyframes(layer.id, prop.key)" :key="`line-${ki}`">
+              <!-- Keyframe property sub-tracks (when expanded) -->
+              <template v-if="state.expandedKeyframeLayers.has(layer.id)">
+                <!-- Path sub-track (tween bars with draggable edges) -->
+                <div
+                  v-if="layer.motionPath?.length >= 2"
+                  class="relative border-b border-(--ui-border)/20"
+                  :style="{ height: `${KF_TRACK_H}px`, zIndex: 2 }"
+                >
+                  <div class="absolute inset-0 bg-[#4af0a2]/5" />
+                  <!-- Presence range background -->
                   <div
-                    v-if="ki < getLayerKeyframes(layer.id, prop.key).length - 1"
-                    class="absolute top-1/2 h-px"
+                    class="absolute top-0 h-full bg-[#4af0a2]/8 rounded-sm"
                     :style="{
-                      left: `${kf.time * pxPerSec}px`,
-                      width: `${(getLayerKeyframes(layer.id, prop.key)[ki + 1].time - kf.time) * pxPerSec}px`,
-                      backgroundColor: getLayerColor(layer),
-                      opacity: 0.4
+                      left: `${(layer.startTime || 0) * pxPerSec}px`,
+                      width: `${((layer.endTime || 3) - (layer.startTime || 0)) * pxPerSec}px`
                     }"
                   />
-                </template>
-
-                <!-- Keyframe diamonds -->
-                <UButton
-                  v-for="(kf, ki) in getLayerKeyframes(layer.id, prop.key)"
-                  :key="`kf-${ki}`"
-                  :aria-label="`${prop.label} keyframe at ${kf.time.toFixed(2)}s for ${layer.name}`"
-                  color="neutral"
-                  variant="ghost"
-                  class="absolute min-h-0 p-0 cursor-pointer"
-                  :style="{
-                    left: `${kf.time * pxPerSec - 5}px`,
-                    top: `${KF_TRACK_H / 2 - 5}px`,
-                    width: '10px',
-                    height: '10px'
-                  }"
-                  @mousedown="onKeyframeDragStart($event, layer.id, prop.key, ki)"
-                  @click="selectKeyframe(layer.id, prop.key, ki, $event)"
-                  @dblclick.stop
-                  @keydown="nudgeKeyframe($event, layer.id, prop.key, ki)"
-                >
-                  <!-- Diamond shape -->
+                  <!-- Tween bars -->
                   <div
-                    class="w-full h-full rotate-45 border transition-colors"
-                    :class="isKeyframeSelected(layer.id, prop.key, ki)
-                      ? 'bg-(--ui-primary) border-(--ui-primary) scale-110'
-                      : 'bg-(--ui-bg-elevated) border-current hover:bg-(--ui-bg-accented)'"
-                    :style="{ color: getLayerColor(layer) }"
+                    v-for="(tw, ti) in getMotionPathTweens(layer)"
+                    :key="`tw-${ti}`"
+                    class="tween-bar absolute rounded-sm"
+                    :style="{
+                      left: `${tw.startTime * pxPerSec}px`,
+                      width: `${(tw.endTime - tw.startTime) * pxPerSec}px`,
+                      top: '2px',
+                      height: `${KF_TRACK_H - 4}px`
+                    }"
+                  >
+                    <!-- Tween fill -->
+                    <div
+                      class="absolute inset-0 rounded-lg cursor-grab active:cursor-grabbing transition-colors"
+                      :class="selectedTween?.layerId === layer.id && selectedTween?.tweenIndex === ti
+                        ? 'bg-[#4af0a2]/50 ring-1 ring-[#4af0a2]'
+                        : 'bg-[#4af0a2]/25 hover:bg-[#4af0a2]/35'"
+                      @mousedown="onTweenDragStart($event, layer.id, ti, 'move')"
+                      @click.stop="selectedTween = { layerId: layer.id, tweenIndex: ti }; selectLayer(layer.id)"
+                    >
+                      <!-- Path range label -->
+                      <span
+                        v-if="(tw.endTime - tw.startTime) * pxPerSec > 40"
+                        class="absolute inset-0 flex items-center justify-center text-[7px] font-mono text-success pointer-events-none select-none"
+                      >{{ Math.round(tw.pathStart * 100) }}–{{ Math.round(tw.pathEnd * 100) }}%</span>
+                    </div>
+                    <!-- Left edge handle -->
+                    <div
+                      class="absolute top-0 left-0 w-[5px] h-full cursor-col-resize hover:bg-[#4af0a2]/40 rounded-l-sm z-10"
+                      @mousedown="onTweenDragStart($event, layer.id, ti, 'start')"
+                    />
+                    <!-- Right edge handle -->
+                    <div
+                      class="absolute top-0 right-0 w-[5px] h-full cursor-col-resize hover:bg-[#4af0a2]/40 rounded-r-sm z-10"
+                      @mousedown="onTweenDragStart($event, layer.id, ti, 'end')"
+                    />
+                  </div>
+                  <!-- Keyframe diamonds at tween boundaries (Flash-style) -->
+                  <div
+                    v-for="(t, di) in tweenBoundaryTimes(layer)"
+                    :key="`twkf-${di}`"
+                    class="absolute w-[8px] h-[8px] rotate-45 bg-[#4af0a2] border border-[#0a0b0e] pointer-events-none"
+                    :style="{ left: `${t * pxPerSec - 4}px`, top: `${KF_TRACK_H / 2 - 4}px`, zIndex: 11 }"
                   />
-                </UButton>
-              </div>
+                  <!-- Add tween button (shown at end of last tween) -->
+                  <div
+                    v-if="getMotionPathTweens(layer).length > 0"
+                    class="absolute cursor-pointer group"
+                    :style="{
+                      left: `${getMotionPathTweens(layer)[getMotionPathTweens(layer).length - 1].endTime * pxPerSec + 2}px`,
+                      top: `${KF_TRACK_H / 2 - 5}px`,
+                      width: '10px',
+                      height: '10px'
+                    }"
+                    @click.stop="addMotionPathTween(layer.id)"
+                  >
+                    <div class="w-full h-full rounded-full bg-[#4af0a2]/20 border border-[#4af0a2]/40 flex items-center justify-center group-hover:bg-[#4af0a2]/40 transition-colors">
+                      <span class="text-[7px] text-success font-bold leading-none">+</span>
+                    </div>
+                  </div>
+                </div>
+                <div
+                  v-for="prop in getVisibleKfProperties(layer)"
+                  :key="`track-${layer.id}-${prop.key}`"
+                  class="relative border-b border-(--ui-border)/20 cursor-crosshair"
+                  :aria-label="`${prop.label} keyframe track for ${layer.name}`"
+                  :style="{ height: `${KF_TRACK_H}px`, zIndex: 2 }"
+                  @dblclick="addKeyframeAtClick($event, layer.id, prop.key)"
+                >
+                  <!-- Subtle track background -->
+                  <div class="absolute inset-0 bg-(--ui-bg)/30" />
+
+                  <!-- Connection lines between keyframes -->
+                  <template v-for="(kf, ki) in getLayerKeyframes(layer.id, prop.key)" :key="`line-${ki}`">
+                    <div
+                      v-if="ki < getLayerKeyframes(layer.id, prop.key).length - 1"
+                      class="absolute top-1/2 h-px"
+                      :style="{
+                        left: `${kf.time * pxPerSec}px`,
+                        width: `${(getLayerKeyframes(layer.id, prop.key)[ki + 1].time - kf.time) * pxPerSec}px`,
+                        backgroundColor: getLayerColor(layer),
+                        opacity: 0.4
+                      }"
+                    />
+                  </template>
+
+                  <!-- Keyframe diamonds -->
+                  <UButton
+                    v-for="(kf, ki) in getLayerKeyframes(layer.id, prop.key)"
+                    :key="`kf-${ki}`"
+                    :aria-label="`${prop.label} keyframe at ${kf.time.toFixed(2)}s for ${layer.name}`"
+                    color="neutral"
+                    variant="ghost"
+                    class="absolute min-h-0 p-0 cursor-pointer"
+                    :style="{
+                      left: `${kf.time * pxPerSec - 5}px`,
+                      top: `${KF_TRACK_H / 2 - 5}px`,
+                      width: '10px',
+                      height: '10px'
+                    }"
+                    @mousedown="onKeyframeDragStart($event, layer.id, prop.key, ki)"
+                    @click="selectKeyframe(layer.id, prop.key, ki, $event)"
+                    @dblclick.stop
+                    @keydown="nudgeKeyframe($event, layer.id, prop.key, ki)"
+                  >
+                    <!-- Diamond shape -->
+                    <div
+                      class="w-full h-full rotate-45 border transition-colors"
+                      :class="isKeyframeSelected(layer.id, prop.key, ki)
+                        ? 'bg-(--ui-primary) border-(--ui-primary) scale-110'
+                        : 'bg-(--ui-bg-elevated) border-current hover:bg-(--ui-bg-accented)'"
+                      :style="{ color: getLayerColor(layer) }"
+                    />
+                  </UButton>
+                </div>
+              </template>
             </template>
           </template>
 

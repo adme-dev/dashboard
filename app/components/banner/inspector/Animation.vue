@@ -10,7 +10,7 @@ const isPreviewing = computed(() => !!selectedLayer.value && animationPreview.va
 
 function set(key: string, val: any) {
   if (!selectedLayer.value) return
-  updateLayer(selectedLayer.value.id, { [key]: val, ...(key === 'animIn' ? { wordPop: undefined } : {}) })
+  updateLayer(selectedLayer.value.id, { [key]: val, ...(key === 'animIn' ? { wordPop: undefined, ease: ANIM_IN.find(preset => preset.id === val)?.ease || 'power2.out' } : {}) })
 }
 
 function setNum(key: string, val: string | number) {

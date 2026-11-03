@@ -362,8 +362,8 @@ export function buildBannerHTML(
       const endTime = l.endTime || ((l.startTime || 0) + 3)
       const animDur = timing.entryDuration
       const outDur = timing.exitDuration
-      const ease = l.ease || 'power2.out'
       const preset = ANIM_IN.find((a: any) => a.id === l.animIn)
+      const ease = l.ease || preset?.ease || 'power2.out'
       const hasMP = (l.motionPath?.length ?? 0) >= 2
 
       // Static layers must also be visible when the renderer requests frame zero.

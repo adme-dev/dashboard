@@ -35,6 +35,7 @@ export interface AnimPreset {
   icon: string
   from: Record<string, number>
   special?: string
+  ease?: string
 }
 
 export interface AnimOutPreset {
@@ -63,6 +64,8 @@ export interface Layer {
   name: string
   /** Shared content identity across independently positioned sizes in one design set. */
   linkId?: string
+  /** Timeline organisation only; members keep independent canvas transforms. */
+  timelineGroup?: { id: string, name: string } | null
   /** Scene ownership; absent layers can span the whole sequence. */
   slideId?: string
   /** Generated, locked fade-through-background overlay. */

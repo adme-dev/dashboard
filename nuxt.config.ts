@@ -88,7 +88,7 @@ export default defineNuxtConfig({
 
   components: [
     { path: '~/components/neubrutalism', pathPrefix: false },
-    '~/components'
+    { path: '~/components', ignore: ['**/ui/**/index.ts'] }
   ],
 
   devtools: {

@@ -1,10 +1,13 @@
 <script setup lang="ts">
+import { Button as ShadcnButton } from '~/components/ui/button'
+import { Tabs as ShadcnTabs, TabsList, TabsTrigger, TabsContent } from '~/components/ui/tabs'
+import { applyTimelineEntrance } from '~/utils/banner-timeline-presets'
 import { computed, ref, watch, nextTick } from 'vue'
 import { ANIM_IN, ANIM_OUT, EASES } from '~/utils/banner-constants'
 import { hasKeyframes, presetToKeyframes } from '~/composables/useBannerTimeline'
 import type { AnimInType, AnimOutType, KeyframeProperty, Layer } from '~/types/banner-studio'
 import { addEndAnimation, insertTimelineKeyframe, keyframeDefault, MIDDLE_ANIMATIONS, addMiddleAnimation } from '~/utils/banner-timeline-edit'
-import { describeKeyframeMotion, type TimelinePhase } from '~/utils/banner-timeline-phases'
+import { describeKeyframeMotion, timelinePhases, type TimelinePhase } from '~/utils/banner-timeline-phases'
 
 const emit = defineEmits<{ dragStart: [event: MouseEvent], moveKey: [event: KeyboardEvent] }>()
 const props = defineProps<{ layer: Layer, direction: 'in' | 'out', compact?: boolean, phase?: TimelinePhase, addAtEnd?: boolean, triggerLabel?: string }>()
@@ -21,14 +24,31 @@ const frameIndex = ref('0')
 const frameError = ref<string>()
 const { isLayerLockedByOther } = useBannerRealtime()
 const editable = computed(() => !props.layer.locked && !isLayerLockedByOther(props.layer.id))
-const isMiddle = computed(() => props.phase?.kind === 'hold')
+const placement = ref<'in' | 'middle' | 'out' | null>(null)
+const phasePlacement = computed(() => props.phase?.label.startsWith('Exit ·') ? 'out' : props.phase?.label.startsWith('Entry ·') ? 'in' : props.phase?.kind === 'hold' || props.phase?.kind === 'motion' ? 'middle' : props.direction)
+const selectedDirection = computed(() => placement.value === 'out' ? 'out' : placement.value === 'in' ? 'in' : phasePlacement.value === 'out' ? 'out' : 'in')
+const targetPhase = computed(() => {
+  if (!placement.value) return props.phase
+  const phases = timelinePhases(props.layer)
+  if (placement.value === 'middle' && phasePlacement.value === 'middle' && props.phase) return props.phase
+  if (placement.value === 'middle') return phases.filter(phase => phase.kind === 'hold').sort((a, b) => Math.abs(a.start - state.currentTime) - Math.abs(b.start - state.currentTime))[0]
+  return phases.find(phase => phase.kind === (placement.value === 'in' ? 'entry' : 'exit') || phase.label.startsWith(placement.value === 'in' ? 'Entry ·' : 'Exit ·'))
+})
+const isMiddle = computed(() => placement.value ? placement.value === 'middle' : phasePlacement.value === 'middle')
+const selectedPlacement = computed(() => isMiddle.value ? 'middle' : selectedDirection.value)
+function setPlacement(value: 'in' | 'middle' | 'out') {
+  placement.value = value
+  tab.value = 'presets'
+  search.value = ''
+  pending.value = null
+}
 const keyframeTime = computed(() => Math.max(props.layer.startTime ?? 0, Math.min(props.layer.endTime ?? state.duration, state.currentTime)))
 const isAudio = computed(() => props.layer.type === 'audio')
 const isKeyframe = computed(() => hasKeyframes(props.layer))
-const title = computed(() => isAudio.value ? 'Audio' : isMiddle.value ? 'Middle' : props.addAtEnd ? 'Build Out' : isKeyframe.value ? 'Animation' : props.direction === 'in' ? 'Build In' : 'Build Out')
-const directionLabel = computed(() => isMiddle.value ? 'middle' : props.direction === 'in' ? 'entrance' : 'exit')
-const presets = computed(() => (isMiddle.value ? MIDDLE_ANIMATIONS.filter(preset => !props.layer.motionPath?.length || !preset.properties.some(property => property === 'x' || property === 'y')) : props.direction === 'in' ? ANIM_IN : ANIM_OUT).filter(p => !(props.addAtEnd && p.id === 'none')).filter(p => p.label.toLowerCase().includes(search.value.trim().toLowerCase())))
-const selectedId = computed(() => props.direction === 'in' && props.layer.wordPop ? 'wordPop' : props.direction === 'in' ? props.layer.animIn : (props.layer.animOut ?? 'fadeOut'))
+const title = computed(() => isAudio.value ? 'Audio' : isMiddle.value ? 'Middle' : props.addAtEnd ? 'Build Out' : isKeyframe.value ? 'Animation' : selectedDirection.value === 'in' ? 'Build In' : 'Build Out')
+const directionLabel = computed(() => isMiddle.value ? 'middle' : selectedDirection.value === 'in' ? 'entrance' : 'exit')
+const presets = computed(() => (isMiddle.value ? MIDDLE_ANIMATIONS.filter(preset => !props.layer.motionPath?.length || !preset.properties.some(property => property === 'x' || property === 'y')) : selectedDirection.value === 'in' ? ANIM_IN : ANIM_OUT).filter(p => !(selectedDirection.value === 'out' && (props.addAtEnd || isKeyframe.value || placement.value === 'out') && p.id === 'none')).filter(p => p.label.toLowerCase().includes(search.value.trim().toLowerCase())))
+const selectedId = computed(() => selectedDirection.value === 'in' && props.layer.wordPop ? 'wordPop' : selectedDirection.value === 'in' ? props.layer.animIn : (props.layer.animOut ?? 'fadeOut'))
 const selectedLabel = computed(() => isAudio.value ? 'Sound' : isKeyframe.value ? describeKeyframeMotion(props.layer) : selectedId.value === 'wordPop' ? 'Words Pop' : ([...ANIM_IN, ...ANIM_OUT].find(p => p.id === selectedId.value)?.label ?? 'None'))
 const blockLabel = computed(() => props.phase?.label ?? selectedLabel.value)
 const blockDescription = computed(() => props.phase ? `${blockLabel.value} · ${props.phase.start.toFixed(2)}–${props.phase.end.toFixed(2)}s` : blockLabel.value)
@@ -40,12 +60,12 @@ const frames = computed(() => props.layer.keyframes?.[property.value] ?? [])
 const frame = computed(() => frames.value[Number(frameIndex.value)])
 const frameOptions = computed(() => frames.value.map((f, i) => ({ label: `${i + 1} · ${f.time.toFixed(2)}s`, value: String(i) })))
 const easeOptions = computed(() => {
-  const current = isKeyframe.value ? frame.value?.easing : props.direction === 'in' ? props.layer.wordPop?.ease || props.layer.ease : props.layer.animOutEase
+  const current = isKeyframe.value ? frame.value?.easing : selectedDirection.value === 'in' ? props.layer.wordPop?.ease || props.layer.ease : props.layer.animOutEase
   const options = [{ label: 'Linear', value: 'none' }, ...EASES.map(e => ({ label: `${e.label} · ${e.category}`, value: e.id }))]
   if (current && !options.some(e => e.value === current)) options.unshift({ label: `Custom · ${current}`, value: current })
   return options
 })
-const canWordPop = computed(() => !isMiddle.value && props.direction === 'in' && props.layer.type === 'text' && !props.layer.textRuns?.length && 'words pop'.includes(search.value.trim().toLowerCase()))
+const canWordPop = computed(() => !isMiddle.value && selectedDirection.value === 'in' && props.layer.type === 'text' && !props.layer.textRuns?.length && 'words pop'.includes(search.value.trim().toLowerCase()))
 const duration = computed(() => state.sets[state.activeKey]?.playback?.duration ?? Math.max(3, props.layer.endTime ?? 3))
 const pendingLabel = computed(() => pending.value === 'wordPop' ? 'Words Pop' : [...ANIM_IN, ...ANIM_OUT].find(p => p.id === pending.value)?.label)
 
@@ -55,7 +75,8 @@ watch(open, async (value) => {
     if (isPreviewing.value) stopAnimationPreview()
     return
   }
-  tab.value = (!props.addAtEnd && isKeyframe.value && !isMiddle.value) || isAudio.value ? 'build' : 'presets'
+  placement.value = null
+  tab.value = isAudio.value || (!props.triggerLabel && !props.addAtEnd && isKeyframe.value && !isMiddle.value) ? 'build' : 'presets'
   search.value = ''
   property.value = tracks.value.find(track => props.layer.keyframes?.[track.value]?.length)?.value ?? tracks.value[0]?.value ?? 'opacity'
   frameIndex.value = '0'
@@ -96,32 +117,44 @@ function applyPreset(id: string) {
   const reset = isKeyframe.value ? { keyframes: undefined, motionPath: undefined, motionPathTweens: undefined, wordPop: undefined, animIn: 'none' as const, animOut: 'none' as const } : {}
   const change = id === 'wordPop'
     ? { animIn: 'none' as const, wordPop: props.layer.wordPop ?? { duration: 0.5, stagger: 0.1, ease: 'cubic-bezier(.21,.79,.09,.97)' } }
-    : props.direction === 'in' ? { animIn: id as AnimInType, wordPop: undefined } : { animOut: id as AnimOutType }
+    : selectedDirection.value === 'in' ? { animIn: id as AnimInType, wordPop: undefined, ease: ANIM_IN.find(preset => preset.id === id)?.ease || 'power2.out' } : { animOut: id as AnimOutType }
   updateLayer(props.layer.id, { ...reset, ...change })
   state.selectedKeyframe = null
   pending.value = null
   focusAnimation()
 }
 function choosePreset(id: string) {
-  if (props.addAtEnd && editable.value) {
-    const start = Math.max(props.layer.startTime ?? 0, (props.layer.endTime ?? state.duration) - 0.5)
+  if (!editable.value) return
+  if (!isMiddle.value && selectedDirection.value === 'out' && (props.addAtEnd || placement.value === 'out' || isKeyframe.value)) {
+    const start = targetPhase.value?.start ?? Math.max(props.layer.startTime ?? 0, (props.layer.endTime ?? state.duration) - 0.5)
     pauseTimeline()
     seekTo(start)
-    updateLayer(props.layer.id, addEndAnimation(props.layer, id as AnimOutType, property => currentLayerValue(props.layer, property)))
+    updateLayer(props.layer.id, addEndAnimation(props.layer, id as AnimOutType, property => currentLayerValue(props.layer, property), targetPhase.value && (targetPhase.value.kind === 'exit' || targetPhase.value.label.startsWith('Exit ·')) ? targetPhase.value : undefined))
     state.selectedKeyframe = null
     focusAnimation()
     open.value = false
     return
   }
-  if (isMiddle.value && props.phase && editable.value) {
-    const at = Math.max(props.phase.start, Math.min(props.phase.end - Math.min(1.2, props.phase.end - props.phase.start), keyframeTime.value))
+  if (isMiddle.value && targetPhase.value) {
+    const phase = targetPhase.value
+    const at = phase.kind === 'motion' ? phase.start : Math.max(phase.start, Math.min(phase.end - Math.min(1.2, phase.end - phase.start), keyframeTime.value))
     pauseTimeline()
     seekTo(at)
     const source = hasKeyframes(props.layer) ? props.layer.keyframes! : presetToKeyframes(props.layer)
-    updateLayer(props.layer.id, addMiddleAnimation(props.layer, props.phase, id, at, source, property => currentLayerValue?.(props.layer, property) ?? keyframeDefault(props.layer, property)))
+    updateLayer(props.layer.id, addMiddleAnimation(props.layer, phase, id, at, source, property => currentLayerValue?.(props.layer, property) ?? keyframeDefault(props.layer, property)))
     state.expandedKeyframeLayers.add(props.layer.id)
     state.selectedKeyframe = null
     open.value = false
+    return
+  }
+  if (isMiddle.value) return
+  if (isKeyframe.value && selectedDirection.value === 'in' && id !== 'none' && id !== 'wordPop' && !ANIM_IN.find(preset => preset.id === id)?.special) {
+    const phase = targetPhase.value && (targetPhase.value.kind === 'entry' || targetPhase.value.label.startsWith('Entry ·')) ? targetPhase.value : undefined
+    const end = phase?.end ?? Math.min(props.layer.endTime, props.layer.startTime + (props.layer.animInDur || 0.6))
+    pauseTimeline()
+    seekTo(end)
+    updateLayer(props.layer.id, applyTimelineEntrance(props.layer, id as AnimInType, property => currentLayerValue(props.layer, property), phase))
+    pending.value = null
     return
   }
   if (isKeyframe.value) {
@@ -135,7 +168,7 @@ function setTiming(value: string | number) {
   const n = Number(value)
   if (value === '' || !Number.isFinite(n)) return
   const bounded = Math.min(Math.max(0.05, n), Math.max(0.05, (props.layer.endTime ?? 3) - (props.layer.startTime ?? 0)))
-  updateLayer(props.layer.id, props.direction === 'in' ? props.layer.wordPop ? { wordPop: { ...props.layer.wordPop, duration: bounded } } : { animInDur: bounded } : { outDur: bounded })
+  updateLayer(props.layer.id, selectedDirection.value === 'in' ? props.layer.wordPop ? { wordPop: { ...props.layer.wordPop, duration: bounded } } : { animInDur: bounded } : { outDur: bounded })
 }
 function setStagger(value: string | number) {
   if (!editable.value) return
@@ -163,7 +196,7 @@ function setFrame(key: 'time' | 'value' | 'easing', value: string | number) {
 function setEase(value: string) {
   if (!editable.value) return
   if (isKeyframe.value) setFrame('easing', value)
-  else updateLayer(props.layer.id, props.direction === 'in' ? props.layer.wordPop ? { wordPop: { ...props.layer.wordPop, ease: value } } : { ease: value } : { animOutEase: value })
+  else updateLayer(props.layer.id, selectedDirection.value === 'in' ? props.layer.wordPop ? { wordPop: { ...props.layer.wordPop, ease: value } } : { ease: value } : { animOutEase: value })
 }
 function addKeyframe() {
   if (!editable.value || isAudio.value) return
@@ -180,7 +213,7 @@ function addKeyframe() {
 }
 function preview() {
   if (isPreviewing.value) stopAnimationPreview()
-  else previewAnimation(props.layer.id, props.addAtEnd ? { start: Math.max(props.layer.startTime ?? 0, (props.layer.endTime ?? state.duration) - 0.5), end: props.layer.endTime ?? state.duration } : props.phase ? { start: props.phase.start, end: props.phase.end } : undefined)
+  else previewAnimation(props.layer.id, targetPhase.value ? { start: targetPhase.value.start, end: targetPhase.value.end } : selectedDirection.value === 'out' ? { start: Math.max(props.layer.startTime ?? 0, (props.layer.endTime ?? state.duration) - 0.5), end: props.layer.endTime ?? state.duration } : undefined)
 }
 onBeforeUnmount(() => {
   if (isPreviewing.value) stopAnimationPreview()
@@ -188,7 +221,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <UPopover v-model:open="open" :content="{ side: 'top', align: direction === 'in' ? 'start' : 'end', sideOffset: 8 }">
+  <UPopover v-model:open="open" :content="{ side: 'top', align: selectedDirection === 'in' ? 'start' : 'end', sideOffset: 8 }">
     <UButton
       :aria-label="triggerLabel ? `${triggerLabel} for ${layer.name}` : phase ? `Edit ${blockDescription} for ${layer.name}` : isAudio ? `Edit audio for ${layer.name}` : isKeyframe ? `Edit ${selectedLabel} for ${layer.name}` : `Edit ${directionLabel} animation for ${layer.name}: ${selectedLabel}`"
       :title="triggerLabel || (phase && phase.kind !== 'hold' && phase.kind !== 'audio' ? `${blockDescription} · Drag left or right to move; click to edit` : blockDescription)"
@@ -217,7 +250,7 @@ onBeforeUnmount(() => {
         <div class="flex shrink-0 items-start justify-between gap-2 border-b border-default p-3">
           <div class="min-w-0">
             <p class="text-sm font-semibold text-highlighted">
-              {{ title }}
+              {{ selectedPlacement === 'in' ? 'Entrance animation' : selectedPlacement === 'out' ? 'Exit animation' : title }}
             </p><p class="truncate text-xs text-muted">
               {{ layer.name }} · {{ isAudio && state.layoutView === 'all' && layer.linkId ? 'Linked layouts' : 'Current layout' }}
             </p>
@@ -240,16 +273,34 @@ onBeforeUnmount(() => {
             @click="() => { open = false }"
           />
         </div>
-        <div class="min-h-0 overflow-y-auto p-3">
-          <UTabs
-            v-if="!isAudio"
-            v-model="tab"
-            :items="[{ label: 'Presets', value: 'presets', icon: 'i-lucide-panels-top-left' }, { label: 'Build', value: 'build', icon: 'i-lucide-sliders-horizontal' }]"
-            :content="false"
-            size="sm"
-            class="mb-3 w-full"
-          />
-          <template v-if="tab === 'presets' && !isAudio">
+        <div
+          v-if="!isAudio"
+          class="flex gap-1 border-b border-default px-3 py-2"
+          role="group"
+          aria-label="Animation position"
+        >
+          <ShadcnButton
+            v-for="position in ([{ value: 'in', label: 'Entrance' }, { value: 'middle', label: 'Middle' }, { value: 'out', label: 'Exit' }] as const)"
+            :key="position.value"
+            size="xs"
+            :variant="selectedPlacement === position.value ? 'secondary' : 'ghost'"
+            :aria-pressed="selectedPlacement === position.value"
+            :class="selectedPlacement === position.value ? 'bg-primary/10 text-primary ring-1 ring-primary/30' : ''"
+            class="flex-1"
+            @click="setPlacement(position.value)"
+          >
+            {{ position.label }}
+          </ShadcnButton>
+        </div>
+        <ShadcnTabs v-model="tab" class="min-h-0 overflow-y-auto p-3">
+          <TabsList v-if="!isAudio" class="mb-2 w-full">
+            <TabsTrigger value="presets">
+              Presets
+            </TabsTrigger><TabsTrigger value="build">
+              Build
+            </TabsTrigger>
+          </TabsList>
+          <TabsContent v-if="!isAudio" value="presets">
             <UFormField label="Search animations" class="mb-3">
               <UInput
                 v-model="search"
@@ -262,7 +313,7 @@ onBeforeUnmount(() => {
             <UAlert
               v-if="isKeyframe && !isMiddle && !addAtEnd"
               title="Custom keyframe animation"
-              description="Selecting a preset asks before replacing this layer’s keyframes and motion path. Build lets you edit the existing motion."
+              description="Presets update this part of the timeline. Later keyframes stay in place. Full-layer effects ask before replacing custom motion."
               color="neutral"
               variant="soft"
               class="mb-3"
@@ -288,7 +339,7 @@ onBeforeUnmount(() => {
                 />
               </div>
             </div>
-            <div class="grid grid-cols-4 gap-2">
+            <div class="grid grid-cols-3 gap-2">
               <UButton
                 v-if="canWordPop && !isMiddle"
                 aria-label="Words Pop entrance animation"
@@ -302,26 +353,29 @@ onBeforeUnmount(() => {
               >
                 <UIcon name="i-lucide-whole-word" class="size-6" /><span class="text-[11px]">Words Pop</span>
               </UButton>
-              <UButton
+              <ShadcnButton
                 v-for="preset in presets"
                 :key="preset.id"
                 :aria-label="`${preset.label} ${directionLabel} animation`"
-                :disabled="!editable"
+                :disabled="!editable || (isMiddle && !targetPhase)"
                 :aria-pressed="!isKeyframe && selectedId === preset.id"
                 color="neutral"
                 variant="ghost"
-                class="flex h-20 min-w-0 flex-col items-center justify-center gap-2 rounded-lg border border-default bg-default px-1 text-center"
+                class="flex h-16 min-w-0 flex-col items-center justify-center gap-2 rounded-lg border border-default bg-default px-1 text-center"
                 :class="!isKeyframe && selectedId === preset.id ? 'ring-1 ring-primary text-primary' : ''"
                 @click="choosePreset(preset.id)"
               >
                 <UIcon :name="'icon' in preset && String(preset.icon).startsWith('i-lucide-') ? preset.icon : `i-lucide-${iconFor(preset.id)}`" class="size-6" /><span class="w-full truncate text-[11px]">{{ preset.label }}</span>
-              </UButton>
+              </ShadcnButton>
             </div>
+            <p v-if="isMiddle && !targetPhase" class="py-2 text-xs text-muted">
+              Make room between existing animations before adding a middle effect.
+            </p>
             <p v-if="!presets.length && !canWordPop" class="py-5 text-center text-sm text-muted">
               No matching animations. Try another name.
             </p>
-          </template>
-          <div v-else class="grid grid-cols-1 gap-4 @lg:grid-cols-2">
+          </TabsContent>
+          <TabsContent value="build" class="grid grid-cols-1 gap-4 @lg:grid-cols-2">
             <template v-if="isAudio">
               <UFormField label="Volume (%)">
                 <UInput
@@ -374,10 +428,10 @@ onBeforeUnmount(() => {
               </template>
             </template>
             <template v-else>
-              <UFormField :label="layer.wordPop && direction === 'in' ? 'Seconds per word' : 'Duration (seconds)'">
+              <UFormField :label="layer.wordPop && selectedDirection === 'in' ? 'Seconds per word' : 'Duration (seconds)'">
                 <UInput
                   :disabled="!editable"
-                  :model-value="direction === 'in' ? layer.wordPop?.duration ?? layer.animInDur ?? 0.6 : layer.outDur ?? 0.25"
+                  :model-value="selectedDirection === 'in' ? layer.wordPop?.duration ?? layer.animInDur ?? 0.6 : layer.outDur ?? 0.25"
                   type="number"
                   :min="0.05"
                   :step="0.05"
@@ -385,7 +439,7 @@ onBeforeUnmount(() => {
                   @update:model-value="setTiming"
                 />
               </UFormField>
-              <UFormField v-if="layer.wordPop && direction === 'in'" label="Word stagger (seconds)">
+              <UFormField v-if="layer.wordPop && selectedDirection === 'in'" label="Word stagger (seconds)">
                 <UInput
                   :disabled="!editable"
                   :model-value="layer.wordPop.stagger"
@@ -400,14 +454,14 @@ onBeforeUnmount(() => {
             </template>
             <UFormField v-if="!isAudio && (!isMiddle || frame)" label="Easing" class="@lg:col-span-2">
               <USelect
-                :model-value="isKeyframe ? frame?.easing || 'none' : direction === 'in' ? layer.wordPop?.ease || layer.ease || 'power2.out' : layer.animOutEase || 'power1.in'"
+                :model-value="isKeyframe ? frame?.easing || 'none' : selectedDirection === 'in' ? layer.wordPop?.ease || layer.ease || 'power2.out' : layer.animOutEase || 'power1.in'"
                 :items="easeOptions"
                 class="w-full"
                 @update:model-value="setEase"
               />
             </UFormField>
-          </div>
-        </div>
+          </TabsContent>
+        </ShadcnTabs>
         <div v-if="!isAudio && tab === 'build'" class="space-y-2 border-t border-default p-3">
           <UFormField v-if="!isKeyframe && !isMiddle" label="Animated property">
             <USelect v-model="property" :items="tracks" class="w-full" />

@@ -79,6 +79,8 @@ export function insertTimelineKeyframe(layer: Layer, property: KeyframeProperty,
 }
 
 export const MIDDLE_ANIMATIONS = [
+  { id: 'bounce', label: 'Bounce', icon: 'i-lucide-corner-right-up', properties: ['y'] },
+  { id: 'elastic', label: 'Elastic', icon: 'i-lucide-move-horizontal', properties: ['scaleX', 'scaleY'] },
   { id: 'blink', label: 'Blink', icon: 'i-lucide-eye', properties: ['opacity'] },
   { id: 'float', label: 'Float', icon: 'i-lucide-move-vertical', properties: ['y'] },
   { id: 'vibrate', label: 'Vibrate', icon: 'i-lucide-vibrate', properties: ['x'] },
@@ -95,8 +97,8 @@ export function addMiddleAnimation(layer: Layer, phase: TimelinePhase, id: strin
   const keyframes = { ...source }
   for (const property of preset.properties) {
     const resting = sample(property)
-    const offsets = id === 'vibrate' ? [0, -4, 4, -4, 4, -4, 4, 0] : [0, id === 'blink' ? -resting * 0.85 : id === 'float' ? -12 : resting * 0.08, 0]
-    const frames = offsets.map((offset, i) => ({ time: round(start + (end - start) * i / (offsets.length - 1)), value: resting + offset, easing: id === 'vibrate' ? 'none' : 'power1.inOut' }))
+    const offsets = id === 'vibrate' ? [0, -4, 4, -4, 4, -4, 4, 0] : [0, id === 'blink' ? -resting * 0.85 : id === 'float' ? -12 : id === 'bounce' ? -24 : id === 'elastic' ? resting * -0.25 : resting * 0.08, 0]
+    const frames = offsets.map((offset, i) => ({ time: round(start + (end - start) * i / (offsets.length - 1)), value: resting + offset, easing: id === 'vibrate' ? 'none' : id === 'bounce' && i === 1 ? 'bounce.out' : id === 'elastic' && i === 1 ? 'elastic.out(1,0.3)' : 'power1.inOut' }))
     keyframes[property] = [...(source[property] || []).filter(frame => frame.time < start - 1e-6 || frame.time > end + 1e-6), ...frames].sort((a, b) => a.time - b.time)
   }
   const animationClips = [...(layer.animationClips || []).filter(clip => clip.end <= start || clip.start >= end), { start, end, label: preset.label }]
@@ -104,12 +106,12 @@ export function addMiddleAnimation(layer: Layer, phase: TimelinePhase, id: strin
 }
 
 /** Reuse exit presets at the layer end without replacing earlier custom motion. */
-export function addEndAnimation(layer: Layer, id: AnimOutType, sample: (property: KeyframeProperty) => number = property => keyframeDefault(layer, property)): Partial<Layer> {
+export function addEndAnimation(layer: Layer, id: AnimOutType, sample: (property: KeyframeProperty) => number = property => keyframeDefault(layer, property), range?: { start: number, end: number }): Partial<Layer> {
   const start = layer.startTime ?? 0
-  const end = layer.endTime ?? start + 3
+  const end = range?.end ?? layer.endTime ?? start + 3
   const preset = ANIM_OUT.find(preset => preset.id === id)
   if (!preset || layer.type === 'audio' || end <= start) return {}
-  const exitStart = Math.max(start, end - 0.5)
+  const exitStart = range?.start ?? Math.max(start, end - 0.5)
   if (!Object.values(layer.keyframes || {}).some(track => track && track.length >= 2)) {
     return { animOut: id, animOutStart: exitStart, outDur: end - exitStart, animOutEase: 'power1.in' }
   }
@@ -120,14 +122,14 @@ export function addEndAnimation(layer: Layer, id: AnimOutType, sample: (property
     const properties: KeyframeProperty[] = key === 'scale' ? ['scaleX', 'scaleY'] : [key as KeyframeProperty]
     for (const property of properties) {
       const resting = sample(property)
-      const frames = (keyframes[property] || []).filter(frame => frame.time < exitStart).map(frame => ({ ...frame }))
+      const frames = (keyframes[property] || []).filter(frame => frame.time < exitStart || frame.time > end).map(frame => ({ ...frame }))
       if (!frames.length && exitStart > start) frames.push({ time: start, value: resting, easing: 'none' })
       frames.push({ time: exitStart, value: resting, easing: 'power1.in' }, { time: end, value })
-      keyframes[property] = frames
+      keyframes[property] = frames.sort((a, b) => a.time - b.time)
     }
   }
   return {
     keyframes,
-    animationClips: [...(layer.animationClips || []).filter(clip => clip.end <= exitStart), { start: exitStart, end, label: `Exit · ${preset.label}` }]
+    animationClips: [...(layer.animationClips || []).filter(clip => clip.end <= exitStart || clip.start >= end), { start: exitStart, end, label: `Exit · ${preset.label}` }]
   }
 }
