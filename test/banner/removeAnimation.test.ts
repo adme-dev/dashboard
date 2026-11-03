@@ -34,3 +34,14 @@ it('does not erase a motion path or an audio clip through an animation removal',
   expect(canRemoveTimelineAnimation(source, { kind: 'motion', start: 0, end: 4, label: 'Motion path', direction: 'in' })).toBe(false)
   expect(canRemoveTimelineAnimation({ ...layer, type: 'audio' }, timelinePhases(layer)[0])).toBe(false)
 })
+
+it('recognises and removes imported repeated opacity pulses, including equal-time reset anchors', () => {
+  const opacity = [{ time: 0, value: 0 }, { time: 1, value: 1 }, ...Array.from({ length: 11 }, (_, i) => ({ time: 3.5 + i * 0.35, value: i % 2 ? 0.2 : 1 })), { time: 7.1, value: 0.2 }, { time: 7.1, value: 1 }, { time: 8.4, value: 1 }]
+  const source = { ...layer, endTime: 8.4, keyframes: { opacity } }
+  const pulse = timelinePhases(source).find(phase => phase.label.includes('Pulsing opacity'))!
+  expect(pulse).toMatchObject({ kind: 'motion', start: 3.5, end: 7.1 })
+  const removed = { ...source, ...removeTimelineAnimation(source, pulse, () => 1) }
+  expect(removed.keyframes.opacity.slice(0, 2)).toEqual(opacity.slice(0, 2))
+  expect(removed.keyframes.opacity.at(-1)).toEqual({ time: 8.4, value: 1 })
+  expect(timelinePhases(removed).some(phase => phase.kind === 'motion')).toBe(false)
+})

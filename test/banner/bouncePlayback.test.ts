@@ -64,3 +64,19 @@ it('Pulse grows and returns to its resting scale in actual editor playback', () 
     expect(Number(gsap.getProperty(board.firstElementChild!, 'scaleX'))).toBeCloseTo(1)
   } finally { controller.destroyTimeline() }
 })
+
+it('Pulsate repeats the reference opacity behaviour using editable keyframes', () => {
+  const layer = { ...base, ...addMiddleAnimation(base, { kind: 'hold', start: 0, end: 4, label: 'Hold', direction: 'in' }, 'pulsate', 1, presetToKeyframes(base), () => 1) }
+  const state = { sets: { mrec: { layers: [layer] } }, activeKey: 'mrec', currentTime: 0, duration: 4, isPlaying: false, isLooping: false }
+  vi.stubGlobal('useBannerStudio', () => ({ state, activeLayers: ref([layer]) }))
+  const board = document.createElement('div'); board.innerHTML = '<div id="lyr-1"></div>'; document.body.append(board)
+  const controller = useBannerTimeline()
+  try {
+    controller.buildTimeline(board, [layer])
+    for (const [time, expected] of [[1, 1], [1.3, 0.2], [1.6, 1], [1.9, 0.2], [2.2, 1]]) {
+      controller.seekTo(time!)
+      expect(Number(gsap.getProperty(board.firstElementChild!, 'opacity'))).toBeCloseTo(expected!)
+    }
+    expect(layer.animationClips![0]!.label).toBe('Pulsate')
+  } finally { controller.destroyTimeline() }
+})
