@@ -92,8 +92,8 @@ export function addMiddleAnimation(layer: Layer, phase: TimelinePhase, id: strin
   const preset = MIDDLE_ANIMATIONS.find(preset => preset.id === id)
   if (!preset || phase.end - phase.start < 0.1) return {}
   const duration = Math.min(1.2, phase.end - phase.start)
-  const start = Math.max(phase.start, Math.min(phase.end - duration, at))
-  const end = start + duration
+  const start = round(Math.max(phase.start, Math.min(phase.end - duration, at)))
+  const end = round(start + duration)
   const keyframes = { ...source }
   for (const property of preset.properties) {
     const resting = sample(property)

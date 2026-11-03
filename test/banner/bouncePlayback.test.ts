@@ -3,6 +3,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { ref } from 'vue'
 import gsap from 'gsap'
 import { useBannerTimeline, presetToKeyframes } from '~/composables/useBannerTimeline'
+import { timelinePhases } from '~/utils/banner-timeline-phases'
 import { addMiddleAnimation } from '~/utils/banner-timeline-edit'
 import { applyTimelineEntrance } from '~/utils/banner-timeline-presets'
 import { buildBannerHTML } from '~/utils/banner-html-builder'
@@ -88,4 +89,10 @@ it('converting a no-exit preset does not invent a fade or revive stale clip labe
   const result = addMiddleAnimation(source, { kind: 'hold', start: 0.6, end: 4, label: 'Hold', direction: 'in' }, 'blink', 1, frames, () => 1)
   expect(result.animationClips!.map(clip => clip.label)).toEqual(['Entry · Bounce', 'Blink'])
   expect(result.keyframes!.opacity!.at(-1)).toMatchObject({ time: 4, value: 1 })
+})
+
+it('does not split a fractional boundary into a phantom zero-duration animation block', () => {
+  const source = { ...base, ...applyTimelineEntrance(base, 'bounceIn') }
+  const result = { ...source, ...addMiddleAnimation(source, { kind: 'hold', start: 0.6, end: 4, label: 'Hold', direction: 'in' }, 'blink', 0.6, presetToKeyframes(source), () => 1) }
+  expect(timelinePhases(result).map(phase => [phase.label, phase.start, phase.end])).toEqual([['Entry · Bounce', 0, 0.6], ['Blink', 0.6, 1.8], ['Hold', 1.8, 4]])
 })
