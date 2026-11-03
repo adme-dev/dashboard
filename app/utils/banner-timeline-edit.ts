@@ -1,6 +1,6 @@
 import { ANIM_OUT } from '~/utils/banner-constants'
 import type { AnimOutType, Keyframe, KeyframeProperty, Layer } from '~/types/banner-studio'
-import type { TimelinePhase } from '~/utils/banner-timeline-phases'
+import { timelinePhases, type TimelinePhase } from '~/utils/banner-timeline-phases'
 
 const round = (value: number) => Math.round(value * 10000) / 10000
 
@@ -101,7 +101,10 @@ export function addMiddleAnimation(layer: Layer, phase: TimelinePhase, id: strin
     const frames = offsets.map((offset, i) => ({ time: round(start + (end - start) * i / (offsets.length - 1)), value: resting + offset, easing: id === 'vibrate' ? 'none' : id === 'bounce' && i === 1 ? 'bounce.out' : id === 'elastic' && i === 1 ? 'elastic.out(1,0.3)' : 'power1.inOut' }))
     keyframes[property] = [...(source[property] || []).filter(frame => frame.time < start - 1e-6 || frame.time > end + 1e-6), ...frames].sort((a, b) => a.time - b.time)
   }
-  const animationClips = [...(layer.animationClips || []).filter(clip => clip.end <= start || clip.start >= end), { start, end, label: preset.label }]
+  const existingClips = Object.values(layer.keyframes || {}).some(track => track && track.length >= 2)
+    ? layer.animationClips || []
+    : timelinePhases(layer).filter(phase => phase.kind === 'entry' || phase.kind === 'exit').map(({ start, end, label }) => ({ start, end, label }))
+  const animationClips = [...existingClips.filter(clip => clip.end <= start || clip.start >= end), { start, end, label: preset.label }]
   return { keyframes, animationClips }
 }
 

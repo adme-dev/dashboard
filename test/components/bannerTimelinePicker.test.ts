@@ -200,7 +200,8 @@ it('offers Bounce in the middle without replacing the entrance', async () => {
   const { studio, click } = await mount({ endTime: 5 }, { kind: 'hold', start: 1, end: 4, label: 'Hold', direction: 'in' })
   await click('Bounce')
   const layer = studio.activeLayers.value[0]!
-  expect(layer.animationClips![0]!.label).toBe('Bounce')
+  expect(layer.animationClips!.map(clip => clip.label)).toContain('Bounce')
+  expect(layer.animationClips!.map(clip => clip.label)).toContain('Entry · Fade')
   expect(layer.keyframes!.y!.some(frame => frame.easing === 'bounce.out')).toBe(true)
   expect(layer.animIn).toBe('fadeIn')
 })

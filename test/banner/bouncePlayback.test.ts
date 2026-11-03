@@ -80,3 +80,12 @@ it('Blink repeats the reference opacity behaviour using editable keyframes', () 
     expect(layer.animationClips![0]!.label).toBe('Blink')
   } finally { controller.destroyTimeline() }
 })
+
+it('converting a no-exit preset does not invent a fade or revive stale clip labels', () => {
+  const source = { ...base, ...applyTimelineEntrance(base, 'bounceIn'), animationClips: [{ start: 3, end: 3.2, label: 'Old Blink' }] }
+  const frames = presetToKeyframes(source)
+  expect(frames.opacity!.at(-1)).toMatchObject({ time: 4, value: 1 })
+  const result = addMiddleAnimation(source, { kind: 'hold', start: 0.6, end: 4, label: 'Hold', direction: 'in' }, 'blink', 1, frames, () => 1)
+  expect(result.animationClips!.map(clip => clip.label)).toEqual(['Entry · Bounce', 'Blink'])
+  expect(result.keyframes!.opacity!.at(-1)).toMatchObject({ time: 4, value: 1 })
+})

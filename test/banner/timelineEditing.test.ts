@@ -106,7 +106,7 @@ describe('direct timeline timing edits', () => {
     const layer = base()
     const phase = { kind: 'hold', start: 2, end: 5.5, label: 'Hold', direction: 'in' } as const
     const change = addMiddleAnimation(layer, phase, 'blink', 5.49, {}, () => 1)
-    expect(change.animationClips).toEqual([{ start: 4.3, end: 5.5, label: 'Blink' }])
+    expect(change.animationClips).toEqual([{ start: 1, end: 1.5, label: 'Entry · Fade' }, { start: 5.5, end: 6, label: 'Exit · Fade' }, { start: 4.3, end: 5.5, label: 'Blink' }])
     expect(change.keyframes!.opacity!.map(frame => frame.time)).toEqual([4.3, 4.6, 4.9, 5.2, 5.5])
   })
   it('nudges a focused block without changing its duration', async () => {

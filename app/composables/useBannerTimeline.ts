@@ -118,7 +118,7 @@ export function presetToKeyframes(layer: Layer): Partial<Record<KeyframeProperty
   const inTime = startTime + (Object.keys(fromProps).length ? animDur : 0)
 
   // Exit values
-  const outStart = outPreset.id === 'none' ? endTime - 0.05 : timing.exitStart
+  const outStart = outPreset.id === 'none' ? endTime : timing.exitStart
   const outProps = outPreset && outPreset.id !== 'none' ? outPreset.to : {}
 
   // Opacity track
@@ -134,7 +134,7 @@ export function presetToKeyframes(layer: Layer): Partial<Record<KeyframeProperty
     opacityKfs.push({ time: outStart, value: layer.opacity, easing: outEase })
   }
   // Exit
-  const outOpacity = outProps.opacity !== undefined ? outProps.opacity : 0
+  const outOpacity = outPreset.id === 'none' ? layer.opacity : outProps.opacity !== undefined ? outProps.opacity : 0
   opacityKfs.push({ time: Math.min(endTime, timing.exitStart + outDur), value: outOpacity })
   result.opacity = opacityKfs
 

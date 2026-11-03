@@ -121,7 +121,7 @@ function applyPreset(id: string) {
   const change = id === 'wordPop'
     ? { animIn: 'none' as const, wordPop: props.layer.wordPop ?? { duration: 0.5, stagger: 0.1, ease: 'cubic-bezier(.21,.79,.09,.97)' } }
     : selectedDirection.value === 'in' ? { animIn: id as AnimInType, wordPop: undefined, ease: ANIM_IN.find(preset => preset.id === id)?.ease || 'power2.out' } : { animOut: id as AnimOutType }
-  updateLayer(props.layer.id, { ...reset, ...change })
+  updateLayer(props.layer.id, { ...reset, ...change, animationClips: undefined })
   state.selectedKeyframe = null
   pending.value = null
   focusAnimation()
