@@ -50,8 +50,14 @@ refusal. CI must run all 44 engine EDM tests and compile WASM after independent
 source review. Actual-WASM tests must then verify these projections, existing
 blank/imported/fixture suites, real-font substitution and screenshots at 100%
 and fit-width. Full Ford fidelity, save/reopen/Undo, hosted acceptance and
-publication remain separate gates. This change does not implement WP-N viewport,
-chrome or relay rebase work, or change the runtime pointer/assets/flags.
+publication remain separate gates. The follow-up viewport change fits the EmailLayout width at first real canvas
+sizing (100% cap, 24px top/side inset), including the exact upstream default
+1200×800 viewport. Later resizes preserve user pan/zoom; Fit width / 100% controls
+explicitly reset it. A tiny/hidden viewport defers initialization until usable.
+The ninth EDM UI regression verifies sizing, explicit controls, no-op authority
+and preservation of later camera state; actual-WASM viewport/control acceptance
+remains required. Generic EDM chrome restrictions and relay rebase remain outside
+these commits, as do runtime pointer/assets/flags.
 
 Native file snapshot/export, authenticated server relay sessions, durable native
 artifacts, arbitrary layout conversion and native template/module publication remain
@@ -65,7 +71,7 @@ corrected in this copy and its checksum updated.
 
 The `FigFlow native source build` GitHub workflow validates those inputs, runs
 native tests, then builds the browser package on Ubuntu x86_64. It requires the
-nine named bridge tests, 44 named engine EDM tests and eight named EDM UI tests to
+nine named bridge tests, 44 named engine EDM tests and nine named EDM UI tests to
 pass; a zero-test Cargo result is rejected. Jobs
 upload source/build receipts and logs, and have no deployment steps or secrets.
 

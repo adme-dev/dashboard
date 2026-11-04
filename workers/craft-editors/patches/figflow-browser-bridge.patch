@@ -4219,7 +4219,7 @@
          list.extend(text::specs());
 --- a/crates/engine/src/lib.rs
 +++ b/crates/engine/src/lib.rs
-@@ -345,6 +345,10 @@
+@@ -345,6 +345,12 @@
  #[derive(Clone, Debug)]
  pub struct DocState {
      pub doc: Arc<Document>,
@@ -4227,15 +4227,18 @@
 +    pub edm: Option<cmd::edm::EdmHandoff>,
 +    /// Separate canonical-operation designer state; never shared with content mode.
 +    pub edm_designer: Option<cmd::edm::EdmDesigner>,
++    /// One-shot camera initialization after a real EDM canvas viewport is known.
++    pub edm_view_initialized: bool,
      pub selection: Vec<NodeId>,
      pub page: NodeId,
      pub history: History,
-@@ -426,6 +430,8 @@
+@@ -426,6 +430,9 @@
              checkpoint: None,
              saved_doc: doc.clone(),
              doc,
 +            edm: None,
 +            edm_designer: None,
++            edm_view_initialized: false,
              selection: Vec::new(),
              page,
              history: History { limit: 1000, ..Default::default() },
@@ -4680,7 +4683,7 @@
 +}
 --- /dev/null
 +++ b/crates/ui-egui/src/edm_panel.rs
-@@ -0,0 +1,522 @@
+@@ -0,0 +1,593 @@
 +//! XeroFlow email content and canonical designer controls on native selections.
 +use std::collections::BTreeSet;
 +
@@ -4700,6 +4703,36 @@
 +const LINK: &str = "xeroflow.edm.linkHref";
 +const SECTION_TYPES: [&str; 8] = ["Heading", "Text", "Button", "Image", "Spacer", "Divider", "Container", "ColumnsContainer"];
 +const FONT_FAMILIES: [&str; 9] = ["MODERN_SANS", "BOOK_SANS", "ORGANIC_SANS", "GEOMETRIC_SANS", "HEAVY_SANS", "ROUNDED_SANS", "MODERN_SERIF", "BOOK_SERIF", "MONOSPACE"];
++
++/// View-only state: never changes native nodes or canonical handoff authority.
++pub fn fit_email_view(ds: &mut figcraft_engine::DocState, fit_width: bool) -> bool {
++    if ds.edm.is_none() && ds.edm_designer.is_none() { return false; }
++    if !ds.view.vw.is_finite() || !ds.view.vh.is_finite() || ds.view.vw <= 48.0 || ds.view.vh <= 48.0 { return false; }
++    let Some(root) = ds.doc.nodes().find(|node| node.plugin_data.get(BLOCK_ID).map(String::as_str) == Some("root") && node.plugin_data.get(ROLE).map(String::as_str) == Some("block")) else { return false };
++    let Some(bounds) = ds.doc.world_bounds(root.id) else { return false };
++    let width = bounds.x1 - bounds.x0;
++    if !width.is_finite() || width <= 0.0 { return false; }
++    ds.view.zoom = if fit_width { ((ds.view.vw - 48.0) / width).min(1.0) } else { 1.0 };
++    ds.view.cx = (bounds.x0 + bounds.x1) / 2.0;
++    ds.view.cy = bounds.y0 + (ds.view.vh / 2.0 - 24.0) / ds.view.zoom;
++    ds.edm_view_initialized = true;
++    true
++}
++
++/// Run after actual canvas sizing, including a first viewport exactly 1200×800.
++/// Later resizes update the viewport dimensions but retain the user's camera.
++pub fn size_viewport(ds: &mut figcraft_engine::DocState, width: f64, height: f64) {
++    if !width.is_finite() || !height.is_finite() || width <= 0.0 || height <= 0.0 { return; }
++    let changed = (ds.view.vw - width).abs() > 0.5 || (ds.view.vh - height).abs() > 0.5;
++    let first = ds.view.vw == 1200.0 && ds.view.vh == 800.0;
++    ds.view.vw = width;
++    ds.view.vh = height;
++    if ds.edm.is_some() || ds.edm_designer.is_some() {
++        if !ds.edm_view_initialized { fit_email_view(ds, true); }
++    } else if changed && first {
++        ds.zoom_to_fit();
++    }
++}
 +
 +fn apply_operation(app: &mut FigApp, operation: Value) {
 +    let _ = app.run("edm_designer_apply", json!({"operations": [operation]}));
@@ -5054,6 +5087,19 @@
 +}
 +
 +pub fn section(app: &mut FigApp, ui: &mut Ui, doc: &Document, selection: &[NodeId]) -> bool {
++    if app.session.ds().is_ok_and(|ds| ds.edm.is_some() || ds.edm_designer.is_some()) {
++        ui.horizontal(|ui| {
++            for (label, fit_width) in [("Fit width", true), ("100%", false)] {
++                if ui.button(label).clicked() {
++                    if let Ok(ds) = app.session.ds_mut() { fit_email_view(ds, fit_width); }
++                }
++            }
++        });
++        if selection.is_empty() && app.session.ds().is_ok_and(|ds| ds.edm.is_some()) {
++            ui.label("Select text, an image or a button");
++            return true;
++        }
++    }
 +    if app.session.ds().is_ok_and(|ds| ds.edm_designer.is_some()) {
 +        designer_section(app, ui, doc, selection);
 +        return true;
@@ -5197,6 +5243,34 @@
 +    }
 +
 +    #[test]
++    fn edm_viewport_first_size_fits_width_and_preserves_later_camera() {
++        let mut session = target_session();
++        let ds = session.ds_mut().unwrap();
++        super::size_viewport(ds, 1200.0, 800.0);
++        assert!(ds.edm_view_initialized);
++        assert_eq!(ds.view.zoom, 1.0);
++        assert_eq!(ds.view.cy, 376.0);
++        ds.view.zoom = 0.77;
++        ds.view.cx = 111.0;
++        ds.view.cy = 999.0;
++        super::size_viewport(ds, 900.0, 700.0);
++        assert_eq!((ds.view.zoom, ds.view.cx, ds.view.cy), (0.77, 111.0, 999.0));
++        super::size_viewport(ds, 400.0, 700.0);
++        assert!(super::fit_email_view(ds, true));
++        assert!((ds.view.zoom - 352.0 / 600.0).abs() < 1e-9);
++        assert!((ds.view.cy * ds.view.zoom - (350.0 - 24.0)).abs() < 1e-9);
++        assert!(super::fit_email_view(ds, false));
++        assert_eq!(ds.view.zoom, 1.0);
++        assert_eq!(ds.view.cy, 326.0);
++        ds.edm_view_initialized = false;
++        super::size_viewport(ds, 1.0, 1.0);
++        assert!(!ds.edm_view_initialized);
++        super::size_viewport(ds, 800.0, 600.0);
++        assert!(ds.edm_view_initialized);
++        assert_eq!(session.execute("edm_designer_snapshot", &json!({})).unwrap()["operations"], json!([]));
++    }
++
++    #[test]
 +    fn edm_panel_field_commit_logs_only_a_changed_value() {
 +        assert_eq!(changed("Hi {{firstName}}".into(), "Hi {{firstName}}"), None, "focus in and out commits nothing");
 +        assert_eq!(changed("Hey {{firstName}}".into(), "Hi {{firstName}}"), Some("Hey {{firstName}}".into()));
@@ -5205,14 +5279,15 @@
 +}
 --- a/crates/ui-egui/src/right.rs
 +++ b/crates/ui-egui/src/right.rs
-@@ -341,12 +341,24 @@
+@@ -341,12 +341,25 @@
      let doc = ds.text_preview.clone().unwrap_or_else(|| ds.doc.clone());
      let sel = ds.selection.clone();
      let vector_edit = ds.vector_edit.clone();
 +    let designer = ds.edm_designer.is_some();
++    let email = designer || ds.edm.is_some();
      if sel.is_empty() {
 -        page_section(app, ui, &doc);
-+        if designer {
++        if email {
 +            crate::edm_panel::section(app, ui, &doc, &sel);
 +            widgets::separator(ui);
 +        } else {
@@ -5469,3 +5544,24 @@
 +        assert!(snapshot_ok(&mut u));
 +    }
 +}
+--- a/crates/ui-egui/src/canvas.rs
++++ b/crates/ui-egui/src/canvas.rs
+@@ -171,16 +171,8 @@
+     let resp = ui.interact(rect, ui.id().with("canvas"), Sense::click_and_drag());
+     let key_box = app.ui.key_box;
+     crate::a11y::canvas(&mut app.ui.nav, &resp, || key_box.map_or_else(|| describe(&app.session), describe_box));
+-    if let Ok(ds) = app.session.ds_mut()
+-        && ((ds.view.vw - f64::from(rect.width())).abs() > 0.5 || (ds.view.vh - f64::from(rect.height())).abs() > 0.5)
+-    {
+-        // Keep the centre; the first sizing after opening re-fits.
+-        let first = ds.view.vw == 1200.0 && ds.view.vh == 800.0;
+-        ds.view.vw = f64::from(rect.width());
+-        ds.view.vh = f64::from(rect.height());
+-        if first {
+-            ds.zoom_to_fit();
+-        }
++    if let Ok(ds) = app.session.ds_mut() {
++        crate::edm_panel::size_viewport(ds, f64::from(rect.width()), f64::from(rect.height()));
+     }
+     let own_cursor = input(app, ui, &resp);
+     // A browser names no dragged file until the drop, so documents there still say "import", or

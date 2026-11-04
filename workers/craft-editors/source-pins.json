@@ -23,7 +23,7 @@
       },
       {
         "path": "patches/figflow-browser-bridge.patch",
-        "sha256": "4a5804476bb406f42c765e22acc487cebcadc2425815e05a0490199a200bb3e0"
+        "sha256": "968f9c73013b1b68b3906170fd8636e6289d1fbdadebb26b7548cf8752a7b026"
       }
     ]
   }
