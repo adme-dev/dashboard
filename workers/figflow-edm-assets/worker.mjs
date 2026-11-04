@@ -1,7 +1,8 @@
 // Private service only. The creative host checks the existing staff session
-// before forwarding this one immutable editor path, without its credentials.
+// before forwarding these immutable editor paths, without its credentials.
 import { LIBRARY_SHELL, STANDALONE_INDEX } from './library-shell.mjs'
 export const PREFIX = '/figflow/0.11.2-edm1/'
+export const PREFIXES = [PREFIX, '/figflow/0.11.2-edm3/', '/figflow/0.11.2-edm4/']
 export default {
   async fetch(request, env) {
     const url = new URL(request.url)
@@ -14,12 +15,12 @@ export default {
         'Referrer-Policy': 'no-referrer', 'X-Content-Type-Options': 'nosniff'
       } })
     }
-    if (url.hostname !== 'creative.xeroflow.io' || !url.pathname.startsWith(PREFIX)
+    if (url.hostname !== 'creative.xeroflow.io' || !PREFIXES.some(prefix => url.pathname.startsWith(prefix))
       || /[%\\]/.test(url.pathname) || !env.ASSETS) return new Response('Not found', { status: 404 })
     url.search = ''
     const response = await env.ASSETS.fetch(new Request(url, { method: request.method }))
     const headers = new Headers(response.headers)
-    headers.set('Cache-Control', 'private, no-store')
+    headers.set('Cache-Control', response.ok ? 'private, max-age=31536000, immutable' : 'private, no-store')
     headers.set('Content-Security-Policy', "frame-ancestors 'self' https://app.xeroflow.io")
     headers.set('Referrer-Policy', 'no-referrer')
     headers.set('X-Content-Type-Options', 'nosniff')
