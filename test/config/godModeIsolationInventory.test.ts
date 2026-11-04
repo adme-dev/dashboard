@@ -228,7 +228,7 @@ describe('God mode route isolation inventory', () => {
       'server/api/email/design/assets/publish.post.ts': ['await designLibrarySession(event, true)'],
       'server/api/email/design/conditions.get.ts': ['await validateSession(token)', 'assertFreshDesignAccess(', 'env.FIGFLOW_EDM_DRAFT_SAVES_ENABLED !== \'true\'', 'env.FIGFLOW_EDM_DESIGNER_ENABLED !== \'true\''],
       'server/api/email/design/conditions.post.ts': ['await validateSession(token)', 'assertFreshDesignAccess(', 'env.FIGFLOW_EDM_DRAFT_SAVES_ENABLED !== \'true\'', 'env.FIGFLOW_EDM_DESIGNER_ENABLED !== \'true\'', 'assertDesignMutationRequest(event, env.FIGFLOW_EDM_APP_ORIGIN)'],
-      'server/api/email/design/designer.post.ts': ['await validateSession(token)', 'assertFreshDesignAccess(', 'env.FIGFLOW_EDM_DRAFT_SAVES_ENABLED !== \'true\'', 'env.FIGFLOW_EDM_DESIGNER_ENABLED !== \'true\'', 'assertDesignMutationRequest(event, env.FIGFLOW_EDM_APP_ORIGIN)'],
+      'server/api/email/design/designer.post.ts': ['await validateSession(token)', 'assertFreshDesignAccess(', 'env.FIGFLOW_EDM_DRAFT_SAVES_ENABLED !== \'true\'', 'const gate = designerGate(env)', '!gate.template', 'assertDesignMutationRequest(event, env.FIGFLOW_EDM_APP_ORIGIN)'],
       'server/api/email/design/drafts/[id]/brand.get.ts': ['await designBrandSession(event, false)'],
       'server/api/email/design/drafts/[id]/brand.post.ts': ['await designBrandSession(event, true)'],
       'server/api/email/design/drafts/[id]/locks.post.ts': ['await designBrandSession(event, true)'],
@@ -265,6 +265,34 @@ describe('God mode route isolation inventory', () => {
     const publisher = readFileSync('server/utils/email-marketing/designModulePublisher.ts', 'utf8')
     expect(publisher).toContain('await assertFreshDesignPublisher(token, actorId, storedScope)')
     expect(publisher).toContain('if (!token) throw createError({ statusCode: 401, statusMessage: \'design_session_invalid\' })')
+  })
+
+  it('pins template-only admission separately from campaign and global authoring authority', () => {
+    // This lexical inventory complements the real route/executor refusal tests
+    // in designTemplateGate; template admission must not become a global bypass.
+    const helper = readFileSync('server/utils/email-marketing/designerGate.ts', 'utf8')
+    expect(helper).toContain("const campaign = env.FIGFLOW_EDM_DESIGNER_ENABLED === 'true'")
+    expect(helper).toContain("template: campaign || env.FIGFLOW_EDM_TEMPLATE_DESIGNER_ENABLED === 'true'")
+    expect(helper).not.toMatch(/isApplicationCapabilityEnabled|registerGodModeMutationFamily|canBypassApplicationControl/)
+    for (const route of ['designer', 'roundtrip']) {
+      const source = readFileSync(`server/api/email/design/${route}.post.ts`, 'utf8')
+      expect(source).toContain("import { designerGate } from '~~/server/utils/email-marketing/designerGate'")
+      expect(source).toContain('const gate = designerGate(env)')
+      expect(source).toContain('assertCampaignNativeEnabled: () => {')
+      expect(source).toContain("if (!gate.campaign) throw createError({ statusCode: 404, statusMessage: 'not_found' })")
+      expect(source).toContain('await validateSession(token)')
+      expect(source).toContain('assertFreshDesignAccess(token, user.id,')
+      expect(source).toContain('assertDesignMutationRequest(event, env.FIGFLOW_EDM_APP_ORIGIN)')
+      expect(source).not.toMatch(/isApplicationCapabilityEnabled|registerGodModeMutationFamily|canBypassApplicationControl/)
+    }
+    const lookup = readFileSync('server/api/email/design/roundtrip.post.ts', 'utf8')
+    expect(lookup).toContain("result.owner?.kind === 'campaign' ? gate.campaign : gate.template")
+    expect(lookup).toContain("result.owner?.kind === 'campaign' && result.mutable && gate.campaign")
+    expect(lookup).toContain("const libraryAvailable = gate.campaign && available && result.draft?.state === 'structured'")
+    const handoffs = readFileSync('server/utils/email-marketing/designHandoffs.ts', 'utf8')
+    expect(handoffs).toContain('assertCampaignNativeEnabled(): void')
+    expect(handoffs).not.toMatch(/assertCampaignNativeEnabled\?\(|assertCampaignNativeEnabled\?\.\(/)
+    expect(handoffs).toContain('getHandoffDraft(db, row.document_id, authorizeWrite, authority.assertCampaignNativeEnabled)')
   })
 
   it('pins FigFlow route additions and relocated legacy guards to canonical authority', () => {

@@ -60,6 +60,16 @@ else
   export CRAFT_FONTS_DIR="$source_root/fonts/$engine"
   export CRAFT_FONTS_REQUIRED=1
   cd "$source_root/$engine"
+  # Check the two bridge-owned modules with the pinned formatter; retain corrected
+  # copies on failure so a follow-up patch can be reviewed without a local build.
+  rustup component add rustfmt --toolchain 1.95.0 >> "$evidence/setup.log" 2>&1
+  if ! rustfmt --edition 2024 --check crates/engine/src/cmd/edm.rs crates/ui-egui/src/edm_panel.rs > "$evidence/rustfmt.log" 2>&1; then
+    mkdir -p "$evidence/formatted"
+    cp crates/engine/src/cmd/edm.rs "$evidence/formatted/edm.rs"
+    cp crates/ui-egui/src/edm_panel.rs "$evidence/formatted/edm_panel.rs"
+    rustfmt --edition 2024 --config-path "$source_root/$engine" "$evidence/formatted/edm.rs" "$evidence/formatted/edm_panel.rs" >> "$evidence/rustfmt.log" 2>&1
+    exit 1
+  fi
   for filter in browser_save_tests xf_mark_tests save_as_tests variables_export_ui_tests browser_bridge; do
     cargo test --locked -p figcraft-ui-egui --lib "$filter" > "$evidence/test-$filter.log" 2>&1
   done
@@ -98,10 +108,11 @@ expected = {
     'edm_panel_structural_targets_omit_absent_column_and_keep_column_zero',
     'edm_panel_structural_emission_matches_shared_targets_and_engine_admits_it',
     'edm_panel_field_commit_logs_only_a_changed_value',
+    'edm_viewport_first_size_fits_width_and_preserves_later_camera',
 }
 matched = re.findall(r'^test (?:[A-Za-z0-9_]+::)*(edm_[A-Za-z0-9_]+) \.\.\. ok$', Path(sys.argv[1]).read_text(), re.M)
 if len(matched) != len(expected) or set(matched) != expected:
-    raise SystemExit(f'Expected exactly 8 passing EDM UI tests; matched {len(matched)}: {matched}')
+    raise SystemExit(f'Expected exactly 9 passing EDM UI tests; matched {len(matched)}: {matched}')
 PY
   cargo test --locked -p figcraft-engine --lib edm_ > "$evidence/test-edm.log" 2>&1
   python3 - "$evidence/test-edm.log" <<'PY'
@@ -122,6 +133,9 @@ expected = {
     'edm_image_url_change_requires_bytes_then_reopens_current_paint',
     'edm_policy_and_column_geometry_stay_bounded_and_non_overlapping',
     'edm_font_stacks_resolve_registered_families_and_heading_weights',
+    'edm_rich_projection_runs_entities_and_bounds',
+    'edm_rich_anchor_spacers_measured_and_protected',
+    'edm_rich_fallback_heading_and_designer_preserve_source',
     'edm_modern_styled_import_is_visible_semantic_and_noop_lossless',
     'edm_content_edit_reflows_once_without_phantom_or_compound_edits',
     'edm_designer_context_maps_selection_without_saving_or_inventing_target',
@@ -152,7 +166,7 @@ expected = {
 }
 matched = re.findall(r'^test (?:cmd::edm::tests::)?(edm_[A-Za-z0-9_]+) \.\.\. ok$', Path(sys.argv[1]).read_text(), re.M)
 if len(matched) != len(expected) or set(matched) != expected:
-    raise SystemExit(f'Expected exactly 41 passing EDM tests; matched {len(matched)}: {matched}')
+    raise SystemExit(f'Expected exactly 44 passing EDM tests; matched {len(matched)}: {matched}')
 PY
   cargo test --locked -p figcraft-engine --lib browser_export_bound > "$evidence/test-browser-export-bound.log" 2>&1
   cargo test --locked -p figcraft-format --lib zip_files > "$evidence/test-zip-files.log" 2>&1

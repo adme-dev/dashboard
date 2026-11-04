@@ -9,7 +9,7 @@ import { stableDesignJson, DesignModuleError } from '../../../shared/emailRender
 import { applyDesignerOperations, designerCapabilities, parseDesignerProposal, type DesignerRoundtripRequest } from '~~/shared/emailRendering/designDesigner'
 import { designToRendererDocument } from '~~/shared/emailRendering/designAdapter'
 import { transactionWithoutRetry } from '~~/server/utils/db'
-import { composerToDesignDraft, validateContentReturn } from '~~/shared/emailRendering/designComposer'
+import { composerToDesignDraft, isExactBlankBody, validateContentReturn } from '~~/shared/emailRendering/designComposer'
 import { validateEmailDesign, type EmailDesignDocument } from '~~/shared/emailRendering/designContract'
 import { FIGFLOW_EDM_EDITOR_URL, FIGFLOW_EDM_ORIGIN, designTargetOwner, type DesignHandoff, type DesignOwner, type RoundtripRequest } from '~~/shared/emailRendering/designRoundtrip'
 import type { EmailRendererClient } from '~~/shared/emailRendering/contract'
@@ -26,7 +26,7 @@ export interface Authority {
   actorId: string
   authorize(clientId: string | null, access: 'read' | 'write'): Promise<'staff' | 'designer'>
   /** Route-owned release policy, evaluated against parsed/persisted ownership. */
-  assertCampaignNativeEnabled?(): void
+  assertCampaignNativeEnabled(): void
 }
 interface HandoffRow {
   id: string
@@ -86,7 +86,7 @@ async function readHandoff(db: DesignDb, id: string, authority: Authority, desig
     WHERE h.id=$1 AND h.actor_id=$2 AND (t.template_kind='draft' OR c.id IS NOT NULL)
       AND h.expires_at + interval '30 days' > clock_timestamp() FOR UPDATE OF h`, [id, authority.actorId])).rows[0] as HandoffRow | undefined
   if (!row) throw new DesignHandoffError('NOT_FOUND')
-  if (row.campaign_id) authority.assertCampaignNativeEnabled?.()
+  if (row.campaign_id) authority.assertCampaignNativeEnabled()
   await authority.authorize(row.client_id, 'read')
   if (validateEmailDesign(row.payload).kind !== (row.template_id ? 'template' : 'campaign-draft')) throw new DesignHandoffError('NOT_FOUND')
   if (!admitting && (row.open_request_text ? JSON.parse(row.open_request_text).authoringMode === 'designer' : false) !== designer)
@@ -126,9 +126,9 @@ async function verifyCampaignDesign(design: EmailDesignDocument, authority: Auth
   if (verified.some(asset => !design.assets.some(saved => stableDesignJson(asset) === stableDesignJson(saved)))) throw new DesignModuleError('ASSET_NOT_READY')
 }
 
-async function getHandoffDraft(db: DesignDb, documentId: string, authorize: (scope: string | null) => Promise<void>, assertCampaignNativeEnabled?: () => void): Promise<HandoffDraftRead> {
+async function getHandoffDraft(db: DesignDb, documentId: string, authorize: (scope: string | null) => Promise<void>, assertCampaignNativeEnabled: () => void): Promise<HandoffDraftRead> {
   const identity = (await db.query('SELECT * FROM email_design_documents WHERE id=$1', [documentId])).rows[0] as { campaign_id: string | null } | undefined
-  if (identity?.campaign_id) assertCampaignNativeEnabled?.()
+  if (identity?.campaign_id) assertCampaignNativeEnabled()
   return identity?.campaign_id ? getDesignDraft(documentId, authorize, db) : getTemplateDesignDraft(documentId, authorize, db)
 }
 
@@ -173,7 +173,7 @@ async function readCommittedCampaignRecovery(db: DesignDb,
     recovery_pin: string | null
   }) | undefined
   if (!row) throw new DesignHandoffError('IDEMPOTENCY_CONFLICT')
-  authority.assertCampaignNativeEnabled?.()
+  authority.assertCampaignNativeEnabled()
   const action = request.action
   if (action.scope.clientId !== row.client_id || row.recovery_client_id !== row.client_id
     || action.proposalId !== row.id || action.expectedProposalRevisionId !== row.proposal_revision_id
@@ -250,7 +250,7 @@ async function executeRoundtrip(
   runTransaction: DesignTransaction = callback => transactionWithoutRetry(db => callback(db)),
   designer = false,
   storage?: DesignAssetStorage
-): Promise<{ handoff: DesignHandoff, recovery?: { campaignId: string, documentId: string, revisionId: string } } | { draft: HandoffDraftRead | null, owner?: DesignOwner, mutable?: boolean, clientId?: string | null }> {
+): Promise<{ handoff: DesignHandoff, recovery?: { campaignId: string, documentId: string, revisionId: string } } | { draft: HandoffDraftRead | null, owner?: DesignOwner, mutable?: boolean, clientId?: string | null, blankDesignerSource?: EmailDesignDocument }> {
   return runTransaction(async (db) => {
     const operationId = request.command === 'open' || request.command === 'start' ? request.operationId : 'action' in request ? request.action.operationId : null
     const encodedRequest = stable(designer ? { ...request, authoringMode: 'designer' } : request)
@@ -286,15 +286,25 @@ async function executeRoundtrip(
               }, db)
             : null }
         }
-        const row = (await db.query('SELECT id, client_id FROM edm_templates WHERE id=$1', [target.id])).rows[0] as { id: string, client_id: string | null } | undefined
+        const row = (await db.query('SELECT id, client_id, template_kind, body_source FROM edm_templates WHERE id=$1', [target.id])).rows[0] as { id: string, client_id: string | null, template_kind: string, body_source: unknown } | undefined
         if (!row) throw new DesignHandoffError('NOT_FOUND')
         await authority.authorize(row.client_id, 'read')
         const document = (await db.query('SELECT id FROM email_design_documents WHERE template_id=$1', [row.id])).rows[0] as { id: string } | undefined
-        return { draft: document
+        const draft = document
           ? await getTemplateDesignDraft(document.id, async (id) => {
               await authority.authorize(id, 'read')
             }, db)
-          : null }
+          : null
+        // Use the raw persisted body, never conversion output or caller hints.
+        // A legacy head also needs the existing whole-owner drift check.
+        const blankDesignerSource = row.template_kind === 'draft'
+          && (!draft || (draft.state === 'legacy' && !draft.ownerChangedSinceSnapshot))
+          && isExactBlankBody(row.body_source)
+          ? composerToDesignDraft(row.body_source, row.client_id)
+          : undefined
+        // Internal discovery metadata only; the HTTP boundary strips it. Keep
+        // draft null until atomic start creates the real persisted baseline.
+        return { draft, ...(blankDesignerSource ? { blankDesignerSource } : {}) }
       }
       if (request.command === 'open' || request.command === 'start') {
         const prior = (await db.query('SELECT id FROM email_design_handoffs WHERE id=$1', [request.operationId])).rows[0]
@@ -314,7 +324,7 @@ async function executeRoundtrip(
         const campaignStart = target?.kind === 'campaign'
         let campaignInitialized: { documentId: string, revisionId: string } | null = null
         if (campaignStart) {
-          authority.assertCampaignNativeEnabled?.()
+          authority.assertCampaignNativeEnabled()
           await assertCampaignOperation(db, authority.actorId, request.operationId, knownReceipt)
           const owner = (await db.query('SELECT client_id FROM campaigns WHERE id=$1 FOR UPDATE', [target.id])).rows[0] as { client_id: string } | undefined
           if (!owner || owner.client_id !== (request.command === 'start' ? request.clientId : null)) throw new DesignHandoffError('NOT_FOUND')
@@ -433,7 +443,7 @@ async function executeRoundtrip(
         if (designer) {
           // Reject a proposal whose source is already obsolete, but leave the
           // authoritative Apply CAS in the canonical writer as well.
-          const current = await getHandoffDraft(db, row.document_id, authorizeWrite)
+          const current = await getHandoffDraft(db, row.document_id, authorizeWrite, authority.assertCampaignNativeEnabled)
           if (current.headRevisionId !== row.base_revision_id || current.state !== 'structured' || current.projection.state !== 'current') throw new DesignHandoffError('REVISION_CONFLICT')
           await renderDesignerPreview(design, renderer)
           if (row.campaign_id) await verifyCampaignDesign(design, authority, db, storage)
@@ -528,7 +538,11 @@ export function executeDesignRoundtrip(request: RoundtripRequest, authority: Aut
  * uncertain replies; it is never selected by an actor/policy field in JSON. */
 export async function executeDesignerRoundtrip(request: DesignerRoundtripRequest, authority: Authority, renderer: EmailRendererClient, runTransaction?: DesignTransaction, storage?: DesignAssetStorage) {
   const result = await executeRoundtrip(request, authority, renderer, runTransaction, true, storage)
-  if (!('handoff' in result) || result.recovery) return result
+  if (!('handoff' in result)) {
+    const { blankDesignerSource: _discovery, ...lookup } = result
+    return lookup
+  }
+  if (result.recovery) return result
   await authority.authorize(result.handoff.source.scope.clientId, 'read')
   const html = await renderDesignerPreview(result.handoff.proposal ?? result.handoff.source, renderer)
   await authority.authorize(result.handoff.source.scope.clientId, 'read')

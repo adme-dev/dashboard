@@ -1,0 +1,51 @@
+name: FigFlow typecheck comparison
+
+on:
+  pull_request:
+    branches: [main]
+    paths: ['.github/workflows/figflow-typecheck-comparison.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  typecheck:
+    name: Full typecheck ${{ matrix.source }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        source: [candidate, baseline]
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ matrix.source == 'baseline' && github.event.pull_request.base.sha || github.event.pull_request.head.sha }}
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24.18.0
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Record comparable environment
+        run: |
+          mkdir -p .verification/typecheck-comparison
+          git rev-parse HEAD > .verification/typecheck-comparison/source.txt
+          node --version > .verification/typecheck-comparison/node.txt
+          pnpm --version > .verification/typecheck-comparison/pnpm.txt
+          sha256sum pnpm-lock.yaml > .verification/typecheck-comparison/lockfile.txt
+      - name: Full typecheck with retained diagnostics and failure status
+        shell: bash
+        run: |
+          set +e
+          pnpm typecheck 2>&1 | tee .verification/typecheck-comparison/typecheck.log
+          result=${PIPESTATUS[0]}
+          printf '%s\n' "$result" > .verification/typecheck-comparison/exit-code.txt
+          exit "$result"
+      - name: Preserve diagnostic evidence even on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: figflow-typecheck-${{ matrix.source }}-${{ github.run_id }}
+          path: .verification/typecheck-comparison/
+          if-no-files-found: error

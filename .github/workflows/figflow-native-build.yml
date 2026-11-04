@@ -58,7 +58,7 @@ jobs:
           assert pin['commit'] == 'd4a303d4708602a9df1738960852d18b185a616b'
           assert pin['source_archive_sha256'] == '04710e7815266580083267103d3fe93218c4dee02415e7016574ee866a09aaa6'
           assert pin['cargo_lock_sha256'] == '539397203fa01e0f460ab2fad69b32003b838828751a7373e833d23b56e35b94'
-          assert pin['release_version'] == '0.11.2-edm3'
+          assert pin['release_version'] == '0.11.2-edm4'
           relay = root / 'figflow-edm-relay.mjs'
           assert relay.is_file() and hashlib.sha256(relay.read_bytes()).hexdigest() == pin['browser_relay_sha256']
           applied = [
@@ -104,14 +104,14 @@ jobs:
           assert 'len(matched) != len(expected) or set(matched) != expected' in build
           assert 'Expected exactly nine passing browser_bridge tests' in build
           assert 'cargo test --locked -p figcraft-engine --lib edm_' in build
-          assert 'Expected exactly 41 passing EDM tests' in build
+          assert 'Expected exactly 44 passing EDM tests' in build
           assert 'cargo test --locked -p figcraft-ui-egui --lib edm_' in build
-          assert 'Expected exactly 8 passing EDM UI tests' in build
+          assert 'Expected exactly 9 passing EDM UI tests' in build
           package = (root / 'build-browser.sh').read_text()
           assert 'case "$engine" in figcraft)' in package
           assert 'Cargo.lock differs from pinned source' in package
           assert 'Browser relay differs from pinned source' in package
-          assert '0.11.2-edm3' in package
+          assert '0.11.2-edm4' in package
           assert 'figflow-edm-relay.mjs' in bridge
 
           workflow = Path('.github/workflows/figflow-native-build.yml').read_text()

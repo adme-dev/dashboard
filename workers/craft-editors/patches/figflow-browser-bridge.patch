@@ -137,7 +137,7 @@
 +}
 --- /dev/null
 +++ b/crates/engine/src/cmd/edm.rs
-@@ -0,0 +1,3794 @@
+@@ -0,0 +1,4841 @@
 +//! Bounded XeroFlow email handoffs on a real native document.
 +//!
 +//! The canonical document is retained verbatim. A snapshot patches only approved
@@ -147,8 +147,7 @@
 +use base64::Engine as _;
 +use figcraft_color::{Color, Paint, PaintKind};
 +use figcraft_doc::{
-+    Document, EffectKind, ImageData, LetterSpacing, LineHeight, Node, NodeId, NodeKind,
-+    TextAlignH, TextAutoResize, TextCase, TextData, TextStyle,
++    Document, EffectKind, ImageData, LetterSpacing, LineHeight, Node, NodeId, NodeKind, TextAlignH, TextAutoResize, TextCase, TextData, TextStyle,
 +};
 +use serde_json::{Value, json};
 +
@@ -227,8 +226,12 @@
 +impl Padding {
 +    const ZERO: Self = Self { top: 0.0, right: 0.0, bottom: 0.0, left: 0.0 };
 +    const DEFAULT: Self = Self { top: 16.0, right: 24.0, bottom: 16.0, left: 24.0 };
-+    fn horizontal(self) -> f64 { self.left + self.right }
-+    fn vertical(self) -> f64 { self.top + self.bottom }
++    fn horizontal(self) -> f64 {
++        self.left + self.right
++    }
++    fn vertical(self) -> f64 {
++        self.top + self.bottom
++    }
 +}
 +
 +#[derive(Clone)]
@@ -308,7 +311,12 @@
 +    if value.len() > MAX_CONTENT || value.chars().any(|c| js_whitespace(c) || c.is_control() || matches!(c, '<' | '>' | '"' | '\'')) {
 +        return false;
 +    }
-+    if !image && (value.is_empty() || value.strip_prefix('#').is_some_and(|fragment| fragment.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'.' | b':' | b'-')))) {
++    if !image
++        && (value.is_empty()
++            || value
++                .strip_prefix('#')
++                .is_some_and(|fragment| fragment.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'.' | b':' | b'-'))))
++    {
 +        return true;
 +    }
 +    let Some(scheme_end) = value.find(':') else { return false };
@@ -368,15 +376,18 @@
 +        }
 +    }
 +    if kind != "ColumnsContainer" {
-+        if prop(block, "columns").and_then(Value::as_array).is_some_and(|columns| {
-+            columns.iter().any(|column| column.as_object().is_some_and(|column| column.contains_key("childrenIds")))
-+        }) {
++        if prop(block, "columns")
++            .and_then(Value::as_array)
++            .is_some_and(|columns| columns.iter().any(|column| column.as_object().is_some_and(|column| column.contains_key("childrenIds"))))
++        {
 +            return Err(bad("edm_import", "column childrenIds are not valid for this block"));
 +        }
 +        return Ok(result);
 +    }
 +    let count = match prop(block, "columnsCount") {
-+        Some(_) => number_prop(block, "columnsCount").filter(|count| (1.0..=3.0).contains(count) && count.fract() == 0.0).ok_or_else(|| bad("edm_import", "invalid columnsCount"))?,
++        Some(_) => number_prop(block, "columnsCount")
++            .filter(|count| (1.0..=3.0).contains(count) && count.fract() == 0.0)
++            .ok_or_else(|| bad("edm_import", "invalid columnsCount"))?,
 +        None => 2.0,
 +    };
 +    let Some(columns) = prop(block, "columns").and_then(Value::as_array) else {
@@ -550,7 +561,10 @@
 +    ("ORGANIC_SANS", &["Seravek", "Gill Sans Nova", "Ubuntu", "Calibri", "Carlito", "DejaVu Sans", "Source Sans 3", "Inter"]),
 +    ("GEOMETRIC_SANS", &["Avenir", "Avenir Next LT Pro", "Montserrat", "Corbel", "URW Gothic", "Source Sans 3", "Inter"]),
 +    ("HEAVY_SANS", &["Bahnschrift", "DIN Alternate", "Franklin Gothic Medium", "Nimbus Sans Narrow", "Inter"]),
-+    ("ROUNDED_SANS", &["Hiragino Maru Gothic ProN", "Quicksand", "Comfortaa", "Manjari", "Arial Rounded MT Bold", "Calibri", "Carlito", "Nunito Sans", "Inter"]),
++    (
++        "ROUNDED_SANS",
++        &["Hiragino Maru Gothic ProN", "Quicksand", "Comfortaa", "Manjari", "Arial Rounded MT Bold", "Calibri", "Carlito", "Nunito Sans", "Inter"],
++    ),
 +    ("MODERN_SERIF", &["Charter", "Bitstream Charter", "Sitka Text", "Cambria", "Caladea", "Source Serif 4", "Liberation Serif", "Inter"]),
 +    ("BOOK_SERIF", &["Iowan Old Style", "Palatino Linotype", "URW Palladio L", "P052", "Merriweather", "Liberation Serif", "Inter"]),
 +    ("MONOSPACE", &["Nimbus Mono PS", "Courier New", "Cutive Mono", "Liberation Mono", "Inter"]),
@@ -586,7 +600,8 @@
 +        // An explicit canonical weight wins; an unrecognised one stays Regular, as before.
 +        Some(raw) => name(raw).unwrap_or("Regular"),
 +        None => name(fallback).unwrap_or("Regular"),
-+    }.into()
++    }
++    .into()
 +}
 +
 +fn text_align(block: &Value, fallback: TextAlignH) -> TextAlignH {
@@ -610,14 +625,17 @@
 +    if let Some(number) = text.strip_suffix('%').and_then(|v| v.trim().parse::<f64>().ok()).filter(|v| v.is_finite()) {
 +        return LineHeight::Percent(number);
 +    }
-+    if let Some(number) = text.strip_suffix("rem").or_else(|| text.strip_suffix("em")).and_then(|v| v.trim().parse::<f64>().ok()).filter(|v| v.is_finite()) {
++    if let Some(number) =
++        text.strip_suffix("rem").or_else(|| text.strip_suffix("em")).and_then(|v| v.trim().parse::<f64>().ok()).filter(|v| v.is_finite())
++    {
 +        return LineHeight::Percent(number * 100.0);
 +    }
 +    text.parse::<f64>().ok().filter(|v| v.is_finite()).map_or(LineHeight::Percent(fallback * 100.0), |v| LineHeight::Percent(v * 100.0))
 +}
 +
 +fn text_data(block: &Value, content: String, spec: TextSpec, theme: &Theme) -> TextData {
-+    let family = native_font_family(if spec.honor_text_style { style_string(block, "fontFamily").unwrap_or(&theme.font_family) } else { &theme.font_family });
++    let family =
++        native_font_family(if spec.honor_text_style { style_string(block, "fontFamily").unwrap_or(&theme.font_family) } else { &theme.font_family });
 +    let weight = if spec.honor_font_weight { native_font_weight(style_string(block, "fontWeight"), spec.weight) } else { spec.weight.into() };
 +    let mut data = TextData::new(content);
 +    data.style = TextStyle {
@@ -625,7 +643,11 @@
 +        font_style: weight,
 +        font_size: if spec.honor_text_style { style_number(block, "fontSize").unwrap_or(spec.size) } else { spec.size },
 +        line_height: if spec.honor_text_style { line_height(block, spec.line_height) } else { LineHeight::Percent(spec.line_height * 100.0) },
-+        letter_spacing: if spec.honor_text_style { style_number(block, "letterSpacing").map_or(LetterSpacing::Pixels(0.0), LetterSpacing::Pixels) } else { LetterSpacing::Pixels(0.0) },
++        letter_spacing: if spec.honor_text_style {
++            style_number(block, "letterSpacing").map_or(LetterSpacing::Pixels(0.0), LetterSpacing::Pixels)
++        } else {
++            LetterSpacing::Pixels(0.0)
++        },
 +        case: if spec.honor_text_style {
 +            match style_string(block, "textTransform") {
 +                Some("uppercase") => TextCase::Upper,
@@ -642,6 +664,282 @@
 +    data.auto_resize = TextAutoResize::None;
 +    data.align_h = if spec.honor_text_style { text_align(block, spec.align) } else { spec.align };
 +    data
++}
++
++// Display-only strict inline grammar. Unknown syntax fails the entire projection;
++// canonical HTML is never passed back through this parser or reconstructed from runs.
++fn rich_entities(raw: &str) -> Option<String> {
++    let mut out = String::new();
++    let mut rest = raw;
++    while let Some(i) = rest.find('&') {
++        out.push_str(&rest[..i]);
++        rest = &rest[i + 1..];
++        let end = rest.find(';').filter(|n| *n <= 32)?;
++        let entity = &rest[..end];
++        let ch = match entity {
++            "amp" => '&',
++            "lt" => '<',
++            "gt" => '>',
++            "quot" => '"',
++            "apos" => '\'',
++            "nbsp" => '\u{a0}',
++            "copy" => '©',
++            "reg" => '®',
++            "trade" => '™',
++            "ndash" => '–',
++            "mdash" => '—',
++            "hellip" => '…',
++            "lsquo" => '‘',
++            "rsquo" => '’',
++            "ldquo" => '“',
++            "rdquo" => '”',
++            _ => {
++                let n = if let Some(h) = entity.strip_prefix("#x").or_else(|| entity.strip_prefix("#X")) {
++                    if h.is_empty() || !h.bytes().all(|b| b.is_ascii_hexdigit()) {
++                        return None;
++                    }
++                    u32::from_str_radix(h, 16).ok()?
++                } else {
++                    let d = entity.strip_prefix('#')?;
++                    if d.is_empty() || !d.bytes().all(|b| b.is_ascii_digit()) {
++                        return None;
++                    }
++                    d.parse::<u32>().ok()?
++                };
++                char::from_u32(n)?
++            }
++        };
++        if ch.is_control() && ch != '\n' && ch != '\t' {
++            return None;
++        }
++        out.push(ch);
++        rest = &rest[end + 1..];
++    }
++    out.push_str(rest);
++    Some(out)
++}
++
++fn rich_css(raw: &str, style: &mut TextStyle, align: &mut TextAlignH, outer: bool) -> Option<()> {
++    for declaration in raw.split(';').filter(|s| !s.trim().is_empty()) {
++        let (key, value) = declaration.split_once(':')?;
++        let value = value.trim();
++        let number = |s: &str| s.parse::<f64>().ok().filter(|n| n.is_finite() && *n > 0.0 && *n <= 512.0);
++        match key.trim().to_ascii_lowercase().as_str() {
++            "font-size" => style.font_size = number(value.strip_suffix("px")?)?,
++            "line-height" => {
++                style.line_height = if let Some(px) = value.strip_suffix("px") {
++                    LineHeight::Pixels(number(px)?)
++                } else {
++                    LineHeight::Percent(number(value)? * 100.0)
++                }
++            }
++            "color" => style.fills = Some(vec![Paint::solid(Color::parse_css(value)?)]),
++            "font-weight" => {
++                if !matches!(value, "normal" | "bold" | "100" | "200" | "300" | "400" | "500" | "600" | "700" | "800" | "900") {
++                    return None;
++                }
++                let italic = style.italic();
++                style.font_style = native_font_weight(Some(value), "Regular");
++                if italic {
++                    style.font_style.push_str(" Italic");
++                }
++            }
++            "font-style" => {
++                let base = style.font_style.trim_end_matches(" Italic").trim_end_matches("Italic").trim();
++                style.font_style = match value {
++                    "normal" => {
++                        if base.is_empty() {
++                            "Regular".into()
++                        } else {
++                            base.into()
++                        }
++                    }
++                    "italic" => format!("{} Italic", if base.is_empty() { "Regular" } else { base }),
++                    _ => return None,
++                };
++            }
++            "font-family" => {
++                let families = value.split(',').map(|s| s.trim().trim_matches(['\'', '"'])).collect::<Vec<_>>();
++                if families.iter().any(|s| s.is_empty()) {
++                    return None;
++                }
++                style.font_family = families.iter().find(|s| figcraft_text::has_family(s)).copied().unwrap_or("Inter").into();
++            }
++            "text-decoration" => {
++                style.decoration = match value {
++                    "underline" => figcraft_doc::TextDecoration::Underline,
++                    "line-through" => figcraft_doc::TextDecoration::Strikethrough,
++                    "none" => figcraft_doc::TextDecoration::None,
++                    _ => return None,
++                }
++            }
++            "text-align" if outer => {
++                *align = match value {
++                    "left" => TextAlignH::Left,
++                    "center" => TextAlignH::Center,
++                    "right" => TextAlignH::Right,
++                    _ => return None,
++                }
++            }
++            "margin" | "padding" if matches!(value, "0" | "0px") => {}
++            "display" if value == "inline" || (outer && value == "block") => {}
++            _ => return None,
++        }
++    }
++    Some(())
++}
++
++fn rich_projection(raw: &str, mut data: TextData) -> Option<TextData> {
++    if raw.len() > MAX_CONTENT || raw.chars().any(|c| c.is_control() && !matches!(c, '\n' | '\r' | '\t')) {
++        return None;
++    }
++    data.characters.clear();
++    data.runs.clear();
++    let mut stack: Vec<(String, TextStyle, usize)> = vec![(String::new(), data.style.clone(), 0)];
++    let mut rest = raw;
++    let mut count = 0;
++    let mut tokens = 0;
++    let mut paragraph_break = false;
++    let mut whole_wrapper = false;
++    while !rest.is_empty() {
++        tokens += 1;
++        if tokens > 1024 {
++            return None;
++        }
++        if !rest.starts_with('<') {
++            let end = rest.find('<').unwrap_or(rest.len());
++            let text = rich_entities(&rest[..end])?;
++            rest = &rest[end..];
++            let style = &stack.last()?.1;
++            if paragraph_break && !text.is_empty() {
++                data.characters.push('\n');
++                data.runs.push(figcraft_doc::StyleRun { start: count, end: count + 1, style: stack.last()?.1.clone() });
++                count += 1;
++                paragraph_break = false;
++            }
++            let start = count;
++            count += text.chars().count();
++            data.characters.push_str(&text);
++            data.runs.push(figcraft_doc::StyleRun { start, end: count, style: style.clone() });
++            continue;
++        }
++        // Quote-aware token boundary: '>' inside a destination is not a tag end.
++        let mut quote = None;
++        let mut end = None;
++        for (i, ch) in rest.char_indices().skip(1) {
++            match (quote, ch) {
++                (Some(q), c) if c == q => quote = None,
++                (None, '\'' | '"') => quote = Some(ch),
++                (None, '>') => {
++                    end = Some(i);
++                    break;
++                }
++                _ => {}
++            }
++        }
++        let end = end?;
++        let token = &rest[1..end];
++        rest = &rest[end + 1..];
++        if let Some(close) = token.strip_prefix('/') {
++            let name = close.trim().to_ascii_lowercase();
++            if stack.len() == 1 || stack.last()?.0 != name {
++                return None;
++            }
++            if matches!(name.as_str(), "p" | "div") && count == stack.last()?.2 {
++                return None;
++            }
++            stack.pop();
++            if whole_wrapper && stack.len() == 1 && !rest.is_empty() {
++                return None;
++            }
++            if matches!(name.as_str(), "p" | "div") {
++                paragraph_break = true;
++            }
++            continue;
++        }
++        let token = token.trim();
++        let name_end = token.find(|c: char| !c.is_ascii_alphanumeric()).unwrap_or(token.len());
++        let name = token[..name_end].to_ascii_lowercase();
++        if !matches!(name.as_str(), "a" | "span" | "b" | "strong" | "i" | "em" | "u" | "s" | "br" | "p" | "div") {
++            return None;
++        }
++        let mut attrs = token[name_end..].trim();
++        if name == "br" {
++            if !attrs.is_empty() && attrs != "/" {
++                return None;
++            }
++            data.characters.push('\n');
++            data.runs.push(figcraft_doc::StyleRun { start: count, end: count + 1, style: stack.last()?.1.clone() });
++            count += 1;
++            paragraph_break = false;
++            continue;
++        }
++        if stack.len() > 32 || (name == "a" && stack.iter().any(|s| s.0 == "a")) {
++            return None;
++        }
++        let outer = stack.len() == 1 && data.characters.is_empty() && rest.ends_with(&format!("</{name}>"));
++        let mut style = stack.last()?.1.clone();
++        match name.as_str() {
++            "b" | "strong" => style.font_style = if style.italic() { "Bold Italic" } else { "Bold" }.into(),
++            "i" | "em" if !style.italic() => style.font_style.push_str(" Italic"),
++            "u" | "a" => style.decoration = figcraft_doc::TextDecoration::Underline,
++            "s" => style.decoration = figcraft_doc::TextDecoration::Strikethrough,
++            _ => {}
++        }
++        let mut seen = BTreeSet::new();
++        while !attrs.is_empty() {
++            let n = attrs.find(|c: char| !c.is_ascii_alphanumeric() && c != '-').unwrap_or(attrs.len());
++            let key = attrs[..n].to_ascii_lowercase();
++            if key.is_empty() || !seen.insert(key.clone()) {
++                return None;
++            }
++            attrs = attrs[n..].trim_start().strip_prefix('=')?.trim_start();
++            let q = attrs.chars().next()?;
++            if q != '\'' && q != '"' {
++                return None;
++            }
++            attrs = &attrs[1..];
++            let n = attrs.find(q)?;
++            let value = rich_entities(&attrs[..n])?;
++            attrs = &attrs[n + 1..];
++            if !attrs.is_empty() && !attrs.starts_with(char::is_whitespace) {
++                return None;
++            }
++            attrs = attrs.trim_start();
++            match key.as_str() {
++                "style" => {
++                    rich_css(&value, &mut style, &mut data.align_h, outer)?;
++                    if outer
++                        && value.split(';').any(|d| {
++                            d.split_once(':').is_some_and(|(k, v)| {
++                                k.trim().eq_ignore_ascii_case("text-align") || (k.trim().eq_ignore_ascii_case("display") && v.trim() == "block")
++                            })
++                        })
++                    {
++                        whole_wrapper = true;
++                    }
++                }
++                "href" if name == "a" => {
++                    if !valid_url(&value, false) {
++                        return None;
++                    }
++                    style.link = Some(value);
++                }
++                "target" if name == "a" && matches!(value.as_str(), "_blank" | "_self") => {}
++                "rel" if name == "a" && value.split_whitespace().all(|v| matches!(v, "noopener" | "noreferrer" | "nofollow")) => {}
++                _ => return None,
++            }
++        }
++        if matches!(name.as_str(), "p" | "div") && !data.characters.is_empty() {
++            paragraph_break = true;
++        }
++        stack.push((name, style, count));
++    }
++    if stack.len() != 1 {
++        return None;
++    }
++    data.normalize();
++    Some(data)
 +}
 +
 +fn measured_text_height(data: &TextData, width: f64) -> Result<f64> {
@@ -697,7 +995,17 @@
 +    }
 +}
 +
-+fn wrapper(doc: &mut Document, parent: NodeId, id: &str, name: &str, x: f64, y: f64, width: f64, block: &Value, background: Option<Color>) -> Result<NodeId> {
++fn wrapper(
++    doc: &mut Document,
++    parent: NodeId,
++    id: &str,
++    name: &str,
++    x: f64,
++    y: f64,
++    width: f64,
++    block: &Value,
++    background: Option<Color>,
++) -> Result<NodeId> {
 +    let root = base_node(doc, parent, NodeKind::Frame, name, x, y, width, 1.0)?;
 +    let node = doc.get_mut(root).map_err(|e| bad("edm_import", e.to_string()))?;
 +    metadata(node, id, "block");
@@ -706,7 +1014,17 @@
 +    Ok(root)
 +}
 +
-+fn add_text(doc: &mut Document, parent: NodeId, id: &str, role: &str, x: f64, y: f64, width: f64, data: TextData, color: Color) -> Result<(NodeId, f64)> {
++fn add_text(
++    doc: &mut Document,
++    parent: NodeId,
++    id: &str,
++    role: &str,
++    x: f64,
++    y: f64,
++    width: f64,
++    data: TextData,
++    color: Color,
++) -> Result<(NodeId, f64)> {
 +    let height = measured_text_height(&data, width)?;
 +    let node_id = base_node(doc, parent, NodeKind::Text(data), "Email text", x, y, width, height)?;
 +    let node = doc.get_mut(node_id).map_err(|e| bad("edm_import", e.to_string()))?;
@@ -786,7 +1104,8 @@
 +            }
 +            let mut child_y = y + pad.top;
 +            for child_id in child_ids(block)? {
-+                let (_, child_height) = import_block(doc, blocks, &child_id, root, x + pad.left, child_y, width - pad.horizontal(), images, editable, mapping, &theme)?;
++                let (_, child_height) =
++                    import_block(doc, blocks, &child_id, root, x + pad.left, child_y, width - pad.horizontal(), images, editable, mapping, &theme)?;
 +                child_y += child_height;
 +            }
 +            (root, (child_y - y + pad.bottom).max(1.0))
@@ -806,7 +1125,9 @@
 +            if !inner.is_finite() || inner <= 0.0 {
 +                return Err(bad("edm_import", "column content width must be positive"));
 +            }
-+            let mut widths = (0..count).map(|index| fixed.get(index).and_then(Value::as_f64).filter(|v| v.is_finite() && *v > 0.0).unwrap_or(0.0)).collect::<Vec<_>>();
++            let mut widths = (0..count)
++                .map(|index| fixed.get(index).and_then(Value::as_f64).filter(|v| v.is_finite() && *v > 0.0).unwrap_or(0.0))
++                .collect::<Vec<_>>();
 +            let fixed_total: f64 = widths.iter().sum();
 +            let automatic = widths.iter().filter(|v| **v == 0.0).count();
 +            if automatic == 0 && fixed_total > inner {
@@ -837,7 +1158,19 @@
 +                if let Some(children) = column.get("childrenIds").and_then(Value::as_array) {
 +                    for child in children {
 +                        let Some(child_id) = child.as_str() else { return Err(bad("edm_import", "child id must be a string")) };
-+                        let (_, child_height) = import_block(doc, blocks, child_id, frame, x + pad.left + offset + inset, child_y, column_width - inset * 2.0, images, editable, mapping, &theme)?;
++                        let (_, child_height) = import_block(
++                            doc,
++                            blocks,
++                            child_id,
++                            frame,
++                            x + pad.left + offset + inset,
++                            child_y,
++                            column_width - inset * 2.0,
++                            images,
++                            editable,
++                            mapping,
++                            &theme,
++                        )?;
 +                        child_y += child_height;
 +                    }
 +                }
@@ -849,12 +1182,19 @@
 +            let alignment = string_prop(block, "contentAlignment").unwrap_or_else(|| "top".into());
 +            for (frame, content_height) in frames {
 +                let remaining = (tallest - content_height).max(0.0);
-+                let offset_y = if alignment == "middle" { remaining / 2.0 } else if alignment == "bottom" { remaining } else { 0.0 };
++                let offset_y = if alignment == "middle" {
++                    remaining / 2.0
++                } else if alignment == "bottom" {
++                    remaining
++                } else {
++                    0.0
++                };
 +                if offset_y > 0.0 {
 +                    let children = doc.node(frame).map(|node| node.children.clone()).ok_or_else(|| bad("edm_import", "column frame missing"))?;
 +                    for child in children {
 +                        let bounds = doc.world_bounds(child).ok_or_else(|| bad("edm_import", "column child bounds missing"))?;
-+                        doc.set_world_transform(child, figcraft_geom::Affine::translate((bounds.x0, bounds.y0 + offset_y))).map_err(|e| bad("edm_import", e.to_string()))?;
++                        doc.set_world_transform(child, figcraft_geom::Affine::translate((bounds.x0, bounds.y0 + offset_y)))
++                            .map_err(|e| bad("edm_import", e.to_string()))?;
 +                    }
 +                }
 +                set_height(doc, frame, tallest)?;
@@ -883,16 +1223,33 @@
 +            } else {
 +                string_prop(block, "text").unwrap_or_default()
 +            };
-+            let data = text_data(block, content_text, TextSpec {
-+                size: default_size,
-+                weight: if kind == "Heading" { "Bold" } else { "Regular" },
-+                line_height: if kind == "Heading" { 1.3 } else { 1.6 },
-+                color,
-+                align: TextAlignH::Left,
-+                honor_text_style: true, honor_font_weight: true,
-+            }, &theme);
++            let mut data = text_data(
++                block,
++                content_text,
++                TextSpec {
++                    size: default_size,
++                    weight: if kind == "Heading" { "Bold" } else { "Regular" },
++                    line_height: if kind == "Heading" { 1.3 } else { 1.6 },
++                    color,
++                    align: TextAlignH::Left,
++                    honor_text_style: true,
++                    honor_font_weight: true,
++                },
++                &theme,
++            );
++            if role == Role::Other {
++                let original = string_prop(block, "text").unwrap_or_default();
++                data = rich_projection(&original, data.clone()).unwrap_or_else(|| {
++                    data.characters = format!("Rich {kind} (protected) — open compiled preview");
++                    data
++                });
++            }
 +            let (text, text_height) = add_text(doc, root, id, "text", x + pad.left, y + pad.top, width - pad.horizontal(), data, color)?;
-+            doc.get_mut(text).map_err(|e| bad("edm_import", e.to_string()))?.locked = role == Role::Other || !editable.contains(&format!("{id}.data.props.text"));
++            doc.get_mut(text).map_err(|e| bad("edm_import", e.to_string()))?.locked =
++                role == Role::Other || !editable.contains(&format!("{id}.data.props.text"));
++            if role == Role::Other {
++                doc.get_mut(text).map_err(|e| bad("edm_import", e.to_string()))?.name = "Rich text (protected)".into();
++            }
 +            content = Some(text);
 +            (root, pad.vertical() + text_height)
 +        }
@@ -904,14 +1261,20 @@
 +            }
 +            metadata(doc.get_mut(root).map_err(|e| bad("edm_import", e.to_string()))?, id, "button");
 +            let text_color = css_color(prop(block, "buttonTextColor")).unwrap_or(Color::WHITE);
-+            let data = text_data(block, string_prop(block, "text").unwrap_or_else(|| "Click here".into()), TextSpec {
-+                size: 16.0,
-+                weight: "Semi Bold",
-+                line_height: 1.0,
-+                color: text_color,
-+                align: TextAlignH::Center,
-+                honor_text_style: true, honor_font_weight: true,
-+            }, &theme);
++            let data = text_data(
++                block,
++                string_prop(block, "text").unwrap_or_else(|| "Click here".into()),
++                TextSpec {
++                    size: 16.0,
++                    weight: "Semi Bold",
++                    line_height: 1.0,
++                    color: text_color,
++                    align: TextAlignH::Center,
++                    honor_text_style: true,
++                    honor_font_weight: true,
++                },
++                &theme,
++            );
 +            let (inner_y, inner_x) = match string_prop(block, "size").as_deref() {
 +                Some("x-small") => (6.0, 12.0),
 +                Some("small") => (8.0, 16.0),
@@ -925,22 +1288,41 @@
 +            let body_height = text_height + inner_y * 2.0;
 +            let align = style_string(block, "textAlign").unwrap_or("left");
 +            let remaining = (available - body_width).max(0.0);
-+            let body_x = x + pad.left + if align == "center" { remaining / 2.0 } else if align == "right" { remaining } else { 0.0 };
++            let body_x = x
++                + pad.left
++                + if align == "center" {
++                    remaining / 2.0
++                } else if align == "right" {
++                    remaining
++                } else {
++                    0.0
++                };
 +            let body = base_node(doc, root, NodeKind::Frame, "Button body", body_x, y + pad.top, body_width, body_height)?;
 +            metadata(doc.get_mut(body).map_err(|e| bad("edm_import", e.to_string()))?, id, "button.body");
 +            let button_color = css_color(prop(block, "buttonBackgroundColor")).unwrap_or(Color::from_rgb8_const(0x2f, 0x45, 0x74));
-+            let radius = style_number(block, "borderRadius").filter(|v| *v > 0.0).unwrap_or_else(|| match string_prop(block, "buttonStyle").as_deref() {
-+                Some("pill") => 9999.0,
-+                Some("square") => 0.0,
-+                _ => 8.0,
-+            });
++            let radius =
++                style_number(block, "borderRadius").filter(|v| *v > 0.0).unwrap_or_else(|| match string_prop(block, "buttonStyle").as_deref() {
++                    Some("pill") => 9999.0,
++                    Some("square") => 0.0,
++                    _ => 8.0,
++                });
 +            {
 +                let node = doc.get_mut(body).map_err(|e| bad("edm_import", e.to_string()))?;
 +                node.fills = vec![Paint::solid(button_color)];
 +                node.corners.radii = [radius; 4];
 +                node.locked = false;
 +            }
-+            let (text, _) = add_text(doc, body, id, "button.text", body_x + inner_x, y + pad.top + inner_y, (body_width - inner_x * 2.0).max(1.0), data, text_color)?;
++            let (text, _) = add_text(
++                doc,
++                body,
++                id,
++                "button.text",
++                body_x + inner_x,
++                y + pad.top + inner_y,
++                (body_width - inner_x * 2.0).max(1.0),
++                data,
++                text_color,
++            )?;
 +            doc.get_mut(text).map_err(|e| bad("edm_import", e.to_string()))?.locked = !editable.contains(&format!("{id}.data.props.text"));
 +            content = Some(text);
 +            (root, pad.vertical() + body_height)
@@ -952,13 +1334,32 @@
 +                let node = doc.get_mut(root).map_err(|e| bad("edm_import", e.to_string()))?;
 +                metadata(node, id, "image");
 +                node.locked = false;
-+                if let Some(value) = string_prop(block, "url") { node.plugin_data.insert(URL.into(), value); }
-+                if let Some(value) = string_prop(block, "alt") { node.plugin_data.insert(ALT.into(), value); }
-+                if let Some(value) = string_prop(block, "linkHref") { node.plugin_data.insert(LINK.into(), value); }
++                if let Some(value) = string_prop(block, "url") {
++                    node.plugin_data.insert(URL.into(), value);
++                }
++                if let Some(value) = string_prop(block, "alt") {
++                    node.plugin_data.insert(ALT.into(), value);
++                }
++                if let Some(value) = string_prop(block, "linkHref") {
++                    node.plugin_data.insert(LINK.into(), value);
++                }
 +            }
 +            if string_prop(block, "url").is_some_and(|url| url.is_empty()) {
 +                let color = Color::from_rgb8_const(0x9C, 0xA3, 0xAF);
-+                let data = text_data(block, "No image selected — image asset required".into(), TextSpec { size: 14.0, weight: "Regular", line_height: 1.4, color, align: TextAlignH::Center, honor_text_style: false, honor_font_weight: false }, &theme);
++                let data = text_data(
++                    block,
++                    "No image selected — image asset required".into(),
++                    TextSpec {
++                        size: 14.0,
++                        weight: "Regular",
++                        line_height: 1.4,
++                        color,
++                        align: TextAlignH::Center,
++                        honor_text_style: false,
++                        honor_font_weight: false,
++                    },
++                    &theme,
++                );
 +                let (_, text_height) = add_text(doc, root, id, "compound.text", x + pad.left, y + pad.top, width - pad.horizontal(), data, color)?;
 +                (root, pad.vertical() + text_height)
 +            } else {
@@ -969,9 +1370,19 @@
 +                let available = width - pad.horizontal();
 +                let image_width = number_prop(block, "width").filter(|v| *v > 0.0).unwrap_or(available).min(available);
 +                let image_height = image_width * f64::from(image.data.height) / f64::from(image.data.width);
-+                let align = string_prop(block, "contentAlignment").or_else(|| style_string(block, "textAlign").map(str::to_owned)).unwrap_or_else(|| "left".into());
++                let align = string_prop(block, "contentAlignment")
++                    .or_else(|| style_string(block, "textAlign").map(str::to_owned))
++                    .unwrap_or_else(|| "left".into());
 +                let remaining = (available - image_width).max(0.0);
-+                let image_x = x + pad.left + if align == "center" { remaining / 2.0 } else if align == "right" { remaining } else { 0.0 };
++                let image_x = x
++                    + pad.left
++                    + if align == "center" {
++                        remaining / 2.0
++                    } else if align == "right" {
++                        remaining
++                    } else {
++                        0.0
++                    };
 +                let paint = base_node(doc, root, NodeKind::Rectangle, "Email image", image_x, y + pad.top, image_width, image_height)?;
 +                {
 +                    let node = doc.get_mut(paint).map_err(|e| bad("edm_import", e.to_string()))?;
@@ -1002,20 +1413,29 @@
 +            let root = wrapper(doc, parent, id, kind, x, y, width, block, style_color(block, "backgroundColor", None))?;
 +            let separator = string_prop(block, "separator").unwrap_or_else(|| "|".into());
 +            let items = prop(block, "items").and_then(Value::as_array).cloned().unwrap_or_default();
-+            let labels = items.iter().filter_map(|item| {
-+                let label = item.get("label").and_then(Value::as_str).unwrap_or_default();
-+                let url = item.get("url").and_then(Value::as_str).unwrap_or_default();
-+                (!label.is_empty() && !url.is_empty()).then_some(label.to_owned())
-+            }).collect::<Vec<_>>();
++            let labels = items
++                .iter()
++                .filter_map(|item| {
++                    let label = item.get("label").and_then(Value::as_str).unwrap_or_default();
++                    let url = item.get("url").and_then(Value::as_str).unwrap_or_default();
++                    (!label.is_empty() && !url.is_empty()).then_some(label.to_owned())
++                })
++                .collect::<Vec<_>>();
 +            let color = style_color(block, "color", theme.text_color).unwrap_or(Color::from_rgb8_const(0x11, 0x18, 0x27));
-+            let data = text_data(block, labels.join(&format!(" {separator} ")), TextSpec {
-+                size: 14.0,
-+                weight: "Regular",
-+                line_height: 1.3,
-+                color,
-+                align: TextAlignH::Center,
-+                honor_text_style: false, honor_font_weight: false,
-+            }, &theme);
++            let data = text_data(
++                block,
++                labels.join(&format!(" {separator} ")),
++                TextSpec {
++                    size: 14.0,
++                    weight: "Regular",
++                    line_height: 1.3,
++                    color,
++                    align: TextAlignH::Center,
++                    honor_text_style: false,
++                    honor_font_weight: false,
++                },
++                &theme,
++            );
 +            let (_, text_height) = add_text(doc, root, id, "compound.text", x + pad.left, y + pad.top, width - pad.horizontal(), data, color)?;
 +            (root, pad.vertical() + text_height)
 +        }
@@ -1025,7 +1445,20 @@
 +            let features = prop(block, "features").and_then(Value::as_array).cloned().unwrap_or_default();
 +            if features.is_empty() {
 +                let color = style_color(block, "color", theme.text_color).unwrap_or(Color::from_rgb8_const(0x6B, 0x72, 0x80));
-+                let data = text_data(block, "No features".into(), TextSpec { size: 14.0, weight: "Regular", line_height: 1.3, color, align: TextAlignH::Center, honor_text_style: false, honor_font_weight: false }, &theme);
++                let data = text_data(
++                    block,
++                    "No features".into(),
++                    TextSpec {
++                        size: 14.0,
++                        weight: "Regular",
++                        line_height: 1.3,
++                        color,
++                        align: TextAlignH::Center,
++                        honor_text_style: false,
++                        honor_font_weight: false,
++                    },
++                    &theme,
++                );
 +                let (_, text_height) = add_text(doc, root, id, "compound.text", x + pad.left, y + pad.top, width - pad.horizontal(), data, color)?;
 +                (root, pad.vertical() + text_height)
 +            } else {
@@ -1049,12 +1482,72 @@
 +                    let icon = feature.get("icon").and_then(Value::as_str).unwrap_or_default().to_owned();
 +                    let heading = feature.get("heading").and_then(Value::as_str).unwrap_or_default().to_owned();
 +                    let description = feature.get("description").and_then(Value::as_str).unwrap_or_default().to_owned();
-+                    let icon_data = text_data(block, icon, TextSpec { size: 32.0, weight: "Regular", line_height: 1.2, color: icon_color, align: TextAlignH::Center, honor_text_style: false, honor_font_weight: false }, &theme);
-+                    let heading_data = text_data(block, heading, TextSpec { size: 16.0, weight: "Bold", line_height: 1.3, color: heading_color, align: TextAlignH::Center, honor_text_style: false, honor_font_weight: false }, &theme);
-+                    let description_data = text_data(block, description, TextSpec { size: 14.0, weight: "Regular", line_height: 1.3, color: description_color, align: TextAlignH::Center, honor_text_style: false, honor_font_weight: false }, &theme);
-+                    let (_, icon_height) = add_text(doc, column, id, "compound.text", feature_x + 8.0, feature_y + 8.0, text_width, icon_data, icon_color)?;
-+                    let (_, heading_height) = add_text(doc, column, id, "compound.text", feature_x + 8.0, feature_y + 8.0 + icon_height + 8.0, text_width, heading_data, heading_color)?;
-+                    let (_, description_height) = add_text(doc, column, id, "compound.text", feature_x + 8.0, feature_y + 8.0 + icon_height + 8.0 + heading_height + 4.0, text_width, description_data, description_color)?;
++                    let icon_data = text_data(
++                        block,
++                        icon,
++                        TextSpec {
++                            size: 32.0,
++                            weight: "Regular",
++                            line_height: 1.2,
++                            color: icon_color,
++                            align: TextAlignH::Center,
++                            honor_text_style: false,
++                            honor_font_weight: false,
++                        },
++                        &theme,
++                    );
++                    let heading_data = text_data(
++                        block,
++                        heading,
++                        TextSpec {
++                            size: 16.0,
++                            weight: "Bold",
++                            line_height: 1.3,
++                            color: heading_color,
++                            align: TextAlignH::Center,
++                            honor_text_style: false,
++                            honor_font_weight: false,
++                        },
++                        &theme,
++                    );
++                    let description_data = text_data(
++                        block,
++                        description,
++                        TextSpec {
++                            size: 14.0,
++                            weight: "Regular",
++                            line_height: 1.3,
++                            color: description_color,
++                            align: TextAlignH::Center,
++                            honor_text_style: false,
++                            honor_font_weight: false,
++                        },
++                        &theme,
++                    );
++                    let (_, icon_height) =
++                        add_text(doc, column, id, "compound.text", feature_x + 8.0, feature_y + 8.0, text_width, icon_data, icon_color)?;
++                    let (_, heading_height) = add_text(
++                        doc,
++                        column,
++                        id,
++                        "compound.text",
++                        feature_x + 8.0,
++                        feature_y + 8.0 + icon_height + 8.0,
++                        text_width,
++                        heading_data,
++                        heading_color,
++                    )?;
++                    let (_, description_height) = add_text(
++                        doc,
++                        column,
++                        id,
++                        "compound.text",
++                        feature_x + 8.0,
++                        feature_y + 8.0 + icon_height + 8.0 + heading_height + 4.0,
++                        text_width,
++                        description_data,
++                        description_color,
++                    )?;
 +                    let feature_height = 16.0 + icon_height + 8.0 + heading_height + 4.0 + description_height;
 +                    set_height(doc, column, feature_height)?;
 +                    row_height = row_height.max(feature_height);
@@ -1064,9 +1557,12 @@
 +        }
 +        "footer" => {
 +            let pad = padding(block, Padding::DEFAULT);
-+            let background = css_color(prop(block, "backgroundColor")).or_else(|| style_color(block, "backgroundColor", None)).or(Some(Color::from_rgb8_const(0xF5, 0xF5, 0xF5)));
++            let background = css_color(prop(block, "backgroundColor"))
++                .or_else(|| style_color(block, "backgroundColor", None))
++                .or(Some(Color::from_rgb8_const(0xF5, 0xF5, 0xF5)));
 +            let root = wrapper(doc, parent, id, kind, x, y, width, block, background)?;
-+            let color = css_color(prop(block, "textColor")).or_else(|| style_color(block, "color", None)).unwrap_or(Color::from_rgb8_const(0x6B, 0x72, 0x80));
++            let color =
++                css_color(prop(block, "textColor")).or_else(|| style_color(block, "color", None)).unwrap_or(Color::from_rgb8_const(0x6B, 0x72, 0x80));
 +            let mut lines = Vec::new();
 +            if let Some(text) = string_prop(block, "additionalText").filter(|v| !v.is_empty()) {
 +                lines.push(text);
@@ -1079,7 +1575,20 @@
 +            }
 +            let mut line_y = y + pad.top;
 +            for line in lines {
-+                let data = text_data(block, line, TextSpec { size: 12.0, weight: "Regular", line_height: 1.3, color, align: TextAlignH::Center, honor_text_style: false, honor_font_weight: false }, &theme);
++                let data = text_data(
++                    block,
++                    line,
++                    TextSpec {
++                        size: 12.0,
++                        weight: "Regular",
++                        line_height: 1.3,
++                        color,
++                        align: TextAlignH::Center,
++                        honor_text_style: false,
++                        honor_font_weight: false,
++                    },
++                    &theme,
++                );
 +                let (_, line_height) = add_text(doc, root, id, "compound.text", x + pad.left, line_y, width - pad.horizontal(), data, color)?;
 +                line_y += line_height + 8.0;
 +            }
@@ -1090,8 +1599,21 @@
 +            let background = style_color(block, "backgroundColor", Some(Color::from_rgb8_const(0xF3, 0xF4, 0xF6)));
 +            let root = wrapper(doc, parent, id, kind, x, y, width, block, background)?;
 +            let color = Color::from_rgb8_const(0x6B, 0x72, 0x80);
-+            let message = format!("Unsupported {kind} block — content preserved in XeroFlow");
-+            let data = text_data(block, message, TextSpec { size: 14.0, weight: "Regular", line_height: 1.4, color, align: TextAlignH::Center, honor_text_style: false, honor_font_weight: false }, &theme);
++            let message = format!("Unsupported {kind} block — open compiled preview (protected)");
++            let data = text_data(
++                block,
++                message,
++                TextSpec {
++                    size: 14.0,
++                    weight: "Regular",
++                    line_height: 1.4,
++                    color,
++                    align: TextAlignH::Center,
++                    honor_text_style: false,
++                    honor_font_weight: false,
++                },
++                &theme,
++            );
 +            let (_, text_height) = add_text(doc, root, id, "compound.text", x + pad.left, y + pad.top, width - pad.horizontal(), data, color)?;
 +            (root, pad.vertical() + text_height)
 +        }
@@ -1101,7 +1623,11 @@
 +    Ok((root, height))
 +}
 +
-+fn build_native(blocks: &serde_json::Map<String, Value>, images: &BTreeMap<String, NativeImage>, editable: &BTreeSet<String>) -> Result<(Document, BTreeMap<String, BlockMap>)> {
++fn build_native(
++    blocks: &serde_json::Map<String, Value>,
++    images: &BTreeMap<String, NativeImage>,
++    editable: &BTreeSet<String>,
++) -> Result<(Document, BTreeMap<String, BlockMap>)> {
 +    let mut doc = Document::new("XeroFlow email");
 +    let page = doc.first_page().ok_or_else(|| bad("edm_import", "page unavailable"))?;
 +    let root = blocks.get("root").ok_or_else(|| bad("edm_import", "root missing"))?;
@@ -1219,7 +1745,8 @@
 +        let Some(before_node) = before.get(&block.root) else { return Err(bad("edm_snapshot", "mapped node missing")) };
 +        let Some(after_node) = after.get(&block.root) else { return Err(bad("edm_snapshot", "mapped node missing")) };
 +        let replaced = replacements.contains_key(id);
-+        if before_node.plugin_data.get(BLOCK_ID) != Some(id) || after_node.plugin_data.get(BLOCK_ID) != Some(id)
++        if before_node.plugin_data.get(BLOCK_ID) != Some(id)
++            || after_node.plugin_data.get(BLOCK_ID) != Some(id)
 +            || structural_node(before_node, &block.role, replaced)? != structural_node(after_node, &block.role, replaced)?
 +        {
 +            return Err(bad("edm_snapshot", "unsupported native change"));
@@ -1232,7 +1759,8 @@
 +            };
 +            let Some(before_content) = before.get(&content) else { return Err(bad("edm_snapshot", "mapped content missing")) };
 +            let Some(after_content) = after.get(&content) else { return Err(bad("edm_snapshot", "mapped content missing")) };
-+            if before_content.plugin_data.get(BLOCK_ID) != Some(id) || after_content.plugin_data.get(BLOCK_ID) != Some(id)
++            if before_content.plugin_data.get(BLOCK_ID) != Some(id)
++                || after_content.plugin_data.get(BLOCK_ID) != Some(id)
 +                || structural_node(before_content, &content_role, replaced)? != structural_node(after_content, &content_role, replaced)?
 +            {
 +                return Err(bad("edm_snapshot", "unsupported native content change"));
@@ -1270,7 +1798,13 @@
 +    {
 +        return Err(bad("edm_snapshot", "invalid content"));
 +    }
-+    let Some(props) = proposal.get_mut("blocks").and_then(|b| b.get_mut(id)).and_then(|b| b.get_mut("data")).and_then(|d| d.get_mut("props")).and_then(Value::as_object_mut) else {
++    let Some(props) = proposal
++        .get_mut("blocks")
++        .and_then(|b| b.get_mut(id))
++        .and_then(|b| b.get_mut("data"))
++        .and_then(|d| d.get_mut("props"))
++        .and_then(Value::as_object_mut)
++    else {
 +        return Err(bad("edm_snapshot", "canonical props missing"));
 +    };
 +    props.insert(field.into(), Value::String(after));
@@ -1320,7 +1854,8 @@
 +        if current_node.fills != baseline_node.fills {
 +            return Err(bad("edm_snapshot", "image fills changed before URL replacement"));
 +        }
-+        let (hash, width, height) = figcraft_format::add_image(ds.doc_mut(), bytes.clone()).map_err(|_| bad("edm_snapshot", "unsupported image bytes"))?;
++        let (hash, width, height) =
++            figcraft_format::add_image(ds.doc_mut(), bytes.clone()).map_err(|_| bad("edm_snapshot", "unsupported image bytes"))?;
 +        if width > 8192 || height > 8192 || u64::from(width) * u64::from(height) > 16_777_216 {
 +            return Err(bad("edm_snapshot", "image dimension limit exceeded"));
 +        }
@@ -1359,12 +1894,16 @@
 +                set_content(&handoff, &mut proposal, id, "url", url)?;
 +                if let Some(alt) = node.plugin_data.get(ALT) {
 +                    set_content(&handoff, &mut proposal, id, "alt", alt.clone())?;
-+                } else if string_prop(handoff.canonical["blocks"].get(id).ok_or_else(|| bad("edm_snapshot", "canonical block missing"))?, "alt").is_some() {
++                } else if string_prop(handoff.canonical["blocks"].get(id).ok_or_else(|| bad("edm_snapshot", "canonical block missing"))?, "alt")
++                    .is_some()
++                {
 +                    return Err(bad("edm_snapshot", "image alt removed"));
 +                }
 +                if let Some(link) = node.plugin_data.get(LINK) {
 +                    set_content(&handoff, &mut proposal, id, "linkHref", link.clone())?;
-+                } else if string_prop(handoff.canonical["blocks"].get(id).ok_or_else(|| bad("edm_snapshot", "canonical block missing"))?, "linkHref").is_some() {
++                } else if string_prop(handoff.canonical["blocks"].get(id).ok_or_else(|| bad("edm_snapshot", "canonical block missing"))?, "linkHref")
++                    .is_some()
++                {
 +                    return Err(bad("edm_snapshot", "image link removed"));
 +                }
 +            }
@@ -1417,12 +1956,18 @@
 +    }
 +
 +    pub fn capability(&self, block_id: &str) -> DesignerBlockCapability {
-+        designer_capability(&self.current, block_id).map(|(editable, can_insert, _)| DesignerBlockCapability { editable, can_insert }).unwrap_or_default()
++        designer_capability(&self.current, block_id)
++            .map(|(editable, can_insert, _)| DesignerBlockCapability { editable, can_insert })
++            .unwrap_or_default()
 +    }
 +
 +    pub fn allows(&self, block_id: &str, field: &str) -> bool {
 +        let expected = format!("{block_id}.data.props.{field}");
-+        self.current.get("policy").and_then(|p| p.get("editableFields")).and_then(Value::as_array).is_some_and(|fields| fields.iter().any(|path| path.as_str() == Some(expected.as_str())))
++        self.current
++            .get("policy")
++            .and_then(|p| p.get("editableFields"))
++            .and_then(Value::as_array)
++            .is_some_and(|fields| fields.iter().any(|path| path.as_str() == Some(expected.as_str())))
 +    }
 +
 +    pub fn location(&self, block_id: &str) -> Option<DesignerLocation> {
@@ -1462,7 +2007,10 @@
 +}
 +
 +fn valid_id(value: &str) -> bool {
-+    !value.is_empty() && value.len() <= 128 && value.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-')) && !matches!(value, "__proto__" | "prototype" | "constructor")
++    !value.is_empty()
++        && value.len() <= 128
++        && value.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-'))
++        && !matches!(value, "__proto__" | "prototype" | "constructor")
 +}
 +
 +fn valid_operation_id(value: &str) -> bool {
@@ -1535,17 +2083,16 @@
 +        return true;
 +    }
 +    let separated = [("email", "preferences"), ("postal", "address"), ("mailing", "address")].into_iter().any(|(head, tail)| {
-+        match_offsets(&legal, head).any(|index| {
-+            legal.get(index + head.len()..).is_some_and(|rest| rest.strip_prefix(['_', ' ', '-']).unwrap_or(rest).starts_with(tail))
-+        })
++        match_offsets(&legal, head)
++            .any(|index| legal.get(index + head.len()..).is_some_and(|rest| rest.strip_prefix(['_', ' ', '-']).unwrap_or(rest).starts_with(tail)))
 +    });
 +    separated
 +        || match_offsets(&legal, "{{").any(|index| {
 +            legal.get(index + 2..).is_some_and(|rest| {
 +                let candidate = rest.trim_start_matches(js_whitespace);
-+                ["address", "business_address", "company_address"].into_iter().any(|marker| {
-+                    candidate.strip_prefix(marker).is_some_and(|rest| rest.trim_start_matches(js_whitespace).starts_with("}}"))
-+                })
++                ["address", "business_address", "company_address"]
++                    .into_iter()
++                    .any(|marker| candidate.strip_prefix(marker).is_some_and(|rest| rest.trim_start_matches(js_whitespace).starts_with("}}")))
 +            })
 +        })
 +}
@@ -1556,7 +2103,13 @@
 +    if kind != "EmailLayout" && !DESIGNER_SECTION_TYPES.contains(&kind) {
 +        return true;
 +    }
-+    if design.get("policy").and_then(|p| p.get("designerLocks")).and_then(|l| l.get("blockIds")).and_then(Value::as_array).is_some_and(|ids| ids.iter().any(|id| id.as_str() == Some(block_id))) {
++    if design
++        .get("policy")
++        .and_then(|p| p.get("designerLocks"))
++        .and_then(|l| l.get("blockIds"))
++        .and_then(Value::as_array)
++        .is_some_and(|ids| ids.iter().any(|id| id.as_str() == Some(block_id)))
++    {
 +        return true;
 +    }
 +    let Some(data) = block.get("data").and_then(Value::as_object) else { return true };
@@ -1575,10 +2128,11 @@
 +        return true;
 +    }
 +    content_fields(kind).iter().any(|field| {
-+        props.contains_key(*field) && !design.get("policy").and_then(|p| p.get("editableFields")).and_then(Value::as_array).is_some_and(|fields| {
-+            let path = format!("{block_id}.data.props.{field}");
-+            fields.iter().any(|value| value.as_str() == Some(path.as_str()))
-+        })
++        props.contains_key(*field)
++            && !design.get("policy").and_then(|p| p.get("editableFields")).and_then(Value::as_array).is_some_and(|fields| {
++                let path = format!("{block_id}.data.props.{field}");
++                fields.iter().any(|value| value.as_str() == Some(path.as_str()))
++            })
 +    })
 +}
 +
@@ -1587,14 +2141,34 @@
 +}
 +
 +fn designer_inherited_lock(design: &Value, block_id: &str) -> bool {
-+    design.get("blocks").and_then(Value::as_object).is_some_and(|blocks| blocks.keys().any(|parent| {
-+        parent != block_id && own_locked(design, parent) && designer_descendants(design, parent).is_ok_and(|ids| ids.iter().any(|id| id == block_id))
-+    }))
++    design.get("blocks").and_then(Value::as_object).is_some_and(|blocks| {
++        blocks.keys().any(|parent| {
++            parent != block_id
++                && own_locked(design, parent)
++                && designer_descendants(design, parent).is_ok_and(|ids| ids.iter().any(|id| id == block_id))
++        })
++    })
 +}
 +
 +fn design_structure_locked(design: &Value, block_id: &str, include_descendants: bool) -> bool {
-+    let mut owners = design.get("policy").and_then(|p| p.get("designerLocks")).and_then(|locks| locks.get("blockIds")).and_then(Value::as_array).map(|ids| ids.iter().filter_map(Value::as_str).collect::<Vec<_>>()).unwrap_or_default();
-+    owners.extend(design.get("policy").and_then(|p| p.get("designerLocks")).and_then(|locks| locks.get("styleFields")).and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str).filter_map(|path| path.split('.').next()));
++    let mut owners = design
++        .get("policy")
++        .and_then(|p| p.get("designerLocks"))
++        .and_then(|locks| locks.get("blockIds"))
++        .and_then(Value::as_array)
++        .map(|ids| ids.iter().filter_map(Value::as_str).collect::<Vec<_>>())
++        .unwrap_or_default();
++    owners.extend(
++        design
++            .get("policy")
++            .and_then(|p| p.get("designerLocks"))
++            .and_then(|locks| locks.get("styleFields"))
++            .and_then(Value::as_array)
++            .into_iter()
++            .flatten()
++            .filter_map(Value::as_str)
++            .filter_map(|path| path.split('.').next()),
++    );
 +    owners.into_iter().any(|owner| {
 +        designer_descendants(design, owner).is_ok_and(|ids| ids.iter().any(|id| id == block_id))
 +            || (include_descendants && designer_descendants(design, block_id).is_ok_and(|ids| ids.iter().any(|id| id == owner)))
@@ -1616,9 +2190,13 @@
 +        // Shared: no module root's subtree contains this block. A container holding a linked
 +        // module still accepts new siblings of it (shared `add-section` checks only the parent).
 +        && !linked.contains(block_id);
-+    let locked_style_fields = design.get("policy").and_then(|p| p.get("designerLocks")).and_then(|locks| locks.get("styleFields")).and_then(Value::as_array).map(|fields| {
-+        fields.iter().filter_map(Value::as_str).filter(|path| path.starts_with(&format!("{block_id}."))).map(str::to_owned).collect()
-+    }).unwrap_or_default();
++    let locked_style_fields = design
++        .get("policy")
++        .and_then(|p| p.get("designerLocks"))
++        .and_then(|locks| locks.get("styleFields"))
++        .and_then(Value::as_array)
++        .map(|fields| fields.iter().filter_map(Value::as_str).filter(|path| path.starts_with(&format!("{block_id}."))).map(str::to_owned).collect())
++        .unwrap_or_default();
 +    Some((editable, can_insert, locked_style_fields))
 +}
 +
@@ -1642,7 +2220,11 @@
 +            return Err(designer_bad("unsupported editable field"));
 +        }
 +        let Some(value) = string_prop(block, parts[3]) else { return Err(designer_bad("editable value must be a string")) };
-+        if value.len() > MAX_CONTENT || (matches!(parts[3], "url" | "linkHref") && !(value.is_empty() && parts[3] == "url") && !valid_url(&value, kind == "Image" && parts[3] == "url")) {
++        if value.len() > MAX_CONTENT
++            || (matches!(parts[3], "url" | "linkHref")
++                && !(value.is_empty() && parts[3] == "url")
++                && !valid_url(&value, kind == "Image" && parts[3] == "url"))
++        {
 +            return Err(designer_bad("invalid editable value"));
 +        }
 +    }
@@ -1721,7 +2303,8 @@
 +fn validate_designer_capabilities(design: &Value, capabilities: &Value) -> Result<()> {
 +    if !only_keys(capabilities, &["version", "operations", "blocks", "nativeSource"])
 +        || capabilities.get("version").and_then(Value::as_u64) != Some(1)
-+        || capabilities.get("operations").and_then(Value::as_array).map(|ops| ops.iter().filter_map(Value::as_str).collect::<Vec<_>>()) != Some(DESIGNER_OPERATION_TYPES.to_vec())
++        || capabilities.get("operations").and_then(Value::as_array).map(|ops| ops.iter().filter_map(Value::as_str).collect::<Vec<_>>())
++            != Some(DESIGNER_OPERATION_TYPES.to_vec())
 +        || capabilities.get("nativeSource").and_then(|s| s.get("state")).and_then(Value::as_str) != Some("canonical-only")
 +        || !capabilities.get("nativeSource").and_then(|s| s.get("artifact")).is_some_and(Value::is_null)
 +    {
@@ -1738,11 +2321,17 @@
 +            return Err(designer_bad("invalid designer capability"));
 +        }
 +        let Some(id) = capability.get("blockId").and_then(Value::as_str) else { return Err(designer_bad("capability block missing")) };
-+        let Some((editable, can_insert, locked_fields)) = designer_capability(design, id) else { return Err(designer_bad("unknown capability block")) };
++        let Some((editable, can_insert, locked_fields)) = designer_capability(design, id) else {
++            return Err(designer_bad("unknown capability block"));
++        };
 +        if !seen.insert(id.to_owned())
 +            || capability.get("editable").and_then(Value::as_bool) != Some(editable)
 +            || capability.get("canInsert").and_then(Value::as_bool) != Some(can_insert)
-+            || capability.get("lockedStyleFields").and_then(Value::as_array).map(|fields| fields.iter().filter_map(Value::as_str).map(str::to_owned).collect::<Vec<_>>()) != Some(locked_fields)
++            || capability
++                .get("lockedStyleFields")
++                .and_then(Value::as_array)
++                .map(|fields| fields.iter().filter_map(Value::as_str).map(str::to_owned).collect::<Vec<_>>())
++                != Some(locked_fields)
 +        {
 +            return Err(designer_bad("capability block mismatch"));
 +        }
@@ -1794,7 +2383,12 @@
 +    let design = p.get("design").ok_or_else(|| designer_bad("design is required"))?;
 +    validate_designer_design(design)?;
 +    validate_designer_capabilities(design, p.get("capabilities").ok_or_else(|| designer_bad("capabilities are required"))?)?;
-+    let operation_id = p.get("operationId").and_then(Value::as_str).filter(|id| valid_operation_id(id)).ok_or_else(|| designer_bad("invalid operationId"))?.to_owned();
++    let operation_id = p
++        .get("operationId")
++        .and_then(Value::as_str)
++        .filter(|id| valid_operation_id(id))
++        .ok_or_else(|| designer_bad("invalid operationId"))?
++        .to_owned();
 +    let supplied = p.get("images").and_then(Value::as_object).cloned().ok_or_else(|| designer_bad("images envelope is required"))?;
 +    let mut doc = Document::new("XeroFlow email designer");
 +    let images = decode_designer_images(design, &mut doc, &supplied)?;
@@ -1857,7 +2451,9 @@
 +    for node_id in &ds.selection {
 +        let node = ds.doc.node(*node_id).ok_or_else(|| designer_bad("selection missing"))?;
 +        let block_id = node.plugin_data.get(BLOCK_ID).ok_or_else(|| designer_bad("unmapped selection"))?;
-+        if designer.block(block_id).is_none() { return Err(designer_bad("unmapped selection")); }
++        if designer.block(block_id).is_none() {
++            return Err(designer_bad("unmapped selection"));
++        }
 +        selected.insert(block_id.clone());
 +    }
 +    let selected: Vec<String> = selected.into_iter().collect();
@@ -1866,7 +2462,9 @@
 +    if selected.len() == 1 {
 +        if let Some(target) = designer.insertion_target(Some(&selected[0])) {
 +            let mut value = json!({"parentId": target.parent_id, "index": target.index});
-+            if let Some(column) = target.column_index { value["columnIndex"] = json!(column); }
++            if let Some(column) = target.column_index {
++                value["columnIndex"] = json!(column);
++            }
 +            result["insertionTarget"] = value;
 +        }
 +    }
@@ -1875,10 +2473,22 @@
 +
 +fn designer_child_ids_at(block: &Value, column_index: Option<usize>) -> Result<Vec<String>> {
 +    if let Some(column_index) = column_index {
-+        let column = prop(block, "columns").and_then(Value::as_array).and_then(|columns| columns.get(column_index)).ok_or_else(|| designer_bad("column index missing"))?;
-+        return column.get("childrenIds").and_then(Value::as_array).map(|ids| ids.iter().map(|id| id.as_str().map(str::to_owned).ok_or_else(|| designer_bad("child id must be a string"))).collect()).unwrap_or_else(|| Ok(Vec::new()));
++        let column = prop(block, "columns")
++            .and_then(Value::as_array)
++            .and_then(|columns| columns.get(column_index))
++            .ok_or_else(|| designer_bad("column index missing"))?;
++        return column
++            .get("childrenIds")
++            .and_then(Value::as_array)
++            .map(|ids| ids.iter().map(|id| id.as_str().map(str::to_owned).ok_or_else(|| designer_bad("child id must be a string"))).collect())
++            .unwrap_or_else(|| Ok(Vec::new()));
 +    }
-+    block.get("data").and_then(|data| data.get("childrenIds")).and_then(Value::as_array).map(|ids| ids.iter().map(|id| id.as_str().map(str::to_owned).ok_or_else(|| designer_bad("child id must be a string"))).collect()).unwrap_or_else(|| Ok(Vec::new()))
++    block
++        .get("data")
++        .and_then(|data| data.get("childrenIds"))
++        .and_then(Value::as_array)
++        .map(|ids| ids.iter().map(|id| id.as_str().map(str::to_owned).ok_or_else(|| designer_bad("child id must be a string"))).collect())
++        .unwrap_or_else(|| Ok(Vec::new()))
 +}
 +
 +fn locate_designer_block(design: &Value, block_id: &str) -> Result<DesignerLocation> {
@@ -1934,7 +2544,12 @@
 +    let data = parent.get_mut("data").and_then(Value::as_object_mut).ok_or_else(|| designer_bad("parent data missing"))?;
 +    if is_columns {
 +        let column_index = column_index.ok_or_else(|| designer_bad("columnIndex is required"))?;
-+        let column = data.get_mut("props").and_then(|props| props.get_mut("columns")).and_then(Value::as_array_mut).and_then(|columns| columns.get_mut(column_index)).ok_or_else(|| designer_bad("column index missing"))?;
++        let column = data
++            .get_mut("props")
++            .and_then(|props| props.get_mut("columns"))
++            .and_then(Value::as_array_mut)
++            .and_then(|columns| columns.get_mut(column_index))
++            .ok_or_else(|| designer_bad("column index missing"))?;
 +        if !column.get("childrenIds").is_some_and(Value::is_array) {
 +            column["childrenIds"] = json!([]);
 +        }
@@ -1963,7 +2578,10 @@
 +}
 +
 +fn valid_font(value: &Value) -> bool {
-+    value.as_str().is_some_and(|font| ["MODERN_SANS", "BOOK_SANS", "ORGANIC_SANS", "GEOMETRIC_SANS", "HEAVY_SANS", "ROUNDED_SANS", "MODERN_SERIF", "BOOK_SERIF", "MONOSPACE"].contains(&font))
++    value.as_str().is_some_and(|font| {
++        ["MODERN_SANS", "BOOK_SANS", "ORGANIC_SANS", "GEOMETRIC_SANS", "HEAVY_SANS", "ROUNDED_SANS", "MODERN_SERIF", "BOOK_SERIF", "MONOSPACE"]
++            .contains(&font)
++    })
 +}
 +
 +fn validate_designer_style(style: &Value) -> Result<()> {
@@ -1973,9 +2591,16 @@
 +            "color" | "backgroundColor" | "borderColor" => valid_hex_colour(value),
 +            "fontFamily" => valid_font(value),
 +            "fontSize" => bounded_number(value, 8.0, 96.0, false),
-+            "fontWeight" => value.as_str().is_some_and(|weight| ["normal", "bold", "100", "200", "300", "400", "500", "600", "700", "800", "900"].contains(&weight)),
++            "fontWeight" => value
++                .as_str()
++                .is_some_and(|weight| ["normal", "bold", "100", "200", "300", "400", "500", "600", "700", "800", "900"].contains(&weight)),
 +            "textAlign" => value.as_str().is_some_and(|align| ["left", "center", "right"].contains(&align)),
-+            "padding" => only_keys(value, &["top", "right", "bottom", "left"]) && value.as_object().is_some_and(|padding| padding.len() == 4 && padding.values().all(|side| bounded_number(side, 0.0, 600.0, false))),
++            "padding" => {
++                only_keys(value, &["top", "right", "bottom", "left"])
++                    && value
++                        .as_object()
++                        .is_some_and(|padding| padding.len() == 4 && padding.values().all(|side| bounded_number(side, 0.0, 600.0, false)))
++            }
 +            "lineHeight" => bounded_number(value, 0.8, 3.0, false),
 +            "letterSpacing" => bounded_number(value, -2.0, 20.0, false),
 +            "borderWidth" => bounded_number(value, 0.0, 20.0, false),
@@ -2063,32 +2688,38 @@
 +
 +fn locked_style_path(design: &Value, block_id: &str, path: &str) -> bool {
 +    let canonical = path.replace(".data.mobile.", ".data.");
-+    design.get("policy").and_then(|p| p.get("designerLocks")).and_then(|locks| locks.get("styleFields")).and_then(Value::as_array).is_some_and(|fields| fields.iter().filter_map(Value::as_str).any(|field| {
-+        let field = field.replace(".data.mobile.", ".data.");
-+        let Some(owner) = field.split('.').next() else { return false };
-+        if owner == block_id {
-+            return related_path(&canonical, &field) || related_path(path, &field);
-+        }
-+        if !designer_descendants(design, owner).is_ok_and(|ids| ids.iter().any(|id| id == block_id)) {
-+            if !designer_descendants(design, block_id).is_ok_and(|ids| ids.iter().any(|id| id == owner)) {
-+                return false;
-+            }
-+            let before = semantic_suffix(&field[owner.len()..]);
-+            let candidate = semantic_suffix(&canonical[block_id.len()..]);
-+            return related_path(&before, &candidate);
-+        }
-+        let suffix = &field[owner.len()..];
-+        if suffix == ".data.props.textColor" || suffix == ".data.style.color" {
-+            return canonical.ends_with(".data.style.color") || canonical.ends_with(".data.props.buttonTextColor");
-+        }
-+        if matches!(suffix, ".data.props.canvasColor" | ".data.props.backdropColor" | ".data.style.backgroundColor") {
-+            return canonical.ends_with(".data.style.backgroundColor") || canonical.ends_with(".data.props.buttonBackgroundColor");
-+        }
-+        if suffix == ".data.props.primaryColor" {
-+            return canonical.ends_with(".data.style.color") || canonical.ends_with(".data.props.buttonBackgroundColor") || canonical.ends_with(".data.props.lineColor");
-+        }
-+        related_path(&canonical, &format!("{block_id}{}", semantic_suffix(suffix)))
-+    }))
++    design.get("policy").and_then(|p| p.get("designerLocks")).and_then(|locks| locks.get("styleFields")).and_then(Value::as_array).is_some_and(
++        |fields| {
++            fields.iter().filter_map(Value::as_str).any(|field| {
++                let field = field.replace(".data.mobile.", ".data.");
++                let Some(owner) = field.split('.').next() else { return false };
++                if owner == block_id {
++                    return related_path(&canonical, &field) || related_path(path, &field);
++                }
++                if !designer_descendants(design, owner).is_ok_and(|ids| ids.iter().any(|id| id == block_id)) {
++                    if !designer_descendants(design, block_id).is_ok_and(|ids| ids.iter().any(|id| id == owner)) {
++                        return false;
++                    }
++                    let before = semantic_suffix(&field[owner.len()..]);
++                    let candidate = semantic_suffix(&canonical[block_id.len()..]);
++                    return related_path(&before, &candidate);
++                }
++                let suffix = &field[owner.len()..];
++                if suffix == ".data.props.textColor" || suffix == ".data.style.color" {
++                    return canonical.ends_with(".data.style.color") || canonical.ends_with(".data.props.buttonTextColor");
++                }
++                if matches!(suffix, ".data.props.canvasColor" | ".data.props.backdropColor" | ".data.style.backgroundColor") {
++                    return canonical.ends_with(".data.style.backgroundColor") || canonical.ends_with(".data.props.buttonBackgroundColor");
++                }
++                if suffix == ".data.props.primaryColor" {
++                    return canonical.ends_with(".data.style.color")
++                        || canonical.ends_with(".data.props.buttonBackgroundColor")
++                        || canonical.ends_with(".data.props.lineColor");
++                }
++                related_path(&canonical, &format!("{block_id}{}", semantic_suffix(suffix)))
++            })
++        },
++    )
 +}
 +
 +fn assert_style_lock(design: &Value, block_id: &str, key: &str, mobile: bool, props: bool) -> Result<()> {
@@ -2129,9 +2760,11 @@
 +            return Err(designer_bad("invalid URL"));
 +        }
 +        if image && string_prop(block, key).as_deref() != Some(after) {
-+            let reused = baseline.get("blocks").and_then(Value::as_object).is_some_and(|blocks| blocks.values().any(|block| {
-+                block.get("type").and_then(Value::as_str) == Some("Image") && string_prop(block, "url").as_deref() == Some(after)
-+            }));
++            let reused = baseline.get("blocks").and_then(Value::as_object).is_some_and(|blocks| {
++                blocks
++                    .values()
++                    .any(|block| block.get("type").and_then(Value::as_str) == Some("Image") && string_prop(block, "url").as_deref() == Some(after))
++            });
 +            if !reused {
 +                return Err(designer_bad("new image assets require server-owned selection"));
 +            }
@@ -2143,8 +2776,14 @@
 +fn new_designer_block_theme(design: &Value, section_type: &str) -> (serde_json::Map<String, Value>, serde_json::Map<String, Value>) {
 +    let brand = design.get("source").and_then(|source| source.get("brand")).and_then(|brand| brand.get("defaults"));
 +    let root = design.get("blocks").and_then(|blocks| blocks.get("root")).and_then(|root| root.get("data")).and_then(|data| data.get("props"));
-+    let font = brand.and_then(|defaults| defaults.get("fontFamily")).filter(|font| valid_font(font)).or_else(|| root.and_then(|props| props.get("fontFamily")).filter(|font| valid_font(font)));
-+    let primary = root.and_then(|props| props.get("primaryColor")).filter(|colour| valid_hex_colour(colour)).or_else(|| brand.and_then(|defaults| defaults.get("primaryColor")).filter(|colour| valid_hex_colour(colour)));
++    let font = brand
++        .and_then(|defaults| defaults.get("fontFamily"))
++        .filter(|font| valid_font(font))
++        .or_else(|| root.and_then(|props| props.get("fontFamily")).filter(|font| valid_font(font)));
++    let primary = root
++        .and_then(|props| props.get("primaryColor"))
++        .filter(|colour| valid_hex_colour(colour))
++        .or_else(|| brand.and_then(|defaults| defaults.get("primaryColor")).filter(|colour| valid_hex_colour(colour)));
 +    let mut props = serde_json::Map::new();
 +    let mut style = serde_json::Map::new();
 +    if let Some(font) = font.filter(|_| matches!(section_type, "Heading" | "Text" | "Button")) {
@@ -2152,9 +2791,15 @@
 +    }
 +    if let Some(primary) = primary {
 +        match section_type {
-+            "Heading" => { style.insert("color".into(), primary.clone()); }
-+            "Button" => { props.insert("buttonBackgroundColor".into(), primary.clone()); }
-+            "Divider" => { props.insert("lineColor".into(), primary.clone()); }
++            "Heading" => {
++                style.insert("color".into(), primary.clone());
++            }
++            "Button" => {
++                props.insert("buttonBackgroundColor".into(), primary.clone());
++            }
++            "Divider" => {
++                props.insert("lineColor".into(), primary.clone());
++            }
 +            _ => {}
 +        }
 +    }
@@ -2193,8 +2838,13 @@
 +            if mobile && is_props {
 +                return Err(designer_bad("mobile props are not supported"));
 +            }
-+            let patch = if is_props { operation.get("props") } else { operation.get("style") }.ok_or_else(|| designer_bad("property patch missing"))?;
-+            if is_props { validate_designer_props(&kind, patch)? } else { validate_designer_style(patch)? };
++            let patch =
++                if is_props { operation.get("props") } else { operation.get("style") }.ok_or_else(|| designer_bad("property patch missing"))?;
++            if is_props {
++                validate_designer_props(&kind, patch)?
++            } else {
++                validate_designer_style(patch)?
++            };
 +            let patch = patch.as_object().ok_or_else(|| designer_bad("property patch must be an object"))?;
 +            for (key, value) in patch {
 +                assert_style_lock(&state.current, block_id, key, mobile, is_props)?;
@@ -2205,7 +2855,11 @@
 +            if is_props && kind == "ColumnsContainer" && patch.contains_key("columnsCount") {
 +                let count = patch.get("columnsCount").and_then(Value::as_u64).ok_or_else(|| designer_bad("invalid columnsCount"))? as usize;
 +                let columns = prop(&block, "columns").and_then(Value::as_array).cloned().unwrap_or_default();
-+                if columns.iter().skip(count).any(|column| column.get("childrenIds").and_then(Value::as_array).is_some_and(|children| !children.is_empty())) {
++                if columns
++                    .iter()
++                    .skip(count)
++                    .any(|column| column.get("childrenIds").and_then(Value::as_array).is_some_and(|children| !children.is_empty()))
++                {
 +                    return Err(designer_bad("cannot remove occupied columns"));
 +                }
 +                let next = (0..count).map(|index| columns.get(index).cloned().unwrap_or_else(|| json!({"childrenIds": []}))).collect::<Vec<_>>();
@@ -2241,10 +2895,16 @@
 +            if !only_keys(operation, &["op", "sectionType", "parentId", "columnIndex", "index"]) {
 +                return Err(designer_bad("invalid add-section"));
 +            }
-+            let section_type = operation.get("sectionType").and_then(Value::as_str).filter(|kind| DESIGNER_SECTION_TYPES.contains(kind)).ok_or_else(|| designer_bad("invalid sectionType"))?;
-+            let parent_id = operation.get("parentId").and_then(Value::as_str).filter(|id| valid_id(id)).ok_or_else(|| designer_bad("invalid parentId"))?;
++            let section_type = operation
++                .get("sectionType")
++                .and_then(Value::as_str)
++                .filter(|kind| DESIGNER_SECTION_TYPES.contains(kind))
++                .ok_or_else(|| designer_bad("invalid sectionType"))?;
++            let parent_id =
++                operation.get("parentId").and_then(Value::as_str).filter(|id| valid_id(id)).ok_or_else(|| designer_bad("invalid parentId"))?;
 +            let column_index = designer_column_index(operation)?;
-+            let index = operation.get("index").and_then(Value::as_u64).filter(|index| *index <= 300).ok_or_else(|| designer_bad("invalid index"))? as usize;
++            let index =
++                operation.get("index").and_then(Value::as_u64).filter(|index| *index <= 300).ok_or_else(|| designer_bad("invalid index"))? as usize;
 +            assert_designer_target(&state.current, parent_id, column_index)?;
 +            let new_id = designer_block_id(&operation_id, operation_index, 0);
 +            if state.current.get("blocks").and_then(|b| b.get(&new_id)).is_some() {
@@ -2271,10 +2931,18 @@
 +            insert_designer_child(list, index, new_id.clone())?;
 +            state.current["blocks"][&new_id] = block;
 +            for field in content_fields(section_type) {
-+                state.current["policy"]["editableFields"].as_array_mut().ok_or_else(|| designer_bad("editableFields missing"))?.push(json!(format!("{new_id}.data.props.{field}")));
++                state.current["policy"]["editableFields"]
++                    .as_array_mut()
++                    .ok_or_else(|| designer_bad("editableFields missing"))?
++                    .push(json!(format!("{new_id}.data.props.{field}")));
 +            }
-+            let fields = content_fields(section_type).iter().map(|field| (field.to_string(), json!(format!("field-{new_id}-{field}")))).collect::<serde_json::Map<_, _>>();
-+            state.current["lineage"].as_array_mut().ok_or_else(|| designer_bad("lineage missing"))?.push(json!({"blockId": new_id, "nodeId": format!("node-{}", designer_block_id(&operation_id, operation_index, 0)), "fields": fields}));
++            let fields = content_fields(section_type)
++                .iter()
++                .map(|field| (field.to_string(), json!(format!("field-{new_id}-{field}"))))
++                .collect::<serde_json::Map<_, _>>();
++            state.current["lineage"].as_array_mut().ok_or_else(|| designer_bad("lineage missing"))?.push(
++                json!({"blockId": new_id, "nodeId": format!("node-{}", designer_block_id(&operation_id, operation_index, 0)), "fields": fields}),
++            );
 +        }
 +        "move-section" | "duplicate-section" | "remove-section" => {
 +            let expected: &[&str] = if op == "remove-section" { &["op", "blockId"] } else { &["op", "blockId", "parentId", "columnIndex", "index"] };
@@ -2301,12 +2969,21 @@
 +                for id in &ids {
 +                    blocks.remove(id);
 +                }
-+                state.current["lineage"].as_array_mut().ok_or_else(|| designer_bad("lineage missing"))?.retain(|item| item.get("blockId").and_then(Value::as_str).is_some_and(|id| !ids.iter().any(|removed| removed == id)));
-+                state.current["policy"]["editableFields"].as_array_mut().ok_or_else(|| designer_bad("editableFields missing"))?.retain(|path| path.as_str().and_then(|path| path.split('.').next()).is_some_and(|id| !ids.iter().any(|removed| removed == id)));
++                state.current["lineage"]
++                    .as_array_mut()
++                    .ok_or_else(|| designer_bad("lineage missing"))?
++                    .retain(|item| item.get("blockId").and_then(Value::as_str).is_some_and(|id| !ids.iter().any(|removed| removed == id)));
++                state.current["policy"]["editableFields"]
++                    .as_array_mut()
++                    .ok_or_else(|| designer_bad("editableFields missing"))?
++                    .retain(|path| path.as_str().and_then(|path| path.split('.').next()).is_some_and(|id| !ids.iter().any(|removed| removed == id)));
 +            } else {
-+                let parent_id = operation.get("parentId").and_then(Value::as_str).filter(|id| valid_id(id)).ok_or_else(|| designer_bad("invalid parentId"))?;
++                let parent_id =
++                    operation.get("parentId").and_then(Value::as_str).filter(|id| valid_id(id)).ok_or_else(|| designer_bad("invalid parentId"))?;
 +                let column_index = designer_column_index(operation)?;
-+                let index = operation.get("index").and_then(Value::as_u64).filter(|index| *index <= 300).ok_or_else(|| designer_bad("invalid index"))? as usize;
++                let index =
++                    operation.get("index").and_then(Value::as_u64).filter(|index| *index <= 300).ok_or_else(|| designer_bad("invalid index"))?
++                        as usize;
 +                if ids.iter().any(|id| id == parent_id) {
 +                    return Err(designer_bad("cannot insert into descendants"));
 +                }
@@ -2321,7 +2998,11 @@
 +                    let list = designer_child_list_mut(&mut state.current, parent_id, column_index)?;
 +                    insert_designer_child(list, index, block_id.into())?;
 +                } else {
-+                    let id_map = ids.iter().enumerate().map(|(child_index, id)| (id.clone(), designer_block_id(&operation_id, operation_index, child_index))).collect::<BTreeMap<_, _>>();
++                    let id_map = ids
++                        .iter()
++                        .enumerate()
++                        .map(|(child_index, id)| (id.clone(), designer_block_id(&operation_id, operation_index, child_index)))
++                        .collect::<BTreeMap<_, _>>();
 +                    if id_map.values().any(|id| state.current.get("blocks").and_then(|b| b.get(id)).is_some()) {
 +                        return Err(designer_bad("generated duplicate ID already exists"));
 +                    }
@@ -2355,27 +3036,55 @@
 +                        }
 +                    }
 +                    let lineage = state.current.get("lineage").and_then(Value::as_array).cloned().unwrap_or_default();
-+                    let grants = state.current.get("policy").and_then(|p| p.get("editableFields")).and_then(Value::as_array).cloned().unwrap_or_default();
-+                    let lock_fields = state.current.get("policy").and_then(|p| p.get("designerLocks")).and_then(|locks| locks.get("styleFields")).and_then(Value::as_array).cloned();
++                    let grants =
++                        state.current.get("policy").and_then(|p| p.get("editableFields")).and_then(Value::as_array).cloned().unwrap_or_default();
++                    let lock_fields = state
++                        .current
++                        .get("policy")
++                        .and_then(|p| p.get("designerLocks"))
++                        .and_then(|locks| locks.get("styleFields"))
++                        .and_then(Value::as_array)
++                        .cloned();
 +                    for old_id in &ids {
 +                        let new_id = id_map.get(old_id).cloned().ok_or_else(|| designer_bad("duplicate remap missing"))?;
-+                        let old_grants = grants.iter().filter(|path| path.as_str().is_some_and(|path| path.starts_with(&format!("{old_id}.")))).cloned().collect::<Vec<_>>();
++                        let old_grants = grants
++                            .iter()
++                            .filter(|path| path.as_str().is_some_and(|path| path.starts_with(&format!("{old_id}."))))
++                            .cloned()
++                            .collect::<Vec<_>>();
 +                        for path in old_grants.iter() {
 +                            let suffix = path.as_str().unwrap_or_default().strip_prefix(old_id).unwrap_or_default();
-+                            state.current["policy"]["editableFields"].as_array_mut().ok_or_else(|| designer_bad("editableFields missing"))?.push(json!(format!("{new_id}{suffix}")));
++                            state.current["policy"]["editableFields"]
++                                .as_array_mut()
++                                .ok_or_else(|| designer_bad("editableFields missing"))?
++                                .push(json!(format!("{new_id}{suffix}")));
 +                        }
-+                        let mut field_names = old_grants.iter().filter_map(|path| path.as_str()).filter_map(|path| path.split('.').next_back()).map(str::to_owned).collect::<BTreeSet<_>>();
++                        let mut field_names = old_grants
++                            .iter()
++                            .filter_map(|path| path.as_str())
++                            .filter_map(|path| path.split('.').next_back())
++                            .map(str::to_owned)
++                            .collect::<BTreeSet<_>>();
 +                        if let Some(item) = lineage.iter().find(|item| item.get("blockId").and_then(Value::as_str) == Some(old_id.as_str())) {
 +                            if let Some(fields) = item.get("fields").and_then(Value::as_object) {
 +                                field_names.extend(fields.keys().cloned());
 +                            }
 +                        }
-+                        let fields = field_names.into_iter().map(|field| (field.clone(), json!(format!("field-{new_id}-{field}")))).collect::<serde_json::Map<_, _>>();
-+                        state.current["lineage"].as_array_mut().ok_or_else(|| designer_bad("lineage missing"))?.push(json!({"blockId": new_id, "nodeId": format!("node-{new_id}"), "fields": fields}));
++                        let fields = field_names
++                            .into_iter()
++                            .map(|field| (field.clone(), json!(format!("field-{new_id}-{field}"))))
++                            .collect::<serde_json::Map<_, _>>();
++                        state.current["lineage"]
++                            .as_array_mut()
++                            .ok_or_else(|| designer_bad("lineage missing"))?
++                            .push(json!({"blockId": new_id, "nodeId": format!("node-{new_id}"), "fields": fields}));
 +                        if let Some(lock_fields) = &lock_fields {
 +                            for path in lock_fields.iter().filter(|path| path.as_str().is_some_and(|path| path.starts_with(&format!("{old_id}.")))) {
 +                                let suffix = path.as_str().unwrap_or_default().strip_prefix(old_id).unwrap_or_default();
-+                                state.current["policy"]["designerLocks"]["styleFields"].as_array_mut().ok_or_else(|| designer_bad("styleFields missing"))?.push(json!(format!("{new_id}{suffix}")));
++                                state.current["policy"]["designerLocks"]["styleFields"]
++                                    .as_array_mut()
++                                    .ok_or_else(|| designer_bad("styleFields missing"))?
++                                    .push(json!(format!("{new_id}{suffix}")));
 +                            }
 +                        }
 +                    }
@@ -2476,7 +3185,9 @@
 +    vec![
 +        spec!("edm_import", "Import XeroFlow email", "{design, images?}", false, |s, p| import(s, p)),
 +        spec!("edm_snapshot", "Snapshot XeroFlow email", "{images?}", true, |s, p| snapshot(s, p)),
-+        spec!("edm_designer_import", "Import XeroFlow email designer", "{design, images, operationId, capabilities}", false, |s, p| designer_import(s, p)),
++        spec!("edm_designer_import", "Import XeroFlow email designer", "{design, images, operationId, capabilities}", false, |s, p| designer_import(
++            s, p
++        )),
 +        spec!("edm_designer_apply", "Apply bounded email designer operations", "{operations}", false, |s, p| designer_apply(s, p)),
 +        spec!("edm_designer_context", "Read canonical email selection and operation context", "{}", false, |s, _| designer_context(s)),
 +        spec!("edm_designer_snapshot", "Snapshot XeroFlow email designer operations", "{}", false, |s, _| designer_snapshot(s)),
@@ -2484,7 +3195,6 @@
 +        spec!("edm_designer_redo", "Redo canonical email designer operation", "{}", false, |s, p| designer_history(s, p, true)),
 +    ]
 +}
-+
 +
 +#[cfg(test)]
 +mod tests {
@@ -2568,7 +3278,10 @@
 +        let mut session = Session::new();
 +        import_designer_with(&mut session, input.clone(), json!({}));
 +        apply_designer(&mut session, operations.clone()).unwrap();
-+        assert_eq!(session.execute("edm_designer_snapshot", &json!({})).unwrap(), json!({"operationId": DESIGNER_OPERATION_ID, "operations": operations.clone()}));
++        assert_eq!(
++            session.execute("edm_designer_snapshot", &json!({})).unwrap(),
++            json!({"operationId": DESIGNER_OPERATION_ID, "operations": operations.clone()})
++        );
 +        {
 +            let designer = session.ds().unwrap().edm_designer.as_ref().unwrap();
 +            assert_eq!(designer.baseline, input);
@@ -2586,31 +3299,60 @@
 +        let designer = session.ds().unwrap().edm_designer.as_ref().unwrap();
 +        assert_eq!(designer.baseline, input);
 +        assert_eq!(designer.current, expected);
-+        assert_eq!(session.execute("edm_designer_snapshot", &json!({})).unwrap(), json!({"operationId": DESIGNER_OPERATION_ID, "operations": operations}));
++        assert_eq!(
++            session.execute("edm_designer_snapshot", &json!({})).unwrap(),
++            json!({"operationId": DESIGNER_OPERATION_ID, "operations": operations})
++        );
 +    }
 +
 +    #[test]
 +    fn edm_campaign_modes_reject_module_arbitrary_and_missing_kinds() {
-+        let kinds = [Some(json!("module")), Some(json!("campaign")), Some(json!("Campaign-draft")), Some(json!("template ")), Some(json!("arbitrary")), Some(json!("")), Some(Value::Null), Some(json!(7)), Some(json!({})), None];
++        let kinds = [
++            Some(json!("module")),
++            Some(json!("campaign")),
++            Some(json!("Campaign-draft")),
++            Some(json!("template ")),
++            Some(json!("arbitrary")),
++            Some(json!("")),
++            Some(Value::Null),
++            Some(json!(7)),
++            Some(json!({})),
++            None,
++        ];
 +        for kind in kinds {
 +            let mut content = design();
 +            let mut designer = designer_design();
 +            for input in [&mut content, &mut designer] {
 +                match &kind {
-+                    Some(value) => { input["kind"] = value.clone(); }
-+                    None => { input.as_object_mut().unwrap().remove("kind"); }
++                    Some(value) => {
++                        input["kind"] = value.clone();
++                    }
++                    None => {
++                        input.as_object_mut().unwrap().remove("kind");
++                    }
 +                }
 +            }
 +            let mut content_session = Session::new();
 +            let before = content_session.docs.len();
 +            let error = content_session.execute("edm_import", &json!({"design": content, "images": {"image-1": PNG}})).unwrap_err();
-+            assert!(matches!(&error, crate::EngineError::BadParams { cmd, msg } if cmd.as_str() == "edm_import" && msg.as_str() == "unsupported canonical handoff"), "content kind {kind:?}: {error}");
++            assert!(
++                matches!(&error, crate::EngineError::BadParams { cmd, msg } if cmd.as_str() == "edm_import" && msg.as_str() == "unsupported canonical handoff"),
++                "content kind {kind:?}: {error}"
++            );
 +            assert_eq!(content_session.docs.len(), before);
 +            let capabilities = designer_capabilities(&designer);
 +            let mut designer_session = Session::new();
 +            let before = designer_session.docs.len();
-+            let error = designer_session.execute("edm_designer_import", &json!({"design": designer, "images": {}, "operationId": DESIGNER_OPERATION_ID, "capabilities": capabilities})).unwrap_err();
-+            assert!(matches!(&error, crate::EngineError::BadParams { cmd, msg } if cmd.as_str() == "edm_designer" && msg.as_str() == "unsupported canonical designer handoff"), "designer kind {kind:?}: {error}");
++            let error = designer_session
++                .execute(
++                    "edm_designer_import",
++                    &json!({"design": designer, "images": {}, "operationId": DESIGNER_OPERATION_ID, "capabilities": capabilities}),
++                )
++                .unwrap_err();
++            assert!(
++                matches!(&error, crate::EngineError::BadParams { cmd, msg } if cmd.as_str() == "edm_designer" && msg.as_str() == "unsupported canonical designer handoff"),
++                "designer kind {kind:?}: {error}"
++            );
 +            assert_eq!(designer_session.docs.len(), before);
 +        }
 +    }
@@ -2618,13 +3360,20 @@
 +    #[test]
 +    fn edm_campaign_content_retains_manifest_policy_and_native_change_refusals() {
 +        let baseline = campaign_content_design();
-+        for (field, value) in [("assets", json!([{"id": "unresolved"}])), ("dependencies", json!([{"moduleId": "unresolved"}])), ("moduleInstances", json!([{"instanceId": "unresolved"}]))] {
++        for (field, value) in [
++            ("assets", json!([{"id": "unresolved"}])),
++            ("dependencies", json!([{"moduleId": "unresolved"}])),
++            ("moduleInstances", json!([{"instanceId": "unresolved"}])),
++        ] {
 +            let mut input = baseline.clone();
 +            input[field] = value;
 +            let mut session = Session::new();
 +            let before = session.docs.len();
 +            let error = session.execute("edm_import", &json!({"design": input, "images": {"image-1": PNG}})).unwrap_err();
-+            assert!(matches!(&error, crate::EngineError::BadParams { cmd, msg } if cmd.as_str() == "edm_import" && msg.as_str() == "unsupported canonical handoff"), "nonempty {field}: {error}");
++            assert!(
++                matches!(&error, crate::EngineError::BadParams { cmd, msg } if cmd.as_str() == "edm_import" && msg.as_str() == "unsupported canonical handoff"),
++                "nonempty {field}: {error}"
++            );
 +            assert_eq!(session.docs.len(), before, "nonempty {field} must not add a document");
 +        }
 +        let mut input = baseline.clone();
@@ -2635,8 +3384,15 @@
 +        session.execute("node.set", &json!({"ids": [text], "props": {"characters": "Ungrantable edit"}})).unwrap();
 +        let native_before_refusal = serde_json::to_value(session.doc().unwrap()).unwrap();
 +        let error = session.execute("edm_snapshot", &json!({})).unwrap_err();
-+        assert!(matches!(&error, crate::EngineError::BadParams { cmd, msg } if cmd.as_str() == "edm_snapshot" && msg.as_str() == "content is not editable"), "ungranted content: {error}");
-+        assert_eq!(serde_json::to_value(session.doc().unwrap()).unwrap(), native_before_refusal, "a refused snapshot must retain the user's native edit");
++        assert!(
++            matches!(&error, crate::EngineError::BadParams { cmd, msg } if cmd.as_str() == "edm_snapshot" && msg.as_str() == "content is not editable"),
++            "ungranted content: {error}"
++        );
++        assert_eq!(
++            serde_json::to_value(session.doc().unwrap()).unwrap(),
++            native_before_refusal,
++            "a refused snapshot must retain the user's native edit"
++        );
 +        assert_eq!(session.ds().unwrap().edm.as_ref().unwrap().canonical, input);
 +        let mut native_change = Session::new();
 +        native_change.execute("edm_import", &json!({"design": baseline.clone(), "images": {"image-1": PNG}})).unwrap();
@@ -2644,8 +3400,15 @@
 +        native_change.execute("node.set", &json!({"ids": [text], "props": {"fontSize": 80}})).unwrap();
 +        let native_before_refusal = serde_json::to_value(native_change.doc().unwrap()).unwrap();
 +        let error = native_change.execute("edm_snapshot", &json!({})).unwrap_err();
-+        assert!(matches!(&error, crate::EngineError::BadParams { cmd, msg } if cmd.as_str() == "edm_snapshot" && msg.as_str() == "unsupported native content change"), "native fontSize change: {error}");
-+        assert_eq!(serde_json::to_value(native_change.doc().unwrap()).unwrap(), native_before_refusal, "a refused snapshot must retain the native font edit");
++        assert!(
++            matches!(&error, crate::EngineError::BadParams { cmd, msg } if cmd.as_str() == "edm_snapshot" && msg.as_str() == "unsupported native content change"),
++            "native fontSize change: {error}"
++        );
++        assert_eq!(
++            serde_json::to_value(native_change.doc().unwrap()).unwrap(),
++            native_before_refusal,
++            "a refused snapshot must retain the native font edit"
++        );
 +        assert_eq!(native_change.ds().unwrap().edm.as_ref().unwrap().canonical, baseline);
 +    }
 +
@@ -2657,13 +3420,19 @@
 +            (json!({"op": "set-props", "blockId": "button-1", "props": {"text": "Locked"}}), "block is locked"),
 +            (json!({"op": "set-style", "blockId": "text-1", "style": {"color": "#123456"}}), "style field is locked"),
 +            (json!({"op": "set-props", "blockId": "text-1", "props": {"text": "Missing merge token"}}), "merge tokens must be preserved"),
-+            (json!({"op": "set-props", "blockId": "empty-image", "props": {"url": "https://example.invalid/new.png"}}), "new image assets require server-owned selection"),
++            (
++                json!({"op": "set-props", "blockId": "empty-image", "props": {"url": "https://example.invalid/new.png"}}),
++                "new image assets require server-owned selection",
++            ),
 +        ] {
 +            let mut session = Session::new();
 +            import_designer_with(&mut session, input.clone(), json!({}));
 +            let native = serde_json::to_value(session.doc().unwrap()).unwrap();
 +            let error = apply_designer(&mut session, json!([operation.clone()])).unwrap_err();
-+            assert!(matches!(&error, crate::EngineError::BadParams { cmd, msg } if cmd.as_str() == "edm_designer" && msg.as_str() == expected_error), "operation {operation}: {error}");
++            assert!(
++                matches!(&error, crate::EngineError::BadParams { cmd, msg } if cmd.as_str() == "edm_designer" && msg.as_str() == expected_error),
++                "operation {operation}: {error}"
++            );
 +            assert_eq!(session.ds().unwrap().edm_designer.as_ref().unwrap().baseline, input);
 +            assert_eq!(session.ds().unwrap().edm_designer.as_ref().unwrap().current, input);
 +            assert!(session.ds().unwrap().edm_designer.as_ref().unwrap().redo_operations.is_empty());
@@ -2675,8 +3444,16 @@
 +        locked["editable"] = json!(true);
 +        let mut session = Session::new();
 +        let before = session.docs.len();
-+        let error = session.execute("edm_designer_import", &json!({"design": input, "images": {}, "operationId": DESIGNER_OPERATION_ID, "capabilities": capabilities})).unwrap_err();
-+        assert!(matches!(&error, crate::EngineError::BadParams { cmd, msg } if cmd.as_str() == "edm_designer" && msg.as_str() == "capability block mismatch"), "forged editable capability: {error}");
++        let error = session
++            .execute(
++                "edm_designer_import",
++                &json!({"design": input, "images": {}, "operationId": DESIGNER_OPERATION_ID, "capabilities": capabilities}),
++            )
++            .unwrap_err();
++        assert!(
++            matches!(&error, crate::EngineError::BadParams { cmd, msg } if cmd.as_str() == "edm_designer" && msg.as_str() == "capability block mismatch"),
++            "forged editable capability: {error}"
++        );
 +        assert_eq!(session.docs.len(), before);
 +    }
 +
@@ -2693,7 +3470,10 @@
 +            import_designer_with(&mut session, input.clone(), json!({}));
 +            let native_before_refusal = serde_json::to_value(session.doc().unwrap()).unwrap();
 +            let error = apply_designer(&mut session, json!([operation.clone()])).unwrap_err();
-+            assert!(matches!(&error, crate::EngineError::BadParams { cmd, msg } if cmd.as_str() == "edm_designer" && msg.as_str() == "block is locked"), "linked operation {operation}: {error}");
++            assert!(
++                matches!(&error, crate::EngineError::BadParams { cmd, msg } if cmd.as_str() == "edm_designer" && msg.as_str() == "block is locked"),
++                "linked operation {operation}: {error}"
++            );
 +            assert_eq!(session.ds().unwrap().edm_designer.as_ref().unwrap().baseline, input);
 +            assert_eq!(session.ds().unwrap().edm_designer.as_ref().unwrap().current, input);
 +            assert_eq!(serde_json::to_value(session.doc().unwrap()).unwrap(), native_before_refusal);
@@ -2738,7 +3518,8 @@
 +        input["blocks"]["root"]["data"]["props"] = json!({
 +            "contentWidth": 680, "backdropColor": "rgb(241, 246, 250)", "canvasColor": "rgba(255, 255, 255, 1)", "textColor": "rgba(18, 40, 58, 0.96)", "fontFamily": "GEOMETRIC_SANS", "locked": "keep-me"
 +        });
-+        input["blocks"]["root"]["data"]["childrenIds"] = json!(["menu", "heading", "copy", "cta", "hero", "features", "columns", "divider", "space", "footer", "rich", "legacy"]);
++        input["blocks"]["root"]["data"]["childrenIds"] =
++            json!(["menu", "heading", "copy", "cta", "hero", "features", "columns", "divider", "space", "footer", "rich", "legacy"]);
 +        input["blocks"]["menu"] = json!({"type": "menu", "data": {
 +            "style": {"padding": pad(8, 22, 36), "color": "rgba(215, 231, 240, 0.85)", "backgroundColor": "#102332"},
 +            "props": {"separator": "|", "items": [{"label": "Explore", "url": "https://example.invalid/explore"}, {"label": "Contact", "url": "https://example.invalid/contact"}]}
@@ -2777,8 +3558,10 @@
 +        }});
 +        input["blocks"]["left-container"] = json!({"type": "Container", "data": {"childrenIds": ["left"], "style": {"padding": pad(6, 8, 14), "backgroundColor": "rgba(241, 246, 250, 0.8)"}}});
 +        input["blocks"]["left"] = json!({"type": "Text", "data": {"style": {"padding": pad(4, 4, 4)}, "props": {"text": "Left column"}}});
-+        input["blocks"]["right"] = json!({"type": "Text", "data": {"style": {"padding": pad(4, 4, 4), "color": "rgb(18, 40, 58)"}, "props": {"text": "Right column"}}});
-+        input["blocks"]["divider"] = json!({"type": "Divider", "data": {"style": {"padding": pad(8, 8, 36)}, "props": {"lineColor": "#71D9F0", "lineThickness": 2}}});
++        input["blocks"]["right"] =
++            json!({"type": "Text", "data": {"style": {"padding": pad(4, 4, 4), "color": "rgb(18, 40, 58)"}, "props": {"text": "Right column"}}});
++        input["blocks"]["divider"] =
++            json!({"type": "Divider", "data": {"style": {"padding": pad(8, 8, 36)}, "props": {"lineColor": "#71D9F0", "lineThickness": 2}}});
 +        input["blocks"]["space"] = json!({"type": "Spacer", "data": {"style": {"backgroundColor": "#FFFFFF"}, "props": {"height": 12}}});
 +        input["blocks"]["footer"] = json!({"type": "footer", "data": {
 +            "style": {"padding": pad(22, 26, 36), "backgroundColor": "#F6F7F9", "color": "#5C6574"},
@@ -2786,8 +3569,16 @@
 +            "mobile": {"style": {"padding": pad(20, 24, 22)}}
 +        }});
 +        input["blocks"]["rich"] = json!({"type": "Text", "data": {"style": {"padding": pad(12, 12, 24), "backgroundColor": "#FFFFFF"}, "props": {"text": "<p>Hello <strong>world</strong> &amp; all</p>"}}});
-+        input["blocks"]["legacy"] = json!({"type": "Html", "data": {"style": {"padding": pad(0, 0, 0)}, "props": {"contents": "<h1>Preserved source</h1>"}}});
-+        input["policy"]["editableFields"] = json!(["heading.data.props.text", "cta.data.props.text", "cta.data.props.url", "hero.data.props.url", "hero.data.props.alt", "hero.data.props.linkHref"]);
++        input["blocks"]["legacy"] =
++            json!({"type": "Html", "data": {"style": {"padding": pad(0, 0, 0)}, "props": {"contents": "<h1>Preserved source</h1>"}}});
++        input["policy"]["editableFields"] = json!([
++            "heading.data.props.text",
++            "cta.data.props.text",
++            "cta.data.props.url",
++            "hero.data.props.url",
++            "hero.data.props.alt",
++            "hero.data.props.linkHref"
++        ]);
 +        input
 +    }
 +
@@ -2800,10 +3591,15 @@
 +    }
 +
 +    fn mapped(session: &Session, block_id: &str, role: &str) -> NodeId {
-+        session.doc().unwrap().nodes().find(|node| {
-+            node.plugin_data.get(BLOCK_ID).map(String::as_str) == Some(block_id)
-+                && node.plugin_data.get(ROLE).map(String::as_str) == Some(role)
-+        }).map(|node| node.id).unwrap()
++        session
++            .doc()
++            .unwrap()
++            .nodes()
++            .find(|node| {
++                node.plugin_data.get(BLOCK_ID).map(String::as_str) == Some(block_id) && node.plugin_data.get(ROLE).map(String::as_str) == Some(role)
++            })
++            .map(|node| node.id)
++            .unwrap()
 +    }
 +
 +    fn text_at(session: &Session, block_id: &str, role: &str) -> String {
@@ -2857,7 +3653,10 @@
 +    fn edm_image_url_change_requires_bytes_then_reopens_current_paint() {
 +        let mut session = Session::new();
 +        import_design(&mut session);
-+        assert_eq!(session.execute("edm_snapshot", &json!({})).unwrap()["blocks"]["image-1"]["data"]["props"]["url"], "https://example.invalid/one.png");
++        assert_eq!(
++            session.execute("edm_snapshot", &json!({})).unwrap()["blocks"]["image-1"]["data"]["props"]["url"],
++            "https://example.invalid/one.png"
++        );
 +        let image = mapped(&session, "image-1", "image");
 +        let paint = mapped(&session, "image-1", "image.paint");
 +        let before_hash = image_hash(session.doc().unwrap().node(paint).unwrap()).unwrap();
@@ -2869,13 +3668,19 @@
 +        assert_ne!(before_hash, after_hash, "replacement must use different valid image bytes");
 +        assert_eq!(proposal["blocks"]["image-1"]["data"]["props"]["url"], "https://example.invalid/two.png");
 +        assert!(required_snapshot_images(&session).unwrap().is_empty());
-+        assert_eq!(session.execute("edm_snapshot", &json!({})).unwrap()["blocks"]["image-1"]["data"]["props"]["url"], "https://example.invalid/two.png");
++        assert_eq!(
++            session.execute("edm_snapshot", &json!({})).unwrap()["blocks"]["image-1"]["data"]["props"]["url"],
++            "https://example.invalid/two.png"
++        );
 +
 +        let image = mapped(&session, "image-1", "image");
 +        let paint = mapped(&session, "image-1", "image.paint");
 +        session.execute("node.set", &json!({"ids": [image], "props": {"pluginData": {URL: "https://example.invalid/three.png"}}})).unwrap();
 +        session.execute("node.set", &json!({"ids": [paint], "props": {"fill": "#ff0000"}})).unwrap();
-+        assert!(session.execute("edm_snapshot", &json!({"images": {"image-1": PNG_ALT}})).is_err(), "URL replacement must not hide an unsupported fill edit");
++        assert!(
++            session.execute("edm_snapshot", &json!({"images": {"image-1": PNG_ALT}})).is_err(),
++            "URL replacement must not hide an unsupported fill edit"
++        );
 +        session.doc_mut().unwrap().get_mut(paint).unwrap().fills = vec![Paint::image(after_hash, figcraft_color::ImageScaleMode::Fit)];
 +        let restored = session.execute("edm_snapshot", &json!({"images": {"image-1": PNG_ALT}})).unwrap();
 +        assert_eq!(restored["blocks"]["image-1"]["data"]["props"]["url"], "https://example.invalid/three.png");
@@ -2916,8 +3721,111 @@
 +        columns["blocks"]["columns"]["data"]["props"]["fixedWidths"] = json!([900, 900]);
 +        let mut overflow = Session::new();
 +        overflow.execute("edm_import", &json!({"design": columns, "images": {"image-1": PNG}})).unwrap();
-+        let widths = overflow.doc().unwrap().nodes().filter(|node| node.plugin_data.get(BLOCK_ID).map(String::as_str) == Some("columns") && node.plugin_data.get(ROLE).map(String::as_str) == Some("column")).map(|node| node.width).collect::<Vec<_>>();
++        let widths = overflow
++            .doc()
++            .unwrap()
++            .nodes()
++            .filter(|node| {
++                node.plugin_data.get(BLOCK_ID).map(String::as_str) == Some("columns")
++                    && node.plugin_data.get(ROLE).map(String::as_str) == Some("column")
++            })
++            .map(|node| node.width)
++            .collect::<Vec<_>>();
 +        assert_eq!(widths, vec![276.0, 276.0], "oversized fixed columns are normalized to the padded canvas");
++    }
++
++    #[test]
++    fn edm_rich_projection_runs_entities_and_bounds() {
++        let project = |s: &str| rich_projection(s, TextData::new(String::new()));
++        let t = project("é<strong>bold <em>both</em></strong><br><a href='mailto:a@example.invalid'>A</a> <a href='https://example.invalid/?a=1&amp;b=2'>B</a>&nbsp;&#x1F680;&lt;b&gt;&amp;lt;").unwrap();
++        assert_eq!(t.characters, "ébold both\nA B\u{a0}🚀<b>&lt;");
++        assert_eq!(t.style_at(1).font_style, "Bold");
++        assert_eq!(t.style_at(6).font_style, "Bold Italic");
++        assert_eq!(t.style_at(11).link.as_deref(), Some("mailto:a@example.invalid"));
++        assert_eq!(t.style_at(13).link.as_deref(), Some("https://example.invalid/?a=1&b=2"));
++        assert_eq!(project("<p>A</p><div>B<br>C</div>").unwrap().characters, "A\nB\nC");
++        for s in [
++            "<p>A</p><p></p><p>B</p>",
++            "<b>x</i>",
++            "<a href='javascript:x'>x</a>",
++            "<span style='display:none'>x</span>",
++            "&bogus;",
++            "&#0;",
++            "<b",
++            "<img src='x'>",
++            "<span onclick='x'>x</span>",
++            "<a href='#'><a href='#'>x</a></a>",
++        ] {
++            assert!(project(s).is_none(), "{s}");
++        }
++        assert!(project(&"x".repeat(MAX_CONTENT + 1)).is_none());
++        assert!(project(&format!("{}x{}", "<b>".repeat(33), "</b>".repeat(33))).is_none());
++    }
++
++    #[test]
++    fn edm_rich_anchor_spacers_measured_and_protected() {
++        let mut input = modern_design();
++        let html = r##"<a href="#" target="_blank" style="font-family:'ford-motion-regular', Arial, Helvetica, sans-serif;font-size:12px;line-height:16px;font-weight:normal;color:#4D4D4D;margin:0;padding:0;text-decoration:underline;display:block">View Online</a>"##;
++        input["blocks"]["root"]["data"]["props"]["contentWidth"] = json!(600);
++        input["blocks"]["root"]["data"]["childrenIds"] = json!(["rich", "s1", "s2", "s3", "s4", "hero"]);
++        // Keep exactly the reachable canonical topology.
++        input["blocks"].as_object_mut().unwrap().retain(|k, _| ["root", "rich", "hero"].contains(&k.as_str()));
++        input["blocks"]["rich"]["data"]["props"]["text"] = json!(html);
++        input["blocks"]["rich"]["data"]["style"] = json!({"padding":{"top":4,"bottom":4,"left":0,"right":36},"textAlign":"right"});
++        input["blocks"]["hero"]["data"]["style"]["padding"] = json!({"top":0,"bottom":0,"left":0,"right":0});
++        input["policy"]["editableFields"] = json!([]);
++        for id in ["s1", "s2", "s3", "s4"] {
++            input["blocks"][id] = json!({"type":"Spacer","data":{"props":{"height":8}}});
++        }
++        let mut session = Session::new();
++        session.execute("edm_import", &json!({"design":input,"images":{"hero":PNG}})).unwrap();
++        let node = session.doc().unwrap().node(mapped(&session, "rich", "text")).unwrap();
++        let NodeKind::Text(t) = &node.kind else { panic!("text") };
++        assert_eq!(t.characters, "View Online");
++        assert_eq!(t.align_h, TextAlignH::Right);
++        assert_eq!(t.style_at(0).font_size, 12.0);
++        assert_eq!(t.style_at(0).line_height, LineHeight::Pixels(16.0));
++        assert_eq!(t.style_at(0).decoration, figcraft_doc::TextDecoration::Underline);
++        assert_eq!(t.style_at(0).fills.as_ref().unwrap()[0].solid_color(), Color::parse_css("#4D4D4D"));
++        assert_eq!(node.height, figcraft_text::layout(t, Some(564.0), None).height);
++        assert_eq!(node.height, 16.0);
++        assert_eq!(session.doc().unwrap().world_bounds(mapped(&session, "hero", "image")).unwrap().y0, 56.0);
++        assert_eq!(session.execute("edm_snapshot", &json!({})).unwrap(), input);
++        assert_eq!(session.execute("edm_snapshot", &json!({})).unwrap()["blocks"]["rich"]["data"]["props"]["text"], html);
++        let rich = mapped(&session, "rich", "text");
++        session.execute("node.set", &json!({"ids":[rich],"props":{"characters":"changed"}})).unwrap();
++        assert!(session.execute("edm_snapshot", &json!({})).is_err());
++    }
++
++    #[test]
++    fn edm_rich_fallback_heading_and_designer_preserve_source() {
++        let mut input = modern_design();
++        let html = "<span style='font-size:22px;color:#123456'><strong>Unicode é heading</strong></span>";
++        input["blocks"]["rich"]["type"] = json!("Heading");
++        input["blocks"]["rich"]["data"]["props"]["text"] = json!(html);
++        let mut designer = Session::new();
++        import_designer_with(&mut designer, input.clone(), json!({"hero":PNG}));
++        assert_eq!(text_at(&designer, "rich", "text"), "Unicode é heading");
++        assert_eq!(designer.execute("edm_designer_snapshot", &json!({})).unwrap()["operations"], json!([]));
++        assert_eq!(designer.ds().unwrap().edm_designer.as_ref().unwrap().current, input);
++        assert!(apply_designer(&mut designer, json!([{"op":"set-props","blockId":"rich","props":{"text":"changed"}}])).is_err());
++        input["blocks"]["rich"]["data"]["props"]["text"] = json!("<table><tr><td>Protected</td></tr></table>");
++        let mut content = Session::new();
++        content.execute("edm_import", &json!({"design":input,"images":{"hero":PNG}})).unwrap();
++        assert!(text_at(&content, "rich", "text").contains("open compiled preview"));
++        let node = content.doc().unwrap().node(mapped(&content, "rich", "text")).unwrap();
++        let NodeKind::Text(t) = &node.kind else { panic!("text") };
++        assert_eq!(node.height, measured_text_height(t, node.width).unwrap());
++        let heading = mapped(&content, "heading", "text");
++        content.execute("node.set", &json!({"ids":[heading],"props":{"characters":"Neighbour edit"}})).unwrap();
++        let snapshot = content.execute("edm_snapshot", &json!({})).unwrap();
++        assert_eq!(snapshot["blocks"]["rich"], input["blocks"]["rich"]);
++        assert_eq!(snapshot["assets"], input["assets"]);
++        // Match text_data's production sizing; WidthAndHeight intentionally disables wrapping.
++        let mut base = TextData::new(String::new());
++        base.auto_resize = TextAutoResize::None;
++        let t = rich_projection(&format!("<strong>{}</strong>", "Long wrapping text ".repeat(40)), base).unwrap();
++        assert!(measured_text_height(&t, 100.0).unwrap() > measured_text_height(&t, 600.0).unwrap());
 +    }
 +
 +    #[test]
@@ -2930,7 +3838,16 @@
 +        let geometric = FONT_STACKS.iter().find(|(key, _)| *key == "GEOMETRIC_SANS").unwrap().1;
 +        assert_eq!(first_registered_family(geometric, |family| family == "Montserrat" || family == "Inter"), "Montserrat");
 +        assert!(figcraft_text::has_family(&native_font_family("UNKNOWN_KEY")) || native_font_family("UNKNOWN_KEY") == "Inter");
-+        for (value, fallback, expected) in [(None, "Bold", "Bold"), (None, "Semi Bold", "Semi Bold"), (None, "Regular", "Regular"), (Some("normal"), "Bold", "Regular"), (Some("600"), "Bold", "Semi Bold"), (Some("700"), "Regular", "Bold"), (Some("bold"), "Regular", "Bold"), (Some("unknown"), "Bold", "Regular")] {
++        for (value, fallback, expected) in [
++            (None, "Bold", "Bold"),
++            (None, "Semi Bold", "Semi Bold"),
++            (None, "Regular", "Regular"),
++            (Some("normal"), "Bold", "Regular"),
++            (Some("600"), "Bold", "Semi Bold"),
++            (Some("700"), "Regular", "Bold"),
++            (Some("bold"), "Regular", "Bold"),
++            (Some("unknown"), "Bold", "Regular"),
++        ] {
 +            assert_eq!(native_font_weight(value, fallback), expected, "{value:?} with default {fallback}");
 +        }
 +        // Imported weights: (design edits, expected heading, copy, button styles).
@@ -2944,8 +3861,12 @@
 +            for (block, weight) in [("heading", heading), ("copy", copy), ("cta", cta)] {
 +                let style = design["blocks"][block]["data"]["style"].as_object_mut().unwrap();
 +                match weight {
-+                    Some(weight) => { style.insert("fontWeight".into(), json!(weight)); }
-+                    None => { style.remove("fontWeight"); }
++                    Some(weight) => {
++                        style.insert("fontWeight".into(), json!(weight));
++                    }
++                    None => {
++                        style.remove("fontWeight");
++                    }
 +                }
 +            }
 +            let mut session = Session::new();
@@ -2999,24 +3920,66 @@
 +        let menu = session.doc().unwrap().node(mapped(&session, "menu", "compound.text")).unwrap();
 +        assert_eq!(menu.fills[0].solid_color(), Some(Color::new(215.0 / 255.0, 231.0 / 255.0, 240.0 / 255.0, 0.85)));
 +        assert!(text_at(&session, "menu", "compound.text").contains("Explore"));
-+        assert!(session.doc().unwrap().nodes().filter(|node| node.plugin_data.get(BLOCK_ID).map(String::as_str) == Some("features")).any(|node| native_text(node).is_ok_and(|text| text.contains("Discover the details"))));
-+        let mut feature_frames = session.doc().unwrap().nodes().filter(|node| node.plugin_data.get(BLOCK_ID).map(String::as_str) == Some("features") && node.plugin_data.get(ROLE).map(String::as_str) == Some("feature.column")).map(|node| { let transform = session.doc().unwrap().world_transform(node.id).as_coeffs(); (transform[4], transform[5]) }).collect::<Vec<_>>();
++        assert!(
++            session
++                .doc()
++                .unwrap()
++                .nodes()
++                .filter(|node| node.plugin_data.get(BLOCK_ID).map(String::as_str) == Some("features"))
++                .any(|node| native_text(node).is_ok_and(|text| text.contains("Discover the details")))
++        );
++        let mut feature_frames = session
++            .doc()
++            .unwrap()
++            .nodes()
++            .filter(|node| {
++                node.plugin_data.get(BLOCK_ID).map(String::as_str) == Some("features")
++                    && node.plugin_data.get(ROLE).map(String::as_str) == Some("feature.column")
++            })
++            .map(|node| {
++                let transform = session.doc().unwrap().world_transform(node.id).as_coeffs();
++                (transform[4], transform[5])
++            })
++            .collect::<Vec<_>>();
 +        feature_frames.sort_by(|a, b| a.1.total_cmp(&b.1).then(a.0.total_cmp(&b.0)));
 +        assert_eq!(feature_frames.len(), 3);
-+        assert!(feature_frames[0].1 == feature_frames[1].1 && feature_frames[2].1 > feature_frames[1].1, "additional features wrap to measured rows instead of overflowing horizontally");
++        assert!(
++            feature_frames[0].1 == feature_frames[1].1 && feature_frames[2].1 > feature_frames[1].1,
++            "additional features wrap to measured rows instead of overflowing horizontally"
++        );
 +        assert!(text_at(&session, "footer", "compound.text").contains("postal address"));
-+        assert!(session.doc().unwrap().nodes().filter(|node| node.plugin_data.get(BLOCK_ID).map(String::as_str) == Some("footer")).any(|node| native_text(node).is_ok_and(|text| text == "Unsubscribe")));
-+        assert!(text_at(&session, "rich", "text").contains("Rich Text block"));
++        assert!(
++            session
++                .doc()
++                .unwrap()
++                .nodes()
++                .filter(|node| node.plugin_data.get(BLOCK_ID).map(String::as_str) == Some("footer"))
++                .any(|node| native_text(node).is_ok_and(|text| text == "Unsubscribe"))
++        );
++        assert_eq!(text_at(&session, "rich", "text"), "Hello world & all");
 +        assert!(!text_at(&session, "rich", "text").contains("<p>"));
 +        assert!(text_at(&session, "legacy", "compound.text").contains("Unsupported Html block"));
 +        let left = session.doc().unwrap().node(mapped(&session, "left", "text")).unwrap();
-+        assert_eq!(left.fills[0].solid_color(), Some(Color::new(18.0 / 255.0, 40.0 / 255.0, 58.0 / 255.0, 0.96)), "root text colour is inherited when block colour is absent");
++        assert_eq!(
++            left.fills[0].solid_color(),
++            Some(Color::new(18.0 / 255.0, 40.0 / 255.0, 58.0 / 255.0, 0.96)),
++            "root text colour is inherited when block colour is absent"
++        );
 +        let left_bounds = session.doc().unwrap().world_bounds(left.id).unwrap();
 +        let right_bounds = session.doc().unwrap().world_bounds(mapped(&session, "right", "text")).unwrap();
 +        let container_bounds = session.doc().unwrap().world_bounds(mapped(&session, "left-container", "block")).unwrap();
 +        assert_eq!((container_bounds.x0, container_bounds.x1 - container_bounds.x0), (30.0, 220.0));
 +        assert_eq!((left_bounds.x0, right_bounds.x0), (48.0, 274.0), "nested container, column, gap and text padding apply exactly once");
-+        let mut columns = session.doc().unwrap().nodes().filter(|node| node.plugin_data.get(BLOCK_ID).map(String::as_str) == Some("columns") && node.plugin_data.get(ROLE).map(String::as_str) == Some("column")).map(|node| (session.doc().unwrap().world_bounds(node.id).unwrap().x0, node.width)).collect::<Vec<_>>();
++        let mut columns = session
++            .doc()
++            .unwrap()
++            .nodes()
++            .filter(|node| {
++                node.plugin_data.get(BLOCK_ID).map(String::as_str) == Some("columns")
++                    && node.plugin_data.get(ROLE).map(String::as_str) == Some("column")
++            })
++            .map(|node| (session.doc().unwrap().world_bounds(node.id).unwrap().x0, node.width))
++            .collect::<Vec<_>>();
 +        columns.sort_by(|a, b| a.0.total_cmp(&b.0));
 +        assert_eq!(columns, vec![(20.0, 240.0), (260.0, 400.0)]);
 +        assert!(session.doc().unwrap().nodes().all(|node| node.is_page() || node.height > 0.0));
@@ -3039,10 +4002,16 @@
 +        let heading = mapped(&session, "heading", "text");
 +        assert!(session.doc().unwrap().node(heading).unwrap().height > before);
 +        assert_eq!(session.execute("edm_snapshot", &json!({})).unwrap(), proposal);
-+        let feature = session.doc().unwrap().nodes().find(|node| {
-+            node.plugin_data.get(BLOCK_ID).map(String::as_str) == Some("features")
-+                && node.plugin_data.get(ROLE).map(String::as_str) == Some("compound.text")
-+        }).map(|node| node.id).unwrap();
++        let feature = session
++            .doc()
++            .unwrap()
++            .nodes()
++            .find(|node| {
++                node.plugin_data.get(BLOCK_ID).map(String::as_str) == Some("features")
++                    && node.plugin_data.get(ROLE).map(String::as_str) == Some("compound.text")
++            })
++            .map(|node| node.id)
++            .unwrap();
 +        session.execute("node.set", &json!({"ids": [feature], "props": {"characters": "Changed compound copy"}})).unwrap();
 +        assert!(session.execute("edm_snapshot", &json!({})).is_err());
 +    }
@@ -3075,16 +4044,24 @@
 +
 +    fn designer_capabilities(design: &Value) -> Value {
 +        let blocks = design["blocks"].as_object().unwrap();
-+        let capabilities = blocks.keys().map(|id| {
-+            let (editable, can_insert, locked_style_fields) = designer_capability(design, id).unwrap();
-+            json!({"blockId": id, "editable": editable, "canInsert": can_insert, "lockedStyleFields": locked_style_fields})
-+        }).collect::<Vec<_>>();
++        let capabilities = blocks
++            .keys()
++            .map(|id| {
++                let (editable, can_insert, locked_style_fields) = designer_capability(design, id).unwrap();
++                json!({"blockId": id, "editable": editable, "canInsert": can_insert, "lockedStyleFields": locked_style_fields})
++            })
++            .collect::<Vec<_>>();
 +        json!({"version": 1, "operations": DESIGNER_OPERATION_TYPES, "blocks": capabilities, "nativeSource": {"state": "canonical-only", "artifact": null, "reason": "PRIVATE_NATIVE_STAGING_UNAVAILABLE"}})
 +    }
 +
 +    fn import_designer_with(session: &mut Session, design: Value, images: Value) {
 +        let capabilities = designer_capabilities(&design);
-+        session.execute("edm_designer_import", &json!({"design": design, "images": images, "operationId": DESIGNER_OPERATION_ID, "capabilities": capabilities})).unwrap();
++        session
++            .execute(
++                "edm_designer_import",
++                &json!({"design": design, "images": images, "operationId": DESIGNER_OPERATION_ID, "capabilities": capabilities}),
++            )
++            .unwrap();
 +    }
 +
 +    fn import_designer(session: &mut Session) {
@@ -3199,13 +4176,17 @@
 +    fn edm_designer_duplicate_ids_remap_dfs_and_same_list_reordering() {
 +        let mut session = Session::new();
 +        import_designer(&mut session);
-+        apply_designer(&mut session, json!([
-+            {"op": "add-section", "sectionType": "Container", "parentId": "root", "index": 3},
-+            {"op": "add-section", "sectionType": "Text", "parentId": designer_block_id(DESIGNER_OPERATION_ID, 0, 0), "index": 0},
-+            {"op": "duplicate-section", "blockId": designer_block_id(DESIGNER_OPERATION_ID, 0, 0), "parentId": "root", "index": 3},
-+            {"op": "move-section", "blockId": designer_block_id(DESIGNER_OPERATION_ID, 2, 0), "parentId": "root", "index": 0},
-+            {"op": "set-props", "blockId": designer_block_id(DESIGNER_OPERATION_ID, 2, 1), "props": {"text": "Duplicated child"}}
-+        ])).unwrap();
++        apply_designer(
++            &mut session,
++            json!([
++                {"op": "add-section", "sectionType": "Container", "parentId": "root", "index": 3},
++                {"op": "add-section", "sectionType": "Text", "parentId": designer_block_id(DESIGNER_OPERATION_ID, 0, 0), "index": 0},
++                {"op": "duplicate-section", "blockId": designer_block_id(DESIGNER_OPERATION_ID, 0, 0), "parentId": "root", "index": 3},
++                {"op": "move-section", "blockId": designer_block_id(DESIGNER_OPERATION_ID, 2, 0), "parentId": "root", "index": 0},
++                {"op": "set-props", "blockId": designer_block_id(DESIGNER_OPERATION_ID, 2, 1), "props": {"text": "Duplicated child"}}
++            ]),
++        )
++        .unwrap();
 +        let designer = session.ds().unwrap().edm_designer.as_ref().unwrap();
 +        let duplicate = designer_block_id(DESIGNER_OPERATION_ID, 2, 0);
 +        let child = designer_block_id(DESIGNER_OPERATION_ID, 2, 1);
@@ -3251,7 +4232,9 @@
 +        let text_node = mapped(&text, "text-1", "text");
 +        text.execute("node.set", &json!({"ids": [text_node], "props": {"characters": "Unlogged edit"}})).unwrap();
 +        assert!(text.execute("edm_designer_snapshot", &json!({})).is_err());
-+        assert!(apply_designer(&mut text, json!([{"op": "set-props", "blockId": "text-1", "props": {"text": "Still forbidden {{firstName}}"}}])).is_err());
++        assert!(
++            apply_designer(&mut text, json!([{"op": "set-props", "blockId": "text-1", "props": {"text": "Still forbidden {{firstName}}"}}])).is_err()
++        );
 +
 +        let mut geometry = Session::new();
 +        import_designer(&mut geometry);
@@ -3264,14 +4247,18 @@
 +    fn edm_designer_image_reuse_and_empty_placeholder_survive_reopen() {
 +        let mut design = designer_design();
 +        design["blocks"]["root"]["data"]["childrenIds"].as_array_mut().unwrap().push(json!("real-image"));
-+        design["blocks"]["real-image"] = json!({"type": "Image", "data": {"props": {"url": "https://example.invalid/one.png", "alt": "One", "linkHref": ""}}});
++        design["blocks"]["real-image"] =
++            json!({"type": "Image", "data": {"props": {"url": "https://example.invalid/one.png", "alt": "One", "linkHref": ""}}});
 +        for field in ["url", "alt", "linkHref"] {
 +            design["policy"]["editableFields"].as_array_mut().unwrap().push(json!(format!("real-image.data.props.{field}")));
 +        }
 +        let mut session = Session::new();
 +        import_designer_with(&mut session, design, json!({"real-image": PNG}));
 +        apply_designer(&mut session, json!([{"op": "duplicate-section", "blockId": "real-image", "parentId": "root", "index": 4}])).unwrap();
-+        assert!(apply_designer(&mut session, json!([{"op": "set-props", "blockId": "real-image", "props": {"url": "https://example.invalid/new.png"}}])).is_err());
++        assert!(
++            apply_designer(&mut session, json!([{"op": "set-props", "blockId": "real-image", "props": {"url": "https://example.invalid/new.png"}}]))
++                .is_err()
++        );
 +        apply_designer(&mut session, json!([{"op": "set-props", "blockId": "empty-image", "props": {"alt": "Choose later"}}])).unwrap();
 +        assert!(text_at(&session, "empty-image", "compound.text").contains("No image selected"));
 +        assert_eq!(session.doc().unwrap().images.len(), 1, "duplicates reuse the verified image store");
@@ -3287,15 +4274,19 @@
 +        design["blocks"]["root"]["data"]["props"]["primaryColor"] = json!("#AABBCC");
 +        let mut session = Session::new();
 +        import_designer_with(&mut session, design.clone(), json!({}));
-+        apply_designer(&mut session, json!([
-+            {"op": "add-section", "sectionType": "Heading", "parentId": "root", "index": 3},
-+            {"op": "add-section", "sectionType": "Button", "parentId": "root", "index": 4},
-+            {"op": "add-section", "sectionType": "Divider", "parentId": "root", "index": 5},
-+            {"op": "add-section", "sectionType": "Text", "parentId": "root", "index": 6},
-+            {"op": "set-props", "blockId": "root", "props": {"primaryColor": "#DDEEFF"}},
-+            {"op": "duplicate-section", "blockId": designer_block_id(DESIGNER_OPERATION_ID, 0, 0), "parentId": "root", "index": 4},
-+            {"op": "add-section", "sectionType": "Heading", "parentId": "root", "index": 8}
-+        ])).unwrap();
++        apply_designer(
++            &mut session,
++            json!([
++                {"op": "add-section", "sectionType": "Heading", "parentId": "root", "index": 3},
++                {"op": "add-section", "sectionType": "Button", "parentId": "root", "index": 4},
++                {"op": "add-section", "sectionType": "Divider", "parentId": "root", "index": 5},
++                {"op": "add-section", "sectionType": "Text", "parentId": "root", "index": 6},
++                {"op": "set-props", "blockId": "root", "props": {"primaryColor": "#DDEEFF"}},
++                {"op": "duplicate-section", "blockId": designer_block_id(DESIGNER_OPERATION_ID, 0, 0), "parentId": "root", "index": 4},
++                {"op": "add-section", "sectionType": "Heading", "parentId": "root", "index": 8}
++            ]),
++        )
++        .unwrap();
 +        let designer = session.ds().unwrap().edm_designer.as_ref().unwrap();
 +        for (index, kind) in [(0, "Heading"), (1, "Button"), (3, "Text")] {
 +            let id = designer_block_id(DESIGNER_OPERATION_ID, index, 0);
@@ -3304,9 +4295,20 @@
 +        assert_eq!(designer.current["blocks"][designer_block_id(DESIGNER_OPERATION_ID, 0, 0)]["data"]["style"]["color"], "#AABBCC");
 +        assert_eq!(designer.current["blocks"][designer_block_id(DESIGNER_OPERATION_ID, 1, 0)]["data"]["props"]["buttonBackgroundColor"], "#AABBCC");
 +        assert_eq!(designer.current["blocks"][designer_block_id(DESIGNER_OPERATION_ID, 2, 0)]["data"]["props"]["lineColor"], "#AABBCC");
-+        assert_eq!(designer.current["blocks"][designer_block_id(DESIGNER_OPERATION_ID, 5, 0)]["data"]["style"]["color"], "#AABBCC", "duplicates retain copied styles");
-+        assert_eq!(designer.current["blocks"][designer_block_id(DESIGNER_OPERATION_ID, 6, 0)]["data"]["style"]["color"], "#DDEEFF", "only genuinely new blocks use the new root primary colour");
-+        assert!(designer.current["blocks"]["button-1"]["data"]["props"].get("buttonBackgroundColor").is_none(), "existing buttons are never recoloured");
++        assert_eq!(
++            designer.current["blocks"][designer_block_id(DESIGNER_OPERATION_ID, 5, 0)]["data"]["style"]["color"],
++            "#AABBCC",
++            "duplicates retain copied styles"
++        );
++        assert_eq!(
++            designer.current["blocks"][designer_block_id(DESIGNER_OPERATION_ID, 6, 0)]["data"]["style"]["color"],
++            "#DDEEFF",
++            "only genuinely new blocks use the new root primary colour"
++        );
++        assert!(
++            designer.current["blocks"]["button-1"]["data"]["props"].get("buttonBackgroundColor").is_none(),
++            "existing buttons are never recoloured"
++        );
 +        assert_eq!(designer.current["source"]["brand"], design["source"]["brand"]);
 +        assert_eq!(designer.current["blocks"]["root"]["data"]["props"]["primaryColor"], "#DDEEFF");
 +        assert_eq!(session.execute("edm_designer_snapshot", &json!({})).unwrap()["operations"].as_array().unwrap().len(), 7);
@@ -3315,8 +4317,10 @@
 +    fn designer_image_design() -> Value {
 +        let mut design = designer_design();
 +        design["blocks"]["root"]["data"]["childrenIds"] = json!(["text-1", "button-1", "empty-image", "image-a", "image-b"]);
-+        design["blocks"]["image-a"] = json!({"type": "Image", "data": {"props": {"url": "https://example.invalid/a.png", "alt": "A", "linkHref": ""}}});
-+        design["blocks"]["image-b"] = json!({"type": "Image", "data": {"props": {"url": "https://example.invalid/b.png", "alt": "B", "linkHref": ""}}});
++        design["blocks"]["image-a"] =
++            json!({"type": "Image", "data": {"props": {"url": "https://example.invalid/a.png", "alt": "A", "linkHref": ""}}});
++        design["blocks"]["image-b"] =
++            json!({"type": "Image", "data": {"props": {"url": "https://example.invalid/b.png", "alt": "B", "linkHref": ""}}});
 +        for id in ["image-a", "image-b"] {
 +            for field in ["url", "alt", "linkHref"] {
 +                design["policy"]["editableFields"].as_array_mut().unwrap().push(json!(format!("{id}.data.props.{field}")));
@@ -3345,7 +4349,8 @@
 +        assert_eq!(designer_paint_hash(&session, "image-a"), b_hash);
 +        apply_designer(&mut session, json!([{"op": "set-props", "blockId": "image-a", "props": {"url": "https://example.invalid/a.png"}}])).unwrap();
 +        assert_eq!(designer_paint_hash(&session, "image-a"), a_hash);
-+        apply_designer(&mut session, json!([{"op": "set-props", "blockId": "empty-image", "props": {"url": "https://example.invalid/b.png"}}])).unwrap();
++        apply_designer(&mut session, json!([{"op": "set-props", "blockId": "empty-image", "props": {"url": "https://example.invalid/b.png"}}]))
++            .unwrap();
 +        assert_eq!(designer_paint_hash(&session, "empty-image"), b_hash);
 +        assert_eq!(designer_paint_hash(&session, "image-b"), b_hash);
 +        let first = session.execute("edm_designer_snapshot", &json!({})).unwrap();
@@ -3393,10 +4398,25 @@
 +        for url in ["https://user:pass@example.invalid/path", "#bad?"] {
 +            assert!(apply_designer(&mut session, json!([{"op": "set-props", "blockId": "button-1", "props": {"url": url}}])).is_err());
 +        }
-+        assert!(apply_designer(&mut session, json!([{"op": "set-props", "blockId": "image-a", "props": {"linkHref": "https://user@example.invalid/path"}}])).is_err());
-+        assert!(apply_designer(&mut session, json!([{"op": "set-props", "blockId": "image-a", "props": {"url": "https://user@example.invalid/a.png"}}])).is_err());
++        assert!(
++            apply_designer(
++                &mut session,
++                json!([{"op": "set-props", "blockId": "image-a", "props": {"linkHref": "https://user@example.invalid/path"}}])
++            )
++            .is_err()
++        );
++        assert!(
++            apply_designer(&mut session, json!([{"op": "set-props", "blockId": "image-a", "props": {"url": "https://user@example.invalid/a.png"}}]))
++                .is_err()
++        );
 +        assert_eq!(session.ds().unwrap().edm_designer.as_ref().unwrap().operations.len(), 0);
-+        for url in ["http://example.invalid/path", "mailto:team@example.invalid", "tel:+61255501234", "#ordinary_1:ok.", "https://example.invalid/path#hash?allowed"] {
++        for url in [
++            "http://example.invalid/path",
++            "mailto:team@example.invalid",
++            "tel:+61255501234",
++            "#ordinary_1:ok.",
++            "https://example.invalid/path#hash?allowed",
++        ] {
 +            apply_designer(&mut session, json!([{"op": "set-props", "blockId": "button-1", "props": {"url": url}}])).unwrap();
 +        }
 +        assert!(valid_url("HTTPS://example.invalid/a.png#ordinary", true));
@@ -3461,13 +4481,19 @@
 +        assert_eq!(session.execute("edm_designer_undo", &json!({})).unwrap(), json!({"operations": 0, "redoOperations": 5}));
 +        for index in 0..operations.as_array().unwrap().len() {
 +            session.execute("edm_designer_redo", &json!({})).unwrap();
-+            assert_eq!(session.execute("edm_designer_snapshot", &json!({})).unwrap()["operations"], Value::Array(operations.as_array().unwrap()[..=index].to_vec()));
++            assert_eq!(
++                session.execute("edm_designer_snapshot", &json!({})).unwrap()["operations"],
++                Value::Array(operations.as_array().unwrap()[..=index].to_vec())
++            );
 +        }
 +        let designer = session.ds().unwrap().edm_designer.as_ref().unwrap();
 +        assert_eq!(designer.current, final_current);
 +        assert_eq!(serde_json::to_value(session.doc().unwrap()).unwrap(), final_native);
 +        assert_eq!(designer.current["blocks"]["root"]["data"]["childrenIds"][0], designer_block_id(DESIGNER_OPERATION_ID, 2, 0));
-+        assert_eq!(designer.current["blocks"][designer_block_id(DESIGNER_OPERATION_ID, 2, 0)]["data"]["childrenIds"], json!([designer_block_id(DESIGNER_OPERATION_ID, 2, 1)]));
++        assert_eq!(
++            designer.current["blocks"][designer_block_id(DESIGNER_OPERATION_ID, 2, 0)]["data"]["childrenIds"],
++            json!([designer_block_id(DESIGNER_OPERATION_ID, 2, 1)])
++        );
 +        assert!(designer.redo_operations.is_empty());
 +    }
 +
@@ -3487,7 +4513,10 @@
 +        apply_designer(&mut session, json!([{"op": "set-props", "blockId": "image-a", "props": {"alt": "New branch"}}])).unwrap();
 +        assert_eq!(designer_paint_hash(&session, "image-a"), a_hash);
 +        assert_eq!(session.execute("edm_designer_redo", &json!({})).unwrap(), json!({"operations": 1, "redoOperations": 0}));
-+        assert_eq!(session.execute("edm_designer_snapshot", &json!({})).unwrap()["operations"], json!([{"op": "set-props", "blockId": "image-a", "props": {"alt": "New branch"}}]));
++        assert_eq!(
++            session.execute("edm_designer_snapshot", &json!({})).unwrap()["operations"],
++            json!([{"op": "set-props", "blockId": "image-a", "props": {"alt": "New branch"}}])
++        );
 +    }
 +
 +    #[test]
@@ -3510,10 +4539,16 @@
 +        let mut invalid_batch = Session::new();
 +        import_designer(&mut invalid_batch);
 +        let pristine = serde_json::to_value(invalid_batch.doc().unwrap()).unwrap();
-+        assert!(apply_designer(&mut invalid_batch, json!([
-+            {"op": "set-props", "blockId": "text-1", "props": {"text": "Must roll back {{firstName}}"}},
-+            {"op": "set-style", "blockId": "text-1", "style": {"color": "not-a-colour"}}
-+        ])).is_err());
++        assert!(
++            apply_designer(
++                &mut invalid_batch,
++                json!([
++                    {"op": "set-props", "blockId": "text-1", "props": {"text": "Must roll back {{firstName}}"}},
++                    {"op": "set-style", "blockId": "text-1", "style": {"color": "not-a-colour"}}
++                ])
++            )
++            .is_err()
++        );
 +        assert_eq!(invalid_batch.ds().unwrap().edm_designer.as_ref().unwrap().current, designer_design());
 +        assert!(invalid_batch.ds().unwrap().edm_designer.as_ref().unwrap().operations.is_empty());
 +        assert_eq!(serde_json::to_value(invalid_batch.doc().unwrap()).unwrap(), pristine);
@@ -3787,8 +4822,16 @@
 +        let proposal = session.execute("edm_snapshot", &json!({"images": {"image-1": PNG_ALT}})).unwrap();
 +        assert_eq!(proposal["blocks"]["image-1"]["data"]["props"]["url"], "https://example.invalid/three.png");
 +        assert_eq!(proposal["blocks"]["image-2"], input["blocks"]["image-2"]);
-+        assert_eq!((designer_paint_hash(&session, "image-1"), designer_paint_hash(&session, "image-2")), (two.clone(), two.clone()), "the verified replacement paints image-1");
-+        assert_eq!(session.doc().unwrap().images.keys().cloned().collect::<Vec<_>>(), vec![two], "bytes no block paints are not carried into the rebuilt store");
++        assert_eq!(
++            (designer_paint_hash(&session, "image-1"), designer_paint_hash(&session, "image-2")),
++            (two.clone(), two.clone()),
++            "the verified replacement paints image-1"
++        );
++        assert_eq!(
++            session.doc().unwrap().images.keys().cloned().collect::<Vec<_>>(),
++            vec![two],
++            "bytes no block paints are not carried into the rebuilt store"
++        );
 +        assert!(required_snapshot_images(&session).unwrap().is_empty());
 +        assert_eq!(session.execute("edm_snapshot", &json!({})).unwrap(), proposal);
 +    }
@@ -3808,7 +4851,11 @@
 +        ("root.data.props.textColor", r##"{"op":"set-style","blockId":"text-1","style":{"color":"#000000"}}"##, false),
 +        ("root.data.props.textColor", r##"{"op":"set-style","blockId":"text-1","style":{"backgroundColor":"#F0F0F0"}}"##, true),
 +        ("root.data.props.textColor", r##"{"op":"set-props","blockId":"root","props":{"canvasColor":"#FAFAFA"}}"##, true),
-+        ("button-1.data.props.buttonBackgroundColor", r##"{"op":"set-props","blockId":"button-1","props":{"buttonBackgroundColor":"#AABBCC"}}"##, false),
++        (
++            "button-1.data.props.buttonBackgroundColor",
++            r##"{"op":"set-props","blockId":"button-1","props":{"buttonBackgroundColor":"#AABBCC"}}"##,
++            false,
++        ),
 +        ("button-1.data.props.buttonBackgroundColor", r##"{"op":"set-props","blockId":"root","props":{"canvasColor":"#FAFAFA"}}"##, false),
 +        ("button-1.data.props.buttonBackgroundColor", r##"{"op":"set-props","blockId":"button-1","props":{"fullWidth":true}}"##, true),
 +    ];
@@ -3952,7 +4999,7 @@
          list.extend(text::specs());
 --- a/crates/engine/src/lib.rs
 +++ b/crates/engine/src/lib.rs
-@@ -345,6 +345,10 @@
+@@ -345,6 +345,12 @@
  #[derive(Clone, Debug)]
  pub struct DocState {
      pub doc: Arc<Document>,
@@ -3960,15 +5007,18 @@
 +    pub edm: Option<cmd::edm::EdmHandoff>,
 +    /// Separate canonical-operation designer state; never shared with content mode.
 +    pub edm_designer: Option<cmd::edm::EdmDesigner>,
++    /// One-shot camera initialization after a real EDM canvas viewport is known.
++    pub edm_view_initialized: bool,
      pub selection: Vec<NodeId>,
      pub page: NodeId,
      pub history: History,
-@@ -426,6 +430,8 @@
+@@ -426,6 +430,9 @@
              checkpoint: None,
              saved_doc: doc.clone(),
              doc,
 +            edm: None,
 +            edm_designer: None,
++            edm_view_initialized: false,
              selection: Vec::new(),
              page,
              history: History { limit: 1000, ..Default::default() },
@@ -4413,7 +5463,7 @@
 +}
 --- /dev/null
 +++ b/crates/ui-egui/src/edm_panel.rs
-@@ -0,0 +1,522 @@
+@@ -0,0 +1,663 @@
 +//! XeroFlow email content and canonical designer controls on native selections.
 +use std::collections::BTreeSet;
 +
@@ -4432,7 +5482,52 @@
 +const ALT: &str = "xeroflow.edm.alt";
 +const LINK: &str = "xeroflow.edm.linkHref";
 +const SECTION_TYPES: [&str; 8] = ["Heading", "Text", "Button", "Image", "Spacer", "Divider", "Container", "ColumnsContainer"];
-+const FONT_FAMILIES: [&str; 9] = ["MODERN_SANS", "BOOK_SANS", "ORGANIC_SANS", "GEOMETRIC_SANS", "HEAVY_SANS", "ROUNDED_SANS", "MODERN_SERIF", "BOOK_SERIF", "MONOSPACE"];
++const FONT_FAMILIES: [&str; 9] =
++    ["MODERN_SANS", "BOOK_SANS", "ORGANIC_SANS", "GEOMETRIC_SANS", "HEAVY_SANS", "ROUNDED_SANS", "MODERN_SERIF", "BOOK_SERIF", "MONOSPACE"];
++
++/// View-only state: never changes native nodes or canonical handoff authority.
++pub fn fit_email_view(ds: &mut figcraft_engine::DocState, fit_width: bool) -> bool {
++    if ds.edm.is_none() && ds.edm_designer.is_none() {
++        return false;
++    }
++    if !ds.view.vw.is_finite() || !ds.view.vh.is_finite() || ds.view.vw <= 48.0 || ds.view.vh <= 48.0 {
++        return false;
++    }
++    let Some(root) = ds.doc.nodes().find(|node| {
++        node.plugin_data.get(BLOCK_ID).map(String::as_str) == Some("root") && node.plugin_data.get(ROLE).map(String::as_str) == Some("block")
++    }) else {
++        return false;
++    };
++    let Some(bounds) = ds.doc.world_bounds(root.id) else { return false };
++    let width = bounds.x1 - bounds.x0;
++    if !width.is_finite() || width <= 0.0 {
++        return false;
++    }
++    ds.view.zoom = if fit_width { ((ds.view.vw - 48.0) / width).min(1.0) } else { 1.0 };
++    ds.view.cx = (bounds.x0 + bounds.x1) / 2.0;
++    ds.view.cy = bounds.y0 + (ds.view.vh / 2.0 - 24.0) / ds.view.zoom;
++    ds.edm_view_initialized = true;
++    true
++}
++
++/// Run after actual canvas sizing, including a first viewport exactly 1200×800.
++/// Later resizes update the viewport dimensions but retain the user's camera.
++pub fn size_viewport(ds: &mut figcraft_engine::DocState, width: f64, height: f64) {
++    if !width.is_finite() || !height.is_finite() || width <= 0.0 || height <= 0.0 {
++        return;
++    }
++    let changed = (ds.view.vw - width).abs() > 0.5 || (ds.view.vh - height).abs() > 0.5;
++    let first = ds.view.vw == 1200.0 && ds.view.vh == 800.0;
++    ds.view.vw = width;
++    ds.view.vh = height;
++    if ds.edm.is_some() || ds.edm_designer.is_some() {
++        if !ds.edm_view_initialized {
++            fit_email_view(ds, true);
++        }
++    } else if changed && first {
++        ds.zoom_to_fit();
++    }
++}
 +
 +fn apply_operation(app: &mut FigApp, operation: Value) {
 +    let _ = app.run("edm_designer_apply", json!({"operations": [operation]}));
@@ -4531,7 +5626,8 @@
 +
 +fn props_choice(app: &mut FigApp, ui: &mut Ui, block_id: &str, key: &'static str, current: String, choices: &[&str]) {
 +    row(ui, 32.0, |ui| {
-+        let committed = widgets::combo_field(ui, Id::new(("edm-designer-prop", block_id, key)), &current, ui.available_width().max(80.0), &strings(choices));
++        let committed =
++            widgets::combo_field(ui, Id::new(("edm-designer-prop", block_id, key)), &current, ui.available_width().max(80.0), &strings(choices));
 +        if let Some(value) = committed.and_then(|value| changed(value, &current)) {
 +            apply_props(app, block_id, Map::from_iter([(key.to_owned(), Value::String(value))]));
 +        }
@@ -4540,7 +5636,8 @@
 +
 +fn style_text_field(app: &mut FigApp, ui: &mut Ui, block_id: &str, key: &'static str, mobile: bool, current: String) {
 +    row(ui, 32.0, |ui| {
-+        let committed = widgets::text_field(ui, Id::new(("edm-designer-style", block_id, key, mobile)), &current, ui.available_width().max(80.0), key);
++        let committed =
++            widgets::text_field(ui, Id::new(("edm-designer-style", block_id, key, mobile)), &current, ui.available_width().max(80.0), key);
 +        if let Some(value) = committed.and_then(|value| changed(value, &current)) {
 +            apply_style(app, block_id, Map::from_iter([(key.to_owned(), Value::String(value))]), mobile);
 +        }
@@ -4557,7 +5654,13 @@
 +
 +fn style_choice(app: &mut FigApp, ui: &mut Ui, block_id: &str, key: &'static str, mobile: bool, current: String, choices: &[&str]) {
 +    row(ui, 32.0, |ui| {
-+        let committed = widgets::combo_field(ui, Id::new(("edm-designer-style", block_id, key, mobile)), &current, ui.available_width().max(80.0), &strings(choices));
++        let committed = widgets::combo_field(
++            ui,
++            Id::new(("edm-designer-style", block_id, key, mobile)),
++            &current,
++            ui.available_width().max(80.0),
++            &strings(choices),
++        );
 +        if let Some(value) = committed.and_then(|value| changed(value, &current)) {
 +            apply_style(app, block_id, Map::from_iter([(key.to_owned(), Value::String(value))]), mobile);
 +        }
@@ -4589,7 +5692,11 @@
 +
 +fn children_len(block: &Value, column_index: Option<usize>) -> usize {
 +    if let Some(index) = column_index {
-+        return block["data"]["props"]["columns"].as_array().and_then(|columns| columns.get(index)).and_then(|column| column["childrenIds"].as_array()).map_or(0, Vec::len);
++        return block["data"]["props"]["columns"]
++            .as_array()
++            .and_then(|columns| columns.get(index))
++            .and_then(|column| column["childrenIds"].as_array())
++            .map_or(0, Vec::len);
 +    }
 +    block["data"]["childrenIds"].as_array().map_or(0, Vec::len)
 +}
@@ -4599,7 +5706,8 @@
 +        [id] => Some(*id),
 +        _ => None,
 +    };
-+    let block_id = selected_node.and_then(|id| doc.node(id)).and_then(|node| node.plugin_data.get(BLOCK_ID)).cloned().unwrap_or_else(|| "root".into());
++    let block_id =
++        selected_node.and_then(|id| doc.node(id)).and_then(|node| node.plugin_data.get(BLOCK_ID)).cloned().unwrap_or_else(|| "root".into());
 +    let Ok(ds) = app.session.ds() else { return };
 +    let Some(designer) = ds.edm_designer.as_ref() else { return };
 +    let Some(block) = designer.block(&block_id).cloned() else { return };
@@ -4611,7 +5719,10 @@
 +    let insertion = designer.insertion_target(Some(&block_id));
 +    let operation_count = designer.operation_count();
 +    let redo_count = designer.redo_count();
-+    let list_len = location.as_ref().and_then(|location| designer.block(&location.parent_id).map(|parent| children_len(parent, location.column_index))).unwrap_or(0);
++    let list_len = location
++        .as_ref()
++        .and_then(|location| designer.block(&location.parent_id).map(|parent| children_len(parent, location.column_index)))
++        .unwrap_or(0);
 +    let mobile_id = Id::new(("edm-designer-mobile-mode", &block_id));
 +    let mut mobile = ui.data(|data| data.get_temp(mobile_id)).unwrap_or(false);
 +    let t = Tokens::get(ui.ctx());
@@ -4633,89 +5744,112 @@
 +    }
 +
 +    if capability.editable {
-+    if kind == "EmailLayout" {
-+        props_number(app, ui, &block_id, "contentWidth", "Canvas width", prop_number(&block, "contentWidth").or(Some(600.0)));
-+        props_choice(app, ui, &block_id, "fontFamily", prop_text(&block, "fontFamily", "MODERN_SANS"), &FONT_FAMILIES);
-+        for (key, label) in [("primaryColor", "Primary"), ("backdropColor", "Backdrop"), ("canvasColor", "Canvas"), ("textColor", "Text"), ("borderColor", "Border")] {
-+            props_text(app, ui, &block_id, key, label, prop_text(&block, key, ""));
-+        }
-+        props_number(app, ui, &block_id, "borderRadius", "Border radius", prop_number(&block, "borderRadius"));
-+    } else {
-+        if matches!(kind.as_str(), "Heading" | "Text") && allows("text") {
-+            props_text(app, ui, &block_id, "text", "Text", prop_text(&block, "text", ""));
-+        }
-+        if kind == "Button" {
-+            if allows("text") {
-+                props_text(app, ui, &block_id, "text", "CTA label", prop_text(&block, "text", "Click here"));
++        if kind == "EmailLayout" {
++            props_number(app, ui, &block_id, "contentWidth", "Canvas width", prop_number(&block, "contentWidth").or(Some(600.0)));
++            props_choice(app, ui, &block_id, "fontFamily", prop_text(&block, "fontFamily", "MODERN_SANS"), &FONT_FAMILIES);
++            for (key, label) in [
++                ("primaryColor", "Primary"),
++                ("backdropColor", "Backdrop"),
++                ("canvasColor", "Canvas"),
++                ("textColor", "Text"),
++                ("borderColor", "Border"),
++            ] {
++                props_text(app, ui, &block_id, key, label, prop_text(&block, key, ""));
 +            }
-+            if allows("url") {
-+                props_text(app, ui, &block_id, "url", "CTA URL", prop_text(&block, "url", ""));
++            props_number(app, ui, &block_id, "borderRadius", "Border radius", prop_number(&block, "borderRadius"));
++        } else {
++            if matches!(kind.as_str(), "Heading" | "Text") && allows("text") {
++                props_text(app, ui, &block_id, "text", "Text", prop_text(&block, "text", ""));
 +            }
-+            props_text(app, ui, &block_id, "buttonBackgroundColor", "CTA background", prop_text(&block, "buttonBackgroundColor", "#2F4574"));
-+            props_text(app, ui, &block_id, "buttonTextColor", "CTA text colour", prop_text(&block, "buttonTextColor", "#FFFFFF"));
-+            props_choice(app, ui, &block_id, "buttonStyle", prop_text(&block, "buttonStyle", "rounded"), &["rounded", "pill", "square"]);
-+            props_choice(app, ui, &block_id, "size", prop_text(&block, "size", "medium"), &["x-small", "small", "medium", "large"]);
-+            row(ui, 32.0, |ui| {
-+                if widgets::checkbox(ui, block["data"]["props"]["fullWidth"].as_bool().unwrap_or(false), "Full-width CTA") {
-+                    let full_width = !block["data"]["props"]["fullWidth"].as_bool().unwrap_or(false);
-+                    apply_props(app, &block_id, Map::from_iter([("fullWidth".into(), json!(full_width))]));
++            if kind == "Button" {
++                if allows("text") {
++                    props_text(app, ui, &block_id, "text", "CTA label", prop_text(&block, "text", "Click here"));
 +                }
-+            });
-+        }
-+        if kind == "Image" {
-+            if allows("alt") {
-+                props_text(app, ui, &block_id, "alt", "Alt text", prop_text(&block, "alt", ""));
-+            }
-+            if allows("linkHref") {
-+                props_text(app, ui, &block_id, "linkHref", "Image link", prop_text(&block, "linkHref", ""));
-+            }
-+            row(ui, 32.0, |ui| {
-+                let current = prop_number(&block, "width");
-+                if let Some(value) = widgets::number_field_or(ui, Id::new(("edm-designer-image-width", &block_id)), current, "Full", 90.0, 1.0).and_then(|edit| match edit { FieldEdit::Set(value) => Some(value), FieldEdit::Scrub(value, true) => Some(value), _ => None }) {
-+                    apply_props(app, &block_id, Map::from_iter([("width".into(), json!(value))]));
++                if allows("url") {
++                    props_text(app, ui, &block_id, "url", "CTA URL", prop_text(&block, "url", ""));
 +                }
-+            });
-+            props_choice(app, ui, &block_id, "contentAlignment", prop_text(&block, "contentAlignment", "left"), &["left", "center", "right"]);
-+            if prop_text(&block, "url", "").is_empty() {
-+                row(ui, 30.0, |ui| widgets::label(ui, "Empty image: select a verified asset in XeroFlow", t.text_secondary));
++                props_text(app, ui, &block_id, "buttonBackgroundColor", "CTA background", prop_text(&block, "buttonBackgroundColor", "#2F4574"));
++                props_text(app, ui, &block_id, "buttonTextColor", "CTA text colour", prop_text(&block, "buttonTextColor", "#FFFFFF"));
++                props_choice(app, ui, &block_id, "buttonStyle", prop_text(&block, "buttonStyle", "rounded"), &["rounded", "pill", "square"]);
++                props_choice(app, ui, &block_id, "size", prop_text(&block, "size", "medium"), &["x-small", "small", "medium", "large"]);
++                row(ui, 32.0, |ui| {
++                    if widgets::checkbox(ui, block["data"]["props"]["fullWidth"].as_bool().unwrap_or(false), "Full-width CTA") {
++                        let full_width = !block["data"]["props"]["fullWidth"].as_bool().unwrap_or(false);
++                        apply_props(app, &block_id, Map::from_iter([("fullWidth".into(), json!(full_width))]));
++                    }
++                });
 +            }
-+        }
-+        if kind == "Spacer" {
-+            props_number(app, ui, &block_id, "height", "Height", prop_number(&block, "height").or(Some(24.0)));
-+        }
-+        if kind == "Divider" {
-+            props_number(app, ui, &block_id, "lineThickness", "Line thickness", prop_number(&block, "lineThickness").or(Some(1.0)));
-+            props_text(app, ui, &block_id, "lineColor", "Line colour", prop_text(&block, "lineColor", "#E5E7EB"));
-+        }
-+        if kind == "ColumnsContainer" {
-+            row(ui, 32.0, |ui| {
-+                let current = prop_number(&block, "columnsCount").unwrap_or(2.0).to_string();
-+                if let Some(value) = widgets::combo_field(ui, Id::new(("edm-designer-columns-count", &block_id)), &current, 90.0, &strings(&["1", "2", "3"])).and_then(|value| value.parse::<f64>().ok()) {
-+                    apply_props(app, &block_id, Map::from_iter([("columnsCount".into(), json!(value))]));
++            if kind == "Image" {
++                if allows("alt") {
++                    props_text(app, ui, &block_id, "alt", "Alt text", prop_text(&block, "alt", ""));
 +                }
-+            });
-+            props_number(app, ui, &block_id, "columnsGap", "Column gap", prop_number(&block, "columnsGap").or(Some(16.0)));
-+            props_choice(app, ui, &block_id, "contentAlignment", prop_text(&block, "contentAlignment", "top"), &["top", "middle", "bottom"]);
-+        }
++                if allows("linkHref") {
++                    props_text(app, ui, &block_id, "linkHref", "Image link", prop_text(&block, "linkHref", ""));
++                }
++                row(ui, 32.0, |ui| {
++                    let current = prop_number(&block, "width");
++                    if let Some(value) = widgets::number_field_or(ui, Id::new(("edm-designer-image-width", &block_id)), current, "Full", 90.0, 1.0)
++                        .and_then(|edit| match edit {
++                            FieldEdit::Set(value) => Some(value),
++                            FieldEdit::Scrub(value, true) => Some(value),
++                            _ => None,
++                        })
++                    {
++                        apply_props(app, &block_id, Map::from_iter([("width".into(), json!(value))]));
++                    }
++                });
++                props_choice(app, ui, &block_id, "contentAlignment", prop_text(&block, "contentAlignment", "left"), &["left", "center", "right"]);
++                if prop_text(&block, "url", "").is_empty() {
++                    row(ui, 30.0, |ui| widgets::label(ui, "Empty image: select a verified asset in XeroFlow", t.text_secondary));
++                }
++            }
++            if kind == "Spacer" {
++                props_number(app, ui, &block_id, "height", "Height", prop_number(&block, "height").or(Some(24.0)));
++            }
++            if kind == "Divider" {
++                props_number(app, ui, &block_id, "lineThickness", "Line thickness", prop_number(&block, "lineThickness").or(Some(1.0)));
++                props_text(app, ui, &block_id, "lineColor", "Line colour", prop_text(&block, "lineColor", "#E5E7EB"));
++            }
++            if kind == "ColumnsContainer" {
++                row(ui, 32.0, |ui| {
++                    let current = prop_number(&block, "columnsCount").unwrap_or(2.0).to_string();
++                    if let Some(value) =
++                        widgets::combo_field(ui, Id::new(("edm-designer-columns-count", &block_id)), &current, 90.0, &strings(&["1", "2", "3"]))
++                            .and_then(|value| value.parse::<f64>().ok())
++                    {
++                        apply_props(app, &block_id, Map::from_iter([("columnsCount".into(), json!(value))]));
++                    }
++                });
++                props_number(app, ui, &block_id, "columnsGap", "Column gap", prop_number(&block, "columnsGap").or(Some(16.0)));
++                props_choice(app, ui, &block_id, "contentAlignment", prop_text(&block, "contentAlignment", "top"), &["top", "middle", "bottom"]);
++            }
 +
-+        row(ui, 32.0, |ui| {
-+            if widgets::checkbox(ui, mobile, "Edit mobile style overrides") {
-+                mobile = !mobile;
-+                ui.data_mut(|data| data.insert_temp(mobile_id, mobile));
++            row(ui, 32.0, |ui| {
++                if widgets::checkbox(ui, mobile, "Edit mobile style overrides") {
++                    mobile = !mobile;
++                    ui.data_mut(|data| data.insert_temp(mobile_id, mobile));
++                }
++            });
++            padding_editor(app, ui, &block_id, &block, mobile);
++            if matches!(kind.as_str(), "Heading" | "Text" | "Button") {
++                style_choice(app, ui, &block_id, "fontFamily", mobile, style_text(&block, mobile, "fontFamily", "MODERN_SANS"), &FONT_FAMILIES);
++                style_number_field(app, ui, &block_id, "fontSize", "Font size", mobile, style_number(&block, mobile, "fontSize"));
++                style_choice(
++                    app,
++                    ui,
++                    &block_id,
++                    "fontWeight",
++                    mobile,
++                    style_text(&block, mobile, "fontWeight", "normal"),
++                    &["normal", "bold", "100", "200", "300", "400", "500", "600", "700", "800", "900"],
++                );
++                style_choice(app, ui, &block_id, "textAlign", mobile, style_text(&block, mobile, "textAlign", "left"), &["left", "center", "right"]);
++                style_number_field(app, ui, &block_id, "lineHeight", "Line height", mobile, style_number(&block, mobile, "lineHeight"));
++                style_number_field(app, ui, &block_id, "letterSpacing", "Letter spacing", mobile, style_number(&block, mobile, "letterSpacing"));
++                style_text_field(app, ui, &block_id, "color", mobile, style_text(&block, mobile, "color", ""));
 +            }
-+        });
-+        padding_editor(app, ui, &block_id, &block, mobile);
-+        if matches!(kind.as_str(), "Heading" | "Text" | "Button") {
-+            style_choice(app, ui, &block_id, "fontFamily", mobile, style_text(&block, mobile, "fontFamily", "MODERN_SANS"), &FONT_FAMILIES);
-+            style_number_field(app, ui, &block_id, "fontSize", "Font size", mobile, style_number(&block, mobile, "fontSize"));
-+            style_choice(app, ui, &block_id, "fontWeight", mobile, style_text(&block, mobile, "fontWeight", "normal"), &["normal", "bold", "100", "200", "300", "400", "500", "600", "700", "800", "900"]);
-+            style_choice(app, ui, &block_id, "textAlign", mobile, style_text(&block, mobile, "textAlign", "left"), &["left", "center", "right"]);
-+            style_number_field(app, ui, &block_id, "lineHeight", "Line height", mobile, style_number(&block, mobile, "lineHeight"));
-+            style_number_field(app, ui, &block_id, "letterSpacing", "Letter spacing", mobile, style_number(&block, mobile, "letterSpacing"));
-+            style_text_field(app, ui, &block_id, "color", mobile, style_text(&block, mobile, "color", ""));
++            style_text_field(app, ui, &block_id, "backgroundColor", mobile, style_text(&block, mobile, "backgroundColor", ""));
 +        }
-+        style_text_field(app, ui, &block_id, "backgroundColor", mobile, style_text(&block, mobile, "backgroundColor", ""));
-+    }
 +    }
 +
 +    widgets::sublabels(ui, "Approved components", None);
@@ -4787,6 +5921,21 @@
 +}
 +
 +pub fn section(app: &mut FigApp, ui: &mut Ui, doc: &Document, selection: &[NodeId]) -> bool {
++    if app.session.ds().is_ok_and(|ds| ds.edm.is_some() || ds.edm_designer.is_some()) {
++        ui.horizontal(|ui| {
++            for (label, fit_width) in [("Fit width", true), ("100%", false)] {
++                if ui.button(label).clicked() {
++                    if let Ok(ds) = app.session.ds_mut() {
++                        fit_email_view(ds, fit_width);
++                    }
++                }
++            }
++        });
++        if selection.is_empty() && app.session.ds().is_ok_and(|ds| ds.edm.is_some()) {
++            ui.label("Select text, an image or a button");
++            return true;
++        }
++    }
 +    if app.session.ds().is_ok_and(|ds| ds.edm_designer.is_some()) {
 +        designer_section(app, ui, doc, selection);
 +        return true;
@@ -4886,17 +6035,31 @@
 +    fn edm_panel_structural_targets_omit_absent_column_and_keep_column_zero() {
 +        for parent in ["root", "nested-container"] {
 +            let target = location(parent, None, 1);
-+            for operation in [add_section_operation("Spacer", &target), move_section_operation("block", &target, 0), duplicate_section_operation("block", &target)] {
++            for operation in
++                [add_section_operation("Spacer", &target), move_section_operation("block", &target, 0), duplicate_section_operation("block", &target)]
++            {
 +                assert!(operation.get("columnIndex").is_none(), "{operation}: no column means no key");
 +                assert!(!operation.to_string().contains("null"), "{operation}: never JSON null");
 +            }
 +        }
-+        assert_eq!(add_section_operation("Spacer", &location("root", None, 1)), json!({"op": "add-section", "sectionType": "Spacer", "parentId": "root", "index": 1}));
++        assert_eq!(
++            add_section_operation("Spacer", &location("root", None, 1)),
++            json!({"op": "add-section", "sectionType": "Spacer", "parentId": "root", "index": 1})
++        );
 +        for column in [0usize, 1, 2] {
 +            let target = location("columns", Some(column), 1);
-+            assert_eq!(add_section_operation("Text", &target), json!({"op": "add-section", "sectionType": "Text", "parentId": "columns", "columnIndex": column, "index": 1}));
-+            assert_eq!(move_section_operation("cell", &target, 0), json!({"op": "move-section", "blockId": "cell", "parentId": "columns", "columnIndex": column, "index": 0}));
-+            assert_eq!(duplicate_section_operation("cell", &target), json!({"op": "duplicate-section", "blockId": "cell", "parentId": "columns", "columnIndex": column, "index": 2}));
++            assert_eq!(
++                add_section_operation("Text", &target),
++                json!({"op": "add-section", "sectionType": "Text", "parentId": "columns", "columnIndex": column, "index": 1})
++            );
++            assert_eq!(
++                move_section_operation("cell", &target, 0),
++                json!({"op": "move-section", "blockId": "cell", "parentId": "columns", "columnIndex": column, "index": 0})
++            );
++            assert_eq!(
++                duplicate_section_operation("cell", &target),
++                json!({"op": "duplicate-section", "blockId": "cell", "parentId": "columns", "columnIndex": column, "index": 2})
++            );
 +        }
 +    }
 +
@@ -4930,6 +6093,34 @@
 +    }
 +
 +    #[test]
++    fn edm_viewport_first_size_fits_width_and_preserves_later_camera() {
++        let mut session = target_session();
++        let ds = session.ds_mut().unwrap();
++        super::size_viewport(ds, 1200.0, 800.0);
++        assert!(ds.edm_view_initialized);
++        assert_eq!(ds.view.zoom, 1.0);
++        assert_eq!(ds.view.cy, 376.0);
++        ds.view.zoom = 0.77;
++        ds.view.cx = 111.0;
++        ds.view.cy = 999.0;
++        super::size_viewport(ds, 900.0, 700.0);
++        assert_eq!((ds.view.zoom, ds.view.cx, ds.view.cy), (0.77, 111.0, 999.0));
++        super::size_viewport(ds, 400.0, 700.0);
++        assert!(super::fit_email_view(ds, true));
++        assert!((ds.view.zoom - 352.0 / 600.0).abs() < 1e-9);
++        assert!((ds.view.cy * ds.view.zoom - (350.0 - 24.0)).abs() < 1e-9);
++        assert!(super::fit_email_view(ds, false));
++        assert_eq!(ds.view.zoom, 1.0);
++        assert_eq!(ds.view.cy, 326.0);
++        ds.edm_view_initialized = false;
++        super::size_viewport(ds, 1.0, 1.0);
++        assert!(!ds.edm_view_initialized);
++        super::size_viewport(ds, 800.0, 600.0);
++        assert!(ds.edm_view_initialized);
++        assert_eq!(session.execute("edm_designer_snapshot", &json!({})).unwrap()["operations"], json!([]));
++    }
++
++    #[test]
 +    fn edm_panel_field_commit_logs_only_a_changed_value() {
 +        assert_eq!(changed("Hi {{firstName}}".into(), "Hi {{firstName}}"), None, "focus in and out commits nothing");
 +        assert_eq!(changed("Hey {{firstName}}".into(), "Hi {{firstName}}"), Some("Hey {{firstName}}".into()));
@@ -4938,14 +6129,15 @@
 +}
 --- a/crates/ui-egui/src/right.rs
 +++ b/crates/ui-egui/src/right.rs
-@@ -341,12 +341,24 @@
+@@ -341,12 +341,25 @@
      let doc = ds.text_preview.clone().unwrap_or_else(|| ds.doc.clone());
      let sel = ds.selection.clone();
      let vector_edit = ds.vector_edit.clone();
 +    let designer = ds.edm_designer.is_some();
++    let email = designer || ds.edm.is_some();
      if sel.is_empty() {
 -        page_section(app, ui, &doc);
-+        if designer {
++        if email {
 +            crate::edm_panel::section(app, ui, &doc, &sel);
 +            widgets::separator(ui);
 +        } else {
@@ -5202,3 +6394,24 @@
 +        assert!(snapshot_ok(&mut u));
 +    }
 +}
+--- a/crates/ui-egui/src/canvas.rs
++++ b/crates/ui-egui/src/canvas.rs
+@@ -171,16 +171,8 @@
+     let resp = ui.interact(rect, ui.id().with("canvas"), Sense::click_and_drag());
+     let key_box = app.ui.key_box;
+     crate::a11y::canvas(&mut app.ui.nav, &resp, || key_box.map_or_else(|| describe(&app.session), describe_box));
+-    if let Ok(ds) = app.session.ds_mut()
+-        && ((ds.view.vw - f64::from(rect.width())).abs() > 0.5 || (ds.view.vh - f64::from(rect.height())).abs() > 0.5)
+-    {
+-        // Keep the centre; the first sizing after opening re-fits.
+-        let first = ds.view.vw == 1200.0 && ds.view.vh == 800.0;
+-        ds.view.vw = f64::from(rect.width());
+-        ds.view.vh = f64::from(rect.height());
+-        if first {
+-            ds.zoom_to_fit();
+-        }
++    if let Ok(ds) = app.session.ds_mut() {
++        crate::edm_panel::size_viewport(ds, f64::from(rect.width()), f64::from(rect.height()));
+     }
+     let own_cursor = input(app, ui, &resp);
+     // A browser names no dragged file until the drop, so documents there still say "import", or
