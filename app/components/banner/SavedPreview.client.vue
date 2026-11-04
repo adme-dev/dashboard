@@ -165,7 +165,7 @@ function changeZoom(direction: number) {
         aria-label="Scrollable artwork preview"
       >
         <div class="grid min-h-full min-w-full w-max place-items-center p-4">
-          <div :style="{ width: `${surfaceWidth * scale}px`, height: `${surfaceHeight * scale}px` }" class="relative shrink-0 shadow-2xl ring-1 ring-default/50">
+          <div :style="{ width: `${surfaceWidth * scale}px`, height: `${surfaceHeight * scale}px` }" class="relative shrink-0" :class="{ 'shadow-2xl ring-1 ring-default/50': mode === 'artwork' }">
             <div ref="surface" class="absolute left-0 top-0 origin-top-left" :style="{ width: `${surfaceWidth}px`, transform: `scale(${scale})` }">
               <BannerSavedViewerFrame
                 v-if="mode === 'artwork'"
@@ -183,6 +183,7 @@ function changeZoom(direction: number) {
                 :html-height="active.format.h"
                 page-name="Client preview"
                 :show-default-cta="false"
+                :show-label="false"
               />
               <AdPreviewMetaFeedPreview
                 v-else
@@ -279,7 +280,7 @@ function changeZoom(direction: number) {
         {{ audioError }}
       </p>
       <p v-if="mode === 'social'" class="shrink-0 px-4 pb-2 text-center text-[11px] text-muted">
-        {{ story ? 'Story / Reel mockup' : 'Facebook Feed mockup' }} · Placement mockup only. Page identity, ad copy and final platform cropping are not included.
+        {{ story ? 'Story / Reel mockup · Full creative shown with phone controls outside the artwork.' : 'Facebook Feed mockup.' }} Page identity, ad copy and final platform cropping are not included.
       </p>
     </div>
     <UAlert
