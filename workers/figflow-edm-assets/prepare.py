@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parent
 PREFIX = Path('figflow/0.11.2-edm1')
 
 
-def prepare(archive, receipt, commit):
+def prepare(archive, receipt, commit, prefix=PREFIX, target=None):
     if len(commit) != 40 or any(c not in '0123456789abcdef' for c in commit):
         raise ValueError('Full reviewed source commit required')
     evidence = json.loads(receipt.read_text())
@@ -24,12 +24,14 @@ def prepare(archive, receipt, commit):
         raise ValueError('Native archive differs from CI receipt')
     if archive.stat().st_size > 64 * 1024 * 1024:
         raise ValueError('Native archive exceeds release bound')
-    target = ROOT / 'dist'
+    if prefix not in [Path('figflow') / version for version in ('0.11.2-edm1', '0.11.2-edm3', '0.11.2-edm4')]:
+        raise ValueError('Unreviewed native prefix')
+    target = target or ROOT / 'dist'
     if target.exists():
         raise ValueError('Owned dist already exists; reconcile its receipt before preparing again')
     with tempfile.TemporaryDirectory(prefix='figflow-assets-') as temporary:
         staging = Path(temporary)
-        asset_root = staging / 'assets' / PREFIX
+        asset_root = staging / 'assets' / prefix
         files = {}
         with zipfile.ZipFile(archive) as package:
             entries = package.infolist()
@@ -59,7 +61,7 @@ def prepare(archive, receipt, commit):
             raise ValueError('Native editor, relay or WASM missing')
         if 'figflow-edm-relay.mjs' not in (asset_root / 'index.html').read_text():
             raise ValueError('Native package does not load its EDM relay')
-        result = {'source': commit, 'archiveSha256': digest, 'ciRunId': evidence.get('run_id'), 'prefix': '/' + str(PREFIX) + '/', 'files': files}
+        result = {'source': commit, 'archiveSha256': digest, 'ciRunId': evidence.get('run_id'), 'prefix': '/' + str(prefix) + '/', 'files': files}
         (staging / 'receipt.json').write_text(json.dumps(result, indent=2) + '\n')
         shutil.copytree(staging, target)
     return result

@@ -1,0 +1,447 @@
+{
+  "legacyReceiptSha256": "84ed777fa12c9ef68d2c8632d0799f97ad803ebf9d48dfe33eafc62148fafc01",
+  "legacy": {
+    "source": "018c306c366e3e9cc1d6a02cb51dddbefec65a6b",
+    "archiveSha256": "91f09af7f0e59a8a3f353afa67ad736ba1e7b1ec215c7b7c329191449026c27c",
+    "ciRunId": "41296329622",
+    "prefix": "/figflow/0.11.2-edm1/",
+    "files": {
+      "OFL-shippori-mincho.txt": {
+        "size": 4399,
+        "sha256": "41fba056279be5f45ff9a99e44b7b53897b42732f5806d8e666e0ab49ac6bd38"
+      },
+      "LICENSE-MIT": {
+        "size": 1100,
+        "sha256": "360c12b61568ef50808e731c98ae84110ea6f674dc34ac1ecb05d7abb9a6079a"
+      },
+      "OFL-liberation-mono.txt": {
+        "size": 4414,
+        "sha256": "93fed46019c38bbe566b479d22148e2e8a1e85ada614accb0211c37b2c61c19b"
+      },
+      "OFL-lato.txt": {
+        "size": 4407,
+        "sha256": "74ba064d03f1f1c4a952da936c3eb71866c34404916734de3cae73b34357e59e"
+      },
+      "OFL-biz-ud-mincho.txt": {
+        "size": 4408,
+        "sha256": "ef0ed524b3bd012f37015e986809eed6f67905456ebfc1ebd7fcc2765282ee01"
+      },
+      "LICENSE-APACHE": {
+        "size": 10174,
+        "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594"
+      },
+      "figcraft-web-6ad41045d103628e.js": {
+        "size": 168771,
+        "sha256": "40a53d1783c894a6f4e189bebca9be7e4521dce77ea54b5ea6b59d1abf21a37c"
+      },
+      "OFL-biz-ud-pgothic.txt": {
+        "size": 4408,
+        "sha256": "e753d7155d53c747d037a445e584c8ecfca6dd79846db610417e282a736b28bc"
+      },
+      "HOSTING.md": {
+        "size": 5713,
+        "sha256": "117e663d47edfa20f09a33cf641c7a986f6d8f10b25d145424d769b97e11af97"
+      },
+      "OFL-noto-sans-cjk-sc.txt": {
+        "size": 4301,
+        "sha256": "6a73f9541c2de74158c0e7cf6b0a58ef774f5a780bf191f2d7ec9cc53efe2bf2"
+      },
+      "figflow-edm-relay.mjs": {
+        "size": 21716,
+        "sha256": "5d290162b286bb12e1fd269abfd74c5e9664a160cdde1da03c6180353c709eb6"
+      },
+      "OFL-source-sans-3.txt": {
+        "size": 4579,
+        "sha256": "89ad2c4f66dd29127527493e729c31e731f111cf10faf5774c3db9275ed0c22c"
+      },
+      "OFL-poppins.txt": {
+        "size": 4385,
+        "sha256": "6be04893d770899a015649c7aa3b582f871b272f8747a92b78b17c3e5c8b2573"
+      },
+      "figcraft-web-6ad41045d103628e_bg.wasm": {
+        "size": 23379511,
+        "sha256": "9525d62c5d1d8e9a184ebe024c6d383bccadc5c02cc0ad5edd9e39adc3f20afb"
+      },
+      "README.md": {
+        "size": 30198,
+        "sha256": "6770f6268468c67dfc46b2c35b5fc5c09d84278f13b2879da366bd3b445af6ef"
+      },
+      "OFL-inter.txt": {
+        "size": 4380,
+        "sha256": "262481e844521b326f5ecd053e59b98c8b2da78c8ee1bdbb6e8174305e54935a"
+      },
+      "OFL-liberation-serif.txt": {
+        "size": 4414,
+        "sha256": "93fed46019c38bbe566b479d22148e2e8a1e85ada614accb0211c37b2c61c19b"
+      },
+      "OFL-carlito.txt": {
+        "size": 4424,
+        "sha256": "58402f82a7c332a700294988fe7554fbb0a63a8d27ccc1ee3bbc640311990a00"
+      },
+      "OFL-noto-sans-arabic.txt": {
+        "size": 4382,
+        "sha256": "07fc70bfeb985cc1a87a8587d0a0c80bab11c86c9dc3fd95b6f0cb332f983e96"
+      },
+      "OFL-montserrat.txt": {
+        "size": 4400,
+        "sha256": "8b7141c03fa4f8d44e6345d5d4931709290f0f67875e452e95ac1fd3a027802e"
+      },
+      "OFL-caladea.txt": {
+        "size": 4393,
+        "sha256": "ccdab61d371d8c8683a128a92cd7d498dbdb1d37689f7cb21f1bf6b16658d213"
+      },
+      "OFL-playfair-display.txt": {
+        "size": 4449,
+        "sha256": "566be814f8e96e93dfa16101331557eb6b5467e9e03f627c0910fe93ca12300e"
+      },
+      "OFL-roboto.txt": {
+        "size": 4394,
+        "sha256": "061402327a96aadb0bfb694a960ed289ecd38d383e396243831ab81feb109c41"
+      },
+      "OFL-nunito-sans.txt": {
+        "size": 4393,
+        "sha256": "efbb0c9e864cef973982d9a17567e6be5c3d1759695574586f3f18c7ecca064b"
+      },
+      "index.html": {
+        "size": 1648,
+        "sha256": "c5b0ed501c1b560724f60c692320a3faa22d938f20bc255636cb70fbd3f4dade"
+      },
+      "NOTICE": {
+        "size": 2566,
+        "sha256": "85c1df10470b1a4a783585cc4c39b0c5ee7c907b662d3a0ca6767c9e2339764f"
+      },
+      "OFL-open-sans.txt": {
+        "size": 4389,
+        "sha256": "fbbbcfef55318de350562559b671360de6d597112ecc5c73881b05092db89602"
+      },
+      "OFL-liberation-sans.txt": {
+        "size": 4414,
+        "sha256": "93fed46019c38bbe566b479d22148e2e8a1e85ada614accb0211c37b2c61c19b"
+      },
+      "OFL-merriweather.txt": {
+        "size": 4437,
+        "sha256": "a7ba785ad99b6eae0444ab89910e512d4af9865937fddbcb5c72c4f59f55d6ad"
+      },
+      "OFL-source-serif-4.txt": {
+        "size": 4492,
+        "sha256": "75784a295293a8992f5a8d99210566e0064a012e6dab6731305e3787f15896c7"
+      }
+    }
+  },
+  "packages": {
+    "0.11.2-edm3": {
+      "source": "5a55a47e54b83bdd022de519c0a19a599fffd6d0",
+      "ciRunId": "41752997197",
+      "archiveSha256": "33c6c4d2f60157014296b0fa74f26aa308e6d5bed19ac7c142bd04725cec0fbf",
+      "files": {
+        "OFL-shippori-mincho.txt": {
+          "size": 4399,
+          "sha256": "41fba056279be5f45ff9a99e44b7b53897b42732f5806d8e666e0ab49ac6bd38"
+        },
+        "LICENSE-MIT": {
+          "size": 1100,
+          "sha256": "360c12b61568ef50808e731c98ae84110ea6f674dc34ac1ecb05d7abb9a6079a"
+        },
+        "OFL-liberation-mono.txt": {
+          "size": 4414,
+          "sha256": "93fed46019c38bbe566b479d22148e2e8a1e85ada614accb0211c37b2c61c19b"
+        },
+        "OFL-lato.txt": {
+          "size": 4407,
+          "sha256": "74ba064d03f1f1c4a952da936c3eb71866c34404916734de3cae73b34357e59e"
+        },
+        "OFL-biz-ud-mincho.txt": {
+          "size": 4408,
+          "sha256": "ef0ed524b3bd012f37015e986809eed6f67905456ebfc1ebd7fcc2765282ee01"
+        },
+        "figcraft-web-1d7acf783bd92c8c_bg.wasm": {
+          "size": 23510042,
+          "sha256": "6e956244ec921f648abb7c5c1b695cc709434952d155a9b7a64b81b8e688b1a7"
+        },
+        "LICENSE-APACHE": {
+          "size": 10174,
+          "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594"
+        },
+        "OFL-biz-ud-pgothic.txt": {
+          "size": 4408,
+          "sha256": "e753d7155d53c747d037a445e584c8ecfca6dd79846db610417e282a736b28bc"
+        },
+        "HOSTING.md": {
+          "size": 5713,
+          "sha256": "117e663d47edfa20f09a33cf641c7a986f6d8f10b25d145424d769b97e11af97"
+        },
+        "OFL-noto-sans-cjk-sc.txt": {
+          "size": 4301,
+          "sha256": "6a73f9541c2de74158c0e7cf6b0a58ef774f5a780bf191f2d7ec9cc53efe2bf2"
+        },
+        "figflow-edm-relay.mjs": {
+          "size": 25083,
+          "sha256": "f433cee45f211b8fb21587626c11af07411689cfcf4878f3a958a5beec31ea7d"
+        },
+        "OFL-source-sans-3.txt": {
+          "size": 4579,
+          "sha256": "89ad2c4f66dd29127527493e729c31e731f111cf10faf5774c3db9275ed0c22c"
+        },
+        "OFL-poppins.txt": {
+          "size": 4385,
+          "sha256": "6be04893d770899a015649c7aa3b582f871b272f8747a92b78b17c3e5c8b2573"
+        },
+        "README.md": {
+          "size": 30198,
+          "sha256": "6770f6268468c67dfc46b2c35b5fc5c09d84278f13b2879da366bd3b445af6ef"
+        },
+        "OFL-inter.txt": {
+          "size": 4380,
+          "sha256": "262481e844521b326f5ecd053e59b98c8b2da78c8ee1bdbb6e8174305e54935a"
+        },
+        "OFL-liberation-serif.txt": {
+          "size": 4414,
+          "sha256": "93fed46019c38bbe566b479d22148e2e8a1e85ada614accb0211c37b2c61c19b"
+        },
+        "OFL-carlito.txt": {
+          "size": 4424,
+          "sha256": "58402f82a7c332a700294988fe7554fbb0a63a8d27ccc1ee3bbc640311990a00"
+        },
+        "OFL-noto-sans-arabic.txt": {
+          "size": 4382,
+          "sha256": "07fc70bfeb985cc1a87a8587d0a0c80bab11c86c9dc3fd95b6f0cb332f983e96"
+        },
+        "figcraft-web-1d7acf783bd92c8c.js": {
+          "size": 168771,
+          "sha256": "c6a348c42e3ff9c20bc6c78d9ee41b1a4333bf322af787d8579a0e141f5ca0da"
+        },
+        "OFL-montserrat.txt": {
+          "size": 4400,
+          "sha256": "8b7141c03fa4f8d44e6345d5d4931709290f0f67875e452e95ac1fd3a027802e"
+        },
+        "OFL-caladea.txt": {
+          "size": 4393,
+          "sha256": "ccdab61d371d8c8683a128a92cd7d498dbdb1d37689f7cb21f1bf6b16658d213"
+        },
+        "OFL-playfair-display.txt": {
+          "size": 4449,
+          "sha256": "566be814f8e96e93dfa16101331557eb6b5467e9e03f627c0910fe93ca12300e"
+        },
+        "OFL-roboto.txt": {
+          "size": 4394,
+          "sha256": "061402327a96aadb0bfb694a960ed289ecd38d383e396243831ab81feb109c41"
+        },
+        "OFL-nunito-sans.txt": {
+          "size": 4393,
+          "sha256": "efbb0c9e864cef973982d9a17567e6be5c3d1759695574586f3f18c7ecca064b"
+        },
+        "index.html": {
+          "size": 1648,
+          "sha256": "94dcf1e70a0e481616def5fc4008d699ac189650df6bcc1b08763c3ad3e2c969"
+        },
+        "NOTICE": {
+          "size": 2566,
+          "sha256": "85c1df10470b1a4a783585cc4c39b0c5ee7c907b662d3a0ca6767c9e2339764f"
+        },
+        "OFL-open-sans.txt": {
+          "size": 4389,
+          "sha256": "fbbbcfef55318de350562559b671360de6d597112ecc5c73881b05092db89602"
+        },
+        "OFL-liberation-sans.txt": {
+          "size": 4414,
+          "sha256": "93fed46019c38bbe566b479d22148e2e8a1e85ada614accb0211c37b2c61c19b"
+        },
+        "OFL-merriweather.txt": {
+          "size": 4437,
+          "sha256": "a7ba785ad99b6eae0444ab89910e512d4af9865937fddbcb5c72c4f59f55d6ad"
+        },
+        "OFL-source-serif-4.txt": {
+          "size": 4492,
+          "sha256": "75784a295293a8992f5a8d99210566e0064a012e6dab6731305e3787f15896c7"
+        }
+      }
+    },
+    "0.11.2-edm4": {
+      "source": "4cfd9d531fb24b1768db930b3064b6680ae6f37b",
+      "ciRunId": "41801949118",
+      "archiveSha256": "8978bdb7a4f2bb7d86456fd8f29157e44e997544448f95f212d8a74802c61c88",
+      "files": {
+        "OFL-shippori-mincho.txt": {
+          "size": 4399,
+          "sha256": "41fba056279be5f45ff9a99e44b7b53897b42732f5806d8e666e0ab49ac6bd38"
+        },
+        "LICENSE-MIT": {
+          "size": 1100,
+          "sha256": "360c12b61568ef50808e731c98ae84110ea6f674dc34ac1ecb05d7abb9a6079a"
+        },
+        "OFL-liberation-mono.txt": {
+          "size": 4414,
+          "sha256": "93fed46019c38bbe566b479d22148e2e8a1e85ada614accb0211c37b2c61c19b"
+        },
+        "OFL-lato.txt": {
+          "size": 4407,
+          "sha256": "74ba064d03f1f1c4a952da936c3eb71866c34404916734de3cae73b34357e59e"
+        },
+        "figcraft-web-95e9ad5b89ff9d.js": {
+          "size": 168771,
+          "sha256": "ce9954c4deb1276b1bde4ef2d0445fcf05aca2006554b62de310738a16731543"
+        },
+        "OFL-biz-ud-mincho.txt": {
+          "size": 4408,
+          "sha256": "ef0ed524b3bd012f37015e986809eed6f67905456ebfc1ebd7fcc2765282ee01"
+        },
+        "LICENSE-APACHE": {
+          "size": 10174,
+          "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594"
+        },
+        "OFL-biz-ud-pgothic.txt": {
+          "size": 4408,
+          "sha256": "e753d7155d53c747d037a445e584c8ecfca6dd79846db610417e282a736b28bc"
+        },
+        "HOSTING.md": {
+          "size": 5713,
+          "sha256": "117e663d47edfa20f09a33cf641c7a986f6d8f10b25d145424d769b97e11af97"
+        },
+        "OFL-noto-sans-cjk-sc.txt": {
+          "size": 4301,
+          "sha256": "6a73f9541c2de74158c0e7cf6b0a58ef774f5a780bf191f2d7ec9cc53efe2bf2"
+        },
+        "figflow-edm-relay.mjs": {
+          "size": 25083,
+          "sha256": "f433cee45f211b8fb21587626c11af07411689cfcf4878f3a958a5beec31ea7d"
+        },
+        "OFL-source-sans-3.txt": {
+          "size": 4579,
+          "sha256": "89ad2c4f66dd29127527493e729c31e731f111cf10faf5774c3db9275ed0c22c"
+        },
+        "OFL-poppins.txt": {
+          "size": 4385,
+          "sha256": "6be04893d770899a015649c7aa3b582f871b272f8747a92b78b17c3e5c8b2573"
+        },
+        "README.md": {
+          "size": 30198,
+          "sha256": "6770f6268468c67dfc46b2c35b5fc5c09d84278f13b2879da366bd3b445af6ef"
+        },
+        "OFL-inter.txt": {
+          "size": 4380,
+          "sha256": "262481e844521b326f5ecd053e59b98c8b2da78c8ee1bdbb6e8174305e54935a"
+        },
+        "OFL-liberation-serif.txt": {
+          "size": 4414,
+          "sha256": "93fed46019c38bbe566b479d22148e2e8a1e85ada614accb0211c37b2c61c19b"
+        },
+        "OFL-carlito.txt": {
+          "size": 4424,
+          "sha256": "58402f82a7c332a700294988fe7554fbb0a63a8d27ccc1ee3bbc640311990a00"
+        },
+        "OFL-noto-sans-arabic.txt": {
+          "size": 4382,
+          "sha256": "07fc70bfeb985cc1a87a8587d0a0c80bab11c86c9dc3fd95b6f0cb332f983e96"
+        },
+        "OFL-montserrat.txt": {
+          "size": 4400,
+          "sha256": "8b7141c03fa4f8d44e6345d5d4931709290f0f67875e452e95ac1fd3a027802e"
+        },
+        "OFL-caladea.txt": {
+          "size": 4393,
+          "sha256": "ccdab61d371d8c8683a128a92cd7d498dbdb1d37689f7cb21f1bf6b16658d213"
+        },
+        "OFL-playfair-display.txt": {
+          "size": 4449,
+          "sha256": "566be814f8e96e93dfa16101331557eb6b5467e9e03f627c0910fe93ca12300e"
+        },
+        "OFL-roboto.txt": {
+          "size": 4394,
+          "sha256": "061402327a96aadb0bfb694a960ed289ecd38d383e396243831ab81feb109c41"
+        },
+        "OFL-nunito-sans.txt": {
+          "size": 4393,
+          "sha256": "efbb0c9e864cef973982d9a17567e6be5c3d1759695574586f3f18c7ecca064b"
+        },
+        "index.html": {
+          "size": 1640,
+          "sha256": "51696ccad37e51779b7a6607631f0b0ebc99e4b600d5a5a1a3ecd5feb34e3866"
+        },
+        "figcraft-web-95e9ad5b89ff9d_bg.wasm": {
+          "size": 23521194,
+          "sha256": "5cee343c20b6823f6a4d82b86a08fda7555260ce374011764c214a80e4d0c561"
+        },
+        "NOTICE": {
+          "size": 2566,
+          "sha256": "85c1df10470b1a4a783585cc4c39b0c5ee7c907b662d3a0ca6767c9e2339764f"
+        },
+        "OFL-open-sans.txt": {
+          "size": 4389,
+          "sha256": "fbbbcfef55318de350562559b671360de6d597112ecc5c73881b05092db89602"
+        },
+        "OFL-liberation-sans.txt": {
+          "size": 4414,
+          "sha256": "93fed46019c38bbe566b479d22148e2e8a1e85ada614accb0211c37b2c61c19b"
+        },
+        "OFL-merriweather.txt": {
+          "size": 4437,
+          "sha256": "a7ba785ad99b6eae0444ab89910e512d4af9865937fddbcb5c72c4f59f55d6ad"
+        },
+        "OFL-source-serif-4.txt": {
+          "size": 4492,
+          "sha256": "75784a295293a8992f5a8d99210566e0064a012e6dab6731305e3787f15896c7"
+        }
+      }
+    }
+  },
+  "assetBaseline": {
+    "deployment": "8ffd494f-01ce-4e7a-991a-53c16134ea11",
+    "version": "49cbc7f6-b99a-44e8-80fb-2fa739a005e7"
+  },
+  "gatewayBaseline": {
+    "deployment": "be4b378c-e124-4b26-b408-6b92dcb13285",
+    "version": "bd310327-549d-40e3-9114-78cc855de201",
+    "modules": {
+      "worker.js": "17d54fbd7c20ebeb2ae2ae056da47b9989fc295a7f43aca097e75d76ce306349",
+      "brand-rpc.mjs": "0787e4c0acb8e2507a8d14f438a977941334212e95e0e490863b71a9812882c2"
+    },
+    "etag": "537c1145908fdc9f0dcd7ee3905d42f7a28ba55e953e7cb778f999249ce10336",
+    "runtime": {
+      "assets": {
+        "headers": {
+          "version": 2,
+          "rules": {
+            "/*": {
+              "set": {
+                "cache-control": "no-cache",
+                "content-security-policy": "frame-ancestors 'self' https://app.xeroflow.io",
+                "referrer-policy": "strict-origin-when-cross-origin",
+                "x-content-type-options": "nosniff"
+              },
+              "unset": []
+            }
+          }
+        },
+        "raw_headers": "/*\n  X-Content-Type-Options: nosniff\n  Referrer-Policy: strict-origin-when-cross-origin\n  Cache-Control: no-cache\n  Content-Security-Policy: frame-ancestors 'self' https://app.xeroflow.io\n",
+        "serve_directly": false,
+        "raw_run_worker_first": true,
+        "base_path": "/"
+      },
+      "compatibility_date": "2026-10-27",
+      "compatibility_flags": [
+        "global_fetch_strictly_public"
+      ],
+      "usage_model": "standard"
+    },
+    "bindings": [
+      {
+        "name": "ASSETS",
+        "type": "assets"
+      },
+      {
+        "name": "CREATIVE_AUTH_KEY",
+        "type": "secret_text"
+      },
+      {
+        "environment": "production",
+        "name": "FIGFLOW_EDM_ASSETS",
+        "service": "xeroflow-figflow-edm-assets",
+        "type": "service"
+      },
+      {
+        "name": "MOTORSTACK_API_KEY",
+        "type": "secret_text"
+      }
+    ]
+  }
+}

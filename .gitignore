@@ -54,3 +54,6 @@ graphify-out/
 # Local verification artifacts and reconstructed native build sources
 .verification/
 __pycache__/
+
+# Prepared additive FigFlow gateway modules; never authoritative source.
+workers/figflow-edm-assets/gateway-dist/
