@@ -62,7 +62,7 @@ else
   cd "$source_root/$engine"
   # Pinned formatting for every changed Rust module; retain corrected copies on failure.
   rustup component add rustfmt --toolchain 1.95.0 >> "$evidence/setup.log" 2>&1
-  formatted_files=(crates/engine/src/cmd/edm.rs crates/ui-egui/src/edm_panel.rs crates/ui-egui/src/edm_chrome.rs crates/ui-egui/src/shortcuts.rs crates/ui-egui/src/menus.rs crates/ui-egui/src/canvas.rs crates/ui-egui/src/lib.rs crates/ui-egui/src/theme.rs crates/text/build.rs crates/text/src/fontdb.rs)
+  formatted_files=(crates/engine/src/cmd/edm.rs crates/ui-egui/src/edm_panel.rs crates/ui-egui/src/edm_chrome.rs crates/ui-egui/src/browser_bridge.rs crates/ui-egui/src/shortcuts.rs crates/ui-egui/src/menus.rs crates/ui-egui/src/canvas.rs crates/ui-egui/src/lib.rs crates/ui-egui/src/theme.rs crates/text/build.rs crates/text/src/fontdb.rs)
   if ! rustfmt --edition 2024 --config skip_children=true --check "${formatted_files[@]}" > "$evidence/rustfmt.log" 2>&1; then
     for file in "${formatted_files[@]}"; do
       mkdir -p "$evidence/formatted/$(dirname "$file")"
@@ -87,6 +87,7 @@ expected = {
     'browser_bridge_designer_context_requires_exact_revision_and_empty_params',
     'browser_bridge_status_and_inspect_strip_paths',
     'browser_bridge_designer_import_snapshot_replay_and_revision_fence',
+    'browser_bridge_edm_generic_mutations_are_refused_before_scene_changes',
 }
 matched = re.findall(
     r'^test (?:browser_bridge::tests::)?(browser_bridge_[A-Za-z0-9_]+) \.\.\. ok$',
@@ -94,7 +95,7 @@ matched = re.findall(
     re.M,
 )
 if len(matched) != len(expected) or set(matched) != expected:
-    raise SystemExit(f'Expected exactly nine passing browser_bridge tests; matched {len(matched)}: {matched}')
+    raise SystemExit(f'Expected exactly ten passing browser_bridge tests; matched {len(matched)}: {matched}')
 PY
   cargo test --locked -p figcraft-ui-egui --lib edm_ > "$evidence/test-edm-ui.log" 2>&1
   python3 - "$evidence/test-edm-ui.log" <<'PY'
@@ -116,10 +117,11 @@ expected = {
     'edm_chrome_content_edit_remains_granted_and_geometry_is_refused',
     'edm_emoji_font_has_real_rocket_outline_and_scalar_layout',
     'edm_chrome_accessible_regions_keep_navigation_without_generic_tools',
+    'edm_chrome_multiline_fields_commit_through_canonical_content_and_designer_controls',
 }
 matched = re.findall(r'^test (?:[A-Za-z0-9_]+::)*(edm_[A-Za-z0-9_]+) \.\.\. ok$', Path(sys.argv[1]).read_text(), re.M)
 if len(matched) != len(expected) or set(matched) != expected:
-    raise SystemExit(f'Expected exactly 15 passing EDM UI tests; matched {len(matched)}: {matched}')
+    raise SystemExit(f'Expected exactly 16 passing EDM UI tests; matched {len(matched)}: {matched}')
 PY
   cargo test --locked -p figcraft-engine --lib edm_ > "$evidence/test-edm.log" 2>&1
   python3 - "$evidence/test-edm.log" <<'PY'

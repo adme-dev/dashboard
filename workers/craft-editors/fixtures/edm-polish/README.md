@@ -27,11 +27,12 @@ escaped literal markup, four canonical Spacer blocks, granted multiline plain
 text and a CTA, and an explicit arbitrary-HTML fallback. `capabilities.json` was
 generated with the shared `designerCapabilities` function, not a test-only grant
 implementation. The two import buttons load the same fixture in content and
-designer mode. Snapshot shows the unchanged canonical content or canonical
+designer mode, reopening a fresh local iframe before each subsequent import
+to respect the one-handoff-per-instance native fence. Snapshot shows the unchanged canonical content or canonical
 operation list. `window.__edmPolishFixture` retains request/reply receipts and
 exposes `load`, `snapshot` and `call` for the root-owned test harness.
 
-Required visual/interaction checks at 1440×900 and 1280×800, initial fit and100%:
+Required visual/interaction checks at 1440×900 and 1280×800, initial fit and 100%:
 
 - Native content shows the rocket outline and unchanged accented Latin/mixed
   style runs; record monochrome appearance. This is not a color-emoji claim.

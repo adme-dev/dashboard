@@ -31,6 +31,108 @@
  ];
 
  /// A system font file entry not yet loaded.
+--- a/crates/ui-egui/src/browser_bridge.rs
++++ b/crates/ui-egui/src/browser_bridge.rs
+@@ -169,9 +169,13 @@
+             return error("document_too_large");
+         }
+         let result = match action {
+-            "status" if keys(&p, &[]) => Ok(
+-                json!({"currentPage": ds.page.0.to_string(), "dirty": ds.is_dirty(), "supportedActions": ["inspect", "get_node", "create_node", "update_node", "edm_import", "edm_required_snapshot_images", "edm_snapshot", "edm_designer_import", "edm_designer_snapshot", "edm_designer_context"], "exports": false}),
+-            ),
++            "status" if keys(&p, &[]) => {
++                let mut actions = vec!["inspect", "get_node", "create_node", "update_node", "edm_import", "edm_required_snapshot_images", "edm_snapshot", "edm_designer_import", "edm_designer_snapshot", "edm_designer_context"];
++                if ds.edm.is_some() || ds.edm_designer.is_some() {
++                    actions.retain(|action| *action != "create_node" && (*action != "update_node" || ds.edm_designer.is_none()));
++                }
++                Ok(json!({"currentPage": ds.page.0.to_string(), "dirty": ds.is_dirty(), "supportedActions": actions, "exports": false}))
++            }
+             "inspect" if keys(&p, &["depth"]) => {
+                 let depth = match p.get("depth") {
+                     None => Some(2),
+@@ -197,13 +201,20 @@
+                     && p.get("name").is_none_or(|v| small_text(v, 256))
+                     && p.get("text").is_none_or(|v| small_text(v, 8192))
+                     && p.get("props").is_none_or(properties);
+-                if !valid { Err("invalid_params") } else { session.execute("node.create", &p).map_err(|_| "engine_refused") }
++                if !valid { Err("invalid_params") } else if !crate::edm_chrome::allowed(session, "node.create", &p) {
++                    Err("engine_refused")
++                } else { session.execute("node.create", &p).map_err(|_| "engine_refused") }
+             }
+             "update_node" if keys(&p, &["id", "props"]) => {
+                 if p.get("id").and_then(decimal).is_none() || !p.get("props").is_some_and(properties) {
+                     Err("invalid_params")
+                 } else {
+-                    session.execute("node.set", &json!({"ids": [p["id"].clone()], "props": p["props"].clone()})).map_err(|_| "engine_refused")
++                    let params = json!({"ids": [p["id"].clone()], "props": p["props"].clone()});
++                    if !crate::edm_chrome::allowed(session, "node.set", &params) {
++                        Err("engine_refused")
++                    } else {
++                        session.execute("node.set", &params).map_err(|_| "engine_refused")
++                    }
+                 }
+             }
+             "edm_import" if keys(&p, &["design", "images"]) => session.execute("edm_import", &p).map_err(|_| "engine_refused"),
+@@ -396,4 +407,58 @@
+         internal["action"] = json!("edm_designer_apply");
+         assert_eq!(parse(bridge.execute(&mut session, &internal.to_string()))["error"]["code"], "unsupported_action");
+     }
+-}
++    #[test]
++    fn browser_bridge_edm_generic_mutations_are_refused_before_scene_changes() {
++        for designer in [false, true] {
++            let (mut bridge, mut session, _) = setup();
++            let design = json!({
++                "schemaVersion": 1, "kind": "template", "scope": {"clientId": null},
++                "source": {"editor": "composer", "nativeArtifact": null}, "rootChildrenIds": ["root"],
++                "blocks": {
++                    "root": {"type": "EmailLayout", "data": {"childrenIds": ["text-1"], "props": {"contentWidth": 600}}},
++                    "text-1": {"type": "Text", "data": {"props": {"text": "Hello"}}}
++                },
++                "lineage": [], "dependencies": [], "moduleInstances": [], "assets": [],
++                "policy": {"version": 1, "editableFields": ["text-1.data.props.text"]}
++            });
++            let capabilities = json!({
++                "version": 1,
++                "operations": ["set-style", "set-props", "add-section", "move-section", "duplicate-section", "remove-section"],
++                "blocks": [
++                    {"blockId": "root", "editable": true, "canInsert": true, "lockedStyleFields": []},
++                    {"blockId": "text-1", "editable": true, "canInsert": false, "lockedStyleFields": []}
++                ],
++                "nativeSource": {"state": "canonical-only", "artifact": null, "reason": "PRIVATE_NATIVE_STAGING_UNAVAILABLE"}
++            });
++            let params = if designer {
++                json!({"design": design, "images": {}, "operationId": "123e4567-e89b-42d3-a456-426614174000", "capabilities": capabilities})
++            } else { json!({"design": design, "images": {}}) };
++            session.execute(if designer { "edm_designer_import" } else { "edm_import" }, &params).unwrap();
++            let status = parse(bridge.execute(&mut session, r#"{"requestId":"edm-status-0001","action":"status"}"#));
++            let actions = status["result"]["supportedActions"].as_array().unwrap();
++            assert!(!actions.contains(&json!("create_node")));
++            assert_eq!(actions.contains(&json!("update_node")), !designer);
++            let before = session.ds().unwrap().doc.clone();
++            let revision = session.ds().unwrap().revision;
++            let node = before.nodes().find(|n| n.plugin_data.get("xeroflow.edm.role").map(String::as_str) == Some("text")).unwrap().id;
++            assert_eq!(parse(bridge.execute(&mut session, &create(&status, "edm-create-0001").to_string()))["error"]["code"], "engine_refused");
++            let mut update = json!({"requestId":"edm-update-0001", "action":"update_node", "instanceId":status["instanceId"],
++                "documentId":status["documentId"], "expectedRevision":status["revision"], "params":{"id":node.0.to_string(),"props":{"width":100}}});
++            assert_eq!(parse(bridge.execute(&mut session, &update.to_string()))["error"]["code"], "engine_refused");
++            assert!(std::sync::Arc::ptr_eq(&before, &session.ds().unwrap().doc));
++            assert_eq!(session.ds().unwrap().revision, revision);
++            update["requestId"] = json!("edm-content-0001");
++            update["params"]["props"] = json!({"characters":"Granted 🚀"});
++            let result = parse(bridge.execute(&mut session, &update.to_string()));
++            if designer {
++                assert_eq!(result["error"]["code"], "engine_refused");
++                assert!(std::sync::Arc::ptr_eq(&before, &session.ds().unwrap().doc));
++                assert_eq!(session.execute("edm_designer_snapshot", &json!({})).unwrap()["operations"], json!([]));
++            } else {
++                assert_eq!(result["ok"], true);
++                assert_eq!(session.execute("edm_snapshot", &json!({})).unwrap()["blocks"]["text-1"]["data"]["props"]["text"], "Granted 🚀");
++            }
++        }
++    }
++
++}
 --- a/crates/ui-egui/src/canvas.rs
 +++ b/crates/ui-egui/src/canvas.rs
 @@ -178,7 +178,9 @@
@@ -100,7 +202,7 @@
      if resp.double_clicked() {
 --- /dev/null
 +++ b/crates/ui-egui/src/edm_chrome.rs
-@@ -0,0 +1,185 @@
+@@ -0,0 +1,193 @@
 +//! EDM-only native chrome. The canonical bridge remains the final authority;
 +//! this UI boundary prevents offering canvas operations it cannot round-trip.
 +use egui::{Id, Ui};
@@ -113,12 +215,16 @@
 +const NOTICE: &str = "Use the email controls for edits; return to XeroFlow to apply changes.";
 +
 +pub(crate) fn active(app: &FigApp) -> bool {
-+    app.session.ds().is_ok_and(|ds| ds.edm.is_some() || ds.edm_designer.is_some())
++    session_active(&app.session)
++}
++
++pub(crate) fn session_active(session: &figcraft_engine::Session) -> bool {
++    session.ds().is_ok_and(|ds| ds.edm.is_some() || ds.edm_designer.is_some())
 +}
 +
 +/// No prefix wildcards: new generic commands must not become available by accident.
-+pub(crate) fn allowed(app: &FigApp, id: &str, params: &Value) -> bool {
-+    if !active(app) {
++pub(crate) fn allowed(session: &figcraft_engine::Session, id: &str, params: &Value) -> bool {
++    if !session_active(session) {
 +        return true;
 +    }
 +    match id {
@@ -148,13 +254,13 @@
 +        | "edit.undo"
 +        | "edit.redo" => true,
 +        "tool.set" => params.as_object().is_some_and(|p| p.len() == 1 && matches!(p.get("tool").and_then(Value::as_str), Some("move" | "hand"))),
-+        "node.set" => content_edit_allowed(app, params),
++        "node.set" => content_edit_allowed(session, params),
 +        _ => false,
 +    }
 +}
 +
-+fn content_edit_allowed(app: &FigApp, params: &Value) -> bool {
-+    let Ok(ds) = app.session.ds() else { return false };
++fn content_edit_allowed(session: &figcraft_engine::Session, params: &Value) -> bool {
++    let Ok(ds) = session.ds() else { return false };
 +    // Designer mutations must use its typed canonical operation log.
 +    if ds.edm_designer.is_some() {
 +        return false;
@@ -183,7 +289,7 @@
 +}
 +
 +pub(crate) fn refuse(app: &mut FigApp, id: &str, params: &Value) -> bool {
-+    if allowed(app, id, params) {
++    if allowed(&app.session, id, params) {
 +        return false;
 +    }
 +    app.show_error(NOTICE.to_owned());
@@ -210,6 +316,10 @@
 +        app.ui.context_menu = None;
 +        app.ui.tool_flyout = None;
 +        app.ui.main_menu = false;
++        app.ui.layers_focus = false;
++        app.ui.pages_focus = None;
++        app.ui.key_box = None;
++        app.ui.rename = None;
 +    }
 +    // Reuse the engine's selection-only pointer behavior, without exposing Dev Mode.
 +    app.session.tool.dev_mode = true;
@@ -544,7 +654,7 @@
          u.frame(vec![Event::Text("Typed".into())]);
          press(&mut u, Key::Z, cmd());
          assert!(u.app.session.ds().unwrap().text_edit.is_none(), "Cmd/Ctrl+Z ends the edit");
-@@ -810,4 +834,130 @@
+@@ -810,4 +834,167 @@
          assert_eq!(counts(&u), (1, 0), "the canonical log is untouched");
          assert!(snapshot_ok(&mut u));
      }
@@ -638,6 +748,43 @@
 +        assert_eq!(before["blocks"]["text-1"]["data"]["props"]["text"], "Edited {{firstName}} 🚀");
 +        assert!(u.app.run("node.set", json!({"ids": [node], "props": {"width": 100}})).is_none());
 +        assert_eq!(u.app.session.execute("edm_snapshot", &json!({})).unwrap(), before);
++    }
++
++    #[test]
++    fn edm_chrome_multiline_fields_commit_through_canonical_content_and_designer_controls() {
++        for designer_mode in [false, true] {
++            let mut u = if designer_mode {
++                designer()
++            } else {
++                let mut session = Session::new();
++                session.execute("edm_import", &json!({"design": fixture_design(), "images": {}})).unwrap();
++                Ui::new(session)
++            };
++            let node = text_node(&u);
++            u.app.run("select.set", json!({"ids": [node]})).unwrap();
++            u.frame(vec![]);
++            let field = if designer_mode {
++                egui::Id::new(("edm-designer-prop", "text-1", "text"))
++            } else {
++                egui::Id::new(("edm-content-text", node))
++            };
++            u.ctx.memory_mut(|memory| memory.request_focus(field.with("te")));
++            u.frame(vec![]);
++            press(&mut u, Key::A, cmd());
++            u.frame(vec![Event::Text("Edited {{firstName}}\nLaunch 🚀".into())]);
++            // Clicking the canvas commits the focused native field; Enter keeps a newline.
++            let blank = u.app.canvas.rect.center();
++            u.button(blank, true);
++            u.button(blank, false);
++            u.frame(vec![]);
++            if designer_mode {
++                assert_eq!(canonical_text(&u), "Edited {{firstName}}\nLaunch 🚀");
++                assert_eq!(counts(&u), (1, 0));
++                assert!(snapshot_ok(&mut u));
++            } else {
++                assert_eq!(u.app.session.execute("edm_snapshot", &json!({})).unwrap()["blocks"]["text-1"]["data"]["props"]["text"], "Edited {{firstName}}\nLaunch 🚀");
++            }
++        }
 +    }
 +
 +    #[test]

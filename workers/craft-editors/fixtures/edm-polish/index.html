@@ -8,7 +8,7 @@
 const frame=document.querySelector('iframe'), status=document.querySelector('#status');
 const design=await fetch('/design.json').then(r=>r.json());
 const capabilities=await fetch('/capabilities.json').then(r=>r.json());
-let mode='content', sequence=0;
+let mode=null, sequence=0, importing=false;
 const receipts=[];
 async function raw(action,params={},binding={}) {
   const request={requestId:`polish-fixture-${++sequence}`,action,params,...binding};
@@ -22,22 +22,41 @@ async function call(action,params={}) {
   const s=await raw('status');
   return raw(action,params,{instanceId:s.instanceId,documentId:s.documentId,expectedRevision:s.revision});
 }
+async function ready() {
+  const start=Date.now();
+  while(!frame.contentWindow.__xfFigBridge){if(Date.now()-start>60000)throw Error('Native bridge unavailable');await new Promise(r=>setTimeout(r,100));}
+}
 async function load(selected) {
-  mode=selected;
-  const params={design,images:{}};
-  if(mode==='designer')Object.assign(params,{operationId:'123e4567-e89b-42d3-a456-426614174000',capabilities});
-  await call(mode==='designer'?'edm_designer_import':'edm_import',params);
-  status.textContent=`Imported ${mode} fixture`;
+  if(!['content','designer'].includes(selected)||importing)throw Error('Select one import mode at a time');
+  importing=true;
+  try {
+    // The native handoff intentionally imports once per instance. Reopen a fresh
+    // local iframe for the next mode or replay; never bypass that authority fence.
+    if(mode!==null){
+      await new Promise((resolve,reject)=>{
+        const timeout=setTimeout(()=>reject(Error('Native frame reload timed out')),60000);
+        frame.onload=()=>{clearTimeout(timeout);frame.onload=null;resolve();};
+        frame.src='/native/index.html?fixture='+sequence;
+      });
+    }
+    mode=null;
+    await ready();
+    const params={design,images:{}};
+    if(selected==='designer')Object.assign(params,{operationId:'123e4567-e89b-42d3-a456-426614174000',capabilities});
+    await call(selected==='designer'?'edm_designer_import':'edm_import',params);
+    mode=selected;
+    status.textContent=`Imported ${mode} fixture`;
+  } finally { importing=false; }
 }
 async function snapshot() {
+  if(mode===null||importing)throw Error('Import a fixture first');
   const result=(await call(mode==='designer'?'edm_designer_snapshot':'edm_snapshot')).result;
   const pre=document.querySelector('#result');pre.hidden=false;pre.textContent=JSON.stringify(result,null,2);
   return result;
 }
 for(const selected of ['content','designer'])document.querySelector('#'+selected).onclick=()=>load(selected).catch(e=>status.textContent=e.message);
 document.querySelector('#snapshot').onclick=()=>snapshot().catch(e=>status.textContent=e.message);
-const start=Date.now();
-while(!frame.contentWindow.__xfFigBridge){if(Date.now()-start>60000)throw Error('Native bridge unavailable');await new Promise(r=>setTimeout(r,100));}
+await ready();
 status.textContent='Native bridge ready';
 window.__edmPolishFixture={load,snapshot,call,receipts,design,capabilities};
 </script>
