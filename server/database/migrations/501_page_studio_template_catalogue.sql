@@ -44,6 +44,9 @@ CREATE FUNCTION protect_page_studio_template_version() RETURNS TRIGGER LANGUAGE 
 END $$;
 CREATE TRIGGER page_studio_template_version_immutable BEFORE UPDATE OR DELETE ON page_studio_template_versions
  FOR EACH ROW EXECUTE FUNCTION protect_page_studio_template_version();
+-- TRUNCATE does not run row-level DELETE triggers, including CASCADE.
+CREATE TRIGGER page_studio_template_version_no_truncate BEFORE TRUNCATE ON page_studio_template_versions
+ FOR EACH STATEMENT EXECUTE FUNCTION protect_page_studio_template_version();
 CREATE TABLE page_studio_template_version_status (
  version_id UUID PRIMARY KEY REFERENCES page_studio_template_versions(id) ON DELETE RESTRICT,
  withdrawn_at TIMESTAMPTZ,

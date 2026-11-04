@@ -109,6 +109,15 @@ UPDATE page_studio_customer_sessions SET revoked_at=clock_timestamp()`)
     await expect(db.query('DELETE FROM page_studio_template_versions')).rejects.toThrow('TEMPLATE_VERSION_IMMUTABLE')
     await expect(db.query('DELETE FROM page_studio_checkpoints')).rejects.toThrow()
   })
+  it('refuses cascading truncate and retains immutable versions and their status', async () => {
+    const versions = (await db.query('SELECT * FROM page_studio_template_versions ORDER BY id')).rows
+    const statuses = (await db.query('SELECT * FROM page_studio_template_version_status ORDER BY version_id')).rows
+    expect(versions).toHaveLength(1)
+    expect(statuses).toHaveLength(1)
+    await expect(db.query('TRUNCATE page_studio_template_versions CASCADE')).rejects.toThrow('TEMPLATE_VERSION_IMMUTABLE')
+    expect((await db.query('SELECT * FROM page_studio_template_versions ORDER BY id')).rows).toEqual(versions)
+    expect((await db.query('SELECT * FROM page_studio_template_version_status ORDER BY version_id')).rows).toEqual(statuses)
+  })
   it('rejects malformed grant scope and missing version source', async () => {
     await expect(db.query(`INSERT INTO page_studio_template_grants(template_id,audience,workspace_id,client_id) VALUES ('${id}','customer-workspace','${id}','${id}')`)).rejects.toThrow()
     await expect(db.query(`INSERT INTO page_studio_template_versions(template_id,format,source_tenant_id,source_client_id,source_site_id,source_checkpoint_id,source_digest,inventory_digest,provenance) VALUES ('${id}','typed','other','${id}','${id}','missing','${hash}','${hash}','{}')`)).rejects.toThrow()

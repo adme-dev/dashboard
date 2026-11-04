@@ -25,9 +25,9 @@ registered as templates by this work.
 
 ## Release dependencies
 
-The branch begins at native import PR843, commit
-`3e56da111d9594e5c3f60d2e3e1065a86e7ea5a6`. Merge the parent only after green CI,
-then move only this increment onto its merged main revision before release.
+Native import PR843 passed its full CI and merged as
+`09f0f7d534cbd2892e87a217ae8562b90c41cfde`. This increment was rebased onto that
+merged main revision; the previous branch tip remains on a preservation ref.
 The corresponding Studio import source is merged in PR241 at
 `41f71616f8650c623f40b3e747885510646e3ed3`.
 
@@ -40,11 +40,16 @@ deployment command contains the word staging.
 ## Local verification
 
 The combined six-file API/domain/component/customer-navigation run passes 54
-tests. The separately verified PostgreSQL run passes 19 database tests; its
+tests. The separately verified PostgreSQL run passes 20 database tests; its
 source manifest matches the reviewed files. Changed-file ESLint and strict
 shared/domain TypeScript checks pass. Independent review closed two important
 findings: portal listing no longer requires site-creation admission, and agency
 tenant selection must match fresh server-owned organization scope.
+
+Kimi ran independent UI and schema specialists. The UI review found no important
+issue. Its schema finding was reproduced: cascading TRUNCATE bypassed row-level
+immutability triggers. A statement-level guard now refuses it; the regression
+verifies that both versions and their status rows remain unchanged.
 
 Customer sign-out, refresh and account errors remain visible beside the
 catalogue. Authenticated setup retains only the exact `view=templates` value.
