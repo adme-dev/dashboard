@@ -39,6 +39,7 @@ const moveFolderId = ref('__unfiled__')
 const moveBusy = ref(false)
 const moveError = ref('')
 const shareTarget = ref<BannerProject | null>(null)
+const downloadTarget = ref<BannerProject | null>(null)
 const renameTarget = ref<BannerProject | null>(null)
 const renameValue = ref('')
 const renameBusy = ref(false)
@@ -662,6 +663,14 @@ function clearFilters() {
             context-label="Client"
           >
             <template #actions="{ id }">
+              <UButton
+                icon="i-lucide-download"
+                :aria-label="`MP4 downloads for ${projectById.get(id)?.name}`"
+                variant="ghost"
+                color="neutral"
+                size="xs"
+                @click="downloadTarget = projectById.get(id) || null"
+              />
               <UDropdownMenu :items="dropdownItems(projectById.get(id)!)">
                 <UButton
                   icon="i-lucide-more-horizontal"
@@ -711,6 +720,15 @@ function clearFilters() {
     </div>
     <BannerTheBriefImportModal v-model:open="showImportModal" @imported="refresh" />
     <BannerProjectShareModal :open="!!shareTarget" :project="shareTarget" @update:open="value => { if (!value) shareTarget = null }" />
+    <BannerVideoDownloads
+      v-if="downloadTarget"
+      :open="!!downloadTarget"
+      :project-id="downloadTarget.id"
+      :project-name="downloadTarget.name"
+      :client-id="downloadTarget.clientId"
+      :editor-url="`${editorBase}/${downloadTarget.id}`"
+      @update:open="value => { if (!value) downloadTarget = null }"
+    />
     <UModal
       :open="!!renameTarget"
       title="Rename banner"

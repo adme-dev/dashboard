@@ -2,6 +2,8 @@ export type ExportJob = {
   canRetry?: boolean
   jobId: string
   formatKey: string
+  width?: number | null
+  height?: number | null
   status: string
   url: string | null
   fileSize: number | null

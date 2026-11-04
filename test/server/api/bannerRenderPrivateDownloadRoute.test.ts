@@ -100,6 +100,8 @@ describe('GET /agency/banner-studio/export-video/jobs', () => {
         fileSize: 71546,
         error: null,
         canRetry: false,
+        width: 728,
+        height: 90,
         createdAt: null,
         startedAt: null,
         updatedAt: null

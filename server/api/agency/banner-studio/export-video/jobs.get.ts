@@ -36,6 +36,8 @@ export default defineEventHandler(async (event) => {
     return { jobs: projectJobStatus(rows).map((job, index) => ({
       ...job,
       canRetry: canRetryBannerJob(rows[index]!),
+      width: rows[index]!.width,
+      height: rows[index]!.height,
       createdAt: rows[index]!.created_at ?? null,
       startedAt: rows[index]!.started_at ?? null,
       updatedAt: rows[index]!.updated_at ?? null
@@ -55,6 +57,8 @@ export default defineEventHandler(async (event) => {
   return { jobs: projectJobStatus(rows).map((job, index) => ({
     ...job,
     canRetry: canRetryBannerJob(rows[index]!),
+    width: rows[index]!.width,
+    height: rows[index]!.height,
     createdAt: rows[index]!.created_at ?? null,
     startedAt: rows[index]!.started_at ?? null,
     updatedAt: rows[index]!.updated_at ?? null
