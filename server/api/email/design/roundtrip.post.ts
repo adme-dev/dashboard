@@ -49,10 +49,12 @@ export default defineEventHandler(async (event) => {
         if (!(error && typeof error === 'object' && 'statusCode' in error && error.statusCode === 403)) throw error
       }
     }
+    const { blankDesignerSource, ...lookup } = result
+    const authoringSource = result.draft?.state === 'structured' ? result.draft.source : blankDesignerSource
     let available = false
-    if ((result.owner?.kind !== 'campaign' || result.mutable === true) && (result.owner?.kind === 'campaign' ? gate.campaign : gate.template) && result.draft?.state === 'structured' && result.draft.source.source.nativeArtifact === null) {
+    if ((result.owner?.kind !== 'campaign' || result.mutable === true) && (result.owner?.kind === 'campaign' ? gate.campaign : gate.template) && authoringSource && authoringSource.source.nativeArtifact === null) {
       try {
-        available = await assertFreshDesignAccess(token, user.id, result.draft.source.scope.clientId, 'write') === 'designer'
+        available = await assertFreshDesignAccess(token, user.id, authoringSource.scope.clientId, 'write') === 'designer'
       } catch (error) {
         // A read-authorised staff member may discover the ordinary draft while
         // structural authoring stays unavailable; other failures remain errors.
@@ -60,7 +62,7 @@ export default defineEventHandler(async (event) => {
       }
     }
     let publisher = false
-    const libraryAvailable = gate.campaign && available && env.FIGFLOW_EDM_LIBRARY_ENABLED === 'true'
+    const libraryAvailable = gate.campaign && available && result.draft?.state === 'structured' && env.FIGFLOW_EDM_LIBRARY_ENABLED === 'true'
     if (libraryAvailable && result.draft?.state === 'structured') {
       try {
         await assertFreshDesignPublisher(token, user.id, result.draft.source.scope.clientId)
@@ -69,9 +71,9 @@ export default defineEventHandler(async (event) => {
         if (!(error && typeof error === 'object' && 'statusCode' in error && error.statusCode === 403)) throw error
       }
     }
-    return { ...result, campaignAuthoring: { contentImagesAvailable: campaignContentImages, available: campaignAvailable && (result.draft?.state !== 'structured' || result.draft.source.source.nativeArtifact === null) }, libraryAuthoring: { available: libraryAvailable, publisher }, designerAuthoring: {
+    return { ...lookup, campaignAuthoring: { contentImagesAvailable: campaignContentImages, available: campaignAvailable && (result.draft?.state !== 'structured' || result.draft.source.source.nativeArtifact === null) }, libraryAuthoring: { available: libraryAvailable, publisher }, designerAuthoring: {
       available, endpoint: '/api/email/design/designer' as const,
-      capabilities: available && result.draft?.state === 'structured' ? designerCapabilities(result.draft.source) : null
+      capabilities: available && authoringSource ? designerCapabilities(authoringSource) : null
     } }
   } catch (error) {
     if (error && typeof error === 'object' && 'constraint' in error && DESIGN_REVISION_CONSTRAINTS.has(String(error.constraint))) rethrowLegacyDesignConflict(error)

@@ -9,7 +9,7 @@ import { stableDesignJson, DesignModuleError } from '../../../shared/emailRender
 import { applyDesignerOperations, designerCapabilities, parseDesignerProposal, type DesignerRoundtripRequest } from '~~/shared/emailRendering/designDesigner'
 import { designToRendererDocument } from '~~/shared/emailRendering/designAdapter'
 import { transactionWithoutRetry } from '~~/server/utils/db'
-import { composerToDesignDraft, validateContentReturn } from '~~/shared/emailRendering/designComposer'
+import { composerToDesignDraft, isExactBlankBody, validateContentReturn } from '~~/shared/emailRendering/designComposer'
 import { validateEmailDesign, type EmailDesignDocument } from '~~/shared/emailRendering/designContract'
 import { FIGFLOW_EDM_EDITOR_URL, FIGFLOW_EDM_ORIGIN, designTargetOwner, type DesignHandoff, type DesignOwner, type RoundtripRequest } from '~~/shared/emailRendering/designRoundtrip'
 import type { EmailRendererClient } from '~~/shared/emailRendering/contract'
@@ -250,7 +250,7 @@ async function executeRoundtrip(
   runTransaction: DesignTransaction = callback => transactionWithoutRetry(db => callback(db)),
   designer = false,
   storage?: DesignAssetStorage
-): Promise<{ handoff: DesignHandoff, recovery?: { campaignId: string, documentId: string, revisionId: string } } | { draft: HandoffDraftRead | null, owner?: DesignOwner, mutable?: boolean, clientId?: string | null }> {
+): Promise<{ handoff: DesignHandoff, recovery?: { campaignId: string, documentId: string, revisionId: string } } | { draft: HandoffDraftRead | null, owner?: DesignOwner, mutable?: boolean, clientId?: string | null, blankDesignerSource?: EmailDesignDocument }> {
   return runTransaction(async (db) => {
     const operationId = request.command === 'open' || request.command === 'start' ? request.operationId : 'action' in request ? request.action.operationId : null
     const encodedRequest = stable(designer ? { ...request, authoringMode: 'designer' } : request)
@@ -286,15 +286,25 @@ async function executeRoundtrip(
               }, db)
             : null }
         }
-        const row = (await db.query('SELECT id, client_id FROM edm_templates WHERE id=$1', [target.id])).rows[0] as { id: string, client_id: string | null } | undefined
+        const row = (await db.query('SELECT id, client_id, template_kind, body_source FROM edm_templates WHERE id=$1', [target.id])).rows[0] as { id: string, client_id: string | null, template_kind: string, body_source: unknown } | undefined
         if (!row) throw new DesignHandoffError('NOT_FOUND')
         await authority.authorize(row.client_id, 'read')
         const document = (await db.query('SELECT id FROM email_design_documents WHERE template_id=$1', [row.id])).rows[0] as { id: string } | undefined
-        return { draft: document
+        const draft = document
           ? await getTemplateDesignDraft(document.id, async (id) => {
               await authority.authorize(id, 'read')
             }, db)
-          : null }
+          : null
+        // Use the raw persisted body, never conversion output or caller hints.
+        // A legacy head also needs the existing whole-owner drift check.
+        const blankDesignerSource = row.template_kind === 'draft'
+          && (!draft || (draft.state === 'legacy' && !draft.ownerChangedSinceSnapshot))
+          && isExactBlankBody(row.body_source)
+          ? composerToDesignDraft(row.body_source, row.client_id)
+          : undefined
+        // Internal discovery metadata only; the HTTP boundary strips it. Keep
+        // draft null until atomic start creates the real persisted baseline.
+        return { draft, ...(blankDesignerSource ? { blankDesignerSource } : {}) }
       }
       if (request.command === 'open' || request.command === 'start') {
         const prior = (await db.query('SELECT id FROM email_design_handoffs WHERE id=$1', [request.operationId])).rows[0]
@@ -528,7 +538,11 @@ export function executeDesignRoundtrip(request: RoundtripRequest, authority: Aut
  * uncertain replies; it is never selected by an actor/policy field in JSON. */
 export async function executeDesignerRoundtrip(request: DesignerRoundtripRequest, authority: Authority, renderer: EmailRendererClient, runTransaction?: DesignTransaction, storage?: DesignAssetStorage) {
   const result = await executeRoundtrip(request, authority, renderer, runTransaction, true, storage)
-  if (!('handoff' in result) || result.recovery) return result
+  if (!('handoff' in result)) {
+    const { blankDesignerSource: _discovery, ...lookup } = result
+    return lookup
+  }
+  if (result.recovery) return result
   await authority.authorize(result.handoff.source.scope.clientId, 'read')
   const html = await renderDesignerPreview(result.handoff.proposal ?? result.handoff.source, renderer)
   await authority.authorize(result.handoff.source.scope.clientId, 'read')

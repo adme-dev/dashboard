@@ -1,4 +1,5 @@
 import fs from 'node:fs'
+import { createEmptyDocument } from '../../app/types/edm'
 import pg from 'pg'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { executeDesignerRoundtrip, executeDesignRoundtrip } from '../../server/utils/email-marketing/designHandoffs'
@@ -242,4 +243,107 @@ describe('designer authority with real PostgreSQL transactions', () => {
     const stored = await getTemplateDesignDraft(documentId, async () => {}, admin)
     expect(stored.projection.state).toBe('current')
   })
+  // E01 cases use fresh never-initialized owners; the structured beforeEach
+  // fixture cannot prove atomic first-start rollback or raw JSONB admission.
+  async function freshBlank(clientId: string | null = scope) {
+    templateId = crypto.randomUUID()
+    await admin.query('INSERT INTO edm_templates(id,client_id,body_source) VALUES($1,$2,$3::jsonb)', [templateId, clientId, JSON.stringify(createEmptyDocument())])
+    return { command: 'start' as const, operationId: crypto.randomUUID(), templateId, clientId }
+  }
+  async function blankEffects(operationId: string) {
+    const counts = (await admin.query(`SELECT
+      (SELECT count(*)::int FROM email_design_documents WHERE template_id=$1) AS documents,
+      (SELECT count(*)::int FROM email_design_revisions r JOIN email_design_documents d ON d.id=r.document_id WHERE d.template_id=$1) AS revisions,
+      (SELECT count(*)::int FROM email_design_handoffs h JOIN email_design_documents d ON d.id=h.document_id WHERE d.template_id=$1) AS handoffs,
+      (SELECT count(*)::int FROM email_design_revision_receipts rr JOIN email_design_documents d ON d.id=rr.document_id WHERE d.template_id=$1) AS writes,
+      (SELECT count(*)::int FROM email_design_handoff_receipts WHERE actor_id=$2 AND operation_id=$3) AS receipts`, [templateId, actorId, operationId])).rows[0]
+    const owner = (await admin.query('SELECT body_source,body_html,email_design_revision_id,updated_at FROM edm_templates WHERE id=$1', [templateId])).rows[0]
+    return { counts, owner }
+  }
+  databaseTest.each(['content', 'staff', 'renderer', 'revoked-during-render'] as const)('E01 real transaction rolls fresh blank %s refusal back with zero writes', async (failure) => {
+    const request = await freshBlank()
+    const before = await blankEffects(request.operationId)
+    let renderCount = 0
+    const renderer = { ...testEmailRenderer, renderDocument: async (...args: Parameters<typeof testEmailRenderer.renderDocument>) => {
+      renderCount++
+      if (failure === 'renderer') throw new Error('conversion render failed')
+      if (failure === 'revoked-during-render') role = 'staff'
+      return testEmailRenderer.renderDocument(...args)
+    } }
+    if (failure === 'staff') role = 'staff'
+    const run = failure === 'content' ? executeDesignRoundtrip : executeDesignerRoundtrip
+    await expect(run(request, authority(), renderer, transaction)).rejects.toMatchObject(failure === 'renderer' ? { message: 'conversion render failed' } : { code: failure === 'content' ? 'NO_EDITABLE_CONTENT' : 'DESIGNER_REQUIRED' })
+    expect(await blankEffects(request.operationId)).toEqual(before)
+    expect(before.counts).toEqual({ documents: 0, revisions: 0, handoffs: 0, writes: 0, receipts: 0 })
+    if (failure === 'renderer' || failure === 'revoked-during-render') expect(renderCount).toBe(1)
+  })
+  databaseTest.each([false, true])('E01 committed lost reply replays once, shared-null=%s', async (shared) => {
+    const request = await freshBlank(shared ? null : scope)
+    const access = { ...authority(), authorize: async (clientId: string | null) => {
+      if (clientId !== request.clientId) throw new Error('scope denied')
+      return role
+    } }
+    const loseReply: DesignTransaction = async callback => { await transaction(callback); throw new Error('committed reply lost') }
+    await expect(executeDesignerRoundtrip(request, access, testEmailRenderer, loseReply)).rejects.toThrow('committed reply lost')
+    const first = await executeDesignerRoundtrip(request, access, testEmailRenderer, transaction)
+    const replay = await executeDesignerRoundtrip(request, access, testEmailRenderer, transaction)
+    expect(replay).toEqual(first)
+    const committed = await blankEffects(request.operationId)
+    // One immutable schema0 snapshot plus one conversion revision.
+    expect(committed.counts).toEqual({ documents: 1, revisions: 2, handoffs: 1, writes: 1, receipts: 1 })
+    await expect(executeDesignerRoundtrip({ ...request, clientId: crypto.randomUUID() }, access, testEmailRenderer, transaction)).rejects.toMatchObject({ code: 'IDEMPOTENCY_CONFLICT' })
+    expect(await blankEffects(request.operationId)).toEqual(committed)
+    role = 'staff'
+    await expect(executeDesignerRoundtrip(request, access, testEmailRenderer, transaction)).rejects.toMatchObject({ code: 'DESIGNER_REQUIRED' })
+    expect(await blankEffects(request.operationId)).toEqual(committed)
+  })
+  databaseTest('E01 raw JSONB blank discovery preserves schema0 drift and initialized-owner distinctions', async () => {
+    const request = await freshBlank()
+    const lookup = () => executeDesignRoundtrip({ command: 'lookup', templateId }, authority(), testEmailRenderer, transaction)
+    expect(await lookup()).toMatchObject({ draft: null, blankDesignerSource: { policy: { editableFields: [] } } })
+    const legacy = await ensureLegacyDesignDocument({ kind: 'template', ownerId: templateId, actorId }, async () => {}, transaction)
+    expect(await lookup()).toMatchObject({ draft: { state: 'legacy', ownerChangedSinceSnapshot: false }, blankDesignerSource: { kind: 'template' } })
+    await admin.query('UPDATE edm_templates SET subject=$2 WHERE id=$1', [templateId, 'changed owner but same exact blank'])
+    expect(await lookup()).not.toHaveProperty('blankDesignerSource')
+    await expect(designer(request)).rejects.toMatchObject({ code: 'LEGACY_CONTENT_CHANGED' })
+    expect((await blankEffects(request.operationId)).counts).toEqual({ documents: 1, revisions: 1, handoffs: 0, writes: 0, receipts: 0 })
+    expect((await getTemplateDesignDraft(legacy.documentId, async () => {}, admin)).state).toBe('legacy')
+  })
+  databaseTest.each(['Heading', 'Text', 'Button'] as const)('E01 blank-derived %s previews then Applies one revision and reopens exact head', async (sectionType) => {
+    const request = await freshBlank()
+    const opened = await designer(request)
+    documentId = opened.handoff.draftId
+    head = opened.handoff.baseRevisionId
+    const proposed = await propose(opened.handoff, [{ op: 'add-section', parentId: 'root', index: 0, sectionType }])
+    expect(proposed.preview.html).toContain('<')
+    const saved = await designer(apply(proposed.handoff))
+    const stored = await getTemplateDesignDraft(documentId, async () => {}, admin)
+    expect(stored).toMatchObject({ state: 'structured', headRevisionId: saved.handoff.appliedRevisionId, projection: { state: 'current' } })
+    const reopened = await designer({ command: 'open', operationId: crypto.randomUUID(), draftId: documentId, expectedRevisionId: stored.headRevisionId })
+    expect(Object.values(reopened.handoff.source.blocks).some(block => block.type === sectionType)).toBe(true)
+    expect((await blankEffects(request.operationId)).counts.revisions).toBe(3)
+    await expect(designer({ command: 'open', operationId: crypto.randomUUID(), draftId: documentId, expectedRevisionId: head })).rejects.toMatchObject({ code: 'REVISION_CONFLICT' })
+  })
+  databaseTest('E01 registered Image uses insert-published-image on the blank-derived head, then preview/Apply/readback/reopen', async () => {
+    const request = await freshBlank()
+    const opened = await designer(request)
+    documentId = opened.handoff.draftId
+    const assetId = crypto.randomUUID()
+    const png = Uint8Array.from(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6lWQAAAAASUVORK5CYII=', 'base64'))
+    const url = 'https://example.invalid/e01-registered.png'
+    await admin.query('INSERT INTO banner_assets(id,client_id,uploaded_by,r2_key,url,mime_type,file_size) VALUES($1,$2,$3,$4,$5,$6,$7)', [assetId, scope, actorId, `banner-assets/${actorId}/${crypto.randomUUID()}/image.png`, url, 'image/png', png.length])
+    const storage = { read: async () => png, url: async () => url, identifyUrl: async () => assetId }
+    const access = { actorId, read: async (clientId: string | null) => { if (clientId !== scope) throw new Error('scope denied') }, designer: async () => { if (role !== 'designer') throw new Error('designer denied') }, publisher: async () => {} }
+    await publishEmailAsset({ version: 1, operationId: crypto.randomUUID(), assetId }, actorId, access.read, storage, transaction)
+    const inserted = await executeDesignModules({ version: 1, command: 'insert-published-image', operationId: crypto.randomUUID(), draftId: documentId, expectedDraftRevisionId: opened.handoff.baseRevisionId, assetId, parentId: 'root', index: 0 }, access, testEmailRenderer, storage, transaction)
+    const imageHead = await designer({ command: 'open', operationId: crypto.randomUUID(), draftId: documentId, expectedRevisionId: inserted.revisionId })
+    const imageId = Object.keys(imageHead.handoff.source.blocks).find(id => imageHead.handoff.source.blocks[id]!.type === 'Image')!
+    const proposed = await propose(imageHead.handoff, [{ op: 'set-props', blockId: imageId, props: { alt: 'Registered blank image' } }])
+    expect(proposed.preview.html).toContain(url)
+    const saved = await designer(apply(proposed.handoff))
+    const reopened = await designer({ command: 'open', operationId: crypto.randomUUID(), draftId: documentId, expectedRevisionId: saved.handoff.appliedRevisionId! })
+    expect(reopened.handoff.source.blocks[imageId]).toMatchObject({ type: 'Image', data: { props: { url, alt: 'Registered blank image' } } })
+    expect(reopened.handoff.source.assets.map(asset => asset.id)).toContain(assetId)
+  })
+
 })

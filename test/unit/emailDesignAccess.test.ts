@@ -80,6 +80,19 @@ describe('fresh email design authority', () => {
       'designer'
     )
   })
+  it.each([{ groups: ['ADMIN'] }, { groups: ['MANAGEMENT'] }])('keeps shared $groups staff on composer fallback and requires current CREATIVE for designer mode', async ({ groups }) => {
+    mocks.query.mockResolvedValue({ ...row(), permission_groups: groups })
+    expect(await assertFreshDesignAccess('token', actor, null, 'write')).toBe('staff')
+    mocks.query.mockResolvedValue({ ...row(), permission_groups: [...groups, 'CREATIVE'] })
+    expect(await assertFreshDesignAccess('token', actor, null, 'write')).toBe('designer')
+    mocks.query.mockResolvedValue({ ...row(), permission_groups: [...groups, 'CREATIVE'], is_read_only: true })
+    await expect(assertFreshDesignAccess('token', actor, null, 'write')).rejects.toMatchObject({ statusCode: 403 })
+  })
+  it.each([{ groups: ['CREATIVE'] }, { groups: ['MARKETING_MANAGEMENT', 'CREATIVE'] }])('denies shared scope to client-assigned $groups without agency authority', async ({ groups }) => {
+    mocks.query.mockResolvedValue({ ...row(), assigned: true, permission_groups: groups })
+    await expect(assertFreshDesignAccess('token', actor, null, 'read')).rejects.toMatchObject({ statusCode: 403 })
+    await expect(assertFreshDesignAccess('token', actor, null, 'write')).rejects.toMatchObject({ statusCode: 403 })
+  })
   it('fails closed on database errors and changed actor identity', async () => {
     mocks.query.mockRejectedValue(new Error('database unavailable'))
     await expect(

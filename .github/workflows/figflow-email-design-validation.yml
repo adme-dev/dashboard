@@ -51,7 +51,10 @@ jobs:
           test/unit/emailDesignDesignerPersistence.test.ts test/unit/emailCampaignHandoffRoute.test.ts
           test/unit/emailDesignLibraryHttp.test.ts test/unit/emailDesignBrandHttp.test.ts
           test/unit/emailDesignConditionRoutes.test.ts test/unit/emailDesignAccess.test.ts
-          test/workers/emailDesignDeploy.test.ts --maxWorkers=1 --no-file-parallelism
+          test/workers/emailDesignDeploy.test.ts test/unit/emailDesignBlankBody.test.ts
+          test/unit/emailDesignBlankLookup.test.ts test/unit/emailDesignBlankStart.test.ts
+          test/unit/emailDesignInitialization.test.ts test/unit/emailDesignModulePersistence.test.ts
+          --maxWorkers=1 --no-file-parallelism
       - name: Build and dry-run private Worker, then test actual artifact admission
         if: matrix.gate == 'worker'
         run: |
@@ -100,7 +103,7 @@ jobs:
           assert.equal(report.success, true)
           assert.equal(report.numPendingTests, 0, 'Skipped PostgreSQL tests are not acceptance')
           assert.equal(report.numTodoTests, 0)
-          assert.ok(report.numPassedTests >= 89, 'All previously skipped tests must execute')
+          assert.ok(report.numPassedTests >= 100, 'All 89 existing and 11 E01 PostgreSQL cases must execute')
           JS
       - name: Remove disposable PostgreSQL
         if: always() && matrix.gate == 'postgres'
