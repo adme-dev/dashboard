@@ -1,0 +1,72 @@
+{
+  "version": 1,
+  "operations": [
+    "set-style",
+    "set-props",
+    "add-section",
+    "move-section",
+    "duplicate-section",
+    "remove-section"
+  ],
+  "blocks": [
+    {
+      "blockId": "root",
+      "editable": false,
+      "canInsert": true,
+      "lockedStyleFields": []
+    },
+    {
+      "blockId": "rich",
+      "editable": false,
+      "canInsert": false,
+      "lockedStyleFields": []
+    },
+    {
+      "blockId": "s1",
+      "editable": true,
+      "canInsert": false,
+      "lockedStyleFields": []
+    },
+    {
+      "blockId": "s2",
+      "editable": true,
+      "canInsert": false,
+      "lockedStyleFields": []
+    },
+    {
+      "blockId": "s3",
+      "editable": true,
+      "canInsert": false,
+      "lockedStyleFields": []
+    },
+    {
+      "blockId": "s4",
+      "editable": true,
+      "canInsert": false,
+      "lockedStyleFields": []
+    },
+    {
+      "blockId": "plain",
+      "editable": true,
+      "canInsert": false,
+      "lockedStyleFields": []
+    },
+    {
+      "blockId": "cta",
+      "editable": true,
+      "canInsert": false,
+      "lockedStyleFields": []
+    },
+    {
+      "blockId": "fallback",
+      "editable": false,
+      "canInsert": false,
+      "lockedStyleFields": []
+    }
+  ],
+  "nativeSource": {
+    "state": "canonical-only",
+    "artifact": null,
+    "reason": "PRIVATE_NATIVE_STAGING_UNAVAILABLE"
+  }
+}

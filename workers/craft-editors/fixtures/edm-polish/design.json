@@ -1,0 +1,129 @@
+{
+  "schemaVersion": 1,
+  "kind": "template",
+  "scope": {
+    "clientId": null
+  },
+  "source": {
+    "editor": "composer",
+    "nativeArtifact": null
+  },
+  "blocks": {
+    "root": {
+      "type": "EmailLayout",
+      "data": {
+        "childrenIds": [
+          "rich",
+          "s1",
+          "s2",
+          "s3",
+          "s4",
+          "plain",
+          "cta",
+          "fallback"
+        ],
+        "props": {
+          "contentWidth": 600,
+          "canvasColor": "#ffffff",
+          "fontFamily": "MODERN_SANS"
+        }
+      }
+    },
+    "rich": {
+      "type": "Text",
+      "data": {
+        "props": {
+          "text": "é<strong>bold <em>both</em></strong><br><a href='mailto:a@example.invalid'>A</a> <a href='https://example.invalid/?a=1&amp;b=2'>B</a>&nbsp;&#x1F680;&lt;b&gt;&amp;lt;"
+        },
+        "style": {
+          "padding": {
+            "top": 0,
+            "bottom": 0,
+            "left": 0,
+            "right": 0
+          }
+        }
+      }
+    },
+    "s1": {
+      "type": "Spacer",
+      "data": {
+        "props": {
+          "height": 8
+        }
+      }
+    },
+    "s2": {
+      "type": "Spacer",
+      "data": {
+        "props": {
+          "height": 8
+        }
+      }
+    },
+    "s3": {
+      "type": "Spacer",
+      "data": {
+        "props": {
+          "height": 8
+        }
+      }
+    },
+    "s4": {
+      "type": "Spacer",
+      "data": {
+        "props": {
+          "height": 8
+        }
+      }
+    },
+    "plain": {
+      "type": "Text",
+      "data": {
+        "props": {
+          "text": "Hello {{firstName}}\nLaunch 🚀 — café 😀 ❤"
+        },
+        "style": {
+          "padding": {
+            "top": 8,
+            "bottom": 8,
+            "left": 16,
+            "right": 16
+          }
+        }
+      }
+    },
+    "cta": {
+      "type": "Button",
+      "data": {
+        "props": {
+          "text": "Read more",
+          "url": "https://example.invalid/launch"
+        }
+      }
+    },
+    "fallback": {
+      "type": "Html",
+      "data": {
+        "props": {
+          "contents": "<table><tr><td>Protected arbitrary HTML</td></tr></table>"
+        }
+      }
+    }
+  },
+  "rootChildrenIds": [
+    "root"
+  ],
+  "lineage": [],
+  "dependencies": [],
+  "moduleInstances": [],
+  "assets": [],
+  "policy": {
+    "version": 1,
+    "editableFields": [
+      "plain.data.props.text",
+      "cta.data.props.text",
+      "cta.data.props.url"
+    ]
+  }
+}

@@ -8,6 +8,7 @@ on:
       - .github/workflows/figflow-native-build.yml
       - workers/craft-editors/source-pins.json
       - workers/craft-editors/ci-setup.py
+      - workers/craft-editors/ci-setup.test.py
       - workers/craft-editors/ci-build-browser.sh
       - workers/craft-editors/build-browser.sh
       - workers/craft-editors/figflow-edm-relay.mjs
@@ -19,6 +20,7 @@ on:
       - .github/workflows/figflow-native-build.yml
       - workers/craft-editors/source-pins.json
       - workers/craft-editors/ci-setup.py
+      - workers/craft-editors/ci-setup.test.py
       - workers/craft-editors/ci-build-browser.sh
       - workers/craft-editors/build-browser.sh
       - workers/craft-editors/figflow-edm-relay.mjs
@@ -42,6 +44,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          python3 workers/craft-editors/ci-setup.test.py
           bash -n workers/craft-editors/ci-build-browser.sh
           bash -n workers/craft-editors/build-browser.sh
           python3 - <<'PY'
@@ -58,7 +61,14 @@ jobs:
           assert pin['commit'] == 'd4a303d4708602a9df1738960852d18b185a616b'
           assert pin['source_archive_sha256'] == '04710e7815266580083267103d3fe93218c4dee02415e7016574ee866a09aaa6'
           assert pin['cargo_lock_sha256'] == '539397203fa01e0f460ab2fad69b32003b838828751a7373e833d23b56e35b94'
-          assert pin['release_version'] == '0.11.2-edm4'
+          assert pin['release_version'] == '0.11.2-edm5'
+          emoji = pin['emoji_font']
+          assert emoji['repository'] == 'googlefonts/noto-emoji'
+          assert emoji['commit'] == '2f1ffdd6fbbd05d6f382138a3d3adcd89c5ce800'
+          assert emoji['file'] == 'fonts/NotoEmoji-Regular.ttf' and emoji['bytes'] == 418804
+          assert emoji['sha256'] == '415dc6290378574135b64c808dc640c1df7531973290c4970c51fdeb849cb0c5'
+          assert emoji['license_file'] == 'fonts/LICENSE' and emoji['license_bytes'] == 4301
+          assert emoji['license_sha256'] == '6a73f9541c2de74158c0e7cf6b0a58ef774f5a780bf191f2d7ec9cc53efe2bf2'
           relay = root / 'figflow-edm-relay.mjs'
           assert relay.is_file() and hashlib.sha256(relay.read_bytes()).hexdigest() == pin['browser_relay_sha256']
           applied = [
@@ -107,12 +117,12 @@ jobs:
           assert 'cargo test --locked -p figcraft-engine --lib edm_' in build
           assert 'Expected exactly 44 passing EDM tests' in build
           assert 'cargo test --locked -p figcraft-ui-egui --lib edm_' in build
-          assert 'Expected exactly 14 passing EDM UI tests' in build
+          assert 'Expected exactly 15 passing EDM UI tests' in build
           package = (root / 'build-browser.sh').read_text()
           assert 'case "$engine" in figcraft)' in package
           assert 'Cargo.lock differs from pinned source' in package
           assert 'Browser relay differs from pinned source' in package
-          assert '0.11.2-edm4' in package
+          assert '0.11.2-edm5' in package
           assert 'figflow-edm-relay.mjs' in bridge
 
           workflow = Path('.github/workflows/figflow-native-build.yml').read_text()

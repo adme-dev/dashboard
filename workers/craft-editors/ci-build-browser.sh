@@ -60,14 +60,15 @@ else
   export CRAFT_FONTS_DIR="$source_root/fonts/$engine"
   export CRAFT_FONTS_REQUIRED=1
   cd "$source_root/$engine"
-  # Check the two bridge-owned modules with the pinned formatter; retain corrected
-  # copies on failure so a follow-up patch can be reviewed without a local build.
+  # Pinned formatting for every changed Rust module; retain corrected copies on failure.
   rustup component add rustfmt --toolchain 1.95.0 >> "$evidence/setup.log" 2>&1
-  if ! rustfmt --edition 2024 --check crates/engine/src/cmd/edm.rs crates/ui-egui/src/edm_panel.rs > "$evidence/rustfmt.log" 2>&1; then
-    mkdir -p "$evidence/formatted"
-    cp crates/engine/src/cmd/edm.rs "$evidence/formatted/edm.rs"
-    cp crates/ui-egui/src/edm_panel.rs "$evidence/formatted/edm_panel.rs"
-    rustfmt --edition 2024 --config-path "$source_root/$engine" "$evidence/formatted/edm.rs" "$evidence/formatted/edm_panel.rs" >> "$evidence/rustfmt.log" 2>&1
+  formatted_files=(crates/engine/src/cmd/edm.rs crates/ui-egui/src/edm_panel.rs crates/ui-egui/src/edm_chrome.rs crates/ui-egui/src/shortcuts.rs crates/ui-egui/src/menus.rs crates/ui-egui/src/canvas.rs crates/ui-egui/src/lib.rs crates/ui-egui/src/theme.rs crates/text/build.rs crates/text/src/fontdb.rs)
+  if ! rustfmt --edition 2024 --config skip_children=true --check "${formatted_files[@]}" > "$evidence/rustfmt.log" 2>&1; then
+    for file in "${formatted_files[@]}"; do
+      mkdir -p "$evidence/formatted/$(dirname "$file")"
+      cp "$file" "$evidence/formatted/$file"
+      rustfmt --edition 2024 --config skip_children=true --config-path "$source_root/$engine" "$evidence/formatted/$file" >> "$evidence/rustfmt.log" 2>&1
+    done
     exit 1
   fi
   for filter in browser_save_tests xf_mark_tests save_as_tests variables_export_ui_tests browser_bridge; do
@@ -114,10 +115,11 @@ expected = {
     'edm_chrome_canvas_is_selection_only_and_keeps_canonical_history',
     'edm_chrome_content_edit_remains_granted_and_geometry_is_refused',
     'edm_emoji_font_has_real_rocket_outline_and_scalar_layout',
+    'edm_chrome_accessible_regions_keep_navigation_without_generic_tools',
 }
 matched = re.findall(r'^test (?:[A-Za-z0-9_]+::)*(edm_[A-Za-z0-9_]+) \.\.\. ok$', Path(sys.argv[1]).read_text(), re.M)
 if len(matched) != len(expected) or set(matched) != expected:
-    raise SystemExit(f'Expected exactly 14 passing EDM UI tests; matched {len(matched)}: {matched}')
+    raise SystemExit(f'Expected exactly 15 passing EDM UI tests; matched {len(matched)}: {matched}')
 PY
   cargo test --locked -p figcraft-engine --lib edm_ > "$evidence/test-edm.log" 2>&1
   python3 - "$evidence/test-edm.log" <<'PY'

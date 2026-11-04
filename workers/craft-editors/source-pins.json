@@ -2,7 +2,7 @@
   "figcraft": {
     "commit": "d4a303d4708602a9df1738960852d18b185a616b",
     "version": "0.11.2",
-    "release_version": "0.11.2-edm4",
+    "release_version": "0.11.2-edm5",
     "source_archive_sha256": "04710e7815266580083267103d3fe93218c4dee02415e7016574ee866a09aaa6",
     "branding_patch": "patches/figflow-branding.patch",
     "branding_patch_sha256": "f5198f5f6235c82047268910d343dd3d3fb8c1e74a62b1a106a49a63dafe60b9",
@@ -27,8 +27,18 @@
       },
       {
         "path": "patches/figflow-edm-polish.patch",
-        "sha256": "8f7e9c07e42f6e055f18b08a4bab0eba01771a0f8b0090394b12be0b31ee5853"
+        "sha256": "917af220e50bc6d8ddea1ab01cd9be01e843358bb0ce56dcab1f3773bd41116b"
       }
-    ]
+    ],
+    "emoji_font": {
+      "repository": "googlefonts/noto-emoji",
+      "commit": "2f1ffdd6fbbd05d6f382138a3d3adcd89c5ce800",
+      "file": "fonts/NotoEmoji-Regular.ttf",
+      "sha256": "415dc6290378574135b64c808dc640c1df7531973290c4970c51fdeb849cb0c5",
+      "bytes": 418804,
+      "license_file": "fonts/LICENSE",
+      "license_sha256": "6a73f9541c2de74158c0e7cf6b0a58ef774f5a780bf191f2d7ec9cc53efe2bf2",
+      "license_bytes": 4301
+    }
   }
 }
