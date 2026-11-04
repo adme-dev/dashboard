@@ -48,7 +48,7 @@ let role: 'staff' | 'designer' = 'designer'
 const read = async (id: string | null) => {
   if (denied || id !== scope) throw new Error('fresh authority denied')
 }
-const authority = (): Authority => ({ actorId, authorize: async (id) => {
+const authority = (): Authority => ({ actorId, assertCampaignNativeEnabled: () => {}, authorize: async (id) => {
   await read(id)
   return role
 } })
@@ -308,7 +308,7 @@ describe('campaign handoffs in unique real PostgreSQL schemas', () => {
     await admin.query('CREATE FUNCTION refuse_recovery_replay_write() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION \'recovery replay attempted write\'; END $$')
     for (const table of guardedTables) await admin.query(`CREATE TRIGGER refuse_recovery_replay_write BEFORE INSERT OR UPDATE OR DELETE ON ${table} FOR EACH ROW EXECUTE FUNCTION refuse_recovery_replay_write()`)
     try {
-      const readOnly: Authority = { actorId, authorize: async (clientId, access) => {
+      const readOnly: Authority = { actorId, assertCampaignNativeEnabled: () => {}, authorize: async (clientId, access) => {
         if (access !== 'read') throw new Error('creative authority must not be requested')
         await read(clientId)
         return 'staff'
@@ -323,7 +323,7 @@ describe('campaign handoffs in unique real PostgreSQL schemas', () => {
       for (const action of [{ ...request.action, name: 'Changed name' }, { ...request.action, scope: { clientId: crypto.randomUUID() } }, { ...request.action, expectedProposalRevisionId: crypto.randomUUID() }]) await expect(command({ ...request, action }, unavailableRenderer, unavailableStorage)).rejects.toThrow('IDEMPOTENCY_CONFLICT')
       await expect(executeDesignRoundtrip(parseRoundtripRequest(request), authority(), unavailableRenderer, transaction, unavailableStorage)).rejects.toThrow('IDEMPOTENCY_CONFLICT')
       let reads = 0
-      await expect(executeDesignerRoundtrip(parsed, { actorId, authorize: async (_client, access) => {
+      await expect(executeDesignerRoundtrip(parsed, { actorId, assertCampaignNativeEnabled: () => {}, authorize: async (_client, access) => {
         if (access !== 'read') throw new Error('creative access requested')
         if (++reads >= 2) throw new Error('destination read revoked')
         return 'staff'
