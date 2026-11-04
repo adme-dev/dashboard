@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { createApp, nextTick, ref, computed, onMounted, type App } from 'vue'
+import { createApp, h, nextTick, ref, computed, onMounted, type App } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createFetch } from 'ofetch'
 import Dashboard from '~~/app/components/studio/CustomerDashboard.client.vue'
@@ -45,9 +45,9 @@ function useTimedDashboardReads() {
     } }
   })
 }
-async function mount() {
+async function mount(templates = false) {
   host = document.createElement('div')
-  app = createApp(Dashboard)
+  app = templates ? createApp({ render: () => h(Dashboard, { returnView: 'templates' }, { default: () => h('section', 'Template catalogue') }) }) : createApp(Dashboard)
   app.component('StudioCustomerShell', { props: ['title', 'description'], template: '<main><h1>{{ title }}</h1><p>{{ description }}</p><slot name="header"/><slot/></main>' })
   app.component('PageStudioCustomerLaunchStatus', { props: ['siteId', 'audience'], template: '<section data-launch-status :data-site="siteId" :data-audience="audience">Current launch status</section>' })
   app.component('UButton', { props: ['label', 'disabled', 'loading', 'to'], template: '<button :disabled="disabled || loading">{{ label }}</button>' })
@@ -298,4 +298,19 @@ it('shows the native launch panel only for a current bound website and removes i
 it('does not infer a website from forms availability or an incomplete setup', async () => {
   await mount()
   expect(host.querySelector('[data-launch-status]')).toBeNull()
+})
+
+it('keeps sign out and status errors visible with the template body', async () => {
+  read.mockRejectedValue(new Error('unavailable'))
+  await mount(true)
+  expect(host.textContent).toContain('Template catalogue')
+  expect(host.textContent).toContain('Status could not refresh')
+  expect(button('Sign out')).toBeDefined()
+  expect(button('Refresh status')).toBeDefined()
+  expect(button('Create preview')).toBeUndefined()
+})
+it('preserves only the supported template view on authenticated setup', async () => {
+  read.mockResolvedValue({ ...value, state: 'setup-required' })
+  await mount(true)
+  expect(navigate).toHaveBeenCalledWith('/studio/onboarding?view=templates', { replace: true })
 })

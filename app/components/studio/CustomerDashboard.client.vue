@@ -2,6 +2,7 @@
 import { openCustomerStudio } from '~/utils/pageStudioCustomerLaunch'
 import type { CustomerDashboard } from '~~/shared/pageStudio/customerDashboard'
 
+const props = defineProps<{ returnView?: 'templates' }>()
 useHead({ title: 'Your website — Page Studio' })
 const api = '/api/portal/page-studio/customer'
 // Current authority and provider checks can outlast a short UI read deadline.
@@ -64,7 +65,7 @@ async function load() {
       overview.value = null
       clearTransferContext()
       await navigateTo('/studio/signup', { replace: true })
-    } else if (!loadError.value && data.value?.state === 'setup-required') await navigateTo('/studio/onboarding', { replace: true })
+    } else if (!loadError.value && data.value?.state === 'setup-required') await navigateTo(props.returnView === 'templates' ? '/studio/onboarding?view=templates' : '/studio/onboarding', { replace: true })
   } finally { busy.value = false }
 }
 onMounted(load)
@@ -170,8 +171,9 @@ async function signOut() {
       :description="actionError"
       role="alert"
     />
+    <slot v-if="$slots.default" />
     <div
-      v-if="!overview && busy"
+      v-if="!$slots.default && !overview && busy"
       class="space-y-4"
       aria-busy="true"
       aria-label="Loading your website"
@@ -182,7 +184,7 @@ async function signOut() {
         Loading your website…
       </p>
     </div>
-    <div v-else-if="overview && view" class="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+    <div v-else-if="!$slots.default && overview && view" class="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
       <section class="overflow-hidden rounded-xl border border-default bg-elevated/40" aria-labelledby="website-status">
         <div class="border-b border-default p-6 sm:p-8">
           <div class="mb-6 flex size-12 items-center justify-center rounded-lg border border-default bg-default">

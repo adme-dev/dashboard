@@ -161,6 +161,14 @@ jobs:
           PAGE_STUDIO_SESSION_AUTHORITY_DATABASE_TEST_URL=postgresql://page_studio_test@127.0.0.1:5432/studio_ai_authority_code_ci pnpm exec vitest run test/server/utils/pageStudioAiAuthorityPostgres.test.ts
         timeout-minutes: 5
 
+      - name: Page Studio template catalogue database authority
+        run: |
+          psql postgresql://page_studio_test@127.0.0.1:5432/page_studio_checkpoint_cas_test -v ON_ERROR_STOP=1 -c 'CREATE DATABASE studio_template_catalogue_ci'
+          pnpm exec vitest run test/server/utils/pageStudioTemplateCataloguePostgres.test.ts test/server/utils/pageStudioTemplateCatalogue.test.ts test/server/api/pageStudioTemplateCatalogue.test.ts
+        timeout-minutes: 5
+        env:
+          PAGE_STUDIO_TEMPLATE_CATALOGUE_DATABASE_TEST_URL: postgresql://page_studio_test@127.0.0.1:5432/studio_template_catalogue_ci
+
       - name: Page Studio access grant and submissions database tests
         run: pnpm exec vitest run test/server/utils/pageStudioEntitlementGrantsPostgres.test.ts test/server/utils/pageStudioInvitedAccessPostgres.test.ts test/server/utils/pageStudioSubmissionsPostgres.test.ts test/server/utils/pageStudioPublishingPostgres.test.ts test/server/utils/pageStudioVersionReviewPostgres.test.ts
         timeout-minutes: 5
