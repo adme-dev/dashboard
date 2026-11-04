@@ -34,6 +34,10 @@ function safeUrl(value: string, image = false): boolean {
 export function sanitizeImportedHtml(html: string): string {
   return sanitizeMarkup(html)
 }
+/** Same fragment policy as composer Html blocks, without a document wrapper. */
+export function sanitizeImportedFragment(html: string): string {
+  return sanitizeMarkup(html, true)
+}
 function sanitizeMarkup(html: string, fragment = false): string {
   const document = fragment ? parseFragment(html) : parse(html)
   // Serialize a parser-produced allowlist, never regex-filter HTML source.

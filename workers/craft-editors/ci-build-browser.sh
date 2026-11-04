@@ -121,6 +121,7 @@ expected = {
     'edm_snapshot_rejects_deletions_and_unexpected_metadata',
     'edm_image_url_change_requires_bytes_then_reopens_current_paint',
     'edm_policy_and_column_geometry_stay_bounded_and_non_overlapping',
+    'edm_font_stacks_resolve_registered_families_and_heading_weights',
     'edm_modern_styled_import_is_visible_semantic_and_noop_lossless',
     'edm_content_edit_reflows_once_without_phantom_or_compound_edits',
     'edm_designer_context_maps_selection_without_saving_or_inventing_target',
@@ -151,7 +152,7 @@ expected = {
 }
 matched = re.findall(r'^test (?:cmd::edm::tests::)?(edm_[A-Za-z0-9_]+) \.\.\. ok$', Path(sys.argv[1]).read_text(), re.M)
 if len(matched) != len(expected) or set(matched) != expected:
-    raise SystemExit(f'Expected exactly 40 passing EDM tests; matched {len(matched)}: {matched}')
+    raise SystemExit(f'Expected exactly 41 passing EDM tests; matched {len(matched)}: {matched}')
 PY
   cargo test --locked -p figcraft-engine --lib browser_export_bound > "$evidence/test-browser-export-bound.log" 2>&1
   cargo test --locked -p figcraft-format --lib zip_files > "$evidence/test-zip-files.log" 2>&1

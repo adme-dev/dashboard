@@ -9,7 +9,7 @@ locked fields are retained while unsupported native structural edits fail closed
 Image bytes are resolved only by the packaged relay into a browser-only envelope;
 they never enter canonical JSON or become durable native asset uploads.
 
-The `0.11.2-edm2` package injects the separately pinned `figflow-edm-relay.mjs`.
+The `0.11.2-edm3` package injects the separately pinned `figflow-edm-relay.mjs`. It adds font resolution to edm2: each email font key resolves to the first family the font database has (canonical renderer stack, then bundled OFL substitutes, then Inter — the browser build registers only Inter for Latin text), and Headings honour `fontWeight`. `0.11.2-edm1` and `0.11.2-edm2` remain separate immutable packages.
 Native file snapshot/export, authenticated server relay sessions, durable native
 artifacts, arbitrary layout conversion and native template/module publication remain
 unsupported. Server-side library publication is a separate capability. Existing manual download/export controls are separate capabilities.
@@ -22,7 +22,7 @@ corrected in this copy and its checksum updated.
 
 The `FigFlow native source build` GitHub workflow validates those inputs, runs
 native tests, then builds the browser package on Ubuntu x86_64. It requires the
-eight named bridge tests, 27 named engine EDM tests and six named EDM UI tests to
+nine named bridge tests, 41 named engine EDM tests and eight named EDM UI tests to
 pass; a zero-test Cargo result is rejected. Jobs
 upload source/build receipts and logs, and have no deployment steps or secrets.
 

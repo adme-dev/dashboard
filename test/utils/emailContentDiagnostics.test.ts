@@ -13,6 +13,17 @@ const imported = (contents: string) => document({ imported: { type: 'Html', data
 const codes = (issues: ReturnType<typeof diagnoseEmailContent>) => issues.map(issue => issue.code)
 
 describe('email content diagnostics', () => {
+  it('checks mobile image sources and block background images like other sent images', () => {
+    const source = document({
+      hero: { type: 'Image', data: { props: { url: 'https://cdn.example.com/desktop.png', alt: 'Hero' }, mobile: { props: { url: 'https://cdn.example.com/mobile.png' } } } },
+      card: { type: 'Html', data: { style: { backgroundImage: 'https://cdn.example.com/sand.jpg' }, props: { contents: '<p>Card</p>' } } }
+    })
+    const issues = diagnoseEmailContent({ ...metadata, document: source, imageAssets: [{ url: 'https://cdn.example.com/mobile.png', fileSize: 700 * 1024 }, { url: 'https://cdn.example.com/sand.jpg', fileSize: 800 * 1024 }] })
+    expect(issues.filter(issue => issue.code === 'heavy_image').map(issue => issue.reference)).toEqual([{ blockId: 'hero' }, { blockId: 'card' }])
+    // The mobile source inherits the image description; a background is decorative.
+    expect(codes(issues)).not.toContain('image_alt')
+  })
+
   it('locates nested canonical blocks and uses stored image metadata without fetching', () => {
     const fetch = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('must not fetch'))
     const source = {

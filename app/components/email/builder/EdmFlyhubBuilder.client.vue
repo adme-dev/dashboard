@@ -16,7 +16,9 @@ import { onBeforeRouteLeave } from 'vue-router'
 import { diagnoseEmailContent, type EmailDiagnosticReference, type EmailDiagnosticImageAsset } from '../../../../shared/emailRendering/contentDiagnostics'
 import { templateCopyCategory, markTemplateClientCopy, templateCopyName } from '~~/app/utils/edmTemplateProvenance'
 import { EDM_SECTION_CATEGORIES, findStarterTemplate } from '~~/app/utils/edmPresets'
-import { figflowTemplateCapability } from '~~/app/utils/edmFigflowLibrary'
+import { figflowComposerQuery, figflowTemplateCapability } from '~~/app/utils/edmFigflowLibrary'
+import { recogniseKnownSection } from '~~/shared/emailRendering/designKnownSections'
+import { designStructureLocked } from '~~/shared/emailRendering/designBrand'
 import type { EdmSectionPreset } from '~~/app/utils/edmPresets'
 import type { EdmFlyhubBlock, EdmFlyhubDocument } from '~~/app/types/edm'
 import type { NativeLibraryIntent } from '~~/app/composables/useEdmNativeLibrary'
@@ -71,6 +73,9 @@ const nativeLibrary = designFlow.nativeLibrary
 let nativeLibraryWorkspace: string | null = null
 const showDiscardFigflow = ref(false)
 const showDesignDraftCopy = ref(false)
+// Explicit reviewed conversion of a complete import into a separate FigFlow draft.
+const showEditableCopy = ref(false)
+const editableCopyBusy = ref(false)
 const designDraftName = ref('')
 const designDraftClient = ref<string | undefined>()
 const designDraftError = ref('')
@@ -971,6 +976,79 @@ async function beginFigflow(createDraft = false) {
     })
   } catch { /* The flow retains the failed operation and displays recovery. */ }
 }
+// Generated sections (e.g. split call-to-actions saved before starters became
+// structured) that can become FigFlow layers. Recognition here is only a hint;
+// the server re-derives and verifies every section from the saved revision.
+const knownSections = computed(() => {
+  const current = designFlow.draft.value
+  if (current?.state !== 'structured' || campaignId.value || !designFlow.designerAuthoring.value.available) return []
+  return Object.entries(current.source.blocks).filter(([blockId, block]) => recogniseKnownSection(block as Parameters<typeof recogniseKnownSection>[0])
+    && !designStructureLocked(current.source, blockId, true)).map(([blockId]) => blockId)
+})
+// Ends when this builder instance goes away (navigation away / remount; called
+// from the existing unmount hook), so a late open/propose reply never presents
+// or routes into a newer workspace.
+let knownSectionLifetime = 0
+function endKnownSectionLifetime() {
+  knownSectionLifetime++
+}
+/** Explicit, reviewed update: never runs on open. Proposes server-derived
+ * operations through the existing designer handoff; Apply is one undoable change. */
+async function reviewKnownSections() {
+  if (!knownSections.value.length || workspaceBusy.value || !templateId.value) return
+  // One review intent, captured before any await: this builder instance, its
+  // route, owner (template/campaign/client), the live draft document and the
+  // complete local workspace (content and metadata). It is rechecked after every
+  // await, reading live state. The only change allowed is the save-first step
+  // advancing this same draft's head; any other change stops before the next
+  // request or any baseline/presentation/route write. A successful save stands,
+  // an opened handoff or returned proposal stays unapplied, and nothing retries.
+  const started = knownSectionLifetime
+  const routeAtStart = JSON.stringify(route.query)
+  const ownerKey = () => JSON.stringify({ template: templateId.value, campaign: campaignId.value, client: templateClient.value })
+  const owner = ownerKey()
+  const liveDraft = () => {
+    const draft = designFlow.draft.value
+    return draft?.state === 'structured' ? { documentId: draft.documentId, headRevisionId: draft.headRevisionId } : null
+  }
+  const documentId = liveDraft()?.documentId
+  const opening = workspaceSnapshot()
+  const sameIntent = () => started === knownSectionLifetime && routeAtStart === JSON.stringify(route.query) && owner === ownerKey()
+    && workspaceSnapshot() === opening && !!documentId && liveDraft()?.documentId === documentId
+  let stopped = ''
+  try {
+    await designFlow.run(async () => {
+      if (!canonicalSaved.value) {
+        if (!await save()) return
+        if (!sameIntent()) throw new Error(stopped = 'The composer or open template changed while saving. Your saved changes are kept; the section update was not started.')
+      }
+      const current = designFlow.draft.value
+      const clientId = templateClient.value === '__shared__' ? null : templateClient.value!
+      if (current?.state !== 'structured' || current.templateId !== templateId.value || current.source.scope.clientId !== clientId
+        || current.projection.state !== 'current' || current.projectionRevisionId !== current.headRevisionId || !canonicalSaved.value)
+        throw new Error('The saved design changed. Reload before updating sections.')
+      const sections = knownSections.value
+      if (!sections.length) return
+      const head = current.headRevisionId
+      const unchanged = () => sameIntent() && liveDraft()?.headRevisionId === head
+      const result = await designFlow.open(templateId.value!, clientId, true, { draftId: current.documentId, expectedRevisionId: head })
+      if (!unchanged()) throw new Error(stopped = 'The composer or open template changed while preparing the section update. Nothing was saved; your edits are kept.')
+      designRevisionRequired.value = true
+      designLocalConflict.value = false
+      const operationId = designFlow.designerOperationId.value
+      if (!operationId) throw new Error('Open the designer again before updating sections.')
+      await designFlow.proposeDesigner(sections.map(blockId => ({ op: 'adopt-known-section' as const, blockId })), operationId)
+      if (!unchanged()) throw new Error(stopped = 'The composer or open template changed while preparing the section update. The update was not applied; your edits are kept.')
+      designFlow.setLocalBaseline?.(opening)
+      showFigflow.value = true
+      await router.replace({ query: { ...route.query, designSession: result.id, designMode: designFlow.mode.value } })
+    })
+  } catch {
+    // The flow retains the failed operation and displays recovery. A drift stop
+    // is not an uncertain write: say what happened, unless this builder is gone.
+    if (stopped && started === knownSectionLifetime) designFlow.error.value = stopped
+  }
+}
 function sameDesignSource(a: unknown, b: unknown): boolean {
   if (a === b) return true
   if (!a || !b || typeof a !== 'object' || typeof b !== 'object') return false
@@ -1384,6 +1462,16 @@ async function confirmDeleteModule() {
 }
 
 const workspaceSavedSnapshot = ref('')
+async function openEditableCopy(id: string) {
+  // Never discard local composer edits by reloading into the copy.
+  if (workspaceSnapshot() !== workspaceSavedSnapshot.value) {
+    toast.add({ title: 'Save your changes first', description: 'The editable copy is ready. Save or discard the composer changes, then open it.', color: 'warning' })
+    return
+  }
+  showEditableCopy.value = false
+  // A full reload starts the new draft's workspace from its own saved source.
+  await reloadNuxtApp({ path: `/agency/email/compose?${new URLSearchParams(figflowComposerQuery(id))}` })
+}
 function workspaceSnapshot() {
   return JSON.stringify({ document: store.document.value, name: name.value, subject: subject.value,
     previewText: previewText.value, client: templateClient.value, kind: templateKind.value, category: templateFolderName.value })
@@ -1482,11 +1570,14 @@ function publishCanonicalTemplate(review: ReviewedTemplatePublication) {
 
 const workspaceLeave = useEdmWorkspaceLeave({
   hasChanges: () => !!workspaceSavedSnapshot.value && workspaceSnapshot() !== workspaceSavedSnapshot.value,
-  isBusy: () => workspaceBusy.value,
+  isBusy: () => workspaceBusy.value || editableCopyBusy.value,
   save
 })
 onBeforeRouteLeave(() => route.query.workspace === 'figflow' ? workspaceLeave.request() : true)
-onBeforeUnmount(() => workspaceLeave.stay())
+onBeforeUnmount(() => {
+  endKnownSectionLifetime()
+  workspaceLeave.stay()
+})
 
 onMounted(async () => {
   async function initialise() {
@@ -1836,7 +1927,28 @@ onMounted(async () => {
       v-if="figflowEnabled && !campaignId && !templateLoading && !templateLoadError && figflowSourceUnsupported && !showFigflow"
       color="info"
       title="Continue editing this source in the composer"
-      description="FigFlow content editing needs supported structured content and editable fields. Imported HTML cannot open as native editable content. Choose a structured starter for native editing, or keep editing and saving here."
+      :description="isImportedDocument && templateId
+        ? 'Imported HTML cannot open in FigFlow directly. Create a reviewed editable copy: supported sections become FigFlow layers, everything else stays protected, and this original is not changed.'
+        : 'FigFlow content editing needs supported structured content and editable fields. Imported HTML cannot open as native editable content. Choose a structured starter for native editing, or keep editing and saving here.'"
+      :actions="isImportedDocument && templateId ? [{ label: 'Create editable FigFlow copy', icon: 'i-lucide-copy-plus', onClick: () => { showEditableCopy = true } }] : []"
+      class="m-3"
+    />
+    <EmailBuilderEdmEditableCopyModal
+      v-if="isImportedDocument && templateId && !campaignId"
+      v-model:open="showEditableCopy"
+      :template-id="templateId"
+      :template-name="name"
+      :unsaved-changes="showEditableCopy && workspaceSnapshot() !== workspaceSavedSnapshot"
+      @created="openEditableCopy"
+      @busy="value => { editableCopyBusy = value }"
+    />
+    <UAlert
+      v-if="knownSections.length && !showFigflow && !designFlow.hasPending.value"
+      color="info"
+      icon="i-lucide-layers"
+      :title="`${knownSections.length} generated ${knownSections.length === 1 ? 'section is' : 'sections are'} still HTML in FigFlow`"
+      description="Review an update that rebuilds them as editable photo, heading, text and button layers. Only unedited generated sections with plain text and links without “&amp;” (for example tracking parameters) qualify; others stay as HTML, unchanged. Any unsaved composer changes are saved first; the section update itself is only saved when you apply it, and Undo reverts it."
+      :actions="[{ label: 'Review section update', icon: 'i-lucide-wand-sparkles', disabled: workspaceBusy, onClick: reviewKnownSections }]"
       class="m-3"
     />
     <UAlert

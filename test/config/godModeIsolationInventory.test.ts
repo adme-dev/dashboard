@@ -126,9 +126,12 @@ const API_INVENTORY = {
   // M06 (7bcc64db3 + 6c55231e6) adds three review API routes, one POST.
   // All delegate genuine session and fresh scope/reviewer authority. The POST
   // also checks origin; no inline role/transaction count or bypass is added.
-  totalRouteFiles: 2340,
-  mutationRouteFiles: 1279,
-  explicitlyGuardedMutationFiles: 412,
+  // 2026-11-03 imported-email editable copy adds one POST (preview/save). Save
+  // uses requireWriteAccess plus the source template's own client scope and the
+  // existing receipt-bound import owner; no transaction() or bypass is added.
+  totalRouteFiles: 2341,
+  mutationRouteFiles: 1280,
+  explicitlyGuardedMutationFiles: 413,
   guardedMutationFilesWithTransactionCall: 55
 } as const
 
@@ -177,9 +180,9 @@ describe('God mode route isolation inventory', () => {
   it('records the full mechanical API and mutation inventory reviewed before implementation', () => {
     expect(mechanicalInventory()).toEqual(API_INVENTORY)
     expect(API_INVENTORY).toEqual({
-      totalRouteFiles: 2340,
-      mutationRouteFiles: 1279,
-      explicitlyGuardedMutationFiles: 412,
+      totalRouteFiles: 2341,
+      mutationRouteFiles: 1280,
+      explicitlyGuardedMutationFiles: 413,
       guardedMutationFilesWithTransactionCall: 55
     })
   })
@@ -474,7 +477,8 @@ describe('God mode route isolation inventory', () => {
       'server/api/agency/banner-studio/projects/[id]/snapshot.get.ts': 'await authorizedBannerSnapshot(event)',
       'server/api/agency/banner-studio/projects/[id]/snapshot.post.ts': 'await authorizedBannerSnapshot(event, true)',
       'server/api/email/template-clients.get.ts': 'await resolveEmailClientScope(event, user)',
-      'server/api/email/templates/import.post.ts': 'await resolveEmailWriteClientId(event, user, input.client_id ?? null)'
+      'server/api/email/templates/import.post.ts': 'await resolveEmailWriteClientId(event, user, input.client_id ?? null)',
+      'server/api/email/templates/[id]/editable-copy.post.ts': 'await assertEmailClientAccess(event, user, source.client_id)'
     }
     for (const [file, authority] of Object.entries(routes)) {
       const source = readFileSync(file, 'utf8')
@@ -483,6 +487,10 @@ describe('God mode route isolation inventory', () => {
     }
     expect(readFileSync('server/api/email/template-clients.get.ts', 'utf8')).toContain('await requireAuth(event)')
     expect(readFileSync('server/api/email/templates/import.post.ts', 'utf8')).toContain('await requireWriteAccess(event)')
+    const editableCopy = readFileSync('server/api/email/templates/[id]/editable-copy.post.ts', 'utf8')
+    expect(editableCopy).toContain('const user = input.save ? await requireWriteAccess(event) : await requireAuth(event)')
+    expect(editableCopy).toContain('const clientId = await resolveEmailWriteClientId(event, user, source.client_id)')
+    expect(editableCopy).toContain('await saveImportedTemplate(')
     const snapshot = readFileSync('server/utils/banner/viewerSnapshot.ts', 'utf8')
     expect(snapshot).toContain('const user = write ? await requireWriteAccess(event) : await requireAuth(event)')
     expect(snapshot).toContain('if (project.clientId) await requireSocialClientAccess(event, project.clientId)')

@@ -8,6 +8,12 @@ import { validateEmailDesign } from '../../shared/emailRendering/designContract'
 import { structuredDesign } from '../fixtures/email-design/structured'
 import { testEmailRenderer } from '../fixtures/emailRenderer'
 import { renderingQualityDocument } from '../fixtures/emailRenderingQuality'
+import { designerBlockId } from '../../shared/emailRendering/designDesigner'
+import { recogniseKnownSection } from '../../shared/emailRendering/designKnownSections'
+import { oemSplit } from '../../app/utils/edmOemLayouts'
+import { Window } from 'happy-dom'
+import { inspectDeliveryContent, deliveryPlainText } from '../../shared/emailRendering/deliveryContent'
+import { rewriteTrackableHrefs } from '../../server/utils/email-marketing/trackingLinks'
 
 const actorId = '10000000-0000-4000-8000-000000000001'
 const documentId = '20000000-0000-4000-8000-000000000001'
@@ -17,10 +23,10 @@ const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value))
 
 /** Deterministic transaction adapter exercises the real handoff/writer/renderer
  * boundaries without remote DB access. It does not certify PostgreSQL locking. */
-function harness() {
+function harness(seed: () => unknown = structuredDesign) {
   let state = {
-    head: initial, source: validateEmailDesign(structuredDesign()), html: '', schema: 1,
-    revisions: { [initial]: validateEmailDesign(structuredDesign()) as unknown } as Record<string, unknown>,
+    head: initial, source: validateEmailDesign(seed()), html: '', schema: 1,
+    revisions: { [initial]: validateEmailDesign(seed()) as unknown } as Record<string, unknown>,
     handoffs: {} as Record<string, any>, receipts: {} as Record<string, any>, writes: {} as Record<string, any>, revisionCount: 0
   }
   let role: 'staff' | 'designer' = 'designer'
@@ -240,5 +246,321 @@ describe('designer proposal persistence boundary', () => {
     await expect(saveStaffTemplateDesignDraft({ documentId, actorId, operationId: crypto.randomUUID(), expectedRevisionId: initial, design: converted }, async () => {}, testEmailRenderer, h.transaction, {}, true)).resolves.toMatchObject({ documentId })
     expect(h.state.source.blocks).toEqual(converted.blocks)
     expect(h.state.source.assets).toEqual([])
+  })
+})
+
+/** Saved draft holding generated split sections: one top-level, one nested in a
+ * Container, carrying text the author edited (and saved) before starters became
+ * structured. Everything else is the shared structured fixture. */
+const editedTitle = 'Spring "drive" event & more'
+const editedCopy = 'Book today & save – 50% off "now"'
+const knownSeed = () => {
+  const design = structuredDesign() as any
+  design.blocks.root.data.childrenIds = ['heading', 'promo', 'wrap', 'cta']
+  design.blocks.promo = clone(oemSplit({ title: editedTitle, copy: editedCopy, action: 'Book now', path: 'book', image: 'https://app.xeroflow.io/email/drive.jpeg', alt: 'EV outside', bg: '#F0F4F7' }))
+  design.blocks.wrap = { type: 'Container', data: { childrenIds: ['inner'] } }
+  design.blocks.inner = clone(oemSplit({ title: 'Nested offer', copy: 'Inside a container', action: 'See offer', path: 'offer', image: 'https://app.xeroflow.io/email/offer.jpeg', alt: 'Offer', bg: '#FFFFFF', reverse: true }))
+  // As composerToDesignDraft persists it: every block has lineage; Html has no grants.
+  design.lineage.push(...['promo', 'wrap', 'inner'].map(blockId => ({ blockId, nodeId: `node-${blockId}`, fields: {} })))
+  return design
+}
+const adoptOp = (blockId: string): DesignerOperation => ({ op: 'adopt-known-section', blockId })
+/** Visible text of each leaf text element (td/p/h2/a): literal meaning, so markup
+ * or entity spellings introduced by a conversion cannot pass as equal strings.
+ * (`span` holds the Button label in the HTML renderer.) */
+function leafTexts(html: string) {
+  const window = new Window()
+  window.document.body.innerHTML = html
+  const leaves = [...window.document.body.querySelectorAll('td, p, h1, h2, h3, a, span')].filter(element => element.children.length === 0)
+  const texts = leaves.map(element => (element.textContent ?? '').replace(/\s+/g, ' ').trim())
+  window.close()
+  return texts
+}
+const fixedOperation = '50000000-0000-4000-8000-000000000001'
+
+describe('known generated sections through the designer review/Apply owner', () => {
+  async function proposeKnown(h: ReturnType<typeof harness>, operations: DesignerOperation[], operationId = fixedOperation) {
+    const handoff = await h.open()
+    const request: DesignerRoundtripRequest = { command: 'propose', handoffId: handoff.id, action: { version: 1, action: 'propose-designer-return', operationId, scope: handoff.source.scope, draftId: documentId, baseRevisionId: handoff.baseRevisionId, operations } }
+    return { handoff, request, result: await h.execute(request) }
+  }
+
+  it('previews without writing, then Apply commits exactly one revision with carried text, nested replacement and deterministic ids', async () => {
+    const h = harness(knownSeed)
+    const { result } = await proposeKnown(h, [adoptOp('promo'), adoptOp('inner')])
+    if (!('handoff' in result)) throw new Error('handoff expected')
+    // Review is non-mutating: nothing is saved until Apply.
+    expect(h.state.revisionCount).toBe(0)
+    expect(h.state.source.blocks.promo?.type).toBe('Html')
+    expect(result.preview.html).toContain('Spring &quot;drive&quot; event &amp; more')
+    const applied = await h.execute(h.applyRequest(result.handoff))
+    expect('handoff' in applied && applied.handoff.state).toBe('applied')
+    expect(h.state.revisionCount).toBe(1)
+    // Rendered meaning, not just stored strings: every carried value reads the
+    // same as literal text in the old generated HTML, the preview and the saved HTML.
+    const before = leafTexts(String(validateEmailDesign(knownSeed()).blocks.promo!.data.props!.contents))
+    for (const value of [editedTitle, editedCopy, 'Book now']) {
+      expect(before).toContain(value)
+      expect(leafTexts(result.preview.html)).toContain(value)
+      expect(leafTexts(h.state.html)).toContain(value)
+    }
+    const saved = h.state.source
+    const first = [0, 1, 2, 3, 4].map(k => designerBlockId(fixedOperation, 0, k))
+    const second = [0, 1, 2, 3, 4].map(k => designerBlockId(fixedOperation, 1, k))
+    expect(saved.blocks.root.data.childrenIds).toEqual(['heading', first[0], 'wrap', 'cta'])
+    // Nested container: replaced in place inside its own parent, not hoisted.
+    expect(saved.blocks.wrap.data.childrenIds).toEqual([second[0]])
+    expect(saved.blocks.promo).toBeUndefined()
+    expect(saved.blocks.inner).toBeUndefined()
+    // Carried persisted text (including entities) — never generator defaults.
+    expect(saved.blocks[first[2]!]?.data.props?.text).toBe(editedTitle)
+    expect(saved.blocks[first[3]!]?.data.props?.text).toBe(editedCopy)
+    expect(saved.blocks[second[1]!]?.data.props?.text).toBe('Nested offer')
+    // Reverse layout keeps words first.
+    expect((saved.blocks[second[0]!]?.data.props?.columns as any[])[1].childrenIds).toEqual([second[4]])
+    // Untouched blocks and their grants/lineage survive byte for byte.
+    const seed = validateEmailDesign(knownSeed())
+    for (const id of ['heading', 'cta']) expect(saved.blocks[id]).toEqual(seed.blocks[id])
+    expect(saved.policy.editableFields).toEqual(expect.arrayContaining(seed.policy.editableFields))
+    expect(saved.lineage.filter(item => ['heading', 'cta', 'wrap'].includes(item.blockId))).toEqual(seed.lineage.filter(item => ['heading', 'cta', 'wrap'].includes(item.blockId)))
+    expect(Object.values(saved.blocks).some(block => recogniseKnownSection(block as any))).toBe(false)
+    // The replaced Html blocks leave no dangling grants or lineage behind.
+    expect(saved.lineage.some(item => ['promo', 'inner'].includes(item.blockId))).toBe(false)
+    expect(saved.policy.editableFields.some(path => ['promo', 'inner'].includes(path.split('.')[0]!))).toBe(false)
+    expect(saved.lineage.filter(item => [...first, ...second].includes(item.blockId))).toHaveLength(10)
+    // Deterministic: an independent replay of the same operation yields the same design.
+    const replay = harness(knownSeed)
+    const again = await proposeKnown(replay, [adoptOp('promo'), adoptOp('inner')])
+    if (!('handoff' in again.result)) throw new Error('handoff expected')
+    await replay.execute(replay.applyRequest(again.result.handoff))
+    expect(replay.state.source).toEqual(saved)
+  })
+
+  it('replays an identical proposal idempotently and refuses a different payload under the same operation', async () => {
+    const h = harness(knownSeed)
+    const { request, result } = await proposeKnown(h, [adoptOp('promo')])
+    if (!('handoff' in result)) throw new Error('handoff expected')
+    const replayed = await h.execute(request)
+    expect('handoff' in replayed && replayed.handoff.proposalRevisionId).toBe(result.handoff.proposalRevisionId)
+    const changed = { ...request, action: { ...(request as any).action, operations: [adoptOp('promo'), adoptOp('inner')] } }
+    await expect(h.execute(changed as DesignerRoundtripRequest)).rejects.toMatchObject({ code: 'IDEMPOTENCY_CONFLICT' })
+    const apply = h.applyRequest(result.handoff)
+    await h.execute(apply)
+    await expect(h.execute(apply)).resolves.toMatchObject({ handoff: { state: 'applied' } })
+    expect(h.state.revisionCount).toBe(1)
+  })
+
+  it('enforces exact base CAS when the saved draft changes after open or after review', async () => {
+    const restaff = (h: ReturnType<typeof harness>, mutate: (design: any) => void) => {
+      const current = validateEmailDesign(h.state.revisions[h.state.head]) as any
+      mutate(current)
+      const revision = crypto.randomUUID()
+      h.state.revisions[revision] = current
+      h.state.head = revision
+      h.state.source = current
+    }
+    // Changed between open and propose: refused before any preview/proposal.
+    const early = harness(knownSeed)
+    const handoff = await early.open()
+    restaff(early, (design) => {
+      design.blocks.heading.data.props.text = 'Staff edit {{first_name}}'
+    })
+    await expect(early.execute({ command: 'propose', handoffId: handoff.id, action: { version: 1, action: 'propose-designer-return', operationId: fixedOperation, scope: handoff.source.scope, draftId: documentId, baseRevisionId: handoff.baseRevisionId, operations: [adoptOp('promo')] } })).rejects.toMatchObject({ code: 'REVISION_CONFLICT' })
+    expect(early.state.handoffs[handoff.id].state).toBe('open')
+    // Changed between review and Apply (the section itself was edited, so it is
+    // no longer recognised): Apply refuses and the newer edit stands.
+    const late = harness(knownSeed)
+    const { result } = await proposeKnown(late, [adoptOp('promo')])
+    if (!('handoff' in result)) throw new Error('handoff expected')
+    restaff(late, (design) => {
+      design.blocks.promo.data.props.contents = String(design.blocks.promo.data.props.contents).replace('Book now', 'Book today')
+    })
+    await expect(late.execute(late.applyRequest(result.handoff))).rejects.toMatchObject({ code: 'REVISION_CONFLICT' })
+    expect(late.state.source.blocks.promo.data.props?.contents).toContain('Book today')
+    expect(late.state.revisionCount).toBe(0)
+    expect(late.state.handoffs[result.handoff.id].state).toBe('proposed')
+  })
+
+  it('re-derives recognition from the saved base: client hints for edited or unknown HTML are refused', async () => {
+    const edited = () => {
+      const design = knownSeed()
+      design.blocks.promo.data.props.contents = String(design.blocks.promo.data.props.contents).replace('font-size:16px', 'font-size:17px')
+      design.blocks.inner.data.hideOnMobile = true
+      return design
+    }
+    for (const blockId of ['promo', 'inner', 'heading', 'root']) {
+      const h = harness(edited)
+      await expect(proposeKnown(h, [adoptOp(blockId)])).rejects.toMatchObject({ code: 'EDIT_FORBIDDEN' })
+      expect(h.state.revisionCount).toBe(0)
+      expect(Object.values(h.state.handoffs).every((row: any) => row.state === 'open')).toBe(true)
+    }
+  })
+
+  it('fails closed for copy whose literal meaning a structured layer cannot keep, leaving state unchanged', async () => {
+    // Text layers render rich HTML and native shows tags/entities as non-text, so
+    // literal angle brackets or entity spellings stay in the original Html section.
+    const values: Array<Record<string, string>> = [{ copy: 'Book <today> & save' }, { copy: 'Keep literal &copy; text' }, { title: 'Save <b>now</b>' }, { action: 'Book &amp; go' }, { copy: 'Legacy &copy without semicolon' }]
+    for (const value of values) {
+      const h = harness(() => {
+        const design = knownSeed()
+        design.blocks.promo = clone(oemSplit({ title: 'T', copy: 'C', action: 'A', path: 'p', image: 'https://app.xeroflow.io/email/drive.jpeg', alt: 'x', ...value }))
+        return design
+      })
+      const seed = clone(h.state.source)
+      expect(recogniseKnownSection(seed.blocks.promo as any), JSON.stringify(value)).toBeNull()
+      await expect(proposeKnown(h, [adoptOp('promo')]), JSON.stringify(value)).rejects.toMatchObject({ code: 'EDIT_FORBIDDEN' })
+      expect(h.state.revisionCount).toBe(0)
+      expect(h.state.source).toEqual(seed)
+      expect(Object.values(h.state.handoffs).every((row: any) => row.state === 'open' && !row.proposal_payload_text)).toBe(true)
+    }
+  })
+
+  /** Parsed link attributes, as a mail client's HTML parser reads them. */
+  function linkAttributes(html: string) {
+    const window = new Window({ settings: { disableJavaScriptEvaluation: true, disableJavaScriptFileLoading: true, disableCSSFileLoading: true } })
+    const template = window.document.createElement('template')
+    template.innerHTML = html
+    const result = { src: [...template.content.querySelectorAll('img')].map(img => img.getAttribute('src')), href: [...template.content.querySelectorAll('a')].map(a => a.getAttribute('href')) }
+    window.close()
+    return result
+  }
+  const linkSeed = (link: { image?: string, path?: string }) => () => {
+    const design = knownSeed()
+    design.blocks.promo = clone(oemSplit({ title: 'Saved', copy: 'Plain copy', action: 'Book', path: 'book', image: 'https://app.xeroflow.io/email/drive.jpeg', alt: 'Saved alt', ...link }))
+    return design
+  }
+  // A0 conversion boundary: a carried image URL or button path containing any
+  // `&` is not converted (the original Html section is kept). These were
+  // previously admitted/carried cases; they are now explicit unsupported-
+  // conversion and full-state-preservation cases, not deleted coverage.
+  const ampersandSuffixes = [
+    '?a=1&b=2', '?utm_source=edm&utm_medium=email', '?w=600&h=400&fit=crop', '?x=1&copy=1&amp=2',
+    '?x=&#35;tail', '?x=&#35tail', '?x=&#x26;b=2', '?x=&#x26b=2',
+    '?x=1&copy;', '?a=1&amp;b=2', '?x=1&foo;', '?x=1&Ecy0;', '?x=1&#x;', '?x=1&#;', '?x=1&#xZ;',
+    '?x=1&copy-x=1', '?x=1&lt', '?a=1&amp;amp;b=2', '?x=1&notin', '?x=1&notin-', '?x=1&copysr', '?x=1&ubrcy_', '?x=1&'
+  ]
+  it.each([
+    ...ampersandSuffixes.map(suffix => ['image', { image: `https://app.xeroflow.io/email/drive.jpeg${suffix}` }] as const),
+    ...ampersandSuffixes.map(suffix => ['button', { path: `book${suffix}` }] as const)
+  ])('does not convert a section whose %s link contains an ampersand, preserving full post-open state %j', async (_kind, link) => {
+    const h = harness(linkSeed(link))
+    h.state.html = 'saved-projection'
+    const handoff = await h.open()
+    const before = clone(h.state)
+    const contents = String(h.state.source.blocks.promo!.data.props!.contents)
+    await expect(h.execute({ command: 'propose', handoffId: handoff.id, action: { version: 1, action: 'propose-designer-return', operationId: fixedOperation, scope: handoff.source.scope, draftId: documentId, baseRevisionId: handoff.baseRevisionId, operations: [adoptOp('promo')] } })).rejects.toMatchObject({ code: 'EDIT_FORBIDDEN' })
+    expect(h.state).toEqual(before)
+    expect(h.state.source.blocks.promo!.data.props!.contents).toBe(contents)
+    expect(recogniseKnownSection(h.state.source.blocks.promo as any)).toBeNull()
+  })
+
+  it('refuses a whole batch when one selected section is ineligible: no partial conversion of the others', async () => {
+    const h = harness(linkSeed({ path: 'book?utm_source=edm&utm_medium=email' }))
+    expect(recogniseKnownSection(h.state.source.blocks.inner as any)).not.toBeNull()
+    h.state.html = 'saved-projection'
+    const handoff = await h.open()
+    const before = clone(h.state)
+    for (const operations of [[adoptOp('inner'), adoptOp('promo')], [adoptOp('promo'), adoptOp('inner')]]) {
+      await expect(h.execute({ command: 'propose', handoffId: handoff.id, action: { version: 1, action: 'propose-designer-return', operationId: crypto.randomUUID(), scope: handoff.source.scope, draftId: documentId, baseRevisionId: handoff.baseRevisionId, operations } })).rejects.toMatchObject({ code: 'EDIT_FORBIDDEN' })
+      expect(h.state).toEqual(before)
+    }
+    expect(h.state.source.blocks.inner!.type).toBe('Html')
+  })
+
+  /** Logical link destinations as each existing provider-free consumer reads them. */
+  async function consumerReadings(html: string) {
+    const tracked: string[] = []
+    await rewriteTrackableHrefs(html, (href) => {
+      tracked.push(href)
+      return href
+    })
+    return { direct: linkAttributes(html), tracked, delivery: inspectDeliveryContent(html).links.map(link => link.href), plaintext: deliveryPlainText(html) }
+  }
+  it.each([
+    ['image', { image: 'https://app.xeroflow.io/email/drive-600x400.jpeg' }],
+    ['button', { path: 'book/test-drive?model=ev9' }]
+  ] as const)('converts an ampersand-free %s link with identical destinations in original, preview and committed output for every consumer', async (_kind, link) => {
+    const h = harness(linkSeed(link))
+    const original = String(h.state.source.blocks.promo!.data.props!.contents)
+    const before = await consumerReadings(original)
+    const { result } = await proposeKnown(h, [adoptOp('promo')])
+    if (!('handoff' in result)) throw new Error('handoff expected')
+    expect(h.state.revisionCount).toBe(0)
+    await h.execute(h.applyRequest(result.handoff))
+    expect(h.state.revisionCount).toBe(1)
+    const image = before.direct.src[0]!
+    const button = before.direct.href[0]!
+    expect(before.tracked).toEqual([button])
+    expect(before.delivery).toEqual([button])
+    for (const html of [result.preview.html, h.state.html]) {
+      const now = await consumerReadings(html)
+      expect(now.direct.src).toContain(image)
+      expect(now.direct.href).toContain(button)
+      expect(now.tracked).toContain(button)
+      expect(now.delivery).toContain(button)
+      expect(now.plaintext).toContain(`Book: ${button}`)
+    }
+    expect(before.plaintext).toContain(`Book: ${button}`)
+    // Canonical readback of the converted blocks holds the same literal values.
+    const ids = [0, 1, 2, 3, 4].map(k => designerBlockId(fixedOperation, 0, k))
+    expect(h.state.source.blocks[ids[1]!]).toMatchObject({ type: 'Image', data: { props: { url: image } } })
+    expect(h.state.source.blocks[ids[4]!]).toMatchObject({ type: 'Button', data: { props: { url: button } } })
+  })
+
+  it('refuses inherited root and container style locks through the real proposal owner, leaving state unchanged', async () => {
+    const variants: Array<[string, string]> = [['promo', 'root.data.props.fontFamily'], ['inner', 'wrap.data.style.padding'], ['inner', 'root.data.style.backgroundColor']]
+    for (const [blockId, path] of variants) {
+      const h = harness(() => {
+        const design = knownSeed()
+        design.policy.designerLocks = { blockIds: [], styleFields: [path] }
+        return design
+      })
+      const seed = clone(h.state.source)
+      await expect(proposeKnown(h, [adoptOp(blockId)]), path).rejects.toMatchObject({ code: 'EDIT_FORBIDDEN' })
+      expect(h.state.revisionCount).toBe(0)
+      expect(h.state.source).toEqual(seed)
+      expect(Object.values(h.state.handoffs).every((row: any) => row.state === 'open' && !row.proposal_payload_text)).toBe(true)
+    }
+  })
+
+  it('refuses explicit block locks, locked parents and module-linked sections', async () => {
+    const variants: Array<[string, (design: any) => void]> = [
+      ['promo', (design) => {
+        design.policy.designerLocks = { blockIds: ['promo'], styleFields: [] }
+      }],
+      ['inner', (design) => {
+        design.policy.designerLocks = { blockIds: ['wrap'], styleFields: [] }
+      }],
+      ['promo', (design) => {
+        design.policy.designerLocks = { blockIds: [], styleFields: ['promo.data.style.padding'] }
+      }],
+      ['inner', (design) => {
+        design.dependencies = [{ moduleId: fixedOperation, revisionId: fixedOperation }]
+        design.moduleInstances = [{ instanceId: 'instance', moduleId: fixedOperation, revisionId: fixedOperation, rootBlockIds: ['wrap'], overrides: {} }]
+      }]
+    ]
+    for (const [index, [blockId, mutate]] of variants.entries()) {
+      const h = harness(() => {
+        const design = knownSeed()
+        mutate(design)
+        return design
+      })
+      await expect(proposeKnown(h, [adoptOp(blockId)]), `lock variant ${index}`).rejects.toMatchObject({ code: 'EDIT_FORBIDDEN' })
+      expect(h.state.revisionCount).toBe(0)
+    }
+  })
+
+  it('checks fresh designer authority at propose and again at Apply', async () => {
+    const demoted = harness(knownSeed)
+    const handoff = await demoted.open()
+    demoted.setRole('staff')
+    await expect(demoted.execute({ command: 'propose', handoffId: handoff.id, action: { version: 1, action: 'propose-designer-return', operationId: fixedOperation, scope: handoff.source.scope, draftId: documentId, baseRevisionId: handoff.baseRevisionId, operations: [adoptOp('promo')] } })).rejects.toMatchObject({ code: 'DESIGNER_REQUIRED' })
+    const revoked = harness(knownSeed)
+    const { result } = await proposeKnown(revoked, [adoptOp('promo')])
+    if (!('handoff' in result)) throw new Error('handoff expected')
+    revoked.revoke()
+    await expect(revoked.execute(revoked.applyRequest(result.handoff))).rejects.toThrow()
+    expect(revoked.state.revisionCount).toBe(0)
+    expect(revoked.state.source.blocks.promo?.type).toBe('Html')
   })
 })

@@ -43,6 +43,8 @@ export type EdmPreviewTone = 'light' | 'dark' | 'accent'
 export interface EdmPresetBlockTemplate {
   type: string
   data: EdmFlyhubBlock['data']
+  /** ColumnsContainer only: child templates per column, instantiated as real blocks. */
+  columns?: EdmPresetBlockTemplate[][]
 }
 
 export interface EdmSectionPreset {
@@ -179,7 +181,8 @@ function toKebabCase(value: string): string {
 }
 
 function cloneBlockTemplate(template: EdmPresetBlockTemplate): EdmFlyhubBlock {
-  return structuredClone(template)
+  const { columns: _columns, ...block } = template
+  return structuredClone(block)
 }
 
 function block(type: string, data: EdmFlyhubBlock['data']): EdmPresetBlockTemplate {
@@ -1903,11 +1906,18 @@ export function buildSectionDocumentFragment(sectionPresetId: string): EdmDocume
   const blocks: Record<string, EdmFlyhubBlock> = {}
   const rootChildrenIds: string[] = []
 
-  for (const template of preset.blocks) {
+  // Nested column templates become ordinary child blocks referenced by
+  // props.columns[].childrenIds, the same shape the composer authors.
+  const instantiate = (template: EdmPresetBlockTemplate): string => {
     const id = generateBlockId()
-    blocks[id] = cloneBlockTemplate(template)
-    rootChildrenIds.push(id)
+    const block = cloneBlockTemplate(template)
+    if (template.type === 'ColumnsContainer' && template.columns) {
+      block.data.props = { ...block.data.props, columnsCount: template.columns.length, columns: template.columns.map(column => ({ childrenIds: column.map(instantiate) })) }
+    }
+    blocks[id] = block
+    return id
   }
+  for (const template of preset.blocks) rootChildrenIds.push(instantiate(template))
 
   return { blocks, rootChildrenIds }
 }

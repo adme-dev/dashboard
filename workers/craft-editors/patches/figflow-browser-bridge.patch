@@ -137,7 +137,7 @@
 +}
 --- /dev/null
 +++ b/crates/engine/src/cmd/edm.rs
-@@ -0,0 +1,3725 @@
+@@ -0,0 +1,3794 @@
 +//! Bounded XeroFlow email handoffs on a real native document.
 +//!
 +//! The canonical document is retained verbatim. A snapshot patches only approved
@@ -540,31 +540,52 @@
 +    Ok(id)
 +}
 +
++/// Canonical renderer stack order (`shared/emailRendering/fonts.ts`), then the
++/// metric-compatible OFL families craft-fonts registers, then Inter. The browser
++/// build registers only Inter for Latin text: a family the font database does
++/// not have renders with the default Regular face and silently drops the weight.
++const FONT_STACKS: &[(&str, &[&str])] = &[
++    ("MODERN_SANS", &["Helvetica Neue", "Arial Nova", "Nimbus Sans", "Arial", "Liberation Sans", "Inter"]),
++    ("BOOK_SANS", &["Optima", "Candara", "Noto Sans", "Source Sans 3", "Inter"]),
++    ("ORGANIC_SANS", &["Seravek", "Gill Sans Nova", "Ubuntu", "Calibri", "Carlito", "DejaVu Sans", "Source Sans 3", "Inter"]),
++    ("GEOMETRIC_SANS", &["Avenir", "Avenir Next LT Pro", "Montserrat", "Corbel", "URW Gothic", "Source Sans 3", "Inter"]),
++    ("HEAVY_SANS", &["Bahnschrift", "DIN Alternate", "Franklin Gothic Medium", "Nimbus Sans Narrow", "Inter"]),
++    ("ROUNDED_SANS", &["Hiragino Maru Gothic ProN", "Quicksand", "Comfortaa", "Manjari", "Arial Rounded MT Bold", "Calibri", "Carlito", "Nunito Sans", "Inter"]),
++    ("MODERN_SERIF", &["Charter", "Bitstream Charter", "Sitka Text", "Cambria", "Caladea", "Source Serif 4", "Liberation Serif", "Inter"]),
++    ("BOOK_SERIF", &["Iowan Old Style", "Palatino Linotype", "URW Palladio L", "P052", "Merriweather", "Liberation Serif", "Inter"]),
++    ("MONOSPACE", &["Nimbus Mono PS", "Courier New", "Cutive Mono", "Liberation Mono", "Inter"]),
++];
++
++fn first_registered_family(stack: &[&str], has_family: impl Fn(&str) -> bool) -> String {
++    stack.iter().copied().find(|family| has_family(family)).unwrap_or("Inter").into()
++}
++
 +fn native_font_family(key: &str) -> String {
-+    match key {
-+        "BOOK_SANS" => "Optima",
-+        "ORGANIC_SANS" => "Seravek",
-+        "GEOMETRIC_SANS" => "Avenir",
-+        "HEAVY_SANS" => "Bahnschrift",
-+        "ROUNDED_SANS" => "Arial Rounded MT Bold",
-+        "MODERN_SERIF" => "Charter",
-+        "BOOK_SERIF" => "Iowan Old Style",
-+        "MONOSPACE" => "Nimbus Mono PS",
-+        _ => "Helvetica Neue",
-+    }.into()
++    let stack = FONT_STACKS.iter().find(|(name, _)| *name == key).unwrap_or(&FONT_STACKS[0]).1;
++    first_registered_family(stack, figcraft_text::has_family)
 +}
 +
 +fn native_font_weight(value: Option<&str>, fallback: &str) -> String {
-+    match value.unwrap_or(fallback) {
-+        "100" => "Thin",
-+        "200" => "Extra Light",
-+        "300" => "Light",
-+        "500" => "Medium",
-+        "600" => "Semi Bold",
-+        "700" | "bold" => "Bold",
-+        "800" => "Extra Bold",
-+        "900" => "Black",
-+        _ => "Regular",
++    // Canonical CSS weights and native style names normalise alike, so a
++    // block's own default ("Bold", "Semi Bold") is kept when no override exists.
++    let name = |raw: &str| -> Option<&'static str> {
++        match raw.trim().to_ascii_lowercase().replace([' ', '-', '_'], "").as_str() {
++            "100" | "thin" => Some("Thin"),
++            "200" | "extralight" => Some("Extra Light"),
++            "300" | "light" => Some("Light"),
++            "400" | "normal" | "regular" => Some("Regular"),
++            "500" | "medium" => Some("Medium"),
++            "600" | "semibold" => Some("Semi Bold"),
++            "700" | "bold" => Some("Bold"),
++            "800" | "extrabold" => Some("Extra Bold"),
++            "900" | "black" => Some("Black"),
++            _ => None,
++        }
++    };
++    match value {
++        // An explicit canonical weight wins; an unrecognised one stays Regular, as before.
++        Some(raw) => name(raw).unwrap_or("Regular"),
++        None => name(fallback).unwrap_or("Regular"),
 +    }.into()
 +}
 +
@@ -868,7 +889,7 @@
 +                line_height: if kind == "Heading" { 1.3 } else { 1.6 },
 +                color,
 +                align: TextAlignH::Left,
-+                honor_text_style: true, honor_font_weight: kind == "Text",
++                honor_text_style: true, honor_font_weight: true,
 +            }, &theme);
 +            let (text, text_height) = add_text(doc, root, id, "text", x + pad.left, y + pad.top, width - pad.horizontal(), data, color)?;
 +            doc.get_mut(text).map_err(|e| bad("edm_import", e.to_string()))?.locked = role == Role::Other || !editable.contains(&format!("{id}.data.props.text"));
@@ -2900,6 +2921,51 @@
 +    }
 +
 +    #[test]
++    fn edm_font_stacks_resolve_registered_families_and_heading_weights() {
++        for (key, stack) in FONT_STACKS {
++            assert_eq!(stack.last(), Some(&"Inter"), "{key} must end in the browser's registered family");
++            assert_eq!(first_registered_family(stack, |_| false), "Inter", "{key} without its preferred fonts keeps Inter");
++            assert_eq!(first_registered_family(stack, |family| family == stack[0]), stack[0], "{key} keeps the canonical first family when present");
++        }
++        let geometric = FONT_STACKS.iter().find(|(key, _)| *key == "GEOMETRIC_SANS").unwrap().1;
++        assert_eq!(first_registered_family(geometric, |family| family == "Montserrat" || family == "Inter"), "Montserrat");
++        assert!(figcraft_text::has_family(&native_font_family("UNKNOWN_KEY")) || native_font_family("UNKNOWN_KEY") == "Inter");
++        for (value, fallback, expected) in [(None, "Bold", "Bold"), (None, "Semi Bold", "Semi Bold"), (None, "Regular", "Regular"), (Some("normal"), "Bold", "Regular"), (Some("600"), "Bold", "Semi Bold"), (Some("700"), "Regular", "Bold"), (Some("bold"), "Regular", "Bold"), (Some("unknown"), "Bold", "Regular")] {
++            assert_eq!(native_font_weight(value, fallback), expected, "{value:?} with default {fallback}");
++        }
++        // Imported weights: (design edits, expected heading, copy, button styles).
++        let cases: [(Option<&str>, Option<&str>, Option<&str>, &str, &str, &str); 3] = [
++            (None, None, None, "Bold", "Regular", "Semi Bold"),
++            (Some("normal"), Some("600"), Some("700"), "Regular", "Semi Bold", "Bold"),
++            (Some("700"), Some("normal"), Some("normal"), "Bold", "Regular", "Regular"),
++        ];
++        for (heading, copy, cta, heading_style, copy_style, cta_style) in cases {
++            let mut design = modern_design();
++            for (block, weight) in [("heading", heading), ("copy", copy), ("cta", cta)] {
++                let style = design["blocks"][block]["data"]["style"].as_object_mut().unwrap();
++                match weight {
++                    Some(weight) => { style.insert("fontWeight".into(), json!(weight)); }
++                    None => { style.remove("fontWeight"); }
++                }
++            }
++            let mut session = Session::new();
++            session.execute("edm_import", &json!({"design": design, "images": {"hero": PNG}})).unwrap();
++            let style = |block: &str, role: &str| {
++                let node = session.doc().unwrap().node(mapped(&session, block, role)).unwrap();
++                let NodeKind::Text(data) = &node.kind else { panic!("{block} {role} must be native text") };
++                (data.style.font_family.clone(), data.style.font_style.clone())
++            };
++            let (heading_family, heading_weight) = style("heading", "text");
++            assert_eq!(heading_weight, heading_style, "heading weight {heading:?}");
++            assert!(figcraft_text::has_family(&heading_family), "unregistered heading family {heading_family}");
++            assert_eq!(style("copy", "text").1, copy_style, "copy weight {copy:?}");
++            assert_eq!(style("cta", "button.text").1, cta_style, "button weight {cta:?}");
++            let snapshot = session.execute("edm_snapshot", &json!({})).unwrap();
++            assert_eq!(snapshot, design, "font resolution must not change the canonical return");
++        }
++    }
++
++    #[test]
 +    fn edm_modern_styled_import_is_visible_semantic_and_noop_lossless() {
 +        let mut session = Session::new();
 +        import_modern(&mut session);
@@ -2909,7 +2975,10 @@
 +        let heading = session.doc().unwrap().node(mapped(&session, "heading", "text")).unwrap();
 +        let NodeKind::Text(data) = &heading.kind else { panic!("heading must be native text") };
 +        assert_eq!(data.style.font_size, 42.0);
-+        assert_eq!(data.style.font_family, "Avenir");
++        // A registered family keeps the requested weight; never an unregistered name.
++        assert_eq!(data.style.font_family, native_font_family("GEOMETRIC_SANS"));
++        assert!(figcraft_text::has_family(&data.style.font_family), "heading family must be registered: {}", data.style.font_family);
++        assert_eq!(data.style.font_style, "Semi Bold", "heading fontWeight 600 must reach native text");
 +        assert_eq!(heading.fills[0].solid_color(), Some(Color::WHITE));
 +        let menu_bounds = session.doc().unwrap().world_bounds(mapped(&session, "menu", "block")).unwrap();
 +        let heading_bounds = session.doc().unwrap().world_bounds(mapped(&session, "heading", "block")).unwrap();

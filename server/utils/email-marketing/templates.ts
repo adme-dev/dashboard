@@ -74,19 +74,29 @@ export interface CreateTemplateInput {
   created_by: string | null
 }
 
-export async function createTemplate(input: CreateTemplateInput, renderer: EmailRendererClient): Promise<EdmTemplate> {
+/** Exact stored source a derived copy was reviewed against. */
+export interface TemplateSourceFence {
+  templateId: string
+  bodySource: unknown
+  clientId: string | null
+  subject: string | null
+  previewText: string | null
+  folderName: string | null
+}
+export class TemplateSourceFenceError extends Error {}
+
+export async function createTemplate(input: CreateTemplateInput, renderer: EmailRendererClient, options: {
+  /** Atomically require the reviewed source row to be unchanged at insert. */
+  sourceFence?: TemplateSourceFence
+  /** Fresh caller authority, re-checked after rendering and before insert. */
+  authorize?: () => Promise<void>
+} = {}): Promise<EdmTemplate> {
   const source = redactTemplateProvenance(input.body_source ?? { root: { type: 'EmailLayout', data: { childrenIds: [] } } })
   const html = await renderHtml(renderer, source, input.subject, input.preview_text)
   const kind = input.template_kind === 'draft' ? 'draft' : 'template'
   const folderName = input.folder_name?.trim() || null
-  const row = await queryOne<EdmTemplate>(`
-    INSERT INTO edm_templates (
-      name, subject, preview_text, body_source, body_html, template_kind, folder_name, client_id, created_by, id
-    )
-    VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8, $9, COALESCE($10::uuid, gen_random_uuid()))
-    ON CONFLICT (id) DO NOTHING
-    RETURNING *
-  `, [
+  if (options.authorize) await options.authorize()
+  const values = [
     input.name,
     input.subject ?? null,
     input.preview_text ?? null,
@@ -97,10 +107,38 @@ export async function createTemplate(input: CreateTemplateInput, renderer: Email
     input.client_id ?? null,
     input.created_by,
     input.id ?? null
-  ])
+  ]
+  const fence = options.sourceFence
+  // One statement: the insert happens only while the reviewed source row still
+  // has exactly the reviewed content, scope and metadata.
+  const row = fence
+    ? await queryOne<EdmTemplate>(`
+      INSERT INTO edm_templates (
+        name, subject, preview_text, body_source, body_html, template_kind, folder_name, client_id, created_by, id
+      )
+      SELECT $1, $2, $3, $4::jsonb, $5, $6, $7, $8, $9, COALESCE($10::uuid, gen_random_uuid())
+      WHERE EXISTS (
+        SELECT 1 FROM edm_templates s WHERE s.id = $11::uuid AND s.body_source = $12::jsonb
+          AND s.client_id IS NOT DISTINCT FROM $13::uuid AND s.subject IS NOT DISTINCT FROM $14
+          AND s.preview_text IS NOT DISTINCT FROM $15 AND s.folder_name IS NOT DISTINCT FROM $16
+      )
+      ON CONFLICT (id) DO NOTHING
+      RETURNING *
+    `, [...values, fence.templateId, JSON.stringify(fence.bodySource ?? null), fence.clientId, fence.subject, fence.previewText, fence.folderName])
+    : await queryOne<EdmTemplate>(`
+    INSERT INTO edm_templates (
+      name, subject, preview_text, body_source, body_html, template_kind, folder_name, client_id, created_by, id
+    )
+    VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8, $9, COALESCE($10::uuid, gen_random_uuid()))
+    ON CONFLICT (id) DO NOTHING
+    RETURNING *
+  `, values)
   if (row) return row
   const existing = input.id ? await getTemplate(input.id) : null
-  if (!existing) throw new Error('Template save could not be confirmed.')
+  if (!existing) {
+    if (fence) throw new TemplateSourceFenceError('The reviewed source template changed before the copy was saved.')
+    throw new Error('Template save could not be confirmed.')
+  }
   return existing
 }
 
@@ -144,7 +182,11 @@ export async function updateTemplate(id: string, patch: UpdateTemplateInput, ren
   const name = patch.name ?? existing.name
   const subject = patch.subject !== undefined ? patch.subject : existing.subject
   const previewText = patch.preview_text !== undefined ? patch.preview_text : existing.preview_text
-  const source = redactTemplateProvenance(patch.body_source !== undefined ? patch.body_source : existing.body_source)
+  const storedReceipt = (existing.body_source as { root?: { data?: { props?: { importReceipt?: unknown } } } } | null)?.root?.data?.props?.importReceipt !== undefined
+  // A receipt-bearing row only accepts content with an object root chain, so
+  // the stored receipt can always be restored; other rows keep prior behaviour.
+  if (storedReceipt && patch.body_source !== undefined && !hasReceiptParentChain(patch.body_source)) throw new TemplateSourceShapeError()
+  const source = withoutImportReceipt(redactTemplateProvenance(patch.body_source !== undefined ? patch.body_source : existing.body_source), storedReceipt)
   const kind = patch.template_kind !== undefined
     ? (patch.template_kind === 'draft' ? 'draft' : 'template')
     : existing.template_kind
@@ -158,7 +200,10 @@ export async function updateTemplate(id: string, patch: UpdateTemplateInput, ren
     SET name = $1,
         subject = $2,
         preview_text = $3,
-        body_source = $4::jsonb,
+        -- The import receipt is write-once server state: carried from the row
+        -- itself, never taken from (or removable by) a content save.
+        body_source = CASE WHEN edm_templates.body_source #> '{root,data,props,importReceipt}' IS NULL THEN $4::jsonb
+          ELSE jsonb_set($4::jsonb, '{root,data,props,importReceipt}', edm_templates.body_source #> '{root,data,props,importReceipt}', true) END,
         body_html = $5,
         template_kind = $6,
         folder_name = $7,
@@ -167,6 +212,40 @@ export async function updateTemplate(id: string, patch: UpdateTemplateInput, ren
     WHERE id = $9 AND client_id IS NOT DISTINCT FROM $10::uuid
     RETURNING *
   `, [name, subject, previewText, JSON.stringify(source), html, kind, folderName, patch.client_id !== undefined ? patch.client_id : existing.client_id, id, authorizedClientId])
+}
+
+const isObject = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value)
+function hasReceiptParentChain(source: unknown): boolean {
+  if (!isObject(source) || !isObject(source.root)) return false
+  const data = source.root.data
+  if (data === undefined) return true
+  if (!isObject(data)) return false
+  return data.props === undefined || data.props === null || isObject(data.props)
+}
+/** Rejected before render/write: content that could drop a stored receipt. */
+export class TemplateSourceShapeError extends Error {
+  readonly statusCode = 400
+  readonly statusMessage = 'invalid_template_source'
+  constructor() {
+    super('invalid_template_source')
+  }
+}
+
+/** Incoming content never carries an import receipt; `updateTemplate` restores
+ * the stored one in SQL. Only when a receipt is stored does it ensure the
+ * receipt's parent object exists so `jsonb_set` can restore it; otherwise the
+ * body is left byte-for-byte unchanged apart from removing an incoming receipt. */
+function withoutImportReceipt<T>(source: T, ensureParent: boolean): T {
+  const document = source as { root?: { data?: { props?: Record<string, unknown> | null } } } | null
+  const props = document?.root?.data?.props
+  const hasIncoming = !!props && typeof props === 'object' && Object.hasOwn(props, 'importReceipt')
+  if (!document?.root || typeof document.root !== 'object' || (!hasIncoming && (!ensureParent || (props && typeof props === 'object')))) return source
+  const copy = structuredClone(document) as { root: { data?: { props?: Record<string, unknown> | null } } }
+  copy.root.data = copy.root.data && typeof copy.root.data === 'object' ? copy.root.data : {}
+  const next = copy.root.data.props && typeof copy.root.data.props === 'object' ? { ...copy.root.data.props } : {}
+  delete next.importReceipt
+  copy.root.data.props = next
+  return copy as T
 }
 
 export async function deleteTemplate(id: string, expectedClientId?: string | null): Promise<boolean> {

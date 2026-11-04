@@ -66,10 +66,22 @@ function collectResponsiveCss(doc: FlyhubDocument, budget?: ReturnType<typeof cr
         mobileCss.push(boundedText(budget)`      ${selector} { ${boundedJoin(typography.map(([prop, value]) => boundedText(budget)`${prop}: ${value} !important;`), ' ', budget)} }`)
       }
     }
-    if (hideClass === 'edm-hide-desktop' || hideClass === 'edm-hide-all') {
+    const mobileImage = block.type === 'Image' ? (block.data.mobile?.props as Record<string, unknown> | null | undefined)?.url : undefined
+    if (typeof mobileImage === 'string' && mobileImage && mobileImage !== block.data.props?.url && !mobileCss.some(rule => rule.includes('.edm-img-mobile {'))) {
+      mobileCss.push('      .edm-img-desktop { display: none !important; max-height: 0 !important; overflow: hidden !important; }')
+      mobileCss.push('      .edm-img-mobile { display: block !important; max-height: none !important; overflow: visible !important; }')
+    }
+    if ((hideClass === 'edm-hide-desktop' || hideClass === 'edm-hide-all') && !desktopCss.some(rule => rule.includes(`.${hideClass} {`))) {
       desktopCss.push(boundedText(budget)`    .${hideClass} { display: none !important; max-height: 0 !important; overflow: hidden !important; }`)
     }
-    if (hideClass === 'edm-hide-mobile' || hideClass === 'edm-hide-all') {
+    // Mobile-only rows stay hidden where media queries are unsupported, and are
+    // revealed by the same later !important rule inside the mobile breakpoint.
+    if (hideClass === 'edm-hide-desktop' && !mobileCss.some(rule => rule.includes('tr.edm-hide-desktop {'))) {
+      // Rows and nested-layout wrappers restore their own display type.
+      mobileCss.push('      tr.edm-hide-desktop { display: table-row !important; max-height: none !important; overflow: visible !important; }')
+      mobileCss.push('      div.edm-hide-desktop { display: block !important; max-height: none !important; overflow: visible !important; }')
+    }
+    if ((hideClass === 'edm-hide-mobile' || hideClass === 'edm-hide-all') && !mobileCss.some(rule => rule.includes(`.${hideClass} {`))) {
       mobileCss.push(boundedText(budget)`      .${hideClass} { display: none !important; max-height: 0 !important; overflow: hidden !important; }`)
     }
   }

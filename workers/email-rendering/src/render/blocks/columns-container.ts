@@ -28,6 +28,12 @@ function renderColumnChildToMjml(block: FlyhubBlock, context: BlockRenderContext
   return mjml
 }
 
+/** An explicit gap (including 0) is honoured, as the composer canvas and native
+ * do; only a missing or non-numeric value falls back to the 16px default. */
+export function columnsGapOf(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : 16
+}
+
 export const COLUMNS_CONTAINER_BLOCK_TYPE = 'ColumnsContainer'
 
 registerBlock({
@@ -42,7 +48,7 @@ registerBlock({
 
     const columns = (props.columns as Array<{ childrenIds: string[] }>) || []
     const columnsCount = columns.length || 2
-    const columnsGap = (props.columnsGap as number) || 16
+    const columnsGap = columnsGapOf(props.columnsGap)
     const contentAlignment = (props.contentAlignment as string) || 'top'
     const fixedWidths = (props.fixedWidths as Array<number | null>) || []
 
@@ -89,8 +95,10 @@ registerBlock({
 
     const columns = (props.columns as Array<{ childrenIds: string[] }>) || []
     const columnsCount = columns.length || 2
-    const columnsGap = (props.columnsGap as number) || 16
+    const columnsGap = columnsGapOf(props.columnsGap)
     const fixedWidths = (props.fixedWidths as Array<number | null>) || []
+    // Same vertical alignment the composer canvas and MJML output already use.
+    const verticalAlign = props.contentAlignment === 'middle' ? 'middle' : props.contentAlignment === 'bottom' ? 'bottom' : 'top'
 
     const columnCells = boundedJoin(columns
       .map((col, index) => {
@@ -110,7 +118,7 @@ registerBlock({
 
         // Use class="stack-column" for mobile stacking
         return boundedText(context.renderBudget)`
-          <td class="stack-column" style="width: ${columnWidth}; vertical-align: top; padding: 0 ${columnsGap / 2}px;">
+          <td class="stack-column" style="width: ${columnWidth}; vertical-align: ${verticalAlign}; padding: 0 ${columnsGap / 2}px;">
             <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
               ${colChildrenHtml || '<tr><td style="min-height: 40px;">&nbsp;</td></tr>'}
             </table>

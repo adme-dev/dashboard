@@ -1,5 +1,6 @@
 /* eslint no-control-regex: off -- Reject control bytes explicitly at the untrusted designer content boundary. */
 import { z } from 'zod'
+import { knownSplitStructure, recogniseKnownSection } from './designKnownSections'
 import { RenderBoundaryError, snapshotRenderInput } from './bounds'
 import { designChildIds, DESIGN_LIMITS, EmailDesignError, validateEmailDesign, type EmailDesignDocument } from './designContract'
 import { designToRendererDocument } from './designAdapter'
@@ -40,7 +41,10 @@ const Operation = z.discriminatedUnion('op', [
   z.object({ op: z.literal('add-section'), ...Target, sectionType: SectionType }).strict(),
   z.object({ op: z.literal('move-section'), ...Target, blockId: Id }).strict(),
   z.object({ op: z.literal('duplicate-section'), ...Target, blockId: Id }).strict(),
-  z.object({ op: z.literal('remove-section'), blockId: Id }).strict()
+  z.object({ op: z.literal('remove-section'), blockId: Id }).strict(),
+  // Server-derived: only the block is named; its replacement comes from the
+  // persisted, byte-verified generated section (see designKnownSections).
+  z.object({ op: z.literal('adopt-known-section'), blockId: Id }).strict()
 ])
 export type DesignerOperation = z.infer<typeof Operation>
 const Proposal = z.object({
@@ -250,6 +254,38 @@ export function applyDesignerOperations(input: unknown, operations: unknown, ope
       const holder = op.mobile ? (block.data.mobile ??= {}) as Record<string, unknown> : block.data
       const key = op.op === 'set-style' ? 'style' : 'props'
       holder[key] = { ...(holder[key] as Record<string, unknown> ?? {}), ...patch }
+    } else if (op.op === 'adopt-known-section') {
+      // Explicit, reviewed conversion of an unmodified generated Html section
+      // into structured layers. Its own legacy-type lock is the reason for this
+      // operation; explicit block/style locks on it or any ancestor (the shared
+      // structure-lock rule), module links and locked parents still deny.
+      const section = recogniseKnownSection(design.blocks[op.blockId])
+      if (!section || op.blockId === 'root') deny('knownSection')
+      if (designStructureLocked(design, op.blockId, true)) deny('designerLocks')
+      if (linked.has(op.blockId)) deny('moduleInstances')
+      for (const parent of Object.keys(design.blocks)) if (parent !== op.blockId && ownLocked(design, parent) && descendants(design, parent).includes(op.blockId)) deny(op.blockId)
+      const list = locate(design, op.blockId)
+      // Carried links meet the same rule as a designer link edit; otherwise the
+      // section stays Html rather than becoming an unsafe structured value.
+      if (!safeLink(section!.image, true) || !safeLink(`https://example.com/${section!.path}`, false)) deny('knownSection')
+      const { container, columns } = knownSplitStructure(section!)
+      let childIndex = 0
+      const create = (template: { type: string, data: Record<string, unknown> & { props?: Record<string, unknown> | null } }) => {
+        const blockId = designerBlockId(operationId, operationIndex, childIndex++)
+        if (Object.hasOwn(design.blocks, blockId)) deny('blockId')
+        design.blocks[blockId] = JSON.parse(JSON.stringify(template))
+        const fields = (content[template.type] ?? []).filter(field => Object.hasOwn(template.data.props ?? {}, field))
+        for (const field of fields) design.policy.editableFields.push(`${blockId}.data.props.${field}`)
+        design.lineage.push({ blockId, nodeId: `node-${blockId}`, fields: Object.fromEntries(fields.map(field => [field, `field-${blockId}-${field}`])) })
+        return blockId
+      }
+      const containerId = create(container)
+      const containerBlock = design.blocks[containerId]
+      containerBlock.data.props = { ...containerBlock.data.props, columnsCount: columns.length, columns: columns.map(column => ({ childrenIds: column.map(create) })) }
+      list.splice(list.indexOf(op.blockId), 1, containerId)
+      design.blocks = Object.fromEntries(Object.entries(design.blocks).filter(([id]) => id !== op.blockId))
+      design.lineage = design.lineage.filter(item => item.blockId !== op.blockId)
+      design.policy.editableFields = design.policy.editableFields.filter(path => path.split('.')[0] !== op.blockId)
     } else if (op.op === 'add-section') {
       const list = childList(design, op.parentId, op.columnIndex)
       const blockId = designerBlockId(operationId, operationIndex)

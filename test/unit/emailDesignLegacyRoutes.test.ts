@@ -44,6 +44,12 @@ describe('existing template routes with versioned history', () => {
       statusMessage: 'email_design_revision_required'
     })
   })
+  it('surfaces a receipt-unsafe body as 400 invalid_template_source at the h3 boundary', async () => {
+    const { TemplateSourceShapeError } = await vi.importActual<typeof import('~~/server/utils/email-marketing/templates')>('~~/server/utils/email-marketing/templates')
+    mocks.update.mockRejectedValue(new TemplateSourceShapeError())
+    const thrown = await patch(event).catch((error: unknown) => error)
+    expect(createError(thrown as Error)).toMatchObject({ statusCode: 400, statusMessage: 'invalid_template_source' })
+  })
   it('returns 409 when deletion would erase a referenced template', async () => {
     mocks.remove.mockRejectedValue({
       code: '23503',

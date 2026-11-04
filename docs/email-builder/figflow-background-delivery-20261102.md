@@ -1,6 +1,6 @@
 # FigFlow background delivery ledger — 2 November 2026
 
-**Current next action and short queue:** [FigFlow EDM — resume here](figflow-current-task-list.md). The sections below are chronological evidence; earlier “Active” rows describe their checkpoint, not current worker state.
+**Current next action and short queue:** [FigFlow EDM — resume here](figflow-current-task-list.md). **Acceptance view:** [PRD checklist E01–E12](figflow-edm-prd-checklist.md). The sections below are chronological evidence; earlier “Active” rows describe their checkpoint, not current worker state.
 
 Owner instruction: run background agents and complete the approved Emailify-style
 email authoring flow plus the adopted R&D roadmap. Integration/coordinator: Codex,
@@ -1380,3 +1380,138 @@ reverified allfour reviewed sourcehashes. Parent scopedESLint passed for allfour
 withzero diagnostics, diffcheck clean, freshlyfetchedmain052 stillincluded.
 Nine-file checkpoint consists only offour tests plusfive status/evidence docs.
 Nextaction iscommit/push fornewexactsourceCI, notmerge/release or499acceptance.
+
+
+## 3 November — exact 981 checkpoint CI passed; release gates remain open
+
+General41515080078 andnative41515080116 both SUCCESS at
+981943bb17e6e9675313c7c47e911b0201161d8c, treecf908129a8448b7e7b8da6108c470218e370e03d;
+actualcheckout1287a1e82b0751d5ec2881ad8c13da5f842cb32f hasmain052 and981 parents.
+Parent directlyverifiedbothGitHubterminalstates, readfullmonitorreport and
+independentlyhashedall98 finalmanifestentries:zero mismatches.
+ManifestSHAb1376790b7fe4bce97c0a26c71a2b2d5eddc4b4d348f9730fc77dc7a97f75c91;
+reportSHA382f3dc9f49b2922d3d1412f3df77c92241408a7f354530e6d9a94c03024319e.
+Report: `.verification/ci-followup-981943bb1/REPORT.md`.
+
+Fullsuite21,951passed/4,255skipped,2,764passed/130skippedfiles; serialized70/70
+isaseparatestage. Alloriginaleightcasesremainpresent andtheirfourcomplete
+filespassed32cases0skip. Social930/132files andPagesguards21/3files passed.
+Productionbuild, rendererisolation andunchangedstrictlimits passed:
+raw25,410,705/25,468,928 (58,223remaining), gzip7,333,151/9,750,000
+(2,416,849remaining). No limitswerechanged. Campaign/backend/successor/native
+runtimeopt-ins remainSKIPPED andunvalidatedbythisCI; previousauthorPG evidence
+remains source/hash-bound. Generalf131failureispreserved, notrewritten.
+
+Native40engine/9bridge/8UI,89namedRust and21relay pass;47native/62package
+checks verify. Parent independentlyhashedZIP83d2d3d7aab10d1f3a2b6020cf44c49a3556b0074ed75943bbf8046f8c55824e
+(9,157,801bytes) andWASM58eabea2a64122848d7feadcd22a0994f7d05e5bc6c44a3a0be2b997b3ceac54
+(23,508,724bytes), comparedall32unpackedfilesbyte-for-bytewithf131. Theyare
+identical;ZIPentrytimestampsdiffer. Existingf131bounded8caseframeevidence
+remainsforitsidenticalpackagebytes; no newbrowser/fullcampaignruntimewasrun.
+
+No merge/deployment/hostedartifactoverwrite/featureactivation/send occurred;
+PR827staysdraft. Migration499422555 is SOURCEONLY/UNAPPROVED/NOTAPPLIED and
+independentreviewremainsFAILED/INCOMPLETEafterautomatedclassification. No
+blockedDBprobe wasretriedorreassigned. FullactualPagesPATCH+Worker+WASM/
+same-templateR2campaignjourney, publicassets, ordinaryhostedstaff/client and
+realinboxacceptance remainopen. Two currentstatusdocsarelocalpost-CIupdates;
+noextradoc-onlypushisneededtorestartthealreadyacceptedsourcebuild.
+
+
+## 3 November — user reports live workflow still incorrect
+
+[Fresh live gap check](live-workflow-gap-20261103.md) confirms PR827 remains
+OPEN/DRAFT/unmerged and the existing Ford HTML import cannot enter FigFlow:
+live guidance disables native editing for imported HTML. Desktoppreviewimages
+load and responsive duplicates hide correctly in this bounded inspection; no
+fullvisual/inbox claim. Currentmain1586643bb hasadvancedwithBannerStudio work,
+so981requirescurrent-main reconciliation before futureintegration. No deployment
+sourceIDwasestablished. No template/save/campaign/send or sourcecode mutation.
+Requestedcurrentfailingflow/URL fromuser; do not infer their new symptom from
+old screenshots. PriorCIgreen isnotend-to-end completion.
+
+## 3 November — Opus: explicit imported-HTML editable copy (E04), local checkpoint
+
+Intake: user-assigned Opus implementation lead on explicit root `figflow-edm-release-20261101`, branch `adme-dev/figflow-authoring-20261102`, base HEAD `981943bb1` (38 ahead / 10 behind `origin/main` `1586643bb` at intake). Parent's three status/report files preserved. Parent supplied private read-only exports (Ford `267b434c…`, Nissan `b5f7b579…`, Cinco `1a37261e…`), unchanged after all runs.
+
+Diagnosis: the live disabled **Edit in FigFlow** comes from `figflowSourceUnsupported`; a complete import is one `Html` block with zero editable fields, and the pinned native projection renders it as a single "Unsupported Html block" placeholder, so PR827 alone does not fix it.
+
+Implemented (uncommitted): deterministic converter, receipt-first preview/save route, composer review dialog, renderer fixes (pre-existing hide-on-desktop bug; image mobile source; Html extended style) and guard extensions (module asset registration and preflight for mobile/background images). Details, exact results and limits: [report](imported-html-editable-copy-20261103.md).
+
+Results (local, bounded): actual renderer in system Chrome — identical visible text lines and image sets in all 6 original/copy views; actual f131 WASM — 6/6 admissions with exact no-op return, images shown once; focused 9 files / 74 tests passed, 0 skipped; broad 407 files passed / 18 skipped, 3,449 tests passed / 323 skipped (opt-in DB/runtime suites remain unvalidated). Evidence: `.verification/opus-imported-conversion-20261103/SHA256SUMS`.
+
+Not done: independent review; reconcile with current main and commit; CI strict size (estimate ≈25 KB of 58,223 bytes headroom, minified); hosted preview of create-copy → visible FigFlow edit → save → reopen; protected buttons/columns/rich text remain non-native (E02–E04 gap); E01 blank starter absent; migration 499 untouched and still blocking E07/E10 acceptance.
+
+## 3 November — independent review of E04, repairs, and the Electric Drive repro
+
+Independent review of frozen `d12cad9a…` (`.verification/opus-imported-conversion-independent-review-20261103.md`): NOT commit-ready — P1 receipt binding/scope/fence, P1 4xx recovery, P1 colour/fill/decoration appearance, P2 async context, P2 viewport clamp. All five repaired locally, red→green recorded; frozen bytes preserved (`frozen-d12cad9a/`, 23/23). Focused 94 passed / 1 DB-gated skip; real local PostgreSQL fence 1/1; broad 407 files / 3,458 tests passed, 19 / 324 skipped. Details: [report *Review repairs*](imported-html-editable-copy-20261103.md). Re-review of the new hashes is pending; no commit/merge/push yet.
+
+Owner repro (structured "Electric Drive (copy)" unstyled in FigFlow): live app loads edm1 (`6ad41045…`), confirmed by the parent from the source pointer and the live index; the branch's CI edm2 (`58eabea2…`) renders the same starter styled. Remaining edm2 failures: font weights and the lower `Html` CTA placeholder. Not fixed; queue item 15.
+
+## 3 November — E04 round 2, native edm3 repair, structured starter CTA
+
+E04 final re-review blocked R1/R2/R4; second-round repairs: write-once receipt enforced in `updateTemplate` SQL (canonical writers already immutable for it), `stale` instead of `not_committed`, per-source/request settlement. Focused 107 passed / 2 DB-gated skips; real PG 2/2; broad 3,465 passed / 325 skipped. Native review P1 (Heading default weight → Regular) and P2 (README counts) repaired: patch `4a8d5284…`, manifest `native-sha256-r2.txt` (`19732174…`); no Rust compile yet. Starter split CTA rebuilt as structured Columns; the email renderer now honours the existing Columns `contentAlignment`; starter/preset tests 29/29. Disk filled twice during the session (owner freed space); only my own disposable scratch was removed, with the parent's verification.
+
+## 3 November — known-section update, zero-gap columns, E04 R1 repair (awaiting review)
+
+Opus. Native and starter final review froze (native A approved 0/0/0; starter one P2). Starter held manifest archived (`opus-starter-cta-20261103/frozen-206068e1`). Columns renderer now uses `columnsGapOf` (explicit 0 honoured, missing 16) in HTML and MJML; reviewer's zero-gap target now passes; one pinned VML assertion updated (gap 0 → 52px, gap 16 → 36px). Known-section update (b-ii) implemented with builder UI (save-before-review disclosed) and 11 new flow/wiring tests covering authority, locks, CAS, local change during open, nested replacement, deterministic ids, replay, recognition changes and carried text; mutation checks recorded. E04 R1 rootless-body receipt loss repaired (`invalid_template_source`). Focused 121 passed; broad 3,484 passed / 325 skipped (411 files / 19 skipped), exit 0. Evidence `.verification/opus-known-section-gap-r1-20261103/`; report [known-section-update-20261103.md](known-section-update-20261103.md). No commit, merge, deploy, package or pointer change; no campaign completion claim.
+
+## 3 November — review dispositions and known-section repair round
+
+Opus. Independent reviews:
+- **Closed as scoped source repairs:** E04 R1 (no P0/P1/P2) and the zero-gap fix (B, 0/0/0).
+- **Known-section update (A):** changes requested — 2 P1 + 1 P2.
+
+The pre-repair freeze is archived read-only (`opus-known-section-gap-r1-20261103/frozen-e5537f42`, 60/60). Repairs, each failing-first:
+- **Inherited locks:** adoption uses the shared `designStructureLocked` ancestry rule, and the builder hint mirrors it.
+- **Literal copy:** sections whose title, copy or label contain markup, entity-like text or unsafe links now fail closed (remain Html) instead of changing meaning.
+- **Async continuation:** owner, route, lifetime and the full local snapshot are rechecked after open and after propose, before baseline, presentation or router writes, with an honest stop message.
+
+Results:
+- 9 mutation checks are caught.
+- Reviewer counterexamples (their artifacts and 38-entry freeze untouched): verbatim 17/9, with every failure explained (7 intended fail-closed refusals, 2 harness bindings); adapted 26/26.
+- Focused: 220 passed. Broad: 3,504 passed / 325 skipped (411 files / 19 skipped), exit 0.
+- One intermediate attempt broke two source-slice harnesses (log kept) and was redesigned to use the existing unmount hook.
+
+Evidence: `.verification/opus-known-section-r2-20261103/`. Awaiting re-review. No commit, merge, deploy, install, build, SQL/499, package or pointer change; E01 and main reconciliation are later stages.
+
+## 3 November — known-section R2 dispositions and R3 repair
+
+Opus. R2 independent review closed the inherited-lock and literal-text cases. It requested changes: 1 P1 + 1 P2. The previous freeze is archived read-only (`opus-known-section-r2-20261103/frozen-188714f2`, 105/105). Repairs, each failing-first:
+- **Carried URLs:** image URLs and button paths whose character-reference spelling would decode differently in an unescaped attribute now keep the section as Html. This uses the exact 106-name legacy rule, oracle-checked with happy-dom. Ordinary query pairs are carried, with exact parsed preview/committed attributes.
+- **Builder intent:** captured before save-first and rechecked against the live draft ref after save, open and propose. Only the save's own head advance is accepted.
+
+Results:
+- 8 mutations caught.
+- Reviewer probe copies: 24/4, the 4 being intended conservative refusals; reviewer artifacts unchanged.
+- Focused 244, neighbours 114, broad 3,528 passed / 325 skipped, exit 0.
+
+Evidence `.verification/opus-known-section-r3-20261103/`. Awaiting re-review. No commit, main reconciliation, install, build, SQL/499, pointer/package or deploy.
+
+## 3 November — known-section A0 conversion boundary
+
+Opus.
+- **Review history:** R3 closed async; its P1 was carried-link drift in the production delivery consumer. The read-only architecture investigation found a general raw-vs-literal URL contract conflict. The independent assessment chose A0, a conversion-only refusal, over C and C′.
+- **Freeze:** the R3 freeze is archived read-only (`opus-known-section-r3-20261103/frozen-772b6735`, 131/131).
+- **Implemented:** any `&` in a carried image URL or button path keeps the section as Html. The name table is removed. There are no renderer, tracking, delivery, importer, native or schema changes. The bounded eligibility is disclosed in the composer alert.
+- **Tests and checks:**
+  - Failing-first: 23 link values each for image and button (refused with full post-open state, Html bytes and recognition unchanged); batch no-partial; ampersand-free positives exact across direct, tracking-callback, delivery and plaintext readings in original, preview and committed output.
+  - Mutations: 4 caught.
+  - Focused 279; neighbours 150.
+  - Broad 3,563 passed / 325 skipped, exit 0. A first broad run had one gate-inventory 5 s timeout under load; it passes standalone and on rerun, and the log is kept.
+- **Owner example:** eligible on the reconstruction only; not recorded as complete.
+- **Follow-up:** the general link-serialization contract is queue item 16.
+- Evidence `.verification/opus-known-section-a0-20261103/`. No commit, reconciliation, install, build, SQL/499, audit, pointer, package or deploy.
+
+## 4 November — A0 source-approved; preparing the coherent checkpoint
+
+- **Review:** Kimi independent review of freeze `00d1afcb…` gave **0 P0/P1/P2** (report `63d6ed3d…`). The reviewed 158-entry freeze is archived read-only (`opus-known-section-a0-20261103/frozen-00d1afcb`).
+- **Disk:** the host recovered to 7 GiB free; checks hold below 5 GiB.
+- **Next, per the accepted method:**
+  1. Deep pre-commit reread.
+  2. Explicit-path checkpoint C1, including the reviewed edm3 native build-source set.
+  3. Fresh-main `--no-ff` merge.
+  4. Exact post-merge delta checks and bounded local checks, with the shared-dependency limitations disclosed.
+  5. PR CI for full exact-lock, general, native and build checks.
+- Runtime pointers, approval pins, migration 499, provider and deploy stay untouched.
+

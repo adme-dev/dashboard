@@ -151,6 +151,9 @@ describe('opt-in generated rendering quality', () => {
     const doc = renderingQualityDocument()
     Object.assign(doc.columns.data.props, { fixedWidths: [350, 100], columnsGap: 0 })
     Object.assign(doc.button.data.props, { fullWidth: true, outlookWidth: 960 })
+    // An explicit zero gap is honoured: the whole 100px column is available.
+    expect(render(doc)).toContain('width:52px')
+    Object.assign(doc.columns.data.props, { columnsGap: 16 })
     expect(render(doc)).toContain('width:36px')
   })
   it('keeps VML dimensions finite when legacy ancestor width settings are malformed', () => {

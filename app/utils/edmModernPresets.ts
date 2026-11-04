@@ -2,7 +2,7 @@
 // FuturaX and Aviro. This catalog deliberately contains no legacy starter IDs.
 import type { EdmPresetBlockTemplate, EdmSectionPreset, EdmStarterTemplate } from '~~/app/utils/edmPresets'
 import type { EdmFlyhubBlock } from '~~/app/types/edm'
-import { oemSplit, oemInspectionClose, oemStudioClose, OEM_IMAGES, OEM_DRIVE_IMAGE } from '~~/app/utils/edmOemLayouts'
+import { oemInspectionClose, oemStudioClose, OEM_IMAGES, OEM_DRIVE_IMAGE } from '~~/app/utils/edmOemLayouts'
 import { featureRow, navMenu, richFooter } from '~~/app/utils/edmSectionBuilders'
 
 export const MODERN_EDM_SECTION_IDS = [
@@ -85,14 +85,30 @@ function features(theme: Theme, title: string, intro: string, items: { heading: 
   row.data.mobile = { props: { columns: 1 }, style: { padding: pad(0, 26, 14) } }
   return [heading(title, theme, { bg: theme.paper, size: 27 }), text(intro, theme, { bg: theme.paper, bottom: 18 }), row]
 }
+/** Photo beside copy as structured blocks (Columns: Image | Heading, Text, Button),
+ * so the composer, renderer and FigFlow all treat each part as an editable layer. */
+function splitCta(opts: { title: string, copy: string, action: string, path: string, image: string, alt: string, reverse?: boolean, bg?: string, ink?: string, accent?: string, buttonInk?: string }): EdmPresetBlockTemplate {
+  const bg = opts.bg ?? '#F4F6F8', ink = opts.ink ?? '#142B40'
+  const words: EdmPresetBlockTemplate[] = [
+    native('Heading', { text: opts.title, level: 'h2' }, { backgroundColor: bg, color: ink, fontFamily: 'MODERN_SANS', fontSize: 32, fontWeight: '700', lineHeight: 1.08, letterSpacing: -1, textAlign: 'left', padding: { top: 32, right: 28, bottom: 18, left: 28 } }, { padding: { top: 28, right: 22, bottom: 16, left: 22 } }),
+    native('Text', { text: opts.copy }, { backgroundColor: bg, color: ink, fontFamily: 'MODERN_SANS', fontSize: 16, fontWeight: 'normal', lineHeight: 1.55, textAlign: 'left', padding: { top: 0, right: 28, bottom: 24, left: 28 } }, { padding: { top: 0, right: 22, bottom: 22, left: 22 } }),
+    native('Button', { text: opts.action, url: `${SITE}/${opts.path}`, buttonBackgroundColor: opts.accent ?? '#142B40', buttonTextColor: opts.buttonInk ?? '#FFFFFF', buttonStyle: 'rectangle', size: 'large' }, { backgroundColor: bg, fontFamily: 'MODERN_SANS', fontSize: 15, fontWeight: '700', textAlign: 'left', borderRadius: 3, padding: { top: 0, right: 28, bottom: 32, left: 28 } }, { padding: { top: 0, right: 22, bottom: 28, left: 22 } })
+  ]
+  const photo: EdmPresetBlockTemplate[] = [native('Image', { url: opts.image, alt: opts.alt, width: 276 }, { padding: { top: 0, right: 0, bottom: 0, left: 0 }, backgroundColor: bg })]
+  return {
+    type: 'ColumnsContainer',
+    data: { props: { columnsGap: 0, fixedWidths: opts.reverse ? [324, 276] : [276, 324], contentAlignment: 'middle' }, style: { padding: { top: 0, right: 0, bottom: 0, left: 0 }, backgroundColor: bg } },
+    columns: opts.reverse ? [words, photo] : [photo, words]
+  }
+}
 function cta(theme: Theme, title: string, copy: string, label: string, path: string): EdmPresetBlockTemplate[] {
   const common = { title, copy, action: label, path }
   switch (theme.brand) {
-    case 'Northline Motors': return [oemSplit({ ...common, title: 'Your next drive starts here.', image: OEM_DRIVE_IMAGE, alt: 'Kia EV9 outside a contemporary building', bg: '#F0F4F7' })]
+    case 'Northline Motors': return [splitCta({ ...common, title: 'Your next drive starts here.', image: OEM_DRIVE_IMAGE, alt: 'Kia EV9 outside a contemporary building', bg: '#F0F4F7' })]
     case 'Fieldwork Property': return [oemInspectionClose()]
-    case 'Tide House': return [oemSplit({ ...common, image: OEM_IMAGES.hospitality, alt: 'Breakfast on a coastal terrace', reverse: true, bg: '#F6F3ED', ink: '#153B43', accent: '#153B43' })]
+    case 'Tide House': return [splitCta({ ...common, image: OEM_IMAGES.hospitality, alt: 'Breakfast on a coastal terrace', reverse: true, bg: '#F6F3ED', ink: '#153B43', accent: '#153B43' })]
     case 'Forma Studio': return [oemStudioClose()]
-    default: return [oemSplit({ ...common, image: OEM_IMAGES.services, alt: 'Plans and material samples in an architectural workspace', reverse: true, bg: '#182E49', ink: '#FFFFFF', accent: '#FFFFFF', buttonInk: '#182E49' })]
+    default: return [splitCta({ ...common, image: OEM_IMAGES.services, alt: 'Plans and material samples in an architectural workspace', reverse: true, bg: '#182E49', ink: '#FFFFFF', accent: '#FFFFFF', buttonInk: '#182E49' })]
   }
 }
 function footer(theme: Theme): EdmPresetBlockTemplate[] {

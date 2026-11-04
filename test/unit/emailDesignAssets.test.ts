@@ -121,6 +121,19 @@ describe('registered scoped media publication', () => {
     module.blocks.heading = { type: 'Html', data: { props: { html: '<img src="https://external/image.png">' } } }
     await expect(verifyDesignModuleAssets(module, h.db, h.publisher, h.storage)).rejects.toMatchObject({ code: 'ASSET_NOT_READY' })
   })
+  it('requires a mobile image source to be a registered scoped asset too', async () => {
+    const h = harness(), module = extractDesignModule(structuredDesign(), ['heading'], [], [])
+    const light = await publishEmailAsset(h.request, actorId, h.publisher, h.storage, h.transaction)
+    const mobile = await publishEmailAsset({ ...h.request, operationId: crypto.randomUUID(), assetId: otherAsset }, actorId, h.publisher, h.storage, h.transaction)
+    module.blocks.heading = { type: 'Image', data: { props: { url: await h.storage.url(assetId) }, mobile: { props: { url: await h.storage.url(otherAsset) } } } }
+    module.policy.editableFields = []
+    expect(await verifyDesignModuleAssets(module, h.db, h.publisher, h.storage)).toEqual([light.asset, mobile.asset])
+    ;(module.blocks.heading.data as { mobile: { props: { url: string } } }).mobile.props.url = 'https://unknown.test/mobile.png'
+    await expect(verifyDesignModuleAssets(module, h.db, h.publisher, h.storage)).rejects.toMatchObject({ code: 'ASSET_NOT_READY' })
+    ;(module.blocks.heading.data as { mobile: { props: { url: unknown } } }).mobile.props.url = ''
+    await expect(verifyDesignModuleAssets(module, h.db, h.publisher, h.storage)).rejects.toMatchObject({ code: 'ASSET_NOT_READY' })
+  })
+
   it('verifies dark variants independently with exact scoped immutable descriptors', async () => {
     const h = harness(), module = extractDesignModule(structuredDesign(), ['heading'], [], [])
     const light = await publishEmailAsset(h.request, actorId, h.publisher, h.storage, h.transaction)

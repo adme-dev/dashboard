@@ -255,8 +255,13 @@ export function diagnoseEmailContent(input: EmailContentDiagnosticInput): EmailC
         }
         if (block.type === 'Image') {
           image(p.url, typeof p.alt === 'string', false, ref)
+          // A mobile source is a second sent image with the same checks.
+          const mobile = (block.data as { mobile?: { props?: Record<string, unknown> | null } | null }).mobile?.props
+          if (typeof mobile?.url === 'string' && mobile.url) image(mobile.url, typeof (mobile.alt ?? p.alt) === 'string', false, ref)
           if (p.linkHref && !actionable(p.linkHref)) add('action_url', 'Add a destination for this linked image.', ref)
         }
+        // Block background images are sent too; they are decorative by definition.
+        if (typeof s.backgroundImage === 'string' && s.backgroundImage) image(s.backgroundImage, true, true, ref)
         if (block.type === 'Button') {
           if (!actionable(p.url)) add('action_url', 'Add a destination for this button.', ref)
           checkType({ ...next, color: text(p.buttonTextColor) || '#ffffff', background: text(p.buttonBackgroundColor) || undefined, size: pixelSize(s.fontSize) || 16 }, ref)

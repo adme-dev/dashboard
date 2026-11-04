@@ -171,6 +171,9 @@ export async function verifyDesignModuleAssets(design: EmailDesignDocument, db: 
     if (!storage) throw new DesignModuleError('ASSET_STORAGE_UNAVAILABLE')
     const urls = [block.data.props?.url]
     if (block.type === 'Image' && block.data.props?.darkSrc) urls.push(block.data.props.darkSrc)
+    // A mobile source is a delivered image too and needs the same registration.
+    const mobileUrl = (block.data.mobile as { props?: Record<string, unknown> | null } | null | undefined)?.props?.url
+    if (block.type === 'Image' && mobileUrl !== undefined && mobileUrl !== null) urls.push(mobileUrl)
     for (const url of urls) {
       const id = typeof url === 'string' ? await storage.identifyUrl(url) : null
       if (!id) throw new DesignModuleError('ASSET_NOT_READY')
