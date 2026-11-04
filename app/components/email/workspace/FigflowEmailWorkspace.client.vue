@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import FigflowTemplatePublish from './FigflowTemplatePublish.client.vue'
 import { onBeforeRouteLeave } from 'vue-router'
 import { useEdmDesignRoundtrip } from '~~/app/composables/useEdmDesignRoundtrip'
 import { figflowTemplateCapability } from '~~/app/utils/edmFigflowLibrary'
@@ -30,6 +31,8 @@ const loadError = ref('')
 const fallback = ref(false)
 const showEditableCopy = ref(false)
 const handoffComponent = ref<{ requestSnapshot: () => void, ready: boolean } | null>(null)
+const publicationComponent = ref<InstanceType<typeof FigflowTemplatePublish> | null>(null)
+const publicationActive = computed(() => publicationComponent.value?.active === true)
 const reviewOpen = ref(false)
 const localDesign = ref<EmailDesignDocument | null>(null)
 const localOperations = ref<DesignerOperation[]>([])
@@ -112,7 +115,9 @@ const saveState = computed(() => {
   if (designFlow.handoff.value?.state === 'open') return 'Saved revision · native changes may be unsaved'
   return 'Saved draft'
 })
-const canSave = computed(() => !!designFlow.handoff.value && designFlow.handoff.value.state === 'open' && handoffComponent.value?.ready === true && !designFlow.busy.value && !designFlow.hasPending.value && !metadataSnapshotPending.value)
+const publicationReady = computed(() => !!designFlow.handoff.value && designFlow.handoff.value.state === 'open' && handoffComponent.value?.ready === true && !designFlow.busy.value && !designFlow.hasPending.value && !metadataSnapshotPending.value)
+
+const canSave = computed(() => publicationReady.value && !publicationActive.value)
 
 const reviewChanges = computed(() => {
   const before = designFlow.handoff.value?.source.blocks
@@ -158,6 +163,7 @@ function settleLeave(leave: boolean) {
   resolve?.(leave)
 }
 function snapshotFailed() {
+  publicationComponent.value?.snapshotFailed()
   metadataSnapshotPending.value = false
   metadataSnapshotIntent = null
   if (metadataOpen.value) metadataError.value = 'Native edits could not be checked. Save or undo them before changing email details.'
@@ -165,7 +171,7 @@ function snapshotFailed() {
   settleLeave(false)
 }
 function requestLeave() {
-  if (loading.value || metadataOpen.value || metadataLocked.value) return false
+  if (loading.value || metadataOpen.value || metadataLocked.value || publicationActive.value) return false
   if (leaveResolve) return false
   if (nativeDirty.value || designFlow.handoff.value?.state === 'proposed' || (designFlow.handoff.value?.state === 'open' && !handoffComponent.value?.ready)) {
     leaveOpen.value = true
@@ -186,6 +192,7 @@ function beforeUnload(event: BeforeUnloadEvent) {
 }
 function reviewSnapshot(design: EmailDesignDocument, operations: DesignerOperation[], operationId: string | null, changed: boolean) {
   nativeDirty.value = changed
+  if (publicationActive.value) { void publicationComponent.value?.acceptSnapshot(design, changed); return }
   if (metadataSnapshotPending.value) {
     const intent = metadataSnapshotIntent
     const current = designFlow.draft.value
@@ -251,6 +258,7 @@ async function continueApplied(handoff: DesignHandoff) {
   await adoptOpen(next)
 }
 async function reviewProposal(handoff: DesignHandoff) {
+  if (publicationActive.value) return
   if (!handoff.proposal) throw new Error('The server proposal is incomplete.')
   serverMismatch.value = true
   nativeDirty.value = true
@@ -258,6 +266,7 @@ async function reviewProposal(handoff: DesignHandoff) {
   await renderServerReview(handoff.proposal)
 }
 async function reopenSavedDraft() {
+  if (publicationActive.value) return
   if (designFlow.busy.value || designFlow.hasPending.value) return
   try {
     await designFlow.run(async () => {
@@ -304,6 +313,7 @@ async function confirmServerProposal() {
   try { await designFlow.run(applyProposal) } catch { /* CAS refusal and pending writes stay visible. */ }
 }
 async function reconcileSave() {
+  if (publicationActive.value) return
   try {
     await designFlow.run(async () => {
       const result = await designFlow.reconcile()
@@ -325,6 +335,7 @@ async function reconcileSave() {
   }
 }
 async function initialise() {
+  if (publicationActive.value) return
   loading.value = true
   loadError.value = ''
   fallback.value = false
@@ -408,9 +419,9 @@ onBeforeUnmount(() => {
       <UButton v-if="(designFlow.error.value || loadError) && designFlow.handoff.value && !designFlow.hasPending.value" label="Reopen saved draft" :disabled="designFlow.busy.value" @click="reopenSavedDraft" />
       <UButton v-if="designFlow.handoff.value" label="Save draft" icon="i-lucide-save" size="sm" :disabled="!canSave" @click="requestSave" />
       <UButton label="Email details" color="neutral" variant="outline" :disabled="!canSave" @click="openMetadata" />
-      <UTooltip text="Publishing is not enabled yet">
-        <UButton v-if="isDraft" label="Publish template" icon="i-lucide-upload" color="neutral" variant="outline" size="sm" disabled />
-      </UTooltip>
+      <FigflowTemplatePublish v-if="isDraft" ref="publicationComponent" :flow="designFlow" :template-id="templateId" :template-name="template?.name || ''"
+        :ready="publicationReady" :dirty="nativeDirty" :blocked="loading || metadataOpen || reviewOpen || leaveOpen || fallback"
+        @snapshot="handoffComponent?.requestSnapshot()" />
     </header>
 
     <main class="flex min-h-0 flex-1 flex-col overflow-y-auto p-3 sm:p-4">
@@ -445,7 +456,7 @@ onBeforeUnmount(() => {
       <EmailBuilderEdmFigflowHandoff
         v-else-if="designFlow.handoff.value"
         ref="handoffComponent"
-        :inert="metadataOpen || metadataLocked || undefined"
+        :inert="metadataOpen || metadataLocked || publicationActive || undefined"
         :key="designFlow.handoff.value.id"
         presentation="workspace"
         :handoff="designFlow.handoff.value"

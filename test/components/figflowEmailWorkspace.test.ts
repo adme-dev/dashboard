@@ -69,6 +69,7 @@ async function mount(handler = response, realRouter = false, realModal = false) 
   const passthrough = defineComponent({ setup: (_, { slots }) => () => h('div', slots.default?.()) })
   app.component('UButton', defineComponent({ props: ['label', 'disabled', 'loading'], emits: ['click'], setup: (props, { emit }) => () => h('button', { disabled: props.disabled || props.loading, onClick: () => emit('click') }, props.label) }))
   app.component('UFormField', passthrough)
+  app.component('UCheckbox', defineComponent({ props: ['modelValue', 'disabled', 'label'], emits: ['update:modelValue'], setup: (p, { emit }) => () => h('label', [h('input', { type: 'checkbox', checked: p.modelValue, disabled: p.disabled, onChange: (e: Event) => emit('update:modelValue', (e.target as HTMLInputElement).checked) }), p.label]) }))
   app.component('UInput', defineComponent({ props: ['modelValue', 'disabled'], emits: ['update:modelValue'], setup: (p, { emit }) => () => h('input', { value: p.modelValue, disabled: p.disabled, onInput: (e: Event) => emit('update:modelValue', (e.target as HTMLInputElement).value) }) }))
   app.component('UAlert', defineComponent({ props: ['title', 'description'], setup: props => () => h('div', `${props.title || ''} ${props.description || ''}`) }))
   app.component('USlideover', defineComponent({ props: ['open'], setup: (props, { slots }) => () => props.open ? h('section', [slots.body?.(), slots.footer?.()]) : null }))
@@ -511,4 +512,187 @@ describe('FigFlow email workspace save orchestration', () => {
     expect(fetch.mock.calls.some(([url]) => url.endsWith('/metadata'))).toBe(false)
   })
 
+})
+
+const PUBLISHED = '50000000-0000-4000-8000-000000000001'
+const PUBLISHED_DOCUMENT = '50000000-0000-4000-8000-000000000002'
+const PUBLISHED_HEAD = '50000000-0000-4000-8000-000000000003'
+function publishResponse(url: string, options?: { method?: string, body?: any }): any {
+  if (url === '/api/email/design/templates') return { published: true, templateId: PUBLISHED, documentId: PUBLISHED_DOCUMENT, revisionId: PUBLISHED_HEAD,
+    publication: { templateId: PUBLISHED, documentId: PUBLISHED_DOCUMENT, revisionId: PUBLISHED_HEAD, design: source() } }
+  const result = response(url, options)
+  if (options?.body?.command === 'lookup') return { ...result, templatePublication: { available: true, includedOverridePaths: [] } }
+  if (url === `/api/email/templates/${TEMPLATE}`) return { template: { ...result.template, email_design_revision_id: HEAD } }
+  return result
+}
+async function confirmPublicationReview() {
+  const check = document.querySelector('[role=dialog] input[type=checkbox]') as HTMLInputElement
+  expect(check).not.toBeNull()
+  check.checked = true
+  check.dispatchEvent(new Event('change', { bubbles: true }))
+  await flush()
+}
+const publicationCalls = () => fetch.mock.calls.filter(([url]) => url === '/api/email/design/templates')
+describe('separate native workspace publication', () => {
+  beforeEach(() => { reviewedChanges = false; reviewedDesign = source() })
+  it('requires capability, clean snapshot, compiled review and explicit confirmation without changing the draft identity', async () => {
+    const { host, click } = await mount(publishResponse, false, true)
+    await click('Publish template')
+    expect(publicationCalls()).toHaveLength(0)
+    expect(document.querySelectorAll('[role=dialog] iframe')).toHaveLength(2)
+    await click('Confirm publication')
+    expect(publicationCalls()).toHaveLength(0)
+    await confirmPublicationReview()
+    await click('Confirm publication')
+    expect(publicationCalls()).toHaveLength(1)
+    expect(publicationCalls()[0][1].body).toEqual({ version: 1, operationId: expect.any(String), command: 'publish-template', draftId: DOCUMENT, expectedRevisionId: HEAD,
+      name: 'Saved newsletter', category: null, includedOverridePaths: [] })
+    expect(document.querySelector('[data-published-template]')?.getAttribute('data-published-template')).toBe(PUBLISHED)
+    expect(host.querySelector('[data-handoff-id]')?.getAttribute('data-handoff-id')).toBe(HANDOFF)
+    expect(fetch.mock.calls.filter(([, options]) => ['apply', 'propose', 'open', 'start'].includes(options?.body?.command))).toHaveLength(1)
+    expect(fetch.mock.calls.some(([url]) => url.includes('/design/history') || url.includes('/design/modules') || url.startsWith('/api/email/design/templates/'))).toBe(false)
+    await click('Back to draft')
+    expect(document.querySelector('[role=dialog]')).toBeNull()
+  })
+  it('keeps publication disabled without capability and with unsaved native changes', async () => {
+    const first = await mount(response)
+    expect(Array.from(first.host.querySelectorAll('button')).find(b => b.textContent === 'Publish template')?.disabled).toBe(true)
+    snapshotDirty = true
+    const second = await mount(publishResponse)
+    expect(Array.from(second.host.querySelectorAll('button')).find(b => b.textContent === 'Publish template')?.disabled).toBe(true)
+    expect(publicationCalls()).toHaveLength(0)
+  })
+  it('checks native changes even if no dirty notification preceded Publish', async () => {
+    reviewedChanges = true
+    const { click } = await mount(publishResponse, false, true)
+    await click('Publish template')
+    expect(document.body.textContent).toContain('Save or undo native edits before publishing')
+    expect(publicationCalls()).toHaveLength(0)
+    expect(document.querySelectorAll('[role=dialog] iframe')).toHaveLength(0)
+  })
+  it('blocks route, metadata, native edits and dismissal through deferred snapshot and ignores unsolicited replies', async () => {
+    deferSnapshot = true
+    const { host, click } = await mount(publishResponse, false, true)
+    await click('Publish template')
+    expect(host.querySelector('[data-handoff-id]')?.hasAttribute('inert')).toBe(true)
+    expect(routeGuard.current?.()).toBe(false)
+    expect(Array.from(host.querySelectorAll('button')).find(b => b.textContent === 'Email details')?.disabled).toBe(true)
+    expect(Array.from(document.querySelectorAll('[role=dialog] button')).find(b => b.textContent === 'Back to draft')?.disabled).toBe(true)
+    replySnapshot?.(); await flush()
+    expect(document.querySelectorAll('[role=dialog] iframe')).toHaveLength(2)
+    await click('Back to draft')
+    replySnapshot?.(); await flush()
+    expect(publicationCalls()).toHaveLength(0)
+  })
+  it('keeps uncertain publication recoverable inside a real modal with the exact original payload after a later denial', async () => {
+    let attempt = 0
+    const { host, click } = await mount((url, options) => {
+      if (url === '/api/email/design/templates' && ++attempt < 3) throw Object.assign(new Error('lost or revoked'), { statusCode: attempt === 1 ? 503 : 403 })
+      return publishResponse(url, options)
+    }, false, true)
+    await click('Publish template'); await confirmPublicationReview(); await click('Confirm publication')
+    const original = structuredClone(publicationCalls()[0][1].body)
+    expect(document.body.textContent).toContain('Publication needs reconciliation')
+    expect(Array.from(document.querySelectorAll('[role=dialog] button')).find(b => b.textContent === 'Back to draft')?.disabled).toBe(true)
+    expect(host.querySelector('[data-handoff-id]')?.hasAttribute('inert')).toBe(true)
+    expect(routeGuard.current?.()).toBe(false)
+    await click('Reconcile publication')
+    expect(document.body.textContent).toContain('Publication needs reconciliation')
+    await click('Reconcile publication')
+    expect(publicationCalls().map(([, call]) => call.body)).toEqual([original, original, original])
+    expect(document.querySelector('[data-published-template]')?.getAttribute('data-published-template')).toBe(PUBLISHED)
+  })
+  it('requires a new review after a definite stale-head refusal without silently copying or retrying', async () => {
+    const { click } = await mount((url, options) => {
+      if (url === '/api/email/design/templates') throw Object.assign(new Error('stale'), { statusCode: 409, data: { statusMessage: 'REVISION_CONFLICT' } })
+      return publishResponse(url, options)
+    }, false, true)
+    await click('Publish template'); await confirmPublicationReview(); await click('Confirm publication')
+    expect(document.body.textContent).toContain('Review saved draft again')
+    expect(document.body.textContent).not.toContain('Publication needs reconciliation')
+    expect(publicationCalls()).toHaveLength(1)
+    await click('Back to draft')
+    expect(document.querySelector('[role=dialog]')).toBeNull()
+  })
+  it('does not accept a mismatched immutable receipt or release its original operation', async () => {
+    let mismatch = true
+    const { click } = await mount((url, options) => {
+      const result = publishResponse(url, options)
+      if (url === '/api/email/design/templates' && mismatch) result.publication.design.blocks.heading.data.props.text = 'Wrong publication'
+      return result
+    }, false, true)
+    await click('Publish template'); await confirmPublicationReview(); await click('Confirm publication')
+    const original = structuredClone(publicationCalls()[0][1].body)
+    expect(document.querySelector('[data-published-template]')).toBeNull()
+    expect(document.body.textContent).toContain('Publication needs reconciliation')
+    mismatch = false; await click('Reconcile publication')
+    expect(publicationCalls()[1][1].body).toEqual(original)
+    expect(document.querySelector('[data-published-template]')).not.toBeNull()
+  })
+  it('retains an incomplete publication receipt for exact reconciliation', async () => {
+    let incomplete = true
+    const { click } = await mount((url, options) => {
+      const result = publishResponse(url, options)
+      if (url === '/api/email/design/templates' && incomplete) {
+        delete result.documentId
+        delete result.publication.documentId
+      }
+      return result
+    }, false, true)
+    await click('Publish template'); await confirmPublicationReview(); await click('Confirm publication')
+    const original = structuredClone(publicationCalls()[0][1].body)
+    expect(document.querySelector('[data-published-template]')).toBeNull()
+    expect(document.body.textContent).toContain('Publication needs reconciliation')
+    incomplete = false; await click('Reconcile publication')
+    expect(publicationCalls()[1][1].body).toEqual(original)
+    expect(document.querySelector('[data-published-template]')).not.toBeNull()
+  })
+  it('does not publish while an ordinary draft save has an uncertain outcome', async () => {
+    reviewedChanges = true
+    reviewedDesign.blocks.heading.data.props.text = 'Unsaved native heading'
+    const { host, click } = await mount((url, options) => {
+      if (options?.body?.command === 'propose') throw Object.assign(new Error('lost save reply'), { statusCode: 503 })
+      return publishResponse(url, options)
+    })
+    await click('Save draft'); await click('Save draft', true)
+    expect(host.textContent).toContain('Reconcile save')
+    expect(Array.from(host.querySelectorAll('button')).find(b => b.textContent === 'Publish template')?.disabled).toBe(true)
+    expect(publicationCalls()).toHaveLength(0)
+  })
+  it('rejects a saved-head change found while opening publication review', async () => {
+    let lookups = 0
+    const { click } = await mount((url, options) => {
+      const result = publishResponse(url, options)
+      if (options?.body?.command === 'lookup' && ++lookups > 2) result.draft = draft(NEXT)
+      return result
+    }, false, true)
+    await click('Publish template')
+    expect(document.body.textContent).toContain('draft changed in another editor')
+    expect(document.querySelectorAll('[role=dialog] iframe')).toHaveLength(0)
+    expect(publicationCalls()).toHaveLength(0)
+  })
+  it('includes only the displayed server-derived module override paths after explicit review', async () => {
+    const paths = ['heading.data.props.text']
+    const { click } = await mount((url, options) => {
+      const result = publishResponse(url, options)
+      if (options?.body?.command === 'lookup') result.templatePublication.includedOverridePaths = paths
+      return result
+    }, false, true)
+    await click('Publish template')
+    expect(document.body.textContent).toContain('Include local module change: heading.data.props.text')
+    expect(publicationCalls()).toHaveLength(0)
+    await confirmPublicationReview(); await click('Confirm publication')
+    expect(publicationCalls()[0][1].body.includedOverridePaths).toEqual(paths)
+  })
+  it('refuses publication when fresh discovery revokes publisher access', async () => {
+    let lookups = 0
+    const { click } = await mount((url, options) => {
+      const result = publishResponse(url, options)
+      if (options?.body?.command === 'lookup' && ++lookups > 2) result.templatePublication.available = false
+      return result
+    }, false, true)
+    await click('Publish template')
+    expect(document.body.textContent).toContain('publishing access changed')
+    expect(publicationCalls()).toHaveLength(0)
+  })
 })

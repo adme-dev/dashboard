@@ -1,3 +1,7 @@
+import { templatePublishEnabled } from '~~/server/utils/email-marketing/templatePublishGate'
+import { reviewedOverridePaths } from '~~/server/utils/email-marketing/designTemplates'
+import { dependencyRecords } from '~~/server/utils/email-marketing/designModules'
+import { transactionWithoutRetry } from '~~/server/utils/db'
 import { designerGate } from '~~/server/utils/email-marketing/designerGate'
 import { DesignModuleError } from '~~/shared/emailRendering/designModules'
 import { rethrowLegacyDesignConflict, DESIGN_REVISION_CONSTRAINTS } from '~~/server/utils/email-marketing/designConflict'
@@ -71,7 +75,30 @@ export default defineEventHandler(async (event) => {
         if (!(error && typeof error === 'object' && 'statusCode' in error && error.statusCode === 403)) throw error
       }
     }
-    return { ...lookup, campaignAuthoring: { contentImagesAvailable: campaignContentImages, available: campaignAvailable && (result.draft?.state !== 'structured' || result.draft.source.source.nativeArtifact === null) }, libraryAuthoring: { available: libraryAvailable, publisher }, designerAuthoring: {
+    const templatePublication = { available: false, includedOverridePaths: [] as string[] }
+    const saved = result.draft
+    if (templatePublishEnabled(env) && saved?.state === 'structured' && saved.source.kind === 'template'
+      && 'templateId' in saved && saved.templateId && result.owner?.kind !== 'campaign'
+      && saved.projection.state === 'current' && saved.projectionRevisionId === saved.headRevisionId) {
+      try {
+        const scope = saved.source.scope.clientId
+        await assertFreshDesignPublisher(token, user.id, scope)
+        if (saved.source.moduleInstances.length) {
+          templatePublication.includedOverridePaths = await transactionWithoutRetry(async db => reviewedOverridePaths(saved.source,
+            await dependencyRecords(saved.source, db, {
+              actorId: user.id,
+              read: async clientId => { await assertFreshDesignAccess(token, user.id, clientId, 'read') },
+              designer: async clientId => { await assertFreshDesignPublisher(token, user.id, clientId) },
+              publisher: clientId => assertFreshDesignPublisher(token, user.id, clientId)
+            })))
+        }
+        await assertFreshDesignPublisher(token, user.id, scope)
+        templatePublication.available = true
+      } catch (error) {
+        if (!(error && typeof error === 'object' && 'statusCode' in error && error.statusCode === 403)) throw error
+      }
+    }
+    return { ...lookup, templatePublication, campaignAuthoring: { contentImagesAvailable: campaignContentImages, available: campaignAvailable && (result.draft?.state !== 'structured' || result.draft.source.source.nativeArtifact === null) }, libraryAuthoring: { available: libraryAvailable, publisher }, designerAuthoring: {
       available, endpoint: '/api/email/design/designer' as const,
       capabilities: available && authoringSource ? designerCapabilities(authoringSource) : null
     } }

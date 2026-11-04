@@ -235,7 +235,7 @@ describe('God mode route isolation inventory', () => {
       'server/api/email/design/history.post.ts': ['await designLibrarySession(event, true)'],
       'server/api/email/design/modules.post.ts': ['await designLibrarySession(event, true)'],
       'server/api/email/design/modules/[moduleId]/[revisionId].get.ts': ['await designLibrarySession(event, false)'],
-      'server/api/email/design/templates.post.ts': ['await designLibrarySession(event, true)'],
+      'server/api/email/design/templates.post.ts': ["await designLibrarySession(event, true, 'publish-template')"],
       'server/api/email/design/templates/[templateId]/[revisionId].get.ts': ['await designLibrarySession(event, false)']
     }
     expect(Object.keys(additions)).toHaveLength(21)

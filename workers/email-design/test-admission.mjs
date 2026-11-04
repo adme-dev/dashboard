@@ -105,6 +105,23 @@ await scenario('template-only admission leaves library, brand and conditions clo
   }
 })
 
+await scenario('narrow template publication requires a session and leaves other library routes closed', {
+  ...validBindings, FIGFLOW_EDM_TEMPLATE_PUBLISH_ENABLED: 'true', FIGFLOW_EDM_DESIGNER_ENABLED: 'false', FIGFLOW_EDM_LIBRARY_ENABLED: 'false'
+}, async worker => {
+  const headers = { ...environmentHeader, origin: 'https://app.xeroflow.io', 'content-type': 'application/json' }
+  await expectStatus(await worker.dispatchFetch(`${origin}/api/email/design/templates`, { method: 'POST', headers, body: '{}' }), 401, 'design_session_invalid')
+  const id = 'd0000000-0000-4000-8000-000000000001'
+  const authenticated = { ...headers, authorization: `Bearer ${canonicalToken(validSecret)}` }
+  // Authenticated command rejection is covered by the HTTP/transaction suites;
+  // this artifact harness has no fresh authority DB and must not fake one.
+  for (const route of ['modules', 'history', 'conditions', 'designer'])
+    await expectStatus(await worker.dispatchFetch(`${origin}/api/email/design/${route}`, { method: 'POST', headers: authenticated, body: '{}' }), 404, 'not_found')
+  for (const route of ['brand', 'locks'])
+    await expectStatus(await worker.dispatchFetch(`${saveUrl}/${route}`, { method: 'POST', headers: authenticated, body: '{}' }), 404, 'not_found')
+  await expectStatus(await worker.dispatchFetch(`${origin}/api/email/design/templates/${id}/${id}`, { headers: authenticated }), 404, 'not_found')
+  await expectStatus(await worker.dispatchFetch(`${origin}/api/email/design/templates`, { method: 'POST', headers: { ...authenticated, origin: 'https://attacker.test' }, body: '{}' }), 403, 'design_origin_denied')
+})
+
 await scenario('enabled designer still requires authenticated authority', {
   ...validBindings, FIGFLOW_EDM_DESIGNER_ENABLED: 'true'
 }, async (worker) => {
