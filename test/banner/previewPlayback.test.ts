@@ -25,7 +25,7 @@ describe('preview animation clock reporting', () => {
     clock.progress = 1
     tick()
     expect(postMessage.mock.lastCall?.[0]).toMatchObject({ current: 12, state: 'ended' })
-    events.mock.calls[0]![1]()
+    events.mock.calls.find(call => call[0] === 'pagehide')![1]()
     expect(clear).toHaveBeenCalled()
   })
 
