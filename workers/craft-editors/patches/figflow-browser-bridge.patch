@@ -137,7 +137,7 @@
 +}
 --- /dev/null
 +++ b/crates/engine/src/cmd/edm.rs
-@@ -0,0 +1,3794 @@
+@@ -0,0 +1,4061 @@
 +//! Bounded XeroFlow email handoffs on a real native document.
 +//!
 +//! The canonical document is retained verbatim. A snapshot patches only approved
@@ -644,6 +644,185 @@
 +    data
 +}
 +
++// Display-only strict inline grammar. Unknown syntax fails the entire projection;
++// canonical HTML is never passed back through this parser or reconstructed from runs.
++fn rich_entities(raw: &str) -> Option<String> {
++    let mut out = String::new();
++    let mut rest = raw;
++    while let Some(i) = rest.find('&') {
++        out.push_str(&rest[..i]);
++        rest = &rest[i + 1..];
++        let end = rest.find(';').filter(|n| *n <= 32)?;
++        let entity = &rest[..end];
++        let ch = match entity {
++            "amp" => '&', "lt" => '<', "gt" => '>', "quot" => '"', "apos" => '\'',
++            "nbsp" => '\u{a0}', "copy" => '©', "reg" => '®', "trade" => '™',
++            "ndash" => '–', "mdash" => '—', "hellip" => '…',
++            "lsquo" => '‘', "rsquo" => '’', "ldquo" => '“', "rdquo" => '”',
++            _ => {
++                let n = if let Some(h) = entity.strip_prefix("#x").or_else(|| entity.strip_prefix("#X")) {
++                    if h.is_empty() || !h.bytes().all(|b| b.is_ascii_hexdigit()) { return None; }
++                    u32::from_str_radix(h, 16).ok()?
++                } else {
++                    let d = entity.strip_prefix('#')?;
++                    if d.is_empty() || !d.bytes().all(|b| b.is_ascii_digit()) { return None; }
++                    d.parse::<u32>().ok()?
++                };
++                char::from_u32(n)?
++            }
++        };
++        if ch.is_control() && ch != '\n' && ch != '\t' { return None; }
++        out.push(ch);
++        rest = &rest[end + 1..];
++    }
++    out.push_str(rest);
++    Some(out)
++}
++
++fn rich_css(raw: &str, style: &mut TextStyle, align: &mut TextAlignH, outer: bool) -> Option<()> {
++    for declaration in raw.split(';').filter(|s| !s.trim().is_empty()) {
++        let (key, value) = declaration.split_once(':')?;
++        let value = value.trim();
++        let number = |s: &str| s.parse::<f64>().ok().filter(|n| n.is_finite() && *n > 0.0 && *n <= 512.0);
++        match key.trim().to_ascii_lowercase().as_str() {
++            "font-size" => style.font_size = number(value.strip_suffix("px")?)?,
++            "line-height" => style.line_height = if let Some(px) = value.strip_suffix("px") { LineHeight::Pixels(number(px)?) } else { LineHeight::Percent(number(value)? * 100.0) },
++            "color" => style.fills = Some(vec![Paint::solid(Color::parse_css(value)?)]),
++            "font-weight" => {
++                if !matches!(value, "normal" | "bold" | "100" | "200" | "300" | "400" | "500" | "600" | "700" | "800" | "900") { return None; }
++                let italic = style.italic();
++                style.font_style = native_font_weight(Some(value), "Regular");
++                if italic { style.font_style.push_str(" Italic"); }
++            }
++            "font-style" => {
++                let base = style.font_style.trim_end_matches(" Italic").trim_end_matches("Italic").trim();
++                style.font_style = match value { "normal" => if base.is_empty() { "Regular".into() } else { base.into() }, "italic" => format!("{} Italic", if base.is_empty() { "Regular" } else { base }), _ => return None };
++            }
++            "font-family" => {
++                let families = value.split(',').map(|s| s.trim().trim_matches(['\'', '"'])).collect::<Vec<_>>();
++                if families.iter().any(|s| s.is_empty()) { return None; }
++                style.font_family = families.iter().find(|s| figcraft_text::has_family(s)).copied().unwrap_or("Inter").into();
++            }
++            "text-decoration" => style.decoration = match value { "underline" => figcraft_doc::TextDecoration::Underline, "line-through" => figcraft_doc::TextDecoration::Strikethrough, "none" => figcraft_doc::TextDecoration::None, _ => return None },
++            "text-align" if outer => *align = match value { "left" => TextAlignH::Left, "center" => TextAlignH::Center, "right" => TextAlignH::Right, _ => return None },
++            "margin" | "padding" if matches!(value, "0" | "0px") => {},
++            "display" if value == "inline" || (outer && value == "block") => {},
++            _ => return None,
++        }
++    }
++    Some(())
++}
++
++fn rich_projection(raw: &str, mut data: TextData) -> Option<TextData> {
++    if raw.len() > MAX_CONTENT || raw.chars().any(|c| c.is_control() && !matches!(c, '\n' | '\r' | '\t')) { return None; }
++    data.characters.clear();
++    data.runs.clear();
++    let mut stack: Vec<(String, TextStyle, usize)> = vec![(String::new(), data.style.clone(), 0)];
++    let mut rest = raw;
++    let mut count = 0;
++    let mut tokens = 0;
++    let mut paragraph_break = false;
++    let mut whole_wrapper = false;
++    while !rest.is_empty() {
++        tokens += 1;
++        if tokens > 1024 { return None; }
++        if !rest.starts_with('<') {
++            let end = rest.find('<').unwrap_or(rest.len());
++            let text = rich_entities(&rest[..end])?;
++            rest = &rest[end..];
++            let style = &stack.last()?.1;
++            if paragraph_break && !text.is_empty() {
++                data.characters.push('\n');
++                data.runs.push(figcraft_doc::StyleRun { start: count, end: count + 1, style: stack.last()?.1.clone() });
++                count += 1; paragraph_break = false;
++            }
++            let start = count;
++            count += text.chars().count();
++            data.characters.push_str(&text);
++            data.runs.push(figcraft_doc::StyleRun { start, end: count, style: style.clone() });
++            continue;
++        }
++        // Quote-aware token boundary: '>' inside a destination is not a tag end.
++        let mut quote = None;
++        let mut end = None;
++        for (i, ch) in rest.char_indices().skip(1) {
++            match (quote, ch) {
++                (Some(q), c) if c == q => quote = None,
++                (None, '\'' | '"') => quote = Some(ch),
++                (None, '>') => { end = Some(i); break; },
++                _ => {},
++            }
++        }
++        let end = end?;
++        let token = &rest[1..end];
++        rest = &rest[end + 1..];
++        if let Some(close) = token.strip_prefix('/') {
++            let name = close.trim().to_ascii_lowercase();
++            if stack.len() == 1 || stack.last()?.0 != name { return None; }
++            if matches!(name.as_str(), "p" | "div") && count == stack.last()?.2 { return None; }
++            stack.pop();
++            if whole_wrapper && stack.len() == 1 && !rest.is_empty() { return None; }
++            if matches!(name.as_str(), "p" | "div") { paragraph_break = true; }
++            continue;
++        }
++        let token = token.trim();
++        let name_end = token.find(|c: char| !c.is_ascii_alphanumeric()).unwrap_or(token.len());
++        let name = token[..name_end].to_ascii_lowercase();
++        if !matches!(name.as_str(), "a" | "span" | "b" | "strong" | "i" | "em" | "u" | "s" | "br" | "p" | "div") { return None; }
++        let mut attrs = token[name_end..].trim();
++        if name == "br" {
++            if !attrs.is_empty() && attrs != "/" { return None; }
++            data.characters.push('\n');
++            data.runs.push(figcraft_doc::StyleRun { start: count, end: count + 1, style: stack.last()?.1.clone() });
++            count += 1; paragraph_break = false;
++            continue;
++        }
++        if stack.len() > 32 || (name == "a" && stack.iter().any(|s| s.0 == "a")) { return None; }
++        let outer = stack.len() == 1 && data.characters.is_empty() && rest.ends_with(&format!("</{name}>"));
++        let mut style = stack.last()?.1.clone();
++        match name.as_str() {
++            "b" | "strong" => style.font_style = if style.italic() { "Bold Italic" } else { "Bold" }.into(),
++            "i" | "em" if !style.italic() => style.font_style.push_str(" Italic"),
++            "u" | "a" => style.decoration = figcraft_doc::TextDecoration::Underline,
++            "s" => style.decoration = figcraft_doc::TextDecoration::Strikethrough,
++            _ => {},
++        }
++        let mut seen = BTreeSet::new();
++        while !attrs.is_empty() {
++            let n = attrs.find(|c: char| !c.is_ascii_alphanumeric() && c != '-').unwrap_or(attrs.len());
++            let key = attrs[..n].to_ascii_lowercase();
++            if key.is_empty() || !seen.insert(key.clone()) { return None; }
++            attrs = attrs[n..].trim_start().strip_prefix('=')?.trim_start();
++            let q = attrs.chars().next()?;
++            if q != '\'' && q != '"' { return None; }
++            attrs = &attrs[1..];
++            let n = attrs.find(q)?;
++            let value = rich_entities(&attrs[..n])?;
++            attrs = &attrs[n + 1..];
++            if !attrs.is_empty() && !attrs.starts_with(char::is_whitespace) { return None; }
++            attrs = attrs.trim_start();
++            match key.as_str() {
++                "style" => {
++                    rich_css(&value, &mut style, &mut data.align_h, outer)?;
++                    if outer && value.split(';').any(|d| d.split_once(':').is_some_and(|(k,v)| k.trim().eq_ignore_ascii_case("text-align") || (k.trim().eq_ignore_ascii_case("display") && v.trim() == "block"))) { whole_wrapper = true; }
++                },
++                "href" if name == "a" => {
++                    if !valid_url(&value, false) { return None; }
++                    style.link = Some(value);
++                }
++                "target" if name == "a" && matches!(value.as_str(), "_blank" | "_self") => {},
++                "rel" if name == "a" && value.split_whitespace().all(|v| matches!(v, "noopener" | "noreferrer" | "nofollow")) => {},
++                _ => return None,
++            }
++        }
++        if matches!(name.as_str(), "p" | "div") && !data.characters.is_empty() { paragraph_break = true; }
++        stack.push((name, style, count));
++    }
++    if stack.len() != 1 { return None; }
++    data.normalize();
++    Some(data)
++}
++
 +fn measured_text_height(data: &TextData, width: f64) -> Result<f64> {
 +    if !width.is_finite() || width <= 0.0 {
 +        return Err(bad("edm_import", "text width must be positive"));
@@ -883,7 +1062,7 @@
 +            } else {
 +                string_prop(block, "text").unwrap_or_default()
 +            };
-+            let data = text_data(block, content_text, TextSpec {
++            let mut data = text_data(block, content_text, TextSpec {
 +                size: default_size,
 +                weight: if kind == "Heading" { "Bold" } else { "Regular" },
 +                line_height: if kind == "Heading" { 1.3 } else { 1.6 },
@@ -891,8 +1070,16 @@
 +                align: TextAlignH::Left,
 +                honor_text_style: true, honor_font_weight: true,
 +            }, &theme);
++            if role == Role::Other {
++                let original = string_prop(block, "text").unwrap_or_default();
++                data = rich_projection(&original, data.clone()).unwrap_or_else(|| {
++                    data.characters = format!("Rich {kind} (protected) — open compiled preview");
++                    data
++                });
++            }
 +            let (text, text_height) = add_text(doc, root, id, "text", x + pad.left, y + pad.top, width - pad.horizontal(), data, color)?;
 +            doc.get_mut(text).map_err(|e| bad("edm_import", e.to_string()))?.locked = role == Role::Other || !editable.contains(&format!("{id}.data.props.text"));
++            if role == Role::Other { doc.get_mut(text).map_err(|e| bad("edm_import", e.to_string()))?.name = "Rich text (protected)".into(); }
 +            content = Some(text);
 +            (root, pad.vertical() + text_height)
 +        }
@@ -1090,7 +1277,7 @@
 +            let background = style_color(block, "backgroundColor", Some(Color::from_rgb8_const(0xF3, 0xF4, 0xF6)));
 +            let root = wrapper(doc, parent, id, kind, x, y, width, block, background)?;
 +            let color = Color::from_rgb8_const(0x6B, 0x72, 0x80);
-+            let message = format!("Unsupported {kind} block — content preserved in XeroFlow");
++            let message = format!("Unsupported {kind} block — open compiled preview (protected)");
 +            let data = text_data(block, message, TextSpec { size: 14.0, weight: "Regular", line_height: 1.4, color, align: TextAlignH::Center, honor_text_style: false, honor_font_weight: false }, &theme);
 +            let (_, text_height) = add_text(doc, root, id, "compound.text", x + pad.left, y + pad.top, width - pad.horizontal(), data, color)?;
 +            (root, pad.vertical() + text_height)
@@ -2921,6 +3108,86 @@
 +    }
 +
 +    #[test]
++    fn edm_rich_projection_runs_entities_and_bounds() {
++        let project = |s: &str| rich_projection(s, TextData::new(String::new()));
++        let t = project("é<strong>bold <em>both</em></strong><br><a href='mailto:a@example.invalid'>A</a> <a href='https://example.invalid/?a=1&amp;b=2'>B</a>&nbsp;&#x1F680;&lt;b&gt;&amp;lt;").unwrap();
++        assert_eq!(t.characters, "ébold both\nA B\u{a0}🚀<b>&lt;");
++        assert_eq!(t.style_at(1).font_style, "Bold");
++        assert_eq!(t.style_at(6).font_style, "Bold Italic");
++        assert_eq!(t.style_at(11).link.as_deref(), Some("mailto:a@example.invalid"));
++        assert_eq!(t.style_at(13).link.as_deref(), Some("https://example.invalid/?a=1&b=2"));
++        assert_eq!(project("<p>A</p><div>B<br>C</div>").unwrap().characters, "A\nB\nC");
++        for s in ["<p>A</p><p></p><p>B</p>", "<b>x</i>", "<a href='javascript:x'>x</a>", "<span style='display:none'>x</span>", "&bogus;", "&#0;", "<b", "<img src='x'>", "<span onclick='x'>x</span>", "<a href='#'><a href='#'>x</a></a>"] {
++            assert!(project(s).is_none(), "{s}");
++        }
++        assert!(project(&"x".repeat(MAX_CONTENT + 1)).is_none());
++        assert!(project(&format!("{}x{}", "<b>".repeat(33), "</b>".repeat(33))).is_none());
++    }
++
++    #[test]
++    fn edm_rich_anchor_spacers_measured_and_protected() {
++        let mut input = modern_design();
++        let html = r##"<a href="#" target="_blank" style="font-family:'ford-motion-regular', Arial, Helvetica, sans-serif;font-size:12px;line-height:16px;font-weight:normal;color:#4D4D4D;margin:0;padding:0;text-decoration:underline;display:block">View Online</a>"##;
++        input["blocks"]["root"]["data"]["props"]["contentWidth"] = json!(600);
++        input["blocks"]["root"]["data"]["childrenIds"] = json!(["rich", "s1", "s2", "s3", "s4", "hero"]);
++        // Keep exactly the reachable canonical topology.
++        input["blocks"].as_object_mut().unwrap().retain(|k, _| ["root", "rich", "hero"].contains(&k.as_str()));
++        input["blocks"]["rich"]["data"]["props"]["text"] = json!(html);
++        input["blocks"]["rich"]["data"]["style"] = json!({"padding":{"top":4,"bottom":4,"left":0,"right":36},"textAlign":"right"});
++        input["blocks"]["hero"]["data"]["style"]["padding"] = json!({"top":0,"bottom":0,"left":0,"right":0});
++        input["policy"]["editableFields"] = json!([]);
++        for id in ["s1", "s2", "s3", "s4"] {
++            input["blocks"][id] = json!({"type":"Spacer","data":{"props":{"height":8}}});
++        }
++        let mut session = Session::new();
++        session.execute("edm_import", &json!({"design":input,"images":{"hero":PNG}})).unwrap();
++        let node = session.doc().unwrap().node(mapped(&session,"rich","text")).unwrap();
++        let NodeKind::Text(t) = &node.kind else { panic!("text") };
++        assert_eq!(t.characters, "View Online");
++        assert_eq!(t.align_h, TextAlignH::Right);
++        assert_eq!(t.style_at(0).font_size, 12.0);
++        assert_eq!(t.style_at(0).line_height, LineHeight::Pixels(16.0));
++        assert_eq!(t.style_at(0).decoration, figcraft_doc::TextDecoration::Underline);
++        assert_eq!(t.style_at(0).fills.as_ref().unwrap()[0].solid_color(), Color::parse_css("#4D4D4D"));
++        assert_eq!(node.height, figcraft_text::layout(t, Some(564.0), None).height);
++        assert_eq!(node.height, 16.0);
++        assert_eq!(session.doc().unwrap().world_bounds(mapped(&session,"hero","image")).unwrap().y0, 56.0);
++        assert_eq!(session.execute("edm_snapshot", &json!({})).unwrap(), input);
++        assert_eq!(session.execute("edm_snapshot", &json!({})).unwrap()["blocks"]["rich"]["data"]["props"]["text"], html);
++        let rich = mapped(&session,"rich","text");
++        session.execute("node.set", &json!({"ids":[rich],"props":{"characters":"changed"}})).unwrap();
++        assert!(session.execute("edm_snapshot", &json!({})).is_err());
++    }
++
++    #[test]
++    fn edm_rich_fallback_heading_and_designer_preserve_source() {
++        let mut input = modern_design();
++        let html = "<span style='font-size:22px;color:#123456'><strong>Unicode é heading</strong></span>";
++        input["blocks"]["rich"]["type"] = json!("Heading");
++        input["blocks"]["rich"]["data"]["props"]["text"] = json!(html);
++        let mut designer = Session::new();
++        import_designer_with(&mut designer, input.clone(), json!({"hero":PNG}));
++        assert_eq!(text_at(&designer,"rich","text"), "Unicode é heading");
++        assert_eq!(designer.execute("edm_designer_snapshot", &json!({})).unwrap()["operations"], json!([]));
++        assert_eq!(designer.ds().unwrap().edm_designer.as_ref().unwrap().current, input);
++        assert!(apply_designer(&mut designer, json!([{"op":"set-props","blockId":"rich","props":{"text":"changed"}}])).is_err());
++        input["blocks"]["rich"]["data"]["props"]["text"] = json!("<table><tr><td>Protected</td></tr></table>");
++        let mut content = Session::new();
++        content.execute("edm_import", &json!({"design":input,"images":{"hero":PNG}})).unwrap();
++        assert!(text_at(&content,"rich","text").contains("open compiled preview"));
++        let node = content.doc().unwrap().node(mapped(&content,"rich","text")).unwrap();
++        let NodeKind::Text(t) = &node.kind else { panic!("text") };
++        assert_eq!(node.height, measured_text_height(t,node.width).unwrap());
++        let heading = mapped(&content,"heading","text");
++        content.execute("node.set", &json!({"ids":[heading],"props":{"characters":"Neighbour edit"}})).unwrap();
++        let snapshot = content.execute("edm_snapshot", &json!({})).unwrap();
++        assert_eq!(snapshot["blocks"]["rich"], input["blocks"]["rich"]);
++        assert_eq!(snapshot["assets"], input["assets"]);
++        let t = rich_projection(&format!("<strong>{}</strong>", "Long wrapping text ".repeat(40)), TextData::new(String::new())).unwrap();
++        assert!(measured_text_height(&t,100.0).unwrap() > measured_text_height(&t,600.0).unwrap());
++    }
++
++    #[test]
 +    fn edm_font_stacks_resolve_registered_families_and_heading_weights() {
 +        for (key, stack) in FONT_STACKS {
 +            assert_eq!(stack.last(), Some(&"Inter"), "{key} must end in the browser's registered family");
@@ -3006,7 +3273,7 @@
 +        assert!(feature_frames[0].1 == feature_frames[1].1 && feature_frames[2].1 > feature_frames[1].1, "additional features wrap to measured rows instead of overflowing horizontally");
 +        assert!(text_at(&session, "footer", "compound.text").contains("postal address"));
 +        assert!(session.doc().unwrap().nodes().filter(|node| node.plugin_data.get(BLOCK_ID).map(String::as_str) == Some("footer")).any(|node| native_text(node).is_ok_and(|text| text == "Unsubscribe")));
-+        assert!(text_at(&session, "rich", "text").contains("Rich Text block"));
++        assert_eq!(text_at(&session, "rich", "text"), "Hello world & all");
 +        assert!(!text_at(&session, "rich", "text").contains("<p>"));
 +        assert!(text_at(&session, "legacy", "compound.text").contains("Unsupported Html block"));
 +        let left = session.doc().unwrap().node(mapped(&session, "left", "text")).unwrap();
