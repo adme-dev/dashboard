@@ -144,5 +144,17 @@ export async function verifyCodePageImport(raw: PageStudioCheckpointCommitInput,
     const bytes = await readBytes(bucket, `${packagePrefix}/files/${await codeSha256(entry.file)}`, entry.bytes)
     requireValue(bytes.length === entry.bytes && await codeSha256(bytes) === entry.sha256)
   }
-  return { codeContent: binding, pageCount: content.inventory.pages.length, routes: content.inventory.pages.map(page => page.route) }
+  return {
+    codeContent: binding,
+    pageCount: content.inventory.pages.length,
+    routes: content.inventory.pages.map(page => page.route),
+    inventoryDigest: content.inventoryDigest,
+    provenance: {
+      policy: registration.policy,
+      candidateDigest: content.inspection.candidateDigest,
+      ...(registration.policy === 'reviewed-inline-static-css-v1' && content.inspection.policy === 'reviewed-inline-static-css-v1'
+        ? { reviewDigest: content.inspection.reviewDigest, reviewId: registration.review.reviewId, evidenceSha256: registration.review.evidenceSha256 }
+        : {})
+    }
+  }
 }
