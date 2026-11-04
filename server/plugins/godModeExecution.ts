@@ -1,3 +1,4 @@
+import { registerGodModeStoryboardMutationFamilies } from '~~/server/utils/video-storyboard/godMode'
 import { registerGodModeMediaExternalMutationFamilies } from '~~/server/utils/audio/godModeExternalMutations'
 import { registerGodModeMediaProjectMutationFamilies } from '~~/server/utils/audio/godModeMutations'
 import { registerGodModeStudioMutationFamilies } from '~~/server/utils/video/godModeStudioMutations'
@@ -25,6 +26,7 @@ registerGodModeChatMutationFamily()
 registerGodModeMediaProjectMutationFamilies()
 registerGodModeMediaExternalMutationFamilies()
 registerGodModeStudioMutationFamilies()
+registerGodModeStoryboardMutationFamilies()
 registerGodModeBannerAssetUploadFamily()
 registerGodModeBannerProjectCreationFamily()
 registerGodModeBannerSocialDraftFamily()

@@ -12,7 +12,7 @@
 
 **Research:** [Freefield review and FF-RD01–FF-RD05 backlog](../../research/2026-11-04-freefield-video-rd.md). This adds recipe/example and run-quality refinements to the existing fourteen tasks; GPU/backend/tool experiments remain separate.
 
-**Status:** T01 input contracts and the existing recipe adapter are implemented locally; T02–T14 and all release acceptance remain pending. [Implementation receipt](../../video/implementations/2026-11-04-storyboard-contracts.md). Planning baseline `c39b8b7f4a79f73350e2a1c4620075f87881a6c5`; first implementation base `87ceb82cfc23a76959e0d0d3d989c96d8ce36d23`. Refresh before further execution. This plan does not reopen historical completed tasks except for the explicit integration changes below.
+**Status:** T01–T03 are implemented locally; T02/T03 additive schemas are applied to the verified agency database. T04–T14, application deployment and all release acceptance remain pending. [Implementation receipt](../../video/implementations/2026-11-04-storyboard-contracts.md). Planning baseline `c39b8b7f4a79f73350e2a1c4620075f87881a6c5`; first implementation base `87ceb82cfc23a76959e0d0d3d989c96d8ce36d23`. Refresh before further execution. This plan does not reopen historical completed tasks except for the explicit integration changes below.
 
 ## Global constraints
 
@@ -110,11 +110,13 @@ T01 defines input contracts `StoryboardPlan`, `StoryboardShot`, `AssetBinding`, 
 
 **Interfaces:** `getStoryboard(projectId)`, `saveStoryboardRevision({ projectId, expectedRevision, operationId, plan, actor })`, `resolveReferenceSet({ projectId, revisionId, actor }): Promise<ResolvedReferenceSet>`. Define `ResolvedReferenceSet` in shared contracts as canonical bindings plus approval records/findings. New reads use the existing project access rule without performing write side effects.
 
-- [ ] Add tests for revision pointer races, same-key replay/different-body conflict, wrong-client asset IDs, unauthorized historical reads, unknown rights, explicit usage approval, revocation and changed brand-kit hash.
-- [ ] Run `pnpm exec vitest run test/video/storyboardStore.test.ts test/server/api/videoStoryboardAccess.test.ts test/video/storyboardReferences.test.ts` before implementation.
-- [ ] Create PRD records with FK/unique constraints, including server-owned timeline obligations; keep copy data inside revision JSON and application receipts immutable. Resolve canonical asset/source IDs on the server, pin revisions/hashes, keep project usage approval separate from source-generation approval.
-- [ ] Add default-off feature gating via Cloudflare bindings/local fallback and ledger family registration. Keep staff idempotency in canonical storage rather than relying on the owner-only ledger. No arbitrary remote fetching in asset resolution.
-- [ ] Execute/record migrations as in T02; run suites and isolated-DB transaction tests. Record actual migration filenames and verify existing assets were not copied or globally approved before committing.
+- [x] Add tests for revision pointer races, same-key replay/different-body conflict, wrong-client asset IDs, unauthorized historical reads, unknown rights, explicit usage approval, revocation and changed brand-kit hash.
+- [x] Run `pnpm exec vitest run test/video/storyboardStore.test.ts test/server/api/videoStoryboardAccess.test.ts test/video/storyboardReferences.test.ts` before implementation.
+- [x] Create PRD records with FK/unique constraints, including server-owned timeline obligations; keep copy data inside revision JSON and application receipts immutable. Resolve canonical asset/source IDs on the server, pin revisions/hashes, keep project usage approval separate from source-generation approval.
+- [x] Add default-off feature gating via Cloudflare bindings/local fallback and ledger family registration. Keep staff idempotency in canonical storage rather than relying on the owner-only ledger. No arbitrary remote fetching in asset resolution.
+- [x] Execute/record migrations as in T02; run suites and isolated-DB transaction tests. Record actual migration filenames and verify existing assets were not copied or globally approved before committing.
+
+**Receipt:** [Persistence, review, checks and migration provenance](../../video/implementations/2026-11-05-storyboard-persistence.md). Default-off backend foundation only; T04 owns planning/revision actions and human copy approval.
 
 ### T04 — Generate and revise reviewable plans
 
