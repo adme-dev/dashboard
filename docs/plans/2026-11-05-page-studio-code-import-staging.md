@@ -32,8 +32,9 @@ acceptance/staging/outbox/AI tests and Vue interaction tests. The disposable
 PostgreSQL staging-authority harness was updated to run migration 500 before its
 assertions. Management Worker typecheck and scoped lint passed. Independent source
 review of standalone presentation and staging acknowledgement found no supported
-consequential issue. Full application build/typecheck and release checks are still
-in progress; no full-suite or hosted acceptance is claimed here.
+consequential issue. Full application build was stopped during Nitro after disk fell to 639 MiB;
+client and SSR compilation passed. Full application typecheck was not started.
+No full-suite or hosted acceptance is claimed here.
 
 The previous bounded Nuxt typecheck exceeded its 4 GiB heap. The new full checks
 use the repository's 16 GiB setting. Database tests use disposable local PostgreSQL;
@@ -48,3 +49,8 @@ no remote migration, credentials, deployment or publication was performed.
 - [ ] Hosted imported-code editing and manual save/reload/restore without AI.
 
 The management URL and local fixture pipeline do not establish a public Kia URL.
+
+CI now explicitly runs the checkpoint and AI authority PostgreSQL suites in
+separate disposable databases, plus the outbox suite under the staging database
+gate. These cases otherwise skip when their required database variables are absent.
+The workflow parses successfully; remote results remain pending.
