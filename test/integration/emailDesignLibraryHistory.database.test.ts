@@ -174,6 +174,38 @@ describe('canonical library/history with isolated real PostgreSQL', () => {
     expect((await admin!.query('SELECT current_schema() AS schema')).rows[0].schema).toBe(schema)
   })
 
+  databaseTest('narrow publication retains the source, commits once after a lost reply, and rejects stale or changed intent without migration 499', async () => {
+    const request = { version: 1, command: 'publish-template', operationId: crypto.randomUUID(), draftId: documentId, expectedRevisionId: head, name: 'Narrow synthetic publication', category: null, includedOverridePaths: [] }
+    const before = await admin!.query('SELECT * FROM edm_templates WHERE id=$1', [templateId])
+    const lost: DesignTransaction = async callback => { await transaction(callback); throw new Error('lost commit reply') }
+    await expect(executeDesignTemplates(request, authority(), testEmailRenderer, undefined, lost, { templateDraftOnly: true })).rejects.toThrow('lost commit reply')
+    const receipt = await executeDesignTemplates(request, authority(), testEmailRenderer, undefined, transaction, { templateDraftOnly: true })
+    expect(receipt.templateId).not.toBe(templateId)
+    expect(receipt.documentId).not.toBe(documentId)
+    expect(await executeDesignTemplates(request, authority(), testEmailRenderer, undefined, transaction, { templateDraftOnly: true })).toEqual(receipt)
+    expect((await admin!.query('SELECT count(*)::int AS count FROM edm_templates WHERE name=$1', [request.name])).rows[0].count).toBe(1)
+    expect((await admin!.query('SELECT * FROM edm_templates WHERE id=$1', [templateId])).rows).toEqual(before.rows)
+    const selected = await readImmutableDesignTemplate(receipt.templateId!, receipt.revisionId, authority(), admin!)
+    expect(selected.design).toEqual(design)
+    await expect(executeDesignTemplates({ ...request, name: 'Different' }, authority(), testEmailRenderer, undefined, transaction, { templateDraftOnly: true })).rejects.toMatchObject({ code: 'IDEMPOTENCY_CONFLICT' })
+    await expect(executeDesignTemplates({ ...request, operationId: crypto.randomUUID(), expectedRevisionId: crypto.randomUUID() }, authority(), testEmailRenderer, undefined, transaction, { templateDraftOnly: true })).rejects.toMatchObject({ code: 'REVISION_CONFLICT' })
+    revoked = true
+    await expect(executeDesignTemplates(request, authority(), testEmailRenderer, undefined, transaction, { templateDraftOnly: true })).rejects.toThrow('synthetic authority denied')
+  })
+
+  databaseTest('narrow publication refuses persisted campaign and module owners without any publication', async () => {
+    const campaignId = crypto.randomUUID(), campaignDocument = crypto.randomUUID()
+    await admin!.query('INSERT INTO campaigns(id,client_id,status) VALUES($1,$2,\'draft\')', [campaignId, scope])
+    await admin!.query('INSERT INTO email_design_documents(id,campaign_id,client_id) VALUES($1,$2,$3)', [campaignDocument, campaignId, scope])
+    const request = { version: 1, command: 'publish-template', operationId: crypto.randomUUID(), draftId: campaignDocument, expectedRevisionId: head, name: 'Forbidden campaign', category: null, includedOverridePaths: [] }
+    await expect(executeDesignTemplates(request, authority(), testEmailRenderer, undefined, transaction, { templateDraftOnly: true })).rejects.toMatchObject({ code: 'NOT_FOUND' })
+    const moduleId = crypto.randomUUID(), moduleDocument = crypto.randomUUID()
+    await admin!.query('INSERT INTO edm_custom_modules(id,client_id) VALUES($1,$2)', [moduleId, scope])
+    await admin!.query('INSERT INTO email_design_documents(id,module_id,client_id) VALUES($1,$2,$3)', [moduleDocument, moduleId, scope])
+    await expect(executeDesignTemplates({ ...request, draftId: moduleDocument }, authority(), testEmailRenderer, undefined, transaction, { templateDraftOnly: true })).rejects.toMatchObject({ code: 'KIND_MISMATCH' })
+    expect((await admin!.query('SELECT count(*)::int AS count FROM edm_templates WHERE name=$1', [request.name])).rows[0].count).toBe(0)
+  })
+
   databaseTest('publishes and copies the exact immutable design, IDs, policy, old module pin, asset and metadata', async () => {
     const moduleMetadata = { name: 'Synthetic heading', category: 'test', description: null, previewTone: 'light', includedOverridePaths: [], rootBlockIds: ['heading'] }
     const module = await executeDesignModules({ version: 1, command: 'publish-module', operationId: crypto.randomUUID(), draftId: documentId, expectedDraftRevisionId: head, ...moduleMetadata }, authority(), testEmailRenderer, undefined, transaction)

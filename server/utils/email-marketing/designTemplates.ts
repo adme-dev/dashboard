@@ -189,9 +189,11 @@ export async function executeDesignTemplates(
   authority: ModuleAuthority,
   renderer: EmailRendererClient,
   storage?: DesignAssetStorage,
-  transaction: DesignTransaction = cb => transactionWithoutRetry(db => cb(db))
+  transaction: DesignTransaction = cb => transactionWithoutRetry(db => cb(db)),
+  options: { templateDraftOnly?: boolean } = {}
 ): Promise<DesignLibraryReceipt> {
   const request = parseDesignTemplateRequest(input)
+  if (options.templateDraftOnly && request.command !== 'publish-template') throw new DesignModuleError('NOT_FOUND')
   z.string().uuid().parse(authority.actorId)
   const digest = await designDigest({ boundary: 'email-template-library-v1', request })
   return transaction(async (db) => {
@@ -214,6 +216,12 @@ export async function executeDesignTemplates(
       }
     }
     await authorize()
+    if (options.templateDraftOnly) {
+      // Check the persisted owner on new operations AND receipt replay. The
+      // narrow gate must never become a campaign/module publication grant.
+      if (!sourceIdentity?.template_id || sourceIdentity.campaign_id) throw new DesignModuleError('NOT_FOUND')
+      await getDesignDraft(request.command === 'publish-template' ? request.draftId : '', authority.read, db)
+    }
     if (!publish) {
       // Lock source owner then document in the canonical order. Head CAS is
       // required for new copies, while receipt replay keeps its original head.

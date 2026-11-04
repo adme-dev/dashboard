@@ -93,6 +93,24 @@ describe('durable FigFlow handoff HTTP boundary', () => {
     mocks.execute.mockResolvedValue({ draft: null })
     expect(await handler(enabled)).toMatchObject({ designerAuthoring: { available: false } })
   })
+  it('discovers narrow publication only for current saved templates with fresh publisher authority', async () => {
+    const enabled = event()
+    Object.assign(enabled.context.cloudflare!.env, { EMAIL_DESIGN_ENVIRONMENT: 'production', EMAIL_DESIGN_SESSION_AUTHORITY: 'pages-auth-me-v1', FIGFLOW_EDM_TEMPLATE_PUBLISH_ENABLED: 'true' })
+    mocks.body.mockResolvedValue({ command: 'lookup', templateId: id })
+    const draft = { state: 'structured', templateId: id, documentId: id, headRevisionId: id, projectionRevisionId: id, projection: { state: 'current' }, source: structuredDesign() }
+    mocks.execute.mockResolvedValue({ draft })
+    expect(await handler(enabled)).toMatchObject({ templatePublication: { available: true, includedOverridePaths: [] }, libraryAuthoring: { available: false }, campaignAuthoring: { available: false } })
+    expect(mocks.publisher).toHaveBeenCalledWith('token', id, draft.source.scope.clientId)
+    mocks.publisher.mockRejectedValue(Object.assign(new Error('not publisher'), { statusCode: 403 }))
+    expect(await handler(enabled)).toMatchObject({ templatePublication: { available: false } })
+    mocks.publisher.mockResolvedValue(undefined)
+    for (const value of [null, { ...draft, projection: { state: 'stale' } }, { ...draft, projectionRevisionId: 'other' }, { ...draft, state: 'legacy' }, { ...draft, source: { ...draft.source, kind: 'campaign-draft' } }]) {
+      mocks.execute.mockResolvedValue({ draft: value })
+      expect(await handler(enabled)).toMatchObject({ templatePublication: { available: false } })
+    }
+    mocks.execute.mockResolvedValue({ owner: { kind: 'campaign', id }, mutable: true, draft })
+    expect(await handler(enabled)).toMatchObject({ templatePublication: { available: false }, libraryAuthoring: { available: false }, campaignAuthoring: { available: false } })
+  })
   it('redacts database failures and preserves body bounds', async () => {
     mocks.execute.mockRejectedValue(new Error('private SQL payload'))
     await expect(handler(event())).rejects.toMatchObject({ statusCode: 503, statusMessage: 'design_handoff_unavailable' })

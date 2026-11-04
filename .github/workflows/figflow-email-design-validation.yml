@@ -6,9 +6,13 @@ on:
     paths:
       - 'server/api/email/design/**'
       - 'server/utils/email-marketing/design*.ts'
+      - 'server/utils/email-marketing/templatePublishGate.ts'
+      - 'app/components/email/workspace/**'
+      - 'app/composables/useEdmDesignRoundtrip.ts'
       - 'shared/emailRendering/**'
       - 'workers/email-design/**'
       - 'test/**/email*'
+      - 'test/components/figflowEmailWorkspace.test.ts'
       - 'test/server/email/**'
       - 'test/config/godModeIsolationInventory.test.ts'
       - '.github/workflows/figflow-email-design-validation.yml'
@@ -56,6 +60,8 @@ jobs:
           test/workers/emailDesignDeploy.test.ts test/unit/emailDesignBlankBody.test.ts
           test/unit/emailDesignBlankLookup.test.ts test/unit/emailDesignBlankStart.test.ts
           test/unit/emailDesignInitialization.test.ts test/unit/emailDesignModulePersistence.test.ts
+          test/unit/emailTemplatePublishGate.test.ts test/unit/emailTemplatePublishRoute.test.ts
+          test/components/figflowEmailWorkspace.test.ts
           --maxWorkers=1 --no-file-parallelism
       - name: Build and dry-run private Worker, then test actual artifact admission
         if: matrix.gate == 'worker'
@@ -97,7 +103,7 @@ jobs:
         env:
           FIGFLOW_DESIGN_PG_SOCKET: /private/tmp/figflow-postgres-20261102-recovered
         run: |
-          pnpm exec vitest run test/integration/emailDesignerRoundtrip.database.test.ts test/integration/emailDesignRevisions.database.test.ts test/integration/emailCampaignHandoff.database.test.ts --maxWorkers=1 --no-file-parallelism --testTimeout=25000 --reporter=default --reporter=json --outputFile=.verification/figflow-ci/postgres.json
+          pnpm exec vitest run test/integration/emailDesignerRoundtrip.database.test.ts test/integration/emailDesignRevisions.database.test.ts test/integration/emailCampaignHandoff.database.test.ts test/integration/emailDesignLibraryHistory.database.test.ts --maxWorkers=1 --no-file-parallelism --testTimeout=25000 --reporter=default --reporter=json --outputFile=.verification/figflow-ci/postgres.json
           node --input-type=module - <<'JS'
           import assert from 'node:assert/strict'
           import { readFileSync } from 'node:fs'
@@ -105,7 +111,7 @@ jobs:
           assert.equal(report.success, true)
           assert.equal(report.numPendingTests, 0, 'Skipped PostgreSQL tests are not acceptance')
           assert.equal(report.numTodoTests, 0)
-          assert.ok(report.numPassedTests >= 100, 'All 89 existing and 11 E01 PostgreSQL cases must execute')
+          assert.ok(report.numPassedTests >= 109, 'All 100 draft/designer/campaign and 9 library/publication PostgreSQL cases must execute')
           JS
       - name: Remove disposable PostgreSQL
         if: always() && matrix.gate == 'postgres'

@@ -9,11 +9,13 @@ import { EmailDesignError } from '../../../shared/emailRendering/designContract'
 import { DesignReadError } from './designReads'
 import { DesignRevisionError } from './designRevisions'
 import type { ModuleAuthority } from './designModules'
+import { templatePublishEnabled } from './templatePublishGate'
 
-export async function designLibrarySession(event: H3Event, mutation: boolean) {
+export async function designLibrarySession(event: H3Event, mutation: boolean, command?: string) {
   setHeader(event, 'cache-control', 'private, no-store')
   const env = event.context.cloudflare?.env ?? {}
-  if (env.FIGFLOW_EDM_DRAFT_SAVES_ENABLED !== 'true' || env.FIGFLOW_EDM_DESIGNER_ENABLED !== 'true' || env.FIGFLOW_EDM_LIBRARY_ENABLED !== 'true') throw createError({ statusCode: 404, statusMessage: 'not_found' })
+  const library = env.FIGFLOW_EDM_DRAFT_SAVES_ENABLED === 'true' && env.FIGFLOW_EDM_DESIGNER_ENABLED === 'true' && env.FIGFLOW_EDM_LIBRARY_ENABLED === 'true'
+  if (!library && !(mutation && command === 'publish-template' && templatePublishEnabled(env))) throw createError({ statusCode: 404, statusMessage: 'not_found' })
   if (mutation) assertDesignMutationRequest(event, env.FIGFLOW_EDM_APP_ORIGIN)
   const authorization = getHeader(event, 'authorization')
   const token = getCookie(event, 'auth_token') || getCookie(event, 'auth_token_client') || (authorization?.startsWith('Bearer ') ? authorization.slice(7) : null)
@@ -26,7 +28,7 @@ export async function designLibrarySession(event: H3Event, mutation: boolean) {
     designer: async (scope) => { if (await assertFreshDesignAccess(token, user.id, scope, 'write') !== 'designer') throw new DesignModuleError('DESIGNER_REQUIRED') },
     publisher: scope => assertFreshDesignPublisher(token, user.id, scope)
   }
-  return { env, authority }
+  return { env, authority, templateOnly: !library }
 }
 export { readBoundedJson }
 export function designLibraryHttpError(error: unknown): never {
