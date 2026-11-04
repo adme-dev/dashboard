@@ -27,7 +27,9 @@ export function describeKeyframeMotion(layer: Layer, start = layer.startTime ?? 
   const direction = (values: number[]) => values.every(value => value > 0) ? 1 : values.every(value => value < 0) ? -1 : 0
   const labels: string[] = []
   const opacity = deltas('opacity')
-  if (opacity.length) labels.push(direction(opacity) === 1 ? 'Fade in' : direction(opacity) === -1 ? 'Fade out' : 'Fade')
+  const opacityResets = (layer.keyframes?.opacity || []).some((frame, index, frames) => index > 0 && frame.time > start + 1e-6 && frame.time < end - 1e-6 && frame.time === frames[index - 1]!.time && frame.value !== frames[index - 1]!.value)
+  const opacityPulses = !opacityResets && opacity.length >= 4 && opacity.every((value, index) => index === 0 || Math.sign(value) !== Math.sign(opacity[index - 1]!))
+  if (opacity.length) labels.push(opacityPulses ? 'Pulsing opacity' : direction(opacity) === 1 ? 'Fade in' : direction(opacity) === -1 ? 'Fade out' : 'Fade')
   const x = deltas('x'), y = deltas('y')
   if (x.length || y.length) {
     labels.push(x.length && y.length

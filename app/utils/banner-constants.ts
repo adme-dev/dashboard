@@ -67,8 +67,8 @@ export const ANIM_IN: AnimPreset[] = [
   { id: 'zoomIn',   label: 'Zoom In',   icon: '⊕', from: { scale: 0.6, opacity: 0 } },
   { id: 'zoomOut',  label: 'Zoom Out',  icon: '⊖', from: { scale: 1.4, opacity: 0 } },
   { id: 'spinIn',   label: 'Spin',      icon: '↻', from: { rotation: -15, scale: 0.8, opacity: 0 } },
-  { id: 'bounceIn', label: 'Bounce',    icon: '⤴', from: { y: 50, opacity: 0 } },
-  { id: 'elastic',  label: 'Elastic',   icon: '~', from: { scale: 0, opacity: 0 } },
+  { id: 'bounceIn', label: 'Bounce', ease: 'bounce.out',    icon: '⤴', from: { y: 50, opacity: 0 } },
+  { id: 'elastic',  label: 'Elastic', ease: 'elastic.out(1,0.3)',   icon: '~', from: { scale: 0, opacity: 0 } },
   { id: 'kenBurns', label: 'Ken Burns', icon: '⟷', from: {}, special: 'kenBurns' },
 ]
 

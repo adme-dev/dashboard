@@ -137,7 +137,7 @@ watch(() => activeLayers.value, (layers) => {
 const assetMediaType = ref<'all' | 'image' | 'video' | 'audio'>('all')
 
 // Left panel tab state
-const leftTab = ref<'sets' | 'templates' | 'elements' | 'assets' | 'feeds' | 'brand' | 'history' | 'slides'>('sets')
+const leftTab = ref<'sets' | 'templates' | 'elements' | 'assets' | 'feeds' | 'brand' | 'history' | 'slides'>('elements')
 const leftPanelCollapsed = useCookie<boolean>('banner-studio-sidebar-collapsed', {
   default: () => false,
   maxAge: 60 * 60 * 24 * 365,
@@ -179,9 +179,9 @@ function onSidebarResizeKey(event: KeyboardEvent) {
 }
 onBeforeUnmount(stopSidebarResize)
 const leftTabItems = [
+  { id: 'elements' as const, label: 'Insert', icon: 'i-lucide-circle-plus' },
   { id: 'sets' as const, label: 'Sets', icon: 'i-lucide-layers' },
   { id: 'templates' as const, label: 'Templates', icon: 'i-lucide-layout-template' },
-  { id: 'elements' as const, label: 'Insert', icon: 'i-lucide-circle-plus' },
   { id: 'assets' as const, label: 'Assets', icon: 'i-lucide-image' },
   { id: 'feeds' as const, label: 'Feeds', icon: 'i-lucide-database' },
   { id: 'brand' as const, label: 'Brand', icon: 'i-lucide-palette' },

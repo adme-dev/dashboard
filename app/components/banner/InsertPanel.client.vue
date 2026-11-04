@@ -6,12 +6,12 @@ import type { BrandButtonVariant } from '~/utils/banner-brand-kit'
 
 const { insertElement } = useBannerInsert()
 const { addBrandGuideButton } = useBannerStudio()
-const { kit } = useBannerProjectBrand()
+const { kit, loading: kitLoading, error: kitError, refresh: refreshKits } = useBannerProjectBrand()
 const toast = useToast()
 const emit = defineEmits<{ browseBrand: [tab: 'logos' | 'variants' | 'offers'] }>()
 const brandId = computed(() => motorstackBrandId(kit.value?.sourceUrl))
 const hasButtonPresets = computed(() => !!kit.value?.id && !!brandStyleProfile(brandId.value))
-const view = ref<BannerMediaType | 'home' | 'elements'>('home')
+const view = ref<BannerMediaType | 'home' | 'elements' | 'buttons'>('home')
 const assetsPanel = ref<{ openUpload: () => void, openMotorStack: () => void }>()
 const categories = [
   { label: 'Images', icon: 'i-lucide-image', value: 'image' },
@@ -48,7 +48,7 @@ function addStyleButton(variant: BrandButtonVariant) {
         @click="() => { view = 'home' }"
       />
       <h2 class="text-sm font-semibold">
-        {{ view === 'home' ? 'Insert' : view === 'elements' ? 'Shapes & elements' : view === 'all' ? 'Media library' : categories.find(item => item.value === view)?.label }}
+        {{ view === 'home' ? 'Insert' : view === 'buttons' ? 'Buttons' : view === 'elements' ? 'Shapes & elements' : view === 'all' ? 'Media library' : categories.find(item => item.value === view)?.label }}
       </h2>
     </div>
     <div v-if="view === 'home'" class="p-3 space-y-4">
@@ -67,7 +67,7 @@ function addStyleButton(variant: BrandButtonVariant) {
           variant="soft"
           color="neutral"
           class="flex-col justify-center gap-1 py-3 text-xs"
-          @click="insertElement(item.type)"
+          @click="item.type === 'button' ? view = 'buttons' : insertElement(item.type)"
         >
           <UIcon :name="item.icon" class="size-5" />{{ item.label }}
         </UButton>
@@ -158,6 +158,54 @@ function addStyleButton(variant: BrandButtonVariant) {
       <p class="text-xs text-muted leading-relaxed">
         Choose media to add it to the current slide. Use the image properties to replace or crop it.
       </p>
+    </div>
+    <div v-else-if="view === 'buttons'" class="space-y-4 p-3">
+      <div v-if="kitLoading" role="status" class="flex items-center gap-2 py-4 text-sm text-muted">
+        <UIcon name="i-lucide-loader-circle" class="size-4 animate-spin" />Loading brand buttons…
+      </div>
+      <template v-else-if="kitError">
+        <UAlert
+          title="Could not load brand buttons"
+          description="Retry to load your style guide presets."
+          color="error"
+          variant="soft"
+        />
+        <UButton
+          label="Retry"
+          color="neutral"
+          variant="outline"
+          @click="() => refreshKits()"
+        />
+      </template>
+      <template v-else>
+        <p class="text-xs leading-relaxed text-muted">
+          {{ hasButtonPresets ? 'Choose a style guide preset. Click to add it, or drag it onto a canvas. Its text stays editable.' : kit ? 'This kit has no button presets yet. You can create a button using its colours and fonts.' : 'Choose a brand kit to see its style guide buttons, or start with a custom button.' }}
+        </p>
+        <BannerBrandStyleGuide
+          v-if="hasButtonPresets && kit"
+          :kit="kit"
+          compact
+          interactive
+          @add-button="addStyleButton"
+        />
+        <UButton
+          v-else
+          label="Add custom button"
+          icon="i-lucide-mouse-pointer-click"
+          color="neutral"
+          variant="outline"
+          class="w-full justify-center"
+          @click="insertElement('button')"
+        />
+        <UButton
+          :label="kit ? 'Change brand kit' : 'Choose a brand kit'"
+          icon="i-lucide-swatch-book"
+          color="neutral"
+          variant="ghost"
+          class="w-full justify-start"
+          @click="emit('browseBrand', 'logos')"
+        />
+      </template>
     </div>
     <BannerElementsPanel v-else-if="view === 'elements'" />
     <BannerAssetsPanel

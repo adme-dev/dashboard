@@ -31,7 +31,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-function mountGesture(extra: Partial<Layer> = {}) {
+function mountGesture(extra: Partial<Layer> = {}, mode: 'start' | 'end' | 'move' = 'end', label?: string) {
   const studio = useBannerStudio()
   studio.loadProject({ id: 'timeline-test', canvasData: { mrec: { layers: [base(extra)] } } } as Parameters<typeof studio.loadProject>[0])
   studio.state.currentTime = 3.25
@@ -41,7 +41,8 @@ function mountGesture(extra: Partial<Layer> = {}) {
     const phases = Vue.computed(() => new Map([[1, timelinePhases(studio.activeLayers.value[0]!)]]))
     const drag = useBannerPhaseDrag(Vue.ref(100), phases)
     return () => Vue.h('div', { 'data-animation-phase': 'entry', 'style': { left: '100px', width: '50px' } }, [Vue.h('button', {
-      onMousedown: (e: MouseEvent) => drag.startPhaseDrag(e, studio.activeLayers.value[0]!, phases.value.get(1)![0]!, 'end')
+      onMousedown: (e: MouseEvent) => drag.startPhaseDrag(e, studio.activeLayers.value[0]!, (label ? phases.value.get(1)!.find(phase => phase.label === label) : phases.value.get(1)![0])!, mode),
+      onKeydown: (e: KeyboardEvent) => drag.nudgePhase(e, studio.activeLayers.value[0]!, (label ? phases.value.get(1)!.find(phase => phase.label === label) : phases.value.get(1)![0])!, mode)
     })])
   } })
   app.mount(root)
@@ -83,6 +84,39 @@ describe('direct timeline timing edits', () => {
     expect(studio.activeLayers.value[0]?.animInStart).toBeUndefined()
     expect(studio.canUndo.value).toBe(false)
   })
+  it('moves a short Blink left and right with its duration, entrance and exit intact', async () => {
+    const opacity = [{ time: 1, value: 0 }, { time: 2, value: 1 }, { time: 4.9, value: 1 }, { time: 4.95, value: 0.15 }, { time: 5, value: 1 }, { time: 5.5, value: 1 }, { time: 6, value: 0 }]
+    const studio = mountGesture({ keyframes: { opacity }, animationClips: [{ start: 4.9, end: 5, label: 'Blink' }] }, 'move', 'Blink')
+    root!.querySelector('button')!.dispatchEvent(mouse('mousedown', 500))
+    window.dispatchEvent(mouse('mousemove', 400))
+    window.dispatchEvent(mouse('mouseup', 400))
+    await Vue.nextTick()
+    expect(studio.activeLayers.value[0]!.animationClips).toEqual([{ start: 3.9, end: 4, label: 'Blink' }])
+    expect(studio.activeLayers.value[0]!.keyframes!.opacity!.slice(0, 2)).toEqual(opacity.slice(0, 2))
+    expect(studio.activeLayers.value[0]!.keyframes!.opacity!.slice(-2)).toEqual(opacity.slice(-2))
+    root!.querySelector('button')!.dispatchEvent(mouse('mousedown', 400))
+    window.dispatchEvent(mouse('mousemove', 450))
+    window.dispatchEvent(mouse('mouseup', 450))
+    await Vue.nextTick()
+    expect(studio.activeLayers.value[0]!.animationClips).toEqual([{ start: 4.4, end: 4.5, label: 'Blink' }])
+    studio.undo(); studio.undo()
+    expect(studio.activeLayers.value[0]!.keyframes!.opacity).toEqual(opacity)
+  })
+  it('fits a new middle effect at full duration when the playhead is near the hold end', () => {
+    const layer = base()
+    const phase = { kind: 'hold', start: 2, end: 5.5, label: 'Hold', direction: 'in' } as const
+    const change = addMiddleAnimation(layer, phase, 'blink', 5.49, {}, () => 1)
+    expect(change.animationClips).toEqual([{ start: 1, end: 1.5, label: 'Entry · Fade' }, { start: 5.5, end: 6, label: 'Exit · Fade' }, { start: 4.3, end: 5.5, label: 'Blink' }])
+    expect(change.keyframes!.opacity!.map(frame => frame.time)).toEqual([4.3, 4.6, 4.9, 5.2, 5.5])
+  })
+  it('nudges a focused block without changing its duration', async () => {
+    const studio = mountGesture({}, 'move')
+    root!.querySelector('button')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))
+    await Vue.nextTick()
+    expect(studio.activeLayers.value[0]).toMatchObject({ animInStart: 1.05, animInDur: 0.5 })
+    studio.undo()
+    expect(studio.activeLayers.value[0]!.animInStart).toBeUndefined()
+  })
   it('cancels on blur or lock changes and never edits a locked layer', () => {
     const studio = mountGesture()
     root!.querySelector('button')!.dispatchEvent(mouse('mousedown', 100))
@@ -107,12 +141,12 @@ describe('direct timeline timing edits', () => {
     const layer = base({ keyframes: { opacity: [{ time: 1, value: 0 }, { time: 2, value: 1 }, { time: 5.5, value: 1 }, { time: 6, value: 0 }] } })
     const middle = { kind: 'hold', start: 2, end: 5.5, label: 'Hold', direction: 'in' } as const
     const authored = { ...layer, ...addMiddleAnimation(layer, middle, 'pulse', 3, layer.keyframes!, () => 1) }
-    expect(timelinePhases(authored).some(phase => phase.label === 'Pulse')).toBe(true)
-    const phase = timelinePhases(authored).find(phase => phase.label === 'Pulse')!
+    expect(timelinePhases(authored).some(phase => phase.label === 'Pulsate')).toBe(true)
+    const phase = timelinePhases(authored).find(phase => phase.label === 'Pulsate')!
     const changed = retimeAnimationPhase(authored, phase, 3, 5)
-    expect(changed.animationClips).toEqual([{ start: 3, end: 5, label: 'Pulse' }])
+    expect(changed.animationClips).toEqual([{ start: 3, end: 5, label: 'Pulsate' }])
     expect(changed.keyframes?.scaleX?.at(-1)?.time).toBe(5)
-    expect(retimeLayerPresence(authored, 2, 12).animationClips?.[0]).toEqual({ start: 6, end: 8.4, label: 'Pulse' })
+    expect(retimeLayerPresence(authored, 2, 12).animationClips?.[0]).toEqual({ start: 6, end: 8.4, label: 'Pulsate' })
   })
   it('keeps shared entrance/exit anchors when moving a middle block', () => {
     const layer = base({ keyframes: {

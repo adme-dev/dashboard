@@ -39,7 +39,7 @@ async function mount(layer: Partial<Layer>, phase?: TimelinePhase, addAtEnd = fa
   app.component('UCheckbox', { props: ['label', 'modelValue'], emits: ['update:modelValue'], setup: (p, { emit }) => () => Vue.h('label', [p.label, Vue.h('input', { type: 'checkbox', checked: p.modelValue, onChange: (e: any) => emit('update:modelValue', e.target.checked) })]) })
   app.mount(host); picker.openPicker(); await Vue.nextTick()
   cleanup = () => { app.unmount(); host.remove() }
-  const click = async (name: string) => { const b = [...host.querySelectorAll('button')].find(b => b.textContent === name); expect(b, name).toBeTruthy(); b!.click(); await Vue.nextTick() }
+  const click = async (name: string) => { const b = [...host.querySelectorAll('button')].find(b => b.textContent?.trim() === name); expect(b, name).toBeTruthy(); if (b!.getAttribute('role') === 'tab') b!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 })); b!.click(); await Vue.nextTick(); if (b!.getAttribute('role') === 'tab') await new Promise(resolve => setTimeout(resolve, 25)) }
   const change = async (label: string, value: string) => { const control = [...host.querySelectorAll('label')].find(l => l.textContent?.startsWith(label))!.querySelector('input,select') as HTMLInputElement; control.value = value; control.dispatchEvent(new Event(control.tagName === 'SELECT' ? 'change' : 'input', { bubbles: true })); await Vue.nextTick() }
   return { studio, host, click, change, previewAnimation, animationPreview, stopAnimationPreview }
 }
@@ -77,13 +77,13 @@ it('edits imported keyframes in the pop-up without replacing the rest of the mot
 it('requires an explicit choice before replacing imported motion, including motion paths', async () => {
   const keyframes = { opacity: [{ time: 0, value: 0 }, { time: 1, value: 1 }] }
   const { studio, host, click } = await mount({ keyframes, motionPath: [{ x: 0, y: 0 }, { x: 10, y: 10 }] })
-  await click('Presets'); await click('Zoom In')
+  await click('Presets'); await click('Ken Burns')
   expect(studio.activeLayers.value[0].keyframes).toEqual(keyframes)
-  expect(host.textContent).toContain('Replace custom motion with Zoom In?')
+  expect(host.textContent).toContain('Replace custom motion with Ken Burns?')
   await click('Keep current motion')
   expect(studio.activeLayers.value[0].keyframes).toEqual(keyframes)
-  await click('Zoom In'); await click('Replace with Zoom In')
-  expect(studio.activeLayers.value[0]).toMatchObject({ animIn: 'zoomIn', animOut: 'none' })
+  await click('Ken Burns'); await click('Replace with Ken Burns')
+  expect(studio.activeLayers.value[0]).toMatchObject({ animIn: 'kenBurns', animOut: 'none' })
   expect(studio.activeLayers.value[0].keyframes).toBeUndefined()
   expect(studio.activeLayers.value[0].motionPath).toBeUndefined()
   studio.undo(); await Vue.nextTick()
@@ -159,7 +159,7 @@ it('shows the actual imported motion in a block without a supplied phase', async
 
 it('opens all existing exit options and adds the chosen preset at the end', async () => {
   const { studio, host, click } = await mount({ animOut: 'none', endTime: 4.2 }, undefined, true)
-  expect(host.textContent).toContain('Build Out')
+  expect(host.textContent).toContain('Exit animation')
   expect(host.textContent).toContain('Zoom Out')
   expect(host.textContent).toContain('Spin')
   expect(host.textContent).not.toContain('Blink')
@@ -181,4 +181,53 @@ it('adds a zoom exit using existing keyframes without resetting imported entranc
   expect(result.keyframes?.opacity?.at(-1)).toEqual({ time: 4, value: 0 })
   studio.undo()
   expect(studio.activeLayers.value[0]!.keyframes).toEqual(keyframes)
+})
+
+it('applies Bounce easing and preserves the existing exit and unrelated keyframes', async () => {
+  const keyframes = { opacity: [{ time: 0, value: 0 }, { time: 0.5, value: 1 }, { time: 2.5, value: 1 }, { time: 3, value: 0 }], x: [{ time: 1, value: 0 }, { time: 2, value: 10 }] }
+  const { studio, click } = await mount({ keyframes, animOut: 'fadeOut' }, { kind: 'entry', start: 0, end: 0.5, label: 'Entry', direction: 'in' })
+  await click('Presets'); await click('Bounce')
+  const layer = studio.activeLayers.value[0]!
+  expect(layer.ease).toBe('bounce.out')
+  expect(layer.keyframes!.y).toEqual([{ time: 0, value: 50, easing: 'bounce.out' }, { time: 0.5, value: 0, easing: 'none' }])
+  expect(layer.keyframes!.x).toEqual(keyframes.x)
+  expect(layer.keyframes!.opacity!.slice(-2)).toEqual(keyframes.opacity.slice(-2))
+  studio.undo()
+  expect(studio.activeLayers.value[0]!.keyframes).toEqual(keyframes)
+})
+
+it('offers Bounce in the middle without replacing the entrance', async () => {
+  const { studio, click } = await mount({ endTime: 5 }, { kind: 'hold', start: 1, end: 4, label: 'Hold', direction: 'in' })
+  await click('Bounce')
+  const layer = studio.activeLayers.value[0]!
+  expect(layer.animationClips!.map(clip => clip.label)).toContain('Bounce')
+  expect(layer.animationClips!.map(clip => clip.label)).toContain('Entry · Fade')
+  expect(layer.keyframes!.y!.some(frame => frame.easing === 'bounce.out')).toBe(true)
+  expect(layer.animIn).toBe('fadeIn')
+})
+
+
+it('switches preview to the chosen exit while keeping the original block label', async () => {
+  const { click, host, previewAnimation } = await mount({ endTime: 4, animOut: 'fadeOut', outDur: 0.5 }, { kind: 'hold', start: 0.5, end: 3.5, label: 'Hold', direction: 'in' })
+  await click('Exit'); await click('Preview')
+  expect(previewAnimation).toHaveBeenCalledWith(1, { start: 3.5, end: 4 })
+  expect(host.querySelector('button[aria-label^="Edit Hold"]')).toBeTruthy()
+})
+
+it('reopens an authored middle Bounce with middle presets', async () => {
+  const { host } = await mount({ endTime: 5, keyframes: { y: [{ time: 1, value: 0 }, { time: 1.6, value: -24 }, { time: 2.2, value: 0 }] } }, { kind: 'motion', start: 1, end: 2.2, label: 'Bounce', direction: 'in' })
+  expect(host.querySelector('button[aria-label="Bounce middle animation"]')).toBeTruthy()
+  expect(host.querySelector('button[aria-label="Elastic middle animation"]')).toBeTruthy()
+})
+
+it('removes a middle Pulse through the popup, keeps the layer, and supports Undo', async () => {
+  const keyframes = { opacity: [{ time: 0, value: 0 }, { time: 0.5, value: 1 }, { time: 2.5, value: 1 }, { time: 3, value: 0 }], scaleX: [{ time: 1, value: 1 }, { time: 1.6, value: 1.08 }, { time: 2.2, value: 1 }], scaleY: [{ time: 1, value: 1 }, { time: 1.6, value: 1.08 }, { time: 2.2, value: 1 }] }
+  const { studio, click } = await mount({ keyframes, animationClips: [{ start: 1, end: 2.2, label: 'Pulse' }] }, { kind: 'motion', start: 1, end: 2.2, label: 'Pulse', direction: 'in' })
+  await click('Remove animation')
+  expect(studio.activeLayers.value).toHaveLength(1)
+  expect(studio.activeLayers.value[0]!.keyframes!.scaleX!.every(frame => frame.value === 1)).toBe(true)
+  expect(studio.activeLayers.value[0]!.keyframes!.opacity).toEqual(keyframes.opacity)
+  studio.undo()
+  expect(studio.activeLayers.value[0]!.keyframes).toEqual(keyframes)
+  expect(studio.activeLayers.value[0]!.animationClips![0]!.label).toBe('Pulse')
 })

@@ -72,7 +72,7 @@ export function presetToKeyframes(layer: Layer): Partial<Record<KeyframeProperty
   const startTime = timing.entryStart
   const endTime = layer.endTime || (startTime + 3)
   const animDur = timing.entryDuration
-  const ease = layer.ease || 'power2.out'
+  const ease = layer.ease || preset?.ease || 'power2.out'
   const outDur = timing.exitDuration
   const outEase = layer.animOutEase || 'power1.in'
 
@@ -115,10 +115,10 @@ export function presetToKeyframes(layer: Layer): Partial<Record<KeyframeProperty
 
   // Always include opacity track
   const opFrom = fromProps.opacity !== undefined ? fromProps.opacity : (Object.keys(fromProps).length > 0 ? 0 : layer.opacity)
-  const inTime = startTime + (Object.keys(fromProps).length ? animDur : 0.1)
+  const inTime = startTime + (Object.keys(fromProps).length ? animDur : 0)
 
   // Exit values
-  const outStart = outPreset.id === 'none' ? endTime - 0.05 : timing.exitStart
+  const outStart = outPreset.id === 'none' ? endTime : timing.exitStart
   const outProps = outPreset && outPreset.id !== 'none' ? outPreset.to : {}
 
   // Opacity track
@@ -126,15 +126,15 @@ export function presetToKeyframes(layer: Layer): Partial<Record<KeyframeProperty
   if (Object.keys(fromProps).length > 0 || opFrom !== layer.opacity) {
     opacityKfs.push({ time: startTime, value: opFrom, easing: ease })
   } else {
-    opacityKfs.push({ time: startTime, value: 0, easing: ease })
+    opacityKfs.push({ time: startTime, value: layer.opacity, easing: ease })
   }
-  opacityKfs.push({ time: inTime, value: layer.opacity })
+  if (inTime > startTime) opacityKfs.push({ time: inTime, value: layer.opacity })
   // Hold visible
   if (outStart > inTime) {
     opacityKfs.push({ time: outStart, value: layer.opacity, easing: outEase })
   }
   // Exit
-  const outOpacity = outProps.opacity !== undefined ? outProps.opacity : 0
+  const outOpacity = outPreset.id === 'none' ? layer.opacity : outProps.opacity !== undefined ? outProps.opacity : 0
   opacityKfs.push({ time: Math.min(endTime, timing.exitStart + outDur), value: outOpacity })
   result.opacity = opacityKfs
 
@@ -281,7 +281,7 @@ function buildPresetLayer(tl: gsap.core.Timeline, el: HTMLElement, layer: Layer)
   const startTime = timing.entryStart
   const endTime = layer.endTime || (startTime + 3)
   const animDur = timing.entryDuration
-  const ease = resolveEase(layer.ease || 'power2.out')
+  const ease = resolveEase(layer.ease || preset?.ease || 'power2.out')
   const outDur = timing.exitDuration
   const opKey = isBg ? 'autoAlpha' : 'opacity'
   const noEntrance = !preset?.special && (!preset || Object.keys(preset.from).length === 0)
