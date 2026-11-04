@@ -7,6 +7,7 @@
 //
 // Bindings (wrangler.toml): AI, AUDIO_BUCKET (R2, 'agency-files'), HYPERDRIVE
 // (→ Neon), DATABASE_URL secret, and RENDER (FFmpeg Container).
+import { handleMediaProbe } from './mediaProbe'
 import { Container } from '@cloudflare/containers'
 
 /** FFmpeg render service — a Linux container running ffmpeg over HTTP. The Worker
@@ -21,13 +22,14 @@ export class RenderContainer extends Container {
 interface Env {
   AI: { run(model: string, inputs: Record<string, unknown>): Promise<any> }
   AUDIO_BUCKET: R2Bucket
-  RENDER: unknown
+  RENDER: Parameters<typeof import('@cloudflare/containers').getContainer>[0]
   HYPERDRIVE?: { connectionString: string }
   DATABASE_URL?: string
   RENDER_CENTS_PER_SEC?: string
 }
 
 export default {
+  fetch: handleMediaProbe,
   async queue(
     batch: MessageBatch<any>,
     env: Env,

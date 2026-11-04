@@ -545,3 +545,8 @@ service = "xeroflow-email-design-production"
 binding = "MOTORSTACK_BRAND_ASSETS"
 service = "xeroflow-creative-tools"
 entrypoint = "MotorstackBrandAssets"
+
+# Private measured storyboard media. Preview intentionally has no production binding.
+[[env.production.services]]
+binding = "STORYBOARD_MEDIA_PROBE"
+service = "audio-jobs"

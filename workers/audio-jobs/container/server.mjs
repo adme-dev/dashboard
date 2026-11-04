@@ -4,6 +4,7 @@
 // JSON. Runs 2-pass loudnorm (measure → linear normalize) + trim/fade, returns
 // the variant bytes. No R2/DB creds here — the Worker owns persistence.
 // V1.2b: /render-composite also accepts overlays (banner HTML → Chromium capture → composite).
+import { serveMediaProbe } from './mediaProbe.mjs'
 import { createServer } from 'node:http'
 import { spawn } from 'node:child_process'
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs'
@@ -36,6 +37,7 @@ function readBody(req) {
 }
 
 const server = createServer(async (req, res) => {
+  if (req.method === 'POST' && req.url === '/probe') return serveMediaProbe(req,res)
   if (req.url === '/health') {
     res.writeHead(200); return res.end('ok')
   }

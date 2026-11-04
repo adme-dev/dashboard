@@ -2,7 +2,7 @@
 
 **Date:** 4 November 2026
 
-**Status:** Initial input-contract foundation implemented locally; R1/R2/R3 acceptance pending. See the [implementation receipt](../../video/implementations/2026-11-04-storyboard-contracts.md).
+**Status:** T01–T05 implemented and independently reviewed locally. T06 atomic application is next. R1/R2/R3 acceptance remains pending. See the [T05 implementation receipt](../../video/implementations/2026-11-05-storyboard-resolution.md) and [initial foundation receipt](../../video/implementations/2026-11-04-storyboard-contracts.md).
 
 **Owner:** Creative / Video Studio
 

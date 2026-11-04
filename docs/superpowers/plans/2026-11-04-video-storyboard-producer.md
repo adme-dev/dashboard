@@ -139,11 +139,11 @@ T01 defines input contracts `StoryboardPlan`, `StoryboardShot`, `AssetBinding`, 
 
 **Interfaces:** `resolveStoryboard({ actor, projectId, revisionId, formats }): Promise<ResolvedStoryboard>`; `compileStoryboard(resolved: ResolvedStoryboard): StoryboardCompileResult`. Compiler is pure and emits the current `TimelineState`; use deterministic clip IDs derived from plan revision, shot and cue identity. Resolve data carries measured duration/bounds and approved binding identity.
 
-- [ ] Add tests for six shots/900 frames, two uses of one source, frame-to-second conversion, short footage, unmeasured media, unresolved voice timing, explicit no-music, required overlay absent, caption cues outside speech, valid multi-lane output and deterministic IDs.
-- [ ] Run `pnpm exec vitest run test/video/storyboardResolve.test.ts test/video/storyboardCompile.test.ts` to establish failures.
-- [ ] Resolve existing asset rows and owned storage metadata; use existing media preparation/probing infrastructure where needed, never fabricate durations from prompts. Bind selected voice/music, reviewed caption cues and Banner overlays. Block incomplete required cues; do not auto-generate them.
-- [ ] Compile video/stills, voice/music/SFX, caption and overlay tracks using exact frame-derived timing. Emit server-owned required-cue/source obligations separately from client-visible provenance. Preserve clip metadata through schema/edit operations, but never rely on it to discover whether required copy exists. Manual changes mark only affected approvals stale; selection/zoom changes do not.
-- [ ] Run suites plus `test/audio/timelineSchema.test.ts`, `test/audio/timelineEditAv.test.ts`, `test/video/aiAssemblyTimeline.test.ts`. Verify round-trip provenance and existing legacy timelines before committing.
+- [x] Add tests for six shots/900 frames, two uses of one source, frame-to-second conversion, short footage, unmeasured media, unresolved voice timing, explicit no-music, required overlay absent, caption cues outside speech, valid multi-lane output and deterministic IDs.
+- [x] Run `pnpm exec vitest run test/video/storyboardResolve.test.ts test/video/storyboardCompile.test.ts` to establish failures.
+- [x] Resolve existing asset rows and owned storage metadata; use existing media preparation/probing infrastructure where needed, never fabricate durations from prompts. Bind selected voice/music, reviewed caption cues and Banner overlays. Block incomplete required cues; do not auto-generate them.
+- [x] Compile video/stills, voice/music/SFX, caption and overlay tracks using exact frame-derived timing. Emit server-owned required-cue/source obligations separately from client-visible provenance. Preserve clip metadata through schema/edit operations, but never rely on it to discover whether required copy exists. Manual changes mark only affected approvals stale; selection/zoom changes do not.
+- [x] Run suites plus `test/audio/timelineSchema.test.ts`, `test/audio/timelineEditAv.test.ts`, `test/video/aiAssemblyTimeline.test.ts`. Verify round-trip provenance and existing legacy timelines before committing.
 
 ### T06 — Apply atomically and recover by receipt
 
