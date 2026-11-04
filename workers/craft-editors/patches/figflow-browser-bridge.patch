@@ -137,7 +137,7 @@
 +}
 --- /dev/null
 +++ b/crates/engine/src/cmd/edm.rs
-@@ -0,0 +1,4838 @@
+@@ -0,0 +1,4841 @@
 +//! Bounded XeroFlow email handoffs on a real native document.
 +//!
 +//! The canonical document is retained verbatim. A snapshot patches only approved
@@ -3821,7 +3821,10 @@
 +        let snapshot = content.execute("edm_snapshot", &json!({})).unwrap();
 +        assert_eq!(snapshot["blocks"]["rich"], input["blocks"]["rich"]);
 +        assert_eq!(snapshot["assets"], input["assets"]);
-+        let t = rich_projection(&format!("<strong>{}</strong>", "Long wrapping text ".repeat(40)), TextData::new(String::new())).unwrap();
++        // Match text_data's production sizing; WidthAndHeight intentionally disables wrapping.
++        let mut base = TextData::new(String::new());
++        base.auto_resize = TextAutoResize::None;
++        let t = rich_projection(&format!("<strong>{}</strong>", "Long wrapping text ".repeat(40)), base).unwrap();
 +        assert!(measured_text_height(&t, 100.0).unwrap() > measured_text_height(&t, 600.0).unwrap());
 +    }
 +
