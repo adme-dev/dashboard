@@ -47,3 +47,9 @@ No full repository CI, authenticated browser, physical-device or hosted render p
 ## Hosted prerequisites
 
 The checked-in worker points at shared resources, while the Pages probe binding is production-only. The worker callback accepts only two production origins. Consequently this configuration cannot serve as isolated preview acceptance. The [operator runbook](../../../runbooks/video-storyboard-producer.md) defines the required database/storage/queue/service isolation and exact callback-origin policy work before preview deployment. Recover adequate local disk capacity and a responsive Docker runtime before attempting another build or Linux fixture run. Linux execution, hosted identities, fixture permissions, secret presence, deployment records and a compatible rollback artifact remain required. Other active work was neither stopped nor cleaned up.
+
+## Retry with a 10 GiB heap limit
+
+At the user's request, the build script now sets `--max-old-space-size=10240` (previously 16384). This limits Node old space, not total process memory. Under Node 24.18.0, Nuxt/Nitro compilation and worker wrapping completed; the final `check-worker-size.mjs` gate failed. The command exited 1, so a passing full production build is still not claimed.
+
+The resulting worker is 25,596,901 raw bytes against the immutable 25,468,928-byte safety budget: 127,973 bytes over. Gzip size is 7,389,820 against 9,750,000 bytes. The budget was not changed. Evidence: `.verification/video-t09/build-10gb.log`. Free disk remained around 10 GiB during this retry. Resolve the bundle-size failure before deployment; Linux and hosted acceptance remain separate outstanding gates.

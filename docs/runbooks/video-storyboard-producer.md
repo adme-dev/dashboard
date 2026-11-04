@@ -8,7 +8,7 @@ The [T08 receipt](../video/implementations/2026-11-05-storyboard-render-enforcem
 
 ## Prepare an isolated pilot
 
-1. Fetch current main and reconcile the candidate. Record the exact candidate and main SHAs. Use Node 24.18.0 and run `pnpm deploy:check`; never bypass the target or source guards. Run the focused regression suite, repository CI, relevant lint/typecheck and `pnpm build`. A guard pass is not a build pass or deployment receipt.
+1. Fetch current main and reconcile the candidate. Record the exact candidate and main SHAs. Use Node 24.18.0 and run `pnpm deploy:check`; never bypass the target or source guards. Run the focused regression suite, repository CI, relevant lint/typecheck and `pnpm build`. The build script sets a 10 GiB Node old-space limit (`--max-old-space-size=10240`); this is not a cap on total process memory or disk usage. A guard pass is not a build pass or deployment receipt.
 2. Verify migrations 500–503 on the intended database using content-free schema checks. Migration 503 is additive and was verified during T08; a different preview database still needs its own migration receipt.
 3. Use isolated database, private R2 bucket, queues, dead-letter queues and worker/container bindings for preview. The checked-in `audio-jobs` configuration names shared resources; it is not an isolated preview configuration. Do not bind a test producer to the production consumer.
 4. Verify the Pages `STORYBOARD_MEDIA_PROBE` service binding, `VIDEO_RENDER_QUEUE` and storage configuration against the same isolated worker/database. The checked-in probe binding is production-only. Verify worker `HYPERDRIVE`, `AUDIO_BUCKET`, `RENDER`, callback origin and matching `STORYBOARD_RENDER_SECRET` presence without printing values.
