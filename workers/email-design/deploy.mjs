@@ -25,7 +25,7 @@ export function validateEmailDesignTarget(config, environment) {
       PAGE_STUDIO_RELEASE_ENVIRONMENT: environment,
       FIGFLOW_EDM_DRAFT_SAVES_ENABLED: production ? 'true' : 'false',
       FIGFLOW_EDM_DESIGNER_ENABLED: 'false',
-      FIGFLOW_EDM_TEMPLATE_DESIGNER_ENABLED: 'false',
+      FIGFLOW_EDM_TEMPLATE_DESIGNER_ENABLED: production ? 'true' : 'false',
       FIGFLOW_EDM_LIBRARY_ENABLED: 'false',
       FIGFLOW_EDM_BRAND_ENABLED: 'false',
       EMAIL_DESIGN_SESSION_AUTHORITY: 'pages-auth-me-v1'
