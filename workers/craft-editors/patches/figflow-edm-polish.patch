@@ -268,7 +268,7 @@
      if resp.double_clicked() {
 --- /dev/null
 +++ b/crates/ui-egui/src/edm_chrome.rs
-@@ -0,0 +1,193 @@
+@@ -0,0 +1,208 @@
 +//! EDM-only native chrome. The canonical bridge remains the final authority;
 +//! this UI boundary prevents offering canvas operations it cannot round-trip.
 +use egui::{Id, Ui};
@@ -393,28 +393,30 @@
 +        app.session.set_tool(figcraft_engine::ToolId::Move);
 +    }
 +    app.ui.right_tab = crate::RightTab::Design;
++    let mut navigation = None;
 +    egui::Panel::top("edm_header").exact_size(42.0).show(ui, |ui| {
 +        a11y::region(&mut app.ui.nav, ui, a11y::Region::Toolbar, egui::accesskit::Role::Toolbar, "Email navigation");
 +        ui.horizontal(|ui| {
 +            ui.strong("Email editor");
 +            for (label, tool) in [("Select", "move"), ("Pan", "hand")] {
 +                if ui.button(label).clicked() {
-+                    app.run("tool.set", json!({"tool": tool}));
++                    navigation = Some(("tool.set", json!({"tool": tool})));
 +                }
 +            }
 +            for (label, command) in [("Undo", "edit.undo"), ("Redo", "edit.redo")] {
 +                if ui.button(label).clicked() {
-+                    crate::menus::invoke(app, command);
++                    navigation = Some((command, json!({})));
 +                }
 +            }
 +            ui.label("Return to XeroFlow to apply");
 +        });
 +    });
 +    let (left, right) = crate::fit_panels(ui.available_width(), Some(200.0), Some(app.ui.right_width));
++    let mut selection = None;
 +    egui::Panel::left("edm_components").exact_size(left).resizable(false).show(ui, |ui| {
 +        a11y::region(&mut app.ui.nav, ui, a11y::Region::Layers, egui::accesskit::Role::Pane, "Email components");
 +        ui.heading("Components");
-+        egui::ScrollArea::vertical().show(ui, |ui| components(app, ui));
++        selection = egui::ScrollArea::vertical().show(ui, |ui| components(app, ui)).inner;
 +    });
 +    egui::Panel::right("edm_properties").exact_size(right).resizable(false).show(ui, |ui| {
 +        a11y::region(&mut app.ui.nav, ui, a11y::Region::Properties, egui::accesskit::Role::Pane, "Email controls");
@@ -426,6 +428,17 @@
 +            }
 +        });
 +    });
++    // A click on these controls first commits the old panel's focused field.
++    if let Some((command, params)) = navigation {
++        if command == "tool.set" {
++            app.run(command, params);
++        } else {
++            crate::menus::invoke(app, command);
++        }
++    }
++    if let Some(node) = selection {
++        app.run("select.set", json!({"ids": [node]}));
++    }
 +    egui::CentralPanel::default().frame(egui::Frame::NONE.fill(t.canvas)).show(ui, |ui| {
 +        let mut worker = app.worker.take().unwrap_or_else(|| render_worker::Worker::new(ctx.clone()));
 +        canvas::show(app, ui, &mut worker);
@@ -437,8 +450,8 @@
 +    app.field_focus = a11y::field_focused(&ctx);
 +}
 +
-+fn components(app: &mut FigApp, ui: &mut Ui) {
-+    let Ok(ds) = app.session.ds() else { return };
++fn components(app: &mut FigApp, ui: &mut Ui) -> Option<figcraft_doc::NodeId> {
++    let Ok(ds) = app.session.ds() else { return None };
 +    let mut rows: Vec<(String, figcraft_doc::NodeId, String, bool)> = Vec::new();
 +    for node in ds.doc.nodes() {
 +        let Some(block) = node.plugin_data.get(BLOCK) else { continue };
@@ -454,19 +467,50 @@
 +        }
 +    }
 +    let selection = ds.selection.clone();
++    let mut clicked = None;
 +    for (block, node, name, _) in rows {
 +        let selected =
 +            selection.iter().any(|id| app.session.doc().ok().and_then(|doc| doc.node(*id)).is_some_and(|n| n.plugin_data.get(BLOCK) == Some(&block)));
 +        if ui.selectable_label(selected, name).clicked() {
-+            app.run("select.set", json!({"ids": [node]}));
++            clicked = Some(node);
 +        }
 +    }
++    clicked
 +}
 --- a/crates/ui-egui/src/edm_panel.rs
 +++ b/crates/ui-egui/src/edm_panel.rs
-@@ -142,12 +142,16 @@
+@@ -141,13 +141,45 @@
+     values.iter().map(|value| (*value).to_owned()).collect()
  }
 
++/// Keep the native field draft until blur is processed, including when the canvas
++/// surrendered focus after the panel painted. Pointer navigation is deferred by
++/// edm_chrome so this field can commit before its selection disappears.
++fn multiline_text(ui: &mut Ui, id: Id, value: &str, label: &str) -> Option<String> {
++    let t = Tokens::get(ui.ctx());
++    let te = id.with("te");
++    let draft: Option<String> = ui.data(|data| data.get_temp(id));
++    let editing = draft.is_some() || ui.memory(|memory| memory.has_focus(te));
++    let mut text = draft.unwrap_or_else(|| value.to_owned());
++    let response = egui::Frame::NONE.fill(t.field).corner_radius(egui::CornerRadius::same(5)).inner_margin(egui::Margin::same(6)).show(ui, |ui| {
++        ui.add(egui::TextEdit::multiline(&mut text).id(te).frame(egui::Frame::NONE)
++            .font(crate::theme::regular(11.0)).hint_text(label).desired_rows(4).desired_width(ui.available_width().max(24.0)))
++    }).inner;
++    crate::a11y::own_focus(&response);
++    let outside = ui.input(|input| input.pointer.any_pressed()
++        && input.pointer.interact_pos().is_some_and(|pos| !response.rect.contains(pos)));
++    let cancel = editing && ui.input(|input| input.key_pressed(egui::Key::Escape));
++    if cancel || (editing && (response.lost_focus() || !response.has_focus() || outside)) {
++        ui.data_mut(|data| data.remove::<String>(id));
++        ui.memory_mut(|memory| memory.surrender_focus(te));
++        return (!cancel && text != value).then_some(text);
++    }
++    if response.has_focus() {
++        ui.data_mut(|data| data.insert_temp(id, text));
++    }
++    None
++}
++
  fn props_text(app: &mut FigApp, ui: &mut Ui, block_id: &str, key: &'static str, label: &'static str, current: String) {
 -    row(ui, 32.0, |ui| {
 -        let committed = widgets::text_field(ui, Id::new(("edm-designer-prop", block_id, key)), &current, ui.available_width().max(80.0), label);
@@ -477,7 +521,7 @@
 +    let id = Id::new(("edm-designer-prop", block_id, key));
 +    let committed = if key == "text" {
 +        widgets::sublabels(ui, label, None);
-+        widgets::multiline_field(ui, id, &current, label, 4)
++        multiline_text(ui, id, &current, label)
 +    } else {
 +        widgets::text_field(ui, id, &current, ui.available_width().max(80.0), label)
 +    };
@@ -487,7 +531,33 @@
  }
 
  fn props_number(app: &mut FigApp, ui: &mut Ui, block_id: &str, key: &'static str, label: &'static str, current: Option<f64>) {
-@@ -431,21 +435,42 @@
+@@ -265,12 +297,13 @@
+     row(ui, 26.0, |ui| {
+         widgets::label(ui, &format!("{kind} · {operation_count} canonical operations"), t.text_secondary);
+     });
++    let mut history = None;
+     row(ui, 32.0, |ui| {
+         if widgets::button(ui, "Undo", false, operation_count > 0).clicked() {
+-            let _ = app.run("edm_designer_undo", json!({}));
++            history = Some("edm_designer_undo");
+         }
+         if widgets::button(ui, "Redo", false, redo_count > 0).clicked() {
+-            let _ = app.run("edm_designer_redo", json!({}));
++            history = Some("edm_designer_redo");
+         }
+     });
+     if !capability.editable {
+@@ -419,6 +452,9 @@
+         });
+     }
+     row(ui, 30.0, |ui| widgets::label(ui, "Canvas text and freeform transforms require explicit controls", t.text_secondary));
++    if let Some(command) = history {
++        app.run(command, json!({}));
++    }
+ }
+
+ fn content_section(app: &mut FigApp, ui: &mut Ui, doc: &Document, selection: &[NodeId]) -> bool {
+@@ -431,21 +467,42 @@
      let fields: Vec<(&str, &str, &str)> = match role {
          Some("button") => vec![("Button URL", URL, "url")],
          Some("image") => vec![("Image URL", URL, "url"), ("Image alt text", ALT, "alt"), ("Image link", LINK, "linkHref")],
@@ -513,7 +583,7 @@
 +    if let Some((text_id, current)) = text {
 +        widgets::sublabels(ui, "Text", None);
 +        if let Some(value) =
-+            widgets::multiline_field(ui, Id::new(("edm-content-text", text_id)), &current, "Text", 4).and_then(|value| changed(value, &current))
++            multiline_text(ui, Id::new(("edm-content-text", text_id)), &current, "Text").and_then(|value| changed(value, &current))
 +        {
 +            app.set_props(&[text_id], json!({"characters": value}));
 +        }
@@ -720,7 +790,7 @@
          u.frame(vec![Event::Text("Typed".into())]);
          press(&mut u, Key::Z, cmd());
          assert!(u.app.session.ds().unwrap().text_edit.is_none(), "Cmd/Ctrl+Z ends the edit");
-@@ -810,4 +834,167 @@
+@@ -810,4 +834,168 @@
          assert_eq!(counts(&u), (1, 0), "the canonical log is untouched");
          assert!(snapshot_ok(&mut u));
      }
@@ -835,6 +905,7 @@
 +            u.frame(vec![]);
 +            press(&mut u, Key::A, cmd());
 +            u.frame(vec![Event::Text("Edited {{firstName}}\nLaunch 🚀".into())]);
++            assert_eq!(u.ctx.data(|data| data.get_temp::<String>(field)).as_deref(), Some("Edited {{firstName}}\nLaunch 🚀"), "the native field retained the typed draft before blur");
 +            // Clicking the canvas commits the focused native field; Enter keeps a newline.
 +            let blank = u.app.canvas.rect.center();
 +            u.button(blank, true);
