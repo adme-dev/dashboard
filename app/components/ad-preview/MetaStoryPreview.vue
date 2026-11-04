@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import PreviewFrame from './PreviewFrame.vue'
 
-defineProps<{
+withDefaults(defineProps<{
+  showDefaultCta?: boolean
   image?: string
   html?: string
   htmlWidth?: number
@@ -12,10 +13,9 @@ defineProps<{
   description?: string
   ctaType?: string
   linkUrl?: string
-}>()
+}>(), { showDefaultCta: true })
 
 const { ctaLabel } = useAdPreview()
-
 </script>
 
 <template>
@@ -23,8 +23,13 @@ const { ctaLabel } = useAdPreview()
     <div class="relative w-full h-full">
       <!-- Background image -->
       <AdPreviewCreativeMedia
-        :html="html" :html-width="htmlWidth" :html-height="htmlHeight"
-        :image="image" label="Story Creative" placeholder-bg="#222" placeholder-fg="#555"
+        :html="html"
+        :html-width="htmlWidth"
+        :html-height="htmlHeight"
+        :image="image"
+        label="Story Creative"
+        placeholder-bg="#222"
+        placeholder-fg="#555"
       />
 
       <!-- Gradient overlays -->
@@ -56,8 +61,10 @@ const { ctaLabel } = useAdPreview()
 
       <!-- Bottom CTA -->
       <div class="absolute bottom-4 left-3 right-3 flex flex-col items-center gap-2">
-        <p v-if="primaryText" class="text-white text-xs text-center line-clamp-2 drop-shadow">{{ primaryText }}</p>
-        <div class="flex items-center gap-1.5 text-white text-xs font-semibold">
+        <p v-if="primaryText" class="text-white text-xs text-center line-clamp-2 drop-shadow">
+          {{ primaryText }}
+        </p>
+        <div v-if="showDefaultCta || ctaType" class="flex items-center gap-1.5 text-white text-xs font-semibold">
           <UIcon name="i-lucide-chevron-up" class="w-4 h-4 animate-bounce" />
           {{ ctaLabel(ctaType || 'LEARN_MORE') }}
         </div>

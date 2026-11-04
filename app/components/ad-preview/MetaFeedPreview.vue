@@ -1,5 +1,7 @@
 <script setup lang="ts">
-defineProps<{
+withDefaults(defineProps<{
+  showPlaceholders?: boolean
+  creativeAspectRatio?: number
   image?: string
   html?: string
   htmlWidth?: number
@@ -10,10 +12,9 @@ defineProps<{
   description?: string
   ctaType?: string
   linkUrl?: string
-}>()
+}>(), { showPlaceholders: true, creativeAspectRatio: 1 })
 
 const { ctaLabel } = useAdPreview()
-
 </script>
 
 <template>
@@ -24,7 +25,9 @@ const { ctaLabel } = useAdPreview()
         {{ (pageName || 'B')[0].toUpperCase() }}
       </div>
       <div class="flex-1 min-w-0">
-        <div class="font-semibold text-sm leading-tight truncate">{{ pageName || 'Your Brand' }}</div>
+        <div class="font-semibold text-sm leading-tight truncate">
+          {{ pageName || 'Your Brand' }}
+        </div>
         <div class="text-xs text-gray-500 flex items-center gap-1">
           Sponsored · <UIcon name="i-lucide-globe" class="w-3 h-3" />
         </div>
@@ -33,34 +36,45 @@ const { ctaLabel } = useAdPreview()
     </div>
 
     <!-- Primary text -->
-    <div class="px-3 pb-2 text-sm leading-snug">
+    <div v-if="showPlaceholders || primaryText" class="px-3 pb-2 text-sm leading-snug">
       {{ primaryText || 'Check out our latest offer!' }}
     </div>
 
     <!-- Ad creative -->
     <div class="relative bg-gray-100">
-      <div class="relative w-full" style="aspect-ratio: 1/1;">
+      <div class="relative w-full" :style="{ aspectRatio: creativeAspectRatio }">
         <AdPreviewCreativeMedia
-          :html="html" :html-width="htmlWidth" :html-height="htmlHeight"
-          :image="image" label="Ad Creative" placeholder-bg="#333" placeholder-fg="#666"
+          :html="html"
+          :html-width="htmlWidth"
+          :html-height="htmlHeight"
+          :image="image"
+          label="Ad Creative"
+          placeholder-bg="#333"
+          placeholder-fg="#666"
         />
       </div>
     </div>
 
     <!-- Link / CTA bar -->
-    <div class="flex items-center justify-between px-3 py-2.5 bg-gray-50 border-t border-gray-200">
+    <div v-if="showPlaceholders || headline || linkUrl || ctaType" class="flex items-center justify-between px-3 py-2.5 bg-gray-50 border-t border-gray-200">
       <div class="flex-1 min-w-0 mr-3">
-        <div class="text-[10px] text-gray-500 uppercase truncate">{{ linkUrl?.replace(/https?:\/\//, '').split('/')[0] || 'example.com' }}</div>
-        <div class="text-sm font-semibold truncate leading-tight">{{ headline || 'Amazing Product' }}</div>
-        <div class="text-xs text-gray-500 truncate">{{ description || 'Shop the best deals online today.' }}</div>
+        <div class="text-[10px] text-gray-500 uppercase truncate">
+          {{ linkUrl?.replace(/https?:\/\//, '').split('/')[0] || 'example.com' }}
+        </div>
+        <div class="text-sm font-semibold truncate leading-tight">
+          {{ headline || 'Amazing Product' }}
+        </div>
+        <div class="text-xs text-gray-500 truncate">
+          {{ description || 'Shop the best deals online today.' }}
+        </div>
       </div>
-      <button class="shrink-0 bg-gray-200 hover:bg-gray-300 text-sm font-semibold px-4 py-1.5 rounded transition-colors">
+      <UButton color="neutral" variant="ghost" class="shrink-0 bg-gray-200 hover:bg-gray-300 text-sm font-semibold px-4 py-1.5 rounded transition-colors">
         {{ ctaLabel(ctaType || 'LEARN_MORE') }}
-      </button>
+      </UButton>
     </div>
 
     <!-- Engagement row -->
-    <div class="flex items-center justify-between px-3 py-2 border-t border-gray-200">
+    <div v-if="showPlaceholders" class="flex items-center justify-between px-3 py-2 border-t border-gray-200">
       <div class="flex items-center gap-1 text-gray-500 text-xs">
         <div class="flex -space-x-1">
           <div class="w-4 h-4 rounded-full bg-blue-500 flex items-center justify-center">
@@ -72,19 +86,21 @@ const { ctaLabel } = useAdPreview()
         </div>
         <span>1.2K</span>
       </div>
-      <div class="text-xs text-gray-500">48 comments · 12 shares</div>
+      <div class="text-xs text-gray-500">
+        48 comments · 12 shares
+      </div>
     </div>
 
     <div class="flex items-center border-t border-gray-200">
-      <button class="flex-1 flex items-center justify-center gap-1.5 py-2.5 text-gray-500 hover:bg-gray-50 text-sm">
+      <UButton color="neutral" variant="ghost" class="flex-1 flex items-center justify-center gap-1.5 py-2.5 text-gray-500 hover:bg-gray-50 text-sm">
         <UIcon name="i-lucide-thumbs-up" class="w-4 h-4" /> Like
-      </button>
-      <button class="flex-1 flex items-center justify-center gap-1.5 py-2.5 text-gray-500 hover:bg-gray-50 text-sm">
+      </UButton>
+      <UButton color="neutral" variant="ghost" class="flex-1 flex items-center justify-center gap-1.5 py-2.5 text-gray-500 hover:bg-gray-50 text-sm">
         <UIcon name="i-lucide-message-circle" class="w-4 h-4" /> Comment
-      </button>
-      <button class="flex-1 flex items-center justify-center gap-1.5 py-2.5 text-gray-500 hover:bg-gray-50 text-sm">
+      </UButton>
+      <UButton color="neutral" variant="ghost" class="flex-1 flex items-center justify-center gap-1.5 py-2.5 text-gray-500 hover:bg-gray-50 text-sm">
         <UIcon name="i-lucide-share" class="w-4 h-4" /> Share
-      </button>
+      </UButton>
     </div>
   </div>
 </template>

@@ -1,0 +1,293 @@
+<script setup lang="ts">
+import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue'
+import { useElementSize, useFullscreen } from '@vueuse/core'
+import type { ArtboardState } from '~/types/banner-studio'
+import { buildBannerHTML, type ExportCustomFont } from '~/utils/banner-html-builder'
+import { resolveBannerFormat } from '~/utils/banner-constants'
+import { withBannerPreviewAudio } from '~/utils/banner-preview-audio'
+
+const props = defineProps<{
+  canvas: Record<string, ArtboardState>
+  fonts?: ExportCustomFont[]
+}>()
+
+const root = ref<HTMLElement | null>(null)
+const viewport = ref<HTMLElement | null>(null)
+const surface = ref<HTMLElement | null>(null)
+const viewportSize = useElementSize(viewport)
+const surfaceSize = useElementSize(surface)
+const { isFullscreen, isSupported: supportsFullscreen, toggle: toggleFullscreen } = useFullscreen(root)
+const expanded = ref(false)
+const fullScreenView = computed(() => isFullscreen.value || expanded.value)
+async function toggleScreen() {
+  if (expanded.value) {
+    expanded.value = false
+    return
+  }
+  if (supportsFullscreen.value) {
+    try {
+      await toggleFullscreen()
+      return
+    } catch { /* Browsers can deny native fullscreen; expand within the window instead. */ }
+  }
+  expanded.value = true
+}
+const selectedKey = ref('')
+const playing = ref(false)
+const muted = ref(false)
+const audioError = ref('')
+function sendSoundPreference() {
+  root.value?.querySelector('iframe')?.contentWindow?.postMessage({ type: 'banner-preview-sound', muted: muted.value }, '*')
+}
+function receiveAudioStatus(event: MessageEvent) {
+  const frame = root.value?.querySelector('iframe')
+  if (!frame || event.source !== frame.contentWindow || event.data?.type !== 'banner-preview-audio') return
+  if (event.data.status === 'ready') sendSoundPreference()
+  if (event.data.status === 'blocked') audioError.value = 'Sound was blocked by your browser. Allow sound for this site, then replay.'
+  if (event.data.status === 'error') audioError.value = 'An audio track could not load. Try replaying the preview.'
+}
+function toggleSound() {
+  muted.value = !muted.value
+  audioError.value = ''
+  sendSoundPreference()
+}
+onMounted(() => window.addEventListener('message', receiveAudioStatus))
+onBeforeUnmount(() => window.removeEventListener('message', receiveAudioStatus))
+const mode = ref<'artwork' | 'social'>('artwork')
+const zoom = ref<number | null>(null)
+const replay = ref(0)
+const layouts = computed(() => Object.entries(props.canvas).flatMap(([key, board]) => {
+  const format = resolveBannerFormat(key)
+  return format && Array.isArray(board?.layers) ? [{ key, board, format }] : []
+}))
+function formatLabel(format: { w: number, h: number }) {
+  return format.w === format.h ? 'Square' : format.h > format.w ? 'Portrait' : 'Landscape'
+}
+function formatIcon(format: { w: number, h: number }) {
+  return format.w === format.h ? 'i-lucide-square' : format.h > format.w ? 'i-lucide-rectangle-vertical' : 'i-lucide-rectangle-horizontal'
+}
+const active = computed(() => layouts.value.find(layout => layout.key === selectedKey.value) || layouts.value[0])
+const hasAudio = computed(() => active.value?.board.layers.some(layer => layer.type === 'audio' && layer.src && !layer.hidden && !layer.muted && (layer.volume ?? 1) > 0))
+const story = computed(() => !!active.value && active.value.format.h > active.value.format.w)
+const surfaceWidth = computed(() => mode.value === 'artwork' ? active.value?.format.w || 1 : story.value ? 280 : 380)
+const surfaceHeight = computed(() => mode.value === 'artwork' ? active.value?.format.h || 1 : surfaceSize.height.value || 560)
+const fitScale = computed(() => Math.min(
+  Math.max(1, viewportSize.width.value - 32) / surfaceWidth.value,
+  Math.max(1, viewportSize.height.value - 32) / surfaceHeight.value,
+  3
+))
+const scale = computed(() => zoom.value ?? fitScale.value)
+const percent = computed(() => Math.round(scale.value * 100))
+const html = computed(() => active.value
+  ? withBannerPreviewAudio(buildBannerHTML(active.value.key, active.value.board.layers, {
+      // A stopped preview still needs the timeline to evaluate keyframes and scene visibility.
+      pausedAt: playing.value ? undefined : 0,
+      playback: active.value.board.playback,
+      bgColor: active.value.board.bgColor || '#0a0a10',
+      customFonts: props.fonts || []
+    }))
+  : '')
+
+function resetView() {
+  audioError.value = ''
+  playing.value = false
+  zoom.value = null
+  viewport.value?.scrollTo({ top: 0, left: 0 })
+}
+watch(() => active.value?.key, resetView)
+watch(mode, resetView)
+watch([playing, replay], () => {
+  audioError.value = ''
+})
+watch(() => props.canvas, () => {
+  playing.value = false
+})
+function changeZoom(direction: number) {
+  zoom.value = Math.min(3, Math.max(0.05, Math.round((scale.value + direction * 0.1) * 100) / 100))
+}
+</script>
+
+<template>
+  <section
+    ref="root"
+    class="flex min-h-0 flex-1 flex-col overflow-hidden bg-default"
+    :class="{ 'fixed inset-0 z-50 h-dvh': expanded }"
+    aria-label="Banner preview"
+    @keydown.esc="expanded = false"
+  >
+    <div v-if="active" class="flex min-h-0 flex-1 flex-col">
+      <div class="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-default bg-default px-4 py-3 sm:px-6">
+        <div class="flex max-w-full min-w-0 items-center gap-2 overflow-x-auto" aria-label="Preview size">
+          <UButton
+            v-for="layout in layouts"
+            :key="layout.key"
+            :aria-label="`${layout.format.w} × ${layout.format.h}`"
+            :aria-pressed="active.key === layout.key"
+            :variant="active.key === layout.key ? 'soft' : 'ghost'"
+            color="neutral"
+            class="shrink-0 gap-2.5 rounded-xl px-3 py-2 text-left sm:px-4"
+            @click="selectedKey = layout.key"
+          >
+            <UIcon :name="formatIcon(layout.format)" class="hidden size-5 shrink-0 text-muted sm:block" />
+            <span class="flex flex-col gap-0.5">
+              <span class="text-xs font-semibold sm:text-sm">{{ formatLabel(layout.format) }}</span>
+              <span class="text-[10px] font-normal tabular-nums text-muted sm:text-xs">{{ layout.format.w }} × {{ layout.format.h }}</span>
+            </span>
+          </UButton>
+        </div>
+        <div class="flex items-center gap-1 rounded-full bg-elevated/70 p-1" aria-label="Preview presentation">
+          <UButton
+            label="Artwork"
+            icon="i-lucide-image"
+            :aria-pressed="mode === 'artwork'"
+            :variant="mode === 'artwork' ? 'solid' : 'ghost'"
+            color="neutral"
+            size="sm"
+            class="rounded-full px-4"
+            @click="mode = 'artwork'"
+          />
+          <UButton
+            label="Social preview"
+            icon="i-lucide-smartphone"
+            :aria-pressed="mode === 'social'"
+            :variant="mode === 'social' ? 'solid' : 'ghost'"
+            color="neutral"
+            size="sm"
+            class="rounded-full px-4"
+            @click="mode = 'social'"
+          />
+        </div>
+      </div>
+      <div
+        ref="viewport"
+        class="min-h-0 flex-1 overflow-auto overscroll-contain bg-elevated/40"
+        tabindex="0"
+        aria-label="Scrollable artwork preview"
+      >
+        <div class="grid min-h-full min-w-full w-max place-items-center p-4">
+          <div :style="{ width: `${surfaceWidth * scale}px`, height: `${surfaceHeight * scale}px` }" class="relative shrink-0 shadow-2xl ring-1 ring-default/50">
+            <div ref="surface" class="absolute left-0 top-0 origin-top-left" :style="{ width: `${surfaceWidth}px`, transform: `scale(${scale})` }">
+              <BannerSavedViewerFrame
+                v-if="mode === 'artwork'"
+                :key="`${active.key}:${replay}`"
+                :html="html"
+                :width="active.format.w"
+                :height="active.format.h"
+                :title="`${active.format.w} × ${active.format.h} preview`"
+              />
+              <AdPreviewMetaStoryPreview
+                v-else-if="story"
+                :key="`story:${active.key}:${replay}`"
+                :html="html"
+                :html-width="active.format.w"
+                :html-height="active.format.h"
+                page-name="Client preview"
+                :show-default-cta="false"
+              />
+              <AdPreviewMetaFeedPreview
+                v-else
+                :key="`feed:${active.key}:${replay}`"
+                :html="html"
+                :html-width="active.format.w"
+                :html-height="active.format.h"
+                page-name="Client preview"
+                :show-placeholders="false"
+                :creative-aspect-ratio="active.format.w / active.format.h"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 border-t border-default bg-default px-4 py-3 sm:px-6">
+        <div class="flex items-center gap-1">
+          <UButton
+            :label="playing ? 'Stop' : 'Play'"
+            :icon="playing ? 'i-lucide-square' : 'i-lucide-play'"
+            color="neutral"
+            variant="solid"
+            size="md"
+            class="min-w-24 justify-center rounded-full"
+            @click="playing = !playing"
+          />
+          <UButton
+            icon="i-lucide-rotate-ccw"
+            aria-label="Replay animation"
+            color="neutral"
+            variant="ghost"
+            size="md"
+            @click="replay++; playing = true"
+          />
+        </div>
+        <UButton
+          v-if="hasAudio"
+          :icon="muted ? 'i-lucide-volume-x' : 'i-lucide-volume-2'"
+          :label="muted ? 'Sound off' : 'Sound on'"
+          :aria-label="muted ? 'Unmute audio' : 'Mute audio'"
+          :aria-pressed="!muted"
+          color="neutral"
+          variant="ghost"
+          size="md"
+          @click="toggleSound()"
+        />
+        <div class="flex items-center gap-1 border-l border-default pl-4" aria-label="Preview zoom">
+          <UButton
+            icon="i-lucide-minus"
+            aria-label="Zoom out"
+            :disabled="scale <= 0.05"
+            color="neutral"
+            variant="ghost"
+            size="md"
+            @click="changeZoom(-1)"
+          />
+          <span class="w-12 text-center text-xs tabular-nums" aria-live="polite">{{ percent }}%</span>
+          <UButton
+            icon="i-lucide-plus"
+            aria-label="Zoom in"
+            :disabled="scale >= 3"
+            color="neutral"
+            variant="ghost"
+            size="md"
+            @click="changeZoom(1)"
+          />
+          <UButton
+            label="Fit"
+            :aria-pressed="zoom === null"
+            color="neutral"
+            :variant="zoom === null ? 'soft' : 'ghost'"
+            size="md"
+            @click="zoom = null"
+          />
+          <UButton
+            label="100%"
+            :aria-pressed="zoom === 1"
+            color="neutral"
+            variant="ghost"
+            size="md"
+            @click="zoom = 1"
+          />
+          <UButton
+            :icon="fullScreenView ? 'i-lucide-minimize' : 'i-lucide-maximize'"
+            :aria-label="fullScreenView ? 'Exit full screen' : 'Full screen'"
+            color="neutral"
+            variant="ghost"
+            size="md"
+            @click="toggleScreen()"
+          />
+        </div>
+      </div>
+      <p v-if="audioError" role="status" class="shrink-0 px-4 pb-2 text-center text-xs text-warning">
+        {{ audioError }}
+      </p>
+      <p v-if="mode === 'social'" class="shrink-0 px-4 pb-2 text-center text-[11px] text-muted">
+        {{ story ? 'Story / Reel mockup' : 'Facebook Feed mockup' }} · Placement mockup only. Page identity, ad copy and final platform cropping are not included.
+      </p>
+    </div>
+    <UAlert
+      v-else
+      class="m-6"
+      color="warning"
+      title="No preview sizes"
+      description="The saved banner has no renderable sizes yet."
+    />
+  </section>
+</template>

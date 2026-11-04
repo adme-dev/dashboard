@@ -193,6 +193,8 @@ function buildWordPopAnimLines(l: Layer): string[] {
 export interface BuildBannerOptions {
   playback?: BannerPlayback
   includeAnimations?: boolean
+  /** Render a real timeline frame without starting playback (saved/client previews). */
+  pausedAt?: number
   bgColor?: string
   feedUrl?: string
   feedBindings?: Record<number, { column: string; property: string }[]>
@@ -212,6 +214,10 @@ export function buildBannerHTML(
   options: BuildBannerOptions = {},
 ): string {
   const { includeAnimations = true, bgColor = '#0a0a10', feedUrl, feedBindings, customFonts = [] } = options
+  const pausedAt = options.pausedAt
+  if (pausedAt !== undefined && (!includeAnimations || !Number.isFinite(pausedAt) || pausedAt < 0)) {
+    throw new Error('Paused previews require animations and a non-negative finite time')
+  }
   const playback = resolveBannerPlayback(options.playback)
   const customFontFamilies = new Set(customFonts.map(cf => cf.family))
   const fmt = resolveBannerFormat(fmtKey)
@@ -329,8 +335,8 @@ export function buildBannerHTML(
         const endTime = l.endTime || (startTime + 3)
         if (l.src) {
           const presenceDur = endTime - startTime
-          const volume = l.muted ? 0 : (l.volume ?? 1)
-          lines.push(`  (function() { var a = document.querySelector('[data-id="${l.id}"]'); if (a) { a.pause(); a.volume = ${volume}; var p = { t: 0 }; tl.to(p, { t: ${presenceDur.toFixed(2)}, duration: ${presenceDur.toFixed(2)}, ease: 'none', onStart: function() { if (!tl.paused()) { a.currentTime = 0; a.play().catch(function() {}); } }, onUpdate: function() { if (tl.paused()) { a.pause(); a.currentTime = p.t; } else { if (Math.abs(a.currentTime - p.t) > 0.3) a.currentTime = p.t; if (a.paused) a.play().catch(function() {}); } }, onComplete: function() { a.pause(); } }, ${startTime}); } })();`)
+          const volume = l.muted || l.hidden ? 0 : (l.volume ?? 1)
+          lines.push(`  (function() { var a = document.querySelector('[data-id="${l.id}"]'); if (a) { a.pause(); a.volume = ${volume}; var p = { t: 0 }; tl.to(p, { t: ${presenceDur.toFixed(2)}, duration: ${presenceDur.toFixed(2)}, ease: 'none', onStart: function() { if (!tl.paused()) { a.currentTime = 0; a.play().catch(function() {}); } }, onUpdate: function() { var loaded = isFinite(a.duration) && a.duration > 0; var mt = loaded ? (a.loop ? p.t % a.duration : Math.min(p.t, a.duration)) : p.t; if (tl.paused()) { a.pause(); a.currentTime = mt; } else if (loaded && !a.loop && p.t >= a.duration) { a.pause(); } else { if (Math.abs(a.currentTime - mt) > 0.3) a.currentTime = mt; if (a.paused) a.play().catch(function() {}); } }, onComplete: function() { a.pause(); } }, ${startTime}); } })();`)
         }
         return
       }
@@ -521,8 +527,8 @@ export function buildBannerHTML(
     ? `\n  gsap.registerPlugin(${[needsMotionPath && 'MotionPathPlugin', needsCustomEase && 'CustomEase'].filter(Boolean).join(', ')});`
     : ''
   const animScript =
-    includeAnimations && animLines
-      ? `<script>${registerMotionPath}\n  const tl = gsap.timeline(${playback ? `{ repeat: ${bannerPlaybackRepeat(playback)} }` : ''});\n  const maskUpdates = [];\n  window.__engagrTimeline = tl;\n${animLines}\n  window.__engagrUpdateMasks = function() { maskUpdates.forEach(function(update) { update(); }); };\n  tl.eventCallback('onUpdate', window.__engagrUpdateMasks);\n<\/script>`
+    includeAnimations && (animLines || pausedAt !== undefined)
+      ? `<script>${registerMotionPath}\n  const tl = gsap.timeline(${pausedAt !== undefined ? `{ paused: true, repeat: ${playback ? bannerPlaybackRepeat(playback) : 0} }` : playback ? `{ repeat: ${bannerPlaybackRepeat(playback)} }` : ''});\n  const maskUpdates = [];\n  window.__engagrTimeline = tl;\n${animLines}\n  window.__engagrUpdateMasks = function() { maskUpdates.forEach(function(update) { update(); }); };\n  tl.eventCallback('onUpdate', window.__engagrUpdateMasks);\n<\/script>`
       : ''
   const runtimeScript = includeAnimations
     ? buildEngagrFrameRuntimeScript({
@@ -530,6 +536,26 @@ export function buildBannerHTML(
         fixedCycleDuration: Boolean(playback),
         visibleElements: buildVisibleElementManifest(layers),
       })
+    : ''
+
+  const initialFrameScript = pausedAt !== undefined
+    ? `<script>
+(function() {
+  var canvas = document.querySelector('.ad');
+  try {
+    if (!window.__engagrTimeline || !window.__engagrFrame) throw new Error('Timeline unavailable');
+    // Force initial zero-time sets: a fresh paused timeline is already at time zero.
+    window.__engagrTimeline.render(${pausedAt}, true, true);
+    window.__engagrFrame.seek(${pausedAt});
+  } catch (_) {
+    canvas.textContent = 'Preview unavailable. Reload to try again.';
+    canvas.style.color = '#fff';
+    canvas.style.padding = '24px';
+    canvas.style.font = '16px sans-serif';
+  }
+  canvas.style.opacity = '1';
+})();
+<\/script>`
     : ''
 
   // Feed runtime script — fetches feed JSON and substitutes layer content at runtime
@@ -579,13 +605,13 @@ ${buildCustomFontFaces(layers, customFonts)}
 </style>
 </head>
 <body>
-<div class="ad">
+<div class="ad"${pausedAt !== undefined ? ' style="opacity:0"' : ''}>
     ${layerDivs}
 </div>
 ${includeAnimations ? buildBannerAudioManifest(layers.map(l => l.src ? { ...l, src: absSrc(l.src, options.baseUrl) } : l)) : ''}
 ${animScript}
 ${runtimeScript}
-${feedScript}
+${initialFrameScript}${feedScript}
 </body>
 </html>`
 }
