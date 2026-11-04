@@ -60,6 +60,16 @@ else
   export CRAFT_FONTS_DIR="$source_root/fonts/$engine"
   export CRAFT_FONTS_REQUIRED=1
   cd "$source_root/$engine"
+  # Check the two bridge-owned modules with the pinned formatter; retain corrected
+  # copies on failure so a follow-up patch can be reviewed without a local build.
+  rustup component add rustfmt --toolchain 1.95.0 >> "$evidence/setup.log" 2>&1
+  if ! rustfmt --edition 2024 --check crates/engine/src/cmd/edm.rs crates/ui-egui/src/edm_panel.rs > "$evidence/rustfmt.log" 2>&1; then
+    mkdir -p "$evidence/formatted"
+    cp crates/engine/src/cmd/edm.rs "$evidence/formatted/edm.rs"
+    cp crates/ui-egui/src/edm_panel.rs "$evidence/formatted/edm_panel.rs"
+    rustfmt --edition 2024 --config-path "$source_root/$engine" "$evidence/formatted/edm.rs" "$evidence/formatted/edm_panel.rs" >> "$evidence/rustfmt.log" 2>&1
+    exit 1
+  fi
   for filter in browser_save_tests xf_mark_tests save_as_tests variables_export_ui_tests browser_bridge; do
     cargo test --locked -p figcraft-ui-egui --lib "$filter" > "$evidence/test-$filter.log" 2>&1
   done
