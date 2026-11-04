@@ -69,17 +69,18 @@ jobs:
         if: matrix.gate == 'postgres'
         # Exact fixture path required by the campaign handoff suite. This lives
         # only on the disposable runner; there is no TCP port or remote DB URL.
+        # Preserve the image entrypoint socket directory for its init-time psql;
+        # PGPORT aligns its temporary server with the final server and fixtures.
         run: |
           sudo mkdir -p /private/tmp/figflow-postgres-20261102-recovered
           sudo chmod 777 /private/tmp/figflow-postgres-20261102-recovered
           docker run --detach --name figflow-validation-postgres \
             --env POSTGRES_USER=figflow_test --env POSTGRES_DB=figflow_design_test \
-            --env POSTGRES_HOST_AUTH_METHOD=trust \
-            --volume /private/tmp/figflow-postgres-20261102-recovered:/private/tmp/figflow-postgres-20261102-recovered \
-            postgres:17 postgres -p 55483 -c listen_addresses='' \
-            -c unix_socket_directories=/private/tmp/figflow-postgres-20261102-recovered
+            --env POSTGRES_HOST_AUTH_METHOD=trust --env PGPORT=55483 \
+            --volume /private/tmp/figflow-postgres-20261102-recovered:/var/run/postgresql \
+            postgres:17 postgres -p 55483 -c listen_addresses=''
           for attempt in $(seq 1 30); do
-            if docker exec figflow-validation-postgres sh -c 'test "$(cat /proc/1/comm)" = postgres' && docker exec figflow-validation-postgres pg_isready -h /private/tmp/figflow-postgres-20261102-recovered -p 55483 -U figflow_test -d figflow_design_test; then
+            if docker exec figflow-validation-postgres sh -c 'test "$(cat /proc/1/comm)" = postgres' && docker exec figflow-validation-postgres pg_isready -h /var/run/postgresql -p 55483 -U figflow_test -d figflow_design_test; then
               exit 0
             fi
             sleep 1
