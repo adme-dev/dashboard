@@ -4,7 +4,7 @@ import type { ArtboardState } from '~/types/banner-studio'
 definePageMeta({ layout: false, middleware: ['role-creative'] })
 const route = useRoute()
 const projectId = String(route.params.id)
-const snapshot = shallowRef<{ clientId?: string | null, name: string, canvasData: Record<string, ArtboardState>, revision: string } | null>(null)
+const snapshot = shallowRef<{ clientId?: string | null, clientName?: string | null, name: string, canvasData: Record<string, ArtboardState>, revision: string } | null>(null)
 const unavailable = ref(false)
 const loading = ref(true)
 const fontsReady = ref(false)
@@ -19,6 +19,8 @@ async function refresh() {
         snapshot.value = next
         await fetchCustomFonts()
         fontsReady.value = true
+      } else if (snapshot.value.clientName !== next.clientName) {
+        snapshot.value = next
       }
       unavailable.value = false
     }
@@ -80,6 +82,12 @@ onBeforeUnmount(() => {
       :description="snapshot ? 'Showing the last loaded version. The latest changes are not available yet; retrying automatically.' : 'Save the project in its editor. This viewer will refresh automatically when the snapshot is ready.'"
     />
     <USkeleton v-if="loading" class="m-4 h-64" />
-    <BannerSavedPreview v-if="snapshot && fontsReady" :canvas="snapshot.canvasData" :fonts="customFonts" />
+    <BannerSavedPreview
+      v-if="snapshot && fontsReady"
+      :canvas="snapshot.canvasData"
+      :fonts="customFonts"
+      :client-name="snapshot.clientName"
+      :project-name="snapshot.name"
+    />
   </main>
 </template>

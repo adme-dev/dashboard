@@ -11,7 +11,7 @@ vi.stubGlobal('createError', (options: { statusCode: number, statusMessage: stri
 
 const { default: preview } = await import('../../server/api/public/banner-share/[token].get')
 const token = `p_${'a'.repeat(32)}`
-const project = { id: 'project', name: 'Client creative', canvasData: { custom_1200x1200: { layers: [{ fontFamily: 'Managed Font' }] } } }
+const project = { id: 'project', name: 'Client creative', clientName: 'GWS KIA', canvasData: { custom_1200x1200: { layers: [{ fontFamily: 'Managed Font' }] } } }
 
 beforeEach(() => {
   mocks.one.mockReset()

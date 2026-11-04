@@ -3,13 +3,19 @@ import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { useElementSize, useFullscreen } from '@vueuse/core'
 import type { ArtboardState } from '~/types/banner-studio'
 import { buildBannerHTML, type ExportCustomFont } from '~/utils/banner-html-builder'
+import { preferredBannerPreviewKey } from '~/utils/banner-library'
 import { resolveBannerFormat } from '~/utils/banner-constants'
 import { withBannerPreviewAudio } from '~/utils/banner-preview-audio'
+import { withBannerPreviewPlayback, readBannerPreviewPlayback, type BannerPreviewPlayback } from '~/utils/banner-preview-playback'
 
 const props = defineProps<{
   canvas: Record<string, ArtboardState>
   fonts?: ExportCustomFont[]
+  clientName?: string | null
+  projectName?: string
 }>()
+
+const pageName = computed(() => props.clientName?.trim() || props.projectName?.trim() || 'Shared banner')
 
 const root = ref<HTMLElement | null>(null)
 const viewport = ref<HTMLElement | null>(null)
@@ -33,9 +39,17 @@ async function toggleScreen() {
   expanded.value = true
 }
 const selectedKey = ref('')
-const playing = ref(false)
 const muted = ref(false)
 const audioError = ref('')
+const playback = ref<BannerPreviewPlayback>({ state: 'loading', current: 0, duration: 0, iteration: 1, repeat: 0 })
+const playing = computed(() => playback.value.state === 'playing')
+const canControl = computed(() => playback.value.duration > 0 && !['loading', 'unavailable'].includes(playback.value.state))
+let commandSequence = 0
+const playbackLabel = computed(() => ({ loading: 'Loading', playing: 'Playing', paused: playback.value.current > 0 ? 'Paused' : 'Ready', ended: 'Finished', static: 'Still artwork', unavailable: 'Playback unavailable' })[playback.value.state])
+const playbackTime = computed(() => `${playback.value.current.toFixed(1)} / ${playback.value.duration.toFixed(1)} s`)
+const playbackLoop = computed(() => playback.value.repeat === -1
+  ? `Loop ${playback.value.iteration} · ∞`
+  : playback.value.repeat > 0 ? `Loop ${playback.value.iteration} / ${playback.value.repeat + 1}` : '')
 function sendSoundPreference() {
   root.value?.querySelector('iframe')?.contentWindow?.postMessage({ type: 'banner-preview-sound', muted: muted.value }, '*')
 }
@@ -46,6 +60,12 @@ function receiveAudioStatus(event: MessageEvent) {
   if (event.data.status === 'blocked') audioError.value = 'Sound was blocked by your browser. Allow sound for this site, then replay.'
   if (event.data.status === 'error') audioError.value = 'An audio track could not load. Try replaying the preview.'
 }
+function receivePlaybackStatus(event: MessageEvent) {
+  const frame = root.value?.querySelector('iframe')
+  if (!frame || event.source !== frame.contentWindow) return
+  const next = readBannerPreviewPlayback(event.data, previewDocument.value.frameId)
+  if (next && (event.data.commandId ?? 0) === commandSequence) playback.value = next
+}
 function toggleSound() {
   muted.value = !muted.value
   audioError.value = ''
@@ -53,9 +73,10 @@ function toggleSound() {
 }
 onMounted(() => window.addEventListener('message', receiveAudioStatus))
 onBeforeUnmount(() => window.removeEventListener('message', receiveAudioStatus))
+onMounted(() => window.addEventListener('message', receivePlaybackStatus))
+onBeforeUnmount(() => window.removeEventListener('message', receivePlaybackStatus))
 const mode = ref<'artwork' | 'social'>('artwork')
 const zoom = ref<number | null>(null)
-const replay = ref(0)
 const layouts = computed(() => Object.entries(props.canvas).flatMap(([key, board]) => {
   const format = resolveBannerFormat(key)
   return format && Array.isArray(board?.layers) ? [{ key, board, format }] : []
@@ -66,7 +87,7 @@ function formatLabel(format: { w: number, h: number }) {
 function formatIcon(format: { w: number, h: number }) {
   return format.w === format.h ? 'i-lucide-square' : format.h > format.w ? 'i-lucide-rectangle-vertical' : 'i-lucide-rectangle-horizontal'
 }
-const active = computed(() => layouts.value.find(layout => layout.key === selectedKey.value) || layouts.value[0])
+const active = computed(() => layouts.value.find(layout => layout.key === selectedKey.value) || layouts.value.find(layout => layout.key === preferredBannerPreviewKey(props.canvas)) || layouts.value[0])
 const hasAudio = computed(() => active.value?.board.layers.some(layer => layer.type === 'audio' && layer.src && !layer.hidden && !layer.muted && (layer.volume ?? 1) > 0))
 const story = computed(() => !!active.value && active.value.format.h > active.value.format.w)
 const surfaceWidth = computed(() => mode.value === 'artwork' ? active.value?.format.w || 1 : story.value ? 280 : 380)
@@ -78,30 +99,55 @@ const fitScale = computed(() => Math.min(
 ))
 const scale = computed(() => zoom.value ?? fitScale.value)
 const percent = computed(() => Math.round(scale.value * 100))
-const html = computed(() => active.value
-  ? withBannerPreviewAudio(buildBannerHTML(active.value.key, active.value.board.layers, {
-      // A stopped preview still needs the timeline to evaluate keyframes and scene visibility.
-      pausedAt: playing.value ? undefined : 0,
-      playback: active.value.board.playback,
-      bgColor: active.value.board.bgColor || '#0a0a10',
-      customFonts: props.fonts || []
-    }))
-  : '')
+let frameSequence = 0
+const previewDocument = computed(() => {
+  // A presentation switch mounts a new iframe; invalidate its previous messages too.
+  void mode.value
+  const frameId = ++frameSequence
+  const source = active.value
+    ? buildBannerHTML(active.value.key, active.value.board.layers, {
+        // A stopped preview still needs the timeline to evaluate keyframes and scene visibility.
+        pausedAt: 0,
+        playback: active.value.board.playback,
+        bgColor: active.value.board.bgColor || '#0a0a10',
+        customFonts: props.fonts || []
+      })
+    : ''
+  return { frameId, html: withBannerPreviewPlayback(withBannerPreviewAudio(source), frameId) }
+})
+const html = computed(() => previewDocument.value.html)
+watch(html, () => {
+  commandSequence = 0
+  playback.value = { state: 'loading', current: 0, duration: 0, iteration: 1, repeat: 0 }
+}, { flush: 'sync' })
+
+function sendPlaybackCommand(action: 'seek' | 'play' | 'pause' | 'replay', time?: number) {
+  if (!canControl.value) return
+  audioError.value = ''
+  sendSoundPreference()
+  root.value?.querySelector('iframe')?.contentWindow?.postMessage({
+    type: 'banner-preview-control', frameId: previewDocument.value.frameId,
+    commandId: ++commandSequence, action, time
+  }, '*')
+}
+function seekPlayback(value: number | number[] | undefined) {
+  const time = Array.isArray(value) ? value[0] : value
+  if (typeof time !== 'number' || !Number.isFinite(time) || !canControl.value) return
+  const current = Math.max(0, Math.min(playback.value.duration, time))
+  sendPlaybackCommand('seek', current)
+  playback.value = { ...playback.value, current, state: 'paused', iteration: 1 }
+}
+function togglePlayback() {
+  sendPlaybackCommand(playback.value.state === 'ended' ? 'replay' : playing.value ? 'pause' : 'play')
+}
 
 function resetView() {
   audioError.value = ''
-  playing.value = false
   zoom.value = null
   viewport.value?.scrollTo({ top: 0, left: 0 })
 }
 watch(() => active.value?.key, resetView)
 watch(mode, resetView)
-watch([playing, replay], () => {
-  audioError.value = ''
-})
-watch(() => props.canvas, () => {
-  playing.value = false
-})
 function changeZoom(direction: number) {
   zoom.value = Math.min(3, Math.max(0.05, Math.round((scale.value + direction * 0.1) * 100) / 100))
 }
@@ -165,11 +211,11 @@ function changeZoom(direction: number) {
         aria-label="Scrollable artwork preview"
       >
         <div class="grid min-h-full min-w-full w-max place-items-center p-4">
-          <div :style="{ width: `${surfaceWidth * scale}px`, height: `${surfaceHeight * scale}px` }" class="relative shrink-0 shadow-2xl ring-1 ring-default/50">
+          <div :style="{ width: `${surfaceWidth * scale}px`, height: `${surfaceHeight * scale}px` }" class="relative shrink-0" :class="{ 'shadow-2xl ring-1 ring-default/50': mode === 'artwork' }">
             <div ref="surface" class="absolute left-0 top-0 origin-top-left" :style="{ width: `${surfaceWidth}px`, transform: `scale(${scale})` }">
               <BannerSavedViewerFrame
                 v-if="mode === 'artwork'"
-                :key="`${active.key}:${replay}`"
+                :key="`${active.key}`"
                 :html="html"
                 :width="active.format.w"
                 :height="active.format.h"
@@ -177,20 +223,21 @@ function changeZoom(direction: number) {
               />
               <AdPreviewMetaStoryPreview
                 v-else-if="story"
-                :key="`story:${active.key}:${replay}`"
+                :key="`story:${active.key}`"
                 :html="html"
                 :html-width="active.format.w"
                 :html-height="active.format.h"
-                page-name="Client preview"
+                :page-name="pageName"
                 :show-default-cta="false"
+                :show-label="false"
               />
               <AdPreviewMetaFeedPreview
                 v-else
-                :key="`feed:${active.key}:${replay}`"
+                :key="`feed:${active.key}`"
                 :html="html"
                 :html-width="active.format.w"
                 :html-height="active.format.h"
-                page-name="Client preview"
+                :page-name="pageName"
                 :show-placeholders="false"
                 :creative-aspect-ratio="active.format.w / active.format.h"
               />
@@ -198,16 +245,43 @@ function changeZoom(direction: number) {
           </div>
         </div>
       </div>
-      <div class="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 border-t border-default bg-default px-4 py-3 sm:px-6">
+      <div class="shrink-0 border-t border-default bg-default px-4 pt-3 sm:px-6" aria-label="Playback timeline">
+        <div class="mx-auto flex max-w-5xl items-center gap-3">
+          <span class="flex min-w-16 items-center gap-1.5 text-[11px] font-medium" role="status">
+            <span class="size-1.5 shrink-0 rounded-full" :class="playback.state === 'playing' ? 'animate-pulse bg-primary' : 'bg-muted'" aria-hidden="true" />
+            {{ playbackLabel }}
+          </span>
+          <UFormField label="Playback position" class="min-w-12 flex-1" :ui="{ label: 'sr-only', container: 'mt-0' }">
+            <USlider
+              :model-value="playback.current"
+              :max="playback.duration || 1"
+              :step="0.1"
+              :disabled="!canControl"
+              :tooltip="{ text: playbackTime }"
+              aria-label="Playback position"
+              class="w-full cursor-pointer py-2"
+              size="sm"
+              @update:model-value="seekPlayback"
+            />
+          </UFormField>
+          <span class="shrink-0 text-xs tabular-nums text-muted" data-testid="playback-time">{{ playbackTime }}</span>
+          <span v-if="playbackLoop" class="hidden shrink-0 text-[11px] text-muted sm:block">{{ playbackLoop }}</span>
+        </div>
+        <p class="mt-1 text-center text-[11px] text-muted">
+          Drag to seek. Play resumes from here.
+        </p>
+      </div>
+      <div class="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 bg-default px-4 py-3 sm:px-6">
         <div class="flex items-center gap-1">
           <UButton
-            :label="playing ? 'Stop' : 'Play'"
-            :icon="playing ? 'i-lucide-square' : 'i-lucide-play'"
+            :label="playback.state === 'ended' ? 'Replay' : playing ? 'Pause' : 'Play'"
+            :icon="playback.state === 'ended' ? 'i-lucide-rotate-ccw' : playing ? 'i-lucide-pause' : 'i-lucide-play'"
             color="neutral"
             variant="solid"
             size="md"
             class="min-w-24 justify-center rounded-full"
-            @click="playing = !playing"
+            :disabled="!canControl"
+            @click="togglePlayback"
           />
           <UButton
             icon="i-lucide-rotate-ccw"
@@ -215,7 +289,8 @@ function changeZoom(direction: number) {
             color="neutral"
             variant="ghost"
             size="md"
-            @click="replay++; playing = true"
+            :disabled="!canControl"
+            @click="sendPlaybackCommand('replay')"
           />
         </div>
         <UButton
@@ -279,7 +354,7 @@ function changeZoom(direction: number) {
         {{ audioError }}
       </p>
       <p v-if="mode === 'social'" class="shrink-0 px-4 pb-2 text-center text-[11px] text-muted">
-        {{ story ? 'Story / Reel mockup' : 'Facebook Feed mockup' }} · Placement mockup only. Page identity, ad copy and final platform cropping are not included.
+        {{ story ? 'Story / Reel mockup · Full creative shown with phone controls outside the artwork.' : 'Facebook Feed mockup.' }} Platform account details, ad copy and final platform cropping are not included.
       </p>
     </div>
     <UAlert

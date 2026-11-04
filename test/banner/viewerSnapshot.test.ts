@@ -26,7 +26,7 @@ describe('Saved banner snapshots', () => {
   it('roundtrips all content through the request bucket without exposing its URL', async () => {
     const e = bucketEvent(); const s = bannerViewerSnapshot(project)
     await storeBannerSnapshot(e.event, s)
-    expect(await readBannerSnapshot(e.event, s)).toEqual({ ...s.document, clientId: null, revision: s.revision })
+    expect(await readBannerSnapshot(e.event, s)).toEqual({ ...s.document, clientId: null, clientName: null, revision: s.revision })
     expect(m.fallbackWrite).not.toHaveBeenCalled()
   })
   it('reads an existing schema-1 object at its original key and attaches only current authorized client context', async () => {
@@ -35,12 +35,13 @@ describe('Saved banner snapshots', () => {
     const legacyHash = createHash('sha256').update(legacyBytes).digest('hex')
     const key = `banner-snapshots/${project.id}/${legacyHash}.json`
     e.objects.set(key, legacyBytes)
-    const snapshot = bannerViewerSnapshot({ ...project, clientId: 'current-client' })
+    const snapshot = bannerViewerSnapshot({ ...project, clientId: 'current-client', clientName: 'GWS KIA' })
     expect(snapshot.key).toBe(key)
     const result = await readBannerSnapshot(e.event, snapshot)
     expect(result.clientId).toBe('current-client')
+    expect(result.clientName).toBe('GWS KIA')
     expect(result.revision).toBe(legacyHash)
-    expect(bannerViewerSnapshot({ ...project, clientId: 'another-client' }).key).toBe(key)
+    expect(bannerViewerSnapshot({ ...project, clientId: 'another-client', clientName: 'Renamed client' }).key).toBe(key)
     const tampered = Buffer.from(legacyBytes)
     tampered[0] = 32
     e.objects.set(key, tampered)
