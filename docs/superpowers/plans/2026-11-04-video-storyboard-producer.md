@@ -189,6 +189,8 @@ T01 defines input contracts `StoryboardPlan`, `StoryboardShot`, `AssetBinding`, 
 
 ### T09 — Complete R1 acceptance, public documentation and rollout
 
+**Checkpoint 5 November:** Current-main reconciliation, broader regression verification and the operator runbook are recorded in the [R1 release evidence index](../../video/releases/2026-11-05-storyboard-r1/README.md). T09 remains open: isolated preview routing/resources, Linux container execution and authenticated/pilot acceptance are not yet verified.
+
 **Files:** update `app/pages/features/index.vue`, `app/pages/features/[slug].vue`, relevant MarketingNav/SEO references; create `docs/runbooks/video-storyboard-producer.md` and `docs/video/releases/2026-11-04-storyboard-r1/README.md` as an evidence index, updating the release date if execution occurs later.
 
 **Interfaces:** release record lists exact source/main/deployment IDs, migration receipts, flag configuration, test/browser/render artifacts and A1–A8/A13 outcomes. Each acceptance row starts pending and links evidence when completed.
