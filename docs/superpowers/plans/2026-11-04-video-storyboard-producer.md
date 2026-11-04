@@ -12,7 +12,7 @@
 
 **Research:** [Freefield review and FF-RD01–FF-RD05 backlog](../../research/2026-11-04-freefield-video-rd.md). This adds recipe/example and run-quality refinements to the existing fourteen tasks; GPU/backend/tool experiments remain separate.
 
-**Status:** All implementation tasks are pending. Source baseline `c39b8b7f4a79f73350e2a1c4620075f87881a6c5`; refresh before execution. This plan does not reopen historical completed tasks except for the explicit integration changes below.
+**Status:** T01 input contracts and the existing recipe adapter are implemented locally; T02–T14 and all release acceptance remain pending. [Implementation receipt](../../video/implementations/2026-11-04-storyboard-contracts.md). Planning baseline `c39b8b7f4a79f73350e2a1c4620075f87881a6c5`; first implementation base `87ceb82cfc23a76959e0d0d3d989c96d8ce36d23`. Refresh before further execution. This plan does not reopen historical completed tasks except for the explicit integration changes below.
 
 ## Global constraints
 
@@ -72,21 +72,23 @@ New paths below are proposed; existing paths were inspected or inventoried at th
 | R2 production | `server/utils/video-storyboard/production.ts`, `productionBudget.ts`, `productionPolicy.ts`, `app/components/media/VideoStudioShotProduction.vue` | `server/utils/video-generation/`, `workers/video-generation/`, `workers/agency-workflows/` |
 | R3 | `server/utils/video-storyboard/continuity.ts`, `audioDirection.ts`, `workers/audio-jobs/container/continuityFrame.mjs` | existing source registry, audio generation and container render entry points |
 
-Shared contracts defined by T01: `StoryboardPlan`, `StoryboardShot`, `AssetBinding`, `CopyRevision`, `ResolvedStoryboard`, `ReadinessFinding`, `StoryboardApplicationReceipt`, `StoryboardCompileResult`, `StoryboardTimelineObligations`, `StoryboardTimelineReview`. `ReadinessFinding` has `code`, `severity: 'blocker' | 'warning'`, optional `shotId`, and a content-safe message. `StoryboardCompileResult` is `{ ok: true; state: TimelineState; shotClipMap: Record<string, string[]>; obligations: StoryboardTimelineObligations } | { ok: false; findings: ReadinessFinding[] }`. Obligations contain application lineage, required cue/source IDs, clip mappings and expected exact content/visibility/timing/layout. A review pins actor/time, timeline ID/revision, obligation hash and validated render-manifest identity.
+T01 defines input contracts `StoryboardPlan`, `StoryboardShot`, `AssetBinding`, `CopyRevision`, `ReadinessFinding` and versioned recipe values/snapshots. Define `ResolvedStoryboard` and `StoryboardCompileResult` with T05, `StoryboardApplicationReceipt` and `StoryboardTimelineObligations` with T06, and `StoryboardTimelineReview` with T08 against their canonical integration boundaries. `ReadinessFinding` has `code`, `severity: 'blocker' | 'warning'`, optional `shotId`, and a content-safe message. `StoryboardCompileResult` is `{ ok: true; state: TimelineState; shotClipMap: Record<string, string[]>; obligations: StoryboardTimelineObligations } | { ok: false; findings: ReadinessFinding[] }`. Obligations contain application lineage, required cue/source IDs, clip mappings and expected exact content/visibility/timing/layout. A review pins actor/time, timeline ID/revision, obligation hash and validated render-manifest identity.
 
 ## R1 — Storyboard and existing-media assembly
 
 ### T01 — Define the plan, copy and timing contract
 
-**Files:** create shared contracts/validation above and `test/video/storyboardSchema.test.ts`, `test/video/storyboardCopy.test.ts`; expose frontend types through `app/types/index.ts` only where needed.
+**Files:** create shared contracts/validation above and `test/video/storyboardSchema.test.ts`, `test/video/storyboardCopy.test.ts`, `test/video/storyboardRecipes.test.ts`; expose frontend types through `app/types/index.ts` only where needed.
 
 **Interfaces:** `validateStoryboardPlan(plan: unknown): { ok: true; plan: StoryboardPlan } | { ok: false; findings: ReadinessFinding[] }`; `validateApprovedCopy(plan: StoryboardPlan, copy: CopyRevision): ReadinessFinding[]`. Refer to PRD §7 for fields; immutable revisions use UUID identities and a separate numeric sequence where useful in the UI.
 
-- [ ] Add failing cases: `sixShotsSumTo900FramesAt30Fps`, `rejects25Shots`, `rejects121SecondPlan`, `rejectsFractionalFrames`, `allowsRepeatedAssetWithDistinctShotIds`, `rejectsDuplicateShotId`, `approvedCopyPreservesUnicodeAndOrder`, `rejectsOmittedOrDuplicatedScriptSegment`.
-- [ ] Run `pnpm exec vitest run test/video/storyboardSchema.test.ts test/video/storyboardCopy.test.ts`; establish intended failures, not harness/import failures.
-- [ ] Implement Zod structures and deterministic validation, including ordered script coverage, copy cue references and required-versus-explicitly-omitted audio. Separate plan timing from measured media bounds; do not coerce invalid durations to defaults.
-- [ ] Define the versioned shared recipe contract (typed defaults/constraints, roles and semantic controls) plus optional pinned recipe/resolved values on the plan. Retain compatibility for manual plans and existing recipe consumers; execution capability/pricing remain server-registry-owned. Add invalid-default, unknown-control and revision-preservation cases to the schema suite.
-- [ ] Re-run the same tests. Record contract decisions and complete pre-commit review before committing this unit.
+- [x] Add failing cases: `sixShotsSumTo900FramesAt30Fps`, `rejects25Shots`, `rejects121SecondPlan`, `rejectsFractionalFrames`, `allowsRepeatedAssetWithDistinctShotIds`, `rejectsDuplicateShotId`, `approvedCopyPreservesUnicodeAndOrder`, `rejectsOmittedOrDuplicatedScriptSegment`.
+- [x] Run `pnpm exec vitest run test/video/storyboardSchema.test.ts test/video/storyboardCopy.test.ts test/video/storyboardRecipes.test.ts`; establish intended failures, not harness/import failures.
+- [x] Implement Zod structures and deterministic validation, including ordered script coverage, copy cue references and required-versus-explicitly-omitted audio. Separate plan timing from measured media bounds; do not coerce invalid durations to defaults.
+- [x] Define the versioned shared recipe contract (typed defaults/constraints, roles and semantic controls) plus optional pinned recipe/resolved values on the plan. Retain compatibility for manual plans and existing recipe consumers; execution capability/pricing remain server-registry-owned. Add invalid-default, unknown-control and revision-preservation cases to the schema suite.
+- [x] Re-run the same tests. Record contract decisions and complete pre-commit review before committing this unit.
+
+**Receipt:** [Source, checks and bounded scope](../../video/implementations/2026-11-04-storyboard-contracts.md). The core input contract is complete locally; downstream authority/resolver types are assigned above to T05/T06/T08. This is not R1 acceptance.
 
 ### T02 — Protect timeline persistence against concurrent writes
 

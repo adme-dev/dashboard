@@ -2,7 +2,7 @@
 
 **Date:** 4 November 2026
 
-**Status:** Proposed product and engineering plan; implementation not started
+**Status:** Initial input-contract foundation implemented locally; R1/R2/R3 acceptance pending. See the [implementation receipt](../../video/implementations/2026-11-04-storyboard-contracts.md).
 
 **Owner:** Creative / Video Studio
 
