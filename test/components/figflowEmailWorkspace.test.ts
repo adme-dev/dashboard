@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import { DialogRoot, DialogPortal, DialogContent, DialogTitle, DialogClose } from 'reka-ui'
 import { createEmptyDocument } from '../../app/types/edm'
 import { createRouter, createMemoryHistory, RouterView } from 'vue-router'
 import { createApp, defineComponent, h, nextTick } from 'vue'
@@ -32,6 +33,8 @@ let resumeState = 'open'
 let snapshotFails = false
 let frameReady = true
 let snapshotDirty = false
+let deferSnapshot = false
+let replySnapshot: (() => void) | null = null
 const flush = async () => {
   for (let n = 0; n < 12; n++) {
     await Promise.resolve()
@@ -55,7 +58,7 @@ function response(url: string, options?: { method?: string, body?: any }) {
   if (command === 'apply') return { handoff: { ...handoff(), state: 'applied', proposal: options.body.action.proposal ?? source(), proposalRevisionId: '40000000-0000-4000-8000-000000000001', appliedRevisionId: NEXT } }
   throw new Error(`Unexpected design command: ${command}`)
 }
-async function mount(handler = response, realRouter = false) {
+async function mount(handler = response, realRouter = false, realModal = false) {
   fetch.mockImplementation(async (url: string, options?: { method?: string, body?: any }) => handler(url, options))
   const host = document.createElement('div')
   document.body.append(host)
@@ -66,10 +69,21 @@ async function mount(handler = response, realRouter = false) {
   const passthrough = defineComponent({ setup: (_, { slots }) => () => h('div', slots.default?.()) })
   app.component('UButton', defineComponent({ props: ['label', 'disabled', 'loading'], emits: ['click'], setup: (props, { emit }) => () => h('button', { disabled: props.disabled || props.loading, onClick: () => emit('click') }, props.label) }))
   app.component('UFormField', passthrough)
-  app.component('UInput', defineComponent({ props: ['modelValue'], emits: ['update:modelValue'], setup: (p, { emit }) => () => h('input', { value: p.modelValue, onInput: (e: Event) => emit('update:modelValue', (e.target as HTMLInputElement).value) }) }))
+  app.component('UInput', defineComponent({ props: ['modelValue', 'disabled'], emits: ['update:modelValue'], setup: (p, { emit }) => () => h('input', { value: p.modelValue, disabled: p.disabled, onInput: (e: Event) => emit('update:modelValue', (e.target as HTMLInputElement).value) }) }))
   app.component('UAlert', defineComponent({ props: ['title', 'description'], setup: props => () => h('div', `${props.title || ''} ${props.description || ''}`) }))
   app.component('USlideover', defineComponent({ props: ['open'], setup: (props, { slots }) => () => props.open ? h('section', [slots.body?.(), slots.footer?.()]) : null }))
-  app.component('UModal', defineComponent({ props: ['open'], setup: (p, { slots }) => () => p.open ? h('section', [slots.body?.(), slots.footer?.()]) : null }))
+  // Nuxt UI Modal uses these actual Reka primitives with modal=true and
+  // prevents outside/Escape dismissal while dismissible=false.
+  app.component('UModal', realModal ? defineComponent({
+    props: ['open', 'title', 'dismissible', 'close'], emits: ['update:open'],
+    setup: (p, { slots, emit }) => () => h(DialogRoot, { open: p.open, modal: true, 'onUpdate:open': value => emit('update:open', value) }, {
+      default: () => h(DialogPortal, {}, { default: () => h(DialogContent, {
+        'aria-describedby': undefined,
+        onInteractOutside: (event: Event) => { if (p.dismissible === false) event.preventDefault() },
+        onEscapeKeyDown: (event: Event) => { if (p.dismissible === false) event.preventDefault() }
+      }, { default: () => [h(DialogTitle, {}, () => p.title), slots.body?.(), slots.footer?.(), p.close !== false ? h(DialogClose, {}, () => 'Close details') : null] }) })
+    })
+  }) : defineComponent({ props: ['open'], setup: (p, { slots }) => () => p.open ? h('section', [slots.body?.(), slots.footer?.()]) : null }))
   app.component('UTooltip', passthrough)
   app.component('UIcon', defineComponent({ setup: () => () => h('i') }))
   app.component('EmailBuilderEdmEditableCopyModal', defineComponent({ setup: () => () => null }))
@@ -81,8 +95,12 @@ async function mount(handler = response, realRouter = false) {
         ready: frameReady,
         requestSnapshot: () => {
           if (snapshotFails) { emit('snapshotFailed'); return }
-          emit('dirtyChange', reviewedChanges)
-          emit('review', reviewedDesign, [], null, reviewedChanges)
+          const reply = () => {
+            emit('dirtyChange', reviewedChanges)
+            emit('review', reviewedDesign, [], null, reviewedChanges)
+          }
+          if (deferSnapshot) replySnapshot = reply
+          else reply()
         }
       })
       if (snapshotDirty) emit('dirtyChange', true)
@@ -93,7 +111,10 @@ async function mount(handler = response, realRouter = false) {
   apps.push(app)
   await flush()
   return { host, real, click: async (label: string, last = false) => {
-    const buttons = Array.from(host.querySelectorAll('button')).filter(button => button.textContent === label)
+    // Direct HTMLElement.click bypasses modal pointer blocking; scope user
+    // interaction to the active dialog instead of permitting impossible clicks.
+    const surface = realModal ? document.querySelector('[role=dialog]') || host : host
+    const buttons = Array.from(surface.querySelectorAll('button')).filter(button => button.textContent === label)
     const button = last ? buttons.at(-1) : buttons[0]
     expect(button, label).toBeDefined()
     button!.click()
@@ -111,6 +132,8 @@ beforeEach(() => {
   snapshotFails = false
   frameReady = true
   snapshotDirty = false
+  deferSnapshot = false
+  replySnapshot = null
   vi.stubGlobal('$fetch', fetch)
   vi.stubGlobal('useRoute', () => ({ query: {} }))
   vi.stubGlobal('useRouter', () => ({ replace }))
@@ -351,7 +374,7 @@ describe('FigFlow email workspace save orchestration', () => {
   })
 
   it('reconciles the exact uncertain metadata payload before reopening', async () => {
-    const { host, click } = await mount()
+    const { host, click } = await mount(response, false, true)
     reviewedChanges = false
     let lost = false
     fetch.mockImplementation(async (url, options) => {
@@ -364,7 +387,7 @@ describe('FigFlow email workspace save orchestration', () => {
     })
     await click('Email details')
     await click('Save email details')
-    await click('Reconcile save')
+    await click('Reconcile email details')
     const writes = fetch.mock.calls.filter(([url]) => url.endsWith('/metadata'))
     expect(writes).toHaveLength(2)
     expect(writes[0][1].body).toEqual(writes[1][1].body)
@@ -380,6 +403,112 @@ describe('FigFlow email workspace save orchestration', () => {
     resolveTemplate(response(`/api/email/templates/${TEMPLATE}`))
     await flush()
     expect(fetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps uncertain metadata recovery reachable inside the real modal', async () => {
+    const { host, click } = await mount(response, false, true)
+    reviewedChanges = false
+    let lost = false
+    fetch.mockImplementation(async (url, options) => {
+      if (url.endsWith('/metadata')) {
+        if (!lost) { lost = true; throw new Error('lost metadata') }
+        return { revisionId: NEXT }
+      }
+      if (options?.body?.command === 'lookup') return { draft: draft(NEXT), designerAuthoring: { available: false } }
+      return response(url, options)
+    })
+    await click('Email details')
+    await click('Save email details')
+    const dialog = document.querySelector('[role=dialog]')!
+    expect(dialog).not.toBeNull()
+    expect(document.body.style.pointerEvents).toBe('none')
+    expect(Array.from(dialog.querySelectorAll('button')).find(b => b.textContent === 'Reconcile email details')).toBeDefined()
+    await click('Reconcile email details')
+    const writes = fetch.mock.calls.filter(([url]) => url.endsWith('/metadata'))
+    expect(writes).toHaveLength(2)
+    expect(writes[0][1].body).toEqual(writes[1][1].body)
+    expect(document.querySelector('[role=dialog]')).toBeNull()
+    expect(host.querySelector('[data-handoff-id]')?.getAttribute('data-handoff-id')).toBe(CONTINUATION)
+  })
+
+  it('locks dismissal, inputs, native editing and routing until a delayed metadata snapshot settles', async () => {
+    const { host, real, click } = await mount(response, true, true)
+    deferSnapshot = true
+    reviewedChanges = false
+    await click('Email details')
+    await click('Save email details')
+    const dialog = document.querySelector('[role=dialog]')!
+    const back = Array.from(dialog.querySelectorAll('button')).find(b => b.textContent === 'Back to design')!
+    expect(back.disabled).toBe(true)
+    expect(dialog.querySelector('input')!.disabled).toBe(true)
+    expect(Array.from(dialog.querySelectorAll('button')).find(b => b.textContent === 'Save email details')!.disabled).toBe(true)
+    back.click()
+    dialog.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    await real.push('/away')
+    await flush()
+    expect(real.currentRoute.value.path).toBe('/')
+    expect(document.querySelector('[role=dialog]')).not.toBeNull()
+    expect(host.querySelector('[data-handoff-id]')!.hasAttribute('inert')).toBe(true)
+    expect(fetch.mock.calls.some(([url]) => url.endsWith('/metadata'))).toBe(false)
+    reviewedChanges = true
+    replySnapshot!()
+    await flush()
+    expect(document.body.textContent).toContain('Save or undo native edits')
+    expect(fetch.mock.calls.some(([url]) => url.endsWith('/metadata'))).toBe(false)
+    await click('Back to design')
+    expect(document.querySelector('[role=dialog]')).toBeNull()
+    reviewedChanges = false
+    replySnapshot!() // even an obsolete no-op must not start a metadata write
+    await flush()
+    expect(fetch.mock.calls.some(([url]) => url.endsWith('/metadata'))).toBe(false)
+  })
+
+  it('keeps the real modal locked from delayed no-op snapshot through metadata write and continuation', async () => {
+    const { host, click } = await mount(response, false, true)
+    deferSnapshot = true
+    reviewedChanges = false
+    let confirmWrite!: (value: any) => void
+    fetch.mockImplementation(async (url, options) => {
+      if (url.endsWith('/metadata')) return new Promise(resolve => { confirmWrite = resolve })
+      if (options?.body?.command === 'lookup') return { draft: draft(NEXT), designerAuthoring: { available: false } }
+      return response(url, options)
+    })
+    await click('Email details')
+    const dialog = document.querySelector('[role=dialog]')!
+    const subject = dialog.querySelector('input')!
+    subject.value = 'Captured subject'
+    subject.dispatchEvent(new Event('input'))
+    await click('Save email details')
+    expect(subject.disabled).toBe(true)
+    expect(dialog.textContent).not.toContain('Close details')
+    await click('Back to design') // disabled: native editing cannot resume
+    replySnapshot!()
+    await flush()
+    expect(document.querySelector('[role=dialog]')).not.toBeNull()
+    expect(host.querySelector('[data-handoff-id]')!.hasAttribute('inert')).toBe(true)
+    const back = Array.from(dialog.querySelectorAll('button')).find(b => b.textContent === 'Back to design')!
+    expect(back.disabled).toBe(true)
+    const writes = fetch.mock.calls.filter(([url]) => url.endsWith('/metadata'))
+    expect(writes).toHaveLength(1)
+    expect(writes[0][1].body).toMatchObject({ subject: 'Captured subject', expectedRevisionId: HEAD })
+    confirmWrite({ revisionId: NEXT })
+    await flush()
+    expect(document.querySelector('[role=dialog]')).toBeNull()
+    expect(host.querySelector('[data-handoff-id]')?.getAttribute('data-handoff-id')).toBe(CONTINUATION)
+  })
+
+  it('ignores a delayed metadata no-op after unmount without writing or reopening', async () => {
+    const { click } = await mount(response, false, true)
+    deferSnapshot = true
+    reviewedChanges = false
+    await click('Email details')
+    await click('Save email details')
+    const calls = fetch.mock.calls.length
+    apps.pop()!.unmount()
+    replySnapshot!()
+    await flush()
+    expect(fetch).toHaveBeenCalledTimes(calls)
+    expect(fetch.mock.calls.some(([url]) => url.endsWith('/metadata'))).toBe(false)
   })
 
 })

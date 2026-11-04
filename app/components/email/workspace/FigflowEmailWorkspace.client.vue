@@ -46,17 +46,33 @@ const metadataOpen = ref(false)
 const metadataSubject = ref('')
 const metadataPreview = ref('')
 const metadataError = ref('')
-let metadataSnapshotPending = false
+const metadataSnapshotPending = ref(false)
+const metadataLocked = computed(() => metadataSnapshotPending.value || designFlow.busy.value || designFlow.hasPending.value)
+interface MetadataSnapshotIntent { subject: string, preview: string, handoffId: string, documentId: string, headRevisionId: string }
+let metadataSnapshotIntent: MetadataSnapshotIntent | null = null
 let submittedMetadata: { subject: string, preview: string } | null = null
 function openMetadata() {
+  if (!canSave.value || metadataOpen.value || reviewOpen.value) return
   metadataSubject.value = template.value?.subject || ''
   metadataPreview.value = template.value?.preview_text || ''
   metadataError.value = ''
   metadataOpen.value = true
 }
+function updateMetadataOpen(open: boolean) {
+  if (open || metadataLocked.value) return
+  metadataSnapshotIntent = null
+  metadataOpen.value = false
+}
 function requestMetadataSave() {
-  if (!canSave.value || !metadataOpen.value) return
-  metadataSnapshotPending = true
+  const current = designFlow.draft.value
+  const handoff = designFlow.handoff.value
+  if (!canSave.value || !metadataOpen.value || !handoff || current?.state !== 'structured') return
+  metadataError.value = ''
+  metadataSnapshotIntent = {
+    subject: metadataSubject.value, preview: metadataPreview.value,
+    handoffId: handoff.id, documentId: current.documentId, headRevisionId: current.headRevisionId
+  }
+  metadataSnapshotPending.value = true
   handoffComponent.value?.requestSnapshot()
 }
 async function finishMetadata() {
@@ -67,8 +83,8 @@ async function finishMetadata() {
   const next = await designFlow.open(props.templateId, clientId.value, designFlow.designerAuthoring.value.available, { draftId: current.documentId, expectedRevisionId: current.headRevisionId })
   await adoptOpen(next)
 }
-async function saveMetadataConfirmed() {
-  submittedMetadata = { subject: metadataSubject.value, preview: metadataPreview.value }
+async function saveMetadataConfirmed(intent: MetadataSnapshotIntent) {
+  submittedMetadata = { subject: intent.subject, preview: intent.preview }
   try {
     await designFlow.run(async () => {
       await designFlow.saveMetadata(submittedMetadata!.subject || null, submittedMetadata!.preview || null)
@@ -96,7 +112,7 @@ const saveState = computed(() => {
   if (designFlow.handoff.value?.state === 'open') return 'Saved revision · native changes may be unsaved'
   return 'Saved draft'
 })
-const canSave = computed(() => !!designFlow.handoff.value && designFlow.handoff.value.state === 'open' && handoffComponent.value?.ready === true && !designFlow.busy.value && !designFlow.hasPending.value)
+const canSave = computed(() => !!designFlow.handoff.value && designFlow.handoff.value.state === 'open' && handoffComponent.value?.ready === true && !designFlow.busy.value && !designFlow.hasPending.value && !metadataSnapshotPending.value)
 
 const reviewChanges = computed(() => {
   const before = designFlow.handoff.value?.source.blocks
@@ -142,13 +158,14 @@ function settleLeave(leave: boolean) {
   resolve?.(leave)
 }
 function snapshotFailed() {
-  metadataSnapshotPending = false
+  metadataSnapshotPending.value = false
+  metadataSnapshotIntent = null
   if (metadataOpen.value) metadataError.value = 'Native edits could not be checked. Save or undo them before changing email details.'
   nativeDirty.value = true
   settleLeave(false)
 }
 function requestLeave() {
-  if (loading.value || metadataOpen.value || designFlow.hasPending.value || designFlow.busy.value) return false
+  if (loading.value || metadataOpen.value || metadataLocked.value) return false
   if (leaveResolve) return false
   if (nativeDirty.value || designFlow.handoff.value?.state === 'proposed' || (designFlow.handoff.value?.state === 'open' && !handoffComponent.value?.ready)) {
     leaveOpen.value = true
@@ -169,12 +186,23 @@ function beforeUnload(event: BeforeUnloadEvent) {
 }
 function reviewSnapshot(design: EmailDesignDocument, operations: DesignerOperation[], operationId: string | null, changed: boolean) {
   nativeDirty.value = changed
-  if (metadataSnapshotPending) {
-    metadataSnapshotPending = false
+  if (metadataSnapshotPending.value) {
+    const intent = metadataSnapshotIntent
+    const current = designFlow.draft.value
+    metadataSnapshotPending.value = false
+    metadataSnapshotIntent = null
+    if (disposed || !metadataOpen.value || !intent) return
+    if (designFlow.handoff.value?.id !== intent.handoffId || designFlow.handoff.value?.state !== 'open'
+      || current?.state !== 'structured' || current.documentId !== intent.documentId || current.headRevisionId !== intent.headRevisionId) {
+      metadataError.value = 'The saved design changed while checking native edits. Reopen email details before saving.'
+      return
+    }
     if (changed) metadataError.value = 'Save or undo native edits before saving email details. Your entries are kept.'
-    else void saveMetadataConfirmed()
+    else void saveMetadataConfirmed(intent)
     return
   }
+  // Unsolicited reads cannot resume metadata saving during this dialog or after unmount.
+  if (disposed || metadataOpen.value) return
   if (leaveSnapshotPending) {
     if (changed) leaveOpen.value = true
     else settleLeave(true)
@@ -200,6 +228,8 @@ async function adoptOpen(next: DesignHandoff) {
     || next.source.scope.clientId !== clientId.value) throw new Error('The reopened draft identity or head does not match.')
   loadError.value = ''
   metadataOpen.value = false
+  metadataSnapshotPending.value = false
+  metadataSnapshotIntent = null
   submittedMetadata = null
   loading.value = false
   reviewOpen.value = false
@@ -289,7 +319,10 @@ async function reconcileSave() {
       if (result.state === 'open') await adoptOpen(result)
       if (result.state === 'cancelled') { reviewOpen.value = false; loadError.value = 'Proposal discarded. Reopen the saved draft to continue.' }
     })
-  } catch { /* Exact retained payloads can be reconciled again. */ }
+  } catch {
+    if (metadataOpen.value) metadataError.value = designFlow.error.value
+    // Exact retained payloads can be reconciled again inside the active dialog.
+  }
 }
 async function initialise() {
   loading.value = true
@@ -349,6 +382,8 @@ onMounted(() => {
 })
 onBeforeUnmount(() => {
   disposed = true
+  metadataSnapshotPending.value = false
+  metadataSnapshotIntent = null
   localPreviewSequence++
   serverPreviewSequence++
   settleLeave(false)
@@ -410,7 +445,7 @@ onBeforeUnmount(() => {
       <EmailBuilderEdmFigflowHandoff
         v-else-if="designFlow.handoff.value"
         ref="handoffComponent"
-        :inert="metadataOpen || undefined"
+        :inert="metadataOpen || metadataLocked || undefined"
         :key="designFlow.handoff.value.id"
         presentation="workspace"
         :handoff="designFlow.handoff.value"
@@ -470,17 +505,18 @@ onBeforeUnmount(() => {
       </template>
     </USlideover>
 
-    <UModal v-model:open="metadataOpen" title="Email details" :dismissible="!designFlow.busy.value && !designFlow.hasPending.value" :close="!designFlow.busy.value && !designFlow.hasPending.value">
+    <UModal :open="metadataOpen" title="Email details" :dismissible="!metadataLocked" :close="!metadataLocked" @update:open="updateMetadataOpen">
       <template #body>
         <div class="@container grid grid-cols-1 gap-4">
-          <UFormField label="Subject"><UInput v-model="metadataSubject" class="w-full" :disabled="designFlow.busy.value || designFlow.hasPending.value" /></UFormField>
-          <UFormField label="Preheader"><UInput v-model="metadataPreview" class="w-full" :disabled="designFlow.busy.value || designFlow.hasPending.value" /></UFormField>
+          <UFormField label="Subject"><UInput v-model="metadataSubject" class="w-full" :disabled="metadataLocked" /></UFormField>
+          <UFormField label="Preheader"><UInput v-model="metadataPreview" class="w-full" :disabled="metadataLocked" /></UFormField>
           <UAlert v-if="metadataError" color="error" :title="metadataError" />
         </div>
       </template>
       <template #footer>
-        <UButton label="Back to design" color="neutral" variant="outline" :disabled="designFlow.busy.value || designFlow.hasPending.value" @click="metadataOpen = false" />
-        <UButton label="Save email details" :loading="designFlow.busy.value" :disabled="!canSave" @click="requestMetadataSave" />
+        <UButton label="Back to design" color="neutral" variant="outline" :disabled="metadataLocked" @click="updateMetadataOpen(false)" />
+        <UButton v-if="designFlow.hasPending.value" label="Reconcile email details" :loading="designFlow.busy.value" @click="reconcileSave" />
+        <UButton v-else label="Save email details" :loading="metadataSnapshotPending || designFlow.busy.value" :disabled="!canSave" @click="requestMetadataSave" />
       </template>
     </UModal>
 
