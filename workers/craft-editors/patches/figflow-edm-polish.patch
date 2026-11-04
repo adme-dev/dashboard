@@ -33,7 +33,45 @@
  /// A system font file entry not yet loaded.
 --- a/crates/ui-egui/src/browser_bridge.rs
 +++ b/crates/ui-egui/src/browser_bridge.rs
-@@ -169,9 +169,13 @@
+@@ -107,7 +107,10 @@
+     }
+     fn execute_value(&mut self, session: &mut Session, input: &str) -> Value {
+         if input.len() > MAX_EDM_REQUEST_BYTES
+-            || (input.len() > MAX_REQUEST_BYTES && !input.contains("\"edm_import\"") && !input.contains("\"edm_snapshot\"") && !input.contains("\"edm_designer_import\""))
++            || (input.len() > MAX_REQUEST_BYTES
++                && !input.contains("\"edm_import\"")
++                && !input.contains("\"edm_snapshot\"")
++                && !input.contains("\"edm_designer_import\""))
+         {
+             return error("request_too_large");
+         }
+@@ -135,8 +138,23 @@
+         if !edm && input.len() > MAX_REQUEST_BYTES {
+             return error("request_too_large");
+         }
+-        let mutation = matches!(action, "create_node" | "update_node" | "edm_import" | "edm_snapshot" | "edm_designer_import" | "edm_designer_snapshot");
+-        if !["status", "inspect", "get_node", "create_node", "update_node", "edm_import", "edm_required_snapshot_images", "edm_snapshot", "edm_designer_import", "edm_designer_snapshot", "edm_designer_context"].contains(&action) {
++        let mutation =
++            matches!(action, "create_node" | "update_node" | "edm_import" | "edm_snapshot" | "edm_designer_import" | "edm_designer_snapshot");
++        if ![
++            "status",
++            "inspect",
++            "get_node",
++            "create_node",
++            "update_node",
++            "edm_import",
++            "edm_required_snapshot_images",
++            "edm_snapshot",
++            "edm_designer_import",
++            "edm_designer_snapshot",
++            "edm_designer_context",
++        ]
++        .contains(&action)
++        {
+             return error("unsupported_action");
+         }
+         let p = request.get("params").cloned().unwrap_or_else(|| json!({}));
+@@ -169,9 +187,24 @@
              return error("document_too_large");
          }
          let result = match action {
@@ -41,7 +79,18 @@
 -                json!({"currentPage": ds.page.0.to_string(), "dirty": ds.is_dirty(), "supportedActions": ["inspect", "get_node", "create_node", "update_node", "edm_import", "edm_required_snapshot_images", "edm_snapshot", "edm_designer_import", "edm_designer_snapshot", "edm_designer_context"], "exports": false}),
 -            ),
 +            "status" if keys(&p, &[]) => {
-+                let mut actions = vec!["inspect", "get_node", "create_node", "update_node", "edm_import", "edm_required_snapshot_images", "edm_snapshot", "edm_designer_import", "edm_designer_snapshot", "edm_designer_context"];
++                let mut actions = vec![
++                    "inspect",
++                    "get_node",
++                    "create_node",
++                    "update_node",
++                    "edm_import",
++                    "edm_required_snapshot_images",
++                    "edm_snapshot",
++                    "edm_designer_import",
++                    "edm_designer_snapshot",
++                    "edm_designer_context",
++                ];
 +                if ds.edm.is_some() || ds.edm_designer.is_some() {
 +                    actions.retain(|action| *action != "create_node" && (*action != "update_node" || ds.edm_designer.is_none()));
 +                }
@@ -50,14 +99,18 @@
              "inspect" if keys(&p, &["depth"]) => {
                  let depth = match p.get("depth") {
                      None => Some(2),
-@@ -197,13 +201,20 @@
+@@ -197,19 +230,34 @@
                      && p.get("name").is_none_or(|v| small_text(v, 256))
                      && p.get("text").is_none_or(|v| small_text(v, 8192))
                      && p.get("props").is_none_or(properties);
 -                if !valid { Err("invalid_params") } else { session.execute("node.create", &p).map_err(|_| "engine_refused") }
-+                if !valid { Err("invalid_params") } else if !crate::edm_chrome::allowed(session, "node.create", &p) {
++                if !valid {
++                    Err("invalid_params")
++                } else if !crate::edm_chrome::allowed(session, "node.create", &p) {
 +                    Err("engine_refused")
-+                } else { session.execute("node.create", &p).map_err(|_| "engine_refused") }
++                } else {
++                    session.execute("node.create", &p).map_err(|_| "engine_refused")
++                }
              }
              "update_node" if keys(&p, &["id", "props"]) => {
                  if p.get("id").and_then(decimal).is_none() || !p.get("props").is_some_and(properties) {
@@ -73,7 +126,19 @@
                  }
              }
              "edm_import" if keys(&p, &["design", "images"]) => session.execute("edm_import", &p).map_err(|_| "engine_refused"),
-@@ -396,4 +407,58 @@
+-            "edm_required_snapshot_images" if keys(&p, &[]) => figcraft_engine::cmd::edm::required_snapshot_images(session).map(|images| json!({"images": images})).map_err(|_| "engine_refused"),
++            "edm_required_snapshot_images" if keys(&p, &[]) => {
++                figcraft_engine::cmd::edm::required_snapshot_images(session).map(|images| json!({"images": images})).map_err(|_| "engine_refused")
++            }
+             "edm_snapshot" if keys(&p, &["images"]) => session.execute("edm_snapshot", &p).map_err(|_| "engine_refused"),
+-            "edm_designer_import" if keys(&p, &["design", "images", "operationId", "capabilities"]) => session.execute("edm_designer_import", &p).map_err(|_| "engine_refused"),
++            "edm_designer_import" if keys(&p, &["design", "images", "operationId", "capabilities"]) => {
++                session.execute("edm_designer_import", &p).map_err(|_| "engine_refused")
++            }
+             "edm_designer_context" if keys(&p, &[]) => session.execute("edm_designer_context", &p).map_err(|_| "engine_refused"),
+             "edm_designer_snapshot" if keys(&p, &[]) => session.execute("edm_designer_snapshot", &p).map_err(|_| "engine_refused"),
+             _ => Err("invalid_params"),
+@@ -396,4 +444,59 @@
          internal["action"] = json!("edm_designer_apply");
          assert_eq!(parse(bridge.execute(&mut session, &internal.to_string()))["error"]["code"], "unsupported_action");
      }
@@ -103,7 +168,9 @@
 +            });
 +            let params = if designer {
 +                json!({"design": design, "images": {}, "operationId": "123e4567-e89b-42d3-a456-426614174000", "capabilities": capabilities})
-+            } else { json!({"design": design, "images": {}}) };
++            } else {
++                json!({"design": design, "images": {}})
++            };
 +            session.execute(if designer { "edm_designer_import" } else { "edm_import" }, &params).unwrap();
 +            let status = parse(bridge.execute(&mut session, r#"{"requestId":"edm-status-0001","action":"status"}"#));
 +            let actions = status["result"]["supportedActions"].as_array().unwrap();
@@ -131,7 +198,6 @@
 +            }
 +        }
 +    }
-+
 +}
 --- a/crates/ui-egui/src/canvas.rs
 +++ b/crates/ui-egui/src/canvas.rs
@@ -763,11 +829,8 @@
 +            let node = text_node(&u);
 +            u.app.run("select.set", json!({"ids": [node]})).unwrap();
 +            u.frame(vec![]);
-+            let field = if designer_mode {
-+                egui::Id::new(("edm-designer-prop", "text-1", "text"))
-+            } else {
-+                egui::Id::new(("edm-content-text", node))
-+            };
++            let field =
++                if designer_mode { egui::Id::new(("edm-designer-prop", "text-1", "text")) } else { egui::Id::new(("edm-content-text", node)) };
 +            u.ctx.memory_mut(|memory| memory.request_focus(field.with("te")));
 +            u.frame(vec![]);
 +            press(&mut u, Key::A, cmd());
@@ -782,7 +845,10 @@
 +                assert_eq!(counts(&u), (1, 0));
 +                assert!(snapshot_ok(&mut u));
 +            } else {
-+                assert_eq!(u.app.session.execute("edm_snapshot", &json!({})).unwrap()["blocks"]["text-1"]["data"]["props"]["text"], "Edited {{firstName}}\nLaunch 🚀");
++                assert_eq!(
++                    u.app.session.execute("edm_snapshot", &json!({})).unwrap()["blocks"]["text-1"]["data"]["props"]["text"],
++                    "Edited {{firstName}}\nLaunch 🚀"
++                );
 +            }
 +        }
 +    }

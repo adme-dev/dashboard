@@ -27,7 +27,7 @@
       },
       {
         "path": "patches/figflow-edm-polish.patch",
-        "sha256": "5c4f333e41f01cb19d64a0af2b5217fef23d838378c21783c7306b45f84aec5b"
+        "sha256": "167afdcab6c08244f07cf27a1192e517bbf28c8f95d2c151510cb74496dee009"
       }
     ],
     "emoji_font": {
