@@ -4,12 +4,13 @@ import getRoot from '~~/server/api/agency/video/projects/[id]/storyboard/index.g
 import getRevision from '~~/server/api/agency/video/projects/[id]/storyboard/revisions/[revision].get'
 import putReferences from '~~/server/api/agency/video/projects/[id]/storyboard/references.put'
 
-const mocks = vi.hoisted(() => ({ auth: vi.fn(), write: vi.fn(), get: vi.fn(), resolve: vi.fn(), save: vi.fn(), ledger: vi.fn(), body: {} as unknown }))
+const mocks = vi.hoisted(() => ({ application: vi.fn(), auth: vi.fn(), write: vi.fn(), get: vi.fn(), resolve: vi.fn(), save: vi.fn(), ledger: vi.fn(), body: {} as unknown }))
 vi.mock('h3', async original => ({
   ...await original<typeof import('h3')>(), defineEventHandler: (fn: unknown) => fn,
   readBody: async () => mocks.body,
   getRouterParam: (event: { params: Record<string, string> }, key: string) => event.params[key]
 }))
+vi.mock('~~/server/utils/video-storyboard/apply', () => ({ getLatestStoryboardApplication: mocks.application }))
 vi.mock('~~/server/utils/auth', () => ({ requireAuth: mocks.auth, requireWriteAccess: mocks.write }))
 vi.mock('~~/server/utils/video-storyboard/store', () => ({ getStoryboard: mocks.get, resolveReferenceSet: mocks.resolve, saveReferenceSetIn: mocks.save }))
 vi.mock('~~/server/utils/video-storyboard/godMode', () => ({ executeStoryboardReferenceWrite: mocks.ledger }))
@@ -17,6 +18,7 @@ const actor = { id: id(6), role: 'member' }
 const event = { params: { id: id(2), revision: id(3) }, context: { cloudflare: { env: {} } } }
 beforeEach(() => {
   vi.resetAllMocks()
+  mocks.application.mockResolvedValue(null)
   mocks.auth.mockResolvedValue(actor)
   mocks.write.mockResolvedValue(actor)
   mocks.get.mockResolvedValue({ storyboard: null, revision: null, referenceSet: null })
@@ -31,6 +33,7 @@ describe('storyboard HTTP boundaries', () => {
     await getRevision(event as never)
     expect(mocks.get).toHaveBeenCalledWith(id(2), actor)
     expect(mocks.get).toHaveBeenCalledWith(id(2), actor, id(3))
+    expect(mocks.application).toHaveBeenCalledWith({ projectId: id(2), actor })
     expect(mocks.write).not.toHaveBeenCalled()
     expect(mocks.save).not.toHaveBeenCalled()
   })

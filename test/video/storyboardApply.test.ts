@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { applyStoryboardIn, getStoryboardApplicationIn } from '~~/server/utils/video-storyboard/apply'
+import { applyStoryboardIn, getStoryboardApplicationIn, getLatestStoryboardApplicationIn } from '~~/server/utils/video-storyboard/apply'
 import { id, storyboardFixture } from './fixtures/storyboard'
 import { emptyAvTimeline } from '~~/server/utils/audio/timelineSchema'
 import { storyboardHash } from '~~/server/utils/video-storyboard/hash'
@@ -35,6 +35,14 @@ describe('atomic storyboard application', () => {
   it('rejects operation fingerprint conflicts', async () => {
     query.mockResolvedValueOnce({ rows: [] }).mockResolvedValueOnce({ rows: [] }).mockResolvedValueOnce({ rows: [{ request_hash: 'other', receipt }] })
     await expect(applyStoryboardIn({ query }, input, prepared())).rejects.toMatchObject({ statusCode: 409 })
+  })
+  it('restores the latest project application only after current read authorization', async () => {
+    query.mockResolvedValueOnce({ rows: [{ receipt }] })
+    expect(await getLatestStoryboardApplicationIn({ query }, input)).toEqual(receipt)
+    expect(query).toHaveBeenCalledWith(expect.stringContaining('ORDER BY created_at DESC'), [input.projectId])
+    mocks.project.mockRejectedValue({ statusCode: 403 })
+    await expect(getLatestStoryboardApplicationIn({ query }, input)).rejects.toMatchObject({ statusCode: 403 })
+    expect(query).toHaveBeenCalledTimes(1)
   })
   it('reauthorizes recovery, which does not need current source eligibility', async () => {
     query.mockResolvedValueOnce({ rows: [{ receipt }] })

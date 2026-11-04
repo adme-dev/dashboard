@@ -792,7 +792,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Render Once, Ship Everywhere',
-        content: 'Pick Reels 9:16, Square 1:1 and YouTube 16:9 in one render. Each render uses a saved timeline snapshot, so subsequent timeline edits do not change that job. Finished variants can be downloaded, saved back to the library as reusable assets, sent to the client portal for approval, or handed to Social Publishing to schedule — without leaving the editor. Failed renders explain why and retry in place.'
+        content: 'Pick Reels 9:16, Square 1:1 and YouTube 16:9 in one render. Each render uses a saved timeline snapshot, so subsequent timeline edits do not change that job. Finished variants can be downloaded, saved back to the library as reusable assets, sent to the client portal for approval, or handed to Social Publishing to schedule — without leaving the editor. Failed renders explain why and retry in place. Storyboard planning and reviewed full-cut replacement are in development, disabled by default, and not yet released; final render safeguards and hosted acceptance are still pending.'
       }
     ]
   },

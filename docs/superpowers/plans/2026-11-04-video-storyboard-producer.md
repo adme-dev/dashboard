@@ -12,7 +12,7 @@
 
 **Research:** [Freefield review and FF-RD01–FF-RD05 backlog](../../research/2026-11-04-freefield-video-rd.md). This adds recipe/example and run-quality refinements to the existing fourteen tasks; GPU/backend/tool experiments remain separate.
 
-**Status:** T01–T06 are implemented and reviewed locally; T02–T04 additive schemas are applied to the verified agency database. T07–T14, application deployment and all release acceptance remain pending. [T06 application receipt](../../video/implementations/2026-11-05-storyboard-application.md). [Implementation receipt](../../video/implementations/2026-11-04-storyboard-contracts.md). Planning baseline `c39b8b7f4a79f73350e2a1c4620075f87881a6c5`; first implementation base `87ceb82cfc23a76959e0d0d3d989c96d8ce36d23`. Refresh before further execution. This plan does not reopen historical completed tasks except for the explicit integration changes below.
+**Status:** T01–T07 are implemented and reviewed locally; T02–T04 additive schemas are applied to the verified agency database. T08–T14, application deployment and all release acceptance remain pending. [T07 workbench receipt](../../video/implementations/2026-11-05-storyboard-workbench.md). [T06 application receipt](../../video/implementations/2026-11-05-storyboard-application.md). [Implementation receipt](../../video/implementations/2026-11-04-storyboard-contracts.md). Planning baseline `c39b8b7f4a79f73350e2a1c4620075f87881a6c5`; first implementation base `87ceb82cfc23a76959e0d0d3d989c96d8ce36d23`. Refresh before further execution. This plan does not reopen historical completed tasks except for the explicit integration changes below.
 
 ## Global constraints
 
@@ -165,12 +165,12 @@ T01 defines input contracts `StoryboardPlan`, `StoryboardShot`, `AssetBinding`, 
 
 **Interfaces:** `useVideoStoryboard(projectId)` exposes plan/revision/readiness, candidate acceptance, reference editing, resolve/apply and receipt recovery. `adoptCommittedStoryboard(receipt, beforeState)` updates the editor state/revision and undo stack exactly once without autosaving the same commit again.
 
-- [ ] Read the required frontend-design skill. Add failing tests for empty state/recipe flow, keyboard reorder, exact-copy editing restrictions, missing-media blockers, revision diff, non-empty replacement confirmation, disabled actions and loading/error recovery.
-- [ ] Run `pnpm exec vitest run test/components/videoStudioStoryboard.test.ts test/components/videoStudioShotInspector.test.ts test/app/videoStoryboardApply.test.ts`.
-- [ ] Implement the Storyboard view within Produce; reuse library selection and inspector patterns. Add reference-role mapping, exact-copy fields, duration totals, format selection and clear ready/missing/review states. Hide unsupported production actions in R1.
-- [ ] Add a small authorized example catalogue with recipe/evaluation revision and status. Test local-only prefill (zero AI/production/save requests), sample-copy labelling, inaccessible/cross-client inputs, stale evidence and explicit draft-change preview. Require fresh planning/production actions; no imported approvals or automatic apply.
-- [ ] Flush/await autosave, pause edits during apply, keep one stable operation ID through retry/receipt lookup, and adopt confirmed server state as one undo step. Preserve local state on 409; recover committed results after a timeout. Track timeline divergence without automatic two-way synchronization.
-- [ ] Re-run suites plus `test/components/videoStudioWorkbench.test.ts`, `test/components/videoStudioProducerRail.test.ts`, `test/components/mediaTimelineInteractions.test.ts`. Browser-check keyboard operation, 390px/768px/1440px widths, dark/light modes and bounded scroll before committing.
+- [x] Read the required frontend-design skill. Add failing tests for empty state/recipe flow, keyboard reorder, exact-copy editing restrictions, missing-media blockers, revision diff, non-empty replacement confirmation, disabled actions and loading/error recovery.
+- [x] Run `pnpm exec vitest run test/components/videoStudioStoryboard.test.ts test/components/videoStudioShotInspector.test.ts test/app/videoStoryboardApply.test.ts`.
+- [x] Implement the Storyboard view within Produce; reuse library selection and inspector patterns. Add reference-role mapping, exact-copy fields, duration totals, format selection and clear ready/missing/review states. Hide unsupported production actions in R1.
+- [x] Add a small authorized example catalogue with recipe/evaluation revision and status. Test local-only prefill (zero AI/production/save requests), sample-copy labelling, inaccessible/cross-client inputs, stale evidence and explicit draft-change preview. Require fresh planning/production actions; no imported approvals or automatic apply.
+- [x] Flush/await autosave, pause edits during apply, keep one stable operation ID through retry/receipt lookup, and adopt confirmed server state as one undo step. Preserve local state on 409; recover committed results after a timeout. Track timeline divergence without automatic two-way synchronization.
+- [x] Re-run suites plus `test/components/videoStudioWorkbench.test.ts`, `test/components/videoStudioProducerRail.test.ts`, `test/components/mediaTimelineInteractions.test.ts`. Browser-check keyboard operation, 390px/768px/1440px widths, dark/light modes and bounded scroll before committing.
 
 ### T08 — Preserve exact copy and current eligibility through rendering
 

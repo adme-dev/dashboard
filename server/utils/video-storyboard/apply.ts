@@ -59,6 +59,15 @@ export async function getStoryboardApplicationIn(db: Db, input: { actor: MediaPr
   const row = (await db.query('SELECT receipt FROM video_storyboard_applications WHERE project_id = $1 AND operation_id = $2', [input.projectId, input.operationId])).rows[0]
   return row?.receipt ?? null
 }
+/** Latest confirmed application is read-only lineage context, including flag-off recovery. */
+export async function getLatestStoryboardApplicationIn(db: Db, input: { actor: MediaProjectActor, projectId: string }) {
+  await requireStoryboardProjectIn(db, input.projectId, input.actor)
+  const row = (await db.query('SELECT receipt FROM video_storyboard_applications WHERE project_id = $1 ORDER BY created_at DESC, id DESC LIMIT 1', [input.projectId])).rows[0]
+  return (row?.receipt ?? null) as StoryboardApplicationReceipt | null
+}
+export function getLatestStoryboardApplication(input: { actor: MediaProjectActor, projectId: string }) {
+  return transaction(db => getLatestStoryboardApplicationIn(db, input))
+}
 export function getStoryboardApplication(input: { actor: MediaProjectActor, projectId: string, operationId: string }) {
   return transaction(db => getStoryboardApplicationIn(db, input))
 }

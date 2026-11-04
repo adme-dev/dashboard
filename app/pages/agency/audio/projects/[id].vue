@@ -10,6 +10,9 @@ import VideoStudioClipInspector from '~~/app/components/media/VideoStudioClipIns
 import VideoStudioInspector from '~~/app/components/media/VideoStudioInspector.vue'
 import VideoStudioLibraryRail from '~~/app/components/media/VideoStudioLibraryRail.vue'
 import VideoStudioOverlayComposer from '~~/app/components/media/VideoStudioOverlayComposer.vue'
+import VideoStudioStoryboard from '~~/app/components/media/VideoStudioStoryboard.vue'
+import { installStoryboardRecovery } from '~~/app/utils/video/storyboardRecovery'
+import { useVideoStoryboard } from '~~/app/composables/useVideoStoryboard'
 import VideoStudioProducerRail from '~~/app/components/media/VideoStudioProducerRail.vue'
 import VideoStudioRenderJobsPanel from '~~/app/components/media/VideoStudioRenderJobsPanel.vue'
 import VideoStudioRenderStatusStrip from '~~/app/components/media/VideoStudioRenderStatusStrip.vue'
@@ -95,6 +98,7 @@ const toast = useToast()
 
 const config = useRuntimeConfig()
 const publicConfig = config.public as {
+  videoStoryboardEnabled?: boolean
   videoStudioEnabled?: boolean
   videoAssetHarnessEnabled?: boolean
   videoGenerationEnabled?: boolean
@@ -102,6 +106,26 @@ const publicConfig = config.public as {
 const videoStudioEnabled = computed(() => Boolean(publicConfig.videoStudioEnabled))
 const videoAssetHarnessEnabled = computed(() => Boolean(publicConfig.videoAssetHarnessEnabled))
 const isAv = computed(() => editor.mediaType.value === 'av')
+const storyboardEnabled = computed(() => Boolean(publicConfig.videoStoryboardEnabled))
+const storyboard = useVideoStoryboard(projectId.value, {
+  enabled: () => storyboardEnabled.value,
+  clientId: () => editor.project.value?.clientId ?? null,
+  editor: { begin: editor.beginStoryboardApplication, adopt: editor.adoptCommittedStoryboard, release: editor.releaseStoryboardApplication, resume: editor.resumeStoryboardApplication }
+})
+const storyboardOpen = ref(Boolean(storyboard.pendingOperation.value))
+watch(storyboardOpen, (open) => {
+  if (open) void storyboard.load()
+}, { immediate: true })
+installStoryboardRecovery({ pending: storyboard.pendingOperation, status: editor.status, loading: storyboard.loading,
+  hold: editor.holdStoryboardApplication, recover: storyboard.recover })
+watch(() => editor.status.value, (status) => {
+  if (status === 'ready' && isAv.value) void storyboard.load()
+})
+watch(storyboard.lastApplication, (receipt) => {
+  if (receipt && !storyboard.pendingOperation.value) editor.restoreStoryboardBaseline(receipt)
+})
+const storyboardTimelineNonEmpty = computed(() => Boolean(editor.timeline.value?.tracks.some(track => track.clips.length)))
+
 
 // AV pickers
 const overlayPickerOpen = ref(false)
@@ -1530,6 +1554,47 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
                 </template>
 
                 <template #produce>
+                <UButton
+                  class="mb-3"
+                  size="sm"
+                  variant="soft"
+                  color="neutral"
+                  icon="i-lucide-panels-top-left"
+                  :label="storyboardOpen ? 'Close storyboard' : 'Storyboard'"
+                  :disabled="editor.storyboardApplying.value"
+                  @click="storyboardOpen = !storyboardOpen"
+                />
+                <VideoStudioStoryboard
+                  v-if="storyboardOpen"
+                  v-model:draft="storyboard.draft.value"
+                  class="h-[min(65svh,48rem)]"
+                  :plan="storyboard.plan.value"
+                  :candidate="storyboard.candidate.value"
+                  :findings="storyboard.findings.value"
+                  :reference-set="storyboard.referenceSet.value"
+                  :enabled="storyboardEnabled"
+                  :pending="storyboard.loading.value"
+                  :pending-operation="storyboard.pendingOperation.value"
+                  :error="storyboard.error.value"
+                  :timeline-non-empty="storyboardTimelineNonEmpty"
+                  :diverged="editor.storyboardDiverged.value"
+                  :selected-asset="selectedStudioAsset"
+                  :examples="storyboard.examples"
+                  :example-preview="storyboard.examplePreview.value"
+                  :fps="editor.timeline.value?.fps ?? 30"
+                  :can-apply="Boolean(storyboard.resolution.value?.ok) && !storyboard.draftChanged.value"
+                  @request-plan="storyboard.planDraft"
+                  @accept-candidate="storyboard.acceptCandidate"
+                  @save-references="storyboard.saveReferences"
+                  @resolve="storyboard.resolve"
+                  @apply="storyboard.apply"
+                  @retry="storyboard.retry"
+                  @recover="storyboard.recover"
+                  @refresh="storyboard.refresh"
+                  @preview-example="storyboard.previewExample"
+                  @prefill-example="storyboard.prefillExample"
+                />
+                <template v-else>
                   <div v-if="videoGenerationEnabled" class="space-y-2">
                     <div class="flex items-center gap-2">
                       <UIcon name="i-lucide-sparkles" class="size-4 text-muted" />
@@ -1597,6 +1662,7 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
                   />
                   <UButton icon="i-lucide-music" size="xs" variant="soft" color="neutral" label="Add audio clip" block @click="pickerOpen = true" />
                 </template>
+              </template>
 
                 <template #review>
                   <VideoStudioReviewStatusPanel
