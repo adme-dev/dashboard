@@ -29,7 +29,8 @@ async function mount(previewCanvas: Record<string, ArtboardState> = canvas, iden
   app.component('BannerSavedViewerFrame', media)
   app.component('AdPreviewMetaFeedPreview', media)
   app.component('AdPreviewMetaStoryPreview', media)
-  app.component('UProgress', defineComponent({ props: ['modelValue', 'max', 'getValueText'], setup: props => () => h('div', { 'role': 'progressbar', 'aria-valuenow': props.modelValue, 'aria-valuemax': props.max }) }))
+  app.component('UFormField', { template: '<div><slot /></div>' })
+  app.component('USlider', defineComponent({ props: ['modelValue', 'max'], emits: ['update:modelValue'], setup: (props, { emit }) => () => h('div', { 'role': 'slider', 'aria-valuenow': props.modelValue, 'aria-valuemax': props.max, 'onClick': () => emit('update:modelValue', 2.5) }) }))
   app.component('UAlert', { template: '<div />' })
   app.mount(host)
   cleanups.push(() => {
@@ -37,29 +38,72 @@ async function mount(previewCanvas: Record<string, ArtboardState> = canvas, iden
     host.remove()
   })
   await nextTick()
+  let lastCommand = 0
+  const report = async (state = 'paused', current = 0, commandId = lastCommand) => {
+    const frame = host.querySelector('iframe')!
+    const html = host.querySelector<HTMLElement>('[data-html]')!.dataset.html!
+    const frameId = Number(html.match(/frameId: (\d+)/)![1])
+    window.dispatchEvent(new MessageEvent('message', { source: frame.contentWindow, data: { type: 'banner-preview-playback', frameId, commandId, state, current, duration: 4, iteration: 1, repeat: 0 } }))
+    await nextTick()
+  }
+  await report()
   const button = (label: string) => [...host.querySelectorAll('button')].find(el => el.textContent === label || el.getAttribute('aria-label') === label)!
   const click = async (label: string) => {
     button(label).click()
     await nextTick()
   }
-  return { host, button, click, media: () => host.querySelector<HTMLElement>('[data-html]')! }
+  const command = (action: string) => {
+    const frame = host.querySelector('iframe')!
+    const post = vi.spyOn(frame.contentWindow!, 'postMessage')
+    return async () => {
+      const data = post.mock.calls.findLast(args => args[0]?.type === 'banner-preview-control')?.[0]
+      expect(data.action).toBe(action)
+      lastCommand = data.commandId
+      return data
+    }
+  }
+  return { host, button, click, report, command, media: () => host.querySelector<HTMLElement>('[data-html]')! }
 }
 
 describe('saved banner review workspace', () => {
-  it('opens on a real stopped frame, switches sizes and stops the previous animation', async () => {
+  it('controls the existing frame and resets when changing sizes', async () => {
     const view = await mount()
-    expect(view.media().dataset.html).toContain('paused: true')
-    expect(view.host.querySelectorAll('[data-html]')).toHaveLength(1)
+    const html = view.media().dataset.html
+    const play = view.command('play')
     await view.click('Play')
-    expect(view.media().dataset.html).not.toContain('paused: true')
+    const playMessage = await play()
+    expect(view.media().dataset.html).toBe(html)
+    await view.report('playing', 1, playMessage.commandId)
+    const pause = view.command('pause')
+    await view.click('Pause')
+    const pauseMessage = await pause()
+    await view.report('paused', 1, pauseMessage.commandId)
+    expect(view.host.textContent).toContain('Paused')
+    expect(view.media().dataset.html).toBe(html)
     await view.click('1200 × 1200')
     expect(view.media().dataset.width).toBe('1200')
     expect(view.media().dataset.html).toContain('paused: true')
-    expect(view.button('Play')).toBeDefined()
-    await view.click('Replay animation')
-    expect(view.media().dataset.html).not.toContain('paused: true')
-    await view.click('Stop')
-    expect(view.media().dataset.html).toContain('window.__engagrFrame.seek(0)')
+    expect(view.host.textContent).toContain('0.0 / 0.0 s')
+  })
+
+  it('seeks without replacing the iframe and ignores earlier clock updates', async () => {
+    const view = await mount()
+    const html = view.media().dataset.html
+    const seek = view.command('seek')
+    view.host.querySelector<HTMLElement>('[role="slider"]')!.click()
+    await nextTick()
+    const message = await seek()
+    expect(message.time).toBe(2.5)
+    expect(view.host.textContent).toContain('2.5 / 4.0 s')
+    await view.report('playing', 0.8, 0)
+    expect(view.host.textContent).toContain('2.5 / 4.0 s')
+    await view.report('paused', 2.5, message.commandId)
+    expect(view.host.textContent).toContain('Paused')
+    expect(view.media().dataset.html).toBe(html)
+    const play = view.command('play')
+    await view.click('Play')
+    await play()
+    expect(view.media().dataset.html).toBe(html)
   })
 
   it('zooms beyond the viewport and restores Fit without restarting the artwork', async () => {
@@ -112,7 +156,7 @@ describe('saved banner review workspace', () => {
     await view.click('Play')
     const frame = view.host.querySelector('iframe')!
     const frameId = Number(view.media().dataset.html!.match(/frameId: (\d+)/)![1])
-    const message = { type: 'banner-preview-playback', frameId, state: 'playing', current: 2.7, duration: 12, iteration: 1, repeat: -1 }
+    const message = { type: 'banner-preview-playback', frameId, commandId: 1, state: 'playing', current: 2.7, duration: 12, iteration: 1, repeat: -1 }
     window.dispatchEvent(new MessageEvent('message', { source: window, data: message }))
     await nextTick()
     expect(view.host.textContent).not.toContain('2.7 / 12.0 s')
@@ -120,15 +164,17 @@ describe('saved banner review workspace', () => {
     await nextTick()
     expect(view.host.textContent).toContain('Playing')
     expect(view.host.textContent).toContain('2.7 / 12.0 s')
-    expect(view.host.querySelector('[role="progressbar"]')?.getAttribute('aria-valuenow')).toBe('2.7')
+    expect(view.host.querySelector('[role="slider"]')?.getAttribute('aria-valuenow')).toBe('2.7')
     const html = view.media().dataset.html
     window.dispatchEvent(new MessageEvent('message', { source: frame.contentWindow, data: { ...message, state: 'ended', current: 12, repeat: 0 } }))
     await nextTick()
     expect(view.host.textContent).toContain('Finished')
     expect(view.media().dataset.html).toBe(html)
+    const replay = view.command('replay')
     await view.click('Replay')
+    const replayMessage = await replay()
+    await view.report('playing', 0, replayMessage.commandId)
     expect(view.host.textContent).not.toContain('Finished')
-    await view.click('Stop')
     window.dispatchEvent(new MessageEvent('message', { source: frame.contentWindow, data: message }))
     await nextTick()
     expect(view.host.textContent).not.toContain('2.7 / 12.0 s')

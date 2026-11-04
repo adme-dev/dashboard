@@ -38,11 +38,13 @@ async function toggleScreen() {
   expanded.value = true
 }
 const selectedKey = ref('')
-const playing = ref(false)
 const muted = ref(false)
 const audioError = ref('')
 const playback = ref<BannerPreviewPlayback>({ state: 'loading', current: 0, duration: 0, iteration: 1, repeat: 0 })
-const playbackLabel = computed(() => ({ loading: 'Loading', playing: 'Playing', paused: 'Ready', ended: 'Finished', static: 'Still artwork', unavailable: 'Playback unavailable' })[playback.value.state])
+const playing = computed(() => playback.value.state === 'playing')
+const canControl = computed(() => playback.value.duration > 0 && !['loading', 'unavailable'].includes(playback.value.state))
+let commandSequence = 0
+const playbackLabel = computed(() => ({ loading: 'Loading', playing: 'Playing', paused: playback.value.current > 0 ? 'Paused' : 'Ready', ended: 'Finished', static: 'Still artwork', unavailable: 'Playback unavailable' })[playback.value.state])
 const playbackTime = computed(() => `${playback.value.current.toFixed(1)} / ${playback.value.duration.toFixed(1)} s`)
 const playbackLoop = computed(() => playback.value.repeat === -1
   ? `Loop ${playback.value.iteration} · ∞`
@@ -61,7 +63,7 @@ function receivePlaybackStatus(event: MessageEvent) {
   const frame = root.value?.querySelector('iframe')
   if (!frame || event.source !== frame.contentWindow) return
   const next = readBannerPreviewPlayback(event.data, previewDocument.value.frameId)
-  if (next) playback.value = next
+  if (next && (event.data.commandId ?? 0) === commandSequence) playback.value = next
 }
 function toggleSound() {
   muted.value = !muted.value
@@ -74,7 +76,6 @@ onMounted(() => window.addEventListener('message', receivePlaybackStatus))
 onBeforeUnmount(() => window.removeEventListener('message', receivePlaybackStatus))
 const mode = ref<'artwork' | 'social'>('artwork')
 const zoom = ref<number | null>(null)
-const replay = ref(0)
 const layouts = computed(() => Object.entries(props.canvas).flatMap(([key, board]) => {
   const format = resolveBannerFormat(key)
   return format && Array.isArray(board?.layers) ? [{ key, board, format }] : []
@@ -99,11 +100,13 @@ const scale = computed(() => zoom.value ?? fitScale.value)
 const percent = computed(() => Math.round(scale.value * 100))
 let frameSequence = 0
 const previewDocument = computed(() => {
+  // A presentation switch mounts a new iframe; invalidate its previous messages too.
+  void mode.value
   const frameId = ++frameSequence
   const source = active.value
     ? buildBannerHTML(active.value.key, active.value.board.layers, {
         // A stopped preview still needs the timeline to evaluate keyframes and scene visibility.
-        pausedAt: playing.value ? undefined : 0,
+        pausedAt: 0,
         playback: active.value.board.playback,
         bgColor: active.value.board.bgColor || '#0a0a10',
         customFonts: props.fonts || []
@@ -112,33 +115,38 @@ const previewDocument = computed(() => {
   return { frameId, html: withBannerPreviewPlayback(withBannerPreviewAudio(source), frameId) }
 })
 const html = computed(() => previewDocument.value.html)
-watch([html, replay], () => {
+watch(html, () => {
+  commandSequence = 0
   playback.value = { state: 'loading', current: 0, duration: 0, iteration: 1, repeat: 0 }
 }, { flush: 'sync' })
 
+function sendPlaybackCommand(action: 'seek' | 'play' | 'pause' | 'replay', time?: number) {
+  if (!canControl.value) return
+  audioError.value = ''
+  sendSoundPreference()
+  root.value?.querySelector('iframe')?.contentWindow?.postMessage({
+    type: 'banner-preview-control', frameId: previewDocument.value.frameId,
+    commandId: ++commandSequence, action, time
+  }, '*')
+}
+function seekPlayback(value: number | number[] | undefined) {
+  const time = Array.isArray(value) ? value[0] : value
+  if (typeof time !== 'number' || !Number.isFinite(time) || !canControl.value) return
+  const current = Math.max(0, Math.min(playback.value.duration, time))
+  sendPlaybackCommand('seek', current)
+  playback.value = { ...playback.value, current, state: 'paused', iteration: 1 }
+}
 function togglePlayback() {
-  if (playback.value.state === 'ended') {
-    replay.value++
-    playing.value = true
-  } else {
-    playing.value = !playing.value
-  }
+  sendPlaybackCommand(playback.value.state === 'ended' ? 'replay' : playing.value ? 'pause' : 'play')
 }
 
 function resetView() {
   audioError.value = ''
-  playing.value = false
   zoom.value = null
   viewport.value?.scrollTo({ top: 0, left: 0 })
 }
 watch(() => active.value?.key, resetView)
 watch(mode, resetView)
-watch([playing, replay], () => {
-  audioError.value = ''
-})
-watch(() => props.canvas, () => {
-  playing.value = false
-})
 function changeZoom(direction: number) {
   zoom.value = Math.min(3, Math.max(0.05, Math.round((scale.value + direction * 0.1) * 100) / 100))
 }
@@ -206,7 +214,7 @@ function changeZoom(direction: number) {
             <div ref="surface" class="absolute left-0 top-0 origin-top-left" :style="{ width: `${surfaceWidth}px`, transform: `scale(${scale})` }">
               <BannerSavedViewerFrame
                 v-if="mode === 'artwork'"
-                :key="`${active.key}:${replay}`"
+                :key="`${active.key}`"
                 :html="html"
                 :width="active.format.w"
                 :height="active.format.h"
@@ -214,7 +222,7 @@ function changeZoom(direction: number) {
               />
               <AdPreviewMetaStoryPreview
                 v-else-if="story"
-                :key="`story:${active.key}:${replay}`"
+                :key="`story:${active.key}`"
                 :html="html"
                 :html-width="active.format.w"
                 :html-height="active.format.h"
@@ -224,7 +232,7 @@ function changeZoom(direction: number) {
               />
               <AdPreviewMetaFeedPreview
                 v-else
-                :key="`feed:${active.key}:${replay}`"
+                :key="`feed:${active.key}`"
                 :html="html"
                 :html-width="active.format.w"
                 :html-height="active.format.h"
@@ -242,28 +250,36 @@ function changeZoom(direction: number) {
             <span class="size-1.5 shrink-0 rounded-full" :class="playback.state === 'playing' ? 'animate-pulse bg-primary' : 'bg-muted'" aria-hidden="true" />
             {{ playbackLabel }}
           </span>
-          <UProgress
-            :model-value="playback.current"
-            :max="playback.duration || 1"
-            :get-value-text="() => playbackTime"
-            :get-value-label="() => 'Animation playback progress'"
-            aria-label="Animation playback progress"
-            class="min-w-12 flex-1"
-            size="sm"
-          />
+          <UFormField label="Playback position" class="min-w-12 flex-1" :ui="{ label: 'sr-only', container: 'mt-0' }">
+            <USlider
+              :model-value="playback.current"
+              :max="playback.duration || 1"
+              :step="0.1"
+              :disabled="!canControl"
+              :tooltip="{ text: playbackTime }"
+              aria-label="Playback position"
+              class="w-full cursor-pointer py-2"
+              size="sm"
+              @update:model-value="seekPlayback"
+            />
+          </UFormField>
           <span class="shrink-0 text-xs tabular-nums text-muted" data-testid="playback-time">{{ playbackTime }}</span>
           <span v-if="playbackLoop" class="hidden shrink-0 text-[11px] text-muted sm:block">{{ playbackLoop }}</span>
         </div>
+        <p class="mt-1 text-center text-[11px] text-muted">
+          Drag to seek. Play resumes from here.
+        </p>
       </div>
       <div class="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 bg-default px-4 py-3 sm:px-6">
         <div class="flex items-center gap-1">
           <UButton
-            :label="playback.state === 'ended' ? 'Replay' : playing ? 'Stop' : 'Play'"
-            :icon="playback.state === 'ended' ? 'i-lucide-rotate-ccw' : playing ? 'i-lucide-square' : 'i-lucide-play'"
+            :label="playback.state === 'ended' ? 'Replay' : playing ? 'Pause' : 'Play'"
+            :icon="playback.state === 'ended' ? 'i-lucide-rotate-ccw' : playing ? 'i-lucide-pause' : 'i-lucide-play'"
             color="neutral"
             variant="solid"
             size="md"
             class="min-w-24 justify-center rounded-full"
+            :disabled="!canControl"
             @click="togglePlayback"
           />
           <UButton
@@ -272,7 +288,8 @@ function changeZoom(direction: number) {
             color="neutral"
             variant="ghost"
             size="md"
-            @click="replay++; playing = true"
+            :disabled="!canControl"
+            @click="sendPlaybackCommand('replay')"
           />
         </div>
         <UButton
