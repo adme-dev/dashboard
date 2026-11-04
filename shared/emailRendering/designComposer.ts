@@ -10,6 +10,37 @@ import {
 } from './designContract'
 import { designToRendererDocument } from './designAdapter'
 
+/** Exact raw composer blank, before validation/conversion can normalize it.
+ * Keep in sync with createEmptyDocument; the regression fixture checks that
+ * owner directly. Fixed expected depth bounds traversal of malformed input. */
+export function isExactBlankBody(source: unknown): boolean {
+  const blank = {
+    root: {
+      type: 'EmailLayout',
+      data: {
+        props: {
+          backdropColor: '#F5F5F5',
+          canvasColor: '#FFFFFF',
+          textColor: '#262626',
+          fontFamily: 'MODERN_SANS'
+        },
+        childrenIds: []
+      }
+    }
+  }
+  const matches = (actual: unknown, expected: unknown): boolean => {
+    if (actual === expected) return true
+    if (!actual || !expected || typeof actual !== 'object' || typeof expected !== 'object') return false
+    if (Array.isArray(expected)) return Array.isArray(actual) && actual.length === 0 && Object.keys(actual).length === 0
+    if (Array.isArray(actual)) return false
+    const values = actual as Record<string, unknown>
+    const entries = Object.entries(expected)
+    return Object.keys(values).length === entries.length
+      && entries.every(([key, value]) => Object.hasOwn(values, key) && matches(values[key], value))
+  }
+  return matches(source, blank)
+}
+
 /** Explicit first conversion of a persisted composer draft. The server, not the
  * browser, supplies its owning scope. Never apply this to an existing design:
  * that would replace its persisted policy, lineage and immutable module pins. */

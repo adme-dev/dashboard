@@ -19,6 +19,10 @@ export function figflowTemplateCapability(source: unknown) {
 }
 
 export function figflowComposerQuery(id: string) {
-  // No copy/starter parameters: creation has already been confirmed by the API.
+  // Legacy deep links are redirected to the dedicated workspace by the composer.
   return { id, workspace: 'figflow', openDesign: '1' }
+}
+
+export function figflowWorkspaceRoute(id: string) {
+  return `/agency/email/design/${encodeURIComponent(id)}`
 }

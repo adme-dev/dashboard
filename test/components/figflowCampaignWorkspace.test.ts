@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 /* eslint-disable @typescript-eslint/no-explicit-any -- Execute the actual composer entry functions with bounded synthetic I/O. */
+import { sameDesignSource } from '../../app/utils/edmDesignEquality'
 import fs from 'node:fs'
 import ts from 'typescript'
 import { computed, ref } from 'vue'
@@ -55,6 +56,7 @@ function harness() {
   const snapshot = () => JSON.stringify({ document: document.value, subject: subject.value })
   const saved = ref(snapshot())
   const state = {
+    sameDesignSource,
     campaignId: ref('campaign-a'), campaignClientId: ref('client-a'), campaignStatus: ref('draft'), designFlow: flow,
     workspaceBusy: computed(() => flow.busy.value || flow.hasPending.value), templateLoading: ref(false), templateLoadError: ref(''),
     workspaceSnapshot: snapshot, workspaceSavedSnapshot: saved, store, subject,

@@ -6,11 +6,15 @@ import { applyDesignerOperations, type DesignerCapabilities, type DesignerOperat
 import { parseNativeLibraryContext, type NativeLibraryContext } from '~~/shared/emailRendering/designModules'
 import type { NativeLibraryIntent } from '~~/app/composables/useEdmNativeLibrary'
 import type { EmailDesignDocument } from '~~/shared/emailRendering/designContract'
+import { sameDesignSource } from '~~/app/utils/edmDesignEquality'
 
-const props = defineProps<{ handoff: DesignHandoff, busy: boolean, error?: string, conflict?: boolean, subject?: string, previewText?: string, mode?: 'content' | 'designer', capabilities?: DesignerCapabilities | null, operationId?: string | null, libraryAvailable?: boolean, libraryReady?: boolean, libraryPublisher?: boolean }>()
+const props = withDefaults(defineProps<{ handoff: DesignHandoff, busy: boolean, error?: string, conflict?: boolean, subject?: string, previewText?: string, mode?: 'content' | 'designer', capabilities?: DesignerCapabilities | null, operationId?: string | null, libraryAvailable?: boolean, libraryReady?: boolean, libraryPublisher?: boolean, presentation?: 'overlay' | 'workspace' }>(), { presentation: 'overlay' })
 const emit = defineEmits<{
   propose: [design: EmailDesignDocument]
   proposeDesigner: [operations: DesignerOperation[], operationId: string]
+  review: [design: EmailDesignDocument, operations: DesignerOperation[], operationId: string | null, changed: boolean]
+  dirtyChange: [dirty: boolean]
+  snapshotFailed: []
   apply: []
   cancel: []
   resume: []
@@ -28,9 +32,16 @@ const previewHtml = ref('')
 const previewLoading = ref(false)
 const previewDevice = ref<'desktop' | 'mobile'>('desktop')
 const previewError = ref('')
+const savedHtml = ref('')
+const savedLoading = ref(false)
+const savedError = ref('')
+const savedDevice = ref<'desktop' | 'mobile'>('desktop')
+const savedStale = ref(false)
 const libraryIntent = ref<NativeLibraryIntent | null>(null)
 const libraryContext = ref<NativeLibraryContext | null>(null)
+const hasProtectedHtml = computed(() => Object.values(props.handoff.source.blocks).some(block => block.type === 'Html'))
 let previewSequence = 0
+let savedSequence = 0
 async function renderProposal() {
   const proposal = props.handoff.state === 'proposed'
     ? props.handoff.proposal
@@ -51,12 +62,35 @@ async function renderProposal() {
     if (sequence === previewSequence) previewLoading.value = false
   }
 }
+async function renderSavedSource() {
+  if (props.presentation !== 'workspace') return
+  const sequence = ++savedSequence
+  savedLoading.value = true
+  savedHtml.value = ''
+  savedError.value = ''
+  try {
+    const result = await $fetch<{ html: string }>('/api/email/templates/render', {
+      method: 'POST', body: { body_source: props.handoff.source.blocks, subject: props.subject || null, preview_text: props.previewText || null }
+    })
+    if (sequence === savedSequence) savedHtml.value = result.html
+  } catch {
+    if (sequence === savedSequence) savedError.value = 'The saved email output could not load. Native editing is still available; retry the compiled output.'
+  } finally {
+    if (sequence === savedSequence) savedLoading.value = false
+  }
+}
 watch(() => props.handoff.proposalRevisionId, () => {
   void renderProposal()
+}, { immediate: true })
+watch(() => [props.handoff.id, props.handoff.baseRevisionId, props.presentation], () => {
+  void renderSavedSource()
 }, { immediate: true })
 let timer: ReturnType<typeof setTimeout> | undefined
 let requestId: string | null = null
 let expectedReply = ''
+let connectPayload: Record<string, unknown> | null = null
+let connectStartedAt = 0
+let waitingForVisible = false
 const changes = computed(() => {
   const proposal = props.handoff.proposal
   if (!proposal) return []
@@ -84,7 +118,12 @@ function send(type: string, payload?: unknown) {
   requestId = crypto.randomUUID()
   frame.value?.contentWindow?.postMessage({ protocol: FIGFLOW_EDM_PROTOCOL, channel, requestId, type, payload: payload === undefined ? undefined : JSON.parse(JSON.stringify(payload)) }, FIGFLOW_EDM_ORIGIN)
 }
-function connect() {
+function dispatchConnect() {
+  if (props.presentation === 'workspace' && document.hidden) {
+    waitingForVisible = true
+    return
+  }
+  waitingForVisible = false
   ready.value = false
   bridgeError.value = ''
   clearTimeout(timer)
@@ -92,20 +131,63 @@ function connect() {
     bridgeError.value = 'Design controls are unavailable. Close and reopen this draft to refresh your access.'
     return
   }
-  send('connect', { handoffId: props.handoff.id, design: props.handoff.source, ...(props.mode === 'designer' ? { mode: 'designer', operationId: props.operationId, capabilities: props.capabilities } : {}) })
+  connectPayload ??= { handoffId: props.handoff.id, design: props.handoff.source, ...(props.mode === 'designer' ? { mode: 'designer', operationId: props.operationId, capabilities: props.capabilities } : {}) }
+  if (!connectStartedAt) connectStartedAt = Date.now()
+  send('connect', connectPayload)
   timer = setTimeout(() => {
-    if (!ready.value) bridgeError.value = 'FigFlow could not open this email. Your saved draft is unchanged. Close and resume the design to reconnect.'
+    if (!ready.value) handleBridgeError('timeout', true)
   }, 30_000)
 }
+function connect() {
+  connectPayload = null
+  connectStartedAt = 0
+  dispatchConnect()
+}
+function retryConnect(code: string) {
+  if (props.presentation !== 'workspace' || expectedReply !== 'ready' || code !== 'timeout') return false
+  if (document.hidden) {
+    waitingForVisible = true
+    connectStartedAt = 0
+    return true
+  }
+  if (Date.now() - connectStartedAt < 60_000) {
+    dispatchConnect()
+    return true
+  }
+  return false
+}
+function handleBridgeError(code: string, localTimeout = false) {
+  if (retryConnect(code)) return
+  const messages: Record<string, string> = {
+    timeout: 'FigFlow is still loading — keep this tab visible. Your saved draft is unchanged; reopen to retry.',
+    image_fetch_failed: 'FigFlow could not load an email image. Check the published image URL, then reopen. Your saved draft is unchanged.',
+    native_refused: 'FigFlow refused this email or its unsupported edits. Your saved draft is unchanged; reopen or undo the unsupported change.'
+  }
+  bridgeError.value = props.presentation === 'workspace'
+    ? messages[code] ?? 'FigFlow could not complete this read. Your saved draft is unchanged; retry or reopen.'
+    : localTimeout
+      ? 'FigFlow could not open this email. Your saved draft is unchanged. Close and resume the design to reconnect.'
+      : 'FigFlow cannot return these changes safely. Undo unsupported changes, finish editing any active text, then retry.'
+}
+function visibilityChanged() {
+  if (props.presentation === 'workspace' && !document.hidden && waitingForVisible && !ready.value) dispatchConnect()
+}
 function requestReturn() {
-  if (!ready.value || props.busy || requesting.value) return
+  if (!ready.value || props.busy || requesting.value) {
+    if (props.presentation === 'workspace') emit('snapshotFailed')
+    return
+  }
   requesting.value = true
   bridgeError.value = ''
   send('snapshot')
   clearTimeout(timer)
   timer = setTimeout(() => {
     requesting.value = false
-    bridgeError.value = 'FigFlow did not confirm a snapshot. Keep this window open and retry Return for review.'
+    requestId = null
+    emit('snapshotFailed')
+    bridgeError.value = props.presentation === 'workspace'
+      ? 'FigFlow did not confirm a snapshot. Keep this tab visible and retry Save draft. Nothing was written.'
+      : 'FigFlow did not confirm a snapshot. Keep this window open and retry Return for review.'
   }, 15_000)
 }
 function cancelLibraryRead() {
@@ -164,34 +246,55 @@ function receive(event: MessageEvent) {
     clearTimeout(timer)
     requesting.value = false
     try {
+      let design: EmailDesignDocument
+      let operations: DesignerOperation[] = []
+      let operationId: string | null = null
       if (props.mode === 'designer') {
         const payload = message.payload
         if (!payload || typeof payload !== 'object' || Object.keys(payload).sort().join(',') !== 'operationId,operations' || payload.operationId !== props.operationId) throw new Error('Invalid design return')
-        applyDesignerOperations(props.handoff.source, payload.operations, payload.operationId)
-        emit('proposeDesigner', payload.operations, payload.operationId)
-      } else emit('propose', validateContentReturn(props.handoff.source, message.payload))
+        operations = payload.operations
+        operationId = payload.operationId
+        design = applyDesignerOperations(props.handoff.source, operations, payload.operationId)
+      } else design = validateContentReturn(props.handoff.source, message.payload)
+      const changed = props.mode === 'designer' ? operations.length > 0 : !sameDesignSource(props.handoff.source.blocks, design.blocks)
+      savedStale.value = changed
+      emit('dirtyChange', changed)
+      if (props.presentation === 'workspace') emit('review', design, operations, operationId, changed)
+      else if (props.mode === 'designer') emit('proposeDesigner', operations, operationId!)
+      else emit('propose', design)
     } catch {
+      emit('snapshotFailed')
       bridgeError.value = 'This design includes changes the email composer cannot preserve. Undo structural or unsupported edits in FigFlow, then return again.'
     }
   } else if (message.type === 'error') {
-    requestId = null
-    clearTimeout(timer)
-    requesting.value = false
-    if (libraryIntent.value) cancelLibraryRead()
-    bridgeError.value = 'FigFlow cannot return these changes safely. Undo unsupported changes, finish editing any active text, then retry.'
+    const code = typeof message.payload?.code === 'string' ? message.payload.code : 'native_refused'
+    if (!retryConnect(code)) {
+      requestId = null
+      clearTimeout(timer)
+      requesting.value = false
+      if (expectedReply === 'snapshot') emit('snapshotFailed')
+      if (libraryIntent.value) cancelLibraryRead()
+      handleBridgeError(code)
+    }
   }
 }
-onMounted(() => window.addEventListener('message', receive))
+onMounted(() => {
+  window.addEventListener('message', receive)
+  document.addEventListener('visibilitychange', visibilityChanged)
+})
 onBeforeUnmount(() => {
   previewSequence++
+  savedSequence++
   clearTimeout(timer)
   window.removeEventListener('message', receive)
+  document.removeEventListener('visibilitychange', visibilityChanged)
 })
+defineExpose({ requestSnapshot: requestReturn, ready })
 </script>
 
 <template>
-  <div class="flex min-h-0 flex-1 flex-col gap-4">
-    <p class="text-sm text-muted">
+  <div :class="presentation === 'workspace' ? 'flex h-full min-h-0 flex-1 flex-col gap-3' : 'flex min-h-0 flex-1 flex-col gap-4'">
+    <p v-if="presentation === 'overlay'" class="text-sm text-muted">
       {{ mode === 'designer' ? 'Build your email with the design controls. Review the rendered desktop and mobile email before applying changes to this draft.' : 'Edit supported text, images and buttons in the content view. Return for review to see the rendered email before applying changes to your saved draft.' }}
     </p>
     <UAlert v-if="error || bridgeError" color="error" :title="error || bridgeError" />
@@ -205,12 +308,12 @@ onBeforeUnmount(() => {
       <slot name="library" />
     </template>
     <UAlert
-      v-else-if="handoff.state === 'open' && mode !== 'designer' && !handoff.source.policy.editableFields.length"
+      v-else-if="presentation === 'overlay' && handoff.state === 'open' && mode !== 'designer' && !handoff.source.policy.editableFields.length"
       color="warning"
       title="This template supports composer editing only"
       description="FigFlow cannot edit its HTML or locked sections yet. Return to the composer to continue; your saved draft is kept."
     />
-    <template v-else-if="handoff.state === 'open'">
+    <template v-else-if="handoff.state === 'open' || (presentation === 'workspace' && handoff.state === 'proposed')">
       <section v-if="libraryIntent" class="flex min-h-0 flex-col gap-3 rounded border border-default bg-elevated p-4" aria-label="Review selection for library">
         <UAlert
           :title="libraryContext ? 'Review the current design' : 'Confirming FigFlow selection'"
@@ -258,18 +361,45 @@ onBeforeUnmount(() => {
           />
         </div>
       </section>
-      <div :inert="libraryIntent !== null || undefined" class="min-h-96 flex-1 overflow-hidden rounded-lg border border-default">
-        <iframe
-          ref="frame"
-          :src="FIGFLOW_EDM_EDITOR_URL"
-          class="h-full min-h-96 w-full"
-          title="FigFlow email design"
-          sandbox="allow-scripts allow-same-origin allow-downloads"
-          referrerpolicy="no-referrer"
-          @load="connect"
-        />
+      <div :class="presentation === 'workspace' && hasProtectedHtml ? 'grid min-h-0 flex-1 grid-cols-1 gap-3 xl:grid-cols-2' : 'flex min-h-0 flex-1 flex-col'">
+        <div :inert="libraryIntent !== null || (presentation === 'workspace' && (handoff.state !== 'open' || busy)) || undefined" class="min-h-96 flex-1 overflow-hidden rounded-lg border border-default">
+          <iframe
+            ref="frame"
+            :src="FIGFLOW_EDM_EDITOR_URL"
+            class="h-full min-h-96 w-full"
+            title="FigFlow email design"
+            sandbox="allow-scripts allow-same-origin allow-downloads"
+            referrerpolicy="no-referrer"
+            @load="connect"
+          />
+        </div>
+        <section v-if="presentation === 'workspace' && hasProtectedHtml" class="flex min-h-0 flex-col overflow-hidden rounded-lg border border-default bg-elevated/30" aria-label="Saved compiled email">
+          <div class="flex flex-wrap items-center justify-between gap-2 border-b border-default px-3 py-2">
+            <div>
+              <p class="text-sm font-medium">Compiled email</p>
+              <p class="text-xs text-muted">{{ busy ? 'Saved baseline — save outcome may be unconfirmed' : savedStale ? 'Saved output — native edits are not saved yet' : 'Saved source — native edits appear only after Save draft' }}</p>
+            </div>
+            <div class="flex gap-1" role="group" aria-label="Saved email preview size">
+              <UButton label="Desktop" size="xs" color="neutral" :variant="savedDevice === 'desktop' ? 'solid' : 'ghost'" :aria-pressed="savedDevice === 'desktop'" @click="savedDevice = 'desktop'" />
+              <UButton label="Mobile" size="xs" color="neutral" :variant="savedDevice === 'mobile' ? 'solid' : 'ghost'" :aria-pressed="savedDevice === 'mobile'" @click="savedDevice = 'mobile'" />
+            </div>
+          </div>
+          <div class="min-h-0 flex-1 overflow-auto p-3">
+            <p v-if="savedLoading" class="text-sm text-muted">Rendering the saved email…</p>
+            <UAlert v-if="savedError" color="error" :title="savedError" :actions="[{ label: 'Retry compiled output', onClick: renderSavedSource }]" />
+            <iframe
+              v-if="savedHtml"
+              :srcdoc="savedHtml"
+              sandbox=""
+              referrerpolicy="no-referrer"
+              title="Saved compiled email output"
+              class="mx-auto block h-full min-h-[36rem] border-0 bg-white"
+              :style="{ width: savedDevice === 'mobile' ? '390px' : '700px', minWidth: savedDevice === 'mobile' ? '390px' : '700px' }"
+            />
+          </div>
+        </section>
       </div>
-      <div class="flex flex-wrap justify-end gap-2">
+      <div v-if="presentation === 'overlay'" class="flex flex-wrap justify-end gap-2">
         <UButton
           label="Return for review"
           icon="i-lucide-arrow-left-right"
@@ -277,7 +407,7 @@ onBeforeUnmount(() => {
           :loading="requesting"
           @click="requestReturn"
         />
-        <template v-if="libraryAvailable && mode === 'designer'">
+        <template v-if="presentation === 'overlay' && libraryAvailable && mode === 'designer'">
           <UButton
             label="Library"
             color="neutral"
@@ -394,7 +524,7 @@ onBeforeUnmount(() => {
       </div>
     </template>
     <UAlert
-      v-else
+      v-else-if="presentation === 'overlay'"
       :color="handoff.state === 'applied' ? 'success' : 'neutral'"
       :title="handoff.state === 'applied' ? 'Design changes saved' : handoff.state === 'expired' ? 'This handoff expired' : 'Current draft kept'"
       description="Close this panel to continue in the composer. Start a new handoff from the current saved draft for further design edits."

@@ -16,7 +16,8 @@ import { onBeforeRouteLeave } from 'vue-router'
 import { diagnoseEmailContent, type EmailDiagnosticReference, type EmailDiagnosticImageAsset } from '../../../../shared/emailRendering/contentDiagnostics'
 import { templateCopyCategory, markTemplateClientCopy, templateCopyName } from '~~/app/utils/edmTemplateProvenance'
 import { EDM_SECTION_CATEGORIES, findStarterTemplate } from '~~/app/utils/edmPresets'
-import { figflowComposerQuery, figflowTemplateCapability } from '~~/app/utils/edmFigflowLibrary'
+import { figflowWorkspaceRoute, figflowTemplateCapability } from '~~/app/utils/edmFigflowLibrary'
+import { sameDesignSource } from '~~/app/utils/edmDesignEquality'
 import { recogniseKnownSection } from '~~/shared/emailRendering/designKnownSections'
 import { designStructureLocked } from '~~/shared/emailRendering/designBrand'
 import type { EdmSectionPreset } from '~~/app/utils/edmPresets'
@@ -897,7 +898,6 @@ async function beginFigflow(createDraft = false) {
   try {
     await designFlow.run(async () => {
       const openingSource = JSON.stringify(store.document.value)
-      let savedBaseline: { draftId: string, expectedRevisionId: string } | undefined
       if (createDraft) {
         if (draftCopyUnconfirmed.value) return
         const draftName = designDraftName.value.trim()
@@ -958,21 +958,11 @@ async function beginFigflow(createDraft = false) {
           if (confirmed?.state !== 'structured' || !canonicalSaved.value || confirmed.templateId !== templateId.value || confirmed.source.scope.clientId !== clientId
             || confirmed.projectionRevisionId !== confirmed.headRevisionId)
             throw new Error('The saved design changed while opening. Keep local edits and reload before continuing.')
-          savedBaseline = { draftId: confirmed.documentId, expectedRevisionId: confirmed.headRevisionId }
         } else if (!await save()) return
       }
       if (!templateId.value) return
       if (JSON.stringify(store.document.value) !== openingSource) throw new Error('The composer changed while saving. Save again before opening FigFlow.')
-      const clientId = templateClient.value === '__shared__' ? null : templateClient.value!
-      const result = savedBaseline
-        ? await designFlow.open(templateId.value, clientId, designFlow.designerAuthoring.value.available, savedBaseline)
-        : await designFlow.open(templateId.value, clientId, designFlow.designerAuthoring.value.available)
-      designRevisionRequired.value = true
-      designServiceUnavailable.value = false
-      designLocalConflict.value = false
-      designFlow.setLocalBaseline?.(workspaceSnapshot())
-      showFigflow.value = true
-      await router.replace({ query: { ...route.query, designSession: result.id, designMode: designFlow.mode.value } })
+      await navigateTo(figflowWorkspaceRoute(templateId.value))
     })
   } catch { /* The flow retains the failed operation and displays recovery. */ }
 }
@@ -1048,12 +1038,6 @@ async function reviewKnownSections() {
     // is not an uncertain write: say what happened, unless this builder is gone.
     if (stopped && started === knownSectionLifetime) designFlow.error.value = stopped
   }
-}
-function sameDesignSource(a: unknown, b: unknown): boolean {
-  if (a === b) return true
-  if (!a || !b || typeof a !== 'object' || typeof b !== 'object') return false
-  const keys = Object.keys(a)
-  return keys.length === Object.keys(b).length && keys.every(key => Object.hasOwn(b, key) && sameDesignSource((a as Record<string, unknown>)[key], (b as Record<string, unknown>)[key]))
 }
 function openBrandControls() {
   if (workspaceBusy.value || !templateId.value || campaignId.value) return
@@ -1470,7 +1454,7 @@ async function openEditableCopy(id: string) {
   }
   showEditableCopy.value = false
   // A full reload starts the new draft's workspace from its own saved source.
-  await reloadNuxtApp({ path: `/agency/email/compose?${new URLSearchParams(figflowComposerQuery(id))}` })
+  await reloadNuxtApp({ path: figflowWorkspaceRoute(id) })
 }
 function workspaceSnapshot() {
   return JSON.stringify({ document: store.document.value, name: name.value, subject: subject.value,
@@ -1722,12 +1706,8 @@ onMounted(async () => {
     // This intent is supplied only after a confirmed library draft creation or
     // explicit open. Consume it before opening; reload never creates a copy.
     if (route.query.openDesign === '1' && route.query.workspace === 'figflow'
-      && !templateLoadError.value && templateId.value && templateKind.value === 'draft'
-      && figflowEnabled && !designServiceUnavailable.value) {
-      const query = { ...route.query }
-      delete query.openDesign
-      await router.replace({ query })
-      await beginFigflow()
+      && !templateLoadError.value && templateId.value && templateKind.value === 'draft') {
+      await navigateTo(figflowWorkspaceRoute(templateId.value))
     }
   }
   retryInitialLoad = initialise

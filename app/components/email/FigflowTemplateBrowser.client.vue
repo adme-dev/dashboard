@@ -1,12 +1,13 @@
 <script setup lang="ts">
+import { createEmptyDocument } from '~~/app/types/edm'
 import { computed, ref, watch } from 'vue'
 import { useEdmCanonicalTemplateCopy } from '~~/app/composables/useEdmCanonicalTemplateCopy'
 import { EDM_STARTER_TEMPLATES, buildStarterTemplateDocument } from '~~/app/utils/edmPresets'
-import { figflowTemplateCapability, figflowComposerQuery } from '~~/app/utils/edmFigflowLibrary'
-import { markTemplateClientCopy, templateCopyName } from '~~/app/utils/edmTemplateProvenance'
+import { figflowTemplateCapability, figflowWorkspaceRoute } from '~~/app/utils/edmFigflowLibrary'
+import { markTemplateClientCopy, templateCopyName, templateSourceDetails } from '~~/app/utils/edmTemplateProvenance'
 import { filterTemplateLibrary, type TemplateLibraryRow } from '~~/app/utils/edmTemplateLibrary'
 
-type Row = TemplateLibraryRow & { capability: ReturnType<typeof figflowTemplateCapability>, starter?: string }
+type Row = TemplateLibraryRow & { capability: ReturnType<typeof figflowTemplateCapability>, starter?: string, blank?: boolean }
 const canonicalCopy = useEdmCanonicalTemplateCopy()
 const route = useRoute()
 const saved = ref<TemplateLibraryRow[]>([])
@@ -81,6 +82,10 @@ function select(row: Row) {
   destination.value = destinations.value.some(o => o.value === preferred) ? preferred : undefined
   createError.value = ''
 }
+function selectBlank() {
+  const body_source = createEmptyDocument()
+  select({ id: 'blank', blank: true, name: 'Blank email', body_source, capability: figflowTemplateCapability(body_source) })
+}
 function composerLink(row: Row) {
   const query = new URLSearchParams(row.starter ? { starter: row.starter } : { copy: row.id })
   query.set('workspace', 'figflow')
@@ -97,18 +102,18 @@ async function createDraft() {
   try {
     // Re-read an existing template under current server scope immediately before
     // copying. A preview/list snapshot is not the source of a library mutation.
-    const template = row.starter ? row : (await $fetch<{ template: TemplateLibraryRow }>(`/api/email/templates/${row.id}`)).template
+    const template = row.starter || row.blank ? row : (await $fetch<{ template: TemplateLibraryRow }>(`/api/email/templates/${row.id}`)).template
     if (template.design_document_id || row.design_document_id) {
       if (template.revision_schema_version !== 1 || !template.head_revision_id) throw new Error('This template has no structured published version to copy.')
       // Exact list selection, never silently adopt a newer source head.
       const result = await canonicalCopy.copy(row, draftName.value.trim(), destination.value === 'shared' ? null : destination.value!)
       if (!result?.templateId) throw new Error('The saved draft receipt is incomplete.')
       confirmedId = result.templateId
-      await navigateTo({ path: '/agency/email/compose', query: figflowComposerQuery(confirmedId) })
+      await navigateTo(figflowWorkspaceRoute(confirmedId))
       return
     }
     const capability = figflowTemplateCapability(template.body_source)
-    if (!capability.canOpen) throw new Error('This template currently supports composer editing only. Open a copy in the composer instead.')
+    if (!capability.canOpen && !row.blank) throw new Error('This template currently supports composer editing only. Open a copy in the composer instead.')
     submitted = true
     const result = await $fetch<{ template: { id: string } }>('/api/email/templates', {
       method: 'POST', body: {
@@ -116,11 +121,11 @@ async function createDraft() {
         client_id: destination.value === 'shared' ? null : destination.value,
         subject: template.subject || null, preview_text: template.preview_text || null,
         folder_name: template.folder_name || null,
-        body_source: row.starter ? capability.document : markTemplateClientCopy(capability.document, row.id)
+        body_source: row.blank ? createEmptyDocument() : row.starter ? capability.document : markTemplateClientCopy(capability.document, row.id)
       }
     })
     confirmedId = result.template.id
-    await navigateTo({ path: '/agency/email/compose', query: figflowComposerQuery(confirmedId) })
+    await navigateTo(figflowWorkspaceRoute(confirmedId))
   } catch (failure) {
     const cause = failure as { statusCode?: number, status?: number, message?: string }
     const status = cause.statusCode ?? cause.status
@@ -144,20 +149,52 @@ async function reconcileCanonicalCopy() {
   createError.value = ''
   try {
     const result = await canonicalCopy.reconcile()
-    if (result?.templateId) await navigateTo({ path: '/agency/email/compose', query: figflowComposerQuery(result.templateId) })
+    if (result?.templateId) await navigateTo(figflowWorkspaceRoute(result.templateId))
   } catch { createError.value = 'The original copy is still unconfirmed. Reconcile this action again before creating another draft.' } finally {
     creating.value = false
   }
+}
+const editableCopyTarget = ref<Row | null>(null)
+function openRow(row: Row) {
+  if (row.template_kind === 'draft') {
+    void navigateTo(figflowWorkspaceRoute(row.id))
+    return
+  }
+  if (!row.design_document_id && templateSourceDetails(row.body_source)) {
+    editableCopyTarget.value = row
+    return
+  }
+  select(row)
+}
+function editableCopyCreated(id: string) {
+  editableCopyTarget.value = null
+  return navigateTo(figflowWorkspaceRoute(id))
 }
 watch(saved, () => {
   const id = route.query.copyTemplate
   const row = typeof id === 'string' ? savedRows.value.find(item => item.id === id) : null
   if (row && !selected.value && !canonicalCopy.hasPending.value) {
-    select(row)
-    const client = route.query.client
-    if (typeof client === 'string' && destinations.value.some(o => o.value === client)) destination.value = client
+    if (!row.design_document_id && templateSourceDetails(row.body_source)) editableCopyTarget.value = row
+    else {
+      select(row)
+      const client = route.query.client
+      if (typeof client === 'string' && destinations.value.some(o => o.value === client)) destination.value = client
+    }
   }
 })
+watch([() => route.query.starter, loading, destinations], ([id]) => {
+  if (loading.value || error.value || selected.value) return
+  const row = typeof id === 'string' ? starters.find(item => item.starter === id) : null
+  if (row) {
+    view.value = 'starters'
+    openRow(row)
+    const requested = route.query.client
+    if (typeof requested === 'string') {
+      destination.value = destinations.value.some(o => o.value === requested) ? requested : undefined
+      if (!destination.value) createError.value = 'Choose an authorized destination for this starter.'
+    }
+  }
+}, { immediate: true })
 function checkDrafts() {
   selected.value = null
   view.value = 'drafts'
@@ -244,6 +281,7 @@ function checkDrafts() {
         title="Check for the saved draft before creating another copy"
         description="A previous save was not confirmed. Draft creation is blocked for this browser visit to avoid duplicates. Reopen a saved draft, or check the library before starting a new visit."
       />
+      <UButton label="Blank email" icon="i-lucide-file-plus" class="mb-4" :disabled="creating || uncertain || canonicalCopy.hasPending.value" @click="selectBlank" />
       <UCard v-if="!rows.length" class="text-center">
         <h2 class="font-semibold">
           No matching {{ view === 'drafts' ? 'drafts' : 'templates' }}
@@ -286,12 +324,11 @@ function checkDrafts() {
             </p>
             <div class="mt-auto flex flex-wrap gap-2 pt-2">
               <UButton
-                v-if="row.capability.canOpen"
-                :label="row.template_kind === 'draft' ? 'Open saved draft' : 'Use in FigFlow'"
+                v-if="row.capability.canOpen || row.template_kind === 'draft' || templateSourceDetails(row.body_source)"
+                :label="row.template_kind === 'draft' ? 'Open saved draft' : !row.design_document_id && templateSourceDetails(row.body_source) ? 'Review editable copy' : 'Use in FigFlow'"
                 icon="i-lucide-pen-tool"
                 :disabled="creating || (uncertain && row.template_kind !== 'draft')"
-                :to="row.template_kind === 'draft' ? { path: '/agency/email/compose', query: figflowComposerQuery(row.id) } : undefined"
-                @click="row.template_kind !== 'draft' && select(row)"
+                @click="openRow(row)"
               />
               <UButton
                 :to="composerLink(row)"
@@ -363,4 +400,13 @@ function checkDrafts() {
       </div>
     </template>
   </UModal>
+  <EmailBuilderEdmEditableCopyModal
+    v-if="editableCopyTarget"
+    :open="!!editableCopyTarget"
+    :template-id="editableCopyTarget.id"
+    :template-name="editableCopyTarget.name"
+    :unsaved-changes="false"
+    @update:open="value => { if (!value) editableCopyTarget = null }"
+    @created="editableCopyCreated"
+  />
 </template>
