@@ -5,6 +5,8 @@ import type { CustomerSetup } from '~~/shared/pageStudio/customerSignup'
 definePageMeta({ layout: false, colorMode: 'light' })
 useHead({ title: 'Set up your workspace — Page Studio' })
 const api = '/api/portal/page-studio/customer'
+const route = useRoute()
+const dashboardReturn = computed(() => route.query.view === 'templates' ? '/studio/dashboard?view=templates' : '/studio/dashboard')
 const draft = reactive<CustomerSetup>({ businessName: '', businessType: '', timezone: 'UTC', goals: [] })
 const revision = ref(0)
 const workspaceId = ref<string | null>(null)
@@ -56,7 +58,7 @@ async function load() {
         }
       } catch { /* Existing saved setup and blocked storage remain usable. */ }
     }
-    if (workspaceId.value) await navigateTo('/studio/dashboard', { replace: true })
+    if (workspaceId.value) await navigateTo(dashboardReturn.value, { replace: true })
   } catch (e: unknown) {
     if ((e as { statusCode?: number })?.statusCode === 401) await navigateTo('/studio/signup', { replace: true })
     else error.value = 'We could not load your saved setup. Please try again.'
@@ -100,7 +102,7 @@ async function advance() {
     if (step.value < 3 && !(hasIntake.value && step.value === 2)) step.value += 1
     else {
       workspaceId.value = (await $fetch<{ workspaceId: string }>(`${api}/complete`, { method: 'POST', body: { expectedRevision: revision.value } })).workspaceId
-      await navigateTo('/studio/dashboard', { replace: true })
+      await navigateTo(dashboardReturn.value, { replace: true })
     }
   } catch (e) {
     showError(e)

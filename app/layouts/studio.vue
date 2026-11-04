@@ -26,6 +26,13 @@ async function signOut() {
             variant="ghost"
           />
           <UButton
+            to="/studio/sites?view=templates"
+            label="Templates"
+            :disabled="unsavedFormSettings"
+            color="neutral"
+            variant="ghost"
+          />
+          <UButton
             to="/studio/credits"
             label="Image credits"
             color="neutral"
