@@ -21,7 +21,9 @@ describe.runIf(Boolean(url))('checkpoint staging outbox on PostgreSQL', () => {
     await db.query(`CREATE SCHEMA "${schema}"; SET search_path TO "${schema}", pg_catalog`)
     await db.query('CREATE TABLE team_members(id UUID PRIMARY KEY); CREATE TABLE agency_clients(id UUID PRIMARY KEY); CREATE TABLE client_users(id UUID PRIMARY KEY); CREATE TABLE custom_roles(id UUID PRIMARY KEY,slug TEXT); CREATE TABLE role_permission_groups(role_id UUID,permission_group TEXT,UNIQUE(role_id,permission_group))')
     await db.query(readFileSync(new URL('../../../server/database/migrations/402_page_studio_control_plane.sql', import.meta.url), 'utf8'))
+    await db.query(readFileSync(new URL('../../../server/database/migrations/428_page_studio_client_staging.sql', import.meta.url), 'utf8'))
     if (existsSync(migration)) await db.query(readFileSync(migration, 'utf8'))
+    await db.query(readFileSync(new URL('../../../server/database/migrations/500_page_studio_code_staging.sql', import.meta.url), 'utf8'))
     clientId = randomUUID()
     await db.query('INSERT INTO agency_clients VALUES($1)', [clientId])
     const entitlement = (await db.query('INSERT INTO page_studio_entitlements(tenant_id,client_id) VALUES(\'outbox-test\',$1) RETURNING id', [clientId])).rows[0]
@@ -70,6 +72,11 @@ describe.runIf(Boolean(url))('checkpoint staging outbox on PostgreSQL', () => {
       await db.query('COMMIT')
       expect((await observer.query('SELECT * FROM page_studio_checkpoint_staging_outbox')).rows).toHaveLength(1)
     } finally { await observer.end() }
+  })
+  it.each([null, { formatVersion: 1, kind: 'code-pages', operationId: 'import_one', indexDigest: 'a'.repeat(64), contentDigest: 'b'.repeat(64) }])('never schedules code-bound checkpoints through typed staging', async (codeContent) => {
+    await db.query(readFileSync(new URL('../../../server/database/migrations/500_page_studio_code_staging.sql', import.meta.url), 'utf8'))
+    await audit({ digest: 'c'.repeat(64), commitProtocol: 'cas-v1', stagingOrigin: origin, codeContent })
+    expect((await db.query('SELECT * FROM page_studio_checkpoint_staging_outbox')).rows).toHaveLength(0)
   })
   it.each([{}, { stagingOrigin: origin }, { digest: 'd'.repeat(64), commitProtocol: 'cas-v1', stagingOrigin: origin }, { digest: 'c'.repeat(64), commitProtocol: 'legacy', stagingOrigin: origin }, { digest: 'c'.repeat(64), commitProtocol: 'cas-v1', stagingOrigin: { ...origin, environment: 'foreign' } }])('preserves legacy/unsupported audits without staging authority', async (metadata) => {
     await audit(metadata)

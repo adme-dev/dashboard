@@ -13,6 +13,7 @@ import {
 interface DocumentState {
   document: PageStudioDocument | null
   studio?: PageStudioSavedPages
+  imported?: { checkpointId: string, routes: string[], readOnly: true }
   pageLimit: number
   revision: number
   updatedAt: string | null
@@ -191,6 +192,21 @@ async function openStudio() {
       <USkeleton class="h-96 w-full" />
       <USkeleton class="h-96 w-full" />
     </div>
+    <section v-else-if="data?.imported" class="space-y-4 rounded-lg border border-default p-5">
+      <h2 class="font-semibold text-highlighted">
+        Imported website pages
+      </h2>
+      <p class="text-sm text-muted">
+        {{ data.imported.routes.length }} of {{ data.pageLimit }} pages saved. This inventory is read-only.
+        Use Update staging to prepare a shareable preview of this saved website.
+      </p>
+      <ul class="space-y-2">
+        <li v-for="route in data.imported.routes" :key="route">
+          <code>{{ route }}</code>
+        </li>
+      </ul>
+      <UButton label="Refresh pages" variant="outline" @click="reloadDraft" />
+    </section>
     <PageStudioSavedPages
       v-else-if="data?.studio"
       :saved="data.studio"

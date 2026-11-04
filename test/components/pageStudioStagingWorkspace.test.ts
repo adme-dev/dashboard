@@ -48,6 +48,61 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 describe('client staging controls', () => {
+  it('requires an explicit code preview update and sends its full binding', async () => {
+    const binding = { formatVersion: 1, kind: 'code-pages', operationId: 'import_1', contentDigest: 'b'.repeat(64), indexDigest: 'c'.repeat(64) }
+    data.value = { ...initial(), currentCodeContent: binding } as typeof data.value
+    const host = await mount(true)
+    expect(mutation).not.toHaveBeenCalled()
+    ;[...host.querySelectorAll('button')].find(button => button.textContent === 'Update staging')?.click()
+    await flush()
+    expect(mutation).toHaveBeenCalledWith(`/api/portal/page-studio/sites/${siteId}/staging`, expect.objectContaining({ body: expect.objectContaining({ codeContent: binding }) }))
+  })
+  it('shows changed code content even when the typed digest is unchanged', async () => {
+    const binding = { formatVersion: 1, kind: 'code-pages', operationId: 'import_1', contentDigest: 'b'.repeat(64), indexDigest: 'c'.repeat(64) }
+    data.value = { ...initial(), status: 'ready', currentCodeContent: binding,
+      active: { id: '20000000-0000-4000-8000-000000000001', checkpointId: 'saved', digest: initial().currentDigest,
+        deployedAt: '2026-09-22T00:00:00.000Z', codeContent: { ...binding, indexDigest: 'd'.repeat(64) } } } as typeof data.value
+    const host = await mount()
+    expect(host.textContent).toContain('Saved changes')
+  })
+  it('keeps an uncertain code update until polling confirms the full binding', async () => {
+    const binding = { formatVersion: 1, kind: 'code-pages', operationId: 'import_1', contentDigest: 'b'.repeat(64), indexDigest: 'c'.repeat(64) }
+    Object.assign(data.value, { currentCodeContent: binding })
+    const host = await mount()
+    mutation.mockRejectedValue(new Error('Connection lost'))
+    const button = [...host.querySelectorAll('button')].find(button => button.textContent === 'Update staging')!
+    button.click()
+    await flush()
+    const first = mutation.mock.calls[0][1].body
+    Object.assign(data.value, { status: 'ready', active: { id: '20000000-0000-4000-8000-000000000001', checkpointId: 'other', digest: initial().currentDigest,
+      deployedAt: '2026-09-22T00:00:00.000Z', codeContent: { ...binding, indexDigest: 'd'.repeat(64) } } })
+    await flush()
+    button.click()
+    await flush()
+    expect(mutation.mock.calls[1][1].body).toEqual(first)
+  })
+  it('does not acknowledge a stale ready response with a different code binding', async () => {
+    const binding = { formatVersion: 1, kind: 'code-pages', operationId: 'import_1', contentDigest: 'b'.repeat(64), indexDigest: 'c'.repeat(64) }
+    Object.assign(data.value, { currentCodeContent: binding })
+    const host = await mount()
+    mutation.mockResolvedValue({ ...initial(), status: 'ready', currentCodeContent: binding,
+      active: { id: '20000000-0000-4000-8000-000000000001', checkpointId: 'other', digest: initial().currentDigest,
+        deployedAt: '2026-09-22T00:00:00.000Z', codeContent: { ...binding, indexDigest: 'd'.repeat(64) } } })
+    const button = [...host.querySelectorAll('button')].find(button => button.textContent === 'Update staging')!
+    button.click()
+    await flush()
+    const first = mutation.mock.calls[0][1].body
+    expect(notify).not.toHaveBeenCalledWith(expect.objectContaining({ title: 'Staging updated' }))
+    button.click()
+    await flush()
+    expect(mutation.mock.calls[1][1].body).toEqual(first)
+    mutation.mockResolvedValueOnce({ ...initial(), status: 'ready', currentCodeContent: binding,
+      active: { id: '20000000-0000-4000-8000-000000000002', checkpointId: 'imported', digest: initial().currentDigest,
+        deployedAt: '2026-09-22T00:00:00.000Z', codeContent: binding } })
+    button.click()
+    await flush()
+    expect(notify).toHaveBeenCalledWith(expect.objectContaining({ title: 'Staging updated', color: 'success' }))
+  })
   it('shows the allocated address but no Open link before a verified deployment', async () => {
     const host = await mount()
     expect(host.textContent).toContain(initial().hostname)

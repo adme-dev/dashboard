@@ -35,6 +35,7 @@ async function mount() {
   await flush()
 }
 beforeEach(() => {
+  vi.stubGlobal('useRoute', () => ({ query: {} }))
   vi.resetAllMocks()
   window.localStorage.clear()
   for (const [name, value] of Object.entries({ ref, reactive, computed, watch, onMounted, definePageMeta: vi.fn(), useHead: vi.fn(), $fetch: fetchMock, navigateTo: navigate })) vi.stubGlobal(name, value)
@@ -142,4 +143,18 @@ describe('verified signup choices', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(button('Create my workspace')).toBeUndefined()
   })
+})
+
+it('returns an authenticated existing workspace to its requested template view', async () => {
+  vi.stubGlobal('useRoute', () => ({ query: { view: 'templates' } }))
+  fetchMock.mockResolvedValue({ draft: { businessName: 'Existing', businessType: 'Other', timezone: 'UTC', goals: [] }, revision: 1, workspaceId: 'workspace-existing' })
+  await mount()
+  expect(navigate).toHaveBeenCalledWith('/studio/dashboard?view=templates', { replace: true })
+})
+
+it.each(['https://other.example', ['templates'], 'unknown'])('ignores unsupported return view %j', async (view) => {
+  vi.stubGlobal('useRoute', () => ({ query: { view } }))
+  fetchMock.mockResolvedValue({ draft: { businessName: 'Existing', businessType: 'Other', timezone: 'UTC', goals: [] }, revision: 1, workspaceId: 'workspace-existing' })
+  await mount()
+  expect(navigate).toHaveBeenCalledWith('/studio/dashboard', { replace: true })
 })

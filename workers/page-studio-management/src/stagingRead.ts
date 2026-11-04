@@ -1,7 +1,8 @@
 import { z } from 'zod'
+import { CodeContentBindingSchema } from '../../../shared/pageStudio/codeContent'
 import { PageStudioStagingStateSchema, pageStudioStagingAddress } from '../../../shared/pageStudio/staging'
 import type { DomainDatabase } from './domainAttachment'
-import { StagingStoreError, stagingArtifactPrefix } from './stagingStore'
+import { StagingStoreError, stagingArtifactPrefix, checkpointCodeContent } from './stagingStore'
 
 const Scope = z.object({ tenantId: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,199}$/), clientId: z.string().uuid(), siteId: z.string().uuid() }).strict()
 const Hostname = /^preview-([a-f0-9]{32})\.xeroflow\.io$/
@@ -14,8 +15,8 @@ const liveScope = `JOIN agency_clients client ON client.id=site.client_id AND cl
  * Merely reading does not allocate provider resources or publish a checkpoint. */
 export async function readStagingState(db: DomainDatabase, rawScope: z.infer<typeof Scope>, canManage: boolean) {
   const scope = Scope.parse(rawScope)
-  const result = await db.query(`SELECT site.id,checkpoint.digest AS current_digest,staging.host_state,
-    active.id AS active_id,active.checkpoint_id,active.checkpoint_digest,active.deployed_at,
+  const result = await db.query(`SELECT site.id,checkpoint.digest AS current_digest,checkpoint.id AS current_checkpoint_id,staging.host_state,
+    active.id AS active_id,active.checkpoint_id,active.checkpoint_digest,active.deployed_at,active.code_content,
     latest.state AS latest_state,latest.failure_code,latest.expired
     FROM page_studio_sites site ${liveScope}
     LEFT JOIN page_studio_checkpoints checkpoint ON checkpoint.tenant_id=site.tenant_id AND checkpoint.client_id=site.client_id
@@ -31,6 +32,7 @@ export async function readStagingState(db: DomainDatabase, rawScope: z.infer<typ
   if (result.rows.length !== 1 || !row) throw new StagingStoreError('STAGING_ACCESS_DENIED', 403)
   const active = row.host_state === 'ready' && row.active_id
     ? {
+        ...(row.code_content ? { codeContent: CodeContentBindingSchema.parse(row.code_content) } : {}),
         id: row.active_id, checkpointId: row.checkpoint_id, digest: row.checkpoint_digest,
         deployedAt: row.deployed_at instanceof Date ? row.deployed_at.toISOString() : row.deployed_at
       }
@@ -40,7 +42,9 @@ export async function readStagingState(db: DomainDatabase, rawScope: z.infer<typ
   if (['queued', 'building'].includes(String(row.latest_state))) status = row.host_state === 'ready' ? 'building' : 'provisioning'
   if (row.expired === true) status = active ? 'update_failed' : 'failed'
   if (row.host_state === 'suspended') status = 'suspended'
+  const codeContent = row.current_checkpoint_id ? await checkpointCodeContent(db, scope, String(row.current_checkpoint_id)) : undefined
   return PageStudioStagingStateSchema.parse({
+    ...(codeContent ? { currentCodeContent: codeContent } : {}),
     siteId: scope.siteId, ...pageStudioStagingAddress(scope.siteId), status, canManage,
     active, currentDigest: row.current_digest ?? null, failure: row.host_state === 'suspended' ? 'ACCESS_INACTIVE' : row.expired === true ? 'BUILD_FAILED' : row.failure_code ?? null
   })
@@ -51,7 +55,7 @@ export async function readStagingState(db: DomainDatabase, rawScope: z.infer<typ
 export async function resolveStagingHost(db: DomainDatabase, hostname: string) {
   if (typeof hostname !== 'string' || !Hostname.test(hostname)) return null
   const result = await db.query(`SELECT site.tenant_id,site.client_id,site.id AS site_id,deployment.id,
-    deployment.checkpoint_id,deployment.checkpoint_digest,deployment.artifact_prefix,deployment.artifact_manifest_digest
+    deployment.code_content,deployment.checkpoint_id,deployment.checkpoint_digest,deployment.artifact_prefix,deployment.artifact_manifest_digest
     FROM page_studio_staging_sites staging
     JOIN page_studio_sites site ON site.tenant_id=staging.tenant_id AND site.client_id=staging.client_id AND site.id=staging.site_id
     ${liveScope}
@@ -64,6 +68,7 @@ export async function resolveStagingHost(db: DomainDatabase, hostname: string) {
   const scope = Scope.parse({ tenantId: row.tenant_id, clientId: row.client_id, siteId: row.site_id })
   if (hostname !== pageStudioStagingAddress(scope.siteId).hostname || row.artifact_prefix !== stagingArtifactPrefix(scope, String(row.id))) return null
   return {
+    ...(row.code_content ? { codeContent: CodeContentBindingSchema.parse(row.code_content) } : {}),
     scope, id: z.string().uuid().parse(row.id), checkpointId: z.string().min(1).max(128).parse(row.checkpoint_id),
     digest: z.string().regex(/^[a-f0-9]{64}$/).parse(row.checkpoint_digest), artifactPrefix: String(row.artifact_prefix),
     manifestDigest: z.string().regex(/^[a-f0-9]{64}$/).parse(row.artifact_manifest_digest)

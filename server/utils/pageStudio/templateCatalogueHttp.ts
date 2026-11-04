@@ -1,0 +1,52 @@
+import { createError, getCookie, getHeader, getQuery, setHeader, type H3Event } from 'h3'
+import { requireClientAuth } from '~~/server/utils/clientAuth'
+import { digestPortalSessionToken } from '~~/server/utils/portalSession'
+import { requireAgencyPageStudioAccess } from './access'
+import { resolvePortalTemplateTenant, resolveAgencyTemplateTenant, queryTemplateCatalogue } from './templateCatalogueAuthority'
+import { readCustomerSession, readCustomerSetup } from './customerSignup'
+import { resolveCustomerWorkspaceAccess } from './customerWorkspaces'
+import { customerSessionToken, guardCustomerRequest } from './customerSignupHttp'
+import { PageStudioTemplateListQuery } from '~~/shared/pageStudio/templateCatalogue'
+import { listPermittedTemplates, type TemplateActor } from './templateCatalogue'
+
+export async function templateCatalogueHandler(event: H3Event, kind: TemplateActor['kind']) {
+  setHeader(event, 'Cache-Control', 'private, no-store')
+  try {
+    const portal = getCookie(event, 'client_session_token')
+    const customer = getCookie(event, '__Host-studio_customer_session') || getCookie(event, 'studio_customer_session')
+    const agency = getCookie(event, 'auth_token') || getCookie(event, 'auth_token_client') || getHeader(event, 'authorization')
+    if ([portal, customer, agency].filter(Boolean).length !== 1
+      || (getCookie(event, '__Host-studio_customer_session') && getCookie(event, 'studio_customer_session'))
+      || !(kind === 'portal' ? portal : kind === 'customer' ? customer : agency)) throw createError({ statusCode: 403 })
+    const parsed = PageStudioTemplateListQuery.safeParse(getQuery(event))
+    if (!parsed.success || getHeader(event, 'transfer-encoding') || Number(getHeader(event, 'content-length') ?? 0) !== 0) throw createError({ statusCode: 400 })
+    async function authorize(): Promise<TemplateActor> {
+      // Existing authentication helpers cache per request; discard those cached
+      // principals on refresh so a revoked login cannot survive this async read.
+      delete event.context.user
+      delete event.context.clientPortalUser
+      if (kind === 'portal') {
+        const user = await requireClientAuth(event)
+        return { kind, userId: user.id, clientId: user.clientId, tenantId: await resolvePortalTemplateTenant(user.clientId), sessionIdentity: await digestPortalSessionToken(portal!) }
+      }
+      if (kind === 'customer') {
+        guardCustomerRequest(event, 'GET')
+        const token = customerSessionToken(event)
+        const user = await readCustomerSession(token)
+        const setup = await readCustomerSetup(token)
+        if (!setup.workspaceId) throw createError({ statusCode: 403 })
+        await resolveCustomerWorkspaceAccess({ identityId: user.identityId, workspaceId: setup.workspaceId })
+        return { kind, identityId: user.identityId, workspaceId: setup.workspaceId, sessionIdentity: await digestPortalSessionToken(token) }
+      }
+      const access = await requireAgencyPageStudioAccess(event, 'PAGE_STUDIO_VIEW')
+      const boundTenant = await resolveAgencyTemplateTenant(event.context.cloudflare?.env ?? {})
+      if (access.tenantId !== boundTenant) throw createError({ statusCode: 403 })
+      return { kind, userId: access.user.id, tenantId: access.tenantId, sessionIdentity: await digestPortalSessionToken(agency!) }
+    }
+    return await listPermittedTemplates(await authorize(), parsed.data, { query: queryTemplateCatalogue, reauthorize: authorize })
+  } catch (error) {
+    const status = (error as { statusCode?: number }).statusCode
+    const statusCode = status && [400, 401, 403, 404, 409].includes(status) ? status : 503
+    throw createError({ statusCode, statusMessage: statusCode === 503 ? 'Templates are unavailable. Try again later.' : 'Template access is unavailable.' })
+  }
+}

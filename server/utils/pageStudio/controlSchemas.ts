@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { CodeContentBindingSchema } from '~~/shared/pageStudio/codeContent'
 
 import { PageStudioHostnameSchema } from '~~/server/utils/pageStudio/delivery'
 
@@ -14,6 +15,7 @@ export const PageStudioControlScopeSchema = z.object({
 }).strict()
 
 export const PageStudioCheckpointSchema = z.object({
+  codeContent: CodeContentBindingSchema.optional(),
   checkpointId: ScopedId,
   createdAt: z.string().datetime(),
   digest: Digest,

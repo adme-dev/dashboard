@@ -54,7 +54,7 @@ describe.runIf(Boolean(url))('retained checkpoint staging authority on PostgreSQ
       CREATE TABLE custom_roles(id UUID PRIMARY KEY,slug TEXT,is_system BOOLEAN,is_read_only BOOLEAN);
       CREATE TABLE role_permission_groups(role_id UUID,permission_group TEXT,UNIQUE(role_id,permission_group));
       CREATE TABLE page_studio_sessions(nonce TEXT PRIMARY KEY,tenant_id TEXT,client_id UUID,site_id UUID,user_id TEXT,role TEXT,capabilities JSONB,issued_at TIMESTAMPTZ,expires_at TIMESTAMPTZ,revoked_at TIMESTAMPTZ);`)
-    for (const name of ['402_page_studio_control_plane.sql', '415_page_studio_setup_proposals.sql', '420_page_studio_login_sessions.sql', '428_page_studio_client_staging.sql', '429_page_studio_checkpoint_staging_outbox.sql'])
+    for (const name of ['402_page_studio_control_plane.sql', '415_page_studio_setup_proposals.sql', '420_page_studio_login_sessions.sql', '428_page_studio_client_staging.sql', '429_page_studio_checkpoint_staging_outbox.sql', '500_page_studio_code_staging.sql'])
       await db.query(readFileSync(new URL(`../../../server/database/migrations/${name}`, import.meta.url), 'utf8'))
     await db.query("ALTER TABLE page_studio_sites ADD COLUMN delivery_mode TEXT NOT NULL DEFAULT 'static'")
     await db.query('INSERT INTO custom_roles VALUES($1,\'owner\',TRUE,FALSE)', [roleId])

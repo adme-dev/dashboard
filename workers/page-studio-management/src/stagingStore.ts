@@ -1,10 +1,12 @@
 import { z } from 'zod'
+import { CodeContentBindingSchema, sameCodeContent, type CodeContentBinding } from '../../../shared/pageStudio/codeContent'
 import { pageStudioStagingAddress } from '../../../shared/pageStudio/staging'
 import type { DomainDatabase } from './domainAttachment'
 
 const Scope = z.object({ tenantId: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,199}$/), clientId: z.string().uuid(), siteId: z.string().uuid() }).strict()
 type Scope = z.infer<typeof Scope>
 const SnapshotRequest = z.object({
+  codeContent: CodeContentBindingSchema.optional(),
   scope: Scope, actorId: z.string().uuid(), actorRole: z.enum(['agency', 'client']),
   checkpointId: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/), digest: z.string().regex(/^[a-f0-9]{64}$/),
   expectedActiveId: z.string().uuid().nullable(), idempotencyKey: z.string().min(1).max(200), originAuditId: z.string().uuid().optional()
@@ -21,6 +23,7 @@ interface Snapshot {
   id: string
   checkpointId: string
   digest: string
+  codeContent?: CodeContentBinding
   state: string
   actorId: string
   actorRole: string
@@ -58,13 +61,13 @@ export async function beginStagingSnapshot(db: DomainDatabase, raw: z.infer<type
   const { scope } = input
   const params = [scope.tenantId, scope.clientId, scope.siteId]
   const reservation = await reserveStagingAddress(db, scope)
-  const existing = await db.query<Snapshot>(`SELECT id::text,checkpoint_id AS "checkpointId",checkpoint_digest AS digest,state,
+  const existing = await db.query<Snapshot>(`SELECT id::text,checkpoint_id AS "checkpointId",checkpoint_digest AS digest,code_content AS "codeContent",state,
       actor_id::text AS "actorId",actor_role AS "actorRole",expected_active_id::text AS "expectedActiveId"
     FROM page_studio_staging_deployments WHERE tenant_id=$1 AND client_id=$2 AND site_id=$3 AND idempotency_key=$4`, [...params, input.idempotencyKey])
   if (existing.rows[0]) {
     const retained = existing.rows[0]
     if (retained.actorId !== input.actorId || retained.actorRole !== input.actorRole || retained.checkpointId !== input.checkpointId
-      || retained.digest !== input.digest || retained.expectedActiveId !== input.expectedActiveId) throw changed()
+      || !sameCodeContent(retained.codeContent, input.codeContent) || retained.digest !== input.digest || retained.expectedActiveId !== input.expectedActiveId) throw changed()
     const origin = (await db.query<{ originAuditId: string | null }>(`SELECT metadata->>'originAuditId' AS "originAuditId"
       FROM page_studio_audit_events WHERE tenant_id=$1 AND client_id=$2 AND site_id=$3
         AND action='staging.requested' AND resource_type='staging_deployment' AND resource_id=$4`, [...params, retained.id])).rows
@@ -77,6 +80,7 @@ export async function beginStagingSnapshot(db: DomainDatabase, raw: z.infer<type
       AND checkpoint.site_id=site.id AND checkpoint.id=site.current_checkpoint_id
     WHERE site.tenant_id=$1 AND site.client_id=$2 AND site.id=$3 AND checkpoint.id=$4 AND checkpoint.digest=$5`, [...params, input.checkpointId, input.digest])
   if (current.rows.length !== 1) throw changed()
+  if (!sameCodeContent(await checkpointCodeContent(db, scope, input.checkpointId), input.codeContent)) throw changed()
   const pending = await db.query(`SELECT id FROM page_studio_staging_deployments
     WHERE tenant_id=$1 AND client_id=$2 AND site_id=$3 AND state IN ('queued','building')`, params)
   if (pending.rows.length) throw new StagingStoreError('STAGING_BUSY', 409)
@@ -89,16 +93,16 @@ export async function beginStagingSnapshot(db: DomainDatabase, raw: z.infer<type
     throw error
   }
   const inserted = await db.query<Snapshot>(`INSERT INTO page_studio_staging_deployments
-    (tenant_id,client_id,site_id,actor_id,actor_role,idempotency_key,checkpoint_id,checkpoint_digest,expected_active_id,id)
-    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-    RETURNING id::text,checkpoint_id AS "checkpointId",checkpoint_digest AS digest,state,
+    (tenant_id,client_id,site_id,actor_id,actor_role,idempotency_key,checkpoint_id,checkpoint_digest,expected_active_id,id,code_content)
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb)
+    RETURNING id::text,checkpoint_id AS "checkpointId",checkpoint_digest AS digest,code_content AS "codeContent",state,
       actor_id::text AS "actorId",actor_role AS "actorRole",expected_active_id::text AS "expectedActiveId"`,
-  [...params, input.actorId, input.actorRole, input.idempotencyKey, input.checkpointId, input.digest, input.expectedActiveId, snapshotId])
+  [...params, input.actorId, input.actorRole, input.idempotencyKey, input.checkpointId, input.digest, input.expectedActiveId, snapshotId, input.codeContent ? JSON.stringify(input.codeContent) : null])
   const snapshot = inserted.rows[0]
   if (!snapshot) throw changed()
   await db.query(`INSERT INTO page_studio_audit_events(tenant_id,client_id,site_id,actor_id,actor_role,action,resource_type,resource_id,metadata)
     VALUES($1,$2,$3,$4,$5,'staging.requested','staging_deployment',$6,$7::jsonb)`,
-  [...params, input.actorId, input.actorRole, snapshot.id, JSON.stringify({ checkpointId: input.checkpointId, digest: input.digest, hostname: reservation.hostname, ...(input.originAuditId ? { originAuditId: input.originAuditId } : {}) })])
+  [...params, input.actorId, input.actorRole, snapshot.id, JSON.stringify({ checkpointId: input.checkpointId, digest: input.digest, ...(input.codeContent ? { codeContent: input.codeContent } : {}), hostname: reservation.hostname, ...(input.originAuditId ? { originAuditId: input.originAuditId } : {}) })])
   return snapshot
 }
 
@@ -122,7 +126,7 @@ export async function beginInitialStagingSnapshot(db: DomainDatabase, raw: z.inf
     FROM page_studio_sites site JOIN page_studio_checkpoints checkpoint ON checkpoint.tenant_id=site.tenant_id
       AND checkpoint.client_id=site.client_id AND checkpoint.site_id=site.id AND checkpoint.id=site.current_checkpoint_id
     WHERE site.tenant_id=$1 AND site.client_id=$2 AND site.id=$3`, params)).rows[0]
-  if (!current) return null
+  if (!current || await checkpointCodeContent(db, scope, current.checkpointId)) return null
   return beginStagingSnapshot(db, { ...input, ...current, expectedActiveId: null, idempotencyKey: 'initial-staging-v1' })
 }
 
@@ -142,7 +146,7 @@ export async function finishStagingSnapshot(db: DomainDatabase, raw: z.infer<typ
   if (input.artifactPrefix !== stagingArtifactPrefix(scope, input.id)) throw changed()
   const reservation = await reserveStagingAddress(db, scope)
   const result = await db.query<Snapshot & { artifactPrefix: string | null, manifestDigest: string | null }>(`SELECT id::text,
-      checkpoint_id AS "checkpointId",checkpoint_digest AS digest,state,actor_id::text AS "actorId",actor_role AS "actorRole",
+      checkpoint_id AS "checkpointId",checkpoint_digest AS digest,code_content AS "codeContent",state,actor_id::text AS "actorId",actor_role AS "actorRole",
       expected_active_id::text AS "expectedActiveId",artifact_prefix AS "artifactPrefix",artifact_manifest_digest AS "manifestDigest"
     FROM page_studio_staging_deployments WHERE tenant_id=$1 AND client_id=$2 AND site_id=$3 AND id=$4 FOR UPDATE`, [...params, input.id])
   const snapshot = result.rows[0]
@@ -158,13 +162,14 @@ export async function finishStagingSnapshot(db: DomainDatabase, raw: z.infer<typ
       AND checkpoint.site_id=site.id AND checkpoint.id=site.current_checkpoint_id
     WHERE site.tenant_id=$1 AND site.client_id=$2 AND site.id=$3 AND checkpoint.id=$4 AND checkpoint.digest=$5`, [...params, snapshot.checkpointId, snapshot.digest])
   if (current.rows.length !== 1) throw changed()
+  if (!sameCodeContent(await checkpointCodeContent(db, scope, snapshot.checkpointId), snapshot.codeContent)) throw changed()
   await db.query(`UPDATE page_studio_staging_deployments SET state='succeeded',artifact_prefix=$5,artifact_manifest_digest=$6,deployed_at=clock_timestamp()
     WHERE tenant_id=$1 AND client_id=$2 AND site_id=$3 AND id=$4`, [...params, input.id, input.artifactPrefix, input.manifestDigest])
   await db.query(`UPDATE page_studio_staging_sites SET active_deployment_id=$4,updated_at=clock_timestamp()
     WHERE tenant_id=$1 AND client_id=$2 AND site_id=$3`, [...params, input.id])
   await db.query(`INSERT INTO page_studio_audit_events(tenant_id,client_id,site_id,actor_id,actor_role,action,resource_type,resource_id,metadata)
     VALUES($1,$2,$3,$4,$5,'staging.activated','staging_deployment',$6,$7::jsonb)`, [...params, snapshot.actorId, snapshot.actorRole, input.id,
-    JSON.stringify({ checkpointId: snapshot.checkpointId, digest: snapshot.digest, manifestDigest: input.manifestDigest, hostname: reservation.hostname })])
+    JSON.stringify({ checkpointId: snapshot.checkpointId, digest: snapshot.digest, ...(snapshot.codeContent ? { codeContent: snapshot.codeContent } : {}), manifestDigest: input.manifestDigest, hostname: reservation.hostname })])
 }
 
 const Failure = z.object({ scope: Scope, id: z.string().uuid(), failure: z.enum(['HOST_UNAVAILABLE', 'BUILD_FAILED', 'SNAPSHOT_CHANGED', 'ACCESS_INACTIVE']) }).strict()
@@ -181,4 +186,17 @@ export async function failStagingSnapshot(db: DomainDatabase, raw: z.infer<typeo
   const actor = result.rows[0]
   if (actor) await db.query(`INSERT INTO page_studio_audit_events(tenant_id,client_id,site_id,actor_id,actor_role,action,resource_type,resource_id,metadata)
     VALUES($1,$2,$3,$4,$5,'staging.failed','staging_deployment',$6,$7::jsonb)`, [scope.tenantId, scope.clientId, scope.siteId, actor.actor_id, actor.actor_role, input.id, JSON.stringify({ code: input.failure })])
+}
+
+/** Only native append-only checkpoint audits may supply accepted code identity. */
+export async function checkpointCodeContent(db: DomainDatabase, scope: Scope, checkpointId: string): Promise<CodeContentBinding | undefined> {
+  const result = await db.query<{ metadata: Record<string, unknown> }>(`SELECT metadata FROM page_studio_audit_events
+    WHERE tenant_id=$1 AND client_id=$2 AND site_id=$3 AND resource_id=$4
+      AND action='workspace.checkpointed' AND resource_type='checkpoint'`, [scope.tenantId, scope.clientId, scope.siteId, checkpointId])
+  const bound = result.rows.filter(row => Object.hasOwn(row.metadata, 'codeContent'))
+  if (!bound.length) return undefined
+  if (result.rows.length !== 1) throw changed()
+  const parsed = CodeContentBindingSchema.safeParse(bound[0]!.metadata.codeContent)
+  if (!parsed.success) throw changed()
+  return parsed.data
 }

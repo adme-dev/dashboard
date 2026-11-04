@@ -1,3 +1,5 @@
+import { getLatestPageStudioCheckpoint } from '~~/server/utils/pageStudio/checkpointRead'
+import { codeFixture } from '../../fixtures/pageStudioCodeContent'
 import { createHash, randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { IncomingMessage, ServerResponse } from 'node:http'
@@ -46,13 +48,18 @@ const userId = '30000000-0000-4000-8000-000000000501'
 const clientId = '20000000-0000-4000-8000-000000000501'
 const roleId = '60000000-0000-4000-8000-000000000501'
 const denied = { code: 'SESSION_AUTHORITY_DENIED', statusCode: 403 }
-const migrationSql = [402, 404, 420, 422, 425, 429].map(number => readFileSync(new URL({
+const migrationSql = [402, 404, 420, 422, 425, 428, 429, 430, 431, 432, 433].map(number => readFileSync(new URL({
   402: '../../../server/database/migrations/402_page_studio_control_plane.sql',
   404: '../../../server/database/migrations/404_page_studio_documents.sql',
   420: '../../../server/database/migrations/420_page_studio_login_sessions.sql',
   422: '../../../server/database/migrations/422_page_studio_cms_visibility.sql',
   425: '../../../server/database/migrations/425_page_studio_cms_authoring_scope.sql',
-  429: '../../../server/database/migrations/429_page_studio_checkpoint_staging_outbox.sql'
+  428: '../../../server/database/migrations/428_page_studio_client_staging.sql',
+  429: '../../../server/database/migrations/429_page_studio_checkpoint_staging_outbox.sql',
+  430: '../../../server/database/migrations/430_page_studio_astro_build_identity.sql',
+  431: '../../../server/database/migrations/431_page_studio_astro_release_receipt.sql',
+  432: '../../../server/database/migrations/432_page_studio_astro_approval.sql',
+  433: '../../../server/database/migrations/433_page_studio_runtime_delivery.sql'
 }[number]!, import.meta.url), 'utf8'))
 const deferred = () => {
   let resolve!: () => void
@@ -189,6 +196,110 @@ describe.runIf(Boolean(databaseUrl))('Ordinary editor checkpoint authority at th
       await observer.query('ROLLBACK')
       await observer.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`)
     } finally { await observer.end() }
+  })
+
+  describe('reviewed code-page imports', () => {
+    beforeEach(async () => {
+      await seedSession('agency')
+      claims.capabilities.push('source:edit')
+      await observer.query('UPDATE page_studio_sessions SET capabilities=$2::jsonb WHERE nonce=$1', [claims.nonce, JSON.stringify(claims.capabilities)])
+      await observer.query('UPDATE page_studio_entitlements SET monthly_ai_operation_limit=0')
+    })
+    async function imported(id = 'imported', pageCount = 1) {
+      return codeFixture({ scope, userId, checkpointId: id, operationId: `operation_${id}`, expectedCheckpointId: 'checkpoint_base', pageCount })
+    }
+    it('commits and cold reads exact code identity with AI allowance zero; replay does not rewind', async () => {
+      const f = await imported()
+      const writer = await connect()
+      const dependencies = { runTransaction: transactionFor(writer), env: { PAGE_STUDIO_CHECKPOINTS: f.bucket } }
+      expect(await commitEditor!(f.input, claims, dependencies)).toMatchObject({ acknowledged: true, isCurrent: true })
+      const coldReader = await connect()
+      expect(await getLatestPageStudioCheckpoint(scope, { queryOne: async (sql, params) => (await coldReader.query(sql, params)).rows[0] ?? null }))
+        .toEqual({ checkpointId: 'imported', digest: f.input.checkpoint.digest, objectKey: f.input.checkpoint.objectKey, codeContent: f.input.checkpoint.codeContent })
+      const saved = await snapshot()
+      expect(saved.current_checkpoint_id).toBe('imported')
+      const audit = saved.audits.find((row: { resource_id: string }) => row.resource_id === 'imported')
+      expect(audit.metadata.codeContent).toEqual(f.input.checkpoint.codeContent)
+      expect(await commitEditor!(f.input, claims, dependencies)).toMatchObject({ acknowledged: true, isCurrent: true })
+      expect(await snapshot()).toEqual(saved)
+      await observer.query('UPDATE page_studio_sites SET current_checkpoint_id=\'checkpoint_base\' WHERE id=$1', [scope.siteId])
+      expect(await commitEditor!(f.input, claims, dependencies)).toMatchObject({ acknowledged: true, isCurrent: false, currentCheckpointId: 'checkpoint_base' })
+    })
+    it('admits exactly one concurrent import from the same base', async () => {
+      const a = await imported('import_a')
+      const b = await imported('import_b')
+      const writerA = await connect()
+      const writerB = await connect()
+      const results = await Promise.all([
+        capture(commitEditor!(a.input, claims, { runTransaction: transactionFor(writerA), env: { PAGE_STUDIO_CHECKPOINTS: a.bucket } })),
+        capture(commitEditor!(b.input, claims, { runTransaction: transactionFor(writerB), env: { PAGE_STUDIO_CHECKPOINTS: b.bucket } }))
+      ])
+      expect(results.filter(result => result.ok)).toHaveLength(1)
+      expect(results.filter(result => !result.ok)).toMatchObject([{ ok: false, error: { code: 'CHECKPOINT_BASE_MISMATCH' } }])
+      const saved = await snapshot()
+      expect(saved.checkpoints).toHaveLength(2)
+    })
+    it('rejects import when its session is revoked while the site lock is held', async () => {
+      const f = await imported()
+      const before = await snapshot()
+      const blocker = await connect()
+      const writer = await connect()
+      await blocker.query('BEGIN')
+      await blocker.query('SELECT id FROM page_studio_sites WHERE id=$1 FOR NO KEY UPDATE', [scope.siteId])
+      const pending = capture(commitEditor!(f.input, claims, { runTransaction: transactionFor(writer), env: { PAGE_STUDIO_CHECKPOINTS: f.bucket } }))
+      try {
+        await waitForBlock(writer, blocker)
+        await observer.query('UPDATE page_studio_sessions SET revoked_at=clock_timestamp() WHERE nonce=$1', [claims.nonce])
+        await blocker.query('COMMIT')
+        expect(await pending).toMatchObject({ ok: false, error: denied })
+        expect(await snapshot()).toEqual(before)
+      } finally {
+        await blocker.query('ROLLBACK')
+        await pending
+      }
+    })
+    it('counts imported routes rather than the typed shell against the page allowance', async () => {
+      const f = await imported('too_many', 2)
+      await observer.query('UPDATE page_studio_entitlements SET pages_per_site_limit=1')
+      const before = await snapshot()
+      const writer = await connect()
+      await expect(commitEditor!(f.input, claims, { runTransaction: transactionFor(writer), env: { PAGE_STUDIO_CHECKPOINTS: f.bucket } }))
+        .rejects.toMatchObject({ code: 'CODE_CONTENT_PAGE_LIMIT' })
+      expect(await snapshot()).toEqual(before)
+    })
+    it.each(['allowance', 'managed', 'runtime'] as const)('rechecks %s after waiting for the site lock', async (change) => {
+      const f = await imported('race_import', 2)
+      const before = await snapshot()
+      const blocker = await connect()
+      const writer = await connect()
+      await blocker.query('BEGIN')
+      await blocker.query('SELECT id FROM page_studio_sites WHERE id=$1 FOR NO KEY UPDATE', [scope.siteId])
+      const pending = capture(commitEditor!(f.input, claims, { runTransaction: transactionFor(writer), env: { PAGE_STUDIO_CHECKPOINTS: f.bucket } }))
+      try {
+        await waitForBlock(writer, blocker)
+        if (change === 'allowance') await blocker.query('UPDATE page_studio_entitlements SET pages_per_site_limit=1')
+        if (change === 'runtime') await blocker.query('UPDATE page_studio_sites SET delivery_mode=\'runtime\' WHERE id=$1', [scope.siteId])
+        if (change === 'managed') await blocker.query(`INSERT INTO page_studio_cms_scopes
+          (scope_key,tenant_id,client_id,business_id,site_id,environment,state,adoption_id,target)
+          VALUES(array_to_json(ARRAY[$1,$2,$2,$3,'staging'])::text,$1,$2::uuid,$2::uuid,$3::uuid,'staging','freezing','fixture','{}')`,
+        [scope.tenantId, scope.clientId, scope.siteId])
+        await blocker.query('COMMIT')
+        expect(await pending).toMatchObject({ ok: false, error: { code: change === 'managed' ? 'CMS_MANAGED_CHECKPOINT_REQUIRED' : 'CODE_CONTENT_PAGE_LIMIT' } })
+        expect(await snapshot()).toEqual(before)
+      } finally {
+        await blocker.query('ROLLBACK')
+        await pending
+      }
+    })
+    it('refuses a typed replacement of an accepted code checkpoint', async () => {
+      const f = await imported()
+      const writer = await connect()
+      await commitEditor!(f.input, claims, { runTransaction: transactionFor(writer), env: { PAGE_STUDIO_CHECKPOINTS: f.bucket } })
+      const before = await snapshot()
+      await expect(commitEditor!({ checkpoint: checkpoint('typed_drop', 'c'), expectedCheckpointId: 'imported' }, claims,
+        { runTransaction: transactionFor(writer) })).rejects.toMatchObject({ code: 'CODE_CONTENT_DOWNGRADE' })
+      expect(await snapshot()).toEqual(before)
+    })
   })
 
   describe.each(['agency', 'client'] as const)('%s session', (role) => {

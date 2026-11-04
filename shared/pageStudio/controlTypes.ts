@@ -1,3 +1,5 @@
+import type { CodeContentBinding } from './codeContent'
+
 export interface PageStudioControlScope {
   tenantId: string
   clientId: string
@@ -9,6 +11,7 @@ export interface PageStudioControlQueryClient {
 }
 
 export interface PageStudioCheckpointInput {
+  codeContent?: CodeContentBinding
   checkpointId: string
   createdAt: string
   digest: string

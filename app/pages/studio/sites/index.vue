@@ -2,7 +2,9 @@
 import type { PageStudioSiteSummary } from '~/types'
 
 definePageMeta({ layout: 'studio', middleware: 'studio-auth' })
-useHead({ title: 'My sites | Page Studio' })
+const route = useRoute()
+const templatesView = computed(() => route.query.view === 'templates')
+useHead({ title: () => templatesView.value ? 'Templates | Page Studio' : 'My sites | Page Studio' })
 const page = ref(1)
 const pageSize = 12
 const { data, pending, error, refresh } = await useFetch<{ sites: PageStudioSiteSummary[], total: number }>('/api/portal/page-studio/sites', {
@@ -26,7 +28,8 @@ async function openStudio(siteId: string) {
 </script>
 
 <template>
-  <section class="space-y-8">
+  <PageStudioTemplateCatalogue v-if="templatesView" endpoint="/api/portal/page-studio/templates" />
+  <section v-else class="space-y-8">
     <div class="flex flex-wrap items-start justify-between gap-4">
       <div>
         <h1 class="text-3xl font-semibold tracking-tight text-highlighted">
