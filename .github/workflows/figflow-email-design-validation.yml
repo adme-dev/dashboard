@@ -10,6 +10,7 @@ on:
       - 'workers/email-design/**'
       - 'test/**/email*'
       - 'test/server/email/**'
+      - 'test/config/godModeIsolationInventory.test.ts'
       - '.github/workflows/figflow-email-design-validation.yml'
   workflow_dispatch:
 
@@ -46,7 +47,8 @@ jobs:
       - name: Focused gate, authority and deployment regressions
         if: matrix.gate == 'worker'
         run: >-
-          pnpm exec vitest run test/server/email/designTemplateGate.test.ts
+          pnpm exec vitest run test/config/godModeIsolationInventory.test.ts
+          test/server/email/designTemplateGate.test.ts
           test/unit/emailDesignDesignerRoute.test.ts test/unit/emailDesignRoundtripRoute.test.ts
           test/unit/emailDesignDesignerPersistence.test.ts test/unit/emailCampaignHandoffRoute.test.ts
           test/unit/emailDesignLibraryHttp.test.ts test/unit/emailDesignBrandHttp.test.ts
