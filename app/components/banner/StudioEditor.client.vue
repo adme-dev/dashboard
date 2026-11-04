@@ -207,6 +207,10 @@ const showSizePicker = ref(false)
 const showExportModal = ref(false)
 const showDesignAssistant = ref(false)
 const exportInitialType = ref<'html5' | 'mp4'>('html5')
+function openVideoExports() {
+  exportInitialType.value = 'mp4'
+  showExportModal.value = true
+}
 const socialSuggestion = ref<{ caption?: string, suggestedSchedule?: string } | undefined>()
 const { openGenerate: openGenerateImage } = useAiImageGenerate()
 async function prepareAssistantSocial(suggestion: { caption?: string, suggestedSchedule?: string }) {
@@ -945,6 +949,11 @@ const { activeSize } = useBannerFileSize()
       v-model:open="showExportModal"
       :initial-type="exportInitialType"
       :social-suggestion="socialSuggestion"
+    />
+    <BannerVideoExportStatus
+      v-if="state.project?.id && !showExportModal"
+      :project-id="state.project.id"
+      @open="openVideoExports"
     />
     <BannerPlayAll v-if="showPlayAll" v-model:open="showPlayAll" />
     <BannerGenerateFromUrl v-if="showGenerateUrl" v-model:open="showGenerateUrl" />

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { createExportJobPoller, exportFormatLabel, summarizeExportJobs, type ExportJob } from '~/utils/bannerExportPoll'
+import { createExportJobPoller, exportFormatLabel, exportJobTiming, summarizeExportJobs, type ExportJob } from '~/utils/bannerExportPoll'
 import { apiErrorDescription } from '~/utils/apiError'
 import { FORMATS } from '~/utils/banner-constants'
 import { createBannerSocialDraftSession } from '~/utils/bannerSocialDraftSession'
@@ -13,6 +13,8 @@ const loading = ref(false)
 const loadError = ref(false)
 const creating = ref<string | null>(null)
 const retrying = ref<string | null>(null)
+const now = ref(Date.now())
+let clock: ReturnType<typeof setInterval> | undefined
 let mounted = true
 const drafts = reactive<Record<string, string>>({})
 const sessions = new Map<string, ReturnType<typeof createBannerSocialDraftSession>>()
@@ -60,6 +62,12 @@ watch(() => [...new Set(jobs.value.filter(job => !['done', 'failed'].includes(jo
 onBeforeUnmount(() => {
   mounted = false
   poller.stop()
+  clearInterval(clock)
+})
+onMounted(() => {
+  clock = setInterval(() => {
+    now.value = Date.now()
+  }, 1000)
 })
 
 function canRetry(job: ExportJob) {
@@ -145,6 +153,7 @@ async function createDraft(job: ExportJob) {
     <p v-if="summary.pending" class="text-xs text-muted">
       Rendering continues if you close this dialog. Reopen it to recover the latest status.
     </p>
+    <UProgress v-if="summary.pending" size="xs" aria-label="MP4 exports in progress" />
     <article v-for="job in pendingJobs" :key="job.jobId" class="rounded-lg border border-default p-3 space-y-1">
       <div class="flex justify-between gap-3 text-xs">
         <span>{{ exportFormatLabel(job.formatKey, FORMATS[job.formatKey]?.name) }}</span>
@@ -152,6 +161,9 @@ async function createDraft(job: ExportJob) {
           {{ job.status }}
         </UBadge>
       </div>
+      <p v-if="job.status !== 'failed'" class="text-xs text-muted">
+        {{ exportJobTiming(job, now) }}
+      </p>
       <UButton
         v-if="canRetry(job)"
         :label="job.status === 'rendering' ? 'Recover render' : 'Retry render'"

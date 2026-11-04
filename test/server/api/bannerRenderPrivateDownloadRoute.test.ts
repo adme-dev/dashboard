@@ -99,7 +99,10 @@ describe('GET /agency/banner-studio/export-video/jobs', () => {
         url: `/api/agency/banner-studio/export-video/jobs/${JOB_ID}/download`,
         fileSize: 71546,
         error: null,
-        canRetry: false
+        canRetry: false,
+        createdAt: null,
+        startedAt: null,
+        updatedAt: null
       }]
     })
   })
