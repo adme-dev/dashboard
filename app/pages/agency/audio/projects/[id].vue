@@ -992,6 +992,7 @@ const saveStatusIcon = computed(() => {
 // Translate the server's reason into something a producer can act on.
 const saveErrorDescription = computed(() => {
   const reason = editor.saveError.value ?? 'Unknown error'
+  if (editor.saveConflict.value) return `${reason} Your local edit is still in this tab.`
   if (/God mode/i.test(reason)) {
     return `${reason}. This route isn't registered for owner (God mode) sessions yet — ask an engineer to add it to the mutation registry.`
   }
@@ -1017,6 +1018,34 @@ async function retrySave() {
     toast.add({ title: 'Saved', color: 'success' })
   } catch {
     // saveStatus/saveError already reflect the failure; the alert stays up.
+  }
+}
+
+const reloadConfirmOpen = ref(false)
+const reloadingSaved = ref(false)
+
+function downloadLocalEdit() {
+  if (!editor.timeline.value) return
+  const blob = new Blob([JSON.stringify(editor.timeline.value, null, 2)], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `video-edit-${projectId.value}-${Date.now()}.json`
+  link.click()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
+async function reloadSavedVersion() {
+  if (reloadingSaved.value) return
+  reloadingSaved.value = true
+  try {
+    await editor.reloadSavedTimeline()
+    reloadConfirmOpen.value = false
+    toast.add({ title: 'Saved version loaded', color: 'success' })
+  } catch (error) {
+    toast.add({ title: 'Could not reload', description: apiErrorDescription(error, 'Your local edit is still in this tab.'), color: 'error' })
+  } finally {
+    reloadingSaved.value = false
   }
 }
 
@@ -1190,7 +1219,7 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
         </div>
       </header>
 
-      <!-- Save failures block editing confidence: say what happened and offer retry. -->
+      <!-- Keep local edits recoverable when another save wins. -->
       <UAlert
         v-if="editor.saveStatus.value === 'error'"
         color="error"
@@ -1199,7 +1228,12 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
         class="shrink-0"
         title="Changes aren't being saved"
         :description="saveErrorDescription"
-        :actions="[{ label: 'Retry save', icon: 'i-lucide-refresh-cw', color: 'error', variant: 'soft', onClick: retrySave }]"
+        :actions="editor.saveConflict.value
+          ? [
+            { label: 'Download local edit', icon: 'i-lucide-download', color: 'neutral', variant: 'soft', onClick: downloadLocalEdit },
+            { label: 'Reload saved version', icon: 'i-lucide-refresh-cw', color: 'error', variant: 'soft', onClick: () => { reloadConfirmOpen = true } }
+          ]
+          : [{ label: 'Retry save', icon: 'i-lucide-refresh-cw', color: 'error', variant: 'soft', onClick: retrySave }]"
       />
 
       <!-- Loading / error states -->
@@ -1787,6 +1821,40 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
             @click="doSaveVersion"
           />
         </div>
+      </div>
+    </template>
+  </UModal>
+
+  <UModal v-model:open="reloadConfirmOpen" title="Reload saved version?" :dismissible="!reloadingSaved">
+    <template #body>
+      <p class="text-sm text-muted">
+        Reloading replaces the edit in this tab and clears its undo history.
+        Download your local edit first if you want to keep a copy. The download
+        contains timeline data, not the media files, and cannot be imported here yet.
+      </p>
+    </template>
+    <template #footer>
+      <div class="flex w-full flex-wrap justify-end gap-2">
+        <UButton
+          variant="ghost"
+          color="neutral"
+          label="Keep editing"
+          :disabled="reloadingSaved"
+          @click="reloadConfirmOpen = false"
+        />
+        <UButton
+          variant="soft"
+          color="neutral"
+          icon="i-lucide-download"
+          label="Download local edit"
+          @click="downloadLocalEdit"
+        />
+        <UButton
+          color="error"
+          label="Discard local edit and reload"
+          :loading="reloadingSaved"
+          @click="reloadSavedVersion"
+        />
       </div>
     </template>
   </UModal>

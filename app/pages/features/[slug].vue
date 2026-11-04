@@ -784,7 +784,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'A Real Editing Timeline',
-        content: 'Five colour-coded lanes — video, overlay, captions, voiceover, music — with drag-to-move, edge trimming, split at the playhead, snapping to neighbours and the grid, and waveforms on audio clips. Space plays, arrows nudge, ⌘Z undoes, and the dock resizes to fit the job. Every edit autosaves; named version snapshots let you checkpoint a cut and restore it later.'
+        content: 'Five colour-coded lanes — video, overlay, captions, voiceover, music — with drag-to-move, edge trimming, split at the playhead, snapping to neighbours and the grid, and waveforms on audio clips. Space plays, arrows nudge, ⌘Z undoes, and the dock resizes to fit the job. Edits autosave after a short pause; named version snapshots let you checkpoint a cut and restore it later. If another save changes the timeline, saving pauses and your local edit stays in the tab. Download its timeline data before choosing to reload the saved version.'
       },
       {
         title: 'Per-Clip Look Controls',
@@ -792,7 +792,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Render Once, Ship Everywhere',
-        content: 'Pick Reels 9:16, Square 1:1 and YouTube 16:9 in one render. Finished variants can be downloaded, saved back to the library as reusable assets, sent to the client portal for approval, or handed to Social Publishing to schedule — without leaving the editor. Failed renders explain why and retry in place.'
+        content: 'Pick Reels 9:16, Square 1:1 and YouTube 16:9 in one render. Each render uses a saved timeline snapshot, so subsequent timeline edits do not change that job. Finished variants can be downloaded, saved back to the library as reusable assets, sent to the client portal for approval, or handed to Social Publishing to schedule — without leaving the editor. Failed renders explain why and retry in place.'
       }
     ]
   },
@@ -813,7 +813,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Non-Destructive Undo and Autosave',
-        content: 'Every edit — move, trim, slice, add, delete — is undoable and redoable via a 100-step in-memory stack (Cmd+Z / Cmd+Shift+Z). Edits are also debounced-saved to the server automatically after 1.5 seconds of inactivity, so you never lose work. Named version snapshots let you checkpoint a milestone ("Before final mix") and restore it at any time.'
+        content: 'Every edit — move, trim, slice, add, delete — is undoable and redoable via a 100-step in-memory stack (Cmd+Z / Cmd+Shift+Z). Edits save automatically after 1.5 seconds of inactivity. If another save changes the timeline, autosave pauses and keeps your local edit in the tab. You can download its timeline data before explicitly replacing it with the saved version; the download excludes media files and cannot yet be imported into the editor. Named version snapshots let you checkpoint a milestone ("Before final mix") and restore it at any time.'
       },
       {
         title: 'Add Clips From The Audio Library',

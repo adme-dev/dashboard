@@ -5,6 +5,7 @@ const queryOneMock = vi.fn()
 const queryRowsMock = vi.fn()
 const transactionMock = vi.fn()
 vi.mock('~~/server/utils/db', () => ({
+  queryOneFresh: (...a: unknown[]) => queryOneMock(...a),
   queryOne: (...a: any[]) => queryOneMock(...a),
   queryRows: (...a: any[]) => queryRowsMock(...a),
   transaction: (cb: any) => transactionMock(cb)
@@ -28,7 +29,7 @@ const projectRow = {
   created_at: '2026-06-02T00:00:00Z', updated_at: '2026-06-02T00:00:00Z'
 }
 const timelineRow = {
-  id: 't1', project_id: 'p1', version: 1, label: null,
+  id: 't1', project_id: 'p1', version: 1, label: null, edit_revision: 0,
   state: { schema_version: 1, media_type: 'audio', sample_rate: 48000, duration_sec: 0, tracks: [], ducking: [] },
   schema_version: 1, created_by: 'u1', created_at: '2026-06-02T00:00:00Z'
 }
@@ -135,16 +136,20 @@ describe('saveDraftTimeline', () => {
           source_out_sec: 8, gain_db: 0, fade_in_sec: 0, fade_out_sec: 0, fade_curve: 'linear' }] }],
       ducking: []
     }
-    const dbQuery = vi.fn().mockResolvedValueOnce({ rows: [{ ...timelineRow, state: { ...state, duration_sec: 8 } }] })
+    const dbQuery = vi.fn()
+      .mockResolvedValueOnce({ rows: [projectRow] })
+      .mockResolvedValueOnce({ rows: [timelineRow] })
+      .mockResolvedValueOnce({ rows: [{ exists: false }] })
+      .mockResolvedValueOnce({ rows: [{ ...timelineRow, edit_revision: 1, state: { ...state, duration_sec: 8 } }] })
     transactionMock.mockImplementation(async (cb: any) => cb({ query: dbQuery }))
-    const saved = await saveDraftTimeline('t1', state)
+    const saved = await saveDraftTimeline({ projectId: 'p1', actor: { id: 'u1', role: 'member' }, expectedTimelineId: 't1', expectedEditRevision: 0, state })
     // duration was recomputed to 8 and embedded in the persisted state arg
-    const persistedState = JSON.parse(dbQuery.mock.calls[0][1][0])
+    const persistedState = JSON.parse(dbQuery.mock.calls[3][1][0])
     expect(persistedState.duration_sec).toBe(8)
     expect((saved.state as any).duration_sec).toBe(8)
   })
 
-  it('throws when the UPDATE returns no row', async () => {
+  it('throws when the project is missing', async () => {
     const state: TimelineState = {
       schema_version: 1, media_type: 'audio', sample_rate: 48000, duration_sec: 0,
       tracks: [{ id: 't', name: 'M', kind: 'music', gain_db: 0, muted: false, locked: false, hidden: false,
@@ -153,31 +158,33 @@ describe('saveDraftTimeline', () => {
       ducking: []
     }
     transactionMock.mockImplementation(async (cb: any) => cb({ query: vi.fn().mockResolvedValueOnce({ rows: [] }) }))
-    await expect(saveDraftTimeline('missing', state)).rejects.toThrow()
+    await expect(saveDraftTimeline({ projectId: 'missing', actor: { id: 'u1', role: 'member' }, expectedTimelineId: 't1', expectedEditRevision: 0, state })).rejects.toThrow()
   })
 })
 
 describe('createVersion', () => {
   it('snapshots current state into version max+1 and repoints current_timeline_id', async () => {
     const dbQuery = vi.fn()
-      // SELECT current timeline (state to copy) + max version
-      .mockResolvedValueOnce({ rows: [{ state: timelineRow.state, max_version: 1 }] })
+      // Project lock, current timeline, then version allocation.
+      .mockResolvedValueOnce({ rows: [projectRow] })
+      .mockResolvedValueOnce({ rows: [timelineRow] })
+      .mockResolvedValueOnce({ rows: [{ max_version: 1 }] })
       // INSERT new version row (version 2)
       .mockResolvedValueOnce({ rows: [{ ...timelineRow, id: 't2', version: 2 }] })
       // UPDATE project.current_timeline_id
       .mockResolvedValueOnce({ rows: [] })
     transactionMock.mockImplementation(async (cb: any) => cb({ query: dbQuery }))
 
-    const v = await createVersion({ projectId: 'p1', createdBy: 'u1', label: 'v2' })
+    const v = await createVersion({ projectId: 'p1', actor: { id: 'u1', role: 'member' }, expectedTimelineId: 't1', expectedEditRevision: 0, label: 'v2' })
     expect(v.version).toBe(2)
     expect(v.id).toBe('t2')
-    expect(dbQuery).toHaveBeenCalledTimes(3)
+    expect(dbQuery).toHaveBeenCalledTimes(5)
   })
 
   it('throws when there is no current timeline', async () => {
     transactionMock.mockImplementation(async (cb: any) =>
       cb({ query: vi.fn().mockResolvedValueOnce({ rows: [] }) }))
-    await expect(createVersion({ projectId: 'p1', createdBy: 'u1' })).rejects.toThrow()
+    await expect(createVersion({ projectId: 'p1', actor: { id: 'u1', role: 'member' }, expectedTimelineId: 't1', expectedEditRevision: 0 })).rejects.toThrow()
   })
 })
 

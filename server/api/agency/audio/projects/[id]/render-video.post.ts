@@ -5,8 +5,9 @@
 // Resolves overlay clips (gsap_project_id → banner layers → server HTML → R2 upload)
 // before enqueuing, so the worker has pre-built HTML to pass to the container.
 import { z } from 'zod'
+import { requireTimelinePrecondition, assertTimelinePrecondition } from '~~/server/utils/audio/timelineRevision'
 import { requireWriteAccess } from '~~/server/utils/auth'
-import { getProjectWithCurrentTimeline, createRenderJob, getRenderJob, markRenderJobFailed } from '~~/server/utils/audio/projects'
+import { getProjectWithCurrentTimeline, createRenderJob, getRenderJob, markRenderJobFailed, assertMediaProjectAccess } from '~~/server/utils/audio/projects'
 import { executeGodModeMediaRender } from '~~/server/utils/audio/godModeExternalMutations'
 import { enqueueVideoRender } from '~~/server/utils/audio/renderQueue'
 import { resolveOverlayFormatKey, loadBannerLayers } from '~~/server/utils/audio/bannerOverlay'
@@ -31,7 +32,9 @@ export default defineEventHandler(async (event) => {
   const user = await requireWriteAccess(event)
   const id = getRouterParam(event, 'id')!
 
-  const bodyResult = BodySchema.safeParse(await readBody(event))
+  const raw = await readBody(event)
+  const precondition = requireTimelinePrecondition(raw)
+  const bodyResult = BodySchema.safeParse(raw)
   if (!bodyResult.success) {
     throw createError({ statusCode: 400, statusMessage: 'Invalid render-video request',
       data: { errors: bodyResult.error.issues.map((i) => i.message) } })
@@ -43,12 +46,15 @@ export default defineEventHandler(async (event) => {
 
   const existing = await getProjectWithCurrentTimeline(id)
   if (!existing) throw createError({ statusCode: 404, statusMessage: 'Project not found' })
+  assertMediaProjectAccess(user, existing.project)
   if (existing.project.mediaType !== 'av') {
     throw createError({ statusCode: 400, statusMessage: 'render-video requires an AV project' })
   }
   if (!existing.project.currentTimelineId || !existing.timeline) {
     throw createError({ statusCode: 409, statusMessage: 'Project has no current timeline to render' })
   }
+
+  assertTimelinePrecondition(existing.timeline, precondition)
 
   // Collect all overlay clips from the timeline state.
   const timelineState = existing.timeline.state as any
@@ -72,7 +78,7 @@ export default defineEventHandler(async (event) => {
     }
     // Snapshot + create the job row (same createRenderJob as audio — channels unused for
     // video but the row records who triggered it and acts as the durable anchor).
-    const job = await createRenderJob({ projectId: id, requestedBy: user.id, channels: [], jobId: run.ids[0]! })
+    const job = await createRenderJob({ projectId: id, actor: user, ...precondition, channels: [], jobId: run.ids[0]! })
 
     // Resolve each overlay per requested output format: load banner layers, build HTML,
     // upload to R2. This avoids reusing portrait overlay HTML for square/landscape

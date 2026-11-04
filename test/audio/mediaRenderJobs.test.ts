@@ -42,37 +42,39 @@ describe('mapRenderJobRow', () => {
 describe('createRenderJob', () => {
   it('snapshots a new version then inserts a queued job pointing at it (one transaction)', async () => {
     const dbQuery = vi.fn()
-      .mockResolvedValueOnce({ rows: [{ state: { schema_version: 1, media_type: 'audio', sample_rate: 48000, duration_sec: 0, tracks: [], ducking: [] }, schema_version: 1, max_version: 1 }] })
+      .mockResolvedValueOnce({ rows: [{ id: 'p1', created_by: 'u1', current_timeline_id: 't1' }] })
+      .mockResolvedValueOnce({ rows: [{ id: 't1', edit_revision: 0, state: { schema_version: 1, media_type: 'audio', sample_rate: 48000, duration_sec: 0, tracks: [], ducking: [] }, schema_version: 1 }] })
+      .mockResolvedValueOnce({ rows: [{ max_version: 1 }] })
       .mockResolvedValueOnce({ rows: [{ id: 't2', project_id: 'p1', version: 2, label: 'render', state: {}, schema_version: 1, created_by: 'u1', created_at: 'x' }] })
-      .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [jobRow] })
     transactionMock.mockImplementation(async (cb: any) => cb({ query: dbQuery }))
 
-    const job = await createRenderJob({ projectId: 'p1', requestedBy: 'u1', channels: ['radio', 'meta'] })
+    const job = await createRenderJob({ projectId: 'p1', actor: { id: 'u1', role: 'member' }, expectedTimelineId: 't1', expectedEditRevision: 0, channels: ['radio', 'meta'] })
     expect(job.id).toBe('j1')
     expect(job.timelineId).toBe('t2')
     expect(job.status).toBe('queued')
-    expect(dbQuery).toHaveBeenCalledTimes(4)
+    expect(dbQuery).toHaveBeenCalledTimes(5)
     // schema_version from source row must be forwarded (not hardcoded 1)
-    const insertCall = dbQuery.mock.calls[1]
+    const insertCall = dbQuery.mock.calls[3]
     expect(insertCall[0]).toContain('INSERT INTO media_timelines')
-    // params[4] is schema_version (0-indexed: newTimelineId, projectId, version, state, schema_version, requestedBy)
-    expect(insertCall[1][4]).toBe(1)
+    // schema_version follows id, project, version, label, state.
+    expect(insertCall[1][5]).toBe(1)
   })
 
   it('preserves schema_version=2 from the source AV timeline (not hardcoded 1)', async () => {
     const dbQuery = vi.fn()
-      .mockResolvedValueOnce({ rows: [{ state: { schema_version: 2, media_type: 'av', tracks: [], ducking: [] }, schema_version: 2, max_version: 3 }] })
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ id: 'p1', created_by: 'u1', current_timeline_id: 't1' }] })
+      .mockResolvedValueOnce({ rows: [{ id: 't1', edit_revision: 0, state: { schema_version: 2, media_type: 'av', tracks: [], ducking: [] }, schema_version: 2 }] })
+      .mockResolvedValueOnce({ rows: [{ max_version: 3 }] })
+      .mockResolvedValueOnce({ rows: [{ id: 'tnew', schema_version: 2, edit_revision: 0 }] })
       .mockResolvedValueOnce({ rows: [{ ...jobRow, id: 'j2', timeline_id: 'tnew' }] })
     transactionMock.mockImplementation(async (cb: any) => cb({ query: dbQuery }))
 
-    await createRenderJob({ projectId: 'p1', requestedBy: 'u1', channels: [] })
-    const insertCall = dbQuery.mock.calls[1]
+    await createRenderJob({ projectId: 'p1', actor: { id: 'u1', role: 'member' }, expectedTimelineId: 't1', expectedEditRevision: 0, channels: [] })
+    const insertCall = dbQuery.mock.calls[3]
     expect(insertCall[0]).toContain('INSERT INTO media_timelines')
-    // schema_version param (index 4) must be 2, not 1
-    expect(insertCall[1][4]).toBe(2)
+    // schema_version param (index 5) must be 2, not 1
+    expect(insertCall[1][5]).toBe(2)
   })
 })
 
@@ -115,7 +117,7 @@ describe('render-job throw paths', () => {
   it('createRenderJob throws when the project has no current timeline', async () => {
     const dbQuery = vi.fn().mockResolvedValueOnce({ rows: [] }) // SELECT returns nothing
     transactionMock.mockImplementation(async (cb: any) => cb({ query: dbQuery }))
-    await expect(createRenderJob({ projectId: 'nope', requestedBy: 'u1', channels: ['radio'] }))
+    await expect(createRenderJob({ projectId: 'nope', actor: { id: 'u1', role: 'member' }, expectedTimelineId: 't1', expectedEditRevision: 0, channels: ['radio'] }))
       .rejects.toThrow()
   })
   it('markRenderJobRendering throws when the job is missing', async () => {

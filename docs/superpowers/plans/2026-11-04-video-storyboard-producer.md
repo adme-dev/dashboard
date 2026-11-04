@@ -94,13 +94,15 @@ T01 defines input contracts `StoryboardPlan`, `StoryboardShot`, `AssetBinding`, 
 
 **Files:** modify `server/utils/audio/projects.ts`, timeline GET/PUT, versions/render snapshot routes, `app/composables/useMediaProjectEditor.ts`, `app/types/index.ts`; additive migration for `media_timelines.edit_revision`; tests `test/audio/timelineRevision.test.ts`, `test/app/mediaEditorSaveConcurrency.test.ts`.
 
-**Interfaces:** timeline reads return `editRevision`; writes consume `expectedTimelineId` and `expectedEditRevision`. Add `saveDraftTimelineIfCurrentIn(db, { projectId, timelineId, expectedEditRevision, state }): Promise<MediaTimeline>`; mismatch throws 409. Use a project lock for timeline-pointer changes. Legacy write bodies without preconditions return refresh-required conflict.
+**Interfaces:** timeline reads return `editRevision`; writes consume `expectedTimelineId` and `expectedEditRevision`. Add `saveDraftTimelineIfCurrentIn(db, { projectId, actor, expectedTimelineId, expectedEditRevision, state }): Promise<MediaTimeline>`; mismatch throws 409. Use a project lock for timeline-pointer changes. Legacy write bodies without preconditions return refresh-required conflict.
 
-- [ ] Add failing tests for two writers at revision 0 (exactly one commits revision 1), pointer changes during save, stale render/version snapshot, missing revision, ownership denial and autosave arriving after a newer edit.
-- [ ] Run `pnpm exec vitest run test/audio/timelineRevision.test.ts test/app/mediaEditorSaveConcurrency.test.ts`. Implement the additive migration and compare-and-swap boundary for all active-timeline writers, including version/render helpers; reuse existing transactions and God-mode coordination.
-- [ ] Serialize client saves, retain dirty edits on conflict and provide explicit reload/recovery. Flush pending saves before version/render/apply actions. Update callers/tests together; do not leave an unguarded compatibility route.
-- [ ] Apply the actual migration automatically to the verified intended database using the repository procedure. First establish target provenance and test it on an isolated Neon branch; never print connection secrets. Record the database target and migration receipt.
-- [ ] Re-run `pnpm exec vitest run test/audio/timelineRevision.test.ts test/app/mediaEditorSaveConcurrency.test.ts test/audio/timelineSchema.test.ts test/audio/renderVideoApi.test.ts`. Review old audio/AV reads and missing-token recovery before committing.
+- [x] Add failing tests for two writers at revision 0 (exactly one commits revision 1), pointer changes during save, stale render/version snapshot, missing revision, ownership denial and autosave arriving after a newer edit.
+- [x] Run `pnpm exec vitest run test/audio/timelineRevision.test.ts test/app/mediaEditorSaveConcurrency.test.ts`. Implement the additive migration and compare-and-swap boundary for all active-timeline writers, including version/render helpers; reuse existing transactions and God-mode coordination.
+- [x] Serialize client saves, retain dirty edits on conflict and provide explicit reload/recovery. Flush pending saves before version/render/apply actions. Update callers/tests together; do not leave an unguarded compatibility route.
+- [x] Apply the actual migration automatically to the verified intended database using the repository procedure. First establish target provenance and test it on an isolated Neon branch; never print connection secrets. Record the database target and migration receipt.
+- [x] Re-run `pnpm exec vitest run test/audio/timelineRevision.test.ts test/app/mediaEditorSaveConcurrency.test.ts test/audio/timelineSchema.test.ts test/audio/renderVideoApi.test.ts`. Review old audio/AV reads and missing-token recovery before committing.
+
+**Receipt:** [Implementation, review, tests and migration target](../../video/implementations/2026-11-04-timeline-revision-safety.md). Complete locally with the additive schema applied; application deployment and browser/hosted acceptance remain open.
 
 ### T03 — Persist storyboard revisions and approved references
 
