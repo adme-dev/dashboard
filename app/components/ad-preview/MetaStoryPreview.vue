@@ -3,6 +3,7 @@ import PreviewFrame from './PreviewFrame.vue'
 
 withDefaults(defineProps<{
   showDefaultCta?: boolean
+  showLabel?: boolean
   image?: string
   html?: string
   htmlWidth?: number
@@ -13,60 +14,56 @@ withDefaults(defineProps<{
   description?: string
   ctaType?: string
   linkUrl?: string
-}>(), { showDefaultCta: true })
+}>(), { showDefaultCta: true, showLabel: true })
 
 const { ctaLabel } = useAdPreview()
 </script>
 
 <template>
-  <PreviewFrame type="phone" label="Meta Story / Reel">
-    <div class="relative w-full h-full">
-      <!-- Background image -->
-      <AdPreviewCreativeMedia
-        :html="html"
-        :html-width="htmlWidth"
-        :html-height="htmlHeight"
-        :image="image"
-        label="Story Creative"
-        placeholder-bg="#222"
-        placeholder-fg="#555"
-      />
-
-      <!-- Gradient overlays -->
-      <div class="absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-black/60 to-transparent" />
-      <div class="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-black/70 to-transparent" />
-
-      <!-- Story progress bars -->
-      <div class="absolute top-7 left-3 right-3 flex gap-1">
-        <div class="flex-1 h-0.5 bg-white/40 rounded-full overflow-hidden">
-          <div class="h-full w-1/3 bg-white rounded-full" />
-        </div>
-        <div class="flex-1 h-0.5 bg-white/40 rounded-full" />
-        <div class="flex-1 h-0.5 bg-white/40 rounded-full" />
-      </div>
-
-      <!-- Profile header -->
-      <div class="absolute top-10 left-3 right-3 flex items-center gap-2">
-        <div class="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 via-pink-500 to-orange-400 p-0.5">
-          <div class="w-full h-full rounded-full bg-gray-800 flex items-center justify-center text-white text-xs font-bold">
+  <PreviewFrame type="phone" :label="showLabel ? 'Meta Story / Reel' : undefined" inset-chrome>
+    <div class="w-full bg-[#111114] text-white">
+      <!-- Keep contextual controls outside the creative, including its logo and legal copy. -->
+      <div data-testid="story-header" class="flex h-11 flex-col justify-center gap-1.5 px-3">
+        <div class="h-0.5 rounded-full bg-white/25" aria-hidden="true" />
+        <div class="flex min-w-0 items-center gap-2">
+          <div class="flex size-6 shrink-0 items-center justify-center rounded-full bg-white/10 text-[9px] font-semibold">
             {{ (pageName || 'B')[0].toUpperCase() }}
           </div>
+          <div class="min-w-0 flex-1">
+            <span class="block truncate text-[10px] font-semibold">{{ pageName || 'Your Brand' }}</span>
+            <span class="block text-[8px] text-white/50">Sponsored</span>
+          </div>
+          <UIcon name="i-lucide-more-horizontal" class="size-3.5 shrink-0 text-white/60" />
         </div>
-        <div class="flex-1 min-w-0">
-          <span class="text-white text-xs font-semibold truncate block">{{ pageName || 'Your Brand' }}</span>
-        </div>
-        <span class="text-white/60 text-[10px] font-medium">Sponsored</span>
-        <UIcon name="i-lucide-more-horizontal" class="w-4 h-4 text-white/60" />
+      </div>
+
+      <!-- An explicit 9:16 box prevents device chrome from changing the artwork's height. -->
+      <div data-testid="story-creative" class="relative w-full overflow-hidden bg-black" style="aspect-ratio: 9 / 16;">
+        <AdPreviewCreativeMedia
+          :html="html"
+          :html-width="htmlWidth"
+          :html-height="htmlHeight"
+          :image="image"
+          label="Story Creative"
+          placeholder-bg="#222"
+          placeholder-fg="#555"
+          fit="contain"
+        />
       </div>
 
       <!-- Bottom CTA -->
-      <div class="absolute bottom-4 left-3 right-3 flex flex-col items-center gap-2">
-        <p v-if="primaryText" class="text-white text-xs text-center line-clamp-2 drop-shadow">
+      <div data-testid="story-footer" class="flex min-h-9 flex-col items-center justify-center gap-1 px-3 py-2">
+        <p v-if="primaryText" class="text-[10px] text-center line-clamp-2">
           {{ primaryText }}
         </p>
-        <div v-if="showDefaultCta || ctaType" class="flex items-center gap-1.5 text-white text-xs font-semibold">
-          <UIcon name="i-lucide-chevron-up" class="w-4 h-4 animate-bounce" />
+        <div v-if="showDefaultCta || ctaType" class="flex items-center gap-1.5 text-[10px] font-semibold">
+          <UIcon name="i-lucide-chevron-up" class="size-3" />
           {{ ctaLabel(ctaType || 'LEARN_MORE') }}
+        </div>
+        <div v-else class="flex w-full items-center gap-3 text-white/50" aria-hidden="true">
+          <div class="h-5 flex-1 rounded-full border border-white/15" />
+          <UIcon name="i-lucide-heart" class="size-3.5" />
+          <UIcon name="i-lucide-send" class="size-3.5" />
         </div>
       </div>
     </div>

@@ -116,6 +116,6 @@ describe('saved banner review workspace', () => {
     expect(Number(view.media().dataset.ratio)).toBeCloseTo(16 / 9)
     expect(view.media().dataset.placeholders).toBe('false')
     expect(view.media().dataset.html).toContain('paused: true')
-    expect(view.host.textContent).toContain('Placement mockup only')
+    expect(view.host.textContent).toContain('Page identity, ad copy and final platform cropping are not included')
   })
 })
