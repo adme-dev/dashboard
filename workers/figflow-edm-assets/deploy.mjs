@@ -13,14 +13,14 @@ export function validateTarget(config) {
     name: 'xeroflow-figflow-edm-assets', account_id: 'a5b299b3ad15c1b5b895dc66f9357b17',
     main: 'worker.mjs', compatibility_date: '2026-10-27',
     workers_dev: false, preview_urls: false, routes: [],
-    assets: { directory: 'dist/assets', binding: 'ASSETS', run_worker_first: true },
+    assets: { directory: 'dist-edm5/assets', binding: 'ASSETS', run_worker_first: true },
     observability: { enabled: false }
   }, 'Private immutable native asset target changed')
 }
 const publication = JSON.parse(readFileSync(resolve(directory, 'publication.json'), 'utf8'))
 export function validatePrepared(receipt, base) {
   assert.equal(receipt.schemaVersion, 2, 'Additive asset bundle required')
-  assert.deepEqual(Object.keys(receipt.versions).sort(), ['0.11.2-edm1', '0.11.2-edm3', '0.11.2-edm4'])
+  assert.deepEqual(Object.keys(receipt.versions).sort(), ['0.11.2-edm1', '0.11.2-edm3', '0.11.2-edm4', '0.11.2-edm5'])
   const list = (path, prefix = '') => readdirSync(path, { withFileTypes: true }).flatMap(entry => {
     assert(!entry.isSymbolicLink(), 'Symlink in prepared native assets')
     const name = prefix + entry.name
@@ -56,9 +56,9 @@ export function main(args = process.argv.slice(2)) {
   const config = JSON.parse(readFileSync(resolve(directory, 'wrangler.json'), 'utf8'))
   validateTarget(config)
   assert.equal(process.versions.node, readFileSync(resolve(root, '.nvmrc'), 'utf8').trim())
-  const receipt = JSON.parse(readFileSync(resolve(directory, 'dist/receipt.json'), 'utf8'))
-  validatePrepared(receipt, resolve(directory, 'dist/assets'))
-  const native = receipt.versions['0.11.2-edm4']
+  const receipt = JSON.parse(readFileSync(resolve(directory, 'dist-edm5/receipt.json'), 'utf8'))
+  validatePrepared(receipt, resolve(directory, 'dist-edm5/assets'))
+  const native = receipt.versions['0.11.2-edm5']
   const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8' }).trim()
   const source = git('rev-parse', 'HEAD')
   assert(/^(?:https:\/\/github\.com\/|git@github\.com:)adme-dev\/dashboard(?:\.git)?$/.test(git('remote', 'get-url', 'origin')))

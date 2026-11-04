@@ -1,24 +1,35 @@
 # Immutable FigFlow EDM assets
 
-## edm4 additive candidate — not yet published
+## edm5 additive publication source — not published
 
-Use `prepare-bundle.py`, `edm4-gateway.py` and `prepare-gateway.mjs` for this
+Use `prepare-bundle.py`, `edm5-gateway.py` and `prepare-gateway.mjs` for this
 candidate. The historical `creative-release.py` below is pinned to an obsolete
-gateway and must not be used to replace current production. Current live source
-was read back on 4 November and reproduced exactly from
-`creative-multibrand-release/build.py`, including MotorStack vehicle/offer/date
-changes, seven launcher cards, existing authentication and editor routing.
+gateway and must not be used to replace current production. The builder first
+reproduces the verified live edm4 gateway from `creative-multibrand-release/build.py`,
+including MotorStack vehicle/offer/date changes, seven launcher cards, existing
+authentication and editor routing, then changes only its native prefix allowlist.
 
-`publication.json` pins the active/latest private asset version
-`49cbc7f6-b99a-44e8-80fb-2fa739a005e7`, gateway version
-`bd310327-549d-40e3-9114-78cc855de201`, their deployment identities, full gateway
-runtime/bindings/module hashes, and all 90 runtime asset hashes. Preparation
-requires the retained edm1 receipt/tree plus accepted edm3 and edm4 CI archives
-and receipts. It refuses replacements, missing versions, changed inventories,
-unreviewed bytes and archive traversal. Existing dist directories must be
+`publication.json` pins active/latest private asset version
+`b278e54b-debc-4af1-9173-fba6964dfb87` at deployment
+`1d62c12f-6f7d-4778-82a8-3dfa6e88ea4a`, and gateway version
+`b50acb4f-30d5-48a1-a711-339f3b98c979` at deployment
+`670df50b-4fb7-45d9-94e5-eb9f58f1a44a`. It retains the full gateway
+runtime/bindings/module hashes and every edm1/edm3/edm4 file pin. The edm5 package
+is exact native source `404e3ff06f1619d928218c5dd0236143209750be`, successful
+workflow-dispatch run `41856781523`, archive SHA-256
+`c18d7d71745a7bff680ca8c8163e8ec9be08e215602dbc4f6459a135bd43f508`.
+Its 31 runtime files come from that retained archive; no synthetic PR checkout
+receipt or relabelled package is accepted.
+
+Preparation requires the retained schema-2 edm1/edm3/edm4 bundle and its 90
+verified files plus the exact edm5 archive/receipt. It validates every base
+receipt entry and byte, writes a separate `dist-edm5` output, and refuses an
+existing output, missing versions, changed inventories, unreviewed bytes and
+archive traversal. The resulting receipt and tree contain exactly 121 runtime
+files: 30 edm1, 30 edm3, 30 edm4 and 31 edm5. Existing dist directories must be
 preserved and reconciled explicitly, never overwritten.
 
-The asset worker accepts only edm1/edm3/edm4 prefixes on the existing host.
+The asset worker accepts only edm1/edm3/edm4/edm5 prefixes on the existing host.
 Successful versioned responses are `private, max-age=31536000, immutable`;
 errors and the unversioned library shell stay `private, no-store`. Authorization
 stays in the gateway before service forwarding; cookies/credentials never enter
@@ -26,53 +37,55 @@ the private asset request. No shared/public cache is enabled. Target remains
 `xeroflow-figflow-edm-assets`, account `a5b299b3ad15c1b5b895dc66f9357b17`,
 workers.dev/previews disabled, no routes, ASSETS only.
 
-The gateway candidate changes exactly one expression: the existing authenticated
-edm1 condition becomes an explicit edm1/edm3/edm4 prefix allowlist. Its
-`brand-rpc.mjs` is unchanged. Preparation requires current clean main and live
-active/latest version equality and emits a version-upload configuration with
-`keep_assets: true` and all four existing bindings inherited. It never supplies
-a gateway asset directory or secret values. Any live/latest drift must stop the
-release and trigger reconciliation; do not update baseline pins merely to clear
-a guard.
+The gateway candidate changes exactly one expression: the verified live
+edm1/edm3/edm4 condition becomes an explicit edm1/edm3/edm4/edm5 prefix
+allowlist. Reversing that expression must restore the live edm4 `worker.js`
+hash exactly; `brand-rpc.mjs` remains unchanged. Preparation requires current
+clean main and live active/latest version equality and emits a version-upload
+configuration with `keep_assets: true` and all four existing bindings inherited.
+It never supplies a gateway asset directory or secret values. Any live/latest
+drift must stop the release and trigger reconciliation; do not update baseline
+pins merely to clear a guard.
 
 Release sequence after independent review and source integration:
 
-1. Prepare the exact additive asset bundle with
-   `python3 workers/figflow-edm-assets/prepare-bundle.py LEGACY_DIST EDM3_ZIP EDM3_BUILD_RECEIPT EDM4_ZIP EDM4_BUILD_RECEIPT`.
+1. Preserve the verified edm1/edm3/edm4 `dist`, then prepare the additive bundle:
+   `python3 workers/figflow-edm-assets/prepare-bundle.py workers/figflow-edm-assets/dist EDM5_ZIP EDM5_BUILD_RECEIPT`.
+   Inspect `dist-edm5/receipt.json` and all 121 files.
 2. On exact clean current main with the pinned Node version, run
    `node workers/figflow-edm-assets/deploy.mjs --check-only`, then `--dry-run`.
    Verify target and full inventory; the mutation path additionally verifies
    unchanged native CI inputs, successful exact-source CI and unchanged live
    asset baseline before publication. Publish only through this guarded script.
-3. Run `python3 workers/figflow-edm-assets/edm4-gateway.py` and its tests; then
+3. Run `python3 workers/figflow-edm-assets/edm5-gateway.py` and its tests; then
    `node workers/figflow-edm-assets/prepare-gateway.mjs FULL_CURRENT_MAIN_SHA`.
    Inspect `gateway-dist/manifest.json` and use Wrangler version upload **dry-run**
    with the generated config and `--no-bundle`. Inspect serialized multipart
    metadata/module hashes: inherit all assets/runtime/bindings and retain the
    launcher, MotorStack and every existing tool route. No partial asset upload.
 4. Only after that review, upload a gateway version without traffic. Verify its
-   exact module hashes, annotation, complete runtime/asset settings and all four
-   bindings via normal Wrangler readback; verify active/latest identities again
-   immediately before switching traffic. This preparation helper does not perform
-   upload or deployment. A stale upload or unrelated latest version is a stop.
-5. Verify authenticated edm1/edm3/edm4 assets and all existing creative tools,
-   launcher, MotorStack routes, auth refusal and QR Codes. Record deployment IDs,
-   source and hashes. Only then make a separate runtime-pointer change and run
-   Pages gates from latest main; publish assets before changing the pointer.
+   exact module hashes, edm5 annotation, complete runtime/asset settings and all
+   four bindings via normal Wrangler readback; verify active/latest identities
+   again immediately before switching traffic. This preparation helper does not
+   perform upload or deployment. A stale upload or unrelated latest version is a
+   stop.
+5. Verify authenticated edm1/edm3/edm4/edm5 assets and all existing creative
+   tools, launcher, MotorStack routes, auth refusal and QR Codes. Record
+   deployment IDs, source and hashes. Only then make a separate runtime-pointer
+   change and run Pages gates from latest main; publish assets before changing
+   the pointer.
 
 Rollback: leave all immutable assets installed and restore the prior application
 pointer first. The recorded prior gateway is a rollback target only while no
 subsequent creative changes would be lost; re-read live state before rollback.
-Do not roll the asset service back after a newer pointer depends on edm4 unless
+Do not roll the asset service back after a newer pointer depends on edm5 unless
 the pointer has already been restored. No flag, migration 499, Pages build or
 application pointer is changed by this candidate.
 
 Remaining acceptance: independent publication review, guarded serialized dry-run,
 live publication/receipts, hosted dual-surface and ordinary-role acceptance.
-Native generic shape/pen/text/share/export/download chrome still exposes
-unsaveable edits; recommend a separate bounded EDM-only chrome restriction while
-preserving snapshot refusal. Emoji glyph coverage is limited (rocket is missing),
-and protected arbitrary Html labels are not whole-Ford native fidelity.
+The bounded historical monochrome emoji font is not full modern/color/ZWJ emoji
+coverage, and protected arbitrary Html fallback is not whole-Ford native fidelity.
 
 Cloudflare references checked for this candidate:
 [Worker-first asset routing](https://developers.cloudflare.com/workers/static-assets/routing/worker-script/),

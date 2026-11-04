@@ -30,7 +30,7 @@ export function releaseConfig(commit) {
     unsafe: { metadata: {
       keep_assets: true, usage_model: 'standard',
       bindings: pins.gatewayBaseline.bindings.map(({ name }) => ({ name, type: 'inherit' })),
-      annotations: { 'workers/commit_sha': commit, 'workers/message': 'Additive immutable FigFlow edm4 from ' + commit }
+      annotations: { 'workers/commit_sha': commit, 'workers/message': 'Additive immutable FigFlow edm5 from ' + commit }
     } }
   }
 }
@@ -40,7 +40,7 @@ export function main(commit) {
   assert.equal(git('rev-parse', 'HEAD'), commit)
   assert.equal(git('rev-parse', 'origin/main'), commit, 'Gateway release requires current main')
   assert.equal(git('status', '--porcelain', '--untracked-files=all'), '', 'Gateway release requires clean source')
-  execFileSync('python3', [resolve(directory, 'edm4-gateway.py')], { cwd: root, env: { ...process.env, PYTHONDONTWRITEBYTECODE: '1' } })
+  execFileSync('python3', [resolve(directory, 'edm5-gateway.py')], { cwd: root, env: { ...process.env, PYTHONDONTWRITEBYTECODE: '1' } })
   const wrangler = (...args) => JSON.parse(execFileSync(process.execPath, [resolve(root, 'node_modules/wrangler/bin/wrangler.js'), ...args, '--name', 'xeroflow-creative-tools', '--json'], { cwd: root, encoding: 'utf8' }))
   validateGatewayState(wrangler('deployments', 'list'), wrangler('versions', 'list'), wrangler('versions', 'view', pins.gatewayBaseline.version))
   writeFileSync(resolve(directory, 'gateway-dist/wrangler.release.json'), JSON.stringify(releaseConfig(commit), null, 2) + '\n')
