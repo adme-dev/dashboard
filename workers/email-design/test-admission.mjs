@@ -91,6 +91,20 @@ for (const enabled of [undefined, 'false']) {
     }), 404, 'not_found')
   })
 }
+await scenario('template-only admission leaves library, brand and conditions closed', {
+  ...validBindings, FIGFLOW_EDM_TEMPLATE_DESIGNER_ENABLED: 'true', FIGFLOW_EDM_DESIGNER_ENABLED: 'false',
+  FIGFLOW_EDM_LIBRARY_ENABLED: 'true', FIGFLOW_EDM_BRAND_ENABLED: 'true'
+}, async (worker) => {
+  const headers = { ...environmentHeader, origin: 'https://app.xeroflow.io', 'content-type': 'application/json' }
+  await expectStatus(await worker.dispatchFetch(`${origin}/api/email/design/designer`, { method: 'POST', headers, body: '{}' }), 401, 'design_session_invalid')
+  for (const route of ['modules', 'templates', 'history', 'conditions']) {
+    await expectStatus(await worker.dispatchFetch(`${origin}/api/email/design/${route}`, { method: 'POST', headers, body: '{}' }), 404, 'not_found')
+  }
+  for (const route of ['brand', 'locks']) {
+    await expectStatus(await worker.dispatchFetch(`${saveUrl}/${route}`, { method: 'POST', headers, body: '{}' }), 404, 'not_found')
+  }
+})
+
 await scenario('enabled designer still requires authenticated authority', {
   ...validBindings, FIGFLOW_EDM_DESIGNER_ENABLED: 'true'
 }, async (worker) => {

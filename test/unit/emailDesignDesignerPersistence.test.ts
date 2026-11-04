@@ -31,7 +31,7 @@ function harness(seed: () => unknown = structuredDesign) {
   }
   let role: 'staff' | 'designer' = 'designer'
   let authorized = true
-  const authority = { actorId, authorize: async (scope: string | null, _access: string) => {
+  const authority = { actorId, assertCampaignNativeEnabled: () => { throw Object.assign(new Error('not_found'), { statusCode: 404 }) }, authorize: async (scope: string | null, _access: string) => {
     if (!authorized || scope !== structuredDesign().scope.clientId) throw new Error('access revoked')
     return role
   } }

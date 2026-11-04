@@ -1,3 +1,4 @@
+import { designerGate } from '~~/server/utils/email-marketing/designerGate'
 import { DesignModuleError } from '~~/shared/emailRendering/designModules'
 import { rethrowLegacyDesignConflict, DESIGN_REVISION_CONSTRAINTS } from '~~/server/utils/email-marketing/designConflict'
 import { createDesignAssetStorage } from '~~/server/utils/email-marketing/designAssets'
@@ -18,7 +19,8 @@ import { EmailDesignActionError } from '~~/shared/emailRendering/designActions'
 export default defineEventHandler(async (event) => {
   setHeader(event, 'cache-control', 'no-store')
   const env = event.context.cloudflare?.env ?? {}
-  if (env.FIGFLOW_EDM_DRAFT_SAVES_ENABLED !== 'true' || env.FIGFLOW_EDM_DESIGNER_ENABLED !== 'true') throw createError({ statusCode: 404, statusMessage: 'not_found' })
+  const gate = designerGate(env)
+  if (env.FIGFLOW_EDM_DRAFT_SAVES_ENABLED !== 'true' || !gate.template) throw createError({ statusCode: 404, statusMessage: 'not_found' })
   try {
     assertDesignMutationRequest(event, env.FIGFLOW_EDM_APP_ORIGIN)
     const authorization = getHeader(event, 'authorization')
@@ -29,6 +31,9 @@ export default defineEventHandler(async (event) => {
     const request = parseDesignerRoundtripRequest(await readBoundedJson(event))
     return await executeDesignerRoundtrip(request, {
       actorId: user.id,
+      assertCampaignNativeEnabled: () => {
+        if (!gate.campaign) throw createError({ statusCode: 404, statusMessage: 'not_found' })
+      },
       authorize: (clientId, access) => assertFreshDesignAccess(token, user.id, clientId, access)
     }, createEmailRenderer(env), undefined, { read: key => createDesignAssetStorage(event, getAppUrl(event)).read(key), url: id => createDesignAssetStorage(event, getAppUrl(event)).url(id), identifyUrl: url => createDesignAssetStorage(event, getAppUrl(event)).identifyUrl(url) })
   } catch (error) {

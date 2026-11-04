@@ -14,6 +14,12 @@ describe('independent library HTTP authority admission', () => {
     mocks.session.mockResolvedValue({ id: actor })
     mocks.access.mockResolvedValue('designer')
   })
+  it('keeps template-only authoring out even with library and brand enabled', async () => {
+    const e = event()
+    Object.assign(e.context.cloudflare!.env, { FIGFLOW_EDM_DESIGNER_ENABLED: 'false', FIGFLOW_EDM_TEMPLATE_DESIGNER_ENABLED: 'true', FIGFLOW_EDM_LIBRARY_ENABLED: 'true', FIGFLOW_EDM_BRAND_ENABLED: 'true' })
+    await expect(designLibrarySession(e, true)).rejects.toMatchObject({ statusCode: 404 })
+    expect(mocks.session).not.toHaveBeenCalled()
+  })
   it('fails closed until all independent private feature gates are explicitly enabled', async () => {
     for (const flag of ['FIGFLOW_EDM_DRAFT_SAVES_ENABLED', 'FIGFLOW_EDM_DESIGNER_ENABLED', 'FIGFLOW_EDM_LIBRARY_ENABLED']) {
       const e = event()

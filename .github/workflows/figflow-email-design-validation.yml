@@ -1,0 +1,119 @@
+name: FigFlow email design validation
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'server/api/email/design/**'
+      - 'server/utils/email-marketing/design*.ts'
+      - 'shared/emailRendering/**'
+      - 'workers/email-design/**'
+      - 'test/**/email*'
+      - 'test/server/email/**'
+      - 'test/config/godModeIsolationInventory.test.ts'
+      - '.github/workflows/figflow-email-design-validation.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: figflow-email-design-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Email design ${{ matrix.gate }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        gate: [worker, postgres, typecheck]
+    env:
+      WRANGLER_SEND_METRICS: 'false'
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24.18.0
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Record exact tested source
+        run: |
+          mkdir -p .verification/figflow-ci
+          git rev-parse HEAD > .verification/figflow-ci/source.txt
+      - name: Focused gate, authority and deployment regressions
+        if: matrix.gate == 'worker'
+        run: >-
+          pnpm exec vitest run test/config/godModeIsolationInventory.test.ts
+          test/server/email/designTemplateGate.test.ts
+          test/unit/emailDesignDesignerRoute.test.ts test/unit/emailDesignRoundtripRoute.test.ts
+          test/unit/emailDesignDesignerPersistence.test.ts test/unit/emailCampaignHandoffRoute.test.ts
+          test/unit/emailDesignLibraryHttp.test.ts test/unit/emailDesignBrandHttp.test.ts
+          test/unit/emailDesignConditionRoutes.test.ts test/unit/emailDesignAccess.test.ts
+          test/workers/emailDesignDeploy.test.ts test/unit/emailDesignBlankBody.test.ts
+          test/unit/emailDesignBlankLookup.test.ts test/unit/emailDesignBlankStart.test.ts
+          test/unit/emailDesignInitialization.test.ts test/unit/emailDesignModulePersistence.test.ts
+          --maxWorkers=1 --no-file-parallelism
+      - name: Build and dry-run private Worker, then test actual artifact admission
+        if: matrix.gate == 'worker'
+        run: |
+          node workers/email-design/deploy.mjs staging --check-only
+          node workers/email-design/deploy.mjs production --check-only
+          node workers/email-design/deploy.mjs staging --dry-run
+          node workers/email-design/deploy.mjs production --dry-run
+          pnpm --dir workers/email-design run test:admission
+        env:
+          WRANGLER_LOG_PATH: ${{ runner.temp }}/figflow-email-design.log
+      - name: Full application typecheck
+        if: matrix.gate == 'typecheck'
+        run: pnpm typecheck
+      - name: Start disposable socket-only PostgreSQL
+        if: matrix.gate == 'postgres'
+        # Exact fixture path required by the campaign handoff suite. This lives
+        # only on the disposable runner; there is no TCP port or remote DB URL.
+        # Preserve the image entrypoint socket directory for its init-time psql;
+        # PGPORT aligns its temporary server with the final server and fixtures.
+        run: |
+          sudo mkdir -p /private/tmp/figflow-postgres-20261102-recovered
+          sudo chmod 777 /private/tmp/figflow-postgres-20261102-recovered
+          docker run --detach --name figflow-validation-postgres \
+            --env POSTGRES_USER=figflow_test --env POSTGRES_DB=figflow_design_test \
+            --env POSTGRES_HOST_AUTH_METHOD=trust --env PGPORT=55483 \
+            --volume /private/tmp/figflow-postgres-20261102-recovered:/var/run/postgresql \
+            postgres:17 postgres -p 55483 -c listen_addresses=''
+          for attempt in $(seq 1 30); do
+            if docker exec figflow-validation-postgres sh -c 'test "$(cat /proc/1/comm)" = postgres' && docker exec figflow-validation-postgres pg_isready -h /var/run/postgresql -p 55483 -U figflow_test -d figflow_design_test; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs figflow-validation-postgres
+          exit 1
+      - name: Execute isolated PostgreSQL suites with no skipped tests
+        if: matrix.gate == 'postgres'
+        env:
+          FIGFLOW_DESIGN_PG_SOCKET: /private/tmp/figflow-postgres-20261102-recovered
+        run: |
+          pnpm exec vitest run test/integration/emailDesignerRoundtrip.database.test.ts test/integration/emailDesignRevisions.database.test.ts test/integration/emailCampaignHandoff.database.test.ts --maxWorkers=1 --no-file-parallelism --testTimeout=25000 --reporter=default --reporter=json --outputFile=.verification/figflow-ci/postgres.json
+          node --input-type=module - <<'JS'
+          import assert from 'node:assert/strict'
+          import { readFileSync } from 'node:fs'
+          const report = JSON.parse(readFileSync('.verification/figflow-ci/postgres.json', 'utf8'))
+          assert.equal(report.success, true)
+          assert.equal(report.numPendingTests, 0, 'Skipped PostgreSQL tests are not acceptance')
+          assert.equal(report.numTodoTests, 0)
+          assert.ok(report.numPassedTests >= 100, 'All 89 existing and 11 E01 PostgreSQL cases must execute')
+          JS
+      - name: Remove disposable PostgreSQL
+        if: always() && matrix.gate == 'postgres'
+        run: docker rm --force figflow-validation-postgres
+      - name: Preserve source and database results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: figflow-email-design-${{ matrix.gate }}-${{ github.run_id }}
+          path: .verification/figflow-ci/
+          if-no-files-found: warn
