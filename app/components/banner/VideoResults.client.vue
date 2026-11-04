@@ -197,6 +197,9 @@ async function createDraft(job: ExportJob) {
         <div class="text-xs font-medium">
           {{ exportFormatLabel(job.formatKey, FORMATS[job.formatKey]?.name) }} <span class="text-muted">{{ job.width ?? FORMATS[job.formatKey]?.w }} × {{ job.height ?? FORMATS[job.formatKey]?.h }}</span>
         </div>
+        <p v-if="job.updatedAt" class="text-xs text-muted">
+          Completed {{ new Date(job.updatedAt).toLocaleString() }}
+        </p>
         <div class="flex flex-wrap gap-2">
           <UButton
             label="Download MP4"
