@@ -1,3 +1,5 @@
+import { CodeContentBindingSchema, sameCodeContent, verifyCodePageImport, type CodeContentBinding } from '~~/shared/pageStudio/codeContent'
+import type { PageStudioCheckpointBucket } from '~~/shared/pageStudio/checkpointReader'
 import type { PageStudioControlScope, PageStudioControlQueryClient, PageStudioCheckpointInput, PageStudioCheckpointCommitInput } from '~~/shared/pageStudio/controlTypes'
 import { editorCheckpointStagingOrigin, type CheckpointStagingOrigin } from './checkpointStagingOrigin'
 import { transaction } from '~~/server/utils/db'
@@ -24,6 +26,7 @@ export interface CustomerEditorCheckpointOrigin {
 }
 
 interface CheckpointDependencies {
+  verifiedCodeContent?: { codeContent: CodeContentBinding, pageCount: number }
   runTransaction?: RunTransaction
   authorize?: (db: PageStudioControlQueryClient) => Promise<void>
   stagingOrigin?: (db: PageStudioControlQueryClient) => Promise<CheckpointStagingOrigin | null>
@@ -36,6 +39,10 @@ type RunTransaction = <T>(callback: (db: PageStudioControlQueryClient) => Promis
 export class PageStudioControlError extends Error {
   constructor(
     readonly code:
+      | 'CODE_CONTENT_REQUIRES_EDITOR'
+      | 'CODE_CONTENT_PAGE_LIMIT'
+      | 'CODE_CONTENT_DOWNGRADE'
+      | 'CODE_CONTENT_INVALID'
       | 'CMS_MANAGED_CHECKPOINT_REQUIRED'
       | 'AUDIT_EVENT_CONFLICT'
       | 'BASE_DIGEST_MISMATCH'
@@ -182,7 +189,7 @@ async function appendMutationAudit(
     resourceType: PageStudioAuditResourceType
     resourceId: string
     idempotencyKey: string
-    metadata: Record<string, string | null | CheckpointStagingOrigin | CustomerProvisioningCheckpointOrigin | CustomerEditorCheckpointOrigin>
+    metadata: Record<string, string | null | CodeContentBinding | CheckpointStagingOrigin | CustomerProvisioningCheckpointOrigin | CustomerEditorCheckpointOrigin>
   }
 ): Promise<void> {
   await db.query(
@@ -260,8 +267,19 @@ export async function commitPageStudioEditorCheckpoint(
 ): Promise<PageStudioCheckpointCommitReceipt> {
   if (!session) throw new PageStudioSessionAuthorityError('SESSION_AUTHORITY_DENIED', 403)
   authorizePageStudioSession(session, { checkpoint: input.checkpoint, authorRole: session.role,
-    requiredCapabilities: ['workspace:checkpoint'] })
+    requiredCapabilities: input.checkpoint.codeContent ? ['workspace:checkpoint', 'source:edit'] : ['workspace:checkpoint'] })
+  let verifiedCodeContent: Awaited<ReturnType<typeof verifyCodePageImport>> | undefined
+  if (input.checkpoint.codeContent) {
+    const bucket = dependencies.env?.PAGE_STUDIO_CHECKPOINTS as PageStudioCheckpointBucket | undefined
+    if (session.role !== 'agency' || !input.expectedCheckpointId || !bucket || typeof bucket.get !== 'function') {
+      throw new PageStudioControlError('CODE_CONTENT_REQUIRES_EDITOR', 403, 'Reviewed code import requires agency checkpoint authority and private storage')
+    }
+    try {
+      verifiedCodeContent = await verifyCodePageImport(input, bucket)
+    } catch { throw new PageStudioControlError('CODE_CONTENT_INVALID', 422, 'The reviewed website import could not be verified') }
+  }
   if (await managedCheckpointScope(input.checkpoint.scope, dependencies)) {
+    if (input.checkpoint.codeContent) throw new PageStudioControlError('CMS_MANAGED_CHECKPOINT_REQUIRED', 409, 'Code-page imports require an unmanaged static website')
     const { coordinateCmsGraphCheckpoint } = await import('./cmsGraphCoordinator')
     const receipt = await coordinateCmsGraphCheckpoint(input, { source: 'studio-session', claims: session,
       env: dependencies.env ?? {}, capability: 'workspace:checkpoint' }, dependencies)
@@ -271,7 +289,11 @@ export async function commitPageStudioEditorCheckpoint(
   }
   const currentCheckpointId = await persistPageStudioCheckpoint(input.checkpoint, {
     ...dependencies,
-    authorize: db => assertPageStudioSessionAuthority(session, 'workspace:checkpoint', { transaction: db }),
+    verifiedCodeContent,
+    authorize: async (db) => {
+      await assertPageStudioSessionAuthority(session, 'workspace:checkpoint', { transaction: db })
+      if (input.checkpoint.codeContent) await assertPageStudioSessionAuthority(session, 'source:edit', { transaction: db })
+    },
     stagingOrigin: db => editorCheckpointStagingOrigin(db, session, dependencies.env?.PAGE_STUDIO_RELEASE_ENVIRONMENT)
   }, input)
   return { acknowledged: true, checkpointId: input.checkpoint.checkpointId, currentCheckpointId,
@@ -283,6 +305,10 @@ async function persistPageStudioCheckpoint(
   dependencies: CheckpointDependencies,
   guard?: Pick<PageStudioCheckpointCommitInput, 'expectedCheckpointId'>
 ): Promise<string | null> {
+  if (input.codeContent && (!guard?.expectedCheckpointId || !dependencies.verifiedCodeContent
+    || !sameCodeContent(input.codeContent, dependencies.verifiedCodeContent.codeContent))) {
+    throw new PageStudioControlError('CODE_CONTENT_REQUIRES_EDITOR', 403, 'Code-page checkpoints require the verified editor import transaction')
+  }
   if (input.objectKey !== expectedCheckpointObjectKey(input.scope, input.checkpointId)) {
     throw new PageStudioControlError(
       'CHECKPOINT_SCOPE_INVALID',
@@ -296,6 +322,16 @@ async function persistPageStudioCheckpoint(
     const site = await requireScopedSite(db, input.scope, dependencies.authorize ? 'FOR NO KEY UPDATE' : 'FOR UPDATE')
     await dependencies.authorize?.(db)
     await rejectManagedCheckpointBypass(db, input.scope)
+    if (dependencies.verifiedCodeContent) {
+      const allowance = (await db.query<{ pages_per_site_limit: number }>(`SELECT entitlement.pages_per_site_limit
+        FROM page_studio_sites site JOIN page_studio_entitlements entitlement ON entitlement.id=site.entitlement_id
+          AND entitlement.tenant_id=site.tenant_id AND entitlement.client_id=site.client_id
+        WHERE site.tenant_id=$1 AND site.client_id=$2 AND site.id=$3 AND site.delivery_mode='static'
+        FOR SHARE OF entitlement`, [input.scope.tenantId, input.scope.clientId, input.scope.siteId])).rows[0]
+      if (!allowance || dependencies.verifiedCodeContent.pageCount > allowance.pages_per_site_limit) {
+        throw new PageStudioControlError('CODE_CONTENT_PAGE_LIMIT', 409, 'The imported website exceeds this account’s page allowance or requires a static site')
+      }
+    }
     if (!guard) {
       // Activation is permanent for this site, even if a later head changes.
       // Read under the same lock as every writer so legacy requests cannot race it.
@@ -340,7 +376,8 @@ async function persistPageStudioCheckpoint(
         )
         const metadata = receipt.rows[0]?.metadata
         if (metadata?.commitProtocol !== 'cas-v1'
-          || metadata.expectedCheckpointId !== guard.expectedCheckpointId) {
+          || metadata.expectedCheckpointId !== guard.expectedCheckpointId
+          || !sameCodeContent(metadata.codeContent, input.codeContent)) {
           throw new PageStudioControlError('CHECKPOINT_CONFLICT', 409,
             'Checkpoint id already represents a different commit request')
         }
@@ -350,6 +387,10 @@ async function persistPageStudioCheckpoint(
       return site.current_checkpoint_id
     }
 
+    if (site.current_checkpoint_id && !input.codeContent) {
+      const current = await readAcceptedCodeContent(db, input.scope, site.current_checkpoint_id)
+      if (current) throw new PageStudioControlError('CODE_CONTENT_DOWNGRADE', 409, 'This saved website contains imported code; use a supported code-page operation')
+    }
     if (guard && site.current_checkpoint_id !== guard.expectedCheckpointId) {
       throw new PageStudioControlError('CHECKPOINT_BASE_MISMATCH', 409,
         'Checkpoint base is no longer current')
@@ -398,6 +439,7 @@ async function persistPageStudioCheckpoint(
       metadata: {
         authorId: input.userId,
         digest: input.digest,
+        ...(input.codeContent ? { codeContent: input.codeContent } : {}),
         ...(stagingOrigin ? { stagingOrigin } : {}),
         ...(dependencies.customerProvisioning ? { customerProvisioning: dependencies.customerProvisioning } : {}),
         ...(dependencies.customerEditor ? { customerEditor: dependencies.customerEditor } : {}),
@@ -407,6 +449,15 @@ async function persistPageStudioCheckpoint(
     await dependencies.authorize?.(db)
     return input.checkpointId
   })
+}
+
+/** Read only accepted audit identity; private preparation never establishes it. */
+export async function readAcceptedCodeContent(db: PageStudioControlQueryClient, scope: PageStudioControlScope, checkpointId: string): Promise<CodeContentBinding | undefined> {
+  const row = (await db.query<{ code_content: unknown }>(`SELECT metadata->'codeContent' AS code_content FROM page_studio_audit_events
+    WHERE tenant_id=$1 AND client_id=$2 AND site_id=$3 AND action='workspace.checkpointed'
+      AND resource_type='checkpoint' AND resource_id=$4 AND idempotency_key=$5`,
+  [scope.tenantId, scope.clientId, scope.siteId, checkpointId, `control:checkpoint:${checkpointId}`])).rows[0]
+  return row?.code_content == null ? undefined : CodeContentBindingSchema.parse(row.code_content)
 }
 
 export { getLatestPageStudioCheckpoint } from './checkpointRead'
@@ -438,6 +489,9 @@ export async function registerPageStudioVersion(
   const runTransaction = dependencies.runTransaction ?? defaultRunTransaction
   return runTransaction(async (db) => {
     await requireScopedSite(db, input.scope, 'FOR UPDATE')
+    if (await readAcceptedCodeContent(db, input.scope, input.checkpointId)) {
+      throw new PageStudioControlError('CODE_CONTENT_DOWNGRADE', 409, 'Imported code websites support preview only; production version submission is unavailable')
+    }
     const existing = await db.query<VersionRow>(
       `SELECT id, checkpoint_id, digest, author_id, author_role, summary, status, created_at
        FROM page_studio_versions
@@ -597,6 +651,9 @@ export async function acceptPageStudioAiProposal(
   dependencies: { runTransaction?: RunTransaction, session?: PageStudioSessionClaims, env?: Record<string, unknown> } = {}
 ) {
   const { checkpoint } = input
+  if (checkpoint.codeContent !== undefined) {
+    throw new PageStudioControlError('CODE_CONTENT_REQUIRES_EDITOR', 403, 'Imported code checkpoints require the reviewed import transaction, not AI proposal acceptance')
+  }
   if (typeof input.expectedCheckpointId !== 'string'
     || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(input.expectedCheckpointId)) {
     throw new PageStudioControlError('CHECKPOINT_BASE_MISMATCH', 422,
@@ -656,6 +713,14 @@ export async function acceptPageStudioAiProposal(
     const authorize = () => assertPageStudioSessionAuthority(session, 'model:invoke', { transaction: db })
     await authorize()
     await rejectManagedCheckpointBypass(db, checkpoint.scope)
+    // AI acceptance is a separate writer from ordinary CAS. Guard both the
+    // current head and retained request identities before replay or any insert;
+    // a typed proposal must never discard or relabel accepted imported content.
+    for (const checkpointId of new Set([site.current_checkpoint_id, input.expectedCheckpointId, checkpoint.checkpointId])) {
+      if (checkpointId && await readAcceptedCodeContent(db, checkpoint.scope, checkpointId)) {
+        throw new PageStudioControlError('CODE_CONTENT_DOWNGRADE', 409, 'AI proposal acceptance is unavailable for imported code checkpoints')
+      }
+    }
     const existingVersion = await db.query<VersionRow>(
       `SELECT id, checkpoint_id, digest, author_id, author_role, summary, status, created_at
        FROM page_studio_versions

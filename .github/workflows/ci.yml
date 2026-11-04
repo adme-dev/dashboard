@@ -153,6 +153,14 @@ jobs:
         env:
           PAGE_STUDIO_DATABASE_TEST_URL: postgresql://page_studio_test@127.0.0.1:5432/page_studio_checkpoint_cas_test
 
+      - name: Page Studio imported checkpoint and AI authority database tests
+        run: |
+          psql postgresql://page_studio_test@127.0.0.1:5432/page_studio_checkpoint_cas_test -v ON_ERROR_STOP=1 -c 'CREATE DATABASE studio_checkpoint_authority_code_ci'
+          psql postgresql://page_studio_test@127.0.0.1:5432/page_studio_checkpoint_cas_test -v ON_ERROR_STOP=1 -c 'CREATE DATABASE studio_ai_authority_code_ci'
+          PAGE_STUDIO_SESSION_AUTHORITY_DATABASE_TEST_URL=postgresql://page_studio_test@127.0.0.1:5432/studio_checkpoint_authority_code_ci pnpm exec vitest run test/server/utils/pageStudioCheckpointAuthorityPostgres.test.ts
+          PAGE_STUDIO_SESSION_AUTHORITY_DATABASE_TEST_URL=postgresql://page_studio_test@127.0.0.1:5432/studio_ai_authority_code_ci pnpm exec vitest run test/server/utils/pageStudioAiAuthorityPostgres.test.ts
+        timeout-minutes: 5
+
       - name: Page Studio access grant and submissions database tests
         run: pnpm exec vitest run test/server/utils/pageStudioEntitlementGrantsPostgres.test.ts test/server/utils/pageStudioInvitedAccessPostgres.test.ts test/server/utils/pageStudioSubmissionsPostgres.test.ts test/server/utils/pageStudioPublishingPostgres.test.ts test/server/utils/pageStudioVersionReviewPostgres.test.ts
         timeout-minutes: 5
@@ -185,7 +193,7 @@ jobs:
       - name: Page Studio Astro reservations and historical release compatibility
         run: |
           psql postgresql://page_studio_test@127.0.0.1:5432/page_studio_checkpoint_cas_test -v ON_ERROR_STOP=1 -c 'CREATE DATABASE studio_cms_activation_astro_ci'
-          pnpm exec vitest run test/server/utils/pageStudioAstroBuildsPostgres.test.ts test/server/utils/pageStudioReleaseFeatureSealsPostgres.test.ts test/server/utils/pageStudioPublishedSiteOwnerPostgres.test.ts test/shared/pageStudioBuilderGraphVerifier.test.ts test/server/utils/pageStudioRuntimePublishingPostgres.test.ts test/server/utils/pageStudioStagingStorePostgres.test.ts test/server/utils/pageStudioCheckpointStagingAuthorityPostgres.test.ts
+          pnpm exec vitest run test/server/utils/pageStudioAstroBuildsPostgres.test.ts test/server/utils/pageStudioReleaseFeatureSealsPostgres.test.ts test/server/utils/pageStudioPublishedSiteOwnerPostgres.test.ts test/shared/pageStudioBuilderGraphVerifier.test.ts test/server/utils/pageStudioRuntimePublishingPostgres.test.ts test/server/utils/pageStudioStagingStorePostgres.test.ts test/server/utils/pageStudioCheckpointStagingAuthorityPostgres.test.ts test/server/utils/pageStudioCheckpointOutboxPostgres.test.ts
         timeout-minutes: 5
         env:
           PAGE_STUDIO_CMS_DATABASE_TEST_URL: postgresql://page_studio_test@127.0.0.1:5432/studio_cms_activation_astro_ci

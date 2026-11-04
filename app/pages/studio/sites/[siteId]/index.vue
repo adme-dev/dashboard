@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { formCatalogue } from '~~/shared/pageStudio/formCatalogue'
-import { standaloneWorkspacePages, type StandaloneSiteWorkspace } from '~~/shared/pageStudio/standaloneWorkspace'
+import { standaloneWorkspaceCanLaunch, standaloneWorkspacePages, type StandaloneSiteWorkspace } from '~~/shared/pageStudio/standaloneWorkspace'
 
 definePageMeta({ layout: 'studio', middleware: 'studio-auth' })
 const route = useRoute()
@@ -26,7 +26,7 @@ const forms = computed(() => formCatalogue(pages.value, data.value?.document.stu
 const { editorOrigin, launchPageStudio } = usePageStudioLauncher()
 const launching = ref(false)
 const toast = useToast()
-const canLaunch = computed(() => Boolean(data.value?.canEdit && editorOrigin.value))
+const canLaunch = computed(() => standaloneWorkspaceCanLaunch(data.value, editorOrigin.value))
 const sections = [
   { value: 'overview', label: 'Overview', icon: 'i-lucide-layout-dashboard' },
   { value: 'pages', label: 'Pages & SEO', icon: 'i-lucide-files' },
@@ -114,6 +114,12 @@ async function openStudio() {
           @click="openStudio"
         />
       </header>
+      <UAlert
+        v-if="data.document.imported"
+        color="neutral"
+        title="Imported website"
+        description="Your saved pages are available to review. Editing this imported website is not available here yet."
+      />
       <div class="grid min-w-0 border-t border-default md:grid-cols-[192px_minmax(0,1fr)]">
         <nav aria-label="Website management" class="flex flex-wrap content-start gap-1 border-b border-default py-4 md:flex-col md:border-b-0 md:border-r md:pr-5 md:py-6">
           <UButton

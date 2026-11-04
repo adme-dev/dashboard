@@ -70,6 +70,7 @@ export async function requireCheckpointStagingOrigin(db: DomainDatabase, raw: un
   if (rows.length !== 1) return deny()
   const audit = rows[0]!
   if (!audit.metadata || typeof audit.metadata !== 'object' || Array.isArray(audit.metadata)) return deny()
+  if (Object.hasOwn(audit.metadata, 'codeContent')) return deny()
   const parsed = CheckpointStagingOriginSchema.safeParse(audit.metadata.stagingOrigin)
   if (!parsed.success || parsed.data.environment !== environment || audit.authorId !== parsed.data.userId
     || audit.metadata.digest !== request.digest || !['cas-v1', 'cms-graph-v1'].includes(String(audit.metadata.commitProtocol))) return deny()

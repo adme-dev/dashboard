@@ -186,6 +186,71 @@ describe.runIf(Boolean(databaseUrl))('AI acceptance authority at the PostgreSQL 
   describe.each(['agency', 'client'] as const)('%s session', (role) => {
     beforeEach(() => seedSession(role))
 
+    const codeContent = { formatVersion: 1 as const, kind: 'code-pages' as const, operationId: 'reviewed_import', indexDigest: 'd'.repeat(64), contentDigest: 'e'.repeat(64) }
+    // Seed an already accepted import, not an import writer: these tests exercise
+    // the independent AI acceptance transaction against native durable identity.
+    async function seedImported(db: pg.Client, makeCurrent = true) {
+      const cp = checkpoint('checkpoint_imported', 'c')
+      await db.query(`INSERT INTO page_studio_checkpoints(id,tenant_id,client_id,site_id,digest,object_key,etag,author_id,created_at)
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`, [cp.checkpointId, scope.tenantId, scope.clientId, scope.siteId, cp.digest, cp.objectKey, cp.etag, userId, cp.createdAt])
+      await db.query(`INSERT INTO page_studio_audit_events(tenant_id,client_id,site_id,actor_id,actor_role,action,resource_type,resource_id,idempotency_key,metadata)
+        VALUES($1,$2,$3,$4,'agency','workspace.checkpointed','checkpoint',$5,$6,$7)`,
+      [scope.tenantId, scope.clientId, scope.siteId, userId, cp.checkpointId, `control:checkpoint:${cp.checkpointId}`,
+        { commitProtocol: 'cas-v1', expectedCheckpointId: 'checkpoint_base', digest: cp.digest, codeContent }])
+      if (makeCurrent) await db.query('UPDATE page_studio_sites SET current_checkpoint_id=$2 WHERE id=$1', [scope.siteId, cp.checkpointId])
+      return cp
+    }
+    it('refuses incoming code binding before AI acceptance can register a version', async () => {
+      const before = await snapshot()
+      const writer = await connect()
+      await expect(acceptPageStudioAiProposal({ ...input, checkpoint: { ...input.checkpoint, codeContent } },
+        { session: claims, runTransaction: transactionFor(writer) })).rejects.toMatchObject({ code: 'CODE_CONTENT_REQUIRES_EDITOR' })
+      expect(await snapshot()).toEqual(before)
+    })
+    it.each([true, false])('refuses an imported expected base even when current=%s', async (makeCurrent) => {
+      const imported = await seedImported(observer, makeCurrent)
+      const before = await snapshot()
+      const writer = await connect()
+      await expect(acceptPageStudioAiProposal({ ...input, expectedCheckpointId: imported.checkpointId, baseDigest: imported.digest },
+        { session: claims, runTransaction: transactionFor(writer) })).rejects.toMatchObject({ code: 'CODE_CONTENT_DOWNGRADE' })
+      expect(await snapshot()).toEqual(before)
+    })
+    it('does not relabel a retained imported checkpoint as a typed AI version', async () => {
+      const imported = await seedImported(observer, false)
+      const before = await snapshot()
+      const writer = await connect()
+      await expect(acceptPageStudioAiProposal({ ...input, checkpoint: imported },
+        { session: claims, runTransaction: transactionFor(writer) })).rejects.toMatchObject({ code: 'CODE_CONTENT_DOWNGRADE' })
+      expect(await snapshot()).toEqual(before)
+    })
+    it('does not replay a typed AI receipt after the current head becomes imported code', async () => {
+      const writer = await connect()
+      const options = { session: claims, runTransaction: transactionFor(writer) }
+      await acceptPageStudioAiProposal(input, options)
+      await seedImported(observer)
+      const before = await snapshot()
+      await expect(acceptPageStudioAiProposal(input, options)).rejects.toMatchObject({ code: 'CODE_CONTENT_DOWNGRADE' })
+      expect(await snapshot()).toEqual(before)
+    })
+    it('rechecks imported head identity after waiting for the site lock', async () => {
+      const blocker = await connect()
+      const writer = await connect()
+      await blocker.query('BEGIN')
+      await blocker.query('SELECT id FROM page_studio_sites WHERE id=$1 FOR NO KEY UPDATE', [scope.siteId])
+      const pending = capture(acceptPageStudioAiProposal(input, { session: claims, runTransaction: transactionFor(writer) }))
+      try {
+        await waitForBlock(writer, blocker)
+        await seedImported(blocker)
+        await blocker.query('COMMIT')
+        const before = await snapshot()
+        expect(await pending).toMatchObject({ ok: false, error: { code: 'CODE_CONTENT_DOWNGRADE' } })
+        expect(await snapshot()).toEqual(before)
+      } finally {
+        await blocker.query('ROLLBACK')
+        await pending
+      }
+    })
+
     function logoutEvent() {
       const request = new IncomingMessage(new Socket())
       request.method = 'POST'

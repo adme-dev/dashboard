@@ -1,5 +1,6 @@
 import { StagingProviderDomainIdSchema } from './stagingProvider'
 import { z } from 'zod'
+import { CodeContentBindingSchema, sameCodeContent, type CodeContentBinding } from '../../../shared/pageStudio/codeContent'
 import { PageStudioStagingRequestSchema, pageStudioStagingAddress } from '../../../shared/pageStudio/staging'
 import type { DomainTransaction } from './domainAttachment'
 import { requireStagingAuthority, requireCheckpointStagingOrigin } from './stagingAuthority'
@@ -9,7 +10,7 @@ import { beginInitialStagingSnapshot, beginStagingSnapshot, finishStagingSnapsho
 type Request = z.infer<typeof PageStudioStagingRequestSchema>
 type CheckpointAuthority = { request: unknown, environment: unknown }
 type Scope = { tenantId: string, clientId: string, siteId: string }
-type BuildInput = { scope: Scope, snapshotId: string, checkpointId: string, digest: string }
+type BuildInput = { scope: Scope, snapshotId: string, checkpointId: string, digest: string, codeContent?: CodeContentBinding }
 export interface StagingCoordinatorDependencies {
   transaction: DomainTransaction
   attach(siteId: string): Promise<{ domainId: string, hostname: string, certificateId: string }>
@@ -17,7 +18,7 @@ export interface StagingCoordinatorDependencies {
   build(input: BuildInput): Promise<unknown>
   verify(input: BuildInput & { artifactPrefix: string, manifestDigest: string }): Promise<unknown>
 }
-const BuildReceipt = z.object({ artifactPrefix: z.string().max(1024), manifestKey: z.string().max(1100), manifestDigest: z.string().regex(/^[a-f0-9]{64}$/), snapshotId: z.string().uuid(), digest: z.string().regex(/^[a-f0-9]{64}$/) }).strict()
+const BuildReceipt = z.object({ codeContent: CodeContentBindingSchema.optional(), artifactPrefix: z.string().max(1024), manifestKey: z.string().max(1100), manifestDigest: z.string().regex(/^[a-f0-9]{64}$/), snapshotId: z.string().uuid(), digest: z.string().regex(/^[a-f0-9]{64}$/) }).strict()
 
 /** Network calls happen outside SQL transactions. Each final write is fenced by
  * its expiring claim and fresh actor/entitlement/checkpoint authority. */
@@ -58,7 +59,7 @@ export async function coordinateStaging(raw: unknown, dependencies: StagingCoord
       const expired = await db.query<{ id: string }>(`SELECT id FROM page_studio_staging_deployments WHERE tenant_id=$1 AND client_id=$2 AND site_id=$3
       AND state='building' AND claim_until<clock_timestamp() AND idempotency_key<>$4`, [...params, request.body.idempotencyKey])
       for (const row of expired.rows) await failStagingSnapshot(db, { scope, id: row.id, failure: 'BUILD_FAILED' })
-      snapshot = await beginStagingSnapshot(db, { scope, checkpointId, digest: request.body.digest, expectedActiveId: request.body.expectedActiveId,
+      snapshot = await beginStagingSnapshot(db, { scope, checkpointId, digest: request.body.digest, codeContent: request.body.codeContent, expectedActiveId: request.body.expectedActiveId,
         idempotencyKey: request.body.idempotencyKey, actorId: actor.actorId, actorRole: actor.kind === 'agency' ? 'agency' : 'client' })
     }
     if (!snapshot || ['succeeded', 'failed'].includes(snapshot.state)) return null
@@ -71,7 +72,7 @@ export async function coordinateStaging(raw: unknown, dependencies: StagingCoord
   })
   if (!claimed) return read()
   const { scope, snapshot, token } = claimed
-  const identity = { scope, snapshotId: snapshot.id, checkpointId: snapshot.checkpointId, digest: snapshot.digest }
+  const identity = { scope, snapshotId: snapshot.id, checkpointId: snapshot.checkpointId, digest: snapshot.digest, ...(snapshot.codeContent ? { codeContent: snapshot.codeContent } : {}) }
   const params = [scope.tenantId, scope.clientId, scope.siteId, snapshot.id, token]
   let failure: 'HOST_UNAVAILABLE' | 'BUILD_FAILED' | 'SNAPSHOT_CHANGED' | 'ACCESS_INACTIVE' = 'HOST_UNAVAILABLE'
   async function withClaim<T>(work: (db: Parameters<Parameters<DomainTransaction>[0]>[0]) => Promise<T>) {
@@ -104,9 +105,9 @@ export async function coordinateStaging(raw: unknown, dependencies: StagingCoord
     failure = 'BUILD_FAILED'
     const built = BuildReceipt.parse(await dependencies.build(identity))
     const prefix = stagingArtifactPrefix(scope, snapshot.id)
-    if (built.snapshotId !== snapshot.id || built.digest !== snapshot.digest || built.artifactPrefix !== prefix || built.manifestKey !== `${prefix}/staging-manifest.json`) throw new Error('Staging build mismatch')
-    const verified = z.object({ verified: z.literal(true), manifestDigest: z.string().regex(/^[a-f0-9]{64}$/) }).strict().parse(await dependencies.verify({ ...identity, artifactPrefix: prefix, manifestDigest: built.manifestDigest }))
-    if (verified.manifestDigest !== built.manifestDigest) throw new Error('Staging read-back failed')
+    if (!sameCodeContent(built.codeContent, snapshot.codeContent) || built.snapshotId !== snapshot.id || built.digest !== snapshot.digest || built.artifactPrefix !== prefix || built.manifestKey !== `${prefix}/staging-manifest.json`) throw new Error('Staging build mismatch')
+    const verified = z.object({ codeContent: CodeContentBindingSchema.optional(), verified: z.literal(true), manifestDigest: z.string().regex(/^[a-f0-9]{64}$/) }).strict().parse(await dependencies.verify({ ...identity, artifactPrefix: prefix, manifestDigest: built.manifestDigest }))
+    if (!sameCodeContent(verified.codeContent, snapshot.codeContent) || verified.manifestDigest !== built.manifestDigest) throw new Error('Staging read-back failed')
     failure = 'SNAPSHOT_CHANGED'
     await withClaim(db => finishStagingSnapshot(db, { scope, id: snapshot.id, artifactPrefix: prefix, manifestDigest: built.manifestDigest }))
   } catch (error) {

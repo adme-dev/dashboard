@@ -63,3 +63,12 @@ describe('client staging address and readiness contract', () => {
     expect(pageStudioStagingLink(state(), siteId)).toContain('xeroflow.io')
   })
 })
+
+it('retains code-content identity even when typed manifest digests are unchanged', () => {
+  const codeContent = { formatVersion: 1, kind: 'code-pages', operationId: 'import_one', indexDigest: 'b'.repeat(64), contentDigest: 'c'.repeat(64) }
+  const current = { ...state(), currentCodeContent: codeContent, active: { ...active, codeContent } }
+  expect(PageStudioStagingStateSchema.parse(current)).toEqual(current)
+  expect(PageStudioStagingRequestSchema.parse({ operation: 'update', siteId, expectedEnvironment: 'staging',
+    actor: { kind: 'agency', actorId: active.id, tenantId: 'agency' },
+    body: { digest: active.digest, codeContent, expectedActiveId: active.id, idempotencyKey: active.id } })).toMatchObject({ body: { codeContent } })
+})

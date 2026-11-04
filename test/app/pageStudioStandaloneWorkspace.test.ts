@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { standaloneWorkspacePages, type StandaloneSiteWorkspace } from '~~/shared/pageStudio/standaloneWorkspace'
+import { standaloneWorkspaceCanLaunch, standaloneWorkspacePages, type StandaloneSiteWorkspace } from '~~/shared/pageStudio/standaloneWorkspace'
 
 const state: StandaloneSiteWorkspace['document'] = { id: 'site', site: { id: 'site', clientId: 'client', name: 'Website', route: 'website' }, document: null, pageLimit: 100, revision: 1, updatedAt: null }
 describe('standalone saved page presentation', () => {
@@ -16,5 +16,26 @@ describe('standalone saved page presentation', () => {
       { id: 'weddings', title: 'Weddings', route: '/services/weddings', visibility: 'draft', seo: { title: 'Our website', description: 'Welcome' }, forms: [] }
     ])
     expect(document.pages[2]?.slug).toBe('weddings')
+  })
+})
+
+// Imported content must win over any old typed projection and stay read-only.
+describe('standalone imported website presentation', () => {
+  const imported = { checkpointId: 'code-saved', routes: ['/kia', '/kia/vehicles'], readOnly: true as const }
+  it('shows exact imported routes instead of zero pages or stale typed pages', () => {
+    const pages = standaloneWorkspacePages({ ...state, imported, studio: { checkpointId: 'old', pages: [{ id: 'old', title: 'Old', route: '/old', visibility: 'public', seo: {}, forms: [] }] } })
+    expect(pages.map(page => page.route)).toEqual(['/kia', '/kia/vehicles'])
+    expect(pages.every(page => page.forms.length === 0)).toBe(true)
+    expect(new Set(pages.map(page => page.id)).size).toBe(2)
+  })
+  it('does not offer unsupported editing for imported pages despite membership', () => {
+    expect(standaloneWorkspaceCanLaunch({ canEdit: true, document: { ...state, imported }, assets: [] }, 'https://studio.example.test')).toBe(false)
+  })
+  it('retains normal editing only with membership and an editor connection', () => {
+    const workspace = { canEdit: true, document: state, assets: [] }
+    expect(standaloneWorkspaceCanLaunch(workspace, 'https://studio.example.test')).toBe(true)
+    expect(standaloneWorkspaceCanLaunch({ ...workspace, canEdit: false }, 'https://studio.example.test')).toBe(false)
+    expect(standaloneWorkspaceCanLaunch(workspace, '')).toBe(false)
+    expect(standaloneWorkspaceCanLaunch(null, 'https://studio.example.test')).toBe(false)
   })
 })

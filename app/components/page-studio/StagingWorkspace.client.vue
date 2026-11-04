@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { PageStudioStagingStateSchema, pageStudioStagingLink, type PageStudioStagingState, type PageStudioStagingUpdateSchema } from '~~/shared/pageStudio/staging'
 import type { z } from 'zod'
+import { sameCodeContent } from '~~/shared/pageStudio/codeContent'
 
 const props = defineProps<{ siteId: string, audience: 'agency' | 'portal' }>()
 const endpoint = computed(() => `/api/${props.audience}/page-studio/sites/${encodeURIComponent(props.siteId)}/staging`)
@@ -19,7 +20,7 @@ const state = computed(() => {
 })
 const link = computed(() => pageStudioStagingLink(state.value, props.siteId))
 const busy = computed(() => updating.value || ['building', 'provisioning'].includes(state.value?.status ?? ''))
-const changed = computed(() => state.value?.active && state.value.currentDigest !== state.value.active.digest)
+const changed = computed(() => state.value?.active && (state.value.currentDigest !== state.value.active.digest || !sameCodeContent(state.value.currentCodeContent, state.value.active.codeContent)))
 const labels: Record<PageStudioStagingState['status'], string> = {
   not_published: 'Not deployed', provisioning: 'Preparing address', building: 'Updating staging', ready: 'Ready',
   update_failed: 'Update failed', failed: 'Deployment failed', suspended: 'Unavailable'
@@ -34,12 +35,17 @@ watch(() => state.value?.status, (status) => {
       }, 5000)
     : undefined
 }, { immediate: true })
-watch(() => state.value?.active, (active) => {
+function confirmsAttempt(current: PageStudioStagingState | null, requested: z.infer<typeof PageStudioStagingUpdateSchema> | null) {
+  const active = current?.active
+  return Boolean(requested && current?.status === 'ready' && active
+    && active.id !== requested.expectedActiveId && active.digest === requested.digest
+    && sameCodeContent(active.codeContent, requested.codeContent))
+}
+watch(() => state.value?.active, () => {
   // A completed refresh is acknowledgement even when the POST response was
   // lost. Keep uncertain requests while the previous snapshot is still active.
   const requested = attempt.value
-  if (requested && state.value?.status === 'ready' && active
-    && active.id !== requested.expectedActiveId && active.digest === requested.digest) {
+  if (confirmsAttempt(state.value, requested)) {
     attempt.value = null
   }
 })
@@ -57,7 +63,7 @@ onMounted(() => {
   mounted = true
   watch([endpoint, state], () => {
     const current = state.value
-    if (!current?.canManage || current.active || current.failure || current.status !== 'not_published' || updating.value) return
+    if (!current?.canManage || current.currentCodeContent || current.active || current.failure || current.status !== 'not_published' || updating.value) return
     // Reserve an empty site's address once, then request its first saved
     // checkpoint once. Later draft changes never trigger another deployment.
     const key = `${endpoint.value}:${current.currentDigest ? 'saved' : 'empty'}`
@@ -109,15 +115,19 @@ async function update() {
   const revision = scopeRevision
   const requestedSite = props.siteId
   const url = endpoint.value
-  attempt.value ??= { digest: current.currentDigest, expectedActiveId: current.active?.id ?? null, idempotencyKey: crypto.randomUUID() }
+  attempt.value ??= { digest: current.currentDigest, ...(current.currentCodeContent ? { codeContent: current.currentCodeContent } : {}), expectedActiveId: current.active?.id ?? null, idempotencyKey: crypto.randomUUID() }
   updating.value = true
   try {
     const response = PageStudioStagingStateSchema.parse(await $fetch(url, { method: 'POST', body: attempt.value }))
     if (revision !== scopeRevision || !mounted) return
     if (requestedSite !== props.siteId || response.siteId !== requestedSite) throw new Error('Staging response did not match this website')
+    const ready = confirmsAttempt(response, attempt.value)
     data.value = response
-    if (!['provisioning', 'building'].includes(response.status)) attempt.value = null
-    const ready = response.status === 'ready'
+    if (ready || response.failure) attempt.value = null
+    if (response.status === 'ready' && !ready) {
+      toast.add({ title: 'Staging update could not be confirmed', description: 'The available preview does not match this saved request. Retry to check the same update.', color: 'warning' })
+      return
+    }
     toast.add({ title: ready ? 'Staging updated' : response.failure ? 'Staging update failed' : 'Staging update in progress',
       description: ready ? 'Your saved website is available at its staging address.' : response.failure ? 'The previous preview stays available when one exists. Retry the update.' : 'The status will refresh automatically.', color: ready ? 'success' : response.failure ? 'error' : 'info' })
   } catch (failure) {
@@ -172,7 +182,7 @@ async function update() {
           {{ state.hostname }}
         </p>
         <p class="text-sm text-muted">
-          {{ deployedAt ? `Saved snapshot deployed ${deployedAt}.` : state.currentDigest ? 'Your first saved preview is prepared automatically. Use Update staging for later changes.' : 'Save a page to prepare the first preview at this address.' }}
+          {{ deployedAt ? `Saved snapshot deployed ${deployedAt}.` : state.currentCodeContent ? 'Use Update staging to preview this imported website.' : state.currentDigest ? 'Your first saved preview is prepared automatically. Use Update staging for later changes.' : 'Save a page to prepare the first preview at this address.' }}
           Unsaved editor changes are excluded. Form submissions are disabled on staging.
         </p>
         <UAlert
