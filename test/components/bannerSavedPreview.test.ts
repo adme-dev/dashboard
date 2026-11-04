@@ -66,6 +66,18 @@ async function mount(previewCanvas: Record<string, ArtboardState> = canvas, iden
 }
 
 describe('saved banner review workspace', () => {
+  it('opens the square layout first and keeps an explicitly chosen size across presentation changes', async () => {
+    const view = await mount()
+    expect(view.media().dataset.width).toBe('1200')
+    expect(view.button('1200 × 1200').getAttribute('aria-pressed')).toBe('true')
+    await view.click('Social preview')
+    expect(view.host.textContent).toContain('Facebook Feed mockup')
+    expect(Number(view.media().dataset.ratio)).toBe(1)
+    await view.click('1080 × 1920')
+    await view.click('Artwork')
+    expect(view.media().dataset.width).toBe('1080')
+  })
+
   it('controls the existing frame and resets when changing sizes', async () => {
     const view = await mount()
     const html = view.media().dataset.html
@@ -80,8 +92,8 @@ describe('saved banner review workspace', () => {
     await view.report('paused', 1, pauseMessage.commandId)
     expect(view.host.textContent).toContain('Paused')
     expect(view.media().dataset.html).toBe(html)
-    await view.click('1200 × 1200')
-    expect(view.media().dataset.width).toBe('1200')
+    await view.click('1080 × 1920')
+    expect(view.media().dataset.width).toBe('1080')
     expect(view.media().dataset.html).toContain('paused: true')
     expect(view.host.textContent).toContain('0.0 / 0.0 s')
   })
@@ -112,7 +124,7 @@ describe('saved banner review workspace', () => {
     await view.click('100%')
     expect(view.host.textContent).toContain('100%')
     expect(view.media().parentElement!.style.transform).toBe('scale(1)')
-    expect(view.media().parentElement!.parentElement!.style.height).toBe('1920px')
+    expect(view.media().parentElement!.parentElement!.style.height).toBe('1200px')
     await view.click('Zoom in')
     expect(view.media().parentElement!.style.transform).toBe('scale(1.1)')
     await view.click('Zoom out')
@@ -193,6 +205,7 @@ describe('saved banner review workspace', () => {
 
   it('uses Story for portrait and Feed for wide artwork without invented copy or engagement', async () => {
     const view = await mount()
+    await view.click('1080 × 1920')
     await view.click('Social preview')
     expect(view.host.textContent).toContain('Story / Reel mockup')
     expect(view.media().dataset.cta).toBe('false')

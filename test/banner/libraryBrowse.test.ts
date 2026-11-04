@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import type { BannerProject } from '../../app/types/banner-studio'
-import { bannerDimensions, hasBannerPreview, bannerLibraryFacets, filterBannerProjects, libraryDate, sortLibrary, theBriefCreatedDate } from '../../app/utils/banner-library'
+import type { ArtboardState, BannerProject } from '../../app/types/banner-studio'
+import { bannerDimensions, preferredBannerPreviewKey, hasBannerPreview, bannerLibraryFacets, filterBannerProjects, libraryDate, sortLibrary, theBriefCreatedDate } from '../../app/utils/banner-library'
 
 const project = (id: string, clientId: string | null, tags: string[] = []): BannerProject => ({
   id, name: `Banner ${id}`, clientId, clientName: clientId === 'news' ? 'DriveAgent News' : 'DriveAgent', tags,
@@ -36,8 +36,8 @@ describe('banner library browsing', () => {
   it('recognizes usable native thumbnails without relying on a stale image URL', () => {
     expect(hasBannerPreview()).toBe(false)
     expect(hasBannerPreview({ mrec: { layers: [] } })).toBe(false)
-    expect(hasBannerPreview({ unknown: { layers: [{ id: 1 }] } } as any)).toBe(false)
-    expect(hasBannerPreview({ unknown: { layers: [{ id: 1 }] }, custom_1200x1200: { layers: [{ id: 2 }] } } as any)).toBe(true)
+    expect(hasBannerPreview({ unknown: { layers: [{ id: 1 }] } } as unknown as Record<string, ArtboardState>)).toBe(false)
+    expect(hasBannerPreview({ unknown: { layers: [{ id: 1 }] }, custom_1200x1200: { layers: [{ id: 2 }] } } as unknown as Record<string, ArtboardState>)).toBe(true)
   })
 
   it('finds a project by its imported folder while retaining the client scope', () => {
@@ -63,5 +63,25 @@ describe('banner library browsing', () => {
     const oldImport = { ...project('old', 'driveagent', ['source:thebrief', 'source-created-date:2018-01-01']), updatedAt: '2026-10-31T00:00:00Z' }
     const unknownImport = project('unknown', 'driveagent', ['source:thebrief'])
     expect(sortLibrary([recentImport, unknownImport, oldImport], 'created').map(item => item.id)).toEqual(['old', 'recent', 'unknown'])
+  })
+})
+
+describe('square-first banner previews', () => {
+  const populated = { layers: [{ id: 1 }] } as ArtboardState
+  it('finds imported squares by dimensions regardless of insertion order or preset name', () => {
+    const canvas = { custom_1080x1920: populated, mrec: populated, custom_1200x1200: populated, fb_sq: populated }
+    expect(preferredBannerPreviewKey(canvas)).toBe('custom_1200x1200')
+    expect(Object.keys(canvas)[0]).toBe('custom_1080x1920')
+    expect(preferredBannerPreviewKey({ ig_story: populated, li_sq: populated })).toBe('li_sq')
+  })
+  it('uses the closest populated aspect ratio when no square artwork exists', () => {
+    expect(preferredBannerPreviewKey({ leader: populated, ig_story: populated, mrec: populated })).toBe('mrec')
+    expect(preferredBannerPreviewKey({ fb_sq: { layers: [] }, ig_story: populated })).toBe('ig_story')
+    expect(preferredBannerPreviewKey({ custom_1080x1920: populated })).toBe('custom_1080x1920')
+  })
+  it('handles empty, malformed and unrecognized artboards', () => {
+    expect(preferredBannerPreviewKey()).toBeUndefined()
+    expect(preferredBannerPreviewKey({ unknown: populated, fb_sq: null } as unknown as Record<string, ArtboardState>)).toBeUndefined()
+    expect(preferredBannerPreviewKey({ leader: { layers: [] }, fb_sq: { layers: [] } })).toBe('fb_sq')
   })
 })
