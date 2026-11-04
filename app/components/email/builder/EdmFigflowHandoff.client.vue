@@ -380,8 +380,8 @@ defineExpose({ requestSnapshot: requestReturn, ready })
               <p class="text-xs text-muted">{{ busy ? 'Saved baseline — save outcome may be unconfirmed' : savedStale ? 'Saved output — native edits are not saved yet' : 'Saved source — native edits appear only after Save draft' }}</p>
             </div>
             <div class="flex gap-1" role="group" aria-label="Saved email preview size">
-              <UButton label="Desktop" size="xs" color="neutral" :variant="savedDevice === 'desktop' ? 'solid' : 'ghost'" :aria-pressed="savedDevice === 'desktop'" @click="savedDevice = 'desktop'" />
-              <UButton label="Mobile" size="xs" color="neutral" :variant="savedDevice === 'mobile' ? 'solid' : 'ghost'" :aria-pressed="savedDevice === 'mobile'" @click="savedDevice = 'mobile'" />
+              <UButton label="Desktop" size="xs" color="neutral" :variant="savedDevice === 'desktop' ? 'solid' : 'ghost'" :aria-pressed="savedDevice === 'desktop'" @click="() => { savedDevice = 'desktop' }" />
+              <UButton label="Mobile" size="xs" color="neutral" :variant="savedDevice === 'mobile' ? 'solid' : 'ghost'" :aria-pressed="savedDevice === 'mobile'" @click="() => { savedDevice = 'mobile' }" />
             </div>
           </div>
           <div class="min-h-0 flex-1 overflow-auto p-3">

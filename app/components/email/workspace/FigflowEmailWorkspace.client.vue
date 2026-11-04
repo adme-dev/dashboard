@@ -343,7 +343,7 @@ async function initialise() {
       if (session.state === 'proposed') await reviewProposal(session)
       else if (session.state === 'applied') await continueApplied(session)
       else if (session.state === 'open') await adoptOpen(session)
-      else if (session.state !== 'open') throw new Error('This handoff is closed. Reopen the saved draft to continue.')
+      else throw new Error('This handoff is closed. Reopen the saved draft to continue.')
       return
     }
     const current = designFlow.draft.value
