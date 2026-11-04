@@ -22,6 +22,7 @@ const mockListProjects = vi.fn()
 const mockCreateProject = vi.fn()
 const mockGetProject = vi.fn()
 const mockSaveDraft = vi.fn()
+const mockRestoreVersion = vi.fn()
 const mockCreateVersion = vi.fn()
 const mockListVersions = vi.fn()
 const mockReplayTimeline = vi.fn()
@@ -47,6 +48,7 @@ vi.mock('~~/server/utils/audio/projects', async original => ({
   getProjectWithCurrentTimeline: (...a: unknown[]) => mockGetProject(...a),
   getProjectWithCurrentTimelineIn: vi.fn(),
   getCurrentTimelineIfMatchingIn: (_db: unknown, ...a: unknown[]) => mockReplayTimeline(...a),
+  restoreTimelineVersionIn: (_db: unknown, ...a: unknown[]) => mockRestoreVersion(...a),
   saveDraftTimelineIfCurrentIn: (_db: unknown, ...a: unknown[]) => mockSaveDraft(...a),
   createVersionIn: (_db: unknown, ...a: unknown[]) => mockCreateVersion(...a),
   listVersions: (...a: unknown[]) => mockListVersions(...a)
@@ -210,5 +212,23 @@ describe('timeline revision route guards', () => {
     await expect(versionPostH({ params: { id: 'p1' }, body: token } as never)).rejects.toMatchObject({ statusCode: 409 })
     expect(mockReplayTimeline).toHaveBeenCalledWith({ projectId: 'p1', actor: { id: 'u1', role: 'member' }, expectedTimelineId: 't2', expectedEditRevision: 0 })
     expect(mockCreateVersion).not.toHaveBeenCalled()
+  })
+})
+
+
+describe('authoritative version restore request', () => {
+  const restoreTimelineId = '00000000-0000-4000-8000-000000000001'
+  beforeEach(() => mockGetProject.mockResolvedValue({ project: { createdBy: 'u1', id: 'p1', status: 'draft', currentTimelineId: 't1' }, timeline: { id: 't1' } }))
+  it('accepts an identity-only restore and never passes client state to the restoring core', async () => {
+    mockRestoreVersion.mockResolvedValue({ id: 'restored', editRevision: 1 })
+    const result = await putH({ params: { id: 'p1' }, body: { ...token, restoreTimelineId } } as never)
+    expect(result.timeline.id).toBe('restored')
+    expect(mockRestoreVersion).toHaveBeenCalledWith({ projectId: 'p1', actor: { id: 'u1', role: 'member' }, ...token, restoreTimelineId })
+    expect(mockSaveDraft).not.toHaveBeenCalled()
+  })
+  it.each([{}, { state: goodState, restoreTimelineId }, { restoreTimelineId: 'invalid' }])('rejects missing, conflicting or invalid restore state %j', async body => {
+    await expect(putH({ params: { id: 'p1' }, body: { ...token, ...body } } as never)).rejects.toMatchObject({ statusCode: 400 })
+    expect(mockRestoreVersion).not.toHaveBeenCalled()
+    expect(mockSaveDraft).not.toHaveBeenCalled()
   })
 })

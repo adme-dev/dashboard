@@ -66,7 +66,7 @@ describe('mapTimelineRow', () => {
 describe('createProject', () => {
   it('inserts a project + v1 timeline and points current_timeline_id at it (in a transaction)', async () => {
     // Fake transaction client: returns the project row, then the timeline row, then the update.
-    const dbQuery = vi.fn()
+    const dbQuery = vi.fn().mockResolvedValue({ rows: [] })
       .mockResolvedValueOnce({ rows: [projectRow] })             // INSERT project
       .mockResolvedValueOnce({ rows: [timelineRow] })            // INSERT v1 timeline
       .mockResolvedValueOnce({ rows: [{ ...projectRow, current_timeline_id: 't1' }] }) // UPDATE project
@@ -85,7 +85,7 @@ describe('createProject', () => {
   })
 
   it('propagates a mid-transaction failure (does not swallow)', async () => {
-    const dbQuery = vi.fn()
+    const dbQuery = vi.fn().mockResolvedValue({ rows: [] })
       .mockResolvedValueOnce({ rows: [projectRow] })   // INSERT project
       .mockRejectedValueOnce(new Error('boom'))        // INSERT v1 timeline fails
     transactionMock.mockImplementation(async (cb: any) => cb({ query: dbQuery }))
@@ -136,7 +136,7 @@ describe('saveDraftTimeline', () => {
           source_out_sec: 8, gain_db: 0, fade_in_sec: 0, fade_out_sec: 0, fade_curve: 'linear' }] }],
       ducking: []
     }
-    const dbQuery = vi.fn()
+    const dbQuery = vi.fn().mockResolvedValue({ rows: [] })
       .mockResolvedValueOnce({ rows: [projectRow] })
       .mockResolvedValueOnce({ rows: [timelineRow] })
       .mockResolvedValueOnce({ rows: [{ exists: false }] })
@@ -164,7 +164,7 @@ describe('saveDraftTimeline', () => {
 
 describe('createVersion', () => {
   it('snapshots current state into version max+1 and repoints current_timeline_id', async () => {
-    const dbQuery = vi.fn()
+    const dbQuery = vi.fn().mockResolvedValue({ rows: [] })
       // Project lock, current timeline, then version allocation.
       .mockResolvedValueOnce({ rows: [projectRow] })
       .mockResolvedValueOnce({ rows: [timelineRow] })
@@ -178,7 +178,7 @@ describe('createVersion', () => {
     const v = await createVersion({ projectId: 'p1', actor: { id: 'u1', role: 'member' }, expectedTimelineId: 't1', expectedEditRevision: 0, label: 'v2' })
     expect(v.version).toBe(2)
     expect(v.id).toBe('t2')
-    expect(dbQuery).toHaveBeenCalledTimes(5)
+    expect(dbQuery).toHaveBeenCalledTimes(6)
   })
 
   it('throws when there is no current timeline', async () => {

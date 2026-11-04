@@ -204,3 +204,13 @@ describe('committed storyboard adoption', () => {
     expect(e.storyboardDiverged.value).toBe(true)
   })
 })
+
+it('restores a saved version through server identity instead of posting client state without lineage', async () => {
+  const e = await editor()
+  const restored = { id: 'restored', editRevision: 1, state: { ...state, width: 720 } }
+  request.mockImplementationOnce(async () => ({ timeline: restored }))
+  await e.restoreVersion({ ...state, width: 2000 }, 'historical-version')
+  expect(request.mock.calls.at(-1)![1].body).toEqual({ expectedTimelineId: 't1', expectedEditRevision: 0, restoreTimelineId: 'historical-version' })
+  expect(e.timeline.value!.width).toBe(720)
+  expect(e.dirty.value).toBe(false)
+})

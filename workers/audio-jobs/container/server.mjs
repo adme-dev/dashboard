@@ -4,6 +4,7 @@
 // JSON. Runs 2-pass loudnorm (measure → linear normalize) + trim/fade, returns
 // the variant bytes. No R2/DB creds here — the Worker owns persistence.
 // V1.2b: /render-composite also accepts overlays (banner HTML → Chromium capture → composite).
+import { serveCopyMeasurement } from './copyMeasurement.mjs'
 import { serveMediaProbe } from './mediaProbe.mjs'
 import { createServer } from 'node:http'
 import { spawn } from 'node:child_process'
@@ -37,6 +38,7 @@ function readBody(req) {
 }
 
 const server = createServer(async (req, res) => {
+  if (req.method === 'POST' && req.url === '/measure-copy') return serveCopyMeasurement(req, res)
   if (req.method === 'POST' && req.url === '/probe') return serveMediaProbe(req,res)
   if (req.url === '/health') {
     res.writeHead(200); return res.end('ok')
@@ -96,6 +98,7 @@ const server = createServer(async (req, res) => {
           mkdirSync(outDir, { recursive: true })
           await captureOverlay(browser, {
             html: ov.html,
+            requiredCopy: ov.requiredCopy,
             width: ov.width,
             height: ov.height,
             fps: ov.fps,
@@ -122,7 +125,7 @@ const server = createServer(async (req, res) => {
         res.writeHead(500); return res.end('composite render failed')
       }
       const out = readFileSync(outPath)
-      res.writeHead(200, { 'content-type': 'video/mp4' })
+      res.writeHead(200, { 'content-type': 'video/mp4', 'content-length': String(out.byteLength) })
       return res.end(out)
     } catch (e) {
       console.error('render-composite error', e)

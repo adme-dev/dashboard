@@ -12,10 +12,12 @@ import VideoStudioLibraryRail from '~~/app/components/media/VideoStudioLibraryRa
 import VideoStudioOverlayComposer from '~~/app/components/media/VideoStudioOverlayComposer.vue'
 import VideoStudioStoryboard from '~~/app/components/media/VideoStudioStoryboard.vue'
 import { installStoryboardRecovery } from '~~/app/utils/video/storyboardRecovery'
+import { useVideoAdjustedEditReview } from '~~/app/composables/useVideoAdjustedEditReview'
 import { useVideoStoryboard } from '~~/app/composables/useVideoStoryboard'
 import VideoStudioProducerRail from '~~/app/components/media/VideoStudioProducerRail.vue'
 import VideoStudioRenderJobsPanel from '~~/app/components/media/VideoStudioRenderJobsPanel.vue'
 import VideoStudioRenderStatusStrip from '~~/app/components/media/VideoStudioRenderStatusStrip.vue'
+import VideoStudioAdjustedEditReview from '~~/app/components/media/VideoStudioAdjustedEditReview.vue'
 import VideoStudioReviewStatusPanel from '~~/app/components/media/VideoStudioReviewStatusPanel.vue'
 import VideoStudioSelectedAssetPanel from '~~/app/components/media/VideoStudioSelectedAssetPanel.vue'
 import VideoStudioVoiceComposer from '~~/app/components/media/VideoStudioVoiceComposer.vue'
@@ -112,6 +114,11 @@ const storyboard = useVideoStoryboard(projectId.value, {
   clientId: () => editor.project.value?.clientId ?? null,
   editor: { begin: editor.beginStoryboardApplication, adopt: editor.adoptCommittedStoryboard, release: editor.releaseStoryboardApplication, resume: editor.resumeStoryboardApplication }
 })
+const adjustedReview = useVideoAdjustedEditReview(projectId.value, { begin: editor.beginStoryboardApplication, release: editor.releaseStoryboardApplication })
+watch(() => editor.dirty.value, dirty => {
+  if (dirty) adjustedReview.invalidate()
+})
+const adjustedReviewClips = computed(() => editor.timeline.value?.tracks.flatMap(track => track.clips.map(clip => ({ value: clip.id, label: `${track.name}: ${clip.id}` }))) ?? [])
 const storyboardOpen = ref(Boolean(storyboard.pendingOperation.value))
 watch(storyboardOpen, (open) => {
   if (open) void storyboard.load()
@@ -807,7 +814,7 @@ async function restore(version: VersionRow) {
     // restore itself is undoable from the version list.
     if (editor.dirty.value || editor.saveStatus.value !== 'saved') await editor.saveNow()
     await editor.saveVersion(`Before restoring ${name}`)
-    editor.restoreVersion(version.state)
+    await editor.restoreVersion(version.state, version.id)
     toast.add({ title: `Restored ${name}`, description: 'Your previous draft was saved as a version first.', color: 'success' })
     versionsOpen.value = false
   } catch (e: unknown) {
@@ -1665,6 +1672,17 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
               </template>
 
                 <template #review>
+                  <VideoStudioAdjustedEditReview
+                    class="mb-3"
+                    :snapshot="adjustedReview.snapshot.value"
+                    :clips="adjustedReviewClips"
+                    :pending="adjustedReview.pending.value || editor.storyboardApplying.value"
+                    :error="adjustedReview.error.value"
+                    :uncertain="adjustedReview.uncertain.value"
+                    @refresh="adjustedReview.load"
+                    @accept="adjustedReview.accept"
+                    @retry="adjustedReview.retry"
+                  />
                   <VideoStudioReviewStatusPanel
                     class="mb-3"
                     :render-job-count="editor.renderJobs.value.length"

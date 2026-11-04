@@ -1,3 +1,4 @@
+import { carryTimelineObligationsIn } from '~~/server/utils/video-storyboard/lineage'
 // server/utils/audio/projects.ts — SOLE gateway to media_projects / media_timelines.
 // Mirrors assets.ts so a future client-portal surface (SP6) reuses it untouched.
 // Validation/duration math lives in the pure timelineSchema.ts; this file is the
@@ -225,6 +226,7 @@ export async function saveDraftTimelineIfCurrentIn(db: Db, input: SaveDraftTimel
   if (usedByRender) {
     const next = await insertTimelineIn(db, input.projectId, persisted, timeline.schema_version, input.actor.id, null, timeline.edit_revision + 1)
     await db.query('UPDATE media_projects SET current_timeline_id = $1, updated_at = now() WHERE id = $2', [next.id, input.projectId])
+    await carryTimelineObligationsIn(db, { projectId: input.projectId, fromTimelineId: timeline.id, fromEditRevision: timeline.edit_revision, timelineId: next.id, editRevision: next.editRevision, state: persisted, actorId: input.actor.id })
     return next
   }
   const row = (await db.query(
@@ -233,6 +235,7 @@ export async function saveDraftTimelineIfCurrentIn(db: Db, input: SaveDraftTimel
     [JSON.stringify(persisted), timeline.id, input.projectId, input.expectedEditRevision]
   )).rows[0]
   if (!row) throw timelineConflict()
+  await carryTimelineObligationsIn(db, { projectId: input.projectId, fromTimelineId: timeline.id, fromEditRevision: timeline.edit_revision, timelineId: row.id, editRevision: row.edit_revision, state: persisted, actorId: input.actor.id })
   return mapTimelineRow(row)
 }
 
@@ -263,6 +266,20 @@ export async function createVersion(input: CreateVersionInput): Promise<MediaTim
 export async function createVersionIn(db: Db, input: CreateVersionInput): Promise<MediaTimeline> {
   const { timeline } = await lockCurrentTimelineIn(db, input)
   const next = await insertTimelineIn(db, input.projectId, timeline.state, timeline.schema_version, input.actor.id, input.label ?? null)
+  await db.query('UPDATE media_projects SET current_timeline_id = $1, updated_at = now() WHERE id = $2', [next.id, input.projectId])
+  await carryTimelineObligationsIn(db, { projectId: input.projectId, fromTimelineId: timeline.id, fromEditRevision: timeline.edit_revision, timelineId: next.id, editRevision: next.editRevision, state: timeline.state, actorId: input.actor.id })
+  return next
+}
+
+/** Restore a server-owned saved version and that version's exact obligations.
+ * A new draft preserves both the prior edit and the historical source. */
+export async function restoreTimelineVersionIn(db: Db, input: RevisionInput & { restoreTimelineId: string }): Promise<MediaTimeline> {
+  const { project, timeline } = await lockCurrentTimelineIn(db, input)
+  if (project.status !== 'draft') throw createError({ statusCode: 409, statusMessage: 'Project is not editable' })
+  const source = (await db.query('SELECT * FROM media_timelines WHERE id = $1 AND project_id = $2', [input.restoreTimelineId, input.projectId])).rows[0]
+  if (!source) throw createError({ statusCode: 404, statusMessage: 'Saved version not found' })
+  const next = await insertTimelineIn(db, input.projectId, source.state, source.schema_version, input.actor.id, 'restored version', timeline.edit_revision + 1)
+  await carryTimelineObligationsIn(db, { projectId: input.projectId, fromTimelineId: source.id, fromEditRevision: source.edit_revision, timelineId: next.id, editRevision: next.editRevision, state: source.state, actorId: input.actor.id })
   await db.query('UPDATE media_projects SET current_timeline_id = $1, updated_at = now() WHERE id = $2', [next.id, input.projectId])
   return next
 }
@@ -324,6 +341,7 @@ export async function createRenderJobIn(db: Db, input: CreateRenderJobInput): Pr
      VALUES ($1, $2, $3, $4, 'queued', $5) RETURNING *`,
     [input.jobId ?? randomUUID(), snapshot.id, input.projectId, input.channels, input.actor.id]
   )).rows[0]
+  await carryTimelineObligationsIn(db, { projectId: input.projectId, fromTimelineId: timeline.id, fromEditRevision: timeline.edit_revision, timelineId: snapshot.id, editRevision: snapshot.editRevision, state: timeline.state, actorId: input.actor.id })
   return mapRenderJobRow(row)
 }
 

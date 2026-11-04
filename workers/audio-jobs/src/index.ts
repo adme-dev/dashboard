@@ -7,6 +7,7 @@
 //
 // Bindings (wrangler.toml): AI, AUDIO_BUCKET (R2, 'agency-files'), HYPERDRIVE
 // (→ Neon), DATABASE_URL secret, and RENDER (FFmpeg Container).
+import { handleCopyMeasurement } from './copyMeasurement'
 import { handleMediaProbe } from './mediaProbe'
 import { Container } from '@cloudflare/containers'
 
@@ -25,11 +26,16 @@ interface Env {
   RENDER: Parameters<typeof import('@cloudflare/containers').getContainer>[0]
   HYPERDRIVE?: { connectionString: string }
   DATABASE_URL?: string
+  STORYBOARD_APP_ORIGIN?: string
+  STORYBOARD_RENDER_SECRET?: string
   RENDER_CENTS_PER_SEC?: string
 }
 
 export default {
-  fetch: handleMediaProbe,
+  fetch(request: Request, env: Env) {
+    if (request.method === 'POST' && new URL(request.url).pathname === '/measure-copy') return handleCopyMeasurement(request, env)
+    return handleMediaProbe(request, env)
+  },
   async queue(
     batch: MessageBatch<any>,
     env: Env,
@@ -41,6 +47,7 @@ export default {
     if (env.DATABASE_URL) process.env.DATABASE_URL = env.DATABASE_URL
 
     if (batch.queue === 'video-render') {
+      const { loadStoryboardRenderInputs, callStoryboardRenderAuthority } = await import('./storyboardRenderAuthority')
       const { runVideoCompositeJob } = await import('./videoCompositeRender')
       const { renderComposite } = await import('./videoCompositeContainer')
       const { videoFormatFor } = await import('../container/videoProfiles.mjs')
@@ -48,16 +55,20 @@ export default {
       for (const msg of batch.messages) {
         try {
           await runVideoCompositeJob(msg.body as any, {
+            loadRenderInputs: loadStoryboardRenderInputs,
+            checkEligibility: (jobId, manifestHash) => callStoryboardRenderAuthority(env, { action: 'check', jobId, manifestHash }),
+            publishApproved: (jobId, manifestHash, variants, costCents) => callStoryboardRenderAuthority(env, { action: 'publish', jobId, manifestHash, variants, costCents }),
+            discardOutput: key => env.AUDIO_BUCKET.delete(key),
             loadTimelineState: db.dbLoadTimelineState,
             markRendering: db.dbMarkRenderRendering,
             markProgress: db.dbMarkRenderProgress,
             markDone: db.dbMarkRenderDone,
             markFailed: db.dbMarkRenderFailed,
-            renderOne: ({ projectId, jobId, state, formatKey, resolvedOverlays }) => {
+            renderOne: ({ projectId, jobId, state, formatKey, resolvedOverlays, pinnedObjects }) => {
               const profile = videoFormatFor(formatKey)
               if (!profile) throw new Error(`unknown video format: ${formatKey}`)
               return renderComposite({ RENDER: env.RENDER, AUDIO_BUCKET: env.AUDIO_BUCKET as any }, {
-                projectId, jobId, state, profile, resolvedOverlays
+                projectId, jobId, state, profile, resolvedOverlays, pinnedObjects
               })
             },
             centsPerSec: Number(env.RENDER_CENTS_PER_SEC ?? '2')

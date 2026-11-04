@@ -2,17 +2,20 @@ import { z } from 'zod'
 import { requireTimelinePrecondition } from '~~/server/utils/audio/timelineRevision'
 import { requireWriteAccess } from '~~/server/utils/auth'
 import { executeGodModeMediaTimelineSave } from '~~/server/utils/audio/godModeMutations'
-import { getProjectWithCurrentTimeline, getCurrentTimelineIfMatchingIn, saveDraftTimelineIfCurrentIn, assertMediaProjectAccess } from '~~/server/utils/audio/projects'
+import { getProjectWithCurrentTimeline, getCurrentTimelineIfMatchingIn, saveDraftTimelineIfCurrentIn, restoreTimelineVersionIn, assertMediaProjectAccess } from '~~/server/utils/audio/projects'
 import { TimelineStateSchema, validateTimeline } from '~~/server/utils/audio/timelineSchema'
 
-const BodySchema = z.object({ state: z.unknown() })
+const BodySchema = z.object({ state: z.unknown().optional(), restoreTimelineId: z.string().uuid().optional() })
+  .refine(value => (value.state !== undefined) !== (value.restoreTimelineId !== undefined), { message: 'Provide timeline state or a saved version to restore' })
 
 export default defineEventHandler(async (event) => {
   const user = await requireWriteAccess(event)
   const id = getRouterParam(event, 'id')!
   const raw = await readBody(event)
   const precondition = requireTimelinePrecondition(raw)
-  const body = BodySchema.parse(raw)
+  const parsedBody = BodySchema.safeParse(raw)
+  if (!parsedBody.success) throw createError({ statusCode: 400, statusMessage: 'Provide timeline state or a valid saved version to restore' })
+  const body = parsedBody.data
 
   const existing = await getProjectWithCurrentTimeline(id)
   if (!existing) throw createError({ statusCode: 404, statusMessage: 'Project not found' })
@@ -24,6 +27,13 @@ export default defineEventHandler(async (event) => {
   const timelineId = existing.project.currentTimelineId
   if (!timelineId) {
     throw createError({ statusCode: 409, statusMessage: 'Project has no draft timeline' })
+  }
+
+  if (body.restoreTimelineId) {
+    const timeline = await executeGodModeMediaTimelineSave(event,
+      db => restoreTimelineVersionIn(db, { projectId: id, actor: user, ...precondition, restoreTimelineId: body.restoreTimelineId! }),
+      (db, resultReference) => getCurrentTimelineIfMatchingIn(db, { projectId: id, actor: user, expectedTimelineId: resultReference, expectedEditRevision: precondition.expectedEditRevision + 1 }))
+    return { timeline }
   }
 
   const parsed = TimelineStateSchema.safeParse(body.state)

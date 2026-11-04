@@ -707,8 +707,33 @@ export function useMediaProjectEditor(projectId: string) {
   }
 
   /** Restore a previously-saved version as the new working state. */
-  function restoreVersion(state: TimelineState) {
-    applyEdit(cloneState(state))
+  async function restoreVersion(state: TimelineState, versionId?: string) {
+    if (!versionId) { applyEdit(cloneState(state)); return }
+    if (storyboardApplying.value) throw new Error('Recover the storyboard application first')
+    saver.cancel()
+    return operations.run(async () => {
+      if (!await persistCurrentSnapshot()) throw new Error('Could not save timeline')
+      const before = timeline.value
+      // Freeze local mutation while the server restores the selected version's
+      // state and independent obligations. An ambiguous result keeps local work.
+      storyboardApplying.value = true
+      try {
+        const result = await apiFetch<{ timeline: MediaTimeline }>(`/api/agency/audio/projects/${projectId}/timeline`, {
+          method: 'PUT', headers: { 'Idempotency-Key': idempotencyKey('restore') },
+          body: { ...timelineToken, restoreTimelineId: versionId }
+        })
+        if (timeline.value !== before) throw new Error('Local edits changed during restoration; reload the saved version')
+        adoptTimelineToken(result.timeline)
+        timeline.value = cloneState(result.timeline.state as TimelineState)
+        undo.clear(); syncUndoRedo()
+        dirty.value = false; saveStatus.value = 'saved'; saveConflict.value = false; saveError.value = null
+        await reloadEngine(timeline.value)
+      } catch (e) {
+        saveStatus.value = 'error'; saveConflict.value = true
+        saveError.value = apiErrorDescription(e, 'Restore status is uncertain. Reload the saved timeline before editing.')
+        throw e
+      } finally { storyboardApplying.value = false }
+    })
   }
 
   // ---------------------------------------------------------------------------

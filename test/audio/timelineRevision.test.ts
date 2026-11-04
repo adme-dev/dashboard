@@ -11,7 +11,7 @@ const project = { id: 'p1', created_by: 'u1', status: 'draft', current_timeline_
 const timeline = { id: 't1', project_id: 'p1', state, schema_version: 1, version: 1, edit_revision: 0, created_by: 'u1' }
 const query = vi.fn()
 const db = { query }
-beforeEach(() => query.mockReset())
+beforeEach(() => query.mockReset().mockResolvedValue({ rows: [] }))
 
 function lockedRows(overrides = {}) {
   query.mockResolvedValueOnce({ rows: [{ ...project, ...overrides }] })

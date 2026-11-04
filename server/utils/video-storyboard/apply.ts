@@ -97,7 +97,7 @@ export async function prepareStoryboardApplication(input: ApplyStoryboardInput, 
 }
 
 /** Refresh write authority after preparation and fence revocation through commit. */
-async function fenceWriteAuthorityIn(db: Db, actor: MediaProjectActor) {
+export async function fenceWriteAuthorityIn(db: Db, actor: MediaProjectActor) {
   const denied = () => createError({ statusCode: 403, statusMessage: 'Current storyboard write access is unavailable' })
   const identity = (await db.query('SELECT user_role, custom_role_id FROM team_members WHERE id = $1 AND is_active = TRUE FOR SHARE', [actor.id])).rows[0]
   if (!identity || identity.user_role !== actor.role || isReadOnlyRole(identity.user_role)) throw denied()
@@ -113,7 +113,7 @@ async function fenceWriteAuthorityIn(db: Db, actor: MediaProjectActor) {
  * are locked; new additive grants cannot revoke an already-authorized decision.
  * Lock acquisition is bounded by lock_timeout; each SQL statement has its own
  * timeout. These are not a whole-transaction wall-time bound. */
-async function fenceDependenciesIn(db: Db, saved: Awaited<ReturnType<typeof getStoryboardIn>>, actor: MediaProjectActor) {
+export async function fenceDependenciesIn(db: Db, saved: Awaited<ReturnType<typeof getStoryboardIn>>, actor: MediaProjectActor) {
   const references = saved.referenceSet
   if (!references) throw conflict()
   const tables: Record<string, string> = { video_asset: 'video_assets', audio_asset: 'audio_assets', source_asset: 'video_gen_source_assets', banner_project: 'banner_projects', brand_kit: 'brand_kits' }

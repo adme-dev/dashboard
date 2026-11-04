@@ -5,6 +5,7 @@
 // Resolves overlay clips (gsap_project_id → banner layers → server HTML → R2 upload)
 // before enqueuing, so the worker has pre-built HTML to pass to the container.
 import { z } from 'zod'
+import { createStoryboardRenderJobIfObligated } from '~~/server/utils/video-storyboard/renderDispatch'
 import { requireTimelinePrecondition, assertTimelinePrecondition } from '~~/server/utils/audio/timelineRevision'
 import { requireWriteAccess } from '~~/server/utils/auth'
 import { getProjectWithCurrentTimeline, createRenderJob, getRenderJob, markRenderJobFailed, assertMediaProjectAccess } from '~~/server/utils/audio/projects'
@@ -25,7 +26,7 @@ const BodySchema = z.object({
 })
 
 export default defineEventHandler(async (event) => {
-  if (process.env.VIDEO_STUDIO_ENABLED !== 'true') {
+  if ((event.context.cloudflare?.env?.VIDEO_STUDIO_ENABLED ?? process.env.VIDEO_STUDIO_ENABLED) !== 'true') {
     throw createError({ statusCode: 404, statusMessage: 'Not found' })
   }
 
@@ -39,7 +40,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Invalid render-video request',
       data: { errors: bodyResult.error.issues.map((i) => i.message) } })
   }
-  const formats = (bodyResult.data.formats?.length ? bodyResult.data.formats : [...ALL_FORMATS]) as [
+  const formats = [...new Set(bodyResult.data.formats?.length ? bodyResult.data.formats : ALL_FORMATS)] as [
     VideoFormatKey,
     ...VideoFormatKey[]
   ]
@@ -75,6 +76,17 @@ export default defineEventHandler(async (event) => {
       const replayed = await getRenderJob(run.ids[0]!)
       if (!replayed) throw createError({ statusCode: 409, statusMessage: 'Replayed render job no longer exists' })
       return replayed
+    }
+    const storyboardJob = await createStoryboardRenderJobIfObligated(event, { projectId: id, actor: user, ...precondition, channels: [], jobId: run.ids[0]!, formats })
+    if (storyboardJob) {
+      try {
+        await enqueueVideoRender(event, { jobId: storyboardJob.id, projectId: id, timelineId: storyboardJob.timelineId, formats })
+        await run.markDispatched()
+      } catch {
+        await markRenderJobFailed(storyboardJob.id, 'Storyboard enqueue failed')
+        throw createError({ statusCode: 502, statusMessage: 'Failed to enqueue video render' })
+      }
+      return storyboardJob
     }
     // Snapshot + create the job row (same createRenderJob as audio — channels unused for
     // video but the row records who triggered it and acts as the durable anchor).

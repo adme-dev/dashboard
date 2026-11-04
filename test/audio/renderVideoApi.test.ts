@@ -10,6 +10,9 @@ g.readBody = async (e: TestEvent) => e.body ?? {}
 g.createError = (i: any) => Object.assign(new Error(i.statusMessage), i)
 g.setResponseStatus = vi.fn()
 
+const mockStoryboardDispatch = vi.fn().mockResolvedValue(null)
+vi.mock('~~/server/utils/video-storyboard/renderDispatch', () => ({ createStoryboardRenderJobIfObligated: (...args: unknown[]) => mockStoryboardDispatch(...args) }))
+
 const mockRequireAuth = vi.fn()
 const mockRequireWriteAccess = vi.fn()
 vi.mock('~~/server/utils/auth', () => ({
@@ -354,4 +357,31 @@ describe('render revision guards', () => {
     expect(mockCreateRenderJob).not.toHaveBeenCalled()
     expect(mockEnqueueVideoRender).not.toHaveBeenCalled()
   })
+})
+
+describe('storyboard manifest dispatch integration', () => {
+  it('queues the persisted obligated job without rebuilding mutable legacy overlays', async () => {
+    mockGetProject.mockResolvedValue({ project: avProject, timeline: goodTimeline })
+    mockStoryboardDispatch.mockResolvedValueOnce({ id: 'storyboard-job', timelineId: 'snapshot', status: 'queued' })
+    const result = await renderVideoH({ params: { id: 'p1' }, body: { ...token, formats: ['square_1x1'] }, context: {} } as never)
+    expect(result.job.id).toBe('storyboard-job')
+    expect(mockCreateRenderJob).not.toHaveBeenCalled()
+    expect(mockLoadBannerLayers).not.toHaveBeenCalled()
+    expect(mockEnqueueVideoRender).toHaveBeenCalledWith(expect.anything(), { jobId: 'storyboard-job', projectId: 'p1', timelineId: 'snapshot', formats: ['square_1x1'] })
+  })
+  it('does not fall back to legacy rendering after an obligated validation rejection', async () => {
+    mockGetProject.mockResolvedValue({ project: avProject, timeline: goodTimeline })
+    mockStoryboardDispatch.mockRejectedValueOnce(new Error('source revoked'))
+    await expect(renderVideoH({ params: { id: 'p1' }, body: { ...token }, context: {} } as never)).rejects.toThrow('source revoked')
+    expect(mockCreateRenderJob).not.toHaveBeenCalled()
+    expect(mockEnqueueVideoRender).not.toHaveBeenCalled()
+  })
+})
+
+it('normalizes duplicate formats before manifest dispatch and enqueue', async () => {
+  mockGetProject.mockResolvedValue({ project: avProject, timeline: goodTimeline })
+  mockStoryboardDispatch.mockResolvedValueOnce({ id: 'storyboard-job', timelineId: 'snapshot', status: 'queued' })
+  await renderVideoH({ params: { id: 'p1' }, body: { ...token, formats: ['square_1x1', 'square_1x1'] }, context: {} } as never)
+  expect(mockStoryboardDispatch).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ formats: ['square_1x1'] }))
+  expect(mockEnqueueVideoRender).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ formats: ['square_1x1'] }))
 })
