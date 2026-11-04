@@ -21,7 +21,7 @@ export async function captureBannerMp4({ html, width, height, fps, crf, quality 
   const puppeteer = (await import('puppeteer-core')).default
   const browser = await puppeteer.launch({
     executablePath: '/usr/bin/chromium',
-    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
   })
   const tmp = join(tmpdir(), `banner-${randomUUID()}`)
   mkdirSync(tmp, { recursive: true })
@@ -46,10 +46,12 @@ export async function captureBannerMp4({ html, width, height, fps, crf, quality 
 
       await seekFrameRuntime(page, runtime.mode, t)
 
+      // JPEG avoids expensive PNG compression for frames that FFmpeg immediately re-encodes.
       await page.screenshot({
-        path: join(tmp, `frame_${String(f).padStart(5, '0')}.png`),
-        type: 'png',
-        clip: { x: 0, y: 0, width: vpW, height: vpH },
+        path: join(tmp, `frame_${String(f).padStart(5, '0')}.jpg`),
+        type: 'jpeg',
+        quality: 92,
+        clip: { x: 0, y: 0, width: vpW, height: vpH }
       })
     }
 
@@ -76,7 +78,7 @@ export async function captureBannerMp4({ html, width, height, fps, crf, quality 
       const ff = spawn('ffmpeg', [
         '-y',
         '-framerate', String(fps),
-        '-i', join(tmp, 'frame_%05d.png'),
+        '-i', join(tmp, 'frame_%05d.jpg'),
         ...mix.inputs,
         ...mix.output,
         '-t', String(renderedDuration),
@@ -85,21 +87,25 @@ export async function captureBannerMp4({ html, width, height, fps, crf, quality 
         '-pix_fmt', 'yuv420p',
         '-movflags', '+faststart',
         '-vf', `scale=${vpW}:${vpH}:flags=lanczos`,
-        out,
+        out
       ], { timeout: 120000 })
       let stderr = ''
-      ff.stderr?.on('data', d => { stderr = (stderr + d.toString()).slice(-4000) })
-      ff.on('close', (code) => code === 0 ? resolve() : reject(new Error(`ffmpeg exit ${code}: ${stderr.slice(-800)}`)))
+      ff.stderr?.on('data', (d) => {
+        stderr = (stderr + d.toString()).slice(-4000)
+      })
+      ff.on('close', code => code === 0 ? resolve() : reject(new Error(`ffmpeg exit ${code}: ${stderr.slice(-800)}`)))
       ff.on('error', reject)
     })
     return readFileSync(out)
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e)
     const suffix = diagnostics?.events?.length ? ` diagnostics=${diagnostics.format()}` : ''
-    throw new Error(`${message}${suffix}`)
+    throw new Error(`${message}${suffix}`, { cause: e })
   } finally {
     await page?.close().catch(() => {})
     await browser.close().catch(() => {})
-    try { rmSync(tmp, { recursive: true, force: true }) } catch { /* ignore */ }
+    try {
+      rmSync(tmp, { recursive: true, force: true })
+    } catch { /* ignore */ }
   }
 }
