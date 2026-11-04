@@ -3,6 +3,7 @@ import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { useElementSize, useFullscreen } from '@vueuse/core'
 import type { ArtboardState } from '~/types/banner-studio'
 import { buildBannerHTML, type ExportCustomFont } from '~/utils/banner-html-builder'
+import { preferredBannerPreviewKey } from '~/utils/banner-library'
 import { resolveBannerFormat } from '~/utils/banner-constants'
 import { withBannerPreviewAudio } from '~/utils/banner-preview-audio'
 import { withBannerPreviewPlayback, readBannerPreviewPlayback, type BannerPreviewPlayback } from '~/utils/banner-preview-playback'
@@ -86,7 +87,7 @@ function formatLabel(format: { w: number, h: number }) {
 function formatIcon(format: { w: number, h: number }) {
   return format.w === format.h ? 'i-lucide-square' : format.h > format.w ? 'i-lucide-rectangle-vertical' : 'i-lucide-rectangle-horizontal'
 }
-const active = computed(() => layouts.value.find(layout => layout.key === selectedKey.value) || layouts.value[0])
+const active = computed(() => layouts.value.find(layout => layout.key === selectedKey.value) || layouts.value.find(layout => layout.key === preferredBannerPreviewKey(props.canvas)) || layouts.value[0])
 const hasAudio = computed(() => active.value?.board.layers.some(layer => layer.type === 'audio' && layer.src && !layer.hidden && !layer.muted && (layer.volume ?? 1) > 0))
 const story = computed(() => !!active.value && active.value.format.h > active.value.format.w)
 const surfaceWidth = computed(() => mode.value === 'artwork' ? active.value?.format.w || 1 : story.value ? 280 : 380)

@@ -18,6 +18,18 @@ export interface BannerLibraryItem {
   to?: string
 }
 
+/** Prefer a populated square, including imported custom sizes, then the closest aspect ratio.
+ * Keep saved order for ties and never change the project itself.
+ */
+export function preferredBannerPreviewKey(canvasData?: Record<string, ArtboardState>): string | undefined {
+  const layouts = Object.entries(canvasData || {}).flatMap(([key, board]) => {
+    const format = resolveBannerFormat(key)
+    return format && Array.isArray(board?.layers) ? [{ key, board, distance: Math.abs(Math.log(format.w / format.h)) }] : []
+  })
+  const populated = layouts.filter(layout => layout.board.layers.length > 0)
+  return (populated.length ? populated : layouts).sort((a, b) => a.distance - b.distance)[0]?.key
+}
+
 /** Native saved canvas takes precedence over potentially stale imported thumbnails. */
 export function hasBannerPreview(canvasData?: Record<string, ArtboardState>): boolean {
   return !!canvasData && Object.entries(canvasData).some(([key, board]) =>

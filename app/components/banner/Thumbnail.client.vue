@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { buildBannerHTML } from '~/utils/banner-html-builder'
+import { preferredBannerPreviewKey } from '~/utils/banner-library'
 import { resolveBannerFormat } from '~/utils/banner-constants'
 import type { ArtboardState } from '~/types/banner-studio'
 
@@ -12,18 +13,12 @@ const { fetchCustomFonts, getExportCustomFonts } = useBannerFonts(() => props.cl
 const containerRef = ref<HTMLDivElement | null>(null)
 const fontsReady = ref(false)
 
-/** Pick the best artboard for thumbnail: prefer mrec (300x250) or first available */
+/** Use the square layout itself rather than cropping a portrait into the tile. */
 const preview = computed(() => {
   if (!fontsReady.value) return null
   const data = props.canvasData
-  if (!data || typeof data !== 'object') return null
-
-  const keys = Object.keys(data).filter(key => !!resolveBannerFormat(key))
-  if (!keys.length) return null
-
-  // Prefer square-ish formats for thumbnails
-  const preferred = ['mrec', 'fb_sq', 'ig_sq', 'leader', 'fb_feed']
-  const fmtKey = preferred.find(k => keys.includes(k) && data[k]?.layers?.length) || keys.find(k => data[k]?.layers?.length) || keys[0]
+  const fmtKey = preferredBannerPreviewKey(data)
+  if (!fmtKey) return null
 
   const artboard = data[fmtKey]
   if (!artboard?.layers?.length) return null
