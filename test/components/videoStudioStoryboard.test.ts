@@ -1,3 +1,4 @@
+import { ReferenceSetWriteSchema } from '~~/shared/video/storyboardReferences'
 // @vitest-environment happy-dom
 import { createApp, h, nextTick, reactive } from 'vue'
 import { describe, expect, it } from 'vitest'
@@ -189,6 +190,20 @@ describe('Storyboard workbench', () => {
     button(host, 'Remove reference').click()
     expect(events).toEqual([['references', []]])
     expect(referenceSet.references).toHaveLength(1)
+    app.unmount()
+  })
+  it('emits canonical Banner identity from a composite overlay library selection and prevents duplicates', async () => {
+    const assetId = '00000000-0000-4000-8000-000000000020'
+    const { host, app, events, props } = await mount({ selectedAsset: { type: 'overlay', rawId: `${assetId}:reels_9x16`, name: 'Banner' } })
+    button(host, 'Add selected reference').click()
+    const references = events[0]![1] as Array<Record<string, unknown>>
+    expect(ReferenceSetWriteSchema.safeParse({ operationId: '00000000-0000-4000-8000-000000000001', expectedRevision: null, references, brandKit: null }).success).toBe(true)
+    expect(references[0]!.assetId).toBe(assetId)
+    expect(references[0]!.sourceKind).toBe('banner_project')
+    props.referenceSet = { references: references.map(ref => ({ ...ref, contentHash: 'a'.repeat(64), approval: null })) }
+    await nextTick()
+    button(host, 'Add selected reference').click()
+    expect(events).toHaveLength(1)
     app.unmount()
   })
   it('freezes mutation while unresolved and offers receipt recovery', async () => {

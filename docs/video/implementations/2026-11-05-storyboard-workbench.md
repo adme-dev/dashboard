@@ -31,3 +31,17 @@ Browser evidence uses actual components and Nuxt UI with synthetic local content
 ## Remaining gates
 
 T08 owns direct-save/render obligations, adjusted-edit review and final output verification. T09 and later release gates remain separate. Minor UI limitations retained after review: reference labels expose canonical IDs rather than friendly titles, the candidate summary is not a comprehensive before/after diff of every lane binding, and the catalogue is one neutral draft fixture. These do not authorize production activation. All new actions stay disabled by default.
+
+## Kimi review corrections — 5 November 2026
+
+Review of the original T07 commit found three Important gaps after the earlier review. The local correction is based on rebased T07 `968597680053fd09f43577bf4e78686038ba03d7`, including current `origin/main` `e7dd20c20`. Scoped Kimi re-review marked all three findings **ADDRESSED** and found no new blocking regression in the six source/test files. It independently passed **30/30 tests across three files** and `git diff --check`. The earlier clear review above remains historical. Final scoped verdict: `.verification/video-t07/kimi-fix-review-final.md`; this was static/offline review, with no HTTP race, browser concurrency, authenticated reload, full suite, build, lint, typecheck, database, external service or deployment verification by the reviewer.
+
+- A retry of an ambiguous application now queries receipt recovery even when the retry returns 401/403/404/409. Missing or unavailable recovery retains the original operation, cache and edit lock, including after cache restoration. An initial definite conflict still releases editing. A recovered receipt is adopted once.
+- The accepted-draft baseline is reactive. Refresh preserves the local draft while invalidating its acceptance and blocking readiness/application until a new candidate is accepted.
+- Banner references use the canonical project UUID from composite library overlay IDs. Duplicate prevention uses that same identity; the component regression validates emitted references with the actual `ReferenceSetWriteSchema`.
+
+Regression-first evidence: **8 expected failures / 22 passes**, then **30/30 passes** across the three affected suites (`.verification/video-t07/kimi-fixes-red.log`, `kimi-fixes-green.log`). Broad offline video/API/component coverage passes **483/483 across 86 files** (`kimi-fixes-regression.log`); additional editor persistence/concurrency/AV and workbench coverage passes **28/28 across 4 files** (`kimi-fixes-editor.log`, overlapping the component suite). Scoped ESLint for all six changed source/test files and `git diff --check` pass. The first lint run caught one test formatting error, corrected before the clean run. Vite emits its existing config-loader warning. Changed files were reread end-to-end; no server import, form markup, migration or release changes are involved.
+
+No whole-repository suite, full build, new browser run, authenticated/hosted race, database or provider action is claimed. The repository suite includes database/integration work outside this correction's authorized offline verification scope. Prior visual evidence remains historical; these checks establish local behavior only.
+
+Two Minor Kimi findings remain deferred: rejected editor mutations during an application can still show a success toast, and a clean-timeline 409 lacks a direct timeline-reload affordance (full refresh remains available). Neither is represented as fixed. T08, production activation and remaining release acceptance stay pending.

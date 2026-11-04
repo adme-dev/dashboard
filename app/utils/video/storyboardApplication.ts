@@ -80,6 +80,7 @@ export function createStoryboardApplication(projectId: string, editor: EditorBou
   async function apply(revisionId: string, replaceConfirmed: boolean) {
     if (running) throw new Error('Application is already running')
     if (pending && (pending.body.revisionId !== revisionId || pending.body.replaceConfirmed !== replaceConfirmed)) throw new Error('Recover the pending application before changing the request')
+    const retryingUnknown = pending !== null
     running = true
     try {
       await resume()
@@ -93,7 +94,8 @@ export function createStoryboardApplication(projectId: string, editor: EditorBou
         return await accept(await transport.apply(pending.body))
       } catch (error) {
         const status = apiErrorStatus(error)
-        if (status && status >= 400 && status < 500 && status !== 408 && status !== 429) {
+        // A rejected retry says nothing about whether the original request committed.
+        if (!retryingUnknown && status && status >= 400 && status < 500 && status !== 408 && status !== 429) {
           pending = null
           persist()
           editor.release()

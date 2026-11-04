@@ -42,6 +42,42 @@ describe('storyboard application ownership', () => {
     expect(editor.release).toHaveBeenCalledOnce()
     expect(app.pendingOperation()).toBe(null)
   })
+  it.each([401, 403, 404, 409])('recovers the original ambiguous application when retry returns %s', async (statusCode) => {
+    const { app, editor, transport } = setup()
+    transport.apply.mockRejectedValueOnce(new Error('lost')).mockRejectedValueOnce({ statusCode })
+    transport.recover.mockResolvedValueOnce(null)
+    await expect(app.apply('revision', true)).rejects.toThrow('lost')
+    await expect(app.retry()).resolves.toEqual(receipt)
+    expect(editor.adopt).toHaveBeenCalledExactlyOnceWith(receipt, before)
+    expect(editor.release).toHaveBeenCalledOnce()
+    expect(app.pendingOperation()).toBe(null)
+  })
+  it.each([false, true])('retains cached operation and lock after rejected retry without receipt (restored=%s)', async (restored) => {
+    const { editor, transport } = setup()
+    let stored: string | null = null
+    const storage = { read: () => stored, write: (value: string | null) => {
+      stored = value
+    } }
+    const resumed = { ...editor, resume: vi.fn(async () => undefined) }
+    let app = createStoryboardApplication('project', resumed, transport, () => 'stable', storage)
+    transport.apply.mockRejectedValueOnce(new Error('lost')).mockRejectedValue({ statusCode: 404 })
+    transport.recover.mockResolvedValue(null)
+    await expect(app.apply('revision', true)).rejects.toThrow('lost')
+    const originalCache = stored
+    if (restored) app = createStoryboardApplication('project', resumed, transport, () => 'new-id', storage)
+    await expect(app.retry()).rejects.toMatchObject({ statusCode: 404 })
+    expect(app.pendingOperation()).toBe('stable')
+    expect(stored).toBe(originalCache)
+    expect(editor.release).not.toHaveBeenCalled()
+    transport.recover.mockRejectedValueOnce({ statusCode: 403 })
+    await expect(app.retry()).rejects.toMatchObject({ statusCode: 404 })
+    expect(stored).toBe(originalCache)
+    expect(editor.release).not.toHaveBeenCalled()
+    transport.recover.mockResolvedValueOnce(receipt)
+    await expect(app.recover()).resolves.toEqual(receipt)
+    expect(editor.adopt).toHaveBeenCalledExactlyOnceWith(receipt, before)
+    expect(stored).toBe(null)
+  })
   it('retries exactly the original request and rejects changed intent while unresolved', async () => {
     const { app, transport } = setup()
     transport.apply.mockRejectedValueOnce(new Error('lost'))

@@ -41,8 +41,8 @@ export function useVideoStoryboard(projectId: string, options: {
   const examples = getStoryboardExamples()
   const examplePreview = ref<StoryboardExample | null>(null)
   const plan = computed(() => revision.value?.plan ?? null)
-  let acceptedDraft = ''
-  const draftChanged = computed(() => JSON.stringify(draft.value) !== acceptedDraft)
+  const acceptedDraft = ref('')
+  const draftChanged = computed(() => JSON.stringify(draft.value) !== acceptedDraft.value)
   const application = options.editor
     ? createStoryboardApplication(projectId, options.editor, {
         apply: body => api<StoryboardApplicationReceipt>(`${base}/apply`, { method: 'POST', body }),
@@ -77,7 +77,7 @@ export function useVideoStoryboard(projectId: string, options: {
     draft.value = { ...draft.value, inputMode: value.inputMode, durationSeconds: value.durationFrames / value.fps,
       targetFormat: value.targetFormat, copy: copy({ scriptSegments: value.copy.scriptSegments, cues: value.copy.cues }), shots: copy(value.shots),
       recipe: value.recipe ? { id: value.recipe.id, version: value.recipe.version, values: copy(value.recipe.resolvedValues) } : undefined }
-    acceptedDraft = JSON.stringify(draft.value)
+    acceptedDraft.value = JSON.stringify(draft.value)
   }
   let loaded = false
   async function load() {
@@ -90,7 +90,7 @@ export function useVideoStoryboard(projectId: string, options: {
       referenceSet.value = saved.referenceSet
       findings.value = saved.readiness
       if (saved.revision) draftFromPlan(saved.revision.plan)
-      else acceptedDraft = JSON.stringify(draft.value)
+      else acceptedDraft.value = JSON.stringify(draft.value)
     })
   }
   async function refresh() {
@@ -103,7 +103,7 @@ export function useVideoStoryboard(projectId: string, options: {
       candidate.value = null
       resolution.value = null
       // A refreshed base never silently makes the local draft an accepted revision.
-      acceptedDraft = ''
+      acceptedDraft.value = ''
       loaded = true
     })
   }

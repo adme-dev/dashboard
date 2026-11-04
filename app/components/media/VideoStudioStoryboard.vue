@@ -246,11 +246,15 @@ const selectedSourceKind = computed(() =>
 function addReference() {
   if (locked.value || !props.selectedAsset || !selectedSourceKind.value) return
   const refs = references()
+  // Overlay library IDs include a format; references pin the owning Banner project.
+  const assetId = selectedSourceKind.value === 'banner_project'
+    ? props.selectedAsset.rawId.split(':')[0]!
+    : props.selectedAsset.rawId
   if (
     refs.some(
       r =>
         r.role === role.value
-        && r.assetId === props.selectedAsset!.rawId
+        && r.assetId === assetId
         && r.sourceKind === selectedSourceKind.value
     )
   )
@@ -260,7 +264,7 @@ function addReference() {
     {
       role: role.value,
       sourceKind: selectedSourceKind.value,
-      assetId: props.selectedAsset.rawId,
+      assetId,
       expectedContentHash: null,
       decision: 'unreviewed',
       evidence: ''
