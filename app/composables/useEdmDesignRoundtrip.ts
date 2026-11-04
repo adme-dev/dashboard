@@ -21,6 +21,7 @@ interface DesignerAvailability { available: boolean, endpoint: string, capabilit
 export function useEdmDesignRoundtrip() {
   const nativeLibrary = useEdmNativeLibrary()
   const libraryAuthoring = ref({ available: false, publisher: false })
+  const templatePublication = ref({ available: false, includedOverridePaths: [] as string[] })
   const campaignAuthoring = ref({ available: false, contentImagesAvailable: false })
   const mode = ref<'content' | 'designer'>('content')
   const designerAuthoring = ref<DesignerAvailability>({ available: false, endpoint: designerEndpoint, capabilities: null })
@@ -78,10 +79,13 @@ export function useEdmDesignRoundtrip() {
     return stableDesignJson(typeof a === 'string' ? { kind: 'template', id: a } : a) === stableDesignJson(typeof b === 'string' ? { kind: 'template', id: b } : b)
   }
   async function lookup(templateId: string | DesignOwner, expectedRevisionId?: string) {
-    const result = await $fetch<{ draft: HandoffDraftRead | null, campaignAuthoring?: { available: boolean, contentImagesAvailable?: boolean }, designerAuthoring?: DesignerAvailability, libraryAuthoring?: { available: boolean, publisher: boolean } }>(contentEndpoint, { method: 'POST', body: { command: 'lookup', ...(typeof templateId === 'string' ? { templateId } : { owner: templateId }) } })
+    const result = await $fetch<{ draft: HandoffDraftRead | null, campaignAuthoring?: { available: boolean, contentImagesAvailable?: boolean }, designerAuthoring?: DesignerAvailability, libraryAuthoring?: { available: boolean, publisher: boolean }, templatePublication?: { available: boolean, includedOverridePaths: string[] } }>(contentEndpoint, { method: 'POST', body: { command: 'lookup', ...(typeof templateId === 'string' ? { templateId } : { owner: templateId }) } })
     if (expectedRevisionId && result.draft?.headRevisionId !== expectedRevisionId)
       throw new Error('The draft changed in another editor. Reload before continuing.')
     draft.value = result.draft
+    templatePublication.value = result.templatePublication?.available === true
+      ? { available: true, includedOverridePaths: [...result.templatePublication.includedOverridePaths] }
+      : { available: false, includedOverridePaths: [] }
     campaignAuthoring.value = { available: result.campaignAuthoring?.available === true, contentImagesAvailable: result.campaignAuthoring?.contentImagesAvailable === true }
     libraryAuthoring.value = result.libraryAuthoring?.available === true
       ? { available: true, publisher: result.libraryAuthoring.publisher === true }
@@ -247,12 +251,26 @@ export function useEdmDesignRoundtrip() {
 
   type TemplateCommand = DesignTemplateRequest extends infer Request ? Request extends DesignTemplateRequest ? Omit<Request, 'version' | 'operationId'> : never : never
   async function template(command: TemplateCommand) {
-    if (!libraryAuthoring.value.available) throw new Error('The design library is unavailable.')
+    const narrow = !libraryAuthoring.value.available
+    const source = draft.value
+    if (narrow && !(command.command === 'publish-template' && templatePublication.value.available
+      && source?.state === 'structured' && designReadOwner(source).kind === 'template'
+      && source.documentId === command.draftId && source.headRevisionId === command.expectedRevisionId
+      && source.projectionRevisionId === command.expectedRevisionId && source.projection.state === 'current'))
+      throw new Error('Template publication is unavailable for this saved draft.')
+    const sourceSnapshot = source?.state === 'structured' ? JSON.parse(JSON.stringify(source.source)) : null
+    const sourceOwner = source ? designReadOwner(source) : null
     const url = '/api/email/design/templates'
     const body = operation(url, () => ({ ...command, version: 1, operationId: crypto.randomUUID() }))
-    return mutate<DesignLibraryReceipt>(url, 'POST', body, async (result) => {
+    return mutate<DesignLibraryReceipt & { publication?: { templateId: string, documentId: string, revisionId: string, design: EmailDesignDocument } }>(url, 'POST', body, async (result) => {
       if (!result.templateId) throw new Error('Template receipt is incomplete.')
-      if (result.published) {
+      if (narrow) {
+        const selected = result.publication
+        if (!result.published || !result.documentId || !result.revisionId || !selected || result.templateId === sourceOwner?.id || result.documentId === source?.documentId
+          || selected.templateId !== result.templateId || selected.documentId !== result.documentId || selected.revisionId !== result.revisionId
+          || !sourceSnapshot || stableDesignJson(selected.design) !== stableDesignJson(sourceSnapshot))
+          throw new Error('The published template receipt could not be verified. Reconcile the same publication.')
+      } else if (result.published) {
         const selected = await $fetch<{ templateId: string, revisionId: string }>(`/api/email/design/templates/${result.templateId}/${result.revisionId}`)
         if (selected.templateId !== result.templateId || selected.revisionId !== result.revisionId) throw new Error('Template receipt readback mismatch.')
       } else {
@@ -363,5 +381,5 @@ export function useEdmDesignRoundtrip() {
       busy.value = false
     }
   }
-  return { lastCampaignPatch, replaceCampaignImage, lastRecovery, localBaseline, setLocalBaseline, campaignAuthoring, saveCampaign, recoverCampaign, nativeLibrary, reopenLibraryDraft, libraryAuthoring, library, template, restoreRevision, publishImage, lastLibraryReceipt, mode, designerAuthoring, designerCapabilities, designerOperationId, proposeDesigner, draft, handoff, busy, error, hasPending, reconcile, lookup, saveStructured, saveMetadata, open, resume, propose, finish, run }
+  return { templatePublication, lastCampaignPatch, replaceCampaignImage, lastRecovery, localBaseline, setLocalBaseline, campaignAuthoring, saveCampaign, recoverCampaign, nativeLibrary, reopenLibraryDraft, libraryAuthoring, library, template, restoreRevision, publishImage, lastLibraryReceipt, mode, designerAuthoring, designerCapabilities, designerOperationId, proposeDesigner, draft, handoff, busy, error, hasPending, reconcile, lookup, saveStructured, saveMetadata, open, resume, propose, finish, run }
 }

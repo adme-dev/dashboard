@@ -36,6 +36,8 @@ describe('private email design deployment targets', () => {
     ['cron', (value: Config) => { value.triggers.crons = ['* * * * *'] }],
     ['foreign media bucket', (value: Config) => { value.r2_buckets[0].bucket_name = 'another-project' }],
     ['premature brand activation', (value: Config) => { value.vars.FIGFLOW_EDM_BRAND_ENABLED = 'true' }],
+    ['premature template publication', (value: Config) => { value.vars.FIGFLOW_EDM_TEMPLATE_PUBLISH_ENABLED = 'true' }],
+    ['missing template publication gate', (value: Config) => { delete value.vars.FIGFLOW_EDM_TEMPLATE_PUBLISH_ENABLED }],
     ['premature library activation', (value: Config) => { value.vars.FIGFLOW_EDM_LIBRARY_ENABLED = 'true' }],
     ['disabled production template designer', (value: Config) => { value.vars.FIGFLOW_EDM_TEMPLATE_DESIGNER_ENABLED = 'false' }],
     ['nonliteral template designer flag', (value: Config) => { value.vars.FIGFLOW_EDM_TEMPLATE_DESIGNER_ENABLED = 'TRUE' }],
@@ -67,9 +69,10 @@ describe('private email design deployment targets', () => {
   it.each(['staging', 'production'])('rejects every unreviewed release-flag combination in %s', (environment) => {
     const flags = [
       'FIGFLOW_EDM_DRAFT_SAVES_ENABLED', 'FIGFLOW_EDM_TEMPLATE_DESIGNER_ENABLED',
-      'FIGFLOW_EDM_DESIGNER_ENABLED', 'FIGFLOW_EDM_LIBRARY_ENABLED', 'FIGFLOW_EDM_BRAND_ENABLED'
+      'FIGFLOW_EDM_DESIGNER_ENABLED', 'FIGFLOW_EDM_LIBRARY_ENABLED', 'FIGFLOW_EDM_BRAND_ENABLED',
+      'FIGFLOW_EDM_TEMPLATE_PUBLISH_ENABLED'
     ]
-    for (let combination = 0; combination < 32; combination++) {
+    for (let combination = 0; combination < 64; combination++) {
       const value = config(environment)
       flags.forEach((flag, index) => { value.vars[flag] = combination & (1 << index) ? 'true' : 'false' })
       // Production admits exactly draft-save + template; staging admits none.
@@ -92,6 +95,7 @@ describe('Pages private transport release', () => {
     expect(privateRoutes).toContain('route: \'/api/email/design/designer\'')
     expect(privateRoutes).toContain('handler: fromRepo(\'server/api/email/design/designer.post.ts\')')
     expect(nuxt).toContain('ignore: [\'**/api/email/design/**\']')
+    expect(pages).not.toContain('FIGFLOW_EDM_TEMPLATE_PUBLISH_ENABLED')
     expect(pages).toMatch(/binding\s*=\s*["']EMAIL_DESIGN["']/)
     expect(pages).not.toContain('FIGFLOW_EDM_TEMPLATE_DESIGNER_ENABLED')
   })
