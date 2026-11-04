@@ -109,10 +109,15 @@ expected = {
     'edm_panel_structural_emission_matches_shared_targets_and_engine_admits_it',
     'edm_panel_field_commit_logs_only_a_changed_value',
     'edm_viewport_first_size_fits_width_and_preserves_later_camera',
+    'edm_chrome_refuses_generic_commands_before_mutation',
+    'edm_chrome_menu_download_and_keyboard_tools_are_refused',
+    'edm_chrome_canvas_is_selection_only_and_keeps_canonical_history',
+    'edm_chrome_content_edit_remains_granted_and_geometry_is_refused',
+    'edm_emoji_font_has_real_rocket_outline_and_scalar_layout',
 }
 matched = re.findall(r'^test (?:[A-Za-z0-9_]+::)*(edm_[A-Za-z0-9_]+) \.\.\. ok$', Path(sys.argv[1]).read_text(), re.M)
 if len(matched) != len(expected) or set(matched) != expected:
-    raise SystemExit(f'Expected exactly 9 passing EDM UI tests; matched {len(matched)}: {matched}')
+    raise SystemExit(f'Expected exactly 14 passing EDM UI tests; matched {len(matched)}: {matched}')
 PY
   cargo test --locked -p figcraft-engine --lib edm_ > "$evidence/test-edm.log" 2>&1
   python3 - "$evidence/test-edm.log" <<'PY'

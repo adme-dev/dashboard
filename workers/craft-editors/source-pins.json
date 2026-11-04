@@ -24,6 +24,10 @@
       {
         "path": "patches/figflow-browser-bridge.patch",
         "sha256": "3b75d3f49ffa3416010e3ce49ca4b87dab163ba8f4c73f59ad3e6674b1fb611a"
+      },
+      {
+        "path": "patches/figflow-edm-polish.patch",
+        "sha256": "8f7e9c07e42f6e055f18b08a4bab0eba01771a0f8b0090394b12be0b31ee5853"
       }
     ]
   }

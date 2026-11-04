@@ -71,6 +71,7 @@ jobs:
               'patches/figflow-xf-mark.patch',
               'patches/figflow-browser-export-bound.patch',
               'patches/figflow-browser-bridge.patch',
+              'patches/figflow-edm-polish.patch',
           ]
           assert [patch['path'] for patch in applied] == expected
           for patch in applied:
@@ -106,7 +107,7 @@ jobs:
           assert 'cargo test --locked -p figcraft-engine --lib edm_' in build
           assert 'Expected exactly 44 passing EDM tests' in build
           assert 'cargo test --locked -p figcraft-ui-egui --lib edm_' in build
-          assert 'Expected exactly 9 passing EDM UI tests' in build
+          assert 'Expected exactly 14 passing EDM UI tests' in build
           package = (root / 'build-browser.sh').read_text()
           assert 'case "$engine" in figcraft)' in package
           assert 'Cargo.lock differs from pinned source' in package

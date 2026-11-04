@@ -1,0 +1,101 @@
+--- a/crates/ui-egui/src/shortcuts.rs
++++ b/crates/ui-egui/src/shortcuts.rs
+@@ -810,4 +810,97 @@
+         assert_eq!(counts(&u), (1, 0), "the canonical log is untouched");
+         assert!(snapshot_ok(&mut u));
+     }
+-}
++    #[test]
++    fn edm_chrome_refuses_generic_commands_before_mutation() {
++        for (command, params) in [
++            ("shape.rectangle", json!({"x": 20, "y": 20, "width": 80, "height": 40})),
++            ("tool.set", json!({"tool": "pen"})),
++            ("file.new", json!({})),
++            ("transform.nudge", json!({"dx": 10, "dy": 10})),
++        ] {
++            let mut u = designer();
++            let node = text_node(&u);
++            u.app.run("select.set", json!({"ids": [node]})).unwrap();
++            let before = u.app.session.ds().unwrap().doc.clone();
++            let docs = u.app.session.docs.len();
++            assert!(u.app.run(command, params).is_none(), "{command} must be refused in EDM");
++            assert_eq!(u.app.session.docs.len(), docs);
++            assert!(std::sync::Arc::ptr_eq(&u.app.session.ds().unwrap().doc, &before));
++            assert!(snapshot_ok(&mut u));
++        }
++        let mut ordinary = Ui::new(Session::new());
++        assert!(ordinary.app.run("shape.rectangle", json!({"width": 80, "height": 40})).is_some());
++    }
++
++    #[test]
++    fn edm_chrome_menu_download_and_keyboard_tools_are_refused() {
++        use std::sync::{Arc, Mutex};
++        struct Downloads(Arc<Mutex<usize>>);
++        impl crate::Services for Downloads {
++            fn downloads(&self) -> bool { true }
++            fn download(&mut self, _: &str, _: &[u8]) -> bool { *self.0.lock().unwrap() += 1; true }
++        }
++        let mut u = designer();
++        let calls = Arc::new(Mutex::new(0));
++        u.app.services = Box::new(Downloads(calls.clone()));
++        crate::menus::invoke(&mut u.app, "file.save");
++        crate::menus::invoke(&mut u.app, "file.saveAs");
++        assert_eq!(*calls.lock().unwrap(), 0, "generic downloads must not masquerade as an EDM save");
++        for key in [Key::R, Key::P, Key::T] {
++            press(&mut u, key, Modifiers::NONE);
++            assert_eq!(u.app.session.tool.tool, figcraft_engine::ToolId::Move);
++        }
++        assert!(snapshot_ok(&mut u));
++    }
++
++    #[test]
++    fn edm_chrome_canvas_is_selection_only_and_keeps_canonical_history() {
++        let mut u = designer();
++        let node = text_node(&u);
++        u.app.run("select.set", json!({"ids": [node]})).unwrap();
++        let before = u.app.session.ds().unwrap().doc.clone();
++        press(&mut u, Key::Enter, Modifiers::NONE);
++        assert!(u.app.session.ds().unwrap().text_edit.is_none());
++        press(&mut u, Key::ArrowRight, Modifiers::NONE);
++        press(&mut u, Key::Delete, Modifiers::NONE);
++        assert!(std::sync::Arc::ptr_eq(&u.app.session.ds().unwrap().doc, &before));
++        apply(&mut u, "Kept {{firstName}}");
++        press(&mut u, Key::Z, cmd());
++        assert_eq!(canonical_text(&u), "Hello {{firstName}}");
++        press(&mut u, Key::Z, cmd() | Modifiers::SHIFT);
++        assert_eq!(canonical_text(&u), "Kept {{firstName}}");
++        assert!(snapshot_ok(&mut u));
++    }
++
++    #[test]
++    fn edm_chrome_content_edit_remains_granted_and_geometry_is_refused() {
++        let mut u = designer();
++        let design = u.app.session.execute("edm_snapshot", &json!({})).unwrap();
++        let mut s = Session::new();
++        s.execute("edm_import", &json!({"design": design, "images": {}})).unwrap();
++        let mut u = Ui::new(s);
++        let node = text_node(&u);
++        assert!(u.app.run("node.set", json!({"ids": [node], "props": {"characters": "Edited {{firstName}} 🚀"}})).is_some());
++        let before = u.app.session.execute("edm_snapshot", &json!({})).unwrap();
++        assert_eq!(before["blocks"]["text-1"]["data"]["props"]["text"], "Edited {{firstName}} 🚀");
++        assert!(u.app.run("node.set", json!({"ids": [node], "props": {"width": 100}})).is_none());
++        assert_eq!(u.app.session.execute("edm_snapshot", &json!({})).unwrap(), before);
++    }
++
++    #[test]
++    fn edm_emoji_font_has_real_rocket_outline_and_scalar_layout() {
++        assert!(figcraft_text::has_family("Noto Emoji"), "pinned outline emoji font must be embedded");
++        let face = figcraft_text::find_face("Noto Emoji", "Regular").unwrap();
++        for c in ['🚀', '😀', '❤'] {
++            assert!(face.has_char(c));
++            let gid = face.glyph_for(c);
++            assert_ne!(gid, 0);
++            assert!(!face.outline_at(gid, &figcraft_text::no_coords()).elements().is_empty());
++        }
++        let text = figcraft_doc::TextData { characters: "A🚀é".into(), ..Default::default() };
++        let layout = figcraft_text::layout(&text, None, None);
++        assert_eq!(layout.lines.last().unwrap().char_end, 3);
++        assert!(layout.glyphs.iter().any(|glyph| glyph.face.family == "Noto Emoji" && glyph.gid != 0 && !glyph.path().elements().is_empty()));
++    }
++
++}
