@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { validateEmailDesignTarget } from '../../workers/email-design/deploy.mjs'
+import { designerGate } from '../../server/utils/email-marketing/designerGate'
 
 interface Config {
   compatibility_flags: string[]
@@ -36,7 +37,9 @@ describe('private email design deployment targets', () => {
     ['foreign media bucket', (value: Config) => { value.r2_buckets[0].bucket_name = 'another-project' }],
     ['premature brand activation', (value: Config) => { value.vars.FIGFLOW_EDM_BRAND_ENABLED = 'true' }],
     ['premature library activation', (value: Config) => { value.vars.FIGFLOW_EDM_LIBRARY_ENABLED = 'true' }],
-    ['premature template designer activation', (value: Config) => { value.vars.FIGFLOW_EDM_TEMPLATE_DESIGNER_ENABLED = 'true' }],
+    ['disabled production template designer', (value: Config) => { value.vars.FIGFLOW_EDM_TEMPLATE_DESIGNER_ENABLED = 'false' }],
+    ['nonliteral template designer flag', (value: Config) => { value.vars.FIGFLOW_EDM_TEMPLATE_DESIGNER_ENABLED = 'TRUE' }],
+    ['missing draft-save prerequisite', (value: Config) => { value.vars.FIGFLOW_EDM_DRAFT_SAVES_ENABLED = 'false' }],
     ['missing template designer gate', (value: Config) => { delete value.vars.FIGFLOW_EDM_TEMPLATE_DESIGNER_ENABLED }],
     ['premature designer activation', (value: Config) => { value.vars.FIGFLOW_EDM_DESIGNER_ENABLED = 'true' }],
     ['unreviewed authority', (value: Config) => { value.vars.EMAIL_DESIGN_SESSION_AUTHORITY = 'another' }],
@@ -49,6 +52,32 @@ describe('private email design deployment targets', () => {
     const value = config('production')
     change(value)
     expect(() => validateEmailDesignTarget(value, 'production')).toThrow()
+  })
+  it('admits only production template authoring while staging and campaign authoring stay closed', () => {
+    expect(config('production').vars).toMatchObject({
+      FIGFLOW_EDM_DRAFT_SAVES_ENABLED: 'true',
+      FIGFLOW_EDM_TEMPLATE_DESIGNER_ENABLED: 'true',
+      FIGFLOW_EDM_DESIGNER_ENABLED: 'false',
+      FIGFLOW_EDM_LIBRARY_ENABLED: 'false',
+      FIGFLOW_EDM_BRAND_ENABLED: 'false'
+    })
+    expect(designerGate(config('production').vars)).toEqual({ template: true, campaign: false })
+    expect(designerGate(config('staging').vars)).toEqual({ template: false, campaign: false })
+  })
+  it.each(['staging', 'production'])('rejects every unreviewed release-flag combination in %s', (environment) => {
+    const flags = [
+      'FIGFLOW_EDM_DRAFT_SAVES_ENABLED', 'FIGFLOW_EDM_TEMPLATE_DESIGNER_ENABLED',
+      'FIGFLOW_EDM_DESIGNER_ENABLED', 'FIGFLOW_EDM_LIBRARY_ENABLED', 'FIGFLOW_EDM_BRAND_ENABLED'
+    ]
+    for (let combination = 0; combination < 32; combination++) {
+      const value = config(environment)
+      flags.forEach((flag, index) => { value.vars[flag] = combination & (1 << index) ? 'true' : 'false' })
+      // Production admits exactly draft-save + template; staging admits none.
+      const approved = environment === 'production' ? combination === 3 : combination === 0
+      const check = () => validateEmailDesignTarget(value, environment)
+      if (approved) expect(check).not.toThrow()
+      else expect(check, JSON.stringify(value.vars)).toThrow()
+    }
   })
   it('does not accept a staging configuration as production', () => {
     expect(() => validateEmailDesignTarget(config('staging'), 'production')).toThrow()
@@ -64,5 +93,6 @@ describe('Pages private transport release', () => {
     expect(privateRoutes).toContain('handler: fromRepo(\'server/api/email/design/designer.post.ts\')')
     expect(nuxt).toContain('ignore: [\'**/api/email/design/**\']')
     expect(pages).toMatch(/binding\s*=\s*["']EMAIL_DESIGN["']/)
+    expect(pages).not.toContain('FIGFLOW_EDM_TEMPLATE_DESIGNER_ENABLED')
   })
 })
