@@ -10,6 +10,7 @@ import { filterTemplateLibrary } from '~~/app/utils/edmTemplateLibrary'
 import type { EdmImageAsset } from '~~/app/utils/edmImageAssets'
 import { EDM_STARTER_TEMPLATES } from '~~/app/utils/edmPresets'
 import type { EdmFlyhubDocument } from '~~/app/types/edm'
+import { figflowWorkspaceRoute } from '~~/app/utils/edmFigflowLibrary'
 
 interface TemplateRow {
   id: string
@@ -125,7 +126,7 @@ function mergeSavedTemplate(template: TemplateRow) {
   data.value = { items: [template, ...data.value.items.filter(row => row.id !== template.id)] }
 }
 function openCopyTemplate(row: TemplateRow) {
-  if (row.design_document_id) {
+  if (row.design_document_id || templateSourceDetails(row.body_source)) {
     navigateTo({ path: '/agency/email', query: { tab: 'templates', workspace: 'figflow', copyTemplate: row.id, ...(targetClient.value ? { client: targetClient.value } : {}) } })
     return
   }
@@ -134,6 +135,10 @@ function openCopyTemplate(row: TemplateRow) {
   const clientId = targetClient.value || (clientChoices.value.clients.some(client => client.id === row.client_id) ? row.client_id : '')
   if (clientId) query.set('client', clientId)
   navigateTo(`/agency/email/compose?${query}`)
+}
+function openFigflow(id: string) {
+  rememberTemplate(id)
+  navigateTo(figflowWorkspaceRoute(id))
 }
 
 const detailsTarget = ref<TemplateRow | null>(null)
@@ -203,9 +208,7 @@ function openComposer(id?: string) {
 
 function openStarter(starterId: string) {
   rememberTemplate(starterId, true)
-  const query = new URLSearchParams({ starter: starterId })
-  if (targetClient.value) query.set('client', targetClient.value)
-  navigateTo(`/agency/email/compose?${query}`)
+  navigateTo({ path: '/agency/email', query: { tab: 'templates', workspace: 'figflow', starter: starterId, ...(targetClient.value ? { client: targetClient.value } : {}) } })
 }
 
 // ── Starter gallery: filters + search ────────────────────────────────────────
@@ -256,6 +259,7 @@ const filteredStarters = computed(() => {
     return industryOk && usageOk && styleOk && searchOk
   })
 })
+const showStarterStrip = computed(() => showStarters.value && selectedMake.value === 'all' && filteredStarters.value.length > 0)
 
 function starterPreviewImageUrl(starterId: string): string {
   return `/email/template-previews/${starterId}.jpeg?v=20261029-oem3`
@@ -443,6 +447,11 @@ function templateDocument(row: TemplateRow): EdmFlyhubDocument | null {
             @click="resetFilters()"
           />
           <UButton
+            label="Design in FigFlow"
+            icon="i-lucide-pen-tool"
+            :to="{ path: '/agency/email', query: { tab: 'templates', workspace: 'figflow' } }"
+          />
+          <UButton
             label="Create campaign"
             icon="i-lucide-mail-plus"
             variant="outline"
@@ -477,7 +486,7 @@ function templateDocument(row: TemplateRow): EdmFlyhubDocument | null {
           </div>
           <p class="mt-3 text-xs text-muted">Choose a client to browse its templates or create a copy of a shared default.</p>
         </section>
-        <section v-if="showStarters && selectedMake === 'all'" class="space-y-4">
+        <section v-if="showStarterStrip" class="space-y-4">
           <h2 class="text-sm font-semibold">XeroFlow defaults</h2>
 
           <div class="email-starter-gallery-grid grid gap-x-5 gap-y-10 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
@@ -571,9 +580,9 @@ function templateDocument(row: TemplateRow): EdmFlyhubDocument | null {
                   <UButton
                     color="neutral" variant="ghost"
                     type="button"
-                    :aria-label="`${usesClientCopy(row) ? 'Create client copy of' : 'Edit'} ${row.name}`"
+                    :aria-label="rowKind(row) === 'draft' ? `Open ${row.name} in FigFlow` : `${usesClientCopy(row) ? 'Create client copy of' : 'Edit'} ${row.name}`"
                     class="flex w-full flex-1 flex-col rounded-none p-0 text-left cursor-pointer whitespace-normal hover:bg-transparent"
-                    @click="usesClientCopy(row) ? openCopyTemplate(row) : openComposer(row.id)"
+                    @click="rowKind(row) === 'draft' ? openFigflow(row.id) : usesClientCopy(row) ? openCopyTemplate(row) : openComposer(row.id)"
                   >
                     <div class="flex h-[430px] w-full items-start justify-center overflow-hidden bg-elevated/40">
                       <EmailBuilderEdmDocumentThumbnail

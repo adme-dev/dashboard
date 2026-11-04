@@ -42,7 +42,7 @@ describe('client template library integration',()=>{
   it('filters client templates and carries the selected client into default reuse',async()=>{
     const host=await mount();const select=host.querySelector<HTMLSelectElement>('[data-label="Client"] select')!;select.value=A;select.dispatchEvent(new Event('change'));await flush()
     expect(host.querySelectorAll('.saved-template-card')).toHaveLength(1);expect(host.textContent).toContain('Alpha saved')
-    host.querySelector<HTMLButtonElement>('.email-starter-card')!.click();expect(navigate).toHaveBeenCalledWith(expect.stringContaining('client='+A))
+    host.querySelector<HTMLButtonElement>('.email-starter-card')!.click();expect(navigate).toHaveBeenCalledWith({ path: '/agency/email', query: { tab: 'templates', workspace: 'figflow', starter: expect.any(String), client: A } })
     click(host,'Shared defaults');await flush();click(host,'Use template');expect(navigate).toHaveBeenLastCalledWith('/agency/email/compose?copy=shared&client='+A)
   })
   it('creates a persisted category through scoped template updates and updates the view immediately', async()=>{
@@ -60,12 +60,13 @@ describe('client template library integration',()=>{
     expect(host.textContent).toContain('Sale weekend')
   })
 
-  it('opens OEM originals as independent copies and exposes recorded provenance without approval claims', async()=>{
+  it('routes OEM originals to explicit copy review and exposes provenance without approval claims', async()=>{
     const original={...rows[0],body_source:{root:{type:'EmailLayout',data:{childrenIds:[],props:{sourceProvenance:{provider:'Sesimi',make:'Geely',approvalState:'approved',notes:'Review all source dates.'}}}}}}
     fetcher.mockImplementation(async(url:string)=>url==='/api/email/template-clients'?{clients:[{id:A,name:'Alpha client'}],canUseSharedTemplates:true}:{items:[original]})
     const host=await mount();expect(host.textContent).toContain('OEM source · Review required')
     host.querySelector<HTMLButtonElement>('.saved-template-card button')!.click()
-    expect(navigate).toHaveBeenLastCalledWith('/agency/email/compose?copy=a&client='+A)
+    expect(navigate).toHaveBeenLastCalledWith({ path: '/agency/email', query: { tab: 'templates', workspace: 'figflow', copyTemplate: 'a' } })
+    expect(fetcher.mock.calls.some(([, options]) => options?.method === 'POST' || options?.method === 'PATCH')).toBe(false)
     host.querySelector<HTMLButtonElement>('[aria-label="Template details"]')!.click();await flush()
     expect(host.textContent).toContain('Review all source dates.');expect(host.textContent).toContain('HTML imports preserve')
     expect(host.textContent).not.toContain('approved')

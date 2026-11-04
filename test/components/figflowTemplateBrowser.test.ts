@@ -1,6 +1,8 @@
 // @vitest-environment happy-dom
 import { createApp, defineComponent, h, nextTick } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { figflowTemplateCapability } from '../../app/utils/edmFigflowLibrary'
+import { EDM_STARTER_TEMPLATES, buildStarterTemplateDocument } from '../../app/utils/edmPresets'
 import Browser from '../../app/components/email/FigflowTemplateBrowser.client.vue'
 
 const fetch = vi.fn()
@@ -62,7 +64,7 @@ describe('FigFlow email template browser', () => {
     expect(create[0]).toBe('/api/email/templates')
     expect(create[1].body).toMatchObject({ template_kind: 'draft', client_id: null, body_source: { heading: { data: { props: { text: 'Fresh source' } } } } })
     expect(JSON.stringify(original)).toBe(before)
-    expect(navigate).toHaveBeenCalledWith({ path: '/agency/email/compose', query: { id: 'confirmed-draft', workspace: 'figflow', openDesign: '1' } })
+    expect(navigate).toHaveBeenCalledWith('/agency/email/design/confirmed-draft')
   })
   it('offers composer fallback rather than native editing for HTML-only source', async () => {
     fetch.mockResolvedValueOnce({ items: [{ ...row(), body_source: { root: { type: 'EmailLayout', data: { childrenIds: ['html'] } }, html: { type: 'Html', data: { props: { contents: '<p>Legacy</p>' } } } } }] }).mockResolvedValueOnce(scope)
@@ -116,6 +118,41 @@ describe('versioned template browser copy', () => {
     fetch.mockResolvedValueOnce(receipt).mockResolvedValueOnce({ draft: { documentId: receipt.documentId, headRevisionId: receipt.revisionId } })
     await click('Reconcile template copy')
     expect(fetch.mock.calls.filter(([url]) => url === '/api/email/design/templates').map(([, options]) => options.body)).toEqual([originalAction, originalAction])
-    expect(navigate).toHaveBeenCalledWith({ path: '/agency/email/compose', query: { id: receipt.templateId, workspace: 'figflow', openDesign: '1' } })
+    expect(navigate).toHaveBeenCalledWith(`/agency/email/design/${receipt.templateId}`)
   })
+  it('creates a named exact blank once and opens only the confirmed ID', async () => {
+    fetch.mockResolvedValueOnce({ items: [] }).mockResolvedValueOnce(scope)
+    const { click } = await mount()
+    await click('Blank email')
+    fetch.mockResolvedValueOnce({ template: { id: 'blank-confirmed' } })
+    await click('Create draft and open FigFlow')
+    const create = fetch.mock.calls.find(([, o]) => o?.method === 'POST')!
+    expect(create[1].body).toMatchObject({ template_kind: 'draft', client_id: null, body_source: { root: { data: { childrenIds: [] } } } })
+    expect(Object.keys(create[1].body.body_source)).toEqual(['root'])
+    expect(navigate).toHaveBeenCalledWith('/agency/email/design/blank-confirmed')
+  })
+  it('retains an uncertain blank create and blocks a blind duplicate', async () => {
+    fetch.mockResolvedValueOnce({ items: [] }).mockResolvedValueOnce(scope)
+    const { click, host } = await mount()
+    await click('Blank email')
+    fetch.mockRejectedValueOnce(new Error('lost create'))
+    await click('Create draft and open FigFlow')
+    expect(host.textContent).toContain('Check Drafts')
+    expect(fetch.mock.calls.filter(([, o]) => o?.method === 'POST')).toHaveLength(1)
+    expect(navigate).not.toHaveBeenCalled()
+  })
+
+  it('waits for authorized scope before resolving a starter client intent', async () => {
+    vi.stubGlobal('useRoute', () => ({ query: { starter: EDM_STARTER_TEMPLATES.find(item => figflowTemplateCapability(buildStarterTemplateDocument(item.id)).canOpen)!.id, client: 'client-a' } }))
+    let resolveScope!: (value: any) => void
+    fetch.mockResolvedValueOnce({ items: [] }).mockImplementationOnce(() => new Promise(resolve => { resolveScope = resolve }))
+    const { host, click } = await mount()
+    expect(host.textContent).not.toContain('Create draft and open FigFlow')
+    resolveScope({ clients: [{ id: 'client-a', name: 'Client A' }], canUseSharedTemplates: true })
+    await flush()
+    fetch.mockResolvedValueOnce({ template: { id: 'starter-draft' } })
+    await click('Create draft and open FigFlow')
+    expect(fetch.mock.calls.find(([, o]) => o?.method === 'POST')?.[1].body.client_id).toBe('client-a')
+  })
+
 })

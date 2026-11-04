@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- Executes the isolated builder review wiring. */
 import { readFileSync } from 'node:fs'
 import ts from 'typescript'
+import { vueScriptDeclarations } from '../helpers/vueScriptDeclarations'
 import { describe, expect, it, vi } from 'vitest'
 import { computed, ref } from 'vue'
 import { recogniseKnownSection } from '~~/shared/emailRendering/designKnownSections'
@@ -8,7 +9,7 @@ import { designStructureLocked } from '~~/shared/emailRendering/designBrand'
 import { oemSplit } from '~~/app/utils/edmOemLayouts'
 
 const source = readFileSync(new URL('../../app/components/email/builder/EdmFlyhubBuilder.client.vue', import.meta.url), 'utf8')
-const wiring = source.slice(source.indexOf('// Generated sections'), source.indexOf('function sameDesignSource'))
+const wiring = vueScriptDeclarations(source, ['knownSections', 'knownSectionLifetime', 'endKnownSectionLifetime', 'reviewKnownSections'])
 const operationId = '50000000-0000-4000-8000-000000000001'
 
 function blocks() {

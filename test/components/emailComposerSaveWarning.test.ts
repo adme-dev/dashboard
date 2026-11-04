@@ -5,8 +5,9 @@ import { parse } from '@vue/compiler-sfc'
 import * as Vue from 'vue'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import ts from 'typescript'
+import { vueScriptDeclarations } from '../helpers/vueScriptDeclarations'
 import { useEdmDesignRoundtrip } from '../../app/composables/useEdmDesignRoundtrip'
-import { figflowTemplateCapability } from '../../app/utils/edmFigflowLibrary'
+import { figflowTemplateCapability, figflowWorkspaceRoute } from '../../app/utils/edmFigflowLibrary'
 import { structuredDesign } from '../fixtures/email-design/structured'
 
 const source = readFileSync('app/components/email/builder/EdmFlyhubBuilder.client.vue', 'utf8')
@@ -26,8 +27,8 @@ const capabilityDeclarations = script.statements.filter(statement =>
     ts.isIdentifier(declaration.name) && declaration.name.text === 'figflowSourceUnsupported'
   )
 ).map(statement => statement.getText(script)).join('\n')
-const begin = source.slice(source.indexOf('async function beginFigflow('), source.indexOf('function sameDesignSource('))
-const edit = source.slice(source.indexOf('function editInFigflow()'), source.indexOf('async function proposeFigflow('))
+const begin = vueScriptDeclarations(source, ['beginFigflow'])
+const edit = vueScriptDeclarations(source, ['editInFigflow'])
 let dispose: (() => void) | undefined
 afterEach(() => {
   dispose?.()
@@ -40,7 +41,7 @@ async function flush() {
 function fixture(blocks = structuredDesign().blocks) {
   const flow = useEdmDesignRoundtrip()
   const state = {
-    designFlow: flow, store: { document: Vue.ref(blocks) }, computed: Vue.computed, figflowTemplateCapability,
+    designFlow: flow, store: { document: Vue.ref(blocks) }, computed: Vue.computed, figflowTemplateCapability, figflowWorkspaceRoute, navigateTo: vi.fn(async () => {}),
     saving: Vue.ref(false), showFigflow: Vue.ref(false), workspaceBusy: Vue.computed(() => flow.busy.value || flow.hasPending.value),
     canonicalSaved: Vue.ref(false),
     figflowEnabled: true, campaignId: Vue.ref(null), templateLoading: Vue.ref(false), templateLoadError: Vue.ref(''),
@@ -55,8 +56,8 @@ function fixture(blocks = structuredDesign().blocks) {
     designRevisionRequired: Vue.ref(false), designServiceUnavailable: Vue.ref(false), designLocalConflict: Vue.ref(false),
     route: { query: {} }, router: { replace: vi.fn(async () => {}) }
   }
-  // beginFigflow records the local Apply baseline from the component's real
-  // workspace snapshot owner; model it over the composer document and name.
+  // Model the composer snapshot for its save/create guards. New entry routes
+  // after saving; the dedicated workspace owns the native Apply baseline.
   Object.assign(state, { workspaceSnapshot: () => JSON.stringify({ blocks: state.store.document.value, name: state.name.value }) })
   const derived = new Function(...Object.keys(state), `${ts.transpile(capabilityDeclarations)}; return { ${capabilityDeclarations ? 'figflowSourceUnsupported' : ''} };`)(...Object.values(state))
   const args = { ...state, ...derived }
@@ -140,8 +141,9 @@ describe('composer distinguishes active saves from unconfirmed outcomes', () => 
     expect(h.host.querySelector('[data-color="info"]')).toBe(null)
     await h.beginFigflow()
     expect(h.save).toHaveBeenCalledOnce()
-    expect(h.showFigflow.value).toBe(true)
-    expect(h.designFlow.localBaseline.value).toBe(h.snapshot())
+    expect(h.navigateTo).toHaveBeenCalledExactlyOnceWith(figflowWorkspaceRoute(h.templateId.value))
+    expect(h.showFigflow.value).toBe(false)
+    expect(h.designFlow.handoff.value).toBe(null)
     expect(h.designFlow.error.value).toBe('')
   })
   it('explains imported HTML before disabling open and refuses direct/automatic open without saving a copy', async () => {
@@ -178,14 +180,17 @@ describe('composer distinguishes active saves from unconfirmed outcomes', () => 
     expect(h.host.querySelector('button')!.disabled).toBe(!designer)
     await h.beginFigflow()
     expect(h.save).not.toHaveBeenCalled()
-    expect(h.showFigflow.value).toBe(designer)
-    expect(h.designFlow.localBaseline.value).toBe(designer ? h.snapshot() : null)
+    expect(h.showFigflow.value).toBe(false)
+    expect(h.designFlow.localBaseline.value).toBe(null)
     expect(h.designFlow.draft.value?.source.policy.editableFields).toEqual([])
     if (designer) {
-      expect(fetch.mock.calls[0]![1].body).toMatchObject({ command: 'open', draftId: documentId, expectedRevisionId: revisionId })
-      expect(fetch.mock.calls.some(([, options]) => options?.method === 'PATCH')).toBe(false)
+      expect(h.navigateTo).toHaveBeenCalledExactlyOnceWith(figflowWorkspaceRoute(h.templateId.value))
+      expect(fetch).not.toHaveBeenCalled()
       expect(h.designFlow.hasPending.value).toBe(false)
-    } else expect(fetch).not.toHaveBeenCalled()
+    } else {
+      expect(h.navigateTo).not.toHaveBeenCalled()
+      expect(fetch).not.toHaveBeenCalled()
+    }
   })
   it('never blocks an already server-authorized designer because the blocks are imported HTML', async () => {
     const h = fixture(legacy)
@@ -195,9 +200,10 @@ describe('composer distinguishes active saves from unconfirmed outcomes', () => 
     expect(h.host.querySelector('[data-color="info"]')).toBe(null)
     await h.beginFigflow()
     expect(h.save).toHaveBeenCalledOnce()
-    expect(h.showFigflow.value).toBe(true)
-    expect(h.designFlow.localBaseline.value).toBe(h.snapshot())
-    expect(h.designFlow.mode.value).toBe('designer')
+    expect(h.navigateTo).toHaveBeenCalledExactlyOnceWith(figflowWorkspaceRoute(h.templateId.value))
+    expect(h.showFigflow.value).toBe(false)
+    expect(h.designFlow.handoff.value).toBe(null)
+    expect(h.designFlow.hasPending.value).toBe(false)
   })
   it('keeps an existing no-content handoff reopenable for review', async () => {
     const h = fixture(legacy)

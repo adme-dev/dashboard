@@ -5,8 +5,10 @@ import { resolve } from 'node:path'
 import { createApp, computed, defineComponent, h, nextTick, ref } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import ts from 'typescript'
+import { vueScriptDeclarations } from '../helpers/vueScriptDeclarations'
+import { sameDesignSource } from '../../app/utils/edmDesignEquality'
 import { useEdmDesignRoundtrip } from '../../app/composables/useEdmDesignRoundtrip'
-import { figflowTemplateCapability } from '../../app/utils/edmFigflowLibrary'
+import { figflowTemplateCapability, figflowWorkspaceRoute } from '../../app/utils/edmFigflowLibrary'
 import { validateEmailDesign } from '../../shared/emailRendering/designContract'
 import { structuredDesign } from '../fixtures/email-design/structured'
 
@@ -20,10 +22,9 @@ const declarations = (names: string[]) => ast.statements.filter(statement => ts.
   && statement.declarationList.declarations.some(declaration => names.includes(declaration.name.getText(ast))))
   .map(statement => statement.getText(ast)).join('\n')
 const validation = declarations(['hasValidTemplateClient', 'hasValidDesignDraftClient'])
-const functions = (names: string[]) => ast.statements.filter(statement => ts.isFunctionDeclaration(statement)
-  && statement.name && names.includes(statement.name.text)).map(statement => statement.getText(ast)).join('\n')
+const functions = (names: string[]) => vueScriptDeclarations(source, names)
 const save = functions(['save'])
-const design = declarations(['figflowSourceUnsupported', 'canonicalSaved']) + '\n' + functions(['beginFigflow', 'editInFigflow', 'reconcileDesignAction', 'reconnectDesignService', 'sameDesignSource'])
+const design = declarations(['figflowSourceUnsupported', 'canonicalSaved']) + '\n' + functions(['beginFigflow', 'editInFigflow', 'reconcileDesignAction', 'reconnectDesignService'])
 const fetch = vi.fn()
 const apps: ReturnType<typeof createApp>[] = []
 const id = '10000000-0000-4000-8000-000000000001'
@@ -48,7 +49,7 @@ function deferred<T>() {
 function mount(realWorkspace = false) {
   const flow = useEdmDesignRoundtrip()
   const args = {
-    computed, figflowTemplateCapability, designFlow: flow,
+    computed, figflowTemplateCapability, figflowWorkspaceRoute, sameDesignSource, navigateTo: vi.fn(async () => {}), designFlow: flow,
     conditionSaving: ref(false), conditionPending: ref(null), brandFlow: { busy: ref(false), hasPending: ref(false), error: ref('') },
     libraryBaseline: null, acceptLibraryAction: vi.fn(),
     saving: ref(false), templateLoading: ref(false), templateLoadError: ref(''),
@@ -91,19 +92,19 @@ afterEach(() => {
 })
 
 describe('live FigFlow composer save and source admission', () => {
-  it('reopens an unchanged saved structured draft at the exact head without any PATCH', async () => {
+  it('routes an unchanged saved draft to its native workspace without PATCH or an inline handoff', async () => {
     const m = mount(true)
     const current = draft()
     current.source.scope.clientId = null
     m.flow.draft.value = current
     m.state.workspaceSavedSnapshot.value = m.state.workspaceSnapshot()
-    fetch.mockResolvedValueOnce({ handoff: { ...handoff(), source: current.source } }).mockResolvedValueOnce({ draft: current })
     await m.state.beginFigflow()
-    expect(fetch.mock.calls[0]![1].body).toMatchObject({ command: 'open', draftId: id, expectedRevisionId: revision })
-    expect(fetch.mock.calls.some(([, options]) => options?.method === 'PATCH')).toBe(false)
-    expect(m.state.showFigflow.value).toBe(true)
+    expect(fetch).not.toHaveBeenCalled()
+    expect(m.state.navigateTo).toHaveBeenCalledExactlyOnceWith(figflowWorkspaceRoute(id))
+    expect(m.flow.draft.value?.headRevisionId).toBe(revision)
+    expect(m.state.showFigflow.value).toBe(false)
   })
-  it('refuses an unchanged saved draft whose remote head moved, retaining local content with no writes', async () => {
+  it('refuses an existing handoff open at a stale head, retaining local content without overwrite', async () => {
     const m = mount(true)
     const current = draft()
     current.source.scope.clientId = null
@@ -111,7 +112,7 @@ describe('live FigFlow composer save and source admission', () => {
     m.state.workspaceSavedSnapshot.value = m.state.workspaceSnapshot()
     const local = JSON.stringify(m.state.store.document.value)
     fetch.mockRejectedValueOnce({ statusCode: 409, data: { statusMessage: 'REVISION_CONFLICT' } })
-    await m.state.beginFigflow()
+    await m.flow.run(() => m.flow.open(id, null, false, { draftId: id, expectedRevisionId: revision })).catch(() => {})
     expect(fetch.mock.calls[0]![1].body).toMatchObject({ command: 'open', expectedRevisionId: revision })
     expect(fetch).toHaveBeenCalledTimes(1)
     expect(JSON.stringify(m.state.store.document.value)).toBe(local)
@@ -119,7 +120,7 @@ describe('live FigFlow composer save and source admission', () => {
     expect(m.state.showFigflow.value).toBe(false)
   })
 
-  it.each(['content', 'metadata'] as const)('saves changed %s before reopening the confirmed resulting head', async (field) => {
+  it.each(['content', 'metadata'] as const)('saves changed %s to the confirmed head before routing to the native workspace', async (field) => {
     const m = mount(true)
     const current = draft()
     current.source.scope.clientId = null
@@ -134,15 +135,57 @@ describe('live FigFlow composer save and source admission', () => {
     const savedMetadata = { ...savedContent, headRevisionId: metadataHead, projectionRevisionId: metadataHead }
     fetch.mockResolvedValueOnce({ revisionId: contentHead }).mockResolvedValueOnce({ draft: savedContent })
       .mockResolvedValueOnce({ revisionId: metadataHead }).mockResolvedValueOnce({ draft: savedMetadata })
-      .mockResolvedValueOnce({ handoff: { ...handoff(), source: savedSource, baseRevisionId: metadataHead } }).mockResolvedValueOnce({ draft: savedMetadata })
     await m.state.beginFigflow()
     expect(fetch.mock.calls[0]![1].body).toMatchObject({ action: 'save-draft', expectedRevisionId: revision })
     expect(fetch.mock.calls[2]![1].body).toMatchObject({ expectedRevisionId: contentHead, subject: m.state.subject.value })
-    expect(fetch.mock.calls[4]![1].body).toMatchObject({ command: 'open', draftId: id, expectedRevisionId: metadataHead })
+    expect(fetch).toHaveBeenCalledTimes(4)
+    expect(m.state.navigateTo).toHaveBeenCalledExactlyOnceWith(figflowWorkspaceRoute(id))
     expect(fetch.mock.calls.filter(([, options]) => options.method === 'PATCH')).toHaveLength(2)
-    expect(m.state.showFigflow.value).toBe(true)
+    expect(m.state.showFigflow.value).toBe(false)
     expect(m.flow.draft.value?.headRevisionId).toBe(metadataHead)
   })
+  it('waits for content and metadata readbacks before navigating to the native workspace', async () => {
+    const m = mount(true)
+    const current = draft()
+    current.source.scope.clientId = null
+    m.flow.draft.value = current
+    m.state.workspaceSavedSnapshot.value = m.state.workspaceSnapshot()
+    m.state.subject.value = 'Unsaved subject'
+    const contentReadback = deferred<any>(), metadataReadback = deferred<any>()
+    fetch.mockResolvedValueOnce({ revisionId: revision }).mockReturnValueOnce(contentReadback.promise)
+      .mockResolvedValueOnce({ revisionId: revision }).mockReturnValueOnce(metadataReadback.promise)
+    const entering = m.state.beginFigflow()
+    await flush()
+    expect(m.state.navigateTo).not.toHaveBeenCalled()
+    expect(fetch).toHaveBeenCalledTimes(2)
+    contentReadback.resolve({ draft: current })
+    await flush()
+    expect(m.state.navigateTo).not.toHaveBeenCalled()
+    expect(fetch).toHaveBeenCalledTimes(4)
+    metadataReadback.resolve({ draft: current })
+    await entering
+    expect(m.state.navigateTo).toHaveBeenCalledExactlyOnceWith(figflowWorkspaceRoute(id))
+    expect(m.flow.hasPending.value).toBe(false)
+    expect(m.flow.handoff.value).toBe(null)
+  })
+
+  it('keeps unsaved composer content and refuses navigation when save CAS fails', async () => {
+    const m = mount(true)
+    const current = draft()
+    current.source.scope.clientId = null
+    m.flow.draft.value = current
+    m.state.workspaceSavedSnapshot.value = m.state.workspaceSnapshot()
+    m.state.store.document.value.heading.data.props.text = 'Unsaved local heading'
+    fetch.mockRejectedValueOnce({ statusCode: 409, data: { statusMessage: 'REVISION_CONFLICT' } })
+    await m.state.beginFigflow()
+    expect(fetch).toHaveBeenCalledTimes(1)
+    expect(fetch.mock.calls[0][1].body).toMatchObject({ action: 'save-draft', expectedRevisionId: revision })
+    expect(m.state.navigateTo).not.toHaveBeenCalled()
+    expect(m.state.store.document.value.heading.data.props.text).toBe('Unsaved local heading')
+    expect(m.flow.draft.value?.headRevisionId).toBe(revision)
+    expect(m.state.showFigflow.value).toBe(false)
+  })
+
   it('does not save or initialize a foreign structured owner', async () => {
     const m = mount(true)
     const current = draft()
@@ -159,19 +202,23 @@ describe('live FigFlow composer save and source admission', () => {
     const m = mount()
     const request = deferred<any>()
     const readback = deferred<any>()
-    fetch.mockResolvedValueOnce({}).mockReturnValueOnce(request.promise).mockReturnValueOnce(readback.promise)
-    await m.click('Edit in FigFlow')
+    fetch.mockReturnValueOnce(request.promise).mockReturnValueOnce(readback.promise)
+    // A retained composer handoff still uses the canonical flow and toolbar.
+    // New entry is tested above as navigation to the dedicated workspace.
+    const opening = m.flow.run(() => m.flow.open(id, null))
+    await flush()
     expect(m.flow.hasPending.value).toBe(true)
     expect(m.errors()).toHaveLength(0)
     expect(m.button('Edit in FigFlow').disabled).toBe(true)
     await m.state.beginFigflow()
-    expect(fetch).toHaveBeenCalledTimes(2)
+    expect(fetch).toHaveBeenCalledTimes(1)
     request.resolve({ handoff: handoff() })
     await flush()
     expect(m.flow.hasPending.value).toBe(true)
     expect(m.errors()).toHaveLength(0)
     readback.resolve({ draft: draft() })
-    await flush()
+    await opening
+    await m.click('Edit in FigFlow')
     expect(m.flow.hasPending.value).toBe(false)
     expect(m.state.showFigflow.value).toBe(true)
     expect(m.errors()).toHaveLength(0)
@@ -205,13 +252,13 @@ describe('live FigFlow composer save and source admission', () => {
   it.each(['transport', 'readback'])('exposes recovery after %s failure and replays only the retained operation', async (failure) => {
     const m = mount()
     const before = JSON.stringify(m.state.store.document.value)
-    fetch.mockResolvedValueOnce({})
     if (failure === 'transport') fetch.mockRejectedValueOnce(new Error('lost reply'))
     else fetch.mockResolvedValueOnce({ handoff: handoff() }).mockRejectedValueOnce(new Error('readback unavailable'))
-    await m.click('Edit in FigFlow')
+    await m.flow.run(() => m.flow.open(id, null)).catch(() => {})
+    await flush()
     expect(m.flow.hasPending.value).toBe(true)
     expect(m.errors()).toHaveLength(1)
-    const retained = JSON.parse(JSON.stringify(fetch.mock.calls[1][1].body))
+    const retained = JSON.parse(JSON.stringify(fetch.mock.calls[0][1].body))
     const count = fetch.mock.calls.length
     expect(await m.state.save()).toBe(false)
     expect(fetch).toHaveBeenCalledTimes(count)
@@ -229,8 +276,9 @@ describe('live FigFlow composer save and source admission', () => {
 
   it('keeps a definite rejection visible when idle without offering a retained-write retry', async () => {
     const m = mount()
-    fetch.mockResolvedValueOnce({}).mockRejectedValueOnce({ statusCode: 403 })
-    await m.click('Edit in FigFlow')
+    fetch.mockRejectedValueOnce({ statusCode: 403 })
+    await m.flow.run(() => m.flow.open(id, null)).catch(() => {})
+    await flush()
     expect(m.errors()).toHaveLength(1)
     expect(m.flow.hasPending.value).toBe(false)
     expect(m.host.textContent).toContain('design access')
@@ -258,16 +306,17 @@ describe('live FigFlow composer save and source admission', () => {
 
   it('keeps receipt recovery reachable when local source becomes unsupported after an unknown open', async () => {
     const m = mount()
-    fetch.mockResolvedValueOnce({}).mockRejectedValueOnce(new Error('lost reply'))
-    await m.click('Edit in FigFlow')
-    const retained = JSON.parse(JSON.stringify(fetch.mock.calls[1][1].body))
+    fetch.mockRejectedValueOnce(new Error('lost reply'))
+    await m.flow.run(() => m.flow.open(id, null)).catch(() => {})
+    await flush()
+    const retained = JSON.parse(JSON.stringify(fetch.mock.calls[0][1].body))
     m.state.store.document.value = htmlSource()
     m.state.templateKind.value = 'template'
     await flush()
     expect(m.button('Edit in FigFlow').disabled).toBe(false)
     fetch.mockResolvedValueOnce({ handoff: handoff() }).mockResolvedValueOnce({ draft: draft() })
     await m.click('Edit in FigFlow')
-    expect(fetch.mock.calls[2][1].body).toEqual(retained)
+    expect(fetch.mock.calls[1][1].body).toEqual(retained)
     expect(m.flow.hasPending.value).toBe(false)
     expect(m.state.showDesignDraftCopy.value).toBe(false)
     expect(m.state.showFigflow.value).toBe(true)

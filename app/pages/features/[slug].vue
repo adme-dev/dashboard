@@ -1620,7 +1620,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Preview and FigFlow Rollout',
-        content: 'Edit spacing, typography, borders and backgrounds; switch between Editor, Preview and HTML to check table-based email output. FigFlow native authoring and reusable template and module versions are being validated for a controlled staff preview, with general release pending. Preview work includes independent design drafts, saved history and rendered review before explicit Apply; conflicts protect newer staff edits. Native campaign editing and publishing new versions of shared templates are still being completed. Wider rollout and Apple Mail, Gmail and Outlook acceptance remain separate gates.'
+        content: 'Edit spacing, typography, borders and backgrounds; switch between Editor, Preview and HTML to check table-based email output. A dedicated FigFlow email workspace is being validated for a controlled staff preview, with general release pending. Existing structured drafts reopen by the same ID; saved-source output stays visible beside protected native sections, and Save requires compiled Desktop/Mobile review plus explicit Apply. Publishing remains disabled, native campaign editing is separate, and conflicts protect newer staff edits. Wider rollout and Apple Mail, Gmail and Outlook acceptance remain separate gates.'
       }
     ]
   },
