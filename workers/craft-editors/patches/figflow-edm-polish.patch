@@ -479,7 +479,7 @@
 +}
 --- a/crates/ui-egui/src/edm_panel.rs
 +++ b/crates/ui-egui/src/edm_panel.rs
-@@ -141,13 +141,45 @@
+@@ -141,13 +141,56 @@
      values.iter().map(|value| (*value).to_owned()).collect()
  }
 
@@ -492,13 +492,24 @@
 +    let draft: Option<String> = ui.data(|data| data.get_temp(id));
 +    let editing = draft.is_some() || ui.memory(|memory| memory.has_focus(te));
 +    let mut text = draft.unwrap_or_else(|| value.to_owned());
-+    let response = egui::Frame::NONE.fill(t.field).corner_radius(egui::CornerRadius::same(5)).inner_margin(egui::Margin::same(6)).show(ui, |ui| {
-+        ui.add(egui::TextEdit::multiline(&mut text).id(te).frame(egui::Frame::NONE)
-+            .font(crate::theme::regular(11.0)).hint_text(label).desired_rows(4).desired_width(ui.available_width().max(24.0)))
-+    }).inner;
++    let response = egui::Frame::NONE
++        .fill(t.field)
++        .corner_radius(egui::CornerRadius::same(5))
++        .inner_margin(egui::Margin::same(6))
++        .show(ui, |ui| {
++            ui.add(
++                egui::TextEdit::multiline(&mut text)
++                    .id(te)
++                    .frame(egui::Frame::NONE)
++                    .font(crate::theme::regular(11.0))
++                    .hint_text(label)
++                    .desired_rows(4)
++                    .desired_width(ui.available_width().max(24.0)),
++            )
++        })
++        .inner;
 +    crate::a11y::own_focus(&response);
-+    let outside = ui.input(|input| input.pointer.any_pressed()
-+        && input.pointer.interact_pos().is_some_and(|pos| !response.rect.contains(pos)));
++    let outside = ui.input(|input| input.pointer.any_pressed() && input.pointer.interact_pos().is_some_and(|pos| !response.rect.contains(pos)));
 +    let cancel = editing && ui.input(|input| input.key_pressed(egui::Key::Escape));
 +    if cancel || (editing && (response.lost_focus() || !response.has_focus() || outside)) {
 +        ui.data_mut(|data| data.remove::<String>(id));
@@ -531,7 +542,7 @@
  }
 
  fn props_number(app: &mut FigApp, ui: &mut Ui, block_id: &str, key: &'static str, label: &'static str, current: Option<f64>) {
-@@ -265,12 +297,13 @@
+@@ -265,12 +308,13 @@
      row(ui, 26.0, |ui| {
          widgets::label(ui, &format!("{kind} · {operation_count} canonical operations"), t.text_secondary);
      });
@@ -547,7 +558,7 @@
          }
      });
      if !capability.editable {
-@@ -419,6 +452,9 @@
+@@ -419,6 +463,9 @@
          });
      }
      row(ui, 30.0, |ui| widgets::label(ui, "Canvas text and freeform transforms require explicit controls", t.text_secondary));
@@ -557,7 +568,7 @@
  }
 
  fn content_section(app: &mut FigApp, ui: &mut Ui, doc: &Document, selection: &[NodeId]) -> bool {
-@@ -431,21 +467,42 @@
+@@ -431,21 +478,40 @@
      let fields: Vec<(&str, &str, &str)> = match role {
          Some("button") => vec![("Button URL", URL, "url")],
          Some("image") => vec![("Image URL", URL, "url"), ("Image alt text", ALT, "alt"), ("Image link", LINK, "linkHref")],
@@ -582,9 +593,7 @@
 +    }
 +    if let Some((text_id, current)) = text {
 +        widgets::sublabels(ui, "Text", None);
-+        if let Some(value) =
-+            multiline_text(ui, Id::new(("edm-content-text", text_id)), &current, "Text").and_then(|value| changed(value, &current))
-+        {
++        if let Some(value) = multiline_text(ui, Id::new(("edm-content-text", text_id)), &current, "Text").and_then(|value| changed(value, &current)) {
 +            app.set_props(&[text_id], json!({"characters": value}));
 +        }
 +    }
@@ -790,7 +799,7 @@
          u.frame(vec![Event::Text("Typed".into())]);
          press(&mut u, Key::Z, cmd());
          assert!(u.app.session.ds().unwrap().text_edit.is_none(), "Cmd/Ctrl+Z ends the edit");
-@@ -810,4 +834,168 @@
+@@ -810,4 +834,172 @@
          assert_eq!(counts(&u), (1, 0), "the canonical log is untouched");
          assert!(snapshot_ok(&mut u));
      }
@@ -905,7 +914,11 @@
 +            u.frame(vec![]);
 +            press(&mut u, Key::A, cmd());
 +            u.frame(vec![Event::Text("Edited {{firstName}}\nLaunch 🚀".into())]);
-+            assert_eq!(u.ctx.data(|data| data.get_temp::<String>(field)).as_deref(), Some("Edited {{firstName}}\nLaunch 🚀"), "the native field retained the typed draft before blur");
++            assert_eq!(
++                u.ctx.data(|data| data.get_temp::<String>(field)).as_deref(),
++                Some("Edited {{firstName}}\nLaunch 🚀"),
++                "the native field retained the typed draft before blur"
++            );
 +            // Clicking the canvas commits the focused native field; Enter keeps a newline.
 +            let blank = u.app.canvas.rect.center();
 +            u.button(blank, true);
