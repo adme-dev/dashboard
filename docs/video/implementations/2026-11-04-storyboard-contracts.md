@@ -42,3 +42,13 @@ pnpm exec vitest run test/video/storyboardSchema.test.ts test/video/storyboardCo
 - Define `ResolvedStoryboard`/compiler types with T05, application receipts/obligations with T06, and adjusted-edit review types with T08. Those contracts depend on canonical persistence/media integration; inventing unconsumed authority-bearing types here would conceal unresolved integration work.
 - Keep public marketing unchanged until the new capability is usable and accepted. No new storyboard UI or production capability is advertised from this foundation.
 - T02 is next: revision-checked timeline persistence. T03 adds stored/authorized storyboard revisions; T04 binds recipe settings to planning; T07 supplies the visible storyboard/example workflow. A13 remains pending until those integration checks pass.
+
+## Independent review
+
+A fresh reviewer approved implementation commit `af5dd5d70` for this bounded local foundation, finding no Critical or Important issues. They independently reran all 97 focused/regression tests and the whitespace check. This is source/test evidence, not hosted or release acceptance.
+
+Two minor follow-ups remain: expand exact-copy regression fixtures to normalization-sensitive Unicode, RTL/CJK and long disclaimers; correct the old T14 interface sentence assigning resolved audio cues to T01 (the updated contract-ownership section and this receipt assign those to T05).
+
+The reviewer did not judge concurrency/apply recovery, current asset eligibility, rendered overflow/alignment, persistent obligations or provider liability. These remain explicitly pending in T02–T14, not waived. Historical snapshot parsing preserves data without claiming current catalogue eligibility; new recipe resolution requires a known revision, and future execution must revalidate it server-side.
+
+Procedural note: the plan helper expected a “Task 1” heading while this plan uses “T01”; the exact T01 section was extracted manually. No implementation scope or source task IDs changed for that tooling mismatch.
