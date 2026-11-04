@@ -1,9 +1,9 @@
 import { afterAll, describe, expect, it } from 'vitest'
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { transformWithEsbuild } from 'vite'
+import { build } from 'esbuild'
 
 const CHROME_CANDIDATES = [
   process.env.CHROME_BIN,
@@ -146,12 +146,11 @@ async function openCdp(wsUrl: string): Promise<CdpClient> {
   return new CdpClient(socket)
 }
 
-async function browserSanitize(inputs: string[]): Promise<string[]> {
-  const source = readFileSync(new URL('../../app/utils/edmInlineText.ts', import.meta.url), 'utf8')
-  const transformed = await transformWithEsbuild(source, 'edmInlineText.ts', {
-    format: 'esm',
-    loader: 'ts',
-    target: 'es2022'
+async function browserSanitize(inputs: string[], mode: 'sanitize' | 'chips' = 'sanitize'): Promise<string[]> {
+  const transformed = await build({
+    entryPoints: [new URL('../../app/utils/edmInlineText.ts', import.meta.url).pathname],
+    bundle: true, write: false, format: 'esm', platform: 'browser', target: 'es2022',
+    alias: { '~~': process.cwd() }
   })
   const harness = await launchChrome()
   const cdp = await openCdp(harness.wsUrl)
@@ -163,11 +162,27 @@ async function browserSanitize(inputs: string[]): Promise<string[]> {
 
   const expression = `
     (async () => {
-      const code = ${JSON.stringify(transformed.code)}
+      const code = ${JSON.stringify(transformed.outputFiles[0]!.text)}
       const inputs = ${JSON.stringify(inputs)}
       const url = URL.createObjectURL(new Blob([code], { type: 'text/javascript' }))
       const mod = await import(url)
       URL.revokeObjectURL(url)
+      if (${JSON.stringify(mode)} === 'chips') {
+        const root = document.createElement('div')
+        root.contentEditable = 'true'
+        root.innerHTML = mod.inlineMergeEditorHtml(inputs[0])
+        document.body.appendChild(root)
+        root.focus()
+        const chip = root.querySelector('[data-merge]')
+        const hydrated = root.innerHTML
+        const roundtrip = mod.serializeInlineMergeHtml(hydrated)
+        const range = document.createRange()
+        range.selectNode(chip)
+        window.getSelection().removeAllRanges()
+        window.getSelection().addRange(range)
+        document.execCommand('delete')
+        return [hydrated, roundtrip, mod.serializeInlineMergeHtml(root.innerHTML)]
+      }
       return inputs.map((input) => mod.sanitizeInlineHtml(input))
     })()
   `
@@ -188,6 +203,16 @@ async function browserSanitize(inputs: string[]): Promise<string[]> {
 }
 
 describe.skipIf(!runRealBrowserTests || !chromePath)('sanitizeInlineHtml in a real Chromium parser', () => {
+  it('roundtrips and deletes a real non-editable merge chip atomically', async () => {
+    const token = '{{custom_offer | Ask our team}}'
+    const [hydrated, roundtrip, deleted] = await browserSanitize([`<b>Hello</b> ${token}!`], 'chips')
+    expect(hydrated).toContain('contenteditable="false"')
+    expect(roundtrip).toBe(`<b>Hello</b> ${token}!`)
+    expect(deleted).not.toContain('custom_offer')
+    expect(deleted).not.toContain('data-merge')
+    expect(deleted).toContain('Hello')
+  })
+
   it('drops foreign-content and raw-text payloads under Chrome', async () => {
     const [svg, math, style, template] = await browserSanitize([
       'before<svg><a href="javascript:alert(1)">x</a><script>y</script></svg>after',

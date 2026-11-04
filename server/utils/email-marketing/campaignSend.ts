@@ -1,9 +1,15 @@
 // server/utils/email-marketing/campaignSend.ts
-// Pure helpers for the campaign sending engine (Phase 2b). No I/O — the chunked
-// sender (2b-2) and the campaign endpoints compose these. Kept side-effect-free
-// so the send-gate + pacing logic is unit-testable without a DB or Resend.
+// Payload helpers for the campaign sending engine (Phase 2b). No DB or provider
+// I/O. Preflight checks signing readiness through the existing email-link owner;
+// payload construction remains pure and never signs a hosted URL.
 
+import { resolveConditionalHtml } from '../../../shared/emailRendering/conditions'
+import { deliveryHasUnsubscribe, deliveryPlainText, inspectDeliveryContent, isUsableUnsubscribeHref } from '../../../shared/emailRendering/deliveryContent'
+import { checkEmailSendability, hasWebVersionMergeTag } from './sendability'
+import { emailLinkSecret } from './links'
+import { resolveEmailMergeTags } from '../../../shared/emailRendering/mergeTags'
 import type { BridgeCommunicationInput } from '~~/server/utils/crm/commsDb'
+import { diagnoseEmailContent, type EmailDiagnosticCode, type EmailDiagnosticReference, type EmailDiagnosticImageAsset } from '../../../shared/emailRendering/contentDiagnostics'
 import { rewriteHtmlLinksForTracking, type RewriteTrackingInput } from './trackingLinks'
 
 export const CAMPAIGN_STATUSES = [
@@ -41,13 +47,10 @@ export function chunk<T>(items: T[], size: number = RESEND_BATCH_LIMIT): T[][] {
 }
 
 // Send gate (spec §2/§4): a campaign body MUST contain an unsubscribe affordance
-// before it can send — either the {{unsubscribe_url}} merge tag (substituted per
-// recipient at send time) or a literal link whose href mentions "unsubscribe".
+// before it can send: a visible labelled anchor using {{unsubscribe_url}} or
+// an absolute HTTPS unsubscribe endpoint. Comments and hidden decoys do not count.
 export function bodyHasUnsubscribe(html: string | null | undefined): boolean {
-  if (!html) return false
-  if (/\{\{\s*unsubscribe_url\s*\}\}/i.test(html)) return true
-  if (/href\s*=\s*["'][^"']*unsubscribe[^"']*["']/i.test(html)) return true
-  return false
+  return !!html && deliveryHasUnsubscribe(html, true)
 }
 
 export interface SendGateInput {
@@ -66,10 +69,12 @@ export type CampaignPreflightCode
   = | 'unsubscribe'
     | 'sender'
     | 'auth_readiness'
+    | 'web_version'
     | 'media_urls'
     | 'html_size'
     | 'footer_identity'
     | 'recipients'
+    | EmailDiagnosticCode
 
 export interface CampaignPreflightCheck {
   code: CampaignPreflightCode
@@ -77,6 +82,8 @@ export interface CampaignPreflightCheck {
   status: CampaignPreflightStatus
   message: string
   value?: string | number | boolean | null
+  id?: string
+  reference?: EmailDiagnosticReference
 }
 
 export interface CampaignPreflightResult {
@@ -109,11 +116,12 @@ const RELATIVE_MEDIA_RE = /\b(?:src|background)\s*=\s*["'](?!https?:\/\/|cid:|da
 const NON_HTTPS_MEDIA_RE = /\b(?:src|background)\s*=\s*["']http:\/\/[^"']+["']|url\(\s*['"]?http:\/\/[^'")]+['"]?\s*\)/i
 const STREET_ADDRESS_RE = /\b\d+[a-z]?(?:\s*[-/]\s*\d+[a-z]?)?\s+[\w\s,'.-]{2,80}\b(?:street|st\b|road|rd\b|avenue|ave\b|drive|dr\b|lane|ln\b|court|ct\b|place|pl\b|parade|pde\b|crescent|cres\b|highway|hwy\b|boulevard|blvd\b|terrace|tce\b|way\b)\b/i
 const PO_BOX_RE = /\b(?:p\.?\s*o\.?\s*box|po\s+box|locked\s+bag|private\s+bag)\s+\d+\b/i
-const LOCALITY_RE = /\b(?:melbourne|sydney|brisbane|perth|adelaide|hobart|darwin|canberra|australia|vic|nsw|qld|wa|sa|tas|act|nt)\b|\b\d{4}\b/i
-const PREFLIGHT_LABELS: Record<CampaignPreflightCode, string> = {
+const LOCALITY_RE = /\b(?:melbourne|sydney|brisbane|perth|adelaide|hobart|darwin|canberra|australia|vic|nsw|qld|wa|sa|tas|act|nt)\b|\b\d{4,6}(?:-\d{4})?\b/i
+const PREFLIGHT_LABELS = {
   unsubscribe: 'Unsubscribe',
   sender: 'Sender',
   auth_readiness: 'Authentication readiness',
+  web_version: 'View online',
   media_urls: 'Media URLs',
   html_size: 'HTML size',
   footer_identity: 'Footer identity',
@@ -141,7 +149,7 @@ export function isSenderDomainAllowed(
 }
 
 function preflightCheck(
-  code: CampaignPreflightCode,
+  code: keyof typeof PREFLIGHT_LABELS,
   status: CampaignPreflightStatus,
   message: string,
   value?: CampaignPreflightCheck['value']
@@ -151,18 +159,13 @@ function preflightCheck(
 }
 
 function hasPhysicalSenderIdentity(html: string): boolean {
-  const text = html
-    .replace(/<!--[\s\S]*?-->/g, ' ')
-    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&#(?:x([0-9a-f]{1,6})|([0-9]{1,7}));/gi, (_entity, hex, decimal) => {
-      const code = Number.parseInt(hex || decimal, hex ? 16 : 10)
-      return code <= 0x10ffff && !(code >= 0xd800 && code <= 0xdfff) ? String.fromCodePoint(code) : ' '
-    })
-    .replace(/&(?:nbsp|ensp|emsp);|[\u200b-\u200d\ufeff]/gi, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
+  let text: string
+  try {
+    text = inspectDeliveryContent(html).text
+  } catch { return false }
+  return hasPhysicalSenderIdentityText(text)
+}
+function hasPhysicalSenderIdentityText(text: string): boolean {
   if (/\byour business postal address\b/i.test(text)) return false
   return (STREET_ADDRESS_RE.test(text) || PO_BOX_RE.test(text)) && LOCALITY_RE.test(text)
 }
@@ -172,6 +175,9 @@ export function buildCampaignPreflight(input: {
     subject?: string | null
     from_email?: string | null
     body_html?: string | null
+    preview_text?: string | null
+    review_required?: boolean | null
+    web_version_enabled?: boolean | null
   }
   toSend: number
   sendingConfigured: boolean
@@ -179,6 +185,7 @@ export function buildCampaignPreflight(input: {
   allowedSenderDomains?: string[]
   checkedAt?: string
   maxHtmlBytes?: number
+  imageAssets?: readonly EmailDiagnosticImageAsset[]
 }): CampaignPreflightResult {
   const html = input.campaign.body_html || ''
   const htmlBytes = Buffer.byteLength(html, 'utf8')
@@ -213,6 +220,18 @@ export function buildCampaignPreflight(input: {
       : 'Sending transport is not configured or the From domain is not allowed.',
     senderDomainReady
   ))
+
+  if ([html, input.campaign.subject, input.campaign.preview_text].some(hasWebVersionMergeTag)) {
+    let signingConfigured = false
+    try {
+      signingConfigured = !!emailLinkSecret()
+    } catch { /* Existing signing owner fails closed. */ }
+    const available = input.campaign.review_required === true && input.campaign.web_version_enabled === true
+      && input.sendingConfigured && signingConfigured
+    checks.push(preflightCheck('web_version', available ? 'pass' : 'blocked', available
+      ? 'View online will use the server-issued URL for this reviewed campaign after its content is frozen.'
+      : 'View online requires a review-gated campaign with web version enabled and email/link signing configured. Complete independent review before sending, or replace the View online token with a normal URL.'))
+  }
 
   const hasUnsafeMedia = RELATIVE_MEDIA_RE.test(html) || NON_HTTPS_MEDIA_RE.test(html)
   checks.push(preflightCheck(
@@ -250,6 +269,15 @@ export function buildCampaignPreflight(input: {
     ))
   }
 
+  // Inspect the frozen HTML, never regenerate a scheduled/sent campaign here.
+  // Content guidance stays advisory; sender/auth/recipient/footer gates above own readiness.
+  checks.push(...diagnoseEmailContent({
+    html,
+    subject: input.campaign.subject,
+    previewText: input.campaign.preview_text,
+    imageAssets: input.imageAssets
+  }))
+
   const blocked = checks.some(check => check.status === 'blocked')
   return {
     ok: !blocked,
@@ -271,6 +299,10 @@ export interface CampaignContent {
   from_email: string | null
   reply_to: string | null
   body_html: string | null
+  preview_text?: string | null
+  /** Signed hosted web-version URL for opted-in reviewed campaigns (M06). Same
+   * for every recipient: it carries no subscriber identity. */
+  web_version_url?: string | null
 }
 
 // Per-recipient unsubscribe URL. `token` is the HMAC signature over
@@ -288,21 +320,21 @@ export function unsubscribeUrl(
   return token ? `${base}&t=${token}` : base
 }
 
-const MERGE_TAG = /\{\{\s*([a-z_]+)\s*\}\}/gi
-
-// Replace {{ key }} tokens (any spacing, case-insensitive) from vars; unknown
-// tags resolve to '' so no literal braces leak into the sent email.
+// Final HTML formatting clears unresolved tags and escapes recipient data.
 export function substituteMergeTags(html: string, vars: Record<string, string>): string {
-  return html.replace(MERGE_TAG, (_match, key: string) => vars[key.toLowerCase()] ?? '')
+  return resolveEmailMergeTags(html, vars, { missing: 'empty', fallbackEncoding: 'html' })
 }
 
 export function recipientVars(
   recipient: { email: string, name: string | null },
-  unsubUrl: string
+  unsubUrl: string,
+  webVersionUrl?: string | null
 ): Record<string, string> {
   const name = (recipient.name || '').trim()
   const firstName = name.split(/\s+/)[0] || ''
-  return { email: recipient.email, name, first_name: firstName, unsubscribe_url: unsubUrl }
+  const vars: Record<string, string> = { email: recipient.email, name, first_name: firstName, unsubscribe_url: unsubUrl }
+  if (webVersionUrl) vars.web_version_url = webVersionUrl
+  return vars
 }
 
 export interface BatchEmail {
@@ -310,6 +342,7 @@ export interface BatchEmail {
   to: string[]
   subject: string
   html: string
+  text?: string
   headers: Record<string, string>
   replyTo?: string
 }
@@ -324,15 +357,28 @@ export function buildBatchEmail(
   unsubToken?: string
 ): BatchEmail {
   const unsubUrl = unsubscribeUrl(appUrl, campaignId, recipient.subscriber_id, unsubToken)
-  const vars = recipientVars(recipient, unsubUrl)
+  const vars = recipientVars(recipient, unsubUrl, campaign.web_version_url)
+  const html = resolveConditionalHtml(campaign.body_html || '', vars)
+  // A false frozen branch is not delivered. Check the remaining content before
+  // missing:empty (or an authored fallback) can conceal an unavailable link.
+  if ([html, campaign.subject, campaign.preview_text].some(hasWebVersionMergeTag)) {
+    let available = false
+    try {
+      const url = new URL(campaign.web_version_url || '')
+      available = ['https:', 'http:'].includes(url.protocol) && !url.username && !url.password
+        && url.hostname !== 'example.invalid' && url.pathname === '/email/view'
+        && ['c', 'v', 't'].every(key => !!url.searchParams.get(key))
+    } catch { /* No server-issued hosted URL. */ }
+    if (!available) throw new Error('WEB_VERSION_UNAVAILABLE: Enable web version on a reviewed campaign and configure email/link signing, or replace the View online token.')
+  }
   const from = campaign.from_name
     ? `${campaign.from_name} <${campaign.from_email}>`
     : (campaign.from_email || '')
   const email: BatchEmail = {
     from,
     to: [recipient.email],
-    subject: substituteMergeTags(campaign.subject || '', vars),
-    html: substituteMergeTags(campaign.body_html || '', vars),
+    subject: resolveEmailMergeTags(campaign.subject || '', vars, { context: 'text', missing: 'empty' }),
+    html: substituteMergeTags(html, vars),
     headers: {
       'List-Unsubscribe': `<${unsubUrl}>`,
       'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click'
@@ -351,10 +397,21 @@ export async function buildTrackedBatchEmail(
   tracking: RewriteTrackingInput
 ): Promise<BatchEmail> {
   const email = buildBatchEmail(campaign, recipient, campaignId, appUrl, unsubToken)
-  return {
-    ...email,
-    html: await rewriteHtmlLinksForTracking(email.html, tracking)
+  const html = await rewriteHtmlLinksForTracking(email.html, tracking)
+  const content = assertFinalCampaignEmail({ ...email, html })
+  return { ...email, html, text: deliveryPlainText(content) }
+}
+
+/** Frozen body only: evaluate conditions, merge once, track, then inspect the
+ * exact recipient payload. No mutable template/catalog lookup or recompilation. */
+export function assertFinalCampaignEmail(email: BatchEmail): ReturnType<typeof inspectDeliveryContent> {
+  const report = checkEmailSendability({ html: email.html, subject: email.subject })
+  const content = inspectDeliveryContent(email.html)
+  if (!report.ok || !content.links.some(link => isUsableUnsubscribeHref(link.href)) || !hasPhysicalSenderIdentityText(content.text)
+    || /\{\{|\}\}/.test(email.html) || /\{\{|\}\}/.test(email.subject)) {
+    throw new Error('FINAL_CAMPAIGN_CONTENT_BLOCKED')
   }
+  return content
 }
 
 // ── Pure: rate-limit (429) handling ─────────────────────────────────────────

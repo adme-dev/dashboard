@@ -74,7 +74,7 @@ registerBlock({
     const textFontSize = fontSize || '16px'
     return boundedText(context.renderBudget)`
         <tr${anchorIdAttribute(props)}>
-          <td style="padding: ${padding}; text-align: ${textAlign}; color: ${textColor || '#374151'}; font-size: ${textFontSize}; font-family: ${escapeFontFamilyForHtml(fontFamily)}; font-weight: ${fontWeight}; line-height: 1.6; ${bgColor ? boundedText(context.renderBudget)`background-color: ${bgColor};` : ''}${extendedStyleCss(style)}">
+          <td${context.darkMode && context.darkTextEnabled !== false && !textColor && !bgColor ? ' class="edm-dark-text"' : ''} style="padding: ${padding}; text-align: ${textAlign}; color: ${textColor || '#374151'}; font-size: ${textFontSize}; font-family: ${escapeFontFamilyForHtml(fontFamily)}; font-weight: ${fontWeight}; line-height: 1.6; ${bgColor ? boundedText(context.renderBudget)`background-color: ${bgColor};` : ''}${extendedStyleCss(style)}">
             ${text}
           </td>
         </tr>`

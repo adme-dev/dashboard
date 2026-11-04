@@ -1,3 +1,4 @@
+import { CONDITION_LIMITS, EmailConditionError, wrapConditionalHtml } from '../../../../shared/emailRendering/conditions'
 import { boundedJoin, boundedText } from './boundedText'
 /**
  * EDM Block Registry
@@ -88,16 +89,24 @@ export function renderBlock(
     return renderPlaceholder(block.type, format, context)
   }
 
+  let html: string
   switch (format) {
     case 'mjml':
-      return definition.renderMjml(block, context)
-    case 'html':
-      return definition.renderHtml(block, context)
+      html = definition.renderMjml(block, context)
+      break
     case 'maizzle':
-      return (definition.renderMaizzle ?? definition.renderHtml)(block, context)
-    default:
-      return definition.renderHtml(block, context)
+      html = (definition.renderMaizzle ?? definition.renderHtml)(block, context)
+      break
+    default: html = definition.renderHtml(block, context)
   }
+  const condition = block.data.props?.visibilityCondition
+  if (condition != null) {
+    context.conditionSequence ??= { value: 0 }
+    if (context.conditionSequence.value >= CONDITION_LIMITS.markers / 2) throw new EmailConditionError('INVALID_CONDITION_MARKER')
+    html = wrapConditionalHtml(html, condition, `c${++context.conditionSequence.value}`)
+    context.renderBudget?.charge(html)
+  }
+  return html
 }
 
 // ---------------------------------------------------------------------------

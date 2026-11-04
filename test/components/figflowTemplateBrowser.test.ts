@@ -36,6 +36,7 @@ async function mount() {
   } }
 }
 beforeEach(() => {
+  vi.stubGlobal('useRoute', () => ({ query: {} }))
   fetch.mockReset()
   navigate.mockReset()
   vi.stubGlobal('$fetch', fetch)
@@ -95,5 +96,26 @@ describe('FigFlow email template browser', () => {
     expect(host.textContent).toContain('could not load')
     expect(host.textContent).not.toContain('Team template')
     expect(host.textContent).not.toContain('Use in FigFlow')
+  })
+})
+
+describe('versioned template browser copy', () => {
+  it('uses canonical copy and exact reconciliation instead of legacy body copying', async () => {
+    const original = { ...row(), template_kind: 'template', design_document_id: '10000000-0000-4000-8000-000000000001', revision_schema_version: 1, head_revision_id: '20000000-0000-4000-8000-000000000001' }
+    fetch.mockResolvedValueOnce({ items: [original] }).mockResolvedValueOnce(scope)
+    const { host, click } = await mount()
+    await click('Use in FigFlow')
+    fetch.mockResolvedValueOnce({ template: original }).mockRejectedValueOnce(new Error('lost canonical reply'))
+    await click('Create draft and open FigFlow')
+    expect(host.textContent).toContain('Reconcile template copy')
+    expect(fetch.mock.calls.filter(([url]) => url === '/api/email/templates')).toHaveLength(1)
+    const originalAction = fetch.mock.calls.find(([url]) => url === '/api/email/design/templates')![1].body
+    expect(originalAction).toMatchObject({ command: 'copy-template-draft', revisionId: original.head_revision_id })
+    expect(originalAction).not.toHaveProperty('body_source')
+    const receipt = { templateId: 'copied-template', documentId: 'new-document', revisionId: 'new-revision', published: false }
+    fetch.mockResolvedValueOnce(receipt).mockResolvedValueOnce({ draft: { documentId: receipt.documentId, headRevisionId: receipt.revisionId } })
+    await click('Reconcile template copy')
+    expect(fetch.mock.calls.filter(([url]) => url === '/api/email/design/templates').map(([, options]) => options.body)).toEqual([originalAction, originalAction])
+    expect(navigate).toHaveBeenCalledWith({ path: '/agency/email/compose', query: { id: receipt.templateId, workspace: 'figflow', openDesign: '1' } })
   })
 })

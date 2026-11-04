@@ -11,7 +11,7 @@ import { queryRowsFresh } from '~~/server/utils/db'
 import { assertFreshDesignAccess } from '~~/server/utils/email-marketing/designAccess'
 import {
   DesignReadError,
-  getTemplateDesignDraft
+  getDesignDraft
 } from '~~/server/utils/email-marketing/designReads'
 
 /** Read only: opening a draft must never create a baseline or rewrite content. */
@@ -42,7 +42,7 @@ export default defineEventHandler(async (event) => {
         statusCode: 400,
         statusMessage: 'invalid_design_target'
       })
-    const draft = await getTemplateDesignDraft(
+    const draft = await getDesignDraft(
       documentId,
       async (clientId) => {
         await assertFreshDesignAccess(token, user.id, clientId, 'read')
@@ -53,7 +53,7 @@ export default defineEventHandler(async (event) => {
         })
       }
     )
-    return { draft }
+    return { draft: draft.owner?.kind === 'template' ? { ...draft, templateId: draft.owner.id } : draft }
   } catch (error) {
     if (error && typeof error === 'object' && 'statusCode' in error && error.statusCode === 403)
       throw createError({ statusCode: 404, statusMessage: 'NOT_FOUND' })

@@ -90,7 +90,7 @@ registerBlock({
       .map((id) => {
         const childBlock = context._document && Object.hasOwn(context._document, id) ? context._document[id] : undefined
         if (!childBlock) return ''
-        return renderBlock(childBlock, 'html', context)
+        return renderBlock(childBlock, 'html', { ...context, darkTextEnabled: context.darkTextEnabled !== false && !containerBgColor })
       }), '\n', context.renderBudget)
 
     return boundedText(context.renderBudget)`

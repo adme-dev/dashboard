@@ -25,6 +25,9 @@
     "EMAIL_DESIGN_ENVIRONMENT": "production",
     "PAGE_STUDIO_RELEASE_ENVIRONMENT": "production",
     "FIGFLOW_EDM_DRAFT_SAVES_ENABLED": "true",
+    "FIGFLOW_EDM_DESIGNER_ENABLED": "false",
+    "FIGFLOW_EDM_LIBRARY_ENABLED": "false",
+    "FIGFLOW_EDM_BRAND_ENABLED": "false",
     "EMAIL_DESIGN_SESSION_AUTHORITY": "pages-auth-me-v1"
   },
   "services": [
@@ -48,6 +51,12 @@
     {
       "binding": "CACHE",
       "id": "7d5db1c489cb40f4b809d611e1408acd"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "MEDIA_BUCKET",
+      "bucket_name": "agency-files"
     }
   ]
 }

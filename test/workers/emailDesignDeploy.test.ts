@@ -14,6 +14,7 @@ interface Config {
   vars: Record<string, string>
   services: Array<{ service: string }>
   hyperdrive: Array<{ id: string }>
+  r2_buckets: Array<{ bucket_name: string }>
   [key: string]: unknown
 }
 
@@ -32,6 +33,10 @@ describe('private email design deployment targets', () => {
     ['public preview URL', (value: Config) => { value.preview_urls = true }],
     ['public route', (value: Config) => { value.routes = ['app.xeroflow.io/*'] }],
     ['cron', (value: Config) => { value.triggers.crons = ['* * * * *'] }],
+    ['foreign media bucket', (value: Config) => { value.r2_buckets[0].bucket_name = 'another-project' }],
+    ['premature brand activation', (value: Config) => { value.vars.FIGFLOW_EDM_BRAND_ENABLED = 'true' }],
+    ['premature library activation', (value: Config) => { value.vars.FIGFLOW_EDM_LIBRARY_ENABLED = 'true' }],
+    ['premature designer activation', (value: Config) => { value.vars.FIGFLOW_EDM_DESIGNER_ENABLED = 'true' }],
     ['unreviewed authority', (value: Config) => { value.vars.EMAIL_DESIGN_SESSION_AUTHORITY = 'another' }],
     ['environment', (value: Config) => { value.vars.EMAIL_DESIGN_ENVIRONMENT = 'staging' }],
     ['renderer', (value: Config) => { value.services[0].service = 'xeroflow-email-rendering-staging' }],
@@ -48,12 +53,14 @@ describe('private email design deployment targets', () => {
   })
 })
 
-
 describe('Pages private transport release', () => {
   it('excludes heavy design routes while mounting its provisioned private transport', () => {
     const nuxt = readFileSync(new URL('../../nuxt.config.ts', import.meta.url), 'utf8')
     const pages = readFileSync(new URL('../../wrangler.toml', import.meta.url), 'utf8')
-    expect(nuxt).toContain("ignore: ['**/api/email/design/**']")
+    const privateRoutes = readFileSync(new URL('../../workers/email-design/nitro.config.ts', import.meta.url), 'utf8')
+    expect(privateRoutes).toContain('route: \'/api/email/design/designer\'')
+    expect(privateRoutes).toContain('handler: fromRepo(\'server/api/email/design/designer.post.ts\')')
+    expect(nuxt).toContain('ignore: [\'**/api/email/design/**\']')
     expect(pages).toMatch(/binding\s*=\s*["']EMAIL_DESIGN["']/)
   })
 })

@@ -10,10 +10,16 @@ import { figflowTemplateCapability } from '../../app/utils/edmFigflowLibrary'
 const source = readFileSync(resolve('app/components/email/builder/EdmFlyhubBuilder.client.vue'), 'utf8')
 const begin = source.slice(source.indexOf('async function beginFigflow('), source.indexOf('function sameDesignSource('))
 const edit = source.slice(source.indexOf('function editInFigflow()'), source.indexOf('async function proposeFigflow('))
-const validation = source.slice(source.indexOf('const hasValidTemplateClient ='), source.indexOf('async function loadTemplateClients()'))
-const capability = source.includes('const figflowSourceUnsupported =')
-  ? source.slice(source.indexOf('const figflowSourceUnsupported ='), source.indexOf('async function beginFigflow('))
-  : ''
+const scriptSource = source.match(/<script setup[^>]*>([\s\S]*?)<\/script>/)![1]!
+const scriptAst = ts.createSourceFile('builder.ts', scriptSource, ts.ScriptTarget.Latest, true)
+// Extract the actual two declarations, not every later composable introduced
+// between validation and the client-loader function.
+const validation = scriptAst.statements.filter(statement => ts.isVariableStatement(statement)
+  && statement.declarationList.declarations.some(declaration => ['hasValidTemplateClient', 'hasValidDesignDraftClient'].includes(declaration.name.getText(scriptAst))))
+  .map(statement => statement.getText(scriptAst)).join('\n')
+const capability = scriptAst.statements.filter(statement => ts.isVariableStatement(statement)
+  && statement.declarationList.declarations.some(declaration => declaration.name.getText(scriptAst) === 'figflowSourceUnsupported'))
+  .map(statement => statement.getText(scriptAst)).join('\n')
 const start = source.lastIndexOf('<UModal', source.indexOf('v-model:open="showDesignDraftCopy"'))
 const modal = source.slice(start, source.indexOf('</UModal>', start) + '</UModal>'.length)
 const apps: ReturnType<typeof createApp>[] = []
@@ -28,7 +34,7 @@ afterEach(() => {
 
 async function mount() {
   const designFlow = {
-    busy: ref(false), error: ref(''), hasPending: ref(false), handoff: ref(null), draft: ref(null),
+    busy: ref(false), error: ref(''), mode: ref('content'), designerAuthoring: ref({ available: false }), hasPending: ref(false), handoff: ref(null), draft: ref(null),
     open: vi.fn(async () => ({ id: 'handoff' })),
     run: async (action: () => Promise<void>) => {
       designFlow.busy.value = true
@@ -42,7 +48,7 @@ async function mount() {
     }
   }
   const args = {
-    computed, figflowTemplateCapability, designFlow, saving: ref(false), templateLoading: ref(false), templateLoadError: ref(''),
+    computed, figflowTemplateCapability, designFlow, conditionSaving: ref(false), conditionPending: ref(null), brandFlow: { busy: ref(false), hasPending: ref(false) }, saving: ref(false), templateLoading: ref(false), templateLoadError: ref(''),
     loadingTemplateClients: ref(false), templateClientsError: ref(false),
     templateClientOptions: ref([{ label: 'Allowed client', value: 'allowed' }, { label: 'Shared default', value: '__shared__' }]),
     templateId: ref<string | null>('library-original'), templateKind: ref('template'),
@@ -127,7 +133,7 @@ describe('composer Create a design draft dialog', () => {
       method: 'POST', body: expect.objectContaining({ name: 'Geely (copy) (design draft)', client_id: 'allowed', template_kind: 'draft', subject: 'Subject', preview_text: 'Preview', folder_name: 'Automotive', body_source: s.store.document.value })
     }))
     expect(s.save).not.toHaveBeenCalled()
-    expect(s.designFlow.open).toHaveBeenCalledExactlyOnceWith('confirmed-draft', 'allowed')
+    expect(s.designFlow.open).toHaveBeenCalledExactlyOnceWith('confirmed-draft', 'allowed', false)
     expect(s.router.replace.mock.calls[0][0]).toEqual({ query: { id: 'confirmed-draft', workspace: 'figflow' } })
     expect(s.showDesignDraftCopy.value).toBe(false)
     expect(s.showSaveModal.value).toBe(false)
@@ -179,7 +185,7 @@ describe('composer Create a design draft dialog', () => {
     s.designDraftName.value = ' Shared draft '
     await s.beginFigflow(true)
     expect(s.apiFetch.mock.calls[0][1].body).toMatchObject({ name: 'Shared draft', client_id: null })
-    expect(s.designFlow.open).toHaveBeenCalledWith('confirmed-draft', null)
+    expect(s.designFlow.open).toHaveBeenCalledWith('confirmed-draft', null, false)
   })
 
   it.each([400, 403])('allows correction after a definite %s rejection without opening Save', async (status) => {
@@ -201,7 +207,7 @@ describe('composer Create a design draft dialog', () => {
     s.designDraftName.value = 'Corrected draft'
     await s.beginFigflow(true)
     expect(s.apiFetch).toHaveBeenCalledTimes(2)
-    expect(s.designFlow.open).toHaveBeenCalledExactlyOnceWith('confirmed-draft', 'allowed')
+    expect(s.designFlow.open).toHaveBeenCalledExactlyOnceWith('confirmed-draft', 'allowed', false)
     expect(s.templateId.value).toBe('confirmed-draft')
   })
 

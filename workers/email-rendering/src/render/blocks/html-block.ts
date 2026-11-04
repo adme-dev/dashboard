@@ -13,6 +13,7 @@ import { escapeHtml } from './helpers'
 import { generateHeroTemplateHtml, generateMaizzleVehiclesSectionHtml } from './maizzle-helpers'
 import { generateOffersSectionHtml, type OfferData } from './offer-html-generator'
 import { anchorIdAttribute } from '../../../../../app/utils/edmAnchor'
+import { extendedStyleCss } from '../../../../../app/utils/edmStyle'
 
 // ---------------------------------------------------------------------------
 // MJML vehicle/offer rendering helpers
@@ -1049,10 +1050,11 @@ registerBlock({
       }
     }
 
-    // Regular HTML content (non-dynamic block)
+    // Regular HTML content (non-dynamic block). Extended styles match the
+    // composer canvas, including its URL-checked background image.
     return boundedText(context.renderBudget)`
         <tr${anchorIdAttribute(props)}>
-          <td style="padding: ${padding}; ${bgColor ? boundedText(context.renderBudget)`background-color: ${bgColor};` : ''}">
+          <td style="padding: ${padding}; ${bgColor ? boundedText(context.renderBudget)`background-color: ${bgColor};` : ''}${extendedStyleCss(style)}">
             ${contents}
           </td>
         </tr>`

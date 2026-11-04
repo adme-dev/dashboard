@@ -18,12 +18,13 @@ interface AccessRow {
 
 /** Reuse session/role/assignment owners, but bypass request and KV decisions.
  * Tokens are supplied only by the authenticated HTTP boundary, never action JSON.
- * This grants draft editing or module reading, never library publishing. */
-export async function assertFreshDesignAccess(
+ * The publisher entrypoint adds agency and CREATIVE checks independently. */
+async function freshDesignAccess(
   token: string,
   actorId: string,
   clientId: string | null,
-  access: 'read' | 'write'
+  access: 'read' | 'write',
+  publisher = false
 ): Promise<'staff' | 'designer'> {
   const user = await validateSession(token)
   if (!user || user.id !== actorId)
@@ -66,5 +67,15 @@ export async function assertFreshDesignAccess(
       && groups.includes('MARKETING_MANAGEMENT')
   if (!agency && !(clientId !== null && row.assigned) && !marketingClient)
     return deny()
+  if (publisher && (!agency || !groups.includes('CREATIVE'))) return deny()
   return groups.includes('CREATIVE') ? 'designer' : 'staff'
+}
+
+export function assertFreshDesignAccess(token: string, actorId: string, clientId: string | null, access: 'read' | 'write') {
+  return freshDesignAccess(token, actorId, clientId, access)
+}
+
+/** Agency publisher is separate from client-scoped CREATIVE designer rights. */
+export async function assertFreshDesignPublisher(token: string, actorId: string, clientId: string | null): Promise<void> {
+  await freshDesignAccess(token, actorId, clientId, 'write', true)
 }

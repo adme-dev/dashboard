@@ -19,6 +19,19 @@ import { signEmailToken, emailLinkSecret } from './links'
 import { getCampaign, prepareCampaignHtmlForSend, setCampaignStatus, type Campaign } from './campaigns'
 import { resolveCampaignSenderDomains } from './senderIdentity'
 import { resolveMarketingProviderConfig } from '~~/server/utils/marketingProviderConfig'
+import { buildWebVersionUrl } from './webVersion'
+
+/** Opted-in gated campaigns get one signed URL for the frozen content digest;
+ * the digest is recomputed by the database, never taken from cached state. Only
+ * a gated campaign's content is frozen once it leaves draft, so only it can
+ * carry a link whose signed version stays valid for the whole send. */
+export async function frozenWebVersionUrl(campaign: Campaign, appUrl: string, secret: string): Promise<string | null> {
+  if (campaign.web_version_enabled !== true || campaign.review_required !== true || campaign.status === 'draft') return null
+  const row = await queryOne<{ digest: string }>(`
+    SELECT email_campaign_content_digest_of(c) AS digest FROM campaigns c WHERE c.id = $1
+  `, [campaign.id])
+  return row?.digest ? buildWebVersionUrl(appUrl, campaign.id, row.digest, secret) : null
+}
 
 export interface RecipientRow {
   id: string
@@ -197,23 +210,34 @@ export async function sendCampaignChunk(campaign: Campaign, event?: H3Event): Pr
   const recipients = await claimPendingChunk(campaign.id, RESEND_BATCH_LIMIT)
   if (recipients.length === 0) return { sent: 0, failed: 0, rateLimited: false, retryAfterSec: 0 }
 
-  const appUrl = getAppUrl(event)
-  const secret = emailLinkSecret()
-  const payload = await Promise.all(recipients.map(async r =>
-    buildTrackedBatchEmail(
-      campaign,
-      { email: r.email, name: r.name, subscriber_id: r.subscriber_id },
-      campaign.id,
-      appUrl,
-      await signEmailToken(secret, 'unsub', campaign.id, r.subscriber_id),
-      {
+  let payload: Awaited<ReturnType<typeof buildTrackedBatchEmail>>[]
+  try {
+    const appUrl = getAppUrl(event)
+    const secret = emailLinkSecret()
+    const webVersionUrl = await frozenWebVersionUrl(campaign, appUrl, secret)
+    const content = webVersionUrl ? { ...campaign, web_version_url: webVersionUrl } : campaign
+    payload = await Promise.all(recipients.map(async r =>
+      buildTrackedBatchEmail(
+        content,
+        { email: r.email, name: r.name, subscriber_id: r.subscriber_id },
+        campaign.id,
         appUrl,
-        campaignId: campaign.id,
-        subscriberId: r.subscriber_id,
-        secret
-      }
-    )
-  ))
+        await signEmailToken(secret, 'unsub', campaign.id, r.subscriber_id),
+        {
+          appUrl,
+          campaignId: campaign.id,
+          subscriberId: r.subscriber_id,
+          secret
+        }
+      )
+    ))
+  } catch {
+    // No provider request has started. Configuration loss, a malformed marker
+    // or a final recipient blocker must not strand claims or be misreported as
+    // a provider failure.
+    await releaseClaims(recipients.map(r => r.id))
+    throw createError({ statusCode: 422, statusMessage: 'campaign_final_content_blocked' })
+  }
 
   let sent = 0
   let failed = 0

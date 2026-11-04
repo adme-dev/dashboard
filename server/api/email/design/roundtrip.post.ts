@@ -1,12 +1,17 @@
+import { DesignModuleError } from '~~/shared/emailRendering/designModules'
+import { rethrowLegacyDesignConflict, DESIGN_REVISION_CONSTRAINTS } from '~~/server/utils/email-marketing/designConflict'
+import { createDesignAssetStorage } from '~~/server/utils/email-marketing/designAssets'
+import { getAppUrl } from '~~/server/utils/appUrl'
 import { createError, defineEventHandler, getCookie, getHeader, setHeader } from 'h3'
 import { ZodError } from 'zod'
 import { validateSession } from '~~/server/utils/auth'
-import { assertFreshDesignAccess } from '~~/server/utils/email-marketing/designAccess'
+import { assertFreshDesignAccess, assertFreshDesignPublisher } from '~~/server/utils/email-marketing/designAccess'
 import { assertDesignMutationRequest, readBoundedJson } from '~~/server/utils/email-marketing/designRequest'
 import { DesignHandoffError, executeDesignRoundtrip } from '~~/server/utils/email-marketing/designHandoffs'
 import { DesignRevisionError } from '~~/server/utils/email-marketing/designRevisions'
 import { DesignReadError } from '~~/server/utils/email-marketing/designReads'
 import { createEmailRenderer } from '~~/server/utils/email-marketing/render/client'
+import { designerCapabilities } from '~~/shared/emailRendering/designDesigner'
 import { parseRoundtripRequest } from '~~/shared/emailRendering/designRoundtrip'
 import { EmailDesignError } from '~~/shared/emailRendering/designContract'
 import { EmailDesignActionError } from '~~/shared/emailRendering/designActions'
@@ -23,11 +28,52 @@ export default defineEventHandler(async (event) => {
     const user = token ? await validateSession(token) : null
     if (!user || !token) throw createError({ statusCode: 401, statusMessage: 'design_session_invalid' })
     const request = parseRoundtripRequest(await readBoundedJson(event))
-    return await executeDesignRoundtrip(request, {
+    const result = await executeDesignRoundtrip(request, {
       actorId: user.id,
+      assertCampaignNativeEnabled: () => {
+        if (env.FIGFLOW_EDM_DESIGNER_ENABLED !== 'true') throw createError({ statusCode: 404, statusMessage: 'not_found' })
+      },
       authorize: (clientId, access) => assertFreshDesignAccess(token, user.id, clientId, access)
-    }, createEmailRenderer(env))
+    }, createEmailRenderer(env), undefined, { read: key => createDesignAssetStorage(event, getAppUrl(event)).read(key), url: id => createDesignAssetStorage(event, getAppUrl(event)).url(id), identifyUrl: url => createDesignAssetStorage(event, getAppUrl(event)).identifyUrl(url) })
+    if (request.command !== 'lookup' || !('draft' in result)) return result
+    let campaignContentImages = false
+    let campaignAvailable = false
+    if (result.owner?.kind === 'campaign' && result.mutable && env.FIGFLOW_EDM_DESIGNER_ENABLED === 'true') {
+      try {
+        const role = await assertFreshDesignAccess(token, user.id, result.clientId ?? null, 'write')
+        campaignAvailable = role === 'designer'
+        campaignContentImages = result.draft?.state === 'structured' && env.FIGFLOW_EDM_LIBRARY_ENABLED === 'true'
+      } catch (error) {
+        if (!(error && typeof error === 'object' && 'statusCode' in error && error.statusCode === 403)) throw error
+      }
+    }
+    let available = false
+    if ((result.owner?.kind !== 'campaign' || result.mutable === true) && env.FIGFLOW_EDM_DESIGNER_ENABLED === 'true' && result.draft?.state === 'structured' && result.draft.source.source.nativeArtifact === null) {
+      try {
+        available = await assertFreshDesignAccess(token, user.id, result.draft.source.scope.clientId, 'write') === 'designer'
+      } catch (error) {
+        // A read-authorised staff member may discover the ordinary draft while
+        // structural authoring stays unavailable; other failures remain errors.
+        if (!(error && typeof error === 'object' && 'statusCode' in error && error.statusCode === 403)) throw error
+      }
+    }
+    let publisher = false
+    const libraryAvailable = available && env.FIGFLOW_EDM_LIBRARY_ENABLED === 'true'
+    if (libraryAvailable && result.draft?.state === 'structured') {
+      try {
+        await assertFreshDesignPublisher(token, user.id, result.draft.source.scope.clientId)
+        publisher = true
+      } catch (error) {
+        if (!(error && typeof error === 'object' && 'statusCode' in error && error.statusCode === 403)) throw error
+      }
+    }
+    return { ...result, campaignAuthoring: { contentImagesAvailable: campaignContentImages, available: campaignAvailable && (result.draft?.state !== 'structured' || result.draft.source.source.nativeArtifact === null) }, libraryAuthoring: { available: libraryAvailable, publisher }, designerAuthoring: {
+      available, endpoint: '/api/email/design/designer' as const,
+      capabilities: available && result.draft?.state === 'structured' ? designerCapabilities(result.draft.source) : null
+    } }
   } catch (error) {
+    if (error && typeof error === 'object' && 'constraint' in error && DESIGN_REVISION_CONSTRAINTS.has(String(error.constraint))) rethrowLegacyDesignConflict(error)
+    if (error instanceof DesignModuleError) throw createError({ statusCode: error.code.includes('STORAGE_UNAVAILABLE') ? 503 : 409, statusMessage: error.code })
     if (error instanceof ZodError || error instanceof EmailDesignActionError || error instanceof EmailDesignError)
       throw createError({ statusCode: 'code' in error && ['LIMIT_EXCEEDED', 'ACTION_LIMIT_EXCEEDED'].includes(error.code) ? 413 : 400, statusMessage: 'invalid_design_request' })
     if (error instanceof DesignHandoffError || error instanceof DesignRevisionError || error instanceof DesignReadError)

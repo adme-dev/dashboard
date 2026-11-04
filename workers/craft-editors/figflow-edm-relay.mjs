@@ -18,6 +18,10 @@
  *   ok result is {images:[{block_id, url}]}. No changes means {images:[]}.
  *   It must be listed in status.supportedActions. A missing capability does
  *   not snapshot.
+ * - designer mode requires edm_designer_import and edm_designer_snapshot in status.
+ *   Import binds {design, images, operationId, capabilities}; snapshot takes {}
+ *   and returns only {operationId, operations}. Empty Image URLs are explicit
+ *   placeholders in this mode; nonempty URLs retain the bounded byte contract.
  * - action "edm_snapshot" params are {} or {images} for exactly those changes.
  *   result is the canonical EmailDesignDocument, not a wrapper. The image list
  *   and the snapshot must share one instance, document, and revision. A later
@@ -102,13 +106,14 @@ function isPublicHttps(value) {
   return true
 }
 
-function imageBlocks(design) {
+function imageBlocks(design, allowEmpty = false) {
   const blocks = design && typeof design === 'object' ? design.blocks : null
   if (!blocks || typeof blocks !== 'object' || Array.isArray(blocks)) throw relayError('rejected')
   const images = []
   for (const [blockId, block] of Object.entries(blocks)) {
     if (!block || block.type !== 'Image') continue
     const url = block.data && block.data.props ? block.data.props.url : undefined
+    if (allowEmpty && url === '') continue
     if (typeof url !== 'string' || !isPublicHttps(url)) throw relayError('image_unsupported')
     images.push({ blockId, url })
   }
@@ -319,6 +324,8 @@ export function createEdmRelay(bridge, parent, options = {}) {
   })
   let binding = { instanceId: '0', documentId: '0', revision: '0' }
   let handoffId = ''
+  let authoringMode = 'content'
+  let designerOperationId = null
   let boundChannel = ''
   let unresolvedImport = null
   let unresolvedSnapshot = null
@@ -338,7 +345,7 @@ export function createEdmRelay(bridge, parent, options = {}) {
   }
 
   function accept(response, action) {
-    if (action !== 'status' && action !== 'edm_import' && (response.instanceId !== binding.instanceId || response.documentId !== binding.documentId)) {
+    if (action !== 'status' && !['edm_import', 'edm_designer_import'].includes(action) && (response.instanceId !== binding.instanceId || response.documentId !== binding.documentId)) {
       throw relayError('native_refused')
     }
     binding = { instanceId: response.instanceId, documentId: response.documentId, revision: response.revision }
@@ -384,34 +391,45 @@ export function createEdmRelay(bridge, parent, options = {}) {
     if (!payload.design || typeof payload.design !== 'object' || byteLength(payload.design) > MAX_DESIGN_BYTES) {
       throw relayError('rejected')
     }
-    const images = imageBlocks(payload.design)
+    const designer = payload.mode === 'designer'
+    if (payload.mode !== undefined && payload.mode !== 'content' && !designer) throw relayError('rejected')
+    if (designer && (typeof payload.operationId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(payload.operationId)
+      || !payload.capabilities || payload.capabilities.version !== 1 || byteLength(payload.capabilities) > 128 * 1024)) throw relayError('rejected')
+    const identity = JSON.stringify(payload)
+    const images = imageBlocks(payload.design, designer)
     await resolveBridge()
     if (unresolvedImport && unresolvedImport.handoffId === payload.handoffId) {
+      if (unresolvedImport.identity !== identity) throw relayError('rejected')
       const imported = await sendRaw(unresolvedImport.raw)
       if (!imported || imported.imported !== true) throw relayError('native_refused')
       unresolvedImport = null
       handoffId = payload.handoffId
       boundChannel = message.channel
+      authoringMode = designer ? 'designer' : 'content'
+      designerOperationId = designer ? payload.operationId : null
       return
     }
-    await call('status', {})
+    const capabilities = await call('status', {})
+    if (designer && (!supported(capabilities, 'edm_designer_import') || !supported(capabilities, 'edm_designer_snapshot'))) throw relayError('native_refused')
     const encoded = await imageMap(images, fetchImage, now() + (options.connectImageMs ?? CONNECT_IMAGE_DEADLINE_MS), now)
     await call('status', {})
     const raw = JSON.stringify({
       requestId: randomRequestId(),
-      action: 'edm_import',
+      action: designer ? 'edm_designer_import' : 'edm_import',
       instanceId: binding.instanceId,
       documentId: binding.documentId,
       expectedRevision: binding.revision,
-      params: { design: payload.design, images: encoded }
+      params: { design: payload.design, images: encoded, ...(designer ? { operationId: payload.operationId, capabilities: payload.capabilities } : {}) }
     })
-    unresolvedImport = { handoffId: payload.handoffId, raw }
+    unresolvedImport = { handoffId: payload.handoffId, identity, raw }
     try {
       const imported = await sendRaw(raw)
       if (!imported || imported.imported !== true) throw relayError('native_refused')
       unresolvedImport = null
       handoffId = payload.handoffId
       boundChannel = message.channel
+      authoringMode = designer ? 'designer' : 'content'
+      designerOperationId = designer ? payload.operationId : null
     } catch (error) {
       if (!error || error.code !== 'timeout') unresolvedImport = null
       throw error
@@ -419,6 +437,7 @@ export function createEdmRelay(bridge, parent, options = {}) {
   }
 
   function assertDesign(design) {
+    if (authoringMode === 'designer' && (!design || design.operationId !== designerOperationId || !Array.isArray(design.operations) || design.operations.length > 300 || Object.keys(design).sort().join(',') !== 'operationId,operations')) throw relayError('native_refused')
     if (!design || typeof design !== 'object' || Array.isArray(design) || byteLength(design) > MAX_DESIGN_BYTES) {
       throw relayError('native_refused')
     }
@@ -429,6 +448,10 @@ export function createEdmRelay(bridge, parent, options = {}) {
   }
 
   async function snapshotParams() {
+    if (authoringMode === 'designer') {
+      if (!supported(await call('status', {}), 'edm_designer_snapshot')) throw relayError('native_refused')
+      return {}
+    }
     for (let attempt = 0; attempt < 2; attempt += 1) {
       const status = await call('status', {})
       if (!supported(status, 'edm_snapshot') || !supported(status, 'edm_required_snapshot_images')) {
@@ -461,7 +484,7 @@ export function createEdmRelay(bridge, parent, options = {}) {
     const params = await snapshotParams()
     const raw = JSON.stringify({
       requestId: randomRequestId(),
-      action: 'edm_snapshot',
+      action: authoringMode === 'designer' ? 'edm_designer_snapshot' : 'edm_snapshot',
       instanceId: binding.instanceId,
       documentId: binding.documentId,
       expectedRevision: binding.revision,
@@ -479,11 +502,24 @@ export function createEdmRelay(bridge, parent, options = {}) {
     }
   }
 
+  async function onContext(message) {
+    if (!handoffId || message.channel !== boundChannel || authoringMode !== 'designer' || unresolvedImport || unresolvedSnapshot || message.payload !== undefined) throw relayError('rejected')
+    const original = { ...binding }
+    if (!supported(await call('status', {}), 'edm_designer_context') || binding.instanceId !== original.instanceId || binding.documentId !== original.documentId) throw relayError('native_refused')
+    const context = await call('edm_designer_context', {})
+    if (!context || context.operationId !== designerOperationId || !Array.isArray(context.operations) || context.operations.length > 300
+      || !Array.isArray(context.selectedBlockIds) || context.selectedBlockIds.length > 300
+      || context.selectedBlockIds.some(id => typeof id !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(id))
+      || Object.keys(context).some(key => !['operationId', 'operations', 'selectedBlockIds', 'insertionTarget'].includes(key))
+      || byteLength(context) > MAX_DESIGN_BYTES) throw relayError('native_refused')
+    reply(message, 'context', context)
+  }
+
   async function handleMessage(event) {
     if (!event || event.origin !== PARENT_ORIGIN || event.source !== parent) return
     const message = event.data
     if (!message || message.protocol !== PROTOCOL || typeof message.channel !== 'string' || typeof message.requestId !== 'string') return
-    if (message.type !== 'connect' && message.type !== 'snapshot') return
+    if (message.type !== 'connect' && message.type !== 'snapshot' && message.type !== 'context') return
     if (boundChannel && message.channel !== boundChannel) {
       reply(message, 'error', { code: 'rejected' })
       return
@@ -497,6 +533,8 @@ export function createEdmRelay(bridge, parent, options = {}) {
       if (message.type === 'connect') {
         await onConnect(message)
         reply(message, 'ready')
+      } else if (message.type === 'context') {
+        await onContext(message)
       } else {
         await onSnapshot(message)
       }

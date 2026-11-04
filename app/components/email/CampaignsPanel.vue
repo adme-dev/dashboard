@@ -21,6 +21,8 @@ interface CampaignRow {
   filter_rules?: { match: 'all' | 'any', rules: Array<{ field: string, op: string, value?: unknown }> } | null
   preflight_result?: CampaignPreflightResult | null
   recipient_snapshot?: RecipientSnapshot | null
+  client_id?: string | null
+  review_required?: boolean
 }
 interface ListRow { id: string, name: string }
 interface CampaignPreflightCheck {
@@ -46,13 +48,17 @@ interface RecipientSnapshot {
   generatedAt?: string
 }
 
+const showTemplateCampaign = ref(false)
+function openCreatedCampaign(id: string) {
+  void navigateTo({ path: '/agency/email/compose', query: { campaign: id } })
+}
 const toast = useToast()
 const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string, body?: unknown }) => Promise<T>
 
 const data = ref<{ campaigns: CampaignRow[] }>({ campaigns: [] })
 const pending = ref(false)
 const listsData = ref<{ items: ListRow[] }>({ items: [] })
-const cfg = ref<{ sending_enabled: boolean }>({ sending_enabled: false })
+const cfg = ref<{ sending_enabled: boolean, review_workflow_enabled?: boolean }>({ sending_enabled: false })
 
 async function refresh() {
   pending.value = true
@@ -68,7 +74,7 @@ async function refreshLists() {
 }
 
 async function refreshConfig() {
-  cfg.value = await apiFetch<{ sending_enabled: boolean }>('/api/email/campaigns/config')
+  cfg.value = await apiFetch<{ sending_enabled: boolean, review_workflow_enabled?: boolean }>('/api/email/campaigns/config')
 }
 
 await Promise.all([refresh(), refreshLists(), refreshConfig()])
@@ -142,6 +148,14 @@ const sendingEnabled = computed(() => !!cfg.value?.sending_enabled)
 const busyId = ref<string | null>(null)
 const showSend = ref(false)
 const sendTarget = ref<CampaignRow | null>(null)
+// ── M06 review (FIGFLOW_EDM_WORKFLOW_ENABLED) ──────────────────────────────
+const showReview = ref(false)
+const reviewTarget = ref<CampaignRow | null>(null)
+function openReview(row: CampaignRow) {
+  reviewTarget.value = row
+  showReview.value = true
+}
+
 const showSchedule = ref(false)
 const scheduleTarget = ref<CampaignRow | null>(null)
 const showReport = ref(false)
@@ -345,6 +359,12 @@ const TERMINAL = new Set(['sent', 'cancelled'])
       <p class="text-sm text-muted">
         {{ data?.campaigns?.length ?? 0 }} campaign(s)
       </p>
+      <UButton
+        label="Create from template"
+        color="neutral"
+        variant="outline"
+        @click="showTemplateCampaign = true"
+      />
       <UButton icon="i-lucide-plus" label="New campaign" @click="openCreate" />
     </div>
 
@@ -407,6 +427,15 @@ const TERMINAL = new Set(['sent', 'cancelled'])
               label="Design"
             />
           </UTooltip>
+          <UButton
+            v-if="cfg.review_workflow_enabled || row.review_required"
+            icon="i-lucide-message-square-text"
+            variant="ghost"
+            :color="row.review_required ? 'primary' : 'neutral'"
+            size="xs"
+            label="Review"
+            @click="openReview(row)"
+          />
           <UButton
             icon="i-lucide-chart-no-axes-column"
             variant="ghost"
@@ -620,5 +649,16 @@ const TERMINAL = new Set(['sent', 'cancelled'])
       :campaign-id="reportTarget?.id || null"
       :campaign-name="reportTarget?.name"
     />
+    <EmailReviewDrawer
+      v-if="cfg.review_workflow_enabled || data.campaigns.some(row => row.review_required)"
+      v-model:open="showReview"
+      kind="campaign"
+      :target-id="reviewTarget?.id || null"
+      :title="reviewTarget?.name"
+      :client-id="reviewTarget?.client_id ?? null"
+      :status="reviewTarget?.status"
+      @changed="refresh()"
+    />
   </div>
+  <EmailCampaignTemplateCreateModal v-model:open="showTemplateCampaign" @created="openCreatedCampaign" />
 </template>

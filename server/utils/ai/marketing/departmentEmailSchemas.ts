@@ -58,13 +58,18 @@ export const departmentEmailContracts = {
     previewText: draftFields.previewText.optional(),
     bodySource: bodySource.optional(),
     templateId: uuid.optional(),
+    templateRevisionId: uuid.optional(),
+    operationId: uuid.optional(),
     segment: segment.optional(),
     acknowledgement: z.literal('CREATE_CLIENT_EMAIL_DRAFT')
-  }).refine(v => !(v.bodySource && v.templateId), 'Use either bodySource or templateId, not both'),
+  }).refine(v => !(v.bodySource && v.templateId), 'Use either bodySource or templateId, not both')
+    .refine(v => !v.templateRevisionId || (!!v.templateId && !!v.operationId), 'Exact template selection requires templateId and operationId'),
   marketing_update_email_campaign_draft: z.strictObject({
     ...client,
     campaignId: uuid,
     expectedRevision: revision,
+    expectedDesignRevisionId: uuid.optional(),
+    operationId: uuid.optional(),
     patch: z.strictObject({
       name: draftFields.name.optional(),
       subject: draftFields.subject.optional(),

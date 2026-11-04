@@ -277,7 +277,7 @@ const categories = [
       { title: 'Smart Watch', slug: 'smart-watch', icon: 'i-lucide-bell-ring', description: 'AI-scored inbox, daily digest narrative, snooze, quiet hours, and semantic keyword subscriptions across every board.' },
       { title: 'Email Templates', slug: 'email-templates', icon: 'i-lucide-mail', description: 'Resend-powered email templates for notifications, invites, and client communications.' },
       { title: 'Email Campaigns', slug: 'email-campaigns', icon: 'i-lucide-send', description: 'Design, target, and send marketing email campaigns to subscriber lists — with merge tags, delivery tracking, and one-click unsubscribe built in.' },
-      { title: 'Email Builder', slug: 'email-builder', icon: 'i-lucide-layout-template', description: 'Build from reusable modules and eleven starters, organise client templates and preview email HTML. Browse email templates from FigFlow, create independent design drafts and review supported content edits.' },
+      { title: 'Email Builder', slug: 'email-builder', icon: 'i-lucide-layout-template', description: 'Build from reusable modules and eleven starters, import supported HTML and preview table-based email layouts. FigFlow authoring, saved versions and campaign workflows are being prepared for controlled staff preview.' },
       { title: 'Subscriber Lists', slug: 'email-lists', icon: 'i-lucide-users', description: 'Build lists, import via CSV, and grow them with public subscribe forms — double opt-in, preference centre, and RFC 8058 compliant unsubscribe.' },
       { title: 'Automations', slug: 'automations', icon: 'i-lucide-zap', description: 'Trigger → action recipes. Auto-notify on status changes, assignments, and due dates.' }
     ]

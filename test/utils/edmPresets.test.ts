@@ -167,7 +167,15 @@ describe('edmPresets', () => {
         new Set(fragment.rootChildrenIds).size,
         `preset ${preset.id} has duplicate root ids`
       ).toBe(fragment.rootChildrenIds.length)
-      expect(Object.keys(fragment.blocks).sort()).toEqual([...fragment.rootChildrenIds].sort())
+      // Every block is a root or a column child reachable from one; nothing is orphaned.
+      const reachable = new Set<string>()
+      const walk = (id: string) => {
+        reachable.add(id)
+        if (fragment.blocks[id]?.type !== 'ColumnsContainer') return
+        for (const column of (fragment.blocks[id]!.data.props?.columns as { childrenIds?: string[] }[] | undefined) ?? []) column.childrenIds?.forEach(walk)
+      }
+      fragment.rootChildrenIds.forEach(walk)
+      expect(Object.keys(fragment.blocks).sort()).toEqual([...reachable].sort())
 
       const document = createEmptyDocument()
       document.root.data.childrenIds = [...fragment.rootChildrenIds]

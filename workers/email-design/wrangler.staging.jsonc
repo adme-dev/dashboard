@@ -25,6 +25,9 @@
     "EMAIL_DESIGN_ENVIRONMENT": "staging",
     "PAGE_STUDIO_RELEASE_ENVIRONMENT": "staging",
     "FIGFLOW_EDM_DRAFT_SAVES_ENABLED": "false",
+    "FIGFLOW_EDM_DESIGNER_ENABLED": "false",
+    "FIGFLOW_EDM_LIBRARY_ENABLED": "false",
+    "FIGFLOW_EDM_BRAND_ENABLED": "false",
     "EMAIL_DESIGN_SESSION_AUTHORITY": "pages-auth-me-v1"
   },
   "services": [
@@ -44,5 +47,6 @@
       "id": "3865ea5568234fc7b0e9e3e595a30286"
     }
   ],
-  "kv_namespaces": []
+  "kv_namespaces": [],
+  "r2_buckets": []
 }

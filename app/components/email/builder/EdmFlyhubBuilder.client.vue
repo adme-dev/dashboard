@@ -3,12 +3,26 @@
      undo/redo, Editor/Preview/HTML views, and Save to edm_templates (2a-ii-4).
      Loads an existing template via ?id= or a starter layout via ?starter=. -->
 <script setup lang="ts">
+import type { ReviewedTemplatePublication } from '~~/app/utils/edmTemplatePublication'
+import { designReadOwner } from '~~/shared/emailRendering/designRoundtrip'
+import { useEdmDesignBrand } from '~~/app/composables/useEdmDesignBrand'
+import { useEdmMergeTags } from '~~/app/composables/useEdmMergeTags'
+import { useEdmConditions } from '~~/app/composables/useEdmConditions'
+import { resolveEmailContentWidth } from '../../../../shared/emailRendering/layout'
+import { canConditionBlock, conditionPolicyLockIds } from '~~/shared/emailRendering/conditionProtection'
+import type { ContentCondition } from '~~/shared/emailRendering/conditions'
+import type { ConditionAction } from '~~/shared/emailRendering/conditionActions'
 import { onBeforeRouteLeave } from 'vue-router'
+import { diagnoseEmailContent, type EmailDiagnosticReference, type EmailDiagnosticImageAsset } from '../../../../shared/emailRendering/contentDiagnostics'
 import { templateCopyCategory, markTemplateClientCopy, templateCopyName } from '~~/app/utils/edmTemplateProvenance'
 import { EDM_SECTION_CATEGORIES, findStarterTemplate } from '~~/app/utils/edmPresets'
-import { figflowTemplateCapability } from '~~/app/utils/edmFigflowLibrary'
+import { figflowComposerQuery, figflowTemplateCapability } from '~~/app/utils/edmFigflowLibrary'
+import { recogniseKnownSection } from '~~/shared/emailRendering/designKnownSections'
+import { designStructureLocked } from '~~/shared/emailRendering/designBrand'
 import type { EdmSectionPreset } from '~~/app/utils/edmPresets'
 import type { EdmFlyhubBlock, EdmFlyhubDocument } from '~~/app/types/edm'
+import type { NativeLibraryIntent } from '~~/app/composables/useEdmNativeLibrary'
+import type { NativeLibraryContext } from '~~/shared/emailRendering/designModules'
 import { extractFragment, reidFragment } from '~~/app/utils/edmModuleFragment'
 import { resolveRootDropIndex, type EdmRootDropPlacement } from '~~/app/utils/edmDragReorder'
 import { getBlockForDevice, isHiddenOnDevice, type EdmDevice } from '~~/app/utils/edmResponsive'
@@ -45,10 +59,23 @@ import type { EdmCustomModule } from '~~/app/composables/useEdmCustomModules'
 
 const store = useEdmBuilder()
 const designFlow = useEdmDesignRoundtrip()
+const brandFlow = useEdmDesignBrand()
+const showBrand = ref(false)
+const showLibrary = ref(false)
+const showHistory = ref(false)
+let brandExpectedBlocks: EdmFlyhubDocument | null = null
+watch(() => designFlow.draft.value, (draft) => {
+  store.setBrandSnapshot(draft?.state === 'structured' ? draft.source.source.brand ?? null : null)
+})
 const figflowEnabled = useRuntimeConfig().public.figflowEdmEnabled === true
 const showFigflow = ref(false)
+const nativeLibrary = designFlow.nativeLibrary
+let nativeLibraryWorkspace: string | null = null
 const showDiscardFigflow = ref(false)
 const showDesignDraftCopy = ref(false)
+// Explicit reviewed conversion of a complete import into a separate FigFlow draft.
+const showEditableCopy = ref(false)
+const editableCopyBusy = ref(false)
 const designDraftName = ref('')
 const designDraftClient = ref<string | undefined>()
 const designDraftError = ref('')
@@ -66,6 +93,54 @@ const apiFetch = $fetch as <T = unknown>(
 ) => Promise<T>
 
 const layout = computed(() => store.getLayoutSettings())
+const showContentChecks = ref(false)
+const pendingDiagnosticJump = ref<EmailDiagnosticReference | null>(null)
+const diagnosticField = ref<string | null>(null)
+const knownDiagnosticAssets = ref<EmailDiagnosticImageAsset[]>([])
+// Computed from current edits, never a persisted approval or a client-rendering claim.
+const contentPreflight = computed(() => ({
+  ok: true,
+  blocked: false,
+  checks: diagnoseEmailContent({
+    document: Object.fromEntries(Object.entries(store.document.value).map(([id, block]) => [id, {
+      ...block, data: getBlockForDevice({ id, ...block }, activeDevice.value).data
+    }])),
+    subject: subject.value,
+    previewText: previewText.value,
+    imageAssets: knownDiagnosticAssets.value
+  })
+}))
+
+function queueDiagnosticJump(reference: EmailDiagnosticReference) {
+  pendingDiagnosticJump.value = reference
+  showContentChecks.value = false
+}
+
+async function jumpToDiagnostic() {
+  const reference = pendingDiagnosticJump.value
+  pendingDiagnosticJump.value = null
+  if (!reference) return
+  viewMode.value = 'editor'
+  const blockId = reference.blockId
+  if (blockId && store.document.value[blockId]) {
+    store.setSelectedBlockId(blockId)
+    const block = store.document.value[blockId]!
+    const selection = block.type === 'Html' && reference.regionId
+      ? getHtmlEditableSelection(String(block.data.props?.contents || ''), reference.regionId)
+      : null
+    store.selectHtmlEditable(selection ? { ...selection, blockId } : null)
+    await nextTick()
+    // Compare IDs rather than interpolating untrusted block IDs into a selector.
+    const target = Array.from(document.querySelectorAll<HTMLElement>('[data-diagnostic-block]'))
+      .find(element => element.dataset.diagnosticBlock === blockId)
+    target?.scrollIntoView({ block: 'center', behavior: 'auto' })
+  } else if (reference.field === 'subject' || reference.field === 'previewText') {
+    diagnosticField.value = reference.field
+    showSaveModal.value = true
+  } else {
+    store.clearSelection()
+  }
+}
 
 // ── Palette ───────────────────────────────────────────────────────────────
 // Slim category list; each category opens a single top-docked flyout panel
@@ -318,12 +393,35 @@ function openHtmlImageLibrary(blockId: string, selection: EdmHtmlEditableSelecti
   imageLibraryOpen.value = true
 }
 
+const campaignImageOpen = ref(false)
+async function replaceCampaignImage(asset: EdmImageAsset) {
+  const selected = selectedBlock.value
+  const current = designFlow.draft.value
+  if (!selected || current?.state !== 'structured' || !canonicalSaved.value || canonicalBlocked.value) return
+  if (!asset.emailPublication) {
+    designFlow.error.value = 'Choose a published registered image.'
+    return
+  }
+  libraryBaseline = { snapshot: workspaceSnapshot(), blocks: JSON.parse(JSON.stringify(store.document.value)) }
+  designFlow.lastLibraryReceipt.value = null
+  try {
+    await designFlow.run(async () => {
+      await designFlow.replaceCampaignImage(selected.id, asset.id)
+      acceptLibraryAction()
+      if (!designLocalConflict.value) campaignImageOpen.value = false
+    })
+  } catch {
+    if (!designFlow.hasPending.value) libraryBaseline = null
+  }
+}
 function applyImageLibraryAsset(asset: EdmImageAsset) {
   const target = imageLibraryTarget.value
   if (!target) return
   const selection = selectedHtmlEditableFor(target.blockId)
   if (!selection || selection.id !== target.selectionId || selection.kind !== 'image') return
-  updateSelectedHtmlEditable({ kind: 'image', src: normaliseEmailImageAssetUrl(asset.url), alt: selection.alt || asset.name })
+  const url = normaliseEmailImageAssetUrl(asset.url)
+  knownDiagnosticAssets.value = [...knownDiagnosticAssets.value.filter(item => item.url !== url), { url, fileSize: asset.fileSize }].slice(-2048)
+  updateSelectedHtmlEditable({ kind: 'image', src: url, alt: selection.alt ?? '' })
   imageLibraryOpen.value = false
   imageLibraryTarget.value = null
 }
@@ -333,6 +431,10 @@ type ViewMode = 'editor' | 'preview' | 'html'
 const viewMode = ref<ViewMode>('editor')
 const activeDevice = ref<EdmDevice>('desktop')
 const previewHtml = ref('')
+const previewSubject = ref('')
+const previewPreheader = ref('')
+let previewGeneration = 0
+const showMergeTags = ref(false)
 const previewLoading = ref(false)
 const previewError = ref('')
 const showTestSendModal = ref(false)
@@ -382,6 +484,7 @@ const previewFrameClass = computed(() => {
 })
 
 async function renderPreview() {
+  const generation = ++previewGeneration
   previewLoading.value = true
   previewError.value = ''
   try {
@@ -390,15 +493,21 @@ async function renderPreview() {
       body: {
         body_source: store.document.value,
         subject: subject.value || null,
-        preview_text: previewText.value || null
+        preview_text: previewText.value || null,
+        variables: mergeTags.variables.value
       }
     })
+    if (generation !== previewGeneration) return
     previewHtml.value = res.html
+    const rendered = new DOMParser().parseFromString(res.html, 'text/html')
+    previewSubject.value = rendered.title
+    previewPreheader.value = rendered.querySelector('body > div[style*="display: none"]')?.textContent || ''
   } catch {
+    if (generation !== previewGeneration) return
     previewError.value = 'Failed to render preview.'
     toast.add({ title: 'Preview failed', description: 'Could not render the email.', color: 'error' })
   } finally {
-    previewLoading.value = false
+    if (generation === previewGeneration) previewLoading.value = false
   }
 }
 
@@ -431,15 +540,11 @@ function isEmailAddress(value: string): boolean {
 
 async function saveCampaignContent() {
   if (!campaignId.value) return
-  await apiFetch(`/api/email/campaigns/${campaignId.value}` as string, {
-    method: 'PATCH',
-    body: buildCampaignEditorPatch({
-      subject: subject.value,
-      previewText: previewText.value,
-      fromEmail: fromEmail.value,
-      bodySource: store.document.value
-    })
-  })
+  const patch = buildCampaignEditorPatch({ subject: subject.value, previewText: previewText.value, fromEmail: fromEmail.value, bodySource: store.document.value })
+  if (designRevisionRequired.value) {
+    if (designFlow.draft.value?.state !== 'structured' || designServiceUnavailable.value) throw new Error('Reconnect the saved campaign before saving.')
+    await designFlow.saveCampaign(patch)
+  } else await apiFetch(`/api/email/campaigns/${campaignId.value}`, { method: 'PATCH', body: patch })
 }
 
 function testSendSuccessDescription(result: NonNullable<typeof testSendResult.value>) {
@@ -572,6 +677,66 @@ const templateClientOptions = computed(() => [
 ])
 const hasValidTemplateClient = computed(() => templateClientOptions.value.some(option => option.value === templateClient.value))
 const hasValidDesignDraftClient = computed(() => templateClientOptions.value.some(option => option.value === designDraftClient.value))
+const campaignClientId = ref<string | null>(null)
+const campaignStatus = ref('draft')
+const mergeClientId = computed(() => campaignId.value ? campaignClientId.value : templateClient.value && templateClient.value !== '__shared__' ? templateClient.value : null)
+const mergeTags = useEdmMergeTags(mergeClientId)
+const conditionDocumentId = computed(() => designFlow.draft.value?.state === 'structured' ? designFlow.draft.value.documentId : null)
+const conditions = useEdmConditions(mergeClientId, conditionDocumentId)
+const conditionPending = ref<ConditionAction | null>(null)
+const conditionSaving = ref(false)
+const conditionEligible = computed(() => {
+  const current = designFlow.draft.value
+  return !!selectedBlock.value && canConditionBlock(store.document.value, selectedBlock.value.id,
+    current?.state === 'structured' ? [...current.source.moduleInstances.flatMap(instance => instance.rootBlockIds), ...conditionPolicyLockIds(current.source.policy)] : [])
+})
+const conditionReady = computed(() => {
+  const current = designFlow.draft.value
+  return !campaignId.value && conditions.canEdit.value && current?.state === 'structured' && current.source.scope.clientId === mergeClientId.value
+    && JSON.stringify(current.source.blocks) === JSON.stringify(store.document.value)
+    && !saving.value && !conditionSaving.value && !conditionPending.value && !designFlow.busy.value && !designFlow.hasPending.value
+    && !['open', 'proposed'].includes(designFlow.handoff.value?.state ?? '') && !designServiceUnavailable.value && !designLocalConflict.value
+})
+let conditionBaseline = ''
+async function saveCondition(value: ContentCondition | null) {
+  const current = designFlow.draft.value
+  if (!current || current.state !== 'structured' || conditionSaving.value) return
+  if (!conditionPending.value) {
+    if (!conditionReady.value || !conditionEligible.value || !selectedBlock.value) return
+    conditionPending.value = { documentId: current.documentId, expectedRevisionId: current.headRevisionId,
+      operationId: crypto.randomUUID(), blockId: selectedBlock.value.id, condition: value }
+    conditionBaseline = JSON.stringify(store.document.value)
+  }
+  conditionSaving.value = true
+  try {
+    const receipt = await $fetch<{ documentId: string, revisionId: string }>('/api/email/design/conditions', { method: 'POST', body: conditionPending.value })
+    const draft = await designFlow.lookup(designReadOwner(current), receipt.revisionId)
+    if (draft?.state !== 'structured') throw new Error('Condition readback unavailable')
+    if (JSON.stringify(store.document.value) === conditionBaseline) {
+      store.resetDocument(draft.source.blocks as EdmFlyhubDocument)
+      markWorkspaceDocumentSaved()
+    } else {
+      designLocalConflict.value = true
+      toast.add({ title: 'Condition saved', description: 'Your newer local changes are kept. Reload the saved draft before editing conditions again.', color: 'warning' })
+    }
+    conditionPending.value = null
+  } catch (error) {
+    const failure = error as { statusCode?: number, status?: number }
+    const status = failure.statusCode ?? failure.status
+    if (status && status >= 400 && status < 500) conditionPending.value = null
+    toast.add({ title: 'Condition save unconfirmed', description: conditionPending.value ? 'Reconcile the same condition save before continuing. Your local content is kept.' : 'The condition was rejected. Reload the current draft and check designer access.', color: 'error' })
+  } finally { conditionSaving.value = false }
+}
+const sampleFieldLabels = [
+  { key: 'first_name', label: 'First name' }, { key: 'name', label: 'Full name' }, { key: 'email', label: 'Email address' }
+]
+watch([mergeTags.variables, mergeClientId], () => {
+  ++previewGeneration
+  previewHtml.value = ''
+  previewSubject.value = ''
+  previewPreheader.value = ''
+  if (viewMode.value !== 'editor') void renderPreview()
+}, { deep: true })
 
 async function loadTemplateClients() {
   loadingTemplateClients.value = true
@@ -596,7 +761,15 @@ const TEMPLATE_KIND_OPTIONS: { label: string, value: TemplateKind }[] = [
 ]
 
 async function save(): Promise<boolean> {
+  // Opening FigFlow saves inside designFlow.run(). Only a concurrent canonical
+  // library/history action owns this latch and must block that existing save.
+  if (designFlow.busy.value && libraryBaseline) return false
+  if (conditionSaving.value || conditionPending.value) return false
   if (templateLoading.value || templateLoadError.value) return false
+  if (brandFlow.busy.value || brandFlow.hasPending.value) {
+    brandFlow.error.value = 'Reconcile the brand or lock action before saving more changes.'
+    return false
+  }
   if (designRevisionRequired.value && (designServiceUnavailable.value || designFlow.draft.value?.state !== 'structured')) {
     designFlow.error.value = 'The design service is unavailable. Your content is kept; reconnect it before saving this versioned draft.'
     return false
@@ -612,6 +785,8 @@ async function save(): Promise<boolean> {
     // Campaigns tab), so we patch subject + body onto it — no name required.
     if (campaignId.value) {
       await saveCampaignContent()
+      workspaceSavedSnapshot.value = savedSnapshot
+      loadedDesignRevisionId.value = designFlow.draft.value?.headRevisionId ?? loadedDesignRevisionId.value
       toast.add({ title: 'Saved', description: 'Campaign content saved.', color: 'success' })
       showSaveModal.value = false
       return true
@@ -674,13 +849,45 @@ async function save(): Promise<boolean> {
 // FigFlow edits an independent template draft; campaigns and library originals
 // keep their identities. The server owns scope, revisions and proposal effects.
 const figflowSourceUnsupported = computed(() => {
+  // Source admission is separate from server-authorized structural authoring.
+  if (designFlow.designerAuthoring.value.available) return false
   const current = designFlow.draft.value
-  // Existing versioned designs keep their stored policy; local edits must not
-  // infer permission to edit fields the original handoff did not allow.
+  // Never derive a new policy for an existing versioned design.
   if (current?.state === 'structured') return current.source.policy.editableFields.length === 0
   return !figflowTemplateCapability(store.document.value).canOpen
 })
+async function beginCampaignFigflow() {
+  if (!campaignId.value || !campaignClientId.value || !designFlow.campaignAuthoring.value.available || campaignStatus.value !== 'draft') return
+  if (designFlow.hasPending.value) {
+    await reconcileDesignAction()
+    return
+  }
+  if (workspaceBusy.value || templateLoading.value || templateLoadError.value) return
+  if (['open', 'proposed'].includes(designFlow.handoff.value?.state ?? '')) {
+    showFigflow.value = true
+    return
+  }
+  try {
+    await designFlow.run(async () => {
+      const target = { kind: 'campaign' as const, id: campaignId.value! }
+      const opening = workspaceSnapshot()
+      if (workspaceSnapshot() !== workspaceSavedSnapshot.value && !await save()) return
+      if (workspaceSnapshot() !== opening) throw new Error('The composer changed while saving. Save again before opening FigFlow.')
+      const current = designFlow.draft.value
+      const saved = current?.state === 'structured' ? { draftId: current.documentId, expectedRevisionId: current.headRevisionId } : undefined
+      const result = await designFlow.open(target, campaignClientId.value, true, saved)
+      if (result.owner?.kind !== 'campaign' || result.owner.id !== campaignId.value) throw new Error('Campaign handoff owner mismatch')
+      designFlow.setLocalBaseline(opening)
+      designRevisionRequired.value = true
+      loadedDesignRevisionId.value = result.baseRevisionId
+      designLocalConflict.value = workspaceSnapshot() !== opening || !sameDesignSource(store.document.value, result.source.blocks)
+      showFigflow.value = true
+      await router.replace({ query: { ...route.query, campaign: campaignId.value, designSession: result.id, designMode: designFlow.mode.value } })
+    })
+  } catch { /* Original operation and local edits remain available for reconciliation. */ }
+}
 async function beginFigflow(createDraft = false) {
+  if (conditionSaving.value || conditionPending.value || brandFlow.busy.value || brandFlow.hasPending.value) return
   if (saving.value || designFlow.busy.value || templateLoading.value || templateLoadError.value) return
   if (designFlow.hasPending.value) {
     await reconcileDesignAction()
@@ -690,6 +897,7 @@ async function beginFigflow(createDraft = false) {
   try {
     await designFlow.run(async () => {
       const openingSource = JSON.stringify(store.document.value)
+      let savedBaseline: { draftId: string, expectedRevisionId: string } | undefined
       if (createDraft) {
         if (draftCopyUnconfirmed.value) return
         const draftName = designDraftName.value.trim()
@@ -736,18 +944,110 @@ async function beginFigflow(createDraft = false) {
           showSaveModal.value = true
           return
         }
-        if (!await save()) return
+        const current = designFlow.draft.value
+        const clientId = templateClient.value === '__shared__' ? null : templateClient.value
+        if (current?.state === 'structured') {
+          if (current.templateId !== templateId.value || current.source.scope.clientId !== clientId)
+            throw new Error('Reopen the same saved template and client before editing in FigFlow.')
+          if (current.projection.state !== 'current' || current.projectionRevisionId !== current.headRevisionId)
+            throw new Error('The saved design projection changed. Reload before editing in FigFlow.')
+          // A clean confirmed workspace needs no content or metadata revision.
+          // Dirty fields still pass through the existing save/readback owner.
+          if (!canonicalSaved.value && !await save()) return
+          const confirmed = designFlow.draft.value
+          if (confirmed?.state !== 'structured' || !canonicalSaved.value || confirmed.templateId !== templateId.value || confirmed.source.scope.clientId !== clientId
+            || confirmed.projectionRevisionId !== confirmed.headRevisionId)
+            throw new Error('The saved design changed while opening. Keep local edits and reload before continuing.')
+          savedBaseline = { draftId: confirmed.documentId, expectedRevisionId: confirmed.headRevisionId }
+        } else if (!await save()) return
       }
       if (!templateId.value) return
       if (JSON.stringify(store.document.value) !== openingSource) throw new Error('The composer changed while saving. Save again before opening FigFlow.')
-      const result = await designFlow.open(templateId.value, templateClient.value === '__shared__' ? null : templateClient.value!)
+      const clientId = templateClient.value === '__shared__' ? null : templateClient.value!
+      const result = savedBaseline
+        ? await designFlow.open(templateId.value, clientId, designFlow.designerAuthoring.value.available, savedBaseline)
+        : await designFlow.open(templateId.value, clientId, designFlow.designerAuthoring.value.available)
       designRevisionRequired.value = true
       designServiceUnavailable.value = false
       designLocalConflict.value = false
+      designFlow.setLocalBaseline?.(workspaceSnapshot())
       showFigflow.value = true
-      await router.replace({ query: { ...route.query, designSession: result.id } })
+      await router.replace({ query: { ...route.query, designSession: result.id, designMode: designFlow.mode.value } })
     })
   } catch { /* The flow retains the failed operation and displays recovery. */ }
+}
+// Generated sections (e.g. split call-to-actions saved before starters became
+// structured) that can become FigFlow layers. Recognition here is only a hint;
+// the server re-derives and verifies every section from the saved revision.
+const knownSections = computed(() => {
+  const current = designFlow.draft.value
+  if (current?.state !== 'structured' || campaignId.value || !designFlow.designerAuthoring.value.available) return []
+  return Object.entries(current.source.blocks).filter(([blockId, block]) => recogniseKnownSection(block as Parameters<typeof recogniseKnownSection>[0])
+    && !designStructureLocked(current.source, blockId, true)).map(([blockId]) => blockId)
+})
+// Ends when this builder instance goes away (navigation away / remount; called
+// from the existing unmount hook), so a late open/propose reply never presents
+// or routes into a newer workspace.
+let knownSectionLifetime = 0
+function endKnownSectionLifetime() {
+  knownSectionLifetime++
+}
+/** Explicit, reviewed update: never runs on open. Proposes server-derived
+ * operations through the existing designer handoff; Apply is one undoable change. */
+async function reviewKnownSections() {
+  if (!knownSections.value.length || workspaceBusy.value || !templateId.value) return
+  // One review intent, captured before any await: this builder instance, its
+  // route, owner (template/campaign/client), the live draft document and the
+  // complete local workspace (content and metadata). It is rechecked after every
+  // await, reading live state. The only change allowed is the save-first step
+  // advancing this same draft's head; any other change stops before the next
+  // request or any baseline/presentation/route write. A successful save stands,
+  // an opened handoff or returned proposal stays unapplied, and nothing retries.
+  const started = knownSectionLifetime
+  const routeAtStart = JSON.stringify(route.query)
+  const ownerKey = () => JSON.stringify({ template: templateId.value, campaign: campaignId.value, client: templateClient.value })
+  const owner = ownerKey()
+  const liveDraft = () => {
+    const draft = designFlow.draft.value
+    return draft?.state === 'structured' ? { documentId: draft.documentId, headRevisionId: draft.headRevisionId } : null
+  }
+  const documentId = liveDraft()?.documentId
+  const opening = workspaceSnapshot()
+  const sameIntent = () => started === knownSectionLifetime && routeAtStart === JSON.stringify(route.query) && owner === ownerKey()
+    && workspaceSnapshot() === opening && !!documentId && liveDraft()?.documentId === documentId
+  let stopped = ''
+  try {
+    await designFlow.run(async () => {
+      if (!canonicalSaved.value) {
+        if (!await save()) return
+        if (!sameIntent()) throw new Error(stopped = 'The composer or open template changed while saving. Your saved changes are kept; the section update was not started.')
+      }
+      const current = designFlow.draft.value
+      const clientId = templateClient.value === '__shared__' ? null : templateClient.value!
+      if (current?.state !== 'structured' || current.templateId !== templateId.value || current.source.scope.clientId !== clientId
+        || current.projection.state !== 'current' || current.projectionRevisionId !== current.headRevisionId || !canonicalSaved.value)
+        throw new Error('The saved design changed. Reload before updating sections.')
+      const sections = knownSections.value
+      if (!sections.length) return
+      const head = current.headRevisionId
+      const unchanged = () => sameIntent() && liveDraft()?.headRevisionId === head
+      const result = await designFlow.open(templateId.value!, clientId, true, { draftId: current.documentId, expectedRevisionId: head })
+      if (!unchanged()) throw new Error(stopped = 'The composer or open template changed while preparing the section update. Nothing was saved; your edits are kept.')
+      designRevisionRequired.value = true
+      designLocalConflict.value = false
+      const operationId = designFlow.designerOperationId.value
+      if (!operationId) throw new Error('Open the designer again before updating sections.')
+      await designFlow.proposeDesigner(sections.map(blockId => ({ op: 'adopt-known-section' as const, blockId })), operationId)
+      if (!unchanged()) throw new Error(stopped = 'The composer or open template changed while preparing the section update. The update was not applied; your edits are kept.')
+      designFlow.setLocalBaseline?.(opening)
+      showFigflow.value = true
+      await router.replace({ query: { ...route.query, designSession: result.id, designMode: designFlow.mode.value } })
+    })
+  } catch {
+    // The flow retains the failed operation and displays recovery. A drift stop
+    // is not an uncertain write: say what happened, unless this builder is gone.
+    if (stopped && started === knownSectionLifetime) designFlow.error.value = stopped
+  }
 }
 function sameDesignSource(a: unknown, b: unknown): boolean {
   if (a === b) return true
@@ -755,11 +1055,40 @@ function sameDesignSource(a: unknown, b: unknown): boolean {
   const keys = Object.keys(a)
   return keys.length === Object.keys(b).length && keys.every(key => Object.hasOwn(b, key) && sameDesignSource((a as Record<string, unknown>)[key], (b as Record<string, unknown>)[key]))
 }
+function openBrandControls() {
+  if (workspaceBusy.value || !templateId.value || campaignId.value) return
+  if (designFlow.draft.value?.state !== 'structured') {
+    toast.add({ title: 'Save a versioned design first', description: 'Open this draft in FigFlow once to initialize its saved design, then return to brand controls.', color: 'info' })
+    return
+  }
+  if (!sameDesignSource(store.document.value, designFlow.draft.value.source.blocks)) {
+    toast.add({ title: 'Save content changes first', description: 'Brand and lock actions apply to the saved revision. Save your local content changes, then reopen these controls.', color: 'info' })
+    return
+  }
+  brandExpectedBlocks = JSON.parse(JSON.stringify(store.document.value))
+  showBrand.value = true
+}
+function acceptBrandDraft(draft: Extract<import('~~/server/utils/email-marketing/designReads').TemplateDesignDraftRead, { state: 'structured' }>) {
+  if (!brandExpectedBlocks || !store.applyDesignReturn(brandExpectedBlocks, draft.source.blocks)) {
+    designLocalConflict.value = true
+    brandFlow.error.value = 'The saved design changed while local edits were made. Reload this draft before saving again.'
+    return
+  }
+  designFlow.draft.value = draft
+  loadedDesignRevisionId.value = draft.headRevisionId
+  brandExpectedBlocks = JSON.parse(JSON.stringify(draft.source.blocks))
+  store.setBrandSnapshot(draft.source.source.brand ?? null)
+  markWorkspaceDocumentSaved()
+}
+async function reconcileBrandAction() {
+  const draft = await brandFlow.reconcile()
+  if (draft) acceptBrandDraft(draft)
+}
 async function reconnectDesignService() {
-  if (!templateId.value) return
+  if (!templateId.value && !campaignId.value) return
   try {
     const expected = designFlow.draft.value?.headRevisionId ?? loadedDesignRevisionId.value ?? undefined
-    const current = await designFlow.lookup(templateId.value, expected)
+    const current = await designFlow.lookup(campaignId.value ? { kind: 'campaign', id: campaignId.value } : templateId.value!, expected)
     if (designRevisionRequired.value && current?.state !== 'structured') throw new Error('Versioned draft unavailable')
     if (!expected && current?.state === 'structured' && !sameDesignSource(store.document.value, current.source.blocks)) {
       designFlow.draft.value = null
@@ -772,10 +1101,16 @@ async function reconnectDesignService() {
   } catch { designServiceUnavailable.value = true }
 }
 function closeFigflow() {
+  if (nativeLibrary.state.value && designFlow.hasPending.value) return
   if (designFlow.handoff.value?.state === 'open') showDiscardFigflow.value = true
-  else showFigflow.value = false
+  else {
+    showFigflow.value = false
+    nativeLibrary.clear()
+    nativeLibraryWorkspace = null
+  }
 }
 function editInFigflow() {
+  if (conditionSaving.value || conditionPending.value || brandFlow.busy.value || brandFlow.hasPending.value) return
   if (saving.value || designFlow.busy.value || templateLoading.value || templateLoadError.value) return
   if (designFlow.handoff.value?.state === 'open' || designFlow.handoff.value?.state === 'proposed') {
     showFigflow.value = true
@@ -798,13 +1133,61 @@ async function proposeFigflow(design: import('~~/shared/emailRendering/designCon
     await designFlow.run(() => designFlow.propose(design))
   } catch { /* Shown in panel. */ }
 }
+async function proposeFigflowDesigner(operations: import('~~/shared/emailRendering/designDesigner').DesignerOperation[], operationId: string) {
+  try {
+    await designFlow.run(() => designFlow.proposeDesigner(operations, operationId))
+  } catch { /* Shown in the review panel; the saved draft is unchanged. */ }
+}
+async function prepareNativeLibrary(context: NativeLibraryContext, intent: NativeLibraryIntent) {
+  const handoff = designFlow.handoff.value
+  if (!handoff || !designFlow.designerOperationId.value || !designFlow.libraryAuthoring.value.available || workspaceBusy.value) return
+  if (!sameDesignSource(store.document.value, handoff.source.blocks)) {
+    designLocalConflict.value = true
+    return
+  }
+  try {
+    nativeLibrary.capture(handoff, context, designFlow.designerOperationId.value, intent)
+    nativeLibraryWorkspace = workspaceSnapshot()
+    await designFlow.run(async () => {
+      await designFlow.proposeDesigner(context.operations as import('~~/shared/emailRendering/designDesigner').DesignerOperation[], context.operationId)
+      if (!context.operations.length) {
+        await designFlow.finish('cancel')
+        if (workspaceSnapshot() !== nativeLibraryWorkspace) throw new Error('The composer changed. Reopen FigFlow before using this selection.')
+        nativeLibrary.saved(designFlow.draft.value, handoff.baseRevisionId)
+      }
+    })
+  } catch { /* Captured work and any pending action remain recoverable. */ }
+}
+async function reopenNativeLibrary() {
+  const selection = nativeLibrary.state.value
+  if (!selection?.ready) return
+  nativeLibrary.requireReopen()
+  if (designLocalConflict.value) return
+  const current = designFlow.draft.value
+  if (current?.state !== 'structured' || current.documentId !== selection.documentId || JSON.stringify(designReadOwner(current)) !== JSON.stringify(selection.owner)
+    || !sameDesignSource(store.document.value, current.source.blocks) || workspaceSnapshot() !== workspaceSavedSnapshot.value) throw new Error('The saved design changed. Reopen it before continuing.')
+  const result = await designFlow.reopenLibraryDraft(selection.owner, selection.documentId, current.headRevisionId)
+  if (result.draftId !== selection.documentId || JSON.stringify(result.owner ?? { kind: 'template', id: result.templateId }) !== JSON.stringify(selection.owner)) throw new Error('Design draft mismatch')
+  nativeLibrary.clear()
+  nativeLibraryWorkspace = null
+  showFigflow.value = true
+  await router.replace({ query: { ...route.query, designSession: result.id, designMode: designFlow.mode.value } })
+}
+async function returnFromNativeLibrary() {
+  if (workspaceBusy.value) return
+  try {
+    await designFlow.run(reopenNativeLibrary)
+  } catch { /* Exact reopen request is retained. */ }
+}
+
 async function applyFigflow() {
   const handoff = designFlow.handoff.value
   if (!handoff?.proposal) return
   // Compare without touching undo history before committing remotely. Compare
   // again after the response to preserve any edits made while awaiting it.
 
-  if (!sameDesignSource(store.document.value, handoff.source.blocks)) {
+  const baseline = workspaceSnapshot()
+  if ((designFlow.localBaseline.value && designFlow.localBaseline.value !== baseline) || (nativeLibrary.state.value && nativeLibraryWorkspace !== baseline) || !sameDesignSource(store.document.value, handoff.source.blocks)) {
     designLocalConflict.value = true
     return
   }
@@ -812,20 +1195,67 @@ async function applyFigflow() {
     await designFlow.run(async () => {
       const result = await designFlow.finish('apply')
       const current = designFlow.draft.value
-      if (!current || current.headRevisionId !== result.appliedRevisionId || !store.applyDesignReturn(handoff.source.blocks, handoff.proposal!.blocks)) {
+      if (!current || workspaceSnapshot() !== baseline || current.headRevisionId !== result.appliedRevisionId || !store.applyDesignReturn(handoff.source.blocks, handoff.proposal!.blocks)) {
         designLocalConflict.value = true
         throw new Error('Current draft changed; local edits kept')
       }
-      showFigflow.value = false
       markWorkspaceDocumentSaved()
+      if (nativeLibrary.state.value) {
+        nativeLibrary.saved(current, result.appliedRevisionId!)
+        nativeLibraryWorkspace = workspaceSnapshot()
+      } else showFigflow.value = false
       toast.add({ title: 'Design changes saved', description: 'Applied as one undoable change.', color: 'success' })
     })
   } catch { /* The server conflicts or the local draft is preserved. */ }
+}
+async function recoverFigflowCampaign(recoveryName: string) {
+  try {
+    await designFlow.run(async () => {
+      const result = await designFlow.recoverCampaign(recoveryName)
+      await navigateTo({ path: '/agency/email/compose', query: { campaign: result.recovery.campaignId } }, { external: true })
+    })
+  } catch { /* Retain the original recovery action until its receipt is reconciled. */ }
+}
+async function restartFigflow() {
+  if (workspaceBusy.value || (designFlow.localBaseline.value && designFlow.localBaseline.value !== workspaceSnapshot())) {
+    designFlow.error.value = 'Keep your newer composer edits. Save or recover them before restarting this handoff.'
+    return
+  }
+  const original = designFlow.handoff.value
+  if (!original) return
+  const snapshot = workspaceSnapshot()
+  try {
+    await designFlow.run(async () => {
+      // Explicit restart keeps the old immutable proposal and reads the current
+      // owner head. It never resets to the obsolete proposal's base revision.
+      const current = await designFlow.lookup(original.owner ?? original.templateId!)
+      if (workspaceSnapshot() !== snapshot || current?.state !== 'structured' || current.projection.state !== 'current') throw new Error('The current draft changed while restarting. Your local edits are kept.')
+      await designFlow.finish('cancel')
+      if (workspaceSnapshot() !== snapshot || !store.applyDesignReturn(original.source.blocks, current.source.blocks)) {
+        designLocalConflict.value = true
+        throw new Error('Local edits are kept. Reload the current saved draft before restarting.')
+      }
+      if ('metadata' in current) {
+        subject.value = current.metadata.subject ?? ''
+        previewText.value = current.metadata.previewText ?? ''
+      }
+      workspaceSavedSnapshot.value = workspaceSnapshot()
+      designLocalConflict.value = false
+      nativeLibrary.clear()
+      showFigflow.value = false
+    })
+    if (designFlow.handoff.value?.state === 'cancelled' && !designLocalConflict.value) {
+      if (campaignId.value) await beginCampaignFigflow()
+      else await beginFigflow()
+    }
+  } catch { /* Both the old proposal and local composer content remain retained. */ }
 }
 async function cancelFigflow() {
   try {
     await designFlow.run(async () => {
       await designFlow.finish('cancel')
+      nativeLibrary.clear()
+      nativeLibraryWorkspace = null
       showFigflow.value = false
     })
   } catch { /* Shown in panel. */ }
@@ -834,16 +1264,30 @@ async function reconcileDesignAction() {
   try {
     await designFlow.run(async () => {
       const result = await designFlow.reconcile()
-      if (!result) return
-      if (result.templateId !== templateId.value) throw new Error('Design draft mismatch')
+      if (designFlow.lastRecovery.value) {
+        await navigateTo({ path: '/agency/email/compose', query: { campaign: designFlow.lastRecovery.value.campaignId } }, { external: true })
+        return
+      }
+      if (!result) {
+        if (campaignId.value && designFlow.lastCampaignPatch.value && sameDesignSource(designFlow.lastCampaignPatch.value, buildCampaignEditorPatch({ subject: subject.value, previewText: previewText.value, fromEmail: fromEmail.value, bodySource: store.document.value }))) workspaceSavedSnapshot.value = workspaceSnapshot()
+        acceptLibraryAction()
+        if (designFlow.nativeLibrary.state.value?.ready && !designFlow.hasPending.value && !designLocalConflict.value && !libraryBaseline) await reopenNativeLibrary()
+        return
+      }
+      if (campaignId.value ? result.owner?.kind !== 'campaign' || result.owner.id !== campaignId.value : result.templateId !== templateId.value) throw new Error('Design draft mismatch')
       if (result.state === 'applied' && result.proposal) {
         const current = designFlow.draft.value
-        designLocalConflict.value = current?.headRevisionId !== result.appliedRevisionId
+        designLocalConflict.value = (!!designFlow.localBaseline.value && designFlow.localBaseline.value !== workspaceSnapshot()) || current?.headRevisionId !== result.appliedRevisionId
           || !store.applyDesignReturn(result.source.blocks, result.proposal.blocks)
-        if (!designLocalConflict.value) markWorkspaceDocumentSaved()
+        if (!designLocalConflict.value) {
+          markWorkspaceDocumentSaved()
+          if (designFlow.nativeLibrary.state.value) designFlow.nativeLibrary.saved(current, result.appliedRevisionId!)
+        }
       }
+      if (designFlow.nativeLibrary.state.value && result.state === 'cancelled') designFlow.nativeLibrary.saved(designFlow.draft.value, result.baseRevisionId)
+      if (designFlow.nativeLibrary.state.value?.ready && result.state === 'open') designFlow.nativeLibrary.clear()
       showFigflow.value = true
-      await router.replace({ query: { ...route.query, designSession: result.id } })
+      await router.replace({ query: { ...route.query, designSession: result.id, designMode: designFlow.mode.value } })
     })
   } catch { /* Keep original payload pending until its receipt is confirmed. */ }
 }
@@ -872,6 +1316,11 @@ const moduleCategoryOptions = computed(() => [
 ])
 
 function openSaveModule() {
+  if (designRevisionRequired.value || designFlow.draft.value?.state === 'structured') {
+    openCanonicalPanel('library')
+    return
+  }
+  if (workspaceBusy.value) return
   if (!selectedBlock.value) return
   moduleName.value = ''
   moduleDescription.value = ''
@@ -887,6 +1336,11 @@ function openSaveModuleForBlock(blockId: string) {
 }
 
 async function saveModule() {
+  if (designRevisionRequired.value || designFlow.draft.value?.state === 'structured') {
+    openCanonicalPanel('library')
+    return
+  }
+  if (workspaceBusy.value) return
   const block = selectedBlock.value
   if (!block) return
   if (!moduleName.value.trim()) {
@@ -914,6 +1368,19 @@ async function saveModule() {
 // Insert a saved module: re-ID its fragment so ids never collide with blocks
 // already in the document, then splice it in at the given position.
 function insertCustomModule(module: EdmCustomModule, position?: number) {
+  if (module.design_document_id || module.head_revision_id || module.revision_schema_version === 1) {
+    if (!canonicalReady.value || module.revision_schema_version !== 1 || !module.head_revision_id) {
+      openCanonicalPanel('library')
+      return
+    }
+    void executeLibraryAction(() => designFlow.library({ command: 'insert-module', moduleId: module.id, revisionId: module.head_revision_id!, parentId: 'root', index: position ?? (store.document.value.root?.data.childrenIds?.length ?? 0) }))
+    return
+  }
+  if (designRevisionRequired.value || designFlow.draft.value?.state === 'structured') {
+    openCanonicalPanel('library')
+    return
+  }
+  if (workspaceBusy.value) return
   if (!canInsertBlocks()) return
   const fragment = reidFragment(module.blocks)
   store.insertBlocks(fragment.blocks, fragment.rootChildrenIds, 'root', position)
@@ -931,6 +1398,11 @@ const renamingModule = ref(false)
 const deletingModule = ref(false)
 
 function openRenameModule(module: EdmCustomModule) {
+  if (module.design_document_id || module.head_revision_id) {
+    openCanonicalPanel('library')
+    return
+  }
+  if (workspaceBusy.value) return
   moduleBeingManaged.value = module
   renameModuleName.value = module.name
   renameModuleDescription.value = module.description ?? ''
@@ -965,6 +1437,11 @@ async function confirmRenameModule() {
 }
 
 function openDeleteModule(module: EdmCustomModule) {
+  if (module.design_document_id || module.head_revision_id) {
+    openCanonicalPanel('library')
+    return
+  }
+  if (workspaceBusy.value) return
   moduleBeingManaged.value = module
   showDeleteModuleModal.value = true
 }
@@ -985,6 +1462,16 @@ async function confirmDeleteModule() {
 }
 
 const workspaceSavedSnapshot = ref('')
+async function openEditableCopy(id: string) {
+  // Never discard local composer edits by reloading into the copy.
+  if (workspaceSnapshot() !== workspaceSavedSnapshot.value) {
+    toast.add({ title: 'Save your changes first', description: 'The editable copy is ready. Save or discard the composer changes, then open it.', color: 'warning' })
+    return
+  }
+  showEditableCopy.value = false
+  // A full reload starts the new draft's workspace from its own saved source.
+  await reloadNuxtApp({ path: `/agency/email/compose?${new URLSearchParams(figflowComposerQuery(id))}` })
+}
 function workspaceSnapshot() {
   return JSON.stringify({ document: store.document.value, name: name.value, subject: subject.value,
     previewText: previewText.value, client: templateClient.value, kind: templateKind.value, category: templateFolderName.value })
@@ -997,14 +1484,100 @@ function markWorkspaceDocumentSaved() {
   saved.document = store.document.value
   workspaceSavedSnapshot.value = JSON.stringify(saved)
 }
-const workspaceBusy = computed(() => saving.value || designFlow.busy.value || designFlow.hasPending.value)
+const workspaceBusy = computed(() => conditionSaving.value || !!conditionPending.value || saving.value || designFlow.busy.value || designFlow.hasPending.value || brandFlow.busy.value || brandFlow.hasPending.value)
+const canonicalSaved = computed(
+  () =>
+    designFlow.draft.value?.state === 'structured'
+    && designFlow.draft.value.projection.state === 'current'
+    && sameDesignSource(store.document.value, designFlow.draft.value.source.blocks)
+    && workspaceSnapshot() === workspaceSavedSnapshot.value
+)
+const canonicalBlocked = computed(
+  () =>
+    workspaceBusy.value
+    || designLocalConflict.value
+    || designServiceUnavailable.value
+    || !!templateLoadError.value
+    || templateLoading.value
+    || ['open', 'proposed'].includes(designFlow.handoff.value?.state ?? '')
+)
+const canonicalReady = computed(() => canonicalSaved.value && !canonicalBlocked.value && designFlow.libraryAuthoring.value.available)
+let libraryBaseline: { snapshot: string, blocks: EdmFlyhubDocument } | null = null
+function openCanonicalPanel(panel: 'library' | 'history') {
+  if (canonicalBlocked.value) return
+  if (!designFlow.libraryAuthoring.value.available || designFlow.draft.value?.state !== 'structured') {
+    toast.add({
+      title: 'Open a saved design draft first',
+      description: 'The versioned library requires current design access and an available saved draft.',
+      color: 'info'
+    })
+    return
+  }
+  if (panel === 'library') showLibrary.value = true
+  else showHistory.value = true
+}
+function acceptLibraryAction() {
+  if (!libraryBaseline) return
+  const receipt = designFlow.lastLibraryReceipt.value
+  if (!receipt) {
+    libraryBaseline = null
+    return
+  }
+  if (!receipt.published) {
+    const current = designFlow.draft.value
+    if (
+      workspaceSnapshot() !== libraryBaseline.snapshot
+      || current?.state !== 'structured'
+      || current.headRevisionId !== receipt.revisionId
+      || !store.applyDesignReturn(libraryBaseline.blocks, current.source.blocks)
+    ) {
+      designLocalConflict.value = true
+      designFlow.error.value
+        = 'The composer changed while saving. Your newer local edits are kept. Reload the saved draft before saving again.'
+      return
+    }
+    loadedDesignRevisionId.value = current.headRevisionId
+    const metadata = receipt as typeof receipt & { subject?: string | null, previewText?: string | null }
+    if (metadata.subject !== undefined) subject.value = metadata.subject ?? ''
+    if (metadata.previewText !== undefined) previewText.value = metadata.previewText ?? ''
+    store.setBrandSnapshot(current.source.source.brand ?? null)
+    workspaceSavedSnapshot.value = workspaceSnapshot()
+  }
+  libraryBaseline = null
+  void customModules.load(true).catch(() => {})
+  toast.add({ title: receipt.published ? 'Published to the library' : 'Saved design updated', color: 'success' })
+}
+async function executeLibraryAction(action: () => Promise<unknown>) {
+  if (!canonicalReady.value || nativeLibrary.state.value?.reopenRequired) return
+  libraryBaseline = { snapshot: workspaceSnapshot(), blocks: JSON.parse(JSON.stringify(store.document.value)) }
+  designFlow.lastLibraryReceipt.value = null
+  try {
+    await designFlow.run(action)
+    acceptLibraryAction()
+    if (nativeLibrary.state.value?.ready && !libraryBaseline && !designLocalConflict.value) await designFlow.run(reopenNativeLibrary)
+  } catch {
+    if (!designFlow.hasPending.value) libraryBaseline = null
+  }
+}
+function publishCanonicalTemplate(review: ReviewedTemplatePublication) {
+  const current = designFlow.draft.value
+  if (current?.state !== 'structured' || !designFlow.libraryAuthoring.value.publisher
+    || current.documentId !== review.request.draftId || current.headRevisionId !== review.request.expectedRevisionId
+    || JSON.stringify(current) !== review.sourceSnapshot) return
+  const request = JSON.parse(JSON.stringify(review.request)) as ReviewedTemplatePublication['request']
+  void executeLibraryAction(() => designFlow.template(request))
+}
+
 const workspaceLeave = useEdmWorkspaceLeave({
   hasChanges: () => !!workspaceSavedSnapshot.value && workspaceSnapshot() !== workspaceSavedSnapshot.value,
-  isBusy: () => workspaceBusy.value,
+  isBusy: () => workspaceBusy.value || editableCopyBusy.value,
   save
 })
 onBeforeRouteLeave(() => route.query.workspace === 'figflow' ? workspaceLeave.request() : true)
-onBeforeUnmount(() => workspaceLeave.stay())
+onBeforeUnmount(() => {
+  endKnownSectionLifetime()
+  workspaceLeave.stay()
+})
 
 onMounted(async () => {
   async function initialise() {
@@ -1021,8 +1594,11 @@ onMounted(async () => {
               name: string
               subject: string | null
               from_email: string | null
+              client_id: string | null
               preview_text: string | null
               body_source: unknown
+              status: string
+              email_design_revision_id?: string | null
               preflight_result?: EmailBuilderSchedulePreflight | null
               recipient_snapshot?: EmailBuilderScheduleRecipientSnapshot | null
             }
@@ -1030,6 +1606,10 @@ onMounted(async () => {
           if (res.campaign?.body_source) {
             store.resetDocument(res.campaign.body_source as EdmFlyhubDocument)
           }
+          campaignClientId.value = res.campaign.client_id ?? null
+          campaignStatus.value = res.campaign.status
+          loadedDesignRevisionId.value = res.campaign.email_design_revision_id ?? null
+          designRevisionRequired.value = !!loadedDesignRevisionId.value
           name.value = res.campaign.name || ''
           subject.value = res.campaign.subject || ''
           fromEmail.value = res.campaign.from_email || ''
@@ -1038,6 +1618,17 @@ onMounted(async () => {
           campaignSnapshot.value = res.campaign.recipient_snapshot ?? null
           schedulePreflight.value = campaignPreflight.value
           scheduleSnapshot.value = campaignSnapshot.value
+          if (figflowEnabled) {
+            await reconnectDesignService()
+            const sessionId = route.query.designSession
+            if (!designServiceUnavailable.value && typeof sessionId === 'string') {
+              const session = await designFlow.resume(sessionId, route.query.designMode === 'designer')
+              if (session.owner?.kind !== 'campaign' || session.owner.id !== campaign) throw new Error('Campaign handoff owner mismatch')
+              designFlow.setLocalBaseline(workspaceSnapshot())
+              designLocalConflict.value = !sameDesignSource(store.document.value, session.source.blocks)
+              showFigflow.value = ['open', 'proposed'].includes(session.state)
+            }
+          } else designServiceUnavailable.value = designRevisionRequired.value
         } catch {
           templateLoadError.value = 'Could not load this campaign. Retry before editing.'
           toast.add({ title: 'Load failed', description: 'Could not load that campaign.', color: 'error' })
@@ -1077,8 +1668,21 @@ onMounted(async () => {
             folder_name?: string | null
             client_id: string | null
             email_design_revision_id?: string | null
+            design_document_id?: string | null
+            head_revision_id?: string | null
+            revision_schema_version?: number | null
           }
         }>(`/api/email/templates/${id}`)
+        if (copying && res.template.design_document_id) {
+          // Canonical copying must select an immutable source and destination;
+          // never hydrate a raw fragment that drops modules/assets/policy.
+          await navigateTo({ path: '/agency/email', query: { tab: 'templates', workspace: 'figflow', copyTemplate: id, ...(typeof route.query.client === 'string' ? { client: route.query.client } : {}) } })
+          return
+        }
+        if (!copying && res.template.design_document_id && res.template.template_kind !== 'draft') {
+          await navigateTo({ path: '/agency/email', query: { tab: 'templates', workspace: 'figflow', copyTemplate: id } })
+          return
+        }
         if (res.template?.body_source) {
           store.resetDocument((copying ? markTemplateClientCopy(res.template.body_source, res.template.id) : res.template.body_source) as EdmFlyhubDocument)
         }
@@ -1096,7 +1700,7 @@ onMounted(async () => {
           const sessionId = route.query.designSession
           if (!designServiceUnavailable.value && typeof sessionId === 'string') {
             try {
-              const session = await designFlow.resume(sessionId)
+              const session = await designFlow.resume(sessionId, route.query.designMode === 'designer')
               if (session.templateId !== res.template.id) throw new Error('Design draft mismatch')
               showFigflow.value = session.state === 'open' || session.state === 'proposed'
             } catch {
@@ -1149,9 +1753,9 @@ onMounted(async () => {
       color="neutral"
     />
   </div>
-  <div v-show="!templateLoading && !templateLoadError" class="flex flex-col h-full">
+  <div v-show="!templateLoading && !templateLoadError" class="flex min-h-0 flex-col h-full">
     <!-- Toolbar -->
-    <header class="flex items-center gap-2 px-4 py-2 border-b border-default">
+    <header class="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-default">
       <div class="flex items-center gap-1">
         <UButton
           icon="i-lucide-undo-2"
@@ -1222,6 +1826,22 @@ onMounted(async () => {
         @click="renderPreview()"
       />
       <UButton
+        icon="i-lucide-braces"
+        label="Merge tags"
+        color="neutral"
+        variant="outline"
+        size="sm"
+        @click="showMergeTags = true"
+      />
+      <UButton
+        icon="i-lucide-list-checks"
+        variant="outline"
+        color="neutral"
+        size="sm"
+        label="Content checks"
+        @click="showContentChecks = true"
+      />
+      <UButton
         v-if="campaignId"
         icon="i-lucide-calendar-clock"
         variant="outline"
@@ -1239,15 +1859,45 @@ onMounted(async () => {
         @click="openTestSend()"
       />
       <UButton
-        v-if="figflowEnabled && !campaignId"
+        v-if="figflowEnabled && (!campaignId || designFlow.campaignAuthoring.value.available)"
         icon="i-lucide-pen-tool"
         label="Edit in FigFlow"
         variant="outline"
         color="neutral"
         size="sm"
         :loading="designFlow.busy.value"
-        :disabled="saving || (figflowSourceUnsupported && !designFlow.hasPending.value && !['open', 'proposed'].includes(designFlow.handoff.value?.state ?? ''))"
-        @click="editInFigflow"
+        :disabled="conditionSaving || !!conditionPending || saving || designFlow.busy.value || brandFlow.busy.value || brandFlow.hasPending.value || (figflowSourceUnsupported && !designFlow.hasPending.value && !['open', 'proposed'].includes(designFlow.handoff.value?.state ?? ''))"
+        @click="campaignId ? beginCampaignFigflow() : editInFigflow()"
+      />
+      <UButton
+        v-if="figflowEnabled && !campaignId && templateKind === 'draft' && designFlow.draft.value?.state === 'structured'"
+        icon="i-lucide-palette"
+        label="Brand and locks"
+        variant="outline"
+        color="neutral"
+        size="sm"
+        :disabled="workspaceBusy"
+        @click="openBrandControls"
+      />
+      <UButton
+        v-if="designFlow.libraryAuthoring.value.available"
+        label="Design library"
+        icon="i-lucide-library"
+        color="neutral"
+        variant="outline"
+        size="sm"
+        :disabled="canonicalBlocked"
+        @click="openCanonicalPanel('library')"
+      />
+      <UButton
+        v-if="designFlow.libraryAuthoring.value.available"
+        label="Version history"
+        icon="i-lucide-history"
+        color="neutral"
+        variant="outline"
+        size="sm"
+        :disabled="canonicalBlocked"
+        @click="openCanonicalPanel('history')"
       />
       <UButton
         icon="i-lucide-save"
@@ -1258,6 +1908,13 @@ onMounted(async () => {
       />
     </header>
 
+    <UAlert
+      v-if="conditionPending"
+      title="Condition save needs reconciliation"
+      description="Retry the same saved condition before making another draft change. Your local content is kept."
+      color="warning"
+      :actions="[{ label: 'Reconcile condition save', onClick: () => conditionPending && saveCondition(conditionPending.condition) }]"
+    />
     <UAlert
       v-if="designServiceUnavailable"
       color="warning"
@@ -1270,7 +1927,28 @@ onMounted(async () => {
       v-if="figflowEnabled && !campaignId && !templateLoading && !templateLoadError && figflowSourceUnsupported && !showFigflow"
       color="info"
       title="Continue editing this source in the composer"
-      description="This source has no supported fields available for FigFlow content editing. Imported HTML cannot open as native editable content. Keep editing and saving here, or choose a structured starter for FigFlow."
+      :description="isImportedDocument && templateId
+        ? 'Imported HTML cannot open in FigFlow directly. Create a reviewed editable copy: supported sections become FigFlow layers, everything else stays protected, and this original is not changed.'
+        : 'FigFlow content editing needs supported structured content and editable fields. Imported HTML cannot open as native editable content. Choose a structured starter for native editing, or keep editing and saving here.'"
+      :actions="isImportedDocument && templateId ? [{ label: 'Create editable FigFlow copy', icon: 'i-lucide-copy-plus', onClick: () => { showEditableCopy = true } }] : []"
+      class="m-3"
+    />
+    <EmailBuilderEdmEditableCopyModal
+      v-if="isImportedDocument && templateId && !campaignId"
+      v-model:open="showEditableCopy"
+      :template-id="templateId"
+      :template-name="name"
+      :unsaved-changes="showEditableCopy && workspaceSnapshot() !== workspaceSavedSnapshot"
+      @created="openEditableCopy"
+      @busy="value => { editableCopyBusy = value }"
+    />
+    <UAlert
+      v-if="knownSections.length && !showFigflow && !designFlow.hasPending.value"
+      color="info"
+      icon="i-lucide-layers"
+      :title="`${knownSections.length} generated ${knownSections.length === 1 ? 'section is' : 'sections are'} still HTML in FigFlow`"
+      description="Review an update that rebuilds them as editable photo, heading, text and button layers. Only unedited generated sections with plain text and links without “&amp;” (for example tracking parameters) qualify; others stay as HTML, unchanged. Any unsaved composer changes are saved first; the section update itself is only saved when you apply it, and Undo reverts it."
+      :actions="[{ label: 'Review section update', icon: 'i-lucide-wand-sparkles', disabled: workspaceBusy, onClick: reviewKnownSections }]"
       class="m-3"
     />
     <UAlert
@@ -1281,7 +1959,68 @@ onMounted(async () => {
       :actions="designFlow.hasPending.value ? [{ label: 'Reconcile saved action', onClick: reconcileDesignAction }] : []"
     />
     <!-- Body -->
-    <div class="flex-1 overflow-hidden">
+    <UAlert
+      v-if="brandFlow.error.value || brandFlow.hasPending.value"
+      color="warning"
+      :title="brandFlow.error.value || 'A brand or lock action needs reconciliation.'"
+      class="m-3"
+      :actions="brandFlow.hasPending.value ? [{ label: 'Reconcile brand action', onClick: reconcileBrandAction }] : []"
+    />
+    <USlideover
+      v-model:open="showBrand"
+      title="Brand and design locks"
+      :dismissible="!brandFlow.busy.value"
+      :close="!brandFlow.busy.value"
+    >
+      <template #body>
+        <EmailBuilderEdmBrandPanel
+          v-if="designFlow.draft.value?.state === 'structured'"
+          :flow="brandFlow"
+          :draft-id="designFlow.draft.value.documentId"
+          :blocked="conditionSaving || !!conditionPending || saving || designFlow.busy.value || designFlow.hasPending.value || designLocalConflict"
+          @saved="acceptBrandDraft"
+        />
+      </template>
+    </USlideover>
+    <USlideover
+      v-model:open="showLibrary"
+      title="Design library"
+      :dismissible="!designFlow.busy.value && !designFlow.hasPending.value"
+      :close="!designFlow.busy.value && !designFlow.hasPending.value"
+      :ui="{ content: 'max-w-xl', body: 'flex min-h-0 p-0' }"
+    >
+      <template #body>
+        <EmailBuilderEdmDesignLibraryPanel
+          v-if="showLibrary"
+          :flow="designFlow"
+          :blocked="canonicalBlocked"
+          :saved="canonicalSaved"
+          :selected-id="selectedBlock?.id ?? null"
+          @module="command => executeLibraryAction(() => designFlow.library(command))"
+          @publish-template="publishCanonicalTemplate"
+          @reconcile-template="reconcileDesignAction"
+          @publish-image="assetId => executeLibraryAction(() => designFlow.publishImage(assetId))"
+        />
+      </template>
+    </USlideover>
+    <USlideover
+      v-model:open="showHistory"
+      title="Version history"
+      :dismissible="!designFlow.busy.value"
+      :close="!designFlow.busy.value"
+      :ui="{ content: 'max-w-xl', body: 'flex min-h-0 p-0' }"
+    >
+      <template #body>
+        <EmailBuilderEdmDesignHistoryPanel
+          v-if="showHistory"
+          :flow="designFlow"
+          :blocked="canonicalBlocked"
+          :saved="canonicalSaved"
+          @restore="revisionId => executeLibraryAction(() => designFlow.restoreRevision(revisionId))"
+        />
+      </template>
+    </USlideover>
+    <div class="flex flex-col flex-1 min-h-0 overflow-hidden">
       <!-- Editor -->
       <div v-show="viewMode === 'editor'" class="flex h-full">
         <!-- Left: slim category rail with a top-docked flyout panel. -->
@@ -1324,7 +2063,7 @@ onMounted(async () => {
         >
           <div
             class="mx-auto min-h-64 rounded shadow-sm"
-            :style="{ backgroundColor: layout.canvasColor, color: layout.textColor, width: '100%', maxWidth: (activeDevice === 'mobile' ? 390 : Math.max(320, Math.min(960, Number(store.document.value.root?.data.props?.contentWidth) || 600))) + 'px' }"
+            :style="{ backgroundColor: layout.canvasColor, color: layout.textColor, width: '100%', maxWidth: (activeDevice === 'mobile' ? 390 : resolveEmailContentWidth(store.document.value.root?.data.props?.contentWidth)) + 'px' }"
             @click.stop
           >
             <!-- Empty state: click to open the unified Add module bubble (opens
@@ -1356,6 +2095,7 @@ onMounted(async () => {
             <!-- Block list -->
             <template v-for="(block, index) in childBlocks" :key="block.id">
               <EmailBuilderEditorBlockWrapper
+                :data-diagnostic-block="block.id"
                 :block-id="block.id"
                 :is-drag-source="draggedRootBlockId === block.id"
                 :drop-placement="rootDropPreview?.targetBlockId === block.id ? rootDropPreview.placement : null"
@@ -1435,7 +2175,7 @@ onMounted(async () => {
         </main>
 
         <!-- Right: block inspector when a block is selected, else email settings -->
-        <aside class="w-80 border-l border-default p-3 overflow-auto">
+        <aside class="w-80 min-h-0 border-l border-default p-3 overflow-y-auto">
           <template v-if="selectedBlock">
             <div class="flex items-center justify-between mb-3">
               <p class="text-xs font-semibold uppercase text-muted">
@@ -1452,11 +2192,25 @@ onMounted(async () => {
                 />
               </UTooltip>
             </div>
+            <UButton
+              v-if="campaignId && selectedBlock.type === 'Image' && designFlow.campaignAuthoring.value.contentImagesAvailable && designFlow.draft.value?.state === 'structured' && designFlow.draft.value.source.policy.editableFields.includes(`${selectedBlock.id}.data.props.url`)"
+              label="Replace registered image"
+              color="neutral"
+              variant="outline"
+              class="mb-3 w-full"
+              :disabled="!canonicalSaved || canonicalBlocked"
+              @click="campaignImageOpen = true"
+            />
             <EmailBuilderBlockSettingsPanel
               :block="selectedBlock"
               :base-block="{ id: selectedBlock.id, type: selectedBlock.type, data: selectedBlock.baseData }"
               :device="activeDevice"
+              :condition-eligible="conditionEligible"
+              :condition-ready="conditionReady"
+              :condition-pending="!!conditionPending"
               :html-editable="selectedHtmlEditableFor(selectedBlock.id)"
+              @condition="saveCondition"
+              @reconcile-condition="conditionPending && saveCondition(conditionPending.condition)"
               @update="onBlockUpdate"
             />
           </template>
@@ -1469,8 +2223,49 @@ onMounted(async () => {
         </aside>
       </div>
 
+      <div v-if="viewMode !== 'editor'" class="@container shrink-0 max-h-[40svh] overflow-y-auto border-b border-default bg-default p-3 space-y-2">
+        <div class="flex flex-wrap items-end gap-3">
+          <UFormField label="Preview as">
+            <USelect v-model="mergeTags.previewMode.value" :items="[{ label: 'Authored tokens and fallbacks', value: 'tokens' }, { label: 'Sample values', value: 'samples' }]" class="w-full min-w-52" />
+          </UFormField>
+          <UPopover v-if="mergeTags.previewMode.value === 'samples'">
+            <UButton
+              label="Edit samples"
+              color="neutral"
+              variant="soft"
+              size="sm"
+            />
+            <template #content>
+              <div class="w-80 max-h-96 overflow-y-auto p-4 space-y-4 bg-default text-default">
+                <p class="text-xs text-muted">
+                  Made-up values only. No subscribers are fetched and no email is sent.
+                </p>
+                <UFormField v-for="field in sampleFieldLabels" :key="field.key" :label="field.label">
+                  <UInput v-model="mergeTags.samples.value[field.key]" :maxlength="256" class="w-full" />
+                </UFormField>
+                <p class="text-xs text-muted">
+                  Unsubscribe uses example.invalid. Edit custom sample values in Merge tags.
+                </p>
+              </div>
+            </template>
+          </UPopover>
+        </div>
+        <p class="text-xs text-muted">
+          Sample preview only. Custom fields use their literal fallback at delivery; unsupported tags stay visible here and may be empty at delivery.
+        </p>
+        <p v-if="mergeTags.error.value" class="text-xs text-error">
+          {{ mergeTags.error.value }}
+        </p>
+        <p v-if="previewSubject" class="text-sm text-default">
+          <span class="text-muted">Subject:</span> {{ previewSubject }}
+        </p>
+        <p v-if="previewPreheader" class="text-sm text-default">
+          <span class="text-muted">Preview text:</span> {{ previewPreheader }}
+        </p>
+      </div>
+
       <!-- Preview -->
-      <div v-if="viewMode === 'preview'" class="h-full overflow-auto bg-elevated/30 p-6">
+      <div v-if="viewMode === 'preview'" class="flex-1 min-h-0 overflow-auto bg-elevated/30 p-6">
         <div v-if="previewError" class="mx-auto max-w-[600px]">
           <UAlert color="error" :title="previewError" />
         </div>
@@ -1487,7 +2282,7 @@ onMounted(async () => {
       </div>
 
       <!-- HTML -->
-      <div v-if="viewMode === 'html'" class="h-full overflow-auto p-6">
+      <div v-if="viewMode === 'html'" class="flex-1 min-h-0 overflow-auto p-6">
         <div class="mx-auto max-w-3xl space-y-3">
           <div class="flex justify-end">
             <UButton
@@ -1509,10 +2304,18 @@ onMounted(async () => {
       </div>
     </div>
 
+    <UModal v-model:open="showMergeTags" title="Client merge tags">
+      <template #body>
+        <div class="max-h-[70svh] min-h-0 overflow-y-auto">
+          <EmailBuilderEdmMergeTagManager />
+        </div>
+      </template>
+    </UModal>
+
     <!-- Save modal -->
     <UModal v-model:open="showSaveModal" :title="campaignId ? 'Save to campaign' : 'Save template'">
       <template #content>
-        <div class="@container p-4 space-y-4">
+        <div class="@container max-h-[85svh] min-h-0 overflow-y-auto p-4 space-y-4">
           <p class="text-sm font-semibold">
             {{ campaignId ? `Save content to “${name || 'campaign'}”` : (templateId ? 'Update template' : 'Save template') }}
           </p>
@@ -1566,8 +2369,14 @@ onMounted(async () => {
             </UFormField>
           </div>
           <UFormField label="Subject line">
-            <UInput v-model="subject" placeholder="Subject shown in the inbox" class="w-full" />
+            <UInput
+              v-model="subject"
+              :autofocus="diagnosticField === 'subject'"
+              placeholder="Subject shown in the inbox"
+              class="w-full"
+            />
           </UFormField>
+          <EmailBuilderEdmMergeTagPicker @insert="subject += (subject ? ' ' : '') + $event" />
           <UFormField
             v-if="campaignId"
             label="From email"
@@ -1582,8 +2391,14 @@ onMounted(async () => {
             />
           </UFormField>
           <UFormField label="Preview text" help="The snippet shown after the subject in most inboxes.">
-            <UInput v-model="previewText" placeholder="Preview text" class="w-full" />
+            <UInput
+              v-model="previewText"
+              :autofocus="diagnosticField === 'previewText'"
+              placeholder="Preview text"
+              class="w-full"
+            />
           </UFormField>
+          <EmailBuilderEdmMergeTagPicker @insert="previewText += (previewText ? ' ' : '') + $event" />
           <div class="flex justify-end gap-2 pt-2">
             <UButton
               variant="ghost"
@@ -1658,6 +2473,14 @@ onMounted(async () => {
       @pick="applyImageLibraryAsset"
     />
 
+    <EmailBuilderEdmImageLibraryPicker
+      v-model:open="campaignImageOpen"
+      canonical
+      published-only
+      :client-id="campaignClientId"
+      @pick="replaceCampaignImage"
+    />
+
     <!-- Send a single test email from the active builder context. -->
     <UModal v-model:open="showTestSendModal" title="Send test email">
       <template #content>
@@ -1725,6 +2548,32 @@ onMounted(async () => {
               label="Send test"
               :loading="testSending"
               @click="sendTestEmail()"
+            />
+          </div>
+        </div>
+      </template>
+    </UModal>
+
+    <UModal
+      v-model:open="showContentChecks"
+      title="Email content checks"
+      :ui="{ content: 'max-w-2xl' }"
+      @after:leave="jumpToDiagnostic"
+    >
+      <template #content>
+        <div class="max-h-[85svh] min-h-0 overflow-y-auto p-4">
+          <EmailCampaignPreflightPanel
+            :preflight="contentPreflight"
+            content-only
+            can-select-issue
+            @select-issue="queueDiagnosticJump"
+          />
+          <div class="mt-4 flex justify-end">
+            <UButton
+              label="Close"
+              color="neutral"
+              variant="ghost"
+              @click="showContentChecks = false"
             />
           </div>
         </div>
@@ -1919,16 +2768,56 @@ onMounted(async () => {
             v-if="designFlow.handoff.value"
             :key="designFlow.handoff.value.id"
             :handoff="designFlow.handoff.value"
+            :mode="designFlow.mode.value"
+            :capabilities="designFlow.designerCapabilities.value"
+            :operation-id="designFlow.designerOperationId.value"
+            :library-available="designFlow.libraryAuthoring.value.available"
+            :library-publisher="designFlow.libraryAuthoring.value.publisher"
+            :library-ready="nativeLibrary.state.value?.ready === true"
             :busy="designFlow.busy.value"
             :error="designFlow.error.value"
             :conflict="designLocalConflict"
             :subject="subject"
             :preview-text="previewText"
             @propose="proposeFigflow"
+            @propose-designer="proposeFigflowDesigner"
             @apply="applyFigflow"
             @cancel="cancelFigflow"
             @resume="resumeFigflow"
-          />
+            @recover="recoverFigflowCampaign"
+            @restart="restartFigflow"
+            @library-request="prepareNativeLibrary"
+          >
+            <template #library>
+              <div v-if="nativeLibrary.state.value?.ready" class="flex min-h-0 flex-1 flex-col overflow-hidden rounded border border-default">
+                <div class="flex items-center justify-between gap-3 border-b border-default p-4">
+                  <p class="text-sm font-medium">
+                    Saved design library
+                  </p>
+                  <UButton
+                    label="Return to design"
+                    color="neutral"
+                    variant="outline"
+                    :disabled="workspaceBusy"
+                    @click="returnFromNativeLibrary"
+                  />
+                </div>
+                <EmailBuilderEdmDesignLibraryPanel
+                  :flow="designFlow"
+                  :blocked="canonicalBlocked || nativeLibrary.state.value.reopenRequired"
+                  :saved="canonicalSaved"
+                  :selected-id="nativeLibrary.state.value.context.selectedBlockIds.length === 1 ? nativeLibrary.state.value.context.selectedBlockIds[0]! : null"
+                  :selected-roots="nativeLibrary.state.value.context.selectedBlockIds"
+                  :insertion-target="nativeLibrary.state.value.context.insertionTarget ?? null"
+                  :initial-section="nativeLibrary.state.value.intent"
+                  @module="command => executeLibraryAction(() => designFlow.library(command))"
+                  @publish-template="publishCanonicalTemplate"
+                  @reconcile-template="reconcileDesignAction"
+                  @publish-image="assetId => executeLibraryAction(() => designFlow.publishImage(assetId))"
+                />
+              </div>
+            </template>
+          </EmailBuilderEdmFigflowHandoff>
         </div>
       </template>
     </UModal>

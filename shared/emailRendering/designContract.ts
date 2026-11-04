@@ -1,5 +1,8 @@
 import { z } from 'zod'
+import { validRenderingQualityProps } from './renderingQuality'
+import { assertDocumentConditions, conditionPolicyLockIds } from './conditionProtection'
 import { RenderBoundaryError, snapshotRenderInput } from './bounds'
+import { EmailBrandSnapshotSchema } from './designBrandDefaults'
 
 // New authoring boundary only. Legacy documents continue through their existing
 // paths until revision migration explicitly snapshots and validates them.
@@ -35,7 +38,13 @@ const Block = z
 const Policy = z
   .object({
     version: z.literal(1),
-    editableFields: z.array(FieldPath).max(3000)
+    editableFields: z.array(FieldPath).max(3000),
+    // Persisted restrictions, never accepted from a designer proposal. Absence
+    // retains legacy content-policy semantics and conservative derived grants.
+    designerLocks: z.object({
+      blockIds: z.array(Id).max(300),
+      styleFields: z.array(FieldPath).max(3000)
+    }).strict().optional()
   })
   .strict()
 const DesignSchema = z
@@ -48,6 +57,7 @@ const DesignSchema = z
     source: z
       .object({
         editor: z.enum(['composer', 'figflow', 'legacy']),
+        brand: EmailBrandSnapshotSchema.optional(),
         nativeArtifact: z
           .object({ id: Id, sha256: Digest })
           .strict()
@@ -164,7 +174,7 @@ function unique(values: string[], field: string) {
 }
 function hasPath(blocks: EmailDesignDocument['blocks'], path: string): boolean {
   const parts = path.split('.')
-  if (parts.length < 3 || parts[1] !== 'data' || parts.includes('childrenIds'))
+  if (parts.length < 3 || parts[1] !== 'data' || (parts.includes('childrenIds') || parts.includes('visibilityCondition')))
     return false
   let value: unknown = blocks
   for (const part of parts) {
@@ -191,6 +201,11 @@ function parseEmailDesign(input: unknown): EmailDesignDocument {
     invalid('scope.clientId')
   if (design.kind === 'module')
     snapshotRenderInput(snapshot, DESIGN_LIMITS.moduleBytes)
+  for (const block of Object.values(design.blocks)) {
+    if (!validRenderingQualityProps(block.type, block.data.props ?? {}, block.data.style)) invalid('renderingQuality')
+    const mobile = block.data.mobile as { props?: Record<string, unknown> } | undefined
+    if (mobile?.props && !validRenderingQualityProps('__mobile__', mobile.props)) invalid('mobile.renderingQuality')
+  }
   const ids = Object.keys(design.blocks)
   if (!ids.length || ids.length > DESIGN_LIMITS.blocks) invalid('blocks')
   if (
@@ -293,6 +308,7 @@ function parseEmailDesign(input: unknown): EmailDesignDocument {
         invalid('moduleInstances.overrides')
     }
   }
+  assertDocumentConditions(design.blocks, [...design.moduleInstances.flatMap(instance => instance.rootBlockIds), ...conditionPolicyLockIds(design.policy)])
   unique(
     design.assets.map(asset => asset.id),
     'assets'

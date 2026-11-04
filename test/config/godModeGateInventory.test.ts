@@ -409,15 +409,44 @@ describe('God mode gate inventory', () => {
     expect(inventory.rows).not.toContain('server/api/agency/banner-studio/custom-templates/[id].delete.ts\tif (existing.isSystem && ![\'admin\', \'owner\'].includes(user.role)) {\tordinary_user_behavior')
     expect(inventory.rows).not.toContain('server/api/agency/banner-studio/custom-templates/[id].delete.ts\tif (existing.createdBy !== user.id && ![\'admin\', \'owner\'].includes(user.role)) {\tordinary_user_behavior')
     // One new presentation flag; server authority and all existing gates are unchanged.
-    expect(inventory.rows).toContain("app/components/email/builder/EdmFlyhubBuilder.client.vue\tconst figflowEnabled = useRuntimeConfig().public.figflowEdmEnabled === true\tapplication_governance_bypass")
+    expect(inventory.rows).toContain('app/components/email/builder/EdmFlyhubBuilder.client.vue\tconst figflowEnabled = useRuntimeConfig().public.figflowEdmEnabled === true\tapplication_governance_bypass')
     // The unchanged signing verifier moved from excluded auth.ts into its build-time port.
-    expect(inventory.rows).toContain("server/utils/sessionToken.ts\tconst JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production'\tprovider_infrastructure_availability")
-    expect(inventory.rows).toHaveLength(1720)
+    expect(inventory.rows).toContain('server/utils/sessionToken.ts\tconst JWT_SECRET = process.env.JWT_SECRET || \'your-secret-key-change-in-production\'\tprovider_infrastructure_availability')
+    // Reviewed against origin/main 7b8818c83: six added inline write gates;
+    // no removed/reclassified rows. This lexical class does not register a bypass.
+    const authoringWriteGates = [
+      'server/api/agency/email/conditions/[id].delete.ts\tconst user = await requireWriteAccess(event)\tapplication_governance_bypass',
+      'server/api/agency/email/conditions/[id].patch.ts\tconst user = await requireWriteAccess(event)\tapplication_governance_bypass',
+      'server/api/agency/email/conditions/index.post.ts\tconst user = await requireWriteAccess(event)\tapplication_governance_bypass',
+      'server/api/agency/email/merge-tags/[id].delete.ts\tconst user = await requireWriteAccess(event)\tapplication_governance_bypass',
+      'server/api/agency/email/merge-tags/[id].patch.ts\tconst user = await requireWriteAccess(event)\tapplication_governance_bypass',
+      'server/api/agency/email/merge-tags/index.post.ts\tconst user = await requireWriteAccess(event)\tapplication_governance_bypass'
+    ]
+    for (const row of authoringWriteGates) expect(inventory.rows).toContain(row)
+    expect(authoringWriteGates).toHaveLength(6)
+    // Exact source-row audit from 46e74e04c (1726 rows, digest 9f28f7a4):
+    // M06 adds only these two lexical rows; none is removed or reclassified.
+    // The first is a comment counted by the unchanged mechanical pattern.
+    // The second is the existing binding/env flag owner, not a bypass grant.
+    const m06GateRows = [
+      'server/utils/email-marketing/review.ts\t* (including \'false\'); then the per-request cached binding; then process.env. */\tprovider_infrastructure_availability',
+      'server/utils/email-marketing/review.ts\tconst value = fromRequest ?? getCachedBinding(\'FIGFLOW_EDM_WORKFLOW_ENABLED\') ?? process.env.FIGFLOW_EDM_WORKFLOW_ENABLED\tapplication_governance_bypass'
+    ]
+    expect(inventory.rows.filter(row => row.startsWith('server/utils/email-marketing/review.ts\t'))).toEqual(m06GateRows)
+    // Campaign selection adds one exact existing-department agency-template read predicate; no bypass is registered.
+    expect(inventory.rows).toContain('server/utils/ai/marketing/departmentEmailOperations.ts\tif (!fresh.permissionGroups?.some(group => [\'ADMIN\', \'MANAGEMENT\'].includes(group))) refuse(\'Agency template access required\', \'forbidden\')\tordinary_user_behavior')
+    // Imported-email editable copy: one preview/save gate, the same reviewed
+    // read-or-write shape as the banner viewer snapshot. Save is a write and stays
+    // a mandatory application control; no bypass family is registered.
+    // The fenced write re-checks the same write authority after rendering (+1).
+    expect(inventory.rows).toContain('server/api/email/templates/[id]/editable-copy.post.ts\tconst user = input.save ? await requireWriteAccess(event) : await requireAuth(event)\tapplication_governance_bypass')
+    expect(inventory.rows).toContain('server/api/email/templates/[id]/editable-copy.post.ts\tconst fresh = await requireWriteAccess(event)\tapplication_governance_bypass')
+    expect(inventory.rows).toHaveLength(1732)
     expect(inventory.counts).toEqual({
       identity_tenant_hard_boundary: 135,
-      provider_infrastructure_availability: 223,
-      application_governance_bypass: 1629,
-      ordinary_user_behavior: 301,
+      provider_infrastructure_availability: 224,
+      application_governance_bypass: 1639,
+      ordinary_user_behavior: 302,
       unrelated_configuration: 431
     })
     // Removing the session KV shortcut removes four auth middleware rows:
@@ -441,7 +470,13 @@ describe('God mode gate inventory', () => {
     // to shared services. Email dispatch now reads request-bound provider config.
     // The classifier and owner bypass registrations remain unchanged; the reviewed
     // row diff is recorded in the marketing-management verification ledger.
-    expect(inventory.digest).toBe('cb41911da1dc0bf50bbad1ddf534de6f8313448d492bedd7d524f600b548e4cb')
+    const canonicalMcpGate = 'server/utils/ai/marketing/departmentEmailOperations.ts\tif (!enabled(\'FIGFLOW_EDM_DRAFT_SAVES_ENABLED\', process.env.FIGFLOW_EDM_DRAFT_SAVES_ENABLED) || (selection && !enabled(\'FIGFLOW_EDM_LIBRARY_ENABLED\', process.env.FIGFLOW_EDM_LIBRARY_ENABLED))) refuse(\'Canonical email drafts are unavailable for this environment\', \'not_found\')\tapplication_governance_bypass'
+    expect(inventory.rows).toContain(canonicalMcpGate)
+    const editableCopyGates = new Set(['server/api/email/templates/[id]/editable-copy.post.ts\tconst user = input.save ? await requireWriteAccess(event) : await requireAuth(event)\tapplication_governance_bypass', 'server/api/email/templates/[id]/editable-copy.post.ts\tconst fresh = await requireWriteAccess(event)\tapplication_governance_bypass'])
+    expect(createHash('sha256').update(inventory.rows.filter(row => row !== canonicalMcpGate && !editableCopyGates.has(row)).join('\n')).digest('hex')).toBe('32f9ebab4bc8d326fd8bd41618e27d5150f70164c2f9003fb9ab53c3765aef11')
+    const campaignReadGate = 'server/utils/ai/marketing/departmentEmailOperations.ts\tif (!fresh.permissionGroups?.some(group => [\'ADMIN\', \'MANAGEMENT\'].includes(group))) refuse(\'Agency template access required\', \'forbidden\')\tordinary_user_behavior'
+    expect(createHash('sha256').update(inventory.rows.filter(row => row !== campaignReadGate && row !== canonicalMcpGate && !editableCopyGates.has(row)).join('\n')).digest('hex')).toBe('9f8c344829d51230c1147d080d246f5e054632a19461cea1988602fc7356487f')
+    expect(inventory.digest).toBe('4e415a5f0962da9cd96962a3097690eedcf663f0c8b34e73242655716944c00f')
     expect(inventory.rows).toContain(
       'app/composables/usePageStudioLauncher.ts\tconst config = useRuntimeConfig()\tunrelated_configuration'
     )

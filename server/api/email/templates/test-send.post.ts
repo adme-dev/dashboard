@@ -10,7 +10,9 @@ import { renderTemplateDocument } from '~~/server/utils/email-marketing/render'
 import { isFlyhubFormat } from '~~/shared/emailRendering/format'
 import { isSenderDomainAllowed } from '~~/server/utils/email-marketing/campaignSend'
 import { resolveCampaignSenderDomains } from '~~/server/utils/email-marketing/senderIdentity'
-import { checkEmailSendability, htmlToPlainText } from '~~/server/utils/email-marketing/sendability'
+import { checkEmailSendability } from '~~/server/utils/email-marketing/sendability'
+import { deliveryPlainText } from '~~/shared/emailRendering/deliveryContent'
+import { resolveEmailMergeTags } from '~~/shared/emailRendering/mergeTags'
 import { prepareSendableHtmlWithMirroredAssets } from '~~/server/utils/email-marketing/sendableHtml'
 
 const OptionalTestRecipient = z.preprocess((value) => {
@@ -90,18 +92,20 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const subject = parsed.data.subject?.trim() || ''
+  const variables = parsed.data.variables ?? {}
+  const subject = resolveEmailMergeTags(parsed.data.subject?.trim() || '', variables, { context: 'text', missing: 'empty' })
   const previewText = parsed.data.preview_text?.trim() || ''
   const html = await renderTemplateDocument(parsed.data.body_source, {
-    subjectLine: subject,
+    subjectLine: parsed.data.subject?.trim() || '',
     previewText,
-    variables: parsed.data.variables
+    variables
   }, createEmailRenderer(event.context?.cloudflare?.env ?? {}))
   const appUrl = getAppUrl(event)
   const sendableHtml = await prepareSendableHtmlWithMirroredAssets(html, {
     appUrl,
     userId: String((user as { id?: string, email?: string }).id || (user as { email?: string }).email || 'email-test')
   })
+  if (sendableHtml.includes('<!--xf-condition')) throw createError({ statusCode: 422, statusMessage: 'unresolved_conditional_content' })
   const sendability = checkEmailSendability({
     html: sendableHtml,
     subject,
@@ -120,7 +124,7 @@ export default defineEventHandler(async (event) => {
     to: [to],
     subject: `[TEST] ${subject}`,
     html: sendableHtml,
-    text: htmlToPlainText(sendableHtml),
+    text: deliveryPlainText(sendableHtml),
     headers: {
       'X-Email-Test': 'true',
       'X-Email-Preview-Origin': appUrl

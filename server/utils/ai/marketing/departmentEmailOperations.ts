@@ -24,6 +24,13 @@ import {
   claimExecution, claimOutcome, finishExecution, refuse, refusalOf, sha256, validExecutionIdentity,
   type ExecutionIdentity, type LedgerDb
 } from './departmentExecutionLedger'
+import { EmailDesignError } from '../../../../shared/emailRendering/designContract'
+import { DesignRevisionError } from '~~/server/utils/email-marketing/designRevisions'
+import { DesignModuleError } from '../../../../shared/emailRendering/designModules'
+import { createCampaignFromTemplateRevision, readCampaignTemplateRevisionScope, type CampaignContentMutation, type CampaignDesignAuthority } from '~~/server/utils/email-marketing/designCampaigns'
+import { createDesignAssetStorage, type DesignAssetStorage } from '~~/server/utils/email-marketing/designAssets'
+import { getCachedCfBinding } from '~~/server/utils/cfBindings'
+import { getAppUrl } from '~~/server/utils/appUrl'
 import type { Campaign } from '~~/server/utils/email-marketing/campaigns'
 import type { EmailRendererClient } from '../../../../shared/emailRendering/contract'
 
@@ -35,6 +42,7 @@ const PROPOSAL_TTL_HOURS = 24
 const MAX_BODY_SOURCE_READ_BYTES = 64 * 1024
 
 export interface DepartmentEmailDeps {
+  designStorage?: (ctx: ToolContext) => DesignAssetStorage
   sendingEnabled?: (event: H3Event) => boolean
   sendingConfigured?: (event: H3Event) => boolean
   senderDomains?: (event: H3Event) => string[]
@@ -100,6 +108,11 @@ async function defaultRequireReviewer(event: H3Event, input: { requesterId: stri
 // ------------------------------------------------------------------------------- runtime gates
 
 // Request bindings (ctx.event) override process.env, which is only a local fallback.
+function assertCanonicalDraftAdmission(ctx: ToolContext, selection: boolean) {
+  const env = ctx.event.context?.cloudflare?.env as Record<string, unknown> | undefined
+  const enabled = (key: string, fallback: string | undefined) => (env?.[key] ?? getCachedCfBinding(key) ?? fallback) === 'true'
+  if (!enabled('FIGFLOW_EDM_DRAFT_SAVES_ENABLED', process.env.FIGFLOW_EDM_DRAFT_SAVES_ENABLED) || (selection && !enabled('FIGFLOW_EDM_LIBRARY_ENABLED', process.env.FIGFLOW_EDM_LIBRARY_ENABLED))) refuse('Canonical email drafts are unavailable for this environment', 'not_found')
+}
 async function sendingEnabled(deps: DepartmentEmailDeps, event: H3Event): Promise<boolean> {
   if (deps.sendingEnabled) return deps.sendingEnabled(event)
   return (await import('~~/server/utils/email-marketing/campaignSender')).isCampaignSendingEnabled(event)
@@ -137,10 +150,21 @@ async function campaignState(db: LedgerDb, campaignId: string, clientId: string,
 }
 
 /** Optimistic-concurrency token for draft edits and proposals. */
+/** M06: reviewed campaigns need an approval of their exact current content.
+ * Readable refusal here; the campaigns trigger is the authoritative gate. */
+async function assertReviewApproval(db: LedgerDb, campaign: Campaign): Promise<void> {
+  const { assertCampaignApprovalCurrent } = await import('~~/server/utils/email-marketing/review')
+  try {
+    await assertCampaignApprovalCurrent(campaign, db)
+  } catch {
+    refuse('Campaign content must be approved in the email review workflow first', 'conflict')
+  }
+}
+
 function draftRevision(c: Campaign, listIds: string[]): string {
   return sha256({
     status: c.status, name: c.name, subject: c.subject, from_name: c.from_name, from_email: c.from_email, reply_to: c.reply_to,
-    preview_text: c.preview_text, body_source: c.body_source ?? null, template_id: c.template_id, filter_rules: c.filter_rules ?? null, listIds
+    preview_text: c.preview_text, body_source: c.body_source ?? null, template_id: c.template_id, filter_rules: c.filter_rules ?? null, listIds, ...(c.email_design_revision_id ? { designRevisionId: c.email_design_revision_id } : {})
   })
 }
 
@@ -242,6 +266,7 @@ async function getCampaign(args: Args<'marketing_get_email_campaign'>, ctx: Tool
     preflight,
     sendingEnabled: await sendingEnabled(deps, ctx.event),
     revision: draftRevision(campaign, listIds),
+    designRevisionId: campaign.email_design_revision_id ?? null,
     proposals: proposals.map(row => proposalView(row)),
     scheduledAt: campaign.scheduled_at, startedAt: campaign.started_at, finishedAt: campaign.finished_at, updatedAt: campaign.updated_at,
     note: 'Edits require this revision. Sending is proposal → independent review → execution.'
@@ -256,8 +281,9 @@ async function listAudiences(args: Args<'marketing_list_email_audiences'>) {
             AND NOT EXISTS (SELECT 1 FROM suppression_list sup WHERE sup.email = s.email)) AS mailable_count
       FROM email_lists l JOIN agency_clients ac ON ac.id = l.client_id AND ac.is_active = TRUE
       WHERE l.client_id = $1 AND l.archived_at IS NULL ORDER BY l.name, l.id LIMIT 101`, [args.clientId]),
-    queryRowsFresh<Record<string, unknown>>(`SELECT t.id, t.name, t.subject, t.template_kind, t.folder_name, t.updated_at
+    queryRowsFresh<Record<string, unknown>>(`SELECT t.id, t.name, t.subject, t.template_kind, t.folder_name, t.updated_at, d.head_revision_id AS design_revision_id
       FROM edm_templates t JOIN agency_clients ac ON ac.id = t.client_id AND ac.is_active = TRUE
+      LEFT JOIN email_design_documents d ON d.template_id=t.id
       WHERE t.client_id = $1 ORDER BY t.updated_at DESC, t.id LIMIT 101`, [args.clientId])
   ])
   return ok({
@@ -291,6 +317,19 @@ async function local(name: DepartmentEmailToolName, args: { clientId: string }, 
   }
   return transactionWithoutRetry(async (pool) => {
     const db = pool as unknown as LedgerDb
+    // Admission also precedes ledger replay; stored owner, never UUID hints,
+    // determines whether an update is canonical. Existing authority stays first.
+    if (name === 'marketing_create_email_campaign_draft' && (args as Args<'marketing_create_email_campaign_draft'>).templateRevisionId) {
+      assertCanonicalDraftAdmission(fresh, true)
+      const selection = args as Args<'marketing_create_email_campaign_draft'>
+      await campaignDesignAuthority(fresh).read(await readCampaignTemplateRevisionScope(selection.templateId!, selection.templateRevisionId!, db))
+    }
+    if (name === 'marketing_update_email_campaign_draft') {
+      const update = args as Args<'marketing_update_email_campaign_draft'>
+      const owner = (await db.query(`SELECT (to_jsonb(c)->>'email_design_revision_id')::uuid AS email_design_revision_id
+        FROM campaigns c WHERE c.id=$1 AND c.client_id=$2`, [update.campaignId, update.clientId])).rows[0] as { email_design_revision_id: string | null } | undefined
+      if (owner?.email_design_revision_id) assertCanonicalDraftAdmission(fresh, false)
+    }
     const claim = await claimExecution(db, identity)
     if (claim.kind !== 'fresh') return claimOutcome(claim)
     const result = await work(db, fresh)
@@ -310,8 +349,28 @@ async function validBody(source: unknown) {
   if (!isFlyhubFormat(source)) refuse('Body must be an Email Studio document', 'bad_args')
 }
 
+function campaignDesignAuthority(ctx: ToolContext): CampaignDesignAuthority {
+  const check = async (scope: string | null, write: boolean) => {
+    if (scope === null) {
+      const fresh = await requireMarketingDepartment(ctx, write)
+      if (!fresh.permissionGroups?.some(group => ['ADMIN', 'MANAGEMENT'].includes(group))) refuse('Agency template access required', 'forbidden')
+    } else await authorize(ctx, scope, write)
+  }
+  return { actorId: ctx.userId, read: scope => check(scope, false), write: scope => check(scope, true) }
+}
+function campaignStorage(ctx: ToolContext, deps: DepartmentEmailDeps): DesignAssetStorage {
+  const get = () => deps.designStorage?.(ctx) ?? createDesignAssetStorage(ctx.event, getAppUrl(ctx.event))
+  return { read: key => get().read(key), url: id => get().url(id), identifyUrl: url => get().identifyUrl(url) }
+}
+
 function createDraft(args: Args<'marketing_create_email_campaign_draft'>, deps: DepartmentEmailDeps): Local {
   return async (db, fresh) => {
+    if (args.templateRevisionId && args.templateId && args.operationId) {
+      await validSegment(args.segment)
+      const selected = await createCampaignFromTemplateRevision({ version: 1, command: 'create-from-template', operationId: args.operationId, templateId: args.templateId, revisionId: args.templateRevisionId, clientId: args.clientId, campaign: { name: args.name, subject: args.subject, preview_text: args.previewText, from_name: args.fromName, from_email: args.fromEmail, reply_to: args.replyTo, filter_rules: args.segment } }, campaignDesignAuthority(fresh), await rendererFor(fresh, deps), campaignStorage(fresh, deps), callback => callback(db))
+      const row = (await db.query('SELECT * FROM campaigns WHERE id=$1', [selected.campaignId])).rows[0] as Campaign
+      return { ...selected, status: row.status, revision: draftRevision(row, []), designRevisionId: selected.revisionId }
+    }
     let source: unknown = args.bodySource
     let subject = args.subject
     let previewText = args.previewText
@@ -336,19 +395,23 @@ function createDraft(args: Args<'marketing_create_email_campaign_draft'>, deps: 
 
 function updateDraft(args: Args<'marketing_update_email_campaign_draft'>, deps: DepartmentEmailDeps): Local {
   return async (db, fresh) => {
+    if (args.operationId) await db.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [`${fresh.userId}:${args.operationId}`])
     const { campaign, listIds } = await campaignState(db, args.campaignId, args.clientId, 'update')
+    if (campaign.email_design_revision_id) assertCanonicalDraftAdmission(fresh, false)
     if (campaign.status !== 'draft') refuse('Only draft campaigns can be edited', 'conflict')
     if (draftRevision(campaign, listIds) !== args.expectedRevision) refuse('Campaign changed since it was read; reload before applying', 'conflict')
     const p = args.patch
     await validBody(p.bodySource)
     await validSegment(p.segment)
     const { updateCampaign } = await import('~~/server/utils/email-marketing/campaigns')
+    const authority = campaignDesignAuthority(fresh)
+    const canonical: CampaignContentMutation | undefined = args.operationId && args.expectedDesignRevisionId ? { actorId: fresh.userId, operationId: args.operationId, expectedRevisionId: args.expectedDesignRevisionId, authorizeRead: authority.read, authorizeWrite: authority.write, storage: campaignStorage(fresh, deps) } : undefined
     const updated = await updateCampaign(campaign.id, {
       name: p.name, subject: p.subject, from_name: p.fromName, from_email: p.fromEmail, reply_to: p.replyTo,
       preview_text: p.previewText, body_source: p.bodySource, filter_rules: p.segment
-    }, await rendererFor(fresh, deps), db)
+    }, await rendererFor(fresh, deps), db, canonical)
     if (!updated) refuse('Campaign not available for this client', 'not_found')
-    return { campaignId: updated.id, status: updated.status, revision: draftRevision(updated, listIds) }
+    return { campaignId: updated.id, status: updated.status, revision: draftRevision(updated, listIds), ...(updated.email_design_revision_id ? { designRevisionId: updated.email_design_revision_id } : {}) }
   }
 }
 
@@ -411,6 +474,7 @@ async function proposeSend(args: Args<'marketing_propose_email_campaign_send'>, 
     if (campaign.status !== 'draft') refuse('Only draft campaigns can be proposed for sending', 'conflict')
     if (!listIds.length) refuse('Select at least one of the client\'s lists first', 'bad_args')
     if (draftRevision(campaign, listIds) !== args.expectedRevision) refuse('Campaign changed since it was read; reload before applying', 'conflict')
+    await assertReviewApproval(db, campaign)
     const freeze = await freezeOf(db, campaign, listIds)
     const preflight = await preflightFor(campaign, freeze.recipientCount, actor.event, deps)
     if (preflight.blocked) preflightRefusal(preflight)
@@ -484,6 +548,7 @@ async function executeSend(args: Args<'marketing_execute_email_campaign_send'>, 
     const preflight = await preflightFor(campaign, freeze.recipientCount, fresh.event, deps)
     if (preflight.blocked) preflightRefusal(preflight)
     if (first) {
+      await assertReviewApproval(db, campaign)
       const { canEnterSending } = await import('~~/server/utils/email-marketing/campaignSend')
       const gate = canEnterSending({ status: campaign.status, toSend: freeze.recipientCount, bodyHtml: campaign.body_html })
       if (!gate.ok) refuse(gate.reason ?? 'Campaign cannot be sent', 'conflict')
@@ -635,10 +700,13 @@ export async function runDepartmentEmailOperation(
   } catch (error) {
     const refusal = refusalOf(error)
     if (refusal) return refusal
+    if (error instanceof EmailDesignError) return fail('This edit changes locked canonical content or structure; reload the saved design and use its permitted editing tools', ['EDIT_FORBIDDEN', 'POLICY_CHANGE_FORBIDDEN'].includes(error.code) ? 'forbidden' : 'bad_args')
+    if (error instanceof DesignRevisionError || error instanceof DesignModuleError) return fail(error.code === 'NOT_FOUND' ? 'Selected design is unavailable' : 'Reload the canonical campaign revision before applying this change', error.code === 'NOT_FOUND' ? 'not_found' : 'conflict')
     const status = (error as { statusCode?: number })?.statusCode
     if (status === 403) return fail('Not permitted for this marketing email request', 'forbidden')
     if (status === 404) return fail('Client or campaign not available', 'not_found')
     if (status === 400 || status === 413 || status === 422) return fail('The application rejected this email request', 'bad_args')
+    if (status === 409 && (error as { statusMessage?: string }).statusMessage === 'design_revision_required') return fail('Read the exact canonical revision and provide operationId plus templateRevisionId for selection or expectedDesignRevisionId for content edits', 'conflict')
     if (status === 409) return fail('Campaign state does not allow this change', 'conflict')
     return fail('Department email operation unavailable', 'unavailable')
   }

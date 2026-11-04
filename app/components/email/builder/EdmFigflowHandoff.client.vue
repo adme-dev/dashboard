@@ -2,15 +2,23 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { FIGFLOW_EDM_EDITOR_URL, FIGFLOW_EDM_ORIGIN, FIGFLOW_EDM_PROTOCOL, type DesignHandoff } from '~~/shared/emailRendering/designRoundtrip'
 import { validateContentReturn } from '~~/shared/emailRendering/designComposer'
+import { applyDesignerOperations, type DesignerCapabilities, type DesignerOperation } from '~~/shared/emailRendering/designDesigner'
+import { parseNativeLibraryContext, type NativeLibraryContext } from '~~/shared/emailRendering/designModules'
+import type { NativeLibraryIntent } from '~~/app/composables/useEdmNativeLibrary'
 import type { EmailDesignDocument } from '~~/shared/emailRendering/designContract'
 
-const props = defineProps<{ handoff: DesignHandoff, busy: boolean, error?: string, conflict?: boolean, subject?: string, previewText?: string }>()
+const props = defineProps<{ handoff: DesignHandoff, busy: boolean, error?: string, conflict?: boolean, subject?: string, previewText?: string, mode?: 'content' | 'designer', capabilities?: DesignerCapabilities | null, operationId?: string | null, libraryAvailable?: boolean, libraryReady?: boolean, libraryPublisher?: boolean }>()
 const emit = defineEmits<{
   propose: [design: EmailDesignDocument]
+  proposeDesigner: [operations: DesignerOperation[], operationId: string]
   apply: []
   cancel: []
   resume: []
+  recover: [name: string]
+  restart: []
+  libraryRequest: [context: NativeLibraryContext, intent: NativeLibraryIntent]
 }>()
+const recoveryName = ref('')
 const frame = ref<HTMLIFrameElement | null>(null)
 const channel = crypto.randomUUID()
 const ready = ref(false)
@@ -18,11 +26,16 @@ const bridgeError = ref('')
 const requesting = ref(false)
 const previewHtml = ref('')
 const previewLoading = ref(false)
+const previewDevice = ref<'desktop' | 'mobile'>('desktop')
 const previewError = ref('')
+const libraryIntent = ref<NativeLibraryIntent | null>(null)
+const libraryContext = ref<NativeLibraryContext | null>(null)
 let previewSequence = 0
 async function renderProposal() {
-  const proposal = props.handoff.proposal
-  if (!proposal || props.handoff.state !== 'proposed') return
+  const proposal = props.handoff.state === 'proposed'
+    ? props.handoff.proposal
+    : libraryContext.value && props.operationId ? applyDesignerOperations(props.handoff.source, libraryContext.value.operations, props.operationId) : null
+  if (!proposal) return
   const sequence = ++previewSequence
   previewLoading.value = true
   previewHtml.value = ''
@@ -47,6 +60,18 @@ let expectedReply = ''
 const changes = computed(() => {
   const proposal = props.handoff.proposal
   if (!proposal) return []
+  if (props.mode === 'designer') {
+    const before = props.handoff.source.blocks
+    const after = proposal.blocks
+    const rows: Array<{ path: string, label: string, before: string, after: string }> = []
+    const label = (block: EmailDesignDocument['blocks'][string]) => String(block.data.props?.text ?? block.type).slice(0, 160)
+    for (const id of new Set([...Object.keys(before), ...Object.keys(after)])) {
+      if (!before[id]) rows.push({ path: id, label: `${after[id].type} added`, before: 'No section', after: label(after[id]) })
+      else if (!after[id]) rows.push({ path: id, label: `${before[id].type} removed`, before: label(before[id]), after: 'Section removed' })
+      else if (JSON.stringify(before[id]) !== JSON.stringify(after[id])) rows.push({ path: id, label: `${before[id].type} updated`, before: label(before[id]), after: label(after[id]) })
+    }
+    return rows
+  }
   return props.handoff.source.policy.editableFields.flatMap((path) => {
     const [id, , , field] = path.split('.')
     const before = props.handoff.source.blocks[id]?.data.props?.[field]
@@ -63,7 +88,11 @@ function connect() {
   ready.value = false
   bridgeError.value = ''
   clearTimeout(timer)
-  send('connect', { handoffId: props.handoff.id, design: props.handoff.source })
+  if (props.mode === 'designer' && (!props.operationId || !props.capabilities)) {
+    bridgeError.value = 'Design controls are unavailable. Close and reopen this draft to refresh your access.'
+    return
+  }
+  send('connect', { handoffId: props.handoff.id, design: props.handoff.source, ...(props.mode === 'designer' ? { mode: 'designer', operationId: props.operationId, capabilities: props.capabilities } : {}) })
   timer = setTimeout(() => {
     if (!ready.value) bridgeError.value = 'FigFlow could not open this email. Your saved draft is unchanged. Close and resume the design to reconnect.'
   }, 30_000)
@@ -79,6 +108,34 @@ function requestReturn() {
     bridgeError.value = 'FigFlow did not confirm a snapshot. Keep this window open and retry Return for review.'
   }, 15_000)
 }
+function cancelLibraryRead() {
+  requestId = null
+  clearTimeout(timer)
+  requesting.value = false
+  libraryIntent.value = null
+  libraryContext.value = null
+  ++previewSequence
+  previewHtml.value = ''
+  previewError.value = ''
+}
+function requestLibrary(intent: NativeLibraryIntent) {
+  if (!ready.value || props.busy || requesting.value || !props.libraryAvailable || props.mode !== 'designer') return
+  libraryIntent.value = intent
+  libraryContext.value = null
+  requesting.value = true
+  bridgeError.value = ''
+  send('context')
+  clearTimeout(timer)
+  timer = setTimeout(() => {
+    cancelLibraryRead()
+    bridgeError.value = 'The selection could not be confirmed. Finish editing in FigFlow and choose the library again.'
+  }, 15_000)
+}
+function confirmLibrary() {
+  if (!libraryContext.value || !libraryIntent.value || props.busy || previewLoading.value || !previewHtml.value) return
+  emit('libraryRequest', libraryContext.value, libraryIntent.value)
+}
+
 function receive(event: MessageEvent) {
   if (event.source !== frame.value?.contentWindow || event.origin !== FIGFLOW_EDM_ORIGIN) return
   const message = event.data
@@ -88,12 +145,31 @@ function receive(event: MessageEvent) {
     clearTimeout(timer)
     ready.value = true
     bridgeError.value = ''
+  } else if (message.type === 'context') {
+    requestId = null
+    clearTimeout(timer)
+    requesting.value = false
+    try {
+      if (!props.operationId || !libraryIntent.value || props.mode !== 'designer' || !props.libraryAvailable) throw new Error('Selection unavailable')
+      const context = parseNativeLibraryContext(props.handoff.source, message.payload, props.operationId)
+      if (libraryIntent.value === 'section' && (!context.selectedBlockIds.length || context.selectedBlockIds.includes('root'))) throw new Error('Choose a complete section')
+      libraryContext.value = context
+      void renderProposal()
+    } catch {
+      cancelLibraryRead()
+      bridgeError.value = 'Choose a mapped email section in FigFlow before opening the library. Your edits are kept.'
+    }
   } else if (message.type === 'snapshot') {
     requestId = null
     clearTimeout(timer)
     requesting.value = false
     try {
-      emit('propose', validateContentReturn(props.handoff.source, message.payload))
+      if (props.mode === 'designer') {
+        const payload = message.payload
+        if (!payload || typeof payload !== 'object' || Object.keys(payload).sort().join(',') !== 'operationId,operations' || payload.operationId !== props.operationId) throw new Error('Invalid design return')
+        applyDesignerOperations(props.handoff.source, payload.operations, payload.operationId)
+        emit('proposeDesigner', payload.operations, payload.operationId)
+      } else emit('propose', validateContentReturn(props.handoff.source, message.payload))
     } catch {
       bridgeError.value = 'This design includes changes the email composer cannot preserve. Undo structural or unsupported edits in FigFlow, then return again.'
     }
@@ -101,6 +177,7 @@ function receive(event: MessageEvent) {
     requestId = null
     clearTimeout(timer)
     requesting.value = false
+    if (libraryIntent.value) cancelLibraryRead()
     bridgeError.value = 'FigFlow cannot return these changes safely. Undo unsupported changes, finish editing any active text, then retry.'
   }
 }
@@ -115,7 +192,7 @@ onBeforeUnmount(() => {
 <template>
   <div class="flex min-h-0 flex-1 flex-col gap-4">
     <p class="text-sm text-muted">
-      Edit supported text, images and buttons in the content view. Return for review to see the rendered email before applying changes to your saved draft.
+      {{ mode === 'designer' ? 'Build your email with the design controls. Review the rendered desktop and mobile email before applying changes to this draft.' : 'Edit supported text, images and buttons in the content view. Return for review to see the rendered email before applying changes to your saved draft.' }}
     </p>
     <UAlert v-if="error || bridgeError" color="error" :title="error || bridgeError" />
     <UAlert
@@ -124,14 +201,64 @@ onBeforeUnmount(() => {
       title="Your composer has newer edits"
       description="Keep your current draft. Save it and start a new FigFlow handoff; this proposal will not overwrite those edits."
     />
+    <template v-if="libraryReady">
+      <slot name="library" />
+    </template>
     <UAlert
-      v-if="handoff.state === 'open' && !handoff.source.policy.editableFields.length"
+      v-else-if="handoff.state === 'open' && mode !== 'designer' && !handoff.source.policy.editableFields.length"
       color="warning"
       title="This template supports composer editing only"
       description="FigFlow cannot edit its HTML or locked sections yet. Return to the composer to continue; your saved draft is kept."
     />
     <template v-else-if="handoff.state === 'open'">
-      <div class="min-h-96 flex-1 overflow-hidden rounded-lg border border-default">
+      <section v-if="libraryIntent" class="flex min-h-0 flex-col gap-3 rounded border border-default bg-elevated p-4" aria-label="Review selection for library">
+        <UAlert
+          :title="libraryContext ? 'Review the current design' : 'Confirming FigFlow selection'"
+          color="info"
+          :description="libraryContext?.operations.length ? 'Save these design changes before inserting or publishing library content.' : 'Opening the library does not publish or change this saved design.'"
+        />
+        <iframe
+          v-if="libraryContext && previewHtml"
+          :srcdoc="previewHtml"
+          sandbox=""
+          referrerpolicy="no-referrer"
+          title="Captured email preview"
+          :class="['mx-auto block h-[320px] w-full rounded border border-default bg-white', previewDevice === 'mobile' ? 'max-w-[390px]' : 'max-w-[1000px]']"
+        />
+        <UAlert
+          v-if="previewError"
+          :title="previewError"
+          color="error"
+          :actions="[{ label: 'Retry preview', onClick: renderProposal }]"
+        />
+        <div class="flex flex-wrap justify-end gap-2">
+          <UButton
+            label="Desktop"
+            color="neutral"
+            variant="ghost"
+            @click="previewDevice = 'desktop'"
+          />
+          <UButton
+            label="Mobile"
+            color="neutral"
+            variant="ghost"
+            @click="previewDevice = 'mobile'"
+          />
+          <UButton
+            label="Continue editing"
+            color="neutral"
+            variant="outline"
+            :disabled="busy"
+            @click="cancelLibraryRead"
+          />
+          <UButton
+            :label="libraryContext?.operations.length ? 'Review and save for library' : 'Use saved design in library'"
+            :disabled="!libraryContext || busy || previewLoading || !previewHtml"
+            @click="confirmLibrary"
+          />
+        </div>
+      </section>
+      <div :inert="libraryIntent !== null || undefined" class="min-h-96 flex-1 overflow-hidden rounded-lg border border-default">
         <iframe
           ref="frame"
           :src="FIGFLOW_EDM_EDITOR_URL"
@@ -142,21 +269,69 @@ onBeforeUnmount(() => {
           @load="connect"
         />
       </div>
-      <div class="flex justify-end">
+      <div class="flex flex-wrap justify-end gap-2">
         <UButton
           label="Return for review"
           icon="i-lucide-arrow-left-right"
-          :disabled="!ready || busy"
+          :disabled="!ready || busy || !!libraryIntent"
           :loading="requesting"
           @click="requestReturn"
         />
+        <template v-if="libraryAvailable && mode === 'designer'">
+          <UButton
+            label="Library"
+            color="neutral"
+            variant="outline"
+            :disabled="!ready || busy || requesting || !!libraryIntent"
+            @click="requestLibrary('library')"
+          />
+          <UButton
+            label="Images"
+            color="neutral"
+            variant="outline"
+            :disabled="!ready || busy || requesting || !!libraryIntent"
+            @click="requestLibrary('images')"
+          />
+          <UButton
+            label="Save selected section"
+            color="neutral"
+            variant="outline"
+            :disabled="!libraryPublisher || !ready || busy || requesting || !!libraryIntent"
+            @click="requestLibrary('section')"
+          />
+          <UButton
+            label="Publish template"
+            color="neutral"
+            variant="outline"
+            :disabled="!libraryPublisher || !ready || busy || requesting || !!libraryIntent"
+            @click="requestLibrary('template')"
+          />
+        </template>
       </div>
     </template>
     <template v-else-if="handoff.state === 'proposed'">
       <div class="min-h-0 flex-1 overflow-y-auto rounded-lg border border-default p-4">
-        <p class="mb-3 text-sm font-medium">
-          Rendered email
-        </p>
+        <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <p class="text-sm font-medium">
+            Rendered email
+          </p>
+          <div class="flex gap-1" role="group" aria-label="Email preview size">
+            <UButton
+              label="Desktop"
+              color="neutral"
+              :variant="previewDevice === 'desktop' ? 'solid' : 'ghost'"
+              :aria-pressed="previewDevice === 'desktop'"
+              @click="previewDevice = 'desktop'"
+            />
+            <UButton
+              label="Mobile"
+              color="neutral"
+              :variant="previewDevice === 'mobile' ? 'solid' : 'ghost'"
+              :aria-pressed="previewDevice === 'mobile'"
+              @click="previewDevice = 'mobile'"
+            />
+          </div>
+        </div>
         <p v-if="previewLoading" class="text-sm text-muted">
           Rendering the email preview…
         </p>
@@ -172,13 +347,13 @@ onBeforeUnmount(() => {
           sandbox=""
           referrerpolicy="no-referrer"
           title="Proposed email preview"
-          class="mx-auto mb-6 block h-[480px] w-full max-w-[760px] rounded border border-default bg-white"
+          :class="['mx-auto mb-6 block h-[480px] w-full rounded border border-default bg-white', previewDevice === 'mobile' ? 'max-w-[390px]' : 'max-w-[1000px]']"
         />
         <p class="mb-3 text-sm font-medium">
-          Content changes
+          {{ mode === 'designer' ? 'Design changes' : 'Content changes' }}
         </p>
         <p v-if="!changes.length" class="text-sm text-muted">
-          No content changes were returned.
+          No changes were returned.
         </p>
         <div v-for="change in changes" :key="change.path" class="border-b border-default py-4 first:pt-0 last:border-0">
           <p class="mb-2 text-sm font-medium">
@@ -224,6 +399,35 @@ onBeforeUnmount(() => {
       :title="handoff.state === 'applied' ? 'Design changes saved' : handoff.state === 'expired' ? 'This handoff expired' : 'Current draft kept'"
       description="Close this panel to continue in the composer. Start a new handoff from the current saved draft for further design edits."
     />
+    <div v-if="handoff.owner?.kind === 'campaign' && handoff.proposal && ['proposed', 'expired'].includes(handoff.state)" class="@container space-y-3 border-t border-default pt-4">
+      <p class="text-sm text-muted">
+        Keep this saved proposal as a separate campaign. The current campaign stays unchanged.
+      </p>
+      <UFormField label="New campaign name">
+        <UInput
+          v-model="recoveryName"
+          :disabled="busy"
+          :maxlength="200"
+          class="w-full"
+        />
+      </UFormField>
+      <div class="flex flex-wrap justify-end gap-2">
+        <UButton
+          v-if="handoff.state === 'proposed'"
+          label="Restart from current draft"
+          color="neutral"
+          variant="outline"
+          :disabled="busy"
+          @click="emit('restart')"
+        />
+        <UButton
+          label="Save as new campaign"
+          :loading="busy"
+          :disabled="!recoveryName.trim() || recoveryName.trim().length > 200"
+          @click="emit('recover', recoveryName.trim())"
+        />
+      </div>
+    </div>
     <UButton
       v-if="error"
       label="Refresh saved handoff"

@@ -5,6 +5,8 @@ const mockReadBody = vi.fn()
 const mockGetRouterParam = vi.fn()
 const mockRequireAuth = vi.fn()
 const mockRequireWriteAccess = vi.fn()
+const mockValidateSession = vi.fn()
+const mockQueryOneFresh = vi.fn()
 const mockGetAssignedClientIds = vi.fn()
 const mockQueryOne = vi.fn()
 const mockRecordConsentEvent = vi.fn()
@@ -71,6 +73,7 @@ testGlobal.readBody = mockReadBody
 testGlobal.getRouterParam = mockGetRouterParam
 
 vi.mock('~~/server/utils/auth', () => ({
+  validateSession: (...args: unknown[]) => mockValidateSession(...args),
   requireAuth: (...args: unknown[]) => mockRequireAuth(...args),
   requireWriteAccess: (...args: unknown[]) => mockRequireWriteAccess(...args)
 }))
@@ -80,6 +83,7 @@ vi.mock('~~/server/utils/clientScoping', () => ({
 }))
 
 vi.mock('~~/server/utils/db', () => ({
+  queryOneFresh: (...args: unknown[]) => mockQueryOneFresh(...args),
   queryOne: (...args: unknown[]) => mockQueryOne(...args),
   queryRows: vi.fn(),
   execute: vi.fn()
@@ -137,6 +141,11 @@ describe('email client-scoped route policy', () => {
     mockRequireWriteAccess.mockResolvedValue(scopedUser)
     mockGetAssignedClientIds.mockResolvedValue([CLIENT_1])
     mockQueryOne.mockResolvedValue(null)
+    mockValidateSession.mockResolvedValue(scopedUser)
+    // Current publication authority is independent of cached write/client scope.
+    mockQueryOneFresh.mockResolvedValue({ role: 'account_manager', custom_role_id: null,
+      configured_role_id: 'account-manager-role', is_read_only: false,
+      permission_groups: ['CLIENTS'], assigned: true, client_active: true })
     mockRecordConsentEvent.mockResolvedValue(undefined)
     mockListLists.mockResolvedValue([])
     mockCreateList.mockResolvedValue({ id: LIST_1, client_id: CLIENT_1 })
@@ -441,16 +450,23 @@ describe('email client-scoped route policy', () => {
     expect(mockListCustomModules).toHaveBeenCalledWith([CLIENT_1])
   })
 
-  it('defaults new scoped custom modules to the actor assigned client', async () => {
+  it('defaults new custom modules to the assigned client after fresh publisher authentication', async () => {
     const handler = (await import('~~/server/api/agency/email/modules/index.post')).default
     const blocks = {
       blocks: { block_1: { type: 'Text', data: { props: { text: 'Saved' } } } },
       rootChildrenIds: ['block_1']
     }
     mockReadBody.mockResolvedValueOnce({ name: 'Client module', blocks })
+    // The cached client-scoped actor also has a current custom publisher role.
+    mockQueryOneFresh.mockResolvedValueOnce({ role: 'account_manager', custom_role_id: 'publisher-role',
+      configured_role_id: 'publisher-role', is_read_only: false,
+      permission_groups: ['MANAGEMENT', 'CREATIVE'], assigned: true, client_active: true })
 
-    await handler({} as never)
+    const request = { node: { req: { headers: { authorization: 'Bearer publisher-session' } } } } as never
+    await handler(request)
 
+    expect(mockValidateSession).toHaveBeenCalledWith('publisher-session')
+    expect(mockQueryOneFresh).toHaveBeenCalledWith(expect.stringContaining('WHERE tm.id=$1 AND tm.is_active=TRUE'), ['user-1', CLIENT_1])
     expect(mockCreateCustomModule).toHaveBeenCalledWith(expect.objectContaining({
       name: 'Client module',
       blocks,
@@ -458,6 +474,21 @@ describe('email client-scoped route policy', () => {
       created_by: 'user-1'
     }))
   })
+
+  it.each(['missing token', 'revoked session', 'changed actor', 'scoped designer', 'read-only publisher'])(
+    'blocks custom module creation for %s before persistence', async (denial) => {
+      const handler = (await import('~~/server/api/agency/email/modules/index.post')).default
+      mockReadBody.mockResolvedValueOnce({ name: 'Client module', blocks: { blocks: { text: { type: 'Text', data: { props: { text: 'Saved' } } } }, rootChildrenIds: ['text'] } })
+      if (denial === 'revoked session') mockValidateSession.mockResolvedValueOnce(null)
+      if (denial === 'changed actor') mockValidateSession.mockResolvedValueOnce(agencyUser)
+      if (denial === 'scoped designer') mockQueryOneFresh.mockResolvedValueOnce({ role: 'creative', custom_role_id: null, configured_role_id: 'designer-role', is_read_only: false, permission_groups: ['CREATIVE'], assigned: true, client_active: true })
+      if (denial === 'read-only publisher') mockQueryOneFresh.mockResolvedValueOnce({ role: 'admin', custom_role_id: null, configured_role_id: 'publisher-role', is_read_only: true, permission_groups: ['ADMIN', 'CREATIVE'], assigned: true, client_active: true })
+      const request = { node: { req: { headers: denial === 'missing token' ? {} : { authorization: 'Bearer publisher-session' } } } } as never
+      await expect(handler(request)).rejects.toMatchObject({ statusCode: ['missing token', 'revoked session', 'changed actor'].includes(denial) ? 401 : 403 })
+      expect(mockCreateCustomModule).not.toHaveBeenCalled()
+      if (denial === 'missing token') expect(mockValidateSession).not.toHaveBeenCalled()
+    }
+  )
 
   it('blocks custom module updates across client scope', async () => {
     const handler = (await import('~~/server/api/agency/email/modules/[id].patch')).default

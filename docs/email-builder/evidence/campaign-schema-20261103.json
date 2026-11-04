@@ -1,0 +1,74 @@
+{
+  "at": "2026-11-02T13:58:45.480Z",
+  "source": "bc8a3ba961c117b4a27efc61cd486af237339bac",
+  "configuredEnvFile": "/Users/paulgiurin/Documents/Projects/dashboard/.env",
+  "host": "ep-lively-fog-a4dum154-pooler.us-east-1.aws.neon.tech",
+  "database": "neondb",
+  "serverVersion": "170011",
+  "applied": {
+    "file": "server/database/migrations/498_email_campaign_design_projection.sql",
+    "sha256": "e8fdd367968efe31eba4efb9af8bc4ecb381e16769efdbe12f88fedaca08e1fb"
+  },
+  "applicationsInTransaction": 2,
+  "existingRows": {
+    "campaigns": 0,
+    "edm_templates": 21,
+    "email_design_documents": 4,
+    "email_design_revisions": 24,
+    "email_design_revision_receipts": 20,
+    "email_review_states": 0
+  },
+  "existingRowContentUnchanged": true,
+  "readback": {
+    "opted_in_campaigns": 0,
+    "gated_campaigns": 0,
+    "html_digest_check": 1,
+    "review_triggers": 10
+  },
+  "triggers": [
+    {
+      "name": "email_design_campaign_head_projection",
+      "enabled": "O",
+      "deferrable": true,
+      "row_guard": false,
+      "update_columns": 0
+    },
+    {
+      "name": "email_design_campaign_projection",
+      "enabled": "O",
+      "deferrable": false,
+      "row_guard": true,
+      "update_columns": 5
+    },
+    {
+      "name": "email_design_campaign_projection_consistent",
+      "enabled": "O",
+      "deferrable": true,
+      "row_guard": true,
+      "update_columns": 5
+    },
+    {
+      "name": "email_design_campaign_projection_consistent_insert",
+      "enabled": "O",
+      "deferrable": true,
+      "row_guard": true,
+      "update_columns": 0
+    },
+    {
+      "name": "email_design_campaign_projection_insert",
+      "enabled": "O",
+      "deferrable": false,
+      "row_guard": true,
+      "update_columns": 0
+    },
+    {
+      "name": "email_design_campaign_revision",
+      "enabled": "O",
+      "deferrable": false,
+      "row_guard": false,
+      "update_columns": 0
+    }
+  ],
+  "validation": "Independent slice3 review; final94 PG cases and rerun8 real497/498 coexistence cases;0skips",
+  "scope": "Additive schema only; no campaign opt-in, review enrollment, feature activation, deployment or provider send"
+}

@@ -132,4 +132,11 @@ describe('BlockSettingsPanel — Phase 3a grouped style sections', () => {
     expect(html).toContain('Link URL')
     expect(html).not.toContain('HTML content')
   })
+  it('exposes the generated-only quality controls on their matching block types', async () => {
+    expect(await render({ id: 'b', type: 'Button', data: { props: {} } })).toContain('Outlook drawn button')
+    expect(await render({ id: 'b', type: 'Button', data: { props: { outlookVml: true } } })).toContain('Outlook button width')
+    expect(await render({ id: 'b', type: 'Image', data: { props: {} } })).toContain('Dark logo URL')
+    expect(await render({ id: 'b', type: 'Avatar', data: { props: {} } })).not.toContain('Dark logo URL')
+    expect(await render({ id: 'b', type: 'ColumnsContainer', data: { props: {} } })).toContain('Reverse mobile stacking')
+  })
 })

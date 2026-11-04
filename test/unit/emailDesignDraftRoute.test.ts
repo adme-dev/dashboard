@@ -52,7 +52,7 @@ const event = () =>
     context: {
       cloudflare: { env: { FIGFLOW_EDM_DRAFT_SAVES_ENABLED: 'true' } }
     }
-  }) as Parameters<typeof handler>[0]
+  }) as unknown as Parameters<typeof handler>[0]
 describe('gated versioned template draft route', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -93,18 +93,21 @@ describe('gated versioned template draft route', () => {
       published: false,
       savedAt: '2026-10-31T00:00:00.000Z'
     })
-    expect(mocks.save.mock.calls[0][0].actorId).toBe(
+    expect(mocks.staff.mock.calls[0][0].actorId).toBe(
       '10000000-0000-4000-8000-000000000001'
     )
+    expect(mocks.staff.mock.calls[0][5]).toBe(true)
+    expect(mocks.save).not.toHaveBeenCalled()
     mocks.access.mockResolvedValue('staff')
     await expect(
-      mocks.save.mock.calls[0][1](structuredDesign().scope.clientId)
+      mocks.staff.mock.calls[0][1](structuredDesign().scope.clientId)
     ).rejects.toMatchObject({ statusCode: 403 })
   })
   it('uses the staff boundary for ordinary editors', async () => {
     mocks.access.mockResolvedValue('staff')
     await handler(event())
     expect(mocks.staff).toHaveBeenCalledOnce()
+    expect(mocks.staff.mock.calls[0][5]).toBe(false)
     expect(mocks.save).not.toHaveBeenCalled()
   })
   it('rejects a forged actor or mismatched target', async () => {

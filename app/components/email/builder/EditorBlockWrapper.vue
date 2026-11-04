@@ -110,6 +110,15 @@
     />
 
     <!-- Block Content -->
+    <UBadge
+      v-if="conditionLabel"
+      icon="i-lucide-list-filter"
+      variant="soft"
+      size="sm"
+      class="pointer-events-none relative z-10 m-1"
+    >
+      {{ conditionLabel }}
+    </UBadge>
     <slot />
 
     <div
@@ -186,6 +195,12 @@ const showInsertBelow = ref(false)
 const insertAboveOpen = ref(false)
 const insertBelowOpen = ref(false)
 
+const conditionLabel = computed(() => {
+  const block = store.document.value[props.blockId]
+  if (!block || !['Container', 'ColumnsContainer'].includes(block.type)) return ''
+  const condition = block.data.props?.visibilityCondition as { name?: unknown } | undefined
+  return typeof condition?.name === 'string' ? condition.name : ''
+})
 const isSelected = computed(() => store.selectedBlockId.value === props.blockId)
 
 function onLeave() {

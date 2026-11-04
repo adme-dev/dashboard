@@ -1,11 +1,14 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
+import { useEdmCanonicalTemplateCopy } from '~~/app/composables/useEdmCanonicalTemplateCopy'
 import { EDM_STARTER_TEMPLATES, buildStarterTemplateDocument } from '~~/app/utils/edmPresets'
 import { figflowTemplateCapability, figflowComposerQuery } from '~~/app/utils/edmFigflowLibrary'
 import { markTemplateClientCopy, templateCopyName } from '~~/app/utils/edmTemplateProvenance'
 import { filterTemplateLibrary, type TemplateLibraryRow } from '~~/app/utils/edmTemplateLibrary'
 
 type Row = TemplateLibraryRow & { capability: ReturnType<typeof figflowTemplateCapability>, starter?: string }
+const canonicalCopy = useEdmCanonicalTemplateCopy()
+const route = useRoute()
 const saved = ref<TemplateLibraryRow[]>([])
 const clients = ref<Array<{ id: string, name: string }>>([])
 const canUseShared = ref(false)
@@ -51,7 +54,7 @@ const categories = computed(() => [
   { label: 'All categories', value: 'all' },
   ...Array.from(new Set(saved.value.map(row => row.folder_name?.trim()).filter((s): s is string => !!s))).sort().map(s => ({ label: s, value: `category:${s}` }))
 ])
-const savedRows = computed<Row[]>(() => saved.value.map(row => ({ ...row, client_name: clientName(row.client_id), capability: figflowTemplateCapability(row.body_source) })))
+const savedRows = computed<Row[]>(() => saved.value.map(row => ({ ...row, client_name: clientName(row.client_id), capability: row.revision_schema_version === 1 ? { ...figflowTemplateCapability(row.body_source), canOpen: true, label: 'Versioned design' } : figflowTemplateCapability(row.body_source) })))
 // Build once: generated block identities do not change during filtering/render.
 const starters: Row[] = EDM_STARTER_TEMPLATES.map((starter) => {
   const document = buildStarterTemplateDocument(starter.id)
@@ -71,6 +74,7 @@ const creating = ref(false)
 const createError = ref('')
 const uncertain = ref(false)
 function select(row: Row) {
+  if (canonicalCopy.hasPending.value) return
   selected.value = row
   draftName.value = `${templateCopyName(row.name).slice(0, 170)} (design draft)`
   const preferred = client.value !== 'all' ? client.value : row.client_id || (canUseShared.value ? 'shared' : undefined)
@@ -85,7 +89,7 @@ function composerLink(row: Row) {
 }
 async function createDraft() {
   const row = selected.value
-  if (!row || creating.value || uncertain.value || !draftName.value.trim() || !destinations.value.some(o => o.value === destination.value)) return
+  if (!row || creating.value || canonicalCopy.hasPending.value || uncertain.value || !draftName.value.trim() || !destinations.value.some(o => o.value === destination.value)) return
   creating.value = true
   createError.value = ''
   let submitted = false
@@ -94,6 +98,15 @@ async function createDraft() {
     // Re-read an existing template under current server scope immediately before
     // copying. A preview/list snapshot is not the source of a library mutation.
     const template = row.starter ? row : (await $fetch<{ template: TemplateLibraryRow }>(`/api/email/templates/${row.id}`)).template
+    if (template.design_document_id || row.design_document_id) {
+      if (template.revision_schema_version !== 1 || !template.head_revision_id) throw new Error('This template has no structured published version to copy.')
+      // Exact list selection, never silently adopt a newer source head.
+      const result = await canonicalCopy.copy(row, draftName.value.trim(), destination.value === 'shared' ? null : destination.value!)
+      if (!result?.templateId) throw new Error('The saved draft receipt is incomplete.')
+      confirmedId = result.templateId
+      await navigateTo({ path: '/agency/email/compose', query: figflowComposerQuery(confirmedId) })
+      return
+    }
     const capability = figflowTemplateCapability(template.body_source)
     if (!capability.canOpen) throw new Error('This template currently supports composer editing only. Open a copy in the composer instead.')
     submitted = true
@@ -121,8 +134,30 @@ async function createDraft() {
         : submitted
           ? 'The draft could not be created. Check the selected client and your design access.'
           : cause.message || 'This template could not be read. Refresh the library and try again.'
-  } finally { creating.value = false }
+  } finally {
+    creating.value = false
+  }
 }
+async function reconcileCanonicalCopy() {
+  if (creating.value) return
+  creating.value = true
+  createError.value = ''
+  try {
+    const result = await canonicalCopy.reconcile()
+    if (result?.templateId) await navigateTo({ path: '/agency/email/compose', query: figflowComposerQuery(result.templateId) })
+  } catch { createError.value = 'The original copy is still unconfirmed. Reconcile this action again before creating another draft.' } finally {
+    creating.value = false
+  }
+}
+watch(saved, () => {
+  const id = route.query.copyTemplate
+  const row = typeof id === 'string' ? savedRows.value.find(item => item.id === id) : null
+  if (row && !selected.value && !canonicalCopy.hasPending.value) {
+    select(row)
+    const client = route.query.client
+    if (typeof client === 'string' && destinations.value.some(o => o.value === client)) destination.value = client
+  }
+})
 function checkDrafts() {
   selected.value = null
   view.value = 'drafts'
@@ -273,9 +308,9 @@ function checkDrafts() {
   <UModal
     :open="!!selected"
     title="Create design draft"
-    :dismissible="!creating"
-    :close="!creating"
-    @update:open="value => { if (!value && !creating) selected = null }"
+    :dismissible="!creating && !canonicalCopy.hasPending.value"
+    :close="!creating && !canonicalCopy.hasPending.value"
+    @update:open="value => { if (!value && !creating && !canonicalCopy.hasPending.value) selected = null }"
   >
     <template #content>
       <div class="@container space-y-5 p-6">
@@ -290,7 +325,7 @@ function checkDrafts() {
           <UInput
             v-model="draftName"
             :maxlength="200"
-            :disabled="creating || uncertain"
+            :disabled="creating || uncertain || canonicalCopy.hasPending.value"
             class="w-full"
           />
         </UFormField>
@@ -300,7 +335,7 @@ function checkDrafts() {
             :items="destinations"
             value-key="value"
             placeholder="Choose a client"
-            :disabled="creating || uncertain"
+            :disabled="creating || uncertain || canonicalCopy.hasPending.value"
             class="w-full"
           />
         </UFormField>
@@ -310,9 +345,14 @@ function checkDrafts() {
             label="Cancel"
             color="neutral"
             variant="ghost"
-            :disabled="creating"
+            :disabled="creating || canonicalCopy.hasPending.value"
             @click="selected = null"
-          /><UButton v-if="uncertain" label="Check Drafts" @click="checkDrafts" /><UButton
+          /><UButton
+            v-if="canonicalCopy.hasPending.value"
+            label="Reconcile template copy"
+            :loading="creating"
+            @click="reconcileCanonicalCopy"
+          /><UButton v-else-if="uncertain" label="Check Drafts" @click="checkDrafts" /><UButton
             v-else
             label="Create draft and open FigFlow"
             :loading="creating"

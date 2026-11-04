@@ -1,6 +1,6 @@
 import { randomUUID } from 'uncrypto'
 import { emailLinkSecret } from '~~/server/utils/email-marketing/links'
-import { appendEmailUtm, verifyEmailClickToken } from '~~/server/utils/email-marketing/trackingLinks'
+import { appendEmailUtm, storedEmailUtmSettings, verifyEmailClickToken } from '~~/server/utils/email-marketing/trackingLinks'
 import { classifyEmailClick } from '~~/server/utils/email-marketing/clickClassifier'
 import { execute, queryOne } from '~~/server/utils/db'
 
@@ -50,15 +50,17 @@ export default defineEventHandler(async (event) => {
   }
 
   const clickId = randomUUID()
-  const attributedUrl = appendEmailUtm(destination, campaignId, clickId)
   const userAgent = requestHeader(event, 'user-agent')
   const clickedAt = new Date().toISOString()
-  const recipientSend = await queryOne<{ sent_at: string | null }>(`
-    SELECT sent_at::text AS sent_at
-    FROM campaign_recipients
-    WHERE campaign_id = $1 AND subscriber_id = $2
-    LIMIT 1
+  // utm_settings is read from the campaign row, which is immutable once it has
+  // left draft; to_jsonb keeps this query valid before migration 497 is applied.
+  const recipientSend = await queryOne<{ sent_at: string | null, utm_settings?: unknown }>(`
+    SELECT
+      (SELECT cr.sent_at::text FROM campaign_recipients cr
+        WHERE cr.campaign_id = $1::uuid AND cr.subscriber_id = $2::uuid LIMIT 1) AS sent_at,
+      (SELECT to_jsonb(c) -> 'utm_settings' FROM campaigns c WHERE c.id = $1::uuid LIMIT 1) AS utm_settings
   `, [campaignId, subscriberId])
+  const attributedUrl = appendEmailUtm(destination, campaignId, clickId, storedEmailUtmSettings(recipientSend?.utm_settings))
   const classification = classifyEmailClick({
     userAgent,
     sentAt: recipientSend?.sent_at ?? null,

@@ -465,3 +465,122 @@ test('public image fetches omit credentials and reject private or oversized sour
   assert.equal(decoded, 0)
   delete globalThis.createImageBitmap
 })
+
+const designerOperationId = '30000000-0000-4000-8000-000000000001'
+const designerConnect = () => connect('designer-channel', {
+  handoffId: 'designer-handoff', design: design(), mode: 'designer',
+  operationId: designerOperationId, capabilities: { version: 1, operations: ['set-style'], blocks: [] }
+})
+
+test('designer context is an exact read-only action bound to frame, mode and native revision', async () => {
+  const context = { operationId: designerOperationId, operations: [], selectedBlockIds: ['heading'], insertionTarget: { parentId: 'root', index: 1 } }
+  const fixture = relayFixture({ onRequest(envelope, native) {
+    if (envelope.action === 'status') return ok(native, { supportedActions: ['edm_designer_import', 'edm_designer_snapshot', 'edm_designer_context'] })
+    if (envelope.action === 'edm_designer_import') return ok(native, { imported: true })
+    assert.equal(envelope.action, 'edm_designer_context')
+    assert.equal(envelope.expectedRevision, native.revision)
+    assert.deepEqual(envelope.params, {})
+    return ok(native, context)
+  } })
+  await fixture.send(designerConnect())
+  await fixture.send({ ...designerConnect(), requestId: 'context-1', type: 'context', payload: undefined })
+  assert.deepEqual(fixture.posted.at(-1).message.payload, context)
+  const calls = fixture.calls.length
+  await fixture.send({ ...designerConnect(), requestId: 'context-2', type: 'context', payload: { action: 'node.delete' } })
+  assert.equal(fixture.calls.length, calls)
+  assert.equal(fixture.posted.at(-1).message.type, 'error')
+  await fixture.send({ ...designerConnect(), requestId: 'context-3', type: 'context', payload: undefined }, { source: {} })
+  assert.equal(fixture.calls.length, calls)
+})
+
+test('context refuses content mode, a switched native document and forged operation identity', async () => {
+  const ordinary = relayFixture()
+  await ordinary.send(connect())
+  await ordinary.send({ ...connect(), requestId: 'context-1', type: 'context', payload: undefined })
+  assert.equal(ordinary.calls.some(call => call.action === 'edm_designer_context'), false)
+  for (const switched of [false, true]) {
+    const fixture = relayFixture({ onRequest(envelope, native) {
+      if (envelope.action === 'status') return ok(native, { supportedActions: ['edm_designer_import', 'edm_designer_snapshot', 'edm_designer_context'] })
+      if (envelope.action === 'edm_designer_import') return ok(native, { imported: true })
+      return ok({ ...native, documentId: switched ? '999' : native.documentId }, { operationId: 'foreign', operations: [], selectedBlockIds: [] })
+    } })
+    await fixture.send(designerConnect())
+    await fixture.send({ ...designerConnect(), requestId: 'context-1', type: 'context', payload: undefined })
+    assert.equal(fixture.posted.at(-1).message.type, 'error')
+  }
+})
+
+test('designer mode refuses a native package without explicit designer capabilities', async () => {
+  const fixture = relayFixture()
+  await fixture.send(designerConnect())
+  assert.deepEqual(fixture.calls.map(call => call.action), ['status'])
+  assert.equal(fixture.posted.at(-1).message.type, 'error')
+  assert.equal(fixture.posted.at(-1).message.payload.code, 'native_refused')
+})
+
+test('designer mode imports the bound capability envelope and returns operations only', async () => {
+  let native = { instanceId: HEX, documentId: '10', revision: '3' }
+  const operations = [{ op: 'set-style', blockId: 'heading', style: { color: '#123456' } }]
+  const fixture = relayFixture({
+    onRequest(envelope) {
+      if (envelope.action === 'status') return ok(native, { supportedActions: ['edm_designer_import', 'edm_designer_snapshot'] })
+      if (envelope.action === 'edm_designer_import') {
+        assert.equal(envelope.params.operationId, designerOperationId)
+        assert.equal(envelope.params.capabilities.version, 1)
+        native = { ...native, documentId: '42', revision: '4' }
+        return ok(native, { imported: true })
+      }
+      if (envelope.action === 'edm_designer_snapshot') {
+        assert.equal(envelope.documentId, '42')
+        assert.equal(envelope.expectedRevision, '4')
+        assert.deepEqual(envelope.params, {})
+        return ok(native, { operationId: designerOperationId, operations })
+      }
+      throw new Error('Unexpected native action')
+    }
+  })
+  await fixture.send(designerConnect())
+  assert.equal(fixture.posted.at(-1).message.type, 'ready')
+  await fixture.send({ ...designerConnect(), requestId: 'designer-snapshot', type: 'snapshot' })
+  assert.equal(fixture.posted.at(-1).message.type, 'snapshot')
+  assert.deepEqual(fixture.posted.at(-1).message.payload, { operationId: designerOperationId, operations })
+  assert.equal(fixture.calls.some(call => ['edm_snapshot', 'edm_required_snapshot_images'].includes(call.action)), false)
+})
+
+test('designer mode rejects canonical replacement or a foreign operation identity', async () => {
+  for (const snapshot of [design(), { operationId: 'foreign-operation', operations: [] }, { operationId: designerOperationId, operations: [], policy: {} }]) {
+    const fixture = relayFixture({
+      onRequest(envelope, native) {
+        if (envelope.action === 'status') return ok(native, { supportedActions: ['edm_designer_import', 'edm_designer_snapshot'] })
+        if (envelope.action === 'edm_designer_import') return ok(native, { imported: true })
+        return ok(native, snapshot)
+      }
+    })
+    await fixture.send(designerConnect())
+    await fixture.send({ ...designerConnect(), requestId: 'designer-snapshot', type: 'snapshot' })
+    assert.equal(fixture.posted.at(-1).message.type, 'error')
+    assert.equal(fixture.posted.at(-1).message.payload.code, 'native_refused')
+  }
+})
+
+
+test('designer empty Image placeholder imports without fetch or invented bytes', async () => {
+  let fetched = false
+  const fixture = relayFixture({
+    relay: { fetchImage: async () => { fetched = true; throw new Error('unexpected fetch') } },
+    onRequest(envelope, native) {
+      if (envelope.action === 'status') return ok(native, { supportedActions: ['edm_designer_import', 'edm_designer_snapshot'] })
+      if (envelope.action === 'edm_designer_import') {
+        assert.deepEqual(envelope.params.images, {})
+        assert.equal(envelope.params.design.blocks.empty.data.props.url, '')
+        return ok(native, { imported: true })
+      }
+      throw new Error('Unexpected action')
+    }
+  })
+  const packet = designerConnect()
+  packet.payload.design = design({ empty: { type: 'Image', data: { props: { url: '', alt: '' } } } })
+  await fixture.send(packet)
+  assert.equal(fetched, false)
+  assert.equal(fixture.posted.at(-1).message.type, 'ready')
+})

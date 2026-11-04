@@ -51,7 +51,7 @@ describe('buildBatchEmail', () => {
     from_name: 'XeroFlow',
     from_email: 'hi@xf.com',
     reply_to: null,
-    body_html: '<p>Hi {{ first_name }}</p><a href="{{ unsubscribe_url }}">stop</a>'
+    body_html: '<p>Hi {{ first_name }}</p><a href="{{ unsubscribe_url }}">stop</a><footer>Agency, 1 Market Street, Melbourne VIC 3000</footer>'
   }
   const recipient = { email: 'ada@x.com', name: 'Ada Lovelace', subscriber_id: 's9' }
 
@@ -61,7 +61,7 @@ describe('buildBatchEmail', () => {
     expect(email.to).toEqual(['ada@x.com'])
     expect(email.subject).toBe('Hello Ada')
     expect(email.html).toContain('Hi Ada')
-    expect(email.html).toContain('https://app.test/email/unsubscribe?c=c9&s=s9')
+    expect(email.html).toContain('https://app.test/email/unsubscribe?c=c9&amp;s=s9')
     expect(email.headers['List-Unsubscribe']).toBe('<https://app.test/email/unsubscribe?c=c9&s=s9>')
     expect(email.headers['List-Unsubscribe-Post']).toBe('List-Unsubscribe=One-Click')
     expect(email.replyTo).toBeUndefined()
@@ -70,7 +70,7 @@ describe('buildBatchEmail', () => {
   it('threads the signature token into the URL, in-body link, and List-Unsubscribe header', () => {
     const email = buildBatchEmail(campaign, recipient, 'c9', 'https://app.test', 'sig123')
     const expected = 'https://app.test/email/unsubscribe?c=c9&s=s9&t=sig123'
-    expect(email.html).toContain(expected)
+    expect(email.html).toContain(expected.replaceAll('&', '&amp;'))
     expect(email.headers['List-Unsubscribe']).toBe(`<${expected}>`)
   })
 
@@ -86,7 +86,7 @@ describe('buildBatchEmail', () => {
     const email = await buildTrackedBatchEmail(
       {
         ...campaign,
-        body_html: '<p>Hi {{ first_name }}</p><a href="https://dealer.example.com/offers">Offer</a><a href="{{ unsubscribe_url }}">stop</a>'
+        body_html: '<p>Hi {{ first_name }}</p><a href="https://dealer.example.com/offers">Offer</a><a href="{{ unsubscribe_url }}">stop</a><footer>Agency, 1 Market Street, Melbourne VIC 3000</footer>'
       },
       recipient,
       'c9',
@@ -102,7 +102,7 @@ describe('buildBatchEmail', () => {
 
     expect(email.html).toContain('https://app.test/email/click?')
     expect(email.html).toContain('u=https%3A%2F%2Fdealer.example.com%2Foffers')
-    expect(email.html).toContain('https://app.test/email/unsubscribe?c=c9&s=s9&t=sig123')
+    expect(email.html).toContain('https://app.test/email/unsubscribe?c=c9&amp;s=s9&amp;t=sig123')
     expect(email.headers['List-Unsubscribe']).toBe('<https://app.test/email/unsubscribe?c=c9&s=s9&t=sig123>')
   })
 })

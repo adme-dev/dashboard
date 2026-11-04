@@ -3,7 +3,7 @@
  * Opt-in real-Postgres contract for department email marketing + social inbox operations. Skipped
  * unless DEPARTMENT_EMAIL_PG_URL points at a LOCAL scratch database. The email and inbox tables are
  * created by executing their migrations verbatim (132, 133, 164, 136, 137, 142, 166, 144, 148, 151,
- * 212, 400); agency_clients, team_members, ai_pending_actions and god_mode_execution_ledger mirror
+ * 212, 400, 163, 491); agency_clients, team_members, ai_pending_actions and god_mode_execution_ledger mirror
  * schema.sql / migrations 171+186+189+392 and 345+347.
  *
  * The real recipient materializer, chunked campaign sender, test-send service and reply dispatcher
@@ -13,6 +13,7 @@
  *   initdb -D /tmp/deptemailpg -U postgres && pg_ctl -D /tmp/deptemailpg -o "-p 54332 -k /tmp" start
  *   DEPARTMENT_EMAIL_PG_URL='postgresql:///postgres?host=/tmp&port=54332&user=postgres' pnpm exec vitest run test/ai/departmentEmailInboxPostgres.test.ts
  */
+import { randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import pg from 'pg'
@@ -29,6 +30,8 @@ function isLocal(value?: string): boolean {
   }
 }
 const local = isLocal(url)
+const schemaName = `dept_email_test_${randomUUID().replaceAll('-', '')}`
+let ownsSchema = false
 
 const h = vi.hoisted(() => ({
   client: null as null | import('pg').Client,
@@ -74,6 +77,8 @@ vi.mock('~~/server/utils/godMode/authority', () => ({
 vi.mock('~~/server/utils/appUrl', () => ({ getAppUrl: () => 'https://app.test' }))
 vi.mock('~~/server/utils/crm/commsDb', () => ({ bridgeCommunication: vi.fn(async () => null) }))
 vi.mock('~~/server/utils/email', () => ({
+  // No cached Worker binding: exercise the real default-off, pre-497 campaign path.
+  getCachedBinding: () => undefined,
   isEmailConfigured: () => true,
   getResendClient: () => ({
     batch: {
@@ -164,7 +169,6 @@ const count = async (sql: string, params: unknown[] = []) => Number((await h.cli
 const doc = { root: { type: 'EmailLayout', data: { childrenIds: [] } } }
 
 const PREREQS = `
-DROP SCHEMA IF EXISTS dept_email_test CASCADE; CREATE SCHEMA dept_email_test; SET search_path TO dept_email_test, public;
 CREATE EXTENSION IF NOT EXISTS citext WITH SCHEMA public;
 CREATE TABLE agency_clients (id uuid PRIMARY KEY, name varchar(255) NOT NULL, is_active boolean NOT NULL DEFAULT true);
 CREATE TABLE team_members (id uuid PRIMARY KEY, name varchar(255) NOT NULL, email varchar(255) UNIQUE NOT NULL, is_active boolean DEFAULT true);
@@ -187,7 +191,9 @@ CREATE TABLE god_mode_execution_ledger (actor_user_id uuid NOT NULL, channel var
 `
 const MIGRATIONS = ['132-email-marketing-core.sql', '133-email-templates.sql', '164-edm-template-folders-drafts.sql', '136-email-campaigns.sql',
   '137-campaign-recipient-claim.sql', '142-campaign-segment.sql', '166-email-campaign-preflight-snapshot.sql', '144_social_accounts.sql',
-  '148_social_inbox.sql', '151_social_automation.sql', '212_social_inbox_case_events.sql', '400_social_inbox_account_client_consistency.sql']
+  '148_social_inbox.sql', '151_social_automation.sql', '212_social_inbox_case_events.sql', '400_social_inbox_account_client_consistency.sql',
+  // Current campaign creation checks canonical template lineage, even for legacy drafts.
+  '163-edm-custom-modules.sql', '491_email_design_revisions.sql']
 const SEED = `
 INSERT INTO agency_clients VALUES ('${CLIENT}', 'Client', true), ('${OTHER_CLIENT}', 'Other', true), ('${INACTIVE_CLIENT}', 'Gone', false);
 INSERT INTO team_members (id, name, email, is_active) VALUES ('${ACTOR}', 'Garrix', 'garrix@agency.test', true), ('${PEER}', 'Hannah', 'hannah@agency.test', true),
@@ -220,22 +226,32 @@ INSERT INTO social_messages (id, conversation_id, client_id, platform_message_id
 
 describe.skipIf(!local)('department email + inbox operations on real Postgres', () => {
   beforeAll(async () => {
-    process.env.EMAIL_SENDING_ENABLED = 'true'
-    process.env.EMAIL_LINK_SECRET = 'test-link-secret'
+    vi.stubEnv('EMAIL_SENDING_ENABLED', 'true')
+    vi.stubEnv('EMAIL_LINK_SECRET', 'test-link-secret')
+    vi.stubEnv('FIGFLOW_EDM_WORKFLOW_ENABLED', undefined)
     // The real test-send service resolves allowed sender domains from configuration.
-    process.env.EMAIL_SENDER_DOMAINS = 'client.test'
+    vi.stubEnv('EMAIL_SENDER_DOMAINS', 'client.test')
     h.client = new pg.Client({ connectionString: url })
     await h.client.connect()
+    // Never pre-drop a shared schema: only this process owns this UUID namespace.
+    await h.client.query(`CREATE SCHEMA "${schemaName}"`)
+    ownsSchema = true
+    await h.client.query(`SET search_path TO "${schemaName}", public`)
     await h.client.query(PREREQS)
     for (const file of MIGRATIONS) await h.client.query(readFileSync(`server/database/migrations/${file}`, 'utf8'))
-    await h.client.query('SET search_path TO dept_email_test, public')
+    await h.client.query(`SET search_path TO "${schemaName}", public`)
     await h.client.query(SEED)
   })
   afterAll(async () => {
-    delete process.env.EMAIL_SENDING_ENABLED
-    delete process.env.EMAIL_SENDER_DOMAINS
-    await h.client?.query('DROP SCHEMA IF EXISTS dept_email_test CASCADE')
-    await h.client?.end()
+    vi.unstubAllEnvs()
+    try {
+      if (ownsSchema && /^dept_email_test_[0-9a-f]{32}$/.test(schemaName)) {
+        await h.client!.query(`DROP SCHEMA "${schemaName}" CASCADE`)
+        ownsSchema = false
+      }
+    } finally {
+      await h.client?.end()
+    }
   })
   beforeEach(() => {
     Object.assign(h, { deny: false, reviewerChecks: 0, failReviewerAfter: Infinity, batchMode: 'ok', replyMode: 'ok', mentions: 0 })
@@ -274,6 +290,8 @@ describe.skipIf(!local)('department email + inbox operations on real Postgres', 
 
   describe('email drafts and audience', () => {
     it('creates client-scoped drafts from documents or the client\'s templates, with ledger replay and conflict', async () => {
+      expect(await count(`SELECT COUNT(*) n FROM information_schema.columns
+        WHERE table_schema = current_schema() AND table_name = 'campaigns' AND column_name = 'review_required'`)).toBe(0)
       const k = key()
       const args = { clientId: CLIENT, name: 'October service', templateId: TEMPLATE, fromEmail: 'news@client.test', acknowledgement: 'CREATE_CLIENT_EMAIL_DRAFT' }
       const created = await mail('marketing_create_email_campaign_draft', args, ACTOR, k)
@@ -284,6 +302,8 @@ describe.skipIf(!local)('department email + inbox operations on real Postgres', 
       expect(await mail('marketing_create_email_campaign_draft', args, ACTOR, k)).toMatchObject({ ok: true, data: { campaignId: id, replayed: true } })
       expect(await mail('marketing_create_email_campaign_draft', { ...args, name: 'Different' }, ACTOR, k)).toMatchObject({ ok: false, code: 'idempotency_conflict' })
       expect(await count(`SELECT COUNT(*) n FROM campaigns WHERE name = 'October service'`)).toBe(1)
+      expect(h.batches).toHaveLength(0)
+      expect(h.testSends).toHaveLength(0)
       expect(await mail('marketing_create_email_campaign_draft', { ...args, name: 'X', templateId: OTHER_TEMPLATE })).toMatchObject({ ok: false, code: 'not_found' })
       expect(await mail('marketing_create_email_campaign_draft', { clientId: CLIENT, name: 'Bad body', bodySource: { blocks: [] }, acknowledgement: 'CREATE_CLIENT_EMAIL_DRAFT' })).toMatchObject({ ok: false, code: 'bad_args' })
       expect(await mail('marketing_create_email_campaign_draft', { ...args, clientId: INACTIVE_CLIENT, templateId: undefined, name: 'Gone' })).toMatchObject({ ok: false, code: 'not_found' })

@@ -13,7 +13,8 @@ import { designToRendererDocument } from './designAdapter'
 /** Explicit first conversion of a persisted composer draft. The server, not the
  * browser, supplies its owning scope. Never apply this to an existing design:
  * that would replace its persisted policy, lineage and immutable module pins. */
-export function composerToDesignDraft(source: unknown, clientId: string | null): EmailDesignDocument {
+export function composerToDesignDraft(source: unknown, clientId: string | null, target: 'template' | 'campaign-draft' = 'template'): EmailDesignDocument {
+  if (target !== 'template' && target !== 'campaign-draft') throw new EmailDesignError('INVALID_DESIGN', 'conversion_target')
   let blocks: EmailDesignDocument['blocks']
   try {
     blocks = snapshotRenderInput(source, DESIGN_LIMITS.documentBytes) as EmailDesignDocument['blocks']
@@ -28,7 +29,7 @@ export function composerToDesignDraft(source: unknown, clientId: string | null):
   rejectUnsafeNumbers(blocks)
   const design = validateEmailDesign({
     schemaVersion: 1,
-    kind: 'template',
+    kind: target,
     scope: { clientId },
     source: { editor: 'composer', nativeArtifact: null },
     blocks,

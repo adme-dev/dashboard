@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- Execute isolated composer save/load boundary. */
 import { readFileSync } from 'node:fs'
-import { describe, expect, it, vi } from 'vitest'
-import { computed, ref } from 'vue'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { computed, effectScope, ref, watch, type EffectScope } from 'vue'
 import { useEdmWorkspaceLeave } from '~~/app/composables/useEdmWorkspaceLeave'
 import ts from 'typescript'
 import { templateCopyCategory, markTemplateClientCopy, templateCopyName } from '~~/app/utils/edmTemplateProvenance'
@@ -10,6 +10,11 @@ const source = readFileSync(new URL('../../app/components/email/builder/EdmFlyhu
 const state = source.slice(source.indexOf('const templateId ='), source.indexOf('// ── Save selection'))
 const workspace = source.slice(source.indexOf('const workspaceSavedSnapshot ='), source.indexOf('onMounted(async () => {'))
 const mounted = source.slice(source.indexOf('onMounted(async () => {'), source.indexOf('</script>'))
+const scopes: EffectScope[] = []
+afterEach(() => {
+  scopes.splice(0).forEach(scope => scope.stop())
+})
+
 async function setup(query: Record<string, string>, shared = false, fail = false, templateFailure = false, deferTemplate?: Promise<void>) {
   const apiFetch = vi.fn(async (url: string) => {
     if (url === '/api/email/template-clients') {
@@ -24,11 +29,19 @@ async function setup(query: Record<string, string>, shared = false, fail = false
   const store = { document: ref({ root: {} }), resetDocument: vi.fn() }
   const router = { replace: vi.fn(async () => {}) }
   let leaveGuard: () => boolean | Promise<boolean> = () => true
-  const args = { designDraftClient: ref<string | undefined>(), designFlow: { draft: ref(null), hasPending: ref(false), busy: ref(false), error: ref('') }, designRevisionRequired: ref(false), designServiceUnavailable: ref(false), loadedDesignRevisionId: ref(null), figflowEnabled: false, useEdmWorkspaceLeave, onBeforeRouteLeave: (guard: () => boolean | Promise<boolean>) => {
-    leaveGuard = guard
-  }, onBeforeUnmount: () => {}, router, ref, computed, templateCopyCategory, markTemplateClientCopy, templateCopyName, route: { query }, apiFetch, store, toast: { add: vi.fn() }, onMounted: (fn: () => Promise<void>) => { mount = fn }, findStarterTemplate: () => null }
+  // These authoring services are outside this save/load boundary. Preserve their
+  // reactive contracts and run the source watcher in a disposable Vue scope.
+  const useEdmMergeTags = vi.fn(() => ({ variables: ref({}), previewMode: ref('tokens') }))
+  const useEdmConditions = vi.fn(() => ({ canEdit: ref(false) }))
+  const args = { useEdmMergeTags, useEdmConditions, watch,
+    previewGeneration: 0, previewHtml: ref(''), previewSubject: ref(''), previewPreheader: ref(''), viewMode: ref('editor'), renderPreview: vi.fn(),
+    brandFlow: { busy: ref(false), hasPending: ref(false), error: ref('') }, designDraftClient: ref<string | undefined>(), designFlow: { draft: ref(null), hasPending: ref(false), busy: ref(false), error: ref('') }, designRevisionRequired: ref(false), designServiceUnavailable: ref(false), editableCopyBusy: ref(false), loadedDesignRevisionId: ref(null), figflowEnabled: false, useEdmWorkspaceLeave, onBeforeRouteLeave: (guard: () => boolean | Promise<boolean>) => {
+      leaveGuard = guard
+    }, onBeforeUnmount: () => {}, router, ref, computed, templateCopyCategory, markTemplateClientCopy, templateCopyName, route: { query }, apiFetch, store, toast: { add: vi.fn() }, onMounted: (fn: () => Promise<void>) => { mount = fn }, findStarterTemplate: () => null }
   const js = ts.transpile(`${state}\n${workspace}\n${mounted}\nreturn {save, templateLoading, templateLoadError, templateClient, templateId, name, subject, templateFolderName, hasValidTemplateClient, templateClientsError, workspaceLeave, markWorkspaceDocumentSaved}`, { target: ts.ScriptTarget.ES2022 })
-  const result = new Function(...Object.keys(args), js)(...Object.values(args))
+  const scope = effectScope()
+  scopes.push(scope)
+  const result = scope.run(() => new Function(...Object.keys(args), js)(...Object.values(args)))
   const mounting = mount()
   if (!deferTemplate) await mounting
   return { ...result, apiFetch, store, router, mounting, leaveGuard: () => leaveGuard() }

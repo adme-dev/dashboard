@@ -1,5 +1,9 @@
 import { templateSourceDetails } from './edmTemplateProvenance'
+
 export interface TemplateLibraryRow {
+  design_document_id?: string | null
+  head_revision_id?: string | null
+  revision_schema_version?: number | null
   body_source?: unknown
   id: string
   name: string
@@ -12,7 +16,7 @@ export interface TemplateLibraryRow {
 }
 export function filterTemplateLibrary<T extends TemplateLibraryRow>(rows: T[], options: { view: string, client: string, search?: string, recentIds?: string[], make?: string }): T[] {
   const query = options.search?.trim().toLowerCase() || ''
-  const filtered = rows.filter(row => {
+  const filtered = rows.filter((row) => {
     const source = templateSourceDetails(row.body_source)
     if (options.make && options.make !== 'all' && source?.make !== options.make) return false
     const shared = !row.client_id

@@ -112,6 +112,24 @@ describe('email template test-send endpoint', () => {
     }))
   })
 
+  it('evaluates conditional sample content even without an explicit variables map', async () => {
+    const handler = (await import('~~/server/api/email/templates/test-send.post')).default
+    const source = structuredClone(validDocument)
+    source.h.data.props = { ...source.h.data.props, visibilityCondition: { version: 1, name: 'Known name', predicate: { field: 'first_name', op: 'exists' } } } as never
+    mockReadBody.mockResolvedValue({ to: 'test@example.com', subject: 'Hi {{ first_name|friend }}', body_source: source })
+    await handler({ context: { cloudflare: { env: emailRendererEnv } } } as never)
+    expect(mockEmailsSend).toHaveBeenCalledWith(expect.objectContaining({ subject: '[TEST] Hi friend', html: expect.not.stringContaining('Preview Root Test') }))
+    expect(mockEmailsSend.mock.calls[0][0].html).not.toContain('xf-condition')
+    mockReadBody.mockResolvedValue({ to: 'test@example.com', subject: 'Hi {{ first_name|friend }}', body_source: source, variables: { first_name: 'Alex & team' } })
+    await handler({ context: { cloudflare: { env: emailRendererEnv } } } as never)
+    expect(mockEmailsSend.mock.calls[1][0].subject).toBe('[TEST] Hi Alex & team')
+    expect(mockEmailsSend.mock.calls[1][0].html).toContain('Preview Root Test')
+    mockReadBody.mockResolvedValue({ to: 'test@example.com', subject: 'Hi {{first_name}}', body_source: source, variables: { first_name: '{{other}}', other: 'Must not appear' } })
+    await handler({ context: { cloudflare: { env: emailRendererEnv } } } as never)
+    expect(mockEmailsSend.mock.calls[2][0].subject).toBe('[TEST] Hi {{other}}')
+    expect(mockEmailsSend.mock.calls[2][0].html).not.toContain('Must not appear')
+  })
+
   it('trims explicit recipients before sending template tests', async () => {
     const handler = (await import('~~/server/api/email/templates/test-send.post')).default
     mockReadBody.mockResolvedValue({

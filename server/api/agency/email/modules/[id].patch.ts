@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { requireWriteAccess } from '~~/server/utils/auth'
 import { getCustomModule, updateCustomModule, PreviewToneSchema } from '~~/server/utils/email-marketing/customModules'
 import { assertEmailClientAccess } from '~~/server/utils/email-marketing/access'
+import { assertFreshLegacyModulePublisher } from '~~/server/utils/email-marketing/designModulePublisher'
 
 const Body = z.object({
   name: z.string().min(1).max(200).optional(),
@@ -24,6 +25,8 @@ export default defineEventHandler(async (event) => {
   const existing = await getCustomModule(id)
   if (!existing) throw createError({ statusCode: 404, statusMessage: 'not_found' })
   await assertEmailClientAccess(event, user, existing.client_id)
+  await assertFreshLegacyModulePublisher(event, user.id, existing.client_id)
+  if (existing.design_document_id) throw createError({ statusCode: 409, statusMessage: 'immutable_module_revision_required' })
   const module = await updateCustomModule(id, parsed.data)
   if (!module) throw createError({ statusCode: 404, statusMessage: 'not_found' })
   return { module }

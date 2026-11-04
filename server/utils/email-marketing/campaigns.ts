@@ -3,8 +3,12 @@
 // (re)rendered from body_source on write. NO sending here — the chunked Resend
 // sender lands in 2b-2; this module only builds the resumable work queue.
 
-import { createError } from 'h3'
-import { queryRows, queryOne, execute, transaction } from '~~/server/utils/db'
+import { createError, type H3Event } from 'h3'
+import { useEvent } from 'nitropack/runtime/internal/context'
+import { transactionWithoutRetry, queryRows, queryOne, execute, transaction } from '~~/server/utils/db'
+import { createDesignAssetStorage, type DesignAssetStorage } from './designAssets'
+import type { DesignDb } from './designRevisions'
+import type { CampaignContentMutation } from './designCampaigns'
 import { getAppUrl } from '~~/server/utils/appUrl'
 import { renderTemplateDocument } from './render'
 import { isFlyhubFormat } from '../../../shared/emailRendering/format'
@@ -16,8 +20,12 @@ import {
   prepareSendableHtmlWithMirroredAssets,
   type PrepareSendableHtmlWithMirroredAssetsOptions
 } from './sendableHtml'
+import { assertCampaignApprovalCurrent, isEmailReviewWorkflowEnabled, mapReviewDbError } from './review'
+import { parseEmailUtmSettings, type EmailUtmSettings } from './trackingLinks'
 
 export interface Campaign {
+  email_design_revision_id?: string | null
+  design_receipt?: { documentId: string, revisionId: string }
   id: string
   name: string
   subject: string | null
@@ -47,8 +55,17 @@ export interface Campaign {
   preflight_result?: CampaignPreflightResult | null
   preflight_checked_at?: string | null
   recipient_snapshot?: unknown
+  /** Migration 497 (M06). Absent on databases before that migration. */
+  review_required?: boolean
+  web_version_enabled?: boolean
+  utm_settings?: EmailUtmSettings | null
   created_at: string
   updated_at: string
+}
+
+/** A gated campaign that has left draft is frozen: never re-prepared or re-rendered. */
+export function isFrozenReviewedCampaign(campaign: Pick<Campaign, 'status' | 'review_required'>): boolean {
+  return campaign.review_required === true && campaign.status !== 'draft'
 }
 
 export interface CampaignRecipientSnapshot {
@@ -75,6 +92,9 @@ async function campaignRow(db: CampaignDb | undefined, sql: string, params: unkn
 }
 
 export interface CampaignHtmlPrepareOptions {
+  event?: H3Event
+  canonicalDb?: DesignDb
+  designStorage?: DesignAssetStorage
   appUrl?: string
   userId?: string
   fetchAsset?: PrepareSendableHtmlWithMirroredAssetsOptions['fetchAsset']
@@ -101,20 +121,54 @@ function campaignSendUserId(campaign: Campaign, fallback?: string): string {
   return fallback || campaign.created_by || campaign.id
 }
 
-export async function prepareCampaignHtmlForSend(
+/** Canonical campaigns validate their unchanged saved output and registered
+ * assets; legacy campaigns retain their existing pure mirroring preparation. */
+/** Shared canonical storage/readiness owner for review preflight and send paths. */
+export async function prepareCanonicalCampaignHtml(campaign: Campaign, opts: CampaignHtmlPrepareOptions = {}) {
+  const { prepareCanonicalCampaignReadiness } = await import('./designCampaigns')
+  let event = opts.event
+  if (!event) {
+    try {
+      event = useEvent()
+    } catch { /* Request-less callers must supply registered storage. */ }
+  }
+  let storage = opts.designStorage
+  if (!storage && event) {
+    try {
+      storage = createDesignAssetStorage(event, opts.appUrl || getAppUrl(event))
+    } catch { /* Readiness refuses images without storage. */ }
+  }
+  return prepareCanonicalCampaignReadiness(campaign, opts.canonicalDb ?? { query: async (sql, params) => ({ rows: await queryRows(sql, params) }) }, storage)
+}
+
+export async function preparedCampaignHtml(
   campaign: Campaign,
   opts: CampaignHtmlPrepareOptions = {}
-): Promise<Campaign> {
+): Promise<string> {
   const html = campaign.body_html || ''
-  if (!html) return campaign
-
-  const prepared = await prepareSendableHtmlWithMirroredAssets(html, {
+  if (campaign.email_design_revision_id) return (await prepareCanonicalCampaignHtml(campaign, opts)).html
+  if (!html) return html
+  return prepareSendableHtmlWithMirroredAssets(html, {
     appUrl: opts.appUrl || getAppUrl(),
     userId: campaignSendUserId(campaign, opts.userId),
     fetchAsset: opts.fetchAsset,
     uploadAsset: opts.uploadAsset,
     mirrorExternalAssets: opts.mirrorExternalAssets
   })
+}
+
+export async function prepareCampaignHtmlForSend(
+  campaign: Campaign,
+  opts: CampaignHtmlPrepareOptions = {}
+): Promise<Campaign> {
+  const html = campaign.body_html || ''
+  if (campaign.email_design_revision_id) {
+    await preparedCampaignHtml(campaign, opts)
+    return campaign
+  }
+  if (!html || isFrozenReviewedCampaign(campaign)) return campaign
+
+  const prepared = await preparedCampaignHtml(campaign, opts)
   if (prepared === html) return campaign
 
   const row = await queryOne<Campaign>(`
@@ -241,7 +295,18 @@ export interface CreateCampaignInput {
   created_by: string | null
 }
 
-export async function createCampaign(input: CreateCampaignInput, renderer: EmailRendererClient, db?: CampaignDb): Promise<Campaign> {
+export async function createCampaign(input: CreateCampaignInput, renderer: EmailRendererClient, db?: CampaignDb, canonicalSelection?: { templateRevisionId: string }): Promise<Campaign> {
+  if (input.template_id) {
+    const canonical = db
+      ? (await db.query('SELECT d.id FROM email_design_documents d JOIN email_design_revisions r ON r.id=d.head_revision_id WHERE d.template_id=$1 AND r.schema_version=1', [input.template_id])).rows[0]
+      : await queryOne('SELECT d.id FROM email_design_documents d JOIN email_design_revisions r ON r.id=d.head_revision_id WHERE d.template_id=$1 AND r.schema_version=1', [input.template_id])
+    if (canonical) {
+      if (!canonicalSelection) throw createError({ statusCode: 409, statusMessage: 'design_revision_required' })
+      const sql = 'SELECT r.id FROM email_design_revisions r JOIN email_design_documents d ON d.id=r.document_id WHERE d.template_id=$1 AND r.id=$2 AND r.schema_version=1'
+      const selected = db ? (await db.query(sql, [input.template_id, canonicalSelection.templateRevisionId])).rows[0] : await queryOne(sql, [input.template_id, canonicalSelection.templateRevisionId])
+      if (!selected) throw createError({ statusCode: 409, statusMessage: 'design_revision_required' })
+    }
+  }
   const source = input.body_source ?? { root: { type: 'EmailLayout', data: { childrenIds: [] } } }
   const name = input.name.trim()
   const subject = normalizeNullableText(input.subject) ?? null
@@ -250,11 +315,16 @@ export async function createCampaign(input: CreateCampaignInput, renderer: Email
   const replyTo = normalizeNullableText(input.reply_to) ?? null
   const previewText = normalizeNullableText(input.preview_text) ?? null
   const html = await renderHtml(renderer, source, subject, previewText)
+  // Every creation entrypoint (REST, MCP department tools) funnels here, so the
+  // workflow flag cannot be bypassed by omitting a template or using another
+  // API. The column is only written when the flag is on (pre-497 safe).
+  const reviewColumn = isEmailReviewWorkflowEnabled() ? ', review_required' : ''
+  const reviewValue = reviewColumn ? ', TRUE' : ''
   const row = await campaignRow(db, `
     INSERT INTO campaigns
       (name, subject, from_name, from_email, reply_to, preview_text,
-       body_source, body_html, template_id, client_id, created_by, filter_rules)
-    VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $11, $12::jsonb)
+       body_source, body_html, template_id, client_id, created_by, filter_rules${reviewColumn})
+    VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $11, $12::jsonb${reviewValue})
     RETURNING *
   `, [
     name,
@@ -287,13 +357,34 @@ export interface UpdateCampaignInput {
   template_id?: string | null
   scheduled_at?: string | null
   filter_rules?: unknown
+  /** M06 workflow settings; part of the approved content digest. */
+  utm_settings?: unknown
+  web_version_enabled?: boolean
 }
 
-export async function updateCampaign(id: string, patch: UpdateCampaignInput, renderer: EmailRendererClient, db?: CampaignDb): Promise<Campaign | null> {
+export async function updateCampaign(id: string, patch: UpdateCampaignInput, renderer: EmailRendererClient, db?: CampaignDb, canonical?: CampaignContentMutation): Promise<Campaign | null> {
   const existing = db ? await campaignRow(db, 'SELECT * FROM campaigns WHERE id = $1', [id]) : await getCampaign(id)
   if (!existing) return null
-  if (existing.status !== 'draft') {
+  const changesContent = patch.body_source !== undefined || patch.subject !== undefined || patch.preview_text !== undefined
+  if (existing.status !== 'draft' && !(existing.email_design_revision_id && changesContent && canonical)) {
     throw createError({ statusCode: 409, statusMessage: 'campaign_not_editable' })
+  }
+
+  if (existing.email_design_revision_id && patch.template_id !== undefined && patch.template_id !== existing.template_id) throw createError({ statusCode: 409, statusMessage: 'design_template_update_required' })
+  if (existing.email_design_revision_id && changesContent) {
+    if (!canonical) throw createError({ statusCode: 409, statusMessage: 'design_revision_required' })
+    const work = async (connection: CampaignDb) => {
+      const { saveCampaignContentPatch } = await import('./designCampaigns')
+      const saved = await saveCampaignContentPatch(id, Object.fromEntries(Object.entries(patch).filter(([, value]) => value !== undefined)), canonical, renderer, connection)
+      let result = await campaignRow(connection, 'SELECT * FROM campaigns WHERE id = $1', [id])
+      if (!saved.replayed) {
+        const { subject: _subject, preview_text: _preview, body_source: _source, ...remaining } = patch
+        if (Object.values(remaining).some(value => value !== undefined)) result = await updateCampaign(id, remaining, renderer, connection)
+      }
+      if (result) result.design_receipt = saved
+      return result
+    }
+    return db ? work(db) : transactionWithoutRetry(connection => work(connection))
   }
 
   const subject = patch.subject !== undefined ? normalizeNullableText(patch.subject) : existing.subject
@@ -302,7 +393,33 @@ export async function updateCampaign(id: string, patch: UpdateCampaignInput, ren
   const fromEmail = patch.from_email !== undefined ? normalizeNullableText(patch.from_email) : existing.from_email
   const replyTo = patch.reply_to !== undefined ? normalizeNullableText(patch.reply_to) : existing.reply_to
   const source = patch.body_source !== undefined ? patch.body_source : existing.body_source
-  const html = await renderHtml(renderer, source, subject, previewText)
+  // Campaigns only re-render when a render input changes, so renaming or
+  // retargeting never silently replaces approved (prepared) HTML.
+  const renderInputsChanged = patch.body_source !== undefined || patch.subject !== undefined || patch.preview_text !== undefined
+  const html = !renderInputsChanged
+    ? existing.body_html
+    : await renderHtml(renderer, source, subject, previewText)
+  const workflowSet: string[] = []
+  const workflowParams: unknown[] = []
+  if (patch.utm_settings !== undefined) {
+    let utm: EmailUtmSettings | null
+    try {
+      utm = parseEmailUtmSettings(patch.utm_settings)
+    } catch {
+      throw createError({ statusCode: 400, statusMessage: 'invalid_utm_settings' })
+    }
+    workflowParams.push(utm === null ? null : JSON.stringify(utm))
+    workflowSet.push(`utm_settings = $${12 + workflowParams.length}::jsonb`)
+  }
+  if (patch.web_version_enabled === true && existing.review_required !== true) {
+    // The hosted web version is signed over approved, frozen content, which only
+    // a gated campaign guarantees; an ungated campaign may be re-prepared mid-send.
+    throw createError({ statusCode: 409, statusMessage: 'web_version_requires_review' })
+  }
+  if (patch.web_version_enabled !== undefined) {
+    workflowParams.push(patch.web_version_enabled === true)
+    workflowSet.push(`web_version_enabled = $${12 + workflowParams.length}::boolean`)
+  }
   const filterRules = patch.filter_rules !== undefined ? patch.filter_rules : existing.filter_rules
   const name = patch.name !== undefined ? patch.name.trim() || existing.name : existing.name
 
@@ -318,7 +435,8 @@ export async function updateCampaign(id: string, patch: UpdateCampaignInput, ren
       body_html    = $9,
       template_id  = $10,
       scheduled_at = $11,
-      filter_rules = $12::jsonb,
+      filter_rules = $12::jsonb,${workflowSet.map(clause => `
+      ${clause},`).join('')}
       updated_at   = NOW()
     WHERE id = $1 AND status = 'draft'
     RETURNING *
@@ -334,7 +452,8 @@ export async function updateCampaign(id: string, patch: UpdateCampaignInput, ren
     html,
     patch.template_id !== undefined ? patch.template_id : existing.template_id,
     patch.scheduled_at !== undefined ? patch.scheduled_at : existing.scheduled_at,
-    filterRules == null ? null : JSON.stringify(filterRules)
+    filterRules == null ? null : JSON.stringify(filterRules),
+    ...workflowParams
   ])
   if (!row) throw createError({ statusCode: 409, statusMessage: 'campaign_not_editable' })
   return row
@@ -458,6 +577,8 @@ export async function scheduleCampaign(
   if (existing.status !== 'draft') {
     throw createError({ statusCode: 409, statusMessage: 'campaign_not_schedulable' })
   }
+  // Refuse before materialization/mirroring side effects; the trigger re-checks.
+  await assertCampaignApprovalCurrent(existing)
 
   const toSend = await materializeRecipients(campaignId, opts)
   const campaign = await getCampaign(campaignId)
@@ -499,7 +620,7 @@ export async function scheduleCampaign(
     JSON.stringify(preflight),
     checkedAt,
     JSON.stringify(snapshot)
-  ])
+  ]).catch((error: unknown) => { throw mapReviewDbError(error) })
   return row as Campaign
 }
 
@@ -518,7 +639,7 @@ export async function setCampaignStatus(id: string, to: CampaignStatus): Promise
   await execute(
     `UPDATE campaigns SET status = $2, updated_at = NOW()${startedClause}${finishedClause} WHERE id = $1`,
     [id, to]
-  )
+  ).catch((error: unknown) => { throw mapReviewDbError(error) })
 }
 
 // Mark a campaign's remaining pending recipients as cancelled (used by cancel).

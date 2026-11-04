@@ -8,6 +8,15 @@
     @click="preventEditorLinkNavigation"
     @auxclick.capture="preventEditorLinkNavigation"
   >
+    <UBadge
+      v-if="conditionLabel"
+      icon="i-lucide-list-filter"
+      variant="soft"
+      size="sm"
+      class="pointer-events-none m-1"
+    >
+      {{ conditionLabel }}
+    </UBadge>
     <!-- Heading -->
     <component
       :is="headingTag"
@@ -108,6 +117,9 @@
         >
           <UIcon :name="action.icon" class="edm-inline-toolbar-icon" aria-hidden="true" />
         </button>
+        <span @mousedown.capture="rememberMergeSelection">
+          <EmailBuilderEdmMergeTagPicker @insert="insertTextMergeToken" />
+        </span>
         <span class="edm-inline-toolbar-divider" aria-hidden="true" />
         <div class="edm-inline-toolbar-color">
           <button
@@ -147,7 +159,7 @@
         :class="['revert-browser-styles', { 'edm-editable': editable }]"
         :contenteditable="editable ? 'true' : undefined"
         @blur="editable && onTextEdit($event, true)"
-        v-html="sanitizeEmailCanvasHtml(String(blockProps.text || ''), false)"
+        v-html="editable ? inlineMergeEditorHtml(String(blockProps.text || '')) : sanitizeEmailCanvasHtml(String(blockProps.text || ''), false)"
       />
     </div>
 
@@ -533,11 +545,11 @@
 
 <script setup lang="ts">
 import { sanitizeEmailCanvasHtml } from '~~/app/utils/edmCanvasHtml'
-import { computed, ref } from 'vue'
+import { computed, nextTick, ref } from 'vue'
 import { previewFontFamily } from '~~/shared/emailRendering/fonts'
 import { dividerLineThickness } from '~~/app/utils/edmDivider'
 import { extendedStyleVue, safeCssColor } from '~~/app/utils/edmStyle'
-import { sanitizeInlineHtml, extractPlainText, safeInlineHref } from '~~/app/utils/edmInlineText'
+import { serializeInlineMergeHtml, inlineMergeEditorHtml, inlineSelectionOffsets, restoreInlineSelection, insertInlineMergeToken, type InlineSelectionOffsets, extractPlainText, safeInlineHref } from '~~/app/utils/edmInlineText'
 import {
   annotateHtmlEditables,
   deleteHtmlEditable,
@@ -607,7 +619,7 @@ function onTextEdit(e: Event, asHtml: boolean) {
   const el = e.target as HTMLElement | null
   if (!el) return
   const value = asHtml
-    ? sanitizeInlineHtml(el.innerHTML)
+    ? serializeInlineMergeHtml(el.innerHTML)
     : extractPlainText(el.textContent || '')
   const current = (props.props?.text as string) ?? ''
   // No-op edit → skip (avoids a needless v-html re-render/flash on blur).
@@ -635,10 +647,28 @@ function onFeatureEdit(index: number, key: 'heading' | 'description', e: Event) 
 }
 
 function commitTextEditorHtml(el: HTMLElement) {
-  const value = sanitizeInlineHtml(el.innerHTML)
-  el.innerHTML = value
+  const value = serializeInlineMergeHtml(el.innerHTML)
+  el.innerHTML = inlineMergeEditorHtml(value)
   const current = (props.props?.text as string) ?? ''
   if (value !== current) emit('update:text', value)
+}
+
+let mergeSelection: InlineSelectionOffsets | null = null
+function rememberMergeSelection() {
+  mergeSelection = textEditorEl.value ? inlineSelectionOffsets(textEditorEl.value) : null
+}
+async function insertTextMergeToken(token: string) {
+  // A picker can blur/commit before its choice arrives; offsets survive that.
+  await nextTick()
+  const root = textEditorEl.value
+  if (!root) return
+  insertInlineMergeToken(root, token, mergeSelection)
+  const caret = inlineSelectionOffsets(root)?.end ?? root.textContent?.length ?? 0
+  commitTextEditorHtml(root)
+  mergeSelection = null
+  await nextTick()
+  root.focus()
+  restoreInlineSelection(root, { start: caret, end: caret })
 }
 
 function applyInlineFormat(command: InlineFormatCommand) {
@@ -700,6 +730,11 @@ function onEditableKeydown(e: KeyboardEvent) {
     ;(e.target as HTMLElement)?.blur()
   }
 }
+
+const conditionLabel = computed(() => {
+  const condition = props.props?.visibilityCondition as { name?: unknown } | undefined
+  return typeof condition?.name === 'string' ? condition.name : ''
+})
 
 const blockProps = computed(() => (props.props || {}) as Record<string, unknown>)
 const rawHtmlContents = computed(() => (blockProps.value.contents as string) || '')
@@ -1634,5 +1669,14 @@ const columnsContainerCellStyle = {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 12px;
   padding: 0 7px;
+}
+.edm-rich-text-wrap :deep(span[data-merge]) {
+  display: inline-block;
+  border-radius: 0.25rem;
+  padding: 0 0.2em;
+  color: var(--ui-text);
+  background: var(--ui-bg-elevated);
+  outline: 1px solid var(--ui-border);
+  user-select: all;
 }
 </style>

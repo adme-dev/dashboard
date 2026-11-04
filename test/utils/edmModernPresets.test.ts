@@ -3,7 +3,7 @@ import { existsSync, statSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { MODERN_EDM_SECTION_IDS, MODERN_EDM_SECTION_PRESETS, MODERN_EDM_STARTER_TEMPLATES } from '~~/app/utils/edmModernPresets'
 
-const nativeTypes = new Set(['Heading', 'Text', 'Button', 'Image', 'menu', 'feature-grid', 'footer', 'Html'])
+const nativeTypes = new Set(['Heading', 'Text', 'Button', 'Image', 'menu', 'feature-grid', 'footer', 'Html', 'ColumnsContainer'])
 describe('modern industry email library', () => {
   it('builds five distinct complete industry starters from reusable editable sections', () => {
     expect(MODERN_EDM_STARTER_TEMPLATES).toHaveLength(5)
@@ -14,7 +14,9 @@ describe('modern industry email library', () => {
       const sections = template.sectionPresetIds.map(id => MODERN_EDM_SECTION_PRESETS.find(s => s.id === id))
       expect(sections.every(Boolean)).toBe(true)
       expect(sections.map(s => s!.categoryId)).toEqual(['header', 'content', 'feature', 'call-to-action', 'footer'])
-      const blocks = sections.flatMap(s => s!.blocks)
+      // Column children are part of the section, so content checks include them.
+      const flatten = (list: typeof sections[number]['blocks']): typeof list => list.flatMap(b => [b, ...flatten((b.columns ?? []).flat())])
+      const blocks = flatten(sections.flatMap(s => s!.blocks))
       expect(blocks.every(b => nativeTypes.has(b.type))).toBe(true)
       expect(blocks.some(b => b.type === 'Image' && String(b.data.props?.alt).length > 20)).toBe(true)
       expect(blocks.some(b => (b.type === 'Button' && String(b.data.props?.url).startsWith('https://')) || (b.type === 'Html' && /<a href="https:\/\//.test(String(b.data.props?.contents))))).toBe(true)

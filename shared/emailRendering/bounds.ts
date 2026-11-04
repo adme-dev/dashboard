@@ -1,3 +1,5 @@
+import { validRenderingQualityProps } from './renderingQuality'
+
 export const MAX_RENDER_REQUEST_BYTES = 8 * 1024 * 1024
 export const MAX_RENDER_OUTPUT_BYTES = 16 * 1024 * 1024
 const encoder = new TextEncoder()
@@ -115,6 +117,8 @@ export function validateDocumentGraph(value: unknown): void {
     if (!record(block) || typeof block.type !== 'string' || !record(block.data)) invalid()
     const data = block.data
     if (data.props != null && !record(data.props)) invalid()
+    if (!validRenderingQualityProps(block.type, (data.props ?? {}) as Record<string, unknown>, data.style)) invalid()
+    if (record(data.mobile) && record(data.mobile.props) && !validRenderingQualityProps('__mobile__', data.mobile.props)) invalid()
     if (block.type === 'review-stars') {
       const maximum = (data.props as Record<string, unknown> | undefined)?.maxStars
       if (typeof maximum === 'number' && maximum > 4096) exceeded()

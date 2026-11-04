@@ -48,4 +48,22 @@ describe('responsive server render', () => {
     expect(html).toContain('.edm-hide-desktop { display: none !important; max-height: 0 !important; overflow: hidden !important; }')
     expect(html).toContain('@media only screen and (max-width: 620px)')
   })
+
+  it('reveals desktop-hidden rows inside the mobile breakpoint once', () => {
+    const html = renderTemplateDocument({
+      root: { type: 'EmailLayout', data: { props: {}, childrenIds: ['a', 'b', 'c'] } },
+      a: { type: 'Text', data: { props: { text: 'Mobile one' }, hideOnDesktop: true } },
+      b: { type: 'Text', data: { props: { text: 'Mobile two' }, hideOnDesktop: true } },
+      c: { type: 'Text', data: { props: { text: 'Hidden everywhere' }, hideOnDesktop: true, hideOnMobile: true } }
+    })
+    const media = html.slice(html.indexOf('@media only screen and (max-width: 620px)'))
+    const outside = html.slice(0, html.indexOf('@media only screen and (max-width: 620px)'))
+    // Default/unsupported clients keep mobile-only rows hidden.
+    expect(outside.split('.edm-hide-desktop { display: none !important;').length - 1).toBe(1)
+    // The later mobile rule wins for supporting clients, never for hide-all.
+    expect(media.split('tr.edm-hide-desktop { display: table-row !important; max-height: none !important; overflow: visible !important; }').length - 1).toBe(1)
+    expect(media.split('div.edm-hide-desktop { display: block !important; max-height: none !important; overflow: visible !important; }').length - 1).toBe(1)
+    expect(media).toContain('.edm-hide-all { display: none !important;')
+    expect(media).not.toContain('.edm-hide-all { display: table-row')
+  })
 })

@@ -6,6 +6,7 @@
  */
 
 import { ref, computed } from 'vue'
+import { isEmailRenderingQualityProperty } from '~~/shared/emailRendering/renderingQuality'
 import {
   createEmptyDocument,
   generateBlockId,
@@ -19,6 +20,7 @@ import {
   type EditorSnapshot
 } from '~~/app/types/edm'
 import type { EdmHtmlEditableSelection } from '~~/app/utils/edmHtmlEditables'
+import { EmailBrandSnapshotSchema, newEmailBlockDefaults, type EmailBrandSnapshot } from '~~/shared/emailRendering/designBrandDefaults'
 import {
   buildSectionDocumentFragment,
   buildStarterTemplateDocument
@@ -32,6 +34,13 @@ const HISTORY_LIMIT = 50
 function createStore() {
   // Core document state
   const document = ref<EdmFlyhubDocument>(createEmptyDocument())
+  const brandSnapshot = ref<EmailBrandSnapshot | null>(null)
+  function setBrandSnapshot(snapshot: EmailBrandSnapshot | null) {
+    brandSnapshot.value = snapshot === null ? null : EmailBrandSnapshotSchema.parse(snapshot)
+  }
+  function newBlockTheme(blockType: string) {
+    return newEmailBlockDefaults(blockType, { blocks: document.value, source: { editor: 'composer', nativeArtifact: null, ...(brandSnapshot.value ? { brand: brandSnapshot.value } : {}) } })
+  }
 
   // UI state
   const selectedBlockId = ref<string | null>(null)
@@ -166,6 +175,7 @@ function createStore() {
   }
 
   function resetDocument(newDocument?: EdmFlyhubDocument) {
+    brandSnapshot.value = null
     document.value = newDocument || createEmptyDocument()
     past.value = []
     future.value = []
@@ -271,6 +281,8 @@ function createStore() {
   }
 
   function updateBlockProps(blockId: string, propsUpdates: Record<string, unknown>) {
+    // Visibility rules are server-derived canonical snapshots, not generic props.
+    propsUpdates = Object.fromEntries(Object.entries(propsUpdates).filter(([key]) => key !== 'visibilityCondition'))
     recordHistory()
     const block = document.value[blockId]
     if (block) {
@@ -318,6 +330,8 @@ function createStore() {
   }
 
   function updateBlockMobileProps(blockId: string, propsUpdates: Record<string, unknown>) {
+    // Do not copy inherited conditions or document-wide rendering flags into mobile overrides.
+    propsUpdates = Object.fromEntries(Object.entries(propsUpdates).filter(([key]) => key !== 'visibilityCondition' && !isEmailRenderingQualityProperty(key)))
     recordHistory()
     const block = document.value[blockId]
     if (!block) return
@@ -424,12 +438,13 @@ function createStore() {
     }
 
     // Create the new block
+    const theme = newBlockTheme(blockType)
     const newBlock: EdmFlyhubBlock = {
       type: blockType,
       data: {
-        style: getDefaultBlockStyle(blockType),
-        props: {},
-        ...initialData
+        ...initialData,
+        style: { ...(initialData?.style ?? getDefaultBlockStyle(blockType)), ...theme.style },
+        props: { ...initialData?.props, ...theme.props }
       }
     }
 
@@ -612,6 +627,8 @@ function createStore() {
       style: block.data.style ? { ...block.data.style } : undefined,
       props: block.data.props ? { ...block.data.props } : undefined
     })
+    // A duplicate preserves authored styling, never reapplies current defaults.
+    document.value[newBlockId] = JSON.parse(JSON.stringify(block))
 
     return newBlockId
   }
@@ -624,12 +641,13 @@ function createStore() {
     initialData?: Partial<EdmFlyhubBlock['data']>
   ) {
     recordHistory()
+    const theme = newBlockTheme(blockType)
     const newBlock: EdmFlyhubBlock = {
       type: blockType,
       data: {
-        style: getDefaultDetachedBlockStyle(blockType),
-        props: {},
-        ...initialData
+        ...initialData,
+        style: { ...(initialData?.style ?? getDefaultDetachedBlockStyle(blockType)), ...theme.style },
+        props: { ...initialData?.props, ...theme.props }
       }
     }
 
@@ -783,6 +801,11 @@ function createStore() {
     const props = (root?.data?.props || {}) as Record<string, unknown>
 
     return {
+      contentWidth: props.contentWidth as number | undefined,
+      darkMode: props.darkMode as boolean | undefined,
+      darkBackdropColor: props.darkBackdropColor as string | undefined,
+      darkCanvasColor: props.darkCanvasColor as string | undefined,
+      darkTextColor: props.darkTextColor as string | undefined,
       backdropColor: (props.backdropColor as string) || '#F5F5F5',
       canvasColor: (props.canvasColor as string) || '#FFFFFF',
       textColor: (props.textColor as string) || '#262626',
@@ -823,6 +846,7 @@ function createStore() {
     setDocument,
     resetDocument,
     applyDesignReturn,
+    setBrandSnapshot,
     getBlock,
     updateBlock,
     updateBlockData,

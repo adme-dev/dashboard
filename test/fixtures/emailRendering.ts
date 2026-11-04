@@ -1,3 +1,4 @@
+import golden from './emailRenderingGolden.json'
 import { starterEmailTemplate } from '../../shared/pageStudio/emailTemplates'
 
 const text = { type: 'Text', data: { props: { text: 'Hello & goodbye — Melbourne' } } }
@@ -27,4 +28,13 @@ const template = starterEmailTemplate('team')
 export const customerFixture = {
   template: { ...template, blocks: [...template.blocks, { id: 'photo', type: 'image' as const, assetId: '10000000-0000-4000-8000-000000000001', alt: 'Sample image', width: 200, alignment: 'center' as const }] },
   context: { siteName: 'Sample & Co', formName: 'Contact <sales>', fields: [{ id: 'name', name: 'Your name', type: 'text' }, { id: 'hidden', name: 'Private tracking', type: 'hidden' }], images: { '10000000-0000-4000-8000-000000000001': 'data:image/png;base64,aGVsbG8=' } }
+}
+
+// Retain the captured pre-extraction artifact unchanged. The one deliberate
+// safety correction encodes recipient text, including the raw ampersand case.
+// Direct and Workerd RPC assertions share the same explicit expected contract.
+export function expectedDocumentHtml(name: string): string {
+  if (!Object.hasOwn(golden.documents, name)) throw new Error('Unknown email rendering fixture')
+  const captured = golden.documents[name as keyof typeof golden.documents]
+  return name === 'html-and-unknown' ? captured.replace('Ari & Team', 'Ari &amp; Team') : captured
 }

@@ -33,6 +33,7 @@ export default defineEventHandler(async (event) => {
   let sql = `
     SELECT
       id,
+      email_publication AS "emailPublication",
       name,
       mime_type AS "mimeType",
       file_size AS "fileSize",
@@ -69,7 +70,7 @@ export default defineEventHandler(async (event) => {
   }
 
   return {
-    assets: assets.map(asset => {
+    assets: assets.map((asset) => {
       const url = signedUrls.get(asset.id)
       return url ? { ...asset, url } : asset
     })

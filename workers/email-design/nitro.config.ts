@@ -47,6 +47,35 @@ export default defineNitroConfig({
   },
   nodeModulesDirs: [join(repoRoot, 'node_modules')],
   handlers: [
+    { route: '/api/email/design/campaigns', method: 'post', handler: fromRepo('server/api/email/design/campaigns.post.ts') },
+    { route: '/api/email/design/templates', method: 'post', handler: fromRepo('server/api/email/design/templates.post.ts') },
+    { route: '/api/email/design/templates/:templateId/:revisionId', method: 'get', handler: fromRepo('server/api/email/design/templates/[templateId]/[revisionId].get.ts') },
+    { route: '/api/email/design/history', method: 'post', handler: fromRepo('server/api/email/design/history.post.ts') },
+    { route: '/api/email/design/conditions', method: 'get', handler: fromRepo('server/api/email/design/conditions.get.ts') },
+    { route: '/api/email/design/conditions', method: 'post', handler: fromRepo('server/api/email/design/conditions.post.ts') },
+    { route: '/api/email/design/drafts/:id/brand', method: 'get', handler: fromRepo('server/api/email/design/drafts/[id]/brand.get.ts') },
+    { route: '/api/email/design/drafts/:id/brand', method: 'post', handler: fromRepo('server/api/email/design/drafts/[id]/brand.post.ts') },
+    { route: '/api/email/design/drafts/:id/locks', method: 'post', handler: fromRepo('server/api/email/design/drafts/[id]/locks.post.ts') },
+    {
+      route: '/api/email/design/modules',
+      method: 'post',
+      handler: fromRepo('server/api/email/design/modules.post.ts')
+    },
+    {
+      route: '/api/email/design/modules/:moduleId/:revisionId',
+      method: 'get',
+      handler: fromRepo('server/api/email/design/modules/[moduleId]/[revisionId].get.ts')
+    },
+    {
+      route: '/api/email/design/assets/publish',
+      method: 'post',
+      handler: fromRepo('server/api/email/design/assets/publish.post.ts')
+    },
+    {
+      route: '/api/email/design/designer',
+      method: 'post',
+      handler: fromRepo('server/api/email/design/designer.post.ts')
+    },
     {
       route: '/api/email/design/roundtrip',
       method: 'post',

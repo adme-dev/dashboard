@@ -7,6 +7,9 @@ import type { EdmDocumentFragment, EdmPreviewTone } from '~~/app/utils/edmPreset
 
 export interface EdmCustomModule {
   id: string
+  design_document_id?: string | null
+  head_revision_id?: string | null
+  revision_schema_version?: number | null
   name: string
   description: string | null
   category: string
@@ -55,7 +58,7 @@ export function useEdmCustomModules() {
     return res.module
   }
 
-  async function rename(id: string, patch: { name?: string; description?: string | null; category?: string; preview_tone?: EdmPreviewTone }) {
+  async function rename(id: string, patch: { name?: string, description?: string | null, category?: string, preview_tone?: EdmPreviewTone }) {
     const res = await apiFetch<{ module: EdmCustomModule }>(`${BASE}/${id}`, { method: 'PATCH', body: patch })
     modules.value = modules.value.map(m => (m.id === id ? res.module : m))
     return res.module

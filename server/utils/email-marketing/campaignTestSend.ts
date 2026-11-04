@@ -7,8 +7,9 @@ import { createError, type H3Event } from 'h3'
 import { getAppUrl } from '~~/server/utils/appUrl'
 import { getResendClient, isEmailConfigured } from '~~/server/utils/email'
 import { prepareCampaignHtmlForSend, type Campaign } from './campaigns'
-import { buildBatchEmail, buildCampaignPreflight } from './campaignSend'
+import { assertFinalCampaignEmail, buildBatchEmail, buildCampaignPreflight } from './campaignSend'
 import { resolveCampaignSenderDomains } from './senderIdentity'
+import { deliveryPlainText } from '../../../shared/emailRendering/deliveryContent'
 import { emailLinkSecret, signEmailToken } from './links'
 
 export interface CampaignTestSendInput {
@@ -45,19 +46,27 @@ export async function sendCampaignTestEmail(event: H3Event, input: CampaignTestS
     })
   }
 
-  const email = buildBatchEmail(
-    preparedCampaign,
-    { email: input.to, name: input.name ?? null, subscriber_id: 'test' },
-    campaign.id,
-    appUrl,
-    await signEmailToken(emailLinkSecret(), 'unsub', campaign.id, 'test')
-  )
+  let email: ReturnType<typeof buildBatchEmail>
+  let plaintext: string
+  try {
+    email = buildBatchEmail(
+      preparedCampaign,
+      { email: input.to, name: input.name ?? null, subscriber_id: 'test' },
+      campaign.id,
+      appUrl,
+      await signEmailToken(emailLinkSecret(), 'unsub', campaign.id, 'test')
+    )
+    plaintext = deliveryPlainText(assertFinalCampaignEmail(email))
+  } catch {
+    throw createError({ statusCode: 422, statusMessage: 'campaign_final_content_blocked' })
+  }
   input.onDispatchStart?.()
   const { data, error } = await client.emails.send({
     from: email.from,
     to: email.to,
     subject: `[TEST] ${email.subject}`,
     html: email.html,
+    text: plaintext,
     headers: email.headers,
     ...(email.replyTo ? { replyTo: email.replyTo } : {})
   })

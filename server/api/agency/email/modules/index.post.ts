@@ -7,6 +7,7 @@ import {
   PreviewToneSchema
 } from '~~/server/utils/email-marketing/customModules'
 import { resolveEmailWriteClientId } from '~~/server/utils/email-marketing/access'
+import { assertFreshLegacyModulePublisher } from '~~/server/utils/email-marketing/designModulePublisher'
 
 const Body = z.object({
   name: z.string().min(1).max(200),
@@ -36,6 +37,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const clientId = await resolveEmailWriteClientId(event, user, parsed.data.client_id ?? null)
+  await assertFreshLegacyModulePublisher(event, user.id, clientId)
   const module = await createCustomModule({
     name: parsed.data.name,
     description: parsed.data.description ?? null,

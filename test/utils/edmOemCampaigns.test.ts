@@ -43,8 +43,12 @@ describe('OEM-informed dealership campaigns', () => {
     let imageLed = 0
     for (const module of modules) {
       const html = JSON.stringify(module.blocks)
-      if (html.includes('<img')) imageLed++
-      const layout = html.match(/data-edm-layout=\\"([^\\]+)\\"/)?.[1]
+      // Split modules are structured Columns (photo/copy order is the layout);
+      // the remaining modules keep their marked Html layouts.
+      const [first] = module.blocks
+      const columns = first?.type === 'ColumnsContainer' ? first.columns : undefined
+      if (html.includes('<img') || columns?.some(column => column.some(child => child.type === 'Image' && String(child.data.props?.url).startsWith('https://')))) imageLed++
+      const layout = columns ? `columns:${columns.map(column => column.map(child => child.type).join('+')).join('|')}` : html.match(/data-edm-layout=\\"([^\\]+)\\"/)?.[1]
       expect(layout).toBeTruthy()
       variants.add(layout!)
     }

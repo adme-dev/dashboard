@@ -2,6 +2,7 @@
 <!-- Live-rendered mini preview of a saved EDM document. Non-interactive; parent
      components own clicks/actions. -->
 <script setup lang="ts">
+import { resolveEmailContentWidth } from '../../../../shared/emailRendering/layout'
 import { computed, ref } from 'vue'
 import { useElementSize } from '@vueuse/core'
 import EdmBlockRenderer from './EdmBlockRenderer.vue'
@@ -21,7 +22,7 @@ const props = withDefaults(defineProps<{
   maxHeight: 360
 })
 
-const emailWidth = computed(() => Math.max(320, Math.min(960, Number(props.document?.root?.data.props?.contentWidth) || 600)))
+const emailWidth = computed(() => resolveEmailContentWidth(props.document?.root?.data.props?.contentWidth))
 
 const blocks = computed<ThumbnailBlockEntry[]>(() => {
   const document = props.document

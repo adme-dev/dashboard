@@ -52,6 +52,7 @@ const stubs: Record<string, unknown> = {
   UButton: { name: 'UButton', props: ['label', 'icon'], template: '<button :data-icon="icon"><slot />{{ label }}</button>' },
   UIcon: { name: 'UIcon', props: ['name'], template: '<i :data-icon="name" />' },
   UInput: { name: 'UInput', props: ['modelValue'], template: '<input />' },
+  UFormField: passthrough('UFormField'),
   UAlert: { name: 'UAlert', props: ['title', 'description'], template: '<div>{{ title }}{{ description }}</div>' }
 }
 
@@ -70,19 +71,20 @@ async function flush() {
   await nextTick()
 }
 
-async function mountPicker() {
+async function mountPicker(props: { canonical?: boolean, clientId?: string } = {}) {
+  const pick = vi.fn()
   const host = document.createElement('div')
   document.body.appendChild(host)
   const app = createApp({
     render: () => h(Suspense, null, {
-      default: () => h(EdmImageLibraryPicker, { open: true }),
+      default: () => h(EdmImageLibraryPicker, { open: true, ...props, onPick: pick }),
       fallback: () => h('div', 'loading')
     })
   })
   Object.entries(stubs).forEach(([name, comp]) => app.component(name, comp as never))
   app.mount(host)
   await flush()
-  return { app, host }
+  return { app, host, pick }
 }
 
 describe('EmailBuilderEdmImageLibraryPicker', () => {
@@ -146,6 +148,40 @@ describe('EmailBuilderEdmImageLibraryPicker', () => {
     })
     expect(host.textContent).toContain('invalid_body: Image file is required.; Unsupported image type.')
 
+    app.unmount()
+  })
+  it('offers scoped registered JPEG/PNG/GIF images and the canonical byte limit', async () => {
+    fetchMock.mockResolvedValue({ assets: [
+      { ...imageAssets[0], clientId: 'current-client' },
+      { ...imageAssets[0], id: 'shared', name: 'Shared image.png', clientId: null },
+      { ...imageAssets[0], id: 'foreign', name: 'Foreign image.png', clientId: 'other-client' },
+      { ...imageAssets[0], id: 'webp', name: 'Unsupported.webp', clientId: null, mimeType: 'image/webp' }
+    ] })
+    const { app, host, pick } = await mountPicker({ canonical: true, clientId: 'current-client' })
+    expect(host.textContent).toContain('Hero car.png')
+    expect(host.textContent).toContain('Shared image.png')
+    expect(host.textContent).not.toContain('Foreign image.png')
+    expect(host.textContent).not.toContain('Unsupported.webp')
+    expect(host.textContent).not.toContain('200.0 MB')
+    const image = Array.from(host.querySelectorAll('button')).find(button => button.textContent?.includes('Hero car.png'))!
+    image.click()
+    expect(pick).toHaveBeenCalledWith(expect.objectContaining({ id: 'asset-1', clientId: 'current-client' }))
+    app.unmount()
+  })
+  it('uploads through the existing registered media owner with the draft client scope', async () => {
+    const uploaded = { ...imageAssets[0], id: 'uploaded', clientId: 'current-client' }
+    fetchMock.mockImplementation(async (url: string) =>
+      url.endsWith('/upload') ? { asset: uploaded } : { assets: [uploaded] }
+    )
+    const { app, host, pick } = await mountPicker({ canonical: true, clientId: 'current-client' })
+    const input = host.querySelector<HTMLInputElement>('input[type=file]')!
+    Object.defineProperty(input, 'files', { value: [new File(['png'], 'hero.png', { type: 'image/png' })] })
+    input.dispatchEvent(new Event('change', { bubbles: true }))
+    await flush()
+    const call = fetchMock.mock.calls.find(([url]) => url === '/api/agency/email/assets/upload')!
+    expect(call[1].body.get('client_id')).toBe('current-client')
+    expect(call[1].body.get('file')).toBeInstanceOf(File)
+    expect(pick).toHaveBeenCalledWith(uploaded)
     app.unmount()
   })
 })

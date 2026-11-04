@@ -80,6 +80,64 @@ await scenario('disabled flag remains closed', {
   await expectStatus(response, 404, 'not_found')
 })
 
+// The designer surface has an independent rollout gate. Draft saves alone
+// never admit structural operations, even through the private service binding.
+for (const enabled of [undefined, 'false']) {
+  const bindings = { ...validBindings }
+  if (enabled !== undefined) bindings.FIGFLOW_EDM_DESIGNER_ENABLED = enabled
+  await scenario(`designer gate ${enabled ?? 'missing'} stays closed`, bindings, async (worker) => {
+    await expectStatus(await worker.dispatchFetch(`${origin}/api/email/design/designer`, {
+      method: 'POST', headers: { ...environmentHeader, origin: 'https://app.xeroflow.io', 'content-type': 'application/json' }, body: '{"command":"lookup"}'
+    }), 404, 'not_found')
+  })
+}
+await scenario('enabled designer still requires authenticated authority', {
+  ...validBindings, FIGFLOW_EDM_DESIGNER_ENABLED: 'true'
+}, async (worker) => {
+  await expectStatus(await worker.dispatchFetch(`${origin}/api/email/design/designer`, {
+    method: 'POST', headers: { ...environmentHeader, origin: 'https://app.xeroflow.io', 'content-type': 'application/json' }, body: '{"command":"lookup"}'
+  }), 401, 'design_session_invalid')
+})
+
+for (const enabled of [undefined, 'false']) {
+  const bindings = { ...validBindings, FIGFLOW_EDM_DESIGNER_ENABLED: 'true' }
+  if (enabled !== undefined) bindings.FIGFLOW_EDM_LIBRARY_ENABLED = enabled
+  await scenario(`library gate ${enabled ?? 'missing'} stays closed independently`, bindings, async (worker) => {
+    for (const route of ['modules', 'templates', 'history']) await expectStatus(await worker.dispatchFetch(`${origin}/api/email/design/${route}`, {
+      method: 'POST', headers: { ...environmentHeader, origin: 'https://app.xeroflow.io', 'content-type': 'application/json' }, body: '{"command":"publish-module"}'
+    }), 404, 'not_found')
+    await expectStatus(await worker.dispatchFetch(`${origin}/api/email/design/templates/d0000000-0000-4000-8000-000000000001/d0000000-0000-4000-8000-000000000002`, { headers: environmentHeader }), 404, 'not_found')
+  })
+}
+
+await scenario('enabled library template and history routes require session authority', {
+  ...validBindings, FIGFLOW_EDM_DESIGNER_ENABLED: 'true', FIGFLOW_EDM_LIBRARY_ENABLED: 'true'
+}, async (worker) => {
+  for (const route of ['templates', 'history']) await expectStatus(await worker.dispatchFetch(`${origin}/api/email/design/${route}`, {
+    method: 'POST', headers: { ...environmentHeader, origin: 'https://app.xeroflow.io', 'content-type': 'application/json' }, body: '{}'
+  }), 401, 'design_session_invalid')
+  await expectStatus(await worker.dispatchFetch(`${origin}/api/email/design/templates/d0000000-0000-4000-8000-000000000001/d0000000-0000-4000-8000-000000000002`, { headers: environmentHeader }), 401, 'design_session_invalid')
+})
+
+for (const enabled of [undefined, 'false']) {
+  const bindings = { ...validBindings, FIGFLOW_EDM_DESIGNER_ENABLED: 'true' }
+  if (enabled !== undefined) bindings.FIGFLOW_EDM_BRAND_ENABLED = enabled
+  await scenario(`brand gate ${enabled ?? 'missing'} stays closed independently`, bindings, async (worker) => {
+    for (const action of ['brand', 'locks']) await expectStatus(await worker.dispatchFetch(`${saveUrl}/${action}`, {
+      method: 'POST', headers: { ...environmentHeader, origin: 'https://app.xeroflow.io', 'content-type': 'application/json' }, body: '{}'
+    }), 404, 'not_found')
+  })
+}
+await scenario('brand and condition routes require native designer admission independently', validBindings, async (worker) => {
+  for (const url of [`${saveUrl}/brand`, `${origin}/api/email/design/conditions`]) await expectStatus(await worker.dispatchFetch(url, { headers: environmentHeader }), 404, 'not_found')
+})
+await scenario('fully enabled brand and conditions still require canonical session authority', {
+  ...validBindings, FIGFLOW_EDM_DESIGNER_ENABLED: 'true', FIGFLOW_EDM_BRAND_ENABLED: 'true'
+}, async (worker) => {
+  await expectStatus(await worker.dispatchFetch(`${saveUrl}/brand`, { headers: environmentHeader }), 401, 'design_session_invalid')
+  await expectStatus(await worker.dispatchFetch(`${origin}/api/email/design/conditions?documentId=d0000000-0000-4000-8000-000000000001`, { headers: environmentHeader }), 401, 'design_session_invalid')
+})
+
 for (const [name, bindings, headers, status, message] of [
   [
     'missing environment',

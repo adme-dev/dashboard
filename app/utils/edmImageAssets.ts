@@ -11,6 +11,7 @@ export const EMAIL_IMAGE_ASSET_ACCEPT = EMAIL_IMAGE_ASSET_MIME_TYPES.join(',')
 
 export interface EdmImageAsset {
   id: string
+  emailPublication?: import('~~/shared/emailRendering/designContract').EmailDesignDocument['assets'][number] | null
   name: string
   mimeType: string
   fileSize: number

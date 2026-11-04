@@ -43,8 +43,8 @@ describe('canTransition', () => {
 })
 
 describe('bodyHasUnsubscribe', () => {
-  it('detects the merge tag (with or without spaces)', () => {
-    expect(bodyHasUnsubscribe('<p>{{unsubscribe_url}}</p>')).toBe(true)
+  it('requires a visible anchor for the merge tag', () => {
+    expect(bodyHasUnsubscribe('<p>{{unsubscribe_url}}</p>')).toBe(false)
     expect(bodyHasUnsubscribe('<a href="{{ unsubscribe_url }}">x</a>')).toBe(true)
   })
 
@@ -60,7 +60,7 @@ describe('bodyHasUnsubscribe', () => {
 })
 
 describe('canEnterSending', () => {
-  const goodBody = '<p>hi {{ unsubscribe_url }}</p>'
+  const goodBody = '<p>hi</p><a href="{{ unsubscribe_url }}">Unsubscribe</a>'
 
   it('passes a draft with recipients + unsubscribe link', () => {
     expect(canEnterSending({ status: 'draft', toSend: 10, bodyHtml: goodBody }))
@@ -89,11 +89,12 @@ describe('canEnterSending', () => {
 describe('buildCampaignPreflight', () => {
   const cleanCampaign = {
     subject: 'June offers',
+    preview_text: 'Explore the latest offers',
     from_email: 'sales@example.com',
     body_html: [
-      '<!doctype html><html><body>',
+      '<!doctype html><html lang="en"><body><h1>June offers</h1>',
       '<p>Latest offer</p>',
-      '<img src="https://cdn.example.com/car.png">',
+      '<img src="https://cdn.example.com/car.png" alt="Car on road">',
       '<a href="{{ unsubscribe_url }}">Unsubscribe</a>',
       '<footer>XeroFlow Agency, 1 Market Street, Melbourne VIC 3000</footer>',
       '</body></html>'

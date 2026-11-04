@@ -1,16 +1,20 @@
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { createSSRApp, h, ref } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import EditorBlockWrapper from '~~/app/components/email/builder/EditorBlockWrapper.vue'
 
 const testGlobals = globalThis as Record<string, unknown>
 
+const document = ref({ hero: { type: 'Container', data: { props: {} as Record<string, unknown> } } })
+
 testGlobals.useEdmBuilder = () => ({
+  document,
   selectedBlockId: ref('hero'),
   setSelectedBlockId: () => {}
 })
 
 const stubs = {
+  UBadge: { name: 'UBadge', template: '<span><slot /></span>' },
   UButton: {
     name: 'UButton',
     props: ['icon', 'title'],
@@ -37,6 +41,17 @@ async function renderWrapper(props: Record<string, unknown> = {}) {
 }
 
 describe('EditorBlockWrapper drag reorder affordance', () => {
+  beforeEach(() => {
+    document.value = { hero: { type: 'Container', data: { props: {} } } }
+  })
+
+  it('renders the authored condition label only on eligible container blocks', async () => {
+    document.value.hero.data.props.visibilityCondition = { name: 'VIP recipients' }
+    expect(await renderWrapper()).toContain('VIP recipients')
+    document.value.hero.type = 'Text'
+    expect(await renderWrapper()).not.toContain('VIP recipients')
+  })
+
   it('renders a draggable handle and drop indicator for selected root blocks', async () => {
     const html = await renderWrapper({ dropPlacement: 'before' })
 

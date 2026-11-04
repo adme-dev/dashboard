@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useEdmDesignRoundtrip } from '../../app/composables/useEdmDesignRoundtrip'
 import { structuredDesign } from '../fixtures/email-design/structured'
+import { designerCapabilities } from '../../shared/emailRendering/designDesigner'
 import { validateEmailDesign } from '../../shared/emailRendering/designContract'
 
 const fetch = vi.fn()
@@ -14,6 +15,56 @@ describe('composer handoff reconciliation', () => {
   beforeEach(() => {
     fetch.mockReset()
     vi.stubGlobal('$fetch', fetch)
+  })
+  it('requires trusted discovery before opening designer mode', async () => {
+    const flow = useEdmDesignRoundtrip()
+    await expect(flow.open(id, null, true)).rejects.toThrow('unavailable')
+    expect(fetch).not.toHaveBeenCalled()
+    fetch.mockResolvedValueOnce({ draft: draft(), designerAuthoring: { available: true, endpoint: 'https://untrusted.example', capabilities: designerCapabilities(source()) } })
+    await flow.lookup(id)
+    expect(flow.designerAuthoring.value.available).toBe(false)
+  })
+  it('returns bounded designer operations with the original proposal identity after a lost reply', async () => {
+    const flow = useEdmDesignRoundtrip()
+    const capabilities = designerCapabilities(source())
+    fetch.mockResolvedValueOnce({ draft: draft(), designerAuthoring: { available: true, endpoint: '/api/email/design/designer', capabilities } })
+    await flow.lookup(id)
+    fetch.mockResolvedValueOnce({ handoff: handoff(), capabilities }).mockResolvedValueOnce({ draft: draft() })
+    await flow.open(id, null, true)
+    expect(fetch.mock.calls[1][0]).toBe('/api/email/design/designer')
+    const operationId = flow.designerOperationId.value!
+    const operations = [{ op: 'set-style' as const, blockId: 'heading', style: { color: '#123456' } }]
+    fetch.mockRejectedValueOnce(new Error('reply lost'))
+    await expect(flow.proposeDesigner(operations, operationId)).rejects.toThrow('reply lost')
+    const payload = fetch.mock.calls.at(-1)![1].body
+    expect(payload.action.action).toBe('propose-designer-return')
+    expect(payload.action.operationId).toBe(operationId)
+    expect(payload.action).not.toHaveProperty('design')
+    expect(payload.action).not.toHaveProperty('policy')
+    await expect(flow.resume(id, false)).rejects.toThrow('reconciliation')
+    await expect(flow.proposeDesigner(operations, crypto.randomUUID())).rejects.toThrow('Open the designer')
+    fetch.mockResolvedValueOnce({ handoff: { ...handoff(), state: 'proposed', proposalRevisionId: revision, proposal: source() }, capabilities })
+    await flow.proposeDesigner(operations, operationId)
+    expect(fetch.mock.calls.at(-1)![1].body).toEqual(payload)
+    expect(flow.hasPending.value).toBe(false)
+    expect(flow.mode.value).toBe('designer')
+    expect(flow.designerCapabilities.value).toEqual(capabilities)
+  })
+  it('retains module commands across an uncertain reply and reads back the exact resulting revision', async () => {
+    const flow = useEdmDesignRoundtrip()
+    flow.draft.value = draft()
+    flow.libraryAuthoring.value = { available: true, publisher: true }
+    const command = { command: 'insert-module' as const, moduleId: id, revisionId: revision, parentId: 'root', index: 1 }
+    fetch.mockRejectedValueOnce(new Error('reply lost'))
+    await expect(flow.library(command)).rejects.toThrow('reply lost')
+    const original = fetch.mock.calls[0][1].body
+    expect(original.draftId).toBe(id)
+    expect(original.expectedDraftRevisionId).toBe(revision)
+    expect(original).not.toHaveProperty('design')
+    fetch.mockResolvedValueOnce({ documentId: id, revisionId: revision, published: false }).mockResolvedValueOnce({ draft: draft() })
+    await flow.reconcile()
+    expect(fetch.mock.calls[1][1].body).toEqual(original)
+    expect(flow.hasPending.value).toBe(false)
   })
   it('explains zero-editable-content rejection without retaining a pending mutation', async () => {
     const flow = useEdmDesignRoundtrip()
@@ -119,4 +170,68 @@ describe('composer handoff reconciliation', () => {
     expect(fetch.mock.calls[1][1].body).toEqual(retained)
     expect(fetch.mock.calls[3][1].body.action).toBe('save-draft')
   })
+})
+
+describe('library exact receipt recovery', () => {
+  beforeEach(() => {
+    fetch.mockReset()
+    vi.stubGlobal('$fetch', fetch)
+  })
+  it('retains an unknown action through a rejected retry until exact readback succeeds', async () => {
+    const flow = useEdmDesignRoundtrip()
+    flow.draft.value = draft()
+    flow.libraryAuthoring.value = { available: true, publisher: false }
+    fetch.mockRejectedValueOnce(new Error('lost commit reply'))
+    await expect(flow.restoreRevision(revision)).rejects.toThrow()
+    const original = fetch.mock.calls[0][1].body
+    fetch.mockRejectedValueOnce(Object.assign(new Error('access revoked'), { statusCode: 403 }))
+    await expect(flow.reconcile()).rejects.toThrow('access revoked')
+    expect(flow.hasPending.value).toBe(true)
+    await expect(flow.library({ command: 'detach-module-instance', instanceId: 'other' })).rejects.toThrow('reconciliation')
+    fetch.mockResolvedValueOnce({ documentId: id, revisionId: revision, published: false })
+      .mockResolvedValueOnce({ draft: draft() })
+    await flow.reconcile()
+    expect(fetch.mock.calls[2][1].body).toEqual(original)
+    expect(flow.hasPending.value).toBe(false)
+  })
+  it('reads a published module receipt through its immutable selection, even with an intervening draft head', async () => {
+    const flow = useEdmDesignRoundtrip()
+    flow.draft.value = draft()
+    flow.libraryAuthoring.value = { available: true, publisher: true }
+    const receipt = { documentId: id, revisionId: revision, moduleId: id, published: true }
+    fetch.mockRejectedValueOnce(new Error('reply lost'))
+    await expect(flow.library({ command: 'publish-module', name: 'Hero', description: null, category: 'hero', previewTone: 'light', includedOverridePaths: [] })).rejects.toThrow('reply lost')
+    const original = fetch.mock.calls[0][1].body
+    fetch.mockResolvedValueOnce(receipt).mockResolvedValueOnce({ moduleId: id, revisionId: revision, design: source() })
+    await flow.reconcile()
+    expect(fetch.mock.calls[1][1].body).toEqual(original)
+    expect(fetch.mock.calls[2][0]).toBe(`/api/email/design/modules/${id}/${revision}`)
+    expect(flow.draft.value.headRevisionId).toBe(revision)
+    expect(flow.hasPending.value).toBe(false)
+  })
+  it('retains a restore action after readback failure and rejects another history command', async () => {
+    const flow = useEdmDesignRoundtrip()
+    flow.draft.value = draft()
+    flow.libraryAuthoring.value = { available: true, publisher: false }
+    fetch.mockResolvedValueOnce({ documentId: id, revisionId: revision, published: false }).mockRejectedValueOnce(new Error('readback lost'))
+    await expect(flow.restoreRevision(revision)).rejects.toThrow('readback lost')
+    const original = fetch.mock.calls[0][1].body
+    expect(original).not.toHaveProperty('design')
+    await expect(flow.library({ command: 'detach-module-instance', instanceId: 'instance' })).rejects.toThrow('reconciliation')
+    fetch.mockResolvedValueOnce({ documentId: id, revisionId: revision, published: false }).mockResolvedValueOnce({ draft: draft() })
+    await flow.reconcile()
+    expect(fetch.mock.calls[2][1].body).toEqual(original)
+    expect(flow.hasPending.value).toBe(false)
+  })
+})
+
+it('confirms image publication readback independent of JSONB property order', async () => {
+  fetch.mockReset()
+  vi.stubGlobal('$fetch', fetch)
+  const flow = useEdmDesignRoundtrip()
+  flow.libraryAuthoring.value = { available: true, publisher: true }
+  const asset = { id, sha256: 'a'.repeat(64), mimeType: 'image/png', bytes: 123, width: 1, height: 1 }
+  fetch.mockResolvedValueOnce({ asset }).mockResolvedValueOnce({ assets: [{ id, emailPublication: { height: 1, width: 1, bytes: 123, mimeType: 'image/png', sha256: 'a'.repeat(64), id } }] })
+  await expect(flow.publishImage(id)).resolves.toEqual({ asset })
+  expect(flow.hasPending.value).toBe(false)
 })

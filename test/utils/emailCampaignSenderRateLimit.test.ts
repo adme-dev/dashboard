@@ -39,7 +39,7 @@ const campaign = {
   from_name: null,
   from_email: 'sales@example.com',
   reply_to: null,
-  body_html: '<p>Offer</p><a href="{{ unsubscribe_url }}">Unsubscribe</a>',
+  body_html: '<p>Offer</p><a href="{{ unsubscribe_url }}">Unsubscribe</a><footer>Agency, 1 Market Street, Melbourne VIC 3000</footer>',
   client_id: null
 }
 
@@ -81,6 +81,14 @@ describe('sendCampaignChunk rate limiting', () => {
       retryAfterSec: 17
     })
     expect(String(mockExecute.mock.calls.at(-1)?.[0])).toContain('claimed_at = NULL')
+  })
+
+  it('releases every claim and never contacts the provider when final recipient content is blocked', async () => {
+    const { sendCampaignChunk } = await import('~~/server/utils/email-marketing/campaignSender')
+    await expect(sendCampaignChunk({ ...campaign, body_html: '<!--xf-condition:v1:close:c1-->' } as never)).rejects.toMatchObject({ statusCode: 422, statusMessage: 'campaign_final_content_blocked' })
+    expect(mockBatchSend).not.toHaveBeenCalled()
+    expect(mockExecute).toHaveBeenCalledWith(expect.stringContaining('claimed_at = NULL'), [['recipient-1']])
+    expect(mockExecute.mock.calls.some(([sql]) => String(sql).includes('status = \'failed\''))).toBe(false)
   })
 
   it('propagates the provider retry-after delay from a send run', async () => {

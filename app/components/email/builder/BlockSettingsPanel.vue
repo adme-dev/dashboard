@@ -4,6 +4,8 @@
      layers/edm/.../BlockSettingsPanel.vue, re-skinned shadcn→Nuxt UI; the CMS media
      library + automotive deps are stripped (image is a plain URL input). -->
 <script setup lang="ts">
+import EdmLinkTargetMenu from './EdmLinkTargetMenu.vue'
+import type { ContentCondition } from '~~/shared/emailRendering/conditions'
 import { dividerLineThickness } from '~~/app/utils/edmDivider'
 import { getEdmSectionSettings } from '~~/app/utils/edmSectionSettings'
 import { BORDER_STYLES, TEXT_TRANSFORMS, SHADOW_OPTIONS } from '~~/app/utils/edmStyle'
@@ -32,6 +34,9 @@ const props = withDefaults(defineProps<{
   block: { id: string, type: string, data: BlockData }
   baseBlock?: { id: string, type: string, data: BlockData } | null
   device?: EdmDevice
+  conditionEligible?: boolean
+  conditionReady?: boolean
+  conditionPending?: boolean
   htmlEditable?: EdmHtmlEditableSelection | null
 }>(), {
   baseBlock: null,
@@ -39,7 +44,12 @@ const props = withDefaults(defineProps<{
   htmlEditable: null
 })
 
-const emit = defineEmits<{ update: [updates: { style?: unknown, props?: unknown, visibility?: { hideOnMobile?: boolean, hideOnDesktop?: boolean }, htmlEditable?: EdmHtmlEditableUpdate }] }>()
+const emit = defineEmits<{ condition: [value: ContentCondition | null], reconcileCondition: [], update: [updates: { style?: unknown, props?: unknown, visibility?: { hideOnMobile?: boolean, hideOnDesktop?: boolean }, htmlEditable?: EdmHtmlEditableUpdate }] }>()
+
+function appendMergeToken(token: string) {
+  const current = String(props.block.data?.props?.text || '')
+  updateProp('text', `${current}${current ? ' ' : ''}${token}`)
+}
 
 const FONT_OPTIONS = [
   { label: 'Modern Sans', value: 'MODERN_SANS' },
@@ -218,6 +228,14 @@ function updateColumnWidth(index: number, value: string | number) {
 
 <template>
   <div class="space-y-4">
+    <EmailBuilderEdmConditionPicker
+      :condition="baseBlock?.data.props?.visibilityCondition ?? block.data.props?.visibilityCondition"
+      :eligible="!!conditionEligible"
+      :ready="!!conditionReady"
+      :pending="conditionPending"
+      @apply="emit('condition', $event)"
+      @reconcile="emit('reconcileCondition')"
+    />
     <UBadge v-if="isMobileEditing" color="primary" variant="soft">
       Mobile override
     </UBadge>
@@ -233,6 +251,13 @@ function updateColumnWidth(index: number, value: string | number) {
         label="Hide on desktop"
         @update:model-value="updateVisibility('hideOnDesktop', !!$event)"
       />
+    </div>
+
+    <div v-if="['Text', 'Heading', 'Button'].includes(block.type)" class="space-y-2">
+      <EmailBuilderEdmMergeTagPicker @insert="appendMergeToken" />
+      <p class="text-xs text-muted">
+        Insert a tag at the end of this block, or use the text toolbar to replace a selection.
+      </p>
     </div>
 
     <!-- Text / Heading -->
@@ -354,6 +379,26 @@ function updateColumnWidth(index: number, value: string | number) {
 
     <!-- Button -->
     <template v-else-if="block.type === 'Button'">
+      <UFormField label="Outlook drawn button" help="Uses a fixed-size shape in classic Outlook. Edit from Desktop; review the final label and width in recipient apps.">
+        <UCheckbox
+          :model-value="block.data?.props?.outlookVml === true"
+          label="Enable Outlook fallback"
+          :disabled="isMobileEditing"
+          @update:model-value="updateProp('outlookVml', $event === true)"
+        />
+      </UFormField>
+      <UFormField v-if="block.data?.props?.outlookVml === true" label="Outlook button width" help="Follows Full/Auto until a custom pixel width is entered. Both versions are capped to the column.">
+        <UInput
+          type="number"
+          :min="32"
+          :max="960"
+          :disabled="isMobileEditing"
+          :model-value="(block.data?.props?.outlookWidth as number) || (block.data?.props?.fullWidth === true ? undefined : 200)"
+          placeholder="Auto"
+          class="w-full"
+          @update:model-value="updateProp('outlookWidth', Math.max(32, Math.min(960, Number($event) || 200)))"
+        />
+      </UFormField>
       <UFormField label="Text">
         <UInput
           :model-value="(block.data?.props?.text as string) || ''"
@@ -362,11 +407,10 @@ function updateColumnWidth(index: number, value: string | number) {
         />
       </UFormField>
 
-      <UFormField label="Url">
-        <UInput
+      <UFormField label="URL">
+        <EdmLinkTargetMenu
+          :key="`${block.id}:url`"
           :model-value="(block.data?.props?.url as string) || ''"
-          placeholder="https://"
-          class="w-full"
           @update:model-value="updateProp('url', $event)"
         />
       </UFormField>
@@ -507,6 +551,16 @@ function updateColumnWidth(index: number, value: string | number) {
         />
       </UFormField>
 
+      <UFormField v-if="block.type === 'Image'" label="Dark logo URL" help="Optional public HTTPS image, shown when dark email styling is enabled. Edit from Desktop. Saved versioned references are read-only; published sections require a registered asset.">
+        <UInput
+          :disabled="isMobileEditing"
+          :model-value="(block.data?.props?.darkSrc as string) || ''"
+          placeholder="https://"
+          class="w-full"
+          @update:model-value="updateProp('darkSrc', $event)"
+        />
+      </UFormField>
+
       <UFormField label="Alt text">
         <UInput
           :model-value="(block.data?.props?.alt as string) || ''"
@@ -517,10 +571,9 @@ function updateColumnWidth(index: number, value: string | number) {
       </UFormField>
 
       <UFormField label="Link URL (optional)">
-        <UInput
+        <EdmLinkTargetMenu
+          :key="`${block.id}:linkHref`"
           :model-value="(block.data?.props?.linkHref as string) || ''"
-          placeholder="https://"
-          class="w-full"
           @update:model-value="updateProp('linkHref', $event)"
         />
       </UFormField>
@@ -813,6 +866,14 @@ function updateColumnWidth(index: number, value: string | number) {
 
     <!-- ColumnsContainer -->
     <template v-else-if="block.type === 'ColumnsContainer'">
+      <UFormField label="Reverse mobile stacking" help="Reverses visual order in supporting mobile email apps. Source and keyboard order stay unchanged. Edit from Desktop.">
+        <UCheckbox
+          :model-value="block.data?.props?.reverseStacking === true"
+          label="Last column first on mobile"
+          :disabled="isMobileEditing"
+          @update:model-value="updateProp('reverseStacking', $event === true)"
+        />
+      </UFormField>
       <UFormField label="Number of columns">
         <div class="grid grid-cols-2 gap-2">
           <UButton

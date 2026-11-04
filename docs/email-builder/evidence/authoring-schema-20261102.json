@@ -1,0 +1,29 @@
+{
+  "at": "2026-11-02T06:40:23.411Z",
+  "source": "3f4271900 plus reviewed local integration",
+  "configuredEnvFile": "/Users/paulgiurin/Documents/Projects/dashboard/.env",
+  "host": "ep-lively-fog-a4dum154-pooler.us-east-1.aws.neon.tech",
+  "database": "neondb",
+  "knownTemplates": 3,
+  "applied": [
+    {
+      "file": "494_email_merge_tag_definitions.sql",
+      "sha256": "b4a60e2b551f91c1440bcdbfb00f26c097edc5bb74c67e6787c43f43cfe895c5"
+    },
+    {
+      "file": "495_email_asset_publication.sql",
+      "sha256": "b66a713e45e07c694e48f22e83c7f0e4329f6e0715b6e05f76c783317eac8f09"
+    },
+    {
+      "file": "496_email_content_conditions.sql",
+      "sha256": "4870e2fb2c7cca4a9c4410d65a52e1e5f0832e91bef00d500a30505a3ae51dcd"
+    }
+  ],
+  "readback": {
+    "merge_catalog": true,
+    "condition_catalog": true,
+    "asset_receipts": true,
+    "protection_triggers": 4
+  },
+  "scope": "additive schema only; no provider send, application deployment or feature activation"
+}

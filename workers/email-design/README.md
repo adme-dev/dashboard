@@ -36,6 +36,7 @@ guard enforces these exact values and the existing target/source/resource rules.
 | PATCH | `/api/email/design/drafts/:id/metadata` |
 | POST | `/api/email/design/drafts/initialize` |
 | POST | `/api/email/design/roundtrip` |
+| POST | `/api/email/design/designer` (independent designer gate) |
 | PATCH / DELETE | `/api/email/templates/:id` (prepared canonical handlers; Pages remains local) |
 
 Migrations 491–493 are already applied to the verified production database.
@@ -52,3 +53,5 @@ authority into an isolated synthetic fixture; real hosted acceptance is separate
 See `docs/email-builder/figflow-roundtrip-milestone.md` and the release receipt for
 exact deployment and acceptance status. No user password or JWT secret is needed
 from the operator to provision this service.
+
+Designer operations are registered in the private Worker and forwarded by the existing Pages transport. `FIGFLOW_EDM_DESIGNER_ENABLED` remains `false` in both reviewed targets until native authoring and hosted save/reopen acceptance establish the release gate. The endpoint also requires the existing draft-save gate and fresh designer authority; deployment does not enable publication.

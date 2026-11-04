@@ -73,7 +73,9 @@ expected = {
     'browser_bridge_update_targets_explicit_node',
     'browser_bridge_mutation_requires_revision_and_receipts_never_evict',
     'browser_bridge_large_integer_identifiers_are_lossless',
+    'browser_bridge_designer_context_requires_exact_revision_and_empty_params',
     'browser_bridge_status_and_inspect_strip_paths',
+    'browser_bridge_designer_import_snapshot_replay_and_revision_fence',
 }
 matched = re.findall(
     r'^test (?:browser_bridge::tests::)?(browser_bridge_[A-Za-z0-9_]+) \.\.\. ok$',
@@ -81,21 +83,76 @@ matched = re.findall(
     re.M,
 )
 if len(matched) != len(expected) or set(matched) != expected:
-    raise SystemExit(f'Expected exactly seven passing browser_bridge tests; matched {len(matched)}: {matched}')
+    raise SystemExit(f'Expected exactly nine passing browser_bridge tests; matched {len(matched)}: {matched}')
+PY
+  cargo test --locked -p figcraft-ui-egui --lib edm_ > "$evidence/test-edm-ui.log" 2>&1
+  python3 - "$evidence/test-edm-ui.log" <<'PY'
+import re,sys
+from pathlib import Path
+expected = {
+    'edm_menu_history_uses_the_canonical_log_and_preserves_native_recovery',
+    'edm_canvas_cmd_z_replays_the_canonical_log_once_per_press',
+    'edm_canvas_cmd_z_undoes_an_unlogged_native_edit_generically_before_the_log',
+    'edm_cmd_z_in_a_panel_field_or_the_palette_leaves_the_log_alone',
+    'edm_cmd_z_while_editing_canvas_text_ends_the_edit_and_undoes_the_typing_generically',
+    'edm_panel_structural_targets_omit_absent_column_and_keep_column_zero',
+    'edm_panel_structural_emission_matches_shared_targets_and_engine_admits_it',
+    'edm_panel_field_commit_logs_only_a_changed_value',
+}
+matched = re.findall(r'^test (?:[A-Za-z0-9_]+::)*(edm_[A-Za-z0-9_]+) \.\.\. ok$', Path(sys.argv[1]).read_text(), re.M)
+if len(matched) != len(expected) or set(matched) != expected:
+    raise SystemExit(f'Expected exactly 8 passing EDM UI tests; matched {len(matched)}: {matched}')
 PY
   cargo test --locked -p figcraft-engine --lib edm_ > "$evidence/test-edm.log" 2>&1
   python3 - "$evidence/test-edm.log" <<'PY'
 import re,sys
 from pathlib import Path
 expected = {
+    'edm_campaign_content_noop_preserves_exact_kind_and_baseline',
+    'edm_campaign_content_edit_preserves_kind_metadata_and_locks',
+    'edm_campaign_designer_noop_preserves_exact_kind_and_baseline',
+    'edm_campaign_designer_edits_and_history_preserve_kind_metadata_and_locks',
+    'edm_campaign_modes_reject_module_arbitrary_and_missing_kinds',
+    'edm_campaign_content_retains_manifest_policy_and_native_change_refusals',
+    'edm_campaign_designer_retains_lock_token_asset_and_capability_refusals',
+    'edm_campaign_designer_retains_linked_module_pins_and_locks',
     'edm_content_roundtrip_preserves_canonical_identity_and_locked_fields',
     'edm_snapshot_rejects_native_additions_and_style_changes',
+    'edm_snapshot_rejects_deletions_and_unexpected_metadata',
     'edm_image_url_change_requires_bytes_then_reopens_current_paint',
     'edm_policy_and_column_geometry_stay_bounded_and_non_overlapping',
+    'edm_font_stacks_resolve_registered_families_and_heading_weights',
+    'edm_modern_styled_import_is_visible_semantic_and_noop_lossless',
+    'edm_content_edit_reflows_once_without_phantom_or_compound_edits',
+    'edm_designer_context_maps_selection_without_saving_or_inventing_target',
+    'edm_designer_context_rejects_unmapped_and_unlogged_selection',
+    'edm_designer_noop_and_empty_image_preserve_exact_baseline',
+    'edm_designer_combined_mobile_style_structure_and_reflow_stays_canonical',
+    'edm_designer_duplicate_ids_remap_dfs_and_same_list_reordering',
+    'edm_designer_locks_and_module_metadata_cannot_be_bypassed',
+    'edm_designer_rejects_unlogged_canvas_text_and_geometry_changes',
+    'edm_designer_image_reuse_and_empty_placeholder_survive_reopen',
+    'edm_designer_brand_defaults_apply_only_to_new_blocks',
+    'edm_designer_image_reuse_uses_immutable_baseline_for_aba_empty_and_snapshots',
+    'edm_designer_legal_address_tokens_lock_capabilities_and_every_mutation_kind',
+    'edm_designer_merge_tokens_match_nested_unmatched_and_multiple_shared_scanning',
+    'edm_designer_safe_url_rejects_credentials_and_invalid_fragment_shorthand',
+    'edm_designer_structural_children_require_exact_container_and_column_shapes',
+    'edm_designer_undo_redo_replays_baseline_with_deterministic_ids_and_reorder',
+    'edm_designer_history_restores_image_bytes_and_discards_redo_after_new_edit',
+    'edm_designer_history_failures_are_atomic_for_native_and_invalid_log_changes',
+    'edm_designer_legal_lock_follows_shared_regex_offsets_separators_and_js_whitespace',
+    'edm_designer_shared_capability_vectors_import_and_tampering_is_refused',
+    'edm_designer_shared_mutation_vectors_refuse_text_style_move_duplicate_and_remove',
+    'edm_designer_shared_link_vectors_reject_authority_credentials_for_every_scheme',
+    'edm_designer_native_match_tracks_unlogged_edits_and_their_generic_undo',
+    'edm_snapshot_rebuild_keys_verified_image_bytes_by_block_and_drops_replaced_bytes',
+    'edm_designer_style_locks_match_shared_desktop_mobile_and_inherited_paths',
+    'edm_designer_structural_column_index_follows_shared_optional_integer_target',
 }
 matched = re.findall(r'^test (?:cmd::edm::tests::)?(edm_[A-Za-z0-9_]+) \.\.\. ok$', Path(sys.argv[1]).read_text(), re.M)
 if len(matched) != len(expected) or set(matched) != expected:
-    raise SystemExit(f'Expected exactly four passing EDM tests; matched {len(matched)}: {matched}')
+    raise SystemExit(f'Expected exactly 41 passing EDM tests; matched {len(matched)}: {matched}')
 PY
   cargo test --locked -p figcraft-engine --lib browser_export_bound > "$evidence/test-browser-export-bound.log" 2>&1
   cargo test --locked -p figcraft-format --lib zip_files > "$evidence/test-zip-files.log" 2>&1
