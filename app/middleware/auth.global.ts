@@ -36,7 +36,10 @@ export default defineNuxtRouteMiddleware(async (to, _from) => {
     '/lobby-room'
   ]
 
-  if (to.path === '/studio' || to.path.startsWith('/studio/') || to.path === '/' || to.path === '/voice-ai' || publicPrefixes.some(p => to.path.startsWith(p))) {
+  // Only the token-scoped viewer is public; its API enforces expiry and revocation.
+  const isBannerShare = /^\/share\/banner\/p_[0-9a-f]{32}\/?$/i.test(to.path)
+
+  if (isBannerShare || to.path === '/studio' || to.path.startsWith('/studio/') || to.path === '/' || to.path === '/voice-ai' || publicPrefixes.some(p => to.path.startsWith(p))) {
     return
   }
 

@@ -25,7 +25,7 @@ const props = withDefaults(defineProps<{
   label: 'Ad Creative',
   placeholderBg: '#333333',
   placeholderFg: '#8a8a8a',
-  fit: 'cover',
+  fit: 'cover'
 })
 
 const box = ref<HTMLElement | null>(null)
@@ -39,7 +39,9 @@ onMounted(() => {
   })
   ro.observe(box.value)
 })
-onBeforeUnmount(() => { ro?.disconnect() })
+onBeforeUnmount(() => {
+  ro?.disconnect()
+})
 
 const hasBanner = computed(() => !!props.html && !!props.htmlWidth && !!props.htmlHeight)
 
@@ -51,7 +53,7 @@ const iframeStyle = computed(() => {
     width: `${w}px`,
     height: `${h}px`,
     transform: `translate(-50%, -50%) scale(${scale || 1})`,
-    visibility: scale ? 'visible' as const : 'hidden' as const,
+    visibility: scale ? 'visible' as const : 'hidden' as const
   }
 })
 
@@ -65,6 +67,8 @@ const placeholder = computed(() =>
       v-if="hasBanner"
       :srcdoc="html"
       sandbox="allow-scripts"
+      allow="autoplay"
+      referrerpolicy="no-referrer"
       scrolling="no"
       title="Banner preview"
       class="absolute top-1/2 left-1/2 origin-center border-0 pointer-events-none"
