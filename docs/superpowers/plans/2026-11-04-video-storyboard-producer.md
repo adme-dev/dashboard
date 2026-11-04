@@ -12,7 +12,7 @@
 
 **Research:** [Freefield review and FF-RD01–FF-RD05 backlog](../../research/2026-11-04-freefield-video-rd.md). This adds recipe/example and run-quality refinements to the existing fourteen tasks; GPU/backend/tool experiments remain separate.
 
-**Status:** T01–T03 are implemented locally; T02/T03 additive schemas are applied to the verified agency database. T04–T14, application deployment and all release acceptance remain pending. [Implementation receipt](../../video/implementations/2026-11-04-storyboard-contracts.md). Planning baseline `c39b8b7f4a79f73350e2a1c4620075f87881a6c5`; first implementation base `87ceb82cfc23a76959e0d0d3d989c96d8ce36d23`. Refresh before further execution. This plan does not reopen historical completed tasks except for the explicit integration changes below.
+**Status:** T01–T04 are implemented locally; T02–T04 additive schemas are applied to the verified agency database. T05–T14, application deployment and all release acceptance remain pending. [Implementation receipt](../../video/implementations/2026-11-04-storyboard-contracts.md). Planning baseline `c39b8b7f4a79f73350e2a1c4620075f87881a6c5`; first implementation base `87ceb82cfc23a76959e0d0d3d989c96d8ce36d23`. Refresh before further execution. This plan does not reopen historical completed tasks except for the explicit integration changes below.
 
 ## Global constraints
 
@@ -124,12 +124,14 @@ T01 defines input contracts `StoryboardPlan`, `StoryboardShot`, `AssetBinding`, 
 
 **Interfaces:** `buildStoryboardPlanningContext({ actor, projectId, request }): Promise<PlanningContext>`; `createStoryboardCandidate(context: PlanningContext): Promise<StoryboardPlan>`; store candidate/result against operation ID without advancing the active revision until `/revisions` is accepted. Define request/context types locally and reuse T01 plan/copy types.
 
-- [ ] Add tests for approved-script preservation, invented price rejection, malicious asset-title instructions, invalid asset IDs, repeated source use, total-duration mismatch, one repair maximum, manual-only operation without AI availability, and failed revision preserving the old plan.
-- [ ] Run `pnpm exec vitest run test/video/storyboardPlanning.test.ts test/server/api/videoStoryboardPlanning.test.ts` with mocked provider responses.
-- [ ] Route text planning through existing model policy/telemetry, using only server-authorized inventory and current copy. Expand dealer offer/product reveal/brand story into structural guidance while retaining the existing legacy recipe consumers.
-- [ ] Return a candidate plus readiness findings; require explicit acceptance of the revision diff. Add a human-authored plan path with the same validation and an explicit `approveCopy` action; derive approval actor/time on the server and reject AI-supplied approval fields. No generation or timeline side effects.
-- [ ] Implement validated versioned definitions through the existing recipe catalogue. Test every visible control/default against its plan output, including empty optional directions, unsupported controls, one primary camera movement and visual-look terminology. Label prompt suggestions accurately; no saved-plan mutation when a recipe changes.
-- [ ] Re-run suites plus `test/app/videoProducerRecipes.test.ts` and `test/video/aiAssembly.test.ts`; review prompts and failure copy, then commit.
+- [x] Add tests for approved-script preservation, invented price rejection, malicious asset-title instructions, invalid asset IDs, repeated source use, total-duration mismatch, one repair maximum, manual-only operation without AI availability, and failed revision preserving the old plan.
+- [x] Run `pnpm exec vitest run test/video/storyboardPlanning.test.ts test/server/api/videoStoryboardPlanning.test.ts` with mocked provider responses.
+- [x] Route text planning through existing model policy/telemetry, using only server-authorized inventory and current copy. Expand dealer offer/product reveal/brand story into structural guidance while retaining the existing legacy recipe consumers.
+- [x] Return a candidate plus readiness findings; require explicit acceptance of the revision diff. Add a human-authored plan path with the same validation and an explicit `approveCopy` action; derive approval actor/time on the server and reject AI-supplied approval fields. No generation or timeline side effects.
+- [x] Implement validated versioned definitions through the existing recipe catalogue. Test every visible control/default against its plan output, including empty optional directions, unsupported controls, one primary camera movement and visual-look terminology. Label prompt suggestions accurately; no saved-plan mutation when a recipe changes.
+- [x] Re-run suites plus `test/app/videoProducerRecipes.test.ts` and `test/video/aiAssembly.test.ts`; review prompts and failure copy, then commit.
+
+**Receipt:** [Planning, explicit copy approval, review and migration evidence](../../video/implementations/2026-11-05-storyboard-planning.md). AI proposes shot structure against human-entered copy; free-form narration suggestions are deferred. No UI/application deployment or media-generation call.
 
 ### T05 — Resolve assets and compile a complete timeline
 

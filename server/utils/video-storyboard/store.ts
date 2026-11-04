@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { transaction } from '~~/server/utils/db'
 import type { GodModeTransactionDb as Db } from '~~/server/utils/godMode/transactionCoordinator'
 import type { MediaProjectActor } from '~~/server/utils/audio/projects'
-import type { AssetBinding, StoryboardPlan } from '~~/shared/video/storyboard'
+import { StoryboardPlanSchema, type AssetBinding, type StoryboardPlan } from '~~/shared/video/storyboard'
 import { validateStoryboardPlan } from '~~/shared/video/storyboardValidation'
 import { ReferenceSetWriteSchema, type ReferenceSetWrite, type StoryboardReferenceSet, type ResolvedReferenceSet } from '~~/shared/video/storyboardReferences'
 import { requireStoryboardProjectIn } from './access'
@@ -127,22 +127,24 @@ export interface SaveStoryboardRevisionInput {
   expectedRevision: string | null
   operationId: string
   plan: unknown
+  approveCopy?: boolean
+  expectedCopyHash?: string
 }
 export async function saveStoryboardRevisionIn(db: Db, input: SaveStoryboardRevisionInput, deps: ReferenceDependencies = {}): Promise<StoryboardRevision> {
   if (!WriteIdentity.safeParse(input).success) throw invalid()
   if (Buffer.byteLength(JSON.stringify(input.plan) ?? '') > 512_000) throw createError({ statusCode: 413, statusMessage: 'Storyboard is too large' })
   const project = await requireStoryboardProjectIn(db, input.projectId, input.actor, true)
   const root = await rootIn(db, input.projectId)
-  const requestHash = storyboardHash({ projectId: input.projectId, actorId: input.actor.id, expectedRevision: input.expectedRevision, operationId: input.operationId, plan: input.plan })
+  const requestHash = storyboardHash({ projectId: input.projectId, actorId: input.actor.id, expectedRevision: input.expectedRevision, operationId: input.operationId, plan: input.plan, approveCopy: input.approveCopy === true, expectedCopyHash: input.expectedCopyHash ?? null })
   const replay = (await db.query('SELECT * FROM video_storyboard_revisions WHERE project_id = $1 AND operation_id = $2', [input.projectId, input.operationId])).rows[0]
   if (replay) {
     if (replay.request_hash !== requestHash) throw conflict()
     return mapRevision(replay)
   }
   if (!root || root.current_revision_id !== input.expectedRevision) throw conflict()
-  const parsed = validateStoryboardPlan(input.plan)
-  if (!parsed.ok) throw invalid()
-  const plan = parsed.plan
+  const parsed = StoryboardPlanSchema.safeParse(input.plan)
+  if (!parsed.success) throw invalid()
+  const plan = parsed.data
   if (plan.projectId !== project.id || plan.id !== root.id || plan.referenceSetRevisionId !== root.current_reference_set_id) throw conflict()
   const reference: ReferenceRow | undefined = (await db.query('SELECT * FROM video_storyboard_reference_sets WHERE project_id = $1 AND id = $2', [project.id, plan.referenceSetRevisionId])).rows[0]
   if (!reference) throw conflict()
@@ -150,9 +152,13 @@ export async function saveStoryboardRevisionIn(db: Db, input: SaveStoryboardRevi
   if (copyHash !== plan.copy.contentHash) throw invalid()
   const knownCopy = (await db.query(`SELECT plan->'copy' AS copy FROM video_storyboard_revisions WHERE project_id = $1 AND plan->>'copyRevisionId' = $2 ORDER BY sequence DESC LIMIT 1`, [project.id, plan.copyRevisionId])).rows[0]?.copy
   if (knownCopy && (knownCopy.contentHash !== copyHash || knownCopy.revision !== plan.copy.revision)) throw conflict()
-  // Copy approval is never accepted from a candidate. T04 owns the explicit
-  // human approval action; this boundary can only retain a canonical approval.
+  // A candidate may retain canonical approval, never supply new approval fields.
   if (plan.copy.approval && (!knownCopy?.approval || storyboardHash(knownCopy.approval) !== storyboardHash(plan.copy.approval))) throw invalid()
+  if (input.approveCopy === true) {
+    if (input.expectedCopyHash !== copyHash) throw conflict()
+    plan.copy.approval = { actorId: input.actor.id, approvedAt: new Date().toISOString(), contentHash: copyHash }
+  }
+  if (!validateStoryboardPlan(plan).ok) throw invalid()
 
   const bindings = new Map<string, Extract<AssetBinding, { status: 'bound' }>>()
   for (const shot of plan.shots) {

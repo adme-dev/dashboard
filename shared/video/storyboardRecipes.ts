@@ -115,3 +115,18 @@ export function resolveStoryboardRecipe(id: string, version: number, values: unk
   const defined = Object.fromEntries(Object.entries(overrides).filter(([, value]) => value !== undefined))
   return StoryboardRecipeSnapshotSchema.parse({ id, version, resolvedValues: { ...recipe.defaults, ...defined } })
 }
+
+/** Version-1 editorial guidance, separate from provider-native controls. */
+export function storyboardRecipeGuidance(snapshot: StoryboardRecipeSnapshot): string {
+  const pinned = resolveStoryboardRecipe(snapshot.id, snapshot.version, snapshot.resolvedValues)
+  const recipe = catalogue.find(value => value.id === pinned.id && value.version === pinned.version)!
+  const structure: Record<string, string> = {
+    'dealer-offer-9x16': 'Lead with product, reserve an offer beat only for supplied copy, then close with supplied CTA. Missing offer facts stay unresolved.',
+    'product-reveal': 'Build anticipation with details, reveal the full product, then show its context and close. Use only supplied benefit copy.',
+    'brand-story-broll': 'Establish context with a wide view, develop the story with medium and detail views, then close. Leave room for supplied speech.',
+    'testimonial-cutdown': 'Lead with supplied proof, support it with relevant visuals, then close. Never invent an endorsement.',
+    'event-recap': 'Open with a highlight, alternate context and detail, then close with supplied event copy.'
+  }
+  const values = pinned.resolvedValues
+  return [structure[recipe.id], `Prompt guidance only: primary movement ${values.primaryMovement}; visual look ${values.visualLook}; pacing ${values.pacing}.`, 'Keep required text and logos in reviewed overlays, not generated scenery.', values.extraDirection.trim()].filter(Boolean).join(' ')
+}

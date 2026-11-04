@@ -8,22 +8,26 @@ import { digestMcpRequestBody } from '~~/shared/utils/mcpRequestClaim'
 const key = Symbol('storyboardReferencesGodMode')
 const route = /^\/api\/agency\/video\/projects\/[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}\/storyboard\/references$/i
 export const isStoryboardReferenceWritePath = (path: string) => route.test(path)
+export const isStoryboardRevisionWritePath = (path: string) => route.test(path.replace(/\/revisions$/, '/references')) && path.endsWith('/revisions')
 function operation(event: H3Event) {
   const context = event.context as Record<PropertyKey, unknown>
   if (!context[key]) context[key] = defineGodModeTransactionOperation({
-    routeOrTool: `PUT ${getRequestURL(event).pathname}`, mutationName: 'storyboard reference revision',
+    routeOrTool: `${isStoryboardRevisionWritePath(getRequestURL(event).pathname) ? 'POST' : 'PUT'} ${getRequestURL(event).pathname}`, mutationName: 'storyboard revision',
     missingResultMessage: 'Storyboard reference revision has no durable result', retryableInProgress: true
   })
   return context[key] as GodModeTransactionOperation
 }
 export function registerGodModeStoryboardMutationFamilies() {
-  return registerGodModeMutationFamily({
-    family: 'video-storyboard-references', method: 'PUT', matchesPath: isStoryboardReferenceWritePath,
-    prepare: event => prepareGodModeTransactionMutation(event, operation(event), {
-      transaction, appendAudit: appendGodModeAuditEvent,
-      digestRequest: async request => digestMcpRequestBody(await readBody(request))
-    })
+  const prepare = (event: H3Event) => prepareGodModeTransactionMutation(event, operation(event), {
+    transaction, appendAudit: appendGodModeAuditEvent,
+    digestRequest: async request => digestMcpRequestBody(await readBody(request))
   })
+  const references = registerGodModeMutationFamily({ family: 'video-storyboard-references', method: 'PUT', matchesPath: isStoryboardReferenceWritePath, prepare })
+  const revisions = registerGodModeMutationFamily({ family: 'video-storyboard-revisions', method: 'POST', matchesPath: isStoryboardRevisionWritePath, prepare })
+  return () => {
+    revisions()
+    references()
+  }
 }
 
 /** Canonical operation IDs protect staff too; owner replay reauthorizes in that core. */
