@@ -47,6 +47,7 @@ describe.runIf(Boolean(databaseUrl))('client staging reservation on PostgreSQL',
       CREATE TABLE role_permission_groups(role_id UUID,permission_group TEXT,UNIQUE(role_id,permission_group));`)
     await db.query(migration('402_page_studio_control_plane.sql'))
     await db.query(migration('428_page_studio_client_staging.sql'))
+    await db.query(migration('500_page_studio_code_staging.sql'))
     await db.query('ALTER TABLE page_studio_sites ADD COLUMN delivery_mode TEXT NOT NULL DEFAULT \'static\'')
     for (const name of ['442_page_studio_customer_workspaces.sql', '444_page_studio_customer_site_ownership.sql', '454_page_studio_native_build_admission.sql']) await db.query(migration(name))
     await db.query('INSERT INTO team_members VALUES($1)', [actorId])
@@ -66,6 +67,23 @@ describe.runIf(Boolean(databaseUrl))('client staging reservation on PostgreSQL',
       await db.query('ROLLBACK')
       if (schema) await db.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`)
     } finally { await db.end() }
+  })
+  it('requires the native code binding, excludes automatic staging and retains public identity', async () => {
+    const codeContent = { formatVersion: 1 as const, kind: 'code-pages' as const, operationId: 'import_one', indexDigest: 'b'.repeat(64), contentDigest: 'c'.repeat(64) }
+    await db.query(`INSERT INTO page_studio_audit_events(tenant_id,client_id,site_id,actor_id,actor_role,action,resource_type,resource_id,metadata)
+      VALUES($1,$2,$3,$4,'agency','workspace.checkpointed','checkpoint',$5,$6::jsonb)`, [scope.tenantId, scope.clientId, scope.siteId, actorId, checkpointId, JSON.stringify({ codeContent })])
+    expect(await transaction(() => beginInitialStagingSnapshot(db, { scope, actorId, actorRole: 'agency' }))).toBeNull()
+    await expect(transaction(() => beginStagingSnapshot(db, request()))).rejects.toMatchObject({ code: 'STAGING_CHANGED' })
+    const snapshot = await transaction(() => beginStagingSnapshot(db, { ...request(), codeContent }))
+    expect(snapshot.codeContent).toEqual(codeContent)
+    await expect(transaction(() => beginStagingSnapshot(db, { ...request(), codeContent: { ...codeContent, contentDigest: 'd'.repeat(64) } }))).rejects.toMatchObject({ code: 'STAGING_CHANGED' })
+    await expect(db.query(`UPDATE page_studio_staging_deployments SET code_content=NULL WHERE id=$1`, [snapshot.id])).rejects.toThrow('STAGING_DEPLOYMENT_IMMUTABLE')
+    await db.query(`UPDATE page_studio_staging_sites SET host_state='ready',provider_domain_id='example-domain',provider_verified_at=NOW()`)
+    await transaction(() => finishStagingSnapshot(db, { scope, id: snapshot.id, artifactPrefix: stagingArtifactPrefix(scope, snapshot.id), manifestDigest: 'e'.repeat(64) }))
+    const state = await readStagingState(db, scope, true)
+    expect(state.currentCodeContent).toEqual(codeContent)
+    expect(state.active?.codeContent).toEqual(codeContent)
+    expect(await resolveStagingHost(db, state.hostname)).toMatchObject({ codeContent })
   })
   it('automatically reserves a stable URL even with zero customer-domain allowance', async () => {
     const first = await transaction(() => reserveStagingAddress(db, scope))
@@ -161,6 +179,26 @@ describe.runIf(Boolean(databaseUrl))('client staging reservation on PostgreSQL',
     }
     return { input, dependencies }
   }
+  it.each(['complete', 'build-omits-binding', 'verify-changes-binding'])('coordinates code preview only with exact build and verification identity: %s', async (mode) => {
+    const { input, dependencies } = await coordinator()
+    const codeContent = { formatVersion: 1 as const, kind: 'code-pages' as const, operationId: 'import_coordinated', indexDigest: 'b'.repeat(64), contentDigest: 'c'.repeat(64) }
+    await db.query(`INSERT INTO page_studio_audit_events(tenant_id,client_id,site_id,actor_id,actor_role,action,resource_type,resource_id,metadata)
+      VALUES($1,$2,$3,$4,'agency','workspace.checkpointed','checkpoint',$5,$6::jsonb)`, [scope.tenantId, scope.clientId, scope.siteId, actorId, checkpointId, JSON.stringify({ codeContent })])
+    const build = dependencies.build
+    dependencies.build = async (identity) => {
+      expect(identity.codeContent).toEqual(codeContent)
+      return { ...await build(identity) as object, ...(mode === 'build-omits-binding' ? {} : { codeContent }) }
+    }
+    dependencies.verify = async (identity) => {
+      expect(identity.codeContent).toEqual(codeContent)
+      return { verified: true, manifestDigest: 'c'.repeat(64), codeContent: mode === 'verify-changes-binding' ? { ...codeContent, indexDigest: 'd'.repeat(64) } : codeContent }
+    }
+    const result = await coordinateStaging({ ...input, body: { ...input.body, codeContent } }, dependencies)
+    if (mode === 'complete') {
+      expect(result).toMatchObject({ status: 'ready', currentCodeContent: codeContent, active: { codeContent } })
+      expect(await resolveStagingHost(db, result.hostname)).toMatchObject({ codeContent })
+    } else expect(result).toMatchObject({ status: 'failed', active: null, failure: 'BUILD_FAILED' })
+  })
   it('coordinates hostname read-back, build, verification and activation with an idempotent receipt', async () => {
     const { input, dependencies } = await coordinator()
     const first = await coordinateStaging(input, dependencies)

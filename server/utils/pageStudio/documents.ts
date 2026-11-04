@@ -1,3 +1,4 @@
+import { CodeContentBindingSchema, verifyCodePageImport } from '~~/shared/pageStudio/codeContent'
 import { randomUUID } from 'node:crypto'
 
 import type { PageStudioDocument } from '~~/shared/pageStudio/document'
@@ -23,6 +24,10 @@ interface DocumentRow {
   checkpoint_digest: string | null
   checkpoint_object_key: string | null
   checkpoint_created_at: string | null
+  checkpoint_author_id?: string
+  checkpoint_etag?: string
+  code_content?: unknown
+  expected_checkpoint_id?: string
   document: PageStudioDocument | null
   name: string
   pages_per_site_limit: number
@@ -35,6 +40,7 @@ export interface PageStudioDocumentState {
   id: string
   document: PageStudioDocument | null
   studio?: PageStudioSavedPages
+  imported?: { checkpointId: string, routes: string[], readOnly: true }
   pageLimit: number
   revision: number
   site: {
@@ -93,7 +99,8 @@ function mapState(siteId: string, row: DocumentRow): PageStudioDocumentState {
 const scopedDocumentSql = `
   SELECT site.client_id, site.name, site.route, site.current_checkpoint_id,
          checkpoint.digest AS checkpoint_digest, checkpoint.object_key AS checkpoint_object_key,
-         checkpoint.created_at AS checkpoint_created_at,
+         checkpoint.created_at AS checkpoint_created_at, checkpoint.author_id AS checkpoint_author_id, checkpoint.etag AS checkpoint_etag,
+         audit.metadata->'codeContent' AS code_content, audit.metadata->>'expectedCheckpointId' AS expected_checkpoint_id,
          entitlement.pages_per_site_limit,
          draft.revision::text, draft.document, draft.updated_at
   FROM page_studio_sites site
@@ -110,6 +117,9 @@ const scopedDocumentSql = `
    AND checkpoint.client_id = site.client_id
    AND checkpoint.site_id = site.id
    AND checkpoint.id = site.current_checkpoint_id
+  LEFT JOIN page_studio_audit_events audit ON audit.tenant_id=site.tenant_id AND audit.client_id=site.client_id
+    AND audit.site_id=site.id AND audit.action='workspace.checkpointed' AND audit.resource_type='checkpoint'
+    AND audit.resource_id=checkpoint.id AND audit.idempotency_key='control:checkpoint:' || checkpoint.id
   WHERE site.tenant_id = $1 AND site.id = $2 AND site.status <> 'archived'`
 
 export async function getPageStudioDocument(
@@ -122,6 +132,19 @@ export async function getPageStudioDocument(
   if (!row.current_checkpoint_id) return mapState(siteId, row)
   if (!bucket || !row.checkpoint_digest || !row.checkpoint_object_key) {
     throw new PageStudioDocumentError('CHECKPOINT_UNAVAILABLE', 503, 'The saved website could not be loaded. Please try again.')
+  }
+  if (row.code_content != null) {
+    try {
+      if (!row.checkpoint_author_id || !row.checkpoint_created_at || !row.checkpoint_etag || !row.expected_checkpoint_id) throw new Error('Missing accepted import metadata')
+      const verified = await verifyCodePageImport({ checkpoint: {
+        checkpointId: row.current_checkpoint_id, digest: row.checkpoint_digest, objectKey: row.checkpoint_object_key,
+        createdAt: new Date(row.checkpoint_created_at).toISOString(), userId: row.checkpoint_author_id, etag: row.checkpoint_etag,
+        scope: { tenantId, clientId: row.client_id, siteId }, codeContent: CodeContentBindingSchema.parse(row.code_content)
+      }, expectedCheckpointId: row.expected_checkpoint_id }, bucket)
+      return { id: siteId, document: null, imported: { checkpointId: row.current_checkpoint_id, routes: verified.routes, readOnly: true },
+        pageLimit: row.pages_per_site_limit, revision: Number(row.revision ?? 0),
+        site: { clientId: row.client_id, id: siteId, name: row.name, route: row.route }, updatedAt: row.checkpoint_created_at }
+    } catch { throw new PageStudioDocumentError('CHECKPOINT_UNAVAILABLE', 422, 'The imported website could not be verified. Refresh before continuing.') }
   }
   const checkpoint = await loadPageStudioCheckpoint({
     scope: { tenantId, clientId: row.client_id, siteId },

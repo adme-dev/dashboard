@@ -1,10 +1,11 @@
 import { z } from 'zod'
+import { CodeContentBindingSchema } from './codeContent'
 import { DomainManagementActorSchema } from './domainManagement'
 
 const SiteId = z.string().uuid().transform(value => value.toLowerCase())
 const Digest = z.string().regex(/^[a-f0-9]{64}$/)
 export const PageStudioStagingUpdateSchema = z.object({
-  digest: Digest, expectedActiveId: z.string().uuid().nullable(), idempotencyKey: z.string().uuid()
+  digest: Digest, codeContent: CodeContentBindingSchema.optional(), expectedActiveId: z.string().uuid().nullable(), idempotencyKey: z.string().uuid()
 }).strict()
 const ManagementScope = { actor: DomainManagementActorSchema, siteId: SiteId, expectedEnvironment: z.enum(['staging', 'production']) }
 export const PageStudioStagingRequestSchema = z.discriminatedUnion('operation', [
@@ -26,6 +27,7 @@ export const PageStudioStagingSnapshotSchema = z.object({
   id: z.string().uuid(),
   checkpointId: z.string().min(1).max(128),
   digest: Digest,
+  codeContent: CodeContentBindingSchema.optional(),
   deployedAt: z.string().datetime()
 }).strict()
 
@@ -37,6 +39,7 @@ export const PageStudioStagingStateSchema = z.object({
   canManage: z.boolean(),
   active: PageStudioStagingSnapshotSchema.nullable(),
   currentDigest: Digest.nullable(),
+  currentCodeContent: CodeContentBindingSchema.optional(),
   // Only fixed, visitor-safe failure categories cross the boundary.
   failure: z.enum(['HOST_UNAVAILABLE', 'BUILD_FAILED', 'SNAPSHOT_CHANGED', 'ACCESS_INACTIVE']).nullable()
 }).strict().superRefine((value, ctx) => {

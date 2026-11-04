@@ -213,6 +213,13 @@ describe('department website reads require explicit Page Studio grants and the e
     expect(result.data.unsupportedOverMcp).toEqual(expect.arrayContaining(['domains', 'subscriptions']))
   })
 
+  it('exposes imported inventory as read-only rather than an editable Dashboard document', async () => {
+    vi.mocked(documents.getPageStudioDocument).mockResolvedValueOnce({ id: STUDIO_SITE, document: null, revision: 0, pageLimit: 10,
+      imported: { checkpointId: 'code', routes: ['/kia'], readOnly: true } } as never)
+    const draft = await run('marketing_get_website_draft', { clientId: CLIENT, siteId: STUDIO_SITE }) as Row
+    expect(draft.data).toMatchObject({ editorKind: 'imported_code', editable: false, document: null,
+      imported: { checkpointId: 'code', routes: ['/kia'], readOnly: true }, forms: [] })
+  })
   it('reads drafts only with EDIT and exposes reusable form identities for Studio sites', async () => {
     h.groups = ['PAGE_STUDIO_VIEW']
     expect(await run('marketing_get_website_draft', { clientId: CLIENT, siteId: STUDIO_SITE })).toMatchObject({ ok: false, code: 'forbidden' })

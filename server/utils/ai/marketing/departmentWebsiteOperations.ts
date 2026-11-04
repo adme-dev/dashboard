@@ -227,10 +227,11 @@ async function getDraft(ctx: ToolContext, tenantId: string, args: Args<'marketin
     clientId: args.clientId,
     siteId: args.siteId,
     revision: state.revision,
-    editable: editable(site) && !studio,
-    editorKind: studio ? 'studio' : 'dashboard_document',
+    editable: editable(site) && !studio && !state.imported,
+    editorKind: state.imported ? 'imported_code' : studio ? 'studio' : 'dashboard_document',
     pageLimit: state.pageLimit,
     document: state.document,
+    imported: state.imported,
     studio: studio ? { checkpointId: studio.checkpointId, pages: studio.pages } : undefined,
     // Reusable form identity: shared definitions keep one definitionId across placements.
     forms: studio
@@ -239,7 +240,7 @@ async function getDraft(ctx: ToolContext, tenantId: string, args: Args<'marketin
           placements: entry.placements.map(placement => ({ pageId: placement.pageId, formId: placement.formId, route: placement.route }))
         }))
       : [],
-    note: studio ? 'This website is edited in Studio; Studio drafts are saved through the Studio editor. Submit the saved draft with marketing_submit_website_version.' : undefined
+    note: state.imported ? 'This imported website inventory is read-only. Use the explicit staging update to preview its saved content.' : studio ? 'This website is edited in Studio; Studio drafts are saved through the Studio editor. Submit the saved draft with marketing_submit_website_version.' : undefined
   })
 }
 

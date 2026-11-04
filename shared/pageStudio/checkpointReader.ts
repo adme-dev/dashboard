@@ -55,7 +55,7 @@ function parseEnvelope(value: unknown): CheckpointEnvelope {
     throw new PageStudioReleaseCheckpointError('CHECKPOINT_INVALID', 'Checkpoint envelope must be an object')
   }
   const envelope = value as Partial<CheckpointEnvelope>
-  if (envelope.schemaVersion !== 1 || typeof envelope.checkpointId !== 'string' || typeof envelope.digest !== 'string') {
+  if (Object.hasOwn(value, 'codeContent') || envelope.schemaVersion !== 1 || typeof envelope.checkpointId !== 'string' || typeof envelope.digest !== 'string') {
     throw new PageStudioReleaseCheckpointError('CHECKPOINT_INVALID', 'Checkpoint envelope fields are invalid')
   }
   if (!envelope.scope || typeof envelope.scope !== 'object' || !envelope.manifest) {

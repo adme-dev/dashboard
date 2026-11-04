@@ -1,3 +1,4 @@
+import { codeFixture } from '../../fixtures/pageStudioCodeContent'
 import { createHash } from 'node:crypto'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { getPageStudioDocument, savePageStudioDocument, replayPageStudioDocumentSave, defaultPageStudioDocument } from '~~/server/utils/pageStudio/documents'
@@ -43,6 +44,19 @@ beforeEach(() => {
 })
 
 describe('Dashboard Pages reads the authoritative Studio website', () => {
+  it('projects verified imported routes read-only without the typed shell', async () => {
+    const f = await codeFixture({ scope })
+    database.queryOneFresh.mockResolvedValue({ ...row, current_checkpoint_id: f.input.checkpoint.checkpointId,
+      checkpoint_digest: f.input.checkpoint.digest, checkpoint_object_key: f.input.checkpoint.objectKey,
+      checkpoint_created_at: f.input.checkpoint.createdAt, checkpoint_author_id: f.input.checkpoint.userId,
+      checkpoint_etag: f.input.checkpoint.etag, code_content: f.input.checkpoint.codeContent, expected_checkpoint_id: f.input.expectedCheckpointId })
+    const result = await getPageStudioDocument(scope.tenantId, scope.siteId, f.bucket)
+    expect(result.document).toBeNull()
+    expect(result.studio).toBeUndefined()
+    expect(result.imported).toEqual({ checkpointId: 'imported', routes: ['/kia'], readOnly: true })
+    f.objects.delete(f.fileKey)
+    await expect(getPageStudioDocument(scope.tenantId, scope.siteId, f.bucket)).rejects.toMatchObject({ code: 'CHECKPOINT_UNAVAILABLE' })
+  })
   it('returns saved pages, SEO and forms without converting or exposing component content', async () => {
     const storage = bucket()
     const result = await getPageStudioDocument('tenant-a', 'site-a', storage)
@@ -140,4 +154,8 @@ describe('Shared immutable checkpoint reader', () => {
     await expect(loadPageStudioCheckpoint({ scope, checkpointId: 'saved', objectKey: key, digests: [digest], bucket: { get: async () => ({ body }) } })).rejects.toMatchObject({ code: 'CHECKPOINT_TOO_LARGE' })
     expect(cancel).toHaveBeenCalled()
   })
+})
+
+it.each([1, 2])('typed document/release/history reader refuses code content in envelope v%s', async (schemaVersion) => {
+  await expect(read({ ...envelope, schemaVersion, codeContent: { formatVersion: 1, kind: 'code-pages', operationId: 'import', indexDigest: 'a'.repeat(64), contentDigest: 'b'.repeat(64) } })).rejects.toMatchObject({ code: 'CHECKPOINT_INVALID' })
 })

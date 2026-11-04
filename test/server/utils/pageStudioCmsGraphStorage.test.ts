@@ -1,3 +1,4 @@
+import { codeFixture } from '../../fixtures/pageStudioCodeContent'
 import { describe, expect, it, vi } from 'vitest'
 import { createCmsGraphStorage } from '~~/server/utils/pageStudio/cmsGraphStorage'
 import type { CmsGraphSnapshot } from '~~/server/utils/pageStudio/cmsGraphCoordinator'
@@ -13,6 +14,13 @@ function object(raw: string) {
   } }) }
 }
 describe('bound graph storage bytes', () => {
+  it.each([1, 2])('refuses code-page checkpoint envelopes v%s as managed graph bases', async (schemaVersion) => {
+    const fixture = await codeFixture({ scope })
+    fixture.set(fixture.input.checkpoint.objectKey, { ...fixture.envelope, schemaVersion })
+    const storage = createCmsGraphStorage({ PAGE_STUDIO_CHECKPOINTS: fixture.bucket }, snapshot)
+    await expect(storage.readCheckpoint({ id: fixture.input.checkpoint.checkpointId,
+      digest: fixture.input.checkpoint.digest, object_key: fixture.input.checkpoint.objectKey })).rejects.toThrow()
+  })
   it('derives scoped artifact keys and verifies actual bytes', async () => {
     const value = { kind: 'action', id: 'action_a', version: 1, scope }, raw = collectionCanonical(value)
     const pin = { kind: 'action' as const, id: 'action_a', version: 1, sha256: await collectionDigest(value) }
