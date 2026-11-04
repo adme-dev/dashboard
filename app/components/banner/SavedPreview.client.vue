@@ -5,6 +5,7 @@ import type { ArtboardState } from '~/types/banner-studio'
 import { buildBannerHTML, type ExportCustomFont } from '~/utils/banner-html-builder'
 import { resolveBannerFormat } from '~/utils/banner-constants'
 import { withBannerPreviewAudio } from '~/utils/banner-preview-audio'
+import { withBannerPreviewPlayback, readBannerPreviewPlayback, type BannerPreviewPlayback } from '~/utils/banner-preview-playback'
 
 const props = defineProps<{
   canvas: Record<string, ArtboardState>
@@ -40,6 +41,12 @@ const selectedKey = ref('')
 const playing = ref(false)
 const muted = ref(false)
 const audioError = ref('')
+const playback = ref<BannerPreviewPlayback>({ state: 'loading', current: 0, duration: 0, iteration: 1, repeat: 0 })
+const playbackLabel = computed(() => ({ loading: 'Loading', playing: 'Playing', paused: 'Ready', ended: 'Finished', static: 'Still artwork', unavailable: 'Playback unavailable' })[playback.value.state])
+const playbackTime = computed(() => `${playback.value.current.toFixed(1)} / ${playback.value.duration.toFixed(1)} s`)
+const playbackLoop = computed(() => playback.value.repeat === -1
+  ? `Loop ${playback.value.iteration} · ∞`
+  : playback.value.repeat > 0 ? `Loop ${playback.value.iteration} / ${playback.value.repeat + 1}` : '')
 function sendSoundPreference() {
   root.value?.querySelector('iframe')?.contentWindow?.postMessage({ type: 'banner-preview-sound', muted: muted.value }, '*')
 }
@@ -50,6 +57,12 @@ function receiveAudioStatus(event: MessageEvent) {
   if (event.data.status === 'blocked') audioError.value = 'Sound was blocked by your browser. Allow sound for this site, then replay.'
   if (event.data.status === 'error') audioError.value = 'An audio track could not load. Try replaying the preview.'
 }
+function receivePlaybackStatus(event: MessageEvent) {
+  const frame = root.value?.querySelector('iframe')
+  if (!frame || event.source !== frame.contentWindow) return
+  const next = readBannerPreviewPlayback(event.data, previewDocument.value.frameId)
+  if (next) playback.value = next
+}
 function toggleSound() {
   muted.value = !muted.value
   audioError.value = ''
@@ -57,6 +70,8 @@ function toggleSound() {
 }
 onMounted(() => window.addEventListener('message', receiveAudioStatus))
 onBeforeUnmount(() => window.removeEventListener('message', receiveAudioStatus))
+onMounted(() => window.addEventListener('message', receivePlaybackStatus))
+onBeforeUnmount(() => window.removeEventListener('message', receivePlaybackStatus))
 const mode = ref<'artwork' | 'social'>('artwork')
 const zoom = ref<number | null>(null)
 const replay = ref(0)
@@ -82,15 +97,33 @@ const fitScale = computed(() => Math.min(
 ))
 const scale = computed(() => zoom.value ?? fitScale.value)
 const percent = computed(() => Math.round(scale.value * 100))
-const html = computed(() => active.value
-  ? withBannerPreviewAudio(buildBannerHTML(active.value.key, active.value.board.layers, {
-      // A stopped preview still needs the timeline to evaluate keyframes and scene visibility.
-      pausedAt: playing.value ? undefined : 0,
-      playback: active.value.board.playback,
-      bgColor: active.value.board.bgColor || '#0a0a10',
-      customFonts: props.fonts || []
-    }))
-  : '')
+let frameSequence = 0
+const previewDocument = computed(() => {
+  const frameId = ++frameSequence
+  const source = active.value
+    ? buildBannerHTML(active.value.key, active.value.board.layers, {
+        // A stopped preview still needs the timeline to evaluate keyframes and scene visibility.
+        pausedAt: playing.value ? undefined : 0,
+        playback: active.value.board.playback,
+        bgColor: active.value.board.bgColor || '#0a0a10',
+        customFonts: props.fonts || []
+      })
+    : ''
+  return { frameId, html: withBannerPreviewPlayback(withBannerPreviewAudio(source), frameId) }
+})
+const html = computed(() => previewDocument.value.html)
+watch([html, replay], () => {
+  playback.value = { state: 'loading', current: 0, duration: 0, iteration: 1, repeat: 0 }
+}, { flush: 'sync' })
+
+function togglePlayback() {
+  if (playback.value.state === 'ended') {
+    replay.value++
+    playing.value = true
+  } else {
+    playing.value = !playing.value
+  }
+}
 
 function resetView() {
   audioError.value = ''
@@ -203,16 +236,35 @@ function changeZoom(direction: number) {
           </div>
         </div>
       </div>
-      <div class="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 border-t border-default bg-default px-4 py-3 sm:px-6">
+      <div class="shrink-0 border-t border-default bg-default px-4 pt-3 sm:px-6" aria-label="Playback timeline">
+        <div class="mx-auto flex max-w-5xl items-center gap-3">
+          <span class="flex min-w-16 items-center gap-1.5 text-[11px] font-medium" role="status">
+            <span class="size-1.5 shrink-0 rounded-full" :class="playback.state === 'playing' ? 'animate-pulse bg-primary' : 'bg-muted'" aria-hidden="true" />
+            {{ playbackLabel }}
+          </span>
+          <UProgress
+            :model-value="playback.current"
+            :max="playback.duration || 1"
+            :get-value-text="() => playbackTime"
+            :get-value-label="() => 'Animation playback progress'"
+            aria-label="Animation playback progress"
+            class="min-w-12 flex-1"
+            size="sm"
+          />
+          <span class="shrink-0 text-xs tabular-nums text-muted" data-testid="playback-time">{{ playbackTime }}</span>
+          <span v-if="playbackLoop" class="hidden shrink-0 text-[11px] text-muted sm:block">{{ playbackLoop }}</span>
+        </div>
+      </div>
+      <div class="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 bg-default px-4 py-3 sm:px-6">
         <div class="flex items-center gap-1">
           <UButton
-            :label="playing ? 'Stop' : 'Play'"
-            :icon="playing ? 'i-lucide-square' : 'i-lucide-play'"
+            :label="playback.state === 'ended' ? 'Replay' : playing ? 'Stop' : 'Play'"
+            :icon="playback.state === 'ended' ? 'i-lucide-rotate-ccw' : playing ? 'i-lucide-square' : 'i-lucide-play'"
             color="neutral"
             variant="solid"
             size="md"
             class="min-w-24 justify-center rounded-full"
-            @click="playing = !playing"
+            @click="togglePlayback"
           />
           <UButton
             icon="i-lucide-rotate-ccw"

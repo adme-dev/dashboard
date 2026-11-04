@@ -29,6 +29,7 @@ async function mount(previewCanvas: Record<string, ArtboardState> = canvas, iden
   app.component('BannerSavedViewerFrame', media)
   app.component('AdPreviewMetaFeedPreview', media)
   app.component('AdPreviewMetaStoryPreview', media)
+  app.component('UProgress', defineComponent({ props: ['modelValue', 'max', 'getValueText'], setup: props => () => h('div', { 'role': 'progressbar', 'aria-valuenow': props.modelValue, 'aria-valuemax': props.max }) }))
   app.component('UAlert', { template: '<div />' })
   app.mount(host)
   cleanups.push(() => {
@@ -104,6 +105,33 @@ describe('saved banner review workspace', () => {
     window.dispatchEvent(new MessageEvent('message', { source: frame.contentWindow, data: { type: 'banner-preview-audio', status: 'blocked' } }))
     await nextTick()
     expect(view.host.textContent).toContain('Sound was blocked')
+  })
+
+  it('shows actual playback time, rejects unrelated windows and preserves the finished frame', async () => {
+    const view = await mount()
+    await view.click('Play')
+    const frame = view.host.querySelector('iframe')!
+    const frameId = Number(view.media().dataset.html!.match(/frameId: (\d+)/)![1])
+    const message = { type: 'banner-preview-playback', frameId, state: 'playing', current: 2.7, duration: 12, iteration: 1, repeat: -1 }
+    window.dispatchEvent(new MessageEvent('message', { source: window, data: message }))
+    await nextTick()
+    expect(view.host.textContent).not.toContain('2.7 / 12.0 s')
+    window.dispatchEvent(new MessageEvent('message', { source: frame.contentWindow, data: message }))
+    await nextTick()
+    expect(view.host.textContent).toContain('Playing')
+    expect(view.host.textContent).toContain('2.7 / 12.0 s')
+    expect(view.host.querySelector('[role="progressbar"]')?.getAttribute('aria-valuenow')).toBe('2.7')
+    const html = view.media().dataset.html
+    window.dispatchEvent(new MessageEvent('message', { source: frame.contentWindow, data: { ...message, state: 'ended', current: 12, repeat: 0 } }))
+    await nextTick()
+    expect(view.host.textContent).toContain('Finished')
+    expect(view.media().dataset.html).toBe(html)
+    await view.click('Replay')
+    expect(view.host.textContent).not.toContain('Finished')
+    await view.click('Stop')
+    window.dispatchEvent(new MessageEvent('message', { source: frame.contentWindow, data: message }))
+    await nextTick()
+    expect(view.host.textContent).not.toContain('2.7 / 12.0 s')
   })
 
   it('uses the actual client in both social placements and falls back to the project name', async () => {
