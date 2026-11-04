@@ -14,8 +14,8 @@ export function resolveOverlayFormatKey(width: number, height: number): string {
   return 'ig_sq' // ~1:1
 }
 
-export async function loadBannerLayers(projectId: string, formatKey: string, event?: H3Event): Promise<{ layers: Layer[], width: number, height: number, playback?: BannerPlayback, customFonts?: ExportCustomFont[] }> {
-  const row = await queryOne<{ clientId: string | null, canvasData: Record<string, { layers: Layer[], playback?: BannerPlayback }> }>(`SELECT canvas_data AS "canvasData", client_id AS "clientId" FROM banner_projects WHERE id = $1`, [projectId])
+export async function loadBannerLayers(projectId: string, formatKey: string, event?: H3Event, canonical?: { clientId: string | null, canvasData: Record<string, { layers: Layer[], playback?: BannerPlayback }> }): Promise<{ layers: Layer[], width: number, height: number, playback?: BannerPlayback, customFonts?: ExportCustomFont[] }> {
+  const row = canonical ?? await queryOne<{ clientId: string | null, canvasData: Record<string, { layers: Layer[], playback?: BannerPlayback }> }>(`SELECT canvas_data AS "canvasData", client_id AS "clientId" FROM banner_projects WHERE id = $1`, [projectId])
   if (!row) throw new Error(`banner project not found: ${projectId}`)
   const artboard = row.canvasData?.[formatKey]
   if (!artboard?.layers) throw new Error(`banner project ${projectId} has no format "${formatKey}"`)

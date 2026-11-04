@@ -2,13 +2,12 @@ import { createError } from 'h3'
 import { transaction } from '~~/server/utils/db'
 import type { GodModeTransactionDb as Db } from '~~/server/utils/godMode/transactionCoordinator'
 import type { MediaProjectActor } from '~~/server/utils/audio/projects'
-import { getFileMetadata } from '~~/server/utils/storage'
 import { loadBannerLayers } from '~~/server/utils/audio/bannerOverlay'
 import type { AssetBinding } from '~~/shared/video/storyboard'
 import { storyboardFormats, type StoryboardFormat, type ResolvedStoryboard, type ResolvedOverlay } from '~~/shared/video/storyboardCompile'
 import { requireStoryboardProjectIn } from './access'
 import { getStoryboardIn, resolveReferenceSetIn } from './store'
-import { canonicalReferenceIn, type ReferenceDependencies } from './references'
+import { canonicalReferenceIn, storyboardFileMetadata, type ReferenceDependencies } from './references'
 import { probeStoryboardMedia } from './mediaProbe'
 import { storyboardHash } from './hash'
 
@@ -17,7 +16,7 @@ const tables = { video_asset: 'video_assets', audio_asset: 'audio_assets', sourc
 
 /** Read-only readiness, not an application token. T06 must re-resolve under its
  * own source/revision fences before persisting a timeline and obligations. */
-export async function resolveStoryboardIn(db: Db, input: ResolveStoryboardInput, deps: ReferenceDependencies = {}): Promise<ResolvedStoryboard> {
+export async function resolveStoryboardIn(db: Db, input: ResolveStoryboardInput, deps: ReferenceDependencies = {}, measure = probeStoryboardMedia): Promise<ResolvedStoryboard> {
   const project = await requireStoryboardProjectIn(db, input.projectId, input.actor)
   const saved = await getStoryboardIn(db, input.projectId, input.actor, input.revisionId)
   if (!saved.revision) throw createError({ statusCode: 404, statusMessage: 'Storyboard revision not found' })
@@ -51,7 +50,7 @@ export async function resolveStoryboardIn(db: Db, input: ResolveStoryboardInput,
           for (const format of result.formats) {
             const spec = storyboardFormats[format]
             // Existing loader enforces actual Banner format and managed font access.
-            const canvas = await loadBannerLayers(binding.assetId, spec.banner, deps.event)
+            const canvas = await loadBannerLayers(binding.assetId, spec.banner, deps.event, { clientId: row.client_id ?? null, canvasData: row.canvas_data })
             const matches = canvas.layers.filter(layer => layer.type === 'text' && layer.text === copy.text && !layer.hidden && layer.opacity === 1)
             if (matches.length !== 1) throw new Error('exact copy')
             const layer = matches[0]!
@@ -69,9 +68,9 @@ export async function resolveStoryboardIn(db: Db, input: ResolveStoryboardInput,
       } else {
         const r2Key = binding.sourceKind === 'audio_asset' ? row.r2_key_master : row.r2_key
         if (typeof r2Key !== 'string' || !r2Key || /^https?:/i.test(r2Key)) throw new Error('locator')
-        const object = await getFileMetadata(r2Key, deps.bucket)
+        const object = await storyboardFileMetadata(r2Key, deps)
         if (!object?.etag || object.size <= 0) throw new Error('object')
-        const measured = await probeStoryboardMedia({ r2Key, expectedEtag: object.etag.replace(/^"|"$/g, ''), expectedSize: object.size }, deps)
+        const measured = await measure({ r2Key, expectedEtag: object.etag.replace(/^"|"$/g, ''), expectedSize: object.size }, deps)
         result.assets[key] = { ...measured, assetId: binding.assetId, contentHash: binding.contentHash, r2Key,
           ...(binding.sourceKind === 'audio_asset' && row.kind === 'voiceover' && typeof row.prompt === 'string' ? { speechText: row.prompt } : {}) }
       }

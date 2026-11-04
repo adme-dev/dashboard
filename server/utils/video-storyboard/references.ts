@@ -7,7 +7,26 @@ import { getFileMetadata, type R2BucketBinding } from '~~/server/utils/storage'
 import type { StoryboardProject } from './access'
 import { storyboardHash } from './hash'
 
-export interface ReferenceDependencies { bucket?: R2BucketBinding, event?: H3Event }
+export interface ReferenceDependencies { bucket?: R2BucketBinding, event?: H3Event, metadataBudget?: { remainingMs: number } }
+/** Bound waiting for read-only HEAD work while application locks are held.
+ * Native R2 HEAD has no abort signal: timeout stops waiting, not the remote read.
+ * Never wrap the whole transaction in a race; its SQL must finish/roll back normally. */
+export async function storyboardFileMetadata(key: string, deps: ReferenceDependencies) {
+  if (deps.metadataBudget === undefined) return getFileMetadata(key, deps.bucket)
+  const remaining = deps.metadataBudget.remainingMs
+  if (remaining <= 0) throw new Error('Storyboard metadata deadline exceeded')
+  const started = Date.now()
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([
+      getFileMetadata(key, deps.bucket),
+      new Promise<never>((_resolve, reject) => { timer = setTimeout(() => reject(new Error('Storyboard metadata deadline exceeded')), remaining) })
+    ])
+  } finally {
+    deps.metadataBudget.remainingMs = Math.max(0, remaining - (Date.now() - started))
+    if (timer) clearTimeout(timer)
+  }
+}
 export interface ReferencePins { references: PinnedReference[], brandKit: StoryboardReferenceSet['brandKit'] }
 const unavailable = () => createError({ statusCode: 409, statusMessage: 'Reference is unavailable or not ready for use' })
 const changed = () => createError({ statusCode: 409, statusMessage: 'Reference changed; review its current content before approving' })
@@ -53,7 +72,7 @@ export async function canonicalReferenceIn(db: GodModeTransactionDb, project: St
   const key = kind === 'audio_asset' ? row.r2_key_master : row.r2_key
   if (typeof key !== 'string' || !key || /^https?:\/\//i.test(key)) throw unavailable()
   // HEAD uses the existing private storage adapter and a server-resolved key.
-  const object = await getFileMetadata(key, deps.bucket).catch(() => null)
+  const object = await storyboardFileMetadata(key, deps).catch(() => null)
   if (!object?.etag || object.size <= 0) throw unavailable()
   return {
     contentHash: storyboardHash({ record, key, object: { etag: object.etag, size: object.size, contentType: object.contentType } }),

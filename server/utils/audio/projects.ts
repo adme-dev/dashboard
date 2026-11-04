@@ -267,6 +267,17 @@ export async function createVersionIn(db: Db, input: CreateVersionInput): Promis
   return next
 }
 
+/** Atomic storyboard replacement: freeze the old row (including its obligations)
+ * as the checkpoint, then move the pointer to a fresh edit. Caller owns transaction. */
+export async function replaceTimelineWithCheckpointIn(db: Db, input: SaveDraftTimelineInput) {
+  const { project, timeline } = await lockCurrentTimelineIn(db, input)
+  if (project.status !== 'draft') throw createError({ statusCode: 409, statusMessage: 'Project is not editable' })
+  const persisted = { ...input.state, duration_sec: computeDuration(input.state) }
+  const next = await insertTimelineIn(db, input.projectId, persisted, input.state.schema_version, input.actor.id, null, timeline.edit_revision + 1)
+  await db.query('UPDATE media_projects SET current_timeline_id = $1, updated_at = now() WHERE id = $2', [next.id, input.projectId])
+  return { checkpoint: mapTimelineRow(timeline), timeline: next }
+}
+
 /** Version history for a project, newest-first. */
 export async function listVersions(projectId: string): Promise<MediaTimeline[]> {
   const rows = await queryRows(

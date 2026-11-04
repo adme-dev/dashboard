@@ -12,7 +12,7 @@
 
 **Research:** [Freefield review and FF-RD01–FF-RD05 backlog](../../research/2026-11-04-freefield-video-rd.md). This adds recipe/example and run-quality refinements to the existing fourteen tasks; GPU/backend/tool experiments remain separate.
 
-**Status:** T01–T04 are implemented locally; T02–T04 additive schemas are applied to the verified agency database. T05–T14, application deployment and all release acceptance remain pending. [Implementation receipt](../../video/implementations/2026-11-04-storyboard-contracts.md). Planning baseline `c39b8b7f4a79f73350e2a1c4620075f87881a6c5`; first implementation base `87ceb82cfc23a76959e0d0d3d989c96d8ce36d23`. Refresh before further execution. This plan does not reopen historical completed tasks except for the explicit integration changes below.
+**Status:** T01–T06 are implemented and reviewed locally; T02–T04 additive schemas are applied to the verified agency database. T07–T14, application deployment and all release acceptance remain pending. [T06 application receipt](../../video/implementations/2026-11-05-storyboard-application.md). [Implementation receipt](../../video/implementations/2026-11-04-storyboard-contracts.md). Planning baseline `c39b8b7f4a79f73350e2a1c4620075f87881a6c5`; first implementation base `87ceb82cfc23a76959e0d0d3d989c96d8ce36d23`. Refresh before further execution. This plan does not reopen historical completed tasks except for the explicit integration changes below.
 
 ## Global constraints
 
@@ -151,11 +151,13 @@ T01 defines input contracts `StoryboardPlan`, `StoryboardShot`, `AssetBinding`, 
 
 **Interfaces:** `applyStoryboard({ actor, projectId, operationId, revisionId, expectedTimelineId, expectedEditRevision, replaceConfirmed }): Promise<StoryboardApplicationReceipt>`; `getStoryboardApplication({ actor, projectId, operationId }): Promise<StoryboardApplicationReceipt | null>`. The canonical transaction owns checkpoint, state, revision and receipt; it does not nest independent helper transactions.
 
-- [ ] Add tests: duplicate same-body receipt replay, conflicting fingerprint, stale plan/timeline/pointer, no replacement confirmation, inaccessible source, checkpoint failure, application write failure, and committed response lost then recovered.
-- [ ] Run `pnpm exec vitest run test/video/storyboardApply.test.ts test/server/api/videoStoryboardApply.test.ts`; include real isolated-DB transaction races as well as unit coverage.
-- [ ] Prepare dependencies outside the lock; re-check all mutable approval/dependency revisions inside the committing transaction using the same mutation locks/version preconditions as T03. Compile only authorized resolved data. Save the prior cut as a recoverable version without invoking provider APIs.
-- [ ] Atomically persist the new edit and its server-owned obligations, increment revision, map shots to clips and save the fingerprinted receipt. Prior checkpoint/version retains its own obligation lineage. Repeated apply with the same operation returns original result. A deliberate later reapply uses a new operation and fresh preview/preconditions.
-- [ ] Re-run suites and inspect rollback paths. Verify ordinary staff and owner-ledger replays converge on the same canonical receipt before committing.
+- [x] Add tests: duplicate same-body receipt replay, conflicting fingerprint, stale plan/timeline/pointer, no replacement confirmation, inaccessible source, checkpoint failure, application write failure, and committed response lost then recovered.
+- [x] Run `pnpm exec vitest run test/video/storyboardApply.test.ts test/server/api/videoStoryboardApply.test.ts`; include real isolated-DB transaction races as well as unit coverage.
+- [x] Prepare dependencies outside the lock; re-check all mutable approval/dependency revisions inside the committing transaction using the same mutation locks/version preconditions as T03. Compile only authorized resolved data. Save the prior cut as a recoverable version without invoking provider APIs.
+- [x] Atomically persist the new edit and its server-owned obligations, increment revision, map shots to clips and save the fingerprinted receipt. Prior checkpoint/version retains its own obligation lineage. Repeated apply with the same operation returns original result. A deliberate later reapply uses a new operation and fresh preview/preconditions.
+- [x] Re-run suites and inspect rollback paths. Verify ordinary staff and owner-ledger replays converge on the same canonical receipt before committing.
+
+**Receipt:** [Atomic application, recovery, scoped review and isolated transaction evidence](../../video/implementations/2026-11-05-storyboard-application.md). Local backend completion only; editor adoption, render enforcement and release acceptance remain separate.
 
 ### T07 — Add storyboard editing and one-step timeline adoption
 

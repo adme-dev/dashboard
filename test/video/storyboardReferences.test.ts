@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { pinReferencesIn, checkReferencesIn } from '~~/server/utils/video-storyboard/references'
+import { pinReferencesIn, checkReferencesIn, storyboardFileMetadata } from '~~/server/utils/video-storyboard/references'
 import { id } from './fixtures/storyboard'
 import type { H3Event } from 'h3'
 import type { ReferenceSetWrite } from '~~/shared/video/storyboardReferences'
@@ -84,5 +84,32 @@ describe('current Banner authority on references', () => {
   it('fails closed for a kit without a request authority context', async () => {
     bannerRows(source)
     await expect(pinReferencesIn(db, project, actor, [], { id: source.id, expectedContentHash: null })).rejects.toMatchObject({ statusCode: 403 })
+  })
+})
+
+describe('application metadata waiting deadline', () => {
+  it('stops waiting for a stalled HEAD and rejects later HEADs without dispatch', async () => {
+    vi.useFakeTimers()
+    try {
+      head.mockReturnValue(new Promise(() => {}))
+      const deps = { metadataBudget: { remainingMs: 100 } }
+      const pending = storyboardFileMetadata('canonical/source.png', deps)
+      const rejected = expect(pending).rejects.toThrow('metadata deadline exceeded')
+      await vi.advanceTimersByTimeAsync(100)
+      await rejected
+      await expect(storyboardFileMetadata('canonical/source.png', deps)).rejects.toThrow('metadata deadline exceeded')
+      expect(head).toHaveBeenCalledTimes(1)
+    } finally { vi.useRealTimers() }
+  })
+  it('counts HEAD waiting rather than intervening SQL or lock wait time', async () => {
+    vi.useFakeTimers()
+    try {
+      const deps = { metadataBudget: { remainingMs: 100 } }
+      head.mockResolvedValue({ etag: 'fixture', size: 12 })
+      await storyboardFileMetadata('canonical/source.png', deps)
+      await vi.advanceTimersByTimeAsync(30_000)
+      await expect(storyboardFileMetadata('canonical/source.png', deps)).resolves.toMatchObject({ etag: 'fixture' })
+      expect(deps.metadataBudget.remainingMs).toBe(100)
+    } finally { vi.useRealTimers() }
   })
 })

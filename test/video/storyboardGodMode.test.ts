@@ -25,6 +25,20 @@ describe('storyboard owner coordination', () => {
     expect(isStoryboardReferenceWritePath('/api/agency/video/projects/00000000-0000-4000-8000-000000000002/storyboard/references')).toBe(true)
     expect(isStoryboardReferenceWritePath('/api/agency/video/projects/00000000-0000-4000-8000-000000000002/storyboard/apply')).toBe(false)
   })
+  it('registers the apply POST family and replays the canonical application receipt', async () => {
+    registerGodModeStoryboardMutationFamilies()
+    const family = mocks.register.mock.calls.map(([value]) => value).find(value => value.family === 'video-storyboard-apply')
+    expect(family.method).toBe('POST')
+    expect(family.matchesPath('/api/agency/video/projects/00000000-0000-4000-8000-000000000002/storyboard/apply')).toBe(true)
+    expect(family.matchesPath('/api/agency/video/projects/00000000-0000-4000-8000-000000000002/storyboard/applications/operation')).toBe(false)
+    const event = { context: {} }
+    await family.prepare(event)
+    const receipt = { id: 'application', checkpointTimelineId: 'prior', after: { timelineId: 'new', editRevision: 1 } }
+    mocks.replayId = receipt.id
+    const canonical = vi.fn().mockResolvedValue(receipt)
+    expect(await executeStoryboardReferenceWrite(event as never, canonical)).toEqual(receipt)
+    expect(canonical).toHaveBeenCalledWith(db)
+  })
   it('runs ordinary staff through the canonical transaction core', async () => {
     const mutate = vi.fn().mockResolvedValue({ id: 'receipt' })
     await executeStoryboardReferenceWrite({ context: {} } as never, mutate)

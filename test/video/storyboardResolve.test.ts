@@ -4,7 +4,7 @@ import { resolveStoryboardIn } from '~~/server/utils/video-storyboard/resolve'
 
 const mocks = vi.hoisted(() => ({ saved: vi.fn(), references: vi.fn(), canonical: vi.fn(), probe: vi.fn(), head: vi.fn(), project: vi.fn(), banner: vi.fn() }))
 vi.mock('~~/server/utils/video-storyboard/store', () => ({ getStoryboardIn: mocks.saved, resolveReferenceSetIn: mocks.references }))
-vi.mock('~~/server/utils/video-storyboard/references', () => ({ canonicalReferenceIn: mocks.canonical }))
+vi.mock('~~/server/utils/video-storyboard/references', () => ({ canonicalReferenceIn: mocks.canonical, storyboardFileMetadata: (...args: unknown[]) => mocks.head(...args) }))
 vi.mock('~~/server/utils/video-storyboard/access', () => ({ requireStoryboardProjectIn: mocks.project }))
 vi.mock('~~/server/utils/video-storyboard/mediaProbe', () => ({ probeStoryboardMedia: mocks.probe }))
 vi.mock('~~/server/utils/storage', () => ({ getFileMetadata: mocks.head }))
@@ -70,6 +70,17 @@ describe('exact Banner layout resolution', () => {
     const result = await resolveStoryboardIn({ query }, { ...input, formats: ['reels_9x16', 'square_1x1'] })
     expect(result.overlays[`${id(15)}:offer`]).toMatchObject({ text: '$39,990 drive away*\n*T&Cs apply.  ', layouts: { reels_9x16: { formatKey: 'fb_story' }, square_1x1: { formatKey: 'ig_sq' } } })
     expect(mocks.banner).toHaveBeenCalledTimes(2)
+  })
+  it('uses canonical canvas instead of cached Banner text for exact-copy evidence', async () => {
+    const stale = await mocks.banner()
+    const current = { ...stale, layers: [{ ...stale.layers[0], text: 'Changed current copy' }] }
+    query.mockResolvedValue({ rows: [{ id: id(22), client_id: null, canvas_data: { fb_story: current } }] })
+    mocks.banner.mockImplementation(async (_id, _format, _event, canonical) => canonical
+      ? { ...current, layers: canonical.canvasData.fb_story.layers }
+      : stale)
+    const result = await resolveStoryboardIn({ query }, input)
+    expect(result.overlays).toEqual({})
+    expect(result.findings.map(f => f.code)).toContain('source_unavailable')
   })
   it.each(['text', 'hidden', 'bounds', 'timing', 'font'])('blocks incorrect %s instead of substituting a layout', async (reason) => {
     const canvas = await mocks.banner()

@@ -8,11 +8,12 @@ import { digestMcpRequestBody } from '~~/shared/utils/mcpRequestClaim'
 const key = Symbol('storyboardReferencesGodMode')
 const route = /^\/api\/agency\/video\/projects\/[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}\/storyboard\/references$/i
 export const isStoryboardReferenceWritePath = (path: string) => route.test(path)
+export const isStoryboardApplyWritePath = (path: string) => route.test(path.replace(/\/apply$/, '/references')) && path.endsWith('/apply')
 export const isStoryboardRevisionWritePath = (path: string) => route.test(path.replace(/\/revisions$/, '/references')) && path.endsWith('/revisions')
 function operation(event: H3Event) {
   const context = event.context as Record<PropertyKey, unknown>
   if (!context[key]) context[key] = defineGodModeTransactionOperation({
-    routeOrTool: `${isStoryboardRevisionWritePath(getRequestURL(event).pathname) ? 'POST' : 'PUT'} ${getRequestURL(event).pathname}`, mutationName: 'storyboard revision',
+    routeOrTool: `${(isStoryboardRevisionWritePath(getRequestURL(event).pathname) || isStoryboardApplyWritePath(getRequestURL(event).pathname)) ? 'POST' : 'PUT'} ${getRequestURL(event).pathname}`, mutationName: 'storyboard revision',
     missingResultMessage: 'Storyboard reference revision has no durable result', retryableInProgress: true
   })
   return context[key] as GodModeTransactionOperation
@@ -24,7 +25,9 @@ export function registerGodModeStoryboardMutationFamilies() {
   })
   const references = registerGodModeMutationFamily({ family: 'video-storyboard-references', method: 'PUT', matchesPath: isStoryboardReferenceWritePath, prepare })
   const revisions = registerGodModeMutationFamily({ family: 'video-storyboard-revisions', method: 'POST', matchesPath: isStoryboardRevisionWritePath, prepare })
+  const applications = registerGodModeMutationFamily({ family: 'video-storyboard-apply', method: 'POST', matchesPath: isStoryboardApplyWritePath, prepare })
   return () => {
+    applications()
     revisions()
     references()
   }
