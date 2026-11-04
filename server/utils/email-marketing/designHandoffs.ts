@@ -26,7 +26,7 @@ export interface Authority {
   actorId: string
   authorize(clientId: string | null, access: 'read' | 'write'): Promise<'staff' | 'designer'>
   /** Route-owned release policy, evaluated against parsed/persisted ownership. */
-  assertCampaignNativeEnabled?(): void
+  assertCampaignNativeEnabled(): void
 }
 interface HandoffRow {
   id: string
@@ -86,7 +86,7 @@ async function readHandoff(db: DesignDb, id: string, authority: Authority, desig
     WHERE h.id=$1 AND h.actor_id=$2 AND (t.template_kind='draft' OR c.id IS NOT NULL)
       AND h.expires_at + interval '30 days' > clock_timestamp() FOR UPDATE OF h`, [id, authority.actorId])).rows[0] as HandoffRow | undefined
   if (!row) throw new DesignHandoffError('NOT_FOUND')
-  if (row.campaign_id) authority.assertCampaignNativeEnabled?.()
+  if (row.campaign_id) authority.assertCampaignNativeEnabled()
   await authority.authorize(row.client_id, 'read')
   if (validateEmailDesign(row.payload).kind !== (row.template_id ? 'template' : 'campaign-draft')) throw new DesignHandoffError('NOT_FOUND')
   if (!admitting && (row.open_request_text ? JSON.parse(row.open_request_text).authoringMode === 'designer' : false) !== designer)
@@ -126,9 +126,9 @@ async function verifyCampaignDesign(design: EmailDesignDocument, authority: Auth
   if (verified.some(asset => !design.assets.some(saved => stableDesignJson(asset) === stableDesignJson(saved)))) throw new DesignModuleError('ASSET_NOT_READY')
 }
 
-async function getHandoffDraft(db: DesignDb, documentId: string, authorize: (scope: string | null) => Promise<void>, assertCampaignNativeEnabled?: () => void): Promise<HandoffDraftRead> {
+async function getHandoffDraft(db: DesignDb, documentId: string, authorize: (scope: string | null) => Promise<void>, assertCampaignNativeEnabled: () => void): Promise<HandoffDraftRead> {
   const identity = (await db.query('SELECT * FROM email_design_documents WHERE id=$1', [documentId])).rows[0] as { campaign_id: string | null } | undefined
-  if (identity?.campaign_id) assertCampaignNativeEnabled?.()
+  if (identity?.campaign_id) assertCampaignNativeEnabled()
   return identity?.campaign_id ? getDesignDraft(documentId, authorize, db) : getTemplateDesignDraft(documentId, authorize, db)
 }
 
@@ -173,7 +173,7 @@ async function readCommittedCampaignRecovery(db: DesignDb,
     recovery_pin: string | null
   }) | undefined
   if (!row) throw new DesignHandoffError('IDEMPOTENCY_CONFLICT')
-  authority.assertCampaignNativeEnabled?.()
+  authority.assertCampaignNativeEnabled()
   const action = request.action
   if (action.scope.clientId !== row.client_id || row.recovery_client_id !== row.client_id
     || action.proposalId !== row.id || action.expectedProposalRevisionId !== row.proposal_revision_id
@@ -314,7 +314,7 @@ async function executeRoundtrip(
         const campaignStart = target?.kind === 'campaign'
         let campaignInitialized: { documentId: string, revisionId: string } | null = null
         if (campaignStart) {
-          authority.assertCampaignNativeEnabled?.()
+          authority.assertCampaignNativeEnabled()
           await assertCampaignOperation(db, authority.actorId, request.operationId, knownReceipt)
           const owner = (await db.query('SELECT client_id FROM campaigns WHERE id=$1 FOR UPDATE', [target.id])).rows[0] as { client_id: string } | undefined
           if (!owner || owner.client_id !== (request.command === 'start' ? request.clientId : null)) throw new DesignHandoffError('NOT_FOUND')
@@ -433,7 +433,7 @@ async function executeRoundtrip(
         if (designer) {
           // Reject a proposal whose source is already obsolete, but leave the
           // authoritative Apply CAS in the canonical writer as well.
-          const current = await getHandoffDraft(db, row.document_id, authorizeWrite)
+          const current = await getHandoffDraft(db, row.document_id, authorizeWrite, authority.assertCampaignNativeEnabled)
           if (current.headRevisionId !== row.base_revision_id || current.state !== 'structured' || current.projection.state !== 'current') throw new DesignHandoffError('REVISION_CONFLICT')
           await renderDesignerPreview(design, renderer)
           if (row.campaign_id) await verifyCampaignDesign(design, authority, db, storage)

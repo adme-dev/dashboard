@@ -39,7 +39,7 @@ const transaction: DesignTransaction = async (callback) => {
     throw error
   } finally { await db.end() }
 }
-const authority = () => ({ actorId, authorize: async (clientId: string | null) => {
+const authority = () => ({ actorId, assertCampaignNativeEnabled: () => { throw Object.assign(new Error('not_found'), { statusCode: 404 }) }, authorize: async (clientId: string | null) => {
   if (clientId !== scope) throw new Error('scope denied')
   return role
 } })
@@ -89,6 +89,16 @@ describe('designer authority with real PostgreSQL transactions', () => {
     if (!admin) return
     await admin.query(`DROP SCHEMA ${schema} CASCADE`)
     await admin.end()
+  })
+  databaseTest('starts, proposes and applies a scoped template while campaign native authority is closed', async () => {
+    const started = await designer({ command: 'start', operationId: crypto.randomUUID(), templateId, clientId: scope })
+    const proposed = await propose(started.handoff, [{ op: 'set-style', blockId: 'heading', style: { color: '#123456' } }])
+    const applied = await designer(apply(proposed.handoff))
+    expect(applied.handoff.state).toBe('applied')
+    role = 'staff'
+    await expect(designer({ command: 'start', operationId: crypto.randomUUID(), templateId, clientId: scope })).rejects.toMatchObject({ code: 'DESIGNER_REQUIRED' })
+    role = 'designer'
+    await expect(designer({ command: 'start', operationId: crypto.randomUUID(), templateId, clientId: crypto.randomUUID() })).rejects.toMatchObject({ code: 'NOT_FOUND' })
   })
   databaseTest('pins exact brand snapshots, applies locks atomically, and binds condition no-op receipts by target', async () => {
     const access = {

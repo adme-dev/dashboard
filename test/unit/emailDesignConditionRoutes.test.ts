@@ -143,3 +143,12 @@ describe('dedicated condition discovery and mutation HTTP gates', () => {
     await expect(post(event())).rejects.toMatchObject({ statusCode: 413 })
   })
 })
+
+it('keeps condition reads and writes closed under template-only authoring', async () => {
+  const e = event()
+  Object.assign(e.context.cloudflare!.env, { FIGFLOW_EDM_DESIGNER_ENABLED: 'false', FIGFLOW_EDM_TEMPLATE_DESIGNER_ENABLED: 'true', FIGFLOW_EDM_LIBRARY_ENABLED: 'true', FIGFLOW_EDM_BRAND_ENABLED: 'true' })
+  await expect(get(e)).rejects.toMatchObject({ statusCode: 404 })
+  await expect(post(e)).rejects.toMatchObject({ statusCode: 404 })
+  expect(mocks.save).not.toHaveBeenCalled()
+  expect(mocks.session).not.toHaveBeenCalled()
+})

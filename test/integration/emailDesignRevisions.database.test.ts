@@ -870,6 +870,7 @@ describe('immutable email design revisions in PostgreSQL', () => {
   )
   const handoffAuthority = () => ({
     actorId,
+    assertCampaignNativeEnabled: () => {},
     authorize: async (clientId: string | null) => {
       if (clientId !== scope) throw new Error('scope denied')
       return 'designer' as const
@@ -966,6 +967,7 @@ describe('immutable email design revisions in PostgreSQL', () => {
     let revoked = false
     await expect(executeDesignRoundtrip(apply(proposed), {
       actorId,
+      assertCampaignNativeEnabled: () => {},
       authorize: async () => { if (revoked) throw new Error('revoked'); return 'designer' }
     }, { ...testEmailRenderer, renderDocument: async () => { revoked = true; return '<p>rendered</p>' } }, transaction)).rejects.toThrow('revoked')
     expect((await roundtrip({ command: 'resume', handoffId: opened.id })).state).toBe('proposed')

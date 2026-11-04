@@ -1,3 +1,4 @@
+import { designerGate } from '~~/server/utils/email-marketing/designerGate'
 import { DesignModuleError } from '~~/shared/emailRendering/designModules'
 import { rethrowLegacyDesignConflict, DESIGN_REVISION_CONSTRAINTS } from '~~/server/utils/email-marketing/designConflict'
 import { createDesignAssetStorage } from '~~/server/utils/email-marketing/designAssets'
@@ -19,6 +20,7 @@ import { EmailDesignActionError } from '~~/shared/emailRendering/designActions'
 export default defineEventHandler(async (event) => {
   setHeader(event, 'cache-control', 'no-store')
   const env = event.context.cloudflare?.env ?? {}
+  const gate = designerGate(env)
   if (env.FIGFLOW_EDM_DRAFT_SAVES_ENABLED !== 'true') throw createError({ statusCode: 404, statusMessage: 'not_found' })
   try {
     assertDesignMutationRequest(event, env.FIGFLOW_EDM_APP_ORIGIN)
@@ -31,14 +33,14 @@ export default defineEventHandler(async (event) => {
     const result = await executeDesignRoundtrip(request, {
       actorId: user.id,
       assertCampaignNativeEnabled: () => {
-        if (env.FIGFLOW_EDM_DESIGNER_ENABLED !== 'true') throw createError({ statusCode: 404, statusMessage: 'not_found' })
+        if (!gate.campaign) throw createError({ statusCode: 404, statusMessage: 'not_found' })
       },
       authorize: (clientId, access) => assertFreshDesignAccess(token, user.id, clientId, access)
     }, createEmailRenderer(env), undefined, { read: key => createDesignAssetStorage(event, getAppUrl(event)).read(key), url: id => createDesignAssetStorage(event, getAppUrl(event)).url(id), identifyUrl: url => createDesignAssetStorage(event, getAppUrl(event)).identifyUrl(url) })
     if (request.command !== 'lookup' || !('draft' in result)) return result
     let campaignContentImages = false
     let campaignAvailable = false
-    if (result.owner?.kind === 'campaign' && result.mutable && env.FIGFLOW_EDM_DESIGNER_ENABLED === 'true') {
+    if (result.owner?.kind === 'campaign' && result.mutable && gate.campaign) {
       try {
         const role = await assertFreshDesignAccess(token, user.id, result.clientId ?? null, 'write')
         campaignAvailable = role === 'designer'
@@ -48,7 +50,7 @@ export default defineEventHandler(async (event) => {
       }
     }
     let available = false
-    if ((result.owner?.kind !== 'campaign' || result.mutable === true) && env.FIGFLOW_EDM_DESIGNER_ENABLED === 'true' && result.draft?.state === 'structured' && result.draft.source.source.nativeArtifact === null) {
+    if ((result.owner?.kind !== 'campaign' || result.mutable === true) && (result.owner?.kind === 'campaign' ? gate.campaign : gate.template) && result.draft?.state === 'structured' && result.draft.source.source.nativeArtifact === null) {
       try {
         available = await assertFreshDesignAccess(token, user.id, result.draft.source.scope.clientId, 'write') === 'designer'
       } catch (error) {
@@ -58,7 +60,7 @@ export default defineEventHandler(async (event) => {
       }
     }
     let publisher = false
-    const libraryAvailable = available && env.FIGFLOW_EDM_LIBRARY_ENABLED === 'true'
+    const libraryAvailable = gate.campaign && available && env.FIGFLOW_EDM_LIBRARY_ENABLED === 'true'
     if (libraryAvailable && result.draft?.state === 'structured') {
       try {
         await assertFreshDesignPublisher(token, user.id, result.draft.source.scope.clientId)
