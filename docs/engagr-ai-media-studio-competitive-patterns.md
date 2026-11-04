@@ -1,5 +1,14 @@
 # engagr AI Media Studio — Competitive Patterns to Incorporate
 
+## Source research updates — 4 November 2026
+
+- [Freefield: review, improvements and separate research tasks](research/2026-11-04-freefield-video-rd.md) — versioned recipes, example prefill, take comparison, output/progress correctness and full-clip evaluation; source reviewed at `e5fa71b`.
+- [Storyboard Producer PRD](superpowers/specs/2026-11-04-video-storyboard-producer-prd.md) and [fourteen-task delivery plan](superpowers/plans/2026-11-04-video-storyboard-producer.md) — OneMinute-Film concepts plus bounded Freefield refinements; all implementation remains pending.
+
+**Reading the older synthesis below:** competitor pricing/licensing and feature comparisons are historical research, not verified current terms or shipped XeroFlow claims. “No hallucination”, “ad-cleared by default”, free rerolls, default extra takes and charge-on-commit are aspirations/ideas, not guarantees or adopted billing policy. Current source approval, exact-copy obligations, per-attempt cost authorization and review evidence in the linked PRD take precedence. The Freefield review reinforces that a successful generation or reference image cannot prove OEM fidelity or commercial rights.
+
+---
+
 **Status:** R&D synthesis for review
 **Companion to:** the audio Architecture Brief + the Video Extension Brief. This doc is *not* architecture — it's a distilled scan of how the best AI-media / ad / editor platforms handle UI/UX, so we can deliberately adopt (or beat) specific patterns. Each item: **pattern — who does it well — why it fits us — where it lands**.
 **Method:** competitive review this session across timeline editors (Descript, CapCut, VEED, Kapwing, Canva, Adobe Express), AI video/avatar/ad tools (HeyGen, Synthesia, Runway, Pika, Creatify, Arcads, AdCreative.ai), and AI music/voice studios (Suno, Udio, ElevenLabs, Soundraw, Murf, Play.ht). Sources at the end.

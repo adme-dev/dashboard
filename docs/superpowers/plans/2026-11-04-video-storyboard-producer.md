@@ -10,6 +10,8 @@
 
 **Spec:** [Video Studio Storyboard Producer PRD](../specs/2026-11-04-video-storyboard-producer-prd.md)
 
+**Research:** [Freefield review and FF-RD01–FF-RD05 backlog](../../research/2026-11-04-freefield-video-rd.md). This adds recipe/example and run-quality refinements to the existing fourteen tasks; GPU/backend/tool experiments remain separate.
+
 **Status:** All implementation tasks are pending. Source baseline `c39b8b7f4a79f73350e2a1c4620075f87881a6c5`; refresh before execution. This plan does not reopen historical completed tasks except for the explicit integration changes below.
 
 ## Global constraints
@@ -32,7 +34,8 @@
 2. **Asset or brand change after approval:** immutable provenance plus current eligibility, with no stale render — T03, T08.
 3. **Approved copy in unusual scripts or long disclaimers:** exact characters/order preserved, overflow surfaced, no false alignment; deleted/hidden cues and stripped metadata cannot erase server obligations — T01, T04, T05, T08.
 4. **Media shorter than the proposed shot / repeated source usage:** valid repeats; no silent stretching, looping or speech truncation — T05, T07.
-5. **Provider accepted a request but response/callback was lost:** retained liability and reconciliation, never blind resubmission — T10, T11, T12.
+5. **Recipe/control drift, wrong output or misleading success:** versioned definitions, explicit artifact roles, semantic evaluation and safe examples — T04, T07, T09–T12.
+6. **Provider accepted a request but response/callback was lost:** retained liability and reconciliation, never blind resubmission — T10, T11, T12.
 
 ## Delivery and dependencies
 
@@ -61,7 +64,7 @@ New paths below are proposed; existing paths were inspected or inventoried at th
 
 | Area | New files | Existing integration points |
 |---|---|---|
-| Contracts | `shared/video/storyboard.ts`, `shared/video/storyboardValidation.ts` | `server/utils/audio/timelineSchema.ts`, `app/types/index.ts` |
+| Contracts | `shared/video/storyboard.ts`, `shared/video/storyboardValidation.ts`, `shared/video/storyboardRecipes.ts` | `server/utils/audio/timelineSchema.ts`, `app/types/index.ts` |
 | Persistence/access | `server/utils/video-storyboard/store.ts`, `access.ts`, `references.ts`, `policy.ts` | `server/utils/db.ts`, `server/utils/video-asset-intelligence/access.ts`, canonical asset stores |
 | Planning | `server/utils/video-storyboard/planning.ts`, `copy.ts` | `server/utils/ai/resolvedGroq.ts`, `app/utils/video/producerRecipes.ts` |
 | Assembly | `server/utils/video-storyboard/resolve.ts`, `apply.ts`, `renderValidation.ts`, `timelineReview.ts`, `shared/video/storyboardCompile.ts` | `server/utils/audio/projects.ts`, timeline/versions/render endpoints |
@@ -82,6 +85,7 @@ Shared contracts defined by T01: `StoryboardPlan`, `StoryboardShot`, `AssetBindi
 - [ ] Add failing cases: `sixShotsSumTo900FramesAt30Fps`, `rejects25Shots`, `rejects121SecondPlan`, `rejectsFractionalFrames`, `allowsRepeatedAssetWithDistinctShotIds`, `rejectsDuplicateShotId`, `approvedCopyPreservesUnicodeAndOrder`, `rejectsOmittedOrDuplicatedScriptSegment`.
 - [ ] Run `pnpm exec vitest run test/video/storyboardSchema.test.ts test/video/storyboardCopy.test.ts`; establish intended failures, not harness/import failures.
 - [ ] Implement Zod structures and deterministic validation, including ordered script coverage, copy cue references and required-versus-explicitly-omitted audio. Separate plan timing from measured media bounds; do not coerce invalid durations to defaults.
+- [ ] Define the versioned shared recipe contract (typed defaults/constraints, roles and semantic controls) plus optional pinned recipe/resolved values on the plan. Retain compatibility for manual plans and existing recipe consumers; execution capability/pricing remain server-registry-owned. Add invalid-default, unknown-control and revision-preservation cases to the schema suite.
 - [ ] Re-run the same tests. Record contract decisions and complete pre-commit review before committing this unit.
 
 ### T02 — Protect timeline persistence against concurrent writes
@@ -118,6 +122,7 @@ Shared contracts defined by T01: `StoryboardPlan`, `StoryboardShot`, `AssetBindi
 - [ ] Run `pnpm exec vitest run test/video/storyboardPlanning.test.ts test/server/api/videoStoryboardPlanning.test.ts` with mocked provider responses.
 - [ ] Route text planning through existing model policy/telemetry, using only server-authorized inventory and current copy. Expand dealer offer/product reveal/brand story into structural guidance while retaining the existing legacy recipe consumers.
 - [ ] Return a candidate plus readiness findings; require explicit acceptance of the revision diff. Add a human-authored plan path with the same validation and an explicit `approveCopy` action; derive approval actor/time on the server and reject AI-supplied approval fields. No generation or timeline side effects.
+- [ ] Implement validated versioned definitions through the existing recipe catalogue. Test every visible control/default against its plan output, including empty optional directions, unsupported controls, one primary camera movement and visual-look terminology. Label prompt suggestions accurately; no saved-plan mutation when a recipe changes.
 - [ ] Re-run suites plus `test/app/videoProducerRecipes.test.ts` and `test/video/aiAssembly.test.ts`; review prompts and failure copy, then commit.
 
 ### T05 — Resolve assets and compile a complete timeline
@@ -153,6 +158,7 @@ Shared contracts defined by T01: `StoryboardPlan`, `StoryboardShot`, `AssetBindi
 - [ ] Read the required frontend-design skill. Add failing tests for empty state/recipe flow, keyboard reorder, exact-copy editing restrictions, missing-media blockers, revision diff, non-empty replacement confirmation, disabled actions and loading/error recovery.
 - [ ] Run `pnpm exec vitest run test/components/videoStudioStoryboard.test.ts test/components/videoStudioShotInspector.test.ts test/app/videoStoryboardApply.test.ts`.
 - [ ] Implement the Storyboard view within Produce; reuse library selection and inspector patterns. Add reference-role mapping, exact-copy fields, duration totals, format selection and clear ready/missing/review states. Hide unsupported production actions in R1.
+- [ ] Add a small authorized example catalogue with recipe/evaluation revision and status. Test local-only prefill (zero AI/production/save requests), sample-copy labelling, inaccessible/cross-client inputs, stale evidence and explicit draft-change preview. Require fresh planning/production actions; no imported approvals or automatic apply.
 - [ ] Flush/await autosave, pause edits during apply, keep one stable operation ID through retry/receipt lookup, and adopt confirmed server state as one undo step. Preserve local state on 409; recover committed results after a timeout. Track timeline divergence without automatic two-way synchronization.
 - [ ] Re-run suites plus `test/components/videoStudioWorkbench.test.ts`, `test/components/videoStudioProducerRail.test.ts`, `test/components/mediaTimelineInteractions.test.ts`. Browser-check keyboard operation, 390px/768px/1440px widths, dark/light modes and bounded scroll before committing.
 
@@ -173,9 +179,10 @@ Shared contracts defined by T01: `StoryboardPlan`, `StoryboardShot`, `AssetBindi
 
 **Files:** update `app/pages/features/index.vue`, `app/pages/features/[slug].vue`, relevant MarketingNav/SEO references; create `docs/runbooks/video-storyboard-producer.md` and `docs/video/releases/2026-11-04-storyboard-r1/README.md` as an evidence index, updating the release date if execution occurs later.
 
-**Interfaces:** release record lists exact source/main/deployment IDs, migration receipts, flag configuration, test/browser/render artifacts and A1–A8 outcomes. Each acceptance row starts pending and links evidence when completed.
+**Interfaces:** release record lists exact source/main/deployment IDs, migration receipts, flag configuration, test/browser/render artifacts and A1–A8/A13 outcomes. Each acceptance row starts pending and links evidence when completed.
 
-- [ ] Run A1–A8 using dealer offer, product reveal and brand-story fixtures; include ordinary staff, owner, wrong-client and two-tab sessions. Verify audio-only and old AV projects, manual source generation, overlays, captions, versions, library saves, portal/social entry points and QR Codes/navigation without sending externally unless authorized.
+- [ ] Run A1–A8/A13 using dealer offer, product reveal and brand-story fixtures; include ordinary staff, owner, wrong-client and two-tab sessions. Verify audio-only and old AV projects, manual source generation, overlays, captions, versions, library saves, portal/social entry points and QR Codes/navigation without sending externally unless authorized.
+- [ ] Record R1 example/recipe evidence for our own authorized dealer offer/product/brand fixtures. Bind recipe/source revisions, input eligibility and actual rendered copy checks; distinguish runnable, eligible and reviewed. Stale or replacement examples start unreviewed; do not borrow Freefield showcase assets.
 - [ ] Measure pilot baseline and completion/time targets. Record findings honestly; unfinished hosted/user criteria keep release acceptance open.
 - [ ] Run focused suites from T01–T08, repository CI checks, relevant lint/typecheck and `pnpm build`. Attribute existing errors separately and block newly introduced failures. Do not claim a baseline issue is harmless without evidence.
 - [ ] Finish runbook/marketing copy for R1 capabilities only. Record flag-off behavior, preserved data and compatible rollback artifact; verify flag-off does not weaken provenance checks on already-created content.
@@ -188,17 +195,18 @@ Shared contracts defined by T01: `StoryboardPlan`, `StoryboardShot`, `AssetBindi
 
 **Files:** create `production.ts`, `productionBudget.ts`, `productionPolicy.ts`; extend existing generation job/budget/reconciliation modules and additive migrations; tests `test/video/storyboardProduction.test.ts`, `test/video-generation/storyboardBudget.test.ts`.
 
-**Interfaces:** `ShotProductionAttempt` contains project/shot/revision/input hashes, stage, selected model, currency, estimated/reserved/reported cost, provider job identity and review state. `reserveShotAttempt(input): Promise<ShotProductionAttempt>` and `approveShotArtifact({ attemptId, artifactHash, expectedShotRevision, actor }): Promise<ShotProductionAttempt>` reuse the existing generation job as the canonical video request. New accounting supplements its liabilities instead of creating a second independently spendable budget.
+**Interfaces:** `ShotProductionAttempt` contains project/shot/revision/input hashes, stage, selected model, currency, estimated/reserved/reported cost, provider job identity and review state, plus a protected normalized request/fingerprint, recipe revision, provider/model revision when available, actual seed when supported/reported, artifact roles/hashes and stage timestamps. Unknown values remain explicit; exact replay is not promised. `reserveShotAttempt(input): Promise<ShotProductionAttempt>` and `approveShotArtifact({ attemptId, artifactHash, expectedShotRevision, actor }): Promise<ShotProductionAttempt>` reuse the existing generation job as the canonical video request. New accounting supplements its liabilities instead of creating a second independently spendable budget.
 
 - [ ] Test simultaneous project/tenant reservations, idempotency fingerprint mismatch, rate changes, image approval invalidation, unreported charge, charged failure, cancellation and timeout after provider acceptance.
 - [ ] Run `pnpm exec vitest run test/video/storyboardProduction.test.ts test/video-generation/storyboardBudget.test.ts` before implementation.
 - [ ] Add durable attempts/approval records and project allowance checks. Extend canonical spend accounting to include unresolved/charged liabilities across existing policy and reservation queries; do not simply change UI totals. Record estimate versus actual explicitly.
+- [ ] Test resolved-default/actual-seed capture, unknown provider metadata, access restrictions and content-free logs. Recreate settings only as a new quoted/authorized attempt; no free-reroll or default extra-take assumption.
 - [ ] Pin approval to artifact, shot, reference and copy revisions. Require new reviewed authorization for a changed request/new take; never replay uncertain paid requests as fresh work. Apply migrations and isolated-DB race checks under the established procedure.
 - [ ] Run new suites plus `test/video-generation/budget.test.ts`, `test/video-generation/policy.test.ts`, `test/video-generation/reconcile.test.ts`; review recovery and costs before committing.
 
 ### T11 — Coordinate image review and generation with existing providers
 
-**Files:** add `workers/agency-workflows/src/videoStoryboardProduction.ts`, integrate its index/contracts/config and existing control-plane route conventions; add shot-production start/status/approve/cancel routes under the storyboard API; integrate canonical generation submission/reconciliation. Tests: `test/video/storyboardWorkflow.test.ts`, `test/server/api/videoStoryboardProduction.test.ts`.
+**Files:** add `workers/agency-workflows/src/videoStoryboardProduction.ts`, integrate its index/contracts/config and existing control-plane route conventions; add shot-production start/status/approve/cancel routes under the storyboard API; integrate canonical generation submission/reconciliation and `server/utils/video-generation/finalize.ts`. Tests: `test/video/storyboardWorkflow.test.ts`, `test/server/api/videoStoryboardProduction.test.ts`.
 
 **Interfaces:** workflow input `{ projectId, attemptId }`; authenticated events carry attempt ID, expected state/revision and artifact/provider identity. Server resolves all sensitive request data. Workflow transitions call T10/canonical job services, never insert directly into an alternate media/job pipeline.
 
@@ -207,7 +215,9 @@ Shared contracts defined by T01: `StoryboardPlan`, `StoryboardShot`, `AssetBindi
 - [ ] Run `pnpm exec vitest run test/video/storyboardWorkflow.test.ts test/server/api/videoStoryboardProduction.test.ts` to establish failures.
 - [ ] Implement selected/uploaded image → review → supported video generation → reconciliation → take review. Image generation is capability-gated; no unsupported multi-reference input is silently discarded. Use the platform's Cloudflare AI Gateway routes only.
 - [ ] Separate safe polling/recovery retries from paid submissions; reconcile by attempt/provider identity after uncertainty. Bound event waits and surface stalled jobs. Store media in existing R2/assets; preserve rejected and late outputs without choosing them automatically.
-- [ ] Re-run suites, generation worker/provider tests and workflow dry-run/build checks. Validate a controlled authorized provider run before enabling the capability, recording receipts and actual media separately from mocked tests.
+- [ ] Add explicit artifact roles and bounded media probing/storage to canonical finalization; missing final output fails closed. Resolve the existing webhook/reconcile duplicate-asset window using durable identity/uniqueness and recovery. Preserve a retryable finalization stage without releasing uncertain spend or resubmitting generation. Use the existing media Worker/container for work beyond Pages limits. Test concurrent finalize, crash after upload/asset insert, wrong media type, oversized/truncated result and diagnostic-only output.
+- [ ] Expose measured queue/provider/transfer/probe/storage stages, with indeterminate progress where appropriate and readiness only after durable registration. Map recipe controls through provider capability checks; test unsupported controls, optional enhancement with reviewed diff and approved-copy/product-fact preservation. Extend `test/video/storyboardWorkflow.test.ts` and `test/server/api/videoStoryboardProduction.test.ts` plus focused finalization coverage in `test/video-generation/storyboardFinalize.test.ts`.
+- [ ] Re-run suites, `test/video-generation/storyboardFinalize.test.ts`, generation worker/provider tests and workflow dry-run/build checks. Validate a controlled authorized provider run before enabling the capability, recording receipts and actual media separately from mocked tests.
 
 ### T12 — Ship shot previews, alternate takes and R2 acceptance
 
@@ -217,7 +227,10 @@ Shared contracts defined by T01: `StoryboardPlan`, `StoryboardShot`, `AssetBindi
 
 - [ ] Test preflight cost/allowance display, image approval, dependency-change invalidation, unknown cost/status, cancellation, replayed requests, rejected take preservation and late output after shot deletion.
 - [ ] Run `pnpm exec vitest run test/components/videoStudioShotProduction.test.ts`; implement Nuxt UI review controls, previews, compare/select take, provider progress and recovery actions.
-- [ ] Complete A9/A10 with a controlled paid fixture under an explicit project allowance; inspect returned media and verify receipt reconciliation after refresh/restart. A completed job alone is insufficient.
+- [ ] Implement synchronized source/result and take comparison: common elapsed seconds, shared seek/play, explicit audio selection, duration/resolution differences and shorter-clip freeze instead of independent loops. Test unequal durations, seek/end handling and rejected-take access. Keep Nuxt UI and keyboard controls.
+- [ ] Add “Use in shot”/eligible existing-tool prefill with explicit input roles, canonical IDs, lineage and server eligibility recheck. Test wrong-client, revoked and unsupported targets, no paid submission and no timeline replacement. Wider tool chaining remains deferred.
+- [ ] Create a versioned evaluation record for each promoted recipe/model using authorized product/vehicle/brand fixtures. Review full clips for identity/geometry, badging, unwanted text/logos, motion, temporal consistency and audio, then composed exports for copy. Record pass/fail findings with artifact hashes, cost, evaluator and date; new/replaced revisions start unreviewed. Execution success alone cannot promote a recipe or approve a take.
+- [ ] Complete A9/A10/A14/A15 with a controlled paid fixture under an explicit project allowance; inspect returned media and verify receipt reconciliation after refresh/restart. A completed job alone is insufficient.
 - [ ] Repeat applicable R1 regression/hosted checks and rollout procedure from T09. Update public copy only for verified R2 capabilities; document unavailable models and staged activation. R3 remains off.
 
 ## R3 — Continuity and directed audio
@@ -244,7 +257,7 @@ Shared contracts defined by T01: `StoryboardPlan`, `StoryboardShot`, `AssetBindi
 - [ ] Run `pnpm exec vitest run test/video/storyboardAudioDirection.test.ts test/audio/storyboardAudioRender.test.ts`.
 - [ ] Reuse eligible library assets first; generate only explicitly selected missing audio through existing approved integrations. Preserve exact speech and source rights evidence. Require reviewed timing/alignment before caption burn-in; never label approximate timing verified.
 - [ ] Integrate targeted plan diffs and affected-dependency selection with no automatic overwrite of approved takes or manual timeline edits. Compile through T05 and apply through T06.
-- [ ] Complete A12 and repeat A1–A11 where affected, including real rendered audio/video inspection. Measure pilot outcomes, update public copy truthfully and follow T09's source/deployment/evidence controls for R3 activation.
+- [ ] Complete A12 and repeat A1–A11/A13–A15 where affected, including real rendered audio/video inspection. Measure pilot outcomes, update public copy truthfully and follow T09's source/deployment/evidence controls for R3 activation.
 
 ## Acceptance coverage and evidence rules
 
@@ -258,6 +271,8 @@ Shared contracts defined by T01: `StoryboardPlan`, `StoryboardShot`, `AssetBindi
 | P6 staged production | T10–T12 | A9, A10 |
 | P7 continuity | T13 | A11 |
 | P8 audio direction | T14 | A12 |
+| P9 recipes/examples (R1) | T01, T04, T07, T09 | A13 |
+| P9 production evidence/comparison (R2) | T10–T12 | A14, A15 |
 | Metrics/marketing/rollout | T09, T12, T14 | Pilot measurements and release receipts |
 
 No checkbox becomes complete from documentation alone. Per-task receipts record source SHA, files/migrations, exact checks, results, unresolved limitations and next dependency. Keep planned and verified outcomes distinct. This plan intentionally starts with R1; R2/R3 tasks are sequenced follow-on work and must be revalidated against current source/provider contracts before execution.
@@ -265,3 +280,9 @@ No checkbox becomes complete from documentation alone. Per-task receipts record 
 ### Planning review — 4 November 2026
 
 A fresh builder review identified two material gaps: client-removable provenance could bypass required-copy checks, and manual edits lacked a route back to approved rendering. The PRD/contracts/tasks now require server-owned timeline obligations and a revision-checked adjusted-edit review. Follow-up review found both issues resolved and no remaining important planning questions. This is document review evidence only; all implementation and runtime acceptance remain pending.
+
+### Freefield research update — 4 November 2026
+
+Source findings are recorded in the linked R&D report. T01/T04/T07/T09 own the bounded R1 recipe/example additions; T10–T12 own R2 request evidence, output/finalization, progress, comparison and evaluation. FF-RD01–FF-RD05 remain unstarted separate investigations and cannot be counted as release completion. All new acceptance rows start pending.
+
+A fresh builder review of the Freefield additions found no actionable issues in release boundaries, task/acceptance coverage, output stages or deferred research scope. This is document review only; implementation and runtime evidence remain pending.

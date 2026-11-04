@@ -34,6 +34,8 @@ Source baseline: dashboard `c39b8b7f4a79f73350e2a1c4620075f87881a6c5`, matching 
 | `app/utils/video/videoStudioAssetGovernance.ts` | Rights labels derive from asset type/source. A label is not recorded approval or verified reuse permission. |
 | `workers/audio-jobs/` | Existing container-backed rendering and per-format overlay composition. |
 
+**Additional R&D:** [Freefield source review and separate research backlog](../../research/2026-11-04-freefield-video-rd.md), reviewed at `e5fa71b8ae52db7f20aa76b5e6e56fc3adff2fca`. Its recipe/example/comparison and run-quality patterns refine the releases below; its GPU runtime and experimental tools are not selected. No Freefield model jobs were run.
+
 Related historical design: [enterprise redesign](../../specs/2026-06-19-video-studio-enterprise-redesign-prd.md) and [completion task list](../plans/2026-06-19-video-studio-completion-task-list.md). Preserve their established editor features; do not interpret historical checked boxes as acceptance of this new scope.
 
 ## 3. Users, jobs and outcomes
@@ -62,7 +64,7 @@ Success targets for the pilot, to be measured rather than assumed:
 
 Each release has its own acceptance and rollout. R1 must remain useful and releasable without R2/R3.
 
-Out of scope: a new editor/render engine, a Next.js port, importing OneMinute-Film source, provider shopping, voice cloning, automatic social publishing, automatic client submissions, long-form film production, advanced motion tracking, new transition/effect engines and multi-user real-time editing. Reuse permission would need establishing before any third-party code copying; no licence file was found in the reviewed external checkout.
+Out of scope: a new editor/render engine, a Next.js port, importing OneMinute-Film source, provider shopping, voice cloning, automatic social publishing, automatic client submissions, long-form film production, advanced motion tracking, new transition/effect engines and multi-user real-time editing. Reuse permission would need establishing before any third-party code copying. No licence file was found in the reviewed OneMinute-Film checkout. Freefield has an MIT code licence; this does not settle its model, asset or output terms.
 
 ## 5. R1 product requirements
 
@@ -136,6 +138,20 @@ Missing, stale, black/blank or unusable frames require review; no silent fallbac
 
 Translate shot intentions into voiceover, music, ambience and SFX cues on existing track types. Reuse authorized library assets first. Explicit silence suppresses automatic beds. Measure generated audio, distinguish proposed timing from reviewed timing and avoid cutting approved speech. Caption segmentation requires actual alignment or manual timing. Use existing ducking/render facilities only where verified; add focused coverage for any newly exercised path. New provider or voice-cloning integrations are outside this plan.
 
+### P9 — Validated recipes, examples and evidence (R1/R2)
+
+**R1:** Extend the existing producer recipe catalogue with a version, typed defaults/constraints, reference roles and semantic shot controls. Use a shared Zod definition and server validation; preserve existing recipe consumers. Resolve available models/actions from their existing server registries rather than duplicating capability or price authority. Record the chosen recipe ID/version and resolved values in the storyboard revision; manual plans may omit recipe identity. Recipe changes do not mutate saved plans. Test that every exposed control affects its intended plan field; optional empty directions must not erase default instructions. Default to one primary camera movement per shot, labelled as prompt guidance unless the provider explicitly supports a native control. Describe visual characteristics rather than equipment that might appear in generated pixels.
+
+Offer a small set of our own authorized examples for the existing dealer offer/product reveal/brand story recipes. “Use example” only prefills a local candidate and shows the changes; it neither calls a model nor saves/replaces an edit. Sample content is clearly marked and never becomes approved client copy. Assets are re-resolved for the current project; no cross-client references or stale signed URLs. Examples carry recipe revision, evaluation date and reviewed status; stale examples are labelled and cannot certify a new revision. Planning/production retains its separate explicit action.
+
+**R2:** Persist a protected run record on the canonical attempt: normalized request and fingerprint, recipe revision, model/provider revision when available, input asset IDs/hashes, actual seed when supported/reported, output roles/hashes and stage timestamps. Mark unavailable fields unknown; no invented seed or reproducibility guarantee. Keep prompts and asset details out of operational logs. Recreating settings requires current eligibility and a fresh cost authorization. Optional prompt enhancement is recipe-specific, shows its proposed change before submission and cannot rewrite approved copy/product facts; unsupported enhancement stays unavailable.
+
+Separate queue, provider execution, transfer/probe/storage and ready-for-review stages from human approval. Show indeterminate progress when measurements are unavailable; never claim 100%/ready while saving or probing. An expected final artifact must exist, be bounded and media-probed, and be durably registered before success. Explicit roles distinguish final video, preview, source/reference, matte and diagnostic output. Never substitute an arbitrary auxiliary artifact for a missing final result. Webhook/reconciliation retries converge on one canonical artifact and cannot trigger another generation request. Do not expose unsupported multi-output actions merely because the contract can represent them.
+
+Compare two existing takes or a source/result with shared elapsed-time playback and seek, explicit audio selection, resolution/duration labels and a clear shorter-clip end state. Do not independently loop unequal clips. “Use in shot” or an eligible existing tool prefills an explicit input role using canonical IDs and renewed server authorization; it preserves lineage without granting approval, starting work or replacing a timeline clip. Wider tool chaining is deferred.
+
+Maintain a versioned fixture/evaluation record for promoted recipes: runnable, currently eligible, evaluated and human-approved are distinct states. Review entire clips for product/identity drift, unwanted logos, requested versus observed motion, temporal artifacts and audio; validate deterministic copy in actual composed exports. Replacement examples and changed model/recipe revisions start unreviewed. Record execution failures and semantic failures separately. No default extra paid take, automatic reroll or claim of guaranteed OEM fidelity.
+
 ## 7. Architecture and contracts
 
 Keep Nuxt 4/Vue/Nuxt UI, Nitro, Neon, R2, existing model routing and the audio-jobs container. Canonical media remains in existing tables/buckets. Storyboard data lives alongside media projects, separate from `TimelineState`; compilation emits the current timeline contract. Add optional producer provenance to clips only if needed for durable mappings, and preserve it through all schema parse/save/edit paths.
@@ -153,7 +169,7 @@ Proposed R1 records:
 
 Required shared R1 types in `shared/video/storyboard.ts`:
 
-- `StoryboardPlan`: `schemaVersion: 1`, `id`, `projectId`, `revision`, `fps`, `durationFrames`, `targetFormat`, `inputMode`, `copyRevisionId`, embedded `copy: CopyRevision`, `referenceSetRevisionId`, `shots`.
+- `StoryboardPlan`: `schemaVersion: 1`, `id`, `projectId`, `revision`, `fps`, `durationFrames`, `targetFormat`, `inputMode`, `copyRevisionId`, embedded `copy: CopyRevision`, `referenceSetRevisionId`, optional `recipe: { id, version, resolvedValues }`, `shots`.
 - `StoryboardShot`: stable `id`, `purpose`, `durationFrames`, `visualDirection`, `referenceRoles`, `spokenSegmentIds`, `copyCueIds`, `visual`, `audioCues`, `captionCues`, `overlayCues`.
 - `AssetBinding`: canonical source kind + asset ID + pinned content revision/hash; optional measured source-in/out frames. Unresolved bindings contain a reason, never an invented ID or arbitrary URL.
 - `CopyRevision`: exact script segments and on-screen copy cues, content hash, revision and approval record. Store within the immutable storyboard revision initially; no separate global copy service.
@@ -206,9 +222,14 @@ R2 adds production/take/approval records referencing existing generation jobs. C
 | A10 | R2 | Concurrent budget reservation, uncertain submission, charged failure, duplicate callback, restart and disablement preserve spend limits and reconcile safely. |
 | A11 | R3 | Continue/cut/new-scene fixtures; source frame provenance and upstream invalidation verified; product consistency reviewed by a human. |
 | A12 | R3 | Measured speech fits approved timing, explicit silence works, licensed audio selection is recorded and captions use reviewed/aligned timing. |
+| A13 | R1 | Recipe defaults/controls validate and reach the plan; existing consumers still work. Example prefill makes no AI/production/save call, cannot approve sample copy, rejects inaccessible references and identifies stale recipe evidence. |
+| A14 | R2 | Protected run record captures available resolved inputs/revisions/seed and unknowns. Missing/mislabelled/oversized output blocks readiness; duplicate finalization creates one canonical asset. Queue/provider/storage stages never report premature completion; recovery does not regenerate. |
+| A15 | R2 | Source/take comparison handles unequal durations and audio, and eligible handoff preserves lineage without submission or timeline replacement. Full-clip recipe evaluations record semantic failures separately from job success; new/replaced evidence begins unreviewed. |
 
 ## 10. Prior-art decisions
 
 Adopt concepts from OneMinute-Film's [shot schemas](https://github.com/shahriarsajeeb/OneMinute-Film/blob/7fbf100f7816a2e7d4b13d34c1aa09d0832651ef/lib/director/schemas.ts), [reference management](https://github.com/shahriarsajeeb/OneMinute-Film/blob/7fbf100f7816a2e7d4b13d34c1aa09d0832651ef/lib/characters/service.ts), [production review](https://github.com/shahriarsajeeb/OneMinute-Film/blob/7fbf100f7816a2e7d4b13d34c1aa09d0832651ef/lib/production/studio-production.ts) and [exact text composition](https://github.com/shahriarsajeeb/OneMinute-Film/blob/7fbf100f7816a2e7d4b13d34c1aa09d0832651ef/lib/visual/exact-text.ts). Its local filesystem/process runtime and provider choices are not the implementation template. Approval hashes and reference frames establish provenance; they do not establish generated visual correctness.
 
 Recommended sequencing is fixed for this plan. Model selection, current migration numbers and isolated preview resources must be resolved from current source/environment when the owning task starts. Lack of a supported provider blocks only that production capability, not the R1 storyboard release.
+
+Freefield adoption is limited to P9/A13–A15 and refinements of existing tasks. Matting, upscaling, generative reframing, reference-sheet/style and camera-transfer investigations remain the separate FF-RD01–FF-RD05 backlog in the research report, with independent capability/terms/cost decisions. They do not block R1 or automatically enter any release.
