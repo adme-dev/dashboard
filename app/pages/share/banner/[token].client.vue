@@ -6,7 +6,7 @@ definePageMeta({ layout: false, auth: false })
 useHead({ meta: [{ name: 'referrer', content: 'no-referrer' }] })
 const route = useRoute()
 const token = String(route.params.token)
-const data = shallowRef<{ project: { name: string, canvasData: Record<string, ArtboardState> | string }, fonts: Array<{ id?: string, name: string, url: string, tags: string[] }> } | null>(null)
+const data = shallowRef<{ project: { name: string, clientName?: string | null, canvasData: Record<string, ArtboardState> | string }, fonts: Array<{ id?: string, name: string, url: string, tags: string[] }> } | null>(null)
 const error = ref('')
 
 try {
@@ -60,6 +60,12 @@ const customFonts = computed<ExportCustomFont[]>(() => (data.value?.fonts || [])
       title="Preview unavailable"
       :description="error"
     />
-    <BannerSavedPreview v-else :canvas="canvas" :fonts="customFonts" />
+    <BannerSavedPreview
+      v-else
+      :canvas="canvas"
+      :fonts="customFonts"
+      :client-name="data?.project.clientName"
+      :project-name="data?.project.name"
+    />
   </main>
 </template>

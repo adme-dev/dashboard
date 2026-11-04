@@ -16,8 +16,11 @@ export default defineEventHandler(async (event) => {
   if (link.revoked || (link.expiresAt && new Date(link.expiresAt).getTime() <= Date.now())) {
     throw createError({ statusCode: 410, statusMessage: 'Preview link has expired or was revoked' })
   }
-  const project = await queryOneFresh<{ id: string, name: string, clientId: string | null, canvasData: Record<string, { layers?: Array<{ fontFamily?: string }> }> | string }>(`
-    SELECT id, name, client_id AS "clientId", canvas_data AS "canvasData" FROM banner_projects WHERE id = $1
+  const project = await queryOneFresh<{ id: string, name: string, clientId: string | null, clientName: string | null, canvasData: Record<string, { layers?: Array<{ fontFamily?: string }> }> | string }>(`
+    SELECT p.id, p.name, p.client_id AS "clientId", c.name AS "clientName", p.canvas_data AS "canvasData"
+    FROM banner_projects p
+    LEFT JOIN agency_clients c ON c.id = p.client_id
+    WHERE p.id = $1
   `, [link.projectId])
   if (!project) throw createError({ statusCode: 404, statusMessage: 'Banner not found' })
   const canvas = typeof project.canvasData === 'string' ? JSON.parse(project.canvasData) : project.canvasData
