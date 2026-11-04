@@ -63,15 +63,18 @@
          return false;
      }
      // Dropped files import onto the canvas, behind a card while they do ([`crate::pending_open`]);
-@@ -515,6 +518,7 @@
+@@ -515,6 +518,10 @@
      let dropped = ctx.input(|i| i.raw.dropped_files.clone());
      let mut refused = false;
      for f in dropped {
-+        if edm { crate::edm_chrome::refuse(app, "file.import", &json!({})); continue; }
++        if edm {
++            crate::edm_chrome::refuse(app, "file.import", &json!({}));
++            continue;
++        }
          let path = f.path().to_path_buf();
          if crate::is_document(&path) {
              crate::pending_open::open_dropped(app, &f);
-@@ -600,17 +604,17 @@
+@@ -600,17 +607,19 @@
          }
          return true;
      }
@@ -89,13 +92,15 @@
      }
      if resp.secondary_clicked() {
 -        open_context_menu(app, pos, mods.command);
-+        if !edm { open_context_menu(app, pos, mods.command); }
++        if !edm {
++            open_context_menu(app, pos, mods.command);
++        }
          return true;
      }
      if resp.double_clicked() {
 --- /dev/null
 +++ b/crates/ui-egui/src/edm_chrome.rs
-@@ -0,0 +1,166 @@
+@@ -0,0 +1,185 @@
 +//! EDM-only native chrome. The canonical bridge remains the final authority;
 +//! this UI boundary prevents offering canvas operations it cannot round-trip.
 +use egui::{Id, Ui};
@@ -117,14 +122,32 @@
 +        return true;
 +    }
 +    match id {
-+        "edm_import" | "edm_snapshot" | "edm_required_snapshot_images" | "edm_designer_import" | "edm_designer_apply"
-+        | "edm_designer_snapshot" | "edm_designer_context" | "edm_designer_undo" | "edm_designer_redo"
-+        | "select.set" | "select.all" | "select.none" | "select.parent" | "select.children" | "select.next" | "select.previous"
-+        | "view.pan" | "view.zoomIn" | "view.zoomOut" | "view.zoomAt" | "view.zoomFit" | "view.zoom100" | "view.zoomSelection"
-+        | "edit.undo" | "edit.redo" => true,
-+        "tool.set" => params.as_object().is_some_and(|p| {
-+            p.len() == 1 && matches!(p.get("tool").and_then(Value::as_str), Some("move" | "hand"))
-+        }),
++        "edm_import"
++        | "edm_snapshot"
++        | "edm_required_snapshot_images"
++        | "edm_designer_import"
++        | "edm_designer_apply"
++        | "edm_designer_snapshot"
++        | "edm_designer_context"
++        | "edm_designer_undo"
++        | "edm_designer_redo"
++        | "select.set"
++        | "select.all"
++        | "select.none"
++        | "select.parent"
++        | "select.children"
++        | "select.next"
++        | "select.previous"
++        | "view.pan"
++        | "view.zoomIn"
++        | "view.zoomOut"
++        | "view.zoomAt"
++        | "view.zoomFit"
++        | "view.zoom100"
++        | "view.zoomSelection"
++        | "edit.undo"
++        | "edit.redo" => true,
++        "tool.set" => params.as_object().is_some_and(|p| p.len() == 1 && matches!(p.get("tool").and_then(Value::as_str), Some("move" | "hand"))),
 +        "node.set" => content_edit_allowed(app, params),
 +        _ => false,
 +    }
@@ -256,7 +279,8 @@
 +    }
 +    let selection = ds.selection.clone();
 +    for (block, node, name, _) in rows {
-+        let selected = selection.iter().any(|id| app.session.doc().ok().and_then(|doc| doc.node(*id)).is_some_and(|n| n.plugin_data.get(BLOCK) == Some(&block)));
++        let selected =
++            selection.iter().any(|id| app.session.doc().ok().and_then(|doc| doc.node(*id)).is_some_and(|n| n.plugin_data.get(BLOCK) == Some(&block)));
 +        if ui.selectable_label(selected, name).clicked() {
 +            app.run("select.set", json!({"ids": [node]}));
 +        }
@@ -287,18 +311,22 @@
  }
 
  fn props_number(app: &mut FigApp, ui: &mut Ui, block_id: &str, key: &'static str, label: &'static str, current: Option<f64>) {
-@@ -431,21 +435,36 @@
+@@ -431,21 +435,42 @@
      let fields: Vec<(&str, &str, &str)> = match role {
          Some("button") => vec![("Button URL", URL, "url")],
          Some("image") => vec![("Image URL", URL, "url"), ("Image alt text", ALT, "alt"), ("Image link", LINK, "linkHref")],
 -        _ => return false,
 +        _ => vec![],
      };
-+    let fields: Vec<_> = fields.into_iter().map(|(label, key, field)| {
-+        (label, key, handoff.allows(&block_id, field), node.plugin_data.get(key).cloned().unwrap_or_default())
-+    }).collect();
-+    let text = doc.nodes().find(|n| n.plugin_data.get(BLOCK_ID) == Some(&block_id)
-+        && matches!(n.plugin_data.get(ROLE).map(String::as_str), Some("text" | "button.text")))
++    let fields: Vec<_> = fields
++        .into_iter()
++        .map(|(label, key, field)| (label, key, handoff.allows(&block_id, field), node.plugin_data.get(key).cloned().unwrap_or_default()))
++        .collect();
++    let text = doc
++        .nodes()
++        .find(|n| {
++            n.plugin_data.get(BLOCK_ID) == Some(&block_id) && matches!(n.plugin_data.get(ROLE).map(String::as_str), Some("text" | "button.text"))
++        })
 +        .filter(|n| !n.locked && handoff.allows(&block_id, "text"))
 +        .and_then(|n| n.kind.text().map(|text| (n.id, text.characters.clone())));
      widgets::section_header(ui, "Email content", &[], false);
@@ -308,8 +336,9 @@
 +    }
 +    if let Some((text_id, current)) = text {
 +        widgets::sublabels(ui, "Text", None);
-+        if let Some(value) = widgets::multiline_field(ui, Id::new(("edm-content-text", text_id)), &current, "Text", 4)
-+            .and_then(|value| changed(value, &current)) {
++        if let Some(value) =
++            widgets::multiline_field(ui, Id::new(("edm-content-text", text_id)), &current, "Text", 4).and_then(|value| changed(value, &current))
++        {
 +            app.set_props(&[text_id], json!({"characters": value}));
 +        }
 +    }
@@ -328,7 +357,8 @@
 -            });
 +            widgets::label(ui, label, t.text);
 +            if let Some(value) = widgets::text_field(ui, Id::new(("xeroflow-edm", *id, key)), &current, ui.available_width().max(80.0), label)
-+                .and_then(|value| changed(value, &current)) {
++                .and_then(|value| changed(value, &current))
++            {
 +                updates.insert(key.to_owned(), Value::String(value));
 +            }
          });
@@ -336,31 +366,46 @@
      if !updates.is_empty() {
 --- a/crates/ui-egui/src/lib.rs
 +++ b/crates/ui-egui/src/lib.rs
-@@ -24,6 +24,7 @@
+@@ -9,9 +9,9 @@
+ pub mod assets_panel;
+ pub mod bidi;
+ pub mod board_bar;
++pub mod branch_ui;
+ #[cfg(any(target_arch = "wasm32", test))]
+ pub mod browser_bridge;
+-pub mod branch_ui;
+ pub mod canvas;
+ pub mod cjk;
+ pub mod colorpicker;
+@@ -23,6 +23,7 @@
+ pub mod dev_compare;
  pub mod dev_mode;
  pub mod dialogs;
- pub mod edm_panel;
 +mod edm_chrome;
+ pub mod edm_panel;
  pub mod export_panel;
  pub mod field_math;
- pub mod font_preview;
-@@ -883,6 +884,7 @@
+@@ -883,6 +884,9 @@
 
      /// Run a command, surfacing errors as a toast. Returns the result.
      pub fn run(&mut self, id: &str, params: Value) -> Option<Value> {
-+        if edm_chrome::refuse(self, id, &params) { return None; }
++        if edm_chrome::refuse(self, id, &params) {
++            return None;
++        }
          let r = self.session.execute(id, &params);
          self.clear_comment_draft_after_tool_set(id, r.is_ok());
          self.handle_ui_requests();
-@@ -918,6 +920,7 @@
+@@ -918,6 +922,9 @@
      /// the answer arrives (the network wakes the window then); errors show as with [`run`](Self::run).
      /// [`Session::waiting_for`] tells the panels to show that it's on its way.
      pub fn run_background(&mut self, ctx: &egui::Context, id: &str, params: Value, done: Done) {
-+        if edm_chrome::refuse(self, id, &params) { return; }
++        if edm_chrome::refuse(self, id, &params) {
++            return;
++        }
          self.waiting.retain(|(c, _)| c != id);
          let r = self.session.start_background(id, params);
          self.handle_ui_requests();
-@@ -1686,6 +1689,10 @@
+@@ -1686,6 +1693,10 @@
          selection_spacing::sync(self, &ctx);
          // Before any widget: the navigation keys (F6, Tab, arrows, Escape) move the keyboard.
          a11y::begin(self, &ctx);
@@ -373,45 +418,59 @@
          }
 --- a/crates/ui-egui/src/menus.rs
 +++ b/crates/ui-egui/src/menus.rs
-@@ -37,6 +37,7 @@
+@@ -37,6 +37,9 @@
  /// middle of the view.
  /// In Dev Mode only a comment's link pastes (it opens the thread); everything else would edit.
  pub fn paste(app: &mut FigApp, event_text: Option<&str>, at: Option<(f64, f64)>) {
-+    if crate::edm_chrome::refuse(app, "edit.paste", &json!({})) { return; }
++    if crate::edm_chrome::refuse(app, "edit.paste", &json!({})) {
++        return;
++    }
      // Only HTML that holds readable design data takes this path; other HTML pastes as before.
      if let Some(html) = app.services.clipboard_get_html().filter(|h| figcraft_engine::cmd::edit::design_clipboard_buffer(h).is_some()) {
          if dev_mode_refuses(app, "edit.paste") {
-@@ -141,6 +142,7 @@
+@@ -141,6 +144,9 @@
  /// Run a menu, shortcut or palette action by id: actions that need the UI (dialogs, panels, the
  /// clipboard) are handled here, the rest go to the engine.
  pub fn invoke(app: &mut FigApp, id: &str) {
-+    if crate::edm_chrome::refuse(app, id, &json!({})) { return; }
++    if crate::edm_chrome::refuse(app, id, &json!({})) {
++        return;
++    }
      if dev_mode_refuses(app, id) {
          return;
      }
 --- a/crates/ui-egui/src/shortcuts.rs
 +++ b/crates/ui-egui/src/shortcuts.rs
-@@ -256,6 +256,10 @@
+@@ -256,6 +256,12 @@
  /// Run the command a shortcut is bound to, with the keyboard's own twists (Escape steps out
  /// before it deselects, Delete ends a pen path, Enter edits the selected text or vector).
  pub fn run_binding(app: &mut FigApp, id: &str) {
 +    if crate::edm_chrome::active(app) && !matches!(id, "edit.undo" | "edit.redo") {
-+        if !crate::edm_chrome::refuse(app, id, &json!({})) { app.run(id, json!({})); }
++        if !crate::edm_chrome::refuse(app, id, &json!({})) {
++            app.run(id, json!({}));
++        }
 +        return;
 +    }
      // Dev Mode places and edits nothing: Enter selects children.
      let dev = app.ui.right_tab == crate::RightTab::Inspect;
      match id {
-@@ -289,6 +293,16 @@
+@@ -289,6 +295,24 @@
  }
 
  fn key_event(app: &mut FigApp, key: Key, physical: Option<Key>, m: Modifiers, repeat: bool, now: f64, ctx: &Context) -> bool {
 +    if crate::edm_chrome::active(app) {
 +        if let Some(b) = lookup(keymap::Context::Canvas, key, physical, m) {
-+            if !repeat || matches!(b.id, "edit.undo" | "edit.redo" | "view.zoomIn" | "view.zoomOut") { run_binding(app, b.id); }
++            if !repeat || matches!(b.id, "edit.undo" | "edit.redo" | "view.zoomIn" | "view.zoomOut") {
++                run_binding(app, b.id);
++            }
 +            return true;
 +        }
-+        let (dx, dy) = match key { Key::ArrowLeft => (-1, 0), Key::ArrowRight => (1, 0), Key::ArrowUp => (0, -1), Key::ArrowDown => (0, 1), _ => return false };
++        let (dx, dy) = match key {
++            Key::ArrowLeft => (-1, 0),
++            Key::ArrowRight => (1, 0),
++            Key::ArrowUp => (0, -1),
++            Key::ArrowDown => (0, 1),
++            _ => return false,
++        };
 +        app.run("view.pan", json!({"dx": dx, "dy": dy, "big": m.shift}));
 +        return true;
 +    }
@@ -419,7 +478,7 @@
      if key == Key::Escape && crate::proto_panel::close_editor(ctx) {
          return true;
      }
-@@ -642,8 +656,8 @@
+@@ -642,8 +666,8 @@
 
      /// One granted Text block. `capabilities` is what the shared `designerCapabilities` returns for
      /// this design (generated with tsx on 2 November 2026), not this crate's own derivation.
@@ -430,7 +489,7 @@
              "schemaVersion": 1,
              "kind": "template",
              "scope": {"clientId": null},
-@@ -658,7 +672,11 @@
+@@ -658,7 +682,11 @@
              "moduleInstances": [],
              "assets": [],
              "policy": {"version": 1, "editableFields": ["text-1.data.props.text"]}
@@ -443,7 +502,20 @@
          let capabilities = json!({
              "version": 1,
              "operations": ["set-style", "set-props", "add-section", "move-section", "duplicate-section", "remove-section"],
-@@ -734,7 +752,7 @@
+@@ -711,11 +739,7 @@
+
+     /// Cmd on macOS, Ctrl elsewhere, as egui reports it.
+     fn cmd() -> Modifiers {
+-        if super::platform() == Platform::Mac {
+-            Modifiers::MAC_CMD | Modifiers::COMMAND
+-        } else {
+-            Modifiers::CTRL | Modifiers::COMMAND
+-        }
++        if super::platform() == Platform::Mac { Modifiers::MAC_CMD | Modifiers::COMMAND } else { Modifiers::CTRL | Modifiers::COMMAND }
+     }
+
+     fn press(u: &mut Ui, key: Key, modifiers: Modifiers) {
+@@ -734,7 +758,7 @@
          assert_eq!(counts(&u), (1, 0));
          let logged = native_text(&u);
          let node = text_node(&u);
@@ -452,7 +524,7 @@
          crate::menus::invoke(&mut u.app, "edit.undo");
          assert_eq!(native_text(&u), logged);
          assert_eq!(counts(&u), (1, 0));
-@@ -766,7 +784,7 @@
+@@ -766,7 +790,7 @@
          apply(&mut u, "Hi {{firstName}}");
          let logged = native_text(&u);
          let node = text_node(&u);
@@ -461,7 +533,7 @@
          assert!(!snapshot_ok(&mut u), "an unlogged native edit blocks the snapshot");
          press(&mut u, Key::Z, cmd());
          assert_eq!(native_text(&u), logged, "generic undo takes the unlogged edit back");
-@@ -801,8 +819,8 @@
+@@ -801,8 +825,8 @@
          let logged = native_text(&u);
          let node = text_node(&u);
          u.app.run("select.set", json!({"ids": [node]})).unwrap();
@@ -472,7 +544,7 @@
          u.frame(vec![Event::Text("Typed".into())]);
          press(&mut u, Key::Z, cmd());
          assert!(u.app.session.ds().unwrap().text_edit.is_none(), "Cmd/Ctrl+Z ends the edit");
-@@ -810,4 +828,126 @@
+@@ -810,4 +834,130 @@
          assert_eq!(counts(&u), (1, 0), "the canonical log is untouched");
          assert!(snapshot_ok(&mut u));
      }
@@ -504,8 +576,13 @@
 +        use std::sync::{Arc, Mutex};
 +        struct Downloads(Arc<Mutex<usize>>);
 +        impl crate::Services for Downloads {
-+            fn downloads(&self) -> bool { true }
-+            fn download(&mut self, _: &str, _: &[u8]) -> bool { *self.0.lock().unwrap() += 1; true }
++            fn downloads(&self) -> bool {
++                true
++            }
++            fn download(&mut self, _: &str, _: &[u8]) -> bool {
++                *self.0.lock().unwrap() += 1;
++                true
++            }
 +        }
 +        let mut u = designer();
 +        let calls = Arc::new(Mutex::new(0));
@@ -598,7 +675,6 @@
 +        assert_eq!(layout.lines.last().unwrap().char_end, 3);
 +        assert!(layout.glyphs.iter().any(|glyph| glyph.face.family == "Noto Emoji" && glyph.gid != 0 && !glyph.path().elements().is_empty()));
 +    }
-+
 +}
 --- a/crates/ui-egui/src/theme.rs
 +++ b/crates/ui-egui/src/theme.rs
