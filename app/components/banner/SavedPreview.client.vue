@@ -9,7 +9,11 @@ import { withBannerPreviewAudio } from '~/utils/banner-preview-audio'
 const props = defineProps<{
   canvas: Record<string, ArtboardState>
   fonts?: ExportCustomFont[]
+  clientName?: string | null
+  projectName?: string
 }>()
+
+const pageName = computed(() => props.clientName?.trim() || props.projectName?.trim() || 'Shared banner')
 
 const root = ref<HTMLElement | null>(null)
 const viewport = ref<HTMLElement | null>(null)
@@ -181,7 +185,7 @@ function changeZoom(direction: number) {
                 :html="html"
                 :html-width="active.format.w"
                 :html-height="active.format.h"
-                page-name="Client preview"
+                :page-name="pageName"
                 :show-default-cta="false"
                 :show-label="false"
               />
@@ -191,7 +195,7 @@ function changeZoom(direction: number) {
                 :html="html"
                 :html-width="active.format.w"
                 :html-height="active.format.h"
-                page-name="Client preview"
+                :page-name="pageName"
                 :show-placeholders="false"
                 :creative-aspect-ratio="active.format.w / active.format.h"
               />
@@ -280,7 +284,7 @@ function changeZoom(direction: number) {
         {{ audioError }}
       </p>
       <p v-if="mode === 'social'" class="shrink-0 px-4 pb-2 text-center text-[11px] text-muted">
-        {{ story ? 'Story / Reel mockup · Full creative shown with phone controls outside the artwork.' : 'Facebook Feed mockup.' }} Page identity, ad copy and final platform cropping are not included.
+        {{ story ? 'Story / Reel mockup · Full creative shown with phone controls outside the artwork.' : 'Facebook Feed mockup.' }} Platform account details, ad copy and final platform cropping are not included.
       </p>
     </div>
     <UAlert

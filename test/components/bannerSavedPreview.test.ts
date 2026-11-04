@@ -14,17 +14,17 @@ afterEach(() => {
 })
 const board = { layers: [{ id: 1, type: 'text', text: 'Opening', x: 0, y: 0, w: 300, h: 60, opacity: 1, startTime: 0, endTime: 4 }] } as ArtboardState
 const canvas = { custom_1080x1920: board, custom_1200x1200: board, custom_1920x1080: board }
-async function mount(previewCanvas: Record<string, ArtboardState> = canvas) {
+async function mount(previewCanvas: Record<string, ArtboardState> = canvas, identity: { clientName?: string | null, projectName?: string } = {}) {
   const host = document.createElement('div')
   document.body.append(host)
-  const app = createApp(SavedPreview, { canvas: previewCanvas })
+  const app = createApp(SavedPreview, { canvas: previewCanvas, ...identity })
   app.component('UButton', defineComponent({
     props: ['label', 'icon', 'variant', 'color', 'size'],
     setup: (props, { attrs }) => () => h('button', attrs, props.label)
   }))
   const media = defineComponent({
-    props: ['html', 'width', 'height', 'htmlWidth', 'htmlHeight', 'showPlaceholders', 'creativeAspectRatio', 'showDefaultCta'],
-    setup: (props, { attrs }) => () => h('div', { ...attrs, 'data-html': props.html, 'data-width': props.width || props.htmlWidth, 'data-ratio': props.creativeAspectRatio, 'data-placeholders': props.showPlaceholders, 'data-cta': props.showDefaultCta }, [h('iframe')])
+    props: ['html', 'width', 'height', 'htmlWidth', 'htmlHeight', 'showPlaceholders', 'creativeAspectRatio', 'showDefaultCta', 'pageName'],
+    setup: (props, { attrs }) => () => h('div', { ...attrs, 'data-html': props.html, 'data-width': props.width || props.htmlWidth, 'data-ratio': props.creativeAspectRatio, 'data-placeholders': props.showPlaceholders, 'data-cta': props.showDefaultCta, 'data-page-name': props.pageName }, [h('iframe')])
   })
   app.component('BannerSavedViewerFrame', media)
   app.component('AdPreviewMetaFeedPreview', media)
@@ -106,6 +106,17 @@ describe('saved banner review workspace', () => {
     expect(view.host.textContent).toContain('Sound was blocked')
   })
 
+  it('uses the actual client in both social placements and falls back to the project name', async () => {
+    const view = await mount(canvas, { clientName: 'GWS KIA', projectName: 'November offers' })
+    await view.click('Social preview')
+    expect(view.media().dataset.pageName).toBe('GWS KIA')
+    await view.click('1200 × 1200')
+    expect(view.media().dataset.pageName).toBe('GWS KIA')
+    const unassigned = await mount(canvas, { projectName: 'Unassigned campaign' })
+    await unassigned.click('Social preview')
+    expect(unassigned.media().dataset.pageName).toBe('Unassigned campaign')
+  })
+
   it('uses Story for portrait and Feed for wide artwork without invented copy or engagement', async () => {
     const view = await mount()
     await view.click('Social preview')
@@ -116,6 +127,6 @@ describe('saved banner review workspace', () => {
     expect(Number(view.media().dataset.ratio)).toBeCloseTo(16 / 9)
     expect(view.media().dataset.placeholders).toBe('false')
     expect(view.media().dataset.html).toContain('paused: true')
-    expect(view.host.textContent).toContain('Page identity, ad copy and final platform cropping are not included')
+    expect(view.host.textContent).toContain('Platform account details, ad copy and final platform cropping are not included')
   })
 })
