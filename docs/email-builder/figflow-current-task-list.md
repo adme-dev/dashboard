@@ -40,4 +40,4 @@ Updated: 3 November 2026. This is the short current queue, not another scope or 
 
 Already recorded: R&D copied into the project; foundation/server authority and renderer changes implemented locally; library/history integrated and pushed; native compile corrections awaiting Linux verification; M06 committed in its isolated branch; authoring migrations494–496 applied with receipt; authoring release not deployed.
 
-**Worktree retirement:** [worktree-retirement-20261103.md](worktree-retirement-20261103.md) records which old trees are retired; this work happens only in the explicit release root.
+**Worktree retirement:** Private verified retirement receipts for the retired worktrees are retained outside the repository; the explicit release root (`figflow-edm-release-20261101`) is the source of truth for this work.
