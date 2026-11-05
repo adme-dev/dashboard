@@ -7,14 +7,14 @@ import { readPortalDomainConfiguration, projectPortalDomain } from './portalDoma
 import { attachPageStudioDomain, refreshPageStudioDomain, domainProviderConfigured } from './domainConfiguration'
 import { listAgencyPageStudioDomains, listPortalPageStudioDomains } from './domainAggregate'
 
-export async function agencyAuthority(db: DomainDatabase, actorId: string, permission: 'PAGE_STUDIO_VIEW' | 'PAGE_STUDIO_DOMAINS' | 'PAGE_STUDIO_APPROVE') {
+export async function agencyAuthority(db: DomainDatabase, actorId: string, permission: 'PAGE_STUDIO_VIEW' | 'PAGE_STUDIO_DOMAINS' | 'PAGE_STUDIO_APPROVE' | 'PAGE_STUDIO_PUBLISH') {
   const staff = (await db.query<{ user_role: string, custom_role_id: string | null }>('SELECT user_role,custom_role_id FROM team_members WHERE id=$1 AND is_active=TRUE FOR SHARE', [actorId])).rows[0]
   if (!staff) throw domainFailure('DOMAIN_ACCESS_DENIED', 403)
   const policy = (await db.query<{ id: string, is_read_only: boolean }>(`SELECT id,is_read_only FROM custom_roles WHERE ${staff.custom_role_id ? 'id=$1' : 'slug=$1 AND is_system=TRUE'} FOR SHARE`, [staff.custom_role_id ?? staff.user_role])).rows[0]
   if (staff.custom_role_id && !policy) throw domainFailure('DOMAIN_ACCESS_DENIED', 403)
   const groups = policy ? (await db.query<{ permission_group: string }>('SELECT permission_group FROM role_permission_groups WHERE role_id=$1 FOR SHARE', [policy.id])).rows.map(row => row.permission_group) : SYSTEM_ROLE_PERMISSIONS[staff.user_role] ?? []
   const canManage = Boolean(policy) && groups.includes('PAGE_STUDIO_EDIT') && !isReadOnlyRole(staff.user_role) && policy?.is_read_only !== true
-  if (!groups.includes(permission) || (permission === 'PAGE_STUDIO_DOMAINS' && (isReadOnlyRole(staff.user_role) || policy?.is_read_only === true))) throw domainFailure('DOMAIN_ACCESS_DENIED', 403)
+  if (!groups.includes(permission) || (['PAGE_STUDIO_DOMAINS', 'PAGE_STUDIO_PUBLISH'].includes(permission) && (isReadOnlyRole(staff.user_role) || policy?.is_read_only === true))) throw domainFailure('DOMAIN_ACCESS_DENIED', 403)
   return canManage
 }
 const serializeDates = (row: Record<string, unknown>) => Object.fromEntries(Object.entries(row).map(([key, value]) => [key, value instanceof Date ? value.toISOString() : value]))

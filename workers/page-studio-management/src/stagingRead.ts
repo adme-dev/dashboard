@@ -30,13 +30,14 @@ export async function readStagingState(db: DomainDatabase, rawScope: z.infer<typ
     WHERE site.tenant_id=$1 AND site.client_id=$2 AND site.id=$3 AND site.status IN ('draft','active')`, [scope.tenantId, scope.clientId, scope.siteId])
   const row = result.rows[0]
   if (result.rows.length !== 1 || !row) throw new StagingStoreError('STAGING_ACCESS_DENIED', 403)
-  const active = row.host_state === 'ready' && row.active_id
+  const retained = row.active_id
     ? {
         ...(row.code_content ? { codeContent: CodeContentBindingSchema.parse(row.code_content) } : {}),
         id: row.active_id, checkpointId: row.checkpoint_id, digest: row.checkpoint_digest,
         deployedAt: row.deployed_at instanceof Date ? row.deployed_at.toISOString() : row.deployed_at
       }
     : null
+  const active = row.host_state === 'ready' ? retained : null
   let status = active ? 'ready' : 'not_published'
   if (row.latest_state === 'failed') status = active ? 'update_failed' : 'failed'
   if (['queued', 'building'].includes(String(row.latest_state))) status = row.host_state === 'ready' ? 'building' : 'provisioning'
@@ -46,7 +47,7 @@ export async function readStagingState(db: DomainDatabase, rawScope: z.infer<typ
   return PageStudioStagingStateSchema.parse({
     ...(codeContent ? { currentCodeContent: codeContent } : {}),
     siteId: scope.siteId, ...pageStudioStagingAddress(scope.siteId), status, canManage,
-    active, currentDigest: row.current_digest ?? null, failure: row.host_state === 'suspended' ? 'ACCESS_INACTIVE' : row.expired === true ? 'BUILD_FAILED' : row.failure_code ?? null
+    active, ...(row.host_state === 'suspended' ? { suspendedSnapshot: retained } : {}), currentDigest: row.current_digest ?? null, failure: row.host_state === 'suspended' ? 'ACCESS_INACTIVE' : row.expired === true ? 'BUILD_FAILED' : row.failure_code ?? null
   })
 }
 
