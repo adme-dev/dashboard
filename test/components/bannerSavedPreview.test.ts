@@ -144,23 +144,38 @@ describe('saved banner review workspace', () => {
     expect(view.host.querySelector('section')?.className).not.toContain('fixed inset-0')
   })
 
-  it('toggles sound without replacing the frame and ignores messages from other windows', async () => {
-    const audioBoard = { ...board, layers: [...board.layers, { id: 9, type: 'audio', src: 'https://example.test/track.wav', startTime: 1, endTime: 4, volume: 0.5 }] } as ArtboardState
+  it('plays sound from the host tap, then mutes and seeks without replacing the frame', async () => {
+    const audioBoard = { ...board, layers: [...board.layers, { id: 9, type: 'audio', src: 'https://example.test/track.wav', startTime: 0, endTime: 4, volume: 0.5 }] } as ArtboardState
     const view = await mount({ custom_1080x1920: audioBoard })
-    const frame = view.host.querySelector('iframe')!
-    const post = vi.spyOn(frame.contentWindow!, 'postMessage')
+    await view.click('1080 × 1920')
+    const audio = view.host.querySelector('audio')!
+    let paused = true
+    Object.defineProperty(audio, 'paused', { get: () => paused })
+    const play = vi.spyOn(audio, 'play').mockImplementation(() => {
+      paused = false
+      return Promise.resolve()
+    })
+    const pause = vi.spyOn(audio, 'pause').mockImplementation(() => {
+      paused = true
+    })
     const html = view.media().dataset.html
+    expect(html).not.toContain('<audio')
+    const playCommand = view.command('play')
+    await view.click('Play')
+    expect(play).toHaveBeenCalledTimes(1)
+    const command = await playCommand()
+    await view.report('playing', 1.2, command.commandId)
+    expect(play).toHaveBeenCalledTimes(1)
+    expect(audio.volume).toBe(0.5)
     await view.click('Mute audio')
-    expect(post).toHaveBeenLastCalledWith({ type: 'banner-preview-sound', muted: true }, '*')
+    expect(audio.muted).toBe(true)
     expect(view.media().dataset.html).toBe(html)
     await view.click('Unmute audio')
-    expect(post).toHaveBeenLastCalledWith({ type: 'banner-preview-sound', muted: false }, '*')
-    window.dispatchEvent(new MessageEvent('message', { source: window, data: { type: 'banner-preview-audio', status: 'blocked' } }))
+    expect(audio.muted).toBe(false)
+    view.host.querySelector<HTMLElement>('[role="slider"]')!.click()
     await nextTick()
-    expect(view.host.textContent).not.toContain('Sound was blocked')
-    window.dispatchEvent(new MessageEvent('message', { source: frame.contentWindow, data: { type: 'banner-preview-audio', status: 'blocked' } }))
-    await nextTick()
-    expect(view.host.textContent).toContain('Sound was blocked')
+    expect(pause).toHaveBeenCalled()
+    expect(audio.currentTime).toBe(2.5)
   })
 
   it('shows actual playback time, rejects unrelated windows and preserves the finished frame', async () => {

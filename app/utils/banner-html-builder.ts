@@ -192,6 +192,8 @@ export interface BuildBannerOptions {
   includeAnimations?: boolean
   /** Render a real timeline frame without starting playback (saved/client previews). */
   pausedAt?: number
+  /** Saved previews play sound in the host page so Safari receives the user's tap. */
+  externalAudio?: boolean
   bgColor?: string
   feedUrl?: string
   feedBindings?: Record<number, { column: string; property: string }[]>
@@ -304,6 +306,7 @@ export function buildBannerHTML(
         return visualLayer(style, `<video src="${escapeHtml(l.src || '')}" muted playsinline preload="auto" style="width:100%;height:100%;object-fit:${l.fit || 'cover'};object-position:${objPos};" />`)
       }
       if (l.type === 'audio') {
+        if (options.externalAudio) return ''
         if (!l.src) return ''
         return `<audio data-id="${l.id}" src="${escapeHtml(l.src)}" preload="auto"${l.loopAudio ? ' loop' : ''} style="display:none;"></audio>`
       }
@@ -323,6 +326,11 @@ export function buildBannerHTML(
       if (l.type === 'audio') {
         const startTime = l.startTime || 0
         const endTime = l.endTime || (startTime + 3)
+        if (options.externalAudio) {
+          // Keep audio-only time in the visual clock without creating an iframe decoder.
+          lines.push(`  tl.to({}, { duration: ${endTime} }, 0);`)
+          return
+        }
         if (l.src) {
           const presenceDur = endTime - startTime
           const volume = l.muted || l.hidden ? 0 : (l.volume ?? 1)
