@@ -13,7 +13,7 @@ const scale = computed(() => availableWidth.value / props.width)
       sandbox="allow-scripts"
       allow="autoplay"
       referrerpolicy="no-referrer"
-      class="absolute left-0 top-0 origin-top-left border-0"
+      class="absolute left-0 top-0 origin-top-left border-0 pointer-events-none"
       :width="width"
       :height="height"
       :style="{ transform: `scale(${scale})` }"
