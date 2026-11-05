@@ -1,9 +1,9 @@
 // @vitest-environment happy-dom
-import { computed, createApp, defineComponent, h, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue'
+import { computed, createApp, defineComponent, h, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import VideoResults from '~~/app/components/banner/VideoResults.client.vue'
 
-const job = (status: string) => ({ jobId: 'job', formatKey: 'ig_port', status, url: status === 'done' ? '/video' : null, error: null, fileSize: null })
+const job = (status: string) => ({ jobId: 'job', formatKey: 'ig_port', status, url: status === 'done' ? '/video' : null, error: null, fileSize: null, createdAt: '2026-01-01T00:00:00Z', startedAt: status === 'rendering' ? '2026-01-01T00:01:00Z' : null, updatedAt: '2026-01-01T00:01:30Z' })
 const flush = async () => {
   for (let i = 0; i < 5; i++) await nextTick()
 }
@@ -14,7 +14,7 @@ afterEach(() => {
 describe('video export recovery UI', () => {
   it('shows pending stages, preserves jobs through failed reads, and recovers completion after reopening', async () => {
     vi.useFakeTimers()
-    for (const [key, value] of Object.entries({ computed, ref, reactive, watch, onBeforeUnmount })) vi.stubGlobal(key, value)
+    for (const [key, value] of Object.entries({ computed, ref, reactive, watch, onBeforeUnmount, onMounted })) vi.stubGlobal(key, value)
     vi.stubGlobal('useToast', () => ({ add: vi.fn() }))
     const fetch = vi.fn().mockResolvedValue({ jobs: [job('queued')] })
     vi.stubGlobal('$fetch', fetch)
@@ -25,6 +25,7 @@ describe('video export recovery UI', () => {
     const app = createApp({ render: () => h(VideoResults, props) })
     app.component('UButton', defineComponent({ props: ['label'], setup: p => () => h('button', p.label) }))
     app.component('UBadge', defineComponent({ setup: (_, { slots }) => () => h('span', slots.default?.()) }))
+    app.component('UProgress', defineComponent({ setup: () => () => h('div', { role: 'progressbar' }) }))
     app.component('UAlert', defineComponent({ props: ['title', 'description'], setup: p => () => h('p', `${p.title} ${p.description}`) }))
     app.mount(root)
     await flush()
@@ -55,6 +56,25 @@ describe('video export recovery UI', () => {
     expect(blocked).toHaveBeenLastCalledWith(false)
     expect(pendingFormats).toHaveBeenLastCalledWith([])
     expect(fetch.mock.calls.every(([url, options]) => url.endsWith('/jobs') && !options.method)).toBe(true)
+    app.unmount()
+  })
+  it('offers authenticated downloads without publishing actions in the library viewer', async () => {
+    for (const [key, value] of Object.entries({ computed, ref, reactive, watch, onBeforeUnmount, onMounted })) vi.stubGlobal(key, value)
+    vi.stubGlobal('useToast', () => ({ add: vi.fn() }))
+    vi.stubGlobal('$fetch', vi.fn().mockResolvedValue({ jobs: [{ ...job('done'), width: 1080, height: 1920 }] }))
+    const root = document.createElement('div')
+    const app = createApp({ render: () => h(VideoResults, { projectId: 'project', completed: [], open: true, downloadOnly: true }) })
+    app.component('UButton', defineComponent({ props: ['label', 'href'], setup: p => () => h(p.href ? 'a' : 'button', { href: p.href }, p.label) }))
+    app.component('UBadge', defineComponent({ setup: (_, { slots }) => () => h('span', slots.default?.()) }))
+    app.component('UProgress', defineComponent({ setup: () => () => h('div') }))
+    app.component('UAlert', defineComponent({ setup: () => () => h('p') }))
+    app.mount(root)
+    await flush()
+    expect(root.textContent).toContain('1080 × 1920')
+    expect(root.textContent).toContain('Completed')
+    expect(root.textContent).toContain('Download MP4')
+    expect(root.textContent).not.toContain('Create social draft')
+    expect(root.textContent).not.toContain('Assign a client')
     app.unmount()
   })
 })

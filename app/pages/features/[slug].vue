@@ -2634,7 +2634,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Private Downloads',
-        content: 'Completed videos are retained in shared object storage and downloaded through an authenticated project route. Export status reports progress and errors, and failed jobs can be retried. The finished file can then be delivered through your normal client approval process.'
+        content: 'Faster frame capture shortens MP4 rendering while preserving the video and timed audio. Completed videos are retained in shared object storage and downloaded through an authenticated project route. A persistent status panel shows queued and rendering jobs, elapsed time and recent activity while you keep editing. Open MP4 downloads from the editor, banner library or saved viewer. The export dialog shows failures and retry options; the finished file can then be delivered through your normal client approval process.'
       }
     ]
   },

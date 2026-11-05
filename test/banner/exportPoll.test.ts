@@ -1,10 +1,18 @@
 import { afterEach, describe, it, expect, vi } from 'vitest'
-import { createExportJobPoller, exportFormatLabel, summarizeExportJobs } from '~~/app/utils/bannerExportPoll'
+import { createExportJobPoller, exportElapsed, exportFormatLabel, exportJobTiming, summarizeExportJobs } from '~~/app/utils/bannerExportPoll'
 
 const j = (status: string, url?: string) => ({ jobId: 'x', formatKey: 'a', status, url: url ?? null, fileSize: null, error: null })
 afterEach(() => vi.useRealTimers())
 
 describe('durable export polling', () => {
+  it('shows honest elapsed and activity timing without claiming frame progress', () => {
+    const now = Date.parse('2026-11-05T01:10:00Z')
+    expect(exportElapsed('2026-11-05T01:08:29Z', now)).toBe('1m 31s')
+    expect(exportJobTiming({ ...j('queued'), createdAt: '2026-11-05T01:08:29Z' }, now)).toBe('Waiting 1m 31s')
+    expect(exportJobTiming({ ...j('rendering'), startedAt: '2026-11-05T01:08:29Z', updatedAt: '2026-11-05T01:09:40Z' }, now)).toBe('Active now · 1m 31s elapsed')
+    expect(exportJobTiming({ ...j('rendering'), startedAt: '2026-11-05T01:08:29Z', updatedAt: '2026-11-05T01:07:00Z' }, now)).toBe('No update for 3m 00s · 1m 31s elapsed')
+    expect(exportElapsed('not-a-date', now)).toBeNull()
+  })
   it('reports actual stages and settlement counts without invented progress', () => {
     expect(summarizeExportJobs([j('done', 'u'), j('rendering'), j('queued'), j('failed')])).toEqual({ total: 4, done: 1, failed: 1, pending: 2, queued: 1, rendering: 1, finished: false, urls: ['u'] })
     expect(summarizeExportJobs([]).finished).toBe(true)
