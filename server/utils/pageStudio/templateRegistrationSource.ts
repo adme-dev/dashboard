@@ -1,3 +1,4 @@
+import { verifyTypedTemplateSource } from '~~/shared/pageStudio/typedTemplate'
 import { CodeContentBindingSchema, verifyCodePageImport } from '~~/shared/pageStudio/codeContent'
 import type { PageStudioCheckpointCommitInput, PageStudioControlScope, PageStudioQueryClient } from '~~/shared/pageStudio/controlTypes'
 import type { PageStudioCheckpointBucket } from '~~/shared/pageStudio/checkpointReader'
@@ -41,18 +42,18 @@ export async function readTemplateRegistrationSource(
     WHERE tenant_id=$1 AND client_id=$2 AND site_id=$3 AND action='workspace.checkpointed'
       AND resource_type='checkpoint' AND resource_id=$4 AND idempotency_key=$5
     FOR SHARE`, [scope.tenantId, scope.clientId, scope.siteId, checkpointId, `control:checkpoint:${checkpointId}`])).rows[0]
-  if (!audit || audit.metadata.codeContent == null) throw new TemplateRegistrationError('TEMPLATE_FORMAT_UNSUPPORTED', 422)
+  if (!audit) throw new TemplateRegistrationError('TEMPLATE_SOURCE_INVALID', 422)
   if (row.delivery_mode !== 'static' || audit.metadata.commitProtocol !== 'cas-v1'
     || audit.metadata.digest !== row.digest || audit.metadata.authorId !== row.author_id
-    || typeof audit.metadata.expectedCheckpointId !== 'string' || !row.author_id) {
+    || (typeof audit.metadata.expectedCheckpointId !== 'string' && audit.metadata.expectedCheckpointId !== null) || !row.author_id) {
     throw new TemplateRegistrationError('TEMPLATE_SOURCE_INVALID', 422)
   }
-  const binding = CodeContentBindingSchema.safeParse(audit.metadata.codeContent)
-  if (!binding.success) throw new TemplateRegistrationError('TEMPLATE_SOURCE_INVALID', 422)
+  const binding = audit.metadata.codeContent == null ? null : CodeContentBindingSchema.safeParse(audit.metadata.codeContent)
+  if (binding && !binding.success) throw new TemplateRegistrationError('TEMPLATE_SOURCE_INVALID', 422)
   return {
     checkpoint: { scope: { ...scope }, checkpointId: row.id, digest: row.digest,
       objectKey: row.object_key, etag: row.etag, userId: row.author_id,
-      createdAt: new Date(row.created_at).toISOString(), codeContent: binding.data },
+      createdAt: new Date(row.created_at).toISOString(), ...(binding?.success ? { codeContent: binding.data } : {}) },
     expectedCheckpointId: audit.metadata.expectedCheckpointId
   }
 }
@@ -64,7 +65,9 @@ export async function verifyTemplateRegistrationSource(
   bucket: PageStudioCheckpointBucket
 ) {
   try {
-    return await verifyCodePageImport(source, bucket)
+    return source.checkpoint.codeContent
+      ? { ...await verifyCodePageImport(source, bucket), format: 'code-pages' as const }
+      : await verifyTypedTemplateSource(source, bucket)
   } catch {
     throw new TemplateRegistrationError('TEMPLATE_SOURCE_INVALID', 422)
   }

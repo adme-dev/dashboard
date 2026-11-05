@@ -33,7 +33,7 @@ export interface TemplateRegistrationDependencies {
 export interface RegisteredTemplateVersion {
   templateId: string
   versionId: string
-  format: 'code-pages'
+  format: 'code-pages' | 'typed'
   replayed: boolean
 }
 interface Entry { id: string, name: string, category: string, withdrawn_at: string | null }
@@ -79,7 +79,7 @@ export async function registerTemplateVersion(
     return readTemplateRegistrationSource(db, scope, request.sourceCheckpointId, request.expectedDigest)
   })
   const verified = await verifyTemplateRegistrationSource(source, deps.bucket)
-  const provenance = { schemaVersion: 1, kind: 'accepted-code-page-import', ...verified.provenance }
+  const provenance = { schemaVersion: 1, kind: verified.format === 'typed' ? 'accepted-typed-checkpoint' : 'accepted-code-page-import', ...verified.provenance }
   return deps.runTransaction(async (db) => {
     const scope = await authorize(db)
     const current = await readTemplateRegistrationSource(db, scope, request.sourceCheckpointId, request.expectedDigest)
@@ -97,7 +97,7 @@ export async function registerTemplateVersion(
       FROM page_studio_template_versions WHERE template_id=$1 AND source_checkpoint_id=$2 AND source_digest=$3
       FOR SHARE`, [entry.id, request.sourceCheckpointId, request.expectedDigest])).rows[0]
     if (existing) {
-      if (existing.format !== 'code-pages' || existing.source_tenant_id !== scope.tenantId
+      if (existing.format !== verified.format || existing.source_tenant_id !== scope.tenantId
         || existing.source_client_id !== scope.clientId || existing.source_site_id !== scope.siteId
         || existing.inventory_digest !== verified.inventoryDigest
         || !sameCodeContent(existing.code_content, verified.codeContent) || !sameCodeContent(existing.provenance, provenance)) {
@@ -105,17 +105,17 @@ export async function registerTemplateVersion(
       }
       // Never restore withdrawn status, refresh visibility or rewind source state.
       if (!sameCodeContent(await authorize(db), scope)) throw new TemplateRegistrationError('TEMPLATE_REGISTRATION_DENIED', 403)
-      return { templateId: entry.id, versionId: existing.id, format: 'code-pages', replayed: true }
+      return { templateId: entry.id, versionId: existing.id, format: verified.format, replayed: true }
     }
     const version = (await db.query<{ id: string }>(`INSERT INTO page_studio_template_versions
       (template_id,format,source_tenant_id,source_client_id,source_site_id,source_checkpoint_id,
         source_digest,inventory_digest,code_content,provenance)
-      VALUES($1,'code-pages',$2,$3,$4,$5,$6,$7,$8::jsonb,$9::jsonb) RETURNING id`,
+      VALUES($1,$10,$2,$3,$4,$5,$6,$7,$8::jsonb,$9::jsonb) RETURNING id`,
     [entry.id, scope.tenantId, scope.clientId, scope.siteId, request.sourceCheckpointId,
-      request.expectedDigest, verified.inventoryDigest, JSON.stringify(verified.codeContent), JSON.stringify(provenance)])).rows[0]
+      request.expectedDigest, verified.inventoryDigest, verified.codeContent ? JSON.stringify(verified.codeContent) : null, JSON.stringify(provenance), verified.format])).rows[0]
     if (!version) throw new TemplateRegistrationError('TEMPLATE_REGISTRATION_UNAVAILABLE', 503)
     await db.query('INSERT INTO page_studio_template_version_status(version_id) VALUES($1)', [version.id])
     if (!sameCodeContent(await authorize(db), scope)) throw new TemplateRegistrationError('TEMPLATE_REGISTRATION_DENIED', 403)
-    return { templateId: entry.id, versionId: version.id, format: 'code-pages', replayed: false }
+    return { templateId: entry.id, versionId: version.id, format: verified.format, replayed: false }
   })
 }

@@ -10074,6 +10074,68 @@ function sharedFormIssues(site) {
   }
   return issues;
 }
+function resolveFooterNewsletterForm(site, pageId) {
+  const { newsletter } = site.shell.footer;
+  const page = site.pages.find((candidate) => candidate.id === pageId);
+  if (
+    !(newsletter && site.shell.footer.enabled) ||
+    page?.shell.footer !== "inherit"
+  ) {
+    return void 0;
+  }
+  const definition = site.formLibrary?.definitions.find(
+    (candidate) => candidate.id === newsletter.definitionId
+  );
+  const placement = definition?.placements.find(
+    (candidate) => candidate.pageId === pageId
+  );
+  const form = page.forms.find(
+    (candidate) => candidate.id === placement?.formId
+  );
+  if (!(definition && placement && form)) {
+    throw new Error(
+      "Footer newsletter requires a current-page shared form placement"
+    );
+  }
+  return form;
+}
+function footerNewsletterIssues(site) {
+  const { newsletter } = site.shell.footer;
+  if (!newsletter) {
+    return [];
+  }
+  const definition = site.formLibrary?.definitions.find(
+    (candidate) => candidate.id === newsletter.definitionId
+  );
+  if (!definition) {
+    return ["Footer newsletter shared form definition does not exist"];
+  }
+  const emails = definition.form.fields.filter(
+    (field) => field.type === "email"
+  );
+  const names = definition.form.fields.filter(
+    (field) => field.type !== "email"
+  );
+  const issues = [];
+  if (
+    emails.length !== 1 ||
+    !emails[0].required ||
+    names.length > 1 ||
+    names.some((field) => field.type !== "text" || field.required)
+  ) {
+    issues.push(
+      "Newsletter requires one required email and at most one optional name field"
+    );
+  }
+  for (const page of site.pages) {
+    try {
+      resolveFooterNewsletterForm(site, page.id);
+    } catch {
+      issues.push(`Footer newsletter placement missing for page ${page.id}`);
+    }
+  }
+  return issues;
+}
 
 // packages/site-icons/src/index.ts
 var SITE_ICON_NAMES = [
@@ -10268,6 +10330,12 @@ var FooterTypographySchema = object({
   linkSize: number2().int().min(12).max(40),
   linkWeight: FooterFontWeightSchema,
 }).strict();
+var FooterNewsletterSchema = object({
+  body: string2().trim().max(500).optional(),
+  definitionId: StableIdSchema,
+  heading: string2().trim().min(1).max(160),
+  submitLabel: string2().trim().min(1).max(80).optional(),
+}).strict();
 var FooterManifestSchema = object({
   brandCopy: string2().trim().max(1e3).optional(),
   columns: array(
@@ -10295,6 +10363,7 @@ var FooterManifestSchema = object({
     "cta",
     "locations",
     "legal",
+    "wordmark",
   ]).optional(),
   legalText: string2().trim().max(2e3).optional(),
   locations: array(
@@ -10307,6 +10376,7 @@ var FooterManifestSchema = object({
   )
     .max(12)
     .optional(),
+  newsletter: FooterNewsletterSchema.optional(),
   primaryAction: ShellActionSchema.optional(),
   socialLinks: array(NavigationChildItemSchema).max(12).default([]),
   typography: FooterTypographySchema.optional(),
@@ -11199,7 +11269,10 @@ function validateSiteManifest(input) {
   }
   const issues = [];
   if (parsed.data.schemaVersion === 2) {
-    for (const message of sharedFormIssues(parsed.data)) {
+    for (const message of [
+      ...sharedFormIssues(parsed.data),
+      ...footerNewsletterIssues(parsed.data),
+    ]) {
       issues.push({
         code: "shared_form_invalid",
         message,
@@ -12889,6 +12962,13 @@ async function verifyNativeAstroRuntimeFeatureRecovery(
     };
   });
 }
+function verifyTypedTemplateManifest(input) {
+  const result = validateSiteManifest(structuredClone(input));
+  if (!result.success || canonicalJson(result.data) !== canonicalJson(input)) {
+    throw new Error("Typed template manifest is invalid or noncanonical");
+  }
+  return { manifest: result.data, pageCount: result.data.pages.length };
+}
 export {
   BuilderGraphVerificationError,
   createAstroCompilerBuildIdentity,
@@ -12914,4 +12994,5 @@ export {
   verifyBuilderReleaseRecovery,
   verifyNativeAstroRuntimeFeatureRecovery,
   verifyNativeAstroRuntimeRelease,
+  verifyTypedTemplateManifest,
 };

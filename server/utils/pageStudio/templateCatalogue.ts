@@ -100,8 +100,8 @@ export async function listPermittedTemplates(rawActor: TemplateActor, rawQuery: 
   const rows = await deps.query(request.sql, request.params)
   const items = rows.slice(0, query.limit).map(row => PageStudioTemplateCardSchema.parse({
     id: row.id, name: row.name, versionId: row.versionId, format: row.format, category: 'automotive', status: row.canPreview ? 'ready' : 'preparing',
-    thumbnail: null, canPreview: Boolean(row.canPreview), canUse: Boolean(deps.copyEnabled && row.canPreview && row.canCopy && row.format === 'code-pages'),
-    unavailableReason: !row.canPreview ? 'Preview and independent editing are being prepared.' : !deps.copyEnabled || row.format !== 'code-pages' ? 'Independent editing is being prepared.' : !row.canCopy ? 'An eligible plan, website capacity and account management access are required to use this template.' : null
+    thumbnail: null, canPreview: Boolean(row.canPreview), canUse: Boolean(deps.copyEnabled && row.canPreview && row.canCopy && ['code-pages', 'typed'].includes(row.format)),
+    unavailableReason: !row.canPreview ? 'Preview and independent editing are being prepared.' : !deps.copyEnabled || !['code-pages', 'typed'].includes(row.format) ? 'Independent editing is being prepared.' : !row.canCopy ? 'An eligible plan, website capacity and account management access are required to use this template.' : null
   }))
   return { items, nextCursor: rows.length > query.limit ? items.at(-1)!.versionId : null }
 }
