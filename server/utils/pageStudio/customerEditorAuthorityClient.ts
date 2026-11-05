@@ -18,3 +18,11 @@ export async function readPlacedCustomerEditorCheckpoint(claims: CustomerEditorC
   if (!result.success) throw createError({ statusCode: 503, statusMessage: CUSTOMER_EDITOR_AUTHORITY_ERROR })
   return result.data
 }
+
+/** Separate code-page projection over the same authoritative placed read. */
+export async function readPlacedCustomerCodeCheckpoint(claims: CustomerEditorClaims, binding: unknown) {
+  const { value } = await placedAuthorityFetch(binding, CUSTOMER_EDITOR_CHECKPOINT_URL, { expectedControlPlaneEnvironment: 'production', claims, capability: 'workspace:reconnect' }, CUSTOMER_EDITOR_AUTHORITY_ERROR)
+  const result = PageStudioCheckpointSchema.pick({ checkpointId: true, digest: true, objectKey: true, codeContent: true }).nullable().safeParse(value)
+  if (!result.success) throw createError({ statusCode: 503, statusMessage: CUSTOMER_EDITOR_AUTHORITY_ERROR })
+  return result.data?.codeContent ? result.data : null
+}
