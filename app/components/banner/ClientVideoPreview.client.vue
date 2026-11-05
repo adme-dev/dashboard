@@ -30,7 +30,7 @@ const story = computed(() => (active.value?.format.h || 0) > (active.value?.form
 const displayWidth = computed(() => {
   const format = active.value?.format
   if (!format) return 1
-  if (mode.value === 'social') return story.value ? 280 : 380
+  if (mode.value === 'social') return Math.min(story.value ? 280 : 380, Math.max(1, width.value - 32))
   const fit = Math.min(Math.max(1, width.value - 32) / format.w, Math.max(1, height.value - 32) / format.h, 1)
   return format.w * (zoom.value ?? fit)
 })
@@ -99,11 +99,11 @@ function reloadPreview() {
 }
 async function fullScreen() {
   const media = video.value as (HTMLVideoElement & { webkitEnterFullscreen?: () => void }) | null
-  if (!supportsFullscreen.value && media?.webkitEnterFullscreen) {
-    media.webkitEnterFullscreen()
-    return
-  }
   try {
+    if (!supportsFullscreen.value && media?.webkitEnterFullscreen) {
+      media.webkitEnterFullscreen()
+      return
+    }
     await toggleFullscreen()
   } catch {
     error.value = 'Use the full-screen control on the video to expand playback.'
@@ -190,6 +190,7 @@ function mediaError() {
               :aria-label="projectName || 'Banner video preview'"
               @ended="ended"
               @error="mediaError"
+              @playing="() => { error = '' }"
             />
           </template>
         </component>
