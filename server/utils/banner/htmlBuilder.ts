@@ -2,6 +2,7 @@ import { bannerAnimationTiming } from '~~/app/utils/banner-animation-timing'
 import { bannerFontFamily } from '~~/shared/banner/fonts'
 import { buildBannerAudioManifest } from '~~/shared/bannerAudioRender.mjs'
 import { bannerVideoSyncScript } from '~~/shared/bannerVideoClock'
+import { bannerAudioSyncScript } from '~~/shared/bannerAudioClock'
 import { bannerEffectCss, bannerTextDepthShadow, bannerTextMarkup, safeBannerTextTexture } from '~~/shared/bannerEffects'
 import { bannerImageCropCss } from '~~/shared/bannerImageCrop'
 import { bannerWordTokens } from '~~/shared/bannerWordPop'
@@ -329,15 +330,9 @@ export function buildBannerHTML(
     const lines: string[] = []
 
     sortedByTime.forEach((l) => {
-      // Audio layers only need sync script — no visual animation
+      // Native audio owns its playback clock; paused seeks remain deterministic.
       if (l.type === 'audio') {
-        const startTime = l.startTime || 0
-        const endTime = l.endTime || (startTime + 3)
-        if (l.src) {
-          const presenceDur = endTime - startTime
-          const volume = l.muted || l.hidden ? 0 : (l.volume ?? 1)
-          lines.push(`  (function() { var a = document.querySelector('[data-id="${l.id}"]'); if (a) { a.pause(); a.volume = ${volume}; var p = { t: 0 }; tl.to(p, { t: ${presenceDur.toFixed(2)}, duration: ${presenceDur.toFixed(2)}, ease: 'none', onStart: function() { if (!tl.paused()) { a.currentTime = 0; a.play().catch(function() {}); } }, onUpdate: function() { var loaded = isFinite(a.duration) && a.duration > 0; var mt = loaded ? (a.loop ? p.t % a.duration : Math.min(p.t, a.duration)) : p.t; if (tl.paused()) { a.pause(); a.currentTime = mt; } else if (loaded && !a.loop && p.t >= a.duration) { a.pause(); } else { if (Math.abs(a.currentTime - mt) > 0.3) a.currentTime = mt; if (a.paused) a.play().catch(function() {}); } }, onComplete: function() { a.pause(); } }, ${startTime}); } })();`)
-        }
+        if (l.src) lines.push(bannerAudioSyncScript(l))
         return
       }
 
