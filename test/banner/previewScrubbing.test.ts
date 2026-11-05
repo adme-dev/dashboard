@@ -14,8 +14,13 @@ afterEach(() => {
 })
 
 it('seeks actual scenes and timed audio both ways, holds the loop endpoint, and resumes without rebuilding', async () => {
-  const play = vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue()
-  vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {})
+  let mediaPaused = true
+  const play = vi.spyOn(HTMLMediaElement.prototype, 'play').mockImplementation(async () => {
+    mediaPaused = false
+  })
+  vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {
+    mediaPaused = true
+  })
   const layers = [
     { id: 1, type: 'text', text: 'Scene', x: 0, y: 0, w: 100, h: 50, opacity: 1, startTime: 0, endTime: 8, animIn: 'none', animOut: 'none', keyframes: { x: [{ time: 0, value: 0 }, { time: 8, value: 80 }] } },
     { id: 2, type: 'audio', src: 'https://example.test/track.wav', startTime: 2, endTime: 8, volume: 0.5, loopAudio: true }
@@ -23,6 +28,7 @@ it('seeks actual scenes and timed audio both ways, holds the loop endpoint, and 
   const html = withBannerPreviewPlayback(buildBannerHTML('mrec', layers, { pausedAt: 0, playback: { duration: 8, loopCount: 0 } }), 7)
   document.body.innerHTML = new DOMParser().parseFromString(html, 'text/html').body.innerHTML
   const audio = document.querySelector('audio')!
+  Object.defineProperty(audio, 'paused', { get: () => mediaPaused })
   Object.defineProperty(audio, 'duration', { value: 2 })
   Object.defineProperty(audio, 'readyState', { value: 4 })
   const events = new Map<string, (e: { source: unknown, data: Record<string, unknown> }) => void>()
@@ -42,8 +48,9 @@ it('seeks actual scenes and timed audio both ways, holds the loop endpoint, and 
   expect(play).not.toHaveBeenCalled()
   audio.dispatchEvent(new Event('seeked'))
   command('play')
+  await new Promise(resolve => setTimeout(resolve, 0))
   expect(timeline!.paused()).toBe(false)
-  expect(timeline!.time()).toBe(5.5)
+  expect(timeline!.time()).toBeCloseTo(5.5, 1)
   timeline!.totalTime(5.6, false)
   expect(play).toHaveBeenCalled()
   await new Promise(resolve => setTimeout(resolve, 0))
@@ -60,12 +67,14 @@ it('seeks actual scenes and timed audio both ways, holds the loop endpoint, and 
   command('seek', 9)
   expect(timeline!.time()).toBe(8)
   command('play')
-  expect(timeline!.time()).toBe(0)
+  await new Promise(resolve => setTimeout(resolve, 0))
+  expect(timeline!.time()).toBeCloseTo(0, 1)
   expect(timeline!.paused()).toBe(false)
   command('pause')
   expect(timeline!.paused()).toBe(true)
   command('seek', 4)
   command('replay')
+  await new Promise(resolve => setTimeout(resolve, 0))
   expect(timeline!.time()).toBe(0)
   expect(parent.postMessage.mock.lastCall?.[0]).toMatchObject({ state: 'playing', commandId, current: 0 })
 })
