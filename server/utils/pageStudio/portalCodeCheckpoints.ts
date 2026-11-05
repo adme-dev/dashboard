@@ -14,7 +14,7 @@ import { authorizePageStudioSession } from './sessions'
 
 const denied = () => createError({ statusCode: 403, statusMessage: 'Saved template copy editing is unavailable.' })
 const Pointer = z.object({ checkpointId: z.string().min(1).max(128), digest: z.string().regex(/^[a-f0-9]{64}$/),
-  objectKey: z.string().min(1).max(1024), codeContent: CodeContentBindingSchema }).strict()
+  objectKey: z.string().min(1).max(1024), codeContent: CodeContentBindingSchema.optional() }).strict()
 
 /** No catalogue/source grant is consulted after a destination copy is ready.
  * Caller owns the transaction; the site lock precedes all authority row locks. */
@@ -36,11 +36,20 @@ export async function readyPortalTemplateCopy(db: PageStudioQueryClient, claims:
       AND audit.action='workspace.checkpointed' AND audit.idempotency_key='control:checkpoint:'||checkpoint.id
       AND audit.metadata->>'commitProtocol'='cas-v1' AND audit.metadata->>'digest'=checkpoint.digest
       AND audit.metadata->>'authorId'=checkpoint.author_id::text
-      AND jsonb_typeof(audit.metadata->'expectedCheckpointId')='string' AND audit.metadata->>'expectedCheckpointId'<>''
+      AND ((NOT (audit.metadata ? 'codeContent')
+        AND (jsonb_typeof(audit.metadata->'expectedCheckpointId')='null'
+          OR (jsonb_typeof(audit.metadata->'expectedCheckpointId')='string' AND audit.metadata->>'expectedCheckpointId'<>'')))
+        OR (jsonb_typeof(audit.metadata->'codeContent')='object'
+          AND jsonb_typeof(audit.metadata->'expectedCheckpointId')='string' AND audit.metadata->>'expectedCheckpointId'<>''))
     WHERE copy.tenant_id=$1 AND copy.client_id=$2 AND copy.site_id=$3 AND copy.state='ready'
       AND site.status IN ('draft','active') AND site.delivery_mode='static'
     FOR SHARE OF copy,checkpoint,audit`, [claims.tenantId, claims.clientId, claims.siteId])).rows[0]
-  const parsed = Pointer.safeParse(row)
+  // PostgreSQL returns SQL NULL for an absent JSON key. Omit it for the typed
+  // pointer; explicit JSON null codeContent is excluded by the SQL guard above.
+  const normalized = row?.codeContent === null
+    ? { checkpointId: row.checkpointId, digest: row.digest, objectKey: row.objectKey }
+    : row
+  const parsed = Pointer.safeParse(normalized)
   const pointer = parsed.success && parsed.data.objectKey === `tenants/${claims.tenantId}/clients/${claims.clientId}/sites/${claims.siteId}/checkpoints/${parsed.data.checkpointId}.json` ? parsed.data : null
   await authorize()
   return pointer
@@ -49,7 +58,7 @@ export async function readyPortalTemplateCopy(db: PageStudioQueryClient, claims:
 async function requireCopy(db: PageStudioQueryClient, claims: PageStudioSessionClaims) {
   if (claims.role !== 'client') throw denied()
   const pointer = await readyPortalTemplateCopy(db, claims)
-  if (!pointer) throw denied()
+  if (!pointer?.codeContent) throw denied()
   return pointer
 }
 
