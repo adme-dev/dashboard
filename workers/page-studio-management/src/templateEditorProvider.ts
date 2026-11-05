@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { templatePreviewHostname } from '../../../shared/pageStudio/templatePreview'
 import { templateCopyEditorHostname, TemplateEditorScopeSchema } from '../../../shared/pageStudio/templateEditorHost'
 
 // Fixed editor service: a copied site cannot claim a live dealer, Dashboard
@@ -25,7 +26,7 @@ type ProviderOperation = 'configuration' | 'list' | 'attach' | 'verify'
 function reportFailure(operation: ProviderOperation, reason: string, status: number | null = null) {
   // Deliberately exclude URLs, identifiers, credentials, bodies and exception
   // messages. These bounded diagnostics distinguish provider failures safely.
-  console.warn(JSON.stringify({ event: 'page_studio_template_editor_provider_failure', operation, reason, status }))
+  console.warn(JSON.stringify({ event: 'page_studio_template_host_provider_failure', operation, reason, status }))
 }
 
 /** Inspect locally, but emit only this fixed vocabulary. Exception text can
@@ -48,7 +49,7 @@ function transportReason(error: unknown): string {
 /** The private coordinator reserves the deterministic hostname before calling
  * this adapter. Certificate identity is not proof of successful HTTPS delivery;
  * activation still requires the delivery service's scoped snapshot read-back. */
-export function cloudflareTemplateEditorProvider(rawConfig: z.infer<typeof Configuration>, fetcher: typeof fetch = globalThis.fetch.bind(globalThis)) {
+function cloudflareTemplateHostProvider(rawConfig: z.infer<typeof Configuration>, service: string, deriveHostname: (input: unknown) => string | Promise<string>, fetcher: typeof fetch) {
   const parsed = Configuration.safeParse(rawConfig)
   if (!parsed.success) {
     reportFailure('configuration', 'invalid')
@@ -109,7 +110,7 @@ export function cloudflareTemplateEditorProvider(rawConfig: z.infer<typeof Confi
   function verify(raw: unknown, hostname: string, operation: ProviderOperation, expectedId?: string) {
     const parsed = ProviderDomain.safeParse(raw)
     if (!parsed.success || parsed.data.hostname !== hostname || parsed.data.zone_id !== config.zoneId
-      || parsed.data.zone_name !== 'xeroflow.io' || parsed.data.service !== TEMPLATE_EDITOR_SERVICE
+      || parsed.data.zone_name !== 'xeroflow.io' || parsed.data.service !== service
       || (expectedId && parsed.data.id !== expectedId)) {
       reportFailure(operation, 'identity')
       throw conflict()
@@ -118,7 +119,7 @@ export function cloudflareTemplateEditorProvider(rawConfig: z.infer<typeof Confi
   }
   return {
     async attach(rawScope: unknown) {
-      const hostname = await templateCopyEditorHostname(TemplateEditorScopeSchema.parse(rawScope))
+      const hostname = await deriveHostname(rawScope)
       const matches = await request('list', `?${new URLSearchParams({ hostname, zone_id: config.zoneId })}`)
       if (!Array.isArray(matches) || matches.length > 1) {
         reportFailure('list', 'matches')
@@ -126,9 +127,20 @@ export function cloudflareTemplateEditorProvider(rawConfig: z.infer<typeof Confi
       }
       const domain = matches.length
         ? verify(matches[0], hostname, 'list')
-        : verify(await request('attach', '', { hostname, service: TEMPLATE_EDITOR_SERVICE, zone_id: config.zoneId }), hostname, 'attach')
+        : verify(await request('attach', '', { hostname, service, zone_id: config.zoneId }), hostname, 'attach')
       const confirmed = verify(await request('verify', `/${domain.id}`), hostname, 'verify', domain.id)
       return { domainId: confirmed.id, hostname: confirmed.hostname, certificateId: confirmed.cert_id }
     }
   }
+}
+
+/** Public adapter surfaces accept scope or version identity, never an arbitrary
+ * hostname, zone or Worker service supplied by a browser. */
+export function cloudflareTemplateEditorProvider(config: z.infer<typeof Configuration>, fetcher: typeof fetch = globalThis.fetch.bind(globalThis)) {
+  return cloudflareTemplateHostProvider(config, TEMPLATE_EDITOR_SERVICE,
+    input => templateCopyEditorHostname(TemplateEditorScopeSchema.parse(input)), fetcher)
+}
+export function cloudflareTemplatePreviewProvider(config: z.infer<typeof Configuration>, fetcher: typeof fetch = globalThis.fetch.bind(globalThis)) {
+  return cloudflareTemplateHostProvider(config, 'xeroflow-page-studio-client-staging',
+    input => templatePreviewHostname(z.string().uuid().parse(input)), fetcher)
 }
