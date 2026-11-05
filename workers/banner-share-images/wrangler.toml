@@ -1,0 +1,14 @@
+name = "xeroflow-banner-share-images"
+main = "src/index.ts"
+compatibility_date = "2026-03-24"
+workers_dev = false
+preview_urls = false
+
+[browser]
+binding = "BROWSER"
+
+[observability]
+enabled = true
+
+# Internal service binding only. Pages validates the preview capability,
+# applies the render rate limit, and caches the resulting JPEG in private R2.

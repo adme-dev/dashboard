@@ -3,7 +3,7 @@ import { bannerFontFamily } from '~~/shared/banner/fonts'
 import { buildBannerAudioManifest } from '~~/shared/bannerAudioRender.mjs'
 import { bannerImageCropCss } from '~~/shared/bannerImageCrop'
 import { bannerWordTokens } from '~~/shared/bannerWordPop'
-import { bannerVideoMediaTimeScript } from '~~/shared/bannerVideoClock'
+import { bannerVideoSyncScript } from '~~/shared/bannerVideoClock'
 import { bannerEffectCss, bannerTextDepthShadow, bannerTextMarkup, safeBannerTextTexture } from '~~/shared/bannerEffects'
 import { resolveBannerPlayback, bannerPlaybackRepeat } from '~/utils/banner-playback'
 import { layerTransformOrigin, layerFlipTransform } from '~/utils/banner-transform'
@@ -337,10 +337,7 @@ export function buildBannerHTML(
         lines.push(...buildWordPopAnimLines(l))
         // Video sync for keyframe layers
         if ((l.type === 'bg' && l.srcType === 'video') || l.type === 'video') {
-          const startTime = l.startTime || 0
-          const endTime = l.endTime || (startTime + 3)
-          const presenceDur = endTime - startTime
-          lines.push(`  (function() { var vid = document.querySelector('[data-id="${l.id}"] video'); if (vid) { vid.pause(); var p = { t: 0 }; tl.to(p, { t: ${presenceDur.toFixed(2)}, duration: ${presenceDur.toFixed(2)}, ease: 'none', onUpdate: function() { vid.currentTime = ${bannerVideoMediaTimeScript(l)}(p.t); } }, ${startTime}); } })();`)
+          lines.push(bannerVideoSyncScript(l))
         }
         return
       }
@@ -427,8 +424,7 @@ export function buildBannerHTML(
 
       // Video sync
       if ((l.type === 'bg' && l.srcType === 'video') || l.type === 'video') {
-        const presenceDur = endTime - startTime
-        lines.push(`  (function() { var vid = document.querySelector('[data-id="${l.id}"] video'); if (vid) { vid.pause(); var p = { t: 0 }; tl.to(p, { t: ${presenceDur.toFixed(2)}, duration: ${presenceDur.toFixed(2)}, ease: 'none', onUpdate: function() { vid.currentTime = ${bannerVideoMediaTimeScript(l)}(p.t); } }, ${startTime}); } })();`)
+        lines.push(bannerVideoSyncScript(l))
       }
 
       // Motion path tweens (chained) for preset-based layers
