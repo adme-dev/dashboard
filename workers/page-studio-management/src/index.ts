@@ -1,3 +1,4 @@
+import { ensureTemplateCopyEditorHost } from './templateEditorHost'
 import { resolveTemplatePreview } from './templatePreview'
 import { TemplatePreviewPointerSchema } from '../../../shared/pageStudio/templatePreview'
 import { TRANSFER_RECOVERY_SOURCE_FREEZE_URL } from '../../../shared/pageStudio/transferRecoverySourceFreezeTransport'
@@ -165,6 +166,11 @@ export default class PageStudioManagement extends WorkerEntrypoint<Env> {
 
   async checkpointStaging(input: unknown) {
     return handleCheckpointStaging(input, this.env as unknown as Record<string, unknown>, work => withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, db => work(db as unknown as DomainDatabase)))
+  }
+
+  async ensureTemplateCopyEditorHost(input: unknown) {
+    return ensureTemplateCopyEditorHost(input, this.env as unknown as Record<string, unknown>,
+      work => withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, db => work(db as unknown as DomainDatabase)))
   }
 
   async resolveTemplatePreview(hostname: string) {

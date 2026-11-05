@@ -46,3 +46,26 @@ errors remained at the last compile. Full integrated production build and bundle
 guard remain required. No new tests or test runs; existing catalogue schema and
 route-inventory fixtures were updated to the new schema. Nothing in this source
 increment proves hosted readiness, editable-copy acceptance or mobile quality.
+
+## Owned-copy launch follow-up
+
+Native copies now appear under Templates → My template copies and expose an
+explicit Open copy action. Its POST selects only a ready receipt in the current
+native workspace, verifies the exact current code checkpoint around fresh
+owner/plan/login checks and issues the existing short-lived editor handoff for
+that destination. The original setup receipt is never repointed. Production
+child-session authority also recognizes these retained account-owned copies;
+ordinary typed checkpoint transport remains unchanged.
+
+Private management now attaches only an accepted copy's exact derived editor
+hostname to the fixed Sandbox service, checks provider identity, then confirms
+HTTPS method admission. Use and Open copy cannot report editor readiness until
+this succeeds; a pending hostname is safely retryable. It never registers a
+wildcard or accepts a caller-selected hostname/service. Native Use is restricted
+to the same owner role and platform-managed active plan required by subsequent
+editing, so a manager cannot create an unreachable native copy.
+
+GET /api/agency/page-studio/templates/sources supplies the approved source
+selector for the agency registration UI. Management compilation passed for the
+added provider and resolver methods. Full integrated build and manual hosted
+acceptance remain pending; no tests were run or added.

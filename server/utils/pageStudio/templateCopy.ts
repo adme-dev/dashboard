@@ -4,6 +4,7 @@ import { transactionWithoutRetry } from '~~/server/utils/db'
 import { CodeContentBindingSchema, sameCodeContent, verifyCodePageImport } from '~~/shared/pageStudio/codeContent'
 import { loadPageStudioCheckpoint, type PageStudioCheckpointBucket } from '~~/shared/pageStudio/checkpointReader'
 import type { PageStudioQueryClient, PageStudioControlScope } from '~~/shared/pageStudio/controlTypes'
+import { templateCopyEditorHostname } from '~~/shared/pageStudio/templateEditorHost'
 import { PageStudioTemplateUseRequest, PageStudioTemplateUseSchema } from '~~/shared/pageStudio/templateCatalogue'
 import { requireSelectedTemplate, assertTemplateActor, templateDenied, type TemplateActionPrincipal } from './templateActionAuthority'
 import { readTemplateRegistrationSource, verifyTemplateRegistrationSource } from './templateRegistrationSource'
@@ -57,7 +58,7 @@ export async function copyTemplateVersion(versionId:string, raw:unknown, context
       WHERE tenant_id=$1 AND client_id=$2 AND status IN ('trial','active') AND effective_from<=clock_timestamp()
         AND (effective_until IS NULL OR effective_until>clock_timestamp())
         ${actor.kind==='portal'?'AND portal_creation_enabled=TRUE':''}
-        ${actor.kind==='customer'?"AND status='active' AND plan_key<>'customer_preview_v1'":''} FOR UPDATE`,[scope.tenantId,scope.clientId])).rows
+        ${actor.kind==='customer'?"AND status='active' AND plan_key<>'customer_preview_v1' AND plan_metadata->'publishingEnabled'='true'::jsonb AND plan_metadata->'managedBy'='\"platform\"'::jsonb AND plan_metadata->'allowedModules' @> '[\"business-content\"]'::jsonb":''} FOR UPDATE`,[scope.tenantId,scope.clientId])).rows
     if(rows.length!==1) throw templateDenied()
     const entitlement=rows[0]!
     if(verifiedSource.pageCount>entitlement.pages_per_site_limit || verifiedSource.totalBytes>Number(entitlement.storage_bytes_limit)) throw createError({statusCode:409,statusMessage:'The template exceeds this account’s page or storage allowance.'})
@@ -93,8 +94,22 @@ export async function copyTemplateVersion(versionId:string, raw:unknown, context
     return row
   })
   const result=(status:'preparing'|'ready')=>PageStudioTemplateUseSchema.parse({requestId:input.requestId,versionId,siteId:reserved.site_id,status})
-  if(reserved.state==='ready')return result('ready')
   const scope:PageStudioControlScope={tenantId:reserved.tenant_id,clientId:reserved.client_id,siteId:reserved.site_id}
+  const ensureEditor=async()=>{
+    const management=context.env.PAGE_STUDIO_MANAGEMENT as {ensureTemplateCopyEditorHost?:(input:unknown)=>Promise<unknown>}|undefined
+    if(!management?.ensureTemplateCopyEditorHost)throw unavailable()
+    const host=z.object({ready:z.literal(true),hostname:z.string()}).strict().parse(await management.ensureTemplateCopyEditorHost(scope))
+    if(host.hostname!==await templateCopyEditorHostname(scope))throw conflict()
+    await context.reauthorize()
+    await transactionWithoutRetry(async db=>{
+      await selected(db)
+      if(!sameCodeContent(await destination(db),{tenantId:scope.tenantId,clientId:scope.clientId}))throw templateDenied()
+      const entitlement=await capacity(db,scope,false)
+      if(!(await db.query(`SELECT id FROM page_studio_sites WHERE id=$1 AND tenant_id=$2 AND client_id=$3
+        AND entitlement_id=$4 AND status IN ('draft','active') FOR SHARE`,[scope.siteId,scope.tenantId,scope.clientId,entitlement.id])).rows.length)throw templateDenied()
+    })
+  }
+  if(reserved.state==='ready'){await ensureEditor();return result('ready')}
   const createdAt=new Date(reserved.created_at).toISOString()
   await context.reauthorize()
   const prepared=z.object({base:Packet,checkpoint:Packet}).strict().parse(await service.prepareTemplateCopy({
@@ -108,7 +123,7 @@ export async function copyTemplateVersion(versionId:string, raw:unknown, context
   const verified=await verifyCodePageImport({checkpoint:prepared.checkpoint,expectedCheckpointId:prepared.base.checkpointId},bucket)
   if(verified.inventoryDigest!==verifiedSource.inventoryDigest||verified.totalBytes!==verifiedSource.totalBytes)throw conflict()
   await context.reauthorize()
-  return transactionWithoutRetry(async db=>{
+  const accepted=await transactionWithoutRetry(async db=>{
     const authorize=async()=>{
       await selected(db)
       if(!sameCodeContent(await destination(db),{tenantId:scope.tenantId,clientId:scope.clientId}))throw templateDenied()
@@ -128,4 +143,6 @@ export async function copyTemplateVersion(versionId:string, raw:unknown, context
     await authorize()
     return result('ready')
   })
+  await ensureEditor()
+  return accepted
 }

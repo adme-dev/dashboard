@@ -12,7 +12,7 @@ const Configuration = z.object({ enabled: z.literal(true), environment: z.enum([
   .refine(value => value.dashboardOrigin !== value.editorOrigin)
 const Token = z.string().regex(/^[A-Za-z0-9_-]{64}$/)
 const denied = () => createError({ statusCode: 403, statusMessage: 'Customer editor handoff is not available.' })
-interface Dependencies { runTransaction?: RunPageStudioTransaction, assertWorkspace?: (workspaceId: string) => void }
+interface Dependencies { selectedCopySiteId?: string, runTransaction?: RunPageStudioTransaction, assertWorkspace?: (workspaceId: string) => void }
 interface Receipt extends CustomerEditorAuthorityReceipt {
   id: string
   token_hash: string
@@ -45,6 +45,8 @@ async function issueHandoff(sessionToken: unknown, trustedConfiguration: unknown
   const config = parseCustomerEditorHandoffConfiguration(trustedConfiguration)
   if (!Token.safeParse(sessionToken).success) throw denied()
   if (config.environment === 'production' && purpose !== 'editor') throw denied()
+  const selectedCopySiteId = dependencies.selectedCopySiteId ? z.string().uuid().parse(dependencies.selectedCopySiteId) : null
+  if (selectedCopySiteId && (config.environment !== 'production' || purpose !== 'editor')) throw denied()
   const adoption = purpose === 'cms-adoption'
   const token = generatePortalMagicLinkToken()
   const tokenHash = await digestPortalSessionToken(token)
@@ -54,9 +56,14 @@ async function issueHandoff(sessionToken: unknown, trustedConfiguration: unknown
     const user = await readCustomerSession(sessionToken, run)
     const setup = await readCustomerSetup(sessionToken, run)
     if (!setup.workspaceId) throw denied()
-    const site = (await db.query<{ site_id: string, entitlement_id: string }>(`SELECT receipt.site_id,site.entitlement_id
-      FROM page_studio_customer_site_requests receipt JOIN page_studio_sites site ON site.id=receipt.site_id
-      WHERE receipt.workspace_id=$1`, [setup.workspaceId])).rows[0]
+    const site = selectedCopySiteId
+      ? (await db.query<{ site_id: string, entitlement_id: string }>(`SELECT site.id AS site_id,site.entitlement_id
+          FROM page_studio_template_copies copy JOIN page_studio_sites site ON site.id=copy.site_id
+          WHERE copy.site_id=$2 AND copy.account_key='customer:' || $1::text AND copy.actor_kind='customer' AND copy.state='ready'
+            AND site.client_id=copy.client_id AND site.tenant_id=copy.tenant_id FOR SHARE OF copy,site`, [setup.workspaceId, selectedCopySiteId])).rows[0]
+      : (await db.query<{ site_id: string, entitlement_id: string }>(`SELECT receipt.site_id,site.entitlement_id
+          FROM page_studio_customer_site_requests receipt JOIN page_studio_sites site ON site.id=receipt.site_id
+          WHERE receipt.workspace_id=$1`, [setup.workspaceId])).rows[0]
     if (!site) throw denied()
     const authorityReceipt = { environment: config.environment, entitlement_id: config.environment === 'production' ? site.entitlement_id : null,
       site_id: site.site_id, login_session_hash: loginHash, purpose,

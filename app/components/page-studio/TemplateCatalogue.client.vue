@@ -3,6 +3,8 @@ import type { PageStudioTemplateCard, PageStudioTemplateList } from '~~/shared/p
 
 const props = defineProps<{ endpoint: '/api/portal/page-studio/templates' | '/api/portal/page-studio/customer/templates' }>()
 const actions = ref<{ showPreview: (item: PageStudioTemplateCard) => void, showUse: (item: PageStudioTemplateCard) => void } | null>(null)
+const copies = ref<{ refresh: () => Promise<unknown> } | null>(null)
+async function refreshAll() { await Promise.all([refresh(), copies.value?.refresh()]) }
 const cursor = ref<string | undefined>()
 const { data, pending, error, refresh } = await useFetch<PageStudioTemplateList>(() => props.endpoint, {
   query: computed(() => ({ ...(cursor.value ? { cursor: cursor.value } : {}), limit: 20 })),
@@ -91,6 +93,7 @@ const { data, pending, error, refresh } = await useFetch<PageStudioTemplateList>
         />
       </div>
     </template>
-    <PageStudioTemplateActions ref="actions" :endpoint="endpoint" @changed="refresh()" />
+    <PageStudioTemplateCopies v-if="endpoint.includes('/customer/')" ref="copies" />
+    <PageStudioTemplateActions ref="actions" :endpoint="endpoint" @changed="refreshAll()" />
   </section>
 </template>
