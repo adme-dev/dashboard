@@ -7,9 +7,12 @@ const Digest = z.string().regex(/^[a-f0-9]{64}$/)
 export const PageStudioStagingUpdateSchema = z.object({
   digest: Digest, codeContent: CodeContentBindingSchema.optional(), expectedActiveId: z.string().uuid().nullable(), idempotencyKey: z.string().uuid()
 }).strict()
+export const PageStudioStagingVisibilitySchema = z.object({ requestId: z.string().uuid(), expectedActiveId: z.string().uuid() }).strict()
 const ManagementScope = { actor: DomainManagementActorSchema, siteId: SiteId, expectedEnvironment: z.enum(['staging', 'production']) }
 export const PageStudioStagingRequestSchema = z.discriminatedUnion('operation', [
   z.object({ ...ManagementScope, operation: z.literal('read') }).strict(),
+  z.object({ ...ManagementScope, actor: z.object({ kind: z.literal('agency'), actorId: z.string().uuid(), tenantId: z.string().min(1).max(200) }).strict(), operation: z.literal('suspend'), body: PageStudioStagingVisibilitySchema }).strict(),
+  z.object({ ...ManagementScope, actor: z.object({ kind: z.literal('agency'), actorId: z.string().uuid(), tenantId: z.string().min(1).max(200) }).strict(), operation: z.literal('resume'), body: PageStudioStagingVisibilitySchema }).strict(),
   z.object({ ...ManagementScope, operation: z.literal('ensure') }).strict(),
   z.object({ ...ManagementScope, operation: z.literal('update'), body: PageStudioStagingUpdateSchema }).strict()
 ])
@@ -38,6 +41,7 @@ export const PageStudioStagingStateSchema = z.object({
   status: z.enum(['not_published', 'provisioning', 'building', 'ready', 'update_failed', 'failed', 'suspended']),
   canManage: z.boolean(),
   active: PageStudioStagingSnapshotSchema.nullable(),
+  suspendedSnapshot: PageStudioStagingSnapshotSchema.nullable().optional(),
   currentDigest: Digest.nullable(),
   currentCodeContent: CodeContentBindingSchema.optional(),
   // Only fixed, visitor-safe failure categories cross the boundary.
@@ -47,6 +51,7 @@ export const PageStudioStagingStateSchema = z.object({
   if (value.hostname !== address.hostname || value.url !== address.url) {
     ctx.addIssue({ code: 'custom', message: 'Staging address does not match this website' })
   }
+  if (value.suspendedSnapshot && value.status !== 'suspended') ctx.addIssue({ code: 'custom', message: 'Retained snapshot is only available while suspended' })
   const activeAllowed = ['ready', 'building', 'update_failed'].includes(value.status)
   if ((!activeAllowed && value.active) || (['ready', 'update_failed'].includes(value.status) && !value.active)) {
     ctx.addIssue({ code: 'custom', message: 'Staging snapshot does not match deployment state' })

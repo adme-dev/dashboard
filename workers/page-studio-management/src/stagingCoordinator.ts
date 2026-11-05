@@ -1,3 +1,4 @@
+import { coordinateStagingVisibility } from './stagingVisibility'
 import { StagingProviderDomainIdSchema } from './stagingProvider'
 import { z } from 'zod'
 import { CodeContentBindingSchema, sameCodeContent, type CodeContentBinding } from '../../../shared/pageStudio/codeContent'
@@ -39,6 +40,7 @@ export async function coordinateStaging(raw: unknown, dependencies: StagingCoord
     return readStagingState(db, authority.scope, authority.canManage)
   })
   if (request.operation === 'read') return read()
+  if (request.operation === 'suspend' || request.operation === 'resume') return coordinateStagingVisibility(request, dependencies)
   const claimed = await transaction(async (db) => {
     const authority = await authorize(db, true)
     const { scope } = authority
