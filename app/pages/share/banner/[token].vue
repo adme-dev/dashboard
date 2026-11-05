@@ -4,16 +4,36 @@ import type { ExportCustomFont } from '~/utils/banner-html-builder'
 
 definePageMeta({ layout: false, auth: false })
 useHead({ meta: [{ name: 'referrer', content: 'no-referrer' }] })
+if (import.meta.server) {
+  useResponseHeader('Cache-Control').value = 'no-store'
+  useResponseHeader('Referrer-Policy').value = 'no-referrer'
+}
 const route = useRoute()
 const token = String(route.params.token)
-const data = shallowRef<{ project: { name: string, clientName?: string | null, canvasData: Record<string, ArtboardState> | string }, fonts: Array<{ id?: string, name: string, url: string, tags: string[] }> } | null>(null)
-const error = ref('')
-
-try {
-  data.value = await $fetch<typeof data.value>(`/api/public/banner-share/${token}`)
-} catch (cause) {
-  error.value = (cause as { data?: { statusMessage?: string } })?.data?.statusMessage || 'This link has expired, was revoked, or is unavailable.'
-}
+const { data, error: requestError } = await useFetch<{
+  project: { name: string, clientName?: string | null, canvasData: Record<string, ArtboardState> | string, updatedAt?: string }
+  fonts: Array<{ id?: string, name: string, url: string, tags: string[] }>
+}>(`/api/public/banner-share/${token}`)
+const error = computed(() => requestError.value
+  ? requestError.value.data?.statusMessage || 'This link has expired, was revoked, or is unavailable.'
+  : '')
+const origin = useRequestURL().origin
+const image = computed(() => data.value
+  ? `${origin}/api/public/banner-share/${encodeURIComponent(token)}/image?v=${encodeURIComponent(data.value.project.updatedAt || '1')}`
+  : '')
+useSeoMeta({
+  title: () => data.value?.project.name || 'Shared banner unavailable',
+  description: () => data.value ? `View ${data.value.project.name} — artwork preview.` : error.value,
+  ogTitle: () => data.value?.project.name || 'Shared banner unavailable',
+  ogDescription: () => data.value ? 'View the artwork and play its animation.' : error.value,
+  ogImage: image,
+  ogImageAlt: () => data.value?.project.name || '',
+  ogType: 'website',
+  ogUrl: () => `${origin}/share/banner/${encodeURIComponent(token)}`,
+  twitterImage: image,
+  twitterCard: 'summary_large_image',
+  robots: 'noindex, nofollow'
+})
 
 const canvas = computed<Record<string, ArtboardState>>(() => {
   const value = data.value?.project.canvasData

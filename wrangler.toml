@@ -545,3 +545,8 @@ service = "xeroflow-email-design-production"
 binding = "MOTORSTACK_BRAND_ASSETS"
 service = "xeroflow-creative-tools"
 entrypoint = "MotorstackBrandAssets"
+
+# Share artwork capture uses its own browser compatibility date.
+[[env.production.services]]
+binding = "BANNER_SHARE_IMAGES"
+service = "xeroflow-banner-share-images"

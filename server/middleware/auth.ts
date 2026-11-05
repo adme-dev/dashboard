@@ -100,7 +100,7 @@ const publicRoutes = [
 
 // Client preview links validate their token, expiry and revocation in the GET handler.
 // Only this exact read route skips the staff session; link management remains private.
-const BANNER_SHARE_CAPABILITY_PATH = /^\/api\/public\/banner-share\/p_[0-9a-f]{32}$/i
+const BANNER_SHARE_CAPABILITY_PATH = /^\/api\/public\/banner-share\/p_[0-9a-f]{32}(?:\/image)?$/i
 // Private Banner Studio objects are exposed only through one exact signed
 // asset-id path segment; the route verifies the HMAC and live database row.
 const BANNER_ASSET_CAPABILITY_PATH = /^\/api\/public\/banner-assets\/v1\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/
