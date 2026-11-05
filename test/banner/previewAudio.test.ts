@@ -1,96 +1,39 @@
 // @vitest-environment happy-dom
-import { describe, expect, it, vi } from 'vitest'
-import { createBannerPreviewAudioController } from '~/utils/banner-preview-audio'
-import { buildBannerHTML } from '~/utils/banner-html-builder'
-import type { Layer } from '~/types/banner-studio'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { withBannerPreviewAudio } from '~/utils/banner-preview-audio'
 
-function track(startTime = 0, endTime = 15) {
-  let currentTime = 0
-  let paused = true
-  let seeks = 0
-  const media = {
-    volume: 1,
-    muted: false,
-    get currentTime() { return currentTime },
-    set currentTime(value: number) {
-      currentTime = value
-      seeks++
-    },
-    get paused() { return paused },
-    play: vi.fn(() => {
-      paused = false
-      return Promise.resolve()
-    }),
-    pause: vi.fn(() => { paused = true })
-  } as unknown as HTMLAudioElement
-  const layer = { id: 1, type: 'audio', src: '/sound.mp3', startTime, endTime, volume: 0.6 } as Layer
-  return { media, layer, seeks: () => seeks }
-}
+afterEach(() => {
+  document.body.innerHTML = ''
+  vi.restoreAllMocks()
+})
 
-describe('saved preview host audio', () => {
-  it('keeps audio-only timeline length without loading a second decoder in the iframe', () => {
-    const { layer } = track(2, 15)
-    const html = buildBannerHTML('mrec', [layer], { pausedAt: 0, externalAudio: true })
-    expect(html).not.toContain('<audio')
-    expect(html).toContain('tl.to({}, { duration: 15 }, 0)')
-    expect(buildBannerHTML('mrec', [layer], { pausedAt: 0 })).toContain('<audio')
-  })
-
-  it('starts directly from Play and does not interrupt Safari decoding on clock reports', () => {
-    const entry = track()
-    const error = vi.fn()
-    const controller = createBannerPreviewAudioController(() => [entry], error)
-    controller.start(0, 1)
-    expect(entry.media.play).toHaveBeenCalledTimes(1)
-    for (let time = 0.1; time < 3; time += 0.1) controller.sync(time, 1)
-    expect(entry.seeks()).toBe(0)
-    expect(entry.media.play).toHaveBeenCalledTimes(1)
-    expect(error).not.toHaveBeenCalled()
-  })
-
-  it('positions only for an explicit scrub or loop and respects the mute control', () => {
-    const entry = track(1, 5)
-    const controller = createBannerPreviewAudioController(() => [entry], vi.fn())
-    controller.start(0, 1)
-    expect(entry.media.play).not.toHaveBeenCalled()
-    controller.sync(1.1, 1)
-    expect(entry.media.play).toHaveBeenCalledTimes(1)
-    expect(entry.media.volume).toBe(0.6)
-    controller.sync(2.2, 1)
-    expect(entry.seeks()).toBe(1)
-    controller.setMuted(true)
-    expect(entry.media.muted).toBe(true)
-    controller.setMuted(false)
-    expect(entry.media.muted).toBe(false)
-    controller.seek(3.5)
-    expect(entry.media.currentTime).toBe(2.5)
-    controller.start(3.5, 1)
-    controller.sync(0.2, 2)
-    expect(entry.media.paused).toBe(true)
-    expect(entry.media.currentTime).toBe(0)
-  })
-
-  it('reapplies a scrub when Safari ignores currentTime before metadata', () => {
-    const entry = track()
-    Object.defineProperty(entry.media, 'readyState', { value: 0, writable: true })
-    const controller = createBannerPreviewAudioController(() => [entry], vi.fn())
-    controller.seek(4)
-    entry.media.currentTime = 0
-    Object.defineProperty(entry.media, 'readyState', { value: 1 })
-    controller.loaded(entry.media)
-    expect(entry.media.currentTime).toBe(4)
-  })
-
-  it('reports Safari playback denial and retries on the next user tap', async () => {
-    const entry = track()
-    vi.mocked(entry.media.play).mockRejectedValueOnce(new DOMException('Denied', 'NotAllowedError'))
-    const error = vi.fn()
-    const controller = createBannerPreviewAudioController(() => [entry], error)
-    controller.start(0, 1)
-    await Promise.resolve()
-    await Promise.resolve()
-    expect(error).toHaveBeenCalledWith(expect.stringContaining('Safari blocked sound'))
-    controller.start(0, 1)
-    expect(entry.media.play).toHaveBeenCalledTimes(2)
+describe('sandboxed preview sound control', () => {
+  it('accepts mute changes only from its host and reports blocked audio without silencing other tracks', async () => {
+    document.body.innerHTML = '<audio></audio><audio></audio>'
+    const [blocked, healthy] = [...document.querySelectorAll('audio')]
+    const denied = vi.spyOn(blocked!, 'play').mockRejectedValue(new DOMException('Denied', 'NotAllowedError'))
+    const playing = vi.spyOn(healthy!, 'play').mockResolvedValue()
+    const parent = { postMessage: vi.fn() }
+    const receive = vi.fn()
+    const fakeWindow = { parent, addEventListener: receive }
+    const script = new DOMParser().parseFromString(withBannerPreviewAudio('<body></body>'), 'text/html').querySelector('script')!.textContent!
+    new Function('window', 'document', script)(fakeWindow, document)
+    expect(parent.postMessage).toHaveBeenCalledWith({ type: 'banner-preview-audio', status: 'ready' }, '*')
+    expect(blocked!.muted).toBe(true)
+    const listener = receive.mock.calls[0]![1]
+    listener({ source: {}, data: { type: 'banner-preview-sound', muted: false } })
+    expect(blocked!.muted).toBe(true)
+    listener({ source: parent, data: { type: 'banner-preview-sound', muted: false } })
+    expect(blocked!.muted).toBe(false)
+    await blocked!.play()
+    await blocked!.play()
+    await healthy!.play()
+    expect(denied).toHaveBeenCalledTimes(1)
+    expect(playing).toHaveBeenCalledTimes(1)
+    expect(parent.postMessage).toHaveBeenCalledWith({ type: 'banner-preview-audio', status: 'blocked' }, '*')
+    listener({ source: parent, data: { type: 'banner-preview-sound', muted: true } })
+    expect(healthy!.muted).toBe(true)
+    await blocked!.play()
+    expect(denied).toHaveBeenCalledTimes(2)
   })
 })

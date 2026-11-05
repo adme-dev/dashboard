@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const mocks = vi.hoisted(() => ({ access: vi.fn(), one: vi.fn(), body: { projectId: '44444444-4444-4444-8444-444444444444', expiresInDays: 7 } }))
+const mocks = vi.hoisted(() => ({ access: vi.fn(), one: vi.fn(), warm: vi.fn(), body: { projectId: '44444444-4444-4444-8444-444444444444', expiresInDays: 7 } }))
+vi.mock('~~/server/utils/banner/shareVideo', () => ({ warmBannerShareVideos: mocks.warm }))
 vi.mock('~~/server/utils/auth', () => ({ requireWriteAccess: async () => ({ id: 'user' }) }))
 vi.mock('~~/server/utils/banner/shareAccess', () => ({ requireBannerShareAccess: mocks.access }))
 vi.mock('~~/server/utils/db', () => ({ queryOneFresh: mocks.one }))
@@ -14,6 +15,7 @@ const { default: createLink } = await import('../../server/api/agency/banner-stu
 beforeEach(() => {
   mocks.access.mockReset()
   mocks.one.mockReset()
+  mocks.warm.mockReset().mockResolvedValue(undefined)
   mocks.body = { projectId: '44444444-4444-4444-8444-444444444444', expiresInDays: 7 }
 })
 
@@ -32,5 +34,13 @@ describe('client preview link creation', () => {
     expect(sql).toContain('client_id IS NOT DISTINCT FROM $5::uuid')
     expect(params[1]).toMatch(/^p_[0-9a-f]{32}$/)
     expect(params.slice(4)).toEqual(['client', 'owner'])
+    expect(mocks.warm).toHaveBeenCalledWith({}, params[1])
+  })
+  it('returns the created link when rendering is temporarily unavailable', async () => {
+    mocks.access.mockResolvedValueOnce({ client_id: 'client', created_by: 'owner' })
+    mocks.one.mockResolvedValueOnce({ id: 'link' })
+    mocks.warm.mockRejectedValueOnce(new Error('queue unavailable'))
+    expect(await createLink({} as never)).toEqual({ id: 'link' })
+    expect(mocks.one).toHaveBeenCalledTimes(1)
   })
 })

@@ -98,9 +98,9 @@ const publicRoutes = [
   '/api/public/contact'
 ]
 
-// Client preview links validate their token, expiry and revocation in the GET handler.
-// Only this exact read route skips the staff session; link management remains private.
-const BANNER_SHARE_CAPABILITY_PATH = /^\/api\/public\/banner-share\/p_[0-9a-f]{32}(?:\/image)?$/i
+// Client preview handlers validate their token, expiry and revocation on every request.
+// Only exact read paths and the saved-artwork preparation POST skip the staff session.
+const BANNER_SHARE_CAPABILITY_PATH = /^\/api\/public\/banner-share\/p_[0-9a-f]{32}(?:\/(?:image|video|videos))?$/i
 // Private Banner Studio objects are exposed only through one exact signed
 // asset-id path segment; the route verifies the HMAC and live database row.
 const BANNER_ASSET_CAPABILITY_PATH = /^\/api\/public\/banner-assets\/v1\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/
@@ -172,6 +172,7 @@ export default defineEventHandler(async (event) => {
   // Skip auth for public API routes
   if (publicRoutes.some(route => pathname.startsWith(route))
     || ((event.method === 'GET' || event.method === 'HEAD') && BANNER_SHARE_CAPABILITY_PATH.test(pathname))
+    || (event.method === 'POST' && /^\/api\/public\/banner-share\/p_[0-9a-f]{32}\/videos$/i.test(pathname))
     || BANNER_ASSET_CAPABILITY_PATH.test(pathname)
     || VIDEO_ASSET_CAPABILITY_PATH.test(pathname)
     || SOCIAL_MEDIA_CAPABILITY_PATH.test(pathname)) {

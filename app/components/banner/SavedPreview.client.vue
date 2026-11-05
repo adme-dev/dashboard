@@ -5,7 +5,7 @@ import type { ArtboardState } from '~/types/banner-studio'
 import { buildBannerHTML, type ExportCustomFont } from '~/utils/banner-html-builder'
 import { preferredBannerPreviewKey } from '~/utils/banner-library'
 import { resolveBannerFormat } from '~/utils/banner-constants'
-import { createBannerPreviewAudioController } from '~/utils/banner-preview-audio'
+import { withBannerPreviewAudio } from '~/utils/banner-preview-audio'
 import { withBannerPreviewPlayback, readBannerPreviewPlayback, type BannerPreviewPlayback } from '~/utils/banner-preview-playback'
 
 const props = defineProps<{
@@ -41,7 +41,6 @@ async function toggleScreen() {
 const selectedKey = ref('')
 const muted = ref(false)
 const audioError = ref('')
-const audioRoot = ref<HTMLElement | null>(null)
 const playback = ref<BannerPreviewPlayback>({ state: 'loading', current: 0, duration: 0, iteration: 1, repeat: 0 })
 const playing = computed(() => playback.value.state === 'playing')
 const canControl = computed(() => playback.value.duration > 0 && !['loading', 'unavailable'].includes(playback.value.state))
@@ -51,37 +50,31 @@ const playbackTime = computed(() => `${playback.value.current.toFixed(1)} / ${pl
 const playbackLoop = computed(() => playback.value.repeat === -1
   ? `Loop ${playback.value.iteration} · ∞`
   : playback.value.repeat > 0 ? `Loop ${playback.value.iteration} / ${playback.value.repeat + 1}` : '')
-const audioLayers = computed(() => active.value?.board.layers.filter(layer => layer.type === 'audio' && layer.src && !layer.hidden && !layer.muted && (layer.volume ?? 1) > 0) || [])
-const hostAudio = createBannerPreviewAudioController(
-  () => audioLayers.value.flatMap((layer, index) => {
-    const media = audioRoot.value?.querySelectorAll('audio')[index]
-    return media ? [{ layer, media }] : []
-  }),
-  (message) => { audioError.value = message }
-)
+function sendSoundPreference() {
+  root.value?.querySelector('iframe')?.contentWindow?.postMessage({ type: 'banner-preview-sound', muted: muted.value }, '*')
+}
+function receiveAudioStatus(event: MessageEvent) {
+  const frame = root.value?.querySelector('iframe')
+  if (!frame || event.source !== frame.contentWindow || event.data?.type !== 'banner-preview-audio') return
+  if (event.data.status === 'ready') sendSoundPreference()
+  if (event.data.status === 'blocked') audioError.value = 'Sound was blocked by your browser. Allow sound for this site, then replay.'
+  if (event.data.status === 'error') audioError.value = 'An audio track could not load. Try replaying the preview.'
+}
 function receivePlaybackStatus(event: MessageEvent) {
   const frame = root.value?.querySelector('iframe')
   if (!frame || event.source !== frame.contentWindow) return
   const next = readBannerPreviewPlayback(event.data, previewDocument.value.frameId)
-  if (next && (event.data.commandId ?? 0) === commandSequence) {
-    playback.value = next
-    if (next.state === 'playing') hostAudio.sync(next.current, next.iteration)
-    if (next.state !== 'playing') hostAudio.pause()
-  }
+  if (next && (event.data.commandId ?? 0) === commandSequence) playback.value = next
 }
 function toggleSound() {
   muted.value = !muted.value
   audioError.value = ''
-  hostAudio.setMuted(muted.value)
+  sendSoundPreference()
 }
-function audioMetadata(event: Event) {
-  if (event.target instanceof HTMLAudioElement) hostAudio.loaded(event.target)
-}
+onMounted(() => window.addEventListener('message', receiveAudioStatus))
+onBeforeUnmount(() => window.removeEventListener('message', receiveAudioStatus))
 onMounted(() => window.addEventListener('message', receivePlaybackStatus))
-onBeforeUnmount(() => {
-  window.removeEventListener('message', receivePlaybackStatus)
-  hostAudio.pause()
-})
+onBeforeUnmount(() => window.removeEventListener('message', receivePlaybackStatus))
 const mode = ref<'artwork' | 'social'>('artwork')
 const zoom = ref<number | null>(null)
 const layouts = computed(() => Object.entries(props.canvas).flatMap(([key, board]) => {
@@ -117,15 +110,13 @@ const previewDocument = computed(() => {
         pausedAt: 0,
         playback: active.value.board.playback,
         bgColor: active.value.board.bgColor || '#0a0a10',
-        customFonts: props.fonts || [],
-        externalAudio: true
+        customFonts: props.fonts || []
       })
     : ''
-  return { frameId, html: withBannerPreviewPlayback(source, frameId) }
+  return { frameId, html: withBannerPreviewPlayback(withBannerPreviewAudio(source), frameId) }
 })
 const html = computed(() => previewDocument.value.html)
 watch(html, () => {
-  hostAudio.pause()
   commandSequence = 0
   playback.value = { state: 'loading', current: 0, duration: 0, iteration: 1, repeat: 0 }
 }, { flush: 'sync' })
@@ -133,9 +124,7 @@ watch(html, () => {
 function sendPlaybackCommand(action: 'seek' | 'play' | 'pause' | 'replay', time?: number) {
   if (!canControl.value) return
   audioError.value = ''
-  if (action === 'pause') hostAudio.pause()
-  if (action === 'seek') hostAudio.seek(time ?? 0)
-  if (action === 'play' || action === 'replay') hostAudio.start(action === 'replay' || playback.value.state === 'ended' ? 0 : playback.value.current, action === 'replay' ? 1 : playback.value.iteration)
+  sendSoundPreference()
   root.value?.querySelector('iframe')?.contentWindow?.postMessage({
     type: 'banner-preview-control', frameId: previewDocument.value.frameId,
     commandId: ++commandSequence, action, time
@@ -172,17 +161,6 @@ function changeZoom(direction: number) {
     aria-label="Banner preview"
     @keydown.esc="expanded = false"
   >
-    <div ref="audioRoot" class="sr-only" aria-hidden="true">
-      <audio
-        v-for="layer in audioLayers"
-        :key="`${active?.key}:${layer.id}`"
-        :src="layer.src"
-        :loop="!!layer.loopAudio"
-        preload="metadata"
-        @loadedmetadata="audioMetadata"
-        @error="audioError = 'An audio track could not load. Try replaying the preview.'"
-      />
-    </div>
     <div v-if="active" class="flex min-h-0 flex-1 flex-col">
       <div class="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-default bg-default px-4 py-3 sm:px-6">
         <div class="flex max-w-full min-w-0 items-center gap-2 overflow-x-auto" aria-label="Preview size">
