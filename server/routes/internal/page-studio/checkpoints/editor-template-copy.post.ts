@@ -33,7 +33,7 @@ export default eventHandler(async event => {
           AND audit.site_id=checkpoint.site_id AND audit.resource_id=checkpoint.id AND audit.resource_type='checkpoint'
           AND audit.action='workspace.checkpointed' AND audit.idempotency_key='control:checkpoint:'||checkpoint.id
           AND audit.metadata->>'commitProtocol'='cas-v1' AND audit.metadata->>'digest'=checkpoint.digest
-          AND audit.metadata->>'authorId'=checkpoint.author_id
+          AND audit.metadata->>'authorId'=checkpoint.author_id::text
         WHERE copy.tenant_id=$1 AND copy.client_id=$2 AND copy.site_id=$3 AND copy.state='ready'
           AND site.status IN ('draft','active') AND site.delivery_mode='static'
         FOR SHARE OF copy,checkpoint,audit`, [claims.tenantId, claims.clientId, claims.siteId])).rows[0]
