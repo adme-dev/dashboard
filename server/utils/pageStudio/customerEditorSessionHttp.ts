@@ -1,5 +1,6 @@
+import { readCustomerCodeCheckpointHistory } from './customerCodeCheckpointHistory'
 import { commitCustomerCodeCheckpoint, readCustomerCodeCheckpoint } from './customerCodeCheckpoints'
-import { authorizePlacedCustomerEditor, readPlacedCustomerEditorCheckpoint, readPlacedCustomerCodeCheckpoint } from './customerEditorAuthorityClient'
+import { readPlacedCustomerCodeCheckpointHistory, authorizePlacedCustomerEditor, readPlacedCustomerEditorCheckpoint, readPlacedCustomerCodeCheckpoint } from './customerEditorAuthorityClient'
 import { assertMethod, createError, getHeader, readBody, setHeader, setResponseStatus, type H3Event } from 'h3'
 import { customerDestinationGuard, readCustomerActivation } from './customerActivation'
 import { z } from 'zod'
@@ -77,6 +78,14 @@ export async function customerEditorSessionHandler(event: H3Event, operation: st
       else throw createError({ statusCode: 503 })
       assertWorkspace?.(claims.workspaceId)
       return { authorized: true, sessionId: claims.nonce, capability: input.capability }
+    }
+    if (operation === 'code-checkpoint-history') {
+      await body(event, Empty)
+      const history = setting(event, 'PAGE_STUDIO_RELEASE_ENVIRONMENT') === 'production' && claims.environment === 'staging'
+        ? await readPlacedCustomerCodeCheckpointHistory(claims, setting(event, 'PAGE_STUDIO_MANAGEMENT'))
+        : await readCustomerCodeCheckpointHistory(claims)
+      assertWorkspace?.(claims.workspaceId)
+      return history
     }
     if (operation === 'code-checkpoint-latest') {
       await body(event, Empty)
