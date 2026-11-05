@@ -56,8 +56,6 @@ async function recoverCopies() {
     forgetAttempt(); attempt.value = null; pendingTemplate.value = null
   }
   if (!attempt.value) {
-    const completed = requestId && state.items.find(item => item.attempt.requestId === requestId && item.status === 'ready')
-    if (completed) { receipt.value = { requestId: completed.attempt.requestId, versionId: completed.attempt.versionId, siteId: completed.siteId, status: 'ready' }; mode.value = 'use'; message.value = ''; emit('changed'); return }
     const pending = state.items.find(item => item.status === 'preparing')
     if (pending) { attempt.value = Object.freeze(pending.attempt); persistAttempt(pending.attempt); receipt.value = null }
   }
