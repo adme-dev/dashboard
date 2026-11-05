@@ -211,6 +211,7 @@ describe('production Pages text binding budget', () => {
     const declaredTextBindings = Object.keys(config.env.production.vars).length
     expect(declaredTextBindings).toBe(43)
     expect(config.env.production.vars).not.toHaveProperty('APP_NAME')
+    expect(config.env.production.vars).not.toHaveProperty('CRM_SEARCH_RELEASE_ENVIRONMENT')
     const declaredNames = Object.keys(config.env.production.vars)
     const textCount = (secretNames: readonly string[]) => {
       const all = [...declaredNames, ...secretNames, ...generatedTextNames]
@@ -219,7 +220,7 @@ describe('production Pages text binding budget', () => {
       return all.length
     }
     expect(observedSecretNames).toHaveLength(102)
-    // Historic source had 43 vars; compact configuration freed a slot, now used by the design gate.
+    // Historic source had 43 vars; removing the unused CRM search runtime marker restores that budget.
     expect(43 + observedSecretNames.length + generatedTextNames.length).toBe(149)
     expect(textCount(observedSecretNames)).toBe(149)
     // The 28 October names-only observation adds the staff grant, with no other secret changes.
