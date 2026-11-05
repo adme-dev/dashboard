@@ -80,19 +80,12 @@ const customFonts = computed<ExportCustomFont[]>(() => (data.value?.fonts || [])
       title="Preview unavailable"
       :description="error"
     />
-    <ClientOnly v-else>
-      <BannerSavedPreview
-        :canvas="canvas"
-        :fonts="customFonts"
-        :client-name="data?.project.clientName"
-        :project-name="data?.project.name"
-      />
-      <template #fallback>
-        <div class="flex flex-1 items-center justify-center gap-3 text-sm text-muted" role="status">
-          <UIcon name="i-lucide-loader-circle" class="size-5 animate-spin" />
-          Loading artwork…
-        </div>
-      </template>
-    </ClientOnly>
+    <BannerSavedPreview
+      v-else
+      :canvas="canvas"
+      :fonts="customFonts"
+      :client-name="data?.project.clientName"
+      :project-name="data?.project.name"
+    />
   </main>
 </template>

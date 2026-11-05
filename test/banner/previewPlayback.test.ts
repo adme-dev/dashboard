@@ -1,17 +1,11 @@
 // @vitest-environment happy-dom
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { readBannerPreviewPlayback, withBannerPreviewPlayback } from '~/utils/banner-preview-playback'
-
-afterEach(() => {
-  document.body.innerHTML = ''
-})
 
 describe('preview animation clock reporting', () => {
   it('reads the real timeline through loops and completion without replacing animation callbacks', () => {
     const clock = { current: 2.7, duration: 12, iteration: 1, repeat: -1, paused: false, progress: 0.2 }
-    const tl = { time: () => clock.current, duration: () => clock.duration, iteration: () => clock.iteration, repeat: () => clock.repeat, paused: () => clock.paused, pause: () => {
-      clock.paused = true
-    }, totalProgress: () => clock.progress }
+    const tl = { time: () => clock.current, duration: () => clock.duration, iteration: () => clock.iteration, repeat: () => clock.repeat, paused: () => clock.paused, totalProgress: () => clock.progress }
     const postMessage = vi.fn(), schedule = vi.fn(), clear = vi.fn(), events = vi.fn()
     const fakeWindow = { parent: { postMessage }, __engagrTimeline: tl, addEventListener: events }
     const script = new DOMParser().parseFromString(withBannerPreviewPlayback('<body></body>', 7), 'text/html').querySelector('script')!.textContent!

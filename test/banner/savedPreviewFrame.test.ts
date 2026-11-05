@@ -73,7 +73,6 @@ describe('saved banner timeline frames', () => {
     runtimeWindow.__engagrFrame!.seek(5.5)
     expect(audio.currentTime).toBeCloseTo(1.5)
     expect(audio.paused).toBe(true)
-    audio.dispatchEvent(new Event('seeked'))
     runtimeWindow.__engagrFrame!.seek(0)
     expect(audio.currentTime).toBe(0)
   })
