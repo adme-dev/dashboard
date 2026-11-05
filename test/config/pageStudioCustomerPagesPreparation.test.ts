@@ -60,6 +60,8 @@ describe('production Pages bounded native customer activation', () => {
     expect(activation).toEqual({
       previewEnabled: true, cmsSetupEnabled: true, browserEnabled: true, editorEnabled: true,
       productionEditorEnabled: true, productionEditorOrigin: 'https://studio.xeroflow.io',
+      templateTenantId: 'b4a0a130-48da-444b-8fdc-d91db8923318',
+      templateSources: [{ siteId: 'd014e5a4-6b95-4772-b4d6-9369fbf72629', slug: 'kia-australia' }],
       previewApprovals: [
         '64326ad7-7354-42e6-871d-8dea401a7798',
         'a8ca805f-751f-484a-b074-688f8a82fe41'

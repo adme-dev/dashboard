@@ -96,22 +96,23 @@ export function describeTool() { return { description: ${JSON.stringify(value)} 
   })
 
   it('decodes lazily, once per bounded group', async () => {
-    const values = Array.from({ length: 40 }, (_, index) => prose(index).repeat(4))
+    // Keep each value small enough that the 128-string cap is reached before 128 KiB.
+    const values = Array.from({ length: 300 }, (_, index) => prose(index))
     const source = `export function tool(index) { switch (index) { ${values.map((value, index) => `case ${index}: return { description: ${JSON.stringify(value)} };`).join('')} } }`
     const root = await directory()
     const probe = path.join(root, 'probe.mjs')
     await writeFile(probe, `import { brotliDecompressSync as inflate } from 'node:zlib'; export const sizes = []; export function brotliDecompressSync(value) { const result = inflate(value); sizes.push(result.byteLength); return result; }`)
     const result = compactStaticTextDataSource(source)
-    expect(result.literals).toBe(40)
+    expect(result.literals).toBe(300)
     const module = await evaluate(result.code.replace('\'node:zlib\'', JSON.stringify(pathToFileURL(probe).href)))
     const { sizes } = await import(pathToFileURL(probe).href)
     expect(sizes).toEqual([])
     expect(module.tool(0).description).toBe(values[0])
-    expect(module.tool(15).description).toBe(values[15])
+    expect(module.tool(127).description).toBe(values[127])
     expect(sizes).toHaveLength(1)
-    expect(module.tool(16).description).toBe(values[16])
+    expect(module.tool(128).description).toBe(values[128])
     expect(sizes).toHaveLength(2)
-    for (const index of [39, 0, 17, 32, 31]) expect(module.tool(index).description).toBe(values[index])
+    for (const index of [299, 0, 129, 256, 255]) expect(module.tool(index).description).toBe(values[index])
     expect(sizes).toHaveLength(3)
     expect(sizes.every((size: number) => size <= 128 * 1024)).toBe(true)
   })

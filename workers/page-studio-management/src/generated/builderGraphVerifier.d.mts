@@ -449,3 +449,8 @@ export declare function verifyNativeAstroRuntimeFeatureRecovery(
     reference: NativeAstroRuntimeFeatureReference;
   }
 >;
+/** Pure typed-template validation; grants and storage ownership remain native. */
+export declare function verifyTypedTemplateManifest(input: unknown): {
+  manifest: unknown;
+  pageCount: number;
+};

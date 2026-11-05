@@ -441,13 +441,19 @@ describe('God mode gate inventory', () => {
     // The fenced write re-checks the same write authority after rendering (+1).
     expect(inventory.rows).toContain('server/api/email/templates/[id]/editable-copy.post.ts\tconst user = input.save ? await requireWriteAccess(event) : await requireAuth(event)\tapplication_governance_bypass')
     expect(inventory.rows).toContain('server/api/email/templates/[id]/editable-copy.post.ts\tconst fresh = await requireWriteAccess(event)\tapplication_governance_bypass')
-    expect(inventory.rows).toHaveLength(1732)
+    // Since c39b8b7f4: 22 added / 3 replaced lexical rows. Storyboard adds
+    // six route write gates, a callback secret, fresh role/identity checks,
+    // binding-first enablement and render configuration. Page Studio template
+    // actions/copies add four identity predicates and one portal-plan gate.
+    // ProjectEditor owns the moved runtime-config read. Classifiers and seeded
+    // counts stay unchanged; native authority remains independently enforced.
+    expect(inventory.rows).toHaveLength(1751)
     expect(inventory.counts).toEqual({
-      identity_tenant_hard_boundary: 135,
-      provider_infrastructure_availability: 224,
-      application_governance_bypass: 1639,
-      ordinary_user_behavior: 302,
-      unrelated_configuration: 431
+      identity_tenant_hard_boundary: 142,
+      provider_infrastructure_availability: 225,
+      application_governance_bypass: 1648,
+      ordinary_user_behavior: 303,
+      unrelated_configuration: 432
     })
     // Removing the session KV shortcut removes four auth middleware rows:
     // cached identity read, cached role branch, cached auth assignment and cache
@@ -473,10 +479,10 @@ describe('God mode gate inventory', () => {
     const canonicalMcpGate = 'server/utils/ai/marketing/departmentEmailOperations.ts\tif (!enabled(\'FIGFLOW_EDM_DRAFT_SAVES_ENABLED\', process.env.FIGFLOW_EDM_DRAFT_SAVES_ENABLED) || (selection && !enabled(\'FIGFLOW_EDM_LIBRARY_ENABLED\', process.env.FIGFLOW_EDM_LIBRARY_ENABLED))) refuse(\'Canonical email drafts are unavailable for this environment\', \'not_found\')\tapplication_governance_bypass'
     expect(inventory.rows).toContain(canonicalMcpGate)
     const editableCopyGates = new Set(['server/api/email/templates/[id]/editable-copy.post.ts\tconst user = input.save ? await requireWriteAccess(event) : await requireAuth(event)\tapplication_governance_bypass', 'server/api/email/templates/[id]/editable-copy.post.ts\tconst fresh = await requireWriteAccess(event)\tapplication_governance_bypass'])
-    expect(createHash('sha256').update(inventory.rows.filter(row => row !== canonicalMcpGate && !editableCopyGates.has(row)).join('\n')).digest('hex')).toBe('32f9ebab4bc8d326fd8bd41618e27d5150f70164c2f9003fb9ab53c3765aef11')
+    expect(createHash('sha256').update(inventory.rows.filter(row => row !== canonicalMcpGate && !editableCopyGates.has(row)).join('\n')).digest('hex')).toBe('0917a169229d1720bc626db488757217ec54d4b5c2f5bc7845bb17f0a82ab6f7')
     const campaignReadGate = 'server/utils/ai/marketing/departmentEmailOperations.ts\tif (!fresh.permissionGroups?.some(group => [\'ADMIN\', \'MANAGEMENT\'].includes(group))) refuse(\'Agency template access required\', \'forbidden\')\tordinary_user_behavior'
-    expect(createHash('sha256').update(inventory.rows.filter(row => row !== campaignReadGate && row !== canonicalMcpGate && !editableCopyGates.has(row)).join('\n')).digest('hex')).toBe('9f8c344829d51230c1147d080d246f5e054632a19461cea1988602fc7356487f')
-    expect(inventory.digest).toBe('4e415a5f0962da9cd96962a3097690eedcf663f0c8b34e73242655716944c00f')
+    expect(createHash('sha256').update(inventory.rows.filter(row => row !== campaignReadGate && row !== canonicalMcpGate && !editableCopyGates.has(row)).join('\n')).digest('hex')).toBe('dcdcf559bb0ba05bc3bc178c457122a85dcc6dad0e8aad1eab2367f06d244683')
+    expect(inventory.digest).toBe('5b53ef5beb21a354bc8fb6442f28c8af9a72d6773d7d13f7462dd839abd8799d')
     expect(inventory.rows).toContain(
       'app/composables/usePageStudioLauncher.ts\tconst config = useRuntimeConfig()\tunrelated_configuration'
     )

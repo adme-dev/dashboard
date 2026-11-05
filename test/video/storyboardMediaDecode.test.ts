@@ -8,6 +8,16 @@ import { probeMediaBytes } from '../../workers/audio-jobs/container/mediaProbe.m
 let dir: string
 beforeAll(() => {
   dir = mkdtempSync(join(tmpdir(), 'probe-test-'))
+  for (const command of ['ffmpeg', 'ffprobe']) {
+    try {
+      execFileSync(command, ['-version'], { stdio: 'pipe', timeout: 5000 })
+    } catch (cause) {
+      throw new Error(
+        `Real media decode tests require ${command} on PATH. Install the FFmpeg package (Ubuntu: sudo apt-get install ffmpeg; macOS: brew install ffmpeg).`,
+        { cause }
+      )
+    }
+  }
 })
 afterAll(() => rmSync(dir, { recursive: true, force: true }))
 function fixture(name: string, args: string[]) {

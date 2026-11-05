@@ -82,8 +82,12 @@ describe('private management immutable deployment target', () => {
     const { parse } = await import('smol-toml')
     const pages = parse(readFileSync('wrangler.toml', 'utf8')) as unknown as { env: { production: { vars: Record<string, string> } } }
     const current = config()
-    expect(current.vars.PAGE_STUDIO_CUSTOMER_ACTIVATION).toBe(pages.env.production.vars.PAGE_STUDIO_CUSTOMER_ACTIVATION)
     const activation = JSON.parse(current.vars.PAGE_STUDIO_CUSTOMER_ACTIVATION)
+    // Catalogue source selection belongs to Pages; management receives only destination authority.
+    const { templateTenantId, templateSources, ...pagesDestination } = JSON.parse(pages.env.production.vars.PAGE_STUDIO_CUSTOMER_ACTIVATION)
+    expect(templateTenantId).toBe('b4a0a130-48da-444b-8fdc-d91db8923318')
+    expect(templateSources).toEqual([{ siteId: 'd014e5a4-6b95-4772-b4d6-9369fbf72629', slug: 'kia-australia' }])
+    expect(activation).toEqual(pagesDestination)
     for (const value of [undefined, '{}', JSON.stringify({ ...activation, productionEditorEnabled: false }),
       JSON.stringify({ ...activation, productionEditorOrigin: 'https://other.test' }),
       JSON.stringify({ ...activation, previewApprovals: activation.previewApprovals.slice(1) }),
