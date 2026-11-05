@@ -60,13 +60,13 @@ export function validateCandidate(input: unknown, context: PlanningContext): { p
     || storyboardHash(plan.recipe ?? null) !== storyboardHash(context.recipe ?? null)) throw invalid()
   const result = validateStoryboardPlan(plan)
   // Pending copy approval is shown for review; acceptance must resolve it.
-  if (!result.ok && result.findings.some(f => f.code !== 'copy_not_approved')) throw invalid()
+  if (result.ok === false && result.findings.some(f => f.code !== 'copy_not_approved')) throw invalid()
   for (const shot of plan.shots) {
     for (const asset of [shot.visual, ...shot.audioCues.map(c => c.asset), ...shot.overlayCues.map(c => c.asset)]) {
       if (asset.status === 'bound' && !context.inventory.some(allowed => allowed.sourceKind === asset.sourceKind && allowed.assetId === asset.assetId && allowed.contentHash === asset.contentHash)) throw invalid()
     }
   }
-  const findings: ReadinessFinding[] = result.ok ? [] : result.findings
+  const findings: ReadinessFinding[] = result.ok === false ? result.findings : []
   if (!plan.copy.approval && !findings.some(f => f.code === 'copy_not_approved')) findings.push({ code: 'copy_not_approved', severity: 'blocker', message: 'Review and approve copy before assembly.' })
   if (plan.shots.some(shot => shot.visual.status !== 'bound' || shot.audioCues.some(cue => cue.required && cue.asset.status !== 'bound') || shot.overlayCues.some(cue => cue.asset.status !== 'bound'))) {
     findings.push({ code: 'media_unresolved', severity: 'blocker', message: 'Select and review the missing media before assembly.' })

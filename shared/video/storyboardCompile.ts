@@ -50,7 +50,7 @@ export function compileStoryboard(resolved: ResolvedStoryboard): StoryboardCompi
   const findings = [...resolved.findings]
   const block = (code: string, shotId?: string) => findings.push({ code, shotId, severity: 'blocker', message: `Storyboard is not ready: ${code.replaceAll('_', ' ')}.` })
   const valid = validateStoryboardPlan(plan)
-  if (!valid.ok) return { ok: false, findings: [...findings, ...valid.findings] }
+  if (valid.ok === false) return { ok: false, findings: [...findings, ...valid.findings] }
   if (!plan.copy.approval) block('copy_not_approved')
   if (!resolved.formats.length || !resolved.formats.includes(plan.targetFormat) || resolved.formats.some(f => !storyboardFormats[f])) block('invalid_formats')
   const dimensions = storyboardFormats[plan.targetFormat]
@@ -110,8 +110,9 @@ export function compileStoryboard(resolved: ResolvedStoryboard): StoryboardCompi
   for (const shot of plan.shots) {
     media(shot.visual, shot.id, 'visual', offset, shot.durationFrames, 'video')
     const voices = shot.audioCues.filter(c => c.kind === 'voiceover' && c.timing === 'reviewed' && c.asset.status === 'bound')
+    const voice = voices[0]
     const speechText = shot.spokenSegmentIds.map(id => plan.copy.scriptSegments.find(s => s.id === id)!.text).join('\n')
-    if ((shot.spokenSegmentIds.length > 0 || voices.length > 0) && (voices.length !== 1 || resolved.assets[`audio_asset:${voices[0].asset.status === 'bound' ? voices[0].asset.assetId : ''}`]?.speechText !== speechText)) block('voice_timing_unresolved', shot.id)
+    if ((shot.spokenSegmentIds.length > 0 || voices.length > 0) && (voices.length !== 1 || !voice || resolved.assets[`audio_asset:${voice.asset.status === 'bound' ? voice.asset.assetId : ''}`]?.speechText !== speechText)) block('voice_timing_unresolved', shot.id)
     for (const cue of shot.audioCues) {
       if (cue.asset.status === 'omitted') continue
       if (cue.timing !== 'reviewed') block('audio_timing_unresolved', shot.id)

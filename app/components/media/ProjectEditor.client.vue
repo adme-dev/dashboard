@@ -1567,7 +1567,7 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
                   icon="i-lucide-panels-top-left"
                   :label="storyboardOpen ? 'Close storyboard' : 'Storyboard'"
                   :disabled="editor.storyboardApplying.value"
-                  @click="storyboardOpen = !storyboardOpen"
+                  @click="() => { storyboardOpen = !storyboardOpen }"
                 />
                 <VideoStudioStoryboard
                   v-if="storyboardOpen"
@@ -1922,7 +1922,7 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
           color="neutral"
           label="Keep editing"
           :disabled="reloadingSaved"
-          @click="reloadConfirmOpen = false"
+          @click="() => { reloadConfirmOpen = false }"
         />
         <UButton
           variant="soft"

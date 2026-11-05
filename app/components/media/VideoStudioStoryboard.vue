@@ -640,7 +640,7 @@ function confirmApply() {
               </UButton><UButton
                 size="xs"
                 variant="outline"
-                @click="selected = selected === shot.id ? null : shot.id"
+                @click="() => { selected = selected === shot.id ? null : shot.id }"
               >
                 {{ selected === shot.id ? 'Close details' : 'Edit shot' }}
               </UButton><UButton
@@ -784,7 +784,7 @@ function confirmApply() {
             {{ formats.find((f) => f.value === plan?.targetFormat)?.label }}
           </p>
           <div class="flex flex-wrap justify-end gap-2">
-            <UButton variant="outline" :disabled="pending" @click="replaceOpen = false">
+            <UButton variant="outline" :disabled="pending" @click="() => { replaceOpen = false }">
               Keep current cut
             </UButton><UButton :disabled="!applyAllowed" @click="confirmApply">
               Replace full cut

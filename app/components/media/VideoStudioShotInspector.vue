@@ -14,6 +14,7 @@ const props = withDefaults(
   { disabled: false, references: () => [] }
 )
 const emit = defineEmits<{ update: [patch: Partial<StoryboardShot>] }>()
+const referenceRoles: StoryboardShot['referenceRoles'] = ['product', 'presenter', 'location', 'style']
 const sources = computed(() => [
   { label: 'Select existing media', value: '__unresolved__' },
   ...props.references
@@ -227,7 +228,7 @@ function sourceFrame(field: 'sourceInFrames' | 'sourceOutFrames', value: string 
       <USelect
         multiple
         :items="
-          ['product', 'presenter', 'location', 'style'].map((value) => ({ label: value, value }))
+          referenceRoles.map((value) => ({ label: value, value }))
         "
         :model-value="shot.referenceRoles"
         :disabled="disabled"
