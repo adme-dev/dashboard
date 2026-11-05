@@ -10,23 +10,30 @@ export const TemplateActorSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('customer'), identityId: Id, workspaceId: Id, sessionIdentity: Session }).strict()
 ])
 export type TemplateActor = z.infer<typeof TemplateActorSchema>
-export interface TemplateCardRow { id: string, name: string, versionId: string, format: string }
+export interface TemplateCardRow { id: string, name: string, versionId: string, format: string, canPreview?: boolean, canCopy?: boolean }
 export interface TemplateCatalogueDependencies {
   query: (sql: string, params: unknown[]) => Promise<TemplateCardRow[]>
+  copyEnabled?: boolean
   reauthorize: () => Promise<TemplateActor>
 }
 const denied = () => Object.assign(new Error('Template access is unavailable.'), { statusCode: 403 })
 
 /** Grants never imply account authority. Broad published eligibility is reserved
  * in the schema, but deliberately has no active query branch in this slice. */
-export function templateCatalogueQuery(actor: TemplateActor, cursor: string | undefined, limit: number) {
+export function templateCatalogueQuery(actor: TemplateActor, cursor: string | undefined, limit: number, versionId?: string) {
   const params: unknown[] = [cursor ?? null, limit + 1]
   let access: string
+  let canCopy = 'FALSE'
   if (actor.kind === 'agency') {
     params.push(actor.tenantId, actor.userId)
     access = `entry.owner_tenant_id=$3 AND EXISTS (SELECT 1 FROM team_members staff WHERE staff.id=$4 AND staff.is_active=TRUE)`
   } else if (actor.kind === 'portal') {
     params.push(actor.tenantId, actor.clientId, actor.userId, actor.sessionIdentity)
+    canCopy = `EXISTS(SELECT 1 FROM client_users copy_user JOIN page_studio_entitlements copy_plan ON copy_plan.client_id=copy_user.client_id
+      WHERE copy_user.id=$5 AND copy_user.role IN ('admin','manager') AND copy_plan.tenant_id=$3 AND copy_plan.portal_creation_enabled=TRUE
+        AND copy_plan.status IN ('trial','active') AND copy_plan.effective_from<=clock_timestamp()
+        AND (copy_plan.effective_until IS NULL OR copy_plan.effective_until>clock_timestamp())
+        AND copy_plan.active_site_limit>(SELECT COUNT(*) FROM page_studio_sites copy_site WHERE copy_site.tenant_id=$3 AND copy_site.client_id=$4 AND copy_site.status<>'archived'))`
     access = `EXISTS (SELECT 1 FROM page_studio_template_grants grant_record
       WHERE grant_record.template_id=entry.id AND grant_record.audience='portal-client'
         AND grant_record.tenant_id=$3 AND grant_record.client_id=$4
@@ -41,6 +48,16 @@ export function templateCatalogueQuery(actor: TemplateActor, cursor: string | un
         AND entitlement.effective_from<=clock_timestamp() AND (entitlement.effective_until IS NULL OR entitlement.effective_until>clock_timestamp()))`
   } else {
     params.push(actor.workspaceId, actor.identityId, actor.sessionIdentity)
+    canCopy = `EXISTS(SELECT 1 FROM page_studio_business_owners copy_owner
+      JOIN page_studio_workspace_memberships copy_member ON copy_member.workspace_id=copy_owner.workspace_id
+      JOIN page_studio_entitlements copy_plan ON copy_plan.client_id=copy_owner.id AND copy_plan.tenant_id='studio-customer-'||copy_owner.id::text
+      WHERE copy_owner.workspace_id=$3 AND copy_owner.agency_client_id IS NULL AND copy_member.identity_id=$4
+        AND copy_member.role IN ('owner','manager') AND copy_member.revoked_at IS NULL
+        AND (copy_member.expires_at IS NULL OR copy_member.expires_at>clock_timestamp())
+        AND copy_plan.status='active' AND copy_plan.plan_key<>'customer_preview_v1' AND copy_plan.effective_from<=clock_timestamp()
+        AND (copy_plan.effective_until IS NULL OR copy_plan.effective_until>clock_timestamp())
+        AND copy_plan.active_site_limit>(SELECT COUNT(*) FROM page_studio_sites copy_site WHERE copy_site.client_id=copy_owner.id AND copy_site.tenant_id=copy_plan.tenant_id AND copy_site.status<>'archived'))`
+
     access = `EXISTS (SELECT 1 FROM page_studio_template_grants grant_record
       WHERE grant_record.template_id=entry.id AND grant_record.audience='customer-workspace' AND grant_record.workspace_id=$3
         AND grant_record.revoked_at IS NULL AND grant_record.effective_from<=clock_timestamp()
@@ -58,11 +75,15 @@ export function templateCatalogueQuery(actor: TemplateActor, cursor: string | un
         AND session.token_hash=$5 AND session.revoked_at IS NULL AND session.expires_at>clock_timestamp()
         AND NOT EXISTS (SELECT 1 FROM page_studio_workspace_client_bindings legacy WHERE legacy.workspace_id=workspace.id))`
   }
-  return { sql: `SELECT entry.id::text, entry.name, version.id::text AS "versionId", version.format
+  params.push(versionId ?? null)
+  const selected = params.length
+  return { sql: `SELECT entry.id::text, entry.name, version.id::text AS "versionId", version.format,
+      EXISTS(SELECT 1 FROM page_studio_template_previews preview WHERE preview.version_id=version.id) AS "canPreview",
+      (${canCopy}) AS "canCopy"
     FROM page_studio_template_entries entry JOIN page_studio_template_versions version ON version.template_id=entry.id
     JOIN page_studio_template_version_status state ON state.version_id=version.id
     WHERE entry.withdrawn_at IS NULL AND state.withdrawn_at IS NULL AND (${access})
-      AND ($1::uuid IS NULL OR version.id>$1::uuid)
+      AND ($1::uuid IS NULL OR version.id>$1::uuid) AND ($${selected}::uuid IS NULL OR version.id=$${selected}::uuid)
     ORDER BY version.id LIMIT $2`, params }
 }
 export async function listPermittedTemplates(rawActor: TemplateActor, rawQuery: unknown, deps: TemplateCatalogueDependencies): Promise<PageStudioTemplateList> {
@@ -76,8 +97,9 @@ export async function listPermittedTemplates(rawActor: TemplateActor, rawQuery: 
   if (JSON.stringify(current) !== JSON.stringify(actor)) throw denied()
   const rows = await deps.query(request.sql, request.params)
   const items = rows.slice(0, query.limit).map(row => PageStudioTemplateCardSchema.parse({
-    id: row.id, name: row.name, versionId: row.versionId, format: row.format, category: 'automotive', status: 'preparing',
-    thumbnail: null, canPreview: false, canUse: false, unavailableReason: 'Preview and independent editing are being prepared.'
+    id: row.id, name: row.name, versionId: row.versionId, format: row.format, category: 'automotive', status: row.canPreview ? 'ready' : 'preparing',
+    thumbnail: null, canPreview: Boolean(row.canPreview), canUse: Boolean(deps.copyEnabled && row.canPreview && row.canCopy && row.format === 'code-pages'),
+    unavailableReason: !row.canPreview ? 'Preview and independent editing are being prepared.' : !deps.copyEnabled || row.format !== 'code-pages' ? 'Independent editing is being prepared.' : !row.canCopy ? 'An eligible plan, website capacity and account management access are required to use this template.' : null
   }))
   return { items, nextCursor: rows.length > query.limit ? items.at(-1)!.versionId : null }
 }

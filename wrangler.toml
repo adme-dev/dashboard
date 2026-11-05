@@ -221,6 +221,10 @@ service = "agency-workflows"
 binding = "PAGE_STUDIO_MANAGEMENT"
 service = "xeroflow-page-studio-management-production"
 [[env.production.services]]
+binding = "PAGE_STUDIO_TEMPLATE_SERVICE"
+service = "xeroflow-page-studio-sandbox"
+entrypoint = "CodePageTemplateService"
+[[env.production.services]]
 binding = "AGENCY_AUTH_EMAIL"
 service = "xeroflow-agency-auth-email"
 [[env.production.services]]
@@ -345,6 +349,8 @@ PAGE_STUDIO_RELEASE_ENVIRONMENT = "production"
 FIGFLOW_EDM_DRAFT_SAVES_ENABLED = "true"
 PAGE_STUDIO_PROVISIONING_ENVIRONMENT = "production"
 PAGE_STUDIO_CONTENT_ENVIRONMENT = "production"
+# Only explicitly approved template sources; private individual sites stay excluded.
+PAGE_STUDIO_TEMPLATE_SOURCES = '[{"siteId":"d014e5a4-6b95-4772-b4d6-9369fbf72629","slug":"kia-australia"}]'
 PAGE_STUDIO_CONTENT_ATTACHMENT_RUNTIME_DIGEST = "2dd87c86b6d909889e4fa2dc60dbca45b660144d5169d054e8a1fcd8b737ce83"
 PAGE_STUDIO_CONTENT_ATTACHMENT_SCHEMA_DIGEST = "012054889e832d8753033811f9a6306d0b9f90a552c9f0a0af9ec5a6f62d435a"
 

@@ -1,3 +1,5 @@
+import { resolveTemplatePreview } from './templatePreview'
+import { TemplatePreviewPointerSchema } from '../../../shared/pageStudio/templatePreview'
 import { TRANSFER_RECOVERY_SOURCE_FREEZE_URL } from '../../../shared/pageStudio/transferRecoverySourceFreezeTransport'
 import { handleTransferRecoverySourceFreezeFetch } from './transferRecoverySourceFreezeFetch'
 import { TRANSFER_RECOVERY_SOURCE_READY_URL } from '../../../shared/pageStudio/transferRecoverySourceReadyTransport'
@@ -163,6 +165,21 @@ export default class PageStudioManagement extends WorkerEntrypoint<Env> {
 
   async checkpointStaging(input: unknown) {
     return handleCheckpointStaging(input, this.env as unknown as Record<string, unknown>, work => withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, db => work(db as unknown as DomainDatabase)))
+  }
+
+  async resolveTemplatePreview(hostname: string) {
+    if (this.env.PAGE_STUDIO_RELEASE_ENVIRONMENT !== 'production') return null
+    return withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, db => resolveTemplatePreview(db as unknown as DomainDatabase, hostname))
+  }
+
+  async verifyTemplateSnapshot(input: unknown) {
+    if (this.env.PAGE_STUDIO_RELEASE_ENVIRONMENT !== 'production') throw new Error('Template preview is unavailable')
+    const pointer = TemplatePreviewPointerSchema.parse(input)
+    const service = (this.env as unknown as Record<string, unknown>).PAGE_STUDIO_CLIENT_STAGING as { verifySnapshot: (input: unknown) => Promise<unknown> }
+    if (typeof service?.verifySnapshot !== 'function') throw new Error('Template preview is unavailable')
+    return service.verifySnapshot({ scope: pointer.scope, snapshotId: pointer.id, checkpointId: pointer.checkpointId,
+      digest: pointer.digest, ...(pointer.codeContent ? { codeContent: pointer.codeContent } : {}),
+      artifactPrefix: pointer.artifactPrefix, manifestDigest: pointer.manifestDigest })
   }
 
   async resolveClientStaging(hostname: string) {
