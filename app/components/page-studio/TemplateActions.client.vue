@@ -19,7 +19,7 @@ const previewUrl = ref<string | null>(null)
 const width = ref<393 | 1440>(1440)
 const canEmbed = ref(false)
 onMounted(() => {
-  canEmbed.value = window.location.origin === 'https://app.xeroflow.io'
+  canEmbed.value = ['https://app.xeroflow.io', 'https://xeroflowpages.com'].includes(window.location.origin)
 })
 const name = ref('')
 const route = ref('')
