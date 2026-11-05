@@ -24,6 +24,7 @@ it('seeks actual scenes and timed audio both ways, holds the loop endpoint, and 
   document.body.innerHTML = new DOMParser().parseFromString(html, 'text/html').body.innerHTML
   const audio = document.querySelector('audio')!
   Object.defineProperty(audio, 'duration', { value: 2 })
+  Object.defineProperty(audio, 'readyState', { value: 4 })
   const events = new Map<string, (e: { source: unknown, data: Record<string, unknown> }) => void>()
   const parent = { postMessage: vi.fn() }
   const runtime: { parent: typeof parent, addEventListener: (name: string, fn: (e: { source: unknown, data: Record<string, unknown> }) => void) => void, __engagrTimeline?: gsap.core.Timeline } = { parent, addEventListener: (name, fn) => events.set(name, fn) }
