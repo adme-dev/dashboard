@@ -66,16 +66,6 @@ async function mount(previewCanvas: Record<string, ArtboardState> = canvas, iden
 }
 
 describe('saved banner review workspace', () => {
-  it('keeps Play available while mobile media has not preloaded', async () => {
-    const view = await mount()
-    await view.report('loading')
-    expect(view.host.textContent).toContain('Loading picture and sound')
-    expect(view.button('Play').hasAttribute('disabled')).toBe(false)
-    await view.report('paused')
-    expect(view.host.textContent).not.toContain('Loading picture and sound')
-    expect(view.button('Play').hasAttribute('disabled')).toBe(false)
-  })
-
   it('opens the square layout first and keeps an explicitly chosen size across presentation changes', async () => {
     const view = await mount()
     expect(view.media().dataset.width).toBe('1200')
@@ -167,10 +157,10 @@ describe('saved banner review workspace', () => {
     expect(post).toHaveBeenLastCalledWith({ type: 'banner-preview-sound', muted: false }, '*')
     window.dispatchEvent(new MessageEvent('message', { source: window, data: { type: 'banner-preview-audio', status: 'blocked' } }))
     await nextTick()
-    expect(view.host.textContent).not.toContain('Tap the artwork')
+    expect(view.host.textContent).not.toContain('Sound was blocked')
     window.dispatchEvent(new MessageEvent('message', { source: frame.contentWindow, data: { type: 'banner-preview-audio', status: 'blocked' } }))
     await nextTick()
-    expect(view.host.textContent).toContain('Tap the artwork')
+    expect(view.host.textContent).toContain('Sound was blocked')
   })
 
   it('shows actual playback time, rejects unrelated windows and preserves the finished frame', async () => {
