@@ -13,7 +13,7 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-it('seeks actual scenes and timed audio both ways, holds the loop endpoint, and resumes without rebuilding', () => {
+it('seeks actual scenes and timed audio both ways, holds the loop endpoint, and resumes without rebuilding', async () => {
   const play = vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue()
   vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {})
   const layers = [
@@ -39,11 +39,13 @@ it('seeks actual scenes and timed audio both ways, holds the loop endpoint, and 
   expect(audio.currentTime).toBeCloseTo(1.5)
   expect(Number(gsap.getProperty('[data-id="1"]', 'x'))).toBeGreaterThan(0)
   expect(play).not.toHaveBeenCalled()
+  audio.dispatchEvent(new Event('seeked'))
   command('play')
   expect(timeline!.paused()).toBe(false)
   expect(timeline!.time()).toBe(5.5)
   timeline!.totalTime(5.6, false)
   expect(play).toHaveBeenCalled()
+  await new Promise(resolve => setTimeout(resolve, 0))
   command('seek', 0)
   expect(audio.currentTime).toBe(0)
   expect(Number(gsap.getProperty('[data-id="1"]', 'x'))).toBe(0)

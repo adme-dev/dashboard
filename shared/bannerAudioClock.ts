@@ -17,30 +17,58 @@ export function bannerAudioSyncScript(layer: BannerAudioClock): string {
     var a = document.querySelector('[data-id="${layer.id}"]');
     if (!a) return;
     a.pause(); a.volume = ${volume}; a.loop = ${Boolean(layer.loopAudio)};
-    var p = { t: 0 }, previous = 0, pending = false;
+    var p = { t: 0 }, previous = 0, pending = false, seeking = false, target = null, wanted = false;
+    function pump() {
+      if (pending || seeking) return;
+      if (target !== null) {
+        // Setting currentTime before metadata exists may be ignored by Safari.
+        if (!(a.readyState > 0 || (isFinite(a.duration) && a.duration > 0))) return;
+        var next = target;
+        target = null;
+        if (Math.abs(a.currentTime - next) > 0.001) {
+          seeking = true;
+          a.pause();
+          try { a.currentTime = next; } catch (_) { seeking = false; target = next; }
+          return;
+        }
+      }
+      if (wanted && a.paused) {
+        pending = true;
+        var playing;
+        try { playing = a.play(); } catch (_) { pending = false; return; }
+        if (playing) playing.catch(function() {}).finally(function() {
+          pending = false;
+          if (!wanted) a.pause();
+          // A seek requested during play startup waits for that request to settle.
+          if (target !== null) pump();
+        });
+        else pending = false;
+      }
+    }
+    a.addEventListener('seeked', function() { seeking = false; pump(); });
+    a.addEventListener('loadedmetadata', pump);
+    a.addEventListener('error', function() { wanted = false; seeking = false; target = null; a.pause(); });
     function sync() {
       var loaded = isFinite(a.duration) && a.duration > 0;
       var mt = loaded ? (a.loop ? p.t % a.duration : Math.min(p.t, a.duration)) : p.t;
       var wrapped = p.t < previous - 0.001;
       previous = p.t;
       if (tl.paused()) {
+        wanted = false;
         a.pause();
-        if (Math.abs(a.currentTime - mt) > 0.001) a.currentTime = mt;
+        target = mt;
+        pump();
         return;
       }
-      if (loaded && !a.loop && p.t >= a.duration) { a.pause(); return; }
+      if (loaded && !a.loop && p.t >= a.duration) { wanted = false; target = null; a.pause(); return; }
       // Seeking a playing MP3 repeatedly interrupts Safari's decoder. A buffered
       // or pending play request must be allowed to start without chasing GSAP.
-      if (wrapped && Math.abs(a.currentTime - mt) > 0.001) a.currentTime = mt;
+      wanted = true;
+      if (wrapped) target = mt;
       var rate = Math.max(0.0625, Math.min(16, Math.abs(tl.timeScale())));
       if (Math.abs(a.playbackRate - rate) > 0.001) a.playbackRate = rate;
-      if (a.paused && !pending) {
-        pending = true;
-        var playing = a.play();
-        if (playing) playing.catch(function() {}).finally(function() { pending = false; if (tl.paused()) a.pause(); });
-        else pending = false;
-      }
+      pump();
     }
-    tl.to(p, { t: ${duration.toFixed(2)}, duration: ${duration.toFixed(2)}, ease: 'none', onUpdate: sync, onComplete: function() { a.pause(); } }, ${start});
+    tl.to(p, { t: ${duration.toFixed(2)}, duration: ${duration.toFixed(2)}, ease: 'none', onUpdate: sync, onComplete: function() { wanted = false; target = null; a.pause(); } }, ${start});
   })();`
 }
