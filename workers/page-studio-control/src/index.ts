@@ -105,6 +105,7 @@ function forwardedRequest(request: Request, config: GatewayConfiguration): Reque
     '/internal/page-studio/ai-proposals/accept',
     '/internal/page-studio/checkpoints/editor-commit',
     '/internal/page-studio/checkpoints/editor-code-history',
+    '/internal/page-studio/checkpoints/editor-template-copy',
     '/internal/page-studio/sessions/authorize',
     ...['catalog', 'quote', 'generate', 'read', 'jobs', 'library'].map(operation => `/internal/page-studio/images/${operation}`)
   ].includes(incomingUrl.pathname)) {
