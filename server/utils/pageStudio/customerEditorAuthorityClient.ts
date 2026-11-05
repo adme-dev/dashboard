@@ -1,6 +1,7 @@
+import { CodeCheckpointHistorySchema } from './codeCheckpointHistory'
 import { createError } from 'h3'
 import { collectionCanonical } from '~~/shared/pageStudio/collectionApi'
-import { CUSTOMER_EDITOR_AUTHORITY_URL, CUSTOMER_EDITOR_AUTHORITY_ERROR, CUSTOMER_EDITOR_CHECKPOINT_URL } from '~~/shared/pageStudio/customerEditorAuthorityTransport'
+import { CUSTOMER_EDITOR_CODE_HISTORY_URL, CUSTOMER_EDITOR_AUTHORITY_URL, CUSTOMER_EDITOR_AUTHORITY_ERROR, CUSTOMER_EDITOR_CHECKPOINT_URL } from '~~/shared/pageStudio/customerEditorAuthorityTransport'
 import { PageStudioCheckpointSchema } from './controlSchemas'
 import { placedAuthorityFetch } from './placedAuthorityFetch'
 import type { CustomerEditorClaims, CustomerEditorCapability } from './customerEditorToken'
@@ -25,4 +26,9 @@ export async function readPlacedCustomerCodeCheckpoint(claims: CustomerEditorCla
   const result = PageStudioCheckpointSchema.pick({ checkpointId: true, digest: true, objectKey: true, codeContent: true }).nullable().safeParse(value)
   if (!result.success) throw createError({ statusCode: 503, statusMessage: CUSTOMER_EDITOR_AUTHORITY_ERROR })
   return result.data?.codeContent ? result.data : null
+}
+
+export async function readPlacedCustomerCodeCheckpointHistory(claims: CustomerEditorClaims, binding: unknown) {
+  const { value } = await placedAuthorityFetch(binding, CUSTOMER_EDITOR_CODE_HISTORY_URL, { expectedControlPlaneEnvironment: 'production', claims, capability: 'workspace:preview' }, CUSTOMER_EDITOR_AUTHORITY_ERROR)
+  return CodeCheckpointHistorySchema.parse(value)
 }

@@ -1,3 +1,4 @@
+import { readCustomerCodeCheckpointHistory } from '../../../server/utils/pageStudio/customerCodeCheckpointHistory'
 import { readNativeCustomerEditorCheckpoint } from '../../../server/utils/pageStudio/customerEditorCheckpointRead'
 import { createError } from 'h3'
 import { z } from 'zod'
@@ -7,7 +8,7 @@ import { customerDestinationGuard, readCustomerActivation } from '../../../serve
 import { customerPreviewRuntimeEnvironment } from '../../../server/utils/pageStudio/customerPreviewRuntime'
 import { boundedBody } from '../../../shared/pageStudio/boundedPrivateBody'
 import { collectionDigest } from '../../../shared/pageStudio/collectionApi'
-import { CUSTOMER_EDITOR_AUTHORITY_URL, CUSTOMER_EDITOR_AUTHORITY_ERROR, CUSTOMER_EDITOR_CHECKPOINT_URL } from '../../../shared/pageStudio/customerEditorAuthorityTransport'
+import { CUSTOMER_EDITOR_CODE_HISTORY_URL, CUSTOMER_EDITOR_AUTHORITY_URL, CUSTOMER_EDITOR_AUTHORITY_ERROR, CUSTOMER_EDITOR_CHECKPOINT_URL } from '../../../shared/pageStudio/customerEditorAuthorityTransport'
 import type { RunPageStudioTransaction } from '../../../shared/pageStudio/controlTypes'
 
 const Input = z.object({ expectedControlPlaneEnvironment: z.literal('production'), claims: CustomerEditorClaimsSchema, capability: CustomerEditorCapabilitySchema }).strict()
@@ -15,8 +16,9 @@ const Input = z.object({ expectedControlPlaneEnvironment: z.literal('production'
 exact stored session admission remains authoritative. */
 export async function handleCustomerEditorAuthorityFetch(request: Request, env: Record<string, unknown>, run: RunPageStudioTransaction) {
   const headers = { 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' }
+  const history = request.url === CUSTOMER_EDITOR_CODE_HISTORY_URL
   const checkpoint = request.url === CUSTOMER_EDITOR_CHECKPOINT_URL
-  if ((!checkpoint && request.url !== CUSTOMER_EDITOR_AUTHORITY_URL) || request.method !== 'POST') return new Response('Not found', { status: 404, headers })
+  if ((!history && !checkpoint && request.url !== CUSTOMER_EDITOR_AUTHORITY_URL) || request.method !== 'POST') return new Response('Not found', { status: 404, headers })
   let digest = '0'.repeat(64)
   const reply = (body: unknown, status = 200) => Response.json(body, { status, headers: { ...headers, 'x-request-digest': digest } })
   try {
@@ -27,6 +29,7 @@ export async function handleCustomerEditorAuthorityFetch(request: Request, env: 
     if (!parsed.success) return reply(CUSTOMER_EDITOR_AUTHORITY_ERROR, 400)
     const { claims, capability } = parsed.data
     if (checkpoint && (claims.environment !== 'staging' || capability !== 'workspace:reconnect')) return reply(CUSTOMER_EDITOR_AUTHORITY_ERROR, 400)
+    if (history && (claims.environment !== 'staging' || capability !== 'workspace:preview')) return reply(CUSTOMER_EDITOR_AUTHORITY_ERROR, 400)
     const configuration = () => {
       if (env.PAGE_STUDIO_RELEASE_ENVIRONMENT !== 'production') throw createError({ statusCode: 503 })
       const activation = readCustomerActivation(env)
@@ -40,11 +43,15 @@ export async function handleCustomerEditorAuthorityFetch(request: Request, env: 
       if (claims.environment === 'production') customerDestinationGuard(env)?.(claims.workspaceId)
     }
     configuration()
-    const latest = checkpoint ? await readNativeCustomerEditorCheckpoint(claims, run) : await run(async (db) => {
-      await assertCustomerEditorSessionAuthority(claims, capability, db)
-    })
+    const latest = history
+      ? await readCustomerCodeCheckpointHistory(claims, run)
+      : checkpoint
+        ? await readNativeCustomerEditorCheckpoint(claims, run)
+        : await run(async (db) => {
+            await assertCustomerEditorSessionAuthority(claims, capability, db)
+          })
     configuration()
-    return reply(checkpoint ? latest : { authorized: true, sessionId: claims.nonce, capability })
+    return reply(checkpoint || history ? latest : { authorized: true, sessionId: claims.nonce, capability })
   } catch (error) {
     const status = Number((error as { statusCode?: unknown } | null)?.statusCode)
     return reply(CUSTOMER_EDITOR_AUTHORITY_ERROR, [400, 401, 403, 409].includes(status) ? status : 503)
