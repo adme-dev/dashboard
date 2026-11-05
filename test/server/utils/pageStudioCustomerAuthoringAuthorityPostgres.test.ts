@@ -55,6 +55,7 @@ describe.runIf(Boolean(databaseUrl))('native production authoring authority', ()
       CREATE TABLE role_permission_groups(role_id UUID, permission_group TEXT, UNIQUE(role_id,permission_group));`)
     for (const name of ['402_page_studio_control_plane.sql', '442_page_studio_customer_workspaces.sql',
       '443_page_studio_customer_signup.sql', '444_page_studio_customer_site_ownership.sql']) await db.query(migration(name))
+    await db.query('CREATE TABLE page_studio_template_copies(id UUID,site_id UUID,tenant_id TEXT,client_id UUID,account_key TEXT,actor_kind TEXT,state TEXT)')
   })
   beforeEach(async () => {
     await db.query('TRUNCATE agency_clients, team_members, page_studio_customer_identities, page_studio_customer_accounts CASCADE')

@@ -48,6 +48,7 @@ describe.runIf(Boolean(databaseUrl))('current owner destination authoring author
  CREATE TABLE page_studio_business_owners(id UUID,workspace_id UUID,agency_client_id UUID);
  CREATE TABLE page_studio_workspace_client_bindings(workspace_id UUID);
  CREATE TABLE page_studio_customer_site_requests(site_id UUID,workspace_id UUID,business_id UUID,tenant_id TEXT);
+ CREATE TABLE page_studio_template_copies(id UUID,site_id UUID,tenant_id TEXT,client_id UUID,account_key TEXT,actor_kind TEXT,state TEXT);
  CREATE TABLE page_studio_entitlements(id UUID,client_id UUID,tenant_id TEXT,status TEXT,plan_key TEXT,effective_from TIMESTAMPTZ,effective_until TIMESTAMPTZ,active_site_limit INTEGER,pages_per_site_limit INTEGER,plan_metadata JSONB);
  CREATE TABLE page_studio_sites(id UUID,client_id UUID,tenant_id TEXT,entitlement_id UUID,status TEXT);
  CREATE TABLE page_studio_customer_sessions(expires_at TIMESTAMPTZ,revoked_at TIMESTAMPTZ);

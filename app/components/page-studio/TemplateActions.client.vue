@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { z } from 'zod'
+import { openCustomerStudio } from '~/utils/pageStudioCustomerLaunch'
 import { PageStudioTemplatePreviewSchema, PageStudioTemplateUseSchema, type PageStudioTemplateCard } from '~~/shared/pageStudio/templateCatalogue'
 
 const props = defineProps<{ endpoint: '/api/portal/page-studio/templates' | '/api/portal/page-studio/customer/templates' }>()
@@ -93,6 +94,17 @@ async function useTemplate() {
     }
   } catch {
     message.value = 'The copy could not be confirmed. Keep this page open and retry to check the same request; do not start another copy.'
+  } finally { busy.value = false }
+}
+async function openCopy() {
+  if (busy.value || receipt.value?.status !== 'ready' || !props.endpoint.includes('/customer/')) return
+  busy.value = true
+  message.value = ''
+  try {
+    const session = await $fetch<{ token: string, editorOrigin: string, expiresAt: string }>(`/api/portal/page-studio/customer/sites/${receipt.value.siteId}/template-editor`, { method: 'POST', body: {} })
+    openCustomerStudio(session)
+  } catch {
+    message.value = 'Your copy is saved. Its editor could not open yet; retry to check current access and editor readiness.'
   } finally { busy.value = false }
 }
 function close() {
@@ -220,6 +232,7 @@ defineExpose({ showPreview, showUse })
           :disabled="busy"
           @click="showUse(selected)"
         />
+        <UButton v-if="mode === 'use' && receipt?.status === 'ready' && endpoint.includes('/customer/')" label="Open copy" :loading="busy" @click="openCopy" />
         <UButton v-if="mode === 'use' && destination" :label="endpoint.includes('/customer/') ? 'View my websites' : 'Open website workspace'" :to="destination" />
         <UButton
           v-else-if="mode === 'use'"

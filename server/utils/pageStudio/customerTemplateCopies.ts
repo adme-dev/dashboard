@@ -35,7 +35,7 @@ export async function customerTemplateCopiesHandler(event:H3Event){
         AND copy.client_id=site.client_id AND copy.tenant_id=site.tenant_id AND owner.agency_client_id IS NULL
         AND site.status IN ('draft','active') ORDER BY copy.created_at DESC,copy.id LIMIT 50`,[actor.workspaceId])).rows
     if(!sameCodeContent(actor,await customer(db,token)))throw denied()
-    return {items:rows}
+    return {items:rows.map(row=>({...row,canOpen:actor.role==='owner'}))}
   })
 }
 /** Explicit selected-copy handoff, with no setup/site pointer mutation. */
