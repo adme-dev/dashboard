@@ -10,11 +10,27 @@ import { PageStudioTemplateListQuery } from '~~/shared/pageStudio/templateCatalo
 import { listPermittedTemplates, type TemplateActor } from './templateCatalogue'
 
 export function templateActorAuthorizer(event: H3Event, kind: TemplateActor['kind'], permission: 'PAGE_STUDIO_VIEW' | 'PAGE_STUDIO_EDIT' | 'PAGE_STUDIO_PUBLISH' = 'PAGE_STUDIO_VIEW') {
-    const portal = getCookie(event, 'client_session_token')
-    const customer = getCookie(event, '__Host-studio_customer_session') || getCookie(event, 'studio_customer_session')
-    const agency = getCookie(event, 'auth_token') || getCookie(event, 'auth_token_client') || getHeader(event, 'authorization')
-    if ([portal, customer, agency].filter(Boolean).length !== 1
-      || (getCookie(event, '__Host-studio_customer_session') && getCookie(event, 'studio_customer_session'))
+    // Each route names its authority family. Other applications may be signed
+    // in in the same browser, but can never supply this route's principal.
+    const portal = kind === 'portal' ? getCookie(event, 'client_session_token') : undefined
+    const secureCustomer = kind === 'customer' ? getCookie(event, '__Host-studio_customer_session') : undefined
+    const localCustomer = kind === 'customer' ? getCookie(event, 'studio_customer_session') : undefined
+    const customer = secureCustomer || localCustomer
+    const agencyCredentials: string[] = []
+    if (kind === 'agency') {
+      for (const name of ['auth_token', 'auth_token_client']) {
+        const token = getCookie(event, name)
+        if (token) agencyCredentials.push(token)
+      }
+      const authorization = getHeader(event, 'authorization')
+      if (authorization) {
+        if (!authorization.startsWith('Bearer ') || !authorization.slice(7)) throw createError({ statusCode: 403 })
+        agencyCredentials.push(authorization.slice(7))
+      }
+      if (new Set(agencyCredentials).size !== 1) throw createError({ statusCode: 403 })
+    }
+    const agency = agencyCredentials[0]
+    if ((secureCustomer && localCustomer)
       || !(kind === 'portal' ? portal : kind === 'customer' ? customer : agency)) throw createError({ statusCode: 403 })
     async function authorize(): Promise<TemplateActor> {
       // Existing authentication helpers cache per request; discard those cached
