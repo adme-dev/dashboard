@@ -141,7 +141,7 @@ function mediaError() {
           color="neutral"
           :variant="active?.key === layout.key ? 'solid' : 'ghost'"
           :aria-pressed="active?.key === layout.key"
-          @click="selectedKey = layout.key"
+          @click="() => { selectedKey = layout.key }"
         >
           {{ layout.format.w }} × {{ layout.format.h }}
         </UButton>
@@ -151,7 +151,7 @@ function mediaError() {
           color="neutral"
           :variant="mode === 'artwork' ? 'soft' : 'ghost'"
           :aria-pressed="mode === 'artwork'"
-          @click="mode = 'artwork'"
+          @click="() => { mode = 'artwork' }"
         >
           Artwork
         </UButton>
@@ -159,7 +159,7 @@ function mediaError() {
           color="neutral"
           :variant="mode === 'social' ? 'soft' : 'ghost'"
           :aria-pressed="mode === 'social'"
-          @click="mode = 'social'"
+          @click="() => { mode = 'social' }"
         >
           Social placement
         </UButton>
@@ -244,10 +244,10 @@ function mediaError() {
         Replay
       </UButton>
       <template v-if="mode === 'artwork'">
-        <UButton color="neutral" :variant="zoom === null ? 'soft' : 'ghost'" @click="zoom = null">
+        <UButton color="neutral" :variant="zoom === null ? 'soft' : 'ghost'" @click="() => { zoom = null }">
           Fit
         </UButton>
-        <UButton color="neutral" :variant="zoom === 1 ? 'soft' : 'ghost'" @click="zoom = 1">
+        <UButton color="neutral" :variant="zoom === 1 ? 'soft' : 'ghost'" @click="() => { zoom = 1 }">
           100%
         </UButton>
         <UButton
@@ -255,14 +255,14 @@ function mediaError() {
           variant="ghost"
           icon="i-lucide-minus"
           aria-label="Zoom out"
-          @click="zoom = Math.max(0.1, (zoom ?? displayWidth / (active?.format.w || 1)) - 0.1)"
+          @click="() => { zoom = Math.max(0.1, (zoom ?? displayWidth / (active?.format.w || 1)) - 0.1) }"
         />
         <UButton
           color="neutral"
           variant="ghost"
           icon="i-lucide-plus"
           aria-label="Zoom in"
-          @click="zoom = Math.min(3, (zoom ?? displayWidth / (active?.format.w || 1)) + 0.1)"
+          @click="() => { zoom = Math.min(3, (zoom ?? displayWidth / (active?.format.w || 1)) + 0.1) }"
         />
       </template>
       <UButton
