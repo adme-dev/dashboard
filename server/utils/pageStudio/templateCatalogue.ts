@@ -18,12 +18,17 @@ export interface TemplateCatalogueDependencies {
 }
 const denied = () => Object.assign(new Error('Template access is unavailable.'), { statusCode: 403 })
 
-/** Grants never imply account authority. Broad published eligibility is reserved
- * in the schema, but deliberately has no active query branch in this slice. */
+/** Explicit publication grants never replace authenticated account authority. */
 export function templateCatalogueQuery(actor: TemplateActor, cursor: string | undefined, limit: number, versionId?: string) {
   const params: unknown[] = [cursor ?? null, limit + 1]
   let access: string
   let canCopy = 'FALSE'
+  const published = `entry.visibility='published-eligible' AND state.published_eligible=TRUE
+    AND EXISTS(SELECT 1 FROM page_studio_template_previews public_preview WHERE public_preview.version_id=version.id)
+    AND EXISTS(SELECT 1 FROM page_studio_template_grants public_grant
+      WHERE public_grant.template_id=entry.id AND public_grant.audience='published-page-studio'
+        AND public_grant.revoked_at IS NULL AND public_grant.effective_from<=clock_timestamp()
+        AND (public_grant.expires_at IS NULL OR public_grant.expires_at>clock_timestamp()))`
   if (actor.kind === 'agency') {
     params.push(actor.tenantId, actor.userId)
     access = `entry.owner_tenant_id=$3 AND EXISTS (SELECT 1 FROM team_members staff WHERE staff.id=$4 AND staff.is_active=TRUE)`
@@ -34,11 +39,11 @@ export function templateCatalogueQuery(actor: TemplateActor, cursor: string | un
         AND copy_plan.status IN ('trial','active') AND copy_plan.effective_from<=clock_timestamp()
         AND (copy_plan.effective_until IS NULL OR copy_plan.effective_until>clock_timestamp())
         AND copy_plan.active_site_limit>(SELECT COUNT(*) FROM page_studio_sites copy_site WHERE copy_site.tenant_id=$3 AND copy_site.client_id=$4 AND copy_site.status<>'archived'))`
-    access = `EXISTS (SELECT 1 FROM page_studio_template_grants grant_record
+    access = `(EXISTS (SELECT 1 FROM page_studio_template_grants grant_record
       WHERE grant_record.template_id=entry.id AND grant_record.audience='portal-client'
         AND grant_record.tenant_id=$3 AND grant_record.client_id=$4
         AND grant_record.revoked_at IS NULL AND grant_record.effective_from<=clock_timestamp()
-        AND (grant_record.expires_at IS NULL OR grant_record.expires_at>clock_timestamp()))
+        AND (grant_record.expires_at IS NULL OR grant_record.expires_at>clock_timestamp())) OR (${published}))
       AND EXISTS (SELECT 1 FROM client_sessions session JOIN client_users usr ON usr.id=session.client_user_id
         JOIN agency_clients client ON client.id=usr.client_id
         WHERE usr.id=$5 AND usr.client_id=$4 AND usr.status='active' AND client.is_active=TRUE
@@ -60,10 +65,10 @@ export function templateCatalogueQuery(actor: TemplateActor, cursor: string | un
         AND (copy_plan.effective_until IS NULL OR copy_plan.effective_until>clock_timestamp())
         AND copy_plan.active_site_limit>(SELECT COUNT(*) FROM page_studio_sites copy_site WHERE copy_site.client_id=copy_owner.id AND copy_site.tenant_id=copy_plan.tenant_id AND copy_site.status<>'archived'))`
 
-    access = `EXISTS (SELECT 1 FROM page_studio_template_grants grant_record
+    access = `(EXISTS (SELECT 1 FROM page_studio_template_grants grant_record
       WHERE grant_record.template_id=entry.id AND grant_record.audience='customer-workspace' AND grant_record.workspace_id=$3
         AND grant_record.revoked_at IS NULL AND grant_record.effective_from<=clock_timestamp()
-        AND (grant_record.expires_at IS NULL OR grant_record.expires_at>clock_timestamp()))
+        AND (grant_record.expires_at IS NULL OR grant_record.expires_at>clock_timestamp())) OR (${published}))
       AND EXISTS (SELECT 1 FROM page_studio_workspace_memberships membership
         JOIN page_studio_customer_workspaces workspace ON workspace.id=membership.workspace_id
         JOIN page_studio_customer_identities identity ON identity.id=membership.identity_id

@@ -13,6 +13,39 @@ const selected = ref<z.infer<typeof Sources>['items'][number] | null>(null)
 const snapshot = ref<NonNullable<z.infer<typeof PageStudioStagingStateSchema>['active']> | null>(null)
 const versionId = ref<string | null>(null)
 const previewUrl = ref<string | null>(null)
+const Availability = z.object({ versionId: z.string().uuid(), available: z.boolean(), withdrawn: z.boolean(), previewPublished: z.boolean(), replayed: z.boolean() }).strict()
+const availability = ref<z.infer<typeof Availability> | null>(null)
+const availabilityAttempt = ref<{ requestId: string, expectedAvailable: boolean, available: boolean } | null>(null)
+async function loadAvailability() {
+  if (!versionId.value) return
+  const selectedVersion = versionId.value
+  const result = Availability.parse(await $fetch(`/api/agency/page-studio/templates/${selectedVersion}/availability`))
+  if (result.versionId !== selectedVersion) throw new Error('Unexpected availability receipt')
+  if (versionId.value === selectedVersion) availability.value = result
+}
+async function changeAvailability() {
+  if (!allowed.value || busy.value || !versionId.value || !availability.value?.previewPublished) return
+  availabilityAttempt.value ??= { requestId: crypto.randomUUID(), expectedAvailable: availability.value.available, available: !availability.value.available }
+  busy.value = true
+  message.value = ''
+  try {
+    const result = Availability.parse(await $fetch(`/api/agency/page-studio/templates/${versionId.value}/availability`, { method: 'POST', body: availabilityAttempt.value }))
+    if (result.versionId !== versionId.value) throw new Error('Unexpected availability receipt')
+    availability.value = result
+    availabilityAttempt.value = null
+  } catch {
+    message.value = 'Catalogue availability was not confirmed. Retry the same request or reload its status.'
+  } finally { busy.value = false }
+}
+async function refreshAvailability() {
+  if (busy.value) return
+  busy.value = true
+  try {
+    await loadAvailability()
+  } catch {
+    message.value = 'Catalogue availability could not be loaded.'
+  } finally { busy.value = false }
+}
 let sequence = 0
 async function select(source: z.infer<typeof Sources>['items'][number]) {
   if (busy.value) return
@@ -21,6 +54,8 @@ async function select(source: z.infer<typeof Sources>['items'][number]) {
   snapshot.value = null
   versionId.value = null
   previewUrl.value = null
+  availability.value = null
+  availabilityAttempt.value = null
   message.value = ''
   busy.value = true
   try {
@@ -42,6 +77,7 @@ async function register() {
       expectedDigest: snapshot.value.digest, slug: selected.value.slug, name: selected.value.name
     } }))
     versionId.value = result.versionId
+    await loadAvailability()
   } catch {
     message.value = 'Registration was not confirmed. Retry to recover the same saved version.'
   } finally { busy.value = false }
@@ -55,6 +91,7 @@ async function publish() {
     const expected = `https://template-${versionId.value.replaceAll('-', '')}.xeroflow.io/`
     if (result.versionId !== versionId.value || result.url !== expected) throw new Error('Unexpected preview receipt')
     previewUrl.value = result.url
+    await loadAvailability()
   } catch {
     message.value = 'Public preview publication was not confirmed. Retry after the preview service is ready.'
   } finally { busy.value = false }
@@ -113,7 +150,7 @@ async function publish() {
           :loading="busy"
           @click="register"
         />
-        <template v-if="versionId && !previewUrl">
+        <template v-if="versionId && !previewUrl && !availability?.withdrawn">
           <p>Version registered. Its public preview has not been confirmed.</p>
           <UButton
             label="Publish public template preview"
@@ -122,7 +159,30 @@ async function publish() {
             @click="publish"
           />
         </template>
-        <template v-if="previewUrl">
+        <UCard v-if="versionId">
+          <div class="space-y-3">
+            <p>{{ availability?.available ? 'Available to signed-in Page Studio accounts. Creating a copy requires an eligible plan and capacity.' : 'Not available in the shared Page Studio catalogue.' }}</p>
+            <p class="text-sm text-muted">
+              Withdrawing disables new selections and this version’s public preview. Existing independent copies remain available.
+            </p>
+            <UButton
+              v-if="availability?.previewPublished"
+              :label="availabilityAttempt ? 'Retry availability change' : availability.available ? 'Withdraw from Page Studio templates' : 'Make available in Page Studio templates'"
+              :disabled="!allowed || busy"
+              @click="changeAvailability"
+            />
+            <p v-else class="text-sm text-muted">
+              A confirmed public template preview is required first.
+            </p>
+            <UButton
+              label="Refresh catalogue status"
+              variant="ghost"
+              :disabled="busy"
+              @click="refreshAvailability"
+            />
+          </div>
+        </UCard>
+        <template v-if="previewUrl && !availability?.withdrawn">
           <UAlert color="success" title="Public template preview published" />
           <UButton
             :to="previewUrl"
