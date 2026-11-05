@@ -1,10 +1,19 @@
 <script setup lang="ts">
 import type { PageStudioTemplateCard, PageStudioTemplateList } from '~~/shared/pageStudio/templateCatalogue'
 
-const props = defineProps<{ endpoint: '/api/portal/page-studio/templates' | '/api/portal/page-studio/customer/templates' }>()
-const actions = ref<{ showPreview: (item: PageStudioTemplateCard) => void, showUse: (item: PageStudioTemplateCard) => void } | null>(null)
-const copies = ref<{ refresh: () => Promise<unknown> } | null>(null)
-async function refreshAll() { await Promise.all([refresh(), copies.value?.refresh()]) }
+const props = defineProps<{
+  endpoint: '/api/agency/page-studio/templates' | '/api/portal/page-studio/templates' | '/api/portal/page-studio/customer/templates'
+}>()
+const actions = ref<{
+  showPreview: (item: PageStudioTemplateCard) => void
+  showUse: (item: PageStudioTemplateCard) => void
+} | null>(null)
+const copies = ref<{
+  refresh: () => Promise<unknown>
+} | null>(null)
+async function refreshAll() {
+  await Promise.all([refresh(), copies.value?.refresh()])
+}
 const cursor = ref<string | undefined>()
 const { data, pending, error, refresh } = await useFetch<PageStudioTemplateList>(() => props.endpoint, {
   query: computed(() => ({ ...(cursor.value ? { cursor: cursor.value } : {}), limit: 20 })),

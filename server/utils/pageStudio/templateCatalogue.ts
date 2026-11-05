@@ -22,7 +22,7 @@ const denied = () => Object.assign(new Error('Template access is unavailable.'),
 export function templateCatalogueQuery(actor: TemplateActor, cursor: string | undefined, limit: number, versionId?: string) {
   const params: unknown[] = [cursor ?? null, limit + 1]
   let access: string
-  let canCopy = 'FALSE'
+  let canCopy: string
   const published = `entry.visibility='published-eligible' AND state.published_eligible=TRUE
     AND EXISTS(SELECT 1 FROM page_studio_template_previews public_preview WHERE public_preview.version_id=version.id)
     AND EXISTS(SELECT 1 FROM page_studio_template_grants public_grant
@@ -31,6 +31,17 @@ export function templateCatalogueQuery(actor: TemplateActor, cursor: string | un
         AND (public_grant.expires_at IS NULL OR public_grant.expires_at>clock_timestamp()))`
   if (actor.kind === 'agency') {
     params.push(actor.tenantId, actor.userId)
+    canCopy = `EXISTS(SELECT 1 FROM team_members copy_staff
+      JOIN custom_roles copy_role ON ((copy_staff.custom_role_id IS NOT NULL AND copy_role.id=copy_staff.custom_role_id)
+        OR (copy_staff.custom_role_id IS NULL AND copy_role.slug=copy_staff.user_role::text AND copy_role.is_system=TRUE))
+      JOIN role_permission_groups copy_permission ON copy_permission.role_id=copy_role.id AND copy_permission.permission_group='PAGE_STUDIO_EDIT'
+      WHERE copy_staff.id=$4 AND copy_staff.is_active=TRUE AND copy_role.is_read_only=FALSE
+        AND copy_staff.user_role NOT IN ('viewer','guest'))
+      AND EXISTS(SELECT 1 FROM page_studio_entitlements copy_plan JOIN agency_clients copy_client ON copy_client.id=copy_plan.client_id
+        WHERE copy_plan.tenant_id=$3 AND copy_client.is_active=TRUE AND copy_plan.status IN ('trial','active')
+          AND copy_plan.effective_from<=clock_timestamp() AND (copy_plan.effective_until IS NULL OR copy_plan.effective_until>clock_timestamp())
+          AND copy_plan.active_site_limit>(SELECT COUNT(*) FROM page_studio_sites copy_site
+            WHERE copy_site.tenant_id=$3 AND copy_site.client_id=copy_plan.client_id AND copy_site.status<>'archived'))`
     access = `entry.owner_tenant_id=$3 AND EXISTS (SELECT 1 FROM team_members staff WHERE staff.id=$4 AND staff.is_active=TRUE)`
   } else if (actor.kind === 'portal') {
     params.push(actor.tenantId, actor.clientId, actor.userId, actor.sessionIdentity)
