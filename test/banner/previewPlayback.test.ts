@@ -1,8 +1,43 @@
 // @vitest-environment happy-dom
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { readBannerPreviewPlayback, withBannerPreviewPlayback } from '~/utils/banner-preview-playback'
 
+afterEach(() => {
+  document.body.innerHTML = ''
+})
+
 describe('preview animation clock reporting', () => {
+  it('holds initial playback until both video and sound can play, then keeps scrubbing available', () => {
+    document.body.innerHTML = '<audio src="/track.mp3"></audio><video src="/clip.mp4"></video>'
+    const audio = document.querySelector('audio')!, video = document.querySelector('video')!
+    let videoReady = 0, paused = true
+    Object.defineProperty(audio, 'readyState', { value: 4 })
+    Object.defineProperty(video, 'readyState', { get: () => videoReady })
+    const postMessage = vi.fn(), events = vi.fn()
+    const play = vi.fn(() => {
+      paused = false
+    })
+    const parent = { postMessage }
+    const tl = { time: () => 0, duration: () => 15, iteration: () => 1, repeat: () => 0, paused: () => paused, totalProgress: () => 0, play }
+    const fakeWindow = { parent, __engagrTimeline: tl, addEventListener: events }
+    const script = new DOMParser().parseFromString(withBannerPreviewPlayback('<body></body>', 9), 'text/html').querySelector('script')!.textContent!
+    new Function('window', 'setInterval', 'clearInterval', script)(fakeWindow, vi.fn(), vi.fn())
+    expect(postMessage.mock.lastCall?.[0]).toMatchObject({ state: 'loading', duration: 15 })
+    const control = events.mock.calls.find(call => call[0] === 'message')![1]
+    control({ source: parent, data: { type: 'banner-preview-control', frameId: 9, commandId: 1, action: 'play' } })
+    expect(play).not.toHaveBeenCalled()
+    videoReady = 3
+    video.dispatchEvent(new Event('canplay'))
+    expect(postMessage.mock.lastCall?.[0].state).toBe('paused')
+    control({ source: parent, data: { type: 'banner-preview-control', frameId: 9, commandId: 2, action: 'play' } })
+    expect(play).toHaveBeenCalledOnce()
+    videoReady = 1
+    video.dispatchEvent(new Event('canplay'))
+    expect(postMessage.mock.lastCall?.[0].state).toBe('playing')
+    Object.defineProperty(video, 'error', { value: { code: 4 } })
+    video.dispatchEvent(new Event('error'))
+    expect(postMessage.mock.lastCall?.[0].state).toBe('unavailable')
+  })
   it('reads the real timeline through loops and completion without replacing animation callbacks', () => {
     const clock = { current: 2.7, duration: 12, iteration: 1, repeat: -1, paused: false, progress: 0.2 }
     const tl = { time: () => clock.current, duration: () => clock.duration, iteration: () => clock.iteration, repeat: () => clock.repeat, paused: () => clock.paused, totalProgress: () => clock.progress }

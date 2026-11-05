@@ -3,6 +3,14 @@ export function withBannerPreviewPlayback(html: string, frameId: number): string
   return html.replace('</body>', `<script>
 (function() {
   var commandId = 0;
+  var assetsReady = false;
+  var media = Array.from(document.querySelectorAll('audio,video')).filter(function(el) {
+    return el.getAttribute('src') && !(el.tagName === 'AUDIO' && el.volume === 0);
+  });
+  function ready() {
+    if (!assetsReady) assetsReady = media.every(function(el) { return el.readyState >= 3; });
+    return assetsReady;
+  }
   function pauseMedia() {
     document.querySelectorAll('audio,video').forEach(function(media) { media.pause(); });
   }
@@ -23,6 +31,8 @@ export function withBannerPreviewPlayback(html: string, frameId: number): string
       iteration = tl.iteration();
       repeat = tl.repeat();
       state = duration <= 0 ? 'static' : repeat !== -1 && tl.totalProgress() >= 1 ? 'ended' : tl.paused() ? 'paused' : 'playing';
+      if (media.some(function(el) { return !!el.error; })) state = 'unavailable';
+      else if (!ready()) state = 'loading';
     }
     window.parent.postMessage({ type: 'banner-preview-playback', frameId: ${JSON.stringify(frameId)}, commandId: commandId, state: state, duration: duration, current: current, iteration: iteration, repeat: repeat }, '*');
   }
@@ -33,6 +43,7 @@ export function withBannerPreviewPlayback(html: string, frameId: number): string
       || data.frameId !== ${JSON.stringify(frameId)} || !Number.isSafeInteger(data.commandId)
       || data.commandId <= commandId || !tl) return;
     if (['seek', 'play', 'pause', 'replay'].indexOf(data.action) < 0) return;
+    if ((data.action === 'play' || data.action === 'replay') && !ready()) { report(); return; }
     if (data.action === 'seek' && (typeof data.time !== 'number' || !isFinite(data.time) || data.time < 0 || data.time > tl.duration())) return;
     commandId = data.commandId;
     if (data.action === 'seek') seek(tl, data.time);
@@ -44,6 +55,7 @@ export function withBannerPreviewPlayback(html: string, frameId: number): string
     }
     report();
   });
+  media.forEach(function(el) { el.addEventListener('canplay', report); el.addEventListener('error', report); });
   report();
   var timer = setInterval(report, 100);
   window.addEventListener('pagehide', function() { clearInterval(timer); });
@@ -64,7 +76,7 @@ export function readBannerPreviewPlayback(value: unknown, frameId: number): Bann
   if (!value || typeof value !== 'object') return null
   const data = value as Record<string, unknown>
   if (data.type !== 'banner-preview-playback' || data.frameId !== frameId
-    || !['playing', 'paused', 'ended', 'static', 'unavailable'].includes(String(data.state))
+    || !['loading', 'playing', 'paused', 'ended', 'static', 'unavailable'].includes(String(data.state))
     || ![data.current, data.duration, data.iteration, data.repeat].every(n => typeof n === 'number' && Number.isFinite(n))
     || Number(data.duration) < 0 || Number(data.current) < 0 || Number(data.current) > Number(data.duration)
     || !Number.isInteger(data.iteration) || Number(data.iteration) < 1
