@@ -1,0 +1,142 @@
+<script setup lang="ts">
+import { z } from 'zod'
+import { PageStudioStagingStateSchema } from '~~/shared/pageStudio/staging'
+
+const Sources = z.object({ items: z.array(z.object({ siteId: z.string().uuid(), slug: z.string().min(1).max(80), name: z.string().min(1).max(160) }).strict()).max(50) }).strict()
+const Registration = z.object({ templateId: z.string().uuid(), versionId: z.string().uuid(), format: z.literal('code-pages'), replayed: z.boolean() }).strict()
+const { canWrite, hasPermission } = useAuth()
+const allowed = computed(() => canWrite.value && hasPermission('PAGE_STUDIO_PUBLISH'))
+const { data, status, error, refresh } = await useAsyncData('agency-template-sources', async () => Sources.parse(await $fetch('/api/agency/page-studio/templates/sources')))
+const busy = ref(false)
+const message = ref('')
+const selected = ref<z.infer<typeof Sources>['items'][number] | null>(null)
+const snapshot = ref<NonNullable<z.infer<typeof PageStudioStagingStateSchema>['active']> | null>(null)
+const versionId = ref<string | null>(null)
+const previewUrl = ref<string | null>(null)
+let sequence = 0
+async function select(source: z.infer<typeof Sources>['items'][number]) {
+  if (busy.value) return
+  const attempt = ++sequence
+  selected.value = source
+  snapshot.value = null
+  versionId.value = null
+  previewUrl.value = null
+  message.value = ''
+  busy.value = true
+  try {
+    const state = PageStudioStagingStateSchema.parse(await $fetch(`/api/agency/page-studio/sites/${source.siteId}/staging`))
+    if (attempt !== sequence) return
+    if (state.siteId !== source.siteId || !state.active || !state.canManage) throw new Error('Prepare an available website preview before registering this template.')
+    if (!state.active.codeContent) throw new Error('This template uses typed pages. Catalogue registration for that format is not available yet.')
+    snapshot.value = state.active
+  } catch (cause) {
+    if (attempt === sequence) message.value = cause instanceof Error ? cause.message : 'Could not load this template source.'
+  } finally { if (attempt === sequence) busy.value = false }
+}
+async function register() {
+  if (!allowed.value || busy.value || !selected.value || !snapshot.value) return
+  busy.value = true
+  message.value = ''
+  try {
+    const result = Registration.parse(await $fetch('/api/agency/page-studio/templates', { method: 'POST', body: {
+      sourceSiteId: selected.value.siteId, sourceCheckpointId: snapshot.value.checkpointId,
+      expectedDigest: snapshot.value.digest, slug: selected.value.slug, name: selected.value.name
+    } }))
+    versionId.value = result.versionId
+  } catch {
+    message.value = 'Registration was not confirmed. Retry to recover the same saved version.'
+  } finally { busy.value = false }
+}
+async function publish() {
+  if (!allowed.value || busy.value || !versionId.value || !snapshot.value) return
+  busy.value = true
+  message.value = ''
+  try {
+    const result = z.object({ versionId: z.string().uuid(), url: z.string().url() }).strict().parse(await $fetch(`/api/agency/page-studio/templates/${versionId.value}/publish-preview`, { method: 'POST', body: { snapshotId: snapshot.value.id } }))
+    const expected = `https://template-${versionId.value.replaceAll('-', '')}.xeroflow.io/`
+    if (result.versionId !== versionId.value || result.url !== expected) throw new Error('Unexpected preview receipt')
+    previewUrl.value = result.url
+  } catch {
+    message.value = 'Public preview publication was not confirmed. Retry after the preview service is ready.'
+  } finally { busy.value = false }
+}
+</script>
+
+<template>
+  <div class="space-y-5">
+    <UAlert title="Curated automotive templates" description="Only approved template sources appear here. Register the selected saved preview, then publish its permanent public preview. Visitors with the link can see the published template." icon="i-lucide-layout-template" />
+    <UAlert v-if="!allowed" color="warning" title="Publishing permission is required to manage templates." />
+    <p v-if="status === 'pending'" role="status">
+      Loading approved sources…
+    </p>
+    <UAlert v-else-if="error" color="error" title="Approved template sources could not be loaded.">
+      <template #actions>
+        <UButton label="Retry" variant="outline" @click="refresh()" />
+      </template>
+    </UAlert>
+    <p v-else-if="!data?.items.length">
+      No template sources have been approved for this account.
+    </p>
+    <div v-else class="flex flex-wrap gap-2">
+      <UButton
+        v-for="source in data.items"
+        :key="source.siteId"
+        :label="source.name"
+        :variant="selected?.siteId === source.siteId ? 'solid' : 'outline'"
+        :disabled="busy"
+        @click="select(source)"
+      />
+    </div>
+    <UCard v-if="selected">
+      <template #header>
+        <h2 class="font-semibold">
+          {{ selected.name }}
+        </h2>
+      </template>
+      <div class="space-y-4">
+        <p v-if="busy" role="status">
+          Working…
+        </p>
+        <UAlert v-if="message" color="warning" :title="message" />
+        <p v-if="snapshot" class="text-sm text-muted">
+          Selected saved preview: {{ new Date(snapshot.deployedAt).toLocaleString() }}. Later source edits do not change this version.
+        </p>
+        <UButton
+          v-if="!snapshot"
+          label="Reload source preview"
+          :disabled="busy"
+          @click="select(selected)"
+        />
+        <UButton
+          v-if="snapshot && !versionId"
+          label="Register template version"
+          :disabled="!allowed || busy"
+          :loading="busy"
+          @click="register"
+        />
+        <template v-if="versionId && !previewUrl">
+          <p>Version registered. Its public preview has not been confirmed.</p>
+          <UButton
+            label="Publish public template preview"
+            :disabled="!allowed || busy"
+            :loading="busy"
+            @click="publish"
+          />
+        </template>
+        <template v-if="previewUrl">
+          <UAlert color="success" title="Public template preview published" />
+          <UButton
+            :to="previewUrl"
+            target="_blank"
+            rel="noopener noreferrer"
+            label="Open shareable preview"
+            icon="i-lucide-external-link"
+          />
+          <p class="break-all text-sm">
+            {{ previewUrl }}
+          </p>
+        </template>
+      </div>
+    </UCard>
+  </div>
+</template>
