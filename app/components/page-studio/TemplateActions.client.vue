@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { z } from 'zod'
+import { StoredTemplateCopyAttemptSchema, TemplateCopyRecoverySchema, type TemplateCopyAttempt } from '~~/shared/pageStudio/templateCopyRecovery'
 import { openCustomerStudio } from '~/utils/pageStudioCustomerLaunch'
 import { PageStudioTemplatePreviewSchema, PageStudioTemplateUseSchema, type PageStudioTemplateCard } from '~~/shared/pageStudio/templateCatalogue'
 
@@ -18,7 +19,52 @@ onMounted(() => {
 const name = ref('')
 const route = ref('')
 const pendingTemplate = ref<PageStudioTemplateCard | null>(null)
-const attempt = ref<{ versionId: string, requestId: string, name: string, route: string } | null>(null)
+const attempt = ref<TemplateCopyAttempt | null>(null)
+const recoveryScope = ref<string | null>(null)
+const recoveryReady = ref(false)
+const storageKey = (scope: string) => `xf-template-copy-v1:${scope}`
+let recoveryGeneration = 0
+function forgetAttempt() { if (recoveryScope.value) localStorage.removeItem(storageKey(recoveryScope.value)) }
+function persistAttempt(pending: TemplateCopyAttempt) {
+  if (!recoveryScope.value) throw new Error('Copy account is not verified')
+  const value = StoredTemplateCopyAttemptSchema.parse({ recoveryScope: recoveryScope.value, attempt: pending })
+  const encoded = JSON.stringify(value)
+  localStorage.setItem(storageKey(value.recoveryScope), encoded)
+  if (localStorage.getItem(storageKey(value.recoveryScope)) !== encoded) throw new Error('Copy recovery could not be stored')
+}
+async function recoverCopies() {
+  const current = ++recoveryGeneration
+  recoveryReady.value = false
+  const state = TemplateCopyRecoverySchema.parse(await $fetch(`${props.endpoint}/copies`))
+  if (current !== recoveryGeneration) throw new Error('Copy account changed')
+  if (recoveryScope.value !== state.recoveryScope) {
+    attempt.value = null; pendingTemplate.value = null; receipt.value = null; selected.value = null
+  }
+  recoveryScope.value = state.recoveryScope
+  const raw = localStorage.getItem(storageKey(state.recoveryScope))
+  if (raw) {
+    if (raw.length > 4096) throw new Error('Copy recovery is invalid')
+    const saved = StoredTemplateCopyAttemptSchema.parse(JSON.parse(raw))
+    if (saved.recoveryScope !== state.recoveryScope) throw new Error('Copy account changed')
+    attempt.value = Object.freeze(saved.attempt)
+  }
+  const known = attempt.value && state.items.find(item => item.attempt.requestId === attempt.value?.requestId)
+  if (known && JSON.stringify(known.attempt) !== JSON.stringify(attempt.value)) throw new Error('The saved copy request changed')
+  const completed = attempt.value && state.items.find(item => item.attempt.requestId === attempt.value?.requestId && item.status === 'ready')
+  if (completed) {
+    receipt.value = { requestId: completed.attempt.requestId, versionId: completed.attempt.versionId, siteId: completed.siteId, status: 'ready' }
+    forgetAttempt(); attempt.value = null; pendingTemplate.value = null
+  }
+  if (!attempt.value) {
+    const completed = requestId && state.items.find(item => item.attempt.requestId === requestId && item.status === 'ready')
+    if (completed) { receipt.value = { requestId: completed.attempt.requestId, versionId: completed.attempt.versionId, siteId: completed.siteId, status: 'ready' }; mode.value = 'use'; message.value = ''; emit('changed'); return }
+    const pending = state.items.find(item => item.status === 'preparing')
+    if (pending) { attempt.value = Object.freeze(pending.attempt); persistAttempt(pending.attempt); receipt.value = null }
+  }
+  recoveryReady.value = true
+  return state
+}
+onMounted(() => { void recoverCopies().catch(() => { message.value = 'Copy recovery could not be checked. Refresh before starting or resuming a copy.' }) })
 const receipt = ref<z.infer<typeof PageStudioTemplateUseSchema> | null>(null)
 const open = computed({
   get: () => mode.value !== null,
@@ -30,11 +76,14 @@ const destination = computed(() => receipt.value?.status === 'ready'
   ? props.endpoint.includes('/customer/') ? '/studio/dashboard' : `/studio/sites/${receipt.value.siteId}`
   : null)
 let generation = 0
-function showUse(item: PageStudioTemplateCard) {
+async function showUse(item: PageStudioTemplateCard) {
   if (!item.canUse || busy.value) return
+  busy.value = true
+  try { await recoverCopies() } catch { message.value = 'Copy recovery could not be checked. Refresh before starting another copy.'; mode.value = 'use'; return } finally { busy.value = false }
   // An uncertain request must be reconciled before selecting another version.
   if (attempt.value && attempt.value.versionId !== item.versionId) {
     selected.value = pendingTemplate.value
+    name.value = attempt.value.name; route.value = attempt.value.route
     message.value = 'Check the previous copy request before choosing another template.'
     mode.value = 'use'
     return
@@ -67,33 +116,41 @@ async function showPreview(item: PageStudioTemplateCard) {
   }
 }
 async function useTemplate() {
-  if (busy.value || !selected.value?.canUse) return
+  if (busy.value || (!selected.value?.canUse && !attempt.value)) return
   const template = selected.value
+  const originalRequest = attempt.value?.requestId
+  const originalScope = recoveryScope.value
+  busy.value = true
+  try { await recoverCopies(); if (!originalScope || recoveryScope.value !== originalScope) throw new Error('Copy account changed') } catch { message.value = 'The copy account changed or recovery is unavailable. Reload before continuing.'; return } finally { busy.value = false }
+  if (!recoveryReady.value) return
+  if (originalRequest && receipt.value?.requestId === originalRequest && receipt.value.status === 'ready') { emit('changed'); return }
   const cleanName = name.value.trim()
   const cleanRoute = route.value.trim().toLowerCase()
   if (!attempt.value && (!cleanName || cleanName.length > 160 || !/^[a-z0-9][a-z0-9-]{0,62}$/.test(cleanRoute))) {
     message.value = 'Enter a website name and a route using letters, numbers and hyphens.'
     return
   }
-  attempt.value ??= { versionId: template.versionId, requestId: crypto.randomUUID(), name: cleanName, route: cleanRoute }
+  if (!attempt.value && !template?.canUse) return
+  const pending = attempt.value ?? Object.freeze({ versionId: template!.versionId, requestId: crypto.randomUUID(), name: cleanName, route: cleanRoute })
+  try { persistAttempt(pending) } catch { message.value = 'Browser recovery storage is unavailable. No copy request was sent. Enable storage and retry.'; return }
+  attempt.value = pending
   pendingTemplate.value ??= template
-  const pending = attempt.value
-  if (pending.versionId !== template.versionId) return
   busy.value = true
   message.value = ''
   try {
     const result = PageStudioTemplateUseSchema.parse(await $fetch(`${props.endpoint}/${encodeURIComponent(pending.versionId)}/use`, {
-      method: 'POST', body: { requestId: pending.requestId, name: pending.name, route: pending.route }
+      method: 'POST', headers: { 'x-page-studio-copy-scope': recoveryScope.value! }, body: { requestId: pending.requestId, name: pending.name, route: pending.route }
     }))
     if (result.requestId !== pending.requestId || result.versionId !== pending.versionId) throw new Error('Copy identity changed')
     receipt.value = result
     if (result.status === 'ready') {
+      forgetAttempt()
       attempt.value = null
       pendingTemplate.value = null
       emit('changed')
     }
   } catch {
-    message.value = 'The copy could not be confirmed. Keep this page open and retry to check the same request; do not start another copy.'
+    message.value = 'The copy could not be confirmed. Its original request is saved for recovery. Resume the same request after refreshing; do not start another copy.'
   } finally { busy.value = false }
 }
 async function openCopy() {
@@ -118,10 +175,26 @@ onBeforeRouteUpdate(confirmLeaving)
 onBeforeUnmount(() => {
   generation++
 })
-defineExpose({ showPreview, showUse })
+async function resumeCopy(requestId?: string) {
+  if (busy.value) return
+  busy.value = true
+  try {
+    const state = await recoverCopies()
+    const completed = requestId && state.items.find(item => item.attempt.requestId === requestId && item.status === 'ready')
+    if (completed) { receipt.value = { requestId: completed.attempt.requestId, versionId: completed.attempt.versionId, siteId: completed.siteId, status: 'ready' }; mode.value = 'use'; message.value = ''; emit('changed'); return }
+    const pending = state.items.find(item => item.status === 'preparing' && (!requestId || item.attempt.requestId === requestId))
+    if (pending && (!attempt.value || attempt.value.requestId === pending.attempt.requestId)) { attempt.value = Object.freeze(pending.attempt); persistAttempt(pending.attempt); receipt.value = null }
+    if (!attempt.value) { message.value = receipt.value?.status === 'ready' ? '' : 'No unfinished copy was found for this account.'; mode.value = 'use'; return }
+    name.value = attempt.value.name; route.value = attempt.value.route; selected.value = null; mode.value = 'use'; message.value = 'Resume the saved request with its original website name and route.'
+  } catch { message.value = 'Recovery could not be checked for this account. Refresh and try again.'; mode.value = 'use' } finally { busy.value = false }
+}
+defineExpose({ showPreview, showUse, resumeCopy })
 </script>
 
 <template>
+  <UAlert v-if="attempt && !open" color="warning" title="Unfinished website copy" description="Resume the saved request before starting another copy.">
+    <template #actions><UButton label="Resume copy" :disabled="busy" @click="resumeCopy()" /></template>
+  </UAlert>
   <UModal
     v-model:open="open"
     :title="mode === 'preview' ? `${selected?.name ?? 'Template'} preview` : 'Use template'"
@@ -236,9 +309,9 @@ defineExpose({ showPreview, showUse })
         <UButton v-if="mode === 'use' && destination" :label="endpoint.includes('/customer/') ? 'View my websites' : 'Open website workspace'" :to="destination" />
         <UButton
           v-else-if="mode === 'use'"
-          :label="attempt ? 'Check copy request' : 'Create website copy'"
+          :label="attempt ? 'Resume copy' : 'Create website copy'"
           :loading="busy"
-          :disabled="!selected?.canUse"
+          :disabled="!recoveryReady || (!selected?.canUse && !attempt)"
           @click="useTemplate"
         />
       </div>
