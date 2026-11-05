@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import type { PageStudioTemplateList } from '~~/shared/pageStudio/templateCatalogue'
+import type { PageStudioTemplateCard, PageStudioTemplateList } from '~~/shared/pageStudio/templateCatalogue'
 
 const props = defineProps<{ endpoint: '/api/portal/page-studio/templates' | '/api/portal/page-studio/customer/templates' }>()
+const actions = ref<{ showPreview: (item: PageStudioTemplateCard) => void, showUse: (item: PageStudioTemplateCard) => void } | null>(null)
 const cursor = ref<string | undefined>()
 const { data, pending, error, refresh } = await useFetch<PageStudioTemplateList>(() => props.endpoint, {
   query: computed(() => ({ ...(cursor.value ? { cursor: cursor.value } : {}), limit: 20 })),
@@ -16,7 +17,7 @@ const { data, pending, error, refresh } = await useFetch<PageStudioTemplateList>
         Templates
       </h1>
       <p class="mt-3 text-muted">
-        Website designs available to your account. Preview and copying will become available when preparation is complete.
+        Website designs available to your account. Preview a saved version or create your own independent copy when available.
       </p>
     </div>
     <template v-if="error">
@@ -49,20 +50,21 @@ const { data, pending, error, refresh } = await useFetch<PageStudioTemplateList>
               {{ item.name }}
             </h2>
             <p class="mt-2 text-sm text-muted">
-              Automotive · Preparing
+              Automotive · {{ item.canPreview ? 'Preview available' : 'Preparing' }}
             </p>
           </div>
-          <p class="text-sm text-muted">
+          <p v-if="item.unavailableReason" class="text-sm text-muted">
             {{ item.unavailableReason }}
           </p>
           <div class="flex flex-wrap gap-2">
             <UButton
               label="Preview"
-              disabled
+              :disabled="!item.canPreview"
               color="neutral"
               variant="outline"
+              @click="actions?.showPreview(item)"
             />
-            <UButton label="Use template" disabled />
+            <UButton label="Use template" :disabled="!item.canUse" @click="actions?.showUse(item)" />
           </div>
         </li>
       </ul>
@@ -89,5 +91,6 @@ const { data, pending, error, refresh } = await useFetch<PageStudioTemplateList>
         />
       </div>
     </template>
+    <PageStudioTemplateActions ref="actions" :endpoint="endpoint" @changed="refresh()" />
   </section>
 </template>
