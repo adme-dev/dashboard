@@ -5,7 +5,7 @@ export const PageStudioTemplateCardSchema = z.object({
   versionId: z.string().uuid(), format: z.enum(['code-pages', 'typed']), status: z.enum(['preparing', 'ready']),
   thumbnail: z.null(), canPreview: z.boolean(), canUse: z.boolean(),
   unavailableReason: z.string().min(1).max(200).nullable()
-}).strict().refine(card => (!card.canPreview || card.status === 'ready') && (!card.canUse || (card.canPreview && card.format === 'code-pages')), 'Ready actions require a published preview and supported copy format')
+}).strict().refine(card => (!card.canPreview || card.status === 'ready') && (!card.canUse || card.canPreview), 'Ready actions require a published preview and supported copy format')
 export type PageStudioTemplateCard = z.infer<typeof PageStudioTemplateCardSchema>
 export const PageStudioTemplateListQuery = z.object({ cursor: z.string().uuid().optional(), limit: z.coerce.number().int().min(1).max(50).default(20) }).strict()
 export const PageStudioTemplateListSchema = z.object({ items: z.array(PageStudioTemplateCardSchema).max(50), nextCursor: z.string().uuid().nullable() }).strict()

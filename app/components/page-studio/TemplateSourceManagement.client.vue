@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { PageStudioStagingStateSchema } from '~~/shared/pageStudio/staging'
 
 const Sources = z.object({ items: z.array(z.object({ siteId: z.string().uuid(), slug: z.string().min(1).max(80), name: z.string().min(1).max(160) }).strict()).max(50) }).strict()
-const Registration = z.object({ templateId: z.string().uuid(), versionId: z.string().uuid(), format: z.literal('code-pages'), replayed: z.boolean() }).strict()
+const Registration = z.object({ templateId: z.string().uuid(), versionId: z.string().uuid(), format: z.enum(['code-pages', 'typed']), replayed: z.boolean() }).strict()
 const { canWrite, hasPermission } = useAuth()
 const allowed = computed(() => canWrite.value && hasPermission('PAGE_STUDIO_PUBLISH'))
 const { data, status, error, refresh } = await useAsyncData('agency-template-sources', async () => Sources.parse(await $fetch('/api/agency/page-studio/templates/sources')))
@@ -27,7 +27,6 @@ async function select(source: z.infer<typeof Sources>['items'][number]) {
     const state = PageStudioStagingStateSchema.parse(await $fetch(`/api/agency/page-studio/sites/${source.siteId}/staging`))
     if (attempt !== sequence) return
     if (state.siteId !== source.siteId || !state.active || !state.canManage) throw new Error('Prepare an available website preview before registering this template.')
-    if (!state.active.codeContent) throw new Error('This template uses typed pages. Catalogue registration for that format is not available yet.')
     snapshot.value = state.active
   } catch (cause) {
     if (attempt === sequence) message.value = cause instanceof Error ? cause.message : 'Could not load this template source.'
