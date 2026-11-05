@@ -344,7 +344,8 @@ MCP_WORKER_ORIGIN = "https://mcp-server.adme-dev.workers.dev"
 # Staff permissions, grants, signed write scope and provider readiness still gate each operation.
 # Exact values/precedence and activation checks: docs/runbooks/marketing-management-config.md.
 MCP_SUITE_CONFIG = '{"generation":true,"writes":true,"financial":false,"video":true,"videoGeneration":false,"banners":true,"feeds":true,"googleAdsRead":true,"googleAdsWrite":true,"googleAdsAutomation":false,"googleAdsDestructive":false}'
-CRM_SEARCH_RELEASE_ENVIRONMENT = "production"
+# CRM search release environment is used by the preview isolation adapter,
+# not the Pages runtime. Omit its production binding to stay within Cloudflare's limit.
 PAGE_STUDIO_RELEASE_ENVIRONMENT = "production"
 FIGFLOW_EDM_DRAFT_SAVES_ENABLED = "true"
 PAGE_STUDIO_PROVISIONING_ENVIRONMENT = "production"
