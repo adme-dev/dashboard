@@ -26,6 +26,13 @@ function fixture(name: string, args: string[]) {
   return readFileSync(path)
 }
 describe('decoded media facts (local FFmpeg)', () => {
+  it.each([8000, 44100, 48000])('counts the complete decoded audio at %i Hz, including a partial final frame', async (sampleRate) => {
+    const audio = fixture(`audio-${sampleRate}.wav`, [
+      '-f', 'lavfi', '-i', `sine=frequency=440:sample_rate=${sampleRate}`,
+      '-t', '0.5', '-ac', '2'
+    ])
+    expect(await probeMediaBytes(audio)).toEqual({ kind: 'audio', durationSeconds: 0.5 })
+  })
   it('measures video duration and dimensions from actual bytes', async () => {
     const bytes = fixture('video.mp4', [
       '-f',

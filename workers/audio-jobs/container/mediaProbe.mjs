@@ -4,12 +4,16 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 const MAX_BYTES = 64 * 1024 * 1024
+const PCM_SAMPLE_RATE = 48_000
+const PCM_BYTES_PER_SAMPLE = 2 // Mono signed 16-bit PCM.
+const MAX_PCM_BYTES = 3600 * PCM_SAMPLE_RATE * PCM_BYTES_PER_SAMPLE
 const INPUT_FORMATS
   = 'mov,mp4,m4a,3gp,3g2,mj2,matroska,webm,avi,mp3,wav,flac,ogg,aac,image2,png_pipe,jpeg_pipe,webp_pipe,gif,bmp_pipe,tiff_pipe'
-function run(command, args, timeoutMs) {
+function run(command, args, timeoutMs, countPcmBytes = false) {
   return new Promise((resolve, reject) => {
     const proc = spawn(command, args, { stdio: ['ignore', 'pipe', 'pipe'] })
     let out = ''
+    let outputBytes = 0
     let err = ''
     let failed = false
     const fail = () => {
@@ -18,8 +22,14 @@ function run(command, args, timeoutMs) {
     }
     const timer = setTimeout(fail, timeoutMs)
     proc.stdout.on('data', (chunk) => {
-      out += chunk
-      if (out.length > 1024 * 1024) fail()
+      if (failed) return
+      outputBytes += chunk.length
+      if (outputBytes > (countPcmBytes ? MAX_PCM_BYTES : 1024 * 1024)) {
+        fail()
+        return
+      }
+      // PCM is counted as it is decoded, never retained in memory.
+      if (!countPcmBytes) out += chunk
     })
     proc.stderr.on('data', (chunk) => {
       err += chunk
@@ -33,7 +43,7 @@ function run(command, args, timeoutMs) {
       clearTimeout(timer)
       if (failed || code !== 0 || err.trim())
         reject(new Error('Media decode failed'))
-      else resolve(out)
+      else resolve(countPcmBytes ? outputBytes : out)
     })
   })
 }
@@ -95,7 +105,8 @@ export async function probeMediaBytes(bytes, { timeoutMs = 20_000 } = {}) {
         && /^(png_pipe|jpeg_pipe|webp_pipe|bmp_pipe|tiff_pipe|image2)$/.test(
           data.format?.format_name ?? ''
         )
-    const progress = await run(
+    const audioOnly = !visual
+    const decoded = await run(
       'ffmpeg',
       [
         ...common,
@@ -105,25 +116,29 @@ export async function probeMediaBytes(bytes, { timeoutMs = 20_000 } = {}) {
         'explode',
         '-i',
         path,
-        '-map',
-        '0:v:0?',
-        '-map',
-        '0:a:0?',
+        ...(audioOnly
+          ? ['-map', '0:a:0']
+          : ['-map', '0:v:0?', '-map', '0:a:0?']),
         '-sn',
         '-dn',
-        '-progress',
-        'pipe:1',
         '-nostats',
-        '-f',
-        'null',
-        '-'
+        ...(audioOnly
+          ? ['-ac', '1', '-ar', String(PCM_SAMPLE_RATE), '-c:a', 'pcm_s16le', '-f', 's16le', 'pipe:1']
+          : ['-progress', 'pipe:1', '-f', 'null', '-'])
       ],
-      remaining()
+      remaining(),
+      audioOnly
     )
-    const times = [...progress.matchAll(/^out_time_us=(\d+)$/gm)].map(
-      m => Number(m[1]) / 1_000_000
-    )
-    const durationSeconds = Math.max(0, ...times)
+    // FFmpeg progress may report the start of the final audio frame rather
+    // than its end. Count actual decoded PCM samples, including the final
+    // partial frame, instead of trusting progress or container duration.
+    if (audioOnly && decoded % PCM_BYTES_PER_SAMPLE !== 0)
+      throw new Error('Incomplete decoded audio sample')
+    const durationSeconds = audioOnly
+      ? decoded / PCM_BYTES_PER_SAMPLE / PCM_SAMPLE_RATE
+      : Math.max(0, ...[...decoded.matchAll(/^out_time_us=(\d+)$/gm)].map(
+          m => Number(m[1]) / 1_000_000
+        ))
     if (
       !image
       && (!Number.isFinite(durationSeconds)
