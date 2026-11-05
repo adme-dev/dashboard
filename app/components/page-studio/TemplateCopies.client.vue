@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { openCustomerStudio } from '~/utils/pageStudioCustomerLaunch'
-interface Copy { siteId: string, name: string, requestId: string, versionId: string, canOpen: boolean }
+interface Copy { siteId: string, name: string, requestId: string, versionId: string, canOpen: boolean, canResume: boolean, status: 'preparing' | 'ready' }
 const { data, error, pending, refresh } = await useFetch<{ items: Copy[] }>('/api/portal/page-studio/customer/template-copies', { default: () => ({ items: [] }) })
+const actions = useTemplateRef<{ resumeCopy: (requestId: string) => Promise<void> }>('actions')
 const opening = ref<string | null>(null)
 const message = ref('')
 async function openCopy(copy: Copy) {
@@ -26,11 +27,13 @@ defineExpose({ refresh })
     <p v-if="pending" role="status">Loading saved copies…</p>
     <ul v-else-if="!error && data?.items.length" class="divide-y divide-default">
       <li v-for="copy in data.items" :key="copy.siteId" class="flex flex-wrap items-center justify-between gap-3 py-4">
-        <span>{{ copy.name }}</span>
-        <UButton label="Open copy" :disabled="!copy.canOpen || !!opening" :loading="opening === copy.siteId" @click="openCopy(copy)" />
+        <span>{{ copy.name }}<span v-if="copy.status === 'preparing'" class="ml-2 text-muted">Preparing</span></span>
+        <UButton v-if="copy.canResume" label="Resume copy" :disabled="!!opening" @click="actions?.resumeCopy(copy.requestId)" />
+        <UButton v-else label="Open copy" :disabled="!copy.canOpen || !!opening" :loading="opening === copy.siteId" @click="openCopy(copy)" />
       </li>
     </ul>
     <p v-else-if="!error" class="text-muted">Saved template copies will appear here.</p>
     <UButton label="Refresh copies" color="neutral" variant="ghost" :disabled="!!opening" @click="refresh()" />
+    <PageStudioTemplateActions ref="actions" endpoint="/api/portal/page-studio/customer/templates" @changed="refresh()" />
   </section>
 </template>

@@ -25,17 +25,18 @@ async function customer(db:PageStudioQueryClient,token:string){
 }
 export async function customerTemplateCopiesHandler(event:H3Event){
   guardCustomerRequest(event,'GET')
+  setHeader(event,'cache-control','private, no-store')
   const token=customerSessionToken(event)
   return transactionWithoutRetry(async db=>{
     const actor=await customer(db,token)
-    const rows=(await db.query<{siteId:string,name:string,requestId:string,versionId:string}>(`SELECT site.id AS "siteId",site.name,copy.id AS "requestId",copy.version_id AS "versionId"
+    const rows=(await db.query<{siteId:string,name:string,requestId:string,versionId:string,status:'preparing'|'ready',actorId:string}>(`SELECT site.id AS "siteId",site.name,copy.id AS "requestId",copy.version_id AS "versionId",copy.state AS status,copy.actor_id AS "actorId"
       FROM page_studio_template_copies copy JOIN page_studio_business_owners owner ON owner.workspace_id=$1
       JOIN page_studio_sites site ON site.id=copy.site_id AND site.client_id=owner.id AND site.tenant_id='studio-customer-'||owner.id::text
-      WHERE copy.account_key='customer:'||$1::text AND copy.actor_kind='customer' AND copy.state='ready'
+      WHERE copy.account_key='customer:'||$1::text AND copy.actor_kind='customer' AND (copy.state='ready' OR (copy.state='preparing' AND copy.actor_id=$2))
         AND copy.client_id=site.client_id AND copy.tenant_id=site.tenant_id AND owner.agency_client_id IS NULL
-        AND site.status IN ('draft','active') ORDER BY copy.created_at DESC,copy.id LIMIT 50`,[actor.workspaceId])).rows
+        AND site.status IN ('draft','active') ORDER BY copy.created_at DESC,copy.id LIMIT 50`,[actor.workspaceId,actor.identityId])).rows
     if(!sameCodeContent(actor,await customer(db,token)))throw denied()
-    return {items:rows.map(row=>({...row,canOpen:actor.role==='owner'}))}
+    return {items:rows.map(({actorId,...row})=>({...row,canOpen:actor.role==='owner'&&row.status==='ready',canResume:actor.role==='owner'&&row.status==='preparing'&&actorId===actor.identityId}))}
   })
 }
 /** Explicit selected-copy handoff, with no setup/site pointer mutation. */
