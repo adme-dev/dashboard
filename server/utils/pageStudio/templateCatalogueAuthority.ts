@@ -1,4 +1,4 @@
-import { z } from 'zod'
+import { CustomerActivationSchema } from './customerActivation'
 import { queryRowsFresh } from '~~/server/utils/db'
 import type { TemplateCardRow } from './templateCatalogue'
 
@@ -24,9 +24,8 @@ export async function resolveAgencyTemplateTenant(env: Record<string, unknown>, 
     // This bundle is server configuration, never a cookie or request parameter.
     // A present malformed binding must fail closed, not select another account.
     try {
-      const bundle = JSON.parse(String(env.PAGE_STUDIO_CUSTOMER_ACTIVATION))
-      if (!bundle || typeof bundle !== 'object' || Array.isArray(bundle)) throw new Error('Invalid template organisation binding')
-      if (Object.hasOwn(bundle, 'templateTenantId')) return z.string().uuid().parse(bundle.templateTenantId)
+      const bundle = CustomerActivationSchema.parse(JSON.parse(String(env.PAGE_STUDIO_CUSTOMER_ACTIVATION)))
+      if (bundle.templateTenantId !== undefined) return bundle.templateTenantId
     } catch {
       throw Object.assign(new Error('Template organisation binding is unavailable.'), { statusCode: 503 })
     }
