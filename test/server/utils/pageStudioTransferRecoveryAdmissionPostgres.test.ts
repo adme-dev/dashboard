@@ -61,6 +61,8 @@ describe.runIf(Boolean(databaseUrl))('exact recovery admission on PostgreSQL', {
     db = new pg.Client({ connectionString: databaseUrl })
     await db.connect()
     await db.query(`CREATE SCHEMA "${schema}"; SET search_path TO "${schema}", pg_catalog`)
+    // Current production authority also checks selected-template provenance.
+    await db.query('CREATE TABLE page_studio_template_copies(id UUID,site_id UUID,tenant_id TEXT,client_id UUID,account_key TEXT,actor_kind TEXT,state TEXT)')
     await db.query(`CREATE TABLE agency_clients(id UUID PRIMARY KEY,is_active BOOLEAN);
       CREATE TABLE client_users(id UUID PRIMARY KEY,client_id UUID,status TEXT,role TEXT);
       CREATE TABLE team_members(id UUID PRIMARY KEY,is_active BOOLEAN,user_role TEXT,custom_role_id UUID,sessions_invalidated_at TIMESTAMPTZ);
