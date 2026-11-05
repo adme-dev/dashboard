@@ -91,6 +91,10 @@ export async function runBannerRenderJob(msg: { jobId: string }, deps: BannerRen
     }
     const category = classifyBannerRenderError(message)
     await deps.markFailed(job.id, token, category === 'unknown' ? message : `${category}: ${message}`)
+    // A render that exhausted the container's ten-minute request budget will
+    // repeat the same expensive capture on every queue redelivery. Keep the
+    // failed job available for an intentional retry with different settings.
+    if (category === 'container_timeout') return false
     throw e
   } finally {
     stopped = true

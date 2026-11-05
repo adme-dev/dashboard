@@ -148,6 +148,12 @@ describe('leased banner render worker', () => {
     expect(d.markFailed).toHaveBeenCalledWith('j1', 'token-1', expect.stringContaining('runtime_not_ready:'))
     expect(d.markDone).not.toHaveBeenCalled()
   })
+  it('acknowledges a timed-out render after recording the failure', async () => {
+    const d = deps({ render: vi.fn().mockRejectedValue(new Error('The operation was aborted due to timeout')) })
+    expect(await runBannerRenderJob({ jobId: 'j1' }, d)).toBe(false)
+    expect(d.markFailed).toHaveBeenCalledWith('j1', 'token-1', expect.stringContaining('container_timeout:'))
+    expect(d.markDone).not.toHaveBeenCalled()
+  })
   it('returns a full-container error to the queue without failing the existing job', async () => {
     const d = deps({ render: vi.fn().mockRejectedValue(new Error('banner container 500: Failed to start container: Maximum number of running container instances exceeded')) })
     await expect(runBannerRenderJob({ jobId: 'j1' }, d)).rejects.toBeInstanceOf(BannerRenderCapacityError)
