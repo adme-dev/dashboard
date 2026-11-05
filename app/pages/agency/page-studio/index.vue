@@ -26,7 +26,16 @@ const errorMessage = computed(() => error.value?.statusMessage || error.value?.m
 <template>
   <UDashboardPanel id="agency-page-studio" :ui="{ root: 'min-h-0 max-h-svh', body: 'min-h-0 overflow-y-auto' }">
     <template #header>
-      <UDashboardNavbar title="Client websites" />
+      <UDashboardNavbar title="Client websites">
+        <template #right>
+          <UButton
+            to="/agency/page-studio/templates"
+            label="Template sources"
+            variant="outline"
+            icon="i-lucide-layout-template"
+          />
+        </template>
+      </UDashboardNavbar>
     </template>
     <template #body>
       <PageStudioSiteWorkspace

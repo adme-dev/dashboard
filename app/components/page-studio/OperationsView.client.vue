@@ -94,6 +94,7 @@ const rows = computed(() => records.value.map((record) => {
             color="neutral"
             variant="outline"
           />
+          <PageStudioManualCapacity v-if="audience === 'agency' && section === 'subscriptions'" :records="records" @saved="refresh()" />
           <PageStudioEntitlementGrant v-if="audience === 'agency' && section === 'subscriptions'" @granted="refresh()" />
           <UButton
             label="Refresh"

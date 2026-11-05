@@ -44,6 +44,14 @@ export async function listAgencyPageStudioSubscriptions(tenantId: string) {
            client.name AS "clientName",
            entitlement.plan_key AS "planKey", entitlement.status,
            entitlement.active_site_limit AS "siteLimit",
+           (entitlement.plan_metadata->>'managedBy'='agency'
+            AND entitlement.status IN ('active','trial') AND entitlement.effective_from<=NOW()
+            AND (entitlement.effective_until IS NULL OR entitlement.effective_until>NOW())
+            AND EXISTS (SELECT 1 FROM billing_entitlement_audit audit
+              WHERE audit.client_id=entitlement.client_id AND audit.feature_key='page_studio.access'
+                AND audit.source='page_studio_entitlements' AND audit.action='grant_created'
+                AND audit.metadata->>'tenantId'=entitlement.tenant_id
+                AND audit.metadata->'entitlement'->>'id'=entitlement.id::text)) AS "canIncreaseManualCapacity",
            entitlement.pages_per_site_limit AS "pagesPerSiteLimit",
            entitlement.custom_domain_limit AS "domainLimit",
            entitlement.monthly_build_limit AS "buildLimit",

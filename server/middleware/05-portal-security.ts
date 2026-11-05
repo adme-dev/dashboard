@@ -61,7 +61,9 @@ export default defineEventHandler((event) => {
   const csp = formOrigins
     ? PORTAL_CSP.replace('form-action \'self\'', `form-action 'self' ${formOrigins}`)
     : PORTAL_CSP
-  setHeader(event, 'Content-Security-Policy', csp)
+  // CSP cannot restrict a hostname wildcard to the template- prefix. The UI
+  // additionally checks the exact version hostname and sandboxes the frame.
+  setHeader(event, 'Content-Security-Policy', isPortalPage ? `${csp}; frame-src 'self' https://*.xeroflow.io` : csp)
   setHeader(event, 'Strict-Transport-Security', 'max-age=31536000; includeSubDomains')
   setHeader(event, 'X-Frame-Options', 'DENY')
   setHeader(event, 'X-Content-Type-Options', 'nosniff')
