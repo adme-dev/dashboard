@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { createError } from 'h3'
 import { CustomerEditorOriginSchema } from './customerEditorToken'
 import { CustomerPreviewApprovalSchema } from './customerDashboard'
+import { TemplateSourcesSchema } from './templateSources'
 
 const prefix = 'PAGE_STUDIO_CUSTOMER_'
 const key = `${prefix}ACTIVATION`
@@ -12,6 +13,7 @@ const Approvals = z.array(CustomerPreviewApprovalSchema).max(100)
   .refine(rows => new Set(rows.map(row => row.workspaceId)).size === rows.length)
 const Activation = z.object({ previewEnabled: z.boolean(), previewApprovals: Approvals,
   cmsSetupEnabled: z.boolean(), browserEnabled: z.boolean(), editorEnabled: z.boolean(),
+  templateSources: TemplateSourcesSchema.optional(),
   productionEditorEnabled: z.boolean().optional(), productionEditorOrigin: CustomerEditorOriginSchema.refine(value => !/[\s;*\\]/.test(value)).optional() }).strict()
   .refine(value => (value.productionEditorEnabled === undefined) === (value.productionEditorOrigin === undefined))
 

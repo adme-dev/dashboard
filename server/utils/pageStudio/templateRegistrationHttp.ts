@@ -1,5 +1,4 @@
 import { createError, getHeader, getRequestURL, readBody, setHeader, type H3Event } from 'h3'
-import { z } from 'zod'
 import { queryRowsFresh } from '~~/server/utils/db'
 import type { PageStudioCheckpointBucket } from '~~/shared/pageStudio/checkpointReader'
 import { requireAgencyPageStudioAccess } from './access'
@@ -8,10 +7,8 @@ import { templateActorAuthorizer } from './templateCatalogueHttp'
 import { registerTemplateVersion, type RegisterTemplateVersionInput } from './templateRegistration'
 import { preparePageStudioPublishPrincipal } from './publishHttp'
 import { withPageStudioPublishAuthority } from './publishAuthority'
+import { readTemplateSources } from './templateSources'
 
-/** Explicit, server-configured sources prevent private individual sites from
- * becoming catalogue entries through a name heuristic or arbitrary selection. */
-const Sources = z.array(z.object({ siteId: z.string().uuid(), slug: z.string().min(1).max(80) }).strict()).min(1).max(50)
 export function guardTemplateMutation(event: H3Event) {
   setHeader(event, 'Cache-Control', 'private, no-store')
   const origin = getHeader(event, 'origin')
@@ -24,8 +21,8 @@ export async function templateRegistrationHandler(event: H3Event) {
   if (actor.kind !== 'agency') throw createError({ statusCode: 403 })
   const input = await readBody<RegisterTemplateVersionInput>(event)
   const env = event.context.cloudflare?.env ?? {}
-  let approved: z.infer<typeof Sources>
-  try { approved = Sources.parse(JSON.parse(String(env.PAGE_STUDIO_TEMPLATE_SOURCES ?? ''))) } catch { throw createError({ statusCode: 503, statusMessage: 'Template source approval is unavailable.' }) }
+  let approved: ReturnType<typeof readTemplateSources>
+  try { approved = readTemplateSources(env) } catch { throw createError({ statusCode: 503, statusMessage: 'Template source approval is unavailable.' }) }
   if (!approved.some(source => source.siteId === input?.sourceSiteId && source.slug === input?.slug)) throw createError({ statusCode: 403 })
   const bucket = env.PAGE_STUDIO_CHECKPOINTS as PageStudioCheckpointBucket | undefined
   if (!bucket || typeof bucket.get !== 'function') throw createError({ statusCode: 503 })
