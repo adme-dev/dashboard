@@ -35,6 +35,12 @@ async function mount(component = Website) {
 }
 beforeEach(() => {
   vi.resetAllMocks()
+  const state = new Map<string, ReturnType<typeof ref>>()
+  vi.stubGlobal('useRoute', () => ({ query: {} }))
+  vi.stubGlobal('useState', (key: string, initialize: () => unknown) => {
+    if (!state.has(key)) state.set(key, ref(initialize()))
+    return state.get(key)
+  })
   read.mockImplementation(url => url.endsWith('/availability') ? { available: true, siteId: 'owned' } : url.endsWith('/dashboard') ? { businessName: 'Flowers', state: 'verification-pending', stage: 5, canOpenStudio: true } : workspace)
   vi.stubGlobal('useFetch', (url: string) => {
     const data = ref(), error = ref(), pending = ref(false)
