@@ -43,9 +43,9 @@ const muted = ref(false)
 const audioError = ref('')
 const playback = ref<BannerPreviewPlayback>({ state: 'loading', current: 0, duration: 0, iteration: 1, repeat: 0 })
 const playing = computed(() => playback.value.state === 'playing')
-const canControl = computed(() => playback.value.duration > 0 && !['loading', 'unavailable'].includes(playback.value.state))
+const canControl = computed(() => playback.value.duration > 0 && playback.value.state !== 'unavailable')
 let commandSequence = 0
-const playbackLabel = computed(() => ({ loading: 'Loading', playing: 'Playing', paused: playback.value.current > 0 ? 'Paused' : 'Ready', ended: 'Finished', static: 'Still artwork', unavailable: 'Playback unavailable' })[playback.value.state])
+const playbackLabel = computed(() => ({ loading: 'Loading', playing: 'Playing', paused: playback.value.current > 0 ? 'Paused' : playback.value.mediaReady === false ? 'Tap Play' : 'Ready', ended: 'Finished', static: 'Still artwork', unavailable: 'Playback unavailable' })[playback.value.state])
 const playbackTime = computed(() => `${playback.value.current.toFixed(1)} / ${playback.value.duration.toFixed(1)} s`)
 const playbackLoop = computed(() => playback.value.repeat === -1
   ? `Loop ${playback.value.iteration} · ∞`
@@ -57,14 +57,17 @@ function receiveAudioStatus(event: MessageEvent) {
   const frame = root.value?.querySelector('iframe')
   if (!frame || event.source !== frame.contentWindow || event.data?.type !== 'banner-preview-audio') return
   if (event.data.status === 'ready') sendSoundPreference()
-  if (event.data.status === 'blocked') audioError.value = 'Sound was blocked by your browser. Allow sound for this site, then replay.'
+  if (event.data.status === 'blocked') audioError.value = 'Tap the artwork to enable sound on this device.'
   if (event.data.status === 'error') audioError.value = 'An audio track could not load. Try replaying the preview.'
 }
 function receivePlaybackStatus(event: MessageEvent) {
   const frame = root.value?.querySelector('iframe')
   if (!frame || event.source !== frame.contentWindow) return
   const next = readBannerPreviewPlayback(event.data, previewDocument.value.frameId)
-  if (next && (event.data.commandId ?? 0) === commandSequence) playback.value = next
+  if (next && (event.data.commandId ?? 0) === commandSequence) {
+    playback.value = next
+    if (next.state === 'playing') audioError.value = ''
+  }
 }
 function toggleSound() {
   muted.value = !muted.value
@@ -138,7 +141,7 @@ function seekPlayback(value: number | number[] | undefined) {
   playback.value = { ...playback.value, current, state: 'paused', iteration: 1 }
 }
 function togglePlayback() {
-  sendPlaybackCommand(playback.value.state === 'ended' ? 'replay' : playing.value ? 'pause' : 'play')
+  sendPlaybackCommand(playback.value.starting ? 'pause' : playback.value.state === 'ended' ? 'replay' : playing.value ? 'pause' : 'play')
 }
 
 function resetView() {
@@ -210,14 +213,14 @@ function changeZoom(direction: number) {
         tabindex="0"
         aria-label="Scrollable artwork preview"
       >
-        <div v-if="playback.state === 'loading'" class="absolute inset-0 z-10 grid place-items-center bg-default/80 backdrop-blur-sm" role="status">
+        <div v-if="playback.state === 'loading'" class="pointer-events-none absolute inset-0 z-10 grid place-items-center bg-default/80 backdrop-blur-sm" role="status">
           <div class="flex flex-col items-center gap-3 px-6 text-center">
             <UIcon name="i-lucide-loader-circle" class="size-6 animate-spin text-primary" />
             <p class="text-sm font-medium">
               Loading picture and sound…
             </p>
             <p class="max-w-xs text-xs text-muted">
-              Play will be ready when the media has buffered.
+              You can cancel and try again if loading takes too long.
             </p>
           </div>
         </div>
@@ -256,6 +259,14 @@ function changeZoom(direction: number) {
           </div>
         </div>
       </div>
+      <UAlert
+        v-if="playback.needsGesture"
+        class="mx-4 my-2"
+        color="info"
+        icon="i-lucide-hand"
+        title="Tap the artwork to start picture and sound."
+        :description="mode === 'social' ? 'Choose Artwork, then tap the preview to enable sound on this device.' : undefined"
+      />
       <div class="shrink-0 border-t border-default bg-default px-4 pt-3 sm:px-6" aria-label="Playback timeline">
         <div class="mx-auto flex max-w-5xl items-center gap-3">
           <span class="flex min-w-16 items-center gap-1.5 text-[11px] font-medium" role="status">
@@ -296,8 +307,8 @@ function changeZoom(direction: number) {
       <div class="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 bg-default px-4 py-3 sm:px-6">
         <div class="flex items-center gap-1">
           <UButton
-            :label="playback.state === 'ended' ? 'Replay' : playing ? 'Pause' : 'Play'"
-            :icon="playback.state === 'ended' ? 'i-lucide-rotate-ccw' : playing ? 'i-lucide-pause' : 'i-lucide-play'"
+            :label="playback.starting ? 'Cancel loading' : playback.state === 'ended' ? 'Replay' : playing ? 'Pause' : 'Play'"
+            :icon="playback.starting ? 'i-lucide-x' : playback.state === 'ended' ? 'i-lucide-rotate-ccw' : playing ? 'i-lucide-pause' : 'i-lucide-play'"
             color="neutral"
             variant="solid"
             size="md"
