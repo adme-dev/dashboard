@@ -382,20 +382,151 @@
           "sha256": "75784a295293a8992f5a8d99210566e0064a012e6dab6731305e3787f15896c7"
         }
       }
+    },
+    "0.11.2-edm5": {
+      "source": "404e3ff06f1619d928218c5dd0236143209750be",
+      "ciRunId": "41856781523",
+      "archiveSha256": "c18d7d71745a7bff680ca8c8163e8ec9be08e215602dbc4f6459a135bd43f508",
+      "files": {
+        "OFL-shippori-mincho.txt": {
+          "size": 4399,
+          "sha256": "41fba056279be5f45ff9a99e44b7b53897b42732f5806d8e666e0ab49ac6bd38"
+        },
+        "LICENSE-MIT": {
+          "size": 1100,
+          "sha256": "360c12b61568ef50808e731c98ae84110ea6f674dc34ac1ecb05d7abb9a6079a"
+        },
+        "figcraft-web-6c5967414b8a688a.js": {
+          "size": 168771,
+          "sha256": "6e867cfea670c9339b62563639a7f73a680915204983a8ca5bb3af7e50f9b72d"
+        },
+        "OFL-liberation-mono.txt": {
+          "size": 4414,
+          "sha256": "93fed46019c38bbe566b479d22148e2e8a1e85ada614accb0211c37b2c61c19b"
+        },
+        "OFL-lato.txt": {
+          "size": 4407,
+          "sha256": "74ba064d03f1f1c4a952da936c3eb71866c34404916734de3cae73b34357e59e"
+        },
+        "OFL-biz-ud-mincho.txt": {
+          "size": 4408,
+          "sha256": "ef0ed524b3bd012f37015e986809eed6f67905456ebfc1ebd7fcc2765282ee01"
+        },
+        "LICENSE-APACHE": {
+          "size": 10174,
+          "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594"
+        },
+        "OFL-biz-ud-pgothic.txt": {
+          "size": 4408,
+          "sha256": "e753d7155d53c747d037a445e584c8ecfca6dd79846db610417e282a736b28bc"
+        },
+        "HOSTING.md": {
+          "size": 5713,
+          "sha256": "117e663d47edfa20f09a33cf641c7a986f6d8f10b25d145424d769b97e11af97"
+        },
+        "OFL-noto-sans-cjk-sc.txt": {
+          "size": 4301,
+          "sha256": "6a73f9541c2de74158c0e7cf6b0a58ef774f5a780bf191f2d7ec9cc53efe2bf2"
+        },
+        "figflow-edm-relay.mjs": {
+          "size": 25083,
+          "sha256": "f433cee45f211b8fb21587626c11af07411689cfcf4878f3a958a5beec31ea7d"
+        },
+        "OFL-source-sans-3.txt": {
+          "size": 4579,
+          "sha256": "89ad2c4f66dd29127527493e729c31e731f111cf10faf5774c3db9275ed0c22c"
+        },
+        "OFL-poppins.txt": {
+          "size": 4385,
+          "sha256": "6be04893d770899a015649c7aa3b582f871b272f8747a92b78b17c3e5c8b2573"
+        },
+        "figcraft-web-6c5967414b8a688a_bg.wasm": {
+          "size": 23530750,
+          "sha256": "bf9bbdfb186327a038cceecb32d69668d2f07863303bf126d698fb69b225fdfd"
+        },
+        "OFL-noto-emoji.txt": {
+          "size": 4301,
+          "sha256": "6a73f9541c2de74158c0e7cf6b0a58ef774f5a780bf191f2d7ec9cc53efe2bf2"
+        },
+        "README.md": {
+          "size": 30198,
+          "sha256": "6770f6268468c67dfc46b2c35b5fc5c09d84278f13b2879da366bd3b445af6ef"
+        },
+        "OFL-inter.txt": {
+          "size": 4380,
+          "sha256": "262481e844521b326f5ecd053e59b98c8b2da78c8ee1bdbb6e8174305e54935a"
+        },
+        "OFL-liberation-serif.txt": {
+          "size": 4414,
+          "sha256": "93fed46019c38bbe566b479d22148e2e8a1e85ada614accb0211c37b2c61c19b"
+        },
+        "OFL-carlito.txt": {
+          "size": 4424,
+          "sha256": "58402f82a7c332a700294988fe7554fbb0a63a8d27ccc1ee3bbc640311990a00"
+        },
+        "OFL-noto-sans-arabic.txt": {
+          "size": 4382,
+          "sha256": "07fc70bfeb985cc1a87a8587d0a0c80bab11c86c9dc3fd95b6f0cb332f983e96"
+        },
+        "OFL-montserrat.txt": {
+          "size": 4400,
+          "sha256": "8b7141c03fa4f8d44e6345d5d4931709290f0f67875e452e95ac1fd3a027802e"
+        },
+        "OFL-caladea.txt": {
+          "size": 4393,
+          "sha256": "ccdab61d371d8c8683a128a92cd7d498dbdb1d37689f7cb21f1bf6b16658d213"
+        },
+        "OFL-playfair-display.txt": {
+          "size": 4449,
+          "sha256": "566be814f8e96e93dfa16101331557eb6b5467e9e03f627c0910fe93ca12300e"
+        },
+        "OFL-roboto.txt": {
+          "size": 4394,
+          "sha256": "061402327a96aadb0bfb694a960ed289ecd38d383e396243831ab81feb109c41"
+        },
+        "OFL-nunito-sans.txt": {
+          "size": 4393,
+          "sha256": "efbb0c9e864cef973982d9a17567e6be5c3d1759695574586f3f18c7ecca064b"
+        },
+        "index.html": {
+          "size": 1648,
+          "sha256": "5bfd9275c9b8fa7b60a696b283d1ed14a2778a5c1dc84da07e86f7c9541f203e"
+        },
+        "NOTICE": {
+          "size": 2566,
+          "sha256": "85c1df10470b1a4a783585cc4c39b0c5ee7c907b662d3a0ca6767c9e2339764f"
+        },
+        "OFL-open-sans.txt": {
+          "size": 4389,
+          "sha256": "fbbbcfef55318de350562559b671360de6d597112ecc5c73881b05092db89602"
+        },
+        "OFL-liberation-sans.txt": {
+          "size": 4414,
+          "sha256": "93fed46019c38bbe566b479d22148e2e8a1e85ada614accb0211c37b2c61c19b"
+        },
+        "OFL-merriweather.txt": {
+          "size": 4437,
+          "sha256": "a7ba785ad99b6eae0444ab89910e512d4af9865937fddbcb5c72c4f59f55d6ad"
+        },
+        "OFL-source-serif-4.txt": {
+          "size": 4492,
+          "sha256": "75784a295293a8992f5a8d99210566e0064a012e6dab6731305e3787f15896c7"
+        }
+      }
     }
   },
   "assetBaseline": {
-    "deployment": "8ffd494f-01ce-4e7a-991a-53c16134ea11",
-    "version": "49cbc7f6-b99a-44e8-80fb-2fa739a005e7"
+    "deployment": "1d62c12f-6f7d-4778-82a8-3dfa6e88ea4a",
+    "version": "b278e54b-debc-4af1-9173-fba6964dfb87"
   },
   "gatewayBaseline": {
-    "deployment": "be4b378c-e124-4b26-b408-6b92dcb13285",
-    "version": "bd310327-549d-40e3-9114-78cc855de201",
+    "deployment": "670df50b-4fb7-45d9-94e5-eb9f58f1a44a",
+    "version": "b50acb4f-30d5-48a1-a711-339f3b98c979",
     "modules": {
-      "worker.js": "17d54fbd7c20ebeb2ae2ae056da47b9989fc295a7f43aca097e75d76ce306349",
+      "worker.js": "f1f4602ed93ff4a9aa75d0f611f74a7ba6d7a6be9c890fba7df669c253b0c665",
       "brand-rpc.mjs": "0787e4c0acb8e2507a8d14f438a977941334212e95e0e490863b71a9812882c2"
     },
-    "etag": "537c1145908fdc9f0dcd7ee3905d42f7a28ba55e953e7cb778f999249ce10336",
+    "etag": "a7e8602713c3103e309fac04e78e37f4ac78f6829713076c09a93d553b9f6057",
     "runtime": {
       "assets": {
         "headers": {
