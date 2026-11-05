@@ -69,3 +69,5 @@ GET /api/agency/page-studio/templates/sources supplies the approved source
 selector for the agency registration UI. Management compilation passed for the
 added provider and resolver methods. Full integrated build and manual hosted
 acceptance remain pending; no tests were run or added.
+
+Production template source approvals share the existing `PAGE_STUDIO_CUSTOMER_ACTIVATION` binding as an optional, strictly validated `templateSources` array of `{siteId, slug}`. Existing activation fields and eligibility checks remain unchanged. An explicitly present legacy `PAGE_STUDIO_TEMPLATE_SOURCES` binding takes precedence and malformed values fail closed; an absent approval array allows no sources. This keeps production within Cloudflare’s 150 text-binding limit.
