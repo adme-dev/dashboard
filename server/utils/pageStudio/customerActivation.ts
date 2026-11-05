@@ -14,6 +14,7 @@ const Approvals = z.array(CustomerPreviewApprovalSchema).max(100)
 const Activation = z.object({ previewEnabled: z.boolean(), previewApprovals: Approvals,
   cmsSetupEnabled: z.boolean(), browserEnabled: z.boolean(), editorEnabled: z.boolean(),
   templateSources: TemplateSourcesSchema.optional(),
+  templateTenantId: z.string().uuid().optional(),
   productionEditorEnabled: z.boolean().optional(), productionEditorOrigin: CustomerEditorOriginSchema.refine(value => !/[\s;*\\]/.test(value)).optional() }).strict()
   .refine(value => (value.productionEditorEnabled === undefined) === (value.productionEditorOrigin === undefined))
 
