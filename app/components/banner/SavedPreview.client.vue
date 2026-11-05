@@ -206,10 +206,21 @@ function changeZoom(direction: number) {
       </div>
       <div
         ref="viewport"
-        class="min-h-0 flex-1 overflow-auto overscroll-contain bg-elevated/40"
+        class="relative min-h-0 flex-1 overflow-auto overscroll-contain bg-elevated/40"
         tabindex="0"
         aria-label="Scrollable artwork preview"
       >
+        <div v-if="playback.state === 'loading'" class="absolute inset-0 z-10 grid place-items-center bg-default/80 backdrop-blur-sm" role="status">
+          <div class="flex flex-col items-center gap-3 px-6 text-center">
+            <UIcon name="i-lucide-loader-circle" class="size-6 animate-spin text-primary" />
+            <p class="text-sm font-medium">
+              Loading picture and sound…
+            </p>
+            <p class="max-w-xs text-xs text-muted">
+              Play will be ready when the media has buffered.
+            </p>
+          </div>
+        </div>
         <div class="grid min-h-full min-w-full w-max place-items-center p-4">
           <div :style="{ width: `${surfaceWidth * scale}px`, height: `${surfaceHeight * scale}px` }" class="relative shrink-0" :class="{ 'shadow-2xl ring-1 ring-default/50': mode === 'artwork' }">
             <div ref="surface" class="absolute left-0 top-0 origin-top-left" :style="{ width: `${surfaceWidth}px`, transform: `scale(${scale})` }">
@@ -248,7 +259,18 @@ function changeZoom(direction: number) {
       <div class="shrink-0 border-t border-default bg-default px-4 pt-3 sm:px-6" aria-label="Playback timeline">
         <div class="mx-auto flex max-w-5xl items-center gap-3">
           <span class="flex min-w-16 items-center gap-1.5 text-[11px] font-medium" role="status">
-            <span class="size-1.5 shrink-0 rounded-full" :class="playback.state === 'playing' ? 'animate-pulse bg-primary' : 'bg-muted'" aria-hidden="true" />
+            <UIcon
+              v-if="playback.state === 'loading'"
+              name="i-lucide-loader-circle"
+              class="size-3 animate-spin"
+              aria-hidden="true"
+            />
+            <span
+              v-else
+              class="size-1.5 shrink-0 rounded-full"
+              :class="playback.state === 'playing' ? 'animate-pulse bg-primary' : 'bg-muted'"
+              aria-hidden="true"
+            />
             {{ playbackLabel }}
           </span>
           <UFormField label="Playback position" class="min-w-12 flex-1" :ui="{ label: 'sr-only', container: 'mt-0' }">

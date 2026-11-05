@@ -66,6 +66,16 @@ async function mount(previewCanvas: Record<string, ArtboardState> = canvas, iden
 }
 
 describe('saved banner review workspace', () => {
+  it('shows initial media buffering and enables Play only after picture and sound are ready', async () => {
+    const view = await mount()
+    await view.report('loading')
+    expect(view.host.textContent).toContain('Loading picture and sound')
+    expect(view.button('Play').hasAttribute('disabled')).toBe(true)
+    await view.report('paused')
+    expect(view.host.textContent).not.toContain('Loading picture and sound')
+    expect(view.button('Play').hasAttribute('disabled')).toBe(false)
+  })
+
   it('opens the square layout first and keeps an explicitly chosen size across presentation changes', async () => {
     const view = await mount()
     expect(view.media().dataset.width).toBe('1200')
