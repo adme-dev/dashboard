@@ -4,8 +4,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import ClientVideoPreview from '~/components/banner/ClientVideoPreview.client.vue'
 import type { ArtboardState } from '~/types/banner-studio'
 
+const viewportSize = vi.hoisted(() => ({ width: 1000, height: 800 }))
 vi.mock('@vueuse/core', () => ({
-  useElementSize: () => ({ width: ref(1000), height: ref(800) }),
+  useElementSize: () => ({ width: ref(viewportSize.width), height: ref(viewportSize.height) }),
   useFullscreen: () => ({ toggle: vi.fn(async () => {}), isSupported: ref(false) })
 }))
 vi.mock('~/components/ad-preview/MetaFeedPreview.vue', () => ({ default: { template: '<div data-placement="feed"><slot name="creative" /></div>' } }))
@@ -22,13 +23,13 @@ const ready = { videos: [
 async function flush() {
   for (let i = 0; i < 8; i++) await nextTick()
 }
-async function mount() {
+async function mount(overrides: Record<string, unknown> = {}) {
   const host = document.createElement('div')
   document.body.append(host)
-  const app = createApp(ClientVideoPreview, { canvas, shareToken: `p_${'a'.repeat(32)}`, projectName: 'GMSV' })
+  const app = createApp(ClientVideoPreview, { canvas, shareToken: `p_${'a'.repeat(32)}`, projectName: 'GMSV', ...overrides })
   app.component('UButton', defineComponent({ props: ['variant', 'color', 'icon', 'loading'], setup: (_, { attrs, slots }) => () => h('button', attrs, slots.default?.()) }))
   app.component('UIcon', { template: '<span />' })
-  app.component('UAlert', defineComponent({ props: ['description'], setup: p => () => h('div', p.description) }))
+  app.component('UAlert', defineComponent({ props: ['description', 'actions'], setup: p => () => h('div', [p.description, ...(p.actions || []).map((action: { label: string, onClick: () => void }) => h('button', { onClick: action.onClick }, action.label))]) }))
   app.mount(host)
   const stop = () => {
     app.unmount()
@@ -46,6 +47,8 @@ async function mount() {
 }
 beforeEach(() => {
   vi.useFakeTimers()
+  viewportSize.width = 1000
+  viewportSize.height = 800
   fetch.mockReset().mockResolvedValue(ready)
 })
 afterEach(() => {
@@ -53,6 +56,93 @@ afterEach(() => {
   vi.useRealTimers()
 })
 describe('client compiled video player', () => {
+  it.each([320, 375, 390])('fits social placement inside a %ipx screen without clipping controls', async (width) => {
+    viewportSize.width = width
+    const { host, click } = await mount()
+    await click('Social placement')
+    expect((host.querySelector('[data-placement="feed"]') as HTMLElement).style.width).toBe(`${width - 32}px`)
+  })
+  it('shows an actionable empty-artwork error without submitting a render', async () => {
+    const { host } = await mount({ canvas: {} })
+    expect(host.textContent).toContain('No saved artwork sizes')
+    expect(fetch).not.toHaveBeenCalled()
+    expect(host.querySelector('video')).toBeNull()
+  })
+  it('does not queue unsupported artwork or poll it indefinitely', async () => {
+    fetch.mockResolvedValue({ videos: [{ ...ready.videos[0], status: 'unsupported', url: null }] })
+    const { host } = await mount()
+    expect(host.textContent).toContain('separate preview export')
+    await vi.advanceTimersByTimeAsync(15000)
+    expect(fetch).toHaveBeenCalledTimes(1)
+  })
+  it('recovers from a network error without starting duplicate renders', async () => {
+    fetch.mockRejectedValueOnce(new Error('offline'))
+    const { host, click } = await mount()
+    expect(host.textContent).toContain('could not be loaded')
+    await click('Reload preview')
+    expect(host.querySelector('video')?.getAttribute('src')).toBe('/square.mp4')
+    expect(fetch.mock.calls.every(([, options]) => options.method !== 'POST')).toBe(true)
+  })
+  it('replaces a failed media element when reloading', async () => {
+    const { host, click } = await mount()
+    const first = host.querySelector('video')!
+    first.dispatchEvent(new Event('error'))
+    await flush()
+    expect(host.textContent).toContain('Video playback could not start')
+    await click('Reload preview')
+    expect(host.querySelector('video')).not.toBe(first)
+    expect(host.textContent).not.toContain('Video playback could not start')
+  })
+  it.each([404, 410])('removes media when a refreshed link returns %i', async (statusCode) => {
+    const { host, click } = await mount()
+    const first = host.querySelector('video')!
+    first.dispatchEvent(new Event('error'))
+    await flush()
+    fetch.mockRejectedValueOnce({ statusCode, data: { statusMessage: 'Link unavailable' } })
+    await click('Reload preview')
+    expect(host.querySelector('video')).toBeNull()
+    expect(host.textContent).toContain('Link unavailable')
+  })
+  it('pauses the previous video when switching sizes and does not autoplay the next', async () => {
+    const { host, click } = await mount()
+    const first = host.querySelector('video')!
+    first.pause = vi.fn()
+    await click('1080 × 1920')
+    expect(first.pause).toHaveBeenCalledOnce()
+    expect(host.querySelector('video')?.hasAttribute('autoplay')).toBe(false)
+    expect(host.querySelectorAll('video')).toHaveLength(1)
+  })
+  it('handles a denied play gesture with a recoverable message', async () => {
+    const { host, click } = await mount()
+    const media = host.querySelector('video')!
+    media.play = vi.fn().mockRejectedValue(new Error('NotAllowedError'))
+    await click('Replay')
+    expect(host.textContent).toContain('Tap Play on the video')
+    media.dispatchEvent(new Event('playing'))
+    await flush()
+    expect(host.textContent).not.toContain('Tap Play on the video')
+  })
+  it('shows the fallback instruction if iPhone fullscreen throws', async () => {
+    const { host, click } = await mount()
+    const media = host.querySelector('video')! as HTMLVideoElement & { webkitEnterFullscreen: () => void }
+    media.webkitEnterFullscreen = () => {
+      throw new Error('InvalidStateError')
+    }
+    await click('Full screen')
+    expect(host.textContent).toContain('Use the full-screen control on the video')
+  })
+  it('honours a finite loop count and resets it on replay', async () => {
+    const { host, click } = await mount({ canvas: { custom_1200x1200: { ...board, playback: { duration: 15, loopCount: 2 } } } })
+    const media = host.querySelector('video')!
+    media.play = vi.fn().mockResolvedValue(undefined)
+    expect(media.hasAttribute('loop')).toBe(false)
+    media.dispatchEvent(new Event('ended'))
+    media.dispatchEvent(new Event('ended'))
+    expect(media.play).toHaveBeenCalledTimes(1)
+    await click('Replay')
+    media.dispatchEvent(new Event('ended'))
+    expect(media.play).toHaveBeenCalledTimes(3)
+  })
   it('uses one inline native video with audio in the same file and no autoplay', async () => {
     const { host } = await mount()
     const video = host.querySelector('video')!
