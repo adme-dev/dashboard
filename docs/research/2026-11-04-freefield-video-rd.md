@@ -2,7 +2,7 @@
 
 **Reviewed:** 4 November 2026
 
-**Status:** Source review and proposed tasks; no implementation or GPU evaluation performed
+**Status:** Source review with follow-up feasibility research recorded as of 5 November 2026; research cross-review is complete and the discovered renderer repair is locally verified, reviewed and committed as `3ed6af33b`. The linked storyboard T01–T08 work is implemented and locally verified; this does not implement the five independent research features below. No GPU evaluation or promotion of these research features has been completed.
 
 **External revision:** [`neuregex/freefield@e5fa71b`](https://github.com/neuregex/freefield/tree/e5fa71b8ae52db7f20aa76b5e6e56fc3adff2fca)
 
@@ -62,7 +62,7 @@ Use Nuxt UI v4 and the existing editor inspector/review surfaces. Do not reprodu
 
 ## Separate research backlog
 
-All items below are **unstarted investigations**, not R1/R2/R3 delivery dependencies. Read current provider/model terms and capabilities when a spike starts; record exact model/weight revisions, relevant terms and source evidence. A manifest's licence string is not a legal determination. Any paid evaluation needs a bounded authorized allowance. If no eligible existing provider exists, return a capability gap; a new GPU/backend decision requires a separate proposal.
+The items below are independent investigations, not R1/R2/R3 delivery dependencies. Their current discovery and evaluation states are recorded separately below. Read current provider/model terms and capabilities when a spike starts; record exact model/weight revisions, relevant terms and source evidence. A manifest's licence string is not a legal determination. Any paid evaluation needs a bounded authorized allowance. If no eligible existing provider exists, return a capability gap; a new GPU/backend decision requires a separate proposal.
 
 | ID / priority | Research task | Source inspiration | Exit evidence before promotion |
 |---|---|---|---|
@@ -71,6 +71,31 @@ All items below are **unstarted investigations**, not R1/R2/R3 delivery dependen
 | FF-RD03 / next | Optional format expansion for portrait/square/landscape reuse | [`reframe`](https://github.com/neuregex/freefield/blob/e5fa71b8ae52db7f20aa76b5e6e56fc3adff2fca/apps/reframe/app.json) | Compare fit/fill/crop baseline with generative outpaint; preserve subject geometry, test moving camera and borders over the entire clip; compose exact-copy overlays afterwards. Explicit review of newly invented surroundings; unchanged fallback remains available. |
 | FF-RD04 / later | Structured reference-sheet preview and style consistency | [`genjutsu`](https://github.com/neuregex/freefield/blob/e5fa71b8ae52db7f20aa76b5e6e56fc3adff2fca/apps/genjutsu/app.json), [`mixed-media`](https://github.com/neuregex/freefield/blob/e5fa71b8ae52db7f20aa76b5e6e56fc3adff2fca/apps/mixed-media/app.json) | Preserve original role/asset IDs and review the constructed sheet; verify provider actually consumes references; full-duration consistency and identity review. Prefer artistic brand content over accuracy-critical vehicle material. |
 | FF-RD05 / later, constrained | Reference camera motion / reshoot feasibility | [`camera-copy`](https://github.com/neuregex/freefield/blob/e5fa71b8ae52db7f20aa76b5e6e56fc3adff2fca/apps/camera-copy/app.json), [`reshoot`](https://github.com/neuregex/freefield/blob/e5fa71b8ae52db7f20aa76b5e6e56fc3adff2fca/apps/reshoot/app.json) | Establish a commercially eligible supported alternative before product promotion. The reviewed camera-copy manifest labels a dependency research/non-commercial; reshoot lists an unstated weight licence. Then compare requested versus observed motion and geometry with human review. |
+
+### Follow-up evidence on 5 November 2026
+
+| Research item | Discovery | Execution and semantic evidence | Current decision |
+|---|---|---|---|
+| FF-RD01 video matting | [Kimi discovery and local baseline complete](./2026-11-05-freefield-matting-upscale-reframe.md) | Bounded local ProRes alpha composite verified; no provider edge-quality evaluation | Defer promotion; BRIA gateway model is an evaluation candidate, not an integrated feature |
+| FF-RD02 upscaling | [Kimi discovery and local baseline complete](./2026-11-05-freefield-matting-upscale-reframe.md) | Equal-size current-renderer/Lanczos comparisons measured; no model output | Defer promotion; FLUX precise upscale needs an adapter, terms decision and bounded evaluation |
+| FF-RD03 generative reframing | [Kimi discovery and local baseline complete](./2026-11-05-freefield-matting-upscale-reframe.md) | Production fit/fill/crop mismatch reproduced; local parity repair verified; no outpaint output | Defer promotion; native Runway expand has a documented ratio field that the reviewed gateway route lacks |
+| FF-RD04 reference sheets and style | [Grok feasibility pass complete](./2026-11-05-freefield-reference-motion-feasibility.md) | No submitted references or full-duration output review | Defer: no eligible wired reference-sheet/style integration |
+| FF-RD05 camera motion and reshoot | [Grok feasibility pass complete](./2026-11-05-freefield-reference-motion-feasibility.md) | No motion generation or quality review | Do not promote the reviewed upstream workflows; later eligible alternatives need a new evaluation |
+
+The Grok pass ran 57 existing tests across five files. These verify current registry, request mapping, recipes and reference authority; they do not establish live provider behavior or commercial clearance. Its reviewed report includes primary-source links and distinguishes prompt camera language from actual reference inputs. A public schema declaring an input does not mean our integration sends it. The same review identified Seedance schema/mapper/registry drift that needs a separate integration check before those inputs are exposed.
+
+The Kimi pass ran 47 existing tests and 36 local FFmpeg/ffprobe commands on owned synthetic fixtures. It established bounded alpha compositing and equal-size upscale baselines, and exposed a production renderer parity bug: the MJS port ignores explicit fill/crop while the TypeScript planner implements them. The MJS planner now mirrors the existing TypeScript framing behavior. Its 99-test focused gate and 20 paired local renders passed. Grok cleared the repair; commit `3ed6af33b` records the source/tests. The broader integration rerun passed 901 tests across 137 files with four workers, after an initial run hit one five-second brand-kit test timeout. A final parity run passed 16/16. These local fixtures are not provider/GPU results or Linux acceptance.
+
+Grok cross-reviewed the FF-RD01–03 report against current official provider contracts and captured local receipts, with no important finding changing its defer decisions. Precise upscale evaluation must explicitly submit `creativity: 0`: upstream BFL defaults to creative mode, while the reviewed Cloudflare schema supplies no default.
+
+The evaluation checkboxes below remain open where the complete exit evidence is absent. A defer or rejection of the reviewed workflow does not implement the feature, approve another provider, or authorize paid generation.
+
+Completed local work:
+
+- [x] Capability discovery and explicit promote/defer decisions for all five investigations.
+- [x] Owned synthetic alpha, equal-size resize and framing baselines, with hashes and probes.
+- [x] Kimi/Grok research cross-review, with source/terms uncertainties retained.
+- [x] Production fit/fill/crop parity repair, regression tests and paired rendered verification (`3ed6af33b`).
 
 Task checklist for the research owner:
 
