@@ -52,9 +52,11 @@ export function templateCatalogueQuery(actor: TemplateActor, cursor: string | un
       JOIN page_studio_workspace_memberships copy_member ON copy_member.workspace_id=copy_owner.workspace_id
       JOIN page_studio_entitlements copy_plan ON copy_plan.client_id=copy_owner.id AND copy_plan.tenant_id='studio-customer-'||copy_owner.id::text
       WHERE copy_owner.workspace_id=$3 AND copy_owner.agency_client_id IS NULL AND copy_member.identity_id=$4
-        AND copy_member.role IN ('owner','manager') AND copy_member.revoked_at IS NULL
+        AND copy_member.role='owner' AND copy_member.revoked_at IS NULL
         AND (copy_member.expires_at IS NULL OR copy_member.expires_at>clock_timestamp())
-        AND copy_plan.status='active' AND copy_plan.plan_key<>'customer_preview_v1' AND copy_plan.effective_from<=clock_timestamp()
+        AND copy_plan.status='active' AND copy_plan.plan_key<>'customer_preview_v1'
+        AND copy_plan.plan_metadata->'publishingEnabled'='true'::jsonb AND copy_plan.plan_metadata->'managedBy'='"platform"'::jsonb
+        AND copy_plan.plan_metadata->'allowedModules' @> '["business-content"]'::jsonb AND copy_plan.effective_from<=clock_timestamp()
         AND (copy_plan.effective_until IS NULL OR copy_plan.effective_until>clock_timestamp())
         AND copy_plan.active_site_limit>(SELECT COUNT(*) FROM page_studio_sites copy_site WHERE copy_site.client_id=copy_owner.id AND copy_site.tenant_id=copy_plan.tenant_id AND copy_site.status<>'archived'))`
 

@@ -43,7 +43,7 @@ export async function assertTemplateActor(db: PageStudioQueryClient, principal: 
         AND identity.subject=account.id::text AND identity.portal_user_id IS NULL AND identity.verified_at<=clock_timestamp()
         AND workspace.status='active' AND member.revoked_at IS NULL
         AND (member.expires_at IS NULL OR member.expires_at>clock_timestamp())
-        AND member.role IN (${write ? "'owner','manager'" : "'owner','manager','editor','viewer'"})
+        AND member.role IN (${write ? "'owner'" : "'owner','manager','editor','viewer'"})
         AND NOT EXISTS(SELECT 1 FROM page_studio_workspace_client_bindings legacy WHERE legacy.workspace_id=workspace.id)
       FOR SHARE OF session,account,identity,member,workspace`, [actor.sessionIdentity, actor.identityId, actor.workspaceId])
     if (rows.rows.length !== 1) throw templateDenied()

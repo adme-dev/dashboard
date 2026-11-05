@@ -65,7 +65,8 @@ SET search_path TO ${schema}`)
       INSERT INTO page_studio_template_grants(template_id,audience,workspace_id) VALUES ('${id}','customer-workspace','${id}');`)
     await db.query(`ALTER TABLE client_users ADD COLUMN role TEXT DEFAULT 'viewer';
       ALTER TABLE page_studio_entitlements ADD COLUMN active_site_limit INTEGER DEFAULT 1;
-      ALTER TABLE page_studio_entitlements ADD COLUMN plan_key TEXT DEFAULT 'standard';`)
+      ALTER TABLE page_studio_entitlements ADD COLUMN plan_key TEXT DEFAULT 'standard';
+      ALTER TABLE page_studio_entitlements ADD COLUMN plan_metadata JSONB DEFAULT '{}'::jsonb;`)
   })
   afterEach(async () => {
     if (db) {
