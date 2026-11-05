@@ -54,7 +54,7 @@ const exportType = ref<'html5' | 'png' | 'jpg' | 'gif' | 'mp4'>(props.initialTyp
 const imageQuality = ref<1 | 2>(1) // 1x or 2x retina
 const jpgQuality = ref(90) // 0-100
 const gifFps = ref(10) // 5-15
-const videoFps = ref(30) // 24, 30, or 60
+const videoFps = ref(24) // 24, 30, or 60
 const videoCrf = ref(23) // 0-51 (lower = better quality)
 const videoQuality = ref<1 | 2>(1) // 1x or 2x
 

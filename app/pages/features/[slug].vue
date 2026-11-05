@@ -2622,7 +2622,7 @@ const features: Record<string, Feature> = {
     details: [
       {
         title: 'Frame-by-Frame Capture',
-        content: 'The video export pipeline uses headless Chromium to render each frame individually. GSAP timeline.seek() positions the animation at precise timestamps, and a full-page screenshot captures the result. Exports capture one animation cycle, up to 30 seconds, at the selected frame rate. Review the rendered file before delivering campaign artwork.'
+        content: 'The video export pipeline uses headless Chromium to render each frame individually. GSAP timeline.seek() positions the animation at precise timestamps, and a full-page screenshot captures the result. Exports capture one animation cycle, up to 30 seconds. The default is 24 fps to reduce rendering work; 30 and 60 fps remain selectable when smoother motion is needed. Review the rendered file before delivering campaign artwork.'
       },
       {
         title: 'Music and Sound Effects',
