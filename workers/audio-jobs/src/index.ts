@@ -15,7 +15,7 @@ import { Container } from '@cloudflare/containers'
  * creds in the container — the Worker owns persistence. */
 export class RenderContainer extends Container {
   defaultPort = 8080
-  sleepAfter = '5m'
+  sleepAfter = '30s'
 }
 
 interface Env {
@@ -70,7 +70,7 @@ export default {
     }
 
     if (batch.queue === 'banner-render') {
-      const { runBannerRenderJob, BannerRenderBusyError } = await import('./bannerRenderWorker')
+      const { runBannerRenderJob, BannerRenderBusyError, BannerRenderCapacityError } = await import('./bannerRenderWorker')
       const { renderBanner, getSourceHtml, uploadBannerMp4 } = await import('./bannerRenderContainer')
       const db = await import('./db')
       for (const msg of batch.messages) {
@@ -86,6 +86,7 @@ export default {
             discardUpload: (key) => (env.AUDIO_BUCKET as R2Bucket).delete(key),
             markDone: db.dbMarkBannerDone,
             markFailed: db.dbMarkBannerFailed,
+            markDeferred: db.dbMarkBannerDeferred,
           })
           // Cleanup source HTML on success only (keep on failure so retries can re-read).
           if (completed) {
@@ -94,7 +95,7 @@ export default {
           msg.ack()
         } catch (e) {
           console.error('audio-jobs.banner-render.error', jobId, e)
-          msg.retry({ delaySeconds: e instanceof BannerRenderBusyError ? e.retryAfterSeconds : 30 })
+          msg.retry({ delaySeconds: e instanceof BannerRenderBusyError || e instanceof BannerRenderCapacityError ? e.retryAfterSeconds : 30 })
         }
       }
       return

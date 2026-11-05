@@ -65,7 +65,7 @@ dead_letter_queue = "video-render-dlq"
 queue = "banner-render"
 max_batch_size = 1
 max_batch_timeout = 5
-max_retries = 3
+max_retries = 8
 dead_letter_queue = "banner-render-dlq"
 
 # Phase 3 — FFmpeg render service as a CF Container bound to this Worker
@@ -75,7 +75,7 @@ dead_letter_queue = "banner-render-dlq"
 name = "audio-render"
 class_name = "RenderContainer"
 image = "./container/Dockerfile"
-max_instances = 3
+max_instances = 6
 # ffmpeg 2-pass loudnorm needs real memory — don't run on the smallest instance.
 # "standard" was renamed to "standard-1" (wrangler 4.95+).
 instance_type = "standard-1"

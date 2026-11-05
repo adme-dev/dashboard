@@ -153,3 +153,8 @@ export async function dbMarkBannerFailed(jobId: string, token: string, error: st
     WHERE id=$1 AND status='rendering' AND started_at=$2::timestamptz
       AND updated_at > now() - interval '15 minutes'`, [jobId, token, error])
 }
+
+export async function dbMarkBannerDeferred(jobId: string, token: string): Promise<void> {
+  await execute(`UPDATE banner_render_jobs SET status='queued', error=NULL, updated_at=now()
+    WHERE id=$1 AND status='rendering' AND started_at=$2::timestamptz`, [jobId, token])
+}
