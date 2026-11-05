@@ -3,10 +3,9 @@ import { resolveCanvasFonts, fontAssetMetadata } from '~~/server/utils/banner/fo
 import { queryOneFresh } from '~~/server/utils/db'
 import { withBannerFontDelivery } from '~~/server/utils/banner/fontDelivery'
 
-export async function loadPublicBannerShare(event: H3Event) {
+export async function loadPublicBannerShare(event: H3Event, token = getRouterParam(event, 'token')) {
   setHeader(event, 'Cache-Control', 'no-store')
   setHeader(event, 'Referrer-Policy', 'no-referrer')
-  const token = getRouterParam(event, 'token')
   if (!token || !/^p_[0-9a-f]{32}$/i.test(token)) throw createError({ statusCode: 404, statusMessage: 'Preview link not found' })
   const link = await queryOneFresh<{ projectId: string, revoked: boolean, expiresAt: string }>(`
     SELECT project_id AS "projectId", revoked, expires_at AS "expiresAt"

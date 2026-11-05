@@ -43,15 +43,17 @@ const { ctaLabel } = useAdPreview()
     <!-- Ad creative -->
     <div class="relative bg-gray-100">
       <div class="relative w-full" :style="{ aspectRatio: creativeAspectRatio }">
-        <AdPreviewCreativeMedia
-          :html="html"
-          :html-width="htmlWidth"
-          :html-height="htmlHeight"
-          :image="image"
-          label="Ad Creative"
-          placeholder-bg="#333"
-          placeholder-fg="#666"
-        />
+        <slot name="creative">
+          <AdPreviewCreativeMedia
+            :html="html"
+            :html-width="htmlWidth"
+            :html-height="htmlHeight"
+            :image="image"
+            label="Ad Creative"
+            placeholder-bg="#333"
+            placeholder-fg="#666"
+          />
+        </slot>
       </div>
     </div>
 

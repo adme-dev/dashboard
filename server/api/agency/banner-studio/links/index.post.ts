@@ -4,6 +4,7 @@
  * Body: { projectId, expiresInDays?: number }
  */
 import { randomUUID } from 'uncrypto'
+import { warmBannerShareVideos } from '~~/server/utils/banner/shareVideo'
 import { queryOneFresh } from '~~/server/utils/db'
 import { requireWriteAccess } from '~~/server/utils/auth'
 import { requireBannerShareAccess } from '~~/server/utils/banner/shareAccess'
@@ -45,6 +46,12 @@ export default defineEventHandler(async (event) => {
   `, [projectId, token, expiresAt, user.id, project.client_id, project.created_by])
   if (!row) throw createError({ statusCode: 409, statusMessage: 'Project access changed; reload before sharing' })
 
+  try {
+    await warmBannerShareVideos(event, token)
+  } catch {
+    // The link remains valid; opening it can prepare missing sizes or retry later.
+    console.warn('[banner-share] Preview preparation deferred')
+  }
   setHeader(event, 'Cache-Control', 'private, no-store')
   return row
 })
