@@ -118,7 +118,12 @@ export async function verifyCodePageImport(raw: PageStudioCheckpointCommitInput,
   const content = Package.parse(await readJson(bucket, `${packagePrefix}/manifest.json`, 2 * 1024 * 1024))
   requireValue(await codeSha256(canonicalCodeJson(content)) === binding.contentDigest
     && await codeSha256(canonicalCodeJson(content.inventory)) === content.inventoryDigest)
-  const registration = Registration.parse(await readJson(bucket, `platform/code-page-import-reviews/v1/${binding.contentDigest}.json`, 2 * 1024 * 1024))
+  const scopedReviewKey = `${prefix}/code-pages/reviews/v1/${binding.contentDigest}.json`
+  const scopedReview = await bucket.get(scopedReviewKey)
+  // Presence selects the scope-local review permanently; malformed scoped data
+  // must never fall back to a legacy review for another operation or account.
+  await scopedReview?.body.cancel()
+  const registration = Registration.parse(await readJson(bucket, scopedReview ? scopedReviewKey : `platform/code-page-import-reviews/v1/${binding.contentDigest}.json`, 2 * 1024 * 1024))
   requireValue(sameCodeContent(registration.scope, scope) && registration.contentDigest === binding.contentDigest && registration.policy === content.inspection.policy)
   if (registration.policy === 'reviewed-inline-static-css-v1') {
     requireValue(content.inspection.policy === registration.policy && registration.review.inventoryDigest === content.inventoryDigest
@@ -147,6 +152,7 @@ export async function verifyCodePageImport(raw: PageStudioCheckpointCommitInput,
   return {
     codeContent: binding,
     pageCount: content.inventory.pages.length,
+    totalBytes: entries.reduce((total, entry) => total + entry.bytes, 0),
     routes: content.inventory.pages.map(page => page.route),
     inventoryDigest: content.inventoryDigest,
     provenance: {

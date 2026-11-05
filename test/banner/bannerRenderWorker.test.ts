@@ -1,5 +1,5 @@
 import { afterEach, describe, it, expect, vi } from 'vitest'
-import { BannerRenderBusyError, runBannerRenderJob, type BannerJob, type BannerRenderDeps } from '~~/workers/audio-jobs/src/bannerRenderWorker'
+import { BannerRenderBusyError, BannerRenderCapacityError, runBannerRenderJob, type BannerJob, type BannerRenderDeps } from '~~/workers/audio-jobs/src/bannerRenderWorker'
 import { BANNER_RENDER_LEASE_MS } from '~~/server/utils/banner/renderDispatch'
 
 const job = (over: Partial<BannerJob> = {}): BannerJob => ({
@@ -18,6 +18,7 @@ function deps(over: Partial<BannerRenderDeps> = {}): BannerRenderDeps {
     discardUpload: vi.fn().mockResolvedValue(undefined),
     markDone: vi.fn().mockResolvedValue(true),
     markFailed: vi.fn().mockResolvedValue(undefined),
+    markDeferred: vi.fn().mockResolvedValue(undefined),
     ...over
   }
 }
@@ -146,5 +147,17 @@ describe('leased banner render worker', () => {
     await expect(runBannerRenderJob({ jobId: 'j1' }, d)).rejects.toThrow('runtime_not_ready')
     expect(d.markFailed).toHaveBeenCalledWith('j1', 'token-1', expect.stringContaining('runtime_not_ready:'))
     expect(d.markDone).not.toHaveBeenCalled()
+  })
+  it('acknowledges a timed-out render after recording the failure', async () => {
+    const d = deps({ render: vi.fn().mockRejectedValue(new Error('The operation was aborted due to timeout')) })
+    expect(await runBannerRenderJob({ jobId: 'j1' }, d)).toBe(false)
+    expect(d.markFailed).toHaveBeenCalledWith('j1', 'token-1', expect.stringContaining('container_timeout:'))
+    expect(d.markDone).not.toHaveBeenCalled()
+  })
+  it('returns a full-container error to the queue without failing the existing job', async () => {
+    const d = deps({ render: vi.fn().mockRejectedValue(new Error('banner container 500: Failed to start container: Maximum number of running container instances exceeded')) })
+    await expect(runBannerRenderJob({ jobId: 'j1' }, d)).rejects.toBeInstanceOf(BannerRenderCapacityError)
+    expect(d.markDeferred).toHaveBeenCalledWith('j1', 'token-1')
+    expect(d.markFailed).not.toHaveBeenCalled()
   })
 })

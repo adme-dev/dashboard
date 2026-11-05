@@ -7,6 +7,10 @@ const props = defineProps<{ siteId: string, audience: 'agency' | 'portal' }>()
 const endpoint = computed(() => `/api/${props.audience}/page-studio/sites/${encodeURIComponent(props.siteId)}/staging`)
 const { data, error, pending, refresh } = await useFetch<PageStudioStagingState>(endpoint)
 const updating = ref(false)
+const confirmSuspend = ref(false)
+const { canWrite, hasPermission } = useAuth()
+const canChangeVisibility = computed(() => props.audience === 'agency' && canWrite.value && hasPermission('PAGE_STUDIO_PUBLISH') && state.value?.canManage)
+const visibilityAttempt = ref<{ operation: 'suspend' | 'resume', requestId: string, expectedActiveId: string } | null>(null)
 const initialUnconfirmed = ref(false)
 const initialRequests = new Set<string>()
 let scopeRevision = 0
@@ -23,7 +27,7 @@ const busy = computed(() => updating.value || ['building', 'provisioning'].inclu
 const changed = computed(() => state.value?.active && (state.value.currentDigest !== state.value.active.digest || !sameCodeContent(state.value.currentCodeContent, state.value.active.codeContent)))
 const labels: Record<PageStudioStagingState['status'], string> = {
   not_published: 'Not deployed', provisioning: 'Preparing address', building: 'Updating staging', ready: 'Ready',
-  update_failed: 'Update failed', failed: 'Deployment failed', suspended: 'Unavailable'
+  update_failed: 'Update failed', failed: 'Deployment failed', suspended: 'Unpublished'
 }
 const deployedAt = computed(() => state.value?.active ? new Intl.DateTimeFormat('en-AU', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(state.value.active.deployedAt)) : null)
 let poll: ReturnType<typeof setInterval> | undefined
@@ -52,6 +56,8 @@ watch(() => state.value?.active, () => {
 function invalidateRequest() {
   scopeRevision++
   attempt.value = null
+  visibilityAttempt.value = null
+  confirmSuspend.value = false
   initialUnconfirmed.value = false
   updating.value = false
 }
@@ -148,6 +154,28 @@ async function update() {
     if (revision === scopeRevision) updating.value = false
   }
 }
+async function changeVisibility(operation: 'suspend' | 'resume') {
+  if (!canChangeVisibility.value || busy.value) return
+  const snapshot = state.value?.active ?? state.value?.suspendedSnapshot
+  if (!snapshot) return
+  if (visibilityAttempt.value && visibilityAttempt.value.operation !== operation) return
+  visibilityAttempt.value ??= { operation, requestId: crypto.randomUUID(), expectedActiveId: snapshot.id }
+  const requested = { ...visibilityAttempt.value }
+  const revision = scopeRevision
+  const url = endpoint.value
+  updating.value = true
+  try {
+    const response = PageStudioStagingStateSchema.parse(await $fetch(`${url}/${operation}`, { method: 'POST', body: { requestId: requested.requestId, expectedActiveId: requested.expectedActiveId } }))
+    if (revision !== scopeRevision || !mounted) return
+    if (response.siteId !== props.siteId) throw new Error('Wrong preview receipt')
+    data.value = response
+    visibilityAttempt.value = null
+    confirmSuspend.value = false
+    toast.add({ title: response.status === 'suspended' ? 'Preview unpublished' : 'Preview visibility checked', color: 'success' })
+  } catch {
+    if (revision === scopeRevision && mounted) toast.add({ title: 'Preview visibility change was not confirmed', description: 'Retry the same action or refresh the status. Saved snapshots are retained.', color: 'error' })
+  } finally { if (revision === scopeRevision) updating.value = false }
+}
 </script>
 
 <template>
@@ -181,7 +209,8 @@ async function update() {
         <p class="break-all rounded-lg border border-default bg-elevated p-3 font-mono text-sm text-highlighted">
           {{ state.hostname }}
         </p>
-        <p class="text-sm text-muted">
+        <UAlert v-if="state.status === 'suspended'" title="This preview is unpublished" description="Visitors cannot open this preview. Resume restores the same saved snapshot after checking its files and address." />
+        <p v-else class="text-sm text-muted">
           {{ deployedAt ? `Saved snapshot deployed ${deployedAt}.` : state.currentCodeContent ? 'Use Update staging to preview this imported website.' : state.currentDigest ? 'Your first saved preview is prepared automatically. Use Update staging for later changes.' : 'Save a page to prepare the first preview at this address.' }}
           Unsaved editor changes are excluded. Form submissions are disabled on staging.
         </p>
@@ -192,7 +221,7 @@ async function update() {
           color="info"
         />
         <UAlert
-          v-if="state.failure"
+          v-if="state.failure && state.status !== 'suspended'"
           title="Staging needs another attempt"
           :description="state.active ? 'The previous snapshot is still available. Retry to deploy your saved changes.' : 'The snapshot is not ready. Retry the update or contact your agency team.'"
           color="warning"
@@ -205,7 +234,21 @@ async function update() {
     <template #footer>
       <div class="flex flex-wrap gap-2">
         <UButton
-          v-if="state?.canManage"
+          v-if="canChangeVisibility && state?.active"
+          label="Unpublish preview"
+          color="warning"
+          variant="outline"
+          :disabled="busy || Boolean(attempt)"
+          @click="confirmSuspend = true"
+        />
+        <UButton
+          v-if="canChangeVisibility && state?.status === 'suspended' && state.suspendedSnapshot"
+          label="Resume saved preview"
+          :disabled="busy"
+          @click="changeVisibility('resume')"
+        />
+        <UButton
+          v-if="state?.canManage && state.status !== 'suspended'"
           :label="initialUnconfirmed ? 'Check initial staging' : 'Update staging'"
           icon="i-lucide-cloud-upload"
           :loading="updating"
@@ -233,5 +276,19 @@ async function update() {
         />
       </div>
     </template>
+    <UModal v-model:open="confirmSuspend" title="Unpublish this preview?" :dismissible="!updating">
+      <template #body>
+        <p>The preview address will stop serving this website. Saved snapshots are retained. This does not change the production website or separately published template previews.</p>
+      </template>
+      <template #footer>
+        <UButton
+          label="Unpublish preview"
+          color="warning"
+          :loading="updating"
+          :disabled="busy"
+          @click="changeVisibility('suspend')"
+        />
+      </template>
+    </UModal>
   </UCard>
 </template>

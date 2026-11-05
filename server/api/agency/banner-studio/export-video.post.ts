@@ -7,7 +7,7 @@ import { executeGodModeBannerRender } from '~~/server/utils/banner/godModeRender
 export default defineEventHandler(async (event) => {
   const user = await requireAuth(event)
   const body = await readBody(event)
-  const { projectId, formats, fps = 30, quality = 1, crf = 23 } = body as {
+  const { projectId, formats, fps = 24, quality = 1, crf = 23 } = body as {
     projectId: string
     formats: BannerFormat[]
     fps?: number

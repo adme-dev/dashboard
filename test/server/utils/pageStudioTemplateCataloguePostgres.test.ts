@@ -43,6 +43,10 @@ SET search_path TO ${schema}`)
       CREATE TABLE page_studio_checkpoints(tenant_id TEXT,client_id UUID,site_id UUID,id TEXT,UNIQUE(tenant_id,client_id,site_id,id));`)
     await db.query(`INSERT INTO page_studio_checkpoints VALUES ('owner','${id}','${id}','cp')`)
     await db.query(readFileSync('server/database/migrations/501_page_studio_template_catalogue.sql', 'utf8'))
+    await db.query(`CREATE TABLE page_studio_sites(id UUID PRIMARY KEY,tenant_id TEXT,client_id UUID,status TEXT,UNIQUE(tenant_id,client_id,id));
+      CREATE TABLE page_studio_staging_deployments(id UUID PRIMARY KEY);
+      CREATE TABLE page_studio_business_owners(id UUID PRIMARY KEY,workspace_id UUID,agency_client_id UUID);`)
+    await db.query(readFileSync('server/database/migrations/502_page_studio_template_operations.sql', 'utf8'))
     await db.query(`INSERT INTO agency_clients VALUES ('${id}',TRUE),('${other}',TRUE);
       INSERT INTO team_members VALUES ('${id}',TRUE);
       INSERT INTO client_users VALUES ('${id}','${id}','active');
@@ -59,6 +63,10 @@ SET search_path TO ${schema}`)
       INSERT INTO page_studio_template_version_status(version_id) VALUES ('${id}');
       INSERT INTO page_studio_template_grants(template_id,audience,tenant_id,client_id) VALUES ('${id}','portal-client','recipient','${id}');
       INSERT INTO page_studio_template_grants(template_id,audience,workspace_id) VALUES ('${id}','customer-workspace','${id}');`)
+    await db.query(`ALTER TABLE client_users ADD COLUMN role TEXT DEFAULT 'viewer';
+      ALTER TABLE page_studio_entitlements ADD COLUMN active_site_limit INTEGER DEFAULT 1;
+      ALTER TABLE page_studio_entitlements ADD COLUMN plan_key TEXT DEFAULT 'standard';
+      ALTER TABLE page_studio_entitlements ADD COLUMN plan_metadata JSONB DEFAULT '{}'::jsonb;`)
   })
   afterEach(async () => {
     if (db) {

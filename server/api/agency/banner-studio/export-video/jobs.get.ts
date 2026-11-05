@@ -4,6 +4,12 @@ import { queryOneFresh, queryRowsFresh } from '~~/server/utils/db'
 import { projectJobStatus, type BannerJobRow } from '~~/server/utils/banner/renderJob'
 import { hasAllSocialClientAccess, requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
 
+type TimedJobRow = BannerJobRow & {
+  created_at: string
+  started_at: string | null
+  updated_at: string
+}
+
 export default defineEventHandler(async (event) => {
   const user = await requireAuth(event)
   setHeader(event, 'Cache-Control', 'private, no-store')
@@ -21,17 +27,25 @@ export default defineEventHandler(async (event) => {
     if (!project) throw createError({ statusCode: 404, statusMessage: 'Project not found' })
     await requireProjectAccess(project)
     // Keep every pending job visible, plus the latest twenty settled jobs.
-    const rows = await queryRowsFresh<BannerJobRow & { updated_at: string }>(
+    const rows = await queryRowsFresh<TimedJobRow>(
       `SELECT * FROM banner_render_jobs WHERE project_id = $1 AND (
         status NOT IN ('done', 'failed') OR id IN (
           SELECT id FROM banner_render_jobs WHERE project_id = $1
           AND status IN ('done', 'failed') ORDER BY created_at DESC LIMIT 20
         )) ORDER BY created_at DESC`, [projectId])
-    return { jobs: projectJobStatus(rows).map((job, index) => ({ ...job, canRetry: canRetryBannerJob(rows[index]!) })) }
+    return { jobs: projectJobStatus(rows).map((job, index) => ({
+      ...job,
+      canRetry: canRetryBannerJob(rows[index]!),
+      width: rows[index]!.width,
+      height: rows[index]!.height,
+      createdAt: rows[index]!.created_at ?? null,
+      startedAt: rows[index]!.started_at ?? null,
+      updatedAt: rows[index]!.updated_at ?? null
+    })) }
   }
   const ids = String(query.ids ?? '').split(',').map(s => s.trim()).filter(Boolean).slice(0, 20)
   if (!ids.length) return { jobs: [] }
-  const rows = await queryRowsFresh<BannerJobRow & ProjectAccess & { updated_at: string }>(
+  const rows = await queryRowsFresh<TimedJobRow & ProjectAccess>(
     `SELECT j.*, p.client_id, p.created_by FROM banner_render_jobs j
        JOIN banner_projects p ON p.id = j.project_id WHERE j.id = ANY($1)`, [ids])
   const checked = new Set<string>()
@@ -40,5 +54,13 @@ export default defineEventHandler(async (event) => {
     await requireProjectAccess(row)
     checked.add(row.project_id)
   }
-  return { jobs: projectJobStatus(rows).map((job, index) => ({ ...job, canRetry: canRetryBannerJob(rows[index]!) })) }
+  return { jobs: projectJobStatus(rows).map((job, index) => ({
+    ...job,
+    canRetry: canRetryBannerJob(rows[index]!),
+    width: rows[index]!.width,
+    height: rows[index]!.height,
+    createdAt: rows[index]!.created_at ?? null,
+    startedAt: rows[index]!.started_at ?? null,
+    updatedAt: rows[index]!.updated_at ?? null
+  })) }
 })

@@ -8,6 +8,7 @@ const snapshot = shallowRef<{ clientId?: string | null, clientName?: string | nu
 const unavailable = ref(false)
 const loading = ref(true)
 const fontsReady = ref(false)
+const downloadsOpen = ref(false)
 const { fetchCustomFonts, getExportCustomFonts } = useBannerFonts(() => snapshot.value?.clientId ?? null)
 let disposed = false
 let timer: ReturnType<typeof setTimeout> | undefined
@@ -65,6 +66,14 @@ onBeforeUnmount(() => {
       <div class="flex items-center gap-2">
         <BannerThemeToggle />
         <UButton
+          label="MP4 downloads"
+          icon="i-lucide-download"
+          color="neutral"
+          variant="outline"
+          :disabled="!snapshot"
+          @click="downloadsOpen = true"
+        />
+        <UButton
           :to="`/creative/banner-studio/${projectId}`"
           icon="i-lucide-pencil"
           color="neutral"
@@ -88,6 +97,14 @@ onBeforeUnmount(() => {
       :fonts="customFonts"
       :client-name="snapshot.clientName"
       :project-name="snapshot.name"
+    />
+    <BannerVideoDownloads
+      v-if="snapshot"
+      v-model:open="downloadsOpen"
+      :project-id="projectId"
+      :project-name="snapshot.name"
+      :client-id="snapshot.clientId"
+      :editor-url="`/creative/banner-studio/${projectId}`"
     />
   </main>
 </template>

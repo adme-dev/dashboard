@@ -47,10 +47,12 @@ export async function withCustomerProductionAuthoringAuthority<T>(
   const params = [loginSessionHash, siteId, entitlementId]
   try {
     return await (dependencies.runTransaction ?? transactionWithoutRetry)(async (db) => {
+      // Retain selected-copy provenance across child-session reads and writes.
+      await db.query("SELECT id FROM page_studio_template_copies WHERE site_id=$1 AND state='ready' FOR SHARE NOWAIT", [siteId])
       const check = async (): Promise<CustomerProductionAuthoringAuthority> => {
         const rows = (await db.query<AuthorityRow>(`
           SELECT identity.id AS identity_id, account.id AS account_id,
-            receipt.workspace_id, receipt.business_id, receipt.tenant_id,
+            workspace.id AS workspace_id, owner.id AS business_id, site.tenant_id,
             LEAST(session.expires_at,membership.expires_at,entitlement.effective_until) AS expires_at
           FROM page_studio_customer_sessions session
           JOIN page_studio_customer_accounts account ON account.id=session.account_id
@@ -58,8 +60,9 @@ export async function withCustomerProductionAuthoringAuthority<T>(
           JOIN page_studio_workspace_memberships membership ON membership.identity_id=identity.id
           JOIN page_studio_customer_workspaces workspace ON workspace.id=membership.workspace_id
           JOIN page_studio_business_owners owner ON owner.workspace_id=workspace.id
-          JOIN page_studio_customer_site_requests receipt ON receipt.workspace_id=workspace.id AND receipt.business_id=owner.id
-          JOIN page_studio_sites site ON site.id=receipt.site_id AND site.client_id=receipt.business_id AND site.tenant_id=receipt.tenant_id
+          JOIN page_studio_sites site ON site.id=$2 AND site.client_id=owner.id AND site.tenant_id='studio-customer-' || owner.id::text
+          LEFT JOIN page_studio_customer_site_requests receipt ON receipt.workspace_id=workspace.id AND receipt.business_id=owner.id
+            AND receipt.site_id=site.id AND receipt.tenant_id=site.tenant_id
           JOIN page_studio_entitlements entitlement ON entitlement.id=site.entitlement_id
             AND entitlement.client_id=site.client_id AND entitlement.tenant_id=site.tenant_id
           WHERE session.token_hash=$1 AND site.id=$2 AND entitlement.id=$3
@@ -67,7 +70,9 @@ export async function withCustomerProductionAuthoringAuthority<T>(
             AND account.status='active' AND identity.status='active' AND identity.verified_at<=clock_timestamp()
             AND identity.issuer='studio' AND identity.subject=account.id::text AND identity.portal_user_id IS NULL
             AND workspace.status='active' AND owner.agency_client_id IS NULL
-            AND receipt.tenant_id='studio-customer-' || owner.id::text
+            AND (receipt.site_id IS NOT NULL OR EXISTS(SELECT 1 FROM page_studio_template_copies copy
+              WHERE copy.site_id=site.id AND copy.tenant_id=site.tenant_id AND copy.client_id=owner.id
+                AND copy.account_key='customer:' || workspace.id::text AND copy.actor_kind='customer' AND copy.state='ready'))
             AND membership.role='owner' AND membership.revoked_at IS NULL
             AND (membership.expires_at IS NULL OR membership.expires_at>clock_timestamp())
             AND NOT EXISTS (SELECT 1 FROM page_studio_workspace_client_bindings legacy WHERE legacy.workspace_id=workspace.id)

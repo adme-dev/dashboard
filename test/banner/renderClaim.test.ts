@@ -3,15 +3,28 @@ import { dirname, resolve } from 'node:path'
 import { readFileSync } from 'node:fs'
 import { describe, expect, it, vi } from 'vitest'
 
-const mocks = vi.hoisted(() => ({ query: vi.fn(), connect: vi.fn() }))
+const mocks = vi.hoisted(() => ({ query: vi.fn(), connect: vi.fn(), end: vi.fn(), construct: vi.fn() }))
 const workerRequire = createRequire(new URL('../../workers/audio-jobs/package.json', import.meta.url))
 const pgPackage = workerRequire.resolve('pg/package.json')
 const pgMetadata = JSON.parse(readFileSync(pgPackage, 'utf8'))
 const pgEntry = resolve(dirname(pgPackage), pgMetadata.exports?.['.']?.import || pgMetadata.main || 'lib/index.js')
-vi.doMock(pgEntry, () => ({ default: { Client: class { connect = mocks.connect; query = mocks.query } } }))
+vi.doMock(pgEntry, () => ({ default: { Client: class {
+  constructor() { mocks.construct() }
+  connect = mocks.connect
+  query = mocks.query
+  end = async () => { await mocks.end() }
+} } }))
 const { dbMarkBannerRendering, dbRenewBannerLease, dbMarkBannerDone, dbMarkBannerFailed } = await import('~~/workers/audio-jobs/src/db')
 
 describe('fenced durable banner lease', () => {
+  it('uses a fresh connection for each query and closes it after a query failure', async () => {
+    const before = { created: mocks.construct.mock.calls.length, closed: mocks.end.mock.calls.length }
+    mocks.query.mockResolvedValueOnce({ rows: [] }).mockRejectedValueOnce(new Error('socket closed'))
+    await dbMarkBannerRendering('first')
+    await expect(dbMarkBannerRendering('second')).rejects.toThrow('socket closed')
+    expect(mocks.construct.mock.calls.length - before.created).toBe(2)
+    expect(mocks.end.mock.calls.length - before.closed).toBe(2)
+  })
   it('claims queued/failed or expired rendering rows with a precision-preserving token', async () => {
     const token = '2026-10-04 12:00:00.123456+00'
     mocks.query.mockResolvedValueOnce({ rows: [{ token }] }).mockResolvedValueOnce({ rows: [] })

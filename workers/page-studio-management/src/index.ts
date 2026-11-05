@@ -1,3 +1,6 @@
+import { ensureTemplateCopyEditorHost } from './templateEditorHost'
+import { resolveTemplatePreview } from './templatePreview'
+import { TemplatePreviewPointerSchema } from '../../../shared/pageStudio/templatePreview'
 import { TRANSFER_RECOVERY_SOURCE_FREEZE_URL } from '../../../shared/pageStudio/transferRecoverySourceFreezeTransport'
 import { handleTransferRecoverySourceFreezeFetch } from './transferRecoverySourceFreezeFetch'
 import { TRANSFER_RECOVERY_SOURCE_READY_URL } from '../../../shared/pageStudio/transferRecoverySourceReadyTransport'
@@ -27,7 +30,7 @@ import { handleTransferRecoveryInspectionFetch } from './transferRecoveryInspect
 import { RESOURCE_AUTHORITY_URL } from '../../../shared/pageStudio/managedTransferResourceAuthority'
 import { handleManagedTransferResourceAuthorityFetch } from './managedTransferResourceAuthority'
 import { handleCustomerEditorAuthorityFetch } from './customerEditorAuthority'
-import { CUSTOMER_EDITOR_AUTHORITY_URL, CUSTOMER_EDITOR_CHECKPOINT_URL } from '../../../shared/pageStudio/customerEditorAuthorityTransport'
+import { CUSTOMER_EDITOR_CODE_HISTORY_URL, CUSTOMER_EDITOR_AUTHORITY_URL, CUSTOMER_EDITOR_CHECKPOINT_URL } from '../../../shared/pageStudio/customerEditorAuthorityTransport'
 import { handleNativeSchemaCoordinatorFetch } from './nativeSchemaCoordinator'
 import { NATIVE_SCHEMA_COORDINATOR_URL } from '../../../shared/pageStudio/nativeSchemaCoordinator'
 import { handleNativeSchemaAuthorityFetch } from './nativeSchemaAuthority'
@@ -102,7 +105,7 @@ export default class PageStudioManagement extends WorkerEntrypoint<Env> {
       work => withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, db => work(db as unknown as DomainDatabase)))
     if (request.url === CMS_STATUS_URL) return handleCmsStatusFetch(request, this.env as unknown as Record<string, unknown>,
       work => withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, db => work(db as unknown as DomainDatabase)))
-    if (request.url === CUSTOMER_EDITOR_AUTHORITY_URL || request.url === CUSTOMER_EDITOR_CHECKPOINT_URL) return handleCustomerEditorAuthorityFetch(request, this.env as unknown as Record<string, unknown>,
+    if (request.url === CUSTOMER_EDITOR_CODE_HISTORY_URL || request.url === CUSTOMER_EDITOR_AUTHORITY_URL || request.url === CUSTOMER_EDITOR_CHECKPOINT_URL) return handleCustomerEditorAuthorityFetch(request, this.env as unknown as Record<string, unknown>,
       work => withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, db => work(db as unknown as DomainDatabase)))
     if (request.url === NATIVE_SCHEMA_COORDINATOR_URL) return handleNativeSchemaCoordinatorFetch(request, this.env as unknown as Record<string, unknown>,
       work => withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, db => work(db as unknown as DomainDatabase)))
@@ -163,6 +166,26 @@ export default class PageStudioManagement extends WorkerEntrypoint<Env> {
 
   async checkpointStaging(input: unknown) {
     return handleCheckpointStaging(input, this.env as unknown as Record<string, unknown>, work => withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, db => work(db as unknown as DomainDatabase)))
+  }
+
+  async ensureTemplateCopyEditorHost(input: unknown) {
+    return ensureTemplateCopyEditorHost(input, this.env as unknown as Record<string, unknown>,
+      work => withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, db => work(db as unknown as DomainDatabase)))
+  }
+
+  async resolveTemplatePreview(hostname: string) {
+    if (this.env.PAGE_STUDIO_RELEASE_ENVIRONMENT !== 'production') return null
+    return withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, db => resolveTemplatePreview(db as unknown as DomainDatabase, hostname))
+  }
+
+  async verifyTemplateSnapshot(input: unknown) {
+    if (this.env.PAGE_STUDIO_RELEASE_ENVIRONMENT !== 'production') throw new Error('Template preview is unavailable')
+    const pointer = TemplatePreviewPointerSchema.parse(input)
+    const service = (this.env as unknown as Record<string, unknown>).PAGE_STUDIO_CLIENT_STAGING as { verifySnapshot: (input: unknown) => Promise<unknown> }
+    if (typeof service?.verifySnapshot !== 'function') throw new Error('Template preview is unavailable')
+    return service.verifySnapshot({ scope: pointer.scope, snapshotId: pointer.id, checkpointId: pointer.checkpointId,
+      digest: pointer.digest, ...(pointer.codeContent ? { codeContent: pointer.codeContent } : {}),
+      artifactPrefix: pointer.artifactPrefix, manifestDigest: pointer.manifestDigest })
   }
 
   async resolveClientStaging(hostname: string) {

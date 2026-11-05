@@ -9,10 +9,10 @@ defineEmits<{ open: [id: string] }>()
 <template>
   <div class="@container">
     <div :class="view === 'grid' ? 'grid grid-cols-[repeat(auto-fill,minmax(min(100%,240px),1fr))] items-start gap-x-5 gap-y-7' : 'divide-y divide-default rounded-lg border border-default'">
-      <div v-if="view === 'list'" class="hidden items-center gap-4 bg-elevated/50 px-4 py-2 text-xs font-medium text-muted @4xl:grid @4xl:grid-cols-[minmax(240px,2fr)_minmax(110px,1fr)_minmax(120px,1fr)_100px_110px_32px]" aria-hidden="true">
+      <div v-if="view === 'list'" class="hidden items-center gap-4 bg-elevated/50 px-4 py-2 text-xs font-medium text-muted @4xl:grid @4xl:grid-cols-[minmax(240px,2fr)_minmax(110px,1fr)_minmax(120px,1fr)_100px_110px_72px]" aria-hidden="true">
         <span>Name</span><span>{{ contextLabel }}</span><span>Dimensions</span><span>Type</span><span>Dates</span><span />
       </div>
-      <article v-for="item in items" :key="item.id" :class="view === 'grid' ? 'group relative min-w-0 @container/card' : 'flex items-center gap-4 p-3 @4xl:grid @4xl:grid-cols-[minmax(240px,2fr)_minmax(110px,1fr)_minmax(120px,1fr)_100px_110px_32px] @4xl:px-4'">
+      <article v-for="item in items" :key="item.id" :class="view === 'grid' ? 'group relative min-w-0 @container/card' : 'flex items-center gap-4 p-3 @4xl:grid @4xl:grid-cols-[minmax(240px,2fr)_minmax(110px,1fr)_minmax(120px,1fr)_100px_110px_72px] @4xl:px-4'">
         <div :class="view === 'grid' ? '' : 'flex min-w-0 flex-1 items-center gap-3'">
           <UButton
             :to="item.to"
@@ -71,7 +71,7 @@ defineEmits<{ open: [id: string] }>()
           </p>
           <p>{{ item.dateLabel || (item.sourceCreatedDate !== undefined ? 'Modified ' : '') }}{{ libraryDate(item.date) }}</p>
         </div>
-        <div :class="view === 'grid' ? 'absolute right-0 top-[calc(100cqw+0.5rem)]' : 'shrink-0'">
+        <div class="flex items-center gap-1" :class="view === 'grid' ? 'absolute right-0 top-[calc(100cqw+0.5rem)]' : 'shrink-0'">
           <slot :id="item.id" name="actions" />
         </div>
       </article>

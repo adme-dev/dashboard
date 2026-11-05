@@ -137,8 +137,9 @@ function ${prefix}(index) {
     : unchanged
 }
 
-// Bound new grouped decompression to 128 KiB and 16 strings. An already-large
-// individual string retains its original plain-string encoding and expansion.
+// Bound grouped decompression to 128 KiB and 32 strings. Adjacent literals
+// share more compression context without changing their decoded bytes or format.
+// An already-large individual string retains its original encoding and expansion.
 function packStaticStrings(values) {
   const blocks = []
   let group = [], bytes = 2, end = 0
@@ -152,7 +153,7 @@ function packStaticStrings(values) {
   }
   for (const value of values) {
     const length = Buffer.byteLength(JSON.stringify(value))
-    if (group.length && (group.length === 16 || bytes + 1 + length > 128 * 1024)) flush()
+    if (group.length && (group.length === 32 || bytes + 1 + length > 128 * 1024)) flush()
     group.push(value)
     bytes += length + (group.length > 1 ? 1 : 0)
     end++

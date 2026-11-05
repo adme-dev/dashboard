@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { createExportJobPoller, exportFormatLabel, summarizeExportJobs, type ExportJob } from '~/utils/bannerExportPoll'
+import { createExportJobPoller, exportFormatLabel, exportJobTiming, summarizeExportJobs, type ExportJob } from '~/utils/bannerExportPoll'
 import { apiErrorDescription } from '~/utils/apiError'
 import { FORMATS } from '~/utils/banner-constants'
 import { createBannerSocialDraftSession } from '~/utils/bannerSocialDraftSession'
 import { bannerRenderSuggestions } from '~/utils/bannerRenderSuggestions'
 
-const props = defineProps<{ projectId: string, clientId?: string | null, completed: ExportJob[], open: boolean, socialSuggestion?: { caption?: string, suggestedSchedule?: string } }>()
+const props = defineProps<{ projectId: string, clientId?: string | null, completed: ExportJob[], open: boolean, downloadOnly?: boolean, socialSuggestion?: { caption?: string, suggestedSchedule?: string } }>()
 const emit = defineEmits<{ 'blocked': [value: boolean], 'pending-formats': [value: string[]] }>()
 const toast = useToast()
 const history = ref<ExportJob[]>([])
@@ -13,6 +13,8 @@ const loading = ref(false)
 const loadError = ref(false)
 const creating = ref<string | null>(null)
 const retrying = ref<string | null>(null)
+const now = ref(Date.now())
+let clock: ReturnType<typeof setInterval> | undefined
 let mounted = true
 const drafts = reactive<Record<string, string>>({})
 const sessions = new Map<string, ReturnType<typeof createBannerSocialDraftSession>>()
@@ -60,6 +62,12 @@ watch(() => [...new Set(jobs.value.filter(job => !['done', 'failed'].includes(jo
 onBeforeUnmount(() => {
   mounted = false
   poller.stop()
+  clearInterval(clock)
+})
+onMounted(() => {
+  clock = setInterval(() => {
+    now.value = Date.now()
+  }, 1000)
 })
 
 function canRetry(job: ExportJob) {
@@ -145,13 +153,17 @@ async function createDraft(job: ExportJob) {
     <p v-if="summary.pending" class="text-xs text-muted">
       Rendering continues if you close this dialog. Reopen it to recover the latest status.
     </p>
+    <UProgress v-if="summary.pending" size="xs" aria-label="MP4 exports in progress" />
     <article v-for="job in pendingJobs" :key="job.jobId" class="rounded-lg border border-default p-3 space-y-1">
       <div class="flex justify-between gap-3 text-xs">
-        <span>{{ exportFormatLabel(job.formatKey, FORMATS[job.formatKey]?.name) }}</span>
+        <span>{{ exportFormatLabel(job.formatKey, FORMATS[job.formatKey]?.name) }} <span v-if="job.width && job.height" class="text-muted">{{ job.width }} × {{ job.height }}</span></span>
         <UBadge :color="job.status === 'failed' ? 'error' : 'neutral'" variant="subtle">
           {{ job.status }}
         </UBadge>
       </div>
+      <p v-if="job.status !== 'failed'" class="text-xs text-muted">
+        {{ exportJobTiming(job, now) }}
+      </p>
       <UButton
         v-if="canRetry(job)"
         :label="job.status === 'rendering' ? 'Recover render' : 'Retry render'"
@@ -166,11 +178,11 @@ async function createDraft(job: ExportJob) {
         {{ job.error }}
       </p>
     </article>
-    <p v-if="!clientId" class="text-xs text-muted">
+    <p v-if="!downloadOnly && !clientId" class="text-xs text-muted">
       Assign a client in project settings to create a social draft.
     </p>
     <p v-if="!jobs.length && !loading && !loadError" class="text-xs text-muted">
-      Completed MP4s will appear here for preview, download and social publishing.
+      {{ downloadOnly ? 'No MP4 exports yet. Open the editor to create one.' : 'Completed MP4s will appear here for preview, download and social publishing.' }}
     </p>
     <article v-for="job in videos" :key="job.jobId" class="rounded-lg border border-default overflow-hidden">
       <video
@@ -183,8 +195,11 @@ async function createDraft(job: ExportJob) {
       />
       <div class="p-3 space-y-3">
         <div class="text-xs font-medium">
-          {{ exportFormatLabel(job.formatKey, FORMATS[job.formatKey]?.name) }} <span class="text-muted">{{ FORMATS[job.formatKey]?.w }} × {{ FORMATS[job.formatKey]?.h }}</span>
+          {{ exportFormatLabel(job.formatKey, FORMATS[job.formatKey]?.name) }} <span class="text-muted">{{ job.width ?? FORMATS[job.formatKey]?.w }} × {{ job.height ?? FORMATS[job.formatKey]?.h }}</span>
         </div>
+        <p v-if="job.updatedAt" class="text-xs text-muted">
+          Completed {{ new Date(job.updatedAt).toLocaleString() }}
+        </p>
         <div class="flex flex-wrap gap-2">
           <UButton
             label="Download MP4"
@@ -195,6 +210,7 @@ async function createDraft(job: ExportJob) {
             size="sm"
           />
           <UButton
+            v-if="!downloadOnly"
             :label="drafts[job.jobId] ? 'Open social draft' : 'Create social draft'"
             icon="i-lucide-send"
             size="sm"
@@ -203,7 +219,7 @@ async function createDraft(job: ExportJob) {
             @click="createDraft(job)"
           />
         </div>
-        <p class="text-xs text-muted">
+        <p v-if="!downloadOnly" class="text-xs text-muted">
           Creates a draft for review. Nothing is posted automatically.
         </p>
       </div>

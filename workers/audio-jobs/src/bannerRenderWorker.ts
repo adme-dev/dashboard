@@ -25,6 +25,7 @@ export type BannerRenderDeps = {
   discardUpload: (r2Key: string) => Promise<void>
   markDone: (jobId: string, token: string, out: { r2Key: string, url: string, size: number }) => Promise<boolean>
   markFailed: (jobId: string, token: string, error: string) => Promise<void>
+  markDeferred: (jobId: string, token: string) => Promise<void>
 }
 
 export class BannerRenderBusyError extends Error {
@@ -32,6 +33,14 @@ export class BannerRenderBusyError extends Error {
 
   constructor() {
     super('Banner render lease is owned by another worker; retry this delivery')
+  }
+}
+
+export class BannerRenderCapacityError extends Error {
+  readonly retryAfterSeconds = 90
+
+  constructor() {
+    super('Banner render container capacity is full; retry after idle containers stop')
   }
 }
 
@@ -76,8 +85,16 @@ export async function runBannerRenderJob(msg: { jobId: string }, deps: BannerRen
     return true
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e)
+    if (message.includes('Maximum number of running container instances exceeded')) {
+      await deps.markDeferred(job.id, token)
+      throw new BannerRenderCapacityError()
+    }
     const category = classifyBannerRenderError(message)
     await deps.markFailed(job.id, token, category === 'unknown' ? message : `${category}: ${message}`)
+    // A render that exhausted the container's ten-minute request budget will
+    // repeat the same expensive capture on every queue redelivery. Keep the
+    // failed job available for an intentional retry with different settings.
+    if (category === 'container_timeout') return false
     throw e
   } finally {
     stopped = true

@@ -104,13 +104,14 @@ function forwardedRequest(request: Request, config: GatewayConfiguration): Reque
     '/internal/page-studio/components/data',
     '/internal/page-studio/ai-proposals/accept',
     '/internal/page-studio/checkpoints/editor-commit',
+    '/internal/page-studio/checkpoints/editor-code-history',
     '/internal/page-studio/sessions/authorize',
     ...['catalog', 'quote', 'generate', 'read', 'jobs', 'library'].map(operation => `/internal/page-studio/images/${operation}`)
   ].includes(incomingUrl.pathname)) {
     const sessionToken = request.headers.get('x-page-studio-session')
     if (sessionToken !== null) headers.set('x-page-studio-session', sessionToken)
   }
-  if (request.method === 'POST' && ['authorize', 'checkpoint', 'latest-checkpoint', 'cms-adoption', 'cms-prerequisites']
+  if (request.method === 'POST' && ['authorize', 'checkpoint', 'latest-checkpoint', 'code-checkpoint-latest', 'code-checkpoint-history', 'code-checkpoint-commit', 'cms-adoption', 'cms-prerequisites']
     .some(operation => incomingUrl.pathname === `/internal/page-studio/customer-sessions/${operation}`)) {
     const token = request.headers.get('x-page-studio-customer-session')
     if (token !== null) headers.set('x-page-studio-customer-session', token)

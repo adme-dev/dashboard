@@ -132,8 +132,10 @@ const API_INVENTORY = {
   // Page Studio catalogue adds three read-only audience adapters (agency,
   // portal and native customer). Fresh scoped authority remains delegated to
   // templateCatalogueHandler; no mutation route or God mode bypass is added.
-  totalRouteFiles: 2344,
-  mutationRouteFiles: 1280,
+  // Template registration, preview publication and three audience preview/use pairs
+  // add eight delegated mutations with fresh scoped authority and no God mode bypass.
+  totalRouteFiles: 2356,
+  mutationRouteFiles: 1290,
   explicitlyGuardedMutationFiles: 413,
   guardedMutationFilesWithTransactionCall: 55
 } as const
@@ -183,8 +185,8 @@ describe('God mode route isolation inventory', () => {
   it('records the full mechanical API and mutation inventory reviewed before implementation', () => {
     expect(mechanicalInventory()).toEqual(API_INVENTORY)
     expect(API_INVENTORY).toEqual({
-      totalRouteFiles: 2344,
-      mutationRouteFiles: 1280,
+      totalRouteFiles: 2356,
+      mutationRouteFiles: 1290,
       explicitlyGuardedMutationFiles: 413,
       guardedMutationFilesWithTransactionCall: 55
     })
