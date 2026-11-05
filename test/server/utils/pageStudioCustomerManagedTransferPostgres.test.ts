@@ -37,6 +37,8 @@ describe.runIf(Boolean(databaseUrl))('customer transfer current native authority
     db = new pg.Client({ connectionString: databaseUrl })
     await db.connect()
     await db.query(`CREATE SCHEMA "${schema}"; SET search_path TO "${schema}", pg_catalog`)
+    // Current production authority also checks selected-template provenance.
+    await db.query('CREATE TABLE page_studio_template_copies(id UUID,site_id UUID,tenant_id TEXT,client_id UUID,account_key TEXT,actor_kind TEXT,state TEXT)')
     await db.query(`CREATE TABLE agency_clients(id UUID PRIMARY KEY, is_active BOOLEAN);
       CREATE TABLE client_users(id UUID PRIMARY KEY, client_id UUID, status TEXT, role TEXT);
       CREATE TABLE team_members(id UUID PRIMARY KEY, is_active BOOLEAN, user_role TEXT, custom_role_id UUID);
@@ -114,10 +116,10 @@ describe.runIf(Boolean(databaseUrl))('customer transfer current native authority
   it.each(['expired', 'cancelled', 'preview', 'publishing-disabled'])('does not show saved publishing readiness for %s plans', async (reason) => {
     await savedCheckpoint()
     const changes: Record<string, string> = {
-      expired: "effective_until=clock_timestamp()-interval '1 second'",
-      cancelled: "status='cancelled'",
-      preview: "plan_key='customer_preview_v1'",
-      'publishing-disabled': "plan_metadata=jsonb_set(plan_metadata,'{publishingEnabled}','false')"
+      'expired': 'effective_until=clock_timestamp()-interval \'1 second\'',
+      'cancelled': 'status=\'cancelled\'',
+      'preview': 'plan_key=\'customer_preview_v1\'',
+      'publishing-disabled': 'plan_metadata=jsonb_set(plan_metadata,\'{publishingEnabled}\',\'false\')'
     }
     await db.query(`UPDATE page_studio_entitlements SET ${changes[reason]} WHERE id=$1`, [planId])
     expect(await savedProjection()).toBe(false)
@@ -152,7 +154,7 @@ describe.runIf(Boolean(databaseUrl))('customer transfer current native authority
         const result = await client.query(sql, params)
         if (sql.includes('checkpoint.id AS checkpoint_id')) {
           checkpointReads++
-          await client.query("UPDATE page_studio_entitlements SET effective_until=clock_timestamp()-interval '1 second' WHERE id=$1", [planId])
+          await client.query('UPDATE page_studio_entitlements SET effective_until=clock_timestamp()-interval \'1 second\' WHERE id=$1', [planId])
         }
         return { rows: result.rows as T[] }
       } })) })
