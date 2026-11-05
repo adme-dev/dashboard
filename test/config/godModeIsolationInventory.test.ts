@@ -129,7 +129,10 @@ const API_INVENTORY = {
   // 2026-11-03 imported-email editable copy adds one POST (preview/save). Save
   // uses requireWriteAccess plus the source template's own client scope and the
   // existing receipt-bound import owner; no transaction() or bypass is added.
-  totalRouteFiles: 2341,
+  // Page Studio catalogue adds three read-only audience adapters (agency,
+  // portal and native customer). Fresh scoped authority remains delegated to
+  // templateCatalogueHandler; no mutation route or God mode bypass is added.
+  totalRouteFiles: 2344,
   mutationRouteFiles: 1280,
   explicitlyGuardedMutationFiles: 413,
   guardedMutationFilesWithTransactionCall: 55
@@ -180,7 +183,7 @@ describe('God mode route isolation inventory', () => {
   it('records the full mechanical API and mutation inventory reviewed before implementation', () => {
     expect(mechanicalInventory()).toEqual(API_INVENTORY)
     expect(API_INVENTORY).toEqual({
-      totalRouteFiles: 2341,
+      totalRouteFiles: 2344,
       mutationRouteFiles: 1280,
       explicitlyGuardedMutationFiles: 413,
       guardedMutationFilesWithTransactionCall: 55

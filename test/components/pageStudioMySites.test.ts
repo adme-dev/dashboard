@@ -28,7 +28,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   error.value = null
   data.value = { sites: [{ id: 'site-a', name: 'Customer website' }], total: 1 }
-  for (const [key, value] of Object.entries({ ref, computed, definePageMeta: vi.fn(), useHead: vi.fn(), useFetch: vi.fn(async () => ({ data, error, pending: ref(false), refresh })), useToast: () => ({ add: notify }), usePageStudioLauncher: () => ({ launchPageStudio: launch, editorOrigin: ref('https://studio.example') }) })) vi.stubGlobal(key, value)
+  for (const [key, value] of Object.entries({ ref, computed, useRoute: () => ({ query: {} }), definePageMeta: vi.fn(), useHead: vi.fn(), useFetch: vi.fn(async () => ({ data, error, pending: ref(false), refresh })), useToast: () => ({ add: notify }), usePageStudioLauncher: () => ({ launchPageStudio: launch, editorOrigin: ref('https://studio.example') }) })) vi.stubGlobal(key, value)
 })
 afterEach(() => {
   apps.splice(0).forEach(app => app.unmount())
