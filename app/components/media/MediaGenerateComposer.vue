@@ -172,7 +172,10 @@ watch([() => props.initialModelId, allModels, () => props.modelSelectionKey], ([
   if (!requested) return
   const candidate = available.find(item => item.id === requested)
   if (!candidate) return
-  if (!candidate.modes.includes(mode.value)) mode.value = candidate.modes[0]!
+  if (!candidate.modes.includes(mode.value)) {
+    mode.value = candidate.modes[0]!
+    onModeChange()
+  }
   modelId.value = candidate.id
 }, { immediate: true })
 
