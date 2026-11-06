@@ -56,6 +56,49 @@ afterEach(() => {
   vi.useRealTimers()
 })
 describe('client compiled video player', () => {
+  it('plays server-prepared sizes even when browser status fetches are blocked', async () => {
+    fetch.mockRejectedValue(new TypeError('Fetch API access control checks'))
+    const { host, click } = await mount({ initialVideos: ready.videos })
+    expect(host.querySelector('video')?.getAttribute('src')).toBe('/square.mp4')
+    await click('1080 × 1920')
+    expect(host.querySelector('video')?.getAttribute('src')).toBe('/portrait.mp4')
+    expect(fetch).not.toHaveBeenCalled()
+  })
+  it('opens an already completed size while the preferred square is still queued', async () => {
+    const { host } = await mount({ initialVideos: [{ ...ready.videos[0], status: 'queued', url: null }, ready.videos[1]] })
+    expect(host.querySelector('video')?.getAttribute('src')).toBe('/portrait.mp4')
+    expect(fetch).not.toHaveBeenCalled()
+  })
+  it('ends a hanging status check after 15 seconds with a full-page reload option', async () => {
+    fetch.mockImplementationOnce((_url, options) => new Promise((_resolve, reject) => {
+      options.signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')))
+    }))
+    const { host } = await mount()
+    await vi.advanceTimersByTimeAsync(15000)
+    await flush()
+    expect(host.textContent).toContain('status could not be checked')
+    expect(host.textContent).toContain('Reload page')
+    expect(host.textContent).not.toContain('Preparing your video preview')
+    expect(fetch).toHaveBeenCalledTimes(1)
+  })
+  it('does not abort completed requests each time polling advances', async () => {
+    fetch.mockResolvedValueOnce({ videos: [{ ...ready.videos[0], status: 'queued', url: null }] })
+    await mount()
+    const signal = fetch.mock.calls[0]![1].signal
+    await vi.advanceTimersByTimeAsync(3000)
+    await flush()
+    expect(signal.aborted).toBe(false)
+    expect(fetch).toHaveBeenCalledTimes(2)
+  })
+  it('recovers an unclaimed stale queue once, then waits without duplicating preparation', async () => {
+    const queued = { videos: [{ ...ready.videos[0], status: 'queued', url: null, canRetry: true }] }
+    fetch.mockResolvedValue(queued)
+    const { host } = await mount()
+    expect(host.textContent).toContain('queued')
+    await vi.advanceTimersByTimeAsync(9000)
+    expect(fetch.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(1)
+    expect(fetch).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ body: { formatKey: 'custom_1200x1200', retry: true } }))
+  })
   it.each([320, 375, 390])('fits social placement inside a %ipx screen without clipping controls', async (width) => {
     viewportSize.width = width
     const { host, click } = await mount()
@@ -78,7 +121,7 @@ describe('client compiled video player', () => {
   it('recovers from a network error without starting duplicate renders', async () => {
     fetch.mockRejectedValueOnce(new Error('offline'))
     const { host, click } = await mount()
-    expect(host.textContent).toContain('could not be loaded')
+    expect(host.textContent).toContain('status could not be checked')
     await click('Reload preview')
     expect(host.querySelector('video')?.getAttribute('src')).toBe('/square.mp4')
     expect(fetch.mock.calls.every(([, options]) => options.method !== 'POST')).toBe(true)
@@ -173,7 +216,7 @@ describe('client compiled video player', () => {
       .mockResolvedValueOnce({ status: 'queued' })
       .mockResolvedValueOnce(ready)
     const { host } = await mount()
-    expect(host.textContent).toContain('Preparing your video preview')
+    expect(host.textContent).toContain('Your video preview is queued')
     expect(fetch.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(1)
     await vi.advanceTimersByTimeAsync(3000)
     await flush()
@@ -201,14 +244,26 @@ describe('client compiled video player', () => {
     await flush()
     expect(host.querySelector('video')?.getAttribute('src')).toBe('/portrait.mp4')
   })
-  it('aborts requests and clears polling when unmounted', async () => {
-    fetch.mockResolvedValue({ videos: [{ ...ready.videos[0], status: 'queued', url: null }] })
+  it('aborts an outstanding request when unmounted', async () => {
+    fetch.mockImplementationOnce((_url, options) => new Promise((_resolve, reject) => {
+      options.signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')))
+    }))
     const { stop } = await mount()
     const signal = fetch.mock.calls[0]![1].signal
     stop()
     cleanups.pop()
     expect(signal.aborted).toBe(true)
     await vi.advanceTimersByTimeAsync(9000)
+    expect(fetch).toHaveBeenCalledTimes(1)
+  })
+  it('clears queued polling when unmounted without aborting a settled request', async () => {
+    fetch.mockResolvedValue({ videos: [{ ...ready.videos[0], status: 'queued', url: null }] })
+    const { stop } = await mount()
+    const signal = fetch.mock.calls[0]![1].signal
+    stop()
+    cleanups.pop()
+    await vi.advanceTimersByTimeAsync(9000)
+    expect(signal.aborted).toBe(false)
     expect(fetch).toHaveBeenCalledTimes(1)
   })
 })

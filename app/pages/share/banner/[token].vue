@@ -12,6 +12,7 @@ const token = String(route.params.token)
 const { data, error: requestError } = await useFetch<{
   project: { name: string, clientName?: string | null, canvasData: Record<string, ArtboardState> | string, updatedAt?: string }
   fonts: Array<{ id?: string, name: string, url: string, tags: string[] }>
+  videos: Array<{ formatKey: string, revision: string, status: string, url: string | null, canRetry: boolean }>
 }>(`/api/public/banner-share/${token}`)
 const error = computed(() => requestError.value
   ? requestError.value.data?.statusMessage || 'This link has expired, was revoked, or is unavailable.'
@@ -78,6 +79,7 @@ const canvas = computed<Record<string, ArtboardState>>(() => {
       v-else
       :canvas="canvas"
       :share-token="token"
+      :initial-videos="data?.videos"
       :client-name="data?.project.clientName"
       :project-name="data?.project.name"
     />

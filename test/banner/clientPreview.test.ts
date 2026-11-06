@@ -20,6 +20,16 @@ beforeEach(() => {
 })
 
 describe('view-only client banner preview', () => {
+  it('includes completed video capabilities in the initial server response', async () => {
+    mocks.one.mockResolvedValueOnce({ projectId: 'project', revoked: false, expiresAt: '2099-01-01' })
+      .mockResolvedValueOnce(project)
+      .mockResolvedValueOnce({ status: 'done', r2_key: 'private-storage-key' })
+    mocks.rows.mockResolvedValueOnce([])
+    const result = await preview({ token } as never)
+    expect(result.videos[0]).toMatchObject({ status: 'done', formatKey: 'custom_1200x1200', canRetry: false })
+    expect(result.videos[0]!.url).toContain(`/api/public/banner-share/${token}/video?`)
+    expect(JSON.stringify(result)).not.toContain('private-storage-key')
+  })
   it('rejects legacy review tokens before reading project data', async () => {
     await expect(preview({ token: 'a'.repeat(32) } as never)).rejects.toMatchObject({ statusCode: 404 })
     expect(mocks.one).not.toHaveBeenCalled()
