@@ -1008,11 +1008,17 @@ onMounted(() => {
   } catch { /* private mode */ }
   window.addEventListener('keydown', onKeyDown)
   window.addEventListener('beforeunload', onBeforeUnload)
-  if (videoGenerationEnabled.value) {
+})
+// Wait for project loading before discovering video capabilities; audio projects
+// retain their existing request flow when the public video flag is enabled.
+watch(() => isAv.value && videoGenerationEnabled.value, (enabled) => {
+  if (enabled) {
     void genJobs.start()
     void loadGenerationModelOptions()
+  } else {
+    genJobs.stop()
   }
-})
+}, { immediate: true })
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeyDown)
   window.removeEventListener('beforeunload', onBeforeUnload)
