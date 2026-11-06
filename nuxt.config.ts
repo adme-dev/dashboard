@@ -1,5 +1,6 @@
 // https://nuxt.com/docs/api/configuration/nuxt-config
 import { fileURLToPath } from 'node:url'
+import { isStoryboardFeatureEnabled } from './shared/video/storyboardFeaturePolicy'
 import { compactPublicAssetsPlugin } from './scripts/compact-worker-static-data.mjs'
 import { workerProcessCompatibilityPlugin } from './scripts/worker-process-compatibility.mjs'
 import { NUXT_PAYLOAD_EXTRACTION, shouldIgnorePrerenderRoute } from './lib/prerender-ignore'
@@ -308,7 +309,7 @@ export default defineNuxtConfig({
       // Client-visible mirror of VIDEO_STUDIO_ENABLED — gates ONLY the "Render video"
       // button in the AV editor (the server endpoint is the real boundary; it 404s when off).
       videoStudioEnabled: process.env.VIDEO_STUDIO_ENABLED === 'true',
-      videoStoryboardEnabled: process.env.VIDEO_STORYBOARD_ENABLED === 'true',
+      videoStoryboardEnabled: isStoryboardFeatureEnabled(process.env.VIDEO_STORYBOARD_ENABLED),
       videoGenerationEnabled: process.env.VIDEO_GENERATION_ENABLED === 'true',
       videoAssetHarnessEnabled: process.env.VIDEO_ASSET_HARNESS_ENABLED === 'true' || process.env.VIDEO_GENERATION_ENABLED === 'true',
       // Client-visible mirror of GOOGLE_BUSINESS_PUBLISHING_ENABLED. Server endpoints
