@@ -141,7 +141,7 @@ const actionOptions = computed(() => actions.value
   .filter(action => ['mask-lift', 'erase-fill', 'mask-only', 'layer-decomposition', 'background-removal'].includes(action.id))
   .map(action => ({ label: action.label, value: action.id })))
 const selectedActionModels = computed(() => models.value.filter(model => model.actions.includes(selectedAction.value)))
-const readyModelCount = computed(() => models.value.filter(model => model.defaultEnabled).length)
+const defaultEnabledModelCount = computed(() => models.value.filter(model => model.defaultEnabled).length)
 const activeJobCount = computed(() => intelligenceJobs.value.filter(job => job.status === 'queued' || job.status === 'running').length)
 const completedJobCount = computed(() => intelligenceJobs.value.filter(job => job.status === 'succeeded').length)
 const selectedItemJobs = computed(() => {
@@ -496,7 +496,7 @@ onBeforeUnmount(() => {
         <div class="flex flex-wrap items-center gap-2">
           <span class="text-sm font-semibold text-highlighted">AI Producer workspace</span>
           <UBadge :label="`${items.length} assets`" size="xs" variant="subtle" color="neutral" />
-          <UBadge :label="`${readyModelCount}/${models.length} models ready`" size="xs" :color="readyModelCount ? 'primary' : 'neutral'" variant="subtle" />
+          <UBadge :label="`${defaultEnabledModelCount}/${models.length} enabled by default`" size="xs" :color="defaultEnabledModelCount ? 'primary' : 'neutral'" variant="subtle" />
           <UBadge v-if="activeJobCount" :label="`${activeJobCount} active`" size="xs" color="primary" variant="subtle" />
         </div>
         <p class="mt-0.5 text-xs text-muted">
@@ -530,7 +530,7 @@ onBeforeUnmount(() => {
           <span class="flex flex-wrap items-center gap-2">
             <span class="text-sm font-semibold text-highlighted">AI Producer workspace</span>
             <UBadge :label="`${items.length} assets`" size="xs" variant="subtle" color="neutral" />
-            <UBadge :label="`${readyModelCount}/${models.length} models ready`" size="xs" :color="readyModelCount ? 'primary' : 'neutral'" variant="subtle" />
+            <UBadge :label="`${defaultEnabledModelCount}/${models.length} enabled by default`" size="xs" :color="defaultEnabledModelCount ? 'primary' : 'neutral'" variant="subtle" />
             <UBadge v-if="activeJobCount" :label="`${activeJobCount} active`" size="xs" color="primary" variant="subtle" />
           </span>
           <span class="block text-xs text-muted">Prepare clean layers, reuse derivatives, and assemble draft edits from the project media library.</span>

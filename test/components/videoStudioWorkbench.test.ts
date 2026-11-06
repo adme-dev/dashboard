@@ -6,6 +6,8 @@ import VideoStudioWorkbench from '~~/app/components/media/VideoStudioWorkbench.v
 import type { VideoRenderFormatId } from '~~/app/utils/video/renderFormats'
 
 const stubs = {
+  UCard: { template: '<div><slot /></div>' },
+  UAlert: { props: ['description'], template: '<p>{{ description }}</p>' },
   UIcon: { name: 'UIcon', props: ['name'], template: '<i :data-icon="name" />' },
   UButton: {
     name: 'UButton',
@@ -53,13 +55,13 @@ async function mount(props: Record<string, unknown>, slots: Record<string, () =>
   const app = createApp({
     render: () => h(VideoStudioWorkbench, {
       ...props,
-      onOpenLibrary: () => events.push({ name: 'open-library', payload: null }),
-      onAddFootage: () => events.push({ name: 'add-footage', payload: null }),
-      onAddOverlay: () => events.push({ name: 'add-overlay', payload: null }),
-      onGenerate: () => events.push({ name: 'generate', payload: null }),
-      onRender: (formats: VideoRenderFormatId[]) => events.push({ name: 'render', payload: formats }),
+      'onOpenLibrary': () => events.push({ name: 'open-library', payload: null }),
+      'onAddFootage': () => events.push({ name: 'add-footage', payload: null }),
+      'onAddOverlay': () => events.push({ name: 'add-overlay', payload: null }),
+      'onGenerate': () => events.push({ name: 'generate', payload: null }),
+      'onRender': (formats: VideoRenderFormatId[]) => events.push({ name: 'render', payload: formats }),
       'onUpdate:mode': (value: string) => events.push({ name: 'update:mode', payload: value }),
-      'onUpdate:producerCollapsed': (value: boolean) => events.push({ name: 'update:producer-collapsed', payload: value }),
+      'onUpdate:producerCollapsed': (value: boolean) => events.push({ name: 'update:producer-collapsed', payload: value })
     }, slots)
   })
   Object.entries(stubs).forEach(([name, comp]) => app.component(name, comp))
@@ -75,7 +77,7 @@ function buttonByText(host: HTMLElement, text: string) {
 }
 
 describe('VideoStudioWorkbench', () => {
-  it('renders the three studio columns, each scrolling on its own', async () => {
+  it('renders independently scrolling controls and tabbed workspace', async () => {
     const html = await render({
       assetCount: 5,
       generationJobCount: 2,
@@ -93,12 +95,12 @@ describe('VideoStudioWorkbench', () => {
     expect(html).toContain('Producer rail')
     expect(html).toContain('2 AI jobs running')
     expect(html).toContain('AI ready')
-    // Three column scroll regions + the outer section never scrolls the page.
-    expect(html.match(/overflow-y-auto/g)?.length).toBe(3)
+    // Both panes scroll independently while the outer section stays bounded.
+    expect(html.match(/overflow-y-auto/g)?.length).toBe(2)
     expect(html).toContain('overflow-hidden')
   })
 
-  it('can collapse the inspector while keeping library and preview visible', async () => {
+  it('can collapse the inspector while retaining the library and preview mounts', async () => {
     const html = await render({ producerCollapsed: true }, {
       library: () => h('p', 'Library rail'),
       preview: () => h('p', 'Preview panel'),
@@ -109,18 +111,66 @@ describe('VideoStudioWorkbench', () => {
     expect(html).toContain('Preview panel')
     expect(html).toContain('Show inspector')
     expect(html).not.toContain('Producer content')
-    expect(html.match(/overflow-y-auto/g)?.length).toBe(2)
+    expect(html.match(/overflow-y-auto/g)?.length).toBe(1)
+  })
+
+  it('switches workspace tabs without recreating the preview or emitting output actions', async () => {
+    const { app, host, events } = await mount({}, {
+      preview: () => h('div', { 'data-preview': '' }, 'Preview state'),
+      library: () => h('div', { 'data-library': '' }, 'Saved assets'),
+      history: () => h('div', { 'data-history': '' }, 'Saved jobs')
+    })
+    try {
+      const preview = host.querySelector('[data-preview]')!
+      const tabs = host.querySelector('[aria-label="Project workspace"]') as HTMLElement
+      buttonByText(tabs, 'Library').click()
+      await nextTick()
+      expect((preview.parentElement as HTMLElement).style.display).toBe('none')
+      expect((host.querySelector('[data-library]')!.parentElement as HTMLElement).style.display).not.toBe('none')
+      buttonByText(tabs, 'History').click()
+      await nextTick()
+      expect(host.querySelector('[data-history]')?.textContent).toBe('Saved jobs')
+      buttonByText(tabs, 'How it works').click()
+      await nextTick()
+      expect(host.textContent).toContain('Review before spending')
+      buttonByText(tabs, 'Preview').click()
+      await nextTick()
+      expect(host.querySelector('[data-preview]')).toBe(preview)
+      expect((preview.parentElement as HTMLElement).style.display).not.toBe('none')
+      expect(events).toEqual([])
+    } finally {
+      app.unmount()
+    }
+  })
+
+  it('restores Library when the already-selected mobile Assets tab is selected again', async () => {
+    const { app, host } = await mount({}, {
+      library: () => h('div', { 'data-library': '' }, 'Saved assets')
+    })
+    try {
+      buttonByText(host, 'Assets').click()
+      await nextTick()
+      const tabs = host.querySelector('[aria-label="Project workspace"]') as HTMLElement
+      buttonByText(tabs, 'History').click()
+      await nextTick()
+      expect((host.querySelector('[data-library]')!.parentElement as HTMLElement).style.display).toBe('none')
+      buttonByText(host, 'Assets').click()
+      await nextTick()
+      expect((host.querySelector('[data-library]')!.parentElement as HTMLElement).style.display).not.toBe('none')
+    } finally {
+      app.unmount()
+    }
   })
 
   it('emits toolbar actions and the selected render formats', async () => {
     const { app, host, events } = await mount({
       generationEnabled: true,
       rendering: false,
-      producerCollapsed: true,
+      producerCollapsed: true
     }, {
       library: () => h('p', 'Library rail'),
       preview: () => h('p', 'Preview panel'),
-      producer: () => h('p', 'Producer content'),
+      producer: () => h('p', 'Producer content')
     })
 
     try {
@@ -138,7 +188,7 @@ describe('VideoStudioWorkbench', () => {
         'generate',
         'open-library',
         'render',
-        'update:producer-collapsed',
+        'update:producer-collapsed'
       ])
       expect(events.find(event => event.name === 'render')?.payload).toEqual(['reels_9x16', 'square_1x1', 'youtube_16x9'])
       expect(events.find(event => event.name === 'update:producer-collapsed')?.payload).toBe(false)
@@ -152,11 +202,11 @@ describe('VideoStudioWorkbench', () => {
       assetCount: 12,
       renderJobCount: 2,
       generationEnabled: true,
-      producerCollapsed: true,
+      producerCollapsed: true
     }, {
       library: () => h('p', 'Library rail'),
       preview: () => h('p', 'Preview panel'),
-      producer: () => h('p', 'Producer content'),
+      producer: () => h('p', 'Producer content')
     })
 
     try {
@@ -174,18 +224,20 @@ describe('VideoStudioWorkbench', () => {
     }
   })
 
-  it('maps review mode onto the inspector panel', async () => {
+  it('opens history in the visible main workspace on mobile', async () => {
     const html = await render({
       mode: 'review',
       renderJobCount: 3,
       generationEnabled: false,
-      generationStatusLabel: 'AI disabled by policy',
+      generationStatusLabel: 'AI disabled by policy'
     }, {
       library: () => h('p', 'Library rail'),
       preview: () => h('p', 'Preview panel'),
-      producer: () => h('p', 'Producer content'),
+      producer: () => h('p', 'Producer content')
     })
 
+    expect(html).toContain('Project history')
+    expect(html).toMatch(/<main[^>]*class="[^"]* flex"/)
     expect(html).toContain('Inspector 3')
     expect(html).toContain('Producer content')
     expect(html).toContain('AI disabled by policy')

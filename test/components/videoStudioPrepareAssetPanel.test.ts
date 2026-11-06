@@ -71,6 +71,17 @@ async function mount(props: Record<string, unknown>) {
 }
 
 describe('VideoStudioPrepareAssetPanel', () => {
+  it('distinguishes catalogue defaults without claiming provider readiness', async () => {
+    const html = await render({ ...baseProps, selectedActionModels: [
+      { id: 'enabled', displayName: 'Enabled model', defaultEnabled: true },
+      { id: 'disabled', displayName: 'Disabled model', defaultEnabled: false },
+    ] })
+    expect(html).toContain('Enabled model (default enabled)')
+    expect(html).toContain('Disabled model (disabled by default)')
+    expect(html).toContain('Provider access and action support are checked when you run a tool.')
+    expect(html).not.toContain('models ready')
+  })
+
   it('renders prepare controls, mask canvas, models, jobs, and derivatives', async () => {
     const html = await render(baseProps)
 
@@ -80,7 +91,7 @@ describe('VideoStudioPrepareAssetPanel', () => {
     expect(html).toContain('Lift the badge')
     expect(html).toContain('Highlighter mask')
     expect(html).toContain('video-asset-masks/project/asset/mask.png')
-    expect(html).toContain('Available models')
+    expect(html).toContain('Model catalogue')
     expect(html).toContain('SAM 2 segmentation')
     expect(html).toContain('Selected asset activity')
     expect(html).toContain('Existing directive')

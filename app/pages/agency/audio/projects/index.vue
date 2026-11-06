@@ -1,6 +1,4 @@
 <script setup lang="ts">
-// SP2c projects list + create. Lists media_projects, lets users open the editor,
-// duplicate, delete, and create new projects.
 import { ref, computed, watch, onMounted } from 'vue'
 import { navigateTo } from '#app'
 import type { MediaProject } from '~~/app/types'
@@ -8,11 +6,19 @@ import type { TimelineState } from '~~/server/utils/audio/timelineSchema'
 
 definePageMeta({ layout: 'agency', middleware: ['role-creative'] })
 
+interface ClientOption {
+  id: string
+  name: string
+}
+
+type ProjectView = 'grid' | 'list'
+
+const AGENCY_CLIENT = 'agency'
+const VIEW_STORAGE_KEY = 'xeroflow-video-project-view'
+
 const toast = useToast()
 const route = useRoute()
 
-// A fresh project seeds two empty lanes so "Add clip" has somewhere to land
-// (index.post defaults to tracks:[], which would dead-end the picker).
 function defaultTimelineState(): TimelineState {
   return {
     schema_version: 1,
@@ -30,26 +36,63 @@ function defaultTimelineState(): TimelineState {
   }
 }
 
-// ─── Projects list ────────────────────────────────────────────────────────────
-
 const apiFetch = $fetch as <T = unknown>(
   request: string,
-  options?: { method?: string; body?: unknown; headers?: Record<string, string> }
+  options?: { method?: string, body?: unknown, headers?: Record<string, string> }
 ) => Promise<T>
+
 const data = ref<{ projects: MediaProject[] } | null>(null)
+const clients = ref<ClientOption[]>([])
 const pending = ref(false)
+const loadError = ref<string | null>(null)
+const projectView = ref<ProjectView>('grid')
+
+function apiErrorDescription(error: unknown, fallback: string) {
+  if (error && typeof error === 'object' && 'data' in error) {
+    const message = (error as { data?: { statusMessage?: string } }).data?.statusMessage
+    if (message) return message
+  }
+  return fallback
+}
 
 async function refresh() {
+  if (pending.value) return
   pending.value = true
+  loadError.value = null
   try {
     data.value = await apiFetch<{ projects: MediaProject[] }>('/api/agency/audio/projects')
+  } catch (error: unknown) {
+    loadError.value = apiErrorDescription(error, 'Could not load projects. Check your connection and try again.')
   } finally {
     pending.value = false
   }
 }
 
+async function loadClients() {
+  try {
+    clients.value = await apiFetch<ClientOption[]>('/api/agency/clients')
+  } catch {
+    clients.value = []
+  }
+}
+
 onMounted(() => {
+  try {
+    const savedView = localStorage.getItem(VIEW_STORAGE_KEY)
+    if (savedView === 'grid' || savedView === 'list') projectView.value = savedView
+  } catch {
+    projectView.value = 'grid'
+  }
   void refresh()
+  void loadClients()
+})
+
+watch(projectView, (view) => {
+  try {
+    localStorage.setItem(VIEW_STORAGE_KEY, view)
+  } catch {
+    // The preference remains available for this session when storage is blocked.
+  }
 })
 
 const allProjects = computed((): MediaProject[] => data.value?.projects ?? [])
@@ -64,18 +107,9 @@ const projects = computed((): MediaProject[] => {
   return allProjects.value.filter(project => project.mediaType === mediaTypeFilter.value)
 })
 const pageTitle = computed(() => isVideoStudio.value ? 'Video Studio' : 'Audio & video projects')
-const pageDescription = computed(() =>
-  isVideoStudio.value
-    ? 'Video timeline sessions for generated clips, footage, overlays, and edits.'
-    : 'Multitrack audio + video timeline sessions - open any project to edit it in the editor.'
-)
-const emptyDescription = computed(() =>
-  isVideoStudio.value
-    ? 'Create your first video project using the button above.'
-    : 'Create your first multitrack audio project using the button above.'
-)
+const pageDescription = 'Multitrack audio and video timeline sessions. Open a project to edit it in the editor.'
 
-// ─── Table columns ────────────────────────────────────────────────────────────
+useHead(() => ({ title: `${pageTitle.value} — XeroFlow Agency` }))
 
 const columns = [
   { accessorKey: 'title', header: 'Title' },
@@ -85,26 +119,19 @@ const columns = [
   { accessorKey: 'actions', header: '' }
 ]
 
-/** Type-narrow a UTable row.original (typed {} by Nuxt UI) to MediaProject. */
 function asProject(row: { original: unknown }): MediaProject {
   return row.original as MediaProject
 }
 
 function fmtDate(iso: string) {
-  try {
-    return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(iso))
-  } catch {
-    return iso
-  }
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return 'Recently updated'
+  return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(date)
 }
-
-// ─── Open editor ─────────────────────────────────────────────────────────────
 
 function openProject(project: MediaProject) {
-  navigateTo(`/agency/audio/projects/${project.id}`)
+  void navigateTo(`/agency/audio/projects/${project.id}`)
 }
-
-// ─── Duplicate ───────────────────────────────────────────────────────────────
 
 const duplicating = ref<string | null>(null)
 
@@ -112,28 +139,35 @@ async function duplicateProject(project: MediaProject) {
   if (duplicating.value) return
   duplicating.value = project.id
   try {
-    // Fetch the source project's current timeline so the copy is a REAL copy
-    // (not an empty project). Fall back to default lanes if it has no timeline.
     const src = await apiFetch<{ project: MediaProject, timeline: { state: TimelineState } | null }>(
       `/api/agency/audio/projects/${project.id}`
     )
-    const initialState = src.timeline?.state ?? defaultTimelineState()
+    const body: Record<string, unknown> = {
+      title: `${project.title ?? 'Untitled'} (copy)`,
+      clientId: project.clientId,
+      mediaType: project.mediaType
+    }
+    if (src.timeline?.state) body.initialState = src.timeline.state
+    else if (project.mediaType === 'audio') body.initialState = defaultTimelineState()
+
     const res = await apiFetch<{ project: MediaProject }>('/api/agency/audio/projects', {
       method: 'POST',
       headers: { 'Idempotency-Key': `media-duplicate:${project.id}:${Date.now().toString(36)}` },
-      body: { title: `${project.title ?? 'Untitled'} (copy)`, initialState }
+      body
     })
     toast.add({ title: 'Project duplicated', color: 'success' })
     await refresh()
-    navigateTo(`/agency/audio/projects/${res.project.id}`)
-  } catch {
-    toast.add({ title: 'Failed to duplicate project', color: 'error' })
+    await navigateTo(`/agency/audio/projects/${res.project.id}`)
+  } catch (error: unknown) {
+    toast.add({
+      title: 'Failed to duplicate project',
+      description: apiErrorDescription(error, 'The source project was not changed. Try again.'),
+      color: 'error'
+    })
   } finally {
     duplicating.value = null
   }
 }
-
-// ─── Delete ───────────────────────────────────────────────────────────────────
 
 const deleteConfirmOpen = ref(false)
 const projectToDelete = ref<MediaProject | null>(null)
@@ -157,188 +191,375 @@ async function confirmDelete() {
     deleteConfirmOpen.value = false
     projectToDelete.value = null
     await refresh()
-  } catch {
-    toast.add({ title: 'Failed to delete project', color: 'error' })
+  } catch (error: unknown) {
+    toast.add({
+      title: 'Failed to delete project',
+      description: apiErrorDescription(error, 'The project was not deleted. Try again.'),
+      color: 'error'
+    })
   } finally {
     deleting.value = false
   }
 }
 
-// ─── Create new project ───────────────────────────────────────────────────────
-
 const createOpen = ref(false)
+const differentProjectOpen = ref(false)
 const newTitle = ref('')
+const newClientId = ref(AGENCY_CLIENT)
 const newKind = ref<'audio' | 'av'>(isVideoStudio.value ? 'av' : 'audio')
 const creating = ref(false)
+const createError = ref<string | null>(null)
+const createIdempotencyKey = ref<string | null>(null)
+const createAttemptFingerprint = ref<string | null>(null)
+const createAudioSeed = ref<TimelineState | null>(null)
 
-watch(mediaTypeFilter, () => {
-  if (!createOpen.value) newKind.value = isVideoStudio.value ? 'av' : 'audio'
-})
+const createClientOptions = computed(() => [
+  { label: 'Agency (no client)', value: AGENCY_CLIENT },
+  ...clients.value.map(item => ({ label: item.name, value: item.id }))
+])
+const createModalTitle = computed(() => newKind.value === 'av' ? 'New video project' : 'New audio project')
+const createButtonLabel = computed(() => newKind.value === 'av' ? 'Create video project' : 'Create audio project')
+const createDescription = computed(() => newKind.value === 'av'
+  ? 'Start with an empty video timeline. Add footage, audio, and storyboards after the project is created.'
+  : 'Start with empty voiceover and music lanes in the multitrack editor.')
+
+function resetCreateDraft() {
+  newTitle.value = ''
+  newClientId.value = AGENCY_CLIENT
+  newKind.value = isVideoStudio.value ? 'av' : 'audio'
+  createError.value = null
+  createIdempotencyKey.value = null
+  createAttemptFingerprint.value = null
+  createAudioSeed.value = null
+}
 
 function openCreateProject() {
-  newKind.value = isVideoStudio.value ? 'av' : 'audio'
+  if (!createIdempotencyKey.value) {
+    resetCreateDraft()
+    createIdempotencyKey.value = `media-create:${crypto.randomUUID()}`
+  }
+  createError.value = null
   createOpen.value = true
 }
 
+watch(createOpen, (open) => {
+  if (!open && !creating.value && !createAttemptFingerprint.value) resetCreateDraft()
+})
+
 async function createProject() {
   if (creating.value) return
+
+  const title = newTitle.value.trim() || null
+  const clientId = newClientId.value === AGENCY_CLIENT ? null : newClientId.value
+  const mediaType = newKind.value
+  const fingerprint = JSON.stringify({ title, clientId, mediaType })
+
+  if (createAttemptFingerprint.value && createAttemptFingerprint.value !== fingerprint) {
+    createError.value = 'Resolve the previous attempt before changing its details, or explicitly start a different project.'
+    return
+  }
+  const idempotencyKey = createIdempotencyKey.value ?? `media-create:${crypto.randomUUID()}`
+  createIdempotencyKey.value = idempotencyKey
+  createAttemptFingerprint.value = fingerprint
+
+  const body: Record<string, unknown> = { title, clientId, mediaType }
+  if (mediaType === 'audio') {
+    createAudioSeed.value ??= defaultTimelineState()
+    body.initialState = createAudioSeed.value
+  }
+
   creating.value = true
+  createError.value = null
+  let createdId: string | null = null
   try {
-    const body: Record<string, unknown> = { title: newTitle.value.trim() || null, mediaType: newKind.value }
-    // Audio seeds two empty lanes; AV is auto-seeded server-side via emptyAvTimeline().
-    if (newKind.value === 'audio') body.initialState = defaultTimelineState()
     const res = await apiFetch<{ project: MediaProject }>('/api/agency/audio/projects', {
       method: 'POST',
-      headers: { 'Idempotency-Key': `media-create:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 10)}` },
+      headers: { 'Idempotency-Key': idempotencyKey },
       body
     })
-    toast.add({ title: 'Project created', color: 'success' })
-    createOpen.value = false
-    newTitle.value = ''
-    newKind.value = isVideoStudio.value ? 'av' : 'audio'
-    await navigateTo(`/agency/audio/projects/${res.project.id}`)
-  } catch (e: unknown) {
-    const description = e && typeof e === 'object' && 'data' in e
-      ? (e as { data?: { statusMessage?: string } }).data?.statusMessage ?? ''
-      : ''
-    toast.add({ title: 'Failed to create project', description, color: 'error' })
+    createdId = res.project.id
+  } catch (error: unknown) {
+    createError.value = apiErrorDescription(error, 'The creation response could not be confirmed. Retry the same details to recover the original attempt; it may already have created a project.')
+    toast.add({ title: 'Creation not confirmed', description: createError.value, color: 'error' })
   } finally {
     creating.value = false
   }
+
+  if (!createdId) return
+  toast.add({ title: 'Project created', color: 'success' })
+  createOpen.value = false
+  resetCreateDraft()
+  await navigateTo(`/agency/audio/projects/${createdId}`)
 }
 </script>
 
 <template>
-  <div class="flex-1 min-h-0 overflow-y-auto">
-    <div class="max-w-4xl mx-auto p-6 space-y-6">
-      <!-- Header -->
-      <header class="flex items-center justify-between gap-2">
-        <div>
-          <h1 class="text-2xl font-semibold tracking-tight">
-            {{ pageTitle }}
-          </h1>
-          <p class="text-sm text-muted">
-            {{ pageDescription }}
-          </p>
-        </div>
-        <UButton
-          icon="i-lucide-plus"
-          color="primary"
-          label="New project"
-          @click="openCreateProject"
+  <div class="min-h-0 flex-1 overflow-y-auto">
+    <div
+      class="mx-auto p-4 sm:p-6 lg:p-8"
+      :class="isVideoStudio ? 'w-full max-w-[1600px]' : 'max-w-4xl space-y-6'"
+    >
+      <template v-if="isVideoStudio">
+        <MediaVideoStudioWorkspaceHeader
+          :project-count="projects.length"
+          :pending="pending && !projects.length"
+          active="studio"
+          @create="openCreateProject"
         />
-      </header>
+        <MediaVideoStudioProjectGallery
+          v-model:view="projectView"
+          class="mt-6"
+          :projects="projects"
+          :clients="clients"
+          :pending="pending"
+          :error="loadError"
+          :duplicating-id="duplicating"
+          @open="openProject"
+          @duplicate="duplicateProject"
+          @delete="promptDelete"
+          @create="openCreateProject"
+          @retry="refresh"
+        />
+      </template>
 
-      <!-- Table -->
-      <div v-if="pending && !projects.length">
-        <USkeleton v-for="n in 3" :key="n" class="h-12 w-full mb-2 rounded-lg" />
-      </div>
+      <template v-else>
+        <header class="flex items-center justify-between gap-4">
+          <div>
+            <h1 class="text-2xl font-semibold tracking-tight text-highlighted">
+              {{ pageTitle }}
+            </h1>
+            <p class="mt-1 text-sm text-muted">
+              {{ pageDescription }}
+            </p>
+          </div>
+          <UButton
+            icon="i-lucide-plus"
+            color="primary"
+            label="New project"
+            class="shrink-0"
+            @click="openCreateProject"
+          />
+        </header>
 
-      <UAlert
-        v-else-if="!pending && !projects.length"
-        color="neutral"
-        variant="subtle"
-        icon="i-lucide-folder-open"
-        title="No projects yet"
-        :description="emptyDescription"
-      />
-
-      <div v-else class="rounded-lg border border-default overflow-hidden">
-        <UTable :data="projects" :columns="columns">
-          <template #title-cell="{ row }">
-            <button
-              class="text-left font-medium text-highlighted hover:text-primary transition-colors"
-              @click="openProject(asProject(row))"
-            >
-              {{ asProject(row).title ?? '(untitled)' }}
-            </button>
-          </template>
-
-          <template #mediaType-cell="{ row }">
-            <UBadge
-              :label="asProject(row).mediaType"
-              size="xs"
-              variant="subtle"
-              color="neutral"
+        <UAlert
+          v-if="loadError && projects.length"
+          color="error"
+          variant="subtle"
+          icon="i-lucide-triangle-alert"
+          title="Projects could not be refreshed"
+          :description="loadError"
+        >
+          <template #actions>
+            <UButton
+              color="error"
+              variant="soft"
+              size="sm"
+              icon="i-lucide-refresh-cw"
+              label="Try again"
+              :loading="pending"
+              @click="refresh"
             />
           </template>
+        </UAlert>
 
-          <template #status-cell="{ row }">
-            <UBadge
-              :label="asProject(row).status"
-              size="xs"
-              variant="subtle"
-              :color="asProject(row).status === 'approved' ? 'success' : 'neutral'"
-            />
-          </template>
+        <div v-if="pending && !projects.length">
+          <USkeleton v-for="n in 3" :key="n" class="mb-2 h-12 w-full rounded-lg" />
+        </div>
 
-          <template #updatedAt-cell="{ row }">
-            <span class="text-sm text-muted">{{ fmtDate(asProject(row).updatedAt) }}</span>
-          </template>
+        <div v-else-if="loadError && !projects.length" class="rounded-lg border border-dashed border-default p-5">
+          <UAlert
+            color="error"
+            variant="subtle"
+            icon="i-lucide-triangle-alert"
+            title="Projects could not be loaded"
+            :description="loadError"
+          />
+          <UButton
+            class="mt-4"
+            color="neutral"
+            variant="soft"
+            icon="i-lucide-refresh-cw"
+            label="Try again"
+            @click="refresh"
+          />
+        </div>
 
-          <template #actions-cell="{ row }">
-            <div class="flex items-center justify-end gap-1">
+        <UAlert
+          v-else-if="!projects.length"
+          color="neutral"
+          variant="subtle"
+          icon="i-lucide-folder-open"
+          title="No projects yet"
+          description="Create your first multitrack audio project using the button above."
+        />
+
+        <div v-else class="overflow-hidden rounded-lg border border-default">
+          <UTable :data="projects" :columns="columns">
+            <template #title-cell="{ row }">
               <UButton
-                icon="i-lucide-pencil"
-                size="xs"
-                variant="ghost"
                 color="neutral"
-                aria-label="Open editor"
-                @click.stop="openProject(asProject(row))"
+                variant="link"
+                class="max-w-full justify-start truncate p-0 font-medium text-highlighted"
+                :label="asProject(row).title ?? 'Untitled project'"
+                @click="openProject(asProject(row))"
               />
-              <UButton
-                icon="i-lucide-copy"
+            </template>
+
+            <template #mediaType-cell="{ row }">
+              <UBadge
+                :label="asProject(row).mediaType === 'av' ? 'Video' : 'Audio'"
                 size="xs"
-                variant="ghost"
+                variant="subtle"
                 color="neutral"
-                aria-label="Duplicate"
-                :loading="duplicating === asProject(row).id"
-                @click.stop="duplicateProject(asProject(row))"
               />
-              <UButton
-                icon="i-lucide-trash-2"
+            </template>
+
+            <template #status-cell="{ row }">
+              <UBadge
+                :label="asProject(row).status.replace('_', ' ')"
                 size="xs"
-                variant="ghost"
-                color="error"
-                aria-label="Delete"
-                @click.stop="promptDelete(asProject(row))"
+                variant="subtle"
+                :color="asProject(row).status === 'approved' ? 'success' : 'neutral'"
+                class="capitalize"
               />
-            </div>
-          </template>
-        </UTable>
-      </div>
+            </template>
+
+            <template #updatedAt-cell="{ row }">
+              <span class="text-sm text-muted">{{ fmtDate(asProject(row).updatedAt) }}</span>
+            </template>
+
+            <template #actions-cell="{ row }">
+              <div class="flex items-center justify-end gap-1">
+                <UButton
+                  icon="i-lucide-pencil"
+                  size="xs"
+                  variant="ghost"
+                  color="neutral"
+                  aria-label="Open editor"
+                  @click="openProject(asProject(row))"
+                />
+                <UButton
+                  icon="i-lucide-copy"
+                  size="xs"
+                  variant="ghost"
+                  color="neutral"
+                  aria-label="Duplicate"
+                  :loading="duplicating === asProject(row).id"
+                  @click="duplicateProject(asProject(row))"
+                />
+                <UButton
+                  icon="i-lucide-trash-2"
+                  size="xs"
+                  variant="ghost"
+                  color="error"
+                  aria-label="Delete"
+                  @click="promptDelete(asProject(row))"
+                />
+              </div>
+            </template>
+          </UTable>
+        </div>
+      </template>
     </div>
   </div>
 
-  <!-- Create project modal -->
-  <UModal v-model:open="createOpen" title="New project">
+  <UModal v-model:open="differentProjectOpen" title="Start a different project?">
     <template #content>
-      <div class="p-4 space-y-4">
-        <UFormField label="Project type">
-          <USelect
-            v-model="newKind"
-            :items="[{ label: 'Audio (multitrack)', value: 'audio' }, { label: 'Video (footage + overlay)', value: 'av' }]"
-            value-key="value"
-          />
-        </UFormField>
-        <UFormField label="Project title">
-          <UInput
-            v-model="newTitle"
-            placeholder="e.g. Q3 Radio Campaign"
-            autofocus
-            @keydown.enter="createProject"
-          />
-        </UFormField>
+      <div class="space-y-4 p-6">
+        <h2 class="text-lg font-semibold">
+          Start a different project?
+        </h2>
+        <p class="text-sm text-muted">
+          The previous request may already have created a project. Check your projects or retry that request first. Starting a different project uses a new creation request.
+        </p>
         <div class="flex justify-end gap-2">
+          <UButton
+            label="Keep previous attempt"
+            color="neutral"
+            variant="ghost"
+            @click="() => { differentProjectOpen = false }"
+          />
+          <UButton label="Start different project" @click="() => { resetCreateDraft(); differentProjectOpen = false }" />
+        </div>
+      </div>
+    </template>
+  </UModal>
+  <UModal v-model:open="createOpen" :title="createModalTitle">
+    <template #content>
+      <div class="p-5 sm:p-6">
+        <div>
+          <h2 class="text-xl font-semibold tracking-tight text-highlighted">
+            {{ createModalTitle }}
+          </h2>
+          <p class="mt-1.5 max-w-lg text-sm leading-6 text-muted">
+            {{ createDescription }}
+          </p>
+        </div>
+
+        <div class="mt-6 grid grid-cols-1 gap-4">
+          <UFormField v-if="!isVideoStudio" label="Project type">
+            <USelect
+              v-model="newKind"
+              :disabled="creating || Boolean(createAttemptFingerprint)"
+              :items="[{ label: 'Audio (multitrack)', value: 'audio' }, { label: 'Video (footage + overlay)', value: 'av' }]"
+              value-key="value"
+              class="w-full"
+            />
+          </UFormField>
+          <UFormField label="Project title" hint="Optional">
+            <UInput
+              v-model="newTitle"
+              :disabled="creating || Boolean(createAttemptFingerprint)"
+              :placeholder="newKind === 'av' ? 'Untitled video' : 'Untitled audio project'"
+              maxlength="200"
+              class="w-full"
+              autofocus
+              @keydown.enter="createProject"
+            />
+          </UFormField>
+          <UFormField label="Client" help="Choose Agency for internal work. Client projects can use portal and publishing hand-offs.">
+            <USelectMenu
+              v-model="newClientId"
+              :disabled="creating || Boolean(createAttemptFingerprint)"
+              :items="createClientOptions"
+              value-key="value"
+              class="w-full"
+              placeholder="Choose a client"
+              :search-input="{ placeholder: 'Search clients' }"
+            />
+          </UFormField>
+        </div>
+
+        <UAlert
+          v-if="createError"
+          class="mt-5"
+          color="error"
+          variant="subtle"
+          icon="i-lucide-triangle-alert"
+          title="Creation not confirmed"
+          :description="createError"
+        />
+
+        <UButton
+          v-if="createAttemptFingerprint && !creating"
+          label="Start a different project"
+          color="neutral"
+          variant="link"
+          class="mt-3"
+          @click="() => { differentProjectOpen = true }"
+        />
+        <div class="mt-6 flex flex-col-reverse gap-2 border-t border-default pt-4 sm:flex-row sm:justify-end">
           <UButton
             variant="ghost"
             color="neutral"
             label="Cancel"
-            @click="createOpen = false"
+            :disabled="creating"
+            @click="() => { createOpen = false }"
           />
           <UButton
             color="primary"
-            label="Create project"
+            icon="i-lucide-plus"
+            :label="createButtonLabel"
             :loading="creating"
             @click="createProject"
           />
@@ -347,25 +568,31 @@ async function createProject() {
     </template>
   </UModal>
 
-  <!-- Delete confirmation modal -->
   <UModal v-model:open="deleteConfirmOpen" title="Delete project">
     <template #content>
-      <div class="p-4 space-y-4">
-        <p class="text-sm text-muted">
-          Are you sure you want to delete
-          <strong class="text-highlighted">{{ projectToDelete?.title ?? 'this project' }}</strong>?
-          This cannot be undone.
-        </p>
-        <div class="flex justify-end gap-2">
+      <div class="space-y-4 p-5 sm:p-6">
+        <div>
+          <h2 class="text-xl font-semibold tracking-tight text-highlighted">
+            Delete project
+          </h2>
+          <p class="mt-2 text-sm leading-6 text-muted">
+            Are you sure you want to delete
+            <strong class="text-highlighted">{{ projectToDelete?.title ?? 'this project' }}</strong>?
+            This cannot be undone.
+          </p>
+        </div>
+        <div class="flex justify-end gap-2 border-t border-default pt-4">
           <UButton
             variant="ghost"
             color="neutral"
             label="Cancel"
-            @click="deleteConfirmOpen = false"
+            :disabled="deleting"
+            @click="() => { deleteConfirmOpen = false }"
           />
           <UButton
             color="error"
-            label="Delete"
+            icon="i-lucide-trash-2"
+            label="Delete project"
             :loading="deleting"
             @click="confirmDelete"
           />
