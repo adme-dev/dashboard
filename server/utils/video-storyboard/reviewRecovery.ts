@@ -13,6 +13,16 @@ import { storyboardHash } from './hash'
 const copyText = z.object({ id: z.string().min(1).max(100), text: z.string().min(1).max(20000) }).strict()
 export const CopyRecoveryApprovalSchema = z.object({ expectedCopyHash: z.string().regex(/^[a-f0-9]{64}$/), scriptSegments: z.array(copyText).max(100), cues: z.array(copyText.extend({ required: z.boolean() })).max(100) }).strict()
 export const ReferenceRecoveryApprovalSchema = z.object({ sourceKind: ReferenceSourceKindSchema, assetId: z.string().uuid(), expectedContentHash: z.string().regex(/^[a-f0-9]{64}$/), evidence: z.string().trim().min(1).max(2000) }).strict()
+export const BrandKitRecoveryApprovalSchema = z.object({ id: z.string().uuid(), expectedPinnedHash: z.string().regex(/^[a-f0-9]{64}$/), expectedContentHash: z.string().regex(/^[a-f0-9]{64}$/), evidence: z.string().trim().min(1).max(2000) }).strict()
+export interface NeededBrandKit { id: string, pinnedContentHash: string, contentHash: string, decision: 'approved' | 'pending' }
+/** Offer only the pinned kit after canonical actor/client authorization. */
+export async function neededTimelineBrandKitIn(db: Db, project: StoryboardProject, actor: MediaProjectActor, refs: StoryboardReferenceSet, deps: ReferenceDependencies): Promise<NeededBrandKit | null> {
+  if (!refs.brandKit) return null
+  try {
+    const identity = await canonicalReferenceIn(db, project, actor, 'brand_kit', refs.brandKit.id, deps)
+    return { id: refs.brandKit.id, pinnedContentHash: refs.brandKit.contentHash, contentHash: identity.contentHash, decision: refs.brandKit.contentHash === identity.contentHash ? 'approved' : 'pending' }
+  } catch { return null /* Unavailable kits remain render blockers, never candidates. */ }
+}
 export async function loadApprovedCopyIn(db: Db, projectId: string, copyRevisionId: string): Promise<CopyRevision | null> {
   const recovery = (await db.query('SELECT copy FROM video_storyboard_review_copies WHERE project_id = $1 AND id = $2', [projectId, copyRevisionId])).rows[0]
   const copy = recovery?.copy ?? (await db.query(`SELECT plan->'copy' AS copy FROM video_storyboard_revisions WHERE project_id = $1 AND plan->>'copyRevisionId' = $2 ORDER BY sequence DESC LIMIT 1`, [projectId, copyRevisionId])).rows[0]?.copy
@@ -59,19 +69,25 @@ export async function neededTimelineReferencesIn(db: Db, project: StoryboardProj
 }
 /** Preserve untouched decisions verbatim. Only explicit, current, cut-scoped
  * selections may get a new approval record, never all inventory by default. */
-export async function approveRecoveryReferencesIn(db: Db, input: { project: StoryboardProject, actor: MediaProjectActor, operationId: string, rootReferenceSetId: string, current: StoryboardReferenceSet, needed: NeededReference[], approvals: z.infer<typeof ReferenceRecoveryApprovalSchema>[] }, deps: ReferenceDependencies) {
+export async function approveRecoveryReferencesIn(db: Db, input: { project: StoryboardProject, actor: MediaProjectActor, operationId: string, rootReferenceSetId: string, current: StoryboardReferenceSet, needed: NeededReference[], approvals: z.infer<typeof ReferenceRecoveryApprovalSchema>[], brandKitApproval?: z.infer<typeof BrandKitRecoveryApprovalSchema> }, deps: ReferenceDependencies) {
   const keys = input.approvals.map(a => `${a.sourceKind}:${a.assetId}`)
   if (new Set(keys).size !== keys.length || input.approvals.some(a => !input.needed.some(n => n.sourceKind === a.sourceKind && n.assetId === a.assetId && n.contentHash === a.expectedContentHash))) throw createError({ statusCode: 409, statusMessage: 'Reference approval must match this current edit' })
+  const brandApproval = input.brandKitApproval ? BrandKitRecoveryApprovalSchema.parse(input.brandKitApproval) : undefined
+  if (brandApproval && (!input.current.brandKit || input.current.brandKit.id !== brandApproval.id || input.current.brandKit.contentHash !== brandApproval.expectedPinnedHash)) throw createError({ statusCode: 409, statusMessage: 'Brand kit approval must match the currently pinned kit' })
   const pins = await pinReferencesIn(db, input.project, input.actor, input.approvals.flatMap((a) => {
     const roles = input.current.references.filter(r => r.sourceKind === a.sourceKind && r.assetId === a.assetId).map(r => r.role)
     return (roles.length ? roles : ['product' as const]).map(role => ({ ...a, role, decision: 'approved' as const }))
-  }), null, deps)
+  }), brandApproval ? { id: brandApproval.id, expectedContentHash: brandApproval.expectedContentHash } : null, deps)
   const references = input.current.references.filter(r => !keys.includes(`${r.sourceKind}:${r.assetId}`)).concat(pins.references)
   if (references.length > 24) throw createError({ statusCode: 400, statusMessage: 'Too many reviewed references' })
   const id = randomUUID()
-  const data = { references, brandKit: input.current.brandKit, reviewScope: { rootReferenceSetId: input.rootReferenceSetId } }
+  // Canonical pinning rechecks current content under the caller's dependency
+  // fences. Only this cut gets the approval; untouched inventory stays verbatim.
+  if (brandApproval && (!pins.brandKit || pins.brandKit.id !== brandApproval.id || pins.brandKit.contentHash !== brandApproval.expectedContentHash)) throw createError({ statusCode: 409, statusMessage: 'Brand kit changed; refresh before approving' })
+  const brandKit = brandApproval && pins.brandKit ? { ...pins.brandKit, approval: { actorId: input.actor.id, approvedAt: new Date().toISOString(), contentHash: pins.brandKit.contentHash, evidence: brandApproval.evidence } } : input.current.brandKit
+  const data = { references, brandKit, reviewScope: { rootReferenceSetId: input.rootReferenceSetId } }
   const row = (await db.query(`INSERT INTO video_storyboard_reference_sets (id,project_id,sequence,parent_id,reference_data,content_hash,operation_id,request_hash,created_by)
-    VALUES ($1,$2,COALESCE((SELECT MAX(sequence) FROM video_storyboard_reference_sets WHERE project_id=$2),0)+1,$3,$4,$5,$6,$7,$8) RETURNING *`, [id, input.project.id, input.current.id, JSON.stringify(data), storyboardHash(data), input.operationId, storyboardHash(input.approvals), input.actor.id])).rows[0]
+    VALUES ($1,$2,COALESCE((SELECT MAX(sequence) FROM video_storyboard_reference_sets WHERE project_id=$2),0)+1,$3,$4,$5,$6,$7,$8) RETURNING *`, [id, input.project.id, input.current.id, JSON.stringify(data), storyboardHash(data), input.operationId, storyboardHash({ references: input.approvals, brandKitApproval: brandApproval ?? null }), input.actor.id])).rows[0]
   return { ...input.current, ...data, id, sequence: row.sequence, parentId: input.current.id, contentHash: row.content_hash } as StoryboardReferenceSet
 }
 

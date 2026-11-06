@@ -159,3 +159,17 @@ describe('review regressions: complete voice and render-affecting edits', () => 
     expect(storyboardApprovalChanges(ducked, before, result.obligations)).toEqual([{ clipId: targetId, reasons: ['timing'] }])
   })
 })
+
+it('compares JSONB-reordered nested layout values semantically while retaining actual layout changes', async () => {
+  const result = compileStoryboard(resolvedFixture())
+  if (!result.ok) throw new Error('Expected valid fixture')
+  const reorder = (value: unknown): unknown => Array.isArray(value) ? value.map(reorder) : value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).reverse().map(([key, child]) => [key, reorder(child)])) : value
+  const baseline = reorder(result.timeline) as typeof result.timeline
+  const current = TimelineStateSchema.parse(result.timeline)
+  const { storyboardApprovalChanges } = await import('~~/shared/video/storyboardCompile')
+  expect(storyboardApprovalChanges(baseline, current, result.obligations)).toEqual([])
+  const clip = current.tracks.flatMap(track => track.clips).find(clip => clip.type === 'video')!
+  if (clip.type !== 'video') throw new Error('Expected video clip')
+  clip.opacity = 0.5
+  expect(storyboardApprovalChanges(baseline, current, result.obligations)).toEqual([{ clipId: clip.id, reasons: ['layout'] }])
+})

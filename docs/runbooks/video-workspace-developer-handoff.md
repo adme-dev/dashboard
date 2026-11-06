@@ -31,3 +31,15 @@ Focused tests cover cover-access restrictions, absent/failed previews, gallery f
 A listed model and configured credentials demonstrate capability discovery, not successful provider execution. No paid provider run is part of this UI verification. Full pilot acceptance, physical-device render acceptance and research-only R2/R3 capability promotion remain separate. Missing thumbnails show a truthful empty preview; no example results are fabricated.
 
 The implementation used actual Kimi CLI alias `kimi-code/k3.1-pro` for the three gallery/header/page files and Codex for authority projection, integration and independent review. Release evidence and exact acceptance limits live in the dated external release receipt, not in claims inferred from source existence.
+
+## Changed-brand-kit recovery (T08)
+
+An adjusted cut can explicitly reapprove its existing pinned brand kit after the canonical kit changes. The review snapshot offers only an accessible current kit, its old pin and current content hash. The operator inspects the kit in Banner Studio, supplies evidence and acknowledges the change before accepting the adjusted edit. Refresh or changed selections invalidate acknowledgements; an uncertain response retains the exact request for retry.
+
+The server requires the same kit identity and both hashes, locks source/actor/client/font dependencies, and writes one immutable cut-scoped reference set together with any media approvals. The global storyboard reference set is unchanged and remains a revocation fence. The transaction rolls back if final render validation fails. This does not add, remove or replace a kit, approve unavailable sources, or bypass project authority. Existing review recovery remains accessible when new storyboard entry is disabled.
+
+## Remaining original-plan work
+
+T01–T08 foundations are implemented; T08 now includes the bounded kit recovery above. T09 integrated hosted/ordinary-role/physical-device acceptance is still partial. T10–T14 (durable shot-generation attempts and budget handling, shot workflow/take review, continuity and audio orchestration) are not completed by the gallery or kit recovery. The five Freefield research capabilities require their own real adapters/backends and evaluations. The existing generation composer and five-model discovery do not constitute those missing pipelines. See the original 2026-11-04 producer PRD/plan and the dated release task audit for individual acceptance rows.
+
+The gallery release is PR885, merged source `601500d7201b46c823b2daf884572cf200e49c68`, Pages deployment `2efcb595-631b-4f74-b17a-0e1bc1102565`. Authenticated gallery/create-dialog/model-selection/storyboard/history checks passed without paid generation or customer-project changes. Creation was cancelled; empty history and absent thumbnails remain truthful. The editor's inherited bucket GET may initialize metadata, so navigation is not a zero-write database audit. Kit-recovery deployment and stateful verification must be recorded separately in its release receipt.

@@ -2,6 +2,7 @@
  * Returned obligations must be persisted by T06, never accepted from clients. */
 import type { AssetBinding, ReadinessFinding, StoryboardPlan } from './storyboard'
 import { validateStoryboardPlan } from './storyboardValidation'
+import { canonicalMcpJson } from '../utils/mcpRequestClaim'
 import { TimelineStateSchema, type TimelineState, type Clip, type Track } from '../../server/utils/audio/timelineSchema'
 
 export const storyboardFormats = {
@@ -150,7 +151,7 @@ export function compileStoryboard(resolved: ResolvedStoryboard): StoryboardCompi
 export function storyboardApprovalChanges(before: TimelineState, after: TimelineState, obligations: StoryboardObligations): Array<{ clipId: string, reasons: Array<'presence' | 'source' | 'timing' | 'layout' | 'copy'> }> {
   const ids = new Set([...obligations.sources, ...obligations.cues].map(item => item.clipId))
   const locate = (state: TimelineState, id: string) => state.tracks.flatMap(track => track.clips.filter(c => c.id === id).map(clip => ({ track, clip })))
-  const duckingSignature = (state: TimelineState, targetId: string) => JSON.stringify(state.ducking
+  const duckingSignature = (state: TimelineState, targetId: string) => canonicalMcpJson(state.ducking
     .filter(rule => rule.target_track_id === targetId)
     .map((rule) => {
       const source = state.tracks.find(track => track.id === rule.source_track_id)
@@ -170,7 +171,7 @@ export function storyboardApprovalChanges(before: TimelineState, after: Timeline
     else {
       const a = previous[0]!.clip as unknown as Record<string, unknown>
       const b = current[0]!.clip as unknown as Record<string, unknown>
-      const differs = (fields: string[]) => fields.some(key => JSON.stringify(a[key]) !== JSON.stringify(b[key]))
+      const differs = (fields: string[]) => fields.some(key => canonicalMcpJson({ value: a[key] }) !== canonicalMcpJson({ value: b[key] }))
       if (differs(['type', 'base_source', 'asset_id', 'r2_key', 'gsap_project_id', 'source_asset_id', 'caption_vtt_url'])) reasons.push('source')
       if (differs(['timeline_start_sec', 'source_in_sec', 'source_out_sec', 'duration_sec', 'gain_db', 'fade_in_sec', 'fade_out_sec', 'fade_curve', 'audio_mode']) || before.fps !== after.fps || previous[0]!.track.gain_db !== current[0]!.track.gain_db
         || (b.type === 'audio' && duckingSignature(before, previous[0]!.track.id) !== duckingSignature(after, current[0]!.track.id))) reasons.push('timing')

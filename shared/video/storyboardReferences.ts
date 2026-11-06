@@ -40,7 +40,7 @@ export interface StoryboardReferenceSet {
   sequence: number
   parentId: string | null
   references: PinnedReference[]
-  brandKit: { id: string, contentHash: string } | null
+  brandKit: { id: string, contentHash: string, approval?: { actorId: string, approvedAt: string, contentHash: string, evidence: string } } | null
   contentHash: string
   createdBy: string
   createdAt: string
