@@ -15,6 +15,8 @@ const reviseCopy = ref(false)
 const copyApproved = ref(false)
 const copyDraft = ref<NonNullable<AdjustedEditSnapshot['copy']> | null>(null)
 const referenceApprovals = ref<Record<string, { approved: boolean, evidence: string }>>({})
+const brandKitEvidence = ref('')
+const brandKitApproved = ref(false)
 const mappings = ref<Record<string, string>>({})
 watch(() => props.snapshot, () => {
   accepted.value = false
@@ -23,18 +25,24 @@ watch(() => props.snapshot, () => {
   copyApproved.value = false
   copyDraft.value = props.snapshot?.copy ? JSON.parse(JSON.stringify(props.snapshot.copy)) : null
   referenceApprovals.value = {}
+  brandKitEvidence.value = ''
+  brandKitApproved.value = false
 }, { immediate: true })
-watch([mappings, reviseCopy, copyDraft, referenceApprovals], () => {
+watch([mappings, reviseCopy, copyDraft, referenceApprovals, brandKitEvidence], () => {
   accepted.value = false
+  brandKitApproved.value = false
 }, { deep: true })
 const changes = computed(() => props.snapshot?.changes ?? [])
 watch(copyDraft, () => {
   copyApproved.value = false
 }, { deep: true })
 const pendingReferences = computed(() => props.snapshot?.references?.filter(item => item.decision !== 'approved') ?? [])
+const pendingBrandKit = computed(() => props.snapshot?.brandKit?.decision === 'pending' ? props.snapshot.brandKit : null)
+const brandKitEvidenceValid = computed(() => Boolean(brandKitEvidence.value.trim()) && brandKitEvidence.value.trim().length <= 2000)
 const copyValid = computed(() => !reviseCopy.value || (copyApproved.value && copyDraft.value && [...copyDraft.value.scriptSegments, ...copyDraft.value.cues].every(item => Boolean(item.text.trim()))))
 const referencesValid = computed(() => Object.values(referenceApprovals.value).every(item => !item.approved || Boolean(item.evidence.trim())))
-const canAccept = computed(() => Boolean(props.snapshot?.obligations) && (!props.snapshot?.review || props.uncertain) && accepted.value && !props.pending && copyValid.value && referencesValid.value)
+const brandKitValid = computed(() => props.uncertain || !pendingBrandKit.value || (brandKitApproved.value && brandKitEvidenceValid.value))
+const canAccept = computed(() => Boolean(props.snapshot?.obligations) && (!props.snapshot?.review || props.uncertain) && accepted.value && !props.pending && copyValid.value && referencesValid.value && brandKitValid.value)
 function submit() {
   if (!canAccept.value) return
   if (props.uncertain) {
@@ -44,7 +52,8 @@ function submit() {
   emit('accept', {
     obligationMappings: Object.entries(mappings.value).filter(([, id]) => id !== '__retain__' && props.clips.some(clip => clip.value === id)).map(([clipId, replacementClipId]) => ({ clipId, replacementClipId })),
     ...(reviseCopy.value && copyDraft.value ? { copyApproval: { expectedCopyHash: copyDraft.value.contentHash, scriptSegments: copyDraft.value.scriptSegments, cues: copyDraft.value.cues } } : {}),
-    ...(pendingReferences.value.some(item => referenceApprovals.value[`${item.sourceKind}:${item.assetId}`]?.approved) ? { referenceApproval: pendingReferences.value.filter(item => referenceApprovals.value[`${item.sourceKind}:${item.assetId}`]?.approved).map(item => ({ sourceKind: item.sourceKind, assetId: item.assetId, expectedContentHash: item.contentHash, evidence: referenceApprovals.value[`${item.sourceKind}:${item.assetId}`]!.evidence.trim() })) } : {})
+    ...(pendingReferences.value.some(item => referenceApprovals.value[`${item.sourceKind}:${item.assetId}`]?.approved) ? { referenceApproval: pendingReferences.value.filter(item => referenceApprovals.value[`${item.sourceKind}:${item.assetId}`]?.approved).map(item => ({ sourceKind: item.sourceKind, assetId: item.assetId, expectedContentHash: item.contentHash, evidence: referenceApprovals.value[`${item.sourceKind}:${item.assetId}`]!.evidence.trim() })) } : {}),
+    ...(pendingBrandKit.value && brandKitApproved.value ? { brandKitApproval: { id: pendingBrandKit.value.id, expectedPinnedHash: pendingBrandKit.value.pinnedContentHash, expectedContentHash: pendingBrandKit.value.contentHash, evidence: brandKitEvidence.value.trim() } } : {})
   })
 }
 function clipLabel(id: string) {
@@ -151,6 +160,41 @@ function clipLabel(id: string) {
             @update:model-value="referenceApprovals[`${reference.sourceKind}:${reference.assetId}`] = { evidence: referenceApprovals[`${reference.sourceKind}:${reference.assetId}`]?.evidence ?? '', approved: Boolean($event) }"
           />
         </div>
+        <section v-if="pendingBrandKit" aria-label="Pending brand kit approval" class="space-y-3 border-t border-default pt-3">
+          <div class="space-y-1">
+            <h4 class="text-sm font-medium text-highlighted">
+              Brand kit needs approval
+            </h4>
+            <p class="break-words text-sm text-highlighted">
+              {{ pendingBrandKit.name?.trim() || pendingBrandKit.id }}
+            </p>
+            <p class="max-w-prose text-sm text-muted">
+              Inspect the currently pinned kit, then record why it is approved for this edit. Accepting does not change your global brand plan.
+            </p>
+          </div>
+          <UButton
+            to="/agency/banner-studio/brand-kits"
+            color="neutral"
+            variant="ghost"
+            size="sm"
+            class="w-fit"
+          >
+            Inspect current brand kit
+          </UButton>
+          <UFormField label="Brand kit approval evidence" description="Record the current kit review and usage clearance in up to 2,000 characters.">
+            <UTextarea
+              v-model="brandKitEvidence"
+              class="w-full"
+              :maxlength="2000"
+              :disabled="pending || uncertain"
+            />
+          </UFormField>
+          <UCheckbox
+            v-model="brandKitApproved"
+            label="I approve this pinned brand kit for the current edit."
+            :disabled="pending || uncertain || !brandKitEvidenceValid"
+          />
+        </section>
         <UCheckbox
           v-if="snapshot.copy"
           v-model="reviseCopy"

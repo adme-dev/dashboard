@@ -73,3 +73,18 @@ it('does not mistake an older review for confirmation of an uncertain operation'
   await controller.load()
   expect(controller.uncertain.value).toBe(true)
 })
+
+it('retains exact brand approval on uncertain retry and rejects changed evidence', async () => {
+  const fetch = vi.fn().mockResolvedValueOnce(snapshot).mockRejectedValueOnce(new Error('lost')).mockResolvedValueOnce({ timelineId: 'timeline', editRevision: 2, review: { id: 'review', createdAt: 'now' }, findings: [] })
+  vi.stubGlobal('$fetch', fetch)
+  const controller = useVideoAdjustedEditReview('project', { begin: vi.fn().mockResolvedValue({ expectedTimelineId: 'timeline', expectedEditRevision: 2 }), release: vi.fn() })
+  const brandKitApproval = { id: 'kit', expectedPinnedHash: 'old', expectedContentHash: 'current', evidence: 'Reviewed current brand guidelines' }
+  await controller.load()
+  await controller.accept({ obligationMappings: [], brandKitApproval })
+  expect(controller.uncertain.value).toBe(true)
+  await controller.accept({ obligationMappings: [], brandKitApproval: { ...brandKitApproval, evidence: 'Different approval' } })
+  expect(fetch).toHaveBeenCalledTimes(2)
+  await controller.retry()
+  expect(fetch.mock.calls[2][1].body).toEqual(fetch.mock.calls[1][1].body)
+  expect(fetch.mock.calls[2][1].body.brandKitApproval).toEqual(brandKitApproval)
+})

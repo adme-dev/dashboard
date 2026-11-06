@@ -11,12 +11,14 @@ export interface AdjustedEditSnapshot {
   review: { id: string, createdAt: string, operationId: string } | null
   copy?: { contentHash: string, scriptSegments: Array<{ id: string, text: string }>, cues: Array<{ id: string, text: string, required: boolean }> } | null
   references?: Array<{ sourceKind: 'video_asset' | 'audio_asset' | 'source_asset' | 'banner_project', assetId: string, contentHash: string, decision: 'approved' | 'pending', clipIds: string[] }>
+  brandKit?: { id: string, name?: string, pinnedContentHash: string, contentHash: string, decision: 'approved' | 'pending' } | null
 }
 export interface AdjustedEditAcceptance {
   obligationMappings: Array<{ clipId: string, replacementClipId: string }>
   copyRevisionId?: string
   copyApproval?: { expectedCopyHash: string, scriptSegments: Array<{ id: string, text: string }>, cues: Array<{ id: string, text: string, required: boolean }> }
   referenceApproval?: Array<{ sourceKind: 'video_asset' | 'audio_asset' | 'source_asset' | 'banner_project', assetId: string, expectedContentHash: string, evidence: string }>
+  brandKitApproval?: { id: string, expectedPinnedHash: string, expectedContentHash: string, evidence: string }
 }
 interface Revision { expectedTimelineId: string, expectedEditRevision: number }
 export function useVideoAdjustedEditReview(projectId: string, editor: {
@@ -72,7 +74,7 @@ export function useVideoAdjustedEditReview(projectId: string, editor: {
     })
   }
   function acceptance(body: AdjustedEditAcceptance): AdjustedEditAcceptance {
-    return { obligationMappings: body.obligationMappings, ...(body.copyRevisionId ? { copyRevisionId: body.copyRevisionId } : {}), ...(body.copyApproval ? { copyApproval: body.copyApproval } : {}), ...(body.referenceApproval ? { referenceApproval: body.referenceApproval } : {}) }
+    return { obligationMappings: body.obligationMappings, ...(body.copyRevisionId ? { copyRevisionId: body.copyRevisionId } : {}), ...(body.copyApproval ? { copyApproval: body.copyApproval } : {}), ...(body.referenceApproval ? { referenceApproval: body.referenceApproval } : {}), ...(body.brandKitApproval ? { brandKitApproval: body.brandKitApproval } : {}) }
   }
   async function accept(input: AdjustedEditAcceptance) {
     await run(async (token) => {

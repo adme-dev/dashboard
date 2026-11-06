@@ -13,9 +13,9 @@ import { remapObligations, prepareStoryboardRenderIn } from './renderValidation'
 import { storyboardHash } from './hash'
 import { canonicalReferenceIn, type ReferenceDependencies } from './references'
 import { fenceWriteAuthorityIn, fenceDependenciesIn } from './apply'
-import { CopyRecoveryApprovalSchema, ReferenceRecoveryApprovalSchema, loadApprovedCopyIn, approveRecoveryCopyIn, neededTimelineReferencesIn, approveRecoveryReferencesIn, resolveTimelineReferenceSetIn } from './reviewRecovery'
+import { CopyRecoveryApprovalSchema, ReferenceRecoveryApprovalSchema, BrandKitRecoveryApprovalSchema, neededTimelineBrandKitIn, loadApprovedCopyIn, approveRecoveryCopyIn, neededTimelineReferencesIn, approveRecoveryReferencesIn, resolveTimelineReferenceSetIn } from './reviewRecovery'
 
-export const TimelineReviewRequestSchema = z.object({ operationId: z.string().uuid(), expectedTimelineId: z.string().uuid(), expectedEditRevision: z.number().int().nonnegative(), obligationMappings: z.array(z.object({ clipId: z.string().min(1), replacementClipId: z.string().min(1) }).strict()).max(256), copyRevisionId: z.string().uuid().optional(), copyApproval: CopyRecoveryApprovalSchema.optional(), referenceApproval: z.array(ReferenceRecoveryApprovalSchema).max(24).optional() }).strict().refine(value => !(value.copyApproval && value.copyRevisionId), { message: 'Choose existing copy or explicitly approve revised copy, not both' })
+export const TimelineReviewRequestSchema = z.object({ operationId: z.string().uuid(), expectedTimelineId: z.string().uuid(), expectedEditRevision: z.number().int().nonnegative(), obligationMappings: z.array(z.object({ clipId: z.string().min(1), replacementClipId: z.string().min(1) }).strict()).max(256), copyRevisionId: z.string().uuid().optional(), copyApproval: CopyRecoveryApprovalSchema.optional(), referenceApproval: z.array(ReferenceRecoveryApprovalSchema).max(24).optional(), brandKitApproval: BrandKitRecoveryApprovalSchema.optional() }).strict().refine(value => !(value.copyApproval && value.copyRevisionId), { message: 'Choose existing copy or explicitly approve revised copy, not both' })
 export type TimelineReviewInput = z.infer<typeof TimelineReviewRequestSchema> & { actor: MediaProjectActor, projectId: string }
 const formats: StoryboardFormat[] = ['reels_9x16', 'square_1x1', 'youtube_16x9']
 const conflict = () => createError({ statusCode: 409, statusMessage: 'Timeline or approval changed; refresh and review again' })
@@ -28,7 +28,8 @@ export async function getTimelineReviewIn(db: Db, input: { actor: MediaProjectAc
   const copy = prepared.lineage ? await loadApprovedCopyIn(db, input.projectId, prepared.lineage.contract.copyRevisionId) : null
   const scope = current?.referenceSet ? await resolveTimelineReferenceSetIn(db, current.referenceSet, prepared.lineage?.referenceSetId ?? null) : null
   const references = scope ? await neededTimelineReferencesIn(db, project, input.actor, prepared.state, scope.current ? scope.referenceSet : current!.referenceSet!, deps) : []
-  return { copy, references, timelineId: row.id, editRevision: row.edit_revision, obligations: prepared.lineage?.contract ?? null,
+  const brandKit = scope ? await neededTimelineBrandKitIn(db, project, input.actor, scope.current ? scope.referenceSet : current!.referenceSet!, deps) : null
+  return { copy, references, brandKit, timelineId: row.id, editRevision: row.edit_revision, obligations: prepared.lineage?.contract ?? null,
     findings: prepared.findings, changes: prepared.lineage ? storyboardApprovalChanges(prepared.lineage.baseline, prepared.state, prepared.lineage.contract) : [],
     review: prepared.findings.length ? null : prepared.lineage?.review ?? null }
 }
@@ -55,12 +56,12 @@ export async function reviewAdjustedTimelineIn(db: Db, input: TimelineReviewInpu
   if (scopedReferences.current) current.referenceSet = scopedReferences.referenceSet
   const state = TimelineStateSchema.parse(timeline.state)
   const project = await requireStoryboardProjectIn(db, input.projectId, input.actor)
-  if (input.referenceApproval?.length) {
+  if (input.referenceApproval?.length || input.brandKitApproval) {
     const needed = await neededTimelineReferencesIn(db, project, input.actor, state, current.referenceSet, deps)
     // Lock new selected sources too before any canonical approval mutation.
-    const extra = needed.filter(n => input.referenceApproval!.some(a => a.assetId === n.assetId && a.sourceKind === n.sourceKind))
+    const extra = needed.filter(n => (input.referenceApproval ?? []).some(a => a.assetId === n.assetId && a.sourceKind === n.sourceKind))
     await fenceDependenciesIn(db, { ...current, referenceSet: { ...current.referenceSet, references: [...current.referenceSet.references, ...extra.map(n => ({ ...n, role: 'product' as const, identityKind: 'record' as const, decision: 'unreviewed' as const, approval: null }))] } }, input.actor)
-    current.referenceSet = await approveRecoveryReferencesIn(db, { project, actor: input.actor, operationId: input.operationId, rootReferenceSetId, current: current.referenceSet, needed, approvals: input.referenceApproval }, deps)
+    current.referenceSet = await approveRecoveryReferencesIn(db, { project, actor: input.actor, operationId: input.operationId, rootReferenceSetId, current: current.referenceSet, needed, approvals: input.referenceApproval ?? [], brandKitApproval: input.brandKitApproval }, deps)
   }
   await fenceDependenciesIn(db, current, input.actor)
   const contract = remapObligations(lineage.contract, input.obligationMappings)
