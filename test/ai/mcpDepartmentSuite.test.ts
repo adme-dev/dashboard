@@ -31,7 +31,7 @@ describe('department suite projection and execution', () => {
     }
   })
   it('discovers the complete inventory repair workflow with feed and write gates', () => {
-    const readNames = ['marketing_diagnose_catalog', 'marketing_get_catalog_upload_status']
+    const readNames = ['marketing_list_catalog_connections', 'marketing_find_client_catalogs', 'marketing_diagnose_catalog', 'marketing_get_catalog_upload_status']
     const writeNames = ['marketing_propose_vehicle_catalog', 'marketing_propose_product_set', 'marketing_propose_catalog_refresh', 'marketing_propose_inventory_feed_change', 'marketing_propose_inventory_feed_setup', 'marketing_approve_catalog_change', 'marketing_execute_catalog_change']
     const names = projectDepartmentMcpSuite(context).map(t => t.name)
     for (const name of [...readNames, ...writeNames]) expect(names).toContain(name)

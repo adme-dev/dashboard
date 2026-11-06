@@ -21,6 +21,8 @@ export function metaProductFilter(input: z.infer<typeof departmentProductFilter>
 const catalogCreation = bound.omit({ catalogId: true }).extend({ name: z.string().trim().min(1).max(120) })
 const proposal = z.strictObject({ clientId: z.string().uuid(), proposalId: z.string().uuid() })
 export const departmentCatalogContracts = [
+  ['marketing_list_catalog_connections', z.strictObject({ clientId: z.string().uuid() }), false, 'List the exact client active Meta connection IDs and saved catalogue/source/product feed identifiers without credentials.'],
+  ['marketing_find_client_catalogs', bound.omit({ catalogId: true }).extend({ cursor: z.number().int().min(0).max(100000).optional(), limit: z.number().int().min(1).max(10).optional() }), false, 'Discover only exact client-owned catalogue IDs from persisted bindings or a sole canonical source feed URL; inspect at most ten business candidates per cursor.'],
   ['marketing_diagnose_catalog', bound, false, 'Inspect exact client-bound catalogue type and safe import evidence, including commerce versus vehicles mismatch.'],
   ['marketing_get_catalog_upload_status', bound, false, 'Read the current bound feed upload status and numeric error evidence; processing is not provider acceptance.'],
   ['marketing_propose_vehicle_catalog', catalogCreation, true, 'Review creation of a Vehicles catalogue in the exact client connection business and attachment of its seller-scoped source feed.'],
