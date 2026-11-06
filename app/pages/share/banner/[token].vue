@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import type { ArtboardState } from '~/types/banner-studio'
-import type { ExportCustomFont } from '~/utils/banner-html-builder'
 
 definePageMeta({ layout: false, auth: false })
 useHead({ meta: [{ name: 'referrer', content: 'no-referrer' }] })
@@ -13,6 +12,7 @@ const token = String(route.params.token)
 const { data, error: requestError } = await useFetch<{
   project: { name: string, clientName?: string | null, canvasData: Record<string, ArtboardState> | string, updatedAt?: string }
   fonts: Array<{ id?: string, name: string, url: string, tags: string[] }>
+  videos: Array<{ formatKey: string, revision: string, status: string, url: string | null, canRetry: boolean }>
 }>(`/api/public/banner-share/${token}`)
 const error = computed(() => requestError.value
   ? requestError.value.data?.statusMessage || 'This link has expired, was revoked, or is unavailable.'
@@ -44,11 +44,6 @@ const canvas = computed<Record<string, ArtboardState>>(() => {
     return {}
   }
 })
-const customFonts = computed<ExportCustomFont[]>(() => (data.value?.fonts || []).flatMap((font) => {
-  const weight = Number(font.tags.find(tag => tag.startsWith('weight:'))?.slice(7) || 400)
-  const format = font.tags.find(tag => tag.startsWith('format:'))?.slice(7) || 'woff2'
-  return /^https?:\/\//.test(font.url) ? [{ id: font.id, family: font.name, url: font.url, format, weight }] : []
-}))
 </script>
 
 <template>
@@ -80,10 +75,11 @@ const customFonts = computed<ExportCustomFont[]>(() => (data.value?.fonts || [])
       title="Preview unavailable"
       :description="error"
     />
-    <BannerSavedPreview
+    <BannerClientVideoPreview
       v-else
       :canvas="canvas"
-      :fonts="customFonts"
+      :share-token="token"
+      :initial-videos="data?.videos"
       :client-name="data?.project.clientName"
       :project-name="data?.project.name"
     />

@@ -29,6 +29,10 @@ describe('client preview without a staff session', () => {
     await expect(auth(event(`${path}/image`, method))).resolves.toBeUndefined()
     expect(mocks.validate).not.toHaveBeenCalled()
   })
+  it.each([['videos', 'GET'], ['videos', 'POST'], ['video', 'GET'], ['video', 'HEAD']])('allows only the exact compiled-preview capability %s %s', async (suffix, method) => {
+    await expect(auth(event(`${path}/${suffix}`, method))).resolves.toBeUndefined()
+    expect(mocks.validate).not.toHaveBeenCalled()
+  })
   it('returns the shared artwork through both boundaries for an active link', async () => {
     mocks.one.mockResolvedValueOnce({ projectId: 'project', revoked: false, expiresAt: '2099-01-01' })
       .mockResolvedValueOnce({ id: 'project', name: 'Shared artwork', canvasData: { mrec: { layers: [] } } })
@@ -46,7 +50,7 @@ describe('client preview without a staff session', () => {
     expect(mocks.one).toHaveBeenCalledTimes(1)
   })
   it.each([
-    [`${path}/image`, 'POST'], [`${path}/image/edit`, 'GET'], [path, 'POST'], [path, 'DELETE'], [`${path}/comments`, 'GET'],
+    [`${path}/video`, 'POST'], [`${path}/videos/edit`, 'POST'], [`${path}/videos`, 'DELETE'], [`${path}/image`, 'POST'], [`${path}/image/edit`, 'GET'], [path, 'POST'], [path, 'DELETE'], [`${path}/comments`, 'GET'],
     ['/api/public/banner-share', 'GET'], ['/api/public/banner-share/p_bad', 'GET'],
     ['/api/agency/banner-studio/links', 'GET'], ['/api/agency/banner-studio/projects', 'GET']
   ])('retains staff authentication for %s %s', async (url, method) => {

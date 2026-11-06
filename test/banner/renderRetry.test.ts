@@ -40,7 +40,7 @@ describe('same-job retry', () => {
     mocks.query.mockReset().mockResolvedValueOnce({ ...row, status: 'rendering' }).mockResolvedValueOnce({ id })
     await expect(handler(event())).resolves.toEqual({ jobId: id, status: 'queued' })
     expect(send).toHaveBeenCalledExactlyOnceWith({ jobId: id })
-    expect(mocks.query.mock.calls[1]?.[0]).toContain('status IN (\'queued\', \'rendering\')')
+    expect(mocks.query.mock.calls[1]?.[0]).toContain('status = \'rendering\' AND updated_at <= now() - interval \'15 minutes\'')
   })
   it('refuses missing source and unauthorized clients before reserving', async () => {
     head.mockResolvedValue(null)
