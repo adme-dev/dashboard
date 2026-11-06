@@ -22,6 +22,8 @@ import VideoStudioReviewStatusPanel from '~~/app/components/media/VideoStudioRev
 import VideoStudioSelectedAssetPanel from '~~/app/components/media/VideoStudioSelectedAssetPanel.vue'
 import VideoStudioVoiceComposer from '~~/app/components/media/VideoStudioVoiceComposer.vue'
 import VideoStudioWorkbench from '~~/app/components/media/VideoStudioWorkbench.vue'
+import VideoStudioFeatureMenu from '~~/app/components/media/VideoStudioFeatureMenu.vue'
+import type { VideoModelOption } from '~~/app/utils/video/modelPresentation'
 import { apiErrorDescription } from '~~/app/utils/apiError'
 import { canReplaceVideoStudioClip } from '~~/app/utils/video/assetReplacement'
 import { resolveVideoStudioClipInspector } from '~~/app/utils/video/clipInspector'
@@ -45,16 +47,16 @@ const projectId = computed(() => String(route.params.id))
 const editor = useMediaProjectEditor(projectId.value)
 const apiFetch = $fetch as <T = unknown>(
   request: string,
-  options?: { method?: string; query?: Record<string, unknown>; headers?: Record<string, string> }
+  options?: { method?: string, query?: Record<string, unknown>, headers?: Record<string, string> }
 ) => Promise<T>
 type VideoClipFit = 'fit' | 'fill' | 'crop'
 type VideoStudioMode = 'assets' | 'edit' | 'produce' | 'review'
 type VideoStudioInspectorTab = 'details' | 'produce' | 'review'
 
-const CLIP_FIT_OPTIONS: Array<{ id: VideoClipFit; label: string; icon: string; hint: string }> = [
+const CLIP_FIT_OPTIONS: Array<{ id: VideoClipFit, label: string, icon: string, hint: string }> = [
   { id: 'fit', label: 'Fit', icon: 'i-lucide-minimize-2', hint: 'Keep the whole frame visible with padding when needed.' },
   { id: 'fill', label: 'Fill', icon: 'i-lucide-stretch-horizontal', hint: 'Stretch the source to the output frame.' },
-  { id: 'crop', label: 'Crop', icon: 'i-lucide-scan', hint: 'Fill the frame and crop excess edges.' },
+  { id: 'crop', label: 'Crop', icon: 'i-lucide-scan', hint: 'Fill the frame and crop excess edges.' }
 ]
 
 function resolvedClipFit(clip: VideoClip): VideoClipFit {
@@ -103,7 +105,7 @@ const publicConfig = config.public as {
   videoAssetHarnessEnabled?: boolean
   videoGenerationEnabled?: boolean
 }
-const videoStudioEnabled = computed(() => Boolean(publicConfig.videoStudioEnabled))
+const _videoStudioEnabled = computed(() => Boolean(publicConfig.videoStudioEnabled))
 const videoAssetHarnessEnabled = computed(() => Boolean(publicConfig.videoAssetHarnessEnabled))
 const isAv = computed(() => editor.mediaType.value === 'av')
 const storyboardEnabled = computed(() => Boolean(publicConfig.videoStoryboardEnabled))
@@ -113,7 +115,7 @@ const storyboard = useVideoStoryboard(projectId.value, {
   editor: { begin: editor.beginStoryboardApplication, adopt: editor.adoptCommittedStoryboard, release: editor.releaseStoryboardApplication, resume: editor.resumeStoryboardApplication }
 })
 const adjustedReview = useVideoAdjustedEditReview(projectId.value, { begin: editor.beginStoryboardApplication, release: editor.releaseStoryboardApplication })
-watch(() => editor.dirty.value, dirty => {
+watch(() => editor.dirty.value, (dirty) => {
   if (dirty) adjustedReview.invalidate()
 })
 const adjustedReviewClips = computed(() => editor.timeline.value?.tracks.flatMap(track => track.clips.map(clip => ({ value: clip.id, label: `${track.name}: ${clip.id}` }))) ?? [])
@@ -131,30 +133,49 @@ watch(storyboard.lastApplication, (receipt) => {
 })
 const storyboardTimelineNonEmpty = computed(() => Boolean(editor.timeline.value?.tracks.some(track => track.clips.length)))
 
-
 // AV pickers
 const overlayPickerOpen = ref(false)
 const mediaPickerOpen = ref(false)
 
-function onOverlayPick(p: { gsapProjectId: string; gsapFormatKey: string; durationSec?: number; startSec?: number }) {
+function onOverlayPick(p: { gsapProjectId: string, gsapFormatKey: string, durationSec?: number, startSec?: number }) {
   editor.addOverlayClipAction(p.gsapProjectId, p.gsapFormatKey, p.durationSec ?? 5, p.startSec ?? editor.currentTime.value)
 }
-function onMediaUploaded(p: { r2Key: string; durationSec: number; baseSource: 'uploaded_footage' | 'still_kenburns' }) {
+function onMediaUploaded(p: { r2Key: string, durationSec: number, baseSource: 'uploaded_footage' | 'still_kenburns' }) {
   editor.addVideoClipAction(p.r2Key, p.durationSec, p.baseSource, editor.currentTime.value)
 }
 
 // ─── Video generation wiring ──────────────────────────────────────────────────
 
 const videoGenerationEnabled = computed(() => Boolean(publicConfig.videoGenerationEnabled))
-const videoGenerationModelsAvailable = computed(() => videoGenerationEnabled.value)
+const generationModelOptions = ref<VideoModelOption[]>([])
+const generationModelsPending = ref(false)
+const generationModelsError = ref('')
+const selectedGenerationModelId = ref<string | null>(null)
+const modelSelectionKey = ref(0)
+const videoWorkspaceView = ref<'preview' | 'library' | 'history' | 'guide'>('preview')
+async function loadGenerationModelOptions() {
+  if (!videoGenerationEnabled.value) return
+  generationModelsPending.value = true
+  generationModelsError.value = ''
+  try {
+    const response = await $fetch<{ models: VideoModelOption[], policy?: { enabled: boolean } }>('/api/agency/video/generation/models', { query: { projectId: projectId.value } })
+    generationModelOptions.value = response.policy?.enabled === false ? [] : response.models
+  } catch {
+    generationModelOptions.value = []
+    generationModelsError.value = 'Model access could not be confirmed. Check project policy and provider setup before generating.'
+  } finally { generationModelsPending.value = false }
+}
+const videoGenerationModelsAvailable = computed(() => generationModelOptions.value.length > 0)
 const videoGenerationReady = computed(() => videoGenerationEnabled.value && videoGenerationModelsAvailable.value)
 const videoGenerationStatusLabel = computed(() => {
-  if (videoGenerationReady.value) return 'AI ready'
+  if (generationModelsPending.value) return 'Checking model access'
+  if (videoGenerationReady.value) return 'Models available'
   if (!videoGenerationEnabled.value) return 'AI disabled by policy'
   return 'No video models'
 })
 const videoGenerationStatusDetail = computed(() => {
-  if (videoGenerationReady.value) return 'Cloudflare AI Gateway video models are available for this project.'
+  if (generationModelsError.value) return generationModelsError.value
+  if (videoGenerationReady.value) return 'Models are listed for this project. Provider setup, source approvals and budget are checked again before submission.'
   if (!videoGenerationEnabled.value) return 'Video generation is disabled for this workspace. Ask an admin to enable the Video Studio generation policy.'
   return 'No runnable video models are configured for this Cloudflare account.'
 })
@@ -179,7 +200,7 @@ const videoStudioInspectorTab = computed<VideoStudioInspectorTab>({
   },
   set: (tab) => {
     videoStudioMode.value = tab === 'details' ? 'edit' : tab
-  },
+  }
 })
 
 const selectedStudioAssetModel = computed({
@@ -188,7 +209,7 @@ const selectedStudioAssetModel = computed({
     selectedStudioAssetId.value = assetId
     // Keep the clip selection: "Replace selected clip" needs both an asset and a clip.
     if (assetId) videoStudioMode.value = 'edit'
-  },
+  }
 })
 
 function selectStudioAsset(asset: VideoStudioAsset | null) {
@@ -241,14 +262,14 @@ const studioOverlayAssets = computed(() => studioBannerProjects.value.flatMap(pr
     id: `${project.id}:${formatKey}`,
     title: project.name,
     formatKey,
-    status: project.status ?? 'ready',
+    status: project.status ?? 'ready'
   }))
 ))
 const { assets: studioAssets } = useVideoStudioAssets(computed(() => ({
   videoAssets: videoAssets.value,
   audioAssets: studioAudioAssets.value,
   overlays: studioOverlayAssets.value,
-  generationJobs: genJobs.jobs.value,
+  generationJobs: genJobs.jobs.value
 })))
 const videoStudioAssetCount = computed(() => studioAssets.value.length)
 /** r2_key → library title, so timeline clips read as names rather than ids. */
@@ -287,7 +308,7 @@ const selectedStudioAssetActivity = computed<VideoStudioSelectedAssetActivity[]>
       detail: job.errorMessage || job.prompt || job.modelId,
       status: job.status,
       source: job.modelId,
-      createdAt: job.completedAt ?? job.startedAt ?? job.createdAt,
+      createdAt: job.completedAt ?? job.startedAt ?? job.createdAt
     })
   }
 
@@ -298,7 +319,7 @@ const selectedStudioAssetActivity = computed<VideoStudioSelectedAssetActivity[]>
       detail: asset.captionVttKey,
       status: 'ready',
       source: 'Captions',
-      createdAt: asset.createdAt,
+      createdAt: asset.createdAt
     })
   }
 
@@ -309,7 +330,7 @@ const selectedStudioAssetActivity = computed<VideoStudioSelectedAssetActivity[]>
       detail: asset.transcript,
       status: 'ready',
       source: 'Speech intelligence',
-      createdAt: asset.createdAt,
+      createdAt: asset.createdAt
     })
   }
 
@@ -320,7 +341,7 @@ const selectedStudioAssetActivity = computed<VideoStudioSelectedAssetActivity[]>
       detail: asset.r2Key,
       status: asset.status,
       source: asset.subtitle ?? 'Derivative',
-      createdAt: asset.createdAt,
+      createdAt: asset.createdAt
     })
   }
 
@@ -337,8 +358,8 @@ const studioLibraryLoading = computed(() => studioAudioPending.value || studioBa
 // Stills already on the timeline that can be registered as i2v source assets.
 const timelineStills = computed(() => {
   const tl = editor.timeline.value
-  if (!tl) return [] as { clipId: string; label: string }[]
-  const out: { clipId: string; label: string }[] = []
+  if (!tl) return [] as { clipId: string, label: string }[]
+  const out: { clipId: string, label: string }[] = []
   for (const t of tl.tracks) if (t.kind === 'video') for (const c of t.clips) {
     if (c.type !== 'video') continue
     if (c.base_source === 'still_kenburns' && c.r2_key) out.push({ clipId: c.id, label: `Still @ ${Math.round(c.timeline_start_sec)}s` })
@@ -351,8 +372,10 @@ const projectAspect = computed(() => {
   return tl.width >= tl.height ? '16:9' : '9:16'
 })
 
-function onGenerationSubmitted(_jobId: string) { void genJobs.start() }
-function onLibraryAddToTimeline(p: { assetId: string; r2Key: string; durationSec: number; streamUrl: string; title: string | null; format: string | null }) {
+function onGenerationSubmitted(_jobId: string) {
+  void genJobs.start()
+}
+function onLibraryAddToTimeline(p: { assetId: string, r2Key: string, durationSec: number, streamUrl: string, title: string | null, format: string | null }) {
   editor.mergeSource(p.r2Key, p.streamUrl, { durationSec: p.durationSec, assetId: p.assetId, title: p.title, format: p.format })
   editor.addVideoClipAction(p.r2Key, p.durationSec, 'uploaded_footage', editor.currentTime.value, p.assetId)
   toast.add({ title: 'Added to timeline', color: 'success' })
@@ -384,7 +407,7 @@ async function refreshStudioLibrary() {
     refreshVideoAssets(),
     genJobs.refresh(),
     refreshStudioAudioAssets(),
-    refreshStudioBannerProjects(),
+    refreshStudioBannerProjects()
   ])
 }
 
@@ -398,7 +421,7 @@ function onStudioAssetAdd(asset: VideoStudioAsset) {
       durationSec: video.durationSec ?? 5,
       streamUrl: `/api/agency/video/assets/${encodeURIComponent(video.id)}/stream`,
       title: video.title,
-      format: video.format,
+      format: video.format
     })
     return
   }
@@ -412,7 +435,7 @@ function onStudioAssetAdd(asset: VideoStudioAsset) {
       durationSec: job.durationSeconds ?? 5,
       streamUrl: `/api/agency/video/assets/${encodeURIComponent(job.outputAssetId)}/stream`,
       title: job.prompt,
-      format: job.aspectRatio,
+      format: job.aspectRatio
     })
     return
   }
@@ -501,7 +524,7 @@ function onVoiceoverReplaceTimeline(asset: AudioAsset) {
   onVoiceoverAddToTimeline(asset)
 }
 
-function onReusePrompt(p: { prompt: string; modelId: string | null }) {
+function onReusePrompt(p: { prompt: string, modelId: string | null }) {
   generationDraftPrompt.value = p.prompt
   libraryOpen.value = false
   generatePickerOpen.value = true
@@ -537,7 +560,7 @@ const selectedOverlayClip = computed(() => {
     return {
       clipId: clip.id,
       startSec: clip.timeline_start_sec,
-      durationSec: clip.duration_sec,
+      durationSec: clip.duration_sec
     }
   }
   return null
@@ -545,11 +568,11 @@ const selectedOverlayClip = computed(() => {
 
 const selectedClipInspector = computed(() => resolveVideoStudioClipInspector({
   timeline: editor.timeline.value,
-  selectedClipId: selectedClipId.value,
+  selectedClipId: selectedClipId.value
 }))
 const canReplaceSelectedClipWithAsset = computed(() => canReplaceVideoStudioClip({
   clip: selectedClipInspector.value,
-  asset: selectedStudioAsset.value,
+  asset: selectedStudioAsset.value
 }))
 
 function splitSelectedClip() {
@@ -589,7 +612,7 @@ function replaceSelectedClipWithAsset(asset: VideoStudioAsset) {
         durationSec,
         assetId: asset.libraryAssetId,
         title: asset.title,
-        format: asset.format,
+        format: asset.format
       })
       editor.addVideoClipAction(
         asset.r2Key!,
@@ -629,7 +652,7 @@ function replaceSelectedClipWithAsset(asset: VideoStudioAsset) {
   toast.add({ title: 'Selected clip replaced', color: 'success' })
 }
 
-function onReplaceSelectedOverlay(p: { gsapProjectId: string; gsapFormatKey: string; durationSec?: number; startSec?: number }) {
+function onReplaceSelectedOverlay(p: { gsapProjectId: string, gsapFormatKey: string, durationSec?: number, startSec?: number }) {
   const selected = selectedOverlayClip.value
   if (!selected) return
   editor.deleteClipAction(selected.clipId)
@@ -653,7 +676,7 @@ function toggleClipEffect(presetId: string) {
 const selectedGeneratedClip = computed(() => resolveGeneratedClipInspector({
   selectedClipId: selectedClipId.value,
   timeline: editor.timeline.value,
-  assets: videoAssets.value,
+  assets: videoAssets.value
 }))
 const selectedVideoEffectPlan = computed(() => effectPreviewPlan(selectedVideoClip.value?.effects ?? []))
 const selectedVideoEffectLabels = computed(() => {
@@ -672,7 +695,7 @@ function duplicateSelectedGeneratedClip() {
     durationSec: selectedGeneratedClip.value.durationSec ?? 5,
     assetId: selectedGeneratedClip.value.assetId,
     title: selectedGeneratedClip.value.title,
-    format: selectedGeneratedClip.value.format,
+    format: selectedGeneratedClip.value.format
   })
   editor.addVideoClipAction(selectedGeneratedClip.value.r2Key, selectedGeneratedClip.value.durationSec ?? 5, 'uploaded_footage', editor.currentTime.value, selectedGeneratedClip.value.assetId)
 }
@@ -735,7 +758,7 @@ async function onSaveAsset(job: MediaRenderJob, format: string) {
 
 // Video library (AV reuse)
 const libraryOpen = ref(false)
-async function onLibraryPublish(p: { assetId: string; sourceJobId: string | null; format: string }) {
+async function onLibraryPublish(p: { assetId: string, sourceJobId: string | null, format: string }) {
   try {
     const res = await editor.publishVideoAssetToSocial(p.assetId)
     await navigateTo(`/agency/social/publishing/compose?edit=${res.postId}&client=${res.clientId}`)
@@ -752,8 +775,8 @@ watch(isAv, (av) => {
   void refreshStudioLibrary()
 }, { immediate: true })
 
-watch(() => genJobs.jobs.value.map((job) => `${job.id}:${job.status}:${job.outputAssetId ?? ''}`).join('|'), () => {
-  if (genJobs.jobs.value.some((job) => job.status === 'succeeded' && job.outputAssetId)) void refreshVideoAssets()
+watch(() => genJobs.jobs.value.map(job => `${job.id}:${job.status}:${job.outputAssetId ?? ''}`).join('|'), () => {
+  if (genJobs.jobs.value.some(job => job.status === 'succeeded' && job.outputAssetId)) void refreshVideoAssets()
 })
 
 async function doSaveVersion() {
@@ -845,7 +868,7 @@ const SHORTCUTS = [
   { keys: '⌘⇧Z', label: 'Redo' },
   { keys: '⌘S', label: 'Save now' },
   { keys: 'S', label: 'Split selected clip' },
-  { keys: '⌫', label: 'Delete selected clip' },
+  { keys: '⌫', label: 'Delete selected clip' }
 ] as const
 
 function togglePlayback() {
@@ -893,7 +916,7 @@ function selectMissingClip(clipId: string) {
 
 // ─── Numeric timing edits from the inspector ─────────────────────────────────
 
-function setSelectedTiming(payload: { field: 'start' | 'duration' | 'end'; seconds: number }) {
+function setSelectedTiming(payload: { field: 'start' | 'duration' | 'end', seconds: number }) {
   const clip = selectedClipInspector.value
   if (!clip) return
   if (payload.field === 'start') {
@@ -907,7 +930,7 @@ function setSelectedTiming(payload: { field: 'start' | 'duration' | 'end'; secon
 
 // ─── Empty-lane "Add …" affordance → the matching picker ─────────────────────
 
-function onAddToTrack(payload: { trackId: string; kind: string }) {
+function onAddToTrack(payload: { trackId: string, kind: string }) {
   const kind = payload.kind === 'audio' ? 'audio' : payload.kind
   if (kind === 'video') mediaPickerOpen.value = true
   else if (kind === 'overlay') overlayPickerOpen.value = true
@@ -924,7 +947,7 @@ const DOCK_MIN = 220
 const DOCK_MAX = 640
 const DOCK_KEY = 'video-studio:dock-height'
 const dockHeight = ref(360)
-let dockDrag: { startY: number; startHeight: number } | null = null
+let dockDrag: { startY: number, startHeight: number } | null = null
 
 function onDockDragStart(event: PointerEvent) {
   dockDrag = { startY: event.clientY, startHeight: dockHeight.value }
@@ -938,7 +961,9 @@ function onDockDragMove(event: PointerEvent) {
 function onDockDragEnd() {
   if (!dockDrag) return
   dockDrag = null
-  try { localStorage.setItem(DOCK_KEY, String(dockHeight.value)) } catch { /* private mode */ }
+  try {
+    localStorage.setItem(DOCK_KEY, String(dockHeight.value))
+  } catch { /* private mode */ }
 }
 
 // ─── Unsaved-changes guard ───────────────────────────────────────────────────
@@ -966,7 +991,9 @@ const discardConfirmOpen = ref(false)
 let resolveDiscard: ((ok: boolean) => void) | null = null
 function confirmDiscard(): Promise<boolean> {
   discardConfirmOpen.value = true
-  return new Promise(resolve => { resolveDiscard = resolve })
+  return new Promise((resolve) => {
+    resolveDiscard = resolve
+  })
 }
 function answerDiscard(ok: boolean) {
   discardConfirmOpen.value = false
@@ -981,7 +1008,10 @@ onMounted(() => {
   } catch { /* private mode */ }
   window.addEventListener('keydown', onKeyDown)
   window.addEventListener('beforeunload', onBeforeUnload)
-  if (videoGenerationEnabled.value) void genJobs.start()
+  if (videoGenerationEnabled.value) {
+    void genJobs.start()
+    void loadGenerationModelOptions()
+  }
 })
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeyDown)
@@ -1082,7 +1112,7 @@ async function reloadSavedVersion() {
 
 const projectTitle = computed(() => editor.project.value?.title?.trim() || 'Untitled project')
 
-const { data: clientsData } = useFetch<Array<{ id: string; name: string }>>('/api/agency/clients', { default: () => [] })
+const { data: clientsData } = useFetch<Array<{ id: string, name: string }>>('/api/agency/clients', { default: () => [] })
 const projectClientName = computed(() => {
   const clientId = editor.project.value?.clientId
   if (!clientId) return null
@@ -1096,7 +1126,7 @@ const clientDraft = ref<string>(NO_CLIENT)
 const clientSaving = ref(false)
 const clientOptions = computed(() => [
   { label: 'No client', value: NO_CLIENT },
-  ...(clientsData.value ?? []).map(client => ({ label: client.name, value: client.id })),
+  ...(clientsData.value ?? []).map(client => ({ label: client.name, value: client.id }))
 ])
 watch(clientPopoverOpen, (open) => {
   if (open) clientDraft.value = editor.project.value?.clientId ?? NO_CLIENT
@@ -1104,7 +1134,10 @@ watch(clientPopoverOpen, (open) => {
 async function commitClient() {
   if (clientSaving.value) return
   const next = clientDraft.value === NO_CLIENT ? null : clientDraft.value
-  if (next === (editor.project.value?.clientId ?? null)) { clientPopoverOpen.value = false; return }
+  if (next === (editor.project.value?.clientId ?? null)) {
+    clientPopoverOpen.value = false
+    return
+  }
   clientSaving.value = true
   try {
     await editor.updateProject({ clientId: next })
@@ -1157,7 +1190,6 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
        at the bottom; AV adds the three-column workbench above it. -->
   <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
     <div class="flex min-h-0 flex-1 flex-col gap-3 p-3">
-
       <!-- Command bar: identity on the left, history on the right. One row. -->
       <header class="flex shrink-0 flex-wrap items-center gap-2">
         <UButton
@@ -1190,10 +1222,18 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
             title="Rename project"
             @click="startRename"
           >
-            <h1 class="truncate text-lg font-semibold tracking-tight text-highlighted">{{ projectTitle }}</h1>
+            <h1 class="truncate text-lg font-semibold tracking-tight text-highlighted">
+              {{ projectTitle }}
+            </h1>
             <UIcon name="i-lucide-pencil" class="size-3.5 shrink-0 text-muted opacity-0 transition group-hover:opacity-100" />
           </button>
-          <UBadge :label="isAv ? 'Video' : 'Audio'" size="xs" variant="subtle" color="neutral" class="shrink-0" />
+          <UBadge
+            :label="isAv ? 'Video' : 'Audio'"
+            size="xs"
+            variant="subtle"
+            color="neutral"
+            class="shrink-0"
+          />
           <UPopover v-model:open="clientPopoverOpen">
             <UButton
               :icon="projectClientName ? 'i-lucide-building-2' : 'i-lucide-building-2'"
@@ -1218,8 +1258,20 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
                   />
                 </UFormField>
                 <div class="flex justify-end gap-2">
-                  <UButton size="xs" variant="ghost" color="neutral" label="Cancel" @click="clientPopoverOpen = false" />
-                  <UButton size="xs" color="primary" label="Save client" :loading="clientSaving" @click="commitClient" />
+                  <UButton
+                    size="xs"
+                    variant="ghost"
+                    color="neutral"
+                    label="Cancel"
+                    @click="clientPopoverOpen = false"
+                  />
+                  <UButton
+                    size="xs"
+                    color="primary"
+                    label="Save client"
+                    :loading="clientSaving"
+                    @click="commitClient"
+                  />
                 </div>
               </div>
             </template>
@@ -1239,12 +1291,53 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
         </UTooltip>
 
         <div v-if="editor.status.value === 'ready'" class="flex items-center gap-1 rounded-md border border-default bg-elevated p-1">
-          <UButton icon="i-lucide-undo-2" size="xs" variant="ghost" color="neutral" :disabled="!editor.canUndo.value" aria-label="Undo (⌘Z)" title="Undo (⌘Z)" @click="editor.undoAction()" />
-          <UButton icon="i-lucide-redo-2" size="xs" variant="ghost" color="neutral" :disabled="!editor.canRedo.value" aria-label="Redo (⌘⇧Z)" title="Redo (⌘⇧Z)" @click="editor.redoAction()" />
+          <UButton
+            icon="i-lucide-undo-2"
+            size="xs"
+            variant="ghost"
+            color="neutral"
+            :disabled="!editor.canUndo.value"
+            aria-label="Undo (⌘Z)"
+            title="Undo (⌘Z)"
+            @click="editor.undoAction()"
+          />
+          <UButton
+            icon="i-lucide-redo-2"
+            size="xs"
+            variant="ghost"
+            color="neutral"
+            :disabled="!editor.canRedo.value"
+            aria-label="Redo (⌘⇧Z)"
+            title="Redo (⌘⇧Z)"
+            @click="editor.redoAction()"
+          />
           <div class="mx-0.5 h-4 w-px bg-default" />
-          <UButton v-if="!isAv" icon="i-lucide-plus-circle" size="xs" variant="soft" color="primary" label="Add clip" @click="pickerOpen = true" />
-          <UButton icon="i-lucide-bookmark" size="xs" variant="ghost" color="neutral" label="Save version" title="Snapshot the timeline" @click="saveVersionOpen = true" />
-          <UButton icon="i-lucide-history" size="xs" variant="ghost" color="neutral" label="Versions" @click="openVersions" />
+          <UButton
+            v-if="!isAv"
+            icon="i-lucide-plus-circle"
+            size="xs"
+            variant="soft"
+            color="primary"
+            label="Add clip"
+            @click="pickerOpen = true"
+          />
+          <UButton
+            icon="i-lucide-bookmark"
+            size="xs"
+            variant="ghost"
+            color="neutral"
+            label="Save version"
+            title="Snapshot the timeline"
+            @click="saveVersionOpen = true"
+          />
+          <UButton
+            icon="i-lucide-history"
+            size="xs"
+            variant="ghost"
+            color="neutral"
+            label="Versions"
+            @click="openVersions"
+          />
         </div>
       </header>
 
@@ -1289,8 +1382,22 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
         >
           <template #actions>
             <template v-for="clipId in editor.missingClipIds.value" :key="clipId">
-              <UButton size="xs" variant="soft" color="warning" icon="i-lucide-mouse-pointer-click" :label="`Select ${missingClipLabel(clipId)}`" @click="selectMissingClip(clipId)" />
-              <UButton size="xs" variant="ghost" color="error" icon="i-lucide-trash-2" label="Remove" @click="editor.deleteClipAction(clipId)" />
+              <UButton
+                size="xs"
+                variant="soft"
+                color="warning"
+                icon="i-lucide-mouse-pointer-click"
+                :label="`Select ${missingClipLabel(clipId)}`"
+                @click="selectMissingClip(clipId)"
+              />
+              <UButton
+                size="xs"
+                variant="ghost"
+                color="error"
+                icon="i-lucide-trash-2"
+                label="Remove"
+                @click="editor.deleteClipAction(clipId)"
+              />
             </template>
           </template>
         </UAlert>
@@ -1298,6 +1405,7 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
         <VideoStudioWorkbench
           v-if="isAv"
           v-model:mode="videoStudioMode"
+          v-model:workspace-view="videoWorkspaceView"
           v-model:producer-collapsed="producerRailCollapsed"
           :asset-count="videoStudioAssetCount"
           :generation-job-count="activeGenerationJobCount"
@@ -1312,33 +1420,93 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
           @open-library="libraryOpen = true"
           @render="onRenderVideo"
         >
-          <template #library>
-              <VideoStudioLibraryRail
-                v-model:selected-id="selectedStudioAssetModel"
-                :assets="studioAssets"
-                :loading="studioLibraryLoading"
-                @refresh="refreshStudioLibrary"
-                @add-asset="onStudioAssetAdd"
-                @generate-from-asset="onStudioAssetGenerate"
-                @inspect-asset="onStudioAssetInspect"
-                @publish-asset="onStudioAssetPublish"
+          <template #navigation>
+            <nav class="flex shrink-0 flex-wrap items-center gap-2 border-b border-default bg-default px-3 py-2" aria-label="Video Studio navigation">
+              <UButton
+                to="/agency/audio/projects?mediaType=av"
+                label="XeroFlow Studio"
+                icon="i-lucide-clapperboard"
+                color="neutral"
+                variant="ghost"
+                class="font-semibold"
               />
+              <UButton
+                to="/agency/audio/projects?mediaType=av"
+                label="Projects"
+                color="neutral"
+                variant="ghost"
+              />
+              <UButton
+                to="/agency/audio"
+                label="Audio"
+                color="neutral"
+                variant="ghost"
+              />
+              <VideoStudioFeatureMenu
+                :models="generationModelOptions"
+                :pending="generationModelsPending"
+                :generation-enabled="videoGenerationReady"
+                :status-detail="videoGenerationStatusDetail"
+                @storyboard="() => { videoStudioMode = 'produce'; storyboardOpen = true }"
+                @produce="() => { videoStudioMode = 'produce'; storyboardOpen = false }"
+                @library="() => { videoStudioMode = 'assets'; videoWorkspaceView = 'library' }"
+                @history="() => { videoStudioMode = 'review'; videoWorkspaceView = 'history' }"
+                @select-model="(id) => { selectedGenerationModelId = id; modelSelectionKey++; storyboardOpen = false; videoStudioMode = 'produce' }"
+              />
+            </nav>
+          </template>
+          <template #history>
+            <VideoStudioRenderJobsPanel
+              :project-id="projectId"
+              :jobs="editor.renderJobs.value"
+              :rendering="editor.rendering.value"
+              @render="onRenderVideo"
+              @retry="onRetryRender"
+              @publish="onPublishToSocial"
+              @send-to-portal="onSendToPortal"
+              @save-asset="onSaveAsset"
+            />
+            <div class="mt-5 rounded-xl border border-default p-4">
+              <h4 class="font-semibold text-highlighted">
+                Generation history
+              </h4><p v-if="!genJobs.jobs.value.length" class="mt-2 text-sm text-muted">
+                No generation jobs are recorded for this project.
+              </p><ul v-else class="mt-3 divide-y divide-default">
+                <li v-for="job in genJobs.jobs.value" :key="job.id" class="flex items-center justify-between gap-3 py-3 text-sm">
+                  <span class="min-w-0 truncate">{{ job.modelId }}</span><UBadge :label="job.status" color="neutral" variant="subtle" />
+                </li>
+              </ul>
+            </div>
+          </template>
+          <template #library>
+            <VideoStudioLibraryRail
+              v-model:selected-id="selectedStudioAssetModel"
+              :assets="studioAssets"
+              :loading="studioLibraryLoading"
+              @refresh="refreshStudioLibrary"
+              @add-asset="onStudioAssetAdd"
+              @generate-from-asset="onStudioAssetGenerate"
+              @inspect-asset="onStudioAssetInspect"
+              @publish-asset="onStudioAssetPublish"
+            />
           </template>
 
           <template #preview>
-              <div class="mb-2 flex items-center gap-2">
-                <UIcon name="i-lucide-monitor-play" class="size-4 text-muted" />
-                <h4 class="text-xs font-medium uppercase text-muted">Preview</h4>
-                <span class="text-[11px] text-muted">Approximate — the server render is the source of truth.</span>
-              </div>
-              <MediaAvPreview
-                :timeline="editor.timeline.value"
-                :current-time="editor.currentTime.value"
-                :is-playing="editor.isPlaying.value"
-                :sources="editor.sources.value"
-              />
+            <div class="mb-2 flex items-center gap-2">
+              <UIcon name="i-lucide-monitor-play" class="size-4 text-muted" />
+              <h4 class="text-xs font-medium uppercase text-muted">
+                Preview
+              </h4>
+              <span class="text-[11px] text-muted">Approximate — the server render is the source of truth.</span>
+            </div>
+            <MediaAvPreview
+              :timeline="editor.timeline.value"
+              :current-time="editor.currentTime.value"
+              :is-playing="editor.isPlaying.value"
+              :sources="editor.sources.value"
+            />
 
-              <div class="mt-3 space-y-3">
+            <div class="mt-3 space-y-3">
               <!-- Per-clip effects drawer — shows for any selected video clip -->
               <div v-if="isAv && selectedVideoClip" class="rounded-lg border border-default bg-elevated p-3">
                 <div class="mb-3 flex flex-wrap items-start justify-between gap-3">
@@ -1383,7 +1551,9 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
                 </div>
                 <div class="mb-4">
                   <div class="mb-2 flex items-center justify-between gap-3">
-                    <p class="text-xs font-medium uppercase text-muted">Framing</p>
+                    <p class="text-xs font-medium uppercase text-muted">
+                      Framing
+                    </p>
                     <p class="text-[11px] text-muted">
                       {{ CLIP_FIT_OPTIONS.find(option => option.id === selectedVideoClip.fit)?.hint }}
                     </p>
@@ -1448,13 +1618,33 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
                   </div>
                   <div class="min-w-0 flex-1">
                     <div class="flex flex-wrap items-center gap-2">
-                      <p class="truncate text-sm font-medium text-highlighted">{{ selectedGeneratedClip.title }}</p>
-                      <UBadge v-if="selectedGeneratedClip.format" :label="selectedGeneratedClip.format" size="xs" variant="subtle" color="neutral" />
-                      <UBadge v-if="selectedGeneratedClip.durationSec" :label="`${selectedGeneratedClip.durationSec}s`" size="xs" variant="subtle" color="neutral" />
+                      <p class="truncate text-sm font-medium text-highlighted">
+                        {{ selectedGeneratedClip.title }}
+                      </p>
+                      <UBadge
+                        v-if="selectedGeneratedClip.format"
+                        :label="selectedGeneratedClip.format"
+                        size="xs"
+                        variant="subtle"
+                        color="neutral"
+                      />
+                      <UBadge
+                        v-if="selectedGeneratedClip.durationSec"
+                        :label="`${selectedGeneratedClip.durationSec}s`"
+                        size="xs"
+                        variant="subtle"
+                        color="neutral"
+                      />
                     </div>
-                    <p class="mt-1 text-xs text-muted">Model: {{ selectedGeneratedClip.modelLabel }}</p>
-                    <p v-if="selectedGeneratedClip.prompt" class="mt-1 line-clamp-2 text-xs text-muted">{{ selectedGeneratedClip.prompt }}</p>
-                    <p v-if="selectedGeneratedClip.sourceJobId" class="mt-1 text-[11px] text-muted">Job {{ selectedGeneratedClip.sourceJobId }}</p>
+                    <p class="mt-1 text-xs text-muted">
+                      Model: {{ selectedGeneratedClip.modelLabel }}
+                    </p>
+                    <p v-if="selectedGeneratedClip.prompt" class="mt-1 line-clamp-2 text-xs text-muted">
+                      {{ selectedGeneratedClip.prompt }}
+                    </p>
+                    <p v-if="selectedGeneratedClip.sourceJobId" class="mt-1 text-[11px] text-muted">
+                      Job {{ selectedGeneratedClip.sourceJobId }}
+                    </p>
                   </div>
                   <div class="flex flex-wrap justify-end gap-2">
                     <UButton
@@ -1493,72 +1683,70 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
                   </div>
                 </div>
               </div>
-
-
-              </div>
+            </div>
           </template>
 
           <template #producer>
-              <VideoStudioInspector
-                v-model:tab="videoStudioInspectorTab"
-                :asset-count="videoStudioAssetCount"
-                :voice-asset-count="studioVoiceAssetCount"
-                :overlay-asset-count="studioOverlayAssetCount"
-                :render-job-count="editor.renderJobs.value.length"
-                :model-ready="videoGenerationReady"
-                :model-status-label="videoGenerationStatusLabel"
-                :model-status-detail="videoGenerationStatusDetail"
-              >
-                <template #actions>
-                  <UButton
-                    icon="i-lucide-panel-right-close"
-                    size="xs"
-                    variant="ghost"
-                    color="neutral"
-                    aria-label="Collapse producer rail"
-                    @click="producerRailCollapsed = true"
-                  />
-                </template>
+            <VideoStudioInspector
+              v-model:tab="videoStudioInspectorTab"
+              :asset-count="videoStudioAssetCount"
+              :voice-asset-count="studioVoiceAssetCount"
+              :overlay-asset-count="studioOverlayAssetCount"
+              :render-job-count="editor.renderJobs.value.length"
+              :model-ready="videoGenerationReady"
+              :model-status-label="videoGenerationStatusLabel"
+              :model-status-detail="videoGenerationStatusDetail"
+            >
+              <template #actions>
+                <UButton
+                  icon="i-lucide-panel-right-close"
+                  size="xs"
+                  variant="ghost"
+                  color="neutral"
+                  aria-label="Collapse producer rail"
+                  @click="producerRailCollapsed = true"
+                />
+              </template>
 
-                <template #details>
-                  <VideoStudioSelectedAssetPanel
-                    v-if="selectedStudioAsset"
-                    :asset="selectedStudioAsset"
-                    :activity="selectedStudioAssetActivity"
-                    :caption-generating="captionGeneratingAssetId === selectedStudioAsset?.id"
-                    :can-replace-selected-clip="canReplaceSelectedClipWithAsset"
-                    @add-to-timeline="onStudioAssetAdd"
-                    @replace-selected-clip="replaceSelectedClipWithAsset"
-                    @add-captions-to-timeline="onStudioAssetAddCaptions"
-                    @generate-from-asset="onStudioAssetGenerate"
-                    @generate-captions="onGenerateCaptions"
-                  />
-                  <VideoStudioClipInspector
-                    v-if="selectedClipInspector"
-                    :class="selectedStudioAsset ? 'mt-3' : ''"
-                    :clip="selectedClipInspector"
-                    :can-split="selectedClipInspector.kind === 'audio'"
-                    @split="splitSelectedClip"
-                    @delete="deleteSelectedClip"
-                    @set-caption-style="setSelectedCaptionStyle"
-                    @set-timing="setSelectedTiming"
-                    @set-placement="(p) => selectedClipInspector && editor.setOverlayPlacementAction(selectedClipInspector.clipId, p)"
-                  />
-                  <VideoStudioSelectedAssetPanel
-                    v-if="!selectedStudioAsset && !selectedClipInspector"
-                    :asset="null"
-                    :activity="selectedStudioAssetActivity"
-                    :caption-generating="false"
-                    :can-replace-selected-clip="false"
-                    @add-to-timeline="onStudioAssetAdd"
-                    @replace-selected-clip="replaceSelectedClipWithAsset"
-                    @add-captions-to-timeline="onStudioAssetAddCaptions"
-                    @generate-from-asset="onStudioAssetGenerate"
-                    @generate-captions="onGenerateCaptions"
-                  />
-                </template>
+              <template #details>
+                <VideoStudioSelectedAssetPanel
+                  v-if="selectedStudioAsset"
+                  :asset="selectedStudioAsset"
+                  :activity="selectedStudioAssetActivity"
+                  :caption-generating="captionGeneratingAssetId === selectedStudioAsset?.id"
+                  :can-replace-selected-clip="canReplaceSelectedClipWithAsset"
+                  @add-to-timeline="onStudioAssetAdd"
+                  @replace-selected-clip="replaceSelectedClipWithAsset"
+                  @add-captions-to-timeline="onStudioAssetAddCaptions"
+                  @generate-from-asset="onStudioAssetGenerate"
+                  @generate-captions="onGenerateCaptions"
+                />
+                <VideoStudioClipInspector
+                  v-if="selectedClipInspector"
+                  :class="selectedStudioAsset ? 'mt-3' : ''"
+                  :clip="selectedClipInspector"
+                  :can-split="selectedClipInspector.kind === 'audio'"
+                  @split="splitSelectedClip"
+                  @delete="deleteSelectedClip"
+                  @set-caption-style="setSelectedCaptionStyle"
+                  @set-timing="setSelectedTiming"
+                  @set-placement="(p) => selectedClipInspector && editor.setOverlayPlacementAction(selectedClipInspector.clipId, p)"
+                />
+                <VideoStudioSelectedAssetPanel
+                  v-if="!selectedStudioAsset && !selectedClipInspector"
+                  :asset="null"
+                  :activity="selectedStudioAssetActivity"
+                  :caption-generating="false"
+                  :can-replace-selected-clip="false"
+                  @add-to-timeline="onStudioAssetAdd"
+                  @replace-selected-clip="replaceSelectedClipWithAsset"
+                  @add-captions-to-timeline="onStudioAssetAddCaptions"
+                  @generate-from-asset="onStudioAssetGenerate"
+                  @generate-captions="onGenerateCaptions"
+                />
+              </template>
 
-                <template #produce>
+              <template #produce>
                 <UButton
                   class="mb-3"
                   size="sm"
@@ -1603,22 +1791,33 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
                   <div v-if="videoGenerationEnabled" class="space-y-2">
                     <div class="flex items-center gap-2">
                       <UIcon name="i-lucide-sparkles" class="size-4 text-muted" />
-                      <h4 class="text-xs font-medium uppercase text-muted">AI generation</h4>
-                      <UBadge v-if="activeGenerationJobCount" :label="`${activeGenerationJobCount} active`" size="xs" variant="subtle" color="primary" class="ml-auto" />
+                      <h4 class="text-xs font-medium uppercase text-muted">
+                        AI generation
+                      </h4>
+                      <UBadge
+                        v-if="activeGenerationJobCount"
+                        :label="`${activeGenerationJobCount} active`"
+                        size="xs"
+                        variant="subtle"
+                        color="primary"
+                        class="ml-auto"
+                      />
                     </div>
                     <MediaGenerateComposer
-                    active
-                    :project-id="projectId"
-                    :timeline-stills="timelineStills"
-                    :default-aspect="projectAspect"
-                    :initial-prompt="generationDraftPrompt"
-                    :initial-source-asset="selectedGenerationSourceAsset"
-                    :recent-jobs="genJobs.jobs.value"
-                    :prepare-timeline-still-source="editor.saveNow"
-                    @submitted="onGenerationSubmitted"
-                    @add-to-timeline="onLibraryAddToTimeline"
-                    @close="generationDraftPrompt = null"
-                />
+                      active
+                      :project-id="projectId"
+                      :timeline-stills="timelineStills"
+                      :default-aspect="projectAspect"
+                      :initial-prompt="generationDraftPrompt"
+                      :initial-model-id="selectedGenerationModelId"
+                      :model-selection-key="modelSelectionKey"
+                      :initial-source-asset="selectedGenerationSourceAsset"
+                      :recent-jobs="genJobs.jobs.value"
+                      :prepare-timeline-still-source="editor.saveNow"
+                      @submitted="onGenerationSubmitted"
+                      @add-to-timeline="onLibraryAddToTimeline"
+                      @close="generationDraftPrompt = null"
+                    />
                   </div>
                   <VideoStudioVoiceComposer
                     :producer-brief="producerBrief"
@@ -1642,7 +1841,9 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
                         <UIcon name="i-lucide-eraser" class="size-4 text-primary" />
                       </div>
                       <div class="min-w-0">
-                        <h4 class="text-sm font-medium text-highlighted">Prepare / erase asset</h4>
+                        <h4 class="text-sm font-medium text-highlighted">
+                          Prepare / erase asset
+                        </h4>
                         <p class="mt-0.5 text-xs leading-snug text-muted">
                           Lift, erase, mask, remove backgrounds, or decompose selected project assets.
                         </p>
@@ -1665,39 +1866,47 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
                     @add-to-timeline="onHarnessAddToTimeline"
                     @brief-change="producerBrief = $event"
                   />
-                  <UButton icon="i-lucide-music" size="xs" variant="soft" color="neutral" label="Add audio clip" block @click="pickerOpen = true" />
+                  <UButton
+                    icon="i-lucide-music"
+                    size="xs"
+                    variant="soft"
+                    color="neutral"
+                    label="Add audio clip"
+                    block
+                    @click="pickerOpen = true"
+                  />
                 </template>
               </template>
 
-                <template #review>
-                  <VideoStudioAdjustedEditReview
-                    class="mb-3"
-                    :snapshot="adjustedReview.snapshot.value"
-                    :clips="adjustedReviewClips"
-                    :pending="adjustedReview.pending.value || editor.storyboardApplying.value"
-                    :error="adjustedReview.error.value"
-                    :uncertain="adjustedReview.uncertain.value"
-                    @refresh="adjustedReview.load"
-                    @accept="adjustedReview.accept"
-                    @retry="adjustedReview.retry"
-                  />
-                  <VideoStudioReviewStatusPanel
-                    class="mb-3"
-                    :render-job-count="editor.renderJobs.value.length"
-                    :latest-render-status="latestRenderJobStatus"
-                  />
-                  <VideoStudioRenderJobsPanel
-                    :project-id="projectId"
-                    :jobs="editor.renderJobs.value"
-                    :rendering="editor.rendering.value"
-                    @render="onRenderVideo"
-                    @retry="onRetryRender"
-                    @publish="onPublishToSocial"
-                    @send-to-portal="onSendToPortal"
-                    @save-asset="onSaveAsset"
-                  />
-                </template>
-              </VideoStudioInspector>
+              <template #review>
+                <VideoStudioAdjustedEditReview
+                  class="mb-3"
+                  :snapshot="adjustedReview.snapshot.value"
+                  :clips="adjustedReviewClips"
+                  :pending="adjustedReview.pending.value || editor.storyboardApplying.value"
+                  :error="adjustedReview.error.value"
+                  :uncertain="adjustedReview.uncertain.value"
+                  @refresh="adjustedReview.load"
+                  @accept="adjustedReview.accept"
+                  @retry="adjustedReview.retry"
+                />
+                <VideoStudioReviewStatusPanel
+                  class="mb-3"
+                  :render-job-count="editor.renderJobs.value.length"
+                  :latest-render-status="latestRenderJobStatus"
+                />
+                <VideoStudioRenderJobsPanel
+                  :project-id="projectId"
+                  :jobs="editor.renderJobs.value"
+                  :rendering="editor.rendering.value"
+                  @render="onRenderVideo"
+                  @retry="onRetryRender"
+                  @publish="onPublishToSocial"
+                  @send-to-portal="onSendToPortal"
+                  @save-asset="onSaveAsset"
+                />
+              </template>
+            </VideoStudioInspector>
           </template>
         </VideoStudioWorkbench>
 
@@ -1725,15 +1934,15 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
             <span class="h-1 w-12 rounded-full bg-accented transition group-hover:bg-primary" />
           </div>
           <VideoStudioRenderStatusStrip
-          v-if="isAv"
-          :project-id="projectId"
-          :jobs="editor.renderJobs.value"
-          :rendering="editor.rendering.value"
-          @retry="onRetryRender"
-          @publish="onPublishToSocial"
-          @send-to-portal="onSendToPortal"
-          @save-asset="onSaveAsset"
-        />
+            v-if="isAv"
+            :project-id="projectId"
+            :jobs="editor.renderJobs.value"
+            :rendering="editor.rendering.value"
+            @retry="onRetryRender"
+            @publish="onPublishToSocial"
+            @send-to-portal="onSendToPortal"
+            @save-asset="onSaveAsset"
+          />
 
           <div class="flex shrink-0 items-center gap-3 rounded-lg border border-default bg-elevated px-3 py-2">
             <UButton
@@ -1744,7 +1953,15 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
               :title="editor.isPlaying.value ? 'Pause (Space)' : 'Play (Space)'"
               @click="togglePlayback"
             />
-            <UButton icon="i-lucide-skip-back" size="sm" variant="ghost" color="neutral" aria-label="Go to start (Home)" title="Go to start (Home)" @click="editor.seek(0)" />
+            <UButton
+              icon="i-lucide-skip-back"
+              size="sm"
+              variant="ghost"
+              color="neutral"
+              aria-label="Go to start (Home)"
+              title="Go to start (Home)"
+              @click="editor.seek(0)"
+            />
             <span class="w-24 shrink-0 text-sm tabular-nums text-muted">
               {{ fmt(editor.currentTime.value) }} / {{ fmt(editor.duration.value) }}
             </span>
@@ -1758,12 +1975,25 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
               @update:model-value="(v: number | number[]) => editor.seek(Array.isArray(v) ? v[0]! : v)"
             />
             <UPopover>
-              <UButton icon="i-lucide-keyboard" size="sm" variant="ghost" color="neutral" aria-label="Keyboard shortcuts" title="Keyboard shortcuts" />
+              <UButton
+                icon="i-lucide-keyboard"
+                size="sm"
+                variant="ghost"
+                color="neutral"
+                aria-label="Keyboard shortcuts"
+                title="Keyboard shortcuts"
+              />
               <template #content>
                 <dl class="grid w-64 grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 p-3 text-xs">
                   <template v-for="shortcut in SHORTCUTS" :key="shortcut.keys">
-                    <dt><UKbd size="sm">{{ shortcut.keys }}</UKbd></dt>
-                    <dd class="text-muted">{{ shortcut.label }}</dd>
+                    <dt>
+                      <UKbd size="sm">
+                        {{ shortcut.keys }}
+                      </UKbd>
+                    </dt>
+                    <dd class="text-muted">
+                      {{ shortcut.label }}
+                    </dd>
                   </template>
                 </dl>
               </template>
@@ -1772,21 +2002,21 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
 
           <div class="min-h-0 flex-1 overflow-y-auto">
             <MediaTimeline
-          :timeline="editor.timeline.value"
-          :clips="editor.clips.value"
-          :tracks="editor.tracks.value"
-          :current-time="editor.currentTime.value"
-          :duration="editor.duration.value"
-          :sources="editor.sources.value"
-          :titles="clipTitles"
-          @select="(p) => selectTimelineClip(p.clipId)"
-          @seek="(sec) => editor.seek(sec)"
-          @move-clip="(p) => editor.moveClipAction(p.clipId, p.toTrackId, p.newStartSec)"
-          @trim-clip="(p) => editor.trimClipAction(p.clipId, p.edge, p.newTimeSec)"
-          @slice="(p) => editor.sliceAction(p.clipId, p.timeSec)"
-          @delete-clip="(p) => { editor.deleteClipAction(p.clipId); if (selectedClipId === p.clipId) selectedClipId = null }"
-          @add-to-track="onAddToTrack"
-        />
+              :timeline="editor.timeline.value"
+              :clips="editor.clips.value"
+              :tracks="editor.tracks.value"
+              :current-time="editor.currentTime.value"
+              :duration="editor.duration.value"
+              :sources="editor.sources.value"
+              :titles="clipTitles"
+              @select="(p) => selectTimelineClip(p.clipId)"
+              @seek="(sec) => editor.seek(sec)"
+              @move-clip="(p) => editor.moveClipAction(p.clipId, p.toTrackId, p.newStartSec)"
+              @trim-clip="(p) => editor.trimClipAction(p.clipId, p.edge, p.newTimeSec)"
+              @slice="(p) => editor.sliceAction(p.clipId, p.timeSec)"
+              @delete-clip="(p) => { editor.deleteClipAction(p.clipId); if (selectedClipId === p.clipId) selectedClipId = null }"
+              @add-to-track="onAddToTrack"
+            />
           </div>
         </section>
       </template>
@@ -1823,7 +2053,12 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
   <!-- AI video generation progress/status (queued/running/failed) -->
   <MediaGenerationStatus v-if="videoGenerationEnabled" :jobs="genJobs.jobs.value" />
 
-  <MediaVideoLibrary v-model:open="libraryOpen" @publish="onLibraryPublish" @add-to-timeline="onLibraryAddToTimeline" @reuse-prompt="onReusePrompt" />
+  <MediaVideoLibrary
+    v-model:open="libraryOpen"
+    @publish="onLibraryPublish"
+    @add-to-timeline="onLibraryAddToTimeline"
+    @reuse-prompt="onReusePrompt"
+  />
 
   <!-- Versions slideover -->
   <USlideover
@@ -1859,7 +2094,12 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
               {{ version.label ?? `Version ${version.version}` }}
             </p>
             <p class="text-xs text-muted mt-0.5 flex items-center gap-1.5">
-              <UBadge :label="`v${version.version}`" size="xs" variant="subtle" color="neutral" />
+              <UBadge
+                :label="`v${version.version}`"
+                size="xs"
+                variant="subtle"
+                color="neutral"
+              />
               <span>{{ fmtVersionDate(version.createdAt) }}</span>
             </p>
           </div>
@@ -1949,7 +2189,12 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
           Your latest edits couldn't be saved to the server. If you leave now they'll be lost.
         </p>
         <div class="flex justify-end gap-2">
-          <UButton variant="ghost" color="neutral" label="Stay and retry" @click="answerDiscard(false)" />
+          <UButton
+            variant="ghost"
+            color="neutral"
+            label="Stay and retry"
+            @click="answerDiscard(false)"
+          />
           <UButton color="error" label="Leave and discard" @click="answerDiscard(true)" />
         </div>
       </div>
