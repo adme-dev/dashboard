@@ -17,11 +17,20 @@ describe('storyboard authorization and flag', () => {
     query.mockResolvedValue({ rows: [{ created_by: actor.id, media_type: 'audio' }] })
     await expect(requireStoryboardProjectIn({ query }, 'project', actor)).rejects.toMatchObject({ statusCode: 400 })
   })
-  it('defaults off and gives deployed bindings precedence over local env', () => {
-    vi.stubEnv('VIDEO_STORYBOARD_ENABLED', '')
-    expect(() => requireStoryboardEnabled({ context: {} } as never)).toThrow()
-    vi.stubEnv('VIDEO_STORYBOARD_ENABLED', 'true')
+  it.each([undefined, 'true'])('enables the pilot for local value %s', (value) => {
+    vi.stubEnv('VIDEO_STORYBOARD_ENABLED', value)
     expect(() => requireStoryboardEnabled({ context: {} } as never)).not.toThrow()
+  })
+  it.each(['false', '', 'TRUE', true, null])('rejects explicit false or malformed override %s', (value) => {
+    const event = { context: { cloudflare: { env: { VIDEO_STORYBOARD_ENABLED: value } } } }
+    expect(() => requireStoryboardEnabled(event as never)).toThrow('Storyboard editing is not enabled')
+  })
+  it('gives deployed binding presence and absence precedence over local env', () => {
+    vi.stubEnv('VIDEO_STORYBOARD_ENABLED', 'false')
+    expect(() => requireStoryboardEnabled({ context: {} } as never)).toThrow()
+    expect(() => requireStoryboardEnabled({ context: { cloudflare: { env: {} } } } as never)).not.toThrow()
+    expect(() => requireStoryboardEnabled({ context: { cloudflare: { env: { VIDEO_STORYBOARD_ENABLED: 'true' } } } } as never)).not.toThrow()
+    vi.stubEnv('VIDEO_STORYBOARD_ENABLED', 'true')
     expect(() => requireStoryboardEnabled({ context: { cloudflare: { env: { VIDEO_STORYBOARD_ENABLED: 'false' } } } } as never)).toThrow()
   })
 })

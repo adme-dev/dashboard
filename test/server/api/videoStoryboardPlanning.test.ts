@@ -20,7 +20,7 @@ beforeEach(() => {
 })
 describe('storyboard planning routes', () => {
   it('requires write authority and the deployed feature flag before planning', async () => {
-    await expect(planRoute({ context: { cloudflare: { env: {} } } } as never)).rejects.toMatchObject({ statusCode: 404 })
+    await expect(planRoute({ context: { cloudflare: { env: { VIDEO_STORYBOARD_ENABLED: 'false' } } } } as never)).rejects.toMatchObject({ statusCode: 404 })
     expect(mocks.create).not.toHaveBeenCalled()
     mocks.auth.mockRejectedValue({ statusCode: 403 })
     await expect(planRoute(event as never)).rejects.toMatchObject({ statusCode: 403 })

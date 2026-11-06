@@ -15,7 +15,7 @@ vi.mock('~~/server/utils/auth', () => ({ requireAuth: mocks.auth, requireWriteAc
 vi.mock('~~/server/utils/video-storyboard/store', () => ({ getStoryboard: mocks.get, resolveReferenceSet: mocks.resolve, saveReferenceSetIn: mocks.save }))
 vi.mock('~~/server/utils/video-storyboard/godMode', () => ({ executeStoryboardReferenceWrite: mocks.ledger }))
 const actor = { id: id(6), role: 'member' }
-const event = { params: { id: id(2), revision: id(3) }, context: { cloudflare: { env: {} } } }
+const event = { params: { id: id(2), revision: id(3) }, context: { cloudflare: { env: { VIDEO_STORYBOARD_ENABLED: 'false' } } } }
 beforeEach(() => {
   vi.resetAllMocks()
   mocks.application.mockResolvedValue(null)
@@ -37,7 +37,7 @@ describe('storyboard HTTP boundaries', () => {
     expect(mocks.write).not.toHaveBeenCalled()
     expect(mocks.save).not.toHaveBeenCalled()
   })
-  it('denies writes when a deployed binding is absent even if local env is on', async () => {
+  it('denies writes when the deployed binding is false even if local env is on', async () => {
     vi.stubEnv('VIDEO_STORYBOARD_ENABLED', 'true')
     await expect(putReferences(event as never)).rejects.toMatchObject({ statusCode: 404 })
     expect(mocks.ledger).not.toHaveBeenCalled()
