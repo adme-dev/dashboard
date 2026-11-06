@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { MetaCatalogGraphError } from '~~/server/utils/metaCatalogProvider'
 import { executeDepartmentCatalogTool } from '~~/server/utils/ai/mcp/departmentCatalogTools'
 
 interface Row {
@@ -16,7 +17,7 @@ const m = vi.hoisted(() => ({
 }))
 vi.mock('~~/server/utils/db', () => ({ queryOneFresh: m.query, queryRowsFresh: m.rows, transactionWithoutRetry: m.transaction }))
 vi.mock('~~/server/utils/metaCatalogRepository', () => ({ getMetaCatalogConnectionAuthority: m.connection, listMetaCatalogFeedBindings: m.bindings, persistMetaCatalogFeedEvidence: vi.fn() }))
-vi.mock('~~/server/utils/metaCatalogProvider', () => ({ createMetaCatalogProvider: () => m.provider }))
+vi.mock('~~/server/utils/metaCatalogProvider', async importOriginal => ({ ...(await importOriginal<Record<string, unknown>>()), createMetaCatalogProvider: () => m.provider }))
 vi.mock('~~/server/utils/feeds/dealerLinks', () => ({ getDealerLink: m.link, linkToContext: () => ({ externalOrgId: 'org' }) }))
 vi.mock('~~/server/utils/feeds/config', () => ({ getSocialDashboardClient: vi.fn().mockResolvedValue({}), resolveSocialDashboardBaseUrl: vi.fn().mockResolvedValue('https://socials.example') }))
 vi.mock('~~/server/utils/feeds/registry', () => ({ getFeedProvider: () => m.feed }))
@@ -87,9 +88,9 @@ beforeEach(() => {
 })
 
 const bound = { clientId: ids.client, connectionId: ids.connection, catalogId: '123456', sourceFeedId: ids.source }
-async function approveRepair(name: string, args: unknown) {
+async function approveRepair(name: string, args: unknown, requestKey = key) {
   if (name === 'marketing_propose_vehicle_catalog') m.bindings.mockResolvedValue([])
-  expect((await call(name, args)).ok).toBe(true)
+  expect((await executeDepartmentCatalogTool(name, args, ctxFor(ids.author) as never, requestKey, digest)).ok).toBe(true)
   const exact = { clientId: ids.client, proposalId: ids.proposal, expectedRevision: row!.resolved_payload.revision, ack: true }
   expect((await call('marketing_approve_catalog_change', exact, ids.peer)).ok).toBe(true)
   return exact
@@ -220,4 +221,59 @@ it('adopts only the manually configured feed with its exact client serve URL', a
 })
 it('blocks another Vehicles catalogue when this source is already bound to one', async () => {
   expect((await call('marketing_propose_vehicle_catalog', { clientId: ids.client, connectionId: ids.connection, sourceFeedId: ids.source, name: 'New duplicate' })).code).toBe('already_configured')
+})
+
+describe('definitive refresh busy rejection', () => {
+  const busy = () => new MetaCatalogGraphError(400, { error: { error_subcode: 1798046, message: 'private-provider-message' } })
+  it('retains a terminal rejection, reads safe status and replays the same failure without retrying', async () => {
+    const exact = await approveRepair('marketing_propose_catalog_refresh', bound)
+    m.provider.createProductFeedUpload.mockRejectedValue(busy())
+    const result = await call('marketing_execute_catalog_change', exact)
+    expect(result).toMatchObject({ ok: false, code: 'provider_busy', details: { operationSucceeded: false, providerRejected: true } })
+    expect(row!.result_payload).toMatchObject({ complete: true, operationSucceeded: false, providerRejected: true, providerBusy: true, providerErrorCode: 1798046 })
+    expect(row!.result_payload).not.toHaveProperty('readbackVerified')
+    expect(JSON.stringify(result)).not.toContain('private-provider-message')
+    expect((await call('marketing_get_catalog_change', { clientId: ids.client, proposalId: ids.proposal })).data).toMatchObject({ reconciliationRequired: false, outcome: { providerRejected: true } })
+    expect(await call('marketing_execute_catalog_change', exact)).toEqual(result)
+    expect(m.provider.createProductFeedUpload).toHaveBeenCalledOnce()
+    m.provider.getProductFeed.mockResolvedValue({ id: '555555', latest_upload: { id: '888888', start_time: '2026-11-06' } })
+    expect((await call('marketing_get_catalog_upload_status', bound)).data).toMatchObject({ upload: { status: 'PROCESSING' } })
+  })
+  it('allows a fresh separately reviewed refresh after a definitive busy rejection', async () => {
+    const exact = await approveRepair('marketing_propose_catalog_refresh', bound)
+    m.provider.createProductFeedUpload.mockRejectedValueOnce(busy())
+    expect((await call('marketing_execute_catalog_change', exact)).code).toBe('provider_busy')
+    const next = await approveRepair('marketing_propose_catalog_refresh', bound, `mcp:${'c'.repeat(64)}`)
+    m.provider.createProductFeedUpload.mockResolvedValue({ id: '888888' })
+    m.provider.getProductFeed.mockResolvedValue({ id: '555555' })
+    expect((await call('marketing_execute_catalog_change', next)).ok).toBe(true)
+    expect(m.provider.createProductFeedUpload).toHaveBeenCalledTimes(2)
+  })
+  it.each([
+    new Error('unknown network response'),
+    new MetaCatalogGraphError(500, { error: { error_subcode: 1798046 } }),
+    new MetaCatalogGraphError(400, { error: { error_subcode: 9999 } })
+  ])('keeps non-definitive failures held for reconciliation', async (error) => {
+    const exact = await approveRepair('marketing_propose_catalog_refresh', bound)
+    m.provider.createProductFeedUpload.mockRejectedValue(error)
+    expect((await call('marketing_execute_catalog_change', exact)).code).toBe('reconciliation_required')
+    expect(row!.result_payload).toMatchObject({ complete: false })
+    expect((await call('marketing_execute_catalog_change', exact)).code).toBe('reconciliation_required')
+    expect(m.provider.createProductFeedUpload).toHaveBeenCalledOnce()
+  })
+  it('never releases a creation proposal for the same busy response', async () => {
+    const exact = await approveRepair('marketing_propose_product_set', { ...bound, name: 'New & Demo', filter })
+    m.provider.createProductSet.mockRejectedValue(busy())
+    expect((await call('marketing_execute_catalog_change', exact)).code).toBe('reconciliation_required')
+    expect(row!.result_payload).toMatchObject({ complete: false })
+    expect((await call('marketing_execute_catalog_change', exact)).code).toBe('reconciliation_required')
+    expect(m.provider.createProductSet).toHaveBeenCalledOnce()
+  })
+  it('keeps busy errors after a known upload ID held because an effect already occurred', async () => {
+    const exact = await approveRepair('marketing_propose_catalog_refresh', bound)
+    m.provider.createProductFeedUpload.mockResolvedValue({ id: '888888' })
+    m.provider.getProductFeed.mockRejectedValue(busy())
+    expect((await call('marketing_execute_catalog_change', exact)).code).toBe('reconciliation_required')
+    expect(row!.result_payload).toMatchObject({ complete: false, uploadId: '888888' })
+  })
 })

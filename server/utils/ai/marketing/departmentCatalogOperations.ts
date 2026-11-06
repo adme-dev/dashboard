@@ -1,6 +1,6 @@
 import { queryOneFresh, queryRowsFresh, transactionWithoutRetry } from '~~/server/utils/db'
 import { getMetaCatalogConnectionAuthority, listMetaCatalogFeedBindings, persistMetaCatalogFeedEvidence } from '~~/server/utils/metaCatalogRepository'
-import { createMetaCatalogProvider } from '~~/server/utils/metaCatalogProvider'
+import { createMetaCatalogProvider, MetaCatalogGraphError } from '~~/server/utils/metaCatalogProvider'
 import { ensureMetaCatalogFeed } from '~~/server/utils/metaCatalogPlatform'
 import { getDealerLink, linkToContext } from '~~/server/utils/feeds/dealerLinks'
 import { getSocialDashboardClient, resolveSocialDashboardBaseUrl } from '~~/server/utils/feeds/config'
@@ -82,7 +82,10 @@ export async function runDepartmentCatalogOperation(name: string, raw: unknown, 
     if (name === 'marketing_execute_catalog_change' || name === 'marketing_approve_catalog_change') {
       const p = await readPaidProposal(input.proposalId!, ACTION, input.clientId)
       if (p.resolved_payload.revision !== input.expectedRevision) campaignDenied('revision_conflict')
-      if (p.status === 'executed') return p.result_payload?.complete === true ? ok(paidProposalView(p)) : fail('Catalog outcome held for reconciliation.', 'reconciliation_required')
+      if (p.status === 'executed') {
+        if (p.result_payload?.complete === true && p.result_payload?.providerBusy === true && p.result_payload?.operationSucceeded === false) return catalogRefreshBusy(p.id, p.resolved_payload.revision)
+        return p.result_payload?.complete === true ? ok(paidProposalView(p)) : fail('Catalog outcome held for reconciliation.', 'reconciliation_required')
+      }
       const intent = p.resolved_payload.input as unknown as Input
       const current = await loadCatalog(ctx, intent)
       if (paidHash({ action: ACTION, input: intent, snapshot: current.snapshot }) !== p.resolved_payload.revision) campaignDenied('revision_conflict')
@@ -118,7 +121,18 @@ export async function runDepartmentCatalogOperation(name: string, raw: unknown, 
           await savePaidReceipt(p, receipt)
         }
         if (intent.operation === 'refresh') {
-          const upload = await current.provider.createProductFeedUpload(current.binding!.productFeedId, `${current.baseUrl.replace(/\/+$/, '')}/api/feeds/${encodeURIComponent(intent.sourceFeedId)}/serve`)
+          let upload: { id: string }
+          try {
+            upload = await current.provider.createProductFeedUpload(current.binding!.productFeedId, `${current.baseUrl.replace(/\/+$/, '')}/api/feeds/${encodeURIComponent(intent.sourceFeedId)}/serve`)
+          } catch (error) {
+            // This exact Graph response definitively rejects this refresh before creating an upload.
+            // Never apply this exception to attachment/creation, transport errors or readback failures.
+            const data = error instanceof MetaCatalogGraphError ? error.data as { error?: { error_subcode?: unknown } } | null : null
+            if (!(error instanceof MetaCatalogGraphError) || error.status !== 400 || data?.error?.error_subcode !== 1798046 || receipt.uploadId) throw error
+            Object.assign(receipt, { complete: true, operationSucceeded: false, providerRejected: true, providerBusy: true, providerErrorCode: 1798046, providerAccepted: false, providerServingVerified: false })
+            await savePaidReceipt(p, receipt)
+            return catalogRefreshBusy(p.id, p.resolved_payload.revision)
+          }
           receipt.uploadId = upload.id
           await savePaidReceipt(p, receipt)
           const readback = await current.provider.getProductFeed(current.binding!.productFeedId)
@@ -200,4 +214,11 @@ function safeUploadEvidence(value: Record<string, unknown> | null | undefined) {
   return { uploadId: typeof value?.id === 'string' && /^\d{5,30}$/.test(value.id) ? value.id : null,
     status: status !== 'UNKNOWN' ? status : value?.end_time ? 'FINISHED' : value?.start_time ? 'PROCESSING' : 'UNKNOWN', errors: safeErrors, errorCount: count(value?.error_count ?? value?.num_invalid_items), warningCount: count(value?.warning_count),
     processedCount: count(value?.num_detected_items), errorCode: count(value?.error_code) }
+}
+
+function catalogRefreshBusy(proposalId: string, revision: string): ToolResult {
+  return fail('Meta rejected this refresh because an upload is already in progress. Read marketing_get_catalog_upload_status, wait for that upload to finish, then prepare and independently approve a new refresh proposal. This proposal will not retry.', 'provider_busy', {
+    proposalId, revision, operationSucceeded: false, providerRejected: true, providerErrorCode: 1798046,
+    statusTool: 'marketing_get_catalog_upload_status', retryRequiresNewReviewedProposal: true
+  })
 }

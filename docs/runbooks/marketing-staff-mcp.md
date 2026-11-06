@@ -70,6 +70,8 @@ The feed suite exposes the complete supported repair sequence to marketing staff
 5. Use `marketing_propose_product_set` with `custom_label_0` / `is_any` / `["new", "demo"]` for New & Demo inventory. Use the existing change tool for an existing set. `marketing_propose_catalog_refresh` refreshes only the persisted bound feed.
 6. Another authorised reviewer approves the exact revision; the requester executes it once. Read `marketing_get_catalog_change` for retained receipts and `marketing_get_catalog_upload_status` for import progress. Configuration/readback success is separate from completed import, provider acceptance and ad delivery. These operations do not activate campaigns or change spend.
 
+Meta's exact upload-already-in-progress rejection is terminal for that refresh proposal: inspect status, wait, then prepare a new independently reviewed refresh. Replaying the rejected proposal returns the same `provider_busy` result without another provider request. Unknown errors and errors after a known upload ID remain held.
+
 A failure after a provider effect retains any known catalogue/feed/set/upload IDs and holds the proposal for reconciliation. Do not retry with a new request key to bypass a held outcome. Missing or incorrect client/provider mapping must be corrected through the native connection workflow before marketing can operate that resource.
 
 ### Website connection requirements
