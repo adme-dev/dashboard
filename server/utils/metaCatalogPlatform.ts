@@ -45,6 +45,9 @@ export interface MetaCampaignAdSummary {
 }
 
 export interface MetaCatalogProvider {
+  createVehicleCatalog(businessId: string, input: { name: string }): Promise<{ id: string }>
+  createProductSet(catalogId: string, input: { name: string, filter: Record<string, unknown> }): Promise<{ id: string }>
+
   listCampaignAds(campaignId: string): Promise<MetaCampaignAdSummary[]>
   listGrantedPermissions(): Promise<string[]>
   getAdAccountBusiness(actId: string): Promise<MetaCatalogBusiness | null>

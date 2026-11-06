@@ -1969,7 +1969,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Manage daily marketing work',
-        content: 'Manage supported tasks, content, lead follow-up, creative drafts, KPI targets, budget allocations, inventory feeds and ad preparation through your assistant. Department access also supports reviewed campaign email, inbox replies and website releases where enabled. Website work retains its native permissions and original XeroFlow login checks; boards retain membership requirements. Some specialist editing and administration actions remain in their native editors.'
+        content: 'Manage supported tasks, content, lead follow-up, creative drafts, KPI targets, budget allocations, inventory feeds and ad preparation through your assistant. Inspect catalogue type and import errors, repair supported feed mappings, and propose vehicle catalogues, New & Demo product sets and import refreshes with independent review. Department access also supports reviewed campaign email, inbox replies and website releases where enabled. Website work retains its native permissions and original XeroFlow login checks; boards retain membership requirements. Some specialist editing and administration actions remain in their native editors.'
       },
       {
         title: 'See what each provider supports',

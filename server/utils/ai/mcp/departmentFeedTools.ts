@@ -1,4 +1,3 @@
-import { z } from 'zod'
 import type { AiTool } from '../toolRegistry'
 import { fail, type ToolContext, type ToolResult } from '../toolContext'
 import {
@@ -6,6 +5,7 @@ import {
   departmentFeedClientSchema,
   departmentFeedExecuteSchema,
   departmentFeedProposalSchema,
+  departmentFeedPreviewSchema,
   departmentFeedRegenerationSchema,
   departmentFeedReviewSchema,
   departmentFeedSetupSchema
@@ -20,10 +20,7 @@ const definitions = [
   ],
   [
     'marketing_preview_inventory_feed',
-    departmentFeedClientSchema.extend({
-      feedId: z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/),
-      limit: z.number().int().min(1).max(100).default(20)
-    }),
+    departmentFeedPreviewSchema,
     false,
     'Preview an existing client feed with bounded counts and credential-free vehicle fields. No changes.'
   ],
@@ -37,19 +34,19 @@ const definitions = [
     'marketing_propose_inventory_feed_setup',
     departmentFeedSetupSchema,
     true,
-    'Prepare a new Google or Facebook inventory feed using the existing client dealer link. Returns an exact revision and readiness preview; no provider write until independent approval and explicit acknowledgement. Supplier connections, credentials, catalogue attachment and arbitrary source URLs are not supported here.'
+    'Prepare a new Google or Facebook inventory feed using the existing client dealer link. Returns an exact revision and readiness preview; no provider write until independent approval and explicit acknowledgement. An optional sourceFeedId clones an explicitly client-bound source template internally; supplier credentials and arbitrary source URLs are never accepted or returned.'
   ],
   [
     'marketing_propose_inventory_feed_change',
     departmentFeedChangeSchema,
     true,
-    'Prepare name, active-state or inventory filter changes to one scoped feed. Exact prior configuration is bound to the proposal; source and seller changes are not supported. Independent approval is required before execution.'
+    'Prepare name, active-state, filters, typed mappingUpdates (merged by target_field), or bounded platformSettings corrections to one scoped feed; preview evaluates the candidate. Exact prior configuration is bound to the proposal; source and seller changes are not supported. Independent approval is required before execution.'
   ],
   [
     'marketing_propose_inventory_feed_regeneration',
     departmentFeedRegenerationSchema,
     true,
-    'Prepare regeneration of one exact scoped native feed as XML or CSV. Returns a revision-bound readiness preview; the native provider is called only after independent approval and explicit execution.'
+    'Prepare regeneration of one exact scoped feed as XML or CSV. Returns a revision-bound readiness preview; the native provider is called only after independent approval and explicit execution.'
   ],
   [
     'marketing_review_inventory_feed_change',

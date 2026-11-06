@@ -59,6 +59,21 @@ All department writes require the write suite and signed `mcp:write`. Feed opera
 
 This suite does not expose every browser action. Studio-editor checkpoint editing, website rollback/domains/subscriptions, video generation, banner asset upload/brand kits/scheduling, email subscriber/list administration and detailed inbox automation settings remain outside the department MCP catalog. Google HTML5 ad publication is preparation-only. Do not describe these source gaps as provider approval failures or imply that a role grant creates missing tools.
 
+### Inventory and catalogue repair
+
+The feed suite exposes the complete supported repair sequence to marketing staff with `department_management`, `MARKETING_MANAGEMENT`, current client access and signed write consent. Staff use their own connection; an owner preview does not prove employee access.
+
+1. Inspect `marketing_get_inventory_feed_health`, the feed preview and `marketing_diagnose_catalog`. Diagnosis reports commerce versus Vehicles catalogue type and redacted numeric upload evidence. A previously unpersisted catalogue requires a configured client default feed, exact seller scope, current connection/business authority, no foreign client binding and exactly one matching canonical feed schedule URL. A catalogue name alone proves nothing.
+2. Propose `marketing_propose_inventory_feed_change` with bounded `mappingUpdates` and/or `platformSettings`. Mapping rules support drivetrain/drive, condition, body/fuel/transmission, dealer address and supported Google fields. For Facebook, target `drive` if the source supplies it; it takes precedence over `drivetrain`. Existing unrelated rules remain. Domain settings stay on the configured feed host. Raw supplier URLs and credentials are never accepted or exposed.
+3. For an existing supplier integration, `marketing_propose_inventory_feed_setup` accepts a configured default `sourceFeedId` to clone internally. Provider credentials remain private. The verified created feed is added to the same client binding so staff can manage it subsequently. A new supplier connection still needs the native integration setup; a stock-page URL alone is insufficient.
+4. Use `marketing_propose_vehicle_catalog` for a new Vehicles catalogue plus feed attachment, or `marketing_propose_catalog_feed` to adopt an existing proven Vehicles catalogue. Creation requires the exact client Meta connection and its business authority. A completed bound Vehicles catalogue is reused rather than duplicated.
+5. Use `marketing_propose_product_set` with `custom_label_0` / `is_any` / `["new", "demo"]` for New & Demo inventory. Use the existing change tool for an existing set. `marketing_propose_catalog_refresh` refreshes only the persisted bound feed.
+6. Another authorised reviewer approves the exact revision; the requester executes it once. Read `marketing_get_catalog_change` for retained receipts and `marketing_get_catalog_upload_status` for import progress. Configuration/readback success is separate from completed import, provider acceptance and ad delivery. These operations do not activate campaigns or change spend.
+
+Meta's exact upload-already-in-progress rejection is terminal for that refresh proposal: inspect status, wait, then prepare a new independently reviewed refresh. Replaying the rejected proposal returns the same `provider_busy` result without another provider request. Unknown errors and errors after a known upload ID remain held.
+
+A failure after a provider effect retains any known catalogue/feed/set/upload IDs and holds the proposal for reconciliation. Do not retry with a new request key to bypass a held outcome. Missing or incorrect client/provider mapping must be corrected through the native connection workflow before marketing can operate that resource.
+
 ### Website connection requirements
 
 Enroll explicit `PAGE_STUDIO_VIEW`, `PAGE_STUDIO_EDIT`, `PAGE_STUDIO_APPROVE` and `PAGE_STUDIO_PUBLISH` groups for staff who manage websites; the marketing group alone does not grant them. Sites must belong to the current agency tenant and an active client with a valid entitlement. Domain and subscription administration are separate permissions.

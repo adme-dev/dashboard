@@ -48,6 +48,22 @@ describe.skipIf(!allowed)('paid proposal real PostgreSQL concurrency', () => {
     const claims = await Promise.allSettled([claimPaidProposal(a), claimPaidProposal(b)])
     expect(claims.filter(c => c.status === 'fulfilled')).toHaveLength(1)
   })
+  it('prevents a stale approved creation after an earlier creation completes', async () => {
+    const creation = { clientId: input.clientId, operation: 'create_catalog', connectionId: actor, sourceFeedId: actor }
+    const a = await preparePaidProposal('department_catalog_change', actor, creation, {}, `mcp:${'3'.repeat(64)}`, '4'.repeat(64))
+    const b = await preparePaidProposal('department_catalog_change', actor, creation, {}, `mcp:${'5'.repeat(64)}`, '6'.repeat(64))
+    await claimPaidProposal(a)
+    await savePaidReceipt(a, { complete: true, catalogId: 'created-catalog' })
+    await expect(claimPaidProposal(b)).rejects.toMatchObject({ campaignCode: 'reconciliation_required' })
+  })
+  it('allows a new refresh after a definitive terminal busy rejection', async () => {
+    const refresh = { ...input, catalogId: 'busy-refresh', operation: 'refresh' }
+    const a = await preparePaidProposal('department_catalog_change', actor, refresh, {}, `mcp:${'7'.repeat(64)}`, '8'.repeat(64))
+    const b = await preparePaidProposal('department_catalog_change', actor, refresh, {}, `mcp:${'9'.repeat(64)}`, '0'.repeat(64))
+    await claimPaidProposal(a)
+    await savePaidReceipt(a, { complete: true, operationSucceeded: false, providerRejected: true, providerBusy: true })
+    await expect(claimPaidProposal(b)).resolves.toBeUndefined()
+  })
   it('denies another client and a changed reviewed snapshot at claim', async () => {
     const p = await preparePaidProposal('department_meta_ad_launch', actor, input, {}, `mcp:${'c'.repeat(64)}`, 'd'.repeat(64))
     await expect(readPaidProposal(p.id, 'department_meta_ad_launch', actor)).rejects.toMatchObject({ campaignCode: 'not_found' })
