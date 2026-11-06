@@ -207,19 +207,20 @@ onBeforeUnmount(() => emit('mask-canvas-ready', null))
 
       <div class="rounded-md border border-default bg-elevated p-2">
         <div class="flex items-center justify-between gap-2">
-          <p class="text-xs font-medium text-muted">Available models</p>
+          <p class="text-xs font-medium text-muted">Model catalogue</p>
           <UBadge :label="`${props.selectedActionModels.length}`" size="xs" variant="subtle" color="neutral" />
         </div>
         <div class="mt-1 flex flex-wrap gap-1">
           <UBadge
             v-for="model in props.selectedActionModels"
             :key="model.id"
-            :label="model.displayName"
+            :label="`${model.displayName} (${model.defaultEnabled ? 'default enabled' : 'disabled by default'})`"
             size="xs"
             :color="model.defaultEnabled ? 'primary' : 'neutral'"
             variant="subtle"
           />
         </div>
+        <p class="mt-1 text-[11px] text-muted">Provider access and action support are checked when you run a tool.</p>
         <p v-if="!props.selectedActionModels.length" class="mt-1 text-[11px] text-muted">
           No gateway model is mapped to this action yet.
         </p>
