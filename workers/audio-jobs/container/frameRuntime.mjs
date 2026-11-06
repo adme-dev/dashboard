@@ -34,6 +34,34 @@ export function createPageDiagnostics(page) {
   }
 }
 
+/** Media requests may stay active while Chromium buffers video. Wait for the
+ * first decodable frame and every image/font instead of global network idle. */
+export async function waitForBannerAssets(page, timeoutMs = 30000) {
+  const readState = () => page.evaluate(() => ({
+    fontsReady: document.fonts.status === 'loaded',
+    images: Array.from(document.images, (image, index) => ({ index, ready: image.complete && image.naturalWidth > 0, failed: image.complete && image.naturalWidth === 0 })),
+    videos: Array.from(document.querySelectorAll('video'), (video, index) => ({ index, ready: video.readyState >= 2, failed: Boolean(video.error) }))
+  }))
+  try {
+    await page.waitForFunction(() =>
+      document.fonts.status === 'loaded'
+      && Array.from(document.images).every(image => image.complete)
+      && Array.from(document.querySelectorAll('video')).every(video => video.readyState >= 2 || video.error),
+    { polling: 100, timeout: timeoutMs })
+  } catch (error) {
+    const state = await readState().catch(() => null)
+    const pendingImages = state?.images.filter(image => !image.ready && !image.failed).map(image => image.index) || []
+    const pendingVideos = state?.videos.filter(video => !video.ready && !video.failed).map(video => video.index) || []
+    throw new Error(`Banner assets did not load within ${timeoutMs}ms (fonts=${state?.fontsReady ?? 'unknown'}, images=${pendingImages.join(',')}, videos=${pendingVideos.join(',')})`, { cause: error })
+  }
+  const state = await readState()
+  const failedImages = state.images.filter(image => image.failed).map(image => image.index)
+  const failedVideos = state.videos.filter(video => video.failed).map(video => video.index)
+  if (failedImages.length || failedVideos.length) {
+    throw new Error(`Banner assets failed to load (images=${failedImages.join(',')}, videos=${failedVideos.join(',')})`)
+  }
+}
+
 export async function resolveFrameRuntime(page, fallbackDurationSec, timeoutMs = 2500) {
   const hasRuntime = await page.evaluate(() => !!window.__engagrFrame).catch(() => false)
   if (hasRuntime) {

@@ -7,7 +7,7 @@ import { mkdirSync, rmSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
-import { createPageDiagnostics, resolveFrameRuntime, seekFrameRuntime } from './frameRuntime.mjs'
+import { createPageDiagnostics, resolveFrameRuntime, seekFrameRuntime, waitForBannerAssets } from './frameRuntime.mjs'
 
 import { readBannerAudioManifest, buildBannerAudioMixArgs } from './bannerAudioRender.mjs'
 import { downloadBannerAudio } from './bannerAudioDownload.mjs'
@@ -32,8 +32,10 @@ export async function captureBannerMp4({ html, width, height, fps, crf, quality 
     diagnostics = createPageDiagnostics(page)
     await page.setViewport({ width: vpW, height: vpH, deviceScaleFactor: 1 })
 
-    // Load the HTML string — networkidle0 ensures fonts + GSAP fully settled.
-    await page.setContent(html, { waitUntil: 'networkidle0', timeout: 15000 })
+    // DOM content waits for the blocking GSAP script. Streaming video can keep
+    // networkidle0 from ever firing, so check actual render assets separately.
+    await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: 15000 })
+    await waitForBannerAssets(page)
 
     const runtime = await resolveFrameRuntime(page, 5)
     let duration = runtime.duration
