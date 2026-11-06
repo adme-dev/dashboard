@@ -139,8 +139,11 @@ const API_INVENTORY = {
   // render callback POST and one read-only Banner share image GET. Storyboard
   // references/revisions/apply/review use transaction coordination; planning
   // uses its external ledger. Resolve stays native. No inline transaction added.
-  totalRouteFiles: 2375,
-  mutationRouteFiles: 1300,
+  // Main 160f978fd adds six public Banner delivery routes: three HEAD aliases,
+  // two GETs and one saved-artwork preparation POST. Capability-token checks
+  // remain in loadPublicBannerShare; no inline role gate, transaction or bypass.
+  totalRouteFiles: 2381,
+  mutationRouteFiles: 1301,
   explicitlyGuardedMutationFiles: 419,
   guardedMutationFilesWithTransactionCall: 55
 } as const
@@ -190,8 +193,8 @@ describe('God mode route isolation inventory', () => {
   it('records the full mechanical API and mutation inventory reviewed before implementation', () => {
     expect(mechanicalInventory()).toEqual(API_INVENTORY)
     expect(API_INVENTORY).toEqual({
-      totalRouteFiles: 2375,
-      mutationRouteFiles: 1300,
+      totalRouteFiles: 2381,
+      mutationRouteFiles: 1301,
       explicitlyGuardedMutationFiles: 419,
       guardedMutationFilesWithTransactionCall: 55
     })
@@ -364,13 +367,40 @@ describe('God mode route isolation inventory', () => {
       let gateSource = source
       if (file === 'server/api/public/banner-share/[token].get.ts') {
         expect(source).toContain('import { loadPublicBannerShare } from \'~~/server/utils/banner/publicShare\'')
-        expect(source).toContain('defineEventHandler(loadPublicBannerShare)')
+        expect(source).toContain('const share = await loadPublicBannerShare(event)')
+        expect(source).toContain('await publicBannerShareVideos(share, getRouterParam(event, \'token\')!)')
+        expect(source.indexOf('await loadPublicBannerShare(event)')).toBeLessThan(source.indexOf('await publicBannerShareVideos('))
         gateSource = readFileSync('server/utils/banner/publicShare.ts', 'utf8')
       }
       for (const gate of gates) expect(gateSource).toContain(gate)
       expect(source).not.toContain('registerGodModeMutationFamily')
       expect(gateSource).not.toContain('registerGodModeMutationFamily')
     }
+  })
+
+  it('pins public Banner video routes to saved-artwork capability checks', () => {
+    const aliases = {
+      'server/api/public/banner-assets/[token].head.ts': './[token].get',
+      'server/api/public/banner-share/[token]/video.head.ts': './video.get',
+      'server/api/public/banner-share/[token]/videos.head.ts': './videos.get'
+    }
+    for (const [file, target] of Object.entries(aliases)) {
+      expect(readFileSync(file, 'utf8')).toContain(`export { default } from '${target}'`)
+    }
+    for (const [file, handler] of [['video.get.ts', 'bannerShareVideo'], ['videos.get.ts', 'bannerShareVideos']]) {
+      const source = readFileSync(`server/api/public/banner-share/[token]/${file}`, 'utf8')
+      expect(source).toContain(`import { ${handler} } from '~~/server/utils/banner/shareVideo'`)
+      expect(source).toContain(`defineEventHandler(${handler})`)
+    }
+    const mutation = readFileSync('server/api/public/banner-share/[token]/videos.post.ts', 'utf8')
+    expect(mutation).toContain('return prepareBannerShareVideo(event, body.formatKey, body.retry === true)')
+    const service = readFileSync('server/utils/banner/shareVideo.ts', 'utf8')
+    expect(service).toContain('const share = await loadPublicBannerShare(event, token)')
+    expect(service).toContain('const share = await loadPublicBannerShare(event)')
+    expect(service).toContain('plan.key === formatKey && plan.revision === revision')
+    expect(service).toContain('await enforceRateLimit(event, { key: `banner-share-video:${share.project.id}`, limit: 10, windowSeconds: 600, failureMode: \'closed\' })')
+    expect(service).toContain('markDispatched: async () => {\n    await loadPublicBannerShare(event, token)')
+    for (const source of [mutation, service]) expect(source).not.toContain('registerGodModeMutationFamily')
   })
 
   it('pins Task5 creator reads and reconciliation to existing authority boundaries', () => {
