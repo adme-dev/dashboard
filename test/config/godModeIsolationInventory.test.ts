@@ -134,9 +134,17 @@ const API_INVENTORY = {
   // templateCatalogueHandler; no mutation route or God mode bypass is added.
   // Template registration, preview publication and three audience preview/use pairs
   // add eight delegated mutations with fresh scoped authority and no God mode bypass.
-  totalRouteFiles: 2356,
-  mutationRouteFiles: 1290,
-  explicitlyGuardedMutationFiles: 413,
+  // Since 0f91a358e: seven delegated Page Studio routes (three mutations),
+  // ten storyboard routes (six write-guarded mutations), one secret-authenticated
+  // render callback POST and one read-only Banner share image GET. Storyboard
+  // references/revisions/apply/review use transaction coordination; planning
+  // uses its external ledger. Resolve stays native. No inline transaction added.
+  // Main 160f978fd adds six public Banner delivery routes: three HEAD aliases,
+  // two GETs and one saved-artwork preparation POST. Capability-token checks
+  // remain in loadPublicBannerShare; no inline role gate, transaction or bypass.
+  totalRouteFiles: 2381,
+  mutationRouteFiles: 1301,
+  explicitlyGuardedMutationFiles: 419,
   guardedMutationFilesWithTransactionCall: 55
 } as const
 
@@ -185,9 +193,9 @@ describe('God mode route isolation inventory', () => {
   it('records the full mechanical API and mutation inventory reviewed before implementation', () => {
     expect(mechanicalInventory()).toEqual(API_INVENTORY)
     expect(API_INVENTORY).toEqual({
-      totalRouteFiles: 2356,
-      mutationRouteFiles: 1290,
-      explicitlyGuardedMutationFiles: 413,
+      totalRouteFiles: 2381,
+      mutationRouteFiles: 1301,
+      explicitlyGuardedMutationFiles: 419,
       guardedMutationFilesWithTransactionCall: 55
     })
   })
@@ -240,7 +248,7 @@ describe('God mode route isolation inventory', () => {
       'server/api/email/design/history.post.ts': ['await designLibrarySession(event, true)'],
       'server/api/email/design/modules.post.ts': ['await designLibrarySession(event, true)'],
       'server/api/email/design/modules/[moduleId]/[revisionId].get.ts': ['await designLibrarySession(event, false)'],
-      'server/api/email/design/templates.post.ts': ["await designLibrarySession(event, true, 'publish-template')"],
+      'server/api/email/design/templates.post.ts': ['await designLibrarySession(event, true, \'publish-template\')'],
       'server/api/email/design/templates/[templateId]/[revisionId].get.ts': ['await designLibrarySession(event, false)']
     }
     expect(Object.keys(additions)).toHaveLength(21)
@@ -276,24 +284,24 @@ describe('God mode route isolation inventory', () => {
     // This lexical inventory complements the real route/executor refusal tests
     // in designTemplateGate; template admission must not become a global bypass.
     const helper = readFileSync('server/utils/email-marketing/designerGate.ts', 'utf8')
-    expect(helper).toContain("const campaign = env.FIGFLOW_EDM_DESIGNER_ENABLED === 'true'")
-    expect(helper).toContain("template: campaign || env.FIGFLOW_EDM_TEMPLATE_DESIGNER_ENABLED === 'true'")
+    expect(helper).toContain('const campaign = env.FIGFLOW_EDM_DESIGNER_ENABLED === \'true\'')
+    expect(helper).toContain('template: campaign || env.FIGFLOW_EDM_TEMPLATE_DESIGNER_ENABLED === \'true\'')
     expect(helper).not.toMatch(/isApplicationCapabilityEnabled|registerGodModeMutationFamily|canBypassApplicationControl/)
     for (const route of ['designer', 'roundtrip']) {
       const source = readFileSync(`server/api/email/design/${route}.post.ts`, 'utf8')
-      expect(source).toContain("import { designerGate } from '~~/server/utils/email-marketing/designerGate'")
+      expect(source).toContain('import { designerGate } from \'~~/server/utils/email-marketing/designerGate\'')
       expect(source).toContain('const gate = designerGate(env)')
       expect(source).toContain('assertCampaignNativeEnabled: () => {')
-      expect(source).toContain("if (!gate.campaign) throw createError({ statusCode: 404, statusMessage: 'not_found' })")
+      expect(source).toContain('if (!gate.campaign) throw createError({ statusCode: 404, statusMessage: \'not_found\' })')
       expect(source).toContain('await validateSession(token)')
       expect(source).toContain('assertFreshDesignAccess(token, user.id,')
       expect(source).toContain('assertDesignMutationRequest(event, env.FIGFLOW_EDM_APP_ORIGIN)')
       expect(source).not.toMatch(/isApplicationCapabilityEnabled|registerGodModeMutationFamily|canBypassApplicationControl/)
     }
     const lookup = readFileSync('server/api/email/design/roundtrip.post.ts', 'utf8')
-    expect(lookup).toContain("result.owner?.kind === 'campaign' ? gate.campaign : gate.template")
-    expect(lookup).toContain("result.owner?.kind === 'campaign' && result.mutable && gate.campaign")
-    expect(lookup).toContain("const libraryAvailable = gate.campaign && available && result.draft?.state === 'structured'")
+    expect(lookup).toContain('result.owner?.kind === \'campaign\' ? gate.campaign : gate.template')
+    expect(lookup).toContain('result.owner?.kind === \'campaign\' && result.mutable && gate.campaign')
+    expect(lookup).toContain('const libraryAvailable = gate.campaign && available && result.draft?.state === \'structured\'')
     const handoffs = readFileSync('server/utils/email-marketing/designHandoffs.ts', 'utf8')
     expect(handoffs).toContain('assertCampaignNativeEnabled(): void')
     expect(handoffs).not.toMatch(/assertCampaignNativeEnabled\?\(|assertCampaignNativeEnabled\?\.\(/)
@@ -355,9 +363,44 @@ describe('God mode route isolation inventory', () => {
     expect(Object.keys(review.newRoutes)).toHaveLength(12)
     for (const [file, gates] of Object.entries(review.newRoutes)) {
       const source = readFileSync(file, 'utf8')
-      for (const gate of gates) expect(source).toContain(gate)
+      // The public adapter now delegates the same token, expiry and lookup gates.
+      let gateSource = source
+      if (file === 'server/api/public/banner-share/[token].get.ts') {
+        expect(source).toContain('import { loadPublicBannerShare } from \'~~/server/utils/banner/publicShare\'')
+        expect(source).toContain('const share = await loadPublicBannerShare(event)')
+        expect(source).toContain('await publicBannerShareVideos(share, getRouterParam(event, \'token\')!)')
+        expect(source.indexOf('await loadPublicBannerShare(event)')).toBeLessThan(source.indexOf('await publicBannerShareVideos('))
+        gateSource = readFileSync('server/utils/banner/publicShare.ts', 'utf8')
+      }
+      for (const gate of gates) expect(gateSource).toContain(gate)
       expect(source).not.toContain('registerGodModeMutationFamily')
+      expect(gateSource).not.toContain('registerGodModeMutationFamily')
     }
+  })
+
+  it('pins public Banner video routes to saved-artwork capability checks', () => {
+    const aliases = {
+      'server/api/public/banner-assets/[token].head.ts': './[token].get',
+      'server/api/public/banner-share/[token]/video.head.ts': './video.get',
+      'server/api/public/banner-share/[token]/videos.head.ts': './videos.get'
+    }
+    for (const [file, target] of Object.entries(aliases)) {
+      expect(readFileSync(file, 'utf8')).toContain(`export { default } from '${target}'`)
+    }
+    for (const [file, handler] of [['video.get.ts', 'bannerShareVideo'], ['videos.get.ts', 'bannerShareVideos']]) {
+      const source = readFileSync(`server/api/public/banner-share/[token]/${file}`, 'utf8')
+      expect(source).toContain(`import { ${handler} } from '~~/server/utils/banner/shareVideo'`)
+      expect(source).toContain(`defineEventHandler(${handler})`)
+    }
+    const mutation = readFileSync('server/api/public/banner-share/[token]/videos.post.ts', 'utf8')
+    expect(mutation).toContain('return prepareBannerShareVideo(event, body.formatKey, body.retry === true)')
+    const service = readFileSync('server/utils/banner/shareVideo.ts', 'utf8')
+    expect(service).toContain('const share = await loadPublicBannerShare(event, token)')
+    expect(service).toContain('const share = await loadPublicBannerShare(event)')
+    expect(service).toContain('plan.key === formatKey && plan.revision === revision')
+    expect(service).toContain('await enforceRateLimit(event, { key: `banner-share-video:${share.project.id}`, limit: 10, windowSeconds: 600, failureMode: \'closed\' })')
+    expect(service).toContain('markDispatched: async () => {\n    await loadPublicBannerShare(event, token)')
+    for (const source of [mutation, service]) expect(source).not.toContain('registerGodModeMutationFamily')
   })
 
   it('pins Task5 creator reads and reconciliation to existing authority boundaries', () => {

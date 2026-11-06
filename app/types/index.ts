@@ -2764,6 +2764,8 @@ export interface MediaProject {
 }
 
 export interface MediaTimeline {
+  /** Compare-and-swap token, independent of saved version numbering. */
+  editRevision: number
   id: string
   projectId: string
   version: number

@@ -30,7 +30,9 @@ describe.skipIf(!url)('template catalogue real PostgreSQL', () => {
     await db.query(`CREATE SCHEMA ${schema};
 SET search_path TO ${schema}`)
     await db.query(`CREATE TABLE agency_clients(id UUID PRIMARY KEY,is_active BOOLEAN);
-      CREATE TABLE team_members(id UUID PRIMARY KEY,is_active BOOLEAN);
+      CREATE TABLE team_members(id UUID PRIMARY KEY,is_active BOOLEAN,custom_role_id UUID,user_role TEXT DEFAULT 'viewer');
+      CREATE TABLE custom_roles(id UUID PRIMARY KEY,slug TEXT,is_system BOOLEAN,is_read_only BOOLEAN);
+      CREATE TABLE role_permission_groups(role_id UUID,permission_group TEXT);
       CREATE TABLE client_users(id UUID PRIMARY KEY,client_id UUID,status TEXT);
       CREATE TABLE client_sessions(client_user_id UUID,token_hash TEXT,expires_at TIMESTAMPTZ);
       CREATE TABLE page_studio_entitlements(tenant_id TEXT,client_id UUID,status TEXT,portal_creation_enabled BOOLEAN,effective_from TIMESTAMPTZ,effective_until TIMESTAMPTZ);
@@ -48,7 +50,7 @@ SET search_path TO ${schema}`)
       CREATE TABLE page_studio_business_owners(id UUID PRIMARY KEY,workspace_id UUID,agency_client_id UUID);`)
     await db.query(readFileSync('server/database/migrations/502_page_studio_template_operations.sql', 'utf8'))
     await db.query(`INSERT INTO agency_clients VALUES ('${id}',TRUE),('${other}',TRUE);
-      INSERT INTO team_members VALUES ('${id}',TRUE);
+      INSERT INTO team_members(id,is_active) VALUES ('${id}',TRUE);
       INSERT INTO client_users VALUES ('${id}','${id}','active');
       INSERT INTO client_sessions VALUES ('${id}','${hash}',clock_timestamp()+interval '1 day');
       INSERT INTO page_studio_entitlements VALUES ('recipient','${id}','active',TRUE,clock_timestamp()-interval '1 day',NULL);

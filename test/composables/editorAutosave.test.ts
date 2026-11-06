@@ -26,13 +26,14 @@ describe('makeDebouncedSaver', () => {
     let calls = 0
     const save = makeDebouncedSaver(async () => { calls++ }, 100)
     save.trigger()
-    // No wait — immediately check (nothing fired yet)
+    save.cancel()
+    // Cancellation survives the original debounce deadline.
     expect(calls).toBe(0)
     await new Promise(r => setTimeout(r, 50))
     // Still within window
     expect(calls).toBe(0)
     await new Promise(r => setTimeout(r, 70))
     // Now past the window
-    expect(calls).toBe(1)
+    expect(calls).toBe(0)
   })
 })

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 interface TestEvent { query?: Record<string, any>; params?: Record<string, string>; body?: any; context?: any }
+const token = { expectedTimelineId: 't1', expectedEditRevision: 0 }
 const g = globalThis as any
 g.defineEventHandler = (fn: any) => fn
 g.getQuery = (e: TestEvent) => e.query ?? {}
@@ -20,7 +21,8 @@ const mockGetProject = vi.fn()
 const mockCreateRenderJob = vi.fn()
 const mockListRenderJobs = vi.fn()
 const mockMarkFailed = vi.fn()
-vi.mock('~~/server/utils/audio/projects', () => ({
+vi.mock('~~/server/utils/audio/projects', async original => ({
+  ...await original<typeof import('~~/server/utils/audio/projects')>(),
   getProjectWithCurrentTimeline: (...a: unknown[]) => mockGetProject(...a),
   createRenderJob: (...a: unknown[]) => mockCreateRenderJob(...a),
   listRenderJobs: (...a: unknown[]) => mockListRenderJobs(...a),
@@ -44,61 +46,61 @@ const goodTimeline = {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  mockRequireAuth.mockResolvedValue({ id: 'u1' })
-  mockRequireWriteAccess.mockResolvedValue({ id: 'u1' })
+  mockRequireAuth.mockResolvedValue({ id: 'u1', role: 'member' })
+  mockRequireWriteAccess.mockResolvedValue({ id: 'u1', role: 'member' })
 })
 
 describe('POST /agency/audio/projects/:id/render', () => {
   it('404s when the project is missing', async () => {
     mockGetProject.mockResolvedValue(null)
-    await expect(renderH({ params: { id: 'p1' }, body: {}, context: {} } as any))
+    await expect(renderH({ params: { id: 'p1' }, body: { ...token }, context: {} } as never))
       .rejects.toMatchObject({ statusCode: 404 })
   })
   it('409s when the project has no current timeline', async () => {
-    mockGetProject.mockResolvedValue({ project: { id: 'p1', currentTimelineId: null }, timeline: null })
-    await expect(renderH({ params: { id: 'p1' }, body: {}, context: {} } as any))
+    mockGetProject.mockResolvedValue({ project: { createdBy: 'u1', id: 'p1', currentTimelineId: null }, timeline: null })
+    await expect(renderH({ params: { id: 'p1' }, body: { ...token }, context: {} } as never))
       .rejects.toMatchObject({ statusCode: 409 })
   })
   it('400s when the current timeline is invalid', async () => {
-    mockGetProject.mockResolvedValue({ project: { id: 'p1', currentTimelineId: 't1' },
-      timeline: { id: 't1', state: { ...goodTimeline, ducking: [
+    mockGetProject.mockResolvedValue({ project: { createdBy: 'u1', id: 'p1', currentTimelineId: 't1' },
+      timeline: { id: 't1', editRevision: 0, state: { ...goodTimeline, ducking: [
         { id: 'd', source_track_id: 't', target_track_id: 'missing', amount_db: -6 } ] } } })
-    await expect(renderH({ params: { id: 'p1' }, body: {}, context: {} } as any))
+    await expect(renderH({ params: { id: 'p1' }, body: { ...token }, context: {} } as never))
       .rejects.toMatchObject({ statusCode: 400 })
     expect(mockCreateRenderJob).not.toHaveBeenCalled()
   })
   it('defaults to all channels, creates the job, enqueues it, returns 202', async () => {
-    mockGetProject.mockResolvedValue({ project: { id: 'p1', clientId: 'c1', currentTimelineId: 't1' },
-      timeline: { id: 't1', state: goodTimeline } })
+    mockGetProject.mockResolvedValue({ project: { createdBy: 'u1', id: 'p1', clientId: 'c1', currentTimelineId: 't1' },
+      timeline: { id: 't1', editRevision: 0, state: goodTimeline } })
     mockCreateRenderJob.mockResolvedValue({ id: 'j1', timelineId: 't2', status: 'queued' })
-    const res = await renderH({ params: { id: 'p1' }, body: {}, context: {} } as any)
+    const res = await renderH({ params: { id: 'p1' }, body: { ...token }, context: {} } as never)
     expect(mockRequireWriteAccess).toHaveBeenCalled()
     const arg = mockCreateRenderJob.mock.calls[0][0]
-    expect(arg).toEqual({ projectId: 'p1', requestedBy: 'u1', channels: ['radio', 'tiktok', 'meta'] })
+    expect(arg).toEqual({ projectId: 'p1', actor: { id: 'u1', role: 'member' }, ...token, channels: ['radio', 'tiktok', 'meta'] })
     expect(mockEnqueue).toHaveBeenCalledWith(expect.anything(), {
       jobId: 'j1', projectId: 'p1', timelineId: 't2', channels: ['radio', 'tiktok', 'meta'] })
     expect(g.setResponseStatus).toHaveBeenCalledWith(expect.anything(), 202)
     expect(res.job.id).toBe('j1')
   })
   it('passes an explicit channel subset through', async () => {
-    mockGetProject.mockResolvedValue({ project: { id: 'p1', currentTimelineId: 't1' },
-      timeline: { id: 't1', state: goodTimeline } })
+    mockGetProject.mockResolvedValue({ project: { createdBy: 'u1', id: 'p1', currentTimelineId: 't1' },
+      timeline: { id: 't1', editRevision: 0, state: goodTimeline } })
     mockCreateRenderJob.mockResolvedValue({ id: 'j1', timelineId: 't2', status: 'queued' })
-    await renderH({ params: { id: 'p1' }, body: { channels: ['radio'] }, context: {} } as any)
+    await renderH({ params: { id: 'p1' }, body: { ...token, channels: ['radio'] }, context: {} } as never)
     expect(mockCreateRenderJob.mock.calls[0][0].channels).toEqual(['radio'])
   })
   it('400s on an unknown channel', async () => {
-    mockGetProject.mockResolvedValue({ project: { id: 'p1', currentTimelineId: 't1' },
-      timeline: { id: 't1', state: goodTimeline } })
-    await expect(renderH({ params: { id: 'p1' }, body: { channels: ['bogus'] }, context: {} } as any))
+    mockGetProject.mockResolvedValue({ project: { createdBy: 'u1', id: 'p1', currentTimelineId: 't1' },
+      timeline: { id: 't1', editRevision: 0, state: goodTimeline } })
+    await expect(renderH({ params: { id: 'p1' }, body: { ...token, channels: ['bogus'] }, context: {} } as never))
       .rejects.toMatchObject({ statusCode: 400 })
   })
   it('marks the job failed and 502s when enqueue throws', async () => {
-    mockGetProject.mockResolvedValue({ project: { id: 'p1', currentTimelineId: 't1' },
-      timeline: { id: 't1', state: goodTimeline } })
+    mockGetProject.mockResolvedValue({ project: { createdBy: 'u1', id: 'p1', currentTimelineId: 't1' },
+      timeline: { id: 't1', editRevision: 0, state: goodTimeline } })
     mockCreateRenderJob.mockResolvedValue({ id: 'j1', timelineId: 't2', status: 'queued' })
     mockEnqueue.mockRejectedValue(new Error('queue down'))
-    await expect(renderH({ params: { id: 'p1' }, body: {}, context: {} } as any))
+    await expect(renderH({ params: { id: 'p1' }, body: { ...token }, context: {} } as never))
       .rejects.toMatchObject({ statusCode: 502 })
     expect(mockMarkFailed).toHaveBeenCalledWith('j1', expect.stringContaining('enqueue failed'))
   })
@@ -110,5 +112,19 @@ describe('GET /agency/audio/projects/:id/render-jobs', () => {
     const res = await jobsH({ params: { id: 'p1' } } as any)
     expect(res).toEqual({ jobs: [{ id: 'j1' }] })
     expect(mockListRenderJobs).toHaveBeenCalledWith('p1')
+  })
+})
+
+describe('render revision guards', () => {
+  it('rejects legacy bodies before snapshot or enqueue', async () => {
+    await expect(renderH({ params: { id: 'p1' }, body: {}, context: {} } as never)).rejects.toMatchObject({ statusCode: 409 })
+    expect(mockCreateRenderJob).not.toHaveBeenCalled()
+    expect(mockEnqueue).not.toHaveBeenCalled()
+  })
+  it('rejects a stale revision before snapshot or enqueue', async () => {
+    mockGetProject.mockResolvedValue({ project: { id: 'p1', createdBy: 'u1', mediaType: 'av', currentTimelineId: 't1' }, timeline: { id: 't1', editRevision: 2, state: {} } })
+    await expect(renderH({ params: { id: 'p1' }, body: token, context: {} } as never)).rejects.toMatchObject({ statusCode: 409 })
+    expect(mockCreateRenderJob).not.toHaveBeenCalled()
+    expect(mockEnqueue).not.toHaveBeenCalled()
   })
 })

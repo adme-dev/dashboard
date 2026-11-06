@@ -3,6 +3,8 @@ import { runVideoCompositeJob } from '../../workers/audio-jobs/src/videoComposit
 
 function deps(over: any = {}) {
   return {
+    loadRenderInputs: vi.fn().mockResolvedValue(null),
+    discardOutput: vi.fn().mockResolvedValue(undefined),
     loadTimelineState: vi.fn().mockResolvedValue({ schema_version: 2 }),
     markRendering: vi.fn().mockResolvedValue(undefined),
     renderOne: vi.fn(async ({ formatKey }: any) => ({ key: `media/p/j/${formatKey}.mp4` })),

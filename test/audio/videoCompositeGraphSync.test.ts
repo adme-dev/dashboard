@@ -52,3 +52,35 @@ describe('videoCompositeGraph .ts ↔ .mjs parity', () => {
     expect(mjs(state, profile)).toEqual(ts(state, profile))
   })
 })
+
+function avWithFraming(baseSource: 'uploaded_footage' | 'still_kenburns', fit?: string) {
+  const state = av()
+  const clip = state.tracks[0]!.clips[0]!
+  if (clip.type !== 'video') throw new Error('Expected video clip')
+  clip.base_source = baseSource
+  if (baseSource === 'still_kenburns') {
+    clip.r2_key = 'm/still.jpg'
+    clip.kenburns = { zoom_from: 1, zoom_to: 1.1, pan_from: [0, 0], pan_to: [0, 0] }
+  }
+  if (fit !== undefined) clip.fit = fit as typeof clip.fit
+  return state
+}
+
+for (const baseSource of ['uploaded_footage', 'still_kenburns'] as const) {
+  describe(`videoCompositeGraph ${baseSource} framing parity`, () => {
+    it.each(['fit', 'fill', 'crop'] as const)('produces identical plans with explicit %s framing', (fit) => {
+      const state = avWithFraming(baseSource, fit)
+      expect(mjs(state, profile)).toEqual(ts(state, profile))
+    })
+
+    it('preserves the legacy default framing when fit is missing', () => {
+      const state = avWithFraming(baseSource)
+      expect(mjs(state, profile)).toEqual(ts(state, profile))
+    })
+
+    it('uses the legacy fallback for an unknown fit value', () => {
+      const state = avWithFraming(baseSource, 'not-a-fit')
+      expect(mjs(state, profile)).toEqual(ts(state, profile))
+    })
+  })
+}

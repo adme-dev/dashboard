@@ -41,6 +41,23 @@ export function clipEffectFilters(effects) {
   return (effects ?? []).map(id => CLIP_EFFECT_PRESETS[id]).filter(Boolean)
 }
 
+export function resolveVideoClipFit(clip) {
+  if (clip.fit === 'fit' || clip.fit === 'fill' || clip.fit === 'crop') return clip.fit
+  return clip.base_source === 'still_kenburns' ? 'crop' : 'fit'
+}
+
+export function videoClipFitFilters(clip, W, H) {
+  switch (resolveVideoClipFit(clip)) {
+    case 'fill':
+      return [`scale=${W}:${H}`]
+    case 'crop':
+      return [`scale=${W}:${H}:force_original_aspect_ratio=increase`, `crop=${W}:${H}`]
+    case 'fit':
+    default:
+      return [`scale=${W}:${H}:force_original_aspect_ratio=decrease`, `pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2`]
+  }
+}
+
 function wrapCaptionText(value, maxLineLength = 30, maxLines = 3) {
   const words = value.replace(/\s+/g, ' ').trim().split(' ').filter(Boolean)
   const lines = []
@@ -136,12 +153,12 @@ export function buildCompositePlan(state, profile, overlays = []) {
       const start = clip.timeline_start_sec, dur = clip.duration_sec
       const parts = []
       if (clip.base_source === 'still_kenburns') {
-        parts.push(`scale=${W}:${H}:force_original_aspect_ratio=increase`, `crop=${W}:${H}`, kenburnsExpr(clip.kenburns, W, H, fps, dur))
+        parts.push(...videoClipFitFilters(clip, W, H), kenburnsExpr(clip.kenburns, W, H, fps, dur))
       } else {
         parts.push(
           clip.source_out_sec != null ? `trim=start=${clip.source_in_sec}:end=${clip.source_out_sec}` : `trim=start=${clip.source_in_sec}`,
           'setpts=PTS-STARTPTS',
-          `scale=${W}:${H}:force_original_aspect_ratio=decrease`, `pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2`
+          ...videoClipFitFilters(clip, W, H)
         )
       }
       parts.push(...clipEffectFilters(clip.effects))

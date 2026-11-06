@@ -39,6 +39,7 @@ beforeEach(() => {
   pending.value = false
   Object.entries({ computed, ref, watch, onMounted, onUnmounted }).forEach(([name, value]) => vi.stubGlobal(name, value))
   vi.stubGlobal('useFetch', async () => ({ data, error, pending, refresh }))
+  vi.stubGlobal('useAuth', () => ({ canWrite: ref(false), hasPermission: () => false }))
   vi.stubGlobal('useToast', () => ({ add: notify }))
   vi.stubGlobal('$fetch', mutation)
 })
