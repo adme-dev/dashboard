@@ -30,6 +30,17 @@ describe('department suite projection and execution', () => {
       expect(z.fromJSONSchema(manifests.find(m => m.name === descriptor.name)!.inputSchema as never)).toBeDefined()
     }
   })
+  it('discovers the complete inventory repair workflow with feed and write gates', () => {
+    const readNames = ['marketing_diagnose_catalog', 'marketing_get_catalog_upload_status']
+    const writeNames = ['marketing_propose_vehicle_catalog', 'marketing_propose_product_set', 'marketing_propose_catalog_refresh', 'marketing_propose_inventory_feed_change', 'marketing_propose_inventory_feed_setup', 'marketing_approve_catalog_change', 'marketing_execute_catalog_change']
+    const names = projectDepartmentMcpSuite(context).map(t => t.name)
+    for (const name of [...readNames, ...writeNames]) expect(names).toContain(name)
+    const readOnly = projectDepartmentMcpSuite({ ...context, suiteFlags: { ...flags, writes: false } }).map(t => t.name)
+    for (const name of readNames) expect(readOnly).toContain(name)
+    for (const name of writeNames) expect(readOnly).not.toContain(name)
+    const disabled = projectDepartmentMcpSuite({ ...context, suiteFlags: { ...flags, feeds: false } }).map(t => t.name)
+    for (const name of [...readNames, ...writeNames]) expect(disabled).not.toContain(name)
+  })
   it('includes email and community operations with write-scope parity', () => {
     const names = projectDepartmentMcpSuite(context).map(t => t.name)
     for (const name of ['marketing_list_email_campaigns', 'marketing_review_email_campaign_send', 'marketing_execute_email_campaign_send', 'marketing_get_inbox_conversation', 'marketing_send_inbox_reply']) expect(names).toContain(name)

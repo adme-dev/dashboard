@@ -57,11 +57,11 @@ describe('dedicated marketing management MCP policy', () => {
     }
   })
   it('admits actual department reads and gates actual budget and review writes by consent', () => {
-    for (const name of ['get_department_client_inventory', 'marketing_list_budget_allocations', 'marketing_list_google_ads_reviews']) {
+    for (const name of ['get_department_client_inventory', 'marketing_list_budget_allocations', 'marketing_list_google_ads_reviews', 'marketing_diagnose_catalog', 'marketing_get_catalog_upload_status']) {
       expect(evaluateStaffToolAdmission(name, manager())).toMatchObject({ allowed: true })
       expect(evaluateStaffToolAdmission(name, manager({ marketingCapabilities: ['reporting'] }))).toMatchObject({ allowed: false })
     }
-    for (const name of ['marketing_set_budget_allocations', 'marketing_execute_google_ads_plan', 'marketing_review_social_revision']) {
+    for (const name of ['marketing_set_budget_allocations', 'marketing_execute_google_ads_plan', 'marketing_review_social_revision', 'marketing_propose_vehicle_catalog', 'marketing_propose_product_set', 'marketing_propose_catalog_refresh', 'marketing_propose_inventory_feed_change']) {
       expect(evaluateStaffToolAdmission(name, manager())).toMatchObject({ allowed: true })
       expect(evaluateStaffToolAdmission(name, manager({ mcpScopes: ['mcp:read'] }))).toMatchObject({ allowed: false, code: 'insufficient_scope' })
       expect(evaluateStaffToolAdmission(name, manager({ assistantReadOnly: true }))).toMatchObject({ allowed: false, code: 'read_only' })

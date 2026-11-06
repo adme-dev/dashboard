@@ -19,7 +19,9 @@ import type {
 } from '~~/server/utils/feeds/types'
 import { resolveMcpRuntimeConfig } from '../mcp/runtimeConfig'
 import { requireMarketingDepartment } from './departmentAuthority'
-import { isExactNativeFeedScope } from './departmentCatalogSchemas'
+import { isScopedDepartmentFeed } from './departmentFeedOwnership'
+import { departmentFeedOperationSchemas } from './departmentFeedSchemas'
+import { mergeFeedMappings, mergeFeedPlatformSettings, type MappingUpdate, type PlatformSettingsPatch } from './departmentFeedMapping'
 import { fail, ok, type ToolContext, type ToolResult } from '../toolContext'
 
 const ACTION = 'department_inventory_feed_change'
@@ -105,7 +107,7 @@ async function load(ctx: ToolContext, clientId: string) {
 type Loaded = Awaited<ReturnType<typeof load>>
 /** Org membership alone is insufficient when several clients share a provider organization. */
 function sellerScoped(detail: FeedDetail, link: DealerLink): boolean {
-  return isExactNativeFeedScope(detail, link)
+  return isScopedDepartmentFeed(detail, link)
 }
 async function scopedFeed(loaded: Loaded, feedId: string): Promise<FeedDetail> {
   const list = await loaded.provider.listFeeds(
@@ -166,11 +168,12 @@ function previewView(preview: FeedPreviewResult) {
     }))
   }
 }
-// Inputs are validated by the explicit tool schemas before reaching this service.
+// Inputs are revalidated at this service boundary, including direct callers.
 interface FeedOperationInput {
   clientId: string
   proposalId?: string
   feedId?: string
+  sourceFeedId?: string
   name?: string
   platform?: FeedPlatform
   filters?: Record<string, unknown>
@@ -178,6 +181,8 @@ interface FeedOperationInput {
     name?: string
     filters?: Record<string, unknown>
     isActive?: boolean
+    mappingUpdates?: MappingUpdate[]
+    platformSettings?: PlatformSettingsPatch
   }
   ack?: boolean
   expectedRevision?: string
@@ -214,6 +219,7 @@ interface Row {
   confirmed_by: string | null
   resolved_payload: Payload
   result_payload: unknown
+  result_ref: string | null
 }
 function proposalView(row: Row) {
   const p = row.resolved_payload
@@ -239,12 +245,15 @@ function proposalView(row: Row) {
       platform: p.input.platform ?? p.before?.platform,
       isActive: p.input.patch?.isActive ?? p.before?.isActive ?? true,
       filters: p.input.filters ?? p.input.patch?.filters ?? null,
+      mappingUpdates: p.input.patch?.mappingUpdates ?? null,
+      platformSettings: p.input.patch?.platformSettings ?? null,
+      sourceFeedId: p.input.sourceFeedId ?? null,
       format: p.input.format ?? null
     },
     preview: p.preview,
     outcome:
       row.result_payload
-      ?? (row.status === 'executed' ? { reconciliationRequired: true } : null)
+      ?? (row.status === 'executed' ? { reconciliationRequired: true, ...(typeof row.result_ref === 'string' && /^[a-zA-Z0-9_-]{1,128}$/.test(row.result_ref) ? { feedId: row.result_ref } : {}) } : null)
   }
 }
 async function requireProposalReviewer(ctx: ToolContext, row: Row, reviewerId = ctx.userId) {
@@ -273,7 +282,7 @@ async function readProposal(
   access: 'owner' | 'reviewer' | 'either' = 'owner'
 ): Promise<Row> {
   const row = await queryOneFresh<Row>(
-    `SELECT id, user_id, tool_name, status, expires_at, confirmed_by, resolved_payload, result_payload FROM ai_pending_actions
+    `SELECT id, user_id, tool_name, status, expires_at, confirmed_by, resolved_payload, result_payload, result_ref FROM ai_pending_actions
     WHERE id = $1 AND source = 'mcp' AND tool_name = $2`,
     [id, ACTION]
   )
@@ -290,6 +299,24 @@ async function readProposal(
   }
   return row
 }
+async function baseline(loaded: Loaded, input: FeedOperationInput, setup: boolean) {
+  if (!setup) return scopedFeed(loaded, input.feedId!)
+  if (!input.sourceFeedId) return null
+  if (!loaded.link.defaultFeedIds.includes(input.sourceFeedId)) stop('Source template is not explicitly client-bound.', 'not_found')
+  return scopedFeed(loaded, input.sourceFeedId)
+}
+function candidate(loaded: Loaded, input: FeedOperationInput, before: FeedDetail | null, setup: boolean) {
+  return {
+    name: input.name ?? input.patch?.name ?? before?.name,
+    platform: input.platform ?? before!.platform,
+    filters: input.filters || input.patch?.filters || setup
+      ? buildInventoryPreviewFilters(normalizeDealerFeedFilters(input.filters ?? input.patch?.filters ?? {}), loaded.link.sellerRefs)
+      : before!.filters,
+    mappings: mergeFeedMappings(before?.mappings ?? {}, input.patch?.mappingUpdates),
+    platformSettings: mergeFeedPlatformSettings(before?.platformSettings ?? {}, input.patch?.platformSettings),
+    source: before?.source ?? undefined
+  }
+}
 async function propose(
   name: string,
   input: FeedOperationInput,
@@ -305,7 +332,7 @@ async function propose(
     ])
     const prior = (
       await db.query(
-        `SELECT id, user_id, tool_name, status, expires_at, confirmed_by, resolved_payload, result_payload FROM ai_pending_actions
+        `SELECT id, user_id, tool_name, status, expires_at, confirmed_by, resolved_payload, result_payload, result_ref FROM ai_pending_actions
       WHERE resolved_payload->>'requestKey' = $1 AND user_id = $2 AND source = 'mcp' AND tool_name = $3`,
         [key, ctx.userId, ACTION]
       )
@@ -322,31 +349,10 @@ async function propose(
       return ok(proposalView(prior))
     }
     const loaded = await load(ctx, input.clientId)
-    const before
-      = name !== 'marketing_propose_inventory_feed_setup'
-        ? await scopedFeed(loaded, input.feedId!)
-        : null
-    const nextFilters
-      = input.filters || input.patch?.filters
-        ? buildInventoryPreviewFilters(
-            normalizeDealerFeedFilters(input.filters ?? input.patch!.filters),
-            loaded.link.sellerRefs
-          )
-        : before!.filters
-    // Existing mappings/source stay internal; requests cannot set or replace either.
-    const preview = await loaded.provider.previewInventory(
-      loaded.providerContext,
-      loaded.link,
-      {
-        name: input.name ?? input.patch?.name ?? before?.name,
-        platform: input.platform ?? before!.platform,
-        filters: nextFilters,
-        mappings: before?.mappings ?? {},
-        platformSettings: before?.platformSettings ?? {},
-        source: before?.source ?? undefined
-      },
-      { limit: 100, offset: 0 }
-    )
+    const setup = name === 'marketing_propose_inventory_feed_setup'
+    const before = await baseline(loaded, input, setup)
+    const next = candidate(loaded, input, before, setup)
+    const preview = await loaded.provider.previewInventory(loaded.providerContext, loaded.link, next, { limit: 100, offset: 0 })
     const revision = hash({ input, before, mapping: loaded.link })
     const payload: Payload = {
       version: 1,
@@ -359,7 +365,7 @@ async function propose(
         : name === 'marketing_propose_inventory_feed_regeneration' ? 'regenerate' : 'change',
       input,
       // The revision binds the full private source/mappings; never copy them into a proposal row.
-      before: before ? { id: before.id, name: safeText(before.name) ?? '', platform: before.platform, isActive: before.isActive } : null,
+      before: before && !setup ? { id: before.id, name: safeText(before.name) ?? '', platform: before.platform, isActive: before.isActive } : null,
       mapping: loaded.link,
       revision,
       preview: previewView(preview)
@@ -430,10 +436,8 @@ async function execute(
   await requireCurrentProposer(ctx, row)
   await requireProposalReviewer(ctx, row, reviewerId)
   const loaded = await load(ctx, input.clientId)
-  const before
-    = payload.operation !== 'setup'
-      ? await scopedFeed(loaded, payload.input.feedId!)
-      : null
+  const before = await baseline(loaded, payload.input, payload.operation === 'setup')
+  const next = candidate(loaded, payload.input, before, payload.operation === 'setup')
   if (
     hash({ input: payload.input, before, mapping: loaded.link })
     !== payload.revision
@@ -470,12 +474,8 @@ async function execute(
         loaded.providerContext,
         loaded.link,
         {
+          ...next,
           name: payload.input.name!,
-          platform: payload.input.platform!,
-          filters: buildInventoryPreviewFilters(
-            normalizeDealerFeedFilters(payload.input.filters),
-            loaded.link.sellerRefs
-          ),
           externalKey: `department-feed:${row.id}`
         }
       )
@@ -489,12 +489,12 @@ async function execute(
         )
         generation = { format: payload.input.format!, itemCount: generated.itemCount }
       } else {
-        const patch: Record<string, unknown> = { ...payload.input.patch }
-        if (patch.filters)
-          patch.filters = buildInventoryPreviewFilters(
-            normalizeDealerFeedFilters(patch.filters),
-            loaded.link.sellerRefs
-          )
+        const patch: Record<string, unknown> = {}
+        if (payload.input.patch?.name !== undefined) patch.name = next.name
+        if (payload.input.patch?.filters !== undefined) patch.filters = next.filters
+        if (payload.input.patch?.mappingUpdates !== undefined) patch.mappings = next.mappings
+        if (payload.input.patch?.platformSettings !== undefined) patch.platform_settings = next.platformSettings
+        if (payload.input.patch?.isActive !== undefined) patch.isActive = payload.input.patch.isActive
         if ('isActive' in patch) {
           patch.is_active = patch.isActive
           delete patch.isActive
@@ -502,34 +502,26 @@ async function execute(
         await loaded.provider.updateFeed(loaded.providerContext, target, patch)
       }
     }
-    const readback = await scopedFeed(loaded, target.feedId)
+    if (payload.operation === 'setup') {
+      if (typeof target.feedId !== 'string' || !/^[a-zA-Z0-9_-]{1,128}$/.test(target.feedId) || target.providerId !== loaded.link.providerId || target.platform !== next.platform) throw new Error('Invalid provider feed identity')
+      // Save the returned identity before later readback can fail; never repeat creation.
+      await transactionWithoutRetry(async (db) => {
+        await db.query(
+          `UPDATE ai_pending_actions SET result_ref=$3 WHERE id=$1 AND user_id=$2 AND source='mcp' AND tool_name=$4 AND status='executed'`,
+          [row.id, ctx.userId, target.feedId, ACTION]
+        )
+      })
+    }
+    const readback = await scopedFeed(payload.operation === 'setup' ? { ...loaded, link: { ...loaded.link, defaultFeedIds: [...loaded.link.defaultFeedIds, target.feedId] } } : loaded, target.feedId)
     if (
       payload.operation === 'regenerate'
       && hash({ input: payload.input, before: readback, mapping: loaded.link }) !== payload.revision
     ) throw new Error('Feed changed during regeneration')
-    const expected
-      = payload.operation === 'setup'
-        ? {
-            name: payload.input.name!,
-            platform: payload.input.platform!,
-            filters: buildInventoryPreviewFilters(
-              normalizeDealerFeedFilters(payload.input.filters),
-              loaded.link.sellerRefs
-            )
-          }
-        : payload.operation === 'change'
-          ? {
-              ...payload.input.patch,
-              ...(payload.input.patch!.filters
-                ? {
-                    filters: buildInventoryPreviewFilters(
-                      normalizeDealerFeedFilters(payload.input.patch!.filters),
-                      loaded.link.sellerRefs
-                    )
-                  }
-                : {})
-            }
-          : {}
+    const expected: Record<string, unknown> = payload.operation === 'setup'
+      ? { name: next.name, platform: next.platform, filters: next.filters, mappings: next.mappings, platformSettings: next.platformSettings, source: next.source ?? null }
+      : payload.operation === 'change'
+        ? { name: next.name, filters: next.filters, mappings: next.mappings, platformSettings: next.platformSettings, source: next.source ?? null, isActive: payload.input.patch?.isActive ?? before!.isActive }
+        : {}
     if (
       Object.entries(expected).some(
         ([k, v]) => canonical(readback[k as keyof FeedDetail]) !== canonical(v)
@@ -545,6 +537,17 @@ async function execute(
       providerDeliveryVerified: false
     }
     await transactionWithoutRetry(async (db) => {
+      if (payload.operation === 'setup' && payload.input.sourceFeedId) {
+        const bound = await db.query(
+          `UPDATE client_feed_links SET default_feed_ids=$6::jsonb, updated_at=NOW()
+           WHERE client_id=$1 AND provider_id=$2 AND status='active' AND external_org_id=$3
+             AND seller_refs=$4::jsonb AND default_feed_ids=$5::jsonb RETURNING client_id`,
+          [loaded.link.clientId, loaded.link.providerId, loaded.link.externalOrgId,
+            JSON.stringify(loaded.link.sellerRefs), JSON.stringify(loaded.link.defaultFeedIds),
+            JSON.stringify([...new Set([...loaded.link.defaultFeedIds, target.feedId])])]
+        )
+        if (!bound.rows.length) throw new Error('Dealer mapping changed during setup')
+      }
       await db.query(
         `UPDATE ai_pending_actions SET result_payload = $3::jsonb, result_ref = $4
       WHERE id = $1 AND user_id = $2 AND source = 'mcp' AND tool_name = $5`,
@@ -567,7 +570,12 @@ export async function runDepartmentFeedOperation(
   digest?: string
 ): Promise<ToolResult> {
   try {
+    const schema = departmentFeedOperationSchemas[name as keyof typeof departmentFeedOperationSchemas]
+    if (!schema) return fail('Unknown department feed operation.', 'not_found')
+    const parsed = schema.safeParse(raw)
+    if (!parsed.success) return fail('Invalid department feed arguments.', 'bad_args')
     const write = MUTATIONS.has(name)
+    if (write && (!/^mcp:[0-9a-f]{64}$/.test(key ?? '') || !/^[0-9a-f]{64}$/.test(digest ?? ''))) return fail('Verified logical request identity required.', 'coordinator_required')
     const ctx = await requireMarketingDepartment(original, write)
     const config = resolveMcpRuntimeConfig(ctx.event)
     if (
@@ -576,7 +584,7 @@ export async function runDepartmentFeedOperation(
       || (write && !config.suiteFlags.writes)
     )
       stop('Department feed capability is disabled.', 'disabled')
-    const input = raw as FeedOperationInput
+    const input = parsed.data as FeedOperationInput
     await requireClient(ctx, input.clientId)
     if (name === 'marketing_get_inventory_feed_change')
       return ok(
