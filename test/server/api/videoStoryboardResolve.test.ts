@@ -15,7 +15,7 @@ beforeEach(() => {
 })
 describe('storyboard resolution route', () => {
   it('requires authority and feature flag before media preparation', async () => {
-    await expect(route({ context: { cloudflare: { env: {} } } } as never)).rejects.toMatchObject({ statusCode: 404 })
+    await expect(route({ context: { cloudflare: { env: { VIDEO_STORYBOARD_ENABLED: 'false' } } } } as never)).rejects.toMatchObject({ statusCode: 404 })
     expect(mocks.resolve).not.toHaveBeenCalled()
     mocks.auth.mockRejectedValue({ statusCode: 403 })
     await expect(route(event as never)).rejects.toMatchObject({ statusCode: 403 })

@@ -20,7 +20,7 @@ beforeEach(() => {
 })
 describe('storyboard apply API', () => {
   it('requires write authorization and the creation flag', async () => {
-    await expect(apply({ context: { cloudflare: { env: {} } } } as never)).rejects.toMatchObject({ statusCode: 404 })
+    await expect(apply({ context: { cloudflare: { env: { VIDEO_STORYBOARD_ENABLED: 'false' } } } } as never)).rejects.toMatchObject({ statusCode: 404 })
     mocks.auth.mockRejectedValue({ statusCode: 403 })
     await expect(apply(event as never)).rejects.toMatchObject({ statusCode: 403 })
     expect(mocks.prepare).not.toHaveBeenCalled()
