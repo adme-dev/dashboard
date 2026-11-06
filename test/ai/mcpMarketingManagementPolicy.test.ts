@@ -57,7 +57,7 @@ describe('dedicated marketing management MCP policy', () => {
     }
   })
   it('admits actual department reads and gates actual budget and review writes by consent', () => {
-    for (const name of ['get_department_client_inventory', 'marketing_list_budget_allocations', 'marketing_list_google_ads_reviews', 'marketing_diagnose_catalog', 'marketing_get_catalog_upload_status']) {
+    for (const name of ['get_department_client_inventory', 'marketing_list_budget_allocations', 'marketing_list_google_ads_reviews', 'marketing_diagnose_catalog', 'marketing_get_catalog_upload_status', 'marketing_list_catalog_connections', 'marketing_find_client_catalogs']) {
       expect(evaluateStaffToolAdmission(name, manager())).toMatchObject({ allowed: true })
       expect(evaluateStaffToolAdmission(name, manager({ marketingCapabilities: ['reporting'] }))).toMatchObject({ allowed: false })
     }

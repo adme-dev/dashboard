@@ -9,13 +9,14 @@ import { requireIndependentMarketingReviewer, assertMarketingCapabilityAtBoundar
 import { requireMarketingDepartment } from './departmentAuthority'
 import { campaignDenied, requireDepartmentClient, departmentRuntimeEnv } from './departmentCampaignSupport'
 import { departmentCatalogContracts, metaProductFilter, departmentProductFilter } from './departmentCatalogSchemas'
+import { findClientCatalogs, listCatalogConnections } from './departmentCatalogDiscovery'
 import { isScopedDepartmentFeed } from './departmentFeedOwnership'
 import { paidHash, preparePaidProposal, readPaidProposal, paidProposalView, claimPaidProposal, savePaidReceipt } from './departmentPaidProposals'
 import { resolveMcpRuntimeConfig } from '../mcp/runtimeConfig'
 import { fail, ok, type ToolContext, type ToolResult } from '../toolContext'
 
 const ACTION = 'department_catalog_change'
-interface Input { clientId: string, connectionId: string, catalogId?: string, name?: string, operation?: 'create_catalog' | 'create_product_set' | 'refresh', sourceFeedId: string, productSetId?: string, filter?: unknown, proposalId?: string, expectedRevision?: string }
+interface Input { clientId: string, connectionId: string, catalogId?: string, name?: string, operation?: 'create_catalog' | 'create_product_set' | 'refresh', sourceFeedId: string, productSetId?: string, filter?: unknown, proposalId?: string, expectedRevision?: string, cursor?: number, limit?: number }
 async function loadCatalog(ctx: ToolContext, input: Input, diagnosis = false) {
   const connection = await getMetaCatalogConnectionAuthority(input.clientId, input.connectionId, { queryOne: queryOneFresh })
   if (!connection?.accessToken || (connection.tokenExpiresAt && !(Date.parse(connection.tokenExpiresAt) > Date.now()))) campaignDenied('not_ready')
@@ -62,7 +63,7 @@ async function loadCatalog(ctx: ToolContext, input: Input, diagnosis = false) {
   const set = input.productSetId ? sets.find(s => s.id === input.productSetId) : null
   if (input.productSetId && (!set || !binding)) campaignDenied('ownership_unproven')
   const snapshot = { connectionId: connection.id, accountId: connection.accountId, actId: connection.actId, binding, link, feed, businessId: business.id, persistedBinding, catalogId: catalog?.id ?? null, catalogType: catalog?.vertical ?? null, ...(input.operation === 'create_catalog' ? { catalogs } : {}), feeds, set, baseUrl }
-  return { connection, binding, link, feed, provider, catalog, business, persistedBinding, sets, set, baseUrl, snapshot }
+  return { connection, binding, bindings, link, feed, provider, catalog, catalogs, business, persistedBinding, sets, set, baseUrl, snapshot }
 }
 export async function runDepartmentCatalogOperation(name: string, raw: unknown, original: ToolContext, key?: string, digest?: string): Promise<ToolResult> {
   try {
@@ -78,6 +79,8 @@ export async function runDepartmentCatalogOperation(name: string, raw: unknown, 
     const flags = resolveMcpRuntimeConfig(ctx.event)
     if (!flags.serverEnabled || !flags.suiteFlags.feeds || (contract[2] && !flags.suiteFlags.writes)) campaignDenied('disabled')
     await requireDepartmentClient(ctx, input.clientId)
+    if (name === 'marketing_list_catalog_connections') return ok(await listCatalogConnections(input.clientId))
+    if (name === 'marketing_find_client_catalogs') return ok(await findClientCatalogs(input, await loadCatalog(ctx, input)))
     if (name === 'marketing_get_catalog_change') return ok(paidProposalView(await readPaidProposal(input.proposalId!, ACTION, input.clientId, undefined)))
     if (name === 'marketing_execute_catalog_change' || name === 'marketing_approve_catalog_change') {
       const p = await readPaidProposal(input.proposalId!, ACTION, input.clientId)

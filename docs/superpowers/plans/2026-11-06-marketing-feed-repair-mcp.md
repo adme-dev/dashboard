@@ -34,3 +34,11 @@ Ruling: deployment is in scope because the user asked that the exposed MCP can p
 - Preview deployment `d5d7acf8-8303-4041-a50a-045ef39beb08`, source `4a78d3ab230c4621b1985d9592b5ae983f8a0d17`. Updated marketing repair page verified over HTTP. Raw bundle 25,348,499 / 25,468,928 bytes; gzip 7,311,239 / 9,750,000 bytes. The final busy-response follow-up is verified separately and will be included in the guarded production rebuild.
 - Full typecheck reports 1,189 repository-wide errors, none in changed implementation files. Broader CI runs independently; main has no required status checks. Focused checks, independent review, source/target guard and production build are release gates for this bounded change.
 - Signed-in browser surfaces are unavailable (CUA service startup failed; Kimi extension disconnected). Employee-owned OAuth acceptance remains pending and is not inferred from owner tools, HTTP 200 or source tests.
+
+## Connection and catalogue discovery closeout
+
+The core repair release reached production as `706725b7` from current main `7ce96676e638ef9def44647419f115669c8722e0`. The first upload attempt failed with a connection error before deployment; the guarded retry rebuilt and uploaded successfully. A final usability check found that marketing's stored inventory read exposes connection counts, so read-only ID discovery is required to avoid manual resource lookup.
+
+Add `marketing_list_catalog_connections` for active client Meta connection and persisted binding IDs only, plus `marketing_find_client_catalogs` to scan a bounded page of candidates and expose only those proven through an exact own persisted binding or default-bound source's sole canonical feed URL. No catalogue names, foreign client IDs, provider messages, supplier URLs or credentials are exposed. Preserve fresh department/client authority and feed-suite gates. Existing native own bindings do not need a default-feed reference; unpersisted adoption does.
+
+Discovery closeout validation: 181 targeted tests passed across 22 suites, including all five real PostgreSQL concurrency tests. New/changed server, test and feature-detail files lint clean after style fixes. Independent review found no blocking findings. No live provider writes were used.
