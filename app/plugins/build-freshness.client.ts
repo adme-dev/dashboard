@@ -1,4 +1,7 @@
 export default defineNuxtPlugin(() => {
+  // Client presentations have their own status refresh and never edit a workspace.
+  const isClientPresentation = () => /^\/share\/banner\/p_[0-9a-f]{32}\/?$/i.test(window.location.pathname)
+  if (isClientPresentation()) return
   const nuxtApp = useNuxtApp()
   const currentBuildId = nuxtApp.payload.config?.app?.buildId
 
@@ -9,7 +12,7 @@ export default defineNuxtPlugin(() => {
   let promptedForBuildId: string | null = null
 
   async function checkBuildFreshness() {
-    if (checking || document.visibilityState === 'hidden') return
+    if (checking || document.visibilityState === 'hidden' || isClientPresentation()) return
 
     checking = true
     try {

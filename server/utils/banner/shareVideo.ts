@@ -43,9 +43,7 @@ async function readJob(projectId: string, plan: Plan) {
   [plan.id, projectId, plan.key, `banner-render-jobs/${plan.id}/source.html`])
 }
 
-export async function bannerShareVideos(event: H3Event) {
-  const share = await loadPublicBannerShare(event)
-  const token = getRouterParam(event, 'token')!
+export async function publicBannerShareVideos(share: Share, token: string) {
   const videos = await Promise.all(bannerShareVideoPlans(share).map(async (plan) => {
     const job = plan.unsupported ? null : await readJob(share.project.id, plan)
     return { formatKey: plan.key, revision: plan.revision, width: plan.width, height: plan.height,
@@ -54,6 +52,11 @@ export async function bannerShareVideos(event: H3Event) {
       url: job?.status === 'done' ? `/api/public/banner-share/${token}/video?formatKey=${encodeURIComponent(plan.key)}&revision=${plan.revision}` : null }
   }))
   return { videos }
+}
+
+export async function bannerShareVideos(event: H3Event) {
+  const share = await loadPublicBannerShare(event)
+  return publicBannerShareVideos(share, getRouterParam(event, 'token')!)
 }
 
 export function buildBannerShareVideoHtml(share: Share, plan: Plan) {
