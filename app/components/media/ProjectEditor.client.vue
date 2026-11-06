@@ -23,7 +23,7 @@ import VideoStudioSelectedAssetPanel from '~~/app/components/media/VideoStudioSe
 import VideoStudioVoiceComposer from '~~/app/components/media/VideoStudioVoiceComposer.vue'
 import VideoStudioWorkbench from '~~/app/components/media/VideoStudioWorkbench.vue'
 import VideoStudioFeatureMenu from '~~/app/components/media/VideoStudioFeatureMenu.vue'
-import type { VideoModelOption } from '~~/app/utils/video/modelPresentation'
+import { modelLabelFor, type VideoModelOption } from '~~/app/utils/video/modelPresentation'
 import { apiErrorDescription } from '~~/app/utils/apiError'
 import { canReplaceVideoStudioClip } from '~~/app/utils/video/assetReplacement'
 import { resolveVideoStudioClipInspector } from '~~/app/utils/video/clipInspector'
@@ -1479,7 +1479,7 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
                 No generation jobs are recorded for this project.
               </p><ul v-else class="mt-3 divide-y divide-default">
                 <li v-for="job in genJobs.jobs.value" :key="job.id" class="flex items-center justify-between gap-3 py-3 text-sm">
-                  <span class="min-w-0 truncate">{{ job.modelId }}</span><UBadge :label="job.status" color="neutral" variant="subtle" />
+                  <span class="min-w-0 truncate">{{ modelLabelFor(job.modelId) }}</span><UBadge :label="job.status" color="neutral" variant="subtle" />
                 </li>
               </ul>
             </div>
