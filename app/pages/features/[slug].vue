@@ -1722,6 +1722,22 @@ const features: Record<string, Feature> = {
       { title: 'Managed Updates', content: 'The creative suite uses pinned upstream GitHub releases and source commits. Candidate upgrades must preserve branding, document formats and integration patches, pass rebuild and browser checks, and retain a previous version for rollback. Detecting an upstream release does not automatically replace an active editor.' }
     ]
   },
+  'role-skills': {
+    title: 'Role Skills & Sources',
+    slug: 'role-skills',
+    icon: 'i-lucide-library',
+    category: 'AI & Intelligence',
+    categoryIcon: 'i-lucide-brain',
+    categoryIconBg: 'bg-amber-50 dark:bg-amber-500/10',
+    categoryIconColor: 'text-amber-600 dark:text-amber-400',
+    description: 'Start the right workflow from chat, see the skills available to your role, and improve shared guidance with version history and clear source references.',
+    details: [
+      { title: 'Useful shortcuts for your role', content: 'The plus menu and starter cards show workflows admitted by your current access. Marketing can review budget health, plan promotions and inspect feeds; creative staff can prepare graphics briefs; account managers can review client delivery. A choice prepares editable text and the appropriate assistant focus before you send it. Text and voice use the same selected workflow identity.' },
+      { title: 'A visible skill library', content: 'Skills and Sources shows your published workflows, required capabilities and official references. Administrators can inspect mappings by role, save improvements as drafts, review immutable history and explicitly publish a version with a reason. A role mapping changes discovery; permissions, client scope, personal tool restrictions and evaluated release checks still govern access.' },
+      { title: 'Official references with clear evidence', content: 'Documentation lookup retrieves approved official platform pages and selected OpenAI or Anthropic repository references. It returns a bounded excerpt, URL, retrieval time and content digest when readable, and identifies unavailable or blocked pages. Source material remains reference data and does not automatically replace published guidance or execute downloaded scripts.' },
+      { title: 'Existing specialists and reviewed actions', content: 'Enabled specialists can provide scoped read-only reviews through the existing Spend Controller, Publishing Planner, Financial Watch and Traffic Controller paths. Client selection and role grants are checked again when used. Company accounting still requires explicit Finance access, and consequential marketing changes retain their existing confirmation and independent review requirements.' }
+    ]
+  },
   'ai-chat': {
     title: 'AI Chat',
     slug: 'ai-chat',

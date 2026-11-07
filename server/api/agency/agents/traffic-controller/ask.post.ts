@@ -1,14 +1,11 @@
+import { platformAgentEnabled } from '~~/server/utils/ai/platformAgentFlags'
 import { requireAuth } from '~~/server/utils/auth'
 import { runTrafficControllerAgentRequest } from '~~/server/utils/ai/trafficControllerAgentRuntime'
 import { resolveUserPlatformAgentAuthority } from '~~/server/utils/ai/platformAgentAuthority'
 import { resolvePlatformAgentScope } from '~~/server/utils/ai/platformAgentScope'
 
-function enabled() {
-  return process.env.TRAFFIC_CONTROLLER_AGENT_ENABLED === 'true'
-}
-
 export default defineEventHandler(async (event) => {
-  if (!enabled()) {
+  if (!platformAgentEnabled(event, 'TRAFFIC_CONTROLLER_AGENT_ENABLED')) {
     throw createError({ statusCode: 404, statusMessage: 'Traffic Controller Agent is not enabled.' })
   }
 

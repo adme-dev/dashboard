@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { formatDistanceToNow } from 'date-fns'
+import type { DropdownMenuItem } from '@nuxt/ui'
+import type { RoleSkillShortcut } from '~~/shared/types/roleSkills'
 import type { AiConversation, AiMessage } from '~/types'
 import { AI_PERSONA_OPTIONS } from '~~/app/utils/aiPersonas'
 
@@ -15,6 +17,7 @@ const apiFetch = $fetch as <T = unknown>(
 ) => Promise<T>
 
 const {
+  workflows, selectedWorkflow, workflowError, loadWorkflows, selectWorkflow, clearWorkflow,
   conversations, activeConversation, messages, selectedPersona, defaultPersona, chatToolsEnabled, loadAssistantDefaults, loading, sending,
   hasMoreConversations, hasMoreMessages, totalConversations,
   fetchConversations, loadMoreConversations, createConversation,
@@ -37,8 +40,30 @@ const personaTooltip = computed(() => {
 })
 const personaSelection = computed({
   get: () => selectedPersona.value ?? '__default__',
-  set: (value: string) => { selectedPersona.value = value === '__default__' ? null : value }
+  set: (value: string) => {
+    clearWorkflow()
+    selectedPersona.value = value === '__default__' ? null : value
+  }
 })
+
+const workflowItems = computed<DropdownMenuItem[][]>(() => {
+  const groups = new Map<string, DropdownMenuItem[]>()
+  for (const workflow of workflows.value) {
+    if (!groups.has(workflow.group)) groups.set(workflow.group, [{ type: 'label', label: workflow.group }])
+    groups.get(workflow.group)!.push({ label: workflow.label, icon: 'i-lucide-workflow', onSelect: () => chooseWorkflow(workflow) })
+  }
+  if (!groups.size) groups.set('empty', [{ label: workflowError.value || 'No workflows available for your role', disabled: true }])
+  return [...groups.values(), [{ label: 'Skills and sources', icon: 'i-lucide-library', to: '/agency/ai/skills' }]]
+})
+
+function chooseWorkflow(workflow: RoleSkillShortcut) {
+  selectWorkflow(workflow)
+  if (selectedWorkflow.value?.versionId !== workflow.versionId) return
+  messageInput.value = workflow.prompt
+  mentionedEntities.value = []
+  closeMentionDropdown()
+  nextTick(() => inputRef.value?.focus())
+}
 
 // --- Voice Chat ---
 const {
@@ -165,6 +190,7 @@ function resolveLastProposal() {
 const voiceSession = useVoiceSession({
   ensureConversation: ensureConversationId,
   getPersona: () => selectedPersona.value,
+  getWorkflow: () => selectedWorkflow.value ? { key: selectedWorkflow.value.key, versionId: selectedWorkflow.value.versionId } : null,
   onTurn: pushVoiceTurn,
   onAssistantNote: pushAssistantNote,
   onProposalResolved: resolveLastProposal,
@@ -232,7 +258,8 @@ async function handleVoiceRecord() {
       activeConversation.value.id,
       blob,
       entities.length > 0 ? entities : undefined,
-      selectedPersona.value
+      selectedPersona.value,
+      selectedWorkflow.value ? { key: selectedWorkflow.value.key, versionId: selectedWorkflow.value.versionId } : undefined
     )
 
     // Replace temp message with actual transcribed text
@@ -567,7 +594,7 @@ function handleMentionKeydown(e: KeyboardEvent) {
 }
 
 // Fetch conversations on mount
-await Promise.all([fetchConversations(), loadAssistantDefaults()])
+await Promise.all([fetchConversations(), loadAssistantDefaults(), loadWorkflows()])
 
 // If navigated from widget with a conversation ID, load it
 const conversationParam = route.query.conversation as string | undefined
@@ -636,6 +663,7 @@ async function handleNewChat() {
   try {
     const conv = await createConversation()
     selectedPersona.value = null
+    clearWorkflow()
     updateUrl(conv.id)
   } catch {
     toast.add({ title: 'Error', description: 'Failed to create conversation', color: 'error' })
@@ -1060,36 +1088,24 @@ function getRenderedMarkdown(content: string): string {
             <p class="text-muted text-sm max-w-md mb-6">
               Ask me about your tasks, clients, boards, budgets, or anything about your agency operations.
             </p>
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 max-w-lg w-full">
-              <button
-                class="text-left px-3 py-2 rounded-lg border border-default hover:bg-elevated/80 transition-colors text-sm"
-                @click="messageInput = 'What tasks are assigned to me?'"
+            <div v-if="workflows.length" class="grid w-full max-w-lg grid-cols-1 gap-2 sm:grid-cols-2">
+              <UButton
+                v-for="workflow in workflows.slice(0, 4)"
+                :key="workflow.key"
+                variant="outline"
+                color="neutral"
+                class="h-full justify-start whitespace-normal px-3 py-2 text-left"
+                @click="chooseWorkflow(workflow)"
               >
-                <span class="font-medium">My tasks</span>
-                <p class="text-xs text-muted mt-0.5">See what's on your plate</p>
-              </button>
-              <button
-                class="text-left px-3 py-2 rounded-lg border border-default hover:bg-elevated/80 transition-colors text-sm"
-                @click="messageInput = 'Show me overdue items across all boards'"
-              >
-                <span class="font-medium">Overdue items</span>
-                <p class="text-xs text-muted mt-0.5">Find what needs attention</p>
-              </button>
-              <button
-                class="text-left px-3 py-2 rounded-lg border border-default hover:bg-elevated/80 transition-colors text-sm"
-                @click="messageInput = 'How is our ad spend looking this month?'"
-              >
-                <span class="font-medium">Ad spend summary</span>
-                <p class="text-xs text-muted mt-0.5">Check budget pacing</p>
-              </button>
-              <button
-                class="text-left px-3 py-2 rounded-lg border border-default hover:bg-elevated/80 transition-colors text-sm"
-                @click="messageInput = 'Give me a status update on all active clients'"
-              >
-                <span class="font-medium">Client status</span>
-                <p class="text-xs text-muted mt-0.5">Overview of active clients</p>
-              </button>
+                <span>
+                  <span class="block text-sm font-medium">{{ workflow.label }}</span>
+                  <span class="mt-0.5 block text-xs text-muted">{{ workflow.description }}</span>
+                </span>
+              </UButton>
             </div>
+            <p v-else class="max-w-sm text-xs text-muted">
+              {{ workflowError || 'No published workflows are available for your role yet. Write your own request to get started.' }}
+            </p>
           </div>
 
           <!-- Message Thread -->
@@ -1335,6 +1351,19 @@ function getRenderedMarkdown(content: string): string {
                 </span>
               </div>
 
+              <div v-if="selectedWorkflow" class="flex items-center gap-1.5 px-3 pt-2 text-xs text-muted">
+                <UIcon name="i-lucide-workflow" class="size-3.5 shrink-0" />
+                <span class="min-w-0 truncate">{{ selectedWorkflow.label }} · v{{ selectedWorkflow.version }}</span>
+                <UButton
+                  icon="i-lucide-x"
+                  variant="ghost"
+                  color="neutral"
+                  size="xs"
+                  class="size-5 shrink-0 p-0"
+                  aria-label="Clear selected workflow"
+                  @click="clearWorkflow"
+                />
+              </div>
               <UFormField label="Message" :ui="{ label: 'sr-only' }" class="px-3 pt-2">
                 <UTextarea
                   ref="messageTextarea"
@@ -1368,6 +1397,16 @@ function getRenderedMarkdown(content: string): string {
               </div>
               <div class="flex items-center justify-between gap-2 px-2 pb-2">
                 <div class="flex min-w-0 items-center gap-2">
+                  <UDropdownMenu v-if="aiToolsEnabled" :items="workflowItems" :content="{ align: 'start', side: 'top' }">
+                    <UButton
+                      icon="i-lucide-plus"
+                      variant="ghost"
+                      color="neutral"
+                      size="sm"
+                      aria-label="Choose workflow"
+                      :disabled="sending || isRecording || voiceProcessing || voiceSession.isActive.value"
+                    />
+                  </UDropdownMenu>
                   <UFormField
                     v-if="aiToolsEnabled"
                     label="Assistant focus"

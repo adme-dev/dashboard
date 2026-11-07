@@ -1,3 +1,4 @@
+import { NATIVE_SUPPLEMENTAL_TOOL_NAMES } from '~~/server/utils/ai/nativeToolNames'
 import { DEPARTMENT_TOOL_NAMES } from '~~/server/utils/ai/mcp/departmentToolNames'
 import { describe, it, expect } from 'vitest'
 import { PERSONAS, DEFAULT_PERSONA, PERSONA_OPTIONS, resolvePersona } from '~~/server/utils/ai/personas'
@@ -6,7 +7,7 @@ import { filterToolsForUser } from '~~/server/utils/ai/toolRegistry'
 import { AI_PERSONA_OPTIONS } from '~~/app/utils/aiPersonas'
 import { PERMISSION_GROUPS, type PermissionGroup } from '~~/server/utils/permissions'
 
-const REGISTRY_NAMES = new Set([...registry.map(t => t.name), ...DEPARTMENT_TOOL_NAMES])
+const REGISTRY_NAMES = new Set([...registry.map(t => t.name), ...DEPARTMENT_TOOL_NAMES, ...NATIVE_SUPPLEMENTAL_TOOL_NAMES])
 
 describe('resolvePersona', () => {
   it('resolves a known key to its persona', () => {
@@ -75,8 +76,8 @@ describe('persona narrowing is bounded by RBAC (never grants beyond the role)', 
     return tools.map(t => t.name)
   }
 
-  it('explicitly granted owner + finance persona → exactly the finance allowlist', () => {
-    expect(toolsFor('owner', 'finance', PERMISSION_GROUPS).sort()).toEqual([...PERSONAS.finance!.toolAllowlist!].sort())
+  it('explicitly granted owner + finance persona intersects the base transport registry', () => {
+    expect(toolsFor('owner', 'finance', PERMISSION_GROUPS).sort()).toEqual(PERSONAS.finance!.toolAllowlist!.filter(name => registry.some(tool => tool.name === name)).sort())
   })
 
   it('owner + finance persona alone does not grant company finance access', () => {

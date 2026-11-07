@@ -289,6 +289,7 @@ const categories = [
     iconBg: 'bg-amber-50 dark:bg-amber-500/10',
     iconColor: 'text-amber-600',
     features: [
+      { title: 'Role Skills & Sources', slug: 'role-skills', icon: 'i-lucide-library', description: 'Role-aware chat workflows, versioned skill guidance, administrator role mappings, and guarded official-documentation lookup.' },
       { title: 'AI Chat', slug: 'ai-chat', icon: 'i-lucide-bot', description: 'Conversational AI that pulls live agency data on demand — finance, ad-spend, client profitability, retainer burn, revenue forecasting, tasks, and more — with @entity mentions, saved My Assistant defaults, shared text and voice focus, and reviewed marketing changes that require confirmation.' },
       { title: 'Owner God Mode', slug: 'owner-god-mode', icon: 'i-lucide-crown', description: 'Always-on access to every registered application and MCP capability for active owners, including audited Banner Studio creation and staged Google Tag Manager publishing. Explicit Finance grants, authentication, isolation and emergency controls remain enforced.' },
       { title: 'Voice AI', slug: 'voice-ai', icon: 'i-lucide-mic', description: 'Send one voice question or start a hands-free conversation from the chat composer, with clear microphone guidance and spoken replies.' },

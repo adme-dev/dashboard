@@ -1,3 +1,4 @@
+import { buildNativeSupplementalTools } from '~~/server/utils/ai/nativeChatTools'
 import { resolveChatRuntime } from '~~/server/utils/ai/chatRuntime'
 import { isActiveGodModeAuthority } from '~~/server/utils/godMode/authority'
 import { discoverNativeMarketingTools } from '~~/server/utils/ai/marketing/nativeTools'
@@ -39,6 +40,7 @@ export interface MyAssistantGetDependencies {
   tools: ExplainableAssistantTool[]
   discoverMarketingTools: typeof discoverNativeMarketingTools
   resolveChatRuntime: typeof resolveChatRuntime
+  discoverSupplementalTools: typeof buildNativeSupplementalTools
 }
 
 const defaultDependencies: MyAssistantGetDependencies = {
@@ -53,7 +55,8 @@ const defaultDependencies: MyAssistantGetDependencies = {
   },
   tools: registry,
   discoverMarketingTools: discoverNativeMarketingTools,
-  resolveChatRuntime
+  resolveChatRuntime,
+  discoverSupplementalTools: buildNativeSupplementalTools
 }
 
 export function createMyAssistantGetHandler(
@@ -73,7 +76,8 @@ export function createMyAssistantGetHandler(
       : await dependencies.discoverMarketingTools({
           userId: user.id, userRole: context.identity.role, source: 'chat', event
         })
-    return { ...dependencies.buildMyAssistantExplainability(context, [...dependencies.tools, ...marketingTools]),
+    const supplemental = await dependencies.discoverSupplementalTools({ userId: user.id, userRole: context.identity.role, source: 'chat', event })
+    return { ...dependencies.buildMyAssistantExplainability(context, [...dependencies.tools, ...marketingTools, ...supplemental]),
       chatRuntime: dependencies.resolveChatRuntime(event) }
   }
 }

@@ -1,15 +1,12 @@
+import { platformAgentEnabled } from '~~/server/utils/ai/platformAgentFlags'
 import { requireAuth } from '~~/server/utils/auth'
 import { getSelectedTenant } from '~~/server/utils/session'
 import { runFinancialWatchAgentRequest } from '~~/server/utils/ai/financialWatchAgentRuntime'
 import { resolveUserPlatformAgentAuthority } from '~~/server/utils/ai/platformAgentAuthority'
 import { resolvePlatformAgentScope } from '~~/server/utils/ai/platformAgentScope'
 
-function enabled() {
-  return process.env.FINANCIAL_WATCH_AGENT_ENABLED === 'true'
-}
-
 export default defineEventHandler(async (event) => {
-  if (!enabled()) {
+  if (!platformAgentEnabled(event, 'FINANCIAL_WATCH_AGENT_ENABLED')) {
     throw createError({ statusCode: 404, statusMessage: 'Financial Watch Agent is not enabled.' })
   }
 

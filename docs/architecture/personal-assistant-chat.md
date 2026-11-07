@@ -44,3 +44,11 @@ This change adds no access to employees' Cloudflare accounts, GitHub repositorie
 - [Conversation state and memory](https://developers.cloudflare.com/agents/concepts/conversation-state-and-memory/): distinguish history, prompt context and memory.
 
 The existing generated graph predates current path IDs and has collisions. It was not regenerated in this change and is stale for this integration. Current source, this architecture note and release receipts take precedence over old diagrams.
+
+## Role skills and official references
+
+Role Skills & Sources at `/agency/ai/skills` adds a role-filtered composer menu and versioned original request guidance. The selected `{key,versionId}` is admitted again on text and voice submission and at engine execution. Skill guidance is bounded task data, not tool authority, and actual user text/transcription remains the persisted input. An immutable version change or revoked role binding requires selection again.
+
+Fresh ADMIN grants govern draft editing and explicit publication; bindings never grant permissions or activate capability packs. Ordinary tool, client, personal-disable, read-only, runtime and evaluated-release ceilings remain enforced. Enabled native specialist adapters reuse authenticated scoped agent routes in read-only mode, require current client authority and never enter Spend Controller proposal mode. The shared specialist authority now uses current explicit role grants and Marketing management all-active client scope.
+
+Official documentation lookup uses exact approved HTTPS host/path families, public-network checks on every redirect, a shared timeout and byte limits. It records unavailable/error/login/script-only sources rather than inventing verification. Repository references are pinned; independently written XeroFlow workflows do not import remote scripts or proprietary plugin bodies. See [the source register](role-skills-source-register.md) for exact revisions and licensing evidence.

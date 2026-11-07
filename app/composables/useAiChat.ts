@@ -1,4 +1,6 @@
 import type { AiConversation, AiMessage, AiContextSource } from '~/types'
+import { watch } from 'vue'
+import type { RoleSkillList, RoleSkillShortcut } from '~~/shared/types/roleSkills'
 import type { MyAssistantView } from '~~/shared/types/aiAssistant'
 import { createAiChatSubmissionBody, postAiChatSubmission } from '~/utils/aiChatTransport'
 
@@ -34,6 +36,12 @@ export function useAiChat() {
   const selectedPersona = useState<string | null>('ai-chat-persona', () => null)
   const defaultPersona = useState<string | null>('ai-chat-default-persona', () => null)
   const chatToolsEnabled = useState<boolean | null>('ai-chat-tools-enabled', () => null)
+  const workflows = useState<RoleSkillShortcut[]>('ai-chat-workflows', () => [])
+  const selectedWorkflow = useState<RoleSkillShortcut | null>('ai-chat-selected-workflow', () => null)
+  const workflowError = ref('')
+  watch(selectedPersona, (persona) => {
+    if (selectedWorkflow.value && selectedWorkflow.value.persona !== persona) selectedWorkflow.value = null
+  })
   const loading = ref(false)
   const sending = ref(false)
   const hasMoreConversations = ref(false)
@@ -43,6 +51,32 @@ export function useAiChat() {
     request: string,
     options?: { method?: string, body?: unknown, params?: Record<string, unknown> }
   ) => Promise<T>
+
+  async function loadWorkflows() {
+    workflowError.value = ''
+    try {
+      const catalog = await apiFetch<RoleSkillList>('/api/agency/ai/skills')
+      workflows.value = catalog.skills
+      if (selectedWorkflow.value && !catalog.skills.some(skill => skill.versionId === selectedWorkflow.value?.versionId)) {
+        selectedWorkflow.value = null
+      }
+    } catch {
+      workflows.value = []
+      selectedWorkflow.value = null
+      workflowError.value = 'Workflows are unavailable. You can still write your own request.'
+    }
+  }
+
+  function selectWorkflow(workflow: RoleSkillShortcut) {
+    const eligible = workflows.value.find(skill => skill.key === workflow.key && skill.versionId === workflow.versionId)
+    if (!eligible) return
+    selectedPersona.value = eligible.persona
+    selectedWorkflow.value = eligible
+  }
+
+  function clearWorkflow() {
+    selectedWorkflow.value = null
+  }
 
   async function loadAssistantDefaults() {
     try {
@@ -87,7 +121,10 @@ export function useAiChat() {
       method: 'POST',
       body: { title: title || null },
     })
-    if (activeConversation.value) selectedPersona.value = null
+    if (activeConversation.value) {
+      selectedPersona.value = null
+      selectedWorkflow.value = null
+    }
     conversations.value.unshift(conv)
     activeConversation.value = conv
     messages.value = []
@@ -104,6 +141,7 @@ export function useAiChat() {
       messages.value = data.messages
       hasMoreMessages.value = data.hasMore
       selectedPersona.value = data.persona ?? null
+      selectedWorkflow.value = null
       // Rehydrate an open proposal onto the most recent assistant message so its confirm card
       // re-renders after a reload (matches the inline shape attached during send()).
       if (data.pendingAction) {
@@ -225,6 +263,7 @@ export function useAiChat() {
       if (boardId) body.boardId = boardId
       // Explicit null clears a stored conversation override and restores the personal default.
       body.persona = selectedPersona.value
+      if (selectedWorkflow.value) body.workflow = { key: selectedWorkflow.value.key, versionId: selectedWorkflow.value.versionId }
       if (room?.officeId) body.room = room
 
       const result = await postAiChatSubmission<ChatMessageResponse>(
@@ -273,6 +312,7 @@ export function useAiChat() {
     if (activeConversation.value?.id === id) {
       activeConversation.value = null
       selectedPersona.value = null
+      selectedWorkflow.value = null
       messages.value = []
     }
   }
@@ -305,6 +345,12 @@ export function useAiChat() {
   }
 
   return {
+    workflows,
+    selectedWorkflow,
+    workflowError,
+    loadWorkflows,
+    selectWorkflow,
+    clearWorkflow,
     conversations,
     activeConversation,
     messages,
