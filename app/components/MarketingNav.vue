@@ -666,7 +666,7 @@ const featuresCol4 = [
   { title: 'Governed AI Assistants', subtitle: 'Personal and department specialists', icon: 'i-lucide-shield-check', iconBg: 'bg-amber-500/15', iconColor: 'text-amber-400', to: '/ai-assistants' },
   { title: 'Advisor Backlog', subtitle: 'CFO recommendations as a triage queue', icon: 'i-lucide-target', iconBg: 'bg-amber-500/15', iconColor: 'text-amber-400', to: '/features/advisor-backlog' },
   { title: 'AI Training', subtitle: 'Your data trains your AI, privately', icon: 'i-lucide-brain', iconBg: 'bg-amber-500/15', iconColor: 'text-amber-400', to: '/ai-training' },
-  { title: 'Voice AI', subtitle: 'Talk to your AI by voice', icon: 'i-lucide-mic', iconBg: 'bg-amber-500/15', iconColor: 'text-amber-400', to: '/voice-ai' },
+  { title: 'Voice AI', subtitle: 'Voice messages and hands-free chat', icon: 'i-lucide-mic', iconBg: 'bg-amber-500/15', iconColor: 'text-amber-400', to: '/voice-ai' },
   { title: CRM_SEARCH_MARKETING_COPY.navigationTitle, subtitle: CRM_SEARCH_MARKETING_COPY.navigationSubtitle, icon: 'i-lucide-search', iconBg: 'bg-amber-500/15', iconColor: 'text-amber-400', to: '/features/semantic-search' },
   { title: 'Creative Workspace MCP', subtitle: 'Preview: scoped creative discovery', icon: 'i-lucide-panels-top-left', iconBg: 'bg-amber-500/15', iconColor: 'text-amber-400', to: '/features/creative-workspace-mcp' },
   { title: 'Marketing Staff MCP', subtitle: 'Reporting, inventory repairs and management', icon: 'i-lucide-user-check', iconBg: 'bg-amber-500/15', iconColor: 'text-amber-400', to: '/features/marketing-staff-mcp' },

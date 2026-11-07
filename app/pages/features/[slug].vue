@@ -1778,7 +1778,7 @@ const features: Record<string, Feature> = {
     details: [
       {
         title: 'Voice Input with Live Feedback',
-        content: 'Click the mic button and speak naturally. The recorder captures audio with echo cancellation, noise suppression, and automatic gain control. A live volume visualiser shows real-time audio levels while recording, and silence detection automatically stops the recording after 1.5 seconds of quiet — so you never have to remember to press stop.'
+        content: 'Choose Voice message to record one question, or Talk to start a hands-free conversation. The compact message box keeps your assistant focus, voice controls and send button together. Recording controls show when the microphone is active and let you stop or cancel.'
       },
       {
         title: 'Speech-to-Text Transcription',
@@ -1789,8 +1789,8 @@ const features: Record<string, Feature> = {
         content: 'AI responses are automatically read back to you using Workers AI text-to-speech. Markdown formatting is stripped before synthesis for natural-sounding audio. Click the volume button to stop playback at any time. If TTS is unavailable, the text response still appears — voice is additive, never blocking.'
       },
       {
-        title: 'Zero Setup, Graceful Degradation',
-        content: 'Voice AI requires no additional configuration or dependencies — it uses the same Workers AI binding as other AI features. In local development or when the AI binding is unavailable, the mic button simply does not appear. The feature degrades gracefully at every step: if transcription fails you get a helpful error; if TTS fails the text response still shows.'
+        title: 'Clear Microphone Guidance',
+        content: 'Open Voice help in the message box for a short explanation of the two voice modes. Microphone access, blocked permissions and voice errors get clear guidance when needed. You can keep typing while voice is unavailable, and text replies remain available if spoken playback fails.'
       }
     ]
   },
