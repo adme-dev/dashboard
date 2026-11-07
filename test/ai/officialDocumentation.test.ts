@@ -55,6 +55,22 @@ describe('official documentation source boundary', () => {
     expect(r.status).toBe('blocked')
     expect(fetcher).not.toHaveBeenCalled()
   })
+  it('uses edge-supported manual redirects for real DNS preflight without following resolver redirects', async () => {
+    const fetcher = vi.fn(async (input: string | URL | Request, options?: RequestInit) => {
+      const url = new URL(String(input))
+      if (url.hostname === 'cloudflare-dns.com' || url.hostname === 'dns.google') {
+        // Cloudflare Workers rejects redirect:error rather than issuing a request.
+        if (options?.redirect === 'error') throw new TypeError('Invalid redirect value')
+        expect(options?.redirect).toBe('manual')
+        return Response.json({ Status: 0, Answer: url.searchParams.get('type') === 'A' ? [{ type: 1, data: '1.1.1.1' }] : [] })
+      }
+      return new Response('<main>' + 'Public documentation reference. '.repeat(8) + '</main>', { headers: { 'content-type': 'text/html' } })
+    })
+    expect((await readOfficialDocumentation('https://developers.cloudflare.com/agents/', { fetch: fetcher })).status).toBe('readable')
+    const redirecting = vi.fn(async () => new Response(null, { status: 302, headers: { location: 'https://localhost/private' } }))
+    expect((await readOfficialDocumentation('https://developers.cloudflare.com/agents/', { fetch: redirecting })).status).toBe('blocked')
+    expect(redirecting.mock.calls).toHaveLength(4)
+  })
 
   it('rejects HTTP200 error shells with generic titles', async () => {
     const r = await readOfficialDocumentation('https://help.ads.microsoft.com/apex/index/3/en/60280', { dns: publicDns, fetch: vi.fn(async () => new Response('<title>Microsoft Advertising</title><main>Hmm... We don’t have anything that matches your search. ' + 'Please try another page. '.repeat(10) + '</main>', { headers: { 'content-type': 'text/html' } })) })

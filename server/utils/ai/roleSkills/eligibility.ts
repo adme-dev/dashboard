@@ -39,17 +39,26 @@ export async function listRoleSkills(input: RoleSkillEligibilityInput, overrides
   const actor = await deps.actor(input.event, input.context.identity.userId)
   // Both fresh explicit role grants and already-admitted current chat context must permit a tool.
   const groups = actor.permissionGroups.filter(group => input.context.permissionGroups.includes(group))
-  const permitted = filterToolsForUser(input.tools, actor.role, groups, actor.readOnly || input.context.isReadOnly)
+  const readOnly = actor.readOnly || input.context.isReadOnly
+  const disabled = new Set(input.context.preferences.disabledTools)
+  const permitted = filterToolsForUser(input.tools, actor.role, groups, readOnly)
   const workflows = await deps.active()
   return workflows.flatMap((workflow) => {
     const active = workflow.active
     if (!active?.enabled || !active.publishedAt || !roleSkillBindingMatches(active.bindings, actor)) return []
+    const personaTools = resolvePersona(workflow.persona).toolAllowlist
+    // These workflow ceilings remain hard even when existing owner runtime authority admits the
+    // release inventory. The common composer's owner branch deliberately returns before narrowing.
+    const narrowed = permitted.filter(tool => (!readOnly || !tool.mutates)
+      && !disabled.has(tool.name) && (!personaTools || personaTools.includes(tool.name)))
     const composition = composeEffectiveAssistantTools({
-      rbacFilteredTools: permitted, catalogRows: input.context.catalogRows,
-      grantedPermissionGroups: groups, personaToolAllowlist: resolvePersona(workflow.persona).toolAllowlist,
-      readOnly: actor.readOnly || input.context.isReadOnly, disabledTools: input.context.preferences.disabledTools,
-      runtimePolicy: input.context.runtimePolicy, actorUserId: actor.userId
-      // Owner/God mode never bypasses workflow availability or explicit role grants.
+      rbacFilteredTools: narrowed, catalogRows: input.context.catalogRows,
+      grantedPermissionGroups: groups, personaToolAllowlist: personaTools,
+      readOnly, disabledTools: input.context.preferences.disabledTools,
+      runtimePolicy: input.context.runtimePolicy, actorUserId: actor.userId,
+      // Honour only already-issued actor-bound runtime release admission, after fresh hard gates.
+      // A request-cached owner authority cannot survive a fresh role demotion. No authority is minted.
+      authority: actor.role === 'owner' ? input.context.godModeAuthority : undefined
     })
     const available = new Set(composition.tools.map(tool => tool.name))
     if (!workflow.tools.length || !workflow.tools.every(name => available.has(name))) return []

@@ -6,7 +6,7 @@ import type { RoleSkillAdminList, RoleSkillAdminWorkflow, RoleSkillDraftInput, R
 const props = defineProps<{ catalog: RoleSkillList, management: RoleSkillAdminList | null }>()
 const emit = defineEmits<{ published: [] }>()
 const toast = useToast()
-const apiFetch = $fetch as <T>(url: string, options: { method: string, body: unknown }) => Promise<T>
+const apiFetch = $fetch as <T>(url: string, options: { method: 'PUT' | 'POST', body: unknown } | { query: Record<string, string> }) => Promise<T>
 const management = ref(props.management)
 watch(() => props.management, (value) => {
   management.value = value
@@ -121,7 +121,7 @@ async function readSource(url = sourceUrl.value) {
   sourceError.value = ''
   preview.value = null
   try {
-    preview.value = await apiFetch<OfficialDocumentationResult>('/api/agency/ai/documentation/read', { method: 'POST', body: { url: url.trim() } })
+    preview.value = await apiFetch<OfficialDocumentationResult>('/api/agency/ai/documentation/read', { query: { url: url.trim() } })
   } catch (error) {
     sourceError.value = errorMessage(error)
   } finally {

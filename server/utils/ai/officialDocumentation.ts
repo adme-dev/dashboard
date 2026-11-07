@@ -97,7 +97,9 @@ export async function readOfficialDocumentation(
   }
   const fetcher = dependencies.fetch ?? globalThis.fetch
   const signal = AbortSignal.timeout(TIMEOUT_MS)
-  const dns = dependencies.dns ?? createCloudflareDohResolver((url, options) => fetcher(url, { ...options, signal, credentials: 'omit', redirect: 'error' }))
+  // Workers supports follow/manual only. The resolver rejects non-2xx responses,
+  // so manual prevents resolver redirects without relying on Node-only error mode.
+  const dns = dependencies.dns ?? createCloudflareDohResolver((url, options) => fetcher(url, { ...options, signal, credentials: 'omit', redirect: 'manual' }))
   let current = initial.fetchUrl
   try {
     for (let hop = 0; hop <= 3; hop++) {
