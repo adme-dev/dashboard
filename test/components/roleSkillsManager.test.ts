@@ -102,7 +102,7 @@ describe('role skill library', () => {
     expect(host.textContent).toContain('readable')
     expect(host.textContent).toContain('digest-1')
     expect(fetcher).toHaveBeenCalledTimes(1)
-    expect(fetcher).toHaveBeenCalledWith('/api/agency/ai/documentation/read', { method: 'POST', body: { url: skill.sources[0].url } })
+    expect(fetcher).toHaveBeenCalledWith('/api/agency/ai/documentation/read', { query: { url: skill.sources[0].url } })
   })
 
   it('saves a new draft with its revision and role bindings, without publishing', async () => {

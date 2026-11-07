@@ -1,3 +1,6 @@
+import { resolveGodModeAuthority } from '~~/server/utils/godMode/authority'
+import type { ActiveCatalogRow } from '~~/server/utils/ai/governance/catalogComposition'
+import type { H3Event } from 'h3'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import type { RoleSkillAdminWorkflow } from '~~/shared/types/roleSkills'
@@ -51,6 +54,8 @@ describe('role-specific curated workflow eligibility', () => {
     expect(await listRoleSkills(input(), deps)).toEqual([])
     actor.permissionGroups = ['FINANCE']
     expect(await listRoleSkills(input(), deps)).toHaveLength(1)
+    context.permissionGroups = ['MEDIA_BUYING']
+    expect(await listRoleSkills(input(), deps)).toEqual([])
     actor.permissionGroups = []
     expect(await listRoleSkills(input(), deps)).toEqual([])
   })
@@ -100,6 +105,105 @@ describe('role-specific curated workflow eligibility', () => {
     await expect(resolveRoleSkillSelection({ key: workflow.key, versionId }, input(), deps)).rejects.toMatchObject({ statusCode: 409 })
     actor.permissionGroups = ['MEDIA_BUYING']
     deps.toolsEnabled.mockReturnValue(false)
+    expect(await listRoleSkills(input(), deps)).toEqual([])
+  })
+})
+
+describe('existing actor-bound owner catalogue admission preserves workflow hard gates', () => {
+  async function ownerAuthority(id = actorId) {
+    return resolveGodModeAuthority({ context: {} } as H3Event, id, {
+      queryOneFresh: vi.fn().mockResolvedValue({ id }), processEnv: {}
+    })
+  }
+  function useOwnerControlInventory() {
+    actor.role = 'owner'
+    context.catalogRows = [{ sourceType: 'capability', isLatestPackVersion: false, releaseState: 'draft',
+      releaseId: 'draft-control', departmentId: 'department', toolName: 'get_budget_health', accessMode: 'read', requiredPermissionGroup: 'MEDIA_BUYING',
+      packVersionId: null, packKey: null, instructionsPreamble: '', packModelFeatureKey: null,
+      packMaxInputTokens: null, packMaxOutputTokens: null, packMaxCostUsdMicros: null, packMaxLatencyMs: null,
+      capabilityVersionId: 'draft-capability', capabilityKey: 'budget', capabilityModelFeatureKey: null,
+      capabilityMaxInputTokens: null, capabilityMaxOutputTokens: null, capabilityMaxCostUsdMicros: null, capabilityMaxLatencyMs: null } satisfies ActiveCatalogRow]
+  }
+  it('honours resolver-issued current owner release authority after fresh explicit grants', async () => {
+    useOwnerControlInventory()
+    context.godModeAuthority = await ownerAuthority()
+    expect(await listRoleSkills(input(), deps)).toHaveLength(1)
+    deps.toolsEnabled.mockReturnValue(false)
+    expect(await listRoleSkills(input(), deps)).toEqual([])
+    deps.toolsEnabled.mockReturnValue(true)
+    context.godModeAuthority = undefined
+    expect(await listRoleSkills(input(), deps)).toEqual([])
+  })
+  it('owner release admission cannot restore disabled, unrelated-persona, read-only or unattached workflows', async () => {
+    useOwnerControlInventory()
+    context.godModeAuthority = await ownerAuthority()
+    context.preferences.disabledTools = ['get_budget_health']
+    expect(await listRoleSkills(input(), deps)).toEqual([])
+    context.preferences.disabledTools = []
+    workflow.persona = 'sales'
+    expect(await listRoleSkills(input(), deps)).toEqual([])
+    workflow.persona = 'media_buyer'
+    actor.readOnly = true
+    expect(await listRoleSkills({ ...input(), tools: [{ ...tools[0]!, mutates: true }] }, deps)).toEqual([])
+    actor.readOnly = false
+    context.isReadOnly = true
+    expect(await listRoleSkills({ ...input(), tools: [{ ...tools[0]!, mutates: true }] }, deps)).toEqual([])
+    context.isReadOnly = false
+    workflow.active!.bindings = { allRoles: false, roleIds: [], systemRoles: [], permissionGroups: [] }
+    expect(await listRoleSkills(input(), deps)).toEqual([])
+  })
+  it('owner release admission never grants missing Finance or other explicit permissions', async () => {
+    useOwnerControlInventory()
+    context.godModeAuthority = await ownerAuthority()
+    workflow.active!.bindings.allRoles = true
+    workflow.tools = ['get_finance_snapshot']
+    workflow.persona = 'finance'
+    expect(await listRoleSkills(input(), deps)).toEqual([])
+    actor.permissionGroups = ['FINANCE']
+    expect(await listRoleSkills(input(), deps)).toHaveLength(1)
+    context.permissionGroups = ['MEDIA_BUYING']
+    expect(await listRoleSkills(input(), deps)).toEqual([])
+    actor.permissionGroups = []
+    expect(await listRoleSkills(input(), deps)).toEqual([])
+  })
+  it('a fresh demotion, inactive authority or emergency-disabled authority cannot retain owner release admission', async () => {
+    useOwnerControlInventory()
+    context.runtimePolicy = resolveCatalogRuntimePolicy('enforced')
+    context.godModeAuthority = await ownerAuthority()
+    actor.role = 'media_buyer'
+    expect(await listRoleSkills(input(), deps)).toEqual([])
+    actor.role = 'owner'
+    context.godModeAuthority = await resolveGodModeAuthority({ context: {} } as H3Event, actorId, {
+      queryOneFresh: vi.fn().mockResolvedValue(null), processEnv: {}
+    })
+    expect(await listRoleSkills(input(), deps)).toEqual([])
+    context.godModeAuthority = await resolveGodModeAuthority({ context: {} } as H3Event, actorId, {
+      queryOneFresh: vi.fn().mockResolvedValue({ id: actorId }), processEnv: { GOD_MODE_DISABLED: 'true' }
+    })
+    expect(await listRoleSkills(input(), deps)).toEqual([])
+  })
+  it('applies the same owner release admission and hard narrowing to supplemental native names', async () => {
+    useOwnerControlInventory()
+    context.godModeAuthority = await ownerAuthority()
+    workflow.tools = ['ask_spend_controller']
+    const supplemental = [{ name: 'ask_spend_controller', description: 'Read-only specialist', parameters: z.object({}), requiredPermission: 'MEDIA_BUYING' as const, handler: vi.fn() }]
+    expect(await listRoleSkills({ ...input(), tools: supplemental }, deps)).toHaveLength(1)
+    context.preferences.disabledTools = ['ask_spend_controller']
+    expect(await listRoleSkills({ ...input(), tools: supplemental }, deps)).toEqual([])
+    context.preferences.disabledTools = []
+    actor.permissionGroups = []
+    expect(await listRoleSkills({ ...input(), tools: supplemental }, deps)).toEqual([])
+  })
+  it('foreign or cloned authority cannot admit unreleased ordinary catalogue tools', async () => {
+    useOwnerControlInventory()
+    context.runtimePolicy = resolveCatalogRuntimePolicy('enforced')
+    const authority = await ownerAuthority()
+    context.godModeAuthority = { ...authority }
+    expect(await listRoleSkills(input(), deps)).toEqual([])
+    context.godModeAuthority = await ownerAuthority('cccccccc-cccc-4ccc-8ccc-cccccccccccc')
+    expect(await listRoleSkills(input(), deps)).toEqual([])
+    context.godModeAuthority = undefined
+    actor.role = 'media_buyer'
     expect(await listRoleSkills(input(), deps)).toEqual([])
   })
 })
