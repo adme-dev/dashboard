@@ -27,12 +27,13 @@ const {
 // AI_TOOLS_ENABLED is on. The private server-resolved flag is authoritative after settings load.
 const publicAiToolsEnabled = Boolean(useRuntimeConfig().public.aiToolsEnabled)
 const aiToolsEnabled = computed(() => chatToolsEnabled.value ?? publicAiToolsEnabled)
-const personaItems = computed(() => {
-  const focus = AI_PERSONA_OPTIONS.find(option => option.key === defaultPersona.value)?.label
-  return [
-    { label: focus ? `My Assistant default (${focus})` : 'My Assistant default', value: '__default__' },
-    ...AI_PERSONA_OPTIONS.map(option => ({ label: option.label, value: option.key }))
-  ]
+const personaItems = computed(() => [
+  { label: 'My Assistant', value: '__default__' },
+  ...AI_PERSONA_OPTIONS.map(option => ({ label: option.label, value: option.key }))
+])
+const personaTooltip = computed(() => {
+  const focus = AI_PERSONA_OPTIONS.find(option => option.key === (selectedPersona.value ?? defaultPersona.value))?.label
+  return selectedPersona.value ? `Conversation focus: ${focus ?? selectedPersona.value}` : `My Assistant default: ${focus ?? 'your saved focus'}`
 })
 const personaSelection = computed({
   get: () => selectedPersona.value ?? '__default__',
@@ -44,7 +45,6 @@ const {
   isAvailable: voiceAvailable,
   isRecording, isProcessing: voiceProcessing,
   isPlaying: voicePlaying,
-  volumeLevel,
   error: voiceError,
   startRecording, stopRecording, cancelRecording,
   sendVoiceMessage, playAudio, stopAudio,
@@ -52,23 +52,20 @@ const {
 
 type MicrophonePermissionState = PermissionState | 'unknown' | 'unsupported'
 
-const VOICE_GUIDE_DISMISSED_KEY = 'xeroflow:voice-guide-dismissed'
 const microphonePermission = ref<MicrophonePermissionState>('unknown')
-const voiceGuideDismissed = ref(false)
-const voiceGuidePreferenceLoaded = ref(false)
 const handsFreeVoiceAvailable = computed(() => aiToolsEnabled.value && voiceAvailable.value)
 const voiceGuideRequested = computed(() => route.query.mode === 'voice')
 const showVoiceGuide = computed(() =>
-  voiceAvailable.value
-  && (voiceGuideRequested.value || (voiceGuidePreferenceLoaded.value && !voiceGuideDismissed.value))
+  voiceGuideRequested.value
+  || microphonePermission.value === 'denied'
+  || microphonePermission.value === 'unsupported'
+  || !voiceAvailable.value
+  || Boolean(voiceError.value)
 )
 
 let microphonePermissionStatus: PermissionStatus | null = null
 
 onMounted(async () => {
-  voiceGuideDismissed.value = localStorage.getItem(VOICE_GUIDE_DISMISSED_KEY) === '1'
-  voiceGuidePreferenceLoaded.value = true
-
   if (!navigator.mediaDevices?.getUserMedia) {
     microphonePermission.value = 'unsupported'
     return
@@ -92,9 +89,6 @@ onBeforeUnmount(() => {
 })
 
 function dismissVoiceGuide() {
-  voiceGuideDismissed.value = true
-  localStorage.setItem(VOICE_GUIDE_DISMISSED_KEY, '1')
-
   if (voiceGuideRequested.value) {
     const { mode: _mode, ...query } = route.query
     void router.replace({ query })
@@ -448,7 +442,8 @@ const messageInput = ref('')
 const searchFilter = ref('')
 const sidebarOpen = ref(true)
 const messagesContainer = ref<HTMLElement | null>(null)
-const inputRef = ref<HTMLTextAreaElement | null>(null)
+const messageTextarea = ref<{ textareaRef: HTMLTextAreaElement | null } | null>(null)
+const inputRef = computed(() => messageTextarea.value?.textareaRef ?? null)
 
 // --- @Mention entity references ---
 interface MentionEntity {
@@ -571,14 +566,6 @@ function handleMentionKeydown(e: KeyboardEvent) {
   }
 }
 
-// Auto-resize textarea to fit content
-function autoResizeInput() {
-  const el = inputRef.value
-  if (!el) return
-  el.style.height = 'auto'
-  el.style.height = Math.min(el.scrollHeight, 200) + 'px'
-}
-
 // Fetch conversations on mount
 await Promise.all([fetchConversations(), loadAssistantDefaults()])
 
@@ -681,13 +668,6 @@ async function handleSend() {
   }
 
   messageInput.value = ''
-  // Reset textarea height after clearing
-  nextTick(() => {
-    if (inputRef.value) {
-      inputRef.value.style.height = 'auto'
-    }
-  })
-
   // Collect entity references to send with the message
   const entities = mentionedEntities.value.map(e => ({ type: e.type, id: e.id }))
   mentionedEntities.value = []
@@ -1060,12 +1040,12 @@ function getRenderedMarkdown(content: string): string {
         </UButton>
       </div>
 
-      <!-- Messages + Floating Input wrapper -->
+      <!-- Messages and composer -->
       <div class="flex-1 flex flex-col min-h-0 relative">
         <!-- Messages scroll area -->
         <div
           ref="messagesContainer"
-          class="flex-1 overflow-y-auto px-4 pt-4 pb-48"
+          class="flex-1 overflow-y-auto px-4 py-4"
           @scroll="handleMessagesScroll"
         >
           <!-- Empty state -->
@@ -1267,11 +1247,8 @@ function getRenderedMarkdown(content: string): string {
           </div>
         </div>
 
-        <!-- Gradient fade behind input -->
-        <div class="absolute bottom-0 left-0 right-0 pointer-events-none h-40 bg-gradient-to-t from-[var(--ui-bg)] via-[var(--ui-bg)]/80 to-transparent" />
-
-        <!-- Floating Input Area (Claude/ChatGPT style) -->
-        <div class="absolute bottom-0 left-0 right-0 px-4 pb-4 pt-2">
+        <!-- Composer stays in the flex layout so messages never hide beneath it. -->
+        <div class="shrink-0 px-3 pb-3 pt-2 sm:px-4">
           <div class="max-w-3xl mx-auto relative">
             <!-- @Mention Autocomplete Dropdown -->
             <Transition
@@ -1321,6 +1298,8 @@ function getRenderedMarkdown(content: string): string {
               v-if="showVoiceGuide"
               :permission="microphonePermission"
               :hands-free-available="handsFreeVoiceAvailable"
+              :unavailable="!voiceAvailable"
+              :error="voiceError"
               @dismiss="dismissVoiceGuide"
             />
 
@@ -1334,7 +1313,7 @@ function getRenderedMarkdown(content: string): string {
               @stop="voiceSession.stop()"
             />
 
-            <div class="bg-elevated border border-default rounded-2xl shadow-lg ring-1 ring-black/[0.03] dark:ring-white/[0.03] overflow-hidden">
+            <div data-testid="ai-chat-composer" class="@container overflow-hidden rounded-2xl border border-default bg-elevated shadow-sm focus-within:border-primary/50">
               <!-- Entity chips (referenced items) -->
               <div v-if="mentionedEntities.length > 0" class="flex flex-wrap gap-1.5 px-4 pt-3 pb-1">
                 <span
@@ -1344,99 +1323,77 @@ function getRenderedMarkdown(content: string): string {
                 >
                   <UIcon :name="ENTITY_ICONS[entity.type] || 'i-lucide-hash'" class="w-3 h-3" />
                   <span class="max-w-[150px] truncate">{{ entity.title }}</span>
-                  <button
-                    class="ml-0.5 hover:text-primary/80 shrink-0"
+                  <UButton
+                    icon="i-lucide-x"
+                    variant="ghost"
+                    color="neutral"
+                    size="xs"
+                    class="ml-0.5 size-4 shrink-0 p-0"
+                    :aria-label="`Remove ${entity.title} reference`"
                     @click="removeMention(entity.id)"
-                  >
-                    <UIcon name="i-lucide-x" class="w-3 h-3" />
-                  </button>
+                  />
                 </span>
               </div>
 
-              <!-- Textarea -->
-              <div class="px-4 pt-3">
-                <textarea
-                  ref="inputRef"
+              <UFormField label="Message" :ui="{ label: 'sr-only' }" class="px-3 pt-2">
+                <UTextarea
+                  ref="messageTextarea"
                   v-model="messageInput"
-                  placeholder="Ask about your tasks, clients, boards... Type @ to reference"
-                  class="w-full resize-none bg-transparent text-sm leading-relaxed outline-none placeholder:text-muted min-h-[72px] max-h-[200px]"
-                  :rows="3"
+                  placeholder="Ask about your agency…"
+                  autoresize
+                  :rows="1"
+                  :maxrows="6"
+                  variant="none"
+                  class="w-full"
+                  :ui="{ base: 'resize-none bg-transparent px-1 py-2 text-sm leading-6 shadow-none ring-0' }"
                   :disabled="sending || voiceSession.isActive.value"
                   :aria-expanded="mentionDropdownOpen && mentionResults.length > 0"
                   aria-controls="mention-listbox"
                   @keydown="handleKeydown"
-                  @input="autoResizeInput(); handleMentionInput()"
+                  @update:model-value="nextTick(handleMentionInput)"
+                />
+              </UFormField>
+              <div v-if="isRecording || voiceProcessing" role="status" class="flex items-center gap-2 px-4 pb-1 text-xs text-muted">
+                <span class="size-1.5 rounded-full" :class="isRecording ? 'bg-error motion-safe:animate-pulse' : 'bg-primary'" />
+                {{ isRecording ? 'Listening…' : 'Processing voice…' }}
+                <UButton
+                  v-if="isRecording"
+                  icon="i-lucide-x"
+                  variant="ghost"
+                  color="neutral"
+                  size="xs"
+                  aria-label="Cancel voice recording"
+                  @click="cancelRecording"
                 />
               </div>
-              <!-- Bottom bar inside the card -->
-              <div class="flex items-center justify-between px-3 py-2">
-                <div class="flex items-center gap-1">
-                  <!-- Focus picker — inherits the saved My Assistant default.
-                       Hidden until AI_TOOLS_ENABLED is on (the loop it drives is flag-gated). -->
-                  <UFormField v-if="aiToolsEnabled" label="Assistant focus" :ui="{ label: 'sr-only' }">
-                    <USelect
-                      v-model="personaSelection"
-                      :items="personaItems"
-                      size="xs"
-                      variant="ghost"
-                      color="neutral"
-                      icon="i-lucide-sparkles"
-                      class="w-36 sm:w-auto mr-1"
-                      :disabled="sending"
-                      aria-label="Assistant focus"
-                      :ui="{ base: 'text-[11px]' }"
-                    />
-                  </UFormField>
-                  <!-- Recording indicator -->
-                  <template v-if="isRecording">
-                    <span class="flex items-center gap-1.5 px-1">
-                      <span class="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-                      <span class="text-[10px] text-red-500 font-medium">Listening...</span>
-                      <span class="h-3 w-12 flex items-end gap-px">
-                        <span
-                          v-for="i in 6"
-                          :key="i"
-                          class="flex-1 bg-red-400 rounded-t transition-all duration-75"
-                          :style="{ height: Math.max(2, Math.min(12, volumeLevel * 80 * (0.5 + Math.random() * 0.5))) + 'px' }"
-                        />
-                      </span>
-                      <button
-                        class="ml-1 text-muted hover:text-default transition-colors"
-                        @click.stop="cancelRecording"
-                      >
-                        <UIcon name="i-lucide-x" class="w-3.5 h-3.5" />
-                      </button>
-                    </span>
-                  </template>
-                  <template v-else-if="voiceProcessing">
-                    <span class="flex items-center gap-1.5 px-1">
-                      <span class="w-2 h-2 rounded-full bg-primary animate-pulse" />
-                      <span class="text-[10px] text-primary font-medium">Processing voice...</span>
-                    </span>
-                  </template>
-                  <template v-else>
-                    <span
-                      v-if="voiceAvailable"
-                      class="inline-flex items-center gap-1 px-1 text-[10px] font-medium"
-                      :class="microphonePermission === 'denied' || microphonePermission === 'unsupported' ? 'text-warning' : 'text-success'"
-                    >
-                      <span
-                        class="size-1.5 rounded-full"
-                        :class="microphonePermission === 'denied' || microphonePermission === 'unsupported' ? 'bg-warning' : 'bg-success'"
-                        aria-hidden="true"
+              <div class="flex items-center justify-between gap-2 px-2 pb-2">
+                <div class="flex min-w-0 items-center gap-2">
+                  <UFormField
+                    v-if="aiToolsEnabled"
+                    label="Assistant focus"
+                    :ui="{ label: 'sr-only' }"
+                    class="min-w-0"
+                  >
+                    <UTooltip :text="personaTooltip">
+                      <USelect
+                        v-model="personaSelection"
+                        :items="personaItems"
+                        size="sm"
+                        variant="ghost"
+                        color="neutral"
+                        icon="i-lucide-sparkles"
+                        class="w-36 max-w-full"
+                        :disabled="sending"
+                        aria-label="Assistant focus"
+                        :ui="{ base: 'text-xs', value: 'truncate' }"
                       />
-                      {{ microphonePermission === 'denied' || microphonePermission === 'unsupported' ? 'Mic permission needed' : 'Voice ready' }}
-                    </span>
-                    <span class="hidden px-1 text-[10px] text-muted md:inline">
-                      <kbd class="font-mono text-[10px] px-1 py-0.5 rounded bg-default border border-default">@</kbd>
-                      to reference
-                      <span class="mx-1 text-muted/40">&middot;</span>
-                      <kbd class="font-mono text-[10px] px-1 py-0.5 rounded bg-default border border-default">Enter</kbd>
-                      to send
-                    </span>
-                  </template>
+                    </UTooltip>
+                  </UFormField>
+                  <span class="hidden whitespace-nowrap text-[11px] text-muted @2xl:inline">
+                    @ to reference · Shift+Enter for a new line
+                  </span>
                 </div>
-                <div class="flex items-center gap-1.5">
+                <div class="flex shrink-0 items-center gap-1">
                   <!-- Hands-free voice session (agentic, open-mic) — gated like the persona picker -->
                   <UButton
                     v-if="aiToolsEnabled && voiceAvailable"
@@ -1444,13 +1401,13 @@ function getRenderedMarkdown(content: string): string {
                     :color="voiceSession.isActive.value ? 'error' : 'neutral'"
                     :variant="voiceSession.isActive.value ? 'solid' : 'ghost'"
                     size="sm"
-                    class="rounded-lg"
+                    class="shrink-0 whitespace-nowrap rounded-lg"
                     :disabled="sending || isRecording || voiceProcessing"
                     :aria-label="voiceSession.isActive.value ? 'Stop hands-free Voice AI' : 'Start hands-free Voice AI'"
                     :title="voiceSession.isActive.value ? 'Stop voice session' : 'Start hands-free voice session'"
                     @click="toggleVoiceSession"
                   >
-                    <span class="hidden lg:inline">{{ voiceSession.isActive.value ? 'Stop Voice' : 'Start Voice' }}</span>
+                    <span class="hidden @md:inline">{{ voiceSession.isActive.value ? 'Stop Voice' : 'Talk' }}</span>
                   </UButton>
                   <!-- Voice button -->
                   <UButton
@@ -1459,14 +1416,14 @@ function getRenderedMarkdown(content: string): string {
                     :color="isRecording ? 'error' : voicePlaying ? 'warning' : 'neutral'"
                     :variant="isRecording || voicePlaying ? 'solid' : 'ghost'"
                     size="sm"
-                    class="rounded-lg"
+                    class="shrink-0 whitespace-nowrap rounded-lg"
                     :loading="voiceProcessing"
                     :disabled="sending || voiceProcessing || voiceSession.isActive.value"
                     :aria-label="voicePlaying ? 'Stop Voice AI playback' : isRecording ? 'Stop recording Voice AI message' : 'Record Voice AI message'"
                     :title="voicePlaying ? 'Stop playback' : isRecording ? 'Stop recording' : 'Record a voice message'"
                     @click="handleVoiceRecord"
                   >
-                    <span class="hidden lg:inline">Voice message</span>
+                    <span class="hidden @md:inline">Voice message</span>
                   </UButton>
                   <!-- Send button -->
                   <UButton
@@ -1477,6 +1434,7 @@ function getRenderedMarkdown(content: string): string {
                       'rounded-lg transition-all duration-150',
                       (!messageInput.trim() || sending || isRecording) ? 'opacity-40' : 'opacity-100 shadow-sm'
                     ]"
+                    aria-label="Send message"
                     :loading="sending"
                     :disabled="!messageInput.trim() || sending || isRecording || voiceSession.isActive.value"
                     @click="handleSend"
