@@ -625,7 +625,7 @@ const featuresCol1 = [
 ]
 
 const featuresCol2 = [
-  { title: 'Xero Integration', subtitle: 'Sync invoices and accounts', icon: 'i-lucide-link', iconBg: 'bg-emerald-500/15', iconColor: 'text-emerald-400', to: '/platform/financials' },
+  { title: 'Xero Integration', subtitle: 'Permission-controlled accounting', icon: 'i-lucide-link', iconBg: 'bg-emerald-500/15', iconColor: 'text-emerald-400', to: '/platform/financials' },
   { title: 'Ad Spend', subtitle: 'Default-on measurement & governed ad control', icon: 'i-lucide-bar-chart-3', iconBg: 'bg-emerald-500/15', iconColor: 'text-emerald-400', to: '/platform/ad-spend' },
   { title: 'Measurement Control', subtitle: 'Desired on, safely gated', icon: 'i-lucide-route', iconBg: 'bg-cyan-500/15', iconColor: 'text-cyan-400', to: '/features/measurement-control-plane' },
   { title: 'Search Authority', subtitle: 'Evidence, governed guides & trust', icon: 'i-lucide-search-check', iconBg: 'bg-cyan-500/15', iconColor: 'text-cyan-400', to: '/features/search-authority-ai-trust' },

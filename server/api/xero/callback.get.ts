@@ -1,8 +1,9 @@
 import { getRequestURL, setCookie } from 'h3'
 import { exchangeXeroCode, fetchXeroTenants } from '~~/server/utils/xeroClient'
-import { setOrgToken, setOrgTenant } from '~~/server/utils/tokenStore'
+import { setOrgToken } from '~~/server/utils/tokenStore'
 import { setSelectedTenant } from '~~/server/utils/session'
 import { requireAuth, getUserByEmail, createJwt, type User } from '~~/server/utils/auth'
+import { assertFinancePermission } from '~~/server/utils/financeAccess'
 
 /**
  * Xero OAuth callback.
@@ -13,10 +14,9 @@ import { requireAuth, getUserByEmail, createJwt, type User } from '~~/server/uti
  *   • "Sign in with Xero" from the login page — no app session. We match
  *     the Xero identity (id_token email, received directly from Xero's
  *     token endpoint) to an ACTIVE team member and mint the same session
- *     cookies as the magic-link callback, so one consent both signs the
- *     user in and keeps the org connection fresh. Previously this flow
- *     stored the org token but created no session — users faced a second
- *     login AND a second consent via settings.
+ *     cookies as the magic-link callback. Only a current explicit Finance
+ *     grant also refreshes the organisation's accounting connection; other
+ *     recognised staff sign in using Xero identity only.
  *
  * If neither an app session nor a recognised team member is present, the
  * org connection is NOT written — an unknown Xero user must not be able
@@ -56,7 +56,7 @@ export default defineEventHandler(async (event) => {
   const tokenSet = await exchangeXeroCode({ code, event })
 
   // Who is authorising this connection?
-  let sessionUser: User | null = null
+  let sessionUser: User | null
   try {
     sessionUser = await requireAuth(event)
   } catch {
@@ -75,25 +75,37 @@ export default defineEventHandler(async (event) => {
     return sendRedirect(event, '/auth/xeroflow?error=xero-not-recognised', 302)
   }
 
-  // Fetch tenants and store at org level
-  let tenants: Array<{ tenantId: string; tenantName: string }> = []
+  // Identity recognition does not grant accounting access. An unavailable
+  // permission lookup must fail before any app session or financial state write.
+  let hasFinancePermission = true
   try {
-    tenants = await fetchXeroTenants(tokenSet.access_token)
-  } catch {
-    // Non-fatal
+    await assertFinancePermission(event, (sessionUser ?? matchedUser)!.id, true)
+  } catch (error) {
+    // A recognised login may remain identity-only. Existing-session connection
+    // attempts and infrastructure failures retain the explicit denial.
+    if (sessionUser || (error as { statusCode?: number }).statusCode !== 403) throw error
+    hasFinancePermission = false
   }
 
-  if (tenants.length === 1) {
-    // Auto-select the only tenant
-    await setOrgToken(event, tokenSet, {
-      tenantId: tenants[0].tenantId,
-      tenantName: tenants[0].tenantName,
-      connectedBy: (sessionUser ?? matchedUser)?.email,
-    })
-    await setSelectedTenant(event, tenants[0].tenantId, tenants[0].tenantName)
-  } else {
-    // Store token, user will select tenant on settings page
-    await setOrgToken(event, tokenSet)
+  let tenants: Array<{ tenantId: string, tenantName: string }> = []
+  if (hasFinancePermission) {
+    try {
+      tenants = await fetchXeroTenants(tokenSet.access_token!)
+    } catch {
+      // Non-fatal for explicitly authorised connections.
+    }
+
+    const onlyTenant = tenants.length === 1 ? tenants[0] : undefined
+    if (onlyTenant) {
+      await setOrgToken(event, tokenSet, {
+        tenantId: onlyTenant.tenantId,
+        tenantName: onlyTenant.tenantName,
+        connectedBy: (sessionUser ?? matchedUser)?.email
+      })
+      await setSelectedTenant(event, onlyTenant.tenantId, onlyTenant.tenantName)
+    } else {
+      await setOrgToken(event, tokenSet)
+    }
   }
 
   // "Sign in with Xero" — mint the same session cookies as the magic-link
@@ -102,14 +114,14 @@ export default defineEventHandler(async (event) => {
     const jwtToken = await createJwt({
       userId: matchedUser.id,
       email: matchedUser.email,
-      role: matchedUser.role,
+      role: matchedUser.role
     })
     const isSecure = getRequestURL(event).protocol === 'https:'
     const cookieOpts = {
       secure: isSecure,
       sameSite: 'lax' as const,
       maxAge: 60 * 60 * 24 * 7,
-      path: '/',
+      path: '/'
     }
     setCookie(event, 'auth_token', jwtToken, { ...cookieOpts, httpOnly: true })
     setCookie(event, 'auth_status', 'logged_in', { ...cookieOpts, httpOnly: false })
@@ -118,8 +130,10 @@ export default defineEventHandler(async (event) => {
 
   // Multi-tenant orgs must land on /settings to pick a tenant — /agency
   // would leave every Xero endpoint erroring on "no organization selected".
-  const dest = mode === 'popup'
-    ? '/xero-popup-close'
-    : (sessionUser || tenants.length !== 1) ? '/settings' : '/agency'
+  const dest = !hasFinancePermission
+    ? '/agency'
+    : mode === 'popup'
+      ? '/xero-popup-close'
+      : (sessionUser || tenants.length !== 1) ? '/settings' : '/agency'
   return sendRedirect(event, dest, 302)
 })

@@ -7,6 +7,8 @@ import { resolveGodModeMcpExecution } from '~~/server/utils/ai/mcp/registry'
 import { registry } from '~~/server/utils/ai/tools'
 import { resolveGodModeAuthority } from '~~/server/utils/godMode/authority'
 
+const finance = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
+vi.mock('~~/server/utils/financeAccess', () => ({ assertFinancePermission: finance }))
 const USER_ID = '11111111-1111-4111-8111-111111111111'
 const OTHER_USER_ID = '22222222-2222-4222-8222-222222222222'
 const IDEMPOTENCY_KEY = `mcp:${'a'.repeat(64)}`
@@ -36,7 +38,7 @@ function claim(scope: string[] = ['mcp:read', 'mcp:write']): McpRequestClaim {
   }
 }
 
-function harness(mutates: boolean) {
+function harness(mutates: boolean, accounting = false) {
   const executeWrite = vi.fn(async () => ({ ok: true as const, data: { directExecution: true } }))
   const executeRead = vi.fn(async () => ({ ok: true as const, data: { count: 1 } }))
   const executeResolvedMutation = vi.fn(async () => ({ ok: true as const, data: { supplemental: true } }))
@@ -52,6 +54,7 @@ function harness(mutates: boolean) {
         tool: {
           name: mutates ? 'create_task' : 'get_tasks',
           description: 'Test tool',
+          ...(accounting ? { requiredPermission: 'FINANCE' } : {}),
           parameters: z.object({}),
           mutates,
           handler: vi.fn()
@@ -252,4 +255,11 @@ describe('God mode MCP direct execution adapter', () => {
     expect(h.executeWrite).not.toHaveBeenCalled()
     expect(h.executeRead).not.toHaveBeenCalled()
   })
+})
+
+it.each([false, true])('fresh Finance gates MCP owner calls before dispatch (mutates=%s)', async mutates => {
+  const requestEvent = event(); const authority = await ownerAuthority(requestEvent); const h = harness(mutates, true)
+  finance.mockRejectedValueOnce({ statusCode: 403 })
+  await expect(h.execute({ event: requestEvent, claim: claim(), authority, idempotencyKey: IDEMPOTENCY_KEY, toolName: mutates ? 'create_task' : 'get_tasks', args: {} })).rejects.toMatchObject({ statusCode: 403 })
+  expect(h.executeWrite).not.toHaveBeenCalled(); expect(h.executeRead).not.toHaveBeenCalled(); expect(h.executeResolvedMutation).not.toHaveBeenCalled()
 })

@@ -1,14 +1,16 @@
+import { assertFinancePermission, assertPermissionGrant } from '~~/server/utils/financeAccess'
 import { isError } from 'h3'
 import { requireRole } from '~~/server/utils/auth'
 import { getClientFinancials } from '~~/server/utils/clientFinancials'
 import { parseClientFinancialRange } from '~~/server/utils/clientFinancialCalculations'
 import { ClientFinancialRepositoryError } from '~~/server/utils/clientFinancialRepository'
-import { isReadOnlyRole, PERMISSIONS, roleHasPermission } from '~~/server/utils/permissions'
+import { PERMISSIONS } from '~~/server/utils/permissions'
 import { getSelectedTenant } from '~~/server/utils/session'
 import { denyMarketingClientViewer } from '~~/server/utils/clients/marketingAccess'
 
 export default defineEventHandler(async (event) => {
   const user = await requireRole(event, PERMISSIONS.CLIENTS)
+  await assertPermissionGrant(event, user.id, 'CLIENTS')
   // CLIENTS alone exposes reconciled revenue, labour and invoices; the marketing department is
   // denied outright so restricted figures are never presented as zero.
   await denyMarketingClientViewer(user.id)
@@ -25,11 +27,14 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Invalid financial date range' })
   }
 
-  const canViewSources = roleHasPermission(user.role, 'FINANCE')
-    || user.permissionGroups?.includes('FINANCE') === true
-  const canAllocate = canViewSources
-    && !isReadOnlyRole(user.role)
-    && user.isCustomReadOnly !== true
+  let canViewSources = false
+  let canAllocate = false
+  try { await assertFinancePermission(event, user.id); canViewSources = true }
+  catch (error) { if ((error as { statusCode?: number }).statusCode !== 403) throw error }
+  if (canViewSources) {
+    try { await assertFinancePermission(event, user.id, true); canAllocate = true }
+    catch (error) { if ((error as { statusCode?: number }).statusCode !== 403) throw error }
+  }
 
   try {
     const tenantId = await getSelectedTenant(event)

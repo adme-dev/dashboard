@@ -18,6 +18,8 @@ import { resolveGodModeAuthority } from '~~/server/utils/godMode/authority'
 import { markTrustedPreDispatchError } from '~~/server/utils/ai/executionErrorProvenance'
 import { resolveGenerationMcpExecutions } from '~~/server/utils/ai/mcp/generationTools'
 
+const finance = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
+vi.mock('~~/server/utils/financeAccess', () => ({ assertFinancePermission: finance }))
 const OWNER_ID = '11111111-1111-4111-8111-111111111111'
 const OTHER_ID = '22222222-2222-4222-8222-222222222222'
 const TENANT_ID = '33333333-3333-4333-8333-333333333333'
@@ -1285,5 +1287,25 @@ describe('God mode chat mutation family', () => {
       { family: 'ai-chat-direct-execution', method: 'POST' }
     ])
     unregister()
+  })
+})
+
+describe('God mode accounting grant boundary', () => {
+  it('rejects revoked Finance before claiming or executing a mutation', async () => {
+    const h = harness()
+    const original = h.deps.resolveTool('create_task')!
+    vi.mocked(h.deps.resolveTool).mockReturnValue({ ...original, requiredPermission: 'FINANCE' })
+    finance.mockRejectedValueOnce({ statusCode: 403 })
+    await expect(h.execute({ event: event(), toolName: 'create_task', args: { title: 'Ship' }, idempotencyKey: 'message-7:tool-call-2' })).rejects.toMatchObject({ statusCode: 403 })
+    expect(h.deps.claimExecution).not.toHaveBeenCalled()
+    expect(h.sideEffects()).toBe(0)
+  })
+  it('rejects revoked Finance before a trusted MCP read handler or cache', async () => {
+    const h = harness(); const authorityEvent = event()
+    const authority = await resolveGodModeAuthority(authorityEvent, OWNER_ID, { queryOneFresh: async () => ({ id: OWNER_ID }) })
+    const handler = vi.fn(async () => ok({ cash: 100 }))
+    finance.mockRejectedValueOnce({ statusCode: 403 })
+    await expect(createTrustedMcpGodModeReadExecutor(h.deps)({ event: authorityEvent, authenticatedUserId: OWNER_ID, authority, sessionDigest: 'd'.repeat(64), idempotencyKey: `mcp:${'e'.repeat(64)}`, tool: { name: 'cash', parameters: z.object({}), requiredPermission: 'FINANCE', handler } as any, args: {}, ctx: { userId: OWNER_ID, userRole: 'owner', event: authorityEvent, source: 'mcp' } })).rejects.toMatchObject({ statusCode: 403 })
+    expect(handler).not.toHaveBeenCalled()
   })
 })

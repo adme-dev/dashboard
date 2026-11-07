@@ -18,13 +18,15 @@
 
 import { queryRows, queryOne } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
+import { hasExpenseFinancePermission } from '~~/server/utils/expenseAccess'
 
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
+  const user = await requireAuth(event)
+  const finance = await hasExpenseFinancePermission(event, user.id)
   const query = getQuery(event)
 
   const status = query.status as string | undefined
-  const userId = query.userId as string | undefined
+  const userId = finance ? query.userId as string | undefined : user.id
   const projectId = query.projectId as string | undefined
   const clientId = query.clientId as string | undefined
   const categoryId = query.categoryId as string | undefined
@@ -218,7 +220,8 @@ export default defineEventHandler(async (event) => {
         total: Number(summary.total_count || 0)
       }
     }
-  } catch (error) {
+  } catch (error: any) {
+    if (error.statusCode) throw error
     console.error('Failed to fetch expenses:', error)
     throw createError({
       statusCode: 500,

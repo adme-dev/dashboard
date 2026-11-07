@@ -27,6 +27,7 @@ beforeEach(() => {
   const one = fixture.queryOneFresh.getMockImplementation()!
   const rows = fixture.queryRowsFresh.getMockImplementation()!
   fixture.queryOneFresh.mockImplementation((sql, params) => {
+    if (sql.includes('role_permission_groups') && sql.includes('rpg.permission_group=$3') && params?.[2] === 'FINANCE') return active && (customGroups ?? SYSTEM_ROLE_PERMISSIONS[role as keyof typeof SYSTEM_ROLE_PERMISSIONS] ?? []).includes('FINANCE') ? { permission_group: 'FINANCE' } : null
     if (sql.includes('FROM team_members')) {
       expect(sql).toContain('is_active = TRUE')
       expect(params).toEqual([USER])

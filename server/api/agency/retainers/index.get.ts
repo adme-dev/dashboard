@@ -1,3 +1,4 @@
+import { assertCommercialPermission } from '~~/server/utils/commercialAccess'
 /**
  * Agency Retainers API
  * Returns all clients with retainer agreements and their usage tracking
@@ -6,7 +7,8 @@
 import { queryRows } from '~~/server/utils/db'
 
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
+  const commercialUser = await requireAuth(event)
+  await assertCommercialPermission(event, commercialUser.id, 'CLIENTS', false)
 
   const query = getQuery(event)
   const period = query.period as string || new Date().toISOString().slice(0, 7) // Default to current month

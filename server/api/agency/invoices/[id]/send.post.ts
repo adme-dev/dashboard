@@ -5,9 +5,11 @@
 
 import { queryOne } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
+import { assertFinancePermission } from '~~/server/utils/financeAccess'
 
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
+  const user = await requireAuth(event)
+  await assertFinancePermission(event, user.id, true)
   const id = getRouterParam(event, 'id')
 
   if (!id) {

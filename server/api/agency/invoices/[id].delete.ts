@@ -1,107 +1,42 @@
-/**
- * Delete/Cancel Invoice
- * DELETE /api/agency/invoices/:id
- *
- * Cancels or permanently deletes an invoice
- */
-
-import { queryOne, transaction } from '~~/server/utils/db'
-import { requireAuth, requireRole } from '~~/server/utils/auth'
+/** Delete an own draft for scoped staff; Finance may also cancel unpaid invoices. */
+import { transaction } from '~~/server/utils/db'
 import { requireInvoiceAccess } from '~~/server/utils/clientScoping'
+import { assertInvoiceRowAccess, lockInvoiceForEdit } from '~~/server/utils/invoiceRowAccess'
 
 export default defineEventHandler(async (event) => {
-  const { user, clientIds } = await requireInvoiceAccess(event)
-
+  const access = await requireInvoiceAccess(event, true)
   const invoiceId = getRouterParam(event, 'id')
-
-  if (!invoiceId) {
-    throw createError({
-      statusCode: 400,
-      statusMessage: 'Invoice ID is required'
-    })
-  }
-
-  const query = getQuery(event)
-  const hardDelete = query.hard === 'true'
+  if (!invoiceId) throw createError({ statusCode: 400, statusMessage: 'Invoice ID is required' })
+  const hardDelete = getQuery(event).hard === 'true'
 
   try {
-    // Check if invoice exists
-    const invoice = await queryOne(
-      `SELECT id, invoice_number, status, amount_paid, client_id, created_by FROM invoices WHERE id = $1`,
-      [invoiceId]
-    )
-
-    if (!invoice) {
-      throw createError({
-        statusCode: 404,
-        statusMessage: 'Invoice not found'
-      })
-    }
-
-    if (clientIds !== 'all') {
-      if (!clientIds.includes(invoice.client_id)) {
-        throw createError({ statusCode: 403, statusMessage: 'Not authorized to delete this invoice' })
+    await assertInvoiceRowAccess(invoiceId, access, true)
+    return await transaction(async (client) => {
+      // The lock and own-draft/assignment recheck precede child deletions and cancellation.
+      const invoice = await lockInvoiceForEdit(client, invoiceId, access)
+      if (Number(invoice.amount_paid) > 0) {
+        throw createError({ statusCode: 400, statusMessage: 'Cannot delete an invoice that has payments recorded. Void or credit it instead.' })
       }
-      if (invoice.status !== 'draft') {
-        throw createError({ statusCode: 403, statusMessage: 'Account managers can only delete draft invoices' })
+      const scopeParams = [invoiceId, access.clientIds === 'all', access.user.id]
+      if (hardDelete) {
+        if (invoice.status !== 'draft') {
+          throw createError({ statusCode: 400, statusMessage: 'Only draft invoices can be permanently deleted. Cancel the invoice instead.' })
+        }
+        await client.query('DELETE FROM invoice_line_items WHERE invoice_id = $1', [invoiceId])
+        await client.query('DELETE FROM invoice_payments WHERE invoice_id = $1', [invoiceId])
+        const deleted = await client.query(`DELETE FROM invoices WHERE id = $1 AND status = 'draft'
+          AND ($2::boolean OR created_by = $3) RETURNING id`, scopeParams)
+        if (!deleted.rows[0]) throw createError({ statusCode: 403, statusMessage: 'Invoice unavailable for deletion' })
+        return { success: true, message: 'Invoice permanently deleted', deleted: true }
       }
-      if (invoice.created_by !== user.id) {
-        throw createError({ statusCode: 403, statusMessage: 'Can only delete invoices you created' })
-      }
-    }
-
-    // Don't allow deleting paid invoices
-    if (invoice.status === 'paid' || Number(invoice.amount_paid) > 0) {
-      throw createError({
-        statusCode: 400,
-        statusMessage: 'Cannot delete an invoice that has payments recorded. Void or credit it instead.'
-      })
-    }
-
-    if (hardDelete) {
-      // Hard delete - only for draft invoices
-      if (invoice.status !== 'draft') {
-        throw createError({
-          statusCode: 400,
-          statusMessage: 'Only draft invoices can be permanently deleted. Cancel the invoice instead.'
-        })
-      }
-
-      await transaction(async (client) => {
-        // Delete line items first
-        await client.query(`DELETE FROM invoice_line_items WHERE invoice_id = $1`, [invoiceId])
-        // Delete payments (should be none for drafts)
-        await client.query(`DELETE FROM invoice_payments WHERE invoice_id = $1`, [invoiceId])
-        // Delete the invoice
-        await client.query(`DELETE FROM invoices WHERE id = $1`, [invoiceId])
-      })
-
-      return {
-        success: true,
-        message: 'Invoice permanently deleted',
-        deleted: true
-      }
-    } else {
-      // Soft delete - mark as cancelled
-      await queryOne(`
-        UPDATE invoices
-        SET status = 'cancelled', updated_at = NOW()
-        WHERE id = $1
-        RETURNING id
-      `, [invoiceId])
-
-      return {
-        success: true,
-        message: 'Invoice cancelled successfully',
-        cancelled: true
-      }
-    }
+      const cancelled = await client.query(`UPDATE invoices SET status = 'cancelled', updated_at = NOW()
+        WHERE id = $1 AND ($2::boolean OR (status = 'draft' AND created_by = $3)) RETURNING id`, scopeParams)
+      if (!cancelled.rows[0]) throw createError({ statusCode: 403, statusMessage: 'Invoice unavailable for cancellation' })
+      return { success: true, message: 'Invoice cancelled successfully', cancelled: true }
+    })
   } catch (error: any) {
     if (error.statusCode) throw error
     console.error('Failed to delete invoice:', error)
-    throw createError({
-      statusCode: 500,
-      statusMessage: 'Failed to delete invoice'
-    })
+    throw createError({ statusCode: 500, statusMessage: 'Failed to delete invoice' })
   }
 })

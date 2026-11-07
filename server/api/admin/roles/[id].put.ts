@@ -1,3 +1,4 @@
+import { assertPermissionGrant } from '~~/server/utils/financeAccess'
 import { queryOne, queryRows, execute, transaction } from '~~/server/utils/db'
 import { requireRole } from '~~/server/utils/auth'
 import { invalidateUserPermissionCache } from '~~/server/utils/roleResolver'
@@ -6,7 +7,8 @@ import { PERMISSION_GROUPS } from '~~/server/utils/permissions'
 const VALID_GROUPS = new Set(PERMISSION_GROUPS)
 
 export default defineEventHandler(async (event) => {
-  await requireRole(event, ['owner'])
+  const currentUser = await requireRole(event, ['owner'])
+  await assertPermissionGrant(event, currentUser.id, 'ADMIN', true)
 
   const roleId = getRouterParam(event, 'id')
   if (!roleId) {

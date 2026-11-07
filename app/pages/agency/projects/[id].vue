@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { format } from 'date-fns'
+import { parseDate, type CalendarDate } from '@internationalized/date'
 
 definePageMeta({
   title: 'Project Details',
@@ -8,6 +9,9 @@ definePageMeta({
 
 const route = useRoute()
 const toast = useToast()
+const { canAccessFinance, canWrite, hasPermission } = useAuth()
+const canPlanProjects = computed(() => canAccessFinance.value || hasPermission('CLIENTS'))
+const canEditPlanningBudget = computed(() => canPlanProjects.value && canWrite.value)
 const projectId = route.params.id as string
 const apiFetch = $fetch as <T = unknown>(
   request: string,
@@ -36,10 +40,19 @@ const timeEntries = computed(() => ((data.value as any)?.timeEntries || []) as a
 const expenses = computed(() => ((data.value as any)?.expenses || []) as any[])
 const taskStats = computed(() => (data.value as any)?.taskStats || { total: 0, completed: 0, inProgress: 0 })
 const invoices = computed(() => ((data.value as any)?.invoices || []) as any[])
+const canReadInvoices = computed(() => Array.isArray((data.value as any)?.invoices))
+const projectTabs = computed(() => [
+  { label: 'Overview', value: 'overview', icon: 'i-lucide-layout-dashboard' },
+  { label: 'Tasks', value: 'tasks', icon: 'i-lucide-check-square' },
+  { label: 'Time Entries', value: 'time', icon: 'i-lucide-clock' },
+  ...(canAccessFinance.value ? [{ label: 'Expenses', value: 'expenses', icon: 'i-lucide-receipt' }] : []),
+  ...(canReadInvoices.value ? [{ label: 'Invoices', value: 'invoices', icon: 'i-lucide-file-text' }] : [])
+])
 const sourceBrief = computed(() => (data.value as any)?.sourceBrief || null)
 
 // Format helpers
 const formatCurrency = (value: number) => {
+  if (!Number.isFinite(value)) return '—'
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'USD',
@@ -117,13 +130,25 @@ const openEditModal = () => {
   }
 }
 
+function toCalendarDate(value: string): CalendarDate | undefined {
+  if (!value) return undefined
+  try { return parseDate(value.slice(0, 10)) } catch { return undefined }
+}
+const editStartDate = computed({ get: () => toCalendarDate(editForm.value.startDate),set: value => { editForm.value.startDate = value?.toString() || '' } })
+const editEndDate = computed({ get: () => toCalendarDate(editForm.value.endDate),set: value => { editForm.value.endDate = value?.toString() || '' } })
+
 const saving = ref(false)
 const saveProject = async () => {
+  if (!canWrite.value) return
   saving.value = true
   try {
     await apiFetch(`/api/agency/projects/${projectId}`, {
       method: 'PUT',
-      body: editForm.value
+      body: {
+        name: editForm.value.name,description: editForm.value.description,status: editForm.value.status,
+        startDate: editForm.value.startDate,endDate: editForm.value.endDate,
+        ...(canEditPlanningBudget.value ? { budgetAmount: editForm.value.budgetAmount } : {})
+      }
     })
     toast.add({ title: 'Project updated', color: 'success' })
     showEditModal.value = false
@@ -173,6 +198,8 @@ async function loadProjectTasks() {
   }
 }
 
+watch(projectTabs, tabs => { if (!tabs.some(tab => tab.value === activeTab.value)) activeTab.value = 'overview' })
+
 watch(activeTab, (tab) => {
   if (tab === 'tasks') loadProjectTasks()
 })
@@ -203,6 +230,7 @@ watch(activeTab, (tab) => {
             {{ project.status.replace('_', ' ') }}
           </UBadge>
           <UButton
+            v-if="canWrite"
             label="Edit Project"
             icon="i-lucide-pencil"
             variant="outline"
@@ -219,7 +247,7 @@ watch(activeTab, (tab) => {
         <template v-else-if="project">
           <!-- Summary Cards -->
           <div class="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
-            <UCard>
+            <UCard v-if="canPlanProjects">
               <div class="text-center">
                 <p class="text-sm text-gray-500">Budget</p>
                 <p class="text-2xl font-bold">{{ formatCurrency(project.budgetAmount) }}</p>
@@ -227,7 +255,7 @@ watch(activeTab, (tab) => {
               </div>
             </UCard>
 
-            <UCard>
+            <UCard v-if="canAccessFinance">
               <div class="text-center">
                 <p class="text-sm text-gray-500">Spent</p>
                 <p class="text-2xl font-bold" :class="project.totalCost > project.budgetAmount ? 'text-red-500' : ''">
@@ -242,7 +270,7 @@ watch(activeTab, (tab) => {
               </div>
             </UCard>
 
-            <UCard>
+            <UCard v-if="canAccessFinance">
               <div class="text-center">
                 <p class="text-sm text-gray-500">Remaining</p>
                 <p class="text-2xl font-bold" :class="project.remainingBudget < 0 ? 'text-red-500' : 'text-emerald-500'">
@@ -251,7 +279,7 @@ watch(activeTab, (tab) => {
               </div>
             </UCard>
 
-            <UCard>
+            <UCard v-if="canAccessFinance">
               <div class="text-center">
                 <p class="text-sm text-gray-500">Margin</p>
                 <p class="text-2xl font-bold" :class="{
@@ -259,7 +287,7 @@ watch(activeTab, (tab) => {
                   'text-amber-500': project.grossMargin >= 15 && project.grossMargin < 30,
                   'text-red-500': project.grossMargin < 15
                 }">
-                  {{ project.grossMargin.toFixed(1) }}%
+                  {{ Number.isFinite(project.grossMargin) ? project.grossMargin.toFixed(1) : '—' }}%
                 </p>
               </div>
             </UCard>
@@ -273,16 +301,15 @@ watch(activeTab, (tab) => {
             </UCard>
           </div>
 
+          <UCard v-if="canPlanProjects && !canAccessFinance && Number.isFinite(project.mediaCost)" class="mb-6">
+            <p class="text-sm text-muted">Campaign media spend</p>
+            <p class="text-2xl font-bold">{{ formatCurrency(project.mediaCost) }}</p>
+          </UCard>
+
           <!-- Tabs -->
           <UTabs
             v-model="activeTab"
-            :items="[
-              { label: 'Overview', value: 'overview', icon: 'i-lucide-layout-dashboard' },
-              { label: 'Tasks', value: 'tasks', icon: 'i-lucide-check-square' },
-              { label: 'Time Entries', value: 'time', icon: 'i-lucide-clock' },
-              { label: 'Expenses', value: 'expenses', icon: 'i-lucide-receipt' },
-              { label: 'Invoices', value: 'invoices', icon: 'i-lucide-file-text' }
-            ]"
+            :items="projectTabs"
             class="mb-6"
           />
 
@@ -311,7 +338,7 @@ watch(activeTab, (tab) => {
                   <dt class="text-gray-500">End Date</dt>
                   <dd class="font-medium">{{ formatDate(project.endDate) }}</dd>
                 </div>
-                <div class="flex justify-between">
+                <div v-if="canAccessFinance" class="flex justify-between">
                   <dt class="text-gray-500">Billing Type</dt>
                   <dd class="font-medium capitalize">{{ project.clientBillingType }}</dd>
                 </div>
@@ -323,7 +350,7 @@ watch(activeTab, (tab) => {
             </UCard>
 
             <!-- Cost Breakdown -->
-            <UCard>
+            <UCard v-if="canAccessFinance">
               <template #header>
                 <h3 class="font-semibold">Cost Breakdown</h3>
               </template>
@@ -379,7 +406,7 @@ watch(activeTab, (tab) => {
             </UCard>
 
             <!-- Recent Invoices -->
-            <UCard>
+            <UCard v-if="canReadInvoices">
               <template #header>
                 <div class="flex items-center justify-between">
                   <h3 class="font-semibold">Recent Invoices</h3>
@@ -498,7 +525,7 @@ watch(activeTab, (tab) => {
           </UCard>
 
           <!-- Expenses Tab -->
-          <UCard v-if="activeTab === 'expenses'">
+          <UCard v-if="canAccessFinance && activeTab === 'expenses'">
             <template #header>
               <div class="flex items-center justify-between">
                 <h3 class="font-semibold">Recent Expenses</h3>
@@ -526,7 +553,7 @@ watch(activeTab, (tab) => {
           </UCard>
 
           <!-- Invoices Tab -->
-          <UCard v-if="activeTab === 'invoices'">
+          <UCard v-if="canReadInvoices && activeTab === 'invoices'">
             <template #header>
               <div class="flex items-center justify-between">
                 <h3 class="font-semibold">Invoices</h3>
@@ -570,17 +597,18 @@ watch(activeTab, (tab) => {
         <h3 class="font-semibold">Edit Project</h3>
       </template>
       <template #body>
-        <div class="space-y-4">
+        <div class="@container space-y-4">
           <UFormField label="Project Name" required>
-            <UInput v-model="editForm.name" placeholder="Project name" />
+            <UInput class="w-full" v-model="editForm.name" placeholder="Project name" />
           </UFormField>
 
           <UFormField label="Description">
-            <UTextarea v-model="editForm.description" placeholder="Project description" :rows="3" />
+            <UTextarea class="w-full" v-model="editForm.description" placeholder="Project description" :rows="3" />
           </UFormField>
 
           <UFormField label="Status">
             <USelectMenu
+              class="w-full"
               v-model="editForm.status"
               :items="[
                 { label: 'Draft', value: 'draft' },
@@ -593,16 +621,22 @@ watch(activeTab, (tab) => {
             />
           </UFormField>
 
-          <UFormField label="Budget Amount">
-            <UInput v-model.number="editForm.budgetAmount" type="number" min="0" step="100" />
+          <UFormField v-if="canEditPlanningBudget" label="Budget Amount">
+            <UInput class="w-full" v-model.number="editForm.budgetAmount" type="number" min="0" step="100" />
           </UFormField>
 
-          <div class="grid grid-cols-2 gap-4">
+          <div class="grid grid-cols-1 gap-4 @lg:grid-cols-2">
             <UFormField label="Start Date">
-              <UInput v-model="editForm.startDate" type="date" />
+              <UPopover>
+                <UButton class="w-full" color="neutral" variant="outline" icon="i-lucide-calendar" :label="editForm.startDate || 'Select date'" />
+                <template #content><UCalendar v-model="editStartDate" /><UButton size="xs" variant="ghost" label="Clear" @click="editForm.startDate = ''" /></template>
+              </UPopover>
             </UFormField>
             <UFormField label="End Date">
-              <UInput v-model="editForm.endDate" type="date" />
+              <UPopover>
+                <UButton class="w-full" color="neutral" variant="outline" icon="i-lucide-calendar" :label="editForm.endDate || 'Select date'" />
+                <template #content><UCalendar v-model="editEndDate" /><UButton size="xs" variant="ghost" label="Clear" @click="editForm.endDate = ''" /></template>
+              </UPopover>
             </UFormField>
           </div>
         </div>

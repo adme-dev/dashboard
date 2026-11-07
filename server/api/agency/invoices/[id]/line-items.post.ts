@@ -5,8 +5,9 @@
  * Adds a new line item to an invoice
  */
 
-import { queryOne, transaction } from '~~/server/utils/db'
-import { requireAuth, requireRole } from '~~/server/utils/auth'
+import { transaction } from '~~/server/utils/db'
+import { requireInvoiceAccess } from '~~/server/utils/clientScoping'
+import { assertInvoiceRowAccess, lockInvoiceForEdit, assertInvoiceReferences } from '~~/server/utils/invoiceRowAccess'
 
 interface LineItemBody {
   description: string
@@ -20,10 +21,7 @@ interface LineItemBody {
 }
 
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
-
-  // Only admins, owners, and sales can modify invoices
-  await requireRole(event, ['owner', 'admin', 'sales'])
+  const access = await requireInvoiceAccess(event, true)
 
   const invoiceId = getRouterParam(event, 'id')
   const body = await readBody<LineItemBody>(event)
@@ -58,37 +56,23 @@ export default defineEventHandler(async (event) => {
 
   try {
     // Check if invoice exists and is editable
-    const invoice = await queryOne(
-      `SELECT id, status, tax_rate FROM invoices WHERE id = $1`,
-      [invoiceId]
-    )
+    await assertInvoiceRowAccess(invoiceId, access, true)
+    return await transaction(async (client) => {
+      const queryOne = async (sql: string, params?: any[]) => (await client.query(sql, params)).rows[0]
+      const invoice = await lockInvoiceForEdit(client, invoiceId, access)
 
-    if (!invoice) {
-      throw createError({
-        statusCode: 404,
-        statusMessage: 'Invoice not found'
-      })
-    }
+      if (access.clientIds !== 'all') await assertInvoiceReferences(client, invoice.client_id, body)
 
-    if (['paid', 'cancelled'].includes(invoice.status)) {
-      throw createError({
-        statusCode: 400,
-        statusMessage: `Cannot add line items to a ${invoice.status} invoice`
-      })
-    }
+      // Get the next sort order if not specified
+      let sortOrder = body.sortOrder
+      if (sortOrder === undefined) {
+        const maxSort = await queryOne(
+          `SELECT MAX(sort_order) as max_order FROM invoice_line_items WHERE invoice_id = $1`,
+          [invoiceId]
+        )
+        sortOrder = (maxSort?.max_order || 0) + 1
+      }
 
-    // Get the next sort order if not specified
-    let sortOrder = body.sortOrder
-    if (sortOrder === undefined) {
-      const maxSort = await queryOne(
-        `SELECT MAX(sort_order) as max_order FROM invoice_line_items WHERE invoice_id = $1`,
-        [invoiceId]
-      )
-      sortOrder = (maxSort?.max_order || 0) + 1
-    }
-
-    let lineItem: any
-    await transaction(async (client) => {
       // Insert line item
       const result = await client.query(`
         INSERT INTO invoice_line_items (
@@ -115,7 +99,7 @@ export default defineEventHandler(async (event) => {
         body.projectId || null,
         sortOrder
       ])
-      lineItem = result.rows[0]
+      const lineItem = result.rows[0]
 
       // Recalculate invoice totals
       const totals = await client.query(`
@@ -142,25 +126,25 @@ export default defineEventHandler(async (event) => {
           updated_at = NOW()
         WHERE id = $4
       `, [subtotal, taxAmount, totalAmount, invoiceId])
-    })
 
-    return {
-      success: true,
-      lineItem: {
-        id: lineItem.id,
-        invoiceId: lineItem.invoice_id,
-        description: lineItem.description,
-        quantity: Number(lineItem.quantity),
-        unitPrice: Number(lineItem.unit_price),
-        amount: Number(lineItem.quantity) * Number(lineItem.unit_price),
-        itemType: lineItem.item_type,
-        taxable: lineItem.taxable,
-        timeEntryId: lineItem.time_entry_id,
-        projectId: lineItem.project_id,
-        sortOrder: lineItem.sort_order,
-        createdAt: lineItem.created_at
+      return {
+        success: true,
+        lineItem: {
+          id: lineItem.id,
+          invoiceId: lineItem.invoice_id,
+          description: lineItem.description,
+          quantity: Number(lineItem.quantity),
+          unitPrice: Number(lineItem.unit_price),
+          amount: Number(lineItem.quantity) * Number(lineItem.unit_price),
+          itemType: lineItem.item_type,
+          taxable: lineItem.taxable,
+          timeEntryId: lineItem.time_entry_id,
+          projectId: lineItem.project_id,
+          sortOrder: lineItem.sort_order,
+          createdAt: lineItem.created_at
+        }
       }
-    }
+    })
   } catch (error: any) {
     if (error.statusCode) throw error
     console.error('Failed to add invoice line item:', error)

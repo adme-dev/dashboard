@@ -1,3 +1,4 @@
+import { assertFinancePermission } from '~~/server/utils/financeAccess'
 import { runFinancialWatchAgentRequest } from '~~/server/utils/ai/financialWatchAgentRuntime'
 import { resolveServicePlatformAgentAuthority } from '~~/server/utils/ai/platformAgentAuthority'
 import { optionalPlatformAgentAssertionAuthority } from '~~/server/utils/ai/platformAgentBridgeAssertion'
@@ -28,6 +29,9 @@ export default defineEventHandler(async (event) => {
   const tenantId = typeof context.tenantId === 'string' && context.tenantId.trim() ? context.tenantId.trim() : ''
   const clientId = typeof context.clientId === 'string' && context.clientId.trim() ? context.clientId.trim() : null
   const assertedAuthority = await optionalPlatformAgentAssertionAuthority(event, 'financial-watch')
+  // A signed assertion carries a snapshot; revocation must take effect before
+  // any stored financial signals or model context are read.
+  if (assertedAuthority?.actor.type === 'user') await assertFinancePermission(event, assertedAuthority.actor.id)
   const authority = assertedAuthority ?? await resolveServicePlatformAgentAuthority({
     serviceId: 'cloudflare-platform-agents',
     tenantId,

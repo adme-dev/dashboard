@@ -41,6 +41,8 @@ export function resetHarness() {
       throw Error('Forbidden legacy read or side effect')
     })
   fixture.queryOneFresh.mockImplementation(async (sql: string, params: any[] = []) => {
+    // These fixtures represent a current explicit grant, independently checked by the reader.
+    if (sql.includes('SELECT rpg.permission_group')) return fixture.context.permissionGroups?.includes(params[2]) ? { permission_group: params[2] } : null
     if (sql.includes('FROM team_members')) return fixture.owner ? { id: USER } : null
     if (sql.includes('xero_org_connection')) {
       expect(sql).toMatch(/^SELECT tenant_id /)

@@ -3,6 +3,7 @@
  * PATCH /api/auth/users/:id/role
  */
 
+import { assertPermissionGrant } from '~~/server/utils/financeAccess'
 import { queryOne } from '~~/server/utils/db'
 import { requireRole, logActivity } from '~~/server/utils/auth'
 import { invalidateUserPermissionCache } from '~~/server/utils/roleResolver'
@@ -33,6 +34,7 @@ const ROLE_HIERARCHY: Record<string, number> = {
 export default defineEventHandler(async (event) => {
   // Only admins and owners can change roles
   const currentUser = await requireRole(event, ['admin', 'owner'])
+  await assertPermissionGrant(event, currentUser.id, 'ADMIN', true)
   const userId = getRouterParam(event, 'id')
 
   if (!userId) {

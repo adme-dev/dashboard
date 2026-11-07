@@ -8,30 +8,17 @@
 // ensures we only run once per day per tenant in their local TZ.
 //
 // Auth: x-cron-secret header matched against CRON_SECRET env var.
-// In development, the secret check is skipped to allow easy manual triggering.
+// Authentication is required in every environment.
 
-import { defineEventHandler, getHeader, getQuery, createError } from 'h3'
+import { defineEventHandler, getQuery } from 'h3'
+import { requireFinanceCronJob } from '~~/server/utils/financeMachineAccess'
 import { queryOne } from '~~/server/utils/db'
 import { resolveCronXeroAuth } from '~~/server/utils/xeroCronAuth'
 import { runDetectionForTenant } from '~~/server/utils/anomalyDetection/runForTenant'
 
 export default defineEventHandler(async (event) => {
-  // Auth
-  const cronSecret = getHeader(event, 'x-cron-secret')
-  const expectedSecret = process.env.CRON_SECRET
+  requireFinanceCronJob(event)
 
-  // import.meta.dev is the Nuxt/Nitro-canonical dev check; works on Cloudflare
-  // Pages preview deploys (where NODE_ENV may not be 'production').
-  if (!import.meta.dev && cronSecret !== expectedSecret) {
-    throw createError({
-      statusCode: 401,
-      statusMessage: 'Unauthorized',
-    })
-  }
-
-  // ?force=true bypasses the local-7am gate. Use for ad-hoc backfills,
-  // smoke tests, or to manually trigger detection without waiting for the
-  // next 7am tenant-local. The auth check above still gates access.
   const query = getQuery(event)
   const force = query.force === 'true' || query.force === '1'
 

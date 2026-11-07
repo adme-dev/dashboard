@@ -4,7 +4,7 @@
  * Allows account managers (scoped) and finance roles (full) to access billing.
  */
 export default defineNuxtRouteMiddleware(async (to) => {
-  const { user, isAuthenticated, fetchUser, isLoading, hasRole } = useAuth()
+  const { user, isAuthenticated, fetchUser, isLoading, canAccessInvoices } = useAuth()
 
   if (!isAuthenticated.value && !isLoading.value) {
     await fetchUser()
@@ -14,7 +14,7 @@ export default defineNuxtRouteMiddleware(async (to) => {
     return navigateTo({ path: '/auth/login', query: { redirect: to.fullPath } })
   }
 
-  if (!hasRole(PERMISSIONS.INVOICE_OWN_CLIENTS)) {
+  if (!canAccessInvoices.value) {
     return navigateTo({ path: '/agency', query: { error: 'no-invoice-access' } })
   }
 })

@@ -4,10 +4,12 @@
  */
 
 import { queryOne } from '~~/server/utils/db'
+import { assertFinancePermission, assertPermissionGrant } from '~~/server/utils/financeAccess'
 import { requireAuth } from '~~/server/utils/auth'
 
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
+  const user = await requireAuth(event)
+  await assertPermissionGrant(event, user.id, 'ADMIN', true)
   const body = await readBody(event)
 
   const {
@@ -28,6 +30,11 @@ export default defineEventHandler(async (event) => {
       statusMessage: 'Name and email are required'
     })
   }
+
+  const rateWrite = Object.prototype.hasOwnProperty.call(body, 'hourlyRate') || Object.prototype.hasOwnProperty.call(body, 'hourlyCost')
+  let includeRates = false
+  try { await assertFinancePermission(event, user.id, rateWrite); includeRates = true }
+  catch (error) { if (rateWrite || (error as { statusCode?: number }).statusCode !== 403) throw error }
 
   try {
     // Check if email already exists
@@ -65,7 +72,7 @@ export default defineEventHandler(async (event) => {
         created_at,
         updated_at
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())
-      RETURNING *
+      RETURNING ${includeRates ? '*' : 'id,name,email,role,department,target_utilization,avatar_url,is_active,created_at,updated_at'}
     `, [
       name,
       email,
@@ -86,8 +93,7 @@ export default defineEventHandler(async (event) => {
         email: result.email,
         role: result.role,
         department: result.department,
-        hourlyRate: Number(result.hourly_rate || 0),
-        hourlyCost: Number(result.hourly_cost || 0),
+        ...(includeRates ? { hourlyRate: Number(result.hourly_rate || 0),hourlyCost: Number(result.hourly_cost || 0) } : {}),
         targetUtilization: Number(result.target_utilization || 0),
         avatarUrl: result.avatar_url,
         isActive: result.is_active,

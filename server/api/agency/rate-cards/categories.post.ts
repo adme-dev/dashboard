@@ -1,8 +1,10 @@
+import { assertCommercialPermission } from '~~/server/utils/commercialAccess'
 import { requireAuth } from '~~/server/utils/auth'
 import { queryOne } from '~~/server/utils/db'
 
 export default eventHandler(async (event) => {
-  await requireAuth(event)
+  const commercialUser = await requireAuth(event)
+  await assertCommercialPermission(event, commercialUser.id, 'SALES', true)
 
   const body = await readBody(event)
   const { id, name, sortOrder } = body

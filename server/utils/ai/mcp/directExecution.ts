@@ -1,4 +1,5 @@
 import { createError, type H3Event } from 'h3'
+import { assertFinancePermission } from '~~/server/utils/financeAccess'
 
 import type { McpRequestClaim } from '~~/shared/utils/mcpRequestClaim'
 import {
@@ -90,6 +91,10 @@ export function createGodModeMcpCallExecutor(deps: GodModeMcpCallDependencies) {
 
     const execution = deps.resolveExecution(input.toolName)
     if (!execution) throw createError({ statusCode: 404, statusMessage: 'God mode MCP tool is unavailable' })
+    if (execution.tool.requiredPermission === 'FINANCE') {
+      if (execution.tool.mutates) await assertFinancePermission(input.event, input.claim.uid, true)
+      else await assertFinancePermission(input.event, input.claim.uid)
+    }
     const missingWriteScope = !!execution.tool.mutates
       && input.requireWriteScope === true
       && !input.claim.scope.includes('mcp:write')

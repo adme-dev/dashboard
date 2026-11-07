@@ -222,6 +222,8 @@ async function mountPage(input: {
   status?: FinancialStatus
   error?: Error | null
   canAccessMediaBuying?: boolean
+  canAccessFinance?: boolean
+  canAccessClients?: boolean
 } = {}) {
   vi.useFakeTimers()
   vi.setSystemTime(new Date('2026-08-22T12:00:00+10:00'))
@@ -258,6 +260,9 @@ async function mountPage(input: {
       isOwner: computed(() => true),
       canAccessMediaBuying: computed(() => input.canAccessMediaBuying ?? true),
       canWrite: computed(() => true),
+      canAccessClients: computed(() => input.canAccessClients ?? true),
+      canAccessFinance: computed(() => input.canAccessFinance ?? true),
+      hasPermission: () => false,
     }),
     useFetch: useFetchMock,
     useRoute: () => ({ params: { id: CLIENT_ID } }),
@@ -309,6 +314,25 @@ afterEach(() => {
 })
 
 describe('agency client detail financial façade', () => {
+  it('suppresses financial reads and stale financial controls when explicit Finance is absent', async () => {
+    const test = await mountPage({ canAccessFinance: false, canAccessClients: false })
+    try {
+      expect(test.useFetchMock.mock.calls[0]?.[1]).toMatchObject({ immediate: false, watch: false })
+      expect(test.host.textContent).not.toContain('Hourly Rate')
+      expect(test.host.textContent).not.toContain('Retainer Amount')
+      expect(test.host.textContent).not.toContain('Xero revenue')
+      expect(test.host.querySelector('[data-tab="invoices"]')).toBeNull()
+    } finally { dispose(test) }
+  })
+  it('retains account-manager client insights without exposing Xero connection controls', async () => {
+    const test = await mountPage({ canAccessFinance: false, canAccessClients: true })
+    try {
+      expect(test.useFetchMock.mock.calls[0]?.[1]).not.toMatchObject({ immediate: false })
+      expect(test.host.textContent).toContain('Xero revenue')
+      expect(test.host.textContent).toContain('Retainer Amount')
+      expect(test.host.textContent).not.toContain('Contact ID:')
+    } finally { dispose(test) }
+  })
   it('uses one inclusive reactive financial read and renders only façade financial values', async () => {
     const test = await mountPage()
     try {

@@ -3,11 +3,13 @@
  * PATCH /api/admin/users/:id
  */
 
+import { assertPermissionGrant } from '~~/server/utils/financeAccess'
 import { requireRole } from '../../../utils/auth'
 import { queryOne } from '../../../utils/db'
 
 export default eventHandler(async (event) => {
-  await requireRole(event, ['admin', 'owner'])
+  const currentUser = await requireRole(event, ['admin', 'owner'])
+  await assertPermissionGrant(event, currentUser.id, 'ADMIN', true)
 
   const userId = getRouterParam(event, 'id')
   if (!userId) {

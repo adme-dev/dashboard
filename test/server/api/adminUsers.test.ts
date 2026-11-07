@@ -36,6 +36,7 @@ vi.mock('~~/server/utils/auth', () => ({
 }))
 
 vi.mock('~~/server/utils/db', () => ({
+  queryOneFresh: vi.fn(async () => ({ permission_group: 'ADMIN' })),
   queryRows: (...args: unknown[]) => mockQueryRows(...args),
   queryRowsFresh: (...args: unknown[]) => mockQueryRows(...args),
   queryOne: (...args: unknown[]) => mockQueryOne(...args)

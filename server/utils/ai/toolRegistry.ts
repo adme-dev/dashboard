@@ -7,6 +7,7 @@ import {
 import { roleHasPermission, isReadOnlyRole, type PermissionGroup } from '~~/server/utils/permissions'
 import type { ToolContext, ToolResult, RiskTier } from './toolContext'
 import { spotlight } from './spotlight'
+import { assertFinancePermission } from '~~/server/utils/financeAccess'
 
 /**
  * Declarative tool definition. `requiredPermission` / `mutates` / `returnsUntrusted` are
@@ -59,12 +60,12 @@ export function filterToolsForUser<A>(
   authority?: GodModeAuthority,
   authenticatedUserId?: string
 ): AiTool<A>[] {
-  if (
-    typeof authenticatedUserId === 'string'
+  const godModeActive = typeof authenticatedUserId === 'string'
     && isActiveGodModeAuthority(authority, authenticatedUserId)
-  ) return reg
-
   return reg.filter((t) => {
+    // Accounting is an explicit grant even when God mode admits other tools.
+    if (t.requiredPermission === 'FINANCE' && !resolvedPermissionGroups?.includes('FINANCE')) return false
+    if (godModeActive) return true
     // Write tools are never shown to read-only roles (viewer/guest).
     if (t.mutates && (resolvedReadOnly === true || isReadOnlyRole(role))) return false
     if (!t.requiredPermission) return true
@@ -108,6 +109,16 @@ export function toSdkTools(
       inputSchema: t.parameters,
       execute: async (args: any, _callOptions: any) => {
         const ordinal = nextToolOrdinal++
+        if (t.requiredPermission === 'FINANCE') {
+          if (!ctx.event) return { ok: false, error: 'Finance permission required.' }
+          try {
+            if (t.mutates) await assertFinancePermission(ctx.event, ctx.userId, true)
+            else await assertFinancePermission(ctx.event, ctx.userId)
+          }
+          catch {
+            return { ok: false, error: 'Finance permission unavailable or not granted.' }
+          }
+        }
         // Defense-in-depth re-check at execution time.
         const permissionGranted = !t.requiredPermission || (ctx.permissionGroups
           ? ctx.permissionGroups.includes(t.requiredPermission)

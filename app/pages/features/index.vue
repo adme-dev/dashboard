@@ -290,7 +290,7 @@ const categories = [
     iconColor: 'text-amber-600',
     features: [
       { title: 'AI Chat', slug: 'ai-chat', icon: 'i-lucide-bot', description: 'Conversational AI that pulls live agency data on demand — finance, ad-spend, client profitability, retainer burn, revenue forecasting, tasks, and more — with @entity mentions, role-focused assistants, and propose-then-confirm actions that never change anything without your click.' },
-      { title: 'Owner God Mode', slug: 'owner-god-mode', icon: 'i-lucide-crown', description: 'Always-on access to every registered application and MCP capability for active owners, including audited Banner Studio creation and staged Google Tag Manager publishing. Authentication, isolation and emergency controls remain enforced.' },
+      { title: 'Owner God Mode', slug: 'owner-god-mode', icon: 'i-lucide-crown', description: 'Always-on access to every registered application and MCP capability for active owners, including audited Banner Studio creation and staged Google Tag Manager publishing. Explicit Finance grants, authentication, isolation and emergency controls remain enforced.' },
       { title: 'Voice AI', slug: 'voice-ai', icon: 'i-lucide-mic', description: 'Talk to your AI assistant. Speech-to-text transcription and text-to-speech responses powered by Workers AI.' },
       { title: 'Anomaly Detection', slug: 'anomaly-detection', icon: 'i-lucide-alert-triangle', description: '10 specialised analysers that proactively flag anomalies across profit, revenue, expenses, cashflow, receivables, budget, ad-spend pacing/delivery health and per-client risk — surfaced in the daily digest, push, and in-app.' },
       { title: CRM_SEARCH_MARKETING_COPY.featureTitle, slug: 'semantic-search', icon: 'i-lucide-search', description: CRM_SEARCH_MARKETING_COPY.featureCardDescription },
@@ -374,7 +374,7 @@ const categories = [
     iconColor: 'text-slate-600',
     features: [
       { title: 'Custom Roles', slug: 'custom-roles', icon: 'i-lucide-user-cog', description: 'Create custom roles beyond the 15 built-in levels. Define granular permissions for each role to match your org structure.' },
-      { title: 'Permission System', slug: 'permission-system', icon: 'i-lucide-lock', description: 'Fine-grained RBAC with 15+ permission areas — finance, creative, media, clients, admin, and more. Server-enforced.' },
+      { title: 'Permission System', slug: 'permission-system', icon: 'i-lucide-lock', description: 'Server-enforced role grants keep company accounting separate from assigned-client billing, campaign spend and budgets.' },
       { title: 'Admin Dashboard', slug: 'admin-dashboard', icon: 'i-lucide-settings', description: 'Central admin panel with user management, role assignment, permission matrix, and audit controls.' }
     ]
   }

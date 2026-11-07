@@ -4,6 +4,7 @@
  */
 
 import { createError, getQuery } from 'h3'
+import { assertFinancePermission } from '~~/server/utils/financeAccess'
 import { requireAuth } from '~~/server/utils/auth'
 import { queryRows } from '~~/server/utils/db'
 
@@ -25,15 +26,14 @@ type TeamMemberRow = {
   created_at: string
 }
 
-function formatMembers(members: TeamMemberRow[]) {
+function formatMembers(members: TeamMemberRow[], includeRates: boolean) {
   return members.map(m => ({
     id: m.id,
     name: m.name,
     email: m.email,
     role: m.role,
     department: m.department,
-    hourlyRate: Number(m.hourly_rate || 0),
-    hourlyCost: Number(m.hourly_cost || 0),
+    ...(includeRates ? { hourlyRate: Number(m.hourly_rate || 0),hourlyCost: Number(m.hourly_cost || 0) } : {}),
     targetUtilization: Number(m.target_utilization || 0),
     avatarUrl: m.avatar_url,
     isActive: m.is_active,
@@ -56,7 +56,7 @@ async function fetchMembers(filters: {
   active?: string
   department?: string
   role?: string
-}) {
+}, includeRates: boolean) {
   const currentPeriod = new Date().toISOString().slice(0, 7)
   const params: Array<string | boolean> = [currentPeriod]
   const conditions: string[] = []
@@ -95,8 +95,7 @@ async function fetchMembers(filters: {
       tm.email,
       COALESCE(tm.role, tm.user_role::text) AS role,
       d.name AS department,
-      tm.default_hourly_rate AS hourly_rate,
-      0 AS hourly_cost,
+      ${includeRates ? 'tm.default_hourly_rate AS hourly_rate,0 AS hourly_cost,' : ''}
       tm.target_utilization,
       tm.avatar_url,
       tm.is_active,
@@ -137,7 +136,10 @@ async function fetchMembers(filters: {
 }
 
 export default eventHandler(async (event) => {
-  await requireAuth(event)
+  const user = await requireAuth(event)
+  let includeRates = false
+  try { await assertFinancePermission(event, user.id); includeRates = true }
+  catch (error) { if ((error as { statusCode?: number }).statusCode !== 403) throw error }
   const query = getQuery(event)
   const search = (query.search as string) || ''
   const active = typeof query.active === 'string' ? query.active : undefined
@@ -145,8 +147,8 @@ export default eventHandler(async (event) => {
   const role = typeof query.role === 'string' ? query.role : undefined
 
   try {
-    const rows = await fetchMembers({ search, active, department, role })
-    const members = formatMembers(rows)
+    const rows = await fetchMembers({ search, active, department, role }, includeRates)
+    const members = formatMembers(rows, includeRates)
     const activeMembers = members.filter(member => member.isActive)
     const totalCapacity = activeMembers.reduce((sum, member) => sum + member.targetUtilization, 0)
     const totalBillableHours = members.reduce((sum, member) => sum + member.billableHoursThisMonth, 0)

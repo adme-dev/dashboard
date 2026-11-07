@@ -3,6 +3,7 @@
  * PATCH /api/auth/users/:id/status
  */
 
+import { assertPermissionGrant } from '~~/server/utils/financeAccess'
 import { queryOne } from '~~/server/utils/db'
 import { requireRole, logActivity, invalidateAllSessions } from '~~/server/utils/auth'
 
@@ -13,6 +14,7 @@ interface StatusBody {
 export default defineEventHandler(async (event) => {
   // Only admins and owners can change user status
   const currentUser = await requireRole(event, ['admin', 'owner'])
+  await assertPermissionGrant(event, currentUser.id, 'ADMIN', true)
   const userId = getRouterParam(event, 'id')
 
   if (!userId) {

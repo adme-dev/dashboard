@@ -8,6 +8,9 @@ definePageMeta({
 
 const router = useRouter()
 const toast = useToast()
+const { canAccessFinance, canWrite, hasPermission } = useAuth()
+const canPlanProjects = computed(() => canAccessFinance.value || hasPermission('CLIENTS'))
+const canCreateProjects = computed(() => canPlanProjects.value && canWrite.value)
 
 // Filters
 const statusFilter = ref<ProjectStatus | 'all'>('all')
@@ -74,7 +77,7 @@ const summary = computed(() => {
 
   const projectsList = projects.value as any[]
   const active = projectsList.filter(p => p.status === 'active')
-  const totalBudget = active.reduce((sum, p) => sum + p.budgetAmount, 0)
+  const totalBudget = active.reduce((sum, p) => sum + (Number.isFinite(p.budgetAmount) ? p.budgetAmount : 0), 0)
   const avgMargin = active.length > 0
     ? active.reduce((sum, p) => sum + (p.grossMargin || 0), 0) / active.length
     : 0
@@ -89,6 +92,7 @@ const summary = computed(() => {
 
 // Format helpers
 const formatCurrency = (value: number) => {
+  if (!Number.isFinite(value)) return '—'
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'USD',
@@ -96,7 +100,7 @@ const formatCurrency = (value: number) => {
   }).format(value)
 }
 
-const formatPercent = (value: number) => `${(value || 0).toFixed(1)}%`
+const formatPercent = (value: number) => Number.isFinite(value) ? `${value.toFixed(1)}%` : '—'
 
 // Status badge color
 const getStatusColor = (status: string) => {
@@ -118,16 +122,18 @@ const getMarginColor = (margin: number) => {
 }
 
 // Table columns
-const columns = [
+const columns = computed(() => [
   { accessorKey: 'name', header: 'Project', enableSorting: true },
   { accessorKey: 'clientName', header: 'Client', enableSorting: true },
-  { accessorKey: 'budgetAmount', header: 'Budget', enableSorting: true },
-  { accessorKey: 'totalCost', header: 'Spent', enableSorting: true },
-  { accessorKey: 'grossMargin', header: 'Margin', enableSorting: true },
+  ...(canPlanProjects.value ? [{ accessorKey: 'budgetAmount', header: 'Budget', enableSorting: true }] : []),
+  ...(canAccessFinance.value ? [
+    { accessorKey: 'totalCost', header: 'Spent', enableSorting: true },
+    { accessorKey: 'grossMargin', header: 'Margin', enableSorting: true }
+  ] : []),
   { accessorKey: 'hoursWorked', header: 'Hours', enableSorting: true },
   { accessorKey: 'status', header: 'Status', enableSorting: true },
   { accessorKey: 'actions', header: '' }
-]
+])
 
 // Actions dropdown items — Nuxt UI v4 uses onSelect, not click
 const getActions = (project: any) => [
@@ -155,6 +161,7 @@ const budgetProgress = (totalCost: number, budgetAmount: number) => {
       <UDashboardNavbar title="Projects">
         <template #right>
           <UButton
+            v-if="canCreateProjects"
             label="New Project"
             icon="i-lucide-plus"
             color="primary"
@@ -178,13 +185,13 @@ const budgetProgress = (totalCost: number, budgetAmount: number) => {
               <p class="text-3xl font-bold text-emerald-500">{{ summary.active }}</p>
             </div>
           </UCard>
-          <UCard>
+          <UCard v-if="canPlanProjects">
             <div class="text-center">
               <p class="text-sm text-gray-500 dark:text-gray-400">Total Budget</p>
               <p class="text-3xl font-bold">{{ formatCurrency(summary.totalBudget) }}</p>
             </div>
           </UCard>
-          <UCard>
+          <UCard v-if="canAccessFinance">
             <div class="text-center">
               <p class="text-sm text-gray-500 dark:text-gray-400">Avg Margin</p>
               <p
@@ -260,7 +267,7 @@ const budgetProgress = (totalCost: number, budgetAmount: number) => {
             <template #totalCost-cell="{ row }">
               <div class="flex items-center gap-2">
                 <span :class="(row.original as any).totalCost > (row.original as any).budgetAmount && (row.original as any).budgetAmount > 0 ? 'text-red-500 font-semibold' : ''">
-                  {{ formatCurrency((row.original as any).totalCost || 0) }}
+                  {{ formatCurrency((row.original as any).totalCost) }}
                 </span>
                 <UProgress
                   v-if="(row.original as any).budgetAmount > 0"
@@ -275,7 +282,7 @@ const budgetProgress = (totalCost: number, budgetAmount: number) => {
 
             <template #grossMargin-cell="{ row }">
               <UBadge :color="getMarginColor((row.original as any).grossMargin || 0)">
-                {{ formatPercent((row.original as any).grossMargin || 0) }}
+                {{ formatPercent((row.original as any).grossMargin) }}
               </UBadge>
             </template>
 

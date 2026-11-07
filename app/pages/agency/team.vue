@@ -12,8 +12,8 @@ type TeamMember = {
   email: string
   role?: string | null
   department?: string | null
-  hourlyRate: number
-  hourlyCost: number
+  hourlyRate?: number
+  hourlyCost?: number
   targetUtilization: number
   avatarUrl?: string | null
   isActive: boolean
@@ -41,6 +41,9 @@ type TeamTableRow = TeamMember | { original?: Partial<TeamMember> }
 
 const toast = useToast()
 const route = useRoute()
+const { canAccessFinance, canWrite, hasPermission } = useAuth()
+const canManageTeam = computed(() => canWrite.value && hasPermission('ADMIN'))
+const canEditRates = computed(() => canAccessFinance.value && canManageTeam.value)
 
 // Filters
 const departmentFilter = ref<string | null>(null)
@@ -56,7 +59,7 @@ const data = ref<TeamMembersResponse | null>(null)
 const pending = ref(false)
 
 const teamQuery = computed(() => ({
-  active: activeFilter.value,
+  active: activeFilter.value === 'all' ? '' : activeFilter.value,
   department: departmentFilter.value || undefined,
   role: roleFilter.value || undefined
 }))
@@ -89,8 +92,8 @@ const normalizeMember = (member: Partial<TeamMember> = {}): TeamMember => ({
   email: member.email ?? '',
   role: member.role ?? null,
   department: member.department ?? null,
-  hourlyRate: toSafeNumber(member?.hourlyRate),
-  hourlyCost: toSafeNumber(member?.hourlyCost),
+  ...(member.hourlyRate != null ? { hourlyRate: toSafeNumber(member.hourlyRate) } : {}),
+  ...(member.hourlyCost != null ? { hourlyCost: toSafeNumber(member.hourlyCost) } : {}),
   targetUtilization: toSafeNumber(member?.targetUtilization),
   avatarUrl: member.avatarUrl ?? null,
   isActive: member.isActive ?? false,
@@ -109,7 +112,8 @@ const departments = computed(() => data.value?.departments || [])
 const roles = computed(() => data.value?.roles || [])
 
 // Format helpers
-const formatCurrency = (value: number) => {
+const formatCurrency = (value: number | undefined) => {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return '—'
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'USD',
@@ -167,7 +171,7 @@ watch(
     }
 
     if (activeFilter.value === 'true') {
-      activeFilter.value = ''
+      activeFilter.value = 'all'
       refresh()
     }
   },
@@ -201,6 +205,7 @@ const memberForm = ref({
 })
 
 const openCreateModal = () => {
+  if (!canManageTeam.value) return
   editingMember.value = null
   memberForm.value = {
     name: '',
@@ -216,6 +221,7 @@ const openCreateModal = () => {
 }
 
 const openEditModal = (member: Partial<TeamMember>) => {
+  if (!canManageTeam.value) return
   const normalizedMember = normalizeMember(member)
   editingMember.value = normalizedMember
   memberForm.value = {
@@ -241,23 +247,26 @@ const errorDescription = (error: unknown) => {
 }
 
 const saveMember = async () => {
+  if (!canManageTeam.value) return
   if (!memberForm.value.name || !memberForm.value.email) {
     toast.add({ title: 'Name and email are required', color: 'error' })
     return
   }
 
   saving.value = true
+  const { hourlyRate, hourlyCost, ...operationalFields } = memberForm.value
+  const payload = { ...operationalFields, ...(canEditRates.value ? { hourlyRate, hourlyCost } : {}) }
   try {
     if (editingMember.value) {
       await apiFetch(`/api/agency/team-members/${editingMember.value.id}`, {
         method: 'PUT',
-        body: memberForm.value
+        body: payload
       })
       toast.add({ title: 'Team member updated', color: 'success' })
     } else {
       await apiFetch('/api/agency/team-members', {
         method: 'POST',
-        body: memberForm.value
+        body: payload
       })
       toast.add({ title: 'Team member created', color: 'success' })
     }
@@ -280,11 +289,13 @@ const showDeleteModal = ref(false)
 const deleting = ref(false)
 
 const confirmDelete = (member: Partial<TeamMember>) => {
+  if (!canManageTeam.value) return
   deletingMember.value = normalizeMember(member)
   showDeleteModal.value = true
 }
 
 const deleteMember = async () => {
+  if (!canManageTeam.value) return
   if (!deletingMember.value) return
 
   deleting.value = true
@@ -335,6 +346,14 @@ const openClientBook = (member: Partial<TeamMember>) => {
   showClientBook.value = true
 }
 
+const memberActions = (member: Partial<TeamMember>) => [
+  [{ label: 'View Clients',icon: 'i-lucide-briefcase',onSelect: () => openClientBook(member) }],
+  ...(canManageTeam.value ? [
+    [{ label: 'Edit',icon: 'i-lucide-edit',onSelect: () => openEditModal(member) }],
+    [{ label: 'Delete',icon: 'i-lucide-trash-2',color: 'error' as const,onSelect: () => confirmDelete(member) }]
+  ] : [])
+]
+
 const commonDepartments = [
   'Design',
   'Development',
@@ -353,6 +372,7 @@ const commonDepartments = [
       <UDashboardNavbar title="Team Members">
         <template #right>
           <UButton
+            v-if="canManageTeam"
             label="Add Team Member"
             icon="i-lucide-user-plus"
             color="primary"
@@ -451,7 +471,7 @@ const commonDepartments = [
             v-model="activeFilter"
             :items="[
               { label: 'Active Only', value: 'true' },
-              { label: 'All Members', value: '' }
+              { label: 'All Members', value: 'all' }
             ]"
             placeholder="Status"
             value-key="value"
@@ -553,24 +573,7 @@ const commonDepartments = [
 
             <template #actions-cell="{ row: r }">
               <UDropdownMenu
-                :items="[
-                  [{
-                     label: 'View Clients',
-                     icon: 'i-lucide-briefcase',
-                     onSelect: () => openClientBook(tableMember(r))
-                   },
-                   {
-                     label: 'Edit',
-                     icon: 'i-lucide-edit',
-                     onSelect: () => openEditModal(tableMember(r))
-                   }],
-                  [{
-                    label: 'Delete',
-                    icon: 'i-lucide-trash-2',
-                    color: 'error' as const,
-                    onSelect: () => confirmDelete(tableMember(r))
-                  }]
-                ]"
+                :items="memberActions(tableMember(r))"
               >
                 <UButton
                   icon="i-lucide-more-horizontal"
@@ -630,7 +633,7 @@ const commonDepartments = [
                 {{ selectedMember.department || '—' }}
               </dd>
             </div>
-            <div>
+            <div v-if="canAccessFinance && selectedMember.hourlyRate !== undefined">
               <dt class="text-sm text-gray-500">
                 Hourly Rate
               </dt>
@@ -638,7 +641,7 @@ const commonDepartments = [
                 {{ formatCurrency(selectedMember.hourlyRate) }}/hr
               </dd>
             </div>
-            <div>
+            <div v-if="canAccessFinance && selectedMember.hourlyCost !== undefined">
               <dt class="text-sm text-gray-500">
                 Hourly Cost
               </dt>
@@ -701,6 +704,7 @@ const commonDepartments = [
         <div class="flex justify-between">
           <UButton
             variant="outline"
+            v-if="canManageTeam"
             label="Edit"
             icon="i-lucide-edit"
             @click="openEditModal(selectedMember)"
@@ -718,34 +722,35 @@ const commonDepartments = [
         </h3>
       </template>
       <template #body>
-        <div class="space-y-4">
+        <div class="@container space-y-4">
           <UFormField label="Name" required>
-            <UInput v-model="memberForm.name" placeholder="Full name" />
+            <UInput class="w-full" v-model="memberForm.name" placeholder="Full name" />
           </UFormField>
 
           <UFormField label="Email" required>
-            <UInput v-model="memberForm.email" type="email" placeholder="email@company.com" />
+            <UInput class="w-full" v-model="memberForm.email" type="email" placeholder="email@company.com" />
           </UFormField>
 
-          <div class="grid grid-cols-2 gap-4">
+          <div class="grid grid-cols-1 gap-4 @lg:grid-cols-2">
             <UFormField label="Role">
-              <UInput v-model="memberForm.role" placeholder="e.g. Designer" list="roles-list" />
+              <UInput class="w-full" v-model="memberForm.role" placeholder="e.g. Designer" list="roles-list" />
               <datalist id="roles-list">
                 <option v-for="r in commonRoles" :key="r" :value="r" />
               </datalist>
             </UFormField>
 
             <UFormField label="Department">
-              <UInput v-model="memberForm.department" placeholder="e.g. Design" list="departments-list" />
+              <UInput class="w-full" v-model="memberForm.department" placeholder="e.g. Design" list="departments-list" />
               <datalist id="departments-list">
                 <option v-for="d in commonDepartments" :key="d" :value="d" />
               </datalist>
             </UFormField>
           </div>
 
-          <div class="grid grid-cols-2 gap-4">
+          <div v-if="canEditRates" class="grid grid-cols-1 gap-4 @lg:grid-cols-2">
             <UFormField label="Hourly Rate ($)">
               <UInput
+                class="w-full"
                 v-model.number="memberForm.hourlyRate"
                 type="number"
                 min="0"
@@ -755,6 +760,7 @@ const commonDepartments = [
 
             <UFormField label="Hourly Cost ($)">
               <UInput
+                class="w-full"
                 v-model.number="memberForm.hourlyCost"
                 type="number"
                 min="0"
@@ -765,6 +771,7 @@ const commonDepartments = [
 
           <UFormField label="Target Utilization (hours/month)">
             <UInput
+              class="w-full"
               v-model.number="memberForm.targetUtilization"
               type="number"
               min="0"

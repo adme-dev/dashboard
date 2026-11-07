@@ -4,17 +4,39 @@
  */
 
 import { queryRows } from '~~/server/utils/db'
+import { requireInvoiceAccess } from '~~/server/utils/clientScoping'
 import { requireAuth } from '~~/server/utils/auth'
+import { assertFinancePermission, assertPermissionGrant } from '~~/server/utils/financeAccess'
 
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
+  const user = await requireAuth(event)
+  let hasFinance = false
+  try {
+    await assertFinancePermission(event, user.id)
+    hasFinance = true
+  } catch (error) {
+    if ((error as { statusCode?: number }).statusCode !== 403) throw error
+  }
+
+  let hasClients = hasFinance
+  if (!hasClients) {
+    try { await assertPermissionGrant(event, user.id, 'CLIENTS'); hasClients = true }
+    catch (error) { if ((error as { statusCode?: number }).statusCode !== 403) throw error }
+  }
+  let assignedClients: string[] | null = null
+  if (!hasClients) {
+    try {
+      const access = await requireInvoiceAccess(event)
+      if (access.clientIds !== 'all') assignedClients = access.clientIds
+    } catch (error) { if ((error as { statusCode?: number }).statusCode !== 403) throw error }
+  }
 
   const query = getQuery(event)
   const { status, clientId } = query
 
   try {
     // Build query with optional filters
-    let sql = `
+    let sql = hasFinance ? `
       SELECT
         p.id,
         p.name,
@@ -62,6 +84,14 @@ export default defineEventHandler(async (event) => {
         GROUP BY project_id
       ) m ON p.id = m.project_id
       WHERE 1=1
+    ` : `
+      SELECT p.id,p.name,p.description,p.start_date,p.end_date,p.status,
+        c.id AS client_id,c.name AS client_name,COALESCE(t.hours_worked,0) AS hours_worked
+        ${hasClients ? ',p.budget_amount,p.budget_type,COALESCE(m.media_cost,0) AS media_cost' : ''}
+      FROM projects p JOIN agency_clients c ON p.client_id=c.id
+      LEFT JOIN (SELECT project_id,SUM(hours) AS hours_worked FROM time_entries GROUP BY project_id) t ON p.id=t.project_id
+      ${hasClients ? 'LEFT JOIN (SELECT project_id,SUM(actual_spend) AS media_cost FROM media_spend WHERE project_id IS NOT NULL GROUP BY project_id) m ON p.id=m.project_id' : ''}
+      WHERE 1=1
     `
 
     const params: any[] = []
@@ -79,9 +109,20 @@ export default defineEventHandler(async (event) => {
       paramIndex++
     }
 
+    if (assignedClients) {
+      sql += ` AND p.client_id=ANY($${paramIndex}::uuid[])`
+      params.push(assignedClients)
+    }
+
     sql += ' ORDER BY p.start_date DESC'
 
     const projects = await queryRows(sql, params)
+
+    if (!hasFinance) return projects.map(p => ({
+      id: p.id, name: p.name, description: p.description, clientId: p.client_id, clientName: p.client_name,
+      startDate: p.start_date, endDate: p.end_date, status: p.status, hoursWorked: Number(p.hours_worked),
+      ...(hasClients ? { budgetAmount: Number(p.budget_amount),budgetType: p.budget_type,mediaCost: Number(p.media_cost) } : {})
+    }))
 
     // Transform to camelCase
     return projects.map(p => ({

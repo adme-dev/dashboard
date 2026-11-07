@@ -31,6 +31,7 @@ describe('spend auto-action cron tenant resolution', () => {
     const handler = (await import('~~/server/api/cron/spend-auto-action.post')).default
 
     const result = await handler({
+      method: 'POST',
       headers: { 'x-cron-secret': 'cron-secret' },
       context: {},
       node: { req: { headers: { 'x-cron-secret': 'cron-secret' } }, res: { setHeader: vi.fn() } }
