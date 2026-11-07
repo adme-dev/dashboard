@@ -41,7 +41,7 @@ export async function executeDepartmentBudgetProposal(name: string, raw: unknown
   try {
     const read = name === 'marketing_get_budget_proposal'
 
-    if (!read && (!/^mcp:[a-f0-9]{64}$/.test(key) || !/^[a-f0-9]{64}$/.test(digest)))
+    if (!read && (!/^(mcp|chat):[a-f0-9]{64}$/.test(key) || !/^[a-f0-9]{64}$/.test(digest)))
       deny('Invalid request identity')
 
     const fresh = await requireMarketingDepartment(ctx, !read)

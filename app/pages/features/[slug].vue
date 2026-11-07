@@ -1746,7 +1746,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Role-Focused Assistants',
-        content: 'Pick the assistant that fits the job — Finance, Marketing, Sales, Media Buyer, or Account Management — or stay with the general Agency Assistant. Each persona keeps the same engine but leads with the right focus and narrows to the tools that matter for that role, always within your permissions. Switching is one click in the chat bar, and your choice sticks to the conversation, including on voice.'
+        content: 'Pick the assistant that fits the job — Finance, Marketing, Sales, Media Buyer, or Account Management — or stay with the general Agency Assistant. Each persona keeps the same engine but leads with the right focus and narrows to the tools that matter for that role, always within your permissions. Start with My Assistant to inherit your saved personal focus, or choose an explicit conversation focus, including General. Text and voice share that choice. Returning to My Assistant clears the conversation override. Open My Assistant directly from chat or Tools to review your defaults and permitted tools.'
       },
       {
         title: 'Owner God Mode, Employee Governance',
@@ -1969,7 +1969,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Manage daily marketing work',
-        content: 'Manage supported tasks, content, lead follow-up, creative drafts, KPI targets, budget allocations, inventory feeds and ad preparation through your assistant. Find client connections and catalogues, inspect catalogue type and import errors, repair supported feed mappings, and propose vehicle catalogues, New & Demo product sets and import refreshes with independent review. Department access also supports reviewed campaign email, inbox replies and website releases where enabled. Website work retains its native permissions and original XeroFlow login checks; boards retain membership requirements. Some specialist editing and administration actions remain in their native editors.'
+        content: 'Native AI Chat can use the reviewed department marketing tools available to your current permissions and grants. Changes first show the exact operation and arguments for confirmation; consequential operations retain independent review and provider readiness checks. You can also use these tools through an external MCP host. Manage supported tasks, content, lead follow-up, creative drafts, KPI targets, budget allocations, inventory feeds and ad preparation through your assistant. Find client connections and catalogues, inspect catalogue type and import errors, repair supported feed mappings, and propose vehicle catalogues, New & Demo product sets and import refreshes with independent review. Department access also supports reviewed campaign email, inbox replies and website releases where enabled. Website work retains its native permissions and original XeroFlow login checks; boards retain membership requirements. Some specialist editing and administration actions remain in their native editors.'
       },
       {
         title: 'See what each provider supports',

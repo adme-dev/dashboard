@@ -4,7 +4,7 @@ describe('GET /api/agency/ai/my-assistant', () => {
   it('authenticates and resolves fresh server authority for the caller', async () => {
     const user = { id: '50000000-0000-4000-8000-000000000001' }
     const event = { context: {} } as never
-    const context = { preferences: { personaKey: null } } as never
+    const context = { identity: { userId: user.id, role: 'owner' }, preferences: { personaKey: null } } as never
     const response = {
       personaKey: null,
       authority: {
@@ -39,10 +39,12 @@ describe('GET /api/agency/ai/my-assistant', () => {
       buildMyAssistantExplainability,
       getRuntimePolicy,
       getObservedMemoryEnabled,
-      tools
+      tools,
+      discoverMarketingTools: vi.fn().mockResolvedValue([]),
+      resolveChatRuntime: vi.fn().mockReturnValue({ toolsEnabled: true, source: 'binding' })
     })
 
-    await expect(handler(event)).resolves.toBe(response)
+    await expect(handler(event)).resolves.toEqual({ ...response, chatRuntime: { toolsEnabled: true, source: 'binding' } })
     expect(response.authority.activePacks[0]?.accessBasis).toBe('company_owner')
     expect(requireAuth).toHaveBeenCalledWith(event)
     expect(resolvePersonalAssistantContext).toHaveBeenCalledWith({

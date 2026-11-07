@@ -1,3 +1,4 @@
+import { parseChatPersona } from '~~/server/utils/ai/chatPersona'
 import { queryOne } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
 import { processUserMessage } from '~~/server/utils/aiChatEngine'
@@ -65,7 +66,7 @@ export function createMessagesPostHandler(dependencies: MessagesRouteDependencie
       ? body.mentionedEntities.filter((e: any) => e?.type && e?.id && ALLOWED_ENTITY_TYPES.has(e.type)).slice(0, 10)
       : []
     const boardId = typeof body?.boardId === 'string' ? body.boardId : undefined
-    const persona = typeof body?.persona === 'string' ? body.persona : undefined
+    const persona = parseChatPersona(body?.persona)
     const room = body?.room && typeof body.room.officeId === 'string'
       ? {
           officeId: body.room.officeId,

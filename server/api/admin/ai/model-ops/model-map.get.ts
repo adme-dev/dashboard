@@ -1,3 +1,4 @@
+import { resolveChatRuntime } from '~~/server/utils/ai/chatRuntime'
 import { requireRole } from '~~/server/utils/auth'
 import { listAiModelAssignments } from '~~/server/utils/ai/modelAssignments'
 import { resolveServerCatalogRuntimePolicy } from '~~/server/utils/ai/governance/catalogComposition'
@@ -34,6 +35,7 @@ function host(value: string | undefined): string | null {
 }
 
 function aiConfigReadiness(event: Parameters<typeof resolveServerCatalogRuntimePolicy>[0]) {
+  const chatRuntime = resolveChatRuntime(event)
   const gatewayUrl = process.env.AI_GATEWAY_URL
   const groqConfigured = present(process.env.GROQ_API_KEY) || present(process.env.GROQ_API)
   const anthropicConfigured = present(process.env.ANTHROPIC_API_KEY)
@@ -83,7 +85,8 @@ function aiConfigReadiness(event: Parameters<typeof resolveServerCatalogRuntimeP
       },
     ],
     loop: {
-      toolsEnabled: process.env.AI_TOOLS_ENABLED === 'true',
+      toolsEnabled: chatRuntime.toolsEnabled,
+      toolsEnabledSource: chatRuntime.source,
       model: process.env.AI_LOOP_MODEL || 'groq/openai/gpt-oss-120b',
       fallbackModel: process.env.AI_LOOP_FALLBACK_MODEL || 'groq/openai/gpt-oss-20b',
       budgetUsd: Number(process.env.AI_LOOP_BUDGET_USD || '0.25'),

@@ -1,4 +1,5 @@
 import type { H3Event } from 'h3'
+import { canAccessAllActiveClients } from './clientAccess'
 import type { AssistantReleaseAccessBasis } from '~~/shared/types/aiAssistant'
 import { queryOne as realQueryOne, queryRows as realQueryRows } from '~~/server/utils/db'
 import {
@@ -353,8 +354,11 @@ export async function resolvePersonalAssistantContext(
   }
   const departments = departmentRows.map(row => mapDepartment(row, companyWideDepartments))
 
-  const assignmentRows = await db.queryRows<ClientAssignmentRow>(
-    `SELECT client.id::text AS client_id,
+  const hasCompanyClientAccess = godModeActive || canAccessAllActiveClients(permissionGroups)
+  const assignmentRows = hasCompanyClientAccess
+    ? []
+    : await db.queryRows<ClientAssignmentRow>(
+        `SELECT client.id::text AS client_id,
             client.name AS client_name,
             assignment.role AS assignment_role
        FROM client_team_assignments assignment
@@ -363,18 +367,14 @@ export async function resolvePersonalAssistantContext(
         AND client.is_active = TRUE
       ORDER BY client.name, client.id
       LIMIT 101`,
-    [identity.id]
-  )
+        [identity.id]
+      )
   if (assignmentRows.length > MAX_ASSIGNMENTS) {
     throw new PersonalAssistantAdmissionError(
       'assistant_client_scope_unbounded',
       `The personal assistant supports at most ${MAX_ASSIGNMENTS} explicit client assignments per turn.`
     )
   }
-  const hasCompanyClientAccess = godModeActive
-    || permissionGroups.includes('ADMIN')
-    || permissionGroups.includes('MANAGEMENT')
-
   const config = await db.queryOne<PersonalConfigRow>(
     `SELECT persona_key, tool_overrides, memory_enabled
        FROM ai_agent_configs

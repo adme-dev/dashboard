@@ -15,18 +15,29 @@ const apiFetch = $fetch as <T = unknown>(
 ) => Promise<T>
 
 const {
-  conversations, activeConversation, messages, selectedPersona, loading, sending,
+  conversations, activeConversation, messages, selectedPersona, defaultPersona, chatToolsEnabled, loadAssistantDefaults, loading, sending,
   hasMoreConversations, hasMoreMessages, totalConversations,
   fetchConversations, loadMoreConversations, createConversation,
   loadConversation, loadMoreMessages, renameConversation, togglePin,
   sendMessage, archiveConversation, cleanupOldConversations, submitFeedback,
 } = useAiChat()
 
-// Slice 1.5 persona picker — narrows the AI's tools/focus (∩ RBAC). Generalist by default.
+// The focus picker inherits My Assistant unless this conversation has an explicit override.
 // Hidden until the agentic tool loop is live: the picker only does anything once
-// AI_TOOLS_ENABLED is on, so gate its visibility on the client-visible mirror of that flag.
-const aiToolsEnabled = Boolean(useRuntimeConfig().public.aiToolsEnabled)
-const personaItems = AI_PERSONA_OPTIONS.map(o => ({ label: o.label, value: o.key }))
+// AI_TOOLS_ENABLED is on. The private server-resolved flag is authoritative after settings load.
+const publicAiToolsEnabled = Boolean(useRuntimeConfig().public.aiToolsEnabled)
+const aiToolsEnabled = computed(() => chatToolsEnabled.value ?? publicAiToolsEnabled)
+const personaItems = computed(() => {
+  const focus = AI_PERSONA_OPTIONS.find(option => option.key === defaultPersona.value)?.label
+  return [
+    { label: focus ? `My Assistant default (${focus})` : 'My Assistant default', value: '__default__' },
+    ...AI_PERSONA_OPTIONS.map(option => ({ label: option.label, value: option.key }))
+  ]
+})
+const personaSelection = computed({
+  get: () => selectedPersona.value ?? '__default__',
+  set: (value: string) => { selectedPersona.value = value === '__default__' ? null : value }
+})
 
 // --- Voice Chat ---
 const {
@@ -45,7 +56,7 @@ const VOICE_GUIDE_DISMISSED_KEY = 'xeroflow:voice-guide-dismissed'
 const microphonePermission = ref<MicrophonePermissionState>('unknown')
 const voiceGuideDismissed = ref(false)
 const voiceGuidePreferenceLoaded = ref(false)
-const handsFreeVoiceAvailable = computed(() => aiToolsEnabled && voiceAvailable.value)
+const handsFreeVoiceAvailable = computed(() => aiToolsEnabled.value && voiceAvailable.value)
 const voiceGuideRequested = computed(() => route.query.mode === 'voice')
 const showVoiceGuide = computed(() =>
   voiceAvailable.value
@@ -159,6 +170,7 @@ function resolveLastProposal() {
 
 const voiceSession = useVoiceSession({
   ensureConversation: ensureConversationId,
+  getPersona: () => selectedPersona.value,
   onTurn: pushVoiceTurn,
   onAssistantNote: pushAssistantNote,
   onProposalResolved: resolveLastProposal,
@@ -225,7 +237,8 @@ async function handleVoiceRecord() {
     const result = await sendVoiceMessage(
       activeConversation.value.id,
       blob,
-      entities.length > 0 ? entities : undefined
+      entities.length > 0 ? entities : undefined,
+      selectedPersona.value
     )
 
     // Replace temp message with actual transcribed text
@@ -567,7 +580,7 @@ function autoResizeInput() {
 }
 
 // Fetch conversations on mount
-await fetchConversations()
+await Promise.all([fetchConversations(), loadAssistantDefaults()])
 
 // If navigated from widget with a conversation ID, load it
 const conversationParam = route.query.conversation as string | undefined
@@ -635,6 +648,7 @@ onUnmounted(() => document.removeEventListener('click', handleDocumentClick))
 async function handleNewChat() {
   try {
     const conv = await createConversation()
+    selectedPersona.value = null
     updateUrl(conv.id)
   } catch {
     toast.add({ title: 'Error', description: 'Failed to create conversation', color: 'error' })
@@ -808,6 +822,16 @@ function getRenderedMarkdown(content: string): string {
           />
         </UDropdownMenu>
       </div>
+      <UButton
+        to="/agency/ai/my-assistant"
+        icon="i-lucide-settings-2"
+        variant="ghost"
+        color="neutral"
+        size="sm"
+        class="mx-3 my-2 justify-start"
+      >
+        My Assistant
+      </UButton>
 
       <!-- Search -->
       <div class="px-3 py-2">
@@ -1347,20 +1371,22 @@ function getRenderedMarkdown(content: string): string {
               <!-- Bottom bar inside the card -->
               <div class="flex items-center justify-between px-3 py-2">
                 <div class="flex items-center gap-1">
-                  <!-- Persona picker (Slice 1.5) — narrows the AI's tools/focus, generalist by default.
+                  <!-- Focus picker — inherits the saved My Assistant default.
                        Hidden until AI_TOOLS_ENABLED is on (the loop it drives is flag-gated). -->
-                  <USelect
-                    v-if="aiToolsEnabled"
-                    v-model="selectedPersona"
-                    :items="personaItems"
-                    size="xs"
-                    variant="ghost"
-                    color="neutral"
-                    icon="i-lucide-sparkles"
-                    class="w-auto mr-1"
-                    :disabled="sending"
-                    :ui="{ base: 'text-[11px]' }"
-                  />
+                  <UFormField v-if="aiToolsEnabled" label="Assistant focus" :ui="{ label: 'sr-only' }">
+                    <USelect
+                      v-model="personaSelection"
+                      :items="personaItems"
+                      size="xs"
+                      variant="ghost"
+                      color="neutral"
+                      icon="i-lucide-sparkles"
+                      class="w-36 sm:w-auto mr-1"
+                      :disabled="sending"
+                      aria-label="Assistant focus"
+                      :ui="{ base: 'text-[11px]' }"
+                    />
+                  </UFormField>
                   <!-- Recording indicator -->
                   <template v-if="isRecording">
                     <span class="flex items-center gap-1.5 px-1">

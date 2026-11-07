@@ -289,7 +289,7 @@ const categories = [
     iconBg: 'bg-amber-50 dark:bg-amber-500/10',
     iconColor: 'text-amber-600',
     features: [
-      { title: 'AI Chat', slug: 'ai-chat', icon: 'i-lucide-bot', description: 'Conversational AI that pulls live agency data on demand — finance, ad-spend, client profitability, retainer burn, revenue forecasting, tasks, and more — with @entity mentions, role-focused assistants, and propose-then-confirm actions that never change anything without your click.' },
+      { title: 'AI Chat', slug: 'ai-chat', icon: 'i-lucide-bot', description: 'Conversational AI that pulls live agency data on demand — finance, ad-spend, client profitability, retainer burn, revenue forecasting, tasks, and more — with @entity mentions, saved My Assistant defaults, shared text and voice focus, and reviewed marketing changes that require confirmation.' },
       { title: 'Owner God Mode', slug: 'owner-god-mode', icon: 'i-lucide-crown', description: 'Always-on access to every registered application and MCP capability for active owners, including audited Banner Studio creation and staged Google Tag Manager publishing. Explicit Finance grants, authentication, isolation and emergency controls remain enforced.' },
       { title: 'Voice AI', slug: 'voice-ai', icon: 'i-lucide-mic', description: 'Talk to your AI assistant. Speech-to-text transcription and text-to-speech responses powered by Workers AI.' },
       { title: 'Anomaly Detection', slug: 'anomaly-detection', icon: 'i-lucide-alert-triangle', description: '10 specialised analysers that proactively flag anomalies across profit, revenue, expenses, cashflow, receivables, budget, ad-spend pacing/delivery health and per-client risk — surfaced in the daily digest, push, and in-app.' },

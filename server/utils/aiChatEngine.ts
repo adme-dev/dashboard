@@ -1,3 +1,5 @@
+import { resolveChatRuntime } from '~~/server/utils/ai/chatRuntime'
+import { resolveChatPersona } from '~~/server/utils/ai/chatPersona'
 import type { H3Event } from 'h3'
 import { queryRows, queryOne, execute } from '~~/server/utils/db'
 import { GROQ_MODELS } from '~~/server/utils/groqClient'
@@ -232,7 +234,7 @@ export async function processUserMessage(
   event?: H3Event,
   mentionedEntities?: Array<{ type: string; id: string }>,
   boardId?: string,
-  persona?: string,
+  persona?: string | null,
   room?: { officeId: string, meetingId?: string, presentUserIds?: string[], transcriptTail?: string },
   pilotUat?: { evidenceId: string, turnId: string, releaseId: string },
   durableSubmission?: { userMessageId: string },
@@ -256,27 +258,11 @@ export async function processUserMessage(
   const godModeActive = isActiveGodModeAuthority(assistantContext.godModeAuthority, userId)
   const effectiveUserRole = assistantContext.identity.role
   const agentConfig = assistantContext.preferences
-  // Persona = one skill-pack per turn (narrows tools ∩ RBAC + a focus preamble). An explicit arg (chat
-  // picker) or the persona persisted on the conversation wins and sticks; otherwise the L1 traffic
-  // controller auto-selects by intent+role AFTER context retrieval (below). Resolve the pinned choice
-  // here so we can persist an explicit pick; defer the auto-select until the intent is known.
-  let explicitOrPersisted = persona ?? null
-  if (!explicitOrPersisted && event) {
-    const convRow = await queryOne<{ system_context: any }>(
-      `SELECT system_context FROM ai_conversations WHERE id = $1`, [conversationId])
-    explicitOrPersisted = (convRow?.system_context as any)?.persona ?? null
-  }
-  explicitOrPersisted ??= agentConfig.personaKey
-  // Persist an explicit choice (migration-free: system_context JSONB) so it sticks across reloads and
-  // for the voice/quick-action paths. Non-fatal if persistence fails.
-  if (persona && event && !pilotUat) {
-    await execute(
-      `UPDATE ai_conversations
-       SET system_context = COALESCE(system_context, '{}'::jsonb) || jsonb_build_object('persona', $2::text)
-       WHERE id = $1`,
-      [conversationId, resolvePersona(persona).key],
-    ).catch(() => {})
-  }
+  // Explicit General remains an override; null clears it and inherits My Assistant.
+  const explicitOrPersisted = await resolveChatPersona({
+    conversationId, userId, requested: persona, personal: agentConfig.personaKey,
+    persist: !!event && !pilotUat
+  })
 
   // 1. Load recent conversation history (last 10 messages)
   const historyRows = await queryRows(`
@@ -446,7 +432,7 @@ export async function processUserMessage(
   if (event && (
     pilotUat
     || godModeActive
-    || shouldUseToolLoop({ aiToolsEnabled: !!cfg.aiToolsEnabled, hasEvent: !!event, intent: contextBundle.intent })
+    || shouldUseToolLoop({ aiToolsEnabled: resolveChatRuntime(event, cfg).toolsEnabled, hasEvent: !!event, intent: contextBundle.intent })
   )) {
     try {
       const { runToolLoop } = await import('~~/server/utils/ai/toolLoop')
@@ -489,6 +475,7 @@ export async function processUserMessage(
               runLoop: async (pk) => {
                 const sub = await runToolLoop({
                   ctx: {
+                    source: 'chat',
                     userId,
                     userRole: effectiveUserRole,
                     permissionGroups: assistantContext.permissionGroups,
@@ -559,6 +546,7 @@ export async function processUserMessage(
       } else {
         const loop = await runToolLoop({
           ctx: {
+            source: 'chat',
             userId,
             userRole: effectiveUserRole,
             permissionGroups: assistantContext.permissionGroups,

@@ -32,7 +32,7 @@ export async function setDepartmentBudgetAllocations(raw: unknown, ctx: ToolCont
   try {
     const args = departmentBudgetUpdateSchema.parse(raw)
 
-    if (!/^mcp:[0-9a-f]{64}$/.test(idempotencyKey) || !/^[0-9a-f]{64}$/.test(sessionDigest))
+    if (!/^(mcp|chat):[0-9a-f]{64}$/.test(idempotencyKey) || !/^[0-9a-f]{64}$/.test(sessionDigest))
       return fail('Invalid execution identity', 'bad_args')
 
     const fresh = await requireMarketingDepartment(ctx, true)

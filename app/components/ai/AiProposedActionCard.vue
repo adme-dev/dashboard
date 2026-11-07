@@ -27,10 +27,15 @@ const errorMsg = ref('')
 const r = computed(() => props.proposal.resolved ?? {})
 const toolName = computed(() => props.proposal.toolName ?? 'create_task')
 const isBudgetChange = computed(() => toolName.value === 'propose_budget_change')
+// The initial response carries the original tool name; reloads carry the native wrapper name.
+const isNativeMarketing = computed(() => r.value.nativeMarketing === true && typeof r.value.operation === 'string')
+const nativeRichConfirm = computed(() => isNativeMarketing.value && r.value.riskTier === 'rich_confirm')
+const nativeAcknowledged = ref(false)
+const nativeArgs = computed(() => JSON.stringify(r.value.args, null, 2))
 // rich_confirm tools (high-risk) must send richConfirmAck so the server's gate lets them through.
 // Keep in sync with the server's rich_confirm tools (toolRegistry effectiveRiskTier).
 const RICH_CONFIRM_TOOLS = new Set(['propose_budget_change', 'propose_eom_generate'])
-const isRichConfirm = computed(() => RICH_CONFIRM_TOOLS.has(toolName.value))
+const isRichConfirm = computed(() => nativeRichConfirm.value || RICH_CONFIRM_TOOLS.has(toolName.value))
 
 const fmtMoney = (n: unknown) => (typeof n === 'number' ? `$${n.toLocaleString()}` : String(n ?? ''))
 function formatDue(d?: string | null): string | null {
@@ -42,6 +47,9 @@ function formatDue(d?: string | null): string | null {
 // Per-tool presentation: header icon/label + the confirm button verb. Budget change is rendered
 // with a dedicated rich body below rather than the generic meta list.
 const view = computed(() => {
+  if (isNativeMarketing.value) {
+    return { icon: 'i-lucide-megaphone', label: 'Proposed marketing operation', cta: 'Confirm operation', doneLabel: 'Marketing result received' }
+  }
   switch (toolName.value) {
     case 'propose_budget_change':
       return { icon: 'i-lucide-dollar-sign', label: 'Proposed budget change · needs your explicit confirmation', cta: 'Confirm budget change', doneLabel: 'Budget change planned' }
@@ -111,7 +119,7 @@ const sanity = computed(() => r.value.sanityCheck as { sane?: boolean, concern?:
 const sanityConcern = computed(() => (sanity.value && sanity.value.sane === false && sanity.value.concern) ? sanity.value.concern : null)
 
 async function confirm() {
-  if (status.value === 'submitting' || status.value === 'done') return
+  if (status.value !== 'idle' || (nativeRichConfirm.value && !nativeAcknowledged.value)) return
   status.value = 'submitting'
   errorMsg.value = ''
   try {
@@ -163,8 +171,45 @@ function cancel() {
       </span>
     </div>
 
+    <!-- The saved envelope is the exact operation being approved; no model-provided acknowledgement. -->
+    <div v-if="isNativeMarketing" class="space-y-3 px-4 pb-3 pt-2">
+      <dl class="space-y-2">
+        <div>
+          <dt class="text-xs text-muted">
+            Operation
+          </dt>
+          <dd class="break-all text-sm font-medium text-highlighted">
+            {{ r.operation }}
+          </dd>
+        </div>
+        <div>
+          <dt class="text-xs text-muted">
+            Confirmation
+          </dt>
+          <dd class="text-sm text-default">
+            {{ nativeRichConfirm ? 'Explicit acknowledgement required' : 'Review and confirm' }}
+          </dd>
+        </div>
+      </dl>
+      <div>
+        <p class="mb-1 text-xs text-muted">
+          Exact arguments
+        </p>
+        <pre class="max-h-64 overflow-auto whitespace-pre-wrap break-all rounded-lg border border-default bg-default p-3 text-xs text-default">{{ nativeArgs }}</pre>
+      </div>
+      <p class="text-xs text-muted">
+        This approves the operation and arguments shown above. Required access, review, and provider checks still apply.
+      </p>
+      <UFormField v-if="nativeRichConfirm && status === 'idle'" label="Review acknowledgement">
+        <UCheckbox v-model="nativeAcknowledged" label="I have reviewed this operation and its exact arguments." />
+      </UFormField>
+      <p v-if="errorMsg" class="text-xs text-error">
+        {{ errorMsg }}
+      </p>
+    </div>
+
     <!-- Body: rich budget-change layout -->
-    <div v-if="isBudgetChange" class="px-4 pb-3 pt-2">
+    <div v-else-if="isBudgetChange" class="px-4 pb-3 pt-2">
       <p class="text-sm font-medium text-highlighted">{{ r.campaignName }}<span v-if="r.platform" class="ml-1 text-xs font-normal text-muted">· {{ r.platform }}</span></p>
 
       <div class="mt-2.5 flex items-center gap-3">
@@ -227,7 +272,9 @@ function cancel() {
       </UButton>
       <UButton
         :color="isBudgetChange ? 'error' : 'primary'" size="sm" icon="i-lucide-check"
-        :loading="status === 'submitting'" @click="confirm"
+        :loading="status === 'submitting'"
+        :disabled="nativeRichConfirm && !nativeAcknowledged"
+        @click="confirm"
       >
         {{ view.cta }}
       </UButton>
