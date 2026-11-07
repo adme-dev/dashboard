@@ -284,6 +284,37 @@ describe('evaluation orchestration', () => {
     expect(createExecutor).not.toHaveBeenCalled()
   })
 
+  it('accepts the Model Ops provider-prefixed ID and freezes its canonical identity without execution', async () => {
+    const svc = service({ getModelCatalogOption: getAiModelCatalogOption })
+    const result = await svc.preflightEvaluation({
+      packVersionId: IDS.pack,
+      modelProvider: 'groq',
+      modelId: 'groq/openai/gpt-oss-120b',
+      budget
+    }, IDS.actor)
+
+    expect(result).toMatchObject({ decision: 'requires_cost_approval', maxModelCalls: 1 })
+    expect(runs.current).toMatchObject({
+      status: 'queued', startedAt: null,
+      materialIdentity: { modelProvider: 'groq', modelId: 'openai/gpt-oss-120b' }
+    })
+    expect(approvals.rateCard.modelId).toBe('openai/gpt-oss-120b')
+    expect(createExecutor).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['groq', 'groq/openai/gpt-oss-20b'],
+    ['anthropic', 'groq/openai/gpt-oss-120b'],
+    ['groq', 'groq/not-catalogued']
+  ] as const)('rejects a different or unknown assignment %s/%s before persisting a run', async (modelProvider, modelId) => {
+    const svc = service({ getModelCatalogOption: getAiModelCatalogOption })
+    await expect(svc.preflightEvaluation({ packVersionId: IDS.pack, modelProvider, modelId, budget }, IDS.actor))
+      .rejects.toMatchObject({ code: 'model_assignment_mismatch' })
+    expect(runs.current).toBeNull()
+    expect(approvals.plan).toBeNull()
+    expect(createExecutor).not.toHaveBeenCalled()
+  })
+
   it('fails closed on non-finite catalog pricing before creating a run', async () => {
     const svc = service({
       getModelCatalogOption: () => ({

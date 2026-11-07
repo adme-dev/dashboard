@@ -91,14 +91,17 @@ describe('observe-and-learn request policy', () => {
       requireAuth: vi.fn().mockResolvedValue({ id: USER_ID }),
       resolvePersonalAssistantContext: vi.fn(async input => {
         displayedStatus = input.observedMemoryEnabled
-        return { preferences: { personaKey: null } } as never
+        return { identity: { userId: USER_ID, role: 'member' }, preferences: { personaKey: null } } as never
       }),
       buildMyAssistantExplainability: vi.fn().mockReturnValue({ ok: true }),
       getRuntimePolicy: vi.fn().mockReturnValue({
         mode: 'legacy',
         authenticatedCoreTools: ['search_knowledge', 'get_tasks']
       }),
-      tools: []
+      tools: [],
+      // Tool discovery has its own fresh-authority tests; this fixture compares observe policy.
+      discoverMarketingTools: vi.fn().mockResolvedValue([]),
+      discoverSupplementalTools: vi.fn().mockResolvedValue([])
     })
     const runObservePass = vi.fn().mockResolvedValue({ users: 0, events: 0, routines: 0, memories: 0 })
     const cronHandler = createObserveAndLearnHandler({
