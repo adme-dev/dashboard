@@ -15,7 +15,9 @@ const {
   transactionQuery,
   requireAuth,
   requireRole,
-  revokeCrmLeadInboxRoute
+  revokeCrmLeadInboxRoute,
+  clientGrant,
+  financeGrant
 } = vi.hoisted(() => ({
   requireClientAuth: vi.fn(),
   requireClientEntitlement: vi.fn(),
@@ -26,8 +28,12 @@ const {
   transactionQuery: vi.fn(),
   requireAuth: vi.fn(),
   requireRole: vi.fn(),
-  revokeCrmLeadInboxRoute: vi.fn()
+  revokeCrmLeadInboxRoute: vi.fn(),
+  clientGrant: vi.fn(),
+  financeGrant: vi.fn()
 }))
+
+vi.mock('~~/server/utils/financeAccess', () => ({ assertPermissionGrant: clientGrant, assertFinancePermission: financeGrant }))
 
 vi.mock('~~/server/utils/clientAuth', () => ({
   requireClientAuth: (...args: unknown[]) => requireClientAuth(...args)
@@ -97,6 +103,8 @@ const subject = (
 describe('client CRM access', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    clientGrant.mockResolvedValue(undefined)
+    financeGrant.mockRejectedValue({ statusCode: 403 })
     requireClientAuth.mockResolvedValue({
       id: '33333333-3333-4333-8333-333333333333',
       clientId: '11111111-1111-4111-8111-111111111111',
@@ -216,10 +224,20 @@ describe('client CRM access', () => {
       body: { isActive: false }
     } as never)
 
+    expect(clientGrant).toHaveBeenCalledWith(expect.anything(), 'staff-1', 'CLIENTS', true)
     expect(transaction).toHaveBeenCalledOnce()
     expect(transactionQuery).toHaveBeenCalledTimes(2)
     expect(transactionQuery.mock.calls[0]?.[1]).toEqual([false, '11111111-1111-4111-8111-111111111111'])
     expect(String(transactionQuery.mock.calls[1]?.[0])).toContain('DELETE FROM client_sessions')
+  })
+
+  it('does not deactivate a client if the staff CLIENTS grant was revoked', async () => {
+    clientGrant.mockRejectedValue({ statusCode: 403 })
+    const handler = (await import('../../../../server/api/agency/clients/[id].put')).default
+    await expect(handler({
+      context: {}, params: { id: '11111111-1111-4111-8111-111111111111' }, body: { isActive: false }
+    } as never)).rejects.toMatchObject({ statusCode: 403 })
+    expect(transaction).not.toHaveBeenCalled()
   })
 
   it('revokes portal sessions in the same transaction when delete performs a soft deactivation', async () => {

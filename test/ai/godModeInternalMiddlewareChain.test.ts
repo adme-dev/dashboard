@@ -27,7 +27,8 @@ const mocks = vi.hoisted(() => ({
   resolvePermissions: vi.fn(),
   appendAudit: vi.fn(),
   mutationCount: 0,
-  ownerActive: true
+  ownerActive: true,
+  financeGranted: false
 }))
 
 vi.mock('~~/server/utils/db', () => ({
@@ -146,6 +147,7 @@ describe('Task 5 delegated execution through the real middleware and route chain
     consumed.clear()
     mocks.mutationCount = 0
     mocks.ownerActive = true
+    mocks.financeGranted = false
     mocks.resolvePermissions.mockResolvedValue({ groups: [], isReadOnly: false })
     mocks.queryRows.mockResolvedValue([])
     mocks.queryRowsFresh.mockImplementation(async (sql: string) => {
@@ -155,6 +157,9 @@ describe('Task 5 delegated execution through the real middleware and route chain
       return []
     })
     mocks.queryOneFresh.mockImplementation(async (sql: string, params: unknown[]) => {
+      if (sql.includes('role_permission_groups') && params[2] === 'FINANCE') {
+        return mocks.ownerActive && mocks.financeGranted && params[0] === OWNER_ID ? { permission_group: 'FINANCE' } : null
+      }
       if (sql.includes('god_mode_mcp_request_nonces')) {
         const jti = String(params[0])
         if (consumed.has(jti)) return null
@@ -220,7 +225,8 @@ describe('Task 5 delegated execution through the real middleware and route chain
     vi.stubGlobal('$fetch', vi.fn(runRealChain))
   })
 
-  it('reaches representative task, finance, social, CRM, and creative/banner handlers exactly once', async () => {
+  it('reaches representative task, explicitly granted finance, social, CRM, and creative/banner handlers exactly once', async () => {
+    mocks.financeGranted = true
     const cases = [
       ['create_task', makeCreateTaskExecutor(), { title: 'Ship', departmentId: DEPARTMENT_ID }],
       ['propose_expense_approval', makeExpenseApprovalExecutor(), { expenseId: 'expense-1', label: 'Media', action: 'approve' }],
@@ -235,6 +241,14 @@ describe('Task 5 delegated execution through the real middleware and route chain
     }
 
     expect(mocks.mutationCount).toBe(5)
+  })
+
+  it('does not grant delegated owner execution accounting access without a fresh FINANCE grant', async () => {
+    const request = await originEvent(12, 'propose_expense_approval')
+    await expect(makeExpenseApprovalExecutor().execute({ expenseId: 'expense-1',label: 'Media',action: 'approve' }, {
+      userId: OWNER_ID,userRole: 'owner',source: 'mcp',permissionGroups: ['FINANCE'],event: request
+    } as any)).rejects.toMatchObject({ statusCode: 403 })
+    expect(mocks.mutationCount).toBe(0)
   })
 
   it('denies an unrelated path, raw header, downgrade, and replay before another handler execution', async () => {

@@ -84,6 +84,7 @@ async function flushUi() {
 }
 
 let managerRole = false
+let marketingGrant = false
 
 function auth() {
   return {
@@ -91,7 +92,10 @@ function auth() {
     isOwner: computed(() => false),
     isAdmin: computed(() => false),
     canAccessMediaBuying: computed(() => true),
-    canWrite: computed(() => true)
+    canWrite: computed(() => true),
+    canAccessClients: computed(() => true),
+    canAccessFinance: computed(() => false),
+    hasPermission: (group: string) => marketingGrant && group === 'MARKETING_MANAGEMENT'
   }
 }
 
@@ -129,6 +133,7 @@ afterEach(() => {
 
 describe('client detail for explicit marketing management', () => {
   async function mountDetail(detail: unknown = marketingDetail) {
+    marketingGrant = (detail as { access?: { financial?: boolean } }).access?.financial === false
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-08-22T12:00:00+10:00'))
     const requests: string[] = []
@@ -182,7 +187,8 @@ describe('client detail for explicit marketing management', () => {
       expect(text).not.toContain('$0')
       expect(test.host.querySelector('[data-tab="time"]')).toBeNull()
       expect(test.host.querySelector('[data-tab="invoices"]')).toBeNull()
-      expect(test.host.querySelector('[data-button="Edit"]')).toBeNull()
+      // Metadata editing is available without exposing hidden client billing defaults.
+      expect(test.host.querySelector('[data-button="Edit"]')).not.toBeNull()
       expect(test.host.querySelector('[data-button="New Project"]')).toBeNull()
     } finally {
       test.dispose()
@@ -216,6 +222,7 @@ describe('client detail for explicit marketing management', () => {
 describe('client KPI targets for explicit marketing management', () => {
   async function mountDetail(detail: unknown, manager = false, canManage = false) {
     managerRole = manager
+    marketingGrant = (detail as { access?: { financial?: boolean } }).access?.financial === false
     const fetchMock = vi.fn(async (url: string, options?: { method?: string }) => {
       if (url === `/api/agency/clients/${CLIENT_ID}`) return structuredClone(detail)
       if (url.endsWith('/kpi-targets') && options?.method === 'PUT') return { ok: true }

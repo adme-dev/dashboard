@@ -4,6 +4,7 @@ import { EvaluationCaseSchema } from '~~/server/utils/ai/governance/contracts'
 import { runDeterministicEvaluation, type EvaluationExecutorRequest } from '~~/server/utils/ai/governance/deterministicEvaluationRunner'
 import { registry } from '~~/server/utils/ai/tools'
 import { filterToolsForUser } from '~~/server/utils/ai/toolRegistry'
+import { PERMISSION_GROUPS } from '~~/server/utils/permissions'
 import { DEFAULT_PERSONA } from '~~/server/utils/ai/personas'
 import { buildDepartmentEvaluationMatrix, renderDepartmentEvaluationMatrix } from '~~/server/utils/ai/governance/departmentEvaluationCases/matrix'
 import { readFileSync } from 'node:fs'
@@ -162,8 +163,8 @@ describe('release-grade department evaluation cases', () => {
     expect(definition).toMatchObject({ expectedNoTool: true, expectedTools: [] })
   })
 
-  it('uses only non-mutating registry tools that survive the real owner runtime and general persona', () => {
-    const ownerRuntimeTools = new Set(filterToolsForUser(registry, 'owner').map(tool => tool.name))
+  it('uses only non-mutating registry tools that survive an explicitly granted owner runtime and general persona', () => {
+    const ownerRuntimeTools = new Set(filterToolsForUser(registry, 'owner', PERMISSION_GROUPS).map(tool => tool.name))
     const registryByName = new Map(registry.map(tool => [tool.name, tool]))
     expect(DEFAULT_PERSONA.toolAllowlist).toBeUndefined()
 

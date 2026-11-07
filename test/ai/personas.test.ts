@@ -3,6 +3,7 @@ import { PERSONAS, DEFAULT_PERSONA, PERSONA_OPTIONS, resolvePersona } from '~~/s
 import { registry } from '~~/server/utils/ai/tools/index'
 import { filterToolsForUser } from '~~/server/utils/ai/toolRegistry'
 import { AI_PERSONA_OPTIONS } from '~~/app/utils/aiPersonas'
+import { PERMISSION_GROUPS, type PermissionGroup } from '~~/server/utils/permissions'
 
 const REGISTRY_NAMES = new Set(registry.map(t => t.name))
 
@@ -66,15 +67,19 @@ describe('Finance persona slice-2 tools', () => {
 
 describe('persona narrowing is bounded by RBAC (never grants beyond the role)', () => {
   // Replicates the loop's two-step: RBAC filter THEN persona allowlist intersection.
-  function toolsFor(role: string, personaKey: string): string[] {
+  function toolsFor(role: string, personaKey: string, groups?: readonly PermissionGroup[]): string[] {
     const persona = resolvePersona(personaKey)
-    let tools = filterToolsForUser(registry, role)
+    let tools = filterToolsForUser(registry, role, groups)
     if (persona.toolAllowlist) tools = tools.filter(t => persona.toolAllowlist!.includes(t.name))
     return tools.map(t => t.name)
   }
 
-  it('owner + finance persona → exactly the finance allowlist (all permitted)', () => {
-    expect(toolsFor('owner', 'finance').sort()).toEqual([...PERSONAS.finance!.toolAllowlist!].sort())
+  it('explicitly granted owner + finance persona → exactly the finance allowlist', () => {
+    expect(toolsFor('owner', 'finance', PERMISSION_GROUPS).sort()).toEqual([...PERSONAS.finance!.toolAllowlist!].sort())
+  })
+
+  it('owner + finance persona alone does not grant company finance access', () => {
+    expect(toolsFor('owner', 'finance')).not.toContain('get_finance_snapshot')
   })
 
   it('a non-FINANCE role + finance persona still cannot reach get_finance_snapshot', () => {

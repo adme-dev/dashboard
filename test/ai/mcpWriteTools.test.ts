@@ -203,9 +203,15 @@ describe('financial actions over MCP (#3 / D4)', () => {
 
   it('projectFinancialTools is empty unless the financial flag is on', () => {
     expect(projectFinancialTools(REGISTRY, 'owner', false)).toEqual([])
-    const names = projectFinancialTools(REGISTRY, 'owner', true).map(t => t.name)
+    const names = projectFinancialTools(REGISTRY, 'owner', true, { permissionGroups: ['FINANCE','ADMIN','MEDIA_BUYING','SALES','CLIENTS'] }).map(t => t.name)
     for (const a of MCP_FINANCIAL_ACTIONS) expect(names).toContain(a)
     expect(names).toContain('confirm_action')
+  })
+
+  it('does not expose accounting actions from an owner role alone when the financial flag is on', () => {
+    const names = projectFinancialTools(REGISTRY, 'owner', true).map(t => t.name)
+    expect(names).not.toContain('propose_expense_approval')
+    expect(names).not.toContain('propose_expense_classify')
   })
 
   it('role-filters by each tool\'s own permission (eom_generate is ADMIN-only)', () => {

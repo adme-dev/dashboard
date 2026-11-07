@@ -54,10 +54,19 @@ it('overview_filters_alias_matches_before_limit_26', async () => {
 })
 it('finance_overview_requires_independent_finance_group', async () => {
   db.queryRowsFresh.mockResolvedValue([{ id: 'a', name: 'A', is_active: true, billing_type: 'retainer' }])
-  db.queryOneFresh.mockImplementation(async (sql: string) => sql.includes('FROM projects p') ? { total_revenue: 100, gross_profit: 40, project_count: 1 } : { id: 'a', total: 1 })
+  db.queryOneFresh.mockImplementation(async (sql: string) => sql.includes('JOIN role_permission_groups rpg') ? { permission_group: 'FINANCE' } : sql.includes('FROM projects p') ? { total_revenue: 100, gross_profit: 40, project_count: 1 } : { id: 'a', total: 1 })
   const result: any = await clientOverviewTool.handler(clientOverviewTool.parameters.parse({ clientName: 'A' }), { ...ctx, permissionGroups: ['CLIENTS', 'FINANCE'] })
   expect(result.data.marginSnapshot).toEqual({ totalRevenue: 100, grossProfit: 40, grossMargin: 40 })
   const [sql, params] = db.queryOneFresh.mock.calls.find(([sql]) => sql.includes('FROM projects p'))!
   expect(sql).toContain('p.client_id = ANY')
   expect(params).toContainEqual(['a'])
+})
+
+it('finance_overview_hides_margin_when_claimed_finance_has_no_current_grant', async () => {
+  db.queryRowsFresh.mockResolvedValue([{ id: 'a', name: 'A', is_active: true, billing_type: 'retainer' }])
+  db.queryOneFresh.mockImplementation(async (sql: string) => sql.includes('JOIN role_permission_groups rpg') ? null : { id: 'a', total: 1 })
+  const result = await clientOverviewTool.handler(clientOverviewTool.parameters.parse({ clientName: 'A' }), { ...ctx, permissionGroups: ['CLIENTS', 'FINANCE'] })
+  if (!result.ok) throw new Error(result.error)
+  expect(result.data).not.toHaveProperty('marginSnapshot')
+  expect(db.queryOneFresh.mock.calls.some(([sql]) => sql.includes('FROM projects p'))).toBe(false)
 })

@@ -6,6 +6,12 @@ import type { ActiveCatalogRow } from '~~/server/utils/ai/governance/catalogComp
 
 const mockRecordAiInvocation = vi.fn()
 const mockResolveModelWithTransport = vi.fn()
+const mockQueryOneFresh = vi.fn()
+
+vi.mock('~~/server/utils/db', async importOriginal => ({
+  ...(await importOriginal<typeof import('~~/server/utils/db')>()),
+  queryOneFresh: (...args: unknown[]) => mockQueryOneFresh(...args)
+}))
 
 vi.mock('~~/server/utils/claudeClient', async (importOriginal) => ({
   ...await importOriginal<typeof import('~~/server/utils/claudeClient')>(),
@@ -282,7 +288,8 @@ describe('runToolLoop (injected mock model)', () => {
 describe('runToolLoop (Slice-2 tool selection)', () => {
   // Positive: model emits a tool-call for get_client_profitability on step 1, then text on step 2.
   // The handler resolves via the mocked fetchClientEconomics (stubbed at module level above).
-  it('selects get_client_profitability for a finance question and records it in the trace', async () => {
+  it('selects get_client_profitability for an explicitly granted finance question and records it in the trace', async () => {
+    mockQueryOneFresh.mockResolvedValueOnce({ permission_group: 'FINANCE' })
     vi.mocked(economics.fetchClientEconomics).mockClear()
     let callCount = 0
     const model = new MockLanguageModelV3({
@@ -308,7 +315,8 @@ describe('runToolLoop (Slice-2 tool selection)', () => {
     })
 
     const out = await runToolLoop({
-      ctx: ctx as any,
+      ctx: { ...ctx,permissionGroups: ['FINANCE'] } as any,
+      permissionGroups: ['FINANCE'],
       system: 'sys',
       messages: [{ role: 'user', content: 'Which client is most profitable this month?' }],
       seed: 'c1',
@@ -323,6 +331,7 @@ describe('runToolLoop (Slice-2 tool selection)', () => {
     // registry → toSdkTools → execute path. This is the assertion that fails if the tool is
     // dropped from the registry — out.toolCalls alone would still echo the mock's emitted call.
     expect(vi.mocked(economics.fetchClientEconomics)).toHaveBeenCalledTimes(1)
+    expect(mockQueryOneFresh).toHaveBeenCalledWith(expect.stringContaining('role_permission_groups'), [ctx.userId, false, 'FINANCE'])
     // The final answer text must be present
     expect(out.text).toContain('Acme')
     // No proposal was created (this is a read tool)

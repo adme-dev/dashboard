@@ -16,7 +16,7 @@ vi.mock('~~/server/utils/session', () => ({
 vi.mock('~~/server/utils/db', () => ({
   queryRows: (...args: unknown[]) => mockQueryRows(...args),
   queryRowsFresh: (...args: unknown[]) => mockQueryRows(...args),
-  queryOneFresh: (sql: string, params: any[]) => sql.includes('team_members') ? Promise.resolve({ id: params[0] }) : sql.includes('xero_org_connection') ? Promise.resolve({ tenant_id: 'tenant-1' }) : Promise.resolve(null),
+  queryOneFresh: (sql: string, params: any[]) => sql.includes('SELECT rpg.permission_group') ? Promise.resolve({ permission_group: params[2] }) : sql.includes('team_members') ? Promise.resolve({ id: params[0] }) : sql.includes('xero_org_connection') ? Promise.resolve({ tenant_id: 'tenant-1' }) : Promise.resolve(null),
 }))
 
 vi.mock('~~/server/utils/kv', () => ({
