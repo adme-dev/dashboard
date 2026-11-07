@@ -39,9 +39,12 @@ const TASK_3_OWNED_FILES = new Set([
   'server/plugins/godModeAudit.ts',
   'server/api/crm/ai/status.get.ts'
 ])
+// Fresh database grants are hard boundaries, never owner governance bypasses.
+const FRESH_ROLE_GRANT_PATTERN = /assertFinancePermission\(|assertPermissionGrant\(|requireInvoiceAccess\(|hasExpenseFinancePermission\(|assertExpenseOwnWritePermission\(/
 const GATE_PATTERN = /process\.env\.|useRuntimeConfig\(|runtimeConfig\.|feature.?flag|suite.?enabled|roleHasPermission\(|hasMcpPermission\(|mcpContextHasPermission\(|hasRole\(|user\.role|user_role|permissionGroups|requirePermission\(|requireRole\(|requireWriteAccess\(|requireFreshCrmSearchAdmin|isReadOnlyRole\(|GOD_MODE_DISABLED|AI_GATEWAY_URL/i
 
 const CENTRAL_HELPER_BY_CLASS = {
+  fresh_role_grant_hard_boundary: 'fresh active database role grant; no God mode bypass',
   identity_tenant_hard_boundary: 'unchanged independent scope helper',
   provider_infrastructure_availability: 'unchanged provider/configuration check',
   application_governance_bypass: 'canBypassApplicationControl / isApplicationCapabilityEnabled',
@@ -50,7 +53,8 @@ const CENTRAL_HELPER_BY_CLASS = {
 } as const
 
 const TASK_3_GATE_ROUTING = [
-  ['server/utils/auth.ts', 'requireRole / requirePermission / requireWriteAccess', 'application_governance_bypass', 'canBypassApplicationControl'],
+  ['server/utils/auth.ts', 'FINANCE branches in requireRole / requirePermission', 'fresh_role_grant_hard_boundary', 'assertFinancePermission'],
+  ['server/utils/auth.ts', 'non-accounting requireRole / requirePermission / requireWriteAccess', 'application_governance_bypass', 'canBypassApplicationControl'],
   ['server/utils/roleResolver.ts', 'permissionGroups', 'ordinary_user_behavior', 'configured role policy'],
   ['server/middleware/rbac.ts', 'isReadOnlyRole', 'application_governance_bypass', 'canBypassApplicationControl'],
   ['server/utils/godMode/featureGate.ts', 'feature flag adapter', 'application_governance_bypass', 'isApplicationCapabilityEnabled'],
@@ -58,7 +62,8 @@ const TASK_3_GATE_ROUTING = [
 ] as const
 
 type GateClass
-  = | 'identity_tenant_hard_boundary'
+  = | 'fresh_role_grant_hard_boundary'
+    | 'identity_tenant_hard_boundary'
     | 'provider_infrastructure_availability'
     | 'application_governance_bypass'
     | 'ordinary_user_behavior'
@@ -73,6 +78,7 @@ function listSourceFiles(root: string): string[] {
 }
 
 function classifyGate(file: string, line: string): GateClass {
+  if (FRESH_ROLE_GRANT_PATTERN.test(line)) return 'fresh_role_grant_hard_boundary'
   if (/GOD_MODE_DISABLED|AI_GATEWAY_URL/i.test(line)
     || (file === 'server/utils/godMode/authority.ts' && /process\.env/.test(line))) {
     return 'provider_infrastructure_availability'
@@ -97,7 +103,7 @@ function legacyInventory() {
     .filter(file => !TASK_3_OWNED_FILES.has(file))
     .sort()
     .flatMap(file => readFileSync(file, 'utf8').split(/\r?\n/).flatMap((line) => {
-      if (!GATE_PATTERN.test(line)) return []
+      if (!GATE_PATTERN.test(line) && !FRESH_ROLE_GRANT_PATTERN.test(line)) return []
       const normalized = line.trim().replace(/\s+/g, ' ')
       return [`${file}\t${normalized}\t${classifyGate(file, normalized)}`]
     }))
@@ -106,6 +112,7 @@ function legacyInventory() {
     result[gateClass]++
     return result
   }, {
+    fresh_role_grant_hard_boundary: 0,
     identity_tenant_hard_boundary: 0,
     provider_infrastructure_availability: 0,
     application_governance_bypass: 790,
@@ -451,13 +458,37 @@ describe('God mode gate inventory', () => {
     // removed gates or classifier/seed changes. This lexical classification
     // does not register a bypass: the thumbnail route rechecks asset authority.
     expect(inventory.rows).toContain('server/utils/audio/projectCovers.ts\tif (isReadOnlyRole(actor.role) || actor.isCustomReadOnly) return covers\tapplication_governance_bypass')
-    expect(inventory.rows).toHaveLength(1752)
+    // Finance/ADMIN resolve fresh active grants, including under God mode.
+    // Invoice/expense delegates retain independent client/row boundaries.
+    // Preserve the complete strict count and digest freeze below.
+    for (const [file, line] of [
+      ['server/middleware/finance.ts', 'await assertFinancePermission(event, user.id, !reads.has(method) || path === \'/api/xero/login\')'],
+      ['server/api/admin/roles/[id].put.ts', 'await assertPermissionGrant(event, currentUser.id, \'ADMIN\', true)'],
+      ['server/api/auth/users/[id]/role.patch.ts', 'await assertPermissionGrant(event, currentUser.id, \'ADMIN\', true)'],
+      ['server/utils/ai/godModeExecution.ts', 'if (tool.requiredPermission === \'FINANCE\') await assertFinancePermission(request.event, user.id, true)'],
+      ['server/api/agency/invoices/index.post.ts', 'const { user, clientIds } = await requireInvoiceAccess(event, true)']
+    ]) {
+      expect(inventory.rows).toContain(`${file}\t${line}\tfresh_role_grant_hard_boundary`)
+      expect(classifyGate(file!, line!)).toBe('fresh_role_grant_hard_boundary')
+    }
+    const freshGrantSource = readFileSync('server/utils/financeAccess.ts', 'utf8')
+    expect(freshGrantSource).toContain('queryOneFresh')
+    expect(freshGrantSource).toContain('tm.is_active=TRUE')
+    expect(freshGrantSource).toContain('rpg.permission_group=$3')
+    expect(freshGrantSource).not.toMatch(/canBypassApplicationControl|isApplicationCapabilityEnabled|import\.meta\.dev/)
+    const authSource = readFileSync('server/utils/auth.ts', 'utf8')
+    for (const helper of ['requireRole', 'requirePermission']) {
+      const body = authSource.slice(authSource.indexOf(`export async function ${helper}(`))
+      expect(body.indexOf('await assertFinancePermission(event, user.id)')).toBeLessThan(body.indexOf('if (import.meta.dev)'))
+    }
+    expect(inventory.rows).toHaveLength(1825)
     expect(inventory.counts).toEqual({
-      identity_tenant_hard_boundary: 142,
-      provider_infrastructure_availability: 225,
-      application_governance_bypass: 1649,
-      ordinary_user_behavior: 303,
-      unrelated_configuration: 432
+      fresh_role_grant_hard_boundary: 89,
+      identity_tenant_hard_boundary: 144,
+      provider_infrastructure_availability: 216,
+      application_governance_bypass: 1636,
+      ordinary_user_behavior: 306,
+      unrelated_configuration: 433
     })
     // Removing the session KV shortcut removes four auth middleware rows:
     // cached identity read, cached role branch, cached auth assignment and cache
@@ -483,21 +514,22 @@ describe('God mode gate inventory', () => {
     const canonicalMcpGate = 'server/utils/ai/marketing/departmentEmailOperations.ts\tif (!enabled(\'FIGFLOW_EDM_DRAFT_SAVES_ENABLED\', process.env.FIGFLOW_EDM_DRAFT_SAVES_ENABLED) || (selection && !enabled(\'FIGFLOW_EDM_LIBRARY_ENABLED\', process.env.FIGFLOW_EDM_LIBRARY_ENABLED))) refuse(\'Canonical email drafts are unavailable for this environment\', \'not_found\')\tapplication_governance_bypass'
     expect(inventory.rows).toContain(canonicalMcpGate)
     const editableCopyGates = new Set(['server/api/email/templates/[id]/editable-copy.post.ts\tconst user = input.save ? await requireWriteAccess(event) : await requireAuth(event)\tapplication_governance_bypass', 'server/api/email/templates/[id]/editable-copy.post.ts\tconst fresh = await requireWriteAccess(event)\tapplication_governance_bypass'])
-    expect(createHash('sha256').update(inventory.rows.filter(row => row !== canonicalMcpGate && !editableCopyGates.has(row)).join('\n')).digest('hex')).toBe('e497ce5a01455592c230d4b4288da6cbe04c3091f6ccd6f1bb78f023d7d60929')
+    expect(createHash('sha256').update(inventory.rows.filter(row => row !== canonicalMcpGate && !editableCopyGates.has(row)).join('\n')).digest('hex')).toBe('429f4a5403cc471572cb51348b066a3d24d410d4cc5a8336d5f467a8b07c86e9')
     const campaignReadGate = 'server/utils/ai/marketing/departmentEmailOperations.ts\tif (!fresh.permissionGroups?.some(group => [\'ADMIN\', \'MANAGEMENT\'].includes(group))) refuse(\'Agency template access required\', \'forbidden\')\tordinary_user_behavior'
-    expect(createHash('sha256').update(inventory.rows.filter(row => row !== campaignReadGate && row !== canonicalMcpGate && !editableCopyGates.has(row)).join('\n')).digest('hex')).toBe('b741d67ad1011f75f5fa3462f6bdb0e48536fd42e8d2dc1c2235594e13e4a7f8')
-    expect(inventory.digest).toBe('db05cf2e17539e18ad69f101eef5a24403ba9e7818abb6e22f2a710f31243822')
+    expect(createHash('sha256').update(inventory.rows.filter(row => row !== campaignReadGate && row !== canonicalMcpGate && !editableCopyGates.has(row)).join('\n')).digest('hex')).toBe('b097367582d0dbf5b2942a0a8df6b080dcfe255a874d41afda5282364676fad0')
+    expect(inventory.digest).toBe('7c8b4cc1f6e9a31c3fe351322b08fbe2b77030927a97d2f491815cbb25f72a5a')
     expect(inventory.rows).toContain(
       'app/composables/usePageStudioLauncher.ts\tconst config = useRuntimeConfig()\tunrelated_configuration'
     )
     expect(CENTRAL_HELPER_BY_CLASS).toEqual({
+      fresh_role_grant_hard_boundary: 'fresh active database role grant; no God mode bypass',
       identity_tenant_hard_boundary: 'unchanged independent scope helper',
       provider_infrastructure_availability: 'unchanged provider/configuration check',
       application_governance_bypass: 'canBypassApplicationControl / isApplicationCapabilityEnabled',
       ordinary_user_behavior: 'unchanged presentation/ordinary decision',
       unrelated_configuration: 'unchanged runtime configuration'
     })
-    expect(TASK_3_GATE_ROUTING).toHaveLength(5)
+    expect(TASK_3_GATE_ROUTING).toHaveLength(6)
   })
 
   it('preserves the normal application gate for non-owners', async () => {

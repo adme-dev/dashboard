@@ -142,10 +142,12 @@ const API_INVENTORY = {
   // Main 160f978fd adds six public Banner delivery routes: three HEAD aliases,
   // two GETs and one saved-artwork preparation POST. Capability-token checks
   // remain in loadPublicBannerShare; no inline role gate, transaction or bypass.
+  // Fresh Finance/ADMIN and scoped invoice/expense delegates remain mandatory.
+  // Explicitly count their helper calls; none registers a God mode bypass.
   totalRouteFiles: 2381,
   mutationRouteFiles: 1301,
-  explicitlyGuardedMutationFiles: 419,
-  guardedMutationFilesWithTransactionCall: 55
+  explicitlyGuardedMutationFiles: 431,
+  guardedMutationFilesWithTransactionCall: 58
 } as const
 
 const EMAIL_TEMPLATE_ROUTE_ADDITIONS = {
@@ -179,7 +181,7 @@ function listApiFiles(root = 'server/api'): string[] {
 function mechanicalInventory() {
   const files = listApiFiles()
   const mutations = files.filter(file => /\.(post|put|patch|delete)\.ts$/.test(file))
-  const guarded = mutations.filter(file => /(requireRole|requirePermission|requireWriteAccess|requireFreshCrmSearchAdmin|isReadOnlyRole|user\.role|roleHasPermission)/.test(readFileSync(file, 'utf8')))
+  const guarded = mutations.filter(file => /(requireRole|requirePermission|requireWriteAccess|requireFreshCrmSearchAdmin|isReadOnlyRole|user\.role|roleHasPermission|assertFinancePermission|assertPermissionGrant|requireInvoiceAccess|hasExpenseFinancePermission|assertExpenseOwnWritePermission)/.test(readFileSync(file, 'utf8')))
   const transactional = guarded.filter(file => /\btransaction\s*\(/.test(readFileSync(file, 'utf8')))
   return {
     totalRouteFiles: files.length,
@@ -195,9 +197,24 @@ describe('God mode route isolation inventory', () => {
     expect(API_INVENTORY).toEqual({
       totalRouteFiles: 2381,
       mutationRouteFiles: 1301,
-      explicitlyGuardedMutationFiles: 419,
-      guardedMutationFilesWithTransactionCall: 55
+      explicitlyGuardedMutationFiles: 431,
+      guardedMutationFilesWithTransactionCall: 58
     })
+  })
+
+  it('retains fresh Finance and ADMIN grants outside God mode governance bypasses', () => {
+    const finance = readFileSync('server/middleware/finance.ts', 'utf8')
+    expect(finance).toContain('await assertFinancePermission(event, user.id,')
+    expect(finance).toContain('isFinanceReadMachineRequest(event)')
+    expect(finance).not.toMatch(/canBypassApplicationControl|registerGodModeMutationFamily/)
+    for (const file of ['server/api/admin/roles/[id].put.ts', 'server/api/auth/users/[id]/role.patch.ts']) {
+      const source = readFileSync(file, 'utf8')
+      expect(source).toContain('await assertPermissionGrant(event, currentUser.id, \'ADMIN\', true)')
+      expect(source).not.toMatch(/canBypassApplicationControl|registerGodModeMutationFamily/)
+    }
+    for (const file of ['server/api/agency/invoices/index.post.ts', 'server/api/agency/invoices/[id].put.ts']) {
+      expect(readFileSync(file, 'utf8')).toContain('await requireInvoiceAccess(event, true)')
+    }
   })
 
   it('pins the three M06 review routes to independent session, scope and mutation gates', () => {

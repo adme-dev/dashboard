@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const createDependencies = vi.fn()
@@ -43,8 +42,11 @@ describe('Monday campaign performance cron', () => {
     expect(ROUTES['0 * * * *']).toContain('/api/cron/ops-autopilot-pacing')
   })
 
-  it('fails closed when the newly scheduled pacing route has no configured cron secret', () => {
-    const route = readFileSync('server/api/cron/ops-autopilot-pacing.post.ts', 'utf8')
-    expect(route).toContain('!process.env.CRON_SECRET || cronSecret !== process.env.CRON_SECRET')
+  it('fails closed when the newly scheduled pacing route has no configured cron secret', async () => {
+    delete process.env.CRON_SECRET
+    const handler = (await import('~~/server/api/cron/ops-autopilot-pacing.post')).default
+    await expect(handler({ method: 'POST', context: {}, node: { req: { headers: {} } } } as never)).rejects.toMatchObject({ statusCode: 503, statusMessage: 'Job authentication unavailable' })
+    expect(createDependencies).not.toHaveBeenCalled()
+    expect(reconcile).not.toHaveBeenCalled()
   })
 })

@@ -17,6 +17,7 @@ import { registry as REGISTRY } from '~~/server/utils/ai/tools/index'
 import type { AiTool } from '~~/server/utils/ai/toolRegistry'
 import type { ToolContext } from '~~/server/utils/ai/toolContext'
 import type { ActionExecutor } from '~~/server/utils/ai/executors/types'
+import { PERMISSION_GROUPS } from '~~/server/utils/permissions'
 
 vi.mock('~~/server/utils/permissions', async (importOriginal) => {
   const actual = await importOriginal<typeof import('~~/server/utils/permissions')>()
@@ -37,14 +38,21 @@ describe('financial tools manifest inclusion (mirrors tools.post.ts)', () => {
     expect(projectFinancialTools(REGISTRY as AiTool<unknown>[], 'owner', false)).toEqual([])
   })
 
-  it('projectFinancialTools includes all 6 propose_* tools + confirm_action when flag is on', () => {
-    const names = projectFinancialTools(REGISTRY as AiTool<unknown>[], 'owner', true).map(t => t.name)
+  it('projectFinancialTools includes all propose_* tools + confirm_action with explicit grants when flag is on', () => {
+    const names = projectFinancialTools(REGISTRY as AiTool<unknown>[], 'owner', true, { permissionGroups: PERMISSION_GROUPS }).map(t => t.name)
     for (const a of MCP_FINANCIAL_ACTIONS) {
       expect(names).toContain(a)
     }
     expect(names).toContain(MCP_CONFIRM_TOOL)
     // confirm_action appears exactly once from this group
     expect(names.filter(n => n === MCP_CONFIRM_TOOL)).toHaveLength(1)
+  })
+
+  it('owner role alone cannot discover company accounting actions', () => {
+    const names = projectFinancialTools(REGISTRY as AiTool<unknown>[], 'owner', true).map(t => t.name)
+    expect(names).not.toContain('propose_expense_approval')
+    expect(names).not.toContain('propose_expense_classify')
+    expect(names).toContain('propose_budget_change')
   })
 
   it('role-filters: viewer gets no financial tools even when flag is on', () => {
@@ -57,7 +65,7 @@ describe('financial tools manifest inclusion (mirrors tools.post.ts)', () => {
 // isFinancialAction coverage
 // ---------------------------------------------------------------------------
 describe('isFinancialAction', () => {
-  it('returns true for all 6 financial action names', () => {
+  it('returns true for all financial action names', () => {
     for (const a of MCP_FINANCIAL_ACTIONS) {
       expect(isFinancialAction(a)).toBe(true)
     }
