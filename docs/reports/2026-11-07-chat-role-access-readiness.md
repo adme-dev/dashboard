@@ -22,7 +22,7 @@ Authenticated `/api/admin/ai/governance/rollout`, `/readiness`, `/catalog` and `
 
 | Pack or cohort | Current state | Required next action |
 | --- | --- | --- |
-| Account Services, Paid Media, Production, Finance, Bookkeeping | Version 1 drafts, existing owner eligible | Fresh exact-version preflight; independent cost approval; approved evaluation; inspect all failures before pilot |
+| Account Services, Paid Media, Production, Finance, Bookkeeping | Version 1 drafts, existing owner eligible | Exact-version preflights prepared below; independent cost approval; approved evaluation; inspect all failures before pilot |
 | Marketing | No nominated owner | Choose a current eligible department member as capability owner |
 | Creative | No nominated owner | Choose a current eligible department member as capability owner |
 | Operations | No eligible owner or candidates | Confirm membership and nominate its accountable capability owner |
@@ -57,7 +57,7 @@ Outstanding administrator decisions: nominate Marketing and Creative owners from
 
 ## Verification
 
-Initial focused suite: 95 tests passed. Broader AI/chat run: 2,422 passed, 48 skipped. The final Finance-discovery and authority tests plus two actual disposable PostgreSQL suites passed 44 tests. Independent review found no Critical/Important findings and independently passed 42 tests. The completed typecheck before the additional preflight repair reported 1,184 diagnostics, identical to the recorded current-main baseline after checkout-path normalization, with none in this task's changed files. Lint comparison across all changed TypeScript/Vue files found no new diagnostics. Build, final preflight-repair review, full-suite and deployment receipts follow when complete.
+Initial focused suite: 95 tests passed. Broader AI/chat run: 2,422 passed, 48 skipped. The final Finance-discovery and authority tests plus two actual disposable PostgreSQL suites passed 44 tests. Independent review found no Critical/Important findings and independently passed 42 tests. Both completed typechecks, including the final preflight repair, reported 1,184 diagnostics, identical to the recorded current-main baseline after checkout-path normalization, with no new diagnostics. Lint comparison across all changed TypeScript/Vue files found no new diagnostics.
 
 The additional preflight repair independently passed 35 tests with no Critical/Important findings. The full test run exposed two stale God-mode inventory snapshots and two older endpoint fixtures. The observe-policy fixture now supplies the current identity/tool-discovery dependencies; the God-mode presentation fixture isolates the accounting database lookup. Their assertions and production authority remain unchanged; those fixture suites and governance evaluation endpoints passed 24 tests.
 
@@ -69,4 +69,13 @@ Reviewed gate-row changes move tool flags into request-aware shared helpers, rep
 
 An independent reviewer inspected all 16 added/changed route files and their delegated authority since the snapshot, recomputed these values, and passed 57 authority/documentation tests. Only expected counts/digests and explanatory comments were refreshed.
 
-The first complete repository run passed 23,572 tests, skipped 4,384 and failed six tests in the two inventory suites and the two stale-fixture suites described above. The repaired inventory suites passed 26/26; the repaired endpoint fixtures plus evaluation endpoints passed 24/24. A final complete run is in progress. The production build passed: raw worker 25,448,505 / 25,468,928 bytes (20,423 remaining), gzip 7,340,057 / 9,750,000. Size guards were not raised.
+The first complete repository run passed 23,572 tests, skipped 4,384 and failed six tests in the two inventory suites and the two stale-fixture suites described above. The repaired inventory suites passed 26/26; the repaired endpoint fixtures plus evaluation endpoints passed 24/24. The final complete run passed **23,583 tests**, skipped 4,379 and failed none (2,917 passing files, 145 skipped). Five artifact-dependent tests also ran after the build completed. These same six original failures were independently confirmed in current-main CI run `42363347239`; none was hidden or excluded. The production build passed: raw worker 25,448,505 / 25,468,928 bytes (20,423 remaining), gzip 7,340,057 / 9,750,000. Size guards were not raised.
+
+
+## Code release decision
+
+Implementation commit: `104f62da09c4d5530cd239e0d29cddcefee00cc1`; [PR #896](https://github.com/adme-dev/dashboard/pull/896) contains the repair and evidence. The source and target guard passed for `agency-dashboard / main`, and the branch includes freshly fetched main `62776b77a337d82b5084c839cfd17c9c72847773`. The source repair is locally verified and independently reviewed; merge/deployment still require the PR checks and a fresh source guard. No deployment or live acceptance of the new code is claimed by this report. Keep QR Codes, Ad Spend, My Assistant and role workflows in the post-deployment checks.
+
+Employee activation is a separate blocked decision: use the exact preflight packet for independent cost approval, retain failed historical results, and resolve ownership/membership and preview/security evidence before any rollout. A read-back confirmed all five new runs are queued with zero executed cases and zero cost. Suite and prompt/toolset digests are included in the packet. The account-by-account access review is retained outside source control in the owned local task evidence directory; no assignments were inferred.
+
+Orca workspace pinning remains unfulfilled: the CLI has no supported pin option and Computer Use denied access to Orca. That denial was not bypassed. The active workspace remains available for this unfinished rollout.

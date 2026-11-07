@@ -34,6 +34,22 @@
           "maxModelCalls": 25,
           "decision": "requires_cost_approval"
         }
+      },
+      "verifiedRun": {
+        "id": "024dd3fc-ea3d-4097-9c32-b5a14ea845a0",
+        "status": "queued",
+        "gatePassed": null,
+        "caseCount": 0,
+        "totalCostUsdMicros": 0,
+        "materialIdentity": {
+          "evaluationSuiteVersionId": "1779550b-4426-457a-83fd-0d29cb4693c3",
+          "packVersionId": "a3741e9b-dfaf-47f1-b839-0c63ed620e97",
+          "capabilityVersionId": null,
+          "modelProvider": "groq",
+          "modelId": "openai/gpt-oss-120b",
+          "promptVersionDigest": "af8678f94a6978d5cd602f92070e97a2900217080fb1fa29d92d79b3195fd303",
+          "toolsetVersionDigest": "f6de83deffa801926a6fcce232c5e6025fad674d71312a33f98acfbd21e43ebe"
+        }
       }
     },
     {
@@ -63,6 +79,22 @@
           "estimatedUpperBoundUsdMicros": 48000,
           "maxModelCalls": 25,
           "decision": "requires_cost_approval"
+        }
+      },
+      "verifiedRun": {
+        "id": "01ab32a6-07ea-46cb-95b4-329258c675f3",
+        "status": "queued",
+        "gatePassed": null,
+        "caseCount": 0,
+        "totalCostUsdMicros": 0,
+        "materialIdentity": {
+          "evaluationSuiteVersionId": "5def3649-8570-4066-88f5-47b16dac15c4",
+          "packVersionId": "ab9a7231-7b94-420d-bbf3-d3d687e740f4",
+          "capabilityVersionId": null,
+          "modelProvider": "groq",
+          "modelId": "openai/gpt-oss-120b",
+          "promptVersionDigest": "4422bfea64d1421bbbb5c13da968bdaa93b0aa4258a6e1248ddbb019b1b08a56",
+          "toolsetVersionDigest": "a7f30eabf5c58605c080c9a03ad54f95b3e05d2933dea16c9e4d4759024ab6e9"
         }
       }
     },
@@ -94,6 +126,22 @@
           "maxModelCalls": 25,
           "decision": "requires_cost_approval"
         }
+      },
+      "verifiedRun": {
+        "id": "9823acd1-08a2-44cc-a078-c7235ae426f3",
+        "status": "queued",
+        "gatePassed": null,
+        "caseCount": 0,
+        "totalCostUsdMicros": 0,
+        "materialIdentity": {
+          "evaluationSuiteVersionId": "84df6ad0-314f-40fe-8333-3d15b4ceca2a",
+          "packVersionId": "e5d4b746-2e7c-450b-b407-f3917817444a",
+          "capabilityVersionId": null,
+          "modelProvider": "groq",
+          "modelId": "openai/gpt-oss-120b",
+          "promptVersionDigest": "26b595252352433949ff595f5473f60fa0132f7f35bc4a1914f5b97f798141d0",
+          "toolsetVersionDigest": "8aa0cf195d18d6096f4c87779a60ff9b6d476762a21e93d9f9a4226aa21c0ee7"
+        }
       }
     },
     {
@@ -124,6 +172,22 @@
           "maxModelCalls": 25,
           "decision": "requires_cost_approval"
         }
+      },
+      "verifiedRun": {
+        "id": "933c2107-d390-448a-85f1-41a9f0dbb9c6",
+        "status": "queued",
+        "gatePassed": null,
+        "caseCount": 0,
+        "totalCostUsdMicros": 0,
+        "materialIdentity": {
+          "evaluationSuiteVersionId": "f98ba69a-3e7c-46ac-8a04-57a7cf0b8208",
+          "packVersionId": "ba3cd8e3-fcd1-44b9-9c4b-af28a9a9040c",
+          "capabilityVersionId": null,
+          "modelProvider": "groq",
+          "modelId": "openai/gpt-oss-120b",
+          "promptVersionDigest": "ad1882095f3fa9153bca782f593bbbd860f8a2d1b39465693a2a46f89efb20c2",
+          "toolsetVersionDigest": "0b801982c23ff00e3a24fa5599e8b3a7734168dddddf9f7317fcc31d30308108"
+        }
       }
     },
     {
@@ -153,6 +217,22 @@
           "estimatedUpperBoundUsdMicros": 48000,
           "maxModelCalls": 25,
           "decision": "requires_cost_approval"
+        }
+      },
+      "verifiedRun": {
+        "id": "50627df9-9f9e-44fc-8ef7-4f48d9d5c638",
+        "status": "queued",
+        "gatePassed": null,
+        "caseCount": 0,
+        "totalCostUsdMicros": 0,
+        "materialIdentity": {
+          "evaluationSuiteVersionId": "c711896e-bc80-4e38-a960-e9ef3fb462aa",
+          "packVersionId": "47468e9d-6d7a-4004-a1be-03cdcb03552a",
+          "capabilityVersionId": null,
+          "modelProvider": "groq",
+          "modelId": "openai/gpt-oss-120b",
+          "promptVersionDigest": "62a98df0181ddc0ee16d56673c748e43e86a487abc4d77e36a0fb2be450b999e",
+          "toolsetVersionDigest": "0bad07122db6b46581fce9b082e4df3ba5aad080cfe0fb280e73d0ce0d6c6fa5"
         }
       }
     }
