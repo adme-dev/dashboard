@@ -1,3 +1,4 @@
+import { admitChatWorkflow, parseChatWorkflowSelection } from '~~/server/utils/ai/chatWorkflow'
 import { parseChatPersona } from '~~/server/utils/ai/chatPersona'
 import { queryOne } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
@@ -23,16 +24,19 @@ interface MessagesRouteDependencies {
   claimSubmission: typeof claimChatSubmission
   completeSubmission: typeof completeChatSubmission
   processMessage: typeof processUserMessage
+  resolveWorkflow: typeof admitChatWorkflow
 }
 
 const defaultDependencies: MessagesRouteDependencies = {
   lookupSubmission: lookupChatSubmission,
   claimSubmission: claimChatSubmission,
   completeSubmission: completeChatSubmission,
-  processMessage: processUserMessage
+  processMessage: processUserMessage,
+  resolveWorkflow: admitChatWorkflow
 }
 
-export function createMessagesPostHandler(dependencies: MessagesRouteDependencies = defaultDependencies) {
+export function createMessagesPostHandler(overrides: Partial<MessagesRouteDependencies> = {}) {
+  const dependencies = { ...defaultDependencies, ...overrides }
   return async (event: any) => {
     const user = await requireAuth(event)
     const id = getRouterParam(event, 'id')
@@ -66,7 +70,8 @@ export function createMessagesPostHandler(dependencies: MessagesRouteDependencie
       ? body.mentionedEntities.filter((e: any) => e?.type && e?.id && ALLOWED_ENTITY_TYPES.has(e.type)).slice(0, 10)
       : []
     const boardId = typeof body?.boardId === 'string' ? body.boardId : undefined
-    const persona = parseChatPersona(body?.persona)
+    let persona = parseChatPersona(body?.persona)
+    const workflowSelection = parseChatWorkflowSelection(body?.workflow)
     const room = body?.room && typeof body.room.officeId === 'string'
       ? {
           officeId: body.room.officeId,
@@ -87,12 +92,18 @@ export function createMessagesPostHandler(dependencies: MessagesRouteDependencie
       conversationId: id,
       transportRetryToken,
       content,
-      request: { content, mentionedEntities, boardId, persona, room }
+      request: { content, mentionedEntities, boardId, persona, room, ...(workflowSelection ? { workflow: workflowSelection } : {}) }
     }
     const existing = await dependencies.lookupSubmission(submissionIdentity)
     if (existing?.state === 'completed') return { ...existing.response, transportRetryToken }
     if (existing?.state === 'blocked') {
       throw createError({ statusCode: 409, statusMessage: 'This submission is already being processed' })
+    }
+
+    const workflow = await dependencies.resolveWorkflow(workflowSelection, event, user.id)
+    if (workflow) {
+      if (persona !== undefined && persona !== workflow.persona) throw createError({ statusCode: 409, statusMessage: 'Workflow focus changed; choose it again' })
+      persona = workflow.persona
     }
 
     const authority = await resolveGodModeAuthority(event, user.id)
@@ -136,7 +147,8 @@ export function createMessagesPostHandler(dependencies: MessagesRouteDependencie
       const result = await dependencies.processMessage(
         id, user.id, user.role, content, event, mentionedEntities, boardId, persona, room,
         undefined,
-        { userMessageId: submission.userMessageId }
+        { userMessageId: submission.userMessageId },
+        workflow
       )
       await dependencies.completeSubmission({
         submissionId: submission.submissionId,

@@ -1,3 +1,5 @@
+import { admitChatWorkflow, formatChatWorkflowContent } from '~~/server/utils/ai/chatWorkflow'
+import { isResolvedRoleSkillSelection, type ResolvedRoleSkillSelection } from '~~/server/utils/ai/roleSkillSelectionAuthority'
 import { resolveChatRuntime } from '~~/server/utils/ai/chatRuntime'
 import { resolveChatPersona } from '~~/server/utils/ai/chatPersona'
 import type { H3Event } from 'h3'
@@ -238,6 +240,7 @@ export async function processUserMessage(
   room?: { officeId: string, meetingId?: string, presentUserIds?: string[], transcriptTail?: string },
   pilotUat?: { evidenceId: string, turnId: string, releaseId: string },
   durableSubmission?: { userMessageId: string },
+  workflow?: ResolvedRoleSkillSelection,
 ): Promise<ChatResponse> {
   const startTime = Date.now()
   const turnId = pilotUat?.turnId ?? crypto.randomUUID()
@@ -258,9 +261,17 @@ export async function processUserMessage(
   const godModeActive = isActiveGodModeAuthority(assistantContext.godModeAuthority, userId)
   const effectiveUserRole = assistantContext.identity.role
   const agentConfig = assistantContext.preferences
+  let selectedWorkflow: ResolvedRoleSkillSelection | undefined
+  if (workflow) {
+    if (!event || !isResolvedRoleSkillSelection(workflow, userId)) throw new Error('Invalid server workflow context')
+    selectedWorkflow = await admitChatWorkflow({ key: workflow.key, versionId: workflow.versionId }, event, userId, assistantContext)
+    if (persona !== undefined && persona !== selectedWorkflow?.persona) throw new Error('Workflow focus mismatch')
+  }
+  const requestContent = formatChatWorkflowContent(content, selectedWorkflow, userId)
+
   // Explicit General remains an override; null clears it and inherits My Assistant.
   const explicitOrPersisted = await resolveChatPersona({
-    conversationId, userId, requested: persona, personal: agentConfig.personaKey,
+    conversationId, userId, requested: selectedWorkflow?.persona ?? persona, personal: agentConfig.personaKey,
     persist: !!event && !pilotUat
   })
 
@@ -282,7 +293,7 @@ export async function processUserMessage(
   const contextBundle = await retrieveContext(
     userId,
     effectiveUserRole,
-    content,
+    requestContent,
     event,
     boardId,
     {
@@ -394,8 +405,8 @@ export async function processUserMessage(
   // 5. Build the messages array for the LLM
   const messagesForPrompt = history.map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`).join('\n\n')
   const fullPrompt = messagesForPrompt
-    ? `${messagesForPrompt}\n\nUser: ${content}`
-    : content
+    ? `${messagesForPrompt}\n\nUser: ${requestContent}`
+    : requestContent
 
   // 6. Save the user message
   const userMsg = durableSubmission
@@ -432,13 +443,13 @@ export async function processUserMessage(
   if (event && (
     pilotUat
     || godModeActive
-    || shouldUseToolLoop({ aiToolsEnabled: resolveChatRuntime(event, cfg).toolsEnabled, hasEvent: !!event, intent: contextBundle.intent })
+    || shouldUseToolLoop({ aiToolsEnabled: resolveChatRuntime(event, cfg).toolsEnabled, hasEvent: !!event, intent: selectedWorkflow ? 'workflow' : contextBundle.intent })
   )) {
     try {
       const { runToolLoop } = await import('~~/server/utils/ai/toolLoop')
       const loopMessages = history
         .map(m => ({ role: m.role, content: m.content }))
-        .concat([{ role: 'user' as const, content }])
+        .concat([{ role: 'user' as const, content: requestContent }])
 
       // L2 traffic controller (Phase 3, behind AI_CONTROLLER_L2_ENABLED): for a request that provably
       // spans ≥2 domains the user is entitled to, decompose → delegate to specialist packs in parallel

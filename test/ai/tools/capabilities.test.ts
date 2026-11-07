@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { getCapabilities, type CapabilitiesDeps } from '~~/server/utils/ai/tools/capabilities'
+import { getCapabilities, inspectCapabilityCatalog, type CapabilitiesDeps } from '~~/server/utils/ai/tools/capabilities'
 import type { ToolContext } from '~~/server/utils/ai/toolContext'
 
 const ctx = {
@@ -77,6 +77,10 @@ describe('get_capabilities', () => {
     const result = await getCapabilities({}, {
       ...ctx,
       godModeExecutionKey: `mcp:${'a'.repeat(64)}`,
+    }, {
+      inspect: inspectCapabilityCatalog,
+      inspectGenerationSpend: async () => null,
+      inspectDataSyncRuns: async () => null
     })
 
     expect(result.ok).toBe(true)

@@ -22,7 +22,7 @@ export interface Persona {
 
 // Useful to every persona, so each focused allowlist includes them: KB search, task creation, personal
 // memory capture, and proposing a KB draft (any agent can contribute knowledge — reviewed before publish).
-const COMMON = ['search_knowledge', 'create_task', 'remember', 'propose_knowledge_article', 'propose_team_memory']
+const COMMON = ['read_official_documentation', 'get_agent_clients', 'search_knowledge', 'create_task', 'remember', 'propose_knowledge_article', 'propose_team_memory']
 
 export const PERSONAS: Record<string, Persona> = {
   general: {
@@ -39,7 +39,7 @@ export const PERSONAS: Record<string, Persona> = {
     instructionsPreamble:
       'You are the agency\'s Finance assistant. Focus on financial health — cash position, P&L, invoicing, ad-spend efficiency, and anomalies. Lead with the numbers, quantify impact, and flag risks early. For questions outside finance, answer briefly and suggest the relevant assistant.',
     toolAllowlist: [
-      'get_finance_snapshot', 'get_adspend_pacing', 'get_open_anomalies', 'get_client_overview',
+      'ask_financial_watch', 'get_finance_snapshot', 'get_adspend_pacing', 'get_open_anomalies', 'get_client_overview',
       'get_client_profitability', 'monitor_retainer_burn', 'flag_over_servicing', 'forecast_revenue',
       'propose_expense_approval', 'propose_eom_generate', 'propose_expense_classify',
       ...COMMON
@@ -51,7 +51,7 @@ export const PERSONAS: Record<string, Persona> = {
     description: 'Ad-spend pacing, social performance, briefs and delivery.',
     instructionsPreamble:
       'You are the agency\'s Marketing assistant. Focus on campaign delivery — ad-spend pacing, social performance, creative briefs, and project status. Tie observations to outcomes and call out under-delivery or pacing issues. For questions outside marketing, answer briefly and suggest the relevant assistant.',
-    toolAllowlist: ['get_adspend_pacing', 'get_social_performance', 'recommend_social_news', 'get_briefs', 'get_project_status', 'propose_schedule_post',
+    toolAllowlist: ['ask_publishing_planner', 'get_adspend_pacing', 'get_social_performance', 'recommend_social_news', 'get_briefs', 'get_project_status', 'propose_schedule_post',
       'get_my_creative_queue', 'propose_proof_status', ...DEPARTMENT_TOOL_NAMES, ...COMMON]
   },
   sales: {
@@ -60,7 +60,7 @@ export const PERSONAS: Record<string, Persona> = {
     description: 'Client overview, briefs/opportunities and account risks.',
     instructionsPreamble:
       'You are the agency\'s Sales assistant. Focus on the client relationship — account overviews, incoming briefs/opportunities, and account-level risks. Be concise and action-oriented. For questions outside sales, answer briefly and suggest the relevant assistant.',
-    toolAllowlist: ['get_client_overview', 'get_briefs', 'get_open_anomalies',
+    toolAllowlist: ['get_client_overview', 'get_briefs', 'get_open_anomalies', 'get_crm_pipeline', 'search_crm',
       'propose_opportunity', 'log_crm_activity', 'propose_quote', 'draft_followup', ...COMMON]
   },
   account: {
@@ -84,7 +84,7 @@ export const PERSONAS: Record<string, Persona> = {
       + 'For questions outside paid media, answer briefly and suggest the relevant assistant.',
     // Reads + the media-buyer write (propose_budget_change, MEDIA_BUYING, rich_confirm). (get_adspend_pacing
     // is FINANCE-gated and dropped by RBAC for a pure media_buyer; the MEDIA_BUYING tools are their surface.)
-    toolAllowlist: ['get_adspend_pacing', 'get_campaign_breakdown', 'get_ad_breakdown', 'get_ad_creative_text', 'get_search_terms', 'get_budget_health', 'get_social_performance', 'get_project_status', 'propose_budget_change', ...DEPARTMENT_TOOL_NAMES, ...COMMON]
+    toolAllowlist: ['ask_spend_controller', 'get_adspend_pacing', 'get_campaign_breakdown', 'get_ad_breakdown', 'get_ad_creative_text', 'get_search_terms', 'get_budget_health', 'get_social_performance', 'get_project_status', 'propose_budget_change', ...DEPARTMENT_TOOL_NAMES, ...COMMON]
   }
 }
 

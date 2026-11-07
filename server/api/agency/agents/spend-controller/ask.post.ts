@@ -1,18 +1,16 @@
+import { platformAgentEnabled } from '~~/server/utils/ai/platformAgentFlags'
 import { requireAuth, requireWriteAccess } from '~~/server/utils/auth'
 import { runSpendControllerAgentRequest } from '~~/server/utils/ai/spendControllerAgentRuntime'
 import { resolveUserPlatformAgentAuthority } from '~~/server/utils/ai/platformAgentAuthority'
 import { resolvePlatformAgentScope } from '~~/server/utils/ai/platformAgentScope'
 
-function enabled() {
-  return process.env.SPEND_CONTROLLER_AGENT_ENABLED === 'true'
-}
 
 function proposalsEnabled() {
   return process.env.SPEND_CONTROLLER_AGENT_PROPOSALS_ENABLED === 'true'
 }
 
 export default defineEventHandler(async (event) => {
-  if (!enabled()) {
+  if (!platformAgentEnabled(event, 'SPEND_CONTROLLER_AGENT_ENABLED')) {
     throw createError({ statusCode: 404, statusMessage: 'Spend Controller Agent is not enabled.' })
   }
 
@@ -31,6 +29,7 @@ export default defineEventHandler(async (event) => {
   const context = body?.context && typeof body.context === 'object' ? body.context : {}
   const authority = await resolveUserPlatformAgentAuthority(event, {
     permissionGroups: ['MEDIA_BUYING'],
+    write: draftActions,
     tenant: 'none'
   })
   if (authority.actor.id !== user.id) {

@@ -1,8 +1,7 @@
-import { buildNativeMarketingTools } from './marketing/nativeTools'
+import { buildNativeChatTools } from './nativeChatTools'
 import { generateText, stepCountIs, type LanguageModel } from 'ai'
 import { resolveModelWithTransport } from '~~/server/utils/claudeClient'
 import { filterToolsForUser, toSdkTools } from './toolRegistry'
-import { registry } from './tools/index'
 import { DEFAULT_PERSONA, type Persona } from './personas'
 import { spotlightSystemClause } from './spotlight'
 import type { ToolContext } from './toolContext'
@@ -163,10 +162,10 @@ export async function runToolLoop(opts: {
     throw new Error('Injected models are unavailable for God mode execution.')
   }
 
-  const nativeMarketingTools = godModeActive ? [] : await buildNativeMarketingTools(opts.ctx, opts.messageId)
+  const nativeChatTools = await buildNativeChatTools(opts.ctx, { messageId: opts.messageId, authority: opts.authority })
   const composition = composeEffectiveAssistantTools({
     rbacFilteredTools: filterToolsForUser(
-      [...registry, ...nativeMarketingTools],
+      nativeChatTools,
       opts.ctx.userRole,
       opts.permissionGroups,
       opts.ctx.assistantReadOnly,

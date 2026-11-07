@@ -1,14 +1,11 @@
+import { platformAgentEnabled } from '~~/server/utils/ai/platformAgentFlags'
 import { requireAuth } from '~~/server/utils/auth'
 import { runPublishingPlannerAgentRequest } from '~~/server/utils/ai/publishingPlannerAgentRuntime'
 import { resolveUserPlatformAgentAuthority } from '~~/server/utils/ai/platformAgentAuthority'
 import { resolvePlatformAgentScope } from '~~/server/utils/ai/platformAgentScope'
 
-function enabled() {
-  return process.env.PUBLISHING_PLANNER_AGENT_ENABLED === 'true'
-}
-
 export default defineEventHandler(async (event) => {
-  if (!enabled()) {
+  if (!platformAgentEnabled(event, 'PUBLISHING_PLANNER_AGENT_ENABLED')) {
     throw createError({ statusCode: 404, statusMessage: 'Publishing Planner Agent is not enabled.' })
   }
 
