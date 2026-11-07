@@ -1,3 +1,4 @@
+import { buildNativeMarketingTools } from './marketing/nativeTools'
 import { generateText, stepCountIs, type LanguageModel } from 'ai'
 import { resolveModelWithTransport } from '~~/server/utils/claudeClient'
 import { filterToolsForUser, toSdkTools } from './toolRegistry'
@@ -162,9 +163,10 @@ export async function runToolLoop(opts: {
     throw new Error('Injected models are unavailable for God mode execution.')
   }
 
+  const nativeMarketingTools = godModeActive ? [] : await buildNativeMarketingTools(opts.ctx, opts.messageId)
   const composition = composeEffectiveAssistantTools({
     rbacFilteredTools: filterToolsForUser(
-      registry,
+      [...registry, ...nativeMarketingTools],
       opts.ctx.userRole,
       opts.permissionGroups,
       opts.ctx.assistantReadOnly,

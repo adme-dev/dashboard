@@ -13,7 +13,7 @@ export interface PaidProposal {
 }
 const cols = 'id,user_id,status,expires_at,resolved_payload,result_payload'
 export async function preparePaidProposal(action: string, actorId: string, input: Record<string, unknown>, snapshot: unknown, key: string, digest: string, source: 'mcp' | 'department_browser' = 'mcp', review?: Record<string, unknown>): Promise<PaidProposal> {
-  if (!/^(mcp|browser):[a-f0-9]{64}$/.test(key) || !/^[a-f0-9]{64}$/.test(digest)) campaignDenied('coordinator_required')
+  if (!/^(mcp|browser|chat):[a-f0-9]{64}$/.test(key) || !/^[a-f0-9]{64}$/.test(digest)) campaignDenied('coordinator_required')
   const intentHash = paidHash({ action, input })
   const revision = paidHash({ action, input, snapshot })
   return transactionWithoutRetry(async (db) => {

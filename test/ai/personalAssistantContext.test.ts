@@ -230,7 +230,7 @@ describe('resolvePersonalAssistantContext', () => {
     const context = await resolvePersonalAssistantContext({ userId: USER_ID }, contextDb)
 
     expect(context.clientScope.mode).toBe('all_active')
-    expect(context.clientScope.assignments).toEqual([{ clientId: CLIENT_ID, name: 'Example Client', role: 'support' }])
+    expect(context.clientScope.assignments).toEqual([])
     const departmentCall = vi.mocked(contextDb.queryRows).mock.calls.find(([sql]) => sql.includes('FROM departments department'))
     expect(departmentCall?.[1]).toEqual([USER_ID, false])
   })
@@ -421,5 +421,27 @@ describe('resolvePersonalAssistantContext', () => {
 
     await expect(resolvePersonalAssistantContext({ userId: USER_ID }, db({ queryOne })))
       .rejects.toThrow('database unavailable')
+  })
+})
+
+describe('marketing management client scope parity', () => {
+  it('uses all active clients for the explicit marketing group without company Finance', async () => {
+    const contextDb = db({ resolvePermissions: vi.fn(async () => ({ groups: ['CLIENTS', 'MARKETING_MANAGEMENT'], isReadOnly: false })) })
+    const context = await resolvePersonalAssistantContext({ userId: USER_ID }, contextDb)
+    expect(context.clientScope.mode).toBe('all_active')
+    expect(context.permissionGroups).not.toContain('FINANCE')
+    expect(context.permissionGroups).not.toContain('MANAGEMENT')
+  })
+  it('returns to assignment scope when the marketing-management grant is removed', async () => {
+    let granted = true
+    const contextDb = db({ resolvePermissions: vi.fn(async () => ({ groups: granted ? ['MARKETING_MANAGEMENT'] : ['CLIENTS'], isReadOnly: false })) })
+    expect((await resolvePersonalAssistantContext({ userId: USER_ID }, contextDb)).clientScope.mode).toBe('all_active')
+    granted = false
+    expect((await resolvePersonalAssistantContext({ userId: USER_ID }, contextDb)).clientScope.mode).toBe('assigned')
+  })
+  it('does not query bounded assignment lists for an all-active authority', async () => {
+    const contextDb = db({ resolvePermissions: vi.fn(async () => ({ groups: ['MARKETING_MANAGEMENT'], isReadOnly: false })) })
+    await resolvePersonalAssistantContext({ userId: USER_ID }, contextDb)
+    expect(vi.mocked(contextDb.queryRows).mock.calls.some(([sql]) => sql.includes('FROM client_team_assignments assignment'))).toBe(false)
   })
 })

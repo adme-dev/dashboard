@@ -94,7 +94,7 @@ export async function executeDepartmentFeedTool(
     return fail('Invalid department feed arguments.', 'bad_args')
   if (
     tool.mutates
-    && (!/^mcp:[0-9a-f]{64}$/.test(idempotencyKey ?? '')
+    && (!/^(mcp|chat):[0-9a-f]{64}$/.test(idempotencyKey ?? '')
       || !/^[0-9a-f]{64}$/.test(sessionDigest ?? ''))
   ) {
     return fail(

@@ -93,7 +93,7 @@ export default defineEventHandler(async (event) => {
     messages,
     hasMore: messages.length === limit,
     pendingAction,
-    // Active persona (Slice 1.5) so the picker re-selects it on reload; defaults to the generalist.
-    persona: (conv.system_context as any)?.persona || 'general',
+    // Return only the explicit override. Null lets the client inherit My Assistant.
+    persona: (conv.system_context as { persona?: string | null })?.persona ?? null
   }
 })

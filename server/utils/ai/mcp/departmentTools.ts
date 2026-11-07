@@ -28,7 +28,7 @@ function enabled(name: string, flags: McpSuiteFlags): boolean {
   if (name.includes('_meta_ad_launch') && !flags.banners) return false
   return true
 }
-const toolsFor = (flags: McpSuiteFlags, tools = departmentTools) => tools.filter(tool => isDepartmentTool(tool.name) && enabled(tool.name, flags))
+export const toolsFor = (flags: McpSuiteFlags, tools = departmentTools) => tools.filter(tool => isDepartmentTool(tool.name) && enabled(tool.name, flags))
 
 /** Descriptors advertise typed operations only; domain-specific coordinators own mutation durability. */
 export function projectDepartmentMcpSuite(context: McpProjectionContext) {

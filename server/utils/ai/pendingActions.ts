@@ -141,10 +141,13 @@ export async function executeProposal(id: string, ctx: ToolContext, db: PendingA
         // The proposal remains claimed even if this bounded reference cannot be persisted.
       }
     }
+    const receiptSummary = ambiguous && typeof (err as { userSummary?: unknown })?.userSummary === 'string'
+      ? String((err as { userSummary: string }).userSummary).slice(0, 1600)
+      : null
     return fail(terminal
       ? 'This action can no longer be completed and has been dismissed.'
       : ambiguous
-        ? 'The action may have completed and needs reconciliation.'
+        ? receiptSummary ?? 'The action may have completed and needs reconciliation.'
         : 'Could not complete the action — the task was not created. Please try again.')
   }
 

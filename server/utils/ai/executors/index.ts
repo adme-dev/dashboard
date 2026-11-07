@@ -1,3 +1,4 @@
+import { nativeMarketingExecutor, nativeMarketingRichExecutor } from '../marketing/nativePendingActions'
 import type { ActionExecutor } from './types'
 import { createTaskExecutor } from './createTask'
 import { scheduleSocialPostExecutor } from './scheduleSocialPost'
@@ -18,6 +19,8 @@ import { createSocialCaseTaskExecutor, linkSocialConversationTaskExecutor } from
  * change). Covers the per-department write packs (PRD §7) as they land.
  */
 export const executors: Record<string, ActionExecutor> = {
+  [nativeMarketingExecutor.toolName]: nativeMarketingExecutor,
+  [nativeMarketingRichExecutor.toolName]: nativeMarketingRichExecutor,
   [createTaskExecutor.toolName]: createTaskExecutor,
   [scheduleSocialPostExecutor.toolName]: scheduleSocialPostExecutor,
   [budgetAlertExecutor.toolName]: budgetAlertExecutor,
@@ -37,7 +40,7 @@ export const executors: Record<string, ActionExecutor> = {
   [proofStatusExecutor.toolName]: proofStatusExecutor,
   [teamMemoryExecutor.toolName]: teamMemoryExecutor,
   [linkSocialConversationTaskExecutor.toolName]: linkSocialConversationTaskExecutor,
-  [createSocialCaseTaskExecutor.toolName]: createSocialCaseTaskExecutor,
+  [createSocialCaseTaskExecutor.toolName]: createSocialCaseTaskExecutor
 }
 
 /** Look up the executor for a proposed action's tool_name; null when unsupported (fail-safe). */

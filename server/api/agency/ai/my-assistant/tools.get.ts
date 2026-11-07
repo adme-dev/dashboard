@@ -1,3 +1,5 @@
+import { isActiveGodModeAuthority } from '~~/server/utils/godMode/authority'
+import { discoverNativeMarketingTools } from '~~/server/utils/ai/marketing/nativeTools'
 /**
  * The caller's RBAC-available co-pilot tools, for the "My Assistant" disable toggles.
  * GET /api/agency/ai/my-assistant/tools
@@ -14,7 +16,8 @@ import { resolvePersonalAssistantContext } from '~~/server/utils/ai/personalAssi
 export default eventHandler(async (event) => {
   const user = await requireAuth(event)
   const context = await resolvePersonalAssistantContext({ userId: user.id, event })
-  const view = buildMyAssistantExplainability(context, registry)
+  const marketingTools = isActiveGodModeAuthority(context.godModeAuthority, user.id) ? [] : await discoverNativeMarketingTools({ userId: user.id, userRole: context.identity.role, source: 'chat', event })
+  const view = buildMyAssistantExplainability(context, [...registry, ...marketingTools])
   return {
     tools: view.tools,
     restrictions: view.restrictions,

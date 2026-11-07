@@ -163,7 +163,8 @@ export function useVoiceChat() {
   async function sendVoiceMessage(
     conversationId: string,
     audioBlob: Blob,
-    entities?: Array<{ type: string; id: string }>
+    entities?: Array<{ type: string, id: string }>,
+    persona?: string | null
   ): Promise<VoiceResponse> {
     isProcessing.value = true
     error.value = null
@@ -171,6 +172,8 @@ export function useVoiceChat() {
     try {
       const formData = new FormData()
       formData.append('audio', audioBlob)
+      // JSON preserves explicit null (inherit) separately from an omitted focus.
+      if (persona !== undefined) formData.append('persona', JSON.stringify(persona))
       if (entities && entities.length > 0) {
         formData.append('mentionedEntities', JSON.stringify(entities))
       }

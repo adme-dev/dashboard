@@ -1,4 +1,5 @@
 import type { AiConversation, AiMessage, AiContextSource } from '~/types'
+import type { MyAssistantView } from '~~/shared/types/aiAssistant'
 import { createAiChatSubmissionBody, postAiChatSubmission } from '~/utils/aiChatTransport'
 
 interface ConversationListResponse {
@@ -15,7 +16,7 @@ interface ConversationDetail {
   // assistant message so the confirm card survives a page reload (Option B rehydration).
   pendingAction?: { proposalId: string, toolName?: string, resolved: any } | null
   // Active persona key for the conversation (Slice 1.5) — re-selects the picker on reload.
-  persona?: string
+  persona?: string | null
 }
 
 interface ChatMessageResponse {
@@ -29,8 +30,10 @@ export function useAiChat() {
   const conversations = useState<AiConversation[]>('ai-chat-conversations', () => [])
   const activeConversation = useState<AiConversation | null>('ai-chat-active', () => null)
   const messages = useState<AiMessage[]>('ai-chat-messages', () => [])
-  // Slice 1.5: active persona key sent with each message; re-initialised from the conversation on load.
-  const selectedPersona = useState<string>('ai-chat-persona', () => 'general')
+  // Null inherits My Assistant; 'general' is a deliberate conversation override.
+  const selectedPersona = useState<string | null>('ai-chat-persona', () => null)
+  const defaultPersona = useState<string | null>('ai-chat-default-persona', () => null)
+  const chatToolsEnabled = useState<boolean | null>('ai-chat-tools-enabled', () => null)
   const loading = ref(false)
   const sending = ref(false)
   const hasMoreConversations = ref(false)
@@ -40,6 +43,18 @@ export function useAiChat() {
     request: string,
     options?: { method?: string, body?: unknown, params?: Record<string, unknown> }
   ) => Promise<T>
+
+  async function loadAssistantDefaults() {
+    try {
+      const config = await apiFetch<Pick<MyAssistantView, 'personaKey' | 'chatRuntime'>>('/api/agency/ai/my-assistant')
+      defaultPersona.value = config.personaKey ?? 'general'
+      chatToolsEnabled.value = config.chatRuntime?.toolsEnabled ?? false
+    } catch (err) {
+      defaultPersona.value = null
+      chatToolsEnabled.value = false
+      console.error('Failed to load assistant defaults:', err)
+    }
+  }
 
   async function fetchConversations(reset = true) {
     loading.value = true
@@ -72,6 +87,7 @@ export function useAiChat() {
       method: 'POST',
       body: { title: title || null },
     })
+    if (activeConversation.value) selectedPersona.value = null
     conversations.value.unshift(conv)
     activeConversation.value = conv
     messages.value = []
@@ -87,7 +103,7 @@ export function useAiChat() {
       activeConversation.value = data.conversation
       messages.value = data.messages
       hasMoreMessages.value = data.hasMore
-      selectedPersona.value = data.persona || 'general'
+      selectedPersona.value = data.persona ?? null
       // Rehydrate an open proposal onto the most recent assistant message so its confirm card
       // re-renders after a reload (matches the inline shape attached during send()).
       if (data.pendingAction) {
@@ -207,7 +223,8 @@ export function useAiChat() {
         body.mentionedEntities = mentionedEntities
       }
       if (boardId) body.boardId = boardId
-      if (selectedPersona.value) body.persona = selectedPersona.value
+      // Explicit null clears a stored conversation override and restores the personal default.
+      body.persona = selectedPersona.value
       if (room?.officeId) body.room = room
 
       const result = await postAiChatSubmission<ChatMessageResponse>(
@@ -255,6 +272,7 @@ export function useAiChat() {
     totalConversations.value--
     if (activeConversation.value?.id === id) {
       activeConversation.value = null
+      selectedPersona.value = null
       messages.value = []
     }
   }
@@ -291,6 +309,9 @@ export function useAiChat() {
     activeConversation,
     messages,
     selectedPersona,
+    defaultPersona,
+    chatToolsEnabled,
+    loadAssistantDefaults,
     loading,
     sending,
     hasMoreConversations,

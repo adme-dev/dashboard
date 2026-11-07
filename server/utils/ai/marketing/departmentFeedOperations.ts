@@ -575,7 +575,7 @@ export async function runDepartmentFeedOperation(
     const parsed = schema.safeParse(raw)
     if (!parsed.success) return fail('Invalid department feed arguments.', 'bad_args')
     const write = MUTATIONS.has(name)
-    if (write && (!/^mcp:[0-9a-f]{64}$/.test(key ?? '') || !/^[0-9a-f]{64}$/.test(digest ?? ''))) return fail('Verified logical request identity required.', 'coordinator_required')
+    if (write && (!/^(mcp|chat):[0-9a-f]{64}$/.test(key ?? '') || !/^[0-9a-f]{64}$/.test(digest ?? ''))) return fail('Verified logical request identity required.', 'coordinator_required')
     const ctx = await requireMarketingDepartment(original, write)
     const config = resolveMcpRuntimeConfig(ctx.event)
     if (
