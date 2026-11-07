@@ -153,6 +153,7 @@ onBeforeUnmount(() => {
 const xeroConnected = ref(false)
 
 onMounted(async () => {
+  if (!canAccessFinance.value) return
   try {
     const status = await layoutFetch<{ connected?: boolean }>('/api/xero/status')
     xeroConnected.value = Boolean(status.connected)

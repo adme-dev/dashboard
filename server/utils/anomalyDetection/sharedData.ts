@@ -1,6 +1,7 @@
 // server/utils/anomalyDetection/sharedData.ts
 import type { H3Event } from 'h3'
 import type { SharedData } from './types'
+import { getFinanceMachineHeaders } from '~~/server/utils/financeMachineAccess'
 import { queryRows } from '~~/server/utils/db'
 
 /**
@@ -13,7 +14,7 @@ import { queryRows } from '~~/server/utils/db'
  * Xero data will see null and no-op.
  */
 export async function fetchSharedData(event: H3Event | null): Promise<SharedData> {
-  const headers = event?.headers ?? new Headers()
+  const headers = getFinanceMachineHeaders(event)
 
   // Avoid expanding Nitro's full generated route union here; this helper deliberately
   // accepts runtime internal paths assembled by the anomaly engine.

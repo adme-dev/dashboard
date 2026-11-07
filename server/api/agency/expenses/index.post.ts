@@ -5,9 +5,12 @@
 
 import { queryOne } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
+import { hasExpenseFinancePermission, assertExpenseOwnWritePermission, assertExpenseReferences } from '~~/server/utils/expenseAccess'
 
 export default defineEventHandler(async (event) => {
   const user = await requireAuth(event)
+  const finance = await hasExpenseFinancePermission(event, user.id, true)
+  if (!finance) await assertExpenseOwnWritePermission(user.id)
   const body = await readBody(event)
 
   const {
@@ -36,6 +39,7 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
+    await assertExpenseReferences({ projectId, clientId, taskId })
     // Verify category exists
     const category = await queryOne(`
       SELECT id, requires_receipt, per_transaction_limit, requires_approval_above
@@ -61,14 +65,12 @@ export default defineEventHandler(async (event) => {
     // Determine initial status
     let status = 'draft'
     if (body.submit) {
-      status = 'submitted'
-      // Auto-approve if below threshold and has receipt (if required)
+      status = 'pending_approval'
+      // Only Finance may use automatic approval when no receipt or additional approval is required.
       const needsReceipt = category.requires_receipt && amount >= 25
       const needsApproval = category.requires_approval_above && amount >= Number(category.requires_approval_above)
-      if (!needsApproval && (!needsReceipt || body.hasReceipt)) {
+      if (finance && !needsApproval && !needsReceipt) {
         status = 'approved'
-      } else if (status === 'submitted') {
-        status = 'pending_approval'
       }
     }
 

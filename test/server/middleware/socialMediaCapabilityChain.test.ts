@@ -1,4 +1,9 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
+
+// Machine credentials are tested with actual H3 events in financeMachineAuth.test.ts.
+vi.mock('~~/server/utils/financeMachineAccess', async importOriginal => ({
+  ...(await importOriginal<Record<string, unknown>>()), isFinanceReadMachineRequest: () => false
+}))
 import { createError } from 'h3'
 
 const mocks = vi.hoisted(() => ({ rows: vi.fn(), session: vi.fn(), delegated: vi.fn(async () => null) }))

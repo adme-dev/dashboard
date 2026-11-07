@@ -11,6 +11,8 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
+const finance = vi.hoisted(() => vi.fn())
+vi.mock('~~/server/utils/financeAccess', () => ({ assertFinancePermission: finance }))
 // Mock dependencies before importing
 vi.mock('~~/server/utils/db', () => ({
   queryRows: vi.fn().mockResolvedValue([]),
@@ -89,6 +91,7 @@ function makeEomRows(): any[] {
 describe('aiContextRetriever — composite scoring', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    finance.mockResolvedValue(undefined)
     mockedSearchSimilar.mockResolvedValue([])
     mockedClassifyIntent.mockResolvedValue({
       intent: 'general',
@@ -202,7 +205,7 @@ describe('aiContextRetriever — composite scoring', () => {
       entities: [],
     })
 
-    const result = await retrieveContext('user-1', 'admin', 'what did we spend on Meta last month')
+    const result = await retrieveContext('user-1', 'admin', 'what did we spend on Meta last month', { headers: {}, $fetch: vi.fn().mockResolvedValue({}) } as any)
     // Spend items should be present
     const spendItems = result.items.filter(i => i.type === 'spend')
     expect(spendItems.length).toBeGreaterThan(0)
@@ -455,6 +458,7 @@ describe('aiContextRetriever — composite scoring', () => {
   it('does not retrieve finance or team context without the required permission groups', async () => {
     for (const intent of ['financial_query', 'team_query'] as const) {
       vi.clearAllMocks()
+    finance.mockResolvedValue(undefined)
       mockedSearchSimilar.mockResolvedValue([])
       mockedClassifyIntent.mockResolvedValue({ intent, confidence: 0.95, entities: [] })
       mockedQueryRows.mockResolvedValue([])
@@ -468,5 +472,26 @@ describe('aiContextRetriever — composite scoring', () => {
       expect(mockedQueryRows.mock.calls.some(([sql]) =>
         String(sql).includes('media_spend') || String(sql).includes('FROM team_members tm'))).toBe(false)
     }
+  })
+})
+
+describe('fresh Finance retrieval boundary', () => {
+  it.each(['owner', 'marketing'])('blocks historical vectors and saved plans for revoked %s', async role => {
+    vi.clearAllMocks(); finance.mockRejectedValueOnce({ statusCode: 403 })
+    mockedClassifyIntent.mockResolvedValue({ intent: 'financial_query', confidence: 1, entities: [] })
+    mockedQueryRows.mockResolvedValue([])
+    const event = { headers: {}, $fetch: vi.fn() } as any
+    await retrieveContext('user', role, 'cashflow and saved plans', event)
+    expect(finance).toHaveBeenCalledWith(event, 'user')
+    expect(event.$fetch).not.toHaveBeenCalled()
+    expect(mockedQueryRows.mock.calls.some(([sql]) => sql.includes('saved_action_plans') || sql.includes('eom_runs'))).toBe(false)
+    expect(mockedSearchSimilar).not.toHaveBeenCalled()
+  })
+  it('legacy calls without a request cannot read accounting or saved-plan payloads', async () => {
+    vi.clearAllMocks(); mockedClassifyIntent.mockResolvedValue({ intent: 'financial_query', confidence: 1, entities: [] })
+    mockedQueryRows.mockResolvedValue([])
+    await retrieveContext('user', 'owner', 'cashflow')
+    expect(finance).not.toHaveBeenCalled()
+    expect(mockedQueryRows.mock.calls.some(([sql]) => sql.includes('saved_action_plans') || sql.includes('eom_runs'))).toBe(false)
   })
 })

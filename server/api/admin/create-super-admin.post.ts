@@ -4,13 +4,15 @@
  * Body: { name: string, email: string }
  */
 
+import { assertPermissionGrant } from '~~/server/utils/financeAccess'
 import { readBody, createError } from 'h3'
 import { queryOne } from '~~/server/utils/db'
 import { requireRole } from '~~/server/utils/auth'
 
 export default defineEventHandler(async (event) => {
   // Require authenticated owner
-  await requireRole(event, ['owner'])
+  const currentUser = await requireRole(event, ['owner'])
+  await assertPermissionGrant(event, currentUser.id, 'ADMIN', true)
 
   // Only allow in development
   if (process.env.NODE_ENV === 'production') {

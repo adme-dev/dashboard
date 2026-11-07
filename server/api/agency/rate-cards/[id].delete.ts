@@ -1,8 +1,10 @@
+import { assertCommercialPermission } from '~~/server/utils/commercialAccess'
 import { requireAuth } from '~~/server/utils/auth'
 import { queryOne, execute } from '~~/server/utils/db'
 
 export default eventHandler(async (event) => {
   const user = await requireAuth(event)
+  await assertCommercialPermission(event, user.id, 'SALES', true)
 
   const id = getRouterParam(event, 'id')
   if (!id) throw createError({ statusCode: 400, statusMessage: 'Item ID is required' })

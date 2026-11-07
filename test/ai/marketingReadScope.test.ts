@@ -1,13 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { resolveMarketingReadScope, clientScopeSql, requireMarketingReadPermission, resolveStoredReportingTenant } from '../../server/utils/ai/marketing/readScope'
 
+const finance = vi.hoisted(() => vi.fn())
+vi.mock('~~/server/utils/financeAccess', () => ({ assertFinancePermission: finance }))
 const db = vi.hoisted(() => ({ queryOneFresh: vi.fn(), queryRowsFresh: vi.fn() }))
 vi.mock('~~/server/utils/db', () => ({ ...db, queryOne: vi.fn(), queryRows: vi.fn(), execute: vi.fn() }))
 vi.mock('~~/server/utils/auth', () => ({ requireAuth: vi.fn() }))
 vi.mock('~~/server/utils/godMode/authority', () => ({ resolveGodModeAuthority: vi.fn(async () => ({ active: false })), isActiveGodModeAuthority: (a: any) => a.active }))
 
 export const staff = (overrides: any = {}): any => ({ userId: 'staff', userRole: 'admin', permissionGroups: [], source: 'mcp', mcpStaffAuthority: 'fresh', marketingCapabilities: ['reporting'], assistantScope: { clientAccessMode: 'assigned', assignedClientIds: ['a'] }, event: {}, ...overrides })
-beforeEach(() => vi.clearAllMocks())
+beforeEach(() => { vi.clearAllMocks(); finance.mockResolvedValue(undefined) })
 describe('trusted reporting scope', () => {
   it('rejects_missing_scope_and_never_uses_cached_assignment_helpers', async () => {
     await expect(resolveMarketingReadScope(staff({ assistantScope: undefined }))).rejects.toThrow()
@@ -50,4 +52,12 @@ it('finance_is_independent_and_never_enables_owner_refresh', async () => {
   const scope = await resolveMarketingReadScope(staff({ permissionGroups: ['FINANCE'], assistantReadOnly: false, mcpScopes: ['agency:read', 'agency:write'] }))
   expect(scope.financialReadAllowed).toBe(true)
   expect(scope.ownerRefreshAllowed).toBe(false)
+})
+
+it('denies revoked Finance without disrupting client-scoped marketing access', async () => {
+  finance.mockRejectedValueOnce({ statusCode: 403 })
+  const scope = await resolveMarketingReadScope(staff({ permissionGroups: ['FINANCE', 'MEDIA_BUYING'] }))
+  expect(scope.financialReadAllowed).toBe(false)
+  expect(scope.clientIds).toEqual(['a'])
+  expect(() => requireMarketingReadPermission(scope, 'pacing')).not.toThrow()
 })

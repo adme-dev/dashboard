@@ -8,6 +8,8 @@ type TestEvent = {
   query?: Record<string, unknown>
 }
 
+const mockFinance = vi.fn()
+const mockClientGrant = vi.fn()
 const mockRequireRole = vi.fn()
 const mockGetSelectedTenant = vi.fn()
 const mockRoleHasPermission = vi.fn()
@@ -29,6 +31,8 @@ testGlobal.defineEventHandler = handler => handler
 testGlobal.getRouterParam = (event, name) => event.params?.[name]
 testGlobal.getQuery = event => event.query ?? {}
 testGlobal.createError = input => Object.assign(new Error(input.statusMessage), input)
+
+vi.mock('~~/server/utils/financeAccess', () => ({ assertFinancePermission: (...args: unknown[]) => mockFinance(...args), assertPermissionGrant: (...args: unknown[]) => mockClientGrant(...args) }))
 
 vi.mock('~~/server/utils/auth', () => ({
   requireRole: (...args: unknown[]) => mockRequireRole(...args),
@@ -63,6 +67,11 @@ const event: TestEvent = {
 describe('GET /api/agency/clients/:id/financials', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockClientGrant.mockResolvedValue(undefined)
+    mockFinance.mockImplementation(async (_e: unknown, id: string, write = false) => {
+      if (id === 'user-2' || (id === 'user-3' && !write)) return
+      throw createH3Error({ statusCode: 403 })
+    })
     mockRequireRole.mockResolvedValue({
       id: 'user-1',
       role: 'account_manager',
@@ -93,6 +102,18 @@ describe('GET /api/agency/clients/:id/financials', () => {
     expect(mockGetClientFinancials).not.toHaveBeenCalled()
   })
 
+  it('rechecks a revoked CLIENTS grant before any source query', async () => {
+    mockClientGrant.mockRejectedValueOnce(createH3Error({ statusCode: 403 }))
+    const { default: handler } = await import('~~/server/api/agency/clients/[id]/financials.get')
+    await expect(handler(event as never)).rejects.toMatchObject({ statusCode: 403 })
+    expect(mockGetClientFinancials).not.toHaveBeenCalled()
+  })
+  it('does not infer raw accounting sources from stale groups or an owner label', async () => {
+    mockRequireRole.mockResolvedValue({ id: 'revoked-owner', role: 'owner', permissionGroups: ['CLIENTS', 'FINANCE'] })
+    const { default: handler } = await import('~~/server/api/agency/clients/[id]/financials.get')
+    await handler(event as never)
+    expect(mockGetClientFinancials).toHaveBeenCalledWith(expect.objectContaining({ includeSources: false, canAllocate: false }))
+  })
   it('requires CLIENTS permission and returns summaries without detailed sources to account managers', async () => {
     const { default: handler } = await import('~~/server/api/agency/clients/[id]/financials.get')
 

@@ -5,14 +5,12 @@
  * Removes a line item from an invoice
  */
 
-import { queryOne, transaction } from '~~/server/utils/db'
-import { requireAuth, requireRole } from '~~/server/utils/auth'
+import { transaction } from '~~/server/utils/db'
+import { requireInvoiceAccess } from '~~/server/utils/clientScoping'
+import { assertInvoiceRowAccess, lockInvoiceForEdit } from '~~/server/utils/invoiceRowAccess'
 
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
-
-  // Only admins, owners, and sales can modify invoices
-  await requireRole(event, ['owner', 'admin', 'sales'])
+  const access = await requireInvoiceAccess(event, true)
 
   const invoiceId = getRouterParam(event, 'id')
   const lineItemId = getRouterParam(event, 'lineItemId')
@@ -33,43 +31,28 @@ export default defineEventHandler(async (event) => {
 
   try {
     // Check if invoice exists and is editable
-    const invoice = await queryOne(
-      `SELECT id, status, tax_rate FROM invoices WHERE id = $1`,
-      [invoiceId]
-    )
+    await assertInvoiceRowAccess(invoiceId, access, true)
+    return await transaction(async (client) => {
+      const queryOne = async (sql: string, params?: any[]) => (await client.query(sql, params)).rows[0]
+      const invoice = await lockInvoiceForEdit(client, invoiceId, access)
 
-    if (!invoice) {
-      throw createError({
-        statusCode: 404,
-        statusMessage: 'Invoice not found'
-      })
-    }
+      // Check if line item exists
+      const lineItem = await queryOne(
+        `SELECT id, description FROM invoice_line_items WHERE id = $1 AND invoice_id = $2`,
+        [lineItemId, invoiceId]
+      )
 
-    if (['paid', 'cancelled'].includes(invoice.status)) {
-      throw createError({
-        statusCode: 400,
-        statusMessage: `Cannot remove line items from a ${invoice.status} invoice`
-      })
-    }
+      if (!lineItem) {
+        throw createError({
+          statusCode: 404,
+          statusMessage: 'Line item not found'
+        })
+      }
 
-    // Check if line item exists
-    const lineItem = await queryOne(
-      `SELECT id, description FROM invoice_line_items WHERE id = $1 AND invoice_id = $2`,
-      [lineItemId, invoiceId]
-    )
-
-    if (!lineItem) {
-      throw createError({
-        statusCode: 404,
-        statusMessage: 'Line item not found'
-      })
-    }
-
-    await transaction(async (client) => {
       // Delete line item
       await client.query(
-        `DELETE FROM invoice_line_items WHERE id = $1`,
-        [lineItemId]
+        `DELETE FROM invoice_line_items WHERE id = $1 AND invoice_id = $2`,
+        [lineItemId, invoiceId]
       )
 
       // Recalculate invoice totals
@@ -97,12 +80,12 @@ export default defineEventHandler(async (event) => {
           updated_at = NOW()
         WHERE id = $4
       `, [subtotal, taxAmount, totalAmount, invoiceId])
-    })
 
-    return {
-      success: true,
-      message: 'Line item deleted successfully'
-    }
+      return {
+        success: true,
+        message: 'Line item deleted successfully'
+      }
+    })
   } catch (error: any) {
     if (error.statusCode) throw error
     console.error('Failed to delete invoice line item:', error)

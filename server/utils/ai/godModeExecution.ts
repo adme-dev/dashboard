@@ -3,6 +3,7 @@ import type { Pool } from '@neondatabase/serverless'
 import type { H3Event } from 'h3'
 import { createError } from 'h3'
 
+import { assertFinancePermission } from '~~/server/utils/financeAccess'
 import { requireAuth } from '~~/server/utils/auth'
 import { queryOneFresh, transaction } from '~~/server/utils/db'
 import {
@@ -479,6 +480,8 @@ function createGodModeExecutionCore(deps: GodModeExecutionDependencies) {
     const executor = deps.resolveExecutor(request.toolName)
     if (!tool || !executor || !tool.mutates) operationalError(404, 'God mode tool is unavailable')
 
+    if (tool.requiredPermission === 'FINANCE') await assertFinancePermission(request.event, user.id, true)
+
     let claim: { claimed: boolean, row: GodModeExecutionLedgerRow }
     try {
       claim = await deps.claimExecution({
@@ -854,6 +857,8 @@ export function createTrustedMcpGodModeResolvedMutationExecutor(deps: GodModeExe
       || !request.tool.mutates
       || request.tool.name !== request.toolName
     ) operationalError(403, 'Invalid MCP owner execution authority')
+
+    if (request.tool.requiredPermission === 'FINANCE') await assertFinancePermission(request.event, request.authenticatedUserId, true)
 
     // Immediate owner-local mutations use one serialization and durability boundary. A failed audit,
     // memory write, outbox insert, or terminal update rolls the claim back too, so the same logical
@@ -1286,6 +1291,7 @@ async function executeGodModeReadCore(
   if (!authority.active || authority.actorUserId !== user.id || authority.emergencyDisabled) {
     operationalError(403, 'God mode is not active')
   }
+  if (request.tool.requiredPermission === 'FINANCE') await assertFinancePermission(request.event, user.id)
   const row: GodModeExecutionLedgerRow & { sessionDigest: string } = {
     actorUserId: user.id,
     channel,

@@ -198,6 +198,7 @@ describe.runIf(Boolean(url))('agency client marketing boundary on disposable Pos
     CREATE TABLE project_expenses (id serial PRIMARY KEY, project_id uuid, amount numeric);
     CREATE TABLE invoices (id serial PRIMARY KEY, client_id uuid, invoice_number text, status text, issue_date date, due_date date, subtotal numeric, tax numeric, total numeric);
     CREATE TABLE media_spend (id serial PRIMARY KEY, client_id uuid, platform text, period text, budget_allocated numeric, actual_spend numeric, commission_rate numeric);
+    CREATE TABLE client_team_assignments (client_id uuid, team_member_id uuid);
     CREATE TABLE client_sessions (id serial PRIMARY KEY, client_user_id uuid);
     CREATE TABLE client_users (id uuid PRIMARY KEY, client_id uuid);
   `)
@@ -227,6 +228,7 @@ describe.runIf(Boolean(url))('agency client marketing boundary on disposable Pos
       ('${ids.inactiveMarketer}', 'Gone', 'media_buyer', '${ids.marketingRole}', FALSE),
       ('${ids.danglingRole}', 'Dangling', 'media_buyer', '20000000-0000-4000-8000-0000000000ff', TRUE),
       ('${ids.unseededSales}', 'Sales', 'sales', NULL, TRUE);
+    INSERT INTO client_team_assignments (client_id, team_member_id) VALUES ('${ids.activeClient}', '${ids.accountManager}');
     INSERT INTO agency_clients (id, name, xero_contact_id, billing_type, retainer_amount, payment_terms, hourly_rate,
       media_commission_rate, is_active, notes, contact_email, contact_phone, address, reporting_timezone, lead_capture_mode) VALUES
       ('${ids.activeClient}', 'Acme Motors', 'xero-1', 'retainer', 6000, 30, 180, 10, TRUE, 'Private margin note',
@@ -291,7 +293,7 @@ describe.runIf(Boolean(url))('agency client marketing boundary on disposable Pos
       expect(h.cachedKeys).toEqual([])
     })
 
-    it('keeps the legacy cached financial list for non-department and finance-holding users', async () => {
+    it('keeps client commercial summaries for explicit CLIENTS including account managers', async () => {
       const handler = await load('~~/server/api/agency/clients/index.get')
       for (const as of ['accountManager', 'financeMarketer'] as const) {
         h.cachedKeys = []
@@ -313,11 +315,11 @@ describe.runIf(Boolean(url))('agency client marketing boundary on disposable Pos
       expect(h.cachedKeys).toEqual([])
     })
 
-    it('treats an unseeded system role by its static defaults, which never grant the department view', async () => {
+    it('redacts unseeded system roles without an explicit Finance grant', async () => {
       const handler = await load('~~/server/api/agency/clients/index.get')
       const rows = await handler(event('unseededSales')) as any[]
-      expect(rows.find(row => row.id === ids.activeClient)).toHaveProperty('totalRevenue', 50000)
-      expect(h.cachedKeys).toEqual(['agency:clients:true'])
+      expect(rows.find(row => row.id === ids.activeClient)).not.toHaveProperty('totalRevenue')
+      expect(h.cachedKeys).toEqual([])
     })
   })
 
@@ -357,7 +359,7 @@ describe.runIf(Boolean(url))('agency client marketing boundary on disposable Pos
       }
     })
 
-    it('keeps legacy full detail for CLIENTS staff and finance-holding department staff', async () => {
+    it('keeps full client insights and assigned invoices for explicit CLIENTS staff', async () => {
       const handler = await load('~~/server/api/agency/clients/[id].get')
       for (const as of ['accountManager', 'financeMarketer'] as const) {
         const body = await handler(event(as, { id: ids.activeClient })) as any
@@ -366,9 +368,31 @@ describe.runIf(Boolean(url))('agency client marketing boundary on disposable Pos
         expect(body.invoices.map((invoice: any) => invoice.invoiceNumber)).toEqual(['INV-42'])
         expect(body.summary.totalMediaCommission).toBeCloseTo(187.5)
       }
-      // Legacy CLIENTS staff still see inactive client detail.
-      expect(await status(handler(event('accountManager', { id: ids.inactiveClient })))).toBe(200)
+      // Explicit Finance staff still see inactive client detail.
+      expect(await status(handler(event('financeMarketer', { id: ids.inactiveClient })))).toBe(200)
     })
+  })
+
+  it('preserves account-manager client billing but omits Xero binding and employee rates; invoice scope remains exact', async () => {
+    const detail = await load('~~/server/api/agency/clients/[id].get')
+    const assigned = await detail(event('accountManager', { id: ids.activeClient })) as any
+    expect(assigned.client).toMatchObject({ hourlyRate: 180, retainerAmount: 6000 })
+    expect(assigned.client).not.toHaveProperty('xeroContactId')
+    expect(assigned.recentTimeEntries[0]).not.toHaveProperty('hourlyRate')
+    expect(assigned.recentTimeEntries[0]).not.toHaveProperty('amount')
+    expect(assigned.invoices.map((row: any) => row.invoiceNumber)).toEqual(['INV-42'])
+    const unassigned = await detail(event('accountManager', { id: ids.inactiveClient })) as any
+    expect(unassigned).not.toHaveProperty('invoices')
+    expect(unassigned.summary).not.toHaveProperty('totalInvoiced')
+    const update = await load('~~/server/api/agency/clients/[id].put')
+    const before = await clientRow(ids.activeClient)
+    expect(await status(update(event('accountManager', { id: ids.activeClient, body: { xeroContactId: 'other' } })))).toBe(403)
+    expect(await clientRow(ids.activeClient)).toEqual(before)
+    const updated = await update(event('accountManager', { id: ids.activeClient, body: { contactPhone: '0400 111 222', hourlyRate: 195 } })) as any
+    expect(updated.client).toMatchObject({ contactPhone: '0400 111 222', hourlyRate: 195 })
+    expect(updated.client).not.toHaveProperty('xeroContactId')
+    // Restore the commercial fixture for subsequent accounting assertions.
+    await h.client!.query('UPDATE agency_clients SET hourly_rate=$2 WHERE id=$1', [ids.activeClient, before.hourly_rate])
   })
 
   describe('PUT /api/agency/clients/:id for explicit marketing management', () => {
@@ -396,7 +420,7 @@ describe.runIf(Boolean(url))('agency client marketing boundary on disposable Pos
       expect(await clientRow(ids.inactiveClient)).toEqual(inactiveBefore)
     })
 
-    it('keeps legacy financial edits for CLIENTS staff', async () => {
+    it('allows client billing edits for writable CLIENTS staff without company Finance', async () => {
       const handler = await load('~~/server/api/agency/clients/[id].put')
       const result = await handler(event('accountManager', { id: ids.inactiveClient, body: { hourlyRate: 155 } })) as any
       expect(result.client.hourlyRate).toBe(155)

@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+// Machine credentials are tested with actual H3 events in financeMachineAuth.test.ts.
+vi.mock('~~/server/utils/financeMachineAccess', async importOriginal => ({
+  ...(await importOriginal<Record<string, unknown>>()), isFinanceReadMachineRequest: () => false
+}))
+
 const mocks = vi.hoisted(() => ({ one: vi.fn(), validate: vi.fn() }))
 vi.mock('~~/server/utils/db', () => ({ queryOneFresh: mocks.one, queryRowsFresh: vi.fn(async () => []) }))
 vi.mock('~~/server/utils/auth', () => ({ acceptGodModeInternalExecution: async () => null, validateSession: mocks.validate, TransientAuthError: class extends Error {} }))

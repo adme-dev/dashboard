@@ -3,8 +3,9 @@
  * PUT /api/auth/users/:id
  */
 
+import { assertPermissionGrant } from '~~/server/utils/financeAccess'
 import { queryOne } from '~~/server/utils/db'
-import { requireAuth, requireRole, logActivity } from '~~/server/utils/auth'
+import { requireAuth, logActivity } from '~~/server/utils/auth'
 
 interface UpdateUserBody {
   name?: string
@@ -26,14 +27,7 @@ export default defineEventHandler(async (event) => {
 
   // Users can update their own profile, admins/owners can update anyone
   const isOwnProfile = currentUser.id === userId
-  const isAdmin = ['admin', 'owner'].includes(currentUser.role)
-
-  if (!isOwnProfile && !isAdmin) {
-    throw createError({
-      statusCode: 403,
-      statusMessage: 'Not authorized to update this user'
-    })
-  }
+  if (!isOwnProfile) await assertPermissionGrant(event, currentUser.id, 'ADMIN', true)
 
   const body = await readBody<UpdateUserBody>(event)
 

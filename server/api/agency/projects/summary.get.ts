@@ -5,9 +5,17 @@
 
 import { queryOne, queryRows } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
+import { assertFinancePermission } from '~~/server/utils/financeAccess'
 
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
+  const user = await requireAuth(event)
+  let hasFinance = false
+  try {
+    await assertFinancePermission(event, user.id)
+    hasFinance = true
+  } catch (error) {
+    if ((error as { statusCode?: number }).statusCode !== 403) throw error
+  }
 
   try {
     // Get status distribution
@@ -21,6 +29,27 @@ export default defineEventHandler(async (event) => {
         COUNT(*) as total
       FROM projects
     `)
+
+    if (!hasFinance) {
+      // Operational ordering and projections never reveal billing rank or cost-derived risk.
+      const topProjects = await queryRows(`
+        SELECT p.id,p.name,c.name AS client,p.status,p.start_date,p.end_date
+        FROM projects p JOIN agency_clients c ON p.client_id=c.id
+        WHERE p.status='active' ORDER BY p.start_date DESC,p.id LIMIT 5
+      `)
+      const recentlyCompleted = await queryRows(`
+        SELECT p.id,p.name,c.name AS client,p.end_date AS completed_date
+        FROM projects p JOIN agency_clients c ON p.client_id=c.id
+        WHERE p.status='completed' ORDER BY p.end_date DESC,p.id LIMIT 5
+      `)
+      return {
+        active: Number(statusCounts?.active) || 0, draft: Number(statusCounts?.draft) || 0,
+        onHold: Number(statusCounts?.on_hold) || 0, completed: Number(statusCounts?.completed) || 0,
+        cancelled: Number(statusCounts?.cancelled) || 0, total: Number(statusCounts?.total) || 0,
+        topProjects: topProjects.map(p => ({ id: p.id,name: p.name,client: p.client,status: p.status,startDate: p.start_date,endDate: p.end_date })),
+        recentlyCompleted: recentlyCompleted.map(p => ({ id: p.id,name: p.name,client: p.client,completedDate: p.completed_date }))
+      }
+    }
 
     // Get financial summary
     const financials = await queryOne(`

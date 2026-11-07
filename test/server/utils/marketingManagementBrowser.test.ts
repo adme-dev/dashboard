@@ -17,6 +17,7 @@ vi.mock('~~/server/utils/db', () => ({
   queryRows: async () => [],
   queryOneFresh: async (sql: string, params: unknown[]) => {
     fixture.sql.push(sql)
+    if (sql.includes('rpg.permission_group=$3')) return null
     if (sql.includes('FROM team_members')) {
       expect(params).toEqual([USER])
       expect(sql).toContain('tm.is_active = TRUE')

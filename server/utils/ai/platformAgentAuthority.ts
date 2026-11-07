@@ -2,6 +2,7 @@ import { createError, type H3Event } from 'h3'
 import { requireAuth, type User } from '~~/server/utils/auth'
 import { queryOne, queryRows } from '~~/server/utils/db'
 import { roleHasPermission, type PermissionGroup } from '~~/server/utils/permissions'
+import { assertFinancePermission } from '~~/server/utils/financeAccess'
 import { getSelectedTenant } from '~~/server/utils/session'
 import { createPlatformAgentAuthority, type PlatformAgentAuthority } from './platformAgentScope'
 
@@ -12,6 +13,7 @@ export interface UserPlatformAgentAuthorityOptions {
 }
 
 function hasPermission(user: User, permission: PermissionGroup) {
+  if (permission === 'FINANCE') return user.permissionGroups?.includes('FINANCE') === true
   return roleHasPermission(user.role, permission) || user.permissionGroups?.includes(permission)
 }
 
@@ -78,6 +80,7 @@ export async function resolveUserPlatformAgentAuthority(
     throw createError({ statusCode: 403, statusMessage: 'Forbidden - Insufficient assistant permissions' })
   }
 
+  if (options.permissionGroups.includes('FINANCE') && hasPermission(user, 'FINANCE')) await assertFinancePermission(event, user.id)
   const tenantId = options.tenant === 'required' ? await getSelectedTenant(event) : null
   if (options.tenant === 'required' && !tenantId) {
     throw createError({ statusCode: 400, statusMessage: 'No organization selected' })

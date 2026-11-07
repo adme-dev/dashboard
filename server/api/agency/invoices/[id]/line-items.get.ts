@@ -5,11 +5,12 @@
  * Returns all line items for an invoice
  */
 
-import { queryOne, queryRows } from '~~/server/utils/db'
-import { requireAuth } from '~~/server/utils/auth'
+import { queryRows } from '~~/server/utils/db'
+import { requireInvoiceAccess } from '~~/server/utils/clientScoping'
+import { assertInvoiceRowAccess } from '~~/server/utils/invoiceRowAccess'
 
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
+  const access = await requireInvoiceAccess(event)
 
   const invoiceId = getRouterParam(event, 'id')
 
@@ -22,10 +23,7 @@ export default defineEventHandler(async (event) => {
 
   try {
     // Verify invoice exists
-    const invoice = await queryOne(
-      `SELECT id, invoice_number FROM invoices WHERE id = $1`,
-      [invoiceId]
-    )
+    const invoice = await assertInvoiceRowAccess(invoiceId, access)
 
     if (!invoice) {
       throw createError({
@@ -38,13 +36,18 @@ export default defineEventHandler(async (event) => {
     const lineItems = await queryRows(`
       SELECT
         li.*,
+        te.id AS scoped_time_entry_id,
+        p.id AS scoped_project_id,
         te.description as time_entry_description,
         te.date as time_entry_date,
         te.hours as time_entry_hours,
         p.name as project_name
       FROM invoice_line_items li
-      LEFT JOIN time_entries te ON li.time_entry_id = te.id
-      LEFT JOIN projects p ON li.project_id = p.id
+      JOIN invoices i ON i.id = li.invoice_id
+      LEFT JOIN time_entries te ON li.time_entry_id = te.id AND EXISTS (
+        SELECT 1 FROM projects tp WHERE tp.id = te.project_id AND tp.client_id = i.client_id
+      )
+      LEFT JOIN projects p ON li.project_id = p.id AND p.client_id = i.client_id
       WHERE li.invoice_id = $1
       ORDER BY li.sort_order
     `, [invoiceId])
@@ -61,11 +64,11 @@ export default defineEventHandler(async (event) => {
         amount: Number(item.quantity) * Number(item.unit_price),
         itemType: item.item_type,
         taxable: item.taxable,
-        timeEntryId: item.time_entry_id,
+        timeEntryId: item.scoped_time_entry_id,
         timeEntryDescription: item.time_entry_description,
         timeEntryDate: item.time_entry_date,
         timeEntryHours: item.time_entry_hours ? Number(item.time_entry_hours) : null,
-        projectId: item.project_id,
+        projectId: item.scoped_project_id,
         projectName: item.project_name,
         sortOrder: item.sort_order,
         createdAt: item.created_at

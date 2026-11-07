@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { assertFinancePermission } from '~~/server/utils/financeAccess'
 import { roleHasPermission, type PermissionGroup } from '~~/server/utils/permissions'
 import { filterToolsForUser, type AiTool } from '~~/server/utils/ai/toolRegistry'
 import type { ToolContext, ToolResult } from '~~/server/utils/ai/toolContext'
@@ -238,6 +239,18 @@ export async function runReadToolHandler(
   const parsed = tool.parameters.safeParse(args)
   if (!parsed.success) return { ok: false, error: 'Invalid arguments.', code: 'bad_args' }
 
+  // All callers, including fresh staff projections and legacy system-role
+  // fallbacks, must prove accounting authority again at the read boundary.
+  if (tool.requiredPermission === 'FINANCE') {
+    if (!ctx.event) return { ok: false, error: 'Finance permission required.', code: 'forbidden' }
+    try {
+      await assertFinancePermission(ctx.event, ctx.userId)
+    } catch (error) {
+      return (error as { statusCode?: number }).statusCode === 403
+        ? { ok: false, error: 'Finance permission required.', code: 'forbidden' }
+        : { ok: false, error: 'Finance permission verification unavailable.', code: 'handler_error' }
+    }
+  }
   try {
     const res: ToolResult = await tool.handler(parsed.data, ctx)
     if (!res.ok) return { ok: false, error: res.error ?? 'Tool error.', code: 'handler_error' }

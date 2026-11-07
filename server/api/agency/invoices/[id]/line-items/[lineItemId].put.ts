@@ -5,8 +5,9 @@
  * Updates a line item on an invoice
  */
 
-import { queryOne, transaction } from '~~/server/utils/db'
-import { requireAuth, requireRole } from '~~/server/utils/auth'
+import { transaction } from '~~/server/utils/db'
+import { requireInvoiceAccess } from '~~/server/utils/clientScoping'
+import { assertInvoiceRowAccess, lockInvoiceForEdit } from '~~/server/utils/invoiceRowAccess'
 
 interface UpdateLineItemBody {
   description?: string
@@ -18,10 +19,7 @@ interface UpdateLineItemBody {
 }
 
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
-
-  // Only admins, owners, and sales can modify invoices
-  await requireRole(event, ['owner', 'admin', 'sales'])
+  const access = await requireInvoiceAccess(event, true)
 
   const invoiceId = getRouterParam(event, 'id')
   const lineItemId = getRouterParam(event, 'lineItemId')
@@ -103,51 +101,34 @@ export default defineEventHandler(async (event) => {
 
   try {
     // Check if invoice exists and is editable
-    const invoice = await queryOne(
-      `SELECT id, status, tax_rate FROM invoices WHERE id = $1`,
-      [invoiceId]
-    )
+    await assertInvoiceRowAccess(invoiceId, access, true)
+    return await transaction(async (client) => {
+      const queryOne = async (sql: string, params?: any[]) => (await client.query(sql, params)).rows[0]
+      const invoice = await lockInvoiceForEdit(client, invoiceId, access)
 
-    if (!invoice) {
-      throw createError({
-        statusCode: 404,
-        statusMessage: 'Invoice not found'
-      })
-    }
+      // Check if line item exists
+      const existingItem = await queryOne(
+        `SELECT id FROM invoice_line_items WHERE id = $1 AND invoice_id = $2`,
+        [lineItemId, invoiceId]
+      )
 
-    if (['paid', 'cancelled'].includes(invoice.status)) {
-      throw createError({
-        statusCode: 400,
-        statusMessage: `Cannot modify line items on a ${invoice.status} invoice`
-      })
-    }
+      if (!existingItem) {
+        throw createError({
+          statusCode: 404,
+          statusMessage: 'Line item not found'
+        })
+      }
 
-    // Check if line item exists
-    const existingItem = await queryOne(
-      `SELECT id FROM invoice_line_items WHERE id = $1 AND invoice_id = $2`,
-      [lineItemId, invoiceId]
-    )
+      const updateValues = [...values, lineItemId, invoiceId]
 
-    if (!existingItem) {
-      throw createError({
-        statusCode: 404,
-        statusMessage: 'Line item not found'
-      })
-    }
-
-    values.push(lineItemId)
-    values.push(invoiceId)
-
-    let lineItem: any
-    await transaction(async (client) => {
       // Update line item
       const result = await client.query(`
         UPDATE invoice_line_items
         SET ${fields.join(', ')}, updated_at = NOW()
         WHERE id = $${idx} AND invoice_id = $${idx + 1}
         RETURNING *
-      `, values)
-      lineItem = result.rows[0]
+      `, updateValues)
+      const lineItem = result.rows[0]
 
       // Recalculate invoice totals
       const totals = await client.query(`
@@ -174,25 +155,25 @@ export default defineEventHandler(async (event) => {
           updated_at = NOW()
         WHERE id = $4
       `, [subtotal, taxAmount, totalAmount, invoiceId])
-    })
 
-    return {
-      success: true,
-      lineItem: {
-        id: lineItem.id,
-        invoiceId: lineItem.invoice_id,
-        description: lineItem.description,
-        quantity: Number(lineItem.quantity),
-        unitPrice: Number(lineItem.unit_price),
-        amount: Number(lineItem.quantity) * Number(lineItem.unit_price),
-        itemType: lineItem.item_type,
-        taxable: lineItem.taxable,
-        timeEntryId: lineItem.time_entry_id,
-        projectId: lineItem.project_id,
-        sortOrder: lineItem.sort_order,
-        updatedAt: lineItem.updated_at
+      return {
+        success: true,
+        lineItem: {
+          id: lineItem.id,
+          invoiceId: lineItem.invoice_id,
+          description: lineItem.description,
+          quantity: Number(lineItem.quantity),
+          unitPrice: Number(lineItem.unit_price),
+          amount: Number(lineItem.quantity) * Number(lineItem.unit_price),
+          itemType: lineItem.item_type,
+          taxable: lineItem.taxable,
+          timeEntryId: lineItem.time_entry_id,
+          projectId: lineItem.project_id,
+          sortOrder: lineItem.sort_order,
+          updatedAt: lineItem.updated_at
+        }
       }
-    }
+    })
   } catch (error: any) {
     if (error.statusCode) throw error
     console.error('Failed to update invoice line item:', error)

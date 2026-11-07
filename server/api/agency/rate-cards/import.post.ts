@@ -1,9 +1,11 @@
+import { assertCommercialPermission } from '~~/server/utils/commercialAccess'
 import { requireAuth } from '~~/server/utils/auth'
 import { transaction } from '~~/server/utils/db'
 import { parseRateCardCsv } from '~~/server/utils/rateCardCsvParser'
 
 export default eventHandler(async (event) => {
   const user = await requireAuth(event)
+  await assertCommercialPermission(event, user.id, 'SALES', true)
 
   const body = await readBody(event)
   const { csvText, dryRun } = body

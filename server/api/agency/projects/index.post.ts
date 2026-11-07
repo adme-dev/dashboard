@@ -5,9 +5,10 @@
 
 import { queryOne } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
+import { assertFinancePermission, assertPermissionGrant } from '~~/server/utils/financeAccess'
 
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
+  const user = await requireAuth(event)
   const body = await readBody(event)
 
   const {
@@ -48,6 +49,12 @@ export default defineEventHandler(async (event) => {
       statusCode: 400,
       statusMessage: 'Start date is required'
     })
+  }
+
+  try { await assertFinancePermission(event, user.id, true) }
+  catch (error) {
+    if ((error as { statusCode?: number }).statusCode !== 403) throw error
+    await assertPermissionGrant(event, user.id, 'CLIENTS', true)
   }
 
   try {

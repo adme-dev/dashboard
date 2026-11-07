@@ -1,8 +1,10 @@
+import { assertPermissionGrant } from '~~/server/utils/financeAccess'
 import { queryOne, execute } from '~~/server/utils/db'
 import { requireRole } from '~~/server/utils/auth'
 
 export default defineEventHandler(async (event) => {
-  await requireRole(event, ['owner'])
+  const currentUser = await requireRole(event, ['owner'])
+  await assertPermissionGrant(event, currentUser.id, 'ADMIN', true)
 
   const roleId = getRouterParam(event, 'id')
   if (!roleId) {

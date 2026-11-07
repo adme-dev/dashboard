@@ -1178,7 +1178,7 @@ const features: Record<string, Feature> = {
     categoryIcon: 'i-lucide-calculator',
     categoryIconBg: 'bg-emerald-50',
     categoryIconColor: 'text-emerald-600',
-    description: 'Two-way sync with Xero for invoices, expenses, contacts, and chart of accounts. Keep your project management and accounting in perfect alignment.',
+    description: 'Two-way sync with Xero for invoices, expenses, contacts, and chart of accounts. Company accounting requires explicit Finance access, while client billing and campaign budgets retain their own permissions.',
     details: [
       {
         title: 'OAuth-Connected Sync',
@@ -1698,11 +1698,11 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Every Registered Capability',
-        content: 'Active owners can discover and execute registered capabilities across Finance, Marketing, Banners, publishing, media generation, administration and MCP integrations without application rollout, permission, budget or confirmation gates. Registered operations include creating editable Banner Studio drafts and staged Google Tag Manager binding, drafting, publishing, verification and rollback through dedicated execution ledgers. Missing providers, bindings, secrets or unimplemented tools remain real operational failures.'
+        content: 'Active owners can discover registered capabilities across Finance, Marketing, Banners, publishing, media generation, administration and MCP integrations. Company accounting execution additionally requires a current explicit Finance grant, including for owners. Other registered operations retain owner authority across application rollout, permission, budget and confirmation gates. Registered operations include creating editable Banner Studio drafts and staged Google Tag Manager binding, drafting, publishing, verification and rollback through dedicated execution ledgers. Missing providers, bindings, secrets or unimplemented tools remain real operational failures.'
       },
       {
         title: 'Security Boundaries Stay Enforced',
-        content: 'God mode never bypasses authentication or session validation, exact active-owner authority, tenant, client and entity isolation, mandatory append-only audit, emergency disable, provider and secret requirements, database constraints or SSRF protection. It is broad application authority, not arbitrary security bypass.'
+        content: 'God mode never bypasses explicit Finance grants, authentication or session validation, exact active-owner authority, tenant, client and entity isolation, mandatory append-only audit, emergency disable, provider and secret requirements, database constraints or SSRF protection. It is broad application authority, not arbitrary security bypass.'
       },
       {
         title: 'Employees Remain Governed',
@@ -1750,7 +1750,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Owner God Mode, Employee Governance',
-        content: 'Active owners receive always-on God mode across every registered application and MCP capability. Authentication, exact active-owner authority, tenant, client and entity isolation, mandatory audit, emergency disable and infrastructure requirements remain enforced. Ordinary employees continue to use evaluation-approved releases, permissions, tool limits and confirmation steps; draft, failed, suspended and retired employee releases stay blocked.'
+        content: 'Active owners receive always-on God mode across every registered application and MCP capability. Explicit Finance grants, authentication, exact active-owner authority, tenant, client and entity isolation, mandatory audit, emergency disable and infrastructure requirements remain enforced. Ordinary employees continue to use evaluation-approved releases, permissions, tool limits and confirmation steps; draft, failed, suspended and retired employee releases stay blocked.'
       },
       {
         title: '@Entity Mentions',
@@ -3859,7 +3859,7 @@ const features: Record<string, Feature> = {
     categoryIcon: 'i-lucide-shield',
     categoryIconBg: 'bg-slate-50',
     categoryIconColor: 'text-slate-600',
-    description: 'Fine-grained role-based access control with server-enforced middleware. 15+ permission areas cover every part of the platform.',
+    description: 'Server-enforced role grants separate company accounting from client commercial workflows and campaign budgets.',
     details: [
       {
         title: 'RBAC Architecture',
@@ -3875,7 +3875,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Mutation Guards',
-        content: 'Every POST, PUT, PATCH, and DELETE request passes through the RBAC middleware. External callers like Xero webhooks and Cloudflare Workers are exempt. Internal API routes are scoped correctly. The system enforces write access restrictions at the API layer, making permission bypass impossible regardless of how the request originates.'
+        content: 'Accounting reads and writes check the active user and current explicit Finance grant before accessing shared Xero data. Owner God mode and development mode do not supply that grant. Read-only roles cannot change accounting, and internal accounting jobs require configured secrets with bounded read routes. Marketing campaign budgets and spend keep their separate permissions; assigned-client invoice access allows scoped staff to work on their own drafts.'
       }
     ]
   },

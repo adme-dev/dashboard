@@ -1,9 +1,10 @@
+import { hasExplicitFinancePermission } from '~~/shared/finance/permissions'
 /**
  * Finance Route Middleware
  * Protects routes that require FINANCE access.
  */
 export default defineNuxtRouteMiddleware(async (to) => {
-  const { user, isAuthenticated, fetchUser, isLoading, hasRole } = useAuth()
+  const { user, isAuthenticated, fetchUser, isLoading } = useAuth()
 
   if (!isAuthenticated.value && !isLoading.value) {
     await fetchUser()
@@ -13,7 +14,7 @@ export default defineNuxtRouteMiddleware(async (to) => {
     return navigateTo({ path: '/auth/login', query: { redirect: to.fullPath } })
   }
 
-  if (!hasRole(PERMISSIONS.FINANCE)) {
+  if (!hasExplicitFinancePermission(user.value)) {
     return navigateTo({ path: '/agency', query: { error: 'no-finance-access' } })
   }
 })

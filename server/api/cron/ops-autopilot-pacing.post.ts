@@ -1,15 +1,13 @@
 // server/api/cron/ops-autopilot-pacing.post.ts
 // Daily budget & pacing watchdog. Reads media_spend, raises escalations into the inbox.
 // Monitoring-only: never writes to an ad platform. Mirrors anomaly-detection's auth + 7am-local gate.
-import { createError, getHeader, getQuery } from 'h3'
+import { defineEventHandler, getQuery } from 'h3'
+import { requireCronJobSecret } from '~~/server/utils/financeMachineAccess'
 import { queryOne } from '~~/server/utils/db'
 import { runPacingWatchdog } from '~~/server/utils/automation/pacingWatchdog'
 
 export default defineEventHandler(async (event) => {
-  const cronSecret = getHeader(event, 'x-cron-secret')
-  if (!import.meta.dev && (!process.env.CRON_SECRET || cronSecret !== process.env.CRON_SECRET)) {
-    throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
-  }
+  requireCronJobSecret(event)
 
   const query = getQuery(event)
   const force = query.force === 'true' || query.force === '1'

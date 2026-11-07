@@ -15,12 +15,12 @@ describe('filterToolsForUser', () => {
   })
 
   it('includes permissioned tools for a finance role', () => {
-    const fin = filterToolsForUser(reg, 'finance') // in FINANCE
+    const fin = filterToolsForUser(reg, 'finance', ['FINANCE']) // in FINANCE
     expect(fin.map(t => t.name).sort()).toEqual(['get_x', 'get_y'])
   })
 
-  it('owner (superset role) sees finance tools too', () => {
-    const owner = filterToolsForUser(reg, 'owner')
+  it('owner requires an explicit Finance group', () => {
+    const owner = filterToolsForUser(reg, 'owner', ['FINANCE'])
     expect(owner.map(t => t.name).sort()).toEqual(['get_x', 'get_y'])
   })
 

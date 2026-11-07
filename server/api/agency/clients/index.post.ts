@@ -4,6 +4,7 @@
  */
 
 import { requireAuth, requireRole } from '~~/server/utils/auth'
+import { assertFinancePermission, assertPermissionGrant } from '~~/server/utils/financeAccess'
 import { executeGodModeAgencyClientCreate } from '~~/server/utils/clients/godModeMutations'
 
 interface CreateClientBody {
@@ -18,6 +19,7 @@ interface CreateClientBody {
   contactPhone?: string
   address?: string
   reportingTimezone?: string
+  xeroContactId?: string | null
 }
 
 export default defineEventHandler(async (event) => {
@@ -34,6 +36,16 @@ export default defineEventHandler(async (event) => {
       statusMessage: 'Client name is required'
     })
   }
+
+  // Client commercial terms belong to CLIENTS; company Xero bindings remain Finance-only.
+  await assertPermissionGrant(event, user.id, 'CLIENTS', true)
+  const writesXeroBinding = Object.prototype.hasOwnProperty.call(body, 'xeroContactId') && body.xeroContactId !== undefined
+  try {
+    await assertFinancePermission(event, user.id, writesXeroBinding)
+  } catch (error) {
+    if (writesXeroBinding || (error as { statusCode?: number }).statusCode !== 403) throw error
+  }
+  setResponseHeader(event, 'cache-control', 'private, no-store')
 
   // Validate billing type
   const validBillingTypes = ['retainer', 'project', 'hybrid', 'commission']
@@ -112,8 +124,8 @@ export default defineEventHandler(async (event) => {
       createdAt: client.created_at,
       updatedAt: client.updated_at
     }
-  } catch (error: any) {
-    if (error.statusCode) throw error
+  } catch (error) {
+    if ((error as { statusCode?: number }).statusCode) throw error
     console.error('Failed to create client:', error)
     throw createError({
       statusCode: 500,

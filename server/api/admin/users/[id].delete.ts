@@ -9,11 +9,13 @@
  * really participated (demo/duplicate/typo accounts).
  */
 
+import { assertPermissionGrant } from '~~/server/utils/financeAccess'
 import { requireRole, logActivity, invalidateAllSessions, invalidateUserMagicLinks } from '~~/server/utils/auth'
 import { queryOne, execute } from '~~/server/utils/db'
 
 export default defineEventHandler(async (event) => {
   const currentUser = await requireRole(event, ['admin', 'owner'])
+  await assertPermissionGrant(event, currentUser.id, 'ADMIN', true)
   const userId = getRouterParam(event, 'id')
 
   if (!userId) {

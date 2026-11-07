@@ -1,9 +1,11 @@
 <script setup lang="ts">
+const { canAccessFinance } = useAuth()
 const apiFetch = $fetch as <T = unknown>(request: string) => Promise<T>
 const data = ref<any | null>(null)
 const status = ref<'idle' | 'pending' | 'success' | 'error'>('idle')
 
 async function refreshProjectProfitability() {
+  if (!canAccessFinance.value) { data.value = null; status.value = 'idle'; return }
   status.value = 'pending'
   try {
     data.value = await apiFetch('/api/agency/projects/profitability')
@@ -15,6 +17,7 @@ async function refreshProjectProfitability() {
 }
 
 onMounted(refreshProjectProfitability)
+watch(canAccessFinance, refreshProjectProfitability)
 
 // Endpoint returns commission-based profitability grouped by client: { clients, summary }.
 const CAP = 5
@@ -53,6 +56,7 @@ function barColor(margin: number) {
 
 <template>
   <DashboardWidgetShell
+    v-if="canAccessFinance"
     title="Project Profitability"
     icon="i-lucide-calculator"
     :badges="badges"

@@ -4,6 +4,8 @@ const mockRequireAuth = vi.fn()
 const mockGetSelectedTenant = vi.fn()
 const mockQueryRows = vi.fn()
 const mockQueryOne = vi.fn()
+const mockFinance = vi.fn()
+vi.mock('~~/server/utils/financeAccess', () => ({ assertFinancePermission: (...args: unknown[]) => mockFinance(...args) }))
 
 vi.mock('~~/server/utils/auth', () => ({
   requireAuth: (...args: unknown[]) => mockRequireAuth(...args),
@@ -25,12 +27,13 @@ describe('resolveUserPlatformAgentAuthority', () => {
     mockGetSelectedTenant.mockReset()
     mockQueryRows.mockReset()
     mockQueryOne.mockReset()
+    mockFinance.mockReset().mockResolvedValue(undefined)
     mockQueryOne.mockResolvedValue({ tenant_id: 'tenant-a' })
     mockGetSelectedTenant.mockResolvedValue('tenant-a')
   })
 
   it('derives an all-client allow-list for management from the database', async () => {
-    mockRequireAuth.mockResolvedValue({ id: 'user-1', role: 'admin', permissionGroups: [] })
+    mockRequireAuth.mockResolvedValue({ id: 'user-1', role: 'admin', permissionGroups: ['FINANCE'] })
     mockQueryRows.mockResolvedValue([{ id: 'client-b' }, { id: 'client-a' }])
     const { resolveUserPlatformAgentAuthority } = await import('~~/server/utils/ai/platformAgentAuthority')
 
@@ -83,7 +86,7 @@ describe('resolveUserPlatformAgentAuthority', () => {
   })
 
   it('fails closed when a required tenant is unavailable', async () => {
-    mockRequireAuth.mockResolvedValue({ id: 'user-1', role: 'admin', permissionGroups: [] })
+    mockRequireAuth.mockResolvedValue({ id: 'user-1', role: 'admin', permissionGroups: ['FINANCE'] })
     mockGetSelectedTenant.mockResolvedValue(null)
     const { resolveUserPlatformAgentAuthority } = await import('~~/server/utils/ai/platformAgentAuthority')
 
@@ -95,7 +98,7 @@ describe('resolveUserPlatformAgentAuthority', () => {
   })
 
   it('rejects a selected user tenant that is not a connected organization tenant', async () => {
-    mockRequireAuth.mockResolvedValue({ id: 'user-1', role: 'admin', permissionGroups: [] })
+    mockRequireAuth.mockResolvedValue({ id: 'user-1', role: 'admin', permissionGroups: ['FINANCE'] })
     mockQueryOne.mockResolvedValue(null)
     const { resolveUserPlatformAgentAuthority } = await import('~~/server/utils/ai/platformAgentAuthority')
 
@@ -138,4 +141,13 @@ describe('resolveUserPlatformAgentAuthority', () => {
     })).rejects.toMatchObject({ statusCode: 403 })
     expect(mockQueryRows).not.toHaveBeenCalled()
   })
+})
+
+it('denies a stale cached Finance grant before tenant or client reads', async () => {
+  mockRequireAuth.mockResolvedValue({ id: 'u', role: 'owner', permissionGroups: ['FINANCE'] })
+  mockFinance.mockRejectedValueOnce({ statusCode: 403 })
+  mockGetSelectedTenant.mockClear(); mockQueryRows.mockClear()
+  const { resolveUserPlatformAgentAuthority } = await import('~~/server/utils/ai/platformAgentAuthority')
+  await expect(resolveUserPlatformAgentAuthority({} as any, { permissionGroups: ['FINANCE'], tenant: 'required' })).rejects.toMatchObject({ statusCode: 403 })
+  expect(mockGetSelectedTenant).not.toHaveBeenCalled(); expect(mockQueryRows).not.toHaveBeenCalled()
 })

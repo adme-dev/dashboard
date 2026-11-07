@@ -71,6 +71,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   Object.entries({ computed, ref, watch, onMounted }).forEach(([name, value]) => vi.stubGlobal(name, value))
   vi.stubGlobal('$fetch', requests)
+  vi.stubGlobal('useAuth', () => ({ canAccessFinance: ref(true) }))
   vi.spyOn(console, 'error').mockImplementation(() => {})
 })
 afterEach(() => {
