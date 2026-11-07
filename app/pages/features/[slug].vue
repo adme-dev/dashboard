@@ -1790,7 +1790,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Clear Microphone Guidance',
-        content: 'Open Voice help in the message box for a short explanation of the two voice modes. Microphone access, blocked permissions and voice errors get clear guidance when needed. You can keep typing while voice is unavailable, and text replies remain available if spoken playback fails.'
+        content: 'Open Voice AI from Tools for a short explanation of the two voice modes. Microphone access, blocked permissions and voice errors get clear guidance when needed. You can keep typing while voice is unavailable, and text replies remain available if spoken playback fails.'
       }
     ]
   },
