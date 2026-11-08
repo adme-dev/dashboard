@@ -9,7 +9,7 @@ afterEach(() => {
   document.body.replaceChildren()
   vi.unstubAllGlobals()
 })
-async function submit(clients: boolean, marketing = false) {
+async function submit(clients: boolean, marketing = false, paymentTerms = 30) {
   const fetch = vi.fn(async () => ({}))
   vi.stubGlobal('$fetch', fetch)
   vi.stubGlobal('computed', computed)
@@ -19,7 +19,7 @@ async function submit(clients: boolean, marketing = false) {
   vi.stubGlobal('useAuth', () => ({ canAccessClients: ref(clients), canAccessFinance: ref(false), isManager: ref(false), hasPermission: (group: string) => marketing && group === 'MARKETING_MANAGEMENT' }))
   const host = document.createElement('div')
   document.body.append(host)
-  const app = createApp(ClientForm, { client: { id: 'client-id', name: 'Client', billingType: 'project', paymentTerms: 30, hourlyRate: 150 } })
+  const app = createApp(ClientForm, { client: { id: 'client-id', name: 'Client', billingType: 'project', paymentTerms, hourlyRate: 150 } })
   for (const name of ['UInput', 'UTextarea', 'USelectMenu', 'URadioGroup', 'UButton']) app.component(name, { render: () => h('span') })
   app.component('UFormField', { props: ['label'], setup: (props, { slots }) => () => h('label', [props.label, slots.default?.()]) })
   apps.push(app)
@@ -35,6 +35,10 @@ describe('client commercial form authority', () => {
     expect(host.textContent).toContain('Billing Type')
     expect(host.textContent).toContain('Payment Terms')
     expect(fetch).toHaveBeenCalledWith('/api/agency/clients/client-id', expect.objectContaining({ body: expect.objectContaining({ billingType: 'project', paymentTerms: 30, hourlyRate: 150 }) }))
+  })
+  it('preserves due-on-receipt zero payment terms when editing an authorized client', async () => {
+    const { fetch } = await submit(true, false, 0)
+    expect(fetch).toHaveBeenCalledWith('/api/agency/clients/client-id', expect.objectContaining({ body: expect.objectContaining({ paymentTerms: 0 }) }))
   })
   it.each([false, true])('omits hidden financial defaults for restricted metadata form; marketing=%s', async (marketing) => {
     const { host, fetch } = await submit(marketing, marketing)
