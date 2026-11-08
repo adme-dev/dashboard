@@ -1,4 +1,4 @@
-import { defineEventHandler, getRequestURL } from 'h3'
+import { defineEventHandler } from 'h3'
 import type { H3Event } from 'h3'
 import { getRouteRules } from 'nitropack/runtime'
 
@@ -11,23 +11,29 @@ type RouteRuleLookup = (path: string) => { ssr?: unknown }
 //
 // Serve such a case variant exactly as its canonical lowercase route is served:
 // Nuxt's supported per-request `noSSR` flag returns the same SPA shell. This adds
-// no route, redirect or rule; it only applies when the request's own rules leave
-// SSR enabled and the canonical lowercase path explicitly disables it.
-export function shouldServeCaseVariantAsSpa(method: string, pathname: string, rulesFor: RouteRuleLookup): boolean {
+// no route, redirect or rule. It applies only when the request's own merged rules
+// do not decide `ssr` at all (an explicit `ssr: true` or `false` always wins) and
+// the canonical lowercase path explicitly disables SSR.
+export function shouldServeCaseVariantAsSpa(method: string, path: string, rulesFor: RouteRuleLookup): boolean {
   if (method !== 'GET' && method !== 'HEAD') return false
-  if (pathname.startsWith('/api/') || pathname.startsWith('/_') || pathname.startsWith('/__')) return false
-  const canonical = pathname.toLowerCase()
-  if (canonical === pathname) return false
-  if (rulesFor(pathname).ssr === false) return false
+  if (path.startsWith('/api/') || path.startsWith('/_') || path.startsWith('/__')) return false
+  const canonical = path.toLowerCase()
+  if (canonical === path) return false
+  if (rulesFor(path).ssr !== undefined) return false
   return rulesFor(canonical).ssr === false
 }
 
+/** Decoded (h3 decodes event.path before middleware), query-free request path. */
+export function requestPagePath(event: Pick<H3Event, 'path'>): string {
+  return (event.path || '/').split('?')[0] || '/'
+}
+
 export default defineEventHandler((event) => {
-  const { pathname } = getRequestURL(event)
-  const rulesFor: RouteRuleLookup = path => path === pathname
+  const path = requestPagePath(event)
+  const rulesFor: RouteRuleLookup = candidate => candidate === path
     ? getRouteRules(event)
-    : getRouteRules({ path, context: {} } as unknown as H3Event)
-  if (!shouldServeCaseVariantAsSpa(event.method, pathname, rulesFor)) return
+    : getRouteRules({ path: candidate, context: {} } as unknown as H3Event)
+  if (!shouldServeCaseVariantAsSpa(event.method, path, rulesFor)) return
   const context = event.context as { nuxt?: { noSSR?: boolean } }
   context.nuxt ||= {}
   context.nuxt.noSSR = true
