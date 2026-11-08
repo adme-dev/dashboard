@@ -142,7 +142,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="p-6 max-w-6xl mx-auto">
+  <div class="flex-1 min-h-0 overflow-y-auto w-full p-6 max-w-6xl mx-auto">
     <div class="flex items-center justify-between mb-6">
       <div>
         <h1 class="text-2xl font-bold">Knowledge Base</h1>

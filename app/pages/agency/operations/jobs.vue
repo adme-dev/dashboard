@@ -82,7 +82,7 @@ onMounted(refresh)
 </script>
 
 <template>
-  <div class="mx-auto max-w-7xl space-y-6 p-4 sm:p-6">
+  <div class="flex-1 min-h-0 overflow-y-auto w-full mx-auto max-w-7xl space-y-6 p-4 sm:p-6">
     <header class="flex flex-wrap items-end justify-between gap-4">
       <div>
         <p class="text-xs font-semibold uppercase tracking-[0.18em] text-primary">Operations</p>
