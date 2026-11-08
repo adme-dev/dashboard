@@ -257,10 +257,12 @@ export default defineEventHandler(async (event) => {
       if (reservation.reason === 'idempotency_key_conflict') {
         throw createError({ statusCode: 409, statusMessage: 'Idempotency key is already used for a different request' })
       }
+      // Explanation computed inside the reservation transaction; it never changes the decision.
+      const budget = reservation.budget ?? null
       throw createError({
         statusCode: 402,
         statusMessage: 'Video generation budget unavailable',
-        data: { allowed: false, reason: reservation.reason, remainingCents: reservation.remainingCents ?? 0 },
+        data: { allowed: false, reason: reservation.reason, remainingCents: reservation.remainingCents ?? 0, budget }
       })
     }
     const job = reservation.job

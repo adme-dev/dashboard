@@ -41,6 +41,17 @@ SELECT COALESCE(SUM(liability_cents), 0) AS total
  WHERE tenant_id = $1
    AND ${LIABILITY_ACCOUNTING_PREDICATE}`
 
+/**
+ * Content-free breakdown of the same tenant cap predicate, grouped by liability state.
+ * Used only to explain budget availability; it never changes what counts.
+ */
+export const TENANT_VIDEO_GENERATION_LIABILITY_BREAKDOWN_SQL = `
+SELECT liability_state, COUNT(*)::integer AS jobs, COALESCE(SUM(liability_cents), 0)::bigint AS cents
+  FROM video_generation_jobs
+ WHERE tenant_id = $1
+   AND ${LIABILITY_ACCOUNTING_PREDICATE}
+ GROUP BY liability_state`
+
 /** Lifetime project ceiling over canonical jobs; settled spend never resets monthly. */
 export const PROJECT_VIDEO_GENERATION_LIABILITY_SUM_SQL = `
 SELECT COALESCE(SUM(liability_cents), 0) AS total

@@ -10,8 +10,10 @@ import {
   MARK_VIDEO_GENERATION_SUCCEEDED_SQL,
   MARK_VIDEO_GENERATION_UNKNOWN_SQL,
   PROJECT_VIDEO_GENERATION_LIABILITY_SUM_SQL,
+  TENANT_VIDEO_GENERATION_LIABILITY_BREAKDOWN_SQL,
   TENANT_VIDEO_GENERATION_LIABILITY_SUM_SQL
 } from '~~/shared/video/generationLiability'
+import { loadVideoGenerationBudgetStatus } from '~~/server/utils/video-generation/budgetStatus'
 
 const connectionString = process.env.STORYBOARD_TEST_DATABASE_URL
 if (connectionString) {
@@ -300,6 +302,39 @@ describe.skipIf(!pool)('video generation liability on localhost', () => {
     const blocked = await reserveAndCreateVideoGenerationJob(reservation(ids, { estimatedCostCents: 50 }), cap)
     expect(blocked).toMatchObject({ ok: false, reason: 'tenant_cap_exceeded', remainingCents: 40 })
     expect(await jobCount(ids.tenantId)).toBe(1)
+  })
+
+  it('explains the cap with a breakdown that totals exactly the enforced liability', async () => {
+    const ids = scope()
+    const wide: Policy = { enabled: true, monthlyCapCents: 1000 }
+    const reported = await reserveAndCreateVideoGenerationJob(reservation(ids, { estimatedCostCents: 70 }), wide)
+    await succeed(reported.job!.id, outputHash('breakdown-reported'), 55)
+    const oldReported = await reserveAndCreateVideoGenerationJob(reservation(ids, { estimatedCostCents: 90 }), wide)
+    await succeed(oldReported.job!.id, outputHash('breakdown-old'), 90)
+    await pool!.query(`UPDATE video_generation_jobs SET completed_at = ${PREVIOUS_UTC_MONTH} WHERE id = $1`, [oldReported.job!.id])
+    const uncertain = await reserveAndCreateVideoGenerationJob(reservation(ids, { estimatedCostCents: 300 }), wide)
+    await pool!.query(CLAIM_VIDEO_GENERATION_SUBMISSION_SQL, [uncertain.job!.id])
+    await pool!.query(`UPDATE video_generation_jobs SET created_at = ${PREVIOUS_UTC_MONTH} WHERE id = $1`, [uncertain.job!.id])
+    await reserveAndCreateVideoGenerationJob(reservation(ids, { estimatedCostCents: 40 }), wide)
+
+    const enforced = (await sums(ids.tenantId, ids.projectId)).tenant
+    const breakdown = await pool!.query(TENANT_VIDEO_GENERATION_LIABILITY_BREAKDOWN_SQL, [ids.tenantId])
+    const status = await loadVideoGenerationBudgetStatus(ids.tenantId, { monthlyCapCents: 400 }, async (sql, params) => (await pool!.query(sql, params)).rows)
+    expect(status).toEqual({
+      capCents: 400,
+      committedCents: enforced,
+      availableCents: 5,
+      reported: { jobs: 1, cents: 55 },
+      reserved: { jobs: 1, cents: 40 },
+      uncertain: { jobs: 1, cents: 300 }
+    })
+    expect(enforced).toBe(395)
+    expect(breakdown.rows.reduce((sum, row) => sum + Number(row.cents), 0)).toBe(enforced)
+
+    const refused = await reserveAndCreateVideoGenerationJob(reservation(ids, { estimatedCostCents: 10 }), { enabled: true, monthlyCapCents: 400 })
+    expect(refused).toMatchObject({ ok: false, reason: 'tenant_cap_exceeded', remainingCents: status.availableCents })
+    // Explanation comes from the refusing transaction itself, so it cannot drift across now().
+    expect(refused.budget).toEqual(status)
   })
 
   it('replays an exact key at the original price and rejects a changed prompt or source order', async () => {
