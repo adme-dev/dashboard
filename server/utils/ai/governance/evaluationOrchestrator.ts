@@ -496,6 +496,14 @@ export function createEvaluationOrchestrator(rawDependencies: Partial<Evaluation
     }, rawActorId: string): Promise<StoredEvaluationCostApproval> {
       const input = ApproveRequestSchema.parse(raw)
       const actorId = UUID.parse(rawActorId)
+      const loaded = await dependencies.materialRepository.loadForEvaluationRun(input.evaluationRunId)
+      if (loaded?.run.createdBy === actorId) {
+        throw new EvaluationOrchestrationError(
+          'evaluation_cost_self_approval',
+          409,
+          'The preflight creator cannot approve this evaluation cost'
+        )
+      }
       return dependencies.approvalStore.approvePlan({
         approvalId: UUID.parse(dependencies.randomUUID()),
         evaluationRunId: input.evaluationRunId,
@@ -550,6 +558,13 @@ export function createEvaluationOrchestrator(rawDependencies: Partial<Evaluation
       const artifacts = await dependencies.approvalStore.loadTrustedArtifacts(input)
       if (!artifacts) {
         throw new EvaluationOrchestrationError('evaluation_approval_unavailable', 409, 'Evaluation approval evidence is missing or revoked')
+      }
+      if (artifacts.approval.approvedBy === loaded.run.createdBy) {
+        throw new EvaluationOrchestrationError(
+          'evaluation_cost_self_approval',
+          409,
+          'A self-approved cost artifact cannot authorize evaluation execution'
+        )
       }
       const option = dependencies.getModelCatalogOption(currentIdentity.modelProvider, currentIdentity.modelId)
       if (!option || !option.pricing) {

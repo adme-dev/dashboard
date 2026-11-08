@@ -27,7 +27,8 @@ const IDS = {
   run: '10000000-0000-4000-8000-000000000006',
   rateCard: '10000000-0000-4000-8000-000000000007',
   approval: '10000000-0000-4000-8000-000000000008',
-  capability: '10000000-0000-4000-8000-000000000009'
+  capability: '10000000-0000-4000-8000-000000000009',
+  approver: '10000000-0000-4000-8000-000000000010'
 }
 
 const NOW = new Date('2026-08-03T02:00:00.000Z')
@@ -244,9 +245,70 @@ describe('evaluation orchestration', () => {
       expiresAt: '2026-08-03T03:00:00.000Z',
       reason: 'Approved for this exact frozen evaluation plan.',
       ...approvalOverrides
-    }, IDS.actor)
+    }, IDS.approver)
     return { svc, preflight, approval }
   }
+
+  it('rejects the preflight creator and admits a distinct authorized approver for the same plan', async () => {
+    const svc = service()
+    const preflight = await svc.preflightEvaluation({
+      packVersionId: IDS.pack,
+      modelProvider: 'groq',
+      modelId: 'openai/gpt-oss-120b',
+      budget
+    }, IDS.actor)
+    const request = {
+      evaluationRunId: preflight.evaluationRunId,
+      planDigest: preflight.planDigest,
+      maxSpendUsdMicros: preflight.estimatedUpperBoundUsdMicros,
+      expiresAt: '2026-08-03T03:00:00.000Z',
+      reason: 'Approved for this exact frozen evaluation plan.'
+    }
+
+    await expect(svc.approveEvaluationCost(request, IDS.actor))
+      .rejects.toMatchObject({ code: 'evaluation_cost_self_approval', statusCode: 409 })
+    expect(approvals.approval).toBeNull()
+    expect(createExecutor).not.toHaveBeenCalled()
+
+    const approval = await svc.approveEvaluationCost(request, IDS.approver)
+    expect(approval).toMatchObject({
+      approvedBy: IDS.approver,
+      planDigest: preflight.planDigest,
+      maxSpendUsdMicros: preflight.estimatedUpperBoundUsdMicros,
+      rateCardId: preflight.rateCardId,
+      evaluationRunId: preflight.evaluationRunId
+    })
+    expect(approvals.plan).toMatchObject({
+      planDigest: preflight.planDigest,
+      createdBy: IDS.actor
+    })
+  })
+
+  it('does not claim or execute a stored same-creator approval, and still executes a distinct approver', async () => {
+    const { svc, preflight, approval } = await preflightAndApprove()
+    approvals.approval = { ...approval, approvedBy: IDS.actor }
+
+    await expect(svc.executeApprovedEvaluation({
+      evaluationRunId: preflight.evaluationRunId,
+      planDigest: preflight.planDigest,
+      rateCardId: preflight.rateCardId,
+      approvalId: approval.approvalId
+    }, IDS.approver)).rejects.toMatchObject({ code: 'evaluation_cost_self_approval', statusCode: 409 })
+    expect(createExecutor).not.toHaveBeenCalled()
+    expect(modelExecute).not.toHaveBeenCalled()
+    expect(runs.current).toMatchObject({ status: 'queued', startedAt: null })
+
+    approvals.approval = { ...approval, approvedBy: IDS.approver }
+    const completed = await svc.executeApprovedEvaluation({
+      evaluationRunId: preflight.evaluationRunId,
+      planDigest: preflight.planDigest,
+      rateCardId: preflight.rateCardId,
+      approvalId: approval.approvalId
+    }, IDS.approver)
+    expect(completed).toMatchObject({ status: 'completed', gatePassed: true })
+    expect(createExecutor).toHaveBeenCalledOnce()
+    expect(modelExecute).toHaveBeenCalledOnce()
+  })
 
   it('binds exact immutable material and trusted integer-micro pricing without a model call', async () => {
     const result = await service().preflightEvaluation({
@@ -594,7 +656,7 @@ describe('evaluation orchestration', () => {
       maxSpendUsdMicros: preflight.estimatedUpperBoundUsdMicros,
       expiresAt: '2026-08-03T03:00:00.000Z',
       reason: 'Approved for the DB-valid empty preamble regression.'
-    }, IDS.actor)
+    }, IDS.approver)
 
     const result = await svc.executeApprovedEvaluation({
       evaluationRunId: preflight.evaluationRunId,

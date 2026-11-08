@@ -92,6 +92,14 @@ For account management, production, paid media, finance, and bookkeeping, comple
 
 Retain the run ID, release ID, version ID, case counts, cost approval identity, and terminal result in the approval packet. Prompts, responses, traces, contact data, credentials, and employee-level usage do not belong in pilot evidence exports.
 
+The preflight creator cannot approve their own evaluation cost. New approvals and
+execution both enforce this separation. Historical self-approved records remain
+in the append-only approval store but cannot authorize a new execution. Because each evaluation
+run has one immutable cost approval, do not overwrite or delete an old approval
+to repair it: create a fresh preflight for the exact current material and obtain
+approval from a different authorized operator. Identity-matched replay of an old
+approval record is not execution authorization.
+
 ### 3. Enroll the named pilot cohort
 
 After all five exact versions pass, an authorized administrator selects 5–10 current, active department members across the three cohorts. For each membership record the business reason and assigned release. Do not select people from interaction volume, memory, assistant ratings, or any performance proxy. Notify participants that aggregate telemetry is used to assess the assistant and is not an employee score.
