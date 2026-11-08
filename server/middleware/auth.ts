@@ -120,6 +120,9 @@ const SOCIAL_MEDIA_CAPABILITY_PATH = /^\/api\/public\/social-media\/v1\.[A-Za-z0
 const selfAuthenticatingRoutes = new Set([
   // Fixed-client newsroom delivery verifies x-newsroom-secret in its handler.
   '/api/internal/newsroom/social',
+  // audio-jobs Worker storyboard render authority; the handler verifies the
+  // STORYBOARD_RENDER_SECRET bearer in constant time before any database access.
+  '/api/internal/video-storyboard/render-eligibility',
   '/api/agency/workflows/readiness',
   '/api/agency/workflows/status',
   '/api/agency/social/publishing/workflows/readiness'

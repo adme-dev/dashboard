@@ -23,7 +23,7 @@ describe('actual worker authority adapter', () => {
     queryOne.mockResolvedValue({ ...row, manifest: msg, manifest_hash: await digestMcpRequestBody(msg) })
     await expect(loadStoryboardRenderInputs(msg)).resolves.toMatchObject({ manifest: msg })
   })
-  it.each(['http://app.xeroflow.io', 'https://evil.test', 'https://app.xeroflow.io@evil.test', 'https://app.xeroflow.io/other'])('rejects callback origin %s', async (origin) => {
+  it.each(['http://app.xeroflow.io', 'https://evil.test', 'https://app.xeroflow.io@evil.test', 'https://app.xeroflow.io/other', 'https://agency-dashboard.pages.dev', 'https://agency-dashboard-6cm.pages.dev.evil.test', 'https://preview.agency-dashboard-6cm.pages.dev'])('rejects callback origin %s', async (origin) => {
     const fetch = vi.spyOn(globalThis, 'fetch')
     await expect(callStoryboardRenderAuthority({ STORYBOARD_APP_ORIGIN: origin, STORYBOARD_RENDER_SECRET: 'test' }, { action: 'check', jobId: 'j', manifestHash: 'h' })).rejects.toThrow()
     expect(fetch).not.toHaveBeenCalled()
