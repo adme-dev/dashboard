@@ -417,10 +417,12 @@ export function createEvaluationOrchestrator(rawDependencies: Partial<Evaluation
       const material = validateMaterial(loaded)
       assertBudgetWithinPack(material, input.budget)
       const assignment = await dependencies.resolveModelAssignment(material.modelFeatureKey)
-      if (assignment.provider !== input.modelProvider || assignment.modelId !== input.modelId) {
+      // Model Ops may expose a routing prefix; freeze the same provider-scoped catalog identity
+      // used by assignment resolution and execution, never an arbitrary client model alias.
+      const option = dependencies.getModelCatalogOption(input.modelProvider, input.modelId)
+      if (assignment.provider !== input.modelProvider || assignment.modelId !== (option?.modelId ?? input.modelId)) {
         throw new EvaluationOrchestrationError('model_assignment_mismatch', 409, 'The selected model is not the pack current assignment')
       }
-      const option = dependencies.getModelCatalogOption(input.modelProvider, input.modelId)
       if (!option || option.status === 'deprecated' || !option.pricing) {
         throw new EvaluationOrchestrationError('model_pricing_unavailable', 422, 'Trusted pricing is unavailable for the selected model')
       }
@@ -434,7 +436,7 @@ export function createEvaluationOrchestrator(rawDependencies: Partial<Evaluation
       const evaluationRunId = UUID.parse(dependencies.randomUUID())
       const rateCardId = UUID.parse(dependencies.randomUUID())
       const inputContract = evaluationModelInputContract(material)
-      const identity = materialIdentity(material, input.modelProvider, input.modelId, inputContract)
+      const identity = materialIdentity(material, input.modelProvider, option.modelId, inputContract)
       const admission = planEvaluationExecution({
         mode: 'model_simulation',
         evaluationRunId,
@@ -494,6 +496,14 @@ export function createEvaluationOrchestrator(rawDependencies: Partial<Evaluation
     }, rawActorId: string): Promise<StoredEvaluationCostApproval> {
       const input = ApproveRequestSchema.parse(raw)
       const actorId = UUID.parse(rawActorId)
+      const loaded = await dependencies.materialRepository.loadForEvaluationRun(input.evaluationRunId)
+      if (loaded?.run.createdBy === actorId) {
+        throw new EvaluationOrchestrationError(
+          'evaluation_cost_self_approval',
+          409,
+          'The preflight creator cannot approve this evaluation cost'
+        )
+      }
       return dependencies.approvalStore.approvePlan({
         approvalId: UUID.parse(dependencies.randomUUID()),
         evaluationRunId: input.evaluationRunId,
@@ -548,6 +558,13 @@ export function createEvaluationOrchestrator(rawDependencies: Partial<Evaluation
       const artifacts = await dependencies.approvalStore.loadTrustedArtifacts(input)
       if (!artifacts) {
         throw new EvaluationOrchestrationError('evaluation_approval_unavailable', 409, 'Evaluation approval evidence is missing or revoked')
+      }
+      if (artifacts.approval.approvedBy === loaded.run.createdBy) {
+        throw new EvaluationOrchestrationError(
+          'evaluation_cost_self_approval',
+          409,
+          'A self-approved cost artifact cannot authorize evaluation execution'
+        )
       }
       const option = dependencies.getModelCatalogOption(currentIdentity.modelProvider, currentIdentity.modelId)
       if (!option || !option.pricing) {

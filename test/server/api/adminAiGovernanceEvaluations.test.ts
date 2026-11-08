@@ -187,6 +187,33 @@ describe('admin AI governance evaluation APIs', () => {
     expect(approveEvaluationCost).not.toHaveBeenCalled()
   })
 
+  it('forwards the authorized approver and surfaces creator self-approval', async () => {
+    const handler = createEvaluationApprovePostHandler({
+      requirePermission, requireWriteAccess, readBody, getRouterParam,
+      setResponseHeader, setResponseStatus, approveEvaluationCost
+    })
+    const body = {
+      planDigest: DIGEST,
+      maxSpendUsdMicros: 27,
+      expiresAt: '2026-08-03T03:00:00.000Z',
+      reason: 'Approve the exact bounded evaluation.'
+    }
+    readBody.mockResolvedValue(body)
+    const currentEvent = event()
+
+    await handler(currentEvent)
+    expect(approveEvaluationCost).toHaveBeenCalledWith({ evaluationRunId: RUN_ID, ...body }, ACTOR_ID)
+    expect(setResponseStatus).toHaveBeenCalledWith(currentEvent, 201)
+
+    approveEvaluationCost.mockRejectedValue(Object.assign(
+      new Error('The preflight creator cannot approve this evaluation cost'),
+      { name: 'EvaluationOrchestrationError', code: 'evaluation_cost_self_approval', statusCode: 409 }
+    ))
+    const failure = await handler(event()).catch((error: unknown) => error)
+    expect(failure).toMatchObject({ statusCode: 409, data: { code: 'evaluation_cost_self_approval' } })
+    expect(JSON.stringify(failure)).not.toContain('preflight creator')
+  })
+
   it('run accepts only stored artifact IDs and digests', async () => {
     const handler = createEvaluationRunPostHandler({
       requirePermission, requireWriteAccess, readBody, getRouterParam,

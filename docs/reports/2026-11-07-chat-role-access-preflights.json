@@ -1,0 +1,240 @@
+{
+  "observedAt": "2026-11-07",
+  "environment": "https://app.xeroflow.io",
+  "status": "preflight_only_requires_independent_cost_approval",
+  "modelCallsExecuted": 0,
+  "maxModelCalls": 125,
+  "totalEstimatedUpperBoundUsdMicros": 240000,
+  "plans": [
+    {
+      "pack": "bookkeeping_read_draft",
+      "releaseId": "119eafef-bc1e-446c-8d18-ce2d4b6c2507",
+      "request": {
+        "packVersionId": "a3741e9b-dfaf-47f1-b839-0c63ed620e97",
+        "modelProvider": "groq",
+        "modelId": "openai/gpt-oss-120b",
+        "budget": {
+          "maxCases": 25,
+          "maxInputTokensPerCase": 8000,
+          "maxOutputTokensPerCase": 1200,
+          "maxCostUsdMicrosPerCase": 40000,
+          "maxLatencyMsPerCase": 20000,
+          "maxTotalCostUsdMicros": 1000000,
+          "maxWallTimeMs": 505000
+        }
+      },
+      "response": {
+        "status": 201,
+        "data": {
+          "evaluationRunId": "024dd3fc-ea3d-4097-9c32-b5a14ea845a0",
+          "departmentId": "4ed75a2c-c4b4-4ade-b35c-c5487500a245",
+          "planDigest": "23ed96538a2ed0d9252813adf517aa144293380be63ac64fadce13d46d678ddf",
+          "rateCardId": "d9eb8adf-ef64-4b4d-b08f-abffa0f048e9",
+          "estimatedUpperBoundUsdMicros": 48000,
+          "maxModelCalls": 25,
+          "decision": "requires_cost_approval"
+        }
+      },
+      "verifiedRun": {
+        "id": "024dd3fc-ea3d-4097-9c32-b5a14ea845a0",
+        "status": "queued",
+        "gatePassed": null,
+        "caseCount": 0,
+        "totalCostUsdMicros": 0,
+        "materialIdentity": {
+          "evaluationSuiteVersionId": "1779550b-4426-457a-83fd-0d29cb4693c3",
+          "packVersionId": "a3741e9b-dfaf-47f1-b839-0c63ed620e97",
+          "capabilityVersionId": null,
+          "modelProvider": "groq",
+          "modelId": "openai/gpt-oss-120b",
+          "promptVersionDigest": "af8678f94a6978d5cd602f92070e97a2900217080fb1fa29d92d79b3195fd303",
+          "toolsetVersionDigest": "f6de83deffa801926a6fcce232c5e6025fad674d71312a33f98acfbd21e43ebe"
+        }
+      }
+    },
+    {
+      "pack": "finance_read_draft",
+      "releaseId": "84f3c652-cd34-48e4-9849-96c7c28aadef",
+      "request": {
+        "packVersionId": "ab9a7231-7b94-420d-bbf3-d3d687e740f4",
+        "modelProvider": "groq",
+        "modelId": "openai/gpt-oss-120b",
+        "budget": {
+          "maxCases": 25,
+          "maxInputTokensPerCase": 8000,
+          "maxOutputTokensPerCase": 1200,
+          "maxCostUsdMicrosPerCase": 40000,
+          "maxLatencyMsPerCase": 20000,
+          "maxTotalCostUsdMicros": 1000000,
+          "maxWallTimeMs": 505000
+        }
+      },
+      "response": {
+        "status": 201,
+        "data": {
+          "evaluationRunId": "01ab32a6-07ea-46cb-95b4-329258c675f3",
+          "departmentId": "c2ea80fc-f30e-4872-ac82-63e346c7dc18",
+          "planDigest": "eb06fb579c4a74f7d0d3c86137fd7f8164e14b13ae527706ccdc8edf3373bd9b",
+          "rateCardId": "0e7fc649-87bd-4fe3-96a1-3b62a4e1e77f",
+          "estimatedUpperBoundUsdMicros": 48000,
+          "maxModelCalls": 25,
+          "decision": "requires_cost_approval"
+        }
+      },
+      "verifiedRun": {
+        "id": "01ab32a6-07ea-46cb-95b4-329258c675f3",
+        "status": "queued",
+        "gatePassed": null,
+        "caseCount": 0,
+        "totalCostUsdMicros": 0,
+        "materialIdentity": {
+          "evaluationSuiteVersionId": "5def3649-8570-4066-88f5-47b16dac15c4",
+          "packVersionId": "ab9a7231-7b94-420d-bbf3-d3d687e740f4",
+          "capabilityVersionId": null,
+          "modelProvider": "groq",
+          "modelId": "openai/gpt-oss-120b",
+          "promptVersionDigest": "4422bfea64d1421bbbb5c13da968bdaa93b0aa4258a6e1248ddbb019b1b08a56",
+          "toolsetVersionDigest": "a7f30eabf5c58605c080c9a03ad54f95b3e05d2933dea16c9e4d4759024ab6e9"
+        }
+      }
+    },
+    {
+      "pack": "paid_media_read_draft",
+      "releaseId": "d18c55f0-557e-4b30-8020-9c1589014fd2",
+      "request": {
+        "packVersionId": "e5d4b746-2e7c-450b-b407-f3917817444a",
+        "modelProvider": "groq",
+        "modelId": "openai/gpt-oss-120b",
+        "budget": {
+          "maxCases": 25,
+          "maxInputTokensPerCase": 8000,
+          "maxOutputTokensPerCase": 1200,
+          "maxCostUsdMicrosPerCase": 40000,
+          "maxLatencyMsPerCase": 20000,
+          "maxTotalCostUsdMicros": 1000000,
+          "maxWallTimeMs": 505000
+        }
+      },
+      "response": {
+        "status": 201,
+        "data": {
+          "evaluationRunId": "9823acd1-08a2-44cc-a078-c7235ae426f3",
+          "departmentId": "c3e90c53-2052-4393-ad88-fbb6bc1d8dc5",
+          "planDigest": "a33e452ee0f4dd1b3dd8b50816b6707b1c965a8b1ccc58459b117607f2d73a78",
+          "rateCardId": "6827cda1-5aa9-4ef7-9831-a160c303e668",
+          "estimatedUpperBoundUsdMicros": 48000,
+          "maxModelCalls": 25,
+          "decision": "requires_cost_approval"
+        }
+      },
+      "verifiedRun": {
+        "id": "9823acd1-08a2-44cc-a078-c7235ae426f3",
+        "status": "queued",
+        "gatePassed": null,
+        "caseCount": 0,
+        "totalCostUsdMicros": 0,
+        "materialIdentity": {
+          "evaluationSuiteVersionId": "84df6ad0-314f-40fe-8333-3d15b4ceca2a",
+          "packVersionId": "e5d4b746-2e7c-450b-b407-f3917817444a",
+          "capabilityVersionId": null,
+          "modelProvider": "groq",
+          "modelId": "openai/gpt-oss-120b",
+          "promptVersionDigest": "26b595252352433949ff595f5473f60fa0132f7f35bc4a1914f5b97f798141d0",
+          "toolsetVersionDigest": "8aa0cf195d18d6096f4c87779a60ff9b6d476762a21e93d9f9a4226aa21c0ee7"
+        }
+      }
+    },
+    {
+      "pack": "production_read_draft",
+      "releaseId": "2a6579d4-94c4-439b-8d21-b526a3497d6b",
+      "request": {
+        "packVersionId": "ba3cd8e3-fcd1-44b9-9c4b-af28a9a9040c",
+        "modelProvider": "groq",
+        "modelId": "openai/gpt-oss-120b",
+        "budget": {
+          "maxCases": 25,
+          "maxInputTokensPerCase": 8000,
+          "maxOutputTokensPerCase": 1200,
+          "maxCostUsdMicrosPerCase": 40000,
+          "maxLatencyMsPerCase": 20000,
+          "maxTotalCostUsdMicros": 1000000,
+          "maxWallTimeMs": 505000
+        }
+      },
+      "response": {
+        "status": 201,
+        "data": {
+          "evaluationRunId": "933c2107-d390-448a-85f1-41a9f0dbb9c6",
+          "departmentId": "48723234-b032-4fb0-9ac3-91ab76242ed3",
+          "planDigest": "8485d2405ff412bcbf5014efd9988fa031155cb6580addfd2cb6cece10ceabd4",
+          "rateCardId": "9fb96155-17b7-4170-88a6-99d5c693f277",
+          "estimatedUpperBoundUsdMicros": 48000,
+          "maxModelCalls": 25,
+          "decision": "requires_cost_approval"
+        }
+      },
+      "verifiedRun": {
+        "id": "933c2107-d390-448a-85f1-41a9f0dbb9c6",
+        "status": "queued",
+        "gatePassed": null,
+        "caseCount": 0,
+        "totalCostUsdMicros": 0,
+        "materialIdentity": {
+          "evaluationSuiteVersionId": "f98ba69a-3e7c-46ac-8a04-57a7cf0b8208",
+          "packVersionId": "ba3cd8e3-fcd1-44b9-9c4b-af28a9a9040c",
+          "capabilityVersionId": null,
+          "modelProvider": "groq",
+          "modelId": "openai/gpt-oss-120b",
+          "promptVersionDigest": "ad1882095f3fa9153bca782f593bbbd860f8a2d1b39465693a2a46f89efb20c2",
+          "toolsetVersionDigest": "0b801982c23ff00e3a24fa5599e8b3a7734168dddddf9f7317fcc31d30308108"
+        }
+      }
+    },
+    {
+      "pack": "account_management_read_draft",
+      "releaseId": "5db1f9b9-d87b-4d2b-a7f8-107af17f0f96",
+      "request": {
+        "packVersionId": "47468e9d-6d7a-4004-a1be-03cdcb03552a",
+        "modelProvider": "groq",
+        "modelId": "openai/gpt-oss-120b",
+        "budget": {
+          "maxCases": 25,
+          "maxInputTokensPerCase": 8000,
+          "maxOutputTokensPerCase": 1200,
+          "maxCostUsdMicrosPerCase": 40000,
+          "maxLatencyMsPerCase": 20000,
+          "maxTotalCostUsdMicros": 1000000,
+          "maxWallTimeMs": 505000
+        }
+      },
+      "response": {
+        "status": 201,
+        "data": {
+          "evaluationRunId": "50627df9-9f9e-44fc-8ef7-4f48d9d5c638",
+          "departmentId": "5cd3e758-80c7-4998-9f68-da6751d27fb4",
+          "planDigest": "4f0bc562e5de08532df6828ef536c298eb45a705de89a7e3211c0a095f9010a0",
+          "rateCardId": "1394b3f1-e71f-4d25-b47c-002cb735086d",
+          "estimatedUpperBoundUsdMicros": 48000,
+          "maxModelCalls": 25,
+          "decision": "requires_cost_approval"
+        }
+      },
+      "verifiedRun": {
+        "id": "50627df9-9f9e-44fc-8ef7-4f48d9d5c638",
+        "status": "queued",
+        "gatePassed": null,
+        "caseCount": 0,
+        "totalCostUsdMicros": 0,
+        "materialIdentity": {
+          "evaluationSuiteVersionId": "c711896e-bc80-4e38-a960-e9ef3fb462aa",
+          "packVersionId": "47468e9d-6d7a-4004-a1be-03cdcb03552a",
+          "capabilityVersionId": null,
+          "modelProvider": "groq",
+          "modelId": "openai/gpt-oss-120b",
+          "promptVersionDigest": "62a98df0181ddc0ee16d56673c748e43e86a487abc4d77e36a0fb2be450b999e",
+          "toolsetVersionDigest": "0bad07122db6b46581fce9b082e4df3ba5aad080cfe0fb280e73d0ce0d6c6fa5"
+        }
+      }
+    }
+  ]
+}

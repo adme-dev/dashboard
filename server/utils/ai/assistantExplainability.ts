@@ -61,9 +61,11 @@ export function buildMyAssistantExplainability(
     context.identity.userId
   )
   const granted = new Set(context.permissionGroups)
-  const permissionTools = godModeActive
-    ? registry
-    : registry.filter(tool => !tool.requiredPermission || granted.has(tool.requiredPermission))
+  // Match native execution: owner release authority cannot supply an accounting grant.
+  const permissionTools = registry.filter((tool) => {
+    if (tool.requiredPermission === 'FINANCE' && !granted.has('FINANCE')) return false
+    return godModeActive || !tool.requiredPermission || granted.has(tool.requiredPermission)
+  })
   const baseline = composeEffectiveAssistantTools({
     rbacFilteredTools: permissionTools,
     catalogRows: context.catalogRows,
@@ -132,7 +134,7 @@ export function buildMyAssistantExplainability(
             accessBasis: godModeActive ? 'god_mode' as const : 'company_owner' as const,
             label: godModeActive ? 'God mode active' : 'Company owner access',
             description: godModeActive
-              ? 'All registered tools are available. Authenticated identity, tenant isolation, and immutable audit still apply.'
+              ? 'Registered tools are available within explicit Finance grants. Authenticated identity, tenant isolation, and immutable audit still apply.'
               : 'Tools remain governed by catalog, permission, role, and personal assistant policy.',
             toolCoverage: {
               available: effective.tools.length,

@@ -76,3 +76,8 @@ A three-format render was accepted as job `3afe794d-4073-4469-98f8-1378846fbc9e`
 Local real-Postgres checks cover canonical storyboard transactions and the nonpaid runner. Local Chrome/FFmpeg produced all three formats with audible fixture audio and exact-copy/hidden-content checks; this is macOS browser evidence, not a new Linux AMD64 or physical-device result. Authorization repairs consistently reuse the existing owner/admin-or-project-creator boundary for project listing, reads, media upload/download, history, rename and delete. Other staff access is tested locally without probing customer projects.
 
 Evidence directory: `/Volumes/Backups/xf-video-followthrough-20261108/` (`production-hosted-check.json`, `hosted-t09.json`, `hosted-adjustment.json`, `hosted-six-shot-preview.png`, `local-render/receipt.json`, `t09-consolidated.log`). Source repairs are not production claims until their merge/deployment receipt is appended. T09 remains partial; T10–T14 and FF-RD01–05 are not accepted, and no paid provider submission was made.
+
+
+### Independent review follow-through — 8 November
+
+Claude Code 2.1.319 (reported model `claude-opus-5-5`) reviewed current-main T09 source and dashboard UX. Its confirmed render-distribution access finding is repaired in the pilot release candidate: save-to-library, send-to-portal and social-draft routes authorize the project before execution-ledger replay as well as before any side effect. Regression checks reject another project creator before job lookup, signing, asset/review/draft writes or caption generation. No customer export or provider call was used for verification. Dashboard UX findings are tracked separately; source review is not hosted acceptance.
