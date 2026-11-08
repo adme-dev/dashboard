@@ -142,8 +142,13 @@ export default defineEventHandler(async (event) => {
     const tenantId = existing.project.clientId ?? 'agency'
     const duplicate = await getVideoGenerationJobByIdempotencyKey(tenantId, body.idempotencyKey)
     if (duplicate) {
-      if (duplicate.projectId !== body.projectId) {
-        throw createError({ statusCode: 409, statusMessage: 'Idempotency key is already used for another project' })
+      const fields = ['projectId', 'mode', 'modelId', 'prompt', 'sourceAssetIds', 'durationSeconds', 'aspectRatio', 'subjectType'] as const
+      const sameRequest = fields.every(field => JSON.stringify(duplicate[field]) === JSON.stringify(body[field]))
+        && (duplicate.resolution ?? null) === (body.resolution ?? null)
+        && duplicate.createdBy === user.id
+        && duplicate.timelineId === (existing.timeline?.id ?? existing.project.currentTimelineId ?? null)
+      if (!sameRequest) {
+        throw createError({ statusCode: 409, statusMessage: 'Idempotency key is already used for a different request' })
       }
       setResponseStatus(event, 202)
       return { job: duplicate, reused: true }
@@ -250,7 +255,7 @@ export default defineEventHandler(async (event) => {
 
     if (!reservation.ok || !reservation.job) {
       if (reservation.reason === 'idempotency_key_conflict') {
-        throw createError({ statusCode: 409, statusMessage: 'Idempotency key is already used for another project' })
+        throw createError({ statusCode: 409, statusMessage: 'Idempotency key is already used for a different request' })
       }
       throw createError({
         statusCode: 402,

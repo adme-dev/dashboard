@@ -1,3 +1,4 @@
+import { GLOBAL_VIDEO_GENERATION_LIABILITY_SUM_SQL } from '~~/shared/video/generationLiability'
 import { z } from 'zod'
 import type { AiTool } from '../toolRegistry'
 import type { ToolContext, ToolResult } from '../toolContext'
@@ -100,13 +101,10 @@ export type GenerationSpendStatus = {
 /** Month-to-date generation spend against the gateway cap. Providers on the AI Gateway
  *  path return no per-call billed figure (Cloudflare unified billing), so this is the
  *  same reservation SUM the budget gate enforces: actual cost where reported, estimate
- *  otherwise, over jobs still holding budget this month. */
+ *  otherwise, including unresolved liability from earlier months. */
 async function inspectGenerationSpendStatus(): Promise<GenerationSpendStatus | null> {
   const rows = await queryRows<{ total: string }>(
-    `SELECT COALESCE(SUM(COALESCE(actual_cost_cents, estimated_cost_cents)), 0) AS total
-       FROM video_generation_jobs
-      WHERE status IN ('queued','running','succeeded')
-        AND created_at >= date_trunc('month', now())`,
+    GLOBAL_VIDEO_GENERATION_LIABILITY_SUM_SQL,
     []
   )
   const cents = Number(rows[0]?.total ?? 0)

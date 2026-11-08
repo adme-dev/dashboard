@@ -11,10 +11,16 @@ export const isStoryboardReferenceWritePath = (path: string) => route.test(path)
 export const isStoryboardApplyWritePath = (path: string) => route.test(path.replace(/\/apply$/, '/references')) && path.endsWith('/apply')
 export const isStoryboardRevisionWritePath = (path: string) => route.test(path.replace(/\/revisions$/, '/references')) && path.endsWith('/revisions')
 export const isStoryboardTimelineReviewWritePath = (path: string) => route.test(path.replace(/\/timeline-review$/, '/references')) && path.endsWith('/timeline-review')
+const productionRoot = /^\/api\/agency\/video\/projects\/[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}\/storyboard\/production/i
+export function isStoryboardProductionWritePath(path: string): boolean {
+  const suffix = path.replace(productionRoot, '')
+  return suffix !== path && (/^\/attempts$/.test(suffix) || /^\/attempts\/[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}\/(approve|cancel)$/i.test(suffix))
+}
+export const isStoryboardAllowanceWritePath = (path: string) => productionRoot.test(path) && path.replace(productionRoot, '') === '/allowance'
 function operation(event: H3Event) {
   const context = event.context as Record<PropertyKey, unknown>
   if (!context[key]) context[key] = defineGodModeTransactionOperation({
-    routeOrTool: `${(isStoryboardRevisionWritePath(getRequestURL(event).pathname) || isStoryboardApplyWritePath(getRequestURL(event).pathname) || isStoryboardTimelineReviewWritePath(getRequestURL(event).pathname)) ? 'POST' : 'PUT'} ${getRequestURL(event).pathname}`, mutationName: 'storyboard revision',
+    routeOrTool: `${(isStoryboardRevisionWritePath(getRequestURL(event).pathname) || isStoryboardApplyWritePath(getRequestURL(event).pathname) || isStoryboardTimelineReviewWritePath(getRequestURL(event).pathname) || isStoryboardProductionWritePath(getRequestURL(event).pathname)) ? 'POST' : 'PUT'} ${getRequestURL(event).pathname}`, mutationName: 'storyboard revision',
     missingResultMessage: 'Storyboard reference revision has no durable result', retryableInProgress: true
   })
   return context[key] as GodModeTransactionOperation
@@ -28,7 +34,11 @@ export function registerGodModeStoryboardMutationFamilies() {
   const revisions = registerGodModeMutationFamily({ family: 'video-storyboard-revisions', method: 'POST', matchesPath: isStoryboardRevisionWritePath, prepare })
   const applications = registerGodModeMutationFamily({ family: 'video-storyboard-apply', method: 'POST', matchesPath: isStoryboardApplyWritePath, prepare })
   const reviews = registerGodModeMutationFamily({ family: 'video-storyboard-timeline-review', method: 'POST', matchesPath: isStoryboardTimelineReviewWritePath, prepare })
+  const production = registerGodModeMutationFamily({ family: 'video-storyboard-production', method: 'POST', matchesPath: isStoryboardProductionWritePath, prepare })
+  const allowance = registerGodModeMutationFamily({ family: 'video-storyboard-allowance', method: 'PUT', matchesPath: isStoryboardAllowanceWritePath, prepare })
   return () => {
+    allowance()
+    production()
     reviews()
     applications()
     revisions()
@@ -37,11 +47,11 @@ export function registerGodModeStoryboardMutationFamilies() {
 }
 
 /** Canonical operation IDs protect staff too; owner replay reauthorizes in that core. */
-export async function executeStoryboardReferenceWrite<T extends { id: string }>(event: H3Event, mutate: (db: GodModeTransactionDb) => Promise<T>): Promise<T> {
+export async function executeStoryboardReferenceWrite<T extends { id: string }>(event: H3Event, mutate: (db: GodModeTransactionDb) => Promise<T>, replay?: (db: GodModeTransactionDb, receiptId: string) => Promise<T>): Promise<T> {
   const prepared = (event.context as Record<PropertyKey, unknown>)[key] as GodModeTransactionOperation | undefined
   if (!prepared) return transaction(mutate)
   return executeGodModeTransactionMutation(event, prepared, transaction, mutate, async (db, receiptId) => {
-    const result = await mutate(db)
+    const result = await (replay ? replay(db, receiptId) : mutate(db))
     if (result.id !== receiptId) throw createError({ statusCode: 409, statusMessage: 'Storyboard receipt mismatch' })
     return result
   })

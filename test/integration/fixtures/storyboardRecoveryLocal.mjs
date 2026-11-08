@@ -14,7 +14,7 @@ try {
     CREATE TABLE role_permission_groups(role_id uuid REFERENCES custom_roles(id) ON DELETE CASCADE, permission_group text);
     CREATE TABLE client_team_assignments(team_member_id uuid, client_id uuid);
     CREATE TABLE brand_kits(id uuid PRIMARY KEY, client_id uuid, name text, colors jsonb DEFAULT '[]', fonts jsonb DEFAULT '[]', logos jsonb DEFAULT '[]', guidelines text, created_by uuid, created_at timestamptz DEFAULT now(), updated_at timestamptz DEFAULT now());`)
-  for (const name of ['160_media_timelines.sql', '174_video_assets.sql', '176_video_gen_source_assets.sql', '500_media_timeline_edit_revision.sql', '501_video_storyboard_persistence.sql', '502_video_storyboard_candidates.sql', '503_video_storyboard_render_review.sql']) {
+  for (const name of ['160_media_timelines.sql', '174_video_assets.sql', '175_video_generation_jobs.sql', '176_video_gen_source_assets.sql', '500_media_timeline_edit_revision.sql', '501_video_storyboard_persistence.sql', '502_video_storyboard_candidates.sql', '503_video_storyboard_render_review.sql', '506_video_generation_liability.sql', '507_video_storyboard_production_attempts.sql', '508_video_generation_output_identity.sql']) {
     await pool.query(await readFile(new URL(`../../../server/database/migrations/${name}`, import.meta.url), 'utf8'))
   }
   console.log('Disposable local base fixtures and actual storyboard migrations applied')

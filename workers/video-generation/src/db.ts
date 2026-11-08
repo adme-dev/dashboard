@@ -1,32 +1,36 @@
 import pg from 'pg'
-import type { VideoGenerationJob, VideoGenerationJobStatus } from '../../../server/utils/video-generation/types'
+import { AsyncLocalStorage } from 'node:async_hooks'
+import {
+  CLAIM_VIDEO_GENERATION_SUBMISSION_SQL,
+  MARK_VIDEO_GENERATION_FAILED_SQL,
+  MARK_VIDEO_GENERATION_RUNNING_SQL,
+  MARK_VIDEO_GENERATION_SUCCEEDED_SQL,
+  MARK_VIDEO_GENERATION_UNKNOWN_SQL,
+  explicitActualCostCents,
+  readVideoGenerationLiability,
+  readVideoGenerationSourceAssetIds,
+} from '../../../shared/video/generationLiability'
+import {
+  stampVideoGenerationTransition,
+  type VideoGenerationJob,
+  type VideoGenerationJobStatus,
+} from '../../../server/utils/video-generation/types'
 
-let client: pg.Client | null = null
-let connectPromise: Promise<pg.Client> | null = null
-
-function getConnectionString(): string {
-  const cs = (globalThis as any).__HYPERDRIVE_CS || process.env.DATABASE_URL
-  if (!cs) throw new Error('No HYPERDRIVE connection string or DATABASE_URL')
-  return cs
+// A connection belongs to one query/request, never a module-global Worker isolate.
+const connectionScope = new AsyncLocalStorage<string>()
+export function withVideoGenerationDatabase<T>(connectionString: string, run: () => Promise<T>): Promise<T> {
+  return connectionScope.run(connectionString, run)
 }
-
-async function getClient(): Promise<pg.Client> {
-  if (client) return client
-  if (connectPromise) return connectPromise
-  connectPromise = (async () => {
-    const c = new pg.Client({ connectionString: getConnectionString() })
-    await c.connect()
-    client = c
-    connectPromise = null
-    return c
-  })()
-  return connectPromise
-}
-
 async function queryRows<T = any>(sql: string, params?: any[]): Promise<T[]> {
-  const c = await getClient()
-  const result = await c.query(sql, params)
-  return result.rows as T[]
+  const connectionString = connectionScope.getStore()
+  if (!connectionString) throw new Error('Video generation database context unavailable')
+  const client = new pg.Client({ connectionString, connectionTimeoutMillis: 10000 })
+  try {
+    await client.connect()
+    return (await client.query(sql, params)).rows as T[]
+  } finally {
+    await client.end().catch(() => undefined)
+  }
 }
 
 async function queryOne<T = any>(sql: string, params?: any[]): Promise<T | null> {
@@ -77,24 +81,12 @@ export async function dbRecordAiInvocation(input: WorkerAiInvocationInput): Prom
     )
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    if (!message.includes('ai_invocations')) console.warn('video-generation.ai-invocation-record-failed', message)
+    if (!message.includes('ai_invocations')) console.warn('video-generation.ai-invocation-record-failed')
   }
-}
-
-function asStringArray(value: unknown): string[] {
-  if (Array.isArray(value)) return value.map(String)
-  if (typeof value === 'string') {
-    try {
-      const parsed = JSON.parse(value)
-      return Array.isArray(parsed) ? parsed.map(String) : []
-    } catch {
-      return []
-    }
-  }
-  return []
 }
 
 function mapJob(row: any): VideoGenerationJob {
+  const estimatedCostCents = Number(row.estimated_cost_cents)
   return {
     id: row.id,
     tenantId: row.tenant_id,
@@ -106,21 +98,23 @@ function mapJob(row: any): VideoGenerationJob {
     modelId: row.model_id,
     provider: row.provider,
     prompt: row.prompt,
-    sourceAssetIds: asStringArray(row.source_asset_ids),
+    sourceAssetIds: readVideoGenerationSourceAssetIds(row.source_asset_ids),
     durationSeconds: Number(row.duration_seconds),
     aspectRatio: row.aspect_ratio,
     resolution: row.resolution ?? null,
     subjectType: row.subject_type,
     complianceStatus: row.compliance_status,
-    complianceReasons: asStringArray(row.compliance_reasons),
-    estimatedCostCents: Number(row.estimated_cost_cents),
+    complianceReasons: readVideoGenerationSourceAssetIds(row.compliance_reasons),
+    estimatedCostCents,
     actualCostCents: row.actual_cost_cents == null ? null : Number(row.actual_cost_cents),
+    ...readVideoGenerationLiability(row, estimatedCostCents),
     idempotencyKey: row.idempotency_key,
     providerRequestId: row.provider_request_id ?? null,
     providerStatus: row.provider_status ?? null,
     providerResultUrl: row.provider_result_url ?? null,
     outputAssetId: row.output_asset_id ?? null,
     outputR2Key: row.output_r2_key ?? null,
+    outputSha256: row.output_sha256 ?? null,
     errorMessage: row.error_message ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -134,27 +128,38 @@ export async function dbGetVideoGenerationJob(id: string): Promise<VideoGenerati
   return row ? mapJob(row) : null
 }
 
-export async function dbMarkVideoGenerationJobRunning(id: string, providerRequestId?: string | null): Promise<VideoGenerationJob> {
-  const row = await queryOne(
-    `UPDATE video_generation_jobs
-     SET status = 'running', provider_request_id = COALESCE($2, provider_request_id),
-         provider_status = 'running', started_at = COALESCE(started_at, now()), updated_at = now()
-     WHERE id = $1 RETURNING *`,
-    [id, providerRequestId ?? null]
-  )
-  if (!row) throw new Error(`video generation job ${id} not found`)
-  return mapJob(row)
+async function updateJobOrCurrent(sql: string, params: unknown[], id: string): Promise<VideoGenerationJob> {
+  const row = await queryOne(sql, params)
+  if (row) return stampVideoGenerationTransition(mapJob(row), true)
+  const existing = await dbGetVideoGenerationJob(id)
+  if (!existing) throw new Error(`video generation job ${id} not found`)
+  return stampVideoGenerationTransition(existing, false)
 }
 
-export async function dbMarkVideoGenerationJobFailed(id: string, errorMessage: string): Promise<VideoGenerationJob> {
-  const row = await queryOne(
-    `UPDATE video_generation_jobs
-     SET status = 'failed', error_message = $2, completed_at = now(), updated_at = now()
-     WHERE id = $1 RETURNING *`,
-    [id, errorMessage]
-  )
-  if (!row) throw new Error(`video generation job ${id} not found`)
-  return mapJob(row)
+export async function dbClaimVideoGenerationSubmission(id: string): Promise<VideoGenerationJob | null> {
+  const row = await queryOne(CLAIM_VIDEO_GENERATION_SUBMISSION_SQL, [id])
+  return row ? mapJob(row) : null
+}
+
+export async function dbMarkVideoGenerationJobRunning(id: string, providerRequestId?: string | null): Promise<VideoGenerationJob> {
+  return updateJobOrCurrent(MARK_VIDEO_GENERATION_RUNNING_SQL, [id, providerRequestId ?? null], id)
+}
+
+export async function dbMarkVideoGenerationJobUnknown(
+  id: string,
+  errorMessage: string,
+  providerRequestId?: string | null,
+): Promise<VideoGenerationJob> {
+  return updateJobOrCurrent(MARK_VIDEO_GENERATION_UNKNOWN_SQL, [id, errorMessage, providerRequestId ?? null], id)
+}
+
+export async function dbMarkVideoGenerationJobFailed(
+  id: string,
+  errorMessage: string,
+  actualCostCents?: number | null,
+): Promise<VideoGenerationJob> {
+  const explicit = explicitActualCostCents(actualCostCents)
+  return updateJobOrCurrent(MARK_VIDEO_GENERATION_FAILED_SQL, [id, errorMessage, explicit != null, explicit], id)
 }
 
 export async function dbMarkVideoGenerationJobSucceeded(input: {
@@ -163,18 +168,18 @@ export async function dbMarkVideoGenerationJobSucceeded(input: {
   providerResultUrl: string
   outputAssetId: string | null
   outputR2Key: string | null
+  outputSha256?: string | null
   actualCostCents: number | null
 }): Promise<VideoGenerationJob> {
-  const row = await queryOne(
-    `UPDATE video_generation_jobs
-     SET status = 'succeeded', provider_status = $2, provider_result_url = $3,
-         output_asset_id = $4, output_r2_key = $5, actual_cost_cents = $6,
-         completed_at = now(), updated_at = now()
-     WHERE id = $1 RETURNING *`,
-    [input.id, input.providerStatus, input.providerResultUrl, input.outputAssetId, input.outputR2Key, input.actualCostCents]
-  )
-  if (!row) throw new Error(`video generation job ${input.id} not found`)
-  return mapJob(row)
+  return updateJobOrCurrent(MARK_VIDEO_GENERATION_SUCCEEDED_SQL, [
+    input.id,
+    input.providerStatus,
+    input.providerResultUrl,
+    input.outputAssetId,
+    input.outputR2Key,
+    input.actualCostCents,
+    input.outputSha256 ?? null,
+  ], input.id)
 }
 
 export async function dbCreateVideoAsset(input: {
@@ -184,6 +189,7 @@ export async function dbCreateVideoAsset(input: {
   sourceProjectId: string | null
   sourceJobId: string | null
   r2Key: string
+  outputSha256?: string | null
   format: string
   width: number | null
   height: number | null
@@ -191,8 +197,11 @@ export async function dbCreateVideoAsset(input: {
 }): Promise<{ id: string; r2Key: string }> {
   const row = await queryOne<{ id: string; r2_key: string }>(
     `INSERT INTO video_assets
-       (client_id, created_by, title, source_project_id, source_job_id, r2_key, format, width, height, duration_sec)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+       (client_id, created_by, title, source_project_id, source_job_id, r2_key, format, width, height, duration_sec, generated_output_sha256)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+     ON CONFLICT (source_job_id, generated_output_sha256)
+       WHERE source_job_id IS NOT NULL AND generated_output_sha256 IS NOT NULL
+     DO UPDATE SET generated_output_sha256 = EXCLUDED.generated_output_sha256
      RETURNING id, r2_key`,
     [
       input.clientId,
@@ -205,6 +214,7 @@ export async function dbCreateVideoAsset(input: {
       input.width,
       input.height,
       input.durationSec,
+      input.outputSha256 ?? null,
     ]
   )
   if (!row) throw new Error('failed to create video asset')

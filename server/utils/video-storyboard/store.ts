@@ -1,3 +1,4 @@
+import { invalidateStoryboardProductionReviewsIn } from './productionInvalidation'
 import { randomUUID } from 'node:crypto'
 import { createError } from 'h3'
 import { z } from 'zod'
@@ -115,6 +116,7 @@ export async function saveReferenceSetIn(db: Db, input: ReferenceSetWrite & { pr
     [randomUUID(), input.projectId, root!.current_reference_set_id, JSON.stringify(pins), storyboardHash(pins), input.operationId, requestHash, input.actor.id]
   )).rows[0]
   await db.query('UPDATE video_storyboards SET current_reference_set_id = $1, updated_at = now() WHERE project_id = $2', [row.id, input.projectId])
+  await invalidateStoryboardProductionReviewsIn(db, input.projectId)
   return mapReference(row)
 }
 export function saveReferenceSet(input: ReferenceSetWrite & { projectId: string, actor: MediaProjectActor }, deps: ReferenceDependencies = {}) {
@@ -184,6 +186,7 @@ export async function saveStoryboardRevisionIn(db: Db, input: SaveStoryboardRevi
   )).rows[0]
   if (!row) throw conflict()
   await db.query('UPDATE video_storyboards SET current_revision_id = $1, updated_at = now() WHERE project_id = $2', [row.id, project.id])
+  await invalidateStoryboardProductionReviewsIn(db, project.id)
   return mapRevision(row)
 }
 export function saveStoryboardRevision(input: SaveStoryboardRevisionInput, deps: ReferenceDependencies = {}) {

@@ -239,3 +239,7 @@ Adopt concepts from OneMinute-Film's [shot schemas](https://github.com/shahriars
 Recommended sequencing is fixed for this plan. Model selection, current migration numbers and isolated preview resources must be resolved from current source/environment when the owning task starts. Lack of a supported provider blocks only that production capability, not the R1 storyboard release.
 
 Freefield adoption is limited to P9/A13–A15 and refinements of existing tasks. Matting, upscaling, generative reframing, reference-sheet/style and camera-transfer investigations remain the separate FF-RD01–FF-RD05 backlog in the research report, with independent capability/terms/cost decisions. They do not block R1 or automatically enter any release.
+
+### 8 November production foundation checkpoint
+
+T10 now has a local held-attempt/approval/accounting implementation using canonical generation jobs, with real PostgreSQL checks for reservation concurrency, unresolved liabilities, immutable approvals and project reassignment. It is not deployed or provider-accepted. T11 durable dispatch and T12 shot-production UI remain downstream work; the existing live storyboard pilot is distinct from those capabilities. See the implementation plan and developer handoff for exact gates and evidence limits.

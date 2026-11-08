@@ -18,7 +18,9 @@ vi.mock('~~/server/utils/db', () => ({
 
 const mockMapVideoGenerationJobRow = vi.fn()
 const mockMarkVideoGenerationJobFailed = vi.fn()
+const mockMarkVideoGenerationJobUnknown = vi.fn()
 vi.mock('~~/server/utils/video-generation/jobs', () => ({
+  markVideoGenerationJobUnknown: (...args: unknown[]) => mockMarkVideoGenerationJobUnknown(...args),
   mapVideoGenerationJobRow: (...args: unknown[]) => mockMapVideoGenerationJobRow(...args),
   markVideoGenerationJobFailed: (...args: unknown[]) => mockMarkVideoGenerationJobFailed(...args),
 }))
@@ -73,5 +75,28 @@ describe('legacy MuAPI webhook endpoint', () => {
 
     await expect(handler(event({ request_id: 'req-1' }) as any)).rejects.toMatchObject({ statusCode: 401 })
     expect(mockQueryOne).not.toHaveBeenCalled()
+  })
+})
+
+
+describe('legacy callback canonical outcome races', () => {
+  beforeEach(() => {
+    mockQueryOne.mockResolvedValue({ id: 'job-1', provider: 'muapi', status: 'running', providerRequestId: 'req-1' })
+  })
+
+  it('returns the terminal winner when failure loses its transition', async () => {
+    mockMarkVideoGenerationJobFailed.mockResolvedValue({ status: 'succeeded' })
+    expect(await handler(event({ request_id: 'req-1', status: 'failed' }) as never)).toEqual({ ok: true, status: 'succeeded' })
+  })
+
+  it('returns the canonical finalize result rather than fabricated success', async () => {
+    mockFinalizeVideoGenerationJob.mockResolvedValue({ status: 'unknown' })
+    expect(await handler(event({ request_id: 'req-1', status: 'completed', outputs: ['https://cdn/out.mp4'] }) as never)).toEqual({ ok: true, status: 'unknown' })
+  })
+
+  it('retains a concurrent success when uncertain finalization loses its transition', async () => {
+    mockFinalizeVideoGenerationJob.mockRejectedValue(new Error('download unavailable'))
+    mockMarkVideoGenerationJobUnknown.mockResolvedValue({ status: 'succeeded' })
+    expect(await handler(event({ request_id: 'req-1', status: 'completed', outputs: ['https://cdn/out.mp4'] }) as never)).toEqual({ ok: true, status: 'succeeded' })
   })
 })

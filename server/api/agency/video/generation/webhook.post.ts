@@ -2,7 +2,7 @@
 // never calls this. Kept for the future fal.ai async path (which will use ED25519, not this).
 import { verifyMuapiSignature } from '~~/server/utils/video-generation/webhookAuth'
 import { queryOne } from '~~/server/utils/db'
-import { mapVideoGenerationJobRow, markVideoGenerationJobFailed } from '~~/server/utils/video-generation/jobs'
+import { mapVideoGenerationJobRow, markVideoGenerationJobFailed, markVideoGenerationJobUnknown } from '~~/server/utils/video-generation/jobs'
 import { finalizeVideoGenerationJob } from '~~/server/utils/video-generation/finalize'
 import { classifyMuapiWebhook } from '~~/server/utils/video-generation/webhookPayload'
 
@@ -30,14 +30,14 @@ export default defineEventHandler(async (event) => {
   const decision = classifyMuapiWebhook(payload)
   if (decision.outcome === 'pending') return { ok: true, ignored: 'non_terminal_status' }
   if (decision.outcome === 'failed') {
-    await markVideoGenerationJobFailed(job.id, decision.errorMessage ?? 'provider failed')
-    return { ok: true, status: 'failed' }
+    const current = await markVideoGenerationJobFailed(job.id, 'provider_failed', decision.actualCostCents)
+    return { ok: true, status: current.status }
   }
   try {
-    await finalizeVideoGenerationJob(job, { status: 'succeeded', outputUrl: decision.outputUrl as string, actualCostCents: decision.actualCostCents })
-  } catch (e: any) {
-    await markVideoGenerationJobFailed(job.id, `finalize failed: ${e?.message ?? String(e)}`)
-    return { ok: true, status: 'failed' }
+    const current = await finalizeVideoGenerationJob(job, { status: 'succeeded', outputUrl: decision.outputUrl as string, actualCostCents: decision.actualCostCents })
+    return { ok: true, status: current.status }
+  } catch {
+    const current = await markVideoGenerationJobUnknown(job.id, 'Provider output finalization needs reconciliation', job.providerRequestId)
+    return { ok: true, status: current.status }
   }
-  return { ok: true, status: 'succeeded' }
 })

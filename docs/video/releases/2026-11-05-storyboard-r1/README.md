@@ -1,5 +1,7 @@
 # Storyboard R1 release evidence
 
+> Historical checkpoint, reconciled 8 November: the deployment-pending statements below describe the original 5 November attempt. PR870 and activation/gallery/kit-recovery PR884–PR886 subsequently merged and deployed; the older local archive branches were retired only after external restore-verified backup. Current implementation, live source readbacks and the still-partial T09 acceptance results are tracked in the [developer handoff](../../../runbooks/video-workspace-developer-handoff.md). Do not use this historical candidate, branch list, disk state or pending deployment row as current release instructions. Full R1 acceptance remains open.
+
 Status: T09 in progress; R1 acceptance and rollout remain open. No application or worker deployment, paid generation or production activation was performed in this checkpoint.
 
 ## Source and environment

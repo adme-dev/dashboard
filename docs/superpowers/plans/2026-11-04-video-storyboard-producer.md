@@ -191,7 +191,7 @@ T01 defines input contracts `StoryboardPlan`, `StoryboardShot`, `AssetBinding`, 
 
 **Checkpoint 5 November:** Current-main reconciliation, broader regression verification and the operator runbook are recorded in the [R1 release evidence index](../../video/releases/2026-11-05-storyboard-r1/README.md). Its deployment-pending statements are historical.
 
-**Release correction 8 November:** PR884–PR886 are merged and the Nov 6 `40ad…`/Pages `0a21b015…` production release includes T08 changed-brand-kit recovery. The older release index and runbook still contain historical pending/flag-off-kit limitations and need coordinated reconciliation outside this bounded change. The dated developer handoff records the fresh November 8 source readback and owned hosted results.
+**Release correction 8 November:** PR884–PR886 are merged and the Nov 6 `40ad…`/Pages `0a21b015…` production release includes T08 changed-brand-kit recovery. The older release index now marks its deployment-pending rows as historical, and the runbook reflects default-on pilot entry and the implemented changed-kit recovery boundary. The dated developer handoff records the fresh November 8 source readback and owned hosted results.
 
 **Files:** update `app/pages/features/index.vue`, `app/pages/features/[slug].vue`, relevant MarketingNav/SEO references; create `docs/runbooks/video-storyboard-producer.md` and `docs/video/releases/2026-11-04-storyboard-r1/README.md` as an evidence index, updating the release date if execution occurs later. The bounded follow-through adds `scripts/video-storyboard-pilot-acceptance.mjs` and `test/video/storyboardPilotAcceptance.test.ts` without adding a production pipeline.
 
@@ -226,6 +226,8 @@ The root adapter owns browser/session authority and must bind the exact origin, 
 ## R2 — Reviewed shot production
 
 ### T10 — Establish take approvals and safe production accounting
+
+**8 November implementation checkpoint (local, not released):** Kimi `kimi-code/k3.1-pro` implemented the held-attempt/approval foundation; Grok `grok-4.7` assisted canonical liability integration and independent review. Migrations 506–508, immutable attempt/approval records, lifetime project allowance, canonical monthly liabilities, submission CAS, exact-request replay, content-addressed output identity, scope/pin checks, cancellation and six authenticated API routes are implemented locally. Real PostgreSQL checks cover eleven accounting cases and five production-attempt cases; 46 production unit checks cover authority and state boundaries. No provider request was submitted, no production migration applied, and no R2/R3 flag enabled. Remaining acceptance includes final combined regression/type review, guarded integration/deployment, workflow dispatch/recovery (T11), production controls (T12), and actual permitted provider acceptance. The unchecked task criteria below remain the overall completion gates, not a claim that no implementation exists.
 
 **Files:** create `production.ts`, `productionBudget.ts`, `productionPolicy.ts`; extend existing generation job/budget/reconciliation modules and additive migrations; tests `test/video/storyboardProduction.test.ts`, `test/video-generation/storyboardBudget.test.ts`.
 

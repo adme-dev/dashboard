@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { executeStoryboardReferenceWrite, registerGodModeStoryboardMutationFamilies, isStoryboardReferenceWritePath } from '~~/server/utils/video-storyboard/godMode'
+import { executeStoryboardReferenceWrite, registerGodModeStoryboardMutationFamilies, isStoryboardReferenceWritePath, isStoryboardProductionWritePath, isStoryboardAllowanceWritePath } from '~~/server/utils/video-storyboard/godMode'
 
 const mocks = vi.hoisted(() => ({ register: vi.fn(), prepare: vi.fn(), execute: vi.fn(), transaction: vi.fn(), replayId: '' }))
 vi.mock('~~/server/utils/db', () => ({ transaction: mocks.transaction }))
@@ -39,6 +39,28 @@ describe('storyboard owner coordination', () => {
     expect(await executeStoryboardReferenceWrite(event as never, canonical)).toEqual(receipt)
     expect(canonical).toHaveBeenCalledWith(db)
   })
+  it('registers only exact production mutation paths and keeps allowance replay read-only', async () => {
+    registerGodModeStoryboardMutationFamilies()
+    const root = '/api/agency/video/projects/00000000-0000-4000-8000-000000000002/storyboard/production'
+    expect(isStoryboardProductionWritePath(`${root}/attempts`)).toBe(true)
+    expect(isStoryboardProductionWritePath(`${root}/attempts/00000000-0000-4000-8000-000000000003/approve`)).toBe(true)
+    expect(isStoryboardProductionWritePath(`${root}/attempts/00000000-0000-4000-8000-000000000003/cancel`)).toBe(true)
+    expect(isStoryboardProductionWritePath(`${root}/attempts/arbitrary/approve`)).toBe(false)
+    expect(isStoryboardProductionWritePath(`${root}/attempts/00000000-0000-4000-8000-000000000003`)).toBe(false)
+    expect(isStoryboardAllowanceWritePath(`${root}/allowance`)).toBe(true)
+    expect(isStoryboardAllowanceWritePath('/allowance')).toBe(false)
+    const family = mocks.register.mock.calls.map(([value]) => value).find(value => value.family === 'video-storyboard-allowance')
+    expect(family.method).toBe('PUT')
+    const event = { context: {} }
+    await family.prepare(event)
+    mocks.replayId = 'project'
+    const mutate = vi.fn()
+    const replay = vi.fn().mockResolvedValue({ id: 'project', allowanceCents: 100 })
+    expect(await executeStoryboardReferenceWrite(event as never, mutate, replay)).toEqual({ id: 'project', allowanceCents: 100 })
+    expect(mutate).not.toHaveBeenCalled()
+    expect(replay).toHaveBeenCalledWith(db, 'project')
+  })
+
   it('runs ordinary staff through the canonical transaction core', async () => {
     const mutate = vi.fn().mockResolvedValue({ id: 'receipt' })
     await executeStoryboardReferenceWrite({ context: {} } as never, mutate)

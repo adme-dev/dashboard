@@ -1,57 +1,39 @@
 import { queryRows } from '~~/server/utils/db'
-import { mapVideoGenerationJobRow, markVideoGenerationJobFailed } from '~~/server/utils/video-generation/jobs'
+import { mapVideoGenerationJobRow, markVideoGenerationJobFailed, failUnclaimedVideoGenerationDispatch } from '~~/server/utils/video-generation/jobs'
 import { makeAiGatewayProvider } from '~~/server/utils/video-generation/providers/aiGatewayProvider'
 import { reconcileRunningJob } from '~~/server/utils/video-generation/reconcile'
 import { finalizeVideoGenerationJob } from '~~/server/utils/video-generation/finalize'
-
-// Cloudflare's async video models finish within ~5 min. A job still 'running' past this
-// window is dead (worker died, or the provider never completed) → reap it as failed. Inside
-// the window, poll the provider by request_id and finalize when it completes.
-const RECONCILE_WINDOW = `20 minutes`
-const DISPATCH_WINDOW = `10 minutes`
+import {
+  INFLIGHT_VIDEO_GENERATION_POLL_SQL,
+  RETAINED_VIDEO_GENERATION_RUNNING_SQL,
+  UNCLAIMED_VIDEO_GENERATION_DISPATCH_SQL,
+} from '~~/shared/video/generationLiability'
 
 export default defineEventHandler(async (event) => {
-  if (getHeader(event, 'x-cron-secret') !== process.env.CRON_SECRET) {
+  const env = event.context?.cloudflare?.env ?? process.env
+  if (typeof env.CRON_SECRET !== 'string' || !env.CRON_SECRET || getHeader(event, 'x-cron-secret') !== env.CRON_SECRET) {
     throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
   }
-  if (process.env.VIDEO_GENERATION_ENABLED !== 'true') {
+  if (env.VIDEO_GENERATION_ENABLED !== 'true') {
     return { ran: false, reason: 'disabled' }
   }
 
-  // A queued row with no provider evidence beyond this window means the queue
-  // dispatch/consumer path never accepted it. Fail it with a retryable reason
-  // so budget is released instead of remaining reserved forever.
-  const undispatched = await queryRows(
-    `SELECT * FROM video_generation_jobs
-       WHERE status = 'queued' AND provider_request_id IS NULL
-         AND created_at < now() - interval '${DISPATCH_WINDOW}'
-       ORDER BY created_at ASC LIMIT 25`
-  )
+  // Only a queued row that never claimed a submit, has no provider id, and is
+  // dispatch-eligible can release. Claimed, unknown, and storyboard-held rows stay.
+  const undispatched = await queryRows(UNCLAIMED_VIDEO_GENERATION_DISPATCH_SQL)
   let dispatchTimedOut = 0
   for (const row of undispatched) {
-    const job = mapVideoGenerationJobRow(row)
-    await markVideoGenerationJobFailed(
-      job.id,
-      'Dispatch timeout: no queue consumer/provider dispatch was recorded within 10 minutes. Budget was released; retry from a new proposal.'
-    ).catch(() => {})
-    dispatchTimedOut++
+    const updated = await failUnclaimedVideoGenerationDispatch(
+      row.id,
+      'Dispatch timeout: no queue consumer claimed this dispatch-eligible job within 10 minutes.',
+    ).catch(() => null)
+    if (updated?.status === 'failed') dispatchTimedOut++
   }
 
-  // Backstop: reap jobs that blew past the completion window.
-  const stale = await queryRows(
-    `SELECT * FROM video_generation_jobs
-       WHERE status = 'running' AND started_at < now() - interval '${RECONCILE_WINDOW}'
-       ORDER BY started_at ASC LIMIT 25`
-  )
-  let reaped = 0
-  for (const row of stale) {
-    const job = mapVideoGenerationJobRow(row)
-    await markVideoGenerationJobFailed(job.id, 'timed out — no completion within the reconcile window').catch(() => {})
-    reaped++
-  }
+  // Running and unknown work keeps its liability after the old 20-minute window.
+  const retained = await queryRows(RETAINED_VIDEO_GENERATION_RUNNING_SQL)
+  const retainedRunning = retained.length
 
-  // Poll in-flight async (aigateway) jobs for completion. The Workers AI binding on Pages is
-  // exposed per-request via event.context.cloudflare.env — NOT process.env.
   const aiBinding = (event.context as any)?.cloudflare?.env?.AI
   let polled = 0
   let succeeded = 0
@@ -68,12 +50,7 @@ export default defineEventHandler(async (event) => {
       finalize: finalizeVideoGenerationJob,
       markFailed: markVideoGenerationJobFailed,
     }
-    const inflight = await queryRows(
-      `SELECT * FROM video_generation_jobs
-         WHERE status = 'running' AND provider = 'aigateway'
-           AND started_at >= now() - interval '${RECONCILE_WINDOW}'
-         ORDER BY started_at ASC LIMIT 25`
-    )
+    const inflight = await queryRows(INFLIGHT_VIDEO_GENERATION_POLL_SQL)
     for (const row of inflight) {
       polled++
       const outcome = await reconcileRunningJob(mapVideoGenerationJobRow(row), deps).catch(() => 'skipped' as const)
@@ -83,5 +60,15 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  return { ran: true, dispatchTimedOut, reaped, polled, succeeded, failed, running, aiBinding: !!aiBinding }
+  return {
+    ran: true,
+    dispatchTimedOut,
+    retainedRunning,
+    reaped: 0,
+    polled,
+    succeeded,
+    failed,
+    running,
+    aiBinding: !!aiBinding,
+  }
 })

@@ -194,6 +194,7 @@ function generationJobColor(status: VideoGenerationJobView['status']) {
   switch (status) {
     case 'succeeded': return 'success'
     case 'failed': return 'error'
+    case 'unknown':
     case 'blocked': return 'warning'
     case 'running': return 'primary'
     default: return 'neutral'

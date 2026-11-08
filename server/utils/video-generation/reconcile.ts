@@ -1,7 +1,11 @@
-import type { VideoGenerationJob } from '~~/server/utils/video-generation/types'
+import {
+  publicVideoGenerationProviderStatus,
+  videoGenerationTransitionWasApplied,
+  type VideoGenerationJob,
+} from '~~/server/utils/video-generation/types'
 import type { VideoGenerationProvider } from '~~/server/utils/video-generation/providers/types'
 import { finalizeVideoGenerationJob } from '~~/server/utils/video-generation/finalize'
-import { markVideoGenerationJobFailed } from '~~/server/utils/video-generation/jobs'
+import { markVideoGenerationJobFailed, markVideoGenerationJobUnknown } from '~~/server/utils/video-generation/jobs'
 import { recordAiInvocation } from '~~/server/utils/ai/invocationLedger'
 
 export interface ReconcileDeps {
@@ -17,14 +21,27 @@ function uuidOrNull(value: string | null | undefined): string | null {
     : null
 }
 
-export async function reconcileRunningJob(job: VideoGenerationJob, deps: ReconcileDeps): Promise<'succeeded' | 'failed' | 'running' | 'skipped'> {
+function canonicalReconcileStatus(
+  status: VideoGenerationJob['status'] | undefined,
+): 'succeeded' | 'failed' | 'running' | 'unknown' | 'skipped' {
+  if (status === 'succeeded' || status === 'failed' || status === 'running' || status === 'unknown') return status
+  return 'skipped'
+}
+
+export async function reconcileRunningJob(
+  job: VideoGenerationJob,
+  deps: ReconcileDeps,
+): Promise<'succeeded' | 'failed' | 'running' | 'unknown' | 'skipped'> {
   const startedAt = Date.now()
   const provider = deps.providers[job.provider]
   if (!provider || !job.providerRequestId) return 'skipped'
   const result = await provider.poll({ providerRequestId: job.providerRequestId, status: job.providerStatus ?? 'running', modelId: job.modelId })
   if (result.status === 'running') return 'running'
-  if (result.status !== 'succeeded' || !result.outputUrl) {
-    await deps.markFailed(job.id, result.errorMessage || `reconcile: provider ${result.status}`)
+  if (result.status === 'failed') {
+    const failed = await deps.markFailed(job.id, 'provider_failed', result.actualCostCents)
+    if (!videoGenerationTransitionWasApplied(failed) || failed.status !== 'failed') {
+      return canonicalReconcileStatus(failed?.status)
+    }
     await recordAiInvocation({
       featureKey: 'video_generation_completion',
       provider: job.provider,
@@ -41,13 +58,22 @@ export async function reconcileRunningJob(job: VideoGenerationJob, deps: Reconci
         projectId: job.projectId,
         jobId: job.id,
         providerRequestId: job.providerRequestId,
-        providerStatus: result.status,
-        errorMessage: result.errorMessage ?? null,
+        providerStatus: publicVideoGenerationProviderStatus(result.status),
+        outcome: 'provider_failed',
         completionPath: 'reconcile',
       },
     })
     return 'failed'
   }
-  await deps.finalize(job, result)
-  return 'succeeded'
+  if (result.status === 'succeeded' && result.outputUrl) {
+    const finalized = await deps.finalize(job, result)
+    return canonicalReconcileStatus(finalized?.status)
+  }
+  // Missing output or an unrecognized runtime status is not a provider failure.
+  // The canonical unknown row keeps uncertain liability and the provider request id.
+  const unknown = await markVideoGenerationJobUnknown(job.id, 'video_generation_unknown_outcome', job.providerRequestId)
+  if (!videoGenerationTransitionWasApplied(unknown) || unknown.status !== 'unknown') {
+    return canonicalReconcileStatus(unknown?.status)
+  }
+  return 'unknown'
 }
