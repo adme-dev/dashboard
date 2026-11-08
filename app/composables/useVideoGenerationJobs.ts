@@ -2,7 +2,7 @@ import { ref } from 'vue'
 
 export interface VideoGenerationJobView {
   id: string
-  status: 'queued' | 'running' | 'succeeded' | 'failed' | 'blocked'
+  status: 'queued' | 'running' | 'succeeded' | 'failed' | 'blocked' | 'unknown'
   mode: string
   modelId: string
   prompt: string
@@ -36,9 +36,10 @@ export function useVideoGenerationJobs(projectId: string) {
 
   function schedule() {
     if (timer) clearTimeout(timer)
-    const active = jobs.value.some((j) => j.status === 'queued' || j.status === 'running')
-    if (!active) return
-    timer = setTimeout(async () => { await refresh(); schedule() }, 2500)
+    const active = jobs.value.some(j => j.status === 'queued' || j.status === 'running')
+    const uncertain = jobs.value.some(j => j.status === 'unknown')
+    if (!active && !uncertain) return
+    timer = setTimeout(async () => { await refresh(); schedule() }, active ? 2500 : 30000)
   }
 
   async function start() { await refresh(); schedule() }

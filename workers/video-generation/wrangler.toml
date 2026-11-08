@@ -14,6 +14,10 @@ dead_letter_queue = "video-generation-dlq"
 binding = "HYPERDRIVE"
 id = "900b4b74ec41462cbbabebd0aa8775aa"
 
+[[hyperdrive]]
+binding = "HYPERDRIVE_FRESH"
+id = "90228af3e2cc461bbc09accc3b47bd9f"
+
 [[r2_buckets]]
 binding = "AUDIO_BUCKET"
 bucket_name = "agency-files"

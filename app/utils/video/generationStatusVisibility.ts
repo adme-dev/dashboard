@@ -16,7 +16,7 @@ export function visibleGenerationJobs(
   return jobs
     .filter((job) => {
       if (dismissedIds.has(job.id)) return false
-      if (job.status === 'queued' || job.status === 'running') return true
+      if (job.status === 'queued' || job.status === 'running' || job.status === 'unknown') return true
       if (job.status !== 'succeeded' && job.status !== 'failed') return false
       const completed = job.completedAt ? Date.parse(job.completedAt) : NaN
       return Number.isFinite(completed) && nowMs - completed < FINISHED_JOB_VISIBILITY_MS

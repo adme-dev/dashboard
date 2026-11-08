@@ -1,4 +1,10 @@
-import type { VideoGenerationJob } from '~~/server/utils/video-generation/types'
+import { downloadGeneratedVideoOutput } from '~~/server/utils/video-generation/outputDownload'
+import { generatedVideoOutputIdentity } from '~~/shared/video/generationOutput'
+import {
+  publicVideoGenerationProviderStatus,
+  videoGenerationTransitionWasApplied,
+  type VideoGenerationJob,
+} from '~~/server/utils/video-generation/types'
 import type { VideoGenerationProviderResult } from '~~/server/utils/video-generation/providers/types'
 import { uploadFile } from '~~/server/utils/storage'
 import { createGeneratedVideoAsset } from '~~/server/utils/video-generation/createAsset'
@@ -29,7 +35,8 @@ function uuidOrNull(value: string | null | undefined): string | null {
 }
 
 /** Download the provider output, store it in R2, create a video_asset row, and mark the job succeeded.
- *  Throws on download failure so callers (webhook/reconcile) can mark the job failed. */
+ *  Throws on download failure so callers retain uncertain liability and reconcile without resubmission.
+ *  Completion cost is recorded only when the compare-and-swap marker says this call changed the row. */
 export async function finalizeVideoGenerationJob(
   job: VideoGenerationJob,
   result: VideoGenerationProviderResult,
@@ -37,18 +44,10 @@ export async function finalizeVideoGenerationJob(
 ): Promise<VideoGenerationJob> {
   const startedAt = Date.now()
   if (!result.outputUrl) throw new Error('finalize called without an output url')
-  const res = await deps.fetchImpl(result.outputUrl)
-  if (!res.ok) throw new Error(`output download failed: ${res.status}`)
-  // TODO(video-gen verify-live): this buffers the whole output in memory (Pages fn ≈128MB).
-  // Fine for short gated-model clips; switch to a streamed R2 upload (or delegate to the
-  // generation Worker) before enabling longer/high-res real models.
-  const bytes = Buffer.from(await res.arrayBuffer())
-  const r2Key = `video-generation/${job.tenantId}/${job.id}/output.mp4`
-  await deps.uploadFile(bytes, r2Key, 'video/mp4', { projectId: job.projectId, jobId: job.id })
-  // NOTE: a concurrent webhook+reconcile finalize of the same job can still create a
-  // duplicate video_assets row here (the markSucceeded below is idempotent, but the
-  // insert already ran). Window is tiny (hourly cron, >2min threshold, prompt webhooks)
-  // and gated; a fully-exclusive claim would need a status-enum migration. Verify-live.
+  const bytes = Buffer.from(await downloadGeneratedVideoOutput(result.outputUrl, deps.fetchImpl))
+  const { r2Key, sha256 } = generatedVideoOutputIdentity(bytes, `video-generation/${job.tenantId}/${job.id}/output.mp4`)
+  await deps.uploadFile(bytes, r2Key, 'video/mp4', { projectId: job.projectId, jobId: job.id, sha256 })
+  // Identical job/output hashes reuse the canonical asset through its unique index.
   const asset = await deps.createVideoAsset({
     clientId: job.tenantId === 'agency' ? null : job.tenantId,
     createdBy: job.createdBy,
@@ -56,6 +55,7 @@ export async function finalizeVideoGenerationJob(
     sourceProjectId: job.projectId,
     sourceJobId: job.id,
     r2Key,
+    outputSha256: sha256,
     format: job.aspectRatio,
     durationSec: job.durationSeconds,
   })
@@ -65,29 +65,33 @@ export async function finalizeVideoGenerationJob(
     providerResultUrl: result.outputUrl,
     outputAssetId: asset.id,
     outputR2Key: asset.r2Key,
+    outputSha256: sha256,
     actualCostCents: result.actualCostCents,
   })
-  await recordAiInvocation({
-    featureKey: 'video_generation_completion',
-    provider: job.provider,
-    modelId: job.modelId,
-    gatewayUsed: job.provider === 'aigateway',
-    userId: job.createdBy,
-    clientId: uuidOrNull(job.tenantId),
-    requestId: job.id,
-    estimatedCostUsd: result.actualCostCents == null ? null : result.actualCostCents / 100,
-    status: 'success',
-    latencyMs: Date.now() - startedAt,
-    metadata: {
-      tenantId: job.tenantId,
-      projectId: job.projectId,
-      jobId: job.id,
-      providerRequestId: job.providerRequestId,
-      providerStatus: result.status,
-      outputAssetId: asset.id,
-      outputR2Key: asset.r2Key,
-      completionPath: 'finalize',
-    },
-  })
+  if (videoGenerationTransitionWasApplied(completed) && completed.status === 'succeeded') {
+    const costCents = typeof completed.actualCostCents === 'number' ? completed.actualCostCents : null
+    await recordAiInvocation({
+      featureKey: 'video_generation_completion',
+      provider: job.provider,
+      modelId: job.modelId,
+      gatewayUsed: job.provider === 'aigateway',
+      userId: job.createdBy,
+      clientId: uuidOrNull(job.tenantId),
+      requestId: job.id,
+      estimatedCostUsd: costCents == null ? null : costCents / 100,
+      status: 'success',
+      latencyMs: Date.now() - startedAt,
+      metadata: {
+        tenantId: job.tenantId,
+        projectId: job.projectId,
+        jobId: job.id,
+        providerRequestId: job.providerRequestId,
+        providerStatus: publicVideoGenerationProviderStatus(completed.providerStatus),
+        outputAssetId: completed.outputAssetId,
+        outputR2Key: completed.outputR2Key,
+        completionPath: 'finalize',
+      },
+    })
+  }
   return completed
 }

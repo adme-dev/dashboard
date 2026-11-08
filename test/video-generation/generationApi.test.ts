@@ -294,7 +294,7 @@ describe('POST /agency/video/generation/jobs', () => {
   })
 
   it('reuses duplicate idempotency keys without enqueueing again', async () => {
-    mockGetJobByIdempotency.mockResolvedValue({ id: 'existing-job', tenantId: avProject.clientId, projectId: avProject.id, idempotencyKey: 'idem-1' })
+    mockGetJobByIdempotency.mockResolvedValue({ ...allowedBody, id: 'existing-job', tenantId: avProject.clientId, createdBy: avProject.createdBy, timelineId: timeline.id })
 
     const res = await createH({ body: allowedBody, context: {} } as any)
 
@@ -303,6 +303,21 @@ describe('POST /agency/video/generation/jobs', () => {
     expect(mockEnqueue).not.toHaveBeenCalled()
     expect(mockRecordAiInvocation).not.toHaveBeenCalled()
     expect(res.job.id).toBe('existing-job')
+  })
+
+  it.each([
+    { prompt: 'changed request' },
+    { modelId: 'aigateway/another-model' },
+    { sourceAssetIds: ['other-source'] },
+    { durationSeconds: 10 },
+    { resolution: '1080p' },
+    { createdBy: 'another-actor' },
+    { timelineId: 'another-timeline' }
+  ])('rejects changed same-key request without reservation or dispatch: %j', async (change) => {
+    mockGetJobByIdempotency.mockResolvedValue({ ...allowedBody, id: 'existing-job', tenantId: avProject.clientId, createdBy: avProject.createdBy, timelineId: timeline.id, ...change })
+    await expect(createH({ body: allowedBody, context: {} } as Parameters<typeof createH>[0])).rejects.toMatchObject({ statusCode: 409 })
+    expect(mockReserve).not.toHaveBeenCalled()
+    expect(mockEnqueue).not.toHaveBeenCalled()
   })
 
   it('rejects duplicate idempotency keys that belong to another project', async () => {

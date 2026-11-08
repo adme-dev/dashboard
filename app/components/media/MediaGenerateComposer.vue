@@ -143,7 +143,7 @@ function jobModelLabel(job: VideoGenerationJobView): string {
 function jobStatusColor(job: VideoGenerationJobView): 'primary' | 'success' | 'error' | 'warning' | 'neutral' {
   if (job.status === 'succeeded') return 'success'
   if (job.status === 'failed') return 'error'
-  if (job.status === 'blocked') return 'warning'
+  if (job.status === 'blocked' || job.status === 'unknown') return 'warning'
   if (job.status === 'running') return 'primary'
   return 'neutral'
 }

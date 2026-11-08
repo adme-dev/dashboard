@@ -20,6 +20,10 @@ export function canSpendVideoGenerationCents(
     return { allowed: false, reason: 'tenant_generation_disabled', remainingCents: 0 }
   }
 
+  if (![policy.monthlyCapCents, currentSpendCents, estimateCents].every(value => Number.isSafeInteger(value) && value >= 0)) {
+    return { allowed: false, reason: 'tenant_cap_exceeded', remainingCents: 0 }
+  }
+
   const remainingCents = Math.max(0, policy.monthlyCapCents - currentSpendCents)
   if (estimateCents > remainingCents) {
     return { allowed: false, reason: 'tenant_cap_exceeded', remainingCents }

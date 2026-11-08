@@ -32,6 +32,7 @@ function dismiss(id: string) { dismissed.value = new Set([...dismissed.value, id
 
 const meta: Record<string, { icon: string; color: string; label: string; spin?: boolean }> = {
   queued: { icon: 'i-lucide-loader-circle', color: 'text-blue-400', label: 'Queued', spin: true },
+  unknown: { icon: 'i-lucide-circle-help', color: 'text-warning', label: 'Outcome needs reconciliation' },
   running: { icon: 'i-lucide-loader-circle', color: 'text-primary', label: 'Generating', spin: true },
   succeeded: { icon: 'i-lucide-check-circle', color: 'text-emerald-400', label: 'Done — in Library' },
   failed: { icon: 'i-lucide-alert-circle', color: 'text-red-400', label: 'Failed' },
@@ -55,6 +56,9 @@ const meta: Record<string, { icon: string; color: string; label: string; spin?: 
           </div>
           <p class="mt-0.5 truncate text-xs text-muted">{{ j.prompt }}</p>
           <p v-if="j.status === 'failed' && j.errorMessage" class="mt-1 text-xs text-red-400 line-clamp-2">{{ j.errorMessage }}</p>
+          <p v-else-if="j.status === 'unknown'" class="mt-1 text-xs text-muted">
+            The provider may have accepted this request. Its budget remains reserved; do not submit it again.
+          </p>
           <p v-else-if="j.status === 'running'" class="mt-1 text-xs text-muted">AI video can take a few minutes — you can keep working.</p>
         </div>
       </div>

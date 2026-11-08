@@ -66,7 +66,9 @@ export interface VideoGenerationProvenanceInput {
   idempotencyKey: string
 }
 
-export type VideoGenerationJobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'blocked'
+export type VideoGenerationJobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'blocked' | 'unknown'
+
+export type VideoGenerationLiabilityState = 'released' | 'reserved' | 'uncertain' | 'reported'
 
 export interface VideoGenerationJob {
   id: string
@@ -88,17 +90,63 @@ export interface VideoGenerationJob {
   complianceReasons: string[]
   estimatedCostCents: number
   actualCostCents: number | null
+  /** Canonical open or settled charge. This is what the monthly sum reads. */
+  liabilityState: VideoGenerationLiabilityState
+  liabilityCents: number
+  /** Null on rows created before the fingerprint column. Replay falls back to stored columns. */
+  requestFingerprint: string | null
+  /** Set by the compare-and-swap claim immediately before a provider submit. */
+  submissionAttemptedAt: string | null
+  /** Storyboard reservations insert false so the worker and reaper leave them alone. */
+  dispatchEligible: boolean
   idempotencyKey: string
   providerRequestId: string | null
   providerStatus: string | null
   providerResultUrl: string | null
   outputAssetId: string | null
   outputR2Key: string | null
+  outputSha256?: string | null
   errorMessage: string | null
   createdAt: string
   updatedAt: string
   startedAt: string | null
   completedAt: string | null
+}
+
+/**
+ * Non-enumerable compare-and-swap result. JSON and object spread omit it,
+ * so API payloads stay the canonical job. Only `true` means this call changed the row.
+ */
+export const videoGenerationTransitionApplied = Symbol.for('xf.videoGenerationTransitionApplied')
+
+const PUBLIC_VIDEO_GENERATION_PROVIDER_STATUSES = new Set([
+  'queued',
+  'submitted',
+  'running',
+  'succeeded',
+  'failed',
+  'unknown',
+  'blocked',
+])
+
+export function stampVideoGenerationTransition<T extends object>(job: T, applied: boolean): T {
+  Object.defineProperty(job, videoGenerationTransitionApplied, {
+    value: applied,
+    enumerable: false,
+    writable: false,
+    configurable: true,
+  })
+  return job
+}
+
+export function videoGenerationTransitionWasApplied(job: object | null | undefined): boolean {
+  if (!job || typeof job !== 'object') return false
+  return Object.getOwnPropertyDescriptor(job, videoGenerationTransitionApplied)?.value === true
+}
+
+/** Provider diagnostics stay off logs. Only a closed status vocabulary is public. */
+export function publicVideoGenerationProviderStatus(status: string | null | undefined): string {
+  return status && PUBLIC_VIDEO_GENERATION_PROVIDER_STATUSES.has(status) ? status : 'unrecognized'
 }
 
 export type VideoGenerationComplianceResult =

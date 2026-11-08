@@ -9,6 +9,11 @@ function job(over: Partial<VideoGenerationJobView>): VideoGenerationJobView {
     id: 'job-1',
     status: 'queued',
     mode: 't2v',
+    sourceAssetIds: [],
+    durationSeconds: 5,
+    aspectRatio: '16:9',
+    resolution: null,
+    subjectType: 'non_vehicle',
     modelId: 'model',
     prompt: 'a prompt',
     outputAssetId: null,
@@ -25,6 +30,10 @@ describe('visibleGenerationJobs', () => {
   it('always shows active jobs regardless of age', () => {
     const jobs = [job({ status: 'queued' }), job({ id: 'job-2', status: 'running' })]
     expect(visibleGenerationJobs(jobs, new Set(), NOW)).toHaveLength(2)
+  })
+
+  it('keeps an uncertain outcome visible even after the normal completion window', () => {
+    expect(visibleGenerationJobs([job({ status: 'unknown', completedAt: '2026-06-01T00:00:00Z' })], new Set(), NOW)).toHaveLength(1)
   })
 
   it('shows recently finished jobs', () => {

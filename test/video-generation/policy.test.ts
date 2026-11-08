@@ -1,5 +1,12 @@
-import { afterEach, describe, expect, it } from 'vitest'
-import { loadTenantVideoGenerationPolicy } from '~~/server/utils/video-generation/policy'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+
+const mockQueryOne = vi.hoisted(() => vi.fn())
+vi.mock('~~/server/utils/db', () => ({
+  queryOne: (...args: unknown[]) => mockQueryOne(...args),
+}))
+
+import { getTenantVideoGenerationSpendCents, loadTenantVideoGenerationPolicy } from '~~/server/utils/video-generation/policy'
+import { TENANT_VIDEO_GENERATION_LIABILITY_SUM_SQL } from '~~/shared/video/generationLiability'
 
 afterEach(() => {
   delete process.env.VIDEO_GENERATION_TEST_TENANT_ENABLED
@@ -60,5 +67,16 @@ describe('video generation tenant policy', () => {
       monthlyCapCents: 0,
       allowedModelIds: [],
     })
+  })
+
+  it('reads the shared liability sum, which keeps unresolved charges across months', async () => {
+    mockQueryOne.mockResolvedValueOnce({ total: '15' })
+
+    await expect(getTenantVideoGenerationSpendCents('dealer-1')).resolves.toBe(15)
+    expect(mockQueryOne).toHaveBeenCalledWith(TENANT_VIDEO_GENERATION_LIABILITY_SUM_SQL, ['dealer-1'])
+    expect(TENANT_VIDEO_GENERATION_LIABILITY_SUM_SQL).toContain("liability_state IN ('reserved', 'uncertain')")
+    expect(TENANT_VIDEO_GENERATION_LIABILITY_SUM_SQL).toContain("liability_state = 'reported'")
+    expect(TENANT_VIDEO_GENERATION_LIABILITY_SUM_SQL).not.toContain("status IN ('queued','running','succeeded')")
+    expect(TENANT_VIDEO_GENERATION_LIABILITY_SUM_SQL).not.toContain('project_id')
   })
 })
