@@ -14,6 +14,7 @@ const mockGetHeader = vi.fn()
 const mockValidateSession = vi.fn()
 const mockResolveUserPermissions = vi.fn()
 const mockResolveGodModeAuthority = vi.fn()
+const mockResolveAccountingUiGroups = vi.fn()
 
 vi.mock('h3', () => ({
   getHeader: (...args: unknown[]) => mockGetHeader(...args)
@@ -22,6 +23,10 @@ vi.mock('h3', () => ({
 vi.mock('~~/server/utils/auth', () => ({
   validateSession: (...args: unknown[]) => mockValidateSession(...args),
   TransientAuthError: class TransientAuthError extends Error {}
+}))
+
+vi.mock('~~/server/utils/accountingUiPermissions', () => ({
+  resolveAccountingUiGroups: (...args: unknown[]) => mockResolveAccountingUiGroups(...args)
 }))
 
 vi.mock('~~/server/utils/roleResolver', () => ({
@@ -51,6 +56,7 @@ describe('auth me God mode state', () => {
       custom_role_id: null
     })
     mockResolveUserPermissions.mockResolvedValue({ groups: ['ADMIN'], isReadOnly: false })
+    mockResolveAccountingUiGroups.mockResolvedValue(['ADMIN'])
   })
 
   it('returns only the client-safe active God mode label after server authority resolution', async () => {
@@ -67,6 +73,8 @@ describe('auth me God mode state', () => {
       event,
       '11111111-1111-4111-8111-111111111111'
     )
+    expect(mockResolveAccountingUiGroups).toHaveBeenCalledWith(event, '11111111-1111-4111-8111-111111111111', ['ADMIN'])
+    expect(result.user.permissionGroups).toEqual(['ADMIN'])
     expect(result.user.godMode).toEqual({ active: true, label: 'God mode active' })
     expect(result.user.godMode).not.toHaveProperty('reason')
     expect(result.user.godMode).not.toHaveProperty('emergencyDisabled')
