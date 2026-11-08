@@ -31,7 +31,7 @@ const form = reactive({
   name: props.client?.name || '',
   billingType: props.client?.billingType || 'project' as BillingType,
   retainerAmount: props.client?.retainerAmount || undefined,
-  paymentTerms: props.client?.paymentTerms || 30,
+  paymentTerms: props.client?.paymentTerms ?? 30,
   hourlyRate: props.client?.hourlyRate || undefined,
   mediaCommissionRate: props.client?.mediaCommissionRate || undefined,
   notes: props.client?.notes || '',
@@ -234,7 +234,9 @@ const handleSubmit = async () => {
     <UFormField v-if="canEditClientTerms" label="Payment Terms">
       <USelectMenu
         v-model="form.paymentTerms"
-        :options="paymentTermsOptions"
+        :items="paymentTermsOptions"
+        label-key="label"
+        value-key="value"
         :disabled="loading"
         class="w-full"
       />
@@ -245,6 +247,7 @@ const handleSubmit = async () => {
       <USelectMenu
         v-model="form.reportingTimezone"
         :items="TIMEZONE_OPTIONS"
+        label-key="label"
         value-key="value"
         :disabled="loading"
         class="w-full"
