@@ -111,11 +111,13 @@ describe('shared preview and campaign merge resolution', () => {
       from_name: null,
       from_email: 'sender@example.com',
       reply_to: null,
-      body_html: '<a href="&#106;avascript:alert(1)">Offer</a><a href="https://dealer.example/offer">Offer</a><a href="{{unsubscribe_url}}">Unsubscribe</a>',
+      body_html: '<a href="&#106;avascript:alert(1)">Offer</a><a href="https://dealer.example/offer">Offer</a><noscript><a href="javascript:alert(1)">No script</a></noscript><svg><a xlink:href="javascript:alert(1)">SVG</a></svg><a href="{{unsubscribe_url}}">Unsubscribe</a>',
       preview_text: 'Preview'
     }, recipient, 'c1', 'https://example.com', 'signature')
     expect(send.subject).toBe('javascript:alert(1)')
     expect(send.html).toContain('<a href="#">Offer</a>')
+    expect(send.html).toContain('<noscript><a href="#">No script</a></noscript>')
+    expect(send.html).toContain('<svg><a xlink:href="#">SVG</a></svg>')
     expect(send.html).not.toContain('&#106;')
     const seen: string[] = []
     const tracked = await rewriteTrackableHrefs(send.html, (href) => {
@@ -127,6 +129,51 @@ describe('shared preview and campaign merge resolution', () => {
     expect(tracked).not.toContain('javascript:')
     const node = parseFragment(tracked).childNodes.find(child => 'attrs' in child && child.attrs.some(attribute => attribute.name === 'href' && attribute.value === '#'))
     expect(node).toBeTruthy()
+  })
+
+  it('neutralizes a namespaced SVG href and preserves safe namespace URLs', () => {
+    const stored = '<svg><a xlink:href="&#106;avascript:alert(1)" href="mailto:sales@example.com">Offer</a></svg>'
+    const output = substituteMergeTags(stored, {})
+    expect(output).toBe('<svg><a xlink:href="#" href="mailto:sales@example.com">Offer</a></svg>')
+    const svg = parseFragment(output).childNodes[0]
+    const anchor = svg && 'childNodes' in svg ? svg.childNodes[0] : undefined
+    const attributes = anchor && 'attrs' in anchor ? anchor.attrs : []
+    expect(attributes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: 'href', prefix: 'xlink', namespace: 'http://www.w3.org/1999/xlink', value: '#' }),
+      expect.objectContaining({ name: 'href', value: 'mailto:sales@example.com' })
+    ]))
+    const safe = '<svg><a xlink:href="https://dealer.example/o&#039;brien">Offer</a></svg>'
+    expect(substituteMergeTags(safe, {})).toBe(safe)
+  })
+
+  it('parses noscript links in non-scripting mode without changing safe fallback content', () => {
+    const output = substituteMergeTags('<noscript><a href="javascript&#58;alert(1)">Offer</a></noscript>', {})
+    expect(output).toBe('<noscript><a href="#">Offer</a></noscript>')
+    const scripting = parseFragment(output).childNodes[0]
+    const text = scripting && 'childNodes' in scripting ? scripting.childNodes[0] : undefined
+    expect(text && 'value' in text ? text.value : '').toBe('<a href="#">Offer</a>')
+    const nonScripting = parseFragment(output, { scriptingEnabled: false }).childNodes[0]
+    const anchor = nonScripting && 'childNodes' in nonScripting ? nonScripting.childNodes[0] : undefined
+    expect(anchor && 'attrs' in anchor ? anchor.attrs : []).toEqual([
+      expect.objectContaining({ name: 'href', value: '#' })
+    ])
+    const safe = '<noscript><a href="https://dealer.example/offer">Offer</a></noscript>'
+    expect(substituteMergeTags(safe, {})).toBe(safe)
+  })
+
+  it('neutralizes later duplicate href spans while parse5 retains the safe first URL', () => {
+    const safeFirst = substituteMergeTags('<a href="https://dealer.example/offer" href="javascript:alert(1)" href="data:text/html,hi">Offer</a>', {})
+    expect(safeFirst).toBe('<a href="https://dealer.example/offer" href="#" href="#">Offer</a>')
+    const safeAnchor = parseFragment(safeFirst).childNodes[0]
+    expect(safeAnchor && 'attrs' in safeAnchor ? safeAnchor.attrs : []).toEqual([
+      expect.objectContaining({ name: 'href', value: 'https://dealer.example/offer' })
+    ])
+    const unsafeFirst = substituteMergeTags('<a href="javascript:alert(1)" href="https://dealer.example/offer">Offer</a>', {})
+    expect(unsafeFirst).toBe('<a href="#" href="https://dealer.example/offer">Offer</a>')
+    const unsafeAnchor = parseFragment(unsafeFirst).childNodes[0]
+    expect(unsafeAnchor && 'attrs' in unsafeAnchor ? unsafeAnchor.attrs : []).toEqual([
+      expect.objectContaining({ name: 'href', value: '#' })
+    ])
   })
 
   it('charges escaped chunks before joining and limits output in both contexts', () => {

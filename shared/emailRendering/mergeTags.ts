@@ -26,9 +26,64 @@ function isDangerousHref(value: string): boolean {
   return /^(javascript|data|vbscript):/i.test(inspected)
 }
 
-function hrefSpans(html: string, base: number, depth: number): Array<{ start: number, end: number }> {
+type HrefSpan = { start: number, end: number, name: string }
+type ParsedHref = { name: string, value: string, location: { startOffset: number, endOffset: number } }
+
+function elementHrefs(element: HtmlElement): ParsedHref[] {
+  const hrefs: ParsedHref[] = []
+  for (const [sourceName, location] of Object.entries(element.sourceCodeLocation?.attrs ?? {})) {
+    const name = sourceName.toLowerCase()
+    if (name !== 'href' && name !== 'xlink:href') continue
+    const attribute = element.attrs.find(candidate => {
+      const parsedName = candidate.prefix ? `${candidate.prefix}:${candidate.name}` : candidate.name
+      return parsedName.toLowerCase() === name
+    })
+    if (attribute) hrefs.push({ name, value: attribute.value, location })
+  }
+  return hrefs
+}
+
+function maskHrefs(html: string, hrefs: ParsedHref[], base: number): string {
+  let masked = html
+  const ordered = [...hrefs].sort((left, right) => right.location.startOffset - left.location.startOffset)
+  for (const href of ordered) {
+    const start = href.location.startOffset - base
+    const end = href.location.endOffset - base
+    masked = `${masked.slice(0, start)}${' '.repeat(end - start)}${masked.slice(end)}`
+  }
+  return masked
+}
+
+function duplicateHrefSpans(html: string, element: HtmlElement, base: number): HrefSpan[] {
+  const startTag = element.sourceCodeLocation?.startTag
+  if (!startTag) return []
+  const source = html.slice(startTag.startOffset, startTag.endOffset)
+  if ((source.match(/(?:^|[\s/])(?:xlink:)?href\s*=/gi) ?? []).length < 2) return []
+  const spans: HrefSpan[] = []
+  let masked = maskHrefs(source, elementHrefs(element), startTag.startOffset)
+  for (let pass = 0; pass < 32; pass++) {
+    const reparsed = parseFragment(masked, { sourceCodeLocationInfo: true, scriptingEnabled: false })
+    const candidate = reparsed.childNodes.find(node => 'attrs' in node) as HtmlElement | undefined
+    if (!candidate) break
+    const hrefs = elementHrefs(candidate)
+    if (!hrefs.length) break
+    for (const href of hrefs) {
+      if (isDangerousHref(href.value)) {
+        spans.push({
+          start: base + startTag.startOffset + href.location.startOffset,
+          end: base + startTag.startOffset + href.location.endOffset,
+          name: href.name
+        })
+      }
+    }
+    masked = maskHrefs(masked, hrefs, 0)
+  }
+  return spans
+}
+
+function hrefSpans(html: string, base: number, depth: number): HrefSpan[] {
   if (depth > 4) return []
-  const spans: Array<{ start: number, end: number }> = []
+  const spans: HrefSpan[] = []
   const visit = (node: HtmlChild) => {
     if (node.nodeName === '#comment') {
       const comment = node as HtmlComment
@@ -40,15 +95,16 @@ function hrefSpans(html: string, base: number, depth: number): Array<{ start: nu
     }
     if (!('attrs' in node)) return
     const element = node as HtmlElement
-    const href = element.attrs.find(attribute => attribute.name === 'href')
-    const location = element.sourceCodeLocation?.attrs?.href
-    if (href && location && isDangerousHref(href.value)) {
-      spans.push({ start: base + location.startOffset, end: base + location.endOffset })
+    for (const href of elementHrefs(element)) {
+      if (isDangerousHref(href.value)) {
+        spans.push({ start: base + href.location.startOffset, end: base + href.location.endOffset, name: href.name })
+      }
     }
+    spans.push(...duplicateHrefSpans(html, element, base))
     const content = node.nodeName === 'template' ? (node as HtmlTemplate).content.childNodes : []
     for (const child of [...element.childNodes, ...content]) visit(child)
   }
-  for (const child of parseFragment(html, { sourceCodeLocationInfo: true }).childNodes) visit(child)
+  for (const child of parseFragment(html, { sourceCodeLocationInfo: true, scriptingEnabled: false }).childNodes) visit(child)
   return spans
 }
 
@@ -60,7 +116,7 @@ export function neutralizeResolvedHrefSchemes(html: string): string {
   let result = html
   for (const span of spans) {
     if (span.start < 0 || span.end > result.length || span.start >= span.end) continue
-    result = `${result.slice(0, span.start)}href="#"${result.slice(span.end)}`
+    result = `${result.slice(0, span.start)}${span.name}="#"${result.slice(span.end)}`
   }
   return result
 }
