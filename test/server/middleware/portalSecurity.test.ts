@@ -38,9 +38,27 @@ testGlobal.setHeader = vi.fn()
 testGlobal.removeResponseHeader = vi.fn()
 testGlobal.useRuntimeConfig = () => ({ public: { pageStudioEditorUrl: editorUrl } })
 
-const { default: portalSecurityMiddleware } = await import(
+const { default: portalSecurityMiddleware, portalSecurityMatchPath } = await import(
   '../../../server/middleware/05-portal-security'
 )
+
+describe('portal security header matching for case and encoded variants', () => {
+  const headerNames = (path: string) => {
+    vi.clearAllMocks()
+    portalSecurityMiddleware({ path, context: { cloudflare: { env: {} } } } as never)
+    return vi.mocked(testGlobal.setHeader).mock.calls.map(([, name]) => name)
+  }
+  it.each(['/PORTAL', '/Portal/invoices', '/STUDIO/dashboard', '/portal/login?next=/AGENCY', '/API/PORTAL/session'])('applies the full header set to %s', (path) => {
+    expect(headerNames(path)).toEqual(expect.arrayContaining(['Cache-Control', 'Content-Security-Policy', 'X-Frame-Options', 'Strict-Transport-Security', 'X-Robots-Tag']))
+  })
+  it('uses the decoded path (h3 decodes event.path before middleware)', () => {
+    expect(portalSecurityMatchPath({ path: decodeURI('/%50ORTAL/login') })).toBe('/portal/login')
+    expect(headerNames(decodeURI('/%50ORTAL/login'))).toContain('X-Frame-Options')
+  })
+  it.each(['/portalx', '/PORTALX/settings', '/studios', '/agency', '/'])('leaves sibling and unrelated path %s untouched', (path) => {
+    expect(headerNames(path)).toEqual([])
+  })
+})
 
 describe('portal response security middleware', () => {
   beforeEach(() => {

@@ -33,8 +33,18 @@ function editorFormOrigin(value: unknown): string {
   }
 }
 
+/**
+ * Path used only to decide whether portal/studio security headers apply. Vue Router
+ * matches page paths case-insensitively, so `/PORTAL` renders the same portal page;
+ * match on h3's decoded, query-free event path, lowercased, so case and percent-encoded
+ * variants receive the same headers. This only widens where protective headers apply.
+ */
+export function portalSecurityMatchPath(event: { path?: string }): string {
+  return ((event.path || '/').split('?')[0] || '/').toLowerCase()
+}
+
 export default defineEventHandler((event) => {
-  const { pathname } = getRequestURL(event)
+  const pathname = portalSecurityMatchPath(event)
   const isPortalApi = hasPrefix(pathname, '/api/portal')
     || hasPrefix(pathname, '/api/client-portal')
   const isPortalPage = hasPrefix(pathname, '/portal') || hasPrefix(pathname, '/studio')
