@@ -1,3 +1,4 @@
+import type { RoleSkillSelection } from '~~/shared/types/roleSkills'
 import type { AiMessage, AiContextSource } from '~/types'
 
 interface VoiceResponse {
@@ -163,7 +164,9 @@ export function useVoiceChat() {
   async function sendVoiceMessage(
     conversationId: string,
     audioBlob: Blob,
-    entities?: Array<{ type: string; id: string }>
+    entities?: Array<{ type: string, id: string }>,
+    persona?: string | null,
+    workflow?: RoleSkillSelection | null
   ): Promise<VoiceResponse> {
     isProcessing.value = true
     error.value = null
@@ -171,6 +174,9 @@ export function useVoiceChat() {
     try {
       const formData = new FormData()
       formData.append('audio', audioBlob)
+      // JSON preserves explicit null (inherit) separately from an omitted focus.
+      if (persona !== undefined) formData.append('persona', JSON.stringify(persona))
+      if (workflow) formData.append('workflow', JSON.stringify(workflow))
       if (entities && entities.length > 0) {
         formData.append('mentionedEntities', JSON.stringify(entities))
       }

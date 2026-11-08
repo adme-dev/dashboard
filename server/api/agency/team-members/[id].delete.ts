@@ -3,11 +3,13 @@
  * DELETE /api/agency/team-members/:id
  */
 
+import { assertPermissionGrant } from '~~/server/utils/financeAccess'
 import { queryOne } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
 
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
+  const currentUser = await requireAuth(event)
+  await assertPermissionGrant(event, currentUser.id, 'ADMIN', true)
   const id = getRouterParam(event, 'id')
 
   if (!id) {

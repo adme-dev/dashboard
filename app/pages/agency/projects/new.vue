@@ -49,6 +49,8 @@ definePageMeta({
 const router = useRouter()
 const route = useRoute()
 const toast = useToast()
+const { canAccessFinance, canWrite, hasPermission } = useAuth()
+const canCreateProject = computed(() => canWrite.value && (canAccessFinance.value || hasPermission('CLIENTS')))
 
 // Pre-select the client when arriving from a client page
 // (e.g. /agency/projects/new?clientId=…). Null when launched standalone.
@@ -169,6 +171,7 @@ const isValid = computed(() => {
 // Submit
 const creating = ref(false)
 const createProject = async () => {
+  if (!canCreateProject.value) return
   if (!isValid.value) {
     toast.add({ title: 'Please fill in all required fields', color: 'error' })
     return
@@ -220,6 +223,7 @@ function selectTemplate(template: ProjectTemplateSummary): void {
 }
 
 const applyTemplate = async () => {
+  if (!canCreateProject.value) return
   if (!selectedTemplate.value || !form.value.clientId) {
     toast.add({ title: 'Please select a client first', color: 'error' })
     return
@@ -271,7 +275,7 @@ const applyTemplate = async () => {
         </template>
         <template #right>
           <UButton
-            v-if="templates.length > 0"
+            v-if="canCreateProject && templates.length > 0"
             label="Use Template"
             icon="i-lucide-copy"
             variant="outline"
@@ -294,7 +298,8 @@ const applyTemplate = async () => {
             </p>
           </div>
 
-          <form class="overflow-hidden rounded-lg border border-default bg-default" @submit.prevent="createProject">
+          <UAlert v-if="!canCreateProject" title="Project creation requires client planning access" color="neutral" variant="subtle" class="mb-6" />
+          <form v-else class="overflow-hidden rounded-lg border border-default bg-default" @submit.prevent="createProject">
             <section class="grid gap-6 border-b border-default px-5 py-6 sm:px-6 lg:grid-cols-[12rem_minmax(0,1fr)]">
               <div>
                 <p class="text-xs font-medium uppercase tracking-wider text-primary">

@@ -3,6 +3,7 @@ import type { PermissionGroup } from '~~/server/utils/permissions'
 import { queryRows, queryOne } from '~~/server/utils/db'
 import { classifyIntent, type AiIntent } from '~~/server/utils/aiIntentClassifier'
 import { searchSimilar } from '~~/server/utils/aiVectorize'
+import { assertFinancePermission } from '~~/server/utils/financeAccess'
 import { isUUID } from '~~/server/utils/ids'
 
 export interface ContextItem {
@@ -1059,7 +1060,20 @@ export async function retrieveContext(
 
   // High-sensitivity sources require explicit current permissions when governed scope is present.
   // Legacy callers retain their existing behavior until they are migrated to server-derived scope.
-  if (scope && !scope.permissionGroups.includes('FINANCE')) sources.delete('financial')
+  // Legacy saved plans have no trusted nonfinancial classification. Check before
+  // reading their payloads or historical financial vectors, including legacy callers.
+  let financeAllowed = false
+  if (event && (!scope || scope.permissionGroups.includes('FINANCE')) && (sources.has('financial') || sources.has('saved_plans'))) {
+    try {
+      await assertFinancePermission(event, userId)
+      financeAllowed = true
+    }
+    catch (error) { if ((error as { statusCode?: number }).statusCode !== 403) throw error }
+  }
+  if (!financeAllowed) {
+    sources.delete('financial')
+    sources.delete('saved_plans')
+  }
   if (scope && !scope.permissionGroups.includes('MANAGEMENT')) sources.delete('team')
 
   const queryPromises: Promise<ContextItem[]>[] = []

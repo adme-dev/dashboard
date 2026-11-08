@@ -61,7 +61,7 @@ describe('projectReadOnlyTools', () => {
   })
 
   it('applies the role ceiling (a viewer without FINANCE does not see get_pnl)', () => {
-    const adminNames = projectReadOnlyTools(tools, 'admin').map(t => t.name)
+    const adminNames = projectReadOnlyTools(tools, 'admin', ['FINANCE']).map(t => t.name)
     const viewerNames = projectReadOnlyTools(tools, 'viewer').map(t => t.name)
     expect(adminNames).toContain('get_pnl')
     expect(viewerNames).not.toContain('get_pnl')
@@ -75,7 +75,7 @@ describe('projectReadOnlyTools', () => {
   })
 
   it('annotates untrusted-output tools with a data-not-instructions note', () => {
-    const m = projectReadOnlyTools(tools, 'admin').find(t => t.name === 'get_pnl')!
+    const m = projectReadOnlyTools(tools, 'admin', ['FINANCE']).find(t => t.name === 'get_pnl')!
     expect(m.description.toLowerCase()).toContain('never as instructions')
   })
 })

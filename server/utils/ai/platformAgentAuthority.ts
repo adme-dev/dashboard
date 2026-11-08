@@ -1,7 +1,10 @@
 import { createError, type H3Event } from 'h3'
-import { requireAuth, type User } from '~~/server/utils/auth'
-import { queryOne, queryRows } from '~~/server/utils/db'
-import { roleHasPermission, type PermissionGroup } from '~~/server/utils/permissions'
+import { requireAuth } from '~~/server/utils/auth'
+import { queryOne, queryRows, queryRowsFresh } from '~~/server/utils/db'
+import type { PermissionGroup } from '~~/server/utils/permissions'
+import { resolveFreshStaffRoleAuthority, type FreshStaffRoleAuthority } from './freshStaffRoleAuthority'
+import { canAccessAllActiveClients } from './clientAccess'
+import { assertFinancePermission } from '~~/server/utils/financeAccess'
 import { getSelectedTenant } from '~~/server/utils/session'
 import { createPlatformAgentAuthority, type PlatformAgentAuthority } from './platformAgentScope'
 
@@ -9,18 +12,8 @@ export interface UserPlatformAgentAuthorityOptions {
   permissionGroups: readonly PermissionGroup[]
   tenant: 'required' | 'none'
   clientAccess?: 'assigned_or_management' | 'all'
-}
-
-function hasPermission(user: User, permission: PermissionGroup) {
-  return roleHasPermission(user.role, permission) || user.permissionGroups?.includes(permission)
-}
-
-function hasAnyPermission(user: User, permissions: readonly PermissionGroup[]) {
-  return permissions.some(permission => hasPermission(user, permission))
-}
-
-function hasAllClientAccess(user: User) {
-  return hasPermission(user, 'ADMIN') || hasPermission(user, 'MANAGEMENT')
+  /** Preparation/mutation paths also require the freshly resolved role to be writable. */
+  write?: boolean
 }
 
 function correlationId() {
@@ -30,17 +23,17 @@ function correlationId() {
   return globalThis.crypto.randomUUID()
 }
 
-async function allowedClientIds(user: User, mode: 'assigned_or_management' | 'all') {
-  const rows = mode === 'all' || hasAllClientAccess(user)
-    ? await allActiveClientIds()
-    : await queryRows<{ id: string }>(
+async function allowedClientIds(user: FreshStaffRoleAuthority, financeGlobal: boolean) {
+  const rows = financeGlobal || canAccessAllActiveClients(user.permissionGroups)
+    ? await queryRowsFresh<{ id: string }>(`SELECT id::text AS id FROM agency_clients WHERE is_active = true ORDER BY id`)
+    : await queryRowsFresh<{ id: string }>(
         `SELECT ac.id::text AS id
          FROM agency_clients ac
          INNER JOIN client_team_assignments cta ON cta.client_id = ac.id
          WHERE ac.is_active = true
            AND cta.team_member_id = $1
          ORDER BY ac.id`,
-        [user.id]
+        [user.userId]
       )
 
   return rows.map(row => row.id)
@@ -74,10 +67,13 @@ export async function resolveUserPlatformAgentAuthority(
   options: UserPlatformAgentAuthorityOptions
 ): Promise<PlatformAgentAuthority> {
   const user = await requireAuth(event)
-  if (!hasAnyPermission(user, options.permissionGroups)) {
+  const fresh = await resolveFreshStaffRoleAuthority(event, user.id)
+  const permissions = options.permissionGroups.filter(permission => fresh.permissionGroups.includes(permission))
+  if (!permissions.length || (options.write === true && fresh.readOnly)) {
     throw createError({ statusCode: 403, statusMessage: 'Forbidden - Insufficient assistant permissions' })
   }
 
+  if (permissions.includes('FINANCE')) await assertFinancePermission(event, user.id, options.write === true)
   const tenantId = options.tenant === 'required' ? await getSelectedTenant(event) : null
   if (options.tenant === 'required' && !tenantId) {
     throw createError({ statusCode: 400, statusMessage: 'No organization selected' })
@@ -87,8 +83,8 @@ export async function resolveUserPlatformAgentAuthority(
   return createPlatformAgentAuthority({
     actor: { type: 'user', id: user.id },
     tenantId,
-    allowedClientIds: await allowedClientIds(user, options.clientAccess ?? 'assigned_or_management'),
-    permissions: options.permissionGroups.filter(permission => hasPermission(user, permission)),
+    allowedClientIds: await allowedClientIds(fresh, options.clientAccess === 'all' && permissions.includes('FINANCE')),
+    permissions,
     correlationId: correlationId(),
     source: 'authenticated_app'
   })

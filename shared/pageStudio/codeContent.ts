@@ -84,6 +84,32 @@ async function readBytes(bucket: PageStudioCheckpointBucket, key: string, limit:
   }
   return bytes
 }
+/** Verify large package files without retaining/copying their complete bodies.
+ * Keep node:crypto inside this server-only path: this module also exports pure
+ * comparison helpers consumed by the browser. */
+async function verifyFileBytes(bucket: PageStudioCheckpointBucket, key: string, expectedBytes: number, expectedDigest: string) {
+  const { createHash } = await import('node:crypto')
+  const object = await bucket.get(key)
+  requireValue(object)
+  const reader = object.body.getReader()
+  let size = 0
+  try {
+    requireValue(object.size === undefined || (Number.isSafeInteger(object.size) && object.size === expectedBytes))
+    const hash = createHash('sha256')
+    for (;;) {
+      const part = await reader.read()
+      if (part.done) break
+      requireValue(part.value instanceof Uint8Array)
+      size += part.value.byteLength
+      requireValue(size <= expectedBytes)
+      hash.update(part.value)
+    }
+    requireValue(size === expectedBytes && hash.digest('hex') === expectedDigest)
+  } catch (error) {
+    await reader.cancel().catch(() => undefined)
+    throw error
+  } finally { reader.releaseLock() }
+}
 async function readJson(bucket: PageStudioCheckpointBucket, key: string, limit: number, canonical = true) {
   const text = new TextDecoder('utf-8', { fatal: true }).decode(await readBytes(bucket, key, limit))
   const value: unknown = JSON.parse(text)
@@ -146,8 +172,7 @@ export async function verifyCodePageImport(raw: PageStudioCheckpointCommitInput,
   const index = await readJson(bucket, `${operationPrefix}/index.json`, 256 * 1024)
   requireValue(sameCodeContent(index, expectedIndex) && await codeSha256(canonicalCodeJson(index)) === binding.indexDigest)
   for (const entry of entries) {
-    const bytes = await readBytes(bucket, `${packagePrefix}/files/${await codeSha256(entry.file)}`, entry.bytes)
-    requireValue(bytes.length === entry.bytes && await codeSha256(bytes) === entry.sha256)
+    await verifyFileBytes(bucket, `${packagePrefix}/files/${await codeSha256(entry.file)}`, entry.bytes, entry.sha256)
   }
   return {
     codeContent: binding,

@@ -1,13 +1,43 @@
+import type { H3Event } from 'h3'
 /**
  * Get Single Project with Full Details
  * GET /api/agency/projects/:id
  */
 
 import { queryOne, queryRows } from '~~/server/utils/db'
+import { requireInvoiceAccess } from '~~/server/utils/clientScoping'
 import { requireAuth } from '~~/server/utils/auth'
+import { assertFinancePermission, assertPermissionGrant } from '~~/server/utils/financeAccess'
+
+async function loadProjectInvoices(event: H3Event, clientId: string, projectId: string) {
+  let access: Awaited<ReturnType<typeof requireInvoiceAccess>>
+  try { access = await requireInvoiceAccess(event) }
+  catch (error) {
+    if ((error as { statusCode?: number }).statusCode === 403) return undefined
+    throw error
+  }
+  if (access.clientIds !== 'all' && !access.clientIds.includes(clientId)) return undefined
+  const invoices = await queryRows(`
+    SELECT i.id,i.invoice_number,i.total_amount,i.status,i.issue_date,i.due_date
+    FROM invoices i WHERE i.project_id=$1 AND i.client_id=$2 ORDER BY i.issue_date DESC LIMIT 5
+  `, [projectId,clientId])
+  return invoices.map(i => ({ id: i.id,invoiceNumber: i.invoice_number,totalAmount: Number(i.total_amount),status: i.status,issueDate: i.issue_date,dueDate: i.due_date }))
+}
 
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
+  const user = await requireAuth(event)
+  let hasFinance = false
+  try {
+    await assertFinancePermission(event, user.id)
+    hasFinance = true
+  } catch (error) {
+    if ((error as { statusCode?: number }).statusCode !== 403) throw error
+  }
+  let hasClients = hasFinance
+  if (!hasClients) {
+    try { await assertPermissionGrant(event, user.id, 'CLIENTS'); hasClients = true }
+    catch (error) { if ((error as { statusCode?: number }).statusCode !== 403) throw error }
+  }
   const id = getRouterParam(event, 'id')
 
   if (!id) {
@@ -18,6 +48,49 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
+    if (!hasFinance) {
+      const project = await queryOne(`
+        SELECT p.id,p.name,p.description,p.start_date,p.end_date,p.status,p.project_manager_id,p.created_at,p.updated_at,
+          c.id AS client_id,c.name AS client_name,pm.name AS project_manager_name,
+          COALESCE(t.hours_worked,0) AS hours_worked,COALESCE(t.billable_hours,0) AS billable_hours
+          ${hasClients ? ',p.budget_amount,p.budget_type,COALESCE(m.media_cost,0) AS media_cost' : ''}
+        FROM projects p JOIN agency_clients c ON p.client_id=c.id
+        LEFT JOIN team_members pm ON p.project_manager_id=pm.id
+        LEFT JOIN (SELECT project_id,SUM(hours) AS hours_worked,SUM(CASE WHEN billable THEN hours ELSE 0 END) AS billable_hours
+          FROM time_entries GROUP BY project_id) t ON p.id=t.project_id
+        ${hasClients ? 'LEFT JOIN (SELECT project_id,SUM(actual_spend) AS media_cost FROM media_spend WHERE project_id IS NOT NULL GROUP BY project_id) m ON p.id=m.project_id' : ''}
+        WHERE p.id=$1
+      `, [id])
+      if (!project) throw createError({ statusCode: 404, statusMessage: 'Project not found' })
+      const timeEntries = await queryRows(`
+        SELECT te.id,te.date,te.hours,te.description,te.billable,tm.id AS user_id,tm.name AS user_name
+        FROM time_entries te JOIN team_members tm ON te.user_id=tm.id
+        WHERE te.project_id=$1 ORDER BY te.date DESC LIMIT 10
+      `, [id])
+      const taskStats = await queryOne(`
+        SELECT COUNT(*) AS total,COUNT(*) FILTER (WHERE status='completed') AS completed,
+          COUNT(*) FILTER (WHERE status='in_progress') AS in_progress FROM tasks WHERE project_id=$1
+      `, [id])
+      let sourceBrief = null
+      try {
+        const brief = await queryOne(`SELECT id,reference_number,title FROM briefs WHERE converted_to_project_id=$1 LIMIT 1`, [id])
+        if (brief) sourceBrief = { id: brief.id,referenceNumber: brief.reference_number,title: brief.title }
+      } catch { /* preserve best-effort operational reverse link */ }
+      const invoices = await loadProjectInvoices(event, project.client_id, id)
+      return {
+        ...(invoices ? { invoices } : {}),
+        project: { id: project.id,name: project.name,description: project.description,clientId: project.client_id,clientName: project.client_name,
+          projectManagerId: project.project_manager_id,projectManagerName: project.project_manager_name,
+          startDate: project.start_date,endDate: project.end_date,status: project.status,hoursWorked: Number(project.hours_worked),
+          billableHours: Number(project.billable_hours),
+          ...(hasClients ? { budgetAmount: Number(project.budget_amount),budgetType: project.budget_type,mediaCost: Number(project.media_cost) } : {}),
+          createdAt: project.created_at,updatedAt: project.updated_at },
+        sourceBrief,
+        timeEntries: timeEntries.map(t => ({ id: t.id,date: t.date,hours: Number(t.hours),description: t.description,billable: t.billable,userId: t.user_id,userName: t.user_name })),
+        taskStats: { total: Number(taskStats?.total || 0),completed: Number(taskStats?.completed || 0),inProgress: Number(taskStats?.in_progress || 0) }
+      }
+    }
+
     // Get project with client info and costs
     const project = await queryOne(`
       SELECT
@@ -113,15 +186,7 @@ export default defineEventHandler(async (event) => {
       WHERE project_id = $1
     `, [id])
 
-    // Get related invoices
-    const invoices = await queryRows(`
-      SELECT
-        i.id, i.invoice_number, i.total_amount, i.status, i.issue_date, i.due_date
-      FROM invoices i
-      WHERE i.project_id = $1
-      ORDER BY i.issue_date DESC
-      LIMIT 5
-    `, [id])
+    const invoices = await loadProjectInvoices(event, project.client_id, id)
 
     // G9: the brief this project was converted from (reverse link). Best-effort.
     let sourceBrief = null
@@ -183,14 +248,7 @@ export default defineEventHandler(async (event) => {
         completed: Number(taskStats?.completed || 0),
         inProgress: Number(taskStats?.in_progress || 0)
       },
-      invoices: invoices.map(i => ({
-        id: i.id,
-        invoiceNumber: i.invoice_number,
-        totalAmount: Number(i.total_amount),
-        status: i.status,
-        issueDate: i.issue_date,
-        dueDate: i.due_date
-      }))
+      ...(invoices ? { invoices } : {})
     }
   } catch (error: any) {
     console.error('Failed to fetch project:', error)

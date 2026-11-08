@@ -469,26 +469,27 @@ describe('auth utility', () => {
   })
 
   describe('requirePermission (group-based RBAC)', () => {
-    it('allows a role whose legacy map grants the group', async () => {
+    it('retains ordinary legacy group permissions for media buying', async () => {
       const user = { id: 'u1', role: 'owner', permissionGroups: [] }
-      const result = await requirePermission({ context: { user } } as any, 'FINANCE' as any)
+      const result = await requirePermission({ context: { user } } as any, 'MEDIA_BUYING')
       expect(result.role).toBe('owner')
     })
 
-    it('allows a custom role carrying the group via permissionGroups', async () => {
-      const user = { id: 'u1', role: 'custom_x', permissionGroups: ['FINANCE'] }
-      const result = await requirePermission({ context: { user } } as any, 'FINANCE' as any)
+    it('retains ordinary dynamic media-buying permissions', async () => {
+      const user = { id: 'u1', role: 'custom_x', permissionGroups: ['MEDIA_BUYING'] }
+      const result = await requirePermission({ context: { user } } as any, 'MEDIA_BUYING')
       expect(result.id).toBe('u1')
     })
 
-    it('throws 403 when neither the role nor groups grant the permission', async () => {
+    it('throws 403 when the current database role has no explicit FINANCE grant', async () => {
       const user = { id: 'u1', role: 'media_buyer', permissionGroups: [] }
-      await expect(requirePermission({ context: { user } } as any, 'FINANCE' as any)).rejects.toMatchObject({
+      mockQueryOneFresh.mockResolvedValueOnce(null)
+      await expect(requirePermission({ context: { user } } as any, 'FINANCE')).rejects.toMatchObject({
         statusCode: 403
       })
     })
 
-    it('allows a freshly verified active owner when normal group RBAC denies', async () => {
+    it('retains an audited God-mode override for ordinary automation permissions', async () => {
       const user = { id: '11111111-1111-4111-8111-111111111111', role: 'media_buyer', permissionGroups: [] }
       mockResolveGodModeAuthority.mockResolvedValue({
         active: true,
@@ -497,7 +498,43 @@ describe('auth utility', () => {
         emergencyDisabled: false
       })
 
-      await expect(requirePermission(auditedGodModeReadEvent(user), 'FINANCE' as any)).resolves.toBe(user)
+      await expect(requirePermission(auditedGodModeReadEvent(user), 'AUTOMATION')).resolves.toBe(user)
+    })
+    it.each(['owner', 'custom_x'])('admits %s FINANCE access only when the fresh role grant is present', async role => {
+      const user = { id: 'finance-user', role, permissionGroups: [] }
+      mockQueryOneFresh.mockResolvedValueOnce({ permission_group: 'FINANCE' })
+      await expect(requirePermission({ context: { user } } as any, 'FINANCE')).resolves.toBe(user)
+      expect(mockQueryOneFresh).toHaveBeenCalledWith(expect.stringContaining('role_permission_groups'), [user.id, false, 'FINANCE'])
+      expect(mockResolveGodModeAuthority).not.toHaveBeenCalled()
+    })
+
+    it.each(['owner', 'admin', 'custom_x'])('does not treat cached FINANCE groups or %s role names as a current grant', async role => {
+      const user = { id: 'denied-user', role, permissionGroups: ['FINANCE'] }
+      mockQueryOneFresh.mockResolvedValueOnce(null)
+      await expect(requirePermission({ context: { user } } as any, 'FINANCE')).rejects.toMatchObject({ statusCode: 403 })
+      expect(mockResolveGodModeAuthority).not.toHaveBeenCalled()
+    })
+
+    it('does not supply a missing FINANCE grant through active God mode', async () => {
+      const user = { id: '11111111-1111-4111-8111-111111111111', role: 'owner', permissionGroups: ['FINANCE'] }
+      mockResolveGodModeAuthority.mockResolvedValue({ active: true, actorUserId: user.id, reason: 'active_owner', emergencyDisabled: false })
+      mockQueryOneFresh.mockResolvedValueOnce(null)
+      await expect(requirePermission(auditedGodModeReadEvent(user), 'FINANCE')).rejects.toMatchObject({ statusCode: 403 })
+      expect(mockResolveGodModeAuthority).not.toHaveBeenCalled()
+    })
+
+    it('rechecks the exact FINANCE grant after revocation on the next request', async () => {
+      const user = { id: 'finance-user', role: 'owner', permissionGroups: ['FINANCE'] }
+      mockQueryOneFresh.mockResolvedValueOnce({ permission_group: 'FINANCE' }).mockResolvedValueOnce(null)
+      await expect(requirePermission({ context: { user } } as any, 'FINANCE')).resolves.toBe(user)
+      await expect(requirePermission({ context: { user } } as any, 'FINANCE')).rejects.toMatchObject({ statusCode: 403 })
+      expect(mockQueryOneFresh).toHaveBeenCalledTimes(2)
+    })
+
+    it('propagates FINANCE authority database failure instead of falling back to owner permissions', async () => {
+      const user = { id: 'finance-user', role: 'owner', permissionGroups: ['FINANCE'] }
+      mockQueryOneFresh.mockRejectedValueOnce(new Error('authority unavailable'))
+      await expect(requirePermission({ context: { user } } as any, 'FINANCE')).rejects.toMatchObject({ statusCode: 503 })
     })
   })
 

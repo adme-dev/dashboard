@@ -5,9 +5,10 @@
 
 import { queryOne } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
+import { assertFinancePermission, assertPermissionGrant } from '~~/server/utils/financeAccess'
 
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
+  const user = await requireAuth(event)
   const id = getRouterParam(event, 'id')
   const body = await readBody(event)
 
@@ -29,6 +30,16 @@ export default defineEventHandler(async (event) => {
     status,
     projectManagerId
   } = body
+
+  const financialWrite = Object.prototype.hasOwnProperty.call(body, 'budgetAmount') || Object.prototype.hasOwnProperty.call(body, 'budgetType')
+  let hasFinance = false
+  let hasClients = false
+  try { await assertFinancePermission(event, user.id, financialWrite); hasFinance = true; hasClients = true }
+  catch (error) {
+    if ((error as { statusCode?: number }).statusCode !== 403) throw error
+    try { await assertPermissionGrant(event, user.id, 'CLIENTS', financialWrite); hasClients = true }
+    catch (clientError) { if (financialWrite || (clientError as { statusCode?: number }).statusCode !== 403) throw clientError }
+  }
 
   try {
     // Check project exists
@@ -111,7 +122,7 @@ export default defineEventHandler(async (event) => {
       UPDATE projects
       SET ${updates.join(', ')}, updated_at = NOW()
       WHERE id = $${paramIndex}
-      RETURNING *
+      RETURNING ${hasFinance ? '*' : `id,name,description,client_id,start_date,end_date,status,project_manager_id,updated_at${hasClients ? ',budget_amount,budget_type' : ''}`}
     `
 
     const project = await queryOne(sql, params)
@@ -123,8 +134,7 @@ export default defineEventHandler(async (event) => {
         name: project.name,
         description: project.description,
         clientId: project.client_id,
-        budgetAmount: Number(project.budget_amount),
-        budgetType: project.budget_type,
+        ...(hasClients ? { budgetAmount: Number(project.budget_amount), budgetType: project.budget_type } : {}),
         startDate: project.start_date,
         endDate: project.end_date,
         status: project.status,

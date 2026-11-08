@@ -12,20 +12,15 @@
 //    initial backfill and after schema additions.
 //
 // Auth: x-cron-secret header matched against CRON_SECRET env var.
-// In development, the secret check is skipped so you can curl the endpoint
-// directly while iterating.
+// Authentication is required in every environment.
 
-import { defineEventHandler, getHeader, getQuery, createError } from 'h3'
+import { defineEventHandler, getQuery } from 'h3'
+import { requireFinanceCronJob } from '~~/server/utils/financeMachineAccess'
 import { resolveCronXeroAuth } from '~~/server/utils/xeroCronAuth'
 import { fullCustomerSync } from '~~/server/utils/xeroCustomerSync'
 
 export default defineEventHandler(async (event) => {
-  // Auth — same pattern as anomaly-detection cron.
-  const cronSecret = getHeader(event, 'x-cron-secret')
-  const expectedSecret = process.env.CRON_SECRET
-  if (!import.meta.dev && cronSecret !== expectedSecret) {
-    throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
-  }
+  requireFinanceCronJob(event)
 
   const query = getQuery(event)
   const full = query.full === 'true' || query.full === '1'

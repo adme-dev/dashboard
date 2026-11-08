@@ -13,7 +13,8 @@
  * Use ?force=true to bypass the local-hour gate for manual triggers.
  */
 
-import { defineEventHandler, getHeader, getQuery, createError } from 'h3'
+import { defineEventHandler, getQuery } from 'h3'
+import { requireFinanceCronJob } from '~~/server/utils/financeMachineAccess'
 import { queryOne } from '~~/server/utils/db'
 import { getActiveOrgToken } from '~~/server/utils/tokenStore'
 import {
@@ -30,12 +31,7 @@ import {
 const TARGET_LOCAL_HOUR = 6
 
 export default defineEventHandler(async (event) => {
-  const cronSecret = getHeader(event, 'x-cron-secret')
-  const expectedSecret = process.env.CRON_SECRET
-
-  if (!import.meta.dev && cronSecret !== expectedSecret) {
-    throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
-  }
+  requireFinanceCronJob(event)
 
   const query = getQuery(event)
   const force = query.force === 'true' || query.force === '1'

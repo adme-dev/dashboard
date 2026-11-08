@@ -8,7 +8,8 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('h3', () => ({
   defineEventHandler: <T extends (...args: never[]) => unknown>(fn: T) => fn,
-  getHeader: () => undefined,
+  getHeader: () => 'test-secret',
+  getRequestURL: () => new URL('http://localhost/api/cron/anomaly-detection'),
   getQuery: (event: { query?: Record<string, string> }) => event.query ?? {},
   createError: (input: { statusCode: number, statusMessage: string }) => Object.assign(new Error(input.statusMessage), input)
 }))
@@ -43,7 +44,7 @@ describe('POST /api/cron/anomaly-detection', () => {
   })
 
   it('resolves the canonical tenant instead of selecting the legacy __default__ connection', async () => {
-    const event = { query: { force: 'true' } }
+    const event = { method: 'POST', query: { force: 'true' }, context: { cloudflare: { env: { CRON_SECRET: 'test-secret' } } } }
     const result = await handler(event as never)
 
     expect(mocks.resolveCronXeroAuth).toHaveBeenCalledWith('anomaly-detection')

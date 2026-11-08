@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { BillingType } from '~/types'
+import { buildClientMutationPayload } from '~/utils/clientMutationPayload'
 
 const props = defineProps<{
   client?: {
@@ -21,6 +22,8 @@ const emit = defineEmits<{
 }>()
 
 const toast = useToast()
+const { canAccessFinance, canAccessClients, hasPermission, isManager } = useAuth()
+const canEditClientTerms = computed(() => canAccessClients.value && (!hasPermission('MARKETING_MANAGEMENT') || canAccessFinance.value || isManager.value))
 const apiFetch = $fetch as <T = unknown>(request: string, options?: { method?: string; body?: unknown }) => Promise<T>
 
 // Form state
@@ -60,12 +63,12 @@ const billingTypeOptions = [
 
 // Show retainer fields
 const showRetainerFields = computed(() =>
-  form.billingType === 'retainer' || form.billingType === 'hybrid'
+  canEditClientTerms.value && (form.billingType === 'retainer' || form.billingType === 'hybrid')
 )
 
 // Show commission fields
 const showCommissionFields = computed(() =>
-  form.billingType === 'commission' || form.billingType === 'hybrid'
+  canEditClientTerms.value && (form.billingType === 'commission' || form.billingType === 'hybrid')
 )
 
 // Payment terms options
@@ -110,13 +113,13 @@ const handleSubmit = async () => {
     if (isEditing.value) {
       await apiFetch(`/api/agency/clients/${props.client!.id}`, {
         method: 'PUT',
-        body: form
+        body: buildClientMutationPayload(form, canEditClientTerms.value, canAccessFinance.value)
       })
       toast.add({ title: 'Client updated', color: 'success' })
     } else {
       await apiFetch('/api/agency/clients', {
         method: 'POST',
-        body: form
+        body: buildClientMutationPayload(form, canEditClientTerms.value, canAccessFinance.value)
       })
       toast.add({ title: 'Client created', color: 'success' })
     }
@@ -142,15 +145,17 @@ const handleSubmit = async () => {
         v-model="form.name"
         placeholder="Enter client name"
         :disabled="loading"
+        class="w-full"
       />
     </UFormField>
 
     <!-- Billing Type -->
-    <UFormField label="Billing Type" required>
+    <UFormField v-if="canEditClientTerms" label="Billing Type" required>
       <URadioGroup
         v-model="form.billingType"
         :items="billingTypeOptions"
         :disabled="loading"
+        class="w-full"
       />
     </UFormField>
 
@@ -204,7 +209,7 @@ const handleSubmit = async () => {
     </UFormField>
 
     <!-- Default Hourly Rate -->
-    <UFormField label="Default Hourly Rate">
+    <UFormField v-if="canEditClientTerms" label="Default Hourly Rate">
       <UInput
         v-model.number="form.hourlyRate"
         type="number"
@@ -226,11 +231,12 @@ const handleSubmit = async () => {
     </UFormField>
 
     <!-- Payment Terms -->
-    <UFormField label="Payment Terms">
+    <UFormField v-if="canEditClientTerms" label="Payment Terms">
       <USelectMenu
         v-model="form.paymentTerms"
         :options="paymentTermsOptions"
         :disabled="loading"
+        class="w-full"
       />
     </UFormField>
 
@@ -246,12 +252,13 @@ const handleSubmit = async () => {
     </UFormField>
 
     <!-- Notes -->
-    <UFormField label="Notes">
+    <UFormField v-if="canEditClientTerms" label="Notes">
       <UTextarea
         v-model="form.notes"
         placeholder="Internal notes about this client..."
         :rows="3"
         :disabled="loading"
+        class="w-full"
       />
     </UFormField>
 

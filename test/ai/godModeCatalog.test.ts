@@ -363,7 +363,7 @@ describe('God-mode SDK wrapper admission', () => {
       name: 'denied_read',
       description: 'Normally denied read.',
       parameters: z.object({}),
-      requiredPermission: 'FINANCE',
+      requiredPermission: 'MANAGEMENT',
       handler: async () => {
         executed.push('denied_read')
         return ok({ admitted: true })
@@ -373,7 +373,7 @@ describe('God-mode SDK wrapper admission', () => {
       name: 'denied_write',
       description: 'Normally denied write proposal.',
       parameters: z.object({}),
-      requiredPermission: 'FINANCE',
+      requiredPermission: 'MANAGEMENT',
       mutates: true,
       handler: async () => {
         executed.push('denied_write')

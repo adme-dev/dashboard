@@ -1,3 +1,4 @@
+import { assertTemplateCopyRecoveryScope } from './templateCopyRecovery'
 import { getRouterParam, readBody, type H3Event } from 'h3'
 import { z } from 'zod'
 import { prepareTemplateAction } from './templatePreviewHttp'
@@ -6,5 +7,6 @@ import type { TemplateActor } from './templateCatalogue'
 export async function templateCopyHandler(event:H3Event,kind:TemplateActor['kind']) {
   const versionId=z.string().uuid().parse(getRouterParam(event,'versionId'))
   const context=await prepareTemplateAction(event,kind,true)
+  await assertTemplateCopyRecoveryScope(event, context.principal.actor)
   return copyTemplateVersion(versionId,await readBody(event),context)
 }

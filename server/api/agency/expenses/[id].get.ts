@@ -3,11 +3,13 @@
  * GET /api/agency/expenses/:id
  */
 
-import { queryOne, queryRows } from '~~/server/utils/db'
+import { queryOne, queryOneFresh, queryRows } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
+import { hasExpenseFinancePermission, assertExpenseRowAccess } from '~~/server/utils/expenseAccess'
 
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
+  const user = await requireAuth(event)
+  const finance = await hasExpenseFinancePermission(event, user.id)
   const id = getRouterParam(event, 'id')
 
   if (!id) {
@@ -18,8 +20,9 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
+    await assertExpenseRowAccess(id, user.id, finance)
     // Get expense with related data
-    const expense = await queryOne(`
+    const expense = await queryOneFresh(`
       SELECT
         e.*,
         tm.name as user_name,
@@ -37,8 +40,8 @@ export default defineEventHandler(async (event) => {
       LEFT JOIN agency_clients c ON e.client_id = c.id
       LEFT JOIN tasks t ON e.task_id = t.id
       LEFT JOIN team_members approver ON e.approved_by = approver.id
-      WHERE e.id = $1
-    `, [id])
+      WHERE e.id = $1 AND ($2::boolean OR e.user_id = $3)
+    `, [id, finance, user.id])
 
     if (!expense) {
       throw createError({

@@ -28,6 +28,7 @@ describe('client staging fetch in the actual Worker runtime', () => {
           } catch (error) { return Response.json({ ok: false, code: error.code ?? error.name }) }
         } }` },
       write: false, bundle: true, format: 'esm', platform: 'neutral', target: 'esnext',
+      external: ['node:*'],
       conditions: ['workerd', 'worker', 'browser'], mainFields: ['module', 'main'], logLevel: 'silent'
     })
     runtime = new Miniflare({

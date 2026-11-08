@@ -1,3 +1,4 @@
+import { assertCommercialPermission } from '~~/server/utils/commercialAccess'
 /**
  * Create/Update Retainer Agreement
  * POST /api/agency/retainers
@@ -6,7 +7,7 @@
  */
 
 import { queryOne } from '~~/server/utils/db'
-import { requireAuth, requireRole } from '~~/server/utils/auth'
+import { requireAuth } from '~~/server/utils/auth'
 
 interface RetainerBody {
   clientId: string
@@ -18,10 +19,8 @@ interface RetainerBody {
 }
 
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
-
-  // Only admins, owners, and sales can manage retainers
-  await requireRole(event, ['owner', 'admin', 'sales'])
+  const commercialUser = await requireAuth(event)
+  await assertCommercialPermission(event, commercialUser.id, 'CLIENTS', true)
 
   const body = await readBody<RetainerBody>(event)
 

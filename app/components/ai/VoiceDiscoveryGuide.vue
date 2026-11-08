@@ -6,6 +6,8 @@ type MicrophonePermissionState = PermissionState | 'unknown' | 'unsupported'
 const props = defineProps<{
   permission: MicrophonePermissionState
   handsFreeAvailable: boolean
+  unavailable?: boolean
+  error?: string | null
 }>()
 
 defineEmits<{ dismiss: [] }>()
@@ -24,57 +26,39 @@ const permissionMessage = computed(() => {
       return 'Microphone access is checked when you start.'
   }
 })
+const hasWarning = computed(() => props.unavailable || Boolean(props.error) || props.permission === 'denied' || props.permission === 'unsupported')
 </script>
 
 <template>
   <section
-    class="mb-2 rounded-xl border border-primary/20 bg-primary/5 px-3 py-3 sm:px-4"
+    class="mb-2 flex items-start gap-2 rounded-lg border border-default bg-default/80 px-3 py-2 text-xs"
     aria-label="Voice AI guidance"
+    :role="hasWarning ? 'status' : undefined"
   >
-    <div class="flex items-start gap-3">
-      <span class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary">
-        <UIcon name="i-lucide-audio-lines" class="size-4" />
-      </span>
-
-      <div class="min-w-0 flex-1">
-        <div class="flex flex-wrap items-center gap-2">
-          <h2 class="text-sm font-semibold text-highlighted">
-            Voice AI is ready
-          </h2>
-          <span class="inline-flex items-center gap-1 text-[11px] font-medium text-success">
-            <span class="size-1.5 rounded-full bg-success" aria-hidden="true" />
-            Live
-          </span>
-        </div>
-
-        <p class="mt-1 text-xs leading-relaxed text-muted">
-          Choose <strong class="font-medium text-default">Voice message</strong> for one question.
-          <template v-if="handsFreeAvailable">
-            Choose <strong class="font-medium text-default">Start Voice</strong> for an ongoing hands-free conversation.
-          </template>
-        </p>
-
-        <p
-          class="mt-2 flex items-start gap-1.5 text-[11px] leading-relaxed"
-          :class="permission === 'denied' || permission === 'unsupported' ? 'text-warning' : 'text-muted'"
-        >
-          <UIcon
-            :name="permission === 'granted' ? 'i-lucide-mic-2' : permission === 'denied' ? 'i-lucide-mic-off' : 'i-lucide-shield-check'"
-            class="mt-0.5 size-3 shrink-0"
-          />
-          {{ permissionMessage }}
-        </p>
-      </div>
-
-      <UButton
-        icon="i-lucide-x"
-        color="neutral"
-        variant="ghost"
-        size="xs"
-        aria-label="Dismiss Voice AI guide"
-        class="shrink-0"
-        @click="$emit('dismiss')"
-      />
+    <UIcon :name="hasWarning ? 'i-lucide-mic-off' : 'i-lucide-audio-lines'" class="mt-0.5 size-3.5 shrink-0" :class="hasWarning ? 'text-warning' : 'text-muted'" />
+    <div class="min-w-0 flex-1 space-y-1 leading-relaxed">
+      <p v-if="unavailable" class="font-medium text-warning">
+        Voice unavailable
+      </p>
+      <p v-if="!hasWarning" class="text-muted">
+        <strong class="font-medium text-default">Voice message</strong> records one question.
+        <template v-if="handsFreeAvailable">
+          <strong class="font-medium text-default">Talk</strong> starts a hands-free conversation.
+        </template>
+      </p>
+      <p :class="hasWarning ? 'text-warning' : 'text-muted'">
+        {{ error || (unavailable ? 'Type your message while voice is unavailable.' : permissionMessage) }}
+      </p>
     </div>
+    <UButton
+      v-if="!hasWarning"
+      icon="i-lucide-x"
+      color="neutral"
+      variant="ghost"
+      size="xs"
+      aria-label="Dismiss Voice AI guide"
+      class="shrink-0"
+      @click="$emit('dismiss')"
+    />
   </section>
 </template>

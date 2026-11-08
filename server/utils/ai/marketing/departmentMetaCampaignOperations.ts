@@ -1,3 +1,4 @@
+import { isNativeMarketingContext } from './nativeAuthority'
 import { createHash } from 'node:crypto'
 import { queryOneFresh, transactionWithoutRetry } from '~~/server/utils/db'
 import { getCampaigns, getAdSets, getPages, uploadAdImage, createAdCreative, createAd, getAdLaunchBinding } from '~~/server/utils/metaClient'
@@ -16,7 +17,7 @@ import type { z } from 'zod'
 const ACTION = 'department_meta_ad_launch'
 type Input = z.infer<typeof metaLaunchInput>
 async function authority(ctx: ToolContext, write: boolean) {
-  if (ctx.source === 'mcp') return requireMarketingDepartment(ctx, write)
+  if ((ctx.source === 'mcp' || isNativeMarketingContext(ctx))) return requireMarketingDepartment(ctx, write)
   const fresh = await resolveMcpStaffContext(ctx.event, ctx.userId, [])
   if (!fresh.permissionGroups?.includes('MARKETING_MANAGEMENT') && !fresh.permissionGroups?.includes('ADMIN')) campaignDenied()
   if (write && fresh.assistantReadOnly) campaignDenied()
@@ -74,7 +75,7 @@ async function requester(ctx: ToolContext, p: PaidProposal) {
   const fresh = await resolveMcpStaffContext(ctx.event, p.user_id, [])
   if ((!fresh.permissionGroups?.includes('MARKETING_MANAGEMENT') && !fresh.permissionGroups?.includes('ADMIN')) || fresh.assistantReadOnly) campaignDenied()
   await requireDepartmentClient(fresh, p.resolved_payload.clientId)
-  if (p.resolved_payload.requestKey.startsWith('mcp:')) await assertMarketingCapabilityAtBoundary(ctx.event, p.user_id, p.resolved_payload.clientId, 'department_management')
+  if (/^(mcp|chat):/.test(p.resolved_payload.requestKey)) await assertMarketingCapabilityAtBoundary(ctx.event, p.user_id, p.resolved_payload.clientId, 'department_management')
 }
 async function execute(ctx: ToolContext, p: PaidProposal, current: Awaited<ReturnType<typeof load>>) {
   // Only the requester executes their own independently approved proposal.
@@ -141,7 +142,7 @@ export async function runDepartmentMetaCampaignOperation(name: string, raw: unkn
     if (!parsed.success) campaignDenied('bad_args')
     const input = parsed.data as { clientId: string, proposalId?: string, expectedRevision?: string }
     const ctx = await authority(original, contract[2])
-    if (original.source === 'mcp') {
+    if ((original.source === 'mcp' || isNativeMarketingContext(original))) {
       const f = resolveMcpRuntimeConfig(ctx.event)
       if (!f.serverEnabled || !f.suiteFlags.banners || (contract[2] && !f.suiteFlags.writes)) campaignDenied('disabled')
     }
@@ -149,7 +150,7 @@ export async function runDepartmentMetaCampaignOperation(name: string, raw: unkn
     if (name === 'marketing_prepare_meta_ad_launch') {
       const intent = metaLaunchInput.parse(parsed.data)
       const current = await load(ctx, intent)
-      return ok({ ...paidProposalView(await preparePaidProposal(ACTION, ctx.userId, intent, current.snapshot, key!, digest!, original.source === 'mcp' ? 'mcp' : 'department_browser', { accountId: current.accountId, imageSha256: current.snapshot.imageHash, campaign: current.snapshot.campaign, adSet: current.snapshot.adSet })), requiresIndependentReview: true })
+      return ok({ ...paidProposalView(await preparePaidProposal(ACTION, ctx.userId, intent, current.snapshot, key!, digest!, (original.source === 'mcp' || isNativeMarketingContext(original)) ? 'mcp' : 'department_browser', { accountId: current.accountId, imageSha256: current.snapshot.imageHash, campaign: current.snapshot.campaign, adSet: current.snapshot.adSet })), requiresIndependentReview: true })
     }
     const p = await readPaidProposal(input.proposalId!, ACTION, input.clientId)
     if (name === 'marketing_get_meta_ad_launch') return ok(paidProposalView(p))

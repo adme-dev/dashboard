@@ -1,3 +1,4 @@
+import { assertFinancePermission } from './financeAccess'
 import { verifyJwt } from '~~/server/utils/sessionToken'
 import bcrypt from 'bcryptjs'
 import { createHash } from 'node:crypto'
@@ -245,7 +246,13 @@ export async function acceptGodModeInternalExecution(event: any): Promise<User |
 export async function requireRole(event: any, roles: readonly string[]): Promise<User> {
   const user = await requireAuth(event)
 
-  // Skip role check in local development
+  // Accounting is a fresh explicit grant, including in development and under owner God mode.
+  if (permissionGroupsForRoles(roles).includes('FINANCE')) {
+    await assertFinancePermission(event, user.id)
+    return user
+  }
+
+  // Skip other legacy role checks in local development
   if (import.meta.dev) {
     return user
   }
@@ -265,6 +272,10 @@ export async function requireRole(event: any, roles: readonly string[]): Promise
  */
 export async function requirePermission(event: any, group: PermissionGroup): Promise<User> {
   const user = await requireAuth(event)
+  if (group === 'FINANCE') {
+    await assertFinancePermission(event, user.id)
+    return user
+  }
   if (import.meta.dev) return user
   if (roleHasPermission(user.role, group)) return user
   if (user.permissionGroups?.includes(group)) return user

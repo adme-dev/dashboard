@@ -24,7 +24,7 @@ export const sha256 = (value: unknown): string =>
   createHash('sha256').update(typeof value === 'string' ? value : departmentCanonicalJson(value)).digest('hex')
 
 export function validExecutionIdentity(key: unknown, digest: unknown): key is string {
-  return typeof key === 'string' && /^mcp:[0-9a-f]{64}$/.test(key)
+  return typeof key === 'string' && /^(mcp|chat):[0-9a-f]{64}$/.test(key)
     && typeof digest === 'string' && /^[0-9a-f]{64}$/.test(digest)
 }
 

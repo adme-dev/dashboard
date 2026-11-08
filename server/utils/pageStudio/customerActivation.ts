@@ -11,21 +11,22 @@ const fields = { previewEnabled: 'PREVIEW_ENABLED', previewApprovals: 'PREVIEW_A
   cmsSetupEnabled: 'CMS_SETUP_ENABLED', browserEnabled: 'BROWSER_ENABLED', editorEnabled: 'EDITOR_ENABLED' } as const
 const Approvals = z.array(CustomerPreviewApprovalSchema).max(100)
   .refine(rows => new Set(rows.map(row => row.workspaceId)).size === rows.length)
-const Activation = z.object({ previewEnabled: z.boolean(), previewApprovals: Approvals,
+export const CustomerActivationSchema = z.object({ previewEnabled: z.boolean(), previewApprovals: Approvals,
   cmsSetupEnabled: z.boolean(), browserEnabled: z.boolean(), editorEnabled: z.boolean(),
   templateSources: TemplateSourcesSchema.optional(),
+  templateTenantId: z.string().uuid().optional(),
   productionEditorEnabled: z.boolean().optional(), productionEditorOrigin: CustomerEditorOriginSchema.refine(value => !/[\s;*\\]/.test(value)).optional() }).strict()
   .refine(value => (value.productionEditorEnabled === undefined) === (value.productionEditorOrigin === undefined))
 
 /** A present bundle is atomic. Never recover fields from legacy configuration.
  * Co-configured scalar keys are rejected, even when their values agree. */
-export function readCustomerActivation(env: Record<string, unknown>): z.infer<typeof Activation> {
+export function readCustomerActivation(env: Record<string, unknown>): z.infer<typeof CustomerActivationSchema> {
   const closed = { previewEnabled: false, previewApprovals: [], cmsSetupEnabled: false, browserEnabled: false, editorEnabled: false }
   const settings = source(env)
   if (Object.hasOwn(settings, key)) {
     try {
       if (typeof settings[key] !== 'string' || Object.values(fields).some(name => Object.hasOwn(settings, prefix + name) || Object.hasOwn(env, prefix + name))) return closed
-      const value = Activation.parse(JSON.parse(settings[key]))
+      const value = CustomerActivationSchema.parse(JSON.parse(settings[key]))
       if (value.productionEditorEnabled !== undefined && ['PRODUCTION_EDITOR_ENABLED', 'EDITOR_ORIGIN'].some(name => Object.hasOwn(settings, prefix + name) || Object.hasOwn(env, prefix + name))) return closed
       return value
     } catch { return closed }

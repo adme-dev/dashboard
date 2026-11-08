@@ -67,6 +67,8 @@ describe.runIf(Boolean(databaseUrl)).each(['staging', 'production'] as const)('n
     await db.query(migration('404_page_studio_documents.sql'))
     await db.query(migration('422_page_studio_cms_visibility.sql'))
     await db.query(migration('425_page_studio_cms_authoring_scope.sql'))
+    // Current production authority also checks selected-template provenance.
+    await db.query('CREATE TABLE page_studio_template_copies(id UUID,site_id UUID,tenant_id TEXT,client_id UUID,account_key TEXT,actor_kind TEXT,state TEXT)')
     workspaces = await import('~~/server/utils/pageStudio/customerWorkspaces')
   })
   beforeEach(async () => {

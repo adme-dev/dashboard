@@ -153,6 +153,7 @@ onBeforeUnmount(() => {
 const xeroConnected = ref(false)
 
 onMounted(async () => {
+  if (!canAccessFinance.value) return
   try {
     const status = await layoutFetch<{ connected?: boolean }>('/api/xero/status')
     xeroConnected.value = Boolean(status.connected)
@@ -370,6 +371,8 @@ const mainNav = computed<NavigationMenuItem[]>(() => {
   items.push(
     { type: 'label', label: 'Tools' },
     { label: 'AI Chat', icon: 'i-lucide-sparkles', to: '/agency/ai/chat', exact: true, onSelect: close },
+    { label: 'My Assistant', icon: 'i-lucide-settings-2', to: '/agency/ai/my-assistant', onSelect: close },
+    { label: 'Skills and Sources', icon: 'i-lucide-library', to: '/agency/ai/skills', onSelect: close },
     { label: 'Voice AI', icon: 'i-lucide-audio-lines', to: '/agency/ai/chat?mode=voice', exact: true, onSelect: close },
     { label: 'AI Reports', icon: 'i-lucide-file-bar-chart', to: '/agency/ai/reports', onSelect: close },
     { label: 'Connect AI Assistants', icon: 'i-lucide-plug', to: '/agency/ai/connectors', onSelect: close }

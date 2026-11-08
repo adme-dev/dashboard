@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { createApp, h, nextTick, computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
+import { createApp, h, nextTick, computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import VideoResults from '~~/app/components/banner/VideoResults.client.vue'
 import { bannerRenderSuggestions } from '~~/app/utils/bannerRenderSuggestions'
@@ -37,7 +37,7 @@ async function mount(extra: Record<string, unknown> = {}) {
 beforeEach(() => {
   fetchMock.mockReset()
   toast.mockReset()
-  for (const [name, value] of Object.entries({ computed, onBeforeUnmount, reactive, ref, watch })) vi.stubGlobal(name, value)
+  for (const [name, value] of Object.entries({ computed, onBeforeUnmount, onMounted, reactive, ref, watch })) vi.stubGlobal(name, value)
   vi.stubGlobal('$fetch', fetchMock)
   vi.stubGlobal('useToast', () => ({ add: toast }))
   vi.stubGlobal('navigateTo', vi.fn().mockResolvedValue(undefined))

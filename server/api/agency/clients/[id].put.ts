@@ -5,12 +5,15 @@
 
 import { requireRole } from '~~/server/utils/auth'
 import { PERMISSIONS } from '~~/server/utils/permissions'
+import { assertFinancePermission, assertPermissionGrant } from '~~/server/utils/financeAccess'
 import { executeGodModeAgencyClientUpdate } from '~~/server/utils/clients/godModeMutations'
 import {
   isMarketingClientViewer,
   MARKETING_EDITABLE_CLIENT_FIELDS,
   requireActiveMarketingClient
 } from '~~/server/utils/clients/marketingAccess'
+
+type ClientMutationRow = { id: string, [key: string]: unknown }
 
 export default defineEventHandler(async (event) => {
   // Editing billing type, rates, Xero link and active status is a sensitive
@@ -26,6 +29,18 @@ export default defineEventHandler(async (event) => {
       statusMessage: 'Invalid client update'
     })
   }
+
+  // Client commercial terms belong to CLIENTS; company Xero bindings remain Finance-only.
+  await assertPermissionGrant(event, user.id, 'CLIENTS', true)
+  const writesXeroBinding = Object.prototype.hasOwnProperty.call(body, 'xeroContactId') && (body as Record<string, unknown>).xeroContactId !== undefined
+  let companyFinance = true
+  try {
+    await assertFinancePermission(event, user.id, writesXeroBinding)
+  } catch (error) {
+    if (writesXeroBinding || (error as { statusCode?: number }).statusCode !== 403) throw error
+    companyFinance = false
+  }
+  setResponseHeader(event, 'cache-control', 'private, no-store')
 
   // The marketing department may correct contact details on active clients only; billing, rates,
   // Xero link, notes, status, portal and CRM mode stay with finance/management.
@@ -111,7 +126,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const updates: string[] = []
-  const values: any[] = []
+  const values: unknown[] = []
   let paramIndex = 1
 
   for (const [camelKey, snakeKey] of Object.entries(fieldMapping)) {
@@ -143,9 +158,11 @@ export default defineEventHandler(async (event) => {
       RETURNING *
     `
 
-    const client = await executeGodModeAgencyClientUpdate(event, async (db) => {
+    const client = await executeGodModeAgencyClientUpdate<ClientMutationRow>(event, async (db) => {
       const updated = await db.query(sql, values)
-      const row = (updated as { rows?: any[] }).rows?.[0] ?? null
+      const row = (updated as { rows?: ClientMutationRow[] }).rows?.[0] ?? null
+
+      if (!row) throw createError({ statusCode: 404, statusMessage: 'Client not found' })
 
       // Deactivation invalidates every portal session atomically with the
       // client status change, so an already-issued cookie cannot survive a
@@ -165,7 +182,7 @@ export default defineEventHandler(async (event) => {
         `SELECT * FROM agency_clients WHERE id = $1 AND id = $2`,
         [id, resultReference]
       )
-      const row = (replayed as { rows?: any[] }).rows?.[0] ?? null
+      const row = (replayed as { rows?: ClientMutationRow[] }).rows?.[0] ?? null
       if (!row) throw new Error('Replayed client no longer exists')
       return row
     })
@@ -199,7 +216,7 @@ export default defineEventHandler(async (event) => {
       client: {
         id: client.id,
         name: client.name,
-        xeroContactId: client.xero_contact_id,
+        ...(companyFinance ? { xeroContactId: client.xero_contact_id } : {}),
         billingType: client.billing_type,
         retainerAmount: client.retainer_amount ? Number(client.retainer_amount) : null,
         paymentTerms: client.payment_terms,
@@ -217,8 +234,8 @@ export default defineEventHandler(async (event) => {
         updatedAt: client.updated_at
       }
     }
-  } catch (error: any) {
-    if (error.statusCode) throw error
+  } catch (error) {
+    if ((error as { statusCode?: number }).statusCode) throw error
     console.error('Failed to update client:', error)
     throw createError({
       statusCode: 500,

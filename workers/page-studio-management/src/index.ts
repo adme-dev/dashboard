@@ -1,3 +1,4 @@
+import { ensureTemplatePreviewHost } from './templatePreviewHost'
 import { ensureTemplateCopyEditorHost } from './templateEditorHost'
 import { resolveTemplatePreview } from './templatePreview'
 import { TemplatePreviewPointerSchema } from '../../../shared/pageStudio/templatePreview'
@@ -170,6 +171,11 @@ export default class PageStudioManagement extends WorkerEntrypoint<Env> {
 
   async ensureTemplateCopyEditorHost(input: unknown) {
     return ensureTemplateCopyEditorHost(input, this.env as unknown as Record<string, unknown>,
+      work => withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, db => work(db as unknown as DomainDatabase)))
+  }
+
+  async ensureTemplatePreviewHost(input: unknown) {
+    return ensureTemplatePreviewHost(input, this.env as unknown as Record<string, unknown>,
       work => withManagementTransaction(this.env.HYPERDRIVE_FRESH.connectionString, db => work(db as unknown as DomainDatabase)))
   }
 

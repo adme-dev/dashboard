@@ -18,9 +18,11 @@ describe('VoiceDiscoveryGuide', () => {
   it('explains one-shot and hands-free Voice AI before first use', async () => {
     const html = await render({ permission: 'prompt', handsFreeAvailable: true })
 
-    expect(html).toContain('Voice AI is ready')
+    expect(html).toContain('Voice AI')
+    expect(html).not.toContain('Voice AI is ready')
+    expect(html).not.toContain('Live')
     expect(html).toContain('Voice message')
-    expect(html).toContain('Start Voice')
+    expect(html).toContain('Talk')
     expect(html).toContain('ask for microphone access')
   })
 
@@ -34,5 +36,11 @@ describe('VoiceDiscoveryGuide', () => {
     const html = await render({ permission: 'denied', handsFreeAvailable: false })
 
     expect(html).toContain('Microphone access is blocked')
+  })
+  it('shows provider failure and unavailable guidance without a false ready state', async () => {
+    const html = await render({ permission: 'granted', handsFreeAvailable: false, unavailable: true, error: 'Voice processing failed. Try typing instead.' })
+    expect(html).toContain('Voice unavailable')
+    expect(html).toContain('Voice processing failed. Try typing instead.')
+    expect(html).not.toContain('Voice AI is ready')
   })
 })

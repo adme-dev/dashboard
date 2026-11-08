@@ -3,8 +3,7 @@
  * GET /api/agency/invoices
  */
 
-import { queryRows, queryOne } from '~~/server/utils/db'
-import { requireAuth } from '~~/server/utils/auth'
+import { queryRowsFresh, queryOneFresh } from '~~/server/utils/db'
 import { requireInvoiceAccess } from '~~/server/utils/clientScoping'
 
 export default defineEventHandler(async (event) => {
@@ -79,14 +78,14 @@ export default defineEventHandler(async (event) => {
     const sortDir = sortOrder === 'asc' ? 'ASC' : 'DESC'
 
     // Get invoices
-    const invoices = await queryRows(`
+    const invoices = await queryRowsFresh(`
       SELECT
         i.id,
         i.invoice_number,
         i.client_id,
         c.name as client_name,
         c.contact_email as client_email,
-        i.project_id,
+        p.id AS project_id,
         p.name as project_name,
         i.issue_date,
         i.due_date,
@@ -113,14 +112,14 @@ export default defineEventHandler(async (event) => {
         (SELECT COUNT(*) FROM invoice_line_items WHERE invoice_id = i.id) as line_item_count
       FROM invoices i
       JOIN agency_clients c ON i.client_id = c.id
-      LEFT JOIN projects p ON i.project_id = p.id
+      LEFT JOIN projects p ON i.project_id = p.id AND p.client_id = i.client_id
       ${whereClause}
       ORDER BY i.${sortColumn} ${sortDir}
       LIMIT $${idx} OFFSET $${idx + 1}
     `, [...params, limit, offset])
 
     // Get total count
-    const countResult = await queryOne(`
+    const countResult = await queryOneFresh(`
       SELECT COUNT(*) as total
       FROM invoices i
       JOIN agency_clients c ON i.client_id = c.id
@@ -128,7 +127,7 @@ export default defineEventHandler(async (event) => {
     `, params)
 
     // Get summary stats
-    const summary = await queryOne(`
+    const summary = await queryOneFresh(`
       SELECT
         COUNT(*) as total_invoices,
         COUNT(CASE WHEN status = 'draft' THEN 1 END) as draft_count,

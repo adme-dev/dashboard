@@ -21,6 +21,10 @@ const mockRequireAuth = vi.fn()
 const mockQueryOne = vi.fn()
 const mockQueryRows = vi.fn()
 
+vi.mock('~~/server/utils/clientScoping', () => ({
+  requireInvoiceAccess: async (...args: unknown[]) => ({ user: await mockRequireAuth(...args), clientIds: ['client-1'] })
+}))
+
 vi.mock('~~/server/utils/auth', () => ({
   requireAuth: (...args: unknown[]) => mockRequireAuth(...args)
 }))

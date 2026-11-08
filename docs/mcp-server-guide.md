@@ -1,5 +1,8 @@
 # XeroFlow MCP Server — Usage & Operator Guide
 
+Native AI Chat also exposes reviewed department marketing tools under the employee's current permissions, with explicit confirmation and retained independent review. See [personal assistant architecture](architecture/personal-assistant-chat.md) for the shared authority model, transport differences and rollout limits.
+
+
 The canonical reference for the XeroFlow MCP server: what it exposes, how to connect, how to turn each
 capability on, and how to use it. Pairs with the design specs (`docs/specs/ai-copilot-mcp-server-*.md`),
 the worker deploy doc (`workers/mcp-server/DEPLOYMENT.md`), and the backlog (`docs/superpowers/TODO-mcp-and-task-execution.md`).

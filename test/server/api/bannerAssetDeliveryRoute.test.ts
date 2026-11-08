@@ -90,6 +90,22 @@ describe('GET /api/public/banner-assets/:token', () => {
     expect(result.warnings).toEqual([])
   })
 
+  it('registers an explicit HEAD endpoint with the same capability checks and range metadata', async () => {
+    // Import the method-specific route: calling GET with method HEAD alone missed
+    // the production router falling through to the application's login redirect.
+    const head = (await import('~~/server/api/public/banner-assets/[token].head')).default
+    const bucket = { head: vi.fn(async () => objectBody()), get: vi.fn() }
+    const response = await head(await request({ method: 'HEAD', bucket, headers: { range: 'bytes=0-1' } }) as never)
+    expect(response.status).toBe(206)
+    expect(response.headers.get('content-range')).toBe('bytes 0-1/11')
+    expect(response.headers.get('content-length')).toBe('2')
+    expect(response.headers.get('location')).toBeNull()
+    expect(await response.text()).toBe('')
+    expect(bucket.get).not.toHaveBeenCalled()
+    await expect(head(await request({ method: 'HEAD', bucket, token: 'invalid' }) as never))
+      .rejects.toMatchObject({ statusCode: 403 })
+  })
+
   it('streams a token-authorized private R2 object with bounded browser caching', async () => {
     const bucket = { get: vi.fn(async () => objectBody()), head: vi.fn(async () => objectBody()) }
     const handler = await loadHandler()

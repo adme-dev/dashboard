@@ -1,3 +1,4 @@
+import { assertCommercialPermission } from '~~/server/utils/commercialAccess'
 /**
  * Remove Retainer Agreement
  * DELETE /api/agency/retainers/:clientId
@@ -6,13 +7,11 @@
  */
 
 import { queryOne } from '~~/server/utils/db'
-import { requireAuth, requireRole } from '~~/server/utils/auth'
+import { requireAuth } from '~~/server/utils/auth'
 
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
-
-  // Only admins, owners, and sales can manage retainers
-  await requireRole(event, ['owner', 'admin', 'sales'])
+  const commercialUser = await requireAuth(event)
+  await assertCommercialPermission(event, commercialUser.id, 'CLIENTS', true)
 
   const clientId = getRouterParam(event, 'clientId')
 

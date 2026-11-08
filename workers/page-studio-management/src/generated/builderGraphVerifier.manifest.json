@@ -5,8 +5,8 @@
     "astroBuildIdentityFixtures.json": "aab6df58afb3eab789e92ab582ceb9cd9c731a30bea96bfb47f4356f20b8751f",
     "builderGraphFixtures.json": "5e55191f0940e2be57d20c8477e221e105d8ad87d511b2db93db67548cd2dcca",
     "builderGraphLicenses.txt": "8d5d58fee24c22b7ca431fdd84693b6487f0a338cdad215d6f86e2465fb0e70e",
-    "builderGraphVerifier.d.mts": "cdc28ba433232169170b7bdecc3cd9d3bc3e72c3bf104eb0b14c638fd97cabad",
-    "builderGraphVerifier.mjs": "0cac0c5a79dafe470dedbb210858e1ab21eeab472d1e4f195217beebdc83cc9a"
+    "builderGraphVerifier.d.mts": "bcbae1260fa77626982261ffa9822e694aa8479b38de32fc40b0f86a4576bd14",
+    "builderGraphVerifier.mjs": "8fd7576ec6d363abd3369fa423a3e7100edb57713642863951ae239038fd2b8c"
   },
   "generator": "scripts/generate-native-builder-verifier.mjs",
   "options": {
@@ -19,7 +19,7 @@
     "target": "es2022",
     "treeShaking": true
   },
-  "sourceDigest": "47c36a6c0b25355a970a1a59438eed3f3493e7a503c30abad41dff5aa62ddd50",
+  "sourceDigest": "04c8898de9cfae1aa933870b980be92596e0b871e11ef5b78c4f7f9620427412",
   "sources": [
     {
       "path": "LICENSE",
@@ -407,7 +407,7 @@
     },
     {
       "path": "package.json",
-      "sha256": "ce0fb7452b4be965e224e2ecf9817a2fbb91c5865ee6f243a12639e31a0e3337"
+      "sha256": "35026ee71b7eb304383ef79282e7b5260b5497c2e088392ae381b01af0a72277"
     },
     {
       "path": "packages/protocol/package.json",
@@ -471,7 +471,7 @@
     },
     {
       "path": "packages/protocol/src/builder-graph-verifier.ts",
-      "sha256": "932b9ecca024099ba1c1b5a8bd4ab59f14999787f64961b5482e84bb6e1095e8"
+      "sha256": "1e510d080040d8845b6f9a426fdfd8da8050bb12c9c7964d9c33d1a67ad99ee5"
     },
     {
       "path": "packages/protocol/src/builder-instance-reference.ts",
@@ -555,11 +555,11 @@
     },
     {
       "path": "packages/protocol/src/shared-forms.ts",
-      "sha256": "91fc87d47c2c405f95d7cd05a65952772c196b166431e62348dfadf4c0d2be5a"
+      "sha256": "e72e8259eaebaef65e08b3ff54daf52093c604b76e98720c638c356ba2139cd7"
     },
     {
       "path": "packages/protocol/src/shell.ts",
-      "sha256": "a9ab61d7b06b40c885ef58cf93229eba76d4c594ee72cf110f4012eed11c3ca4"
+      "sha256": "4c72d0e5f69ebd20230f035c2f7d10185d09ac538b94f82dde0832ee7ad6e7b3"
     },
     {
       "path": "packages/protocol/src/site.ts",
@@ -575,7 +575,7 @@
     },
     {
       "path": "packages/protocol/src/validation.ts",
-      "sha256": "416d1857c8b85e6ea4a5c021ee8ea413f8ba3b0b95c05a4db7ca27b378e404ab"
+      "sha256": "19b4fe9ac814be7cbd8c353051050c4761b5ed77651bfb03e0f04a99b16b81bb"
     },
     {
       "path": "packages/protocol/test/fixtures/astro-build-identity.v1.json",
@@ -591,7 +591,7 @@
     },
     {
       "path": "pnpm-lock.yaml",
-      "sha256": "a2f9b647db6549d8759ff56eebf167a4aff4cc4085a77bdd529069d68c39ed0b"
+      "sha256": "c46bbf746b507ef77aed632207cf5b36fbce0f958b72c1fbee07bec472004eb6"
     },
     {
       "path": "scripts/generate-native-builder-verifier.mjs",

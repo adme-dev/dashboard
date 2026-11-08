@@ -73,11 +73,15 @@ export async function publishTemplatePreviewHandler(event: H3Event) {
   }
   const pointer = await transactionWithoutRetry(read)
   await withPageStudioPublishAuthority(pointer.scope, principal, read)
-  const management = env.PAGE_STUDIO_MANAGEMENT as { verifyTemplateSnapshot?: (input: unknown) => Promise<unknown> } | undefined
-  if (!management?.verifyTemplateSnapshot) throw createError({ statusCode: 503 })
+  const management = env.PAGE_STUDIO_MANAGEMENT as { verifyTemplateSnapshot?: (input: unknown) => Promise<unknown>, ensureTemplatePreviewHost?: (input: unknown) => Promise<unknown> } | undefined
+  if (!management?.verifyTemplateSnapshot || !management.ensureTemplatePreviewHost) throw createError({ statusCode: 503 })
   const verified = z.object({ verified: z.literal(true), manifestDigest: z.string(), codeContent: z.unknown().optional() }).strict().parse(await management.verifyTemplateSnapshot(pointer))
   if (verified.manifestDigest !== pointer.manifestDigest || !sameCodeContent(verified.codeContent, pointer.codeContent)) throw createError({ statusCode: 409 })
   const hostname = templatePreviewHostname(versionId)
+  await withPageStudioPublishAuthority(pointer.scope, principal, async db => {
+    if (!sameCodeContent(await read(db), pointer) || !sameCodeContent(await authorize(), actor)) throw createError({ statusCode: 403 })
+  })
+  z.object({ hostname: z.literal(hostname) }).strict().parse(await management.ensureTemplatePreviewHost(pointer))
   // Publication must not advertise a reserved name before actual DNS/TLS/routing.
   const response = await fetch(`https://${hostname}/.well-known/xeroflow-staging`, { redirect: 'manual', signal: AbortSignal.timeout(10000) })
   let health = ''

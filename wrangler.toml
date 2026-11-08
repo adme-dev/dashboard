@@ -6,9 +6,9 @@ compatibility_flags = ["nodejs_compat", "no_handle_cross_request_promise_resolut
 # top level binding-free prevents Cloudflare preview deploys from inheriting a
 # production mutable resource when an environment-specific entry is absent.
 
-# ============================================
+# =====================================
 # Environment Variables (non-secret)
-# ============================================
+# =====================================
 [vars]
 NODE_VERSION = "24"
 NUXT_PUBLIC_PAGE_STUDIO_EDITOR_URL = ""
@@ -310,7 +310,7 @@ PAGE_STUDIO_CUSTOMER_TERMS_VERSION = "2026-08-02"
 PAGE_STUDIO_CUSTOMER_EMAIL_FROM = "notification@xeroflow.io"
 # Exact workspace approvals expire with signup. CMS/editor still require site grants and ready proof.
 # One atomic bundle scopes editing and explicitly approved template sources; keep legacy scalars absent (150 bindings).
-PAGE_STUDIO_CUSTOMER_ACTIVATION = "{\"previewEnabled\":true,\"previewApprovals\":[{\"workspaceId\":\"64326ad7-7354-42e6-871d-8dea401a7798\",\"starterVersion\":\"limousine-v1\",\"policy\":{\"approvalId\":\"2dee4ab1-e1a7-4f4f-8322-abdefa9afeb3\",\"approvedBy\":\"6a5d2e15-315c-4790-b64e-5e3e17001c8e\",\"expiresAt\":\"2026-10-22T12:00:00Z\",\"pagesPerSiteLimit\":10,\"storageBytesLimit\":104857600,\"monthlyBuildLimit\":10,\"monthlyTrafficBytesLimit\":104857600}},{\"workspaceId\":\"a8ca805f-751f-484a-b074-688f8a82fe41\",\"starterVersion\":\"limousine-v1\",\"policy\":{\"approvalId\":\"a0511e75-a010-4b9b-bea0-51a448c07ccc\",\"approvedBy\":\"6a5d2e15-315c-4790-b64e-5e3e17001c8e\",\"expiresAt\":\"2026-10-22T12:00:00Z\",\"pagesPerSiteLimit\":10,\"storageBytesLimit\":104857600,\"monthlyBuildLimit\":10,\"monthlyTrafficBytesLimit\":104857600}}],\"cmsSetupEnabled\":true,\"browserEnabled\":true,\"editorEnabled\":true,\"productionEditorEnabled\":true,\"productionEditorOrigin\":\"https://studio.xeroflow.io\",\"templateSources\":[{\"siteId\":\"d014e5a4-6b95-4772-b4d6-9369fbf72629\",\"slug\":\"kia-australia\"}]}"
+PAGE_STUDIO_CUSTOMER_ACTIVATION = "{\"previewEnabled\":true,\"previewApprovals\":[{\"workspaceId\":\"64326ad7-7354-42e6-871d-8dea401a7798\",\"starterVersion\":\"limousine-v1\",\"policy\":{\"approvalId\":\"2dee4ab1-e1a7-4f4f-8322-abdefa9afeb3\",\"approvedBy\":\"6a5d2e15-315c-4790-b64e-5e3e17001c8e\",\"expiresAt\":\"2026-10-22T12:00:00Z\",\"pagesPerSiteLimit\":10,\"storageBytesLimit\":104857600,\"monthlyBuildLimit\":10,\"monthlyTrafficBytesLimit\":104857600}},{\"workspaceId\":\"a8ca805f-751f-484a-b074-688f8a82fe41\",\"starterVersion\":\"limousine-v1\",\"policy\":{\"approvalId\":\"a0511e75-a010-4b9b-bea0-51a448c07ccc\",\"approvedBy\":\"6a5d2e15-315c-4790-b64e-5e3e17001c8e\",\"expiresAt\":\"2026-10-22T12:00:00Z\",\"pagesPerSiteLimit\":10,\"storageBytesLimit\":104857600,\"monthlyBuildLimit\":10,\"monthlyTrafficBytesLimit\":104857600}}],\"cmsSetupEnabled\":true,\"browserEnabled\":true,\"editorEnabled\":true,\"productionEditorEnabled\":true,\"productionEditorOrigin\":\"https://studio.xeroflow.io\",\"templateTenantId\":\"b4a0a130-48da-444b-8fdc-d91db8923318\",\"templateSources\":[{\"siteId\":\"d014e5a4-6b95-4772-b4d6-9369fbf72629\",\"slug\":\"kia-australia\"}]}"
 PAGE_STUDIO_CUSTOMER_PREVIEW_RUNTIME_ENABLED = "true"
 PAGE_STUDIO_CUSTOMER_PREVIEW_EDITOR_ORIGIN = "https://studio-customer-preview.xeroflow.io"
 PAGE_STUDIO_INVITED_ORIGIN = "https://xeroflowpages.com"
@@ -472,9 +472,9 @@ PAGE_STUDIO_RUNTIME_RENDERER = "{\"assetsDigest\":\"107a3f107a7a36fc841f4361f5d9
 PAGE_STUDIO_RUNTIME_CMS_ADMISSIONS = "[{\"scope\":{\"tenantId\":\"page-studio-staging\",\"clientId\":\"10000000-0000-4000-8000-000000000001\",\"siteId\":\"a27135dc-1374-475c-a56d-7e60310425bb\"},\"environment\":\"staging\",\"renderer\":{\"name\":\"astro-runtime\",\"assetsDigest\":\"107a3f107a7a36fc841f4361f5d9f2f2298d4896bd55ab6f883f2ad39b40a96b\",\"codeDigest\":\"fff207a68a9edd1206f3898a0c4058cf2749709e7824f8b5ff8659c3a349befe\",\"generation\":\"astro_runtime_91baeb98a143ef30fb3bc0f2d891c3a147583702238f3e6ac11f9fb8d857c4e4\"}},{\"scope\":{\"tenantId\":\"tenant_page_studio_staging\",\"clientId\":\"20000000-0000-4000-8000-000000000301\",\"siteId\":\"5ddc69f4-bd4f-4179-ba6f-e23412133cb0\"},\"environment\":\"staging\",\"renderer\":{\"name\":\"astro-runtime\",\"assetsDigest\":\"107a3f107a7a36fc841f4361f5d9f2f2298d4896bd55ab6f883f2ad39b40a96b\",\"codeDigest\":\"fff207a68a9edd1206f3898a0c4058cf2749709e7824f8b5ff8659c3a349befe\",\"generation\":\"astro_runtime_91baeb98a143ef30fb3bc0f2d891c3a147583702238f3e6ac11f9fb8d857c4e4\"}},{\"scope\":{\"tenantId\":\"page-studio-staging\",\"clientId\":\"10000000-0000-4000-8000-000000000001\",\"siteId\":\"a27135dc-1374-475c-a56d-7e60310425bb\"},\"environment\":\"staging\",\"renderer\":{\"assetsDigest\":\"107a3f107a7a36fc841f4361f5d9f2f2298d4896bd55ab6f883f2ad39b40a96b\",\"codeDigest\":\"8936c848f4ea6447cdeab0b4c40c4e02ceae04942bae129cd1452b24ea364b27\",\"generation\":\"astro_runtime_e2a0dabf7c067db91c8e9f1a15779f1d600323381580735847a0625f3347b617\",\"name\":\"astro-runtime\"}},{\"scope\":{\"tenantId\":\"tenant_page_studio_staging\",\"clientId\":\"20000000-0000-4000-8000-000000000301\",\"siteId\":\"5ddc69f4-bd4f-4179-ba6f-e23412133cb0\"},\"environment\":\"staging\",\"renderer\":{\"assetsDigest\":\"107a3f107a7a36fc841f4361f5d9f2f2298d4896bd55ab6f883f2ad39b40a96b\",\"codeDigest\":\"8936c848f4ea6447cdeab0b4c40c4e02ceae04942bae129cd1452b24ea364b27\",\"generation\":\"astro_runtime_e2a0dabf7c067db91c8e9f1a15779f1d600323381580735847a0625f3347b617\",\"name\":\"astro-runtime\"}},{\"scope\":{\"tenantId\":\"page-studio-staging\",\"clientId\":\"10000000-0000-4000-8000-000000000001\",\"siteId\":\"a27135dc-1374-475c-a56d-7e60310425bb\"},\"environment\":\"staging\",\"renderer\":{\"assetsDigest\":\"107a3f107a7a36fc841f4361f5d9f2f2298d4896bd55ab6f883f2ad39b40a96b\",\"codeDigest\":\"89fd5882de0744d9a0cf36b8176278e3620ea8b6334113ebb2205be6cb0546c0\",\"generation\":\"astro_runtime_a8ea2d0477dc5309093dfbe24b5c754bb1444455ad54b2cc99ff3e61adc3185e\",\"name\":\"astro-runtime\"}},{\"scope\":{\"tenantId\":\"tenant_page_studio_staging\",\"clientId\":\"20000000-0000-4000-8000-000000000301\",\"siteId\":\"5ddc69f4-bd4f-4179-ba6f-e23412133cb0\"},\"environment\":\"staging\",\"renderer\":{\"assetsDigest\":\"107a3f107a7a36fc841f4361f5d9f2f2298d4896bd55ab6f883f2ad39b40a96b\",\"codeDigest\":\"89fd5882de0744d9a0cf36b8176278e3620ea8b6334113ebb2205be6cb0546c0\",\"generation\":\"astro_runtime_a8ea2d0477dc5309093dfbe24b5c754bb1444455ad54b2cc99ff3e61adc3185e\",\"name\":\"astro-runtime\"}},{\"scope\":{\"tenantId\":\"page-studio-staging\",\"clientId\":\"10000000-0000-4000-8000-000000000001\",\"siteId\":\"a27135dc-1374-475c-a56d-7e60310425bb\"},\"environment\":\"staging\",\"renderer\":{\"assetsDigest\":\"107a3f107a7a36fc841f4361f5d9f2f2298d4896bd55ab6f883f2ad39b40a96b\",\"codeDigest\":\"f506b53b5b442df470b06880cd3a10cf116d074d6b5b5113ba1251ae2b33c13e\",\"generation\":\"astro_runtime_55f4c2813577ad0dedcfce08ac60edb4843e5d3604b9bdf9349b708210955a06\",\"name\":\"astro-runtime\"}},{\"scope\":{\"tenantId\":\"tenant_page_studio_staging\",\"clientId\":\"20000000-0000-4000-8000-000000000301\",\"siteId\":\"5ddc69f4-bd4f-4179-ba6f-e23412133cb0\"},\"environment\":\"staging\",\"renderer\":{\"assetsDigest\":\"107a3f107a7a36fc841f4361f5d9f2f2298d4896bd55ab6f883f2ad39b40a96b\",\"codeDigest\":\"f506b53b5b442df470b06880cd3a10cf116d074d6b5b5113ba1251ae2b33c13e\",\"generation\":\"astro_runtime_55f4c2813577ad0dedcfce08ac60edb4843e5d3604b9bdf9349b708210955a06\",\"name\":\"astro-runtime\"}}]"
 PAGE_STUDIO_STAGING_TENANT_ID = "page-studio-staging"
 
-# ============================================
+# =====================================
 # Scheduled Triggers
-# ============================================
+# =====================================
 #
 # Cloudflare Pages does NOT support [triggers] in wrangler.toml — wrangler v4
 # rejects it with: 'Configuration file for Pages projects does not support "triggers"'.
@@ -545,3 +545,13 @@ service = "xeroflow-email-design-production"
 binding = "MOTORSTACK_BRAND_ASSETS"
 service = "xeroflow-creative-tools"
 entrypoint = "MotorstackBrandAssets"
+
+# Private measured storyboard media. Preview intentionally has no production binding.
+[[env.production.services]]
+binding = "STORYBOARD_MEDIA_PROBE"
+service = "audio-jobs"
+
+# Share artwork capture uses its own browser compatibility date.
+[[env.production.services]]
+binding = "BANNER_SHARE_IMAGES"
+service = "xeroflow-banner-share-images"

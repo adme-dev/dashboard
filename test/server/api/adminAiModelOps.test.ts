@@ -80,6 +80,13 @@ describe('GET /api/admin/ai/model-ops/model-map', () => {
     mockQueryRows.mockResolvedValue([])
   })
 
+  it('reports the same request binding used by chat instead of the process-only flag', async () => {
+    process.env.AI_TOOLS_ENABLED = 'true'
+    const result = await modelMapHandler({ context: { cloudflare: { env: { AI_TOOLS_ENABLED: 'false' } } } })
+    expect(result.config.loop.toolsEnabled).toBe(false)
+    expect(result.config.loop.toolsEnabledSource).toBe('binding')
+  })
+
   it('requires admin access and returns the static model map', async () => {
     process.env.AI_GATEWAY_URL = 'https://gateway.ai.cloudflare.com/v1/account/default'
     process.env.GROQ_API = 'groq-secret'

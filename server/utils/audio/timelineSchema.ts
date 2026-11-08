@@ -6,10 +6,14 @@
 // render filtergraph (SP1) never disagree about the contract.
 import { z } from 'zod'
 
+// Advisory editor provenance. Server obligations are stored separately.
+const StoryboardProvenanceSchema = z.object({ revisionId: z.string().uuid(), shotId: z.string().uuid(), cueId: z.string().min(1) }).optional()
+
 const FadeCurve = z.enum(['linear', 'exp', 'log'])
 
 // ── Audio clip (v1-compatible) ────────────────────────────────────────────────
 export const AudioClipSchema = z.object({
+  storyboard: StoryboardProvenanceSchema,
   type: z.literal('audio'),
   id: z.string().min(1),
   asset_id: z.string().nullable().default(null), // provenance FK → audio_assets; null = uploaded/external
@@ -32,6 +36,7 @@ export const KenBurnsSchema = z.object({
 })
 
 export const VideoClipSchema = z.object({
+  storyboard: StoryboardProvenanceSchema,
   type: z.literal('video'),
   id: z.string().min(1),
   asset_id: z.string().nullable().default(null),
@@ -51,6 +56,7 @@ export const VideoClipSchema = z.object({
 
 // ── GSAP overlay clip ─────────────────────────────────────────────────────────
 export const OverlayClipSchema = z.object({
+  storyboard: StoryboardProvenanceSchema,
   type: z.literal('overlay'),
   id: z.string().min(1),
   timeline_start_sec: z.number(),
@@ -68,6 +74,7 @@ export const OverlayClipSchema = z.object({
 
 // ── Caption clip ──────────────────────────────────────────────────────────────
 export const CaptionClipSchema = z.object({
+  storyboard: StoryboardProvenanceSchema,
   type: z.literal('caption'),
   id: z.string().min(1),
   timeline_start_sec: z.number(),

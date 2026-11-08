@@ -6,6 +6,7 @@ import {
 } from '../utils/auth'
 import { resolveUserPermissions } from '../utils/roleResolver'
 import { isReadOnlyRole } from '../utils/permissions'
+import { isFinanceReadMachineRequest } from '../utils/financeMachineAccess'
 
 import {
   CRM_SEARCH_DEAD_LETTER_PATH,
@@ -98,9 +99,9 @@ const publicRoutes = [
   '/api/public/contact'
 ]
 
-// Client preview links validate their token, expiry and revocation in the GET handler.
-// Only this exact read route skips the staff session; link management remains private.
-const BANNER_SHARE_CAPABILITY_PATH = /^\/api\/public\/banner-share\/p_[0-9a-f]{32}$/i
+// Client preview handlers validate their token, expiry and revocation on every request.
+// Only exact read paths and the saved-artwork preparation POST skip the staff session.
+const BANNER_SHARE_CAPABILITY_PATH = /^\/api\/public\/banner-share\/p_[0-9a-f]{32}(?:\/(?:image|video|videos))?$/i
 // Private Banner Studio objects are exposed only through one exact signed
 // asset-id path segment; the route verifies the HMAC and live database row.
 const BANNER_ASSET_CAPABILITY_PATH = /^\/api\/public\/banner-assets\/v1\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/
@@ -133,15 +134,6 @@ const crmSearchMachineRoutes: ReadonlySet<string> = new Set([
   CRM_SEARCH_HEALTH_PATH
 ])
 
-// Paths that an authenticated cron can read with X-Internal-Cron-Secret.
-// Narrow to read-only Xero + advisor surfaces — never include auth/
-// admin/mutation endpoints, even with the secret.
-const CRON_ALLOWED_PREFIXES = [
-  '/api/xero/',
-  '/api/advisor/',
-  '/api/ai/financial-advisor'
-]
-
 type MiddlewareUser = User & { isCustomReadOnly?: boolean }
 
 function getErrorStatusCode(error: unknown) {
@@ -172,6 +164,7 @@ export default defineEventHandler(async (event) => {
   // Skip auth for public API routes
   if (publicRoutes.some(route => pathname.startsWith(route))
     || ((event.method === 'GET' || event.method === 'HEAD') && BANNER_SHARE_CAPABILITY_PATH.test(pathname))
+    || (event.method === 'POST' && /^\/api\/public\/banner-share\/p_[0-9a-f]{32}\/videos$/i.test(pathname))
     || BANNER_ASSET_CAPABILITY_PATH.test(pathname)
     || VIDEO_ASSET_CAPABILITY_PATH.test(pathname)
     || SOCIAL_MEDIA_CAPABILITY_PATH.test(pathname)) {
@@ -189,23 +182,12 @@ export default defineEventHandler(async (event) => {
   const delegatedUser = await acceptGodModeInternalExecution(event)
   if (delegatedUser) return
 
-  // Internal cron bypass: a process inside CF with the shared secret
-  // can hit whitelisted read endpoints as a synthetic "cron" user.
-  // Used by /api/internal/attribution-cron to re-measure metrics on
-  // schedule. Silently falls through if the header is missing or the
-  // path isn't whitelisted.
-  const cronSecret = getHeader(event, 'x-internal-cron-secret')
-  const expectedCronSecret = process.env.CRON_INTERNAL_SECRET
-  if (cronSecret && expectedCronSecret && cronSecret === expectedCronSecret
-    && CRON_ALLOWED_PREFIXES.some(p => pathname.startsWith(p))) {
+  // A verified machine credential grants only exact read requests, never staff authority.
+  if (isFinanceReadMachineRequest(event)) {
     event.context.user = {
-      id: 'cron',
-      email: 'cron@internal',
-      name: 'Attribution Cron',
-      role: 'owner',
-      is_active: true
+      id: 'cron', email: 'cron@internal', name: 'Finance Read Job', role: 'member', is_active: true
     }
-    event.context.auth = { userId: 'cron', role: 'owner' }
+    event.context.auth = { userId: 'cron', role: 'member' }
     return
   }
 

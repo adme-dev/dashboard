@@ -2,6 +2,7 @@
 import { CalendarDate, getLocalTimeZone, today } from '@internationalized/date'
 import { format } from 'date-fns'
 import { apiErrorDescription } from '~/utils/apiError'
+import { buildClientMutationPayload } from '~/utils/clientMutationPayload'
 import type {
   ClientFinancialMediaCampaign,
   ClientFinancialsResponse,
@@ -18,7 +19,7 @@ const route = useRoute()
 const toast = useToast()
 // KPI targets are editable by writable MANAGEMENT roles and the marketing department view
 // (see canManageKpis) — everyone else gets a read-only view instead of a 403 on save.
-const { isManager, isOwner, canAccessMediaBuying, canWrite } = useAuth()
+const { isManager, isOwner, canAccessMediaBuying, canWrite, canAccessFinance, canAccessClients, hasPermission } = useAuth()
 const clientId = route.params.id as string
 const apiFetch = $fetch as <T = unknown>(
   request: string,
@@ -85,7 +86,7 @@ interface MarketingClientPayload {
   mediaSpend?: Array<{ id: string | number, platform: string, period: string, budgetAllocated: number, actualSpend: number }>
 }
 const clientPayload = computed(() => clientData.value as MarketingClientPayload | null)
-const marketingView = computed(() => clientPayload.value?.access?.financial === false)
+const marketingView = computed(() => !canAccessClients.value || clientPayload.value?.access?.financial === false)
 const canViewFinancials = computed(() => Boolean(client.value) && !marketingView.value)
 const financialsEnabledAtSetup = canViewFinancials.value
 const marketingProjects = computed(() => marketingView.value ? clientPayload.value?.projects ?? [] : [])
@@ -421,10 +422,10 @@ const saveClient = async () => {
       ...clientPayload
     } = editForm.value
     const crmPayload = { leadCaptureMode, crmCoreStatus, crmExternalStatus }
-    const normalizedClientPayload = {
+    const normalizedClientPayload = buildClientMutationPayload({
       ...clientPayload,
       portalBoardId: clientPayload.portalBoardId === '__none__' ? null : clientPayload.portalBoardId
-    }
+    }, canAccessClients.value, canAccessFinance.value, marketingView.value)
     const requests: Array<Promise<unknown>> = [
       apiFetch(`/api/agency/clients/${clientId}`, {
         method: 'PUT',
@@ -432,7 +433,7 @@ const saveClient = async () => {
         body: normalizedClientPayload
       })
     ]
-    if (isManager.value) {
+    if (isManager.value && !marketingView.value) {
       requests.push(apiFetch(`/api/agency/clients/${clientId}/crm-settings`, {
         method: 'PUT',
         headers: { 'Idempotency-Key': idempotencyKeyFor('crm', crmPayload) },
@@ -454,6 +455,7 @@ const saveClient = async () => {
 }
 
 const unlinkXero = async () => {
+  if (!canAccessFinance.value || !canWrite.value) return
   const payload = { xeroContactId: null }
   try {
     await apiFetch(`/api/agency/clients/${clientId}`, {
@@ -552,7 +554,7 @@ const mediaColumns = [
 // KPI Targets
 const kpiData = ref<{ targets: Array<{ resultType: string, targetCostPerResult: number, targetCtr: number | null, maxFrequency: number | null }>, availableResultTypes: string[], revision?: string, canManage?: boolean }>({ targets: [], availableResultTypes: [] })
 // KPI targets are department work: the marketing view may edit them (revision-bound), as may managers.
-const canManageKpis = computed(() => canWrite.value && (isManager.value || marketingView.value || kpiData.value.canManage === true))
+const canManageKpis = computed(() => canWrite.value && (isManager.value || hasPermission('MARKETING_MANAGEMENT') || kpiData.value.canManage === true))
 
 async function refreshKpi() {
   kpiData.value = await apiFetch<{ targets: Array<{ resultType: string, targetCostPerResult: number, targetCtr: number | null, maxFrequency: number | null }>, availableResultTypes: string[], revision?: string, canManage?: boolean }>(
@@ -623,8 +625,9 @@ async function saveKpiTargets() {
           </div>
         </template>
         <template #right>
-          <div v-if="!marketingView" class="flex gap-2">
+          <div v-if="canWrite" class="flex gap-2">
             <UButton
+              v-if="!marketingView"
               label="New Project"
               icon="i-lucide-folder-plus"
               variant="outline"
@@ -837,7 +840,7 @@ async function saveKpiTargets() {
                     <a :href="`tel:${client.contactPhone}`" class="text-primary hover:underline">{{ client.contactPhone }}</a>
                   </dd>
                 </div>
-                <div v-if="client.address">
+                <div v-if="!marketingView && client.address">
                   <dt class="text-sm text-muted">
                     Billing Address
                   </dt>
@@ -845,7 +848,7 @@ async function saveKpiTargets() {
                     {{ client.address }}
                   </dd>
                 </div>
-                <div v-if="client.hourlyRate">
+                <div v-if="!marketingView && client.hourlyRate">
                   <dt class="text-sm text-muted">
                     Hourly Rate
                   </dt>
@@ -853,7 +856,7 @@ async function saveKpiTargets() {
                     {{ formatCurrency(client.hourlyRate) }}/hr
                   </dd>
                 </div>
-                <div v-if="client.retainerAmount">
+                <div v-if="!marketingView && client.retainerAmount">
                   <dt class="text-sm text-muted">
                     Retainer Amount
                   </dt>
@@ -861,7 +864,7 @@ async function saveKpiTargets() {
                     {{ formatCurrency(client.retainerAmount) }}/mo
                   </dd>
                 </div>
-                <div v-if="client.mediaCommissionRate">
+                <div v-if="!marketingView && client.mediaCommissionRate">
                   <dt class="text-sm text-muted">
                     Media Commission
                   </dt>
@@ -869,7 +872,7 @@ async function saveKpiTargets() {
                     {{ client.mediaCommissionRate }}%
                   </dd>
                 </div>
-                <div v-if="client.notes">
+                <div v-if="!marketingView && client.notes">
                   <dt class="text-sm text-muted">
                     Notes
                   </dt>
@@ -884,7 +887,7 @@ async function saveKpiTargets() {
             <ClientsClientTeamCard :client-id="clientId" />
 
             <!-- Xero Link -->
-            <UCard v-if="!marketingView" class="lg:col-span-3">
+            <UCard v-if="canAccessFinance && !marketingView" class="lg:col-span-3">
               <template #header>
                 <div class="flex items-center justify-between">
                   <h3 class="font-semibold">
@@ -1428,7 +1431,7 @@ async function saveKpiTargets() {
               />
             </UFormField>
 
-            <div class="grid grid-cols-1 gap-4 @lg:grid-cols-2">
+            <div v-if="!marketingView" class="grid grid-cols-1 gap-4 @lg:grid-cols-2">
               <UFormField label="Billing Type">
                 <USelectMenu
                   v-model="editForm.billingType"
@@ -1456,7 +1459,7 @@ async function saveKpiTargets() {
             </div>
           </fieldset>
 
-          <fieldset class="space-y-5 pb-6 border-b border-default">
+          <fieldset v-if="!marketingView" class="space-y-5 pb-6 border-b border-default">
             <legend class="text-[11px] font-medium text-muted uppercase tracking-widest mb-1">
               Client portal
             </legend>
@@ -1483,7 +1486,7 @@ async function saveKpiTargets() {
             />
           </fieldset>
 
-          <fieldset class="space-y-5 pb-6 border-b border-default">
+          <fieldset v-if="!marketingView" class="space-y-5 pb-6 border-b border-default">
             <legend class="text-[11px] font-medium text-muted uppercase tracking-widest mb-1">
               Lead capture & CRM
             </legend>
@@ -1588,7 +1591,7 @@ async function saveKpiTargets() {
               </UFormField>
             </div>
 
-            <UFormField label="Billing Address">
+            <UFormField v-if="!marketingView" label="Billing Address">
               <UTextarea
                 v-model="editForm.address"
                 :rows="3"
@@ -1600,7 +1603,7 @@ async function saveKpiTargets() {
           </fieldset>
 
           <!-- Section: Rates -->
-          <fieldset class="space-y-5 pb-6 border-b border-default">
+          <fieldset v-if="!marketingView" class="space-y-5 pb-6 border-b border-default">
             <legend class="text-[11px] font-medium text-muted uppercase tracking-widest mb-1">
               Rates
             </legend>
@@ -1655,7 +1658,7 @@ async function saveKpiTargets() {
           </fieldset>
 
           <!-- Section: Integrations -->
-          <fieldset class="space-y-5 pb-6 border-b border-default">
+          <fieldset v-if="canAccessFinance && !marketingView" class="space-y-5 pb-6 border-b border-default">
             <legend class="text-[11px] font-medium text-muted uppercase tracking-widest mb-1">
               Integrations
             </legend>
@@ -1666,7 +1669,7 @@ async function saveKpiTargets() {
           </fieldset>
 
           <!-- Section: Notes & Status -->
-          <fieldset class="space-y-5">
+          <fieldset v-if="!marketingView" class="space-y-5">
             <legend class="text-[11px] font-medium text-muted uppercase tracking-widest mb-1">
               Notes & Status
             </legend>

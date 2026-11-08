@@ -3,8 +3,9 @@
  * Returns all clients with profitability summary from Postgres
  */
 
-import { db, queryRows, queryRowsFresh } from '~~/server/utils/db'
+import { queryRows, queryRowsFresh } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
+import { assertFinancePermission, assertPermissionGrant } from '~~/server/utils/financeAccess'
 import { cachedFetch } from '~~/server/utils/kv'
 import { CLIENT_FINANCIAL_ACCESS_HEADER, isMarketingClientViewer } from '~~/server/utils/clients/marketingAccess'
 
@@ -40,26 +41,38 @@ async function listMarketingClients() {
 export default defineEventHandler(async (event) => {
   const user = await requireAuth(event)
 
-  // The department never shares the cached financial list, and ignores `active`: inactive clients
-  // are outside its authority whatever the query asks for.
-  if (await isMarketingClientViewer(user.id)) {
+  setResponseHeader(event, 'cache-control', 'private, no-store')
+  let clientInsights = true
+  try {
+    await assertPermissionGrant(event, user.id, 'CLIENTS', false)
+  } catch (error) {
+    if ((error as { statusCode?: number }).statusCode !== 403) throw error
+    clientInsights = false
+  }
+  const marketingOnly = await isMarketingClientViewer(user.id)
+  if (!clientInsights || marketingOnly) {
     setResponseHeader(event, CLIENT_FINANCIAL_ACCESS_HEADER, 'marketing')
-    setResponseHeader(event, 'cache-control', 'private, no-store')
     try {
       return await listMarketingClients()
-    } catch (error) {
-      console.error('Failed to fetch marketing clients:', error)
+    } catch {
       throw createError({ statusCode: 500, statusMessage: 'Failed to fetch clients' })
     }
+  }
+  let companyFinance = true
+  try {
+    await assertFinancePermission(event, user.id, false)
+  } catch (error) {
+    if ((error as { statusCode?: number }).statusCode !== 403) throw error
+    companyFinance = false
   }
 
   const query = getQuery(event)
   const activeOnly = query.active !== 'false'
 
-  return cachedFetch(event, `agency:clients:${activeOnly}`, 120, async () => {
-  try {
+  const clients = await cachedFetch(event, `agency:clients:${activeOnly}`, 120, async () => {
+    try {
     // Get clients with aggregated profitability data
-    const clients = await queryRows(`
+      const clients = await queryRows(`
       SELECT
         c.*,
         COALESCE(stats.total_revenue, 0) as total_revenue,
@@ -98,35 +111,36 @@ export default defineEventHandler(async (event) => {
       ORDER BY c.name
     `, [!activeOnly])
 
-    // Transform snake_case to camelCase for frontend
-    return clients.map(c => ({
-      id: c.id,
-      name: c.name,
-      xeroContactId: c.xero_contact_id,
-      billingType: c.billing_type,
-      retainerAmount: c.retainer_amount ? Number(c.retainer_amount) : undefined,
-      paymentTerms: c.payment_terms,
-      hourlyRate: c.hourly_rate ? Number(c.hourly_rate) : undefined,
-      mediaCommissionRate: c.media_commission_rate ? Number(c.media_commission_rate) : undefined,
-      isActive: c.is_active,
-      logoUrl: c.logo_url || null,
-      notes: c.notes,
-      createdAt: c.created_at,
-      updatedAt: c.updated_at,
-      // Profitability data
-      totalRevenue: Number(c.total_revenue) || 0,
-      totalCost: Number(c.total_cost) || 0,
-      grossProfit: Number(c.gross_profit) || 0,
-      grossMargin: Number(c.gross_margin) || 0,
-      projectCount: Number(c.project_count) || 0,
-      activeProjects: Number(c.active_projects) || 0,
-    }))
-  } catch (error) {
-    console.error('Failed to fetch clients:', error)
-    throw createError({
-      statusCode: 500,
-      statusMessage: 'Failed to fetch clients'
-    })
-  }
+      // Transform snake_case to camelCase for frontend
+      return clients.map(c => ({
+        id: c.id,
+        name: c.name,
+        xeroContactId: c.xero_contact_id,
+        billingType: c.billing_type,
+        retainerAmount: c.retainer_amount ? Number(c.retainer_amount) : undefined,
+        paymentTerms: c.payment_terms,
+        hourlyRate: c.hourly_rate ? Number(c.hourly_rate) : undefined,
+        mediaCommissionRate: c.media_commission_rate ? Number(c.media_commission_rate) : undefined,
+        isActive: c.is_active,
+        logoUrl: c.logo_url || null,
+        notes: c.notes,
+        createdAt: c.created_at,
+        updatedAt: c.updated_at,
+        // Profitability data
+        totalRevenue: Number(c.total_revenue) || 0,
+        totalCost: Number(c.total_cost) || 0,
+        grossProfit: Number(c.gross_profit) || 0,
+        grossMargin: Number(c.gross_margin) || 0,
+        projectCount: Number(c.project_count) || 0,
+        activeProjects: Number(c.active_projects) || 0
+      }))
+    } catch (error) {
+      console.error('Failed to fetch clients:', error)
+      throw createError({
+        statusCode: 500,
+        statusMessage: 'Failed to fetch clients'
+      })
+    }
   })
+  return clients.map(({ xeroContactId, ...client }) => companyFinance ? { ...client, xeroContactId } : client)
 })

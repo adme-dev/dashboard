@@ -3,8 +3,12 @@
 // The master clock is engine.currentTime(); an rAF loop mirrors it into currentTime
 // for the playhead (clock rule: the view slaves to the engine, never the reverse).
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import type { StoryboardApplicationReceipt } from '~~/server/utils/video-storyboard/apply'
 import type { TimelineState, Track } from '~~/server/utils/audio/timelineSchema'
-import type { MediaProject } from '~~/app/types'
+import { createSerialMediaOperations } from '~~/app/utils/audio/mediaSaveQueue'
+import { TimelineWritePreconditionSchema } from '~~/shared/video/timelineRevision'
+import type { TimelineWritePrecondition } from '~~/shared/video/timelineRevision'
+import type { MediaTimeline, MediaProject, MediaRenderJob } from '~~/app/types'
 import { planTimeline, type ScheduledClip, type TrackBus } from '~~/app/utils/audio/audioSchedulePlanner'
 import { createAudioEngine, type AudioEngine, type AudioEngineDeps, type LoadResult } from '~~/app/composables/useAudioEngine'
 import { createBrowserAudioContext, browserSetTimer, makeR2Resolver } from '~~/app/utils/audio/audioContextFactory'
@@ -23,9 +27,7 @@ import {
   videoSourceRecord,
   type VideoSourceInput,
 } from '~~/app/utils/video/videoSourceRegistry'
-import type { MediaRenderJob } from '~~/app/types'
 import type { VideoAsset } from '~~/server/utils/video/assets'
-import { idempotencyKey } from '~~/app/utils/idempotencyKey'
 
 export type EditorStatus = 'idle' | 'loading' | 'ready' | 'error'
 export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
@@ -33,9 +35,13 @@ export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
 // ---------------------------------------------------------------------------
 // Pure debounced-saver helper — exported for unit testing
 // ---------------------------------------------------------------------------
-export function makeDebouncedSaver(fn: () => Promise<void>, ms: number): { trigger(): void } {
+export function makeDebouncedSaver(fn: () => Promise<void>, ms: number): { trigger(): void, cancel(): void } {
   let timer: ReturnType<typeof setTimeout> | null = null
   return {
+    cancel() {
+      if (timer !== null) clearTimeout(timer)
+      timer = null
+    },
     trigger() {
       if (timer !== null) clearTimeout(timer)
       timer = setTimeout(() => {
@@ -153,13 +159,23 @@ export function useMediaProjectEditor(projectId: string) {
   const saveStatus = ref<SaveStatus>('idle')
   /** Human-readable reason for the last failed save (null when the last save succeeded). */
   const saveError = ref<string | null>(null)
+  const saveConflict = ref(false)
+  const operations = createSerialMediaOperations()
+  const storyboardApplying = ref(false)
+  const storyboardAppliedState = ref<string | null>(null)
+  const storyboardDiverged = computed(() => storyboardAppliedState.value !== null && JSON.stringify(timeline.value) !== storyboardAppliedState.value)
+  const adoptedStoryboardOperations = new Set<string>()
+  let timelineToken: TimelineWritePrecondition | null = null
+  function adoptTimelineToken(value: Pick<MediaTimeline, 'id' | 'editRevision'>) {
+    timelineToken = TimelineWritePreconditionSchema.parse({ expectedTimelineId: value.id, expectedEditRevision: value.editRevision })
+    if (project.value) project.value.currentTimelineId = value.id
+  }
   /** True from the first edit until the next successful save — drives the leave-page guard. */
   const dirty = ref(false)
   /** Project metadata (title, client, status). Loaded with the timeline. */
   const project = ref<MediaProject | null>(null)
-  // Each save attempt gets its own Idempotency-Key. A retried payload is a new
-  // attempt with a new key — timeline saves are idempotent UPDATEs, so a
-  // response-less attempt that did commit is harmlessly re-applied.
+  // Each explicit request has a fresh key. CAS rejects an ambiguous replay if
+  // a prior response was lost; it never silently overwrites a newer edit.
   let saveSequence = 0
   const idempotencyKey = (scope: string) => `media-${scope}:${projectId}:${Date.now().toString(36)}:${++saveSequence}`
   // Clip ids whose audio source couldn't be resolved (deleted/404). Non-fatal: the
@@ -185,26 +201,38 @@ export function useMediaProjectEditor(projectId: string) {
   // ---------------------------------------------------------------------------
   // Autosave wiring
   // ---------------------------------------------------------------------------
-  async function doSave(): Promise<boolean> {
-    if (!timeline.value) return false
+  async function persistCurrentSnapshot(): Promise<boolean> {
+    if (!timeline.value || !timelineToken || saveConflict.value) return false
+    if (!dirty.value) return true
     saveStatus.value = 'saving'
     const snapshot = timeline.value
     try {
-      await apiFetch(`/api/agency/audio/projects/${projectId}/timeline`, {
+      const result = await apiFetch<{ timeline: MediaTimeline }>(`/api/agency/audio/projects/${projectId}/timeline`, {
         method: 'PUT',
         headers: { 'Idempotency-Key': idempotencyKey('timeline') },
-        body: { state: timeline.value }
+        body: { ...timelineToken, state: cloneState(snapshot) }
       })
-      saveStatus.value = 'saved'
+      adoptTimelineToken(result.timeline)
       saveError.value = null
-      // Only clean if nothing was edited while the request was in flight.
-      if (timeline.value === snapshot) dirty.value = false
+      if (timeline.value === snapshot) {
+        dirty.value = false
+        saveStatus.value = 'saved'
+      } else {
+        saveStatus.value = 'idle'
+      }
       return true
     } catch (e: unknown) {
       saveStatus.value = 'error'
-      saveError.value = apiErrorDescription(e, 'Unknown error')
+      saveConflict.value = apiErrorStatus(e) === 409
+      saveError.value = saveConflict.value
+        ? 'The saved timeline changed. Download your local edit before reloading the saved version.'
+        : apiErrorDescription(e, 'Unknown error')
       return false
     }
+  }
+
+  function doSave(): Promise<boolean> {
+    return operations.run(persistCurrentSnapshot)
   }
 
   const saver = makeDebouncedSaver(async () => { await doSave() }, 1500)
@@ -212,6 +240,7 @@ export function useMediaProjectEditor(projectId: string) {
 
   /** Rename / re-home the project. Resolves with the updated project row. */
   async function updateProject(patch: { title?: string | null; clientId?: string | null }): Promise<MediaProject> {
+    if (storyboardApplying.value) throw new Error('Recover the storyboard application first')
     const res = await apiFetch<{ project: MediaProject }>(`/api/agency/audio/projects/${projectId}`, {
       method: 'PATCH',
       headers: { 'Idempotency-Key': idempotencyKey('project') },
@@ -221,8 +250,74 @@ export function useMediaProjectEditor(projectId: string) {
     return res.project
   }
   async function saveNow() {
+    saver.cancel()
     const saved = await doSave()
     if (!saved) throw new Error('Could not save timeline')
+  }
+
+  /** Freeze synchronously, then drain every save already in flight before capturing CAS. */
+  async function beginStoryboardApplication() {
+    if (storyboardApplying.value) throw new Error('Storyboard application is already pending')
+    storyboardApplying.value = true
+    saver.cancel()
+    try {
+      return await operations.run(async () => {
+        if (!await persistCurrentSnapshot() || !timeline.value || !timelineToken) throw new Error('Save the current edit before applying a storyboard')
+        return { ...timelineToken, beforeState: cloneState(timeline.value) }
+      })
+    } catch (error) {
+      storyboardApplying.value = false
+      throw error
+    }
+  }
+  function restoreStoryboardBaseline(receipt: StoryboardApplicationReceipt) {
+    if (receipt.projectId !== projectId) return
+    storyboardAppliedState.value = JSON.stringify(receipt.afterState)
+  }
+  function holdStoryboardApplication() {
+    storyboardApplying.value = true
+    saver.cancel()
+  }
+  async function resumeStoryboardApplication() {
+    if (!timeline.value || !timelineToken) throw new Error('Wait for the project to finish loading before recovery')
+    holdStoryboardApplication()
+    await operations.run(async () => undefined)
+  }
+  function releaseStoryboardApplication() {
+    storyboardApplying.value = false
+  }
+  async function adoptCommittedStoryboard(receipt: StoryboardApplicationReceipt, beforeState: TimelineState) {
+    if (adoptedStoryboardOperations.has(receipt.operationId)) return
+    if (!storyboardApplying.value || receipt.projectId !== projectId || !timelineToken) {
+      throw new Error('Storyboard receipt no longer matches the editor')
+    }
+    const matchesBefore = receipt.before.timelineId === timelineToken.expectedTimelineId && receipt.before.editRevision === timelineToken.expectedEditRevision
+    const matchesAfter = receipt.after.timelineId === timelineToken.expectedTimelineId && receipt.after.editRevision === timelineToken.expectedEditRevision
+    if (dirty.value || (!matchesBefore && !matchesAfter)) {
+      // A refresh may already have loaded an edit newer than this confirmed receipt.
+      // Consume recovery without replacing that newer/local edit.
+      adoptedStoryboardOperations.add(receipt.operationId)
+      storyboardAppliedState.value = JSON.stringify(receipt.afterState)
+      error.value = 'Application confirmed; the current edit has since changed and was preserved.'
+      return
+    }
+    saver.cancel()
+    undo.push(cloneState(beforeState))
+    timeline.value = cloneState(receipt.afterState)
+    adoptTimelineToken({ id: receipt.after.timelineId, editRevision: receipt.after.editRevision })
+    adoptedStoryboardOperations.add(receipt.operationId)
+    storyboardAppliedState.value = JSON.stringify(timeline.value)
+    dirty.value = false
+    saveConflict.value = false
+    saveError.value = null
+    saveStatus.value = 'saved'
+    syncUndoRedo()
+    // Source refresh is recoverable independently; never repeat the committed adoption.
+    try {
+      const sources = await apiFetch<{ sources: Record<string, string> }>(`/api/agency/audio/projects/${projectId}/clip-sources`)
+      for (const [key, url] of Object.entries(sources.sources)) mergeSource(key, url)
+      await reloadEngine(timeline.value)
+    } catch { error.value = 'Storyboard applied. Reload media sources to preview the new cut.' }
   }
 
   // ---------------------------------------------------------------------------
@@ -245,7 +340,7 @@ export function useMediaProjectEditor(projectId: string) {
   }
 
   function applyEdit(next: TimelineState) {
-    if (!timeline.value) return
+    if (!timeline.value || storyboardApplying.value) return
     // Push the CURRENT state onto the undo stack before replacing it.
     undo.push(timeline.value)
     timeline.value = next
@@ -449,31 +544,39 @@ export function useMediaProjectEditor(projectId: string) {
 
   /** Enqueue a composite-video render. Returns false (with a flag-off signal) on 404. */
   async function renderVideoAction(formats?: string[]): Promise<{ ok: boolean; flagOff?: boolean; maybeQueued?: boolean; reason?: string }> {
-    if (rendering.value) return { ok: false }
+    if (rendering.value || storyboardApplying.value) return { ok: false }
     rendering.value = true
-    try {
-      if (!await doSave()) return { ok: false }
-      await apiFetch(`/api/agency/audio/projects/${projectId}/render-video`, {
-        method: 'POST',
-        headers: { 'Idempotency-Key': idempotencyKey('render') },
-        body: formats?.length ? { formats } : {}
-      })
-      await refreshRenderJobs()
-      scheduleJobPoll()
-      return { ok: true }
-    } catch (e: unknown) {
-      if (apiErrorStatus(e) === 404) return { ok: false, flagOff: true }
-      if (isPossiblyAppliedFailure(e)) {
-        // The request may have reached the queue before the failure. Show what
-        // actually exists rather than inviting a duplicate render.
-        await refreshRenderJobs().catch(() => {})
+    saver.cancel()
+    return operations.run(async () => {
+      try {
+        if (!await persistCurrentSnapshot()) return { ok: false, reason: saveError.value ?? 'Save failed' }
+        await apiFetch(`/api/agency/audio/projects/${projectId}/render-video`, {
+          method: 'POST',
+          headers: { 'Idempotency-Key': idempotencyKey('render') },
+          body: { ...timelineToken, ...(formats?.length ? { formats } : {}) }
+        })
+        await refreshRenderJobs()
         scheduleJobPoll()
-        return { ok: false, maybeQueued: true, reason: apiErrorDescription(e, 'No response from the server') }
+        return { ok: true }
+      } catch (e: unknown) {
+        if (apiErrorStatus(e) === 409) {
+          saveConflict.value = true
+          saveStatus.value = 'error'
+          saveError.value = 'The saved timeline changed. Download your local edit before reloading the saved version.'
+        }
+        if (apiErrorStatus(e) === 404) return { ok: false, flagOff: true }
+        if (isPossiblyAppliedFailure(e)) {
+          // The request may have reached the queue before the failure. Show what
+          // actually exists rather than inviting a duplicate render.
+          await refreshRenderJobs().catch(() => {})
+          scheduleJobPoll()
+          return { ok: false, maybeQueued: true, reason: apiErrorDescription(e, 'No response from the server') }
+        }
+        return { ok: false, reason: apiErrorDescription(e, 'Unknown error') }
+      } finally {
+        rendering.value = false
       }
-      return { ok: false, reason: apiErrorDescription(e, 'Unknown error') }
-    } finally {
-      rendering.value = false
-    }
+    })
   }
 
   /** Draft a social post from a rendered variant. Returns { postId, clientId } or throws (page toasts). */
@@ -522,7 +625,7 @@ export function useMediaProjectEditor(projectId: string) {
   }
 
   function undoAction() {
-    if (!timeline.value) return
+    if (!timeline.value || storyboardApplying.value) return
     const prev = undo.undo(timeline.value)
     if (prev) {
       timeline.value = prev
@@ -533,7 +636,7 @@ export function useMediaProjectEditor(projectId: string) {
   }
 
   function redoAction() {
-    if (!timeline.value) return
+    if (!timeline.value || storyboardApplying.value) return
     const nxt = undo.redo(timeline.value)
     if (nxt) {
       timeline.value = nxt
@@ -549,13 +652,49 @@ export function useMediaProjectEditor(projectId: string) {
 
   /** Snapshot the CURRENT timeline as a named version (server-side copy). */
   async function saveVersion(label: string) {
-    // versions.post reads body: { label?: string | null }
-    // It snapshots the server's current draft timeline; save first so it's up to date.
-    await saveNow()
-    return apiFetch(`/api/agency/audio/projects/${projectId}/versions`, {
-      method: 'POST',
-      headers: { 'Idempotency-Key': idempotencyKey('version') },
-      body: { label }
+    if (storyboardApplying.value) throw new Error('Recover the storyboard application first')
+    saver.cancel()
+    return operations.run(async () => {
+      if (!await persistCurrentSnapshot()) throw new Error('Could not save timeline')
+      try {
+        const result = await apiFetch<{ timeline: MediaTimeline }>(`/api/agency/audio/projects/${projectId}/versions`, {
+          method: 'POST',
+          headers: { 'Idempotency-Key': idempotencyKey('version') },
+          body: { ...timelineToken, label }
+        })
+        adoptTimelineToken(result.timeline)
+        return result
+      } catch (e) {
+        saveStatus.value = 'error'
+        saveConflict.value = apiErrorStatus(e) === 409 || (apiErrorStatus(e) ?? 0) >= 500 || isPossiblyAppliedFailure(e)
+        saveError.value = apiErrorDescription(e, 'Version status is unknown. Reload the saved version before editing further.')
+        throw e
+      }
+    })
+  }
+
+  /** Explicit user-confirmed recovery; failures never discard the local edit. */
+  async function reloadSavedTimeline() {
+    if (storyboardApplying.value) throw new Error('Recover the storyboard application first')
+    saver.cancel()
+    return operations.run(async () => {
+      const local = timeline.value
+      const [result, sources] = await Promise.all([
+        apiFetch<{ project: MediaProject, timeline: MediaTimeline }>(`/api/agency/audio/projects/${projectId}`),
+        apiFetch<{ sources: Record<string, string> }>(`/api/agency/audio/projects/${projectId}/clip-sources`)
+      ])
+      if (timeline.value !== local) throw new Error('You edited while reloading. Your local changes are still here; reload again when ready.')
+      adoptTimelineToken(result.timeline)
+      project.value = result.project
+      timeline.value = cloneState(result.timeline.state as TimelineState)
+      for (const [key, url] of Object.entries(sources.sources)) mergeSource(key, url)
+      undo.clear()
+      syncUndoRedo()
+      dirty.value = false
+      saveConflict.value = false
+      saveError.value = null
+      saveStatus.value = 'saved'
+      await reloadEngine(timeline.value)
     })
   }
 
@@ -568,8 +707,33 @@ export function useMediaProjectEditor(projectId: string) {
   }
 
   /** Restore a previously-saved version as the new working state. */
-  function restoreVersion(state: TimelineState) {
-    applyEdit(cloneState(state))
+  async function restoreVersion(state: TimelineState, versionId?: string) {
+    if (!versionId) { applyEdit(cloneState(state)); return }
+    if (storyboardApplying.value) throw new Error('Recover the storyboard application first')
+    saver.cancel()
+    return operations.run(async () => {
+      if (!await persistCurrentSnapshot()) throw new Error('Could not save timeline')
+      const before = timeline.value
+      // Freeze local mutation while the server restores the selected version's
+      // state and independent obligations. An ambiguous result keeps local work.
+      storyboardApplying.value = true
+      try {
+        const result = await apiFetch<{ timeline: MediaTimeline }>(`/api/agency/audio/projects/${projectId}/timeline`, {
+          method: 'PUT', headers: { 'Idempotency-Key': idempotencyKey('restore') },
+          body: { ...timelineToken, restoreTimelineId: versionId }
+        })
+        if (timeline.value !== before) throw new Error('Local edits changed during restoration; reload the saved version')
+        adoptTimelineToken(result.timeline)
+        timeline.value = cloneState(result.timeline.state as TimelineState)
+        undo.clear(); syncUndoRedo()
+        dirty.value = false; saveStatus.value = 'saved'; saveConflict.value = false; saveError.value = null
+        await reloadEngine(timeline.value)
+      } catch (e) {
+        saveStatus.value = 'error'; saveConflict.value = true
+        saveError.value = apiErrorDescription(e, 'Restore status is uncertain. Reload the saved timeline before editing.')
+        throw e
+      } finally { storyboardApplying.value = false }
+    })
   }
 
   // ---------------------------------------------------------------------------
@@ -582,11 +746,12 @@ export function useMediaProjectEditor(projectId: string) {
       // The SP0 project GET returns the MediaTimeline WRAPPER; the TimelineState lives
       // in `.state` (validated on write — cast rather than re-import the Zod value client-side).
       const [proj, src] = await Promise.all([
-        apiFetch<{ project: MediaProject; timeline: { state: unknown } | null }>(`/api/agency/audio/projects/${projectId}`),
+        apiFetch<{ project: MediaProject, timeline: MediaTimeline | null }>(`/api/agency/audio/projects/${projectId}`),
         apiFetch<{ sources: Record<string, string> }>(`/api/agency/audio/projects/${projectId}/clip-sources`)
       ])
       const state = proj.timeline?.state as TimelineState | undefined
       if (!state) { status.value = 'error'; error.value = 'This project has no timeline yet.'; return }
+      adoptTimelineToken(proj.timeline!)
       timeline.value = state
       project.value = proj.project
       // Populate the live sources map from the initial presigned URLs
@@ -657,13 +822,20 @@ export function useMediaProjectEditor(projectId: string) {
   }
 
   onMounted(() => { void init() })
-  onBeforeUnmount(() => { cancelAnimationFrame(raf); if (pollTimer) clearTimeout(pollTimer); engine?.dispose(); engine = null })
+  onBeforeUnmount(() => {
+    saver.cancel()
+    cancelAnimationFrame(raf)
+    if (pollTimer) clearTimeout(pollTimer)
+    engine?.dispose()
+    engine = null
+  })
 
   return {
     // State
     timeline, clips, tracks, status, error,
     isPlaying, currentTime, duration,
-    canUndo, canRedo, saveStatus, saveError, dirty, saveNow,
+    storyboardApplying, storyboardDiverged, restoreStoryboardBaseline, holdStoryboardApplication, beginStoryboardApplication, resumeStoryboardApplication, releaseStoryboardApplication, adoptCommittedStoryboard,
+    canUndo, canRedo, saveStatus, saveError, saveConflict, dirty, saveNow, reloadSavedTimeline,
     project, updateProject,
     /** Clip ids whose source couldn't be loaded (deleted/404). Non-fatal warning. */
     missingClipIds,

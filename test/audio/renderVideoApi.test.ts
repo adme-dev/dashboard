@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 interface TestEvent { query?: Record<string, any>; params?: Record<string, string>; body?: any; context?: any }
+const token = { expectedTimelineId: 't1', expectedEditRevision: 0 }
 const g = globalThis as any
 g.defineEventHandler = (fn: any) => fn
 g.getQuery = (e: TestEvent) => e.query ?? {}
@@ -8,6 +9,9 @@ g.getRouterParam = (e: TestEvent, n: string) => e.params?.[n]
 g.readBody = async (e: TestEvent) => e.body ?? {}
 g.createError = (i: any) => Object.assign(new Error(i.statusMessage), i)
 g.setResponseStatus = vi.fn()
+
+const mockStoryboardDispatch = vi.fn().mockResolvedValue(null)
+vi.mock('~~/server/utils/video-storyboard/renderDispatch', () => ({ createStoryboardRenderJobIfObligated: (...args: unknown[]) => mockStoryboardDispatch(...args) }))
 
 const mockRequireAuth = vi.fn()
 const mockRequireWriteAccess = vi.fn()
@@ -19,7 +23,8 @@ vi.mock('~~/server/utils/auth', () => ({
 const mockGetProject = vi.fn()
 const mockCreateRenderJob = vi.fn()
 const mockMarkFailed = vi.fn()
-vi.mock('~~/server/utils/audio/projects', () => ({
+vi.mock('~~/server/utils/audio/projects', async original => ({
+  ...await original<typeof import('~~/server/utils/audio/projects')>(),
   getProjectWithCurrentTimeline: (...a: unknown[]) => mockGetProject(...a),
   createRenderJob: (...a: unknown[]) => mockCreateRenderJob(...a),
   markRenderJobFailed: (...a: unknown[]) => mockMarkFailed(...a)
@@ -55,24 +60,26 @@ vi.mock('~~/server/utils/storage', () => ({
 const { default: renderVideoH } = await import('../../server/api/agency/audio/projects/[id]/render-video.post')
 
 const avProject = {
+  createdBy: 'u1',
   id: 'p1',
   mediaType: 'av',
   currentTimelineId: 't1',
   status: 'draft'
 }
 const audioProject = {
+  createdBy: 'u1',
   id: 'p2',
   mediaType: 'audio',
   currentTimelineId: 't1',
   status: 'draft'
 }
-const goodTimeline = { id: 't1', state: {} }
+const goodTimeline = { id: 't1', editRevision: 0, state: {} }
 const validOverlayHtml = '<script>window.__engagrFrame={ready:true,duration:5,seek:function(){}}</script>'
 
 beforeEach(() => {
   vi.clearAllMocks()
-  mockRequireAuth.mockResolvedValue({ id: 'u1' })
-  mockRequireWriteAccess.mockResolvedValue({ id: 'u1' })
+  mockRequireAuth.mockResolvedValue({ id: 'u1', role: 'member' })
+  mockRequireWriteAccess.mockResolvedValue({ id: 'u1', role: 'member' })
   process.env.VIDEO_STUDIO_ENABLED = 'true'
 })
 
@@ -85,13 +92,13 @@ describe('POST /agency/audio/projects/:id/render-video', () => {
     mockGetProject.mockResolvedValue({ project: avProject, timeline: goodTimeline })
     mockCreateRenderJob.mockResolvedValue({ id: 'j1', timelineId: 't2', status: 'queued' })
 
-    const res = await renderVideoH({ params: { id: 'p1' }, body: {}, context: {} } as any)
+    const res = await renderVideoH({ params: { id: 'p1' }, body: { ...token }, context: {} } as never)
 
     expect(mockRequireWriteAccess).toHaveBeenCalled()
     // createRenderJob called with projectId + requestedBy
     const jobArg = mockCreateRenderJob.mock.calls[0][0]
     expect(jobArg.projectId).toBe('p1')
-    expect(jobArg.requestedBy).toBe('u1')
+    expect(jobArg.actor.id).toBe('u1')
 
     // enqueueVideoRender called with the right message
     expect(mockEnqueueVideoRender).toHaveBeenCalledWith(
@@ -105,7 +112,7 @@ describe('POST /agency/audio/projects/:id/render-video', () => {
   it('400s when the project mediaType is audio (not av)', async () => {
     mockGetProject.mockResolvedValue({ project: audioProject, timeline: goodTimeline })
 
-    await expect(renderVideoH({ params: { id: 'p2' }, body: {}, context: {} } as any))
+    await expect(renderVideoH({ params: { id: 'p2' }, body: { ...token }, context: {} } as never))
       .rejects.toMatchObject({ statusCode: 400 })
     expect(mockCreateRenderJob).not.toHaveBeenCalled()
   })
@@ -113,7 +120,7 @@ describe('POST /agency/audio/projects/:id/render-video', () => {
   it('throws 404 when VIDEO_STUDIO_ENABLED is not set', async () => {
     delete process.env.VIDEO_STUDIO_ENABLED
 
-    await expect(renderVideoH({ params: { id: 'p1' }, body: {}, context: {} } as any))
+    await expect(renderVideoH({ params: { id: 'p1' }, body: { ...token }, context: {} } as never))
       .rejects.toMatchObject({ statusCode: 404 })
     expect(mockGetProject).not.toHaveBeenCalled()
   })
@@ -123,7 +130,7 @@ describe('POST /agency/audio/projects/:id/render-video', () => {
     mockCreateRenderJob.mockResolvedValue({ id: 'j1', timelineId: 't2', status: 'queued' })
     mockEnqueueVideoRender.mockRejectedValue(new Error('queue unavailable'))
 
-    await expect(renderVideoH({ params: { id: 'p1' }, body: {}, context: {} } as any))
+    await expect(renderVideoH({ params: { id: 'p1' }, body: { ...token }, context: {} } as never))
       .rejects.toMatchObject({ statusCode: 502 })
     expect(mockMarkFailed).toHaveBeenCalledWith('j1', expect.stringContaining('enqueue failed'))
   })
@@ -132,7 +139,7 @@ describe('POST /agency/audio/projects/:id/render-video', () => {
 // T6: overlay resolution tests
 describe('POST /agency/audio/projects/:id/render-video — overlay resolution', () => {
   const overlayTimeline = {
-    id: 't1',
+    id: 't1', editRevision: 0,
     state: {
       schema_version: 2,
       media_type: 'av',
@@ -157,7 +164,7 @@ describe('POST /agency/audio/projects/:id/render-video — overlay resolution', 
   }
 
   beforeEach(() => {
-    mockRequireWriteAccess.mockResolvedValue({ id: 'u1' })
+    mockRequireWriteAccess.mockResolvedValue({ id: 'u1', role: 'member' })
     mockEnqueueVideoRender.mockResolvedValue(undefined)
     mockLoadBannerLayers.mockResolvedValue({ layers: [{ id: 'l1', type: 'text', text: 'Hi' }], width: 1080, height: 1920 })
     mockResolveOverlayFormatKey.mockReturnValue('fb_story')
@@ -171,7 +178,7 @@ describe('POST /agency/audio/projects/:id/render-video — overlay resolution', 
 
     const res = await renderVideoH({
       params: { id: 'p1' },
-      body: { formats: ['reels_9x16'] },
+      body: { ...token, formats: ['reels_9x16'] },
       context: {}
     } as any)
 
@@ -207,7 +214,7 @@ describe('POST /agency/audio/projects/:id/render-video — overlay resolution', 
 
   it('uses resolveOverlayFormatKey when gsap_format_key is null', async () => {
     const noKeyTimeline = {
-      id: 't1',
+      id: 't1', editRevision: 0,
       state: {
         schema_version: 2,
         media_type: 'av',
@@ -236,7 +243,7 @@ describe('POST /agency/audio/projects/:id/render-video — overlay resolution', 
 
     await renderVideoH({
       params: { id: 'p1' },
-      body: { formats: ['reels_9x16'] },
+      body: { ...token, formats: ['reels_9x16'] },
       context: {}
     } as any)
 
@@ -247,7 +254,7 @@ describe('POST /agency/audio/projects/:id/render-video — overlay resolution', 
 
   it('resolves default overlay HTML separately for each requested render format', async () => {
     const noKeyTimeline = {
-      id: 't1',
+      id: 't1', editRevision: 0,
       state: {
         schema_version: 2,
         media_type: 'av',
@@ -284,7 +291,7 @@ describe('POST /agency/audio/projects/:id/render-video — overlay resolution', 
 
     await renderVideoH({
       params: { id: 'p1' },
-      body: { formats: ['reels_9x16', 'youtube_16x9'] },
+      body: { ...token, formats: ['reels_9x16', 'youtube_16x9'] },
       context: {}
     } as any)
 
@@ -322,7 +329,7 @@ describe('POST /agency/audio/projects/:id/render-video — overlay resolution', 
     mockCreateRenderJob.mockResolvedValue({ id: 'j3', timelineId: 't1', status: 'queued' })
     mockLoadBannerLayers.mockRejectedValue(new Error('banner project not found: bp1'))
 
-    await expect(renderVideoH({ params: { id: 'p1' }, body: {}, context: {} } as any))
+    await expect(renderVideoH({ params: { id: 'p1' }, body: { ...token }, context: {} } as never))
       .rejects.toMatchObject({ statusCode: 400 })
   })
 
@@ -331,9 +338,50 @@ describe('POST /agency/audio/projects/:id/render-video — overlay resolution', 
     mockCreateRenderJob.mockResolvedValue({ id: 'j4', timelineId: 't1', status: 'queued' })
     mockBuildBannerHTML.mockReturnValue('<div>invalid overlay</div>')
 
-    await expect(renderVideoH({ params: { id: 'p1' }, body: { formats: ['reels_9x16'] }, context: {} } as any))
+    await expect(renderVideoH({ params: { id: 'p1' }, body: { ...token, formats: ['reels_9x16'] }, context: {} } as never))
       .rejects.toMatchObject({ statusCode: 400, statusMessage: expect.stringContaining('Overlay resolution failed') })
     expect(mockMarkFailed).toHaveBeenCalledWith('j4', expect.stringContaining('render runtime'))
     expect(mockUploadFile).not.toHaveBeenCalled()
   })
+})
+
+describe('render revision guards', () => {
+  it('rejects legacy bodies before snapshot or enqueue', async () => {
+    await expect(renderVideoH({ params: { id: 'p1' }, body: {}, context: {} } as never)).rejects.toMatchObject({ statusCode: 409 })
+    expect(mockCreateRenderJob).not.toHaveBeenCalled()
+    expect(mockEnqueueVideoRender).not.toHaveBeenCalled()
+  })
+  it('rejects a stale revision before snapshot or enqueue', async () => {
+    mockGetProject.mockResolvedValue({ project: { id: 'p1', createdBy: 'u1', mediaType: 'av', currentTimelineId: 't1' }, timeline: { id: 't1', editRevision: 2, state: {} } })
+    await expect(renderVideoH({ params: { id: 'p1' }, body: token, context: {} } as never)).rejects.toMatchObject({ statusCode: 409 })
+    expect(mockCreateRenderJob).not.toHaveBeenCalled()
+    expect(mockEnqueueVideoRender).not.toHaveBeenCalled()
+  })
+})
+
+describe('storyboard manifest dispatch integration', () => {
+  it('queues the persisted obligated job without rebuilding mutable legacy overlays', async () => {
+    mockGetProject.mockResolvedValue({ project: avProject, timeline: goodTimeline })
+    mockStoryboardDispatch.mockResolvedValueOnce({ id: 'storyboard-job', timelineId: 'snapshot', status: 'queued' })
+    const result = await renderVideoH({ params: { id: 'p1' }, body: { ...token, formats: ['square_1x1'] }, context: {} } as never)
+    expect(result.job.id).toBe('storyboard-job')
+    expect(mockCreateRenderJob).not.toHaveBeenCalled()
+    expect(mockLoadBannerLayers).not.toHaveBeenCalled()
+    expect(mockEnqueueVideoRender).toHaveBeenCalledWith(expect.anything(), { jobId: 'storyboard-job', projectId: 'p1', timelineId: 'snapshot', formats: ['square_1x1'] })
+  })
+  it('does not fall back to legacy rendering after an obligated validation rejection', async () => {
+    mockGetProject.mockResolvedValue({ project: avProject, timeline: goodTimeline })
+    mockStoryboardDispatch.mockRejectedValueOnce(new Error('source revoked'))
+    await expect(renderVideoH({ params: { id: 'p1' }, body: { ...token }, context: {} } as never)).rejects.toThrow('source revoked')
+    expect(mockCreateRenderJob).not.toHaveBeenCalled()
+    expect(mockEnqueueVideoRender).not.toHaveBeenCalled()
+  })
+})
+
+it('normalizes duplicate formats before manifest dispatch and enqueue', async () => {
+  mockGetProject.mockResolvedValue({ project: avProject, timeline: goodTimeline })
+  mockStoryboardDispatch.mockResolvedValueOnce({ id: 'storyboard-job', timelineId: 'snapshot', status: 'queued' })
+  await renderVideoH({ params: { id: 'p1' }, body: { ...token, formats: ['square_1x1', 'square_1x1'] }, context: {} } as never)
+  expect(mockStoryboardDispatch).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ formats: ['square_1x1'] }))
+  expect(mockEnqueueVideoRender).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ formats: ['square_1x1'] }))
 })

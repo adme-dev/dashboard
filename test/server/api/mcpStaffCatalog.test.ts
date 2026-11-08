@@ -109,6 +109,7 @@ interface Actor {
   role: string
   customRoleId?: string | null
   customRole?: { is_read_only: boolean, permission_groups: string[] } | null
+  systemRole?: { is_read_only: boolean, permission_groups: string[] }
   active?: boolean
   assignments?: string[]
 }
@@ -162,13 +163,19 @@ describe('ordinary staff MCP catalog boundary', () => {
     mocks.execute.mockResolvedValue(1)
     mocks.executeRemember.mockResolvedValue({ ok: true, data: { remembered: true } })
     mocks.requireAuth.mockImplementation(async () => ({ id: USER_ID, role: actor.role }))
-    mocks.queryOne.mockImplementation(async (sql: string) => {
+    mocks.queryOne.mockImplementation(async (sql: string, params?: unknown[]) => {
+      if (sql.includes('JOIN role_permission_groups rpg') && sql.includes('WHERE tm.id=$1')) {
+        const policy = actor.customRoleId ? actor.customRole : actor.systemRole
+        return actor.active !== false && policy?.permission_groups.includes(String(params?.[2]))
+          ? { permission_group: params?.[2] }
+          : null
+      }
       if (sql.includes('FROM team_members')) {
         return actor.active === false
           ? null
           : { role: actor.role, custom_role_id: actor.customRoleId ?? null, name: 'Staff', email: 'staff@example.test' }
       }
-      if (sql.includes('FROM custom_roles')) return sql.includes('cr.id = $1') ? (actor.customRole ?? null) : null
+      if (sql.includes('FROM custom_roles')) return sql.includes('cr.id = $1') ? (actor.customRole ?? null) : (actor.systemRole ?? null)
       if (sql.includes('ai_action_audit')) return { n: 0 }
       return null
     })
@@ -253,7 +260,7 @@ describe('ordinary staff MCP catalog boundary', () => {
   })
 
   it('keeps management paths, narrowed by a fresh custom role and mandatory write scope', async () => {
-    actor = { role: 'lead' }
+    actor = { role: 'lead', systemRole: { is_read_only: false, permission_groups: ['MANAGEMENT', 'FINANCE', 'CLIENTS'] } }
     expect(await listedNames()).toEqual(expect.arrayContaining(['get_finance_snapshot', 'get_leads', 'get_client_overview']))
     expect(await listedNames()).not.toContain('propose_create_task')
     await expect(call('get_finance_snapshot')).resolves.toMatchObject({ ok: true })
@@ -267,6 +274,12 @@ describe('ordinary staff MCP catalog boundary', () => {
     actor = { role: 'lead', customRoleId: CUSTOM_ROLE, customRole: { is_read_only: false, permission_groups: ['MANAGEMENT'] } }
     expect(await listedNames()).not.toContain('get_finance_snapshot')
     mocks.handlers.get_finance_snapshot.mockClear()
+    await expect(call('get_finance_snapshot')).resolves.toMatchObject({ ok: false, code: 'forbidden' })
+    expect(mocks.handlers.get_finance_snapshot).not.toHaveBeenCalled()
+  })
+
+  it('never treats an unseeded management role default as a persisted Finance grant', async () => {
+    actor = { role: 'lead' }
     await expect(call('get_finance_snapshot')).resolves.toMatchObject({ ok: false, code: 'forbidden' })
     expect(mocks.handlers.get_finance_snapshot).not.toHaveBeenCalled()
   })

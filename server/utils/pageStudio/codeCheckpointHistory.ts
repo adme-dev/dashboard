@@ -18,7 +18,7 @@ export async function readAcceptedCodeCheckpointHistory(db: PageStudioQueryClien
       AND audit.resource_id=checkpoint.id AND audit.resource_type='checkpoint' AND audit.action='workspace.checkpointed'
       AND audit.idempotency_key='control:checkpoint:'||checkpoint.id
       AND audit.metadata->>'commitProtocol'='cas-v1' AND audit.metadata->>'digest'=checkpoint.digest
-      AND audit.metadata->>'authorId'=checkpoint.author_id
+      AND audit.metadata->>'authorId'=checkpoint.author_id::text
       AND jsonb_typeof(audit.metadata->'expectedCheckpointId')='string'
       AND audit.metadata->>'expectedCheckpointId'<>''
     WHERE checkpoint.tenant_id=$1 AND checkpoint.client_id=$2 AND checkpoint.site_id=$3

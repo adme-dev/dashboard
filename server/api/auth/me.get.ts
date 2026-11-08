@@ -1,3 +1,4 @@
+import { resolveAccountingUiGroups } from '~~/server/utils/accountingUiPermissions'
 import { validateSession, TransientAuthError } from '../../utils/auth'
 import { resolveUserPermissions } from '../../utils/roleResolver'
 import { resolveGodModeAuthority } from '../../utils/godMode/authority'
@@ -36,6 +37,7 @@ export default defineEventHandler(async (event) => {
 
     // Resolve permission groups
     const resolved = await resolveUserPermissions(event, user.id, user.role, user.custom_role_id)
+    resolved.groups = await resolveAccountingUiGroups(event, user.id, resolved.groups)
     const godModeAuthority = await resolveGodModeAuthority(event, user.id)
     const qrUser = await withQrTeamPermission({ ...user, permissionGroups: resolved.groups, isCustomReadOnly: resolved.isReadOnly })
 

@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+// Machine credentials are tested with actual H3 events in financeMachineAuth.test.ts.
+vi.mock('~~/server/utils/financeMachineAccess', async importOriginal => ({
+  ...(await importOriginal<Record<string, unknown>>()), isFinanceReadMachineRequest: () => false
+}))
+
 const mocks = vi.hoisted(() => ({ one: vi.fn(), validate: vi.fn() }))
 vi.mock('~~/server/utils/db', () => ({ queryOneFresh: mocks.one, queryRowsFresh: vi.fn(async () => []) }))
 vi.mock('~~/server/utils/auth', () => ({ acceptGodModeInternalExecution: async () => null, validateSession: mocks.validate, TransientAuthError: class extends Error {} }))
@@ -25,6 +30,14 @@ describe('client preview without a staff session', () => {
     await expect(auth(event(path, method))).resolves.toBeUndefined()
     expect(mocks.validate).not.toHaveBeenCalled()
   })
+  it.each(['GET', 'HEAD'])('lets the exact %s artwork image reach its token checks', async (method) => {
+    await expect(auth(event(`${path}/image`, method))).resolves.toBeUndefined()
+    expect(mocks.validate).not.toHaveBeenCalled()
+  })
+  it.each([['videos', 'GET'], ['videos', 'POST'], ['video', 'GET'], ['video', 'HEAD']])('allows only the exact compiled-preview capability %s %s', async (suffix, method) => {
+    await expect(auth(event(`${path}/${suffix}`, method))).resolves.toBeUndefined()
+    expect(mocks.validate).not.toHaveBeenCalled()
+  })
   it('returns the shared artwork through both boundaries for an active link', async () => {
     mocks.one.mockResolvedValueOnce({ projectId: 'project', revoked: false, expiresAt: '2099-01-01' })
       .mockResolvedValueOnce({ id: 'project', name: 'Shared artwork', canvasData: { mrec: { layers: [] } } })
@@ -42,7 +55,7 @@ describe('client preview without a staff session', () => {
     expect(mocks.one).toHaveBeenCalledTimes(1)
   })
   it.each([
-    [path, 'POST'], [path, 'DELETE'], [`${path}/comments`, 'GET'],
+    [`${path}/video`, 'POST'], [`${path}/videos/edit`, 'POST'], [`${path}/videos`, 'DELETE'], [`${path}/image`, 'POST'], [`${path}/image/edit`, 'GET'], [path, 'POST'], [path, 'DELETE'], [`${path}/comments`, 'GET'],
     ['/api/public/banner-share', 'GET'], ['/api/public/banner-share/p_bad', 'GET'],
     ['/api/agency/banner-studio/links', 'GET'], ['/api/agency/banner-studio/projects', 'GET']
   ])('retains staff authentication for %s %s', async (url, method) => {

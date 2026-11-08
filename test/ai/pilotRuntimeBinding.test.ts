@@ -41,7 +41,7 @@ describe('pilot UAT exact runtime binding', () => {
 
   it('does not persist persona or distill memory as a controlled UAT side effect', () => {
     const engine = readFileSync('server/utils/aiChatEngine.ts', 'utf8')
-    expect(engine).toContain('if (persona && event && !pilotUat)')
+    expect(engine).toContain('persist: !!event && !pilotUat')
     expect(engine).toContain('if (event && cfg.aiMemoryDistillEnabled && !pilotUat')
   })
 })

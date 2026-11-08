@@ -1,3 +1,4 @@
+import { assertCommercialPermission } from '~~/server/utils/commercialAccess'
 import { requireAuth } from '~~/server/utils/auth'
 import { GROQ_MODELS } from '~~/server/utils/groqClient'
 import { generateModelRoutedGroqInsight } from '~~/server/utils/ai/resolvedGroq'
@@ -5,6 +6,7 @@ import { $fetch as ofetch } from 'ofetch'
 
 export default eventHandler(async (event) => {
   const user = await requireAuth(event)
+  await assertCommercialPermission(event, user.id, 'SALES', true)
 
   const body = await readBody(event)
   const { serviceName, categoryName, price, priceUnit, setupFee, setupNotes, notes } = body

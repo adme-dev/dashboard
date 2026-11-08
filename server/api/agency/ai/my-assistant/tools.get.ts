@@ -1,3 +1,4 @@
+import { buildNativeChatTools } from '~~/server/utils/ai/nativeChatTools'
 /**
  * The caller's RBAC-available co-pilot tools, for the "My Assistant" disable toggles.
  * GET /api/agency/ai/my-assistant/tools
@@ -7,14 +8,14 @@
  */
 import { eventHandler } from 'h3'
 import { requireAuth } from '~~/server/utils/auth'
-import { registry } from '~~/server/utils/ai/tools/index'
 import { buildMyAssistantExplainability } from '~~/server/utils/ai/assistantExplainability'
 import { resolvePersonalAssistantContext } from '~~/server/utils/ai/personalAssistantContext'
 
 export default eventHandler(async (event) => {
   const user = await requireAuth(event)
   const context = await resolvePersonalAssistantContext({ userId: user.id, event })
-  const view = buildMyAssistantExplainability(context, registry)
+  const tools = await buildNativeChatTools({ userId: user.id, userRole: context.identity.role, source: 'chat', event }, { discovery: true, authority: context.godModeAuthority })
+  const view = buildMyAssistantExplainability(context, tools)
   return {
     tools: view.tools,
     restrictions: view.restrictions,

@@ -163,6 +163,16 @@ export function createMetaCatalogProvider(config: MetaCatalogProviderConfig): Me
   }
 
   return {
+    async createVehicleCatalog(businessId, input) {
+      return idSchema.parse(await request(`${encodeURIComponent(businessId)}/owned_product_catalogs`, {
+        method: 'POST', body: { name: input.name, vertical: 'vehicles' }
+      }))
+    },
+    async createProductSet(catalogId, input) {
+      return idSchema.parse(await request(`${encodeURIComponent(catalogId)}/product_sets`, {
+        method: 'POST', body: { name: input.name, filter: JSON.stringify(input.filter) }
+      }))
+    },
     async listGrantedPermissions() {
       const rows = await listPages(
         'me/permissions',
@@ -258,7 +268,7 @@ export function createMetaCatalogProvider(config: MetaCatalogProviderConfig): Me
 
     async getProductFeed(productFeedId) {
       return productFeedSchema.parse(await request(encodeURIComponent(productFeedId), {
-        query: { fields: 'id,name,schedule,update_schedule,latest_upload' }
+        query: { fields: 'id,name,schedule,update_schedule,latest_upload{id,start_time,end_time,error_count,warning_count,num_detected_items,num_invalid_items,num_persisted_items,errors.limit(100){error_type,severity,total_count}}' }
       }))
     }
   }

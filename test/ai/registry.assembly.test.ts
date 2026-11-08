@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { registry } from '~~/server/utils/ai/tools/index'
 import { filterToolsForUser } from '~~/server/utils/ai/toolRegistry'
 import { projectReadOnlyTools } from '~~/server/utils/ai/mcp/project'
+import { PERMISSION_GROUPS } from '~~/server/utils/permissions'
 
 const READ_TOOLS = [
   'get_capabilities',
@@ -71,8 +72,14 @@ describe('assembled tool registry (Slices 1–2 + memory + media-buyer + Phase-2
     expect(filterToolsForUser(registry, 'guest').map(t => t.name)).not.toContain('create_task')
   })
 
-  it('owner sees the whole registry', () => {
-    expect(filterToolsForUser(registry, 'owner')).toHaveLength(registry.length)
+  it('owner role alone cannot discover company finance tools', () => {
+    const names = filterToolsForUser(registry, 'owner').map(t => t.name)
+    expect(names).not.toContain('get_finance_snapshot')
+    expect(names).toContain('get_tasks')
+  })
+
+  it('owner with explicit grants sees the whole registry', () => {
+    expect(filterToolsForUser(registry, 'owner', PERMISSION_GROUPS)).toHaveLength(registry.length)
     expect(registry.length).toBe(ALL.length)
   })
 

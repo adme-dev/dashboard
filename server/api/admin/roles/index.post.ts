@@ -1,3 +1,4 @@
+import { assertPermissionGrant } from '~~/server/utils/financeAccess'
 import { queryOne, execute } from '~~/server/utils/db'
 import { requireRole } from '~~/server/utils/auth'
 import { PERMISSION_GROUPS } from '~~/server/utils/permissions'
@@ -6,6 +7,7 @@ const VALID_GROUPS = new Set(PERMISSION_GROUPS)
 
 export default defineEventHandler(async (event) => {
   const currentUser = await requireRole(event, ['owner'])
+  await assertPermissionGrant(event, currentUser.id, 'ADMIN', true)
 
   const body = await readBody<{
     name: string

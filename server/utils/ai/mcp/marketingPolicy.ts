@@ -1,3 +1,5 @@
+import { canAccessAllActiveClients } from '../clientAccess'
+import { isNativeMarketingContext } from '../marketing/nativeAuthority'
 import { DEPARTMENT_WEBSITE_GRANTS, type DepartmentWebsiteToolName } from '../marketing/departmentWebsiteSchemas'
 // server/utils/ai/mcp/marketingPolicy.ts
 // The single policy interpretation for ordinary (non-owner) MCP staff, shared by tools/list,
@@ -162,7 +164,7 @@ export function marketingCapabilitiesFor(config: MarketingStaffGrantConfig, user
 export const MCP_ALL_CLIENT_GROUPS: readonly PermissionGroup[] = Object.freeze(['ADMIN', 'MANAGEMENT'])
 
 export function hasMcpAllClientAuthority(groups: readonly PermissionGroup[] | undefined): boolean {
-  return !!groups && (MCP_ALL_CLIENT_GROUPS.some(group => groups.includes(group)) || groups.includes('MARKETING_MANAGEMENT'))
+  return canAccessAllActiveClients(groups)
 }
 
 /** Management staff = explicit fresh MANAGEMENT/ADMIN group. Legacy role strings and grants never count. */
@@ -227,7 +229,7 @@ export function evaluateStaffToolAdmission(
   }
   if (isWriteScopeToolName(name)) {
     if (ctx.assistantReadOnly === true) return deny('read_only', 'Your role is read-only.')
-    if (!hasWriteScope(scopeSet(ctx.mcpScopes))) {
+    if (!isNativeMarketingContext(ctx) && !hasWriteScope(scopeSet(ctx.mcpScopes))) {
       return deny('insufficient_scope', 'This action requires write access. Reconnect your AI assistant and grant write (mcp:write) to use it.')
     }
   }

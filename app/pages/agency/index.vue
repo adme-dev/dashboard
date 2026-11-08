@@ -3,7 +3,7 @@ import { format, isPast, isToday, isThisWeek, startOfDay, addDays, parseISO } fr
 
 definePageMeta({ title: 'Dashboard' })
 
-const { user, isManager, isAdmin } = useAuth()
+const { user, isManager, isAdmin, canAccessFinance } = useAuth()
 const {
   activeWidgets, pinnedItems, availableWidgets, widgetCategories, allWidgets,
   isVisible, widgetOrder, toggleWidget, pinItem, unpinItem,
@@ -16,7 +16,10 @@ loadPreferences()
 
 // --- Data fetching (lazy — page renders immediately with skeletons) ---
 const { data: teamData, status: teamStatus } = useLazyFetch('/api/agency/team-members')
-const { data: kpis, status: kpisStatus } = useLazyFetch('/api/agency/kpis')
+const { data: kpis, status: kpisStatus } = useLazyAsyncData('agency-finance-kpis', () =>
+  canAccessFinance.value ? $fetch('/api/agency/kpis') : Promise.resolve({}),
+  { watch: [canAccessFinance] }
+)
 const { data: workspacesData, status: wsStatus } = useLazyFetch('/api/agency/workspaces')
 const { data: boardsData, status: boardsStatus } = useLazyFetch('/api/agency/boards')
 const { data: recentTime, status: timeStatus } = useLazyFetch('/api/agency/time/recent')
@@ -141,7 +144,7 @@ const cleanDescription = (desc: string | null) => {
 }
 
 // --- Financial KPIs ---
-const kpiData = computed(() => kpis.value as any)
+const kpiData = computed(() => canAccessFinance.value ? kpis.value as any : null)
 const financialMetrics = computed(() => [
   { label: 'Revenue', value: formatCurrency(kpiData.value?.totalRevenue || 0), icon: 'i-lucide-dollar-sign', color: 'text-blue-600 dark:text-blue-400', bg: 'bg-blue-50 dark:bg-blue-500/10' },
   { label: 'Gross Margin', value: formatPercent(kpiData.value?.grossMargin || 0), icon: 'i-lucide-trending-up', color: (kpiData.value?.grossMargin || 0) >= 30 ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400', bg: (kpiData.value?.grossMargin || 0) >= 30 ? 'bg-emerald-50 dark:bg-emerald-500/10' : 'bg-amber-50 dark:bg-amber-500/10' },
@@ -555,7 +558,7 @@ const pinnedTypeRoutes: Record<string, (item: any) => string> = {
           </UCard>
 
           <!-- Financial KPIs -->
-          <UCard v-if="isVisible('financial-kpis')" :style="{ order: widgetOrder('financial-kpis') }">
+          <UCard v-if="canAccessFinance && isVisible('financial-kpis')" :style="{ order: widgetOrder('financial-kpis') }">
             <template #header>
               <div class="flex items-center gap-2">
                 <UIcon name="i-lucide-bar-chart-3" class="w-4 h-4 text-[var(--ui-text-muted)]" />
@@ -601,10 +604,10 @@ const pinnedTypeRoutes: Record<string, (item: any) => string> = {
           <DashboardDeliverablesDueWidget v-if="isVisible('deliverables-due')" :style="{ order: widgetOrder('deliverables-due') }" />
 
           <!-- Revenue Snapshot (left) -->
-          <DashboardRevenueSnapshotWidget v-if="isVisible('revenue-snapshot')" :style="{ order: widgetOrder('revenue-snapshot') }" />
+          <DashboardRevenueSnapshotWidget v-if="canAccessFinance && isVisible('revenue-snapshot')" :style="{ order: widgetOrder('revenue-snapshot') }" />
 
           <!-- Project Profitability (left) -->
-          <DashboardProjectProfitabilityWidget v-if="isVisible('project-profitability')" :style="{ order: widgetOrder('project-profitability') }" />
+          <DashboardProjectProfitabilityWidget v-if="canAccessFinance && isVisible('project-profitability')" :style="{ order: widgetOrder('project-profitability') }" />
         </div>
 
         <!-- Right Column (1/3) -->
@@ -660,7 +663,7 @@ const pinnedTypeRoutes: Record<string, (item: any) => string> = {
           </UCard>
 
           <!-- Team Utilization -->
-          <UCard v-if="isVisible('team-utilization')" :style="{ order: widgetOrder('team-utilization') }">
+          <UCard v-if="canAccessFinance && isVisible('team-utilization')" :style="{ order: widgetOrder('team-utilization') }">
             <template #header>
               <div class="flex items-center justify-between">
                 <div class="flex items-center gap-2">
@@ -697,7 +700,7 @@ const pinnedTypeRoutes: Record<string, (item: any) => string> = {
           </UCard>
 
           <!-- Budget Alerts -->
-          <UCard v-if="isVisible('budget-alerts') && budgetAlerts.length" :style="{ order: widgetOrder('budget-alerts') }">
+          <UCard v-if="canAccessFinance && isVisible('budget-alerts') && budgetAlerts.length" :style="{ order: widgetOrder('budget-alerts') }">
             <template #header>
               <div class="flex items-center gap-2">
                 <UIcon name="i-lucide-shield-alert" class="w-4 h-4 text-amber-500" />
@@ -741,13 +744,13 @@ const pinnedTypeRoutes: Record<string, (item: any) => string> = {
           <DashboardBlockedTasksWidget v-if="isVisible('blocked-tasks')" :style="{ order: widgetOrder('blocked-tasks') }" />
 
           <!-- Cash Position (right) -->
-          <DashboardCashPositionWidget v-if="isVisible('cash-position')" :style="{ order: widgetOrder('cash-position') }" />
+          <DashboardCashPositionWidget v-if="canAccessFinance && isVisible('cash-position')" :style="{ order: widgetOrder('cash-position') }" />
 
           <!-- Receivables Aging (right) -->
-          <DashboardReceivablesAgingWidget v-if="isVisible('receivables-aging')" :style="{ order: widgetOrder('receivables-aging') }" />
+          <DashboardReceivablesAgingWidget v-if="canAccessFinance && isVisible('receivables-aging')" :style="{ order: widgetOrder('receivables-aging') }" />
 
           <!-- Overhead Burn (right) -->
-          <DashboardOverheadBurnWidget v-if="isVisible('overhead-burn')" :style="{ order: widgetOrder('overhead-burn') }" />
+          <DashboardOverheadBurnWidget v-if="canAccessFinance && isVisible('overhead-burn')" :style="{ order: widgetOrder('overhead-burn') }" />
 
           <!-- Recent Creatives (right) -->
           <DashboardRecentCreativesWidget v-if="isVisible('recent-creatives')" :style="{ order: widgetOrder('recent-creatives') }" />

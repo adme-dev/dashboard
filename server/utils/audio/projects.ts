@@ -1,8 +1,12 @@
+import { carryTimelineObligationsIn } from '~~/server/utils/video-storyboard/lineage'
 // server/utils/audio/projects.ts — SOLE gateway to media_projects / media_timelines.
 // Mirrors assets.ts so a future client-portal surface (SP6) reuses it untouched.
 // Validation/duration math lives in the pure timelineSchema.ts; this file is the
 // DB boundary only.
 import { randomUUID } from 'crypto'
+import { createError } from 'h3'
+import { requireTimelinePrecondition, assertTimelinePrecondition, timelineConflict } from './timelineRevision'
+import type { TimelineWritePrecondition } from '~~/shared/video/timelineRevision'
 import type { MediaProject, MediaTimeline, MediaRenderJob } from '~~/app/types'
 import { queryOne, queryOneFresh, queryRows, transaction } from '~~/server/utils/db'
 import type { GodModeTransactionDb as Db } from '~~/server/utils/godMode/transactionCoordinator'
@@ -30,6 +34,7 @@ export function mapTimelineRow(row: any): MediaTimeline {
     id: row.id,
     projectId: row.project_id,
     version: row.version,
+    editRevision: row.edit_revision ?? 0,
     label: row.label ?? null,
     state: row.state,
     schemaVersion: row.schema_version,
@@ -124,12 +129,12 @@ export async function getProjectWithCurrentTimelineIn(
 export async function getProjectWithCurrentTimeline(
   id: string
 ): Promise<{ project: MediaProject; timeline: MediaTimeline | null } | null> {
-  const projectRow = await queryOne(`SELECT * FROM media_projects WHERE id = $1`, [id])
+  const projectRow = await queryOneFresh(`SELECT * FROM media_projects WHERE id = $1`, [id])
   if (!projectRow) return null
   const project = mapProjectRow(projectRow)
   let timeline: MediaTimeline | null = null
   if (project.currentTimelineId) {
-    const tlRow = await queryOne(`SELECT * FROM media_timelines WHERE id = $1`, [project.currentTimelineId])
+    const tlRow = await queryOneFresh(`SELECT * FROM media_timelines WHERE id = $1`, [project.currentTimelineId])
     timeline = tlRow ? mapTimelineRow(tlRow) : null
   }
   return { project, timeline }
@@ -176,21 +181,72 @@ export async function listProjects(clientId?: string): Promise<MediaProject[]> {
   return rows.map(mapProjectRow)
 }
 
-/** Autosave: overwrite a draft timeline row's state in place, recomputing
- * duration_sec into the persisted state. The caller (endpoint) is responsible
- * for confirming the project is still in 'draft' status. */
-export async function saveDraftTimeline(timelineId: string, state: TimelineState): Promise<MediaTimeline> {
-  return transaction(db => saveDraftTimelineIn(db, timelineId, state))
+export interface MediaProjectActor { id: string, role: string }
+
+export function assertMediaProjectAccess(actor: MediaProjectActor, project: { createdBy: string }) {
+  if (!actor || (actor.role !== 'owner' && actor.role !== 'admin' && project.createdBy !== actor.id)) {
+    throw createError({ statusCode: 403, statusMessage: 'Access denied to this project' })
+  }
 }
 
-/** Transaction-scoped core of saveDraftTimeline. */
-export async function saveDraftTimelineIn(db: Db, timelineId: string, state: TimelineState): Promise<MediaTimeline> {
-  const persisted = { ...state, duration_sec: computeDuration(state) }
+type RevisionInput = TimelineWritePrecondition & { projectId: string, actor: MediaProjectActor }
+
+/** Project-row lock is shared by every active-state/pointer writer. */
+async function lockCurrentTimelineIn(db: Db, input: RevisionInput) {
+  const precondition = requireTimelinePrecondition(input)
+  const project = (await db.query('SELECT * FROM media_projects WHERE id = $1 FOR UPDATE', [input.projectId])).rows[0]
+  if (!project) throw createError({ statusCode: 404, statusMessage: 'Project not found' })
+  assertMediaProjectAccess(input.actor, mapProjectRow(project))
+  if (project.current_timeline_id !== precondition.expectedTimelineId) throw timelineConflict()
+  const timeline = (await db.query('SELECT * FROM media_timelines WHERE id = $1 AND project_id = $2', [precondition.expectedTimelineId, input.projectId])).rows[0]
+  if (!timeline) throw timelineConflict()
+  assertTimelinePrecondition(mapTimelineRow(timeline), precondition)
+  return { project, timeline }
+}
+
+/** A replay receipt is valid only while that exact revision is still current. */
+export async function getCurrentTimelineIfMatchingIn(db: Db, input: RevisionInput): Promise<MediaTimeline> {
+  const { timeline } = await lockCurrentTimelineIn(db, input)
+  return mapTimelineRow(timeline)
+}
+
+export interface SaveDraftTimelineInput extends RevisionInput { state: TimelineState }
+
+export async function saveDraftTimeline(input: SaveDraftTimelineInput): Promise<MediaTimeline> {
+  return transaction(db => saveDraftTimelineIfCurrentIn(db, input))
+}
+
+export async function saveDraftTimelineIfCurrentIn(db: Db, input: SaveDraftTimelineInput): Promise<MediaTimeline> {
+  const { project, timeline } = await lockCurrentTimelineIn(db, input)
+  if (project.status !== 'draft') throw createError({ statusCode: 409, statusMessage: 'Project is not editable' })
+  const persisted = { ...input.state, duration_sec: computeDuration(input.state) }
+  const usedByRender = (await db.query('SELECT EXISTS (SELECT 1 FROM media_render_jobs WHERE timeline_id = $1) AS exists', [timeline.id])).rows[0]?.exists
+  // Older application versions made their render snapshot active. Preserve those
+  // bytes too: fork the first new edit instead of changing an existing job's input.
+  if (usedByRender) {
+    const next = await insertTimelineIn(db, input.projectId, persisted, timeline.schema_version, input.actor.id, null, timeline.edit_revision + 1)
+    await db.query('UPDATE media_projects SET current_timeline_id = $1, updated_at = now() WHERE id = $2', [next.id, input.projectId])
+    await carryTimelineObligationsIn(db, { projectId: input.projectId, fromTimelineId: timeline.id, fromEditRevision: timeline.edit_revision, timelineId: next.id, editRevision: next.editRevision, state: persisted, actorId: input.actor.id })
+    return next
+  }
   const row = (await db.query(
-    `UPDATE media_timelines SET state = $1 WHERE id = $2 RETURNING *`,
-    [JSON.stringify(persisted), timelineId]
+    `UPDATE media_timelines SET state = $1, edit_revision = edit_revision + 1
+     WHERE id = $2 AND project_id = $3 AND edit_revision = $4 RETURNING *`,
+    [JSON.stringify(persisted), timeline.id, input.projectId, input.expectedEditRevision]
   )).rows[0]
-  if (!row) throw new Error(`timeline ${timelineId} not found`)
+  if (!row) throw timelineConflict()
+  await carryTimelineObligationsIn(db, { projectId: input.projectId, fromTimelineId: timeline.id, fromEditRevision: timeline.edit_revision, timelineId: row.id, editRevision: row.edit_revision, state: persisted, actorId: input.actor.id })
+  return mapTimelineRow(row)
+}
+
+/** Called only under the project lock, so version allocation cannot race. */
+async function insertTimelineIn(db: Db, projectId: string, state: unknown, schemaVersion: number, actorId: string, label: string | null, revision = 0): Promise<MediaTimeline> {
+  const max = (await db.query('SELECT MAX(version) AS max_version FROM media_timelines WHERE project_id = $1', [projectId])).rows[0]
+  const row = (await db.query(
+    `INSERT INTO media_timelines (id, project_id, version, label, state, schema_version, created_by, edit_revision)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+    [randomUUID(), projectId, Number(max.max_version) + 1, label, JSON.stringify(state), schemaVersion, actorId, revision]
+  )).rows[0]
   return mapTimelineRow(row)
 }
 
@@ -200,45 +256,43 @@ export async function getTimelineIn(db: Db, timelineId: string): Promise<MediaTi
   return row ? mapTimelineRow(row) : null
 }
 
-export interface CreateVersionInput {
-  projectId: string
-  createdBy: string
-  label?: string | null
-}
+export interface CreateVersionInput extends RevisionInput { label?: string | null }
 
-/** Duplicate-to-version: snapshot the project's current state into a new
- * version (max+1) and repoint current_timeline_id at it. The new row becomes the
- * editable draft; the prior row is frozen history. */
+/** Freeze the prior row; the checked successor becomes the editable draft. */
 export async function createVersion(input: CreateVersionInput): Promise<MediaTimeline> {
   return transaction(db => createVersionIn(db, input))
 }
 
-/** Transaction-scoped core of createVersion. */
 export async function createVersionIn(db: Db, input: CreateVersionInput): Promise<MediaTimeline> {
-  const newId = randomUUID()
-  {
-    const cur = await db.query(
-      `SELECT t.state AS state,
-              (SELECT MAX(version) FROM media_timelines WHERE project_id = $1) AS max_version
-       FROM media_projects p
-       JOIN media_timelines t ON t.id = p.current_timeline_id
-       WHERE p.id = $1`,
-      [input.projectId]
-    )
-    if (!cur.rows[0]) throw new Error(`project ${input.projectId} has no current timeline`)
-    const nextVersion = Number(cur.rows[0].max_version) + 1
-    const ins = await db.query(
-      `INSERT INTO media_timelines (id, project_id, version, label, state, schema_version, created_by)
-       VALUES ($1, $2, $3, $4, $5, 1, $6) RETURNING *`,
-      [newId, input.projectId, nextVersion, input.label ?? null,
-        JSON.stringify(cur.rows[0].state), input.createdBy]
-    )
-    await db.query(
-      `UPDATE media_projects SET current_timeline_id = $1, updated_at = now() WHERE id = $2`,
-      [newId, input.projectId]
-    )
-    return mapTimelineRow(ins.rows[0])
-  }
+  const { timeline } = await lockCurrentTimelineIn(db, input)
+  const next = await insertTimelineIn(db, input.projectId, timeline.state, timeline.schema_version, input.actor.id, input.label ?? null)
+  await db.query('UPDATE media_projects SET current_timeline_id = $1, updated_at = now() WHERE id = $2', [next.id, input.projectId])
+  await carryTimelineObligationsIn(db, { projectId: input.projectId, fromTimelineId: timeline.id, fromEditRevision: timeline.edit_revision, timelineId: next.id, editRevision: next.editRevision, state: timeline.state, actorId: input.actor.id })
+  return next
+}
+
+/** Restore a server-owned saved version and that version's exact obligations.
+ * A new draft preserves both the prior edit and the historical source. */
+export async function restoreTimelineVersionIn(db: Db, input: RevisionInput & { restoreTimelineId: string }): Promise<MediaTimeline> {
+  const { project, timeline } = await lockCurrentTimelineIn(db, input)
+  if (project.status !== 'draft') throw createError({ statusCode: 409, statusMessage: 'Project is not editable' })
+  const source = (await db.query('SELECT * FROM media_timelines WHERE id = $1 AND project_id = $2', [input.restoreTimelineId, input.projectId])).rows[0]
+  if (!source) throw createError({ statusCode: 404, statusMessage: 'Saved version not found' })
+  const next = await insertTimelineIn(db, input.projectId, source.state, source.schema_version, input.actor.id, 'restored version', timeline.edit_revision + 1)
+  await carryTimelineObligationsIn(db, { projectId: input.projectId, fromTimelineId: source.id, fromEditRevision: source.edit_revision, timelineId: next.id, editRevision: next.editRevision, state: source.state, actorId: input.actor.id })
+  await db.query('UPDATE media_projects SET current_timeline_id = $1, updated_at = now() WHERE id = $2', [next.id, input.projectId])
+  return next
+}
+
+/** Atomic storyboard replacement: freeze the old row (including its obligations)
+ * as the checkpoint, then move the pointer to a fresh edit. Caller owns transaction. */
+export async function replaceTimelineWithCheckpointIn(db: Db, input: SaveDraftTimelineInput) {
+  const { project, timeline } = await lockCurrentTimelineIn(db, input)
+  if (project.status !== 'draft') throw createError({ statusCode: 409, statusMessage: 'Project is not editable' })
+  const persisted = { ...input.state, duration_sec: computeDuration(input.state) }
+  const next = await insertTimelineIn(db, input.projectId, persisted, input.state.schema_version, input.actor.id, null, timeline.edit_revision + 1)
+  await db.query('UPDATE media_projects SET current_timeline_id = $1, updated_at = now() WHERE id = $2', [next.id, input.projectId])
+  return { checkpoint: mapTimelineRow(timeline), timeline: next }
 }
 
 /** Version history for a project, newest-first. */
@@ -268,48 +322,27 @@ export function mapRenderJobRow(row: any): MediaRenderJob {
   }
 }
 
-export interface CreateRenderJobInput {
-  projectId: string
-  requestedBy: string
+export interface CreateRenderJobInput extends RevisionInput {
   channels: string[]
   /** Pre-reserved id (God mode ledger); minted when omitted. */
   jobId?: string
 }
 
-/** Snapshot the current draft into a new immutable version (SP0 §6), then insert a
- * queued render job pointing at that frozen version — all in one transaction so a
- * job never references a half-written version. */
+/** Immutable render snapshot is never the editable draft. */
 export async function createRenderJob(input: CreateRenderJobInput): Promise<MediaRenderJob> {
-  const newTimelineId = randomUUID()
-  const jobId = input.jobId ?? randomUUID()
-  return transaction(async (db) => {
-    const cur = await db.query(
-      `SELECT t.state AS state, t.schema_version AS schema_version,
-              (SELECT MAX(version) FROM media_timelines WHERE project_id = $1) AS max_version
-       FROM media_projects p
-       JOIN media_timelines t ON t.id = p.current_timeline_id
-       WHERE p.id = $1`,
-      [input.projectId]
-    )
-    if (!cur.rows[0]) throw new Error(`project ${input.projectId} has no current timeline`)
-    const nextVersion = Number(cur.rows[0].max_version) + 1
-    const sourceSchemaVersion = cur.rows[0].schema_version ?? 1
-    await db.query(
-      `INSERT INTO media_timelines (id, project_id, version, label, state, schema_version, created_by)
-       VALUES ($1, $2, $3, 'render snapshot', $4, $5, $6)`,
-      [newTimelineId, input.projectId, nextVersion, JSON.stringify(cur.rows[0].state), sourceSchemaVersion, input.requestedBy]
-    )
-    await db.query(
-      `UPDATE media_projects SET current_timeline_id = $1, updated_at = now() WHERE id = $2`,
-      [newTimelineId, input.projectId]
-    )
-    const job = await db.query(
-      `INSERT INTO media_render_jobs (id, timeline_id, project_id, channels, status, requested_by)
-       VALUES ($1, $2, $3, $4, 'queued', $5) RETURNING *`,
-      [jobId, newTimelineId, input.projectId, input.channels, input.requestedBy]
-    )
-    return mapRenderJobRow(job.rows[0])
-  })
+  return transaction(db => createRenderJobIn(db, input))
+}
+
+export async function createRenderJobIn(db: Db, input: CreateRenderJobInput): Promise<MediaRenderJob> {
+  const { timeline } = await lockCurrentTimelineIn(db, input)
+  const snapshot = await insertTimelineIn(db, input.projectId, timeline.state, timeline.schema_version, input.actor.id, 'render snapshot')
+  const row = (await db.query(
+    `INSERT INTO media_render_jobs (id, timeline_id, project_id, channels, status, requested_by)
+     VALUES ($1, $2, $3, $4, 'queued', $5) RETURNING *`,
+    [input.jobId ?? randomUUID(), snapshot.id, input.projectId, input.channels, input.actor.id]
+  )).rows[0]
+  await carryTimelineObligationsIn(db, { projectId: input.projectId, fromTimelineId: timeline.id, fromEditRevision: timeline.edit_revision, timelineId: snapshot.id, editRevision: snapshot.editRevision, state: timeline.state, actorId: input.actor.id })
+  return mapRenderJobRow(row)
 }
 
 /** Single render job by id, or null if not found. */

@@ -5,6 +5,8 @@
 
 import { queryOne, queryOneFresh, queryRows, queryRowsFresh } from '~~/server/utils/db'
 import { requireAuth, requireRole } from '~~/server/utils/auth'
+import { assertFinancePermission, assertPermissionGrant } from '~~/server/utils/financeAccess'
+import { requireInvoiceAccess } from '~~/server/utils/clientScoping'
 import { PERMISSIONS } from '~~/server/utils/permissions'
 import {
   isMarketingClientViewer,
@@ -88,20 +90,27 @@ export default defineEventHandler(async (event) => {
   const user = await requireAuth(event)
   const id = getRouterParam(event, 'id')
 
-  if (await isMarketingClientViewer(user.id)) {
-    setResponseHeader(event, 'cache-control', 'private, no-store')
-    try {
-      return await getMarketingClientDetail(id)
-    } catch (error) {
-      if ((error as { statusCode?: number }).statusCode) throw error
-      console.error('Failed to fetch marketing client:', error)
-      throw createError({ statusCode: 500, statusMessage: 'Failed to fetch client details' })
-    }
+  setResponseHeader(event, 'cache-control', 'private, no-store')
+  let clientInsights = true
+  try {
+    await assertPermissionGrant(event, user.id, 'CLIENTS', false)
+  } catch (error) {
+    if ((error as { statusCode?: number }).statusCode !== 403) throw error
+    clientInsights = false
   }
-
-  // Match the page's `role-clients` gate: only CLIENTS-permission staff may read
-  // full client financials (revenue, cost, invoices, time entries, team).
+  const marketingOnly = await isMarketingClientViewer(user.id)
+  if (!clientInsights || marketingOnly) {
+    if (!marketingOnly) await requireRole(event, PERMISSIONS.CLIENTS)
+    return await getMarketingClientDetail(id)
+  }
   await requireRole(event, PERMISSIONS.CLIENTS)
+  let companyFinance = true
+  try {
+    await assertFinancePermission(event, user.id, false)
+  } catch (error) {
+    if ((error as { statusCode?: number }).statusCode !== 403) throw error
+    companyFinance = false
+  }
 
   if (!id) {
     throw createError({
@@ -152,7 +161,7 @@ export default defineEventHandler(async (event) => {
     // Get recent time entries across all projects
     const recentTimeEntries = await queryRows(`
       SELECT
-        te.*,
+        ${companyFinance ? 'te.*' : 'te.id, te.date, te.hours, te.description, te.billable'},
         p.name as project_name,
         tm.name as user_name
       FROM time_entries te
@@ -163,13 +172,20 @@ export default defineEventHandler(async (event) => {
       LIMIT 20
     `, [id])
 
-    // Get invoices for this client
-    const invoices = await queryRows(`
-      SELECT * FROM invoices
-      WHERE client_id = $1
-      ORDER BY issue_date DESC
-      LIMIT 20
+    // Client summaries do not imply invoice-row access. Fresh invoice authority
+    // and assignment scope must include this exact client before reading rows.
+    let canReadInvoices = false
+    try {
+      const access = await requireInvoiceAccess(event)
+      canReadInvoices = access.clientIds === 'all' || access.clientIds.includes(id)
+    } catch (error) {
+      if ((error as { statusCode?: number }).statusCode !== 403) throw error
+    }
+    const invoices = canReadInvoices
+      ? await queryRows(`
+      SELECT * FROM invoices WHERE client_id = $1 ORDER BY issue_date DESC LIMIT 20
     `, [id])
+      : []
 
     // Calculate summary stats
     const totalRevenue = projects.reduce((sum, p) => sum + Number(p.budget_amount || 0), 0)
@@ -194,7 +210,7 @@ export default defineEventHandler(async (event) => {
     // syncs store commission_rate = 0). Rows and the summary share this so the
     // headline figure always matches the per-row breakdown.
     const clientCommissionRate = client.media_commission_rate ? Number(client.media_commission_rate) : 0
-    const rowCommission = (ms: any) => {
+    const rowCommission = (ms: Record<string, unknown>) => {
       const rate = Number(ms.commission_rate) > 0 ? Number(ms.commission_rate) : clientCommissionRate
       return (Number(ms.actual_spend) || 0) * rate / 100
     }
@@ -204,7 +220,7 @@ export default defineEventHandler(async (event) => {
       client: {
         id: client.id,
         name: client.name,
-        xeroContactId: client.xero_contact_id,
+        ...(companyFinance ? { xeroContactId: client.xero_contact_id } : {}),
         billingType: client.billing_type,
         retainerAmount: client.retainer_amount ? Number(client.retainer_amount) : null,
         paymentTerms: client.payment_terms,
@@ -244,21 +260,22 @@ export default defineEventHandler(async (event) => {
         userName: te.user_name,
         date: te.date,
         hours: Number(te.hours),
-        hourlyRate: Number(te.hourly_rate),
-        amount: Number(te.hours) * Number(te.hourly_rate),
+        ...(companyFinance ? { hourlyRate: Number(te.hourly_rate), amount: Number(te.hours) * Number(te.hourly_rate) } : {}),
         description: te.description,
         billable: te.billable
       })),
-      invoices: invoices.map(inv => ({
-        id: inv.id,
-        invoiceNumber: inv.invoice_number,
-        status: inv.status,
-        issueDate: inv.issue_date,
-        dueDate: inv.due_date,
-        subtotal: Number(inv.subtotal) || 0,
-        tax: Number(inv.tax) || 0,
-        total: Number(inv.total) || 0
-      })),
+      ...(canReadInvoices
+        ? { invoices: invoices.map(inv => ({
+            id: inv.id,
+            invoiceNumber: inv.invoice_number,
+            status: inv.status,
+            issueDate: inv.issue_date,
+            dueDate: inv.due_date,
+            subtotal: Number(inv.subtotal) || 0,
+            tax: Number(inv.tax) || 0,
+            total: Number(inv.total) || 0
+          })) }
+        : {}),
       mediaSpend: mediaSpend.map(ms => ({
         id: ms.id,
         platform: ms.platform,
@@ -277,7 +294,7 @@ export default defineEventHandler(async (event) => {
         totalProjects: projects.length,
         activeProjects,
         completedProjects,
-        totalInvoiced: invoices.reduce((sum, inv) => sum + Number(inv.total || 0), 0),
+        ...(canReadInvoices ? { totalInvoiced: invoices.reduce((sum, inv) => sum + Number(inv.total || 0), 0) } : {}),
         totalMediaSpend: mediaSpend.reduce((sum, ms) => sum + Number(ms.actual_spend || 0), 0),
         // Sum of per-row commission (with client-rate fallback, see rowCommission)
         // so the headline figure matches the per-row breakdown in the Media Spend tab.
@@ -288,8 +305,8 @@ export default defineEventHandler(async (event) => {
         retainerAmount: client.retainer_amount ? Number(client.retainer_amount) : 0
       }
     }
-  } catch (error: any) {
-    if (error.statusCode) throw error
+  } catch (error) {
+    if ((error as { statusCode?: number }).statusCode) throw error
     console.error('Failed to fetch client:', error)
     throw createError({
       statusCode: 500,

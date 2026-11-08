@@ -1,6 +1,7 @@
 import { z } from 'zod'
+import { requireTimelinePrecondition, assertTimelinePrecondition } from '~~/server/utils/audio/timelineRevision'
 import { requireWriteAccess } from '~~/server/utils/auth'
-import { getProjectWithCurrentTimeline, createRenderJob, markRenderJobFailed } from '~~/server/utils/audio/projects'
+import { getProjectWithCurrentTimeline, createRenderJob, markRenderJobFailed, assertMediaProjectAccess } from '~~/server/utils/audio/projects'
 import { TimelineStateSchema, validateTimeline } from '~~/server/utils/audio/timelineSchema'
 import { enqueueTimelineRender } from '~~/server/utils/audio/renderQueue'
 import type { AudioChannel } from '~~/server/utils/audio/profiles'
@@ -13,7 +14,9 @@ const BodySchema = z.object({
 export default defineEventHandler(async (event) => {
   const user = await requireWriteAccess(event)
   const id = getRouterParam(event, 'id')!
-  const bodyResult = BodySchema.safeParse(await readBody(event))
+  const raw = await readBody(event)
+  const precondition = requireTimelinePrecondition(raw)
+  const bodyResult = BodySchema.safeParse(raw)
   if (!bodyResult.success) {
     throw createError({ statusCode: 400, statusMessage: 'Invalid render request', data: { errors: bodyResult.error.issues.map((i) => i.message) } })
   }
@@ -21,9 +24,12 @@ export default defineEventHandler(async (event) => {
 
   const existing = await getProjectWithCurrentTimeline(id)
   if (!existing) throw createError({ statusCode: 404, statusMessage: 'Project not found' })
+  assertMediaProjectAccess(user, existing.project)
   if (!existing.project.currentTimelineId || !existing.timeline) {
     throw createError({ statusCode: 409, statusMessage: 'Project has no current timeline to render' })
   }
+
+  assertTimelinePrecondition(existing.timeline, precondition)
 
   // Validate the exact state we are about to freeze + render.
   const parsed = TimelineStateSchema.safeParse(existing.timeline.state)
@@ -35,7 +41,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Invalid timeline', data: { errors: check.errors } })
   }
 
-  const job = await createRenderJob({ projectId: id, requestedBy: user.id, channels })
+  const job = await createRenderJob({ projectId: id, actor: user, ...precondition, channels })
   try {
     await enqueueTimelineRender(event, {
       jobId: job.id, projectId: id, timelineId: job.timelineId, channels

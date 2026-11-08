@@ -1,3 +1,4 @@
+import type { RoleSkillSelection } from '~~/shared/types/roleSkills'
 import { classifyConfirmUtterance } from '~~/app/utils/voiceConfirm'
 import { createBargeInDetector } from '~~/app/utils/voiceBargeIn'
 import {
@@ -27,6 +28,9 @@ function confirmNote(toolName?: string): string {
 export interface UseVoiceSessionOptions {
   /** Returns the active conversation id, creating one if needed. */
   ensureConversation: () => Promise<string | null>
+  /** Read the latest focus at submission time; null inherits My Assistant. */
+  getPersona?: () => string | null
+  getWorkflow?: () => RoleSkillSelection | null
   /** Push a completed user+assistant turn into the chat thread. */
   onTurn: (userText: string, assistant: AiMessage, proposedAction: Proposal | null) => void
   /** Append a short assistant note (e.g. the spoken confirm result). */
@@ -115,7 +119,7 @@ export function useVoiceSession(opts: UseVoiceSessionOptions) {
 
     dispatch({ type: 'SPEECH_CAPTURED' })
     try {
-      const result = await voice.sendVoiceMessage(convId, blob)
+      const result = await voice.sendVoiceMessage(convId, blob, undefined, opts.getPersona?.(), opts.getWorkflow?.())
       if (phase() !== 'processing') return // stop() fired mid-request
       const proposal = result.proposedAction ?? null
       pendingProposal = proposal

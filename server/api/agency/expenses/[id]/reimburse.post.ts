@@ -9,9 +9,11 @@
 
 import { queryOne } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
+import { assertFinancePermission } from '~~/server/utils/financeAccess'
 
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
+  const user = await requireAuth(event)
+  await assertFinancePermission(event, user.id, true)
   const id = getRouterParam(event, 'id')
   const body = await readBody(event)
 
@@ -68,9 +70,11 @@ export default defineEventHandler(async (event) => {
         reimbursement_reference = $2,
         status = 'paid',
         updated_at = NOW()
-      WHERE id = $1
+      WHERE id = $1 AND status = 'approved' AND reimbursable = TRUE AND reimbursed = FALSE
       RETURNING *
     `, [id, reference || null])
+
+    if (!expense) throw createError({ statusCode: 409, statusMessage: 'Expense changed before transition' })
 
     return {
       success: true,

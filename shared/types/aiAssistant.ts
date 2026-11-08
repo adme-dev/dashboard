@@ -80,7 +80,13 @@ export interface MyAssistantToolRestrictionView {
   message: string
 }
 
+export interface AssistantChatRuntimeView {
+  toolsEnabled: boolean
+  source: 'binding' | 'runtime_config' | 'process' | 'default'
+}
+
 export interface MyAssistantView extends MyAssistantConfig {
+  chatRuntime?: AssistantChatRuntimeView
   observedMemoryEnabled: boolean
   authority: MyAssistantAuthorityView
   tools: MyAssistantToolView[]

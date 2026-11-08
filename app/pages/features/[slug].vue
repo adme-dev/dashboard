@@ -780,11 +780,11 @@ const features: Record<string, Feature> = {
     details: [
       {
         title: 'One Screen, Every Source',
-        content: 'Assets on the left, preview and selected-clip controls in the centre, the inspector on the right, and the timeline docked along the bottom — nothing scrolls away. Drop in uploaded footage and stills, pull overlays straight from Banner Studio, add voiceover and music from Audio Studio, or generate B-roll and image-to-video clips with AI — all from the same command bar.'
+        content: 'Open a project from the thumbnail gallery, then work with producer controls beside a large preview and a docked timeline. Switch between Preview, Library, History and How it works without losing the edit. Drop in uploaded footage and stills, pull overlays straight from Banner Studio, add voiceover and music from Audio Studio, or generate B-roll and image-to-video clips with AI — all from the same command bar.'
       },
       {
         title: 'A Real Editing Timeline',
-        content: 'Five colour-coded lanes — video, overlay, captions, voiceover, music — with drag-to-move, edge trimming, split at the playhead, snapping to neighbours and the grid, and waveforms on audio clips. Space plays, arrows nudge, ⌘Z undoes, and the dock resizes to fit the job. Every edit autosaves; named version snapshots let you checkpoint a cut and restore it later.'
+        content: 'Five colour-coded lanes — video, overlay, captions, voiceover, music — with drag-to-move, edge trimming, split at the playhead, snapping to neighbours and the grid, and waveforms on audio clips. Space plays, arrows nudge, ⌘Z undoes, and the dock resizes to fit the job. Edits autosave after a short pause; named version snapshots let you checkpoint a cut and restore it later. If another save changes the timeline, saving pauses and your local edit stays in the tab. Download its timeline data before choosing to reload the saved version.'
       },
       {
         title: 'Per-Clip Look Controls',
@@ -792,7 +792,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Render Once, Ship Everywhere',
-        content: 'Pick Reels 9:16, Square 1:1 and YouTube 16:9 in one render. Finished variants can be downloaded, saved back to the library as reusable assets, sent to the client portal for approval, or handed to Social Publishing to schedule — without leaving the editor. Failed renders explain why and retry in place.'
+        content: 'Pick Reels 9:16, Square 1:1 and YouTube 16:9 in one render. Each render uses a saved timeline snapshot, so subsequent timeline edits do not change that job. Finished variants can be downloaded, saved back to the library as reusable assets, sent to the client portal for approval, or handed to Social Publishing to schedule — without leaving the editor. Failed renders explain why and retry in place. Storyboard planning and reviewed full-cut replacement are available for pilot use with project access controls and render safeguards. If a pinned brand kit changes, review its current content and explicitly record approval for the adjusted cut; stale or unavailable kits remain blocked. Model selection shows configured capabilities, not a guarantee of successful provider execution; provider, budget and approval checks still apply. Physical-device and full pilot acceptance remain in progress.'
       }
     ]
   },
@@ -813,7 +813,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Non-Destructive Undo and Autosave',
-        content: 'Every edit — move, trim, slice, add, delete — is undoable and redoable via a 100-step in-memory stack (Cmd+Z / Cmd+Shift+Z). Edits are also debounced-saved to the server automatically after 1.5 seconds of inactivity, so you never lose work. Named version snapshots let you checkpoint a milestone ("Before final mix") and restore it at any time.'
+        content: 'Every edit — move, trim, slice, add, delete — is undoable and redoable via a 100-step in-memory stack (Cmd+Z / Cmd+Shift+Z). Edits save automatically after 1.5 seconds of inactivity. If another save changes the timeline, autosave pauses and keeps your local edit in the tab. You can download its timeline data before explicitly replacing it with the saved version; the download excludes media files and cannot yet be imported into the editor. Named version snapshots let you checkpoint a milestone ("Before final mix") and restore it at any time.'
       },
       {
         title: 'Add Clips From The Audio Library',
@@ -1178,7 +1178,7 @@ const features: Record<string, Feature> = {
     categoryIcon: 'i-lucide-calculator',
     categoryIconBg: 'bg-emerald-50',
     categoryIconColor: 'text-emerald-600',
-    description: 'Two-way sync with Xero for invoices, expenses, contacts, and chart of accounts. Keep your project management and accounting in perfect alignment.',
+    description: 'Two-way sync with Xero for invoices, expenses, contacts, and chart of accounts. Company accounting requires explicit Finance access, while client billing and campaign budgets retain their own permissions.',
     details: [
       {
         title: 'OAuth-Connected Sync',
@@ -1698,11 +1698,11 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Every Registered Capability',
-        content: 'Active owners can discover and execute registered capabilities across Finance, Marketing, Banners, publishing, media generation, administration and MCP integrations without application rollout, permission, budget or confirmation gates. Registered operations include creating editable Banner Studio drafts and staged Google Tag Manager binding, drafting, publishing, verification and rollback through dedicated execution ledgers. Missing providers, bindings, secrets or unimplemented tools remain real operational failures.'
+        content: 'Active owners can discover registered capabilities across Finance, Marketing, Banners, publishing, media generation, administration and MCP integrations. Company accounting execution additionally requires a current explicit Finance grant, including for owners. Other registered operations retain owner authority across application rollout, permission, budget and confirmation gates. Registered operations include creating editable Banner Studio drafts and staged Google Tag Manager binding, drafting, publishing, verification and rollback through dedicated execution ledgers. Missing providers, bindings, secrets or unimplemented tools remain real operational failures.'
       },
       {
         title: 'Security Boundaries Stay Enforced',
-        content: 'God mode never bypasses authentication or session validation, exact active-owner authority, tenant, client and entity isolation, mandatory append-only audit, emergency disable, provider and secret requirements, database constraints or SSRF protection. It is broad application authority, not arbitrary security bypass.'
+        content: 'God mode never bypasses explicit Finance grants, authentication or session validation, exact active-owner authority, tenant, client and entity isolation, mandatory append-only audit, emergency disable, provider and secret requirements, database constraints or SSRF protection. It is broad application authority, not arbitrary security bypass.'
       },
       {
         title: 'Employees Remain Governed',
@@ -1720,6 +1720,22 @@ const features: Record<string, Feature> = {
       { title: 'Find Authorized Creative Work', content: 'Search names across Banner Studio assets and projects, audio assets, video assets and EDM templates. Each result has a stable source-qualified reference. Current client assignments narrow results before pagination; the metadata preview does not return file contents, private storage keys, email bodies or signed download URLs.' },
       { title: 'Individual Editors, Clear Status', content: 'PhotoFlow, VectorFlow, EffectFlow, FilmFlow, SoundFlow and FigFlow are separate browser editors. Their native automation interfaces inform the integration design, but browser control requires an additional authenticated connection. Capability discovery explicitly distinguishes this planned connection from existing application services.' },
       { title: 'Managed Updates', content: 'The creative suite uses pinned upstream GitHub releases and source commits. Candidate upgrades must preserve branding, document formats and integration patches, pass rebuild and browser checks, and retain a previous version for rollback. Detecting an upstream release does not automatically replace an active editor.' }
+    ]
+  },
+  'role-skills': {
+    title: 'Role Skills & Sources',
+    slug: 'role-skills',
+    icon: 'i-lucide-library',
+    category: 'AI & Intelligence',
+    categoryIcon: 'i-lucide-brain',
+    categoryIconBg: 'bg-amber-50 dark:bg-amber-500/10',
+    categoryIconColor: 'text-amber-600 dark:text-amber-400',
+    description: 'Start the right workflow from chat, see the skills available to your role, and improve shared guidance with version history and clear source references.',
+    details: [
+      { title: 'Useful shortcuts for your role', content: 'The plus menu and starter cards show workflows admitted by your current access. Marketing can review budget health, plan promotions and inspect feeds; creative staff can prepare graphics briefs; account managers can review client delivery. A choice prepares editable text and the appropriate assistant focus before you send it. Text and voice use the same selected workflow identity.' },
+      { title: 'A visible skill library', content: 'Skills and Sources shows your published workflows, required capabilities and official references. Administrators can inspect mappings by role, save improvements as drafts, review immutable history and explicitly publish a version with a reason. A role mapping changes discovery; permissions, client scope, personal tool restrictions and evaluated release checks still govern access.' },
+      { title: 'Official references with clear evidence', content: 'Documentation lookup retrieves approved official platform pages and selected OpenAI or Anthropic repository references. It returns a bounded excerpt, URL, retrieval time and content digest when readable, and identifies unavailable or blocked pages. Source material remains reference data and does not automatically replace published guidance or execute downloaded scripts.' },
+      { title: 'Existing specialists and reviewed actions', content: 'Enabled specialists can provide scoped read-only reviews through the existing Spend Controller, Publishing Planner, Financial Watch and Traffic Controller paths. Client selection and role grants are checked again when used. Company accounting still requires explicit Finance access, and consequential marketing changes retain their existing confirmation and independent review requirements.' }
     ]
   },
   'ai-chat': {
@@ -1746,11 +1762,11 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Role-Focused Assistants',
-        content: 'Pick the assistant that fits the job — Finance, Marketing, Sales, Media Buyer, or Account Management — or stay with the general Agency Assistant. Each persona keeps the same engine but leads with the right focus and narrows to the tools that matter for that role, always within your permissions. Switching is one click in the chat bar, and your choice sticks to the conversation, including on voice.'
+        content: 'Pick the assistant that fits the job — Finance, Marketing, Sales, Media Buyer, or Account Management — or stay with the general Agency Assistant. Each persona keeps the same engine but leads with the right focus and narrows to the tools that matter for that role, always within your permissions. Start with My Assistant to inherit your saved personal focus, or choose an explicit conversation focus, including General. Text and voice share that choice. Returning to My Assistant clears the conversation override. Open My Assistant directly from chat or Tools to review your defaults and permitted tools.'
       },
       {
         title: 'Owner God Mode, Employee Governance',
-        content: 'Active owners receive always-on God mode across every registered application and MCP capability. Authentication, exact active-owner authority, tenant, client and entity isolation, mandatory audit, emergency disable and infrastructure requirements remain enforced. Ordinary employees continue to use evaluation-approved releases, permissions, tool limits and confirmation steps; draft, failed, suspended and retired employee releases stay blocked.'
+        content: 'Active owners receive always-on God mode across every registered application and MCP capability. Explicit Finance grants, authentication, exact active-owner authority, tenant, client and entity isolation, mandatory audit, emergency disable and infrastructure requirements remain enforced. Ordinary employees continue to use evaluation-approved releases, permissions, tool limits and confirmation steps; draft, failed, suspended and retired employee releases stay blocked.'
       },
       {
         title: '@Entity Mentions',
@@ -1778,7 +1794,7 @@ const features: Record<string, Feature> = {
     details: [
       {
         title: 'Voice Input with Live Feedback',
-        content: 'Click the mic button and speak naturally. The recorder captures audio with echo cancellation, noise suppression, and automatic gain control. A live volume visualiser shows real-time audio levels while recording, and silence detection automatically stops the recording after 1.5 seconds of quiet — so you never have to remember to press stop.'
+        content: 'Choose Voice message to record one question, or Talk to start a hands-free conversation. The compact message box keeps your assistant focus, voice controls and send button together. Recording controls show when the microphone is active and let you stop or cancel.'
       },
       {
         title: 'Speech-to-Text Transcription',
@@ -1789,8 +1805,8 @@ const features: Record<string, Feature> = {
         content: 'AI responses are automatically read back to you using Workers AI text-to-speech. Markdown formatting is stripped before synthesis for natural-sounding audio. Click the volume button to stop playback at any time. If TTS is unavailable, the text response still appears — voice is additive, never blocking.'
       },
       {
-        title: 'Zero Setup, Graceful Degradation',
-        content: 'Voice AI requires no additional configuration or dependencies — it uses the same Workers AI binding as other AI features. In local development or when the AI binding is unavailable, the mic button simply does not appear. The feature degrades gracefully at every step: if transcription fails you get a helpful error; if TTS fails the text response still shows.'
+        title: 'Clear Microphone Guidance',
+        content: 'Open Voice AI from Tools for a short explanation of the two voice modes. Microphone access, blocked permissions and voice errors get clear guidance when needed. You can keep typing while voice is unavailable, and text replies remain available if spoken playback fails.'
       }
     ]
   },
@@ -1969,7 +1985,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Manage daily marketing work',
-        content: 'Manage supported tasks, content, lead follow-up, creative drafts, KPI targets, budget allocations, inventory feeds and ad preparation through your assistant. Department access also supports reviewed campaign email, inbox replies and website releases where enabled. Website work retains its native permissions and original XeroFlow login checks; boards retain membership requirements. Some specialist editing and administration actions remain in their native editors.'
+        content: 'Native AI Chat can use the reviewed department marketing tools available to your current permissions and grants. Changes first show the exact operation and arguments for confirmation; consequential operations retain independent review and provider readiness checks. You can also use these tools through an external MCP host. Manage supported tasks, content, lead follow-up, creative drafts, KPI targets, budget allocations, inventory feeds and ad preparation through your assistant. Find client connections and catalogues, inspect catalogue type and import errors, repair supported feed mappings, and propose vehicle catalogues, New & Demo product sets and import refreshes with independent review. Department access also supports reviewed campaign email, inbox replies and website releases where enabled. Website work retains its native permissions and original XeroFlow login checks; boards retain membership requirements. Some specialist editing and administration actions remain in their native editors.'
       },
       {
         title: 'See what each provider supports',
@@ -2486,7 +2502,7 @@ const features: Record<string, Feature> = {
     details: [
       { title: 'Editable TheBrief Imports', content: 'Bring supported HTML5 exports into Banner Studio as editable layers across a design set, retaining source fonts, supported animation timing, validated static image effects and bounded muted MP4 clips as editable video layers, including supported static colour filters, opacity and blend modes. Video clips retain their original bytes and use one media clock for preview, scrubbing and HTML export; unsupported sound, clip starts and framing remain held for review. Select up to 50 prepared packages per batch, then confirm each client, folder and assets before saving drafts. Each new draft gets a saved viewer checked against its stored revision, with a separate retry if the viewer needs preparing. Preserve the original creation date when verified; an explicit undated option marks the draft for later backfill without assigning the import date. The library shows TheBrief creation separately from XeroFlow modification. A corrected package can explicitly update an imported draft while preserving its previous version; published projects and conflicting edits are protected. Compare every layout and final output with the original before production use.' },
       { title: 'Visual Library & Folders', content: 'Browse a responsive grid of square preview tiles with compact captions. Projects with a square layout use it first, including imported custom sizes; other formats keep their full artwork without cropping. Choose a folder during import or move a saved project from its library menu. Nested folder browsing and Unfiled keep placement independent of client ownership and source provenance.' },
-      { title: 'Client Preview Links', content: 'Create a view-only link clients can open without signing in. Open on the square layout when available, select any saved size, inspect its opening animation frame, play or replay it with its timed audio tracks and a sound toggle, drag the playback timeline to inspect any frame, resume from that position, follow elapsed time and loop count, and use Fit, 100%, zoom or full screen to check details. Switch to a Facebook Feed or Story / Reel mockup headed by the project’s assigned client name to review placement context; Story artwork keeps its full 9:16 proportions inside a phone frame, with phone controls outside the creative so logos and legal copy remain visible. These contextual mockups do not include verified platform account details, ad copy or platform cropping. Links expire after a chosen period and can be revoked from the project’s Share menu.' },
+      { title: 'Client Preview Links', content: 'Create a view-only link clients can open without signing in. Open on the square layout when available and select a saved size. Client previews compile the artwork and timed audio into an H.264 MP4, with AAC audio, for native video playback. Preparation starts when the link is created; existing links can prepare missing sizes when opened. Each saved layout and font revision reuses its compiled file across viewers. A preparation status appears until the video is ready, with retry for failed jobs. Use native play, sound and timeline controls, Replay, Fit, 100%, zoom or full screen to check details. Compiled previews currently support animations up to 30 seconds and even dimensions up to 2000 pixels. Switch to a Facebook Feed or Story / Reel mockup headed by the project’s assigned client name to review placement context; Story artwork keeps its full 9:16 proportions inside a phone frame, with phone controls outside the creative so logos and legal copy remain visible. These contextual mockups do not include verified platform account details, ad copy or platform cropping. Shared links include the artwork name and a still of the saved square-first layout in messaging previews. Links expire after a chosen period and can be revoked from the project’s Share menu.' },
       { title: 'Team Viewer', content: 'Team members with client access can open the signed-in saved viewer without creating a public link. The project remains in the agency library for ongoing production.' }
     ]
   },
@@ -3859,7 +3875,7 @@ const features: Record<string, Feature> = {
     categoryIcon: 'i-lucide-shield',
     categoryIconBg: 'bg-slate-50',
     categoryIconColor: 'text-slate-600',
-    description: 'Fine-grained role-based access control with server-enforced middleware. 15+ permission areas cover every part of the platform.',
+    description: 'Server-enforced role grants separate company accounting from client commercial workflows and campaign budgets.',
     details: [
       {
         title: 'RBAC Architecture',
@@ -3875,7 +3891,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Mutation Guards',
-        content: 'Every POST, PUT, PATCH, and DELETE request passes through the RBAC middleware. External callers like Xero webhooks and Cloudflare Workers are exempt. Internal API routes are scoped correctly. The system enforces write access restrictions at the API layer, making permission bypass impossible regardless of how the request originates.'
+        content: 'Accounting reads and writes check the active user and current explicit Finance grant before accessing shared Xero data. Owner God mode and development mode do not supply that grant. Read-only roles cannot change accounting, and internal accounting jobs require configured secrets with bounded read routes. Marketing campaign budgets and spend keep their separate permissions; assigned-client invoice access allows scoped staff to work on their own drafts.'
       }
     ]
   },

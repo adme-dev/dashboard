@@ -32,8 +32,14 @@ describe('catalogue HTTP authority boundaries', () => {
     expect(mocks.query).toHaveBeenCalledTimes(2)
     expect((kind === 'portal' ? mocks.portal : kind === 'customer' ? mocks.customer : mocks.agency)).toHaveBeenCalledTimes(2)
   })
-  it('rejects dual-cookie authority before querying', async () => {
-    await expect(templateCatalogueHandler(event({ 'client_session_token': 'x', '__Host-studio_customer_session': 'y' }), 'portal')).rejects.toMatchObject({ statusCode: 403 })
+  it('uses only the route audience when other applications have cookies', async () => {
+    expect(await templateCatalogueHandler(event({ 'client_session_token': 'x', '__Host-studio_customer_session': 'y' }), 'portal')).toEqual({ items: [], nextCursor: null })
+    expect(mocks.portal).toHaveBeenCalledTimes(2)
+    expect(mocks.customer).not.toHaveBeenCalled()
+    expect(mocks.agency).not.toHaveBeenCalled()
+  })
+  it('rejects conflicting customer cookies before querying', async () => {
+    await expect(templateCatalogueHandler(event({ '__Host-studio_customer_session': 'x', 'studio_customer_session': 'y' }), 'customer')).rejects.toMatchObject({ statusCode: 403 })
     expect(mocks.query).not.toHaveBeenCalled()
   })
   it('rejects caller scope and excessive limit', async () => {

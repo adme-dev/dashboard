@@ -1,3 +1,5 @@
+import { admitChatWorkflow, parseChatWorkflowSelection } from '~~/server/utils/ai/chatWorkflow'
+import { parseChatPersona } from '~~/server/utils/ai/chatPersona'
 import { queryOne } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
 import { processUserMessage } from '~~/server/utils/aiChatEngine'
@@ -100,6 +102,31 @@ export default defineEventHandler(async (event) => {
   const boardIdPart = formData.find(p => p.name === 'boardId')
   const boardId = boardIdPart?.data ? boardIdPart.data.toString('utf-8').trim() || undefined : undefined
 
+  const personaPart = formData.find(p => p.name === 'persona')
+  let persona: string | null | undefined
+  if (personaPart) {
+    try {
+      persona = parseChatPersona(JSON.parse(personaPart.data.toString('utf-8')))
+    } catch {
+      throw createError({ statusCode: 400, statusMessage: 'Invalid assistant focus' })
+    }
+  }
+
+  const workflowPart = formData.find(p => p.name === 'workflow')
+  let workflowSelection
+  if (workflowPart) {
+    try {
+      workflowSelection = parseChatWorkflowSelection(JSON.parse(workflowPart.data.toString('utf-8')))
+    } catch {
+      throw createError({ statusCode: 400, statusMessage: 'Invalid workflow selection' })
+    }
+  }
+  const workflow = await admitChatWorkflow(workflowSelection, event, user.id)
+  if (workflow) {
+    if (persona !== undefined && persona !== workflow.persona) throw createError({ statusCode: 409, statusMessage: 'Workflow focus changed; choose it again' })
+    persona = workflow.persona
+  }
+
   // Step 1: Speech-to-Text
   const sttResult = await speechToText(event, audioPart.data, {
     featureKey: 'agency_ai_voice_stt',
@@ -123,7 +150,7 @@ export default defineEventHandler(async (event) => {
   // Step 2: Process through existing AI pipeline (unchanged)
   let result
   try {
-    result = await processUserMessage(id, user.id, user.role, transcribedText, event, mentionedEntities, boardId)
+    result = await processUserMessage(id, user.id, user.role, transcribedText, event, mentionedEntities, boardId, persona, undefined, undefined, undefined, workflow)
   } catch (err: any) {
     console.error('Failed to process voice message:', err)
     throw createError({

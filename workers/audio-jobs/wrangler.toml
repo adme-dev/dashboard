@@ -7,6 +7,9 @@
 # This Worker has AI + R2 + DB as first-class bindings. Mirrors leads-delivery-worker.
 name = "audio-jobs"
 main = "src/index.ts"
+workers_dev = false
+preview_urls = false
+routes = []
 compatibility_date = "2025-12-01"
 compatibility_flags = ["nodejs_compat"]
 
@@ -76,9 +79,9 @@ name = "audio-render"
 class_name = "RenderContainer"
 image = "./container/Dockerfile"
 max_instances = 6
-# ffmpeg 2-pass loudnorm needs real memory — don't run on the smallest instance.
-# "standard" was renamed to "standard-1" (wrangler 4.95+).
-instance_type = "standard-1"
+# Banner frame capture needs a full vCPU to finish larger formats within the
+# Worker's ten-minute container request deadline; audio mixing also needs memory.
+instance_type = "standard-2"
 
 [[durable_objects.bindings]]
 class_name = "RenderContainer"

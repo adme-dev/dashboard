@@ -5,9 +5,12 @@
 
 import { queryOne } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
+import { hasExpenseFinancePermission, assertExpenseOwnWritePermission, assertExpenseRowAccess, assertExpenseReferences } from '~~/server/utils/expenseAccess'
 
 export default defineEventHandler(async (event) => {
   const user = await requireAuth(event)
+  const finance = await hasExpenseFinancePermission(event, user.id, true)
+  if (!finance) await assertExpenseOwnWritePermission(user.id)
   const id = getRouterParam(event, 'id')
   const body = await readBody(event)
 
@@ -20,24 +23,21 @@ export default defineEventHandler(async (event) => {
 
   try {
     // Check expense exists and can be edited
-    const existing = await queryOne(`
-      SELECT id, user_id, status
-      FROM expenses
-      WHERE id = $1
-    `, [id])
-
-    if (!existing) {
-      throw createError({
-        statusCode: 404,
-        statusMessage: 'Expense not found'
-      })
-    }
+    const existing = await assertExpenseRowAccess(id, user.id, finance)
 
     // Only draft or rejected expenses can be edited (by the owner)
     if (!['draft', 'rejected'].includes(existing.status)) {
       throw createError({
         statusCode: 400,
         statusMessage: 'Only draft or rejected expenses can be edited'
+      })
+    }
+
+    if (['projectId', 'clientId', 'taskId'].some(key => body[key] !== undefined)) {
+      await assertExpenseReferences({
+        projectId: body.projectId !== undefined ? body.projectId || null : existing.project_id,
+        clientId: body.clientId !== undefined ? body.clientId || null : existing.client_id,
+        taskId: body.taskId !== undefined ? body.taskId || null : existing.task_id
       })
     }
 
@@ -75,7 +75,7 @@ export default defineEventHandler(async (event) => {
     // Handle submit action
     if (body.submit) {
       updates.push(`status = $${idx}`)
-      params.push('submitted')
+      params.push(finance ? 'submitted' : 'pending_approval')
       idx++
       updates.push(`submitted_at = $${idx}`)
       params.push(new Date().toISOString())
@@ -93,14 +93,17 @@ export default defineEventHandler(async (event) => {
     params.push(new Date().toISOString())
     idx++
 
-    params.push(id)
+    params.push(id, finance, user.id)
 
     const expense = await queryOne(`
       UPDATE expenses
       SET ${updates.join(', ')}
-      WHERE id = $${idx}
+      WHERE id = $${idx} AND status IN ('draft', 'rejected')
+        AND ($${idx + 1}::boolean OR user_id = $${idx + 2})
       RETURNING *
     `, params)
+
+    if (!expense) throw createError({ statusCode: 409, statusMessage: 'Expense changed before update' })
 
     return {
       expense: {

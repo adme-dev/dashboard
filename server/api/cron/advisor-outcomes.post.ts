@@ -10,11 +10,12 @@
  * intervention with measured impact".
  *
  * Mirrors the anomaly + advisor cron auth pattern: x-cron-secret with
- * dev bypass, local-hour gate (default 7am tenant-local), ?force=true
+ * authentication in every environment, local-hour gate (default 7am tenant-local), ?force=true
  * to skip the gate.
  */
 
-import { defineEventHandler, getHeader, getQuery, createError } from 'h3'
+import { defineEventHandler, getQuery } from 'h3'
+import { requireFinanceCronJob } from '~~/server/utils/financeMachineAccess'
 import { queryOne, queryRows, execute } from '~~/server/utils/db'
 import { getActiveOrgToken } from '~~/server/utils/tokenStore'
 import { measureRecommendation } from '~~/server/utils/advisorGenerators'
@@ -23,12 +24,7 @@ const TARGET_LOCAL_HOUR = 7
 const CHECKPOINT_DAYS = [7, 14, 30] as const
 
 export default defineEventHandler(async (event) => {
-  const cronSecret = getHeader(event, 'x-cron-secret')
-  const expectedSecret = process.env.CRON_SECRET
-
-  if (!import.meta.dev && cronSecret !== expectedSecret) {
-    throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
-  }
+  requireFinanceCronJob(event)
 
   const query = getQuery(event)
   const force = query.force === 'true' || query.force === '1'

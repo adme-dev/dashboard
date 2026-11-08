@@ -1,17 +1,15 @@
 // Hourly cron entrypoint; self-gates to the tenant-local digest hour (default 9).
 // Posts a Slack budget review of active ad-spend/budget anomalies, or an
 // all-clear message when there are none. Auth: x-cron-secret vs CRON_SECRET.
-import { defineEventHandler, getHeader, getQuery, createError } from 'h3'
+import { defineEventHandler, getQuery } from 'h3'
+import { requireCronJobSecret } from '~~/server/utils/financeMachineAccess'
 import { queryOne, queryRows } from '~~/server/utils/db'
 import { getBudgetSlackConfig } from '~~/server/utils/budgetSlackConfig'
 import { buildDigestBlocks, postSlack, validateWebhook, type BudgetSlackItem } from '~~/server/utils/anomalyDetection/slackBudget'
 import { getAppUrl } from '~~/server/utils/appUrl'
 
 export default defineEventHandler(async (event) => {
-  const cronSecret = getHeader(event, 'x-cron-secret')
-  if (!import.meta.dev && cronSecret !== process.env.CRON_SECRET) {
-    throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
-  }
+  requireCronJobSecret(event)
   const force = (() => { const q = getQuery(event); return q.force === 'true' || q.force === '1' })()
 
   const conn = await queryOne<{ tenant_id: string; timezone: string }>(

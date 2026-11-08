@@ -13,7 +13,7 @@ export interface PaidProposal {
 }
 const cols = 'id,user_id,status,expires_at,resolved_payload,result_payload'
 export async function preparePaidProposal(action: string, actorId: string, input: Record<string, unknown>, snapshot: unknown, key: string, digest: string, source: 'mcp' | 'department_browser' = 'mcp', review?: Record<string, unknown>): Promise<PaidProposal> {
-  if (!/^(mcp|browser):[a-f0-9]{64}$/.test(key) || !/^[a-f0-9]{64}$/.test(digest)) campaignDenied('coordinator_required')
+  if (!/^(mcp|browser|chat):[a-f0-9]{64}$/.test(key) || !/^[a-f0-9]{64}$/.test(digest)) campaignDenied('coordinator_required')
   const intentHash = paidHash({ action, input })
   const revision = paidHash({ action, input, snapshot })
   return transactionWithoutRetry(async (db) => {
@@ -40,13 +40,22 @@ export function paidProposalView(p: PaidProposal) {
 export async function claimPaidProposal(p: PaidProposal) {
   const claimed = await transactionWithoutRetry(async (db) => {
     if (p.resolved_payload.action === 'department_catalog_change') {
-      const catalogId = p.resolved_payload.input.catalogId
-      await db.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [`department-catalog:${catalogId}`])
+      const input = p.resolved_payload.input
+      const creating = input.operation === 'create_catalog'
+      const catalogId = creating ? null : input.catalogId
+      if (creating ? !input.connectionId || !input.sourceFeedId : !catalogId) campaignDenied('bad_args')
+      const resource = creating
+        ? `new:${p.resolved_payload.clientId}:${input.connectionId}:${input.sourceFeedId}`
+        : String(catalogId)
+      await db.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [`department-catalog:${resource}`])
       const held = (await db.query(`SELECT id FROM ai_pending_actions WHERE tool_name='department_catalog_change'
-        AND status='executed' AND id<>$1 AND resolved_payload->'input'->>'catalogId'=$2
-        AND (result_payload->>'complete') IS DISTINCT FROM 'true' LIMIT 1`, [p.id, catalogId])).rows[0]
+        AND status='executed' AND id<>$1
+        AND (resolved_payload->'input'->>'catalogId'=$2 OR result_payload->>'catalogId'=$2
+          OR (resolved_payload->'input'->>'operation'='create_catalog'
+            AND concat('new:',resolved_payload->>'clientId',':',resolved_payload->'input'->>'connectionId',':',resolved_payload->'input'->>'sourceFeedId')=$2))
+        AND ((result_payload->>'complete') IS DISTINCT FROM 'true' OR $3::boolean) LIMIT 1`, [p.id, resource, creating])).rows[0]
       if (held) campaignDenied('reconciliation_required')
-      const conflict = (await db.query(`SELECT client_id FROM meta_catalog_feed_bindings WHERE product_catalog_id=$1 AND client_id<>$2 LIMIT 1`, [catalogId, p.resolved_payload.clientId])).rows[0]
+      const conflict = catalogId && (await db.query(`SELECT client_id FROM meta_catalog_feed_bindings WHERE product_catalog_id=$1 AND client_id<>$2 LIMIT 1`, [catalogId, p.resolved_payload.clientId])).rows[0]
       if (conflict) campaignDenied('ownership_unproven')
     }
     return (await db.query(`UPDATE ai_pending_actions SET status='executed',executed_at=NOW()

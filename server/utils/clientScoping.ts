@@ -1,7 +1,7 @@
-import { createError, type H3Event } from 'h3'
-import { queryRows, queryOneFresh } from './db'
+import type { H3Event } from 'h3'
+import { queryRows, queryRowsFresh, queryOneFresh } from './db'
 import { kvGet, kvPut, kvDelete } from './kv'
-import { roleHasPermission } from './permissions'
+import { assertFinancePermission, assertPermissionGrant } from './financeAccess'
 import type { User } from './auth'
 
 const CACHE_TTL = 300 // 5 minutes
@@ -25,34 +25,38 @@ export async function getAssignedClientIds(event: H3Event, userId: string): Prom
 }
 
 /**
- * Resolve invoice access level for a user:
- * - Finance roles (owner, admin, lead, PM, finance, accounts) → 'all'
- * - Users with FINANCE permission group → 'all'
- * - Account managers (INVOICE_OWN_CLIENTS) → scoped client ID array
- * - Everyone else → 403
+ * Current Finance grants allow all clients; current INVOICE_OWN_CLIENTS grants
+ * allow only freshly assigned active clients. Role names and cached grants or
+ * assignments never establish invoice authority. Mutation callers set write=true
+ * so read-only roles retain reads without receiving draft or payment authority.
  */
-export async function resolveInvoiceAccess(event: H3Event, user: User): Promise<'all' | string[]> {
-  const isFinance = roleHasPermission(user.role, 'FINANCE')
-    || user.permissionGroups?.includes('FINANCE')
-  if (isFinance) return 'all'
-
-  const hasInvoiceAccess = roleHasPermission(user.role, 'INVOICE_OWN_CLIENTS')
-    || user.permissionGroups?.includes('INVOICE_OWN_CLIENTS')
-  if (!hasInvoiceAccess) {
-    throw createError({ statusCode: 403, statusMessage: 'No invoice access' })
+export async function resolveInvoiceAccess(event: H3Event, user: User, write = false): Promise<'all' | string[]> {
+  try {
+    if (write) await assertFinancePermission(event, user.id, true)
+    else await assertFinancePermission(event, user.id)
+    return 'all'
+  } catch (error) {
+    if ((error as { statusCode?: number }).statusCode !== 403) throw error
   }
-
-  return getAssignedClientIds(event, user.id)
+  if (write) await assertPermissionGrant(event, user.id, 'INVOICE_OWN_CLIENTS', true)
+  else await assertPermissionGrant(event, user.id, 'INVOICE_OWN_CLIENTS')
+  const rows = await queryRowsFresh<{ client_id: string }>(`
+    SELECT cta.client_id
+    FROM client_team_assignments cta
+    JOIN agency_clients client ON client.id = cta.client_id
+    WHERE cta.team_member_id = $1 AND client.is_active = TRUE
+    ORDER BY cta.client_id`, [user.id])
+  return rows.map(row => row.client_id)
 }
 
 /**
  * Convenience wrapper: authenticate + resolve invoice access in one call.
  * Returns the user and their client scope ('all' or specific IDs).
  */
-export async function requireInvoiceAccess(event: H3Event): Promise<{ user: User; clientIds: 'all' | string[] }> {
+export async function requireInvoiceAccess(event: H3Event, write = false): Promise<{ user: User, clientIds: 'all' | string[] }> {
   const { requireAuth } = await import('./auth')
   const user = await requireAuth(event)
-  const clientIds = await resolveInvoiceAccess(event, user)
+  const clientIds = await resolveInvoiceAccess(event, user, write)
   return { user, clientIds }
 }
 

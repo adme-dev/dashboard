@@ -85,7 +85,7 @@ export async function dbRecordAiInvocation(input: WorkerAiInvocationInput): Prom
 
 // Render-job status writers (Hyperdrive→Neon). Mirror the music writers' execute() usage.
 export async function dbMarkRenderRendering(jobId: string): Promise<void> {
-  await execute(`UPDATE media_render_jobs SET status='rendering', updated_at=now() WHERE id=$1`, [jobId])
+  await execute(`UPDATE media_render_jobs SET status='rendering', updated_at=now() WHERE id=$1 AND status <> 'done'`, [jobId])
 }
 export async function dbMarkRenderProgress(jobId: string, progress: Record<string, unknown>): Promise<void> {
   await execute(`UPDATE media_render_jobs SET progress=$1::jsonb, updated_at=now() WHERE id=$2`, [JSON.stringify(progress), jobId])
@@ -97,7 +97,7 @@ export async function dbMarkRenderDone(jobId: string, variants: Record<string, s
   )
 }
 export async function dbMarkRenderFailed(jobId: string, error: string): Promise<void> {
-  await execute(`UPDATE media_render_jobs SET status='failed', error=$1, updated_at=now() WHERE id=$2`, [error, jobId])
+  await execute(`UPDATE media_render_jobs SET status='failed', error=$1, updated_at=now() WHERE id=$2 AND status <> 'done'`, [error, jobId])
 }
 export async function dbLoadTimelineState(timelineId: string): Promise<any> {
   const row = await queryOne<{ state: any }>(`SELECT state FROM media_timelines WHERE id=$1`, [timelineId])

@@ -4,6 +4,7 @@ import { hasMarketingManagementPermission, isMarketingManagementContext } from '
 import type { PermissionGroup } from '~~/server/utils/permissions'
 import { resolveGodModeAuthority, isActiveGodModeAuthority } from '~~/server/utils/godMode/authority'
 import type { ToolContext } from '../toolContext'
+import { assertFinancePermission } from '~~/server/utils/financeAccess'
 
 export type MarketingReadScope = Readonly<{
   actorUserId: string
@@ -44,9 +45,17 @@ export async function resolveMarketingReadScope(ctx: ToolContext): Promise<Marke
     clientIds = clientIds === null ? [...personalIds] : clientIds.filter(id => personalIds.includes(id))
   }
   if (ctx.clientScope) clientIds = clientIds === null || clientIds.includes(ctx.clientScope) ? [ctx.clientScope] : []
+  let financialReadAllowed = false
+  if (ownerVerified || groups.includes('FINANCE')) {
+    try {
+      await assertFinancePermission(ctx.event, ctx.userId)
+      financialReadAllowed = true
+    }
+    catch (error) { if ((error as { statusCode?: number }).statusCode !== 403) throw error }
+  }
   return Object.freeze({ actorUserId: ctx.userId, clientIds, activeClientsOnly: allActive, ownerVerified,
     permissionGroups: [...groups], reportingGranted: !application && (authority.marketingCapabilities ?? []).includes('reporting'),
-    financialReadAllowed: ownerVerified || groups.includes('FINANCE'), ownerRefreshAllowed: ownerVerified && ctx.assistantReadOnly !== true })
+    financialReadAllowed, ownerRefreshAllowed: ownerVerified && ctx.assistantReadOnly !== true })
 }
 export async function resolveBrowserMarketingReadScope(event: H3Event): Promise<MarketingReadScope> {
   const { requireAuth } = await import('~~/server/utils/auth')

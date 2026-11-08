@@ -1,5 +1,8 @@
 # AI assistant company rollout readiness
 
+For native chat defaults, text/voice focus and shared marketing-tool authority, see [personal assistant architecture](../architecture/personal-assistant-chat.md). A deployed integration fix does not satisfy the evaluation, membership or approval gates below.
+
+
 Use the readiness gate before enrolling a company-wide AI assistant pilot or enforcing governed assistant coverage.
 
 ```bash

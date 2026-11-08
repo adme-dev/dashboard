@@ -9,12 +9,12 @@
  */
 
 import { queryOne, queryRows } from '~~/server/utils/db'
-import { requireAuth } from '~~/server/utils/auth'
+import { requireInvoiceAccess } from '~~/server/utils/clientScoping'
 
 const toNumber = (value: string | number | null | undefined) => Number(value || 0)
 
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
+  const { clientIds } = await requireInvoiceAccess(event)
   const query = getQuery(event)
 
   const clientId = query.clientId as string
@@ -24,6 +24,10 @@ export default defineEventHandler(async (event) => {
       statusCode: 400,
       statusMessage: 'Client ID is required'
     })
+  }
+
+  if (clientIds !== 'all' && !clientIds.includes(clientId)) {
+    throw createError({ statusCode: 403, statusMessage: 'Client invoice access required' })
   }
 
   try {

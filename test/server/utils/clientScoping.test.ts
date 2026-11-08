@@ -3,7 +3,7 @@
  *
  * Tests the invoice access resolution pipeline:
  * - getAssignedClientIds: KV cache → DB lookup → cache write
- * - resolveInvoiceAccess: finance roles get 'all', account_manager gets scoped IDs, others get 403
+ * - resolveInvoiceAccess: fresh Finance grants get all, fresh invoice grants get assigned IDs
  * - invalidateAssignmentCache: deletes KV cache key
  */
 
@@ -11,9 +11,17 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // Mock database
 const mockQueryRows = vi.fn()
+const mockQueryRowsFresh = vi.fn()
+const mockFinance = vi.fn()
+const mockInvoiceGrant = vi.fn()
+vi.mock('~~/server/utils/financeAccess', () => ({
+  assertFinancePermission: (...args: unknown[]) => mockFinance(...args),
+  assertPermissionGrant: (...args: unknown[]) => mockInvoiceGrant(...args)
+}))
 
 vi.mock('../../../server/utils/db', () => ({
-  queryRows: (...args: any[]) => mockQueryRows(...args)
+  queryRows: (...args: any[]) => mockQueryRows(...args),
+  queryRowsFresh: (...args: unknown[]) => mockQueryRowsFresh(...args)
 }))
 
 // Mock KV
@@ -102,35 +110,41 @@ describe('getAssignedClientIds', () => {
 describe('resolveInvoiceAccess', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockFinance.mockRejectedValue({ statusCode: 403 })
+    mockInvoiceGrant.mockRejectedValue({ statusCode: 403, statusMessage: 'No invoice access' })
   })
 
-  it('returns "all" for finance role (e.g. finance)', async () => {
+  it('returns "all" for a currently granted finance-role user', async () => {
     const user = makeUser({ role: 'finance' })
+    mockFinance.mockResolvedValueOnce(undefined)
     const result = await resolveInvoiceAccess(fakeEvent, user)
     expect(result).toBe('all')
   })
 
-  it('returns "all" for owner', async () => {
+  it('returns "all" for owner only with a current Finance grant', async () => {
     const user = makeUser({ role: 'owner' })
+    mockFinance.mockResolvedValueOnce(undefined)
     const result = await resolveInvoiceAccess(fakeEvent, user)
     expect(result).toBe('all')
   })
 
-  it('returns "all" for admin', async () => {
+  it('returns "all" for admin only with a current Finance grant', async () => {
     const user = makeUser({ role: 'admin' })
+    mockFinance.mockResolvedValueOnce(undefined)
     const result = await resolveInvoiceAccess(fakeEvent, user)
     expect(result).toBe('all')
   })
 
-  it('returns "all" for user with FINANCE permission group', async () => {
+  it('returns "all" after checking a current FINANCE grant', async () => {
     const user = makeUser({ role: 'member', permissionGroups: ['FINANCE'] })
+    mockFinance.mockResolvedValueOnce(undefined)
     const result = await resolveInvoiceAccess(fakeEvent, user)
     expect(result).toBe('all')
   })
 
   it('returns client ID array for account_manager', async () => {
-    mockKvGet.mockResolvedValue(null)
-    mockQueryRows.mockResolvedValue([
+    mockInvoiceGrant.mockResolvedValueOnce(undefined)
+    mockQueryRowsFresh.mockResolvedValueOnce([
       { client_id: 'client-10' },
       { client_id: 'client-20' },
     ])
@@ -142,7 +156,9 @@ describe('resolveInvoiceAccess', () => {
   })
 
   it('returns client IDs for user with INVOICE_OWN_CLIENTS permission group', async () => {
-    mockKvGet.mockResolvedValue(['client-99'])
+    mockKvGet.mockResolvedValue(['stale-revoked'])
+    mockInvoiceGrant.mockResolvedValueOnce(undefined)
+    mockQueryRowsFresh.mockResolvedValueOnce([{ client_id: 'client-99' }])
 
     const user = makeUser({ id: 'custom-1', role: 'member', permissionGroups: ['INVOICE_OWN_CLIENTS'] })
     const result = await resolveInvoiceAccess(fakeEvent, user)

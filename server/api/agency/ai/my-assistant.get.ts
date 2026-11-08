@@ -1,3 +1,7 @@
+import { buildNativeSupplementalTools } from '~~/server/utils/ai/nativeChatTools'
+import { resolveChatRuntime } from '~~/server/utils/ai/chatRuntime'
+import { isActiveGodModeAuthority } from '~~/server/utils/godMode/authority'
+import { discoverNativeMarketingTools } from '~~/server/utils/ai/marketing/nativeTools'
 /**
  * Read the caller's own co-pilot config ("My Assistant", command-center spec §4a Personalize tier).
  * GET /api/agency/ai/my-assistant
@@ -34,6 +38,9 @@ export interface MyAssistantGetDependencies {
   getRuntimePolicy(event: H3Event): CatalogRuntimePolicy
   getObservedMemoryEnabled(event: H3Event): boolean
   tools: ExplainableAssistantTool[]
+  discoverMarketingTools: typeof discoverNativeMarketingTools
+  resolveChatRuntime: typeof resolveChatRuntime
+  discoverSupplementalTools: typeof buildNativeSupplementalTools
 }
 
 const defaultDependencies: MyAssistantGetDependencies = {
@@ -41,12 +48,15 @@ const defaultDependencies: MyAssistantGetDependencies = {
   resolvePersonalAssistantContext,
   buildMyAssistantExplainability,
   getRuntimePolicy(event) {
-    return resolveServerCatalogRuntimePolicy(event, useRuntimeConfig(event) as any)
+    return resolveServerCatalogRuntimePolicy(event, useRuntimeConfig(event))
   },
   getObservedMemoryEnabled(event) {
     return resolveObserveAndLearnRuntimePolicy(event).enabled
   },
-  tools: registry
+  tools: registry,
+  discoverMarketingTools: discoverNativeMarketingTools,
+  resolveChatRuntime,
+  discoverSupplementalTools: buildNativeSupplementalTools
 }
 
 export function createMyAssistantGetHandler(
@@ -61,7 +71,14 @@ export function createMyAssistantGetHandler(
       runtimePolicy: dependencies.getRuntimePolicy(event),
       observedMemoryEnabled: dependencies.getObservedMemoryEnabled(event)
     })
-    return dependencies.buildMyAssistantExplainability(context, dependencies.tools)
+    const marketingTools = isActiveGodModeAuthority(context.godModeAuthority, user.id)
+      ? []
+      : await dependencies.discoverMarketingTools({
+          userId: user.id, userRole: context.identity.role, source: 'chat', event
+        })
+    const supplemental = await dependencies.discoverSupplementalTools({ userId: user.id, userRole: context.identity.role, source: 'chat', event })
+    return { ...dependencies.buildMyAssistantExplainability(context, [...dependencies.tools, ...marketingTools, ...supplemental]),
+      chatRuntime: dependencies.resolveChatRuntime(event) }
   }
 }
 

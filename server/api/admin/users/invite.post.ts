@@ -7,6 +7,7 @@
  * modal previously collected all of this and then did nothing with it.
  */
 
+import { assertPermissionGrant } from '~~/server/utils/financeAccess'
 import { requireRole, generateMagicLink } from '~~/server/utils/auth'
 import { sendMagicLinkEmail } from '~~/server/utils/email'
 import { getAppUrl } from '~~/server/utils/appUrl'
@@ -31,6 +32,7 @@ function nameFromEmail(email: string): string {
 
 export default defineEventHandler(async (event) => {
   const currentUser = await requireRole(event, ['admin', 'owner'])
+  await assertPermissionGrant(event, currentUser.id, 'ADMIN', true)
   const body = await readBody<InviteBody>(event)
 
   const emails = [...new Set((body.emails || []).map(e => String(e).trim().toLowerCase()).filter(Boolean))]

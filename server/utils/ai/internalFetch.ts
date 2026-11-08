@@ -10,6 +10,7 @@ export type AiInternalFetchOptions = {
   method?: 'GET' | 'POST'
   body?: unknown
   query?: Record<string, unknown>
+  timeout?: number
 }
 
 function invalidRequest(statusMessage: string): never {
@@ -76,6 +77,7 @@ export async function aiInternalFetch<T = unknown>(
   return await (globalThis as any).$fetch(path, {
     method,
     ...(method === 'POST' ? { body: options.body } : {}),
-    headers
+    headers,
+    ...(options.timeout ? { signal: AbortSignal.timeout(Math.min(20_000, Math.max(1000, options.timeout))) } : {})
   }) as T
 }

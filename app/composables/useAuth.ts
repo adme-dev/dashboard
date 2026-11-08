@@ -1,3 +1,4 @@
+import { hasExplicitFinancePermission, hasExplicitInvoicePermission } from '~~/shared/finance/permissions'
 import type { User } from '~/types'
 import { canAccessQrCodes as hasQrAccess } from '~~/shared/qr/permissions'
 import { useAuthenticatedFetch } from './useAuthenticatedFetch'
@@ -40,8 +41,8 @@ export const useAuth = () => {
   const isLead = computed(() => hasRole(['owner', 'admin', 'lead']))
   const isReadOnly = computed(() => !!user.value && (isReadOnlyRole(user.value.role) || user.value.isCustomReadOnly === true))
   const canWrite = computed(() => !!user.value && !isReadOnlyRole(user.value.role) && user.value.isCustomReadOnly !== true)
-  const canAccessFinance = computed(() => hasRole(PERMISSIONS.FINANCE))
-  const canAccessInvoices = computed(() => hasRole(PERMISSIONS.INVOICE_OWN_CLIENTS))
+  const canAccessFinance = computed(() => hasExplicitFinancePermission(user.value))
+  const canAccessInvoices = computed(() => hasExplicitInvoicePermission(user.value))
   const canAccessSales = computed(() => hasRole(PERMISSIONS.SALES))
   const canAccessClients = computed(() => hasRole(PERMISSIONS.CLIENTS))
   const canAccessCreative = computed(() => hasRole(PERMISSIONS.CREATIVE))

@@ -15,11 +15,15 @@ const state = vi.hoisted(() => ({
   enabled: true,
   providerReady: true,
   failWrite: false,
+  failBinding: false,
+  providerFeedId: '',
   creates: 0,
   generates: 0,
   updates: 0,
   reads: 0,
   lastPatch: {} as any,
+  lastPreview: {} as any,
+  lastCreate: {} as any,
   detail: {} as any,
   link: {} as any
 }))
@@ -55,6 +59,16 @@ vi.mock('~~/server/utils/ai/mcp/runtimeConfig', () => ({
 }))
 const query = vi.hoisted(() =>
   vi.fn(async (sql: string, p: any[] = []) => {
+    if (sql.includes('UPDATE client_feed_links')) {
+      if (state.failBinding) return { rows: [] }
+      state.link.defaultFeedIds = JSON.parse(p[5])
+      return { rows: [{ client_id: p[0] }] }
+    }
+    if (sql.includes('SET result_ref=$3')) {
+      const row = state.rows.find(r => r.id === p[0])
+      if (row) row.result_ref = p[2]
+      return { rows: [] }
+    }
     if (sql.includes('agency_clients'))
       return { rows: state.active ? [{ id: p[0] }] : [] }
     if (sql.includes('pg_advisory')) return { rows: [] }
@@ -136,27 +150,30 @@ vi.mock('~~/server/utils/feeds/registry', () => ({
     listFeeds: async () => {
       state.reads++
       return [
-        { id: 'feed-1', name: 'Stock', platform: 'facebook', isActive: true }
+        { id: state.detail.id, name: 'Stock', platform: 'facebook', isActive: true }
       ]
     },
     getFeed: async () => structuredClone(state.detail),
-    previewInventory: async () => ({
-      total: 2,
-      items: [
-        {
-          id: 'v1',
-          make: 'Ford',
-          url: 'https://secret.test?token=secret',
-          image: 'secret'
+    previewInventory: async (_ctx: any, _link: any, spec: any) => {
+      state.lastPreview = spec
+      return ({
+        total: 2,
+        items: [
+          {
+            id: 'v1',
+            make: 'Ford',
+            url: 'https://secret.test?token=secret',
+            image: 'secret'
+          }
+        ],
+        validation: {
+          matchedTotal: 3,
+          validatedTotal: 2,
+          invalidTotal: 1,
+          invalidSummaries: []
         }
-      ],
-      validation: {
-        matchedTotal: 3,
-        validatedTotal: 2,
-        invalidTotal: 1,
-        invalidSummaries: []
-      }
-    }),
+      })
+    },
     previewFeed: async () => ({
       total: 2,
       items: [],
@@ -167,12 +184,15 @@ vi.mock('~~/server/utils/feeds/registry', () => ({
         invalidSummaries: []
       }
     }),
-    createFeed: async () => {
+    createFeed: async (_ctx: any, _link: any, spec: any) => {
+      state.lastCreate = spec
+      if (spec.source) state.detail.id = 'feed-new'
+      Object.assign(state.detail, spec)
       state.creates++
       if (state.failWrite) throw new Error('https://secret.test?token=secret')
       return {
         providerId: 'social-dashboard',
-        feedId: 'feed-1',
+        feedId: state.providerFeedId || state.detail.id,
         platform: 'facebook'
       }
     },
@@ -180,6 +200,7 @@ vi.mock('~~/server/utils/feeds/registry', () => ({
       state.updates++
       state.lastPatch = patch
       Object.assign(state.detail, patch)
+      if (patch.platform_settings) state.detail.platformSettings = patch.platform_settings
       if ('is_active' in patch) state.detail.isActive = patch.is_active
     },
     generateFeed: async () => {
@@ -230,6 +251,8 @@ beforeEach(() => {
     enabled: true,
     providerReady: true,
     failWrite: false,
+    failBinding: false,
+    providerFeedId: '',
     creates: 0,
     generates: 0,
     updates: 0,
@@ -255,10 +278,120 @@ beforeEach(() => {
   vi.clearAllMocks()
 })
 describe('department inventory boundary', () => {
+  it('previews candidate mapping repairs, preserves other rules/settings and executes readback once', async () => {
+    state.detail.mappings = { rules: [{ target_field: 'title', source_field: 'title' }, { target_field: 'drivetrain', source_field: 'drive', fallback_value: 'OTHER' }] }
+    state.detail.platformSettings = { currency: 'AUD' }
+    const proposal = await run('marketing_propose_inventory_feed_change', { clientId, feedId: 'feed-1', patch: {
+      mappingUpdates: [{ target_field: 'drivetrain', transformations: [{ type: 'valueMap', map: { 'Front Wheel Drive': 'FWD' } }] }, { target_field: 'city', fallback_value: 'Knox' }],
+      platformSettings: { fb_page_id: '123456789' }
+    } })
+    expect(proposal.ok, JSON.stringify(proposal)).toBe(true)
+    expect(state.lastPreview.mappings.rules).toEqual([
+      { target_field: 'title', source_field: 'title' },
+      { target_field: 'drivetrain', source_field: 'drive', fallback_value: 'OTHER', transformations: [{ type: 'valueMap', map: { 'Front Wheel Drive': 'FWD' } }] },
+      { target_field: 'city', fallback_value: 'Knox' }
+    ])
+    await approve(proposal)
+    const args = { clientId, proposalId: (proposal as any).data.proposalId, expectedRevision: (proposal as any).data.revision, ack: true }
+    expect(await run('marketing_execute_inventory_feed_change', args)).toMatchObject({ ok: true, data: { readbackVerified: true } })
+    expect(state.lastPatch.platform_settings).toEqual({ currency: 'AUD', fb_page_id: '123456789' })
+    expect(state.lastPatch.mappings).toEqual(state.lastPreview.mappings)
+    expect((await run('marketing_execute_inventory_feed_change', args)).ok).toBe(true)
+    expect(state.updates).toBe(1)
+  })
+  it('clones only an explicitly bound source template without persisting credentials and rejects stale source', async () => {
+    state.detail.source = { type: 'adtorque', url: 'https://feed.test?token=private-source-token' }
+    const proposal = await run('marketing_propose_inventory_feed_setup', { clientId, name: 'Stock', platform: 'facebook', sourceFeedId: 'feed-1' })
+    expect(proposal.ok, JSON.stringify(proposal)).toBe(true)
+    expect(state.lastPreview.source).toEqual(state.detail.source)
+    expect(JSON.stringify(state.rows)).not.toContain('private-source-token')
+    await approve(proposal)
+    state.detail.source.url += '-changed'
+    expect(await run('marketing_execute_inventory_feed_change', { clientId, proposalId: (proposal as any).data.proposalId, expectedRevision: (proposal as any).data.revision, ack: true })).toMatchObject({ ok: false, code: 'revision_conflict' })
+    expect(state.creates).toBe(0)
+  })
+  it('executes a trusted supplier clone with private source and persists safe provider readback', async () => {
+    state.detail.source = { type: 'adtorque', url: 'https://feed.test?token=private-source-token' }
+    const proposal = await run('marketing_propose_inventory_feed_setup', { clientId, name: 'Stock', platform: 'facebook', sourceFeedId: 'feed-1' })
+    await approve(proposal)
+    const args = { clientId, proposalId: (proposal as any).data.proposalId, expectedRevision: (proposal as any).data.revision, ack: true }
+    expect(await run('marketing_execute_inventory_feed_change', args)).toMatchObject({ ok: true, data: { readbackVerified: true } })
+    expect(state.lastCreate.source).toEqual(state.detail.source)
+    expect(state.lastCreate.filters.sellerIds).toEqual(['seller-1'])
+    expect(state.link.defaultFeedIds).toEqual(['feed-1', 'feed-new'])
+    expect((await run('marketing_preview_inventory_feed', { clientId, feedId: 'feed-new' })).ok).toBe(true)
+    expect(JSON.stringify(state.rows)).not.toContain('private-source-token')
+  })
+  it('holds supplier setup when binding persistence fails and never repeats creation', async () => {
+    state.detail.source = { type: 'adtorque', url: 'https://feed.test?token=private-source-token' }
+    const proposal = await run('marketing_propose_inventory_feed_setup', { clientId, name: 'Stock', platform: 'facebook', sourceFeedId: 'feed-1' })
+    await approve(proposal)
+    state.failBinding = true
+    const args = { clientId, proposalId: (proposal as any).data.proposalId, expectedRevision: (proposal as any).data.revision, ack: true }
+    expect(await run('marketing_execute_inventory_feed_change', args)).toMatchObject({ ok: false, code: 'reconciliation_required' })
+    expect(await run('marketing_execute_inventory_feed_change', args)).toMatchObject({ ok: false, code: 'reconciliation_required' })
+    expect(state.creates).toBe(1)
+    expect(state.link.defaultFeedIds).toEqual(['feed-1'])
+    expect(query.mock.calls.some(([sql, p]) => sql.includes('SET result_ref=$3') && p[2] === 'feed-new')).toBe(true)
+    expect(await run('marketing_get_inventory_feed_change', { clientId, proposalId: args.proposalId })).toMatchObject({ ok: true, data: { outcome: { reconciliationRequired: true, feedId: 'feed-new' } } })
+  })
+  it('rejects an unbounded provider-created ID without persisting or exposing it', async () => {
+    const proposal = await setup()
+    await approve(proposal)
+    state.providerFeedId = 'https://private.example/?token=secret'
+    const args = { clientId, proposalId: (proposal as any).data.proposalId, expectedRevision: (proposal as any).data.revision, ack: true }
+    expect(await run('marketing_execute_inventory_feed_change', args)).toMatchObject({ ok: false, code: 'reconciliation_required' })
+    expect(query.mock.calls.some(([sql]) => sql.includes('SET result_ref=$3'))).toBe(false)
+    const view = await run('marketing_get_inventory_feed_change', { clientId, proposalId: args.proposalId })
+    expect(JSON.stringify(view)).not.toContain('private.example')
+    expect(state.creates).toBe(1)
+  })
+  it('rejects stale mappings, arbitrary settings and foreign website hosts before writes', async () => {
+    state.detail.platformSettings = { website_domain: 'dealer.example' }
+    for (const platformSettings of [{ website_domain: 'foreign.example' }, { channel_link: 'https://dealer.example/?token=secret' }, { access_token: 'secret' }]) {
+      expect((await run('marketing_propose_inventory_feed_change', { clientId, feedId: 'feed-1', patch: { platformSettings } })).ok).toBe(false)
+    }
+    expect(state.rows).toHaveLength(0)
+    const proposal = await run('marketing_propose_inventory_feed_change', { clientId, feedId: 'feed-1', patch: { mappingUpdates: [{ target_field: 'drive', source_field: 'drive', transformations: [{ type: 'valueMap', map: { 'Front Wheel Drive': 'FWD' } }] }], platformSettings: { channel_link: 'https://dealer.example', link_templatePreset: 'imotor' } } })
+    expect(proposal.ok).toBe(true)
+    expect(state.lastPreview.platformSettings.link_template).toBe('https://{domain}/{condition}-cars/for-sale/{stock_number}')
+    await approve(proposal)
+    state.detail.mappings = { rules: [{ target_field: 'color', source_field: 'color' }] }
+    expect(await run('marketing_execute_inventory_feed_change', { clientId, proposalId: (proposal as any).data.proposalId, expectedRevision: (proposal as any).data.revision, ack: true })).toMatchObject({ ok: false, code: 'revision_conflict' })
+    expect(state.updates).toBe(0)
+  })
+  it('repairs Google store_code and bounded dealer address fallback using candidate preview', async () => {
+    state.detail.platform = 'google'
+    state.detail.platformSettings = { store_code: 'wrong', currency: 'AUD' }
+    const address = { line1: '1 Dealer Road', city: 'Knox', state: 'VIC', postcode: '3152', country: 'AU' }
+    const proposal = await run('marketing_propose_inventory_feed_change', { clientId, feedId: 'feed-1', patch: { platformSettings: { store_code: 'Actual_Location-3152', store_address: '1 Dealer Road, Knox VIC 3152' }, mappingUpdates: [{ target_field: 'address', source_field: 'address', fallback_value: address }] } })
+    expect(proposal.ok).toBe(true)
+    expect(state.lastPreview.platformSettings.store_code).toBe('Actual_Location-3152')
+    expect(state.lastPreview.mappings.rules[0].fallback_value).toEqual(address)
+    await approve(proposal)
+    expect(await run('marketing_execute_inventory_feed_change', { clientId, proposalId: (proposal as any).data.proposalId, expectedRevision: (proposal as any).data.revision, ack: true })).toMatchObject({ ok: true, data: { readbackVerified: true } })
+    expect(state.detail.platformSettings).toEqual({ currency: 'AUD', store_code: 'Actual_Location-3152', store_address: '1 Dealer Road, Knox VIC 3152' })
+  })
+  it('requires explicit client source binding and rejects duplicate targets or unsupported transforms', async () => {
+    state.link.defaultFeedIds = []
+    expect((await run('marketing_propose_inventory_feed_setup', { clientId, name: 'Stock', platform: 'facebook', sourceFeedId: 'feed-1' })).ok).toBe(false)
+    for (const mappingUpdates of [
+      [{ target_field: 'drive', fallback_value: 'FWD' }, { target_field: 'drive', fallback_value: 'RWD' }],
+      [{ target_field: 'drive', transformations: [{ type: 'eval', code: 'secret' }] }]
+    ]) expect((await run('marketing_propose_inventory_feed_change', { clientId, feedId: 'feed-1', patch: { mappingUpdates } })).ok).toBe(false)
+    expect(state.rows).toHaveLength(0)
+  })
+  it('runtime validates direct service inputs before provider calls', async () => {
+    const { runDepartmentFeedOperation } = await import('~~/server/utils/ai/marketing/departmentFeedOperations')
+    expect(await runDepartmentFeedOperation('marketing_propose_inventory_feed_change', { clientId, feedId: 'feed-1', patch: { source: { url: 'https://bad.test' } } }, ctx, key, digest)).toMatchObject({ ok: false, code: 'bad_args' })
+    expect(state.reads).toBe(0)
+  })
   it('exports unique prefixed tools and fails closed for direct write handlers', async () => {
     expect(new Set(departmentFeedTools.map(t => t.name)).size).toBe(8)
     for (const tool of departmentFeedTools) {
       expect(tool.name).toMatch(/^marketing_/)
+      expect(typeof tool.mutates).toBe('boolean')
+      expect(typeof tool.description).toBe('string')
       if (tool.mutates) expect((await tool.handler({}, ctx)).ok).toBe(false)
     }
   })
@@ -392,8 +525,9 @@ describe('department inventory boundary', () => {
     ).toBe(false)
     expect(state.updates).toBe(0)
   })
-  it('rejects alternate source selectors before storing a proposal or leaking source configuration', async () => {
-    state.detail.source = { type: 'url', url: 'https://feed.test?token=private-source-token' }
+  it('rejects unbound alternate source selectors before storing a proposal or leaking source configuration', async () => {
+    state.detail.source = { type: 'adtorque', url: 'https://feed.test?token=private-source-token' }
+    state.link.defaultFeedIds = []
     const proposal = await run('marketing_propose_inventory_feed_change', { clientId, feedId: 'feed-1', patch: { name: 'New' } })
     expect(proposal.ok).toBe(false)
     expect(state.rows).toHaveLength(0)

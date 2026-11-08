@@ -12,15 +12,13 @@
 // Auth + token handling mirror xero-customer-sync.post.ts: resolve the org from
 // xero_org_connection, refresh the access token if near expiry, run the sync.
 
-import { defineEventHandler, getHeader, getQuery, createError } from 'h3'
+import { defineEventHandler, getQuery } from 'h3'
+import { requireFinanceCronJob } from '~~/server/utils/financeMachineAccess'
 import { resolveCronXeroAuth } from '~~/server/utils/xeroCronAuth'
 import { syncInvoiceLines, syncAccounts } from '~~/server/utils/xeroInvoiceLinesSync'
 
 export default defineEventHandler(async (event) => {
-  const cronSecret = getHeader(event, 'x-cron-secret')
-  if (!import.meta.dev && cronSecret !== process.env.CRON_SECRET) {
-    throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
-  }
+  requireFinanceCronJob(event)
 
   const q = getQuery(event)
   const months = q.full === 'true' || q.full === '1'

@@ -1,4 +1,5 @@
-import { defineEventHandler, getHeader, createError } from 'h3'
+import { defineEventHandler } from 'h3'
+import { requireCronJobSecret } from '~~/server/utils/financeMachineAccess'
 import { queryRows, queryOne } from '~~/server/utils/db'
 import { buildPacingReview, PACING_REVIEW_SELECT_COLUMNS, type PacingReviewRow } from '~~/server/utils/socialSpendPacingReview'
 import { getSpendAutoActionPolicy } from '~~/server/utils/spendAutoActionConfig'
@@ -14,10 +15,7 @@ import { createNotification } from '~~/server/utils/notifications'
  * No-op while the policy is disabled (the shipped default).
  */
 export default defineEventHandler(async (event) => {
-  const cronSecret = getHeader(event, 'x-cron-secret')
-  if (!import.meta.dev && cronSecret !== process.env.CRON_SECRET) {
-    throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
-  }
+  requireCronJobSecret(event)
   // Single-tenant prod: use the connected Xero tenant when present, otherwise
   // retain the legacy tenant that owns settings in installations without Xero.
   const conn = await queryOne<{ tenant_id: string }>(`SELECT tenant_id FROM xero_org_connection ORDER BY connected_at DESC LIMIT 1`)

@@ -39,16 +39,18 @@ const { ctaLabel } = useAdPreview()
 
       <!-- An explicit 9:16 box prevents device chrome from changing the artwork's height. -->
       <div data-testid="story-creative" class="relative w-full overflow-hidden bg-black" style="aspect-ratio: 9 / 16;">
-        <AdPreviewCreativeMedia
-          :html="html"
-          :html-width="htmlWidth"
-          :html-height="htmlHeight"
-          :image="image"
-          label="Story Creative"
-          placeholder-bg="#222"
-          placeholder-fg="#555"
-          fit="contain"
-        />
+        <slot name="creative">
+          <AdPreviewCreativeMedia
+            :html="html"
+            :html-width="htmlWidth"
+            :html-height="htmlHeight"
+            :image="image"
+            label="Story Creative"
+            placeholder-bg="#222"
+            placeholder-fg="#555"
+            fit="contain"
+          />
+        </slot>
       </div>
 
       <!-- Bottom CTA -->

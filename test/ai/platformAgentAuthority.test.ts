@@ -1,141 +1,110 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { H3Event } from 'h3'
+import { resolveUserPlatformAgentAuthority, resolveServicePlatformAgentAuthority } from '~~/server/utils/ai/platformAgentAuthority'
 
-const mockRequireAuth = vi.fn()
-const mockGetSelectedTenant = vi.fn()
-const mockQueryRows = vi.fn()
-const mockQueryOne = vi.fn()
-
-vi.mock('~~/server/utils/auth', () => ({
-  requireAuth: (...args: unknown[]) => mockRequireAuth(...args),
-}))
-
-vi.mock('~~/server/utils/session', () => ({
-  getSelectedTenant: (...args: unknown[]) => mockGetSelectedTenant(...args),
-}))
-
-vi.mock('~~/server/utils/db', () => ({
-  queryRows: (...args: unknown[]) => mockQueryRows(...args),
-  queryOne: (...args: unknown[]) => mockQueryOne(...args),
-}))
-
-describe('resolveUserPlatformAgentAuthority', () => {
-  beforeEach(() => {
-    vi.resetModules()
-    mockRequireAuth.mockReset()
-    mockGetSelectedTenant.mockReset()
-    mockQueryRows.mockReset()
-    mockQueryOne.mockReset()
-    mockQueryOne.mockResolvedValue({ tenant_id: 'tenant-a' })
-    mockGetSelectedTenant.mockResolvedValue('tenant-a')
+const mocks = vi.hoisted(() => ({ auth: vi.fn(), tenant: vi.fn(), rows: vi.fn(), freshRows: vi.fn(), one: vi.fn(), finance: vi.fn() }))
+vi.mock('~~/server/utils/auth', () => ({ requireAuth: mocks.auth }))
+vi.mock('~~/server/utils/session', () => ({ getSelectedTenant: mocks.tenant }))
+vi.mock('~~/server/utils/db', () => ({ queryRows: mocks.rows, queryRowsFresh: mocks.freshRows, queryOne: mocks.one }))
+vi.mock('~~/server/utils/financeAccess', () => ({ assertFinancePermission: mocks.finance }))
+const event = { context: {} } as H3Event
+let grants: string[]
+let active: boolean
+let readOnly: boolean
+let role: string
+const allClients = Array.from({ length: 95 }, (_, index) => ({ id: `client-${index}` }))
+const assigned = allClients.slice(0, 93)
+beforeEach(() => {
+  vi.clearAllMocks()
+  grants = ['MEDIA_BUYING']
+  active = true
+  readOnly = false
+  role = 'media_buyer'
+  mocks.auth.mockResolvedValue({ id: 'staff', role: 'owner', permissionGroups: ['ADMIN', 'MANAGEMENT', 'FINANCE', 'MEDIA_BUYING'] })
+  mocks.freshRows.mockImplementation(async (sql: string) => {
+    if (sql.includes('FROM team_members')) return active ? [{ role, role_id: 'custom-role', custom_role_id: 'custom-role', is_read_only: readOnly, permission_groups: grants }] : []
+    return sql.includes('client_team_assignments') ? assigned : allClients
   })
-
-  it('derives an all-client allow-list for management from the database', async () => {
-    mockRequireAuth.mockResolvedValue({ id: 'user-1', role: 'admin', permissionGroups: [] })
-    mockQueryRows.mockResolvedValue([{ id: 'client-b' }, { id: 'client-a' }])
-    const { resolveUserPlatformAgentAuthority } = await import('~~/server/utils/ai/platformAgentAuthority')
-
-    const authority = await resolveUserPlatformAgentAuthority({ context: {} } as any, {
-      permissionGroups: ['MEDIA_BUYING'],
-      tenant: 'required',
-    })
-
-    expect(mockQueryRows.mock.calls[0]?.[0]).toContain('FROM agency_clients')
-    expect(mockQueryRows.mock.calls[0]?.[0]).not.toContain('client_team_assignments')
-    expect(authority).toMatchObject({
-      actor: { type: 'user', id: 'user-1' },
-      tenantId: 'tenant-a',
-      allowedClientIds: ['client-b', 'client-a'],
-      source: 'authenticated_app',
-    })
+  mocks.rows.mockResolvedValue([{ id: 'service-client' }])
+  mocks.one.mockResolvedValue({ tenant_id: 'tenant-a' })
+  mocks.tenant.mockResolvedValue('tenant-a')
+  mocks.finance.mockResolvedValue(undefined)
+})
+describe('fresh user platform-agent authority', () => {
+  it('marketing management covers all 95 active clients including the two unassigned clients', async () => {
+    grants = ['MARKETING_MANAGEMENT']
+    const authority = await resolveUserPlatformAgentAuthority(event, { permissionGroups: ['MARKETING_MANAGEMENT'], tenant: 'none' })
+    expect(authority.allowedClientIds).toEqual(allClients.map(client => client.id))
+    expect(authority.allowedClientIds).toContain('client-94')
+    expect(mocks.rows).not.toHaveBeenCalled()
+    expect(mocks.freshRows.mock.calls[1][0]).not.toContain('client_team_assignments')
   })
-
-  it('derives only assigned clients for a non-management specialist', async () => {
-    mockRequireAuth.mockResolvedValue({ id: 'user-2', role: 'media_buyer', permissionGroups: [] })
-    mockQueryRows.mockResolvedValue([{ id: 'client-a' }])
-    const { resolveUserPlatformAgentAuthority } = await import('~~/server/utils/ai/platformAgentAuthority')
-
-    const authority = await resolveUserPlatformAgentAuthority({ context: {} } as any, {
-      permissionGroups: ['MEDIA_BUYING'],
-      tenant: 'none',
-    })
-
-    expect(mockQueryRows.mock.calls[0]?.[0]).toContain('client_team_assignments')
-    expect(mockQueryRows.mock.calls[0]?.[1]).toEqual(['user-2'])
-    expect(authority.tenantId).toBeNull()
-    expect(authority.allowedClientIds).toEqual(['client-a'])
+  it('an assigned-only specialist gets 93 current active assignments through fresh reads', async () => {
+    const authority = await resolveUserPlatformAgentAuthority(event, { permissionGroups: ['MEDIA_BUYING'], tenant: 'none' })
+    expect(authority.allowedClientIds).toEqual(assigned.map(client => client.id))
+    expect(authority.allowedClientIds).not.toContain('client-94')
+    expect(mocks.freshRows.mock.calls[1][0]).toContain('client_team_assignments')
+    expect(mocks.freshRows.mock.calls[1][0]).toContain('ac.is_active = true')
+    expect(mocks.rows).not.toHaveBeenCalled()
   })
-
-  it('honors dynamic permission groups and denies unrelated users', async () => {
-    const { resolveUserPlatformAgentAuthority } = await import('~~/server/utils/ai/platformAgentAuthority')
-    mockRequireAuth.mockResolvedValue({ id: 'user-3', role: 'custom', permissionGroups: ['FINANCE'] })
-    mockQueryRows.mockResolvedValue([])
-
-    await expect(resolveUserPlatformAgentAuthority({ context: {} } as any, {
-      permissionGroups: ['FINANCE'],
-      tenant: 'required',
-    })).resolves.toMatchObject({ actor: { id: 'user-3' } })
-
-    mockRequireAuth.mockResolvedValue({ id: 'user-4', role: 'creative', permissionGroups: [] })
-    await expect(resolveUserPlatformAgentAuthority({ context: {} } as any, {
-      permissionGroups: ['FINANCE'],
-      tenant: 'required',
-    })).rejects.toMatchObject({ statusCode: 403 })
+  it('custom role grants replace cached owner defaults, and revocation/deactivation denies the next request', async () => {
+    await expect(resolveUserPlatformAgentAuthority(event, { permissionGroups: ['MEDIA_BUYING'], tenant: 'none' })).resolves.toBeDefined()
+    grants = []
+    await expect(resolveUserPlatformAgentAuthority(event, { permissionGroups: ['MEDIA_BUYING'], tenant: 'none' })).rejects.toMatchObject({ statusCode: 403 })
+    grants = ['MEDIA_BUYING']
+    active = false
+    await expect(resolveUserPlatformAgentAuthority(event, { permissionGroups: ['MEDIA_BUYING'], tenant: 'none' })).rejects.toMatchObject({ statusCode: 403 })
   })
-
-  it('fails closed when a required tenant is unavailable', async () => {
-    mockRequireAuth.mockResolvedValue({ id: 'user-1', role: 'admin', permissionGroups: [] })
-    mockGetSelectedTenant.mockResolvedValue(null)
-    const { resolveUserPlatformAgentAuthority } = await import('~~/server/utils/ai/platformAgentAuthority')
-
-    await expect(resolveUserPlatformAgentAuthority({ context: {} } as any, {
-      permissionGroups: ['FINANCE'],
-      tenant: 'required',
-    })).rejects.toMatchObject({ statusCode: 400 })
-    expect(mockQueryRows).not.toHaveBeenCalled()
+  it('read-only actors can read but cannot prepare mutating runs', async () => {
+    readOnly = true
+    await expect(resolveUserPlatformAgentAuthority(event, { permissionGroups: ['MEDIA_BUYING'], tenant: 'none' })).resolves.toBeDefined()
+    await expect(resolveUserPlatformAgentAuthority(event, { permissionGroups: ['MEDIA_BUYING'], tenant: 'none', write: true })).rejects.toMatchObject({ statusCode: 403 })
   })
-
-  it('rejects a selected user tenant that is not a connected organization tenant', async () => {
-    mockRequireAuth.mockResolvedValue({ id: 'user-1', role: 'admin', permissionGroups: [] })
-    mockQueryOne.mockResolvedValue(null)
-    const { resolveUserPlatformAgentAuthority } = await import('~~/server/utils/ai/platformAgentAuthority')
-
-    await expect(resolveUserPlatformAgentAuthority({ context: {} } as any, {
-      permissionGroups: ['FINANCE'],
-      tenant: 'required',
-    })).rejects.toMatchObject({ statusCode: 403 })
-    expect(mockQueryRows).not.toHaveBeenCalled()
+  it('Finance-global access requires the explicit Finance path and fresh Finance assertion', async () => {
+    grants = ['MEDIA_BUYING', 'FINANCE']
+    const marketing = await resolveUserPlatformAgentAuthority(event, { permissionGroups: ['MEDIA_BUYING'], tenant: 'none', clientAccess: 'all' })
+    expect(marketing.allowedClientIds).toHaveLength(93)
+    expect(mocks.finance).not.toHaveBeenCalled()
+    const finance = await resolveUserPlatformAgentAuthority(event, { permissionGroups: ['FINANCE'], tenant: 'required', clientAccess: 'all' })
+    expect(finance.allowedClientIds).toHaveLength(95)
+    expect(mocks.finance).toHaveBeenCalledWith(event, 'staff', false)
+    await resolveUserPlatformAgentAuthority(event, { permissionGroups: ['FINANCE'], tenant: 'required', clientAccess: 'all', write: true })
+    expect(mocks.finance).toHaveBeenLastCalledWith(event, 'staff', true)
   })
-
-  it('derives service authority only for a connected tenant and active clients', async () => {
-    mockQueryOne.mockResolvedValue({ tenant_id: 'tenant-a' })
-    mockQueryRows.mockResolvedValue([{ id: 'client-a' }, { id: 'client-b' }])
-    const { resolveServicePlatformAgentAuthority } = await import('~~/server/utils/ai/platformAgentAuthority')
-
-    const authority = await resolveServicePlatformAgentAuthority({
-      serviceId: 'cloudflare-platform-agents',
-      tenantId: 'tenant-a',
-      tenant: 'required',
-    })
-
-    expect(mockQueryOne.mock.calls[0]?.[0]).toContain('FROM xero_org_connection')
-    expect(mockQueryOne.mock.calls[0]?.[1]).toEqual(['tenant-a'])
-    expect(authority).toMatchObject({
-      actor: { type: 'service', id: 'cloudflare-platform-agents' },
-      tenantId: 'tenant-a',
-      allowedClientIds: ['client-a', 'client-b'],
-      source: 'authenticated_service',
-    })
+  it('stale cached Finance and revoked fresh Finance fail before tenant or client queries', async () => {
+    grants = []
+    await expect(resolveUserPlatformAgentAuthority(event, { permissionGroups: ['FINANCE'], tenant: 'required' })).rejects.toMatchObject({ statusCode: 403 })
+    grants = ['FINANCE']
+    mocks.finance.mockRejectedValueOnce({ statusCode: 403 })
+    await expect(resolveUserPlatformAgentAuthority(event, { permissionGroups: ['FINANCE'], tenant: 'required' })).rejects.toMatchObject({ statusCode: 403 })
+    expect(mocks.tenant).not.toHaveBeenCalled()
+    expect(mocks.freshRows.mock.calls.every(([sql]) => String(sql).includes('FROM team_members'))).toBe(true)
   })
-
-  it('rejects service authority for an unconnected tenant', async () => {
-    mockQueryOne.mockResolvedValue(null)
-    const { resolveServicePlatformAgentAuthority } = await import('~~/server/utils/ai/platformAgentAuthority')
-
-    await expect(resolveServicePlatformAgentAuthority({
-      serviceId: 'cloudflare-platform-agents',
-      tenantId: 'tenant-b',
-      tenant: 'required',
-    })).rejects.toMatchObject({ statusCode: 403 })
-    expect(mockQueryRows).not.toHaveBeenCalled()
+  it('fails closed on fresh authority storage errors', async () => {
+    mocks.freshRows.mockRejectedValueOnce(new Error('DB unavailable'))
+    await expect(resolveUserPlatformAgentAuthority(event, { permissionGroups: ['MEDIA_BUYING'], tenant: 'none' })).rejects.toMatchObject({ statusCode: 503 })
+    expect(mocks.rows).not.toHaveBeenCalled()
+  })
+  it('preserves required selected-tenant and connected-organization validation', async () => {
+    grants = ['FINANCE']
+    mocks.tenant.mockResolvedValueOnce(null)
+    await expect(resolveUserPlatformAgentAuthority(event, { permissionGroups: ['FINANCE'], tenant: 'required' })).rejects.toMatchObject({ statusCode: 400 })
+    mocks.one.mockResolvedValueOnce(null)
+    await expect(resolveUserPlatformAgentAuthority(event, { permissionGroups: ['FINANCE'], tenant: 'required' })).rejects.toMatchObject({ statusCode: 403 })
+    expect(mocks.one).toHaveBeenCalledWith(expect.stringContaining('FROM xero_org_connection'), ['tenant-a'])
+  })
+})
+describe('independent service authority remains unchanged', () => {
+  it('uses the connected service tenant and active service clients without any invented user grant', async () => {
+    const authority = await resolveServicePlatformAgentAuthority({ serviceId: 'service', tenantId: 'tenant-a', tenant: 'required' })
+    expect(authority).toMatchObject({ actor: { type: 'service', id: 'service' }, tenantId: 'tenant-a', allowedClientIds: ['service-client'], permissions: ['PLATFORM_AGENTS_SERVICE'] })
+    expect(mocks.auth).not.toHaveBeenCalled()
+    expect(mocks.freshRows).not.toHaveBeenCalled()
+    expect(mocks.finance).not.toHaveBeenCalled()
+  })
+  it('rejects an unconnected service tenant', async () => {
+    mocks.one.mockResolvedValueOnce(null)
+    await expect(resolveServicePlatformAgentAuthority({ serviceId: 'service', tenantId: 'tenant-other', tenant: 'required' })).rejects.toMatchObject({ statusCode: 403 })
+    expect(mocks.rows).not.toHaveBeenCalled()
   })
 })
