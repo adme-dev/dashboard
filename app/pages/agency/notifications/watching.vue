@@ -1,5 +1,5 @@
 <template>
-  <div class="p-6 max-w-6xl mx-auto">
+  <div class="flex-1 min-h-0 overflow-y-auto w-full p-6 max-w-6xl mx-auto">
     <header class="mb-6">
       <h1 class="text-2xl font-semibold">Watching</h1>
       <p class="text-sm text-muted mt-1">

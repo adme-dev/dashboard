@@ -79,7 +79,7 @@ const cards = computed(() => [
 </script>
 
 <template>
-  <div class="mx-auto max-w-6xl space-y-6 p-4 sm:p-6">
+  <div class="flex-1 min-h-0 overflow-y-auto w-full mx-auto max-w-6xl space-y-6 p-4 sm:p-6">
     <header class="flex items-center justify-between gap-4">
       <div>
         <h1 class="text-xl font-semibold text-highlighted">AI Command Center</h1>

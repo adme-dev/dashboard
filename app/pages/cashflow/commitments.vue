@@ -288,7 +288,7 @@ async function confirmDelete() {
 </script>
 
 <template>
-  <div class="p-6 space-y-6">
+  <div class="flex-1 min-h-0 overflow-y-auto w-full p-6 space-y-6">
     <div class="flex flex-wrap items-start justify-between gap-4">
       <div>
         <h1 class="text-2xl font-semibold">

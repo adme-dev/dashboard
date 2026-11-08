@@ -130,7 +130,7 @@ watch(clientId, loadOverview)
 </script>
 
 <template>
-  <div class="mx-auto w-full max-w-[1600px] space-y-6 p-4 sm:p-6">
+  <div class="flex-1 min-h-0 overflow-y-auto w-full mx-auto max-w-[1600px] space-y-6 p-4 sm:p-6">
     <div class="flex flex-wrap items-end justify-between gap-4">
       <div>
         <p class="text-xs font-medium uppercase tracking-[0.18em] text-muted">
