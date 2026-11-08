@@ -40,9 +40,15 @@ test('publication retains all old pins and adds only the exact-source edm5 inven
   assert.equal(pins.packages['0.11.2-edm5'].source, '404e3ff06f1619d928218c5dd0236143209750be')
   assert.equal(pins.packages['0.11.2-edm5'].ciRunId, '41856781523')
   assert.equal(pins.packages['0.11.2-edm5'].archiveSha256, 'c18d7d71745a7bff680ca8c8163e8ec9be08e215602dbc4f6459a135bd43f508')
+})
+
+test('publication pins the complete verified live edm4 release baseline', () => {
   assert.deepEqual(pins.assetBaseline, { deployment: '1d62c12f-6f7d-4778-82a8-3dfa6e88ea4a', version: 'b278e54b-debc-4af1-9173-fba6964dfb87' })
+  assert.equal(pins.gatewayBaseline.deployment, '670df50b-4fb7-45d9-94e5-eb9f58f1a44a')
   assert.equal(pins.gatewayBaseline.version, 'b50acb4f-30d5-48a1-a711-339f3b98c979')
   assert.equal(pins.gatewayBaseline.modules['worker.js'], 'f1f4602ed93ff4a9aa75d0f611f74a7ba6d7a6be9c890fba7df669c253b0c665')
+  assert.equal(pins.gatewayBaseline.modules['brand-rpc.mjs'], '0787e4c0acb8e2507a8d14f438a977941334212e95e0e490863b71a9812882c2')
+  assert.equal(pins.gatewayBaseline.etag, 'a7e8602713c3103e309fac04e78e37f4ac78f6829713076c09a93d553b9f6057')
 })
 
 test('asset receipt cannot omit old versions, edm5, or substitute reviewed file hashes', () => {

@@ -21,6 +21,16 @@ workflow-dispatch run `41856781523`, archive SHA-256
 Its 31 runtime files come from that retained archive; no synthetic PR checkout
 receipt or relabelled package is accepted.
 
+The baseline above was reconfirmed by read-only Wrangler deployment/version
+readbacks on 8 November 2026: it is the current 100%-traffic edm4 release from
+`bbb6b07a36dcc48dd92590e125564f07b2f61acd`, with gateway `worker.js`
+`f1f4602ed93ff4a9aa75d0f611f74a7ba6d7a6be9c890fba7df669c253b0c665` and script
+etag `a7e8602713c3103e309fac04e78e37f4ac78f6829713076c09a93d553b9f6057`.
+Older pre-edm4 baselines still recorded on main must not replace this live
+parent during merges. The raw receipts are retained in
+`.verification/edm5-completion-20261108/`; any subsequent live change remains a
+release stop requiring a new explicit reconciliation.
+
 Preparation requires the retained schema-2 edm1/edm3/edm4 bundle and its 90
 verified files plus the exact edm5 archive/receipt. It validates every base
 receipt entry and byte, writes a separate `dist-edm5` output, and refuses an
