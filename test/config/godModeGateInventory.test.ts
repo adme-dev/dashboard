@@ -481,17 +481,24 @@ describe('God mode gate inventory', () => {
       const body = authSource.slice(authSource.indexOf(`export async function ${helper}(`))
       expect(body.indexOf('await assertFinancePermission(event, user.id)')).toBeLessThan(body.indexOf('if (import.meta.dev)'))
     }
-    expect(inventory.rows).toHaveLength(1848)
-    // PR894/895 added role-workflow and documentation authority; T09 keeps
-    // write gates and now passes their actor into project ownership checks.
-    // Reconciled exact lexical rows; classifications and bypass policy are unchanged.
+    // Native chat/role skills since 2203d56f retain fresh role/client authority.
+    // The reviewed row delta is recorded in the 2026-11-07 chat role-access report;
+    // these lexical classifications do not authorize or register a bypass.
+    // The admin MCP status diagnostic now reads the master switch, suite flags, write-scope
+    // opt-in, Worker origin and secret presence through the shared binding-aware runtime
+    // resolver used by tools/list, tools/call and my-tools. Its fourteen direct process.env
+    // reads (eight governance flags, three secret presence checks, three configuration
+    // values) leave this lexical inventory; its requireRole and role rows are unchanged and
+    // no bypass is registered. See test/server/api/mcpAdminStatus.test.ts.
+    // T09 retains three write gates and passes their authenticated actor into project access checks.
+    expect(inventory.rows).toHaveLength(1835)
     expect(inventory.counts).toEqual({
       fresh_role_grant_hard_boundary: 90,
       identity_tenant_hard_boundary: 146,
-      provider_infrastructure_availability: 222,
-      application_governance_bypass: 1634,
-      ordinary_user_behavior: 321,
-      unrelated_configuration: 434
+      provider_infrastructure_availability: 219,
+      application_governance_bypass: 1626,
+      ordinary_user_behavior: 322,
+      unrelated_configuration: 431
     })
     // Removing the session KV shortcut removes four auth middleware rows:
     // cached identity read, cached role branch, cached auth assignment and cache
@@ -517,10 +524,10 @@ describe('God mode gate inventory', () => {
     const canonicalMcpGate = 'server/utils/ai/marketing/departmentEmailOperations.ts\tif (!enabled(\'FIGFLOW_EDM_DRAFT_SAVES_ENABLED\', process.env.FIGFLOW_EDM_DRAFT_SAVES_ENABLED) || (selection && !enabled(\'FIGFLOW_EDM_LIBRARY_ENABLED\', process.env.FIGFLOW_EDM_LIBRARY_ENABLED))) refuse(\'Canonical email drafts are unavailable for this environment\', \'not_found\')\tapplication_governance_bypass'
     expect(inventory.rows).toContain(canonicalMcpGate)
     const editableCopyGates = new Set(['server/api/email/templates/[id]/editable-copy.post.ts\tconst user = input.save ? await requireWriteAccess(event) : await requireAuth(event)\tapplication_governance_bypass', 'server/api/email/templates/[id]/editable-copy.post.ts\tconst fresh = await requireWriteAccess(event)\tapplication_governance_bypass'])
-    expect(createHash('sha256').update(inventory.rows.filter(row => row !== canonicalMcpGate && !editableCopyGates.has(row)).join('\n')).digest('hex')).toBe('fcdb0415a18aa1ac80586ff6186240e7f0b27b2b38355c1e9b12201197e039a2')
+    expect(createHash('sha256').update(inventory.rows.filter(row => row !== canonicalMcpGate && !editableCopyGates.has(row)).join('\n')).digest('hex')).toBe('8f67ed01c02d970aab59f918f0aab53672b7b0430fc928d73d294ba9ad2152a7')
     const campaignReadGate = 'server/utils/ai/marketing/departmentEmailOperations.ts\tif (!fresh.permissionGroups?.some(group => [\'ADMIN\', \'MANAGEMENT\'].includes(group))) refuse(\'Agency template access required\', \'forbidden\')\tordinary_user_behavior'
-    expect(createHash('sha256').update(inventory.rows.filter(row => row !== campaignReadGate && row !== canonicalMcpGate && !editableCopyGates.has(row)).join('\n')).digest('hex')).toBe('2c41bf37acd58c2cfc4f087c4c7d5aef8362cf4f844e55f3bf2facb50f0cc482')
-    expect(inventory.digest).toBe('b379ba7756ff3546b11692edfd1bda57a2c138982bf4e1459896813c8ae350a8')
+    expect(createHash('sha256').update(inventory.rows.filter(row => row !== campaignReadGate && row !== canonicalMcpGate && !editableCopyGates.has(row)).join('\n')).digest('hex')).toBe('5a42a2baec1f743b96f117819c8c88d1ae2becc3cde50cd69f35760ae3f7ef95')
+    expect(inventory.digest).toBe('5b1897521e04e2ce5c7ecd490df2523ad30339962d97a907453328b940449385')
     expect(inventory.rows).toContain(
       'app/composables/usePageStudioLauncher.ts\tconst config = useRuntimeConfig()\tunrelated_configuration'
     )

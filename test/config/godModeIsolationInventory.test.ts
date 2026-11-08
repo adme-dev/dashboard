@@ -144,8 +144,9 @@ const API_INVENTORY = {
   // remain in loadPublicBannerShare; no inline role gate, transaction or bypass.
   // Fresh Finance/ADMIN and scoped invoice/expense delegates remain mandatory.
   // Explicitly count their helper calls; none registers a God mode bypass.
-  // PR894/895: three ADMIN-grant role-skill routes, one scoped skill GET,
-  // and authenticated allowlisted documentation GET/POST; no new bypass.
+  // Native role skills and official documentation add six authenticated routes
+  // (three mutations). ADMIN writes delegate fresh grants; documentation is a
+  // bounded public-source read. No inline gate, transaction or bypass is added.
   totalRouteFiles: 2387,
   mutationRouteFiles: 1304,
   explicitlyGuardedMutationFiles: 431,

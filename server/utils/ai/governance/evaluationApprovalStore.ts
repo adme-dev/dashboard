@@ -343,6 +343,7 @@ export function createPostgresEvaluationApprovalStore(
             AND $7::timestamptz <= rate_card.valid_until
             AND rate_revocation.rate_card_id IS NULL
             AND approval.id IS NULL
+            AND plan.created_by <> $4::uuid
          RETURNING *
          )
          SELECT * FROM inserted
@@ -355,6 +356,24 @@ export function createPostgresEvaluationApprovalStore(
         ]
       )
       if (!result.rows[0]) {
+        const diagnosis = await client.query(
+          `SELECT plan.created_by = $2::uuid AS self_approval,
+                  EXISTS (
+                    SELECT 1 FROM ai_eval_cost_approvals existing
+                     WHERE existing.evaluation_run_id = plan.evaluation_run_id
+                  ) AS already_approved
+             FROM ai_eval_execution_plans plan
+            WHERE plan.evaluation_run_id = $1::uuid
+              AND plan.plan_digest = $3`,
+          [approval.evaluationRunId, approval.approvedBy, approval.planDigest]
+        )
+        const row = diagnosis.rows[0] as { self_approval?: boolean, already_approved?: boolean } | undefined
+        if (row?.self_approval === true && row.already_approved !== true) {
+          throw new EvaluationApprovalStoreError(
+            'evaluation_cost_self_approval',
+            'The preflight creator cannot approve this evaluation cost'
+          )
+        }
         throw new EvaluationApprovalStoreError('approval_not_admitted', 'Evaluation approval was not admitted')
       }
       const stored = mapApproval(result.rows[0])
@@ -394,7 +413,8 @@ export function createPostgresEvaluationApprovalStore(
             AND rate_card.id = $3::uuid
             AND approval.id = $4::uuid
             AND rate_revocation.rate_card_id IS NULL
-            AND approval_revocation.approval_id IS NULL`,
+            AND approval_revocation.approval_id IS NULL
+            AND approval.approved_by <> plan.created_by`,
         [lookup.evaluationRunId, lookup.planDigest, lookup.rateCardId, lookup.approvalId]
       )
       if (!result.rows[0]) return null
