@@ -124,7 +124,7 @@
                 }"
               >
                 <div class="flex items-start justify-between">
-                  <div class="flex-1">
+                  <div class="flex-1 min-w-0 @container">
                     <div class="flex items-center gap-2">
                       <h4 class="font-semibold text-gray-900 dark:text-white">
                         {{ board.name }}
@@ -146,24 +146,30 @@
                     </div>
 
                     <!-- Mapping Configuration -->
-                    <div class="mt-3 grid grid-cols-2 gap-3">
+                    <div class="mt-3 grid grid-cols-1 gap-4 @lg:grid-cols-2">
                       <UFormField label="Map to Department" size="sm">
                         <USelect
-                          :model-value="boardMappings[board.mondayBoardId]?.departmentId || board.suggestedMapping.departmentId"
-                          :options="departmentOptions"
+                          :model-value="boardMappings[board.mondayBoardId]?.departmentId || NO_MAPPING_VALUE"
+                          :items="departmentOptions"
+                          class="w-full"
+                          label-key="label"
+                          value-key="value"
                           placeholder="Select department"
                           size="sm"
-                          @update:model-value="(val) => updateBoardMapping(board.mondayBoardId, 'departmentId', String(val))"
+                          @update:model-value="(val) => updateBoardMapping(board.mondayBoardId, 'departmentId', val)"
                         />
                       </UFormField>
 
                       <UFormField label="Map to Project (optional)" size="sm">
                         <USelect
-                          :model-value="boardMappings[board.mondayBoardId]?.projectId"
-                          :options="projectOptions"
+                          :model-value="boardMappings[board.mondayBoardId]?.projectId || NO_MAPPING_VALUE"
+                          :items="projectOptions"
+                          class="w-full"
+                          label-key="label"
+                          value-key="value"
                           placeholder="Select project"
                           size="sm"
-                          @update:model-value="(val) => updateBoardMapping(board.mondayBoardId, 'projectId', String(val))"
+                          @update:model-value="(val) => updateBoardMapping(board.mondayBoardId, 'projectId', val)"
                         />
                       </UFormField>
                     </div>
@@ -327,6 +333,7 @@ const expandedBoards = ref<Set<string>>(new Set())
 const starting = ref(false)
 
 // Constants
+const NO_MAPPING_VALUE = '__none__'
 const userColumns = [
   { accessorKey: 'name', header: 'Monday User' },
   { accessorKey: 'email', header: 'Email' },
@@ -343,17 +350,17 @@ const unmappedBoardsCount = computed(() => {
   if (!preview.value) return 0
   return preview.value.boards.filter(board => {
     const mapping = boardMappings.value[board.mondayBoardId]
-    return !mapping?.departmentId && !board.suggestedMapping.departmentId
+    return mapping ? !mapping.departmentId : !board.suggestedMapping.departmentId
   }).length
 })
 
 const departmentOptions = computed(() => [
-  { label: 'Select Department...', value: '' },
+  { label: 'Select Department...', value: NO_MAPPING_VALUE },
   ...props.departments,
 ])
 
 const projectOptions = computed(() => [
-  { label: 'No Project', value: '' },
+  { label: 'No Project', value: NO_MAPPING_VALUE },
   ...props.projects,
 ])
 
@@ -392,11 +399,11 @@ async function fetchPreview() {
   }
 }
 
-function updateBoardMapping(boardId: string, field: 'departmentId' | 'projectId', value: string) {
+function updateBoardMapping(boardId: string, field: 'departmentId' | 'projectId', value: unknown) {
   if (!boardMappings.value[boardId]) {
     boardMappings.value[boardId] = {}
   }
-  boardMappings.value[boardId][field] = value || undefined
+  boardMappings.value[boardId][field] = typeof value === 'string' && value !== NO_MAPPING_VALUE ? value : undefined
 }
 
 function toggleBoardDetails(boardId: string) {
@@ -415,12 +422,12 @@ function formatValue(value: any): string {
 }
 
 function startMigration() {
-  // Merge suggestions with user overrides
   const finalMappings: Record<string, BoardMapping> = {}
   for (const board of preview.value?.boards || []) {
+    const mapping = boardMappings.value[board.mondayBoardId] ?? board.suggestedMapping
     finalMappings[board.mondayBoardId] = {
-      departmentId: boardMappings.value[board.mondayBoardId]?.departmentId || board.suggestedMapping.departmentId,
-      projectId: boardMappings.value[board.mondayBoardId]?.projectId || board.suggestedMapping.projectId,
+      departmentId: mapping.departmentId,
+      projectId: mapping.projectId,
     }
   }
   emit('start', finalMappings)

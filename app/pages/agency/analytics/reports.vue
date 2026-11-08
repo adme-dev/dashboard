@@ -137,7 +137,7 @@ function statusColor(status: string | null): 'success' | 'warning' | 'error' | '
 </script>
 
 <template>
-  <div class="p-6 space-y-6">
+  <div class="flex-1 min-h-0 overflow-y-auto w-full p-6 space-y-6">
     <div>
       <h1 class="text-xl font-semibold">
         Scheduled Reports

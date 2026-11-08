@@ -288,7 +288,7 @@ watch(task, (t) => {
       </div>
 
       <!-- Content -->
-      <div v-else-if="task" class="p-6 space-y-6">
+      <div v-else-if="task" class="@container p-6 space-y-6">
         <!-- Title -->
         <div>
           <div
@@ -312,14 +312,15 @@ watch(task, (t) => {
         </div>
 
         <!-- Status & Priority Row -->
-        <div class="grid grid-cols-2 gap-4">
+        <div class="grid grid-cols-1 gap-4 @lg:grid-cols-2">
           <!-- Status -->
           <UFormField label="Status">
             <USelectMenu
               :model-value="task.statusId"
-              :options="statuses.map(s => ({ label: s.name, value: s.id, color: s.color }))"
-              option-attribute="label"
-              value-attribute="value"
+              :items="statuses.map(s => ({ label: s.name, value: s.id, color: s.color }))"
+              class="w-full"
+              label-key="label"
+              value-key="value"
               @update:model-value="updateStatus"
             >
               <template #leading="{ modelValue }">
@@ -335,9 +336,10 @@ watch(task, (t) => {
           <UFormField label="Priority">
             <USelectMenu
               :model-value="task.priority"
-              :options="priorityOptions"
-              option-attribute="label"
-              value-attribute="value"
+              :items="priorityOptions"
+              class="w-full"
+              label-key="label"
+              value-key="value"
               @update:model-value="(v) => updateField('priority', v)"
             >
               <template #leading="{ modelValue }">
@@ -352,7 +354,7 @@ watch(task, (t) => {
         </div>
 
         <!-- Assignee & Due Date -->
-        <div class="grid grid-cols-2 gap-4">
+        <div class="grid grid-cols-1 gap-4 @lg:grid-cols-2">
           <!-- Assignee -->
           <UFormField label="Assignee">
             <div class="flex items-center gap-2">
@@ -379,9 +381,10 @@ watch(task, (t) => {
         <UFormField label="Type">
           <USelectMenu
             :model-value="task.taskType"
-            :options="taskTypeOptions"
-            option-attribute="label"
-            value-attribute="value"
+            :items="taskTypeOptions"
+            class="w-full"
+            label-key="label"
+            value-key="value"
             @update:model-value="(v) => updateField('taskType', v)"
           >
             <template #leading="{ modelValue }">
