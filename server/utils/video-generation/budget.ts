@@ -97,7 +97,7 @@ export async function reserveAndCreateVideoGenerationJobIn(
       return { ok: false, reason: decision.reason, remainingCents: decision.remainingCents }
     }
     const breakdown = await db.query(TENANT_VIDEO_GENERATION_LIABILITY_BREAKDOWN_SQL, [input.tenantId])
-    const budget = summarizeVideoGenerationBudget(policy, (breakdown.rows ?? []) as Parameters<typeof summarizeVideoGenerationBudget>[1])
+    const budget = summarizeVideoGenerationBudget(policy, (breakdown.rows ?? []) as unknown as Parameters<typeof summarizeVideoGenerationBudget>[1])
     return { ok: false, reason: decision.reason, remainingCents: decision.remainingCents, budget }
   }
 
