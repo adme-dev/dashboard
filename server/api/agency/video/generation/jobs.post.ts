@@ -15,6 +15,7 @@ import { resolveSourceAssetUrls } from '~~/server/utils/video-generation/resolve
 import { getVideoGenerationModel } from '~~/server/utils/video-generation/modelRegistry'
 import { isTenantModel } from '~~/server/utils/video-generation/surface'
 import { loadTenantVideoGenerationPolicy } from '~~/server/utils/video-generation/policy'
+import { loadVideoGenerationBudgetStatus } from '~~/server/utils/video-generation/budgetStatus'
 import { loadVideoGenerationSourceAssets } from '~~/server/utils/video-generation/sourceAssets'
 import { canUseVideoGenerationProject } from '~~/server/utils/video-generation/timelineStillSource'
 import { recordAiInvocation } from '~~/server/utils/ai/invocationLedger'
@@ -257,10 +258,14 @@ export default defineEventHandler(async (event) => {
       if (reservation.reason === 'idempotency_key_conflict') {
         throw createError({ statusCode: 409, statusMessage: 'Idempotency key is already used for a different request' })
       }
+      // Explanation only (read after the reservation lock): it never changes the decision.
+      const budget = reservation.reason === 'tenant_cap_exceeded' && tenantPolicy?.enabled
+        ? await loadVideoGenerationBudgetStatus(tenantId, tenantPolicy).catch(() => null)
+        : null
       throw createError({
         statusCode: 402,
         statusMessage: 'Video generation budget unavailable',
-        data: { allowed: false, reason: reservation.reason, remainingCents: reservation.remainingCents ?? 0 },
+        data: { allowed: false, reason: reservation.reason, remainingCents: reservation.remainingCents ?? 0, budget }
       })
     }
     const job = reservation.job

@@ -20,6 +20,11 @@ vi.mock('~~/server/utils/video-generation/policy', () => ({
   loadTenantVideoGenerationPolicy: (...a: unknown[]) => mockLoadTenantPolicy(...a),
 }))
 
+const mockLoadBudget = vi.fn()
+vi.mock('~~/server/utils/video-generation/budgetStatus', () => ({
+  loadVideoGenerationBudgetStatus: (...a: unknown[]) => mockLoadBudget(...a)
+}))
+
 const { default: handler } = await import('../../server/api/agency/video/generation/models.get')
 
 const projectId = '00000000-0000-4000-8000-000000000002'
@@ -53,11 +58,17 @@ describe('GET /agency/video/generation/models', () => {
     const res = await handler({ query: { projectId } } as any)
 
     expect(mockLoadTenantPolicy).toHaveBeenCalledWith(avProject.clientId)
-    expect(res).toEqual({ models: [], policy: { enabled: false, monthlyCapCents: 0 } })
+    expect(res).toEqual({ models: [], policy: { enabled: false, monthlyCapCents: 0 }, budget: null })
+    expect(mockLoadBudget).not.toHaveBeenCalled()
   })
 
   it('returns models for an enabled project tenant policy', async () => {
+    const budget = { capCents: 1000, committedCents: 2350, availableCents: 0, reported: { jobs: 0, cents: 0 }, reserved: { jobs: 0, cents: 0 }, uncertain: { jobs: 13, cents: 2350 } }
+    mockLoadBudget.mockResolvedValueOnce(budget)
     const res = await handler({ query: { projectId } } as any)
+
+    expect(mockLoadBudget).toHaveBeenCalledWith(avProject.clientId, expect.objectContaining({ enabled: true, monthlyCapCents: 1000 }))
+    expect(res.budget).toEqual(budget)
 
     expect(mockLoadTenantPolicy).toHaveBeenCalledWith(avProject.clientId)
     expect(res.models.some((model: any) => model.id === 'aigateway/seedance-i2v')).toBe(true)

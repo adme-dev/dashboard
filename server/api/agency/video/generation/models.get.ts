@@ -2,6 +2,7 @@ import { requireWriteAccess } from '~~/server/utils/auth'
 import { getProjectWithCurrentTimeline } from '~~/server/utils/audio/projects'
 import { listSelectableVideoGenerationModels } from '~~/server/utils/video-generation/modelRegistry'
 import { loadTenantVideoGenerationPolicy } from '~~/server/utils/video-generation/policy'
+import { loadVideoGenerationBudgetStatus } from '~~/server/utils/video-generation/budgetStatus'
 import { canUseVideoGenerationProject } from '~~/server/utils/video-generation/timelineStillSource'
 import { selectableVideoModelOptions } from '~~/app/utils/video/modelPresentation'
 
@@ -32,5 +33,7 @@ export default defineEventHandler(async (event) => {
   return {
     models: policy.enabled ? selectableVideoModelOptions(listSelectableVideoGenerationModels()) : [],
     policy: { enabled: policy.enabled, monthlyCapCents: policy.monthlyCapCents },
+    // Content-free counts and cents only; explains why a request may be refused.
+    budget: policy.enabled ? await loadVideoGenerationBudgetStatus(tenantId, policy) : null
   }
 })
