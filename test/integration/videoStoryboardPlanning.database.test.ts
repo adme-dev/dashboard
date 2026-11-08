@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { Pool } from 'pg'
-import { afterAll, describe, expect, it, vi } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { createProject } from '~~/server/utils/audio/projects'
 import { emptyAvTimeline } from '~~/server/utils/audio/timelineSchema'
 import { getStoryboard, saveReferenceSet } from '~~/server/utils/video-storyboard/store'
@@ -11,10 +11,18 @@ import { storyboardFixture } from '../video/fixtures/storyboard'
 
 const connectionString = process.env.STORYBOARD_TEST_DATABASE_URL
 const host = process.env.STORYBOARD_TEST_DATABASE_HOST
-if (connectionString && (new URL(connectionString).hostname !== host || host !== 'ep-hidden-meadow-a4m2e772.us-east-1.aws.neon.tech')) throw new Error('Only the verified isolated storyboard branch is allowed')
+if (connectionString) {
+  const url = new URL(connectionString)
+  const isolatedNeon = url.hostname === host && host === 'ep-hidden-meadow-a4m2e772.us-east-1.aws.neon.tech'
+  const isolatedLocal = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname) && url.pathname === '/video_storyboard_recovery_test' && Boolean(url.port) && !url.search
+  if (!isolatedNeon && !isolatedLocal) throw new Error('Only verified isolated Neon or explicit localhost video_storyboard_recovery_test is allowed')
+}
 const pool = connectionString ? new Pool({ connectionString, max: 4 }) : null
 vi.mock('~~/server/utils/db', () => ({
-  queryOne: vi.fn(), queryOneFresh: vi.fn(), queryRows: vi.fn(),
+  queryOne: async (sql: string, params: unknown[]) => (await pool!.query(sql, params)).rows[0],
+  queryOneFresh: async (sql: string, params: unknown[]) => (await pool!.query(sql, params)).rows[0],
+  queryRows: async (sql: string, params: unknown[]) => (await pool!.query(sql, params)).rows,
+  queryRowsFresh: async (sql: string, params: unknown[]) => (await pool!.query(sql, params)).rows,
   transaction: async (operation: (db: unknown) => Promise<unknown>) => {
     const client = await pool!.connect()
     try {
@@ -31,6 +39,7 @@ vi.mock('~~/server/utils/db', () => ({
 // SQL is real. Synthetic media uses a stub HEAD; this suite never uploads media.
 vi.mock('~~/server/utils/storage', () => ({ getFileMetadata: async () => ({ etag: 'fixture-etag', size: 128, contentType: 'image/png' }) }))
 const actor = { id: randomUUID(), role: 'member' }
+const roleId = randomUUID()
 const projects: string[] = []
 async function fixture() {
   const created = await createProject({ createdBy: actor.id, clientId: null, title: 'Synthetic T04 candidate fixture', mediaType: 'av', initialState: emptyAvTimeline() })
@@ -50,8 +59,17 @@ function accept(input: Awaited<ReturnType<typeof fixture>>, candidate: Awaited<R
     candidateId: candidate.id, candidateHash: candidate.candidateHash, acceptChanges: true, approveCopy: true }))
 }
 describe.skipIf(!pool)('isolated storyboard planning', { timeout: 90000 }, () => {
+  beforeAll(async () => {
+    await pool!.query(`INSERT INTO custom_roles (id, name, slug, is_read_only) VALUES ($1, 'Synthetic storyboard role', $2, false)`, [roleId, `storyboard-${roleId}`])
+    await pool!.query(`INSERT INTO team_members (id, name, email, user_role, custom_role_id, is_active) VALUES ($1, 'Synthetic storyboard actor', $2, 'member', $3, true)`, [actor.id, `${actor.id}@example.invalid`, roleId])
+  }, 30000)
   afterAll(async () => {
-    for (const projectId of projects) await pool!.query('DELETE FROM media_projects WHERE id=$1', [projectId])
+    for (const projectId of projects) {
+      await pool!.query('DELETE FROM video_storyboards WHERE project_id=$1', [projectId])
+      await pool!.query('DELETE FROM media_projects WHERE id=$1', [projectId])
+    }
+    await pool!.query('DELETE FROM team_members WHERE id=$1', [actor.id])
+    await pool!.query('DELETE FROM custom_roles WHERE id=$1', [roleId])
     await pool!.end()
   }, 30000)
   it('supports offline manual candidates, exact human approval, replay and new copy identity', async () => {

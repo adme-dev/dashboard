@@ -10,7 +10,8 @@ const mockRequireAuth = vi.fn()
 vi.mock('~~/server/utils/auth', () => ({ requireAuth: (...a: unknown[]) => mockRequireAuth(...a) }))
 
 const mockGetProject = vi.fn()
-vi.mock('~~/server/utils/audio/projects', () => ({
+vi.mock('~~/server/utils/audio/projects', async importOriginal => ({
+  ...await importOriginal<typeof import('~~/server/utils/audio/projects')>(),
   getProjectWithCurrentTimeline: (...a: unknown[]) => mockGetProject(...a)
 }))
 
@@ -36,7 +37,7 @@ const timeline = { id: 't1', projectId: 'p1', version: 1, label: null, state, sc
 
 beforeEach(() => {
   vi.clearAllMocks()
-  mockRequireAuth.mockResolvedValue({ id: 'u1' })
+  mockRequireAuth.mockResolvedValue({ id: 'u1', role: 'member' })
   mockIsConfigured.mockReturnValue(true)
   mockPresign.mockImplementation(async (key: string) => `https://signed/${key}`)
 })
@@ -53,7 +54,7 @@ describe('GET /agency/audio/projects/:id/clip-sources', () => {
   })
 
   it('maps ONLY the non-muted timeline keys to same-origin proxy URLs (never presigned, never arbitrary)', async () => {
-    mockGetProject.mockResolvedValue({ project: { id: 'p1' }, timeline })
+    mockGetProject.mockResolvedValue({ project: { id: 'p1', createdBy: 'u1' }, timeline })
     const res = await handler({ params: { id: 'p1' } } as any)
     expect(res).toEqual({ sources: {
       'k/a': '/api/agency/audio/projects/p1/media?key=k%2Fa',
@@ -65,19 +66,19 @@ describe('GET /agency/audio/projects/:id/clip-sources', () => {
 
   it('falls back to the local uploads route when storage is not configured', async () => {
     mockIsConfigured.mockReturnValue(false)
-    mockGetProject.mockResolvedValue({ project: { id: 'p1' }, timeline })
+    mockGetProject.mockResolvedValue({ project: { id: 'p1', createdBy: 'u1' }, timeline })
     const res = await handler({ params: { id: 'p1' } } as any)
     expect(res).toEqual({ sources: { 'k/a': '/api/_uploads/k/a', 'k/b': '/api/_uploads/k/b' } })
   })
 
   it('returns empty sources when the project has no current timeline', async () => {
-    mockGetProject.mockResolvedValue({ project: { id: 'p1' }, timeline: null })
+    mockGetProject.mockResolvedValue({ project: { id: 'p1', createdBy: 'u1' }, timeline: null })
     const res = await handler({ params: { id: 'p1' } } as any)
     expect(res).toEqual({ sources: {} })
   })
 
   it('returns empty sources when the timeline state is unparseable', async () => {
-    mockGetProject.mockResolvedValue({ project: { id: 'p1' }, timeline: { ...timeline, state: { not: 'a timeline' } } })
+    mockGetProject.mockResolvedValue({ project: { id: 'p1', createdBy: 'u1' }, timeline: { ...timeline, state: { not: 'a timeline' } } })
     const res = await handler({ params: { id: 'p1' } } as any)
     expect(res).toEqual({ sources: {} })
     expect(mockPresign).not.toHaveBeenCalled()

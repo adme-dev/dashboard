@@ -8,7 +8,7 @@ import { createError } from 'h3'
 import { requireTimelinePrecondition, assertTimelinePrecondition, timelineConflict } from './timelineRevision'
 import type { TimelineWritePrecondition } from '~~/shared/video/timelineRevision'
 import type { MediaProject, MediaTimeline, MediaRenderJob } from '~~/app/types'
-import { queryOne, queryOneFresh, queryRows, transaction } from '~~/server/utils/db'
+import { queryOne, queryOneFresh, queryRows, queryRowsFresh, transaction } from '~~/server/utils/db'
 import type { GodModeTransactionDb as Db } from '~~/server/utils/godMode/transactionCoordinator'
 import { computeDuration, type TimelineState } from '~~/server/utils/audio/timelineSchema'
 
@@ -99,8 +99,12 @@ export async function createProjectIn(
 export async function updateProjectIn(
   db: Db,
   id: string,
-  patch: { title?: string | null; clientId?: string | null }
+  patch: { title?: string | null; clientId?: string | null },
+  actor?: MediaProjectActor
 ): Promise<MediaProject | null> {
+  const projectRow = (await db.query('SELECT * FROM media_projects WHERE id = $1 FOR UPDATE', [id])).rows[0]
+  if (!projectRow) return null
+  if (actor) assertMediaProjectAccess(actor, mapProjectRow(projectRow))
   const sets: string[] = ['updated_at = now()']
   const params: unknown[] = [id]
   if (patch.title !== undefined) { params.push(patch.title === '' ? null : patch.title); sets.push(`title = $${params.length}`) }
@@ -157,10 +161,11 @@ export async function deleteProject(id: string): Promise<boolean> {
 }
 
 /** Transaction-scoped core of deleteProject. */
-export async function deleteProjectIn(db: Db, id: string): Promise<boolean> {
+export async function deleteProjectIn(db: Db, id: string, actor?: MediaProjectActor): Promise<boolean> {
   {
-    const exists = await db.query(`SELECT id FROM media_projects WHERE id = $1`, [id])
-    if (!exists.rows[0]) return false
+    const projectRow = (await db.query('SELECT * FROM media_projects WHERE id = $1 FOR UPDATE', [id])).rows[0]
+    if (!projectRow) return false
+    if (actor) assertMediaProjectAccess(actor, mapProjectRow(projectRow))
     // Render jobs first (no cascade on timeline_id FK).
     await db.query(`DELETE FROM media_render_jobs WHERE project_id = $1`, [id])
     // Deleting the project cascades its media_timelines rows.
@@ -169,10 +174,19 @@ export async function deleteProjectIn(db: Db, id: string): Promise<boolean> {
   }
 }
 
-/** List projects, optionally filtered by client. */
-export async function listProjects(clientId?: string): Promise<MediaProject[]> {
-  const where = clientId ? 'WHERE client_id = $1' : ''
-  const params = clientId ? [clientId] : []
+/** List projects, optionally filtered by client and restricted to the actor's projects. */
+export async function listProjects(clientId?: string, actor?: MediaProjectActor): Promise<MediaProject[]> {
+  const conditions: string[] = []
+  const params: string[] = []
+  if (clientId) {
+    params.push(clientId)
+    conditions.push(`client_id = $${params.length}`)
+  }
+  if (actor && actor.role !== 'owner' && actor.role !== 'admin') {
+    params.push(actor.id)
+    conditions.push(`created_by = $${params.length}`)
+  }
+  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
   // SP0: hard cap; pagination deferred (mirrors assets.ts ceiling)
   const rows = await queryRows(
     `SELECT * FROM media_projects ${where} ORDER BY updated_at DESC LIMIT 200`,
@@ -347,13 +361,14 @@ export async function createRenderJobIn(db: Db, input: CreateRenderJobInput): Pr
 
 /** Single render job by id, or null if not found. */
 export async function getRenderJob(jobId: string): Promise<MediaRenderJob | null> {
-  const row = await queryOne(`SELECT * FROM media_render_jobs WHERE id = $1`, [jobId])
+  const row = await queryOneFresh(`SELECT * FROM media_render_jobs WHERE id = $1`, [jobId])
   return row ? mapRenderJobRow(row) : null
 }
 
 /** Render jobs for a project, newest-first. */
 export async function listRenderJobs(projectId: string): Promise<MediaRenderJob[]> {
-  const rows = await queryRows(
+  // Render state must bypass Hyperdrive cache after enqueue and Worker updates.
+  const rows = await queryRowsFresh(
     `SELECT * FROM media_render_jobs WHERE project_id = $1 ORDER BY created_at DESC LIMIT 100`,
     [projectId]
   )
