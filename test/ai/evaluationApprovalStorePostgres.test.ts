@@ -12,7 +12,8 @@ const IDS = {
   run: '10000000-0000-4000-8000-000000000002',
   department: '10000000-0000-4000-8000-000000000003',
   actor: '10000000-0000-4000-8000-000000000004',
-  approval: '10000000-0000-4000-8000-000000000005'
+  approval: '10000000-0000-4000-8000-000000000005',
+  approver: '10000000-0000-4000-8000-000000000006'
 }
 
 const rateCard = {
@@ -28,7 +29,7 @@ const rateCard = {
   createdAt: '2026-07-22T00:00:00.000Z'
 }
 
-describe('Postgres evaluation approval store', () => {
+describe('evaluation approval store SQL contract (mocked query client, not a PostgreSQL server)', () => {
   it('registers immutable model pricing through parameters', async () => {
     const query = vi.fn().mockResolvedValue({ rows: [{
       id: IDS.rateCard,
@@ -124,8 +125,57 @@ describe('Postgres evaluation approval store', () => {
     })).rejects.toMatchObject<EvaluationApprovalStoreError>({ code: 'plan_conflict' })
   })
 
-  it('approves only a current unrevoked stored plan with sufficient spend', async () => {
+  it('approves only a current unrevoked stored plan with sufficient spend from a distinct operator', async () => {
     const query = vi.fn().mockResolvedValue({ rows: [{
+      id: IDS.approval,
+      evaluation_run_id: IDS.run,
+      rate_card_id: IDS.rateCard,
+      plan_digest: 'b'.repeat(64),
+      approved_by: IDS.approver,
+      reason: 'Approved for the bounded evaluation suite.',
+      max_spend_usd_micros: '5760',
+      approved_at: '2026-07-22T02:00:00.000Z',
+      expires_at: '2026-07-22T03:00:00.000Z'
+    }] })
+    const store = createPostgresEvaluationApprovalStore({ query })
+
+    const stored = await store.approvePlan({
+      approvalId: IDS.approval,
+      evaluationRunId: IDS.run,
+      planDigest: 'b'.repeat(64),
+      approvedBy: IDS.approver,
+      reason: 'Approved for the bounded evaluation suite.',
+      maxSpendUsdMicros: 5_760,
+      expiresAt: '2026-07-22T03:00:00.000Z'
+    })
+
+    expect(stored).toMatchObject({
+      approvalId: IDS.approval,
+      evaluationRunId: IDS.run,
+      rateCardId: IDS.rateCard,
+      planDigest: 'b'.repeat(64),
+      approvedBy: IDS.approver,
+      maxSpendUsdMicros: 5_760,
+      expiresAt: '2026-07-22T03:00:00.000Z'
+    })
+    const [sql, params] = query.mock.calls[0]!
+    expect(sql).toMatch(/INSERT INTO ai_eval_cost_approvals[\s\S]*SELECT/)
+    expect(sql).toMatch(/\$6::bigint >= plan\.estimated_upper_bound_usd_micros/)
+    expect(sql).toMatch(/\$6, NOW\(\), \$7::timestamptz/)
+    expect(sql).toMatch(/rate_revocation\.rate_card_id IS NULL/)
+    expect(sql).toMatch(/approval\.id IS NULL/)
+    expect(sql).toMatch(/plan\.created_by <> \$4::uuid/)
+    expect(sql).toMatch(/plan\.plan_digest/)
+    expect(sql).toMatch(/plan\.rate_card_id/)
+    expect(params).toEqual([
+      IDS.approval, IDS.run, 'b'.repeat(64), IDS.approver,
+      'Approved for the bounded evaluation suite.', 5_760, '2026-07-22T03:00:00.000Z'
+    ])
+    expect(query).toHaveBeenCalledTimes(1)
+  })
+
+  it('rejects a new approval from the preflight creator and replays an already stored approval id', async () => {
+    const storedRow = {
       id: IDS.approval,
       evaluation_run_id: IDS.run,
       rate_card_id: IDS.rateCard,
@@ -135,10 +185,13 @@ describe('Postgres evaluation approval store', () => {
       max_spend_usd_micros: '5760',
       approved_at: '2026-07-22T02:00:00.000Z',
       expires_at: '2026-07-22T03:00:00.000Z'
-    }] })
+    }
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ self_approval: true, already_approved: false }] })
+      .mockResolvedValueOnce({ rows: [storedRow] })
     const store = createPostgresEvaluationApprovalStore({ query })
-
-    await store.approvePlan({
+    const command = {
       approvalId: IDS.approval,
       evaluationRunId: IDS.run,
       planDigest: 'b'.repeat(64),
@@ -146,14 +199,40 @@ describe('Postgres evaluation approval store', () => {
       reason: 'Approved for the bounded evaluation suite.',
       maxSpendUsdMicros: 5_760,
       expiresAt: '2026-07-22T03:00:00.000Z'
-    })
+    }
 
-    const [sql] = query.mock.calls[0]!
-    expect(sql).toMatch(/INSERT INTO ai_eval_cost_approvals[\s\S]*SELECT/)
-    expect(sql).toMatch(/\$6::bigint >= plan\.estimated_upper_bound_usd_micros/)
-    expect(sql).toMatch(/\$6, NOW\(\), \$7::timestamptz/)
-    expect(sql).toMatch(/rate_revocation\.rate_card_id IS NULL/)
-    expect(sql).toMatch(/approval\.id IS NULL/)
+    await expect(store.approvePlan(command)).rejects.toMatchObject<EvaluationApprovalStoreError>({
+      code: 'evaluation_cost_self_approval'
+    })
+    expect(String(query.mock.calls[0]?.[0])).toMatch(/plan\.created_by <> \$4::uuid/)
+    expect(String(query.mock.calls[1]?.[0])).toMatch(/self_approval/)
+    expect(query.mock.calls[1]?.[1]).toEqual([IDS.run, IDS.actor, 'b'.repeat(64)])
+
+    await expect(store.approvePlan(command)).resolves.toMatchObject({
+      approvalId: IDS.approval,
+      planDigest: 'b'.repeat(64),
+      approvedBy: IDS.actor,
+      maxSpendUsdMicros: 5_760,
+      rateCardId: IDS.rateCard
+    })
+    expect(query).toHaveBeenCalledTimes(3)
+  })
+
+  it('keeps an existing approval refusal distinct from creator self-approval', async () => {
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ self_approval: true, already_approved: true }] })
+    const store = createPostgresEvaluationApprovalStore({ query })
+
+    await expect(store.approvePlan({
+      approvalId: IDS.approval,
+      evaluationRunId: IDS.run,
+      planDigest: 'b'.repeat(64),
+      approvedBy: IDS.actor,
+      reason: 'Approved for the bounded evaluation suite.',
+      maxSpendUsdMicros: 5_760,
+      expiresAt: '2026-07-22T03:00:00.000Z'
+    })).rejects.toMatchObject<EvaluationApprovalStoreError>({ code: 'approval_not_admitted' })
   })
 
   it('loads trust artifacts only for the exact run, digest and unrevoked records', async () => {
@@ -168,7 +247,7 @@ describe('Postgres evaluation approval store', () => {
       valid_until: rateCard.validUntil,
       approval_id: IDS.approval,
       plan_digest: 'b'.repeat(64),
-      approved_by: IDS.actor,
+      approved_by: IDS.approver,
       reason: 'Approved for the bounded evaluation suite.',
       max_spend_usd_micros: '5760',
       approved_at: '2026-07-22T02:00:00.000Z',
@@ -185,12 +264,27 @@ describe('Postgres evaluation approval store', () => {
 
     expect(artifacts).toMatchObject({
       rateCard: { modelProvider: 'groq', modelId: rateCard.modelId },
-      approval: { approvalId: IDS.approval, planDigest: 'b'.repeat(64) }
+      approval: { approvalId: IDS.approval, planDigest: 'b'.repeat(64), approvedBy: IDS.approver }
     })
     const [sql, params] = query.mock.calls[0]!
     expect(sql).toMatch(/rate_revocation\.rate_card_id IS NULL/)
     expect(sql).toMatch(/approval_revocation\.approval_id IS NULL/)
+    expect(sql).toMatch(/approval\.approved_by <> plan\.created_by/)
     expect(params).toEqual([IDS.run, 'b'.repeat(64), IDS.rateCard, IDS.approval])
+  })
+
+  it('does not return a stored same-creator approval as execution authority', async () => {
+    const query = vi.fn().mockResolvedValue({ rows: [] })
+    const store = createPostgresEvaluationApprovalStore({ query } as EvaluationApprovalSqlClient)
+
+    await expect(store.loadTrustedArtifacts({
+      evaluationRunId: IDS.run,
+      planDigest: 'b'.repeat(64),
+      rateCardId: IDS.rateCard,
+      approvalId: IDS.approval
+    })).resolves.toBeNull()
+    expect(String(query.mock.calls[0]?.[0])).toMatch(/approval\.approved_by <> plan\.created_by/)
+    expect(query).toHaveBeenCalledTimes(1)
   })
 
   it('revokes pricing and approvals with separate append-only evidence', async () => {

@@ -765,7 +765,7 @@ describe('God-mode explainability', () => {
   } as PersonalAssistantContext
 
   it('reports stable God-mode authority, full registry coverage, and hard-boundary language', () => {
-    const view = buildMyAssistantExplainability(context, registeredTools.map(tool => ({
+    const view = buildMyAssistantExplainability({ ...context, permissionGroups: ['FINANCE'] }, registeredTools.map(tool => ({
       ...tool,
       description: `${tool.name} description`,
       requiredPermission: 'FINANCE'
@@ -781,6 +781,15 @@ describe('God-mode explainability', () => {
     expect(view.authority.description).toContain('audit')
     expect(view.tools.map(tool => tool.name)).toEqual(['owner_read', 'owner_write'])
     expect(view.restrictions).toEqual([])
+  })
+
+  it('does not advertise Finance tools to an owner without an explicit Finance grant', () => {
+    const view = buildMyAssistantExplainability(context, registeredTools.map(tool => ({
+      ...tool, description: `${tool.name} description`, requiredPermission: 'FINANCE'
+    })))
+    expect(view.tools).toEqual([])
+    expect(view.authority.toolCoverage).toEqual({ available: 0, registered: 2, complete: false })
+    expect(view.authority.description).toContain('Finance')
   })
 
   it('returns the existing company-owner basis when emergency disablement is active', () => {

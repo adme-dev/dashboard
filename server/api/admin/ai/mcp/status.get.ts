@@ -1,3 +1,11 @@
+// server/api/admin/ai/mcp/status.get.ts
+// Owner/admin rollout diagnostic for the MCP connector (app/pages/admin/ai/mcp.vue).
+// Reads the master switch, suite flags and legacy write-scope opt-in through the SAME shared
+// runtime resolver as tools/list, tools/call and my-tools, so this page reports the suites the
+// Worker actually serves: request Cloudflare bindings first, compact MCP_SUITE_CONFIG honoured,
+// explicit false / non-string legacy bindings fail closed. Secret health is presence-only; raw
+// secret values and operator staff-grant JSON never leave the server.
+import { defineEventHandler, type H3Event } from 'h3'
 import { requireRole } from '~~/server/utils/auth'
 import { queryRows } from '~~/server/utils/db'
 import { registry } from '~~/server/utils/ai/tools'
@@ -6,6 +14,7 @@ import {
   projectRegisteredMcpTools,
   registeredMcpSuites
 } from '~~/server/utils/ai/mcp/registry'
+import { readMcpRuntimeValue, resolveMcpRuntimeConfig } from '~~/server/utils/ai/mcp/runtimeConfig'
 import type { AiTool } from '~~/server/utils/ai/toolRegistry'
 import { isActiveGodModeAuthority, resolveGodModeAuthority } from '~~/server/utils/godMode/authority'
 
@@ -17,29 +26,34 @@ interface AuditRow {
   created_at: string
 }
 
+const DEFAULT_WORKER_ORIGIN = 'https://mcp-server.adme-dev.workers.dev'
+
 function configured(value: string | undefined): boolean {
   return Boolean(value?.trim())
 }
 
-export default eventHandler(async (event) => {
+/** Worker handshake secret: binding first; a present non-string binding fails closed (tools.post / call.post). */
+function internalSecretConfigured(event: H3Event): boolean {
+  return configured(readMcpRuntimeValue(event, 'MCP_INTERNAL_SECRET'))
+}
+
+/** Signing / internal-execution secrets: string binding, else local env (requestClaim, internalExecutionDelegation). */
+function fallbackSecretConfigured(event: H3Event, key: string): boolean {
+  const binding = (event.context as { cloudflare?: { env?: Record<string, unknown> } }).cloudflare?.env?.[key]
+  return configured(typeof binding === 'string' ? binding : process.env[key])
+}
+
+export default defineEventHandler(async (event) => {
   const user = await requireRole(event, ['admin', 'owner'])
+  const runtime = resolveMcpRuntimeConfig(event)
   const authority = await resolveGodModeAuthority(event, user.id)
   const godModeActive = isActiveGodModeAuthority(authority, user.id)
-  const suiteFlags = {
-    generation: process.env.MCP_GEN_TOOLS_ENABLED === 'true',
-    writes: process.env.MCP_WRITE_TOOLS_ENABLED === 'true',
-    financial: process.env.MCP_FINANCIAL_TOOLS_ENABLED === 'true',
-    video: process.env.MCP_VIDEO_TOOLS_ENABLED === 'true',
-    videoGeneration: process.env.MCP_VIDEO_GEN_ENABLED === 'true',
-    banners: process.env.MCP_BANNER_TOOLS_ENABLED === 'true',
-    feeds: process.env.MCP_FEED_TOOLS_ENABLED === 'true'
-  }
   const projection = {
     tools: registry as AiTool<unknown>[],
     role: user.role ?? '',
     scopes: ['mcp:read', 'mcp:write'],
-    requireWriteScope: process.env.MCP_REQUIRE_WRITE_SCOPE === 'true',
-    suiteFlags
+    requireWriteScope: runtime.legacyRequireWriteScope,
+    suiteFlags: runtime.suiteFlags
   }
   const tools = godModeActive
     ? projectGodModeTools(projection)
@@ -53,20 +67,20 @@ export default eventHandler(async (event) => {
   ).catch(() => [])
 
   return {
-    enabled: process.env.MCP_SERVER_ENABLED === 'true',
-    workerOrigin: process.env.MCP_WORKER_ORIGIN || 'https://mcp-server.adme-dev.workers.dev',
+    enabled: runtime.serverEnabled,
+    workerOrigin: runtime.workerOrigin || DEFAULT_WORKER_ORIGIN,
     authority: godModeActive ? 'god_mode' : 'governed',
     role: user.role ?? '',
     toolCount: tools.length,
     tools: tools.map(tool => ({ name: tool.name, description: tool.description })),
     suites: registeredMcpSuites.map(suite => ({ key: suite.key })),
-    suiteFlags,
+    suiteFlags: { ...runtime.suiteFlags },
     safeguards: {
-      writeScopeRequired: process.env.MCP_REQUIRE_WRITE_SCOPE === 'true',
+      writeScopeRequired: runtime.legacyRequireWriteScope,
       emergencyDisabled: authority.emergencyDisabled,
-      internalSecretConfigured: configured(process.env.MCP_INTERNAL_SECRET),
-      requestSigningSecretConfigured: configured(process.env.MCP_REQUEST_SIGNING_SECRET),
-      internalExecutionSecretConfigured: configured(process.env.GOD_MODE_INTERNAL_EXECUTION_SECRET)
+      internalSecretConfigured: internalSecretConfigured(event),
+      requestSigningSecretConfigured: fallbackSecretConfigured(event, 'MCP_REQUEST_SIGNING_SECRET'),
+      internalExecutionSecretConfigured: fallbackSecretConfigured(event, 'GOD_MODE_INTERNAL_EXECUTION_SECRET')
     },
     recentAudit: recentAudit.map(row => ({
       id: row.id,

@@ -481,14 +481,23 @@ describe('God mode gate inventory', () => {
       const body = authSource.slice(authSource.indexOf(`export async function ${helper}(`))
       expect(body.indexOf('await assertFinancePermission(event, user.id)')).toBeLessThan(body.indexOf('if (import.meta.dev)'))
     }
-    expect(inventory.rows).toHaveLength(1825)
+    // Native chat/role skills since 2203d56f retain fresh role/client authority.
+    // The reviewed row delta is recorded in the 2026-11-07 chat role-access report;
+    // these lexical classifications do not authorize or register a bypass.
+    // The admin MCP status diagnostic now reads the master switch, suite flags, write-scope
+    // opt-in, Worker origin and secret presence through the shared binding-aware runtime
+    // resolver used by tools/list, tools/call and my-tools. Its fourteen direct process.env
+    // reads (eight governance flags, three secret presence checks, three configuration
+    // values) leave this lexical inventory; its requireRole and role rows are unchanged and
+    // no bypass is registered. See test/server/api/mcpAdminStatus.test.ts.
+    expect(inventory.rows).toHaveLength(1835)
     expect(inventory.counts).toEqual({
-      fresh_role_grant_hard_boundary: 89,
-      identity_tenant_hard_boundary: 144,
-      provider_infrastructure_availability: 216,
-      application_governance_bypass: 1636,
-      ordinary_user_behavior: 306,
-      unrelated_configuration: 433
+      fresh_role_grant_hard_boundary: 90,
+      identity_tenant_hard_boundary: 146,
+      provider_infrastructure_availability: 219,
+      application_governance_bypass: 1626,
+      ordinary_user_behavior: 322,
+      unrelated_configuration: 431
     })
     // Removing the session KV shortcut removes four auth middleware rows:
     // cached identity read, cached role branch, cached auth assignment and cache
@@ -514,10 +523,10 @@ describe('God mode gate inventory', () => {
     const canonicalMcpGate = 'server/utils/ai/marketing/departmentEmailOperations.ts\tif (!enabled(\'FIGFLOW_EDM_DRAFT_SAVES_ENABLED\', process.env.FIGFLOW_EDM_DRAFT_SAVES_ENABLED) || (selection && !enabled(\'FIGFLOW_EDM_LIBRARY_ENABLED\', process.env.FIGFLOW_EDM_LIBRARY_ENABLED))) refuse(\'Canonical email drafts are unavailable for this environment\', \'not_found\')\tapplication_governance_bypass'
     expect(inventory.rows).toContain(canonicalMcpGate)
     const editableCopyGates = new Set(['server/api/email/templates/[id]/editable-copy.post.ts\tconst user = input.save ? await requireWriteAccess(event) : await requireAuth(event)\tapplication_governance_bypass', 'server/api/email/templates/[id]/editable-copy.post.ts\tconst fresh = await requireWriteAccess(event)\tapplication_governance_bypass'])
-    expect(createHash('sha256').update(inventory.rows.filter(row => row !== canonicalMcpGate && !editableCopyGates.has(row)).join('\n')).digest('hex')).toBe('429f4a5403cc471572cb51348b066a3d24d410d4cc5a8336d5f467a8b07c86e9')
+    expect(createHash('sha256').update(inventory.rows.filter(row => row !== canonicalMcpGate && !editableCopyGates.has(row)).join('\n')).digest('hex')).toBe('9b19b5cf4ab2fd1fdc0ab75978d8dc2bdebfd5f3f0d9963fb153dcf531c7b1f0')
     const campaignReadGate = 'server/utils/ai/marketing/departmentEmailOperations.ts\tif (!fresh.permissionGroups?.some(group => [\'ADMIN\', \'MANAGEMENT\'].includes(group))) refuse(\'Agency template access required\', \'forbidden\')\tordinary_user_behavior'
-    expect(createHash('sha256').update(inventory.rows.filter(row => row !== campaignReadGate && row !== canonicalMcpGate && !editableCopyGates.has(row)).join('\n')).digest('hex')).toBe('b097367582d0dbf5b2942a0a8df6b080dcfe255a874d41afda5282364676fad0')
-    expect(inventory.digest).toBe('7c8b4cc1f6e9a31c3fe351322b08fbe2b77030927a97d2f491815cbb25f72a5a')
+    expect(createHash('sha256').update(inventory.rows.filter(row => row !== campaignReadGate && row !== canonicalMcpGate && !editableCopyGates.has(row)).join('\n')).digest('hex')).toBe('5c235c6004cc7517f75b5f6cb3f1a17237e15a59b8ca1aab678f314349e7055e')
+    expect(inventory.digest).toBe('dacc53f1d09901dfd85b5d084958545f259af3f06e4f9af7a9132b5b50a7d264')
     expect(inventory.rows).toContain(
       'app/composables/usePageStudioLauncher.ts\tconst config = useRuntimeConfig()\tunrelated_configuration'
     )

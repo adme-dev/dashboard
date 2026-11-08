@@ -16,7 +16,12 @@ export interface FreshStaffRoleAuthority {
 export async function resolveFreshStaffRoleAuthority(event: H3Event, userId: string, dependencies = { authenticate: requireAuth, rows: queryRowsFresh }): Promise<FreshStaffRoleAuthority> {
   const user = await dependencies.authenticate(event)
   if (user.id !== userId) throw createError({ statusCode: 403, statusMessage: 'Staff actor mismatch' })
-  const rows = await dependencies.rows<{
+  return loadFreshStaffRoleAuthority(userId, dependencies.rows)
+}
+
+/** Server-internal authority lookup for an already authenticated actor; bypasses query caching. */
+export async function loadFreshStaffRoleAuthority(userId: string, rowsQuery = queryRowsFresh): Promise<FreshStaffRoleAuthority> {
+  const rows = await rowsQuery<{
     role: string
     role_id: string | null
     custom_role_id: string | null
