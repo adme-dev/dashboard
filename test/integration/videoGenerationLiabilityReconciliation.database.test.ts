@@ -3,7 +3,7 @@ import { Pool } from 'pg'
 import { afterAll, describe, expect, it } from 'vitest'
 import { reconcileVideoGenerationLiabilityIn } from '../../server/utils/video-generation/liabilityReconciliation'
 import type { ReconcileVideoGenerationLiabilityInput } from '../../server/utils/video-generation/liabilityReconciliation'
-import { TENANT_VIDEO_GENERATION_LIABILITY_SUM_SQL } from '../../shared/video/generationLiability'
+import { CLAIM_VIDEO_GENERATION_SUBMISSION_SQL, MARK_VIDEO_GENERATION_FAILED_SQL, TENANT_VIDEO_GENERATION_LIABILITY_SUM_SQL } from '../../shared/video/generationLiability'
 
 const connectionString = process.env.STORYBOARD_TEST_DATABASE_URL
 if (connectionString) {
@@ -50,6 +50,7 @@ function input(ids: { tenantId: string, projectId: string, jobId: string }, acto
     actualCostCents: 120,
     evidenceKind: 'provider_log',
     evidenceReference: 'aig-log-0001-synthetic',
+    evidenceSha256: 'a'.repeat(64),
     actorId,
     ...overrides
   }
@@ -126,6 +127,10 @@ describe.skipIf(!pool)('video generation liability reconciliation on localhost',
     expect(await run(input(ids, inactiveOwner))).toEqual({ ok: false, reason: 'actor_not_owner' })
     expect(await run(input({ ...ids, jobId: randomUUID() }, actor))).toEqual({ ok: false, reason: 'job_not_found' })
     expect(await run(input(ids, actor, { evidenceReference: 'short' }))).toMatchObject({ ok: false, reason: 'invalid_input' })
+    expect(await run(input(ids, actor, { evidenceReference: '        ' }))).toMatchObject({ ok: false, reason: 'invalid_input' })
+    expect(await run(input(ids, actor, { evidenceSha256: '' }))).toMatchObject({ ok: false, reason: 'invalid_input' })
+    expect(await run(input(ids, actor, { actualCostCents: 2_147_483_648 }))).toMatchObject({ ok: false, reason: 'invalid_input' })
+    expect(await run(input(ids, actor, { expectedLiabilityCents: Number.MAX_SAFE_INTEGER }))).toMatchObject({ ok: false, reason: 'invalid_input' })
     expect(await run(input(ids, actor, { outcome: 'reported', actualCostCents: null }))).toMatchObject({ ok: false, reason: 'invalid_input' })
     expect(await run(input(ids, actor, { outcome: 'released', actualCostCents: 0 }))).toMatchObject({ ok: false, reason: 'invalid_input' })
 
@@ -148,5 +153,52 @@ describe.skipIf(!pool)('video generation liability reconciliation on localhost',
     expect((await pool!.query('SELECT count(*)::int AS n FROM video_generation_liability_reconciliations WHERE job_id=$1', [ids.jobId])).rows[0].n).toBe(1)
     const after = await job(ids.jobId)
     expect(['reported', 'released']).toContain(after.liability_state)
+  })
+
+  it('canonicalizes replays, treats a changed note as a conflict, and records the executing role', async () => {
+    const ids = await legacyTerminalJob('failed')
+    const actor = await owner()
+    const value = input(ids, actor, { note: 'reviewed export' })
+    expect(await run(value)).toMatchObject({ ok: true, replayed: false })
+    expect(await run({ ...value, evidenceReference: `  ${value.evidenceReference}  `, operationId: ` ${value.operationId} `, evidenceSha256: 'A'.repeat(64) })).toMatchObject({ ok: true, replayed: true })
+    expect(await run({ ...value, note: 'different note' })).toEqual({ ok: false, reason: 'operation_conflict' })
+    const row = (await pool!.query('SELECT executed_by_role, evidence_sha256 FROM video_generation_liability_reconciliations WHERE job_id=$1', [ids.jobId])).rows[0]
+    expect(row.executed_by_role).toBe((await pool!.query('SELECT current_user AS u')).rows[0].u)
+    expect(row.evidence_sha256).toBe('a'.repeat(64))
+    await expect(pool!.query('TRUNCATE video_generation_liability_reconciliations')).rejects.toThrow('immutable')
+  })
+
+  it('serializes one operation id used for two different jobs concurrently', async () => {
+    const first = await legacyTerminalJob('failed')
+    const second = await legacyTerminalJob('failed')
+    const actor = await owner()
+    const operationId = `reconcile:${randomUUID()}`
+    const results = await Promise.all([
+      run(input(first, actor, { operationId })),
+      run(input(second, actor, { operationId }))
+    ])
+    expect(results.filter(r => r.ok)).toHaveLength(1)
+    expect(results.filter(r => !r.ok)).toEqual([{ ok: false, reason: 'operation_conflict' }])
+    const states = [await job(first.jobId), await job(second.jobId)].map(r => r.liability_state).sort()
+    expect(states).toEqual(['reported', 'uncertain'])
+  })
+
+  it('settles a claimed new-style (fingerprinted) failed job without touching status or output pointers', async () => {
+    const ids = { tenantId: randomUUID(), projectId: randomUUID(), jobId: randomUUID() }
+    await pool!.query(
+      `INSERT INTO video_generation_jobs (id, tenant_id, project_id, created_by, status, mode, model_id, provider, prompt,
+         source_asset_ids, duration_seconds, aspect_ratio, subject_type, compliance_status, compliance_reasons,
+         estimated_cost_cents, idempotency_key, request_fingerprint, liability_state, liability_cents, dispatch_eligible)
+       VALUES ($1,$2,$3,$4,'queued','image-to-video','aigateway/seedance-i2v','aigateway','fingerprinted fixture','{}',5,'16:9','vehicle','vehicle_i2v','{}',90,$5,$6,'reserved',90,true)`,
+      [ids.jobId, ids.tenantId, ids.projectId, randomUUID(), randomUUID(), 'f'.repeat(64)]
+    )
+    expect((await pool!.query(CLAIM_VIDEO_GENERATION_SUBMISSION_SQL, [ids.jobId])).rowCount).toBe(1)
+    await pool!.query(MARK_VIDEO_GENERATION_FAILED_SQL, [ids.jobId, 'provider timeout', false, null])
+    const before = (await pool!.query('SELECT status, liability_state, liability_cents, output_asset_id, output_r2_key FROM video_generation_jobs WHERE id=$1', [ids.jobId])).rows[0]
+    expect(before).toMatchObject({ status: 'failed', liability_state: 'uncertain', liability_cents: 90 })
+    const actor = await owner()
+    expect(await run(input(ids, actor, { expectedLiabilityCents: 90, actualCostCents: 75 }))).toMatchObject({ ok: true, liabilityState: 'reported', liabilityCents: 75 })
+    const after = (await pool!.query('SELECT status, liability_state, liability_cents, actual_cost_cents, output_asset_id, output_r2_key FROM video_generation_jobs WHERE id=$1', [ids.jobId])).rows[0]
+    expect(after).toMatchObject({ status: 'failed', liability_state: 'reported', liability_cents: 75, actual_cost_cents: 75, output_asset_id: before.output_asset_id, output_r2_key: before.output_r2_key })
   })
 })

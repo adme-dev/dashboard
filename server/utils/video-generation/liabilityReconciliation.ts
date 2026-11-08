@@ -3,8 +3,11 @@ import { randomUUID } from 'node:crypto'
 /**
  * Operator reconciliation of a TERMINAL video generation job whose liability is
  * 'uncertain'. It never infers cost: 'reported' needs an explicit actual cost and
- * 'released' asserts the provider proves no charge; both need a provider-proof
- * reference. Evidence is append-only (migration 509) and a job reconciles once.
+ * 'released' attests the provider shows no charge. Both need a provider-evidence
+ * reference AND the SHA-256 of the retained provider artifact. The database cannot
+ * verify provider truth offline; this is an accountable operator attestation whose
+ * evidence (incl. the executing database role) is append-only (migration 509), and
+ * a job reconciles once.
  *
  * Live jobs (queued/running/unknown) are excluded: only the worker/finalizer
  * settles them.
@@ -22,7 +25,7 @@ export interface ReconcileVideoGenerationLiabilityInput {
   actualCostCents: number | null
   evidenceKind: ReconciliationEvidenceKind
   evidenceReference: string
-  evidenceSha256?: string | null
+  evidenceSha256: string
   note?: string | null
   actorId: string
 }
@@ -49,17 +52,36 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const TERMINAL = new Set(['succeeded', 'failed', 'blocked'])
 const EVIDENCE_KINDS = new Set<ReconciliationEvidenceKind>(['provider_log', 'provider_invoice', 'provider_support_case'])
 
+const PG_INTEGER_MAX = 2_147_483_647
+const isCents = (value: unknown): value is number => Number.isSafeInteger(value) && (value as number) >= 0 && (value as number) <= PG_INTEGER_MAX
+
+/** One canonical form for validation, replay comparison and insert. */
+export function normalizeReconciliationInput(input: ReconcileVideoGenerationLiabilityInput): ReconcileVideoGenerationLiabilityInput {
+  const note = typeof input.note === 'string' ? input.note.trim() : null
+  return {
+    ...input,
+    operationId: typeof input.operationId === 'string' ? input.operationId.trim() : input.operationId,
+    tenantId: typeof input.tenantId === 'string' ? input.tenantId.trim() : input.tenantId,
+    jobId: typeof input.jobId === 'string' ? input.jobId.trim().toLowerCase() : input.jobId,
+    projectId: typeof input.projectId === 'string' ? input.projectId.trim().toLowerCase() : input.projectId,
+    actorId: typeof input.actorId === 'string' ? input.actorId.trim().toLowerCase() : input.actorId,
+    evidenceReference: typeof input.evidenceReference === 'string' ? input.evidenceReference.trim() : input.evidenceReference,
+    evidenceSha256: typeof input.evidenceSha256 === 'string' ? input.evidenceSha256.trim().toLowerCase() : input.evidenceSha256,
+    note: note || null
+  }
+}
+
 export function validateReconciliationInput(input: ReconcileVideoGenerationLiabilityInput): string | null {
-  if (typeof input.operationId !== 'string' || input.operationId.length < 8 || input.operationId.length > 200) return 'operationId must be 8-200 characters'
+  if (typeof input.operationId !== 'string' || input.operationId.length < 8 || input.operationId.length > 200) return 'operationId must be 8-200 non-blank characters'
   if (!UUID_RE.test(input.jobId) || !UUID_RE.test(input.projectId) || !UUID_RE.test(input.actorId)) return 'jobId, projectId and actorId must be UUIDs'
   if (typeof input.tenantId !== 'string' || !input.tenantId) return 'tenantId is required'
-  if (!Number.isSafeInteger(input.expectedLiabilityCents) || input.expectedLiabilityCents < 0) return 'expectedLiabilityCents must be a non-negative integer'
+  if (!isCents(input.expectedLiabilityCents)) return 'expectedLiabilityCents must be a non-negative PostgreSQL integer'
   if (input.outcome !== 'reported' && input.outcome !== 'released') return 'outcome must be reported or released'
-  if (input.outcome === 'reported' && !(Number.isSafeInteger(input.actualCostCents) && (input.actualCostCents as number) >= 0)) return 'reported requires a non-negative integer actualCostCents'
+  if (input.outcome === 'reported' && !isCents(input.actualCostCents)) return 'reported requires a non-negative PostgreSQL integer actualCostCents'
   if (input.outcome === 'released' && input.actualCostCents !== null) return 'released must not carry actualCostCents'
   if (!EVIDENCE_KINDS.has(input.evidenceKind)) return 'evidenceKind must be provider_log, provider_invoice or provider_support_case'
-  if (typeof input.evidenceReference !== 'string' || input.evidenceReference.trim().length < 8 || input.evidenceReference.length > 512) return 'evidenceReference must be 8-512 characters'
-  if (input.evidenceSha256 != null && !/^[0-9a-f]{64}$/.test(input.evidenceSha256)) return 'evidenceSha256 must be a lowercase SHA-256 hex digest'
+  if (typeof input.evidenceReference !== 'string' || input.evidenceReference.length < 8 || input.evidenceReference.length > 512) return 'evidenceReference must be 8-512 non-blank characters'
+  if (typeof input.evidenceSha256 !== 'string' || !/^[0-9a-f]{64}$/.test(input.evidenceSha256)) return 'evidenceSha256 (SHA-256 of the retained provider artifact) is required'
   if (input.note != null && input.note.length > 1000) return 'note must be at most 1000 characters'
   return null
 }
@@ -73,7 +95,8 @@ function sameOperation(row: Record<string, unknown>, input: ReconcileVideoGenera
     && (row.actual_cost_cents == null ? null : Number(row.actual_cost_cents)) === input.actualCostCents
     && row.evidence_kind === input.evidenceKind
     && row.evidence_reference === input.evidenceReference
-    && (row.evidence_sha256 ?? null) === (input.evidenceSha256 ?? null)
+    && row.evidence_sha256 === input.evidenceSha256
+    && (row.note ?? null) === (input.note ?? null)
     && String(row.actor_id) === input.actorId
 }
 
@@ -83,9 +106,12 @@ export async function reconcileVideoGenerationLiabilityIn(
   input: ReconcileVideoGenerationLiabilityInput,
   options: { apply: boolean } = { apply: true }
 ): Promise<ReconcileVideoGenerationLiabilityResult> {
+  input = normalizeReconciliationInput(input)
   const invalid = validateReconciliationInput(input)
   if (invalid) return { ok: false, reason: 'invalid_input', detail: invalid }
 
+  // Lock order: operation id first (same id on different jobs serializes), then the job row.
+  await db.query(`SELECT pg_advisory_xact_lock(hashtextextended('videogen:liability-reconcile-op:' || $1, 0))`, [input.operationId])
   // Serialize every attempt on this job (and therefore on its single evidence slot).
   const jobRows = await db.query(
     `SELECT id, tenant_id, project_id, status, liability_state, liability_cents, actual_cost_cents
@@ -129,15 +155,24 @@ export async function reconcileVideoGenerationLiabilityIn(
   }
 
   const reconciliationId = randomUUID()
-  await db.query(
-    `INSERT INTO video_generation_liability_reconciliations
+  try {
+    await db.query(
+      `INSERT INTO video_generation_liability_reconciliations
        (id, operation_id, job_id, tenant_id, project_id, expected_liability_state, expected_liability_cents,
         outcome, actual_cost_cents, evidence_kind, evidence_reference, evidence_sha256, note, actor_id)
      VALUES ($1,$2,$3,$4,$5,'uncertain',$6,$7,$8,$9,$10,$11,$12,$13)`,
-    [reconciliationId, input.operationId, input.jobId, input.tenantId, input.projectId, input.expectedLiabilityCents,
-      input.outcome, input.actualCostCents, input.evidenceKind, input.evidenceReference.trim(), input.evidenceSha256 ?? null,
-      input.note ?? null, input.actorId]
-  )
+      [reconciliationId, input.operationId, input.jobId, input.tenantId, input.projectId, input.expectedLiabilityCents,
+        input.outcome, input.actualCostCents, input.evidenceKind, input.evidenceReference, input.evidenceSha256,
+        input.note ?? null, input.actorId]
+    )
+  } catch (error) {
+    // Locks make these unreachable in practice; keep typed semantics if a constraint still wins.
+    const constraint = error as { code?: string, constraint?: string }
+    if (constraint.code === '23505') {
+      return { ok: false, reason: /operation_id/.test(String(constraint.constraint)) ? 'operation_conflict' : 'already_reconciled' }
+    }
+    throw error
+  }
   const updated = await db.query(
     `UPDATE video_generation_jobs
         SET liability_state = $2,

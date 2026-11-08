@@ -6,7 +6,7 @@
  *     --operation-id <unique id> --job <uuid> --tenant <tenant id> --project <uuid> \
  *     --expected-cents <current liability_cents> --outcome reported|released \
  *     [--actual-cents <provider-proven cost>] --evidence-kind provider_log|provider_invoice|provider_support_case \
- *     --evidence-ref <provider log id / invoice line / case id> [--evidence-sha256 <hex>] \
+ *     --evidence-ref <provider log id / invoice line / case id> --evidence-sha256 <sha256 of the retained artifact> \
  *     --actor <owner team_member uuid> [--note <text>] [--apply]
  *
  * Never use this to make a cap fit or to clear liability without proof: the evidence
@@ -36,11 +36,11 @@ async function main() {
     actualCostCents: actual === undefined ? null : Number(actual),
     evidenceKind: arg('evidence-kind') as ReconciliationEvidenceKind,
     evidenceReference: arg('evidence-ref') ?? '',
-    evidenceSha256: arg('evidence-sha256') ?? null,
+    evidenceSha256: arg('evidence-sha256') ?? '',
     note: arg('note') ?? null,
     actorId: arg('actor') ?? ''
   }
-  const pool = new Pool({ connectionString, max: 1 })
+  const pool = new Pool({ connectionString, max: 1, application_name: 'video-generation-reconcile-liability' })
   const client = await pool.connect()
   try {
     await client.query('BEGIN')
