@@ -76,6 +76,29 @@ const localFilters = reactive<KanbanFilters>({
   projectId: props.filters.projectId
 })
 
+const ALL_FILTER_VALUE = '__all__'
+
+const selectedAssignee = computed({
+  get: () => localFilters.assigneeId ?? ALL_FILTER_VALUE,
+  set: (value: string) => {
+    localFilters.assigneeId = value === ALL_FILTER_VALUE ? undefined : value
+  }
+})
+
+const selectedPriority = computed({
+  get: () => localFilters.priority ?? ALL_FILTER_VALUE,
+  set: (value: TaskPriority | typeof ALL_FILTER_VALUE) => {
+    localFilters.priority = value === ALL_FILTER_VALUE ? undefined : value
+  }
+})
+
+const selectedProject = computed({
+  get: () => localFilters.projectId ?? ALL_FILTER_VALUE,
+  set: (value: string) => {
+    localFilters.projectId = value === ALL_FILTER_VALUE ? undefined : value
+  }
+})
+
 // Debounced search
 const debouncedSearch = refDebounced(toRef(localFilters, 'search'), 300)
 
@@ -136,11 +159,11 @@ const clearFilters = () => {
 
     <!-- Assignee Filter -->
     <USelectMenu
-      v-model="localFilters.assigneeId"
-      :options="[{ label: 'All assignees', value: undefined }, ...members]"
+      v-model="selectedAssignee"
+      :items="[{ label: 'All assignees', value: ALL_FILTER_VALUE }, ...members]"
       placeholder="Assignee"
-      option-attribute="label"
-      value-attribute="value"
+      label-key="label"
+      value-key="value"
       class="w-40"
     >
       <template #leading>
@@ -150,11 +173,11 @@ const clearFilters = () => {
 
     <!-- Priority Filter -->
     <USelectMenu
-      v-model="localFilters.priority"
-      :options="[{ label: 'All priorities', value: undefined }, ...priorityOptions]"
+      v-model="selectedPriority"
+      :items="[{ label: 'All priorities', value: ALL_FILTER_VALUE }, ...priorityOptions]"
       placeholder="Priority"
-      option-attribute="label"
-      value-attribute="value"
+      label-key="label"
+      value-key="value"
       class="w-36"
     >
       <template #leading>
@@ -175,17 +198,18 @@ const clearFilters = () => {
       placeholder="Labels"
       multiple
       class="w-36"
+      label-key="label"
       value-key="value"
     />
 
     <!-- Project Filter (optional) -->
     <USelectMenu
       v-if="showProjectFilter"
-      v-model="localFilters.projectId"
-      :options="[{ label: 'All projects', value: undefined }, ...projects]"
+      v-model="selectedProject"
+      :items="[{ label: 'All projects', value: ALL_FILTER_VALUE }, ...projects]"
       placeholder="Project"
-      option-attribute="label"
-      value-attribute="value"
+      label-key="label"
+      value-key="value"
       class="w-40"
     >
       <template #leading>

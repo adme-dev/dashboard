@@ -32,14 +32,14 @@ def digest(path):
         return hashlib.file_digest(stream, 'sha256').hexdigest()
 
 
-def download(url, path, expected=None):
+def download(url, path, expected=None, max_bytes=512 * 1024 * 1024):
     request = urllib.request.Request(url, headers={'User-Agent': 'XeroFlow-creative-build'})
     with urllib.request.urlopen(request, timeout=120) as response, path.open('wb') as output:
         copied = 0
         while block := response.read(1024 * 1024):
             copied += len(block)
-            if copied > 512 * 1024 * 1024:
-                raise ValueError('Archive download exceeds 512 MiB')
+            if copied > max_bytes:
+                raise ValueError('Download exceeds pinned byte budget')
             output.write(block)
     actual = digest(path)
     if expected is not None and actual != expected:
@@ -75,6 +75,27 @@ def extract(archive, destination, prefix=None):
                 target.chmod(0o755 if member.mode & 0o111 else 0o644)
 
 
+def add_emoji_font(pin, font_root, source):
+    """An unmodified OFL outline font through the existing build-time manifest pipeline."""
+    base = f'https://raw.githubusercontent.com/{pin["repository"]}/{pin["commit"]}/'
+    # No caller-controlled destination or runtime fetch. Hash and exact size fence both files.
+    targets = [
+        ('file', 'sha256', 'bytes', font_root / 'fonts' / 'NotoEmoji-Regular.ttf'),
+        ('license_file', 'license_sha256', 'license_bytes', source / 'packaging' / 'web' / 'OFL-noto-emoji.txt'),
+    ]
+    for file_key, hash_key, size_key, target in targets:
+        download(base + pin[file_key], target, pin[hash_key], max_bytes=pin[size_key])
+        if target.stat().st_size != pin[size_key]:
+            raise ValueError('Font/license length differs from pin')
+    manifest = font_root / 'fonts' / 'manifest.txt'
+    existing = manifest.read_text()
+    if 'Noto Emoji |' in existing:
+        raise ValueError('Duplicate Noto Emoji manifest entry')
+    manifest.write_text(existing.rstrip() + '\nNoto Emoji | Regular | fonts/NotoEmoji-Regular.ttf | Zsye\n')
+    return {**pin, 'url': base + pin['file'], 'license_url': base + pin['license_file'],
+            'manifest_sha256': digest(manifest), 'coverage': 'Noto Emoji 1.05, monochrome outlines; not full modern emoji coverage'}
+
+
 def setup(engine, root, tools_root, evidence):
     scripts = Path(__file__).resolve().parent
     pins = json.loads((scripts / 'source-pins.json').read_text())
@@ -105,6 +126,7 @@ def setup(engine, root, tools_root, evidence):
         download(fonts_url, archive, sha)
         extract(archive, root / 'fonts' / engine, f'craft-fonts-{commit}')
         font_receipt = {'commit': commit, 'url': fonts_url, 'sha256': sha}
+        font_receipt['emoji'] = add_emoji_font(pin['emoji_font'], root / 'fonts' / engine, source)
     bin_dir = tools_root / 'bin'
     bin_dir.mkdir()
     for name, tool in TOOLS.items():

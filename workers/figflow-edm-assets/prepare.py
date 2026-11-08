@@ -24,7 +24,7 @@ def prepare(archive, receipt, commit, prefix=PREFIX, target=None):
         raise ValueError('Native archive differs from CI receipt')
     if archive.stat().st_size > 64 * 1024 * 1024:
         raise ValueError('Native archive exceeds release bound')
-    if prefix not in [Path('figflow') / version for version in ('0.11.2-edm1', '0.11.2-edm3', '0.11.2-edm4')]:
+    if prefix not in [Path('figflow') / version for version in ('0.11.2-edm1', '0.11.2-edm3', '0.11.2-edm4', '0.11.2-edm5')]:
         raise ValueError('Unreviewed native prefix')
     target = target or ROOT / 'dist'
     if target.exists():

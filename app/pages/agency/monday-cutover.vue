@@ -284,7 +284,7 @@ watch([sourceBoardId, targetBoardId], load, { immediate: true })
 </script>
 
 <template>
-  <div class="mx-auto max-w-6xl space-y-6 p-6">
+  <div class="flex-1 min-h-0 overflow-y-auto w-full mx-auto max-w-6xl space-y-6 p-6">
     <div class="flex flex-wrap items-start justify-between gap-4">
       <div>
         <p class="text-xs font-semibold uppercase tracking-wide text-primary-600">

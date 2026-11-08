@@ -196,9 +196,9 @@ watch(() => xeroStatus.value?.selectedTenantId, (v) => {
   selectedTenant.value = (v as string | undefined)
 })
 
-async function selectTenant(tenantId: string | any) {
-  const id = typeof tenantId === 'string' ? tenantId : tenantId?.value || tenantId
-  await apiFetch('/api/xero/select-tenant', { method: 'POST', body: { tenantId: id } })
+async function selectTenant(tenantId: unknown) {
+  if (typeof tenantId !== 'string') return
+  await apiFetch('/api/xero/select-tenant', { method: 'POST', body: { tenantId } })
   await refreshStatus()
   toast.add({ title: 'Organization selected', icon: 'i-lucide-check', color: 'success' })
 }
@@ -263,7 +263,9 @@ async function selectTenant(tenantId: string | any) {
         <UFormField label="Organization" class="flex items-center justify-between gap-4">
           <USelectMenu
             :loading="tenantsLoading"
-            :options="tenantOptions"
+            :items="tenantOptions"
+            label-key="label"
+            value-key="value"
             placeholder="Select an organization"
             :model-value="xeroStatus?.selectedTenantId || undefined"
             @update:model-value="selectTenant"
@@ -280,7 +282,9 @@ async function selectTenant(tenantId: string | any) {
         <div v-if="tenantOptions.length" class="pt-1">
           <URadioGroup
             v-model="selectedTenant"
-            :options="tenantOptions"
+            :items="tenantOptions"
+            label-key="label"
+            value-key="value"
             @update:model-value="selectTenant"
             legend="Or pick below"
           />

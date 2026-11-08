@@ -34,11 +34,13 @@ class ArchiveBoundary(unittest.TestCase):
             root = Path(temp)
             prepare.ROOT = root
             archive, receipt = self.fixture(root)
-            result = prepare.prepare(archive, receipt, 'a' * 40)
+            result = prepare.prepare(archive, receipt, 'a' * 40, Path('figflow/0.11.2-edm5'))
             self.assertEqual(result['ciRunId'], '123')
-            self.assertEqual((root / 'dist/assets/figflow/0.11.2-edm1/editor.wasm').read_bytes(), b'\x00asm')
+            self.assertEqual((root / 'dist/assets/figflow/0.11.2-edm5/editor.wasm').read_bytes(), b'\x00asm')
             with self.assertRaisesRegex(ValueError, 'already exists'):
-                prepare.prepare(archive, receipt, 'a' * 40)
+                prepare.prepare(archive, receipt, 'a' * 40, Path('figflow/0.11.2-edm5'))
+            with self.assertRaisesRegex(ValueError, 'Unreviewed'):
+                prepare.prepare(archive, receipt, 'a' * 40, Path('figflow/0.11.2-edm2'), root / 'other')
 
     def test_rejects_archive_traversal_without_writing_output(self):
         with tempfile.TemporaryDirectory(prefix='figflow-archive-test-') as temp:

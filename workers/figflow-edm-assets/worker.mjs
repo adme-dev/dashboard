@@ -2,7 +2,7 @@
 // before forwarding these immutable editor paths, without its credentials.
 import { LIBRARY_SHELL, STANDALONE_INDEX } from './library-shell.mjs'
 export const PREFIX = '/figflow/0.11.2-edm1/'
-export const PREFIXES = [PREFIX, '/figflow/0.11.2-edm3/', '/figflow/0.11.2-edm4/']
+export const PREFIXES = [PREFIX, '/figflow/0.11.2-edm3/', '/figflow/0.11.2-edm4/', '/figflow/0.11.2-edm5/']
 export default {
   async fetch(request, env) {
     const url = new URL(request.url)
