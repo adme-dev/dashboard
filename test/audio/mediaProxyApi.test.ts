@@ -16,7 +16,8 @@ g.createError = (i: { statusCode: number; statusMessage: string }) => Object.ass
 const mockRequireAuth = vi.fn()
 vi.mock('~~/server/utils/auth', () => ({ requireAuth: (...a: unknown[]) => mockRequireAuth(...a) }))
 const mockGetProject = vi.fn()
-vi.mock('~~/server/utils/audio/projects', () => ({ getProjectWithCurrentTimeline: (...a: unknown[]) => mockGetProject(...a) }))
+vi.mock('~~/server/utils/audio/projects', async importOriginal => ({
+  ...await importOriginal<typeof import('~~/server/utils/audio/projects')>(), getProjectWithCurrentTimeline: (...a: unknown[]) => mockGetProject(...a) }))
 const mockRead = vi.fn()
 vi.mock('~~/server/utils/storage', () => ({ readStoredObject: (...a: unknown[]) => mockRead(...a) }))
 
@@ -32,8 +33,8 @@ beforeEach(() => {
   vi.clearAllMocks()
   for (const k of Object.keys(headersOut)) delete headersOut[k]
   statusOut = 200
-  mockRequireAuth.mockResolvedValue({ id: 'u1' })
-  mockGetProject.mockResolvedValue({ project: { id: 'p1' }, timeline })
+  mockRequireAuth.mockResolvedValue({ id: 'u1', role: 'member' })
+  mockGetProject.mockResolvedValue({ project: { id: 'p1', createdBy: 'u1' }, timeline })
 })
 
 describe('parseByteRange', () => {

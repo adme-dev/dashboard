@@ -18,11 +18,13 @@ vi.mock('~~/server/utils/auth', () => ({
 }))
 
 const mockGetProject = vi.fn()
+const mockGetProjectFresh = vi.fn()
 const mockCreateRenderJob = vi.fn()
 const mockListRenderJobs = vi.fn()
 const mockMarkFailed = vi.fn()
 vi.mock('~~/server/utils/audio/projects', async original => ({
   ...await original<typeof import('~~/server/utils/audio/projects')>(),
+  getProjectFresh: (...a: unknown[]) => mockGetProjectFresh(...a),
   getProjectWithCurrentTimeline: (...a: unknown[]) => mockGetProject(...a),
   createRenderJob: (...a: unknown[]) => mockCreateRenderJob(...a),
   listRenderJobs: (...a: unknown[]) => mockListRenderJobs(...a),
@@ -46,6 +48,7 @@ const goodTimeline = {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mockGetProjectFresh.mockResolvedValue({ id: 'p1', createdBy: 'u1' })
   mockRequireAuth.mockResolvedValue({ id: 'u1', role: 'member' })
   mockRequireWriteAccess.mockResolvedValue({ id: 'u1', role: 'member' })
 })

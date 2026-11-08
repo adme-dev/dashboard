@@ -13,10 +13,12 @@ type TestTransaction = (db: { query: ReturnType<typeof vi.fn> }) => unknown
 
 const queryOneMock = vi.fn()
 const queryRowsMock = vi.fn()
+const queryRowsFreshMock = vi.fn()
 const transactionMock = vi.fn()
 vi.mock('~~/server/utils/db', () => ({
   queryOne: (...a: unknown[]) => queryOneMock(...a),
   queryRows: (...a: unknown[]) => queryRowsMock(...a),
+  queryRowsFresh: (...a: unknown[]) => queryRowsFreshMock(...a),
   transaction: (cb: TestTransaction) => transactionMock(cb)
 }))
 
@@ -86,11 +88,12 @@ describe('createRenderJob', () => {
 
 describe('listRenderJobs', () => {
   it('lists a project\'s jobs newest-first', async () => {
-    queryRowsMock.mockResolvedValueOnce([jobRow])
+    queryRowsFreshMock.mockResolvedValueOnce([jobRow])
     const rows = await listRenderJobs('p1')
     expect(rows).toHaveLength(1)
-    expect(queryRowsMock.mock.calls[0][0]).toContain('ORDER BY created_at DESC')
-    expect(queryRowsMock.mock.calls[0][1]).toEqual(['p1'])
+    expect(queryRowsMock).not.toHaveBeenCalled()
+    expect(queryRowsFreshMock.mock.calls[0][0]).toContain('ORDER BY created_at DESC')
+    expect(queryRowsFreshMock.mock.calls[0][1]).toEqual(['p1'])
   })
 })
 
