@@ -491,12 +491,14 @@ describe('God mode gate inventory', () => {
     // values) leave this lexical inventory; its requireRole and role rows are unchanged and
     // no bypass is registered. See test/server/api/mcpAdminStatus.test.ts.
     // T09 retains three write gates and passes their authenticated actor into project access checks.
-    expect(inventory.rows).toHaveLength(1835)
+    // Audio import adds one requireWriteAccess gate (application_governance_bypass), the same
+    // classification as upload-media; it joins the existing media-upload God mode family.
+    expect(inventory.rows).toHaveLength(1836)
     expect(inventory.counts).toEqual({
       fresh_role_grant_hard_boundary: 90,
       identity_tenant_hard_boundary: 145,
       provider_infrastructure_availability: 218,
-      application_governance_bypass: 1629,
+      application_governance_bypass: 1630,
       ordinary_user_behavior: 322,
       unrelated_configuration: 430
     })
@@ -524,10 +526,10 @@ describe('God mode gate inventory', () => {
     const canonicalMcpGate = 'server/utils/ai/marketing/departmentEmailOperations.ts\tif (!enabled(\'FIGFLOW_EDM_DRAFT_SAVES_ENABLED\', process.env.FIGFLOW_EDM_DRAFT_SAVES_ENABLED) || (selection && !enabled(\'FIGFLOW_EDM_LIBRARY_ENABLED\', process.env.FIGFLOW_EDM_LIBRARY_ENABLED))) refuse(\'Canonical email drafts are unavailable for this environment\', \'not_found\')\tapplication_governance_bypass'
     expect(inventory.rows).toContain(canonicalMcpGate)
     const editableCopyGates = new Set(['server/api/email/templates/[id]/editable-copy.post.ts\tconst user = input.save ? await requireWriteAccess(event) : await requireAuth(event)\tapplication_governance_bypass', 'server/api/email/templates/[id]/editable-copy.post.ts\tconst fresh = await requireWriteAccess(event)\tapplication_governance_bypass'])
-    expect(createHash('sha256').update(inventory.rows.filter(row => row !== canonicalMcpGate && !editableCopyGates.has(row)).join('\n')).digest('hex')).toBe('3820e06c20261b15dc27cb073e77db119d0d222e2db40104beb932672392f4b3')
+    expect(createHash('sha256').update(inventory.rows.filter(row => row !== canonicalMcpGate && !editableCopyGates.has(row)).join('\n')).digest('hex')).toBe('4e34273363c646105deac7c343fd6ffffb4ebf0981b25c000665a6372e2b26a8')
     const campaignReadGate = 'server/utils/ai/marketing/departmentEmailOperations.ts\tif (!fresh.permissionGroups?.some(group => [\'ADMIN\', \'MANAGEMENT\'].includes(group))) refuse(\'Agency template access required\', \'forbidden\')\tordinary_user_behavior'
-    expect(createHash('sha256').update(inventory.rows.filter(row => row !== campaignReadGate && row !== canonicalMcpGate && !editableCopyGates.has(row)).join('\n')).digest('hex')).toBe('3d5a8b5e8635f6cc67293fe4618fe9a92e86034ae5ff09a1126597b334b5bcb4')
-    expect(inventory.digest).toBe('1b82c492e8733f6af3833c0a845cdafb45b2f1a86ca2d629ae2ec54c1a19ef6b')
+    expect(createHash('sha256').update(inventory.rows.filter(row => row !== campaignReadGate && row !== canonicalMcpGate && !editableCopyGates.has(row)).join('\n')).digest('hex')).toBe('be16543d047a1851615179afe20322704ab7c2fa671157e2870ef4443790d2c6')
+    expect(inventory.digest).toBe('94a57e02f45e10f6f5e423ede2d9c2f793fe71f72505e777b7c8f777e1ecfd06')
     expect(inventory.rows).toContain(
       'app/composables/usePageStudioLauncher.ts\tconst config = useRuntimeConfig()\tunrelated_configuration'
     )
