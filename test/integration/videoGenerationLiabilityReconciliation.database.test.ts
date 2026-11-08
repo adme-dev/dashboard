@@ -82,7 +82,7 @@ async function tenantSum(tenantId: string) {
 }
 
 describe.skipIf(!pool)('video generation liability reconciliation on localhost', () => {
-  it('reports a provider-proven cost once, with immutable evidence, and the cap sum follows', async () => {
+  it('reports an operator-attested cost once, with immutable evidence, and the cap sum follows', async () => {
     const ids = await legacyTerminalJob('succeeded')
     const actor = await owner()
     expect(await tenantSum(ids.tenantId)).toBe(150)
@@ -106,7 +106,7 @@ describe.skipIf(!pool)('video generation liability reconciliation on localhost',
     expect((await pool!.query('SELECT count(*)::int AS n FROM video_generation_liability_reconciliations WHERE job_id=$1', [ids.jobId])).rows[0].n).toBe(1)
   })
 
-  it('releases only with a provider-proof reference and removes it from the tenant cap', async () => {
+  it('releases only with a provider-evidence reference and removes it from the tenant cap', async () => {
     const ids = await legacyTerminalJob('failed')
     const actor = await owner()
     const released = await run(input(ids, actor, { outcome: 'released', actualCostCents: null, evidenceKind: 'provider_invoice', evidenceReference: 'invoice-2026-06-line-17' }))
@@ -216,5 +216,25 @@ describe.skipIf(!pool)('video generation liability reconciliation on localhost',
     expect(await run(input(ids, actor, { providerIdentity: 'aig-req-12345', validationMethod: 'invoice_line_match' }))).toMatchObject({ ok: true, liabilityState: 'reported' })
     const evidence = (await pool!.query('SELECT provider_request_id_snapshot, provider_identity, currency, validation_method FROM video_generation_liability_reconciliations WHERE job_id = $1', [ids.jobId])).rows[0]
     expect(evidence).toEqual({ provider_request_id_snapshot: 'aig-req-12345', provider_identity: 'aig-req-12345', currency: 'USD', validation_method: 'invoice_line_match' })
+  })
+
+  it('records an operator-attested identity when the job never stored a provider request id', async () => {
+    const ids = await legacyTerminalJob('failed')
+    const actor = await owner()
+    expect(await run(input(ids, actor, { providerIdentity: '  padded-legacy-id ' }))).toMatchObject({ ok: true })
+    const evidence = (await pool!.query('SELECT provider_identity, provider_identity_source, provider_request_id_snapshot FROM video_generation_liability_reconciliations WHERE job_id = $1', [ids.jobId])).rows[0]
+    expect(evidence).toEqual({ provider_identity: '  padded-legacy-id ', provider_identity_source: 'operator_attested', provider_request_id_snapshot: null })
+  })
+
+  it('matches short or padded legacy provider request ids exactly and rejects a replay after the id changes', async () => {
+    const ids = await legacyTerminalJob('succeeded')
+    await pool!.query(`UPDATE video_generation_jobs SET provider_request_id = ' r1 ' WHERE id = $1`, [ids.jobId])
+    const actor = await owner()
+    expect(await run(input(ids, actor, { providerIdentity: 'r1' }))).toEqual({ ok: false, reason: 'provider_identity_mismatch' })
+    const value = input(ids, actor, { providerIdentity: ' r1 ' })
+    expect(await run(value)).toMatchObject({ ok: true })
+    expect((await pool!.query('SELECT provider_identity_source FROM video_generation_liability_reconciliations WHERE job_id = $1', [ids.jobId])).rows[0].provider_identity_source).toBe('job_provider_request_id')
+    await pool!.query(`UPDATE video_generation_jobs SET provider_request_id = 'r2' WHERE id = $1`, [ids.jobId])
+    expect(await run(value)).toEqual({ ok: false, reason: 'operation_conflict' })
   })
 })

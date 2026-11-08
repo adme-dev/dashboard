@@ -31,7 +31,10 @@ CREATE TABLE IF NOT EXISTS video_generation_liability_reconciliations (
   -- Provider-side identity of the exact job: the job's own provider_request_id when it has one
   -- (snapshotted, must match), otherwise an operator-supplied provider identifier.
   provider_request_id_snapshot TEXT NULL,
-  provider_identity TEXT NOT NULL CHECK (length(provider_identity) BETWEEN 4 AND 512 AND provider_identity = btrim(provider_identity)),
+  provider_identity TEXT NOT NULL CHECK (length(provider_identity) BETWEEN 1 AND 4096),
+  -- 'job_provider_request_id': equals the job's own provider request id (bound).
+  -- 'operator_attested': the job never recorded one; the identity is the operator's attestation only.
+  provider_identity_source TEXT NOT NULL CHECK (provider_identity_source IN ('job_provider_request_id', 'operator_attested')),
   currency TEXT NOT NULL CHECK (currency = 'USD'),
   note TEXT NULL CHECK (note IS NULL OR length(note) <= 1000),
   actor_id UUID NOT NULL,
@@ -41,7 +44,10 @@ CREATE TABLE IF NOT EXISTS video_generation_liability_reconciliations (
   CONSTRAINT video_generation_liability_reconciliation_outcome_cost
     CHECK ((outcome = 'reported') = (actual_cost_cents IS NOT NULL)),
   CONSTRAINT video_generation_liability_reconciliation_provider_identity
-    CHECK (provider_request_id_snapshot IS NULL OR provider_identity = provider_request_id_snapshot)
+    CHECK (
+      (provider_identity_source = 'job_provider_request_id' AND provider_request_id_snapshot IS NOT NULL AND provider_identity = provider_request_id_snapshot)
+      OR (provider_identity_source = 'operator_attested' AND provider_request_id_snapshot IS NULL)
+    )
 );
 
 CREATE OR REPLACE FUNCTION video_generation_liability_reconciliation_immutable() RETURNS trigger
