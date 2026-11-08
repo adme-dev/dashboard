@@ -7,7 +7,11 @@
  *     --expected-cents <current liability_cents> --outcome reported|released \
  *     [--actual-cents <provider-proven cost>] --evidence-kind provider_log|provider_invoice|provider_support_case \
  *     --evidence-ref <provider log id / invoice line / case id> --evidence-sha256 <sha256 of the retained artifact> \
+ *     --validation-method provider_console_lookup|provider_api_export|invoice_line_match|provider_support_confirmation \
+ *     --provider-identity <provider-side id of this exact job> --currency USD \
  *     --actor <owner team_member uuid> [--note <text>] [--apply]
+ *
+ * The SHA-256 only fingerprints the retained artifact for later review; it is not proof.
  *
  * Never use this to make a cap fit or to clear liability without proof: the evidence
  * row is permanent and audited (migration 509). Live jobs are rejected.
@@ -37,6 +41,9 @@ async function main() {
     evidenceKind: arg('evidence-kind') as ReconciliationEvidenceKind,
     evidenceReference: arg('evidence-ref') ?? '',
     evidenceSha256: arg('evidence-sha256') ?? '',
+    validationMethod: arg('validation-method') as ReconcileVideoGenerationLiabilityInput['validationMethod'],
+    providerIdentity: arg('provider-identity') ?? '',
+    currency: (arg('currency') ?? '') as 'USD',
     note: arg('note') ?? null,
     actorId: arg('actor') ?? ''
   }

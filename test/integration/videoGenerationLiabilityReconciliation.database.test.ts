@@ -51,6 +51,9 @@ function input(ids: { tenantId: string, projectId: string, jobId: string }, acto
     evidenceKind: 'provider_log',
     evidenceReference: 'aig-log-0001-synthetic',
     evidenceSha256: 'a'.repeat(64),
+    validationMethod: 'provider_console_lookup',
+    providerIdentity: 'operator-supplied-provider-id',
+    currency: 'USD',
     actorId,
     ...overrides
   }
@@ -129,6 +132,9 @@ describe.skipIf(!pool)('video generation liability reconciliation on localhost',
     expect(await run(input(ids, actor, { evidenceReference: 'short' }))).toMatchObject({ ok: false, reason: 'invalid_input' })
     expect(await run(input(ids, actor, { evidenceReference: '        ' }))).toMatchObject({ ok: false, reason: 'invalid_input' })
     expect(await run(input(ids, actor, { evidenceSha256: '' }))).toMatchObject({ ok: false, reason: 'invalid_input' })
+    expect(await run(input(ids, actor, { currency: 'EUR' as 'USD' }))).toMatchObject({ ok: false, reason: 'invalid_input' })
+    expect(await run(input(ids, actor, { validationMethod: 'guess' as never }))).toMatchObject({ ok: false, reason: 'invalid_input' })
+    expect(await run(input(ids, actor, { providerIdentity: '' }))).toMatchObject({ ok: false, reason: 'invalid_input' })
     expect(await run(input(ids, actor, { actualCostCents: 2_147_483_648 }))).toMatchObject({ ok: false, reason: 'invalid_input' })
     expect(await run(input(ids, actor, { expectedLiabilityCents: Number.MAX_SAFE_INTEGER }))).toMatchObject({ ok: false, reason: 'invalid_input' })
     expect(await run(input(ids, actor, { outcome: 'reported', actualCostCents: null }))).toMatchObject({ ok: false, reason: 'invalid_input' })
@@ -200,5 +206,15 @@ describe.skipIf(!pool)('video generation liability reconciliation on localhost',
     expect(await run(input(ids, actor, { expectedLiabilityCents: 90, actualCostCents: 75 }))).toMatchObject({ ok: true, liabilityState: 'reported', liabilityCents: 75 })
     const after = (await pool!.query('SELECT status, liability_state, liability_cents, actual_cost_cents, output_asset_id, output_r2_key FROM video_generation_jobs WHERE id=$1', [ids.jobId])).rows[0]
     expect(after).toMatchObject({ status: 'failed', liability_state: 'reported', liability_cents: 75, actual_cost_cents: 75, output_asset_id: before.output_asset_id, output_r2_key: before.output_r2_key })
+  })
+
+  it('binds the settlement to the job\'s own provider request id when one exists', async () => {
+    const ids = await legacyTerminalJob('succeeded')
+    await pool!.query(`UPDATE video_generation_jobs SET provider_request_id = 'aig-req-12345' WHERE id = $1`, [ids.jobId])
+    const actor = await owner()
+    expect(await run(input(ids, actor, { providerIdentity: 'aig-req-99999' }))).toEqual({ ok: false, reason: 'provider_identity_mismatch' })
+    expect(await run(input(ids, actor, { providerIdentity: 'aig-req-12345', validationMethod: 'invoice_line_match' }))).toMatchObject({ ok: true, liabilityState: 'reported' })
+    const evidence = (await pool!.query('SELECT provider_request_id_snapshot, provider_identity, currency, validation_method FROM video_generation_liability_reconciliations WHERE job_id = $1', [ids.jobId])).rows[0]
+    expect(evidence).toEqual({ provider_request_id_snapshot: 'aig-req-12345', provider_identity: 'aig-req-12345', currency: 'USD', validation_method: 'invoice_line_match' })
   })
 })

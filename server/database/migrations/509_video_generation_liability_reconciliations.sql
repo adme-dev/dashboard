@@ -25,14 +25,23 @@ CREATE TABLE IF NOT EXISTS video_generation_liability_reconciliations (
   actual_cost_cents INTEGER NULL CHECK (actual_cost_cents IS NULL OR actual_cost_cents >= 0),
   evidence_kind TEXT NOT NULL CHECK (evidence_kind IN ('provider_log', 'provider_invoice', 'provider_support_case')),
   evidence_reference TEXT NOT NULL CHECK (length(evidence_reference) BETWEEN 8 AND 512 AND evidence_reference = btrim(evidence_reference)),
+  -- Fingerprint of the retained artifact so reviewers can match it later; NOT proof of billing.
   evidence_sha256 TEXT NOT NULL CHECK (evidence_sha256 ~ '^[0-9a-f]{64}$'),
+  validation_method TEXT NOT NULL CHECK (validation_method IN ('provider_console_lookup', 'provider_api_export', 'invoice_line_match', 'provider_support_confirmation')),
+  -- Provider-side identity of the exact job: the job's own provider_request_id when it has one
+  -- (snapshotted, must match), otherwise an operator-supplied provider identifier.
+  provider_request_id_snapshot TEXT NULL,
+  provider_identity TEXT NOT NULL CHECK (length(provider_identity) BETWEEN 4 AND 512 AND provider_identity = btrim(provider_identity)),
+  currency TEXT NOT NULL CHECK (currency = 'USD'),
   note TEXT NULL CHECK (note IS NULL OR length(note) <= 1000),
   actor_id UUID NOT NULL,
   executed_by_role TEXT NOT NULL DEFAULT current_user,
   executed_by_application TEXT NULL DEFAULT current_setting('application_name', true),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   CONSTRAINT video_generation_liability_reconciliation_outcome_cost
-    CHECK ((outcome = 'reported') = (actual_cost_cents IS NOT NULL))
+    CHECK ((outcome = 'reported') = (actual_cost_cents IS NOT NULL)),
+  CONSTRAINT video_generation_liability_reconciliation_provider_identity
+    CHECK (provider_request_id_snapshot IS NULL OR provider_identity = provider_request_id_snapshot)
 );
 
 CREATE OR REPLACE FUNCTION video_generation_liability_reconciliation_immutable() RETURNS trigger
