@@ -12,7 +12,7 @@ import type { EmailDesignDocument } from './designContract'
 
 // Immutable package path. Promotion must publish this exact package before the
 // feature is activated; never point sessions at a moving editor alias.
-export const FIGFLOW_EDM_EDITOR_URL = 'https://creative.xeroflow.io/figflow/0.11.2-edm4/'
+export const FIGFLOW_EDM_EDITOR_URL = 'https://creative.xeroflow.io/figflow/0.11.2-edm5/'
 export const FIGFLOW_EDM_ORIGIN = 'https://creative.xeroflow.io'
 export const FIGFLOW_EDM_PROTOCOL = 'xeroflow-edm-v1'
 
