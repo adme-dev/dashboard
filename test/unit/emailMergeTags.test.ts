@@ -3,6 +3,8 @@ import { createRenderBudget } from '../../shared/emailRendering/bounds'
 import { resolveEmailMergeTags } from '../../shared/emailRendering/mergeTags'
 import { replaceMergeFields } from '../../workers/email-rendering/src/render/mergeFields'
 import { buildBatchEmail, substituteMergeTags } from '../../server/utils/email-marketing/campaignSend'
+import { rewriteTrackableHrefs } from '../../server/utils/email-marketing/trackingLinks'
+import { parseFragment } from 'parse5'
 import { renderFlyhubDocumentToHtml } from '../../workers/email-rendering/src/render/flyhub-html-renderer'
 
 const document = { root: { type: 'EmailLayout', data: { childrenIds: ['text'] } }, text: { type: 'Text', data: { props: { text: 'Hello {{ First_Name | there }}' } } } }
@@ -80,6 +82,51 @@ describe('shared preview and campaign merge resolution', () => {
     expect(replaceMergeFields('<a href="{{ offer_url }}">Offer</a>', {})).toBe('<a href="{{ offer_url }}">Offer</a>')
     expect(substituteMergeTags('<a href="{{ offer_url }}">Offer</a>', {})).toBe('<a href="">Offer</a>')
     expect(resolveEmailMergeTags('Subject {{ offer_url }}', { offer_url: 'javascript:alert(1)' }, { context: 'text' })).toBe('Subject javascript:alert(1)')
+  })
+
+  it('blocks parsed character-reference and unquoted script hrefs before tracking', async () => {
+    const blocked = [
+      'href="&#106;avascript:alert(1)"',
+      'href="&#106avascript:alert(1)"',
+      'href="&#x6A;avascript:alert(1)"',
+      'href="&#x09;javascript:alert(1)"',
+      'href="java&#115;cript:alert(1)"',
+      'href="javascript&#58;alert(1)"',
+      'href="javascript&colon;alert(1)"',
+      'href="&#9;javascript:alert(1)"',
+      'href="&Tab;javascript:alert(1)"',
+      'href="&#11;javascript:alert(1)"',
+      'href="&#100;ata:text/html,hi"',
+      'href=javascript:alert(1)',
+      'href=&#106;avascript:alert(1)'
+    ]
+    for (const attribute of blocked) {
+      expect(substituteMergeTags(`<a ${attribute}>Offer</a>`, {})).toBe('<a href="#">Offer</a>')
+    }
+    expect(substituteMergeTags('<a href="https://dealer.example/o&#039;brien">Offer</a>', {})).toBe('<a href="https://dealer.example/o&#039;brien">Offer</a>')
+    expect(substituteMergeTags('<a href="{{ offer_url }}">Offer</a>', { offer_url: '&#106;avascript:alert(1)' })).toBe('<a href="&amp;#106;avascript:alert(1)">Offer</a>')
+    const recipient = { email: 'r@example.com', name: 'Ari', subscriber_id: 's1' }
+    const send = buildBatchEmail({
+      subject: 'javascript:alert(1)',
+      from_name: null,
+      from_email: 'sender@example.com',
+      reply_to: null,
+      body_html: '<a href="&#106;avascript:alert(1)">Offer</a><a href="https://dealer.example/offer">Offer</a><a href="{{unsubscribe_url}}">Unsubscribe</a>',
+      preview_text: 'Preview'
+    }, recipient, 'c1', 'https://example.com', 'signature')
+    expect(send.subject).toBe('javascript:alert(1)')
+    expect(send.html).toContain('<a href="#">Offer</a>')
+    expect(send.html).not.toContain('&#106;')
+    const seen: string[] = []
+    const tracked = await rewriteTrackableHrefs(send.html, (href) => {
+      seen.push(href)
+      return 'https://click.example/go'
+    })
+    expect(seen).toEqual(['https://dealer.example/offer'])
+    expect(tracked).toContain('href="#"')
+    expect(tracked).not.toContain('javascript:')
+    const node = parseFragment(tracked).childNodes.find(child => 'attrs' in child && child.attrs.some(attribute => attribute.name === 'href' && attribute.value === '#'))
+    expect(node).toBeTruthy()
   })
 
   it('charges escaped chunks before joining and limits output in both contexts', () => {

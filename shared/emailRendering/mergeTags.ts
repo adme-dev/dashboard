@@ -1,3 +1,4 @@
+import { parseFragment, type DefaultTreeAdapterMap } from 'parse5'
 import { createRenderBudget, RenderBoundaryError } from './bounds'
 
 type MergeOptions = {
@@ -9,30 +10,66 @@ type MergeOptions = {
 }
 const compiledFallbackEntities: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"' }
 const entities: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', '\'': '&#039;' }
-const dangerousHrefScheme = /^(javascript|data|vbscript):/i
 const unresolvedHrefToken = /^\{\{[^{}]{1,2304}\}\}$/
+type HtmlChild = DefaultTreeAdapterMap['childNode']
+type HtmlElement = DefaultTreeAdapterMap['element']
+type HtmlComment = DefaultTreeAdapterMap['commentNode']
+type HtmlTemplate = DefaultTreeAdapterMap['template']
 
-function decodeCompiledHref(value: string): string {
-  return value.replace(/&(amp|lt|gt|quot|#0*39|#x0*27);/gi, (_entity, name: string) => compiledFallbackEntities[name.toLowerCase()] ?? '\'')
+function isDangerousHref(value: string): boolean {
+  const inspected = value.replace(/[\u0000-\u001F\u007F]/g, '').trim()
+  if (!inspected || unresolvedHrefToken.test(inspected)) return false
+  try {
+    const protocol = new URL(inspected).protocol
+    if (protocol === 'javascript:' || protocol === 'data:' || protocol === 'vbscript:') return true
+  } catch { /* A non-absolute value can still be a raw scheme after control removal. */ }
+  return /^(javascript|data|vbscript):/i.test(inspected)
 }
 
-/** Quoted hrefs are checked after merge substitution. Inspection removes ASCII
- * controls and decodes the compiler's entities once; the stored attribute is
- * replaced only when the result is a scriptable scheme. */
+function hrefSpans(html: string, base: number, depth: number): Array<{ start: number, end: number }> {
+  if (depth > 4) return []
+  const spans: Array<{ start: number, end: number }> = []
+  const visit = (node: HtmlChild) => {
+    if (node.nodeName === '#comment') {
+      const comment = node as HtmlComment
+      const location = comment.sourceCodeLocation
+      if (location && comment.data.toLowerCase().includes('href')) {
+        spans.push(...hrefSpans(comment.data, base + location.startOffset + 4, depth + 1))
+      }
+      return
+    }
+    if (!('attrs' in node)) return
+    const element = node as HtmlElement
+    const href = element.attrs.find(attribute => attribute.name === 'href')
+    const location = element.sourceCodeLocation?.attrs?.href
+    if (href && location && isDangerousHref(href.value)) {
+      spans.push({ start: base + location.startOffset, end: base + location.endOffset })
+    }
+    const content = node.nodeName === 'template' ? (node as HtmlTemplate).content.childNodes : []
+    for (const child of [...element.childNodes, ...content]) visit(child)
+  }
+  for (const child of parseFragment(html, { sourceCodeLocationInfo: true }).childNodes) visit(child)
+  return spans
+}
+
+/** After HTML merge, replace hrefs whose parsed URL is a scriptable scheme.
+ * parse5 decodes character references and reads unquoted attributes. Only those
+ * attribute spans change; unresolved tokens and every other byte stay. */
 export function neutralizeResolvedHrefSchemes(html: string): string {
-  return html.replace(/\bhref(\s*=\s*)("([^"]*)"|'([^']*)')/gi, (full, equals, quoted, doubleValue, singleValue) => {
-    const raw = typeof doubleValue === 'string' ? doubleValue : typeof singleValue === 'string' ? singleValue : ''
-    const inspected = decodeCompiledHref(raw).replace(/[\u0000-\u001F\u007F]/g, '').trim()
-    if (unresolvedHrefToken.test(inspected) || !dangerousHrefScheme.test(inspected)) return full
-    const quote = quoted.startsWith('\'') ? '\'' : '"'
-    return `href${equals}${quote}#${quote}`
-  })
+  const spans = hrefSpans(html, 0, 0).sort((left, right) => right.start - left.start)
+  let result = html
+  for (const span of spans) {
+    if (span.start < 0 || span.end > result.length || span.start >= span.end) continue
+    result = `${result.slice(0, span.start)}href="#"${result.slice(span.end)}`
+  }
+  return result
 }
 
 /** One bounded pass over the authored template. Recipient values are literal
  * data: never replacement-string instructions or a second template to evaluate.
- * HTML encoding is for text/quoted attributes. After that encoding, quoted
- * href schemes are checked once. Subjects use the plain-text context. */
+ * HTML encoding is for text and attribute values. After that encoding, parse5
+ * reads each href, including character references and unquoted attributes, and
+ * a scriptable scheme is replaced once. Subjects use the plain-text context. */
 export function resolveEmailMergeTags(template: string, variables: Record<string, string>, options: MergeOptions = {}): string {
   const budget = options.budget ?? createRenderBudget()
   const values = new Map(Object.entries(variables).map(([key, value]) => [key.toLowerCase().trim(), value]))

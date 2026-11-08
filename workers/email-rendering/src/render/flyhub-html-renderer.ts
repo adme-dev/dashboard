@@ -1,5 +1,5 @@
 import { emailDarkPalette } from '../../../../shared/emailRendering/renderingQuality'
-import { resolveEmailMergeTags } from '../../../../shared/emailRendering/mergeTags'
+import { neutralizeResolvedHrefSchemes, resolveEmailMergeTags } from '../../../../shared/emailRendering/mergeTags'
 import { resolveEmailContentWidth } from '../../../../shared/emailRendering/layout'
 import { resolveConditionalHtml } from '../../../../shared/emailRendering/conditions'
 import { assertImportedDocumentIdentity } from '../../../../shared/emailRendering/importedDocument'
@@ -192,7 +192,8 @@ export function renderFlyhubDocumentToHtml(
     const contents = soleChild.data.props.contents
     if (typeof contents !== 'string') throw new Error('Imported email document is missing')
     const html = boundedText(options.renderBudget)`${contents}`
-    return options.variables ? replaceMergeFields(html, options.variables, options.renderBudget) : html
+    const merged = options.variables ? replaceMergeFields(html, options.variables, options.renderBudget) : html
+    return neutralizeResolvedHrefSchemes(merged)
   }
 
   const backdropColor = (rootProps.backdropColor as string) || '#F5F5F5'
@@ -290,7 +291,7 @@ ${darkCss}${responsiveCss.desktopCss.length ? boundedText(options.renderBudget)`
   `.trim()
 
   // Builders already charged each allocation; response admission validates final bytes.
-  return html
+  return neutralizeResolvedHrefSchemes(html)
 }
 
 /**

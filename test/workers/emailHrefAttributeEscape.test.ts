@@ -121,5 +121,10 @@ describe('button and image href escaping', () => {
       button: { type: 'Button', data: { props: { text: 'Book', url: '{{ offer_url }}' } } }
     })
     expect(hrefs(preview)).toContain('{{ offer_url }}')
+    const imported = renderFlyhubDocumentToHtml({
+      root: { type: 'EmailLayout', data: { props: {}, childrenIds: ['raw'] } },
+      raw: { type: 'Html', data: { props: { documentMode: 'email', contents: '<a href="&#106;avascript:alert(1)">Offer</a><a href=javascript:alert(1)>Go</a>' } } }
+    })
+    expect(imported).toBe('<a href="#">Offer</a><a href="#">Go</a>')
   })
 })
