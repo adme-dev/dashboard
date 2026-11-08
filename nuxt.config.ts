@@ -5,6 +5,7 @@ import { isPublicVideoFeatureEnabled } from './shared/video/publicFeaturePolicy'
 import { compactPublicAssetsPlugin } from './scripts/compact-worker-static-data.mjs'
 import { workerProcessCompatibilityPlugin } from './scripts/worker-process-compatibility.mjs'
 import { NUXT_PAYLOAD_EXTRACTION, shouldIgnorePrerenderRoute } from './lib/prerender-ignore'
+import { serverStubClientOnlyPagesModule } from './lib/build/clientOnlyPageStubs'
 
 // @flyhub/* email-builder packages are CLIENT-ONLY (the visual editor runs in the
 // browser). Alias them to a stub in the Nitro/Workers server bundle so the heavy
@@ -83,7 +84,9 @@ export default defineNuxtConfig({
   modules: [
     '@nuxt/eslint',
     '@nuxt/ui',
-    '@vueuse/nuxt'
+    '@vueuse/nuxt',
+    // Keep SSR builds of pages whose every route is ssr:false out of the Pages Worker.
+    serverStubClientOnlyPagesModule
   ],
 
   ssr: true,
