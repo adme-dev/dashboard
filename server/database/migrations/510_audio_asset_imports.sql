@@ -24,15 +24,16 @@ ALTER TABLE audio_assets DROP CONSTRAINT IF EXISTS audio_assets_import_provenanc
 ALTER TABLE audio_assets ADD CONSTRAINT audio_assets_import_provenance_check
   CHECK (
     source <> 'imported' OR (
+      -- Every operand is explicitly NOT NULL: a CHECK treats an UNKNOWN result as passing.
       source_filename IS NOT NULL AND length(source_filename) BETWEEN 1 AND 255
-      AND source_mime IN ('audio/wav', 'audio/mpeg', 'audio/mp4')
-      AND source_sha256 ~ '^[0-9a-f]{64}$'
-      AND source_bytes > 0
+      AND source_mime IS NOT NULL AND source_mime IN ('audio/wav', 'audio/mpeg', 'audio/mp4')
+      AND source_sha256 IS NOT NULL AND source_sha256 ~ '^[0-9a-f]{64}$'
+      AND source_bytes IS NOT NULL AND source_bytes > 0
       AND source_project_id IS NOT NULL
       AND rights_confirmed_by IS NOT NULL
       AND rights_confirmed_at IS NOT NULL
       AND r2_key_master IS NOT NULL
-      AND duration_sec > 0
+      AND duration_sec IS NOT NULL AND duration_sec > 0
     )
   );
 

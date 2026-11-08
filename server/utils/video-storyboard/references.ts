@@ -49,7 +49,9 @@ export async function canonicalReferenceIn(db: GodModeTransactionDb, project: St
   }
   let hasAccess = isBanner || actor.role === 'admin' || actor.role === 'owner' || row.created_by === actor.id
   if (!hasAccess && kind === 'source_asset') hasAccess = row.client_id === null || row.client_id === project.clientId
-  if (!hasAccess && kind === 'video_asset' && row.source_project_id) {
+  // Imported audio follows the same origin-project rule as video assets: the uploader
+  // (often an admin) is recorded as creator, so the origin project's owner may use it.
+  if (!hasAccess && (kind === 'video_asset' || (kind === 'audio_asset' && row.source === 'imported')) && row.source_project_id) {
     const origin = (await db.query('SELECT created_by FROM media_projects WHERE id = $1', [row.source_project_id])).rows[0]
     hasAccess = origin?.created_by === actor.id
   }

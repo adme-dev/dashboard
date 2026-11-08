@@ -37,10 +37,47 @@ function deps(overrides: Partial<ImportAudioDeps> = {}) {
     insert: vi.fn(async (params: unknown[]) => {
       calls.insert = params
       return { id: params[0], source: 'imported' }
-    })
+    }),
+    remove: vi.fn(async () => {}),
+    onStored: vi.fn(async () => {})
   }
   return { d: { ...base, ...overrides }, calls }
 }
+
+describe('importAudioAsset storage hygiene', () => {
+  const key = 'audio/org/00000000-0000-4000-8000-0000000000bb/master.wav'
+  it('marks the run dispatched right after storage and removes nothing on success', async () => {
+    const { d } = deps()
+    await importAudioAsset(input(), d)
+    expect(d.onStored).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(d.upload).mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(d.onStored!).mock.invocationCallOrder[0]!)
+    expect(d.remove).not.toHaveBeenCalled()
+  })
+  it('removes the stored object when verification, measurement or insertion fails', async () => {
+    const cases: Partial<ImportAudioDeps>[] = [
+      { metadata: vi.fn(async () => null) },
+      { probe: vi.fn(async () => ({ kind: 'image' as const, durationSeconds: null, width: 1, height: 1 })) },
+      { insert: vi.fn(async () => { throw new Error('db down') }) }
+    ]
+    for (const override of cases) {
+      const { d } = deps(override)
+      await expect(importAudioAsset(input(), d)).rejects.toBeTruthy()
+      expect(d.remove).toHaveBeenCalledWith(key)
+    }
+  })
+  it('removes the losing copy of a concurrent same-key import but never the winner', async () => {
+    const sha = createHash('sha256').update(wav).digest('hex')
+    const winner = { source: 'imported', source_sha256: sha, source_project_id: projectId, r2_key_master: 'audio/org/winner/master.wav' }
+    const find = vi.fn().mockResolvedValueOnce(null).mockResolvedValueOnce(winner)
+    const duplicate = vi.fn(async () => {
+      throw Object.assign(new Error('dup'), { code: '23505' })
+    })
+    const { d } = deps({ findByIdempotencyKey: find, insert: duplicate })
+    expect((await importAudioAsset(input(), d)).replayed).toBe(true)
+    expect(d.remove).toHaveBeenCalledWith(key)
+    expect(d.remove).not.toHaveBeenCalledWith(winner.r2_key_master)
+  })
+})
 
 describe('sniffAudioFormat', () => {
   it('detects formats from bytes, not names', () => {

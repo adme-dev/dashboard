@@ -33,6 +33,8 @@ const ACCEPTED_DECLARED: Record<string, ImportAudioFormat> = {
 }
 
 export const MAX_IMPORT_AUDIO_BYTES = MAX_PROBE_BYTES
+/** Multipart framing headroom over the file limit, checked before the body is buffered. */
+export const MAX_IMPORT_REQUEST_BYTES = MAX_IMPORT_AUDIO_BYTES + 1024 * 1024
 
 /** Content sniffing: the bytes decide the format, not the filename or declared type. */
 export function sniffAudioFormat(bytes: Uint8Array): ImportAudioFormat | null {
@@ -65,6 +67,10 @@ export interface ImportAudioDeps {
   probe(input: MediaProbeInput): Promise<MeasuredMedia>
   findByIdempotencyKey(key: string): Promise<Record<string, unknown> | null>
   insert(params: unknown[]): Promise<Record<string, unknown>>
+  /** Best-effort removal of an object this attempt stored but did not commit. */
+  remove(key: string): Promise<void>
+  /** Called once the bytes are durably stored (God mode marks the run dispatched). */
+  onStored?(): Promise<void>
 }
 
 export function importIdempotencyKey(projectId: string, clientKey: string): string {
@@ -101,17 +107,24 @@ export async function importAudioAsset(input: ImportAudioInput, deps: ImportAudi
   const key = buildMasterKey(input.projectClientId, input.assetId, format)
   const contentType = MIME_BY_FORMAT[format]
   await deps.upload(input.bytes, key, contentType)
+  await deps.onStored?.()
+  const discard = async () => {
+    await deps.remove(key).catch(() => undefined)
+  }
   const stored = await deps.metadata(key)
   if (!stored?.etag || stored.size !== input.bytes.length) {
+    await discard()
     throw createError({ statusCode: 502, statusMessage: 'Imported audio could not be verified in storage' })
   }
   let measured: MeasuredMedia
   try {
     measured = await deps.probe({ r2Key: key, expectedEtag: stored.etag.replace(/^"|"$/g, ''), expectedSize: stored.size })
   } catch {
+    await discard()
     throw createError({ statusCode: 422, statusMessage: 'The audio could not be measured; upload a standard WAV, MP3 or M4A file' })
   }
   if (measured.kind !== 'audio' || !(typeof measured.durationSeconds === 'number' && measured.durationSeconds > 0)) {
+    await discard()
     throw createError({ statusCode: 422, statusMessage: 'The file does not contain a measurable audio track' })
   }
 
@@ -124,8 +137,13 @@ export async function importAudioAsset(input: ImportAudioInput, deps: ImportAudi
     return { row, replayed: false }
   } catch (error) {
     // A concurrent request with the same key won the unique idempotency slot.
-    if ((error as { code?: string })?.code !== '23505') throw error
+    if ((error as { code?: string })?.code !== '23505') {
+      await discard()
+      throw error
+    }
     const winner = await deps.findByIdempotencyKey(idempotencyKey)
+    // The winner owns its own object (distinct asset id); this attempt's copy is unused.
+    if (!winner || String(winner.r2_key_master) !== key) await discard()
     if (winner && winner.source === 'imported' && winner.source_sha256 === sha256 && String(winner.source_project_id) === input.projectId) {
       return { row: winner, replayed: true }
     }

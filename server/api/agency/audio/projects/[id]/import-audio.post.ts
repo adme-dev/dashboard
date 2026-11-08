@@ -7,9 +7,9 @@ import { executeGodModeMediaUpload } from '~~/server/utils/audio/godModeExternal
 import { requireWriteAccess } from '~~/server/utils/auth'
 import { assertMediaProjectAccess, getProjectWithCurrentTimeline } from '~~/server/utils/audio/projects'
 import { mapRow, streamUrlFor } from '~~/server/utils/audio/assets'
-import { INSERT_IMPORTED_AUDIO_ASSET_SQL, importAudioAsset } from '~~/server/utils/audio/importAudio'
+import { INSERT_IMPORTED_AUDIO_ASSET_SQL, MAX_IMPORT_REQUEST_BYTES, importAudioAsset } from '~~/server/utils/audio/importAudio'
 import type { ImportAudioRole } from '~~/server/utils/audio/importAudio'
-import { getFileMetadata, uploadFile } from '~~/server/utils/storage'
+import { deleteFile, getFileMetadata, uploadFile } from '~~/server/utils/storage'
 import { probeStoryboardMedia } from '~~/server/utils/video-storyboard/mediaProbe'
 import { storyboardRequestDependencies } from '~~/server/utils/video-storyboard/request'
 import { queryOne } from '~~/server/utils/db'
@@ -27,6 +27,14 @@ export default defineEventHandler(async (event) => {
   assertMediaProjectAccess(actor, existing.project)
   if (existing.project.mediaType !== 'av') throw createError({ statusCode: 400, statusMessage: 'import-audio requires an AV project' })
 
+  // Bound the body before multipart parsing buffers it in memory.
+  const declaredLength = Number(getHeader(event, 'content-length'))
+  if (!Number.isSafeInteger(declaredLength) || declaredLength <= 0) {
+    throw createError({ statusCode: 411, statusMessage: 'Content-Length is required for audio imports' })
+  }
+  if (declaredLength > MAX_IMPORT_REQUEST_BYTES) {
+    throw createError({ statusCode: 413, statusMessage: 'Audio import exceeds the size limit' })
+  }
   const form = await readMultipartFormData(event)
   if (!form) throw createError({ statusCode: 400, statusMessage: 'Expected multipart form data' })
   const file = form.find(f => f.name === 'file')
@@ -37,7 +45,8 @@ export default defineEventHandler(async (event) => {
 
   type ImportResult = { asset: ReturnType<typeof mapRow>, replayed: boolean }
   const result = await executeGodModeMediaUpload<ImportResult>(event, async (run) => {
-    if (run.replay && run.replayResult) return run.replayResult
+    // Replays go through the import's own idempotency (stable reserved asset id and
+    // hash check), so a different file under the same key is still a 409.
     const imported = await importAudioAsset({
       projectId: id,
       projectClientId: existing.project.clientId ?? null,
@@ -55,9 +64,10 @@ export default defineEventHandler(async (event) => {
       metadata: key => getFileMetadata(key, bucket),
       probe: input => probeStoryboardMedia(input, { event }),
       findByIdempotencyKey: key => queryOne<Record<string, unknown>>('SELECT * FROM audio_assets WHERE idempotency_key = $1', [key]),
-      insert: async params => (await queryOne<Record<string, unknown>>(INSERT_IMPORTED_AUDIO_ASSET_SQL, params))!
+      insert: async params => (await queryOne<Record<string, unknown>>(INSERT_IMPORTED_AUDIO_ASSET_SQL, params))!,
+      remove: key => deleteFile(key, bucket),
+      onStored: () => run.markDispatched()
     })
-    await run.markDispatched()
     const asset = mapRow(imported.row)
     asset.streamUrl = await streamUrlFor(asset)
     return { asset, replayed: imported.replayed }
