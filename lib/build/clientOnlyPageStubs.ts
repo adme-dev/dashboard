@@ -15,8 +15,14 @@
 // - a file used by any page that is not proven client-only is kept;
 // - pages with named views or server/island mode are kept;
 // - only the generated router's plain import is replaced (never `?macro=true`
-//   page meta, and never an import from any other module), and the stub throws
-//   if it is ever rendered on the server instead of silently rendering nothing.
+//   page meta, and never an import from any other module).
+// - selection uses Nitro's final route rules at the start of the server bundle
+//   and is re-verified against the rules Nitro serializes; a mismatch fails the build.
+//
+// Vue Router matches paths case-insensitively while Nitro route rules do not, so
+// e.g. `/AGENCY` is still server-rendered. The stub therefore renders the same
+// empty placeholder Nuxt uses for client-only pages on the server (the client then
+// renders the real page) and logs a warning, rather than failing the request.
 import { createRouter as createRadixRouter, toRouteMatcher } from 'radix3'
 import defu from 'defu'
 
@@ -113,7 +119,17 @@ export function selectClientOnlyPageFiles(pages: StubbablePage[], routeRules: Ro
 export const CLIENT_ONLY_PAGE_STUB_PREFIX = '\0client-only-page-stub:'
 
 export function clientOnlyPageStubSource(file: string): string {
-  return `export default { name: 'ServerStubbedClientOnlyPage', setup() { throw new Error(${JSON.stringify(`Client-only page was rendered on the server: ${file.split('/pages/').pop()}`)}) } }\n`
+  const page = JSON.stringify(file.split('/pages/').pop())
+  return `import { h } from 'vue'
+let warned = false
+export default {
+  name: 'ServerStubbedClientOnlyPage',
+  setup() {
+    if (!warned) { warned = true; console.warn('[client-only-pages] server placeholder rendered for ' + ${page} + ' (non-canonical path casing or rule drift)') }
+    return () => h('div')
+  }
+}
+`
 }
 
 export function isGeneratedRoutesModule(importer: string | undefined): boolean {
@@ -139,9 +155,14 @@ export function clientOnlyPageStubPlugin(files: Set<string>, stats: { stubbed: S
   }
 }
 
+interface MinimalNitro {
+  options: { routeRules?: RouteRules }
+  hooks: { hook(name: 'rollup:before', fn: () => void): void }
+}
+
 interface MinimalNuxt {
-  options: { routeRules?: RouteRules, nitro?: { routeRules?: RouteRules } }
   hook(name: 'pages:resolved', fn: (pages: StubbablePage[]) => void): void
+  hook(name: 'nitro:init', fn: (nitro: MinimalNitro) => void): void
   hook(name: 'vite:extendConfig', fn: (config: { plugins?: unknown[] }, env: { isServer: boolean }) => void): void
 }
 
@@ -151,38 +172,53 @@ interface MinimalNuxt {
  */
 export function serverStubClientOnlyPagesModule(_options: unknown, nuxt: MinimalNuxt) {
   if (process.env.XEROFLOW_KEEP_CLIENT_PAGES_IN_SERVER === 'true') return
+  let pages: StubbablePage[] | null = null
+  let nitro: MinimalNitro | null = null
   const files = new Set<string>()
   const stats = { stubbed: new Set<string>() }
-  nuxt.hook('pages:resolved', (pages) => {
-    files.clear()
-    // Resolved after modules ran, so module- and nitro-provided rules are included.
-    // A nitro-level rule that enables SSR always wins, keeping every page it touches.
-    const routeRules: RouteRules = { ...nuxt.options.nitro?.routeRules, ...nuxt.options.routeRules }
-    for (const [pattern, rule] of Object.entries(nuxt.options.nitro?.routeRules ?? {})) {
-      if (rule && 'ssr' in rule && rule.ssr !== false) routeRules[pattern] = { ...routeRules[pattern], ssr: rule.ssr }
-    }
-    for (const file of selectClientOnlyPageFiles(pages, routeRules)) files.add(file)
-    const reportPath = process.env.XEROFLOW_CLIENT_ONLY_PAGES_REPORT
-    if (reportPath) {
-      const routes: Array<{ path: string, file?: string }> = []
-      const walk = (list: StubbablePage[], parent: string) => list.forEach((p) => {
-        const full = joinPath(parent, p.path)
-        routes.push({ path: full, file: p.file })
-        walk(p.children ?? [], full)
-      })
-      walk(pages, '')
-      const report = routes.map(r => ({ ...r, stubbed: !!r.file && files.has(r.file) }))
-      void import('node:fs').then(fs => fs.writeFileSync(reportPath, JSON.stringify({ routeRules, routes: report }, null, 2)))
-    }
+  const select = () => (pages && nitro ? selectClientOnlyPageFiles(pages, nitro.options.routeRules ?? {}) : new Set<string>())
+
+  nuxt.hook('pages:resolved', (resolved) => {
+    pages = resolved
+  })
+  nuxt.hook('nitro:init', (instance) => {
+    nitro = instance
+    // Nitro serializes these rules into the runtime after the Vite server build.
+    // Any stubbed page that would no longer be client-only under them fails the build.
+    instance.hooks.hook('rollup:before', () => {
+      const final = select()
+      const drifted = [...stats.stubbed].filter(file => !final.has(file))
+      if (drifted.length) throw new Error(`[client-only-pages] route rules changed after selection; rebuild without stubbing: ${drifted.join(', ')}`)
+    })
   })
   nuxt.hook('vite:extendConfig', (config, { isServer }) => {
     if (!isServer) return
     config.plugins ??= []
     config.plugins.push({
       ...clientOnlyPageStubPlugin(files, stats),
+      buildStart() {
+        // Select with Nitro's final rules (after modules and inline page rules); no Nitro → nothing stubbed.
+        files.clear()
+        stats.stubbed.clear()
+        for (const file of select()) files.add(file)
+        writeReport(pages ?? [], nitro?.options.routeRules ?? {}, files)
+      },
       buildEnd() {
         console.info(`[client-only-pages] server bundle stubbed ${stats.stubbed.size} of ${files.size} client-only page files`)
       }
     })
   })
+}
+
+function writeReport(pages: StubbablePage[], routeRules: RouteRules, files: Set<string>) {
+  const reportPath = process.env.XEROFLOW_CLIENT_ONLY_PAGES_REPORT
+  if (!reportPath) return
+  const routes: Array<{ path: string, file?: string, stubbed: boolean }> = []
+  const walk = (list: StubbablePage[], parent: string) => list.forEach((page) => {
+    const full = joinPath(parent, page.path)
+    routes.push({ path: full, file: page.file, stubbed: !!page.file && files.has(page.file) })
+    walk(page.children ?? [], full)
+  })
+  walk(pages, '')
+  void import('node:fs').then(fs => fs.writeFileSync(reportPath, JSON.stringify({ routeRules, routes }, null, 2)))
 }

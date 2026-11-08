@@ -1,11 +1,13 @@
-import { describe, expect, it } from 'vitest'
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { describe, expect, it, vi } from 'vitest'
 import {
   CLIENT_ONLY_PAGE_STUB_PREFIX,
   clientOnlyPageStubPlugin,
   clientOnlyPageStubSource,
   createSsrDisabledChecker,
   probePaths,
-  selectClientOnlyPageFiles
+  selectClientOnlyPageFiles,
+  serverStubClientOnlyPagesModule
 } from '../../lib/build/clientOnlyPageStubs'
 
 const rules = {
@@ -94,11 +96,85 @@ describe('clientOnlyPageStubPlugin', () => {
     expect(plugin.resolveId(file, undefined)).toBeNull()
     expect(plugin.resolveId('/app/pages/pricing.vue', '/repo/.nuxt/routes.mjs')).toBeNull()
   })
-  it('loads a stub that fails loudly if ever rendered on the server', async () => {
+  it('loads a server placeholder that renders an empty element and warns once', async () => {
     const source = plugin.load(CLIENT_ONLY_PAGE_STUB_PREFIX + file)!
     expect(source).toBe(clientOnlyPageStubSource(file))
-    const mod = await import(`data:text/javascript,${encodeURIComponent(source)}`)
-    expect(() => mod.default.setup()).toThrow('Client-only page was rendered on the server: agency/index.vue')
+    const mod = await import(`data:text/javascript,${encodeURIComponent(source.replace('import { h } from \'vue\'', 'const h = (tag) => ({ tag })'))}`)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    expect(mod.default.setup()()).toEqual({ tag: 'div' })
+    mod.default.setup()
+    expect(warn).toHaveBeenCalledTimes(1)
+    expect(warn.mock.calls[0]![0]).toContain('agency/index.vue')
+    warn.mockRestore()
     expect(plugin.load('/app/pages/agency/index.vue')).toBeNull()
+  })
+})
+
+describe('serverStubClientOnlyPagesModule', () => {
+  function harness() {
+    const hooks: Record<string, (...args: any[]) => any> = {}
+    const nitroHooks: Record<string, () => void> = {}
+    const nuxt = {
+      hook: (name: string, fn: (...args: any[]) => any) => {
+        hooks[name] = fn
+      }
+    }
+    serverStubClientOnlyPagesModule({}, nuxt as any)
+    const nitro = {
+      options: { routeRules: { ...rules } as Record<string, Record<string, unknown>> },
+      hooks: {
+        hook: (name: string, fn: () => void) => {
+          nitroHooks[name] = fn
+        }
+      }
+    }
+    const serverPlugin = () => {
+      const config: { plugins?: any[] } = {}
+      hooks['vite:extendConfig']!(config, { isServer: true })
+      return config.plugins![0]
+    }
+    return { hooks, nitroHooks, nitro, serverPlugin }
+  }
+  const pages = [page('/agency', 'agency.vue'), page('/pricing', 'pricing.vue')]
+
+  it('selects at server buildStart with the final Nitro rules', () => {
+    const { hooks, nitro, serverPlugin } = harness()
+    hooks['pages:resolved']!(pages)
+    hooks['nitro:init']!(nitro)
+    const plugin = serverPlugin()
+    plugin.buildStart()
+    expect(plugin.resolveId('/app/pages/agency.vue', '/r/.nuxt/routes.mjs')).toBe(CLIENT_ONLY_PAGE_STUB_PREFIX + '/app/pages/agency.vue')
+    expect(plugin.resolveId('/app/pages/pricing.vue', '/r/.nuxt/routes.mjs')).toBeNull()
+  })
+
+  it('stubs nothing when Nitro rules are unavailable, and never touches the client build', () => {
+    const { hooks, serverPlugin } = harness()
+    hooks['pages:resolved']!(pages)
+    const plugin = serverPlugin()
+    plugin.buildStart()
+    expect(plugin.resolveId('/app/pages/agency.vue', '/r/.nuxt/routes.mjs')).toBeNull()
+    const client: { plugins?: any[] } = {}
+    hooks['vite:extendConfig']!(client, { isServer: false })
+    expect(client.plugins).toBeUndefined()
+  })
+
+  it('fails the build when Nitro rules drift after selection', () => {
+    const { hooks, nitroHooks, nitro, serverPlugin } = harness()
+    hooks['pages:resolved']!(pages)
+    hooks['nitro:init']!(nitro)
+    const plugin = serverPlugin()
+    plugin.buildStart()
+    plugin.resolveId('/app/pages/agency.vue', '/r/.nuxt/routes.mjs')
+    expect(() => nitroHooks['rollup:before']!()).not.toThrow()
+    nitro.options.routeRules['/agency'] = { ssr: true }
+    expect(() => nitroHooks['rollup:before']!()).toThrow('route rules changed after selection')
+  })
+
+  it('is disabled by XEROFLOW_KEEP_CLIENT_PAGES_IN_SERVER=true', () => {
+    vi.stubEnv('XEROFLOW_KEEP_CLIENT_PAGES_IN_SERVER', 'true')
+    const hook = vi.fn()
+    serverStubClientOnlyPagesModule({}, { hook } as any)
+    expect(hook).not.toHaveBeenCalled()
+    vi.unstubAllEnvs()
   })
 })
