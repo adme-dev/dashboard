@@ -87,4 +87,39 @@ describe('button and image href escaping', () => {
     expect(hrefs(fallback)).toContain(escaped)
     expect(fallback).not.toContain('&amp;amp;')
   })
+
+  it('blocks resolved script schemes after merge and keeps safe hrefs encoded once', () => {
+    const document = (offerUrl: string) => renderFlyhubDocumentToHtml({
+      root: { type: 'EmailLayout', data: { props: { darkMode: true }, childrenIds: ['button', 'image', 'dark', 'outlook'] } },
+      button: { type: 'Button', data: { props: { text: 'Book', url: '{{ offer_url }}' } } },
+      image: { type: 'Image', data: { props: { url: 'https://cdn.example/car.png', alt: 'Car', linkHref: '{{ offer_url }}' }, mobile: { props: { url: 'https://cdn.example/car-mobile.png', alt: 'Car' } } } },
+      dark: { type: 'Image', data: { props: { url: 'https://cdn.example/light.png', alt: 'Logo', linkHref: '{{ offer_url }}', darkSrc: 'https://cdn.example/dark.png' } } },
+      outlook: { type: 'Button', data: { props: { text: 'Book', url: '{{ offer_url }}', outlookVml: true } } }
+    }, { variables: { offer_url: offerUrl } })
+    for (const offerUrl of [
+      'javascript:alert(1)',
+      'JaVaScRiPt:alert(1)',
+      ' \n\tjavascript:alert(1)',
+      'java\tscript:alert(1)',
+      'data:text/html,hi',
+      'vbscript:msgbox(1)'
+    ]) {
+      const html = document(offerUrl)
+      const links = hrefs(html)
+      expect(links).toHaveLength(5)
+      expect(links.every(href => href === '#')).toBe(true)
+    }
+    const safe = document('mailto:sales@example.com')
+    expect(hrefs(safe).every(href => href === 'mailto:sales@example.com')).toBe(true)
+    const phone = document('tel:+61390000000')
+    expect(hrefs(phone).every(href => href === 'tel:+61390000000')).toBe(true)
+    const https = document(quoted)
+    expect(hrefs(https).every(href => href === escaped)).toBe(true)
+    expect(https).not.toContain('&amp;amp;')
+    const preview = renderFlyhubDocumentToHtml({
+      root: { type: 'EmailLayout', data: { props: {}, childrenIds: ['button'] } },
+      button: { type: 'Button', data: { props: { text: 'Book', url: '{{ offer_url }}' } } }
+    })
+    expect(hrefs(preview)).toContain('{{ offer_url }}')
+  })
 })

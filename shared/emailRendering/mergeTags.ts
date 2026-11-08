@@ -9,11 +9,30 @@ type MergeOptions = {
 }
 const compiledFallbackEntities: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"' }
 const entities: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', '\'': '&#039;' }
+const dangerousHrefScheme = /^(javascript|data|vbscript):/i
+const unresolvedHrefToken = /^\{\{[^{}]{1,2304}\}\}$/
+
+function decodeCompiledHref(value: string): string {
+  return value.replace(/&(amp|lt|gt|quot|#0*39|#x0*27);/gi, (_entity, name: string) => compiledFallbackEntities[name.toLowerCase()] ?? '\'')
+}
+
+/** Quoted hrefs are checked after merge substitution. Inspection removes ASCII
+ * controls and decodes the compiler's entities once; the stored attribute is
+ * replaced only when the result is a scriptable scheme. */
+export function neutralizeResolvedHrefSchemes(html: string): string {
+  return html.replace(/\bhref(\s*=\s*)("([^"]*)"|'([^']*)')/gi, (full, equals, quoted, doubleValue, singleValue) => {
+    const raw = typeof doubleValue === 'string' ? doubleValue : typeof singleValue === 'string' ? singleValue : ''
+    const inspected = decodeCompiledHref(raw).replace(/[\u0000-\u001F\u007F]/g, '').trim()
+    if (unresolvedHrefToken.test(inspected) || !dangerousHrefScheme.test(inspected)) return full
+    const quote = quoted.startsWith('\'') ? '\'' : '"'
+    return `href${equals}${quote}#${quote}`
+  })
+}
 
 /** One bounded pass over the authored template. Recipient values are literal
  * data: never replacement-string instructions or a second template to evaluate.
- * HTML encoding is for text/quoted attributes; URL ownership remains with the
- * existing field and asset contracts. Subjects use the plain-text context. */
+ * HTML encoding is for text/quoted attributes. After that encoding, quoted
+ * href schemes are checked once. Subjects use the plain-text context. */
 export function resolveEmailMergeTags(template: string, variables: Record<string, string>, options: MergeOptions = {}): string {
   const budget = options.budget ?? createRenderBudget()
   const values = new Map(Object.entries(variables).map(([key, value]) => [key.toLowerCase().trim(), value]))
@@ -61,5 +80,6 @@ export function resolveEmailMergeTags(template: string, variables: Record<string
     cursor = match.index! + match[0].length
   }
   append(template.slice(cursor))
-  return chunks.join('')
+  const resolved = chunks.join('')
+  return options.context === 'text' ? resolved : neutralizeResolvedHrefSchemes(resolved)
 }

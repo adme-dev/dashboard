@@ -65,6 +65,23 @@ describe('shared preview and campaign merge resolution', () => {
     expect(html).toContain('<title>{{other}}</title>')
     expect(html).not.toContain('Should not appear')
   })
+  it('blocks resolved script schemes in final hrefs without rewriting safe urls, preview tokens, or subjects', () => {
+    const stored = '<a href="{{ offer_url }}">Offer</a><a href=\'{{ mail }}\'>Mail</a><a href="{{ phone }}">Call</a>'
+    expect(substituteMergeTags(stored, {
+      offer_url: 'JaVaScRiPt:alert(1)',
+      mail: 'mailto:sales@example.com',
+      phone: 'tel:+61390000000'
+    })).toBe('<a href="#">Offer</a><a href=\'mailto:sales@example.com\'>Mail</a><a href="tel:+61390000000">Call</a>')
+    expect(substituteMergeTags('<a href="{{ offer_url }}">Offer</a>', { offer_url: ' \njava\tscript:alert(1)' })).toBe('<a href="#">Offer</a>')
+    expect(substituteMergeTags('<a href="{{ offer_url }}">Offer</a>', { offer_url: 'data:text/html,hi' })).toBe('<a href="#">Offer</a>')
+    expect(substituteMergeTags('<a href="{{ offer_url }}">Offer</a>', { offer_url: 'vbscript:msgbox(1)' })).toBe('<a href="#">Offer</a>')
+    expect(substituteMergeTags('<a href="{{ offer_url }}">Offer</a>', { offer_url: 'https://dealer.example/offer?q="vip"&src=edm' }))
+      .toBe('<a href="https://dealer.example/offer?q=&quot;vip&quot;&amp;src=edm">Offer</a>')
+    expect(replaceMergeFields('<a href="{{ offer_url }}">Offer</a>', {})).toBe('<a href="{{ offer_url }}">Offer</a>')
+    expect(substituteMergeTags('<a href="{{ offer_url }}">Offer</a>', {})).toBe('<a href="">Offer</a>')
+    expect(resolveEmailMergeTags('Subject {{ offer_url }}', { offer_url: 'javascript:alert(1)' }, { context: 'text' })).toBe('Subject javascript:alert(1)')
+  })
+
   it('charges escaped chunks before joining and limits output in both contexts', () => {
     expect(() => resolveEmailMergeTags('{{name}}', { name: '<'.repeat(10) }, { budget: createRenderBudget(20) })).toThrowError(expect.objectContaining({ code: 'LIMIT_EXCEEDED' }))
     expect(() => resolveEmailMergeTags('{{x}}{{x}}{{x}}', { x: '1234567890' }, { context: 'text', budget: createRenderBudget(20) })).toThrow()
