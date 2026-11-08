@@ -1,7 +1,7 @@
 import { boundedText } from '../boundedText'
 import type { FlyhubBlock, BlockRenderContext } from './types'
 import { formatPadding, resolveFontFamily } from './types'
-import { escapeHtml, escapeFontFamilyForHtml } from './helpers'
+import { escapeHtml, escapeFontFamilyForHtml, escapeUrl } from './helpers'
 import { anchorIdAttribute } from '../../../../../app/utils/edmAnchor'
 import { EmailThemeColor } from '../../../../../shared/emailRendering/renderingQuality'
 
@@ -26,7 +26,7 @@ export function renderOutlookButton(block: FlyhubBlock, context: BlockRenderCont
   const radius = props.buttonStyle === 'pill' ? height / 2 : props.buttonStyle === 'rounded' || !props.buttonStyle ? 8 : 0
   const arc = Math.round(Math.min(100, radius / Math.min(height, width) * 200))
   const text = escapeHtml(typeof props.text === 'string' && props.text ? props.text : 'Click here', context.renderBudget)
-  const url = escapeHtml(typeof props.url === 'string' && props.url ? props.url : '#', context.renderBudget)
+  const url = escapeUrl(typeof props.url === 'string' && props.url ? props.url : '#')
   const weight = style.fontWeight === 'bold' ? 'bold' : '600'
   return boundedText(context.renderBudget)`
         <tr${anchorIdAttribute(props)}>

@@ -3,7 +3,7 @@ import { boundedText } from '../boundedText'
 import { registerBlock } from '../block-registry'
 import type { FlyhubBlock, BlockRenderContext } from './types'
 import { resolveFontFamily, formatPadding } from './types'
-import { escapeHtml, escapeFontFamilyForHtml } from './helpers'
+import { escapeHtml, escapeFontFamilyForHtml, escapeUrl } from './helpers'
 import { anchorIdAttribute } from '../../../../../app/utils/edmAnchor'
 import { extendedStyleCss } from '../../../../../app/utils/edmStyle'
 
@@ -25,7 +25,7 @@ registerBlock({
     const richStyle = extendedStyleCss(style)
 
     const buttonText = (props.text as string) || 'Click here'
-    const buttonUrl = (props.url as string) || '#'
+    const buttonUrl = escapeUrl(typeof props.url === 'string' && props.url ? props.url : '#')
     const buttonBgColor = (props.buttonBackgroundColor as string) || context.primaryColor
     const buttonTextColor = (props.buttonTextColor as string) || '#ffffff'
     const buttonStyle = (props.buttonStyle as string) || 'rounded'
@@ -91,7 +91,7 @@ registerBlock({
     const richStyle = extendedStyleCss(style)
 
     const buttonText = (props.text as string) || 'Click here'
-    const buttonUrl = (props.url as string) || '#'
+    const buttonUrl = escapeUrl(typeof props.url === 'string' && props.url ? props.url : '#')
     const buttonBgColor = (props.buttonBackgroundColor as string) || context.primaryColor
     const buttonTextColor = (props.buttonTextColor as string) || '#ffffff'
     const buttonStyle = (props.buttonStyle as string) || 'rounded'
@@ -135,7 +135,7 @@ registerBlock({
     const fontWeight = (style.fontWeight as string) || 'normal'
 
     const buttonText = (props.text as string) || 'Click here'
-    const buttonUrl = (props.url as string) || '#'
+    const buttonUrl = escapeUrl(typeof props.url === 'string' && props.url ? props.url : '#')
     const buttonBgColor = (props.buttonBackgroundColor as string) || context.primaryColor
     const buttonTextColor = (props.buttonTextColor as string) || '#ffffff'
     const buttonStyle = (props.buttonStyle as string) || 'rounded'
