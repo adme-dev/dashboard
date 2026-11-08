@@ -131,7 +131,7 @@ describe('render distribution endpoints', () => {
       // The route passes the God-mode reserved id; staff requests get a fresh uuid.
       id: expect.stringMatching(/^[0-9a-f-]{36}$/),
       clientId: 'client-1',
-      createdBy: 'user-1'
+      createdBy: 'user-1',
       title: 'Launch render',
       sourceProjectId: 'project-1',
       sourceJobId: 'job-1',
@@ -177,7 +177,7 @@ describe('render distribution endpoints', () => {
     expect(mockRenderPublicUrl).toHaveBeenCalledWith('job-1', 'reels_9x16', 'https://app.xeroflow.io')
     expect(mockBuildVideoStudioSocialDraft).toHaveBeenCalledWith(expect.objectContaining({
       clientId: 'client-1',
-      createdBy: 'user-1'
+      createdBy: 'user-1',
       mediaUrl: 'https://app.xeroflow.io/api/public/renders/token',
       format: 'reels_9x16',
       projectId: 'project-1',
