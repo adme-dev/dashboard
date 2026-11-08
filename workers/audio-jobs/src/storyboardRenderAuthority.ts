@@ -43,7 +43,7 @@ export async function callStoryboardRenderAuthority(env: AuthorityEnv, body: {
   let response: Response
   try {
     response = await fetch(new URL('/api/internal/video-storyboard/render-eligibility', origin), {
-      method: 'POST', redirect: 'error', signal: AbortSignal.timeout(60_000),
+      method: 'POST', redirect: 'manual', signal: AbortSignal.timeout(60_000),
       headers: { 'content-type': 'application/json', 'authorization': `Bearer ${env.STORYBOARD_RENDER_SECRET}` },
       body: JSON.stringify(body)
     })

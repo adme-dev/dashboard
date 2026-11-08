@@ -28,6 +28,20 @@ describe('actual worker authority adapter', () => {
     await expect(callStoryboardRenderAuthority({ STORYBOARD_APP_ORIGIN: origin, STORYBOARD_RENDER_SECRET: 'test' }, { action: 'check', jobId: 'j', manifestHash: 'h' })).rejects.toThrow()
     expect(fetch).not.toHaveBeenCalled()
   })
+  it('uses edge-compatible manual redirects and never follows a redirected authority request', async () => {
+    const fetch = vi.spyOn(globalThis, 'fetch').mockImplementation(async (_url, init) => {
+      if (init?.redirect === 'error') throw new TypeError('Unsupported edge redirect mode')
+      return new Response(null, { status: 302, headers: { location: 'https://untrusted.example/collect' } })
+    })
+    await expect(callStoryboardRenderAuthority({ STORYBOARD_APP_ORIGIN: 'https://app.xeroflow.io', STORYBOARD_RENDER_SECRET: 'test' }, { action: 'check', jobId: 'j', manifestHash: 'h' })).rejects.toThrow('eligibility rejected')
+    expect(fetch).toHaveBeenCalledTimes(1)
+    expect(fetch).toHaveBeenCalledWith(new URL('https://app.xeroflow.io/api/internal/video-storyboard/render-eligibility'), expect.objectContaining({ redirect: 'manual' }))
+  })
+  it('accepts a successful authority response with the edge-compatible redirect mode', async () => {
+    const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 204 }))
+    await expect(callStoryboardRenderAuthority({ STORYBOARD_APP_ORIGIN: 'https://app.xeroflow.io', STORYBOARD_RENDER_SECRET: 'test' }, { action: 'check', jobId: 'j', manifestHash: 'h' })).resolves.toBeUndefined()
+    expect(fetch).toHaveBeenCalledWith(expect.any(URL), expect.objectContaining({ redirect: 'manual' }))
+  })
   it('retains ambiguous publication outcomes rather than deleting potentially published bytes', async () => {
     vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('network'))
     await expect(callStoryboardRenderAuthority({ STORYBOARD_APP_ORIGIN: 'https://app.xeroflow.io', STORYBOARD_RENDER_SECRET: 'test' }, { action: 'publish', jobId: 'j', manifestHash: 'h' })).rejects.toBeInstanceOf(StoryboardPublicationUncertainError)

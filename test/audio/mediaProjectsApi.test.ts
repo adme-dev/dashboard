@@ -21,6 +21,7 @@ vi.mock('~~/server/utils/auth', () => ({
 const mockListProjects = vi.fn()
 const mockCreateProject = vi.fn()
 const mockGetProject = vi.fn()
+const mockGetProjectFresh = vi.fn()
 const mockSaveDraft = vi.fn()
 const mockRestoreVersion = vi.fn()
 const mockCreateVersion = vi.fn()
@@ -45,6 +46,7 @@ vi.mock('~~/server/utils/audio/projects', async original => ({
   ...await original<typeof import('~~/server/utils/audio/projects')>(),
   listProjects: (...a: unknown[]) => mockListProjects(...a),
   createProjectIn: (_db: unknown, ...a: unknown[]) => mockCreateProject(...a),
+  getProjectFresh: (...a: unknown[]) => mockGetProjectFresh(...a),
   getProjectWithCurrentTimeline: (...a: unknown[]) => mockGetProject(...a),
   getProjectWithCurrentTimelineIn: vi.fn(),
   getCurrentTimelineIfMatchingIn: (_db: unknown, ...a: unknown[]) => mockReplayTimeline(...a),
@@ -63,6 +65,7 @@ const { default: versionGetH } = await import('../../server/api/agency/audio/pro
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mockGetProjectFresh.mockResolvedValue({ id: 'p1', createdBy: 'u1' })
   replayReference = null
   mockRequireAuth.mockResolvedValue({ id: 'u1', role: 'member' })
   mockRequireWriteAccess.mockResolvedValue({ id: 'u1', role: 'member' })
@@ -73,12 +76,12 @@ describe('GET /agency/audio/projects', () => {
     mockListProjects.mockResolvedValue([{ id: 'p1' }])
     const res = await listH({ query: { clientId: '11111111-1111-4111-8111-111111111111' } } as any)
     expect(res).toEqual({ projects: [{ id: 'p1', cover: null }] })
-    expect(mockListProjects).toHaveBeenCalledWith('11111111-1111-4111-8111-111111111111')
+    expect(mockListProjects).toHaveBeenCalledWith('11111111-1111-4111-8111-111111111111', { id: 'u1', role: 'member' })
   })
   it('lists all projects when no filter', async () => {
     mockListProjects.mockResolvedValue([])
     await listH({ query: {} } as any)
-    expect(mockListProjects).toHaveBeenCalledWith(undefined)
+    expect(mockListProjects).toHaveBeenCalledWith(undefined, { id: 'u1', role: 'member' })
   })
 })
 

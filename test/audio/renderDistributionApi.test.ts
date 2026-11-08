@@ -15,10 +15,21 @@ vi.mock('~~/server/utils/auth', () => ({
 
 const mockGetProjectWithCurrentTimeline = vi.fn()
 const mockGetRenderJob = vi.fn()
-vi.mock('~~/server/utils/audio/projects', () => ({
+vi.mock('~~/server/utils/audio/projects', async importOriginal => ({
+  ...(await importOriginal<typeof import('~~/server/utils/audio/projects')>()),
   getProjectWithCurrentTimeline: (...args: unknown[]) => mockGetProjectWithCurrentTimeline(...args),
   getRenderJob: (...args: unknown[]) => mockGetRenderJob(...args),
 }))
+
+let storedReplay: unknown = null
+const mockLedgerEntry = vi.fn()
+vi.mock('~~/server/utils/video/godModeStudioMutations', async (importOriginal) => {
+  const original = await importOriginal<typeof import('~~/server/utils/video/godModeStudioMutations')>()
+  return { ...original, withGodModeLedger: (...args: Parameters<typeof original.withGodModeLedger>) => {
+    mockLedgerEntry()
+    return storedReplay ? Promise.resolve(storedReplay) : original.withGodModeLedger(...args)
+  } }
+})
 
 const mockCreateVideoAsset = vi.fn()
 vi.mock('~~/server/utils/video/assets', () => ({
@@ -62,6 +73,7 @@ const project = {
     id: 'project-1',
     clientId: 'client-1',
     title: 'EOFY dealer launch',
+    createdBy: 'user-1'
   },
 }
 
@@ -83,8 +95,9 @@ function event(body: Record<string, unknown> = { format: 'reels_9x16' }) {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  storedReplay = null
   process.env.VIDEO_STUDIO_ENABLED = 'true'
-  mockRequireWriteAccess.mockResolvedValue({ id: 'user-1' })
+  mockRequireWriteAccess.mockResolvedValue({ id: 'user-1', role: 'member' })
   mockGetProjectWithCurrentTimeline.mockResolvedValue(project)
   mockGetRenderJob.mockResolvedValue(job)
 })
@@ -94,6 +107,21 @@ afterEach(() => {
 })
 
 describe('render distribution endpoints', () => {
+  it.each([
+    ['save asset', saveAssetHandler], ['portal', sendToPortalHandler], ['social draft', publishSocialHandler]
+  ] as const)('rejects another project creator before %s side effects', async (_name, handler) => {
+    storedReplay = { previouslyAuthorized: true }
+    mockRequireWriteAccess.mockResolvedValue({ id: 'other-member', role: 'member' })
+    await expect(handler(event())).rejects.toMatchObject({ statusCode: 403 })
+    expect(mockLedgerEntry).not.toHaveBeenCalled()
+    expect(mockGetRenderJob).not.toHaveBeenCalled()
+    expect(mockCreateVideoAsset).not.toHaveBeenCalled()
+    expect(mockCreateVideoReview).not.toHaveBeenCalled()
+    expect(mockRenderPublicUrl).not.toHaveBeenCalled()
+    expect(mockBuildVideoStudioSocialDraft).not.toHaveBeenCalled()
+    expect(mockQueryOne).not.toHaveBeenCalled()
+  })
+
   it('saves a completed render variant to the video library with source provenance', async () => {
     mockCreateVideoAsset.mockResolvedValue({ id: 'asset-1' })
 
@@ -128,7 +156,7 @@ describe('render distribution endpoints', () => {
       format: 'reels_9x16',
       r2Key: 'media/project-1/job-1/reels_9x16.mp4',
       title: 'Client review',
-      createdBy: 'user-1',
+      createdBy: 'user-1'
     })
     expect(res).toEqual({ review: { id: 'review-1' } })
   })
@@ -197,7 +225,7 @@ describe('render distribution endpoints', () => {
   })
 
   it('rejects portal and social distribution when the project has no client', async () => {
-    mockGetProjectWithCurrentTimeline.mockResolvedValue({ project: { id: 'project-1', clientId: null } })
+    mockGetProjectWithCurrentTimeline.mockResolvedValue({ project: { id: 'project-1', clientId: null, createdBy: 'user-1' } })
 
     await expect(sendToPortalHandler(event())).rejects.toMatchObject({ statusCode: 400 })
     await expect(publishSocialHandler(event())).rejects.toMatchObject({ statusCode: 400 })

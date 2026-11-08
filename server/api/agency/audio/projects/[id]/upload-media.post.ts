@@ -5,7 +5,7 @@
 // pattern (readMultipartFormData → validate → uploadFile).
 import { executeGodModeMediaUpload } from '~~/server/utils/audio/godModeExternalMutations'
 import { requireWriteAccess } from '~~/server/utils/auth'
-import { getProjectWithCurrentTimeline } from '~~/server/utils/audio/projects'
+import { assertMediaProjectAccess, getProjectWithCurrentTimeline } from '~~/server/utils/audio/projects'
 import {
   uploadFile,
   getPresignedDownloadUrl,
@@ -18,13 +18,14 @@ import {
 } from '~~/server/utils/storage'
 
 export default defineEventHandler(async (event) => {
-  await requireWriteAccess(event)
+  const actor = await requireWriteAccess(event)
 
   const id = getRouterParam(event, 'id')!
   const existing = await getProjectWithCurrentTimeline(id)
   if (!existing) {
     throw createError({ statusCode: 404, statusMessage: 'Project not found' })
   }
+  assertMediaProjectAccess(actor, existing.project)
   if (existing.project.mediaType !== 'av') {
     throw createError({ statusCode: 400, statusMessage: 'upload-media requires an AV project' })
   }

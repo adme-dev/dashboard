@@ -12,11 +12,17 @@ import { storyboardFixture } from '../video/fixtures/storyboard'
 
 const connectionString = process.env.STORYBOARD_TEST_DATABASE_URL
 const host = process.env.STORYBOARD_TEST_DATABASE_HOST
-if (connectionString && (new URL(connectionString).hostname !== host || host !== 'ep-hidden-meadow-a4m2e772.us-east-1.aws.neon.tech')) throw new Error('Only the verified isolated storyboard branch is allowed')
+if (connectionString) {
+  const url = new URL(connectionString)
+  const isolatedNeon = url.hostname === host && host === 'ep-hidden-meadow-a4m2e772.us-east-1.aws.neon.tech'
+  const isolatedLocal = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname) && url.pathname === '/video_storyboard_recovery_test' && Boolean(url.port) && !url.search
+  if (!isolatedNeon && !isolatedLocal) throw new Error('Only verified isolated Neon or explicit localhost video_storyboard_recovery_test is allowed')
+}
 const pool = connectionString ? new Pool({ connectionString, max: 6 }) : null
 vi.mock('~~/server/utils/db', () => ({
   queryOneFresh: async (sql: string, params: unknown[]) => (await pool!.query(sql, params)).rows[0],
   queryOne: async (sql: string, params: unknown[]) => (await pool!.query(sql, params)).rows[0],
+  queryRowsFresh: async (sql: string, params: unknown[]) => (await pool!.query(sql, params)).rows,
   queryRows: async (sql: string, params: unknown[]) => (await pool!.query(sql, params)).rows,
   transaction: async (operation: (db: unknown) => Promise<unknown>) => {
     const client = await pool!.connect()
@@ -77,7 +83,10 @@ describe.skipIf(!pool)('isolated atomic storyboard applications', { timeout: 900
     await pool!.query(`INSERT INTO team_members (id, name, email, user_role, custom_role_id, is_active) VALUES ($1, 'Synthetic T06 actor', $2, 'member', $3, true)`, [actor.id, `t06-${actor.id}@example.invalid`, roleId])
   }, 30000)
   afterAll(async () => {
-    for (const projectId of projects) await pool!.query('DELETE FROM media_projects WHERE id=$1', [projectId])
+    for (const projectId of projects) {
+      await pool!.query('DELETE FROM video_storyboards WHERE project_id=$1', [projectId])
+      await pool!.query('DELETE FROM media_projects WHERE id=$1', [projectId])
+    }
     for (const asset of assets) await pool!.query('DELETE FROM video_assets WHERE id=$1', [asset])
     await pool!.query('DELETE FROM team_members WHERE id=$1', [actor.id])
     await pool!.query('DELETE FROM custom_roles WHERE id=$1', [roleId])

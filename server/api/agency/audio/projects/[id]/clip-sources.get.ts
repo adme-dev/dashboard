@@ -1,5 +1,5 @@
 import { requireAuth } from '~~/server/utils/auth'
-import { getProjectWithCurrentTimeline } from '~~/server/utils/audio/projects'
+import { assertMediaProjectAccess, getProjectWithCurrentTimeline } from '~~/server/utils/audio/projects'
 import { collectClipKeys } from '~~/server/utils/audio/clipSources'
 import { TimelineStateSchema } from '~~/server/utils/audio/timelineSchema'
 import { isStorageConfigured } from '~~/server/utils/storage'
@@ -9,10 +9,11 @@ import { isStorageConfigured } from '~~/server/utils/storage'
 // R2 URLs carry no CORS headers and cannot be drawn into the preview canvas.
 // The proxy re-validates key membership on every request → no IDOR/SSRF.
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
+  const actor = await requireAuth(event)
   const id = getRouterParam(event, 'id')!
   const res = await getProjectWithCurrentTimeline(id)
   if (!res) throw createError({ statusCode: 404, statusMessage: 'Project not found' })
+  assertMediaProjectAccess(actor, res.project)
 
   const sources: Record<string, string> = {}
   if (!res.timeline) return { sources }

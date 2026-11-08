@@ -7,7 +7,7 @@
 // current timeline are served (no arbitrary-key reads). Honours Range so
 // <video> can seek.
 import { requireAuth } from '~~/server/utils/auth'
-import { getProjectWithCurrentTimeline } from '~~/server/utils/audio/projects'
+import { assertMediaProjectAccess, getProjectWithCurrentTimeline } from '~~/server/utils/audio/projects'
 import { collectClipKeys } from '~~/server/utils/audio/clipSources'
 import { TimelineStateSchema } from '~~/server/utils/audio/timelineSchema'
 import { readStoredObject, type R2BucketBinding } from '~~/server/utils/storage'
@@ -30,13 +30,15 @@ export function parseByteRange(header: string | undefined, size?: number): { sta
 }
 
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
+  const actor = await requireAuth(event)
   const id = getRouterParam(event, 'id')!
+  const res = await getProjectWithCurrentTimeline(id)
+  if (!res) throw createError({ statusCode: 404, statusMessage: 'Project not found' })
+  assertMediaProjectAccess(actor, res.project)
+
   const key = String(getQuery(event).key ?? '')
   if (!key) throw createError({ statusCode: 400, statusMessage: 'key is required' })
-
-  const res = await getProjectWithCurrentTimeline(id)
-  if (!res?.timeline) throw createError({ statusCode: 404, statusMessage: 'Project not found' })
+  if (!res.timeline) throw createError({ statusCode: 404, statusMessage: 'Project not found' })
   const parsed = TimelineStateSchema.safeParse(res.timeline.state)
   if (!parsed.success || !collectClipKeys(parsed.data).includes(key)) {
     throw createError({ statusCode: 404, statusMessage: 'Media is not part of this project' })

@@ -104,6 +104,17 @@ describe('editor revision persistence integration', () => {
     expect(e.timeline.value?.width).toBe(720)
   })
 
+  it('keeps an accepted render visible and polling through an initially empty history read', async () => {
+    const e = await editor()
+    const job = { id: 'j1', projectId: 'p1', status: 'queued' }
+    request.mockResolvedValueOnce({ job }).mockResolvedValueOnce({ jobs: [] })
+    expect(await e.renderVideoAction()).toEqual({ ok: true })
+    expect(e.renderJobs.value).toEqual([job])
+    request.mockResolvedValueOnce({ jobs: [{ ...job, status: 'done' }] })
+    await e.refreshRenderJobs()
+    expect(e.renderJobs.value).toEqual([{ ...job, status: 'done' }])
+  })
+
   it('flushes before rendering and surfaces a render revision conflict', async () => {
     const e = await editor()
     e.restoreVersion({ ...state, width: 720 })

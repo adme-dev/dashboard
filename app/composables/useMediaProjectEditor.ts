@@ -525,12 +525,16 @@ export function useMediaProjectEditor(projectId: string) {
   // ─── Render jobs ────────────────────────────────────────────────────────────
   const renderJobs = ref<MediaRenderJob[]>([])
   const rendering = ref(false)
+  const acceptedRenderJobs = new Map<string, MediaRenderJob>()
   let pollTimer: ReturnType<typeof setTimeout> | null = null
 
   async function refreshRenderJobs() {
     try {
       const res = await apiFetch<{ jobs: MediaRenderJob[] }>(`/api/agency/audio/projects/${projectId}/render-jobs`)
-      renderJobs.value = res?.jobs ?? []
+      const jobs = res?.jobs ?? []
+      for (const job of jobs) acceptedRenderJobs.delete(job.id)
+      // Keep the durable enqueue receipt visible until the history read observes it.
+      renderJobs.value = [...acceptedRenderJobs.values(), ...jobs]
     } catch { /* surfaced via UI emptiness */ }
   }
 
@@ -550,11 +554,15 @@ export function useMediaProjectEditor(projectId: string) {
     return operations.run(async () => {
       try {
         if (!await persistCurrentSnapshot()) return { ok: false, reason: saveError.value ?? 'Save failed' }
-        await apiFetch(`/api/agency/audio/projects/${projectId}/render-video`, {
+        const accepted = await apiFetch<{ job: MediaRenderJob }>(`/api/agency/audio/projects/${projectId}/render-video`, {
           method: 'POST',
           headers: { 'Idempotency-Key': idempotencyKey('render') },
           body: { ...timelineToken, ...(formats?.length ? { formats } : {}) }
         })
+        if (accepted?.job?.id) {
+          acceptedRenderJobs.set(accepted.job.id, accepted.job)
+          renderJobs.value = [accepted.job, ...renderJobs.value.filter(job => job.id !== accepted.job.id)]
+        }
         await refreshRenderJobs()
         scheduleJobPoll()
         return { ok: true }
