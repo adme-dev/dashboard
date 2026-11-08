@@ -38,7 +38,7 @@ export async function callStoryboardRenderAuthority(env: AuthorityEnv, body: {
   if (!env.STORYBOARD_RENDER_SECRET || !env.STORYBOARD_APP_ORIGIN) throw new Error('Storyboard render authority unavailable')
   const origin = new URL(env.STORYBOARD_APP_ORIGIN)
   if (origin.protocol !== 'https:' || origin.username || origin.password || origin.pathname !== '/' || origin.search || origin.hash
-    || !['app.xeroflow.io', 'agency-dashboard.pages.dev'].includes(origin.hostname) || origin.port)
+    || !['app.xeroflow.io', 'agency-dashboard-6cm.pages.dev'].includes(origin.hostname) || origin.port)
     throw new Error('Storyboard render authority origin invalid')
   let response: Response
   try {

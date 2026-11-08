@@ -78,6 +78,13 @@ describe('auth middleware internal bearer endpoints', () => {
     await expect(handler(fakeEvent('/api/internal/newsroom/other'))).rejects.toMatchObject({ statusCode: 401 })
   })
 
+  it('lets only the exact storyboard render authority callback reach its bearer guard', async () => {
+    await expect(handler(fakeEvent('/api/internal/video-storyboard/render-eligibility'))).resolves.toBeUndefined()
+    expect(validateSession).not.toHaveBeenCalled()
+    await expect(handler(fakeEvent('/api/internal/video-storyboard/render-eligibility/admin'))).rejects.toMatchObject({ statusCode: 401 })
+    await expect(handler(fakeEvent('/api/internal/video-storyboard/other'))).rejects.toMatchObject({ statusCode: 401 })
+  })
+
   it('does not broaden the signed lead bypass to sibling internal routes', async () => {
     await expect(handler(fakeEvent('/api/internal/leads-private/admin'))).rejects.toMatchObject({
       statusCode: 401,
