@@ -58,7 +58,8 @@ export default defineEventHandler(async (event) => {
       bytes: new Uint8Array(file.data),
       rightsConfirmed: field(form, 'rightsConfirmed') === 'true',
       idempotencyKey: clientKey,
-      assetId: run.ids[0]!
+      assetId: run.ids[0]!,
+      replayOnly: run.replay
     }, {
       upload: (bytes, key, contentType) => uploadFile(Buffer.from(bytes), key, contentType, { projectId: id, kind: 'audio-import' }, bucket).then(() => undefined),
       metadata: key => getFileMetadata(key, bucket),

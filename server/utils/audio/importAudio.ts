@@ -59,6 +59,8 @@ export interface ImportAudioInput {
   idempotencyKey: string
   /** Pre-reserved asset id (God mode ledger); minted by the caller otherwise. */
   assetId: string
+  /** A succeeded God mode replay: return the committed asset, never import again. */
+  replayOnly?: boolean
 }
 
 export interface ImportAudioDeps {
@@ -103,14 +105,22 @@ export async function importAudioAsset(input: ImportAudioInput, deps: ImportAudi
     }
     return { row: existing, replayed: true }
   }
+  if (input.replayOnly) {
+    throw createError({ statusCode: 409, statusMessage: 'The original import is no longer available; use a new Idempotency-Key' })
+  }
 
   const key = buildMasterKey(input.projectClientId, input.assetId, format)
   const contentType = MIME_BY_FORMAT[format]
-  await deps.upload(input.bytes, key, contentType)
-  await deps.onStored?.()
   const discard = async () => {
     await deps.remove(key).catch(() => undefined)
   }
+  try {
+    await deps.upload(input.bytes, key, contentType)
+  } catch (error) {
+    await discard()
+    throw error
+  }
+  await deps.onStored?.()
   const stored = await deps.metadata(key)
   if (!stored?.etag || stored.size !== input.bytes.length) {
     await discard()
@@ -138,7 +148,10 @@ export async function importAudioAsset(input: ImportAudioInput, deps: ImportAudi
   } catch (error) {
     // A concurrent request with the same key won the unique idempotency slot.
     if ((error as { code?: string })?.code !== '23505') {
-      await discard()
+      // The insert may have committed even though the client saw an error: keep the
+      // object whenever a row references it, and only remove a provably unused copy.
+      const committed = await deps.findByIdempotencyKey(idempotencyKey).catch(() => undefined)
+      if (committed === null) await discard()
       throw error
     }
     const winner = await deps.findByIdempotencyKey(idempotencyKey)

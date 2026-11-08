@@ -64,6 +64,26 @@ describe('importAudioAsset storage hygiene', () => {
       await expect(importAudioAsset(input(), d)).rejects.toBeTruthy()
       expect(d.remove).toHaveBeenCalledWith(key)
     }
+    const failedUpload = deps({ upload: vi.fn(async () => {
+      throw new Error('partial write')
+    }) })
+    await expect(importAudioAsset(input(), failedUpload.d)).rejects.toThrow('partial write')
+    expect(failedUpload.d.remove).toHaveBeenCalledWith(key)
+    expect(failedUpload.d.onStored).not.toHaveBeenCalled()
+  })
+  it('keeps the object when an ambiguous insert error actually committed', async () => {
+    const committed = { source: 'imported', r2_key_master: key }
+    const find = vi.fn().mockResolvedValueOnce(null).mockResolvedValueOnce(committed)
+    const { d } = deps({ findByIdempotencyKey: find, insert: vi.fn(async () => {
+      throw new Error('connection reset after commit')
+    }) })
+    await expect(importAudioAsset(input(), d)).rejects.toThrow('connection reset')
+    expect(d.remove).not.toHaveBeenCalled()
+  })
+  it('never re-imports on a succeeded God mode replay whose asset is gone', async () => {
+    const { d } = deps()
+    await expect(importAudioAsset(input({ replayOnly: true }), d)).rejects.toMatchObject({ statusCode: 409 })
+    expect(d.upload).not.toHaveBeenCalled()
   })
   it('removes the losing copy of a concurrent same-key import but never the winner', async () => {
     const sha = createHash('sha256').update(wav).digest('hex')
