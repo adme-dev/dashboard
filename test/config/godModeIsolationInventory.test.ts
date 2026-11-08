@@ -144,8 +144,10 @@ const API_INVENTORY = {
   // remain in loadPublicBannerShare; no inline role gate, transaction or bypass.
   // Fresh Finance/ADMIN and scoped invoice/expense delegates remain mandatory.
   // Explicitly count their helper calls; none registers a God mode bypass.
-  totalRouteFiles: 2381,
-  mutationRouteFiles: 1301,
+  // PR894/895: three ADMIN-grant role-skill routes, one scoped skill GET,
+  // and authenticated allowlisted documentation GET/POST; no new bypass.
+  totalRouteFiles: 2387,
+  mutationRouteFiles: 1304,
   explicitlyGuardedMutationFiles: 431,
   guardedMutationFilesWithTransactionCall: 58
 } as const
@@ -195,8 +197,8 @@ describe('God mode route isolation inventory', () => {
   it('records the full mechanical API and mutation inventory reviewed before implementation', () => {
     expect(mechanicalInventory()).toEqual(API_INVENTORY)
     expect(API_INVENTORY).toEqual({
-      totalRouteFiles: 2381,
-      mutationRouteFiles: 1301,
+      totalRouteFiles: 2387,
+      mutationRouteFiles: 1304,
       explicitlyGuardedMutationFiles: 431,
       guardedMutationFilesWithTransactionCall: 58
     })
