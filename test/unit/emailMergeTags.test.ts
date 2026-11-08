@@ -176,6 +176,27 @@ describe('shared preview and campaign merge resolution', () => {
     ])
   })
 
+  it('neutralizes Outlook conditional-comment hrefs without rewriting safe comment bytes', () => {
+    const stored = '<!--[if mso]><v:roundrect href="javascript&#58;alert(1)"><![endif]-->'
+    expect(substituteMergeTags(stored, {})).toBe('<!--[if mso]><v:roundrect href="#"><![endif]-->')
+    const safe = '<!--[if mso]><v:roundrect href="https://dealer.example/o&#039;brien"><![endif]-->'
+    expect(substituteMergeTags(safe, {})).toBe(safe)
+  })
+
+  it('uses parser locations for malformed start tags and leaves an unclosed quote untouched', () => {
+    const output = substituteMergeTags('<a/href=javascript:alert(1) title=Keep>Offer</a>', {})
+    expect(output).toBe('<a/href="#" title=Keep>Offer</a>')
+    const anchor = parseFragment(output).childNodes[0]
+    expect(anchor && 'attrs' in anchor ? anchor.attrs : []).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: 'href', value: '#' }),
+      expect.objectContaining({ name: 'title', value: 'Keep' })
+    ]))
+    const unclosed = '<a href="javascript:alert(1)>Offer</a>'
+    expect(substituteMergeTags(unclosed, {})).toBe(unclosed)
+    const duplicate = substituteMergeTags('<a href=https://dealer.example/offer href=&#106;avascript:alert(1)>Offer</a>', {})
+    expect(duplicate).toBe('<a href=https://dealer.example/offer href="#">Offer</a>')
+  })
+
   it('charges escaped chunks before joining and limits output in both contexts', () => {
     expect(() => resolveEmailMergeTags('{{name}}', { name: '<'.repeat(10) }, { budget: createRenderBudget(20) })).toThrowError(expect.objectContaining({ code: 'LIMIT_EXCEEDED' }))
     expect(() => resolveEmailMergeTags('{{x}}{{x}}{{x}}', { x: '1234567890' }, { context: 'text', budget: createRenderBudget(20) })).toThrow()

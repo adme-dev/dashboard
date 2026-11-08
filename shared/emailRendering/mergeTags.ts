@@ -28,6 +28,8 @@ function isDangerousHref(value: string): boolean {
 
 type HrefSpan = { start: number, end: number, name: string }
 type ParsedHref = { name: string, value: string, location: { startOffset: number, endOffset: number } }
+type ReparseBudget = { remaining: number }
+const MAX_DUPLICATE_REPARSE_CHARS = 1_000_000
 
 function elementHrefs(element: HtmlElement): ParsedHref[] {
   const hrefs: ParsedHref[] = []
@@ -54,14 +56,17 @@ function maskHrefs(html: string, hrefs: ParsedHref[], base: number): string {
   return masked
 }
 
-function duplicateHrefSpans(html: string, element: HtmlElement, base: number): HrefSpan[] {
+function duplicateHrefSpans(html: string, element: HtmlElement, base: number, budget: ReparseBudget): HrefSpan[] {
   const startTag = element.sourceCodeLocation?.startTag
   if (!startTag) return []
   const source = html.slice(startTag.startOffset, startTag.endOffset)
   if ((source.match(/(?:^|[\s/])(?:xlink:)?href\s*=/gi) ?? []).length < 2) return []
   const spans: HrefSpan[] = []
   let masked = maskHrefs(source, elementHrefs(element), startTag.startOffset)
-  for (let pass = 0; pass < 32; pass++) {
+  // Later duplicates are inert to parse5. Bound their extra source cleanup so
+  // malformed markup cannot turn repeated start-tag parsing into unbounded work.
+  for (let pass = 0; pass < 32 && masked.length <= budget.remaining; pass++) {
+    budget.remaining -= masked.length
     const reparsed = parseFragment(masked, { sourceCodeLocationInfo: true, scriptingEnabled: false })
     const candidate = reparsed.childNodes.find(node => 'attrs' in node) as HtmlElement | undefined
     if (!candidate) break
@@ -81,7 +86,7 @@ function duplicateHrefSpans(html: string, element: HtmlElement, base: number): H
   return spans
 }
 
-function hrefSpans(html: string, base: number, depth: number): HrefSpan[] {
+function hrefSpans(html: string, base: number, depth: number, budget: ReparseBudget): HrefSpan[] {
   if (depth > 4) return []
   const spans: HrefSpan[] = []
   const visit = (node: HtmlChild) => {
@@ -89,7 +94,7 @@ function hrefSpans(html: string, base: number, depth: number): HrefSpan[] {
       const comment = node as HtmlComment
       const location = comment.sourceCodeLocation
       if (location && comment.data.toLowerCase().includes('href')) {
-        spans.push(...hrefSpans(comment.data, base + location.startOffset + 4, depth + 1))
+        spans.push(...hrefSpans(comment.data, base + location.startOffset + 4, depth + 1, budget))
       }
       return
     }
@@ -100,7 +105,7 @@ function hrefSpans(html: string, base: number, depth: number): HrefSpan[] {
         spans.push({ start: base + href.location.startOffset, end: base + href.location.endOffset, name: href.name })
       }
     }
-    spans.push(...duplicateHrefSpans(html, element, base))
+    spans.push(...duplicateHrefSpans(html, element, base, budget))
     const content = node.nodeName === 'template' ? (node as HtmlTemplate).content.childNodes : []
     for (const child of [...element.childNodes, ...content]) visit(child)
   }
@@ -112,7 +117,7 @@ function hrefSpans(html: string, base: number, depth: number): HrefSpan[] {
  * parse5 decodes character references and reads unquoted attributes. Only those
  * attribute spans change; unresolved tokens and every other byte stay. */
 export function neutralizeResolvedHrefSchemes(html: string): string {
-  const spans = hrefSpans(html, 0, 0).sort((left, right) => right.start - left.start)
+  const spans = hrefSpans(html, 0, 0, { remaining: MAX_DUPLICATE_REPARSE_CHARS }).sort((left, right) => right.start - left.start)
   let result = html
   for (const span of spans) {
     if (span.start < 0 || span.end > result.length || span.start >= span.end) continue
