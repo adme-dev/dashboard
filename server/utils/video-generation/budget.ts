@@ -1,10 +1,13 @@
 import { transaction as defaultTransaction } from '~~/server/utils/db'
 import { canSpendVideoGenerationCents } from '~~/server/utils/video-generation/costs'
 import { mapVideoGenerationJobRow } from '~~/server/utils/video-generation/jobs'
+import { summarizeVideoGenerationBudget } from '~~/server/utils/video-generation/budgetStatus'
+import type { VideoGenerationBudgetStatus } from '~~/server/utils/video-generation/budgetStatus'
 import type { CreateVideoGenerationJobInput } from '~~/server/utils/video-generation/jobs'
 import type { VideoGenerationJob, VideoGenerationTenantPolicy } from '~~/server/utils/video-generation/types'
 import {
   PROJECT_VIDEO_GENERATION_LIABILITY_SUM_SQL,
+  TENANT_VIDEO_GENERATION_LIABILITY_BREAKDOWN_SQL,
   TENANT_VIDEO_GENERATION_LIABILITY_SUM_SQL,
   VIDEO_GENERATION_JOB_INSERT_SQL,
   VIDEO_GENERATION_TENANT_LOCK_SQL,
@@ -27,6 +30,8 @@ export interface ReserveVideoGenerationResult {
   reused?: boolean
   reason?: 'allowed' | 'tenant_generation_disabled' | 'tenant_cap_exceeded' | 'project_allowance_exceeded' | 'idempotency_key_conflict'
   remainingCents?: number
+  /** Content-free explanation read in the same transaction (same now()) as the refusal. */
+  budget?: VideoGenerationBudgetStatus
 }
 
 export interface VideoGenerationBudgetDb {
@@ -88,7 +93,12 @@ export async function reserveAndCreateVideoGenerationJobIn(
   const currentSpendCents = Number(spendRow.rows?.[0]?.total ?? 0)
   const decision = canSpendVideoGenerationCents(policy, currentSpendCents, input.estimatedCostCents)
   if (!decision.allowed) {
-    return { ok: false, reason: decision.reason, remainingCents: decision.remainingCents }
+    if (decision.reason !== 'tenant_cap_exceeded' || !policy?.enabled) {
+      return { ok: false, reason: decision.reason, remainingCents: decision.remainingCents }
+    }
+    const breakdown = await db.query(TENANT_VIDEO_GENERATION_LIABILITY_BREAKDOWN_SQL, [input.tenantId])
+    const budget = summarizeVideoGenerationBudget(policy, (breakdown.rows ?? []) as Parameters<typeof summarizeVideoGenerationBudget>[1])
+    return { ok: false, reason: decision.reason, remainingCents: decision.remainingCents, budget }
   }
 
   if (typeof input.projectAllowanceCents === 'number') {

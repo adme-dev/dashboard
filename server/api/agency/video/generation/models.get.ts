@@ -34,6 +34,6 @@ export default defineEventHandler(async (event) => {
     models: policy.enabled ? selectableVideoModelOptions(listSelectableVideoGenerationModels()) : [],
     policy: { enabled: policy.enabled, monthlyCapCents: policy.monthlyCapCents },
     // Content-free counts and cents only; explains why a request may be refused.
-    budget: policy.enabled ? await loadVideoGenerationBudgetStatus(tenantId, policy) : null
+    budget: policy.enabled ? await loadVideoGenerationBudgetStatus(tenantId, policy).catch(() => null) : null
   }
 })

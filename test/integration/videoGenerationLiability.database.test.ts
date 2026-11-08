@@ -333,6 +333,8 @@ describe.skipIf(!pool)('video generation liability on localhost', () => {
 
     const refused = await reserveAndCreateVideoGenerationJob(reservation(ids, { estimatedCostCents: 10 }), { enabled: true, monthlyCapCents: 400 })
     expect(refused).toMatchObject({ ok: false, reason: 'tenant_cap_exceeded', remainingCents: status.availableCents })
+    // Explanation comes from the refusing transaction itself, so it cannot drift across now().
+    expect(refused.budget).toEqual(status)
   })
 
   it('replays an exact key at the original price and rejects a changed prompt or source order', async () => {

@@ -639,7 +639,7 @@ async function submit() {
         color="primary"
         icon="i-lucide-sparkles"
         :loading="submitting"
-        :disabled="(touched && !validation.valid) || !!budgetNotice"
+        :disabled="touched && !validation.valid"
         label="Generate"
         @click="submit"
       />

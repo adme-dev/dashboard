@@ -75,6 +75,14 @@ describe('GET /agency/video/generation/models', () => {
     expect(res.policy).toEqual({ enabled: true, monthlyCapCents: 1000 })
   })
 
+  it('degrades to a null budget when the explanation cannot be loaded', async () => {
+    mockLoadBudget.mockRejectedValueOnce(new Error('transient'))
+    const res = await handler({ query: { projectId } } as any)
+
+    expect(res.budget).toBeNull()
+    expect(res.models.length).toBeGreaterThan(0)
+  })
+
   it('rejects non-AV projects when scoped by project id', async () => {
     mockGetProject.mockResolvedValueOnce({ project: { ...avProject, mediaType: 'audio' }, timeline: null })
 
