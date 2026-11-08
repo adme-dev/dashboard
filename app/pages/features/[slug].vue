@@ -1762,7 +1762,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Role-Focused Assistants',
-        content: 'Pick the assistant that fits the job — Finance, Marketing, Sales, Media Buyer, or Account Management — or stay with the general Agency Assistant. Each persona keeps the same engine but leads with the right focus and narrows to the tools that matter for that role, always within your permissions. Start with My Assistant to inherit your saved personal focus, or choose an explicit conversation focus, including General. Text and voice share that choice. Returning to My Assistant clears the conversation override. Open My Assistant directly from chat or Tools to review your defaults and permitted tools.'
+        content: 'Pick the assistant that fits the job — Finance, Marketing, Sales, Media Buyer, or Account Management — or stay with the general Agency Assistant. Each persona keeps the same engine but leads with the right focus and narrows to the tools that matter for that role, always within your permissions. Start with My Assistant to inherit your saved personal focus, or choose an explicit conversation focus, including General. Text and voice share that choice. Returning to My Assistant clears the conversation override. Open My Assistant directly from chat or Tools to review your defaults and permitted tools. Chat checks current role grants on each turn; accounting tools require explicit Finance access, including for owners.'
       },
       {
         title: 'Owner God Mode, Employee Governance',

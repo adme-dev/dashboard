@@ -4,7 +4,7 @@ Source: base `fa14776da587cf9bac3ffdc77aa3fffa0f442715` plus the personal-assist
 
 ## Employee entry points
 
-Employees open **AI Chat** and **My Assistant** from Tools. My Assistant holds their own saved focus, disabled tools and memory preference. It does not create another model or grant access. Every native turn resolves the active identity, current custom-role groups, department memberships, client scope, personal narrowing and applicable evaluated release. No saved settings means the documented defaults apply.
+Employees open **AI Chat** and **My Assistant** from Tools. My Assistant holds their own saved focus, disabled tools and memory preference. It does not create another model or grant access. Every native turn resolves the active identity, current explicit database grants for the exact assigned system or custom role, department memberships, client scope, personal narrowing and applicable evaluated release. These admission reads use the uncached database path. A role reassignment during admission fails closed for retry; static role defaults cannot restore revoked grants. My Assistant discovery also keeps Finance tools behind the explicit Finance grant, including for owners. No saved settings means the documented defaults apply.
 
 Chat starts with My Assistant inheritance. An explicit focus, including General, overrides the personal default for that conversation. Selecting My Assistant sends JSON null, clears the owning conversation's stored focus and inherits the saved personal default. Omitted focus preserves an existing conversation override for legacy callers. Both text and voice preserve these distinctions. Conversation persistence is bound to the authenticated owner.
 

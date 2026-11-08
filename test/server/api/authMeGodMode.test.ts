@@ -28,6 +28,12 @@ vi.mock('~~/server/utils/roleResolver', () => ({
   resolveUserPermissions: (...args: unknown[]) => mockResolveUserPermissions(...args)
 }))
 
+// This endpoint test covers the public God-mode projection. Accounting authority is
+// independently tested; isolate its database read rather than calling an unbound Nitro DB.
+vi.mock('~~/server/utils/accountingUiPermissions', () => ({
+  resolveAccountingUiGroups: vi.fn().mockResolvedValue(['ADMIN'])
+}))
+
 vi.mock('~~/server/utils/godMode/authority', () => ({
   resolveGodModeAuthority: (...args: unknown[]) => mockResolveGodModeAuthority(...args)
 }))
