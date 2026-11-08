@@ -16,8 +16,8 @@ scripts,root,engine=Path(sys.argv[1]),Path(sys.argv[2]),sys.argv[3]
 pin=json.loads((scripts/'source-pins.json').read_text())[engine]
 if hashlib.sha256((root/engine/'Cargo.lock').read_bytes()).hexdigest()!=pin['cargo_lock_sha256']:
     raise SystemExit('Cargo.lock differs from pinned source')
-if pin.get('release_version') != '0.11.2-edm4':
-    raise SystemExit('FigFlow EDM package version must be 0.11.2-edm4')
+if pin.get('release_version') != '0.11.2-edm5':
+    raise SystemExit('FigFlow EDM package version must be 0.11.2-edm5')
 relay=scripts/'figflow-edm-relay.mjs'
 if not relay.is_file() or hashlib.sha256(relay.read_bytes()).hexdigest()!=pin.get('browser_relay_sha256'):
     raise SystemExit('Browser relay differs from pinned source')
@@ -47,7 +47,7 @@ if [[ -d "$source_root/fonts/$engine" ]]; then
   export CRAFT_FONTS_REQUIRED=1
 fi
 cd "$source_root/$engine"
-export FIGCRAFT_VERSION="${FIGFLOW_EDM_VERSION:-0.11.2-edm4}"
+export FIGCRAFT_VERSION="${FIGFLOW_EDM_VERSION:-0.11.2-edm5}"
 shasum -a 256 Cargo.lock > "$source_root/$engine-lock-before.sha256"
 bash packaging/web/package.sh > "$source_root/build-$engine.log" 2>&1
 shasum -a 256 -c "$source_root/$engine-lock-before.sha256"

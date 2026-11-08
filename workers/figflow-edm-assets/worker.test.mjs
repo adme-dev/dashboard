@@ -46,14 +46,14 @@ test('serves only the immutable package without forwarding staff credentials', a
 })
 
 test('all retained versions are bounded, immutable only on success, and shell stays uncached', async () => {
-  for (const version of ['edm1', 'edm3', 'edm4']) {
+  for (const version of ['edm1', 'edm3', 'edm4', 'edm5']) {
     for (const status of [200, 404, 500]) {
       const response = await worker.fetch(new Request(`https://creative.xeroflow.io/figflow/0.11.2-${version}/editor.wasm`, { method: 'HEAD' }), { ASSETS: { fetch: async () => new Response('asset', { status }) } })
       assert.equal(response.headers.get('cache-control'), status === 200 ? 'private, max-age=31536000, immutable' : 'private, no-store')
       assert.equal(await response.text(), '')
     }
   }
-  for (const path of ['/figflow/0.11.2-edm40/', '/figflow/0.11.2-edm2/', '/figflow/0.11.2-edm4/%2fsecret']) {
+  for (const path of ['/figflow/0.11.2-edm40/', '/figflow/0.11.2-edm50/', '/figflow/0.11.2-edm2/', '/figflow/0.11.2-edm5/%2fsecret']) {
     assert.equal((await worker.fetch(new Request('https://creative.xeroflow.io' + path), { ASSETS: { fetch: () => { throw Error('unexpected') } } })).status, 404)
   }
 })

@@ -8,7 +8,7 @@
   "preview_urls": false,
   "routes": [],
   "assets": {
-    "directory": "dist/assets",
+    "directory": "dist-edm5/assets",
     "binding": "ASSETS",
     "run_worker_first": true
   },
