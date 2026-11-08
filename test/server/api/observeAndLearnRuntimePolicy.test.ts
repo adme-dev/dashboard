@@ -91,13 +91,16 @@ describe('observe-and-learn request policy', () => {
       requireAuth: vi.fn().mockResolvedValue({ id: USER_ID }),
       resolvePersonalAssistantContext: vi.fn(async input => {
         displayedStatus = input.observedMemoryEnabled
-        return { preferences: { personaKey: null } } as never
+        return { identity: { role: 'member' }, preferences: { personaKey: null } } as never
       }),
       buildMyAssistantExplainability: vi.fn().mockReturnValue({ ok: true }),
       getRuntimePolicy: vi.fn().mockReturnValue({
         mode: 'legacy',
         authenticatedCoreTools: ['search_knowledge', 'get_tasks']
       }),
+      discoverMarketingTools: vi.fn().mockResolvedValue([]),
+      discoverSupplementalTools: vi.fn().mockResolvedValue([]),
+      resolveChatRuntime: vi.fn().mockReturnValue({}),
       tools: []
     })
     const runObservePass = vi.fn().mockResolvedValue({ users: 0, events: 0, routines: 0, memories: 0 })
