@@ -148,9 +148,11 @@ const API_INVENTORY = {
   // (three mutations). ADMIN writes delegate fresh grants; documentation is a
   // bounded public-source read. No inline gate, transaction or bypass is added.
   // T10 adds two scoped reads and four guarded production writes; no authority bypass.
-  totalRouteFiles: 2393,
-  mutationRouteFiles: 1308,
-  explicitlyGuardedMutationFiles: 435,
+  // Audio import adds one write-access, project-scoped multipart write in the existing
+  // media-upload God mode family; no authority bypass.
+  totalRouteFiles: 2394,
+  mutationRouteFiles: 1309,
+  explicitlyGuardedMutationFiles: 436,
   guardedMutationFilesWithTransactionCall: 58
 } as const
 
@@ -200,9 +202,9 @@ describe('God mode route isolation inventory', () => {
     expect(mechanicalInventory()).toEqual(API_INVENTORY)
     expect(API_INVENTORY).toEqual({
       // T10 adds two scoped reads and four guarded production writes; no authority bypass.
-  totalRouteFiles: 2393,
-      mutationRouteFiles: 1308,
-      explicitlyGuardedMutationFiles: 435,
+  totalRouteFiles: 2394,
+      mutationRouteFiles: 1309,
+      explicitlyGuardedMutationFiles: 436,
       guardedMutationFilesWithTransactionCall: 58
     })
   })
