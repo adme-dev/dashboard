@@ -8,6 +8,8 @@ import { videoModelPresentation, type VideoModelOption } from '~~/app/utils/vide
 import { VIDEO_GENERATION_TEMPLATES, type VideoGenerationTemplate } from '~~/app/utils/video/generationTemplates'
 import { videoGenerationJobTimelinePayload, type VideoLibraryTimelinePayload } from '~~/app/utils/video/videoLibraryTimeline'
 import { apiErrorDescription, apiErrorReasons, isPossiblyAppliedFailure } from '~~/app/utils/apiError'
+import { generationBudgetNotice, generationBudgetSummary, isGenerationBudgetStatus } from '~~/app/utils/video/generationBudget'
+import type { GenerationBudgetStatus } from '~~/app/utils/video/generationBudget'
 import type { VideoGenerationMode } from '~~/server/utils/video-generation/types'
 import type { VideoGenerationJobView } from '~~/app/composables/useVideoGenerationJobs'
 import { idempotencyKey } from '~~/app/utils/idempotencyKey'
@@ -42,13 +44,13 @@ const apiFetch = $fetch as <T = unknown>(
     headers?: Record<string, string>
   }
 ) => Promise<T>
-const modelData = ref<{ models: VideoModelOption[] }>({ models: [] })
+const modelData = ref<{ models: VideoModelOption[], budget?: GenerationBudgetStatus | null }>({ models: [] })
 const modelsPending = ref(false)
 
 async function refreshModels() {
   modelsPending.value = true
   try {
-    modelData.value = await apiFetch<{ models: VideoModelOption[] }>('/api/agency/video/generation/models', {
+    modelData.value = await apiFetch<{ models: VideoModelOption[], budget?: GenerationBudgetStatus | null }>('/api/agency/video/generation/models', {
       query: { projectId: props.projectId }
     })
   } finally {
@@ -96,6 +98,8 @@ const modelItems = computed(() => models.value.map((m) => {
 }))
 const selectedModelIcon = computed(() => (model.value ? videoModelPresentation(model.value).icon : 'i-lucide-box'))
 const costChipLabel = computed(() => `~$${(estCostCents.value / 100).toFixed(2)} · ${durationSeconds.value}s`)
+const budget = computed(() => (isGenerationBudgetStatus(modelData.value.budget) ? modelData.value.budget : null))
+const budgetNotice = computed(() => (model.value ? generationBudgetNotice(budget.value, estCostCents.value) : null))
 const recentJobs = computed(() => (props.recentJobs ?? []).slice(0, 5))
 
 // Templates gallery shows while the prompt is empty (the blank-page moment);
@@ -347,6 +351,13 @@ async function submit() {
       emit('submitted', '')
       return
     }
+    const refusedBudget = (e as { data?: { data?: { budget?: unknown } } })?.data?.data?.budget
+    if (isGenerationBudgetStatus(refusedBudget)) {
+      modelData.value = { ...modelData.value, budget: refusedBudget }
+      const notice = generationBudgetNotice(refusedBudget, estCostCents.value)
+      toast.add({ title: notice?.title ?? 'Video generation budget unavailable', description: notice?.description ?? apiErrorDescription(e), color: 'warning', icon: 'i-lucide-wallet' })
+      return
+    }
     const reasons = apiErrorReasons(e)
     toast.add({ title: 'Could not start generation', description: reasons?.join(' ') ?? apiErrorDescription(e), color: 'error' })
   } finally {
@@ -535,7 +546,7 @@ async function submit() {
               </div>
             </template>
           </UPopover>
-          <UTooltip :text="`Estimated cost for ${durationSeconds}s${model?.costUnit === 'second' ? ' (billed per second)' : ''}`">
+          <UTooltip :text="`Estimated cost for ${durationSeconds}s${model?.costUnit === 'second' ? ' (billed per second)' : ''}${generationBudgetSummary(budget)}`">
             <UBadge
               :label="costChipLabel"
               variant="subtle"
@@ -603,6 +614,16 @@ async function submit() {
           </div>
         </div>
       </div>
+
+      <!-- Budget: explains unconfirmed historical liability instead of a bare refusal -->
+      <UAlert
+        v-if="budgetNotice"
+        color="warning"
+        variant="subtle"
+        icon="i-lucide-wallet"
+        :title="budgetNotice.title"
+        :description="budgetNotice.description"
+      />
 
       <!-- Validation warning -->
       <UAlert
