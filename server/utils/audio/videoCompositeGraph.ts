@@ -8,20 +8,20 @@ import type { VideoFormat } from './videoProfiles'
 
 export interface OverlayFrameInput {
   clipId: string
-  framesPattern: string   // e.g. 'ovl_o1/%05d.png'
+  framesPattern: string // e.g. 'ovl_o1/%05d.png'
   fps: number
   timeline_start_sec: number
   duration_sec: number
 }
 
 export interface CompositePlan {
-  inputs: FiltergraphInput[]   // video-clip inputs first, then audio-clip inputs
+  inputs: FiltergraphInput[] // video-clip inputs first, then audio-clip inputs
   filterComplex: string
-  vLabel: string               // '[vout]'
-  aLabel: string | null        // '[aout]' or null when no audio tracks
+  vLabel: string // '[vout]'
+  aLabel: string | null // '[aout]' or null when no audio tracks
   durationSec: number
   profile: VideoFormat
-  overlayInputs: OverlayFrameInput[]   // V1.2b: empty array when no overlays
+  overlayInputs: OverlayFrameInput[] // V1.2b: empty array when no overlays
 }
 
 const AUDIO_KINDS = ['voiceover', 'music', 'sfx']
@@ -85,7 +85,7 @@ function escapeDrawtext(value: string): string {
   return value
     .replace(/\\/g, '\\\\')
     .replace(/:/g, '\\:')
-    .replace(/'/g, "\\'")
+    .replace(/'/g, '\\\'')
     .replace(/\n/g, '\\n')
 }
 
@@ -190,7 +190,10 @@ export function buildCompositePlan(state: TimelineState, profile: VideoFormat, o
   const audioPlan = buildTimelineFiltergraph(audioState)
   const hasAudio = audioPlan.inputs.length > 0
   const offsetAudio = hasAudio
-    ? audioPlan.filterComplex.replace(/\[(\d+):a\]/g, (_m, n) => `[${Number(n) + V}:a]`).replace(/\[mix\]/g, '[aout]')
+    ? audioPlan.filterComplex.replace(/\[(\d+):a\]/g, (_m, n) => `[${Number(n) + V}:a]`).replace(/\[mix\]/g, '[mixraw]')
+    // The mix ends with its last clip; pad (silence) and trim it to the timeline so the
+    // audio stream always spans the video, e.g. a 5 s music cue in a 30 s storyboard.
+    + `;[mixraw]apad=whole_dur=${duration.toFixed(3)},atrim=end=${duration.toFixed(3)},asetpts=N/SR/TB[aout]`
     : ''
 
   // --- V1.2b: overlay frame-sequence compositing ---

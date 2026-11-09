@@ -80,7 +80,7 @@ function escapeDrawtext(value) {
   return value
     .replace(/\\/g, '\\\\')
     .replace(/:/g, '\\:')
-    .replace(/'/g, "\\'")
+    .replace(/'/g, '\\\'')
     .replace(/\n/g, '\\n')
 }
 
@@ -177,7 +177,10 @@ export function buildCompositePlan(state, profile, overlays = []) {
   const audioPlan = buildTimelineFiltergraph(audioState)
   const hasAudio = audioPlan.inputs.length > 0
   const offsetAudio = hasAudio
-    ? audioPlan.filterComplex.replace(/\[(\d+):a\]/g, (_m, n) => `[${Number(n) + V}:a]`).replace(/\[mix\]/g, '[aout]')
+    ? audioPlan.filterComplex.replace(/\[(\d+):a\]/g, (_m, n) => `[${Number(n) + V}:a]`).replace(/\[mix\]/g, '[mixraw]')
+    // The mix ends with its last clip; pad (silence) and trim it to the timeline so the
+    // audio stream always spans the video, e.g. a 5 s music cue in a 30 s storyboard.
+    + `;[mixraw]apad=whole_dur=${duration.toFixed(3)},atrim=end=${duration.toFixed(3)},asetpts=N/SR/TB[aout]`
     : ''
 
   // --- V1.2b: overlay frame-sequence compositing ---
