@@ -16,7 +16,8 @@ import {
 
 const UUID = '[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}'
 const RENDER_ROUTE = new RegExp(`^/api/agency/audio/projects/${UUID}/render-video$`, 'i')
-const UPLOAD_ROUTE = new RegExp(`^/api/agency/audio/projects/${UUID}/upload-media$`, 'i')
+// Multipart media uploads, including provider-free audio imports into the canonical asset pipeline.
+const UPLOAD_ROUTE = new RegExp(`^/api/agency/audio/projects/${UUID}/(?:upload-media|import-audio)$`, 'i')
 const GENERATION_ROUTE = '/api/agency/video/generation/jobs'
 
 export const MEDIA_RENDER_MUTATION: GodModeExternalMutation = {
