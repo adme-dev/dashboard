@@ -1,0 +1,27 @@
+{
+  "source_commit": "9ac1d65c399f0bf5c003b96530d4dcdcd4309129",
+  "project": "agency-dashboard",
+  "deployment_id": "b375fe5a-aa12-41f7-89be-4ffedb49b4a7",
+  "environment": "production",
+  "source_deploy_run": 42795537384,
+  "status": "deployed-public-host-verified",
+  "checked_at": "2026-11-10T11:45:31.599754+00:00",
+  "entry_readback": [
+    {
+      "host": "https://app.xeroflow.io",
+      "entry": "/_nuxt/Dg_9l3uA.js",
+      "status": 200,
+      "bytes": 244964,
+      "sha256": "0264763e6dca0c7e9b974e4e0c33b7a3d572058ab10d3f47b5f7a4fc35f071e6"
+    },
+    {
+      "host": "https://b375fe5a.agency-dashboard-6cm.pages.dev",
+      "entry": "/_nuxt/Dg_9l3uA.js",
+      "status": 200,
+      "bytes": 244964,
+      "sha256": "0264763e6dca0c7e9b974e4e0c33b7a3d572058ab10d3f47b5f7a4fc35f071e6"
+    }
+  ],
+  "browser": "Signed-out browser loads XeroFlow login with redirect=/agency/qr-codes",
+  "limits": "Owner dashboard/QR page was verified before deployment. Fresh signed-in post-deploy check unavailable: native browser cgWindowNotFound and owner extension timeoutMs failure. No credential/cookie copying or new sign-in messages. Shared entry hash does not verify every asset or protected QR behavior."
+}
