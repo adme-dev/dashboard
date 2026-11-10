@@ -1,0 +1,74 @@
+{
+  "effectcraft": {
+    "version": "0.23.1",
+    "commit": "f5e5c8a4d8e0d5aa7e5493b527c0773969a4364a",
+    "name": "effectcraft-web-0.23.1.zip",
+    "size": 22438665,
+    "digest": "sha256:de8bc2116ae87beeabddb756397e825a556939f326ae9907c3bf29c49d8ea2ee",
+    "browser_download_url": "https://github.com/storytold/effectcraft/releases/download/v0.23.1/effectcraft-web-0.23.1.zip",
+    "candidate_version": "0.23.1-flow1",
+    "status": "upstream-input-only-unbuilt-unpublished",
+    "source_archive_sha256": "3c90d7321e91339e10b28b972348176bf4b0e76b8474c9992a12ee70bf6e60cd",
+    "cargo_lock_sha256": "a69d418582f656f8635d81344f2076db62256172a49da6083fd3d30d381b7ca2"
+  },
+  "filmcraft": {
+    "version": "0.19.0",
+    "commit": "d1af238bba9fc814487c81e47b53543dff435c09",
+    "name": "filmcraft-web-0.19.0.zip",
+    "size": 15550034,
+    "digest": "sha256:3215de38749b38126e5c12ace0cbb6ab8412cd59a6773f4d302bf9ff09edb22a",
+    "browser_download_url": "https://github.com/storytold/filmcraft/releases/download/v0.19.0/filmcraft-web-0.19.0.zip",
+    "candidate_version": "0.19.0-flow1",
+    "status": "upstream-input-only-unbuilt-unpublished",
+    "source_archive_sha256": "ca9d75efd7360a3a59f04fb10aac5df9d2a352c8bd570cce4b600a3db5e3592d",
+    "cargo_lock_sha256": "ef042555a5b44d503ee9b0844d3c226b5bb287e4b30671220020a32f18d17cb5"
+  },
+  "photocraft": {
+    "version": "0.22.0",
+    "commit": "5000240c6e5dc30a024d20f97a620c78eca10d1e",
+    "name": "photocraft-web-0.22.0.zip",
+    "size": 14909301,
+    "digest": "sha256:597c4ffc54eca20d944a292b54ef7b6a3a1fd20725c42396eee00adebef3ebd9",
+    "browser_download_url": "https://github.com/storytold/photocraft/releases/download/v0.22.0/photocraft-web-0.22.0.zip",
+    "candidate_version": "0.22.0-flow1",
+    "status": "upstream-input-only-unbuilt-unpublished",
+    "source_archive_sha256": "6aae89247a09bdc5d3839e35bdec2cd85e9b70e54cc2dd495164003b0ba24732",
+    "cargo_lock_sha256": "2f057f34c76d178af1af4d9722cef391493b9bda04d3d43a0ad6bbe9491f2e66"
+  },
+  "vectorcraft": {
+    "version": "0.23.0",
+    "commit": "5d0e892e2419f63bc0ea3c743ddff2e81e15fd3a",
+    "name": "vectorcraft-web-0.23.0.zip",
+    "size": 36903039,
+    "digest": "sha256:0271705cb871700122e78e971ca3f1328edeba9ac25927d761e9fa5e7543d8c0",
+    "browser_download_url": "https://github.com/storytold/vectorcraft/releases/download/v0.23.0/vectorcraft-web-0.23.0.zip",
+    "candidate_version": "0.23.0-flow1",
+    "status": "upstream-input-only-unbuilt-unpublished",
+    "source_archive_sha256": "67fe471d1feb504ec92f4ab3951846b2c303d61648d1c95d3c675b84932e9aa6",
+    "cargo_lock_sha256": "55ba7fca07b819f64a0e06114a0bd22d2ffd2fb432b0d4804e61da26a48ff846"
+  },
+  "soundcraft": {
+    "version": "0.19.0",
+    "commit": "04878f8fda885c95f8be5893bbfe4ea4e062a814",
+    "name": "soundcraft-web-0.19.0.zip",
+    "size": 6880934,
+    "digest": "sha256:0a6d898eb5bf284bc34b69e9add3b5542c5420b01652f73ff8aff61d2370e48b",
+    "browser_download_url": "https://github.com/storytold/soundcraft/releases/download/v0.19.0/soundcraft-web-0.19.0.zip",
+    "candidate_version": "0.19.0-flow1",
+    "status": "upstream-input-only-unbuilt-unpublished",
+    "source_archive_sha256": "b7c8cfde33d2399c44f53bdb922a60181954db3b16473f9302410d762debfc2d",
+    "cargo_lock_sha256": "79f83ac9b46d8c7eae1d198ecc47367bf8e2d01b97a8300b1240a2eaf2b229f7"
+  },
+  "figcraft": {
+    "version": "0.17.0",
+    "commit": "5bc71c1a2c860adc106801751faf45920e2e46c9",
+    "name": "figcraft-web-0.17.0.zip",
+    "size": 10505876,
+    "digest": "sha256:3d6410b7b12ae000b2f062855dc0e80fcc7c09f41d5d03a938636cf9dcce0145",
+    "browser_download_url": "https://github.com/storytold/figcraft/releases/download/v0.17.0/figcraft-web-0.17.0.zip",
+    "candidate_version": "0.17.0-flow1",
+    "status": "upstream-input-only-unbuilt-unpublished",
+    "source_archive_sha256": "936690527aaeddeacd39c1e8918dde246916e020ae40778ea996677c3028d22d",
+    "cargo_lock_sha256": "6381a286d890bee3ade30658ac74d2f9d58b9844fd1a787df0394401fc573a9e"
+  }
+}

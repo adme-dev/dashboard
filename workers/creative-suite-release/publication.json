@@ -1,0 +1,72 @@
+{
+  "receipt_sha256": "a3da4bec5515cb6dab46795cd270e09f307d6ecb61263239f9f416d065509ec0",
+  "receipt": {
+    "status": "prepared-unpublished-additive-candidate",
+    "assets": 262,
+    "prefixes": [
+      "/effectflow/0.23.1-flow1/",
+      "/filmflow/0.19.0-flow1/",
+      "/photoflow/0.22.0-flow1/",
+      "/vectorflow/0.23.0-flow1/",
+      "/soundflow/0.19.0-flow1/",
+      "/figflow/0.17.0-flow1/"
+    ],
+    "shell_inputs": {
+      "editor-dock.css": "b673c9f1bf12542f7f4c91b64b9bf35adc30aac33b11af93916bf5a0f471539f",
+      "editor-dock.js": "5d48e6af8b7c7d6ef501f217896cb7764e069da5540a08858ebc5a6ed1252300",
+      "asset-library.js": "bf5fa63dd2605de662e7c5d4c08fa29c7dbddd08d23164e8b4233de80378934c",
+      "asset-library.css": "44011151c08bf50e76b50c8b9f8d81b649711948a4d8e8f699839bd83aebd65e",
+      "auth-session.js": "53ac31a3bbf77e9e9590cbe44c73005dcf2ceff9234c17b5c5dce0e47bd1c704",
+      "install-app.js": "c4be48351c65620a9b103efa4c6e5d29872ff4c1303a8a8ea024ade2b9cdf087",
+      "install-app.css": "b57e30ab74de9b9eeac71c941277c99bb31e734f0c189f2ada339980a00b295b",
+      "xeroflow-logo.svg": "403cdf6eaa671384065cb0599b0b608bcf052e2a16cc66fdd85b90b00f5f6f77",
+      "xeroflow-icon-192.png": "0e17bc25b530ccb7f520e7434b11e3fe0cfbfd74df351dd2d517e21573e1b55b",
+      "xeroflow-icon-512.png": "88ff4523aa83936c253041525fc0719c23fe2bb1e95842ebfc38f8a717552e07",
+      "xeroflow-maskable-512.png": "e92c9b9af777577322591ad6dd5ffe831cf476d417e3ed9191dcd990e0e4e15b",
+      "apple-touch-icon.png": "a5aab916c97654254c4b67c1107f91eea0ef3b87b6d256716547a5cdc45ef0bf"
+    },
+    "baseline_modules": {
+      "worker.js": "97d2daacca6aae1d77baadb33b24b66590e5bf26e7cf32d4723a340750c416ca",
+      "brand-rpc.mjs": "0787e4c0acb8e2507a8d14f438a977941334212e95e0e490863b71a9812882c2"
+    },
+    "modules": {
+      "worker.js": "39908d48454f968f5bec872154dc0a0f799a500c9ca0e22300b2f1cdd13cb55f",
+      "brand-rpc.mjs": "0787e4c0acb8e2507a8d14f438a977941334212e95e0e490863b71a9812882c2"
+    },
+    "service_files": {
+      "assets-worker.mjs": "f42992a12b9edc4327730baa86ab9e1e9669366a7c87f9529bc7acf8febef8c3",
+      "wrangler.jsonc": "ac96e4f38408486710334a560a4e6863bce7f93fc68695140d764e5274ebb0da",
+      "inventory.json": "025b96d2227d5a9d3e37e44f4c03c0a6d102eb46a1fea90e96ccc9f3d9391d34",
+      "compressed.json": "c4bb3944652054ecb1cb6d54a09086def8d0ac1c48ed326b6a7ed31a7714d9b7"
+    },
+    "compressed_decoded": {
+      "/effectflow/0.23.1-flow1/effectcraft_web_bg.wasm": {
+        "sha256": "b6a313466de049a9f54fa93a3fdafbf17e744054e851ab55ecb531653b6266fc",
+        "bytes": 64782589
+      },
+      "/filmflow/0.19.0-flow1/filmcraft_web_bg.wasm": {
+        "sha256": "d389932e400038e9b279d73c526c1bc0fdb2cbaa0067ab4ea6f4a9d9bef4857d",
+        "bytes": 49318665
+      },
+      "/vectorflow/0.23.0-flow1/vectorcraft-web-96c6139d4ab21001_bg.wasm": {
+        "sha256": "94918b65578781c5a67dd991e41b37ef79c1c67176a1c9ca66732d040c90f269",
+        "bytes": 98473094
+      }
+    },
+    "keep_assets": true,
+    "stable_routes_changed": false,
+    "new_binding": {
+      "name": "CREATIVE_STANDALONE_ASSETS",
+      "type": "service",
+      "service": "xeroflow-creative-standalone-assets",
+      "environment": "production"
+    },
+    "preserve_bindings": [
+      "ASSETS",
+      "CREATIVE_AUTH_KEY",
+      "MOTORSTACK_API_KEY",
+      "FIGFLOW_EDM_ASSETS"
+    ],
+    "browser_acceptance": false
+  }
+}

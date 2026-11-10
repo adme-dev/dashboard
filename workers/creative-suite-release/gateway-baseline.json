@@ -1,0 +1,52 @@
+{
+  "version": "0f9b678f-b5b3-47f5-9d84-0ab25126c6b2",
+  "deployment": "ea560989-67cb-407e-ab47-b5f2ba966e9d",
+  "etag": "a7a2e12a18d7a966c8f30033e1c081119cffe7f4b0c21387f7aa2ede62423963",
+  "runtime": {
+    "assets": {
+      "headers": {
+        "version": 2,
+        "rules": {
+          "/*": {
+            "set": {
+              "cache-control": "no-cache",
+              "content-security-policy": "frame-ancestors 'self' https://app.xeroflow.io",
+              "referrer-policy": "strict-origin-when-cross-origin",
+              "x-content-type-options": "nosniff"
+            },
+            "unset": []
+          }
+        }
+      },
+      "raw_headers": "/*\n  X-Content-Type-Options: nosniff\n  Referrer-Policy: strict-origin-when-cross-origin\n  Cache-Control: no-cache\n  Content-Security-Policy: frame-ancestors 'self' https://app.xeroflow.io\n",
+      "serve_directly": false,
+      "raw_run_worker_first": true,
+      "base_path": "/"
+    },
+    "compatibility_date": "2026-10-27",
+    "compatibility_flags": [
+      "global_fetch_strictly_public"
+    ],
+    "usage_model": "standard"
+  },
+  "bindings": [
+    {
+      "name": "ASSETS",
+      "type": "assets"
+    },
+    {
+      "name": "CREATIVE_AUTH_KEY",
+      "type": "secret_text"
+    },
+    {
+      "environment": "production",
+      "name": "FIGFLOW_EDM_ASSETS",
+      "service": "xeroflow-figflow-edm-assets",
+      "type": "service"
+    },
+    {
+      "name": "MOTORSTACK_API_KEY",
+      "type": "secret_text"
+    }
+  ]
+}

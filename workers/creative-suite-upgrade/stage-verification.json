@@ -1,0 +1,63 @@
+{
+  "status": "verified-unpublished-standalone-delta",
+  "engines": 6,
+  "assets": 185,
+  "compressed_assets": [
+    {
+      "path": "/effectflow/0.23.1-flow1/effectcraft_web_bg.wasm.br",
+      "encoded_bytes": 14162426,
+      "decoded_bytes": 64782589,
+      "encoded_sha256": "bba2ce2735175172b3ad2339219f0b09f6a00cabd617b86f309df1093bf5d70e",
+      "decoded_sha256": "b6a313466de049a9f54fa93a3fdafbf17e744054e851ab55ecb531653b6266fc"
+    },
+    {
+      "path": "/filmflow/0.19.0-flow1/filmcraft_web_bg.wasm.br",
+      "encoded_bytes": 12682235,
+      "decoded_bytes": 49318665,
+      "encoded_sha256": "a885b01f53848458a6b132f546ab54e810caf6e31af20cdea91e24b42f498b63",
+      "decoded_sha256": "d389932e400038e9b279d73c526c1bc0fdb2cbaa0067ab4ea6f4a9d9bef4857d"
+    },
+    {
+      "path": "/vectorflow/0.23.0-flow1/vectorcraft-web-96c6139d4ab21001_bg.wasm.br",
+      "encoded_bytes": 23382437,
+      "decoded_bytes": 98473094,
+      "encoded_sha256": "8670940694bb937cf874c38276eb302a953cd1d81f08978879ea8474d72a9040",
+      "decoded_sha256": "94918b65578781c5a67dd991e41b37ef79c1c67176a1c9ca66732d040c90f269"
+    }
+  ],
+  "maximum_file": {
+    "path": "/figflow/0.17.0-flow1/figcraft-web-3621afe8f825a56e_bg.wasm",
+    "bytes": 25546822
+  },
+  "total_stored_bytes": 159455929,
+  "manifest_sha256": {
+    "asset-sha256.json": "38e662bb4aeb98e3136f5b191716932c96b6a4d68bdf9f469c3c935ab1f8d3a7",
+    "compressed.json": "c4bb3944652054ecb1cb6d54a09086def8d0ac1c48ed326b6a7ed31a7714d9b7",
+    "stored-assets.json": "5cc89f7f8d94555014b37a6b63aaab4f9e4155da99f4fcba711a4b1a413abf6f"
+  },
+  "stage_receipt_sha256": "0a991c45642835dff2f399d869fc4a2459eed58a659bafbf09bb1fe9e150de99",
+  "node": "v24.18.0",
+  "brotli": "1.2.0",
+  "verification": "Read every actual public file, compare encoded hash/size, independently decompress and compare decoded hashes/sizes, exact inventory and route checks; no deployment",
+  "complete_ASSETS_inventory": false,
+  "artifact_root": "/Volumes/Backups/Development/creative-suite-upgrade-20261110/assets-candidate-standalone-flow1",
+  "guard_tests": {
+    "passed": 9,
+    "failed": 0,
+    "command": "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s workers/creative-suite-upgrade -p test_stage*.py -v"
+  },
+  "helper_sha256": {
+    "stage_assets.py": "2cf87c4a714c36fee535744d0f5431f3dce63e880bfdd6b6c7d248d600ab4dcb",
+    "brotli-stage.mjs": "bc30b85cdb631e844042d4d1d8ad47bea34741e7ae46e61c919ffb4a5e457597",
+    "stage-inputs.json": "b4d3f03c1f5a136d12a58a7bf832d1e9353dc01bfce78d3acb09a689feabb934",
+    "test_stage_assets.py": "6988c4c64f6f1b38d05fa2c1531b9eb987ada22028afee661cfed28cb2656a2d",
+    "verify-stage.mjs": "be0aefa58b0cce5ff257e446ad1ddc543f361c2b865630cc30ca2eda29a62336"
+  },
+  "source_review": {
+    "preserved_worker_sha256": "53995e069ed042458b3b00e7762375111674a2069fab12c6c3a9987f8d4f045a",
+    "preserved_builder_sha256": "a34c4bdd43929559aa4377b47f488746e9249c93527d288b045d951092af45bc",
+    "current_main_captured_worker_sha256": "1461ce3b66e6b9914c75dd3fece63023b0d81d578f3c5844966095c106595080",
+    "current_main_release_builder_sha256": "c06b73ba5b626354dd10f5100d5d9f19251c8b64c38ab6b6887ca2e11a51972b",
+    "finding": "String URL to .br URL schema retained; current main embeds compressed_default. New map must be reconciled with full inventory in separate reviewed publication. No gateway edits."
+  }
+}

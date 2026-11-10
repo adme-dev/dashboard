@@ -1,0 +1,250 @@
+{
+  "status": "six-manual-branded-builds-and-unpublished-asset-delta-verified",
+  "guard_tests": {
+    "passed": 16,
+    "failed": 0,
+    "command": "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s workers/creative-suite-upgrade -p test_*.py -v"
+  },
+  "engine_inputs": [
+    {
+      "engine": "effectcraft",
+      "archive_verified": true,
+      "patch_sha256": "4c19c64fb45c478d960fe4cc9d840ec605b4d01e2ab88fb67ae94c1d1b593c5e",
+      "pristine_lock_verified": true,
+      "zero_fuzz_dry_run": true
+    },
+    {
+      "engine": "filmcraft",
+      "archive_verified": true,
+      "patch_sha256": "761ab780eafb00f9fb895dd4c7ef6e9a44801966310d194e4a02ff1b6f56ef2d",
+      "pristine_lock_verified": true,
+      "zero_fuzz_dry_run": true
+    },
+    {
+      "engine": "photocraft",
+      "archive_verified": true,
+      "patch_sha256": "02a04f29b5736c0dc4f2b98974354385835885b9aebc6bb8f40bfc88c9f61a7a",
+      "pristine_lock_verified": true,
+      "zero_fuzz_dry_run": true
+    },
+    {
+      "engine": "vectorcraft",
+      "archive_verified": true,
+      "patch_sha256": "ce0eee6f9db8549baa06de984b2dbc64300aec939e16800672104e1ab3d04f11",
+      "pristine_lock_verified": true,
+      "zero_fuzz_dry_run": true
+    },
+    {
+      "engine": "soundcraft",
+      "archive_verified": true,
+      "patch_sha256": "1c9f82b341d4069be9f3757f9115ac777230a94889050cf56666139426eebfb4",
+      "pristine_lock_verified": true,
+      "zero_fuzz_dry_run": true
+    },
+    {
+      "engine": "figcraft",
+      "archive_verified": true,
+      "patch_sha256": "294abb13e3dd4859c003522211ad37d240032ad050d5c62d83649d92ce8a9ce0",
+      "pristine_lock_verified": true,
+      "zero_fuzz_dry_run": true
+    }
+  ],
+  "builds_run_by_helper": false,
+  "installs_run_by_helper": false,
+  "deployment_performed": false,
+  "toolchain_provenance": "Partial: direct tools checksummed; Trunk wasm-opt version_123 auto-download/shared cache is not checksum verified",
+  "fully_checksum_pinned_toolchain": false,
+  "font_packaging_review": {
+    "photocraft": "PHOTOCRAFT_WEB_FONTS_DIR points to verified root/fonts; served manifest/font/license files copied by upstream packaging",
+    "other_engines": "All six web packaging scripts/shared packaging environments inspected; no other engine-specific font-directory override found",
+    "scope": "Source inspection and fixture test only; no helper build or repackage executed"
+  },
+  "manual_build_receipts": {
+    "effectcraft": {
+      "engine": "effectcraft",
+      "exit": 0,
+      "seconds": 392.8445131778717,
+      "lock_sha256": "a69d418582f656f8635d81344f2076db62256172a49da6083fd3d30d381b7ca2",
+      "lock_unchanged": true,
+      "packages": [
+        {
+          "file": "effectcraft-web-0.23.1.zip",
+          "bytes": 22136156,
+          "sha256": "df5ff1087407f3fee94dd7a49a4f425895ed17c8ebc16937b80bd6c1543561fa"
+        }
+      ]
+    },
+    "filmcraft": {
+      "engine": "filmcraft",
+      "exit": 0,
+      "seconds": 292.60516023635864,
+      "lock_sha256": "ef042555a5b44d503ee9b0844d3c226b5bb287e4b30671220020a32f18d17cb5",
+      "lock_unchanged": true,
+      "packages": [
+        {
+          "file": "filmcraft-web-0.19.0.zip",
+          "bytes": 18536518,
+          "sha256": "8843d3892b949176ff32b89ea5fcabb2239c968a6a4e0705d6ebb686a07d632e"
+        }
+      ]
+    },
+    "photocraft": {
+      "engine": "photocraft",
+      "exit": 0,
+      "seconds": null,
+      "lock_sha256": "2f057f34c76d178af1af4d9722cef391493b9bda04d3d43a0ad6bbe9491f2e66",
+      "lock_unchanged": true,
+      "packages": [
+        {
+          "file": "photocraft-web-0.22.0.zip",
+          "bytes": 45287028,
+          "sha256": "dadd87c0f534e237db3571b59f9834f01193f7cc23b13bacedd2b191a7f5f0fe"
+        }
+      ],
+      "packaging_only": true,
+      "compiler_receipt": "../photocraft/receipt.json",
+      "font_commit": "b076417b5880bd4154bd22f00695b1d28c6bea83"
+    },
+    "soundcraft": {
+      "engine": "soundcraft",
+      "exit": 0,
+      "seconds": 163.87532496452332,
+      "lock_sha256": "79f83ac9b46d8c7eae1d198ecc47367bf8e2d01b97a8300b1240a2eaf2b229f7",
+      "lock_unchanged": true,
+      "packages": [
+        {
+          "file": "soundcraft-web-0.19.0.zip",
+          "bytes": 6957065,
+          "sha256": "efc75f6102b0d9c87d61fcde64d6023ca1a0e65ae8fc7c798ab089aab694621e"
+        }
+      ]
+    },
+    "figcraft": {
+      "engine": "figcraft",
+      "exit": 0,
+      "seconds": 256.7018520832062,
+      "lock_sha256": "6381a286d890bee3ade30658ac74d2f9d58b9844fd1a787df0394401fc573a9e",
+      "lock_unchanged": true,
+      "packages": [
+        {
+          "file": "figcraft-web-0.17.0.zip",
+          "bytes": 10504084,
+          "sha256": "80d068ab118df503f1799e004d300c0613dd088f654e40450251242b362f59dc"
+        }
+      ]
+    },
+    "vectorcraft": {
+      "engine": "vectorcraft",
+      "exit": 0,
+      "seconds": 513.3931219577789,
+      "lock_sha256": "55ba7fca07b819f64a0e06114a0bd22d2ffd2fb432b0d4804e61da26a48ff846",
+      "lock_unchanged": true,
+      "packages": [
+        {
+          "file": "vectorcraft-web-0.23.0.zip",
+          "bytes": 36855401,
+          "sha256": "28ef7440e4121e4e30a7f8364b3b57e934f2f21b4379a9f8d5f8e6f8a3494ba7"
+        }
+      ]
+    }
+  },
+  "package_inspection": "Actual staged files independently read; Brotli assets decoded and compared to original hashes. All185 files below25MiB. This is an unpublished delta, NOT complete live ASSETS inventory or browser proof.",
+  "vector_status": "Corrected menu patch compiled; failed original receipt retained. Thirty optional background font faces absent exactly as upstream release; three startup fallback fonts included.",
+  "independent_review": {
+    "reviewer": "Kimi",
+    "dispatch": "ctx_206b0467ea63",
+    "status": "release-gates-remain",
+    "findings": [
+      "Actual compressed assets/route manifest required; Vector requires q11",
+      "Manual toolchain provenance incomplete; no helper build proof",
+      "Photo/Vector patch reject artifacts remain in build trees; fresh prepared root required for final source provenance",
+      "Browser acceptance and scheduled default-branch run outstanding"
+    ]
+  },
+  "asset_stage_receipt": {
+    "assets": 185,
+    "brotli_quality": 11,
+    "complete_ASSETS_inventory": false,
+    "compressed_assets": 3,
+    "compression_concurrency": 1,
+    "deployable_in_isolation": false,
+    "input_manifest_sha256": "b4d3f03c1f5a136d12a58a7bf832d1e9353dc01bfce78d3acb09a689feabb934",
+    "inputs": [
+      {
+        "engine": "effectcraft",
+        "entry": "/effectflow/0.23.1-flow1/index.html",
+        "receipt": "effectcraft/receipt.json",
+        "receipt_sha256": "2405428ed47972759b9c20a5bdcc715994586128f53f704451bd19f9d145889c",
+        "scope": "0.23.1-flow1",
+        "zip": "effectcraft/effectcraft-web-0.23.1.zip",
+        "zip_bytes": 22136156,
+        "zip_sha256": "df5ff1087407f3fee94dd7a49a4f425895ed17c8ebc16937b80bd6c1543561fa"
+      },
+      {
+        "engine": "filmcraft",
+        "entry": "/filmflow/0.19.0-flow1/index.html",
+        "receipt": "filmcraft/receipt.json",
+        "receipt_sha256": "2f869517b6fd42a5f3887db448d96a4daa0e9cb1c51228a1027b37b5b1b6b590",
+        "scope": "0.19.0-flow1",
+        "zip": "filmcraft/filmcraft-web-0.19.0.zip",
+        "zip_bytes": 18536518,
+        "zip_sha256": "8843d3892b949176ff32b89ea5fcabb2239c968a6a4e0705d6ebb686a07d632e"
+      },
+      {
+        "compiler_receipt": "photocraft/receipt.json",
+        "compiler_receipt_sha256": "7e658527e7e9d8fc844a2dd9644d847400ae953c0f59cd3390ebb0b01fc2a52a",
+        "engine": "photocraft",
+        "entry": "/photoflow/0.22.0-flow1/index.html",
+        "receipt": "photocraft-with-fonts/receipt.json",
+        "receipt_sha256": "d39d5e3be262260330fbfce5c0e44473cec837facee869bb2c3083b5ef6028f4",
+        "scope": "0.22.0-flow1",
+        "zip": "photocraft-with-fonts/photocraft-web-0.22.0.zip",
+        "zip_bytes": 45287028,
+        "zip_sha256": "dadd87c0f534e237db3571b59f9834f01193f7cc23b13bacedd2b191a7f5f0fe"
+      },
+      {
+        "engine": "vectorcraft",
+        "entry": "/vectorflow/0.23.0-flow1/index.html",
+        "receipt": "vectorcraft/receipt.json",
+        "receipt_sha256": "8b9993042fa13b5801e300b510ce3aef1953364a35de32bb93b812491e605b9f",
+        "scope": "0.23.0-flow1",
+        "zip": "vectorcraft/vectorcraft-web-0.23.0.zip",
+        "zip_bytes": 36855401,
+        "zip_sha256": "28ef7440e4121e4e30a7f8364b3b57e934f2f21b4379a9f8d5f8e6f8a3494ba7"
+      },
+      {
+        "engine": "soundcraft",
+        "entry": "/soundflow/0.19.0-flow1/index.html",
+        "receipt": "soundcraft/receipt.json",
+        "receipt_sha256": "c795a27d2815082a6ef2ae8f11c04d3e66d046483de3edb52faf531082a5ebb2",
+        "scope": "0.19.0-flow1",
+        "zip": "soundcraft/soundcraft-web-0.19.0.zip",
+        "zip_bytes": 6957065,
+        "zip_sha256": "efc75f6102b0d9c87d61fcde64d6023ca1a0e65ae8fc7c798ab089aab694621e"
+      },
+      {
+        "engine": "figcraft",
+        "entry": "/figflow/0.17.0-flow1/index.html",
+        "receipt": "figcraft/receipt.json",
+        "receipt_sha256": "089ed57de924aefe4b253c3ca92c81848f5510194e581d11c6cf65aa6d21fc60",
+        "scope": "0.17.0-flow1",
+        "zip": "figcraft/figcraft-web-0.17.0.zip",
+        "zip_bytes": 10504084,
+        "zip_sha256": "80d068ab118df503f1799e004d300c0613dd088f654e40450251242b362f59dc"
+      }
+    ],
+    "manifest_sha256": {
+      "asset-sha256.json": "38e662bb4aeb98e3136f5b191716932c96b6a4d68bdf9f469c3c935ab1f8d3a7",
+      "compressed.json": "c4bb3944652054ecb1cb6d54a09086def8d0ac1c48ed326b6a7ed31a7714d9b7",
+      "stored-assets.json": "5cc89f7f8d94555014b37a6b63aaab4f9e4155da99f4fcba711a4b1a413abf6f"
+    },
+    "remaining": "Reconcile complete existing ASSETS inventory, EDM and old live paths before any publication; browser and hosted acceptance separate.",
+    "status": "unpublished-standalone-delta",
+    "strict_max_file_bytes": 26214400
+  },
+  "review_corrections": {
+    "asset_limit": "Actual q11 files and exact route map produced; Vector23382437 bytes",
+    "weekly_check": "Restored read-only workflow,14 tests and live metadata check passed; default-branch activation pending",
+    "dompurify": "Updated3.4.17;5 focused tests passed; other audit findings remain"
+  }
+}

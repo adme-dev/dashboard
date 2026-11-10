@@ -1,0 +1,52 @@
+{
+  "effectcraft": {
+    "scope": "0.23.1-flow1",
+    "receipt": "effectcraft/receipt.json",
+    "receipt_sha256": "2405428ed47972759b9c20a5bdcc715994586128f53f704451bd19f9d145889c",
+    "zip": "effectcraft/effectcraft-web-0.23.1.zip",
+    "zip_sha256": "df5ff1087407f3fee94dd7a49a4f425895ed17c8ebc16937b80bd6c1543561fa",
+    "zip_bytes": 22136156
+  },
+  "filmcraft": {
+    "scope": "0.19.0-flow1",
+    "receipt": "filmcraft/receipt.json",
+    "receipt_sha256": "2f869517b6fd42a5f3887db448d96a4daa0e9cb1c51228a1027b37b5b1b6b590",
+    "zip": "filmcraft/filmcraft-web-0.19.0.zip",
+    "zip_sha256": "8843d3892b949176ff32b89ea5fcabb2239c968a6a4e0705d6ebb686a07d632e",
+    "zip_bytes": 18536518
+  },
+  "photocraft": {
+    "scope": "0.22.0-flow1",
+    "receipt": "photocraft-with-fonts/receipt.json",
+    "receipt_sha256": "d39d5e3be262260330fbfce5c0e44473cec837facee869bb2c3083b5ef6028f4",
+    "zip": "photocraft-with-fonts/photocraft-web-0.22.0.zip",
+    "zip_sha256": "dadd87c0f534e237db3571b59f9834f01193f7cc23b13bacedd2b191a7f5f0fe",
+    "zip_bytes": 45287028,
+    "compiler_receipt": "photocraft/receipt.json",
+    "compiler_receipt_sha256": "7e658527e7e9d8fc844a2dd9644d847400ae953c0f59cd3390ebb0b01fc2a52a"
+  },
+  "vectorcraft": {
+    "scope": "0.23.0-flow1",
+    "receipt": "vectorcraft/receipt.json",
+    "receipt_sha256": "8b9993042fa13b5801e300b510ce3aef1953364a35de32bb93b812491e605b9f",
+    "zip": "vectorcraft/vectorcraft-web-0.23.0.zip",
+    "zip_sha256": "28ef7440e4121e4e30a7f8364b3b57e934f2f21b4379a9f8d5f8e6f8a3494ba7",
+    "zip_bytes": 36855401
+  },
+  "soundcraft": {
+    "scope": "0.19.0-flow1",
+    "receipt": "soundcraft/receipt.json",
+    "receipt_sha256": "c795a27d2815082a6ef2ae8f11c04d3e66d046483de3edb52faf531082a5ebb2",
+    "zip": "soundcraft/soundcraft-web-0.19.0.zip",
+    "zip_sha256": "efc75f6102b0d9c87d61fcde64d6023ca1a0e65ae8fc7c798ab089aab694621e",
+    "zip_bytes": 6957065
+  },
+  "figcraft": {
+    "scope": "0.17.0-flow1",
+    "receipt": "figcraft/receipt.json",
+    "receipt_sha256": "089ed57de924aefe4b253c3ca92c81848f5510194e581d11c6cf65aa6d21fc60",
+    "zip": "figcraft/figcraft-web-0.17.0.zip",
+    "zip_sha256": "80d068ab118df503f1799e004d300c0613dd088f654e40450251242b362f59dc",
+    "zip_bytes": 10504084
+  }
+}
