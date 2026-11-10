@@ -1,0 +1,102 @@
+{
+  "effectcraft": {
+    "version": "0.23.1",
+    "commit": "f5e5c8a4d8e0d5aa7e5493b527c0773969a4364a",
+    "archive": "effectcraft-f5e5c8a4d8e0d5aa7e5493b527c0773969a4364a.tar.gz",
+    "source_url": "https://codeload.github.com/storytold/effectcraft/tar.gz/f5e5c8a4d8e0d5aa7e5493b527c0773969a4364a",
+    "source_archive_sha256": "3c90d7321e91339e10b28b972348176bf4b0e76b8474c9992a12ee70bf6e60cd",
+    "cargo_lock_sha256": "a69d418582f656f8635d81344f2076db62256172a49da6083fd3d30d381b7ca2",
+    "patch": "patches/effectflow.patch",
+    "patch_sha256": "4c19c64fb45c478d960fe4cc9d840ec605b4d01e2ab88fb67ae94c1d1b593c5e",
+    "rust": "1.95.0",
+    "wasm_bindgen": "0.2.129"
+  },
+  "filmcraft": {
+    "version": "0.19.0",
+    "commit": "d1af238bba9fc814487c81e47b53543dff435c09",
+    "archive": "filmcraft-d1af238bba9fc814487c81e47b53543dff435c09.tar.gz",
+    "source_url": "https://codeload.github.com/storytold/filmcraft/tar.gz/d1af238bba9fc814487c81e47b53543dff435c09",
+    "source_archive_sha256": "ca9d75efd7360a3a59f04fb10aac5df9d2a352c8bd570cce4b600a3db5e3592d",
+    "cargo_lock_sha256": "ef042555a5b44d503ee9b0844d3c226b5bb287e4b30671220020a32f18d17cb5",
+    "patch": "patches/filmflow.patch",
+    "patch_sha256": "0ae6f5451631468fe0054620dfc08090f97e2ea3a15a20c340b04f166d900eac",
+    "rust": "1.95.0",
+    "wasm_bindgen": "0.2.129",
+    "fonts": {
+      "commit": "b076417b5880bd4154bd22f00695b1d28c6bea83",
+      "archive": "b076417b5880bd4154bd22f00695b1d28c6bea83.tar.gz",
+      "sha256": "35eadfeb7e4217a933f24b73a3d190b90fed81e6c933266f092c161746c0a9eb",
+      "url": "https://codeload.github.com/storytold/craft-fonts/tar.gz/b076417b5880bd4154bd22f00695b1d28c6bea83",
+      "required": true
+    }
+  },
+  "photocraft": {
+    "version": "0.22.0",
+    "commit": "5000240c6e5dc30a024d20f97a620c78eca10d1e",
+    "archive": "photocraft-5000240c6e5dc30a024d20f97a620c78eca10d1e.tar.gz",
+    "source_url": "https://codeload.github.com/storytold/photocraft/tar.gz/5000240c6e5dc30a024d20f97a620c78eca10d1e",
+    "source_archive_sha256": "6aae89247a09bdc5d3839e35bdec2cd85e9b70e54cc2dd495164003b0ba24732",
+    "cargo_lock_sha256": "2f057f34c76d178af1af4d9722cef391493b9bda04d3d43a0ad6bbe9491f2e66",
+    "patch": "patches/photoflow.patch",
+    "patch_sha256": "02a04f29b5736c0dc4f2b98974354385835885b9aebc6bb8f40bfc88c9f61a7a",
+    "rust": "1.95.0",
+    "wasm_bindgen": "0.2.129",
+    "fonts": {
+      "commit": "b076417b5880bd4154bd22f00695b1d28c6bea83",
+      "archive": "b076417b5880bd4154bd22f00695b1d28c6bea83.tar.gz",
+      "sha256": "35eadfeb7e4217a933f24b73a3d190b90fed81e6c933266f092c161746c0a9eb",
+      "url": "https://codeload.github.com/storytold/craft-fonts/tar.gz/b076417b5880bd4154bd22f00695b1d28c6bea83",
+      "required": true
+    }
+  },
+  "vectorcraft": {
+    "version": "0.23.0",
+    "commit": "5d0e892e2419f63bc0ea3c743ddff2e81e15fd3a",
+    "archive": "vectorcraft-5d0e892e2419f63bc0ea3c743ddff2e81e15fd3a.tar.gz",
+    "source_url": "https://codeload.github.com/storytold/vectorcraft/tar.gz/5d0e892e2419f63bc0ea3c743ddff2e81e15fd3a",
+    "source_archive_sha256": "67fe471d1feb504ec92f4ab3951846b2c303d61648d1c95d3c675b84932e9aa6",
+    "cargo_lock_sha256": "55ba7fca07b819f64a0e06114a0bd22d2ffd2fb432b0d4804e61da26a48ff846",
+    "patch": "patches/vectorflow.patch",
+    "patch_sha256": "ce0eee6f9db8549baa06de984b2dbc64300aec939e16800672104e1ab3d04f11",
+    "rust": "1.95.0",
+    "wasm_bindgen": "0.2.129",
+    "fonts": {
+      "commit": "b076417b5880bd4154bd22f00695b1d28c6bea83",
+      "archive": "b076417b5880bd4154bd22f00695b1d28c6bea83.tar.gz",
+      "sha256": "35eadfeb7e4217a933f24b73a3d190b90fed81e6c933266f092c161746c0a9eb",
+      "url": "https://codeload.github.com/storytold/craft-fonts/tar.gz/b076417b5880bd4154bd22f00695b1d28c6bea83",
+      "required": true
+    }
+  },
+  "soundcraft": {
+    "version": "0.19.0",
+    "commit": "04878f8fda885c95f8be5893bbfe4ea4e062a814",
+    "archive": "soundcraft-04878f8fda885c95f8be5893bbfe4ea4e062a814.tar.gz",
+    "source_url": "https://codeload.github.com/storytold/soundcraft/tar.gz/04878f8fda885c95f8be5893bbfe4ea4e062a814",
+    "source_archive_sha256": "b7c8cfde33d2399c44f53bdb922a60181954db3b16473f9302410d762debfc2d",
+    "cargo_lock_sha256": "79f83ac9b46d8c7eae1d198ecc47367bf8e2d01b97a8300b1240a2eaf2b229f7",
+    "patch": "patches/soundflow.patch",
+    "patch_sha256": "1c9f82b341d4069be9f3757f9115ac777230a94889050cf56666139426eebfb4",
+    "rust": "1.95.0",
+    "wasm_bindgen": "0.2.129"
+  },
+  "figcraft": {
+    "version": "0.17.0",
+    "commit": "5bc71c1a2c860adc106801751faf45920e2e46c9",
+    "archive": "figcraft-5bc71c1a2c860adc106801751faf45920e2e46c9.tar.gz",
+    "source_url": "https://codeload.github.com/storytold/figcraft/tar.gz/5bc71c1a2c860adc106801751faf45920e2e46c9",
+    "source_archive_sha256": "936690527aaeddeacd39c1e8918dde246916e020ae40778ea996677c3028d22d",
+    "cargo_lock_sha256": "6381a286d890bee3ade30658ac74d2f9d58b9844fd1a787df0394401fc573a9e",
+    "patch": "patches/figflow.patch",
+    "patch_sha256": "294abb13e3dd4859c003522211ad37d240032ad050d5c62d83649d92ce8a9ce0",
+    "rust": "1.95.0",
+    "wasm_bindgen": "0.2.129",
+    "fonts": {
+      "commit": "37827adc41fd165f9a9234ac40f94dbad353aa69",
+      "archive": "37827adc41fd165f9a9234ac40f94dbad353aa69.tar.gz",
+      "sha256": "64c213260ee643c99edb1300ff047a2a00b270d7efef4aa943fec78641fdfef0",
+      "url": "https://codeload.github.com/storytold/craft-fonts/tar.gz/37827adc41fd165f9a9234ac40f94dbad353aa69",
+      "required": true
+    }
+  }
+}

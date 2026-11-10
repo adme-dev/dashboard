@@ -1,0 +1,37 @@
+{
+  "platform": "aarch64-apple-darwin",
+  "rust": "1.95.0",
+  "trunk": "0.21.14",
+  "wasm_bindgen": "0.2.129",
+  "tools": {
+    "trunk": {
+      "url": "https://github.com/trunk-rs/trunk/releases/download/v0.21.14/trunk-aarch64-apple-darwin.tar.gz",
+      "sha256": "764e299dd50d89442a4e96a236349f57961984b701e74d3dbdb39cd1c9f5101e",
+      "archive": "trunk-aarch64-apple-darwin.tar.gz"
+    },
+    "bindgen": {
+      "url": "https://github.com/wasm-bindgen/wasm-bindgen/releases/download/0.2.129/wasm-bindgen-0.2.129-aarch64-apple-darwin.tar.gz",
+      "sha256": "81d4a23d56b3c3eb8187658329116d50e0b228a93b343825fb71f70179051cd1",
+      "archive": "wasm-bindgen-0.2.129-aarch64-apple-darwin.tar.gz"
+    },
+    "rustup": {
+      "url": "https://static.rust-lang.org/rustup/dist/aarch64-apple-darwin/rustup-init",
+      "sha256": "63752a1919a3a4793173ec70f8f212621a7ce38ba6a246095984482f4de20f9f",
+      "archive": "rustup-init"
+    }
+  },
+  "fully_checksum_pinned_toolchain": false,
+  "transitive_tools": {
+    "wasm_opt": {
+      "version": "version_123",
+      "environment": "TRUNK_TOOLS_WASM_OPT",
+      "url": "https://github.com/WebAssembly/binaryen/releases/download/version_123/binaryen-version_123-arm64-macos.tar.gz",
+      "sha256": null,
+      "status": "version-selected-auto-download-not-checksum-verified",
+      "cache": "Trunk 0.21.14 uses platform ProjectDirs(dev,trunkrs,trunk) cache, shared outside the build root. Existing cached executable may be reused.",
+      "provenance_limitation": "No optimizer archive digest or cached executable/library provenance is verified by this candidate. Pin and verify binaryen archive plus runtime library before claiming fully pinned tools.",
+      "source": "https://github.com/trunk-rs/trunk/blob/v0.21.14/src/tools.rs",
+      "configuration_source": "https://github.com/trunk-rs/trunk/blob/v0.21.14/src/config/models/tools.rs"
+    }
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "editor-dock.css": "b673c9f1bf12542f7f4c91b64b9bf35adc30aac33b11af93916bf5a0f471539f",
+  "editor-dock.js": "5d48e6af8b7c7d6ef501f217896cb7764e069da5540a08858ebc5a6ed1252300",
+  "asset-library.js": "bf5fa63dd2605de662e7c5d4c08fa29c7dbddd08d23164e8b4233de80378934c",
+  "asset-library.css": "44011151c08bf50e76b50c8b9f8d81b649711948a4d8e8f699839bd83aebd65e",
+  "auth-session.js": "53ac31a3bbf77e9e9590cbe44c73005dcf2ceff9234c17b5c5dce0e47bd1c704",
+  "install-app.js": "c4be48351c65620a9b103efa4c6e5d29872ff4c1303a8a8ea024ade2b9cdf087",
+  "install-app.css": "b57e30ab74de9b9eeac71c941277c99bb31e734f0c189f2ada339980a00b295b",
+  "xeroflow-logo.svg": "403cdf6eaa671384065cb0599b0b608bcf052e2a16cc66fdd85b90b00f5f6f77",
+  "xeroflow-icon-192.png": "0e17bc25b530ccb7f520e7434b11e3fe0cfbfd74df351dd2d517e21573e1b55b",
+  "xeroflow-icon-512.png": "88ff4523aa83936c253041525fc0719c23fe2bb1e95842ebfc38f8a717552e07",
+  "xeroflow-maskable-512.png": "e92c9b9af777577322591ad6dd5ffe831cf476d417e3ed9191dcd990e0e4e15b",
+  "apple-touch-icon.png": "a5aab916c97654254c4b67c1107f91eea0ef3b87b6d256716547a5cdc45ef0bf"
+}

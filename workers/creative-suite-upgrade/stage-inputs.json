@@ -1,0 +1,53 @@
+{
+  "effectcraft": {
+    "scope": "0.23.1-flow1",
+    "receipt": "effectcraft/receipt.json",
+    "receipt_sha256": "2405428ed47972759b9c20a5bdcc715994586128f53f704451bd19f9d145889c",
+    "zip": "effectcraft/effectcraft-web-0.23.1.zip",
+    "zip_sha256": "df5ff1087407f3fee94dd7a49a4f425895ed17c8ebc16937b80bd6c1543561fa",
+    "zip_bytes": 22136156
+  },
+  "filmcraft": {
+    "scope": "0.19.0-flow2",
+    "receipt": "filmcraft-flow2/receipt.json",
+    "receipt_sha256": "6a02535e5c3dba955a82ed9d00497ad1e39a5b1eab6a67bccf1b9f2e4852b5c9",
+    "zip": "filmcraft-flow2/filmcraft-web-0.19.0-flow2.zip",
+    "zip_sha256": "2c99b48538caa7f37bd53a53ff325f2df2fc50a1d8b2ac33658f522513e8587b",
+    "zip_bytes": 18535895,
+    "archive_root": "filmcraft-web-0.19.0-flow2"
+  },
+  "photocraft": {
+    "scope": "0.22.0-flow2",
+    "receipt": "photocraft-with-fonts-and-snippets/receipt.json",
+    "receipt_sha256": "130f53e8fc7c6ddbd214c189ba18e903d72956dbf5eea194a741ff4299504f42",
+    "zip": "photocraft-with-fonts-and-snippets/photocraft-web-0.22.0.zip",
+    "zip_sha256": "7752ab741a35d3f2b94a0cac68c13127f3b718a0294ade980b8892a5223d572f",
+    "zip_bytes": 45330944,
+    "compiler_receipt": "photocraft/receipt.json",
+    "compiler_receipt_sha256": "7e658527e7e9d8fc844a2dd9644d847400ae953c0f59cd3390ebb0b01fc2a52a"
+  },
+  "vectorcraft": {
+    "scope": "0.23.0-flow1",
+    "receipt": "vectorcraft/receipt.json",
+    "receipt_sha256": "8b9993042fa13b5801e300b510ce3aef1953364a35de32bb93b812491e605b9f",
+    "zip": "vectorcraft/vectorcraft-web-0.23.0.zip",
+    "zip_sha256": "28ef7440e4121e4e30a7f8364b3b57e934f2f21b4379a9f8d5f8e6f8a3494ba7",
+    "zip_bytes": 36855401
+  },
+  "soundcraft": {
+    "scope": "0.19.0-flow1",
+    "receipt": "soundcraft/receipt.json",
+    "receipt_sha256": "c795a27d2815082a6ef2ae8f11c04d3e66d046483de3edb52faf531082a5ebb2",
+    "zip": "soundcraft/soundcraft-web-0.19.0.zip",
+    "zip_sha256": "efc75f6102b0d9c87d61fcde64d6023ca1a0e65ae8fc7c798ab089aab694621e",
+    "zip_bytes": 6957065
+  },
+  "figcraft": {
+    "scope": "0.17.0-flow1",
+    "receipt": "figcraft/receipt.json",
+    "receipt_sha256": "089ed57de924aefe4b253c3ca92c81848f5510194e581d11c6cf65aa6d21fc60",
+    "zip": "figcraft/figcraft-web-0.17.0.zip",
+    "zip_sha256": "80d068ab118df503f1799e004d300c0613dd088f654e40450251242b362f59dc",
+    "zip_bytes": 10504084
+  }
+}
