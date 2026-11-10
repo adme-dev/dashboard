@@ -33,11 +33,11 @@ The standalone FigFlow upgrade must not change `workers/craft-editors/source-pin
 - [x] Port the standalone branding/save/export changes against each exact source. Classify removed functionality already supplied upstream. Preserve native storage/format identifiers and original notices. Record regenerated patch hashes and unchanged Cargo.lock hashes.
 - [x] Pin current upstream font and Rust/WASM build requirements. Build sequentially on the backup drive; bound concurrency and preserve source/package receipts.
 - [x] Verify local actual-browser startup, native project save/reopen and export for all six built editors; Photo packaging and Film encoder runtime repairs qualified.
-- [ ] Verify hosted wrapped startup/save/reopen/export, dock/session and real MotorStack native-canvas import after additive publication.
+- [x] Verify hosted wrapped startup/save/reopen/export, dock/session and real MotorStack native-canvas import after additive publication.
 - [x] Reconstruct exact EDM5 gateway modules and prepare a private additive assets service with frozen inventory/envelopes. Preserve the complete existing ASSETS binding and all old versions; never replace it with a partial delta.
 - [x] Run current-main MotorStack/gateway/FigFlow regression baselines and focused release guards.
-- [ ] Reconcile fresh current main, CI and live gateway/private-service state before each integration/upload/promotion.
-- [ ] Publish immutable accepted packages, then change stable app routes. Verify authenticated editor routes, prior versions, MotorStack, FigFlow EDM and QR Codes. Record source/current main/package hashes/Worker version/deployment IDs separately.
+- [x] Reconcile fresh current main, CI and live gateway/private-service state before each integration/upload/promotion.
+- [x] Publish immutable accepted packages, then change stable app routes. Verify authenticated editor routes, prior versions, MotorStack, FigFlow EDM and QR Codes. Record source/current main/package hashes/Worker version/deployment IDs separately.
 
 ## Connection inventory and MCP
 
@@ -50,3 +50,7 @@ Unfinished standalone features: general XeroFlow project autosave/import, durabl
 FilmCraft 0.19.0 official `docs/agents.md`: `filmcraft-cli mcp` serves stdio in headless mode or desktop bridge mode. It provides command discovery/execution, project/sequence inspection, media import, rendering and desktop UI controls. The CLI lacks filesystem-confinement flags; any future hosted use must use existing scoped execution authority and actual process/filesystem isolation.
 
 `apps/filmcraft-web/src/api.rs` and `docs/web.md`: the browser build exposes `window.filmcraft` promises for commands, requests, screenshots and file/project import. That is a browser-local control API, not a hosted MCP endpoint and not proof our current browser build is connected to the agency agent.
+
+## Published checkpoint
+
+PR914 merged at9ac1d65c399f0bf5c003b96530d4dcdcd4309129; final-head CI42787149717 passed. All six hosted roundtrips/exports passed and normal suite routes were promoted on10November. Gateway versionb13ec84c-3f51-4d8d-a002-24b276b5ea41, deployment78b40e3a-a4a6-4952-838a-434e624d9580. See [the release ledger](../../runbooks/creative-suite-upgrade-20261110.md) for private/additive/stable receipts and scoped acceptance. Dashboard DOMPurify Pages deployment remains a separate in-progress stage.

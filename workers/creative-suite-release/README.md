@@ -2,6 +2,10 @@
 
 This release upgrades the existing `creative.xeroflow.io` suite. It retains its launcher, seven cards, branding, dock/tab behavior, sign-in, installation identities, MotorStack HTTP/RPC and specialised FigFlow EDM1/3/4/5 paths. The complete old ASSETS binding stays attached to the original gateway. It creates a private additive assets service; it never replaces that binding with a partial directory. See [PARITY.md](PARITY.md) and [the release ledger](../../docs/runbooks/creative-suite-upgrade-20261110.md).
 
+## Published release
+
+The six normal canonical suite links were promoted on10November after actual owner-session hosted save/reopen/export checks for every editor. [published-release.json](published-release.json) records source9ac, exact gateway/private versions and deployments. [The release ledger](../../docs/runbooks/creative-suite-upgrade-20261110.md) distinguishes immutable publication, additive qualification and stable promotion. The preparation-time status fields below and in the frozen receipt describe the artifact before publication; they are not current deployment state.
+
 ## Frozen candidate
 
 Current output: `/Volumes/Backups/Development/creative-suite-upgrade-20261110/connected-assets-candidate-009`.

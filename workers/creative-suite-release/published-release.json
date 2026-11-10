@@ -1,0 +1,35 @@
+{
+  "status": "published",
+  "host": "creative.xeroflow.io",
+  "published_at": "2026-11-10T10:38:07.638113Z",
+  "source_commit": "9ac1d65c399f0bf5c003b96530d4dcdcd4309129",
+  "pull_request": 914,
+  "receipt_sha256": "fa1163712c7a4516bcce19ef36d93cb7f33501896a3156158440350ec8ac8aad",
+  "gateway": {
+    "version": "b13ec84c-3f51-4d8d-a002-24b276b5ea41",
+    "deployment": "78b40e3a-a4a6-4952-838a-434e624d9580",
+    "etag": "1978ecce5a06482ccb63f5de36c80009793e90435c0da68a3d83932a05f5d26b"
+  },
+  "assets": {
+    "version": "95469284-d389-4382-b670-7bdcf1d9af5d",
+    "deployment": "ba855df5-c299-498c-955c-c4437aa093f0",
+    "public_workers_dev_status": 404,
+    "decoded_content_readback_assets": 264
+  },
+  "hosted_acceptance_sha256": "e4d269cdae2a066d9ea90c4634dc742a9aa8ef7cc65c9f945072fd58fd9a0bdc",
+  "routes": {
+    "photocraft": "/photoflow/0.22.0-flow2/",
+    "vectorcraft": "/vectorflow/0.23.0-flow1/",
+    "effectcraft": "/effectflow/0.23.1-flow1/",
+    "filmcraft": "/filmflow/0.19.0-flow2/",
+    "soundcraft": "/soundflow/0.19.0-flow1/",
+    "figcraft": "/figflow/0.17.0-flow1/"
+  },
+  "specialised_figflow_email": "0.11.2-edm5",
+  "evidence_root": "/Volumes/Backups/Development/creative-suite-upgrade-20261110",
+  "limits": [
+    "Recorded release receipt; weekly metadata check does not prove current hosted runtime",
+    "Installed-app runtime and universal historical-document fonts not fully qualified",
+    "No native MCP activation or shared project autosave"
+  ]
+}
