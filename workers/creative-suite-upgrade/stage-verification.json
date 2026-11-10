@@ -11,11 +11,11 @@
       "decoded_sha256": "b6a313466de049a9f54fa93a3fdafbf17e744054e851ab55ecb531653b6266fc"
     },
     {
-      "path": "/filmflow/0.19.0-flow1/filmcraft_web_bg.wasm.br",
-      "encoded_bytes": 12682235,
-      "decoded_bytes": 49318665,
-      "encoded_sha256": "a885b01f53848458a6b132f546ab54e810caf6e31af20cdea91e24b42f498b63",
-      "decoded_sha256": "d389932e400038e9b279d73c526c1bc0fdb2cbaa0067ab4ea6f4a9d9bef4857d"
+      "path": "/filmflow/0.19.0-flow2/filmcraft_web_bg.wasm.br",
+      "encoded_bytes": 12675291,
+      "decoded_bytes": 49311920,
+      "encoded_sha256": "c4fea2eb1d94047f534d48559a86e54349607f5088fd5b94bb9bb0804a713241",
+      "decoded_sha256": "217b2a5e447bb0334e6487477289789d1ca82255ca643af8b6207d46ffc85101"
     },
     {
       "path": "/vectorflow/0.23.0-flow1/vectorcraft-web-96c6139d4ab21001_bg.wasm.br",
@@ -29,43 +29,31 @@
     "path": "/figflow/0.17.0-flow1/figcraft-web-3621afe8f825a56e_bg.wasm",
     "bytes": 25546822
   },
-  "total_stored_bytes": 159456209,
+  "total_stored_bytes": 159449265,
   "manifest_sha256": {
-    "asset-sha256.json": "751ad12a74b1cec0eed7e9c5c19ddc2c4a54774ccce782d1f35340f8e81f9abd",
-    "compressed.json": "c4bb3944652054ecb1cb6d54a09086def8d0ac1c48ed326b6a7ed31a7714d9b7",
-    "stored-assets.json": "d5141f7b159584b53f0a262dc8f276034130404a22f7cd3adf84aef1c7bea5bd"
+    "asset-sha256.json": "f24d9bd5a1b7970d9200eec578ceb3185a9e0adc5d86899811abd9fb4566055e",
+    "compressed.json": "72ed2be65101fec88d5c209297cbb06c41894559361047f9e6a915d9ef4429b1",
+    "stored-assets.json": "1a967a084e05f528946c879dff7b3821955e8ea9aeb3daa7d2912fc79d0e8b51"
   },
-  "stage_receipt_sha256": "6fad6a18b82f2d81111e3bcead15fc0f47cc62adab0046101e7248ff8dddb410",
+  "stage_receipt_sha256": "3a4f68fda13abb616109fe66c9e72dc7a2f7cd57caf056558122b44004c50efa",
   "node": "v24.18.0",
   "brotli": "1.2.0",
   "verification": "Read every actual public file, compare encoded hash/size, independently decompress and compare decoded hashes/sizes, exact inventory and route checks; no deployment",
   "complete_ASSETS_inventory": false,
-  "artifact_root": "/Volumes/Backups/Development/creative-suite-upgrade-20261110/assets-candidate-standalone-flow2",
-  "javascript_imports": {
-    "photoflow": {
-      "javascript_modules": 4,
-      "unresolved_relative_literal_imports": []
-    },
-    "filmflow": {
-      "javascript_modules": 3,
-      "unresolved_relative_literal_imports": []
-    },
-    "soundflow": {
-      "javascript_modules": 2,
-      "unresolved_relative_literal_imports": []
-    },
-    "figflow": {
-      "javascript_modules": 2,
-      "unresolved_relative_literal_imports": []
-    },
-    "effectflow": {
-      "javascript_modules": 6,
-      "unresolved_relative_literal_imports": []
-    },
-    "vectorflow": {
-      "javascript_modules": 2,
-      "unresolved_relative_literal_imports": []
-    }
+  "artifact_root": "/Volumes/Backups/Development/creative-suite-upgrade-20261110/assets-candidate-standalone-flow3",
+  "helper_sha256": {
+    "stage_assets.py": "b806bdaca8f78379ee318a8a915d56117808815fb952e42bef08acd72228e3ce",
+    "brotli-stage.mjs": "63c979ba1c09d3069e9f4cdccdec64deffe77ea57d97f355ae6bf7b6144f4b54",
+    "verify-stage.mjs": "be0aefa58b0cce5ff257e446ad1ddc543f361c2b865630cc30ca2eda29a62336",
+    "repair_photo_package.py": "49b7a3306ee14b5d21ba71d56011b650e0de8cefab09a7ce0db08cf63ebd444b",
+    "stage-inputs.json": "8a8b9928712de8d9cedf93035117f6137f0af72e4126845f031227a7e0a6cc5c"
+  },
+  "source_review_preserved_from_previous_checkpoint": {
+    "preserved_worker_sha256": "53995e069ed042458b3b00e7762375111674a2069fab12c6c3a9987f8d4f045a",
+    "preserved_builder_sha256": "a34c4bdd43929559aa4377b47f488746e9249c93527d288b045d951092af45bc",
+    "current_main_captured_worker_sha256": "1461ce3b66e6b9914c75dd3fece63023b0d81d578f3c5844966095c106595080",
+    "current_main_release_builder_sha256": "c06b73ba5b626354dd10f5100d5d9f19251c8b64c38ab6b6887ca2e11a51972b",
+    "finding": "String URL to .br URL schema retained; current main embeds compressed_default. New map must be reconciled with full inventory in separate reviewed publication. No gateway edits."
   },
   "photo_repair_receipt": {
     "status": "repaired-unpublished-photo-package",
@@ -99,15 +87,59 @@
     "missing_imports_after": [],
     "wasm_and_parts_unchanged": true
   },
-  "guard_tests": {
-    "passed": 45,
-    "failed": 0,
-    "scope": "44 checker/preparation/stage/photo-repair tests plus1verified-Brotli-reuse test; exact commands and logs retained under /private/tmp/creative-photo-*"
+  "film_flow2_receipt": {
+    "engine": "filmcraft",
+    "exit": 0,
+    "seconds": 230.00151801109314,
+    "lock_sha256": "ef042555a5b44d503ee9b0844d3c226b5bb287e4b30671220020a32f18d17cb5",
+    "lock_unchanged": true,
+    "packages": [
+      {
+        "file": "filmcraft-web-0.19.0-flow2.zip",
+        "bytes": 18535895,
+        "sha256": "2c99b48538caa7f37bd53a53ff325f2df2fc50a1d8b2ac33658f522513e8587b"
+      }
+    ],
+    "scope": "/filmflow/0.19.0-flow2/",
+    "patch_sha256": "0ae6f5451631468fe0054620dfc08090f97e2ea3a15a20c340b04f166d900eac",
+    "upstream_commit": "d1af238bba9fc814487c81e47b53543dff435c09",
+    "status": "built-unpublished-browser-retest-required",
+    "wasm": {
+      "path": "filmcraft-web-0.19.0-flow2/filmcraft_web_bg.wasm",
+      "sha256": "217b2a5e447bb0334e6487477289789d1ca82255ca643af8b6207d46ffc85101",
+      "bytes": 49311920
+    }
   },
-  "helper_sha256": {
-    "stage_assets.py": "af3f833978185da35afbce823eb9f5095549a33a4a8218652a00df92858bc5e1",
-    "brotli-stage.mjs": "63c979ba1c09d3069e9f4cdccdec64deffe77ea57d97f355ae6bf7b6144f4b54",
-    "verify-stage.mjs": "be0aefa58b0cce5ff257e446ad1ddc543f361c2b865630cc30ca2eda29a62336",
-    "repair_photo_package.py": "49b7a3306ee14b5d21ba71d56011b650e0de8cefab09a7ce0db08cf63ebd444b"
+  "guard_tests": {
+    "passed": 48,
+    "failed": 0,
+    "command": "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s workers/creative-suite-upgrade -p 'test_*.py' -v",
+    "log": "/private/tmp/creative-flow3-upgrade-tests.log"
+  },
+  "javascript_imports": {
+    "photoflow": {
+      "javascript_modules": 4,
+      "unresolved_relative_literal_imports": []
+    },
+    "filmflow": {
+      "javascript_modules": 3,
+      "unresolved_relative_literal_imports": []
+    },
+    "soundflow": {
+      "javascript_modules": 2,
+      "unresolved_relative_literal_imports": []
+    },
+    "figflow": {
+      "javascript_modules": 2,
+      "unresolved_relative_literal_imports": []
+    },
+    "effectflow": {
+      "javascript_modules": 6,
+      "unresolved_relative_literal_imports": []
+    },
+    "vectorflow": {
+      "javascript_modules": 2,
+      "unresolved_relative_literal_imports": []
+    }
   }
 }

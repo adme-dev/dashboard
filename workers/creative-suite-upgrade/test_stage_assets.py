@@ -28,15 +28,18 @@ class StagingGuards(unittest.TestCase):
         self.builds.mkdir()
         self.output = self.base / 'delta'
 
-    def fixture(self, extra=None):
-        archive = self.builds / 'effectcraft-web-1.0.0.zip'
+    def fixture(self, extra=None, suffix=''):
+        prefix = 'effectcraft-web-1.0.0' + suffix
+        archive = self.builds / (prefix + '.zip')
         with zipfile.ZipFile(archive, 'w') as z:
-            z.writestr('effectcraft-web-1.0.0/index.html', '<html>candidate</html>')
+            z.writestr(prefix + '/index.html', '<html>candidate</html>')
             for name, data in extra or [('module.wasm', b'\0asm' + b'a' * 10000)]:
-                z.writestr('effectcraft-web-1.0.0/' + name, data)
+                z.writestr(prefix + '/' + name, data)
         receipt = {'engine': 'effectcraft', 'exit': 0, 'lock_unchanged': True, 'lock_sha256': 'pinned-lock', 'packages': [{'file': archive.name, 'bytes': archive.stat().st_size, 'sha256': subject.file_sha(archive)}]}
         (self.builds / 'receipt.json').write_text(json.dumps(receipt))
         item = {'scope': '1.0.0-flow1', 'receipt': 'receipt.json', 'receipt_sha256': subject.file_sha(self.builds / 'receipt.json'), 'zip': archive.name, 'zip_bytes': archive.stat().st_size, 'zip_sha256': subject.file_sha(archive)}
+        if suffix:
+            item['archive_root'] = prefix
         (self.config / 'stage-inputs.json').write_text(json.dumps({'effectcraft': item}))
         (self.config / 'source-pins.json').write_text(json.dumps({'effectcraft': {'version': '1.0.0', 'cargo_lock_sha256': 'pinned-lock'}}))
         return archive
@@ -61,6 +64,26 @@ class StagingGuards(unittest.TestCase):
         self.assertFalse(receipt['deployable_in_isolation'])
         with self.assertRaisesRegex(ValueError, 'fresh absolute'):
             self.run_stage()
+
+    def test_explicit_derivative_archive_root_is_bounded_to_engine_and_version(self):
+        self.fixture(suffix='-flow2')
+        self.run_stage()
+        self.assertTrue((self.output / 'stage-receipt.json').exists())
+
+    def test_arbitrary_archive_root_rejected_before_output(self):
+        self.fixture()
+        inputs = json.loads((self.config / 'stage-inputs.json').read_text())
+        inputs['effectcraft']['archive_root'] = '../other'
+        (self.config / 'stage-inputs.json').write_text(json.dumps(inputs))
+        with self.assertRaisesRegex(ValueError, 'Invalid archive root'):
+            self.run_stage()
+        self.assertFalse(self.output.exists())
+
+    def test_missing_relative_module_prevents_success_receipt(self):
+        self.fixture([('main.js', b"import './missing.js';")])
+        with self.assertRaisesRegex(ValueError, 'Unresolved JavaScript module imports'):
+            self.run_stage()
+        self.assertFalse((self.output / 'stage-receipt.json').exists())
 
     def test_modified_zip_refused_before_output(self):
         archive = self.fixture()

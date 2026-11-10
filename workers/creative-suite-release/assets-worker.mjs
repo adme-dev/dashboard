@@ -1,5 +1,6 @@
 import inventory from './inventory.json' with { type: 'json' }
 import compressed from './compressed.json' with { type: 'json' }
+import figLibrary from './fig-library.json' with { type: 'json' }
 
 export default {
   async fetch(request, env) {
@@ -7,6 +8,7 @@ export default {
     const url = new URL(request.url)
     if (/%|\\/.test(url.pathname)) return new Response('Not found', { status: 404 })
     let path = url.pathname.endsWith('/') ? url.pathname + 'index.html' : url.pathname
+    if (path === figLibrary.index && url.searchParams.get('canvas') !== '1') path = figLibrary.library
     const encoded = Object.hasOwn(compressed, path) ? compressed[path] : null
     path = encoded || path
     if (!Object.hasOwn(inventory, path) || (path.endsWith('.br') && !encoded)) return new Response('Not found', { status: 404 })
@@ -18,7 +20,13 @@ export default {
     headers.set('Cache-Control', 'private, no-store')
     headers.set('Referrer-Policy', 'no-referrer')
     headers.set('X-Content-Type-Options', 'nosniff')
-    headers.set('Content-Security-Policy', "frame-ancestors 'self' https://app.xeroflow.io")
+    if (path === figLibrary.library) {
+      // Exact existing specialised library policy; do not apply it to executable editor assets.
+      headers.set('Content-Type', 'text/html; charset=utf-8')
+      headers.set('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; frame-src 'self' https://app.xeroflow.io; frame-ancestors 'self' https://app.xeroflow.io; base-uri 'none'; form-action 'none'")
+    } else {
+      headers.set('Content-Security-Policy', "frame-ancestors 'self' https://app.xeroflow.io")
+    }
     if (encoded) {
       headers.set('Content-Type', 'application/wasm')
       headers.set('Content-Encoding', 'br')

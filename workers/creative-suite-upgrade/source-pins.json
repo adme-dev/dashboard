@@ -19,7 +19,7 @@
     "source_archive_sha256": "ca9d75efd7360a3a59f04fb10aac5df9d2a352c8bd570cce4b600a3db5e3592d",
     "cargo_lock_sha256": "ef042555a5b44d503ee9b0844d3c226b5bb287e4b30671220020a32f18d17cb5",
     "patch": "patches/filmflow.patch",
-    "patch_sha256": "761ab780eafb00f9fb895dd4c7ef6e9a44801966310d194e4a02ff1b6f56ef2d",
+    "patch_sha256": "0ae6f5451631468fe0054620dfc08090f97e2ea3a15a20c340b04f166d900eac",
     "rust": "1.95.0",
     "wasm_bindgen": "0.2.129",
     "fonts": {

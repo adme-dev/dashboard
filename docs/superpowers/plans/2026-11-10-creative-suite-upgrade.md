@@ -30,11 +30,13 @@ The standalone FigFlow upgrade must not change `workers/craft-editors/source-pin
 - [x] Read existing browser, upgrade, native execution, MotorStack and current FigFlow gateway docs. Baseline old checkout auth/asset/MotorStack tests: 47 passed.
 - [x] Create a fresh-main worktree and use the authorized backup drive for resources.
 - [x] Replay all original patches with zero fuzz on isolated new source. All engines require ports; preserve rejects/logs. Separately test current-main FigFlow EDM patches only to measure compatibility, not to promote them.
-- [ ] Port the standalone branding/save/export changes against each exact source. Classify removed functionality already supplied upstream. Preserve native storage/format identifiers and original notices. Record regenerated patch hashes and unchanged Cargo.lock hashes.
-- [ ] Pin current upstream font and Rust/WASM build requirements. Build sequentially on the backup drive; bound concurrency and preserve source/package receipts.
-- [ ] Verify actual browser startup, import, save/reopen/export and Flow branding for each built editor. Exercise existing dock and MotorStack file import against actual canvases, not just a synthetic drop fixture.
-- [ ] Reconstruct and verify the latest gateway and complete asset inventory before preparing additive package publication. Retain every old version and all binding names/types/targets. Never deploy a partial asset directory or the obsolete rollout worker.
-- [ ] Run current-main MotorStack, gateway and FigFlow regressions. Preserve newer main changes, obtain fresh live version/module readbacks, and compare current main before source integration.
+- [x] Port the standalone branding/save/export changes against each exact source. Classify removed functionality already supplied upstream. Preserve native storage/format identifiers and original notices. Record regenerated patch hashes and unchanged Cargo.lock hashes.
+- [x] Pin current upstream font and Rust/WASM build requirements. Build sequentially on the backup drive; bound concurrency and preserve source/package receipts.
+- [x] Verify local actual-browser startup, native project save/reopen and export for all six built editors; Photo packaging and Film encoder runtime repairs qualified.
+- [ ] Verify hosted wrapped startup/save/reopen/export, dock/session and real MotorStack native-canvas import after additive publication.
+- [x] Reconstruct exact EDM5 gateway modules and prepare a private additive assets service with frozen inventory/envelopes. Preserve the complete existing ASSETS binding and all old versions; never replace it with a partial delta.
+- [x] Run current-main MotorStack/gateway/FigFlow regression baselines and focused release guards.
+- [ ] Reconcile fresh current main, CI and live gateway/private-service state before each integration/upload/promotion.
 - [ ] Publish immutable accepted packages, then change stable app routes. Verify authenticated editor routes, prior versions, MotorStack, FigFlow EDM and QR Codes. Record source/current main/package hashes/Worker version/deployment IDs separately.
 
 ## Connection inventory and MCP

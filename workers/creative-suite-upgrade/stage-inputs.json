@@ -8,12 +8,13 @@
     "zip_bytes": 22136156
   },
   "filmcraft": {
-    "scope": "0.19.0-flow1",
-    "receipt": "filmcraft/receipt.json",
-    "receipt_sha256": "2f869517b6fd42a5f3887db448d96a4daa0e9cb1c51228a1027b37b5b1b6b590",
-    "zip": "filmcraft/filmcraft-web-0.19.0.zip",
-    "zip_sha256": "8843d3892b949176ff32b89ea5fcabb2239c968a6a4e0705d6ebb686a07d632e",
-    "zip_bytes": 18536518
+    "scope": "0.19.0-flow2",
+    "receipt": "filmcraft-flow2/receipt.json",
+    "receipt_sha256": "6a02535e5c3dba955a82ed9d00497ad1e39a5b1eab6a67bccf1b9f2e4852b5c9",
+    "zip": "filmcraft-flow2/filmcraft-web-0.19.0-flow2.zip",
+    "zip_sha256": "2c99b48538caa7f37bd53a53ff325f2df2fc50a1d8b2ac33658f522513e8587b",
+    "zip_bytes": 18535895,
+    "archive_root": "filmcraft-web-0.19.0-flow2"
   },
   "photocraft": {
     "scope": "0.22.0-flow2",

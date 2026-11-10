@@ -13,6 +13,10 @@ export function validatePrepared(directory){
   assert.deepEqual(receipt,publication.receipt)
   for(const [file,digest] of Object.entries(receipt.service_files))assert.equal(sha(readFileSync(resolve(directory,file))),digest,'Service upload file changed: '+file)
   for(const [file,digest] of Object.entries(receipt.modules))assert.equal(sha(readFileSync(resolve(directory,'gateway',file))),digest,'Gateway module changed')
+  if(receipt.promotion_modules){
+    for(const [file,digest] of Object.entries(receipt.promotion_modules))assert.equal(sha(readFileSync(resolve(directory,'promotion',file))),digest,'Promotion gateway module changed')
+    assert.equal(sha(readFileSync(resolve(directory,'promotion-receipt.json'))),receipt.promotion_receipt_sha256,'Promotion receipt changed')
+  }
   const inventory=JSON.parse(readFileSync(resolve(directory,'inventory.json')))
   const list=(directory,prefix='')=>readdirSync(directory,{withFileTypes:true}).flatMap(entry=>{assert(!entry.isSymbolicLink(),'Linked public asset');return entry.isDirectory()?list(resolve(directory,entry.name),prefix+entry.name+'/'):[prefix+entry.name]})
   assert.deepEqual(list(resolve(directory,'public')).sort(),Object.keys(inventory).map(x=>x.slice(1)).sort(),'Public inventory changed')

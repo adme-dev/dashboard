@@ -51,3 +51,10 @@ Browser startup qualification found that Photo's relocated `app/photocraft-web.j
 Fresh stage: `/Volumes/Backups/Development/creative-suite-upgrade-20261110/assets-candidate-standalone-flow2` (186 stored files). Every literal relative JavaScript dependency resolves across all6 packages, including dynamic `import()` and export-from paths. The staging helper now rejects unresolved literal module imports before issuing a success receipt. Nonliteral dynamic imports and browser execution still require runtime acceptance.
 
 Three unchanged Brotli assets were reused only after input archive/hash checks and lossless decoded-byte comparison; output files are newly written. The reuse fixture confirms differing input is rejected. This avoids recompressing unchanged binaries and does not trust a cache key alone. Actual stored/decoded files passed `verify-stage.mjs` again. No deployment occurred.
+
+
+## Film browser encoder correction and stageflow3
+
+Selected Film package is `filmcraft-flow2/filmcraft-web-0.19.0-flow2.zip`, SHA256 `2c99b48538caa7f37bd53a53ff325f2df2fc50a1d8b2ac33658f522513e8587b`,18,535,895 bytes. The successful compiler receipt and unchanged Cargo.lock were verified. Its explicit archive root is bounded to the pinned engine/version plus a Flow suffix. New Film WASM SHA256 is `217b2a5e447bb0334e6487477289789d1ca82255ca643af8b6207d46ffc85101`; real MP4 browser acceptance remains separate.
+
+Fresh final standalone stage is `/Volumes/Backups/Development/creative-suite-upgrade-20261110/assets-candidate-standalone-flow3`. Effect/Vector Brotli files were reused only after hash and decoded-byte equality checks; Film's new binary was freshly compressed with quality11. The actual stage passed all stored/decoded hash, file-size, exact-inventory and literal JavaScript module-resolution checks. Film and Photo use flow2 paths; earlier stages and packages remain unchanged. The connected candidate adds the preserved Fig library shell and separate canonical promotion module; see `../creative-suite-release/README.md`.

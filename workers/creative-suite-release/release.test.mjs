@@ -12,7 +12,8 @@ const load = source => import('data:text/javascript;base64,' + Buffer.from(sourc
 const receipt = JSON.parse(read('release-receipt.json'))
 const inventory = JSON.parse(read('inventory.json'))
 const compressed = JSON.parse(read('compressed.json'))
-const service = (await load(read('assets-worker.mjs').replace(/^import inventory .*$/m, 'const inventory = ' + JSON.stringify(inventory)).replace(/^import compressed .*$/m, 'const compressed = ' + JSON.stringify(compressed)))).default
+const figLibrary = JSON.parse(read('fig-library.json'))
+const service = (await load(read('assets-worker.mjs').replace(/^import inventory .*$/m, 'const inventory = ' + JSON.stringify(inventory)).replace(/^import compressed .*$/m, 'const compressed = ' + JSON.stringify(compressed)).replace(/^import figLibrary .*$/m,'const figLibrary = '+JSON.stringify(figLibrary)))).default
 const gateway = (await load(read('gateway/worker.js').replace('import { WorkerEntrypoint } from "cloudflare:workers";', 'class WorkerEntrypoint {}').replace('"./brand-rpc.mjs"', JSON.stringify(pathToFileURL(resolve(root,'gateway/brand-rpc.mjs')).href)))).default
 
 test('all stored assets match final manifest and strict size bound', () => {
@@ -27,7 +28,19 @@ test('all shells include connected local modules and stable install identities',
   for (const prefix of receipt.prefixes) {
     const page = read('public'+prefix+'index.html')
     for (const module of ['editor-dock.js','auth-session.js','asset-library.js','install-app.js']) assert.ok(page.includes('./xf-shell/'+module))
+    const engine = prefix.split('/')[1].replace('flow','craft')
+    const loading = ['effectcraft','filmcraft'].includes(engine) ? 'loading' : engine+'_loading'
+    assert.equal((page.match(/id="xeroflow-loading-brand"/g)||[]).length,1)
+    assert.ok(page.includes('#'+loading+' > img { display: none !important; }'))
+    assert.ok(page.includes('#'+loading+'::before'))
+    assert.ok(page.includes('background: url("./xf-shell/xeroflow-logo.svg")'))
+    assert.equal((page.match(/name="theme-color"/g)||[]).length,1)
+    assert.ok(page.includes('<meta name="theme-color" content="#1b1b1e">'))
     const manifest = JSON.parse(read('public'+prefix+'manifest.webmanifest'))
+    assert.equal(manifest.icons.length,3)
+    const maskable = manifest.icons.find(icon=>icon.purpose==='maskable')
+    assert.equal(maskable.src,'./xf-shell/xeroflow-maskable-512.png')
+    assert.ok(Object.hasOwn(inventory,prefix+'xf-shell/xeroflow-maskable-512.png'))
     assert.equal(manifest.id,'/'+prefix.split('/')[1]+'/')
     assert.equal(manifest.start_url,manifest.id)
     assert.equal(manifest.scope,manifest.id)
@@ -68,4 +81,46 @@ test('gateway fresh authorization precedes new editor and service-worker dispatc
   await request('/figflow/0.11.2-flow1/','fixture-jwt');assert.equal(edm.length,5)
   const stable=await request('/figflow/','fixture-jwt');assert.equal(new URL(stable.headers.get('Location')).pathname,'/figflow/0.11.2-flow1/')
   assert.equal((await request('/filmflow/0.19.0-flow10/index.html','fixture-jwt')).status,200);assert.equal(legacy.length,2)
+})
+
+test('new FigFlow default entry preserves existing library HTML and canvas=1 serves its native index',async()=>{
+  const { LIBRARY_SHELL, STANDALONE_INDEX } = await import('../figflow-edm-assets/library-shell.mjs')
+  const prefix = figLibrary.index.slice(0,-'index.html'.length)
+  assert.equal(read('public'+figLibrary.library),LIBRARY_SHELL.replace(STANDALONE_INDEX,prefix))
+  assert.ok(read('public'+figLibrary.library).includes('https://app.xeroflow.io/agency/email?tab=templates&amp;workspace=figflow'))
+  const calls=[]
+  const env={ASSETS:{fetch:async request=>{calls.push(new URL(request.url).pathname);return new Response('fixture')}}}
+  const { default: oldLibraryService } = await import('../figflow-edm-assets/worker.mjs')
+  const oldResponse = await oldLibraryService.fetch(new Request('https://creative.xeroflow.io'+STANDALONE_INDEX), {})
+  for(const path of [prefix,figLibrary.index,prefix+'?canvas=0']){
+    const response = await service.fetch(new Request('https://assets'+path),env)
+    assert.equal(response.headers.get('Content-Security-Policy'),oldResponse.headers.get('Content-Security-Policy'))
+    assert.equal(response.headers.get('Content-Type'),'text/html; charset=utf-8')
+  }
+  assert.deepEqual(calls,[figLibrary.library,figLibrary.library,figLibrary.library])
+  calls.length=0
+  const canvasResponse = await service.fetch(new Request('https://assets'+prefix+'?canvas=1'),env)
+  assert.equal(canvasResponse.headers.get('Content-Security-Policy'),"frame-ancestors 'self' https://app.xeroflow.io")
+  assert.deepEqual(calls,[figLibrary.index])
+})
+test('separate promotion selects all new canonical routes while additive and legacy routing remain unchanged',async t=>{
+  const promoted=(await load(read('promotion/worker.js').replace('import { WorkerEntrypoint } from "cloudflare:workers";', 'class WorkerEntrypoint {}').replace('"./brand-rpc.mjs"', JSON.stringify(pathToFileURL(resolve(root,'promotion/brand-rpc.mjs')).href)))).default
+  const original=globalThis.fetch;t.after(()=>{globalThis.fetch=original})
+  globalThis.fetch=async()=>Response.json({success:true,user:{id:'fixture',email:'paul@adme.net.au',is_active:true}})
+  const env={CREATIVE_AUTH_KEY:randomBytes(32).toString('base64url'),ASSETS:{fetch:async()=>new Response('legacy')}}
+  for(const prefix of receipt.prefixes){
+    const app=prefix.split('/')[1]
+    for(const stable of ['/'+app,'/'+app+'/']){
+      const request=new Request('https://creative.xeroflow.io'+stable,{headers:{Cookie:'__Host-xf_creative_session=fixture-jwt'}})
+      const response=await promoted.fetch(request,env)
+      assert.equal(response.status,302);assert.equal(new URL(response.headers.get('Location')).pathname,prefix)
+      assert.equal(response.headers.get('Cache-Control'),'private, no-store')
+    }
+  }
+  const anonymous=await promoted.fetch(new Request('https://creative.xeroflow.io/filmflow/'),env)
+  assert.equal(anonymous.status,401)
+  const oldHost=await promoted.fetch(new Request('https://xeroflow-creative-tools.adme-dev.workers.dev/filmflow/',{headers:{Cookie:'__Host-xf_creative_session=fixture-jwt'}}),env)
+  assert.equal(new URL(oldHost.headers.get('Location')).pathname,'/filmflow/0.13.0-flow1/')
+  const additive=await gateway.fetch(new Request('https://creative.xeroflow.io/filmflow/',{headers:{Cookie:'__Host-xf_creative_session=fixture-jwt'}}),env)
+  assert.equal(new URL(additive.headers.get('Location')).pathname,'/filmflow/0.13.0-flow1/')
 })

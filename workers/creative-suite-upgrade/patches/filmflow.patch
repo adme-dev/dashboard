@@ -2852,3 +2852,18 @@
              .open(&mut open)
              .collapsible(false)
              .resizable(false)
+--- a/crates/h264enc/src/lib.rs
++++ b/crates/h264enc/src/lib.rs
+@@ -566,7 +566,11 @@
+         let pps_nal = nal::nal(3, NAL_PPS, &pps.rbsp());
+         let threads = if cfg.threads == 0 { std::thread::available_parallelism().map_or(1, |n| n.get()) } else { cfg.threads };
+         let slices = if cfg.slices > 0 { cfg.slices.min(mbh) } else { threads.min(mbh.div_ceil(4)).max(1) };
+-        #[cfg(feature = "threads")]
++        // Browser WASM cannot spawn std threads, including a one-thread pool.
++        // Blocking Rayon joins/iterators use its supported global sequential fallback.
++        #[cfg(all(feature = "threads", target_arch = "wasm32"))]
++        let pool = Pool { pool: None };
++        #[cfg(all(feature = "threads", not(target_arch = "wasm32")))]
+         let pool = Pool {
+             pool: Some(
+                 rayon::ThreadPoolBuilder::new()

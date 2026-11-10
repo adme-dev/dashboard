@@ -1,66 +1,91 @@
-# Additive connected standalone release candidate
+# Existing Creative Suite upgrade and guarded publication
 
-This directory prepares a private asset service and a gateway module candidate against the verified EDM5 gateway. It performs no upload, stable-route switch, secret change or deployment. The complete old ASSETS inventory stays attached to the original gateway; its bindings, old URLs, MotorStack RPC and specialised EDM1/3/4/5 and Email Library routing remain present.
+This release upgrades the existing `creative.xeroflow.io` suite. It retains its launcher, seven cards, branding, dock/tab behavior, sign-in, installation identities, MotorStack HTTP/RPC and specialised FigFlow EDM1/3/4/5 paths. The complete old ASSETS binding stays attached to the original gateway. It creates a private additive assets service; it never replaces that binding with a partial directory. See [PARITY.md](PARITY.md) and [the release ledger](../../docs/runbooks/creative-suite-upgrade-20261110.md).
 
-The current standalone candidate now has version-local shared dock, install, session and MotorStack library code. The exact preserved shell source hashes are pinned in `shell-source-pins.json`; the library's dynamically loaded CSS is redirected into the same immutable version scope. Dock destinations retain existing stable app URLs; installed-app IDs and scopes also retain those stable URLs. This preparation alone does not make stable URLs select the new editors. Native canvas import, shared saving and cross-app document transfer are not established by the presence of a library UI.
+## Frozen candidate
 
-Effect's replacement `sw.js` unregisters only its current registration. It has no fetch listener and deletes no cache, IndexedDB or OPFS data. The new version's service-worker request passes the same fresh account gate as the rest of the version. Old-version service-worker routing is untouched.
+Current output: `/Volumes/Backups/Development/creative-suite-upgrade-20261110/connected-assets-candidate-009`.
 
-The private service has no public route, workers.dev URL or preview URL. Its exact inventory gate runs before ASSETS; unknown assets, direct `.br` requests and non-GET/HEAD requests are rejected. Three requested WASM URLs are mapped to their existing verified Brotli files with manual encoding. Headers and credentials are not forwarded from gateway users to either backing asset handler.
+- 264 stored files, all below 25 MiB.
+- Receipt SHA256: `fa1163712c7a4516bcce19ef36d93cb7f33501896a3156158440350ec8ac8aad`.
+- Inputs: verified standalone stageflow3, Photo0.22.0-flow2 and Film0.19.0-flow2, other four flow1 scopes.
+- All assets, inventory/config/route manifests, decoded Brotli payloads, additive gateway and separate promotion modules are frozen in `publication.json`.
+- Earlier candidates and original packages remain retained. No upload or traffic change occurred during preparation.
 
-## Reproduce locally
+The shell preserves the existing loading XF logo, #1b1b1e theme, maskable icon, session overlay, MotorStack library and stable installation IDs/scopes/start URLs. Effect's replacement service worker unregisters only itself; it deletes no cache, IndexedDB or OPFS data.
 
-Run the existing EDM5 generator first if `workers/figflow-edm-assets/gateway-dist/` is absent. It reproduces reviewed local modules; it does not deploy.
+New FigFlow's default entry preserves the existing library HTML and restrictive HTTP CSP, changing only its Canvas iframe to `/figflow/0.17.0-flow1/?canvas=1`. That query selects the native canvas. The Email templates iframe, hash navigation, explicit old paths and EDM5 save/bridge authority remain unchanged. Standalone0.17 is not an upgrade of the specialised0.11.2-edm5 engine.
+
+The private assets service has no public route, workers.dev or preview URL. Inventory/method checks precede ASSETS. Unknown paths, direct `.br` requests and non-GET/HEAD methods are rejected. Requested WASM URLs map to verified encoded files with manual Brotli response encoding. Gateway dispatch follows fresh existing account authorization and forwards no user credential headers.
+
+## Reproduce and verify
+
+Generate the existing EDM5 baseline modules first if `workers/figflow-edm-assets/gateway-dist/` is absent. Preparation requires their exact recorded hashes and fresh output; it deploys nothing.
 
 ```sh
 python3 workers/creative-suite-release/prepare.py \
-  --stage /Volumes/Backups/Development/creative-suite-upgrade-20261110/assets-candidate-standalone-flow1 \
-  --output /Volumes/Backups/Development/creative-suite-upgrade-20261110/NEW-connected-assets-candidate \
+  --stage /Volumes/Backups/Development/creative-suite-upgrade-20261110/assets-candidate-standalone-flow3 \
+  --output /absolute/NEW-connected-candidate \
   --shell /Users/paulgiurin/orca/workspaces/dashboard/craft-hosted-rollout-20261028/workers/craft-editors/static \
   --gateway workers/figflow-edm-assets/gateway-dist
 
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover \
   -s workers/creative-suite-release -p 'test_*.py' -v
-CREATIVE_RELEASE_DIR=/absolute/prepared/root node --test workers/creative-suite-release/release.test.mjs
+CREATIVE_RELEASE_DIR=/absolute/prepared/root node --test \
+  workers/creative-suite-release/release.test.mjs \
+  workers/creative-suite-release/envelope.test.mjs \
+  workers/creative-suite-release/gateway-config.test.mjs \
+  workers/creative-suite-release/promotion.test.mjs
+node workers/creative-suite-release/validate-prepared.mjs /absolute/prepared/root
 ```
 
-The final prepared output is `/Volumes/Backups/Development/creative-suite-upgrade-20261110/connected-assets-candidate-006`. It contains 263 files, all below 25 MiB, copied exclusively from the verified stage plus reviewed wrappers. Stage metadata and current gateway module hashes are pinned. Output must be fresh; preparer preserves every earlier candidate.
+Five Python guards and nineteen Node tests passed against candidate009. Coverage includes actual file hashes/sizes, connected shells/install metadata, compressed route headers, fresh authorization, credential stripping, old paths/EDM, exact library HTML/CSP parity, native-canvas query selection, twelve canonical stable redirects, legacy-origin routing, tampered envelopes and failed promotion admission. Cloudflare's base class and backing network services are stubbed; these tests do not establish hosted/provider acceptance.
 
-Three Python guard tests passed (existing output, changed stage metadata and linked metadata). Five Node tests passed using the actual generated service/gateway: all stored hashes/sizes, shell/install metadata and cache-safe retirement, inventory/method/direct-compression rejection, real compressed-route headers, real fresh-authority gating before dispatch, cookie stripping, old route/EDM/library preservation. The test stubs only Cloudflare's platform base class and backing network services. No browser, provider or deployed runtime acceptance is claimed.
+## Publication order
 
-## Publication gates
+Use reviewed, clean exact current main after source integration and required CI. Reconcile the live gateway's active/latest versions, runtime, bindings and etag against `gateway-baseline.json` immediately before upload. Existing historical EDM release guards name older releases; do not execute them unchanged.
 
-Before publishing, freshly reconcile active/latest `xeroflow-creative-tools` deployment identity, runtime settings, bindings and module hashes. The receipt's baseline source hashes alone are not live-state evidence. Upload the private service first, verify actual stored/decoded responses through a contained binding probe, then prepare the gateway upload with `keep_assets:true`, all four existing bindings and exactly the new `CREATIVE_STANDALONE_ASSETS` binding. No gateway ASSETS directory should be supplied. Existing EDM release guards describe historical IDs and must not be used unchanged.
-
-The generated gateway exposes only six new immutable scopes after existing authorization. Stable routes deliberately remain at their prior versions for acceptance. Actual browser startup/import/save/reopen/export, fonts, dock/session, installed apps and MotorStack Rust-canvas import remain release gates. The FigFlow stable entry continues to open the specialised Email Library; any later canvas selection must preserve that experience explicitly. This candidate does not claim a hosted native Film MCP service.
-
-A reviewed `prepare-gateway.mjs` performs the fresh read-only deployment/latest/version reconciliation and writes an upload-only config. It requires clean exact current main and refuses an unknown uploaded version even when that version has no traffic. Its baseline is `0f9b678f-b5b3-47f5-9d84-0ab25126c6b2`, deployment `ea560989-67cb-407e-ab47-b5f2ba966e9d`, with the matching script etag/runtime and four existing bindings in `gateway-baseline.json`. Its two fixture tests passed, including drift rejection. It deliberately has no production upload or promotion operation.
-
-After source review/integration and renewed artifact verification, the release operator's sequence is:
-
-```sh
-# Root must first establish this private service name is unused, or reconcile its
-# active/latest version against a newly recorded baseline. Do not overwrite it blindly.
-node node_modules/wrangler/bin/wrangler.js deploy --config /prepared/root/wrangler.jsonc --dry-run --outdir /fresh/dry-run/output
-# Only after reviewing that exact serialized target and service inventory:
-node node_modules/wrangler/bin/wrangler.js deploy --config /prepared/root/wrangler.jsonc
-
-# Prepare against freshly reconciled gateway state, preserving existing ASSETS:
-node workers/creative-suite-release/prepare-gateway.mjs /prepared/root
-node node_modules/wrangler/bin/wrangler.js versions upload --config /prepared/root/gateway/wrangler.release.json
-```
-
-Read back the uploaded version and verify its module/binding/runtime state before any traffic allocation. The private service must already exist and have been checked through an authenticated binding probe. The script does not infer browser acceptance from an upload. A later stable-route promotion remains a separately reviewed source change with explicit FigFlow Email Library/canvas routing.
-
-
-The final publication envelope is pinned in `publication.json`: receipt SHA256 `97876c939a00a3b37880e6754756d64f123c99162d4eb5a7f3f579f2c4d42e44`. The receipt hashes service module, private configuration, exact inventory and compressed manifest as well as gateway modules. `validate-prepared.mjs` validates that frozen envelope, every actual public file and full inventory, private target/account, and all decoded Brotli hashes before publication. Gateway preparation calls the same validator. Run it immediately before either operator upload:
+First establish the private service name is unused, or reconcile its current active/latest versions. Validate the frozen candidate and dry-run the exact immutable target/account/config before deployment:
 
 ```sh
 node workers/creative-suite-release/validate-prepared.mjs /prepared/root
-CREATIVE_RELEASE_DIR=/prepared/root node --test workers/creative-suite-release/envelope.test.mjs workers/creative-suite-release/gateway-config.test.mjs
+node node_modules/wrangler/bin/wrangler.js deploy \
+  --config /prepared/root/wrangler.jsonc --dry-run --outdir /fresh/dry-run/output
+# Review serialized target, configuration and inventory first.
+node node_modules/wrangler/bin/wrangler.js deploy --config /prepared/root/wrangler.jsonc
 ```
 
-Five envelope tests passed, including four distinct service/config/manifest tamper rejections. These complement the five actual service/gateway tests, three Python input guards and two gateway-state tests. No unchanged binary build was repeated.
+Read back the deployed private service through a contained remote binding. The operator's temporary probe must listen explicitly on127.0.0.1, forward only the allowed canvas query, and compare actual stored/decoded responses with the frozen inventory. Keep source/command/response receipts; this is Cloudflare-account binding evidence, not end-user sign-in acceptance.
 
+Next prepare and upload the additive gateway. It preserves all four existing bindings with `keep_assets:true` and adds only `CREATIVE_STANDALONE_ASSETS`. No gateway ASSETS directory is supplied:
 
-Photo startup qualification required the upstream packaging repair documented in `../creative-suite-upgrade/STAGING.md`. Final candidate006 consumes fresh stage flow2 and routes Photo under `/photoflow/0.22.0-flow2/`; the other five scopes retain their flow1 names. It contains263 stored files and is pinned by receipt SHA256 `97876c939a00a3b37880e6754756d64f123c99162d4eb5a7f3f579f2c4d42e44`. Twelve actual-service/gateway/envelope tests passed after rebuilding this candidate. Previous candidates remain unchanged. These module-resolution checks do not replace the real-browser startup and save/export acceptance owned by the release operator.
+```sh
+node workers/creative-suite-release/prepare-gateway.mjs /prepared/root
+node node_modules/wrangler/bin/wrangler.js versions upload \
+  --config /prepared/root/gateway/wrangler.release.json
+```
+
+Read back source annotation, runtime, bindings and uploaded version before allocating traffic. The additive gateway exposes only the new immutable prefixes; stable selections remain old while the operator verifies the actual hosted editors, dock/session, MotorStack native import, Fig library/EDM and retained paths. An upload is not traffic allocation or browser acceptance.
+
+## Stable route promotion
+
+Separate `promotion/worker.js` and `promotion-receipt.json` select the six new versions on the existing canonical gateway. Legacy worker.dev origins keep their old routes and origin storage. FigFlow's stable route reaches its preserved library entry; `?canvas=1` reaches the new canvas. Original immutable versions remain available.
+
+`prepare-promotion.mjs` requires an evidence-backed hosted acceptance JSON with:
+
+- `status: "accepted-immutable-candidate"`, current `receiptSha256`, exact `sourceCommit`, matching additive `modules` and `promotionModules`.
+- Actual `gateway` deployment/version/etag and `assets` deployment/version.
+- True recorded checks: `allSixStartupSaveReopenExport`, `dockSession`, `motorstackNativeImport`, `figLibraryAndEdm`, `oldVersionsRetained`, `privateAssetService`.
+
+The helper never generates acceptance. It rechecks clean exact current main, the frozen envelope, active/latest gateway and assets versions, and exact gateway source annotation/runtime/bindings. It writes an upload-only configuration:
+
+```sh
+node workers/creative-suite-release/prepare-promotion.mjs \
+  /prepared/root /real/hosted-acceptance.json
+node node_modules/wrangler/bin/wrangler.js versions upload \
+  --config /prepared/root/promotion/wrangler.release.json
+```
+
+Review/read back that version before traffic allocation. After promotion, verify all six stable URLs and retained paths live and record exact source, private/gateway versions and deployment IDs. Keep the preceding verified gateway version available for rollback; never clear browser storage to upgrade.
+
+Native Film MCP activation, shared XeroFlow project autosave and cross-editor document transfer are separate capabilities. Installed-app runtime behavior and universal historical-document/font fidelity remain distinct from browser and manifest checks.

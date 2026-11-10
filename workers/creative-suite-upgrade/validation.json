@@ -1,7 +1,7 @@
 {
-  "status": "six-manual-branded-builds-and-unpublished-asset-delta-verified",
+  "status": "six-local-browser-roundtrips-and-exports-passed-unpublished",
   "guard_tests": {
-    "passed": 45,
+    "passed": 48,
     "failed": 0,
     "command": "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s workers/creative-suite-upgrade -p test_*.py -v"
   },
@@ -16,7 +16,7 @@
     {
       "engine": "filmcraft",
       "archive_verified": true,
-      "patch_sha256": "761ab780eafb00f9fb895dd4c7ef6e9a44801966310d194e4a02ff1b6f56ef2d",
+      "patch_sha256": "0ae6f5451631468fe0054620dfc08090f97e2ea3a15a20c340b04f166d900eac",
       "pristine_lock_verified": true,
       "zero_fuzz_dry_run": true
     },
@@ -77,16 +77,25 @@
     "filmcraft": {
       "engine": "filmcraft",
       "exit": 0,
-      "seconds": 292.60516023635864,
+      "seconds": 230.00151801109314,
       "lock_sha256": "ef042555a5b44d503ee9b0844d3c226b5bb287e4b30671220020a32f18d17cb5",
       "lock_unchanged": true,
       "packages": [
         {
-          "file": "filmcraft-web-0.19.0.zip",
-          "bytes": 18536518,
-          "sha256": "8843d3892b949176ff32b89ea5fcabb2239c968a6a4e0705d6ebb686a07d632e"
+          "file": "filmcraft-web-0.19.0-flow2.zip",
+          "bytes": 18535895,
+          "sha256": "2c99b48538caa7f37bd53a53ff325f2df2fc50a1d8b2ac33658f522513e8587b"
         }
-      ]
+      ],
+      "scope": "/filmflow/0.19.0-flow2/",
+      "patch_sha256": "0ae6f5451631468fe0054620dfc08090f97e2ea3a15a20c340b04f166d900eac",
+      "upstream_commit": "d1af238bba9fc814487c81e47b53543dff435c09",
+      "status": "built-unpublished-browser-retest-required",
+      "wasm": {
+        "path": "filmcraft-web-0.19.0-flow2/filmcraft_web_bg.wasm",
+        "sha256": "217b2a5e447bb0334e6487477289789d1ca82255ca643af8b6207d46ffc85101",
+        "bytes": 49311920
+      }
     },
     "photocraft": {
       "engine": "photocraft",
@@ -180,7 +189,7 @@
       ]
     }
   },
-  "package_inspection": "All186 staged files independently read; Brotli decoded and matched; literal relative JavaScript import closure verified for all six. Unpublished delta; hosted acceptance remains pending.",
+  "package_inspection": "All186 standalone stored assets and264 connected assets verified, decoded Brotli hashes matched and all literal relative JS imports resolved. Local core editor acceptance passed. No hosted auth/provider/installed-app acceptance or deployment inferred.",
   "vector_status": "Corrected menu patch compiled; failed original receipt retained. Thirty optional background font faces absent exactly as upstream release; three startup fallback fonts included.",
   "independent_review": {
     "reviewer": "Kimi",
@@ -200,7 +209,7 @@
     "compressed_assets": 3,
     "compression_concurrency": 1,
     "deployable_in_isolation": false,
-    "input_manifest_sha256": "bdc68172116afd60ca52d51b8c3c7577a99edf51d8c1a6edd44f913565731180",
+    "input_manifest_sha256": "8a8b9928712de8d9cedf93035117f6137f0af72e4126845f031227a7e0a6cc5c",
     "inputs": [
       {
         "engine": "effectcraft",
@@ -213,14 +222,15 @@
         "zip_sha256": "df5ff1087407f3fee94dd7a49a4f425895ed17c8ebc16937b80bd6c1543561fa"
       },
       {
+        "archive_root": "filmcraft-web-0.19.0-flow2",
         "engine": "filmcraft",
-        "entry": "/filmflow/0.19.0-flow1/index.html",
-        "receipt": "filmcraft/receipt.json",
-        "receipt_sha256": "2f869517b6fd42a5f3887db448d96a4daa0e9cb1c51228a1027b37b5b1b6b590",
-        "scope": "0.19.0-flow1",
-        "zip": "filmcraft/filmcraft-web-0.19.0.zip",
-        "zip_bytes": 18536518,
-        "zip_sha256": "8843d3892b949176ff32b89ea5fcabb2239c968a6a4e0705d6ebb686a07d632e"
+        "entry": "/filmflow/0.19.0-flow2/index.html",
+        "receipt": "filmcraft-flow2/receipt.json",
+        "receipt_sha256": "6a02535e5c3dba955a82ed9d00497ad1e39a5b1eab6a67bccf1b9f2e4852b5c9",
+        "scope": "0.19.0-flow2",
+        "zip": "filmcraft-flow2/filmcraft-web-0.19.0-flow2.zip",
+        "zip_bytes": 18535895,
+        "zip_sha256": "2c99b48538caa7f37bd53a53ff325f2df2fc50a1d8b2ac33658f522513e8587b"
       },
       {
         "compiler_receipt": "photocraft/receipt.json",
@@ -266,9 +276,9 @@
       }
     ],
     "manifest_sha256": {
-      "asset-sha256.json": "751ad12a74b1cec0eed7e9c5c19ddc2c4a54774ccce782d1f35340f8e81f9abd",
-      "compressed.json": "c4bb3944652054ecb1cb6d54a09086def8d0ac1c48ed326b6a7ed31a7714d9b7",
-      "stored-assets.json": "d5141f7b159584b53f0a262dc8f276034130404a22f7cd3adf84aef1c7bea5bd"
+      "asset-sha256.json": "f24d9bd5a1b7970d9200eec578ceb3185a9e0adc5d86899811abd9fb4566055e",
+      "compressed.json": "72ed2be65101fec88d5c209297cbb06c41894559361047f9e6a915d9ef4429b1",
+      "stored-assets.json": "1a967a084e05f528946c879dff7b3821955e8ea9aeb3daa7d2912fc79d0e8b51"
     },
     "remaining": "Reconcile complete existing ASSETS inventory, EDM and old live paths before any publication; browser and hosted acceptance separate.",
     "status": "unpublished-standalone-delta",
@@ -293,14 +303,134 @@
       "version": "0.23.0-flow1",
       "save": "vectorcraft native document",
       "reopen": "Saved100pt rectangle reopened in Brave, Fit Artboard displays geometry",
-      "export": "SVG downloaded; geometry inspection pending"
+      "export": "SVG downloaded and parsed:100x100 rectangle at77.707,49.228 with whitefill/blackstroke"
     },
     "filmflow": {
-      "save_reopen": "Demo project downloaded and reopened",
-      "export": "One H264 export requested; outcome reconciliation pending"
+      "engine": "FilmFlow0.19.0-flow2",
+      "scope": "Actual staged bare browser WASM in Brave,127.0.0.1:8778",
+      "save_reopen": "Opened exact previously downloaded FilmCraft demo.fcproj from flow1 in flow2; project rendered intact",
+      "export": "One new unique-name custom0..1sec320x180 H264/AAC MP4 export downloaded",
+      "artifact": {
+        "file": "XeroFlow-QA-film-repaired.mp4",
+        "bytes": 106144,
+        "sha256": "8d7077f204b98fe4ba6714ab72913a22dc336a61d9960e3fc854ca8a213a4546"
+      },
+      "ffprobe": {
+        "programs": [],
+        "stream_groups": [],
+        "streams": [
+          {
+            "codec_name": "h264",
+            "codec_type": "video",
+            "width": 320,
+            "height": 180,
+            "r_frame_rate": "24000/1001",
+            "duration": "1.001000",
+            "nb_read_frames": "24"
+          },
+          {
+            "codec_name": "aac",
+            "codec_type": "audio",
+            "sample_rate": "48000",
+            "channels": 2,
+            "r_frame_rate": "0/0",
+            "duration": "1.002000",
+            "nb_read_frames": "47"
+          }
+        ],
+        "format": {
+          "duration": "1.002000",
+          "size": "106144"
+        }
+      },
+      "ffmpeg_full_decode_exit": 0,
+      "superseded_flow1": "Bounded Brave flow1 export failed before encoding with explicit Rayon threadpool error; old earlier Chrome click outcome never established; no blind retry"
     },
-    "soundflow": "Demo rendered; save/reopen/export pending",
-    "effectflow": "pending",
-    "figflow": "pending"
+    "soundflow": {
+      "engine": "SoundFlow0.19.0-flow1",
+      "scope": "Local exact staged bare browser editor, Brave",
+      "save_reopen": "Downloaded scraftz bundle including5 WAV assets, reopened via native browser picker; status Opened Midnight Groove.scraftz and9tracks/waveforms/MIDI visible",
+      "export": "Bounce Mix WAV completed; download done",
+      "artifacts": [
+        {
+          "file": "Midnight Groove.scraftz",
+          "bytes": 66201740,
+          "sha256": "3daad4c06a4aadb8ac2be54e91947f6401216a4e6433da6a936a58f43710006b"
+        },
+        {
+          "file": "Midnight Groove Bounce.wav",
+          "bytes": 16095306,
+          "sha256": "318e8ef40e1c4d951cdc00eb5653181cfcdb8c8cd9f44d2fa09c17c2e35b1c5b",
+          "channels": 2,
+          "sample_width": 3,
+          "sample_rate": 48000,
+          "frames": 2682432,
+          "duration": 55.884,
+          "nonzero_audio": true
+        }
+      ]
+    },
+    "effectflow": {
+      "engine": "effectflow",
+      "scope": "Local exact staged bare editor, Brave",
+      "save_reopen": "Native project downloaded and reopened; expected scene/shape visible",
+      "export": "PNG downloaded, format signature/dimensions checked",
+      "artifacts": [
+        {
+          "file": "Untitled Project.ecproj",
+          "bytes": 746737,
+          "sha256": "6cfe9c8703c1f037b41294b0cb802fdb50f5c6e7edba17b9bf6582b869a09ba1"
+        },
+        {
+          "file": "Frame.png",
+          "bytes": 674406,
+          "sha256": "e75a53952ef60b0c1e17e20566d3953e9f0c2bff099c604abc203dfaec2a161a",
+          "dimensions": [
+            1920,
+            1080
+          ]
+        }
+      ]
+    },
+    "figflow": {
+      "engine": "figflow",
+      "scope": "Local exact staged bare editor, Brave",
+      "save_reopen": "Native project downloaded and reopened; expected scene/shape visible",
+      "export": "PNG downloaded, format signature/dimensions checked",
+      "artifacts": [
+        {
+          "file": "Untitled.figcraft",
+          "bytes": 2045,
+          "sha256": "59428f4d59c1d86840da1926dc79a3646746110ca792a71ca3f1f6af2860ffab"
+        },
+        {
+          "file": "Page 1.png",
+          "bytes": 584,
+          "sha256": "d27dfd467f3f4bb9b1dbe2a06acdb509365ccfa1fc523f62798a01b71321a61c",
+          "dimensions": [
+            100,
+            100
+          ]
+        }
+      ]
+    }
+  },
+  "connected_candidate": {
+    "path": "/Volumes/Backups/Development/creative-suite-upgrade-20261110/connected-assets-candidate-009",
+    "assets": 264,
+    "receipt_sha256": "fa1163712c7a4516bcce19ef36d93cb7f33501896a3156158440350ec8ac8aad",
+    "stable_routes_changed": false,
+    "promotion_modules_prepared": true,
+    "personalisation": "Existing loading XFmark, theme, maskable icon, compiledFlowbranding, dock/session/install/MotorStack wrapper retained",
+    "figflow": "Existing library shell retained withgeneralcanvasiframe0.17; specialisedEDM5unchanged",
+    "deployment_performed": false,
+    "fig_library_csp": "Exact existing restricted library policy and HTML content type retained"
+  },
+  "film_repair_regressions": {
+    "actual_wasm": "Beforefix constructor100 fails; afterfix encodesandflushes4frames withnothreadimports",
+    "native_tests": 57,
+    "scope": "WASMexplicitthreadpoolonly; nativeerrorsandslicesunchanged",
+    "source_replay": "49files277hunkszeroFuzzzeroOffsetsbyteidentical",
+    "browser_mp4": "24H264frames320x18024000/1001 plusstereoAAC48k1.002sec; ffmpegfulldecodeexit0"
   }
 }

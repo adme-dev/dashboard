@@ -127,7 +127,9 @@ def stage(builds, output, node, config=HERE, limit=LIMIT, reuse=None):
         archive_path = checked_file(builds, item['zip'], item['zip_sha256'])
         if archive_path.stat().st_size != item['zip_bytes']:
             raise ValueError('ZIP size mismatch')
-        prefix = f'{engine}-web-{pins[engine]["version"]}'
+        prefix = item.get('archive_root', f'{engine}-web-{pins[engine]["version"]}')
+        if not re.fullmatch(re.escape(f'{engine}-web-{pins[engine]["version"]}') + r'(?:-flow[1-9]\d*)?', prefix):
+            raise ValueError('Invalid archive root')
         with zipfile.ZipFile(archive_path) as archive:
             plan = members(archive, prefix, limit)
             if engine == 'photocraft' and not any(rel == 'fonts/manifest.txt' for _, rel, _, _ in plan):

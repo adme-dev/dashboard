@@ -1,11 +1,11 @@
 {
-  "receipt_sha256": "97876c939a00a3b37880e6754756d64f123c99162d4eb5a7f3f579f2c4d42e44",
+  "receipt_sha256": "fa1163712c7a4516bcce19ef36d93cb7f33501896a3156158440350ec8ac8aad",
   "receipt": {
     "status": "prepared-unpublished-additive-candidate",
-    "assets": 263,
+    "assets": 264,
     "prefixes": [
       "/effectflow/0.23.1-flow1/",
-      "/filmflow/0.19.0-flow1/",
+      "/filmflow/0.19.0-flow2/",
       "/photoflow/0.22.0-flow2/",
       "/vectorflow/0.23.0-flow1/",
       "/soundflow/0.19.0-flow1/",
@@ -30,23 +30,29 @@
       "brand-rpc.mjs": "0787e4c0acb8e2507a8d14f438a977941334212e95e0e490863b71a9812882c2"
     },
     "modules": {
-      "worker.js": "0f3f7fba8466fd9e2c534f9ca57355d92e2684fe4ac1a12ca02f935dd6a696c3",
+      "worker.js": "6fe6a53a0a54fbfcc9529688b1108cf31006125821e2f03b8d13964b023fe741",
       "brand-rpc.mjs": "0787e4c0acb8e2507a8d14f438a977941334212e95e0e490863b71a9812882c2"
     },
+    "promotion_modules": {
+      "worker.js": "31632a5df132a4465fd832058e2ec0b7ef1ca46e9050112faa2da70cb7c6d3d9",
+      "brand-rpc.mjs": "0787e4c0acb8e2507a8d14f438a977941334212e95e0e490863b71a9812882c2"
+    },
+    "promotion_receipt_sha256": "2fbc317cb1473ff2652b58def730d019281b59fdfa75931b359aff713b7a657d",
     "service_files": {
-      "assets-worker.mjs": "f42992a12b9edc4327730baa86ab9e1e9669366a7c87f9529bc7acf8febef8c3",
+      "assets-worker.mjs": "2d0d9a6f094d8f57d409a56d5a9e021f7eefb55a55910d3abc88ef6705eeb4cd",
       "wrangler.jsonc": "ac96e4f38408486710334a560a4e6863bce7f93fc68695140d764e5274ebb0da",
-      "inventory.json": "f3f44292ab1cfd5ecaec0b14d39c005b1cb7a1b54a324c4d115322220846dab0",
-      "compressed.json": "c4bb3944652054ecb1cb6d54a09086def8d0ac1c48ed326b6a7ed31a7714d9b7"
+      "inventory.json": "38d6fb52007ed55ebc23288e06e63cc817dd66e0bed03ab666cff284552e6ca9",
+      "compressed.json": "72ed2be65101fec88d5c209297cbb06c41894559361047f9e6a915d9ef4429b1",
+      "fig-library.json": "9eaee3ae5be5d66af0b287e29c5e7e3243873ff6c612715c2c31249bafb613ec"
     },
     "compressed_decoded": {
       "/effectflow/0.23.1-flow1/effectcraft_web_bg.wasm": {
         "sha256": "b6a313466de049a9f54fa93a3fdafbf17e744054e851ab55ecb531653b6266fc",
         "bytes": 64782589
       },
-      "/filmflow/0.19.0-flow1/filmcraft_web_bg.wasm": {
-        "sha256": "d389932e400038e9b279d73c526c1bc0fdb2cbaa0067ab4ea6f4a9d9bef4857d",
-        "bytes": 49318665
+      "/filmflow/0.19.0-flow2/filmcraft_web_bg.wasm": {
+        "sha256": "217b2a5e447bb0334e6487477289789d1ca82255ca643af8b6207d46ffc85101",
+        "bytes": 49311920
       },
       "/vectorflow/0.23.0-flow1/vectorcraft-web-96c6139d4ab21001_bg.wasm": {
         "sha256": "94918b65578781c5a67dd991e41b37ef79c1c67176a1c9ca66732d040c90f269",
