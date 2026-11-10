@@ -18,7 +18,7 @@ jobs:
           persist-credentials: false
       - name: Validate read-only checker
         run: python3 -m unittest discover -s workers/creative-suite-upgrade -p test_check_updates.py -v
-      - name: Check six candidate upstream inputs
+      - name: Compare upstream inputs and published six-editor receipt
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: python3 workers/creative-suite-upgrade/check-updates.py --report "$RUNNER_TEMP/creative-updates/report.json" --summary "$GITHUB_STEP_SUMMARY"

@@ -1,90 +1,73 @@
 # Creative Suite upgrade and connection review — 10 November 2026
 
-## Current live gateway
+## Published existing online suite
 
-Read-only Cloudflare Wrangler checks on 10 November identify `xeroflow-creative-tools` active version `0f9b678f-b5b3-47f5-9d84-0ab25126c6b2`, deployment `ea560989-67cb-407e-ab47-b5f2ba966e9d`, 100% traffic. Source annotation: `312d8e6ebe083e40f9c87d3c00b263cb6e972511` (EDM5 integration). Script etag: `a7a2e12a18d7a966c8f30033e1c081119cffe7f4b0c21387f7aa2ede62423963`. No deployment occurred in this review.
+The six standalone editors are upgraded on the existing [XeroFlow Creative Suite](https://creative.xeroflow.io). PR914 merged at `9ac1d65c399f0bf5c003b96530d4dcdcd4309129`; its content equals reviewed head `d059b7d06b1594ecc22490bb089f46e9483e0273`. Required CI [42787149717](https://github.com/adme-dev/dashboard/actions/runs/42787149717) passed all36 steps on Node24.18.0. Current main was freshly fetched and equal to the release source before private publication, additive activation and stable promotion.
 
-The gateway retains `ASSETS`, `CREATIVE_AUTH_KEY`, `MOTORSTACK_API_KEY`, and production service binding `FIGFLOW_EDM_ASSETS` → `xeroflow-figflow-edm-assets`. Compatibility date remains 2026-10-27 with `global_fetch_strictly_public`. Only binding names/types/targets were inspected; secrets were not read or copied.
+| Stable entry | Published editor | Hosted verification |
+| --- | --- | --- |
+| `/photoflow/` | `0.22.0-flow2` | Actual Motorstack Favicon imported as180×180 native layer; PSD saved/reopened with logo and layer intact; PNG exported. |
+| `/vectorflow/` | `0.23.0-flow1` | Native100pt rectangle project saved/reopened/rendered; SVG parsed with expected100×100 rectangle. |
+| `/effectflow/` | `0.23.1-flow1` | Eight-layer composition saved/reopened/rendered;1920×1080 framePNG exported. |
+| `/filmflow/` | `0.19.0-flow2` | Twelve-item native project saved/reopened/rendered; one320×180,0–1s MP4 exported. ffprobe found24H264 frames and48kHz stereoAAC; full ffmpeg decode passed. |
+| `/soundflow/` | `0.19.0-flow1` | Nine-track scraftz bundle including fiveWAVs saved/reopened with audio/MIDI;55.884s48kHz24bit stereoWAV bounced with nonzero audio. |
+| `/figflow/` | `0.17.0-flow1` canvas | Native figcraft saved/reopened with rectangle rendered and100×100PNG exported **inside the preserved library iframe**. |
 
-The named `MotorstackBrandAssets` entrypoint advertises `listBrands`, `getBrandKit`, `getBrandAsset`, `listMedia`, `getMediaAsset` and `listCreativeCatalog`. This is live configuration evidence, not today's provider receipt or a completed user import.
+Each stable entry was followed in the signed-in owner's Brave session after promotion and resolved to its new immutable prefix. The retained launcher shows all seven cards, including Banner Studio. The new FigFlow entry retains Canvas and Email templates; `?canvas=1` selects its0.17 native canvas. Specialised email editing remains **0.11.2-edm5** with its existing relay, constrained editing, emoji and save authority. This release does not relabel EDM5 as a0.17 email engine.
 
-## Connections to preserve
+## Deployment receipts and rollback
 
-| Connection | Evidence and limits |
-|---|---|
-| Canonical XeroFlow sign-in | Existing encrypted handoff and fresh `/api/auth/me` checks. Old rollout auth/asset/MotorStack baseline: 47 tests passed locally today. No account/access expansion. |
-| MotorStack browser asset library | Fixed read-only adapter; same-origin private binary delivery, brand membership and content validation. Existing README's real-provider evidence is historical. Actual new Rust-canvas import remains a release gate. |
-| MotorStack Banner Studio kits/media/offers | Mainline private RPC, managed asset imports, current offer-image/date fixes. Seven current-source catalogue/vehicle/offer regressions passed today. Provider delivery is separate. |
-| FigFlow email editor | Live gateway includes EDM5. Mainline `workers/craft-editors` pins the special 0.11.2-edm5 source/relay. Keep all EDM1/3/4/5 paths and canonical email authority. Standalone FigFlow0.17 does not silently upgrade this specialised integration. |
-| XeroFlow creative AI/MCP discovery | Existing `get_creative_workspace_capabilities` and `search_creative_workspace` use the canonical registry and fresh permission/client scope. The 28 October ledger has hosted discovery evidence; this review did not run an external authenticated MCP client. |
-| General native project save/import and cross-app handoff | Still not established for the six standalone browser editors. Metadata discovery does not imply file access, editing, durable artifacts or automatic project saving. |
-| Native preview executor | Separate default-off/qualification work; browser upgrades do not activate it. Preserve the uncertainty hold and existing pending work. |
+The immutable machine-readable record is [published-release.json](../../workers/creative-suite-release/published-release.json). Cloudflare account: `a5b299b3ad15c1b5b895dc66f9357b17`.
 
-Canonical references: [MotorStack runbook](motorstack-brand-kits.md), [creative MCP inventory](../plans/2026-10-28-creative-mcp-inventory.md), [workspace MCP ledger](../plans/2026-10-28-creative-workspace-mcp.md), [FigFlow asset publication](../../workers/figflow-edm-assets/README.md).
+| Target / stage | Version | Deployment |
+| --- | --- | --- |
+| Private `xeroflow-creative-standalone-assets` | `95469284-d389-4382-b670-7bdcf1d9af5d` | `ba855df5-c299-498c-955c-c4437aa093f0` |
+| Additive gateway, stable selections still old | `ded0740d-08b2-4f84-b47b-c261f89b58cd` | `cf18332f-b1d8-4885-b072-b409d78f63b0` |
+| **Promoted `xeroflow-creative-tools`,100% traffic** | `b13ec84c-3f51-4d8d-a002-24b276b5ea41` | `78b40e3a-a4a6-4952-838a-434e624d9580` |
 
-Some historical README checkpoints still describe EDM4 as active. The live gateway above supersedes those current-state statements; do not blindly change old release guards or deploy an earlier gateway. Reconcile each release against fresh active/latest IDs.
+Promoted gateway etag: `1978ecce5a06482ccb63f5de36c80009793e90435c0da68a3d83932a05f5d26b`. The private service has no public routes, workers.dev or preview URL; direct workers.dev returned404. Its264 decoded assets, five negative checks and HEAD behavior passed remote binding readback. Stored compressed input hashes were verified before upload. Cloudflare's proxy can decompress/recompress transport, so unchanged encoded wire bytes are not claimed.
 
-## FilmFlow MCP
+The gateway retains its complete original ASSETS inventory, `CREATIVE_AUTH_KEY`, `MOTORSTACK_API_KEY`, production `FIGFLOW_EDM_ASSETS` binding, compatibility date2026-10-27 and runtime settings. Only `CREATIVE_STANDALONE_ASSETS` was added. Five binding names/types/targets, runtime, source annotations, latest uploads and active deployments were read back before allocation. No secrets were read/copied. Fresh authorization still precedes private dispatch; credentials are stripped before forwarding.
 
-FilmCraft 0.19.0 officially supports `filmcraft-cli mcp` over stdio:
+Rollback selection: additive version `ded0740d-08b2-4f84-b47b-c261f89b58cd` restores old stable selections while keeping new immutable URLs available. Pre-upgrade EDM5 gateway `0f9b678f-b5b3-47f5-9d84-0ab25126c6b2`, deployment `ea560989-67cb-407e-ab47-b5f2ba966e9d`, is also retained. Reconcile current active/latest versions and bindings before any rollback. Do not execute older EDM4/EDM5 historical deployment guards unchanged.
 
-- Headless: operates on an in-process project, with `--project` or `--demo`.
-- Desktop bridge: `--bridge 127.0.0.1:9876` talks to a desktop app started with its control channel.
-- Tools cover command discovery/execution/batches, project and sequence inspection, media import, frame rendering and desktop UI controls. Long headless exports support progress/cancellation.
+## Personalisation and existing connections
 
-[Versioned official agent documentation](https://github.com/storytold/filmcraft/blob/v0.19.0/docs/agents.md).
+Compiled Flow/XF branding, original launcher artwork/starfield/credits, version-local dock/tab behavior, custom loading mark, theme, maskable icons, installation identities and account/session overlays are retained. No origin storage was cleared. Old immutable URLs remain available; oldPhoto0.16 was opened again through the dock after additive activation. Legacy worker.dev origins retain their existing selections/storage. See [PARITY.md](../../workers/creative-suite-release/PARITY.md).
 
-The browser build instead exposes `window.filmcraft` with command/request/screenshot/import APIs. That is not an HTTP MCP server or proof our hosted FilmFlow is connected to the agency agent. A future adapter must use existing XeroFlow MCP identity, current project/client authority, bounded commands, revision fences and durable outcome reconciliation. A timed-out queued Film browser mutation can still execute, so never blindly retry it.
-
-[Versioned browser documentation](https://github.com/storytold/filmcraft/blob/v0.19.0/docs/web.md).
-
-The native MCP CLI has no filesystem confinement flags. Hosted use would require real process/filesystem isolation through the existing qualified execution boundary. No MCP registration, new credential, native service activation or remote exposure was made here.
-
-## Upgrade acceptance
-
-All six target archives, source pins and Cargo.lock files were verified; branded rebuilds and actual local browser project roundtrips/exports passed. Immutable selected scopes are Photo0.22.0-flow2, Vector0.23.0-flow1, Effect0.23.1-flow1, Film0.19.0-flow2, Sound0.19.0-flow1 and standalone Fig0.17.0-flow1. Compiled Flow/XF branding and prior browser personalization are retained; see [the parity review](../../workers/creative-suite-release/PARITY.md).
-
-Artifacts and browser receipts live on the authorized backup drive at `/Volumes/Backups/Development/creative-suite-upgrade-20261110`. Original and failed packages/stages remain retained. Local native-browser controls worked around the connected browser API navigation failure. Local tests do not establish hosted sign-in, provider import, dock/session or installed-app acceptance.
-
-| Editor | Local browser evidence |
+| Connection | Current evidence and limits |
 | --- | --- |
-| PhotoFlow |320×180 brush-dot image saved as PSD, reopened in a separate document with edit intact, PNG exported. Missing relocated upstream snippet repaired without changing any original54 payloads or WASM. |
-| VectorFlow |100pt rectangle saved as native vectorcraft, reopened and rendered after Fit Artboard, SVG exported with exact expected rectangle/fill/stroke. |
-| EffectFlow | Demo project saved as ecproj, reopened/rendered,1920×1080 frame PNG exported. |
-| FilmFlow | Saved demo fcproj reopened in rebuilt flow2. One new320×180 custom0–1s MP4 export downloaded:24H264 frames at24000/1001,48kHz stereoAAC,1.002s. Full ffmpeg decode passed. |
-| SoundFlow |9-track demo saved as scraftz bundle including five audio files, reopened with waveforms/MIDI,55.884s48kHz24bit stereoWAV exported with nonzero audio. |
-| FigFlow standalone |100×100 rectangle saved as figcraft, reopened/rendered in separate document,100×100 pagePNG exported. |
+| XeroFlow sign-in and dock | Owner signed in through the established handoff; all six hosted immutable versions accepted that session. Dock retains six editor links, Creative Suite, Install and Motorstack actions. |
+| Motorstack browser library | Actual current provider brands/catalogue loaded; Alfa Romeo Favicon imported into new PhotoFlow's native canvas and roundtripped asPSD. |
+| Motorstack Banner Studio kits/media/offers | Existing private `MotorstackBrandAssets` entrypoint and fixed adapter retained. Seven current-source regressions passed. Today's Photo import does not prove a new Banner Studio import or provider delivery. |
+| FigFlow library/email | New default library embeds new canvas. Email templates still read eight existing templates through canonical `app.xeroflow.io/agency/email?tab=templates&workspace=figflow`. EDM1/3/4/5 routes, binding and modules are unchanged. No email draft, template mutation or send was created; no new EDM persistence roundtrip is claimed. |
+| Creative AI/MCP discovery | Existing capability/search registry and fresh client/permission authority retained. Historical hosted discovery evidence is separate from a new external MCP client check. |
+| QR Codes / established navigation | Existing owner dashboard and QR Codes page loaded during release checks. No QR record was created or changed. |
 
-Photo's upstream0.22 ZIP placed wasm-bindgen snippets at root while relocating the importing glue into `app/`. The separate repaired ZIP adds the missing280-byte snippet under `app/snippets/`; fonts/licenses/WASM remain identical. Film's actual browser export exposed unsupported explicit Rayon thread-pool creation; its bounded WASM-only repair uses the existing sequential fallback and preserves native error handling. Actual WASM red→green plus57 native tests and zero-fuzz source replay passed; see [Film repair evidence](../../workers/creative-suite-upgrade/FILM-WASM-REPAIR.md).
+Canonical references: [Motorstack runbook](motorstack-brand-kits.md), [creative MCP inventory](../plans/2026-10-28-creative-mcp-inventory.md), [workspace MCP ledger](../plans/2026-10-28-creative-workspace-mcp.md), [FigFlow publication](../../workers/figflow-edm-assets/README.md).
 
-## Existing package maintenance checks
+## Package and build evidence
 
-The canonical [creative workspace implementation ledger](../plans/2026-10-28-creative-workspace-mcp.md#keeping-upstream-current) records PR728 as the owner of the weekly Monday 06:17 UTC read-only six-editor release check. Its last recorded status is default-branch integration pending. The workflow and `workers/craft-editors/UPGRADES.md` exist in the preserved rollout checkout, but are absent from the current-main base used for this upgrade (`25a384d4f3054aa208cf8378abcc755b6fcd642b`). Do not report the scheduled check as active without verifying default-branch integration and a successful scheduled run.
+All six target archives, exact source pins and Cargo.lock files were verified; branded rebuilds and local browser project roundtrips/exports passed before hosted checks. The frozen connected candidate009 contains264 stored files, each below25MiB, receipt SHA256 `fa1163712c7a4516bcce19ef36d93cb7f33501896a3156158440350ec8ac8aad`. Original/failed packages and all candidates are retained on the authorized backup drive at `/Volumes/Backups/Development/creative-suite-upgrade-20261110`. Actual browser artifact hashes and scoped checks are under `browser-evidence/`; `hosted-acceptance-009.json`, private readback, upload/activation logs and `release-state.json` distinguish each delivery stage.
 
-The existing upgrade contract also requires changelog/license and format/storage review; exact source, package, Cargo.lock, patch and font digests; branded rebuilds; browser startup/import/save/export, dock/auth and installed-app checks; retained immutable old URLs/storage; and source/deployment receipts. A version comparison alone does not close these requirements. The browser bridge joins regression coverage when shipped.
+Photo's upstream0.22 ZIP relocated JS into `app/` but left an imported wasm-bindgen snippet only at root. The bounded flow2 repair adds one280-byte copy under `app/snippets/`; all54 original payloads, WASM, fonts and licenses remain identical. Film's actual browser export exposed explicit Rayon pool creation unsupported onWASM. Its WASM-only fix uses the existing sequential fallback while retaining native error handling, slices and rate control. Actual WASM red→green,57 native regressions and zero-fuzz source replay passed. See [Film repair](../../workers/creative-suite-upgrade/FILM-WASM-REPAIR.md).
 
-The separate [dashboard dependency audit](../security/dependency-audit-2026-07-12.md) records production audit findings and a supported-parent upgrade requirement for Zero/OpenTelemetry, with an August 12 review deadline. Its July results and deadline are historical, not evidence of the November dependency graph. A fresh `pnpm audit --prod --json` against this current-main lockfile completed on 10 November (exit 1 for findings). Registry metadata reports 6 critical, 105 high, 96 moderate and 25 low findings across dependency paths; these counts are not proof of production reachability. Raw evidence: `/private/tmp/creative-dashboard-dependency-audit-20261110.json`. Supported upgrades and reachability/exception reconciliation remain outstanding; do not silently force incompatible transitive major versions or label the entire dashboard current from the six editor checks.
+48 upgradePython tests,5 releasePython guards and19 Node service/gateway/envelope/promotion tests passed. Independent review covered branding/native preservation,264 actual file hashes, routing after auth, old paths/EDM and five bindings. The library CSP gap found in candidate008 was corrected in009 to match the original restrictive policy and covered by runtime assertions.
 
-All six editors compiled. Photo uses the corrected font-inclusive package; Vector uses the corrected menu patch. The final asset verification and font limitation are recorded below. All browser and publication gates above remain open.
+Manual helper-build provenance remains bounded: direct tools are checksummed, but shared Trunk wasm-opt cache and earlier Photo/Vector trial artifacts do not prove a fully isolated helper build. Vector's30 absent optional font-picker faces match upstream; three startup fallback fonts are present. Installed-app runtime behavior and universal historical-document/font fidelity are not inferred from manifests and browser fixture checks.
 
-## Independent review, staging and package maintenance
+## Ongoing version and dependency checks
 
-Kimi dispatch `ctx_206b0467ea63` reviewed the original build/staging constraints. Direct tools are checksummed, but the manual Trunk optimizer cache and earlier Photo/Vector patch-trial artifacts do not establish fully isolated/checksum-pinned helper-build provenance. All current packages retain original source lockfiles and licenses. Vector's30 omitted optional font-picker faces match upstream; three startup fallback fonts are included. Historical-document font fidelity remains unqualified.
+The Monday06:17UTC read-only workflow is restored on main byPR914. Its first manual mainline run [42795530493](https://github.com/adme-dev/dashboard/actions/runs/42795530493) succeeded at release source9ac. This establishes workflow execution/default-branch integration; no Monday scheduled event is claimed before it occurs. The checker now compares exact original upstream inputs and the separate published receipt, including today's six selected versions. It never downloads application binaries, changes pins, builds, deploys or sends messages. Seventeen deterministic guards validate metadata handling and published receipt admission. A version match does not substitute for upgrade qualification.
 
-Final standalone stage `assets-candidate-standalone-flow3` contains186 files; receipt SHA256 `3a4f68fda13abb616109fe66c9e72dc7a2f7cd57caf056558122b44004c50efa`. Actual quality11 compressed WASM sizes are Effect14,162,426, Film12,675,291 and Vector23,382,437 bytes. All files are below25MiB. Effect/Vector compression was reused only after encoded-hash and exact decoded-byte checks; new Film WASM was recompressed and verified. This delta must never replace the gateway's complete old ASSETS inventory.
+The broader dashboard audit is separate. DOMPurify3.4.17 and five focused tests are merged inPR914; production Pages deployment [42795537384](https://github.com/adme-dev/dashboard/actions/runs/42795537384) remains in progress at this checkpoint. Its first attempt timed out downloading Ubuntu media dependencies before source checks; the failed job was retried without source changes. Do not claim DOMPurify live until the guarded `agency-dashboard` deployment and hosted verification complete. The fresh audit still reports5critical,104high,95moderate and23low dependency paths, with zeroDOMPurify advisory entries. See [dependency review](../security/dependency-review-2026-11-10.md). No universal package currency or clean audit is claimed.
 
-Dashboard DOMPurify3.4.17 and its focused sanitization tests are included in PR914 but remain undeployed. Other dependency findings remain; see [dependency review](../security/dependency-review-2026-11-10.md). The read-only weekly checker is restored with14 guard tests and current six-editor upstream metadata verification. Default-branch activation and successful workflow run still require integration.
+The historical Zero/OpenTelemetry exception and August12 deadline are not renewed. Supported parent upgrades/reachability and the remaining findings stay separate follow-up work.
 
-Kimi CI dispatch `ctx_115fc3a86fb5` reported production build,23,795 full-suite tests,70 serial tests and focused suites passing on Node24.18.0 for e242. Its scheduled follow-up was cancelled. The next Photo commit d9e460cfd restarted CI; final Film/personalization/routing edits require their own source commit and CI evidence. No green run is substituted for real publication or hosted acceptance.
+## FilmFlow MCP and remaining capabilities
 
-## Connected publication and promotion
+FilmCraft0.19 officially supports `filmcraft-cli mcp` overstdio in headless mode (`--project`/`--demo`) or desktop bridge mode (`--bridge 127.0.0.1:9876`). Tools cover command discovery/execution/batches, project/sequence inspection, media import, rendering and desktop UI controls; long exports support progress/cancellation. [Versioned official agent docs](https://github.com/storytold/filmcraft/blob/v0.19.0/docs/agents.md).
 
-Final wrapped output is `connected-assets-candidate-009` (264 assets), frozen receipt SHA256 `fa1163712c7a4516bcce19ef36d93cb7f33501896a3156158440350ec8ac8aad`. All real stored bytes/config/manifests/gateway modules and decoded Brotli payloads are verified.48 upgradePython tests,5 releasePython guards and19 service/gateway/envelope/promotionNode tests pass. Independent Film review confirmed original branding/native behavior is preserved.
+Its browser build exposes `window.filmcraft` commands/requests/screenshots/import APIs. This is not an HTTP MCP server or proof hosted FilmFlow is connected to an agency agent. The native CLI has no filesystem-confinement flags; hosted use needs the existing qualified execution boundary, real process/filesystem isolation, current project/client authority, revision fences and durable outcome reconciliation. A timed-out queued browser mutation can still execute: reconcile it before retrying. [Versioned official browser docs](https://github.com/storytold/filmcraft/blob/v0.19.0/docs/web.md).
 
-Version-local shell copies preserve dock/tab behavior, session overlay, MotorStack UI, stable installation IDs, theme/maskable icons and customized loading marks. Existing launcher, seven cards/starfield/credits and complete gateway ASSETS remain attached. Effect's new service worker unregisters only itself and deletes no origin data.
-
-The new FigFlow default entry preserves the existing Email Library HTML and restrictive CSP, changing only its Canvas iframe to the new0.17 canvas. `?canvas=1` selects that native canvas. Explicit old versions and EDM1/3/4/5 remain intact. Specialised0.11.2-edm5 retains the custom `window.__xfFigBridge.request`, relay, constrained editing, emoji and email save authority. It is deliberately not relabelled as an upgraded0.17 email engine. An isolated feasibility attempt found13 rejected files/27 hunks and new0.17 control channels bypassing earlier admission; a future email-engine migration needs explicit admission repair and native/WASM/email acceptance. No production EDM package was changed.
-
-The additive gateway exposes the six new prefixes only after existing fresh authorization, strips credentials to the private assets service and leaves stable paths unchanged for hosted qualification. Separate frozen promotion modules update the canonical existing launcher destinations only after recorded hosted acceptance and fresh gateway/private-service deployment/runtime/binding checks. Legacy origins and old immutable URLs retain their existing routes. No partial ASSETS replacement or parallel login/storage system is introduced.
-
-Remaining: final source integration/CI; private upload and exact byte readback; additive gateway upload/readback; real hosted six-editor roundtrips, dock/session, MotorStack native import, Fig library/EDM and retained old-path checks; then guarded stable promotion and live receipt verification. No Creative Suite Cloudflare write has occurred at this checkpoint. Installed-app runtime behavior and universal historical-document font fidelity must not be inferred from browser/manifest checks.
+No native MCP registration, credential, service activation or remote exposure occurred. Shared XeroFlow project autosave, durable native artifacts and cross-editor document transfer remain separate capabilities. A future specialised0.17 email-engine port needs admission/control-channel repairs and native/WASM/email acceptance: the isolated feasibility attempt had13 rejected files/27 hunks and bypassed older admission paths. Retaining EDM5 preserves the existing supported email behavior.

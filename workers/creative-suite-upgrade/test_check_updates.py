@@ -112,7 +112,7 @@ class Checks(unittest.TestCase):
         self.assertTrue(failed)
         self.assertEqual(len(report['applications']), 6)
         self.assertNotIn('secret-provider-body', json.dumps(report))
-        self.assertEqual(report['baseline_kind'], 'unapproved_candidate_inputs_not_deployed')
+        self.assertEqual(report['baseline_kind'], 'original_upstream_source_inputs_not_deployed_receipt')
         self.assertIn('not the deployed', updates.summary(report))
 
     def test_api_credentials_and_redirects_are_confined(self):
@@ -158,6 +158,42 @@ class Checks(unittest.TestCase):
             invalid.write_text('var app_routes_default = {};')
             with self.assertRaises(ValueError):
                 updates.load_configured_routes(invalid)
+
+
+    def test_published_baseline_uses_six_live_selections_and_retains_provenance(self):
+        path = Path(__file__).resolve().parents[1] / 'creative-suite-release/published-release.json'
+        baseline = updates.load_published_release(path)
+        self.assertEqual(baseline['kind'], 'published_release_receipt_not_runtime_recheck')
+        self.assertEqual(baseline['applications']['photocraft']['configured_route'], '/photoflow/0.22.0-flow2/')
+        self.assertEqual(baseline['applications']['filmcraft']['configured_route'], '/filmflow/0.19.0-flow2/')
+        self.assertEqual(baseline['applications']['figcraft']['upstream_version'], '0.17.0')
+        self.assertEqual(baseline['specialised_figflow_email'], '0.11.2-edm5')
+        self.assertEqual(baseline['source_commit'], '9ac1d65c399f0bf5c003b96530d4dcdcd4309129')
+
+    def test_published_receipt_rejects_unpublished_incomplete_or_cross_app_routes(self):
+        path = Path(__file__).resolve().parents[1] / 'creative-suite-release/published-release.json'
+        for change in ('status', 'source', 'missing', 'cross_app', 'version', 'gateway', 'null_target', 'list_target'):
+            data = json.loads(path.read_text())
+            if change == 'status': data['status'] = 'prepared'
+            if change == 'source': data['source_commit'] = 'main'
+            if change == 'missing': del data['routes']['figcraft']
+            if change == 'cross_app': data['routes']['figcraft'] = data['routes']['photocraft']
+            if change == 'version': data['routes']['figcraft'] = '/figflow/latest/'
+            if change == 'gateway': data['gateway']['version'] = 'pending'
+            if change == 'null_target': data['gateway'] = None
+            if change == 'list_target': data['assets'] = []
+            with tempfile.TemporaryDirectory() as tmp:
+                invalid = Path(tmp) / 'release.json'; invalid.write_text(json.dumps(data))
+                with self.assertRaises(ValueError, msg=change): updates.load_published_release(invalid)
+
+    def test_summary_labels_published_receipt_without_claiming_runtime_recheck(self):
+        path = Path(__file__).resolve().parents[1] / 'creative-suite-release/published-release.json'
+        baseline = updates.load_published_release(path)
+        report = {'applications': [], 'configured_route_baseline': baseline}
+        text = updates.summary(report)
+        self.assertIn('Published release receipt', text)
+        self.assertIn('does not re-run hosted acceptance', text)
+        self.assertIn('0.11.2-edm5', text)
 
 
 if __name__ == '__main__':

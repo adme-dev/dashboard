@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read-only upstream release check against unapproved candidate inputs.
+"""Read-only upstream check against exact source inputs and a publication receipt.
 
 Never changes live pins, runs upstream code, builds, deploys or deletes old versions.
 """
@@ -176,6 +176,44 @@ def load_configured_routes(path):
             'source': 'workers/creative-launcher-card-release/source/worker.js',
             'source_sha256': hashlib.sha256(raw).hexdigest(), 'applications': applications}
 
+
+def load_published_release(path):
+    """Use a committed publication receipt, without claiming a live runtime check."""
+    raw = path.read_bytes()
+    data = json.loads(raw)
+    uuid = re.compile(r'^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$')
+    if not isinstance(data, dict) or data.get('status') != 'published' or data.get('host') != 'creative.xeroflow.io':
+        raise ValueError('Expected canonical published Creative Suite receipt')
+    if not SHA.fullmatch(data.get('source_commit', '')) or not re.fullmatch(r'[0-9a-f]{64}', data.get('receipt_sha256', '')):
+        raise ValueError('Invalid publication source or artifact digest')
+    for target in ('gateway', 'assets'):
+        if not isinstance(data.get(target), dict):
+            raise ValueError('Invalid publication deployment object')
+        for field in ('version', 'deployment'):
+            if not uuid.fullmatch(data[target].get(field, '')):
+                raise ValueError('Missing publication deployment identity')
+    if not isinstance(data.get('published_at'), str) or not datetime.fromisoformat(data['published_at'].replace('Z', '+00:00')).tzinfo:
+        raise ValueError('Publication timestamp must have a timezone')
+    routes = data.get('routes')
+    if not isinstance(routes, dict) or set(routes) != set(ENGINES):
+        raise ValueError('Expected exactly six published routes')
+    applications = {}
+    for engine in ENGINES:
+        app = engine.replace('craft', 'flow')
+        route = routes[engine]
+        found = re.fullmatch('/' + app + r'/([0-9]+\.[0-9]+\.[0-9]+)-flow[1-9][0-9]*/', route) if isinstance(route, str) else None
+        if not found or version(found[1]) is None:
+            raise ValueError('Invalid published application route')
+        applications[engine] = {'upstream_version': found[1], 'configured_route': route}
+    return {'kind': 'published_release_receipt_not_runtime_recheck',
+            'source': 'workers/creative-suite-release/published-release.json',
+            'source_sha256': hashlib.sha256(raw).hexdigest(),
+            'source_commit': data['source_commit'], 'published_at': data['published_at'],
+            'gateway': data['gateway'], 'assets': data['assets'],
+            'specialised_figflow_email': data.get('specialised_figflow_email'),
+            'applications': applications}
+
+
 def error_label(error):
     # Provider bodies, request headers, tokens and redirects never enter the report.
     return f'GitHub API HTTP {error.code}' if isinstance(error, urllib.error.HTTPError) else type(error).__name__
@@ -183,7 +221,7 @@ def error_label(error):
 
 def collect(pins, github, configured=None):
     report = {'checked_at': datetime.now(timezone.utc).isoformat(), 'read_only_check': True,
-              'baseline_kind': 'unapproved_candidate_inputs_not_deployed', 'applications': []}
+              'baseline_kind': 'original_upstream_source_inputs_not_deployed_receipt', 'applications': []}
     if configured is not None:
         report['configured_route_baseline'] = configured
     failed = False
@@ -207,12 +245,18 @@ def collect(pins, github, configured=None):
 
 def summary(report):
     lines = ['## Creative upstream releases', '',
-             'Baseline: unapproved candidate inputs; this is not the deployed release inventory.', '',
-             '| Application | Candidate upstream | Latest stable | Status |', '| --- | --- | --- | --- |']
+             'Original upstream source pins are not the deployed release inventory; published selections are separate below.', '',
+             '| Application | Source upstream | Latest stable | Status |', '| --- | --- | --- | --- |']
     for app in report.get('applications', []):
         lines.append(f"| {app['engine']} | {app['current_version']} | {app.get('latest_version', 'unknown')} | {app['status']} |")
     if report.get('configured_route_baseline'):
-        lines.extend(['', 'Separate baseline: source-configured standalone routes, not authenticated runtime acceptance.', '',
+        baseline = report['configured_route_baseline']
+        if baseline.get('kind') == 'published_release_receipt_not_runtime_recheck':
+            lines.extend(['', 'Published release receipt: ' + baseline['published_at'] + '. This metadata checker does not re-run hosted acceptance.',
+                          'Specialised FigFlow email remains ' + str(baseline.get('specialised_figflow_email')) + '.', ''])
+        else:
+            lines.extend(['', 'Historical source-configured routes, not authenticated runtime acceptance.', ''])
+        lines.extend(['',
                       '| Application | Configured route | Compared with latest |', '| --- | --- | --- |'])
         for app in report.get('applications', []):
             baseline = app.get('configured_route_comparison')
@@ -233,10 +277,10 @@ def main(argv=None):
     args = parser.parse_args(argv)
     try:
         pins = load_candidates(args.pins)
-        configured = load_configured_routes(Path(__file__).resolve().parents[1] / 'creative-launcher-card-release/source/worker.js')
+        configured = load_published_release(Path(__file__).resolve().parents[1] / 'creative-suite-release/published-release.json')
         report, failed = collect(pins, GitHub(os.environ.get('GH_TOKEN') or os.environ.get('GITHUB_TOKEN')), configured)
     except (OSError, ValueError, KeyError, TypeError) as error:
-        report = {'read_only_check': True, 'baseline_kind': 'unapproved_candidate_inputs_not_deployed',
+        report = {'read_only_check': True, 'baseline_kind': 'original_upstream_source_inputs_not_deployed_receipt',
                   'input_error': error_label(error), 'applications': []}
         failed = True
     if args.report:
