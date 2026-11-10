@@ -40,3 +40,14 @@ Recheck a retained stage without recompressing:
 ```sh
 node workers/creative-suite-upgrade/verify-stage.mjs /path/to/assets-candidate-standalone-flow1
 ```
+
+
+## Photo startup repair — 10 November
+
+Browser startup qualification found that Photo's relocated `app/photocraft-web.js` imported `./snippets/eframe-d31a8450ea12dfc1/inline0.js`, while the ZIP included that module only at root `snippets/`. The official upstream 0.22.0 ZIP has the same layout defect; `packaging/web/package.sh` copies the glue into `app/` without its relative snippets.
+
+`repair_photo_package.py` adds the verified root snippet under `app/snippets/` in a new ZIP, preserving all54 original file payloads. No Rust source, Cargo.lock, WASM or compressed WASM part changes. Corrected Photo scope is `0.22.0-flow2`; previous outputs remain retained. ZIP SHA256 `7752ab741a35d3f2b94a0cac68c13127f3b718a0294ade980b8892a5223d572f`,45,330,944 bytes. Selected build receipt lives under `builds/photocraft-with-fonts-and-snippets/` on the backup drive.
+
+Fresh stage: `/Volumes/Backups/Development/creative-suite-upgrade-20261110/assets-candidate-standalone-flow2` (186 stored files). Every literal relative JavaScript dependency resolves across all6 packages, including dynamic `import()` and export-from paths. The staging helper now rejects unresolved literal module imports before issuing a success receipt. Nonliteral dynamic imports and browser execution still require runtime acceptance.
+
+Three unchanged Brotli assets were reused only after input archive/hash checks and lossless decoded-byte comparison; output files are newly written. The reuse fixture confirms differing input is rejected. This avoids recompressing unchanged binaries and does not trust a cache key alone. Actual stored/decoded files passed `verify-stage.mjs` again. No deployment occurred.

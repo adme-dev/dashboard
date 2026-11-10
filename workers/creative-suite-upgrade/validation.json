@@ -1,7 +1,7 @@
 {
   "status": "six-manual-branded-builds-and-unpublished-asset-delta-verified",
   "guard_tests": {
-    "passed": 16,
+    "passed": 45,
     "failed": 0,
     "command": "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s workers/creative-suite-upgrade -p test_*.py -v"
   },
@@ -97,13 +97,45 @@
       "packages": [
         {
           "file": "photocraft-web-0.22.0.zip",
-          "bytes": 45287028,
-          "sha256": "dadd87c0f534e237db3571b59f9834f01193f7cc23b13bacedd2b191a7f5f0fe"
+          "bytes": 45330944,
+          "sha256": "7752ab741a35d3f2b94a0cac68c13127f3b718a0294ade980b8892a5223d572f"
         }
       ],
       "packaging_only": true,
       "compiler_receipt": "../photocraft/receipt.json",
-      "font_commit": "b076417b5880bd4154bd22f00695b1d28c6bea83"
+      "font_commit": "b076417b5880bd4154bd22f00695b1d28c6bea83",
+      "packaging_repair": {
+        "status": "repaired-unpublished-photo-package",
+        "source_sha256": "dadd87c0f534e237db3571b59f9834f01193f7cc23b13bacedd2b191a7f5f0fe",
+        "output_sha256": "7752ab741a35d3f2b94a0cac68c13127f3b718a0294ade980b8892a5223d572f",
+        "bytes": 45330944,
+        "added": {
+          "photocraft-web-0.22.0/app/snippets/eframe-d31a8450ea12dfc1/inline0.js": {
+            "bytes": 280,
+            "sha256": "22a98f9d0c5a0532d291bdc9a3050439420b3d11143b4568fcfd3c66fff36995"
+          }
+        },
+        "unchanged_original_files": 54,
+        "missing_imports_before": [
+          {
+            "module": "photocraft-web-0.22.0/app/photocraft-web.js",
+            "import": "./snippets/eframe-d31a8450ea12dfc1/inline0.js",
+            "resolved": "photocraft-web-0.22.0/app/snippets/eframe-d31a8450ea12dfc1/inline0.js"
+          },
+          {
+            "module": "photocraft-web-0.22.0/app/photocraft-web.js",
+            "import": "./snippets/eframe-d31a8450ea12dfc1/inline0.js",
+            "resolved": "photocraft-web-0.22.0/app/snippets/eframe-d31a8450ea12dfc1/inline0.js"
+          },
+          {
+            "module": "photocraft-web-0.22.0/app/photocraft-web.js",
+            "import": "./snippets/eframe-d31a8450ea12dfc1/inline0.js",
+            "resolved": "photocraft-web-0.22.0/app/snippets/eframe-d31a8450ea12dfc1/inline0.js"
+          }
+        ],
+        "missing_imports_after": [],
+        "wasm_and_parts_unchanged": true
+      }
     },
     "soundcraft": {
       "engine": "soundcraft",
@@ -148,7 +180,7 @@
       ]
     }
   },
-  "package_inspection": "Actual staged files independently read; Brotli assets decoded and compared to original hashes. All185 files below25MiB. This is an unpublished delta, NOT complete live ASSETS inventory or browser proof.",
+  "package_inspection": "All186 staged files independently read; Brotli decoded and matched; literal relative JavaScript import closure verified for all six. Unpublished delta; hosted acceptance remains pending.",
   "vector_status": "Corrected menu patch compiled; failed original receipt retained. Thirty optional background font faces absent exactly as upstream release; three startup fallback fonts included.",
   "independent_review": {
     "reviewer": "Kimi",
@@ -162,13 +194,13 @@
     ]
   },
   "asset_stage_receipt": {
-    "assets": 185,
+    "assets": 186,
     "brotli_quality": 11,
     "complete_ASSETS_inventory": false,
     "compressed_assets": 3,
     "compression_concurrency": 1,
     "deployable_in_isolation": false,
-    "input_manifest_sha256": "b4d3f03c1f5a136d12a58a7bf832d1e9353dc01bfce78d3acb09a689feabb934",
+    "input_manifest_sha256": "bdc68172116afd60ca52d51b8c3c7577a99edf51d8c1a6edd44f913565731180",
     "inputs": [
       {
         "engine": "effectcraft",
@@ -194,13 +226,13 @@
         "compiler_receipt": "photocraft/receipt.json",
         "compiler_receipt_sha256": "7e658527e7e9d8fc844a2dd9644d847400ae953c0f59cd3390ebb0b01fc2a52a",
         "engine": "photocraft",
-        "entry": "/photoflow/0.22.0-flow1/index.html",
-        "receipt": "photocraft-with-fonts/receipt.json",
-        "receipt_sha256": "d39d5e3be262260330fbfce5c0e44473cec837facee869bb2c3083b5ef6028f4",
-        "scope": "0.22.0-flow1",
-        "zip": "photocraft-with-fonts/photocraft-web-0.22.0.zip",
-        "zip_bytes": 45287028,
-        "zip_sha256": "dadd87c0f534e237db3571b59f9834f01193f7cc23b13bacedd2b191a7f5f0fe"
+        "entry": "/photoflow/0.22.0-flow2/index.html",
+        "receipt": "photocraft-with-fonts-and-snippets/receipt.json",
+        "receipt_sha256": "130f53e8fc7c6ddbd214c189ba18e903d72956dbf5eea194a741ff4299504f42",
+        "scope": "0.22.0-flow2",
+        "zip": "photocraft-with-fonts-and-snippets/photocraft-web-0.22.0.zip",
+        "zip_bytes": 45330944,
+        "zip_sha256": "7752ab741a35d3f2b94a0cac68c13127f3b718a0294ade980b8892a5223d572f"
       },
       {
         "engine": "vectorcraft",
@@ -234,9 +266,9 @@
       }
     ],
     "manifest_sha256": {
-      "asset-sha256.json": "38e662bb4aeb98e3136f5b191716932c96b6a4d68bdf9f469c3c935ab1f8d3a7",
+      "asset-sha256.json": "751ad12a74b1cec0eed7e9c5c19ddc2c4a54774ccce782d1f35340f8e81f9abd",
       "compressed.json": "c4bb3944652054ecb1cb6d54a09086def8d0ac1c48ed326b6a7ed31a7714d9b7",
-      "stored-assets.json": "5cc89f7f8d94555014b37a6b63aaab4f9e4155da99f4fcba711a4b1a413abf6f"
+      "stored-assets.json": "d5141f7b159584b53f0a262dc8f276034130404a22f7cd3adf84aef1c7bea5bd"
     },
     "remaining": "Reconcile complete existing ASSETS inventory, EDM and old live paths before any publication; browser and hosted acceptance separate.",
     "status": "unpublished-standalone-delta",
@@ -246,5 +278,29 @@
     "asset_limit": "Actual q11 files and exact route map produced; Vector23382437 bytes",
     "weekly_check": "Restored read-only workflow,14 tests and live metadata check passed; default-branch activation pending",
     "dompurify": "Updated3.4.17;5 focused tests passed; other audit findings remain"
+  },
+  "local_browser_acceptance": {
+    "scope": "Bare exact staged assets over local HTTP; no hosted auth, dock, installed app or provider connection proof",
+    "photoflow": {
+      "version": "0.22.0-flow2",
+      "created": "320x180 black brush dot on white",
+      "save": "PSD",
+      "reopen": "Saved PSD reopened in separate document; dot and dimensions intact",
+      "export": "PNG320x180",
+      "evidence": "backup/browser-evidence/photo-vector-downloads.json"
+    },
+    "vectorflow": {
+      "version": "0.23.0-flow1",
+      "save": "vectorcraft native document",
+      "reopen": "Saved100pt rectangle reopened in Brave, Fit Artboard displays geometry",
+      "export": "SVG downloaded; geometry inspection pending"
+    },
+    "filmflow": {
+      "save_reopen": "Demo project downloaded and reopened",
+      "export": "One H264 export requested; outcome reconciliation pending"
+    },
+    "soundflow": "Demo rendered; save/reopen/export pending",
+    "effectflow": "pending",
+    "figflow": "pending"
   }
 }

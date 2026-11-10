@@ -16,12 +16,12 @@
     "zip_bytes": 18536518
   },
   "photocraft": {
-    "scope": "0.22.0-flow1",
-    "receipt": "photocraft-with-fonts/receipt.json",
-    "receipt_sha256": "d39d5e3be262260330fbfce5c0e44473cec837facee869bb2c3083b5ef6028f4",
-    "zip": "photocraft-with-fonts/photocraft-web-0.22.0.zip",
-    "zip_sha256": "dadd87c0f534e237db3571b59f9834f01193f7cc23b13bacedd2b191a7f5f0fe",
-    "zip_bytes": 45287028,
+    "scope": "0.22.0-flow2",
+    "receipt": "photocraft-with-fonts-and-snippets/receipt.json",
+    "receipt_sha256": "130f53e8fc7c6ddbd214c189ba18e903d72956dbf5eea194a741ff4299504f42",
+    "zip": "photocraft-with-fonts-and-snippets/photocraft-web-0.22.0.zip",
+    "zip_sha256": "7752ab741a35d3f2b94a0cac68c13127f3b718a0294ade980b8892a5223d572f",
+    "zip_bytes": 45330944,
     "compiler_receipt": "photocraft/receipt.json",
     "compiler_receipt_sha256": "7e658527e7e9d8fc844a2dd9644d847400ae953c0f59cd3390ebb0b01fc2a52a"
   },

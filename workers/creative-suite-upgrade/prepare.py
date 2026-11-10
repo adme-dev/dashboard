@@ -1,6 +1,7 @@
 """Prepare and build standalone candidates; never publish or change the EDM editor pins."""
 import argparse
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path, PurePosixPath
@@ -228,10 +229,20 @@ def build(root, config=HERE):
     start = time.monotonic()
     with (output / 'build.log').open('x') as log:
         result = subprocess.run(['bash', 'packaging/web/package.sh'], cwd=root / 'source', env=environment(root, pin, prepared['engine']), stdout=log, stderr=subprocess.STDOUT)
+    photo_repair = None
+    produced = list((output / 'packages').glob('*-web-*.zip'))
+    if result.returncode == 0 and prepared['engine'] == 'photocraft' and len(produced) == 1:
+        spec = importlib.util.spec_from_file_location('repair_photo_package', HERE / 'repair_photo_package.py')
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        original = output / 'upstream-packages' / produced[0].name
+        original.parent.mkdir(exist_ok=False)
+        produced[0].rename(original)
+        photo_repair = module.repair(original, produced[0], sha(original))
     lock = sha(root / 'source/Cargo.lock')
     packages = [{'path': str(p.relative_to(root)), 'bytes': p.stat().st_size, 'sha256': sha(p)} for p in (output / 'packages').glob('*-web-*.zip')]
     passed = result.returncode == 0 and lock == pin['cargo_lock_sha256'] and len(packages) == 1
-    write_json(output / 'receipt.json', {'status': 'built-unpublished' if passed else 'failed', 'exit': result.returncode, 'seconds': time.monotonic() - start, 'cargo_lock_sha256': lock, 'lock_unchanged': lock == pin['cargo_lock_sha256'], 'packages': packages, 'pin': pin, 'transitive_tools': ready['inputs'].get('transitive_tools', {}), 'fully_checksum_pinned_toolchain': False})
+    write_json(output / 'receipt.json', {'status': 'built-unpublished' if passed else 'failed', 'exit': result.returncode, 'seconds': time.monotonic() - start, 'cargo_lock_sha256': lock, 'lock_unchanged': lock == pin['cargo_lock_sha256'], 'packages': packages, 'pin': pin, 'transitive_tools': ready['inputs'].get('transitive_tools', {}), 'fully_checksum_pinned_toolchain': False, 'photo_packaging_repair': photo_repair})
     if not passed:
         raise ValueError('Build failed, changed lockfile, or missing/ambiguous package; see receipt')
 

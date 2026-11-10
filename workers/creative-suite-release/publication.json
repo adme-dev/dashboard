@@ -1,12 +1,12 @@
 {
-  "receipt_sha256": "a3da4bec5515cb6dab46795cd270e09f307d6ecb61263239f9f416d065509ec0",
+  "receipt_sha256": "97876c939a00a3b37880e6754756d64f123c99162d4eb5a7f3f579f2c4d42e44",
   "receipt": {
     "status": "prepared-unpublished-additive-candidate",
-    "assets": 262,
+    "assets": 263,
     "prefixes": [
       "/effectflow/0.23.1-flow1/",
       "/filmflow/0.19.0-flow1/",
-      "/photoflow/0.22.0-flow1/",
+      "/photoflow/0.22.0-flow2/",
       "/vectorflow/0.23.0-flow1/",
       "/soundflow/0.19.0-flow1/",
       "/figflow/0.17.0-flow1/"
@@ -30,13 +30,13 @@
       "brand-rpc.mjs": "0787e4c0acb8e2507a8d14f438a977941334212e95e0e490863b71a9812882c2"
     },
     "modules": {
-      "worker.js": "39908d48454f968f5bec872154dc0a0f799a500c9ca0e22300b2f1cdd13cb55f",
+      "worker.js": "0f3f7fba8466fd9e2c534f9ca57355d92e2684fe4ac1a12ca02f935dd6a696c3",
       "brand-rpc.mjs": "0787e4c0acb8e2507a8d14f438a977941334212e95e0e490863b71a9812882c2"
     },
     "service_files": {
       "assets-worker.mjs": "f42992a12b9edc4327730baa86ab9e1e9669366a7c87f9529bc7acf8febef8c3",
       "wrangler.jsonc": "ac96e4f38408486710334a560a4e6863bce7f93fc68695140d764e5274ebb0da",
-      "inventory.json": "025b96d2227d5a9d3e37e44f4c03c0a6d102eb46a1fea90e96ccc9f3d9391d34",
+      "inventory.json": "f3f44292ab1cfd5ecaec0b14d39c005b1cb7a1b54a324c4d115322220846dab0",
       "compressed.json": "c4bb3944652054ecb1cb6d54a09086def8d0ac1c48ed326b6a7ed31a7714d9b7"
     },
     "compressed_decoded": {

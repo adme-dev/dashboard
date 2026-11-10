@@ -24,7 +24,7 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover \
 CREATIVE_RELEASE_DIR=/absolute/prepared/root node --test workers/creative-suite-release/release.test.mjs
 ```
 
-The final prepared output is `/Volumes/Backups/Development/creative-suite-upgrade-20261110/connected-assets-candidate-005`. It contains 262 files, all below 25 MiB, copied exclusively from the verified stage plus reviewed wrappers. Stage metadata and current gateway module hashes are pinned. Output must be fresh; preparer preserves every earlier candidate.
+The final prepared output is `/Volumes/Backups/Development/creative-suite-upgrade-20261110/connected-assets-candidate-006`. It contains 263 files, all below 25 MiB, copied exclusively from the verified stage plus reviewed wrappers. Stage metadata and current gateway module hashes are pinned. Output must be fresh; preparer preserves every earlier candidate.
 
 Three Python guard tests passed (existing output, changed stage metadata and linked metadata). Five Node tests passed using the actual generated service/gateway: all stored hashes/sizes, shell/install metadata and cache-safe retirement, inventory/method/direct-compression rejection, real compressed-route headers, real fresh-authority gating before dispatch, cookie stripping, old route/EDM/library preservation. The test stubs only Cloudflare's platform base class and backing network services. No browser, provider or deployed runtime acceptance is claimed.
 
@@ -53,7 +53,7 @@ node node_modules/wrangler/bin/wrangler.js versions upload --config /prepared/ro
 Read back the uploaded version and verify its module/binding/runtime state before any traffic allocation. The private service must already exist and have been checked through an authenticated binding probe. The script does not infer browser acceptance from an upload. A later stable-route promotion remains a separately reviewed source change with explicit FigFlow Email Library/canvas routing.
 
 
-The final publication envelope is pinned in `publication.json`: receipt SHA256 `a3da4bec5515cb6dab46795cd270e09f307d6ecb61263239f9f416d065509ec0`. The receipt hashes service module, private configuration, exact inventory and compressed manifest as well as gateway modules. `validate-prepared.mjs` validates that frozen envelope, every actual public file and full inventory, private target/account, and all decoded Brotli hashes before publication. Gateway preparation calls the same validator. Run it immediately before either operator upload:
+The final publication envelope is pinned in `publication.json`: receipt SHA256 `97876c939a00a3b37880e6754756d64f123c99162d4eb5a7f3f579f2c4d42e44`. The receipt hashes service module, private configuration, exact inventory and compressed manifest as well as gateway modules. `validate-prepared.mjs` validates that frozen envelope, every actual public file and full inventory, private target/account, and all decoded Brotli hashes before publication. Gateway preparation calls the same validator. Run it immediately before either operator upload:
 
 ```sh
 node workers/creative-suite-release/validate-prepared.mjs /prepared/root
@@ -61,3 +61,6 @@ CREATIVE_RELEASE_DIR=/prepared/root node --test workers/creative-suite-release/e
 ```
 
 Five envelope tests passed, including four distinct service/config/manifest tamper rejections. These complement the five actual service/gateway tests, three Python input guards and two gateway-state tests. No unchanged binary build was repeated.
+
+
+Photo startup qualification required the upstream packaging repair documented in `../creative-suite-upgrade/STAGING.md`. Final candidate006 consumes fresh stage flow2 and routes Photo under `/photoflow/0.22.0-flow2/`; the other five scopes retain their flow1 names. It contains263 stored files and is pinned by receipt SHA256 `97876c939a00a3b37880e6754756d64f123c99162d4eb5a7f3f579f2c4d42e44`. Twelve actual-service/gateway/envelope tests passed after rebuilding this candidate. Previous candidates remain unchanged. These module-resolution checks do not replace the real-browser startup and save/export acceptance owned by the release operator.

@@ -7,6 +7,7 @@ import re
 import stat
 import subprocess
 import zipfile
+from repair_photo_package import missing_imports
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[1]
@@ -91,7 +92,7 @@ def write_json(path, data):
         stream.write('\n')
 
 
-def stage(builds, output, node, config=HERE, limit=LIMIT):
+def stage(builds, output, node, config=HERE, limit=LIMIT, reuse=None):
     builds, output, config = Path(builds), Path(output), Path(config)
     if not output.is_absolute() or output != output.resolve() or output.exists():
         raise ValueError('Output must be fresh absolute path without symlinks')
@@ -99,6 +100,7 @@ def stage(builds, output, node, config=HERE, limit=LIMIT):
         raise ValueError('Stage outside the source repository')
     inputs = json.loads((config / 'stage-inputs.json').read_text())
     pins = json.loads((config / 'source-pins.json').read_text())
+    reused = json.loads((Path(reuse) / 'stored-assets.json').read_text()) if reuse else {}
     preflight = []
     scopes = set()
     for engine, item in inputs.items():
@@ -149,7 +151,11 @@ def stage(builds, output, node, config=HERE, limit=LIMIT):
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 decoded_hashes[url] = sha(data)
                 if encoded:
-                    process = subprocess.run([str(node), str(HERE / 'brotli-stage.mjs'), str(destination), str(limit)], input=data, capture_output=True, check=True)
+                    cached = reused.get(target_url)
+                    reuse_args = []
+                    if cached and cached.get('encoding') == 'br' and cached.get('decoded_sha256') == sha(data):
+                        reuse_args = [str(checked_file(Path(reuse) / 'public', target_url.lstrip('/'), cached['sha256']))]
+                    process = subprocess.run([str(node), str(HERE / 'brotli-stage.mjs'), str(destination), str(limit), *reuse_args], input=data, capture_output=True, check=True)
                     metadata = json.loads(process.stdout)
                     if metadata['decoded_sha256'] != sha(data) or metadata['decoded_bytes'] != len(data) or metadata['roundtrip_verified'] is not True:
                         raise ValueError('Compression receipt mismatch')
@@ -169,6 +175,9 @@ def stage(builds, output, node, config=HERE, limit=LIMIT):
     for url, target in compressed.items():
         if (public / url.lstrip('/')).exists() or not (public / target.lstrip('/')).is_file():
             raise ValueError('Invalid compressed route')
+    unresolved = missing_imports({str(p.relative_to(public)): p.read_bytes() for p in public.rglob('*.js')})
+    if unresolved:
+        raise ValueError('Unresolved JavaScript module imports: ' + json.dumps(unresolved))
     write_json(output / 'compressed.json', compressed)
     write_json(output / 'asset-sha256.json', decoded_hashes)
     write_json(output / 'stored-assets.json', stored)
@@ -180,5 +189,6 @@ if __name__ == '__main__':
     parser.add_argument('--builds', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--node', type=Path, required=True)
+    parser.add_argument('--reuse-stage', type=Path)
     args = parser.parse_args()
-    stage(args.builds, args.output, args.node)
+    stage(args.builds, args.output, args.node, reuse=args.reuse_stage)

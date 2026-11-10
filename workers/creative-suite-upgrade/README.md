@@ -60,3 +60,6 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover \
 The tests use temporary fixtures and exercise real zero-fuzz patch application, failed replay, changed lockfiles, checksums, path traversal/symlinks, extraction limits, overwrite refusal, environment isolation and modified-source rejection. They do not install tools or build editors.
 
 Before release: attach successful per-engine build receipts and branded ZIP hashes, run upstream/focused regression checks, verify actual browser open/edit/save/reopen/export flows and retained licenses, review access control, then publish through a separately reviewed release mechanism. This candidate alone authorizes no production route change.
+
+
+Photo 0.22.0 packaging requires `repair_photo_package.py` after upstream packaging: its bootloader relocates wasm-bindgen glue into `app/` but upstream leaves its relative snippets at root. The build helper retains the original ZIP in `build/upstream-packages/` and emits a separately repaired selected ZIP. The repair adds only missing duplicate snippet files and validates all literal relative JS imports; conflicting snippets or unresolved imports fail closed. It does not modify WASM. Final current Photo scope is `0.22.0-flow2`; see `STAGING.md` for exact archive/receipt evidence.

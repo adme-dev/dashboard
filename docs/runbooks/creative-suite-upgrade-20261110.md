@@ -46,7 +46,7 @@ All six target source archives and browser ZIPs were downloaded and checksum ver
 
 Build artifacts, logs and receipts live on the user-authorized backup drive at `/Volumes/Backups/Development/creative-suite-upgrade-20261110`. Individual `builds/<engine>/receipt.json` files are authoritative for compilation outcomes; a downloaded upstream ZIP or clean patch replay is not a successful branded build.
 
-Browser verification is currently blocked by the connected Chrome tool failing navigation with `Cannot read properties of undefined (reading 'timeoutMs')`; the in-app browser reports unavailable. This is a tool limitation, not an application failure. Do not claim startup/import/save/reopen/export acceptance or switch live routes on this evidence.
+The connected browser navigation API fails with `Cannot read properties of undefined (reading 'timeoutMs')`. Native browser controls provide a working fallback. Local engine QA is now underway; hosted connections and stable-route promotion remain separate gates.
 
 ## Existing package maintenance checks
 
@@ -66,14 +66,24 @@ The previous hypothetical Brotli inspection is **not actual publication asset pr
 
 Vector's 30 omitted background font-picker faces match the upstream 0.23.0 release and its own pinned font revision. Three startup fallback fonts are present. Existing-document font rendering remains an acceptance gate. Manual build provenance also remains partial: environment inheritance, absent embedded source SHA in Photo, shared unverified optimizer cache and residual patch trial artifacts in Photo/Vector build trees do not constitute clean helper-build proof.
 
-Browser navigation was retried after review and still fails before loading an origin. No browser acceptance is claimed.
+Native Safari/Brave/Chrome fallback loads actual locally staged editors. See the current browser checkpoint below; API navigation failure no longer blocks local QA.
 
-Dashboard DOMPurify was updated to 3.4.17 with five focused tests passing. The fresh production audit has zero DOMPurify advisories but retains other findings; see [dependency review](../security/dependency-review-2026-11-10.md). This remains uncommitted and undeployed source work.
+Dashboard DOMPurify was updated to 3.4.17 with five focused tests passing. The fresh production audit has zero DOMPurify advisories but retains other findings; see [dependency review](../security/dependency-review-2026-11-10.md). This is included in PR914; it remains undeployed.
 
 The weekly checker has been restored in `.github/workflows/creative-tools-updates.yml`, targeting the isolated candidate checker. Fourteen guard tests passed; the live metadata report confirmed all six candidate versions current. This does not activate the schedule until default-branch integration and a successful run. Fresh fetch still matched base `25a384d4f3054aa208cf8378abcc755b6fcd642b`.
 
 ## Connected additive publication candidate
 
-`workers/creative-suite-release/` now prepares an additive private assets service and a gateway candidate against the verified EDM5 modules. Final wrapped output: `/Volumes/Backups/Development/creative-suite-upgrade-20261110/connected-assets-candidate-005` (262 assets). Receipt SHA256: `a3da4bec5515cb6dab46795cd270e09f307d6ecb61263239f9f416d065509ec0`.
+`workers/creative-suite-release/` now prepares an additive private assets service and a gateway candidate against the verified EDM5 modules. Final wrapped output: `/Volumes/Backups/Development/creative-suite-upgrade-20261110/connected-assets-candidate-006` (263 assets). Receipt SHA256: `97876c939a00a3b37880e6754756d64f123c99162d4eb5a7f3f579f2c4d42e44`.
 
 Version-local dock, session, install and MotorStack UI assets are included. Effect service-worker retirement unregisters only itself and deletes no caches. Exact new version prefixes dispatch after fresh gateway authorization with stripped credentials; old ASSETS, all EDM paths and the FigFlow Email Library remain. All service upload files/config/inventory/compressed mappings and gateway modules are frozen and verified; 15 focused tests passed. Independent review found no material behavior blocker; its account-target and upload-envelope corrections are implemented. Current gateway reconciliation, upload/readback, browser acceptance and stable-route promotion remain pending. This candidate does not activate native MCP, cross-app document persistence or provider imports.
+
+## Current browser and Photo packaging checkpoint
+
+Native local-browser QA exposed a real upstream Photo0.22 packaging defect: relocated `app/photocraft-web.js` imports a snippets module left only at the package root. The published upstream ZIP has the same missing relative target. The bounded repair copies that existing280-byte module under `app/snippets/`; all54 original payloads, fonts, licenses and compiled WASM bytes remain identical. The immutable Photo URL advances to `0.22.0-flow2`; failed flow1 and candidates001–005 remain retained as evidence, not release selections.
+
+Selected Photo ZIP SHA256: `7752ab741a35d3f2b94a0cac68c13127f3b718a0294ade980b8892a5223d572f` (45,330,944 bytes). Standalone stage `assets-candidate-standalone-flow2` contains186 files; receipt SHA256 `6fad6a18b82f2d81111e3bcead15fc0f47cc62adab0046101e7248ff8dddb410`. Previously verified Brotli files are reused only after encoded hash and decoded byte comparisons. The helper reports quality11 for these known quality11 artifacts; future reuse should identify provenance explicitly rather than infer compression quality. A repair failure currently fails closed before a failed-build receipt is written; original archive and logs remain.
+
+PhotoFlow in Brave created a320×180 image with a black brush dot, saved PSD, exported PNG, and reopened the saved PSD in a separate document with the dot intact. VectorFlow saved its100pt rectangle document, reopened it in Brave and rendered the geometry after Fit Artboard, then downloaded SVG. FilmFlow demo saved/reopened; the single H264 request still needs outcome reconciliation. SoundFlow demo rendered; its native project roundtrip/export plus EffectFlow/FigFlow checks remain open. Download hashes are retained in `browser-evidence/` on the backup drive. These local bare-editor checks do not establish authenticated hosted connections.
+
+Kimi CI dispatch `ctx_115fc3a86fb5` reported local production build,23,795 full-suite tests,70 serial tests and focused suites passing on required Node24.18.0. Remote run42780165171 at e242 remained in progress at step24/36 with all completed steps passing. Its scheduled follow-up was cancelled. Photo repair needs a new commit and CI run; no Creative Suite Cloudflare write has occurred.

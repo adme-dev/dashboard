@@ -3,7 +3,7 @@ from pathlib import Path
 import argparse, hashlib, json, shutil, re
 HERE = Path(__file__).resolve().parent
 BASE_HASHES = {'worker.js':'97d2daacca6aae1d77baadb33b24b66590e5bf26e7cf32d4723a340750c416ca','brand-rpc.mjs':'0787e4c0acb8e2507a8d14f438a977941334212e95e0e490863b71a9812882c2'}
-STAGE_HASHES = {'stored-assets.json':'5cc89f7f8d94555014b37a6b63aaab4f9e4155da99f4fcba711a4b1a413abf6f','stage-receipt.json':'0a991c45642835dff2f399d869fc4a2459eed58a659bafbf09bb1fe9e150de99','compressed.json':'c4bb3944652054ecb1cb6d54a09086def8d0ac1c48ed326b6a7ed31a7714d9b7'}
+STAGE_HASHES = {'stored-assets.json': 'd5141f7b159584b53f0a262dc8f276034130404a22f7cd3adf84aef1c7bea5bd', 'stage-receipt.json': '6fad6a18b82f2d81111e3bcead15fc0f47cc62adab0046101e7248ff8dddb410', 'compressed.json': 'c4bb3944652054ecb1cb6d54a09086def8d0ac1c48ed326b6a7ed31a7714d9b7'}
 RETIRE = """// Retire this registration without deleting any origin cache or document storage.
 self.addEventListener('install', () => self.skipWaiting())
 self.addEventListener('activate', event => event.waitUntil(self.registration.unregister()))

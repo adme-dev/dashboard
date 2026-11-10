@@ -1,7 +1,7 @@
 {
   "status": "verified-unpublished-standalone-delta",
   "engines": 6,
-  "assets": 185,
+  "assets": 186,
   "compressed_assets": [
     {
       "path": "/effectflow/0.23.1-flow1/effectcraft_web_bg.wasm.br",
@@ -29,35 +29,85 @@
     "path": "/figflow/0.17.0-flow1/figcraft-web-3621afe8f825a56e_bg.wasm",
     "bytes": 25546822
   },
-  "total_stored_bytes": 159455929,
+  "total_stored_bytes": 159456209,
   "manifest_sha256": {
-    "asset-sha256.json": "38e662bb4aeb98e3136f5b191716932c96b6a4d68bdf9f469c3c935ab1f8d3a7",
+    "asset-sha256.json": "751ad12a74b1cec0eed7e9c5c19ddc2c4a54774ccce782d1f35340f8e81f9abd",
     "compressed.json": "c4bb3944652054ecb1cb6d54a09086def8d0ac1c48ed326b6a7ed31a7714d9b7",
-    "stored-assets.json": "5cc89f7f8d94555014b37a6b63aaab4f9e4155da99f4fcba711a4b1a413abf6f"
+    "stored-assets.json": "d5141f7b159584b53f0a262dc8f276034130404a22f7cd3adf84aef1c7bea5bd"
   },
-  "stage_receipt_sha256": "0a991c45642835dff2f399d869fc4a2459eed58a659bafbf09bb1fe9e150de99",
+  "stage_receipt_sha256": "6fad6a18b82f2d81111e3bcead15fc0f47cc62adab0046101e7248ff8dddb410",
   "node": "v24.18.0",
   "brotli": "1.2.0",
   "verification": "Read every actual public file, compare encoded hash/size, independently decompress and compare decoded hashes/sizes, exact inventory and route checks; no deployment",
   "complete_ASSETS_inventory": false,
-  "artifact_root": "/Volumes/Backups/Development/creative-suite-upgrade-20261110/assets-candidate-standalone-flow1",
+  "artifact_root": "/Volumes/Backups/Development/creative-suite-upgrade-20261110/assets-candidate-standalone-flow2",
+  "javascript_imports": {
+    "photoflow": {
+      "javascript_modules": 4,
+      "unresolved_relative_literal_imports": []
+    },
+    "filmflow": {
+      "javascript_modules": 3,
+      "unresolved_relative_literal_imports": []
+    },
+    "soundflow": {
+      "javascript_modules": 2,
+      "unresolved_relative_literal_imports": []
+    },
+    "figflow": {
+      "javascript_modules": 2,
+      "unresolved_relative_literal_imports": []
+    },
+    "effectflow": {
+      "javascript_modules": 6,
+      "unresolved_relative_literal_imports": []
+    },
+    "vectorflow": {
+      "javascript_modules": 2,
+      "unresolved_relative_literal_imports": []
+    }
+  },
+  "photo_repair_receipt": {
+    "status": "repaired-unpublished-photo-package",
+    "source_sha256": "dadd87c0f534e237db3571b59f9834f01193f7cc23b13bacedd2b191a7f5f0fe",
+    "output_sha256": "7752ab741a35d3f2b94a0cac68c13127f3b718a0294ade980b8892a5223d572f",
+    "bytes": 45330944,
+    "added": {
+      "photocraft-web-0.22.0/app/snippets/eframe-d31a8450ea12dfc1/inline0.js": {
+        "bytes": 280,
+        "sha256": "22a98f9d0c5a0532d291bdc9a3050439420b3d11143b4568fcfd3c66fff36995"
+      }
+    },
+    "unchanged_original_files": 54,
+    "missing_imports_before": [
+      {
+        "module": "photocraft-web-0.22.0/app/photocraft-web.js",
+        "import": "./snippets/eframe-d31a8450ea12dfc1/inline0.js",
+        "resolved": "photocraft-web-0.22.0/app/snippets/eframe-d31a8450ea12dfc1/inline0.js"
+      },
+      {
+        "module": "photocraft-web-0.22.0/app/photocraft-web.js",
+        "import": "./snippets/eframe-d31a8450ea12dfc1/inline0.js",
+        "resolved": "photocraft-web-0.22.0/app/snippets/eframe-d31a8450ea12dfc1/inline0.js"
+      },
+      {
+        "module": "photocraft-web-0.22.0/app/photocraft-web.js",
+        "import": "./snippets/eframe-d31a8450ea12dfc1/inline0.js",
+        "resolved": "photocraft-web-0.22.0/app/snippets/eframe-d31a8450ea12dfc1/inline0.js"
+      }
+    ],
+    "missing_imports_after": [],
+    "wasm_and_parts_unchanged": true
+  },
   "guard_tests": {
-    "passed": 9,
+    "passed": 45,
     "failed": 0,
-    "command": "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s workers/creative-suite-upgrade -p test_stage*.py -v"
+    "scope": "44 checker/preparation/stage/photo-repair tests plus1verified-Brotli-reuse test; exact commands and logs retained under /private/tmp/creative-photo-*"
   },
   "helper_sha256": {
-    "stage_assets.py": "2cf87c4a714c36fee535744d0f5431f3dce63e880bfdd6b6c7d248d600ab4dcb",
-    "brotli-stage.mjs": "bc30b85cdb631e844042d4d1d8ad47bea34741e7ae46e61c919ffb4a5e457597",
-    "stage-inputs.json": "b4d3f03c1f5a136d12a58a7bf832d1e9353dc01bfce78d3acb09a689feabb934",
-    "test_stage_assets.py": "6988c4c64f6f1b38d05fa2c1531b9eb987ada22028afee661cfed28cb2656a2d",
-    "verify-stage.mjs": "be0aefa58b0cce5ff257e446ad1ddc543f361c2b865630cc30ca2eda29a62336"
-  },
-  "source_review": {
-    "preserved_worker_sha256": "53995e069ed042458b3b00e7762375111674a2069fab12c6c3a9987f8d4f045a",
-    "preserved_builder_sha256": "a34c4bdd43929559aa4377b47f488746e9249c93527d288b045d951092af45bc",
-    "current_main_captured_worker_sha256": "1461ce3b66e6b9914c75dd3fece63023b0d81d578f3c5844966095c106595080",
-    "current_main_release_builder_sha256": "c06b73ba5b626354dd10f5100d5d9f19251c8b64c38ab6b6887ca2e11a51972b",
-    "finding": "String URL to .br URL schema retained; current main embeds compressed_default. New map must be reconciled with full inventory in separate reviewed publication. No gateway edits."
+    "stage_assets.py": "af3f833978185da35afbce823eb9f5095549a33a4a8218652a00df92858bc5e1",
+    "brotli-stage.mjs": "63c979ba1c09d3069e9f4cdccdec64deffe77ea57d97f355ae6bf7b6144f4b54",
+    "verify-stage.mjs": "be0aefa58b0cce5ff257e446ad1ddc543f361c2b865630cc30ca2eda29a62336",
+    "repair_photo_package.py": "49b7a3306ee14b5d21ba71d56011b650e0de8cefab09a7ce0db08cf63ebd444b"
   }
 }

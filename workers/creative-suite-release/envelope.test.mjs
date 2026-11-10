@@ -6,7 +6,7 @@ import { resolve } from 'node:path'
 import { validatePrepared } from './validate-prepared.mjs'
 const root=process.env.CREATIVE_RELEASE_DIR
 if(!root)throw Error('Set CREATIVE_RELEASE_DIR')
-test('frozen actual envelope validates service/config/manifests/assets/compressed round trips',()=>assert.equal(validatePrepared(root).assets,262))
+test('frozen actual envelope validates service/config/manifests/assets/compressed round trips',()=>assert.equal(validatePrepared(root).assets,263))
 for(const changed of ['assets-worker.mjs','wrangler.jsonc','inventory.json','compressed.json'])test('rejects tampered '+changed+' before upload',()=>{
   const temp=mkdtempSync(resolve(tmpdir(),'creative-envelope-'))
   try{

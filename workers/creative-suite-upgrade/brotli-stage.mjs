@@ -1,11 +1,11 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import { brotliCompressSync, brotliDecompressSync, constants } from 'node:zlib'
 import { createHash } from 'node:crypto'
-const [destination, maximum] = process.argv.slice(2)
+const [destination, maximum, reuse] = process.argv.slice(2)
 const limit = Number(maximum)
 if (!destination || !Number.isSafeInteger(limit) || limit < 1) throw Error('Invalid destination/limit')
 const raw = readFileSync(0)
-const encoded = brotliCompressSync(raw, { params: { [constants.BROTLI_PARAM_QUALITY]: 11 } })
+const encoded = reuse ? readFileSync(reuse) : brotliCompressSync(raw, { params: { [constants.BROTLI_PARAM_QUALITY]: 11 } })
 if (encoded.length >= limit) throw Error('Compressed asset exceeds strict file limit')
 if (!brotliDecompressSync(encoded).equals(raw)) throw Error('Brotli roundtrip mismatch')
 writeFileSync(destination, encoded, { flag: 'wx' })
