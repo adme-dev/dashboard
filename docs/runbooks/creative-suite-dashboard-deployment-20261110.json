@@ -4,7 +4,7 @@
   "deployment_id": "b375fe5a-aa12-41f7-89be-4ffedb49b4a7",
   "environment": "production",
   "source_deploy_run": 42795537384,
-  "status": "deployed-public-host-verified",
+  "status": "deployed-owner-navigation-verified",
   "checked_at": "2026-11-10T11:45:31.599754+00:00",
   "entry_readback": [
     {
@@ -23,5 +23,37 @@
     }
   ],
   "browser": "Signed-out browser loads XeroFlow login with redirect=/agency/qr-codes",
-  "limits": "Owner dashboard/QR page was verified before deployment. Fresh signed-in post-deploy check unavailable: native browser cgWindowNotFound and owner extension timeoutMs failure. No credential/cookie copying or new sign-in messages. Shared entry hash does not verify every asset or protected QR behavior."
+  "limits": "Owner-only read-only navigation and rendering acceptance. QR creation, updates, exports, scans and ordinary employee acceptance were not tested. Shared entry hash does not verify every asset.",
+  "initial_owner_browser_blocker": "Owner dashboard/QR page was verified before deployment. Fresh signed-in post-deploy check unavailable: native browser cgWindowNotFound and owner extension timeoutMs failure. No credential/cookie copying or new sign-in messages. Shared entry hash does not verify every asset or protected QR behavior.",
+  "owner_acceptance": {
+    "checked_at": "2026-11-11T20:29:36.660998+00:00",
+    "browser": "Existing signed-in Brave owner session",
+    "identity_scope": "Owner / Super Admin only",
+    "routes": {
+      "/agency/qr-codes": {
+        "status": "passed",
+        "observations": [
+          "QR Codes heading and existing QR cards/thumbnails rendered",
+          "Client filter and name/URL search visible",
+          "Create variants and New QR code controls visible"
+        ]
+      },
+      "/agency": {
+        "status": "passed",
+        "observations": [
+          "Dashboard navigation from QR page succeeded",
+          "Owner greeting and My Work, Boards, Completion Trends, Workload Overview and Client Health sections rendered"
+        ]
+      }
+    },
+    "mutations_performed": false,
+    "qr_links_scanned": false,
+    "public_entry_rechecked": {
+      "path": "/_nuxt/Dg_9l3uA.js",
+      "status": 200,
+      "bytes": 244964,
+      "sha256": "0264763e6dca0c7e9b974e4e0c33b7a3d572058ab10d3f47b5f7a4fc35f071e6"
+    },
+    "proof": "Native browser accessibility state and screenshot inspected in resumed Orca session on 12 November 2026"
+  }
 }
