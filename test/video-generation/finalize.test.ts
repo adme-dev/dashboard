@@ -39,6 +39,7 @@ describe('finalizeVideoGenerationJob', () => {
     const result = await finalizeVideoGenerationJob(job, { status: 'succeeded', outputUrl: 'https://8.8.8.8/out.mp4', actualCostCents: 42 }, deps as any)
     expect(deps.fetchImpl).toHaveBeenCalledWith('https://8.8.8.8/out.mp4', expect.objectContaining({ redirect: 'manual', signal: expect.any(AbortSignal) }))
     expect(deps.uploadFile).toHaveBeenCalledWith(expect.any(Buffer), outputKey, 'video/mp4', expect.any(Object))
+    expect(deps.createVideoAsset).toHaveBeenCalledWith(expect.objectContaining({ format: '9:16', width: null, height: null }))
     expect(deps.markSucceeded).toHaveBeenCalledWith(expect.objectContaining({ id: 'job-1', outputAssetId: 'asset-1', outputSha256: 'aeca4ec81179e906402b14b4a58f8f3c8fbf2d71356cd3f116b43d72555e7208', actualCostCents: 42 }))
     expect(mockRecordAiInvocation).toHaveBeenCalledWith(expect.objectContaining({
       featureKey: 'video_generation_completion',
@@ -189,5 +190,28 @@ describe('finalizeVideoGenerationJob', () => {
       estimatedCostUsd: 0,
       metadata: expect.objectContaining({ outputAssetId: 'asset-1', outputR2Key: outputKey }),
     }))
+  })
+})
+
+
+describe('Pages finalizer output framing parity', () => {
+  it('registers measured MP4 framing when it differs from the requested format', async () => {
+    const bytes = new Uint8Array(124)
+    bytes.set(validMp4)
+    const view = new DataView(bytes.buffer)
+    for (const [offset, type, size] of [[16, 'moov', 108], [24, 'trak', 100], [32, 'tkhd', 92]] as const) {
+      view.setUint32(offset, size)
+      bytes.set([...type].map(char => char.charCodeAt(0)), offset + 4)
+    }
+    view.setUint32(116, 1280 * 65536)
+    view.setUint32(120, 720 * 65536)
+    const deps = {
+      fetchImpl: vi.fn().mockResolvedValue(new Response(bytes, { headers: { 'content-type': 'video/mp4' } })),
+      uploadFile: vi.fn().mockResolvedValue({ url: '/x' }),
+      createVideoAsset: vi.fn().mockResolvedValue({ id: 'asset-measured', r2Key: 'output.mp4' }),
+      markSucceeded: vi.fn().mockResolvedValue(stampVideoGenerationTransition({ ...job, status: 'succeeded' }, false))
+    }
+    await finalizeVideoGenerationJob(job, { status: 'succeeded', outputUrl: 'https://8.8.8.8/out.mp4', actualCostCents: null }, deps as never)
+    expect(deps.createVideoAsset).toHaveBeenCalledWith(expect.objectContaining({ format: '16:9', width: 1280, height: 720 }))
   })
 })

@@ -1,5 +1,17 @@
 # Video workspace developer handoff
 
+## Authoritative current status — 13 November 2026
+
+Current main `e90b8a0feafb0a662aadbf830660528a85aa846e` includes video PRs #897, #901, #903, #904, #906 and #908–#913, followed by Creative Suite PRs #914–#917. The newer Creative Suite release, deployment and QA evidence remains authoritative in `docs/runbooks/creative-suite-upgrade-20261110.md` and `docs/superpowers/plans/2026-11-10-creative-suite-upgrade.md`; this video handoff does not reopen or replace it.
+
+- **T10 is implemented, merged and deployed.** PR #903 merged at `0893f2a05`; Pages deployment `1e535a98-6be8-4084-bc6b-18797342c0e9` and `video-generation` Worker version `f8d3911c-5768-422e-ac65-e0ccd81fe5d6` were read back after the coordinated queue pause/drain/schema/Worker/Pages rollout. Delivery resumed with backlog zero and no messages lost, purged or redriven. Migrations 506–508 were applied to production during that rollout; migration 509 (PR #910 reconciliation) and migration 510 (PR #911 provider-free audio import) were subsequently applied to production and released. PR #913's timeline-length audio mix is also live in the audio-jobs container.
+- **Storyboard production remains off.** Production readback found `VIDEO_STORYBOARD_PRODUCTION_ENABLED` absent. Source enables it only for literal `true` and also requires the existing storyboard and generation flags. Merge/deployment is not production activation, paid-provider acceptance or R2 completion.
+- **Hosted audio evidence passed, with bounded scope.** The A5 storyboard audio-cue slice passed using an owned, provider-free imported WAV and the approved T09 visual. A7 re-render job `da3511f0-f716-4d97-a37a-09c38f2e170f` completed all three formats. Its receipt records `done` and all variants; the retained closeout measurements record 30.000-second audio streams, 440 Hz tone at 0–5 seconds (about −23.6 dBFS), and 5–30-second digital silence (about −91 dBFS). Evidence under `/Volumes/Backups/xf-video-followthrough-20261108/`: `acceptance-a3a7/a5-storyboard-audio-receipt.json`, `acceptance-a3a7/a7-rerender/receipt.json`, and the `CLAUDE-TAKEOVER-LEDGER.md` closeout. A5/A7 remain partial overall: no rendered copy/pixel/OCR review, ordinary-role hosted acceptance, bit-exact PCM claim or full visual/bypass acceptance is made.
+- **Historical liability is unresolved.** Eighteen historical jobs retain a conservative 3,430 cents of internal uncertain liability; this is not a provider-confirmed billed amount and must not be reported as actual charges. AI Gateway provider evidence remained inaccessible with HTTP 403 using the available authorization, so no unsupported settlement or cost conversion has occurred. PR #910 supplies the audited reconciliation mechanism, not evidence that these jobs are settled.
+- **Acceptance remains open.** T09 and full R1 are partial/unaccepted; T11–T14 and full R2/R3 remain incomplete/unaccepted. Product/brand/source-reuse coverage, rendered copy pixels, ordinary-role and wrong-client hosted journeys, two-tab/UI recovery, physical devices, recipe/example coverage, operator pilot completion/time targets, controlled provider runs, continuity, directed audio and current flag-off/rollback acceptance remain outstanding as applicable. No full-pilot claim is made.
+
+The dated sections below preserve the implementation and investigation sequence. Statements such as “integration pending”, “not deployed” or “no production migration” describe only their named 8–9 November checkpoints and are superseded by this section.
+
 ## Scope and routes
 
 Video projects use `/agency/audio/projects?mediaType=av`; audio and all-project views remain at the canonical projects route. The editor is `/agency/audio/projects/:id`. Both use the agency layout and creative-role middleware. The screenshot-directed workspace borrows Freefield's media-first gallery and control/preview arrangement, not its GPU execution platform or data model. Reference revision: `neuregex/freefield@e5fa71b8ae52db7f20aa76b5e6e56fc3adff2fca`.
@@ -57,7 +69,7 @@ The runner permits only project/storyboard reads, reference save, manual plan/ca
 
 Stdout is JSON-lines progress. The atomic mode-`0600` receipt stores IDs, hashes, findings and coverage limits, not copy, reference evidence notes, media locators, sessions or credentials. Retry an interrupted run with the identical fixture/run ID/receipt; it re-resolves before an unfinished apply rather than storing resolved media. A changed fixture requires a new run ID. A completed receipt resumes with read-only preflight and no writes. Focused check: `pnpm exec vitest run test/video/storyboardPilotAcceptance.test.ts` (5 tests passing on this source slice). The root-owned browser adapter has separately completed the manual hosted fixture described below; the generic runner also passes against disposable local Postgres.
 
-## Remaining original-plan work
+## Original-plan checkpoint — 8 November (historical)
 
 T01–T08 foundations are implemented; T08 includes bounded changed-brand-kit recovery. PR884–PR886 are merged. PR886 merge `40ad01146216cc7808d334612e27e0b3a5d5672f` was released on 6 November as Pages deployment `0a21b015-a984-4d97-845b-36a4ad660e6a`; older kit-recovery deployment-pending statements are historical. The 8 November source readback and bounded hosted results are recorded below.
 
@@ -65,7 +77,7 @@ T09 remains partial. Exact outstanding rows are A1 browser-inspected dealer asse
 
 The gallery release is PR885, merged source `601500d7201b46c823b2daf884572cf200e49c68`, Pages deployment `2efcb595-631b-4f74-b17a-0e1bc1102565`. Authenticated gallery/create-dialog/model-selection/storyboard/history checks passed without paid generation or customer-project changes. Creation was cancelled; empty history and absent thumbnails remain truthful. The editor's inherited bucket GET may initialize metadata, so navigation is not a zero-write database audit.
 
-## 8 November hosted follow-through
+## 8 November hosted follow-through (historical checkpoint)
 
 The initial 8 November production readback identified source `62776b77a337d82b5084c839cfd17c9c72847773`, Pages deployment `c5a665e3-a2e5-4de1-a3d2-8b11cf40c9db`. At that initial check, authenticated public storyboard/studio/generation/search flags were true and 146 production settings were preserved. A later readback at 12:36 UTC found intervening production source `647974d7171ac86c7156480cc35a269fb54b3625`, Pages `c3ca1dd6-7085-4edb-adbc-5dcdd01115f4`, with 146 settings. Fresh authenticated HTML showed storyboard/search true but studio/generation false; the current-source repair release must restore both authorized build-time flags. These are timestamped observations, not proof that the pending repair has deployed.
 
@@ -81,7 +93,7 @@ Evidence directory: `/Volumes/Backups/xf-video-followthrough-20261108/` (`produc
 ### Independent review follow-through — 8 November
 
 Claude Code 2.1.319 (reported model `claude-opus-5-5`) reviewed current-main T09 source and dashboard UX. Its confirmed render-distribution access finding is repaired in the pilot release candidate: save-to-library, send-to-portal and social-draft routes authorize the project before execution-ledger replay as well as before any side effect. Regression checks reject another project creator before job lookup, signing, asset/review/draft writes or caption generation. No customer export or provider call was used for verification. Dashboard UX findings are tracked separately; source review is not hosted acceptance.
-## T10 production attempt and accounting slice (8 November, integration pending)
+## T10 production attempt and accounting slice — 8 November local checkpoint (historical; deployed 9 November)
 
 The next slice adds held shot attempts linked one-to-one to canonical `video_generation_jobs`; it does not create a second spend balance. `VIDEO_STORYBOARD_PRODUCTION_ENABLED` defaults off and is not enabled by this work. New reservation/approval/allowance writes require that runtime opt-in plus existing storyboard/generation flags; saved attempt reads and cancellation remain available after disablement. Routes under `/api/agency/video/projects/:id/storyboard/production` are `attempts` POST, `attempts/:attemptId` GET, `attempts/:attemptId/approve` POST, `attempts/:attemptId/cancel` POST and `allowance` GET/PUT. Owner writes retain the canonical God-mode transaction audit; project, fresh-role, reference and billing boundaries remain independent.
 
