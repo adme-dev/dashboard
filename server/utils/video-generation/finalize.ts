@@ -1,4 +1,5 @@
 import { downloadGeneratedVideoOutput } from '~~/server/utils/video-generation/outputDownload'
+import { mp4Dimensions } from '~~/shared/video/mp4Dimensions'
 import { generatedVideoOutputIdentity } from '~~/shared/video/generationOutput'
 import {
   publicVideoGenerationProviderStatus,
@@ -45,6 +46,7 @@ export async function finalizeVideoGenerationJob(
   const startedAt = Date.now()
   if (!result.outputUrl) throw new Error('finalize called without an output url')
   const bytes = Buffer.from(await downloadGeneratedVideoOutput(result.outputUrl, deps.fetchImpl))
+  const dimensions = mp4Dimensions(Uint8Array.from(bytes).buffer)
   const { r2Key, sha256 } = generatedVideoOutputIdentity(bytes, `video-generation/${job.tenantId}/${job.id}/output.mp4`)
   await deps.uploadFile(bytes, r2Key, 'video/mp4', { projectId: job.projectId, jobId: job.id, sha256 })
   // Identical job/output hashes reuse the canonical asset through its unique index.
@@ -56,7 +58,9 @@ export async function finalizeVideoGenerationJob(
     sourceJobId: job.id,
     r2Key,
     outputSha256: sha256,
-    format: job.aspectRatio,
+    format: dimensions?.aspectRatio ?? job.aspectRatio,
+    width: dimensions?.width ?? null,
+    height: dimensions?.height ?? null,
     durationSec: job.durationSeconds,
   })
   const completed = await deps.markSucceeded({
