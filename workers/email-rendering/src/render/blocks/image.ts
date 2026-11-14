@@ -2,7 +2,7 @@ import { boundedText } from '../boundedText'
 import { registerBlock } from '../block-registry'
 import type { FlyhubBlock, BlockRenderContext } from './types'
 import { formatPadding } from './types'
-import { escapeHtml } from './helpers'
+import { escapeHtml, escapeUrl } from './helpers'
 import { anchorIdAttribute } from '../../../../../app/utils/edmAnchor'
 import { extendedStyleCss } from '../../../../../app/utils/edmStyle'
 
@@ -44,7 +44,7 @@ registerBlock({
               align="${contentAlignment}"
               src="${imageUrl}"
               alt="${escapeHtml(imageAlt)}"
-              ${imageLinkHref ? boundedText(_context.renderBudget)`href="${imageLinkHref}"` : ''}
+              ${imageLinkHref ? boundedText(_context.renderBudget)`href="${escapeUrl(imageLinkHref)}"` : ''}
               ${imageWidth !== '100%' ? boundedText(_context.renderBudget)`width="${imageWidth}"` : ''}
               fluid-on-mobile="true"
             />
@@ -68,7 +68,7 @@ registerBlock({
       return boundedText(_context.renderBudget)`<mj-text padding="${padding}" align="center" color="#9ca3af" background-color="#f3f4f6">No image</mj-text>`
     }
 
-    return boundedText(_context.renderBudget)`<mj-image padding="${padding}" align="${contentAlignment}" src="${imageUrl}" alt="${escapeHtml(imageAlt)}" ${imageLinkHref ? boundedText(_context.renderBudget)`href="${imageLinkHref}"` : ''} fluid-on-mobile="true" />`
+    return boundedText(_context.renderBudget)`<mj-image padding="${padding}" align="${contentAlignment}" src="${imageUrl}" alt="${escapeHtml(imageAlt)}" ${imageLinkHref ? boundedText(_context.renderBudget)`href="${escapeUrl(imageLinkHref)}"` : ''} fluid-on-mobile="true" />`
   },
 
   renderHtml(block: FlyhubBlock, _context: BlockRenderContext): string {
@@ -103,7 +103,7 @@ registerBlock({
       // dark variant through the generated head CSS only.
       const dark = boundedText(_context.renderBudget)`<!--[if !mso]><!--><img class="edm-dark-image" src="${escapeHtml(darkSrc, _context.renderBudget)}" alt="${escapeHtml(imageAlt, _context.renderBudget)}" style="${imageStyle} display: none; max-height: 0; overflow: hidden; mso-hide: all;" /><!--<![endif]-->`
       const images = boundedText(_context.renderBudget)`${light}${dark}`
-      const linked = imageLinkHref ? boundedText(_context.renderBudget)`<a href="${escapeHtml(imageLinkHref, _context.renderBudget)}">${images}</a>` : images
+      const linked = imageLinkHref ? boundedText(_context.renderBudget)`<a href="${escapeUrl(imageLinkHref)}">${images}</a>` : images
       return boundedText(_context.renderBudget)`
         <tr${anchorIdAttribute(props)}>
           <td style="padding: ${padding}; text-align: ${contentAlignment}; ${bgColor ? boundedText(_context.renderBudget)`background-color: ${bgColor};` : ''}${extendedStyleCss(style)}">
@@ -122,7 +122,7 @@ registerBlock({
     const images = mobileUrl
       ? boundedText(_context.renderBudget)`<img class="edm-img-desktop" src="${imageUrl}" alt="${escapeHtml(imageAlt)}" style="max-width: 100%; height: auto; display: block; margin: 0 auto;" /><!--[if !mso]><!--><img class="edm-img-mobile" src="${escapeHtml(mobileUrl, _context.renderBudget)}" alt="${escapeHtml(mobileAlt, _context.renderBudget)}" style="max-width: 100%; height: auto; display: none; max-height: 0; overflow: hidden; margin: 0 auto; mso-hide: all;" /><!--<![endif]-->`
       : imgTag
-    const imageHtml = imageLinkHref ? boundedText(_context.renderBudget)`<a href="${imageLinkHref}">${images}</a>` : images
+    const imageHtml = imageLinkHref ? boundedText(_context.renderBudget)`<a href="${escapeUrl(imageLinkHref)}">${images}</a>` : images
 
     return boundedText(_context.renderBudget)`
         <tr${anchorIdAttribute(props)}>

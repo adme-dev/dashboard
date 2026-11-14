@@ -1,3 +1,4 @@
+import { parseFragment, type DefaultTreeAdapterMap } from 'parse5'
 import { createRenderBudget, RenderBoundaryError } from './bounds'
 
 type MergeOptions = {
@@ -9,11 +10,127 @@ type MergeOptions = {
 }
 const compiledFallbackEntities: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"' }
 const entities: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', '\'': '&#039;' }
+const unresolvedHrefToken = /^\{\{[^{}]{1,2304}\}\}$/
+type HtmlChild = DefaultTreeAdapterMap['childNode']
+type HtmlElement = DefaultTreeAdapterMap['element']
+type HtmlComment = DefaultTreeAdapterMap['commentNode']
+type HtmlTemplate = DefaultTreeAdapterMap['template']
+
+function isDangerousHref(value: string): boolean {
+  const inspected = value.replace(/[\u0000-\u001F\u007F]/g, '').trim()
+  if (!inspected || unresolvedHrefToken.test(inspected)) return false
+  try {
+    const protocol = new URL(inspected).protocol
+    if (protocol === 'javascript:' || protocol === 'data:' || protocol === 'vbscript:') return true
+  } catch { /* A non-absolute value can still be a raw scheme after control removal. */ }
+  return /^(javascript|data|vbscript):/i.test(inspected)
+}
+
+type HrefSpan = { start: number, end: number, name: string }
+type ParsedHref = { name: string, value: string, location: { startOffset: number, endOffset: number } }
+type ReparseBudget = { remaining: number }
+const MAX_DUPLICATE_REPARSE_CHARS = 1_000_000
+
+function elementHrefs(element: HtmlElement): ParsedHref[] {
+  const hrefs: ParsedHref[] = []
+  for (const [sourceName, location] of Object.entries(element.sourceCodeLocation?.attrs ?? {})) {
+    const name = sourceName.toLowerCase()
+    if (name !== 'href' && name !== 'xlink:href') continue
+    const attribute = element.attrs.find(candidate => {
+      const parsedName = candidate.prefix ? `${candidate.prefix}:${candidate.name}` : candidate.name
+      return parsedName.toLowerCase() === name
+    })
+    if (attribute) hrefs.push({ name, value: attribute.value, location })
+  }
+  return hrefs
+}
+
+function maskHrefs(html: string, hrefs: ParsedHref[], base: number): string {
+  let masked = html
+  const ordered = [...hrefs].sort((left, right) => right.location.startOffset - left.location.startOffset)
+  for (const href of ordered) {
+    const start = href.location.startOffset - base
+    const end = href.location.endOffset - base
+    masked = `${masked.slice(0, start)}${' '.repeat(end - start)}${masked.slice(end)}`
+  }
+  return masked
+}
+
+function duplicateHrefSpans(html: string, element: HtmlElement, base: number, budget: ReparseBudget): HrefSpan[] {
+  const startTag = element.sourceCodeLocation?.startTag
+  if (!startTag) return []
+  const source = html.slice(startTag.startOffset, startTag.endOffset)
+  if ((source.match(/(?:^|[\s/])(?:xlink:)?href\s*=/gi) ?? []).length < 2) return []
+  const spans: HrefSpan[] = []
+  let masked = maskHrefs(source, elementHrefs(element), startTag.startOffset)
+  // Later duplicates are inert to parse5. Bound their extra source cleanup so
+  // malformed markup cannot turn repeated start-tag parsing into unbounded work.
+  for (let pass = 0; pass < 32 && masked.length <= budget.remaining; pass++) {
+    budget.remaining -= masked.length
+    const reparsed = parseFragment(masked, { sourceCodeLocationInfo: true, scriptingEnabled: false })
+    const candidate = reparsed.childNodes.find(node => 'attrs' in node) as HtmlElement | undefined
+    if (!candidate) break
+    const hrefs = elementHrefs(candidate)
+    if (!hrefs.length) break
+    for (const href of hrefs) {
+      if (isDangerousHref(href.value)) {
+        spans.push({
+          start: base + startTag.startOffset + href.location.startOffset,
+          end: base + startTag.startOffset + href.location.endOffset,
+          name: href.name
+        })
+      }
+    }
+    masked = maskHrefs(masked, hrefs, 0)
+  }
+  return spans
+}
+
+function hrefSpans(html: string, base: number, depth: number, budget: ReparseBudget): HrefSpan[] {
+  if (depth > 4) return []
+  const spans: HrefSpan[] = []
+  const visit = (node: HtmlChild) => {
+    if (node.nodeName === '#comment') {
+      const comment = node as HtmlComment
+      const location = comment.sourceCodeLocation
+      if (location && comment.data.toLowerCase().includes('href')) {
+        spans.push(...hrefSpans(comment.data, base + location.startOffset + 4, depth + 1, budget))
+      }
+      return
+    }
+    if (!('attrs' in node)) return
+    const element = node as HtmlElement
+    for (const href of elementHrefs(element)) {
+      if (isDangerousHref(href.value)) {
+        spans.push({ start: base + href.location.startOffset, end: base + href.location.endOffset, name: href.name })
+      }
+    }
+    spans.push(...duplicateHrefSpans(html, element, base, budget))
+    const content = node.nodeName === 'template' ? (node as HtmlTemplate).content.childNodes : []
+    for (const child of [...element.childNodes, ...content]) visit(child)
+  }
+  for (const child of parseFragment(html, { sourceCodeLocationInfo: true, scriptingEnabled: false }).childNodes) visit(child)
+  return spans
+}
+
+/** After HTML merge, replace hrefs whose parsed URL is a scriptable scheme.
+ * parse5 decodes character references and reads unquoted attributes. Only those
+ * attribute spans change; unresolved tokens and every other byte stay. */
+export function neutralizeResolvedHrefSchemes(html: string): string {
+  const spans = hrefSpans(html, 0, 0, { remaining: MAX_DUPLICATE_REPARSE_CHARS }).sort((left, right) => right.start - left.start)
+  let result = html
+  for (const span of spans) {
+    if (span.start < 0 || span.end > result.length || span.start >= span.end) continue
+    result = `${result.slice(0, span.start)}${span.name}="#"${result.slice(span.end)}`
+  }
+  return result
+}
 
 /** One bounded pass over the authored template. Recipient values are literal
  * data: never replacement-string instructions or a second template to evaluate.
- * HTML encoding is for text/quoted attributes; URL ownership remains with the
- * existing field and asset contracts. Subjects use the plain-text context. */
+ * HTML encoding is for text and attribute values. After that encoding, parse5
+ * reads each href, including character references and unquoted attributes, and
+ * a scriptable scheme is replaced once. Subjects use the plain-text context. */
 export function resolveEmailMergeTags(template: string, variables: Record<string, string>, options: MergeOptions = {}): string {
   const budget = options.budget ?? createRenderBudget()
   const values = new Map(Object.entries(variables).map(([key, value]) => [key.toLowerCase().trim(), value]))
@@ -61,5 +178,6 @@ export function resolveEmailMergeTags(template: string, variables: Record<string
     cursor = match.index! + match[0].length
   }
   append(template.slice(cursor))
-  return chunks.join('')
+  const resolved = chunks.join('')
+  return options.context === 'text' ? resolved : neutralizeResolvedHrefSchemes(resolved)
 }
