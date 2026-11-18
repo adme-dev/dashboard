@@ -32,6 +32,8 @@ export interface GenerationJobDraft {
   modelId: string
   prompt: string
   sourceAssetId: string | null
+  /** Second source frame, only when the job used a start + end frame and the model still supports it. */
+  endSourceAssetId: string | null
   durationSeconds: number
   subjectType: VideoGenerationSubjectType
 }
@@ -51,13 +53,16 @@ export function draftFromGenerationJob(job: GenerationJobDraftSource, models: Vi
     ? job.durationSeconds
     : firstDuration
   const subjectType = SUBJECT_TYPES.find((candidate) => candidate === job.subjectType) ?? 'unknown'
-  const sourceAssetId = mode === 'image-to-video' ? (job.sourceAssetIds?.find(Boolean) ?? null) : null
+  const sourceIds = mode === 'image-to-video' ? (job.sourceAssetIds ?? []).filter(Boolean) : []
+  const sourceAssetId = sourceIds[0] ?? null
+  const endSourceAssetId = sourceIds.length > 1 && model.capabilities.endFrame ? sourceIds[1]! : null
 
   return {
     mode,
     modelId: model.id,
     prompt: job.prompt,
     sourceAssetId,
+    endSourceAssetId,
     durationSeconds,
     subjectType
   }
@@ -69,13 +74,22 @@ export interface GenerationFormInput {
   prompt: string
   sourceAssetId: string | null
   durationSeconds: number
+  /** Start & end frames workflow: an end frame is required and the model must support it. */
+  requireEndFrame?: boolean
+  endSourceAssetId?: string | null
 }
 
 export function validateGenerationForm(input: GenerationFormInput): { valid: boolean; errors: string[] } {
   const errors: string[] = []
   if (!input.model) errors.push('Select a model.')
   if (!input.prompt.trim()) errors.push('A prompt is required.')
-  if (input.mode === 'image-to-video' && !input.sourceAssetId) errors.push('A source image is required for image-to-video.')
+  if (input.mode === 'image-to-video' && !input.sourceAssetId) {
+    errors.push(input.requireEndFrame ? 'Add a start frame.' : 'A source image is required for image-to-video.')
+  }
+  if (input.requireEndFrame) {
+    if (input.model && !input.model.capabilities.endFrame) errors.push('This model cannot use an end frame. Pick another model.')
+    if (!input.endSourceAssetId) errors.push('Add an end frame.')
+  }
   if (input.model && !input.model.durationsSeconds.includes(input.durationSeconds)) errors.push('Pick a supported duration.')
   return { valid: errors.length === 0, errors }
 }

@@ -46,9 +46,29 @@ describe('videoGenerationForm', () => {
       modelId: 'aigateway/seedance-i2v',
       prompt: 'slow push-in on a red SUV',
       sourceAssetId: 'source-1',
+      endSourceAssetId: null,
       durationSeconds: 5,
       subjectType: 'vehicle'
     })
+  })
+
+  it('restores a start + end frame job only for a model that still supports end frames', () => {
+    const job = { mode: 'image-to-video', prompt: 'reveal', sourceAssetIds: ['start-1', 'end-1'], durationSeconds: 5, subjectType: 'vehicle' }
+    expect(draftFromGenerationJob({ ...job, modelId: 'aigateway/vidu-i2v' }, selectable))
+      .toMatchObject({ sourceAssetId: 'start-1', endSourceAssetId: 'end-1' })
+    expect(draftFromGenerationJob({ ...job, modelId: 'aigateway/seedance-i2v' }, selectable))
+      .toMatchObject({ sourceAssetId: 'start-1', endSourceAssetId: null })
+  })
+
+  it('start & end frames requires both frames and an end-frame model', () => {
+    const vidu = getVideoGenerationModel('aigateway/vidu-i2v')!
+    const seedance = getVideoGenerationModel('aigateway/seedance-i2v')!
+    const base = { mode: 'image-to-video' as const, prompt: 'reveal', durationSeconds: 5, requireEndFrame: true }
+    expect(validateGenerationForm({ ...base, model: vidu, sourceAssetId: null, endSourceAssetId: null }).errors)
+      .toEqual(['Add a start frame.', 'Add an end frame.'])
+    expect(validateGenerationForm({ ...base, model: seedance, sourceAssetId: 's', endSourceAssetId: 'e' }).errors)
+      .toEqual(['This model cannot use an end frame. Pick another model.'])
+    expect(validateGenerationForm({ ...base, model: vidu, sourceAssetId: 's', endSourceAssetId: 'e' }).valid).toBe(true)
   })
 
   it('rejects unsupported prior jobs and normalizes stale duration metadata', () => {

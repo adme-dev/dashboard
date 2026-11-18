@@ -51,6 +51,25 @@ describe('video generation compliance', () => {
     expect(result.classification).toBe('blocked_vehicle_t2v')
   })
 
+  it('blocks a start/end-frame vehicle job when either frame is unapproved', () => {
+    const model = getVideoGenerationModel('mock/i2v-safe')!
+    const base = { mode: 'image-to-video' as const, prompt: 'reveal from front three-quarter to rear', model, requestedSubjectType: 'vehicle' as const, tenantPolicy, provenance }
+
+    for (const sourceAssets of [
+      [{ id: 'start', approved: true, subjectType: 'vehicle' as const }, { id: 'end', approved: false, subjectType: 'vehicle' as const }],
+      [{ id: 'start', approved: false, subjectType: 'vehicle' as const }, { id: 'end', approved: true, subjectType: 'vehicle' as const }]
+    ]) {
+      const result = evaluateVideoGenerationCompliance({ ...base, sourceAssets })
+      expect(result.allowed).toBe(false)
+      expect(result.classification).toBe('missing_approved_asset')
+    }
+
+    const both = evaluateVideoGenerationCompliance({ ...base, sourceAssets: [
+      { id: 'start', approved: true, subjectType: 'vehicle' }, { id: 'end', approved: true, subjectType: 'vehicle' }
+    ] })
+    expect(both).toMatchObject({ allowed: true, classification: 'vehicle_i2v' })
+  })
+
   it('allows approved vehicle image-to-video', () => {
     const model = getVideoGenerationModel('mock/i2v-safe')!
 

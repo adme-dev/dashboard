@@ -838,7 +838,7 @@ const features: Record<string, Feature> = {
     details: [
       {
         title: 'Image-To-Video From An Approved Still',
-        content: 'Start from a real photo — a car on the forecourt, a product on the shelf — and animate it into a clean, on-brand motion clip: a slow parallax, a subtle reveal, a push-in. Because the motion is generated from your own approved still rather than dreamt up from scratch, the product on screen is the actual product, not an AI hallucination of it. Every image-to-video job is gated to source assets that have been approved and are owned by that client or the agency.'
+        content: 'Start from a real photo — a car on the forecourt, a product on the shelf — and animate it into a clean, on-brand motion clip: a slow parallax, a subtle reveal, a push-in. Because the motion is generated from your own approved still rather than dreamt up from scratch, the product on screen is the actual product, not an AI hallucination of it. Every image-to-video job is gated to source assets that have been approved and are owned by that client or the agency. Pick "Start & end frames" to set where the shot begins and where it lands — say, a front three-quarter that resolves on the offer card — on models that support an end frame, with both frames held to the same approval rule.'
       },
       {
         title: 'Text-To-Video B-Roll',

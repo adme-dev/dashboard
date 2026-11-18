@@ -3,7 +3,8 @@
 // The slideover picker wraps this component; Video Studio can also embed it in
 // the workbench so generation is part of the editing surface.
 import { ref, computed, watch } from 'vue'
-import { modelsForMode, validateGenerationForm, costPreviewCents, draftFromGenerationJob } from '~~/app/utils/videoGenerationForm'
+import { validateGenerationForm, costPreviewCents, draftFromGenerationJob } from '~~/app/utils/videoGenerationForm'
+import { availableWorkflows, modelsForWorkflow, videoGenerationWorkflow, workflowForMode, type VideoGenerationWorkflow } from '~~/app/utils/video/generationWorkflows'
 import { videoModelPresentation, type VideoModelOption } from '~~/app/utils/video/modelPresentation'
 import { VIDEO_GENERATION_TEMPLATES, type VideoGenerationTemplate } from '~~/app/utils/video/generationTemplates'
 import { videoGenerationJobTimelinePayload, type VideoLibraryTimelinePayload } from '~~/app/utils/video/videoLibraryTimeline'
@@ -61,14 +62,39 @@ async function refreshModels() {
 const allModels = computed((): VideoModelOption[] => modelData.value?.models ?? [])
 const hasModels = computed(() => allModels.value.length > 0)
 
-const mode = ref<VideoGenerationMode>('image-to-video')
-const models = computed(() => modelsForMode(allModels.value, mode.value))
+// Workflow-first: staff pick what to make; the model list narrows to models that can do it.
+const workflow = ref<VideoGenerationWorkflow>('animate-image')
+const mode = computed<VideoGenerationMode>(() => videoGenerationWorkflow(workflow.value).mode)
+const needsEndFrame = computed(() => videoGenerationWorkflow(workflow.value).frames === 2)
+const models = computed(() => modelsForWorkflow(allModels.value, workflow.value))
+const workflowItems = computed(() => availableWorkflows(allModels.value).map(w => ({ label: w.label, value: w.id, icon: w.icon })))
+const workflowIcon = computed(() => videoGenerationWorkflow(workflow.value).icon)
 const modelId = ref<string>('')
 const model = computed(() => allModels.value.find(m => m.id === modelId.value) ?? null)
 const prompt = ref('')
 const sourceAssetId = ref<string | null>(null)
 const sourceFileName = ref<string | null>(null)
 const selectedStillId = ref<string | null>(null)
+// End frame (Start & end frames workflow only).
+const endSourceAssetId = ref<string | null>(null)
+const endSourceFileName = ref<string | null>(null)
+const endSelectedStillId = ref<string | null>(null)
+type FrameSlot = 'start' | 'end'
+const uploadTarget = ref<FrameSlot>('start')
+const frameSlots = computed((): { slot: FrameSlot, label: string | null, hint: string }[] => needsEndFrame.value
+  ? [{ slot: 'start', label: 'Start frame', hint: 'Where the clip begins' }, { slot: 'end', label: 'End frame', hint: 'Where the clip ends' }]
+  : [{ slot: 'start', label: null, hint: 'Required for image → video' }])
+const frameName = (slot: FrameSlot) => (slot === 'end' ? endSourceFileName.value : sourceFileName.value)
+const frameStillId = (slot: FrameSlot) => (slot === 'end' ? endSelectedStillId.value : selectedStillId.value)
+function setFrame(slot: FrameSlot, id: string | null, name: string | null) {
+  if (slot === 'end') {
+    endSourceAssetId.value = id
+    endSourceFileName.value = name
+  } else {
+    sourceAssetId.value = id
+    sourceFileName.value = name
+  }
+}
 const subjectType = ref<'vehicle' | 'non_vehicle' | 'unknown'>('unknown')
 const durationSeconds = ref<number>(model.value?.durationsSeconds[0] ?? 5)
 const submitting = ref(false)
@@ -78,17 +104,21 @@ const registeredInitialSource = ref<{ assetId: string, sourceId: string } | null
 // Hidden file input ref — triggered programmatically via the upload button
 const fileInputRef = ref<HTMLInputElement | null>(null)
 
-const MODE_OPTIONS = [
-  { label: 'Image → video', value: 'image-to-video' },
-  { label: 'Text → video', value: 'text-to-video' }
-]
 const SUBJECT_OPTIONS = [
   { label: 'Unknown', value: 'unknown' },
   { label: 'Vehicle', value: 'vehicle' },
   { label: 'Non-vehicle', value: 'non_vehicle' }
 ]
 
-const validation = computed(() => validateGenerationForm({ mode: mode.value, model: model.value, prompt: prompt.value, sourceAssetId: sourceAssetId.value, durationSeconds: durationSeconds.value }))
+const validation = computed(() => validateGenerationForm({
+  mode: mode.value,
+  model: model.value,
+  prompt: prompt.value,
+  sourceAssetId: sourceAssetId.value,
+  durationSeconds: durationSeconds.value,
+  requireEndFrame: needsEndFrame.value,
+  endSourceAssetId: endSourceAssetId.value
+}))
 const estCostCents = computed(() => (model.value ? costPreviewCents(model.value, durationSeconds.value) : 0))
 
 // Rich composer-bar presentation: provider icon + capability sublabel + cost per row.
@@ -109,7 +139,7 @@ const templatesVisible = computed(() => !prompt.value.trim())
 
 function applyTemplate(template: VideoGenerationTemplate) {
   if (mode.value !== template.mode) {
-    mode.value = template.mode
+    workflow.value = workflowForMode(template.mode)
     onModeChange()
   }
   prompt.value = template.prompt
@@ -125,7 +155,7 @@ function applyJobDraft(job: VideoGenerationJobView) {
     return
   }
 
-  mode.value = draft.mode
+  workflow.value = draft.endSourceAssetId ? 'start-end-frames' : workflowForMode(draft.mode)
   modelId.value = draft.modelId
   prompt.value = draft.prompt
   durationSeconds.value = draft.durationSeconds
@@ -138,6 +168,8 @@ function applyJobDraft(job: VideoGenerationJobView) {
   } else {
     clearSource()
   }
+  if (draft.endSourceAssetId) setFrame('end', draft.endSourceAssetId, 'Previous end frame')
+  else clearSource('end')
 }
 
 function jobModelLabel(job: VideoGenerationJobView): string {
@@ -170,14 +202,23 @@ function onModeChange() {
   modelId.value = models.value[0]?.id ?? ''
   durationSeconds.value = model.value?.durationsSeconds[0] ?? 5
   if (mode.value === 'text-to-video') clearSource()
+  if (!needsEndFrame.value) clearSource('end')
 }
+
+// If the current workflow stops being available (models changed), fall back to one that is.
+watch(workflowItems, (items) => {
+  if (items.length && !items.some(item => item.value === workflow.value)) {
+    workflow.value = items[0]!.value
+    onModeChange()
+  }
+})
 
 watch([() => props.initialModelId, allModels, () => props.modelSelectionKey], ([requested, available]) => {
   if (!requested) return
   const candidate = available.find(item => item.id === requested)
   if (!candidate) return
-  if (!candidate.modes.includes(mode.value)) {
-    mode.value = candidate.modes[0]!
+  if (!videoGenerationWorkflow(workflow.value).supports(candidate)) {
+    workflow.value = workflowForMode(candidate.modes[0]!)
     onModeChange()
   }
   modelId.value = candidate.id
@@ -209,16 +250,16 @@ watch(() => props.initialSourceAsset?.assetId ?? null, () => {
   if (props.active ?? true) void applyInitialSourceAsset()
 })
 
-function clearSource() {
-  sourceAssetId.value = null
-  sourceFileName.value = null
-  selectedStillId.value = null
+function clearSource(slot: FrameSlot = 'start') {
+  setFrame(slot, null, null)
+  if (slot === 'end') endSelectedStillId.value = null
+  else selectedStillId.value = null
 }
 
 async function applyInitialSourceAsset() {
   const source = props.initialSourceAsset
   if (!source) return
-  mode.value = 'image-to-video'
+  if (workflow.value === 'text-to-video') workflow.value = 'animate-image'
   onModeChange()
   selectedStillId.value = null
 
@@ -248,14 +289,18 @@ async function applyInitialSourceAsset() {
   }
 }
 
-function triggerFileInput() {
+function triggerFileInput(slot: FrameSlot = 'start') {
+  uploadTarget.value = slot
   fileInputRef.value?.click()
 }
 
 // Register a still already in this project timeline as the i2v source — reuses
 // media the user already uploaded instead of requiring another image upload.
-async function onExistingStillSelected(clipId: string | null) {
+async function onExistingStillSelected(clipId: string | null, slot: FrameSlot = 'start') {
   if (!clipId) return
+  if (slot === 'end') endSelectedStillId.value = clipId
+  else selectedStillId.value = clipId
+  uploadTarget.value = slot
   uploading.value = true
   try {
     await props.prepareTimelineStillSource?.()
@@ -264,11 +309,10 @@ async function onExistingStillSelected(clipId: string | null) {
       headers: { 'Idempotency-Key': idempotencyKey('source-asset-from-still') },
       body: { projectId: props.projectId, clipId, subjectType: subjectType.value }
     })
-    sourceAssetId.value = res.id
-    sourceFileName.value = props.timelineStills.find(s => s.clipId === clipId)?.label ?? 'Project still'
+    setFrame(slot, res.id, props.timelineStills.find(s => s.clipId === clipId)?.label ?? 'Project still')
   } catch (e: unknown) {
     toast.add({ title: 'Could not use still', description: apiErrorDescription(e), color: 'error' })
-    clearSource()
+    clearSource(slot)
   } finally {
     uploading.value = false
   }
@@ -279,6 +323,7 @@ async function onFileSelected(event: Event) {
   const file = input.files?.[0]
   if (!file) return
 
+  const slot = uploadTarget.value
   uploading.value = true
   try {
     const formData = new FormData()
@@ -292,13 +337,11 @@ async function onFileSelected(event: Event) {
       body: formData
     })
 
-    sourceAssetId.value = res.id
-    sourceFileName.value = file.name
+    setFrame(slot, res.id, file.name)
   } catch (e: unknown) {
     toast.add({ title: 'Upload failed', description: apiErrorDescription(e), color: 'error' })
     // Reset so the user can retry
-    sourceAssetId.value = null
-    sourceFileName.value = null
+    setFrame(slot, null, null)
   } finally {
     uploading.value = false
     // Reset the input so the same file can be re-selected if needed
@@ -329,7 +372,8 @@ async function submit() {
         mode: mode.value,
         modelId: model.value.id,
         prompt: prompt.value,
-        sourceAssetIds: sourceAssetId.value ? [sourceAssetId.value] : [],
+        // Start frame first, then the end frame (the server maps the second id to end_image).
+        sourceAssetIds: [sourceAssetId.value, needsEndFrame.value ? endSourceAssetId.value : null].filter((id): id is string => Boolean(id)),
         durationSeconds: durationSeconds.value,
         aspectRatio: props.defaultAspect,
         subjectType: subjectType.value,
@@ -435,56 +479,61 @@ async function submit() {
             aria-hidden="true"
             @change="onFileSelected"
           >
-          <div v-if="sourceFileName" class="flex items-center gap-2 rounded-lg border border-default bg-default/40 px-2.5 py-1.5">
-            <UIcon name="i-lucide-image" class="size-4 shrink-0 text-muted" />
-            <span class="truncate text-xs text-default">{{ sourceFileName }}</span>
-            <UButton
-              icon="i-lucide-x"
-              size="xs"
-              variant="ghost"
-              color="neutral"
-              aria-label="Clear source image"
-              :disabled="uploading"
-              class="ml-auto shrink-0"
-              @click="clearSource"
-            />
-          </div>
-          <div v-else class="flex flex-wrap items-center gap-2">
-            <USelectMenu
-              v-if="timelineStills.length"
-              v-model="selectedStillId"
-              :items="timelineStills.map((s) => ({ label: s.label, value: s.clipId }))"
-              value-key="value"
-              size="xs"
-              placeholder="Use a project still"
-              :disabled="uploading"
-              @update:model-value="onExistingStillSelected"
-            />
-            <UButton
-              size="xs"
-              variant="outline"
-              color="neutral"
-              icon="i-lucide-image-plus"
-              :label="timelineStills.length ? 'Upload still' : 'Add source image'"
-              :loading="uploading"
-              :disabled="uploading"
-              @click="triggerFileInput"
-            />
-            <span class="text-[11px] text-muted">Required for image → video</span>
+          <div class="space-y-1.5">
+            <div v-for="frame in frameSlots" :key="frame.slot" class="flex min-w-0 items-center gap-2">
+              <span v-if="frame.label" class="w-20 shrink-0 text-[11px] font-medium text-muted">{{ frame.label }}</span>
+              <div v-if="frameName(frame.slot)" class="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-default bg-default/40 px-2.5 py-1.5">
+                <UIcon name="i-lucide-image" class="size-4 shrink-0 text-muted" />
+                <span class="truncate text-xs text-default">{{ frameName(frame.slot) }}</span>
+                <UButton
+                  icon="i-lucide-x"
+                  size="xs"
+                  variant="ghost"
+                  color="neutral"
+                  :aria-label="`Clear ${frame.label?.toLowerCase() ?? 'source image'}`"
+                  :disabled="uploading"
+                  class="ml-auto shrink-0"
+                  @click="clearSource(frame.slot)"
+                />
+              </div>
+              <div v-else class="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                <USelectMenu
+                  v-if="timelineStills.length"
+                  :model-value="frameStillId(frame.slot) ?? undefined"
+                  :items="timelineStills.map((s) => ({ label: s.label, value: s.clipId }))"
+                  value-key="value"
+                  size="xs"
+                  placeholder="Use a project still"
+                  :disabled="uploading"
+                  @update:model-value="(clipId: string) => onExistingStillSelected(clipId, frame.slot)"
+                />
+                <UButton
+                  size="xs"
+                  variant="outline"
+                  color="neutral"
+                  icon="i-lucide-image-plus"
+                  :label="timelineStills.length ? 'Upload still' : (frame.label ? `Add ${frame.label.toLowerCase()}` : 'Add source image')"
+                  :loading="uploading && uploadTarget === frame.slot"
+                  :disabled="uploading"
+                  @click="triggerFileInput(frame.slot)"
+                />
+                <span class="text-[11px] text-muted">{{ frame.hint }}</span>
+              </div>
+            </div>
           </div>
         </div>
 
         <!-- Composer bar -->
         <div class="flex flex-wrap items-center gap-1.5 border-t border-default px-2 py-2">
           <USelect
-            v-model="mode"
-            :items="MODE_OPTIONS"
+            v-model="workflow"
+            :items="workflowItems"
             value-key="value"
             size="xs"
             variant="soft"
             color="neutral"
-            :icon="mode === 'image-to-video' ? 'i-lucide-image-play' : 'i-lucide-type'"
-            aria-label="Generation mode"
+            :icon="workflowIcon"
+            aria-label="What to make"
             @update:model-value="onModeChange"
           />
           <USelectMenu
