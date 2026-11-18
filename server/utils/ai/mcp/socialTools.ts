@@ -19,6 +19,7 @@ import { fail, ok, type ToolContext, type ToolResult } from '~~/server/utils/ai/
 import type { McpExecutionDescriptor, McpProjectionContext, McpToolManifest } from './project'
 import { toMcpInputSchema } from './project'
 import { hasWriteScope } from './scope'
+import { isNativeMarketingContext } from '../marketing/nativeAuthority'
 import { isSocialMcpWriteToolName, SOCIAL_MCP_TOOL_NAMES } from './socialToolNames'
 
 const UUID = z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, 'Expected a UUID')
@@ -102,7 +103,8 @@ function admit(name: string, ctx: ToolContext): ToolResult | null {
   if (isSocialMcpWriteToolName(name)) {
     if (ctx.assistantReadOnly === true) return fail('Your role is read-only.', 'read_only')
     const scopes = ctx.mcpScopes instanceof Set ? ctx.mcpScopes : new Set(ctx.mcpScopes ?? [])
-    if (!hasWriteScope(scopes)) {
+    // Native chat has no OAuth scopes; its click-confirmed, actor-bound context stands in (as in marketingPolicy).
+    if (!isNativeMarketingContext(ctx) && !hasWriteScope(scopes)) {
       return fail('This action requires write access. Reconnect your AI assistant and grant write (mcp:write).', 'insufficient_scope')
     }
   }

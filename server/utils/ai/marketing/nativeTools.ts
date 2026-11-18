@@ -5,6 +5,8 @@ import { sha256 } from './departmentExecutionLedger'
 import type { NativeMarketingEnvelope } from './nativePendingActions'
 import { effectiveRiskTier } from '../toolRegistry'
 import type { McpSuiteFlags } from '../mcp/project'
+import { isTask4StaffTool } from '../mcp/marketingTask4Names'
+import { isSocialMcpToolName } from '../mcp/socialToolNames'
 
 interface Dependencies {
   resolve: typeof resolveNativeMarketingContext
@@ -17,25 +19,39 @@ interface Dependencies {
   audit: (name: string, args: unknown, ctx: ToolContext, result: ToolResult) => Promise<void>
 }
 async function dependencies(ctx: ToolContext): Promise<Dependencies> {
-  const [{ toolsFor, executeDepartmentTool }, { evaluateStaffToolAdmission }, { resolveMcpRuntimeConfig }] = await Promise.all([
-    import('../mcp/departmentTools'), import('../mcp/marketingPolicy'), import('../mcp/runtimeConfig')
+  const [{ toolsFor, executeDepartmentTool }, { evaluateStaffToolAdmission }, { resolveMcpRuntimeConfig }, task4, social] = await Promise.all([
+    import('../mcp/departmentTools'), import('../mcp/marketingPolicy'), import('../mcp/runtimeConfig'),
+    import('../mcp/marketingTask4Tools'), import('../mcp/socialTools')
   ])
+  // The same staff suites the MCP projects (department, Ads/GTM, social drafts), with their original
+  // schemas. Admission per tool still requires the actor's own grant and role.
+  const catalog = (flags: McpSuiteFlags): AiTool<unknown>[] =>
+    [...toolsFor(flags), ...task4.task4StaffTools({ suiteFlags: flags }), ...social.socialMcpTools]
   const config = resolveMcpRuntimeConfig(ctx.event)
   const flags = config.suiteFlags
-  return { resolve: resolveNativeMarketingContext, flags, tools: config.serverEnabled ? toolsFor(flags) : [],
+  return { resolve: resolveNativeMarketingContext, flags, tools: config.serverEnabled ? catalog(flags) : [],
     authorizeConfirmation: async (tool, ctx) => (await import('./nativeConfirmationPolicy')).nativeConfirmationAllowed(tool, ctx),
     propose: async (ctx, messageId, name, args, riskTier) => {
       const current = resolveMcpRuntimeConfig(ctx.event)
-      if (!current.serverEnabled || !toolsFor(current.suiteFlags).some(tool => tool.name === name)) return fail('Marketing operations are disabled.', 'disabled')
+      if (!current.serverEnabled || !catalog(current.suiteFlags).some(tool => tool.name === name)) return fail('Marketing operations are disabled.', 'disabled')
       return (await import('./nativePendingActions')).prepareNativeMarketingAction(ctx, messageId, name, args, riskTier)
     },
     admitted: (name, fresh) => evaluateStaffToolAdmission(name, fresh).allowed,
-    run: (name, args, fresh, key, digest) => resolveMcpRuntimeConfig(fresh.event).serverEnabled
-      ? executeDepartmentTool(name, args, fresh, key, digest)
-      : Promise.resolve(fail('Marketing operations are disabled.', 'disabled')),
+    run: (name, args, fresh, key, digest) => {
+      if (!resolveMcpRuntimeConfig(fresh.event).serverEnabled) return Promise.resolve(fail('Marketing operations are disabled.', 'disabled'))
+      if (isTask4StaffTool(name)) return task4.executeTask4StaffTool(name, args, fresh, key)
+      // The social ledger keeps its shared `mcp:` key namespace; the digest stays bound to this chat actor/message.
+      if (isSocialMcpToolName(name)) return social.executeSocialMcpTool({ toolName: name, args, ctx: fresh, userId: fresh.userId, idempotencyKey: `mcp:${digest}`, sessionDigest: digest })
+      return executeDepartmentTool(name, args, fresh, key, digest)
+    },
     audit: async (name, args, fresh, result) => {
       const [{ execute }, { departmentAudit }] = await Promise.all([import('~~/server/utils/db'), import('../mcp/departmentAudit')])
+      const mutates = catalog(flags).find(tool => tool.name === name)?.mutates === true
+      // Ads plans, GTM proposals and social drafts: same arg-keys-only trail the MCP writes for them.
       const audit = departmentAudit(name, args, result, toolsFor(flags).find(tool => tool.name === name)?.riskTier)
+        ?? ((isTask4StaffTool(name) || isSocialMcpToolName(name)) && mutates
+          ? { pendingId: null, riskTier: 'confirm' as const, actionClass: 'prepare', outcome: result.ok ? 'proposed' : 'failed' }
+          : null)
       if (!audit) return
       await execute(`INSERT INTO ai_action_audit (pending_id,user_id,confirmed_by,tool_name,risk_tier,client_scope,payload,outcome)
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`, [audit.pendingId, fresh.userId,
