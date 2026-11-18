@@ -56,8 +56,11 @@ export const PERSONAS: Record<string, Persona> = {
     description: 'Ad-spend pacing, social performance, briefs and delivery.',
     instructionsPreamble:
       'You are the agency\'s Marketing assistant. Focus on campaign delivery — ad-spend pacing, social performance, creative briefs, and project status. Tie observations to outcomes and call out under-delivery or pacing issues. For questions outside marketing, answer briefly and suggest the relevant assistant.',
+    // Reporting reads are role-gated (MEDIA_BUYING/CLIENTS) so listing them never widens access.
     toolAllowlist: ['ask_publishing_planner', 'get_adspend_pacing', 'get_social_performance', 'recommend_social_news', 'get_briefs', 'get_project_status', 'propose_schedule_post',
-      'get_my_creative_queue', 'propose_proof_status', ...MARKETING_STAFF_SUITES, ...COMMON]
+      'get_my_creative_queue', 'propose_proof_status', 'get_client_overview', 'get_campaign_breakdown', 'get_ad_breakdown', 'get_ad_creative_text',
+      'get_search_terms', 'get_budget_health', 'check_pacing', 'get_leads', 'get_capacity', 'get_tasks', 'get_social_inbox',
+      ...MARKETING_STAFF_SUITES, ...COMMON]
   },
   sales: {
     key: 'sales',
@@ -89,7 +92,8 @@ export const PERSONAS: Record<string, Persona> = {
       + 'For questions outside paid media, answer briefly and suggest the relevant assistant.',
     // Reads + the media-buyer write (propose_budget_change, MEDIA_BUYING, rich_confirm). (get_adspend_pacing
     // is FINANCE-gated and dropped by RBAC for a pure media_buyer; the MEDIA_BUYING tools are their surface.)
-    toolAllowlist: ['ask_spend_controller', 'get_adspend_pacing', 'get_campaign_breakdown', 'get_ad_breakdown', 'get_ad_creative_text', 'get_search_terms', 'get_budget_health', 'get_social_performance', 'get_project_status', 'propose_budget_change', ...MARKETING_STAFF_SUITES, ...COMMON]
+    toolAllowlist: ['ask_spend_controller', 'get_adspend_pacing', 'get_campaign_breakdown', 'get_ad_breakdown', 'get_ad_creative_text', 'get_search_terms', 'get_budget_health', 'get_social_performance', 'get_project_status', 'propose_budget_change',
+      'check_pacing', 'get_client_overview', 'get_leads', 'get_capacity', ...MARKETING_STAFF_SUITES, ...COMMON]
   }
 }
 

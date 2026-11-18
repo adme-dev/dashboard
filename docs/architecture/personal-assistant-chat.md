@@ -24,6 +24,8 @@ Native operation keys bind actor, persisted message, operation and arguments. Ru
 
 ## Models, context and memory
 
+**Provider limits (battle-tested 18 Nov 2026).** Groq rejects any request with more than 128 tools, and marketing-management staff compose 200+. `server/utils/ai/toolRouting.ts` therefore advertises a per-turn subset (always-on core, tools already used in the conversation, best lexical matches for recent user text) once a catalogue exceeds 60 tools, and adds `find_more_tools` so the model can widen the set mid-turn via `activeTools`/`prepareStep`. Routing only narrows what is advertised; each tool's own permission, confirmation and review checks still run. gpt-oss also sends `null` for unset optional fields, which Groq's server-side validation rejects; `providerToolSchema.ts` advertises optional fields as nullable, guarantees an object root and strips `null`s before the tool's own zod validation.
+
 The existing main chat model route uses Groq (GPT OSS 120B with the configured fallback). Cloudflare Think powers separate durable specialist agents; installing an employee connector does not automatically invoke every specialist. This repair does not replace the model route or upgrade the Agents SDK.
 
 Recent conversation history, retrieved agency context and long-term personal/shared memory are different inputs. Personal memory remains actor-scoped; shared memory follows its own department/organization rules. My Assistant's memory preference narrows use. Observe-and-learn and memory distillation have separate runtime flags. An external host's private history or memory is not imported automatically.

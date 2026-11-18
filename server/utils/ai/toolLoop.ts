@@ -1,5 +1,7 @@
 import { buildNativeChatTools } from './nativeChatTools'
-import { generateText, stepCountIs, type LanguageModel } from 'ai'
+import { generateText, stepCountIs, tool as sdkTool, type LanguageModel } from 'ai'
+import { z } from 'zod'
+import { FIND_MORE_TOOLS, PROVIDER_TOOL_CAP, TOOL_ROUTING_THRESHOLD, findMoreTools, recentUserText, routeTools, toolNamesFromMessages } from './toolRouting'
 import { resolveModelWithTransport } from '~~/server/utils/claudeClient'
 import { filterToolsForUser, toSdkTools } from './toolRegistry'
 import { DEFAULT_PERSONA, type Persona } from './personas'
@@ -192,10 +194,35 @@ export async function runToolLoop(opts: {
     ? { executionIdentity: opts.messageId }
     : undefined)
 
+  // Per-turn routing: providers cap tools per request (Groq: 128) and resend every definition on
+  // each step, so large catalogues advertise a relevant subset. Every tool stays registered (and
+  // keeps its own permission/confirmation checks); the model widens the set via find_more_tools.
+  const routedToolNames = tools.length > TOOL_ROUTING_THRESHOLD
+    ? routeTools({ tools, text: recentUserText(opts.messages as unknown[]), usedToolNames: toolNamesFromMessages(opts.messages as unknown[]) })
+    : null
+  const expandedToolNames = new Set<string>()
+  const activeToolNames = () => routedToolNames
+    ? [...new Set([...routedToolNames, ...expandedToolNames])].slice(0, PROVIDER_TOOL_CAP - 1).concat(FIND_MORE_TOOLS)
+    : undefined
+  if (routedToolNames) {
+    sdkTools[FIND_MORE_TOOLS] = sdkTool({
+      description: 'Only part of your tool catalogue is loaded for this question. If you need a capability you cannot see (for example Google Ads keyword changes, GTM tracking, social drafts, email, feeds, websites or team tasks), call this with a short description of what you need; matching tools become available on your next step.',
+      inputSchema: z.object({ query: z.string().min(2).max(300) }),
+      execute: async ({ query }: { query: string }) => {
+        const found = findMoreTools(tools, query, new Set(activeToolNames()))
+        found.forEach(match => expandedToolNames.add(match.name))
+        return found.length
+          ? { ok: true, data: { added: found.map(match => ({ name: match.name, description: match.description.slice(0, 240) })), note: 'These tools are available from your next step.' } }
+          : { ok: true, data: { added: [], note: 'No further matching tools exist in your catalogue for that need.' } }
+      }
+    })
+  }
+
   const system = [
     opts.system,
     opts.catalogInstructionsAlreadyIncluded ? '' : composition.instructionsPreamble,
     persona.instructionsPreamble,
+    routedToolNames ? `Only tools relevant to this question are loaded. If you need a capability that is not in your tool list, call ${FIND_MORE_TOOLS} before saying you cannot do it.` : '',
     spotlightSystemClause()
   ]
     .filter(Boolean)
@@ -215,6 +242,9 @@ export async function runToolLoop(opts: {
     system,
     messages: opts.messages,
     tools: sdkTools,
+    ...(routedToolNames
+      ? { activeTools: activeToolNames(), prepareStep: () => ({ activeTools: activeToolNames() }) }
+      : {}),
     stopWhen: [stepCountIs(STEP_CAP)],
     abortSignal: opts.signal ?? AbortSignal.timeout(deadlineMs),
     maxOutputTokens: godModeActive
@@ -248,6 +278,7 @@ export async function runToolLoop(opts: {
     persona: persona.key,
     readOnly: Boolean(opts.readOnly),
     toolCount: tools.length,
+    routedToolCount: routedToolNames ? activeToolNames()!.length : null,
     catalogMode: composition.mode,
     catalogRuntimeMode: opts.runtimePolicy?.mode ?? 'legacy',
     catalogCoverageStatus: composition.coverageStatus,
