@@ -346,7 +346,9 @@ describe('AI governance command centre', () => {
       app.unmount()
       host.remove()
     }
-  }, 30_000)
+    // A real Chromium cold start can take most of 30s on a loaded CI runner (twice timed out
+    // there while the assertions take ~4s locally); the budget is for the launch, not the page.
+  }, 90_000)
 
   it('keeps readiness data visible and marks it stale when a retry fails', async () => {
     let readinessCalls = 0
