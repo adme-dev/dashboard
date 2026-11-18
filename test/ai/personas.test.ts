@@ -1,5 +1,7 @@
 import { NATIVE_SUPPLEMENTAL_TOOL_NAMES } from '~~/server/utils/ai/nativeToolNames'
 import { DEPARTMENT_TOOL_NAMES } from '~~/server/utils/ai/mcp/departmentToolNames'
+import { TASK4_STAFF_NAMES } from '~~/server/utils/ai/mcp/marketingTask4Names'
+import { SOCIAL_MCP_TOOL_NAMES } from '~~/server/utils/ai/mcp/socialToolNames'
 import { describe, it, expect } from 'vitest'
 import { PERSONAS, DEFAULT_PERSONA, PERSONA_OPTIONS, resolvePersona } from '~~/server/utils/ai/personas'
 import { registry } from '~~/server/utils/ai/tools/index'
@@ -7,7 +9,7 @@ import { filterToolsForUser } from '~~/server/utils/ai/toolRegistry'
 import { AI_PERSONA_OPTIONS } from '~~/app/utils/aiPersonas'
 import { PERMISSION_GROUPS, type PermissionGroup } from '~~/server/utils/permissions'
 
-const REGISTRY_NAMES = new Set([...registry.map(t => t.name), ...DEPARTMENT_TOOL_NAMES, ...NATIVE_SUPPLEMENTAL_TOOL_NAMES])
+const REGISTRY_NAMES = new Set([...registry.map(t => t.name), ...DEPARTMENT_TOOL_NAMES, ...TASK4_STAFF_NAMES, ...SOCIAL_MCP_TOOL_NAMES, ...NATIVE_SUPPLEMENTAL_TOOL_NAMES])
 
 describe('resolvePersona', () => {
   it('resolves a known key to its persona', () => {

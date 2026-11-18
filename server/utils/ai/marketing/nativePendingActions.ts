@@ -59,7 +59,8 @@ export function nativeMarketingReceipt(operation: string, value: unknown, fallba
   const ambiguous = facts.ledgerRecorded === false || facts.reconciliationRequired === true || facts.operationSucceeded === false
     || ['unknown', 'partial', 'failed', 'reconciliation_required'].includes(status ?? '')
     || (facts.complete === false && !['proposed', 'draft', 'in_review', 'queued', 'accepted', 'pending', 'paused'].includes(status ?? ''))
-  const proposalOnly = /marketing_(?:propose|prepare)_/.test(operation)
+  // Plans, proposals and drafts change nothing at a provider; each still needs its own review/execution.
+  const proposalOnly = /^(?:marketing_(?:propose|prepare)_|google_ads_plan_|propose_gtm_|(?:create|update)_social_post_draft$|submit_social_post_for_review$)/.test(operation)
   const label = ambiguous ? 'Marketing operation needs manual reconciliation' : proposalOnly ? 'Marketing proposal prepared' : 'Marketing operation returned'
   const evidence = [status ? `status=${status}` : '', ...Object.entries(facts).map(([key, value]) => `${key}=${value}`)].filter(Boolean).join(', ')
   const summary = `${label}: ${operation}.${evidence ? ` Receipt: ${evidence}.` : ''} Reference: ${reference}.${ambiguous ? ' Inspect the retained domain outcome before taking another action.' : proposalOnly ? ' Continue with its required review and execution steps.' : ''}`

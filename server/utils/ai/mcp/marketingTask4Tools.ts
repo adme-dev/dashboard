@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { toMcpInputSchema } from './project'
 import type { ToolContext, ToolResult } from '~~/server/utils/ai/toolContext'
+import type { AiTool } from '~~/server/utils/ai/toolRegistry'
 import type {
   McpProjectionContext,
   McpToolManifest,
@@ -88,24 +89,32 @@ export function projectTask4StaffSuite(
     }))
   ]
 }
+/**
+ * Flag-enabled staff Ads/GTM tools with their typed schemas. The handlers are inert: MCP and native
+ * chat both dispatch through executeTask4StaffTool, which re-admits the fresh actor first.
+ */
+export function task4StaffTools(context: Pick<McpProjectionContext, 'suiteFlags'>): AiTool<unknown>[] {
+  return projectTask4StaffSuite(context as McpProjectionContext).map(m => ({
+    name: m.name,
+    description: m.description,
+    parameters: task4StaffSchema(m.name) as z.ZodType<unknown>,
+    mutates: isTask4WriteTool(m.name),
+    handler: async () => ({
+      ok: false,
+      error: 'Use the scoped staff call boundary.'
+    })
+  }))
+}
+
 /** Staff descriptors have no provider mutation executor. Calls use the scoped service below. */
 export function resolveTask4StaffExecutions(
   context: McpProjectionContext
 ): McpExecutionDescriptor[] {
-  return projectTask4StaffSuite(context).map(m => ({
-    name: m.name,
-    canonicalName: m.name,
+  return task4StaffTools(context).map(tool => ({
+    name: tool.name,
+    canonicalName: tool.name,
     kind: 'supplemental',
-    tool: {
-      name: m.name,
-      description: m.description,
-      parameters: task4StaffSchema(m.name) as any,
-      mutates: isTask4WriteTool(m.name),
-      handler: async () => ({
-        ok: false,
-        error: 'Use the scoped staff call boundary.'
-      })
-    }
+    tool
   }))
 }
 export async function executeTask4StaffTool(

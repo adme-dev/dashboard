@@ -7,6 +7,7 @@ import {
 import { roleHasPermission, isReadOnlyRole, type PermissionGroup } from '~~/server/utils/permissions'
 import type { ToolContext, ToolResult, RiskTier } from './toolContext'
 import { spotlight } from './spotlight'
+import { providerSafeInputSchema } from './providerToolSchema'
 import { assertFinancePermission } from '~~/server/utils/financeAccess'
 
 /**
@@ -106,7 +107,8 @@ export function toSdkTools(
   for (const t of tools) {
     out[t.name] = tool({
       description: t.description,
-      inputSchema: t.parameters,
+      // Null-tolerant, object-rooted schema: gpt-oss on Groq sends `null` for unset optional fields.
+      inputSchema: providerSafeInputSchema(t.parameters),
       execute: async (args: any, _callOptions: any) => {
         const ordinal = nextToolOrdinal++
         if (t.requiredPermission === 'FINANCE') {

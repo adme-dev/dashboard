@@ -1,4 +1,9 @@
 import { DEPARTMENT_TOOL_NAMES } from './mcp/departmentToolNames'
+import { TASK4_STAFF_NAMES } from './mcp/marketingTask4Names'
+import { SOCIAL_MCP_TOOL_NAMES } from './mcp/socialToolNames'
+
+/** The staff marketing suites shared with the MCP (department, Google Ads/GTM, social drafts). Grants still decide access. */
+const MARKETING_STAFF_SUITES = [...DEPARTMENT_TOOL_NAMES, ...TASK4_STAFF_NAMES, ...SOCIAL_MCP_TOOL_NAMES]
 /**
  * Persona-readiness: a persona is configuration over the SAME loop, not a separate engine.
  * It (a) prepends an instruction preamble and (b) optionally narrows the toolset (intersected
@@ -51,8 +56,11 @@ export const PERSONAS: Record<string, Persona> = {
     description: 'Ad-spend pacing, social performance, briefs and delivery.',
     instructionsPreamble:
       'You are the agency\'s Marketing assistant. Focus on campaign delivery — ad-spend pacing, social performance, creative briefs, and project status. Tie observations to outcomes and call out under-delivery or pacing issues. For questions outside marketing, answer briefly and suggest the relevant assistant.',
+    // Reporting reads are role-gated (MEDIA_BUYING/CLIENTS) so listing them never widens access.
     toolAllowlist: ['ask_publishing_planner', 'get_adspend_pacing', 'get_social_performance', 'recommend_social_news', 'get_briefs', 'get_project_status', 'propose_schedule_post',
-      'get_my_creative_queue', 'propose_proof_status', ...DEPARTMENT_TOOL_NAMES, ...COMMON]
+      'get_my_creative_queue', 'propose_proof_status', 'get_client_overview', 'get_campaign_breakdown', 'get_ad_breakdown', 'get_ad_creative_text',
+      'get_search_terms', 'get_budget_health', 'check_pacing', 'get_leads', 'get_capacity', 'get_tasks', 'get_social_inbox',
+      ...MARKETING_STAFF_SUITES, ...COMMON]
   },
   sales: {
     key: 'sales',
@@ -84,7 +92,8 @@ export const PERSONAS: Record<string, Persona> = {
       + 'For questions outside paid media, answer briefly and suggest the relevant assistant.',
     // Reads + the media-buyer write (propose_budget_change, MEDIA_BUYING, rich_confirm). (get_adspend_pacing
     // is FINANCE-gated and dropped by RBAC for a pure media_buyer; the MEDIA_BUYING tools are their surface.)
-    toolAllowlist: ['ask_spend_controller', 'get_adspend_pacing', 'get_campaign_breakdown', 'get_ad_breakdown', 'get_ad_creative_text', 'get_search_terms', 'get_budget_health', 'get_social_performance', 'get_project_status', 'propose_budget_change', ...DEPARTMENT_TOOL_NAMES, ...COMMON]
+    toolAllowlist: ['ask_spend_controller', 'get_adspend_pacing', 'get_campaign_breakdown', 'get_ad_breakdown', 'get_ad_creative_text', 'get_search_terms', 'get_budget_health', 'get_social_performance', 'get_project_status', 'propose_budget_change',
+      'check_pacing', 'get_client_overview', 'get_leads', 'get_capacity', ...MARKETING_STAFF_SUITES, ...COMMON]
   }
 }
 
