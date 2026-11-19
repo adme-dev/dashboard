@@ -5,12 +5,7 @@ import { PERMISSION_GROUPS, SYSTEM_ROLE_PERMISSIONS } from '~~/server/utils/perm
 import { queryOneFresh, queryRowsFresh } from '~~/server/utils/db'
 import { verifyJwt } from '~~/server/utils/auth'
 import { getTrustedTask5DelegatedExecution } from '~~/server/utils/godMode/internalExecutionDelegation'
-import {
-  CRM_SEARCH_DORMANT_SCOPE_ID,
-  crmSearchActivationDeclared,
-  isCrmSearchSchemaMissing,
-  logCrmSearchDormantOnce
-} from '~~/server/utils/crm/searchDormancy'
+import { loadOrganisationScopeOrDormant } from '~~/server/utils/crm/searchDormancy'
 
 export interface CrmSearchContext {
   organisationScopeId: string
@@ -22,6 +17,13 @@ export interface CrmSearchContext {
   permissionSet: readonly string[]
   visibility: { ownerScoped: boolean }
   assistantScope?: { clientIds: readonly string[]; sourceRevision: string }
+  /**
+   * 'dormant' when the CRM search schema is absent (search never activated).
+   * organisationScopeId is then CRM_SEARCH_DORMANT_SCOPE_ID; search surfaces
+   * must reject it via requireActiveCrmSearchScope. Every authorization field
+   * above is resolved identically in both states.
+   */
+  searchScope?: 'active' | 'dormant'
 }
 
 export type TrustedCrmSystemPurpose
@@ -340,7 +342,11 @@ async function resolveAgencyForActor(
     const assigned = await deps.loadAgencyAssignment(actor.id, client.id)
     if (!assigned || !assistantScope.clientIds.includes(client.id)) notFound()
   }
-  const organisationScopeId = await deps.loadOrganisationScope()
+  // Resolved only after every actor/client/assignment check above passed.
+  const { organisationScopeId, searchScope } = await loadOrganisationScopeOrDormant(
+    deps.loadOrganisationScope,
+    input.surface
+  )
   if (!organisationScopeId) scopeUnavailable()
 
   return {
@@ -352,7 +358,8 @@ async function resolveAgencyForActor(
     surface: input.surface,
     permissionSet: [...new Set(permissionSet)],
     visibility: { ownerScoped: client.recordVisibility === 'owner' && !isManagement(permissionSet) },
-    ...(assistantScope ? { assistantScope } : {})
+    ...(assistantScope ? { assistantScope } : {}),
+    searchScope
   }
 }
 
@@ -377,7 +384,11 @@ export async function resolvePortalCrmSearchContext(
   if (!session || !internalCrmModes.has(session.leadCaptureMode)) notFound()
   const canView = session.isPrimaryContact || session.canViewCrm || session.canEditCrm || session.canAdminCrm
   if (!canView || !(await deps.loadPortalEntitlement(session.clientId))) notFound()
-  const organisationScopeId = await deps.loadOrganisationScope()
+  // Resolved only after the portal session, CRM mode, view flag and entitlement passed.
+  const { organisationScopeId, searchScope } = await loadOrganisationScopeOrDormant(
+    deps.loadOrganisationScope,
+    input.surface
+  )
   if (!organisationScopeId) scopeUnavailable()
   return {
     organisationScopeId,
@@ -387,7 +398,8 @@ export async function resolvePortalCrmSearchContext(
     actorId: session.id,
     surface: input.surface,
     permissionSet: ['CRM_VIEW'],
-    visibility: { ownerScoped: false }
+    visibility: { ownerScoped: false },
+    searchScope
   }
 }
 
@@ -397,19 +409,13 @@ export async function resolveTrustedCrmSystemContext(
 ): Promise<TrustedCrmSystemContext> {
   const client = await deps.loadClient(input.clientId)
   if (!client) notFound()
-  let organisationScopeId: string | null
-  let searchScope: 'active' | 'dormant' = 'active'
-  try {
-    organisationScopeId = await deps.loadOrganisationScope()
-  } catch (error) {
-    // CRM search is intentionally dormant until its signed release applies the
-    // crm_search_* schema. Trusted non-search CRM work (lead promotion, etc.)
-    // must not depend on it; search capture is skipped, never fatal.
-    if (!isCrmSearchSchemaMissing(error) || crmSearchActivationDeclared()) throw error
-    logCrmSearchDormantOnce(input.purpose)
-    organisationScopeId = CRM_SEARCH_DORMANT_SCOPE_ID
-    searchScope = 'dormant'
-  }
+  // CRM search is intentionally dormant until its signed release applies the
+  // crm_search_* schema. Trusted non-search CRM work (lead promotion, etc.)
+  // must not depend on it; search capture is skipped, never fatal.
+  const { organisationScopeId, searchScope } = await loadOrganisationScopeOrDormant(
+    deps.loadOrganisationScope,
+    input.purpose
+  )
   if (!organisationScopeId) scopeUnavailable()
   return {
     organisationScopeId,

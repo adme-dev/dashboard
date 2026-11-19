@@ -11,6 +11,7 @@ import {
   type AgencyAiContextResolution,
   type CrmSearchContext
 } from './searchContext'
+import { requireActiveCrmSearchScope } from './searchDormancy'
 import type { NormalizedCrmSearchRequest } from './searchRequest'
 import {
   reciprocalRankFusion
@@ -810,6 +811,8 @@ export async function retrieveCrm(
   request: NormalizedCrmSearchRequest,
   dependencies: CrmRetrievalDependencies
 ): Promise<CrmRetrievalResult> {
+  // Defense in depth: never query, embed or emit telemetry for a dormant scope.
+  requireActiveCrmSearchScope(context)
   // This is the only branch whose failure propagates to the public request.
   const keyword = await dependencies.runKeyword(
     context,
