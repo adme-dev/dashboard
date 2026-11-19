@@ -45,6 +45,7 @@ import { modelCapabilitiesTool } from './modelCapabilities'
 import { runAdspendSyncTool, getAdspendSyncStatusTool } from './adspendSync'
 import { adCreativeTextTool } from './adCreativeText'
 import { searchTermsTool } from './searchTerms'
+import { clientChangeHistoryTool } from './clientChangeHistory'
 
 // CRM tools share the same fresh CLIENTS-gated context boundary. Keep them as
 // one registry slice so a newly registered CRM action cannot silently omit it.
@@ -65,6 +66,8 @@ export const registry: AiTool<any>[] = [
   getAdspendSyncStatusTool,
   adCreativeTextTool,
   searchTermsTool,
+  // Governance phase 4: read-only per-client change timeline (dormant behind shared/changeHistoryDefaults.ts).
+  clientChangeHistoryTool,
   financeTool,
   adspendTool,
   campaignBreakdownTool,

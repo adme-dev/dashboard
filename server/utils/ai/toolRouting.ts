@@ -113,7 +113,7 @@ const SYNONYMS: Record<string, string[]> = {
   client: ['client', 'clients'],
   clients: ['client', 'clients'],
   qa: ['review', 'portfolio', 'recommendations', 'conversion'],
-  audit: ['review', 'portfolio', 'conversion'],
+  audit: ['review', 'portfolio', 'conversion', 'history', 'change', 'log'],
   portfolio: ['portfolio', 'review'],
   across: ['portfolio', 'review'],
   every: ['portfolio'],
@@ -129,7 +129,13 @@ const SYNONYMS: Record<string, string[]> = {
   approval: ['policy', 'approval', 'disapproved'],
   rejected: ['policy', 'disapproved'],
   violation: ['policy', 'disapproved', 'evidence'],
-  violations: ['policy', 'disapproved', 'evidence']
+  violations: ['policy', 'disapproved', 'evidence'],
+  history: ['history', 'change', 'log', 'timeline'],
+  changed: ['history', 'change', 'log'],
+  changes: ['history', 'change', 'log'],
+  change: ['history', 'change', 'log'],
+  changelog: ['history', 'change', 'log'],
+  log: ['history', 'log', 'change']
 }
 
 export interface RoutableTool { name: string, description: string }

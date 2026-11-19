@@ -93,7 +93,7 @@ export const PERSONAS: Record<string, Persona> = {
     // Reads + the media-buyer write (propose_budget_change, MEDIA_BUYING, rich_confirm). (get_adspend_pacing
     // is FINANCE-gated and dropped by RBAC for a pure media_buyer; the MEDIA_BUYING tools are their surface.)
     toolAllowlist: ['ask_spend_controller', 'get_adspend_pacing', 'get_campaign_breakdown', 'get_ad_breakdown', 'get_ad_creative_text', 'get_search_terms', 'get_budget_health', 'get_social_performance', 'get_project_status', 'propose_budget_change',
-      'check_pacing', 'get_client_overview', 'get_leads', 'get_capacity', ...MARKETING_STAFF_SUITES, ...COMMON]
+      'check_pacing', 'get_client_overview', 'get_client_change_history', 'get_leads', 'get_capacity', ...MARKETING_STAFF_SUITES, ...COMMON]
   }
 }
 
