@@ -120,7 +120,16 @@ const SYNONYMS: Record<string, string[]> = {
   dealers: ['portfolio', 'client', 'clients'],
   accounts: ['portfolio', 'connections', 'account'],
   wasted: ['search', 'terms', 'wasted', 'spend'],
-  wasting: ['search', 'terms', 'wasted', 'spend']
+  wasting: ['search', 'terms', 'wasted', 'spend'],
+  policy: ['policy', 'disapproved', 'limited', 'evidence'],
+  disapproved: ['policy', 'disapproved', 'limited'],
+  disapproval: ['policy', 'disapproved', 'limited'],
+  disapprovals: ['policy', 'disapproved', 'limited'],
+  limited: ['policy', 'limited', 'disapproved'],
+  approval: ['policy', 'approval', 'disapproved'],
+  rejected: ['policy', 'disapproved'],
+  violation: ['policy', 'disapproved', 'evidence'],
+  violations: ['policy', 'disapproved', 'evidence']
 }
 
 export interface RoutableTool { name: string, description: string }
