@@ -260,7 +260,8 @@ jobs:
 
       - name: Page Studio recovery source freeze database tests
         run: pnpm exec vitest run test/server/utils/pageStudioTransferRecoverySourceFreezePostgres.test.ts --maxWorkers=1
-        timeout-minutes: 6
+        # Passing runs take 335-347s (93-96% of the old 6 min limit); slow runners tipped it over.
+        timeout-minutes: 10
         env:
           PAGE_STUDIO_CMS_DATABASE_TEST_URL: postgresql://page_studio_test@127.0.0.1:5432/studio_cms_transfer_recovery_ci
 
