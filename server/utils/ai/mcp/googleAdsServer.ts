@@ -164,7 +164,7 @@ export async function listPortfolioAccounts(
   maxAccounts: number
 ): Promise<PortfolioAccount[]> {
   const rows = await queryRows<PortfolioAccount>(
-    `SELECT b.client_id AS "clientId", ac.name AS "clientName", sc.id AS "connectionId",
+    `SELECT b.client_id AS "clientId", ac.name AS "clientName", NULLIF(TRIM(sc.account_name), '') AS "accountName", sc.id AS "connectionId",
             b.operating_customer_id AS "customerId"
        FROM google_ads_account_bindings b
        JOIN social_connections sc
