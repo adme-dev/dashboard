@@ -98,8 +98,11 @@ export function createGodModeMcpCallExecutor(deps: GodModeMcpCallDependencies) {
     const missingWriteScope = !!execution.tool.mutates
       && input.requireWriteScope === true
       && !input.claim.scope.includes('mcp:write')
+    const baseBypass: GodModeBypassedControl[] = execution.godModeBypassedControls?.length
+      ? [...execution.godModeBypassedControls]
+      : ['confirmation']
     const bypassedControls: GodModeBypassedControl[] = execution.tool.mutates
-      ? (missingWriteScope ? ['confirmation', 'mcp_scope'] : ['confirmation'])
+      ? (missingWriteScope ? [...baseBypass, 'mcp_scope'] : baseBypass)
       : []
     const clientId = targetClientId(input.args)
 

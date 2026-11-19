@@ -501,13 +501,17 @@ describe('God mode gate inventory', () => {
     // process.env / typed runtimeConfig reads (5 application_governance_bypass rows) for one generic
     // useRuntimeConfig read each plus the helper's own (3 unrelated_configuration rows). These are
     // feature switches, not authority checks; RBAC and God mode bypass registration are unchanged.
-    expect(inventory.rows).toHaveLength(1835)
+    // Marketing phase 3 (draft → approve) adds seven lexical rows and no bypass registration:
+    // three active-owner checks (team_members user_role = 'owner', identity_tenant_hard_boundary)
+    // for owner God-mode review and owner-approved budget application, and four fresh
+    // permissionGroups reads (ordinary_user_behavior) in the review service / owner budget review.
+    expect(inventory.rows).toHaveLength(1842)
     expect(inventory.counts).toEqual({
       fresh_role_grant_hard_boundary: 90,
-      identity_tenant_hard_boundary: 146,
+      identity_tenant_hard_boundary: 149,
       provider_infrastructure_availability: 218,
       application_governance_bypass: 1625,
-      ordinary_user_behavior: 322,
+      ordinary_user_behavior: 326,
       unrelated_configuration: 433
     })
     // Removing the session KV shortcut removes four auth middleware rows:
@@ -534,10 +538,10 @@ describe('God mode gate inventory', () => {
     const canonicalMcpGate = 'server/utils/ai/marketing/departmentEmailOperations.ts\tif (!enabled(\'FIGFLOW_EDM_DRAFT_SAVES_ENABLED\', process.env.FIGFLOW_EDM_DRAFT_SAVES_ENABLED) || (selection && !enabled(\'FIGFLOW_EDM_LIBRARY_ENABLED\', process.env.FIGFLOW_EDM_LIBRARY_ENABLED))) refuse(\'Canonical email drafts are unavailable for this environment\', \'not_found\')\tapplication_governance_bypass'
     expect(inventory.rows).toContain(canonicalMcpGate)
     const editableCopyGates = new Set(['server/api/email/templates/[id]/editable-copy.post.ts\tconst user = input.save ? await requireWriteAccess(event) : await requireAuth(event)\tapplication_governance_bypass', 'server/api/email/templates/[id]/editable-copy.post.ts\tconst fresh = await requireWriteAccess(event)\tapplication_governance_bypass'])
-    expect(createHash('sha256').update(inventory.rows.filter(row => row !== canonicalMcpGate && !editableCopyGates.has(row)).join('\n')).digest('hex')).toBe('5aaf48de2f4712d0243a3a6701ba648f484e7b4a2db4532bea80e9439a0e3c4a')
+    expect(createHash('sha256').update(inventory.rows.filter(row => row !== canonicalMcpGate && !editableCopyGates.has(row)).join('\n')).digest('hex')).toBe('e088c4cb4418999e7a036410109ff3fc3223e5e98973b45c026406cd36e6fa4b') // +7 marketing phase-3 rows (see counts above)
     const campaignReadGate = 'server/utils/ai/marketing/departmentEmailOperations.ts\tif (!fresh.permissionGroups?.some(group => [\'ADMIN\', \'MANAGEMENT\'].includes(group))) refuse(\'Agency template access required\', \'forbidden\')\tordinary_user_behavior'
-    expect(createHash('sha256').update(inventory.rows.filter(row => row !== campaignReadGate && row !== canonicalMcpGate && !editableCopyGates.has(row)).join('\n')).digest('hex')).toBe('5b102e0ac6dc5263441dbc70a4b2c98bed0b2be2425be5dde9df43d51e42146a')
-    expect(inventory.digest).toBe('31b890eeb478ac8b41fb0df348ef32c23ee1c349c52fce239aba8bd0592b8126')
+    expect(createHash('sha256').update(inventory.rows.filter(row => row !== campaignReadGate && row !== canonicalMcpGate && !editableCopyGates.has(row)).join('\n')).digest('hex')).toBe('015bacbbc5158eee10d104328099ca1453ee7297acb6b4f33482d32e2794a5c5')
+    expect(inventory.digest).toBe('49535e26dfdb34dc44f0bd8a433a60c60acf5cce8e43d22982c1d67d27e9ad50')
     expect(inventory.rows).toContain(
       'app/composables/usePageStudioLauncher.ts\tconst config = useRuntimeConfig()\tunrelated_configuration'
     )

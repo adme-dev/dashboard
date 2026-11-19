@@ -38,7 +38,14 @@ const SUITE_BINDINGS = {
   googleAdsWrite: 'GOOGLE_ADS_MCP_WRITE_ENABLED',
   googleAdsAutomation: 'GOOGLE_ADS_MCP_AUTOMATION_ENABLED',
   googleAdsDestructive: 'GOOGLE_ADS_MCP_DESTRUCTIVE_ENABLED'
-} satisfies Record<keyof McpSuiteFlags, string>
+} satisfies Record<Exclude<keyof McpSuiteFlags, CompactOnlySuiteFlag>, string>
+
+/**
+ * Flags that exist ONLY inside MCP_SUITE_CONFIG. Production Pages is at its 150 text-binding cap, so new
+ * switches get no legacy per-flag binding (and therefore can never be enabled by a stray env var).
+ */
+const COMPACT_ONLY_SUITE_FLAGS = ['marketingDraftReview'] as const
+type CompactOnlySuiteFlag = typeof COMPACT_ONLY_SUITE_FLAGS[number]
 
 /** Reject the whole compact source on any invalid field; never discard independent legacy flags. */
 function parseSuiteConfig(raw: unknown): Partial<McpSuiteFlags> {
@@ -47,7 +54,9 @@ function parseSuiteConfig(raw: unknown): Partial<McpSuiteFlags> {
     const value: unknown = JSON.parse(raw)
     if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
     for (const [key, enabled] of Object.entries(value)) {
-      if (!Object.prototype.hasOwnProperty.call(SUITE_BINDINGS, key) || typeof enabled !== 'boolean') return {}
+      const known = Object.prototype.hasOwnProperty.call(SUITE_BINDINGS, key)
+        || (COMPACT_ONLY_SUITE_FLAGS as readonly string[]).includes(key)
+      if (!known || typeof enabled !== 'boolean') return {}
     }
     return value as Partial<McpSuiteFlags>
   } catch {
@@ -79,6 +88,7 @@ export function resolveMcpRuntimeConfig(event?: H3Event): McpRuntimeConfig {
     // Presence, not truthiness: even null/undefined/malformed bindings block compact and local grants.
     return [field, legacy === MISSING ? compact[field as keyof McpSuiteFlags] === true : legacy === 'true']
   })) as Required<McpSuiteFlags>
+  for (const field of COMPACT_ONLY_SUITE_FLAGS) suiteFlags[field] = compact[field] === true
   return {
     serverEnabled: flag(event, 'MCP_SERVER_ENABLED'),
     workerOrigin: readMcpRuntimeValue(event, 'MCP_WORKER_ORIGIN') ?? '',

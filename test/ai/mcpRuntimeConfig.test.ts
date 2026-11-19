@@ -14,8 +14,11 @@ const SUITE_BINDINGS = {
   googleAdsAutomation: 'GOOGLE_ADS_MCP_AUTOMATION_ENABLED',
   googleAdsDestructive: 'GOOGLE_ADS_MCP_DESTRUCTIVE_ENABLED'
 } as const
-const ALL_OFF = Object.fromEntries(Object.keys(SUITE_BINDINGS).map(key => [key, false]))
-const ALL_ON = Object.fromEntries(Object.keys(SUITE_BINDINGS).map(key => [key, true]))
+// Compact-only switches (no legacy per-flag binding: production Pages is at its text-binding cap).
+const COMPACT_ONLY = ['marketingDraftReview'] as const
+const ALL_KEYS = [...Object.keys(SUITE_BINDINGS), ...COMPACT_ONLY]
+const ALL_OFF = Object.fromEntries(ALL_KEYS.map(key => [key, false]))
+const ALL_ON = Object.fromEntries(ALL_KEYS.map(key => [key, true]))
 
 const USER_A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
 
@@ -47,6 +50,17 @@ describe('MCP runtime configuration', () => {
     expect(resolveMcpRuntimeConfig(eventWith({
       MCP_SUITE_CONFIG: JSON.stringify(ALL_OFF), [binding]: 'true'
     })).suiteFlags).toEqual({ ...ALL_OFF, [field]: true })
+  })
+
+  it('reads marketingDraftReview only from MCP_SUITE_CONFIG and defaults it off', () => {
+    expect(resolveMcpRuntimeConfig(eventWith({})).suiteFlags.marketingDraftReview).toBe(false)
+    // A same-named or conventional per-flag binding never enables it.
+    expect(resolveMcpRuntimeConfig(eventWith({ marketingDraftReview: 'true', MCP_MARKETING_DRAFT_REVIEW_ENABLED: 'true' }))
+      .suiteFlags.marketingDraftReview).toBe(false)
+    expect(resolveMcpRuntimeConfig(eventWith({ MCP_SUITE_CONFIG: '{"marketingDraftReview":true}' })).suiteFlags)
+      .toEqual({ ...ALL_OFF, marketingDraftReview: true })
+    expect(resolveMcpRuntimeConfig(eventWith({ MCP_SUITE_CONFIG: '{"marketingDraftReview":"true"}' }))
+      .suiteFlags.marketingDraftReview).toBe(false)
   })
 
   it('uses process compact fallback only when its request binding is absent', () => {

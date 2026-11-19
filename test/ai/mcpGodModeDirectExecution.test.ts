@@ -230,6 +230,32 @@ describe('God mode MCP direct execution adapter', () => {
     }))
   })
 
+  it('routes owner marketing review decisions as explicit confirmations (permission bypass, never confirmation)', async () => {
+    const requestEvent = event()
+    const authority = await ownerAuthority(requestEvent)
+    const descriptor = resolveGodModeMcpExecution({
+      tools: registry,
+      role: 'owner',
+      scopes: ['mcp:read'],
+      requireWriteScope: true,
+      suiteFlags: { generation: false, writes: false, financial: false, video: false, videoGeneration: false, banners: false }
+    }, 'google_ads_review_plan')!
+    const executeResolvedMutation = vi.fn(async () => ({ ok: true as const, data: { reviewed: true } }))
+    const execute = createGodModeMcpCallExecutor({
+      resolveExecution: vi.fn(() => descriptor),
+      executeWrite: vi.fn() as any,
+      executeRead: vi.fn() as any,
+      executeResolvedMutation: executeResolvedMutation as any
+    })
+    const args = { actionPlanId: '55555555-5555-4555-8555-555555555555', expectedRequestHash: 'a'.repeat(64), decision: 'approve', reason: 'Wasted spend', ack: true }
+    await execute({ event: requestEvent, claim: { ...claim(), toolName: 'google_ads_review_plan' }, authority, idempotencyKey: IDEMPOTENCY_KEY, toolName: 'google_ads_review_plan', args, requireWriteScope: true })
+    await execute({ event: requestEvent, claim: { ...claim(['mcp:read']), toolName: 'google_ads_review_plan' }, authority, idempotencyKey: IDEMPOTENCY_KEY, toolName: 'google_ads_review_plan', args, requireWriteScope: true })
+
+    expect(descriptor).toMatchObject({ kind: 'supplemental', executionClass: 'internal-http' })
+    expect(executeResolvedMutation).toHaveBeenNthCalledWith(1, expect.objectContaining({ bypassedControls: ['permission'] }))
+    expect(executeResolvedMutation).toHaveBeenNthCalledWith(2, expect.objectContaining({ bypassedControls: ['permission', 'mcp_scope'] }))
+  })
+
   it('rejects a subject mismatch or structural authority clone before either execution path', async () => {
     const requestEvent = event()
     const authority = await ownerAuthority(requestEvent)
