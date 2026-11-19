@@ -82,11 +82,14 @@ jobs:
       # Provision explicitly instead of relying on the hosted runner image.
       - name: Install and verify media decode dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends ffmpeg
+          # The runner's Ubuntu mirror intermittently crawls (4 CI timeouts on 2026-11-19); retry and
+          # allow more time rather than failing the whole suite on a package download.
+          APT_OPTS="-o Acquire::Retries=5 -o Acquire::http::Timeout=30"
+          sudo apt-get $APT_OPTS update
+          sudo apt-get $APT_OPTS install --yes --no-install-recommends ffmpeg
           ffmpeg -version
           ffprobe -version
-        timeout-minutes: 5
+        timeout-minutes: 15
 
       - name: Install pnpm
         uses: pnpm/action-setup@v6
