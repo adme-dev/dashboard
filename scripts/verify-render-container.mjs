@@ -7,6 +7,8 @@ import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
+import { request } from 'node:http'
+import { once } from 'node:events'
 
 const dir = mkdtempSync(join(tmpdir(), 'render-verification-'))
 const origin = 'http://127.0.0.1:8080'
@@ -96,7 +98,32 @@ try {
   assert.equal((await post('/measure-copy', { html: '<script>alert(1)</script>' })).status, 422)
   assert.equal((await fetch(origin + '/missing')).status, 404)
   assert.equal((await fetch(origin + '/health')).status, 200)
-  console.log('PASS: packaged service readiness, real probe/rejections, loudness render, audio timeline, video composite, exact-copy acceptance/rejection, Chromium overlays/banner frames, full output decode and recovery')
+  // A rollout sends SIGTERM. An accepted request must finish before the process exits.
+  const exited = once(server, 'exit')
+  const draining = new Promise((resolve, reject) => {
+    const req = request(origin + '/render', {
+      method: 'POST', headers: { 'content-length': String(tone.length), 'x-audio-profile': JSON.stringify({ format: 'wav', lufs: -16, truePeak: -1, lra: 11 }) }
+    }, async (res) => {
+      try {
+        const chunks = []
+        for await (const chunk of res) chunks.push(chunk)
+        assert.equal(res.statusCode, 200)
+        assert.ok(Buffer.concat(chunks).length > 44)
+        resolve()
+      } catch (error) { reject(error) }
+    })
+    req.on('error', reject)
+    req.setTimeout(30000, () => req.destroy(new Error('Drain timeout')))
+    req.flushHeaders()
+    req.write(tone.subarray(0, 100))
+    delay(200).then(() => {
+      server.kill('SIGTERM')
+      return delay(100)
+    }).then(() => req.end(tone.subarray(100))).catch(reject)
+  })
+  await draining
+  assert.deepEqual(await exited, [0, null], `Graceful shutdown: ${logs}`)
+  console.log('PASS: packaged HTTP media/Chromium acceptance, full decode, rejection/recovery and SIGTERM request drain')
 } finally {
   server.kill('SIGKILL')
   rmSync(dir, { recursive: true, force: true })

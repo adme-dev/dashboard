@@ -189,4 +189,17 @@ const server = createServer(async (req, res) => {
   }
 })
 
+// Container rollouts send SIGTERM. Stop accepting jobs while allowing accepted
+// HTTP requests (and their FFmpeg/Chromium children) to complete and clean up.
+// Cloudflare applies its own final termination deadline if a job never finishes.
+let draining = false
+function drain() {
+  if (draining) return
+  draining = true
+  console.log('[render] draining accepted requests')
+  server.close()
+}
+process.on('SIGTERM', drain)
+process.on('SIGINT', drain)
+
 server.listen(PORT, () => console.log(`[render] listening on ${PORT}`))
