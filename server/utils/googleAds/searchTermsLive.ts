@@ -53,15 +53,15 @@ export function searchTermDateRange(windowDays: number, now: Date): { startDate:
   return { startDate: isoDate(start), endDate: isoDate(end) }
 }
 
-function assertSameCustomer(value: unknown, customerId: string): void {
+export function assertSameGoogleAdsCustomer(value: unknown, customerId: string): void {
   if (typeof value === 'string') {
     for (const match of value.matchAll(/customers\/([^/\s]+)(?=\/|$)/g)) {
       if (match[1]!.replace(/-/g, '') !== customerId) throw new Error('Cross-customer Google Ads resource denied')
     }
   } else if (Array.isArray(value)) {
-    value.forEach(item => assertSameCustomer(item, customerId))
+    value.forEach(item => assertSameGoogleAdsCustomer(item, customerId))
   } else if (value && typeof value === 'object') {
-    Object.values(value).forEach(item => assertSameCustomer(item, customerId))
+    Object.values(value).forEach(item => assertSameGoogleAdsCustomer(item, customerId))
   }
 }
 
@@ -107,7 +107,7 @@ ORDER BY metrics.cost_micros DESC`
       cpc: clicks > 0 ? Math.round(costMicros / clicks / 10_000) / 100 : null
     }
   })
-  assertSameCustomer(items, input.customerId)
+  assertSameGoogleAdsCustomer(items, input.customerId)
   return {
     customerId: input.customerId,
     window: { days: input.windowDays, ...range },

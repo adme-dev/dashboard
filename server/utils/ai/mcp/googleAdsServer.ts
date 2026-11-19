@@ -12,6 +12,7 @@ import type { GoogleAdsActionPlan } from '~~/server/utils/googleAds/contracts'
 import { resolveGoogleAdsControlSession } from '~~/server/utils/googleAds/controlSession'
 import { listGoogleAdsRecommendations } from '~~/server/utils/googleAds/recommendations'
 import { listGoogleAdsSearchTerms } from '~~/server/utils/googleAds/searchTermsLive'
+import { listGoogleAdsPolicyIssues } from '~~/server/utils/googleAds/policyIssuesLive'
 import { reviewGoogleAdsPortfolio, type PortfolioAccount } from '~~/server/utils/googleAds/portfolioReview'
 import {
   listGoogleAdsInventory,
@@ -353,6 +354,19 @@ export function buildGoogleAdsMcpToolDependencies(
         windowDays: input.windowDays,
         maxResults: input.maxResults,
         wastedOnly: input.wastedOnly,
+        ...(input.campaignResourceName ? { campaignResourceName: input.campaignResourceName } : {})
+      })
+    },
+    listPolicyIssues: async (input, context) => {
+      if (delegatedAdsContext(context)) {
+        const mapping = await assertGoogleAdsConnection(context, input.clientId, input.connectionId)
+        assertGoogleAdsResourceCustomers(input, mapping.customerId)
+      }
+      const session = await resolveGoogleAdsControlSession({ clientId: input.clientId, connectionId: input.connectionId })
+      return listGoogleAdsPolicyIssues({
+        customerId: session.connection.customerId,
+        auth: session.auth,
+        maxResults: input.maxResults,
         ...(input.campaignResourceName ? { campaignResourceName: input.campaignResourceName } : {})
       })
     },
