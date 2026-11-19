@@ -88,6 +88,9 @@ const server = createServer(async (req, res) => {
         // Drive the Chromium binary installed in this container image.
         const puppeteer = (await import('puppeteer-core')).default
         browser = await puppeteer.launch({
+          // The HTTP server owns graceful termination of accepted jobs.
+          handleSIGTERM: false,
+          handleSIGINT: false,
           executablePath: '/usr/bin/chromium',
           args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
         })

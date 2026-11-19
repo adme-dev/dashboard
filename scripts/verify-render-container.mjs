@@ -3,7 +3,7 @@
 //   -v "$PWD/scripts/verify-render-container.mjs:/verification.mjs:ro" IMAGE /verification.mjs
 import assert from 'node:assert/strict'
 import { spawn, execFileSync } from 'node:child_process'
-import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, writeFileSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
@@ -12,6 +12,8 @@ import { once } from 'node:events'
 
 const dir = mkdtempSync(join(tmpdir(), 'render-verification-'))
 const origin = 'http://127.0.0.1:8080'
+const drainSignal = process.env.VERIFY_DRAIN_SIGNAL || 'SIGTERM'
+assert.ok(['SIGTERM', 'SIGINT'].includes(drainSignal))
 let logs = ''
 const server = spawn(process.execPath, ['/app/server.mjs'], { stdio: ['ignore', 'pipe', 'pipe'] })
 for (const stream of [server.stdout, server.stderr]) {
@@ -100,6 +102,23 @@ try {
   assert.equal((await fetch(origin + '/health')).status, 200)
   // A rollout sends SIGTERM. An accepted request must finish before the process exits.
   const exited = once(server, 'exit')
+  const chromiumRender = post('/render-banner', { html: html.replace('duration:0.5', 'duration:2'), width: 64, height: 64, fps: 24, crf: 23, quality: 1 })
+  // Observe the real child process instead of guessing its startup time. Puppeteer's
+  // signal handlers are installed before Chromium launches.
+  let chromiumActive = false
+  for (let n = 0; n < 300; n++) {
+    chromiumActive = readdirSync('/proc').some((pid) => {
+      if (!/^\d+$/.test(pid)) return false
+      try {
+        return readFileSync(`/proc/${pid}/cmdline`, 'utf8').includes('/usr/lib/chromium/chromium')
+      } catch {
+        return false
+      }
+    })
+    if (chromiumActive) break
+    await delay(50)
+  }
+  assert.ok(chromiumActive, 'Chromium is active before termination')
   const draining = new Promise((resolve, reject) => {
     const req = request(origin + '/render', {
       method: 'POST', headers: { 'content-length': String(tone.length), 'x-audio-profile': JSON.stringify({ format: 'wav', lufs: -16, truePeak: -1, lra: 11 }) }
@@ -117,13 +136,14 @@ try {
     req.flushHeaders()
     req.write(tone.subarray(0, 100))
     delay(200).then(() => {
-      server.kill('SIGTERM')
+      server.kill(drainSignal)
       return delay(100)
     }).then(() => req.end(tone.subarray(100))).catch(reject)
   })
   await draining
+  await output(await chromiumRender, 'drained-banner.mp4', 'video/mp4')
   assert.deepEqual(await exited, [0, null], `Graceful shutdown: ${logs}`)
-  console.log('PASS: packaged HTTP media/Chromium acceptance, full decode, rejection/recovery and SIGTERM request drain')
+  console.log(`PASS: packaged HTTP media/Chromium acceptance, full decode, rejection/recovery and ${drainSignal} request drain`)
 } finally {
   server.kill('SIGKILL')
   rmSync(dir, { recursive: true, force: true })

@@ -20,6 +20,9 @@ export async function captureBannerMp4({ html, width, height, fps, crf, quality 
   const vpH = height * (quality || 1)
   const puppeteer = (await import('puppeteer-core')).default
   const browser = await puppeteer.launch({
+    // The HTTP server drains accepted jobs before allowing process exit.
+    handleSIGTERM: false,
+    handleSIGINT: false,
     executablePath: '/usr/bin/chromium',
     args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
   })

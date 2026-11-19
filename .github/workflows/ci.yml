@@ -462,7 +462,10 @@ jobs:
 
       - name: Packaged render HTTP service and Chromium acceptance
         if: steps.scope.outputs.media == 'true'
-        run: docker run --rm --platform linux/amd64 --network none --entrypoint node -v "$PWD/scripts/verify-render-container.mjs:/verification.mjs:ro" xeroflow-render:ci /verification.mjs
+        run: |
+          for signal in SIGTERM SIGINT; do
+            docker run --rm --platform linux/amd64 --network none --entrypoint node -e VERIFY_DRAIN_SIGNAL="$signal" -v "$PWD/scripts/verify-render-container.mjs:/verification.mjs:ro" xeroflow-render:ci /verification.mjs
+          done
         timeout-minutes: 10
 
   # Ordinary Pages releases keep CRM provider activation dormant. The existing
