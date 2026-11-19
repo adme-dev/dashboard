@@ -25,7 +25,7 @@ import {
   type McpToolManifest
 } from './project'
 import { projectRegisteredMcpTools, projectStaffOnlyMcpTools, type RegisteredMcpSuite } from './registry'
-import { ADS_STAFF_READ_NAMES, ADS_STAFF_PLAN_NAMES, GTM_STAFF_NAMES, TASK4_STAFF_NAMES, isLegacyAdsMutation } from './marketingTask4Names'
+import { ADS_STAFF_READ_NAMES, ADS_STAFF_PLAN_NAMES, ADS_STAFF_REVIEW_NAMES, GTM_STAFF_NAMES, TASK4_STAFF_NAMES, isLegacyAdsMutation } from './marketingTask4Names'
 import { LEGACY_MCP_SOCIAL_PROPOSAL_TOOL, SOCIAL_MCP_TOOL_NAMES } from './socialToolNames'
 import { DEPARTMENT_TOOL_NAMES } from './departmentToolNames'
 
@@ -89,6 +89,9 @@ export const MCP_STAFF_TOOL_POLICY: Readonly<Record<string, StaffToolPolicyEntry
   ...Object.fromEntries(DEPARTMENT_TOOL_NAMES.map(name => [name, { ...pilotRead, capability: 'department_management' }])),
   ...Object.fromEntries(ADS_STAFF_READ_NAMES.map(name => [name, { ...pilotRead, capability: 'ads_plan' }])),
   ...Object.fromEntries(ADS_STAFF_PLAN_NAMES.map(name => [name, { ...pilotRead, capability: 'ads_plan' }])),
+  // Phase 3 draft runners + review queue: ads_plan only. Approver/executor authority (independent
+  // ADMIN/MARKETING_MANAGEMENT reviewer, never the requester) is enforced again inside the review service.
+  ...Object.fromEntries(ADS_STAFF_REVIEW_NAMES.map(name => [name, { ...pilotRead, capability: 'ads_plan' }])),
   ...Object.fromEntries(GTM_STAFF_NAMES.map(name => [name, { ...pilotRead, capability: 'tracking_plan' }])),
   // Creative metadata discovery never inherits marketing grants.
   get_creative_workspace_capabilities: Object.freeze({ capability: null, status: 'reviewed', clientScoped: false, legacyRoleSensitive: false, requiredPermission: 'CREATIVE' }),

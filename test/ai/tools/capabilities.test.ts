@@ -9,7 +9,7 @@ const ctx = {
   userRole: 'owner',
   mcpScopes: ['mcp:read', 'mcp:write'],
   source: 'mcp',
-  event: {} as any,
+  event: {} as any
 } as ToolContext
 
 describe('get_capabilities', () => {
@@ -21,17 +21,17 @@ describe('get_capabilities', () => {
           { name: 'propose_banner_render', mode: 'propose_only' },
           { name: 'confirm_action', mode: 'confirmation' },
           { name: 'verify_creative_compliance', mode: 'inspection' },
-          { name: 'generate_voiceover', mode: 'direct_generation' },
+          { name: 'generate_voiceover', mode: 'direct_generation' }
         ],
-        suites: { textModels: true, imageGeneration: true, bannerStudio: true, video: true, audio: true },
+        suites: { textModels: true, imageGeneration: true, bannerStudio: true, video: true, audio: true }
       }),
       inspectActions: vi.fn().mockResolvedValue([{
         tool: 'generate_voiceover',
         arguments: { clientId: '22222222-2222-4222-8222-222222222222', title: 'EOFY' },
         clientName: 'Northern Motor Group',
         actorName: 'Paul Giurin',
-        outcome: 'succeeded',
-      }]),
+        outcome: 'succeeded'
+      }])
     }
     const result = await getCapabilities({ actionLog: { clientName: 'Northern Motor Group', limit: 20 } }, ctx, deps)
     expect(result.ok).toBe(true)
@@ -40,22 +40,22 @@ describe('get_capabilities', () => {
       scopes: ['mcp:read', 'mcp:write'],
       tools: expect.arrayContaining([
         { name: 'get_campaign_breakdown', mode: 'read' },
-        { name: 'propose_banner_render', mode: 'propose_only' },
+        { name: 'propose_banner_render', mode: 'propose_only' }
       ]),
       creationSuites: { textModels: true, imageGeneration: true, bannerStudio: true, video: true, audio: true },
       rateLimits: {
         generation: { maxCalls: 20, windowMinutes: 10 },
-        inspection: { maxCalls: 100, windowMinutes: 10 },
+        inspection: { maxCalls: 100, windowMinutes: 10 }
       },
       directGenerationDecision: {
         enabled: true,
         tools: ['generate_voiceover'],
-        compensatingControls: expect.arrayContaining(['immutable action audit']),
+        compensatingControls: expect.arrayContaining(['immutable action audit'])
       },
       actionLog: {
         count: 1,
-        items: [expect.objectContaining({ tool: 'generate_voiceover', actorName: 'Paul Giurin' })],
-      },
+        items: [expect.objectContaining({ tool: 'generate_voiceover', actorName: 'Paul Giurin' })]
+      }
     })
     expect(deps.inspectActions).toHaveBeenCalledWith(ctx, { clientName: 'Northern Motor Group', limit: 20 })
   })
@@ -65,7 +65,7 @@ describe('get_capabilities', () => {
       .mockRejectedValueOnce(new Error('transient'))
       .mockResolvedValueOnce({
         tools: [{ name: 'list_creative_models', mode: 'read' }],
-        suites: { textModels: true, imageGeneration: true, bannerStudio: false, video: false, audio: false },
+        suites: { textModels: true, imageGeneration: true, bannerStudio: false, video: false, audio: false }
       })
     const result = await getCapabilities({}, ctx, { inspect, retryDelay: vi.fn(async () => {}) })
 
@@ -76,7 +76,7 @@ describe('get_capabilities', () => {
   it('derives God-mode capabilities from the exact executable MCP registry', async () => {
     const result = await getCapabilities({}, {
       ...ctx,
-      godModeExecutionKey: `mcp:${'a'.repeat(64)}`,
+      godModeExecutionKey: `mcp:${'a'.repeat(64)}`
     }, {
       inspect: inspectCapabilityCatalog,
       inspectGenerationSpend: async () => null,
@@ -85,8 +85,8 @@ describe('get_capabilities', () => {
 
     expect(result.ok).toBe(true)
     const tools = (result as any).data.tools as Array<{ name: string, mode: string }>
-    // 174 → 175 (after #932): get_client_change_history (governance phase 4, read-only client change timeline; dormant switch).
-    expect(tools).toHaveLength(175)
+    // 174 → 181: get_client_change_history (+1) and 6 owner-only marketing phase-3 review tools (+6); get_client_change_history (governance phase 4, read-only client change timeline; dormant switch).
+    expect(tools).toHaveLength(181)
     expect(tools).toContainEqual({ name: 'get_creative_workspace_capabilities', mode: 'read' })
     expect(tools).toContainEqual({ name: 'search_creative_workspace', mode: 'read' })
     expect(tools).toContainEqual({ name: 'run_adspend_sync', mode: 'inspection' })
@@ -123,14 +123,14 @@ describe('get_capabilities', () => {
     expect((result as any).data.alwaysRequiresConfirmation).toEqual({
       tools: ['propose_attach_catalog_feed', 'propose_set_product_set_rules'],
       reason: 'binds or retargets a client ad account; not reversible from the agent side',
-      note: 'requires confirm_action with ack:true regardless of caller authority',
+      note: 'requires confirm_action with ack:true regardless of caller authority'
     })
     expect((result as any).data.governance.godModeBypass).toContain('direct-execute')
     expect((result as any).data.dataSync.adSpend.cron).toBe('0 20 * * *')
     expect((result as any).data.dataSync.adSpend).toHaveProperty('lastRunAt')
     expect((result as any).data.dataSync.adSpend).toHaveProperty('coverageBaselinePresent')
     expect((result as any).data.servedCatalog).toEqual({
-      release: '2026-09-03.1', previousRelease: '2026-09-01.15', toolCount: 175, projectionAuthority: 'shared_with_tools_list',
+      release: '2026-09-03.1', previousRelease: '2026-09-01.15', toolCount: 181, projectionAuthority: 'shared_with_tools_list',
     })
     expect((result as any).data.degraded).toBeUndefined()
   }, 15_000)
@@ -138,7 +138,7 @@ describe('get_capabilities', () => {
   it('returns a typed degraded capability response after the retry is exhausted', async () => {
     const result = await getCapabilities({}, ctx, {
       inspect: vi.fn().mockRejectedValue(new Error('down')),
-      retryDelay: vi.fn(async () => {}),
+      retryDelay: vi.fn(async () => {})
     })
     expect(result).toMatchObject({
       ok: true,
@@ -149,15 +149,15 @@ describe('get_capabilities', () => {
           imageGeneration: false,
           bannerStudio: false,
           video: false,
-          audio: false,
+          audio: false
         },
         degraded: {
           active: true,
           code: 'capabilities_partial',
           retryable: true,
-          unavailableSections: ['tool_catalog'],
-        },
-      },
+          unavailableSections: ['tool_catalog']
+        }
+      }
     })
   })
 
@@ -167,7 +167,7 @@ describe('get_capabilities', () => {
       ? [{ n: 0 }]
       : [
           { platform: 'google', status: 'completed', started_at: '2026-08-19 08:13:47+00', finished_at: '2026-08-19 08:17:55+00', synced_count: 54, failure_count: 23 },
-          { platform: 'meta', status: 'failed', started_at: '2026-08-19 08:13:37+00', finished_at: '2026-08-19 08:16:30+00', synced_count: 0, failure_count: 46 },
+          { platform: 'meta', status: 'failed', started_at: '2026-08-19 08:13:37+00', finished_at: '2026-08-19 08:16:30+00', synced_count: 0, failure_count: 46 }
         ])
     const status = await inspectDataSyncRunStatus(load as any)
     expect(status?.lastRunOutcome).toBe('completed')

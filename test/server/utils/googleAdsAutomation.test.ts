@@ -248,4 +248,58 @@ describe('Google Ads policy-limited automation runners', () => {
       arguments: { resourceName }
     }), authority, flags)
   })
+
+  describe('ads-governance kill switch hook', () => {
+    const resourceName = 'customers/1234567890/campaigns/10'
+    const pausePolicy = () => vi.fn().mockResolvedValue({
+      id: policyId, actionClass: 'pause', policyVersion: 'pause-v1', enabled: true,
+      conditions: {}, maxDailyActions: 5, actionsToday: 5
+    })
+
+    it('is dormant by default: the real hook reports not halted while governance is off', async () => {
+      const { isAdsAutomationHalted } = await import('~~/server/utils/adsGovernance/limits')
+      await expect(isAdsAutomationHalted()).resolves.toBe(false)
+    })
+
+    it('refuses before any Google work when the stop is engaged', async () => {
+      const deps = baseDependencies({ loadPolicy: pausePolicy(), automationHalted: vi.fn().mockResolvedValue(true) })
+      await expect(runGoogleAdsPausePolicy({
+        clientId, connectionId, actorId, entityType: 'campaign', resourceName
+      }, authority, flags, deps)).resolves.toMatchObject({ executed: false, reason: 'automation_kill_switch' })
+      expect(deps.resolveSession).not.toHaveBeenCalled()
+      expect(deps.execute).not.toHaveBeenCalled()
+
+      const searchDeps = baseDependencies({ automationHalted: vi.fn().mockResolvedValue(true) })
+      await expect(runGoogleAdsSearchTermPolicy({
+        clientId, connectionId, actorId, scope: 'campaign', parentResourceName: resourceName
+      }, authority, flags, searchDeps)).resolves.toMatchObject({ executed: false, reason: 'automation_kill_switch' })
+      expect(searchDeps.execute).not.toHaveBeenCalled()
+    })
+
+    it('re-checks immediately before the provider call so a mid-run stop wins', async () => {
+      const automationHalted = vi.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true)
+      const deps = baseDependencies({
+        automationHalted,
+        query: vi.fn().mockResolvedValue({
+          rows: [{
+            campaign: { resourceName, status: 'ENABLED' },
+            metrics: { impressions: 1000, clicks: 50, costMicros: 25000000, conversions: 0 }
+          }],
+          more: 0
+        }),
+        loadPolicy: vi.fn().mockResolvedValue({
+          id: policyId, actionClass: 'pause', policyVersion: 'pause-v1', enabled: true, maxDailyActions: 5, actionsToday: 0,
+          conditions: {
+            lookbackDays: 14, cooldownHours: 48, allowedResourceTypes: ['campaign'], resourceNames: [resourceName],
+            minImpressions: 500, minClicks: 25, minSpendMicros: 10000000, maxConversions: 0
+          }
+        })
+      })
+      await expect(runGoogleAdsPausePolicy({
+        clientId, connectionId, actorId, entityType: 'campaign', resourceName
+      }, authority, flags, deps, new Date('2026-08-31T02:00:00.000Z'))).resolves.toMatchObject({ executed: false, reason: 'automation_kill_switch' })
+      expect(automationHalted).toHaveBeenCalledTimes(2)
+      expect(deps.execute).not.toHaveBeenCalled()
+    })
+  })
 })

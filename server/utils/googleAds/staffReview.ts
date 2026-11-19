@@ -11,6 +11,22 @@ import { executeSearchGoogleAdsControlAction } from './searchRuntime'
 import { resolveMcpRuntimeConfig } from '~~/server/utils/ai/mcp/runtimeConfig'
 
 import { isMarketingManagementContext } from '~~/server/utils/marketingManagement'
+import { classifyAdsActionRisk, evaluateTierApproval } from '~~/server/utils/adsGovernance/riskTiers'
+import type { GoogleAdsActionPlan } from './contracts'
+
+/**
+ * Governance tier gate (read/low/medium/high) on top of the independent-review gate: the plan's typed
+ * operation decides the tier; high-risk operations need the owner. It can only narrow who may approve.
+ */
+function requireTierReviewer(plan: GoogleAdsActionPlan, reviewer: { id: string, role: string, groups: readonly string[] }) {
+  const verdict = evaluateTierApproval(classifyAdsActionRisk(plan.operation), {
+    requesterId: plan.actorId,
+    reviewerId: reviewer.id,
+    reviewerRole: reviewer.role,
+    reviewerGroups: reviewer.groups
+  })
+  if ('code' in verdict) throw createError({ statusCode: 403, statusMessage: verdict.code })
+}
 
 const Request = z.strictObject({
   actionPlanId: z.string().uuid(),
@@ -34,7 +50,7 @@ async function load(event: H3Event, id: string, actorId: string) {
       statusCode: 404,
       statusMessage: 'Review plan not found'
     })
-  await requireIndependentMarketingReviewer(event, {
+  const reviewer = await requireIndependentMarketingReviewer(event, {
     requesterId: plan.actorId,
     clientId: plan.clientId,
     reviewerId: actorId
@@ -51,10 +67,10 @@ async function load(event: H3Event, id: string, actorId: string) {
     plan.connectionId,
     plan.customerId
   )
-  return plan
+  return { plan, reviewer }
 }
 export async function getGoogleAdsReviewPlan(event: H3Event, actorId: string, id: string) {
-  return load(event, z.string().uuid().parse(id), actorId)
+  return (await load(event, z.string().uuid().parse(id), actorId)).plan
 }
 
 export async function listGoogleAdsReviewPlans(
@@ -83,7 +99,7 @@ export async function listGoogleAdsReviewPlans(
   const plans = []
   for (const row of rows) {
     try {
-      plans.push(await load(event, row.id, actorId))
+      plans.push((await load(event, row.id, actorId)).plan)
     } catch (error) {
       if (![403, 404].includes((error as { statusCode: number }).statusCode)) throw error
     }
@@ -99,9 +115,11 @@ export async function reviewGoogleAdsPlan(
     decision: z.enum(['approved', 'rejected']),
     reason: z.string().trim().max(1000).optional()
   }).parse(raw)
-  const plan = await load(event, input.actionPlanId, actorId)
+  const { plan, reviewer } = await load(event, input.actionPlanId, actorId)
   if (plan.requestHash !== input.expectedRequestHash)
     throw createError({ statusCode: 409, statusMessage: 'Plan changed' })
+  // Rejecting never needs elevated authority; approving must meet the operation's governance tier.
+  if (input.decision === 'approved') requireTierReviewer(plan, reviewer)
   await transaction(async (db) => {
     const result = await db.query(
       `UPDATE google_ads_action_plans SET status=$3,reviewed_by=$4,reviewed_at=NOW(),rejection_reason=$5 WHERE id=$1 AND request_hash=$2 AND review_policy='delegated_marketing' AND status='pending_approval' AND expires_at>NOW() AND actor_id<>$4 RETURNING id`,
@@ -139,7 +157,7 @@ export async function executeReviewedGoogleAdsPlan(
   raw: unknown
 ) {
   const input = Request.parse(raw),
-    plan = await load(event, input.actionPlanId, actorId)
+    { plan } = await load(event, input.actionPlanId, actorId)
   if (
     plan.requestHash !== input.expectedRequestHash
     || !plan.reviewedBy
@@ -149,11 +167,11 @@ export async function executeReviewedGoogleAdsPlan(
       statusCode: 409,
       statusMessage: 'Exact approved review required'
     })
-  await requireIndependentMarketingReviewer(event, {
+  requireTierReviewer(plan, await requireIndependentMarketingReviewer(event, {
     requesterId: plan.actorId,
     clientId: plan.clientId,
     reviewerId: plan.reviewedBy
-  })
+  }))
   if (plan.status !== 'approved' || Date.parse(plan.expiresAt) <= Date.now())
     throw createError({
       statusCode: 409,

@@ -8,8 +8,16 @@ import { assertMarketingCapabilityAtBoundary, requireIndependentMarketingReviewe
 import { setDepartmentBudgetAllocations } from './departmentBudgetOperations'
 import { departmentBudgetUpdateSchema, departmentBudgetProposalSchema, departmentBudgetExecuteSchema, departmentBudgetReviewSchema } from './departmentBudgetSchemas'
 import { fail, ok, type ToolContext, type ToolResult } from '../toolContext'
+import { marketingProposalExpiresAt } from '~~/server/utils/adsGovernance/proposalExpiry'
+import { classifyAdsActionRisk, evaluateTierApproval } from '~~/server/utils/adsGovernance/riskTiers'
 
 const ACTION = 'department_budget_allocation'
+/** Governance tier of this family (medium: manager approval). Narrows, never widens, the reviewer gate. */
+const TIER = classifyAdsActionRisk(ACTION)
+function requireTierReviewer(requesterId: string, reviewer: { id: string, role?: string | null, groups?: readonly string[] | null }) {
+  const verdict = evaluateTierApproval(TIER, { requesterId, reviewerId: reviewer.id, reviewerRole: reviewer.role, reviewerGroups: reviewer.groups })
+  if ('code' in verdict) deny(verdict.code)
+}
 const sha = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex')
 function deny(message: string): never {
   throw new Error(message)
@@ -30,12 +38,23 @@ interface Proposal {
       decision: 'approve' | 'reject'
       revision: string
       reason: string
+      /** 'owner' = approved by the active owner through God mode (marketing phase 3). */
+      kind?: 'department' | 'owner'
     } | null
   }
   result_payload: Record<string, unknown> | null
 }
 const view = (row: Proposal) => ({ proposalId: row.id, requesterId: row.user_id, clientId: row.resolved_payload.clientId, revision: row.resolved_payload.revision,
   allocations: row.resolved_payload.input, review: row.resolved_payload.review, status: row.status, expiresAt: row.expires_at, result: row.result_payload, providerChanged: false })
+// Marketing phase 3: shared with the owner (God-mode) budget review in ownerBudgetReview.ts.
+export const DEPARTMENT_BUDGET_ACTION = ACTION
+export type DepartmentBudgetProposalRow = Proposal
+export const viewDepartmentBudgetProposal = view
+async function isActiveOwnerReviewer(userId: string, db: { query: (sql: string, params?: unknown[]) => Promise<{ rows: unknown[] }> }): Promise<boolean> {
+  const result = await db.query(`SELECT id FROM team_members WHERE id = $1 AND is_active = TRUE AND user_role = 'owner'`, [userId])
+  return result.rows.length === 1
+}
+
 /** Immutable allocation proposal with independent review; apply/audit/receipt commit together. */
 export async function executeDepartmentBudgetProposal(name: string, raw: unknown, ctx: ToolContext, key: string, digest: string): Promise<ToolResult> {
   try {
@@ -76,7 +95,7 @@ export async function executeDepartmentBudgetProposal(name: string, raw: unknown
         const payload = { clientId: input.clientId, revision, requestKey: key, requestDigest: digest, input, review: null }
 
         const row = (await db.query(`INSERT INTO ai_pending_actions (user_id,tool_name,resolved_payload,status,source,conversation_id,expires_at)
-          VALUES ($1,$2,$3::jsonb,'proposed','mcp',NULL,NOW()+INTERVAL '24 hours') RETURNING *`, [fresh.userId, ACTION, JSON.stringify(payload)])).rows[0] as Proposal
+          VALUES ($1,$2,$3::jsonb,'proposed','mcp',NULL,$4::timestamptz) RETURNING *`, [fresh.userId, ACTION, JSON.stringify(payload), marketingProposalExpiresAt(fresh.event).toISOString()])).rows[0] as Proposal
 
         return ok(view(row))
       })
@@ -119,11 +138,13 @@ export async function executeDepartmentBudgetProposal(name: string, raw: unknown
         if (proposal.user_id === fresh.userId || proposal.status !== 'proposed' || Date.parse(proposal.expires_at) <= Date.now())
           deny('Independent current proposal review required')
 
-        await requireIndependentMarketingReviewer(fresh.event, { requesterId: proposal.user_id, clientId: input.clientId, reviewerId: fresh.userId })
+        const reviewer = await requireIndependentMarketingReviewer(fresh.event, { requesterId: proposal.user_id, clientId: input.clientId, reviewerId: fresh.userId })
+
+        requireTierReviewer(proposal.user_id, reviewer)
 
         const decision = departmentBudgetReviewSchema.parse(input)
 
-        if (payload.review && (payload.review.id !== fresh.userId || payload.review.decision !== decision.decision))
+        if (payload.review && (payload.review.id !== fresh.userId || payload.review.decision !== decision.decision || payload.review.kind === 'owner'))
           deny('Proposal already reviewed')
 
         payload.review = { id: fresh.userId, decision: decision.decision, revision: payload.revision, reason: decision.reason }
@@ -139,12 +160,19 @@ export async function executeDepartmentBudgetProposal(name: string, raw: unknown
       if (proposal.status !== 'proposed' || Date.parse(proposal.expires_at) <= Date.now() || payload.review?.decision !== 'approve' || payload.review.revision !== payload.revision)
         deny('Unexpired independently approved proposal required')
 
-      const reviewer = await assertMarketingCapabilityAtBoundary(fresh.event, payload.review.id, input.clientId, 'department_management')
+      if (payload.review.kind === 'owner') {
+        // Owner approval (God mode, marketing phase 3): re-verify the approver is STILL an active owner
+        // and is not the requester. Department-grant checks do not apply to the owner.
+        if (payload.review.id === proposal.user_id || !await isActiveOwnerReviewer(payload.review.id, db))
+          deny('Owner approver is no longer active')
+      } else {
+        const reviewer = await assertMarketingCapabilityAtBoundary(fresh.event, payload.review.id, input.clientId, 'department_management')
 
-      if (!reviewer.permissionGroups?.includes('MARKETING_MANAGEMENT'))
-        deny('Reviewer no longer has department authority')
+        if (!reviewer.permissionGroups?.includes('MARKETING_MANAGEMENT'))
+          deny('Reviewer no longer has department authority')
 
-      await requireIndependentMarketingReviewer(fresh.event, { requesterId: proposal.user_id, clientId: input.clientId, reviewerId: payload.review.id })
+        requireTierReviewer(proposal.user_id, await requireIndependentMarketingReviewer(fresh.event, { requesterId: proposal.user_id, clientId: input.clientId, reviewerId: payload.review.id }))
+      }
 
       const result = await setDepartmentBudgetAllocations(payload.input, fresh, key, digest, db)
 

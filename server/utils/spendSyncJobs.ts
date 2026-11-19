@@ -192,12 +192,20 @@ export function evaluateSpendCoverageGate(previousCount: number | null, currentC
   }
 }
 
-export async function getLastSourceCampaignCount(platform: string, sourceKey: string): Promise<number | null> {
-  const row = await queryOne<{ campaign_count: number }>(
-    `SELECT campaign_count FROM spend_sync_source_counts WHERE platform = $1 AND source_key = $2`,
+/**
+ * Previous campaign count for this source IN THE SAME PERIOD. The gate protects rows already persisted
+ * for a period from being narrowed by a shrunken provider response; a new month has no rows to protect,
+ * and comparing against last month's count halted every run for accounts whose campaigns ended
+ * (5 Meta accounts kept the whole Meta job `failed` from 2026-09-29). No `period` = legacy any-period.
+ */
+export async function getLastSourceCampaignCount(platform: string, sourceKey: string, period?: string): Promise<number | null> {
+  const row = await queryOne<{ campaign_count: number, period: string | null }>(
+    `SELECT campaign_count, period FROM spend_sync_source_counts WHERE platform = $1 AND source_key = $2`,
     [platform, sourceKey]
   ).catch(() => null)
-  return row ? Number(row.campaign_count) : null
+  if (!row) return null
+  if (period && row.period && row.period !== period) return null
+  return Number(row.campaign_count)
 }
 
 export async function recordSourceCampaignCount(
@@ -250,10 +258,10 @@ async function notifyCoverageHalt(input: { platform: string, sourceLabel: string
  * warn/proceed the caller persists as normal and then records the new baseline count.
  */
 export async function applySpendCoverageGate(
-  input: { platform: string, sourceKey: string, sourceLabel: string, currentCount: number },
+  input: { platform: string, sourceKey: string, sourceLabel: string, currentCount: number, period?: string },
   deps: SpendCoverageGateDeps = {}
 ): Promise<{ gate: SpendCoverageGate, halted: boolean, warning: string | null }> {
-  const previous = await (deps.loadPrevious ?? getLastSourceCampaignCount)(input.platform, input.sourceKey)
+  const previous = await (deps.loadPrevious ?? getLastSourceCampaignCount)(input.platform, input.sourceKey, input.period)
   const gate = evaluateSpendCoverageGate(previous, input.currentCount)
   if (gate.action === 'halt') {
     console.error(

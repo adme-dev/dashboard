@@ -71,6 +71,26 @@ export const ADS_STAFF_PLAN_NAMES = [
   'google_ads_plan_set_pmax_audience_signals',
   'google_ads_plan_set_pmax_search_themes'
 ] as const
+/**
+ * Marketing phase 3 (draft → approve). The policy runners keep their names but, for staff, run in DRAFT
+ * mode only (a reviewable plan, never an execution). The review tools approve/reject/execute delegated
+ * plans through the independent-review service. All dormant behind MCP_SUITE_CONFIG.marketingDraftReview.
+ */
+export const ADS_STAFF_DRAFT_NAMES = [
+  'google_ads_run_search_term_policy',
+  'google_ads_run_pause_policy'
+] as const
+export const ADS_STAFF_REVIEW_READ_NAMES = ['google_ads_list_pending_reviews'] as const
+export const ADS_STAFF_REVIEW_WRITE_NAMES = [
+  'google_ads_review_plan',
+  'google_ads_execute_reviewed_plan'
+] as const
+export const ADS_STAFF_REVIEW_NAMES: readonly string[] = [
+  ...ADS_STAFF_DRAFT_NAMES,
+  ...ADS_STAFF_REVIEW_READ_NAMES,
+  ...ADS_STAFF_REVIEW_WRITE_NAMES
+]
+export const isAdsStaffReviewTool = (name: string) => ADS_STAFF_REVIEW_NAMES.includes(name)
 export const GTM_STAFF_NAMES = [
   'list_gtm_site_inventory',
   'get_gtm_tracking_ownership',
@@ -86,13 +106,18 @@ export const GTM_STAFF_NAMES = [
 export const TASK4_STAFF_NAMES: readonly string[] = [
   ...ADS_STAFF_READ_NAMES,
   ...ADS_STAFF_PLAN_NAMES,
+  ...ADS_STAFF_REVIEW_NAMES,
   ...GTM_STAFF_NAMES
 ]
 export const isTask4StaffTool = (name: string) =>
   TASK4_STAFF_NAMES.includes(name)
 export const isTask4WriteTool = (name: string) =>
   ADS_STAFF_PLAN_NAMES.includes(name as any)
+  || (ADS_STAFF_DRAFT_NAMES as readonly string[]).includes(name)
+  || (ADS_STAFF_REVIEW_WRITE_NAMES as readonly string[]).includes(name)
   || name.startsWith('propose_gtm_')
   || name === 'record_gtm_tracking_ownership'
+/** Self-approvable legacy Ads writes; the draft-only staff runners are routed to the reviewed suite instead. */
 export const isLegacyAdsMutation = (name: string) =>
-  name === 'propose_google_ads_action' || name.startsWith('google_ads_run_')
+  name === 'propose_google_ads_action'
+  || (name.startsWith('google_ads_run_') && !(ADS_STAFF_DRAFT_NAMES as readonly string[]).includes(name))

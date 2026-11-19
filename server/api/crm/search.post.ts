@@ -1,6 +1,7 @@
 import { createError } from 'h3'
 import { normalizeCrmSearchRequest } from '~~/server/utils/crm/searchRequest'
 import { resolveAgencyCrmSearchContext } from '~~/server/utils/crm/searchContext'
+import { requireActiveCrmSearchScope } from '~~/server/utils/crm/searchDormancy'
 import type { CrmSearchHit } from '~~/server/utils/crm/search'
 import {
   createCrmRetrievalDependencies,
@@ -16,6 +17,9 @@ export default defineEventHandler(async (event): Promise<{ results: CrmSearchHit
     clientId: request.clientId,
     surface: 'agency_global'
   })
+  // Authorization above is unchanged; a dormant search scope is an explicit
+  // "not enabled" response, never empty or synthesized results.
+  requireActiveCrmSearchScope(context)
   const result = await retrieveCrm(
     context,
     request,
