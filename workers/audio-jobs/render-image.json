@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "image": "registry.cloudflare.com/a5b299b3ad15c1b5b895dc66f9357b17/xeroflow-render@sha256:c6ddfd8e42e4f98a258517c0835e96eecace0ca2ca485ee23e48b2167caf0f7e",
+  "sourceCommit": "8b6d8c04af144f56fed5e11d8eb69e0dbf7687ae",
+  "contextSha256": "9b68af0e3db0c21abbbe667e544a47ba593de17e91ad8c45e6892f6b3e630ff6",
+  "qualifiedAt": "2026-11-19T22:54:25.454Z",
+  "platform": "linux/amd64",
+  "ffmpeg": "5.1.9-0+deb12u1",
+  "checks": [
+    "packaged-http-service",
+    "real-media-13"
+  ],
+  "previousImage": "registry.cloudflare.com/a5b299b3ad15c1b5b895dc66f9357b17/audio-render@sha256:cbd5c37863a5a4d461d00627258edb1981e105f7d7279203e3e09ab5ffe9874f"
+}

@@ -382,12 +382,11 @@ jobs:
       - name: Pages deployment target guard
         run: pnpm run test:deployment-guards
 
-  # Real-FFmpeg tests run against the PRODUCTION render container image (workers/audio-jobs/container),
-  # not the runner's distro ffmpeg: CI and the Cloudflare Container used by Video, Banner and Audio Studio
-  # share one pinned build. ffmpeg/ffprobe on PATH are shims into that image, so tests run unchanged.
+  # Build the production Dockerfile and exercise the packaged HTTP service as well as FFmpeg.
+  # Debian repositories can change between builds; the production image is qualified separately,
+  # pinned by registry digest and tied to this context by scripts/check-render-image.mjs.
   # Only runs when media code changes, and always on main.
   media-render:
-    if: github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -403,7 +402,7 @@ jobs:
             echo "media=true" >> "$GITHUB_OUTPUT"; echo "push/main: running media tests"; exit 0
           fi
           changed=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD")
-          hits=$(echo "$changed" | grep -E '^(workers/audio-jobs/|server/utils/(audio|banner|video[^/]*)/|test/(video|audio|banner)/|scripts/thebrief/|\.github/workflows/ci\.yml$|package\.json$|pnpm-lock\.yaml$)' || true)
+          hits=$(echo "$changed" | grep -E '^(workers/audio-jobs/|shared/|server/utils/(audio|banner|video[^/]*)/|test/(video|audio|banner)/|scripts/(thebrief/|verify-render-container\.mjs$|check-render-image\.mjs$)|test/scripts/renderImageGuard\.test\.ts$|vitest\.config\.|\.github/workflows/ci\.yml$|package\.json$|pnpm-lock\.yaml$)' || true)
           if [ -n "$hits" ]; then
             echo "media=true" >> "$GITHUB_OUTPUT"; echo "media paths changed:"; echo "$hits"
           else
@@ -457,13 +456,19 @@ jobs:
         run: |
           ffmpeg -hide_banner -version | head -1
           ffprobe -hide_banner -version | head -1
+          node scripts/check-render-image.mjs
           pnpm exec vitest run test/video/storyboardMediaDecode.test.ts test/audio/renderAudioSpansTimeline.test.ts test/banner/audioRender.test.ts
         timeout-minutes: 15
+
+      - name: Packaged render HTTP service and Chromium acceptance
+        if: steps.scope.outputs.media == 'true'
+        run: docker run --rm --platform linux/amd64 --network none --entrypoint node -v "$PWD/scripts/verify-render-container.mjs:/verification.mjs:ro" xeroflow-render:ci /verification.mjs
+        timeout-minutes: 10
 
   # Ordinary Pages releases keep CRM provider activation dormant. The existing
   # source deploy command enforces this, current main, and agency-dashboard.
   source_deploy:
-    needs: ci
+    needs: [ci, media-render]
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.release_action == 'source-deploy'
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -504,7 +509,7 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
   release_artifact:
-    needs: ci
+    needs: [ci, media-render]
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.release_action == 'build'
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -560,7 +565,7 @@ jobs:
           retention-days: 7
 
   deploy:
-    needs: ci
+    needs: [ci, media-render]
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.release_action == 'deploy'
     runs-on: ubuntu-latest
     timeout-minutes: 30
