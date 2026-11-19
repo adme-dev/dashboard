@@ -504,13 +504,17 @@ describe('God mode gate inventory', () => {
     // Governance phase 4 adds GET /api/agency/clients/[id]/change-history: one requirePermission
     // ('CLIENTS') read gate (application_governance_bypass, same as platform-readiness.get.ts),
     // followed by the fresh client-scoped reporting authority; no write, no bypass registered.
-    expect(inventory.rows).toHaveLength(1836)
+    // Marketing governance (integration of #937 + #940): +9 rows, all new checks, none removed —
+    // phase 2: automation-rule manager check + tier reviewer projection (2, ordinary_user_behavior);
+    // phase 3: active-owner reviewer lookups (3, identity_tenant_hard_boundary) and requester/reviewer
+    // group checks (4, ordinary_user_behavior). Row diff verified against main on 2026-11-19.
+    expect(inventory.rows).toHaveLength(1845)
     expect(inventory.counts).toEqual({
       fresh_role_grant_hard_boundary: 90,
-      identity_tenant_hard_boundary: 146,
+      identity_tenant_hard_boundary: 149,
       provider_infrastructure_availability: 218,
       application_governance_bypass: 1626,
-      ordinary_user_behavior: 322,
+      ordinary_user_behavior: 328,
       unrelated_configuration: 433
     })
     // Removing the session KV shortcut removes four auth middleware rows:
@@ -541,11 +545,11 @@ describe('God mode gate inventory', () => {
     const canonicalMcpGate = 'server/utils/ai/marketing/departmentEmailOperations.ts\tif (!enabled(\'FIGFLOW_EDM_DRAFT_SAVES_ENABLED\', process.env.FIGFLOW_EDM_DRAFT_SAVES_ENABLED) || (selection && !enabled(\'FIGFLOW_EDM_LIBRARY_ENABLED\', process.env.FIGFLOW_EDM_LIBRARY_ENABLED))) refuse(\'Canonical email drafts are unavailable for this environment\', \'not_found\')\tapplication_governance_bypass'
     expect(inventory.rows).toContain(canonicalMcpGate)
     const editableCopyGates = new Set(['server/api/email/templates/[id]/editable-copy.post.ts\tconst user = input.save ? await requireWriteAccess(event) : await requireAuth(event)\tapplication_governance_bypass', 'server/api/email/templates/[id]/editable-copy.post.ts\tconst fresh = await requireWriteAccess(event)\tapplication_governance_bypass'])
-    expect(createHash('sha256').update(inventory.rows.filter(row => row !== canonicalMcpGate && row !== changeHistoryGate && !editableCopyGates.has(row)).join('\n')).digest('hex')).toBe('5aaf48de2f4712d0243a3a6701ba648f484e7b4a2db4532bea80e9439a0e3c4a')
+    expect(createHash('sha256').update(inventory.rows.filter(row => row !== canonicalMcpGate && row !== changeHistoryGate && !editableCopyGates.has(row)).join('\n')).digest('hex')).toBe('1763909f1f5d7374b2095b57f447be1d8283944a0d2de472a4a5d0c92f2b0ed4')
     const campaignReadGate = 'server/utils/ai/marketing/departmentEmailOperations.ts\tif (!fresh.permissionGroups?.some(group => [\'ADMIN\', \'MANAGEMENT\'].includes(group))) refuse(\'Agency template access required\', \'forbidden\')\tordinary_user_behavior'
-    expect(createHash('sha256').update(inventory.rows.filter(row => row !== campaignReadGate && row !== canonicalMcpGate && row !== changeHistoryGate && !editableCopyGates.has(row)).join('\n')).digest('hex')).toBe('5b102e0ac6dc5263441dbc70a4b2c98bed0b2be2425be5dde9df43d51e42146a')
+    expect(createHash('sha256').update(inventory.rows.filter(row => row !== campaignReadGate && row !== canonicalMcpGate && row !== changeHistoryGate && !editableCopyGates.has(row)).join('\n')).digest('hex')).toBe('adf42a92a228059e059f603db643744c13e28cde708fe3d9f9788a0fe5fae2c2')
     // Whole-inventory digest moves only by the reviewed change-history read gate above.
-    expect(inventory.digest).toBe('17782746cd3b44da351e0707b8531f3da41ca73985016b51f7e34bf6d0d15631')
+    expect(inventory.digest).toBe('d36e1cfae730d1c1411090001fc455169b35d54cfa890e8f68467743fbe5d738')
     expect(inventory.rows).toContain(
       'app/composables/usePageStudioLauncher.ts\tconst config = useRuntimeConfig()\tunrelated_configuration'
     )
