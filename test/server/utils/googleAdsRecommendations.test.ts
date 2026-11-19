@@ -22,10 +22,11 @@ describe('Google Ads recommendation reads', () => {
         more: 0
       })
       .mockResolvedValueOnce({
-        rows: [{ customer: {
-          optimizationScore: 0.82,
-          optimizationScoreUrl: 'https://ads.google.com/aw/recommendations?ocid=123'
-        } }],
+        // Producer shape (API v25): the URL is a metric, not a customer field.
+        rows: [{
+          customer: { optimizationScore: 0.82 },
+          metrics: { optimizationScoreUrl: 'https://ads.google.com/aw/recommendations?ocid=123' }
+        }],
         more: 0
       })
 
@@ -61,5 +62,13 @@ describe('Google Ads recommendation reads', () => {
       types: ['CAMPAIGN_BUDGET) OR TRUE'], includeDismissed: false
     }, { query })).rejects.toThrow()
     expect(query).not.toHaveBeenCalled()
+  })
+
+  it('selects the optimisation score URL as a metric (customer.optimization_score_url is UNRECOGNIZED_FIELD)', async () => {
+    const query = vi.fn(async () => ({ rows: [], more: 0 }))
+    await listGoogleAdsRecommendations({ customerId: '1234567890', auth, maxResults: 5, types: [], includeDismissed: false }, { query })
+    const sent = (query.mock.calls as unknown as Array<[{ query: string }]>).map(call => call[0].query).join('\n')
+    expect(sent).toContain('metrics.optimization_score_url')
+    expect(sent).not.toContain('customer.optimization_score_url')
   })
 })
