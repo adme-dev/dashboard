@@ -41,6 +41,18 @@ function resolvedDeps(retrieve = vi.fn().mockResolvedValue({
 }
 
 describe('search_crm', () => {
+  it('reports CRM search as not enabled for an authorized dormant context and never retrieves', async () => {
+    const deps = resolvedDeps()
+    ;(deps.resolveContext as ReturnType<typeof vi.fn>).mockResolvedValue({
+      status: 'resolved',
+      context: { ...context, organisationScopeId: 'crm-search-dormant', searchScope: 'dormant' },
+      clientName: 'Acme'
+    })
+    await expect(searchCrm({ clientName: 'Acme', query: 'jo', limit: 5 }, ctx, deps))
+      .resolves.toMatchObject({ ok: false, error: 'CRM search is not enabled.' })
+    expect(deps.retrieveCrm).not.toHaveBeenCalled()
+  })
+
   it('uses the fresh agency-AI context and direct authorized retrieval coordinator', async () => {
     const deps = resolvedDeps()
     const result = await searchCrm({ clientName: 'Acme', query: 'jo', limit: 5 }, ctx, deps)

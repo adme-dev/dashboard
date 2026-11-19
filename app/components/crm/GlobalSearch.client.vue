@@ -57,6 +57,12 @@ function isCurrentSearch(invocation: SearchInvocation) {
     && invocation.rawTerm.trim() === invocation.debouncedTerm.trim()
 }
 
+// Server returns data.code 'crm_search_not_enabled' while CRM search is dormant.
+function isSearchNotEnabled(error: unknown): boolean {
+  const body = (error as { data?: { data?: { code?: unknown } } } | null)?.data
+  return body?.data?.code === 'crm_search_not_enabled'
+}
+
 async function invokeSearch(debouncedTerm: string, clientId: string) {
   const invocation: SearchInvocation = {
     generation: ++searchGeneration,
@@ -81,10 +87,12 @@ async function invokeSearch(debouncedTerm: string, clientId: string) {
       body
     })
     if (isCurrentSearch(invocation)) results.value = response.results
-  } catch {
+  } catch (error: unknown) {
     if (isCurrentSearch(invocation)) {
       results.value = []
-      errorMessage.value = 'CRM search is unavailable. Try again.'
+      errorMessage.value = isSearchNotEnabled(error)
+        ? 'CRM search is not enabled yet. Browse records from the tabs instead.'
+        : 'CRM search is unavailable. Try again.'
     }
   } finally {
     if (isCurrentSearch(invocation)) loading.value = false

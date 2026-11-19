@@ -1,6 +1,7 @@
 import { queryRows } from '~~/server/utils/db'
 import { crmVisibilityCond } from '~~/server/utils/crm/recordAccess'
 import type { CrmSearchContext } from '~~/server/utils/crm/searchContext'
+import { requireActiveCrmSearchScope } from '~~/server/utils/crm/searchDormancy'
 
 export type CrmSearchTargetType = 'person' | 'company' | 'opportunity' | 'activity' | 'task'
 
@@ -140,6 +141,7 @@ export async function runCrmKeywordSearch(
   poolLimit = CRM_KEYWORD_POOL_LIMIT,
   dependencies: CrmKeywordSearchDependencies = defaultDependencies
 ): Promise<CrmSearchHit[]> {
+  requireActiveCrmSearchScope(context)
   const built = buildSearchQuery(context, normalizedTerm, poolLimit)
   if (!built) return []
   const rows = await dependencies.queryRows<KeywordRow>(built.sql, built.params)

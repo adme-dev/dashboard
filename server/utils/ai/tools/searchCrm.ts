@@ -19,6 +19,7 @@ import {
   type CrmRetrievalDependencies,
   type CrmRetrievalResult
 } from '~~/server/utils/crm/retrieval'
+import { isCrmSearchContextDormant } from '~~/server/utils/crm/searchDormancy'
 
 function admitsNormalizedClientSelector(value: string): boolean {
   try {
@@ -103,6 +104,9 @@ export async function searchCrm(
       surface: 'agency_ai'
     })
     if (!hasAgencyAiAuthority(ctx, resolution)) return fail('No matching client.')
+    // Authority is checked first; a dormant search scope is then reported
+    // explicitly instead of as a generic failure or empty results.
+    if (isCrmSearchContextDormant(resolution.context)) return fail('CRM search is not enabled.')
 
     const retrievalDependencies = deps.createRetrievalDependencies(ctx.event)
     const retrieval = await deps.retrieveCrm(
