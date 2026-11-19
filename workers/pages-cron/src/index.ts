@@ -32,7 +32,10 @@ export const ROUTES: Record<string, string[]> = {
     '/api/cron/hr-review-reminders',
     '/api/cron/monday-reconcile',
     '/api/cron/monday-health-notifications',
-    '/api/cron/site-intelligence'
+    '/api/cron/site-intelligence',
+    // Notify-only marketing alerts (governance phase 1). A no-op until agency_settings
+    // 'marketing_alerts' enables it; self-gates the daily digest to the configured local hour.
+    '/api/cron/marketing-alerts'
   ],
   // hourly at :30 — GA4 richer dimension/event breakdowns. Offset 30 min from
   // ga4-sync to spread GA4 API load; the endpoint self-limits to the 25 stalest
