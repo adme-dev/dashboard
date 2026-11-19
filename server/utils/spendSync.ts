@@ -140,7 +140,8 @@ export async function syncMetaSpendAccount(conn: MetaConn, month: number, year: 
     platform: 'meta',
     sourceKey: conn.id,
     sourceLabel: conn.account_name,
-    currentCount: campaigns.length
+    currentCount: campaigns.length,
+    period
   })
   if (coverage.warning) coverageWarnings.push(`${conn.account_name}: ${coverage.warning}`)
   if (coverage.halted) {
@@ -527,7 +528,8 @@ async function processGoogleConnection(
     platform: 'google',
     sourceKey: conn.id,
     sourceLabel: conn.account_name,
-    currentCount: campaigns.length
+    currentCount: campaigns.length,
+    period
   })
   if (coverage.warning) coverageWarnings.push(`${conn.account_name}: ${coverage.warning}`)
   if (coverage.halted) {

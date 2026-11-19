@@ -207,3 +207,15 @@ describe('getSpendCoverageDeltas (coverageDelta shaping for the read tools)', ()
     expect(await getSpendCoverageDeltas(vi.fn(async () => []) as never)).toBeNull()
   })
 })
+
+describe('coverage gate compares within the same period', () => {
+  it('ignores a previous count recorded for a different month', async () => {
+    const { getLastSourceCampaignCount } = await import('~~/server/utils/spendSyncJobs')
+    const db = await import('~~/server/utils/db')
+    const spy = vi.spyOn(db, 'queryOne').mockResolvedValue({ campaign_count: 12, period: '2026-10' } as never)
+    expect(await getLastSourceCampaignCount('meta', 'conn', '2026-11')).toBeNull()
+    expect(await getLastSourceCampaignCount('meta', 'conn', '2026-10')).toBe(12)
+    expect(await getLastSourceCampaignCount('meta', 'conn')).toBe(12)
+    spy.mockRestore()
+  })
+})
