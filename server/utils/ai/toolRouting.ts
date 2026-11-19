@@ -111,7 +111,16 @@ const SYNONYMS: Record<string, string[]> = {
   video: ['video', 'videos', 'render'],
   qr: ['qr', 'code', 'codes'],
   client: ['client', 'clients'],
-  clients: ['client', 'clients']
+  clients: ['client', 'clients'],
+  qa: ['review', 'portfolio', 'recommendations', 'conversion'],
+  audit: ['review', 'portfolio', 'conversion'],
+  portfolio: ['portfolio', 'review'],
+  across: ['portfolio', 'review'],
+  every: ['portfolio'],
+  dealers: ['portfolio', 'client', 'clients'],
+  accounts: ['portfolio', 'connections', 'account'],
+  wasted: ['search', 'terms', 'wasted', 'spend'],
+  wasting: ['search', 'terms', 'wasted', 'spend']
 }
 
 export interface RoutableTool { name: string, description: string }

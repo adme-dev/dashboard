@@ -11,6 +11,8 @@ import {
 import type { GoogleAdsActionPlan } from '~~/server/utils/googleAds/contracts'
 import { resolveGoogleAdsControlSession } from '~~/server/utils/googleAds/controlSession'
 import { listGoogleAdsRecommendations } from '~~/server/utils/googleAds/recommendations'
+import { listGoogleAdsSearchTerms } from '~~/server/utils/googleAds/searchTermsLive'
+import { reviewGoogleAdsPortfolio, type PortfolioAccount } from '~~/server/utils/googleAds/portfolioReview'
 import {
   listGoogleAdsInventory,
   type ListGoogleAdsInventoryInput
@@ -148,6 +150,42 @@ function validationAuditMetadata(validation: unknown): Record<string, unknown> {
       ? record.providerRequestId
       : null
   }
+}
+
+/**
+ * Bound (exact client↔connection↔customer mapped) active Google Ads accounts the caller may read.
+ * Delegated staff: one fresh authority resolution, then the same client-coverage rule every
+ * single-account read applies. Owner: every active bound account (narrowed by any client scope).
+ */
+export async function listPortfolioAccounts(
+  context: ToolContext,
+  clientIds: string[] | null,
+  maxAccounts: number
+): Promise<PortfolioAccount[]> {
+  const rows = await queryRows<PortfolioAccount>(
+    `SELECT b.client_id AS "clientId", ac.name AS "clientName", sc.id AS "connectionId",
+            b.operating_customer_id AS "customerId"
+       FROM google_ads_account_bindings b
+       JOIN social_connections sc
+         ON sc.id = b.connection_id AND sc.client_id = b.client_id
+        AND sc.platform = 'google' AND sc.status = 'active'
+        AND b.operating_customer_id = REPLACE(sc.account_id, '-', '')
+       JOIN agency_clients ac ON ac.id = b.client_id AND ac.is_active
+      WHERE ($1::uuid[] IS NULL OR b.client_id = ANY($1::uuid[]))
+        AND ($2::uuid IS NULL OR b.client_id = $2::uuid)
+      ORDER BY ac.name, b.operating_customer_id
+      LIMIT 200`,
+    [clientIds, context.clientScope ?? null]
+  )
+  let allowed = rows
+  if (delegatedAdsContext(context)) {
+    const { freshContextCoversClient } = await import('~~/server/utils/ai/marketing/reviewAuthority')
+    const fresh = await resolveMcpStaffContext(context.event, context.userId, [...(context.mcpScopes ?? [])])
+    if (!(fresh.marketingCapabilities ?? []).some(c => c === 'reporting' || c === 'ads_plan')) return []
+    const covered = await Promise.all(rows.map(row => freshContextCoversClient({ ...fresh, clientScope: context.clientScope }, row.clientId)))
+    allowed = rows.filter((_, index) => covered[index])
+  }
+  return allowed.slice(0, maxAccounts)
 }
 
 export function buildGoogleAdsMcpToolDependencies(
@@ -301,6 +339,50 @@ export function buildGoogleAdsMcpToolDependencies(
         maxResults: input.maxResults,
         types: input.types,
         includeDismissed: input.includeDismissed
+      })
+    },
+    listSearchTerms: async (input, context) => {
+      if (delegatedAdsContext(context)) {
+        const mapping = await assertGoogleAdsConnection(context, input.clientId, input.connectionId)
+        assertGoogleAdsResourceCustomers(input, mapping.customerId)
+      }
+      const session = await resolveGoogleAdsControlSession({ clientId: input.clientId, connectionId: input.connectionId })
+      return listGoogleAdsSearchTerms({
+        customerId: session.connection.customerId,
+        auth: session.auth,
+        windowDays: input.windowDays,
+        maxResults: input.maxResults,
+        wastedOnly: input.wastedOnly,
+        ...(input.campaignResourceName ? { campaignResourceName: input.campaignResourceName } : {})
+      })
+    },
+    reviewPortfolio: async (input, context) => {
+      const accounts = await listPortfolioAccounts(context, input.clientIds ?? null, input.maxAccounts)
+      const sessions = new Map<string, ReturnType<typeof resolveGoogleAdsControlSession>>()
+      const session = (account: PortfolioAccount) => {
+        if (!sessions.has(account.connectionId)) {
+          sessions.set(account.connectionId, resolveGoogleAdsControlSession({ clientId: account.clientId, connectionId: account.connectionId }))
+        }
+        return sessions.get(account.connectionId)!
+      }
+      return reviewGoogleAdsPortfolio({
+        accounts,
+        sections: input.sections,
+        windowDays: input.windowDays,
+        perAccountLimit: input.perAccountLimit
+      }, {
+        recommendations: async (account, maxResults) => {
+          const live = await session(account)
+          return listGoogleAdsRecommendations({ customerId: live.connection.customerId, auth: live.auth, maxResults, types: [], includeDismissed: false })
+        },
+        conversionActions: async (account, activityWindow) => {
+          const live = await session(account)
+          return listGoogleAdsInventory({ kind: 'conversion_action', customerId: live.connection.customerId, auth: live.auth, maxResults: 200, status: 'ALL', activityWindow })
+        },
+        wastedSearchTerms: async (account, windowDays, maxResults) => {
+          const live = await session(account)
+          return listGoogleAdsSearchTerms({ customerId: live.connection.customerId, auth: live.auth, windowDays, maxResults, wastedOnly: true })
+        }
       })
     },
     loadPlan: (actionPlanId, actorId) => getGoogleAdsActionPlanForActor(actionPlanId, actorId),

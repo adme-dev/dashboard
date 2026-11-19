@@ -50,3 +50,18 @@ describe('per-turn tool routing', () => {
     expect(toolNamesFromMessages(messages)).toEqual(['get_department_budget_health'])
   })
 })
+
+describe('portfolio routing vocabulary', () => {
+  it('routes cross-account QA questions to the portfolio review tool', () => {
+    const tools = [
+      { name: 'google_ads_review_portfolio', description: 'Read-only QA across every Google Ads account: recommendations, conversion-action problems and wasted search terms.' },
+      { name: 'google_ads_list_search_terms', description: 'Read live Google search terms for one account, wastedOnly returns spend with no conversions.' },
+      { name: 'get_department_daily_brief', description: 'Daily exceptions across clients' },
+      ...Array.from({ length: 80 }, (_, i) => ({ name: `filler_${i}`, description: 'Unrelated capability' }))
+    ]
+    const top = (q: string) => [...scoreTools(tools, q).entries()].sort((a, b) => b[1] - a[1])[0]?.[0]
+    expect(top('QA all our dealer Google Ads accounts')).toBe('google_ads_review_portfolio')
+    expect(top('Check recommendations and conversion actions across every account')).toBe('google_ads_review_portfolio')
+    expect(top('Which search terms are wasting money?')).toBe('google_ads_list_search_terms')
+  })
+})

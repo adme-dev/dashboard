@@ -8,6 +8,8 @@ export const ADS_STAFF_READ_NAMES = [
   'google_ads_list_assets',
   'google_ads_list_conversion_actions',
   'google_ads_list_recommendations',
+  'google_ads_list_search_terms',
+  'google_ads_review_portfolio',
   'google_ads_resolve_measurement_account',
   'google_ads_get_measurement_health',
   'google_ads_get_conversion_reconciliation',
