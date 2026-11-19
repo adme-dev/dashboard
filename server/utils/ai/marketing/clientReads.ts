@@ -21,6 +21,10 @@ export async function findScopedClients(scope: MarketingReadScope, name: string,
 }
 export async function resolveScopedClient(scope: MarketingReadScope, name: string): Promise<ClientMatch | null> {
   const exact = await findScopedClients(scope, name, 1, true)
+  // A client whose own name matches exactly wins over another client's alias of the same text
+  // (e.g. "Brighton GWM" is both a client and a dealership alias of Brighton Auto Group).
+  const byName = exact.filter(row => row.name.trim().toLowerCase() === name.trim().toLowerCase())
+  if (byName.length === 1) return byName[0]!
   const rows = exact.length ? exact : await findScopedClients(scope, name, 1)
   if (rows.length > 1) throw createError({ statusCode: 400, statusMessage: 'Multiple clients match; narrow the client name' })
   return rows[0] ?? null

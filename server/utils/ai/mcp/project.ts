@@ -193,7 +193,7 @@ export function projectReadOnlyTools(
 
 export type ExecuteOutcome
   = | { ok: true, data: unknown }
-    | { ok: false, error: string, code: 'not_found' | 'forbidden' | 'write_blocked' | 'bad_args' | 'handler_error' }
+    | { ok: false, error: string, code: 'not_found' | 'forbidden' | 'write_blocked' | 'bad_args' | 'handler_error', reason?: string }
 
 /**
  * Execute ONE read-only tool by name for a resolved user. Defense-in-depth at the wire boundary:
@@ -237,7 +237,14 @@ export async function runReadToolHandler(
 ): Promise<ExecuteOutcome> {
   if (tool.mutates) return { ok: false, error: `Tool ${tool.name} is not available over MCP (read-only).`, code: 'write_blocked' }
   const parsed = tool.parameters.safeParse(args)
-  if (!parsed.success) return { ok: false, error: 'Invalid arguments.', code: 'bad_args' }
+  if (!parsed.success) {
+    // Name the offending fields so the model can correct its call; first 3 issues, rest counted as `more`.
+    const ISSUE_CAP = 3
+    const shown = parsed.error.issues.slice(0, ISSUE_CAP)
+    const more = parsed.error.issues.length - shown.length
+    const detail = shown.map(issue => `${issue.path.join('.') || 'arguments'}: ${issue.message}`).join('; ')
+    return { ok: false, error: `Invalid arguments. ${detail}${more > 0 ? ` (+${more} more)` : ''}`, code: 'bad_args' }
+  }
 
   // All callers, including fresh staff projections and legacy system-role
   // fallbacks, must prove accounting authority again at the read boundary.
@@ -253,7 +260,7 @@ export async function runReadToolHandler(
   }
   try {
     const res: ToolResult = await tool.handler(parsed.data, ctx)
-    if (!res.ok) return { ok: false, error: res.error ?? 'Tool error.', code: 'handler_error' }
+    if (!res.ok) return { ok: false, error: res.error ?? 'Tool error.', code: 'handler_error', ...(res.code ? { reason: res.code } : {}) }
     return { ok: true, data: res.data }
   } catch {
     return { ok: false, error: 'Tool execution failed.', code: 'handler_error' }

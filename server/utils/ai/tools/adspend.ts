@@ -229,6 +229,8 @@ export const adspendTool: AiTool<Args> = {
   name: 'get_adspend_pacing',
   description: 'Get per-client ad-spend pacing for the current month across Meta and Google. Returns actual spend, spendAsOf, budget level, allocated budget, expected-to-date pace, explicit data coverage, and worst-case freshness (`lastSyncedAt`, `oldestSyncedAt`, `staleRowCount`, `stalenessThresholdHours`). Spend without a configured budget is `no_budget_set`; incomplete campaign budget coverage is `partial_budget_coverage`. Both have null pace and are excluded from pacing conclusions. Unattributed account spend is returned separately. Before data reaches 24 hours old, when a sync record is missing, or when campaign coverage dropped >5% on the last sync, the tool HALTS: `halted: true` with `haltReason`/`haltDetail`/`asOf` and NO figures — do not advise on pacing from a halted response. Use cursor/limit to paginate. Do NOT use for cash, runway, or accounts-receivable (use get_finance_snapshot).',
   parameters: params,
-  requiredPermission: 'FINANCE',
+  // Media-buying data, not accounting: the handler's own marketing read gate admits MEDIA_BUYING,
+  // FINANCE or a delegated `reporting` grant. FINANCE here hard-failed every media buyer over MCP.
+  requiredPermission: 'MEDIA_BUYING',
   handler: (a, c) => getAdspendPacing(a, c),
 }
