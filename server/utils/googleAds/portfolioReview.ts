@@ -12,6 +12,8 @@ export type PortfolioSection = typeof PORTFOLIO_SECTIONS[number]
 export interface PortfolioAccount {
   clientId: string
   clientName: string
+  /** Google Ads account name — distinguishes brand accounts of one dealer group. */
+  accountName?: string | null
   connectionId: string
   customerId: string
 }
@@ -55,7 +57,7 @@ export function summariseRecommendations(result: Record<string, unknown>, limit:
   }
 }
 
-export function summariseConversionActions(result: Record<string, unknown>) {
+export function summariseConversionActions(result: Record<string, unknown>, limit = 5) {
   const list = items(result)
   const enabled = list.filter(item => item.status === 'ENABLED')
   const primary = list.filter(item => item.primaryForGoal === true)
@@ -68,7 +70,19 @@ export function summariseConversionActions(result: Record<string, unknown>) {
       issues.push({ issue: 'primary_action_zero_conversions', name: item.name, resourceName: item.resourceName })
     }
   }
-  return { total: list.length, enabled: enabled.length, primaryEnabled: primary.filter(item => item.status === 'ENABLED').length, issues }
+  // Dealer accounts can carry dozens of primary actions; return counts by type plus the first few,
+  // never the whole list (a 57-account review was 167k characters, too large for an assistant to read).
+  const issueCounts: Record<string, number> = {}
+  for (const entry of issues) issueCounts[entry.issue] = (issueCounts[entry.issue] ?? 0) + 1
+  return {
+    total: list.length,
+    enabled: enabled.length,
+    primaryEnabled: primary.filter(item => item.status === 'ENABLED').length,
+    issuesTotal: issues.length,
+    issueCounts,
+    issues: issues.slice(0, limit),
+    ...(issues.length > limit ? { moreIssues: issues.length - limit } : {})
+  }
 }
 
 export function summariseWastedSearchTerms(result: Record<string, unknown>, limit: number) {
@@ -116,7 +130,7 @@ export async function reviewGoogleAdsPortfolio(input: PortfolioReviewInput, read
   const sections = new Set(input.sections)
   const activityWindow = input.windowDays <= 7 ? 'LAST_7_DAYS' as const : 'LAST_30_DAYS' as const
   const accounts = await mapLimited(input.accounts, input.concurrency ?? 4, async (account) => {
-    const base = { clientId: account.clientId, clientName: account.clientName, connectionId: account.connectionId, customerId: account.customerId }
+    const base = { clientId: account.clientId, clientName: account.clientName, accountName: account.accountName ?? null, connectionId: account.connectionId, customerId: account.customerId }
     const errors: Record<string, string> = {}
     const row: Record<string, unknown> = { ...base }
     const run = async (section: PortfolioSection, key: string, read: () => Promise<unknown>) => {
@@ -129,7 +143,7 @@ export async function reviewGoogleAdsPortfolio(input: PortfolioReviewInput, read
     }
     await Promise.all([
       run('recommendations', 'recommendations', async () => summariseRecommendations(await readers.recommendations(account, 100), input.perAccountLimit)),
-      run('conversion_actions', 'conversionActions', async () => summariseConversionActions(await readers.conversionActions(account, activityWindow))),
+      run('conversion_actions', 'conversionActions', async () => summariseConversionActions(await readers.conversionActions(account, activityWindow), input.perAccountLimit)),
       run('search_terms', 'wastedSearchTerms', async () => summariseWastedSearchTerms(await readers.wastedSearchTerms(account, input.windowDays, 200), input.perAccountLimit))
     ])
     if (Object.keys(errors).length) row.errors = errors
@@ -138,8 +152,10 @@ export async function reviewGoogleAdsPortfolio(input: PortfolioReviewInput, read
   const attention = accounts
     .map(account => ({
       clientName: account.clientName,
+      accountName: account.accountName ?? null,
+      customerId: account.customerId,
       wastedCost: num((account.wastedSearchTerms as { wastedCost?: unknown } | undefined)?.wastedCost),
-      conversionIssues: ((account.conversionActions as { issues?: unknown[] } | undefined)?.issues ?? []).length,
+      conversionIssues: num((account.conversionActions as { issuesTotal?: unknown } | undefined)?.issuesTotal),
       recommendations: num((account.recommendations as { count?: unknown } | undefined)?.count),
       failedSections: Object.keys((account.errors as Record<string, string> | undefined) ?? {})
     }))

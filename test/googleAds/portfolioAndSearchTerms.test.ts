@@ -119,4 +119,14 @@ describe('portfolio review', () => {
     const review = await reviewGoogleAdsPortfolio({ accounts: accounts.slice(0, 1), sections: ['recommendations'], windowDays: 30, perAccountLimit: 3 }, readers as never)
     expect(review.accounts[0]).toMatchObject({ errors: { recommendations: 'Google Ads rejected the requested fields. (PROHIBITED_FIELD_IN_SELECT_CLAUSE @ recommendation.impact)' } })
   })
+
+  it('stays compact: issue counts by type, capped list, and account names in the attention list', async () => {
+    const many = Array.from({ length: 12 }, (_, i) => ({ name: `Call ${i}`, status: 'ENABLED', primaryForGoal: true, recentActivity: { state: 'zero' } }))
+    const summary = summariseConversionActions({ items: many }, 3)
+    expect(summary).toMatchObject({ issuesTotal: 12, issueCounts: { primary_action_zero_conversions: 12 }, moreIssues: 9 })
+    expect(summary.issues).toHaveLength(3)
+    const readers = { recommendations: vi.fn(), conversionActions: vi.fn(async () => ({ items: many })), wastedSearchTerms: vi.fn() }
+    const review = await reviewGoogleAdsPortfolio({ accounts: [{ ...accounts[0]!, accountName: 'Northern MG' }], sections: ['conversion_actions'], windowDays: 30, perAccountLimit: 3 }, readers as never)
+    expect(review.attention[0]).toMatchObject({ accountName: 'Northern MG', customerId: '1', conversionIssues: 12 })
+  })
 })
