@@ -128,6 +128,30 @@ describe('canonical lead acceptance side effects', () => {
     expect(mocks.markCrmPromotionQueued).toHaveBeenCalledTimes(1)
   })
 
+  it('keeps the stored lead and still notifies when inline CRM promotion fails (dormant CRM search 42P01)', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const missing = Object.assign(
+      new Error('relation "crm_search_organisation_scopes" does not exist'),
+      { name: 'error', code: '42P01' }
+    )
+    mocks.enqueueLeadJob.mockImplementation(async (msg: { type: string }) => {
+      if (msg.type === 'crm.promote') throw missing
+    })
+
+    await expect(acceptLead({} as any, input('full_crm'))).resolves.toEqual({
+      status: 'created',
+      leadId: 'lead-1'
+    })
+
+    expect(mocks.markCrmPromotionFailure).toHaveBeenCalledWith('lead-1', missing)
+    expect(mocks.notifyOnNewLead).toHaveBeenCalledTimes(1)
+    expect(warn).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'crm_lead_promotion_enqueue_failed',
+      errorCode: '42P01'
+    }))
+    warn.mockRestore()
+  })
+
   it('performs no ingestion or downstream action in analytics-only mode', async () => {
     await expect(acceptLead({} as any, input('analytics_only'))).resolves.toEqual({
       status: 'mode_skipped'

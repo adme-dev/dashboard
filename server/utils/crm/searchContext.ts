@@ -5,6 +5,12 @@ import { PERMISSION_GROUPS, SYSTEM_ROLE_PERMISSIONS } from '~~/server/utils/perm
 import { queryOneFresh, queryRowsFresh } from '~~/server/utils/db'
 import { verifyJwt } from '~~/server/utils/auth'
 import { getTrustedTask5DelegatedExecution } from '~~/server/utils/godMode/internalExecutionDelegation'
+import {
+  CRM_SEARCH_DORMANT_SCOPE_ID,
+  crmSearchActivationDeclared,
+  isCrmSearchSchemaMissing,
+  logCrmSearchDormantOnce
+} from '~~/server/utils/crm/searchDormancy'
 
 export interface CrmSearchContext {
   organisationScopeId: string
@@ -45,6 +51,12 @@ export interface TrustedCrmSystemContext {
   permissionSet: readonly []
   visibility: { ownerScoped: false }
   trustedSystem: { purpose: TrustedCrmSystemPurpose }
+  /**
+   * 'dormant' when the CRM search schema is absent (search never activated).
+   * organisationScopeId is then CRM_SEARCH_DORMANT_SCOPE_ID and must never be
+   * used for search capture, indexing or retrieval.
+   */
+  searchScope?: 'active' | 'dormant'
 }
 
 export type CrmRecordAccessContext = CrmSearchContext | TrustedCrmSystemContext
@@ -385,7 +397,19 @@ export async function resolveTrustedCrmSystemContext(
 ): Promise<TrustedCrmSystemContext> {
   const client = await deps.loadClient(input.clientId)
   if (!client) notFound()
-  const organisationScopeId = await deps.loadOrganisationScope()
+  let organisationScopeId: string | null
+  let searchScope: 'active' | 'dormant' = 'active'
+  try {
+    organisationScopeId = await deps.loadOrganisationScope()
+  } catch (error) {
+    // CRM search is intentionally dormant until its signed release applies the
+    // crm_search_* schema. Trusted non-search CRM work (lead promotion, etc.)
+    // must not depend on it; search capture is skipped, never fatal.
+    if (!isCrmSearchSchemaMissing(error) || crmSearchActivationDeclared()) throw error
+    logCrmSearchDormantOnce(input.purpose)
+    organisationScopeId = CRM_SEARCH_DORMANT_SCOPE_ID
+    searchScope = 'dormant'
+  }
   if (!organisationScopeId) scopeUnavailable()
   return {
     organisationScopeId,
@@ -396,7 +420,8 @@ export async function resolveTrustedCrmSystemContext(
     surface: 'trusted_system',
     permissionSet: [],
     visibility: { ownerScoped: false },
-    trustedSystem: { purpose: input.purpose }
+    trustedSystem: { purpose: input.purpose },
+    searchScope
   }
 }
 

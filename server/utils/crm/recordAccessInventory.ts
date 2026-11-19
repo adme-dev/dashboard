@@ -272,6 +272,7 @@ const CRM_SERVICE_SURFACES = [
   'service:server/utils/crm/search/operations/execution.ts',
   'service:server/utils/crm/search/operations/health.ts',
   'service:server/utils/crm/search/retention.ts',
+  "service:server/utils/crm/searchDormancy.ts",
   "service:server/utils/crm/searchIndex/analyticsKeyring.ts",
   "service:server/utils/crm/searchIndex/approvalRepository.ts",
   "service:server/utils/crm/searchIndex/backfill.ts",
