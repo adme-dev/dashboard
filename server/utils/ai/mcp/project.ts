@@ -4,6 +4,7 @@ import { roleHasPermission, type PermissionGroup } from '~~/server/utils/permiss
 import { filterToolsForUser, type AiTool } from '~~/server/utils/ai/toolRegistry'
 import type { ToolContext, ToolResult } from '~~/server/utils/ai/toolContext'
 import type { TrustedSupplementalExecutionServices } from '~~/server/utils/ai/godModeExecution'
+import type { GodModeBypassedControl } from '~~/server/utils/godMode/audit'
 
 /**
  * MCP Server Phase 1 — read-only projection + guarded execution (mcp-server-phase1 spec §4–5).
@@ -52,6 +53,13 @@ export interface McpExecutionDescriptor {
     ctx: ToolContext,
     services: TrustedSupplementalExecutionServices
   ) => Promise<ToolResult>
+  /**
+   * Owner God-mode audit classification. Mutations default to `['confirmation']` (God mode executes a
+   * write the ordinary flow would hold for confirmation). Explicit review/approval tools ARE the human
+   * confirmation — hash-bound and `ack: true` — so they record the control actually bypassed instead
+   * (e.g. `['permission']`: the owner stands in for the department reviewer role).
+   */
+  godModeBypassedControls?: readonly GodModeBypassedControl[]
 }
 
 export type McpExecutionResolver = (context: McpProjectionContext) => McpExecutionDescriptor[]
@@ -68,6 +76,12 @@ export interface McpSuiteFlags {
   googleAdsWrite?: boolean
   googleAdsAutomation?: boolean
   googleAdsDestructive?: boolean
+  /**
+   * Marketing phase 3 draft → approve flows (staff draft runners, review queue, owner review tools).
+   * Compact-only (MCP_SUITE_CONFIG): production Pages is at its text-binding cap, so it has no legacy
+   * per-flag binding. Default off.
+   */
+  marketingDraftReview?: boolean
 }
 
 /**

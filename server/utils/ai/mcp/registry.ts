@@ -41,6 +41,7 @@ import {
 import { projectGoogleAdsTools } from './googleAdsTools'
 import { projectSocialMcpSuite, resolveSocialMcpExecutions } from './socialTools'
 import { projectDepartmentMcpSuite, resolveDepartmentMcpExecutions } from './departmentTools'
+import { projectOwnerMarketingReviewMcpSuite, resolveOwnerMarketingReviewMcpExecutions } from './marketingReviewTools'
 
 export interface RegisteredMcpSuite {
   key: string
@@ -109,6 +110,13 @@ const suiteDefinitions: RegisteredMcpSuite[] = [
     project: projectGoogleAdsMcpSuite,
     executions: resolveGoogleAdsMcpExecutions,
     sourceProjectors: [projectGoogleAdsTools]
+  },
+  {
+    // Marketing phase 3: owner review of delegated Ads plans and department budget proposals. Projects
+    // ONLY into the God-mode union (governanceBypass); ordinary governed projections receive nothing.
+    key: 'owner-marketing-review',
+    project: projectOwnerMarketingReviewMcpSuite,
+    executions: resolveOwnerMarketingReviewMcpExecutions
   }
 ]
 
@@ -262,7 +270,7 @@ function resolveCatalog(
   for (const name of executionRows.keys()) {
     if (!manifestNames.has(name)) throw new Error(`MCP execution resolver has no projected manifest: ${name}`)
   }
-  const executions = manifests.map(manifest => {
+  const executions = manifests.map((manifest) => {
     const rows = executionRows.get(manifest.name) ?? []
     if (rows.length !== 1) {
       throw new Error(`Expected exactly one MCP execution resolver for ${manifest.name}; received ${rows.length}`)

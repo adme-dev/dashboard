@@ -14,8 +14,14 @@ import {
   ADS_STAFF_PLAN_NAMES,
   GTM_STAFF_NAMES,
   isTask4WriteTool,
-  isTask4StaffTool
+  isTask4StaffTool,
+  isAdsStaffReviewTool
 } from './marketingTask4Names'
+import {
+  executeStaffAdsReviewTool,
+  marketingReviewToolSchema,
+  projectStaffAdsReviewManifests
+} from './marketingReviewTools'
 import { GtmProposalInput } from '~~/server/utils/tracking/gtmProposalSchemas'
 import { GtmOwnershipSchema } from '~~/server/utils/tracking/gtmOwnership'
 
@@ -48,6 +54,7 @@ for (const [name, action] of Object.entries(actionByName))
 /** One typed input contract for staff manifests, descriptors and dispatch. */
 function task4StaffSchema(name: string): z.ZodType {
   if (gtmSchemas[name]) return gtmSchemas[name]!
+  if (isAdsStaffReviewTool(name)) return marketingReviewToolSchema(name)!
   if (name === 'google_ads_list_connections') return z.strictObject({ clientId: z.string().uuid() })
   const schema = getGoogleAdsToolSchema(name)!
   return schema instanceof z.ZodObject && 'requestedMode' in schema.shape
@@ -59,6 +66,8 @@ export function projectTask4StaffSuite(
   context: McpProjectionContext
 ): McpToolManifest[] {
   const source = [...googleAdsReadTools, ...googleAdsSearchPlanningTools]
+  // Phase 3 draft/review tools: projected only while MCP_SUITE_CONFIG.marketingDraftReview is on.
+  const review = projectStaffAdsReviewManifests(context.suiteFlags)
   const ads = [...ADS_STAFF_READ_NAMES, ...ADS_STAFF_PLAN_NAMES]
     .filter(name =>
       isTask4WriteTool(name) || name === 'google_ads_reverify_resource'
@@ -78,6 +87,7 @@ export function projectTask4StaffSuite(
     })
   return [
     ...ads,
+    ...review,
     ...GTM_STAFF_NAMES.map(name => ({
       name,
       description: actionByName[name]
@@ -99,6 +109,8 @@ export function task4StaffTools(context: Pick<McpProjectionContext, 'suiteFlags'
     description: m.description,
     parameters: task4StaffSchema(m.name) as z.ZodType<unknown>,
     mutates: isTask4WriteTool(m.name),
+    // Executing an approved plan changes a live account: native chat shows the richer confirmation card.
+    ...(m.name === 'google_ads_execute_reviewed_plan' ? { riskTier: 'rich_confirm' as const } : {}),
     handler: async () => ({
       ok: false,
       error: 'Use the scoped staff call boundary.'
@@ -142,6 +154,7 @@ export async function executeTask4StaffTool(
           code: 'disabled'
         }
     }
+    if (isAdsStaffReviewTool(name)) return await executeStaffAdsReviewTool(name, args, ctx)
     if (name === 'google_ads_list_connections') {
       const { listGoogleAdsConnections }
         = await import('~~/server/utils/ai/marketing/googleAdsAccess')

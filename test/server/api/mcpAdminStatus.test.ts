@@ -40,7 +40,9 @@ const GRANTED_USER_ID = '22222222-2222-4222-8222-222222222222'
 
 const SUITE_KEYS = [
   'generation', 'writes', 'financial', 'video', 'videoGeneration', 'banners', 'feeds',
-  'googleAdsRead', 'googleAdsWrite', 'googleAdsAutomation', 'googleAdsDestructive'
+  'googleAdsRead', 'googleAdsWrite', 'googleAdsAutomation', 'googleAdsDestructive',
+  // Compact-only (MCP_SUITE_CONFIG) marketing phase-3 switch; always reported, default off.
+  'marketingDraftReview'
 ] as const
 const ALL_OFF = Object.fromEntries(SUITE_KEYS.map(key => [key, false]))
 

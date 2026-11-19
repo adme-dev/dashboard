@@ -31,7 +31,8 @@ describe('marketing management MCP production configuration', () => {
       .toEqual(['MCP_SERVER_ENABLED', 'MCP_SUITE_CONFIG', 'MCP_WORKER_ORIGIN'])
     const effective = resolveMcpRuntimeConfig({ context: { cloudflare: { env: vars } } } as any)
     expect(effective.serverEnabled).toBe(true)
-    expect(effective.suiteFlags).toEqual(intended)
+    // Marketing phase 3 (draft → approve) ships dormant: production config must NOT enable it.
+    expect(effective.suiteFlags).toEqual({ ...intended, marketingDraftReview: false })
     expect(effective.workerOrigin).toBe('https://mcp-server.adme-dev.workers.dev')
   })
 

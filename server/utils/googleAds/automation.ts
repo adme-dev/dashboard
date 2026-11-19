@@ -20,20 +20,74 @@ import {
 
 const UuidSchema = z.string().uuid()
 const CustomerResourceSchema = z.string().regex(/^customers\/(\d{1,20})\/(campaigns|adGroups|adGroupAds|adGroupCriteria)\/\d+(?:~\d+)?$/)
+/**
+ * Runner mode. `execute` (default) is the existing policy automation: it plans an AUTOMATIC action and
+ * hands it to the executor when every policy guard passes. `draft` (marketing phase 3) evaluates the same
+ * fresh evidence but only ever persists a reviewable PROPOSAL plan — it never calls the executor, never
+ * needs the automation flag and never consumes the policy's daily quota. Drafts are approved
+ * independently and executed later through the reviewed-plan executor.
+ */
+const RunnerModeSchema = z.enum(['execute', 'draft']).default('execute')
+const DraftSourceSchema = z.enum(['mcp', 'chat']).default('mcp')
+/** Requester-tunable evidence thresholds for a draft when no stored account policy exists. */
+export const SearchTermDraftThresholdsSchema = z.strictObject({
+  lookbackDays: z.number().int().min(1).max(90).optional(),
+  minImpressions: z.number().int().min(0).optional(),
+  minClicks: z.number().int().min(0).optional(),
+  minSpendMicros: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).optional(),
+  maxConversions: z.number().finite().min(0).optional(),
+  negativeMatchType: z.enum(['EXACT', 'PHRASE']).optional(),
+  maxKeywords: z.number().int().min(1).max(100).optional(),
+  protectedTerms: z.array(z.string().trim().min(1).max(80)).max(200).optional()
+})
+export const PauseDraftThresholdsSchema = z.strictObject({
+  lookbackDays: z.number().int().min(1).max(90).optional(),
+  minImpressions: z.number().int().min(0).optional(),
+  minClicks: z.number().int().min(0).optional(),
+  minSpendMicros: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).optional(),
+  maxConversions: z.number().finite().min(0).optional()
+})
 const SearchPolicyInputSchema = z.strictObject({
   clientId: UuidSchema,
   connectionId: UuidSchema,
   actorId: UuidSchema,
   scope: z.enum(['campaign', 'ad_group']),
-  parentResourceName: CustomerResourceSchema
+  parentResourceName: CustomerResourceSchema,
+  mode: RunnerModeSchema,
+  source: DraftSourceSchema,
+  draftThresholds: SearchTermDraftThresholdsSchema.optional()
 })
 const PausePolicyInputSchema = z.strictObject({
   clientId: UuidSchema,
   connectionId: UuidSchema,
   actorId: UuidSchema,
   entityType: z.enum(['campaign', 'ad_group', 'ad', 'keyword']),
-  resourceName: CustomerResourceSchema
+  resourceName: CustomerResourceSchema,
+  mode: RunnerModeSchema,
+  source: DraftSourceSchema,
+  draftThresholds: PauseDraftThresholdsSchema.optional()
 })
+
+/** Conservative draft defaults: a human still reviews every candidate before anything changes. */
+const SEARCH_TERM_DRAFT_DEFAULTS = {
+  lookbackDays: 30,
+  cooldownHours: 72,
+  minImpressions: 0,
+  minClicks: 5,
+  minSpendMicros: 20_000_000,
+  maxConversions: 0,
+  negativeMatchType: 'EXACT' as const,
+  maxKeywords: 25,
+  protectedTerms: [] as string[]
+}
+const PAUSE_DRAFT_DEFAULTS = {
+  lookbackDays: 30,
+  cooldownHours: 72,
+  minImpressions: 0,
+  minClicks: 50,
+  minSpendMicros: 200_000_000,
+  maxConversions: 0
+}
 
 const CommonRunnerConditions = {
   lookbackDays: z.number().int().min(1).max(90),
@@ -194,9 +248,12 @@ function customerIdFromResource(resourceName: string): string {
 function blocked(
   actionClass: 'negative_keywords' | 'pause',
   reason: RunnerBlockReason,
-  evidence: Record<string, unknown> = {}
+  evidence: Record<string, unknown> = {},
+  mode: 'execute' | 'draft' = 'execute'
 ): Record<string, unknown> {
-  return { actionClass, executed: false, reason, evidence }
+  return mode === 'draft'
+    ? { actionClass, mode, executed: false, drafted: false, reason, evidence }
+    : { actionClass, executed: false, reason, evidence }
 }
 
 function meetsThresholds(
@@ -209,6 +266,41 @@ function meetsThresholds(
     && metrics.conversions <= conditions.maxConversions
 }
 
+const DRAFT_NEXT_STEP = 'Nothing has changed in Google Ads. An independent reviewer approves or rejects this draft with google_ads_review_plan; an approved draft is executed with google_ads_execute_reviewed_plan, which re-validates it first.'
+
+function searchTermDraftConditions(input: z.infer<typeof SearchPolicyInputSchema>) {
+  const t = { ...SEARCH_TERM_DRAFT_DEFAULTS, ...input.draftThresholds }
+  return {
+    lookbackDays: t.lookbackDays,
+    cooldownHours: SEARCH_TERM_DRAFT_DEFAULTS.cooldownHours,
+    allowedScopes: [input.scope],
+    resourceNames: [input.parentResourceName],
+    protectedTerms: t.protectedTerms,
+    minImpressions: t.minImpressions,
+    minClicks: t.minClicks,
+    minSpendMicros: t.minSpendMicros,
+    maxConversions: t.maxConversions,
+    negativeMatchType: t.negativeMatchType,
+    allowedMatchTypes: ['EXACT', 'PHRASE'],
+    maxKeywordsPerAction: t.maxKeywords,
+    maxAdditionsPerRun: t.maxKeywords
+  }
+}
+
+function pauseDraftConditions(input: z.infer<typeof PausePolicyInputSchema>) {
+  const t = { ...PAUSE_DRAFT_DEFAULTS, ...input.draftThresholds }
+  return {
+    lookbackDays: t.lookbackDays,
+    cooldownHours: PAUSE_DRAFT_DEFAULTS.cooldownHours,
+    allowedResourceTypes: [input.entityType],
+    resourceNames: [input.resourceName],
+    minImpressions: t.minImpressions,
+    minClicks: t.minClicks,
+    minSpendMicros: t.minSpendMicros,
+    maxConversions: t.maxConversions
+  }
+}
+
 export async function runGoogleAdsSearchTermPolicy(
   rawInput: unknown,
   authority: GoogleAdsControlAuthority,
@@ -217,8 +309,11 @@ export async function runGoogleAdsSearchTermPolicy(
   now = new Date()
 ): Promise<Record<string, unknown>> {
   const input = SearchPolicyInputSchema.parse(rawInput)
-  if (!flags.write || !flags.automation || !authority.hasWriteScope) {
-    return blocked('negative_keywords', 'feature_disabled')
+  const draft = input.mode === 'draft'
+  const block = (reason: RunnerBlockReason, evidence: Record<string, unknown> = {}) =>
+    blocked('negative_keywords', reason, evidence, input.mode)
+  if (!flags.write || (!draft && !flags.automation) || !authority.hasWriteScope) {
+    return block('feature_disabled')
   }
   const dependencies = { ...defaultDependencies, ...overrides }
   if (await dependencies.automationHalted()) return blocked('negative_keywords', 'automation_kill_switch')
@@ -239,15 +334,19 @@ export async function runGoogleAdsSearchTermPolicy(
     customerId: session.connection.customerId,
     actionClass: 'negative_keywords'
   })
-  if (!grant?.enabled) return blocked('negative_keywords', 'policy_missing')
-  if (grant.maxDailyActions !== null && grant.actionsToday >= grant.maxDailyActions) {
-    return blocked('negative_keywords', 'daily_cap')
+  const activePolicy = grant?.enabled ? grant : null
+  if (!activePolicy && !draft) return block('policy_missing')
+  // Drafts never consume or respect the automatic daily quota: nothing is applied until reviewed.
+  if (!draft && activePolicy && activePolicy.maxDailyActions !== null && activePolicy.actionsToday >= activePolicy.maxDailyActions) {
+    return block('daily_cap')
   }
-  const conditions = SearchTermPolicyConditionsSchema.safeParse(grant.conditions)
-  if (!conditions.success) return blocked('negative_keywords', 'policy_invalid')
+  const conditions = SearchTermPolicyConditionsSchema.safeParse(activePolicy
+    ? activePolicy.conditions
+    : searchTermDraftConditions(input))
+  if (!conditions.success) return block('policy_invalid')
   if (!conditions.data.allowedScopes.includes(input.scope)
     || !conditions.data.resourceNames.includes(input.parentResourceName)) {
-    return blocked('negative_keywords', 'scope_blocked')
+    return block('scope_blocked')
   }
   const recent = await dependencies.recentAction({
     clientId: input.clientId,
@@ -257,7 +356,7 @@ export async function runGoogleAdsSearchTermPolicy(
     operations: ['add_negative_keywords'],
     cooldownHours: conditions.data.cooldownHours
   })
-  if (recent) return blocked('negative_keywords', recent)
+  if (recent) return block(recent)
 
   const range = dateRange(conditions.data.lookbackDays, now)
   const parentFilter = input.scope === 'campaign'
@@ -280,7 +379,7 @@ WHERE ${parentFilter}
   AND segments.date BETWEEN '${range.startDate}' AND '${range.endDate}'`
   })
   if (searchTerms.more > 0) {
-    return blocked('negative_keywords', 'policy_invalid', { code: 'search_term_limit_exceeded' })
+    return block('policy_invalid', { code: 'search_term_limit_exceeded' })
   }
   const keywordParentFilter = input.scope === 'campaign'
     ? `campaign.resource_name = '${input.parentResourceName}'`
@@ -298,7 +397,7 @@ WHERE ${keywordParentFilter}
   AND ad_group_criterion.status != 'REMOVED'`
   })
   if (positiveKeywords.more > 0) {
-    return blocked('negative_keywords', 'policy_invalid', { code: 'positive_keyword_limit_exceeded' })
+    return block('policy_invalid', { code: 'positive_keyword_limit_exceeded' })
   }
   const positiveTerms = new Set(positiveKeywords.rows.map(row => (
     normalizeTerm(PositiveKeywordRowSchema.parse(row).adGroupCriterion.keyword.text)
@@ -333,7 +432,7 @@ WHERE ${keywordParentFilter}
   const unique = [...new Map(eligible.map(row => [normalizeTerm(row.searchTermView.searchTerm), row])).values()]
     .slice(0, Math.min(conditions.data.maxAdditionsPerRun, conditions.data.maxKeywordsPerAction))
   if (unique.length === 0) {
-    return blocked('negative_keywords', searchTerms.rows.length === 0 ? 'no_candidates' : 'threshold_not_met', {
+    return block(searchTerms.rows.length === 0 ? 'no_candidates' : 'threshold_not_met', {
       evaluated: searchTerms.rows.length,
       window: range
     })
@@ -342,7 +441,7 @@ WHERE ${keywordParentFilter}
     text: row.searchTermView.searchTerm.trim().replace(/\s+/g, ' '),
     matchType: conditions.data.negativeMatchType
   }))
-  const idempotencyKey = `policy:${grant.id}:${hashGoogleAdsValue({
+  const idempotencyKey = `${draft ? 'draft' : 'policy'}:${activePolicy?.id ?? 'adhoc'}:${hashGoogleAdsValue({
     parent: input.parentResourceName,
     range,
     keywords
@@ -351,10 +450,10 @@ WHERE ${keywordParentFilter}
     clientId: input.clientId,
     connectionId: input.connectionId,
     actorId: input.actorId,
-    source: 'automation',
+    source: draft ? input.source : 'automation',
     operation: 'add_negative_keywords',
     resourceType: 'negative_keyword',
-    requestedMode: 'automatic',
+    requestedMode: draft ? 'proposal' : 'automatic',
     arguments: {
       scope: input.scope,
       parentResourceName: input.parentResourceName,
@@ -366,11 +465,12 @@ WHERE ${keywordParentFilter}
     planId: plan.id,
     clientId: input.clientId,
     actorId: input.actorId,
-    eventType: 'automation_evaluated',
+    eventType: draft ? 'automation_drafted' : 'automation_evaluated',
     metadata: {
       actionClass: 'negative_keywords',
-      policyId: grant.id,
-      policyVersion: grant.policyVersion,
+      mode: input.mode,
+      policyId: activePolicy?.id ?? null,
+      policyVersion: activePolicy?.policyVersion ?? null,
       window: range,
       thresholds: {
         minImpressions: conditions.data.minImpressions,
@@ -384,8 +484,29 @@ WHERE ${keywordParentFilter}
       }))
     }
   })
+  if (draft) {
+    // A draft is only ever a reviewable proposal; the executor is never reached from this branch.
+    if (plan.executionMode !== 'proposal' || !plan.policyDecision.allowed || plan.status !== 'pending_approval') {
+      return block('plan_blocked', { actionPlanId: plan.id })
+    }
+    return {
+      actionClass: 'negative_keywords',
+      mode: 'draft',
+      executed: false,
+      drafted: true,
+      policyId: activePolicy?.id ?? null,
+      actionPlanId: plan.id,
+      requestHash: plan.requestHash,
+      status: plan.status,
+      expiresAt: plan.expiresAt,
+      window: range,
+      evaluated: searchTerms.rows.length,
+      candidates: keywords.map(keyword => keyword.text),
+      nextStep: DRAFT_NEXT_STEP
+    }
+  }
   if (plan.executionMode !== 'automatic' || !plan.policyDecision.allowed) {
-    return blocked('negative_keywords', 'plan_blocked', { actionPlanId: plan.id })
+    return block('plan_blocked', { actionPlanId: plan.id })
   }
   // Re-checked immediately before the provider call so an engaged stop wins over an in-flight run.
   if (await dependencies.automationHalted()) return blocked('negative_keywords', 'automation_kill_switch', { actionPlanId: plan.id })
@@ -393,8 +514,8 @@ WHERE ${keywordParentFilter}
   return {
     actionClass: 'negative_keywords',
     executed: execution.ok,
-    policyId: grant.id,
-    policyVersion: grant.policyVersion,
+    policyId: activePolicy!.id,
+    policyVersion: activePolicy!.policyVersion,
     actionPlanId: plan.id,
     window: range,
     evaluated: searchTerms.rows.length,
@@ -418,8 +539,11 @@ export async function runGoogleAdsPausePolicy(
   now = new Date()
 ): Promise<Record<string, unknown>> {
   const input = PausePolicyInputSchema.parse(rawInput)
-  if (!flags.write || !flags.automation || !authority.hasWriteScope) {
-    return blocked('pause', 'feature_disabled')
+  const draft = input.mode === 'draft'
+  const block = (reason: RunnerBlockReason, evidence: Record<string, unknown> = {}) =>
+    blocked('pause', reason, evidence, input.mode)
+  if (!flags.write || (!draft && !flags.automation) || !authority.hasWriteScope) {
+    return block('feature_disabled')
   }
   const dependencies = { ...defaultDependencies, ...overrides }
   if (await dependencies.automationHalted()) return blocked('pause', 'automation_kill_switch')
@@ -445,15 +569,18 @@ export async function runGoogleAdsPausePolicy(
     customerId: session.connection.customerId,
     actionClass: 'pause'
   })
-  if (!grant?.enabled) return blocked('pause', 'policy_missing')
-  if (grant.maxDailyActions !== null && grant.actionsToday >= grant.maxDailyActions) {
-    return blocked('pause', 'daily_cap')
+  const activePolicy = grant?.enabled ? grant : null
+  if (!activePolicy && !draft) return block('policy_missing')
+  if (!draft && activePolicy && activePolicy.maxDailyActions !== null && activePolicy.actionsToday >= activePolicy.maxDailyActions) {
+    return block('daily_cap')
   }
-  const conditions = PausePolicyConditionsSchema.safeParse(grant.conditions)
-  if (!conditions.success) return blocked('pause', 'policy_invalid')
+  const conditions = PausePolicyConditionsSchema.safeParse(activePolicy
+    ? activePolicy.conditions
+    : pauseDraftConditions(input))
+  if (!conditions.success) return block('policy_invalid')
   if (!conditions.data.allowedResourceTypes.includes(input.entityType)
     || !conditions.data.resourceNames.includes(input.resourceName)) {
-    return blocked('pause', 'scope_blocked')
+    return block('scope_blocked')
   }
   const config = PAUSE_RESOURCES[input.entityType]
   const recent = await dependencies.recentAction({
@@ -464,7 +591,7 @@ export async function runGoogleAdsPausePolicy(
     operations: [config.operation],
     cooldownHours: conditions.data.cooldownHours
   })
-  if (recent) return blocked('pause', recent)
+  if (recent) return block(recent)
   const range = dateRange(conditions.data.lookbackDays, now)
   const result = await dependencies.query({
     customerId: session.connection.customerId,
@@ -481,7 +608,7 @@ WHERE ${config.resource}.resource_name = '${input.resourceName}'
   AND segments.date BETWEEN '${range.startDate}' AND '${range.endDate}'`
   })
   if (result.more > 0 || result.rows.length !== 1) {
-    return blocked('pause', 'no_candidates', { window: range })
+    return block('no_candidates', { window: range })
   }
   const row = z.object({
     [config.field]: z.object({
@@ -493,9 +620,9 @@ WHERE ${config.resource}.resource_name = '${input.resourceName}'
   const entity = row[config.field] as { resourceName: string, status: string }
   const metrics = MetricsSchema.parse(row.metrics)
   if (entity.status !== 'ENABLED' || !meetsThresholds(metrics, conditions.data)) {
-    return blocked('pause', 'threshold_not_met', { window: range, metrics, status: entity.status })
+    return block('threshold_not_met', { window: range, metrics, status: entity.status })
   }
-  const idempotencyKey = `policy:${grant.id}:${hashGoogleAdsValue({
+  const idempotencyKey = `${draft ? 'draft' : 'policy'}:${activePolicy?.id ?? 'adhoc'}:${hashGoogleAdsValue({
     resourceName: input.resourceName,
     range,
     metrics
@@ -504,10 +631,10 @@ WHERE ${config.resource}.resource_name = '${input.resourceName}'
     clientId: input.clientId,
     connectionId: input.connectionId,
     actorId: input.actorId,
-    source: 'automation',
+    source: draft ? input.source : 'automation',
     operation: config.operation,
     resourceType: input.entityType,
-    requestedMode: 'automatic',
+    requestedMode: draft ? 'proposal' : 'automatic',
     arguments: { resourceName: input.resourceName },
     idempotencyKey
   }, authority, flags)
@@ -515,11 +642,12 @@ WHERE ${config.resource}.resource_name = '${input.resourceName}'
     planId: plan.id,
     clientId: input.clientId,
     actorId: input.actorId,
-    eventType: 'automation_evaluated',
+    eventType: draft ? 'automation_drafted' : 'automation_evaluated',
     metadata: {
       actionClass: 'pause',
-      policyId: grant.id,
-      policyVersion: grant.policyVersion,
+      mode: input.mode,
+      policyId: activePolicy?.id ?? null,
+      policyVersion: activePolicy?.policyVersion ?? null,
       resourceName: input.resourceName,
       window: range,
       thresholds: {
@@ -531,8 +659,28 @@ WHERE ${config.resource}.resource_name = '${input.resourceName}'
       metrics
     }
   })
+  if (draft) {
+    // A draft is only ever a reviewable proposal; the executor is never reached from this branch.
+    if (plan.executionMode !== 'proposal' || !plan.policyDecision.allowed || plan.status !== 'pending_approval') {
+      return block('plan_blocked', { actionPlanId: plan.id })
+    }
+    return {
+      actionClass: 'pause',
+      mode: 'draft',
+      executed: false,
+      drafted: true,
+      policyId: activePolicy?.id ?? null,
+      actionPlanId: plan.id,
+      requestHash: plan.requestHash,
+      status: plan.status,
+      expiresAt: plan.expiresAt,
+      window: range,
+      metrics,
+      nextStep: DRAFT_NEXT_STEP
+    }
+  }
   if (plan.executionMode !== 'automatic' || !plan.policyDecision.allowed) {
-    return blocked('pause', 'plan_blocked', { actionPlanId: plan.id })
+    return block('plan_blocked', { actionPlanId: plan.id })
   }
   // Re-checked immediately before the provider call so an engaged stop wins over an in-flight run.
   if (await dependencies.automationHalted()) return blocked('pause', 'automation_kill_switch', { actionPlanId: plan.id })
@@ -540,8 +688,8 @@ WHERE ${config.resource}.resource_name = '${input.resourceName}'
   return {
     actionClass: 'pause',
     executed: execution.ok,
-    policyId: grant.id,
-    policyVersion: grant.policyVersion,
+    policyId: activePolicy!.id,
+    policyVersion: activePolicy!.policyVersion,
     actionPlanId: plan.id,
     window: range,
     metrics,
