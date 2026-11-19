@@ -454,15 +454,22 @@ export function extractConversions(actions?: Array<{ action_type: string; value:
 }
 
 /**
- * Extract revenue from Meta's action_values array.
- * Looks for 'omni_purchase' or 'purchase' action values.
+ * Extract purchase revenue from Meta's action_values array.
+ *
+ * `omni_purchase`, `purchase` and `offsite_conversion.fb_pixel_purchase` (plus
+ * substring variants like `onsite_web_purchase`) report the SAME purchases at
+ * different aggregation levels. Summing them — or substring-matching 'purchase' —
+ * double/triple-counts revenue. Mirror extractConversions: take the maximum of the
+ * exact purchase family instead of the sum.
  */
 export function extractRevenue(actionValues?: Array<{ action_type: string; value: string }>): number {
   if (!actionValues) return 0
-  const revenueTypes = ['omni_purchase', 'purchase', 'offsite_conversion.fb_pixel_purchase']
-  return actionValues
-    .filter(a => revenueTypes.some(t => a.action_type.includes(t)))
-    .reduce((sum, a) => sum + parseFloat(a.value || '0'), 0)
+  const purchaseFamily = ['omni_purchase', 'purchase', 'offsite_conversion.fb_pixel_purchase']
+  const values = actionValues
+    .filter(a => purchaseFamily.includes(a.action_type))
+    .map(a => Number.parseFloat(a.value))
+    .filter(Number.isFinite)
+  return values.length > 0 ? Math.max(0, ...values) : 0
 }
 
 // ============================================

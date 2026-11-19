@@ -45,10 +45,16 @@ export type BreakdownCampaign = {
   platform: 'meta' | 'google'
   spend: number
   roas: number | null
+  roasDataStatus?: 'unavailable'
+  roasUnavailableReason?: string
   cpc: number | null
   impressions: number
   clicks: number
   conversions: number | null
+  conversionsDataStatus?: 'available' | 'unavailable'
+  conversionsUnavailableReason?: string | null
+  /** Google only: advertiser-assigned `metrics.conversions_value` — NOT verified revenue. */
+  providerConversionValue?: number | null
   leadCount: number | null
   costPerLead: number | null
   frequency: number | null
@@ -110,6 +116,57 @@ export async function getLeadAttributionSummary(request: CampaignBreakdownQuery,
 
 const PLATFORM_QUERY: Record<'meta' | 'google', string> = { meta: 'meta', google: 'google_ads,google' }
 
+export type ProviderConversionMetric = {
+  dataStatus: 'available' | 'unavailable'
+  definition: string
+  source: string
+  note: string
+}
+
+/**
+ * Provider conversion contract per platform.
+ *
+ * Meta: before 2026-08-19 (commit 2f5038c13) `extractConversions` summed every
+ * overlapping action family (`lead` + `onsite_conversion.lead_grouped` +
+ * `offsite_conversion.*` + `purchase` …), so one outcome was counted 2–3x.
+ * The extractor is fixed, but daily_spend rows for periods last synced before the
+ * fix still hold the inflated sums (Feb–Jul 2026 ≈ 1 "conversion" per $1 spent).
+ * Meta stays suppressed until those periods are resynced.
+ *
+ * Google: daily_spend.conversions is the single scalar `metrics.conversions`
+ * from GAQL (`getDailySpend` → `processGoogleConnection`). Google de-duplicates it
+ * across conversion actions and counts only actions with
+ * include_in_conversions_metric (primary). No action-family summing happens on
+ * our side, so the Meta overlap defect does not apply.
+ */
+export const PROVIDER_CONVERSION_METRICS: Record<'meta' | 'google', ProviderConversionMetric> = {
+  meta: {
+    dataStatus: 'unavailable',
+    definition: 'suppressed_pending_historical_resync',
+    source: 'meta_insights_actions',
+    note: 'Meta conversion totals are hidden: rows synced before 2026-08-19 summed overlapping lead/purchase action families (double/triple counting). They stay null until historical Meta periods are resynced with the non-overlapping extractor.',
+  },
+  google: {
+    dataStatus: 'available',
+    definition: 'google_ads_metrics_conversions',
+    source: 'google_ads_api.campaign.metrics.conversions',
+    note: 'Google Ads "Conversions" column: de-duplicated by Google across primary conversion actions (include_in_conversions_metric), attributed to the interaction date, and may be fractional under data-driven attribution. What counts as a conversion is each account\'s own conversion-action configuration (forms, calls, etc.).',
+  },
+}
+
+/**
+ * ROAS is not served for any platform.
+ * - Meta: revenue comes from purchase action_values, which shared the overlapping
+ *   action-family defect and has not been resynced.
+ * - Google: revenue is `metrics.conversions_value`, an advertiser-assigned value per
+ *   conversion action — not verified sales revenue. Many dealer accounts use Google's
+ *   default value of 1 per conversion, so value/spend is not a return on ad spend.
+ */
+export const ROAS_UNAVAILABLE_REASONS: Record<'meta' | 'google', string> = {
+  meta: 'meta_revenue_pending_historical_resync',
+  google: 'google_conversion_value_not_verified_revenue',
+}
+
 function normaliseStatus(rawStatus: unknown, endDate: string | null): CampaignEffectiveStatus {
   if (endDate && endDate < new Date().toISOString().slice(0, 10)) return 'ended'
   const raw = String(rawStatus ?? '').trim().toUpperCase()
@@ -139,7 +196,8 @@ function mapCampaign(it: any): BreakdownCampaign {
     cpc: it?.cpc == null ? null : Number(it.cpc),
     impressions: Number(it?.impressions ?? 0),
     clicks: Number(it?.clicks ?? 0),
-    conversions: null,
+    conversions: it?.conversions == null ? null : Number(it.conversions),
+    providerConversionValue: it?.revenue == null ? null : Number(it.revenue),
     leadCount: it?.accountLeadAttribution?.status === 'ambiguous' ? null : Number(it?.leadCount ?? 0),
     costPerLead: it?.costPerLead == null ? null : Number(it.costPerLead),
     frequency: it?.frequency == null ? null : Number(it.frequency),
@@ -336,9 +394,21 @@ export async function getCampaignBreakdown(args: Args, ctx: ToolContext, deps: C
         : !row.impressionShare
           ? 'unavailable' as const
           : diagnosticDataStatus({ supported: true, asOf: row.impressionShareAsOf ?? null, unavailableReason: impressionShareUnavailableReason, now: deps.now?.() })
+      const conversionMetric = PROVIDER_CONVERSION_METRICS[row.platform]
+      const conversionsAvailable = conversionMetric.dataStatus === 'available' && row.conversions != null && Number.isFinite(row.conversions)
       return {
         ...row,
-        conversions: null,
+        conversions: conversionsAvailable ? row.conversions : null,
+        conversionsDataStatus: conversionsAvailable ? 'available' as const : 'unavailable' as const,
+        conversionsUnavailableReason: conversionsAvailable
+          ? null
+          : conversionMetric.dataStatus === 'available' ? 'provider_conversions_not_synced' : conversionMetric.definition,
+        providerConversionValue: row.platform === 'google' && row.providerConversionValue != null && Number.isFinite(row.providerConversionValue)
+          ? row.providerConversionValue
+          : null,
+        roas: null,
+        roasDataStatus: 'unavailable' as const,
+        roasUnavailableReason: ROAS_UNAVAILABLE_REASONS[row.platform],
         // Some Google campaign resources can return metric-shaped values outside
         // the campaign types whose impression-share contract we support. Keep the
         // block absent for those types rather than implying comparable evidence.
@@ -357,10 +427,25 @@ export async function getCampaignBreakdown(args: Args, ctx: ToolContext, deps: C
       return true
     })
     const coverageDelta = await (deps.loadCoverageDeltas ? deps.loadCoverageDeltas(ctx) : loadMarketingCoverageDelta(scope)).catch(() => null)
-    const page = paginateWithCursor(sortCampaigns(filtered, sortBy), args.cursor, args.limit)
-    const note = (sortBy !== 'spend' && current.total > current.campaigns.length)
-      ? `Ranked by ${sortBy} over the ${current.campaigns.length} highest-spend campaigns (of ${current.total}); lower-spend campaigns are not included in this ranking.`
-      : undefined
+    // ROAS is never served (see ROAS_UNAVAILABLE_REASONS), so a ROAS ranking would be
+    // meaningless — rank by spend and say so instead of implying an order.
+    const effectiveSort = sortBy === 'roas' ? 'spend' : sortBy
+    const page = paginateWithCursor(sortCampaigns(filtered, effectiveSort), args.cursor, args.limit)
+    const note = sortBy === 'roas'
+      ? 'ROAS is unavailable (see roasMetric), so campaigns are ranked by spend instead.'
+      : (sortBy !== 'spend' && current.total > current.campaigns.length)
+        ? `Ranked by ${sortBy} over the ${current.campaigns.length} highest-spend campaigns (of ${current.total}); lower-spend campaigns are not included in this ranking.`
+        : undefined
+    const requestedPlatforms: Array<'meta' | 'google'> = args.platform ? [args.platform] : ['meta', 'google']
+    const conversionMetricsByPlatform = Object.fromEntries(requestedPlatforms.map(p => [p, PROVIDER_CONVERSION_METRICS[p]]))
+    const conversionMetric = args.platform
+      ? PROVIDER_CONVERSION_METRICS[args.platform]
+      : {
+          dataStatus: 'partial' as const,
+          definition: 'per_platform',
+          note: 'Google conversions are available; Meta conversions are suppressed pending historical resync. See byPlatform and each campaign\'s conversionsDataStatus.',
+          byPlatform: conversionMetricsByPlatform,
+        }
     const freshness = buildSyncFreshness(current.campaigns.map(row => row.lastSyncedAt), { now: deps.now?.() })
     const health = buildDataHealth({ configured: true, expected: current.total, withData: current.campaigns.length })
     // P-02: untrusted data ⇒ say so and return no figures; keep the coverage universe visible (P-13).
@@ -407,10 +492,18 @@ export async function getCampaignBreakdown(args: Args, ctx: ToolContext, deps: C
         targetCap: 20,
         errors: [...new Set(diagnosticRefreshResults.map(result => result.error).filter(Boolean))].slice(0, 3),
       },
-      conversionMetric: {
+      conversionMetric,
+      roasMetric: {
         dataStatus: 'unavailable',
-        definition: 'suppressed_pending_historical_resync',
-        note: 'Provider conversion totals are hidden until historical Meta rows are resynced with non-overlapping lead/purchase semantics.',
+        definition: 'not_served',
+        byPlatform: Object.fromEntries(requestedPlatforms.map(p => [p, ROAS_UNAVAILABLE_REASONS[p]])),
+        note: 'ROAS is null for every campaign. Meta purchase revenue is pending historical resync; Google conversions_value is advertiser-assigned (often a default of 1 per conversion), not verified revenue. Google rows expose the raw value as providerConversionValue for context only — do not present it as revenue or ROAS.',
+      },
+      costPerLeadMetric: {
+        dataStatus: 'available',
+        definition: 'spend_per_submitted_non_test_lead',
+        source: 'leads table (submitted, non-test, matched by client + campaign) ÷ synced spend',
+        note: 'CPL does not use provider conversions. It is null when no leads matched or when the campaign identity is ambiguous across ad accounts.',
       },
       ...(leadCounts ? {
         leadAttribution: {
@@ -438,7 +531,7 @@ export async function getCampaignBreakdown(args: Args, ctx: ToolContext, deps: C
 
 export const campaignBreakdownTool: AiTool<Args> = {
   name: 'get_campaign_breakdown',
-  description: 'Campaign delivery and performance for a requested date range across Meta and Google: live/effective and provider serving status, normalized plus exact limitation reasons, Google Search impression-share/budget-loss/rank-loss evidence, delivery dates, spend, ROAS, CPC, frequency, submitted leads and CPL. Serving and impression-share families each include their own asOf/dataStatus/unavailableReason, and unsupported campaign types are absent rather than zero-filled. Ordinary staff read stored diagnostics only; a verified owner may refresh up to 20 authorized campaigns. Provider conversions remain null pending historical resync; pagination, comparison, lead-attribution coverage, and platform-scoped freshness halts retain their existing contracts.',
+  description: 'Campaign delivery and performance for a requested date range across Meta and Google: live/effective and provider serving status, normalized plus exact limitation reasons, Google Search impression-share/budget-loss/rank-loss evidence, delivery dates, spend, ROAS, CPC, frequency, submitted leads and CPL. Serving and impression-share families each include their own asOf/dataStatus/unavailableReason, and unsupported campaign types are absent rather than zero-filled. Ordinary staff read stored diagnostics only; a verified owner may refresh up to 20 authorized campaigns. Provider conversions: Google returns Google Ads metrics.conversions (de-duplicated primary conversions); Meta conversions are null pending historical resync (overlapping action families). ROAS is always null with roasUnavailableReason — Meta revenue is unresynced and Google conversions_value is advertiser-assigned, not verified revenue (raw value in providerConversionValue, Google only). CPL = spend ÷ submitted non-test leads from the leads table. Unavailable values are null, never zero. Pagination, comparison, lead-attribution coverage, and platform-scoped freshness halts retain their existing contracts.',
   parameters: params,
   requiredPermission: 'MEDIA_BUYING',
   handler: (a, c) => getCampaignBreakdown(a, c),
