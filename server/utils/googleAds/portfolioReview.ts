@@ -154,7 +154,7 @@ export async function reviewGoogleAdsPortfolio(input: PortfolioReviewInput, read
     accounts,
     notes: [
       'Live Google Ads reads, read-only. Costs are in each account currency.',
-      'Accounts without an exact XeroFlow account mapping are not included; multi-account dealer groups need mapping first.'
+      'Only Google Ads accounts linked to a XeroFlow client (with an exact account mapping) are included.'
     ]
   }
 }
