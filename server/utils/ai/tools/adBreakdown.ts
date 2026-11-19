@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { syncCampaignAdPerformance } from '~~/server/utils/onDemandSync'
 import type { AiTool } from '../toolRegistry'
 import { ok, fail, escapeLike, type ToolContext, type ToolResult } from '../toolContext'
-import { buildDataHealth, buildSyncFreshness, paginateWithCursor, evaluateHalt, PACING_HALT_HOURS } from './responseContract'
+import { buildDataHealth, buildSyncFreshness, paginateWithCursor, evaluatePlatformScopedHalt, PACING_HALT_HOURS } from './responseContract'
 import { resolveMarketingReadScope, requireMarketingReadPermission, loadMarketingCoverageDelta } from '../marketing/readScope'
 import { resolveScopedClient } from '../marketing/clientReads'
 import { readLeadAttribution } from '../marketing/campaignReads'
@@ -240,18 +240,28 @@ export async function getAdBreakdown(args: Args, ctx: ToolContext, deps: AdBreak
       if (bv == null) return -1
       return args.sortBy === 'cpc' || args.sortBy === 'cpl' ? av - bv : bv - av
     })
-    const page = paginateWithCursor(ads, args.cursor, args.limit)
-    const withFrequency = ads.filter(ad => ad.frequency != null).length
-    const health = buildDataHealth({ configured: result.targetCount > 0, available: result.available, expected: ads.length, withData: withFrequency })
-    const freshness = buildSyncFreshness(ads.map(ad => ad.lastSyncedAt), { now: deps.now?.() })
     const coverageDelta = await (deps.loadCoverageDeltas ? deps.loadCoverageDeltas(ctx) : loadMarketingCoverageDelta(scope)).catch(() => null)
-    // P-02: untrusted data ⇒ say so and return no figures; keep the coverage universe visible (P-13).
-    const halt = evaluateHalt(freshness, {
+    // P-02, platform-scoped: an untrusted platform's ads are withheld and named in unavailablePlatforms;
+    // the healthy platform's ads still return. No trustworthy platform ⇒ no figures (coverage stays visible, P-13).
+    const scopedHalt = evaluatePlatformScopedHalt(ads, {
+      platformOf: ad => ad.platform,
+      clientOf: ad => ad.clientName,
+      freshnessOf: rows => buildSyncFreshness(rows.map(ad => ad.lastSyncedAt), { now: deps.now?.() }),
+      platforms: ['meta', 'google'],
+      requestedPlatform: args.platform ?? null,
       haltAfterHours: PACING_HALT_HOURS,
       now: deps.now?.(),
       coverageDelta: coverageDelta as Record<string, { deltaPct?: number | null, staleBaseline?: boolean }> | null,
-      platform: args.platform ?? null,
     })
+    const halt = scopedHalt.halt
+    const platformHalts = scopedHalt.platformAvailability
+      ? { platformAvailability: scopedHalt.platformAvailability, unavailablePlatforms: scopedHalt.unavailablePlatforms }
+      : {}
+    const visibleAds = halt.halted ? ads : scopedHalt.rows
+    const page = paginateWithCursor(visibleAds, args.cursor, args.limit)
+    const withFrequency = visibleAds.filter(ad => ad.frequency != null).length
+    const health = buildDataHealth({ configured: result.targetCount > 0, available: result.available, expected: ads.length, withData: withFrequency })
+    const freshness = buildSyncFreshness(visibleAds.map(ad => ad.lastSyncedAt), { now: deps.now?.() })
     if (halt.halted) {
       return ok({
         period: currentPeriod,
@@ -263,6 +273,7 @@ export async function getAdBreakdown(args: Args, ctx: ToolContext, deps: AdBreak
         haltDetail: halt.haltDetail,
         asOf: halt.asOf,
         ...(coverageDelta ? { coverageDelta } : {}),
+        ...platformHalts,
         ...health,
         coverageField: 'frequency',
         targetCampaignLimit: 20,
@@ -283,6 +294,7 @@ export async function getAdBreakdown(args: Args, ctx: ToolContext, deps: AdBreak
       halted: false,
       ...freshness,
       ...(coverageDelta ? { coverageDelta } : {}),
+      ...platformHalts,
       ...health,
       coverageField: 'frequency',
       conversionMetric: {

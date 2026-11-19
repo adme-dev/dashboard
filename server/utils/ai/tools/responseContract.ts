@@ -240,3 +240,166 @@ export function evaluateHalt(
   }
   return { halted: false }
 }
+
+type CoverageDeltaMap = Record<string, {
+  deltaPct?: number | null
+  staleBaseline?: boolean
+  currentFinishedAt?: string | null
+} | null | undefined> | null | undefined
+
+/**
+ * One platform withheld from a combined (all-platform) read. Never a zero: the platform's rows are
+ * removed from the figures and this entry says why, as of when, and what was withheld.
+ */
+export interface PlatformUnavailable {
+  platform: string
+  status: 'unavailable'
+  reason: HaltReason
+  detail: string
+  /** Freshness of the withheld platform's own rows (lastSyncedAt null when it had none in scope). */
+  asOf: SyncFreshness
+  /** Newest completed sync job the coverage comparison is measured from (coverage halts only). */
+  baselineAsOf: string | null
+  affectedScope: {
+    requestScope: 'all_platforms'
+    rowsWithheld: number
+    clientsWithheld: string[]
+    clientCountWithheld: number
+  }
+}
+
+export type PlatformAvailability = Record<string, { status: 'available', rows: number } | PlatformUnavailable>
+
+export interface PlatformScopedHalt<T> {
+  /** Whole-response verdict: halted only when NO platform with rows in scope is trustworthy. */
+  halt: HaltVerdict
+  /** Rows the response may present — untrusted platforms' rows are removed, never zeroed. */
+  rows: T[]
+  unavailablePlatforms: PlatformUnavailable[]
+  /** Present only for combined (unscoped) reads. */
+  platformAvailability?: PlatformAvailability
+}
+
+const MAX_WITHHELD_CLIENT_NAMES = 25
+
+/**
+ * Platform-scoped P-02 halt for combined reads. Row freshness is still gated across the whole
+ * response (worst-case contract unchanged), but each platform's COVERAGE baseline/drop only withholds
+ * that platform: a stale Meta baseline no longer withholds healthy Google figures (and vice versa).
+ * Withheld platforms are removed from the rows and reported as explicit `unavailable` entries
+ * (reason, asOf, affected scope) — never zeros, never silently omitted. A request scoped to one
+ * platform keeps the single evaluateHalt verdict, and a combined read with no trustworthy platform
+ * still halts the whole response.
+ */
+export function evaluatePlatformScopedHalt<T>(
+  rows: readonly T[],
+  options: {
+    platformOf: (row: T) => string | null | undefined
+    freshnessOf: (rows: T[]) => SyncFreshness
+    clientOf?: (row: T) => string | null | undefined
+    /** Platforms the tool reports on; each is assessed even when it has no rows in scope. */
+    platforms?: readonly string[]
+    requestedPlatform?: string | null
+    haltAfterHours: number
+    now?: Date
+    coverageDelta?: CoverageDeltaMap
+    coverageDropHaltPct?: number
+  },
+): PlatformScopedHalt<T> {
+  const all = [...rows]
+  const haltOptions = {
+    haltAfterHours: options.haltAfterHours,
+    now: options.now,
+    coverageDelta: options.coverageDelta ?? null,
+    coverageDropHaltPct: options.coverageDropHaltPct,
+  }
+  const requested = normalizeHaltPlatform(options.requestedPlatform)
+  if (requested !== null) {
+    return {
+      halt: evaluateHalt(options.freshnessOf(all), { ...haltOptions, platform: requested }),
+      rows: all,
+      unavailablePlatforms: [],
+    }
+  }
+  const combinedFreshness = options.freshnessOf(all)
+  // Row freshness (no_sync_record / stale_sync) keeps its whole-response, worst-case contract —
+  // only COVERAGE halts (baseline / drop) are split per platform.
+  const freshnessVerdict = evaluateHalt(combinedFreshness, { ...haltOptions, coverageDelta: null })
+  if (freshnessVerdict.halted || all.length === 0) {
+    return { halt: freshnessVerdict.halted ? freshnessVerdict : evaluateHalt(combinedFreshness, haltOptions), rows: all, unavailablePlatforms: [] }
+  }
+  const combined = evaluateHalt(combinedFreshness, haltOptions)
+
+  // Rows without a platform cannot be attributed to one platform's sync, so they gate on EVERY
+  // platform's coverage (the original combined behaviour) under the 'unattributed_platform' key.
+  const UNATTRIBUTED = 'unattributed_platform'
+  const keyOf = (row: T) => normalizeHaltPlatform(options.platformOf(row)) ?? UNATTRIBUTED
+  const groups = new Map<string, T[]>()
+  for (const platform of options.platforms ?? []) {
+    const key = normalizeHaltPlatform(platform)
+    if (key) groups.set(key, [])
+  }
+  for (const row of all) {
+    const key = keyOf(row)
+    if (!groups.has(key)) groups.set(key, [])
+    groups.get(key)!.push(row)
+  }
+
+  const coverageFor = (platform: string) => Object.entries(options.coverageDelta ?? {})
+    .find(([key]) => normalizeHaltPlatform(key) === platform)?.[1] ?? null
+  const nowIso = (options.now ?? new Date()).toISOString()
+  const availability: PlatformAvailability = {}
+  const unavailable: PlatformUnavailable[] = []
+  const healthy = new Set<string>()
+  for (const [platform, platformRows] of groups) {
+    const freshness = options.freshnessOf(platformRows)
+    // Coverage-only verdict for this platform: the combined freshness gate above already passed, so
+    // the freshness input is pinned to `now` and only this platform's baseline/drop can halt it.
+    const verdict = evaluateHalt(
+      { ...freshness, lastSyncedAt: nowIso },
+      { ...haltOptions, platform: platform === UNATTRIBUTED ? null : platform },
+    )
+    if (!verdict.halted) {
+      availability[platform] = { status: 'available', rows: platformRows.length }
+      if (platformRows.length > 0) healthy.add(platform)
+      continue
+    }
+    const clients = [...new Set(platformRows
+      .map(row => options.clientOf?.(row))
+      .filter((name): name is string => typeof name === 'string' && name.length > 0))].sort()
+    const coverage = verdict.haltReason === 'stale_coverage_baseline' || verdict.haltReason === 'coverage_drop'
+      ? coverageFor(platform)
+      : null
+    const entry: PlatformUnavailable = {
+      platform,
+      status: 'unavailable',
+      reason: verdict.haltReason,
+      detail: verdict.haltDetail,
+      asOf: freshness,
+      baselineAsOf: coverage?.currentFinishedAt ?? null,
+      affectedScope: {
+        requestScope: 'all_platforms',
+        rowsWithheld: platformRows.length,
+        clientsWithheld: clients.slice(0, MAX_WITHHELD_CLIENT_NAMES),
+        clientCountWithheld: clients.length,
+      },
+    }
+    availability[platform] = entry
+    unavailable.push(entry)
+  }
+
+  if (healthy.size === 0) {
+    // No trustworthy platform: the whole response halts as before, and each culprit is still named.
+    const first = unavailable[0]
+    const halt: HaltVerdict = combined.halted || !first
+      ? combined
+      : { halted: true, haltReason: first.reason, haltDetail: first.detail, asOf: combinedFreshness }
+    return { halt, rows: [], unavailablePlatforms: unavailable, platformAvailability: availability }
+  }
+  return {
+    halt: { halted: false },
+    rows: all.filter(row => healthy.has(keyOf(row))),
+    unavailablePlatforms: unavailable,
+    platformAvailability: availability,
+  }
+}

@@ -5,6 +5,7 @@ import {
   mergeSyncFreshness,
   paginateWithCursor,
   evaluateHalt,
+  evaluatePlatformScopedHalt,
   PACING_HALT_HOURS,
   STALENESS_THRESHOLD_HOURS,
 } from '~~/server/utils/ai/tools/responseContract'
@@ -181,5 +182,72 @@ describe('MCP response contract helpers', () => {
       const all = evaluateHalt(fresh('2026-08-20T11:00:00Z'), { haltAfterHours: PACING_HALT_HOURS, now, coverageDelta, platform: 'all' })
       expect(all.halted && all.haltReason).toBe('coverage_drop')
     })
+  })
+})
+
+describe('evaluatePlatformScopedHalt', () => {
+  const now = new Date('2026-08-20T12:00:00Z')
+  type Row = { platform: string, client: string, syncedAt: string | null }
+  const rows: Row[] = [
+    { platform: 'meta', client: 'Acme', syncedAt: '2026-08-20T10:00:00Z' },
+    { platform: 'google_ads', client: 'Globex', syncedAt: '2026-08-20T11:00:00Z' },
+  ]
+  const run = (input: Row[], extra: Record<string, unknown> = {}) => evaluatePlatformScopedHalt(input, {
+    platformOf: r => r.platform,
+    clientOf: r => r.client,
+    freshnessOf: rs => buildSyncFreshness(rs.map(r => r.syncedAt), { now }),
+    platforms: ['meta', 'google'],
+    haltAfterHours: PACING_HALT_HOURS,
+    now,
+    ...extra,
+  })
+
+  it('withholds only the stale-baseline platform and reports it as unavailable, not zero', () => {
+    const result = run(rows, { coverageDelta: { meta: { staleBaseline: true, currentFinishedAt: '2026-07-29T20:03:26Z' }, google: { deltaPct: 0, staleBaseline: false } } })
+    expect(result.halt).toEqual({ halted: false })
+    expect(result.rows.map(r => r.client)).toEqual(['Globex'])
+    expect(result.unavailablePlatforms).toEqual([{
+      platform: 'meta',
+      status: 'unavailable',
+      reason: 'stale_coverage_baseline',
+      detail: expect.stringContaining('meta'),
+      asOf: expect.objectContaining({ lastSyncedAt: '2026-08-20T10:00:00Z' }),
+      baselineAsOf: '2026-07-29T20:03:26Z',
+      affectedScope: { requestScope: 'all_platforms', rowsWithheld: 1, clientsWithheld: ['Acme'], clientCountWithheld: 1 },
+    }])
+    expect(result.platformAvailability).toEqual({
+      meta: result.unavailablePlatforms[0],
+      google: { status: 'available', rows: 1 },
+    })
+  })
+
+  it('names a stale-baseline platform as unavailable even when it has no rows in scope', () => {
+    const result = run([rows[1]!], { coverageDelta: { meta: { staleBaseline: true }, google: { deltaPct: 0 } } })
+    expect(result.halt.halted).toBe(false)
+    expect(result.rows).toHaveLength(1)
+    expect(result.unavailablePlatforms).toEqual([expect.objectContaining({ platform: 'meta', affectedScope: expect.objectContaining({ rowsWithheld: 0 }) })])
+  })
+
+  it('ignores platforms outside the tool (e.g. linkedin) and halts whole only when no platform with rows is trustworthy', () => {
+    expect(run(rows, { coverageDelta: { linkedin: { staleBaseline: true } } }).halt.halted).toBe(false)
+    const allBad = run(rows, { coverageDelta: { meta: { staleBaseline: true }, google: { deltaPct: -30 } } })
+    expect(allBad.halt.halted).toBe(true)
+    expect(allBad.rows).toEqual([])
+    expect(allBad.unavailablePlatforms.map(u => u.reason).sort()).toEqual(['coverage_drop', 'stale_coverage_baseline'])
+  })
+
+  it('keeps the whole-response freshness gate and the single verdict for platform-scoped requests', () => {
+    const stale = run(rows, { now: new Date('2026-08-22T12:00:00Z'), coverageDelta: null })
+    expect(stale.halt.halted && stale.halt.haltReason).toBe('stale_sync')
+    expect(stale.unavailablePlatforms).toEqual([])
+    const scoped = run(rows, { requestedPlatform: 'meta', coverageDelta: { meta: { staleBaseline: true } } })
+    expect(scoped.halt.halted && scoped.halt.haltReason).toBe('stale_coverage_baseline')
+    expect(scoped.platformAvailability).toBeUndefined()
+  })
+
+  it('gates rows with no platform on every platform\'s coverage', () => {
+    const result = run([...rows, { platform: '', client: 'Mystery', syncedAt: '2026-08-20T11:00:00Z' }], { coverageDelta: { meta: { staleBaseline: true }, google: { deltaPct: 0 } } })
+    expect(result.rows.map(r => r.client)).toEqual(['Globex'])
+    expect(result.unavailablePlatforms.map(u => u.platform).sort()).toEqual(['meta', 'unattributed_platform'])
   })
 })

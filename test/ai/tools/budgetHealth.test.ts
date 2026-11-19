@@ -149,13 +149,29 @@ describe('getBudgetHealth', () => {
       expect(d.coverage.expected).toBe(2)
     })
 
-    it('halts on a coverage drop and reports halted:false otherwise', async () => {
-      const dropped = data(await getBudgetHealth({}, ctx, deps({ loadCoverageDeltas: async () => ({ google: { deltaPct: -9 } }) })))
+    it('halts when every platform\'s coverage dropped and reports halted:false otherwise', async () => {
+      const dropped = data(await getBudgetHealth({}, ctx, deps({ loadCoverageDeltas: async () => ({ google: { deltaPct: -9 }, meta: { deltaPct: -12 } }) })))
       expect(dropped.halted).toBe(true)
       expect(dropped.haltReason).toBe('coverage_drop')
+      expect(dropped.clients).toEqual([])
       const normal = data(await getBudgetHealth({}, ctx, deps()))
       expect(normal.halted).toBe(false)
       expect(normal.truncatedAtSource).toBe(false)
+      expect(normal.unavailablePlatforms).toEqual([])
+    })
+
+    it('platform-scoped halt: one platform\'s coverage drop withholds only that platform, from rows AND totals', async () => {
+      const d = data(await getBudgetHealth({}, ctx, deps({ loadCoverageDeltas: async () => ({ google: { deltaPct: -9 }, meta: { deltaPct: 0 } }) })))
+      expect(d.halted).toBe(false)
+      expect(d.clients.map((c: any) => c.clientName)).toEqual(['Acme'])
+      expect(d.summary).toMatchObject({ totalBudget: 600, totalSpent: 500, clientCount: 1 })
+      // The endpoint's all-platform summary passthrough (atRiskCount etc.) is dropped, not mixed in.
+      expect(d.summary.atRiskCount).toBeUndefined()
+      expect(d.dataStatus).toBe('partial')
+      expect(d.unavailablePlatforms).toEqual([expect.objectContaining({
+        platform: 'google', status: 'unavailable', reason: 'coverage_drop',
+        affectedScope: expect.objectContaining({ rowsWithheld: 1, clientsWithheld: ['Globex'] }),
+      })])
     })
   })
 })

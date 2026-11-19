@@ -44,4 +44,39 @@ describe('check_pacing', () => {
     expect(data.count).toBe(0)
     expect(JSON.stringify(data)).not.toContain('recommendedDailyBudget')
   })
+
+  it('platform-scoped halt: a stale Meta coverage baseline withholds only Meta items and names Meta as unavailable', async () => {
+    const deps: CheckPacingDeps = {
+      now: () => new Date('2026-08-19T06:00:00Z'),
+      load: vi.fn().mockResolvedValue([
+        row(),
+        row({ media_spend_id: 'ms2', client_id: 'c2', client_name: 'Globex', campaign_id: 'cmp2', campaign_name: 'Search', platform: 'google_ads' }),
+      ]),
+      loadCoverageDeltas: async () => ({
+        meta: { deltaPct: null, staleBaseline: true, currentFinishedAt: '2026-07-29T20:03:26Z' },
+        google: { deltaPct: 0, staleBaseline: false, currentFinishedAt: '2026-08-18T21:50:07Z' },
+      }),
+    }
+    const data = ((await checkPacing({}, ctx, deps)) as any).data
+    expect(data.halted).toBe(false)
+    expect(data.items.length).toBeGreaterThan(0)
+    expect(data.items.every((i: any) => i.platform === 'google')).toBe(true)
+    expect(data.items.some((i: any) => i.client === 'Acme')).toBe(false)
+    expect(data.unavailablePlatforms).toEqual([expect.objectContaining({
+      platform: 'meta', status: 'unavailable', reason: 'stale_coverage_baseline', baselineAsOf: '2026-07-29T20:03:26Z',
+      affectedScope: expect.objectContaining({ rowsWithheld: 1, clientsWithheld: ['Acme'] }),
+    })])
+  })
+
+  it('still halts the whole response when the only platform with rows has a stale baseline', async () => {
+    const deps: CheckPacingDeps = {
+      now: () => new Date('2026-08-19T06:00:00Z'),
+      load: vi.fn().mockResolvedValue([row()]),
+      loadCoverageDeltas: async () => ({ meta: { staleBaseline: true }, google: { deltaPct: 0, staleBaseline: false } }),
+    }
+    const data = ((await checkPacing({}, ctx, deps)) as any).data
+    expect(data.halted).toBe(true)
+    expect(data.haltReason).toBe('stale_coverage_baseline')
+    expect(data.items).toEqual([])
+  })
 })

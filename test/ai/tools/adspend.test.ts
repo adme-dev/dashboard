@@ -221,6 +221,35 @@ describe('get_adspend_pacing', () => {
       expect(data.campaigns).toEqual([])
     })
 
+    it('platform-scoped halt: a stale Meta baseline returns Google pacing and an explicit unavailable Meta entry', async () => {
+      const deps: AdspendDeps = {
+        now: NOW,
+        loadCoverageDeltas: async () => ({
+          meta: { deltaPct: null, staleBaseline: true, currentFinishedAt: '2026-07-29T20:03:26Z' },
+          google: { deltaPct: 0, staleBaseline: false, currentFinishedAt: '2026-08-18T08:00:00Z' },
+        }),
+        pacing: vi.fn().mockResolvedValue([
+          campaign({ client: 'Acme', platform: 'meta', spend: 900 }),
+          campaign({ client: 'Globex', platform: 'google', spend: 300 }),
+          campaign({ client: 'Unmapped Meta', platform: 'meta', unattributed: true, budget: null, pacePct: null, status: 'no_budget_set' }),
+        ]),
+      }
+      const data = ((await getAdspendPacing({ status: 'all' }, ctx, deps)) as any).data
+      expect(data.halted).toBe(false)
+      expect(data.campaigns.map((c: any) => [c.client, c.platform])).toEqual([['Globex', 'google']])
+      expect(data.unattributed).toEqual([])
+      expect(data.dataStatus).toBe('partial')
+      expect(data.unavailablePlatforms).toEqual([expect.objectContaining({
+        platform: 'meta', status: 'unavailable', reason: 'stale_coverage_baseline', baselineAsOf: '2026-07-29T20:03:26Z',
+        affectedScope: expect.objectContaining({ requestScope: 'all_platforms', rowsWithheld: 2, clientCountWithheld: 2 }),
+      })])
+      // Unavailable is not zero: Meta spend is neither reported nor summed as 0.
+      expect(data.campaigns.some((c: any) => c.platform === 'meta')).toBe(false)
+      const metaOnly = ((await getAdspendPacing({ status: 'all', platform: 'meta' }, ctx, deps)) as any).data
+      expect(metaOnly.halted).toBe(true)
+      expect(metaOnly.haltReason).toBe('stale_coverage_baseline')
+    })
+
     it('does not halt inside the window and reports halted:false explicitly', async () => {
       const deps: AdspendDeps = {
         now: () => new Date('2026-08-19T07:00:00Z'),
