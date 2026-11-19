@@ -2,19 +2,26 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { parse } from 'yaml'
 
-type WorkflowStep = { uses?: string, with?: Record<string, string>, run?: string, env?: Record<string, string> }
+type WorkflowStep = { name?: string, uses?: string, with?: Record<string, string>, run?: string, env?: Record<string, string> }
 
 const workflow = parse(readFileSync(new URL('../../.github/workflows/ci.yml', import.meta.url), 'utf8'))
 describe('manual ordinary Pages production release', () => {
   it('is an explicit dispatch choice, with successful full CI and production environment protection', () => {
     expect(workflow.on.workflow_dispatch.inputs.release_action.options).toContain('source-deploy')
     const job = workflow.jobs.source_deploy
-    expect(job.needs).toBe('ci')
+    expect(job.needs).toEqual(['ci', 'media-render'])
     expect(job.if).toBe('github.event_name == \'workflow_dispatch\' && github.ref == \'refs/heads/main\' && inputs.release_action == \'source-deploy\'')
     expect(job.environment).toBe('production_deploy')
     expect(workflow.concurrency['cancel-in-progress']).toBe('${{ github.event_name != \'workflow_dispatch\' }}')
     expect(workflow.concurrency.group).toContain('github.event_name == \'workflow_dispatch\' && \'release\' || \'check\'')
     expect(job.concurrency).toEqual({ 'group': 'agency-dashboard-production-release', 'cancel-in-progress': false })
+  })
+  it('requires successful media verification on every manual release path', () => {
+    for (const name of ['source_deploy', 'release_artifact', 'deploy']) {
+      expect(workflow.jobs[name].needs).toEqual(['ci', 'media-render'])
+    }
+    expect(workflow.jobs['media-render'].if).toBeUndefined()
+    expect(workflow.jobs['media-render'].steps.find((step: WorkflowStep) => step.name === 'Media scope').run).toContain('"${{ github.event_name }}" != "pull_request"')
   })
   it('checks out the tested dispatch SHA and executes only the guarded production deployment', () => {
     const steps = workflow.jobs.source_deploy.steps
