@@ -501,12 +501,15 @@ describe('God mode gate inventory', () => {
     // process.env / typed runtimeConfig reads (5 application_governance_bypass rows) for one generic
     // useRuntimeConfig read each plus the helper's own (3 unrelated_configuration rows). These are
     // feature switches, not authority checks; RBAC and God mode bypass registration are unchanged.
-    expect(inventory.rows).toHaveLength(1835)
+    // Governance phase 4 adds GET /api/agency/clients/[id]/change-history: one requirePermission
+    // ('CLIENTS') read gate (application_governance_bypass, same as platform-readiness.get.ts),
+    // followed by the fresh client-scoped reporting authority; no write, no bypass registered.
+    expect(inventory.rows).toHaveLength(1836)
     expect(inventory.counts).toEqual({
       fresh_role_grant_hard_boundary: 90,
       identity_tenant_hard_boundary: 146,
       provider_infrastructure_availability: 218,
-      application_governance_bypass: 1625,
+      application_governance_bypass: 1626,
       ordinary_user_behavior: 322,
       unrelated_configuration: 433
     })
@@ -531,13 +534,18 @@ describe('God mode gate inventory', () => {
     // to shared services. Email dispatch now reads request-bound provider config.
     // The classifier and owner bypass registrations remain unchanged; the reviewed
     // row diff is recorded in the marketing-management verification ledger.
+    // Governance phase 4 read gate (reviewed; see the row-count note above). Excluded from the frozen
+    // pre-existing digests below so those continue to prove nothing else moved.
+    const changeHistoryGate = 'server/api/agency/clients/[id]/change-history.get.ts\tawait requirePermission(event, \'CLIENTS\')\tapplication_governance_bypass'
+    expect(inventory.rows).toContain(changeHistoryGate)
     const canonicalMcpGate = 'server/utils/ai/marketing/departmentEmailOperations.ts\tif (!enabled(\'FIGFLOW_EDM_DRAFT_SAVES_ENABLED\', process.env.FIGFLOW_EDM_DRAFT_SAVES_ENABLED) || (selection && !enabled(\'FIGFLOW_EDM_LIBRARY_ENABLED\', process.env.FIGFLOW_EDM_LIBRARY_ENABLED))) refuse(\'Canonical email drafts are unavailable for this environment\', \'not_found\')\tapplication_governance_bypass'
     expect(inventory.rows).toContain(canonicalMcpGate)
     const editableCopyGates = new Set(['server/api/email/templates/[id]/editable-copy.post.ts\tconst user = input.save ? await requireWriteAccess(event) : await requireAuth(event)\tapplication_governance_bypass', 'server/api/email/templates/[id]/editable-copy.post.ts\tconst fresh = await requireWriteAccess(event)\tapplication_governance_bypass'])
-    expect(createHash('sha256').update(inventory.rows.filter(row => row !== canonicalMcpGate && !editableCopyGates.has(row)).join('\n')).digest('hex')).toBe('5aaf48de2f4712d0243a3a6701ba648f484e7b4a2db4532bea80e9439a0e3c4a')
+    expect(createHash('sha256').update(inventory.rows.filter(row => row !== canonicalMcpGate && row !== changeHistoryGate && !editableCopyGates.has(row)).join('\n')).digest('hex')).toBe('5aaf48de2f4712d0243a3a6701ba648f484e7b4a2db4532bea80e9439a0e3c4a')
     const campaignReadGate = 'server/utils/ai/marketing/departmentEmailOperations.ts\tif (!fresh.permissionGroups?.some(group => [\'ADMIN\', \'MANAGEMENT\'].includes(group))) refuse(\'Agency template access required\', \'forbidden\')\tordinary_user_behavior'
-    expect(createHash('sha256').update(inventory.rows.filter(row => row !== campaignReadGate && row !== canonicalMcpGate && !editableCopyGates.has(row)).join('\n')).digest('hex')).toBe('5b102e0ac6dc5263441dbc70a4b2c98bed0b2be2425be5dde9df43d51e42146a')
-    expect(inventory.digest).toBe('31b890eeb478ac8b41fb0df348ef32c23ee1c349c52fce239aba8bd0592b8126')
+    expect(createHash('sha256').update(inventory.rows.filter(row => row !== campaignReadGate && row !== canonicalMcpGate && row !== changeHistoryGate && !editableCopyGates.has(row)).join('\n')).digest('hex')).toBe('5b102e0ac6dc5263441dbc70a4b2c98bed0b2be2425be5dde9df43d51e42146a')
+    // Whole-inventory digest moves only by the reviewed change-history read gate above.
+    expect(inventory.digest).toBe('17782746cd3b44da351e0707b8531f3da41ca73985016b51f7e34bf6d0d15631')
     expect(inventory.rows).toContain(
       'app/composables/usePageStudioLauncher.ts\tconst config = useRuntimeConfig()\tunrelated_configuration'
     )
