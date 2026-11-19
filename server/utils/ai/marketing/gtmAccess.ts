@@ -1,4 +1,5 @@
 import { createError } from 'h3'
+import { isNativeMarketingContext } from './nativeAuthority'
 import { queryOneFresh, queryRows } from '~~/server/utils/db'
 import type { ToolContext } from '~~/server/utils/ai/toolContext'
 
@@ -43,7 +44,7 @@ export async function assertGtmSite(
       ctx.userId,
       site.client_id,
       'tracking_plan',
-      { scopes: ctx.mcpScopes, requireWriteScope: true }
+      { scopes: ctx.mcpScopes, requireWriteScope: !isNativeMarketingContext(ctx) }
     )
   return site
 }
@@ -106,4 +107,14 @@ export async function listGtmConnectionsInScope(ctx: ToolContext) {
       ctx.clientScope ?? null
     ]
   )
+}
+
+export async function assertGtmContainerForClient(ctx: ToolContext, connectionId: string, clientId: string, containerPath: string) {
+  await assertGtmConnectionForClient(ctx, connectionId, clientId)
+  const mapped = await queryOneFresh(
+    `SELECT b.id FROM gtm_container_bindings b JOIN tracking_sites s ON s.id=b.tracking_site_id
+     WHERE b.connection_id=$1 AND s.client_id=$2 AND b.container_path=$3 AND s.is_active=TRUE LIMIT 1`,
+    [connectionId, clientId, containerPath]
+  )
+  if (!mapped) throw createError({ statusCode: 403, statusMessage: 'Exact client/container mapping required; request an initial mapping for an unbound site or ask an owner to review this remap' })
 }

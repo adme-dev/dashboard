@@ -670,7 +670,7 @@ const featuresCol4 = [
   { title: 'Voice AI', subtitle: 'Voice messages and hands-free chat', icon: 'i-lucide-mic', iconBg: 'bg-amber-500/15', iconColor: 'text-amber-400', to: '/voice-ai' },
   { title: CRM_SEARCH_MARKETING_COPY.navigationTitle, subtitle: CRM_SEARCH_MARKETING_COPY.navigationSubtitle, icon: 'i-lucide-search', iconBg: 'bg-amber-500/15', iconColor: 'text-amber-400', to: '/features/semantic-search' },
   { title: 'Creative Workspace MCP', subtitle: 'Preview: scoped creative discovery', icon: 'i-lucide-panels-top-left', iconBg: 'bg-amber-500/15', iconColor: 'text-amber-400', to: '/features/creative-workspace-mcp' },
-  { title: 'Marketing Staff MCP', subtitle: 'Reporting, inventory repairs and management', icon: 'i-lucide-user-check', iconBg: 'bg-amber-500/15', iconColor: 'text-amber-400', to: '/features/marketing-staff-mcp' },
+  { title: 'Marketing Staff MCP', subtitle: 'Reporting, tracking onboarding and management', icon: 'i-lucide-user-check', iconBg: 'bg-amber-500/15', iconColor: 'text-amber-400', to: '/features/marketing-staff-mcp' },
   { title: 'AI Assistant Connectors', subtitle: 'Staff access and audited owner tools', icon: 'i-lucide-plug', iconBg: 'bg-amber-500/15', iconColor: 'text-amber-400', to: '/features/ai-connectors' },
 ]
 

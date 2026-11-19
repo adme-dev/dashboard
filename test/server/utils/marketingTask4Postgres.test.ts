@@ -25,6 +25,7 @@ import {
   executeApprovedGtmProposal,
   getGtmChangeProposal
 } from '../../../server/utils/tracking/gtmProposals'
+import * as gtmApi from '../../../server/utils/googleTagManagerClient'
 import { recordGtmOwnership } from '../../../server/utils/tracking/gtmOwnership'
 
 const state = vi.hoisted(() => ({
@@ -404,6 +405,279 @@ suite('Task4 real SQL review boundaries', () => {
     state.adsStatus = 'ENABLED'
     state.adsMutations = 0
     state.adsValidations = 0
+  })
+  const initialMapping = async (key = 'initial-mapping') => {
+    await state.pool.query('DELETE FROM gtm_container_bindings WHERE tracking_site_id=$1', [SITE])
+    const ownership = await recordGtmOwnership(ctx(), { siteId: SITE, evidence }, key + '-evidence')
+    return createGtmChangeProposal(ctx(), {
+      action: 'binding', siteId: SITE, ownershipEvidenceId: ownership.id,
+      connectionId: GTM, containerPath: 'accounts/1/containers/2', initialMapping: true
+    }, key)
+  }
+  it('requests first mapping locally, then independently verifies and binds without touching GTM', async () => {
+    const proposal = await initialMapping()
+    expect(proposal.status).toBe('pending_review')
+    expect(state.providerCalls).toBe(0)
+    expect(proposal.review.base).toBeNull()
+    await expect(reviewGtmChangeProposal(ctx(), { proposalId: proposal.id, expectedHash: proposal.request_hash, decision: 'approved' })).rejects.toMatchObject({ statusCode: 403 })
+    await reviewGtmChangeProposal(ctx(A), { proposalId: proposal.id, expectedHash: proposal.request_hash, decision: 'approved' })
+    expect(state.providerCalls).toBe(0)
+    const result = await executeApprovedGtmProposal(ctx(A), { proposalId: proposal.id, expectedHash: proposal.request_hash })
+    expect(result.status).toBe('verified')
+    expect(state.writes).toBe(0)
+    expect(state.publishes).toBe(0)
+    expect((await state.pool.query('SELECT connection_id FROM gtm_container_bindings WHERE tracking_site_id=$1', [SITE])).rows[0].connection_id).toBe(GTM)
+    expect(await getGtmChangeProposal(ctx(), proposal.id)).toMatchObject({ status: 'verified' })
+  })
+  it('first mapping cannot be used to replace a binding or access a foreign client', async () => {
+    const ownership = await recordGtmOwnership(ctx(), { siteId: SITE, evidence }, 'existing-evidence')
+    await expect(createGtmChangeProposal(ctx(), {
+      action: 'binding', siteId: SITE, ownershipEvidenceId: ownership.id, connectionId: GTM,
+      containerPath: 'accounts/1/containers/2', initialMapping: true
+    }, 'replace')).rejects.toMatchObject({ statusCode: 409 })
+    expect(state.providerCalls).toBe(0)
+    await state.pool.query('UPDATE tracking_sites SET client_id=$1 WHERE id=$2', [D, SITE])
+    await expect(initialMapping()).rejects.toMatchObject({ statusCode: 403 })
+    expect(state.providerCalls).toBe(0)
+  })
+  it('first mapping rejects another locally bound client container before credentials', async () => {
+    await state.pool.query('DELETE FROM gtm_container_bindings WHERE tracking_site_id=$1', [SITE])
+    const otherSite = 'abababab-abab-4bab-8bab-abababababab'
+    await state.pool.query('INSERT INTO tracking_sites(id,client_id,name,allowed_origins) VALUES($1,$2,\'Other\',ARRAY[\'https://other.test\'])', [otherSite, D])
+    await state.pool.query(`INSERT INTO gtm_container_bindings(tracking_site_id,connection_id,account_path,account_name,container_path,container_public_id,container_name,bound_by)
+      VALUES($1,$2,'accounts/1','test','accounts/1/containers/2','GTM-TEST','Other',$3)`, [otherSite, GTM, A])
+    await expect(initialMapping()).rejects.toMatchObject({ statusCode: 403 })
+    expect(state.providerCalls).toBe(0)
+  })
+  it('first mapping rechecks requester and original approver revocation before credentials', async () => {
+    const proposal = await initialMapping()
+    await reviewGtmChangeProposal(ctx(A), { proposalId: proposal.id, expectedHash: proposal.request_hash, decision: 'approved' })
+    await state.pool.query('DELETE FROM client_team_assignments WHERE team_member_id=$1', [U])
+    await expect(executeApprovedGtmProposal(ctx(A), { proposalId: proposal.id, expectedHash: proposal.request_hash })).rejects.toMatchObject({ statusCode: 403 })
+    expect(state.providerCalls).toBe(0)
+    await state.pool.query('INSERT INTO client_team_assignments VALUES($1,$2)', [U, C])
+    await state.pool.query('UPDATE team_members SET is_active=FALSE WHERE id=$1', [A])
+    await expect(executeApprovedGtmProposal(ctx(A), { proposalId: proposal.id, expectedHash: proposal.request_hash })).rejects.toMatchObject({ statusCode: 403 })
+    expect(state.providerCalls).toBe(0)
+  })
+  it('first mapping rejects a mismatched provider host without creating a binding', async () => {
+    const proposal = await initialMapping()
+    await reviewGtmChangeProposal(ctx(A), { proposalId: proposal.id, expectedHash: proposal.request_hash, decision: 'approved' })
+    vi.mocked(gtmApi.getGtmContainer).mockResolvedValueOnce({ path: 'accounts/1/containers/2', domainName: ['foreign.test'], usageContext: ['web'] } as gtmApi.GtmContainer)
+    await expect(executeApprovedGtmProposal(ctx(A), { proposalId: proposal.id, expectedHash: proposal.request_hash })).rejects.toMatchObject({ statusCode: 409 })
+    expect((await state.pool.query('SELECT id FROM gtm_container_bindings WHERE tracking_site_id=$1', [SITE])).rows).toEqual([])
+    expect(state.writes).toBe(0)
+  })
+  it('first mapping never overwrites a site binding added during provider verification', async () => {
+    const proposal = await initialMapping()
+    await reviewGtmChangeProposal(ctx(A), { proposalId: proposal.id, expectedHash: proposal.request_hash, decision: 'approved' })
+    const target = await gtmApi.getGtmContainer('test', 'accounts/1/containers/2')
+    vi.mocked(gtmApi.getGtmContainer).mockImplementationOnce(async () => {
+      await state.pool.query(`INSERT INTO gtm_container_bindings(tracking_site_id,connection_id,account_path,account_name,container_path,container_public_id,container_name,bound_by)
+        VALUES($1,$2,'accounts/9','Concurrent','accounts/9/containers/9','GTM-OTHER','Concurrent',$3)`, [SITE, GTM, A])
+      return target
+    })
+    await expect(executeApprovedGtmProposal(ctx(A), { proposalId: proposal.id, expectedHash: proposal.request_hash })).rejects.toMatchObject({ statusCode: 409 })
+    expect((await state.pool.query('SELECT container_path FROM gtm_container_bindings WHERE tracking_site_id=$1', [SITE])).rows[0].container_path).toBe('accounts/9/containers/9')
+    expect(await held()).toBeNull()
+    expect((await state.pool.query('SELECT status FROM gtm_change_proposals WHERE id=$1', [proposal.id])).rows[0].status).toBe('failed')
+  })
+  it('first mapping rejects a foreign container claimed while the provider check is in flight', async () => {
+    const proposal = await initialMapping()
+    await reviewGtmChangeProposal(ctx(A), { proposalId: proposal.id, expectedHash: proposal.request_hash, decision: 'approved' })
+    const target = await gtmApi.getGtmContainer('test', 'accounts/1/containers/2')
+    vi.mocked(gtmApi.getGtmContainer).mockImplementationOnce(async () => {
+      const otherSite = 'adadadad-adad-4dad-8dad-adadadadadad'
+      const otherConnection = 'aeaeaeae-aeae-4eae-8eae-aeaeaeaeaeae'
+      await state.pool.query('INSERT INTO tracking_sites(id,client_id,name,allowed_origins) VALUES($1,$2,\'Other\',ARRAY[\'https://other.test\'])', [otherSite, D])
+      await state.pool.query(`INSERT INTO gtm_connections(id,google_credential_profile_id,google_subject,google_email,connected_by) VALUES($1,$2,'other-subject','other@example.test',$3)`, [otherConnection, GTM, A])
+      await state.pool.query(`INSERT INTO gtm_container_bindings(tracking_site_id,connection_id,account_path,account_name,container_path,container_public_id,container_name,bound_by)
+        VALUES($1,$2,'accounts/1','Other','accounts/1/containers/2','GTM-TEST','Other',$3)`, [otherSite, otherConnection, A])
+      return target
+    })
+    await expect(executeApprovedGtmProposal(ctx(A), { proposalId: proposal.id, expectedHash: proposal.request_hash })).rejects.toMatchObject({ statusCode: 409 })
+    expect((await state.pool.query('SELECT id FROM gtm_container_bindings WHERE tracking_site_id=$1', [SITE])).rows).toEqual([])
+  })
+  it('first mapping rechecks site ownership changed during provider verification', async () => {
+    const proposal = await initialMapping()
+    await reviewGtmChangeProposal(ctx(A), { proposalId: proposal.id, expectedHash: proposal.request_hash, decision: 'approved' })
+    const target = await gtmApi.getGtmContainer('test', 'accounts/1/containers/2')
+    vi.mocked(gtmApi.getGtmContainer).mockImplementationOnce(async () => {
+      await state.pool.query('UPDATE tracking_sites SET client_id=$1 WHERE id=$2', [D, SITE])
+      return target
+    })
+    await expect(executeApprovedGtmProposal(ctx(A), { proposalId: proposal.id, expectedHash: proposal.request_hash })).rejects.toMatchObject({ statusCode: 409 })
+    expect((await state.pool.query('SELECT id FROM gtm_container_bindings WHERE tracking_site_id=$1', [SITE])).rows).toEqual([])
+  })
+  it('staff MCP onboarding catalog and invocation require the real tracking grant and fresh client assignment', async () => {
+    const { resolveMcpStaffContext } = await import('../../../server/utils/ai/mcp/staffAuthority')
+    const { projectMcpToolsForStaff } = await import('../../../server/utils/ai/mcp/marketingPolicy')
+    const { executeTask4StaffTool } = await import('../../../server/utils/ai/mcp/marketingTask4Tools')
+    const staff = await resolveMcpStaffContext(event, U, ['mcp:read', 'mcp:write'])
+    const projection = { tools: [], suiteFlags: {}, role: staff.userRole, scopes: staff.mcpScopes }
+    expect(projectMcpToolsForStaff({ context: projection as unknown as import('../../../server/utils/ai/mcp/project').McpProjectionContext, staff }).map(tool => tool.name)).toContain('get_client_tracking_onboarding')
+    expect(await executeTask4StaffTool('get_client_tracking_onboarding', { clientId: C }, staff, 'guide')).toMatchObject({ ok: true, data: { clientId: C } })
+    expect(await executeTask4StaffTool('get_client_tracking_onboarding', { clientId: D }, staff, 'foreign-guide')).toMatchObject({ ok: false, code: 'forbidden' })
+    await state.pool.query('DELETE FROM client_team_assignments WHERE team_member_id=$1', [U])
+    expect(await executeTask4StaffTool('get_client_tracking_onboarding', { clientId: C }, staff, 'revoked-guide')).toMatchObject({ ok: false, code: 'forbidden' })
+    const unenrolled = { ...staff, marketingCapabilities: [] }
+    expect(projectMcpToolsForStaff({ context: projection as unknown as import('../../../server/utils/ai/mcp/project').McpProjectionContext, staff: unenrolled }).map(tool => tool.name)).not.toContain('get_client_tracking_onboarding')
+    expect(await executeTask4StaffTool('get_client_tracking_onboarding', { clientId: C }, unenrolled, 'no-grant')).toMatchObject({ ok: false, code: 'capability_required' })
+    expect(state.providerCalls).toBe(0)
+  })
+  it('walks a new external client from first mapping through separately reviewed installation and publication', async () => {
+    const { getClientTrackingOnboarding } = await import('../../../server/utils/tracking/marketingOnboarding')
+    const mapping = await initialMapping('full-onboarding')
+    await reviewGtmChangeProposal(ctx(A), { proposalId: mapping.id, expectedHash: mapping.request_hash, decision: 'approved' })
+    await executeApprovedGtmProposal(ctx(A), { proposalId: mapping.id, expectedHash: mapping.request_hash })
+    expect((await getClientTrackingOnboarding(ctx(), C)).sites[0].stage).toBe('ready_to_install')
+    await state.pool.query('UPDATE tracking_sites SET write_key=\'onboarding-test-key\' WHERE id=$1', [SITE])
+    const installation = await createGtmChangeProposal(ctx(), { action: 'installation', siteId: SITE, ownershipEvidenceId: mapping.ownership_evidence_id }, 'full-install')
+    expect((await getClientTrackingOnboarding(ctx(), C)).sites[0].stage).toBe('awaiting_installation_approval')
+    await reviewGtmChangeProposal(ctx(A), { proposalId: installation.id, expectedHash: installation.request_hash, decision: 'approved' })
+    expect((await executeApprovedGtmProposal(ctx(A), { proposalId: installation.id, expectedHash: installation.request_hash })).status).toBe('versioned')
+    expect(state.publishes).toBe(0)
+    expect((await getClientTrackingOnboarding(ctx(), C)).sites[0].stage).toBe('awaiting_publication')
+    const publication = await createGtmChangeProposal(ctx(), { action: 'publish', siteId: SITE, ownershipEvidenceId: mapping.ownership_evidence_id, sourceProposalId: installation.id }, 'full-publish')
+    await expect(executeApprovedGtmProposal(ctx(A), { proposalId: publication.id, expectedHash: publication.request_hash })).rejects.toMatchObject({ statusCode: 409 })
+    expect(state.publishes).toBe(0)
+    await reviewGtmChangeProposal(ctx(A), { proposalId: publication.id, expectedHash: publication.request_hash, decision: 'approved' })
+    expect((await executeApprovedGtmProposal(ctx(A), { proposalId: publication.id, expectedHash: publication.request_hash })).status).toBe('verified')
+    const status = await getClientTrackingOnboarding(ctx(), C)
+    expect(status.sites[0].stage).toBe('tag_verified_in_gtm')
+    expect(status.conversionDelivery).toBe('not_verified')
+    expect(state.publishes).toBe(1)
+    await state.pool.query(`INSERT INTO gtm_change_sets(binding_id,action_type,status,requested_by) VALUES($1,'rollback','rolled_back',$2)`, [installation.binding_id, A])
+    await state.pool.query('UPDATE gtm_container_bindings SET last_verified_at=NOW() WHERE tracking_site_id=$1', [SITE])
+    expect((await getClientTrackingOnboarding(ctx(), C)).sites[0].stage).toBe('live_verification_needed')
+  })
+  it('does not describe missing ownership evidence or expired approval as ready to proceed', async () => {
+    const { getClientTrackingOnboarding } = await import('../../../server/utils/tracking/marketingOnboarding')
+    expect((await getClientTrackingOnboarding(ctx(), C)).sites[0].stage).toBe('ownership_evidence_needed')
+    const mapping = await initialMapping('expired-mapping')
+    await state.pool.query(`INSERT INTO gtm_change_proposals(client_id,site_id,connection_id,action_type,requester_id,desired_state,state_diff,request_hash,base_live_path,base_live_fingerprint,ownership_evidence_id,idempotency_key,expires_at)
+      SELECT client_id,site_id,connection_id,action_type,requester_id,desired_state,state_diff,request_hash,base_live_path,base_live_fingerprint,ownership_evidence_id,'expired-copy',NOW()-INTERVAL '1 hour' FROM gtm_change_proposals WHERE id=$1`, [mapping.id])
+    expect((await getClientTrackingOnboarding(ctx(), C)).sites[0].stage).toBe('proposal_expired')
+  })
+  it('cannot omit initialMapping to use a sibling site connection or read an unproven remap target', async () => {
+    const sibling = 'afafafaf-afaf-4faf-8faf-afafafafafaf'
+    await state.pool.query('INSERT INTO tracking_sites(id,client_id,name,allowed_origins) VALUES($1,$2,\'Sibling\',ARRAY[\'https://example.test\'])', [sibling, C])
+    const own = await recordGtmOwnership(ctx(), { siteId: sibling, evidence }, 'sibling')
+    await expect(createGtmChangeProposal(ctx(), { action: 'binding', siteId: sibling, ownershipEvidenceId: own.id, connectionId: GTM, containerPath: 'accounts/1/containers/99' }, 'no-initial-flag')).rejects.toMatchObject({ statusCode: 409 })
+    const boundOwn = await recordGtmOwnership(ctx(), { siteId: SITE, evidence }, 'bound-own')
+    await expect(createGtmChangeProposal(ctx(), { action: 'binding', siteId: SITE, ownershipEvidenceId: boundOwn.id, connectionId: GTM, containerPath: 'accounts/1/containers/99' }, 'unproven-remap')).rejects.toMatchObject({ statusCode: 403 })
+    expect(state.providerCalls).toBe(0)
+  })
+  it('accepts server-proven native tracking writes but rejects synthetic chat and unsigned MCP writes', async () => {
+    const { resolveNativeMarketingContext } = await import('../../../server/utils/ai/marketing/nativeAuthority')
+    const fakeChat = { ...ctx(), source: 'chat' as const, mcpScopes: undefined }
+    await expect(recordGtmOwnership(fakeChat, { siteId: SITE, evidence }, 'fake-chat')).rejects.toMatchObject({ statusCode: 403 })
+    event.context.fixtureUser = { id: U }
+    try {
+      const native = await resolveNativeMarketingContext(fakeChat)
+      expect(native.mcpScopes).toBeUndefined()
+      const own = await recordGtmOwnership(native, { siteId: SITE, evidence }, 'native-confirmed')
+      await state.pool.query('DELETE FROM gtm_container_bindings WHERE tracking_site_id=$1', [SITE])
+      expect(await createGtmChangeProposal(native, { action: 'binding', siteId: SITE, ownershipEvidenceId: own.id, connectionId: GTM, containerPath: 'accounts/1/containers/2', initialMapping: true }, 'native-mapping')).toMatchObject({ status: 'pending_review' })
+    } finally { delete event.context.fixtureUser }
+    expect(state.providerCalls).toBe(0)
+  })
+  it('rejects shared multi-domain containers rather than granting container-wide staff access', async () => {
+    const proposal = await initialMapping('shared-container')
+    await reviewGtmChangeProposal(ctx(A), { proposalId: proposal.id, expectedHash: proposal.request_hash, decision: 'approved' })
+    const target = await gtmApi.getGtmContainer('test', 'accounts/1/containers/2')
+    vi.mocked(gtmApi.getGtmContainer).mockResolvedValueOnce({ ...target, domainName: ['example.test', 'foreign.test'] })
+    await expect(executeProposal(proposal)).rejects.toMatchObject({ statusCode: 409 })
+    expect(await held()).toBeNull()
+    expect((await state.pool.query('SELECT id FROM gtm_container_bindings WHERE tracking_site_id=$1', [SITE])).rows).toEqual([])
+  })
+  it('a newer native ownership assessment invalidates earlier external installation evidence', async () => {
+    const { p } = await approvedInstallation()
+    await recordGtmOwnership(ctx(), { siteId: SITE, evidence: { ...evidence, siteKind: 'native_driveagent', conversionOwner: 'driveagent' } }, 'new-native-assessment')
+    state.providerCalls = 0
+    await expect(executeProposal(p)).rejects.toMatchObject({ statusCode: 409 })
+    expect(state.providerCalls).toBe(0)
+  })
+  it('does not label an unrelated folder publication or a binding timestamp as pixel verification', async () => {
+    const { getClientTrackingOnboarding } = await import('../../../server/utils/tracking/marketingOnboarding')
+    const { p, own } = await prepare()
+    await executeProposal(p)
+    const pub = await createGtmChangeProposal(ctx(), { action: 'publish', siteId: SITE, ownershipEvidenceId: own.id, sourceProposalId: p.id }, 'folder-publish')
+    await reviewGtmChangeProposal(ctx(A), { proposalId: pub.id, expectedHash: pub.request_hash, decision: 'approved' })
+    await executeProposal(pub)
+    expect((await getClientTrackingOnboarding(ctx(), C)).sites[0].stage).toBe('live_verification_needed')
+    await state.pool.query('UPDATE gtm_container_bindings SET last_verified_at=NOW() WHERE tracking_site_id=$1', [SITE])
+    expect((await getClientTrackingOnboarding(ctx(), C)).sites[0].stage).toBe('live_verification_needed')
+  })
+  it('onboarding detects disconnected identities, changed hosts and nonretryable connection holds', async () => {
+    const { getClientTrackingOnboarding } = await import('../../../server/utils/tracking/marketingOnboarding')
+    await recordGtmOwnership(ctx(), { siteId: SITE, evidence }, 'readiness-evidence')
+    await state.pool.query('UPDATE gtm_connections SET status=\'disconnected\' WHERE id=$1', [GTM])
+    expect((await getClientTrackingOnboarding(ctx(), C)).sites[0].stage).toBe('connection_reconnect_needed')
+    await state.pool.query('UPDATE gtm_connections SET status=\'active\' WHERE id=$1', [GTM])
+    await state.pool.query('UPDATE tracking_sites SET allowed_origins=ARRAY[\'https://changed.test\'] WHERE id=$1', [SITE])
+    expect((await getClientTrackingOnboarding(ctx(), C)).sites[0].stage).toBe('ownership_evidence_needed')
+    await state.pool.query(`UPDATE gtm_connections SET metadata=jsonb_set(metadata,'{reviewedExecution}','"foreign-opaque-operation"'::jsonb) WHERE id=$1`, [GTM])
+    const result = await getClientTrackingOnboarding(ctx(), C)
+    expect(result.sites[0].stage).toBe('inspection_required')
+    expect(JSON.stringify(result)).not.toContain('foreign-opaque-operation')
+  })
+  it('unbound mapping readiness detects a disconnected requested connection', async () => {
+    const { getClientTrackingOnboarding } = await import('../../../server/utils/tracking/marketingOnboarding')
+    await initialMapping('unbound-disconnected')
+    await state.pool.query('UPDATE gtm_connections SET status=\'expired\' WHERE id=$1', [GTM])
+    expect((await getClientTrackingOnboarding(ctx(), C)).sites[0].stage).toBe('connection_reconnect_needed')
+  })
+  it('cannot publish a previously external installer after a current native ownership assessment', async () => {
+    const { p } = await approvedInstallation()
+    await executeProposal(p)
+    const native = await recordGtmOwnership(ctx(), { siteId: SITE, evidence: { ...evidence, siteKind: 'native_driveagent', conversionOwner: 'driveagent' } }, 'publish-native-assessment')
+    state.providerCalls = 0
+    await expect(createGtmChangeProposal(ctx(), { action: 'publish', siteId: SITE, ownershipEvidenceId: native.id, sourceProposalId: p.id }, 'native-publish')).rejects.toMatchObject({ statusCode: 409 })
+    expect(state.providerCalls).toBe(0)
+    expect(state.publishes).toBe(0)
+  })
+  it('onboarding status omits secrets and never reads providers or foreign clients', async () => {
+    const { getClientTrackingOnboarding } = await import('../../../server/utils/tracking/marketingOnboarding')
+    await state.pool.query('UPDATE tracking_sites SET write_key=\'private-write-key\' WHERE id=$1', [SITE])
+    const result = await getClientTrackingOnboarding(ctx(), C)
+    expect(result.sites).toMatchObject([{ siteId: SITE, stage: 'ownership_evidence_needed' }])
+    expect(result.guide).toContain('initialMapping')
+    expect(JSON.stringify(result)).not.toContain('private-write-key')
+    expect(result.conversionDelivery).toBe('not_verified')
+    await expect(getClientTrackingOnboarding(ctx(), D)).rejects.toMatchObject({ statusCode: 403 })
+    expect(state.providerCalls).toBe(0)
+  })
+  it('onboarding reports site setup, mapping approval and compiled-version publication as separate steps', async () => {
+    const { getClientTrackingOnboarding } = await import('../../../server/utils/tracking/marketingOnboarding')
+    const proposal = await initialMapping()
+    expect((await getClientTrackingOnboarding(ctx(), C)).sites[0].stage).toBe('awaiting_mapping_approval')
+    await state.pool.query('UPDATE gtm_change_proposals SET status=\'rejected\' WHERE id=$1', [proposal.id])
+    expect((await getClientTrackingOnboarding(ctx(), C)).sites[0].stage).toBe('connection_needed')
+    await state.pool.query('UPDATE tracking_sites SET is_active=FALSE WHERE id=$1', [SITE])
+    expect((await getClientTrackingOnboarding(ctx(), C)).stage).toBe('site_setup_needed')
+  })
+  it('initial mapping requires signed write consent and cannot be approved by a marketing manager alone', async () => {
+    await state.pool.query('DELETE FROM gtm_container_bindings WHERE tracking_site_id=$1', [SITE])
+    const ownership = await recordGtmOwnership(ctx(), { siteId: SITE, evidence }, 'scope-evidence')
+    await expect(createGtmChangeProposal({ ...ctx(), mcpScopes: ['mcp:read'] }, {
+      action: 'binding', siteId: SITE, ownershipEvidenceId: ownership.id,
+      connectionId: GTM, containerPath: 'accounts/1/containers/2', initialMapping: true
+    }, 'no-write')).rejects.toMatchObject({ statusCode: 403 })
+    const proposal = await initialMapping()
+    const role = 'acacacac-acac-4cac-8cac-acacacacacac'
+    await state.pool.query('INSERT INTO custom_roles(id,slug) VALUES($1,\'tracking-marketing-reviewer\')', [role])
+    await state.pool.query('INSERT INTO role_permission_groups VALUES($1,\'MARKETING_MANAGEMENT\')', [role])
+    await state.pool.query('UPDATE team_members SET custom_role_id=$1 WHERE id=$2', [role, A])
+    const env = event.context.cloudflare.env
+    const previous = env.MCP_MARKETING_STAFF_GRANTS
+    env.MCP_MARKETING_STAFF_GRANTS = JSON.stringify({ [U]: ['tracking_plan'], [A]: ['tracking_plan', 'department_management'] })
+    try {
+      await expect(reviewGtmChangeProposal(ctx(A), { proposalId: proposal.id, expectedHash: proposal.request_hash, decision: 'approved' })).rejects.toMatchObject({ statusCode: 403 })
+      expect(state.providerCalls).toBe(0)
+      const { listGtmReviewProposals } = await import('../../../server/utils/tracking/gtmProposals')
+      expect(await listGtmReviewProposals(ctx(A))).toEqual([])
+    } finally { env.MCP_MARKETING_STAFF_GRANTS = previous }
   })
   it('denies revoked assignment and wrong customer before credentials', async () => {
     await expect(

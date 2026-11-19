@@ -315,7 +315,7 @@ plan at `/agency/marketing/reviews/google-ads`. Owner direct execution remains
 separate. `reporting` also permits scoped Ads reads; every local mutation requires
 signed `mcp:write` and current role/client access.
 
-With `tracking_plan`, staff inspect assigned GTM site inventories, record
+With `tracking_plan`, staff use `get_client_tracking_onboarding` for the onboarding guide and stored client/site setup stages, including unbound sites. Explicit `initialMapping: true` on a binding proposal allows a local first-mapping request without provider reads; an independent owner/admin must approve and execute it. Google OAuth and missing tracking-site creation remain operator steps. See [new client tracking setup](runbooks/marketing-tracking-onboarding.md). Staff inspect assigned GTM site inventories, record
 ownership evidence and prepare local binding/workspace/installation/publish/
 rollback proposals. Provider workspace creation and publication require separate
 reviews at `/agency/marketing/reviews/gtm`. The bounded Google tag, GA4 event and

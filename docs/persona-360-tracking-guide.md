@@ -319,6 +319,10 @@ events, point-in-time features, trends, market intelligence, AI, mobile, voice,
 and MCP. It must consume versioned identity decisions; it must not independently
 guess identity or bypass tenant, consent, and purpose controls.
 
+## Marketing tracking onboarding (19 November 2026)
+
+The published New client tracking setup skill and `get_client_tracking_onboarding` provide a scoped setup guide/status read, including unbound sites. First mapping requests use explicit `initialMapping: true` on the existing binding proposal, without provider reads. Independent owner/admin review and execution verifies the exact host/container and creates only the local mapping. Google OAuth/site creation remain operator prerequisites. Follow [the onboarding runbook](runbooks/marketing-tracking-onboarding.md); separate mapping, version compilation, publication, live browser verification and customer delivery. Graph/wiki freshness limitations are recorded there.
+
 ## Independently reviewed GTM changes (27 October 2026)
 
 Staff tracking grants permit scoped inventory and local proposals. They do not

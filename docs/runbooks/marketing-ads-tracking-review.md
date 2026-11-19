@@ -12,9 +12,8 @@ diff, risk, expiry and tracking ownership evidence. Approve and execute separate
 Execution rechecks requester/reviewer authority and target ownership. Unknown
 outcomes are held; inspect provider evidence rather than repeating the operation.
 
-GTM needs an existing client-to-connection mapping established by the owner.
-Staff inventories return only assigned bindings. A binding proposal can select
-an unbound web container only after exact ownership review; application checks
+GTM inventory reads require an existing client-to-connection mapping. For the first mapping, staff can submit `propose_gtm_container_binding` with explicit `initialMapping: true` and operator-provided connection/container identifiers, without provider reads. An independent owner/admin must approve and execute this local request; execution verifies the exact host/web container and never overwrites a concurrent binding. Google OAuth and tracking-site creation retain their existing operator workflows. Staff inventories return only assigned bindings. See [tracking onboarding](marketing-tracking-onboarding.md). An explicit first-mapping proposal can select
+an unbound web container only after exact ownership review and independent owner/admin approval; ordinary remaps require an already established exact client/container mapping. Shared containers declaring unrelated provider domains are rejected for first mappings; application checks
 its public domain against the site's explicit HTTPS allowed origins. Other
 clients' containers are rejected before credentials. No connection-name fallback
 establishes ownership.
