@@ -38,8 +38,10 @@ const SHARED_MEMORY_WRITES = ['propose_team_memory']
 const OPS_AUTOPILOT_READS = ['check_pacing', 'check_brief_completeness']
 // Read-coverage expansion (sub-project 1): CRM/leads/listening/inbox/EDM reads — auto-projected over MCP.
 const READ_COVERAGE_TOOLS = ['search_crm', 'get_crm_pipeline', 'get_leads', 'get_social_listening', 'get_social_inbox', 'get_email_campaign_performance', 'recommend_social_news']
+// Marketing automation governance phase 4: read-only per-client change timeline (dormant behind a committed switch).
+const GOVERNANCE_READS = ['get_client_change_history']
 // remember = immediate personal-memory mutation; MCP coordinates it transactionally without confirmation.
-const ALL = [...READ_TOOLS, ...SLICE2_TOOLS, ...MEDIA_BUYER_TOOLS, ...MEDIA_BUYER_OPERATIONS, ...WRITE_TOOLS, ...DELIVERY_TOOLS, ...DELIVERY_READS, ...CRM_WRITES, ...CRM_READS, ...FINANCE_WRITES, ...CREATIVE_READS, ...CREATIVE_WRITES, ...SHARED_MEMORY_WRITES, ...OPS_AUTOPILOT_READS, ...READ_COVERAGE_TOOLS, 'remember']
+const ALL = [...READ_TOOLS, ...SLICE2_TOOLS, ...MEDIA_BUYER_TOOLS, ...MEDIA_BUYER_OPERATIONS, ...WRITE_TOOLS, ...DELIVERY_TOOLS, ...DELIVERY_READS, ...CRM_WRITES, ...CRM_READS, ...FINANCE_WRITES, ...CREATIVE_READS, ...CREATIVE_WRITES, ...SHARED_MEMORY_WRITES, ...OPS_AUTOPILOT_READS, ...READ_COVERAGE_TOOLS, ...GOVERNANCE_READS, 'remember']
 
 describe('assembled tool registry (Slices 1–2 + memory + media-buyer + Phase-2 writes)', () => {
   it('contains the 17 read tools + the write tools + remember', () => {

@@ -195,7 +195,8 @@ describe('authoritative registered MCP suite projection', () => {
     const executions = resolveGodModeMcpExecutions(ownerContext)
 
     expect(manifests).toHaveLength(executions.length)
-    expect(manifests).toHaveLength(174)
+    // 174 → 175 (after #932): get_client_change_history (governance phase 4, read-only client change timeline; dormant switch).
+    expect(manifests).toHaveLength(175)
     expect(new Set(executions.map(execution => execution.name)).size).toBe(executions.length)
     expect(manifests.map(manifest => manifest.name)).toContain('list_video_source_assets')
     expect(manifests.map(manifest => manifest.name)).toContain('propose_promote_creative_asset')

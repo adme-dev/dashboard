@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { onMounted } from 'vue'
 import { CalendarDate, getLocalTimeZone, today } from '@internationalized/date'
 import { format } from 'date-fns'
 import { apiErrorDescription } from '~/utils/apiError'
@@ -214,11 +215,26 @@ const activeTab = ref('overview')
 const showFinancialAllocation = ref(false)
 const qrGrid = ref<{ refresh: () => void, openNew: () => void }>()
 
+// Change history tab: dormant until the server switch (shared/changeHistoryDefaults.ts) is on.
+// The endpoint answers `{ enabled: false }` cheaply while dormant, so the tab stays hidden.
+const changeHistoryEnabled = ref(false)
+onMounted(async () => {
+  try {
+    const probe = await apiFetch<{ enabled: boolean }>(`/api/agency/clients/${clientId}/change-history?limit=1`)
+    changeHistoryEnabled.value = probe?.enabled === true
+  } catch {
+    changeHistoryEnabled.value = false
+  }
+})
+
 const reportingTabs = computed(() => [
   { label: 'Website', value: 'website', icon: 'i-lucide-radio' },
   { label: 'QR Codes', value: 'qr', icon: 'i-lucide-qr-code' },
   ...(canAccessMediaBuying.value
     ? [{ label: 'Measurement', value: 'measurement', icon: 'i-lucide-activity' }]
+    : []),
+  ...(changeHistoryEnabled.value
+    ? [{ label: 'Change history', value: 'history', icon: 'i-lucide-history' }]
     : [])
 ])
 
@@ -1366,6 +1382,10 @@ async function saveKpiTargets() {
           <div v-if="activeTab === 'qr'" class="space-y-4">
             <div class="flex justify-end"><UButton icon="i-lucide-plus" @click="qrGrid?.openNew()">New QR code</UButton></div>
             <QrGrid ref="qrGrid" :client-id="clientId" />
+          </div>
+
+          <div v-if="activeTab === 'history' && changeHistoryEnabled">
+            <ClientsClientChangeHistory :client-id="clientId" @availability="changeHistoryEnabled = $event" />
           </div>
 
           <div v-if="activeTab === 'measurement' && canAccessMediaBuying">

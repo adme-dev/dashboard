@@ -98,6 +98,8 @@ export const MCP_STAFF_TOOL_POLICY: Readonly<Record<string, StaffToolPolicyEntry
   // Pinned to the caller's own assigned tasks for non-manager legacy roles (tasks.ts).
   get_tasks: Object.freeze({ capability: null, status: 'reviewed', clientScoped: false, legacyRoleSensitive: true }),
   get_client_overview: pilotRead,
+  // Governance phase 4: read-only client change timeline; `reporting` grant + covered clients only.
+  get_client_change_history: pilotRead,
   ...Object.fromEntries(MARKETING_PILOT_READ_TOOLS.map(name => [name, pilotRead])),
   ...Object.fromEntries(SOCIAL_MCP_TOOL_NAMES.map(name => [name, socialDraft]))
 })
