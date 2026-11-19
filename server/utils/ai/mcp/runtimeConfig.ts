@@ -7,6 +7,7 @@
 import type { H3Event } from 'h3'
 import type { McpSuiteFlags } from './project'
 import { parseMarketingStaffGrants, type MarketingStaffGrantConfig } from './marketingPolicy'
+import { ADS_GOVERNANCE_COMPACT_KEY } from '~~/shared/adsGovernanceDefaults'
 
 export interface McpRuntimeConfig {
   /** MCP_SERVER_ENABLED — the expose-layer master switch. */
@@ -46,10 +47,15 @@ function parseSuiteConfig(raw: unknown): Partial<McpSuiteFlags> {
   try {
     const value: unknown = JSON.parse(raw)
     if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+    const flags: Partial<McpSuiteFlags> = {}
     for (const [key, enabled] of Object.entries(value)) {
+      // Nested ads-governance switches share this compact variable (Pages text-binding cap) but are
+      // never suite flags; server/utils/adsGovernance/config.ts parses them on its own, fail closed.
+      if (key === ADS_GOVERNANCE_COMPACT_KEY) continue
       if (!Object.prototype.hasOwnProperty.call(SUITE_BINDINGS, key) || typeof enabled !== 'boolean') return {}
+      flags[key as keyof McpSuiteFlags] = enabled
     }
-    return value as Partial<McpSuiteFlags>
+    return flags
   } catch {
     return {}
   }

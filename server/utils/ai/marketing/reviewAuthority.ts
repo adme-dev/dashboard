@@ -26,6 +26,8 @@ export interface IndependentReviewer {
   id: string
   role: string
   name: string | null
+  /** Fresh permission groups, so callers can apply narrower governance-tier checks. */
+  groups: readonly string[]
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -109,7 +111,7 @@ export async function requireIndependentMarketingReviewer(
   if (!await freshContextCoversClient(ctx, input.clientId, options.clientIsActive)) {
     forbidden('MARKETING_CLIENT_NOT_AVAILABLE')
   }
-  return { id: reviewerId, role: ctx.userRole, name: ctx.userName ?? null }
+  return { id: reviewerId, role: ctx.userRole, name: ctx.userName ?? null, groups: [...(ctx.permissionGroups ?? [])] }
 }
 
 /** True for definitive denials (revocation); false for transient authority-storage failures. */

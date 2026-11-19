@@ -57,7 +57,8 @@ beforeEach(() => {
     marketingCapabilities: state.requesterRevoked && id === 'requester' ? [] : context().marketingCapabilities,
     assistantReadOnly: state.readOnly
   }))
-  state.plan = { id: ids.plan, clientId: ids.client, actorId: 'requester', requestHash: ids.hash,
+  // `operation` is always present on stored plans (schema-validated); it decides the governance risk tier.
+  state.plan = { id: ids.plan, clientId: ids.client, actorId: 'requester', requestHash: ids.hash, operation: 'add_negative_keywords',
     reviewPolicy: 'delegated_marketing', reviewedBy: 'reviewer', status: 'approved', expiresAt: '2099-01-01T00:00:00Z' }
   state.gtm = { id: ids.plan, client_id: ids.client, requester_id: 'requester', site_id: 'site',
     binding_id: 'binding', connection_id: 'connection', ownership_evidence_id: 'evidence', action_type: 'workspace',

@@ -34,7 +34,8 @@ beforeEach(() => {
 
   m.capability.mockResolvedValue({ permissionGroups: ['MARKETING_MANAGEMENT'] })
 
-  m.review.mockResolvedValue({ id: peer })
+  // Governance tier gate (medium): the fresh reviewer must hold manager authority.
+  m.review.mockResolvedValue({ id: peer, role: 'account_manager', groups: ['MARKETING_MANAGEMENT'] })
 
   m.apply.mockResolvedValue({ ok: true, data: { updated: 1 } })
 
@@ -113,4 +114,30 @@ it('invalidates affected reporting caches only after commit and preserves a succ
   expect(committedAtInvalidation).toBe(true)
 
   expect(m.invalidate).toHaveBeenCalledWith(ctx.event, { clientId, period: '2026-10', platform: 'google_ads', tenantId: 'org-tenant' })
+})
+it('stores new proposals with the configurable business-day-aware expiry (default 72 h, not 24 h)', async () => {
+  m.query.mockImplementation(async (sql: string) => ({ rows: sql.includes('FROM media_spend') ? [{ id: proposalId, budget_allocated: 10 }] : sql.includes('INSERT INTO ai_pending_actions') ? [row] : [], rowCount: 1 }))
+
+  const before = Date.now()
+
+  expect(await executeDepartmentBudgetProposal('marketing_propose_budget_allocations', row.resolved_payload.input, ctx, key, digest)).toMatchObject({ ok: true })
+
+  const insert = m.query.mock.calls.find(([sql]) => sql.includes('INSERT INTO ai_pending_actions'))!
+
+  expect(insert[0]).not.toContain('24 hours')
+
+  expect(Date.parse(insert[1][3]) - before).toBeGreaterThanOrEqual(72 * 3_600_000 - 5_000)
+})
+it('medium-tier gate: a reviewer without manager authority cannot approve or authorise execution', async () => {
+  m.review.mockResolvedValue({ id: peer, role: 'media_buyer', groups: ['MEDIA_BUYING'] })
+
+  expect(await executeDepartmentBudgetProposal('marketing_review_budget_allocations', { ...args(), decision: 'approve', reason: 'Approved monthly budget' }, ctx, key, digest)).toMatchObject({ ok: false })
+
+  expect(m.query.mock.calls.some(([sql]) => /^\s*UPDATE/.test(sql))).toBe(false)
+
+  row.resolved_payload.review = { id: peer, decision: 'approve', revision, reason: 'Approved' }
+
+  expect(await executeDepartmentBudgetProposal('marketing_set_budget_allocations', args(), ctx, key, digest)).toMatchObject({ ok: false })
+
+  expect(m.apply).not.toHaveBeenCalled()
 })

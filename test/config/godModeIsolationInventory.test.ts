@@ -150,7 +150,10 @@ const API_INVENTORY = {
   // T10 adds two scoped reads and four guarded production writes; no authority bypass.
   // Audio import adds one write-access, project-scoped multipart write in the existing
   // media-upload God mode family; no authority bypass.
-  totalRouteFiles: 2394,
+  // Ads automation governance (phase 2) adds ONE read-only GET
+  // (server/api/agency/marketing/automation/governance.get.ts): requireAuth + fresh staff authority,
+  // dormant behind ADS_GOVERNANCE_DEFAULTS.automation; no mutation route, no God mode family.
+  totalRouteFiles: 2395,
   mutationRouteFiles: 1309,
   explicitlyGuardedMutationFiles: 436,
   guardedMutationFilesWithTransactionCall: 58
@@ -202,7 +205,8 @@ describe('God mode route isolation inventory', () => {
     expect(mechanicalInventory()).toEqual(API_INVENTORY)
     expect(API_INVENTORY).toEqual({
       // T10 adds two scoped reads and four guarded production writes; no authority bypass.
-  totalRouteFiles: 2394,
+      // +1 read-only ads-governance GET (see API_INVENTORY note); mutation counts unchanged.
+      totalRouteFiles: 2395,
       mutationRouteFiles: 1309,
       explicitlyGuardedMutationFiles: 436,
       guardedMutationFilesWithTransactionCall: 58
