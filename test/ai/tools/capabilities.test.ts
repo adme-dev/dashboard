@@ -85,7 +85,7 @@ describe('get_capabilities', () => {
 
     expect(result.ok).toBe(true)
     const tools = (result as any).data.tools as Array<{ name: string, mode: string }>
-    expect(tools).toHaveLength(171)
+    expect(tools).toHaveLength(173)
     expect(tools).toContainEqual({ name: 'get_creative_workspace_capabilities', mode: 'read' })
     expect(tools).toContainEqual({ name: 'search_creative_workspace', mode: 'read' })
     expect(tools).toContainEqual({ name: 'run_adspend_sync', mode: 'inspection' })
