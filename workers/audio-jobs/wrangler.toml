@@ -78,7 +78,7 @@ dead_letter_queue = "banner-render-dlq"
 name = "audio-render"
 class_name = "RenderContainer"
 # Qualify once, deploy exactly those bytes; do not rebuild at deployment time.
-image = "registry.cloudflare.com/a5b299b3ad15c1b5b895dc66f9357b17/xeroflow-render@sha256:c6ddfd8e42e4f98a258517c0835e96eecace0ca2ca485ee23e48b2167caf0f7e"
+image = "registry.cloudflare.com/a5b299b3ad15c1b5b895dc66f9357b17/xeroflow-render@sha256:2cdb9b603af1c4b01afcd20eaff09d74b4d607b7db213916ddb61bc21a4597e6"
 max_instances = 6
 # Banner frame capture needs a full vCPU to finish larger formats within the
 # Worker's ten-minute container request deadline; audio mixing also needs memory.

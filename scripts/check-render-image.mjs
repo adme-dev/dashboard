@@ -28,7 +28,8 @@ export function verifyRenderImage({ config, receipt, contextHash }) {
   const image = containers[0].match(/^image\s*=\s*"([^"]+)"\s*$/m)?.[1]
   if (image !== receipt.image) throw new Error('Configured render image does not match qualified image')
   if (receipt.contextSha256 !== contextHash) throw new Error('Render context changed: build, verify and qualify a new image before release')
-  if (!/^[a-f0-9]{40}$/.test(receipt.sourceCommit) || !receipt.checks?.includes('packaged-http-service') || !receipt.checks?.includes('real-media-13')) throw new Error('Missing render qualification provenance')
+  const requiredChecks = ['packaged-http-service', 'real-media-13', 'sigterm-audio-and-chromium-drain', 'sigint-audio-and-chromium-drain']
+  if (!/^[a-f0-9]{40}$/.test(receipt.sourceCommit) || !Array.isArray(receipt.checks) || !requiredChecks.every(check => receipt.checks.includes(check))) throw new Error('Missing render qualification provenance')
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

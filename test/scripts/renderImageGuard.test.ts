@@ -3,7 +3,7 @@ import { verifyRenderImage, renderContextHash } from '../../scripts/check-render
 import { readFileSync } from 'node:fs'
 
 const image = `registry.cloudflare.com/a5b299b3ad15c1b5b895dc66f9357b17/xeroflow-render@sha256:${'a'.repeat(64)}`
-const receipt = { image, contextSha256: 'context', sourceCommit: 'b'.repeat(40), checks: ['packaged-http-service', 'real-media-13'] }
+const receipt = { image, contextSha256: 'context', sourceCommit: 'b'.repeat(40), checks: ['packaged-http-service', 'real-media-13', 'sigterm-audio-and-chromium-drain', 'sigint-audio-and-chromium-drain'] }
 const config = `name = "audio-jobs"\n[[containers]]\nclass_name = "RenderContainer"\nimage = "${image}"\n[[durable_objects.bindings]]\nname = "RENDER"`
 const verify = (patch = {}) => verifyRenderImage({ config, receipt, contextHash: 'context', ...patch })
 describe('qualified render image admission', () => {

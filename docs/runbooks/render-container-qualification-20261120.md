@@ -19,6 +19,16 @@ audio timeline and video composition, exact-copy acceptance/mismatch, Chromium
 overlays, frame-seeked banner MP4 pixels, full output decoding, and recovery
 after rejected inputs. It creates only disposable synthetic media.
 
+The added rollout test exposed a real defect: SIGTERM immediately terminated
+an accepted HTTP render request (ECONNRESET). The server now closes its listener
+and lets accepted requests, child processes and temporary-file cleanup finish.
+The original image failed the test; the repaired image completes the request
+and exits cleanly. Independent review then found Puppeteer's own signal
+handlers still closed Chromium. The regression was reproduced with Chromium
+actively rendering. All three launch sites now defer SIGTERM/SIGINT to the
+server. Both signal cases pass with concurrent accepted audio and Chromium
+jobs. Cloudflare retains its platform termination deadline.
+
 CI runs that script alongside the three existing real-media tests. Its path
 filter now includes shared contracts and verification scripts. All three
 manual release paths depend on the media job, which runs on release dispatches
@@ -33,14 +43,17 @@ qualification receipt, not a cryptographic test attestation.
 
 ## Qualification evidence
 
-- Source at build: `8b6d8c04af144f56fed5e11d8eb69e0dbf7687ae`.
+- Source at build: `525a7d9942e0f24a70e98b536442d1f198221d40`.
 - Fresh Docker build: Linux amd64; FFmpeg `5.1.9-0+deb12u1`.
 - Exact built/pushed image digest:
-  `sha256:c6ddfd8e42e4f98a258517c0835e96eecace0ca2ca485ee23e48b2167caf0f7e`.
+  `sha256:2cdb9b603af1c4b01afcd20eaff09d74b4d607b7db213916ddb61bc21a4597e6`.
 - Existing real-media suite: 13 passed, none skipped.
-- Packaged HTTP service acceptance: passed, including actual Chromium output.
-- Wider audio/banner/video and guard suite: 1,774 passed, one existing skip;
-  a final guard case added afterward passed in its six-case focused run.
+- Packaged HTTP service acceptance: passed, including actual Chromium output
+  and accepted audio/Chromium completion after SIGTERM and SIGINT.
+- Final wider audio/banner/video and release-guard suite: 1,779 passed, one
+  existing skip (two workers). A preceding highly parallel run hit a five-second
+  timeout in one brand-kit reference test; its focused rerun and the final
+  bounded suite passed. The real-media tests were run separately against the image.
 - Worker bundle dry-run passed before and after registry pinning.
 - Independent source review: no blocking/high/medium findings.
 
@@ -79,7 +92,11 @@ both after failures. Do not replay customer jobs to test a release.
 
 Pre-change Cloudflare readback: `audio-render` application
 `a037cecd-2a4a-4758-a915-205696996d7b`, version14, updated9November;
-previous registry image is recorded in the receipt. Worker deployment history
+previous registry image is recorded in the receipt. The active Worker baseline
+was `dee29c29-ef86-459b-a349-09f2185d0e78`, deployment
+`a76e6a3a-5b63-4358-9a78-d2f3a953b4ba`. Its private exact-copy measurement
+endpoint returned200 with zero findings through a local authenticated remote
+service binding. No queue/customer job or R2 object was created. Worker deployment history
 and Container history differ and must not be conflated.
 
 The pinned Containers SDK is0.3.7. Official source tracks in-flight requests
@@ -91,6 +108,7 @@ generation acceptance are distinct from these bounded service checks.
 ## Official references checked
 
 - [Cloudflare image management](https://developers.cloudflare.com/containers/guides/image-management/): push tested images and use digest references.
+- [Cloudflare rollouts](https://developers.cloudflare.com/containers/configuration/rollouts/): SIGTERM, draining and separate rollout status.
 - [Cloudflare deployment guide](https://developers.cloudflare.com/containers/guides/deploy/): Worker/image deployment order, non-transactional rollout and separate verification.
 - [Official Containers SDK source](https://github.com/cloudflare/containers/blob/main/src/lib/container.ts) and [changelog](https://github.com/cloudflare/containers/blob/main/CHANGELOG.md): in-flight activity and lifecycle fixes; source checked against locked0.3.7.
 - [Cloudflare issue138](https://github.com/cloudflare/containers/issues/138): reported long-FFmpeg termination; an issue report is not proof this application has that failure.

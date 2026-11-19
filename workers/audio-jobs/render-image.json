@@ -1,14 +1,16 @@
 {
   "schemaVersion": 1,
-  "image": "registry.cloudflare.com/a5b299b3ad15c1b5b895dc66f9357b17/xeroflow-render@sha256:c6ddfd8e42e4f98a258517c0835e96eecace0ca2ca485ee23e48b2167caf0f7e",
-  "sourceCommit": "8b6d8c04af144f56fed5e11d8eb69e0dbf7687ae",
-  "contextSha256": "9b68af0e3db0c21abbbe667e544a47ba593de17e91ad8c45e6892f6b3e630ff6",
-  "qualifiedAt": "2026-11-19T22:54:25.454Z",
+  "image": "registry.cloudflare.com/a5b299b3ad15c1b5b895dc66f9357b17/xeroflow-render@sha256:2cdb9b603af1c4b01afcd20eaff09d74b4d607b7db213916ddb61bc21a4597e6",
+  "sourceCommit": "525a7d9942e0f24a70e98b536442d1f198221d40",
+  "contextSha256": "1196c431922e0586408e53a9d8ef7abc5a4669812056fe58f8eb13358f5e1f44",
+  "qualifiedAt": "2026-11-19T23:04:02.965Z",
   "platform": "linux/amd64",
   "ffmpeg": "5.1.9-0+deb12u1",
   "checks": [
     "packaged-http-service",
-    "real-media-13"
+    "real-media-13",
+    "sigterm-audio-and-chromium-drain",
+    "sigint-audio-and-chromium-drain"
   ],
   "previousImage": "registry.cloudflare.com/a5b299b3ad15c1b5b895dc66f9357b17/audio-render@sha256:cbd5c37863a5a4d461d00627258edb1981e105f7d7279203e3e09ab5ffe9874f"
 }
