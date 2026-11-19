@@ -315,16 +315,54 @@ describe('getCampaignBreakdown', () => {
   })
 
   describe('P-02 halt', () => {
-    it('BF-2: a google-scoped breakdown returns rows while meta\'s baseline is stale; unscoped still halts naming meta', async () => {
+    it('BF-2: a google-scoped breakdown returns rows while meta\'s baseline is stale', async () => {
       const coverage = { meta: { deltaPct: 0, staleBaseline: true }, google: { deltaPct: 0, staleBaseline: false } }
       const googleOnly = data(await getCampaignBreakdown({ platform: 'google' }, ctx, deps({ loadCoverageDeltas: async () => coverage as any })))
       expect(googleOnly.halted).toBe(false)
       expect(googleOnly.campaigns.map((c: any) => c.campaignId)).toEqual(['c3'])
-      const unscoped = data(await getCampaignBreakdown({}, ctx, deps({ loadCoverageDeltas: async () => coverage as any })))
-      expect(unscoped.halted).toBe(true)
-      expect(unscoped.haltReason).toBe('stale_coverage_baseline')
-      expect(unscoped.haltDetail).toMatch(/meta/)
-      expect(unscoped.campaigns).toEqual([])
+      expect(googleOnly.unavailablePlatforms).toBeUndefined()
+      const metaOnly = data(await getCampaignBreakdown({ platform: 'meta' }, ctx, deps({ loadCoverageDeltas: async () => coverage as any })))
+      expect(metaOnly.halted).toBe(true)
+      expect(metaOnly.haltReason).toBe('stale_coverage_baseline')
+      expect(metaOnly.campaigns).toEqual([])
+    })
+
+    it('platform-scoped halt: a combined breakdown returns Google rows and an explicit unavailable Meta entry (not zeros)', async () => {
+      const coverage = {
+        meta: { deltaPct: null, staleBaseline: true, previousFinishedAt: '2026-08-01T20:00:00Z', currentFinishedAt: '2026-08-02T20:00:00Z' },
+        google: { deltaPct: 0, staleBaseline: false, currentFinishedAt: '2026-08-18T21:50:00Z' },
+      }
+      const d = data(await getCampaignBreakdown({}, ctx, deps({ loadCoverageDeltas: async () => coverage as any })))
+      expect(d.halted).toBe(false)
+      expect(d.campaigns.map((c: any) => c.campaignId)).toEqual(['c3'])
+      expect(d.campaigns.every((c: any) => c.platform === 'google')).toBe(true)
+      expect(d.total).toBe(1)
+      expect(d.dataStatus).toBe('partial')
+      expect(d.lastSyncedAt).toBe('2026-08-18T08:30:00Z')
+      expect(d.unavailablePlatforms).toHaveLength(1)
+      expect(d.unavailablePlatforms[0]).toMatchObject({
+        platform: 'meta',
+        status: 'unavailable',
+        reason: 'stale_coverage_baseline',
+        baselineAsOf: '2026-08-02T20:00:00Z',
+        asOf: { lastSyncedAt: '2026-08-18T08:00:00Z' },
+        affectedScope: { requestScope: 'all_platforms', rowsWithheld: 2, clientsWithheld: ['Acme'], clientCountWithheld: 1 },
+      })
+      expect(d.platformAvailability.google).toEqual({ status: 'available', rows: 1 })
+      expect(d.platformAvailability.meta.status).toBe('unavailable')
+      // Unavailable is not zero: no Meta campaign, spend or zero-filled placeholder leaks into the figures.
+      expect(JSON.stringify(d.campaigns)).not.toContain('Acme')
+      expect(d.campaigns.some((c: any) => c.platform === 'meta')).toBe(false)
+    })
+
+    it('platform-scoped halt: the combined response still halts when every platform with rows is untrusted', async () => {
+      const coverage = { meta: { staleBaseline: true }, google: { deltaPct: -40, staleBaseline: false } }
+      const d = data(await getCampaignBreakdown({}, ctx, deps({ loadCoverageDeltas: async () => coverage as any })))
+      expect(d.halted).toBe(true)
+      expect(d.campaigns).toEqual([])
+      expect(d.unavailablePlatforms.map((u: any) => [u.platform, u.reason]).sort()).toEqual([
+        ['google', 'coverage_drop'], ['meta', 'stale_coverage_baseline'],
+      ])
     })
 
     it('halts with no figures before the newest sync reaches 24h old', async () => {

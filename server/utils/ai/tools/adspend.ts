@@ -5,7 +5,7 @@ import { readSpendSummary } from '../marketing/spendReads'
 import type { AiTool } from '../toolRegistry'
 import { ok, fail, type ToolContext, type ToolResult } from '../toolContext'
 import { dayOfMonth, expectedToDate } from '~~/server/utils/anomalyDetection/adPacingMath'
-import { buildDataHealth, mergeSyncFreshness, paginateWithCursor, evaluateHalt, PACING_HALT_HOURS } from './responseContract'
+import { buildDataHealth, mergeSyncFreshness, paginateWithCursor, evaluatePlatformScopedHalt, PACING_HALT_HOURS } from './responseContract'
 
 const params = z.object({
   clientName: z.string().optional(),
@@ -127,7 +127,7 @@ export async function getAdspendPacing(args: Args, ctx: ToolContext, deps: Adspe
     const clientId = requestedClient?.id
     if (!scope.ownerVerified && args.clientName && !clientId) return fail('Client not found')
     const sourceRows = await deps.pacing(ctx, { clientId, clientName: scope.ownerVerified ? args.clientName : undefined, platform: args.platform })
-    const all = sourceRows.filter(c => (scope.ownerVerified ? (!args.clientName || c.client.toLowerCase().includes(args.clientName.toLowerCase())) : !requestedClient || (c.clientId ? c.clientId === requestedClient.id : c.client === requestedClient.name)) && (!args.platform || c.platform === args.platform)).map((c) => {
+    const inScope = sourceRows.filter(c => (scope.ownerVerified ? (!args.clientName || c.client.toLowerCase().includes(args.clientName.toLowerCase())) : !requestedClient || (c.clientId ? c.clientId === requestedClient.id : c.client === requestedClient.name)) && (!args.platform || c.platform === args.platform)).map((c) => {
       const hasCoverageCounts = Number.isFinite(c.campaignCount) && Number.isFinite(c.budgetedCampaignCount)
       const hasPartialBudgetCoverage = c.budget !== null
         && hasCoverageCounts
@@ -153,29 +153,40 @@ export async function getAdspendPacing(args: Args, ctx: ToolContext, deps: Adspe
       return true
     }
 
+    const coverageDelta = await (deps.loadCoverageDeltas ? deps.loadCoverageDeltas(ctx) : loadMarketingCoverageDelta(scope)).catch(() => null)
+    // P-02, platform-scoped: a platform whose data cannot be trusted is withheld (never zeroed) and
+    // named in unavailablePlatforms; the healthy platforms' pacing is still returned.
+    const scopedHalt = evaluatePlatformScopedHalt(inScope, {
+      platformOf: c => c.platform,
+      clientOf: c => c.client,
+      freshnessOf: rows => mergeSyncFreshness(rows, { now: deps.now?.() }),
+      platforms: ['meta', 'google'],
+      requestedPlatform: args.platform ?? null,
+      haltAfterHours: PACING_HALT_HOURS,
+      now: deps.now?.(),
+      coverageDelta: coverageDelta as Record<string, { deltaPct?: number | null, staleBaseline?: boolean }> | null,
+    })
+    const halt = scopedHalt.halt
+    const platformHalts = scopedHalt.platformAvailability
+      ? { platformAvailability: scopedHalt.platformAvailability, unavailablePlatforms: scopedHalt.unavailablePlatforms }
+      : {}
+    const all = halt.halted ? inScope : scopedHalt.rows
     const attributed = all.filter(c => !c.unattributed)
     const filtered = attributed.filter(matchesCommonFilters)
     const unattributed = all
       .filter(c => c.unattributed && matchesCommonFilters(c))
       .map(c => ({ ...c, accountName: c.client }))
-    const coverageDelta = await (deps.loadCoverageDeltas ? deps.loadCoverageDeltas(ctx) : loadMarketingCoverageDelta(scope)).catch(() => null)
     const page = paginateWithCursor(filtered, args.cursor, args.limit)
     const health = buildDataHealth({
       configured: all.length > 0,
       expected: attributed.length,
       withData: attributed.filter(c => c.budget !== null && c.status !== 'partial_budget_coverage').length,
     })
-    if (unattributed.length > 0 && health.dataStatus === 'populated') health.dataStatus = 'partial'
+    if ((unattributed.length > 0 || (!halt.halted && scopedHalt.unavailablePlatforms.length > 0)) && health.dataStatus === 'populated') health.dataStatus = 'partial'
 
     const freshness = mergeSyncFreshness(all, { now: deps.now?.() })
-    // P-02: when the data cannot be trusted the tool says so and returns no figures. The coverage
+    // When no platform can be trusted the tool says so and returns no figures. The coverage
     // universe stays visible so a consumer can still see what is NOT being assessed (P-13).
-    const halt = evaluateHalt(freshness, {
-      haltAfterHours: PACING_HALT_HOURS,
-      now: deps.now?.(),
-      coverageDelta: coverageDelta as Record<string, { deltaPct?: number | null, staleBaseline?: boolean }> | null,
-      platform: args.platform ?? null,
-    })
     if (halt.halted) {
       return ok({
         period: currentPeriod(),
@@ -186,6 +197,7 @@ export async function getAdspendPacing(args: Args, ctx: ToolContext, deps: Adspe
         haltDetail: halt.haltDetail,
         asOf: halt.asOf,
         ...(coverageDelta ? { coverageDelta } : {}),
+        ...platformHalts,
         ...health,
         campaigns: [],
         unattributed: [],
@@ -210,6 +222,7 @@ export async function getAdspendPacing(args: Args, ctx: ToolContext, deps: Adspe
       },
       ...freshness,
       ...(coverageDelta ? { coverageDelta } : {}),
+      ...platformHalts,
       ...health,
       campaigns: page.items,
       unattributed,
@@ -227,7 +240,7 @@ export async function getAdspendPacing(args: Args, ctx: ToolContext, deps: Adspe
 
 export const adspendTool: AiTool<Args> = {
   name: 'get_adspend_pacing',
-  description: 'Get per-client ad-spend pacing for the current month across Meta and Google. Returns actual spend, spendAsOf, budget level, allocated budget, expected-to-date pace, explicit data coverage, and worst-case freshness (`lastSyncedAt`, `oldestSyncedAt`, `staleRowCount`, `stalenessThresholdHours`). Spend without a configured budget is `no_budget_set`; incomplete campaign budget coverage is `partial_budget_coverage`. Both have null pace and are excluded from pacing conclusions. Unattributed account spend is returned separately. Before data reaches 24 hours old, when a sync record is missing, or when campaign coverage dropped >5% on the last sync, the tool HALTS: `halted: true` with `haltReason`/`haltDetail`/`asOf` and NO figures — do not advise on pacing from a halted response. Use cursor/limit to paginate. Do NOT use for cash, runway, or accounts-receivable (use get_finance_snapshot).',
+  description: 'Get per-client ad-spend pacing for the current month across Meta and Google. Returns actual spend, spendAsOf, budget level, allocated budget, expected-to-date pace, explicit data coverage, and worst-case freshness (`lastSyncedAt`, `oldestSyncedAt`, `staleRowCount`, `stalenessThresholdHours`). Spend without a configured budget is `no_budget_set`; incomplete campaign budget coverage is `partial_budget_coverage`. Both have null pace and are excluded from pacing conclusions. Unattributed account spend is returned separately. Before data reaches 24 hours old, when a sync record is missing, or when campaign coverage dropped >5% on the last sync, the tool HALTS: `halted: true` with `haltReason`/`haltDetail`/`asOf` and NO figures — do not advise on pacing from a halted response. Halts are platform-scoped: in a combined (no platform) request, an untrusted platform is withheld and listed in `unavailablePlatforms` (reason, asOf, affectedScope) while the healthy platform rows are still returned — an unavailable platform is unassessed, never zero spend. Use cursor/limit to paginate. Do NOT use for cash, runway, or accounts-receivable (use get_finance_snapshot).',
   parameters: params,
   // Media-buying data, not accounting: the handler's own marketing read gate admits MEDIA_BUYING,
   // FINANCE or a delegated `reporting` grant. FINANCE here hard-failed every media buyer over MCP.

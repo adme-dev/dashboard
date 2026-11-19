@@ -4,7 +4,7 @@ import { resolveScopedClient } from '../marketing/clientReads'
 import { readCampaignAnalytics, readLeadAttribution } from '../marketing/campaignReads'
 import type { AiTool } from '../toolRegistry'
 import { ok, fail, type ToolContext, type ToolResult } from '../toolContext'
-import { buildDataHealth, buildSyncFreshness, paginateWithCursor, evaluateHalt, PACING_HALT_HOURS } from './responseContract'
+import { buildDataHealth, buildSyncFreshness, paginateWithCursor, evaluatePlatformScopedHalt, PACING_HALT_HOURS } from './responseContract'
 import { diagnosticDataStatus, sanitizeDiagnosticError } from '~~/server/utils/adDiagnostics'
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD')
@@ -427,10 +427,28 @@ export async function getCampaignBreakdown(args: Args, ctx: ToolContext, deps: C
       return true
     })
     const coverageDelta = await (deps.loadCoverageDeltas ? deps.loadCoverageDeltas(ctx) : loadMarketingCoverageDelta(scope)).catch(() => null)
+    // P-02, platform-scoped: untrusted data ⇒ say so and return no figures for THAT platform. A
+    // combined read keeps the healthy platforms' rows and names each withheld platform explicitly.
+    const scopedHalt = evaluatePlatformScopedHalt(current.campaigns, {
+      platformOf: row => row.platform,
+      clientOf: row => row.clientName,
+      freshnessOf: rows => buildSyncFreshness(rows.map(row => row.lastSyncedAt), { now: deps.now?.() }),
+      platforms: ['meta', 'google'],
+      requestedPlatform: args.platform ?? null,
+      haltAfterHours: PACING_HALT_HOURS,
+      now: deps.now?.(),
+      coverageDelta: coverageDelta as Record<string, { deltaPct?: number | null, staleBaseline?: boolean }> | null,
+    })
+    const halt = scopedHalt.halt
+    const withheldPlatforms = new Set(scopedHalt.unavailablePlatforms.map(entry => entry.platform))
+    const platformHalts = scopedHalt.platformAvailability
+      ? { platformAvailability: scopedHalt.platformAvailability, unavailablePlatforms: scopedHalt.unavailablePlatforms }
+      : {}
+    const visible = filtered.filter(campaign => !withheldPlatforms.has(campaign.platform))
     // ROAS is never served (see ROAS_UNAVAILABLE_REASONS), so a ROAS ranking would be
     // meaningless — rank by spend and say so instead of implying an order.
     const effectiveSort = sortBy === 'roas' ? 'spend' : sortBy
-    const page = paginateWithCursor(sortCampaigns(filtered, effectiveSort), args.cursor, args.limit)
+    const page = paginateWithCursor(sortCampaigns(visible, effectiveSort), args.cursor, args.limit)
     const note = sortBy === 'roas'
       ? 'ROAS is unavailable (see roasMetric), so campaigns are ranked by spend instead.'
       : (sortBy !== 'spend' && current.total > current.campaigns.length)
@@ -446,15 +464,8 @@ export async function getCampaignBreakdown(args: Args, ctx: ToolContext, deps: C
           note: 'Google conversions are available; Meta conversions are suppressed pending historical resync. See byPlatform and each campaign\'s conversionsDataStatus.',
           byPlatform: conversionMetricsByPlatform,
         }
-    const freshness = buildSyncFreshness(current.campaigns.map(row => row.lastSyncedAt), { now: deps.now?.() })
-    const health = buildDataHealth({ configured: true, expected: current.total, withData: current.campaigns.length })
-    // P-02: untrusted data ⇒ say so and return no figures; keep the coverage universe visible (P-13).
-    const halt = evaluateHalt(freshness, {
-      haltAfterHours: PACING_HALT_HOURS,
-      now: deps.now?.(),
-      coverageDelta: coverageDelta as Record<string, { deltaPct?: number | null, staleBaseline?: boolean }> | null,
-      platform: args.platform ?? null,
-    })
+    const freshness = buildSyncFreshness(scopedHalt.rows.map(row => row.lastSyncedAt), { now: deps.now?.() })
+    const health = buildDataHealth({ configured: true, expected: current.total, withData: halt.halted ? current.campaigns.length : scopedHalt.rows.length })
     if (halt.halted) {
       return ok({
         period,
@@ -465,6 +476,7 @@ export async function getCampaignBreakdown(args: Args, ctx: ToolContext, deps: C
         haltDetail: halt.haltDetail,
         asOf: halt.asOf,
         ...(coverageDelta ? { coverageDelta } : {}),
+        ...platformHalts,
         ...health,
         campaigns: [],
         total: 0,
@@ -483,6 +495,7 @@ export async function getCampaignBreakdown(args: Args, ctx: ToolContext, deps: C
       halted: false,
       ...freshness,
       ...(coverageDelta ? { coverageDelta } : {}),
+      ...platformHalts,
       ...health,
       diagnosticRefresh: {
         attempted: refreshTargets.length,
@@ -531,7 +544,7 @@ export async function getCampaignBreakdown(args: Args, ctx: ToolContext, deps: C
 
 export const campaignBreakdownTool: AiTool<Args> = {
   name: 'get_campaign_breakdown',
-  description: 'Campaign delivery and performance for a requested date range across Meta and Google: live/effective and provider serving status, normalized plus exact limitation reasons, Google Search impression-share/budget-loss/rank-loss evidence, delivery dates, spend, ROAS, CPC, frequency, submitted leads and CPL. Serving and impression-share families each include their own asOf/dataStatus/unavailableReason, and unsupported campaign types are absent rather than zero-filled. Ordinary staff read stored diagnostics only; a verified owner may refresh up to 20 authorized campaigns. Provider conversions: Google returns Google Ads metrics.conversions (de-duplicated primary conversions); Meta conversions are null pending historical resync (overlapping action families). ROAS is always null with roasUnavailableReason — Meta revenue is unresynced and Google conversions_value is advertiser-assigned, not verified revenue (raw value in providerConversionValue, Google only). CPL = spend ÷ submitted non-test leads from the leads table. Unavailable values are null, never zero. Pagination, comparison, lead-attribution coverage, and platform-scoped freshness halts retain their existing contracts.',
+  description: 'Campaign delivery and performance for a requested date range across Meta and Google: live/effective and provider serving status, normalized plus exact limitation reasons, Google Search impression-share/budget-loss/rank-loss evidence, delivery dates, spend, ROAS, CPC, frequency, submitted leads and CPL. Serving and impression-share families each include their own asOf/dataStatus/unavailableReason, and unsupported campaign types are absent rather than zero-filled. Ordinary staff read stored diagnostics only; a verified owner may refresh up to 20 authorized campaigns. Provider conversions: Google returns Google Ads metrics.conversions (de-duplicated primary conversions); Meta conversions are null pending historical resync (overlapping action families). ROAS is always null with roasUnavailableReason — Meta revenue is unresynced and Google conversions_value is advertiser-assigned, not verified revenue (raw value in providerConversionValue, Google only). CPL = spend ÷ submitted non-test leads from the leads table. Unavailable values are null, never zero. Pagination, comparison and lead-attribution coverage retain their existing contracts. Freshness/coverage halts are platform-scoped: in a combined request an untrusted platform is withheld and listed in `unavailablePlatforms` (reason, asOf, affectedScope) while healthy platforms\' campaigns still return — unavailable is unassessed, never zero.',
   parameters: params,
   requiredPermission: 'MEDIA_BUYING',
   handler: (a, c) => getCampaignBreakdown(a, c),

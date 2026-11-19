@@ -5,7 +5,7 @@ import { getSpendCoverageDeltas } from '~~/server/utils/spendSyncJobs'
 import type { AiTool } from '../toolRegistry'
 import { ok, fail, type ToolContext, type ToolResult } from '../toolContext'
 import { aiInternalFetch } from '../internalFetch'
-import { buildDataHealth, mergeSyncFreshness, paginateWithCursor, evaluateHalt, PACING_HALT_HOURS } from './responseContract'
+import { buildDataHealth, mergeSyncFreshness, paginateWithCursor, evaluatePlatformScopedHalt, PACING_HALT_HOURS } from './responseContract'
 
 const params = z.object({
   clientName: z.string().optional(),
@@ -87,7 +87,7 @@ export async function getBudgetHealth(args: Args, ctx: ToolContext, deps: Budget
     const res = await deps.health(ctx)
 
     const nameNeedle = args.clientName?.trim().toLowerCase()
-    const normalised = res.clients.map((c) => {
+    const allNormalised = res.clients.map((c) => {
       const campaignCount = c.campaignCount
       const budgetedCampaignCount = c.budgetedCampaignCount
       const hasCoverageCounts = Number.isFinite(campaignCount) && Number.isFinite(budgetedCampaignCount)
@@ -119,6 +119,24 @@ export async function getBudgetHealth(args: Args, ctx: ToolContext, deps: Budget
           budgetCoverage,
         }
     })
+    const coverageDelta = await (deps.loadCoverageDeltas ?? getSpendCoverageDeltas)().catch(() => null)
+    // P-02, platform-scoped (portfolio tool): every platform gates ITS OWN rows. An untrusted platform
+    // is withheld and named in unavailablePlatforms; healthy platforms' rows and totals still return.
+    const scopedHalt = evaluatePlatformScopedHalt(allNormalised, {
+      platformOf: c => c.platform,
+      clientOf: c => c.clientName,
+      freshnessOf: rows => mergeSyncFreshness(rows, { now: deps.now?.() }),
+      platforms: ['meta', 'google'],
+      haltAfterHours: PACING_HALT_HOURS,
+      now: deps.now?.(),
+      coverageDelta: coverageDelta as Record<string, { deltaPct?: number | null, staleBaseline?: boolean }> | null,
+    })
+    const halt = scopedHalt.halt
+    const platformWithheld = !halt.halted && scopedHalt.unavailablePlatforms.length > 0
+    const platformHalts = scopedHalt.platformAvailability
+      ? { platformAvailability: scopedHalt.platformAvailability, unavailablePlatforms: scopedHalt.unavailablePlatforms }
+      : {}
+    const normalised = halt.halted ? allNormalised : scopedHalt.rows
     const attributed = normalised.filter(c => !c.unattributed)
     const filtered = attributed.filter((c) => {
       if (nameNeedle && !c.clientName.toLowerCase().includes(nameNeedle)) return false
@@ -141,10 +159,11 @@ export async function getBudgetHealth(args: Args, ctx: ToolContext, deps: Budget
       withData: pacingEligible.length,
     })
     const partialBudgetCoverageCount = attributed.filter(c => c.healthStatus === 'partial_budget_coverage').length
-    if ((unattributed.length > 0 || partialBudgetCoverageCount > 0) && health.dataStatus === 'populated') health.dataStatus = 'partial'
-    const coverageDelta = await (deps.loadCoverageDeltas ?? getSpendCoverageDeltas)().catch(() => null)
+    if ((unattributed.length > 0 || partialBudgetCoverageCount > 0 || platformWithheld) && health.dataStatus === 'populated') health.dataStatus = 'partial'
     const summary = {
-      ...res.summary,
+      // The endpoint's own summary spans every platform; drop it when a platform is withheld so no
+      // portfolio figure silently includes the untrusted platform.
+      ...(platformWithheld ? {} : res.summary),
       totalBudget,
       totalSpent,
       budgetedSpend: totalSpent,
@@ -161,13 +180,7 @@ export async function getBudgetHealth(args: Args, ctx: ToolContext, deps: Budget
     }
 
     const freshness = mergeSyncFreshness(normalised, { now: deps.now?.() })
-    // P-02: untrusted data ⇒ say so and return no figures; keep the coverage universe visible (P-13).
-    const halt = evaluateHalt(freshness, {
-      haltAfterHours: PACING_HALT_HOURS,
-      now: deps.now?.(),
-      coverageDelta: coverageDelta as Record<string, { deltaPct?: number | null, staleBaseline?: boolean }> | null,
-      platform: null, // portfolio tool: gates on every platform and names the culprit
-    })
+    // No trustworthy platform ⇒ say so and return no figures; keep the coverage universe visible (P-13).
     if (halt.halted) {
       return ok({
         period: res.period,
@@ -177,6 +190,7 @@ export async function getBudgetHealth(args: Args, ctx: ToolContext, deps: Budget
         haltDetail: halt.haltDetail,
         asOf: halt.asOf,
         ...(coverageDelta ? { coverageDelta } : {}),
+        ...platformHalts,
         ...health,
         summary: { clientCount: attributed.length, excludedFromPacingCount: attributed.length },
         clients: [],
@@ -200,6 +214,7 @@ export async function getBudgetHealth(args: Args, ctx: ToolContext, deps: Budget
       },
       ...freshness,
       ...(coverageDelta ? { coverageDelta } : {}),
+      ...platformHalts,
       ...health,
       summary,
       clients: page.items,
@@ -219,7 +234,7 @@ export const budgetHealthTool: AiTool<Args> = {
   name: 'get_budget_health',
   description: 'Budget health for the current month per client/platform — allocated budget, spend, % consumed, coverage, and worst-case freshness (`lastSyncedAt`, `oldestSyncedAt`, `staleRowCount`, `stalenessThresholdHours`). '
     + 'Rows without a configured budget are `no_budget_set`; rows where only some campaigns have budgets are `partial_budget_coverage`. Both have null pacing values and are excluded from pacing conclusions. Unattributed account spend is returned separately. '
-    + 'Every pacing row includes spendAsOf. Before data reaches 24 hours old, when no sync record exists, or when coverage dropped >5% on the last sync the tool HALTS (`halted: true`, `haltReason`, `haltDetail`, `asOf`) and returns no figures. '
+    + 'Every pacing row includes spendAsOf. Before data reaches 24 hours old, when no sync record exists, or when coverage dropped >5% on the last sync the tool HALTS (`halted: true`, `haltReason`, `haltDetail`, `asOf`) and returns no figures. Halts are platform-scoped: when only one platform is untrusted its rows are withheld from rows and totals and it is listed in `unavailablePlatforms` (reason, asOf, affectedScope) — unavailable means unassessed, never zero. '
     + 'Use for "who is over budget", "which accounts are at risk", or "budget pacing this month". '
     + 'For per-campaign ROAS/CPC use get_campaign_breakdown; for cash use get_finance_snapshot. '
     + 'Optionally filter by status and use cursor/limit pagination.',
