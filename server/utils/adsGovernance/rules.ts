@@ -170,7 +170,7 @@ export async function createAutomationRule(event: H3Event | undefined, actor: Go
   const config = requireWritable(event, actor)
   const input = CreateRuleSchema.parse(raw)
   const verdict = validateAutomationRule({ family: input.family, mode: input.mode, expiresAt: input.expiresAt, now, autoApplyEnabled: config.autoApply })
-  if (!verdict.ok) throw new AutomationRuleError(verdict.code)
+  if ('code' in verdict) throw new AutomationRuleError(verdict.code)
   return transactionWithoutRetry(async (db) => {
     await assertOwnerAndClient(db as unknown as Db, input.ownerUserId, input.clientId)
     const row = (await db.query(`INSERT INTO ads_automation_rules
@@ -198,7 +198,7 @@ export async function updateAutomationRule(event: H3Event | undefined, actor: Go
       && input.scope === undefined && input.thresholds === undefined && input.ownerUserId === undefined
     if (!disablingOnly) {
       const verdict = validateAutomationRule({ family: current.family, mode, expiresAt, now, autoApplyEnabled: config.autoApply })
-      if (!verdict.ok) throw new AutomationRuleError(verdict.code)
+      if ('code' in verdict) throw new AutomationRuleError(verdict.code)
     }
     const ownerUserId = input.ownerUserId ?? current.owner_user_id
     if (input.ownerUserId !== undefined) await assertOwnerAndClient(db as unknown as Db, ownerUserId, current.client_id)

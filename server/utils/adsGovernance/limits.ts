@@ -176,7 +176,7 @@ export async function reserveAutomatedExecution(
         accountChanges: Number(usage?.account_changes ?? 0),
         campaignBudgetBaseline: usage?.baseline == null ? null : Number(usage.baseline)
       }, now)
-      if (!decision.allowed) return { ok: false, code: decision.code, message: decision.message } as const
+      if ('code' in decision) return { ok: false, code: decision.code, message: decision.message } as const
       const row = (await db.query(`INSERT INTO ads_automation_executions
           (rule_id, client_id, platform, account_id, campaign_id, family, risk_tier, budget_before, budget_after)
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`, [

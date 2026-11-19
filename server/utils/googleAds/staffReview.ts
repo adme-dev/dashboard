@@ -25,7 +25,7 @@ function requireTierReviewer(plan: GoogleAdsActionPlan, reviewer: { id: string, 
     reviewerRole: reviewer.role,
     reviewerGroups: reviewer.groups
   })
-  if (!verdict.ok) throw createError({ statusCode: 403, statusMessage: verdict.code })
+  if ('code' in verdict) throw createError({ statusCode: 403, statusMessage: verdict.code })
 }
 
 const Request = z.strictObject({

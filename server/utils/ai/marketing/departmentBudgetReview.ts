@@ -16,7 +16,7 @@ const ACTION = 'department_budget_allocation'
 const TIER = classifyAdsActionRisk(ACTION)
 function requireTierReviewer(requesterId: string, reviewer: { id: string, role?: string | null, groups?: readonly string[] | null }) {
   const verdict = evaluateTierApproval(TIER, { requesterId, reviewerId: reviewer.id, reviewerRole: reviewer.role, reviewerGroups: reviewer.groups })
-  if (!verdict.ok) deny(verdict.code)
+  if ('code' in verdict) deny(verdict.code)
 }
 const sha = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex')
 function deny(message: string): never {
