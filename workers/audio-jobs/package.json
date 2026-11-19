@@ -6,7 +6,7 @@
     "node": ">=24.0.0"
   },
   "scripts": {
-    "deploy": "wrangler deploy",
+    "deploy": "node ../../scripts/check-render-image.mjs && wrangler deploy",
     "dev": "wrangler dev"
   },
   "dependencies": {

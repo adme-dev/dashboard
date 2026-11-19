@@ -88,6 +88,9 @@ const server = createServer(async (req, res) => {
         // Drive the Chromium binary installed in this container image.
         const puppeteer = (await import('puppeteer-core')).default
         browser = await puppeteer.launch({
+          // The HTTP server owns graceful termination of accepted jobs.
+          handleSIGTERM: false,
+          handleSIGINT: false,
           executablePath: '/usr/bin/chromium',
           args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
         })
@@ -188,5 +191,18 @@ const server = createServer(async (req, res) => {
     rmSync(dir, { recursive: true, force: true })
   }
 })
+
+// Container rollouts send SIGTERM. Stop accepting jobs while allowing accepted
+// HTTP requests (and their FFmpeg/Chromium children) to complete and clean up.
+// Cloudflare applies its own final termination deadline if a job never finishes.
+let draining = false
+function drain() {
+  if (draining) return
+  draining = true
+  console.log('[render] draining accepted requests')
+  server.close()
+}
+process.on('SIGTERM', drain)
+process.on('SIGINT', drain)
 
 server.listen(PORT, () => console.log(`[render] listening on ${PORT}`))

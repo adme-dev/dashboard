@@ -191,7 +191,7 @@ export async function serveCopyMeasurement(req, res) {
     const input = JSON.parse(Buffer.concat(chunks).toString('utf8'))
     validateStaticCopy(input)
     const puppeteer = (await import('puppeteer-core')).default
-    browser = await puppeteer.launch({ executablePath: '/usr/bin/chromium', args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'] })
+    browser = await puppeteer.launch({ handleSIGTERM: false, handleSIGINT: false, executablePath: '/usr/bin/chromium', args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'] })
     const result = await measureStaticCopy(browser, input)
     res.writeHead(200, { 'content-type': 'application/json' })
     res.end(JSON.stringify(result))
