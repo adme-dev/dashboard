@@ -126,16 +126,6 @@ jobs:
 
       # Real media decode tests require both executables from the FFmpeg package.
       # Provision explicitly instead of relying on the hosted runner image.
-      - name: Install and verify media decode dependencies
-        run: |
-          # The runner's Ubuntu mirror intermittently crawls (4 CI timeouts on 2026-11-19); retry and
-          # allow more time rather than failing the whole suite on a package download.
-          APT_OPTS="-o Acquire::Retries=5 -o Acquire::http::Timeout=30"
-          sudo apt-get $APT_OPTS update
-          sudo apt-get $APT_OPTS install --yes --no-install-recommends ffmpeg
-          ffmpeg -version
-          ffprobe -version
-        timeout-minutes: 15
 
       - name: Install pnpm
         uses: pnpm/action-setup@v6
@@ -379,7 +369,7 @@ jobs:
         # does not compete with the full pool. Every other test still runs below.
         run: |
           pnpm exec vitest run test/server/api/crmSearchEndpoints.test.ts test/app/aiGovernanceControlPlane.test.ts --maxWorkers=1
-          pnpm run test:run --exclude test/server/api/crmSearchEndpoints.test.ts --exclude test/app/aiGovernanceControlPlane.test.ts
+          pnpm run test:run --exclude test/server/api/crmSearchEndpoints.test.ts --exclude test/app/aiGovernanceControlPlane.test.ts --exclude test/video/storyboardMediaDecode.test.ts
         timeout-minutes: 20
 
       # Kept as separate steps despite being subsets of the run above: both are
@@ -391,6 +381,84 @@ jobs:
 
       - name: Pages deployment target guard
         run: pnpm run test:deployment-guards
+
+  # Real-FFmpeg tests run against the PRODUCTION render container image (workers/audio-jobs/container),
+  # not the runner's distro ffmpeg: CI and the Cloudflare Container used by Video, Banner and Audio Studio
+  # share one pinned build. ffmpeg/ffprobe on PATH are shims into that image, so tests run unchanged.
+  # Only runs when media code changes, and always on main.
+  media-render:
+    if: github.event_name != 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Media scope
+        id: scope
+        run: |
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "media=true" >> "$GITHUB_OUTPUT"; echo "push/main: running media tests"; exit 0
+          fi
+          changed=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD")
+          hits=$(echo "$changed" | grep -E '^(workers/audio-jobs/|server/utils/(audio|banner|video[^/]*)/|test/(video|audio|banner)/|scripts/thebrief/|\.github/workflows/ci\.yml$|package\.json$|pnpm-lock\.yaml$)' || true)
+          if [ -n "$hits" ]; then
+            echo "media=true" >> "$GITHUB_OUTPUT"; echo "media paths changed:"; echo "$hits"
+          else
+            echo "media=false" >> "$GITHUB_OUTPUT"; echo "skipped: no media changes"
+          fi
+
+      - name: Set up Docker Buildx
+        if: steps.scope.outputs.media == 'true'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build production render image (cached)
+        if: steps.scope.outputs.media == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: workers/audio-jobs/container
+          load: true
+          tags: xeroflow-render:ci
+          cache-from: type=gha,scope=render-container
+          cache-to: type=gha,mode=max,scope=render-container
+
+      - name: Route ffmpeg/ffprobe into the render image
+        if: steps.scope.outputs.media == 'true'
+        run: |
+          mkdir -p "$RUNNER_TEMP/ffshim"
+          for bin in ffmpeg ffprobe; do
+            cat > "$RUNNER_TEMP/ffshim/$bin" <<SHIM
+          #!/usr/bin/env bash
+          exec docker run --rm -i --user "\$(id -u):\$(id -g)" -v /tmp:/tmp -v "$GITHUB_WORKSPACE:$GITHUB_WORKSPACE" -w "\$PWD" --entrypoint $bin xeroflow-render:ci "\$@"
+          SHIM
+            chmod +x "$RUNNER_TEMP/ffshim/$bin"
+          done
+          echo "$RUNNER_TEMP/ffshim" >> "$GITHUB_PATH"
+
+      - name: Install pnpm
+        if: steps.scope.outputs.media == 'true'
+        uses: pnpm/action-setup@v6
+
+      - name: Install node
+        if: steps.scope.outputs.media == 'true'
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24.18.0
+          cache: pnpm
+
+      - name: Install dependencies
+        if: steps.scope.outputs.media == 'true'
+        run: pnpm install --frozen-lockfile
+
+      - name: Real-FFmpeg media tests (production render image)
+        if: steps.scope.outputs.media == 'true'
+        run: |
+          ffmpeg -hide_banner -version | head -1
+          ffprobe -hide_banner -version | head -1
+          pnpm exec vitest run test/video/storyboardMediaDecode.test.ts test/audio/renderAudioSpansTimeline.test.ts test/banner/audioRender.test.ts
+        timeout-minutes: 15
 
   # Ordinary Pages releases keep CRM provider activation dormant. The existing
   # source deploy command enforces this, current main, and agency-dashboard.

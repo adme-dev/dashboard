@@ -2,7 +2,10 @@
 # FFmpeg + Chromium render service for Audio Studio Phase 3 + Video Studio V1.2b.
 # Runs as a CF Container bound to the audio-jobs Worker (RENDER binding).
 # Stateless HTTP server on :8080.
-FROM node:22-bookworm-slim
+# Pinned by digest (2026-11-19) so CI's media tests and production renders use the identical base and
+# Debian bookworm ffmpeg (5.1.x). CI builds THIS file and runs the real-ffmpeg tests against it
+# (.github/workflows/ci.yml → media-render job). Bump deliberately; CI will re-verify.
+FROM node:22-bookworm-slim@sha256:e9f565d32859f0cbfb52125eafe8be39390f24dac302dc3cdf566e8ba3ab21ee
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ffmpeg chromium fonts-liberation ca-certificates \
