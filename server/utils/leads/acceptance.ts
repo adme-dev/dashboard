@@ -193,8 +193,16 @@ export async function acceptLead(event: H3Event, input: {
       try {
         await enqueueLeadJob({ type: 'crm.promote', payload: { lead_id: intake.leadId } })
       } catch (error) {
+        // The lead is already committed. CRM promotion (inline fallback or a
+        // failed queue send) is a recoverable, durably-recorded side effect
+        // (lead_crm_promotion_state = failed) and must never abort ingestion
+        // or skip the new-lead notification below.
         await markCrmPromotionFailure(intake.leadId, error)
-        throw error
+        console.warn({
+          event: 'crm_lead_promotion_enqueue_failed',
+          errorClass: error instanceof Error ? error.name : 'unknown',
+          errorCode: (error as { code?: unknown } | null)?.code ?? null
+        })
       }
     } else {
       await markCrmPromotionSkipped(lead.client_id, intake.leadId, policy.reason ?? 'crm_not_available')

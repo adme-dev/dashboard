@@ -53,6 +53,35 @@ describe('leads delivery Worker CRM authorization', () => {
     })).rejects.toThrow('Trusted CRM organisation scope is unavailable')
   })
 
+  it('resolves a search-dormant context when the crm_search schema is absent', async () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {})
+    dbMocks.queryOne.mockResolvedValueOnce({ id: 'client-a' })
+    dbMocks.queryRows.mockRejectedValueOnce(Object.assign(
+      new Error('relation "crm_search_organisation_scopes" does not exist'),
+      { code: '42P01' }
+    ))
+
+    await expect(resolveTrustedCrmSystemContext({
+      clientId: 'client-a',
+      purpose: 'lead_crm_promotion'
+    })).resolves.toMatchObject({
+      clientId: 'client-a',
+      organisationScopeId: 'crm-search-dormant',
+      searchScope: 'dormant'
+    })
+    info.mockRestore()
+  })
+
+  it('does not treat other database errors as search dormancy', async () => {
+    dbMocks.queryOne.mockResolvedValueOnce({ id: 'client-a' })
+    dbMocks.queryRows.mockRejectedValueOnce(Object.assign(new Error('timeout'), { code: '57014' }))
+
+    await expect(resolveTrustedCrmSystemContext({
+      clientId: 'client-a',
+      purpose: 'lead_crm_promotion'
+    })).rejects.toThrow('timeout')
+  })
+
   it('locks promotion records inside the current tenant', async () => {
     const query = vi.fn().mockResolvedValue({
       rows: [{ id: 'person-1', client_id: 'client-a' }]
