@@ -83,6 +83,14 @@ import {
 } from '~~/server/utils/ai/mcp/socialToolNames'
 import { executeSocialMcpTool } from '~~/server/utils/ai/mcp/socialTools'
 
+/** Fixed error codes only (never messages or argument values) so failed staff calls are diagnosable. */
+function auditErrorFields(outcome: unknown): Record<string, string> {
+  const o = outcome as { code?: unknown, reason?: unknown }
+  const safe = (v: unknown) => typeof v === 'string' && /^[A-Za-z0-9_.:-]{1,64}$/.test(v) ? v : undefined
+  const code = safe(o.code), reason = safe(o.reason)
+  return { ...(code ? { errorCode: code } : {}), ...(reason ? { errorReason: reason } : {}) }
+}
+
 export default defineEventHandler(async (event) => {
   const runtime = resolveMcpRuntimeConfig(event)
   if (!runtime.serverEnabled) {
@@ -469,7 +477,7 @@ export default defineEventHandler(async (event) => {
       (isConfirm || departmentAuditResult?.actionClass === 'review') && outcome.ok ? userId : null,
       toolName,
       departmentAuditResult?.riskTier ?? auditRiskTier,
-      JSON.stringify({ ...(departmentAuditResult ? { actionClass: departmentAuditResult.actionClass } : {}), source: 'mcp', argKeys: Object.keys(args) }),
+      JSON.stringify({ ...(departmentAuditResult ? { actionClass: departmentAuditResult.actionClass } : {}), source: 'mcp', argKeys: Object.keys(args), ...(outcome.ok ? {} : auditErrorFields(outcome)) }),
       departmentAuditResult?.outcome ?? auditOutcome
     ]
   ).catch(() => {})

@@ -16,7 +16,7 @@ const params = z.object({
   startDate: isoDate.optional(),
   endDate: isoDate.optional(),
   comparePrevious: z.boolean().default(false),
-  refresh: z.boolean().default(false),
+  refresh: z.boolean().default(false).describe('Owner-only live re-sync. Leave false; staff read the latest synced data.'),
   cursor: z.string().optional(),
   limit: z.number().int().min(1).max(50).default(20),
 }).superRefine((value, issue) => {
@@ -281,7 +281,7 @@ export async function getCampaignBreakdown(args: Args, ctx: ToolContext, deps: C
   try {
     const scope = await resolveMarketingReadScope(ctx)
     requireMarketingReadPermission(scope, 'campaigns')
-    if (args.refresh && !scope.ownerRefreshAllowed) return fail('Refreshing requires a reviewed owner operation.', 'MARKETING_REFRESH_REQUIRES_REVIEW')
+    if (args.refresh && !scope.ownerRefreshAllowed) return fail('Live refresh is owner-only. Retry the same call without `refresh` (or with refresh:false) to read the latest synced data.', 'MARKETING_REFRESH_REQUIRES_REVIEW')
     const sortBy = args.sortBy ?? 'spend'
     const period = args.startDate && args.endDate
       ? { start: args.startDate, end: args.endDate }

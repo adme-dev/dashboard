@@ -18,7 +18,7 @@ const params = z.object({
   endDate: isoDate.optional(),
   platform: z.enum(['meta', 'google']).optional(),
   sortBy: z.enum(['spend', 'frequency', 'ctr', 'cpc', 'leads', 'cpl', 'age']).default('frequency'),
-  refresh: z.boolean().default(false),
+  refresh: z.boolean().default(false).describe('Owner-only live re-sync. Leave false; staff read the latest synced data.'),
   comparePrevious: z.boolean().default(false),
   cursor: z.string().optional(),
   limit: z.number().int().min(1).max(50).default(20),
@@ -163,7 +163,7 @@ export async function getAdBreakdown(args: Args, ctx: ToolContext, deps: AdBreak
   try {
     const scope = await resolveMarketingReadScope(ctx)
     requireMarketingReadPermission(scope, 'ads')
-    if (args.refresh && !scope.ownerRefreshAllowed) return fail('Refreshing requires a reviewed owner operation.', 'MARKETING_REFRESH_REQUIRES_REVIEW')
+    if (args.refresh && !scope.ownerRefreshAllowed) return fail('Live refresh is owner-only. Retry the same call without `refresh` (or with refresh:false) to read the latest synced data.', 'MARKETING_REFRESH_REQUIRES_REVIEW')
     const result = await deps.fetch(args, ctx)
     const currentPeriod = period(args)
     const leadCounts = deps.leadAttribution

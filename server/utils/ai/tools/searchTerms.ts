@@ -20,7 +20,7 @@ const params = z.object({
   startDate: isoDate.optional(),
   endDate: isoDate.optional(),
   sortBy: z.enum(['cost', 'clicks']).default('cost'),
-  refresh: z.boolean().default(false),
+  refresh: z.boolean().default(false).describe('Owner-only live re-sync. Leave false; staff read the latest synced data.'),
   cursor: z.string().optional(),
   limit: z.number().int().min(1).max(50).default(20),
 }).superRefine((value, issue) => {
@@ -62,7 +62,7 @@ export async function getSearchTerms(args: Args, ctx: ToolContext, deps: SearchT
   try {
     const scope = await resolveMarketingReadScope(ctx)
     requireMarketingReadPermission(scope, 'search_terms')
-    if (args.refresh && !scope.ownerRefreshAllowed) return fail('Refreshing requires a reviewed owner operation.', 'MARKETING_REFRESH_REQUIRES_REVIEW')
+    if (args.refresh && !scope.ownerRefreshAllowed) return fail('Live refresh is owner-only. Retry the same call without `refresh` (or with refresh:false) to read the latest synced data.', 'MARKETING_REFRESH_REQUIRES_REVIEW')
     const target = await deps.resolve(args, ctx)
     if (!target) return fail('No campaign matched the requested client/campaign scope.', 'SEARCH_TERM_CAMPAIGN_NOT_FOUND')
     const now = deps.now?.() ?? new Date()
@@ -82,7 +82,7 @@ export async function getSearchTerms(args: Args, ctx: ToolContext, deps: SearchT
         error: snapshot.lastError,
       }
     }
-    if (!snapshot) return fail('Search-term data is unavailable for this campaign window.', 'SEARCH_TERMS_UNAVAILABLE')
+    if (!snapshot) return fail('No stored search-term snapshot for this campaign window. For live Google Ads search terms use google_ads_list_search_terms (or google_ads_review_portfolio across accounts).', 'SEARCH_TERMS_UNAVAILABLE')
     const failedAfterSuccess = Boolean(
       snapshot.lastError
       && snapshot.asOf
