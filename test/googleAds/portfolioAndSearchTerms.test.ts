@@ -112,4 +112,11 @@ describe('portfolio review', () => {
     expect(readers.conversionActions).not.toHaveBeenCalled()
     expect(readers.wastedSearchTerms).not.toHaveBeenCalled()
   })
+
+  it('names the Google error code and field for a failed section', async () => {
+    const err = Object.assign(new Error('Google Ads rejected the requested fields.'), { code: 'PROHIBITED_FIELD_IN_SELECT_CLAUSE', fieldPath: 'recommendation.impact' })
+    const readers = { recommendations: vi.fn(async () => { throw err }), conversionActions: vi.fn(), wastedSearchTerms: vi.fn() }
+    const review = await reviewGoogleAdsPortfolio({ accounts: accounts.slice(0, 1), sections: ['recommendations'], windowDays: 30, perAccountLimit: 3 }, readers as never)
+    expect(review.accounts[0]).toMatchObject({ errors: { recommendations: 'Google Ads rejected the requested fields. (PROHIBITED_FIELD_IN_SELECT_CLAUSE @ recommendation.impact)' } })
+  })
 })

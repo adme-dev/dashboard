@@ -101,10 +101,15 @@ async function mapLimited<T, R>(values: T[], limit: number, fn: (value: T) => Pr
   return out
 }
 
+const PROVIDER_TOKEN = /^[A-Za-z0-9_.:\[\]-]{1,120}$/
 const safeError = (error: unknown): string => {
-  const message = (error as { statusMessage?: unknown, message?: unknown })?.statusMessage
-    ?? (error as { message?: unknown })?.message
-  return typeof message === 'string' && message.length < 200 ? message : 'Google Ads read failed'
+  const e = error as { statusMessage?: unknown, message?: unknown, code?: unknown, fieldPath?: unknown }
+  const message = e?.statusMessage ?? e?.message
+  const base = typeof message === 'string' && message.length < 200 ? message : 'Google Ads read failed'
+  // Google's error enum and field path are fixed provider identifiers (no client data); without them a
+  // 400 is undiagnosable ("rejected the requested fields").
+  const detail = [e?.code, e?.fieldPath].filter((v): v is string => typeof v === 'string' && PROVIDER_TOKEN.test(v))
+  return detail.length ? `${base} (${detail.join(' @ ')})` : base
 }
 
 export async function reviewGoogleAdsPortfolio(input: PortfolioReviewInput, readers: PortfolioReaders) {
