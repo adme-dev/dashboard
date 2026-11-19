@@ -129,4 +129,9 @@ describe('portfolio review', () => {
     const review = await reviewGoogleAdsPortfolio({ accounts: [{ ...accounts[0]!, accountName: 'Northern MG' }], sections: ['conversion_actions'], windowDays: 30, perAccountLimit: 3 }, readers as never)
     expect(review.attention[0]).toMatchObject({ accountName: 'Northern MG', customerId: '1', conversionIssues: 12 })
   })
+
+  it('counts recommendations from the producer shape (recommendations, not items)', () => {
+    expect(summariseRecommendations({ optimizationScore: 0.6, recommendations: [{ type: 'KEYWORD' }, { type: 'SITELINK_ASSET' }] }, 5))
+      .toMatchObject({ optimizationScore: 0.6, count: 2, byType: { KEYWORD: 1, SITELINK_ASSET: 1 } })
+  })
 })

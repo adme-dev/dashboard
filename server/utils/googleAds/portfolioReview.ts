@@ -33,7 +33,10 @@ export interface PortfolioReviewInput {
 }
 
 type Item = Record<string, unknown>
-const items = (value: Record<string, unknown>): Item[] => (Array.isArray(value.items) ? value.items as Item[] : [])
+const items = (value: Record<string, unknown>): Item[] => (Array.isArray(value.items)
+  ? value.items as Item[]
+  // listGoogleAdsRecommendations returns its list as `recommendations`, not `items`.
+  : Array.isArray(value.recommendations) ? value.recommendations as Item[] : [])
 const num = (value: unknown): number => (typeof value === 'number' && Number.isFinite(value) ? value : 0)
 
 export function summariseRecommendations(result: Record<string, unknown>, limit: number) {

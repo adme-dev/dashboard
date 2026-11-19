@@ -148,11 +148,17 @@ FROM recommendation${filters.length > 0 ? `\nWHERE ${filters.join('\n  AND ')}` 
     customerId: input.customerId,
     auth: input.auth,
     maxRows: 1,
-    query: 'SELECT customer.optimization_score, customer.optimization_score_url FROM customer'
+    // optimization_score_url is a METRIC in current API versions; selecting customer.optimization_score_url
+    // fails with UNRECOGNIZED_FIELD and took every recommendations read down with it (found 2026-11-19).
+    query: 'SELECT customer.optimization_score, metrics.optimization_score_url FROM customer'
   })
-  const customer = score.rows[0] && typeof score.rows[0] === 'object'
-    ? (score.rows[0] as Record<string, unknown>).customer
+  const scoreRow = score.rows[0] && typeof score.rows[0] === 'object'
+    ? score.rows[0] as Record<string, unknown>
     : undefined
+  const customer = {
+    ...((scoreRow?.customer as Record<string, unknown> | undefined) ?? {}),
+    optimizationScoreUrl: (scoreRow?.metrics as Record<string, unknown> | undefined)?.optimizationScoreUrl
+  }
   const parsedCustomer = z.object({
     optimizationScore: z.union([z.string(), z.number()])
       .transform(Number)
