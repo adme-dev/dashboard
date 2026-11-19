@@ -1,28 +1,25 @@
 import type { H3Event } from 'h3'
+import { resolveAssistantRuntimeFlag, type AssistantRuntimeSource } from './assistantRuntime'
 
+/**
+ * Whether the governed tool loop is on for this request. Delegates to the shared assistant runtime
+ * resolver so `AI_TOOLS_ENABLED` and the compact `AI_ASSISTANT_CONFIG` ("tools") follow one precedence.
+ */
 export function resolveChatRuntime(event?: H3Event, config?: { aiToolsEnabled?: unknown }): {
   toolsEnabled: boolean
-  source: 'binding' | 'runtime_config' | 'process' | 'default'
+  source: AssistantRuntimeSource
 } {
   const bindings = (event?.context as { cloudflare?: { env?: Record<string, unknown> } } | undefined)?.cloudflare?.env
-  let value: unknown
-  let source: 'binding' | 'runtime_config' | 'process' | 'default' = 'default'
-  if (bindings && Object.prototype.hasOwnProperty.call(bindings, 'AI_TOOLS_ENABLED')) {
-    value = bindings.AI_TOOLS_ENABLED
-    source = 'binding'
-  } else {
-    if (!config) {
-      try {
-        config = useRuntimeConfig(event) as { aiToolsEnabled?: unknown }
-      } catch { /* Non-Nuxt callers use process below. */ }
-    }
-    if (config?.aiToolsEnabled !== undefined) {
-      value = config.aiToolsEnabled
-      source = 'runtime_config'
-    } else if (process.env.AI_TOOLS_ENABLED !== undefined) {
-      value = process.env.AI_TOOLS_ENABLED
-      source = 'process'
-    }
+  let runtimeConfig = config as Record<string, unknown> | undefined
+  if (!runtimeConfig) {
+    try {
+      runtimeConfig = useRuntimeConfig(event) as unknown as Record<string, unknown>
+    } catch { /* Non-Nuxt callers use process below. */ }
   }
-  return { toolsEnabled: value === true || value === 'true', source }
+  const resolved = resolveAssistantRuntimeFlag('tools', event, {
+    bindings,
+    runtimeConfig,
+    processEnv: process.env as Record<string, unknown>
+  })
+  return { toolsEnabled: resolved.enabled, source: resolved.source }
 }

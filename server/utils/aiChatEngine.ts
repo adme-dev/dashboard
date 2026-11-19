@@ -9,6 +9,7 @@ import { generateModelRoutedGroqInsight } from '~~/server/utils/ai/resolvedGroq'
 import { retrieveContext } from '~~/server/utils/aiContextRetriever'
 import { getRelevantPatterns } from '~~/server/utils/aiFeedbackProcessor'
 import { shouldUseToolLoop } from '~~/server/utils/ai/gate'
+import { assistantRuntimeEnabled } from '~~/server/utils/ai/assistantRuntime'
 import { resolvePersona } from '~~/server/utils/ai/personas'
 import { selectSkillPack } from '~~/server/utils/ai/controller/route'
 import {
@@ -460,7 +461,7 @@ export async function processUserMessage(
       // specialist findings degrades to the normal L1 single-pack loop below.
       let l2Answer: string | null = null
       let l2Cost = 0
-      if (cfg.aiControllerL2Enabled && !explicitOrPersisted && !godModeActive) {
+      if (assistantRuntimeEnabled('controllerL2', event) && !explicitOrPersisted && !godModeActive) {
         try {
           const [{ classifyRequest }, { planSpecialists }, { delegateToSpecialists }, { synthesizeAnswer }] = await Promise.all([
             import('~~/server/utils/ai/controller/classify'),
@@ -701,10 +702,10 @@ export async function processUserMessage(
   if (assistantMsg?.id && usedToolLoop) await linkAiInvocationTurnMessage(turnId, userId, assistantMsg.id)
 
   // 10b. Inferred memory distillation (Phase-0 WS-A.8b) — fire-and-forget AFTER the response, gated
-  // by AI_MEMORY_DISTILL_ENABLED (dormant by default). Distils ≤3 durable `inferred` memories from
+  // by AI_MEMORY_DISTILL_ENABLED and the user's own My Assistant memory toggle. Distils ≤3 durable `inferred` memories from
   // this turn for future recall. Strictly user-scoped, fully fail-safe (never throws), and registered
   // via runAfterResponse so it survives on Cloudflare without blocking the reply.
-  if (event && cfg.aiMemoryDistillEnabled && !pilotUat && !isError && aiContent.trim()) {
+  if (event && agentConfig.memoryEnabled !== false && assistantRuntimeEnabled('memoryDistill', event) && !pilotUat && !isError && aiContent.trim()) {
     const distillWork = import('~~/server/utils/ai/memory/orchestrate')
       .then(({ distillAndStoreMemories }) =>
         distillAndStoreMemories({ userId, turn: { userMessage: content, assistantMessage: aiContent }, event }))

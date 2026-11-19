@@ -2,6 +2,7 @@
 import { fileURLToPath } from 'node:url'
 import { isStoryboardFeatureEnabled } from './shared/video/storyboardFeaturePolicy'
 import { isPublicVideoFeatureEnabled } from './shared/video/publicFeaturePolicy'
+import { AI_ASSISTANT_DEFAULTS, assistantDefaultOr } from './shared/aiAssistantDefaults'
 import { compactPublicAssetsPlugin } from './scripts/compact-worker-static-data.mjs'
 import { workerProcessCompatibilityPlugin } from './scripts/worker-process-compatibility.mjs'
 import { NUXT_PAYLOAD_EXTRACTION, shouldIgnorePrerenderRoute } from './lib/prerender-ignore'
@@ -138,8 +139,9 @@ export default defineNuxtConfig({
     // Anthropic — dormant escape hatch for the tool-calling loop (prod-only; needs key + gateway)
     anthropicApiKey: process.env.ANTHROPIC_API_KEY || '',
 
-    // AI tool-calling (Slice 1) — OFF by default; flip per-env to enable the loop
-    aiToolsEnabled: process.env.AI_TOOLS_ENABLED === 'true',
+    // AI tool-calling — reviewed default in shared/aiAssistantDefaults.ts (production is at the
+    // 150 text-binding ceiling). An explicit AI_TOOLS_ENABLED / AI_ASSISTANT_CONFIG still wins.
+    aiToolsEnabled: assistantDefaultOr(process.env.AI_TOOLS_ENABLED, AI_ASSISTANT_DEFAULTS.tools),
     aiPilotUatEnabled: process.env.AI_PILOT_UAT_ENABLED === 'true',
     aiLoopModel: process.env.AI_LOOP_MODEL || 'groq/openai/gpt-oss-120b', // Option 2: Groq open-source default
     // Fallback was kimi-k2 but Groq returns 404 for it (not on the account) — gpt-oss-20b is the valid sibling.
@@ -148,17 +150,17 @@ export default defineNuxtConfig({
     aiGovernedCatalogMode: process.env.AI_GOVERNED_CATALOG_MODE || 'legacy',
     // Inferred personal-memory distillation (Phase-0 WS-A.8b) — OFF by default. When enabled, the
     // chat engine distils ≤3 durable memories per turn fire-and-forget. Hard gate per the build loop.
-    aiMemoryDistillEnabled: process.env.AI_MEMORY_DISTILL_ENABLED === 'true',
+    aiMemoryDistillEnabled: assistantDefaultOr(process.env.AI_MEMORY_DISTILL_ENABLED, AI_ASSISTANT_DEFAULTS.memoryDistill),
     // L2 traffic-controller supervisor (Phase 3) — OFF by default. When enabled, cross-domain requests
     // fan out to ≥2 specialist skill-packs and synthesize one answer. Adds latency + cost; hard gate.
-    aiControllerL2Enabled: process.env.AI_CONTROLLER_L2_ENABLED === 'true',
+    aiControllerL2Enabled: assistantDefaultOr(process.env.AI_CONTROLLER_L2_ENABLED, AI_ASSISTANT_DEFAULTS.controllerL2),
     // Observe & Learn W-2 (observe-and-learn spec §4) — OFF by default. When enabled, a daily cron
     // distils each staff member's OWN recurring routines into source='observed', user-scoped memories.
     // The shared request policy prefers Cloudflare bindings and fails closed on malformed values.
-    aiObserveEnabled: process.env.AI_OBSERVE_ENABLED === 'true',
+    aiObserveEnabled: assistantDefaultOr(process.env.AI_OBSERVE_ENABLED, AI_ASSISTANT_DEFAULTS.observe),
     // Observe & Learn W-4 proactive suggestion — HELD for explicit sign-off; DOUBLY dormant (also needs
     // AI_OBSERVE_ENABLED). No proactive routine suggestion fires until this is on. Hard gate.
-    aiObserveProactiveEnabled: process.env.AI_OBSERVE_PROACTIVE_ENABLED === 'true',
+    aiObserveProactiveEnabled: assistantDefaultOr(process.env.AI_OBSERVE_PROACTIVE_ENABLED, AI_ASSISTANT_DEFAULTS.observeProactive),
     // Visuals → Knowledge trigger — OFF by default. When on, new image proof-assets are captioned (Workers
     // AI vision) into UNPUBLISHED KB drafts fire-and-forget. Read at the trigger via process.env. Hard gate.
     visualsToKnowledgeEnabled: process.env.VISUALS_TO_KNOWLEDGE_ENABLED === 'true',
@@ -309,7 +311,7 @@ export default defineNuxtConfig({
       // agentic-AI UI (e.g. the chat persona picker) so it stays hidden until the loop
       // is live. The real authorization boundary is the server-side flag + RBAC; this is
       // a non-sensitive boolean for presentation only.
-      aiToolsEnabled: process.env.AI_TOOLS_ENABLED === 'true',
+      aiToolsEnabled: assistantDefaultOr(process.env.AI_TOOLS_ENABLED, AI_ASSISTANT_DEFAULTS.tools),
       // Public video discovery defaults on; explicit false hides it for rollback.
       // Server feature/tenant/model/approval/budget checks remain authoritative.
       videoStudioEnabled: isPublicVideoFeatureEnabled(process.env.VIDEO_STUDIO_ENABLED),
