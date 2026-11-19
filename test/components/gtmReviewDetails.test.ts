@@ -19,6 +19,12 @@ describe('exact GTM review rendering', () => {
     const html = await render({ action: 'installation', base: { path: 'versions/3', fingerprint: 'base-fp' }, target: null, installation: { siteName: 'Example site', collectorOrigin: 'https://collector.example.test', spa: true }, installationHash: 'payload-sha', changes: [{ action: 'install', name: 'Example site', before: null, after: { scriptUrl: 'https://collector.example.test/track.js', writeKeyHash: 'key-sha' } }], validation: 'Unavailable', cost: 'Unavailable' })
     for (const text of ['Example site', 'https://collector.example.test', 'Single-page navigation: Enabled', 'payload-sha', 'key-sha', 'separate publication review required']) expect(html).toContain(text)
   })
+  it('describes a first mapping as a local binding without implying a version will be published', async () => {
+    const html = await render({ action: 'binding', base: null, target: null, changes: [{ action: 'binding', before: null, after: { connectionId: 'connection-123', containerPath: 'accounts/1/containers/2' } }], validation: 'Local first-mapping request only', cost: 'Unavailable' })
+    expect(html).toContain('Connect the tracking site to GTM')
+    expect(html).toContain('No GTM tags or versions are changed')
+    expect(html).not.toContain('Created during execution; separate publication review required')
+  })
   it('requires a new proposal when exact evidence is missing', async () => {
     expect(await render(null)).toContain('Prepare a new proposal before approving')
   })

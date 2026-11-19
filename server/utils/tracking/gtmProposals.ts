@@ -10,7 +10,8 @@ import {
 import {
   assertGtmSite,
   assertGtmBindingForSite,
-  assertGtmConnectionForClient
+  assertGtmConnectionForClient,
+  assertGtmContainerForClient
 } from '~~/server/utils/ai/marketing/gtmAccess'
 import { resolveMcpStaffContext } from '~~/server/utils/ai/mcp/staffAuthority'
 import {
@@ -73,6 +74,17 @@ async function credential(
     })
   return value.token
 }
+// First mapping is an explicit local request, never permission to inspect an unassigned identity.
+interface InitialMappingRow { action_type: string, desired_state?: { input?: { initialMapping?: boolean } } }
+const isInitialMapping = (row: InitialMappingRow) => row.action_type === 'binding' && row.desired_state?.input?.initialMapping === true
+async function assertInitialConnection(connectionId: string) {
+  if (!await queryOneFresh('SELECT id FROM gtm_connections WHERE id=$1 AND status=\'active\'', [connectionId]))
+    throw createError({ statusCode: 403, statusMessage: 'An active operator-provided GTM connection is required' })
+}
+function requireInitialMappingAdmin(row: InitialMappingRow, reviewer: { groups: readonly string[] }) {
+  if (isInitialMapping(row) && !reviewer.groups.includes('ADMIN'))
+    throw createError({ statusCode: 403, statusMessage: 'An independent owner/admin must authorise the initial GTM mapping' })
+}
 // Internal only: publication construction and verification require the exact persisted manifest.
 // Never return this raw row from a staff or browser boundary.
 async function loadAuthorizedGtmChangeProposal(ctx: ToolContext, id: string) {
@@ -114,7 +126,11 @@ async function loadAuthorizedGtmChangeProposal(ctx: ToolContext, id: string) {
     )
       conflict('Site binding changed since review')
   }
-  await assertGtmConnectionForClient(ctx, row.connection_id, row.client_id)
+  if (row.action_type === 'binding' && !isInitialMapping(row)) {
+    if (!row.desired_state.previousBinding) conflict('Recreate the first mapping with explicit initialMapping intent')
+    await assertGtmContainerForClient(ctx, row.connection_id, row.client_id, row.desired_state.containerPath)
+  } else if (isInitialMapping(row) && row.status !== 'verified') await assertInitialConnection(row.connection_id)
+  else await assertGtmConnectionForClient(ctx, row.connection_id, row.client_id)
   const cross = await queryOneFresh(
     `SELECT b.id FROM gtm_container_bindings b JOIN tracking_sites s ON s.id=b.tracking_site_id WHERE b.container_path=$1 AND s.client_id<>$2 LIMIT 1`,
     [row.desired_state.containerPath, row.client_id]
@@ -214,7 +230,18 @@ export async function createGtmChangeProposal(
   const connectionId
     = binding?.connection_id
       ?? (input as Extract<typeof input, { action: 'binding' }>).connectionId
-  await assertGtmConnectionForClient(ctx, connectionId, site.client_id)
+  const initialMapping = input.action === 'binding' && input.initialMapping === true
+  if (initialMapping) {
+    if (await queryOneFresh('SELECT id FROM gtm_container_bindings WHERE tracking_site_id=$1', [site.id]))
+      conflict('Initial mapping requires an unbound tracking site')
+    await assertInitialConnection(connectionId)
+  } else {
+    if (input.action === 'binding') {
+      if (!await queryOneFresh('SELECT id FROM gtm_container_bindings WHERE tracking_site_id=$1', [site.id]))
+        conflict('First mapping requires explicit initialMapping intent and independent owner/admin review')
+      await assertGtmContainerForClient(ctx, connectionId, site.client_id, input.containerPath)
+    } else await assertGtmConnectionForClient(ctx, connectionId, site.client_id)
+  }
   const containerPath
     = binding?.container_path
       ?? (input as Extract<typeof input, { action: 'binding' }>).containerPath
@@ -261,6 +288,12 @@ export async function createGtmChangeProposal(
   let target: any = null, source: any = null
   if (input.action === 'publish' || input.action === 'rollback') {
     source = await loadAuthorizedGtmChangeProposal(ctx, input.sourceProposalId)
+    if (input.action === 'publish' && evidence.evidence.siteKind === 'native_driveagent'
+      && (source.action_type === 'installation' || (source.action_type === 'workspace'
+        && source.desired_state.input.changes.some((change: { template: { templateId: string, eventName?: string } }) =>
+          change.template.templateId === 'tag.google_ads_conversion.v1'
+          || (change.template.templateId === 'tag.ga4_event.v1' && ['generate_lead', 'purchase'].includes(change.template.eventName ?? ''))))))
+      conflict('Native accepted-lead conversions retain their supported server path; recompile supported changes using current evidence')
     if (
       source.site_id !== site.id
       || source.connection_id !== connectionId
@@ -290,13 +323,17 @@ export async function createGtmChangeProposal(
     }
   }
   const installation = input.action === 'installation' ? await getGtmInstallationIdentity(ctx.event, site.id) : null
-  const token = await credential(
-    ctx,
-    connectionId,
-    input.action === 'publish' || input.action === 'rollback'
-  )
-  const live = await call(() => api.getLiveGtmVersion(token, containerPath))
-  if (!live.path.startsWith(`${containerPath}/versions/`) || !live.fingerprint)
+  const token = initialMapping
+    ? null
+    : await credential(
+        ctx,
+        connectionId,
+        input.action === 'publish' || input.action === 'rollback'
+      )
+  const live = initialMapping
+    ? { path: 'not_read', fingerprint: 'not_read' }
+    : await call(() => api.getLiveGtmVersion(token!, containerPath))
+  if (!initialMapping && (!live.path.startsWith(`${containerPath}/versions/`) || !live.fingerprint))
     conflict('Exact live snapshot required')
   const beforeChanges: any[] = []
   if (input.action === 'workspace')
@@ -304,7 +341,7 @@ export async function createGtmChangeProposal(
       const { kind, body } = compileGtmTemplate(change.template)
       if (change.action === 'update') {
         const current = await call(() =>
-          api.getGtmEntity(token, change.entityPath, kind)
+          api.getGtmEntity(token!, change.entityPath, kind)
         )
         if (current.fingerprint !== change.expectedFingerprint)
           conflict('GTM entity drift')
@@ -323,7 +360,7 @@ export async function createGtmChangeProposal(
   if (target) {
     if (input.action === 'publish' && (live.path !== source.base_live_path || live.fingerprint !== source.base_live_fingerprint))
       conflict('Live version changed since compilation; recompile and review before publication')
-    const version = await call(() => api.getGtmVersion(token, target.path))
+    const version = await call(() => api.getGtmVersion(token!, target.path))
     if (version.fingerprint !== target.fingerprint)
       conflict('Target version drift')
     verifyGtmVersion(target.managed, version, containerPath)
@@ -346,7 +383,7 @@ export async function createGtmChangeProposal(
     review: {
       action: input.action,
       siteName: site.name ?? site.id,
-      base: gtmVersionReview(live),
+      base: initialMapping ? null : gtmVersionReview(live),
       target: targetVersion ? gtmVersionReview(targetVersion) : null,
       sourceProposalId: source?.id ?? null,
       sourceProposalHref: source ? `/agency/marketing/reviews/gtm#proposal-${source.id}` : null,
@@ -359,7 +396,9 @@ export async function createGtmChangeProposal(
             : [{ action: 'binding', before: previousBinding, after: { connectionId, containerPath } }],
       installation: installation?.review ?? null,
       installationHash: installation?.hash ?? null,
-      validation: 'Local schema and provider read snapshot only; execution compilation and live read-back are not yet available.',
+      validation: initialMapping
+        ? 'Local first-mapping request only. No provider credentials or inventory read. An independent owner/admin must approve; execution verifies the exact host and web container. No tags are installed or published.'
+        : 'Local schema and provider read snapshot only; execution compilation and live read-back are not yet available.',
       cost: 'Provider billing and downstream conversion cost impact are unavailable; no spend estimate is asserted.'
     }
   }
@@ -416,11 +455,12 @@ async function reviewedContext(ctx: ToolContext, id: string) {
     throw createError({ statusCode: 404, statusMessage: 'Proposal not found' })
   if (ctx.clientScope && ctx.clientScope !== row.client_id)
     throw createError({ statusCode: 403, statusMessage: 'Proposal outside requested client scope' })
-  await requireIndependentMarketingReviewer(ctx.event, {
+  const reviewer = await requireIndependentMarketingReviewer(ctx.event, {
     requesterId: row.requester_id,
     clientId: row.client_id,
     reviewerId: ctx.userId
   })
+  requireInitialMappingAdmin(row, reviewer)
   const requester = await assertMarketingCapabilityAtBoundary(
     ctx.event,
     row.requester_id,
@@ -435,7 +475,7 @@ async function reviewedContext(ctx: ToolContext, id: string) {
   )
   if (evidence.evidence_hash !== row.desired_state.ownershipHash)
     conflict('Ownership evidence changed')
-  return { row, requester }
+  return { row, requester, evidence }
 }
 export async function getGtmReviewProposal(ctx: ToolContext, id: string) {
   return gtmProposalProjection((await reviewedContext(ctx, id)).row)
@@ -484,9 +524,10 @@ export async function listGtmReviewProposals(ctx: ToolContext) {
   const proposals = []
   for (const row of rows) {
     try {
-      await requireIndependentMarketingReviewer(ctx.event, {
+      const reviewer = await requireIndependentMarketingReviewer(ctx.event, {
         requesterId: row.requester_id, clientId: row.client_id, reviewerId: ctx.userId
       })
+      requireInitialMappingAdmin(row, reviewer)
       await assertMarketingCapabilityAtBoundary(ctx.event, row.requester_id, row.client_id, 'tracking_plan')
       proposals.push(gtmProposalProjection(row))
     } catch (error) {
@@ -500,14 +541,15 @@ export async function executeApprovedGtmProposal(
   raw: unknown
 ) {
   const input = reviewInput.parse(raw),
-    { row, requester } = await reviewedContext(ctx, input.proposalId)
+    { row, requester, evidence } = await reviewedContext(ctx, input.proposalId)
   if (row.request_hash !== input.expectedHash || !row.reviewer_id)
     conflict('Exact reviewed proposal required')
-  await requireIndependentMarketingReviewer(ctx.event, {
+  const approver = await requireIndependentMarketingReviewer(ctx.event, {
     requesterId: row.requester_id,
     clientId: row.client_id,
     reviewerId: row.reviewer_id
   })
+  requireInitialMappingAdmin(row, approver)
   await transaction(async (db) => {
     // Durable connection-level serialization prevents concurrent container publications and also holds
     // uncertain work across process crashes. It is not a timed lease: an unknown result needs inspection.
@@ -526,6 +568,7 @@ export async function executeApprovedGtmProposal(
     if (!claimed.rows.length)
       conflict('Proposal is not executable; inspect its recorded result')
   })
+  const initialMapping = isInitialMapping(row)
   let writesStarted = false,
     quotaFailure: string | undefined,
     changeSetId: string | undefined
@@ -543,7 +586,7 @@ export async function executeApprovedGtmProposal(
     // Reserve all reads, mutations and read-back before credentials or the first provider effect.
     const requests = row.action_type === 'workspace'
       ? 1 + gtmTypedChangeRequestCount(row.desired_state.input.changes)
-      : row.action_type === 'installation' ? 11 : row.action_type === 'binding' ? 2 : 5
+      : row.action_type === 'installation' ? 11 : row.action_type === 'binding' ? (initialMapping ? 1 : 2) : 5
     if (requests > 20) {
       quotaFailure = `This operation needs ${requests} GTM requests; the supported bound is 20 per operation. Prepare a smaller separately reviewed proposal.`
       conflict(quotaFailure)
@@ -568,11 +611,13 @@ export async function executeApprovedGtmProposal(
       ['publish', 'rollback'].includes(row.action_type)
     )
     const container = row.desired_state.containerPath
-    const live = await call(() => api.getLiveGtmVersion(token, container))
-    if (
+    const live = initialMapping
+      ? { path: 'not_read', fingerprint: 'not_read' }
+      : await call(() => api.getLiveGtmVersion(token, container))
+    if (!initialMapping && (
       live.path !== row.base_live_path
       || live.fingerprint !== row.base_live_fingerprint
-    )
+    ))
       conflict('Live GTM version drift; create a new proposal')
     let result: any,
       status = 'verified'
@@ -626,6 +671,7 @@ export async function executeApprovedGtmProposal(
           site.allowed_origins.includes(`https://${host}`)
         )
         || !target.usageContext?.includes('web')
+        || (initialMapping && target.domainName.some(host => !site.allowed_origins.includes(`https://${host}`)))
       )
         conflict('Exact public host and web container ownership required')
       result = await upsertGtmContainerBinding({
@@ -634,6 +680,7 @@ export async function executeApprovedGtmProposal(
         connectionId: row.connection_id,
         account: { path: accountPath, name: accountPath },
         container: target!,
+        initialOnly: initialMapping ? { clientId: row.client_id, publicHost: evidence.evidence.publicHost } : undefined,
         beforeWrite
       })
     } else {

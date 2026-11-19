@@ -13,7 +13,7 @@ const config = (value: unknown) => value == null ? 'None' : JSON.stringify(value
     />
     <template v-else>
       <h3 class="text-base font-semibold">
-        {{ review.action === 'rollback' ? 'Restore a previous version' : review.action === 'publish' ? 'Replace the live version' : review.action === 'installation' ? 'Compile the tracking installation' : 'Proposed changes' }}
+        {{ review.action === 'binding' ? 'Connect the tracking site to GTM' : review.action === 'rollback' ? 'Restore a previous version' : review.action === 'publish' ? 'Replace the live version' : review.action === 'installation' ? 'Compile the tracking installation' : 'Proposed changes' }}
       </h3>
       <dl class="grid grid-cols-1 @lg:grid-cols-2 gap-4">
         <div>
@@ -21,9 +21,9 @@ const config = (value: unknown) => value == null ? 'None' : JSON.stringify(value
             Current live base
           </dt>
           <dd class="break-all">
-            {{ review.base?.path }}
+            {{ review.base?.path || 'Provider inventory has not been read' }}
           </dd>
-          <dd class="break-all text-muted">
+          <dd v-if="review.base" class="break-all text-muted">
             Fingerprint: {{ review.base?.fingerprint }}
           </dd>
         </div>
@@ -32,7 +32,7 @@ const config = (value: unknown) => value == null ? 'None' : JSON.stringify(value
             Exact target version
           </dt>
           <dd class="break-all">
-            {{ review.target?.path || 'Created during execution; separate publication review required' }}
+            {{ review.action === 'binding' ? 'No GTM tags or versions are changed' : review.target?.path || 'Created during execution; separate publication review required' }}
           </dd>
           <dd v-if="review.target" class="break-all text-muted">
             Fingerprint: {{ review.target.fingerprint }}

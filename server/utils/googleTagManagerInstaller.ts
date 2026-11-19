@@ -1,6 +1,6 @@
 import { gtmHash } from '~~/server/utils/tracking/gtmOwnership'
 import { createError, getRequestURL, type H3Event } from 'h3'
-import { execute, queryOne, queryOneFresh, queryRows } from '~~/server/utils/db'
+import { execute, queryOne, queryOneFresh, queryRows, transaction } from '~~/server/utils/db'
 import {
   buildXeroFlowGtmEntities,
   createGtmTag,
@@ -94,6 +94,8 @@ export async function upsertGtmContainerBinding(input: {
   account: { path: string, name: string }
   container: GtmContainer
   beforeWrite?: () => void
+  /** Reviewed onboarding must never overwrite a concurrently established binding. */
+  initialOnly?: { clientId: string, publicHost: string }
 }): Promise<GtmSiteBindingSummary> {
   if (!/^accounts\/\d+$/.test(input.account.path)) {
     throw createError({ statusCode: 400, statusMessage: 'Invalid GTM account path' })
@@ -109,9 +111,7 @@ export async function upsertGtmContainerBinding(input: {
     throw createError({ statusCode: 400, statusMessage: 'The selected GTM container is not a web container' })
   }
 
-  input.beforeWrite?.()
-  const row = await queryOne<GtmSiteBindingRow>(
-    `INSERT INTO gtm_container_bindings (
+  const sql = `INSERT INTO gtm_container_bindings (
        tracking_site_id, connection_id,
        account_path, account_name,
        container_path, container_public_id, container_name, domain_names,
@@ -119,7 +119,9 @@ export async function upsertGtmContainerBinding(input: {
      )
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
      ON CONFLICT (tracking_site_id)
-     DO UPDATE SET
+     ${input.initialOnly
+        ? 'DO NOTHING'
+        : `DO UPDATE SET
        connection_id = EXCLUDED.connection_id,
        account_path = EXCLUDED.account_path,
        account_name = EXCLUDED.account_name,
@@ -130,7 +132,7 @@ export async function upsertGtmContainerBinding(input: {
        last_live_version_path = NULL,
        last_verified_at = NULL,
        bound_by = EXCLUDED.bound_by,
-       updated_at = NOW()
+       updated_at = NOW()`}
      RETURNING id AS binding_id,
                tracking_site_id,
                connection_id,
@@ -144,19 +146,45 @@ export async function upsertGtmContainerBinding(input: {
                last_verified_at,
                ''::text AS site_name,
                ''::text AS write_key,
-               FALSE AS spa`,
-    [
-      input.siteId,
-      input.connectionId,
-      input.account.path,
-      input.account.name,
-      input.container.path,
-      input.container.publicId,
-      input.container.name,
-      input.container.domainName || [],
-      input.userId,
-    ],
-  )
+               FALSE AS spa`
+  const params = [
+    input.siteId,
+    input.connectionId,
+    input.account.path,
+    input.account.name,
+    input.container.path,
+    input.container.publicId,
+    input.container.name,
+    input.container.domainName || [],
+    input.userId
+  ]
+  const row = input.initialOnly
+    ? await transaction(async (db) => {
+        // Short database-only critical section: all binding writers acquire conflicting row-exclusive
+        // locks, including the legacy owner path. Recheck after provider reads and before the insert.
+        await db.query('LOCK TABLE gtm_container_bindings IN SHARE ROW EXCLUSIVE MODE')
+        const site = (await db.query<{ client_id: string, is_active: boolean, allowed_origins: string[] }>(
+          'SELECT client_id,is_active,allowed_origins FROM tracking_sites WHERE id=$1 FOR UPDATE', [input.siteId]
+        )).rows[0]
+        if (!site?.is_active || site.client_id !== input.initialOnly!.clientId
+          || !site.allowed_origins.includes(`https://${input.initialOnly!.publicHost}`)
+          || !input.container.domainName?.includes(input.initialOnly!.publicHost)
+          || input.container.domainName.some(host => !site.allowed_origins.includes(`https://${host}`)))
+          throw createError({ statusCode: 409, statusMessage: 'Reviewed tracking site ownership changed during onboarding' })
+        const foreign = await db.query(
+          `SELECT b.id FROM gtm_container_bindings b JOIN tracking_sites s ON s.id=b.tracking_site_id
+           JOIN tracking_sites target ON target.id=$2 WHERE b.container_path=$1 AND s.client_id<>target.client_id LIMIT 1`,
+          [input.container.path, input.siteId]
+        )
+        if (foreign.rows.length) throw createError({ statusCode: 409, statusMessage: 'Container ownership changed during onboarding' })
+        const inserted = (await db.query<GtmSiteBindingRow>(sql, params)).rows[0] ?? null
+        if (inserted) input.beforeWrite?.()
+        return inserted
+      })
+    : await (async () => {
+        input.beforeWrite?.()
+        return queryOne<GtmSiteBindingRow>(sql, params)
+      })()
   if (!row) throw new Error('Unable to bind Google Tag Manager container')
   return toBindingSummary(row)
 }

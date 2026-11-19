@@ -92,6 +92,7 @@ export const ADS_STAFF_REVIEW_NAMES: readonly string[] = [
 ]
 export const isAdsStaffReviewTool = (name: string) => ADS_STAFF_REVIEW_NAMES.includes(name)
 export const GTM_STAFF_NAMES = [
+  'get_client_tracking_onboarding',
   'list_gtm_site_inventory',
   'get_gtm_tracking_ownership',
   'record_gtm_tracking_ownership',

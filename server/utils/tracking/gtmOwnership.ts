@@ -121,10 +121,10 @@ export async function getGtmOwnership(
 ) {
   const site = await assertGtmSite(ctx, siteId)
   const row = await queryOneFresh<any>(
-    `SELECT id,evidence,evidence_hash,created_at,expires_at FROM gtm_tracking_ownership_evidence WHERE site_id=$1 AND client_id=$2 AND ($3::uuid IS NULL OR id=$3) AND expires_at>NOW() ORDER BY created_at DESC LIMIT 1`,
-    [siteId, site.client_id, id ?? null]
+    `SELECT id,evidence,evidence_hash,created_at,expires_at FROM gtm_tracking_ownership_evidence WHERE site_id=$1 AND client_id=$2 ORDER BY created_at DESC,id DESC LIMIT 1`,
+    [siteId, site.client_id]
   )
-  if (!row)
+  if (!row || new Date(row.expires_at).getTime() <= Date.now() || (id && row.id !== id))
     throw createError({
       statusCode: 409,
       statusMessage: 'Current tracking ownership evidence required'

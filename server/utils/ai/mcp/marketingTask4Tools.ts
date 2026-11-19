@@ -27,6 +27,7 @@ import { GtmOwnershipSchema } from '~~/server/utils/tracking/gtmOwnership'
 
 const site = z.strictObject({ siteId: z.string().uuid() })
 const gtmSchemas: Record<string, z.ZodType> = {
+  get_client_tracking_onboarding: z.strictObject({ clientId: z.string().uuid() }),
   list_client_gtm_connections: z.strictObject({}),
   list_gtm_site_inventory: site.extend({
     workspacePath: z
@@ -90,11 +91,15 @@ export function projectTask4StaffSuite(
     ...review,
     ...GTM_STAFF_NAMES.map(name => ({
       name,
-      description: actionByName[name]
-        ? 'Prepare a local tracking proposal. A separate owner/admin reviews before any provider changes; publish requires its own review.'
-        : name === 'record_gtm_tracking_ownership'
-          ? 'Record exact host, accepted-enquiry ownership, consent, current-source and documentary evidence; do not include credentials or customer payloads.'
-          : 'Read client-scoped tracking inventory or proposal evidence; installation does not prove conversion delivery.',
+      description: name === 'get_client_tracking_onboarding'
+        ? 'Start new-client tracking onboarding: read the staff setup guide and safe stored site/mapping/proposal stages for one authorised client, including sites not yet bound to GTM. No provider calls or conversion delivery claims.'
+        : name === 'propose_gtm_container_binding'
+          ? 'Request an exact GTM container binding. For a first mapping use initialMapping: true and operator-provided connectionId/containerPath: local request only, no provider reads; independent owner/admin approval and execution required. Does not install or publish a tag.'
+          : actionByName[name]
+            ? 'Prepare a local tracking proposal. A separate owner/admin reviews before any provider changes; publish requires its own review.'
+            : name === 'record_gtm_tracking_ownership'
+              ? 'Record exact host, accepted-enquiry ownership, consent, current-source and documentary evidence; do not include credentials or customer payloads.'
+              : 'Read client-scoped tracking inventory or proposal evidence; installation does not prove conversion delivery.',
       inputSchema: toMcpInputSchema(gtmSchemas[name]!) as any
     }))
   ]
@@ -203,6 +208,10 @@ export async function executeTask4StaffTool(
       )
     }
     const input = gtmSchemas[name]!.parse(args) as any
+    if (name === 'get_client_tracking_onboarding') {
+      const { getClientTrackingOnboarding } = await import('~~/server/utils/tracking/marketingOnboarding')
+      return { ok: true, data: await getClientTrackingOnboarding(ctx, input.clientId) }
+    }
     if (name === 'list_client_gtm_connections') {
       const { listGtmConnectionsInScope }
         = await import('~~/server/utils/ai/marketing/gtmAccess')

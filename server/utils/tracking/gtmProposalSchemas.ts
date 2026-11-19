@@ -14,6 +14,7 @@ export const GtmProposalInput = z.discriminatedUnion('action', [
     ...base,
     action: z.literal('binding'),
     connectionId: UUID,
+    initialMapping: z.literal(true).optional(),
     containerPath: z.string().regex(/^accounts\/\d+\/containers\/\d+$/)
   }),
   z.strictObject({

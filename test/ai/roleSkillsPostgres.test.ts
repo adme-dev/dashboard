@@ -36,6 +36,14 @@ describe.skipIf(!local)('curated workflows in isolated local PostgreSQL', () => 
       const migration = readFileSync('server/database/migrations/505_assistant_role_skills.sql', 'utf8')
       await pool.query(migration)
       await pool.query(migration)
+      const onboardingMigration = readFileSync('server/database/migrations/518_marketing_tracking_onboarding_skill.sql', 'utf8')
+      await pool.query(onboardingMigration)
+      await pool.query(onboardingMigration)
+      const onboarding = (await readRoleSkillCatalogue(store)).find(workflow => workflow.key === 'marketing_tracking_onboarding')!
+      expect(onboarding.active?.label).toBe('New client tracking setup')
+      expect(onboarding.active?.prompt).toContain('initialMapping')
+      expect(onboarding.tools).toEqual(['get_client_tracking_onboarding'])
+      expect(onboarding.active?.bindings.permissionGroups).toEqual(['MEDIA_BUYING', 'MARKETING_MANAGEMENT'])
       await pool.query('CREATE TABLE custom_roles (id uuid PRIMARY KEY,name text,slug text,is_system boolean,is_read_only boolean DEFAULT FALSE,sort_order integer DEFAULT 0)')
       await pool.query(`CREATE TABLE team_members(id uuid PRIMARY KEY,user_role text,custom_role_id uuid,is_active boolean DEFAULT TRUE);
         CREATE TABLE role_permission_groups(role_id uuid,permission_group text)`)
@@ -58,8 +66,12 @@ describe.skipIf(!local)('curated workflows in isolated local PostgreSQL', () => 
       await expect(resolveRoleSkillActor({} as H3Event, memberId, actorDeps)).rejects.toMatchObject({ statusCode: 403 })
       const original = (await readRoleSkillCatalogue(store)).find(workflow => workflow.key === 'marketing_budget_health')!
       expect(original.active?.version).toBe(1)
-      expect((await readRoleSkillCatalogue(store))).toHaveLength(16)
+      expect((await readRoleSkillCatalogue(store))).toHaveLength(17)
       const actorId = randomUUID()
+      const customOnboarding = await saveRoleSkillDraft(onboarding.key, { expectedRevision: onboarding.revision, label: 'Tailored tracking onboarding', description: 'Team onboarding', prompt: 'Use the authorised onboarding guide and preserve review gates.', enabled: false, bindings: onboarding.active!.bindings, reason: 'Operator customisation' }, actorId, store)
+      await publishRoleSkillVersion(onboarding.key, { expectedRevision: customOnboarding.revision, versionId: customOnboarding.draft!.id, reason: 'Publish operator customisation' }, actorId, store)
+      await pool.query(onboardingMigration)
+      expect((await readRoleSkillCatalogue(store)).find(workflow => workflow.key === onboarding.key)?.active).toMatchObject({ label: 'Tailored tracking onboarding', enabled: false })
       const body = { expectedRevision: original.revision, label: 'Revised budget check', description: 'A tailored team request', prompt: 'Ask for the client and period, then inspect stored budget health.',
         enabled: true, bindings: { allRoles: false, roleIds: [], systemRoles: [], permissionGroups: ['MEDIA_BUYING'] }, reason: 'Clarify required client context' }
       await expect(saveRoleSkillDraft(original.key, { ...body, bindings: { ...body.bindings, roleIds: [randomUUID()] } }, actorId, store)).rejects.toMatchObject({ statusCode: 400 })
