@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { queryOne } from '~~/server/utils/db'
+import { isAdsAutomationHalted } from '~~/server/utils/adsGovernance/limits'
 import { hashGoogleAdsValue } from '~~/server/utils/googleAds/actionPlanner'
 import { appendGoogleAdsActionEvent } from '~~/server/utils/googleAds/actionStore'
 import type { GoogleAdsActionPlan } from '~~/server/utils/googleAds/contracts'
@@ -96,7 +97,7 @@ const PositiveKeywordRowSchema = z.object({
   })
 })
 
-type RunnerBlockReason = 'feature_disabled' | 'policy_missing' | 'policy_invalid' | 'scope_blocked' | 'daily_cap' | 'cooldown' | 'manual_override' | 'threshold_not_met' | 'no_candidates' | 'plan_blocked'
+type RunnerBlockReason = 'feature_disabled' | 'policy_missing' | 'policy_invalid' | 'scope_blocked' | 'daily_cap' | 'cooldown' | 'manual_override' | 'threshold_not_met' | 'no_candidates' | 'plan_blocked' | 'automation_kill_switch'
 type RecentActionReason = 'cooldown' | 'manual_override' | null
 
 export interface GoogleAdsAutomationRunnerDependencies {
@@ -123,6 +124,11 @@ export interface GoogleAdsAutomationRunnerDependencies {
     flags: GoogleAdsControlFlags
   ): ReturnType<typeof executeSearchGoogleAdsControlAction>
   event(input: Parameters<typeof appendGoogleAdsActionEvent>[0]): Promise<unknown>
+  /**
+   * Global ads-governance kill switch. Dormant: always false while the governance switch is off
+   * (shared/adsGovernanceDefaults.ts); when on, true if the switch is engaged or unreadable.
+   */
+  automationHalted(): Promise<boolean>
 }
 
 const defaultDependencies: GoogleAdsAutomationRunnerDependencies = {
@@ -157,7 +163,8 @@ const defaultDependencies: GoogleAdsAutomationRunnerDependencies = {
   },
   plan: planSearchGoogleAdsControlAction,
   execute: (plan, authority, flags) => executeSearchGoogleAdsControlAction(plan, authority, flags),
-  event: appendGoogleAdsActionEvent
+  event: appendGoogleAdsActionEvent,
+  automationHalted: () => isAdsAutomationHalted()
 }
 
 function normalizeTerm(value: string): string {
@@ -214,6 +221,7 @@ export async function runGoogleAdsSearchTermPolicy(
     return blocked('negative_keywords', 'feature_disabled')
   }
   const dependencies = { ...defaultDependencies, ...overrides }
+  if (await dependencies.automationHalted()) return blocked('negative_keywords', 'automation_kill_switch')
   const session = await dependencies.resolveSession({
     clientId: input.clientId,
     connectionId: input.connectionId
@@ -379,6 +387,8 @@ WHERE ${keywordParentFilter}
   if (plan.executionMode !== 'automatic' || !plan.policyDecision.allowed) {
     return blocked('negative_keywords', 'plan_blocked', { actionPlanId: plan.id })
   }
+  // Re-checked immediately before the provider call so an engaged stop wins over an in-flight run.
+  if (await dependencies.automationHalted()) return blocked('negative_keywords', 'automation_kill_switch', { actionPlanId: plan.id })
   const execution = await dependencies.execute(plan, authority, flags)
   return {
     actionClass: 'negative_keywords',
@@ -412,6 +422,7 @@ export async function runGoogleAdsPausePolicy(
     return blocked('pause', 'feature_disabled')
   }
   const dependencies = { ...defaultDependencies, ...overrides }
+  if (await dependencies.automationHalted()) return blocked('pause', 'automation_kill_switch')
   const session = await dependencies.resolveSession({
     clientId: input.clientId,
     connectionId: input.connectionId
@@ -523,6 +534,8 @@ WHERE ${config.resource}.resource_name = '${input.resourceName}'
   if (plan.executionMode !== 'automatic' || !plan.policyDecision.allowed) {
     return blocked('pause', 'plan_blocked', { actionPlanId: plan.id })
   }
+  // Re-checked immediately before the provider call so an engaged stop wins over an in-flight run.
+  if (await dependencies.automationHalted()) return blocked('pause', 'automation_kill_switch', { actionPlanId: plan.id })
   const execution = await dependencies.execute(plan, authority, flags)
   return {
     actionClass: 'pause',

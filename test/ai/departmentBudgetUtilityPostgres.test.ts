@@ -48,7 +48,9 @@ vi.mock('~~/server/utils/ai/marketing/readScope', () => ({ resolveMarketingReadS
 vi.mock('~~/server/utils/ai/marketing/reviewAuthority', () => ({ assertMarketingCapabilityAtBoundary: async () => ({ permissionGroups: ['MARKETING_MANAGEMENT'] }), requireIndependentMarketingReviewer: async (_event: unknown, input: any) => {
   if (input.requesterId === input.reviewerId)
     throw new Error('Self review')
-  return { id: input.reviewerId }
+  // Mirrors the real producer: it only returns ADMIN / MARKETING_MANAGEMENT reviewers, with fresh groups
+  // (the medium governance tier gate reads them).
+  return { id: input.reviewerId, role: 'account_manager', name: null, groups: ['MARKETING_MANAGEMENT'] }
 } }))
 vi.mock('~~/server/utils/tokenStore', () => ({ getOrgTenant: async () => undefined }))
 vi.mock('~~/server/utils/socialSpendCache', () => ({ invalidateSpendPeriodCaches: async () => undefined }))
