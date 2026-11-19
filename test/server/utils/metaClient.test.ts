@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { extractConversions, getMetaAuthUrl, META_MARKETING_OAUTH_SCOPES } from '~~/server/utils/metaClient'
+import { extractConversions, extractRevenue, getMetaAuthUrl, META_MARKETING_OAUTH_SCOPES } from '~~/server/utils/metaClient'
 
 describe('metaClient OAuth', () => {
   it('requests catalog permissions required for product set catalog audits', () => {
@@ -46,5 +46,22 @@ describe('Meta conversion semantics', () => {
       { action_type: 'offsite_conversion.fb_pixel_purchase', value: '4' },
       { action_type: 'offsite_conversion', value: '30' },
     ])).toBe(4)
+  })
+})
+
+describe('Meta revenue semantics', () => {
+  it('takes one purchase value instead of summing overlapping purchase action families', () => {
+    expect(extractRevenue([
+      { action_type: 'omni_purchase', value: '1200.50' },
+      { action_type: 'purchase', value: '1200.50' },
+      { action_type: 'offsite_conversion.fb_pixel_purchase', value: '1200.50' },
+      { action_type: 'onsite_web_purchase', value: '1200.50' },
+      { action_type: 'lead', value: '99' },
+    ])).toBe(1200.5)
+  })
+
+  it('returns 0 when no purchase family is present', () => {
+    expect(extractRevenue([{ action_type: 'lead', value: '10' }])).toBe(0)
+    expect(extractRevenue(undefined)).toBe(0)
   })
 })

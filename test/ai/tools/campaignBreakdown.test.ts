@@ -67,7 +67,10 @@ describe('getCampaignBreakdown', () => {
       frequency: 3.2,
       conversions: null,
     })
-    expect(d.conversionMetric).toMatchObject({ dataStatus: 'unavailable', definition: 'suppressed_pending_historical_resync' })
+    // Unfiltered: per-platform contract, not a blanket Meta suppression.
+    expect(d.conversionMetric).toMatchObject({ dataStatus: 'partial', definition: 'per_platform' })
+    expect(d.conversionMetric.byPlatform.meta).toMatchObject({ dataStatus: 'unavailable', definition: 'suppressed_pending_historical_resync' })
+    expect(d.conversionMetric.byPlatform.google).toMatchObject({ dataStatus: 'available', definition: 'google_ads_metrics_conversions' })
     // Round-7 A-1: mediaSpendId must survive to the projected rows so the budget
     // allocation write tools are addressable from this read alone.
     const acmeProspecting = d.campaigns.find((row: any) => row.campaignId === 'c1')
@@ -103,7 +106,7 @@ describe('getCampaignBreakdown', () => {
 
   it('filters by platform', async () => {
     const r = await getCampaignBreakdown({ platform: 'google', sortBy: 'spend' }, ctx, deps())
-    expect(data(r).campaigns).toEqual([expect.objectContaining({ ...rows[2], conversions: null })])
+    expect(data(r).campaigns).toEqual([expect.objectContaining({ ...rows[2], conversions: 7, roas: null })])
   })
 
   it('projects provider serving reasons and Search impression-share evidence with separate clocks', async () => {
@@ -189,10 +192,50 @@ describe('getCampaignBreakdown', () => {
     expect(refreshDiagnostics).toHaveBeenCalledWith([globexId], ctx)
   })
 
-  it('sorts by roas desc with nulls last', async () => {
+  it('never ranks by ROAS: falls back to spend order with an explicit note', async () => {
     const r = await getCampaignBreakdown({ sortBy: 'roas' }, ctx, deps())
     const d = data(r)
-    expect(d.campaigns.map((c: any) => c.campaignName)).toEqual(['Acme Retargeting', 'Acme Prospecting', 'Globex Search'])
+    expect(d.campaigns.map((c: any) => c.campaignName)).toEqual(['Acme Retargeting', 'Globex Search', 'Acme Prospecting'])
+    expect(d.note).toMatch(/ROAS is unavailable/)
+  })
+
+  describe('provider outcome lineage (2026-11-19 marketing review)', () => {
+    const googleRow = { ...rows[2]!, roas: 1.39, conversions: 7.5, providerConversionValue: 348 }
+    const metaRow = { ...rows[0]!, roas: 2.0, conversions: 40, providerConversionValue: 0 }
+    const lineageDeps = () => deps({ breakdown: vi.fn().mockResolvedValue({ campaigns: [googleRow, metaRow], total: 2 }) })
+
+    it('scopes the conversion suppression to Meta only', async () => {
+      const d = data(await getCampaignBreakdown({ platform: 'meta', sortBy: 'spend' }, ctx, lineageDeps()))
+      expect(d.conversionMetric).toMatchObject({ dataStatus: 'unavailable', definition: 'suppressed_pending_historical_resync' })
+      expect(d.conversionMetric.note).toMatch(/Meta/)
+      expect(d.campaigns[0]).toMatchObject({ platform: 'meta', conversions: null, conversionsDataStatus: 'unavailable', conversionsUnavailableReason: 'suppressed_pending_historical_resync' })
+    })
+
+    it('serves Google conversions from metrics.conversions when platform=google', async () => {
+      const d = data(await getCampaignBreakdown({ platform: 'google', sortBy: 'spend' }, ctx, lineageDeps()))
+      expect(d.conversionMetric).toMatchObject({ dataStatus: 'available', definition: 'google_ads_metrics_conversions', source: 'google_ads_api.campaign.metrics.conversions' })
+      expect(JSON.stringify(d.conversionMetric)).not.toContain('suppressed_pending_historical_resync')
+      expect(d.campaigns[0]).toMatchObject({ platform: 'google', conversions: 7.5, conversionsDataStatus: 'available', conversionsUnavailableReason: null })
+    })
+
+    it('mixed results keep per-campaign conversion status (Google numeric, Meta null — never zero)', async () => {
+      const d = data(await getCampaignBreakdown({ sortBy: 'spend' }, ctx, lineageDeps()))
+      const google = d.campaigns.find((c: any) => c.platform === 'google')
+      const meta = d.campaigns.find((c: any) => c.platform === 'meta')
+      expect(google.conversions).toBe(7.5)
+      expect(meta.conversions).toBeNull()
+      expect(meta.conversions).not.toBe(0)
+    })
+
+    it('returns ROAS as null with an explicit per-platform unavailable reason, even when upstream computed one', async () => {
+      const d = data(await getCampaignBreakdown({ sortBy: 'spend' }, ctx, lineageDeps()))
+      const google = d.campaigns.find((c: any) => c.platform === 'google')
+      const meta = d.campaigns.find((c: any) => c.platform === 'meta')
+      expect(google).toMatchObject({ roas: null, roasDataStatus: 'unavailable', roasUnavailableReason: 'google_conversion_value_not_verified_revenue', providerConversionValue: 348 })
+      expect(meta).toMatchObject({ roas: null, roasDataStatus: 'unavailable', roasUnavailableReason: 'meta_revenue_pending_historical_resync', providerConversionValue: null })
+      expect(d.roasMetric).toMatchObject({ dataStatus: 'unavailable', byPlatform: { meta: 'meta_revenue_pending_historical_resync', google: 'google_conversion_value_not_verified_revenue' } })
+      expect(d.costPerLeadMetric).toMatchObject({ dataStatus: 'available', definition: 'spend_per_submitted_non_test_lead' })
+    })
   })
 
   it('sorts by cpc ascending (lower CPC is better)', async () => {
@@ -203,14 +246,14 @@ describe('getCampaignBreakdown', () => {
 
   it('adds a window caveat when ranking by roas/cpc over a truncated set (finding #5)', async () => {
     const d = deps({ breakdown: vi.fn().mockResolvedValue({ campaigns: rows, total: 250 }) })
-    const r = await getCampaignBreakdown({ sortBy: 'roas' }, ctx, d)
+    const r = await getCampaignBreakdown({ sortBy: 'cpc' }, ctx, d)
     expect((r as any).data.note).toMatch(/highest-spend campaigns \(of 250\)/)
   })
 
   it('does NOT add a caveat when sorting by spend or the window is complete', async () => {
     const bySpend = await getCampaignBreakdown({ sortBy: 'spend' }, ctx, deps({ breakdown: vi.fn().mockResolvedValue({ campaigns: rows, total: 250 }) }))
     expect((bySpend as any).data.note).toBeUndefined()
-    const complete = await getCampaignBreakdown({ sortBy: 'roas' }, ctx, deps())
+    const complete = await getCampaignBreakdown({ sortBy: 'cpc' }, ctx, deps())
     expect((complete as any).data.note).toBeUndefined()
   })
 
