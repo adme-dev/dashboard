@@ -126,16 +126,31 @@ jobs:
 
       # Real media decode tests require both executables from the FFmpeg package.
       # Provision explicitly instead of relying on the hosted runner image.
-      - name: Install and verify media decode dependencies
+      # The runner's Ubuntu mirror repeatedly crawled past even a 15-minute limit (6 CI failures on
+      # 2026-11-19). Cache the ffmpeg .deb set per runner image so most runs never touch the mirror.
+      - name: Restore ffmpeg package cache
+        id: ffmpeg-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/ffmpeg-debs
+          key: ffmpeg-debs-v1-${{ env.ImageOS }}-${{ env.ImageVersion }}
+
+      - name: Download ffmpeg packages (cache miss only)
+        if: steps.ffmpeg-cache.outputs.cache-hit != 'true'
         run: |
-          # The runner's Ubuntu mirror intermittently crawls (4 CI timeouts on 2026-11-19); retry and
-          # allow more time rather than failing the whole suite on a package download.
           APT_OPTS="-o Acquire::Retries=5 -o Acquire::http::Timeout=30"
           sudo apt-get $APT_OPTS update
-          sudo apt-get $APT_OPTS install --yes --no-install-recommends ffmpeg
+          sudo apt-get $APT_OPTS install --yes --no-install-recommends --download-only ffmpeg
+          mkdir -p ~/ffmpeg-debs
+          cp /var/cache/apt/archives/*.deb ~/ffmpeg-debs/
+        timeout-minutes: 15
+
+      - name: Install and verify media decode dependencies
+        run: |
+          sudo dpkg -i ~/ffmpeg-debs/*.deb
           ffmpeg -version
           ffprobe -version
-        timeout-minutes: 15
+        timeout-minutes: 5
 
       - name: Install pnpm
         uses: pnpm/action-setup@v6
