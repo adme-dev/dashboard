@@ -61,10 +61,16 @@ function requestIdFrom(error: UnknownRecord): string | undefined {
   return typeof value === 'string' && value ? value : undefined
 }
 
+// searchStream returns its failure as a JSON array of chunks (`[{ error: {...} }]`); unary calls return
+// `{ error: {...} }`. Accept both, or every streamed read loses Google's error code and field path.
+function unwrapStreamEnvelope(value: unknown): UnknownRecord {
+  return Array.isArray(value) ? asRecord(value.find(item => asRecord(item).error) ?? value[0]) : asRecord(value)
+}
+
 function firstProviderError(error: UnknownRecord): UnknownRecord {
-  const data = asRecord(error.data)
+  const data = unwrapStreamEnvelope(error.data)
   const response = asRecord(error.response)
-  const responseData = asRecord(response._data)
+  const responseData = unwrapStreamEnvelope(response._data)
   const envelope = asRecord(Object.keys(data).length ? data.error : responseData.error)
   const details = Array.isArray(envelope.details) ? envelope.details : []
 
@@ -155,6 +161,11 @@ export function normalizeGoogleAdsError(error: unknown): GoogleAdsActionError {
   const category = categoryFrom(status, code)
   const retryable = status === 429 || status === 500 || status === 502 || status === 503 || status === 504
   const location = locationFrom(providerError)
+  // GAQL query errors name the offending field only in the message text. Lift just a strict
+  // resource.field identifier out of it (never free text) so read failures are diagnosable.
+  const queryField = !location.fieldPath && typeof providerError.message === 'string'
+    ? /'([a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+)'/.exec(providerError.message)?.[1]
+    : undefined
 
   return new GoogleAdsActionError({
     code,
@@ -162,7 +173,8 @@ export function normalizeGoogleAdsError(error: unknown): GoogleAdsActionError {
     retryable,
     requestId: requestIdFrom(record),
     safeMessage: safeMessageFor(category),
-    ...location
+    ...location,
+    ...(queryField ? { fieldPath: queryField } : {})
   })
 }
 
