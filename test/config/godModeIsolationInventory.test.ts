@@ -150,8 +150,10 @@ const API_INVENTORY = {
   // T10 adds two scoped reads and four guarded production writes; no authority bypass.
   // Audio import adds one write-access, project-scoped multipart write in the existing
   // media-upload God mode family; no authority bypass.
-  totalRouteFiles: 2395,
-  mutationRouteFiles: 1309,
+  // Marketing alerts adds one cron POST (/api/cron/marketing-alerts) authenticated by the
+  // machine cron secret, not a staff session; it is notify-only and registers no bypass.
+  totalRouteFiles: 2396,
+  mutationRouteFiles: 1310,
   explicitlyGuardedMutationFiles: 436,
   guardedMutationFilesWithTransactionCall: 58
 } as const
@@ -203,8 +205,9 @@ describe('God mode route isolation inventory', () => {
     expect(API_INVENTORY).toEqual({
       // T10 adds two scoped reads and four guarded production writes; no authority bypass.
   // Governance phase 4 adds one client-scoped read (clients/[id]/change-history.get.ts).
-  totalRouteFiles: 2395,
-      mutationRouteFiles: 1309,
+      // Marketing alerts adds one cron-secret POST; no authority bypass.
+      totalRouteFiles: 2396,
+      mutationRouteFiles: 1310,
       explicitlyGuardedMutationFiles: 436,
       guardedMutationFilesWithTransactionCall: 58
     })
