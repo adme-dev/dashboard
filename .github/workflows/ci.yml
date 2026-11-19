@@ -77,6 +77,52 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          # A pull_request checkout is GitHub's merge commit: depth 2 brings in its
+          # base parent (HEAD^1) so the scope step can diff exactly the PR's changes.
+          fetch-depth: 2
+
+      # The Page Studio PostgreSQL gates below take ~36 of the ~50 CI minutes.
+      # Pull requests run them only when the diff can affect Page Studio; push to
+      # main and workflow_dispatch ALWAYS run the complete suite. Any uncertainty
+      # (missing base, failed diff) fails open to running everything.
+      - name: Determine Page Studio test scope
+        id: scope
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            echo "page_studio=true" >> "$GITHUB_OUTPUT"
+            echo "Running Page Studio steps: event is $EVENT_NAME (full suite always runs outside pull requests)."
+            exit 0
+          fi
+          if ! changed="$(git diff --name-only HEAD^1 HEAD)"; then
+            echo "page_studio=true" >> "$GITHUB_OUTPUT"
+            echo "Running Page Studio steps: could not diff the PR against its base (fail open)."
+            exit 0
+          fi
+          # Generous on purpose: a false "run" costs minutes, a false "skip" hides a regression.
+          # Line 1: anything named Page Studio (server/utils/pageStudio, shared/pageStudio,
+          #   workers/page-studio-*, app + api + routes, page_studio migrations, tests, fixtures, scripts).
+          # Then: every migration (the DB tests apply them), shared non-Page-Studio modules the
+          #   Page Studio code and tests import, test scaffolding, and toolchain/workflow config.
+          pattern='[Pp]age[-_]?[Ss]tudio'
+          pattern+='|^server/database/'
+          pattern+='|^server/utils/(db|portalSession|clientAuth|auth|session|storage|rateLimit|roleResolver|permissions|portalMagicLinkRecipients|cloudflareEmailGateway|claudeClient|asyncBackground|appUrl)\.ts$'
+          pattern+='|^server/utils/(leads|measurement|godMode)/|^server/utils/ai/modelRegistry'
+          pattern+='|^shared/utils/mcpRequestClaim|^shared/emailRendering/'
+          pattern+='|^test/(helpers|fixtures|support|utils|mocks)/|^test/setup\.ts$'
+          pattern+='|^\.github/workflows/ci\.yml$|^package\.json$|^pnpm-lock\.yaml$|^pnpm-workspace\.yaml$|^\.npmrc$|^\.nvmrc$'
+          pattern+='|^vitest\.config|^tsconfig|^nuxt\.config'
+          matched="$(printf '%s\n' "$changed" | grep -E "$pattern" || true)"
+          if [ -n "$matched" ]; then
+            echo "page_studio=true" >> "$GITHUB_OUTPUT"
+            echo "Running Page Studio steps; matched paths:"
+            printf '%s\n' "$matched" | sed 's/^/  /'
+          else
+            echo "page_studio=false" >> "$GITHUB_OUTPUT"
+            echo "skipped: no Page Studio changes ($(printf '%s\n' "$changed" | grep -c . || true) changed files checked)"
+          fi
 
       # Real media decode tests require both executables from the FFmpeg package.
       # Provision explicitly instead of relying on the hosted runner image.
@@ -136,6 +182,7 @@ jobs:
           MARKETING_MCP_STUDIO_BRIDGE_DATABASE_TEST_URL: postgresql://page_studio_test@127.0.0.1:5432/marketing_department_ci
 
       - name: Page Studio management generated binding reproducibility
+        if: steps.scope.outputs.page_studio == 'true'
         run: |
           pnpm --dir workers/page-studio-management run types
           git diff --exit-code -- workers/page-studio-management/worker-staging.d.ts workers/page-studio-management/worker-production.d.ts
@@ -145,28 +192,33 @@ jobs:
           WRANGLER_LOG_PATH: ${{ runner.temp }}/page-studio-management-types.log
 
       - name: Page Studio management strict Worker typecheck
+        if: steps.scope.outputs.page_studio == 'true'
         run: pnpm --dir workers/page-studio-management run typecheck
         timeout-minutes: 5
 
       - name: Page Studio management transaction round trips and PostgreSQL semantics
+        if: steps.scope.outputs.page_studio == 'true'
         run: pnpm exec vitest run test/workers/pageStudioManagementDatabase.test.ts test/workers/pageStudioManagementDatabasePostgres.test.ts
         timeout-minutes: 5
         env:
           PAGE_STUDIO_MANAGEMENT_DATABASE_TEST_URL: postgresql://page_studio_test@127.0.0.1:5432/page_studio_checkpoint_cas_test
 
       - name: Page Studio management immutable deployment targets
+        if: steps.scope.outputs.page_studio == 'true'
         run: |
           node workers/page-studio-management/deploy.mjs staging --check-only
           node workers/page-studio-management/deploy.mjs production --check-only
         timeout-minutes: 5
 
       - name: Page Studio checkpoint concurrency and migration tests
+        if: steps.scope.outputs.page_studio == 'true'
         run: pnpm exec vitest run test/config/pageStudioCheckpointCasPostgres.test.ts test/config/pageStudioControlPlaneMigrationPostgres.test.ts
         timeout-minutes: 5
         env:
           PAGE_STUDIO_DATABASE_TEST_URL: postgresql://page_studio_test@127.0.0.1:5432/page_studio_checkpoint_cas_test
 
       - name: Page Studio imported checkpoint and AI authority database tests
+        if: steps.scope.outputs.page_studio == 'true'
         run: |
           psql postgresql://page_studio_test@127.0.0.1:5432/page_studio_checkpoint_cas_test -v ON_ERROR_STOP=1 -c 'CREATE DATABASE studio_checkpoint_authority_code_ci'
           psql postgresql://page_studio_test@127.0.0.1:5432/page_studio_checkpoint_cas_test -v ON_ERROR_STOP=1 -c 'CREATE DATABASE studio_ai_authority_code_ci'
@@ -175,6 +227,7 @@ jobs:
         timeout-minutes: 5
 
       - name: Page Studio template catalogue database authority
+        if: steps.scope.outputs.page_studio == 'true'
         run: |
           psql postgresql://page_studio_test@127.0.0.1:5432/page_studio_checkpoint_cas_test -v ON_ERROR_STOP=1 -c 'CREATE DATABASE studio_template_catalogue_ci'
           pnpm exec vitest run test/server/utils/pageStudioTemplateCataloguePostgres.test.ts test/server/utils/pageStudioTemplateCatalogue.test.ts test/server/api/pageStudioTemplateCatalogue.test.ts
@@ -183,6 +236,7 @@ jobs:
           PAGE_STUDIO_TEMPLATE_CATALOGUE_DATABASE_TEST_URL: postgresql://page_studio_test@127.0.0.1:5432/studio_template_catalogue_ci
 
       - name: Page Studio access grant and submissions database tests
+        if: steps.scope.outputs.page_studio == 'true'
         run: pnpm exec vitest run test/server/utils/pageStudioEntitlementGrantsPostgres.test.ts test/server/utils/pageStudioInvitedAccessPostgres.test.ts test/server/utils/pageStudioSubmissionsPostgres.test.ts test/server/utils/pageStudioPublishingPostgres.test.ts test/server/utils/pageStudioVersionReviewPostgres.test.ts
         timeout-minutes: 5
         env:
@@ -190,6 +244,7 @@ jobs:
           PAGE_STUDIO_INVITED_ACCESS_TEST_URL: postgresql://page_studio_test@127.0.0.1:5432/page_studio_checkpoint_cas_test
 
       - name: Page Studio native history and CMS attachment intent database tests
+        if: steps.scope.outputs.page_studio == 'true'
         run: |
           psql postgresql://page_studio_test@127.0.0.1:5432/page_studio_checkpoint_cas_test -v ON_ERROR_STOP=1 -c 'CREATE DATABASE studio_history_authority_ci'
           psql postgresql://page_studio_test@127.0.0.1:5432/page_studio_checkpoint_cas_test -v ON_ERROR_STOP=1 -c 'CREATE DATABASE studio_attachment_intent_ci'
@@ -200,18 +255,21 @@ jobs:
           PAGE_STUDIO_ATTACHMENT_DATABASE_TEST_URL: postgresql://page_studio_test@127.0.0.1:5432/studio_attachment_intent_ci
 
       - name: Page Studio customer workspace ownership database tests
+        if: steps.scope.outputs.page_studio == 'true'
         run: pnpm exec vitest run test/server/utils/pageStudioCustomerPlanGrantsPostgres.test.ts test/server/utils/pageStudioCustomerPublishAuthorityPostgres.test.ts test/server/utils/pageStudioCustomerWorkspacesPostgres.test.ts test/server/utils/pageStudioCustomerSignupPostgres.test.ts test/server/utils/pageStudioCustomerSitesPostgres.test.ts test/server/utils/pageStudioLegacyOwnershipUpgradePostgres.test.ts test/server/utils/pageStudioCustomerProvisioningPostgres.test.ts test/server/utils/pageStudioCustomerEditorHandoffPostgres.test.ts test/server/utils/pageStudioCustomerEditorSessionsPostgres.test.ts test/server/utils/pageStudioCustomerCmsSavesPostgres.test.ts test/server/utils/pageStudioCustomerCmsAdoptionPostgres.test.ts test/server/utils/pageStudioCustomerSchemaUpgradePostgres.test.ts
         timeout-minutes: 5
         env:
           PAGE_STUDIO_WORKSPACE_TEST_URL: postgresql://page_studio_test@127.0.0.1:5432/page_studio_checkpoint_cas_test
 
       - name: Page Studio setup and provisioning authority database tests
+        if: steps.scope.outputs.page_studio == 'true'
         run: pnpm exec vitest run test/server/api/pageStudioAgencySetupProposalPostgres.test.ts test/server/api/pageStudioPortalSetupPostgres.test.ts test/server/utils/pageStudioProvisioningAuthorityPostgres.test.ts
         timeout-minutes: 5
         env:
           PAGE_STUDIO_AUTHORITY_DATABASE_TEST_URL: postgresql://page_studio_test@127.0.0.1:5432/page_studio_checkpoint_cas_test
 
       - name: Page Studio Astro reservations and historical release compatibility
+        if: steps.scope.outputs.page_studio == 'true'
         run: |
           psql postgresql://page_studio_test@127.0.0.1:5432/page_studio_checkpoint_cas_test -v ON_ERROR_STOP=1 -c 'CREATE DATABASE studio_cms_activation_astro_ci'
           pnpm exec vitest run test/server/utils/pageStudioAstroBuildsPostgres.test.ts test/server/utils/pageStudioReleaseFeatureSealsPostgres.test.ts test/server/utils/pageStudioPublishedSiteOwnerPostgres.test.ts test/shared/pageStudioBuilderGraphVerifier.test.ts test/server/utils/pageStudioRuntimePublishingPostgres.test.ts test/server/utils/pageStudioStagingStorePostgres.test.ts test/server/utils/pageStudioCheckpointStagingAuthorityPostgres.test.ts test/server/utils/pageStudioCheckpointOutboxPostgres.test.ts
@@ -220,6 +278,7 @@ jobs:
           PAGE_STUDIO_CMS_DATABASE_TEST_URL: postgresql://page_studio_test@127.0.0.1:5432/studio_cms_activation_astro_ci
 
       - name: Page Studio managed production authoring and transfer authority
+        if: steps.scope.outputs.page_studio == 'true'
         run: pnpm exec vitest run test/server/utils/pageStudioCustomerAuthoringAuthorityPostgres.test.ts test/server/utils/pageStudioCustomerProductionEditorPostgres.test.ts test/server/utils/pageStudioManagedTransferAuthorityPostgres.test.ts test/server/utils/pageStudioManagedTransferCompletionMigrationPostgres.test.ts test/server/utils/pageStudioManagedCmsOriginPostgres.test.ts test/server/utils/pageStudioManagedTransferDestinationAuthoringPostgres.test.ts test/server/utils/pageStudioCustomerManagedTransferPostgres.test.ts --maxWorkers=1
         timeout-minutes: 8
         env:
@@ -227,6 +286,7 @@ jobs:
           PAGE_STUDIO_CMS_DATABASE_TEST_URL: postgresql://page_studio_test@127.0.0.1:5432/studio_cms_activation_astro_ci
 
       - name: Page Studio expired transfer recovery database tests
+        if: steps.scope.outputs.page_studio == 'true'
         run: |
           psql postgresql://page_studio_test@127.0.0.1:5432/page_studio_checkpoint_cas_test -v ON_ERROR_STOP=1 -c 'CREATE DATABASE studio_cms_transfer_recovery_ci'
           pnpm exec vitest run test/server/utils/pageStudioTransferControlsPostgres.test.ts test/server/utils/pageStudioTransferRecoveryMigrationPostgres.test.ts test/server/utils/pageStudioTransferRecoveryInventoryPostgres.test.ts test/server/utils/pageStudioTransferRecoveryReconciliationPostgres.test.ts --maxWorkers=1
@@ -235,30 +295,35 @@ jobs:
           PAGE_STUDIO_CMS_DATABASE_TEST_URL: postgresql://page_studio_test@127.0.0.1:5432/studio_cms_transfer_recovery_ci
 
       - name: Page Studio recovery approval and admission database tests
+        if: steps.scope.outputs.page_studio == 'true'
         run: pnpm exec vitest run test/server/utils/pageStudioTransferRecoveryReviewPostgres.test.ts test/server/utils/pageStudioTransferRecoveryAdmissionPostgres.test.ts --maxWorkers=1
         timeout-minutes: 8
         env:
           PAGE_STUDIO_CMS_DATABASE_TEST_URL: postgresql://page_studio_test@127.0.0.1:5432/studio_cms_transfer_recovery_ci
 
       - name: Page Studio explicit recovery admission control database tests
+        if: steps.scope.outputs.page_studio == 'true'
         run: pnpm exec vitest run test/server/utils/pageStudioTransferRecoveryAdmissionControlPostgres.test.ts --maxWorkers=1
         timeout-minutes: 5
         env:
           PAGE_STUDIO_CMS_DATABASE_TEST_URL: postgresql://page_studio_test@127.0.0.1:5432/studio_cms_transfer_recovery_ci
 
       - name: Page Studio recovery source association database tests
+        if: steps.scope.outputs.page_studio == 'true'
         run: pnpm exec vitest run test/server/utils/pageStudioTransferRecoveryPhasePostgres.test.ts --maxWorkers=1
         timeout-minutes: 6
         env:
           PAGE_STUDIO_CMS_DATABASE_TEST_URL: postgresql://page_studio_test@127.0.0.1:5432/studio_cms_transfer_recovery_ci
 
       - name: Page Studio recovery source effect authority and coordinator database tests
+        if: steps.scope.outputs.page_studio == 'true'
         run: pnpm exec vitest run test/server/utils/pageStudioTransferRecoverySourceEffectPostgres.test.ts test/server/utils/pageStudioTransferRecoverySourceEffectControlPostgres.test.ts --maxWorkers=1
         timeout-minutes: 6
         env:
           PAGE_STUDIO_CMS_DATABASE_TEST_URL: postgresql://page_studio_test@127.0.0.1:5432/studio_cms_transfer_recovery_ci
 
       - name: Page Studio recovery source freeze database tests
+        if: steps.scope.outputs.page_studio == 'true'
         run: pnpm exec vitest run test/server/utils/pageStudioTransferRecoverySourceFreezePostgres.test.ts --maxWorkers=1
         # Passing runs take 335-347s (93-96% of the old 6 min limit); slow runners tipped it over.
         timeout-minutes: 10
@@ -266,12 +331,14 @@ jobs:
           PAGE_STUDIO_CMS_DATABASE_TEST_URL: postgresql://page_studio_test@127.0.0.1:5432/studio_cms_transfer_recovery_ci
 
       - name: Page Studio continuation journal and current authority (PostgreSQL)
+        if: steps.scope.outputs.page_studio == 'true'
         timeout-minutes: 5
         run: pnpm exec vitest run test/server/utils/pageStudioContinuationJournalPostgres.test.ts test/server/utils/pageStudioContinuationConsentPostgres.test.ts test/server/utils/pageStudioTransferRecoveryContinuationAuthorityPostgres.test.ts --maxWorkers=1
         env:
           PAGE_STUDIO_CMS_DATABASE_TEST_URL: postgresql://page_studio_test@127.0.0.1:5432/studio_cms_transfer_recovery_ci
 
       - name: Page Studio booking and content authority database tests
+        if: steps.scope.outputs.page_studio == 'true'
         run: pnpm exec vitest run test/server/utils/pageStudioBookingsPostgres.test.ts test/server/utils/pageStudioPortalBookingsPostgres.test.ts test/server/utils/pageStudioBusinessContentPostgres.test.ts test/server/utils/pageStudioEmailConfigurationPostgres.test.ts
         timeout-minutes: 5
         env:
@@ -280,6 +347,7 @@ jobs:
           PAGE_STUDIO_BOOKINGS_DATABASE_TEST_URL: postgresql://page_studio_test@127.0.0.1:5432/page_studio_checkpoint_cas_test
 
       - name: Page Studio durable domain attachment database tests
+        if: steps.scope.outputs.page_studio == 'true'
         run: |
           psql postgresql://page_studio_test@127.0.0.1:5432/page_studio_checkpoint_cas_test -v ON_ERROR_STOP=1 -c 'CREATE DATABASE page_studio_domains_disposable'
           pnpm exec vitest run test/server/utils/pageStudioDomainAttachmentPostgres.test.ts
