@@ -52,7 +52,12 @@ export function createObserveAndLearnHandler(
           `SELECT DISTINCT ta.user_id
            FROM task_activities ta
            JOIN team_members tm ON tm.id = ta.user_id AND tm.is_active = TRUE
-          WHERE ta.user_id IS NOT NULL AND ta.created_at > NOW() - INTERVAL '30 days'`
+          WHERE ta.user_id IS NOT NULL AND ta.created_at > NOW() - INTERVAL '30 days'
+            -- Respect each person's My Assistant memory switch: memory off means nothing is learned.
+            AND NOT EXISTS (
+              SELECT 1 FROM ai_agent_configs c
+               WHERE c.owner_user_id = ta.user_id AND c.scope = 'personal' AND c.memory_enabled = FALSE
+            )`
         )
         return rows.map(r => r.user_id)
       },
