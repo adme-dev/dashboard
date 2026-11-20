@@ -57,3 +57,20 @@ fits its pane. Further shape/height checks were deliberately paused, and the own
 dev server and fixture tab closed, to free memory for the renderer benchmark.
 The synthetic fixture was moved outside the repository before commit. No deployed
 UI acceptance is claimed.
+
+## Related retry correction
+
+Code inspection of the actual failed Reels-only pilot exposed a related export
+control defect: Retry discarded its job argument and defaulted to all three
+formats. Recover the output set only when persisted variants plus current format
+account for the recorded total. If historical evidence is incomplete, show a
+toast directing the operator to select formats explicitly; never guess and
+expand the request. Three failing regressions cover Reels-only, a known partial
+set and incomplete/unknown evidence. This change remains within the user’s
+authorized Video Studio cleanup and preserves the explicit render action.
+
+Retry verification: the three new regressions failed before implementation;
+21 focused format/workbench/render-panel tests pass afterward. Independent
+review found no Critical or Important findings. The original UI source head
+8d0b44aa9 passed full CI44669583204 before this bounded follow-up; the new head
+requires its own CI.

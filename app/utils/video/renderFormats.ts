@@ -32,3 +32,23 @@ export function normalizeVideoRenderFormats(formats: readonly string[] | null | 
   }
   return seen.size ? [...seen] : [...DEFAULT_VIDEO_RENDER_FORMATS]
 }
+
+/** Recover the requested outputs only when persisted job evidence is complete.
+ * Historical jobs without that evidence require a fresh explicit selection.
+ */
+export function retryVideoRenderFormats(job: {
+  variants?: Record<string, unknown>
+  progress?: { total: number, formatKey: string | null } | null
+} | null | undefined): VideoRenderFormatId[] | null {
+  const total = job?.progress?.total
+  if (!Number.isInteger(total) || !total || total < 1 || total > VIDEO_RENDER_FORMATS.length) return null
+  const recorded = Object.keys(job?.variants ?? {})
+  if (recorded.some(format => !VIDEO_RENDER_FORMAT_IDS.has(format))) return null
+  const current = job?.progress?.formatKey
+  if (current) {
+    if (!VIDEO_RENDER_FORMAT_IDS.has(current)) return null
+    recorded.push(current)
+  }
+  const formats = VIDEO_RENDER_FORMATS.map(format => format.id).filter(format => recorded.includes(format))
+  return formats.length === total ? formats : null
+}

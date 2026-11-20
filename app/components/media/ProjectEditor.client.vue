@@ -34,7 +34,7 @@ import type { CaptionStylePreset } from '~~/app/utils/audio/timelineEdit'
 import type { AiAssemblyTimelinePayload } from '~~/app/utils/video/aiAssemblyTimeline'
 import type { AssetDerivativeTimelinePayload } from '~~/app/utils/video/assetDerivativeTimeline'
 import { audioStudioTimelinePayload } from '~~/app/utils/video/videoLibraryTimeline'
-import type { VideoRenderFormatId } from '~~/app/utils/video/renderFormats'
+import { retryVideoRenderFormats, type VideoRenderFormatId } from '~~/app/utils/video/renderFormats'
 import type { VideoStudioSelectedAssetActivity } from '~~/app/components/media/VideoStudioSelectedAssetPanel.vue'
 import type { AudioAsset, MediaRenderJob } from '~~/app/types'
 import { videoStudioAssetImageSource, type VideoStudioAsset } from '~~/app/utils/video/videoStudioAssets'
@@ -727,8 +727,17 @@ async function onRenderVideo(formats?: VideoRenderFormatId[]) {
   else toast.add({ title: 'Failed to queue render', description: res.reason, color: 'error' })
 }
 
-async function onRetryRender() {
-  await onRenderVideo()
+async function onRetryRender(job?: MediaRenderJob) {
+  const formats = retryVideoRenderFormats(job)
+  if (!formats) {
+    toast.add({
+      title: 'Choose render formats',
+      description: 'This job does not record every requested output. Choose the formats in the toolbar, then select Render.',
+      color: 'warning'
+    })
+    return
+  }
+  await onRenderVideo(formats)
 }
 
 async function onPublishToSocial(job: MediaRenderJob, format: string) {
