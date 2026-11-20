@@ -3,10 +3,28 @@
 // Ported from the video-composite-render-spike; drives the GSAP timeline via
 // gsap.globalTimeline.getChildren(false)[0] (the banner builder's master tl),
 // NOT window.__seek (spike-only mechanism).
+import pngjs from 'pngjs'
 import { prepareStaticCopyPage, inspectExactCopy } from './copyMeasurement.mjs'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { resolveFrameRuntime, seekFrameRuntime, waitForBannerAssets } from './frameRuntime.mjs'
+
+const pngSignature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])
+
+// Chromium emits RGB on fully opaque frames and RGBA on transparent frames.
+// A decoded pixel format change resets FFmpeg's active video and audio filters.
+export function normalizeOverlayPng(bytes, width, height) {
+  const frame = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+  if (frame.length < 33 || !frame.subarray(0, 8).equals(pngSignature)
+    || frame.readUInt32BE(8) !== 13 || frame.toString('ascii', 12, 16) !== 'IHDR'
+    || frame.readUInt32BE(16) !== width || frame.readUInt32BE(20) !== height
+    || frame[24] !== 8 || (frame[25] !== 2 && frame[25] !== 6)) {
+    throw new Error('Unexpected Chromium overlay PNG')
+  }
+  if (frame[25] === 6) return frame
+  const decoded = pngjs.PNG.sync.read(frame)
+  return pngjs.PNG.sync.write(decoded, { colorType: 6, inputColorType: 6, bitDepth: 8, deflateLevel: 1, filterType: 0 })
+}
 
 /**
  * Capture transparent-PNG frames of a GSAP banner HTML page.
@@ -46,15 +64,15 @@ export async function captureOverlay(browser, { html, width, height, fps, durati
       if (exactInput && (await inspectExactCopy(page, exactInput)).length) throw new Error('Exact copy changed during capture')
 
       const framePath = join(outDir, `ovl_${String(f).padStart(5, '0')}.png`)
-      await page.screenshot({
+      const pixels = await page.screenshot({
         omitBackground: true,   // transparent PNG — the key new capability
         type: 'png',
         // These frames are immediately decoded by FFmpeg. Prefer faster lossless
         // PNG encoding over smaller files so portrait footage fits the render deadline.
         optimizeForSpeed: true,
         clip: { x: 0, y: 0, width, height },
-        path: framePath,
       })
+      writeFileSync(framePath, normalizeOverlayPng(pixels, width, height))
     }
 
     return { frames }

@@ -14,7 +14,7 @@ RUN apt-get update \
 WORKDIR /app
 # Puppeteer Core drives the Chromium binary installed above. The Cloudflare
 # Browser Rendering package expects a remote browser binding with fetch().
-RUN npm install puppeteer-core@25.5.0
+RUN npm install puppeteer-core@25.5.0 pngjs@7.0.0
 COPY copyMeasurement.mjs mediaProbe.mjs server.mjs render.mjs timelineFiltergraph.mjs videoCompositeGraph.mjs reelmotionBaseGraph.mjs frameRuntime.mjs overlayCapture.mjs bannerCapture.mjs bannerAudioDownload.mjs bannerAudioRender.mjs ./
 
 EXPOSE 8080

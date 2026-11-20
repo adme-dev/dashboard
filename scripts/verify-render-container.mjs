@@ -129,20 +129,47 @@ try {
   const fps = 30
   const source = { r2Key: 'banner-assets/fixture.mp4', zoom: [{ timeSec: 0, scale: 1 }, { timeSec: 1, scale: 1.05 }] }
   const split = buildCompositePlan(
-    { tracks: [{ kind: 'overlay', clips: [clip] }], ducking: [], sample_rate: 48000 },
+    { tracks: [{ kind: 'overlay', clips: [clip] }, { id: 'voice', kind: 'voiceover', gain_db: 0, clips: [
+      { id: 'tone', gain_db: 0, r2_key: 'tone.wav', source_in_sec: 0, source_out_sec: 1, timeline_start_sec: 0 }
+    ] }], ducking: [], sample_rate: 48000 },
     { format: 'reels_9x16', width: 1080, height: 1920, fps, videoBitrate: '8M' },
     [{ clipId: clip.id, framesPattern: 'graphics/%05d.png', fps, timeline_start_sec: 0, duration_sec: 1, baseFootage: source }]
   )
-  const derivedGraphics = '<body style="margin:0;background:transparent"><div style="width:100px;height:100px;background:magenta"></div><script>window.__engagrFrame={ready:true,duration:1,seek(){}}</script></body>'
+  // A fully opaque cut between transparent frames changes Chromium's PNG color
+  // type. The audio filter must keep one clock throughout the image sequence.
+  const derivedGraphics = `<body style="margin:0;background:transparent"><div style="width:100px;height:100px;background:magenta"></div><script>
+    window.__engagrFrame={ready:true,duration:1,seek(t){document.body.style.background=t>=0.33&&t<0.46?'white':'transparent'}}
+    </script></body>`
   const unsupported = await post('/render-composite', {
     plan: split, files: [{ b64: readFileSync(movingPath).toString('base64') }]
   })
   assert.equal(unsupported.status, 422)
   assert.equal(unsupported.headers.get('x-reelmotion-base'), 'unsupported')
   const composed = await output(await post('/render-composite', {
-    plan: split, files: [{ b64: readFileSync(sourceWithOffset).toString('base64') }],
+    plan: split, files: [{ b64: readFileSync(sourceWithOffset).toString('base64') }, { b64: tone.toString('base64') }],
     overlays: [{ clipId: clip.id, html: derivedGraphics, framesPattern: 'graphics/%05d.png', fps, width: 1080, height: 1920, durationSec: 1 }]
   }), 'split-graphics.mp4', 'video/mp4')
+  const packets = JSON.parse(execFileSync('ffprobe', ['-v', 'error', '-select_streams', 'a',
+    '-show_packets', '-show_entries', 'packet=duration', '-of', 'json', composed.path], { encoding: 'utf8' })).packets
+  assert.ok(packets.length > 40 && packets.slice(0, -1).every(packet => Number(packet.duration) === 1024),
+    'transparency changes must preserve the 1024-sample AAC packet clock')
+  assert.equal(Number(composed.facts.streams[0].nb_frames), 30, 'exact one-second video frame count')
+  const { normalizeOverlayPng } = await import('/app/overlayCapture.mjs')
+  for (const format of ['rgb24', 'rgba']) {
+    const png = ffmpeg(['-f', 'lavfi', '-i', `color=c=0x1a294c@0.5:s=8x8,format=${format}`,
+      '-frames:v', '1', '-c:v', 'png', '-f', 'image2pipe', 'pipe:1'])
+    const actual = normalizeOverlayPng(png, 8, 8)
+    assert.equal(actual[24], 8)
+    assert.equal(actual[25], 6, 'FFmpeg always decodes RGBA')
+    const decode = input => execFileSync('ffmpeg', ['-v', 'error', '-i', 'pipe:0', '-pix_fmt', 'rgba', '-f', 'rawvideo', 'pipe:1'], { input })
+    const expected = decode(png)
+    assert.deepEqual(decode(actual), expected, 'every original decoded channel is preserved')
+    if (format === 'rgba') {
+      assert.ok(expected[3] > 0 && expected[3] < 255)
+      assert.deepEqual(actual, png, 'RGBA screenshot bytes pass through unchanged')
+    }
+    assert.throws(() => normalizeOverlayPng(png, 9, 8), /Unexpected Chromium overlay PNG/)
+  }
   const pixel = (time, x, y) => ffmpeg(['-ss', String(time), '-i', composed.path, '-frames:v', '1',
     '-vf', `crop=2:2:${x}:${y},scale=1:1`, '-f', 'rawvideo', '-pix_fmt', 'rgb24', 'pipe:1'])
   for (const at of [0, 0.3]) assert.ok(pixel(at, 540, 960)[2] > 200, 'offset footage stays blue until its source transition')
