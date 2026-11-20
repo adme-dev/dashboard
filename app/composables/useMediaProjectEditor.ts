@@ -527,23 +527,29 @@ export function useMediaProjectEditor(projectId: string) {
   const rendering = ref(false)
   const acceptedRenderJobs = new Map<string, MediaRenderJob>()
   let pollTimer: ReturnType<typeof setTimeout> | null = null
+  let disposed = false
 
   async function refreshRenderJobs() {
+    if (disposed) return
     try {
       const res = await apiFetch<{ jobs: MediaRenderJob[] }>(`/api/agency/audio/projects/${projectId}/render-jobs`)
+      if (disposed) return
       const jobs = res?.jobs ?? []
       for (const job of jobs) acceptedRenderJobs.delete(job.id)
       // Keep the durable enqueue receipt visible until the history read observes it.
       renderJobs.value = [...acceptedRenderJobs.values(), ...jobs]
-    } catch { /* surfaced via UI emptiness */ }
+    } catch { /* Keep the last known jobs through transient read failures. */ }
+    finally { scheduleJobPoll() }
   }
 
   function scheduleJobPoll() {
     if (pollTimer) clearTimeout(pollTimer)
+    pollTimer = null
+    if (disposed) return
     const active = renderJobs.value.some(j => j.status === 'queued' || j.status === 'rendering')
     const delay = active ? nextPollDelay('rendering') : null
     if (delay == null) return
-    pollTimer = setTimeout(async () => { await refreshRenderJobs(); scheduleJobPoll() }, delay)
+    pollTimer = setTimeout(() => { pollTimer = null; void refreshRenderJobs() }, delay)
   }
 
   /** Enqueue a composite-video render. Returns false (with a flag-off signal) on 404. */
@@ -564,7 +570,6 @@ export function useMediaProjectEditor(projectId: string) {
           renderJobs.value = [accepted.job, ...renderJobs.value.filter(job => job.id !== accepted.job.id)]
         }
         await refreshRenderJobs()
-        scheduleJobPoll()
         return { ok: true }
       } catch (e: unknown) {
         if (apiErrorStatus(e) === 409) {
@@ -577,7 +582,6 @@ export function useMediaProjectEditor(projectId: string) {
           // The request may have reached the queue before the failure. Show what
           // actually exists rather than inviting a duplicate render.
           await refreshRenderJobs().catch(() => {})
-          scheduleJobPoll()
           return { ok: false, maybeQueued: true, reason: apiErrorDescription(e, 'No response from the server') }
         }
         return { ok: false, reason: apiErrorDescription(e, 'Unknown error') }
@@ -831,6 +835,7 @@ export function useMediaProjectEditor(projectId: string) {
 
   onMounted(() => { void init() })
   onBeforeUnmount(() => {
+    disposed = true
     saver.cancel()
     cancelAnimationFrame(raf)
     if (pollTimer) clearTimeout(pollTimer)
