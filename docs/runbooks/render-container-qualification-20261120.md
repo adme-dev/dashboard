@@ -382,3 +382,34 @@ Observed peak cgroup memory was 1,503,023,104 bytes and captured PNGs occupied
 235,048,618 bytes. This is local emulation with four CPUs and the existing
 standard-4 resource envelope, not native Cloudflare timing. Full CI, production
 rollout/readbacks and a new native export remain pending for this stage.
+
+### Hardening production and native acceptance
+
+PR #955 merged as `66a06ab2d7af12acc5f92de3173067fcfbadff23`.
+Current-head CI run `44694529273` passed: the broad suite had 24,140 passing
+and 4,446 skipped tests, alongside the explicit native PostgreSQL and 13
+real-media checks. Pages deployed first as
+`eb7ba97b-463f-4f2e-a33f-68d65535b10a`. Worker
+`669e9026-173f-426b-aae4-bb3ed6b0de78` then rolled out the qualified image.
+Application `audio-render` reached version 17; rollout
+`105c87b6-dd49-49b2-a961-3e9846a872a4` reported completed with all five existing
+instances at the target version. The four-CPU standard-4 class was preserved.
+
+Native portrait-only job `5622ab1f-7591-4208-b6ec-4528ad53c1e8` completed in
+139.7 seconds from creation to publication. Its actual downloaded MP4 fully
+decodes, contains 1,206 frames and exactly matches the previous accepted native
+SHA-256 `58e2304741a5b9505d6bc6ccc2fbb0227c522258de1512d840125ba74fa74bb3`
+(40,652,216 bytes). Byte equality preserves the previous picture, crop, narration
+and copy acceptance. Live capture and encoding counters, actual upload-byte
+counters and QR Codes leave/return polling were observed. This supersedes the
+pending native gate for the hardening image above. The pilot remains voice-only.
+
+The editor's default three-format button also queued QA job
+`33db9756-a95b-4d4b-9b82-734063741bc5` during rollout. Its old-image attempt
+failed; a new-image retry completed portrait and entered the slower whole-artwork
+square path. Preserve this stress history; it does not qualify square/landscape
+throughput or establish a bounded cause for every transient failure. A separate
+Worker correction in PR #956 stops automatic redelivery of a confirmed persisted
+deadline, while keeping transport and publication uncertainty retryable. Its
+review and focused native PostgreSQL/queue tests passed; its release is tracked
+separately from the accepted #955 portrait result.

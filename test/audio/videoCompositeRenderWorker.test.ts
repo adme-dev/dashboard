@@ -143,3 +143,34 @@ describe('runVideoCompositeJob', () => {
     }))
   })
 })
+
+it('treats a cleaned-up, durably persisted deadline as terminal', async () => {
+  vi.useFakeTimers()
+  const d = deps({ renderOne: () => new Promise(() => {}), markFailed: vi.fn().mockResolvedValue(true) })
+  const run = runVideoCompositeJob({ jobId: 'j', projectId: 'p', timelineId: 't', formats: ['reels_9x16'] }, d as any)
+  void run.catch(() => {})
+  await vi.advanceTimersByTimeAsync(720001)
+  await expect(run).rejects.toMatchObject({ name: 'TerminalRenderDeadlineError' })
+  expect(d.markFailed).toHaveBeenCalledOnce()
+})
+it.each([false, undefined])('keeps uncertain deadline failure persistence retryable (%s)', async persisted => {
+  vi.useFakeTimers()
+  const d = deps({ renderOne: () => new Promise(() => {}), markFailed: vi.fn().mockResolvedValue(persisted) })
+  const run = runVideoCompositeJob({ jobId: 'j', projectId: 'p', timelineId: 't', formats: ['reels_9x16'] }, d as any)
+  void run.catch(() => {})
+  await vi.advanceTimersByTimeAsync(720001)
+  await expect(run).rejects.toMatchObject({ name: 'RenderDeadlineError' })
+})
+it('keeps a deadline retryable when completed output cleanup fails', async () => {
+  vi.useFakeTimers()
+  const d = deps({
+    renderOne: vi.fn().mockResolvedValueOnce({ key: 'first.mp4' }).mockImplementationOnce(() => new Promise(() => {})),
+    discardOutput: vi.fn().mockRejectedValue(new Error('storage unavailable')),
+    markFailed: vi.fn().mockResolvedValue(true),
+  })
+  const run = runVideoCompositeJob({ jobId: 'j', projectId: 'p', timelineId: 't', formats: ['reels_9x16', 'square_1x1'] }, d as any)
+  void run.catch(() => {})
+  await vi.advanceTimersByTimeAsync(720001)
+  await expect(run).rejects.toMatchObject({ name: 'RenderDeadlineError' })
+  expect(d.markFailed).not.toHaveBeenCalled()
+})

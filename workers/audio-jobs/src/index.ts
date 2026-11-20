@@ -9,6 +9,7 @@
 // (→ Neon), DATABASE_URL secret, and RENDER (FFmpeg Container).
 import { handleCopyMeasurement } from './copyMeasurement'
 import { handleMediaProbe } from './mediaProbe'
+import { TerminalRenderDeadlineError } from '../../../shared/video/renderExecution'
 import { Container } from '@cloudflare/containers'
 
 /** FFmpeg render service — a Linux container running ffmpeg over HTTP. The Worker
@@ -63,7 +64,7 @@ export default {
             markRendering: db.dbMarkRenderRendering,
             markProgress: db.dbMarkRenderProgress,
             markDone: db.dbMarkRenderDone,
-            markFailed: db.dbMarkRenderFailed,
+            markFailed: db.dbMarkVideoRenderFailed,
             renderOne: ({ projectId, jobId, state, formatKey, resolvedOverlays, pinnedObjects, signal, deadlineAtMs, onProgress }) => {
               const profile = videoFormatFor(formatKey)
               if (!profile) throw new Error(`unknown video format: ${formatKey}`)
@@ -76,7 +77,8 @@ export default {
           msg.ack()
         } catch (e) {
           console.error('audio-jobs.video-render.error', (msg.body as any)?.jobId, e)
-          msg.retry({ delaySeconds: 30 })
+          if (e instanceof TerminalRenderDeadlineError) msg.ack()
+          else msg.retry({ delaySeconds: 30 })
         }
       }
       return
