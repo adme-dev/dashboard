@@ -335,7 +335,7 @@ function clearFilters() {
           size="sm"
           @click="() => { showImportModal = true }"
         >
-          Import from TheBrief
+          Import creative packages
         </UButton>
         <UButton
           v-if="!fullScreen"

@@ -3,11 +3,14 @@ import { requireWriteAccess } from '~~/server/utils/auth'
 import { executeGodModeMediaProjectCreate } from '~~/server/utils/audio/godModeMutations'
 import { createProjectIn, getProjectWithCurrentTimelineIn } from '~~/server/utils/audio/projects'
 import { TimelineStateSchema, validateTimeline, emptyAvTimeline } from '~~/server/utils/audio/timelineSchema'
+import { requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
+import { getOrCreateReelmotionProjectIn } from '~~/server/utils/audio/reelmotionProject'
 
 const BodySchema = z.object({
   title: z.string().max(200).nullish(),
   clientId: z.string().uuid().nullish(),
   mediaType: z.enum(['audio', 'av']).default('audio'),
+  sourceBannerProjectId: z.string().uuid().optional(),
   // Optional seed timeline; defaults to an empty audio timeline (or AV timeline for
   // AV projects) when omitted.
   initialState: z.unknown().optional()
@@ -16,6 +19,10 @@ const BodySchema = z.object({
 export default defineEventHandler(async (event) => {
   const user = await requireWriteAccess(event)
   const body = BodySchema.parse(await readBody(event))
+  if (body.sourceBannerProjectId) {
+    if (!body.clientId || body.mediaType !== 'av') throw createError({ statusCode: 400, statusMessage: 'A ReelMotion companion requires its client and AV media type' })
+    await requireSocialClientAccess(event, body.clientId)
+  }
 
   // Seed: use provided initialState, or auto-seed based on mediaType.
   const seed = body.initialState ?? (body.mediaType === 'av' ? emptyAvTimeline() : {})
@@ -34,6 +41,10 @@ export default defineEventHandler(async (event) => {
   const { project, timeline } = await executeGodModeMediaProjectCreate(
     event,
     async (db) => {
+      if (body.sourceBannerProjectId) {
+        const result = await getOrCreateReelmotionProjectIn(db, { bannerId: body.sourceBannerProjectId, clientId: body.clientId!, actor: user })
+        return { id: result.project.id, ...result }
+      }
       const created = await createProjectIn(db, {
         createdBy: user.id,
         clientId: body.clientId ?? null,

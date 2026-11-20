@@ -12,6 +12,8 @@ import { fitRect, kenBurnsTransformAt, activeVisualClipAt, extractBannerLayers }
 import { isSamePreviewSourceUrl, resolveVideoPreviewState, type VideoPreviewMediaStatus } from '~~/app/utils/video/videoPreviewState'
 import { effectPreviewPlan, shakeOffsetAt } from '~~/app/utils/video/effectPreview'
 import { applyOverlayPlacement } from '~~/shared/utils/overlayPlacement'
+import { overlayPreviewFonts, seekOverlayPreview } from '~~/app/utils/video/bannerPreview'
+import type { CustomFont } from '~~/app/composables/useBannerFonts'
 
 const props = defineProps<{
   timeline: TimelineState
@@ -257,45 +259,47 @@ function bannerFormatSize(canvasData: Record<string, any> | undefined, fmtKey: s
 const overlayRefs = ref<Record<string, HTMLIFrameElement | null>>({})
 
 const overlayHtmlKey = ref<Record<string, string>>({})
+const overlayErrors = ref<Record<string, string>>({})
 async function buildOverlayHtmlFor(clip: any) {
   const key = JSON.stringify(clip.placement ?? null)
   if (overlayHtml.value[clip.id] && overlayHtmlKey.value[clip.id] === key) return
   overlayHtmlKey.value = { ...overlayHtmlKey.value, [clip.id]: key }
   try {
-    const proj = await apiFetch<{ canvasData: Record<string, { layers?: unknown[], playback?: BannerPlayback }> }>(`/api/agency/banner-studio/projects/${clip.gsap_project_id}`)
+    const proj = await apiFetch<{ clientId: string | null, canvasData: Record<string, { layers?: unknown[], playback?: BannerPlayback }> }>(`/api/agency/banner-studio/projects/${clip.gsap_project_id}`)
     const fmtKey = clip.gsap_format_key || Object.keys(proj.canvasData ?? {})[0]
     if (!fmtKey) return
     const layers = extractBannerLayers(proj.canvasData, fmtKey) as any
+    const fonts = layers.some((layer: { fontAssetId?: string }) => layer.fontAssetId)
+      ? await apiFetch<CustomFont[]>(`/api/agency/banner-studio/fonts?clientId=${encodeURIComponent(proj.clientId || '__agency__')}`) : []
+    const customFonts = overlayPreviewFonts(layers, fonts, proj.clientId)
     // An iframe is only composited transparently when its color-scheme matches
     // the embedder's; the app runs dark, so a light-scheme srcdoc paints an opaque
     // black backdrop over the preview canvas. Pin both sides to the same scheme.
     const bannerSize = bannerFormatSize(proj.canvasData, fmtKey)
     const html = applyOverlayPlacement(
-      buildBannerHTML(fmtKey, layers, { includeAnimations: true, playback: proj.canvasData[fmtKey]?.playback }),
+      buildBannerHTML(fmtKey, layers.filter((layer: { type: string }) => layer.type !== 'audio'), { includeAnimations: true, playback: proj.canvasData[fmtKey]?.playback, customFonts }),
       clip.placement ?? null,
       { width: W.value, height: H.value },
       bannerSize
     )
       .replace(/<head>/i, '<head><meta name="color-scheme" content="dark light"><style>html,body{background:transparent!important}</style>')
     overlayHtml.value = { ...overlayHtml.value, [clip.id]: html }
-  } catch { /* overlay just won't preview */ }
+    delete overlayErrors.value[clip.id]
+  } catch {
+    overlayErrors.value[clip.id] = 'Artwork preview could not load. Check the linked banner and its fonts, then reopen this project.'
+  }
 }
 
 watch(overlayClips, (clips) => { for (const c of clips) void buildOverlayHtmlFor(c) }, { immediate: true, deep: true })
 
-function gsapTimelineOf(iframe: HTMLIFrameElement | null): any {
-  const w = iframe?.contentWindow as any
-  try { return w?.gsap?.globalTimeline?.getChildren?.(false)?.[0] ?? null } catch { return null }
-}
-
 function syncOverlays() {
   for (const clip of overlayClips.value) {
     const iframe = overlayRefs.value[clip.id]
-    const tl = gsapTimelineOf(iframe)
-    if (!tl) continue
     const isActive = props.currentTime >= clip.timeline_start_sec && props.currentTime < clip.timeline_start_sec + clip.duration_sec
     if (!isActive) continue
-    try { tl.pause(); tl.seek(Math.max(0, props.currentTime - clip.timeline_start_sec)) } catch { /* not ready */ }
+    void seekOverlayPreview(iframe?.contentWindow as any, props.currentTime - clip.timeline_start_sec).catch(() => {
+      overlayErrors.value[clip.id] = 'Artwork playback could not seek. Reopen the linked banner and check its media.'
+    })
   }
 }
 
@@ -304,8 +308,9 @@ function overlayActive(clip: any): boolean {
 }
 
 function onOverlayLoad(clip: any) {
-  const tl = gsapTimelineOf(overlayRefs.value[clip.id])
-  if (tl) { try { tl.pause(); tl.seek(Math.max(0, props.currentTime - clip.timeline_start_sec)) } catch { /* noop */ } }
+  void seekOverlayPreview(overlayRefs.value[clip.id]?.contentWindow as any, props.currentTime - clip.timeline_start_sec).catch(() => {
+    overlayErrors.value[clip.id] = 'Artwork playback could not seek. Reopen the linked banner and check its media.'
+  })
 }
 
 onMounted(() => {
@@ -335,6 +340,7 @@ onBeforeUnmount(() => {
       :height="H"
       class="absolute inset-0 h-full w-full object-contain"
     />
+    <UAlert v-if="Object.values(overlayErrors).length" color="warning" variant="subtle" title="Artwork preview needs attention" :description="Object.values(overlayErrors)[0]" class="absolute inset-x-2 top-2 z-10" />
     <template v-for="clip in overlayClips" :key="clip.id">
       <iframe
         v-if="overlayHtml[clip.id]"
