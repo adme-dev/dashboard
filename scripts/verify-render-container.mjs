@@ -90,7 +90,7 @@ try {
   // A footage-bearing overlay must have a decodable first frame. A black
   // screenshot is not a successful render when the embedded media failed.
   const embeddedVideo = (source, fps = 2, times = [0]) => ({
-    plan: { inputs: [{}], overlayInputs: [{ clipId: 'footage', framesPattern: 'footage/%05d.png', fps }], filterComplex: `[0:v]fps=${fps},scale=128:64,drawbox=color=red:t=fill[base];[base][1:v]overlay=shortest=1[vout]`, vLabel: '[vout]', aLabel: null, profile: { fps, videoBitrate: '200k' } },
+    plan: { inputs: [{}], overlayInputs: [{ clipId: 'footage', framesPattern: 'footage/%05d.png', fps }], filterComplex: `[0:v]fps=${fps},scale=128:64,drawbox=color=red:t=fill[base];[base][1:v]overlay=shortest=1[vout]`, vLabel: '[vout]', aLabel: null, profile: { format: 'reels_9x16', fps, videoBitrate: '200k' } },
     files: [{ b64: readFileSync(videoPath).toString('base64') }],
     overlays: [{ clipId: 'footage', framesPattern: 'footage/%05d.png', width: 128, height: 64, fps, durationSec: times.length / fps,
       html: `<html><body style="margin:0;background:transparent"><video muted playsinline preload="auto" style="width:128px;height:64px" src="data:video/mp4;base64,${source}"></video><script>const video=document.querySelector('video');const clock=setInterval(()=>{if(video.readyState>=1)video.currentTime=(video.currentTime+0.1)%0.8},1);window.__engagrFrame={ready:true,duration:${times.length / fps},seek(t){clearInterval(clock);video.pause();if(video.readyState>=1)video.currentTime=${JSON.stringify(times)}[Math.round(t*${fps})]}}</script></body></html>` }]

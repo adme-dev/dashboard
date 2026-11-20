@@ -248,7 +248,10 @@ export function buildCompositeRenderArgs(plan: CompositePlan, inputPaths: string
   }
   args.push('-filter_complex', plan.filterComplex, '-map', plan.vLabel)
   if (plan.aLabel) args.push('-map', plan.aLabel)
-  args.push('-r', String(plan.profile.fps), '-c:v', 'libx264', '-b:v', plan.profile.videoBitrate, '-pix_fmt', 'yuv420p', '-movflags', '+faststart')
+  args.push('-r', String(plan.profile.fps), '-c:v', 'libx264')
+  // Portrait artwork capture shares the render deadline with the final encode.
+  if (plan.profile.format === 'reels_9x16' && plan.overlayInputs.length > 0) args.push('-preset', 'veryfast')
+  args.push('-b:v', plan.profile.videoBitrate, '-pix_fmt', 'yuv420p', '-movflags', '+faststart')
   if (plan.aLabel) args.push('-c:a', 'aac', '-b:a', '192k')
   args.push('-shortest', '-y', outputPath)
   return args
