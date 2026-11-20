@@ -3,7 +3,7 @@
 **Current render release procedure:** see
 [20 November qualification runbook](../../docs/runbooks/render-container-qualification-20261120.md).
 Production now uses a qualified registry digest, not a Dockerfile rebuild during
-deployment. Use `pnpm --dir workers/audio-jobs deploy`; it checks the image receipt.
+deployment. Use `pnpm --dir workers/audio-jobs run deploy`; it checks the image receipt.
 The June activation instructions below are historical; verify live bindings and
 queues before acting on them. Public workers.dev access is disabled in current config.
 
