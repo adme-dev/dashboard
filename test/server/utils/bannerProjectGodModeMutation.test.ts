@@ -147,7 +147,7 @@ describe('God mode banner project creation coordination', () => {
     const event = request()
     const prepared = await prepareGodModeBannerProjectCreation(event, dependencies)
     const project = await executeGodModeBannerProjectCreation(event, async db => await findExistingTheBriefProject(db, {
-      clientId: ACTOR_ID, sourceHashTag: `source-sha256:${'a'.repeat(64)}`, tags: ['source:thebrief']
+      sourceTag: 'source:thebrief', clientId: ACTOR_ID, sourceHashTag: `source-sha256:${'a'.repeat(64)}`, designTag: null, tags: ['source:thebrief']
     }))
     await prepared.persistTerminal({
       actorUserId: ACTOR_ID,
