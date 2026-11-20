@@ -27,9 +27,12 @@ export function verifyRenderImage({ config, receipt, contextHash }) {
   if (containers.length !== 1 || !/^class_name\s*=\s*"RenderContainer"\s*$/m.test(containers[0])) throw new Error('Unexpected container target')
   const image = containers[0].match(/^image\s*=\s*"([^"]+)"\s*$/m)?.[1]
   if (image !== receipt.image) throw new Error('Configured render image does not match qualified image')
+  const instanceType = containers[0].match(/^instance_type\s*=\s*"([^"]+)"\s*$/m)?.[1]
+  if (typeof receipt.instanceType !== 'string' || !receipt.instanceType || instanceType !== receipt.instanceType) throw new Error('Configured instance type does not match render qualification')
   if (receipt.contextSha256 !== contextHash) throw new Error('Render context changed: build, verify and qualify a new image before release')
   const requiredChecks = ['packaged-http-service', 'real-media-13', 'sigterm-audio-and-chromium-drain', 'sigint-audio-and-chromium-drain']
   if (!/^[a-f0-9]{40}$/.test(receipt.sourceCommit) || !Array.isArray(receipt.checks) || !requiredChecks.every(check => receipt.checks.includes(check))) throw new Error('Missing render qualification provenance')
+  if (receipt.qualificationStatus !== 'qualified-full-sample' || !receipt.checks.includes('full-40s-composite-and-picture-timing')) throw new Error('Missing full-sample render and picture-timing acceptance; deployment is held')
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

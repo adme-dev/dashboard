@@ -25,7 +25,7 @@
 
 ## Tasks
 
-- [ ] Root: failing eligibility/authorization/compatibility tests, shared typed descriptor, strict pure layer selector, managed source resolver and render dispatch; retain full HTML and create graphics sibling only for eligible managed content.
-- [ ] Astra High: failing Worker pin/compatibility and first-PTS/VFR/zoom tests, Worker adapter plus TS/MJS graph and container support, no changes to root-owned producer/shared files.
-- [ ] Review all changes, run scoped tests, qualify exact new image including signals and full real composite with20 picture checks, retain immutable digest/context/receipt.
+- [x] Root: failing eligibility/authorization/compatibility tests, shared typed descriptor, strict pure layer selector, managed source resolver and render dispatch; retain full HTML and create graphics sibling only for eligible managed content.
+- [x] Astra High: failing Worker pin/compatibility and first-PTS/VFR/zoom tests, Worker adapter plus TS/MJS graph and container support, no changes to root-owned producer/shared files.
+- [x] Review all changes, run scoped tests, qualify exact new image including signals and full real composite with20 picture checks, retain immutable digest/context/receipt.
 - [ ] Current-main CI and integration; release Worker/container first, guarded Pages producer release, separate live readbacks and monitored native export/download acceptance.

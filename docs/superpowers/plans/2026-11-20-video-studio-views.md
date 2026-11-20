@@ -37,9 +37,9 @@ test/components/videoStudioWorkbench.test.ts.
 Files: app/components/media/MediaAvPreview.client.vue and Workbench;
 scoped preview sizing utility/test only if needed for meaningful geometry checks.
 
-- [ ] Add meaningful fit checks for portrait/square/landscape and small pane sizes.
-- [ ] Fit the authored aspect ratio to available pane dimensions without the current 520px minimum.
-- [ ] Run focused tests and inspect actual local browser layout across view switches and small/large viewports.
+- [x] Add meaningful fit checks for portrait/square/landscape and small pane sizes.
+- [x] Fit the authored aspect ratio to available pane dimensions without the current 520px minimum.
+- [x] Run focused tests and inspect actual local browser layout across view switches and small/large viewports.
 - [ ] Independent review, current-main CI, guarded Pages release and live view-switching checks.
 
 ## Source verification checkpoint
@@ -72,5 +72,17 @@ authorized Video Studio cleanup and preserves the explicit render action.
 Retry verification: the three new regressions failed before implementation;
 21 focused format/workbench/render-panel tests pass afterward. Independent
 review found no Critical or Important findings. The original UI source head
-8d0b44aa9 passed full CI44669583204 before this bounded follow-up; the new head
+8d0b44aa9 passed full CI 44669583204 before this bounded follow-up; the new head
 requires its own CI.
+
+## Completed local browser acceptance
+
+The remaining geometry sweep passes 12/12 combinations: portrait/square/landscape
+at 1440×900, 1440×600, 390×844 and 390×700. Each frame fits its measured pane, has
+no document horizontal overflow and leaves the output-action counter at zero.
+The edited storyboard brief survives Library, History and Preview round trips.
+A dark-mode mobile screenshot was inspected. This uses the actual production
+components in a private client-only harness with the official Nuxt UI 4 Vue/Vite
+plugin, without Nitro/auth/database or new installed dependencies. Both its
+server and tab were closed before the final renderer benchmark. Hosted/live
+acceptance remains separate.

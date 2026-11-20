@@ -31,6 +31,7 @@ Banner-ad MP4 export remains a separate path with its existing duration limits.
 
 - One `custom_1080x1920` board, explicit matching playback, at most 90 seconds
   and 600 editable layers. Existing TheBrief packages retain their 200-layer cap.
+  This is an input ceiling, not a qualified render-time or throughput guarantee.
 - Existing package limits, MIME validation, checksum checks, scoped font/media
   uploads and saved-canvas readback apply.
 - Provenance uses `source:reelmotion`; it is never labelled as a TheBrief export.
@@ -50,7 +51,18 @@ Banner-ad MP4 export remains a separate path with its existing duration limits.
 ## Runtime basis
 
 The implementation reuses scoped Banner Studio storage, native AV timelines and
-the existing Cloudflare render queue/container. Review resource budgets against
+the existing Cloudflare render queue/container. Every dispatch retains a complete
+HTML snapshot. For a strictly eligible portrait companion, it also derives
+transparent graphics from the same loaded artwork revision and uses FFmpeg for
+the client-owned managed footage, including its authored centered zoom curve.
+The Worker verifies the source object's recorded ETag and size. Unsupported
+artwork keeps whole-artwork capture; unsupported media profiles receive at most
+one bounded fallback using the same verified footage bytes. Saved artwork is
+never rewritten for the optimization. This implements a bounded part of the
+FFmpeg-footage/graphics split in
+[the video brief](../engagr-ai-media-studio-video-brief.md), not a general timeline
+compiler or a 90-second throughput guarantee.
+Review resource budgets against
 [Cloudflare's instance limits](https://developers.cloudflare.com/containers/platform/limits/).
 Long render acceptance must test the real queue and lifecycle; historical
 [long-running fetch reports](https://github.com/cloudflare/containers/issues/162)
