@@ -36,6 +36,7 @@ beforeEach(() => {
 
 afterEach(() => {
   hooks.unmount.forEach(fn => fn())
+  vi.useRealTimers()
 })
 
 describe('editor revision persistence integration', () => {
@@ -113,6 +114,45 @@ describe('editor revision persistence integration', () => {
     request.mockResolvedValueOnce({ jobs: [{ ...job, status: 'done' }] })
     await e.refreshRenderJobs()
     expect(e.renderJobs.value).toEqual([{ ...job, status: 'done' }])
+  })
+
+  it('resumes a running export found after reopening the project and stops when complete', async () => {
+    const e = await editor()
+    vi.useFakeTimers()
+    const job = { id: 'j1', projectId: 'p1', status: 'rendering' }
+    request.mockResolvedValueOnce({ jobs: [job] })
+    await e.refreshRenderJobs()
+    request.mockResolvedValueOnce({ jobs: [{ ...job, status: 'done' }] })
+    await vi.advanceTimersByTimeAsync(2500)
+    expect(e.renderJobs.value).toEqual([{ ...job, status: 'done' }])
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('keeps polling a reopened export after a transient history failure', async () => {
+    const e = await editor()
+    vi.useFakeTimers()
+    const job = { id: 'j1', projectId: 'p1', status: 'queued' }
+    request.mockResolvedValueOnce({ jobs: [job] })
+    await e.refreshRenderJobs()
+    request.mockRejectedValueOnce(new Error('Temporary network failure'))
+    await vi.advanceTimersByTimeAsync(2500)
+    expect(e.renderJobs.value).toEqual([job])
+    request.mockResolvedValueOnce({ jobs: [{ ...job, status: 'done' }] })
+    await vi.advanceTimersByTimeAsync(2500)
+    expect(e.renderJobs.value[0]?.status).toBe('done')
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('does not resume polling when a history response arrives after leaving the editor', async () => {
+    const e = await editor()
+    vi.useFakeTimers()
+    const response = pending<{ jobs: Array<{ id: string; status: string }> }>()
+    request.mockImplementationOnce(() => response.promise)
+    const read = e.refreshRenderJobs()
+    hooks.unmount.forEach(fn => fn())
+    response.resolve({ jobs: [{ id: 'j1', status: 'rendering' }] })
+    await read
+    expect(vi.getTimerCount()).toBe(0)
   })
 
   it('flushes before rendering and surfaces a render revision conflict', async () => {
