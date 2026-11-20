@@ -45,6 +45,9 @@ export async function captureOverlay(browser, { html, width, height, fps, durati
       await page.screenshot({
         omitBackground: true,   // transparent PNG — the key new capability
         type: 'png',
+        // These frames are immediately decoded by FFmpeg. Prefer faster lossless
+        // PNG encoding over smaller files so portrait footage fits the render deadline.
+        optimizeForSpeed: true,
         clip: { x: 0, y: 0, width, height },
         path: framePath,
       })
