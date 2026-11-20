@@ -6,7 +6,7 @@
 import { prepareStaticCopyPage, inspectExactCopy } from './copyMeasurement.mjs'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { resolveFrameRuntime, seekFrameRuntime } from './frameRuntime.mjs'
+import { resolveFrameRuntime, seekFrameRuntime, waitForBannerAssets } from './frameRuntime.mjs'
 
 /**
  * Capture transparent-PNG frames of a GSAP banner HTML page.
@@ -22,14 +22,18 @@ export async function captureOverlay(browser, { html, width, height, fps, durati
   try {
     await page.setViewport({ width, height, deviceScaleFactor: 1 })
 
-    // Load the HTML string — networkidle0 ensures fonts + GSAP fully settled.
+    // Streaming video can stay network-active after the DOM is ready. Require
+    // decodable media explicitly, as the standalone banner capture does.
     const exactInput = requiredCopy?.length ? { html, width, height, fps, durationSec, required: requiredCopy } : null
     if (exactInput) {
       const findings = await prepareStaticCopyPage(page, exactInput)
       if (findings.length) throw new Error(`Exact copy capture blocked: ${findings[0].code}`)
-    } else await page.setContent(html, { waitUntil: 'networkidle0', timeout: 30000 })
-
+    } else await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: 15000 })
     const runtime = await resolveFrameRuntime(page, durationSec)
+    // Freeze the authored clock before waiting: an autoplaying timeline can keep
+    // setting currentTime while the first video frame is still decoding.
+    await seekFrameRuntime(page, runtime.mode, 0)
+    await waitForBannerAssets(page)
     const totalDuration = runtime.duration
 
     const frames = Math.ceil(totalDuration * fps)

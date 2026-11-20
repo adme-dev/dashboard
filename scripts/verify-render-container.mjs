@@ -87,6 +87,18 @@ try {
     overlays: [{ ...copy, clipId: 'copy1', framesPattern: 'copy/%05d.png', requiredCopy: copy.required }]
   }), 'overlay.mp4', 'video/mp4')
   assert.equal(overlay.facts.streams[0].width, 128)
+  // A footage-bearing overlay must have a decodable first frame. A black
+  // screenshot is not a successful render when the embedded media failed.
+  const embeddedVideo = source => ({
+    plan: { inputs: [{}], overlayInputs: [{ clipId: 'footage', framesPattern: 'footage/%05d.png', fps: 2 }], filterComplex: '[0:v]scale=128:64,drawbox=color=red:t=fill[base];[base][1:v]overlay=shortest=1[vout]', vLabel: '[vout]', aLabel: null, profile: { fps: 2, videoBitrate: '200k' } },
+    files: [{ b64: readFileSync(videoPath).toString('base64') }],
+    overlays: [{ clipId: 'footage', framesPattern: 'footage/%05d.png', width: 128, height: 64, fps: 2, durationSec: 0.5,
+      html: `<html><body style="margin:0;background:transparent"><video muted playsinline preload="auto" style="width:128px;height:64px" src="data:video/mp4;base64,${source}"></video><script>const video=document.querySelector('video');const clock=setInterval(()=>{if(video.readyState>=1)video.currentTime=(video.currentTime+0.1)%0.8},1);window.__engagrFrame={ready:true,duration:0.5,seek(t){clearInterval(clock);video.pause();if(video.readyState>=1)video.currentTime=t}}</script></body></html>` }]
+  })
+  const embedded = await output(await post('/render-composite', embeddedVideo(readFileSync(videoPath).toString('base64'))), 'embedded-video.mp4', 'video/mp4')
+  const firstVideoPixel = ffmpeg(['-i', embedded.path, '-frames:v', '1', '-vf', 'crop=2:2:64:32,scale=1:1', '-f', 'rawvideo', '-pix_fmt', 'rgb24', 'pipe:1'])
+  assert.ok(firstVideoPixel[2] > firstVideoPixel[0] + 100, 'first overlay frame contains blue footage, not the red base')
+  assert.equal((await post('/render-composite', embeddedVideo(Buffer.from('invalid-video').toString('base64')))).status, 500, 'failed embedded footage must not become a blank successful export')
   const html = '<html><body style="margin:0;background:#e02020;width:64px;height:64px"><script>window.__engagrFrame={ready:true,duration:0.5,seek(t){document.body.style.background=t<0.25?"#e02020":"#2020e0"}}</script></body></html>'
   const banner = await output(await post('/render-banner', { html, width: 64, height: 64, fps: 12, crf: 23, quality: 1 }), 'banner.mp4', 'video/mp4')
   assert.equal(banner.facts.streams[0].codec_name, 'h264')
