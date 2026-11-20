@@ -326,3 +326,59 @@ acceptance are still required. Record final release IDs and readbacks in the
 associated combined release PR and private job evidence. The original failed
 native job remains historical evidence; the local MP4 does not establish native
 success. The pilot remains voice-only and has not received client approval.
+
+## Accepted native baseline and hardening candidate
+
+The split candidate above was subsequently integrated in PR #953 and the
+leave-and-return polling repair in PR #954. Production Pages deployment
+`05ccc7a2-d203-407c-85be-02ab956be100` serves current main
+`3f7a8e36489a836293e5d3f231b5a1a7333cf7a4`. The active audio-jobs Worker version
+is `b8953df8-dd22-49cc-a446-ef521c70fd98`; Container version 16 uses the qualified
+`de3be03…` image on standard-4. These are the accepted baseline, superseding the
+historical pending gates above.
+
+Two real portrait jobs completed through the authenticated native editor in
+approximately 173 seconds. Their downloaded MP4s were byte-identical: 40,652,216
+bytes, SHA-256 `58e2304741a5b9505d6bc6ccc2fbb0227c522258de1512d840125ba74fa74bb3`.
+The first output passed complete decode, 1,206-frame picture timing, 20 source
+PTS matches, 32 visible zoom controls, continuous AAC packets and four narration
+windows with a constant five-millisecond offset. Returning from QR Codes resumed
+polling and displayed the second completed export without refreshing. Historical
+failed jobs remain preserved. The sample remains voice-only.
+
+PR #955 now extends that accepted baseline with whole-job budgets, owned child
+termination, completed-file streaming, measured progress, attempt fencing and
+ordered advisory writes. Reviewed source `7715828edc602df049d0ba13e46b9ed0a772c769`
+has 1,241 focused regressions passing plus the matching-token positive callback
+check. Native PostgreSQL proves stale/tokenless writes cannot cross a claimed
+attempt and delayed earlier-format progress cannot replace newer counters.
+A committed UPDATE followed by an injected lost response preserves output bytes
+and reconciles completion on retry. Independent source review has no material
+blockers. Exact-image qualification and a fresh native export are still pending
+for this new stage; the earlier native receipts do not prove it.
+
+Pages must deploy before the new Worker/container because the new callback has
+an optional attempt token that the old strict schema rejects. Render work may
+not initiate publication after its twelve-minute deadline. An atomic publication
+already issued before expiry can still commit during the reserved reconciliation
+window; preserve potentially committed bytes and reconcile on retry.
+
+### Hardening image qualified locally
+
+The reviewed source produced immutable Linux amd64 image
+`sha256:e345af76da37aca367e1a2f7428dd47bf1160719f3e8465227d0a5df8cecf6ca`,
+context `f30ced9f4c160590e1445b79816cfa6097419cbb94965130a0b1be557686b12a`.
+The same image passed 13 real-media tests without skips and packaged HTTP,
+Chromium, decode/recovery and accepted-request drain under SIGTERM and SIGINT.
+Real Chromium deadline and disconnect tests each left zero Chromium processes
+and zero scratch directories; a subsequent encode succeeded.
+
+The full portrait sample completed in 161.685 seconds with measured capturing,
+encoding and streaming stages. Its 40,674,651 output bytes and SHA-256
+`b50aa80c98e2f05d13bd1c9a4d0b394f40b42252580e651ceb50d9366f0f618b`
+exactly match the previous qualified local sample. Full decode, 1,206 frames,
+source PTS, 32 zoom controls, four narration windows and copy crops passed.
+Observed peak cgroup memory was 1,503,023,104 bytes and captured PNGs occupied
+235,048,618 bytes. This is local emulation with four CPUs and the existing
+standard-4 resource envelope, not native Cloudflare timing. Full CI, production
+rollout/readbacks and a new native export remain pending for this stage.

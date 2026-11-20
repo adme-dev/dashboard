@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
-  "image": "registry.cloudflare.com/a5b299b3ad15c1b5b895dc66f9357b17/xeroflow-render@sha256:de3be03d105a7f9ac918a1495a2f8686a08443e11c41a0f545ea80d85c54fbc6",
+  "image": "registry.cloudflare.com/a5b299b3ad15c1b5b895dc66f9357b17/xeroflow-render@sha256:e345af76da37aca367e1a2f7428dd47bf1160719f3e8465227d0a5df8cecf6ca",
   "instanceType": "standard-4",
-  "sourceCommit": "df615d09ffe2937282f4ecb6d0a878438db6ff97",
-  "contextSha256": "b01155cba066ee994f8f012521c4ec116a2c2b29b1ea67549e2777a03803c88c",
-  "qualifiedAt": "2026-11-20T04:20:04Z",
+  "sourceCommit": "7715828edc602df049d0ba13e46b9ed0a772c769",
+  "contextSha256": "f30ced9f4c160590e1445b79816cfa6097419cbb94965130a0b1be557686b12a",
+  "qualifiedAt": "2026-11-20T07:22:17.972238+00:00",
   "platform": "linux/amd64",
   "ffmpeg": "5.1.9-0+deb12u1",
   "qualificationStatus": "qualified-full-sample",
@@ -14,9 +14,12 @@
     "sigterm-audio-and-chromium-drain",
     "sigint-audio-and-chromium-drain",
     "lossless-canonical-rgba",
-    "full-40s-composite-and-picture-timing"
+    "full-40s-composite-and-picture-timing",
+    "whole-composite-deadline-and-disconnect-cleanup",
+    "measured-capture-and-encoder-progress",
+    "slow-and-interrupted-completed-file-stream"
   ],
-  "previousImage": "registry.cloudflare.com/a5b299b3ad15c1b5b895dc66f9357b17/xeroflow-render@sha256:2cdb9b603af1c4b01afcd20eaff09d74b4d607b7db213916ddb61bc21a4597e6",
+  "previousImage": "registry.cloudflare.com/a5b299b3ad15c1b5b895dc66f9357b17/xeroflow-render@sha256:de3be03d105a7f9ac918a1495a2f8686a08443e11c41a0f545ea80d85c54fbc6",
   "previousInstanceType": "standard-2",
   "sample": {
     "inputDurationSec": 40.18,
@@ -26,7 +29,7 @@
     "fps": 30,
     "width": 1080,
     "height": 1920,
-    "elapsedMs": 162250,
+    "elapsedMs": 161685,
     "outputBytes": 40674651,
     "outputSha256": "b50aa80c98e2f05d13bd1c9a4d0b394f40b42252580e651ceb50d9366f0f618b",
     "fullDecode": "passed",
@@ -41,7 +44,7 @@
     ],
     "anomalousAudioPackets": 0,
     "capturedPngBytes": 235048618,
-    "observedContainerMemoryBytes": 1515270144,
+    "observedContainerMemoryBytes": 1503023104,
     "environment": "Local Linux amd64 emulation on ARM;4CPU quota;nominal12GiB cap/Docker VM7.65GiB. Native deployment and queued-export acceptance are separate."
   }
 }

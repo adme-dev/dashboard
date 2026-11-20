@@ -46,6 +46,14 @@ describe('storyboard dispatch and publication', () => {
     expect(mocks.prepare).not.toHaveBeenCalled()
     expect(db.query.mock.calls.some(([sql]: string[]) => sql.includes("SET status='done'"))).toBe(false)
   })
+  it('publishes a matching attempt under existing dependency locks and retains its fence', async () => {
+    const attemptId = '55555555-5555-4555-8555-555555555555'
+    const db = dbFor('rendering', 0, { attemptId })
+    expect(await authorizeStoryboardRenderCallbackIn(db, event, { action: 'publish', jobId, manifestHash: storyboardHash(manifest), variants, attemptId })).toEqual({ ok: true, completed: true })
+    expect(mocks.authority).toHaveBeenCalledWith(db, actor)
+    const update = db.query.mock.calls.find(([sql]: string[]) => sql.includes("SET status='done'"))
+    expect(JSON.parse(update![1][3])).toMatchObject({ stage: 'done', attemptId })
+  })
   it('preserves legacy path only on an authoritative empty lineage', async () => {
     mocks.lineage.mockResolvedValue(null)
     expect(await createStoryboardRenderJobIfObligatedIn(dbFor(), event, { projectId, actor, channels: [], expectedTimelineId: timelineId, expectedEditRevision: 0, formats: ['square_1x1'] })).toBeNull()
