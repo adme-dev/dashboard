@@ -2,6 +2,7 @@
 // Bounded producer controls beside a tabbed preview, library and history workspace.
 // Each pane owns scrolling; mobile navigation selects the visible pane.
 import { computed, onMounted, ref, watch } from 'vue'
+import { useElementSize } from '@vueuse/core'
 import {
   DEFAULT_VIDEO_RENDER_FORMATS,
   VIDEO_RENDER_FORMATS,
@@ -40,14 +41,19 @@ const emit = defineEmits<{
   (event: 'update:producer-collapsed', value: boolean): void
 }>()
 
-type WorkspaceView = 'preview' | 'library' | 'history' | 'guide'
+type WorkspaceView = 'preview' | 'storyboard' | 'library' | 'history' | 'guide'
 const workspaceView = defineModel<WorkspaceView>('workspaceView', { default: 'preview' })
 const workspaceItems = computed(() => [
+  { label: 'Storyboard', icon: 'i-lucide-panels-top-left', value: 'storyboard' },
   { label: 'Preview', icon: 'i-lucide-monitor-play', value: 'preview' },
   { label: 'Library', icon: 'i-lucide-library', value: 'library', badge: props.assetCount ? String(props.assetCount) : undefined },
   { label: 'History', icon: 'i-lucide-history', value: 'history', badge: props.renderJobCount ? String(props.renderJobCount) : undefined },
   { label: 'How it works', icon: 'i-lucide-circle-help', value: 'guide' }
 ])
+const workspaceBody = ref<HTMLElement | null>(null)
+const { height: workspaceHeight } = useElementSize(workspaceBody)
+const previewMaxHeight = computed(() => workspaceHeight.value > 0 ? Math.max(96, workspaceHeight.value - 76) : 240)
+
 const localMode = ref<StudioMode>(props.mode)
 const activeMode = computed({
   get: () => localMode.value,
@@ -134,10 +140,16 @@ function panelClass(panel: 'assets' | 'edit' | 'produce') {
   return mobilePanel.value === panel ? 'flex' : 'hidden lg:flex'
 }
 
+function selectWorkspace(view: string | number) {
+  workspaceView.value = view as WorkspaceView
+  // Only explicit tab navigation leaves the mobile inspector. Producer actions
+  // may change the background workspace while keeping their controls visible.
+  if (activeMode.value === 'produce') activeMode.value = 'edit'
+}
+
 watch(activeMode, (mode) => {
   if (mode === 'review') workspaceView.value = 'history'
   else if (mode === 'assets') workspaceView.value = 'library'
-  else if (mode === 'edit') workspaceView.value = 'preview'
   if ((mode === 'produce' || mode === 'review') && props.producerCollapsed) {
     emit('update:producer-collapsed', false)
   }
@@ -294,23 +306,27 @@ watch(() => props.mode, (mode) => {
       <main :class="['min-h-0 min-w-0 flex-col overflow-hidden bg-default', mobilePanel === 'produce' ? 'hidden lg:flex' : 'flex']">
         <div class="shrink-0 overflow-x-auto border-b border-default px-4 py-3">
           <UTabs
-            v-model="workspaceView"
+            :model-value="workspaceView"
             :items="workspaceItems"
             :content="false"
             size="sm"
             variant="pill"
             class="w-max min-w-full sm:min-w-0"
             aria-label="Project workspace"
+            @update:model-value="selectWorkspace"
           />
         </div>
-        <div class="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
-          <div v-show="workspaceView === 'preview'" class="min-h-full">
-            <slot name="preview" />
+        <div ref="workspaceBody" class="min-h-0 flex-1 overflow-hidden">
+          <div v-show="workspaceView === 'preview'" data-workspace-pane="preview" class="h-full min-h-0 overflow-y-auto p-4 sm:p-5">
+            <slot name="preview" :max-height="previewMaxHeight" />
           </div>
-          <div v-show="workspaceView === 'library'">
+          <div v-show="workspaceView === 'storyboard'" data-workspace-pane="storyboard" class="flex h-full min-h-0 flex-col overflow-hidden p-4 sm:p-5">
+            <slot name="storyboard" />
+          </div>
+          <div v-show="workspaceView === 'library'" data-workspace-pane="library" class="h-full min-h-0 overflow-y-auto p-4 sm:p-5">
             <slot name="library" />
           </div>
-          <div v-if="workspaceView === 'history'" class="mx-auto max-w-5xl space-y-4">
+          <div v-if="workspaceView === 'history'" class="mx-auto h-full min-h-0 max-w-5xl space-y-4 overflow-y-auto p-4 sm:p-5">
             <div>
               <h3 class="text-xl font-semibold text-highlighted">
                 Project history
@@ -324,7 +340,7 @@ watch(() => props.mode, (mode) => {
               </p>
             </slot>
           </div>
-          <div v-if="workspaceView === 'guide'" class="mx-auto max-w-4xl space-y-6">
+          <div v-if="workspaceView === 'guide'" class="mx-auto h-full min-h-0 max-w-4xl space-y-6 overflow-y-auto p-4 sm:p-5">
             <div>
               <h3 class="text-2xl font-semibold tracking-tight text-highlighted">
                 From an idea to a finished edit
@@ -337,7 +353,7 @@ watch(() => props.mode, (mode) => {
                 <h4 class="font-semibold text-highlighted">
                   Plan the story
                 </h4><p class="mt-2 text-sm leading-6 text-muted">
-                  Open Produce, then Storyboard. Set the brief and format, review the copy and references, and inspect the proposed shots before applying them.
+                  Open the Storyboard workspace. Set the brief and format, review the copy and references, and inspect the proposed shots before applying them.
                 </p>
               </UCard>
               <UCard>

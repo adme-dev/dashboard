@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from 'vitest'
-import { createApp, createSSRApp, h, nextTick } from 'vue'
+import { createApp, createSSRApp, defineComponent, h, nextTick, reactive, ref } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import VideoStudioWorkbench from '~~/app/components/media/VideoStudioWorkbench.vue'
 import type { VideoRenderFormatId } from '~~/app/utils/video/renderFormats'
@@ -96,7 +96,7 @@ describe('VideoStudioWorkbench', () => {
     expect(html).toContain('2 AI jobs running')
     expect(html).toContain('AI ready')
     // Both panes scroll independently while the outer section stays bounded.
-    expect(html.match(/overflow-y-auto/g)?.length).toBe(2)
+    expect(html.match(/overflow-y-auto/g)?.length).toBe(3)
     expect(html).toContain('overflow-hidden')
   })
 
@@ -111,7 +111,7 @@ describe('VideoStudioWorkbench', () => {
     expect(html).toContain('Preview panel')
     expect(html).toContain('Show inspector')
     expect(html).not.toContain('Producer content')
-    expect(html.match(/overflow-y-auto/g)?.length).toBe(1)
+    expect(html.match(/overflow-y-auto/g)?.length).toBe(2)
   })
 
   it('switches workspace tabs without recreating the preview or emitting output actions', async () => {
@@ -141,6 +141,66 @@ describe('VideoStudioWorkbench', () => {
     } finally {
       app.unmount()
     }
+  })
+
+  it('opens Storyboard as a workspace and retains its local state across navigation', async () => {
+    const StatefulStoryboard = defineComponent({
+      setup() {
+        const copy = ref('Local shot copy')
+        return () => h('input', { 'data-storyboard-draft': '', 'value': copy.value, 'onInput': (event: Event) => {
+          copy.value = (event.target as HTMLInputElement).value
+        } })
+      }
+    })
+    const { app, host, events } = await mount({}, {
+      storyboard: () => h(StatefulStoryboard),
+      preview: () => h('div', { 'data-preview': '' }, 'Preview state')
+    })
+    try {
+      const tabs = host.querySelector('[aria-label="Project workspace"]') as HTMLElement
+      const storyboard = host.querySelector('[data-storyboard-draft]') as HTMLInputElement
+      const preview = host.querySelector('[data-preview]')!
+      buttonByText(tabs, 'Storyboard').click()
+      await nextTick()
+      expect((storyboard.closest('[data-workspace-pane]') as HTMLElement).style.display).not.toBe('none')
+      storyboard.value = 'Unsaved local selection'
+      storyboard.dispatchEvent(new Event('input'))
+      buttonByText(tabs, 'Library').click()
+      await nextTick()
+      buttonByText(tabs, 'Storyboard').click()
+      await nextTick()
+      expect(host.querySelector('[data-storyboard-draft]')).toBe(storyboard)
+      expect(storyboard.value).toBe('Unsaved local selection')
+      expect(host.querySelector('[data-preview]')).toBe(preview)
+      expect(events).toEqual([])
+    } finally { app.unmount() }
+  })
+
+  it('shows the main Storyboard workspace after mobile Inspector navigation', async () => {
+    const { app, host, events } = await mount({}, {
+      storyboard: () => h('p', 'Storyboard draft')
+    })
+    try {
+      buttonByText(host, 'Inspector').click()
+      await nextTick()
+      expect(host.querySelector('main')?.classList.contains('hidden')).toBe(true)
+      const tabs = host.querySelector('[aria-label="Project workspace"]') as HTMLElement
+      buttonByText(tabs, 'Storyboard').click()
+      await nextTick()
+      expect(host.querySelector('main')?.classList.contains('hidden')).toBe(false)
+      expect(events.filter(event => ['render', 'generate'].includes(event.name))).toEqual([])
+    } finally { app.unmount() }
+  })
+
+  it('keeps mobile Produce visible when its caller closes Storyboard programmatically', async () => {
+    const props = reactive({ mode: 'produce', workspaceView: 'storyboard' })
+    const { app, host, events } = await mount(props)
+    try {
+      props.workspaceView = 'preview'
+      await nextTick()
+      expect(host.querySelector('main')?.classList.contains('hidden')).toBe(true)
+      expect(events).not.toContainEqual({ name: 'update:mode', payload: 'edit' })
+    } finally { app.unmount() }
   })
 
   it('restores Library when the already-selected mobile Assets tab is selected again', async () => {

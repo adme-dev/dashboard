@@ -19,6 +19,8 @@ const props = defineProps<{
   timeline: TimelineState
   currentTime: number
   isPlaying: boolean
+  /** Bound the authored frame to the visible workspace without changing output pixels. */
+  maxHeight?: number
   /** r2_key → presigned URL (from the editor's sources map) */
   sources: Record<string, string>
 }>()
@@ -331,8 +333,8 @@ onBeforeUnmount(() => {
 <template>
   <div
     ref="frameRef"
-    class="relative mx-auto h-[min(72vh,780px)] min-h-[520px] max-w-full overflow-hidden rounded-lg border border-default bg-black"
-    :style="{ aspectRatio: aspect, width: 'auto' }"
+    class="relative mx-auto w-full max-w-full overflow-hidden rounded-lg border border-default bg-black"
+    :style="{ aspectRatio: aspect, maxWidth: `${(props.maxHeight ?? 780) * W / H}px` }"
   >
     <canvas
       ref="canvasRef"

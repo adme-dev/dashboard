@@ -119,7 +119,11 @@ watch(() => editor.dirty.value, (dirty) => {
   if (dirty) adjustedReview.invalidate()
 })
 const adjustedReviewClips = computed(() => editor.timeline.value?.tracks.flatMap(track => track.clips.map(clip => ({ value: clip.id, label: `${track.name}: ${clip.id}` }))) ?? [])
-const storyboardOpen = ref(Boolean(storyboard.pendingOperation.value))
+const videoWorkspaceView = ref<'preview' | 'storyboard' | 'library' | 'history' | 'guide'>(storyboard.pendingOperation.value ? 'storyboard' : 'preview')
+const storyboardOpen = computed({
+  get: () => videoWorkspaceView.value === 'storyboard',
+  set: (open: boolean) => { videoWorkspaceView.value = open ? 'storyboard' : 'preview' }
+})
 watch(storyboardOpen, (open) => {
   if (open) void storyboard.load()
 }, { immediate: true })
@@ -152,7 +156,6 @@ const generationModelsPending = ref(false)
 const generationModelsError = ref('')
 const selectedGenerationModelId = ref<string | null>(null)
 const modelSelectionKey = ref(0)
-const videoWorkspaceView = ref<'preview' | 'library' | 'history' | 'guide'>('preview')
 async function loadGenerationModelOptions() {
   if (!videoGenerationEnabled.value) return
   generationModelsPending.value = true
@@ -1453,7 +1456,7 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
                 :pending="generationModelsPending"
                 :generation-enabled="videoGenerationReady"
                 :status-detail="videoGenerationStatusDetail"
-                @storyboard="() => { videoStudioMode = 'produce'; storyboardOpen = true }"
+                @storyboard="() => { videoStudioMode = 'edit'; storyboardOpen = true }"
                 @produce="() => { videoStudioMode = 'produce'; storyboardOpen = false }"
                 @library="() => { videoStudioMode = 'assets'; videoWorkspaceView = 'library' }"
                 @history="() => { videoStudioMode = 'review'; videoWorkspaceView = 'history' }"
@@ -1497,7 +1500,39 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
             />
           </template>
 
-          <template #preview>
+          <template #storyboard>
+            <VideoStudioStoryboard
+              v-model:draft="storyboard.draft.value"
+              class="h-full"
+              :plan="storyboard.plan.value"
+              :candidate="storyboard.candidate.value"
+              :findings="storyboard.findings.value"
+              :reference-set="storyboard.referenceSet.value"
+              :enabled="storyboardEnabled"
+              :pending="storyboard.loading.value"
+              :pending-operation="storyboard.pendingOperation.value"
+              :error="storyboard.error.value"
+              :timeline-non-empty="storyboardTimelineNonEmpty"
+              :diverged="editor.storyboardDiverged.value"
+              :selected-asset="selectedStudioAsset"
+              :examples="storyboard.examples"
+              :example-preview="storyboard.examplePreview.value"
+              :fps="editor.timeline.value?.fps ?? 30"
+              :can-apply="Boolean(storyboard.resolution.value?.ok) && !storyboard.draftChanged.value"
+              @request-plan="storyboard.planDraft"
+              @accept-candidate="storyboard.acceptCandidate"
+              @save-references="storyboard.saveReferences"
+              @resolve="storyboard.resolve"
+              @apply="storyboard.apply"
+              @retry="storyboard.retry"
+              @recover="storyboard.recover"
+              @refresh="storyboard.refresh"
+              @preview-example="storyboard.previewExample"
+              @prefill-example="storyboard.prefillExample"
+            />
+          </template>
+
+          <template #preview="{ maxHeight }">
             <div class="mb-2 flex items-center gap-2">
               <UIcon name="i-lucide-monitor-play" class="size-4 text-muted" />
               <h4 class="text-xs font-medium uppercase text-muted">
@@ -1506,6 +1541,7 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
               <span class="text-[11px] text-muted">Approximate — the server render is the source of truth.</span>
             </div>
             <MediaAvPreview
+              :max-height="maxHeight"
               :timeline="editor.timeline.value"
               :current-time="editor.currentTime.value"
               :is-playing="editor.isPlaying.value"
@@ -1759,129 +1795,97 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
                   variant="soft"
                   color="neutral"
                   icon="i-lucide-panels-top-left"
-                  :label="storyboardOpen ? 'Close storyboard' : 'Storyboard'"
+                  label="Open storyboard"
                   :disabled="editor.storyboardApplying.value"
-                  @click="() => { storyboardOpen = !storyboardOpen }"
+                  @click="() => { videoStudioMode = 'edit'; storyboardOpen = true }"
                 />
-                <VideoStudioStoryboard
-                  v-if="storyboardOpen"
-                  v-model:draft="storyboard.draft.value"
-                  class="h-[min(65svh,48rem)]"
-                  :plan="storyboard.plan.value"
-                  :candidate="storyboard.candidate.value"
-                  :findings="storyboard.findings.value"
-                  :reference-set="storyboard.referenceSet.value"
-                  :enabled="storyboardEnabled"
-                  :pending="storyboard.loading.value"
-                  :pending-operation="storyboard.pendingOperation.value"
-                  :error="storyboard.error.value"
-                  :timeline-non-empty="storyboardTimelineNonEmpty"
-                  :diverged="editor.storyboardDiverged.value"
-                  :selected-asset="selectedStudioAsset"
-                  :examples="storyboard.examples"
-                  :example-preview="storyboard.examplePreview.value"
-                  :fps="editor.timeline.value?.fps ?? 30"
-                  :can-apply="Boolean(storyboard.resolution.value?.ok) && !storyboard.draftChanged.value"
-                  @request-plan="storyboard.planDraft"
-                  @accept-candidate="storyboard.acceptCandidate"
-                  @save-references="storyboard.saveReferences"
-                  @resolve="storyboard.resolve"
-                  @apply="storyboard.apply"
-                  @retry="storyboard.retry"
-                  @recover="storyboard.recover"
-                  @refresh="storyboard.refresh"
-                  @preview-example="storyboard.previewExample"
-                  @prefill-example="storyboard.prefillExample"
-                />
-                <template v-else>
-                  <div v-if="videoGenerationEnabled" class="space-y-2">
-                    <div class="flex items-center gap-2">
-                      <UIcon name="i-lucide-sparkles" class="size-4 text-muted" />
-                      <h4 class="text-xs font-medium uppercase text-muted">
-                        AI generation
-                      </h4>
-                      <UBadge
-                        v-if="activeGenerationJobCount"
-                        :label="`${activeGenerationJobCount} active`"
-                        size="xs"
-                        variant="subtle"
-                        color="primary"
-                        class="ml-auto"
-                      />
-                    </div>
-                    <MediaGenerateComposer
-                      active
-                      :project-id="projectId"
-                      :timeline-stills="timelineStills"
-                      :default-aspect="projectAspect"
-                      :initial-prompt="generationDraftPrompt"
-                      :initial-model-id="selectedGenerationModelId"
-                      :model-selection-key="modelSelectionKey"
-                      :initial-source-asset="selectedGenerationSourceAsset"
-                      :recent-jobs="genJobs.jobs.value"
-                      :prepare-timeline-still-source="editor.saveNow"
-                      @submitted="onGenerationSubmitted"
-                      @add-to-timeline="onLibraryAddToTimeline"
-                      @close="generationDraftPrompt = null"
+                <div v-if="videoGenerationEnabled" class="space-y-2">
+                  <div class="flex items-center gap-2">
+                    <UIcon name="i-lucide-sparkles" class="size-4 text-muted" />
+                    <h4 class="text-xs font-medium uppercase text-muted">
+                      AI generation
+                    </h4>
+                    <UBadge
+                      v-if="activeGenerationJobCount"
+                      :label="`${activeGenerationJobCount} active`"
+                      size="xs"
+                      variant="subtle"
+                      color="primary"
+                      class="ml-auto"
                     />
                   </div>
-                  <VideoStudioVoiceComposer
-                    :producer-brief="producerBrief"
-                    :existing-voiceover-count="existingVoiceoverClipIds.length"
-                    @generated="onVoiceoverGenerated"
-                    @add-to-timeline="onVoiceoverAddToTimeline"
-                    @replace-with-generated="onVoiceoverReplaceTimeline"
-                  />
-                  <VideoStudioOverlayComposer
-                    :projects="studioBannerProjects"
-                    :loading="studioBannerPending"
-                    :current-time-sec="editor.currentTime.value"
-                    :selected-overlay-clip="selectedOverlayClip"
-                    @refresh="refreshStudioBannerProjects"
-                    @add-overlay="onOverlayPick"
-                    @replace-overlay="onReplaceSelectedOverlay"
-                  />
-                  <div v-if="videoAssetHarnessEnabled" class="space-y-3">
-                    <div class="mb-3 flex items-start gap-2">
-                      <div class="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary/10">
-                        <UIcon name="i-lucide-eraser" class="size-4 text-primary" />
-                      </div>
-                      <div class="min-w-0">
-                        <h4 class="text-sm font-medium text-highlighted">
-                          Prepare / erase asset
-                        </h4>
-                        <p class="mt-0.5 text-xs leading-snug text-muted">
-                          Lift, erase, mask, remove backgrounds, or decompose selected project assets.
-                        </p>
-                      </div>
-                    </div>
-                    <MediaAssetHarness
-                      :project-id="projectId"
-                      studio
-                      @add-to-timeline="onHarnessAddToTimeline"
-                      @add-derivative-to-timeline="onHarnessAddDerivativeToTimeline"
-                    />
-                  </div>
-                  <VideoStudioProducerRail
+                  <MediaGenerateComposer
+                    active
                     :project-id="projectId"
-                    :selected-asset="selectedStudioAsset"
-                    :asset-count="videoStudioAssetCount"
-                    :voice-asset-count="studioVoiceAssetCount"
-                    :overlay-asset-count="studioOverlayAssetCount"
-                    :recent-generation-jobs="genJobs.jobs.value"
+                    :timeline-stills="timelineStills"
+                    :default-aspect="projectAspect"
+                    :initial-prompt="generationDraftPrompt"
+                    :initial-model-id="selectedGenerationModelId"
+                    :model-selection-key="modelSelectionKey"
+                    :initial-source-asset="selectedGenerationSourceAsset"
+                    :recent-jobs="genJobs.jobs.value"
+                    :prepare-timeline-still-source="editor.saveNow"
+                    @submitted="onGenerationSubmitted"
+                    @add-to-timeline="onLibraryAddToTimeline"
+                    @close="generationDraftPrompt = null"
+                  />
+                </div>
+                <VideoStudioVoiceComposer
+                  :producer-brief="producerBrief"
+                  :existing-voiceover-count="existingVoiceoverClipIds.length"
+                  @generated="onVoiceoverGenerated"
+                  @add-to-timeline="onVoiceoverAddToTimeline"
+                  @replace-with-generated="onVoiceoverReplaceTimeline"
+                />
+                <VideoStudioOverlayComposer
+                  :projects="studioBannerProjects"
+                  :loading="studioBannerPending"
+                  :current-time-sec="editor.currentTime.value"
+                  :selected-overlay-clip="selectedOverlayClip"
+                  @refresh="refreshStudioBannerProjects"
+                  @add-overlay="onOverlayPick"
+                  @replace-overlay="onReplaceSelectedOverlay"
+                />
+                <div v-if="videoAssetHarnessEnabled" class="space-y-3">
+                  <div class="mb-3 flex items-start gap-2">
+                    <div class="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary/10">
+                      <UIcon name="i-lucide-eraser" class="size-4 text-primary" />
+                    </div>
+                    <div class="min-w-0">
+                      <h4 class="text-sm font-medium text-highlighted">
+                        Prepare / erase asset
+                      </h4>
+                      <p class="mt-0.5 text-xs leading-snug text-muted">
+                        Lift, erase, mask, remove backgrounds, or decompose selected project assets.
+                      </p>
+                    </div>
+                  </div>
+                  <MediaAssetHarness
+                    :project-id="projectId"
+                    studio
                     @add-to-timeline="onHarnessAddToTimeline"
-                    @brief-change="producerBrief = $event"
+                    @add-derivative-to-timeline="onHarnessAddDerivativeToTimeline"
                   />
-                  <UButton
-                    icon="i-lucide-music"
-                    size="xs"
-                    variant="soft"
-                    color="neutral"
-                    label="Add audio clip"
-                    block
-                    @click="pickerOpen = true"
-                  />
-                </template>
+                </div>
+                <VideoStudioProducerRail
+                  :project-id="projectId"
+                  :selected-asset="selectedStudioAsset"
+                  :asset-count="videoStudioAssetCount"
+                  :voice-asset-count="studioVoiceAssetCount"
+                  :overlay-asset-count="studioOverlayAssetCount"
+                  :recent-generation-jobs="genJobs.jobs.value"
+                  @add-to-timeline="onHarnessAddToTimeline"
+                  @brief-change="producerBrief = $event"
+                />
+                <UButton
+                  icon="i-lucide-music"
+                  size="xs"
+                  variant="soft"
+                  color="neutral"
+                  label="Add audio clip"
+                  block
+                  @click="pickerOpen = true"
+                />
               </template>
 
               <template #review>
