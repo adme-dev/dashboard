@@ -37,7 +37,8 @@ export function assertStoryboardOutputs(manifest: Pick<StoryboardRenderManifest,
 }
 export const StoryboardCallbackSchema = z.object({
   action: z.enum(['check', 'publish']), jobId: z.string().uuid(), manifestHash: z.string().regex(/^[a-f0-9]{64}$/),
-  variants: z.record(z.string(), z.string().max(512)).optional(), costCents: z.number().int().min(0).max(100000000).optional()
+  variants: z.record(z.string(), z.string().max(512)).optional(), costCents: z.number().int().min(0).max(100000000).optional(),
+  attemptId: z.string().uuid().optional()
 }).strict()
 type Callback = z.infer<typeof StoryboardCallbackSchema>
 
@@ -139,6 +140,9 @@ export async function authorizeStoryboardRenderCallbackIn(db: Db, event: H3Event
     return { ok: true, completed: true }
   }
   if (!['queued', 'rendering'].includes(row.status)) throw rejected('Render is no longer publishable')
+  if (input.action === 'publish' && typeof row.progress?.attemptId === 'string' && input.attemptId !== row.progress.attemptId) {
+    throw rejected('Render attempt is no longer current')
+  }
   const dependencies = manifest.dependencies as { actorId?: string, signature?: string } | undefined
   if (dependencies?.actorId !== row.requested_by) throw rejected('Render actor does not match')
   const actorRow = (await db.query('SELECT id, user_role AS role FROM team_members WHERE id=$1 AND is_active=TRUE FOR SHARE', [row.requested_by])).rows[0]
@@ -156,7 +160,7 @@ export async function authorizeStoryboardRenderCallbackIn(db: Db, event: H3Event
     const bucket = event.context.cloudflare?.env?.MEDIA_BUCKET as { head(key: string): Promise<{ size: number } | null> } | undefined
     if (!bucket?.head) throw createError({ statusCode: 503, statusMessage: 'Render output storage unavailable' })
     for (const key of Object.values(input.variants!)) if (!((await bucket.head(key))?.size)) throw rejected('Render output is unavailable')
-    await db.query(`UPDATE media_render_jobs SET status='done', variants=$1, cost_cents=$2, progress=$4, error=NULL, updated_at=now() WHERE id=$3 AND status IN ('queued','rendering')`, [JSON.stringify(input.variants), input.costCents ?? 0, input.jobId, JSON.stringify({ stage: 'done', formatKey: null, done: manifest.formats.length, total: manifest.formats.length, updatedAt: new Date().toISOString() })])
+    await db.query(`UPDATE media_render_jobs SET status='done', variants=$1, cost_cents=$2, progress=$4, error=NULL, updated_at=now() WHERE id=$3 AND status IN ('queued','rendering')`, [JSON.stringify(input.variants), input.costCents ?? 0, input.jobId, JSON.stringify({ ...(input.attemptId ? { attemptId: input.attemptId } : {}), stage: 'done', formatKey: null, done: manifest.formats.length, total: manifest.formats.length, updatedAt: new Date().toISOString() })])
   }
   return { ok: true, completed: input.action === 'publish' }
 }

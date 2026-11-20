@@ -20,7 +20,7 @@ describe('storyboard queue authority', () => {
     expect(d.loadTimelineState).not.toHaveBeenCalled()
     expect(d.renderOne).toHaveBeenCalledWith(expect.objectContaining({ state: manifest.state, pinnedObjects: [] }))
     expect(d.checkEligibility).toHaveBeenCalledWith('j', 'h')
-    expect(d.publishApproved).toHaveBeenCalledWith('j', 'h', { reels_9x16: 'private.mp4' }, expect.any(Number))
+    expect(d.publishApproved).toHaveBeenCalledWith('j', 'h', { reels_9x16: 'private.mp4' }, expect.any(Number), expect.any(String))
     expect(d.markDone).not.toHaveBeenCalled()
   })
   it('rejects queue identity/format substitution', async () => {

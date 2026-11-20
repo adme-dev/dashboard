@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import type { MediaRenderJob, MediaRenderJobStatus } from '~~/app/types'
 import {
   parseRenderFailure,
+  renderStageMeter,
   renderVariantFormats,
   renderVariantUrl,
   summarizeVideoRenderJobs,
@@ -28,6 +29,7 @@ const summary = computed(() => summarizeVideoRenderJobs(props.jobs))
 const latestCompleted = computed(() => latestJob(job => job.status === 'done' && renderVariantFormats(job).length > 0))
 const latestFailed = computed(() => latestJob(job => job.status === 'failed'))
 const activeJob = computed(() => latestJob(job => job.status === 'queued' || job.status === 'rendering'))
+const stageMeter = computed(() => renderStageMeter(activeJob.value))
 const completedFormats = computed(() => renderVariantFormats(latestCompleted.value))
 
 function latestJob(predicate: (job: MediaRenderJob) => boolean) {
@@ -95,12 +97,12 @@ const latestFailure = computed(() => latestFailed.value ? parseRenderFailure(lat
           <p class="text-xs font-medium text-highlighted">Render queue</p>
           <UBadge :label="statusLabel" size="xs" variant="subtle" :color="statusColor(status)" />
           <UProgress
-            v-if="summary.active && activeJob?.progress?.total"
-            :model-value="activeJob.progress.done"
-            :max="activeJob.progress.total"
+            v-if="stageMeter"
+            :model-value="stageMeter.value ?? undefined"
+            :max="stageMeter.max"
             size="xs"
             class="w-24"
-            :aria-label="`${activeJob.progress.done} of ${activeJob.progress.total} formats rendered`"
+            :aria-label="[stageMeter.label, stageMeter.detail].filter(Boolean).join(': ')"
           />
           <UBadge
             v-if="summary.failed"
@@ -110,11 +112,11 @@ const latestFailure = computed(() => latestFailed.value ? parseRenderFailure(lat
             color="error"
           />
         </div>
-        <p class="truncate text-[11px] text-muted">
-          <span v-if="summary.active && activeJob?.progress?.formatKey">
-            Rendering {{ activeJob.progress.formatKey }} · {{ activeJob.progress.done + 1 }} of {{ activeJob.progress.total }} — you can keep editing.
+        <p class="text-[11px] text-muted">
+          <span v-if="summary.active && stageMeter">
+            {{ stageMeter.label }}<template v-if="stageMeter.detail"> · {{ stageMeter.detail }}</template><template v-if="activeJob?.progress?.total"> · {{ activeJob.progress.done }} of {{ activeJob.progress.total }} formats ready</template> — you can keep editing.
           </span>
-          <span v-else-if="summary.active">Rendering now — started {{ dateLabel(activeJob?.createdAt) }}. This usually takes a few minutes; you can keep editing.</span>
+          <span v-else-if="summary.active">{{ activeJob?.status === 'queued' ? 'Queued' : 'Rendering now' }} — started {{ dateLabel(activeJob?.createdAt) }}. You can keep editing.</span>
           <span v-else-if="summary.latest">Latest {{ summary.latest.status }} · {{ dateLabel(summary.latest.createdAt) }}</span>
           <span v-else>Render the timeline to create downloadable variants.</span>
         </p>

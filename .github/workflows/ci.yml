@@ -171,6 +171,14 @@ jobs:
           SOCIAL_INBOX_SCOPE_PG_URL: postgresql://page_studio_test@127.0.0.1:5432/marketing_department_ci
           MARKETING_MCP_STUDIO_BRIDGE_DATABASE_TEST_URL: postgresql://page_studio_test@127.0.0.1:5432/marketing_department_ci
 
+      - name: Video render attempt native PostgreSQL fences
+        run: |
+          psql postgresql://page_studio_test@127.0.0.1:5432/page_studio_checkpoint_cas_test -v ON_ERROR_STOP=1 -c 'CREATE DATABASE video_render_hardening_test'
+          pnpm exec vitest run test/integration/videoRenderAttempt.database.test.ts
+        timeout-minutes: 3
+        env:
+          VIDEO_HARDENING_DATABASE_URL: postgresql://page_studio_test@127.0.0.1:5432/video_render_hardening_test
+
       - name: Page Studio management generated binding reproducibility
         if: steps.scope.outputs.page_studio == 'true'
         run: |

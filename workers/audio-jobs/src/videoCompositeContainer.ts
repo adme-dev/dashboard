@@ -10,12 +10,14 @@ import type { PinnedRenderObject, CopyRequirement } from '../../../shared/video-
 import type { ReelmotionBaseFootage } from '../../../shared/reelmotionBaseFootage'
 import { getContainer } from '@cloudflare/containers'
 import { buildCompositePlan } from '../container/videoCompositeGraph.mjs'
+import { createRenderDeadline, VIDEO_RENDER_FORMAT_MS, VIDEO_PROGRESS_INTERVAL_MS, VIDEO_PROGRESS_REQUEST_MS, measuredRenderProgress, type MeasuredRenderProgress } from '../../../shared/video/renderExecution'
 
 export interface CompositeRenderEnv {
   RENDER: Parameters<typeof getContainer>[0]
   AUDIO_BUCKET: {
     get(key: string): Promise<{ size: number, etag?: string, arrayBuffer(): Promise<ArrayBuffer>, text(): Promise<string> } | null>
     put(key: string, body: ArrayBuffer | Uint8Array | ReadableStream<Uint8Array>, opts?: { httpMetadata: { contentType: string } }): Promise<unknown>
+    delete?(key: string): Promise<unknown>
   }
 }
 
@@ -41,17 +43,25 @@ function embedPinnedFootage(html: string, b64: string): string {
   return html.replace(tag, () => embedded)
 }
 
-export async function renderComposite(
-  env: CompositeRenderEnv,
-  args: {
+export interface CompositeRenderArgs {
     projectId: string
     jobId: string
     state: unknown
     profile: { width: number, height: number, fps: number, format: string }
     pinnedObjects?: PinnedRenderObject[]
     resolvedOverlays?: ResolvedOverlay[]
-  }
-): Promise<{ key: string }> {
+    signal?: AbortSignal
+    deadlineAtMs?: number
+    onProgress?(progress: MeasuredRenderProgress): Promise<void>
+}
+
+export async function renderComposite(env: CompositeRenderEnv, args: CompositeRenderArgs): Promise<{ key: string }> {
+  const execution = createRenderDeadline(VIDEO_RENDER_FORMAT_MS, { signal: args.signal, deadlineAtMs: args.deadlineAtMs })
+  try { return await renderCompositeWithinBudget(env, args, execution) }
+  finally { execution.dispose() }
+}
+
+async function renderCompositeWithinBudget(env: CompositeRenderEnv, args: CompositeRenderArgs, execution: ReturnType<typeof createRenderDeadline>): Promise<{ key: string }> {
   const resolvedOverlays = args.resolvedOverlays ?? []
   if (args.pinnedObjects && (args.pinnedObjects.reduce((sum, object) => sum + object.size, 0) > 16 * 1024 * 1024 || resolvedOverlays.some(overlay => overlay.baseFootage || !overlay.requiredCopy?.length)))
     throw new Error('Storyboard composite exceeds supported immutable input contract')
@@ -73,13 +83,13 @@ export async function renderComposite(
   const readInput = async (key: string) => {
     const pinned = args.pinnedObjects?.find(object => object.key === key)
     if (args.pinnedObjects && !pinned) throw new Error('Unpinned composite input')
-    const object = await env.AUDIO_BUCKET.get(key)
+    const object = await execution.run(() => env.AUDIO_BUCKET.get(key))
     if (!object) throw new Error('Composite input unavailable')
     if (base && key === base.source.r2Key && (object.etag !== base.source.etag || object.size !== base.source.size))
       throw new Error('Managed base footage changed')
     if (pinned && object.size !== pinned.size) throw new Error('Pinned render input size changed')
-    const bytes = await object.arrayBuffer()
-    if (pinned) await verifyPinnedObject(bytes, pinned)
+    const bytes = await execution.run(() => object.arrayBuffer())
+    if (pinned) await execution.run(() => verifyPinnedObject(bytes, pinned))
     return bytes
   }
 
@@ -126,12 +136,18 @@ export async function renderComposite(
   }
 
   const instance = getContainer(env.RENDER, `vid:${args.jobId}`)
-  const signal = AbortSignal.timeout(600_000)
-  const post = (renderPlan: typeof plan, media: typeof files, overlays: typeof containerOverlays) =>
-    instance.fetch('http://render.local/render-composite', {
-      method: 'POST', headers: { 'content-type': 'application/json' }, signal,
-      body: JSON.stringify({ plan: renderPlan, files: media, ...(overlays.length ? { overlays } : {}) })
-    })
+  const signal = execution.signal
+  const post = async (renderPlan: typeof plan, media: typeof files, overlays: typeof containerOverlays) => {
+    signal.throwIfAborted()
+    const id = crypto.randomUUID()
+    const polling = createRenderProgressPoller(instance, id, execution, args.onProgress)
+    try {
+      return await execution.run(() => instance.fetch('http://render.local/render-composite', {
+        method: 'POST', headers: { 'content-type': 'application/json', 'x-render-execution-id': id, 'x-render-timeout-ms': String(Math.max(1, Math.floor(execution.remainingMs()))) }, signal,
+        body: JSON.stringify({ plan: renderPlan, files: media, ...(overlays.length ? { overlays } : {}) })
+      }), async response => { await response.body?.cancel().catch(() => {}) })
+    } finally { await polling.stop() }
+  }
   let res = await post(plan, files, containerOverlays)
   if (baseOverlay && res.status === 422 && res.headers.get('x-reelmotion-base') === 'unsupported') {
     await res.body?.cancel()
@@ -143,6 +159,44 @@ export async function renderComposite(
   if (!res.ok) throw new Error(`composite render failed: ${res.status}`)
   if (!res.body) throw new Error('Composite render body missing')
   const key = `media/${args.projectId}/${args.jobId}/${crypto.randomUUID()}/${args.profile.format}.mp4`
-  await putCompositeOutput(env.AUDIO_BUCKET, key, res)
+  const reportUpload = async (bytesDone: number, bytesTotal: number) => {
+    if (!args.onProgress || signal.aborted) return
+    const advisory = createRenderDeadline(VIDEO_PROGRESS_REQUEST_MS, { signal })
+    try { await advisory.run(() => args.onProgress!({ stage: 'uploading', bytesDone, bytesTotal })) }
+    catch { /* telemetry never owns export success */ }
+    finally { advisory.dispose() }
+  }
+  await execution.run(() => putCompositeOutput(env.AUDIO_BUCKET, key, res, { signal, onProgress: reportUpload }), async () => { await env.AUDIO_BUCKET.delete?.(key) })
+  if (signal.aborted) {
+    if (env.AUDIO_BUCKET.delete) await env.AUDIO_BUCKET.delete(key).catch(() => {})
+    signal.throwIfAborted()
+  }
   return { key }
+}
+
+/** Only one status read at a time; callbacks cannot outlive their HTTP attempt. */
+function createRenderProgressPoller(instance: { fetch(input: string, init: RequestInit): Promise<Response> }, id: string, execution: ReturnType<typeof createRenderDeadline>, onProgress?: CompositeRenderArgs['onProgress']) {
+  let stopped = false
+  let timer: ReturnType<typeof setTimeout> | undefined
+  let pending: Promise<void> = Promise.resolve()
+  let read: ReturnType<typeof createRenderDeadline> | undefined
+  const controller = new AbortController()
+  const schedule = () => {
+    if (!onProgress || stopped || execution.signal.aborted) return
+    timer = setTimeout(() => {
+      timer = undefined
+      pending = (async () => {
+        read = createRenderDeadline(VIDEO_PROGRESS_REQUEST_MS, { signal: controller.signal, deadlineAtMs: execution.deadlineAtMs })
+        try {
+          const response = await read.run(() => instance.fetch(`http://render.local/render-progress/${id}`, { method: 'GET', signal: read!.signal }))
+          if (!response.ok) { await response.body?.cancel().catch(() => {}); return }
+          const progress = measuredRenderProgress(await read.run(() => response.json()))
+          if (progress && !stopped && !execution.signal.aborted) await read.run(() => onProgress!(progress))
+        } catch { /* old containers and unavailable progress remain compatible */ }
+        finally { read.dispose(); read = undefined; schedule() }
+      })()
+    }, VIDEO_PROGRESS_INTERVAL_MS)
+  }
+  schedule()
+  return { async stop() { stopped = true; if (timer) clearTimeout(timer); controller.abort(); read?.dispose(); await pending } }
 }

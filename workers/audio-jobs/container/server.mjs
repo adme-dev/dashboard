@@ -8,13 +8,15 @@ import { serveCopyMeasurement } from './copyMeasurement.mjs'
 import { readBaseFootageStartTime, serveMediaProbe } from './mediaProbe.mjs'
 import { createServer } from 'node:http'
 import { spawn } from 'node:child_process'
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { buildMeasurePassArgs, parseLoudnormJson, buildRenderPassArgs } from './render.mjs'
 import { buildMasterRenderArgs } from './timelineFiltergraph.mjs'
 import { buildCompositeRenderArgs } from './videoCompositeGraph.mjs'
-import { captureOverlay } from './overlayCapture.mjs'
+import { captureCompositeOverlays } from './overlayCapture.mjs'
+import { captureWithBrowser, createProgressStore, executionHeaders, isExecutionId, readCompositeBody, requestLifetime,
+  runEncoder, streamCompositeFile } from './renderExecution.mjs'
 
 const PORT = process.env.PORT || 8080
 
@@ -35,6 +37,70 @@ function readBody(req) {
     req.on('end', () => resolve(Buffer.concat(chunks)))
     req.on('error', reject)
   })
+}
+
+const renderProgress = createProgressStore()
+
+async function serveComposite(req, res) {
+  let lifetime, record, dir
+  try {
+    const { id, timeoutMs } = executionHeaders(req.headers)
+    record = renderProgress.begin(id)
+    lifetime = requestLifetime(req, res, timeoutMs)
+    const { signal } = lifetime
+    res.setHeader('x-render-execution-id', id)
+    const payload = JSON.parse((await readCompositeBody(req, signal)).toString('utf8'))
+    lifetime.check()
+    dir = mkdtempSync(join(tmpdir(), 'composite-'))
+    const paths = payload.files.map((file, i) => {
+      const path = join(dir, `in${i}`)
+      writeFileSync(path, Buffer.from(file.b64, 'base64'))
+      return path
+    })
+    lifetime.check()
+    const baseStartSec = payload.plan.overlayInputs.some(overlay => overlay.baseFootage)
+      ? await readBaseFootageStartTime(paths[0], signal)
+      : undefined
+    if (baseStartSec === null) {
+      res.writeHead(422, { 'x-reelmotion-base': 'unsupported' })
+      return res.end('Unsupported base footage profile')
+    }
+    const overlays = Array.isArray(payload.overlays) ? payload.overlays : []
+    if (overlays.length) {
+      record.update({ stage: 'capturing', framesDone: 0 })
+      const puppeteer = (await import('puppeteer-core')).default
+      await captureWithBrowser(puppeteer, signal, browser =>
+        captureCompositeOverlays(browser, overlays, payload.plan.overlayInputs, dir, signal, record.update))
+    }
+    lifetime.check()
+    const duration = payload.plan.durationSec
+    const durationMs = Number.isFinite(duration) && duration > 0 ? Math.round(duration * 1000) : undefined
+    const encoding = { stage: 'encoding', ...(durationMs === undefined ? {} : { durationMs }) }
+    record.update(encoding)
+    const outPath = join(dir, 'out.mp4')
+    const args = ['-progress', 'pipe:3', ...buildCompositeRenderArgs(payload.plan, paths, outPath, baseStartSec)]
+    const result = await runEncoder('ffmpeg', args, signal, ms => {
+      record.update({ ...encoding, encodedTimeMs: Math.min(ms, durationMs ?? ms) })
+    })
+    if (result.code !== 0) {
+      console.error('composite render ffmpeg failed', result.stderr.slice(-800))
+      throw new Error('Composite encoding failed')
+    }
+    lifetime.check()
+    record.update({ stage: 'streaming' })
+    await streamCompositeFile(outPath, res, signal)
+  } catch (cause) {
+    const error = lifetime?.signal.aborted ? lifetime.signal.reason : cause
+    if (!res.destroyed && !res.headersSent) {
+      if (!req.complete) res.setHeader('connection', 'close')
+      res.writeHead(error.statusCode ?? 500)
+      res.end(error.statusCode ? error.message : 'composite render failed')
+    } else if (!res.writableFinished && !res.destroyed) res.destroy()
+  } finally {
+    lifetime?.finish()
+    record?.finish()
+    if (dir) rmSync(dir, { recursive: true, force: true })
+  }
 }
 
 const server = createServer(async (req, res) => {
@@ -70,81 +136,18 @@ const server = createServer(async (req, res) => {
     }
   }
 
-  if (req.method === 'POST' && req.url === '/render-composite') {
-    const dir = mkdtempSync(join(tmpdir(), 'composite-'))
-    let browser = null
-    try {
-      // Body: { plan, files: [{ b64 }], overlays?: [{ clipId, html, framesPattern, fps, durationSec, width, height }] }
-      const payload = JSON.parse((await readBody(req)).toString('utf8'))
-      const paths = payload.files.map((f, i) => {
-        const p = join(dir, `in${i}`)
-        writeFileSync(p, Buffer.from(f.b64, 'base64'))
-        return p
-      })
-
-      const baseStartSec = payload.plan.overlayInputs.some(overlay => overlay.baseFootage)
-        ? await readBaseFootageStartTime(paths[0])
-        : undefined
-
-      if (baseStartSec === null) {
-        res.writeHead(422, { 'x-reelmotion-base': 'unsupported' })
-        return res.end('Unsupported base footage profile')
-      }
-      // V1.2b: capture overlay frames from banner HTML before ffmpeg composite.
-      const overlays = Array.isArray(payload.overlays) ? payload.overlays : []
-      if (overlays.length > 0) {
-        // Drive the Chromium binary installed in this container image.
-        const puppeteer = (await import('puppeteer-core')).default
-        browser = await puppeteer.launch({
-          // The HTTP server owns graceful termination of accepted jobs.
-          handleSIGTERM: false,
-          handleSIGINT: false,
-          executablePath: '/usr/bin/chromium',
-          args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
-        })
-        for (const ov of overlays) {
-          // framesPattern is e.g. 'ovl_clipId/%05d.png'; the dir part is the outDir.
-          const framesDirName = ov.framesPattern.split('/')[0]
-          const outDir = join(dir, framesDirName)
-          mkdirSync(outDir, { recursive: true })
-          await captureOverlay(browser, {
-            html: ov.html,
-            requiredCopy: ov.requiredCopy,
-            width: ov.width,
-            height: ov.height,
-            fps: ov.fps,
-            durationSec: ov.durationSec,
-            outDir,
-          })
-          // Replace the framesPattern in the plan's overlayInputs with an absolute path
-          // so ffmpeg can find the frames. The plan already has the relative pattern;
-          // buildCompositeRenderArgs uses plan.overlayInputs[].framesPattern.
-          for (const planOv of payload.plan.overlayInputs) {
-            if (planOv.clipId === ov.clipId) {
-              planOv.framesPattern = join(outDir, 'ovl_%05d.png')
-            }
-          }
-        }
-        await browser.close()
-        browser = null
-      }
-
-      const outPath = join(dir, 'out.mp4')
-      const pass = await runFfmpeg(buildCompositeRenderArgs(payload.plan, paths, outPath, baseStartSec))
-      if (pass.code !== 0) {
-        console.error('composite render ffmpeg failed', pass.stderr.slice(-800))
-        res.writeHead(500); return res.end('composite render failed')
-      }
-      const out = readFileSync(outPath)
-      res.writeHead(200, { 'content-type': 'video/mp4', 'content-length': String(out.byteLength) })
-      return res.end(out)
-    } catch (e) {
-      console.error('render-composite error', e)
-      if (browser) { try { await browser.close() } catch {} }
-      res.writeHead(500); return res.end('render-composite error')
-    } finally {
-      rmSync(dir, { recursive: true, force: true })
+  if (req.method === 'POST' && req.url === '/render-composite') return serveComposite(req, res)
+  if (req.method === 'GET' && req.url.startsWith('/render-progress/')) {
+    const id = req.url.slice('/render-progress/'.length).toLowerCase()
+    res.setHeader('content-type', 'application/json')
+    res.setHeader('cache-control', 'no-store')
+    if (!isExecutionId(id)) {
+      res.writeHead(400)
+      return res.end('null')
     }
+    const state = renderProgress.get(id)
+    res.writeHead(state ? 200 : 404)
+    return res.end(JSON.stringify(state ?? null))
   }
 
   if (req.method === 'POST' && req.url === '/render-banner') {

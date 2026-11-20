@@ -792,7 +792,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Prepared ReelMotion Edits',
-        content: 'Import a prepared ReelMotion package through Banner Studio’s creative-package importer. Footage, captions, fonts and motion remain editable; open the saved artwork in a linked Video Studio draft to mix audio and queue a portrait export. Packages carry preparation checks for head clearance and the final spoken line before the end card. Review the saved result before delivery. Footage selection, transcription and face checks are prepared outside the hosted editor in this pilot; importing does not automatically edit a new shoot.'
+        content: 'Import a prepared ReelMotion package through Banner Studio’s creative-package importer. Footage, captions, fonts and motion remain editable; open the saved artwork in a linked Video Studio draft to mix audio and queue a portrait export. Packages carry preparation checks for head clearance and the final spoken line before the end card. Exports show measured artwork capture, encoding and saving progress when available, with completed formats tracked separately. Review the saved result before delivery. Footage selection, transcription and face checks are prepared outside the hosted editor in this pilot; importing does not automatically edit a new shoot.'
       },
       {
         title: 'Render Once, Ship Everywhere',

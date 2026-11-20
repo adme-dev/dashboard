@@ -67,3 +67,24 @@ Review resource budgets against
 Long render acceptance must test the real queue and lifecycle; historical
 [long-running fetch reports](https://github.com/cloudflare/containers/issues/162)
 are useful failure cases, not proof of the deployed SDK's behaviour.
+
+
+## Export progress and time limits
+
+Video Studio reports measured frames while preparing artwork, encoded media time,
+and saved bytes when the renderer supplies those counters. Missing measurements
+remain indeterminate. Completed formats are separate from within-format progress;
+only authoritative publication makes the export downloadable. You can keep
+editing or leave and return while the queued job runs.
+
+Composite work shares a twelve-minute budget across source reads and all formats.
+Each format has a ten-minute cap within that budget. Disconnects and deadlines
+terminate owned rendering children and clean temporary files. Progress is advisory;
+a temporary status failure does not fail an otherwise valid export. A lost
+publication response retains output bytes until the queue retry reconciles the
+persisted job rather than deleting a potentially published video.
+
+Release order: deploy the backwards-compatible Pages callback schema first, then
+the qualified Worker/container pair. The Worker sends a private attempt token;
+old Pages callback schemas reject that extra field. This stage retains the
+qualified media engine; native Container API migration is separately qualified.

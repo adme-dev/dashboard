@@ -99,3 +99,23 @@ describe('VideoStudioRenderStatusStrip', () => {
     }
   })
 })
+
+describe('measured export stages', () => {
+  it.each([
+    ['capturing', { framesDone: 15, framesTotal: 30 }, 'Preparing artwork', '15 of 30 frames', '15', '30'],
+    ['encoding', { encodedTimeMs: 12000, durationMs: 40200 }, 'Encoding video', '12.0 of 40.2 seconds', '12000', '40200'],
+    ['uploading', { bytesDone: 1048576, bytesTotal: 2097152 }, 'Saving video', '1.0 of 2.0 MB', '1048576', '2097152'],
+  ])('shows measured %s counters separately from completed formats', async (stage, counters, label, detail, value, max) => {
+    const html = await render({ jobs: [job({ status: 'rendering', progress: { stage, ...counters, formatKey: 'reels_9x16', done: 0, total: 2, updatedAt: '2026-11-20T00:00:00Z' } as any })] })
+    expect(html).toContain(label)
+    expect(html).toContain(detail)
+    expect(html).toContain(`value="${value}"`)
+    expect(html).toContain(`max="${max}"`)
+    expect(html).toContain('0 of 2 formats ready')
+  })
+  it('keeps terminal jobs free from stale active counters', async () => {
+    const html = await render({ jobs: [job({ progress: { stage: 'encoding', encodedTimeMs: 12000, durationMs: 40200, done: 0, total: 1, formatKey: 'reels_9x16', updatedAt: '' } as any })] })
+    expect(html).not.toContain('Encoding video')
+    expect(html).not.toContain('<progress')
+  })
+})

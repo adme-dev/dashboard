@@ -80,3 +80,24 @@ function humanizeCategory(category: string): string {
     .map(part => part.charAt(0).toUpperCase() + part.slice(1))
     .join(' ')
 }
+
+
+/** Measured work within one format. Missing counters stay indeterminate. */
+export function renderStageMeter(job: MediaRenderJob | null | undefined): { label: string; detail: string; value: number | null; max: number } | null {
+  if (!job || job.status !== 'rendering' || !job.progress) return null
+  const p = job.progress
+  const stages = {
+    rendering: { label: 'Preparing render', done: undefined, total: undefined, unit: 'frames' },
+    capturing: { label: 'Preparing artwork', done: p.framesDone, total: p.framesTotal, unit: 'frames' },
+    encoding: { label: 'Encoding video', done: p.encodedTimeMs, total: p.durationMs, unit: 'seconds' },
+    uploading: { label: 'Saving video', done: p.bytesDone, total: p.bytesTotal, unit: 'MB' },
+  }
+  const stage = Object.hasOwn(stages, p.stage) ? stages[p.stage as keyof typeof stages] : undefined
+  if (!stage) return null
+  const { label, done, total, unit } = stage
+  if (typeof done !== 'number' || !Number.isSafeInteger(done) || done < 0 || typeof total !== 'number' || !Number.isSafeInteger(total) || total <= 0)
+    return { label, detail: '', value: null, max: 100 }
+  const value = Math.min(done, total)
+  const display = (v: number) => unit === 'frames' ? String(v) : (v / (unit === 'seconds' ? 1000 : 1048576)).toFixed(1)
+  return { label, detail: `${display(value)} of ${display(total)} ${unit}`, value, max: total }
+}

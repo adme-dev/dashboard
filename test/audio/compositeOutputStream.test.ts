@@ -19,8 +19,9 @@ export default { async fetch(request,env) {
   const response=new Response(body,{headers:mode==='missing'?{}:{'content-length':String(expected)}})
   try {
     const bucket=mode==='put-failure'?{put:async()=>{throw new Error('storage unavailable')}}:env.BUCKET
-    await putCompositeOutput(bucket,'output.mp4',response)
-    return Response.json({ok:true,text:await(await env.BUCKET.get('output.mp4')).text()})
+    const progress=[]
+    await putCompositeOutput(bucket,'output.mp4',response,{onProgress:mode==='progress'?async(done,total)=>{progress.push([done,total])}:undefined})
+    return Response.json({ok:true,text:await(await env.BUCKET.get('output.mp4')).text(),...(mode==='progress'?{progress}:{})})
   }catch(error){return Response.json({ok:false,cancelled,error:String(error)})}
 }}` })
   await runtime.ready
@@ -39,5 +40,9 @@ describe('workerd known-length composite output upload', () => {
   it('cancels the upstream body when R2 fails before consumption', async () => {
     const r = await start()
     expect(await (await r.dispatchFetch('http://local/put-failure')).json()).toMatchObject({ ok: false, cancelled: true })
+  })
+  it('reports actual uploaded byte counts without changing the stored output', async () => {
+    const r = await start()
+    expect(await (await r.dispatchFetch('http://local/progress')).json()).toMatchObject({ ok: true, text: 'approved mp4 bytes', progress: [[0, 18], [18, 18]] })
   })
 })
