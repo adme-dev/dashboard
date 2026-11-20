@@ -1,3 +1,4 @@
+import type { ReelmotionBaseFootage } from '../../../shared/reelmotionBaseFootage'
 import type { StoryboardRenderManifest, PinnedRenderObject } from '../../../shared/video-storyboard/renderManifest'
 // workers/audio-jobs/src/videoCompositeRender.ts — orchestrates a video composite
 // render job. Collaborators (DB writers, container caller) are injected so the
@@ -7,6 +8,7 @@ import type { StoryboardRenderManifest, PinnedRenderObject } from '../../../shar
 export class StoryboardPublicationUncertainError extends Error {}
 
 export interface ResolvedOverlay {
+  baseFootage?: ReelmotionBaseFootage
   clipId: string
   htmlKey: string // R2 key for the uploaded banner HTML
   timeline_start_sec: number

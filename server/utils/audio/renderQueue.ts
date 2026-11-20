@@ -1,6 +1,7 @@
 // server/utils/audio/renderQueue.ts — thin producer boundary to the timeline-render
 // and video-render CF Queues. Isolated so endpoints stay testable (mock this module)
 // and so the binding-lookup gotcha (CF Pages producer binding) lives in one place.
+import type { ReelmotionBaseFootage } from '~~/shared/reelmotionBaseFootage'
 import type { AudioChannel } from '~~/server/utils/audio/profiles'
 
 export interface TimelineRenderMessage {
@@ -15,6 +16,7 @@ export interface ResolvedOverlay {
   htmlKey: string               // R2 key for the uploaded banner HTML
   timeline_start_sec: number
   duration_sec: number
+  baseFootage?: ReelmotionBaseFootage
 }
 
 export interface VideoRenderMessage {

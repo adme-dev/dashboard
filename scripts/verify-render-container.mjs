@@ -117,6 +117,38 @@ try {
     colors.push(Array.from(sample.subarray(i, i + 3), channel => channel > 128 ? 1 : 0).join(''))
   }
   assert.deepEqual(colors, ['001', '110', '010', '110'], 'visible video follows each forward and backward media seek')
+  // A managed MP4 with a positive first PTS is held at its first and last
+  // frame by a paused browser. Verify the same clock in the FFmpeg base and
+  // composite an opaque graphic over the transparent browser capture.
+  const { buildCompositePlan } = await import('/app/videoCompositeGraph.mjs')
+  const sourceWithOffset = join(dir, 'offset.mp4')
+  ffmpeg(['-f', 'lavfi', '-i', 'color=blue:s=1080x1920:r=10:d=0.5',
+    '-vf', "drawbox=color=lime:t=fill:enable='gte(t,0.2)'", '-c:v', 'libx264',
+    '-pix_fmt', 'yuv420p', '-output_ts_offset', '0.2', sourceWithOffset])
+  const clip = { id: 'art', type: 'overlay', timeline_start_sec: 0, duration_sec: 1 }
+  const fps = 30
+  const source = { r2Key: 'banner-assets/fixture.mp4', zoom: [{ timeSec: 0, scale: 1 }, { timeSec: 1, scale: 1.05 }] }
+  const split = buildCompositePlan(
+    { tracks: [{ kind: 'overlay', clips: [clip] }], ducking: [], sample_rate: 48000 },
+    { format: 'reels_9x16', width: 1080, height: 1920, fps, videoBitrate: '8M' },
+    [{ clipId: clip.id, framesPattern: 'graphics/%05d.png', fps, timeline_start_sec: 0, duration_sec: 1, baseFootage: source }]
+  )
+  const derivedGraphics = '<body style="margin:0;background:transparent"><div style="width:100px;height:100px;background:magenta"></div><script>window.__engagrFrame={ready:true,duration:1,seek(){}}</script></body>'
+  const unsupported = await post('/render-composite', {
+    plan: split, files: [{ b64: readFileSync(movingPath).toString('base64') }]
+  })
+  assert.equal(unsupported.status, 422)
+  assert.equal(unsupported.headers.get('x-reelmotion-base'), 'unsupported')
+  const composed = await output(await post('/render-composite', {
+    plan: split, files: [{ b64: readFileSync(sourceWithOffset).toString('base64') }],
+    overlays: [{ clipId: clip.id, html: derivedGraphics, framesPattern: 'graphics/%05d.png', fps, width: 1080, height: 1920, durationSec: 1 }]
+  }), 'split-graphics.mp4', 'video/mp4')
+  const pixel = (time, x, y) => ffmpeg(['-ss', String(time), '-i', composed.path, '-frames:v', '1',
+    '-vf', `crop=2:2:${x}:${y},scale=1:1`, '-f', 'rawvideo', '-pix_fmt', 'rgb24', 'pipe:1'])
+  for (const at of [0, 0.3]) assert.ok(pixel(at, 540, 960)[2] > 200, 'offset footage stays blue until its source transition')
+  for (const at of [0.5, 0.9]) assert.ok(pixel(at, 540, 960)[1] > 200, 'the last green footage frame holds to timeline end')
+  const graphicPixel = pixel(0.5, 40, 40)
+  assert.ok(graphicPixel[0] > 200 && graphicPixel[2] > 200, 'captured upper-layer graphic remains visible')
   const html = '<html><body style="margin:0;background:#e02020;width:64px;height:64px"><script>window.__engagrFrame={ready:true,duration:0.5,seek(t){document.body.style.background=t<0.25?"#e02020":"#2020e0"}}</script></body></html>'
   const banner = await output(await post('/render-banner', { html, width: 64, height: 64, fps: 12, crf: 23, quality: 1 }), 'banner.mp4', 'video/mp4')
   assert.equal(banner.facts.streams[0].codec_name, 'h264')

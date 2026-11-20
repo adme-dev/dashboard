@@ -1,12 +1,15 @@
 // PURE timeline → ffmpeg composite args (base video + audio bed + overlay frame-sequences). No I/O.
 // Dual-imported by Nitro and the audio-jobs Container (.mjs port).
 // V1.2b: overlays are transparent PNG image-sequences alpha-composited onto [vout].
+import { buildReelmotionBase } from '../../../workers/audio-jobs/container/reelmotionBaseGraph.mjs'
 import type { TimelineState } from './timelineSchema'
 import { computeDuration } from './timelineSchema'
 import { buildTimelineFiltergraph, type FiltergraphInput } from './timelineFiltergraph'
+import type { ReelmotionBaseFootage } from '../../../shared/reelmotionBaseFootage'
 import type { VideoFormat } from './videoProfiles'
 
 export interface OverlayFrameInput {
+  baseFootage?: { r2Key: string, zoom: ReelmotionBaseFootage['zoom'] }
   clipId: string
   framesPattern: string // e.g. 'ovl_o1/%05d.png'
   fps: number
@@ -155,9 +158,10 @@ export function buildCompositePlan(state: TimelineState, profile: VideoFormat, o
   const duration = computeDuration(state)
 
   // --- video base chain ---
-  const videoInputs: FiltergraphInput[] = []
-  const vChains: string[] = [`color=c=black:s=${W}x${H}:r=${fps}:d=${duration.toFixed(3)}[vb0]`]
-  let baseLabel = 'vb0', baseN = 0, idx = 0
+  const base = buildReelmotionBase(state, profile, duration, overlays)
+  const videoInputs: FiltergraphInput[] = base ? [base.input] : []
+  const vChains: string[] = [base?.filter ?? `color=c=black:s=${W}x${H}:r=${fps}:d=${duration.toFixed(3)}[vb0]`]
+  let baseLabel = 'vb0', baseN = 0, idx = videoInputs.length
 
   for (const track of state.tracks.filter(t => t.kind === 'video' && !t.muted)) {
     for (const clip of track.clips as any[]) {
@@ -235,12 +239,18 @@ export function buildCompositePlan(state: TimelineState, profile: VideoFormat, o
   }
 }
 
-export function buildCompositeRenderArgs(plan: CompositePlan, inputPaths: string[], outputPath: string): string[] {
+export function buildCompositeRenderArgs(plan: CompositePlan, inputPaths: string[], outputPath: string, baseStartSec?: number): string[] {
   if (inputPaths.length !== plan.inputs.length) {
     throw new Error(`inputPaths (${inputPaths.length}) must match plan.inputs (${plan.inputs.length})`)
   }
   const args = ['-hide_banner', '-nostats']
   // Regular video + audio inputs (must come first, matching plan.inputs order)
+  if (plan.overlayInputs.some(overlay => overlay.baseFootage)) {
+    if (!Number.isFinite(baseStartSec)) throw new Error('Missing base footage start time')
+    // FFmpeg normally subtracts the file start time. Restore it for this input
+    // so the captured artwork and browser seek use the original video PTS.
+    args.push('-protocol_whitelist', 'file', '-format_whitelist', 'mov', '-itsoffset', String(baseStartSec))
+  }
   for (const p of inputPaths) args.push('-i', p)
   // Overlay frame-sequence inputs come after, matching filtergraph input indices
   for (const ov of plan.overlayInputs) {

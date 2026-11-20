@@ -47,6 +47,29 @@ function run(command, args, timeoutMs, countPcmBytes = false) {
     })
   })
 }
+// Preserve the browser's media timeline for a verified local MP4. FFmpeg
+// otherwise removes the file's start offset before the first filter.
+export async function readBaseFootageStartTime(path) {
+  const result = await run('ffprobe', ['-v', 'error', '-protocol_whitelist', 'file', '-format_whitelist', 'mov',
+    '-select_streams', 'v', '-show_entries',
+    'format=start_time:stream=codec_name,pix_fmt,width,height,sample_aspect_ratio,color_transfer:stream_disposition=attached_pic:stream_tags=rotate:stream_side_data=side_data_type,rotation',
+    '-of', 'json', path], 10000)
+  const facts = JSON.parse(result)
+  if (!facts.streams?.length) throw new Error('Base footage video stream missing')
+  const [video] = facts.streams
+  if (facts.streams.length !== 1 || video.codec_name !== 'h264' || video.pix_fmt !== 'yuv420p'
+    || video.width !== 1080 || video.height !== 1920 || video.sample_aspect_ratio !== '1:1'
+    || video.disposition?.attached_pic || Number(video.tags?.rotate ?? 0) !== 0
+    || (video.color_transfer && video.color_transfer !== 'bt709' && video.color_transfer !== 'unknown')
+    || video.side_data_list?.some(item => item.side_data_type === 'Display Matrix' || Number(item.rotation ?? 0) !== 0)) {
+    return null
+  }
+  const raw = facts.format?.start_time
+  const seconds = Number(raw)
+  if (typeof raw !== 'string' || !raw.trim() || !Number.isFinite(seconds)) throw new Error('Invalid base footage start time')
+  return seconds
+}
+
 /** Local bytes only. Restricted demuxers exclude playlists; network protocols are disabled. */
 export async function probeMediaBytes(bytes, { timeoutMs = 20_000 } = {}) {
   if (!bytes.length || bytes.length > MAX_BYTES)

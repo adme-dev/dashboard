@@ -57,6 +57,13 @@ vi.mock('~~/server/utils/storage', () => ({
   validateFileSize: vi.fn(),
 }))
 
+const mockSelectBaseFootage = vi.fn()
+const mockResolveBaseFootage = vi.fn()
+vi.mock('~~/server/utils/audio/reelmotionBaseFootage', () => ({
+  selectReelmotionBaseFootage: (...args: unknown[]) => mockSelectBaseFootage(...args),
+  resolveReelmotionBaseFootage: (...args: unknown[]) => mockResolveBaseFootage(...args)
+}))
+
 const { default: renderVideoH } = await import('../../server/api/agency/audio/projects/[id]/render-video.post')
 
 const avProject = {
@@ -78,6 +85,8 @@ const validOverlayHtml = '<script>window.__engagrFrame={ready:true,duration:5,se
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mockSelectBaseFootage.mockReturnValue(null)
+  mockResolveBaseFootage.mockResolvedValue(null)
   mockRequireAuth.mockResolvedValue({ id: 'u1', role: 'member' })
   mockRequireWriteAccess.mockResolvedValue({ id: 'u1', role: 'member' })
   process.env.VIDEO_STUDIO_ENABLED = 'true'
@@ -384,4 +393,28 @@ it('normalizes duplicate formats before manifest dispatch and enqueue', async ()
   await renderVideoH({ params: { id: 'p1' }, body: { ...token, formats: ['square_1x1', 'square_1x1'] }, context: {} } as never)
   expect(mockStoryboardDispatch).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ formats: ['square_1x1'] }))
   expect(mockEnqueueVideoRender).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ formats: ['square_1x1'] }))
+})
+
+
+describe('ReelMotion split dispatch compatibility', () => {
+  it('retains complete HTML and adds a managed pinned graphics sibling', async () => {
+    const overlay = { type: 'overlay', id: 'o1', gsap_project_id: 'bp1', timeline_start_sec: 0, duration_sec: 5 }
+    const state = { duration_sec: 5, width: 1080, height: 1920, tracks: [{ kind: 'overlay', clips: [overlay] }] }
+    mockGetProject.mockResolvedValue({ project: { ...avProject, clientId: 'client-a' }, timeline: { ...goodTimeline, state } })
+    mockCreateRenderJob.mockResolvedValue({ id: 'j1', timelineId: 't2', status: 'queued' })
+    const layers = [{ id: 1, type: 'video', src: 'https://assets.example/footage.mp4' }, { id: 2, type: 'text', text: 'Copy' }]
+    const zoom = [{ timeSec: 0, scale: 1 }]
+    mockLoadBannerLayers.mockResolvedValue({ layers, width: 1080, height: 1920, playback: { duration: 5, loopCount: 0 } })
+    mockResolveOverlayFormatKey.mockReturnValue('fb_story')
+    mockBuildBannerHTML.mockReturnValue(validOverlayHtml)
+    mockSelectBaseFootage.mockReturnValue({ video: layers[0], graphics: [layers[1]], zoom })
+    const baseFootage = { version: 1, graphicsHtmlKey: 'media/p1/j1/reels_9x16/overlay-o1-graphics.html', source: { r2Key: 'banner-assets/actor/source.mp4', etag: 'etag', size: 100 }, zoom }
+    mockResolveBaseFootage.mockResolvedValue(baseFootage)
+    await renderVideoH({ params: { id: 'p1' }, body: { ...token, formats: ['reels_9x16'] }, context: {} } as never)
+    expect(mockBuildBannerHTML).toHaveBeenNthCalledWith(1, 'fb_story', layers, expect.any(Object))
+    expect(mockBuildBannerHTML).toHaveBeenNthCalledWith(2, 'fb_story', [layers[1]], expect.objectContaining({ bgColor: 'transparent' }))
+    expect(mockUploadFile).toHaveBeenCalledWith(expect.any(Buffer), baseFootage.graphicsHtmlKey, 'text/html')
+    expect(mockEnqueueVideoRender).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ resolvedOverlaysByFormat: { reels_9x16: [{ clipId: 'o1', htmlKey: 'media/p1/j1/reels_9x16/overlay-o1.html', timeline_start_sec: 0, duration_sec: 5, baseFootage }] } }))
+    expect(mockResolveBaseFootage).toHaveBeenCalledWith(expect.objectContaining({ clientId: 'client-a', bannerId: 'bp1', src: layers[0].src }))
+  })
 })

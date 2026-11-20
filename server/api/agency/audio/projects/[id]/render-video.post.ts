@@ -10,6 +10,8 @@ import { requireTimelinePrecondition, assertTimelinePrecondition } from '~~/serv
 import { requireWriteAccess } from '~~/server/utils/auth'
 import { getProjectWithCurrentTimeline, createRenderJob, getRenderJob, markRenderJobFailed, assertMediaProjectAccess } from '~~/server/utils/audio/projects'
 import { executeGodModeMediaRender } from '~~/server/utils/audio/godModeExternalMutations'
+import { selectReelmotionBaseFootage, resolveReelmotionBaseFootage } from '~~/server/utils/audio/reelmotionBaseFootage'
+import type { ResolvedOverlay } from '~~/server/utils/audio/renderQueue'
 import { enqueueVideoRender } from '~~/server/utils/audio/renderQueue'
 import { resolveOverlayFormatKey, loadBannerLayers } from '~~/server/utils/audio/bannerOverlay'
 import { buildBannerHTML } from '~~/server/utils/banner/htmlBuilder'
@@ -96,13 +98,13 @@ export default defineEventHandler(async (event) => {
     // upload to R2. This avoids reusing portrait overlay HTML for square/landscape
     // exports when the clip does not pin a specific Banner Studio format.
     // Any error here is a user/config error → 400 (project or format not found).
-    const resolvedOverlaysByFormat: Record<string, { clipId: string; htmlKey: string; timeline_start_sec: number; duration_sec: number }[]> = {}
+    const resolvedOverlaysByFormat: Record<string, ResolvedOverlay[]> = {}
     try {
       for (const format of formats) {
         const profile = videoFormatFor(format)
         const profileW = profile?.width ?? 1080
         const profileH = profile?.height ?? 1920
-        const resolvedForFormat: { clipId: string; htmlKey: string; timeline_start_sec: number; duration_sec: number }[] = []
+        const resolvedForFormat: ResolvedOverlay[] = []
 
         for (const clip of overlayClips) {
           const fmtKey: string = clip.gsap_format_key ?? resolveOverlayFormatKey(profileW, profileH)
@@ -123,12 +125,37 @@ export default defineEventHandler(async (event) => {
           }
           const htmlKey = `media/${id}/${job.id}/${format}/overlay-${clip.id}.html`
           await uploadFile(Buffer.from(html, 'utf8'), htmlKey, 'text/html')
-          resolvedForFormat.push({
+          const resolved: ResolvedOverlay = {
             clipId: clip.id,
             htmlKey,
             timeline_start_sec: clip.timeline_start_sec,
             duration_sec: clip.duration_sec,
-          })
+          }
+          // Optional optimization retains complete HTML for older queue consumers.
+          // Both views derive from this exact loaded layer revision; the editable
+          // Banner Studio project is never rewritten for an export.
+          const selected = existing.project.clientId ? selectReelmotionBaseFootage({
+            format, width, height, duration: timelineState.duration_sec,
+            playback, layers, timeline: timelineState, clip
+          }) : null
+          if (selected && existing.project.clientId) {
+            const graphicsHtmlKey = `${htmlKey.slice(0, -5)}-graphics.html`
+            const baseFootage = await resolveReelmotionBaseFootage({
+              clientId: existing.project.clientId, bannerId: clip.gsap_project_id,
+              src: selected.video.src!, graphicsHtmlKey, zoom: selected.zoom
+            })
+            if (baseFootage) {
+              const graphicsHtml = applyOverlayPlacement(
+                buildBannerHTML(fmtKey, selected.graphics, { baseUrl, playback, customFonts, bgColor: 'transparent' }),
+                clip.placement ?? null, { width: profileW, height: profileH }, { width, height }
+              )
+              const graphicsFindings = lintBannerRenderFormat({ key: fmtKey, html: graphicsHtml, width, height }, { fps: 30, crf: 23, quality: 1 })
+              if (hasRenderLintErrors(graphicsFindings)) throw new Error('ReelMotion graphics snapshot is invalid')
+              await uploadFile(Buffer.from(graphicsHtml, 'utf8'), graphicsHtmlKey, 'text/html')
+              resolved.baseFootage = baseFootage
+            }
+          }
+          resolvedForFormat.push(resolved)
         }
 
         if (resolvedForFormat.length > 0) {
