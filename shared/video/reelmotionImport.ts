@@ -28,6 +28,6 @@ export function reelmotionVideoTimeline(project: SavedReel, assets: ManagedAudio
     ]
   })
   const checked = validateTimeline(state)
-  if (!checked.ok) throw new Error(checked.errors.join('; '))
+  if (checked.ok === false) throw new Error(checked.errors.join('; '))
   return state
 }

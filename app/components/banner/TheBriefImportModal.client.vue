@@ -413,7 +413,7 @@ async function importDrafts() {
                       size="xs"
                       variant="ghost"
                       color="neutral"
-                      @click="row.sourceCreatedDate = ''"
+                      @click="() => { row.sourceCreatedDate = '' }"
                     >
                       Clear
                     </UButton>
@@ -556,7 +556,7 @@ async function importDrafts() {
           color="neutral"
           variant="ghost"
           :disabled="busy"
-          @click="showDraftUpdate = false"
+          @click="() => { showDraftUpdate = false }"
         >
           Cancel
         </UButton>
