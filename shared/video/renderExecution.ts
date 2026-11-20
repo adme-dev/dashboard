@@ -26,6 +26,11 @@ export interface VideoRenderProgress extends MeasuredRenderProgress {
 }
 export class RenderPublicationUncertainError extends Error {}
 
+/** Deadline failure was durably stored after cleanup; explicit Retry creates a new job. */
+export class TerminalRenderDeadlineError extends Error {
+  constructor(message: string) { super(message); this.name = 'TerminalRenderDeadlineError' }
+}
+
 export class RenderDeadlineError extends Error {
   constructor() { super('container_timeout: Video export exceeded its render-work deadline'); this.name = 'RenderDeadlineError' }
 }

@@ -112,9 +112,13 @@ export async function dbMarkRenderDone(jobId: string, variants: Record<string, s
   }
   if (attemptId && !changed) throw new Error('Render attempt is no longer current')
 }
-export async function dbMarkRenderFailed(jobId: string, error: string, attemptId?: string): Promise<void> {
-  await execute(`UPDATE media_render_jobs SET status='failed', error=$1, updated_at=now() WHERE id=$2 AND status <> 'done'
+export async function dbMarkVideoRenderFailed(jobId: string, error: string, attemptId?: string): Promise<boolean> {
+  const changed = await execute(`UPDATE media_render_jobs SET status='failed', error=$1, updated_at=now() WHERE id=$2 AND status <> 'done'
     AND (($3::text IS NULL AND progress->>'attemptId' IS NULL) OR progress->>'attemptId'=$3::text)`, [error, jobId, attemptId ?? null])
+  return changed > 0
+}
+export async function dbMarkRenderFailed(jobId: string, error: string, attemptId?: string): Promise<void> {
+  await dbMarkVideoRenderFailed(jobId, error, attemptId)
 }
 export async function dbLoadTimelineState(timelineId: string): Promise<any> {
   const row = await queryOne<{ state: any }>(`SELECT state FROM media_timelines WHERE id=$1`, [timelineId])

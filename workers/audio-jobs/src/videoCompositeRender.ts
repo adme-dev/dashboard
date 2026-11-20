@@ -1,6 +1,6 @@
 import type { ReelmotionBaseFootage } from '../../../shared/reelmotionBaseFootage'
 import type { StoryboardRenderManifest, PinnedRenderObject } from '../../../shared/video-storyboard/renderManifest'
-import { createRenderDeadline, VIDEO_RENDER_WORK_MS, VIDEO_PROGRESS_REQUEST_MS, RenderPublicationUncertainError, type MeasuredRenderProgress, type VideoRenderProgress } from '../../../shared/video/renderExecution'
+import { createRenderDeadline, VIDEO_RENDER_WORK_MS, VIDEO_PROGRESS_REQUEST_MS, RenderPublicationUncertainError, RenderDeadlineError, TerminalRenderDeadlineError, type MeasuredRenderProgress, type VideoRenderProgress } from '../../../shared/video/renderExecution'
 // workers/audio-jobs/src/videoCompositeRender.ts — orchestrates a video composite
 // render job. Collaborators (DB writers, container caller) are injected so the
 // control flow is unit-testable without CF bindings / ffmpeg. The real wiring
@@ -39,7 +39,7 @@ export interface VideoRenderDeps {
   markProgress?(jobId: string, progress: VideoRenderProgress): Promise<void>
   renderOne(args: { projectId: string, jobId: string, state: unknown, formatKey: string, resolvedOverlays?: ResolvedOverlay[], pinnedObjects?: PinnedRenderObject[], signal: AbortSignal, deadlineAtMs: number, onProgress(progress: MeasuredRenderProgress): Promise<void> }): Promise<{ key: string }>
   markDone(jobId: string, variants: Record<string, string>, costCents: number | null, attemptId?: string): Promise<void>
-  markFailed(jobId: string, error: string, attemptId?: string): Promise<void>
+  markFailed(jobId: string, error: string, attemptId?: string): Promise<void | boolean>
   centsPerSec: number
 }
 
@@ -103,14 +103,17 @@ export async function runVideoCompositeJob(msg: VideoRenderMessage, deps: VideoR
     // A lost publish response may already have committed. Retain bytes for retry.
     closed = true
     if (e instanceof RenderPublicationUncertainError) throw e
+    let failurePersisted = false
     const cleanup = createRenderDeadline(30_000)
     try {
       await cleanup.run(async () => {
-        await Promise.allSettled(Object.values(variants).map(key => deps.discardOutput(key)))
-        await deps.markFailed(msg.jobId, e instanceof Error ? e.message : String(e), attemptId)
+        const removed = await Promise.allSettled(Object.values(variants).map(key => deps.discardOutput(key)))
+        if (removed.some(result => result.status === 'rejected')) throw new Error('Render cleanup unavailable')
+        failurePersisted = await deps.markFailed(msg.jobId, e instanceof Error ? e.message : String(e), attemptId) === true
       })
     } catch { /* retain the original failure for queue retry if status persistence is unavailable */ }
     finally { cleanup.dispose() }
+    if (e instanceof RenderDeadlineError && failurePersisted) throw new TerminalRenderDeadlineError(e.message)
     throw e
   } finally {
     closed = true

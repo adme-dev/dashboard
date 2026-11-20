@@ -10,14 +10,16 @@ export async function loadStoryboardRenderInputs(msg: VideoRenderMessage) {
     project_id: string
     timeline_id: string
     status: string
+    error?: string | null
     manifest: StoryboardRenderManifest | null
     manifest_hash: string | null
     obligated: boolean
-  }>(`SELECT j.project_id, j.timeline_id, j.status, m.manifest, m.manifest_hash,
+  }>(`SELECT j.project_id, j.timeline_id, j.status, j.error, m.manifest, m.manifest_hash,
       EXISTS(SELECT 1 FROM video_storyboard_timeline_obligations o WHERE o.timeline_id=j.timeline_id) AS obligated
     FROM media_render_jobs j LEFT JOIN video_storyboard_render_manifests m ON m.job_id=j.id WHERE j.id=$1`, [msg.jobId])
   if (!row || row.project_id !== msg.projectId || row.timeline_id !== msg.timelineId)
     throw new Error('Render job identity mismatch')
+  if (row.status === 'failed' && row.error?.startsWith('container_timeout:')) return { completed: true as const }
   if (row.status === 'done') return { completed: true as const }
   if (!row.manifest) {
     if (row.obligated) throw new Error('Storyboard render manifest required')

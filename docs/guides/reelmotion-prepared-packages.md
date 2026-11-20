@@ -78,7 +78,10 @@ only authoritative publication makes the export downloadable. You can keep
 editing or leave and return while the queued job runs.
 
 Composite work shares a twelve-minute budget across source reads and all formats.
-Each format has a ten-minute cap within that budget. Disconnects and deadlines
+Each format has a ten-minute cap within that budget. A confirmed deadline failure
+stops automatic retries after cleanup and failure persistence; use Retry to create
+a new job with the required formats. Transport and uncertain-publication failures
+remain retryable. Disconnects and deadlines
 terminate owned rendering children and clean temporary files. Progress is advisory;
 a temporary status failure does not fail an otherwise valid export. A lost
 publication response retains output bytes until the queue retry reconciles the

@@ -79,3 +79,23 @@ independently. This is authorized follow-up, not part of the Task1 protocol chan
   declarations and legacy audio/banner typing errors; no newly introduced error
   remains. Baseline comparison and full build/CI remain release checks.
 - No migrations required. Attempt ownership/counters use existing progress JSONB.
+
+## Native follow-up: terminal deadline retry classification
+
+The default three-format acceptance job started during the image rollout. Its
+old-image attempt failed and retried; the new-image attempt completed portrait
+but square uses the supported slower whole-artwork path. A separate portrait-only
+job completed and downloaded byte-identical to the prior accepted native output.
+Do not claim three-format throughput from that proof.
+
+Review found no per-job cancellation API. Persisted deterministic deadline failures
+were being revived by queue redelivery. The bounded correction acknowledges a
+deadline only after successful output cleanup and fenced failure persistence;
+failed persistence or publication uncertainty remains retryable. Authoritative
+redelivery skips persisted deadline failures after verifying job identity. Manual
+Retry creates a new job and explicit format selection. No global queue mutation,
+synthetic completion or deletion of historical jobs is permitted.
+
+Tests must cover actual queue ack/retry, stale/current native PostgreSQL failure
+confirmation, uncertain persistence, cleanup failures, redelivery identity and
+transport/publication retry preservation. The container image is unchanged.

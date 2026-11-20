@@ -52,3 +52,12 @@ it.each([408, 429, 500, 503])('treats publication HTTP %s as uncertain', async (
   vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status }))
   await expect(callStoryboardRenderAuthority({ STORYBOARD_APP_ORIGIN: 'https://app.xeroflow.io', STORYBOARD_RENDER_SECRET: 'test' }, { action: 'publish', jobId: 'j', manifestHash: 'h' })).rejects.toBeInstanceOf(StoryboardPublicationUncertainError)
 })
+
+it('recognizes a persisted deadline as terminal, while keeping transport failures retryable', async () => {
+  queryOne.mockResolvedValue({ ...row, obligated: false, status: 'failed', error: 'container_timeout: Video export exceeded its render-work deadline' })
+  await expect(loadStoryboardRenderInputs(msg)).resolves.toEqual({ completed: true })
+  queryOne.mockResolvedValue({ ...row, obligated: false, status: 'failed', error: 'composite render failed: 500' })
+  await expect(loadStoryboardRenderInputs(msg)).resolves.toBeNull()
+  queryOne.mockResolvedValue({ ...row, project_id: 'other', status: 'failed', error: 'container_timeout: expired' })
+  await expect(loadStoryboardRenderInputs(msg)).rejects.toThrow('identity')
+})

@@ -3,7 +3,7 @@ import { Pool } from 'pg'
 import { createRequire } from 'node:module'
 const workerPg = createRequire(new URL('../../workers/audio-jobs/src/db.ts', import.meta.url))('pg')
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { dbMarkRenderRendering, dbMarkRenderProgress, dbMarkRenderDone, dbMarkRenderFailed } from '../../workers/audio-jobs/src/db'
+import { dbMarkRenderRendering, dbMarkRenderProgress, dbMarkRenderDone, dbMarkRenderFailed, dbMarkVideoRenderFailed } from '../../workers/audio-jobs/src/db'
 
 import { runVideoCompositeJob, RenderPublicationUncertainError } from '../../workers/audio-jobs/src/videoCompositeRender'
 
@@ -104,6 +104,15 @@ describe.skipIf(!connection)('native PostgreSQL render attempt fences', () => {
     await dbMarkRenderProgress(jobId, { ...progress(first), sequence: 2, formatKey: 'square_1x1' })
     await dbMarkRenderProgress(jobId, { ...progress(first, 'capturing'), sequence: 1, formatKey: 'reels_9x16' })
     expect((await row()).progress).toMatchObject({ sequence: 2, formatKey: 'square_1x1', stage: 'encoding' })
+  })
+  it('confirms failure persistence only for the current non-completed attempt', async () => {
+    await dbMarkRenderRendering(jobId, first)
+    expect(await dbMarkVideoRenderFailed(jobId, 'container_timeout: expired', second)).toBe(false)
+    expect(await dbMarkVideoRenderFailed(jobId, 'container_timeout: expired', first)).toBe(true)
+    expect(await row()).toMatchObject({ status: 'failed', error: 'container_timeout: expired' })
+    await dbMarkRenderRendering(jobId, second)
+    await dbMarkRenderDone(jobId, { reels_9x16: 'approved.mp4' }, 2, second)
+    expect(await dbMarkVideoRenderFailed(jobId, 'container_timeout: expired', second)).toBe(false)
   })
   it('retains legacy audio status writes without an attempt token', async () => {
     await dbMarkRenderRendering(jobId)
