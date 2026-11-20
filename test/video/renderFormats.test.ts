@@ -3,6 +3,7 @@ import {
   DEFAULT_VIDEO_RENDER_FORMATS,
   VIDEO_RENDER_FORMATS,
   normalizeVideoRenderFormats,
+  retryVideoRenderFormats,
 } from '~~/app/utils/video/renderFormats'
 
 describe('video render formats', () => {
@@ -21,5 +22,20 @@ describe('video render formats', () => {
   it('falls back to all render formats when selection is empty', () => {
     expect(normalizeVideoRenderFormats([])).toEqual(DEFAULT_VIDEO_RENDER_FORMATS)
     expect(normalizeVideoRenderFormats(null)).toEqual(DEFAULT_VIDEO_RENDER_FORMATS)
+  })
+})
+
+
+describe('retrying the recorded video outputs', () => {
+  it('retains a failed Reels-only request instead of expanding to all formats', () => {
+    expect(retryVideoRenderFormats({ variants: {}, progress: { total: 1, formatKey: 'reels_9x16' } })).toEqual(['reels_9x16'])
+  })
+  it('recovers a known partial request from completed and current formats', () => {
+    expect(retryVideoRenderFormats({ variants: { reels_9x16: 'output.mp4' }, progress: { total: 2, formatKey: 'square_1x1' } })).toEqual(['reels_9x16', 'square_1x1'])
+  })
+  it('requires an explicit selection for missing, unknown or incomplete request evidence', () => {
+    for (const job of [undefined, { variants: {}, progress: null }, { variants: {}, progress: { total: 2, formatKey: 'reels_9x16' } }, { variants: {}, progress: { total: 1, formatKey: 'unknown' } }]) {
+      expect(retryVideoRenderFormats(job)).toBeNull()
+    }
   })
 })

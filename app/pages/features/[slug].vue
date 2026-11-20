@@ -780,7 +780,7 @@ const features: Record<string, Feature> = {
     details: [
       {
         title: 'One Screen, Every Source',
-        content: 'Open a project from the thumbnail gallery, then work with producer controls beside a large preview and a docked timeline. Switch between Preview, Library, History and How it works without losing the edit. Drop in uploaded footage and stills, pull overlays straight from Banner Studio, add voiceover and music from Audio Studio, or generate B-roll and image-to-video clips with AI — all from the same command bar.'
+        content: 'Open a project from the thumbnail gallery, then work with producer controls beside a large preview and a docked timeline. Switch between Storyboard, Preview, Library, History and How it works without losing the edit. Plan shots in the full workspace and fit portrait or landscape previews into the available pane. Drop in uploaded footage and stills, pull overlays straight from Banner Studio, add voiceover and music from Audio Studio, or generate B-roll and image-to-video clips with AI — all from the same command bar.'
       },
       {
         title: 'A Real Editing Timeline',
@@ -796,7 +796,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Render Once, Ship Everywhere',
-        content: 'Pick Reels 9:16, Square 1:1 and YouTube 16:9 in one render. Each render uses a saved timeline snapshot, so subsequent timeline edits do not change that job. Finished variants can be downloaded, saved back to the library as reusable assets, sent to the client portal for approval, or handed to Social Publishing to schedule — without leaving the editor. Failed renders explain why and retry in place. Storyboard planning and reviewed full-cut replacement are available for pilot use with project access controls and render safeguards. If a pinned brand kit changes, review its current content and explicitly record approval for the adjusted cut; stale or unavailable kits remain blocked. Model selection shows configured capabilities, not a guarantee of successful provider execution; provider, budget and approval checks still apply. Uncertain provider outcomes retain their budget reservation for reconciliation and are not automatically resubmitted. Physical-device and full pilot acceptance remain in progress.'
+        content: 'Pick Reels 9:16, Square 1:1 and YouTube 16:9 in one render. Each render uses a saved timeline snapshot, so subsequent timeline edits do not change that job. Finished variants can be downloaded, saved back to the library as reusable assets, sent to the client portal for approval, or handed to Social Publishing to schedule — without leaving the editor. Failed renders explain why. Retrying keeps the recorded output formats; older jobs with incomplete format records require a fresh explicit selection. Storyboard planning and reviewed full-cut replacement are available for pilot use with project access controls and render safeguards. If a pinned brand kit changes, review its current content and explicitly record approval for the adjusted cut; stale or unavailable kits remain blocked. Model selection shows configured capabilities, not a guarantee of successful provider execution; provider, budget and approval checks still apply. Uncertain provider outcomes retain their budget reservation for reconciliation and are not automatically resubmitted. Physical-device and full pilot acceptance remain in progress.'
       }
     ]
   },
