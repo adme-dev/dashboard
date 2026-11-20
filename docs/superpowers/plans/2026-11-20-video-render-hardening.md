@@ -99,3 +99,13 @@ synthetic completion or deletion of historical jobs is permitted.
 Tests must cover actual queue ack/retry, stale/current native PostgreSQL failure
 confirmation, uncertain persistence, cleanup failures, redelivery identity and
 transport/publication retry preservation. The container image is unchanged.
+
+## Delivery checkpoint
+
+Tasks1–3 and the initial Task4 hardening release completed in PR955 with exact-image
+qualification, full current-head CI, Pages-before-Worker rollout and native
+portrait job5622ab1f-7591-4208-b6ec-4528ad53c1e8. Downloaded native bytes match the
+prior accepted native output. Live measured capture/encoding/upload and QR Codes
+leave/return checks passed. The task's terminal-deadline follow-up remains in PR956;
+it changes Worker retry classification, not the qualified container. Native
+Container API migration and general large/multi-format throughput remain separate.
