@@ -5,7 +5,7 @@
 // the variant bytes. No R2/DB creds here — the Worker owns persistence.
 // V1.2b: /render-composite also accepts overlays (banner HTML → Chromium capture → composite).
 import { serveCopyMeasurement } from './copyMeasurement.mjs'
-import { serveMediaProbe } from './mediaProbe.mjs'
+import { readBaseFootageStartTime, serveMediaProbe } from './mediaProbe.mjs'
 import { createServer } from 'node:http'
 import { spawn } from 'node:child_process'
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs'
@@ -82,6 +82,14 @@ const server = createServer(async (req, res) => {
         return p
       })
 
+      const baseStartSec = payload.plan.overlayInputs.some(overlay => overlay.baseFootage)
+        ? await readBaseFootageStartTime(paths[0])
+        : undefined
+
+      if (baseStartSec === null) {
+        res.writeHead(422, { 'x-reelmotion-base': 'unsupported' })
+        return res.end('Unsupported base footage profile')
+      }
       // V1.2b: capture overlay frames from banner HTML before ffmpeg composite.
       const overlays = Array.isArray(payload.overlays) ? payload.overlays : []
       if (overlays.length > 0) {
@@ -122,7 +130,7 @@ const server = createServer(async (req, res) => {
       }
 
       const outPath = join(dir, 'out.mp4')
-      const pass = await runFfmpeg(buildCompositeRenderArgs(payload.plan, paths, outPath))
+      const pass = await runFfmpeg(buildCompositeRenderArgs(payload.plan, paths, outPath, baseStartSec))
       if (pass.code !== 0) {
         console.error('composite render ffmpeg failed', pass.stderr.slice(-800))
         res.writeHead(500); return res.end('composite render failed')

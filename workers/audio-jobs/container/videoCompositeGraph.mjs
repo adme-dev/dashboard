@@ -2,6 +2,7 @@
 // server/utils/audio/videoCompositeGraph.ts. KEEP IN SYNC (the render.ts↔render.mjs
 // convention; guarded by test/audio/videoCompositeGraphSync.test.ts).
 // V1.2b: overlays are transparent PNG image-sequences alpha-composited onto [vout].
+import { buildReelmotionBase } from './reelmotionBaseGraph.mjs'
 import { buildTimelineFiltergraph } from './timelineFiltergraph.mjs'
 
 const AUDIO_KINDS = ['voiceover', 'music', 'sfx']
@@ -142,9 +143,10 @@ export function buildCompositePlan(state, profile, overlays = []) {
   const duration = computeDuration(state)
 
   // --- video base chain ---
-  const videoInputs = []
-  const vChains = [`color=c=black:s=${W}x${H}:r=${fps}:d=${duration.toFixed(3)}[vb0]`]
-  let baseLabel = 'vb0', baseN = 0, idx = 0
+  const base = buildReelmotionBase(state, profile, duration, overlays)
+  const videoInputs = base ? [base.input] : []
+  const vChains = [base?.filter ?? `color=c=black:s=${W}x${H}:r=${fps}:d=${duration.toFixed(3)}[vb0]`]
+  let baseLabel = 'vb0', baseN = 0, idx = videoInputs.length
 
   for (const track of state.tracks.filter(t => t.kind === 'video' && !t.muted)) {
     for (const clip of track.clips) {
@@ -222,12 +224,18 @@ export function buildCompositePlan(state, profile, overlays = []) {
   }
 }
 
-export function buildCompositeRenderArgs(plan, inputPaths, outputPath) {
+export function buildCompositeRenderArgs(plan, inputPaths, outputPath, baseStartSec) {
   if (inputPaths.length !== plan.inputs.length) {
     throw new Error(`inputPaths (${inputPaths.length}) must match plan.inputs (${plan.inputs.length})`)
   }
   const args = ['-hide_banner', '-nostats']
   // Regular video + audio inputs (must come first, matching plan.inputs order)
+  if (plan.overlayInputs.some(overlay => overlay.baseFootage)) {
+    if (!Number.isFinite(baseStartSec)) throw new Error('Missing base footage start time')
+    // FFmpeg normally subtracts the file start time. Restore it for this input
+    // so the captured artwork and browser seek use the original video PTS.
+    args.push('-protocol_whitelist', 'file', '-format_whitelist', 'mov', '-itsoffset', String(baseStartSec))
+  }
   for (const p of inputPaths) args.push('-i', p)
   // Overlay frame-sequence inputs come after, matching filtergraph input indices
   for (const ov of plan.overlayInputs) {
@@ -235,7 +243,10 @@ export function buildCompositeRenderArgs(plan, inputPaths, outputPath) {
   }
   args.push('-filter_complex', plan.filterComplex, '-map', plan.vLabel)
   if (plan.aLabel) args.push('-map', plan.aLabel)
-  args.push('-r', String(plan.profile.fps), '-c:v', 'libx264', '-b:v', plan.profile.videoBitrate, '-pix_fmt', 'yuv420p', '-movflags', '+faststart')
+  args.push('-r', String(plan.profile.fps), '-c:v', 'libx264')
+  // Portrait artwork capture shares the render deadline with the final encode.
+  if (plan.profile.format === 'reels_9x16' && plan.overlayInputs.length > 0) args.push('-preset', 'veryfast')
+  args.push('-b:v', plan.profile.videoBitrate, '-pix_fmt', 'yuv420p', '-movflags', '+faststart')
   if (plan.aLabel) args.push('-c:a', 'aac', '-b:a', '192k')
   args.push('-shortest', '-y', outputPath)
   return args

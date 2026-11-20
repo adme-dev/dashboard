@@ -31,11 +31,11 @@ This maps almost 1:1 onto two CF-native references.
 
 | Repo / ref | License | Mode | Biggest edge-case win |
 |---|---|---|---|
-| **Kent C. Dodds — ffmpeg on CF Containers** (PR #720 + writeup) | ✅ MIT | **copy the topology** | Our exact Queue→Worker→Container→R2→status flow, with the lifecycle traps solved: **return 202 immediately** (don't block the queue consumer), **heartbeat-renew the container activity timeout** so `sleepAfter` can't kill a long render, **retry-in-place / no local fallback** ("fallback paradox"), **HMAC-signed** container→app status callback. |
+| **Kent C. Dodds — ffmpeg on CF Containers** (PR #720 + writeup) | ✅ MIT | **copy the topology** | Reference for Queue→Worker→Container→R2 and asynchronous callback lifecycles: **return 202 immediately** (don't block the queue consumer), **verify the locked SDK's activity tracking** before adding a heartbeat, **retry-in-place / no local fallback** ("fallback paradox"), **HMAC-signed** container→app status callback. |
 | **cloudflare/containers SDK** | ✅ Apache/MIT | depend (already do) | `startAndWaitForPorts()` (don't race ffmpeg before its server is up), `renewActivityTimeout()` (the heartbeat primitive), `getByName/getRandom` to fan renders across instances, lifecycle hooks. Gap: no autoscale/retry — Queue + DLQ covers retry (we have `music-gen-dlq`). |
 | **slhck/ffmpeg-normalize** + **[loudnorm.html](https://k.ylo.ph/2016/04/04/loudnorm.html)** | ✅ open | copy the logic | **Two-pass loudnorm done right** (measure → JSON → normalize with `measured_*` + `linear=true`). Traps it documents: single-pass **drifts** (no offset); loudnorm **silently falls back to dynamic AGC** when headroom is tight (audible pumping under a music bed — detect & log); it **internally resamples to 192 kHz** (pin output `-ar`/`aformat` after). `--lower-only` matters for already-hot masters at social −14 vs radio −24. |
 | **orchestkit `audio-mixing-patterns`** | ✅ ref/skill | copy params | The mixing cookbook: **`aformat=...:sample_rates=48000:channel_layouts=stereo` on EVERY input *before* `amix`** (the #1 silent amix failure); concrete `sidechaincompress` params (pumping = attack/release too fast); **`adelay=5000|5000` is per-channel** (or `all=1`); `amix` `duration=first` vs `longest` truncates/pads; add `alimiter` to avoid post-mix clipping. |
-| **HyperFrames CF template** `heygen-com/...` | ✅ Apache-2.0 | copy (video tier) | Working **headless-Chromium → ffmpeg → stream-to-R2** container for the Phase-2 video tier: **bake Chromium+ffmpeg into the image** (cold-start fix), **stream ffmpeg stdout through the Worker to R2** (no `/tmp` blowup), `--workers auto` for parallel capture. |
+| **HyperFrames Cloudflare template** | ✅ Apache-2.0 | Render lifecycle reference | The container runs `hyperframes render --workers auto` on `standard-4`. It gives the renderer ten minutes, then sends SIGTERM with a five-second grace period before SIGKILL. After the MP4 finishes on temporary disk, the container streams the file with its content length. The Worker writes that response body to R2. [Container](https://github.com/heygen-com/hyperframes-cloudflare-template/blob/c6dae931fd6c247a870c2a8a0f37eee52da14092/container/server.mjs#L52-L119) · [Worker](https://github.com/heygen-com/hyperframes-cloudflare-template/blob/c6dae931fd6c247a870c2a8a0f37eee52da14092/src/routes/api/render.ts#L61-L85) · [Instance configuration](https://github.com/heygen-com/hyperframes-cloudflare-template/blob/c6dae931fd6c247a870c2a8a0f37eee52da14092/wrangler.jsonc#L24-L30) |
 | **json-to-ffmpeg** / **editly** | ✅ MIT | reference only | Timeline-JSON → filtergraph codegen *structure* — but both are **video-biased**; keep our own (more capable) audio graph. |
 | **fluent-ffmpeg** | ⛔ archived/EOL (May 2025) | do not depend | Syntax reference only; build the graph string ourselves (we already do). |
 
@@ -51,6 +51,8 @@ This maps almost 1:1 onto two CF-native references.
 | **Motion Canvas** `motion-canvas/...` | ✅ MIT (GPL switch was *shelved* — re-verify) | reference | **Deterministic, frame-seekable animation-as-function-of-playhead** — the seekability model for our GSAP-slaved layer. |
 | **Diffusion Studio core** `diffusionstudio/core` | ⚠️ MPL-2.0 (≤1.5) / ⛔ non-commercial (≥1.6) | pin or reference | Real **WebCodecs encode/decode in TS** for in-browser preview/export. Traps: license splits at 1.6; last release Oct 2024 (stalled). |
 | **designcombo/react-video-editor** | ⛔ no license file (unanswered commercial-use issue) | UX reference only | CapCut-clone timeline UX (built on Remotion). Good UI reference; **do not depend** (license unknown + inherits Remotion). |
+
+Freefield, the open-source Higgsfield project, is a reference for media generation. Its runner validates inputs from a workflow manifest, asks the gateway to prepare GPU memory, submits a ComfyUI job and reads progress events. The CPU export path for an edited dealer reel is covered by the video brief’s FFmpeg and browser composition design. [Freefield runner](https://github.com/neuregex/freefield/blob/f4cd771d55833e89e54407dbbc9cb5399316354a/server/runner.ts#L188-L263) · [Video brief §4.4](engagr-ai-media-studio-video-brief.md#44-render--the-composite-pipeline)
 
 ## 4. Consolidated "edge cases solved" — the design checklist
 
@@ -69,21 +71,21 @@ The point of the exercise. Design around these from day one (each already cost s
 - [ ] **Single-pass loudnorm drifts** → two-pass (measure→normalize, `linear=true`); **log dynamic-AGC fallback** (pumping); **pin output sample rate** (192 kHz internal resample).
 - [ ] **`amix` silent mismatch** → `aformat` every input to a common rate/layout *before* mixing; choose `duration=first` vs `longest` deliberately; `alimiter` to avoid clipping.
 - [ ] **`adelay` is per-channel** (`5000|5000` or `all=1`).
-- [ ] **Container `sleepAfter` kills long renders** → heartbeat `renewActivityTimeout()`; signal-stop on drain.
+- [ ] **Container lifecycle** → verify in-flight activity in the locked SDK and drain accepted work on signals; do not infer an idle-timeout defect from a long render alone.
 - [ ] **Don't block the queue consumer** → 202 + async + signed callback. **Retry-in-place; no local fallback.**
 - [ ] **VBR duration-header bug** (we already hit melotts-side): VBR MP3/AAC can write wrong/absent duration → favor CBR / pin duration / remux pass. **Add a regression test — no OSS covers this.**
 
 **Video (Phase 2)**
 - [ ] **Capture half-loaded frames** → `delayRender`-style block-until-ready before each frame.
 - [ ] **Float-frame drift** → rational-time model (OTIO).
-- [ ] **Headless cold-start** → bake Chromium+ffmpeg into the image; **stream ffmpeg→R2**, no `/tmp` output file.
+- [ ] Package Chromium and FFmpeg in the image. Measure peak temporary disk for captured frames and the encoded MP4 separately from memory used to deliver the output.
 
 ## 5. Adopt recommendations (mapped to phases)
 
 - **Audio Phase 1b (timeline):** depend on **`standardized-audio-context`** (day 1) + **wavesurfer.js** (UI/peaks/regions); copy **Tone.js Transport** (or `web-audio-scheduler`) for the master clock; port **waveform-playlist**'s fade/automation engine; scheduled-gain-ramp ducking. Server-side **`audiowaveform`** → R2 peak cache.
-- **Audio render (shipped, extend):** lift **ffmpeg-normalize**'s two-pass loudnorm logic + **orchestkit**'s `aformat`-before-`amix` + sidechain params into our (pure, tested) filtergraph builder; keep the **Kent C. Dodds** lifecycle (202 + heartbeat + signed callback + retry-in-place) — we already match it.
+- **Audio render (shipped, extend):** lift **ffmpeg-normalize**'s two-pass loudnorm logic + **orchestkit**'s `aformat`-before-`amix` + sidechain params into our (pure, tested) filtergraph builder; use the existing bounded queue consumer and Container→R2 result stream. It awaits the Container response; it does not implement the reference’s 202/callback lifecycle. Verify activity against the locked SDK rather than assuming a heartbeat is missing.
 - **Timeline data model:** shape the Neon JSON on **OTIO** concepts (rational time, transitions, media refs) so audio is the degenerate one-scene case and video scenes→shots extends cleanly.
-- **Video Phase 2:** fork **HyperFrames** for the headless container; reimplement **Remotion `delayRender`** semantics; evaluate **Revideo** (MIT) vs self-built, knowing it's semi-stalled.
+- The bounded 20 November ReelMotion implementation decodes eligible managed footage in FFmpeg and captures editable graphics with Chromium. It preserves centered authored zoom and verifies source identity; unsupported artwork retains whole-artwork capture. Broader timeline compilation remains future work. Derive both from the same saved artwork revision and verify trim, crop, timing and layer order against the whole-artwork render. Measure capture time, peak disk and total elapsed time on the same container class. HyperFrames supplies a reference for bounding the renderer process. Remotion supplies a pattern for waiting until the assets for each frame are ready.
 
 ## 6. License traps (because "piggyback" = ship)
 

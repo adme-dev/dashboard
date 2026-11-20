@@ -17,6 +17,19 @@ function av() {
   ] })
 }
 describe('videoCompositeGraph .ts ↔ .mjs parity', () => {
+  it.each([
+    ['reels_9x16', true, 'veryfast'],
+    ['reels_9x16', false, undefined],
+    ['square_1x1', true, undefined],
+    ['youtube_16x9', true, undefined]
+  ] as const)('selects the encode preset for %s with captured overlays=%s', (format, hasOverlay, preset) => {
+    const overlays = hasOverlay ? [{ clipId: 'art', framesPattern: 'art/%05d.png', fps: 30, timeline_start_sec: 0, duration_sec: 5 }] : []
+    const plan = ts(av(), videoFormatFor(format)!, overlays)
+    const args = tsArgs(plan, ['a', 'b'], 'out.mp4')
+    expect(mjsArgs(plan, ['a', 'b'], 'out.mp4')).toEqual(args)
+    const index = args.indexOf('-preset')
+    expect(index < 0 ? undefined : args[index + 1]).toBe(preset)
+  })
   it('produces identical plans', () => {
     expect(mjs(av(), profile)).toEqual(ts(av(), profile))
   })

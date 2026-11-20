@@ -106,7 +106,34 @@ export async function seekFrameRuntime(page, mode, timeSeconds) {
       if (tl && typeof tl.seek === 'function') tl.seek(seekT)
     }, timeSeconds)
   }
-  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => resolve(null))))
+  // A paused video's currentTime reflects the requested time immediately.
+  // Wait for Chromium to decode that seek, then give the compositor a frame.
+  await page.evaluate(() => new Promise((resolve, reject) => {
+    let frame
+    const timeout = setTimeout(() => {
+      cancelAnimationFrame(frame)
+      reject(new Error('Timed out waiting for video frame'))
+    }, 30000)
+    const check = () => {
+      for (const video of document.querySelectorAll('video')) {
+        if (!video.checkVisibility({ opacityProperty: true, visibilityProperty: true })) continue
+        if (video.error) {
+          clearTimeout(timeout)
+          reject(new Error('Video frame failed to decode'))
+          return
+        }
+        if (video.seeking || video.readyState < video.HAVE_CURRENT_DATA) {
+          frame = requestAnimationFrame(check)
+          return
+        }
+      }
+      frame = requestAnimationFrame(() => {
+        clearTimeout(timeout)
+        resolve(null)
+      })
+    }
+    check()
+  }))
 }
 
 export function sanitizeUrl(value) {
