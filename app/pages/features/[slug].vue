@@ -791,6 +791,10 @@ const features: Record<string, Feature> = {
         content: 'Select any video clip to set its framing (fit, fill or crop) and stack effect presets — film grain, motion blur, VHS, shake, bloom, fisheye — with the preview approximating what it can and flagging what is render-only. Generated clips carry their prompt and model with them, so you can copy the prompt, duplicate the clip, or publish it directly.'
       },
       {
+        title: 'Prepared ReelMotion Edits',
+        content: 'Import a prepared ReelMotion package through Banner Studio’s creative-package importer. Footage, captions, fonts and motion remain editable; open the saved artwork in a linked Video Studio draft to mix audio and queue a portrait export. Packages carry preparation checks for head clearance and the final spoken line before the end card. Review the saved result before delivery. Footage selection, transcription and face checks are prepared outside the hosted editor in this pilot; importing does not automatically edit a new shoot.'
+      },
+      {
         title: 'Render Once, Ship Everywhere',
         content: 'Pick Reels 9:16, Square 1:1 and YouTube 16:9 in one render. Each render uses a saved timeline snapshot, so subsequent timeline edits do not change that job. Finished variants can be downloaded, saved back to the library as reusable assets, sent to the client portal for approval, or handed to Social Publishing to schedule — without leaving the editor. Failed renders explain why and retry in place. Storyboard planning and reviewed full-cut replacement are available for pilot use with project access controls and render safeguards. If a pinned brand kit changes, review its current content and explicitly record approval for the adjusted cut; stale or unavailable kits remain blocked. Model selection shows configured capabilities, not a guarantee of successful provider execution; provider, budget and approval checks still apply. Uncertain provider outcomes retain their budget reservation for reconciliation and are not automatically resubmitted. Physical-device and full pilot acceptance remain in progress.'
       }

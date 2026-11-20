@@ -9,6 +9,7 @@ import { uploadTheBriefAssets } from '~/utils/thebrief-asset-uploads'
 import { beginImportAttempt, finishImportAttempt, importAttemptKey } from '~/utils/thebrief-import-attempt'
 import { prepareBannerUploadRequest } from '~/utils/bannerUpload'
 import { bindImportedFontFace, findImportedFontFace } from '~/utils/thebrief-font-bindings'
+import { createReelmotionVideoDraft } from '~/utils/video/reelmotionImport'
 
 const open = defineModel<boolean>('open', { default: false })
 const emit = defineEmits<{ imported: [] }>()
@@ -26,6 +27,7 @@ let catalogGeneration = 0
 const error = ref('')
 const progress = ref('')
 const readyViewers = ref(new Set<string>())
+const videoDrafts = ref<Record<string, string>>({})
 // Explicit, per-batch operator choice: import undated drafts and mark them for a
 // later Created-date backfill instead of holding them. Never substitutes a date.
 const importUndated = ref(false)
@@ -209,6 +211,19 @@ async function prepareSavedViewer(row: TheBriefImportRow) {
   } finally { busy.value = false }
 }
 
+async function openVideoDraft(row: TheBriefImportRow) {
+  if (busy.value || !row.projectId) return
+  busy.value = true
+  error.value = ''
+  try {
+    const id = videoDrafts.value[row.projectId] || await createReelmotionVideoDraft(row.projectId, row.clientId, api)
+    videoDrafts.value[row.projectId] = id
+    await navigateTo(`/agency/audio/projects/${id}`)
+  } catch (cause) {
+    error.value = cause instanceof Error ? cause.message : 'Could not prepare the Video Studio draft. Your banner draft is retained.'
+  } finally { busy.value = false }
+}
+
 async function importDrafts() {
   if (busy.value || !ready.value) return
   busy.value = true
@@ -221,7 +236,8 @@ async function importDrafts() {
       if (!clients.value.some(c => c.id === row.clientId)) throw new Error('Select an existing client')
       if (row.folderId !== '__unfiled__' && !folders.value.some(folder => folder.id === row.folderId)) throw new Error('Select an existing folder')
       const pkg = row.pkg
-      const duplicate = existing.find(p => p.clientId === row.clientId && p.tags?.includes(`source-sha256:${pkg.source.sha256}`))
+      const sourceTag = pkg.kind === 'xeroflow-reelmotion-import' ? 'source:reelmotion' : 'source:thebrief'
+      const duplicate = existing.find(p => p.clientId === row.clientId && p.tags?.includes(sourceTag) && p.tags.includes(`source-sha256:${pkg.source.sha256}`))
       if (duplicate) {
         row.projectId = duplicate.id
         row.status = 'Already imported · open for review or explicitly update this draft'
@@ -229,10 +245,10 @@ async function importDrafts() {
       }
       // A fresh export of the same TheBrief design has different archive bytes.
       // Never create a second draft for it; corrections use the explicit update flow.
-      const sameDesign = existing.find(p => p.clientId === row.clientId && p.tags?.includes(`source-design:${pkg.source.designHash}`))
+      const sameDesign = existing.find(p => p.clientId === row.clientId && p.tags?.includes(sourceTag) && p.tags.includes(`source-design:${pkg.source.designHash}`))
       if (sameDesign) {
         row.projectId = sameDesign.id
-        row.status = 'Already imported from this TheBrief design · open for review or explicitly update this draft'
+        row.status = pkg.kind === 'xeroflow-thebrief-import' ? 'Already imported from this TheBrief design · open for review or explicitly update this draft' : 'Already imported from this ReelMotion edit · open the draft for review'
         continue
       }
       const datePending = !calendarDate(row.sourceCreatedDate)
@@ -283,7 +299,7 @@ async function importDrafts() {
 <template>
   <UModal
     v-model:open="open"
-    title="Import from TheBrief"
+    title="Import creative packages"
     description="Assign each prepared design to its client and save it as a draft for review."
     :dismissible="!busy"
     :ui="{ content: 'sm:max-w-3xl' }"
@@ -295,9 +311,9 @@ async function importDrafts() {
           color="neutral"
           variant="subtle"
           title="Prepared native packages"
-          description="This pilot accepts .xeroflow.json files prepared from HTML5 exports. Original ZIP upload is not yet supported here. Imports retain editable layers; playback, fonts and loop behaviour still need visual review."
+          description="Import prepared TheBrief designs or ReelMotion edits as editable drafts. ReelMotion packages include footage, fonts, captions and recorded head/timing checks; review the result before export."
         />
-        <UFormField label="Import packages" help="Up to 50 prepared packages per batch. Keep the original HTML5 archives for reference.">
+        <UFormField label="Import packages" help="Choose prepared .xeroflow.json files. Keep original source files for reference.">
           <UFileUpload
             v-model="files"
             multiple
@@ -374,7 +390,7 @@ async function importDrafts() {
                 :disabled="busy || !!row.projectId"
               />
             </UFormField>
-            <UFormField label="Original creation date" help="Use the Created date in TheBrief's Info panel. The export or last-updated date is different.">
+            <UFormField label="Source creation date" :help="row.pkg.kind === 'xeroflow-reelmotion-import' ? 'The date this prepared edit was created; the historical client delivery stays separate.' : 'Use the Created date in TheBrief’s Info panel. The export or last-updated date is different.'">
               <UPopover>
                 <UButton
                   color="neutral"
@@ -384,7 +400,7 @@ async function importDrafts() {
                   :class="!row.sourceCreatedDate && 'text-muted'"
                   :disabled="busy || !!row.projectId"
                 >
-                  {{ displayDate(row.sourceCreatedDate) || 'Choose TheBrief creation date' }}
+                  {{ displayDate(row.sourceCreatedDate) || 'Choose source creation date' }}
                 </UButton>
                 <template #content>
                   <UCalendar
@@ -397,7 +413,7 @@ async function importDrafts() {
                       size="xs"
                       variant="ghost"
                       color="neutral"
-                      @click="row.sourceCreatedDate = ''"
+                      @click="() => { row.sourceCreatedDate = '' }"
                     >
                       Clear
                     </UButton>
@@ -419,6 +435,14 @@ async function importDrafts() {
               {{ row.status }}
             </p>
             <div v-if="row.projectId" class="flex flex-wrap gap-2">
+              <UButton
+                v-if="row.pkg.kind === 'xeroflow-reelmotion-import'"
+                icon="i-lucide-clapperboard"
+                :disabled="busy"
+                @click="openVideoDraft(row)"
+              >
+                Open in Video Studio
+              </UButton>
               <UButton
                 v-if="readyViewers.has(row.projectId)"
                 :to="`/creative/banner-studio/view/${row.projectId}`"
@@ -447,6 +471,7 @@ async function importDrafts() {
                 Open in Banner Studio
               </UButton>
               <UButton
+                v-if="row.pkg.kind === 'xeroflow-thebrief-import'"
                 variant="outline"
                 color="neutral"
                 icon="i-lucide-history"
@@ -531,7 +556,7 @@ async function importDrafts() {
           color="neutral"
           variant="ghost"
           :disabled="busy"
-          @click="showDraftUpdate = false"
+          @click="() => { showDraftUpdate = false }"
         >
           Cancel
         </UButton>

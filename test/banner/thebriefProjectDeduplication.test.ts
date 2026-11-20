@@ -42,7 +42,7 @@ async function transaction(_event: unknown, create: (db: GodModeTransactionDb) =
         return { rows: [] }
       }
       if (sql.includes('FROM agency_clients')) return { rows: [CLIENT_A, CLIENT_B].includes(String(params[0])) ? [{ id: params[0] }] : [] }
-      if (sql.includes('FROM banner_projects')) return { rows: rows.filter(row => row.clientId === params[0] && row.tags.includes('source:thebrief') && row.tags.some(tag => tag.toLowerCase() === params[1] || (params[2] !== null && tag.toLowerCase() === params[2]))).slice(0, 1) }
+      if (sql.includes('FROM banner_projects')) return { rows: rows.filter(row => row.clientId === params[0] && row.tags.includes(String(params[3] || 'source:thebrief')) && row.tags.some(tag => tag.toLowerCase() === params[1] || (params[2] !== null && tag.toLowerCase() === params[2]))).slice(0, 1) }
       if (sql.includes('INSERT INTO banner_projects')) {
         await Promise.resolve()
         const row = { id: `project-${rows.length + 1}`, clientId: params[1] as string | null, name: String(params[0]), canvasData: JSON.parse(String(params[2])), tags: params[3] as string[] }
@@ -100,6 +100,15 @@ describe('TheBrief project deduplication', () => {
     expect(second).toEqual({ ...first, name: 'Edited name', canvasData: { edited: true } })
     expect(rows).toHaveLength(1)
     expect(coordinator).toHaveBeenCalledTimes(2)
+  })
+  it('accepts ReelMotion at the real create boundary and keeps source identities separate', async () => {
+    const reel = { body: { name: 'Reel', clientId: CLIENT_A, tags: ['source:reelmotion', `source-sha256:${hash}`], canvasData: {} } } as never
+    const [first, retry] = [await createProject(reel), await createProject(reel)]
+    expect(first.id).toBe(retry.id)
+    expect((await createProject(request())).id).not.toBe(first.id)
+    expect(rows).toHaveLength(2)
+    expect(clientAccess).toHaveBeenCalled()
+    expect(() => readTheBriefProjectIdentity(CLIENT_A, ['source:thebrief', 'source:reelmotion', `source-sha256:${hash}`])).toThrow()
   })
 
   it('serialises simultaneous same-client imports before lookup and insert', async () => {

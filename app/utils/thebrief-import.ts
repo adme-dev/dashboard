@@ -41,9 +41,10 @@ const layer = z.object({
 }).strict()
 const binary = z.object({ path: local, fileName: z.string().max(150).regex(/^[\w .-]+$/), sha256: sha, base64: z.string().max(28 * 1024 * 1024).regex(/^[A-Za-z0-9+/]*={0,2}$/), mimeType: z.string().max(100) })
 const schema = z.object({
-  kind: z.literal('xeroflow-thebrief-import'), version: z.literal(1), name: z.string().trim().min(1).max(200),
+  kind: z.enum(['xeroflow-thebrief-import', 'xeroflow-reelmotion-import']), version: z.literal(1), name: z.string().trim().min(1).max(200),
   source: z.object({ designHash: z.string().regex(/^[\w-]+$/).max(100), sha256: sha, folder: z.string().max(250), duration: z.number().positive().max(300), loopCount: z.number().int().min(0).max(1000), createdDate: z.iso.date().optional(), clientName: z.string().trim().min(1).max(200).optional() }),
-  canvasData: z.record(z.string(), z.object({ layers: z.array(layer).min(1).max(200), bgColor: css.optional(), slides: z.array(z.object({ id: z.string().max(100).regex(/^[a-zA-Z0-9:_-]+$/), name: z.string().min(1).max(100), duration: z.number().finite().min(0.1).max(300) }).strict()).min(1).max(50).optional(), playback: z.object({ duration: z.number().positive().max(300), loopCount: z.number().int().min(0).max(1000) }).optional() })),
+  reelmotion: z.object({ lastSpokenWordEndSec: z.number().finite().nonnegative(), endCardStartSec: z.number().finite().nonnegative(), headClashes: z.literal(0), faceSampleFps: z.number().finite().min(6).max(60) }).strict().optional(),
+  canvasData: z.record(z.string(), z.object({ layers: z.array(layer).min(1).max(600), bgColor: css.optional(), slides: z.array(z.object({ id: z.string().max(100).regex(/^[a-zA-Z0-9:_-]+$/), name: z.string().min(1).max(100), duration: z.number().finite().min(0.1).max(300) }).strict()).min(1).max(50).optional(), playback: z.object({ duration: z.number().positive().max(300), loopCount: z.number().int().min(0).max(1000) }).optional() })),
   warnings: z.array(z.string().max(1000)).max(250),
   assets: z.array(binary.extend({ mimeType: z.enum(['image/png', 'image/jpeg', 'image/webp', 'audio/mpeg', 'video/mp4']) })).max(100),
   fonts: z.array(binary.extend({ family: z.string().min(1).max(100).regex(/^[\w .-]+$/), weight: z.number().int().min(1).max(1000), style: z.literal('normal'), format: z.enum(['truetype', 'opentype', 'woff', 'woff2']) })).max(32)
@@ -54,6 +55,12 @@ export function parseTheBriefPackage(input: unknown): TheBriefPackage {
   const result = schema.parse(input)
   const boards = Object.entries(result.canvasData)
   if (!boards.length || boards.length > 20) throw new Error('Import requires 1–20 design sizes')
+  if (result.kind === 'xeroflow-reelmotion-import') {
+    const qa = result.reelmotion
+    if (boards.length !== 1 || boards[0]![0] !== 'custom_1080x1920' || result.source.duration > 90 || result.source.loopCount !== 0) throw new Error('ReelMotion requires one 1080×1920 board up to 90 seconds')
+    if (!boards[0]![1].playback) throw new Error('ReelMotion requires explicit playback timing')
+    if (!qa || qa.lastSpokenWordEndSec + 0.1 > qa.endCardStartSec || result.source.duration - qa.endCardStartSec < 2.8 - 0.001) throw new Error('ReelMotion requires head QA and an end card after the final spoken word')
+  } else if (boards.some(([, board]) => board.layers.length > 200)) throw new Error('TheBrief imports support up to 200 layers per size')
   for (const font of result.fonts) {
     const decodedSize = font.base64.length * 3 / 4 - (font.base64.endsWith('==') ? 2 : font.base64.endsWith('=') ? 1 : 0)
     if (decodedSize > 5 * 1024 * 1024) throw new Error('Font exceeds 5 MB upload limit')
@@ -118,7 +125,7 @@ export function clientFromHint(hint: string | undefined, clients: Array<{ id: st
 
 export function importTags(pkg: TheBriefPackage, createdDate = pkg.source.createdDate, { datePending = false } = {}): string[] {
   if (createdDate && !z.iso.date().safeParse(createdDate).success) throw new Error('Invalid TheBrief creation date')
-  return ['source:thebrief', `source-design:${pkg.source.designHash}`, `source-sha256:${pkg.source.sha256}`,
+  return [pkg.kind === 'xeroflow-reelmotion-import' ? 'source:reelmotion' : 'source:thebrief', `source-design:${pkg.source.designHash}`, `source-sha256:${pkg.source.sha256}`,
     `source-folder:${pkg.source.folder}`, `category:${pkg.source.folder.split('/').at(-1) || 'Imported'}`,
     `source-duration:${pkg.source.duration}`, `source-loops:${pkg.source.loopCount}`,
     ...(createdDate ? [`source-created-date:${createdDate}`] : datePending ? ['import:created-date-pending'] : []), 'import:needs-review']

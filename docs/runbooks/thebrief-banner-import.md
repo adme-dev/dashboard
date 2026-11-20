@@ -11,7 +11,7 @@ TheBrief API documents a credential-based design list and export flow: authentic
 1. Keep the original download outside Git. Inspect the outer ZIP and each nested size ZIP before extraction. Record the design URL/hash, source folder, size count, playback duration, fonts, asset hashes, and conversion warnings. Do not execute the exported JavaScript.
 2. Extract each size into a separate private directory. Run the strict converter and package builder for each size. Any unsupported animation holds the import for review rather than silently flattening it.
 3. Merge the verified size packages into one design-set package. The merge preserves each artboard, deduplicates identical assets and fonts, and remaps the font aliases used by the layers.
-4. Open **Banner Studio → Import from TheBrief**, select the prepared package, confirm the client and folder, and import as a draft. The source folder suggests a destination only when it matches one unique folder exactly. The selected client determines access; folder placement does not.
+4. Open **Banner Studio → Import creative packages**, select the prepared package, confirm the client and folder, and import as a draft. The source folder suggests a destination only when it matches one unique folder exactly. The selected client determines access; folder placement does not.
 5. Open all sizes in the editor. Check first, middle and final frames, font faces, rounded corners, vehicle artwork, legal copy, sound and loop behavior against TheBrief. Keep `import:needs-review` until a producer approves the result.
 
 After safely extracting a child size ZIP, the preparation commands are:

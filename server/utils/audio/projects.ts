@@ -44,6 +44,8 @@ export function mapTimelineRow(row: any): MediaTimeline {
 }
 
 export interface CreateProjectInput {
+  /** Reserved server identity for a reconciled import; never a raw request field. */
+  id?: string
   createdBy: string
   clientId: string | null
   title: string | null
@@ -65,7 +67,7 @@ export async function createProjectIn(
   db: Db,
   input: CreateProjectInput
 ): Promise<{ project: MediaProject; timeline: MediaTimeline }> {
-  const projectId = randomUUID()
+  const projectId = input.id ?? randomUUID()
   const timelineId = randomUUID()
   const state = { ...input.initialState, duration_sec: computeDuration(input.initialState) }
   const mediaType = input.mediaType ?? 'audio'
