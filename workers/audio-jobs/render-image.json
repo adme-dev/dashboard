@@ -20,7 +20,7 @@
     "slow-and-interrupted-completed-file-stream"
   ],
   "previousImage": "registry.cloudflare.com/a5b299b3ad15c1b5b895dc66f9357b17/xeroflow-render@sha256:de3be03d105a7f9ac918a1495a2f8686a08443e11c41a0f545ea80d85c54fbc6",
-  "previousInstanceType": "standard-2",
+  "previousInstanceType": "standard-4",
   "sample": {
     "inputDurationSec": 40.18,
     "outputDurationSec": 40.2,
