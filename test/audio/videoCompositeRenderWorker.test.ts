@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { afterEach, describe, it, expect, vi } from 'vitest'
 import { runVideoCompositeJob } from '../../workers/audio-jobs/src/videoCompositeRender'
 
 function deps(over: any = {}) {
@@ -13,18 +13,20 @@ function deps(over: any = {}) {
     centsPerSec: 2, ...over
   }
 }
+afterEach(() => vi.useRealTimers())
 describe('runVideoCompositeJob', () => {
   it('renders each format and marks done with the variants map', async () => {
     const d = deps()
     await runVideoCompositeJob({ jobId: 'j', projectId: 'p', timelineId: 't', formats: ['reels_9x16', 'square_1x1'] }, d as any)
-    expect(d.markRendering).toHaveBeenCalledWith('j')
+    expect(d.markRendering).toHaveBeenCalledWith('j', expect.any(String))
     expect(d.renderOne).toHaveBeenCalledTimes(2)
     expect(d.markDone.mock.calls[0][1]).toEqual({ reels_9x16: 'media/p/j/reels_9x16.mp4', square_1x1: 'media/p/j/square_1x1.mp4' })
+    expect(d.markDone.mock.calls[0][3]).toBe(d.markRendering.mock.calls[0][1])
   })
   it('marks failed and rethrows on error', async () => {
     const d = deps({ renderOne: vi.fn().mockRejectedValue(new Error('boom')) })
     await expect(runVideoCompositeJob({ jobId: 'j', projectId: 'p', timelineId: 't', formats: ['reels_9x16'] }, d as any)).rejects.toThrow('boom')
-    expect(d.markFailed).toHaveBeenCalledWith('j', 'boom')
+    expect(d.markFailed).toHaveBeenCalledWith('j', 'boom', expect.any(String))
   })
   it('threads resolvedOverlays from the message through to deps.renderOne', async () => {
     const overlays = [
@@ -84,5 +86,60 @@ describe('runVideoCompositeJob', () => {
     await expect(runVideoCompositeJob({ jobId: 'j', projectId: 'p', timelineId: 't', formats: ['reels_9x16'] }, d as any)).resolves.toBeUndefined()
     expect(d.markDone).toHaveBeenCalledOnce()
     expect(d.markFailed).not.toHaveBeenCalled()
+  })
+
+  it('bounds input loading within the whole job deadline', async () => {
+    vi.useFakeTimers()
+    const d = deps({ loadRenderInputs: () => new Promise(() => {}) })
+    const run = runVideoCompositeJob({ jobId: 'j', projectId: 'p', timelineId: 't', formats: ['reels_9x16'] }, d as any)
+    void run.catch(() => {})
+    await vi.advanceTimersByTimeAsync(720001)
+    expect(d.markFailed).toHaveBeenCalledWith('j', expect.stringMatching(/deadline/i), expect.any(String))
+    await expect(run).rejects.toThrow(/deadline/i)
+    expect(d.renderOne).not.toHaveBeenCalled()
+  })
+
+  it('shares the remaining job budget across formats instead of restarting it', async () => {
+    vi.useFakeTimers()
+    const d = deps({ renderOne: vi.fn(({ formatKey }: any) => formatKey === 'reels_9x16'
+      ? new Promise(resolve => setTimeout(() => resolve({ key: 'first.mp4' }), 500000))
+      : new Promise(() => {})) })
+    const run = runVideoCompositeJob({ jobId: 'j', projectId: 'p', timelineId: 't', formats: ['reels_9x16', 'square_1x1'] }, d as any)
+    void run.catch(() => {})
+    await vi.advanceTimersByTimeAsync(720001)
+    expect(d.markFailed).toHaveBeenCalled()
+    await expect(run).rejects.toThrow(/deadline/i)
+    const second = d.renderOne.mock.calls[1][0]
+    expect(second.signal.aborted).toBe(true)
+    expect(second.deadlineAtMs).toBe(d.renderOne.mock.calls[0][0].deadlineAtMs)
+    expect(d.discardOutput).toHaveBeenCalledWith('first.mp4')
+    expect(d.markDone).not.toHaveBeenCalled()
+  })
+
+  it('discards a late output without publishing after its deadline', async () => {
+    vi.useFakeTimers()
+    let finish!: (value: { key: string }) => void
+    const d = deps({ renderOne: () => new Promise(resolve => { finish = resolve }) })
+    const run = runVideoCompositeJob({ jobId: 'j', projectId: 'p', timelineId: 't', formats: ['reels_9x16'] }, d as any)
+    void run.catch(() => {})
+    await vi.advanceTimersByTimeAsync(720001)
+    expect(d.markFailed).toHaveBeenCalled()
+    finish({ key: 'late.mp4' })
+    await vi.advanceTimersByTimeAsync(0)
+    await expect(run).rejects.toThrow(/deadline/i)
+    expect(d.discardOutput).toHaveBeenCalledWith('late.mp4')
+    expect(d.markDone).not.toHaveBeenCalled()
+  })
+
+  it('reports measured stage counts separately from completed formats', async () => {
+    const markProgress = vi.fn().mockResolvedValue(undefined)
+    const d = deps({ markProgress, renderOne: async ({ onProgress }: any) => {
+      await onProgress?.({ stage: 'capturing', framesDone: 5, framesTotal: 30, updatedAtMs: Date.now() })
+      return { key: 'approved.mp4' }
+    } })
+    await runVideoCompositeJob({ jobId: 'j', projectId: 'p', timelineId: 't', formats: ['reels_9x16'] }, d as any)
+    expect(markProgress.mock.calls.map(([, p]: any[]) => p)).toContainEqual(expect.objectContaining({
+      stage: 'capturing', framesDone: 5, framesTotal: 30, done: 0, total: 1, formatKey: 'reels_9x16'
+    }))
   })
 })

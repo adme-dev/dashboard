@@ -33,7 +33,7 @@ export function normalizeOverlayPng(bytes, width, height) {
  * @param {{ html: string, width: number, height: number, fps: number, durationSec: number, outDir: string }} opts
  * @returns {Promise<{ frames: number }>}
  */
-export async function captureOverlay(browser, { html, width, height, fps, durationSec, outDir, requiredCopy }) {
+export async function captureOverlay(browser, { html, width, height, fps, durationSec, outDir, requiredCopy, signal, onProgress }) {
   mkdirSync(outDir, { recursive: true })
 
   const page = await browser.newPage()
@@ -56,7 +56,9 @@ export async function captureOverlay(browser, { html, width, height, fps, durati
 
     const frames = Math.ceil(totalDuration * fps)
 
+    onProgress?.(0, frames)
     for (let f = 0; f < frames; f++) {
+      signal?.throwIfAborted()
       const t = f / fps
 
       await seekFrameRuntime(page, runtime.mode, t)
@@ -72,11 +74,37 @@ export async function captureOverlay(browser, { html, width, height, fps, durati
         optimizeForSpeed: true,
         clip: { x: 0, y: 0, width, height },
       })
+      signal?.throwIfAborted()
       writeFileSync(framePath, normalizeOverlayPng(pixels, width, height))
+      onProgress?.(f + 1, frames)
     }
 
     return { frames }
   } finally {
     await page.close().catch(() => {})
+  }
+}
+
+export async function captureCompositeOverlays(browser, overlays, inputs, dir, signal, report) {
+  let previousFrames = 0
+  for (const [i, overlay] of overlays.entries()) {
+    signal.throwIfAborted()
+    const outDir = join(dir, `overlay-${i}`)
+    const result = await captureOverlay(browser, {
+      html: overlay.html, requiredCopy: overlay.requiredCopy,
+      width: overlay.width, height: overlay.height, fps: overlay.fps, durationSec: overlay.durationSec,
+      outDir, signal,
+      // An authored runtime can outlast the proposed clip duration. Only the
+      // final overlay makes the denominator for the complete capture known.
+      onProgress(done, total) {
+        const progress = { stage: 'capturing', framesDone: previousFrames + done,
+          ...(i === overlays.length - 1 ? { framesTotal: previousFrames + total } : {}) }
+        try { report(progress) } catch { /* Telemetry cannot invalidate captured frames. */ }
+      }
+    })
+    previousFrames += result.frames
+    for (const input of inputs) {
+      if (input.clipId === overlay.clipId) input.framesPattern = join(outDir, 'ovl_%05d.png')
+    }
   }
 }

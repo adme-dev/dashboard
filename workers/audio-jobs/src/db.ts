@@ -3,6 +3,7 @@
 // globalThis by index.ts). Raw TCP to Neon isn't possible in a Worker without
 // Hyperdrive. Mirrors workers/leads-delivery-worker/src/db.ts.
 import pg from 'pg'
+import { RenderPublicationUncertainError, type VideoRenderProgress } from '../../../shared/video/renderExecution'
 
 function getConnectionString(): string {
   const cs = (globalThis as any).__HYPERDRIVE_CS || process.env.DATABASE_URL
@@ -13,7 +14,7 @@ function getConnectionString(): string {
 async function withClient<T>(run: (client: pg.Client) => Promise<T>): Promise<T> {
   // A Worker isolate outlives an individual queue delivery. A pg.Client kept in
   // module scope can carry a closed socket and promises from an expired request.
-  const client = new pg.Client({ connectionString: getConnectionString() })
+  const client = new pg.Client({ connectionString: getConnectionString(), connectionTimeoutMillis: 5_000, statement_timeout: 15_000, query_timeout: 20_000 })
   try {
     await client.connect()
     return await run(client)
@@ -84,20 +85,36 @@ export async function dbRecordAiInvocation(input: WorkerAiInvocationInput): Prom
 }
 
 // Render-job status writers (Hyperdrive→Neon). Mirror the music writers' execute() usage.
-export async function dbMarkRenderRendering(jobId: string): Promise<void> {
-  await execute(`UPDATE media_render_jobs SET status='rendering', updated_at=now() WHERE id=$1 AND status <> 'done'`, [jobId])
+export async function dbMarkRenderRendering(jobId: string, attemptId?: string): Promise<void> {
+  await execute(`UPDATE media_render_jobs SET status='rendering', error=NULL,
+    progress=CASE WHEN $2::text IS NULL THEN progress ELSE jsonb_build_object('attemptId',$2::text) END,
+    updated_at=now() WHERE id=$1 AND status <> 'done' AND ($2::text IS NOT NULL OR progress->>'attemptId' IS NULL)`, [jobId, attemptId ?? null])
 }
-export async function dbMarkRenderProgress(jobId: string, progress: Record<string, unknown>): Promise<void> {
-  await execute(`UPDATE media_render_jobs SET progress=$1::jsonb, updated_at=now() WHERE id=$2`, [JSON.stringify(progress), jobId])
+export async function dbMarkRenderProgress(jobId: string, progress: Record<string, unknown> | VideoRenderProgress): Promise<void> {
+  const sequence = typeof progress.sequence === 'number' && Number.isSafeInteger(progress.sequence) && progress.sequence >= 0 ? progress.sequence : 0
+  await execute(`UPDATE media_render_jobs SET progress=$1::jsonb, updated_at=now() WHERE id=$2
+    AND (status IN ('queued','rendering') OR (status='done' AND $1::jsonb->>'stage'='done'))
+    AND (($3::text IS NULL AND progress->>'attemptId' IS NULL) OR progress->>'attemptId'=$3::text)
+    AND COALESCE((progress->>'sequence')::bigint,0) <= $4::bigint`,
+    [JSON.stringify(progress), jobId, typeof progress.attemptId === 'string' ? progress.attemptId : null, sequence])
 }
-export async function dbMarkRenderDone(jobId: string, variants: Record<string, string>, costCents: number | null): Promise<void> {
-  await execute(
-    `UPDATE media_render_jobs SET status='done', variants=$1::jsonb, cost_cents=$2, updated_at=now() WHERE id=$3`,
-    [JSON.stringify(variants), costCents, jobId]
+export async function dbMarkRenderDone(jobId: string, variants: Record<string, string>, costCents: number | null, attemptId?: string): Promise<void> {
+  let changed: number
+  try { changed = await execute(
+    `UPDATE media_render_jobs SET status='done', variants=$1::jsonb, cost_cents=$2, error=NULL, updated_at=now() WHERE id=$3
+      AND (($4::text IS NULL AND progress->>'attemptId' IS NULL) OR (status='rendering' AND progress->>'attemptId'=$4::text))`,
+    [JSON.stringify(variants), costCents, jobId, attemptId ?? null]
   )
+  } catch {
+    // The UPDATE may have committed before its response was lost. Keep bytes
+    // until the authoritative loader reconciles the persisted job on retry.
+    throw new RenderPublicationUncertainError('Render publication response unavailable')
+  }
+  if (attemptId && !changed) throw new Error('Render attempt is no longer current')
 }
-export async function dbMarkRenderFailed(jobId: string, error: string): Promise<void> {
-  await execute(`UPDATE media_render_jobs SET status='failed', error=$1, updated_at=now() WHERE id=$2 AND status <> 'done'`, [error, jobId])
+export async function dbMarkRenderFailed(jobId: string, error: string, attemptId?: string): Promise<void> {
+  await execute(`UPDATE media_render_jobs SET status='failed', error=$1, updated_at=now() WHERE id=$2 AND status <> 'done'
+    AND (($3::text IS NULL AND progress->>'attemptId' IS NULL) OR progress->>'attemptId'=$3::text)`, [error, jobId, attemptId ?? null])
 }
 export async function dbLoadTimelineState(timelineId: string): Promise<any> {
   const row = await queryOne<{ state: any }>(`SELECT state FROM media_timelines WHERE id=$1`, [timelineId])

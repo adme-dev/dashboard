@@ -57,18 +57,18 @@ export default {
           await runVideoCompositeJob(msg.body as any, {
             loadRenderInputs: loadStoryboardRenderInputs,
             checkEligibility: (jobId, manifestHash) => callStoryboardRenderAuthority(env, { action: 'check', jobId, manifestHash }),
-            publishApproved: (jobId, manifestHash, variants, costCents) => callStoryboardRenderAuthority(env, { action: 'publish', jobId, manifestHash, variants, costCents }),
+            publishApproved: (jobId, manifestHash, variants, costCents, attemptId) => callStoryboardRenderAuthority(env, { action: 'publish', jobId, manifestHash, variants, costCents, attemptId }),
             discardOutput: key => env.AUDIO_BUCKET.delete(key),
             loadTimelineState: db.dbLoadTimelineState,
             markRendering: db.dbMarkRenderRendering,
             markProgress: db.dbMarkRenderProgress,
             markDone: db.dbMarkRenderDone,
             markFailed: db.dbMarkRenderFailed,
-            renderOne: ({ projectId, jobId, state, formatKey, resolvedOverlays, pinnedObjects }) => {
+            renderOne: ({ projectId, jobId, state, formatKey, resolvedOverlays, pinnedObjects, signal, deadlineAtMs, onProgress }) => {
               const profile = videoFormatFor(formatKey)
               if (!profile) throw new Error(`unknown video format: ${formatKey}`)
               return renderComposite({ RENDER: env.RENDER, AUDIO_BUCKET: env.AUDIO_BUCKET as any }, {
-                projectId, jobId, state, profile, resolvedOverlays, pinnedObjects
+                projectId, jobId, state, profile, resolvedOverlays, pinnedObjects, signal, deadlineAtMs, onProgress
               })
             },
             centsPerSec: Number(env.RENDER_CENTS_PER_SEC ?? '2')

@@ -1,7 +1,7 @@
 import type { H3Event } from 'h3'
 import type { GodModeTransactionDb as Db } from '~~/server/utils/godMode/transactionCoordinator'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { authorizeStoryboardRenderCallbackIn, createStoryboardRenderJobIfObligatedIn } from '~~/server/utils/video-storyboard/renderDispatch'
+import { authorizeStoryboardRenderCallbackIn, createStoryboardRenderJobIfObligatedIn, StoryboardCallbackSchema } from '~~/server/utils/video-storyboard/renderDispatch'
 import { storyboardHash } from '~~/server/utils/video-storyboard/hash'
 
 const mocks = vi.hoisted(() => ({ prepare: vi.fn(), lineage: vi.fn(), create: vi.fn(), authority: vi.fn(), fence: vi.fn(), resolveScope: vi.fn() }))
@@ -21,9 +21,9 @@ const signature = storyboardHash({ state: prepared.state, applicationId: 'app', 
 const manifest = { id: 'manifest', jobId, projectId, timelineId, editRevision: 0, formats: ['square_1x1'], dependencies: { actorId: actor.id, signature } }
 const variants = { square_1x1: `media/${projectId}/${jobId}/44444444-4444-4444-8444-444444444444/square_1x1.mp4` }
 const event = { context: { cloudflare: { env: { MEDIA_BUCKET: { head: vi.fn().mockResolvedValue({ size: 42 }), get: vi.fn(), put: vi.fn() }, STORYBOARD_RENDER_SECRET: 'secret', STORYBOARD_MEDIA_PROBE: {}, VIDEO_RENDER_QUEUE: {} } } } } as unknown as H3Event
-function dbFor(status = 'rendering', costCents = 0) {
+function dbFor(status = 'rendering', costCents = 0, progress?: unknown) {
   return { query: vi.fn(async (sql: string) => {
-    if (sql.includes('SELECT j.*')) return { rows: [{ id: jobId, project_id: projectId, timeline_id: timelineId, requested_by: actor.id, manifest, manifest_hash: storyboardHash(manifest), status, variants, cost_cents: costCents }] }
+    if (sql.includes('SELECT j.*')) return { rows: [{ id: jobId, project_id: projectId, timeline_id: timelineId, requested_by: actor.id, manifest, manifest_hash: storyboardHash(manifest), status, variants, cost_cents: costCents, progress }] }
     if (sql.includes('FROM team_members')) return { rows: [actor] }
     if (sql.includes('SELECT edit_revision')) return { rows: [{ edit_revision: 0 }] }
     return { rows: [] }
@@ -37,6 +37,15 @@ beforeEach(() => {
   mocks.create.mockResolvedValue({ id: jobId, timelineId })
 })
 describe('storyboard dispatch and publication', () => {
+  it('accepts a validated attempt token in the signed callback contract', () => {
+    expect(StoryboardCallbackSchema.safeParse({ action: 'publish', jobId, manifestHash: storyboardHash(manifest), variants, attemptId: '55555555-5555-4555-8555-555555555555' }).success).toBe(true)
+  })
+  it.each([undefined, '66666666-6666-4666-8666-666666666666'])('rejects a stale or missing attempt before output publication', async attemptId => {
+    const db = dbFor('rendering', 0, { attemptId: '55555555-5555-4555-8555-555555555555' })
+    await expect(authorizeStoryboardRenderCallbackIn(db, event, { action: 'publish', jobId, manifestHash: storyboardHash(manifest), variants, attemptId } as any)).rejects.toThrow(/attempt/i)
+    expect(mocks.prepare).not.toHaveBeenCalled()
+    expect(db.query.mock.calls.some(([sql]: string[]) => sql.includes("SET status='done'"))).toBe(false)
+  })
   it('preserves legacy path only on an authoritative empty lineage', async () => {
     mocks.lineage.mockResolvedValue(null)
     expect(await createStoryboardRenderJobIfObligatedIn(dbFor(), event, { projectId, actor, channels: [], expectedTimelineId: timelineId, expectedEditRevision: 0, formats: ['square_1x1'] })).toBeNull()

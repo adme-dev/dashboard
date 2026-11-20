@@ -34,6 +34,7 @@ export async function callStoryboardRenderAuthority(env: AuthorityEnv, body: {
   manifestHash: string
   variants?: Record<string, string>
   costCents?: number
+  attemptId?: string
 }): Promise<void> {
   if (!env.STORYBOARD_RENDER_SECRET || !env.STORYBOARD_APP_ORIGIN) throw new Error('Storyboard render authority unavailable')
   const origin = new URL(env.STORYBOARD_APP_ORIGIN)

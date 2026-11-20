@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { MediaRenderJob } from '~~/app/types'
 import {
   creativeVersionLabelForRenderJob,
+  renderStageMeter,
   parseRenderFailure,
   renderVariantFormats,
   renderVariantUrl,
@@ -84,5 +85,23 @@ describe('video render job summary', () => {
       details: 'plain failure',
       retryable: true
     })
+  })
+})
+
+describe('render stage meter', () => {
+  it('uses indeterminate progress when measurements are missing or invalid', () => {
+    for (const counters of [{}, { framesDone: -1, framesTotal: 30 }, { framesDone: NaN, framesTotal: 30 }, { framesDone: 3, framesTotal: 0 }]) {
+      expect(renderStageMeter(job({ status: 'rendering', progress: { stage: 'capturing', ...counters, formatKey: null, done: 0, total: 1, updatedAt: '' } }))).toMatchObject({ label: 'Preparing artwork', value: null })
+    }
+  })
+  it('clamps an overrun and never interprets a terminal job as active', () => {
+    const progress = { stage: 'capturing' as const, framesDone: 40, framesTotal: 30, formatKey: null, done: 0, total: 1, updatedAt: '' }
+    expect(renderStageMeter(job({ status: 'rendering', progress }))).toMatchObject({ value: 30, max: 30 })
+    expect(renderStageMeter(job({ status: 'failed', progress }))).toBeNull()
+    expect(renderStageMeter(job({ status: 'done', progress }))).toBeNull()
+  })
+  it('preserves legacy rendering without inventing measured progress', () => {
+    expect(renderStageMeter(job({ status: 'rendering' }))).toBeNull()
+    expect(renderStageMeter(job({ status: 'rendering', progress: { stage: 'rendering', done: 0, total: 1, formatKey: 'reels_9x16', updatedAt: '' } }))).toMatchObject({ label: 'Preparing render', value: null })
   })
 })

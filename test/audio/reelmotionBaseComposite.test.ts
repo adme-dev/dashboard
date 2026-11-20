@@ -90,6 +90,8 @@ describe('managed base footage in an artwork composite', () => {
     expect(body.overlays[0].html).toBe('<video src="data:video/mp4;base64,AQID"></video>')
     expect(body.files).toHaveLength(1)
     expect(post.mock.calls[0]![1].signal).toBe(post.mock.calls[1]![1].signal)
+    expect(post.mock.calls[0]![1].headers['x-render-execution-id']).not.toBe(post.mock.calls[1]![1].headers['x-render-execution-id'])
+    expect(Number(post.mock.calls[1]![1].headers['x-render-timeout-ms'])).toBeLessThanOrEqual(Number(post.mock.calls[0]![1].headers['x-render-timeout-ms']))
   })
   it.each([
     '<video src="one"></video><video src="two"></video>',

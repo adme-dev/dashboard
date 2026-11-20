@@ -1,11 +1,13 @@
 import type { ReelmotionBaseFootage } from '../../../shared/reelmotionBaseFootage'
 import type { StoryboardRenderManifest, PinnedRenderObject } from '../../../shared/video-storyboard/renderManifest'
+import { createRenderDeadline, VIDEO_RENDER_WORK_MS, VIDEO_PROGRESS_REQUEST_MS, RenderPublicationUncertainError, type MeasuredRenderProgress, type VideoRenderProgress } from '../../../shared/video/renderExecution'
 // workers/audio-jobs/src/videoCompositeRender.ts — orchestrates a video composite
 // render job. Collaborators (DB writers, container caller) are injected so the
 // control flow is unit-testable without CF bindings / ffmpeg. The real wiring
 // lives in index.ts (queue branch) which constructs the deps from env.
 
-export class StoryboardPublicationUncertainError extends Error {}
+export { RenderPublicationUncertainError } from '../../../shared/video/renderExecution'
+export class StoryboardPublicationUncertainError extends RenderPublicationUncertainError {}
 
 export interface ResolvedOverlay {
   baseFootage?: ReelmotionBaseFootage
@@ -29,62 +31,89 @@ export interface VideoRenderDeps {
   /** Mandatory DB authority: null means a verified non-storyboard job. */
   loadRenderInputs(msg: VideoRenderMessage): Promise<{ manifest: StoryboardRenderManifest, manifestHash: string } | { completed: true } | null>
   checkEligibility(jobId: string, manifestHash: string): Promise<void>
-  publishApproved(jobId: string, manifestHash: string, variants: Record<string, string>, costCents: number): Promise<void>
+  publishApproved(jobId: string, manifestHash: string, variants: Record<string, string>, costCents: number, attemptId?: string): Promise<void>
   discardOutput(key: string): Promise<void>
   loadTimelineState(timelineId: string): Promise<unknown>
-  markRendering(jobId: string): Promise<void>
+  markRendering(jobId: string, attemptId?: string): Promise<void>
   /** Optional per-format stage reporting for the editor's render strip. Failures are swallowed. */
-  markProgress?(jobId: string, progress: { stage: 'rendering' | 'done', formatKey: string | null, done: number, total: number, updatedAt: string }): Promise<void>
-  renderOne(args: { projectId: string, jobId: string, state: unknown, formatKey: string, resolvedOverlays?: ResolvedOverlay[], pinnedObjects?: PinnedRenderObject[] }): Promise<{ key: string }>
-  markDone(jobId: string, variants: Record<string, string>, costCents: number | null): Promise<void>
-  markFailed(jobId: string, error: string): Promise<void>
+  markProgress?(jobId: string, progress: VideoRenderProgress): Promise<void>
+  renderOne(args: { projectId: string, jobId: string, state: unknown, formatKey: string, resolvedOverlays?: ResolvedOverlay[], pinnedObjects?: PinnedRenderObject[], signal: AbortSignal, deadlineAtMs: number, onProgress(progress: MeasuredRenderProgress): Promise<void> }): Promise<{ key: string }>
+  markDone(jobId: string, variants: Record<string, string>, costCents: number | null, attemptId?: string): Promise<void>
+  markFailed(jobId: string, error: string, attemptId?: string): Promise<void>
   centsPerSec: number
 }
 
 export async function runVideoCompositeJob(msg: VideoRenderMessage, deps: VideoRenderDeps): Promise<void> {
   const start = Date.now()
+  const budget = createRenderDeadline(VIDEO_RENDER_WORK_MS)
+  const attemptId = crypto.randomUUID()
+  let closed = false
   const variants: Record<string, string> = {}
   try {
-    const loaded = await deps.loadRenderInputs(msg)
+    const loaded = await budget.run(() => deps.loadRenderInputs(msg))
     if (loaded && 'completed' in loaded) return
     const approved = loaded && 'manifest' in loaded ? loaded : null
     const manifest = approved?.manifest
     if (manifest && (manifest.jobId !== msg.jobId || manifest.projectId !== msg.projectId || manifest.timelineId !== msg.timelineId || JSON.stringify(manifest.formats) !== JSON.stringify(msg.formats)))
       throw new Error('Render manifest identity mismatch')
-    if (approved) await deps.checkEligibility(msg.jobId, approved.manifestHash)
-    await deps.markRendering(msg.jobId)
-    const state = manifest ? manifest.state : await deps.loadTimelineState(msg.timelineId)
+    if (approved) await budget.run(() => deps.checkEligibility(msg.jobId, approved.manifestHash))
+    await budget.run(() => deps.markRendering(msg.jobId, attemptId))
+    const state = manifest ? manifest.state : await budget.run(() => deps.loadTimelineState(msg.timelineId))
     const total = msg.formats.length
-    const report = async (stage: 'rendering' | 'done', formatKey: string | null, done: number) => {
+    let sequence = 0
+    const report = async (measured: MeasuredRenderProgress, formatKey: string | null, done: number) => {
+      if (closed || budget.signal.aborted || !deps.markProgress) return
+      const advisory = createRenderDeadline(VIDEO_PROGRESS_REQUEST_MS, { signal: budget.signal })
       try {
-        await deps.markProgress?.(msg.jobId, { stage, formatKey, done, total, updatedAt: new Date(Date.now()).toISOString() })
+        await advisory.run(() => deps.markProgress!(msg.jobId, { ...measured, attemptId, sequence: ++sequence, formatKey, done, total, updatedAt: new Date().toISOString() }))
       } catch { /* progress is advisory — never fail a render over it */ }
+      finally { advisory.dispose() }
     }
     let done = 0
     for (const formatKey of msg.formats) {
-      await report('rendering', formatKey, done)
+      budget.signal.throwIfAborted()
+      await report({ stage: 'rendering' }, formatKey, done)
       const resolvedOverlays = manifest ? manifest.resolvedOverlaysByFormat[formatKey] : msg.resolvedOverlaysByFormat?.[formatKey] ?? msg.resolvedOverlays
-      const { key } = await deps.renderOne({
+      const { key } = await budget.run(() => deps.renderOne({
         projectId: msg.projectId,
         jobId: msg.jobId,
         state,
         formatKey,
         resolvedOverlays,
+        signal: budget.signal,
+        deadlineAtMs: budget.deadlineAtMs,
+        onProgress: progress => report(progress, formatKey, done),
         ...(manifest ? { pinnedObjects: manifest.objects } : {})
-      })
+      }), output => deps.discardOutput(output.key))
       variants[formatKey] = key
+      budget.signal.throwIfAborted()
       done += 1
     }
     const wallSec = Math.max(1, Math.round((Date.now() - start) / 1000))
     const cost = Math.round(wallSec * deps.centsPerSec)
-    if (approved) await deps.publishApproved(msg.jobId, approved.manifestHash, variants, cost)
-    else await deps.markDone(msg.jobId, variants, cost)
-    await report('done', null, done)
+    try {
+      if (approved) await budget.run(() => deps.publishApproved(msg.jobId, approved.manifestHash, variants, cost, attemptId))
+      else await budget.run(() => deps.markDone(msg.jobId, variants, cost, attemptId))
+    } catch (error) {
+      if (budget.signal.aborted) throw new RenderPublicationUncertainError('Render publication response unavailable')
+      throw error
+    }
+    await report({ stage: 'done' }, null, done)
   } catch (e) {
     // A lost publish response may already have committed. Retain bytes for retry.
-    if (e instanceof StoryboardPublicationUncertainError) throw e
-    for (const key of Object.values(variants)) await deps.discardOutput(key).catch(() => {})
-    await deps.markFailed(msg.jobId, e instanceof Error ? e.message : String(e))
+    closed = true
+    if (e instanceof RenderPublicationUncertainError) throw e
+    const cleanup = createRenderDeadline(30_000)
+    try {
+      await cleanup.run(async () => {
+        await Promise.allSettled(Object.values(variants).map(key => deps.discardOutput(key)))
+        await deps.markFailed(msg.jobId, e instanceof Error ? e.message : String(e), attemptId)
+      })
+    } catch { /* retain the original failure for queue retry if status persistence is unavailable */ }
+    finally { cleanup.dispose() }
     throw e
+  } finally {
+    closed = true
+    budget.dispose()
   }
 }

@@ -2781,13 +2781,7 @@ export interface MediaTimeline {
 
 export type MediaRenderJobStatus = 'queued' | 'rendering' | 'done' | 'failed'
 
-export interface MediaRenderJobProgress {
-  stage: 'rendering' | 'uploading' | 'done'
-  formatKey: string | null
-  done: number
-  total: number
-  updatedAt: string
-}
+export type MediaRenderJobProgress = import('../../shared/video/renderExecution').VideoRenderProgress
 
 export interface MediaRenderJob {
   id: string

@@ -9,7 +9,8 @@ const PCM_BYTES_PER_SAMPLE = 2 // Mono signed 16-bit PCM.
 const MAX_PCM_BYTES = 3600 * PCM_SAMPLE_RATE * PCM_BYTES_PER_SAMPLE
 const INPUT_FORMATS
   = 'mov,mp4,m4a,3gp,3g2,mj2,matroska,webm,avi,mp3,wav,flac,ogg,aac,image2,png_pipe,jpeg_pipe,webp_pipe,gif,bmp_pipe,tiff_pipe'
-function run(command, args, timeoutMs, countPcmBytes = false) {
+function run(command, args, timeoutMs, countPcmBytes = false, signal) {
+  signal?.throwIfAborted()
   return new Promise((resolve, reject) => {
     const proc = spawn(command, args, { stdio: ['ignore', 'pipe', 'pipe'] })
     let out = ''
@@ -20,7 +21,18 @@ function run(command, args, timeoutMs, countPcmBytes = false) {
       failed = true
       proc.kill('SIGKILL')
     }
+    let hardStop
+    const cancel = () => {
+      proc.kill('SIGTERM')
+      hardStop = setTimeout(fail, 5000)
+    }
+    signal?.addEventListener('abort', cancel, { once: true })
     const timer = setTimeout(fail, timeoutMs)
+    function cleanup() {
+      clearTimeout(timer)
+      clearTimeout(hardStop)
+      signal?.removeEventListener('abort', cancel)
+    }
     proc.stdout.on('data', (chunk) => {
       if (failed) return
       outputBytes += chunk.length
@@ -36,11 +48,12 @@ function run(command, args, timeoutMs, countPcmBytes = false) {
       if (err.length > 65536) fail()
     })
     proc.on('error', () => {
-      clearTimeout(timer)
+      cleanup()
       reject(new Error('Media decoder unavailable'))
     })
     proc.on('close', (code) => {
-      clearTimeout(timer)
+      cleanup()
+      if (signal?.aborted) return reject(signal.reason)
       if (failed || code !== 0 || err.trim())
         reject(new Error('Media decode failed'))
       else resolve(countPcmBytes ? outputBytes : out)
@@ -49,11 +62,11 @@ function run(command, args, timeoutMs, countPcmBytes = false) {
 }
 // Preserve the browser's media timeline for a verified local MP4. FFmpeg
 // otherwise removes the file's start offset before the first filter.
-export async function readBaseFootageStartTime(path) {
+export async function readBaseFootageStartTime(path, signal) {
   const result = await run('ffprobe', ['-v', 'error', '-protocol_whitelist', 'file', '-format_whitelist', 'mov',
     '-select_streams', 'v', '-show_entries',
     'format=start_time:stream=codec_name,pix_fmt,width,height,sample_aspect_ratio,color_transfer:stream_disposition=attached_pic:stream_tags=rotate:stream_side_data=side_data_type,rotation',
-    '-of', 'json', path], 10000)
+    '-of', 'json', path], 10000, false, signal)
   const facts = JSON.parse(result)
   if (!facts.streams?.length) throw new Error('Base footage video stream missing')
   const [video] = facts.streams
