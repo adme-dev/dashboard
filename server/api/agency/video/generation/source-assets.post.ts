@@ -1,3 +1,4 @@
+import { requireVideoGenerationEnabled } from '~~/server/utils/video-generation/feature'
 import { requireWriteAccess } from '~~/server/utils/auth'
 import { getProjectWithCurrentTimeline } from '~~/server/utils/audio/projects'
 import { uploadFile, validateFileType, validateFileSize, getMaxFileSize } from '~~/server/utils/storage'
@@ -11,9 +12,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 // Owners (God mode) run this under the execution ledger; staff run it directly.
 export default defineEventHandler(event => withGodModeLedger(event, 'sourceAssetUpload', async ({ reservedId }) => {
-  if (process.env.VIDEO_GENERATION_ENABLED !== 'true') {
-    throw createError({ statusCode: 404, statusMessage: 'Not found' })
-  }
+  requireVideoGenerationEnabled(event)
   const user = await requireWriteAccess(event)
   const form = await readMultipartFormData(event)
   const file = form?.find((f) => f.name === 'file')

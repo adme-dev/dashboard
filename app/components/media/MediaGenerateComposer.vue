@@ -5,12 +5,12 @@
 import { ref, computed, watch } from 'vue'
 import { validateGenerationForm, costPreviewCents, draftFromGenerationJob } from '~~/app/utils/videoGenerationForm'
 import { availableWorkflows, modelsForWorkflow, videoGenerationWorkflow, workflowForMode, type VideoGenerationWorkflow } from '~~/app/utils/video/generationWorkflows'
-import { videoModelPresentation, type VideoModelOption } from '~~/app/utils/video/modelPresentation'
+import { videoModelPresentation } from '~~/app/utils/video/modelPresentation'
 import { VIDEO_GENERATION_TEMPLATES, type VideoGenerationTemplate } from '~~/app/utils/video/generationTemplates'
 import { videoGenerationJobTimelinePayload, type VideoLibraryTimelinePayload } from '~~/app/utils/video/videoLibraryTimeline'
 import { apiErrorDescription, apiErrorReasons, isPossiblyAppliedFailure } from '~~/app/utils/apiError'
 import { generationBudgetNotice, generationBudgetSummary, isGenerationBudgetStatus } from '~~/app/utils/video/generationBudget'
-import type { GenerationBudgetStatus } from '~~/app/utils/video/generationBudget'
+import { useVideoModelAccess } from '~~/app/composables/useVideoModelAccess'
 import type { VideoGenerationMode } from '~~/server/utils/video-generation/types'
 import type { VideoGenerationJobView } from '~~/app/composables/useVideoGenerationJobs'
 import { idempotencyKey } from '~~/app/utils/idempotencyKey'
@@ -45,21 +45,9 @@ const apiFetch = $fetch as <T = unknown>(
     headers?: Record<string, string>
   }
 ) => Promise<T>
-const modelData = ref<{ models: VideoModelOption[], budget?: GenerationBudgetStatus | null }>({ models: [] })
-const modelsPending = ref(false)
-
-async function refreshModels() {
-  modelsPending.value = true
-  try {
-    modelData.value = await apiFetch<{ models: VideoModelOption[], budget?: GenerationBudgetStatus | null }>('/api/agency/video/generation/models', {
-      query: { projectId: props.projectId }
-    })
-  } finally {
-    modelsPending.value = false
-  }
-}
-
-const allModels = computed((): VideoModelOption[] => modelData.value?.models ?? [])
+const { data: modelData, models: allModels, pending: modelsPending, failed: modelsFailed, detail: modelAccessDetail, retry: retryModels } = useVideoModelAccess(
+  computed(() => props.projectId), computed(() => props.active ?? true)
+)
 const hasModels = computed(() => allModels.value.length > 0)
 
 // Workflow-first: staff pick what to make; the model list narrows to models that can do it.
@@ -127,7 +115,7 @@ const modelItems = computed(() => models.value.map((m) => {
   return { label: m.label, value: m.id, ...presentation }
 }))
 const selectedModelIcon = computed(() => (model.value ? videoModelPresentation(model.value).icon : 'i-lucide-box'))
-const costChipLabel = computed(() => `~$${(estCostCents.value / 100).toFixed(2)} · ${durationSeconds.value}s`)
+const costChipLabel = computed(() => `${modelData.value.policy?.payer === 'agency' ? 'Agency estimate' : 'Estimate'} US$${(estCostCents.value / 100).toFixed(2)} · ${durationSeconds.value}s`)
 const budget = computed(() => (isGenerationBudgetStatus(modelData.value.budget) ? modelData.value.budget : null))
 const budgetNotice = computed(() => (model.value ? generationBudgetNotice(budget.value, estCostCents.value) : null))
 const recentJobs = computed(() => (props.recentJobs ?? []).slice(0, 5))
@@ -240,7 +228,6 @@ watch(models, (next) => {
 
 watch(() => props.active ?? true, (isActive) => {
   if (!isActive) return
-  void refreshModels()
   if (props.initialPrompt) prompt.value = props.initialPrompt
   void applyInitialSourceAsset()
 }, { immediate: true })
@@ -418,7 +405,8 @@ async function submit() {
       variant="subtle"
       icon="i-lucide-triangle-alert"
       title="AI video generation is unavailable"
-      description="No runnable video models are configured for this Cloudflare account."
+      :description="modelAccessDetail"
+      :actions="modelsFailed ? [{ label: 'Retry', onClick: retryModels }] : []"
     />
 
     <!-- Loading skeleton while the model list fetches -->

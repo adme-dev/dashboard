@@ -244,6 +244,10 @@ const agentRunsResponse = {
 const responses: Record<string, unknown> = {
   '/api/admin/ai/model-ops/model-map': modelMapResponse,
   '/api/admin/ai/model-ops/invocations': invocationResponse,
+  '/api/admin/ai/model-ops/video-costs': [
+    { payer: 'agency', attributionId: 'a', client: 'Dealer A', jobs: 2, estimatedCents: 250, actualCents: 0, reportedJobs: 1, openCents: 125 },
+    { payer: 'tenant', attributionId: 'b', client: 'Dealer B', jobs: 1, estimatedCents: 125, actualCents: null, reportedJobs: 0, openCents: 125 },
+  ],
   '/api/admin/ai/model-ops/graphify': graphifyResponse,
   '/api/admin/ai/model-ops/agent-runs': agentRunsResponse,
 }
@@ -367,6 +371,24 @@ async function mountPage(options: {
 }
 
 describe('Admin AI Model Ops page', () => {
+  it('shows client attribution, funding, and distinguishes an actual zero from missing costs', async () => {
+    const { app, host } = await mountPage()
+    try {
+      const rows = Array.from(host.querySelectorAll('tr'))
+      const agencyRow = rows.find(row => row.textContent?.includes('Dealer A'))
+      expect(agencyRow?.textContent).toContain('Agency-funded')
+      expect(agencyRow?.textContent).toContain('$2.50')
+      expect(agencyRow?.textContent).toContain('$0.00')
+      expect(agencyRow?.textContent).toContain('1 of 2 jobs')
+      const tenantRow = rows.find(row => row.textContent?.includes('Dealer B'))
+      expect(tenantRow?.textContent).toContain('Tenant budget')
+      expect(tenantRow?.textContent).toContain('Unreported')
+    } finally {
+      app.unmount()
+      host.remove()
+    }
+  })
+
   it('renders orchestrator readiness and the manual read-check action', async () => {
     const html = await render()
 

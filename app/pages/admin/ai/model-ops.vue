@@ -480,6 +480,30 @@ const error = ref<any>(null)
 const invocationData = ref<InvocationResponse | null>(null)
 const invocationsPending = ref(false)
 const invocationsError = ref<any>(null)
+type VideoCostRow = {
+  payer: 'agency' | 'tenant'
+  attributionId: string
+  client: string
+  jobs: number
+  estimatedCents: number
+  actualCents: number | null
+  reportedJobs: number
+  openCents: number
+}
+
+const videoCosts = ref<VideoCostRow[] | null>(null)
+const videoCostsPending = ref(false)
+async function refreshVideoCosts() {
+  videoCostsPending.value = true
+  try {
+    videoCosts.value = await apiFetch<VideoCostRow[]>('/api/admin/ai/model-ops/video-costs')
+  } catch {
+    videoCosts.value = null
+  } finally {
+    videoCostsPending.value = false
+  }
+}
+
 const graphifyData = ref<GraphifyResponse | null>(null)
 const graphifyPending = ref(false)
 const graphifyError = ref<any>(null)
@@ -535,7 +559,7 @@ async function refreshAgentRuns() {
   }
 }
 
-await Promise.all([refresh(), refreshInvocations(), refreshGraphify(), refreshAgentRuns()])
+await Promise.all([refresh(), refreshInvocations(), refreshVideoCosts(), refreshGraphify(), refreshAgentRuns()])
 
 const orchestratorCheckPending = ref(false)
 const orchestratorCheckError = ref<string | null>(null)
@@ -589,7 +613,7 @@ const invocationCards = computed(() => {
   const summary = invocationData.value?.summary
   return [
     { label: 'Calls (30d)', value: (summary?.totalInvocations ?? 0).toLocaleString(), icon: 'i-lucide-activity' },
-    { label: 'Cost (30d)', value: money(summary?.estimatedCostUsd ?? 0), icon: 'i-lucide-dollar-sign' },
+    { label: 'Invocation estimates (30d)', value: money(summary?.estimatedCostUsd ?? 0), icon: 'i-lucide-dollar-sign' },
     { label: 'Tokens (30d)', value: (summary?.totalTokens ?? 0).toLocaleString(), icon: 'i-lucide-cpu' },
     { label: 'Avg latency', value: `${summary?.avgLatencyMs ?? 0}ms`, icon: 'i-lucide-timer' },
   ]
@@ -978,7 +1002,7 @@ function repoName(url: string) {
 }
 
 async function refreshAll() {
-  await Promise.all([refresh(), refreshInvocations(), refreshGraphify(), refreshAgentRuns()])
+  await Promise.all([refresh(), refreshInvocations(), refreshVideoCosts(), refreshGraphify(), refreshAgentRuns()])
 }
 
 async function runOrchestratorCheck() {
@@ -1139,7 +1163,7 @@ const agentRunStatusColor: Record<AgentRun['statusBucket'], 'success' | 'warning
           icon="i-lucide-refresh-cw"
           color="neutral"
           variant="ghost"
-          :loading="pending || invocationsPending || graphifyPending || agentRunsPending"
+          :loading="pending || invocationsPending || videoCostsPending || graphifyPending || agentRunsPending"
           @click="refreshAll()"
         >
           Refresh
@@ -1200,6 +1224,43 @@ const agentRunStatusColor: Record<AgentRun['statusBucket'], 'success' | 'warning
       title="Read-only orchestrator check complete"
       :description="`${orchestratorCheckResult.summary.successfulTools}/${orchestratorCheckResult.summary.totalTools} tools succeeded`"
     />
+
+    <UCard>
+      <template #header>
+        <h2 class="text-sm font-semibold text-highlighted">Video generation costs</h2>
+        <p class="mt-1 text-xs text-muted">USD for jobs created in the last 30 days. Open liability covers reserved and uncertain costs.</p>
+      </template>
+      <p v-if="videoCostsPending" class="text-sm text-muted">Loading video costs…</p>
+      <UAlert v-else-if="!videoCosts" color="warning" title="Video costs are unavailable" />
+      <p v-else-if="!videoCosts.length" class="text-sm text-muted">No video generation jobs in this period.</p>
+      <div v-else class="overflow-x-auto">
+        <table class="w-full text-left text-sm">
+          <thead class="text-xs text-muted">
+            <tr>
+              <th scope="col" class="p-2">Client</th>
+              <th scope="col" class="p-2">Budget</th>
+              <th scope="col" class="p-2 text-right">Jobs</th>
+              <th scope="col" class="p-2 text-right">Request estimates</th>
+              <th scope="col" class="p-2 text-right">Recorded actuals</th>
+              <th scope="col" class="p-2 text-right">Open liability</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-default">
+            <tr v-for="row in videoCosts" :key="row.payer + row.attributionId">
+              <td class="p-2 font-medium">{{ row.client }}</td>
+              <td class="p-2">{{ row.payer === 'agency' ? 'Agency-funded' : 'Tenant budget' }}</td>
+              <td class="p-2 text-right tabular-nums">{{ row.jobs }}</td>
+              <td class="p-2 text-right tabular-nums">{{ money(row.estimatedCents / 100) }}</td>
+              <td class="p-2 text-right tabular-nums">
+                {{ row.actualCents === null ? 'Unreported' : money(row.actualCents / 100) }}
+                <span v-if="row.reportedJobs" class="block text-xs text-muted">{{ row.reportedJobs }} of {{ row.jobs }} jobs</span>
+              </td>
+              <td class="p-2 text-right tabular-nums">{{ money(row.openCents / 100) }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </UCard>
 
     <UAlert
       v-if="agentRunsError"

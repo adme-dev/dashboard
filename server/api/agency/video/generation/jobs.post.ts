@@ -1,3 +1,4 @@
+import { requireVideoGenerationEnabled } from '~~/server/utils/video-generation/feature'
 import { z } from 'zod'
 import { requireWriteAccess } from '~~/server/utils/auth'
 import { getProjectWithCurrentTimeline } from '~~/server/utils/audio/projects'
@@ -14,7 +15,7 @@ import { reserveAndCreateVideoGenerationJob } from '~~/server/utils/video-genera
 import { resolveSourceAssetUrls } from '~~/server/utils/video-generation/resolveSourceUrls'
 import { getVideoGenerationModel } from '~~/server/utils/video-generation/modelRegistry'
 import { isTenantModel } from '~~/server/utils/video-generation/surface'
-import { loadTenantVideoGenerationPolicy } from '~~/server/utils/video-generation/policy'
+import { loadStaffVideoGenerationPolicy } from '~~/server/utils/video-generation/policy'
 import { loadVideoGenerationSourceAssets } from '~~/server/utils/video-generation/sourceAssets'
 import { canUseVideoGenerationProject } from '~~/server/utils/video-generation/timelineStillSource'
 import { recordAiInvocation } from '~~/server/utils/ai/invocationLedger'
@@ -31,12 +32,6 @@ const BodySchema = z.object({
   subjectType: z.enum(['vehicle', 'non_vehicle', 'unknown']).default('unknown'),
   idempotencyKey: z.string().min(6).max(200),
 })
-
-function assertEnabled() {
-  if (process.env.VIDEO_GENERATION_ENABLED !== 'true') {
-    throw createError({ statusCode: 404, statusMessage: 'Not found' })
-  }
-}
 
 function assertModelSupportsRequest(model: NonNullable<ReturnType<typeof getVideoGenerationModel>>, body: z.infer<typeof BodySchema>) {
   if (!model.modes.includes(body.mode)) {
@@ -108,7 +103,7 @@ async function recordVideoGenerationRequest(input: {
 }
 
 export default defineEventHandler(async (event) => {
-  assertEnabled()
+  requireVideoGenerationEnabled(event)
   const user = await requireWriteAccess(event)
   const parsed = BodySchema.safeParse(await readBody(event))
   if (!parsed.success) {
@@ -165,12 +160,12 @@ export default defineEventHandler(async (event) => {
     try {
       sourceAssets = await loadVideoGenerationSourceAssets(
         body.sourceAssetIds,
-        body.mode === 'image-to-video' ? tenantId : undefined
+        tenantId
       )
     } catch (e: any) {
       throw createError({ statusCode: 400, statusMessage: `Source image unavailable: ${e?.message ?? 'unresolved'}` })
     }
-    const tenantPolicy = await loadTenantVideoGenerationPolicy(tenantId)
+    const tenantPolicy = await loadStaffVideoGenerationPolicy(user.id)
 
     const compliance = evaluateVideoGenerationCompliance({
       mode: body.mode,
@@ -185,6 +180,7 @@ export default defineEventHandler(async (event) => {
     const estimatedCostCents = estimateVideoGenerationCostCents(model, body.durationSeconds)
     if (!compliance.allowed) {
       const blocked = await createVideoGenerationJob({
+        payer: tenantPolicy.payer,
         tenantId,
         projectId: body.projectId,
         timelineId: existing.timeline?.id ?? existing.project.currentTimelineId ?? null,
@@ -215,6 +211,7 @@ export default defineEventHandler(async (event) => {
         status: 'error',
         errorCode: 'blocked_by_compliance',
         metadata: {
+          payer: tenantPolicy.payer,
           queued: false,
           complianceStatus: compliance.classification,
           complianceReasons: compliance.reasons,
@@ -291,6 +288,7 @@ export default defineEventHandler(async (event) => {
           status: 'error',
           errorCode: 'source_resolution_failed',
           metadata: {
+            payer: tenantPolicy.payer,
             queued: false,
             sourceAssetCount: body.sourceAssetIds.length,
             errorMessage: e?.message ?? String(e),
@@ -310,6 +308,7 @@ export default defineEventHandler(async (event) => {
       mode: body.mode,
       estimatedCostCents,
       metadata: {
+        payer: tenantPolicy.payer,
         queued: true,
         sourceAssetCount: body.sourceAssetIds.length,
         resolvedSourceAssetUrlCount: sourceAssetUrls.length,

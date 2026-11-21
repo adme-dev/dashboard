@@ -55,7 +55,6 @@ describe('VideoStudioInspector', () => {
       voiceAssetCount: 2,
       overlayAssetCount: 4,
       renderJobCount: 3,
-      modelReady: true,
     }, {
       details: () => h('p', 'Selected asset details'),
       produce: () => h('p', 'Producer controls'),
@@ -72,7 +71,7 @@ describe('VideoStudioInspector', () => {
     expect(html).toContain('2')
     expect(html).toContain('Overlays')
     expect(html).toContain('4')
-    expect(html).toContain('AI ready')
+    expect(html).not.toContain('AI ready')
     expect(html).toContain('Selected asset details')
     expect(html).not.toContain('Producer controls')
     expect(html).not.toContain('Render review')
@@ -81,9 +80,6 @@ describe('VideoStudioInspector', () => {
   it('switches between produce and review panels', async () => {
     const { app, host, events } = await mount({
       renderJobCount: 2,
-      modelReady: false,
-      modelStatusLabel: 'No video models',
-      modelStatusDetail: 'No runnable video models are configured for this Cloudflare account.',
     }, {
       details: () => h('p', 'Details panel'),
       produce: () => h('p', 'Produce panel'),
@@ -98,8 +94,7 @@ describe('VideoStudioInspector', () => {
       await nextTick()
 
       expect(host.textContent).toContain('Produce panel')
-      expect(host.textContent).toContain('No video models')
-      expect(host.textContent).toContain('No runnable video models are configured for this Cloudflare account.')
+      expect(host.textContent).not.toContain('No video models')
       expect(events).toContainEqual({ name: 'update:tab', payload: 'produce' })
 
       ;([...host.querySelectorAll('button')].find(button => button.textContent?.includes('Review 2')) as HTMLButtonElement).click()

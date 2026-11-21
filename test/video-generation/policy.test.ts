@@ -2,10 +2,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 const mockQueryOne = vi.hoisted(() => vi.fn())
 vi.mock('~~/server/utils/db', () => ({
+  queryOneFresh: (...args: unknown[]) => mockQueryOne(...args),
   queryOne: (...args: unknown[]) => mockQueryOne(...args),
 }))
 
-import { getTenantVideoGenerationSpendCents, loadTenantVideoGenerationPolicy } from '~~/server/utils/video-generation/policy'
+import { getTenantVideoGenerationSpendCents, loadStaffVideoGenerationPolicy, loadTenantVideoGenerationPolicy } from '~~/server/utils/video-generation/policy'
 import { TENANT_VIDEO_GENERATION_LIABILITY_SUM_SQL } from '~~/shared/video/generationLiability'
 
 afterEach(() => {
@@ -15,6 +16,14 @@ afterEach(() => {
 })
 
 describe('video generation tenant policy', () => {
+  it('requires a live active writable team identity for agency funding', async () => {
+    mockQueryOne.mockResolvedValueOnce(null)
+    await expect(loadStaffVideoGenerationPolicy('external-user')).rejects.toMatchObject({ statusCode: 403 })
+    mockQueryOne.mockResolvedValueOnce({ id: 'staff-user' })
+    await expect(loadStaffVideoGenerationPolicy('staff-user')).resolves.toEqual({ enabled: true, payer: 'agency', monthlyCapCents: null })
+    expect(mockQueryOne).toHaveBeenLastCalledWith(expect.stringContaining('FROM team_members'), ['staff-user'])
+  })
+
   it('defaults disabled', async () => {
     await expect(loadTenantVideoGenerationPolicy('dealer-1')).resolves.toEqual({
       enabled: false,

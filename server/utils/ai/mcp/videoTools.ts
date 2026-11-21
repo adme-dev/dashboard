@@ -1,3 +1,4 @@
+import { isVideoGenerationEnabled } from '~~/server/utils/video-generation/feature'
 import { z } from 'zod'
 import type { PermissionGroup } from '~~/server/utils/permissions'
 import type { ToolContext, ToolResult } from '~~/server/utils/ai/toolContext'
@@ -26,6 +27,8 @@ export interface ResolvedAvProject {
 
 /** The resolved payload a `video_generation` proposal persists (frozen at propose, executed at confirm). */
 export interface VideoGenerationPendingPayload {
+  /** Legacy proposals predate agency funding and used the tenant budget. */
+  payer?: 'agency' | 'tenant'
   tenantId: string
   projectId: string
   timelineId: string | null
@@ -99,7 +102,7 @@ export const videoReadTools: VideoToolDescriptor[] = [
     name: 'list_video_models',
     description:
       'List selectable video-generation models and, per model, the allowed modes / durations / aspect-ratios / '
-      + 'resolutions / subject-types, plus the tenant monthly cap. Use this to form a valid propose_video_generation '
+      + 'resolutions / subject-types, plus the payer and any applicable monthly cap. Use this to form a valid propose_video_generation '
       + 'call. Optional projectId scopes to that tenant\'s policy.',
     parameters: z.object({ projectId: UUID.optional() }),
     requiredPermission: 'CREATIVE'
@@ -153,6 +156,7 @@ export function projectVideoReadTools(
 }
 
 export interface AvProjectActor {
+  clientScope?: string
   id: string
   role: string
   permissionGroups?: ToolContext['permissionGroups']
@@ -160,7 +164,7 @@ export interface AvProjectActor {
 }
 
 export function avProjectActor(ctx: ToolContext): AvProjectActor {
-  return { id: ctx.userId, role: ctx.userRole, permissionGroups: ctx.permissionGroups, mcpStaffAuthority: ctx.mcpStaffAuthority }
+  return { id: ctx.userId, role: ctx.userRole, clientScope: ctx.clientScope, permissionGroups: ctx.permissionGroups, mcpStaffAuthority: ctx.mcpStaffAuthority }
 }
 
 /**
@@ -172,7 +176,8 @@ export function canUseAllAvProjects(actor: AvProjectActor): boolean {
   return legacyAll && (actor.mcpStaffAuthority !== 'fresh' || !!actor.permissionGroups?.includes('ADMIN'))
 }
 
-export function canUseAvProject(actor: AvProjectActor, project: { createdBy?: string | null }): boolean {
+export function canUseAvProject(actor: AvProjectActor, project: { createdBy?: string | null, clientId?: string | null }): boolean {
+  if (actor.clientScope !== undefined && actor.clientScope !== project.clientId) return false
   return canUseAllAvProjects(actor) || project.createdBy === actor.id
 }
 
@@ -355,7 +360,7 @@ export interface VideoProposeDeps {
   getModel: (modelId: string) => VideoGenerationModel | null | undefined
   isTenantModel: (model: VideoGenerationModel) => boolean
   loadSources: (ids: string[], tenantId: string | undefined, mode: string) => Promise<VideoGenerationSourceAsset[]>
-  loadPolicy: (tenantId: string) => Promise<VideoGenerationTenantPolicy>
+  loadPolicy: (tenantId: string, ctx: ToolContext) => Promise<VideoGenerationTenantPolicy>
   evaluateCompliance: (input: EvaluateVideoGenerationComplianceInput) => VideoGenerationComplianceResult
   estimateCost: (model: VideoGenerationModel, durationSeconds: number) => number
   resolveCreativeAsset?: (assetId: string, ctx: ToolContext) => Promise<{
@@ -390,6 +395,9 @@ function modelSupports(model: VideoGenerationModel, p: z.infer<typeof VideoGenPa
 export async function executeVideoPropose(
   action: VideoConfirmAction, args: unknown, ctx: ToolContext, deps: VideoProposeDeps
 ): Promise<VideoProposeOutcome> {
+  if (action === 'video_generation' && !isVideoGenerationEnabled(ctx.event)) {
+    return { ok: false, error: 'Video generation is disabled.', code: 'disabled' }
+  }
   if (!deps.suiteEnabled) return { ok: false, error: 'Video tools are not enabled over MCP.', code: 'disabled' }
   if ((action === 'video_generation' || action === 'video_project_create') && !deps.genEnabled) {
     return { ok: false, error: 'Video generation is not enabled over MCP.', code: 'disabled' }
@@ -517,7 +525,7 @@ export async function executeVideoPropose(
     const tenantId = existing.project.clientId ?? 'agency'
     let sources: VideoGenerationSourceAsset[] = []
     try {
-      sources = await deps.loadSources(p.sourceAssetIds, p.mode === 'image-to-video' ? tenantId : undefined, p.mode)
+      sources = await deps.loadSources(p.sourceAssetIds, tenantId, p.mode)
     } catch {
       return {
         ok: false,
@@ -526,7 +534,7 @@ export async function executeVideoPropose(
         details: { error: 'source_asset_unavailable', sourceAssetIds: p.sourceAssetIds }
       }
     }
-    const policy = await deps.loadPolicy(tenantId)
+    const policy = await deps.loadPolicy(tenantId, ctx)
 
     // Compliance only checks provenance.idempotencyKey for PRESENCE — the real key is derived from the
     // proposalId at confirm. A stable placeholder here satisfies the gate without affecting the verdict.
@@ -546,6 +554,7 @@ export async function executeVideoPropose(
 
     const estimatedCostCents = deps.estimateCost(model, p.durationSeconds)
     const payload = {
+      payer: policy.payer ?? 'tenant',
       tenantId,
       projectId: p.projectId,
       timelineId: existing.timeline?.id ?? existing.project.currentTimelineId ?? null,
@@ -558,7 +567,7 @@ export async function executeVideoPropose(
     return {
       ok: true,
       data: {
-        proposalId, kind: 'video_generation', estimatedCostCents,
+        proposalId, kind: 'video_generation', estimatedCostCents, payer: policy.payer ?? 'tenant',
         complianceClassification: compliance.classification, resolvedModel: model.id,
         resolvedParams: { mode: p.mode, durationSeconds: p.durationSeconds, aspectRatio: p.aspectRatio }
       }
@@ -591,7 +600,7 @@ export interface VideoConfirmDeps {
    * authority (or a project moved to another client) is refused without effects.
    */
   authorizeProject: (target: VideoConfirmProjectTarget, ctx: ToolContext) => Promise<boolean>
-  reserve: (payload: VideoGenerationPendingPayload, ctx: ToolContext) => Promise<{ ok: boolean, reason?: string, remainingCents?: number, job?: { id: string }, reused?: boolean }>
+  reserve: (payload: VideoGenerationPendingPayload, ctx: ToolContext) => Promise<{ ok: boolean, reason?: string, remainingCents?: number | null, job?: { id: string }, reused?: boolean }>
   prepareEnqueue?: (payload: VideoGenerationPendingPayload, ctx: ToolContext) => Promise<unknown>
   enqueue: (payload: VideoGenerationPendingPayload, jobId: string, ctx: ToolContext, prepared?: unknown) => Promise<void>
   createProject: (payload: VideoProjectPendingPayload, ctx: ToolContext) => Promise<{ projectId: string }>
@@ -611,6 +620,9 @@ export async function dispatchVideoConfirm(
   if (!(VIDEO_CONFIRM_ACTIONS as readonly string[]).includes(row.tool_name)) return null
   if (row.tool_name === 'video_timeline_edit') {
     return { ok: false, error: 'Timeline edit proposals require in-app review before execution.', code: 'forbidden' }
+  }
+  if (row.tool_name === 'video_generation' && !isVideoGenerationEnabled(ctx.event)) {
+    return { ok: false, error: 'Video generation is disabled.', code: 'forbidden' }
   }
   if (!deps.genEnabled) return { ok: false, error: 'Video generation is not enabled over MCP.', code: 'forbidden' }
   try {
@@ -636,6 +648,9 @@ export async function dispatchVideoConfirm(
     // video_generation
     const payload = row.resolved_payload as VideoGenerationPendingPayload
     const reservation = await deps.reserve(payload, ctx)
+    if (reservation.reason === 'payer_changed') {
+      return { ok: false, error: 'The payer has changed. Create a new video proposal for approval.', code: 'forbidden' }
+    }
     if (!reservation.ok || !reservation.job) {
       return { ok: false, error: `Budget unavailable (${reservation.reason ?? 'cap'}).`, code: 'cap_exceeded' }
     }
@@ -753,7 +768,7 @@ export function resolveVideoMcpExecutions(): McpExecutionDescriptor[] {
       const baseDeps = buildVideoProposeDeps()
       const outcome = await executeVideoPropose(action, args, ctx, {
         suiteEnabled: true,
-        genEnabled: true,
+        genEnabled: action !== 'video_generation' || isVideoGenerationEnabled(ctx.event),
         bypassPermissions: true,
         ...baseDeps,
         persist: async (...persistArgs) => {
@@ -779,7 +794,7 @@ export function resolveVideoMcpExecutions(): McpExecutionDescriptor[] {
         const { buildVideoProposeDeps } = await import('./videoRunner')
         const outcome = await executeVideoPropose(action, args, ctx, {
           suiteEnabled: true,
-          genEnabled: true,
+          genEnabled: action !== 'video_generation' || isVideoGenerationEnabled(ctx.event),
           bypassPermissions: true,
           ...buildVideoProposeDeps()
         })

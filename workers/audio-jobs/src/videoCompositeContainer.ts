@@ -28,6 +28,7 @@ export interface ResolvedOverlay {
   duration_sec: number
   requiredCopy?: CopyRequirement[]
   baseFootage?: ReelmotionBaseFootage
+  containedPortraitFootage?: ReelmotionBaseFootage
 }
 
 // The producer emits one video with one double-quoted src. If the original
@@ -63,10 +64,16 @@ export async function renderComposite(env: CompositeRenderEnv, args: CompositeRe
 
 async function renderCompositeWithinBudget(env: CompositeRenderEnv, args: CompositeRenderArgs, execution: ReturnType<typeof createRenderDeadline>): Promise<{ key: string }> {
   const resolvedOverlays = args.resolvedOverlays ?? []
-  if (args.pinnedObjects && (args.pinnedObjects.reduce((sum, object) => sum + object.size, 0) > 16 * 1024 * 1024 || resolvedOverlays.some(overlay => overlay.baseFootage || !overlay.requiredCopy?.length)))
+  if (args.pinnedObjects && (args.pinnedObjects.reduce((sum, object) => sum + object.size, 0) > 16 * 1024 * 1024 || resolvedOverlays.some(overlay => overlay.baseFootage || overlay.containedPortraitFootage || !overlay.requiredCopy?.length)))
     throw new Error('Storyboard composite exceeds supported immutable input contract')
-  const baseOverlay = resolvedOverlays.find(overlay => overlay.baseFootage)
-  const base = baseOverlay?.baseFootage
+  const baseOverlay = resolvedOverlays.find(overlay => overlay.baseFootage || overlay.containedPortraitFootage)
+  const contained = baseOverlay?.containedPortraitFootage
+  const base = contained ?? baseOverlay?.baseFootage
+  if (contained && (baseOverlay?.baseFootage || args.profile.fps !== 30 || args.profile.height !== 1080
+    || !((args.profile.format === 'square_1x1' && args.profile.width === 1080)
+      || (args.profile.format === 'youtube_16x9' && args.profile.width === 1920)))) {
+    throw new Error('Invalid contained portrait output')
+  }
   if (base && baseOverlay) {
     const expectedHtmlKey = `media/${args.projectId}/${args.jobId}/${args.profile.format}/overlay-${baseOverlay.clipId}.html`
     const source = base.source
@@ -100,10 +107,19 @@ async function renderCompositeWithinBudget(env: CompositeRenderEnv, args: Compos
     fps: args.profile.fps ?? 30,
     timeline_start_sec: ov.timeline_start_sec,
     duration_sec: ov.duration_sec,
-    ...(ov.baseFootage ? { baseFootage: { r2Key: ov.baseFootage.source.r2Key, zoom: ov.baseFootage.zoom } } : {})
+    ...(base && ov === baseOverlay ? { baseFootage: { r2Key: base.source.r2Key, zoom: base.zoom } } : {})
   }))
 
-  const plan = buildCompositePlan(args.state, args.profile, overlayFrameInputs)
+  // Compose footage, zoom and graphics at authored resolution. Fit the complete
+  // picture once at the output boundary so captions and end cards stay in frame.
+  const artworkProfile = contained ? { ...args.profile, format: 'reels_9x16', width: 1080, height: 1920 } : args.profile
+  const plan = buildCompositePlan(args.state, artworkProfile, overlayFrameInputs)
+  if (contained) {
+    const { width, height } = args.profile
+    plan.filterComplex += `;${plan.vLabel}scale=-2:${height},setsar=1,pad=${width}:${height}:(ow-iw)/2:0[contained]`
+    plan.vLabel = '[contained]'
+    plan.profile = args.profile
+  }
 
   const files: { b64: string }[] = []
   for (const input of plan.inputs) {
@@ -122,7 +138,7 @@ async function renderCompositeWithinBudget(env: CompositeRenderEnv, args: Compos
     requiredCopy?: CopyRequirement[]
   }[] = []
   for (const [index, ov] of resolvedOverlays.entries()) {
-    const html = new TextDecoder().decode(await readInput(ov.baseFootage?.graphicsHtmlKey ?? ov.htmlKey))
+    const html = new TextDecoder().decode(await readInput(base && ov === baseOverlay ? base.graphicsHtmlKey : ov.htmlKey))
     containerOverlays.push({
       clipId: ov.clipId,
       html,
@@ -130,8 +146,8 @@ async function renderCompositeWithinBudget(env: CompositeRenderEnv, args: Compos
       framesPattern: `ovl_${index}/%05d.png`,
       fps: args.profile.fps ?? 30,
       durationSec: ov.duration_sec,
-      width: args.profile.width,
-      height: args.profile.height
+      width: artworkProfile.width,
+      height: artworkProfile.height
     })
   }
 
@@ -152,7 +168,7 @@ async function renderCompositeWithinBudget(env: CompositeRenderEnv, args: Compos
   if (baseOverlay && res.status === 422 && res.headers.get('x-reelmotion-base') === 'unsupported') {
     await res.body?.cancel()
     const original = new TextDecoder().decode(await readInput(baseOverlay.htmlKey))
-    const fullOverlay = { ...containerOverlays[0]!, html: embedPinnedFootage(original, files[0]!.b64) }
+    const fullOverlay = { ...containerOverlays[0]!, width: args.profile.width, height: args.profile.height, html: embedPinnedFootage(original, files[0]!.b64) }
     const fallback = buildCompositePlan(args.state, args.profile, [{ ...overlayFrameInputs[0], baseFootage: undefined }])
     res = await post(fallback, files.slice(1), [fullOverlay])
   }

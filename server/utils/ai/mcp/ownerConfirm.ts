@@ -1,3 +1,4 @@
+import { isVideoGenerationEnabled } from '~~/server/utils/video-generation/feature'
 import { execute, queryOne } from '~~/server/utils/db'
 import { getExecutor } from '~~/server/utils/ai/executors'
 import type { ToolContext, ToolResult } from '~~/server/utils/ai/toolContext'
@@ -67,7 +68,7 @@ export async function executeOwnerMcpConfirm(
       return await dispatchVideoConfirm(
         { tool_name: row.tool_name, resolved_payload: payload },
         videoCtx,
-        { genEnabled: true, ...videoConfirmDeps, execution }
+        { genEnabled: row.tool_name !== 'video_generation' || isVideoGenerationEnabled(videoCtx.event), ...videoConfirmDeps, execution }
       )
     },
     feedDispatch: async (row, feedCtx, ack) => {

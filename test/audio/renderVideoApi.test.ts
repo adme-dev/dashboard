@@ -59,7 +59,8 @@ vi.mock('~~/server/utils/storage', () => ({
 
 const mockSelectBaseFootage = vi.fn()
 const mockResolveBaseFootage = vi.fn()
-vi.mock('~~/server/utils/audio/reelmotionBaseFootage', () => ({
+vi.mock('~~/server/utils/audio/reelmotionBaseFootage', async (importOriginal) => ({
+  ...await importOriginal<typeof import('~~/server/utils/audio/reelmotionBaseFootage')>(),
   selectReelmotionBaseFootage: (...args: unknown[]) => mockSelectBaseFootage(...args),
   resolveReelmotionBaseFootage: (...args: unknown[]) => mockResolveBaseFootage(...args)
 }))
@@ -397,6 +398,32 @@ it('normalizes duplicate formats before manifest dispatch and enqueue', async ()
 
 
 describe('ReelMotion split dispatch compatibility', () => {
+  it('takes one pinned portrait snapshot for the batch, fits legacy HTML and supplies native-size graphics', async () => {
+    const overlay = { type: 'overlay', id: 'o1', gsap_format_key: 'custom_1080x1920', gsap_project_id: 'bp1', timeline_start_sec: 0, duration_sec: 5 }
+    const state = { duration_sec: 5, width: 1080, height: 1920, tracks: [{ kind: 'overlay', clips: [overlay] }] }
+    mockGetProject.mockResolvedValue({ project: { ...avProject, clientId: 'client-a' }, timeline: { ...goodTimeline, state } })
+    mockCreateRenderJob.mockResolvedValue({ id: 'j1', timelineId: 't2', status: 'queued' })
+    const layers = [{ id: 1, type: 'video', src: 'https://assets.example/footage.mp4' }]
+    const zoom = [{ timeSec: 0, scale: 1 }]
+    mockLoadBannerLayers.mockResolvedValue({ layers, width: 1080, height: 1920, playback: { duration: 5, loopCount: 0 } })
+    mockBuildBannerHTML.mockReturnValue(validOverlayHtml)
+    mockSelectBaseFootage.mockReturnValue({ video: layers[0], graphics: [], zoom })
+    mockResolveBaseFootage.mockImplementation(async ({ graphicsHtmlKey }) => ({
+      version: 1, graphicsHtmlKey, source: { r2Key: 'banner-assets/actor/source.mp4', etag: 'etag', size: 100 }, zoom
+    }))
+    await renderVideoH({ params: { id: 'p1' }, body: { ...token }, context: {} } as never)
+    expect(mockLoadBannerLayers).toHaveBeenCalledTimes(1)
+    expect(mockResolveBaseFootage).toHaveBeenCalledTimes(1)
+    const uploads = new Map(mockUploadFile.mock.calls.map(([html, key]) => [key, html.toString()]))
+    const byFormat = mockEnqueueVideoRender.mock.calls[0]![1].resolvedOverlaysByFormat
+    for (const [format, left] of [['square_1x1', 236], ['youtube_16x9', 656]] as const) {
+      const [item] = byFormat[format]
+      expect(item.baseFootage).toBeUndefined()
+      expect(uploads.get(item.htmlKey)).toContain(`left:${left}px!important;top:0px!important;transform:scale(0.5625)`)
+      expect(uploads.get(item.containedPortraitFootage.graphicsHtmlKey)).toContain('left:0px!important;top:0px!important;transform:scale(1)')
+    }
+    expect(byFormat.reels_9x16[0].baseFootage).toBeDefined()
+  })
   it('retains complete HTML and adds a managed pinned graphics sibling', async () => {
     const overlay = { type: 'overlay', id: 'o1', gsap_project_id: 'bp1', timeline_start_sec: 0, duration_sec: 5 }
     const state = { duration_sec: 5, width: 1080, height: 1920, tracks: [{ kind: 'overlay', clips: [overlay] }] }

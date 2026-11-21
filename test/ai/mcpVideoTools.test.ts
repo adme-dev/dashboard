@@ -20,7 +20,7 @@ vi.mock('~~/server/utils/permissions', () => ({
   roleHasPermission: (role: string) => role === 'admin'
 }))
 
-const ctx = (role: string, userId = 'u1'): ToolContext => ({ userId, userRole: role, event: {} as never, source: 'mcp' })
+const ctx = (role: string, userId = 'u1'): ToolContext => ({ userId, userRole: role, event: { context: { cloudflare: { env: { VIDEO_GENERATION_ENABLED: 'true' } } } } as never, source: 'mcp' })
 
 const READ_NAMES = ['list_av_projects', 'list_video_models', 'list_video_generations', 'list_video_source_assets', 'get_video_generation_status', 'get_timeline_context']
 

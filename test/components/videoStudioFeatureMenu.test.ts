@@ -35,7 +35,7 @@ describe('studio feature discovery', () => {
       button.click()
       await nextTick()
       expect(events).toEqual([model.id])
-      expect(host.textContent).toContain('checked before submission')
+      expect(host.textContent).toContain('estimated cost')
     } finally {
       app.unmount()
     }
@@ -43,7 +43,7 @@ describe('studio feature discovery', () => {
   it('shows setup status without selectable model buttons when policy is disabled', async () => {
     const { host, app, events, models } = await mount(false)
     try {
-      expect(host.textContent).toContain('Generation needs setup')
+      expect(host.textContent).toContain('AI clip generation')
       expect([...host.querySelectorAll('button')].some(item => item.textContent?.includes(models[0]!.label))).toBe(false)
       expect(events).toEqual([])
     } finally {

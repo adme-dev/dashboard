@@ -1,12 +1,11 @@
+import { requireVideoGenerationEnabled } from '~~/server/utils/video-generation/feature'
 import { requireWriteAccess } from '~~/server/utils/auth'
 import { getProjectWithCurrentTimeline } from '~~/server/utils/audio/projects'
 import { getVideoGenerationJob } from '~~/server/utils/video-generation/jobs'
 import { canUseVideoGenerationProject } from '~~/server/utils/video-generation/timelineStillSource'
 
 export default defineEventHandler(async (event) => {
-  if (process.env.VIDEO_GENERATION_ENABLED !== 'true') {
-    throw createError({ statusCode: 404, statusMessage: 'Not found' })
-  }
+  requireVideoGenerationEnabled(event)
   const user = await requireWriteAccess(event)
   const id = getRouterParam(event, 'id')!
   const job = await getVideoGenerationJob(id)

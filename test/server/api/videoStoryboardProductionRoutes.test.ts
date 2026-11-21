@@ -63,7 +63,7 @@ describe('storyboard production routes', () => {
   it('takes project and actor only from the authorized route/session', async () => {
     expect(await reserve(event(request) as never)).toEqual({ attempt: { id: id(3) } })
     expect(mocks.write).toHaveBeenCalled()
-    expect(mocks.reserve).toHaveBeenCalledWith(expect.anything(), { ...request, projectId: id(2), actor }, expect.objectContaining({ loadTenantPolicy: expect.any(Function) }))
+    expect(mocks.reserve).toHaveBeenCalledWith(expect.anything(), { ...request, projectId: id(2), actor }, expect.objectContaining({ event: expect.anything() }))
     await expect(reserve(event({ ...request, projectId: id(8) }) as never)).rejects.toMatchObject({ statusCode: 400 })
     expect(mocks.reserve).toHaveBeenCalledTimes(1)
   })

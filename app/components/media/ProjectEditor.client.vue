@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useVideoModelAccess } from '~~/app/composables/useVideoModelAccess'
 // SP2c full multitrack editor. Extends the SP2b read-only preview by wiring every
 // MediaTimeline emit to the composable actions, adding an edit toolbar (undo/redo,
 // split, add-clip, save-version), and passing the reactive sources map for waveforms.
@@ -23,7 +24,7 @@ import VideoStudioSelectedAssetPanel from '~~/app/components/media/VideoStudioSe
 import VideoStudioVoiceComposer from '~~/app/components/media/VideoStudioVoiceComposer.vue'
 import VideoStudioWorkbench from '~~/app/components/media/VideoStudioWorkbench.vue'
 import VideoStudioFeatureMenu from '~~/app/components/media/VideoStudioFeatureMenu.vue'
-import { modelLabelFor, type VideoModelOption } from '~~/app/utils/video/modelPresentation'
+import { modelLabelFor } from '~~/app/utils/video/modelPresentation'
 import { apiErrorDescription } from '~~/app/utils/apiError'
 import { canReplaceVideoStudioClip } from '~~/app/utils/video/assetReplacement'
 import { resolveVideoStudioClipInspector } from '~~/app/utils/video/clipInspector'
@@ -151,37 +152,12 @@ function onMediaUploaded(p: { r2Key: string, durationSec: number, baseSource: 'u
 // ─── Video generation wiring ──────────────────────────────────────────────────
 
 const videoGenerationEnabled = computed(() => Boolean(publicConfig.videoGenerationEnabled))
-const generationModelOptions = ref<VideoModelOption[]>([])
-const generationModelsPending = ref(false)
-const generationModelsError = ref('')
+const { models: generationModelOptions, pending: generationModelsPending, detail: videoGenerationStatusDetail } = useVideoModelAccess(
+  projectId, computed(() => isAv.value && videoGenerationEnabled.value)
+)
 const selectedGenerationModelId = ref<string | null>(null)
 const modelSelectionKey = ref(0)
-async function loadGenerationModelOptions() {
-  if (!videoGenerationEnabled.value) return
-  generationModelsPending.value = true
-  generationModelsError.value = ''
-  try {
-    const response = await $fetch<{ models: VideoModelOption[], policy?: { enabled: boolean } }>('/api/agency/video/generation/models', { query: { projectId: projectId.value } })
-    generationModelOptions.value = response.policy?.enabled === false ? [] : response.models
-  } catch {
-    generationModelOptions.value = []
-    generationModelsError.value = 'Model access could not be confirmed. Check project policy and provider setup before generating.'
-  } finally { generationModelsPending.value = false }
-}
-const videoGenerationModelsAvailable = computed(() => generationModelOptions.value.length > 0)
-const videoGenerationReady = computed(() => videoGenerationEnabled.value && videoGenerationModelsAvailable.value)
-const videoGenerationStatusLabel = computed(() => {
-  if (generationModelsPending.value) return 'Checking model access'
-  if (videoGenerationReady.value) return 'Models available'
-  if (!videoGenerationEnabled.value) return 'AI disabled by policy'
-  return 'No video models'
-})
-const videoGenerationStatusDetail = computed(() => {
-  if (generationModelsError.value) return generationModelsError.value
-  if (videoGenerationReady.value) return 'Models are listed for this project. Provider setup, source approvals and budget are checked again before submission.'
-  if (!videoGenerationEnabled.value) return 'Video generation is disabled for this workspace. Ask an admin to enable the Video Studio generation policy.'
-  return 'No runnable video models are configured for this Cloudflare account.'
-})
+const videoGenerationReady = computed(() => generationModelOptions.value.length > 0)
 const generatePickerOpen = ref(false)
 const generationDraftPrompt = ref<string | null>(null)
 const genJobs = useVideoGenerationJobs(projectId.value)
@@ -1026,7 +1002,6 @@ onMounted(() => {
 watch(() => isAv.value && videoGenerationEnabled.value, (enabled) => {
   if (enabled) {
     void genJobs.start()
-    void loadGenerationModelOptions()
   } else {
     genJobs.stop()
   }
@@ -1428,8 +1403,7 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
           :asset-count="videoStudioAssetCount"
           :generation-job-count="activeGenerationJobCount"
           :render-job-count="editor.renderJobs.value.length"
-          :generation-enabled="videoGenerationReady"
-          :generation-status-label="videoGenerationStatusLabel"
+          :generation-enabled="videoGenerationEnabled"
           :generation-status-detail="videoGenerationStatusDetail"
           :rendering="editor.rendering.value"
           @add-footage="mediaPickerOpen = true"
@@ -1744,9 +1718,6 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
               :voice-asset-count="studioVoiceAssetCount"
               :overlay-asset-count="studioOverlayAssetCount"
               :render-job-count="editor.renderJobs.value.length"
-              :model-ready="videoGenerationReady"
-              :model-status-label="videoGenerationStatusLabel"
-              :model-status-detail="videoGenerationStatusDetail"
             >
               <template #actions>
                 <UButton
@@ -1839,6 +1810,7 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
                     @close="generationDraftPrompt = null"
                   />
                 </div>
+                <p v-else class="text-sm text-muted">{{ videoGenerationStatusDetail }}</p>
                 <VideoStudioVoiceComposer
                   :producer-brief="producerBrief"
                   :existing-voiceover-count="existingVoiceoverClipIds.length"

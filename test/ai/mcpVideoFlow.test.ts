@@ -15,7 +15,7 @@ import type { ToolContext } from '~~/server/utils/ai/toolContext'
 
 vi.mock('~~/server/utils/permissions', () => ({ roleHasPermission: (role: string) => role === 'admin' }))
 
-const ctx = (role = 'admin'): ToolContext => ({ userId: 'u1', userRole: role, event: {} as never, source: 'mcp' })
+const ctx = (role = 'admin'): ToolContext => ({ userId: 'u1', userRole: role, event: { context: { cloudflare: { env: { VIDEO_GENERATION_ENABLED: 'true' } } } } as never, source: 'mcp' })
 
 interface PendingRow { id: string, user_id: string, tool_name: string, resolved_payload: unknown, status: string, source: string, result_payload?: unknown }
 

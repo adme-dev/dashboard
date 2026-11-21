@@ -33,6 +33,17 @@ describe('owner MCP confirm execution', () => {
     mocks.executorExecute.mockResolvedValue({ resultRef: 'task-1', summary: 'Created task' })
   })
 
+  it('honours a disabled platform flag before executing an owner video proposal', async () => {
+    mocks.queryOne.mockResolvedValue({ tool_name: 'video_generation', resolved_payload: { payer: 'agency' } })
+    const result = await executeOwnerMcpConfirm({ proposalId: '22222222-2222-4222-8222-222222222222' }, {
+      userId: '11111111-1111-4111-8111-111111111111', userRole: 'owner', source: 'mcp',
+      godModeExecutionKey: `mcp:${'a'.repeat(64)}`,
+      event: { context: { cloudflare: { env: { VIDEO_GENERATION_ENABLED: 'false' } } } } as any
+    })
+    expect(result).toMatchObject({ ok: false, error: 'Video generation is disabled.' })
+    expect(mocks.executorExecute).not.toHaveBeenCalled()
+  })
+
   it('atomically claims an existing MCP pending action and executes its registered operation', async () => {
     const proposalId = '22222222-2222-4222-8222-222222222222'
     const userId = '11111111-1111-4111-8111-111111111111'

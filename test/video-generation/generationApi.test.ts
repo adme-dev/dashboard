@@ -46,7 +46,7 @@ vi.mock('~~/server/utils/video-generation/enqueue', () => ({
 
 const mockLoadTenantPolicy = vi.fn()
 vi.mock('~~/server/utils/video-generation/policy', () => ({
-  loadTenantVideoGenerationPolicy: (...a: unknown[]) => mockLoadTenantPolicy(...a),
+  loadStaffVideoGenerationPolicy: (...a: unknown[]) => mockLoadTenantPolicy(...a),
 }))
 
 const mockReserve = vi.fn()

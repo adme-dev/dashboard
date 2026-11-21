@@ -11,6 +11,7 @@ export class StoryboardPublicationUncertainError extends RenderPublicationUncert
 
 export interface ResolvedOverlay {
   baseFootage?: ReelmotionBaseFootage
+  containedPortraitFootage?: ReelmotionBaseFootage
   clipId: string
   htmlKey: string // R2 key for the uploaded banner HTML
   timeline_start_sec: number
