@@ -27,6 +27,10 @@ const zoom = ref<number | null>(null)
 const viewport = ref<HTMLElement | null>(null)
 const root = ref<HTMLElement | null>(null)
 const video = ref<HTMLVideoElement | null>(null)
+const posterFailed = ref(false)
+const posterUrl = computed(() => active.value
+  ? `/api/public/banner-share/${encodeURIComponent(props.shareToken)}/image?formatKey=${encodeURIComponent(active.value.key)}`
+  : undefined)
 const { width, height } = useElementSize(viewport)
 const { toggle: toggleFullscreen, isSupported: supportsFullscreen } = useFullscreen(root)
 const story = computed(() => (active.value?.format.h || 0) > (active.value?.format.w || 0))
@@ -108,6 +112,7 @@ watch(() => [props.shareToken, active.value?.key], ([token], previous) => {
   result.value = null
   error.value = ''
   preparing.value = false
+  posterFailed.value = false
   iteration = 1
   zoom.value = null
   if (token !== previous?.[0]) knownVideos.value = props.initialVideos || []
@@ -207,6 +212,7 @@ function mediaError() {
               ref="video"
               :key="`${result.url}:${playbackVersion}`"
               :src="result.url"
+              :poster="posterFailed ? undefined : posterUrl"
               class="block h-full w-full bg-black object-contain"
               :style="{ aspectRatio: active ? `${active.format.w} / ${active.format.h}` : '1' }"
               controls
@@ -227,6 +233,14 @@ function mediaError() {
         role="status"
         aria-live="polite"
       >
+        <img
+          v-if="posterUrl && !posterFailed && !error && !['failed', 'unsupported'].includes(result?.status || '')"
+          :src="posterUrl"
+          :alt="`${projectName || 'Banner'} — video poster`"
+          class="block max-h-[55vh] max-w-full object-contain"
+          :style="{ width: `${displayWidth}px`, aspectRatio: active ? `${active.format.w} / ${active.format.h}` : '1' }"
+          @error="posterFailed = true"
+        >
         <template v-if="result?.status === 'unsupported'">
           <UIcon name="i-lucide-info" class="size-8 text-muted" />
           <p>This size needs a separate preview export. Contact the team for a video.</p>
