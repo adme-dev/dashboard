@@ -9,7 +9,17 @@ import type {
 import { getVideoGenerationModel } from '../modelRegistry'
 import { buildCfVideoInputs, imageInputEncoding } from '../cfInputs'
 
+export interface VideoGatewayLog {
+  model: string
+  success: boolean
+  status_code: number
+  metadata?: Record<string, unknown> | null
+  cost?: number | null
+  custom_cost?: boolean
+}
+
 export interface AiGatewayDeps {
+  lastLog?: () => Promise<VideoGatewayLog | null>
   /** Faithful env.AI.run(model, inputs, options?) passthrough. Partner video models
    *  (bytedance/seedance, google/veo, …) take FLAT inputs and run SYNCHRONOUSLY —
    *  the call blocks for the full generation (minutes) and resolves with
@@ -103,27 +113,40 @@ export function makeAiGatewayProvider(deps: AiGatewayDeps): VideoGenerationProvi
   return {
     async submit(request: VideoGenerationProviderRequest): Promise<VideoGenerationProviderSubmission> {
       const model = cfModelFor(request.modelId)
-      const raw = await deps.run(
-        model,
-        await buildInputs(model, request),
-        {
-          gateway: {
-            metadata: {
-              tenantId: request.tenantId ?? '',
-              projectId: request.projectId ?? '',
-              userId: request.userId ?? '',
-              jobId: request.jobId,
-              modelId: request.modelId,
+      const inputs = await buildInputs(model, request)
+      let raw: unknown
+      let runError: unknown
+      try {
+        raw = await deps.run(
+          model, inputs, {
+            gateway: {
+              id: 'default',
+              metadata: {
+                tenantId: request.tenantId ?? '',
+                projectId: request.projectId ?? '',
+                userId: request.userId ?? '',
+                jobId: request.jobId,
+                modelId: request.modelId,
+              },
             },
-          },
-        }
-      )
+          }
+        )
+      } catch (error) {
+        runError = error ?? new Error('Gateway request failed')
+      }
+      // The binding exposes the latest log ID. Verify attribution before using it.
+      const log = await deps.lastLog?.().catch(() => null)
+      const matched = log?.metadata?.jobId === request.jobId && log.model === model ? log : null
+      if (runError && !(matched?.success === false && matched.status_code === 400)) throw runError
+      const cost = matched?.cost
+      const actualCostCents = !matched?.custom_cost && typeof cost === 'number' && Number.isFinite(cost) && cost >= 0
+        ? Math.round(cost * 100)
+        : null
       const outputUrl = extractVideoUrl(raw)
       const providerError = extractProviderError(raw)
-      // CF bills via unified billing (dashboard); no per-call cost is returned → null.
       completedResults.set(request.jobId, outputUrl
-        ? { status: 'succeeded', outputUrl, actualCostCents: null, errorMessage: null }
-        : { status: 'failed', outputUrl: null, actualCostCents: null, errorMessage: providerError || `model returned no video url (state=${extractState(raw) ?? 'unknown'})` })
+        ? { status: 'succeeded', outputUrl, actualCostCents, errorMessage: null }
+        : { status: 'failed', outputUrl: null, actualCostCents, errorMessage: providerError || `model returned no video url (state=${extractState(raw) ?? 'unknown'})` })
       return { providerRequestId: request.jobId, status: 'completed', modelId: request.modelId }
     },
 

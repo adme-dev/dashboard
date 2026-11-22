@@ -23,7 +23,7 @@ describe('aiGateway provider (synchronous partner video models)', () => {
     expect(model).toBe('bytedance/seedance-2.0-fast')
     // Documented partner shape: flat inputs. The batch { requests: [...] } envelope is
     // rejected by these models with 7003: User Input Error.
-    expect(inputs).toEqual({ prompt: 'slow pan', image: 'https://r2/still.png', duration: 5, aspect_ratio: '9:16', resolution: '720p' })
+    expect(inputs).toEqual({ prompt: 'slow pan', image: 'https://r2/still.png', duration: 5, aspect_ratio: '9:16', resolution: '720p', generate_audio: false })
     expect((inputs as any).requests).toBeUndefined()
     expect(options).toMatchObject({ gateway: { metadata: { tenantId: 'dealer-1', projectId: 'project-1', userId: 'user-1', jobId: 'job-1', modelId: 'aigateway/seedance-i2v' } } })
     expect((options as any).queueRequest).toBeUndefined()
@@ -108,6 +108,22 @@ describe('aiGateway provider (synchronous partner video models)', () => {
     const res = await provider.poll({ providerRequestId: 'job-elsewhere', status: 'running', modelId: 'aigateway/seedance-i2v' })
     expect(res.status).toBe('running')
     expect(res.outputUrl).toBeNull()
+  })
+
+  it('uses only the matching gateway receipt for a confirmed zero-cost rejection', async () => {
+    const log = { model: 'bytedance/seedance-2.0-fast', metadata: { jobId: i2vReq.jobId }, cost: 0, success: false, status_code: 400 }
+    const provider = makeAiGatewayProvider({ run: vi.fn().mockRejectedValue(new Error('rejected')), lastLog: async () => log })
+    expect(await provider.poll(await provider.submit(i2vReq))).toMatchObject({ status: 'failed', actualCostCents: 0 })
+    log.metadata.jobId = 'another-job'
+    await expect(provider.submit(i2vReq)).rejects.toThrow('rejected')
+  })
+
+  it('uses the gateway charge for a completed request and ignores custom prices', async () => {
+    const log = { model: 'bytedance/seedance-2.0-fast', metadata: { jobId: i2vReq.jobId }, cost: 0.731, success: true, status_code: 200, custom_cost: false }
+    const provider = makeAiGatewayProvider({ run: async () => completedResponse, lastLog: async () => log })
+    expect(await provider.poll(await provider.submit(i2vReq))).toMatchObject({ status: 'succeeded', actualCostCents: 73 })
+    log.custom_cost = true
+    expect(await provider.poll(await provider.submit(i2vReq))).toMatchObject({ status: 'succeeded', actualCostCents: null })
   })
 
   it('the cached result is consumed once (second poll falls back to running)', async () => {
