@@ -546,6 +546,15 @@ export async function convertTheBriefHtml(html) {
         if (stages.some(stage => !['none', 'instant', 'audio'].includes(stage.type))) throw new Error(`Audio ${sourceId}: unsupported source audio effect`)
         const delay = audioConfig?.buildIn?.delay
         if (delay !== undefined && (!Number.isFinite(delay) || delay < 0 || Math.abs(slide.start + delay - start) > 1e-6)) throw new Error(`Audio ${sourceId}: source audio presence requires reconciliation`)
+        if (audioConfig?.endTime !== undefined && audioConfig?.duration !== undefined) {
+          const clipDuration = audioConfig.endTime - offset
+          if (!Number.isFinite(clipDuration) || clipDuration <= 0 || Math.abs(clipDuration - audioConfig.duration) > 1e-6 || start + clipDuration > slide.end + 1e-6) throw new Error(`Audio ${sourceId}: clip duration requires reconciliation`)
+          if (Math.abs(layerBase.endTime - (start + clipDuration)) > 1e-6) {
+            layerBase.endTime = start + clipDuration
+            layerBase.keyframes = { opacity: holdOpacity(start, layerBase.endTime) }
+            warnings.push(`Audio ${sourceId}: presence reconciled to the authored ${clipDuration}s clip trim rather than the generic element duration; review soundtrack timing`)
+          }
+        }
         layers.push({ ...layerBase, id: id++, type: 'audio', name: `Audio ${sourceId}`, src: localAsset(sources[0].getAttribute('src')), x: 0, y: 0, w: 1, h: 1, volume, ...(audio.muted || audio.hasAttribute('muted') || audioConfig?.muted === true ? { muted: true } : {}) })
       } else if (type === 'video') {
         // Bounded video adapter: one local muted autoplay clip that starts at media
@@ -870,13 +879,30 @@ export async function convertTheBriefHtml(html) {
           }
           layers.push({ ...layerBase, id: id++, type: 'image', name: `Shape ${sourceId}`, rotation, src: localAsset(asset[1]), fit: 'cover' })
         } else {
-          if (borders.some(width => width !== 0)) throw new Error(`${element.id}: shape border needs an adapter`)
-          layers.push({ ...layerBase, id: id++, type: 'rect', name: `Shape ${sourceId}`, rotation, ...(borderRadius !== undefined ? { borderRadius } : {}), ...shapeEffects, fillColor: contentCss.backgroundColor || 'transparent' })
+          if (borders.some(width => width !== 0)) {
+            const sides = ['Top', 'Right', 'Bottom', 'Left']
+            const colors = sides.map(side => contentCss[`border${side}Color`])
+            const styles = sides.map(side => contentCss[`border${side}Style`])
+            if (new Set(borders).size !== 1 || !Number.isFinite(borders[0]) || borders[0] < 0 || borders[0] > 100 || new Set(colors).size !== 1 || styles.some(value => value !== 'solid') || rectShape || visualFilter) throw new Error(`${element.id}: shape border composition needs an adapter`)
+            // Native buttons support border-box fill, uniform stroke and corners.
+            // Empty text retains this shape as an editable native visual layer.
+            layers.push({ ...layerBase, id: id++, type: 'button', name: `Bordered shape ${sourceId}`, text: '', rotation, borderRadius: borderRadius || 0, borderWidth: borders[0], borderColor: colors[0], bgColor: contentCss.backgroundColor || 'transparent', textColor: 'transparent' })
+            warnings.push(`${element.id}: uniform bordered shape preserved as an editable native button with empty text; review border and corner geometry`)
+          } else {
+            layers.push({ ...layerBase, id: id++, type: 'rect', name: `Shape ${sourceId}`, rotation, ...(borderRadius !== undefined ? { borderRadius } : {}), ...shapeEffects, fillColor: contentCss.backgroundColor || 'transparent' })
+          }
         }
       } else {
         throw new Error(`Unsupported layer type: ${type}`)
       }
       sourceElements.push({ sourceId, slideId: slide.id, type, nativeLayerIds: layers.slice(before).map(layer => layer.id), start, end })
+    }
+    for (const layer of layers) {
+      if (!layer.fontFamily?.includes(',')) continue
+      const names = layer.fontFamily.split(',').map(value => value.trim().replace(/^["']|["']$/g, ''))
+      const declared = fonts.filter(font => names.includes(font.family) && font.weight === (layer.fontWeight || 400) && font.style === (layer.fontStyle || 'normal'))
+      if (declared.length !== 1 || !names[0].startsWith(declared[0].family + ' file-')) throw new Error(`${layer.name}: ambiguous export font alias needs reconciliation`)
+      layer.fontFamily = declared[0].family
     }
     return { schemaVersion: 1, adapter: slides.length === 1 ? 'thebrief-css-single-slide-pilot' : 'thebrief-css-hard-cut-slides', fidelityVerified: false, fonts, externalFontStylesheets, imageTransforms, source: { designHash: source.designHash || null, width: source.width, height: source.height, duration, loopCount: source.loopCount, elementCount: elements.length }, videoFrames, canvasData: { [`custom_${source.width}x${source.height}`]: { slides: slides.map((slide, index) => ({ id: `source-slide:${slide.id}`, name: `Slide ${index + 1}`, duration: slide.end - slide.start })), playback: { duration, loopCount: source.loopCount }, layers, bgColor: background } }, sourceElements, warnings }
   } finally {

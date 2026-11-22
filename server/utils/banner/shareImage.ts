@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { getQuery } from 'h3'
 import type { H3Event } from 'h3'
 import { buildBannerHTML } from '~~/server/utils/banner/htmlBuilder'
 import { preferredBannerPreviewKey } from '~~/app/utils/banner-library'
@@ -14,7 +15,11 @@ export async function bannerShareImage(event: H3Event): Promise<Response> {
   const canvas: Record<string, ArtboardState> = typeof project.canvasData === 'string'
     ? JSON.parse(project.canvasData)
     : project.canvasData as Record<string, ArtboardState>
-  const key = preferredBannerPreviewKey(canvas)
+  const { formatKey } = getQuery(event)
+  if (formatKey !== undefined && typeof formatKey !== 'string') {
+    throw createError({ statusCode: 400, statusMessage: 'Choose one saved artwork size' })
+  }
+  const key = formatKey === undefined ? preferredBannerPreviewKey(canvas) : formatKey
   const format = key && resolveBannerFormat(key)
   const board = key && canvas[key]
   if (!key || !format || !board || format.w > 4000 || format.h > 4000) {
@@ -23,7 +28,7 @@ export async function bannerShareImage(event: H3Event): Promise<Response> {
   const env = event.context.cloudflare?.env
   const bucket = env?.MEDIA_BUCKET
   if (!bucket?.get || !bucket.put) throw createError({ statusCode: 503, statusMessage: 'Artwork preview storage unavailable' })
-  const revision = createHash('sha256').update(JSON.stringify({ canvas: board, fonts, version: 1 })).digest('hex')
+  const revision = createHash('sha256').update(JSON.stringify({ key, canvas: board, fonts, version: 2 })).digest('hex')
   const imageKey = `banner-share-previews/${project.id}/${revision}.jpg`
   const headers = { 'Content-Type': 'image/jpeg', 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer' }
   const cached = await bucket.get(imageKey)

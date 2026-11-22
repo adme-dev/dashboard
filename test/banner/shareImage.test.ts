@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({ load: vi.fn(), limit: vi.fn(), get: vi.fn(), put: vi.fn(), screenshot: vi.fn() }))
+vi.mock('h3', async importOriginal => ({ ...await importOriginal<typeof import('h3')>(), getQuery: (event: { query?: object }) => event.query || {} }))
 vi.mock('~~/server/utils/banner/publicShare', () => ({ loadPublicBannerShare: mocks.load }))
 vi.mock('~~/server/utils/rateLimit', () => ({ enforceRateLimit: mocks.limit }))
 vi.stubGlobal('createError', (options: object) => Object.assign(new Error(), options))
@@ -50,6 +51,28 @@ describe('shared artwork images', () => {
     mocks.screenshot.mockResolvedValueOnce(new Response('failed', { status: 500 }))
     await expect(bannerShareImage(event as never)).rejects.toMatchObject({ statusCode: 503 })
     expect(mocks.put).not.toHaveBeenCalled()
+  })
+
+  it('renders the requested saved portrait size for its video poster', async () => {
+    mocks.load.mockResolvedValueOnce({ project: { id: 'project', canvasData: {
+      custom_1080x1080: { layers: [], playback: { duration: 6, loopCount: 0 } },
+      custom_1080x1920: { layers: [], playback: { duration: 6, loopCount: 0 } }
+    } }, fonts: [] })
+    await bannerShareImage({ ...event, query: { formatKey: 'custom_1080x1920' } } as never)
+    const [, options] = mocks.screenshot.mock.calls[0]!
+    expect(options.viewport).toEqual({ width: 675, height: 1200, deviceScaleFactor: 1 })
+    expect(options.html).toContain('window.__engagrFrame.seek(3)')
+  })
+
+  it.each(['custom_400x300', 'https://example.com/artwork'])('rejects a poster size not present in the shared canvas: %s', async (formatKey) => {
+    await expect(bannerShareImage({ ...event, query: { formatKey } } as never)).rejects.toMatchObject({ statusCode: 404 })
+    expect(mocks.get).not.toHaveBeenCalled()
+    expect(mocks.screenshot).not.toHaveBeenCalled()
+  })
+
+  it('rejects multiple size values before rendering', async () => {
+    await expect(bannerShareImage({ ...event, query: { formatKey: ['custom_1080x1080', 'custom_1080x1920'] } } as never)).rejects.toMatchObject({ statusCode: 400 })
+    expect(mocks.screenshot).not.toHaveBeenCalled()
   })
 
   it('permits only managed assets and fixed rendering dependencies', () => {

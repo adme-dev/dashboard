@@ -56,6 +56,27 @@ afterEach(() => {
   vi.useRealTimers()
 })
 describe('client compiled video player', () => {
+  it('shows a saved artwork poster while the video is queued', async () => {
+    fetch.mockResolvedValue({ videos: [{ ...ready.videos[0], status: 'queued', url: null }] })
+    const { host } = await mount()
+    const image = host.querySelector('img')!
+    expect(image.getAttribute('src')).toBe(`/api/public/banner-share/p_${'a'.repeat(32)}/image?formatKey=custom_1200x1200`)
+    expect(image.getAttribute('alt')).toBe('GMSV — video poster')
+    expect(host.querySelector('video')).toBeNull()
+    image.dispatchEvent(new Event('error'))
+    await flush()
+    expect(host.querySelector('img')).toBeNull()
+    expect(host.textContent).toContain('queued')
+  })
+
+  it('uses a matching poster for each selected video without autoplay', async () => {
+    const { host, click } = await mount({ initialVideos: ready.videos })
+    expect(host.querySelector('video')?.getAttribute('poster')).toContain('formatKey=custom_1200x1200')
+    await click('1080 × 1920')
+    expect(host.querySelector('video')?.getAttribute('poster')).toContain('formatKey=custom_1080x1920')
+    expect(host.querySelector('video')?.hasAttribute('autoplay')).toBe(false)
+  })
+
   it('plays server-prepared sizes even when browser status fetches are blocked', async () => {
     fetch.mockRejectedValue(new TypeError('Fetch API access control checks'))
     const { host, click } = await mount({ initialVideos: ready.videos })
@@ -144,6 +165,7 @@ describe('client compiled video player', () => {
     fetch.mockRejectedValueOnce({ statusCode, data: { statusMessage: 'Link unavailable' } })
     await click('Reload preview')
     expect(host.querySelector('video')).toBeNull()
+    expect(host.querySelector('img')).toBeNull()
     expect(host.textContent).toContain('Link unavailable')
   })
   it('pauses the previous video when switching sizes and does not autoplay the next', async () => {

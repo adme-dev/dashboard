@@ -1,5 +1,19 @@
 # Banner Studio change log
 
+## Migration readiness reconciliation — 23 November 2026
+
+This checkpoint supersedes the October outstanding-feature list below. It reconciles recent implementation history with current `main` (`52f84ef95`); historical entries retain the state at their original date.
+
+| Area | Current evidence | Remaining acceptance |
+| --- | --- | --- |
+| Designer workflow | Linked layouts, native text/font controls, image/video/audio insertion, replacement/crop controls and brand button presets are implemented. Insert opens first in both editor routes. | A producer/designer trial using active campaign files, including revision, undo, save/reopen and delivery. |
+| MotorStack | Media search/import, readable brand kits and automatic kit selection are live; the GEELY work recorded 986 targeted passing checks and live font verification in PR #780. | Scheduled MotorStack refresh remains outstanding. Applying a kit is an explicit edit; retain exact imported campaign faces. |
+| Client videos | Native compiled H.264/AAC proofs, phone layout fixes, initial-page completed-video capabilities, bounded status requests and safe stale-queue recovery shipped through PRs #880–883. | Actual Safari/iPhone playback remains unverified in the recorded history. Chrome/mobile layout checks do not certify Safari. |
+| Current four campaigns | Leapmotor and GAC are saved as three-size editable drafts. Corrected packages bind every text layer to a managed font (32/32 and 35/35); save/reopen edits and six-second soundtrack transport were checked. | Repeat final source/native frame comparison after the font correction. RAM and Nissan remain held for unsupported mask/text/reveal motion; RAM also exceeds the bounded video inspection limit. |
+| Posters | This release candidate adds the selected size's saved-artwork still to the client video and its preparation state. | Record deployment and verify selected sizes, failed-image fallback and mobile layout before claiming live acceptance. |
+
+The candidate also fixes export-only custom-font family aliases, reconciles internally consistent audio clip duration against stale generic element duration, and preserves uniform solid bordered shapes as editable native button layers with empty text. Unsupported borders and ambiguous font aliases still hold conversion. Original files and client capabilities stay outside Git. See the [current campaign acceptance ledger](../migrations/banner-studio-northern-20261123.md).
+
 ## Recents import compatibility — release candidate (31 October 2026)
 
 Offline preparation now retains centered horizontal image reflections, transparent shapes and full normal/italic Google font faces. Static image opacity and bounded filter chains preserve source brightness, hue and shadows in the editor and exports. Supported intermediate pulse and bounce effects preserve exact cycle/reset timestamps and clipped easing curves. Native playback and both HTML exporters handle ordered keyframes at the same timestamp, including forward and backward seeks after saving. Larger outer design-set ZIPs have a separate bounded inspection profile; child archives retain the standard limits.
@@ -86,15 +100,12 @@ Release: [PR #739](https://github.com/adme-dev/dashboard/pull/739), source `349b
 
 Play All follow-up: [PR #737](https://github.com/adme-dev/dashboard/pull/737). See the transition ledger for earlier pilot and audio evidence.
 
-## Still needed before retiring TheBrief
+## Cutover gates still open — reconciled 23 November 2026
 
-- Stock-video background gallery with search, preview and reusable assets.
-- Real folder management and remaining project-menu workflows.
-- Ordered slides, transitions and familiar animation blocks/builder.
-- Linked insertion, duplication and deletion across all sizes.
-- MP4 audio mixing and verified exported video/audio files.
-- MotorStack brand assets in Banner Studio and the Creative Suite launcher entry.
-- Reliable bulk conversion, including more complex Toyota/Gendore/Chery slides and animations. API access requires Enterprise; browser bulk HTML5 export works on Pro Legacy.
-- Producer review of representative active jobs and a successful team trial.
+- Resolve active RAM/Nissan import holds with native editable equivalents that match the source, then verify every size and transition.
+- Finish representative source/native comparisons and delivered-file checks, including legal copy, exact font faces, audio, seek, loop and still posters.
+- Complete an actual Safari/iPhone check on the current compiled client proof path.
+- Complete a designer/producer trial and reconcile active-job counts, exceptions and retained source archives before retiring TheBrief.
+- Treat complex legacy/bulk conversion and scheduled MotorStack refresh as separate workstreams; do not infer completion from the current two campaign drafts.
 
-TheBrief has not been retired. Video playback support, stock media access and final export verification are separate acceptance checks.
+TheBrief has not been retired. Existing features are not listed as missing solely because an October note predates their release.

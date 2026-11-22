@@ -26,6 +26,19 @@ it('preserves explicit mute and zero volume', async () => {
   expect(zero.canvasData.custom_300x250.layers.find(layer => layer.type === 'audio').volume).toBe(0)
 })
 
+it('uses the authored clip trim when the generic audio element duration is stale', async () => {
+  const html = audioSource({ endTime: 3.8, duration: 3.8 })
+    .replace('{id:1,from:200}', '{id:1,from:200,duration:2000}')
+  const result = await convertTheBriefHtml(html)
+  const track = result.canvasData.custom_300x250.layers.find(layer => layer.type === 'audio')
+  expect(track).toMatchObject({ startTime: 0.2, endTime: 4 })
+  expect(track.keyframes.opacity.at(-1)).toMatchObject({ time: 4, value: 1 })
+})
+
+it('holds inconsistent clip duration metadata rather than guessing the audio end', async () => {
+  await expect(convertTheBriefHtml(audioSource({ endTime: 3, duration: 2 }))).rejects.toThrow('clip duration requires reconciliation')
+})
+
 it('holds already-clipped exports with unresolved original offsets or fades instead of guessing', async () => {
   await expect(convertTheBriefHtml(audioSource({ startTime: 12.4, endTime: 18.4, duration: 130 }))).rejects.toThrow('source clip offset 12.4s requires exported-clip reconciliation')
   await expect(convertTheBriefHtml(audioSource({ buildOut: { type: 'fadeAudio', duration: 1 } }))).rejects.toThrow('source fades require exported-clip reconciliation')
