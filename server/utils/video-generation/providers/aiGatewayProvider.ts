@@ -17,6 +17,7 @@ export interface VideoGatewayLog {
   status_code: number
   metadata?: Record<string, unknown> | null
   cost?: number | null
+  wholesale?: boolean
   custom_cost?: boolean
 }
 
@@ -141,7 +142,9 @@ export function makeAiGatewayProvider(deps: AiGatewayDeps): VideoGenerationProvi
       const matched = log?.metadata?.jobId === request.jobId && log.model === model ? log : null
       if (runError && !(matched?.success === false && matched.status_code === 400)) throw runError
       const cost = matched?.cost
-      const actualCostCents = !matched?.custom_cost && typeof cost === 'number' && Number.isFinite(cost) && (cost > 0 || (cost === 0 && matched?.success === false))
+      const keySource = (raw as { gatewayMetadata?: { keySource?: string } } | undefined)?.gatewayMetadata?.keySource
+      const unifiedBilling = matched?.wholesale === true || (matched?.wholesale == null && keySource === 'Unified')
+      const actualCostCents = unifiedBilling && !matched?.custom_cost && typeof cost === 'number' && Number.isFinite(cost) && (cost > 0 || (cost === 0 && matched?.success === false))
         ? Math.round(cost * 100)
         : null
       const outputUrl = extractVideoUrl(raw)

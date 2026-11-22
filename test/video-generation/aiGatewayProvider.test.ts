@@ -111,7 +111,7 @@ describe('aiGateway provider (synchronous partner video models)', () => {
   })
 
   it('uses only the matching gateway receipt for a confirmed zero-cost rejection', async () => {
-    const log = { model: 'bytedance/seedance-2.0-fast', metadata: { jobId: i2vReq.jobId }, cost: 0, success: false, status_code: 400 }
+    const log = { model: 'bytedance/seedance-2.0-fast', metadata: { jobId: i2vReq.jobId }, cost: 0, wholesale: true, success: false, status_code: 400 }
     const provider = makeAiGatewayProvider({ run: vi.fn().mockRejectedValue(new Error('rejected')), lastLog: async () => log })
     expect(await provider.poll(await provider.submit(i2vReq))).toMatchObject({ status: 'failed', actualCostCents: 0, errorMessage: expect.stringContaining('HTTP 400') })
     log.metadata.jobId = 'another-job'
@@ -119,12 +119,15 @@ describe('aiGateway provider (synchronous partner video models)', () => {
   })
 
   it('uses the gateway charge for a completed request and ignores custom prices', async () => {
-    const log = { model: 'bytedance/seedance-2.0-fast', metadata: { jobId: i2vReq.jobId }, cost: 0.731, success: true, status_code: 200, custom_cost: false }
+    const log = { model: 'bytedance/seedance-2.0-fast', metadata: { jobId: i2vReq.jobId }, cost: 0.731, success: true, status_code: 200, wholesale: true, custom_cost: false }
     const provider = makeAiGatewayProvider({ run: async () => completedResponse, lastLog: async () => log })
     expect(await provider.poll(await provider.submit(i2vReq))).toMatchObject({ status: 'succeeded', actualCostCents: 73 })
     log.cost = 0
     expect(await provider.poll(await provider.submit(i2vReq))).toMatchObject({ actualCostCents: null })
     log.cost = 0.731
+    log.wholesale = false
+    expect(await provider.poll(await provider.submit(i2vReq))).toMatchObject({ actualCostCents: null })
+    log.wholesale = true
     log.custom_cost = true
     expect(await provider.poll(await provider.submit(i2vReq))).toMatchObject({ status: 'succeeded', actualCostCents: null })
   })
