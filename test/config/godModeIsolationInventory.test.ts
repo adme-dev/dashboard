@@ -153,7 +153,8 @@ const API_INVENTORY = {
   // Ads governance adds one read-only GET (/api/agency/marketing/automation/governance).
   // Marketing alerts adds one cron POST (/api/cron/marketing-alerts) authenticated by the
   // machine cron secret, not a staff session; it is notify-only and registers no bypass.
-  totalRouteFiles: 2397,
+  // Model Ops adds one admin/owner aggregate GET; it cannot dispatch a job or change its payer.
+  totalRouteFiles: 2398,
   mutationRouteFiles: 1310,
   explicitlyGuardedMutationFiles: 436,
   guardedMutationFilesWithTransactionCall: 58
@@ -207,7 +208,7 @@ describe('God mode route isolation inventory', () => {
       // T10 adds two scoped reads and four guarded production writes; no authority bypass.
   // Governance phase 4 adds one client-scoped read (clients/[id]/change-history.get.ts).
       // Marketing alerts adds one cron-secret POST; no authority bypass.
-      totalRouteFiles: 2397,
+      totalRouteFiles: 2398,
       mutationRouteFiles: 1310,
       explicitlyGuardedMutationFiles: 436,
       guardedMutationFilesWithTransactionCall: 58
@@ -335,6 +336,17 @@ describe('God mode route isolation inventory', () => {
     expect(handoffs).toContain('assertCampaignNativeEnabled(): void')
     expect(handoffs).not.toMatch(/assertCampaignNativeEnabled\?\(|assertCampaignNativeEnabled\?\.\(/)
     expect(handoffs).toContain('getHandoffDraft(db, row.document_id, authorizeWrite, authority.assertCampaignNativeEnabled)')
+  })
+
+  it('keeps agency-wide video cost reporting behind its existing admin role and outside bypass routes', () => {
+    const file = 'server/api/admin/ai/model-ops/video-costs.get.ts'
+    const source = readFileSync(file, 'utf8')
+    const gate = source.indexOf("await requireRole(event, ['admin', 'owner'])")
+    expect(gate).toBeGreaterThan(-1)
+    expect(source.indexOf('return queryRows', gate)).toBeGreaterThan(gate)
+    expect(source).toContain('GROUP BY j.payer, j.tenant_id, c.name')
+    expect(source).not.toMatch(/isApplicationCapabilityEnabled|registerGodModeMutationFamily/)
+    expect(listReviewedGodModeReadRoutes().some(route => route.file === file)).toBe(false)
   })
 
   it('pins FigFlow route additions and relocated legacy guards to canonical authority', () => {
