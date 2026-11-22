@@ -445,13 +445,17 @@ export async function getPresignedUploadUrl(
  */
 export async function getPresignedDownloadUrl(
   key: string,
-  expiresIn: number = 3600 // 1 hour default
+  expiresIn: number = 3600,
+  attachmentFilename?: string
 ): Promise<string> {
   const client = getR2Client()
 
   const command = new GetObjectCommand({
     Bucket: r2Config().bucketName,
-    Key: key
+    Key: key,
+    ResponseContentDisposition: attachmentFilename
+      ? `attachment; filename="${attachmentFilename.replace(/[^a-zA-Z0-9_.-]/g, '_')}"`
+      : undefined
   })
 
   return getSignedUrl(client, command, { expiresIn })

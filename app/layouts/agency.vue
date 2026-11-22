@@ -12,8 +12,9 @@ const selectedWorkspace = ref<string | null>(null)
 const isClientAnalyticsRoute = computed(() => route.path.startsWith('/agency/analytics/client/'))
 const { fetch: layoutFetch } = useAuthenticatedFetch()
 
-// The Activity Hub floating bubble is hidden on the full-screen Chat surface —
-// it duplicates chat and overlaps the bottom-anchored message composer.
+const activityHubLauncherTarget = shallowRef<HTMLElement | null>(null)
+provide('activity-hub-launcher-target', activityHubLauncherTarget)
+// Chat has its own bottom-anchored composer.
 const showActivityHub = computed(() => !route.path.startsWith('/agency/chat'))
 
 // RBAC: permission-gated navigation
@@ -664,7 +665,7 @@ watch([() => route.path, () => mainNav.value.length], () => {
     </div>
 
     <ClientOnly>
-      <ActivityHub v-if="showActivityHub" />
+      <ActivityHub v-if="showActivityHub" :launcher-target="activityHubLauncherTarget" />
     </ClientOnly>
   </UDashboardGroup>
 </template>

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { MediaRenderJob, MediaRenderJobStatus } from '~~/app/types'
-import { creativeVersionLabelForRenderJob, parseRenderFailure, renderVariantFormats, renderVariantUrl } from '~~/app/utils/video/renderJobSummary'
+import { creativeVersionLabelForRenderJob, parseRenderFailure, renderVariantFormats, renderFormatLabel, renderDownloadUrl } from '~~/app/utils/video/renderJobSummary'
 
 const props = withDefaults(defineProps<{
   projectId: string
@@ -37,7 +37,7 @@ function variantFormats(job: MediaRenderJob) {
 }
 
 function variantUrl(job: MediaRenderJob, format: string) {
-  return renderVariantUrl(props.projectId, job.id, format)
+  return renderDownloadUrl(props.projectId, job.id, format)
 }
 
 function versionLabel(job: MediaRenderJob) {
@@ -46,7 +46,7 @@ function versionLabel(job: MediaRenderJob) {
 
 function variantItems(job: MediaRenderJob, label: string, icon: string, event: 'publish' | 'send-to-portal' | 'save-asset') {
   return [variantFormats(job).map(format => ({
-    label: `${label} ${format}`,
+    label: `${label} ${renderFormatLabel(format)}`,
     icon,
     onSelect: () => emit(event, job, format)
   }))]
@@ -116,12 +116,13 @@ function failureSummary(job: MediaRenderJob) {
           <UButton
             v-for="format in variantFormats(job)"
             :key="format"
-            :label="format"
+            :label="`Download ${renderFormatLabel(format)}`"
             size="xs"
             variant="soft"
             color="neutral"
             :to="variantUrl(job, format)"
-            target="_blank"
+            external
+            download
           />
           <UButton
             v-if="job.status === 'failed'"
@@ -166,7 +167,7 @@ function failureSummary(job: MediaRenderJob) {
               size="xs"
               variant="ghost"
               color="neutral"
-              label="Library"
+              label="Save to library"
             />
           </UDropdownMenu>
         </div>

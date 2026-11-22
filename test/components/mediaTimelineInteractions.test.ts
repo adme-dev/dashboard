@@ -10,7 +10,7 @@ import MediaTimeline from '~~/app/components/media/MediaTimeline.client.vue'
 const stubs = {
   UIcon: { name: 'UIcon', props: ['name'], template: '<i :data-icon="name" />' },
   UButton: { name: 'UButton', props: ['label', 'icon', 'disabled'], emits: ['click'], template: '<button :disabled="disabled" @click="$emit(\'click\', $event)">{{ label }}</button>' },
-  USelect: { name: 'USelect', props: ['modelValue', 'items'], template: '<select />' },
+  USelect: { name: 'USelect', props: ['modelValue', 'items'], template: '<select :value="modelValue"><option v-for="item in items" :key="item.value" :value="item.value">{{ item.label }}</option></select>' },
   UPopover: { name: 'UPopover', template: '<div><slot /><slot name="content" /></div>' },
 }
 
@@ -65,6 +65,23 @@ beforeAll(() => {
 })
 
 describe('MediaTimeline interactions', () => {
+  it('fits a loaded portrait edit to its pane and preserves a manual zoom', async () => {
+    const width = vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(924)
+    const { app, host } = await mount({ duration: 40.2, pxPerSec: undefined })
+    try {
+      expect(host.querySelector('select')?.value).toBe('20')
+      host.querySelector<HTMLButtonElement>('[aria-label="Zoom in"]')!.click()
+      await nextTick()
+      expect(host.querySelector('select')?.value).toBe('30')
+      host.querySelector<HTMLButtonElement>('[title="Fit timeline (0)"]')!.click()
+      await nextTick()
+      expect(host.querySelector('select')?.value).toBe('20')
+    } finally {
+      app.unmount()
+      width.mockRestore()
+    }
+  })
+
   it('treats a plain click as selection only — no move-clip, so no edit or autosave', async () => {
     const { app, host, events } = await mount()
     try {

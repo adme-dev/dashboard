@@ -65,7 +65,7 @@ describe('VideoStudioInspector', () => {
     expect(html).toContain('Details')
     expect(html).toContain('Produce')
     expect(html).toContain('Review 3')
-    expect(html).toContain('Assets')
+    expect(html).toContain('Library assets')
     expect(html).toContain('12')
     expect(html).toContain('Voice')
     expect(html).toContain('2')

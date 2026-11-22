@@ -27,7 +27,6 @@ const props = withDefaults(defineProps<{
   /** library titles keyed by r2_key (or overlay project id) — for clip labels */
   titles?: Record<string, string | undefined>
 }>(), {
-  pxPerSec: 60,
   sources: () => ({}),
   titles: () => ({})
 })
@@ -72,26 +71,40 @@ const RULER_HEIGHT = 24
 // ─── Zoom ─────────────────────────────────────────────────────────────────────
 
 const containerRef = ref<HTMLElement | null>(null)
-const containerWidth = ref(800)
+const containerWidth = ref(0)
 const shortcutHelpOpen = ref(false)
 
-const internalPxPerSec = ref(props.pxPerSec)
+// A null manual zoom keeps the timeline fitted as media loads or the pane resizes.
+const manualZoom = ref<number | null>(props.pxPerSec ?? null)
+const internalPxPerSec = computed(() => manualZoom.value ?? (
+  containerWidth.value && props.duration > 0
+    ? fitTimelineZoom(props.duration, containerWidth.value, LABEL_WIDTH)
+    : 60
+))
+const zoomLabel = computed(() => `${Number(internalPxPerSec.value.toPrecision(3))} px/s`)
+const zoomOptions = computed(() => TIMELINE_ZOOM_OPTIONS.some(option => option.value === internalPxPerSec.value)
+  ? TIMELINE_ZOOM_OPTIONS
+  : [{ label: zoomLabel.value, value: internalPxPerSec.value }, ...TIMELINE_ZOOM_OPTIONS])
 
 function fitToWindow() {
-  internalPxPerSec.value = fitTimelineZoom(props.duration, containerWidth.value, LABEL_WIDTH)
+  manualZoom.value = null
 }
-
-function zoomIn() { internalPxPerSec.value = stepTimelineZoom(internalPxPerSec.value, 'in') }
-function zoomOut() { internalPxPerSec.value = stepTimelineZoom(internalPxPerSec.value, 'out') }
+function zoomIn() {
+  manualZoom.value = stepTimelineZoom(internalPxPerSec.value, 'in')
+}
+function zoomOut() {
+  manualZoom.value = stepTimelineZoom(internalPxPerSec.value, 'out')
+}
 function toggleShortcutHelp() { shortcutHelpOpen.value = !shortcutHelpOpen.value }
 function closeShortcutHelp() { shortcutHelpOpen.value = false }
 
-// Sync if the parent changes the prop after mount
-watch(() => props.pxPerSec, (v) => { internalPxPerSec.value = v })
+watch(() => props.pxPerSec, (v) => {
+  manualZoom.value = v ?? null
+})
 
 onMounted(() => {
   if (containerRef.value) {
-    containerWidth.value = containerRef.value.offsetWidth
+    containerWidth.value = containerRef.value.clientWidth
     const ro = new ResizeObserver((entries) => {
       for (const e of entries) containerWidth.value = e.contentRect.width
     })
@@ -113,6 +126,11 @@ const playheadLeft = computed(() =>
 function rect(clip: DisplayClip) {
   const fallback = Math.max(0, props.duration - clip.timelineStartSec)
   return clipRect(clip, internalPxPerSec.value, fallback)
+}
+
+function clipIcon(clip: DisplayClip) {
+  if (clip.kind === 'video') return clip.baseSource === 'still_kenburns' ? 'i-lucide-image' : 'i-lucide-film'
+  return clip.kind === 'overlay' ? 'i-lucide-shapes' : 'i-lucide-subtitles'
 }
 
 function fmtDur(clip: DisplayClip) {
@@ -137,7 +155,7 @@ const rulerTicks = computed(() => {
   const candidates = [0.25, 0.5, 1, 2, 5, 10, 30, 60]
   const interval = candidates.find(c => c * pps >= containerWidth.value / 30) ?? 60
   const ticks: { x: number; label: string }[] = []
-  for (let t = 0; t <= dur + interval; t += interval) {
+  for (let t = 0; t < dur; t += interval) {
     const mins = Math.floor(t / 60)
     const secs = (t % 60).toFixed(0).padStart(2, '0')
     ticks.push({ x: LABEL_WIDTH + t * pps, label: mins > 0 ? `${mins}:${secs}` : `${secs}s` })
@@ -369,8 +387,8 @@ function handleDelete() {
 }
 
 function onKeyDown(event: KeyboardEvent) {
-  // Don't intercept while user is typing in an input
-  if ((event.target as HTMLElement)?.closest('input, textarea, [contenteditable]')) return
+  if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return
+  if (event.target instanceof Element && event.target.closest('input, textarea, select, [contenteditable], [role="dialog"]')) return
   if (event.key === '?' || (event.shiftKey && event.key === '/')) {
     event.preventDefault()
     toggleShortcutHelp()
@@ -470,9 +488,6 @@ onUnmounted(() => {
     <div class="flex items-center gap-1.5">
       <UIcon name="i-lucide-zoom-in" class="size-3.5 text-muted" />
       <span class="text-xs font-medium text-muted">Zoom</span>
-      <span class="rounded border border-default bg-default/40 px-1.5 py-0.5 text-[11px] leading-none text-muted">
-        {{ Math.round(internalPxPerSec) }} px/s
-      </span>
     </div>
     <UButton
       icon="i-lucide-minus"
@@ -485,11 +500,12 @@ onUnmounted(() => {
     />
     <USelect
       :model-value="internalPxPerSec"
-      :items="TIMELINE_ZOOM_OPTIONS"
+      :items="zoomOptions"
+      aria-label="Timeline zoom"
       value-key="value"
       size="xs"
       class="w-28"
-      @update:model-value="(v: number) => (internalPxPerSec = v)"
+      @update:model-value="(v: number) => (manualZoom = v)"
     />
     <UButton
       icon="i-lucide-plus"
@@ -672,23 +688,14 @@ onUnmounted(() => {
             :ref="(el) => { if (el) { waveContainers[clip.clipId] = el as HTMLElement; mountWaveform(clip.clipId, clip.r2_key as string, el as HTMLElement) } }"
             class="absolute inset-0 pointer-events-none overflow-hidden"
           />
-          <!-- Video: icon strip -->
-          <div v-else-if="clip.kind === 'video'" class="absolute inset-0 flex items-center gap-1 px-2 pointer-events-none">
-            <UIcon :name="clip.baseSource === 'still_kenburns' ? 'i-lucide-image' : 'i-lucide-film'" class="size-3.5 text-inverted/80" />
+          <div class="pointer-events-none relative flex w-full min-w-0 items-center gap-1.5 px-3 text-inverted">
+            <UIcon
+              v-if="clip.kind !== 'audio'"
+              :name="clipIcon(clip)"
+              class="size-3.5 shrink-0 opacity-80"
+            />
+            <span class="truncate text-xs font-medium">{{ clip.label }} · {{ fmtDur(clip) }}</span>
           </div>
-          <!-- Overlay: badge -->
-          <div v-else-if="clip.kind === 'overlay'" class="absolute inset-0 flex items-center gap-1 px-2 pointer-events-none">
-            <UIcon name="i-lucide-shapes" class="size-3.5 text-inverted/80" />
-          </div>
-          <!-- Captions: badge -->
-          <div v-else class="absolute inset-0 flex items-center gap-1 px-2 pointer-events-none">
-            <UIcon name="i-lucide-subtitles" class="size-3.5 text-inverted/80" />
-          </div>
-
-          <!-- Clip label -->
-          <span class="relative z-10 truncate px-2 text-xs font-medium text-inverted ml-1">
-            {{ clip.label }} · {{ fmtDur(clip) }}
-          </span>
 
           <!-- Trim handle — end (right edge) -->
           <div

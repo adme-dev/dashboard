@@ -17,13 +17,14 @@ export function clampTimelineZoom(pxPerSec: number): number {
 
 export function fitTimelineZoom(durationSec: number, containerWidthPx: number, labelWidthPx: number): number {
   const duration = Math.max(durationSec, 1)
-  const usableWidth = Math.max(containerWidthPx - labelWidthPx, 100)
-  return clampTimelineZoom(Math.floor(usableWidth / duration))
+  const usableWidth = Math.max(containerWidthPx - labelWidthPx, 1)
+  return Math.min(TIMELINE_ZOOM_MAX, usableWidth / duration)
 }
 
 export function stepTimelineZoom(pxPerSec: number, direction: 'in' | 'out'): number {
   const next = direction === 'in'
     ? pxPerSec * TIMELINE_ZOOM_FACTOR
     : pxPerSec / TIMELINE_ZOOM_FACTOR
+  if (pxPerSec < TIMELINE_ZOOM_MIN && direction === 'out') return pxPerSec
   return clampTimelineZoom(next)
 }

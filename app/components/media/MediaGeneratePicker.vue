@@ -8,6 +8,7 @@ const props = defineProps<{
   projectId: string
   timelineStills: { clipId: string; label: string }[]
   defaultAspect: string
+  defaultDurationSeconds?: number
   initialPrompt?: string | null
   initialSourceAsset?: { assetId: string; title: string } | null
   recentJobs?: VideoGenerationJobView[]
@@ -38,6 +39,7 @@ const openModel = computed({
         :project-id="props.projectId"
         :timeline-stills="props.timelineStills"
         :default-aspect="props.defaultAspect"
+        :default-duration-seconds="props.defaultDurationSeconds"
         :initial-prompt="props.initialPrompt"
         :initial-source-asset="props.initialSourceAsset"
         :recent-jobs="props.recentJobs"

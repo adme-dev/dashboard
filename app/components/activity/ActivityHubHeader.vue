@@ -17,6 +17,7 @@ defineExpose({ handleEl })
     </div>
     <div class="flex items-center gap-0.5">
       <UButton
+        :aria-label="sizeMode === 'compact' ? 'Expand Activity Hub' : 'Reduce Activity Hub'"
         :icon="sizeMode === 'compact' ? 'i-lucide-maximize-2' : 'i-lucide-minimize-2'"
         variant="ghost"
         color="neutral"
@@ -24,6 +25,7 @@ defineExpose({ handleEl })
         @click="toggleSize"
       />
       <UButton
+        aria-label="Minimize Activity Hub"
         icon="i-lucide-minus"
         variant="ghost"
         color="neutral"

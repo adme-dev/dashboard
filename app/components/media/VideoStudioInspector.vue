@@ -51,7 +51,7 @@ const tabItems = computed(() => [
 ])
 
 const summaryItems = computed(() => [
-  { label: 'Assets', value: props.assetCount, icon: 'i-lucide-library' },
+  { label: 'Library assets', value: props.assetCount, icon: 'i-lucide-library' },
   { label: 'Voice', value: props.voiceAssetCount, icon: 'i-lucide-mic-2' },
   { label: 'Overlays', value: props.overlayAssetCount, icon: 'i-lucide-shapes' },
 ])
@@ -76,13 +76,13 @@ watch(() => props.tab, (tab) => {
       v-model="activeTab"
       :items="tabItems"
       :content="false"
-      size="sm"
+      size="xs"
       variant="link"
       color="primary"
       aria-label="Video Studio inspector"
     />
 
-    <div class="grid grid-cols-3 divide-x divide-default rounded-md border border-default bg-default/30">
+    <div v-if="activeTab === 'details'" class="grid grid-cols-3 divide-x divide-default rounded-md border border-default bg-default/30">
       <div
         v-for="item in summaryItems"
         :key="item.label"

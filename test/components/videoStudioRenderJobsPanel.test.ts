@@ -50,7 +50,7 @@ describe('VideoStudioRenderJobsPanel', () => {
     expect(html).toContain('/api/agency/audio/projects/project-1/renders/render-1/reels_9x16')
     expect(html).toContain('Publish')
     expect(html).toContain('Portal')
-    expect(html).toContain('Library')
+    expect(html).toContain('Save to library')
   })
 
   it('renders an empty render state', async () => {

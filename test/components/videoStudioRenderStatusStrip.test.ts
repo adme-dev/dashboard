@@ -6,6 +6,7 @@ import VideoStudioRenderStatusStrip from '~~/app/components/media/VideoStudioRen
 import type { MediaRenderJob } from '~~/app/types'
 
 const stubs = {
+  UPopover: { template: '<div><slot /><slot name="content" /></div>' },
   UIcon: { name: 'UIcon', props: ['name'], template: '<i :data-icon="name" />' },
   UProgress: { name: 'UProgress', props: ['modelValue', 'max'], template: '<progress :value="modelValue" :max="max" />' },
   UBadge: { name: 'UBadge', props: ['label'], template: '<span>{{ label }}</span>' },
@@ -71,7 +72,8 @@ describe('VideoStudioRenderStatusStrip', () => {
     expect(html).toContain('/api/agency/audio/projects/project-1/renders/render-1/reels_9x16')
     expect(html).toContain('Publish')
     expect(html).toContain('Portal')
-    expect(html).toContain('Library')
+    expect(html).toContain('Save to library')
+    expect(html).toContain('Download 9:16 vertical')
   })
 
   it('renders failure details and emits retry from the strip', async () => {
@@ -82,9 +84,11 @@ describe('VideoStudioRenderStatusStrip', () => {
       error: 'VIDEO_RENDER_QUEUE binding unavailable',
       createdAt: '2026-06-18T02:00:00Z',
     })
-    const { app, host, events } = await mount({ jobs: [failed] })
+    const { app, host, events } = await mount({ jobs: [job(), failed, job({ id: 'older-failure', status: 'failed', error: null })] })
 
     try {
+      expect(host.textContent).toContain('2 failed')
+      expect(host.textContent).toContain('No failure reason was recorded.')
       expect(host.textContent).toContain('Render failed')
       expect(host.textContent).toContain('VIDEO_RENDER_QUEUE binding unavailable')
 

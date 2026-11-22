@@ -104,6 +104,13 @@ function button(host: HTMLElement, text: string) {
   return b
 }
 describe('Storyboard workbench', () => {
+  it('shows the existing edit separately from an empty draft target', async () => {
+    const { host, app } = await mount({ draft: { ...draft(), shots: [] }, timelineNonEmpty: true, editDuration: 40.2, editClipCount: 2, editFormat: '1080 × 1920' })
+    expect(host.textContent).toContain('0 planned shots')
+    expect(host.textContent).toContain('2 clips · 40.20s · 1080 × 1920')
+    expect(host.textContent).toContain('Draft target 30s · current edit 40.20s')
+    app.unmount()
+  })
   it('supports empty recipe and manual flows without paid generation', async () => {
     const { host, app, events } = await mount()
     expect(host.textContent).toContain('Storyboard')

@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { useDraggable, useWindowSize, useLocalStorage } from '@vueuse/core'
 
+const props = defineProps<{ launcherTarget?: HTMLElement | null }>()
+
 const { isOpen, hidden, activeTab, sizeMode, savedPosition, totalUnreadBadge, toggle } = useActivityHub()
 
 const panelEl = ref<HTMLElement | null>(null)
@@ -22,8 +24,8 @@ const MAX_H = 1000
 const presetWidth = computed(() => sizeMode.value === 'compact' ? 400 : 480)
 const presetHeight = computed(() => sizeMode.value === 'compact' ? 520 : 650)
 
-const panelWidth = computed(() => userWidth.value ?? presetWidth.value)
-const panelHeight = computed(() => userHeight.value ?? presetHeight.value)
+const panelWidth = computed(() => Math.min(props.launcherTarget ? winW.value : Infinity, userWidth.value ?? presetWidth.value))
+const panelHeight = computed(() => Math.min(props.launcherTarget ? winH.value : Infinity, userHeight.value ?? presetHeight.value))
 
 // Reset custom size when user explicitly toggles between compact/expanded.
 watch(sizeMode, () => {
@@ -101,7 +103,7 @@ watch([x, y], () => {
 })
 
 // Re-clamp on window resize or size mode change
-watch([winW, winH, sizeMode], () => {
+watch([winW, winH, sizeMode, () => props.launcherTarget], () => {
   clamping = true
   clamp()
   savedPosition.value = { x: x.value, y: y.value }
@@ -172,6 +174,27 @@ watch(isOpen, (open) => {
     </div>
   </Transition>
 
+  <Teleport v-if="launcherTarget" :to="launcherTarget">
+    <UButton
+      v-if="!hidden"
+      icon="i-lucide-bell"
+      color="neutral"
+      variant="ghost"
+      :aria-expanded="isOpen"
+      :aria-label="totalUnreadBadge ? `Activity Hub, ${totalUnreadBadge} unread` : 'Activity Hub'"
+      title="Activity Hub"
+      @click="toggle"
+    >
+      <span class="hidden sm:inline">Activity Hub</span>
+      <UBadge
+        v-if="totalUnreadBadge"
+        size="xs"
+        color="error"
+        :label="totalUnreadBadge > 99 ? '99+' : String(totalUnreadBadge)"
+      />
+    </UButton>
+  </Teleport>
+
   <!-- FAB Button -->
   <Transition
     enter-active-class="transition-all duration-200 ease-out delay-150"
@@ -182,6 +205,7 @@ watch(isOpen, (open) => {
     leave-to-class="opacity-0 scale-75"
   >
     <div
+      v-if="!launcherTarget"
       v-show="!isOpen && !hidden"
       class="fixed bottom-6 right-6 z-50 w-18 h-18"
     >

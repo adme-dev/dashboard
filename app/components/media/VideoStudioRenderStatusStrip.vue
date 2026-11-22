@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { MediaRenderJob, MediaRenderJobStatus } from '~~/app/types'
+import type { MediaRenderJob } from '~~/app/types'
 import {
   parseRenderFailure,
   renderStageMeter,
   renderVariantFormats,
-  renderVariantUrl,
+  renderDownloadUrl,
+  renderFormatLabel,
   summarizeVideoRenderJobs,
 } from '~~/app/utils/video/renderJobSummary'
 
@@ -27,7 +28,10 @@ const emit = defineEmits<{
 
 const summary = computed(() => summarizeVideoRenderJobs(props.jobs))
 const latestCompleted = computed(() => latestJob(job => job.status === 'done' && renderVariantFormats(job).length > 0))
-const latestFailed = computed(() => latestJob(job => job.status === 'failed'))
+const failedJobs = computed(() => props.jobs
+  .filter(job => job.status === 'failed')
+  .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
+  .map(job => ({ job, failure: parseRenderFailure(job.error) })))
 const activeJob = computed(() => latestJob(job => job.status === 'queued' || job.status === 'rendering'))
 const stageMeter = computed(() => renderStageMeter(activeJob.value))
 const completedFormats = computed(() => renderVariantFormats(latestCompleted.value))
@@ -38,24 +42,17 @@ function latestJob(predicate: (job: MediaRenderJob) => boolean) {
     .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))[0] ?? null
 }
 
-function statusColor(status: MediaRenderJobStatus | 'idle'): 'primary' | 'success' | 'error' | 'neutral' {
-  if (status === 'done') return 'success'
-  if (status === 'failed') return 'error'
-  if (status === 'queued' || status === 'rendering') return 'primary'
-  return 'neutral'
-}
-
 const statusLabel = computed(() => {
   if (props.rendering) return 'Queueing render'
   if (summary.value.active) return `${summary.value.active} active`
   if (summary.value.completed) return `${summary.value.completed} completed`
-  if (summary.value.failed) return `${summary.value.failed} failed`
   return 'No renders'
 })
 
-const status = computed<MediaRenderJobStatus | 'idle'>(() => {
-  if (props.rendering) return 'queued'
-  return summary.value.latest?.status ?? 'idle'
+const statusColor = computed(() => {
+  if (props.rendering || summary.value.active) return 'primary'
+  if (summary.value.completed) return 'success'
+  return 'neutral'
 })
 
 function dateLabel(iso: string | null | undefined) {
@@ -69,7 +66,7 @@ function dateLabel(iso: string | null | undefined) {
 
 function variantItems(job: MediaRenderJob, label: string, icon: string, event: 'publish' | 'send-to-portal' | 'save-asset') {
   return [renderVariantFormats(job).map(format => ({
-    label: `${label} ${format}`,
+    label: `${label} ${renderFormatLabel(format)}`,
     icon,
     onSelect: () => emitVariant(event, job, format),
   }))]
@@ -81,7 +78,6 @@ function emitVariant(event: 'publish' | 'send-to-portal' | 'save-asset', job: Me
   else emit('save-asset', job, format)
 }
 
-const latestFailure = computed(() => latestFailed.value ? parseRenderFailure(latestFailed.value.error) : null)
 </script>
 
 <template>
@@ -95,7 +91,13 @@ const latestFailure = computed(() => latestFailed.value ? parseRenderFailure(lat
       <div class="min-w-0">
         <div class="flex flex-wrap items-center gap-1.5">
           <p class="text-xs font-medium text-highlighted">Render queue</p>
-          <UBadge :label="statusLabel" size="xs" variant="subtle" :color="statusColor(status)" />
+          <UBadge
+            v-if="!summary.failed || summary.active || summary.completed || props.rendering"
+            :label="statusLabel"
+            size="xs"
+            variant="subtle"
+            :color="statusColor"
+          />
           <UProgress
             v-if="stageMeter"
             :model-value="stageMeter.value ?? undefined"
@@ -104,13 +106,39 @@ const latestFailure = computed(() => latestFailed.value ? parseRenderFailure(lat
             class="w-24"
             :aria-label="[stageMeter.label, stageMeter.detail].filter(Boolean).join(': ')"
           />
-          <UBadge
-            v-if="summary.failed"
-            :label="`${summary.failed} failed`"
-            size="xs"
-            variant="subtle"
-            color="error"
-          />
+          <UPopover v-if="failedJobs.length">
+            <UButton
+              :label="`${summary.failed} failed`"
+              trailing-icon="i-lucide-chevron-down"
+              size="xs"
+              variant="soft"
+              color="error"
+              :aria-label="`Show ${summary.failed} failed renders`"
+            />
+            <template #content>
+              <div class="max-h-64 w-80 max-w-[90vw] divide-y divide-default overflow-y-auto" aria-label="Failed renders">
+                <div v-for="{ job, failure } in failedJobs" :key="job.id" class="space-y-1 p-3">
+                  <p class="text-xs font-medium text-error">
+                    {{ failure.label }}
+                  </p>
+                  <p class="text-xs text-muted">
+                    {{ dateLabel(job.createdAt) }}
+                  </p>
+                  <p class="whitespace-pre-wrap break-words text-sm">
+                    {{ failure.details || 'No failure reason was recorded.' }}
+                  </p>
+                  <UButton
+                    label="Retry render"
+                    icon="i-lucide-refresh-cw"
+                    size="xs"
+                    variant="soft"
+                    :loading="props.rendering"
+                    @click="emit('retry', job)"
+                  />
+                </div>
+              </div>
+            </template>
+          </UPopover>
         </div>
         <p class="text-[11px] text-muted">
           <span v-if="summary.active && stageMeter">
@@ -131,9 +159,10 @@ const latestFailure = computed(() => latestFailed.value ? parseRenderFailure(lat
         size="xs"
         variant="soft"
         color="neutral"
-        :label="format"
-        :to="renderVariantUrl(props.projectId, latestCompleted.id, format)"
-        target="_blank"
+        :label="`Download ${renderFormatLabel(format)}`"
+        :to="renderDownloadUrl(props.projectId, latestCompleted.id, format)"
+        external
+        download
       />
       <UDropdownMenu :items="variantItems(latestCompleted, 'Publish', 'i-lucide-share-2', 'publish')">
         <UButton icon="i-lucide-share-2" size="xs" variant="ghost" color="primary" label="Publish" />
@@ -142,26 +171,14 @@ const latestFailure = computed(() => latestFailed.value ? parseRenderFailure(lat
         <UButton icon="i-lucide-send" size="xs" variant="ghost" color="neutral" label="Portal" />
       </UDropdownMenu>
       <UDropdownMenu :items="variantItems(latestCompleted, 'Save', 'i-lucide-bookmark', 'save-asset')">
-        <UButton icon="i-lucide-bookmark" size="xs" variant="ghost" color="neutral" label="Library" />
+        <UButton
+          icon="i-lucide-bookmark"
+          size="xs"
+          variant="ghost"
+          color="neutral"
+          label="Save to library"
+        />
       </UDropdownMenu>
-    </div>
-    <div v-else-if="latestFailed" class="ml-auto flex min-w-0 max-w-xl items-center gap-2">
-      <div v-if="latestFailed.error" class="min-w-0 rounded-md border border-error/30 bg-error/5 px-2 py-1">
-        <div class="flex items-center gap-1.5 text-[11px] font-medium text-error">
-          <UIcon name="i-lucide-triangle-alert" class="size-3.5 shrink-0" />
-          <span class="shrink-0">{{ latestFailure?.label }}</span>
-          <span class="truncate font-normal">{{ latestFailure?.details }}</span>
-        </div>
-      </div>
-      <UButton
-        icon="i-lucide-refresh-cw"
-        size="xs"
-        variant="soft"
-        :color="latestFailure?.retryable ? 'primary' : 'neutral'"
-        label="Retry"
-        :loading="props.rendering"
-        @click="emit('retry', latestFailed)"
-      />
     </div>
   </section>
 </template>
