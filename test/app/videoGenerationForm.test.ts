@@ -26,10 +26,11 @@ describe('videoGenerationForm', () => {
   })
 
   it('computes cost preview using the model cost unit', () => {
-    // seedance: 30c/second; mock/t2v-broll remains a dormant per-generation model for cost tests.
-    const perSecond = getVideoGenerationModel('aigateway/seedance-i2v')!   // 30c/sec
+    // Seedance Fast: 12c/second (CF 720p non-video input); mock/t2v-broll remains a dormant per-generation model for cost tests.
+    const perSecond = getVideoGenerationModel('aigateway/seedance-i2v')!   // 12c/sec
     const perGeneration = getVideoGenerationModel('mock/t2v-broll')!        // 200c/generation
-    expect(costPreviewCents(perSecond, 10)).toBe(300)
+    expect(costPreviewCents(perSecond, 5)).toBe(60)
+    expect(costPreviewCents(perSecond, 10)).toBe(120)
     expect(costPreviewCents(perGeneration, 5)).toBe(200)
   })
 

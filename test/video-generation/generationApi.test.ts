@@ -171,7 +171,8 @@ describe('POST /agency/video/generation/jobs', () => {
         projectId: avProject.id,
         timelineId: timeline.id,
         modelId: 'aigateway/seedance-i2v',
-        estimatedCostCents: 150,
+        // Seedance Fast 5s @ CF 720p image-input $0.12/s.
+        estimatedCostCents: 60,
       }),
       expect.objectContaining({ enabled: true })
     )
@@ -188,7 +189,7 @@ describe('POST /agency/video/generation/jobs', () => {
       gatewayUsed: true,
       userId: '00000000-0000-4000-8000-000000000001',
       clientId: avProject.clientId,
-      estimatedCostUsd: 1.5,
+      estimatedCostUsd: 0.6,
       status: 'success',
       metadata: expect.objectContaining({
         queued: true,

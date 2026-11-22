@@ -14,6 +14,7 @@ import { useVideoModelAccess } from '~~/app/composables/useVideoModelAccess'
 import type { VideoGenerationMode } from '~~/server/utils/video-generation/types'
 import type { VideoGenerationJobView } from '~~/app/composables/useVideoGenerationJobs'
 import { idempotencyKey } from '~~/app/utils/idempotencyKey'
+import MediaGeneratedThumbnail from '~~/app/components/media/MediaGeneratedThumbnail.vue'
 
 const props = defineProps<{
   active?: boolean
@@ -135,9 +136,14 @@ const modelItems = computed(() => models.value.map((m) => {
   return { label: m.label, value: m.id, ...presentation }
 }))
 const selectedModelIcon = computed(() => (model.value ? videoModelPresentation(model.value).icon : 'i-lucide-box'))
-const costChipLabel = computed(() => `${modelData.value.policy?.payer === 'agency' ? 'Agency estimate' : 'Estimate'} US$${(estCostCents.value / 100).toFixed(2)}`)
+const estimateTitle = computed(() => (modelData.value.policy?.payer === 'agency' ? 'Agency-funded estimate' : 'Estimated cost'))
+const estimateAmount = computed(() => `US$${(estCostCents.value / 100).toFixed(2)}`)
 const budget = computed(() => (isGenerationBudgetStatus(modelData.value.budget) ? modelData.value.budget : null))
 const budgetNotice = computed(() => (model.value ? generationBudgetNotice(budget.value, estCostCents.value) : null))
+const estimateDetail = computed(() => {
+  const billing = model.value?.costUnit === 'second' ? ', billed per second' : ''
+  return `${durationSeconds.value}s clip${billing}${generationBudgetSummary(budget.value)}`
+})
 const recentJobs = computed(() => (props.recentJobs ?? []).slice(0, 5))
 
 // Templates gallery shows while the prompt is empty (the blank-page moment);
@@ -426,11 +432,52 @@ async function submit() {
       <USkeleton class="h-24 w-full rounded-md" />
     </div>
 
-    <!-- Prompt-first composer: big prompt card with a control bar along the
-             bottom (mode ▾ / model ▾ / advanced params / cost chip), instead of a
-             stacked form. The prompt is the primary object; everything else is a
-             setting hanging off it. -->
+    <!-- Workflow-first, top to bottom: what to make → model → prompt/frames →
+         clip settings → estimate + Generate. Generate sits in normal flow after
+         every input, so it can never cover the selectors above it. -->
     <template v-if="hasModels">
+      <div class="grid grid-cols-1 gap-3 @md:grid-cols-2">
+        <UFormField label="What to make">
+          <USelect
+            v-model="workflow"
+            :items="workflowItems"
+            value-key="value"
+            size="sm"
+            :icon="workflowIcon"
+            aria-label="What to make"
+            class="w-full"
+            @update:model-value="onModeChange"
+          />
+        </UFormField>
+        <UFormField label="Model">
+          <USelectMenu
+            v-model="modelId"
+            :items="modelItems"
+            value-key="value"
+            size="sm"
+            :icon="selectedModelIcon"
+            :search-input="false"
+            class="w-full"
+            aria-label="Model"
+          >
+            <template #item="{ item }">
+              <div class="flex min-w-0 flex-1 items-center gap-2.5 py-0.5">
+                <UIcon :name="item.icon" class="size-4 shrink-0 text-muted" />
+                <div class="min-w-0 flex-1">
+                  <p class="truncate text-xs font-medium text-highlighted">
+                    {{ item.label }}
+                  </p>
+                  <p class="truncate text-[11px] text-muted">
+                    {{ item.sublabel }}
+                  </p>
+                </div>
+                <span class="shrink-0 text-[11px] tabular-nums text-muted">{{ item.costLabel }}</span>
+              </div>
+            </template>
+          </USelectMenu>
+        </UFormField>
+      </div>
+
       <div class="rounded-xl border border-default bg-elevated/60 transition-colors focus-within:border-primary/50">
         <UFormField label="Prompt" class="px-3 pt-2">
           <UTextarea
@@ -445,7 +492,7 @@ async function submit() {
         </UFormField>
 
         <!-- i2v source image attachment -->
-        <div v-if="mode === 'image-to-video'" class="px-3 pb-2.5">
+        <div v-if="mode === 'image-to-video'" class="border-t border-default px-3 py-2.5">
           <!-- Hidden file input — triggered by the upload button below -->
           <UInput
             ref="fileInputRef"
@@ -457,7 +504,7 @@ async function submit() {
             @change="onFileSelected"
           />
           <div class="space-y-1.5">
-            <div v-for="frame in frameSlots" :key="frame.slot" class="flex min-w-0 items-center gap-2">
+            <div v-for="frame in frameSlots" :key="frame.slot" class="flex min-w-0 flex-wrap items-center gap-2">
               <span v-if="frame.label" class="w-20 shrink-0 text-[11px] font-medium text-muted">{{ frame.label }}</span>
               <div v-if="frameName(frame.slot)" class="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-default bg-default/40 px-2.5 py-1.5">
                 <UIcon name="i-lucide-image" class="size-4 shrink-0 text-muted" />
@@ -481,7 +528,9 @@ async function submit() {
                   value-key="value"
                   size="xs"
                   placeholder="Use a project still"
+                  :aria-label="frame.label ? `${frame.label} from project` : 'Source image from project'"
                   :disabled="uploading"
+                  class="min-w-0 max-w-full"
                   @update:model-value="(clipId: string) => onExistingStillSelected(clipId, frame.slot)"
                 />
                 <UButton
@@ -499,103 +548,39 @@ async function submit() {
             </div>
           </div>
         </div>
+      </div>
 
-        <div class="grid grid-cols-1 gap-3 px-3 pb-3 @min-[15rem]:grid-cols-2">
-          <UFormField label="Aspect ratio">
-            <USelect
-              v-model="aspectRatio"
-              :items="(model?.aspectRatios ?? []).map(value => ({ label: value, value }))"
-              value-key="value"
-              aria-label="Aspect ratio"
-              class="w-full"
-              size="sm"
-            />
-          </UFormField>
-          <UFormField label="Clip duration">
-            <USelect
-              v-model="durationSeconds"
-              aria-label="Clip duration"
-              :items="(model?.durationsSeconds ?? []).map(value => ({ label: `${value}s`, value }))"
-              value-key="value"
-              class="w-full"
-              size="sm"
-            />
-          </UFormField>
-        </div>
-
-        <!-- Composer bar -->
-        <div class="flex flex-wrap items-center gap-1.5 border-t border-default px-2 py-2">
+      <div class="grid grid-cols-1 gap-3 @min-[15rem]:grid-cols-2 @lg:grid-cols-3">
+        <UFormField label="Aspect ratio">
           <USelect
-            v-model="workflow"
-            :items="workflowItems"
+            v-model="aspectRatio"
+            :items="(model?.aspectRatios ?? []).map(value => ({ label: value, value }))"
             value-key="value"
-            size="xs"
-            variant="soft"
-            color="neutral"
-            :icon="workflowIcon"
-            aria-label="What to make"
-            @update:model-value="onModeChange"
+            aria-label="Aspect ratio"
+            class="w-full"
+            size="sm"
           />
-          <USelectMenu
-            v-model="modelId"
-            :items="modelItems"
+        </UFormField>
+        <UFormField label="Clip duration">
+          <USelect
+            v-model="durationSeconds"
+            aria-label="Clip duration"
+            :items="(model?.durationsSeconds ?? []).map(value => ({ label: `${value}s`, value }))"
             value-key="value"
-            size="xs"
-            variant="soft"
-            color="neutral"
-            :icon="selectedModelIcon"
-            :search-input="false"
-            class="min-w-44"
-            aria-label="Model"
-          >
-            <template #item="{ item }">
-              <div class="flex min-w-0 flex-1 items-center gap-2.5 py-0.5">
-                <UIcon :name="item.icon" class="size-4 shrink-0 text-muted" />
-                <div class="min-w-0 flex-1">
-                  <p class="truncate text-xs font-medium text-highlighted">
-                    {{ item.label }}
-                  </p>
-                  <p class="truncate text-[11px] text-muted">
-                    {{ item.sublabel }}
-                  </p>
-                </div>
-                <span class="shrink-0 text-[11px] tabular-nums text-muted">{{ item.costLabel }}</span>
-              </div>
-            </template>
-          </USelectMenu>
-          <UPopover>
-            <UButton
-              icon="i-lucide-sliders-horizontal"
-              size="xs"
-              variant="soft"
-              color="neutral"
-              aria-label="Advanced parameters"
-            />
-            <template #content>
-              <div class="w-64 space-y-4 p-4">
-                <p class="text-sm font-medium text-highlighted">
-                  Advanced
-                </p>
-                <UFormField label="Subject" help="Helps with compliance routing.">
-                  <USelect
-                    v-model="subjectType"
-                    :items="SUBJECT_OPTIONS"
-                    value-key="value"
-                    class="w-full"
-                  />
-                </UFormField>
-              </div>
-            </template>
-          </UPopover>
-          <UTooltip :text="`Estimated cost for ${durationSeconds}s${model?.costUnit === 'second' ? ' (billed per second)' : ''}${generationBudgetSummary(budget)}`">
-            <UBadge
-              :label="costChipLabel"
-              variant="subtle"
-              color="neutral"
-              class="ml-auto tabular-nums"
-            />
-          </UTooltip>
-        </div>
+            class="w-full"
+            size="sm"
+          />
+        </UFormField>
+        <UFormField label="Subject" help="Routes compliance checks." class="@min-[15rem]:col-span-2 @lg:col-span-1">
+          <USelect
+            v-model="subjectType"
+            :items="SUBJECT_OPTIONS"
+            value-key="value"
+            aria-label="Subject"
+            class="w-full"
+            size="sm"
+          />
+        </UFormField>
       </div>
 
       <!-- Budget: explains unconfirmed historical liability instead of a bare refusal -->
@@ -608,11 +593,16 @@ async function submit() {
         :description="budgetNotice.description"
       />
 
-      <div data-generation-submit class="sticky bottom-0 z-10 space-y-1.5 border-t border-default bg-default py-2">
-        <p v-if="readinessReason" role="status" class="text-xs text-muted">
-          {{ readinessReason }}
+      <!-- Estimate + Generate sit in normal flow (not sticky) so they can never
+           cover the workflow selector or inputs inside a scrolling rail. -->
+      <div data-generation-submit class="space-y-2 rounded-lg border border-default bg-default/40 p-3">
+        <div data-generation-estimate class="flex items-baseline justify-between gap-3">
+          <span class="text-xs font-medium text-muted">{{ estimateTitle }}</span>
+          <span class="text-lg font-semibold tabular-nums text-highlighted">{{ estimateAmount }}</span>
+        </div>
+        <p class="text-[11px] leading-snug text-muted">
+          {{ estimateDetail }}
         </p>
-
         <UButton
           block
           :color="readinessReason || budgetNotice ? 'neutral' : 'primary'"
@@ -623,6 +613,9 @@ async function submit() {
           label="Generate"
           @click="submit"
         />
+        <p v-if="readinessReason" role="status" class="text-xs text-muted">
+          {{ readinessReason }}
+        </p>
       </div>
 
       <!-- Start from a template — visible while the prompt is blank -->
@@ -653,9 +646,9 @@ async function submit() {
       </div>
     </template>
 
-    <div v-if="recentJobs.length" class="space-y-2">
+    <div v-if="recentJobs.length" class="space-y-2" data-recent-generations>
       <div class="flex items-center justify-between gap-3">
-        <p class="text-xs font-semibold uppercase tracking-widest text-muted">
+        <p class="text-xs font-medium text-muted">
           Recent generations
         </p>
         <span class="text-[11px] text-muted">{{ recentJobs.length }} latest</span>
@@ -664,19 +657,23 @@ async function submit() {
         <div
           v-for="job in recentJobs"
           :key="job.id"
-          class="grid grid-cols-[3rem_minmax(0,1fr)] gap-x-3 gap-y-2 rounded-lg border border-default bg-default/30 px-3 py-2.5"
+          :data-generation-job="job.id"
+          class="grid grid-cols-[4rem_minmax(0,1fr)] gap-x-3 gap-y-2 rounded-lg border border-default bg-default/30 px-3 py-2.5"
         >
-          <div class="flex h-12 w-12 items-center justify-center overflow-hidden rounded bg-elevated">
-            <video
+          <div class="size-16 overflow-hidden rounded-md border border-default bg-elevated">
+            <!-- Poster comes from the actual output asset, seeked past fade-in frames. -->
+            <MediaGeneratedThumbnail
               v-if="job.status === 'succeeded' && job.outputAssetId"
-              :src="`/api/agency/video/assets/${encodeURIComponent(job.outputAssetId)}/stream#t=0.1`"
-              muted
-              playsinline
-              preload="metadata"
-              aria-hidden="true"
-              class="size-full object-contain"
+              :asset-id="job.outputAssetId"
+              :duration-sec="job.durationSeconds"
+              :alt="`Preview of ${job.prompt || 'generated clip'}`"
             />
-            <UIcon v-else :name="job.status === 'failed' || job.status === 'blocked' ? 'i-lucide-circle-alert' : 'i-lucide-clock'" class="size-4 text-muted" />
+            <div v-else class="flex size-full items-center justify-center">
+              <UIcon
+                :name="job.status === 'failed' || job.status === 'blocked' ? 'i-lucide-circle-alert' : job.status === 'succeeded' ? 'i-lucide-film' : 'i-lucide-clock'"
+                class="size-4 text-muted"
+              />
+            </div>
           </div>
           <div class="min-w-0 flex-1">
             <div class="flex min-w-0 items-center gap-2">

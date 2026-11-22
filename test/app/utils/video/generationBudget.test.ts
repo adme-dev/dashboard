@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { generationBudgetNotice, generationBudgetSummary, isGenerationBudgetStatus } from '~~/app/utils/video/generationBudget'
+import { generationBudgetNotice, generationBudgetSummary, generationReceiptLabel, isGenerationBudgetStatus } from '~~/app/utils/video/generationBudget'
 
 const budget = {
   capCents: 1000,
@@ -32,5 +32,15 @@ describe('generationBudgetNotice', () => {
     expect(isGenerationBudgetStatus(budget)).toBe(true)
     expect(isGenerationBudgetStatus({ capCents: 1 })).toBe(false)
     expect(isGenerationBudgetStatus(null)).toBe(false)
+  })
+})
+
+describe('generation receipts', () => {
+  it('shows provider-reported zero and nonzero amounts, released charges and unknown costs separately', () => {
+    expect(generationReceiptLabel({ actualCostCents: 60 })).toBe('Provider cost US$0.60')
+    expect(generationReceiptLabel({ actualCostCents: 0 })).toBe('Provider cost US$0.00')
+    expect(generationReceiptLabel({ liabilityState: 'released' })).toBe('No charge')
+    expect(generationReceiptLabel({ liabilityState: 'uncertain' })).toBe('Provider cost unconfirmed')
+    expect(generationReceiptLabel({})).toBe('Provider cost unconfirmed')
   })
 })

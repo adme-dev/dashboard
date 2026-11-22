@@ -22,6 +22,13 @@ describe('buildCfVideoInputs', () => {
     expect(buildCfVideoInputs('bytedance/seedance-2.0-fast', { ...base, durationSeconds: 20 }).duration).toBe(12)
   })
 
+  it('Seedance Fast defaults unsupported dimensions to 720p and preserves valid queued 480p requests', () => {
+    for (const resolution of [null, '720p', '1080p', '4k', 'garbage']) {
+      expect(buildCfVideoInputs('bytedance/seedance-2.0-fast', { ...base, resolution }).resolution).toBe('720p')
+    }
+    expect(buildCfVideoInputs('bytedance/seedance-2.0-fast', { ...base, resolution: '480p' }).resolution).toBe('480p')
+  })
+
   it('full Seedance enables native audio and honors the published 12s/4k schema', () => {
     expect(buildCfVideoInputs('bytedance/seedance-2.0', {
       ...base,

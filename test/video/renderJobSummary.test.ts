@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { MediaRenderJob } from '~~/app/types'
 import {
   creativeVersionLabelForRenderJob,
+  renderFailureHistoryNote,
   renderStageMeter,
   parseRenderFailure,
   renderVariantFormats,
@@ -66,6 +67,18 @@ describe('video render job summary', () => {
       status: 'failed',
       variants: {}
     }))).toBe('Version render-3 · failed')
+  })
+
+  it('keeps a failure actionable until newer successful outputs cover its request', () => {
+    const failed = job({ status: 'failed', channels: ['reels_9x16', 'square_1x1'] })
+    const later = job({ status: 'done', createdAt: '2026-06-20T00:00:00Z', variants: { reels_9x16: 'r' } })
+    expect(renderFailureHistoryNote(failed, [later])).toBeNull()
+    expect(renderFailureHistoryNote(failed, [later, { ...later, projectId: 'another', variants: { square_1x1: 's' } }])).toBeNull()
+    expect(renderFailureHistoryNote(failed, [later, { ...later, variants: { square_1x1: 's' } }])).toBe('Later renders produced all of these outputs.')
+    expect(renderFailureHistoryNote({ ...failed, channels: [] }, [later])).toContain('output selection for this earlier attempt is unknown')
+    expect(renderFailureHistoryNote({ ...failed, channels: [], progress: {
+      stage: 'encoding', formatKey: 'square_1x1', total: 2, done: 0, updatedAt: ''
+    } }, [later])).toBeNull()
   })
 
   it('parses categorized render failures for display', () => {

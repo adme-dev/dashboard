@@ -71,10 +71,21 @@ describe('VideoStudioRenderJobsPanel', () => {
     })
 
     expect(html).toContain('failed')
-    expect(html).toContain('Render failed')
+    expect(html).toContain('The renderer could not encode the video.')
     expect(html).toContain('FFmpeg exited with code 1')
     expect(html).toContain('Overlay source was missing.')
-    expect(html).toContain('Retry')
+    expect(html).toContain('choose the output formats in the toolbar')
+    expect(html).not.toContain('A retry uses the current timeline.')
     expect(html).not.toContain('/api/agency/audio/projects/project-1/renders/failed-render')
   })
+  it('preserves superseded failures in history without a retry prompt', async () => {
+    const html = await render({ jobs: [
+      job({ id: 'old', channels: ['reels_9x16'], status: 'failed', error: 'container_timeout: deadline', variants: {} }),
+      job({ createdAt: '2026-06-18T02:00:00Z' })
+    ] })
+    expect(html).toContain('Later renders produced all of these outputs.')
+    expect(html).toContain('The export took too long and stopped.')
+    expect(html).not.toContain('A retry uses the current timeline.')
+  })
+
 })

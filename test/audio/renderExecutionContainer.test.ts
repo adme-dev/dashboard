@@ -82,7 +82,7 @@ describe('private composite render execution', () => {
     const id = response.headers.get('x-render-execution-id')
     expect(id).toMatch(/^[a-f0-9-]{36}$/)
     expect(await (await status(id!)).json()).toMatchObject({ stage: 'streaming' })
-    expect(await work()).toEqual([])
+    await until(async () => (await work()).length === 0)
   })
   it.each([['bad', '30'], [randomUUID(), '0'], [randomUUID(), '600001'], [randomUUID(), '1.5']])(
     'rejects invalid execution headers before starting work', async (id, ms) => {
@@ -128,7 +128,12 @@ describe('private composite render execution', () => {
   }, 12000)
   it('rejects an empty encoder output and removes scratch before a later render', async () => {
     expect((await post('empty')).status).toBe(500)
-    expect(await work()).toEqual([])
+    // The server ends the HTTP response before its finally block removes scratch.
+    await until(async () => (await work()).length === 0)
+    const next = await post('small')
+    expect(next.status).toBe(200)
+    expect((await next.arrayBuffer()).byteLength).toBe(48)
+    await until(async () => (await work()).length === 0)
   })
   it.each(['SIGTERM', 'SIGINT'] as const)('drains an accepted composite on %s', async signal => {
     const { child, endpoint } = await startService()

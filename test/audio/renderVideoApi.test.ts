@@ -107,6 +107,7 @@ describe('POST /agency/audio/projects/:id/render-video', () => {
     expect(mockRequireWriteAccess).toHaveBeenCalled()
     // createRenderJob called with projectId + requestedBy
     const jobArg = mockCreateRenderJob.mock.calls[0][0]
+    expect(jobArg.channels).toEqual(['reels_9x16', 'square_1x1', 'youtube_16x9'])
     expect(jobArg.projectId).toBe('p1')
     expect(jobArg.actor.id).toBe('u1')
 
@@ -192,6 +193,7 @@ describe('POST /agency/audio/projects/:id/render-video — overlay resolution', 
       context: {}
     } as any)
 
+    expect(mockCreateRenderJob.mock.calls[0][0].channels).toEqual(['reels_9x16'])
     // loadBannerLayers called with the project id + the gsap_format_key from the clip
     expect(mockLoadBannerLayers).toHaveBeenCalledWith('bp1', 'fb_story', expect.any(Object))
 

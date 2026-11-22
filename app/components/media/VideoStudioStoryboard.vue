@@ -84,6 +84,14 @@ const root = ref<HTMLElement>()
 const frameRate = computed(() => props.plan?.fps || props.candidate?.plan.fps || props.fps)
 const total = computed(() => props.draft.shots.reduce((sum, shot) => sum + shot.durationFrames, 0))
 const selectedShot = computed(() => props.draft.shots.find(s => s.id === selected.value))
+const plannedSeconds = computed(() => total.value / frameRate.value)
+// The edit is frame-quantised, so a difference of up to one frame still "matches" the target.
+const actualVsTarget = computed(() => {
+  if (!props.timelineNonEmpty) return null
+  const delta = props.editDuration - props.draft.durationSeconds
+  if (Math.abs(delta) <= 1 / frameRate.value + 1e-6) return 'Current edit matches the draft target.'
+  return `Current edit runs ${Math.abs(delta).toFixed(2)}s ${delta > 0 ? 'longer' : 'shorter'} than the draft target.`
+})
 const applyAllowed = computed(
   () =>
     !locked.value
@@ -307,18 +315,57 @@ function confirmApply() {
           Storyboard draft
         </h3>
         <p class="text-xs text-muted">
-          {{ draft.shots.length }} planned shots · {{ (total / frameRate).toFixed(2) }}s planned
+          {{ draft.shots.length }} planned shots · {{ plannedSeconds.toFixed(2) }}s planned
         </p>
       </div>
     </header>
     <div class="min-h-0 flex-1 space-y-5 overflow-y-auto py-4 pr-1">
-      <div v-if="timelineNonEmpty" class="border-l-2 border-primary pl-3 text-sm">
-        <p class="font-medium text-highlighted">
-          Current edit
-        </p>
-        <p>{{ editClipCount }} {{ editClipCount === 1 ? 'clip' : 'clips' }} · {{ editDuration.toFixed(2) }}s<span v-if="editFormat"> · {{ editFormat }}</span></p>
-        <p v-if="Math.abs(editDuration - draft.durationSeconds) >= 0.01" class="mt-1 text-xs text-muted">
-          Draft target {{ draft.durationSeconds }}s · current edit {{ editDuration.toFixed(2) }}s
+      <!-- Actual (solid) vs intended (dashed): a mismatch is information, never a warning. -->
+      <div class="space-y-2" role="group" aria-label="Duration">
+        <dl class="grid grid-cols-1 gap-2 @md:grid-cols-3">
+          <div
+            v-if="timelineNonEmpty"
+            data-duration="actual"
+            class="min-w-0 rounded-md border border-default bg-elevated px-3 py-2"
+          >
+            <dt class="flex items-center gap-1.5 text-xs text-muted">
+              <span class="size-2 shrink-0 rounded-full bg-primary" aria-hidden="true" />
+              Current edit · actual
+            </dt>
+            <dd class="text-sm font-semibold tabular-nums text-highlighted">
+              {{ editDuration.toFixed(2) }}s
+            </dd>
+            <dd class="truncate text-xs text-muted">
+              {{ editClipCount }} {{ editClipCount === 1 ? 'clip' : 'clips' }}<span v-if="editFormat"> · {{ editFormat }}</span>
+            </dd>
+          </div>
+          <div data-duration="target" class="min-w-0 rounded-md border border-dashed border-accented px-3 py-2">
+            <dt class="flex items-center gap-1.5 text-xs text-muted">
+              <span class="size-2 shrink-0 rounded-full border border-dashed border-current" aria-hidden="true" />
+              Draft target
+            </dt>
+            <dd class="text-sm font-medium tabular-nums text-default">
+              {{ draft.durationSeconds }}s
+            </dd>
+            <dd class="truncate text-xs text-muted">
+              Planning goal, not the edit
+            </dd>
+          </div>
+          <div data-duration="planned" class="min-w-0 rounded-md border border-dashed border-default px-3 py-2">
+            <dt class="flex items-center gap-1.5 text-xs text-muted">
+              <span class="size-2 shrink-0 rounded-sm border border-dashed border-current" aria-hidden="true" />
+              Planned shots
+            </dt>
+            <dd class="text-sm font-medium tabular-nums text-default">
+              {{ plannedSeconds.toFixed(2) }}s
+            </dd>
+            <dd class="truncate text-xs text-muted">
+              {{ draft.shots.length }} {{ draft.shots.length === 1 ? 'shot' : 'shots' }} in this draft
+            </dd>
+          </div>
+        </dl>
+        <p v-if="actualVsTarget" data-duration-delta class="text-xs text-muted">
+          {{ actualVsTarget }}
         </p>
       </div>
       <UAlert

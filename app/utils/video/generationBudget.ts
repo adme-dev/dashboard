@@ -1,6 +1,14 @@
 // Content-free budget explanation for the AI video composer. Amounts come from
 // GET /api/agency/video/generation/models (`budget`) or a 402 refusal's `data.budget`.
 
+import type { VideoGenerationJobView } from '~~/app/composables/useVideoGenerationJobs'
+
+export function generationReceiptLabel(job: Pick<VideoGenerationJobView, 'actualCostCents' | 'liabilityState'>): string {
+  if (job.actualCostCents != null) return `Provider cost US$${(job.actualCostCents / 100).toFixed(2)}`
+  if (job.liabilityState === 'released') return 'No charge'
+  return 'Provider cost unconfirmed'
+}
+
 export interface GenerationBudgetBucket {
   jobs: number
   cents: number

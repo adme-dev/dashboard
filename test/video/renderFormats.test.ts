@@ -27,6 +27,10 @@ describe('video render formats', () => {
 
 
 describe('retrying the recorded video outputs', () => {
+  it('uses the stored output selection before progress is available', () => {
+    expect(retryVideoRenderFormats({ channels: ['square_1x1', 'reels_9x16'], variants: {}, progress: null })).toEqual(['square_1x1', 'reels_9x16'])
+    expect(retryVideoRenderFormats({ channels: ['radio', 'meta'], progress: null })).toBeNull()
+  })
   it('retains a failed Reels-only request instead of expanding to all formats', () => {
     expect(retryVideoRenderFormats({ variants: {}, progress: { total: 1, formatKey: 'reels_9x16' } })).toEqual(['reels_9x16'])
   })

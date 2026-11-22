@@ -4,6 +4,7 @@ import {
   getVideoGenerationModel,
   listSelectableVideoGenerationModels,
 } from '~~/server/utils/video-generation/modelRegistry'
+import { estimateVideoGenerationCostCents } from '~~/server/utils/video-generation/costs'
 
 describe('video generation model registry', () => {
   it('returns null for unknown models', () => {
@@ -74,6 +75,18 @@ describe('video generation model registry', () => {
     expect(m!.modes).toContain('image-to-video')
     expect(m!.cfModel).toBe('bytedance/seedance-2.0-fast')
     expect(listSelectableVideoGenerationModels().map((x) => x.id)).toContain('aigateway/seedance-i2v')
+  })
+
+  it('prices Seedance Fast at the published 720p image-input rate and offers only 720p', () => {
+    // developers.cloudflare.com/ai/models/bytedance/seedance-2.0-fast/: "@720p non-video
+    // input (per second) $0.12"; resolution enum 480p|720p, default 720p.
+    const fast = getVideoGenerationModel('aigateway/seedance-i2v')!
+    expect(fast).toMatchObject({ estimatedCostCents: 12, costUnit: 'second', resolutions: ['720p'] })
+    expect(estimateVideoGenerationCostCents(fast, 5)).toBe(60)
+    // Other models are untouched by this correction.
+    expect(getVideoGenerationModel('aigateway/seedance-2-i2v')).toMatchObject({
+      estimatedCostCents: 30, resolutions: ['720p', '1080p', '4k'],
+    })
   })
 
   it('registers an internal-only CF t2v model that is NOT tenant-selectable', () => {

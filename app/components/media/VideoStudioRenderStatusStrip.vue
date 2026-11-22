@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useSessionStorage } from '@vueuse/core'
+import VideoStudioRenderFailure from './VideoStudioRenderFailure.vue'
 import type { MediaRenderJob } from '~~/app/types'
 import {
-  parseRenderFailure,
+  renderFailureHistoryNote,
   renderStageMeter,
   renderVariantFormats,
   renderDownloadUrl,
@@ -28,10 +30,10 @@ const emit = defineEmits<{
 
 const summary = computed(() => summarizeVideoRenderJobs(props.jobs))
 const latestCompleted = computed(() => latestJob(job => job.status === 'done' && renderVariantFormats(job).length > 0))
+const dismissed = useSessionStorage<string[]>(computed(() => `video-render-alerts:${props.projectId}`), [], { initOnMounted: true })
 const failedJobs = computed(() => props.jobs
-  .filter(job => job.status === 'failed')
-  .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
-  .map(job => ({ job, failure: parseRenderFailure(job.error) })))
+  .filter(job => job.status === 'failed' && !dismissed.value.includes(job.id) && !renderFailureHistoryNote(job, props.jobs))
+  .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)))
 const activeJob = computed(() => latestJob(job => job.status === 'queued' || job.status === 'rendering'))
 const stageMeter = computed(() => renderStageMeter(activeJob.value))
 const completedFormats = computed(() => renderVariantFormats(latestCompleted.value))
@@ -46,6 +48,7 @@ const statusLabel = computed(() => {
   if (props.rendering) return 'Queueing render'
   if (summary.value.active) return `${summary.value.active} active`
   if (summary.value.completed) return `${summary.value.completed} completed`
+  if (summary.value.failed) return 'See render history'
   return 'No renders'
 })
 
@@ -92,7 +95,7 @@ function emitVariant(event: 'publish' | 'send-to-portal' | 'save-asset', job: Me
         <div class="flex flex-wrap items-center gap-1.5">
           <p class="text-xs font-medium text-highlighted">Render queue</p>
           <UBadge
-            v-if="!summary.failed || summary.active || summary.completed || props.rendering"
+            v-if="!failedJobs.length || summary.active || summary.completed || props.rendering"
             :label="statusLabel"
             size="xs"
             variant="subtle"
@@ -108,32 +111,24 @@ function emitVariant(event: 'publish' | 'send-to-portal' | 'save-asset', job: Me
           />
           <UPopover v-if="failedJobs.length">
             <UButton
-              :label="`${summary.failed} failed`"
+              :label="`${failedJobs.length} failed`"
               trailing-icon="i-lucide-chevron-down"
               size="xs"
               variant="soft"
               color="error"
-              :aria-label="`Show ${summary.failed} failed renders`"
+              :aria-label="`Show ${failedJobs.length} failed renders`"
             />
             <template #content>
               <div class="max-h-64 w-80 max-w-[90vw] divide-y divide-default overflow-y-auto" aria-label="Failed renders">
-                <div v-for="{ job, failure } in failedJobs" :key="job.id" class="space-y-1 p-3">
-                  <p class="text-xs font-medium text-error">
-                    {{ failure.label }}
-                  </p>
-                  <p class="text-xs text-muted">
-                    {{ dateLabel(job.createdAt) }}
-                  </p>
-                  <p class="whitespace-pre-wrap break-words text-sm">
-                    {{ failure.details || 'No failure reason was recorded.' }}
-                  </p>
+                <div v-for="job in failedJobs" :key="job.id" class="space-y-2 p-3">
+                  <p class="text-xs text-muted">{{ dateLabel(job.createdAt) }}</p>
+                  <VideoStudioRenderFailure :job="job" :rendering="props.rendering" @retry="emit('retry', job)" />
                   <UButton
-                    label="Retry render"
-                    icon="i-lucide-refresh-cw"
+                    label="Dismiss alert"
                     size="xs"
-                    variant="soft"
-                    :loading="props.rendering"
-                    @click="emit('retry', job)"
+                    variant="ghost"
+                    color="neutral"
+                    @click="dismissed = [...dismissed, job.id]"
                   />
                 </div>
               </div>

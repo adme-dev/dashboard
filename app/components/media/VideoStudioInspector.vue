@@ -62,56 +62,63 @@ watch(() => props.tab, (tab) => {
 </script>
 
 <template>
-  <section class="space-y-3">
-    <div class="flex items-center justify-between gap-3">
-      <div class="flex min-w-0 items-center gap-2">
-        <UIcon name="i-lucide-panel-right" class="size-4 text-muted" />
-        <h3 class="text-xs font-medium uppercase text-muted">Inspector</h3>
-      </div>
-      <div class="flex items-center gap-1">
-        <slot name="actions" />
-      </div>
-    </div>
-    <UTabs
-      v-model="activeTab"
-      :items="tabItems"
-      :content="false"
-      size="xs"
-      variant="link"
-      color="primary"
-      aria-label="Video Studio inspector"
-    />
-
-    <div v-if="activeTab === 'details'" class="grid grid-cols-3 divide-x divide-default rounded-md border border-default bg-default/30">
-      <div
-        v-for="item in summaryItems"
-        :key="item.label"
-        class="min-w-0 px-2 py-1.5"
-      >
-        <div class="flex items-center gap-1 text-[10px] uppercase text-muted">
-          <UIcon :name="item.icon" class="size-3 shrink-0" />
-          <span class="truncate">{{ item.label }}</span>
+  <section class="flex h-full min-h-0 flex-col">
+    <div
+      data-inspector-nav
+      class="shrink-0 space-y-1 border-b border-default bg-default px-4 pb-1 pt-3"
+    >
+      <div class="flex items-center justify-between gap-3">
+        <div class="flex min-w-0 items-center gap-2">
+          <UIcon name="i-lucide-panel-right" class="size-4 text-muted" />
+          <h3 class="text-xs font-medium text-muted">Inspector</h3>
         </div>
-        <p class="mt-0.5 text-sm font-medium text-highlighted">{{ item.value }}</p>
-      </div>
-    </div>
-
-    <div v-if="activeTab === 'details'" class="min-w-0">
-      <slot name="details">
-        <div class="rounded-md border border-dashed border-default px-3 py-4 text-center">
-          <UIcon name="i-lucide-mouse-pointer-square" class="mx-auto size-4 text-muted" />
-          <p class="mt-2 text-xs font-medium text-highlighted">No selection</p>
-          <p class="mt-1 text-[11px] text-muted">Select an asset or clip to inspect production details.</p>
+        <div class="flex items-center gap-1">
+          <slot name="actions" />
         </div>
-      </slot>
+      </div>
+      <UTabs
+        v-model="activeTab"
+        :items="tabItems"
+        :content="false"
+        size="xs"
+        variant="link"
+        color="primary"
+        aria-label="Video Studio inspector"
+      />
     </div>
 
-    <div v-else-if="activeTab === 'produce'" class="min-w-0 space-y-3">
-      <slot name="produce" />
-    </div>
+    <div data-inspector-content class="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
+      <div v-if="activeTab === 'details'" class="grid grid-cols-3 divide-x divide-default rounded-md border border-default bg-default/30">
+        <div
+          v-for="item in summaryItems"
+          :key="item.label"
+          class="min-w-0 px-2 py-1.5"
+        >
+          <div class="flex items-center gap-1 text-[10px] uppercase text-muted">
+            <UIcon :name="item.icon" class="size-3 shrink-0" />
+            <span class="truncate">{{ item.label }}</span>
+          </div>
+          <p class="mt-0.5 text-sm font-medium text-highlighted">{{ item.value }}</p>
+        </div>
+      </div>
 
-    <div v-else class="min-w-0 space-y-3">
-      <slot name="review" />
+      <div v-if="activeTab === 'details'" class="min-w-0">
+        <slot name="details">
+          <div class="rounded-md border border-dashed border-default px-3 py-4 text-center">
+            <UIcon name="i-lucide-mouse-pointer-square" class="mx-auto size-4 text-muted" />
+            <p class="mt-2 text-xs font-medium text-highlighted">No selection</p>
+            <p class="mt-1 text-[11px] text-muted">Select an asset or clip to inspect production details.</p>
+          </div>
+        </slot>
+      </div>
+
+      <div v-else-if="activeTab === 'produce'" class="min-w-0 space-y-3">
+        <slot name="produce" />
+      </div>
+
+      <div v-else class="min-w-0 space-y-3">
+        <slot name="review" />
+      </div>
     </div>
   </section>
 </template>
