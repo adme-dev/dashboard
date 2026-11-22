@@ -46,7 +46,7 @@ Use the project menuâ€™s **Move to folder** action to change an existing designâ
 
 Review/comment links and view-only client links use separate token formats. The public client endpoint returns current artwork and only the fonts needed to render it; it does not return comments or reviewer identities.
 
-Client proofs use a compiled native video with embedded audio. Prepare every required size before delivery, then verify playback, seeking and sound without an agency login. The poster candidate uses a saved-artwork still for the selected size before Play and while the video prepares. It captures the midpoint up to three seconds, caches by canvas/font/size revision, and still checks live link authorization before serving cached bytes. A failed poster must leave video controls and retry status usable. Client links expire or can be revoked; creating one does not email it to a client. Browser/mobile layout evidence is separate from an actual Safari/iPhone playback check.
+Client proofs use a compiled native video with embedded audio. Prepare every required size before delivery, then verify playback, seeking and sound without an agency login. The player uses a saved-artwork still for the selected size before Play and while the video prepares. It captures the midpoint up to three seconds, caches by canvas/font/size revision, and still checks live link authorization before serving cached bytes. A failed poster must leave video controls and retry status usable. Client links expire or can be revoked; creating one does not email it to a client. Browser/mobile layout evidence is separate from an actual Safari/iPhone playback check.
 
 ## Reusing an imported design
 
