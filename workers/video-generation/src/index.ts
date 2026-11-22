@@ -1,5 +1,5 @@
 import { mockVideoGenerationProvider } from '../../../server/utils/video-generation/providers/mockProvider'
-import { makeAiGatewayProvider, type VideoGatewayLog } from '../../../server/utils/video-generation/providers/aiGatewayProvider'
+import { makeAiGatewayProvider, VIDEO_GATEWAY_ID, type VideoGatewayLog } from '../../../server/utils/video-generation/providers/aiGatewayProvider'
 import { downloadToR2 } from './downloadToR2'
 import {
   withVideoGenerationDatabase,
@@ -78,7 +78,14 @@ export default {
                 run: (model, inputs, options) => env.AI.run(model, inputs, options),
                 lastLog: async () => {
                   const id = env.AI.aiGatewayLogId
-                  return id ? env.AI.gateway('default').getLog(id) : null
+                  if (!id) return null
+                  const gateway = env.AI.gateway(VIDEO_GATEWAY_ID)
+                  try {
+                    return await gateway.getLog(id)
+                  } catch {
+                    await new Promise(resolve => setTimeout(resolve, 750))
+                    return gateway.getLog(id)
+                  }
                 }
               })
             }

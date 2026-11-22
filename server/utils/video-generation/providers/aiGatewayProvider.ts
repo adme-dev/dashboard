@@ -9,6 +9,8 @@ import type {
 import { getVideoGenerationModel } from '../modelRegistry'
 import { buildCfVideoInputs, imageInputEncoding } from '../cfInputs'
 
+export const VIDEO_GATEWAY_ID = 'default'
+
 export interface VideoGatewayLog {
   model: string
   success: boolean
@@ -120,7 +122,7 @@ export function makeAiGatewayProvider(deps: AiGatewayDeps): VideoGenerationProvi
         raw = await deps.run(
           model, inputs, {
             gateway: {
-              id: 'default',
+              id: VIDEO_GATEWAY_ID,
               metadata: {
                 tenantId: request.tenantId ?? '',
                 projectId: request.projectId ?? '',
@@ -139,11 +141,11 @@ export function makeAiGatewayProvider(deps: AiGatewayDeps): VideoGenerationProvi
       const matched = log?.metadata?.jobId === request.jobId && log.model === model ? log : null
       if (runError && !(matched?.success === false && matched.status_code === 400)) throw runError
       const cost = matched?.cost
-      const actualCostCents = !matched?.custom_cost && typeof cost === 'number' && Number.isFinite(cost) && cost >= 0
+      const actualCostCents = !matched?.custom_cost && typeof cost === 'number' && Number.isFinite(cost) && (cost > 0 || (cost === 0 && matched?.success === false))
         ? Math.round(cost * 100)
         : null
       const outputUrl = extractVideoUrl(raw)
-      const providerError = extractProviderError(raw)
+      const providerError = runError ? 'The provider rejected this generation request (HTTP 400).' : extractProviderError(raw)
       completedResults.set(request.jobId, outputUrl
         ? { status: 'succeeded', outputUrl, actualCostCents, errorMessage: null }
         : { status: 'failed', outputUrl: null, actualCostCents, errorMessage: providerError || `model returned no video url (state=${extractState(raw) ?? 'unknown'})` })
