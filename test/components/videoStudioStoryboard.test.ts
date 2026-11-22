@@ -107,8 +107,31 @@ describe('Storyboard workbench', () => {
   it('shows the existing edit separately from an empty draft target', async () => {
     const { host, app } = await mount({ draft: { ...draft(), shots: [] }, timelineNonEmpty: true, editDuration: 40.2, editClipCount: 2, editFormat: '1080 × 1920' })
     expect(host.textContent).toContain('0 planned shots')
-    expect(host.textContent).toContain('2 clips · 40.20s · 1080 × 1920')
-    expect(host.textContent).toContain('Draft target 30s · current edit 40.20s')
+    const actual = host.querySelector('[data-duration="actual"]')!
+    const target = host.querySelector('[data-duration="target"]')!
+    expect(actual.textContent).toContain('Current edit · actual')
+    expect(actual.textContent).toContain('40.20s')
+    expect(actual.textContent).toContain('2 clips · 1080 × 1920')
+    expect(target.textContent).toContain('Draft target')
+    expect(target.textContent).toContain('30s')
+    // Actual is solid, the target is a dashed goal: visually distinct, not a warning.
+    expect(target.className).toContain('border-dashed')
+    expect(actual.className).not.toContain('border-dashed')
+    expect(host.querySelector('[data-duration-delta]')?.textContent).toContain('Current edit runs 10.20s longer than the draft target.')
+    expect(host.querySelector('[data-duration-delta]')?.className).not.toMatch(/warning|error/)
+    app.unmount()
+  })
+  it('treats a frame-quantised edit as matching the draft target', async () => {
+    const { host, app } = await mount({ timelineNonEmpty: true, editDuration: 30 + 1 / 30, editClipCount: 3 })
+    expect(host.querySelector('[data-duration-delta]')?.textContent).toContain('Current edit matches the draft target.')
+    expect(host.textContent).not.toContain('longer than the draft target')
+    app.unmount()
+  })
+  it('omits the actual duration and comparison when the timeline is empty', async () => {
+    const { host, app } = await mount({ timelineNonEmpty: false, editDuration: 0 })
+    expect(host.querySelector('[data-duration="actual"]')).toBeNull()
+    expect(host.querySelector('[data-duration-delta]')).toBeNull()
+    expect(host.querySelector('[data-duration="target"]')?.textContent).toContain('30s')
     app.unmount()
   })
   it('supports empty recipe and manual flows without paid generation', async () => {

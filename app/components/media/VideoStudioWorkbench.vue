@@ -303,7 +303,7 @@ watch(() => props.mode, (mode) => {
 
     <div :class="['grid min-h-0 flex-1 grid-cols-1', workspaceGridClass]" :style="workspaceStyle">
       <aside v-if="!props.producerCollapsed" :class="['min-h-0 min-w-0 flex-col overflow-hidden border-r border-default bg-default/40', panelClass('produce')]">
-        <div class="min-h-0 flex-1 overflow-y-auto p-4">
+        <div class="min-h-0 flex-1 overflow-hidden">
           <slot name="producer" />
         </div>
       </aside>

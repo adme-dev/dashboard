@@ -37,9 +37,13 @@ export function normalizeVideoRenderFormats(formats: readonly string[] | null | 
  * Historical jobs without that evidence require a fresh explicit selection.
  */
 export function retryVideoRenderFormats(job: {
+  channels?: readonly string[]
   variants?: Record<string, unknown>
   progress?: { total: number, formatKey: string | null } | null
 } | null | undefined): VideoRenderFormatId[] | null {
+  if (job?.channels?.length && job.channels.every(format => VIDEO_RENDER_FORMAT_IDS.has(format)))
+    return normalizeVideoRenderFormats(job.channels)
+
   const total = job?.progress?.total
   if (!Number.isInteger(total) || !total || total < 1 || total > VIDEO_RENDER_FORMATS.length) return null
   const recorded = Object.keys(job?.variants ?? {})

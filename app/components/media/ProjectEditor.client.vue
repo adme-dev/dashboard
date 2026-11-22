@@ -4,7 +4,8 @@ import { useVideoModelAccess } from '~~/app/composables/useVideoModelAccess'
 // MediaTimeline emit to the composable actions, adding an edit toolbar (undo/redo,
 // split, add-clip, save-version), and passing the reactive sources map for waveforms.
 import { computed, inject, nextTick, ref, shallowRef, watch, onMounted, onBeforeUnmount, type ShallowRef } from 'vue'
-import { createReusableTemplate } from '@vueuse/core'
+import { createReusableTemplate, useElementSize, useWindowSize } from '@vueuse/core'
+import { resolveTimelineDockHeight, stepTimelineDockHeight, TIMELINE_DOCK_MIN, TIMELINE_DOCK_MAX } from '~~/app/utils/audio/timelineLayout'
 import { onBeforeRouteLeave, useRoute } from 'vue-router'
 import { useMediaProjectEditor } from '~~/app/composables/useMediaProjectEditor'
 import type { PickedAsset } from '~~/app/components/media/MediaAssetPicker.vue'
@@ -25,6 +26,7 @@ import VideoStudioSelectedAssetPanel from '~~/app/components/media/VideoStudioSe
 import VideoStudioVoiceComposer from '~~/app/components/media/VideoStudioVoiceComposer.vue'
 import VideoStudioWorkbench from '~~/app/components/media/VideoStudioWorkbench.vue'
 import VideoStudioFeatureMenu from '~~/app/components/media/VideoStudioFeatureMenu.vue'
+import { generationReceiptLabel } from '~~/app/utils/video/generationBudget'
 import { modelLabelFor } from '~~/app/utils/video/modelPresentation'
 import { apiErrorDescription } from '~~/app/utils/apiError'
 import { canReplaceVideoStudioClip } from '~~/app/utils/video/assetReplacement'
@@ -950,26 +952,57 @@ function onAddToTrack(payload: { trackId: string, kind: string }) {
 
 // ─── Dock height (resizable, remembered per browser) ─────────────────────────
 
-const DOCK_MIN = 140
-const DOCK_MAX = 640
 const DOCK_KEY = 'video-studio:dock-height'
-const dockHeight = ref(196)
+const customDockHeight = ref<number | null>(null)
+const dockElement = ref<HTMLElement | null>(null)
+const renderStrip = ref<HTMLElement | null>(null)
+const naturalTimelineHeight = ref<number | null>(null)
+const { height: renderStripHeight } = useElementSize(renderStrip)
+const { width: viewportWidth, height: viewportHeight } = useWindowSize()
+const dockHeight = computed(() => resolveTimelineDockHeight({
+  naturalHeight: naturalTimelineHeight.value,
+  chromeHeight: renderStripHeight.value + 8,
+  viewportHeight: viewportHeight.value,
+  phone: viewportWidth.value < 1024,
+  manualHeight: customDockHeight.value,
+}))
 let dockDrag: { startY: number, startHeight: number } | null = null
 
 function onDockDragStart(event: PointerEvent) {
-  dockDrag = { startY: event.clientY, startHeight: dockHeight.value }
+  dockDrag = { startY: event.clientY, startHeight: dockElement.value?.clientHeight ?? dockHeight.value }
   ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
 }
 function onDockDragMove(event: PointerEvent) {
   if (!dockDrag) return
   // Dragging up grows the dock.
-  dockHeight.value = Math.min(DOCK_MAX, Math.max(DOCK_MIN, dockDrag.startHeight + (dockDrag.startY - event.clientY)))
+  resizeDock(dockDrag.startHeight + dockDrag.startY - event.clientY)
 }
 function onDockDragEnd() {
   if (!dockDrag) return
   dockDrag = null
+  rememberDockHeight()
+}
+function resizeDock(height: number) {
+  customDockHeight.value = Math.min(TIMELINE_DOCK_MAX, Math.max(TIMELINE_DOCK_MIN, height))
+}
+function fitDockToTracks() {
+  customDockHeight.value = null
   try {
-    localStorage.setItem(DOCK_KEY, String(dockHeight.value))
+    localStorage.removeItem(DOCK_KEY)
+  } catch { /* private mode */ }
+}
+function onDockKey(event: KeyboardEvent) {
+  const nextHeight = stepTimelineDockHeight(dockHeight.value, event.key)
+  if (nextHeight == null) return
+  event.preventDefault()
+  event.stopPropagation()
+  resizeDock(nextHeight)
+  rememberDockHeight()
+}
+function rememberDockHeight() {
+  if (customDockHeight.value == null) return
+  try {
+    localStorage.setItem(DOCK_KEY, String(customDockHeight.value))
   } catch { /* private mode */ }
 }
 
@@ -1011,7 +1044,7 @@ function answerDiscard(ok: boolean) {
 onMounted(() => {
   try {
     const stored = Number(localStorage.getItem(DOCK_KEY))
-    if (Number.isFinite(stored) && stored >= DOCK_MIN && stored <= DOCK_MAX) dockHeight.value = stored
+    if (Number.isFinite(stored) && stored >= TIMELINE_DOCK_MIN && stored <= TIMELINE_DOCK_MAX) customDockHeight.value = stored
   } catch { /* private mode */ }
   window.addEventListener('keydown', onKeyDown)
   window.addEventListener('beforeunload', onBeforeUnload)
@@ -1512,7 +1545,7 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
           v-model:mode="videoStudioMode"
           v-model:workspace-view="videoWorkspaceView"
           v-model:producer-collapsed="producerRailCollapsed"
-          class="max-lg:h-[clamp(22rem,54svh,34rem)] max-lg:flex-none"
+          class="max-lg:h-[clamp(22rem,54svh,34rem)] max-lg:grow max-lg:shrink-0"
           :asset-count="videoStudioAssetCount"
           :generation-job-count="activeGenerationJobCount"
           :render-job-count="editor.renderJobs.value.length"
@@ -1568,7 +1601,14 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
                 No generation jobs are recorded for this project.
               </p><ul v-else class="mt-3 divide-y divide-default">
                 <li v-for="job in genJobs.jobs.value" :key="job.id" class="flex items-center justify-between gap-3 py-3 text-sm">
-                  <span class="min-w-0 truncate">{{ modelLabelFor(job.modelId) }}</span><UBadge :label="job.status" color="neutral" variant="subtle" />
+                  <div class="min-w-0">
+                    <p class="truncate">{{ modelLabelFor(job.modelId) }}</p>
+                    <p v-if="job.estimatedCostCents != null" class="text-xs tabular-nums text-muted">
+                      Estimate US${{ (job.estimatedCostCents / 100).toFixed(2) }} ·
+                      {{ generationReceiptLabel(job) }}
+                    </p>
+                  </div>
+                  <UBadge :label="job.status" color="neutral" variant="subtle" />
                 </li>
               </ul>
             </div>
@@ -2010,8 +2050,9 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
         <!-- Video playback controls live with the preview. Audio uses the transport here. -->
         <!-- Audio projects have no workbench: the dock takes the whole height. -->
         <section
+          ref="dockElement"
           :class="['relative flex flex-col gap-2', isAv ? 'shrink-0' : 'min-h-0 flex-1']"
-          :style="isAv ? { height: `min(${dockHeight}px, 40svh)` } : undefined"
+          :style="isAv ? { height: `${dockHeight}px` } : undefined"
         >
           <!-- Drag handle: grows the dock upward. -->
           <div
@@ -2020,9 +2061,14 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
             role="separator"
             aria-orientation="horizontal"
             aria-label="Resize timeline"
+            tabindex="0"
+            title="Resize timeline. Double-click or press Enter to fit tracks."
+            @dblclick="fitDockToTracks"
+            @keydown.enter.prevent.stop="fitDockToTracks"
+            @keydown="onDockKey"
             :aria-valuenow="dockHeight"
-            :aria-valuemin="DOCK_MIN"
-            :aria-valuemax="DOCK_MAX"
+            :aria-valuemin="TIMELINE_DOCK_MIN"
+            :aria-valuemax="resolveTimelineDockHeight({ naturalHeight: null, manualHeight: TIMELINE_DOCK_MAX, viewportHeight, phone: viewportWidth < 1024 })"
             @pointerdown="onDockDragStart"
             @pointermove="onDockDragMove"
             @pointerup="onDockDragEnd"
@@ -2030,20 +2076,21 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
           >
             <span class="h-1 w-12 rounded-full bg-accented transition group-hover:bg-primary" />
           </div>
-          <VideoStudioRenderStatusStrip
-            v-if="isAv"
-            :project-id="projectId"
-            :jobs="editor.renderJobs.value"
-            :rendering="editor.rendering.value"
-            @retry="onRetryRender"
-            @publish="onPublishToSocial"
-            @send-to-portal="onSendToPortal"
-            @save-asset="onSaveAsset"
-          />
+          <div v-if="isAv" ref="renderStrip">
+            <VideoStudioRenderStatusStrip
+              :project-id="projectId"
+              :jobs="editor.renderJobs.value"
+              :rendering="editor.rendering.value"
+              @retry="onRetryRender"
+              @publish="onPublishToSocial"
+              @send-to-portal="onSendToPortal"
+              @save-asset="onSaveAsset"
+            />
+          </div>
 
           <Transport v-if="!isAv" />
 
-          <div class="min-h-0 flex-1 overflow-y-auto">
+          <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
             <MediaTimeline
               :timeline="editor.timeline.value"
               :clips="editor.clips.value"
@@ -2052,6 +2099,7 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
               :duration="editor.duration.value"
               :sources="editor.sources.value"
               :titles="clipTitles"
+              @natural-height="naturalTimelineHeight = $event.heightPx"
               @select="(p) => selectTimelineClip(p.clipId)"
               @seek="(sec) => editor.seek(sec)"
               @move-clip="(p) => editor.moveClipAction(p.clipId, p.toTrackId, p.newStartSec)"
@@ -2095,7 +2143,11 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
   />
 
   <!-- AI video generation progress/status (queued/running/failed) -->
-  <MediaGenerationStatus v-if="videoGenerationEnabled" :jobs="genJobs.jobs.value" />
+  <MediaGenerationStatus
+    v-if="videoGenerationEnabled"
+    :jobs="genJobs.jobs.value"
+    @add-to-timeline="onLibraryAddToTimeline"
+  />
 
   <MediaVideoLibrary
     v-model:open="libraryOpen"

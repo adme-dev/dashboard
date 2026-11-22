@@ -100,8 +100,8 @@ describe('VideoStudioWorkbench', () => {
     expect(html).toContain('Producer rail')
     expect(html).toContain('2 AI jobs running')
     expect(html).not.toContain('AI ready')
-    // Both panes scroll independently while the outer section stays bounded.
-    expect(html.match(/overflow-y-auto/g)?.length).toBe(3)
+    // The preview and workspace scroll here. The inspector owns its body scroll.
+    expect(html.match(/overflow-y-auto/g)?.length).toBe(2)
     expect(html).toContain('overflow-hidden')
   })
 

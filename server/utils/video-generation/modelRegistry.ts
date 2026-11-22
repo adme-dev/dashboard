@@ -57,8 +57,14 @@ const MODELS: VideoGenerationModel[] = [
     supportsNativeAudio: false,
     durationsSeconds: [5, 10],
     aspectRatios: ['16:9', '9:16', '1:1'],
-    resolutions: ['720p', '1080p'],
-    estimatedCostCents: 30,
+    // Cloudflare's Fast schema accepts only 480p|720p (default 720p). Only the
+    // default 720p is offered; 480p is intentionally not exposed.
+    resolutions: ['720p'],
+    // $0.12/s — Cloudflare's published "@720p non-video input" (and Default) rate for
+    // bytedance/seedance-2.0-fast. Image-to-video sends an image, not a video, so
+    // this is the rate that applies. Verified against a real 5s charge of 60¢.
+    // https://developers.cloudflare.com/ai/models/bytedance/seedance-2.0-fast/
+    estimatedCostCents: 12,
     costUnit: 'second',
     capabilities: conservativeCapabilities(),
     safetyClass: 'vehicle_i2v_safe',

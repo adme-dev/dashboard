@@ -1,11 +1,24 @@
 <script setup lang="ts">
 // Floating status card for AI video generation — shows queued/running jobs with a live
 // elapsed timer + spinner, and surfaces failures so the user is never left guessing.
+//
+// Placement: anchored top-right under the page header. The bottom-right corner is
+// where the timeline toolbar keeps Split and Delete, so a card there sat on top of
+// destructive editing controls.
 import { computed, ref, onMounted, onBeforeUnmount } from 'vue'
 import type { VideoGenerationJobView } from '~~/app/composables/useVideoGenerationJobs'
 import { visibleGenerationJobs } from '~~/app/utils/video/generationStatusVisibility'
+import { videoGenerationJobTimelinePayload, type VideoLibraryTimelinePayload } from '~~/app/utils/video/videoLibraryTimeline'
+import MediaGeneratedThumbnail from '~~/app/components/media/MediaGeneratedThumbnail.vue'
 
-const props = defineProps<{ jobs: VideoGenerationJobView[] }>()
+const props = defineProps<{
+  jobs: VideoGenerationJobView[]
+  /**
+   * Bound via `@add-to-timeline`. Declared as a prop (not only an emit) so the
+   * "Add at playhead" action renders only when the host editor can place clips.
+   */
+  onAddToTimeline?: (payload: VideoLibraryTimelinePayload) => void
+}>()
 
 const dismissed = ref<Set<string>>(new Set())
 const now = ref(Date.now())
@@ -30,23 +43,60 @@ function elapsed(j: VideoGenerationJobView): string {
 
 function dismiss(id: string) { dismissed.value = new Set([...dismissed.value, id]) }
 
-const meta: Record<string, { icon: string; color: string; label: string; spin?: boolean }> = {
-  queued: { icon: 'i-lucide-loader-circle', color: 'text-blue-400', label: 'Queued', spin: true },
+function timelinePayload(j: VideoGenerationJobView): VideoLibraryTimelinePayload | null {
+  return j.status === 'succeeded' ? videoGenerationJobTimelinePayload(j) : null
+}
+
+function addAtPlayhead(j: VideoGenerationJobView) {
+  const payload = timelinePayload(j)
+  if (!payload || !props.onAddToTimeline) return
+  props.onAddToTimeline(payload)
+  // The clip is on the timeline now; the card has done its job.
+  dismiss(j.id)
+}
+
+const meta: Record<string, { icon: string, color: string, label: string, spin?: boolean }> = {
+  queued: { icon: 'i-lucide-loader-circle', color: 'text-blue-600 dark:text-blue-400', label: 'Queued', spin: true },
   unknown: { icon: 'i-lucide-circle-help', color: 'text-warning', label: 'Outcome needs reconciliation' },
   running: { icon: 'i-lucide-loader-circle', color: 'text-primary', label: 'Generating', spin: true },
-  succeeded: { icon: 'i-lucide-check-circle', color: 'text-emerald-400', label: 'Done — in Library' },
-  failed: { icon: 'i-lucide-alert-circle', color: 'text-red-400', label: 'Failed' },
+  succeeded: { icon: 'i-lucide-check-circle', color: 'text-emerald-600 dark:text-emerald-400', label: 'Done — in Library' },
+  failed: { icon: 'i-lucide-alert-circle', color: 'text-error', label: 'Failed' }
 }
 </script>
 
 <template>
-  <div v-if="visible.length" class="fixed bottom-28 right-4 z-50 flex max-h-[50dvh] w-80 max-w-[calc(100vw-2rem)] flex-col gap-2 overflow-y-auto">
-    <UCard v-for="j in visible" :key="j.id" :ui="{ body: 'p-3 sm:p-3' }" class="shadow-lg ring-1 ring-default/60 bg-default/95 backdrop-blur">
+  <div
+    v-if="visible.length"
+    data-generation-status
+    class="pointer-events-none fixed right-4 top-[calc(var(--ui-header-height,4rem)+0.5rem)] z-50 flex max-h-[45dvh] w-80 max-w-[calc(100vw-2rem)] flex-col gap-2 overflow-y-auto"
+    aria-live="polite"
+  >
+    <UCard
+      v-for="j in visible"
+      :key="j.id"
+      :data-generation-status-job="j.id"
+      :ui="{ body: 'p-3 sm:p-3' }"
+      class="pointer-events-auto bg-default/95 shadow-lg ring-1 ring-default/60 backdrop-blur"
+    >
       <div class="flex items-start gap-3">
-        <UIcon :name="meta[j.status].icon" :class="[meta[j.status].color, meta[j.status].spin && 'animate-spin', 'size-5 shrink-0 mt-0.5']" />
+        <div
+          v-if="j.status === 'succeeded' && j.outputAssetId"
+          class="size-10 shrink-0 overflow-hidden rounded-md border border-default"
+        >
+          <MediaGeneratedThumbnail
+            :asset-id="j.outputAssetId"
+            :duration-sec="j.durationSeconds"
+            :alt="`Preview of ${j.prompt || 'generated clip'}`"
+          />
+        </div>
+        <UIcon
+          v-else
+          :name="meta[j.status]?.icon ?? 'i-lucide-circle'"
+          :class="[meta[j.status]?.color, meta[j.status]?.spin && 'animate-spin', 'mt-0.5 size-5 shrink-0']"
+        />
         <div class="min-w-0 flex-1">
           <div class="flex items-center gap-2">
-            <span class="text-sm font-medium text-default">{{ meta[j.status].label }}</span>
+            <span class="text-sm font-medium text-default">{{ meta[j.status]?.label ?? j.status }}</span>
             <span v-if="j.status === 'queued' || j.status === 'running'" class="text-xs tabular-nums text-muted">{{ elapsed(j) }}</span>
             <UButton
               v-if="j.status === 'succeeded' || j.status === 'failed'"
@@ -55,16 +105,32 @@ const meta: Record<string, { icon: string; color: string; label: string; spin?: 
               size="xs"
               variant="ghost"
               color="neutral"
-              class="ml-auto -mr-1 -mt-1"
+              class="-mr-1 -mt-1 ml-auto"
               @click="dismiss(j.id)"
             />
           </div>
-          <p class="mt-0.5 truncate text-xs text-muted">{{ j.prompt }}</p>
-          <p v-if="j.status === 'failed' && j.errorMessage" class="mt-1 text-xs text-red-400 line-clamp-2">{{ j.errorMessage }}</p>
+          <p class="mt-0.5 truncate text-xs text-muted">
+            {{ j.prompt }}
+          </p>
+          <p v-if="j.status === 'failed' && j.errorMessage" class="mt-1 line-clamp-2 text-xs text-error">
+            {{ j.errorMessage }}
+          </p>
           <p v-else-if="j.status === 'unknown'" class="mt-1 text-xs text-muted">
             The provider may have accepted this request. Its budget remains reserved; do not submit it again.
           </p>
-          <p v-else-if="j.status === 'running'" class="mt-1 text-xs text-muted">AI video can take a few minutes — you can keep working.</p>
+          <p v-else-if="j.status === 'running'" class="mt-1 text-xs text-muted">
+            AI video can take a few minutes — you can keep working.
+          </p>
+          <UButton
+            v-if="props.onAddToTimeline && timelinePayload(j)"
+            class="mt-2"
+            size="xs"
+            variant="soft"
+            color="primary"
+            icon="i-lucide-plus-circle"
+            label="Add at playhead"
+            @click="addAtPlayhead(j)"
+          />
         </div>
       </div>
     </UCard>

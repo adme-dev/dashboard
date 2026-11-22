@@ -1,6 +1,7 @@
 <script setup lang="ts">
+import VideoStudioRenderFailure from './VideoStudioRenderFailure.vue'
 import type { MediaRenderJob, MediaRenderJobStatus } from '~~/app/types'
-import { creativeVersionLabelForRenderJob, parseRenderFailure, renderVariantFormats, renderFormatLabel, renderDownloadUrl } from '~~/app/utils/video/renderJobSummary'
+import { creativeVersionLabelForRenderJob, renderFailureHistoryNote, renderVariantFormats, renderFormatLabel, renderDownloadUrl } from '~~/app/utils/video/renderJobSummary'
 
 const props = withDefaults(defineProps<{
   projectId: string
@@ -52,9 +53,6 @@ function variantItems(job: MediaRenderJob, label: string, icon: string, event: '
   }))]
 }
 
-function failureSummary(job: MediaRenderJob) {
-  return parseRenderFailure(job.error)
-}
 </script>
 
 <template>
@@ -102,15 +100,15 @@ function failureSummary(job: MediaRenderJob) {
           </div>
         </div>
 
-        <div v-if="job.status === 'failed' && job.error" class="mt-2 rounded-md border border-error/30 bg-error/5 p-2">
-          <div class="flex items-center gap-1.5 text-[11px] font-medium text-error">
-            <UIcon name="i-lucide-triangle-alert" class="size-3.5" />
-            <span>{{ failureSummary(job).label }}</span>
-          </div>
-          <p class="mt-1 whitespace-pre-wrap break-words text-[11px] leading-snug text-error">
-            {{ failureSummary(job).details }}
-          </p>
-        </div>
+        <VideoStudioRenderFailure
+          v-if="job.status === 'failed'"
+          class="mt-2"
+          :job="job"
+          :history-note="renderFailureHistoryNote(job, props.jobs)"
+          :rendering="props.rendering"
+          history
+          @retry="emit('retry', job)"
+        />
 
         <div class="mt-2 flex flex-wrap items-center gap-1.5">
           <UButton
@@ -123,16 +121,6 @@ function failureSummary(job: MediaRenderJob) {
             :to="variantUrl(job, format)"
             external
             download
-          />
-          <UButton
-            v-if="job.status === 'failed'"
-            icon="i-lucide-refresh-cw"
-            size="xs"
-            variant="soft"
-            :color="failureSummary(job).retryable ? 'primary' : 'neutral'"
-            label="Retry"
-            :loading="props.rendering"
-            @click="emit('retry', job)"
           />
           <UDropdownMenu
             v-if="job.status === 'done' && variantFormats(job).length"

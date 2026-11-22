@@ -79,7 +79,7 @@ export default defineEventHandler(async (event) => {
       if (!replayed) throw createError({ statusCode: 409, statusMessage: 'Replayed render job no longer exists' })
       return replayed
     }
-    const storyboardJob = await createStoryboardRenderJobIfObligated(event, { projectId: id, actor: user, ...precondition, channels: [], jobId: run.ids[0]!, formats })
+    const storyboardJob = await createStoryboardRenderJobIfObligated(event, { projectId: id, actor: user, ...precondition, channels: formats, jobId: run.ids[0]!, formats })
     if (storyboardJob) {
       try {
         await enqueueVideoRender(event, { jobId: storyboardJob.id, projectId: id, timelineId: storyboardJob.timelineId, formats })
@@ -90,9 +90,8 @@ export default defineEventHandler(async (event) => {
       }
       return storyboardJob
     }
-    // Snapshot + create the job row (same createRenderJob as audio — channels unused for
-    // video but the row records who triggered it and acts as the durable anchor).
-    const job = await createRenderJob({ projectId: id, actor: user, ...precondition, channels: [], jobId: run.ids[0]! })
+    // As for audio renders, channels records the requested output keys before dispatch.
+    const job = await createRenderJob({ projectId: id, actor: user, ...precondition, channels: formats, jobId: run.ids[0]! })
 
     // Resolve each overlay per requested output format: load banner layers, build HTML,
     // upload to R2. This avoids reusing portrait overlay HTML for square/landscape

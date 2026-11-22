@@ -1,4 +1,5 @@
 import { ref } from 'vue'
+import type { VideoGenerationLiabilityState } from '~~/shared/video/generationLiability'
 
 export interface VideoGenerationJobView {
   id: string
@@ -7,6 +8,9 @@ export interface VideoGenerationJobView {
   modelId: string
   prompt: string
   sourceAssetIds: string[]
+  estimatedCostCents?: number
+  actualCostCents?: number | null
+  liabilityState?: VideoGenerationLiabilityState
   durationSeconds: number
   aspectRatio: string
   resolution: string | null

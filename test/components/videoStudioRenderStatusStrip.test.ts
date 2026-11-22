@@ -76,11 +76,21 @@ describe('VideoStudioRenderStatusStrip', () => {
     expect(html).toContain('Download 9:16 vertical')
   })
 
+  it('shows no red alert for an earlier failure with unknown scope after a successful video export', async () => {
+    const html = await render({ jobs: [
+      job({ status: 'failed', channels: [], variants: {}, error: 'composite render failed: 500' }),
+      job({ id: 'new', createdAt: '2026-06-20T02:00:00Z', variants: { reels_9x16: 'r.mp4' } })
+    ] })
+    expect(html).toContain('1 completed')
+    expect(html).not.toContain('failed renders')
+  })
+
   it('renders failure details and emits retry from the strip', async () => {
     const failed = job({
       id: 'failed-render',
       status: 'failed',
       variants: {},
+      channels: ['square_1x1'],
       error: 'VIDEO_RENDER_QUEUE binding unavailable',
       createdAt: '2026-06-18T02:00:00Z',
     })
@@ -88,16 +98,22 @@ describe('VideoStudioRenderStatusStrip', () => {
 
     try {
       expect(host.textContent).toContain('2 failed')
-      expect(host.textContent).toContain('No failure reason was recorded.')
-      expect(host.textContent).toContain('Render failed')
-      expect(host.textContent).toContain('VIDEO_RENDER_QUEUE binding unavailable')
+      expect(host.textContent).toContain('This export stopped without recording a reason.')
+      expect(host.textContent).toContain('The export could not start because the render queue was unavailable.')
+      expect(host.textContent).not.toContain('VIDEO_RENDER_QUEUE')
+      expect(host.textContent).toContain('Requested outputs · 1:1 feed')
 
-      ;([...host.querySelectorAll('button')].find(button => button.textContent?.includes('Retry')) as HTMLButtonElement).click()
+      ;([...host.querySelectorAll('button')].find(button => button.textContent?.includes('Retry 1:1 feed')) as HTMLButtonElement).click()
       await nextTick()
 
       expect(events).toHaveLength(1)
       expect(events[0].name).toBe('retry')
       expect((events[0].payload as MediaRenderJob).id).toBe('failed-render')
+      ;([...host.querySelectorAll('button')].find(button => button.textContent === 'Dismiss alert') as HTMLButtonElement).click()
+      await nextTick()
+      expect(host.textContent).toContain('1 failed')
+      expect(host.textContent).not.toContain('render queue was unavailable')
+      expect(host.textContent).toContain('This export stopped without recording a reason.')
     } finally {
       app.unmount()
     }

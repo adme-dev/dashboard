@@ -12,6 +12,13 @@ import { clipRect, playheadX, timeAtX } from '~~/app/utils/audio/timelineGeometr
 import { snapTime } from '~~/app/utils/audio/timelineEdit'
 import { toDisplayLanes, type DisplayClip } from '~~/app/utils/audio/timelineDisplay'
 import { TIMELINE_ZOOM_OPTIONS, fitTimelineZoom, stepTimelineZoom } from '~~/app/utils/audio/timelineZoom'
+import {
+  TIMELINE_LANE_HEIGHT,
+  TIMELINE_RULER_HEIGHT,
+  horizontalScrollbarHeight,
+  rulerTicks as buildRulerTicks,
+  timelineNaturalHeight
+} from '~~/app/utils/audio/timelineLayout'
 
 // ─── Props & Emits ────────────────────────────────────────────────────────────
 
@@ -46,6 +53,8 @@ const emit = defineEmits<{
   (e: 'delete-clip', payload: { clipId: string }): void
   /** Empty-lane affordance: the user wants to add media to this track */
   (e: 'add-to-track', payload: { trackId: string; kind: string }): void
+  /** Height (px) needed to show every lane without scrolling — lets the dock size itself to the track count. */
+  (e: 'natural-height', payload: { heightPx: number }): void
 }>()
 
 const EMPTY_LANE_LABEL: Record<string, string> = {
@@ -62,16 +71,21 @@ function emptyLaneLabel(lane: { kind: string; name: string }) {
 
 // ─── Layout constants ─────────────────────────────────────────────────────────
 
-const LANE_HEIGHT = 56
+const LANE_HEIGHT = TIMELINE_LANE_HEIGHT
 const LABEL_WIDTH = 120
 const TRIM_HIT_PX = 8
 const SNAP_THRESHOLD_PX = 8
-const RULER_HEIGHT = 24
+const RULER_HEIGHT = TIMELINE_RULER_HEIGHT
+/** Gap between the toolbar and the canvas (`gap-2`). */
+const TOOLBAR_GAP_PX = 8
 
 // ─── Zoom ─────────────────────────────────────────────────────────────────────
 
 const containerRef = ref<HTMLElement | null>(null)
 const containerWidth = ref(0)
+const toolbarRef = ref<HTMLElement | null>(null)
+const toolbarHeight = ref(0)
+const scrollbarHeight = ref(0)
 const shortcutHelpOpen = ref(false)
 
 // A null manual zoom keeps the timeline fitted as media loads or the pane resizes.
@@ -104,11 +118,24 @@ watch(() => props.pxPerSec, (v) => {
 
 onMounted(() => {
   if (containerRef.value) {
-    containerWidth.value = containerRef.value.clientWidth
+    const el = containerRef.value
+    containerWidth.value = el.clientWidth
+    scrollbarHeight.value = horizontalScrollbarHeight(el.offsetHeight, el.clientHeight)
     const ro = new ResizeObserver((entries) => {
       for (const e of entries) containerWidth.value = e.contentRect.width
+      // A classic scrollbar appears/disappears with zoom; overlay scrollbars measure 0.
+      scrollbarHeight.value = horizontalScrollbarHeight(el.offsetHeight, el.clientHeight)
     })
     ro.observe(containerRef.value)
+    onUnmounted(() => ro.disconnect())
+  }
+  if (toolbarRef.value) {
+    // The toolbar wraps on narrow panes, so its height is measured rather than assumed.
+    toolbarHeight.value = toolbarRef.value.offsetHeight
+    const ro = new ResizeObserver(() => {
+      if (toolbarRef.value) toolbarHeight.value = toolbarRef.value.offsetHeight
+    })
+    ro.observe(toolbarRef.value)
     onUnmounted(() => ro.disconnect())
   }
 })
@@ -146,22 +173,14 @@ const lanes = computed(() => toDisplayLanes(props.timeline, props.clips, props.t
 /** Flat list of every display clip across all lanes — for interaction handlers. */
 const allDisplayClips = computed<DisplayClip[]>(() => lanes.value.flatMap(l => l.clips))
 
+const naturalHeight = computed(() => timelineNaturalHeight(lanes.value.length, toolbarHeight.value + TOOLBAR_GAP_PX, scrollbarHeight.value))
+watch(naturalHeight, heightPx => emit('natural-height', { heightPx }), { immediate: true })
+
 // ─── Ruler ticks ─────────────────────────────────────────────────────────────
 
-const rulerTicks = computed(() => {
-  const pps = internalPxPerSec.value
-  const dur = Math.max(props.duration, 1)
-  // Choose a tick interval so there are at most ~30 ticks across the visible area
-  const candidates = [0.25, 0.5, 1, 2, 5, 10, 30, 60]
-  const interval = candidates.find(c => c * pps >= containerWidth.value / 30) ?? 60
-  const ticks: { x: number; label: string }[] = []
-  for (let t = 0; t < dur; t += interval) {
-    const mins = Math.floor(t / 60)
-    const secs = (t % 60).toFixed(0).padStart(2, '0')
-    ticks.push({ x: LABEL_WIDTH + t * pps, label: mins > 0 ? `${mins}:${secs}` : `${secs}s` })
-  }
-  return ticks
-})
+// Spacing follows zoom only, so labels stay readable when zoomed out or on a narrow phone pane.
+const rulerTicks = computed(() => buildRulerTicks(props.duration, internalPxPerSec.value)
+  .map(tick => ({ ...tick, x: LABEL_WIDTH + tick.sec * internalPxPerSec.value })))
 
 // ─── Selection ────────────────────────────────────────────────────────────────
 
@@ -215,11 +234,11 @@ interface DragState {
 
 const drag = ref<DragState | null>(null)
 
-/** Returns the lane index that a given screenY falls in (accounting for ruler offset) */
+/** Returns the lane index that a given clientY falls in (accounting for ruler and vertical scroll) */
 function laneIndexAt(screenY: number): number {
   if (!containerRef.value) return 0
   const containerRect = containerRef.value.getBoundingClientRect()
-  const relY = screenY - containerRect.top - RULER_HEIGHT
+  const relY = screenY - containerRect.top - RULER_HEIGHT + containerRef.value.scrollTop
   return Math.max(0, Math.min(lanes.value.length - 1, Math.floor(relY / LANE_HEIGHT)))
 }
 
@@ -347,7 +366,7 @@ function clipDragStyle(clipId: string): Record<string, string> {
 function onLaneClick(event: MouseEvent) {
   if (!containerRef.value) return
   const containerRect = containerRef.value.getBoundingClientRect()
-  const relX = event.clientX - containerRect.left - LABEL_WIDTH
+  const relX = event.clientX - containerRect.left - LABEL_WIDTH + containerRef.value.scrollLeft
   if (relX < 0) return
   const t = timeAtX(relX, internalPxPerSec.value)
   clearSelection()
@@ -483,248 +502,255 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <!-- Zoom toolbar -->
-  <div class="relative mb-2 flex flex-wrap items-center gap-2 px-1">
-    <div class="flex items-center gap-1.5">
-      <UIcon name="i-lucide-zoom-in" class="size-3.5 text-muted" />
-      <span class="text-xs font-medium text-muted">Zoom</span>
-    </div>
-    <UButton
-      icon="i-lucide-minus"
-      size="xs"
-      variant="ghost"
-      color="neutral"
-      aria-label="Zoom out"
-      title="Zoom out (-)"
-      @click="zoomOut"
-    />
-    <USelect
-      :model-value="internalPxPerSec"
-      :items="zoomOptions"
-      aria-label="Timeline zoom"
-      value-key="value"
-      size="xs"
-      class="w-28"
-      @update:model-value="(v: number) => (manualZoom = v)"
-    />
-    <UButton
-      icon="i-lucide-plus"
-      size="xs"
-      variant="ghost"
-      color="neutral"
-      aria-label="Zoom in"
-      title="Zoom in (+)"
-      @click="zoomIn"
-    />
-    <UButton
-      icon="i-lucide-maximize-2"
-      size="xs"
-      variant="ghost"
-      color="neutral"
-      label="Fit timeline"
-      title="Fit timeline (0)"
-      @click="fitToWindow"
-    />
-    <UButton
-      icon="i-lucide-keyboard"
-      size="xs"
-      variant="ghost"
-      color="neutral"
-      label="Shortcuts"
-      title="Show timeline shortcuts (?)"
-      @click="toggleShortcutHelp"
-    />
-    <div
-      v-if="shortcutHelpOpen"
-      class="absolute left-1 top-9 z-40 w-72 rounded-lg border border-default bg-elevated p-3 shadow-xl"
-    >
-      <div class="mb-2 flex items-center justify-between gap-3">
-        <p class="text-xs font-medium uppercase text-muted">Timeline shortcuts</p>
-        <UButton icon="i-lucide-x" size="xs" variant="ghost" color="neutral" aria-label="Close shortcuts" @click="closeShortcutHelp" />
+  <!-- Own the vertical scroll so the ruler can stay sticky while lanes scroll. -->
+  <div class="flex h-full min-h-0 flex-col gap-2">
+    <!-- Zoom toolbar -->
+    <div ref="toolbarRef" class="relative flex shrink-0 flex-wrap items-center gap-2 px-1">
+      <div class="flex items-center gap-1.5">
+        <UIcon name="i-lucide-zoom-in" class="size-3.5 text-muted" />
+        <span class="text-xs font-medium text-muted">Zoom</span>
       </div>
-      <div class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-2 text-xs">
-        <kbd class="rounded border border-default bg-default px-1.5 py-0.5 text-muted">+</kbd><span class="text-muted">Zoom in</span>
-        <kbd class="rounded border border-default bg-default px-1.5 py-0.5 text-muted">-</kbd><span class="text-muted">Zoom out</span>
-        <kbd class="rounded border border-default bg-default px-1.5 py-0.5 text-muted">0</kbd><span class="text-muted">Fit timeline</span>
-        <kbd class="rounded border border-default bg-default px-1.5 py-0.5 text-muted">S</kbd><span class="text-muted">Split selected audio at playhead</span>
-        <kbd class="rounded border border-default bg-default px-1.5 py-0.5 text-muted">⌘ + scroll</kbd><span class="text-muted">Zoom timeline</span>
-        <kbd class="rounded border border-default bg-default px-1.5 py-0.5 text-muted">Del</kbd><span class="text-muted">Delete selected clip</span>
-        <kbd class="rounded border border-default bg-default px-1.5 py-0.5 text-muted">?</kbd><span class="text-muted">Show or hide shortcuts</span>
-      </div>
-    </div>
-    <div class="flex min-w-56 items-center gap-1.5 rounded-md border border-default bg-default/40 px-2 py-1 text-[11px] text-muted">
-      <UIcon name="i-lucide-info" class="size-3.5 shrink-0" />
-      <span class="truncate">{{ selectedClipHint }}</span>
-    </div>
-    <!-- Slice + Delete toolbar actions -->
-    <div class="ml-auto flex items-center gap-2">
       <UButton
-        icon="i-lucide-scissors"
+        icon="i-lucide-minus"
         size="xs"
         variant="ghost"
         color="neutral"
-        label="Split (S)"
-        :disabled="!canSplitActiveClip"
-        :title="canSplitActiveClip ? 'Split the selected audio clip at the playhead' : 'Split currently supports audio clips only'"
-        @click="handleSlice"
+        aria-label="Zoom out"
+        title="Zoom out (-)"
+        @click="zoomOut"
+      />
+      <USelect
+        :model-value="internalPxPerSec"
+        :items="zoomOptions"
+        aria-label="Timeline zoom"
+        value-key="value"
+        size="xs"
+        class="w-28"
+        @update:model-value="(v: number) => (manualZoom = v)"
       />
       <UButton
-        icon="i-lucide-trash-2"
+        icon="i-lucide-plus"
         size="xs"
         variant="ghost"
-        color="error"
-        label="Delete"
-        :disabled="!selectedClipId"
-        title="Delete the selected clip"
-        @click="handleDelete"
+        color="neutral"
+        aria-label="Zoom in"
+        title="Zoom in (+)"
+        @click="zoomIn"
       />
-    </div>
-  </div>
-
-  <!-- Timeline canvas -->
-  <div
-    ref="containerRef"
-    class="relative overflow-x-auto rounded-lg border border-default bg-elevated select-none"
-    @pointermove="onPointerMove"
-    @pointerup="onPointerUp"
-    @wheel="onWheel"
-    @pointercancel="() => (drag = null)"
-  >
-    <div
-      class="relative"
-      :style="{ width: `${LABEL_WIDTH + trackWidthPx}px`, minWidth: '100%' }"
-    >
-      <!-- Ruler row -->
+      <UButton
+        icon="i-lucide-maximize-2"
+        size="xs"
+        variant="ghost"
+        color="neutral"
+        label="Fit timeline"
+        title="Fit timeline (0)"
+        @click="fitToWindow"
+      />
+      <UButton
+        icon="i-lucide-keyboard"
+        size="xs"
+        variant="ghost"
+        color="neutral"
+        label="Shortcuts"
+        title="Show timeline shortcuts (?)"
+        @click="toggleShortcutHelp"
+      />
       <div
-        class="relative border-b border-default bg-default"
-        :style="{ height: `${RULER_HEIGHT}px` }"
+        v-if="shortcutHelpOpen"
+        class="absolute left-1 top-9 z-40 w-72 rounded-lg border border-default bg-elevated p-3 shadow-xl"
       >
-        <!-- left label spacer -->
-        <div
-          class="absolute left-0 top-0 border-r border-default"
-          :style="{ width: `${LABEL_WIDTH}px`, height: `${RULER_HEIGHT}px` }"
+        <div class="mb-2 flex items-center justify-between gap-3">
+          <p class="text-xs font-medium uppercase text-muted">Timeline shortcuts</p>
+          <UButton icon="i-lucide-x" size="xs" variant="ghost" color="neutral" aria-label="Close shortcuts" @click="closeShortcutHelp" />
+        </div>
+        <div class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-2 text-xs">
+          <kbd class="rounded border border-default bg-default px-1.5 py-0.5 text-muted">+</kbd><span class="text-muted">Zoom in</span>
+          <kbd class="rounded border border-default bg-default px-1.5 py-0.5 text-muted">-</kbd><span class="text-muted">Zoom out</span>
+          <kbd class="rounded border border-default bg-default px-1.5 py-0.5 text-muted">0</kbd><span class="text-muted">Fit timeline</span>
+          <kbd class="rounded border border-default bg-default px-1.5 py-0.5 text-muted">S</kbd><span class="text-muted">Split selected audio at playhead</span>
+          <kbd class="rounded border border-default bg-default px-1.5 py-0.5 text-muted">⌘ + scroll</kbd><span class="text-muted">Zoom timeline</span>
+          <kbd class="rounded border border-default bg-default px-1.5 py-0.5 text-muted">Del</kbd><span class="text-muted">Delete selected clip</span>
+          <kbd class="rounded border border-default bg-default px-1.5 py-0.5 text-muted">?</kbd><span class="text-muted">Show or hide shortcuts</span>
+        </div>
+      </div>
+      <div class="flex min-w-56 items-center gap-1.5 rounded-md border border-default bg-default/40 px-2 py-1 text-[11px] text-muted">
+        <UIcon name="i-lucide-info" class="size-3.5 shrink-0" />
+        <span class="truncate">{{ selectedClipHint }}</span>
+      </div>
+      <!-- Slice + Delete toolbar actions -->
+      <div class="ml-auto flex items-center gap-2">
+        <UButton
+          icon="i-lucide-scissors"
+          size="xs"
+          variant="ghost"
+          color="neutral"
+          label="Split (S)"
+          class="disabled:text-muted disabled:opacity-40"
+          :disabled="!canSplitActiveClip"
+          :title="canSplitActiveClip ? 'Split the selected audio clip at the playhead' : 'Split currently supports audio clips only'"
+          @click="handleSlice"
         />
-        <!-- tick marks -->
-        <div
-          v-for="tick in rulerTicks"
-          :key="tick.x"
-          class="absolute top-0 flex flex-col items-start"
-          :style="{ left: `${tick.x}px` }"
-        >
-          <div class="h-2 w-px bg-muted" />
-          <span class="ml-1 text-[10px] text-muted leading-none">{{ tick.label }}</span>
-        </div>
+        <UButton
+          icon="i-lucide-trash-2"
+          size="xs"
+          variant="ghost"
+          :color="selectedClipId ? 'error' : 'neutral'"
+          label="Delete"
+          class="disabled:text-muted disabled:opacity-40"
+          :disabled="!selectedClipId"
+          :title="selectedClipId ? 'Delete the selected clip' : 'Select a clip to delete it'"
+          @click="handleDelete"
+        />
       </div>
+    </div>
 
-      <!-- Track lanes -->
+    <!-- Timeline canvas -->
+    <div
+      ref="containerRef"
+      data-timeline-scroll
+      class="relative min-h-0 flex-1 overflow-auto overscroll-x-contain rounded-lg border border-default bg-elevated select-none"
+      @pointermove="onPointerMove"
+      @pointerup="onPointerUp"
+      @wheel="onWheel"
+      @pointercancel="() => (drag = null)"
+    >
       <div
-        v-for="(lane, laneIdx) in lanes"
-        :key="lane.id"
-        class="relative border-b border-default last:border-b-0 cursor-crosshair"
-        :style="{ height: `${LANE_HEIGHT}px` }"
-        @click="onLaneClick"
+        class="relative"
+        :style="{ width: `${LABEL_WIDTH + trackWidthPx}px`, minWidth: '100%' }"
       >
-        <!-- Sticky track label -->
+        <!-- Ruler row: sticky so time stays readable while lanes scroll vertically -->
         <div
-          class="absolute left-0 top-0 z-10 flex h-full items-center gap-2 border-r border-default bg-elevated px-3"
-          :style="{ width: `${LABEL_WIDTH}px` }"
+          data-timeline-ruler
+          class="sticky top-0 z-30 border-b border-default bg-default"
+          :style="{ height: `${RULER_HEIGHT}px` }"
         >
-          <UIcon v-if="lane.muted" name="i-lucide-volume-x" class="size-4 text-muted" />
-          <span
-            class="truncate text-sm font-medium"
-            :class="lane.muted ? 'text-muted' : 'text-highlighted'"
-          >{{ lane.name }}</span>
-        </div>
-
-        <!-- Empty lane: invite, don't just leave a blank strip -->
-        <button
-          v-if="!lane.clips.length"
-          type="button"
-          class="absolute top-2 flex items-center gap-1.5 rounded-md border border-dashed border-default px-2.5 text-xs text-muted transition hover:border-primary/60 hover:text-highlighted"
-          :style="{ left: `${LABEL_WIDTH + 8}px`, height: `${LANE_HEIGHT - 16}px` }"
-          @click.stop="emit('add-to-track', { trackId: lane.id, kind: lane.kind })"
-        >
-          <UIcon name="i-lucide-plus" class="size-3.5" />
-          {{ emptyLaneLabel(lane) }}
-        </button>
-
-        <!-- Clips -->
-        <div
-          v-for="clip in lane.clips"
-          :key="clip.clipId"
-          class="absolute top-2 flex items-center rounded-md overflow-hidden cursor-grab active:cursor-grabbing"
-          :class="[
-            clip.kind === 'video' ? 'bg-blue-600 dark:bg-blue-500'
-              : clip.kind === 'overlay' ? 'bg-fuchsia-600 dark:bg-fuchsia-500'
-                : clip.kind === 'caption' ? 'bg-amber-600 dark:bg-amber-500'
-              : lane.muted ? 'bg-muted' : 'bg-primary',
-            selectedClipId === clip.clipId ? 'ring-2 ring-white ring-offset-2 ring-offset-elevated shadow-lg' : 'hover:ring-1 hover:ring-white/60',
-            drag?.clipId === clip.clipId ? 'transition-none' : 'transition-shadow'
-          ]"
-          :title="`${clip.label}: drag to move, drag edges to trim${clip.kind === 'audio' ? ', press S to split' : ''}`"
-          :style="{
-            left: `${LABEL_WIDTH + rect(clip).x}px`,
-            width: `${rect(clip).width}px`,
-            height: `${LANE_HEIGHT - 16}px`,
-            ...clipDragStyle(clip.clipId)
-          }"
-          @pointerdown.stop="(e: PointerEvent) => onClipPointerDown(e, clip, laneIdx, 'move')"
-          @click.stop
-        >
-          <!-- Trim handle — start (left edge) -->
+          <!-- left label spacer -->
           <div
-            class="absolute left-0 top-0 h-full cursor-col-resize z-10 flex items-center justify-center bg-black/10 hover:bg-black/25"
-            :style="{ width: `${TRIM_HIT_PX}px` }"
-            title="Trim clip start"
-            aria-label="Trim clip start"
-            @pointerdown.stop="(e: PointerEvent) => onClipPointerDown(e, clip, laneIdx, 'trim-start')"
-          >
-            <div class="h-5 w-0.5 rounded-full bg-white/80 shadow" />
-          </div>
-
-          <!-- Audio: wavesurfer waveform -->
-          <div
-            v-if="clip.kind === 'audio'"
-            :ref="(el) => { if (el) { waveContainers[clip.clipId] = el as HTMLElement; mountWaveform(clip.clipId, clip.r2_key as string, el as HTMLElement) } }"
-            class="absolute inset-0 pointer-events-none overflow-hidden"
+            class="absolute left-0 top-0 border-r border-default"
+            :style="{ width: `${LABEL_WIDTH}px`, height: `${RULER_HEIGHT}px` }"
           />
-          <div class="pointer-events-none relative flex w-full min-w-0 items-center gap-1.5 px-3 text-inverted">
-            <UIcon
-              v-if="clip.kind !== 'audio'"
-              :name="clipIcon(clip)"
-              class="size-3.5 shrink-0 opacity-80"
-            />
-            <span class="truncate text-xs font-medium">{{ clip.label }} · {{ fmtDur(clip) }}</span>
-          </div>
-
-          <!-- Trim handle — end (right edge) -->
+          <!-- tick marks -->
           <div
-            class="absolute right-0 top-0 h-full cursor-col-resize z-10 flex items-center justify-center bg-black/10 hover:bg-black/25"
-            :style="{ width: `${TRIM_HIT_PX}px` }"
-            title="Trim clip end"
-            aria-label="Trim clip end"
-            @pointerdown.stop="(e: PointerEvent) => onClipPointerDown(e, clip, laneIdx, 'trim-end')"
+            v-for="tick in rulerTicks"
+            :key="tick.sec"
+            class="absolute top-0 flex flex-col items-start"
+            :style="{ left: `${tick.x}px` }"
           >
-            <div class="h-5 w-0.5 rounded-full bg-white/80 shadow" />
+            <div class="h-2 w-px bg-muted" />
+            <span class="ml-1 text-[10px] text-muted leading-none">{{ tick.label }}</span>
           </div>
         </div>
-      </div>
 
-      <!-- Snap guide: shows where a dragged edge will land -->
-      <div
-        v-if="snapGuideSec !== null"
-        class="pointer-events-none absolute z-20 w-px border-l border-dashed border-white/80"
-        :style="{ left: `${LABEL_WIDTH + playheadX(snapGuideSec, internalPxPerSec)}px`, top: `${RULER_HEIGHT}px`, height: `${lanes.length * LANE_HEIGHT}px` }"
-      >
-        <span class="absolute -top-5 left-1 rounded bg-white/90 px-1 text-[10px] font-medium tabular-nums text-black">{{ snapGuideSec.toFixed(2) }}s</span>
-      </div>
+        <!-- Track lanes -->
+        <div
+          v-for="(lane, laneIdx) in lanes"
+          :key="lane.id"
+          class="relative border-b border-default last:border-b-0 cursor-crosshair"
+          :style="{ height: `${LANE_HEIGHT}px` }"
+          @click="onLaneClick"
+        >
+          <!-- Sticky track label -->
+          <div
+            class="absolute left-0 top-0 z-10 flex h-full items-center gap-2 border-r border-default bg-elevated px-3"
+            :style="{ width: `${LABEL_WIDTH}px` }"
+          >
+            <UIcon v-if="lane.muted" name="i-lucide-volume-x" class="size-4 text-muted" />
+            <span
+              class="truncate text-sm font-medium"
+              :class="lane.muted ? 'text-muted' : 'text-highlighted'"
+            >{{ lane.name }}</span>
+          </div>
 
-      <!-- Playhead -->
-      <div
-        class="pointer-events-none absolute z-20 w-px bg-primary"
-        :style="{ left: `${playheadLeft}px`, top: `${RULER_HEIGHT}px`, height: `${lanes.length * LANE_HEIGHT}px` }"
-      >
-        <div class="absolute -left-1 -top-1 size-2 rounded-full bg-primary" />
+          <!-- Empty lane: invite, don't just leave a blank strip -->
+          <button
+            v-if="!lane.clips.length"
+            type="button"
+            class="absolute top-2 flex items-center gap-1.5 rounded-md border border-dashed border-default px-2.5 text-xs text-muted transition hover:border-primary/60 hover:text-highlighted"
+            :style="{ left: `${LABEL_WIDTH + 8}px`, height: `${LANE_HEIGHT - 16}px` }"
+            @click.stop="emit('add-to-track', { trackId: lane.id, kind: lane.kind })"
+          >
+            <UIcon name="i-lucide-plus" class="size-3.5" />
+            {{ emptyLaneLabel(lane) }}
+          </button>
+
+          <!-- Clips -->
+          <div
+            v-for="clip in lane.clips"
+            :key="clip.clipId"
+            class="absolute top-2 flex items-center rounded-md overflow-hidden cursor-grab active:cursor-grabbing"
+            :class="[
+              clip.kind === 'video' ? 'bg-blue-600 dark:bg-blue-500'
+                : clip.kind === 'overlay' ? 'bg-fuchsia-600 dark:bg-fuchsia-500'
+                  : clip.kind === 'caption' ? 'bg-amber-600 dark:bg-amber-500'
+                : lane.muted ? 'bg-muted' : 'bg-primary',
+              selectedClipId === clip.clipId ? 'ring-2 ring-white ring-offset-2 ring-offset-elevated shadow-lg' : 'hover:ring-1 hover:ring-white/60',
+              drag?.clipId === clip.clipId ? 'transition-none' : 'transition-shadow'
+            ]"
+            :title="`${clip.label}: drag to move, drag edges to trim${clip.kind === 'audio' ? ', press S to split' : ''}`"
+            :style="{
+              left: `${LABEL_WIDTH + rect(clip).x}px`,
+              width: `${rect(clip).width}px`,
+              height: `${LANE_HEIGHT - 16}px`,
+              ...clipDragStyle(clip.clipId)
+            }"
+            @pointerdown.stop="(e: PointerEvent) => onClipPointerDown(e, clip, laneIdx, 'move')"
+            @click.stop
+          >
+            <!-- Trim handle — start (left edge) -->
+            <div
+              class="absolute left-0 top-0 h-full cursor-col-resize z-10 flex items-center justify-center bg-black/10 hover:bg-black/25"
+              :style="{ width: `${TRIM_HIT_PX}px` }"
+              title="Trim clip start"
+              aria-label="Trim clip start"
+              @pointerdown.stop="(e: PointerEvent) => onClipPointerDown(e, clip, laneIdx, 'trim-start')"
+            >
+              <div class="h-5 w-0.5 rounded-full bg-white/80 shadow" />
+            </div>
+
+            <!-- Audio: wavesurfer waveform -->
+            <div
+              v-if="clip.kind === 'audio'"
+              :ref="(el) => { if (el) { waveContainers[clip.clipId] = el as HTMLElement; mountWaveform(clip.clipId, clip.r2_key as string, el as HTMLElement) } }"
+              class="absolute inset-0 pointer-events-none overflow-hidden"
+            />
+            <div class="pointer-events-none relative flex w-full min-w-0 items-center gap-1.5 px-3 text-inverted">
+              <UIcon
+                v-if="clip.kind !== 'audio'"
+                :name="clipIcon(clip)"
+                class="size-3.5 shrink-0 opacity-80"
+              />
+              <span class="truncate text-xs font-medium">{{ clip.label }} · {{ fmtDur(clip) }}</span>
+            </div>
+
+            <!-- Trim handle — end (right edge) -->
+            <div
+              class="absolute right-0 top-0 h-full cursor-col-resize z-10 flex items-center justify-center bg-black/10 hover:bg-black/25"
+              :style="{ width: `${TRIM_HIT_PX}px` }"
+              title="Trim clip end"
+              aria-label="Trim clip end"
+              @pointerdown.stop="(e: PointerEvent) => onClipPointerDown(e, clip, laneIdx, 'trim-end')"
+            >
+              <div class="h-5 w-0.5 rounded-full bg-white/80 shadow" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Snap guide: shows where a dragged edge will land -->
+        <div
+          v-if="snapGuideSec !== null"
+          class="pointer-events-none absolute z-40 w-px border-l border-dashed border-white/80"
+          :style="{ left: `${LABEL_WIDTH + playheadX(snapGuideSec, internalPxPerSec)}px`, top: `${RULER_HEIGHT}px`, height: `${lanes.length * LANE_HEIGHT}px` }"
+        >
+          <span class="absolute -top-5 left-1 rounded bg-white/90 px-1 text-[10px] font-medium tabular-nums text-black">{{ snapGuideSec.toFixed(2) }}s</span>
+        </div>
+
+        <!-- Playhead -->
+        <div
+          class="pointer-events-none absolute z-20 w-px bg-primary"
+          :style="{ left: `${playheadLeft}px`, top: `${RULER_HEIGHT}px`, height: `${lanes.length * LANE_HEIGHT}px` }"
+        >
+          <div class="absolute -left-1 -top-1 size-2 rounded-full bg-primary" />
+        </div>
       </div>
     </div>
   </div>
