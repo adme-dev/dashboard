@@ -56,13 +56,13 @@ function variantItems(job: MediaRenderJob, label: string, icon: string, event: '
 </script>
 
 <template>
-  <div class="rounded-md border border-default bg-elevated p-3">
-    <div class="flex items-start justify-between gap-2">
-      <div class="min-w-0">
-        <p class="text-sm font-medium text-highlighted">
+  <div class="min-w-0 rounded-md border border-default bg-elevated p-3">
+    <div class="flex flex-wrap items-start justify-between gap-2">
+      <div class="min-w-0 flex-1 basis-40">
+        <p class="break-words text-sm font-medium text-highlighted">
           Render jobs
         </p>
-        <p class="mt-0.5 text-xs leading-snug text-muted">
+        <p class="mt-0.5 break-words text-xs leading-snug text-muted">
           Export, save, send, or publish completed renders.
         </p>
       </div>
@@ -72,6 +72,7 @@ function variantItems(job: MediaRenderJob, label: string, icon: string, event: '
         color="primary"
         variant="soft"
         label="Render"
+        class="shrink-0"
         :loading="props.rendering"
         @click="emit('render')"
       />
@@ -81,20 +82,22 @@ function variantItems(job: MediaRenderJob, label: string, icon: string, event: '
       <div
         v-for="job in props.jobs"
         :key="job.id"
-        class="rounded-md border border-default bg-default/30 p-2"
+        data-render-job
+        class="min-w-0 rounded-md border border-default bg-default/30 p-2"
       >
-        <div class="flex items-start gap-2">
+        <div class="flex min-w-0 items-start gap-2">
           <UBadge
             :label="job.status"
             size="xs"
             variant="subtle"
             :color="statusColor(job.status)"
+            class="shrink-0"
           />
           <div class="min-w-0 flex-1">
-            <p class="truncate text-xs text-muted">
+            <p class="break-words text-xs text-muted">
               {{ dateLabel(job.createdAt) }}
             </p>
-            <p class="mt-0.5 truncate text-[11px] text-muted">
+            <p data-render-version class="mt-0.5 break-words text-[11px] text-muted [overflow-wrap:anywhere]">
               {{ versionLabel(job) }}
             </p>
           </div>
@@ -110,18 +113,22 @@ function variantItems(job: MediaRenderJob, label: string, icon: string, event: '
           @retry="emit('retry', job)"
         />
 
-        <div class="mt-2 flex flex-wrap items-center gap-1.5">
+        <div class="mt-2 flex min-w-0 flex-wrap items-center gap-1.5">
+          <!-- Default slot instead of `label`: the theme truncates labels, so long format names would be clipped. -->
           <UButton
             v-for="format in variantFormats(job)"
             :key="format"
-            :label="`Download ${renderFormatLabel(format)}`"
+            data-render-download
+            class="max-w-full"
             size="xs"
             variant="soft"
             color="neutral"
             :to="variantUrl(job, format)"
             external
             download
-          />
+          >
+            <span class="min-w-0 whitespace-normal break-words text-left [overflow-wrap:anywhere]">Download {{ renderFormatLabel(format) }}</span>
+          </UButton>
           <UDropdownMenu
             v-if="job.status === 'done' && variantFormats(job).length"
             :items="variantItems(job, 'Publish', 'i-lucide-share-2', 'publish')"

@@ -719,7 +719,12 @@ onUnmounted(() => {
                 :name="clipIcon(clip)"
                 class="size-3.5 shrink-0 opacity-80"
               />
-              <span class="truncate text-xs font-medium">{{ clip.label }} · {{ fmtDur(clip) }}</span>
+              <!-- Audio labels sit on the waveform, so give the text its own dark backing in both themes. -->
+              <span
+                :data-clip-label="clip.kind"
+                class="truncate text-xs font-medium"
+                :class="clip.kind === 'audio' ? 'max-w-full rounded bg-black/75 px-1.5 py-0.5 text-white' : ''"
+              >{{ clip.label }} · {{ fmtDur(clip) }}</span>
             </div>
 
             <!-- Trim handle — end (right edge) -->

@@ -53,6 +53,20 @@ describe('VideoStudioRenderJobsPanel', () => {
     expect(html).toContain('Save to library')
   })
 
+  it('wraps technical version names and download labels in a narrow history split', async () => {
+    const html = await render({ jobs: [job({ id: 'render-0b5c9a2e-5d1f-4c3a-9e77-very-long-version-id' })] })
+
+    expect(html).toMatch(/data-render-version class="[^"]*\[overflow-wrap:anywhere\]/)
+    expect(html).not.toMatch(/data-render-version class="[^"]*truncate/)
+    // Every format keeps a visible download action, and its label may wrap instead of clipping.
+    expect(html.match(/data-render-download/g)).toHaveLength(2)
+    expect(html).toMatch(/data-render-download[^>]*class="max-w-full"/)
+    expect(html).toContain('whitespace-normal')
+    expect(html).toContain('Download')
+    expect(html).toContain('Publish')
+    expect(html).toContain('Save to library')
+  })
+
   it('renders an empty render state', async () => {
     const html = await render({ jobs: [] })
 
