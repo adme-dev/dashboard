@@ -95,7 +95,8 @@ export interface Layer {
   /** Safe inline superscripts; rendered only while their text matches the layer. */
   textRuns?: Array<{ text: string, fontSize?: number, top?: number }>
   /** Reviewed TheBrief per-word entrance; words remain one editable text layer. */
-  wordPop?: { duration: number, stagger: number, ease: string }
+  wordPop?: import('../../shared/bannerImportedMotion').BannerWordEntrance
+  reveal?: import('../../shared/bannerImportedMotion').BannerReveal
   fontSize?: number
   fontWeight?: number
   fontFamily?: string
@@ -133,6 +134,7 @@ export interface Layer {
   focalX?: number // 0-100, default 50 (center)
   focalY?: number // 0-100, default 50 (center)
   /** Video media clock (see shared/bannerVideoClock): clip in/out points in seconds and clip looping. */
+  mediaMask?: 'fadeTop'
   mediaStart?: number
   mediaEnd?: number
   mediaLoop?: boolean

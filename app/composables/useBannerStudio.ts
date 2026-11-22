@@ -21,6 +21,8 @@ const animClipboard = ref<{
   animIn: AnimInType
   animInDur: number
   animInStart?: number
+  wordPop?: Layer['wordPop']
+  reveal?: Layer['reveal']
   animOutStart?: number
   ease: string
   startTime: number
@@ -740,6 +742,8 @@ export function useBannerStudio() {
       animIn: l.animIn,
       animInDur: l.animInDur,
       animInStart: l.animInStart,
+      wordPop: l.wordPop ? { ...l.wordPop, ...(l.wordPop.delays ? { delays: [...l.wordPop.delays] } : {}) } : undefined,
+      reveal: l.reveal ? { ...l.reveal } : undefined,
       animOutStart: l.animOutStart,
       ease: l.ease || 'power2.out',
       startTime: l.startTime,
@@ -753,7 +757,7 @@ export function useBannerStudio() {
   function pasteAnimation() {
     const l = selectedLayer.value
     if (!l || !animClipboard.value) return
-    updateLayer(l.id, { ...animClipboard.value })
+    updateLayer(l.id, { ...animClipboard.value, wordPop: l.type === 'text' && !l.textRuns?.length ? animClipboard.value.wordPop : undefined, reveal: ['rect', 'button'].includes(l.type) ? animClipboard.value.reveal : undefined })
   }
 
   // ── Clipboard ─────────────────────────

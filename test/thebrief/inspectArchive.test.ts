@@ -127,7 +127,7 @@ describe('bounded MP4 allowance', () => {
   })
 
   it('bounds each clip and the total video allowance', () => {
-    expect(() => inspectArchive(zip({ 'index.html': '<p></p>', 'media/a.mp4': mp4(22 * 1024 * 1024) }))).toThrow('ZIP expansion exceeds limit')
+    expect(() => inspectArchive(zip({ 'index.html': '<p></p>', 'media/a.mp4': mp4(25 * 1024 * 1024) }))).toThrow('ZIP expansion exceeds limit')
     expect(() => inspectArchive(zip({ 'index.html': '<p></p>', 'media/a.mp4': mp4(3 * 1024 * 1024), 'media/b.mp4': mp4(3 * 1024 * 1024) }), { maxVideoTotalBytes: 5 * 1024 * 1024 })).toThrow('ZIP expansion exceeds limit')
   })
 })

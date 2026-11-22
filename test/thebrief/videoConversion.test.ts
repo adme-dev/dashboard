@@ -66,3 +66,10 @@ it.each([
 it('holds a video without source player settings', async () => {
   await expect(convertTheBriefHtml(videoSource().replace(/videoElements:\[[^\]]*\]/, 'videoElements:[]'))).rejects.toThrow('missing or mismatched source video settings')
 })
+
+it('preserves the reviewed top fade on an editable video and rejects other media masks', async () => {
+  const gradient = 'linear-gradient(0deg,rgba(0,0,0,1) 45%,rgba(0,0,0,0.8) 78%,rgba(0,0,0,0) 100%)'
+  const html = videoSource().replace('<video ', '<div class="sourceFade"><video ').replace('</video>', '</video></div>') + `<style>.sourceFade{mask-image:${gradient};mask-repeat:no-repeat;mask-position:center;mask-size:100% 100%;mask-origin:content-box}</style>`
+  expect(await videoLayer(html)).toMatchObject({ type: 'video', mediaMask: 'fadeTop' })
+  await expect(videoLayer(html.replace(' 45%', ' 10%'))).rejects.toThrow('unsupported media mask composition')
+})

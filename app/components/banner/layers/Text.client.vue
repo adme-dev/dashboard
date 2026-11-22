@@ -141,7 +141,7 @@ function onKeydown(e: KeyboardEvent) {
         <TextGlyphs
           :text="isEditing ? (layer.text || '') : displayText"
           :runs="displayRuns"
-          :word-pop="!!layer.wordPop && !isEditing"
+          :word-pop="!isEditing && layer.wordPop"
           :line-box-font-size="!isEditing ? layer.lineBoxFontSize : undefined"
           :font-size="layer.fontSize"
         />

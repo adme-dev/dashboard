@@ -2,13 +2,13 @@
 import type { Layer } from '~/types/banner-studio'
 import { bannerWordTokens } from '~~/shared/bannerWordPop'
 
-defineProps<{ text: string, runs?: Layer['textRuns'], lineBoxFontSize?: number, fontSize?: number, wordPop?: boolean }>()
+defineProps<{ text: string, runs?: Layer['textRuns'], lineBoxFontSize?: number, fontSize?: number, wordPop?: Layer['wordPop'] | false }>()
 </script>
 
 <template>
   <template v-if="wordPop">
     <span
-      v-for="(token, index) in bannerWordTokens(text)"
+      v-for="(token, index) in bannerWordTokens(text, wordPop ? wordPop.unit : undefined)"
       :key="index"
       :data-banner-word="token.wordIndex === null ? undefined : token.wordIndex"
       :style="token.wordIndex === null ? undefined : { display: 'inline-block', transformOrigin: 'center center' }"

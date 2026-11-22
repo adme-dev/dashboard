@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { mediaMaskCss } from '~~/shared/bannerImportedMotion'
 import type { Layer } from '~/types/banner-studio'
 import { effectStyleFromLayer } from '~~/shared/bannerEffects'
 
@@ -12,7 +13,7 @@ const effects = computed(() => effectStyleFromLayer(props.layer as unknown as Re
 <template>
   <div
     class="absolute inset-0 overflow-hidden"
-    :style="{ filter: effects.visualFilter }"
+    :style="[mediaMaskCss(layer.mediaMask), { filter: effects.visualFilter }]"
   >
     <video
       v-if="layer.src"

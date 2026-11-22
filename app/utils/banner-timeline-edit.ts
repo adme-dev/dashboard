@@ -20,12 +20,18 @@ export function retimeLayerPresence(layer: Layer, start: number, end: number): P
     change.dur = change.animInDur
   }
   if (layer.outDur) change.outDur = round(layer.outDur * scale)
-  if (layer.wordPop) change.wordPop = { ...layer.wordPop, duration: layer.wordPop.duration * scale, stagger: layer.wordPop.stagger * scale }
+  if (layer.wordPop) change.wordPop = { ...layer.wordPop, duration: layer.wordPop.duration * scale, stagger: layer.wordPop.stagger * scale, ...(layer.wordPop.delays ? { delays: layer.wordPop.delays.map(delay => delay * scale) } : {}), ...(layer.wordPop.offset ? { offset: layer.wordPop.offset * scale } : {}) }
+  if (layer.reveal) change.reveal = { ...layer.reveal, duration: layer.reveal.duration * scale }
   return change
 }
 
 /** Stretch only this interval; adjacent hold intervals absorb its movement. */
 export function retimeAnimationPhase(layer: Layer, phase: TimelinePhase, start: number, end: number): Partial<Layer> {
+  if (phase.nativeEntrance === 'reveal' && layer.reveal) return { animInStart: start, reveal: { ...layer.reveal, duration: end - start } }
+  if (phase.nativeEntrance === 'words' && layer.wordPop) {
+    const scale = (end - start) / (phase.end - phase.start)
+    return { animInStart: start, wordPop: { ...layer.wordPop, duration: layer.wordPop.duration * scale, stagger: layer.wordPop.stagger * scale, ...(layer.wordPop.delays ? { delays: layer.wordPop.delays.map(delay => delay * scale) } : {}), ...(layer.wordPop.offset ? { offset: layer.wordPop.offset * scale } : {}) } }
+  }
   if (Object.values(layer.keyframes || {}).some(frames => frames && frames.length >= 2)) {
     const time = (value: number) => value < phase.start - 1e-6 || value > phase.end + 1e-6
       ? value

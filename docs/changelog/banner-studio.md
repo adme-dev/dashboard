@@ -1,5 +1,11 @@
 # Banner Studio change log
 
+## 23 November 2026 — Editable RAM and Nissan entrances
+
+- Added reviewed word/letter effects, soft wipes and TV shape reveals with native timing and removal controls across the editor, saved viewer and client video renderer. Text and packaged fonts remain editable.
+- Preserved the RAM top video fade and allowed verified clips up to 24 MiB within bounded packages. Unknown source effects remain review holds.
+- Added regression coverage for reverse seeking, typewriter step-end timing, irregular delays, safe runtime metadata, and strict mask/glow recipes. Live migration acceptance is tracked in the Northern campaign ledger.
+
 ## Migration readiness reconciliation — 23 November 2026
 
 This checkpoint supersedes the October outstanding-feature list below. It reconciles recent implementation history with current `main` (`52f84ef95`); historical entries retain the state at their original date.

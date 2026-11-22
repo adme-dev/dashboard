@@ -73,3 +73,10 @@ describe('TheBrief batch selection', () => {
     expect((await readImportBatch([file('Second', 'b')], [], [], [...folders, { ...folders[0]!, id: 'duplicate' }]))[0]?.folderId).toBe('__unfiled__')
   })
 })
+
+it('bounds the total selected package bytes before decoding any files', async () => {
+  const huge = { name: 'large.json', size: 129 * 1024 * 1024, text: async () => {
+    throw new Error('must not decode')
+  } } as File
+  await expect(readImportBatch([huge], [], [])).rejects.toThrow('128 MB in total')
+})

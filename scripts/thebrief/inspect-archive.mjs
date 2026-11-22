@@ -4,9 +4,9 @@ import { inflateRawSync } from 'node:zlib'
 // Offline preflight only. Never evaluate imported code, fetch resources, or write
 // archive paths to disk. This is not an approval to execute or publish a package.
 const defaults = { maxArchiveBytes: 20 * 1024 * 1024, maxFileBytes: 10 * 1024 * 1024, maxTotalBytes: 40 * 1024 * 1024, maxFiles: 500, maxDepth: 1,
-  // Separate, bounded allowance for verified MP4 entries only (per-clip cap matches the
+  // Separate, bounded allowance for verified MP4 entries only (per-clip cap fits the
   // package asset limit). Non-video content keeps the limits above.
-  maxVideoFileBytes: 21 * 1024 * 1024, maxVideoTotalBytes: 64 * 1024 * 1024, maxVideoArchiveBytes: 64 * 1024 * 1024 }
+  maxVideoFileBytes: 24 * 1024 * 1024, maxVideoTotalBytes: 64 * 1024 * 1024, maxVideoArchiveBytes: 64 * 1024 * 1024 }
 const digest = bytes => createHash('sha256').update(bytes).digest('hex')
 const fail = (message) => {
   throw new Error(message)

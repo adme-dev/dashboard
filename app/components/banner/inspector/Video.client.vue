@@ -148,6 +148,14 @@ function fillCanvas() {
       {{ range[0].toFixed(2) }}–{{ range[1].toFixed(2) }}s of
       {{ duration.toFixed(2) }}s
     </p>
+    <UFormField label="Video fade">
+      <UCheckbox
+        :model-value="selectedLayer.mediaMask === 'fadeTop'"
+        label="Fade top into the background"
+        :disabled="disabled"
+        @update:model-value="set({ mediaMask: $event === true ? 'fadeTop' : undefined })"
+      />
+    </UFormField>
     <UButton
       label="Replace video"
       icon="i-lucide-video"

@@ -1,3 +1,4 @@
+import { revealCommands, safeWordEntrance, wordEntranceDelay, wordEntranceSteps } from '~~/shared/bannerImportedMotion'
 import { bannerVideoMediaTime } from '~~/shared/bannerVideoClock'
 import { ref, readonly, watch } from 'vue'
 import { bannerAnimationTiming } from '~/utils/banner-animation-timing'
@@ -16,6 +17,7 @@ gsap.registerPlugin(MotionPathPlugin, CustomEase)
 
 /** Resolve a stored ease string (GSAP name or `cubic(x1,y1,x2,y2)`) to something gsap accepts */
 function resolveEase(ease?: string): string | ((p: number) => number) {
+  if (ease === 'step-end') return (p: number) => p < 1 ? 0 : 1
   const p = parseCubicEase(ease)
   if (p) return CustomEase.create('', cubicEaseToSvg(p))
   return ease || 'power2.inOut'
@@ -375,15 +377,14 @@ function addAudioSync(tl: gsap.core.Timeline, el: HTMLElement, layer: Layer) {
 
 function addWordPop(tl: gsap.core.Timeline, el: HTMLElement, layer: Layer) {
   if (!layer.wordPop) return
-  const { duration, stagger, ease } = layer.wordPop
-  const curve = resolveEase(ease)
+  const effect = safeWordEntrance(layer.wordPop)
+  if (!effect) return
   el.querySelectorAll<HTMLElement>('[data-banner-word]').forEach((word, index) => {
-    const at = (layer.animInStart ?? layer.startTime ?? 0) + index * stagger
-    tl.set(word, { opacity: 0, scale: 0.6, filter: 'blur(10px)', y: 0, immediateRender: false }, 0)
-    tl.to(word, { opacity: 1, duration: duration * 0.4, ease: curve, immediateRender: false }, at)
-    tl.to(word, { scale: 1.05, duration: duration * 0.7, ease: curve, immediateRender: false }, at)
-    tl.to(word, { scale: 1, duration: duration * 0.3, ease: curve, immediateRender: false }, at + duration * 0.7)
-    tl.to(word, { filter: 'blur(0px)', duration, ease: curve, immediateRender: false }, at)
+    const at = (layer.animInStart ?? layer.startTime ?? 0) + (effect.offset || 0) + wordEntranceDelay(effect, index)
+    for (const step of wordEntranceSteps(effect)) {
+      if (step.start === 0) tl.set(word, { [step.property]: step.from, immediateRender: false }, 0)
+      tl.to(word, { [step.property]: step.to, duration: step.duration, ease: resolveEase(step.ease || effect.ease), immediateRender: false }, at + step.start)
+    }
   })
 }
 
@@ -460,6 +461,15 @@ function addLayerToTimeline(tl: gsap.core.Timeline, el: HTMLElement, layer: Laye
   }
 
   addWordPop(tl, el, layer)
+  const reveals = revealCommands(layer.reveal, layer.h)
+  for (const command of reveals) {
+    const target = el.querySelector(command.target === 'effect' ? '[data-banner-reveal]' : command.target === 'content' ? '[data-banner-reveal-content]' : '[data-banner-reveal-glow]')
+    if (!target) continue
+    const at = layer.animInStart ?? layer.startTime ?? 0
+    // Every property's first value is explicit, including delayed segments.
+    if (!reveals.some(previous => previous !== command && previous.target === command.target && previous.property === command.property && previous.start < command.start)) tl.set(target, { [command.property]: command.from, immediateRender: false }, 0)
+    tl.to(target, { [command.property]: command.to, duration: command.duration, ease: resolveEase(command.ease), immediateRender: false }, at + command.start)
+  }
 
   // Motion path animation — drives position along a curved trajectory
   if (layer.motionPath && layer.motionPath.length >= 2) {
@@ -620,6 +630,12 @@ export function useBannerTimeline() {
     layers.forEach(layer => {
       const el = artboardEl.querySelector(`#lyr-${layer.id}`) as HTMLElement
       if (el) {
+        el.querySelectorAll('[data-banner-word], [data-banner-reveal], [data-banner-reveal-content], [data-banner-reveal-glow]').forEach((child) => {
+          gsap.killTweensOf(child)
+          gsap.set(child, { clearProps: 'transform,opacity,filter,maskPosition,webkitMaskPosition' })
+          if (layer.reveal?.type === 'tvExpand') gsap.set(child, { clearProps: 'maskSize,webkitMaskSize' })
+          if (child.hasAttribute('data-banner-reveal-glow')) gsap.set(child, { opacity: 0 })
+        })
         gsap.killTweensOf(el)
         // Clear animated transforms, then restore the model's resting transform
         // through GSAP so both its cache and the inline style agree. Vue does not

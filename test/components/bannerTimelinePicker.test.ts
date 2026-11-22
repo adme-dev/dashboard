@@ -231,3 +231,18 @@ it('removes a middle Pulse through the popup, keeps the layer, and supports Undo
   expect(studio.activeLayers.value[0]!.keyframes).toEqual(keyframes)
   expect(studio.activeLayers.value[0]!.animationClips![0]!.label).toBe('Pulse')
 })
+
+it('edits native reveal easing and duration without damaging shape keyframes, and undo restores it', async () => {
+  const keyframes = { opacity: [{ time: 0, value: 1 }, { time: 3, value: 1 }] }
+  const reveal = { type: 'tvExpand' as const, duration: 0.4, ease: 'cubic-bezier(.39,.575,.565,1)' }
+  const { studio, click, change } = await mount({ type: 'rect', keyframes, reveal }, { kind: 'entry', start: 0, end: 0.4, direction: 'in', nativeEntrance: 'reveal', label: 'Entry · TV reveal' })
+  await click('Build')
+  await change('Duration (seconds)', '0.8')
+  expect(studio.activeLayers.value[0].reveal?.duration).toBe(0.8)
+  await change('Easing', 'none')
+  expect(studio.activeLayers.value[0].reveal).toEqual({ ...reveal, duration: 0.8, ease: 'none' })
+  expect(studio.activeLayers.value[0].keyframes).toEqual(keyframes)
+  studio.undo()
+  await Vue.nextTick()
+  expect(studio.activeLayers.value[0].reveal?.ease).toBe(reveal.ease)
+})

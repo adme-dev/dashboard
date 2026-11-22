@@ -13,6 +13,7 @@ export interface TheBriefImportRow {
 }
 
 export async function readImportBatch(files: File[], previous: TheBriefImportRow[], clients: Array<{ id: string, name: string }>, folders: BannerFolder[] = []): Promise<TheBriefImportRow[]> {
+  if (files.reduce((sum, file) => sum + file.size, 0) > 128 * 1024 * 1024) throw new Error('Choose a smaller batch: prepared packages exceed 128 MB in total.')
   if (files.length > 50) throw new Error('Choose up to 50 prepared packages at a time.')
   const rows: TheBriefImportRow[] = []
   for (const file of files) {
@@ -23,7 +24,7 @@ export async function readImportBatch(files: File[], previous: TheBriefImportRow
       rows.push(existing)
       continue
     }
-    if (file.size > 45 * 1024 * 1024) throw new Error(`${file.name} exceeds the 45 MB package limit`)
+    if (file.size > 85 * 1024 * 1024) throw new Error(`${file.name} exceeds the 85 MB package limit`)
     const pkg = parseTheBriefPackage(JSON.parse(await file.text()))
     for (const asset of [...pkg.assets, ...pkg.fonts]) await packageFile(asset)
     rows.push({ file, pkg, clientId: clientFromHint(pkg.source.clientName, clients) || suggestImportClient(pkg.name, clients) || '__unassigned__', folderId: bannerFolderForSource(folders, pkg.source.folder) || '__unfiled__', sourceCreatedDate: pkg.source.createdDate || '', status: 'Ready for draft import' })

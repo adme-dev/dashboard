@@ -13,6 +13,19 @@ export async function waitForPreviewAssets(urls, timeoutMs = 20000) {
           }
         })).then(() => document.fonts.ready),
         ...[...new Set(urls)].map(async (url) => {
+          if (/\.mp4$/i.test(url)) {
+            const video = document.createElement('video')
+            video.preload = 'auto'
+            video.muted = true
+            await new Promise((resolve, reject) => {
+              video.onloadeddata = resolve
+              video.onerror = () => reject(new Error(`Video failed to decode: ${url}`))
+              video.src = url
+              video.load()
+            })
+            if (!video.videoWidth || !video.videoHeight) throw new Error(`Video has no frames: ${url}`)
+            return
+          }
           const image = new Image()
           image.src = url
           try {
