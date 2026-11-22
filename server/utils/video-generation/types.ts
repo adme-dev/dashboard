@@ -49,7 +49,8 @@ export interface VideoGenerationModel {
 
 export interface VideoGenerationTenantPolicy {
   enabled: boolean
-  monthlyCapCents: number
+  payer?: 'agency' | 'tenant'
+  monthlyCapCents: number | null
   allowedModelIds?: string[]
 }
 
@@ -89,6 +90,7 @@ export interface VideoGenerationJob {
   complianceStatus: string
   complianceReasons: string[]
   estimatedCostCents: number
+  payer: 'agency' | 'tenant'
   actualCostCents: number | null
   /** Canonical open or settled charge. This is what the monthly sum reads. */
   liabilityState: VideoGenerationLiabilityState

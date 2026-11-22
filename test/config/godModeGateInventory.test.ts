@@ -44,6 +44,7 @@ const FRESH_ROLE_GRANT_PATTERN = /assertFinancePermission\(|assertPermissionGran
 const GATE_PATTERN = /process\.env\.|useRuntimeConfig\(|runtimeConfig\.|feature.?flag|suite.?enabled|roleHasPermission\(|hasMcpPermission\(|mcpContextHasPermission\(|hasRole\(|user\.role|user_role|permissionGroups|requirePermission\(|requireRole\(|requireWriteAccess\(|requireFreshCrmSearchAdmin|isReadOnlyRole\(|GOD_MODE_DISABLED|AI_GATEWAY_URL/i
 
 const CENTRAL_HELPER_BY_CLASS = {
+  spend_authorization_hard_boundary: 'approved payer and budget policy; no God mode bypass',
   fresh_role_grant_hard_boundary: 'fresh active database role grant; no God mode bypass',
   identity_tenant_hard_boundary: 'unchanged independent scope helper',
   provider_infrastructure_availability: 'unchanged provider/configuration check',
@@ -62,7 +63,8 @@ const TASK_3_GATE_ROUTING = [
 ] as const
 
 type GateClass
-  = | 'fresh_role_grant_hard_boundary'
+  = | 'spend_authorization_hard_boundary'
+    | 'fresh_role_grant_hard_boundary'
     | 'identity_tenant_hard_boundary'
     | 'provider_infrastructure_availability'
     | 'application_governance_bypass'
@@ -77,7 +79,35 @@ function listSourceFiles(root: string): string[] {
   })
 }
 
+// Generation availability is an operator switch on a paid provider. It also applies
+// to owner MCP calls. Funding checks compare a current staff/project or retained
+// payer identity; changing a payer requires a fresh proposal.
+function videoBoundary(file: string, line: string): GateClass | undefined {
+  const matches = (path: string, pattern: RegExp) => file === path && pattern.test(line)
+  if (matches('server/utils/video-generation/feature.ts', /return env\.VIDEO_GENERATION_ENABLED/)
+    || (!line.trimStart().startsWith('export function') && /(?:require|is)VideoGenerationEnabled\(/.test(line))) {
+    return 'provider_infrastructure_availability'
+  }
+  if (matches('server/utils/video-generation/policy.ts', /tm\.user_role|cr\.is_read_only|if \(!staff\)/)
+    || matches('server/utils/video-storyboard/productionPolicy.ts', /tm\.user_role AS role/)
+    || matches('server/utils/video-generation/budget.ts', /WRITABLE_VIDEO_STAFF_SQL.*FOR SHARE|JOIN staff ON|if \(!authority\.rows/)) {
+    return 'fresh_role_grant_hard_boundary'
+  }
+  if (matches('server/utils/video-generation/budget.ts', /const agencyFunded =|if \(!agencyFunded &&/)
+    || matches('server/utils/video-generation/costs.ts', /if \(policy\.payer === 'agency'/)
+    || matches('server/utils/ai/mcp/videoRunner.ts', /reason: 'payer_changed'/)) {
+    return 'spend_authorization_hard_boundary'
+  }
+  if (matches('server/utils/video-generation/budget.ts', /COALESCE\(p\.client_id/)
+    || matches('server/utils/ai/mcp/videoRunner.ts', /if \(ctx\.clientScope/)
+    || matches('server/utils/ai/mcp/videoTools.ts', /actor\.clientScope !== project\.clientId/)) {
+    return 'identity_tenant_hard_boundary'
+  }
+}
+
 function classifyGate(file: string, line: string): GateClass {
+  const video = videoBoundary(file, line)
+  if (video) return video
   if (FRESH_ROLE_GRANT_PATTERN.test(line)) return 'fresh_role_grant_hard_boundary'
   if (/GOD_MODE_DISABLED|AI_GATEWAY_URL/i.test(line)
     || (file === 'server/utils/godMode/authority.ts' && /process\.env/.test(line))) {
@@ -103,7 +133,7 @@ function legacyInventory() {
     .filter(file => !TASK_3_OWNED_FILES.has(file))
     .sort()
     .flatMap(file => readFileSync(file, 'utf8').split(/\r?\n/).flatMap((line) => {
-      if (!GATE_PATTERN.test(line) && !FRESH_ROLE_GRANT_PATTERN.test(line)) return []
+      if (!GATE_PATTERN.test(line) && !FRESH_ROLE_GRANT_PATTERN.test(line) && !videoBoundary(file, line)) return []
       const normalized = line.trim().replace(/\s+/g, ' ')
       return [`${file}\t${normalized}\t${classifyGate(file, normalized)}`]
     }))
@@ -112,6 +142,7 @@ function legacyInventory() {
     result[gateClass]++
     return result
   }, {
+    spend_authorization_hard_boundary: 0,
     fresh_role_grant_hard_boundary: 0,
     identity_tenant_hard_boundary: 0,
     provider_infrastructure_availability: 0,
@@ -508,12 +539,24 @@ describe('God mode gate inventory', () => {
     // phase 2: automation-rule manager check + tier reviewer projection (2, ordinary_user_behavior);
     // phase 3: active-owner reviewer lookups (3, identity_tenant_hard_boundary) and requester/reviewer
     // group checks (4, ordinary_user_behavior). Row diff verified against main on 2026-11-19.
-    expect(inventory.rows).toHaveLength(1845)
+    // Eight inline process.env checks moved to the shared provider switch. The
+    // HTTP and MCP adapters, including owner confirmation, must retain that switch.
+    // The role projection now carries client scope, and the storyboard role query
+    // fails closed on a missing assigned role. The new Model Ops GET uses requireRole.
+    // Funding checks cover the agency policy, the project cap on tenant-paid work,
+    // a valid estimate and the payer originally approved by the MCP requester.
+    const videoRows = inventory.rows.filter(row => row.endsWith('\tspend_authorization_hard_boundary'))
+    expect(videoRows).toHaveLength(4)
+    expect(videoRows.some(row => row.includes("reason: 'payer_changed'"))).toBe(true)
+    expect(inventory.rows.filter(row => row.startsWith('server/api/agency/video/generation/')
+      && row.endsWith('requireVideoGenerationEnabled(event)\tprovider_infrastructure_availability'))).toHaveLength(8)
+    expect(inventory.rows).toHaveLength(1871)
     expect(inventory.counts).toEqual({
-      fresh_role_grant_hard_boundary: 90,
-      identity_tenant_hard_boundary: 149,
-      provider_infrastructure_availability: 218,
-      application_governance_bypass: 1626,
+      spend_authorization_hard_boundary: 4,
+      fresh_role_grant_hard_boundary: 99,
+      identity_tenant_hard_boundary: 152,
+      provider_infrastructure_availability: 235,
+      application_governance_bypass: 1619,
       ordinary_user_behavior: 328,
       unrelated_configuration: 433
     })
@@ -545,15 +588,16 @@ describe('God mode gate inventory', () => {
     const canonicalMcpGate = 'server/utils/ai/marketing/departmentEmailOperations.ts\tif (!enabled(\'FIGFLOW_EDM_DRAFT_SAVES_ENABLED\', process.env.FIGFLOW_EDM_DRAFT_SAVES_ENABLED) || (selection && !enabled(\'FIGFLOW_EDM_LIBRARY_ENABLED\', process.env.FIGFLOW_EDM_LIBRARY_ENABLED))) refuse(\'Canonical email drafts are unavailable for this environment\', \'not_found\')\tapplication_governance_bypass'
     expect(inventory.rows).toContain(canonicalMcpGate)
     const editableCopyGates = new Set(['server/api/email/templates/[id]/editable-copy.post.ts\tconst user = input.save ? await requireWriteAccess(event) : await requireAuth(event)\tapplication_governance_bypass', 'server/api/email/templates/[id]/editable-copy.post.ts\tconst fresh = await requireWriteAccess(event)\tapplication_governance_bypass'])
-    expect(createHash('sha256').update(inventory.rows.filter(row => row !== canonicalMcpGate && row !== changeHistoryGate && !editableCopyGates.has(row)).join('\n')).digest('hex')).toBe('1763909f1f5d7374b2095b57f447be1d8283944a0d2de472a4a5d0c92f2b0ed4')
+    expect(createHash('sha256').update(inventory.rows.filter(row => row !== canonicalMcpGate && row !== changeHistoryGate && !editableCopyGates.has(row)).join('\n')).digest('hex')).toBe('366871cfc9e0809466cbe34ba19711472abc05c6ff4aae6dad0399aa422613c5')
     const campaignReadGate = 'server/utils/ai/marketing/departmentEmailOperations.ts\tif (!fresh.permissionGroups?.some(group => [\'ADMIN\', \'MANAGEMENT\'].includes(group))) refuse(\'Agency template access required\', \'forbidden\')\tordinary_user_behavior'
-    expect(createHash('sha256').update(inventory.rows.filter(row => row !== campaignReadGate && row !== canonicalMcpGate && row !== changeHistoryGate && !editableCopyGates.has(row)).join('\n')).digest('hex')).toBe('adf42a92a228059e059f603db643744c13e28cde708fe3d9f9788a0fe5fae2c2')
-    // Whole-inventory digest moves only by the reviewed change-history read gate above.
-    expect(inventory.digest).toBe('d36e1cfae730d1c1411090001fc455169b35d54cfa890e8f68467743fbe5d738')
+    expect(createHash('sha256').update(inventory.rows.filter(row => row !== campaignReadGate && row !== canonicalMcpGate && row !== changeHistoryGate && !editableCopyGates.has(row)).join('\n')).digest('hex')).toBe('4ba5a258ef55a4627ace3d2dec418b3f503c47ccad7e18b331d68bc256667ddf')
+    // Pins the complete reviewed inventory, including the video funding boundaries.
+    expect(inventory.digest).toBe('13de1cd01bb5ba0cad42653b328b0e48997fc3e0b65411dc8e31e74b362359b1')
     expect(inventory.rows).toContain(
       'app/composables/usePageStudioLauncher.ts\tconst config = useRuntimeConfig()\tunrelated_configuration'
     )
     expect(CENTRAL_HELPER_BY_CLASS).toEqual({
+      spend_authorization_hard_boundary: 'approved payer and budget policy; no God mode bypass',
       fresh_role_grant_hard_boundary: 'fresh active database role grant; no God mode bypass',
       identity_tenant_hard_boundary: 'unchanged independent scope helper',
       provider_infrastructure_availability: 'unchanged provider/configuration check',

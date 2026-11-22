@@ -3,7 +3,7 @@ import type { VideoGenerationModel, VideoGenerationTenantPolicy } from '~~/serve
 export interface VideoGenerationSpendDecision {
   allowed: boolean
   reason: 'allowed' | 'tenant_generation_disabled' | 'tenant_cap_exceeded'
-  remainingCents: number
+  remainingCents: number | null
 }
 
 export function estimateVideoGenerationCostCents(model: VideoGenerationModel, durationSeconds: number): number {
@@ -20,7 +20,10 @@ export function canSpendVideoGenerationCents(
     return { allowed: false, reason: 'tenant_generation_disabled', remainingCents: 0 }
   }
 
-  if (![policy.monthlyCapCents, currentSpendCents, estimateCents].every(value => Number.isSafeInteger(value) && value >= 0)) {
+  if (policy.payer === 'agency' && policy.monthlyCapCents === null && Number.isSafeInteger(estimateCents) && estimateCents >= 0) {
+    return { allowed: true, reason: 'allowed', remainingCents: null }
+  }
+  if (policy.monthlyCapCents === null || ![policy.monthlyCapCents, currentSpendCents, estimateCents].every(value => Number.isSafeInteger(value) && value >= 0)) {
     return { allowed: false, reason: 'tenant_cap_exceeded', remainingCents: 0 }
   }
 

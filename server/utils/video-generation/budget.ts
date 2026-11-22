@@ -1,3 +1,5 @@
+import { createError } from 'h3'
+import { WRITABLE_VIDEO_STAFF_SQL } from '~~/server/utils/video-generation/policy'
 import { transaction as defaultTransaction } from '~~/server/utils/db'
 import { canSpendVideoGenerationCents } from '~~/server/utils/video-generation/costs'
 import { mapVideoGenerationJobRow } from '~~/server/utils/video-generation/jobs'
@@ -29,7 +31,7 @@ export interface ReserveVideoGenerationResult {
   job?: VideoGenerationJob
   reused?: boolean
   reason?: 'allowed' | 'tenant_generation_disabled' | 'tenant_cap_exceeded' | 'project_allowance_exceeded' | 'idempotency_key_conflict'
-  remainingCents?: number
+  remainingCents?: number | null
   /** Content-free explanation read in the same transaction (same now()) as the refusal. */
   budget?: VideoGenerationBudgetStatus
 }
@@ -89,7 +91,18 @@ export async function reserveAndCreateVideoGenerationJobIn(
     return { ok: true, reused: true, job: mapVideoGenerationJobRow(existingRow) }
   }
 
-  const spendRow = await db.query(TENANT_VIDEO_GENERATION_LIABILITY_SUM_SQL, [input.tenantId])
+  const agencyFunded = policy?.enabled === true && policy.payer === 'agency' && policy.monthlyCapCents === null
+  if (agencyFunded) {
+    const authority = await db.query(
+      `WITH staff AS (${WRITABLE_VIDEO_STAFF_SQL} FOR SHARE OF tm)
+       SELECT p.id FROM media_projects p JOIN staff ON staff.id = p.created_by OR staff.role IN ('owner', 'admin')
+        WHERE p.id = $2 AND p.media_type = 'av' AND COALESCE(p.client_id::text, 'agency') = $3
+        FOR SHARE OF p`, [input.createdBy, input.projectId, input.tenantId])
+    if (!authority.rows?.length) {
+      throw createError({ statusCode: 403, statusMessage: 'Agency generation access or project attribution changed' })
+    }
+  }
+  const spendRow = agencyFunded ? { rows: [] } : await db.query(TENANT_VIDEO_GENERATION_LIABILITY_SUM_SQL, [input.tenantId])
   const currentSpendCents = Number(spendRow.rows?.[0]?.total ?? 0)
   const decision = canSpendVideoGenerationCents(policy, currentSpendCents, input.estimatedCostCents)
   if (!decision.allowed) {
@@ -101,7 +114,7 @@ export async function reserveAndCreateVideoGenerationJobIn(
     return { ok: false, reason: decision.reason, remainingCents: decision.remainingCents, budget }
   }
 
-  if (typeof input.projectAllowanceCents === 'number') {
+  if (!agencyFunded && typeof input.projectAllowanceCents === 'number') {
     if ((!Number.isSafeInteger(input.projectAllowanceCents) || input.projectAllowanceCents < 0)) {
       return { ok: false, reason: 'project_allowance_exceeded', remainingCents: 0 }
     }
@@ -125,6 +138,7 @@ export async function reserveAndCreateVideoGenerationJobIn(
     VIDEO_GENERATION_JOB_INSERT_SQL,
     videoGenerationJobInsertParams({
       ...input,
+      payer: agencyFunded ? 'agency' : 'tenant',
       id: input.id ?? null,
       status,
       requestFingerprint: fingerprint,

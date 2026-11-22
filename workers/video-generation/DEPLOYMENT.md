@@ -1,6 +1,6 @@
 # Video Generation Worker Deployment
 
-This worker is the dormant queue consumer for Video Studio V2 AI generation jobs.
+This worker is the queue consumer for Video Studio V2 AI generation jobs.
 It is not required for Video Studio V1 render/export flows.
 
 ## What It Consumes
@@ -10,8 +10,9 @@ It is not required for Video Studio V1 render/export flows.
 - Pages producer binding: `VIDEO_GENERATION_QUEUE -> video-generation`
 - Worker: `workers/video-generation`
 
-The Pages app creates `video_generation_jobs` rows and sends queue messages only
-when generation is enabled:
+The Pages app requires the global generation switch. Active agency staff with project write access use agency funding without a monthly cap. Each request records the client/project, payer and USD estimate. Confirmed charges and outstanding liabilities appear in Admin → AI Model Ops. Client-funded requests retain their tenant policy.
+
+Generation and test-tenant settings:
 
 - `VIDEO_GENERATION_ENABLED=true`
 - `VIDEO_GENERATION_TEST_TENANT_ENABLED=true`

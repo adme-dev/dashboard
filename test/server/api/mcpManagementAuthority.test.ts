@@ -107,7 +107,7 @@ describe('ordinary MCP management authority corrections', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.stubEnv('MCP_INTERNAL_SECRET', SECRET)
-    bindings = { MCP_SERVER_ENABLED: 'true' }
+    bindings = { MCP_SERVER_ENABLED: 'true', VIDEO_GENERATION_ENABLED: 'true' }
     actor = { role: 'lead', customGroups: ['MANAGEMENT'] }
     mocks.isActiveAuthority.mockReturnValue(false)
     mocks.consumeClaim.mockImplementation(async () => ({ uid: USER_ID, scope: ['mcp:read', 'mcp:write'], bodyDigest: 'e'.repeat(64) }))
@@ -188,6 +188,7 @@ describe('ordinary MCP management authority corrections', () => {
   })
 
   const videoPayload = {
+    payer: 'agency',
     tenantId: CLIENT_A,
     projectId: PROJECT_ID,
     timelineId: null,
@@ -234,7 +235,7 @@ describe('ordinary MCP management authority corrections', () => {
       getModel: () => ({ id: 'm1', provider: 'cf', modes: ['text-to-video'], durationsSeconds: [5], aspectRatios: ['16:9'], resolutions: [], allowedSubjectTypes: ['unknown'], requiresApprovedSourceAsset: false }),
       isTenantModel: () => true,
       loadSources: async () => [],
-      loadPolicy: async () => ({ enabled: true, monthlyCapCents: 100000 }),
+      loadPolicy: async () => ({ enabled: true, payer: 'agency', monthlyCapCents: null }),
       evaluateCompliance: () => ({ allowed: true, classification: 'clear', reasons: [] }),
       estimateCost: () => 250
     } as any)
@@ -251,7 +252,7 @@ describe('ordinary MCP management authority corrections', () => {
 
     const { proposed, persisted } = await proposeVideoAsCurrentUser()
     expect(proposed).toMatchObject({ ok: true, data: { proposalId: PROPOSAL_ID } })
-    expect(persisted).toMatchObject({ projectId: PROJECT_ID, tenantId: CLIENT_A })
+    expect(persisted).toMatchObject({ projectId: PROJECT_ID, tenantId: CLIENT_A, payer: 'agency' })
 
     // Revoke ADMIN: still active, writable, CREATIVE, signed mcp:write, suites on.
     actor.customGroups = ['MANAGEMENT', 'CREATIVE']
@@ -319,6 +320,33 @@ describe('ordinary MCP management authority corrections', () => {
     await expect(call('confirm_action', { proposalId: PROPOSAL_ID }))
       .resolves.toMatchObject({ ok: false, code: 'cap_exceeded' })
     expect(mocks.transaction).toHaveBeenCalledTimes(1)
+  })
+
+  it.each([undefined, 'tenant'])('requires a fresh approval when the retained payer %s changes to agency', async payer => {
+    actor = { role: 'admin', customGroups: ['ADMIN', 'MANAGEMENT', 'CREATIVE'] }
+    bindings.MCP_VIDEO_TOOLS_ENABLED = 'true'
+    bindings.MCP_VIDEO_GEN_ENABLED = 'true'
+    mocks.project = { id: PROJECT_ID, media_type: 'av', created_by: OTHER_USER, client_id: CLIENT_A }
+    mocks.pending = { tool_name: 'video_generation', resolved_payload: { ...videoPayload, payer } }
+    await expect(call('confirm_action', { proposalId: PROPOSAL_ID }))
+      .resolves.toMatchObject({ ok: false, code: 'forbidden', error: expect.stringContaining('payer') })
+    expect(mocks.transaction).not.toHaveBeenCalled()
+    expect(reverted()).toBe(true)
+  })
+
+  it('blocks proposal and confirmation when the global binding is absent even with enabled MCP flags', async () => {
+    vi.stubEnv('VIDEO_GENERATION_ENABLED', 'true')
+    delete bindings.VIDEO_GENERATION_ENABLED
+    actor = { role: 'admin', customGroups: ['ADMIN', 'MANAGEMENT', 'CREATIVE'] }
+    bindings.MCP_VIDEO_TOOLS_ENABLED = 'true'
+    bindings.MCP_VIDEO_GEN_ENABLED = 'true'
+    mocks.pending = { tool_name: 'video_generation', resolved_payload: videoPayload }
+    const { proposed, persisted } = await proposeVideoAsCurrentUser()
+    expect(proposed).toMatchObject({ ok: false, code: 'disabled' })
+    expect(persisted).toBeUndefined()
+    await expect(call('confirm_action', { proposalId: PROPOSAL_ID })).resolves.toMatchObject({ ok: false, code: 'forbidden' })
+    expect(mocks.transaction).not.toHaveBeenCalled()
+    expect(reverted()).toBe(true)
   })
 
   it('reaches the budget reservation for the same retained proposal while ADMIN is current', async () => {

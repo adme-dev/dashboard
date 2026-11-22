@@ -30,7 +30,7 @@ function mockBucket(etag = source.etag, size = source.size, snapshot = '<video s
   const read = vi.fn().mockResolvedValue(Uint8Array.from([1, 2, 3]).buffer)
   const get = vi.fn(async (key: string) => ({
     size: key === source.r2Key ? size : 3, etag,
-    arrayBuffer: key === overlay.htmlKey ? async () => new TextEncoder().encode(snapshot).buffer : read, text: async () => ''
+    arrayBuffer: key.endsWith('/overlay-art.html') ? async () => new TextEncoder().encode(snapshot).buffer : read, text: async () => ''
   }))
   return { read, get, env: { RENDER: {} as any, AUDIO_BUCKET: { get, put: vi.fn() } } }
 }
@@ -62,6 +62,34 @@ describe('managed base footage in an artwork composite', () => {
     const sent = JSON.parse(post.mock.calls[0]![1].body)
     expect(sent.plan.inputs[0].r2_key).toBe(source.r2Key)
     expect(sent.files).toHaveLength(2)
+  })
+  it.each(['square_1x1', 'youtube_16x9'] as const)('fits the completed native picture into %s and retains a fitted whole-artwork fallback', async format => {
+    const output = videoFormatFor(format)!
+    const htmlKey = overlay.htmlKey.replace('reels_9x16', format)
+    const containedPortraitFootage = { ...base, graphicsHtmlKey: base.graphicsHtmlKey.replace('reels_9x16', format) }
+    const { env } = mockBucket()
+    post.mockReset().mockResolvedValueOnce(new Response(null, { status: 422, headers: { 'x-reelmotion-base': 'unsupported' } }))
+      .mockResolvedValueOnce(new Response('mp4'))
+    await renderComposite(env, { ...args, profile: output, resolvedOverlays: [{ ...clip, htmlKey, containedPortraitFootage }] })
+    const [split, fallback] = post.mock.calls.map(([, init]) => JSON.parse(init.body))
+    expect(split.overlays[0]).toMatchObject({ width: 1080, height: 1920 })
+    expect(split.plan.filterComplex).toContain('s=1080x1920:fps=30')
+    expect(split.plan.filterComplex).toContain(`[vout]scale=-2:1080,setsar=1,pad=${output.width}:1080:(ow-iw)/2:0[contained]`)
+    expect(split.plan).toMatchObject({ profile: output, vLabel: '[contained]' })
+    expect(fallback.overlays[0]).toMatchObject({ width: output.width, height: output.height, html: '<video src="data:video/mp4;base64,AQID"></video>' })
+    expect(fallback.plan.inputs.map((input: { r2_key: string }) => input.r2_key)).toEqual(['voice.wav'])
+    expect(fallback.plan.vLabel).toBe('[vout]')
+  })
+  it('rejects changed output dimensions and mixed split descriptors before any storage read', async () => {
+    const { env, get } = mockBucket()
+    const output = videoFormatFor('square_1x1')!
+    const htmlKey = overlay.htmlKey.replace('reels_9x16', output.format)
+    const containedPortraitFootage = { ...base, graphicsHtmlKey: base.graphicsHtmlKey.replace('reels_9x16', output.format) }
+    const item = { ...clip, htmlKey, containedPortraitFootage }
+    await expect(renderComposite(env, { ...args, profile: { ...output, width: 1920 }, resolvedOverlays: [item] })).rejects.toThrow('Invalid contained portrait output')
+    await expect(renderComposite(env, { ...args, profile: output, resolvedOverlays: [{ ...item, baseFootage: base }] })).rejects.toThrow('Invalid contained portrait output')
+    await expect(renderComposite(env, { ...args, profile: output, pinnedObjects: [], resolvedOverlays: [{ ...item, requiredCopy: [{} as never] }] })).rejects.toThrow(/immutable/)
+    expect(get).not.toHaveBeenCalled()
   })
   it.each([['changed', 3], [source.etag, 4]] as const)('rejects changed ETag/size before reading footage bytes', async (etag, size) => {
     const { env, read } = mockBucket(etag, size)

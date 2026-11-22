@@ -94,7 +94,7 @@ describe('VideoStudioWorkbench', () => {
     expect(html).toContain('Preview canvas')
     expect(html).toContain('Producer rail')
     expect(html).toContain('2 AI jobs running')
-    expect(html).toContain('AI ready')
+    expect(html).not.toContain('AI ready')
     // Both panes scroll independently while the outer section stays bounded.
     expect(html.match(/overflow-y-auto/g)?.length).toBe(3)
     expect(html).toContain('overflow-hidden')
@@ -289,7 +289,7 @@ describe('VideoStudioWorkbench', () => {
       mode: 'review',
       renderJobCount: 3,
       generationEnabled: false,
-      generationStatusLabel: 'AI disabled by policy'
+      generationStatusDetail: 'AI clip generation is disabled for this workspace.'
     }, {
       library: () => h('p', 'Library rail'),
       preview: () => h('p', 'Preview panel'),
@@ -300,6 +300,6 @@ describe('VideoStudioWorkbench', () => {
     expect(html).toMatch(/<main[^>]*class="[^"]* flex"/)
     expect(html).toContain('Inspector 3')
     expect(html).toContain('Producer content')
-    expect(html).toContain('AI disabled by policy')
+    expect(html).toContain('AI clip generation is disabled for this workspace.')
   })
 })

@@ -67,12 +67,12 @@ function freshCtx(groups: PermissionGroup[], userRole = 'lead'): ToolContext {
     assistantScope: { departmentIds: [], clientAccessMode: 'all_active', assignedClientIds: [], catalogReleaseIds: [] },
     mcpStaffAuthority: 'fresh',
     source: 'mcp',
-    event: {} as any
+    event: { context: { cloudflare: { env: { VIDEO_GENERATION_ENABLED: 'true' } } } } as any
   }
 }
 
 function legacyCtx(userRole = 'lead'): ToolContext {
-  return { userId: USER_ID, userRole, source: 'mcp', event: {} as any }
+  return { userId: USER_ID, userRole, source: 'mcp', event: { context: { cloudflare: { env: { VIDEO_GENERATION_ENABLED: 'true' } } } } as any }
 }
 
 function staffNames(groups: PermissionGroup[], overrides: Partial<ToolContext> = {}): Set<string> {

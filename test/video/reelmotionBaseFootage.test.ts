@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { Layer } from '../../app/types/banner-studio'
-import { selectReelmotionBaseFootage, resolveReelmotionBaseFootage } from '../../server/utils/audio/reelmotionBaseFootage'
+import { portraitArtworkView, selectReelmotionBaseFootage, resolveReelmotionBaseFootage } from '../../server/utils/audio/reelmotionBaseFootage'
 
 function fixture() {
   const duration = 40.18
@@ -19,6 +19,21 @@ describe('bounded ReelMotion footage split', () => {
     expect(result.graphics[0]).toBe(input.layers[3])
     expect(result.zoom).toEqual(input.layers[2].keyframes!.scaleX!.map(frame => ({ timeSec: frame.time, scale: frame.value })))
     expect(input.layers).toHaveLength(4)
+  })
+  it.each(['square_1x1', 'youtube_16x9'])('fits a pinned portrait companion in %s, independent boards retain their own layout', format => {
+    const input = fixture()
+    expect(selectReelmotionBaseFootage({ ...input, format } as never)).toBeNull()
+    for (const gsap_format_key of ['custom_1080x1920', 'fb_story']) {
+      expect(selectReelmotionBaseFootage({ ...input, format, clip: { ...input.clip, gsap_format_key } } as never)?.graphics).toEqual([input.layers[3]])
+    }
+  })
+  it('keeps unsupported edits on the complete centered artboard and respects explicit placement', () => {
+    const input = fixture()
+    const pinned = { ...input, format: 'youtube_16x9', clip: { ...input.clip, gsap_format_key: 'custom_1080x1920' } }
+    pinned.layers[2].rotation = 90
+    expect(portraitArtworkView(pinned as never)).toBe('contained')
+    expect(selectReelmotionBaseFootage(pinned as never)).toBeNull()
+    expect(portraitArtworkView({ ...pinned, clip: { ...pinned.clip, placement: { anchor: 'top-left' } } } as never)).toBeNull()
   })
   it('retains whole-artwork capture for unsupported visual/timing/zoom changes', () => {
     const changes = [

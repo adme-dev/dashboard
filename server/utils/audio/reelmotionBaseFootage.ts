@@ -12,23 +12,31 @@ type SplitInput = {
   playback?: BannerPlayback
   layers: Layer[]
   timeline: TimelineState
-  clip: { id: string, gsap_project_id: string, timeline_start_sec: number, duration_sec: number, placement?: unknown, opacity?: number }
+  clip: { id: string, gsap_project_id: string, gsap_format_key?: string, timeline_start_sec: number, duration_sec: number, placement?: unknown, opacity?: number }
 }
 
 const videoKeys = new Set(['id', 'name', 'type', 'src', 'srcType', 'x', 'y', 'w', 'h', 'zIndex', 'opacity', 'startTime', 'endTime', 'fit', 'focalX', 'focalY', 'rotation', 'flipX', 'flipY', 'hidden', 'locked', 'slideId', 'linkId', 'timelineGroup', 'transformOrigin', 'animIn', 'animOut', 'animInDur', 'outDur', 'keyframes', 'mediaStart', 'mediaEnd', 'mediaLoop'])
 const finite = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value)
 
-/** Conservative eligibility: unsupported artwork keeps the complete HTML path. */
-export function selectReelmotionBaseFootage(input: SplitInput): { video: Layer, graphics: Layer[], zoom: ReelmotionBaseFootage['zoom'] } | null {
-  const { duration, layers, clip, timeline } = input
-  if (input.format !== 'reels_9x16' || input.width !== 1080 || input.height !== 1920
-    || !finite(duration) || duration <= 0 || duration > 90 || input.playback?.duration !== duration || input.playback.loopCount !== 0
-    || timeline.width !== 1080 || timeline.height !== 1920 || timeline.duration_sec !== duration
-    || !/^[A-Za-z0-9_-]+$/.test(clip.id)
-    || clip.timeline_start_sec !== 0 || clip.duration_sec !== duration || clip.placement != null || (clip.opacity ?? 1) !== 1) return null
+/** Resolve the view independently of the optimization so unsupported motion still
+ * keeps the entire pinned artboard when Chromium renders the original HTML. */
+export function portraitArtworkView({ format, width, height, clip, timeline }: Pick<SplitInput, 'format' | 'width' | 'height' | 'clip' | 'timeline'>): 'native' | 'contained' | null {
+  if (width !== 1080 || height !== 1920 || timeline.width !== width || timeline.height !== height
+    || clip.timeline_start_sec !== 0 || clip.duration_sec !== timeline.duration_sec || clip.placement != null || (clip.opacity ?? 1) !== 1) return null
   const visuals = timeline.tracks.filter(track => ['video', 'overlay', 'caption'].includes(track.kind) && track.clips.length)
   if (visuals.length !== 1 || visuals[0]!.kind !== 'overlay' || visuals[0]!.hidden || visuals[0]!.muted
     || visuals[0]!.clips.length !== 1 || visuals[0]!.clips[0]!.id !== clip.id) return null
+  if (format === 'reels_9x16') return 'native'
+  if (clip.gsap_format_key && (format === 'square_1x1' || format === 'youtube_16x9')) return 'contained'
+  return null
+}
+
+/** Conservative eligibility: unsupported artwork keeps the complete HTML path. */
+export function selectReelmotionBaseFootage(input: SplitInput): { video: Layer, graphics: Layer[], zoom: ReelmotionBaseFootage['zoom'] } | null {
+  const { duration, layers, clip, timeline } = input
+  if (!portraitArtworkView(input) || !finite(duration) || duration <= 0 || duration > 90
+    || input.playback?.duration !== duration || input.playback.loopCount !== 0
+    || timeline.duration_sec !== duration || !/^[A-Za-z0-9_-]+$/.test(clip.id)) return null
   if (layers.some(layer => layer.type !== 'audio' && !layer.hidden && !finite(layer.zIndex))) return null
   if (new Set(layers.map(layer => layer.id)).size !== layers.length || layers.some(layer => layer.isMask || layer.slideTransitionFor)) return null
   const videos = layers.filter(layer => layer.type === 'video' || (layer.type === 'bg' && layer.srcType === 'video'))

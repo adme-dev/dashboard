@@ -60,6 +60,7 @@ const enabledPolicy: VideoGenerationTenantPolicy = { enabled: true, monthlyCapCe
 
 function makeFakeTransaction(opts: {
   spendCents: number
+  agencyAccess?: boolean
   projectSpendCents?: number
   existingRow?: Record<string, unknown> | null
 }) {
@@ -78,6 +79,7 @@ function makeFakeTransaction(opts: {
           calls.push('existing')
           return { rows: opts.existingRow ? [opts.existingRow] : [] }
         }
+        if (text.includes('WITH staff AS')) return { rows: opts.agencyAccess === false ? [] : [{ id: 'project-1' }] }
         if (text.includes('SUM') && text.includes('project_id')) {
           calls.push('project-spend')
           spendSql.push(text)
@@ -118,6 +120,7 @@ function makeFakeTransaction(opts: {
                 liability_state: params?.[20],
                 liability_cents: params?.[21],
                 dispatch_eligible: params?.[22],
+                payer: params?.[23],
                 created_at: '2026-06-10T00:00:00.000Z',
                 updated_at: '2026-06-10T00:00:00.000Z',
               },
@@ -134,6 +137,23 @@ function makeFakeTransaction(opts: {
 }
 
 describe('reserveAndCreateVideoGenerationJob', () => {
+  it('attributes staff work to its client and agency payer even with exhausted client and project budgets', async () => {
+    const fake = makeFakeTransaction({ spendCents: 900, projectSpendCents: 800 })
+    const result = await reserveAndCreateVideoGenerationJob(baseInput({ projectAllowanceCents: 0 }),
+      { enabled: true, payer: 'agency', monthlyCapCents: null }, { transaction: fake.transaction as any })
+    expect(result.job).toMatchObject({ payer: 'agency', tenantId: 'tenant-1', estimatedCostCents: 50,
+      actualCostCents: null, liabilityState: 'reserved', liabilityCents: 50 })
+    expect(fake.spendSql).toEqual([])
+  })
+
+  it('refuses an agency charge if the project client or staff access changed before reservation', async () => {
+    const fake = makeFakeTransaction({ spendCents: 0, agencyAccess: false })
+    await expect(reserveAndCreateVideoGenerationJob(baseInput(),
+      { enabled: true, payer: 'agency', monthlyCapCents: null }, { transaction: fake.transaction as any }))
+      .rejects.toMatchObject({ statusCode: 403 })
+    expect(fake.insertCalls).toEqual([])
+  })
+
   it('reserves and inserts when under cap', async () => {
     const fake = makeFakeTransaction({ spendCents: 20 })
     const result = await reserveAndCreateVideoGenerationJob(baseInput(), enabledPolicy, {

@@ -4,7 +4,7 @@ import { transaction } from '~~/server/utils/db'
 import type { GodModeTransactionDb } from '~~/server/utils/godMode/transactionCoordinator'
 import type { MediaProjectActor } from '~~/server/utils/audio/projects'
 import { reserveAndCreateVideoGenerationJobIn } from '~~/server/utils/video-generation/budget'
-import { loadTenantVideoGenerationPolicy } from '~~/server/utils/video-generation/policy'
+import { agencyVideoGenerationPolicy } from '~~/server/utils/video-generation/policy'
 import { getVideoGenerationModel } from '~~/server/utils/video-generation/modelRegistry'
 import { isTenantModel } from '~~/server/utils/video-generation/surface'
 import { evaluateVideoGenerationCompliance } from '~~/server/utils/video-generation/compliance'
@@ -66,7 +66,7 @@ const conflict = (message: string) => createError({ statusCode: 409, statusMessa
 const invalid = (message: string) => createError({ statusCode: 400, statusMessage: message })
 
 export interface ShotProductionDependencies extends ReferenceDependencies {
-  loadTenantPolicy?: typeof loadTenantVideoGenerationPolicy
+  loadTenantPolicy?: (tenantId: string) => Promise<ReturnType<typeof agencyVideoGenerationPolicy>>
   getModel?: typeof getVideoGenerationModel
   estimateCost?: typeof estimateVideoGenerationCostCents
   reserveJob?: typeof reserveAndCreateVideoGenerationJobIn
@@ -476,7 +476,7 @@ export async function reserveShotAttemptIn(
   if (!prompt.trim()) throw invalid('Shot has no production prompt')
   if (prompt.length > 4000) throw invalid('Shot production prompt exceeds 4000 characters')
   const idempotencyKey = `storyboard-production:${project.id}:${request.operationId}`
-  const tenantPolicy = await (deps.loadTenantPolicy ?? loadTenantVideoGenerationPolicy)(tenantId)
+  const tenantPolicy = deps.loadTenantPolicy ? await deps.loadTenantPolicy(tenantId) : agencyVideoGenerationPolicy()
   const initialSubject: VideoGenerationSubjectType = sourceAssets.some(asset => asset.subjectType === 'vehicle')
     ? 'vehicle'
     : 'non_vehicle'

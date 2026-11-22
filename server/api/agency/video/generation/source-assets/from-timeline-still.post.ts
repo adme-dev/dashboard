@@ -1,3 +1,4 @@
+import { requireVideoGenerationEnabled } from '~~/server/utils/video-generation/feature'
 import { z } from 'zod'
 import { requireWriteAccess } from '~~/server/utils/auth'
 import { getProjectWithCurrentTimeline } from '~~/server/utils/audio/projects'
@@ -14,9 +15,7 @@ const BodySchema = z.object({
 
 // Owners (God mode) run this under the execution ledger; staff run it directly.
 export default defineEventHandler(event => withGodModeLedger(event, 'sourceAssetFromStill', async ({ reservedId }) => {
-  if (process.env.VIDEO_GENERATION_ENABLED !== 'true') {
-    throw createError({ statusCode: 404, statusMessage: 'Not found' })
-  }
+  requireVideoGenerationEnabled(event)
 
   const user = await requireWriteAccess(event)
   const parsed = BodySchema.safeParse(await readBody(event))

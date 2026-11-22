@@ -38,7 +38,7 @@ const LIABILITY_ACCOUNTING_PREDICATE = `
 export const TENANT_VIDEO_GENERATION_LIABILITY_SUM_SQL = `
 SELECT COALESCE(SUM(liability_cents), 0) AS total
   FROM video_generation_jobs
- WHERE tenant_id = $1
+ WHERE tenant_id = $1 AND payer = 'tenant'
    AND ${LIABILITY_ACCOUNTING_PREDICATE}`
 
 /**
@@ -48,7 +48,7 @@ SELECT COALESCE(SUM(liability_cents), 0) AS total
 export const TENANT_VIDEO_GENERATION_LIABILITY_BREAKDOWN_SQL = `
 SELECT liability_state, COUNT(*)::integer AS jobs, COALESCE(SUM(liability_cents), 0)::bigint AS cents
   FROM video_generation_jobs
- WHERE tenant_id = $1
+ WHERE tenant_id = $1 AND payer = 'tenant'
    AND ${LIABILITY_ACCOUNTING_PREDICATE}
  GROUP BY liability_state`
 
@@ -56,7 +56,7 @@ SELECT liability_state, COUNT(*)::integer AS jobs, COALESCE(SUM(liability_cents)
 export const PROJECT_VIDEO_GENERATION_LIABILITY_SUM_SQL = `
 SELECT COALESCE(SUM(liability_cents), 0) AS total
   FROM video_generation_jobs
- WHERE project_id = $1
+ WHERE project_id = $1 AND payer = 'tenant'
    AND liability_state <> 'released'`
 
 /**
@@ -72,10 +72,10 @@ INSERT INTO video_generation_jobs (
   id, tenant_id, project_id, timeline_id, created_by, status, mode, model_id, provider,
   prompt, source_asset_ids, duration_seconds, aspect_ratio, resolution, subject_type,
   compliance_status, compliance_reasons, estimated_cost_cents, idempotency_key,
-  request_fingerprint, liability_state, liability_cents, dispatch_eligible
+  request_fingerprint, liability_state, liability_cents, dispatch_eligible, payer
 ) VALUES (
   COALESCE($1::uuid, gen_random_uuid()),
-  $2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12,$13,$14,$15,$16,$17::jsonb,$18,$19,$20,$21,$22,$23
+  $2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12,$13,$14,$15,$16,$17::jsonb,$18,$19,$20,$21,$22,$23,$24
 )
 ON CONFLICT DO NOTHING
 RETURNING *`
@@ -421,6 +421,7 @@ export function fingerprintSourceFromJobRow(row: Record<string, unknown>): Video
 }
 
 export interface VideoGenerationJobInsertParamsInput {
+  payer?: 'agency' | 'tenant'
   id?: string | null
   tenantId: string
   projectId: string
@@ -470,7 +471,8 @@ export function videoGenerationJobInsertParams(input: VideoGenerationJobInsertPa
     input.requestFingerprint,
     input.liabilityState,
     input.liabilityCents,
-    input.dispatchEligible
+    input.dispatchEligible,
+    input.payer ?? 'tenant'
   ]
 }
 

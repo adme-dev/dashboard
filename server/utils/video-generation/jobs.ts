@@ -40,6 +40,7 @@ export function mapVideoGenerationJobRow(row: any): VideoGenerationJob {
   return {
     id: row.id,
     tenantId: row.tenant_id,
+    payer: row.payer ?? 'tenant',
     projectId: row.project_id,
     timelineId: row.timeline_id ?? null,
     createdBy: row.created_by,
@@ -74,6 +75,7 @@ export function mapVideoGenerationJobRow(row: any): VideoGenerationJob {
 }
 
 export interface CreateVideoGenerationJobInput {
+  payer?: VideoGenerationJob['payer']
   tenantId: string
   projectId: string
   timelineId: string | null

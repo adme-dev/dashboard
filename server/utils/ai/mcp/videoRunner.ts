@@ -1,3 +1,4 @@
+import { requireVideoGenerationEnabled } from '~~/server/utils/video-generation/feature'
 import type { ToolContext } from '~~/server/utils/ai/toolContext'
 import {
   avProjectActor,
@@ -13,7 +14,7 @@ import {
 import { listProjects, getProjectWithCurrentTimeline, getProjectFresh, createProject, listRenderJobs } from '~~/server/utils/audio/projects'
 import { listSelectableVideoGenerationModels, getVideoGenerationModel } from '~~/server/utils/video-generation/modelRegistry'
 import { selectableVideoModelOptions } from '~~/app/utils/video/modelPresentation'
-import { loadTenantVideoGenerationPolicy } from '~~/server/utils/video-generation/policy'
+import { loadStaffVideoGenerationPolicy, loadTenantVideoGenerationPolicy } from '~~/server/utils/video-generation/policy'
 import { getVideoGenerationJob, listVideoGenerationJobsForProject, listVideoGenerationJobsForProjects, markVideoGenerationJobFailed } from '~~/server/utils/video-generation/jobs'
 import { listApprovedVideoGenerationSourceAssets } from '~~/server/utils/video-generation/sourceAssetStore'
 import { isTenantModel } from '~~/server/utils/video-generation/surface'
@@ -63,6 +64,15 @@ function costReconciliation(job: { status: string, actualCostCents: number | nul
   return ['succeeded', 'failed', 'blocked'].includes(job.status) ? 'provider_does_not_report' : 'pending'
 }
 
+async function loadActorPolicy(tenantId: string, ctx: ToolContext) {
+  requireVideoGenerationEnabled(ctx.event)
+  if (ctx.clientScope !== undefined) {
+    if (ctx.clientScope !== tenantId) throw new Error('Project outside client scope')
+    return loadTenantVideoGenerationPolicy(tenantId, ctx.event?.context?.cloudflare?.env ?? process.env)
+  }
+  return loadStaffVideoGenerationPolicy(ctx.userId)
+}
+
 export function buildVideoReadRunner(): VideoReadRunner {
   return {
     list_av_projects: async (_raw, ctx) => {
@@ -77,15 +87,16 @@ export function buildVideoReadRunner(): VideoReadRunner {
     },
 
     list_video_models: async (raw, ctx) => {
+      requireVideoGenerationEnabled(ctx.event)
       const a = raw as ModelsArgs
       const models = selectableVideoModelOptions(listSelectableVideoGenerationModels())
       if (!a.projectId) return { models, policy: { enabled: true } }
       const existing = await authorizedProject(a.projectId, ctx)
       if (!existing) throw new Error('project not usable')
-      const policy = await loadTenantVideoGenerationPolicy(existing.project.clientId ?? 'agency')
+      const policy = await loadActorPolicy(existing.project.clientId ?? 'agency', ctx)
       return {
         models: policy.enabled ? models : [],
-        policy: { enabled: policy.enabled, monthlyCapCents: policy.monthlyCapCents }
+        policy: { enabled: policy.enabled, payer: policy.payer ?? 'tenant', monthlyCapCents: policy.monthlyCapCents }
       }
     },
 
@@ -108,6 +119,7 @@ export function buildVideoReadRunner(): VideoReadRunner {
         modelId: j.modelId,
         estimatedCostCents: j.estimatedCostCents,
         actualCostCents: j.actualCostCents,
+        payer: j.payer,
         costReconciliation: costReconciliation(j),
         createdAt: j.createdAt
       }))
@@ -147,6 +159,7 @@ export function buildVideoReadRunner(): VideoReadRunner {
         assetUrl: job.providerResultUrl ?? null,
         estimatedCostCents: job.estimatedCostCents,
         actualCostCents: job.actualCostCents,
+        payer: job.payer,
         costReconciliation: costReconciliation(job),
         error: job.errorMessage ?? null
       }
@@ -277,7 +290,7 @@ export function buildVideoProposeDeps() {
     getModel: getVideoGenerationModel,
     isTenantModel,
     loadSources: (ids: string[], tenantId: string | undefined) => loadVideoGenerationSourceAssets(ids, tenantId),
-    loadPolicy: (tenantId: string) => loadTenantVideoGenerationPolicy(tenantId),
+    loadPolicy: loadActorPolicy,
     evaluateCompliance: (input: Parameters<typeof evaluateVideoGenerationCompliance>[0]) => evaluateVideoGenerationCompliance(input),
     estimateCost: (model: Parameters<typeof estimateVideoGenerationCostCents>[0], secs: number) => estimateVideoGenerationCostCents(model, secs),
     resolveCreativeAsset: findCreativeAssetById,
@@ -305,6 +318,8 @@ export function buildVideoConfirmDeps() {
       // The endpoint injects idempotencyKey (mcp:<proposalId>) before dispatch; defensive narrow.
       const idempotencyKey = payload.idempotencyKey
       if (!idempotencyKey) throw new Error('missing idempotencyKey at confirm')
+      const policy = await loadActorPolicy(payload.tenantId, ctx)
+      if ((payload.payer ?? 'tenant') !== (policy.payer ?? 'tenant')) return { ok: false, reason: 'payer_changed' }
       return reserveAndCreateVideoGenerationJob(
         {
           tenantId: payload.tenantId,
@@ -326,7 +341,7 @@ export function buildVideoConfirmDeps() {
           estimatedCostCents: payload.estimatedCostCents,
           idempotencyKey
         },
-        await loadTenantVideoGenerationPolicy(payload.tenantId)
+        policy
       )
     },
     prepareEnqueue: async (payload: VideoGenerationPendingPayload) => {

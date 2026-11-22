@@ -18,7 +18,6 @@ const props = withDefaults(defineProps<{
   generationJobCount?: number
   renderJobCount?: number
   generationEnabled?: boolean
-  generationStatusLabel?: string
   generationStatusDetail?: string
   rendering?: boolean
   producerCollapsed?: boolean
@@ -28,7 +27,6 @@ const props = withDefaults(defineProps<{
   generationJobCount: 0,
   renderJobCount: 0,
   generationEnabled: false,
-  generationStatusLabel: '',
   generationStatusDetail: '',
   rendering: false,
   producerCollapsed: false
@@ -221,14 +219,6 @@ watch(() => props.mode, (mode) => {
           variant="subtle"
           color="primary"
         />
-        <span
-          class="hidden items-center gap-1 text-[11px] sm:inline-flex"
-          :class="props.generationEnabled ? 'text-muted' : 'text-warning'"
-          :title="generationStatusDetail"
-        >
-          <UIcon name="i-lucide-sparkles" class="size-3.5" />
-          {{ props.generationStatusLabel || (props.generationEnabled ? 'AI ready' : 'AI unavailable') }}
-        </span>
         <div class="flex items-center gap-1 rounded-md border border-default bg-default/50 p-1">
           <UPopover :content="{ align: 'end' }">
             <UButton

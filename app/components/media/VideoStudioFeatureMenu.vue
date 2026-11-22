@@ -90,7 +90,7 @@ const emit = defineEmits<{
             </h3><UBadge color="neutral" variant="subtle" :label="pending ? 'Checking' : `${models.length} listed`" />
           </div>
           <p class="text-xs leading-5 text-muted">
-            Select a model for the next request. Source approval, provider setup and budget are checked before submission.
+            Select a model for the next request. Each model shows its estimated cost.
           </p>
           <div v-if="pending" class="space-y-2">
             <USkeleton v-for="i in 3" :key="i" class="h-14 w-full" />
@@ -99,7 +99,7 @@ const emit = defineEmits<{
             v-else-if="!generationEnabled || !models.length"
             color="neutral"
             variant="subtle"
-            title="Generation needs setup"
+            title="AI clip generation"
             :description="statusDetail || 'No selectable models are available for this project. Ask an administrator to check provider and tenant policy.'"
           />
           <UButton

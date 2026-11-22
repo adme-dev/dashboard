@@ -36,7 +36,7 @@ export function summarizeVideoGenerationBudget(
   const reserved = bucket('reserved')
   const uncertain = bucket('uncertain')
   const committedCents = reported.cents + reserved.cents + uncertain.cents
-  const capCents = Number.isSafeInteger(policy.monthlyCapCents) && policy.monthlyCapCents > 0 ? policy.monthlyCapCents : 0
+  const capCents = policy.monthlyCapCents !== null && Number.isSafeInteger(policy.monthlyCapCents) && policy.monthlyCapCents > 0 ? policy.monthlyCapCents : 0
   return { capCents, committedCents, availableCents: Math.max(0, capCents - committedCents), reported, reserved, uncertain }
 }
 

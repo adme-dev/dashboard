@@ -10,7 +10,7 @@ import { requireTimelinePrecondition, assertTimelinePrecondition } from '~~/serv
 import { requireWriteAccess } from '~~/server/utils/auth'
 import { getProjectWithCurrentTimeline, createRenderJob, getRenderJob, markRenderJobFailed, assertMediaProjectAccess } from '~~/server/utils/audio/projects'
 import { executeGodModeMediaRender } from '~~/server/utils/audio/godModeExternalMutations'
-import { selectReelmotionBaseFootage, resolveReelmotionBaseFootage } from '~~/server/utils/audio/reelmotionBaseFootage'
+import { portraitArtworkView, selectReelmotionBaseFootage, resolveReelmotionBaseFootage } from '~~/server/utils/audio/reelmotionBaseFootage'
 import type { ResolvedOverlay } from '~~/server/utils/audio/renderQueue'
 import { enqueueVideoRender } from '~~/server/utils/audio/renderQueue'
 import { resolveOverlayFormatKey, loadBannerLayers } from '~~/server/utils/audio/bannerOverlay'
@@ -99,6 +99,11 @@ export default defineEventHandler(async (event) => {
     // exports when the clip does not pin a specific Banner Studio format.
     // Any error here is a user/config error → 400 (project or format not found).
     const resolvedOverlaysByFormat: Record<string, ResolvedOverlay[]> = {}
+    type ArtworkSnapshot = {
+      board: Awaited<ReturnType<typeof loadBannerLayers>>
+      footage?: Awaited<ReturnType<typeof resolveReelmotionBaseFootage>>
+    }
+    const pinnedArtwork = new Map<string, ArtworkSnapshot>()
     try {
       for (const format of formats) {
         const profile = videoFormatFor(format)
@@ -108,13 +113,29 @@ export default defineEventHandler(async (event) => {
 
         for (const clip of overlayClips) {
           const fmtKey: string = clip.gsap_format_key ?? resolveOverlayFormatKey(profileW, profileH)
-          const { layers, width, height, playback, customFonts } = await loadBannerLayers(clip.gsap_project_id, fmtKey, event)
+          // Reuse a pinned artboard revision across formats. Independent artboards
+          // can be released after their respective snapshot uploads.
+          const artworkKey = JSON.stringify([clip.gsap_project_id, fmtKey])
+          let snapshot = pinnedArtwork.get(artworkKey)
+          if (!snapshot) {
+            snapshot = { board: await loadBannerLayers(clip.gsap_project_id, fmtKey, event) }
+            if (clip.gsap_format_key && formats.length > 1) pinnedArtwork.set(artworkKey, snapshot)
+          }
+          const { layers, width, height, playback, customFonts } = snapshot.board
           const baseUrl = process.env.NUXT_PUBLIC_APP_URL ?? ''
+          const selected = existing.project.clientId ? selectReelmotionBaseFootage({
+            format, width, height, duration: timelineState.duration_sec,
+            playback, layers, timeline: timelineState, clip
+          }) : null
+          const containPortrait = portraitArtworkView({ format, width, height, clip, timeline: timelineState }) === 'contained'
+          const placement = containPortrait
+            ? { anchor: 'center' as const, scale: Math.min(profileW / width, profileH / height), margin_pct: 0 }
+            : clip.placement ?? null
           // Placement is baked into the HTML so the Chromium capture (output-size
           // viewport) lands the banner exactly where the editor preview shows it.
           const html = applyOverlayPlacement(
             buildBannerHTML(fmtKey, layers, { baseUrl, playback, customFonts }),
-            clip.placement ?? null,
+            placement,
             { width: profileW, height: profileH },
             { width, height }
           )
@@ -134,25 +155,26 @@ export default defineEventHandler(async (event) => {
           // Optional optimization retains complete HTML for older queue consumers.
           // Both views derive from this exact loaded layer revision; the editable
           // Banner Studio project is never rewritten for an export.
-          const selected = existing.project.clientId ? selectReelmotionBaseFootage({
-            format, width, height, duration: timelineState.duration_sec,
-            playback, layers, timeline: timelineState, clip
-          }) : null
           if (selected && existing.project.clientId) {
             const graphicsHtmlKey = `${htmlKey.slice(0, -5)}-graphics.html`
-            const baseFootage = await resolveReelmotionBaseFootage({
-              clientId: existing.project.clientId, bannerId: clip.gsap_project_id,
-              src: selected.video.src!, graphicsHtmlKey, zoom: selected.zoom
-            })
-            if (baseFootage) {
+            if (snapshot.footage === undefined) {
+              snapshot.footage = await resolveReelmotionBaseFootage({
+                clientId: existing.project.clientId, bannerId: clip.gsap_project_id,
+                src: selected.video.src!, graphicsHtmlKey, zoom: selected.zoom
+              })
+            }
+            if (snapshot.footage) {
+              const baseFootage = { ...snapshot.footage, graphicsHtmlKey }
               const graphicsHtml = applyOverlayPlacement(
                 buildBannerHTML(fmtKey, selected.graphics, { baseUrl, playback, customFonts, bgColor: 'transparent' }),
-                clip.placement ?? null, { width: profileW, height: profileH }, { width, height }
+                clip.placement ?? null, { width, height }, { width, height }
               )
               const graphicsFindings = lintBannerRenderFormat({ key: fmtKey, html: graphicsHtml, width, height }, { fps: 30, crf: 23, quality: 1 })
               if (hasRenderLintErrors(graphicsFindings)) throw new Error('ReelMotion graphics snapshot is invalid')
               await uploadFile(Buffer.from(graphicsHtml, 'utf8'), graphicsHtmlKey, 'text/html')
-              resolved.baseFootage = baseFootage
+              // Older workers ignore the new descriptor and use the complete fitted HTML.
+              if (containPortrait) resolved.containedPortraitFootage = baseFootage
+              else resolved.baseFootage = baseFootage
             }
           }
           resolvedForFormat.push(resolved)

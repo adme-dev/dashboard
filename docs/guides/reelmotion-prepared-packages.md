@@ -20,9 +20,12 @@ license music inside the hosted editor. Those steps happen during preparation.
    for the current operator, client and banner. It references the editable banner
    artwork and resolves audio from managed assets belonging to that client.
    A retry retains saved video edits instead of replacing them.
-6. Save/reload, inspect fonts and footage during playback, and queue only the
-   Reels/TikTok output for this portrait pilot. Download and inspect the actual
-   MP4, including the opening, closing sentence and end card, before delivery.
+6. Save and reload the draft, check fonts and footage during playback, and choose
+   the required output formats. Reels uses the native portrait canvas. Square
+   and YouTube center the complete unplaced portrait artboard with black side
+   bars. Review each downloaded MP4, including captions, closing sentence and
+   end card, before delivery. See the qualification runbook for the current
+   hosted acceptance of each format.
 
 No client approval, external delivery or publishing occurs during import.
 Banner-ad MP4 export remains a separate path with its existing duration limits.
@@ -55,6 +58,10 @@ the existing Cloudflare render queue/container. Every dispatch retains a complet
 HTML snapshot. For a strictly eligible portrait companion, it also derives
 transparent graphics from the same loaded artwork revision and uses FFmpeg for
 the client-owned managed footage, including its authored centered zoom curve.
+For a single full-length pinned portrait artboard, square and landscape renders
+compose the native picture first, then scale and center it in the requested
+frame. Formats with their own artboards keep their respective compositions.
+An explicit overlay placement keeps its authored positioning.
 The Worker verifies the source object's recorded ETag and size. Unsupported
 artwork keeps whole-artwork capture; unsupported media profiles receive at most
 one bounded fallback using the same verified footage bytes. Saved artwork is

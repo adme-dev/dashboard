@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { Pool, type PoolClient } from 'pg'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
-import { reserveAndCreateVideoGenerationJob } from '~~/server/utils/video-generation/budget'
+import { reserveAndCreateVideoGenerationJob, reserveAndCreateVideoGenerationJobIn } from '~~/server/utils/video-generation/budget'
 import {
   CLAIM_VIDEO_GENERATION_SUBMISSION_SQL,
   FAIL_UNCLAIMED_VIDEO_GENERATION_DISPATCH_SQL,
@@ -161,6 +161,37 @@ describe.skipIf(!pool)('video generation liability on localhost', () => {
       await pool!.query('DELETE FROM video_generation_jobs WHERE tenant_id = $1', [tenantId])
     }
     await pool!.end()
+  })
+
+  it('settles agency-paid client work without consuming client budget, and rechecks scope on new charges', async () => {
+    const db = await pool!.connect()
+    const ids = scope()
+    const agency: Policy = { enabled: true, payer: 'agency', monthlyCapCents: null }
+    const input = reservation(ids, { projectAllowanceCents: 0 })
+    try {
+      await db.query('BEGIN')
+      await db.query(`INSERT INTO agency_clients (id, is_active) VALUES ($1, true)`, [ids.tenantId])
+      await db.query(`INSERT INTO team_members (id, name, email, user_role, is_active)
+        VALUES ($1, 'Video fixture', $2, 'member', true)`, [ids.userId, `${ids.userId}@example.invalid`])
+      await db.query(`INSERT INTO media_projects (id, client_id, created_by, media_type, title)
+        VALUES ($1,$2,$3,'av','Agency cost fixture')`, [ids.projectId, ids.tenantId, ids.userId])
+      const result = await reserveAndCreateVideoGenerationJobIn(db, input, agency)
+      expect(result.job).toMatchObject({ payer: 'agency', tenantId: ids.tenantId, estimatedCostCents: 60, actualCostCents: null })
+      const id = result.job!.id
+      await db.query(CLAIM_VIDEO_GENERATION_SUBMISSION_SQL, [id])
+      await db.query(MARK_VIDEO_GENERATION_SUCCEEDED_SQL, [id, 'ready', 'memory://output', null, null, 76, outputHash('agency')])
+      const replay = await reserveAndCreateVideoGenerationJobIn(db, input, agency)
+      expect(replay).toMatchObject({ reused: true, job: { id, payer: 'agency', estimatedCostCents: 60, actualCostCents: 76, liabilityCents: 76 } })
+      expect(Number((await db.query(TENANT_VIDEO_GENERATION_LIABILITY_SUM_SQL, [ids.tenantId])).rows[0].total)).toBe(0)
+      expect(Number((await db.query(PROJECT_VIDEO_GENERATION_LIABILITY_SUM_SQL, [ids.projectId])).rows[0].total)).toBe(0)
+      await db.query('UPDATE media_projects SET client_id=NULL WHERE id=$1', [ids.projectId])
+      await expect(reserveAndCreateVideoGenerationJobIn(db, reservation(ids), agency)).rejects.toMatchObject({ statusCode: 403 })
+      await db.query('UPDATE team_members SET is_active=false WHERE id=$1', [ids.userId])
+      await expect(reserveAndCreateVideoGenerationJobIn(db, reservation({ ...ids, tenantId: 'agency' }), agency)).rejects.toMatchObject({ statusCode: 403 })
+    } finally {
+      await db.query('ROLLBACK')
+      db.release()
+    }
   })
 
   it('keeps fresh legacy rolling-deployment writes dispatchable once and rejects terminal regression', async () => {

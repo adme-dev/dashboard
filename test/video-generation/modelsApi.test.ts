@@ -17,7 +17,7 @@ vi.mock('~~/server/utils/audio/projects', () => ({
 
 const mockLoadTenantPolicy = vi.fn()
 vi.mock('~~/server/utils/video-generation/policy', () => ({
-  loadTenantVideoGenerationPolicy: (...a: unknown[]) => mockLoadTenantPolicy(...a),
+  loadStaffVideoGenerationPolicy: (...a: unknown[]) => mockLoadTenantPolicy(...a),
 }))
 
 const mockLoadBudget = vi.fn()
@@ -44,6 +44,12 @@ beforeEach(() => {
 })
 
 describe('GET /agency/video/generation/models', () => {
+  it('returns an explicit disabled code when the deployed flag overrides local settings', async () => {
+    await expect(handler({ context: { cloudflare: { env: { VIDEO_GENERATION_ENABLED: 'false' } } } } as any))
+      .rejects.toMatchObject({ statusCode: 404, data: { code: 'VIDEO_GENERATION_DISABLED' } })
+    expect(mockRequireWriteAccess).not.toHaveBeenCalled()
+  })
+
   it('returns selectable tenant-safe model options', async () => {
     const res = await handler({} as any)
     expect(res.models.some((model: any) => model.id === 'aigateway/seedance-i2v')).toBe(true)
@@ -57,8 +63,8 @@ describe('GET /agency/video/generation/models', () => {
 
     const res = await handler({ query: { projectId } } as any)
 
-    expect(mockLoadTenantPolicy).toHaveBeenCalledWith(avProject.clientId)
-    expect(res).toEqual({ models: [], policy: { enabled: false, monthlyCapCents: 0 }, budget: null })
+    expect(mockLoadTenantPolicy).toHaveBeenCalledWith('user-1')
+    expect(res).toEqual({ models: [], policy: { enabled: false, payer: 'tenant', monthlyCapCents: 0 }, budget: null })
     expect(mockLoadBudget).not.toHaveBeenCalled()
   })
 
@@ -70,9 +76,18 @@ describe('GET /agency/video/generation/models', () => {
     expect(mockLoadBudget).toHaveBeenCalledWith(avProject.clientId, expect.objectContaining({ enabled: true, monthlyCapCents: 1000 }))
     expect(res.budget).toEqual(budget)
 
-    expect(mockLoadTenantPolicy).toHaveBeenCalledWith(avProject.clientId)
+    expect(mockLoadTenantPolicy).toHaveBeenCalledWith('user-1')
     expect(res.models.some((model: any) => model.id === 'aigateway/seedance-i2v')).toBe(true)
-    expect(res.policy).toEqual({ enabled: true, monthlyCapCents: 1000 })
+    expect(res.policy).toEqual({ enabled: true, payer: 'tenant', monthlyCapCents: 1000 })
+  })
+
+  it('offers models for staff on a client project without reading the client budget', async () => {
+    mockLoadTenantPolicy.mockResolvedValueOnce({ enabled: true, payer: 'agency', monthlyCapCents: null })
+    const res = await handler({ query: { projectId } } as any)
+    expect(res.policy).toEqual({ enabled: true, payer: 'agency', monthlyCapCents: null })
+    expect(res.models.length).toBeGreaterThan(0)
+    expect(res.budget).toBeNull()
+    expect(mockLoadBudget).not.toHaveBeenCalled()
   })
 
   it('degrades to a null budget when the explanation cannot be loaded', async () => {

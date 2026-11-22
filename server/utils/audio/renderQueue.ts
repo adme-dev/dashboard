@@ -17,6 +17,7 @@ export interface ResolvedOverlay {
   timeline_start_sec: number
   duration_sec: number
   baseFootage?: ReelmotionBaseFootage
+  containedPortraitFootage?: ReelmotionBaseFootage
 }
 
 export interface VideoRenderMessage {

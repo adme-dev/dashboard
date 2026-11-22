@@ -41,7 +41,7 @@ export async function requireFreshProductionActorIn(
   actor: MediaProjectActor
 ): Promise<MediaProjectActor> {
   const row = (await db.query(
-    `SELECT tm.user_role AS role, COALESCE(cr.is_read_only, FALSE) AS custom_read_only
+    `SELECT tm.user_role AS role, (tm.custom_role_id IS NOT NULL AND cr.is_read_only IS DISTINCT FROM FALSE) AS custom_read_only
        FROM team_members tm
        LEFT JOIN custom_roles cr ON cr.id = tm.custom_role_id
       WHERE tm.id = $1 AND tm.is_active = TRUE`,
