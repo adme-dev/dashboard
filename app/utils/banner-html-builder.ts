@@ -1,3 +1,4 @@
+import { mediaMaskCss, revealCommands, safeWordEntrance, wordEntranceSteps, REVEAL_WRAPPER_STYLE, REVEAL_GLOW_STYLE, revealContentStyle } from '~~/shared/bannerImportedMotion'
 import { bannerAnimationTiming } from '~/utils/banner-animation-timing'
 import { bannerFontFamily } from '~~/shared/banner/fonts'
 import { buildBannerAudioManifest } from '~~/shared/bannerAudioRender.mjs'
@@ -14,6 +15,7 @@ import { buildEngagrFrameRuntimeScript, buildVisibleElementManifest, estimateBan
 
 /** Ease → JS expression for the exported timeline. `cubic(x1,y1,x2,y2)` becomes an inline CustomEase. */
 function easeToExportExpr(ease?: string): string {
+  if (ease === 'step-end') return 'function(p) { return p < 1 ? 0 : 1 }'
   const m = ease && /^cubic(?:-bezier)?\(\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*\)$/.exec(ease.trim())
   if (m) return `CustomEase.create('', 'M0,0 C${m[1]},${m[2]} ${m[3]},${m[4]} 1,1')`
   return `'${ease || 'power2.inOut'}'`
@@ -182,9 +184,21 @@ function buildKeyframeAnimLines(l: Layer, cycleEnd?: number): string[] {
 
 function buildWordPopAnimLines(l: Layer): string[] {
   if (!l.wordPop) return []
-  const { duration, stagger, ease } = l.wordPop
+  const effect = safeWordEntrance(l.wordPop)
+  if (!effect) return []
   const at = l.animInStart ?? l.startTime ?? 0
-  return [`  (function() { var words = document.querySelectorAll('[data-id="${l.id}"] [data-banner-word]'); var ease = ${easeToExportExpr(ease)}; words.forEach(function(word, index) { var at = ${at} + index * ${stagger}; tl.set(word, { opacity: 0, scale: 0.6, filter: 'blur(10px)', y: 0 }, 0); tl.to(word, { opacity: 1, duration: ${duration * 0.4}, ease: ease }, at); tl.to(word, { scale: 1.05, duration: ${duration * 0.7}, ease: ease }, at); tl.to(word, { scale: 1, duration: ${duration * 0.3}, ease: ease }, at + ${duration * 0.7}); tl.to(word, { filter: 'blur(0px)', duration: ${duration}, ease: ease }, at); }); })();`]
+  const steps = wordEntranceSteps(effect).map(step => `${step.start === 0 ? `tl.set(word, {${JSON.stringify(step.property)}:${JSON.stringify(step.from)}}, 0);` : ''} tl.to(word, {${JSON.stringify(step.property)}:${JSON.stringify(step.to)},duration:${step.duration},ease:${easeToExportExpr(step.ease || effect.ease)}}, at + ${step.start});`).join(' ')
+  return [`  (function() { var words = document.querySelectorAll('[data-id="${l.id}"] [data-banner-word]'); var delays = ${JSON.stringify(effect.delays || [])}; words.forEach(function(word, index) { var at = ${at + (effect.offset || 0)} + (delays[index] !== undefined ? delays[index] : delays.length ? delays[delays.length - 1] + (index - delays.length + 1) * Math.max(0, delays.length > 1 ? (delays[delays.length - 1] - delays[0]) / (delays.length - 1) : ${effect.stagger}) : index * ${effect.stagger}); ${steps} }); })();`]
+}
+
+function buildRevealAnimLines(l: Layer): string[] {
+  const commands = revealCommands(l.reveal, l.h)
+  return commands.map((command, index) => {
+    const selector = command.target === 'effect' ? '[data-banner-reveal]' : command.target === 'content' ? '[data-banner-reveal-content]' : '[data-banner-reveal-glow]'
+    const target = JSON.stringify(`[data-id="${l.id}"] ${selector}`)
+    const first = !commands.slice(0, index).some(previous => previous.target === command.target && previous.property === command.property)
+    return `${first ? `tl.set(${target}, {${JSON.stringify(command.property)}:${JSON.stringify(command.from)}}, 0);` : ''} tl.to(${target}, {${JSON.stringify(command.property)}:${JSON.stringify(command.to)},duration:${command.duration},ease:${easeToExportExpr(command.ease)}}, ${(l.animInStart ?? l.startTime ?? 0) + command.start});`
+  })
 }
 
 export interface BuildBannerOptions {
@@ -217,6 +231,11 @@ export function buildBannerHTML(
     .sort((a, b) => Number(!!a.slideTransitionFor) - Number(!!b.slideTransitionFor) || a.zIndex - b.zIndex)
     .map((l) => {
       function visualLayer(style: string, content = '') {
+        if (l.reveal) {
+          const contentStyle = l.reveal.type === 'softWipe' ? 'width:100%;height:100%;mask-image:linear-gradient(90deg,black 0%,black 50%,transparent 74%);-webkit-mask-image:linear-gradient(90deg,black 0%,black 50%,transparent 74%);mask-repeat:no-repeat;-webkit-mask-repeat:no-repeat;mask-size:200% 100%;-webkit-mask-size:200% 100%;' : revealContentStyle(l.reveal.type)
+          content = `<div data-banner-reveal style="${REVEAL_WRAPPER_STYLE}"><div data-banner-reveal-content style="${contentStyle}${style.slice(frameStyle.length)}">${content}</div>${l.reveal.type === 'tvExpand' ? `<div data-banner-reveal-glow style="${REVEAL_GLOW_STYLE}"></div>` : ''}</div>`
+          style = frameStyle
+        }
         const flip = !l.isMask && layerFlipTransform(l)
         if (flip) {
           content = `<div data-layer-content style="width:100%;height:100%;box-sizing:border-box;${style.slice(frameStyle.length)}transform:${flip};">${content}</div>`
@@ -277,7 +296,7 @@ export function buildBannerHTML(
           ? `<span aria-hidden="true" style="font-size:${l.lineBoxFontSize}px">&#160;</span>`
           : ''
         const textMarkup = l.wordPop
-          ? bannerWordTokens(l.text || '').map(token => token.wordIndex === null ? escapeHtml(token.text) : `<span data-banner-word="${token.wordIndex}" style="display:inline-block;transform-origin:center center">${escapeHtml(token.text)}</span>`).join('')
+          ? bannerWordTokens(l.text || '', l.wordPop?.unit).map(token => token.wordIndex === null ? escapeHtml(token.text) : `<span data-banner-word="${token.wordIndex}" style="display:inline-block;transform-origin:center center">${escapeHtml(token.text)}</span>`).join('')
           : l.textRuns?.length && l.textRuns.map(run => run.text).join('') === l.text
             ? l.textRuns.map(run => `<span style="${run.fontSize ? `font-size:${run.fontSize}px;` : ''}${run.top !== undefined ? `position:relative;top:${run.top}px;` : ''}">${escapeHtml(run.text)}</span>`).join('')
             : escapeHtml(l.text || '')
@@ -299,6 +318,7 @@ export function buildBannerHTML(
         return visualLayer(style, `<img src="${escapeHtml(l.src || '')}" style="${bannerImageCropCss(l.imageCrop) || `width:100%;height:100%;object-fit:${l.fit || 'cover'};`}" />`)
       }
       if (l.type === 'video') {
+        style += mediaMaskCss(l.mediaMask)
         const objPos = `${l.focalX ?? 50}% ${l.focalY ?? 50}%`
         style += bannerEffectCss({ visualFilter: l.visualFilter })
         return visualLayer(style, `<video src="${escapeHtml(l.src || '')}" muted playsinline preload="auto" style="width:100%;height:100%;object-fit:${l.fit || 'cover'};object-position:${objPos};" />`)
@@ -334,7 +354,7 @@ export function buildBannerHTML(
       // Keyframe-based layers use dedicated builder
       if (layerHasKeyframes(l)) {
         lines.push(...buildKeyframeAnimLines(l, playback?.duration))
-        lines.push(...buildWordPopAnimLines(l))
+        lines.push(...buildWordPopAnimLines(l), ...buildRevealAnimLines(l))
         // Video sync for keyframe layers
         if ((l.type === 'bg' && l.srcType === 'video') || l.type === 'video') {
           const startTime = l.startTime || 0
@@ -449,8 +469,7 @@ export function buildBannerHTML(
         }
       }
 
-      lines.push(...buildWordPopAnimLines(l))
-
+      lines.push(...buildWordPopAnimLines(l), ...buildRevealAnimLines(l))
     })
 
     // Animated mask clip-path proxy scripts

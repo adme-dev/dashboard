@@ -43,3 +43,9 @@ Live acceptance on `app.xeroflow.io`:
 - The shared source checkout's uncommitted analytics files and the separate `fix/banner-viewer-rest-frame` worktree were read only and left untouched. The deployed diff contains only the 13 files reviewed in PR #962; previously merged colleague work is retained through current main.
 
 The PR media-render CI job passed its packaged production-container, FFmpeg and Chromium checks. The broader CI job was still running at the live verification checkpoint; the full repository suite is not claimed green. Source files, raw captures and client capabilities remain in the private migration evidence directory. This documentation-only closeout does not change runtime release bytes.
+
+## RAM and Nissan release candidate
+
+Both all-size packages now prepare without unsupported-animation holds. RAM has two exact packaged font faces; Nissan has three. Reviewed native word/character motion, soft wipe, TV reveal and static video fade preserve editable copy and geometry. RAM's 22,458,658-byte clip passes the bounded 24 MiB video allowance. Rounded clip metadata reconciles only where the full six-second visible interval fits inside the probed file.
+
+Six offline comparison pairs were inspected at early, reveal, motion, settled and end timestamps. Source JavaScript was removed; source CSS and original fonts/media were retained. DOM geometry/masks and settled screenshots agree closely; captured compositor lag makes raw screenshot differences unsuitable as a pixel-equivalence certification. These preparation checks supersede the earlier unsupported-effect blockers but do not yet establish live import, proof delivery, producer approval or actual Safari/iPhone acceptance. Live results will be appended after deployment.

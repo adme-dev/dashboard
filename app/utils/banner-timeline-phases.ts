@@ -1,3 +1,5 @@
+import { revealLabel, wordEntranceLabel, wordEntranceDelay } from '~~/shared/bannerImportedMotion'
+import { bannerWordTokens } from '~~/shared/bannerWordPop'
 import { bannerAnimationTiming } from '~/utils/banner-animation-timing'
 import type { KeyframeProperty, Layer } from '~/types/banner-studio'
 import { ANIM_IN, ANIM_OUT } from '~/utils/banner-constants'
@@ -8,6 +10,7 @@ export interface TimelinePhase {
   end: number
   label: string
   direction: 'in' | 'out'
+  nativeEntrance?: 'words' | 'reveal'
 }
 
 /** Describe changing properties, without guessing a preset from imported samples. */
@@ -72,6 +75,12 @@ export function timelinePhases(layer: Layer): TimelinePhase[] {
       const from = Math.max(start, clip.start), to = Math.min(end, clip.end)
       if (to > from) changes.push({ start: from, end: to })
     }
+    const entrance = layer.reveal || layer.wordPop
+    const effectStart = layer.animInStart ?? start
+    const word = layer.wordPop
+    const count = word ? bannerWordTokens(layer.text || '', word.unit).filter(token => token.wordIndex !== null).length : 0
+    const effectEnd = Math.min(end, effectStart + (entrance?.duration || 0) + (word ? (word.offset || 0) + (word.delays ? Math.max(0, ...word.delays, wordEntranceDelay(word, Math.max(0, count - 1))) : Math.max(0, count - 1) * word.stagger) : 0))
+    if (entrance && effectEnd > effectStart) changes.push({ start: effectStart, end: effectEnd })
     changes.sort((a, b) => a.start - b.start)
     const merged: typeof changes = []
     for (const range of changes) {
@@ -88,8 +97,9 @@ export function timelinePhases(layer: Layer): TimelinePhase[] {
     for (const range of authoredRanges) {
       if (range.start > cursor) phases.push({ kind: 'hold', start: cursor, end: range.start, label: holdLabel, direction: 'in' })
       const kind = range.start === start && range.end < end ? 'entry' : range.end === end && range.start > start ? 'exit' : 'motion'
+      const nativeLabel = entrance && range.start === effectStart && range.end === effectEnd ? `Entry · ${layer.reveal ? revealLabel(layer.reveal.type) : wordEntranceLabel(word?.variant)}` : undefined
       const authored = layer.animationClips?.find(clip => Math.abs(clip.start - range.start) < 0.0001 && Math.abs(clip.end - range.end) < 0.0001)
-      phases.push({ ...range, kind, label: authored?.label || `${kind === 'entry' ? 'Entry' : kind === 'exit' ? 'Exit' : 'Motion'} · ${describeKeyframeMotion(layer, range.start, range.end)}`, direction: kind === 'exit' ? 'out' : 'in' })
+      phases.push({ ...range, kind, ...(nativeLabel ? { nativeEntrance: layer.reveal ? 'reveal' as const : 'words' as const } : {}), label: nativeLabel || authored?.label || `${kind === 'entry' ? 'Entry' : kind === 'exit' ? 'Exit' : 'Motion'} · ${describeKeyframeMotion(layer, range.start, range.end)}`, direction: kind === 'exit' ? 'out' : 'in' })
       cursor = range.end
     }
     if (cursor < end) phases.push({ kind: 'hold', start: cursor, end, label: holdLabel, direction: 'in' })

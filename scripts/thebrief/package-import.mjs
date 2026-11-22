@@ -81,7 +81,13 @@ for (const board of Object.values(candidate.canvasData)) {
         if (bytes.subarray(4, 8).toString('latin1') !== 'ftyp') throw new Error('Video is not an MP4 file')
         const media = await probeVideo(bytes)
         if (media.codec !== 'h264') throw new Error(`Video ${basename(originalPath)}: ${media.codec || 'unknown'} codec requires an adapter`)
-        if (!(media.duration > 0) || layer.mediaEnd > media.duration + 0.05) throw new Error(`Video ${basename(originalPath)}: source clip end ${layer.mediaEnd}s exceeds the ${media.duration}s file`)
+        if (!(media.duration > 0)) throw new Error(`Video ${basename(originalPath)}: invalid file duration`)
+        if (layer.mediaEnd > media.duration + 0.05) {
+          const visible = layer.endTime - layer.startTime
+          if (visible > media.duration - (layer.mediaStart || 0) + 0.001) throw new Error(`Video ${basename(originalPath)}: source clip end ${layer.mediaEnd}s exceeds the ${media.duration}s file`)
+          candidate.warnings.push(`${basename(originalPath)}: rounded source clip end ${layer.mediaEnd}s reconciled to verified file duration ${media.duration}s; the complete visible interval ends before that boundary`)
+          layer.mediaEnd = media.duration
+        }
         const frame = (candidate.videoFrames || []).find(item => item.layerId === layer.id)
         if (frame && !(media.width > 0 && media.height > 0 && Math.abs(media.width / media.height - frame.aspect) / frame.aspect <= 0.01)) throw new Error(`Video ${basename(originalPath)}: file aspect does not match its source framing`)
         const sha256 = hash(bytes)

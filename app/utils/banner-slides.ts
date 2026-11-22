@@ -20,7 +20,7 @@ function scenePresence(layer: Layer) {
   const firstOpacity = [...(layer.keyframes?.opacity || [])].sort((a, b) => a.time - b.time)[0]
   const canTrim = layer.clipToPresence && layer.type !== 'audio'
     && firstOpacity?.value === 0 && firstOpacity.time > layer.startTime && firstOpacity.time < layer.endTime
-    && !layer.motionPath?.length && !layer.motionPathTweens?.length && !layer.animationClips?.length
+    && !layer.reveal && !layer.wordPop && !layer.motionPath?.length && !layer.motionPathTweens?.length && !layer.animationClips?.length
     && (!layer.animIn || layer.animIn === 'none') && (!layer.animOut || layer.animOut === 'none')
     && Object.values(layer.keyframes || {}).every(frames => !frames?.some(frame => frame.time < firstOpacity.time))
   return { startTime: canTrim ? firstOpacity.time : layer.startTime, endTime: layer.endTime }
@@ -87,9 +87,12 @@ function mapLayerTime(layer: Layer, time: (value: number) => number, scale: numb
   if (layer.outDur) layer.outDur = round(layer.outDur * scale)
   layer.delay = layer.startTime
   if (layer.animInDur !== undefined) layer.dur = layer.animInDur
+  if (layer.reveal) layer.reveal.duration = round(layer.reveal.duration * scale)
   if (layer.wordPop) {
     layer.wordPop.duration = round(layer.wordPop.duration * scale)
     layer.wordPop.stagger = round(layer.wordPop.stagger * scale)
+    if (layer.wordPop.delays) layer.wordPop.delays = layer.wordPop.delays.map(delay => round(delay * scale))
+    if (layer.wordPop.offset) layer.wordPop.offset = round(layer.wordPop.offset * scale)
   }
 }
 

@@ -8,6 +8,7 @@ const changesWithin = (frames: { time: number, value: number }[], phase: Timelin
 
 export function canRemoveTimelineAnimation(layer: Layer, phase?: TimelinePhase) {
   if (!phase || phase.kind === 'audio' || layer.type === 'audio') return false
+  if (phase.nativeEntrance) return !!(layer.reveal || layer.wordPop)
   if (!Object.values(layer.keyframes || {}).some(track => track && track.length >= 2)) return isEntry(phase) || isExit(phase) || (layer.animIn === 'kenBurns' && phase.label === 'Ken Burns')
   return Object.entries(layer.keyframes || {}).some(([property, frames]) => !((property === 'x' || property === 'y') && layer.motionPath?.length) && frames && changesWithin([...frames].sort((a, b) => a.time - b.time), phase))
 }
@@ -19,6 +20,7 @@ export function removalSampleTime(phase: TimelinePhase) {
 /** Replace only this effect with a hold. Other layers, tracks and later motion survive. */
 export function removeTimelineAnimation(layer: Layer, phase: TimelinePhase, sample: (property: KeyframeProperty) => number): Partial<Layer> {
   if (!canRemoveTimelineAnimation(layer, phase)) return {}
+  if (phase.nativeEntrance) return phase.nativeEntrance === 'reveal' ? { reveal: undefined } : { wordPop: undefined }
   if (!Object.values(layer.keyframes || {}).some(track => track && track.length >= 2)) {
     return isExit(phase)
       ? { animOut: 'none', animOutStart: undefined }

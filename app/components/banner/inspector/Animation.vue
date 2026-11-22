@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { revealLabel, wordEntranceLabel } from '~~/shared/bannerImportedMotion'
 import { ANIM_IN, ANIM_OUT, EASES, EASE_GROUPS, easeSvgPath } from '~/utils/banner-constants'
 import { parseCubicEase } from '~/utils/banner-ease'
 import type { AnimInType, AnimOutType, KeyframeProperty } from '~/types/banner-studio'
@@ -10,7 +11,7 @@ const isPreviewing = computed(() => !!selectedLayer.value && animationPreview.va
 
 function set(key: string, val: any) {
   if (!selectedLayer.value) return
-  updateLayer(selectedLayer.value.id, { [key]: val, ...(key === 'animIn' ? { wordPop: undefined, animationClips: undefined, ease: ANIM_IN.find(preset => preset.id === val)?.ease || 'power2.out' } : {}) })
+  updateLayer(selectedLayer.value.id, { [key]: val, ...(key === 'animIn' ? { wordPop: undefined, reveal: undefined, animationClips: undefined, ease: ANIM_IN.find(preset => preset.id === val)?.ease || 'power2.out' } : {}) })
 }
 
 function setNum(key: string, val: string | number) {
@@ -21,7 +22,14 @@ function setWordTiming(key: 'duration' | 'stagger', value: string | number) {
   if (!selectedLayer.value?.wordPop) return
   const number = Number(value)
   if (!Number.isFinite(number)) return
-  set('wordPop', { ...selectedLayer.value.wordPop, [key]: Math.min(5, Math.max(key === 'duration' ? 0.05 : 0, number)) })
+  set('wordPop', { ...selectedLayer.value.wordPop, ...(key === 'stagger' ? { delays: undefined, offset: undefined } : {}), [key]: Math.min(5, Math.max(key === 'duration' ? 0.05 : 0, number)) })
+}
+
+function setRevealDuration(value: string | number) {
+  const reveal = selectedLayer.value?.reveal
+  const duration = Number(value)
+  if (!reveal || value === '' || !Number.isFinite(duration)) return
+  set('reveal', { ...reveal, duration: Math.min(5, Math.max(0.05, duration)) })
 }
 
 const CATEGORY_LABEL: Record<string, string> = { out: 'Ease out', in: 'Ease in', inOut: 'Ease in/out', special: '' }
@@ -184,14 +192,42 @@ function deleteSelectedKeyframe() {
       <UButton size="xs" variant="soft" :icon="isPreviewing ? 'i-lucide-square' : 'i-lucide-play'" @click="previewLayer">{{ isPreviewing ? 'Stop preview' : 'Preview' }}</UButton>
     </div>
 
+    <div v-if="selectedLayer.reveal" class="rounded-md border border-default p-3">
+      <div class="mb-3 flex items-center justify-between gap-2">
+        <p class="text-xs font-semibold">
+          {{ revealLabel(selectedLayer.reveal.type) }}
+        </p>
+        <UButton
+          icon="i-lucide-x"
+          aria-label="Remove reveal animation"
+          color="neutral"
+          variant="ghost"
+          size="xs"
+          @click="set('reveal', undefined)"
+        />
+      </div>
+      <UFormField label="Reveal duration (seconds)">
+        <UInput
+          :model-value="selectedLayer.reveal.duration"
+          class="w-full"
+          type="number"
+          :min="0.05"
+          :max="5"
+          :step="0.05"
+          size="xs"
+          @update:model-value="setRevealDuration"
+        />
+      </UFormField>
+    </div>
+
     <div v-if="selectedLayer.wordPop" class="rounded-md border border-primary/30 bg-primary/10 p-2.5 text-xs">
       <div class="flex items-start justify-between gap-2">
         <div>
           <p class="font-semibold text-primary">
-            Words Pop
+            {{ wordEntranceLabel(selectedLayer.wordPop.variant) }}
           </p>
           <p class="mt-1 text-muted">
-            Words enter one by one from the layer start.
+            Editable text with its imported entrance timing.
           </p>
         </div>
         <UButton
@@ -205,7 +241,7 @@ function deleteSelectedKeyframe() {
       </div>
       <div class="@container mt-3">
         <div class="grid grid-cols-1 gap-4 @lg:grid-cols-2">
-          <UFormField label="Seconds per word">
+          <UFormField :label="selectedLayer.wordPop.unit === 'character' ? 'Seconds per letter' : 'Seconds per word'">
             <UInput
               :model-value="selectedLayer.wordPop.duration"
               type="number"
@@ -217,7 +253,7 @@ function deleteSelectedKeyframe() {
               @update:model-value="setWordTiming('duration', $event)"
             />
           </UFormField>
-          <UFormField label="Word stagger (seconds)">
+          <UFormField :label="selectedLayer.wordPop.unit === 'character' ? 'Letter stagger (seconds)' : 'Word stagger (seconds)'">
             <UInput
               :model-value="selectedLayer.wordPop.stagger"
               type="number"

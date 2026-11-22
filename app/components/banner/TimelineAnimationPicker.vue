@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { revealLabel, wordEntranceLabel } from '~~/shared/bannerImportedMotion'
 import { Button as ShadcnButton } from '~/components/ui/button'
 import { Tabs as ShadcnTabs, TabsList, TabsTrigger, TabsContent } from '~/components/ui/tabs'
 import { canRemoveTimelineAnimation, removalSampleTime, removeTimelineAnimation } from '~/utils/banner-timeline-remove'
@@ -47,12 +48,12 @@ function setPlacement(value: 'in' | 'middle' | 'out') {
 }
 const keyframeTime = computed(() => Math.max(props.layer.startTime ?? 0, Math.min(props.layer.endTime ?? state.duration, state.currentTime)))
 const isAudio = computed(() => props.layer.type === 'audio')
-const isKeyframe = computed(() => hasKeyframes(props.layer))
+const isKeyframe = computed(() => hasKeyframes(props.layer) && !props.phase?.nativeEntrance)
 const title = computed(() => isAudio.value ? 'Audio' : isMiddle.value ? 'Middle' : props.addAtEnd ? 'Build Out' : isKeyframe.value ? 'Animation' : selectedDirection.value === 'in' ? 'Build In' : 'Build Out')
 const directionLabel = computed(() => isMiddle.value ? 'middle' : selectedDirection.value === 'in' ? 'entrance' : 'exit')
 const presets = computed(() => (isMiddle.value ? MIDDLE_ANIMATIONS.filter(preset => !props.layer.motionPath?.length || !preset.properties.some(property => property === 'x' || property === 'y')) : selectedDirection.value === 'in' ? ANIM_IN : ANIM_OUT).filter(p => !(selectedDirection.value === 'out' && (props.addAtEnd || isKeyframe.value || placement.value === 'out') && p.id === 'none')).filter(p => p.label.toLowerCase().includes(search.value.trim().toLowerCase())))
 const selectedId = computed(() => selectedDirection.value === 'in' && props.layer.wordPop ? 'wordPop' : selectedDirection.value === 'in' ? props.layer.animIn : (props.layer.animOut ?? 'fadeOut'))
-const selectedLabel = computed(() => isAudio.value ? 'Sound' : isKeyframe.value ? describeKeyframeMotion(props.layer) : selectedId.value === 'wordPop' ? 'Words Pop' : ([...ANIM_IN, ...ANIM_OUT].find(p => p.id === selectedId.value)?.label ?? 'None'))
+const selectedLabel = computed(() => isAudio.value ? 'Sound' : isKeyframe.value ? describeKeyframeMotion(props.layer) : props.layer.reveal && selectedDirection.value === 'in' ? revealLabel(props.layer.reveal.type) : selectedId.value === 'wordPop' ? wordEntranceLabel(props.layer.wordPop?.variant) : ([...ANIM_IN, ...ANIM_OUT].find(p => p.id === selectedId.value)?.label ?? 'None'))
 const blockLabel = computed(() => props.phase?.label ?? selectedLabel.value)
 const blockDescription = computed(() => props.phase ? `${blockLabel.value} · ${props.phase.start.toFixed(2)}–${props.phase.end.toFixed(2)}s` : blockLabel.value)
 const foreground = computed(() => props.phase?.kind === 'hold' ? 'var(--ui-text)' : '#ffffff')
@@ -63,7 +64,7 @@ const frames = computed(() => props.layer.keyframes?.[property.value] ?? [])
 const frame = computed(() => frames.value[Number(frameIndex.value)])
 const frameOptions = computed(() => frames.value.map((f, i) => ({ label: `${i + 1} · ${f.time.toFixed(2)}s`, value: String(i) })))
 const easeOptions = computed(() => {
-  const current = isKeyframe.value ? frame.value?.easing : selectedDirection.value === 'in' ? props.layer.wordPop?.ease || props.layer.ease : props.layer.animOutEase
+  const current = isKeyframe.value ? frame.value?.easing : selectedDirection.value === 'in' ? props.layer.reveal?.ease || props.layer.wordPop?.ease || props.layer.ease : props.layer.animOutEase
   const options = [{ label: 'Linear', value: 'none' }, ...EASES.map(e => ({ label: `${e.label} · ${e.category}`, value: e.id }))]
   if (current && !options.some(e => e.value === current)) options.unshift({ label: `Custom · ${current}`, value: current })
   return options
@@ -120,7 +121,7 @@ function applyPreset(id: string) {
   const reset = isKeyframe.value ? { keyframes: undefined, motionPath: undefined, motionPathTweens: undefined, wordPop: undefined, animIn: 'none' as const, animOut: 'none' as const } : {}
   const change = id === 'wordPop'
     ? { animIn: 'none' as const, wordPop: props.layer.wordPop ?? { duration: 0.5, stagger: 0.1, ease: 'cubic-bezier(.21,.79,.09,.97)' } }
-    : selectedDirection.value === 'in' ? { animIn: id as AnimInType, wordPop: undefined, ease: ANIM_IN.find(preset => preset.id === id)?.ease || 'power2.out' } : { animOut: id as AnimOutType }
+    : selectedDirection.value === 'in' ? { animIn: id as AnimInType, wordPop: undefined, reveal: undefined, ease: ANIM_IN.find(preset => preset.id === id)?.ease || 'power2.out' } : { animOut: id as AnimOutType }
   updateLayer(props.layer.id, { ...reset, ...change, animationClips: undefined })
   state.selectedKeyframe = null
   pending.value = null
@@ -171,13 +172,13 @@ function setTiming(value: string | number) {
   const n = Number(value)
   if (value === '' || !Number.isFinite(n)) return
   const bounded = Math.min(Math.max(0.05, n), Math.max(0.05, (props.layer.endTime ?? 3) - (props.layer.startTime ?? 0)))
-  updateLayer(props.layer.id, selectedDirection.value === 'in' ? props.layer.wordPop ? { wordPop: { ...props.layer.wordPop, duration: bounded } } : { animInDur: bounded } : { outDur: bounded })
+  updateLayer(props.layer.id, selectedDirection.value === 'in' ? props.layer.reveal ? { reveal: { ...props.layer.reveal, duration: bounded } } : props.layer.wordPop ? { wordPop: { ...props.layer.wordPop, duration: bounded } } : { animInDur: bounded } : { outDur: bounded })
 }
 function setStagger(value: string | number) {
   if (!editable.value) return
   const n = Number(value)
   if (value === '' || !Number.isFinite(n) || !props.layer.wordPop) return
-  updateLayer(props.layer.id, { wordPop: { ...props.layer.wordPop, stagger: Math.min(5, Math.max(0, n)) } })
+  updateLayer(props.layer.id, { wordPop: { ...props.layer.wordPop, delays: undefined, offset: undefined, stagger: Math.min(5, Math.max(0, n)) } })
 }
 function setFrame(key: 'time' | 'value' | 'easing', value: string | number) {
   if (!editable.value) return
@@ -199,7 +200,7 @@ function setFrame(key: 'time' | 'value' | 'easing', value: string | number) {
 function setEase(value: string) {
   if (!editable.value) return
   if (isKeyframe.value) setFrame('easing', value)
-  else updateLayer(props.layer.id, selectedDirection.value === 'in' ? props.layer.wordPop ? { wordPop: { ...props.layer.wordPop, ease: value } } : { ease: value } : { animOutEase: value })
+  else updateLayer(props.layer.id, selectedDirection.value === 'in' ? props.layer.reveal ? { reveal: { ...props.layer.reveal, ease: value } } : props.layer.wordPop ? { wordPop: { ...props.layer.wordPop, ease: value } } : { ease: value } : { animOutEase: value })
 }
 function addKeyframe() {
   if (!editable.value || isAudio.value) return
@@ -441,10 +442,10 @@ onBeforeUnmount(() => {
               </template>
             </template>
             <template v-else>
-              <UFormField :label="layer.wordPop && selectedDirection === 'in' ? 'Seconds per word' : 'Duration (seconds)'">
+              <UFormField :label="layer.wordPop && selectedDirection === 'in' ? layer.wordPop.unit === 'character' ? 'Seconds per letter' : 'Seconds per word' : 'Duration (seconds)'">
                 <UInput
                   :disabled="!editable"
-                  :model-value="selectedDirection === 'in' ? layer.wordPop?.duration ?? layer.animInDur ?? 0.6 : layer.outDur ?? 0.25"
+                  :model-value="selectedDirection === 'in' ? layer.reveal?.duration ?? layer.wordPop?.duration ?? layer.animInDur ?? 0.6 : layer.outDur ?? 0.25"
                   type="number"
                   :min="0.05"
                   :step="0.05"
@@ -467,7 +468,7 @@ onBeforeUnmount(() => {
             </template>
             <UFormField v-if="!isAudio && (!isMiddle || frame)" label="Easing" class="@lg:col-span-2">
               <USelect
-                :model-value="isKeyframe ? frame?.easing || 'none' : selectedDirection === 'in' ? layer.wordPop?.ease || layer.ease || 'power2.out' : layer.animOutEase || 'power1.in'"
+                :model-value="isKeyframe ? frame?.easing || 'none' : selectedDirection === 'in' ? layer.reveal?.ease || layer.wordPop?.ease || layer.ease || 'power2.out' : layer.animOutEase || 'power1.in'"
                 :items="easeOptions"
                 class="w-full"
                 @update:model-value="setEase"

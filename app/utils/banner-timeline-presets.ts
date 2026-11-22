@@ -7,7 +7,7 @@ export function applyTimelineEntrance(layer: Layer, id: AnimInType, sample: (pro
   const preset = ANIM_IN.find(preset => preset.id === id)
   if (!preset) return {}
   const ease = preset.ease || 'power2.out'
-  const common = { animIn: id, ease, wordPop: undefined }
+  const common = { animIn: id, ease, wordPop: undefined, reveal: undefined }
   if (!Object.values(layer.keyframes || {}).some(track => track && track.length >= 2)) return common
   if (preset.special || id === 'none') return {}
   const start = range?.start ?? layer.startTime ?? 0

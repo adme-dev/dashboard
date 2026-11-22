@@ -22,7 +22,8 @@ const layer = z.object({
   rotation: number.optional(), borderRadius: number.nonnegative().optional(), transformOrigin: z.object({ x: number, y: number }).optional(),
   mixBlendMode: z.enum(['normal', 'multiply', 'screen', 'overlay', 'darken', 'lighten', 'color-dodge', 'color-burn', 'hard-light', 'soft-light', 'difference', 'exclusion', 'hue', 'saturation', 'color', 'luminosity']).optional(),
   text: z.string().max(10000).optional(), textTransform: z.enum(['uppercase', 'lowercase', 'capitalize', 'none']).optional(), fontFamily: z.string().max(150).regex(/^[\w ,.-]+$/).optional(),
-  wordPop: z.object({ duration: z.number().positive().max(5), stagger: z.number().min(0).max(5), ease: z.string().regex(/^cubic-bezier\([\d.,\s-]+\)$/) }).strict().optional(),
+  wordPop: z.object({ duration: z.number().positive().max(5), stagger: z.number().min(0).max(5), ease: z.string().regex(/^cubic-bezier\([\d.,\s-]+\)$/), variant: z.enum(['pop', 'blurLeft', 'blurUp', 'zoomOut', 'typewriter']).optional(), unit: z.enum(['word', 'character']).optional(), delays: z.array(z.number().min(0).max(5)).max(500).optional(), offset: z.number().min(0).max(5).optional() }).strict().optional(),
+  reveal: z.object({ type: z.enum(['softWipe', 'tvExpand']), duration: z.number().positive().max(5), ease: z.string().regex(/^cubic-bezier\([\d.,\s-]+\)$/) }).strict().optional(),
   fontSize: number.positive().optional(), fontWeight: z.number().int().min(1).max(1000).optional(),
   fontStyle: z.enum(['normal', 'italic']).optional(),
   lineBoxFontSize: number.positive().optional(), textAntialias: z.boolean().optional(), lineHeight: z.number().positive().max(10).optional(),
@@ -36,10 +37,11 @@ const layer = z.object({
   visualFilter: z.string().max(500).refine(isSafeBannerImageFilter).optional(),
   muted: z.boolean().optional(),
   focalX: z.number().min(0).max(100).optional(), focalY: z.number().min(0).max(100).optional(),
+  mediaMask: z.literal('fadeTop').optional(),
   mediaStart: z.number().min(0).max(300).optional(), mediaEnd: z.number().positive().max(300).optional(), mediaLoop: z.boolean().optional(),
   keyframes: z.object({ opacity: track.optional(), x: track.optional(), y: track.optional(), scaleX: track.optional(), scaleY: track.optional(), rotation: track.optional() }).optional()
 }).strict()
-const binary = z.object({ path: local, fileName: z.string().max(150).regex(/^[\w .-]+$/), sha256: sha, base64: z.string().max(28 * 1024 * 1024).regex(/^[A-Za-z0-9+/]*={0,2}$/), mimeType: z.string().max(100) })
+const binary = z.object({ path: local, fileName: z.string().max(150).regex(/^[\w .-]+$/), sha256: sha, base64: z.string().max(32 * 1024 * 1024).regex(/^[A-Za-z0-9+/]*={0,2}$/), mimeType: z.string().max(100) })
 const schema = z.object({
   kind: z.enum(['xeroflow-thebrief-import', 'xeroflow-reelmotion-import']), version: z.literal(1), name: z.string().trim().min(1).max(200),
   source: z.object({ designHash: z.string().regex(/^[\w-]+$/).max(100), sha256: sha, folder: z.string().max(250), duration: z.number().positive().max(300), loopCount: z.number().int().min(0).max(1000), createdDate: z.iso.date().optional(), clientName: z.string().trim().min(1).max(200).optional() }),
@@ -67,9 +69,15 @@ export function parseTheBriefPackage(input: unknown): TheBriefPackage {
     const extension = { truetype: 'ttf', opentype: 'otf', woff: 'woff', woff2: 'woff2' }[font.format]
     if (!font.fileName.toLowerCase().endsWith(`.${extension}`)) throw new Error('Font format does not match filename')
   }
+  for (const asset of result.assets) {
+    const bytes = asset.base64.length * 3 / 4 - (asset.base64.endsWith('==') ? 2 : asset.base64.endsWith('=') ? 1 : 0)
+    const limit = asset.mimeType === 'video/mp4' ? 24 : 21
+    if (bytes > limit * 1024 * 1024) throw new Error(`Packaged asset exceeds ${limit} MB limit`)
+  }
   const binaries = [...result.assets, ...result.fonts]
   if (new Set(binaries.map(a => a.path)).size !== binaries.length) throw new Error('Duplicate asset path')
-  if (binaries.reduce((size, a) => size + a.base64.length, 0) > 40 * 1024 * 1024) throw new Error('Package exceeds 40 MB limit')
+  const packageLimit = result.assets.some(asset => asset.mimeType === 'video/mp4') ? 80 : 40
+  if (binaries.reduce((size, a) => size + a.base64.length, 0) > packageLimit * 1024 * 1024) throw new Error(`Package exceeds ${packageLimit} MB limit`)
   for (const [format, board] of boards) {
     if (board.playback && (board.playback.duration !== result.source.duration || board.playback.loopCount !== result.source.loopCount)) throw new Error('Playback differs from source timing')
     if (board.slides) {
@@ -91,10 +99,12 @@ export function parseTheBriefPackage(input: unknown): TheBriefPackage {
       }
       if (item.src && !result.assets.some(a => a.path === item.src)) throw new Error('Missing packaged asset')
       if (item.textRuns && item.textRuns.map(run => run.text).join('') !== item.text) throw new Error('Text runs differ from layer text')
+      if (item.reveal && item.type !== 'rect' && item.type !== 'button') throw new Error('Reveal requires editable shape geometry')
       if (item.wordPop && (item.type !== 'text' || item.textRuns)) throw new Error('Word animation requires plain text')
       if (['image', 'audio', 'video'].includes(item.type) && !item.src) throw new Error('Image, audio or video layer is missing its asset')
       const mime = item.src ? result.assets.find(a => a.path === item.src)?.mimeType : undefined
       if ((item.type === 'video') !== (mime === 'video/mp4')) throw new Error('Video layers must reference MP4 assets, and only video layers may')
+      if (item.type !== 'video' && item.mediaMask) throw new Error('Video mask requires a video layer')
       if (item.type !== 'video' && (item.mediaStart !== undefined || item.mediaEnd !== undefined || item.mediaLoop !== undefined)) throw new Error('Media clock is only valid on video layers')
       if (item.mediaEnd !== undefined && item.mediaEnd <= (item.mediaStart ?? 0)) throw new Error('Invalid video clip timing')
       if (item.rectShape && (item.type !== 'rect' || item.borderRadius !== undefined)) throw new Error('Ellipse shape is only valid on rectangle layers without a corner radius')

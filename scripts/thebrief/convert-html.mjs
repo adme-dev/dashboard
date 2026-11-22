@@ -247,26 +247,79 @@ function boundedRepeatedFrames(cycle, at, duration, visibleEnd, identity, reset,
 function sourceWordPop(element, sourceId, style, rules) {
   const wrapper = element.querySelector('[data-words-animation="true"]')
   if (!wrapper) return null
-  if (wrapper.id !== `effIn${sourceId}` || element.querySelectorAll('.row').length !== 1) throw new Error('Unsupported word animation structure')
+  const rows = [...element.querySelectorAll('.row')]
+  if (wrapper.id !== `effIn${sourceId}` || !rows.length || rows.length > 20) throw new Error('Unsupported word animation structure')
   const words = [...wrapper.querySelectorAll('span.word.in')]
-  if (!words.length || words.length > 20) throw new Error('Unsupported word animation count')
+  if (!words.length || words.length > 500) throw new Error('Unsupported word animation count')
   const settings = words.map((word, index) => {
     const css = style(word)
     if (Number(word.getAttribute('data-index')) !== index || !word.textContent.trim() || css.animationIterationCount !== '1' || css.animationDirection !== 'normal' || css.animationFillMode !== 'backwards') throw new Error('Unsupported word animation settings')
     return { name: css.animationName, duration: seconds(css.animationDuration), delay: seconds(css.animationDelay), ease: cssEase(css.animationTimingFunction) }
   })
   const first = settings[0]
-  const stagger = settings.length > 1 ? settings[1].delay - first.delay : 0
-  if (first.delay !== 0 || !Number.isFinite(stagger) || stagger < 0 || first.duration <= 0 || first.duration > 5 || settings.some((item, index) => item.name !== first.name || item.duration !== first.duration || item.ease !== first.ease || !sameTime(item.delay, index * stagger))) throw new Error('Unsupported word animation stagger')
+  if (first.duration <= 0 || first.duration > 5 || settings.some(item => item.name !== first.name || item.duration !== first.duration || item.ease !== first.ease || item.delay < 0 || item.delay > 5)) throw new Error('Unsupported word animation stagger')
   const rule = rules.findLast(item => item.name === first.name)
   const frames = rule && [...rule.cssRules].map(frame => [frame.keyText, frame.style.transform, frame.style.filter, frame.style.opacity])
-  if (JSON.stringify(frames) !== JSON.stringify([
-    ['0%', 'translateY(0) scale(.6)', 'blur(10px)', '0'],
-    ['40%', '', '', '1'],
-    ['70%', 'translateY(0) scale(1.05)', '', ''],
-    ['100%', 'translateY(0) scale(1)', 'blur(0px)', '']
-  ])) throw new Error('Unsupported word animation keyframes')
-  return { duration: first.duration, stagger, ease: first.ease }
+  const signature = JSON.stringify(frames)
+  const variants = [
+    ['pop', [['0%', 'translateY(0) scale(.6)', 'blur(10px)', '0'], ['40%', '', '', '1'], ['70%', 'translateY(0) scale(1.05)', '', ''], ['100%', 'translateY(0) scale(1)', 'blur(0px)', '']]],
+    ['blurLeft', [['0%', 'translateX(-20px) scale(1)', 'blur(10px)', '0'], ['40%', '', '', '1'], ['100%', 'translateX(0) scale(1)', 'blur(0px)', '']]],
+    ['blurUp', [['0%', 'translateY(20px) scale(1)', 'blur(10px)', '0'], ['40%', '', '', '1'], ['100%', 'translateY(0) scale(1)', 'blur(0px)', '']]],
+    ['zoomOut', [['0%', 'translateY(0) scale(1.3)', 'blur(10px)', '0'], ['40%', '', '', '1'], ['100%', 'translateY(0) scale(1)', 'blur(0px)', '']]],
+    ['typewriter', [['0%', '', '', '0'], ['100%', '', '', '1']]]
+  ]
+  const variant = variants.find(([, expected]) => JSON.stringify(expected) === signature)?.[0]
+  if (!variant || (variant === 'typewriter' && [...rule.cssRules][0].style.animationTimingFunction !== 'step-end')) throw new Error('Unsupported word animation keyframes')
+  const character = words.every(word => word.hasAttribute('data-chars-split'))
+  if (words.some(word => word.hasAttribute('data-chars-split')) && (!character || words.some(word => Array.from(word.textContent.trim()).length !== 1))) throw new Error('Unsupported character animation structure')
+  return { rows: rows.map((row) => {
+    const delays = words.flatMap((word, index) => word.closest('.row') === row ? [settings[index].delay] : [])
+    if (!delays.length) throw new Error('Missing word animation row')
+    const stagger = delays.length > 1 ? delays[1] - delays[0] : 0
+    const uniform = stagger >= 0 && delays.every((delay, index) => sameTime(delay, delays[0] + index * stagger))
+    return { duration: first.duration, stagger: uniform ? stagger : 0, ease: first.ease, ...(variant !== 'pop' ? { variant } : {}), ...(character ? { unit: 'character' } : {}), ...(uniform ? (delays[0] ? { offset: delays[0] } : {}) : { delays }) }
+  }) }
+}
+
+function sourceReveal(effect, style, rules) {
+  if (!effect) return null
+  const css = style(effect)
+  const rule = rules.findLast(item => item.name === css.animationName)
+  if (!rule) return null
+  const text = rule.cssText.replace(/\s+/g, '')
+  let type
+  if (text.includes('mask-position:148%center') && text.includes('linear-gradient(90deg,black0%,black50%,transparent74%)')) type = 'softWipe'
+  else if (text.includes('--tv-collapse-mask-w:400%') && text.includes('--tv-collapse-mask-h:3px') && text.includes('brightness(3.2)saturate(.15)')) type = 'tvExpand'
+  if (!type) return null
+  // Match the complete reviewed recipe, including all keyframe offsets and values.
+  const expected = type === 'softWipe'
+    ? [
+        ['0%', { 'mask-image': 'linear-gradient(90deg,black 0%,black 50%,transparent 74%)', '-webkit-mask-image': 'linear-gradient(90deg,black 0%,black 50%,transparent 74%)', 'mask-repeat': 'no-repeat', '-webkit-mask-repeat': 'no-repeat', 'mask-size': '200% 100%', '-webkit-mask-size': '200% 100%', 'mask-position': '148% center', '-webkit-mask-position': '148% center', 'opacity': '0' }],
+        ['15%', { opacity: '1' }],
+        ['100%', { 'mask-image': 'linear-gradient(90deg,black 0%,black 50%,transparent 74%)', '-webkit-mask-image': 'linear-gradient(90deg,black 0%,black 50%,transparent 74%)', 'mask-repeat': 'no-repeat', '-webkit-mask-repeat': 'no-repeat', 'mask-size': '200% 100%', '-webkit-mask-size': '200% 100%', 'mask-position': '0% center', '-webkit-mask-position': '0% center' }]
+      ]
+    : [
+        ['0%', { '--tv-collapse-mask-w': '100%', '--tv-collapse-mask-h': '3px', 'filter': 'brightness(3.2) saturate(.15)', 'opacity': '0', '--tv-collapse-glow': '0.6' }], ['8%', { opacity: '1' }], ['22%', { '--tv-collapse-mask-w': '100%', '--tv-collapse-mask-h': '3px', '--tv-collapse-glow': '0.6' }], ['55%', { '--tv-collapse-glow': '0' }], ['60%', { '--tv-collapse-mask-w': '100%', '--tv-collapse-mask-h': '100%', 'filter': 'brightness(3.2) saturate(.15)' }], ['100%', { '--tv-collapse-mask-w': '400%', '--tv-collapse-mask-h': '400%', 'filter': 'brightness(1) saturate(1)', 'opacity': '1', '--tv-collapse-glow': '0' }]
+      ]
+  const actual = [...rule.cssRules]
+  if (actual.length !== expected.length || actual.some((frame, index) => {
+    const [offset, values] = expected[index]
+    const properties = Array.from({ length: frame.style.length }, (_, i) => frame.style.item(i))
+    return frame.keyText !== offset || properties.length !== Object.keys(values).length || properties.some(property => frame.style.getPropertyValue(property).replace(/\s+/g, '') !== (values[property] || '').replace(/\s+/g, ''))
+  })) throw new Error('Unsupported reveal keyframes')
+  if (type === 'tvExpand') {
+    const staticRules = [...effect.ownerDocument.styleSheets].flatMap(sheet => [...sheet.cssRules]).filter(rule => rule.selectorText)
+    const classes = [...effect.classList]
+    const check = (suffix, expected) => {
+      const rule = staticRules.findLast(rule => classes.some(name => rule.selectorText === `.${name}${suffix}`))
+      return rule && rule.style.length === Object.keys(expected).length && Object.entries(expected).every(([property, value]) => rule.style.getPropertyValue(property).replace(/\s+/g, '') === value.replace(/\s+/g, ''))
+    }
+    if (!check('>*', { 'mask-image': 'linear-gradient(#000,#000)', '-webkit-mask-image': 'linear-gradient(#000,#000)', 'mask-repeat': 'no-repeat', '-webkit-mask-repeat': 'no-repeat', 'mask-position': 'center', '-webkit-mask-position': 'center', 'mask-size': 'var(--tv-collapse-mask-w) var(--tv-collapse-mask-h)', '-webkit-mask-size': 'var(--tv-collapse-mask-w) var(--tv-collapse-mask-h)' })
+      || !check('::after', { 'content': '\'\'', 'pointer-events': 'none', 'opacity': 'var(--tv-collapse-glow)', 'left': '0px', 'right': '0px', 'top': '50%', 'height': '2px', 'margin-top': '-1px', 'background-image': 'linear-gradient(90deg,transparent,#fff 12%,#fff 88%,transparent)', 'box-shadow': '0 0 13.6px 1.2px rgba(255,255,255,.77)', 'background-position-x': 'initial', 'background-position-y': 'initial', 'background-size': 'initial', 'background-repeat': 'initial', 'background-attachment': 'initial', 'background-origin': 'initial', 'background-clip': 'initial', 'background-color': 'initial' })) throw new Error('Unsupported TV reveal composition')
+  }
+  const duration = seconds(css.animationDuration)
+  if (seconds(css.animationDelay || '0s') !== 0 || css.animationIterationCount !== '1' || css.animationDirection !== 'normal' || css.animationFillMode !== 'backwards' || !(duration > 0 && duration <= 5)) throw new Error('Unsupported reveal timing')
+  return { type, duration, ease: cssEase(css.animationTimingFunction) }
 }
 
 // Only sequential wrappers that settle back to identity can share a native
@@ -349,6 +402,7 @@ function effectTracks(effect, style, rules, start, end, warnings, geometry, inte
       if (!sameTime(frames.at(-1).time, at + duration)) frames.push({ time: at + duration, value: identityValue(property) })
       if ((!intermediate && frames[0].value !== identityValue(property)) || frames.at(-1).value !== identityValue(property)) throw new Error('Intermediate effect must return to identity')
     }
+    if (property === 'opacity' && frames[0]?.time === at && frames.at(-1).time < at + duration && !intermediate && css.opacity !== '0') frames.push({ time: at + duration, value: css.opacity === '' ? 1 : Number(css.opacity) })
     if (frames.length < 2 || !sameTime(frames[0].time, at) || !sameTime(frames.at(-1).time, at + duration)) throw new Error('Keyframes need explicit start and end values')
     if (css.animationDirection === 'reverse') {
       const original = structuredClone(frames)
@@ -495,7 +549,13 @@ export async function convertTheBriefHtml(html) {
       let wordPop = null
       try {
         wordPop = sourceWordPop(element, sourceId, style, rules)
-        let effect = wordPop ? {} : effectTracks(document.getElementById(`effIn${sourceId}`), style, rules, start, end, warnings, layerBase)
+        const entrance = document.getElementById(`effIn${sourceId}`)
+        const reveal = sourceReveal(entrance, style, rules)
+        if (reveal) {
+          if (start + reveal.duration > end + 1e-6) throw new Error('Reveal crosses layer boundary')
+          layerBase.reveal = reveal
+        }
+        let effect = wordPop || reveal ? {} : effectTracks(document.getElementById(`effIn${sourceId}`), style, rules, start, end, warnings, layerBase)
         const middle = document.getElementById(`effMid${sourceId}`)
         if (middle) {
           try {
@@ -601,6 +661,18 @@ export async function convertTheBriefHtml(html) {
             if (nodeCss.animationName && nodeCss.animationName !== 'none') throw new Error(`Video ${sourceId}: animated filter requires an adapter`)
             videoFilters.push(nodeCss.filter)
           }
+        }
+        let masks = 0
+        for (const node of ancestry) {
+          const values = [...sourceDeclarations(document, node, 'mask-image|-webkit-mask-image'), style(node).getPropertyValue('mask-image'), style(node).getPropertyValue('-webkit-mask-image'), node.style.getPropertyValue('mask-image'), node.style.getPropertyValue('-webkit-mask-image')].filter(value => value && value !== 'none')
+          if (!values.length) continue
+          const expected = 'linear-gradient(0deg,rgba(0,0,0,1)45%,rgba(0,0,0,0.8)78%,rgba(0,0,0,0)100%)'
+          if (++masks > 1 || values.some(value => value.replace(/\s+/g, '') !== expected)
+            || [...sourceDeclarations(document, node, 'mask-repeat|-webkit-mask-repeat')].some(value => value !== 'no-repeat')
+            || [...sourceDeclarations(document, node, 'mask-position|-webkit-mask-position')].some(value => value !== 'center')
+            || [...sourceDeclarations(document, node, 'mask-size|-webkit-mask-size')].some(value => value !== '100% 100%')
+            || [...sourceDeclarations(document, node, 'mask-origin|-webkit-mask-origin')].some(value => value !== 'content-box')) throw new Error(`Video ${sourceId}: unsupported media mask composition`)
+          layerBase.mediaMask = 'fadeTop'
         }
         const videoFilter = videoFilters.join(' ')
         if (videoFilter && !isSafeBannerImageFilter(videoFilter)) throw new Error(`Video ${sourceId}: unsupported static filter`)
@@ -714,7 +786,7 @@ export async function convertTheBriefHtml(html) {
           const lineHeight = /^\d*\.?\d+$/.test(rowCss.lineHeight) ? Number(rowCss.lineHeight) : px(rowCss.lineHeight) / fontSize
           const height = lineBoxFontSize * lineHeight
           if (!Number.isFinite(height)) throw new Error('Unsupported text line height')
-          if (row.textContent.trim()) layers.push({ ...layerBase, linkId: `source:${sourceId}:row:${rowIndex}`, id: id++, type: 'text', name: row.textContent.trim().slice(0, 60), y, h: height, ...(layerBase.transformOrigin ? { transformOrigin: { x: layerBase.transformOrigin.x, y: layerBase.transformOrigin.y - (y - layerBase.y) } } : {}), text: row.textContent.replace(/^[ \t\r\n]+|[ \t\r\n]+$/g, ''), ...(textRuns.length ? { text: row.textContent, textRuns } : {}), ...(wordPop ? { wordPop } : {}), textTransform, fontFamily: textCss.fontFamily.replace(/["']/g, ''), fontStyle: textCss.fontStyle === 'italic' ? 'italic' : 'normal', fontSize, lineBoxFontSize, textAntialias: style(document.documentElement).getPropertyValue('-webkit-font-smoothing') === 'antialiased', fontWeight: Number(textCss.fontWeight) || 400, lineHeight, color: paintedCss.color || textCss.color || '#fff', ...(textStroke ? { textStroke, textPaintOrder } : {}), ...(textShadow ? { textShadow } : {}), textAlign: textCss.textAlign || 'left', letterSpacing: !textCss.letterSpacing || textCss.letterSpacing === 'normal' ? '0px' : textCss.letterSpacing })
+          if (row.textContent.trim()) layers.push({ ...layerBase, linkId: `source:${sourceId}:row:${rowIndex}`, id: id++, type: 'text', name: row.textContent.trim().slice(0, 60), y, h: height, ...(layerBase.transformOrigin ? { transformOrigin: { x: layerBase.transformOrigin.x, y: layerBase.transformOrigin.y - (y - layerBase.y) } } : {}), text: row.textContent.replace(/^[ \t\r\n]+|[ \t\r\n]+$/g, ''), ...(textRuns.length ? { text: row.textContent, textRuns } : {}), ...(wordPop ? { wordPop: wordPop.rows[rowIndex] } : {}), textTransform, fontFamily: textCss.fontFamily.replace(/["']/g, ''), fontStyle: textCss.fontStyle === 'italic' ? 'italic' : 'normal', fontSize, lineBoxFontSize, textAntialias: style(document.documentElement).getPropertyValue('-webkit-font-smoothing') === 'antialiased', fontWeight: Number(textCss.fontWeight) || 400, lineHeight, color: paintedCss.color || textCss.color || '#fff', ...(textStroke ? { textStroke, textPaintOrder } : {}), ...(textShadow ? { textShadow } : {}), textAlign: textCss.textAlign || 'left', letterSpacing: !textCss.letterSpacing || textCss.letterSpacing === 'normal' ? '0px' : textCss.letterSpacing })
           y += height
           rowHeights.push(height)
         }
