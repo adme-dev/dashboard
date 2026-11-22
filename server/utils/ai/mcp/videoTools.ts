@@ -647,7 +647,15 @@ export async function dispatchVideoConfirm(
     }
     // video_generation
     const payload = row.resolved_payload as VideoGenerationPendingPayload
-    const reservation = await deps.reserve(payload, ctx)
+    let reservation: Awaited<ReturnType<VideoConfirmDeps['reserve']>>
+    try {
+      reservation = await deps.reserve(payload, ctx)
+    } catch (error) {
+      if (error && typeof error === 'object' && 'statusCode' in error && error.statusCode === 403) {
+        return { ok: false, error: 'Project access changed. Check your access and create a new proposal.', code: 'forbidden' }
+      }
+      throw error
+    }
     if (reservation.reason === 'payer_changed') {
       return { ok: false, error: 'The payer has changed. Create a new video proposal for approval.', code: 'forbidden' }
     }

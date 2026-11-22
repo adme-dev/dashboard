@@ -19,7 +19,7 @@ export default defineEventHandler(async (event) => {
     SELECT j.payer, j.tenant_id AS "attributionId",
            COALESCE(c.name, CASE WHEN j.tenant_id = 'agency' THEN 'Agency projects' ELSE j.tenant_id END) AS client,
            COUNT(*)::int AS jobs,
-           SUM(j.estimated_cost_cents)::float8 AS "estimatedCents",
+           COALESCE(SUM(j.estimated_cost_cents) FILTER (WHERE j.liability_state <> 'released'), 0)::float8 AS "estimatedCents",
            SUM(j.actual_cost_cents)::float8 AS "actualCents",
            COUNT(j.actual_cost_cents)::int AS "reportedJobs",
            COALESCE(SUM(j.liability_cents) FILTER (WHERE j.liability_state IN ('reserved', 'uncertain')), 0)::float8 AS "openCents"

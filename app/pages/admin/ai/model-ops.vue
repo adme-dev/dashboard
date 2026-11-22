@@ -1228,7 +1228,7 @@ const agentRunStatusColor: Record<AgentRun['statusBucket'], 'success' | 'warning
     <UCard>
       <template #header>
         <h2 class="text-sm font-semibold text-highlighted">Video generation costs</h2>
-        <p class="mt-1 text-xs text-muted">USD for jobs created in the last 30 days. Open liability covers reserved and uncertain costs.</p>
+        <p class="mt-1 text-xs text-muted">USD for jobs created in the last 30 days. Job counts include every attempt. Estimates exclude released jobs. Open liability covers reserved and uncertain costs.</p>
       </template>
       <p v-if="videoCostsPending" class="text-sm text-muted">Loading video costs…</p>
       <UAlert v-else-if="!videoCosts" color="warning" title="Video costs are unavailable" />
