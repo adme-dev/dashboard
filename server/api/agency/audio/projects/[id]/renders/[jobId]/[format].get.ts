@@ -20,6 +20,11 @@ export default defineEventHandler(async (event) => {
   const key = (job.variants ?? {})[format]
   if (!key) throw createError({ statusCode: 404, statusMessage: 'Render variant not available' })
 
+  if (getQuery(event).download === '1' && isStorageConfigured()) {
+    const filename = `${project.title || 'render'}-${format}.mp4`
+    return sendRedirect(event, await getPresignedDownloadUrl(key, 3600, filename), 302)
+  }
+
   const url = isStorageConfigured()
     ? (getPublicUrl(key) ?? await getPresignedDownloadUrl(key, 60 * 60))
     : `/api/_uploads/${key}`

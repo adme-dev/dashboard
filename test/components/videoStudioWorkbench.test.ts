@@ -6,6 +6,11 @@ import VideoStudioWorkbench from '~~/app/components/media/VideoStudioWorkbench.v
 import type { VideoRenderFormatId } from '~~/app/utils/video/renderFormats'
 
 const stubs = {
+  UModal: {
+    setup() { return { open: ref(false) } },
+    template: '<div><span @click="open = true"><slot /></span><section v-if="open" role="dialog"><button @click="open = false">Close</button><slot name="body" /></section></div>'
+  },
+  UDropdownMenu: { template: '<div><slot /></div>' },
   UCard: { template: '<div><slot /></div>' },
   UAlert: { props: ['description'], template: '<p>{{ description }}</p>' },
   UIcon: { name: 'UIcon', props: ['name'], template: '<i :data-icon="name" />' },
@@ -123,9 +128,9 @@ describe('VideoStudioWorkbench', () => {
     try {
       const preview = host.querySelector('[data-preview]')!
       const tabs = host.querySelector('[aria-label="Project workspace"]') as HTMLElement
-      buttonByText(tabs, 'Library').click()
+      buttonByText(tabs, 'Project assets').click()
       await nextTick()
-      expect((preview.parentElement as HTMLElement).style.display).toBe('none')
+      expect(preview.closest('[data-workspace-pane]')?.classList.contains('lg:flex')).toBe(true)
       expect((host.querySelector('[data-library]')!.parentElement as HTMLElement).style.display).not.toBe('none')
       buttonByText(tabs, 'History').click()
       await nextTick()
@@ -136,11 +141,30 @@ describe('VideoStudioWorkbench', () => {
       buttonByText(tabs, 'Preview').click()
       await nextTick()
       expect(host.querySelector('[data-preview]')).toBe(preview)
-      expect((preview.parentElement as HTMLElement).style.display).not.toBe('none')
+      expect(preview.closest('[data-workspace-pane]')?.classList.contains('flex')).toBe(true)
       expect(events).toEqual([])
     } finally {
       app.unmount()
     }
+  })
+
+  it('expands the mounted frame and transport together and restores them on close', async () => {
+    const { app, host } = await mount({}, {
+      preview: () => h('canvas'),
+      transport: () => h('div', { 'data-transport': '' })
+    })
+    try {
+      const frame = host.querySelector('canvas')
+      const transport = host.querySelector('[data-transport]')
+      host.querySelector<HTMLButtonElement>('[aria-label="Expand preview"]')!.click()
+      await nextTick()
+      expect(host.querySelector('[data-expanded-preview] canvas')).toBe(frame)
+      expect(host.querySelector('[data-expanded-preview] [data-transport]')).toBe(transport)
+      buttonByText(host, 'Close').click()
+      await nextTick()
+      expect(host.querySelector('[data-expanded-preview]')).toBeNull()
+      expect(host.querySelector('[data-workspace-pane="preview"] canvas')).toBe(frame)
+    } finally { app.unmount() }
   })
 
   it('opens Storyboard as a workspace and retains its local state across navigation', async () => {
@@ -165,7 +189,7 @@ describe('VideoStudioWorkbench', () => {
       expect((storyboard.closest('[data-workspace-pane]') as HTMLElement).style.display).not.toBe('none')
       storyboard.value = 'Unsaved local selection'
       storyboard.dispatchEvent(new Event('input'))
-      buttonByText(tabs, 'Library').click()
+      buttonByText(tabs, 'Project assets').click()
       await nextTick()
       buttonByText(tabs, 'Storyboard').click()
       await nextTick()
@@ -184,7 +208,7 @@ describe('VideoStudioWorkbench', () => {
       buttonByText(host, 'Inspector').click()
       await nextTick()
       expect(host.querySelector('main')?.classList.contains('hidden')).toBe(true)
-      const tabs = host.querySelector('[aria-label="Project workspace"]') as HTMLElement
+      const tabs = host.querySelector('[aria-label="Mobile project workspace"]') as HTMLElement
       buttonByText(tabs, 'Storyboard').click()
       await nextTick()
       expect(host.querySelector('main')?.classList.contains('hidden')).toBe(false)
@@ -203,18 +227,18 @@ describe('VideoStudioWorkbench', () => {
     } finally { app.unmount() }
   })
 
-  it('restores Library when the already-selected mobile Assets tab is selected again', async () => {
+  it('returns to project assets through the mobile workspace tabs', async () => {
     const { app, host } = await mount({}, {
       library: () => h('div', { 'data-library': '' }, 'Saved assets')
     })
     try {
-      buttonByText(host, 'Assets').click()
+      buttonByText(host, 'Project assets').click()
       await nextTick()
-      const tabs = host.querySelector('[aria-label="Project workspace"]') as HTMLElement
+      const tabs = host.querySelector('[aria-label="Mobile project workspace"]') as HTMLElement
       buttonByText(tabs, 'History').click()
       await nextTick()
       expect((host.querySelector('[data-library]')!.parentElement as HTMLElement).style.display).toBe('none')
-      buttonByText(host, 'Assets').click()
+      buttonByText(host, 'Project assets').click()
       await nextTick()
       expect((host.querySelector('[data-library]')!.parentElement as HTMLElement).style.display).not.toBe('none')
     } finally {
@@ -237,7 +261,7 @@ describe('VideoStudioWorkbench', () => {
       buttonByText(host, 'Footage').click()
       buttonByText(host, 'Overlay').click()
       buttonByText(host, 'Generate').click()
-      buttonByText(host, 'Library').click()
+      buttonByText(host, 'Saved videos').click()
       buttonByText(host, 'Render 3 formats').click()
       buttonByText(host, 'Show inspector').click()
       await nextTick()
@@ -270,8 +294,8 @@ describe('VideoStudioWorkbench', () => {
     })
 
     try {
-      expect(host.textContent).toContain('Assets 12')
-      expect(host.textContent).toContain('Inspector 2')
+      expect(host.textContent).toContain('Project assets 12')
+      expect(host.textContent).toContain('History 2')
       expect(host.textContent).toContain('3 formats')
 
       buttonByText(host, 'Inspector').click()
@@ -298,7 +322,7 @@ describe('VideoStudioWorkbench', () => {
 
     expect(html).toContain('Project history')
     expect(html).toMatch(/<main[^>]*class="[^"]* flex"/)
-    expect(html).toContain('Inspector 3')
+    expect(html).toContain('History 3')
     expect(html).toContain('Producer content')
     expect(html).toContain('AI clip generation is disabled for this workspace.')
   })

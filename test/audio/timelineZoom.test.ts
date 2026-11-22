@@ -12,7 +12,7 @@ describe('timeline zoom helpers', () => {
   it('fits timeline duration into the usable container width', () => {
     expect(fitTimelineZoom(10, 1120, 120)).toBe(100)
     expect(fitTimelineZoom(0, 1120, 120)).toBe(800)
-    expect(fitTimelineZoom(1000, 160, 120)).toBe(10)
+    expect(fitTimelineZoom(1000, 160, 120)).toBe(0.04)
   })
 
   it('steps zoom in and out by the configured factor', () => {

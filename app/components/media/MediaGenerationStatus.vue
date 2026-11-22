@@ -40,7 +40,7 @@ const meta: Record<string, { icon: string; color: string; label: string; spin?: 
 </script>
 
 <template>
-  <div v-if="visible.length" class="fixed bottom-4 right-4 z-50 flex w-80 flex-col gap-2">
+  <div v-if="visible.length" class="fixed bottom-28 right-4 z-50 flex max-h-[50dvh] w-80 max-w-[calc(100vw-2rem)] flex-col gap-2 overflow-y-auto">
     <UCard v-for="j in visible" :key="j.id" :ui="{ body: 'p-3 sm:p-3' }" class="shadow-lg ring-1 ring-default/60 bg-default/95 backdrop-blur">
       <div class="flex items-start gap-3">
         <UIcon :name="meta[j.status].icon" :class="[meta[j.status].color, meta[j.status].spin && 'animate-spin', 'size-5 shrink-0 mt-0.5']" />
@@ -50,7 +50,12 @@ const meta: Record<string, { icon: string; color: string; label: string; spin?: 
             <span v-if="j.status === 'queued' || j.status === 'running'" class="text-xs tabular-nums text-muted">{{ elapsed(j) }}</span>
             <UButton
               v-if="j.status === 'succeeded' || j.status === 'failed'"
-              icon="i-lucide-x" size="xs" variant="ghost" color="neutral" class="ml-auto -mr-1 -mt-1"
+              aria-label="Dismiss generation status"
+              icon="i-lucide-x"
+              size="xs"
+              variant="ghost"
+              color="neutral"
+              class="ml-auto -mr-1 -mt-1"
               @click="dismiss(j.id)"
             />
           </div>

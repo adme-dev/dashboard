@@ -38,7 +38,23 @@ describe('GET /agency/video/generation/jobs', () => {
 
     expect(mockGetProject).toHaveBeenCalledWith(projectId)
     expect(mockListJobs).toHaveBeenCalledWith(projectId)
-    expect(res).toEqual({ jobs: [{ id: 'job-1' }] })
+    expect(res).toEqual({ jobs: [{ id: 'job-1', errorMessage: null }] })
+  })
+
+  it('explains failures without exposing internal diagnostics', async () => {
+    mockListJobs.mockResolvedValueOnce([
+      { status: 'failed', errorMessage: 'source resolution failed: sensitive diagnostic' },
+      { status: 'failed', errorMessage: 'sensitive diagnostic' },
+      { status: 'failed', errorMessage: 'Provider rejected generated audio. Cloudflare log private-id' },
+      { status: 'failed', errorMessage: 'Dispatch preparation failed before queue acceptance: private detail' }
+    ])
+    const res = await handler({ query: { projectId } } as unknown as Parameters<typeof handler>[0])
+    expect(res.jobs.map(job => job.errorMessage)).toEqual([
+      'The source image could not be loaded. Select it again before retrying.',
+      'Generation failed. No further details are available.',
+      'The provider rejected the generated audio. Revise the prompt or choose another model.',
+      'The request could not be prepared for the generation queue.'
+    ])
   })
 
   it('forbids non-admin users from listing another user project jobs', async () => {
@@ -61,7 +77,7 @@ describe('GET /agency/video/generation/jobs', () => {
 
     const res = await handler({ query: { projectId } } as any)
 
-    expect(res).toEqual({ jobs: [{ id: 'job-1' }] })
+    expect(res).toEqual({ jobs: [{ id: 'job-1', errorMessage: null }] })
     expect(mockListJobs).toHaveBeenCalledWith(projectId)
   })
 

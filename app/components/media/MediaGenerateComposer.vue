@@ -22,6 +22,7 @@ const props = defineProps<{
   timelineStills: { clipId: string, label: string }[]
   /** default aspect from the project format, e.g. '9:16' */
   defaultAspect: string
+  defaultDurationSeconds?: number
   initialPrompt?: string | null
   initialModelId?: string | null
   modelSelectionKey?: number
@@ -84,13 +85,32 @@ function setFrame(slot: FrameSlot, id: string | null, name: string | null) {
   }
 }
 const subjectType = ref<'vehicle' | 'non_vehicle' | 'unknown'>('unknown')
-const durationSeconds = ref<number>(model.value?.durationsSeconds[0] ?? 5)
+const chosenDuration = ref<number | null>(null)
+const chosenAspect = ref<string | null>(null)
+const durationSeconds = computed({
+  get() {
+    const options = model.value?.durationsSeconds ?? []
+    if (chosenDuration.value !== null && options.includes(chosenDuration.value)) return chosenDuration.value
+    const target = props.defaultDurationSeconds
+    if (!target || !Number.isFinite(target)) return options[0] ?? 5
+    return options.reduce((best, next) => Math.abs(next - target) < Math.abs(best - target) ? next : best, options[0] ?? 5)
+  },
+  set(value: number) { chosenDuration.value = value }
+})
+const aspectRatio = computed({
+  get() {
+    const options = model.value?.aspectRatios ?? []
+    if (chosenAspect.value && options.includes(chosenAspect.value)) return chosenAspect.value
+    return options.includes(props.defaultAspect) ? props.defaultAspect : options[0] ?? ''
+  },
+  set(value: string) { chosenAspect.value = value }
+})
 const submitting = ref(false)
 const uploading = ref(false)
 const registeredInitialSource = ref<{ assetId: string, sourceId: string } | null>(null)
 
 // Hidden file input ref — triggered programmatically via the upload button
-const fileInputRef = ref<HTMLInputElement | null>(null)
+const fileInputRef = ref<{ inputRef?: HTMLInputElement } | null>(null)
 
 const SUBJECT_OPTIONS = [
   { label: 'Unknown', value: 'unknown' },
@@ -115,7 +135,7 @@ const modelItems = computed(() => models.value.map((m) => {
   return { label: m.label, value: m.id, ...presentation }
 }))
 const selectedModelIcon = computed(() => (model.value ? videoModelPresentation(model.value).icon : 'i-lucide-box'))
-const costChipLabel = computed(() => `${modelData.value.policy?.payer === 'agency' ? 'Agency estimate' : 'Estimate'} US$${(estCostCents.value / 100).toFixed(2)} · ${durationSeconds.value}s`)
+const costChipLabel = computed(() => `${modelData.value.policy?.payer === 'agency' ? 'Agency estimate' : 'Estimate'} US$${(estCostCents.value / 100).toFixed(2)}`)
 const budget = computed(() => (isGenerationBudgetStatus(modelData.value.budget) ? modelData.value.budget : null))
 const budgetNotice = computed(() => (model.value ? generationBudgetNotice(budget.value, estCostCents.value) : null))
 const recentJobs = computed(() => (props.recentJobs ?? []).slice(0, 5))
@@ -146,6 +166,7 @@ function applyJobDraft(job: VideoGenerationJobView) {
   workflow.value = draft.endSourceAssetId ? 'start-end-frames' : workflowForMode(draft.mode)
   modelId.value = draft.modelId
   prompt.value = draft.prompt
+  aspectRatio.value = job.aspectRatio
   durationSeconds.value = draft.durationSeconds
   subjectType.value = draft.subjectType
   selectedStillId.value = null
@@ -188,7 +209,6 @@ function addJobToTimeline(job: VideoGenerationJobView) {
 
 function onModeChange() {
   modelId.value = models.value[0]?.id ?? ''
-  durationSeconds.value = model.value?.durationsSeconds[0] ?? 5
   if (mode.value === 'text-to-video') clearSource()
   if (!needsEndFrame.value) clearSource('end')
 }
@@ -211,13 +231,6 @@ watch([() => props.initialModelId, allModels, () => props.modelSelectionKey], ([
   }
   modelId.value = candidate.id
 }, { immediate: true })
-
-watch(modelId, () => {
-  if (!model.value) return
-  if (!model.value.durationsSeconds.includes(durationSeconds.value)) {
-    durationSeconds.value = model.value.durationsSeconds[0] ?? 5
-  }
-})
 
 watch(models, (next) => {
   if (!next.length) return
@@ -278,7 +291,7 @@ async function applyInitialSourceAsset() {
 
 function triggerFileInput(slot: FrameSlot = 'start') {
   uploadTarget.value = slot
-  fileInputRef.value?.click()
+  fileInputRef.value?.inputRef?.click()
 }
 
 // Register a still already in this project timeline as the i2v source — reuses
@@ -336,17 +349,15 @@ async function onFileSelected(event: Event) {
   }
 }
 
-// Validation only speaks once the user has typed or tried to generate — an
-// untouched form should read as an invitation, not an error.
-const touched = ref(false)
-watch(prompt, (value) => {
-  if (value.trim()) touched.value = true
+const readinessReason = computed(() => {
+  if (uploading.value) return 'Preparing your source image…'
+  if (!validation.value.valid) return validation.value.errors.join(' ')
+  if (!aspectRatio.value) return 'Select a model with a supported aspect ratio.'
+  return ''
 })
-const showValidation = computed(() => touched.value && !validation.value.valid)
 
 async function submit() {
-  touched.value = true
-  if (!validation.value.valid || !model.value) return
+  if (submitting.value || readinessReason.value || budgetNotice.value || !model.value) return
   submitting.value = true
   // One key for both the body (tenant-level dedupe) and the header (God mode ledger).
   const idempotencyKey = `video-gen:${crypto.randomUUID()}`
@@ -362,7 +373,7 @@ async function submit() {
         // Start frame first, then the end frame (the server maps the second id to end_image).
         sourceAssetIds: [sourceAssetId.value, needsEndFrame.value ? endSourceAssetId.value : null].filter((id): id is string => Boolean(id)),
         durationSeconds: durationSeconds.value,
-        aspectRatio: props.defaultAspect,
+        aspectRatio: aspectRatio.value,
         subjectType: subjectType.value,
         idempotencyKey
       }
@@ -398,7 +409,7 @@ async function submit() {
 </script>
 
 <template>
-  <div class="flex flex-col gap-6 py-1">
+  <div class="@container flex flex-col gap-4 py-1">
     <UAlert
       v-if="!modelsPending && !hasModels"
       color="warning"
@@ -420,45 +431,23 @@ async function submit() {
              stacked form. The prompt is the primary object; everything else is a
              setting hanging off it. -->
     <template v-if="hasModels">
-      <!-- Start from a template — visible while the prompt is blank -->
-      <div v-if="templatesVisible" class="space-y-2">
-        <p class="text-xs font-semibold uppercase tracking-widest text-muted">
-          Start from a template
-        </p>
-        <div class="grid grid-cols-2 gap-2">
-          <button
-            v-for="template in VIDEO_GENERATION_TEMPLATES"
-            :key="template.id"
-            type="button"
-            class="group flex items-start gap-2.5 rounded-lg border border-default bg-elevated/60 p-2.5 text-left transition hover:border-primary/50 hover:bg-primary/5"
-            @click="applyTemplate(template)"
-          >
-            <UIcon :name="template.icon" class="mt-0.5 size-4 shrink-0 text-muted transition-colors group-hover:text-primary" />
-            <span class="min-w-0">
-              <span class="block truncate text-xs font-medium text-highlighted">{{ template.title }}</span>
-              <span class="mt-0.5 block text-[11px] leading-snug text-muted">{{ template.tagline }}</span>
-            </span>
-          </button>
-        </div>
-        <p class="text-[11px] text-muted">
-          Templates prefill the prompt — edit anything before generating.
-        </p>
-      </div>
-
       <div class="rounded-xl border border-default bg-elevated/60 transition-colors focus-within:border-primary/50">
-        <UTextarea
-          v-model="prompt"
-          :rows="5"
-          autoresize
-          variant="none"
-          placeholder="Describe the motion, atmosphere, or scene you want…"
-          class="w-full"
-        />
+        <UFormField label="Prompt" class="px-3 pt-2">
+          <UTextarea
+            v-model="prompt"
+            :rows="3"
+            :maxlength="4000"
+            autoresize
+            variant="none"
+            placeholder="Describe the motion, atmosphere, or scene you want…"
+            class="w-full"
+          />
+        </UFormField>
 
         <!-- i2v source image attachment -->
         <div v-if="mode === 'image-to-video'" class="px-3 pb-2.5">
           <!-- Hidden file input — triggered by the upload button below -->
-          <input
+          <UInput
             ref="fileInputRef"
             type="file"
             accept="image/jpeg,image/png,image/webp"
@@ -466,7 +455,7 @@ async function submit() {
             tabindex="-1"
             aria-hidden="true"
             @change="onFileSelected"
-          >
+          />
           <div class="space-y-1.5">
             <div v-for="frame in frameSlots" :key="frame.slot" class="flex min-w-0 items-center gap-2">
               <span v-if="frame.label" class="w-20 shrink-0 text-[11px] font-medium text-muted">{{ frame.label }}</span>
@@ -509,6 +498,29 @@ async function submit() {
               </div>
             </div>
           </div>
+        </div>
+
+        <div class="grid grid-cols-1 gap-3 px-3 pb-3 @min-[15rem]:grid-cols-2">
+          <UFormField label="Aspect ratio">
+            <USelect
+              v-model="aspectRatio"
+              :items="(model?.aspectRatios ?? []).map(value => ({ label: value, value }))"
+              value-key="value"
+              aria-label="Aspect ratio"
+              class="w-full"
+              size="sm"
+            />
+          </UFormField>
+          <UFormField label="Clip duration">
+            <USelect
+              v-model="durationSeconds"
+              aria-label="Clip duration"
+              :items="(model?.durationsSeconds ?? []).map(value => ({ label: `${value}s`, value }))"
+              value-key="value"
+              class="w-full"
+              size="sm"
+            />
+          </UFormField>
         </div>
 
         <!-- Composer bar -->
@@ -564,14 +576,6 @@ async function submit() {
                 <p class="text-sm font-medium text-highlighted">
                   Advanced
                 </p>
-                <UFormField label="Duration">
-                  <USelect
-                    v-model="durationSeconds"
-                    :items="(model?.durationsSeconds ?? [5]).map((d) => ({ label: `${d}s`, value: d }))"
-                    value-key="value"
-                    class="w-full"
-                  />
-                </UFormField>
                 <UFormField label="Subject" help="Helps with compliance routing.">
                   <USelect
                     v-model="subjectType"
@@ -594,64 +598,6 @@ async function submit() {
         </div>
       </div>
 
-      <div v-if="recentJobs.length" class="space-y-2">
-        <div class="flex items-center justify-between gap-3">
-          <p class="text-xs font-semibold uppercase tracking-widest text-muted">
-            Recent generations
-          </p>
-          <span class="text-[11px] text-muted">{{ recentJobs.length }} latest</span>
-        </div>
-        <div class="space-y-2">
-          <div
-            v-for="job in recentJobs"
-            :key="job.id"
-            class="flex items-center gap-3 rounded-lg border border-default bg-default/30 px-3 py-2.5"
-          >
-            <UIcon
-              :name="job.status === 'succeeded' ? 'i-lucide-circle-check' : job.status === 'failed' || job.status === 'blocked' ? 'i-lucide-circle-alert' : 'i-lucide-loader-circle'"
-              class="size-4 shrink-0 text-muted"
-            />
-            <div class="min-w-0 flex-1">
-              <div class="flex min-w-0 items-center gap-2">
-                <p class="truncate text-xs font-medium text-highlighted">
-                  {{ jobModelLabel(job) }}
-                </p>
-                <UBadge
-                  :label="job.status"
-                  :color="jobStatusColor(job)"
-                  variant="subtle"
-                  size="xs"
-                  class="shrink-0 capitalize"
-                />
-              </div>
-              <p class="mt-0.5 truncate text-[11px] text-muted">
-                {{ job.prompt }}
-              </p>
-            </div>
-            <div class="flex shrink-0 items-center gap-1">
-              <UButton
-                v-if="canAddJobToTimeline(job)"
-                size="xs"
-                variant="soft"
-                color="neutral"
-                icon="i-lucide-plus-circle"
-                label="Add"
-                @click="addJobToTimeline(job)"
-              />
-              <UButton
-                v-if="canReuseJob(job)"
-                size="xs"
-                variant="ghost"
-                color="neutral"
-                icon="i-lucide-rotate-ccw"
-                :label="job.status === 'failed' || job.status === 'blocked' ? 'Retry' : 'Reuse'"
-                @click="applyJobDraft(job)"
-              />
-            </div>
-          </div>
-        </div>
-      </div>
-
       <!-- Budget: explains unconfirmed historical liability instead of a bare refusal -->
       <UAlert
         v-if="budgetNotice"
@@ -662,24 +608,120 @@ async function submit() {
         :description="budgetNotice.description"
       />
 
-      <!-- Validation warning -->
-      <UAlert
-        v-if="showValidation"
-        color="warning"
-        variant="subtle"
-        icon="i-lucide-info"
-        :title="validation.errors[0]"
-      />
+      <div data-generation-submit class="sticky bottom-0 z-10 space-y-1.5 border-t border-default bg-default py-2">
+        <p v-if="readinessReason" role="status" class="text-xs text-muted">
+          {{ readinessReason }}
+        </p>
 
-      <UButton
-        block
-        color="primary"
-        icon="i-lucide-sparkles"
-        :loading="submitting"
-        :disabled="touched && !validation.valid"
-        label="Generate"
-        @click="submit"
-      />
+        <UButton
+          block
+          :color="readinessReason || budgetNotice ? 'neutral' : 'primary'"
+          :variant="readinessReason || budgetNotice ? 'soft' : 'solid'"
+          icon="i-lucide-sparkles"
+          :loading="submitting"
+          :disabled="Boolean(readinessReason || budgetNotice || submitting)"
+          label="Generate"
+          @click="submit"
+        />
+      </div>
+
+      <!-- Start from a template — visible while the prompt is blank -->
+      <div v-if="templatesVisible" class="space-y-2">
+        <p class="text-xs font-medium text-muted">
+          Start from a template
+        </p>
+        <div class="grid grid-cols-1 gap-2 @xs:grid-cols-2">
+          <UButton
+            v-for="template in VIDEO_GENERATION_TEMPLATES"
+            :key="template.id"
+            color="neutral"
+            variant="outline"
+            type="button"
+            class="group flex whitespace-normal items-start gap-2.5 rounded-lg border border-default bg-elevated/60 p-2.5 text-left transition hover:border-primary/50 hover:bg-primary/5"
+            @click="applyTemplate(template)"
+          >
+            <UIcon :name="template.icon" class="mt-0.5 size-4 shrink-0 text-muted transition-colors group-hover:text-primary" />
+            <span class="min-w-0">
+              <span class="block truncate text-xs font-medium text-highlighted">{{ template.title }}</span>
+              <span class="mt-0.5 block text-[11px] leading-snug text-muted">{{ template.tagline }}</span>
+            </span>
+          </UButton>
+        </div>
+        <p class="text-[11px] text-muted">
+          Templates prefill the prompt — edit anything before generating.
+        </p>
+      </div>
     </template>
+
+    <div v-if="recentJobs.length" class="space-y-2">
+      <div class="flex items-center justify-between gap-3">
+        <p class="text-xs font-semibold uppercase tracking-widest text-muted">
+          Recent generations
+        </p>
+        <span class="text-[11px] text-muted">{{ recentJobs.length }} latest</span>
+      </div>
+      <div class="space-y-2">
+        <div
+          v-for="job in recentJobs"
+          :key="job.id"
+          class="grid grid-cols-[3rem_minmax(0,1fr)] gap-x-3 gap-y-2 rounded-lg border border-default bg-default/30 px-3 py-2.5"
+        >
+          <div class="flex h-12 w-12 items-center justify-center overflow-hidden rounded bg-elevated">
+            <video
+              v-if="job.status === 'succeeded' && job.outputAssetId"
+              :src="`/api/agency/video/assets/${encodeURIComponent(job.outputAssetId)}/stream#t=0.1`"
+              muted
+              playsinline
+              preload="metadata"
+              aria-hidden="true"
+              class="size-full object-contain"
+            />
+            <UIcon v-else :name="job.status === 'failed' || job.status === 'blocked' ? 'i-lucide-circle-alert' : 'i-lucide-clock'" class="size-4 text-muted" />
+          </div>
+          <div class="min-w-0 flex-1">
+            <div class="flex min-w-0 items-center gap-2">
+              <p class="truncate text-xs font-medium text-highlighted">
+                {{ jobModelLabel(job) }}
+              </p>
+              <UBadge
+                :label="job.status"
+                :color="jobStatusColor(job)"
+                variant="subtle"
+                size="xs"
+                class="shrink-0 capitalize"
+              />
+            </div>
+            <p class="mt-0.5 line-clamp-2 text-xs text-muted" :title="job.prompt">
+              {{ job.prompt }}
+            </p>
+          </div>
+          <div class="col-span-2 space-y-2">
+            <p v-if="job.errorMessage && (job.status === 'failed' || job.status === 'blocked')" class="text-xs text-error">
+              {{ job.errorMessage }}
+            </p>
+            <div class="flex flex-wrap justify-end gap-1">
+              <UButton
+                v-if="canAddJobToTimeline(job)"
+                size="xs"
+                variant="soft"
+                color="neutral"
+                icon="i-lucide-plus-circle"
+                label="Add at playhead"
+                @click="addJobToTimeline(job)"
+              />
+              <UButton
+                v-if="hasModels && canReuseJob(job)"
+                size="xs"
+                variant="ghost"
+                color="neutral"
+                icon="i-lucide-rotate-ccw"
+                :label="job.status === 'failed' || job.status === 'blocked' ? 'Edit and retry' : 'Reuse'"
+                @click="applyJobDraft(job)"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>

@@ -37,7 +37,7 @@ describe('MediaGenerateComposer external model selection', () => {
     const submitted = vi.fn()
     app = createApp({ render: () => h(MediaGenerateComposer, { ...props, onSubmitted: submitted }) })
     const slotStub = { template: '<div><slot /></div>' }
-    for (const name of ['UAlert', 'USkeleton', 'UIcon', 'UTextarea', 'UPopover', 'UFormField', 'UBadge', 'UTooltip']) {
+    for (const name of ['UInput', 'UAlert', 'USkeleton', 'UIcon', 'UTextarea', 'UPopover', 'UFormField', 'UBadge', 'UTooltip']) {
       app.component(name, slotStub)
     }
     app.component('UButton', { props: ['label', 'disabled'], template: '<button :disabled="disabled"><slot />{{ label }}</button>' })

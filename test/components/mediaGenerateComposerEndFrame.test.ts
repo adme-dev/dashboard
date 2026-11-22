@@ -34,11 +34,12 @@ function mountComposer(models: object[]) {
       active: true,
       projectId: 'project-end-frame-test',
       timelineStills: [{ clipId: 'front', label: 'Front three-quarter' }, { clipId: 'rear', label: 'Rear three-quarter' }],
-      defaultAspect: '16:9'
+      defaultAspect: '9:16',
+      defaultDurationSeconds: 9.8
     })
   })
   const slotStub = { template: '<div><slot /></div>' }
-  for (const name of ['UAlert', 'USkeleton', 'UIcon', 'UTextarea', 'UPopover', 'UFormField', 'UBadge', 'UTooltip']) app.component(name, slotStub)
+  for (const name of ['UInput', 'UAlert', 'USkeleton', 'UIcon', 'UTextarea', 'UPopover', 'UFormField', 'UBadge', 'UTooltip']) app.component(name, slotStub)
   app.component('UButton', { props: ['label', 'disabled'], template: '<button :disabled="disabled"><slot />{{ label }}</button>' })
   const selectStub = {
     props: ['modelValue', 'items'],
@@ -67,6 +68,13 @@ describe('MediaGenerateComposer start & end frames', () => {
     const { host, calls } = mountComposer([seedance, vidu])
     await flush()
 
+    const generateButton = [...host.querySelectorAll('button')].find(button => button.textContent?.trim() === 'Generate')!
+    expect(generateButton.disabled).toBe(true)
+    expect(host.textContent).toContain('A prompt is required.')
+    expect(host.textContent).toContain('A source image is required')
+    expect(host.querySelector<HTMLSelectElement>('select[aria-label="Aspect ratio"]')?.value).toBe('9:16')
+    expect(host.querySelector<HTMLSelectElement>('select[aria-label="Clip duration"]')?.value).toBe('10')
+
     const workflowPicker = host.querySelector<HTMLSelectElement>('select[aria-label="What to make"]')!
     expect([...workflowPicker.options].map(option => option.value)).toContain('start-end-frames')
     choose(workflowPicker, 'start-end-frames')
@@ -84,6 +92,8 @@ describe('MediaGenerateComposer start & end frames', () => {
 
     choose(stillPickers(host)[0]!, 'front')
     await flush()
+    expect(generateButton.disabled).toBe(true)
+    expect(host.textContent).toContain('Add an end frame.')
     choose(stillPickers(host)[0]!, 'rear')
     await flush()
 
@@ -91,8 +101,9 @@ describe('MediaGenerateComposer start & end frames', () => {
     generate.click()
     await flush()
 
+    expect(generateButton.disabled).toBe(false)
     const job = calls.find(call => call.url === '/api/agency/video/generation/jobs')
-    expect(job?.body).toMatchObject({ mode: 'image-to-video', modelId: vidu.id, sourceAssetIds: ['source-front', 'source-rear'] })
+    expect(job?.body).toMatchObject({ mode: 'image-to-video', modelId: vidu.id, aspectRatio: '9:16', sourceAssetIds: ['source-front', 'source-rear'] })
   })
 
   it('does not offer start & end frames when no model supports an end frame', async () => {

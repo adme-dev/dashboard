@@ -3,7 +3,8 @@ import { useVideoModelAccess } from '~~/app/composables/useVideoModelAccess'
 // SP2c full multitrack editor. Extends the SP2b read-only preview by wiring every
 // MediaTimeline emit to the composable actions, adding an edit toolbar (undo/redo,
 // split, add-clip, save-version), and passing the reactive sources map for waveforms.
-import { computed, nextTick, ref, watch, onMounted, onBeforeUnmount } from 'vue'
+import { computed, inject, nextTick, ref, shallowRef, watch, onMounted, onBeforeUnmount, type ShallowRef } from 'vue'
+import { createReusableTemplate } from '@vueuse/core'
 import { onBeforeRouteLeave, useRoute } from 'vue-router'
 import { useMediaProjectEditor } from '~~/app/composables/useMediaProjectEditor'
 import type { PickedAsset } from '~~/app/components/media/MediaAssetPicker.vue'
@@ -43,6 +44,9 @@ import type { VideoClip } from '~~/server/utils/audio/timelineSchema'
 import type { VideoAsset } from '~~/server/utils/video/assets'
 import { idempotencyKey } from '~~/app/utils/idempotencyKey'
 
+const activityHubLauncherTarget = inject<ShallowRef<HTMLElement | null>>('activity-hub-launcher-target', shallowRef(null))
+const [DefineTransport, Transport] = createReusableTemplate()
+const [DefineStudioTools, StudioTools] = createReusableTemplate()
 const route = useRoute()
 const projectId = computed(() => String(route.params.id))
 const editor = useMediaProjectEditor(projectId.value)
@@ -348,7 +352,12 @@ const timelineStills = computed(() => {
 const projectAspect = computed(() => {
   const tl = editor.timeline.value
   if (!tl) return '9:16'
-  return tl.width >= tl.height ? '16:9' : '9:16'
+  const ratios = ['16:9', '9:16', '1:1', '4:3', '3:4'] as const
+  const distance = (ratio: string) => {
+    const [w, h] = ratio.split(':').map(Number)
+    return Math.abs(Math.log((tl.width / tl.height) / (w! / h!)))
+  }
+  return ratios.reduce((best, ratio) => distance(ratio) < distance(best) ? ratio : best)
 })
 
 function onGenerationSubmitted(_jobId: string) {
@@ -448,11 +457,21 @@ function onStudioAssetAddCaptions(asset: VideoStudioAsset) {
   toast.add({ title: 'Captions added to timeline', color: 'success' })
 }
 
+function openGenerator() {
+  if (window.matchMedia('(min-width: 1024px)').matches) {
+    videoStudioMode.value = 'produce'
+    producerRailCollapsed.value = false
+    videoWorkspaceView.value = 'preview'
+  } else {
+    generatePickerOpen.value = true
+  }
+}
+
 function onStudioAssetGenerate(asset: VideoStudioAsset) {
   selectStudioAsset(asset)
   if (!videoStudioAssetImageSource(asset)) return
   generationDraftPrompt.value = asset.prompt
-  generatePickerOpen.value = true
+  openGenerator()
 }
 
 function onStudioAssetInspect(asset: VideoStudioAsset) {
@@ -506,7 +525,7 @@ function onVoiceoverReplaceTimeline(asset: AudioAsset) {
 function onReusePrompt(p: { prompt: string, modelId: string | null }) {
   generationDraftPrompt.value = p.prompt
   libraryOpen.value = false
-  generatePickerOpen.value = true
+  openGenerator()
 }
 
 // Selected video clip (any source) — drives the per-clip effects drawer.
@@ -931,10 +950,10 @@ function onAddToTrack(payload: { trackId: string, kind: string }) {
 
 // ─── Dock height (resizable, remembered per browser) ─────────────────────────
 
-const DOCK_MIN = 220
+const DOCK_MIN = 140
 const DOCK_MAX = 640
 const DOCK_KEY = 'video-studio:dock-height'
-const dockHeight = ref(360)
+const dockHeight = ref(196)
 let dockDrag: { startY: number, startHeight: number } | null = null
 
 function onDockDragStart(event: PointerEvent) {
@@ -1179,10 +1198,79 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
 </script>
 
 <template>
-  <!-- Both project kinds run as a fixed-height editor with the timeline docked
-       at the bottom; AV adds the three-column workbench above it. -->
-  <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
-    <div class="flex min-h-0 flex-1 flex-col gap-3 p-3">
+  <DefineStudioTools>
+    <VideoStudioFeatureMenu
+      :models="generationModelOptions"
+      :pending="generationModelsPending"
+      :generation-enabled="videoGenerationReady"
+      :status-detail="videoGenerationStatusDetail"
+      @storyboard="() => { videoStudioMode = 'edit'; storyboardOpen = true }"
+      @produce="() => { videoStudioMode = 'produce'; storyboardOpen = false }"
+      @library="() => { videoStudioMode = 'assets'; videoWorkspaceView = 'library' }"
+      @history="() => { videoStudioMode = 'review'; videoWorkspaceView = 'history' }"
+      @select-model="(id) => { selectedGenerationModelId = id; modelSelectionKey++; storyboardOpen = false; videoStudioMode = 'produce' }"
+    />
+  </DefineStudioTools>
+  <DefineTransport>
+    <div class="@container flex shrink-0 flex-wrap items-center gap-1.5 rounded-lg border border-default bg-elevated px-3 py-2">
+      <UButton
+        :icon="editor.isPlaying.value ? 'i-lucide-pause' : 'i-lucide-play'"
+        color="primary"
+        size="sm"
+        :aria-label="editor.isPlaying.value ? 'Pause (Space)' : 'Play (Space)'"
+        :title="editor.isPlaying.value ? 'Pause (Space)' : 'Play (Space)'"
+        @click="togglePlayback"
+      />
+      <UButton
+        icon="i-lucide-skip-back"
+        size="sm"
+        variant="ghost"
+        color="neutral"
+        aria-label="Go to start (Home)"
+        title="Go to start (Home)"
+        @click="editor.seek(0)"
+      />
+      <span class="shrink-0 text-sm tabular-nums text-muted">
+        {{ fmt(editor.currentTime.value) }} / {{ fmt(editor.duration.value) }}
+      </span>
+      <USlider
+        class="order-last min-w-6 basis-full @xs:order-none @xs:flex-1"
+        :min="0"
+        :max="Math.max(editor.duration.value, 0.001)"
+        :step="0.01"
+        :model-value="editor.currentTime.value"
+        aria-label="Playhead"
+        @update:model-value="(v: number | number[]) => editor.seek(Array.isArray(v) ? v[0]! : v)"
+      />
+      <UPopover>
+        <UButton
+          icon="i-lucide-keyboard"
+          size="sm"
+          variant="ghost"
+          color="neutral"
+          aria-label="Keyboard shortcuts"
+          title="Keyboard shortcuts"
+        />
+        <template #content>
+          <dl class="grid w-64 grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 p-3 text-xs">
+            <template v-for="shortcut in SHORTCUTS" :key="shortcut.keys">
+              <dt>
+                <UKbd size="sm">
+                  {{ shortcut.keys }}
+                </UKbd>
+              </dt>
+              <dd class="text-muted">
+                {{ shortcut.label }}
+              </dd>
+            </template>
+          </dl>
+        </template>
+      </UPopover>
+    </div>
+  </DefineTransport>
+  <!-- The desktop timeline docks below the workspace. Smaller screens scroll the editor. -->
+  <div class="flex min-h-0 flex-1 flex-col overflow-y-auto lg:overflow-hidden">
+    <div class="flex min-h-max flex-1 flex-col gap-2 p-2 lg:min-h-0 lg:p-3">
       <!-- Command bar: identity on the left, history on the right. One row. -->
       <header class="flex shrink-0 flex-wrap items-center gap-2">
         <UButton
@@ -1211,7 +1299,7 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
           <button
             v-else
             type="button"
-            class="group flex min-w-0 items-center gap-2 rounded-md px-1 py-0.5 text-left hover:bg-elevated"
+            class="group flex min-w-0 items-center gap-1 rounded-md px-1 py-0.5 text-left hover:bg-elevated"
             title="Rename project"
             @click="startRename"
           >
@@ -1225,7 +1313,7 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
             size="xs"
             variant="subtle"
             color="neutral"
-            class="shrink-0"
+            class="hidden shrink-0 sm:inline-flex"
           />
           <UPopover v-model:open="clientPopoverOpen">
             <UButton
@@ -1271,6 +1359,8 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
           </UPopover>
         </div>
 
+        <span v-if="isAv" ref="activityHubLauncherTarget" class="empty:hidden" />
+
         <!-- Save status: always visible, never decorative. -->
         <UTooltip :text="editor.saveError.value ?? ''" :disabled="!editor.saveError.value">
           <span
@@ -1283,7 +1373,29 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
           </span>
         </UTooltip>
 
-        <div v-if="editor.status.value === 'ready'" class="flex items-center gap-1 rounded-md border border-default bg-elevated p-1">
+        <div v-if="editor.status.value === 'ready'" class="flex shrink-0 items-center sm:hidden">
+          <span v-if="isAv" class="[&_[data-slot=label]]:sr-only [&_[data-slot=trailingIcon]]:hidden">
+            <StudioTools />
+          </span>
+          <UDropdownMenu
+            :items="[
+              [{ label: 'Projects', icon: 'i-lucide-folder', to: backTo }, { label: 'Audio', icon: 'i-lucide-music', to: '/agency/audio' }],
+              [{ label: 'Undo', icon: 'i-lucide-undo-2', disabled: !editor.canUndo.value, onSelect: () => editor.undoAction() },
+               { label: 'Redo', icon: 'i-lucide-redo-2', disabled: !editor.canRedo.value, onSelect: () => editor.redoAction() }],
+              [{ label: 'Save version', icon: 'i-lucide-bookmark', onSelect: () => { saveVersionOpen = true } },
+               { label: 'Versions', icon: 'i-lucide-history', onSelect: openVersions },
+               ...(!isAv ? [{ label: 'Add clip', icon: 'i-lucide-plus-circle', onSelect: () => { pickerOpen = true } }] : [])]
+            ]"
+          >
+            <UButton
+              icon="i-lucide-ellipsis"
+              color="neutral"
+              variant="ghost"
+              aria-label="Project actions"
+            />
+          </UDropdownMenu>
+        </div>
+        <div v-if="editor.status.value === 'ready'" class="hidden items-center gap-1 rounded-md border border-default bg-elevated p-1 sm:flex">
           <UButton
             icon="i-lucide-undo-2"
             size="xs"
@@ -1400,6 +1512,7 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
           v-model:mode="videoStudioMode"
           v-model:workspace-view="videoWorkspaceView"
           v-model:producer-collapsed="producerRailCollapsed"
+          class="max-lg:h-[clamp(22rem,54svh,34rem)] max-lg:flex-none"
           :asset-count="videoStudioAssetCount"
           :generation-job-count="activeGenerationJobCount"
           :render-job-count="editor.renderJobs.value.length"
@@ -1408,12 +1521,12 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
           :rendering="editor.rendering.value"
           @add-footage="mediaPickerOpen = true"
           @add-overlay="overlayPickerOpen = true"
-          @generate="generatePickerOpen = true"
+          @generate="openGenerator"
           @open-library="libraryOpen = true"
           @render="onRenderVideo"
         >
           <template #navigation>
-            <nav class="flex shrink-0 flex-wrap items-center gap-2 border-b border-default bg-default px-3 py-2" aria-label="Video Studio navigation">
+            <nav class="hidden shrink-0 flex-wrap items-center gap-2 border-b border-default bg-default px-3 py-2 sm:flex" aria-label="Video Studio navigation">
               <UButton
                 to="/agency/audio/projects?mediaType=av"
                 label="XeroFlow Studio"
@@ -1434,17 +1547,7 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
                 color="neutral"
                 variant="ghost"
               />
-              <VideoStudioFeatureMenu
-                :models="generationModelOptions"
-                :pending="generationModelsPending"
-                :generation-enabled="videoGenerationReady"
-                :status-detail="videoGenerationStatusDetail"
-                @storyboard="() => { videoStudioMode = 'edit'; storyboardOpen = true }"
-                @produce="() => { videoStudioMode = 'produce'; storyboardOpen = false }"
-                @library="() => { videoStudioMode = 'assets'; videoWorkspaceView = 'library' }"
-                @history="() => { videoStudioMode = 'review'; videoWorkspaceView = 'history' }"
-                @select-model="(id) => { selectedGenerationModelId = id; modelSelectionKey++; storyboardOpen = false; videoStudioMode = 'produce' }"
-              />
+              <StudioTools />
             </nav>
           </template>
           <template #history>
@@ -1496,6 +1599,9 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
               :pending-operation="storyboard.pendingOperation.value"
               :error="storyboard.error.value"
               :timeline-non-empty="storyboardTimelineNonEmpty"
+              :edit-duration="editor.duration.value"
+              :edit-clip-count="editor.timeline.value.tracks.reduce((n, track) => n + track.clips.length, 0)"
+              :edit-format="`${editor.timeline.value.width} × ${editor.timeline.value.height}`"
               :diverged="editor.storyboardDiverged.value"
               :selected-asset="selectedStudioAsset"
               :examples="storyboard.examples"
@@ -1516,13 +1622,6 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
           </template>
 
           <template #preview="{ maxHeight }">
-            <div class="mb-2 flex items-center gap-2">
-              <UIcon name="i-lucide-monitor-play" class="size-4 text-muted" />
-              <h4 class="text-xs font-medium uppercase text-muted">
-                Preview
-              </h4>
-              <span class="text-[11px] text-muted">Approximate — the server render is the source of truth.</span>
-            </div>
             <MediaAvPreview
               :max-height="maxHeight"
               :timeline="editor.timeline.value"
@@ -1530,8 +1629,12 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
               :is-playing="editor.isPlaying.value"
               :sources="editor.sources.value"
             />
-
-            <div class="mt-3 space-y-3">
+          </template>
+          <template #transport>
+            <Transport />
+          </template>
+          <template #clip-tools>
+            <div v-if="selectedVideoClip || selectedGeneratedClip" class="mt-3 space-y-3">
               <!-- Per-clip effects drawer — shows for any selected video clip -->
               <div v-if="isAv && selectedVideoClip" class="rounded-lg border border-default bg-elevated p-3">
                 <div class="mb-3 flex flex-wrap items-start justify-between gap-3">
@@ -1769,16 +1872,6 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
               </template>
 
               <template #produce>
-                <UButton
-                  class="mb-3"
-                  size="sm"
-                  variant="soft"
-                  color="neutral"
-                  icon="i-lucide-panels-top-left"
-                  label="Open storyboard"
-                  :disabled="editor.storyboardApplying.value"
-                  @click="() => { videoStudioMode = 'edit'; storyboardOpen = true }"
-                />
                 <div v-if="videoGenerationEnabled" class="space-y-2">
                   <div class="flex items-center gap-2">
                     <UIcon name="i-lucide-sparkles" class="size-4 text-muted" />
@@ -1799,6 +1892,7 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
                     :project-id="projectId"
                     :timeline-stills="timelineStills"
                     :default-aspect="projectAspect"
+                    :default-duration-seconds="selectedClipInspector?.durationSec ?? undefined"
                     :initial-prompt="generationDraftPrompt"
                     :initial-model-id="selectedGenerationModelId"
                     :model-selection-key="modelSelectionKey"
@@ -1810,7 +1904,19 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
                     @close="generationDraftPrompt = null"
                   />
                 </div>
-                <p v-else class="text-sm text-muted">{{ videoGenerationStatusDetail }}</p>
+                <p v-else class="text-sm text-muted">
+                  {{ videoGenerationStatusDetail }}
+                </p>
+                <UButton
+                  class="mb-3"
+                  size="sm"
+                  variant="soft"
+                  color="neutral"
+                  icon="i-lucide-panels-top-left"
+                  label="Open storyboard"
+                  :disabled="editor.storyboardApplying.value"
+                  @click="() => { videoStudioMode = 'edit'; storyboardOpen = true }"
+                />
                 <VideoStudioVoiceComposer
                   :producer-brief="producerBrief"
                   :existing-voiceover-count="existingVoiceoverClipIds.length"
@@ -1901,11 +2007,11 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
           </template>
         </VideoStudioWorkbench>
 
-        <!-- Dock: transport + timeline, pinned to the bottom for AV projects. -->
+        <!-- Video playback controls live with the preview. Audio uses the transport here. -->
         <!-- Audio projects have no workbench: the dock takes the whole height. -->
         <section
           :class="['relative flex flex-col gap-2', isAv ? 'shrink-0' : 'min-h-0 flex-1']"
-          :style="isAv ? { height: `${dockHeight}px` } : undefined"
+          :style="isAv ? { height: `min(${dockHeight}px, 40svh)` } : undefined"
         >
           <!-- Drag handle: grows the dock upward. -->
           <div
@@ -1935,61 +2041,7 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
             @save-asset="onSaveAsset"
           />
 
-          <div class="flex shrink-0 items-center gap-3 rounded-lg border border-default bg-elevated px-3 py-2">
-            <UButton
-              :icon="editor.isPlaying.value ? 'i-lucide-pause' : 'i-lucide-play'"
-              color="primary"
-              size="sm"
-              :aria-label="editor.isPlaying.value ? 'Pause (Space)' : 'Play (Space)'"
-              :title="editor.isPlaying.value ? 'Pause (Space)' : 'Play (Space)'"
-              @click="togglePlayback"
-            />
-            <UButton
-              icon="i-lucide-skip-back"
-              size="sm"
-              variant="ghost"
-              color="neutral"
-              aria-label="Go to start (Home)"
-              title="Go to start (Home)"
-              @click="editor.seek(0)"
-            />
-            <span class="w-24 shrink-0 text-sm tabular-nums text-muted">
-              {{ fmt(editor.currentTime.value) }} / {{ fmt(editor.duration.value) }}
-            </span>
-            <USlider
-              class="flex-1"
-              :min="0"
-              :max="Math.max(editor.duration.value, 0.001)"
-              :step="0.01"
-              :model-value="editor.currentTime.value"
-              aria-label="Playhead"
-              @update:model-value="(v: number | number[]) => editor.seek(Array.isArray(v) ? v[0]! : v)"
-            />
-            <UPopover>
-              <UButton
-                icon="i-lucide-keyboard"
-                size="sm"
-                variant="ghost"
-                color="neutral"
-                aria-label="Keyboard shortcuts"
-                title="Keyboard shortcuts"
-              />
-              <template #content>
-                <dl class="grid w-64 grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 p-3 text-xs">
-                  <template v-for="shortcut in SHORTCUTS" :key="shortcut.keys">
-                    <dt>
-                      <UKbd size="sm">
-                        {{ shortcut.keys }}
-                      </UKbd>
-                    </dt>
-                    <dd class="text-muted">
-                      {{ shortcut.label }}
-                    </dd>
-                  </template>
-                </dl>
-              </template>
-            </UPopover>
-          </div>
+          <Transport v-if="!isAv" />
 
           <div class="min-h-0 flex-1 overflow-y-auto">
             <MediaTimeline
@@ -2033,6 +2085,7 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
     :project-id="projectId"
     :timeline-stills="timelineStills"
     :default-aspect="projectAspect"
+    :default-duration-seconds="selectedClipInspector?.durationSec ?? undefined"
     :initial-prompt="generationDraftPrompt"
     :initial-source-asset="selectedGenerationSourceAsset"
     :recent-jobs="genJobs.jobs.value"

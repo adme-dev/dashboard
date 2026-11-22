@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 interface TestEvent {
   params?: Record<string, string>
+  query?: Record<string, string>
   body?: unknown
 }
 
@@ -95,6 +96,7 @@ const mockSendRedirect = vi.fn()
 const g = globalThis as unknown as Record<string, unknown>
 g.defineEventHandler = (handler: unknown) => handler
 g.getRouterParam = (event: TestEvent, name: string) => event.params?.[name]
+g.getQuery = (event: TestEvent) => event.query ?? {}
 g.readBody = async (event: TestEvent) => event.body ?? {}
 g.createError = (input: { statusCode: number, statusMessage: string }) =>
   Object.assign(new Error(input.statusMessage), input)
@@ -153,6 +155,12 @@ describe('project history read authorization', () => {
     expect(mockGetPublicUrl).not.toHaveBeenCalled()
     expect(mockGetPresignedDownloadUrl).not.toHaveBeenCalled()
     expect(mockSendRedirect).not.toHaveBeenCalled()
+  })
+
+  it('signs explicit downloads with an attachment filename even for publicly served media', async () => {
+    mockGetPublicUrl.mockReturnValue('https://media.example/j1.mp4')
+    await renderVariantHandler({ params: { id: 'p1', jobId: 'j1', format: 'mp4' }, query: { download: '1' } } as never)
+    expect(mockGetPresignedDownloadUrl).toHaveBeenCalledWith('private/p1/j1.mp4', 3600, 'Private project-mp4.mp4')
   })
 
   it.each(allowedActors)('allows the $label to read history and obtain a signed render URL', async ({ value }) => {

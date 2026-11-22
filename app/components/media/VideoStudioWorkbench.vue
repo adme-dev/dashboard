@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// Bounded producer controls beside a tabbed preview, library and history workspace.
+// The desktop preview stays mounted beside the active workspace.
 // Each pane owns scrolling; mobile navigation selects the visible pane.
 import { computed, onMounted, ref, watch } from 'vue'
 import { useElementSize } from '@vueuse/core'
@@ -44,13 +44,13 @@ const workspaceView = defineModel<WorkspaceView>('workspaceView', { default: 'pr
 const workspaceItems = computed(() => [
   { label: 'Storyboard', icon: 'i-lucide-panels-top-left', value: 'storyboard' },
   { label: 'Preview', icon: 'i-lucide-monitor-play', value: 'preview' },
-  { label: 'Library', icon: 'i-lucide-library', value: 'library', badge: props.assetCount ? String(props.assetCount) : undefined },
+  { label: 'Project assets', icon: 'i-lucide-library', value: 'library', badge: props.assetCount ? String(props.assetCount) : undefined },
   { label: 'History', icon: 'i-lucide-history', value: 'history', badge: props.renderJobCount ? String(props.renderJobCount) : undefined },
   { label: 'How it works', icon: 'i-lucide-circle-help', value: 'guide' }
 ])
-const workspaceBody = ref<HTMLElement | null>(null)
-const { height: workspaceHeight } = useElementSize(workspaceBody)
-const previewMaxHeight = computed(() => workspaceHeight.value > 0 ? Math.max(96, workspaceHeight.value - 76) : 240)
+const expandedTarget = ref<HTMLElement | null>(null)
+const frameArea = ref<HTMLElement | null>(null)
+const { height: frameHeight } = useElementSize(frameArea)
 
 const localMode = ref<StudioMode>(props.mode)
 const activeMode = computed({
@@ -61,20 +61,19 @@ const activeMode = computed({
   }
 })
 
-// On mobile, history belongs to the main workspace; Produce opens the controls.
-const mobilePanel = computed({
-  get: () => activeMode.value === 'review' ? 'edit' : activeMode.value,
-  set: (value: string) => {
-    activeMode.value = value as StudioMode
-    if (value === 'assets') workspaceView.value = 'library'
-    else if (value === 'edit') workspaceView.value = 'preview'
-  }
-})
+// Desktop keeps the inspector open beside the workspace. Phones navigate to it in the same tab strip.
+const mobilePanel = computed(() => activeMode.value === 'produce' ? 'produce' : 'edit')
 const mobileItems = computed(() => [
-  { label: 'Assets', icon: 'i-lucide-library', value: 'assets', badge: props.assetCount ? String(props.assetCount) : undefined },
-  { label: 'Edit', icon: 'i-lucide-monitor-play', value: 'edit' },
-  { label: 'Inspector', icon: 'i-lucide-panel-right', value: 'produce', badge: props.renderJobCount ? String(props.renderJobCount) : undefined }
+  workspaceItems.value[1]!,
+  workspaceItems.value[0]!,
+  { label: 'Inspector', icon: 'i-lucide-panel-right', value: 'produce' },
+  ...workspaceItems.value.slice(2)
 ])
+const workspaceTabStyle = { indicator: 'hidden', trigger: 'data-[state=active]:bg-primary data-[state=active]:text-inverted transition-none' }
+function selectMobileWorkspace(view: string | number) {
+  if (view === 'produce') activeMode.value = 'produce'
+  else selectWorkspace(view)
+}
 
 const generationStatusDetail = computed(() => props.generationStatusDetail || (props.generationEnabled
   ? 'Cloudflare AI Gateway video models are available for this project.'
@@ -83,7 +82,7 @@ const generationStatusDetail = computed(() => props.generationStatusDetail || (p
 // ─── Column widths: drag the dividers; remembered per browser ───────────────
 const COLUMNS_KEY = 'video-studio:columns'
 const INSPECTOR_RANGE = [280, 640] as const
-const inspectorWidth = ref(360)
+const inspectorWidth = ref(310)
 let columnDrag: { startX: number, startWidth: number } | null = null
 
 function clamp(value: number, [min, max]: readonly [number, number]) {
@@ -114,7 +113,7 @@ onMounted(() => {
 
 // Below lg the grid is a single column; the widths only apply from lg up (via CSS var + class).
 const workspaceStyle = computed(() => ({
-  '--vs-inspector': `${inspectorWidth.value}px`
+  '--vs-inspector': `min(${inspectorWidth.value}px, 38%)`
 }))
 const workspaceGridClass = computed(() => props.producerCollapsed
   ? 'lg:grid-cols-1'
@@ -162,8 +161,34 @@ watch(() => props.mode, (mode) => {
   <section class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-default bg-elevated">
     <slot name="navigation" />
     <!-- Creation controls stay separate from explicit output actions. -->
-    <header class="flex shrink-0 flex-wrap items-center gap-2 border-b border-default px-3 py-2">
-      <div class="flex flex-wrap items-center gap-1 rounded-md border border-default bg-default/50 p-1">
+    <header class="flex shrink-0 flex-wrap items-center gap-1 border-b border-default px-2 py-1 sm:gap-2 sm:px-3 sm:py-2">
+      <UDropdownMenu
+        :items="[
+          { label: 'Add footage', icon: 'i-lucide-film', onSelect: () => emit('add-footage') },
+          { label: 'Add overlay', icon: 'i-lucide-shapes', onSelect: () => emit('add-overlay') },
+          { label: 'Saved videos', icon: 'i-lucide-library', onSelect: () => emit('open-library') }
+        ]"
+      >
+        <UButton
+          class="sm:hidden"
+          label="Add"
+          icon="i-lucide-plus"
+          size="xs"
+          color="neutral"
+          variant="ghost"
+        />
+      </UDropdownMenu>
+      <UButton
+        class="sm:hidden"
+        label="Generate"
+        icon="i-lucide-sparkles"
+        size="xs"
+        color="neutral"
+        variant="ghost"
+        :disabled="!props.generationEnabled"
+        @click="emit('generate')"
+      />
+      <div class="hidden flex-wrap items-center gap-1 rounded-md border border-default bg-default/50 p-1 sm:flex">
         <UButton
           icon="i-lucide-film"
           size="xs"
@@ -195,21 +220,10 @@ watch(() => props.mode, (mode) => {
           size="xs"
           variant="ghost"
           color="neutral"
-          label="Library"
+          label="Saved videos"
           @click="emit('open-library')"
         />
       </div>
-
-      <UTabs
-        v-model="mobilePanel"
-        :items="mobileItems"
-        :content="false"
-        size="xs"
-        variant="link"
-        color="primary"
-        class="min-w-0 lg:hidden"
-        aria-label="Video Studio panel"
-      />
 
       <div class="ml-auto flex flex-wrap items-center gap-2">
         <UBadge
@@ -273,6 +287,19 @@ watch(() => props.mode, (mode) => {
         </div>
       </div>
     </header>
+    <div class="shrink-0 overflow-x-auto border-b border-default px-1 py-1 lg:hidden">
+      <UTabs
+        :model-value="mobilePanel === 'produce' ? 'produce' : workspaceView"
+        :items="mobileItems"
+        :content="false"
+        :ui="workspaceTabStyle"
+        size="xs"
+        variant="pill"
+        class="w-max"
+        aria-label="Mobile project workspace"
+        @update:model-value="selectMobileWorkspace"
+      />
+    </div>
 
     <div :class="['grid min-h-0 flex-1 grid-cols-1', workspaceGridClass]" :style="workspaceStyle">
       <aside v-if="!props.producerCollapsed" :class="['min-h-0 min-w-0 flex-col overflow-hidden border-r border-default bg-default/40', panelClass('produce')]">
@@ -294,10 +321,11 @@ watch(() => props.mode, (mode) => {
         <span class="w-px bg-default transition group-hover:w-0.5 group-hover:bg-primary" />
       </div>
       <main :class="['min-h-0 min-w-0 flex-col overflow-hidden bg-default', mobilePanel === 'produce' ? 'hidden lg:flex' : 'flex']">
-        <div class="shrink-0 overflow-x-auto border-b border-default px-4 py-3">
+        <div class="hidden shrink-0 overflow-x-auto border-b border-default px-4 py-2 lg:block">
           <UTabs
             :model-value="workspaceView"
             :items="workspaceItems"
+            :ui="workspaceTabStyle"
             :content="false"
             size="sm"
             variant="pill"
@@ -306,17 +334,56 @@ watch(() => props.mode, (mode) => {
             @update:model-value="selectWorkspace"
           />
         </div>
-        <div ref="workspaceBody" class="min-h-0 flex-1 overflow-hidden">
-          <div v-show="workspaceView === 'preview'" data-workspace-pane="preview" class="h-full min-h-0 overflow-y-auto p-4 sm:p-5">
-            <slot name="preview" :max-height="previewMaxHeight" />
+        <div
+          class="grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)] overflow-hidden"
+          :class="workspaceView !== 'preview' ? 'lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]' : 'grid-cols-1'"
+        >
+          <div
+            data-workspace-pane="preview"
+            class="min-h-0 min-w-0 flex-col overflow-y-auto bg-default p-2 sm:p-3"
+            :class="workspaceView === 'preview' ? 'flex' : 'hidden border-r border-default lg:flex'"
+          >
+            <div class="flex h-full min-h-36 shrink-0 flex-col gap-1.5">
+              <div class="flex shrink-0 items-center justify-between gap-2">
+                <h4 class="text-sm font-semibold text-highlighted" title="Effects are approximated until render">
+                  Edit preview
+                </h4>
+                <UModal
+                  fullscreen
+                  title="Expanded preview"
+                  :transition="false"
+                  :close="{ 'aria-label': 'Exit expanded preview' }"
+                  :ui="{ body: 'flex min-h-0 flex-1 flex-col p-2 sm:p-3' }"
+                >
+                  <UButton
+                    icon="i-lucide-maximize-2"
+                    aria-label="Expand preview"
+                    title="Expand preview"
+                    color="neutral"
+                    size="xs"
+                    variant="ghost"
+                  />
+                  <template #body>
+                    <div ref="expandedTarget" data-expanded-preview class="flex min-h-0 flex-1 flex-col gap-2" />
+                  </template>
+                </UModal>
+              </div>
+              <Teleport :to="expandedTarget ?? 'body'" :disabled="!expandedTarget">
+                <div ref="frameArea" class="flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded bg-black">
+                  <slot name="preview" :max-height="frameHeight || 320" />
+                </div>
+                <slot name="transport" />
+              </Teleport>
+            </div>
+            <slot name="clip-tools" />
           </div>
-          <div v-show="workspaceView === 'storyboard'" data-workspace-pane="storyboard" class="flex h-full min-h-0 flex-col overflow-hidden p-4 sm:p-5">
+          <div v-show="workspaceView === 'storyboard'" data-workspace-pane="storyboard" class="flex h-full min-h-0 min-w-0 flex-col overflow-hidden p-3 sm:p-4">
             <slot name="storyboard" />
           </div>
-          <div v-show="workspaceView === 'library'" data-workspace-pane="library" class="h-full min-h-0 overflow-y-auto p-4 sm:p-5">
+          <div v-show="workspaceView === 'library'" data-workspace-pane="library" class="h-full min-h-0 min-w-0 overflow-y-auto p-3 sm:p-4">
             <slot name="library" />
           </div>
-          <div v-if="workspaceView === 'history'" class="mx-auto h-full min-h-0 max-w-5xl space-y-4 overflow-y-auto p-4 sm:p-5">
+          <div v-if="workspaceView === 'history'" class="mx-auto h-full min-h-0 min-w-0 max-w-5xl space-y-4 overflow-y-auto p-4 sm:p-5">
             <div>
               <h3 class="text-xl font-semibold text-highlighted">
                 Project history
@@ -330,7 +397,7 @@ watch(() => props.mode, (mode) => {
               </p>
             </slot>
           </div>
-          <div v-if="workspaceView === 'guide'" class="mx-auto h-full min-h-0 max-w-4xl space-y-6 overflow-y-auto p-4 sm:p-5">
+          <div v-if="workspaceView === 'guide'" class="mx-auto h-full min-h-0 min-w-0 max-w-4xl space-y-6 overflow-y-auto p-4 sm:p-5">
             <div>
               <h3 class="text-2xl font-semibold tracking-tight text-highlighted">
                 From an idea to a finished edit
@@ -350,7 +417,7 @@ watch(() => props.mode, (mode) => {
                 <h4 class="font-semibold text-highlighted">
                   Choose your assets
                 </h4><p class="mt-2 text-sm leading-6 text-muted">
-                  Use the Library for real footage, stills, voice and overlays. Selecting a model prepares a request; it does not start generation.
+                  Use Project assets for real footage, stills, voice and overlays. Selecting a model prepares a request; it does not start generation.
                 </p>
               </UCard>
               <UCard>

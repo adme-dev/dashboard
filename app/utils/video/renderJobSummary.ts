@@ -1,3 +1,4 @@
+import { VIDEO_RENDER_FORMATS } from './renderFormats'
 import type { MediaRenderJob } from '~~/app/types'
 
 export interface VideoRenderJobSummary {
@@ -38,6 +39,14 @@ export function renderVariantFormats(job: MediaRenderJob | null | undefined): st
 
 export function renderVariantUrl(projectId: string, jobId: string, format: string): string {
   return `/api/agency/audio/projects/${encodeURIComponent(projectId)}/renders/${encodeURIComponent(jobId)}/${encodeURIComponent(format)}`
+}
+
+export function renderDownloadUrl(projectId: string, jobId: string, format: string): string {
+  return `${renderVariantUrl(projectId, jobId, format)}?download=1`
+}
+
+export function renderFormatLabel(format: string): string {
+  return VIDEO_RENDER_FORMATS.find(entry => entry.id === format)?.detail ?? format
 }
 
 export function creativeVersionLabelForRenderJob(job: MediaRenderJob): string {

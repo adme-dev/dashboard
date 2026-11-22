@@ -22,6 +22,9 @@ const props = withDefaults(
     pending?: boolean
     error?: string | null
     timelineNonEmpty?: boolean
+    editDuration?: number
+    editClipCount?: number
+    editFormat?: string
     diverged?: boolean
     canApply?: boolean
     fps?: number
@@ -39,6 +42,9 @@ const props = withDefaults(
     pending: false,
     error: null,
     timelineNonEmpty: false,
+    editDuration: 0,
+    editClipCount: 0,
+    editFormat: '',
     diverged: false,
     canApply: false,
     fps: 30,
@@ -298,17 +304,23 @@ function confirmApply() {
     <header class="flex flex-wrap items-center justify-between gap-2 border-b border-default pb-3">
       <div>
         <h3 class="font-semibold">
-          Storyboard
+          Storyboard draft
         </h3>
         <p class="text-xs text-muted">
-          Plan the sequence, review exact copy, then assemble existing media.
+          {{ draft.shots.length }} planned shots · {{ (total / frameRate).toFixed(2) }}s planned
         </p>
       </div>
-      <UBadge color="neutral" variant="subtle">
-        {{ draft.shots.length }} shots · {{ (total / frameRate).toFixed(2) }}s
-      </UBadge>
     </header>
     <div class="min-h-0 flex-1 space-y-5 overflow-y-auto py-4 pr-1">
+      <div v-if="timelineNonEmpty" class="border-l-2 border-primary pl-3 text-sm">
+        <p class="font-medium text-highlighted">
+          Current edit
+        </p>
+        <p>{{ editClipCount }} {{ editClipCount === 1 ? 'clip' : 'clips' }} · {{ editDuration.toFixed(2) }}s<span v-if="editFormat"> · {{ editFormat }}</span></p>
+        <p v-if="Math.abs(editDuration - draft.durationSeconds) >= 0.01" class="mt-1 text-xs text-muted">
+          Draft target {{ draft.durationSeconds }}s · current edit {{ editDuration.toFixed(2) }}s
+        </p>
+      </div>
       <UAlert
         v-if="!enabled"
         title="Storyboard actions are unavailable"
@@ -376,7 +388,7 @@ function confirmApply() {
             @update:model-value="chooseRecipe(String($event))"
           />
         </UFormField>
-        <UFormField label="Output format">
+        <UFormField label="Storyboard format" help="Choose export formats in the Render controls.">
           <USelect
             :items="formats"
             :model-value="draft.targetFormat"
@@ -387,7 +399,7 @@ function confirmApply() {
             "
           />
         </UFormField>
-        <UFormField label="Target duration in seconds">
+        <UFormField label="Draft target (seconds)">
           <UInput
             type="number"
             :min="1"
