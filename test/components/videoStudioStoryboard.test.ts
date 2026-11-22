@@ -106,26 +106,47 @@ function button(host: HTMLElement, text: string) {
 describe('Storyboard workbench', () => {
   it('shows the existing edit separately from an empty draft target', async () => {
     const { host, app } = await mount({ draft: { ...draft(), shots: [] }, timelineNonEmpty: true, editDuration: 40.2, editClipCount: 2, editFormat: '1080 × 1920' })
-    expect(host.textContent).toContain('0 planned shots')
+    expect(host.textContent).toContain('0 planned shots · 0s planned')
+    expect(host.textContent).not.toContain('0.00s')
     const actual = host.querySelector('[data-duration="actual"]')!
     const target = host.querySelector('[data-duration="target"]')!
     expect(actual.textContent).toContain('Current edit · actual')
-    expect(actual.textContent).toContain('40.20s')
+    expect(actual.textContent).toContain('40.2s')
     expect(actual.textContent).toContain('2 clips · 1080 × 1920')
     expect(target.textContent).toContain('Draft target')
     expect(target.textContent).toContain('30s')
     // Actual is solid, the target is a dashed goal: visually distinct, not a warning.
     expect(target.className).toContain('border-dashed')
     expect(actual.className).not.toContain('border-dashed')
-    expect(host.querySelector('[data-duration-delta]')?.textContent).toContain('Current edit runs 10.20s longer than the draft target.')
-    expect(host.querySelector('[data-duration-delta]')?.className).not.toMatch(/warning|error/)
+    const delta = host.querySelector('[data-duration-delta]')!
+    expect(delta.getAttribute('data-duration-delta')).toBe('over')
+    expect(delta.textContent).toContain('10.2s over target')
+    expect(delta.className).not.toMatch(/warning|error/)
     app.unmount()
   })
   it('treats a frame-quantised edit as matching the draft target', async () => {
     const { host, app } = await mount({ timelineNonEmpty: true, editDuration: 30 + 1 / 30, editClipCount: 3 })
-    expect(host.querySelector('[data-duration-delta]')?.textContent).toContain('Current edit matches the draft target.')
-    expect(host.textContent).not.toContain('longer than the draft target')
+    const delta = host.querySelector('[data-duration-delta]')!
+    expect(delta.getAttribute('data-duration-delta')).toBe('match')
+    expect(delta.textContent).toContain('Matches target')
+    expect(host.textContent).not.toContain('over target')
     app.unmount()
+  })
+  it('reports a shorter edit as a concise under-target figure', async () => {
+    const { host, app } = await mount({ timelineNonEmpty: true, editDuration: 19.82, editClipCount: 2 })
+    const delta = host.querySelector('[data-duration-delta]')!
+    expect(delta.getAttribute('data-duration-delta')).toBe('under')
+    expect(delta.textContent).toContain('10.18s under target')
+    app.unmount()
+  })
+  it('omits the comparison without a real edit duration or a finite target', async () => {
+    const zeroEdit = await mount({ timelineNonEmpty: true, editDuration: 0 })
+    expect(zeroEdit.host.querySelector('[data-duration-delta]')).toBeNull()
+    zeroEdit.app.unmount()
+    const noTarget = await mount({ draft: { ...draft(), durationSeconds: Number.NaN }, timelineNonEmpty: true, editDuration: 12 })
+    expect(noTarget.host.querySelector('[data-duration-delta]')).toBeNull()
+    expect(noTarget.host.querySelector('[data-duration="target"]')?.textContent).toContain('Not set')
+    noTarget.app.unmount()
   })
   it('omits the actual duration and comparison when the timeline is empty', async () => {
     const { host, app } = await mount({ timelineNonEmpty: false, editDuration: 0 })

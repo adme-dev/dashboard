@@ -94,9 +94,9 @@ watch(() => props.tab, (tab) => {
           :key="item.label"
           class="min-w-0 px-2 py-1.5"
         >
-          <div class="flex items-center gap-1 text-[10px] uppercase text-muted">
-            <UIcon :name="item.icon" class="size-3 shrink-0" />
-            <span class="truncate">{{ item.label }}</span>
+          <div class="flex items-start gap-1 text-[10px] uppercase leading-tight text-muted">
+            <UIcon :name="item.icon" class="mt-px size-3 shrink-0" aria-hidden="true" />
+            <span data-summary-label class="min-w-0 break-words">{{ item.label }}</span>
           </div>
           <p class="mt-0.5 text-sm font-medium text-highlighted">{{ item.value }}</p>
         </div>

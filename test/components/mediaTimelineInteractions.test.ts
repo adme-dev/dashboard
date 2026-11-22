@@ -201,6 +201,20 @@ describe('MediaTimeline interactions', () => {
     }
   })
 
+  it('backs only the audio label text, not the whole waveform, with a dark legible chip', async () => {
+    const clips = [{ clipId: 'a1', trackId: 'music', timelineStartSec: 0, durationSec: 4, r2_key: 'media/p/audio/voice-take.mp3' }]
+    const { app, host } = await mount({ clips })
+    try {
+      const audioLabel = host.querySelector('[data-clip-label="audio"]')!
+      expect(audioLabel.className).toContain('bg-black/75')
+      expect(audioLabel.className).toContain('text-white')
+      const videoLabel = host.querySelector('[data-clip-label="video"]')!
+      expect(videoLabel.className).not.toContain('bg-black/75')
+    } finally {
+      app.unmount()
+    }
+  })
+
   it('uses the library title for a clip when one is known', async () => {
     const { app, host } = await mount({ titles: { 'media/p/footage/1700000000000-hero-shot-1234abcd.mp4': 'Dealer hero v3' } })
     try {

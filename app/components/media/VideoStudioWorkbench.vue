@@ -335,8 +335,8 @@ watch(() => props.mode, (mode) => {
           />
         </div>
         <div
-          class="grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)] overflow-hidden"
-          :class="workspaceView !== 'preview' ? 'lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]' : 'grid-cols-1'"
+          class="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,1fr)] overflow-hidden"
+          :class="{ 'lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]': workspaceView !== 'preview' }"
         >
           <div
             data-workspace-pane="preview"
@@ -383,11 +383,11 @@ watch(() => props.mode, (mode) => {
           <div v-show="workspaceView === 'library'" data-workspace-pane="library" class="h-full min-h-0 min-w-0 overflow-y-auto p-3 sm:p-4">
             <slot name="library" />
           </div>
-          <div v-if="workspaceView === 'history'" class="mx-auto h-full min-h-0 min-w-0 max-w-5xl space-y-4 overflow-y-auto p-4 sm:p-5">
-            <div>
-              <h3 class="text-xl font-semibold text-highlighted">
+          <div v-if="workspaceView === 'history'" data-workspace-pane="history" class="mx-auto h-full min-h-0 w-full min-w-0 max-w-5xl space-y-4 overflow-y-auto p-3 sm:p-5">
+            <div class="min-w-0">
+              <h3 class="break-words text-xl font-semibold text-highlighted">
                 Project history
-              </h3><p class="mt-1 text-sm text-muted">
+              </h3><p class="mt-1 break-words text-sm text-muted">
                 Saved outputs and their current status. Viewing history never starts a new run.
               </p>
             </div>

@@ -85,12 +85,22 @@ const frameRate = computed(() => props.plan?.fps || props.candidate?.plan.fps ||
 const total = computed(() => props.draft.shots.reduce((sum, shot) => sum + shot.durationFrames, 0))
 const selectedShot = computed(() => props.draft.shots.find(s => s.id === selected.value))
 const plannedSeconds = computed(() => total.value / frameRate.value)
-// The edit is frame-quantised, so a difference of up to one frame still "matches" the target.
-const actualVsTarget = computed(() => {
-  if (!props.timelineNonEmpty) return null
+// Concise seconds: at most two decimals, no trailing zeros ("0s", "10.2s", "10.18s").
+function formatSeconds(value: number) {
+  if (!Number.isFinite(value)) return '0s'
+  return `${Number(value.toFixed(2))}s`
+}
+const hasTarget = computed(() => Number.isFinite(props.draft.durationSeconds) && props.draft.durationSeconds > 0)
+// Compare only a real edit with a finite target. The edit is frame-quantised,
+// so a difference of up to one frame still matches the target.
+const actualVsTarget = computed<{ kind: 'match' | 'over' | 'under', label: string } | null>(() => {
+  if (!props.timelineNonEmpty || !hasTarget.value) return null
+  if (!Number.isFinite(props.editDuration) || props.editDuration <= 0) return null
   const delta = props.editDuration - props.draft.durationSeconds
-  if (Math.abs(delta) <= 1 / frameRate.value + 1e-6) return 'Current edit matches the draft target.'
-  return `Current edit runs ${Math.abs(delta).toFixed(2)}s ${delta > 0 ? 'longer' : 'shorter'} than the draft target.`
+  if (Math.abs(delta) <= 1 / frameRate.value + 1e-6) return { kind: 'match', label: 'Matches target' }
+  return delta > 0
+    ? { kind: 'over', label: `${formatSeconds(delta)} over target` }
+    : { kind: 'under', label: `${formatSeconds(-delta)} under target` }
 })
 const applyAllowed = computed(
   () =>
@@ -315,7 +325,7 @@ function confirmApply() {
           Storyboard draft
         </h3>
         <p class="text-xs text-muted">
-          {{ draft.shots.length }} planned shots · {{ plannedSeconds.toFixed(2) }}s planned
+          {{ draft.shots.length }} planned shots · {{ formatSeconds(plannedSeconds) }} planned
         </p>
       </div>
     </header>
@@ -333,7 +343,7 @@ function confirmApply() {
               Current edit · actual
             </dt>
             <dd class="text-sm font-semibold tabular-nums text-highlighted">
-              {{ editDuration.toFixed(2) }}s
+              {{ formatSeconds(editDuration) }}
             </dd>
             <dd class="truncate text-xs text-muted">
               {{ editClipCount }} {{ editClipCount === 1 ? 'clip' : 'clips' }}<span v-if="editFormat"> · {{ editFormat }}</span>
@@ -345,7 +355,7 @@ function confirmApply() {
               Draft target
             </dt>
             <dd class="text-sm font-medium tabular-nums text-default">
-              {{ draft.durationSeconds }}s
+              {{ hasTarget ? formatSeconds(draft.durationSeconds) : 'Not set' }}
             </dd>
             <dd class="truncate text-xs text-muted">
               Planning goal, not the edit
@@ -357,15 +367,20 @@ function confirmApply() {
               Planned shots
             </dt>
             <dd class="text-sm font-medium tabular-nums text-default">
-              {{ plannedSeconds.toFixed(2) }}s
+              {{ formatSeconds(plannedSeconds) }}
             </dd>
             <dd class="truncate text-xs text-muted">
               {{ draft.shots.length }} {{ draft.shots.length === 1 ? 'shot' : 'shots' }} in this draft
             </dd>
           </div>
         </dl>
-        <p v-if="actualVsTarget" data-duration-delta class="text-xs text-muted">
-          {{ actualVsTarget }}
+        <p
+          v-if="actualVsTarget"
+          :data-duration-delta="actualVsTarget.kind"
+          class="text-xs tabular-nums"
+          :class="actualVsTarget.kind === 'over' ? 'font-semibold text-highlighted' : 'text-muted'"
+        >
+          <span class="sr-only">Current edit: </span>{{ actualVsTarget.label }}
         </p>
       </div>
       <UAlert

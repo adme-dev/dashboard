@@ -77,6 +77,15 @@ describe('VideoStudioInspector', () => {
     expect(html).not.toContain('Render review')
   })
 
+  it('wraps summary labels at narrow widths and keeps their icons', async () => {
+    const { app, host } = await mount({ assetCount: 12 })
+    const label = [...host.querySelectorAll('[data-summary-label]')].find(el => el.textContent === 'Library assets')!
+    expect(label.className).not.toContain('truncate')
+    expect(label.className).toContain('break-words')
+    expect(label.parentElement?.querySelector('[data-icon="i-lucide-library"]')).not.toBeNull()
+    app.unmount()
+  })
+
   it('switches between produce and review panels', async () => {
     const { app, host, events } = await mount({
       renderJobCount: 2,

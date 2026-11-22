@@ -1602,7 +1602,7 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
               </p><ul v-else class="mt-3 divide-y divide-default">
                 <li v-for="job in genJobs.jobs.value" :key="job.id" class="flex items-center justify-between gap-3 py-3 text-sm">
                   <div class="min-w-0">
-                    <p class="truncate">{{ modelLabelFor(job.modelId) }}</p>
+                    <p class="break-words [overflow-wrap:anywhere]">{{ modelLabelFor(job.modelId) }}</p>
                     <p v-if="job.estimatedCostCents != null" class="text-xs tabular-nums text-muted">
                       Estimate US${{ (job.estimatedCostCents / 100).toFixed(2) }} ·
                       {{ generationReceiptLabel(job) }}

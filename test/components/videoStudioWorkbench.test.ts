@@ -322,6 +322,10 @@ describe('VideoStudioWorkbench', () => {
 
     expect(html).toContain('Project history')
     expect(html).toMatch(/<main[^>]*class="[^"]* flex"/)
+    // Below lg the split is one shrinkable track, so long history content wraps instead of widening the pane.
+    expect(html).toContain('grid-cols-[minmax(0,1fr)]')
+    expect(html).toContain('lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]')
+    expect(html).toMatch(/data-workspace-pane="history" class="[^"]*w-full min-w-0/)
     expect(html).toContain('History 3')
     expect(html).toContain('Producer content')
     expect(html).toContain('AI clip generation is disabled for this workspace.')
