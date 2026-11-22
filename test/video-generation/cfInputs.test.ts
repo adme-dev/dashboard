@@ -16,7 +16,7 @@ const base = {
 describe('buildCfVideoInputs', () => {
   it('seedance: generic shape passes through with clamped values', () => {
     expect(buildCfVideoInputs('bytedance/seedance-2.0-fast', base)).toEqual({
-      prompt: base.prompt, duration: 5, aspect_ratio: '9:16', resolution: '720p', image: base.image,
+      prompt: base.prompt, duration: 5, aspect_ratio: '9:16', resolution: '720p', image: base.image, generate_audio: false,
     })
     // duration clamped into 4–12
     expect(buildCfVideoInputs('bytedance/seedance-2.0-fast', { ...base, durationSeconds: 20 }).duration).toBe(12)

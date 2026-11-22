@@ -76,7 +76,7 @@ export function buildCfVideoInputs(cfModel: string, req: CfVideoInputRequest): R
       resolution: pickResolution(req.resolution, fullModel ? ['720p', '1080p', '4k'] : ['480p', '720p'], '720p'),
     }
     if (req.image) inputs.image = req.image
-    if (fullModel) inputs.generate_audio = true
+    inputs.generate_audio = fullModel
     return inputs
   }
 

@@ -1,5 +1,5 @@
 import { mockVideoGenerationProvider } from '../../../server/utils/video-generation/providers/mockProvider'
-import { makeAiGatewayProvider } from '../../../server/utils/video-generation/providers/aiGatewayProvider'
+import { makeAiGatewayProvider, VIDEO_GATEWAY_ID, type VideoGatewayLog } from '../../../server/utils/video-generation/providers/aiGatewayProvider'
 import { downloadToR2 } from './downloadToR2'
 import {
   withVideoGenerationDatabase,
@@ -21,7 +21,11 @@ interface Env {
   DATABASE_URL?: string
   HYPERDRIVE?: { connectionString: string }
   HYPERDRIVE_FRESH?: { connectionString: string }
-  AI: { run(model: string, inputs: Record<string, unknown>, options?: any): Promise<any> }
+  AI: {
+    run(model: string, inputs: Record<string, unknown>, options?: any): Promise<any>
+    aiGatewayLogId: string | null
+    gateway(id: string): { getLog(id: string): Promise<VideoGatewayLog> }
+  }
   AUDIO_BUCKET: { put(key: string, value: ArrayBuffer | Uint8Array, options?: any): Promise<unknown> }
 }
 
@@ -71,8 +75,18 @@ export default {
             providers: {
               mock: mockVideoGenerationProvider,
               aigateway: makeAiGatewayProvider({
-              // Faithful passthrough — the provider builds flat model inputs plus gateway metadata.
-                run: (model, inputs, options) => env.AI.run(model, inputs as any, options as any)
+                run: (model, inputs, options) => env.AI.run(model, inputs, options),
+                lastLog: async () => {
+                  const id = env.AI.aiGatewayLogId
+                  if (!id) return null
+                  const gateway = env.AI.gateway(VIDEO_GATEWAY_ID)
+                  try {
+                    return await gateway.getLog(id)
+                  } catch {
+                    await new Promise(resolve => setTimeout(resolve, 750))
+                    return gateway.getLog(id)
+                  }
+                }
               })
             }
           })

@@ -408,6 +408,13 @@ describe('dispatchVideoConfirm', () => {
     expect(deps.enqueue).not.toHaveBeenCalled()
   })
 
+  it('reports revoked access at reservation before dispatch', async () => {
+    const deps = { ...okDeps(), reserve: vi.fn().mockRejectedValue({ statusCode: 403 }) }
+    const r = await dispatchVideoConfirm({ tool_name: 'video_generation', resolved_payload: genPayload }, ctx('admin'), deps)
+    expect(r).toMatchObject({ ok: false, code: 'forbidden', error: expect.stringContaining('Project access changed') })
+    expect(deps.enqueue).not.toHaveBeenCalled()
+  })
+
   it('reused reservation does not re-enqueue', async () => {
     const deps = { ...okDeps(), reserve: vi.fn(async () => ({ ok: true, reused: true, job: { id: 'job-1' } })) }
     const r = await dispatchVideoConfirm({ tool_name: 'video_generation', resolved_payload: genPayload }, ctx('admin'), deps)
