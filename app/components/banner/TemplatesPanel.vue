@@ -27,16 +27,19 @@ function applyTemplate(id: string) {
 }
 
 const applyingBrandTemplate = ref(false)
+const dealerName = ref('')
 async function applySelectedBrandTemplate(variant: 'hero' | 'dual-cta') {
   const selectedKit = kit.value
   if (!selectedKit || applyingBrandTemplate.value) return
+  const project = state.project
+  const selectedDealer = dealerName.value
   applyingBrandTemplate.value = true
   let vehicleImageUrl: string | null = null
   try {
     const brandId = motorstackBrandId(selectedKit.sourceUrl)
     if (brandId) {
       const catalog = await $fetch<MotorstackPreviewCatalog>('/api/agency/banner-studio/motorstack/media', { query: { brandId } })
-      const selected = chooseMotorstackPreview(catalog)
+      const selected = chooseMotorstackPreview(catalog, state.project?.name)
       if (selected) {
         const imported = await $fetch<{ asset: { url: string } }>('/api/agency/banner-studio/motorstack/media', { method: 'POST', body: { brandId, assetId: selected.asset.id } })
         vehicleImageUrl = imported.asset.url
@@ -45,8 +48,10 @@ async function applySelectedBrandTemplate(variant: 'hero' | 'dual-cta') {
   } catch {
     toast.add({ title: 'Vehicle image unavailable', description: 'The brand layout will use its colour background.', color: 'warning' })
   } finally {
-    loadBrandTemplate(selectedKit, variant, vehicleImageUrl)
-    toast.add({ title: 'Brand template applied', description: `${selectedKit.name} layout loaded to all artboards. Undo to restore.`, color: 'success' })
+    if (state.project === project && kit.value?.id === selectedKit.id) {
+      loadBrandTemplate(selectedKit, variant, vehicleImageUrl, selectedDealer)
+      toast.add({ title: 'Brand template applied', description: `${selectedKit.name} layout loaded to all artboards. Undo to restore.`, color: 'success' })
+    }
     applyingBrandTemplate.value = false
   }
 }
@@ -126,6 +131,20 @@ async function applyDbTemplate(tpl: BannerTemplateDB) {
           @click="kitId = brand.id"
         />
       </div>
+      <UFormField
+        v-if="kit"
+        label="Dealer name"
+        help="Optional dealership name shown in every size."
+        class="mb-3"
+      >
+        <UInput
+          v-model="dealerName"
+          placeholder="e.g. Courtney & Patterson Ford"
+          :maxlength="100"
+          :disabled="applyingBrandTemplate"
+          class="w-full"
+        />
+      </UFormField>
       <div v-if="kit" class="grid grid-cols-2 gap-2">
         <UButton label="Hero + CTA" icon="i-lucide-panel-top" variant="soft" size="xs" block :loading="applyingBrandTemplate" @click="applySelectedBrandTemplate('hero')" />
         <UButton label="Two CTAs" icon="i-lucide-panels-top-left" variant="soft" size="xs" block :loading="applyingBrandTemplate" @click="applySelectedBrandTemplate('dual-cta')" />
