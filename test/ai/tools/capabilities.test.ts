@@ -85,8 +85,8 @@ describe('get_capabilities', () => {
 
     expect(result.ok).toBe(true)
     const tools = (result as any).data.tools as Array<{ name: string, mode: string }>
-    // 174 → 181: get_client_change_history (+1) and 6 owner-only marketing phase-3 review tools (+6); get_client_change_history (governance phase 4, read-only client change timeline; dormant switch).
-    expect(tools).toHaveLength(181)
+    // Includes the six active-owner inventory-feed tools.
+    expect(tools).toHaveLength(187)
     expect(tools).toContainEqual({ name: 'get_creative_workspace_capabilities', mode: 'read' })
     expect(tools).toContainEqual({ name: 'search_creative_workspace', mode: 'read' })
     expect(tools).toContainEqual({ name: 'run_adspend_sync', mode: 'inspection' })
@@ -130,7 +130,7 @@ describe('get_capabilities', () => {
     expect((result as any).data.dataSync.adSpend).toHaveProperty('lastRunAt')
     expect((result as any).data.dataSync.adSpend).toHaveProperty('coverageBaselinePresent')
     expect((result as any).data.servedCatalog).toEqual({
-      release: '2026-09-03.1', previousRelease: '2026-09-01.15', toolCount: 181, projectionAuthority: 'shared_with_tools_list',
+      release: '2026-11-23.1', previousRelease: '2026-09-03.1', toolCount: 187, projectionAuthority: 'shared_with_tools_list',
     })
     expect((result as any).data.degraded).toBeUndefined()
   }, 15_000)

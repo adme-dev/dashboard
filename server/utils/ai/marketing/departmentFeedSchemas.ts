@@ -40,6 +40,11 @@ export const departmentFeedChangeSchema = departmentFeedClientSchema.extend({
     platformSettings: departmentFeedPlatformSettingsSchema.optional()
   }).refine(patch => Object.keys(patch).length > 0)
 })
+const { store_code, store_address } = departmentFeedPlatformSettingsSchema.shape
+const ownerPlatformSettings = z.strictObject({ store_code, store_address }).refine(v => Object.keys(v).length > 0)
+export const ownerFeedChangeSchema = departmentFeedChangeSchema.extend({
+  patch: departmentFeedChangeSchema.shape.patch.safeExtend({ platformSettings: ownerPlatformSettings.optional() })
+})
 export const departmentFeedRegenerationSchema = departmentFeedClientSchema.extend({
   feedId,
   format: z.enum(['xml', 'csv']).default('xml')

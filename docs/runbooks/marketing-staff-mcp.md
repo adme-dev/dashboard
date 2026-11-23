@@ -65,6 +65,10 @@ All department writes require the write suite and signed `mcp:write`. Feed opera
 
 This suite does not expose every browser action. Studio-editor checkpoint editing, website rollback/domains/subscriptions, video generation, banner asset upload/brand kits/scheduling, email subscriber/list administration and detailed inbox automation settings remain outside the department MCP catalog. Google HTML5 ad publication is preparation-only. Do not describe these source gaps as provider approval failures or imply that a role grant creates missing tools.
 
+### Owner inventory feed editing
+
+An active owner using their own MCP connection can select a client, list feeds with `owner_get_inventory_feed_health`, and inspect one with `owner_preview_inventory_feed`. Use `owner_propose_inventory_feed_change` for existing-feed activation, pause, filters, mappings or store details, or `owner_propose_inventory_feed_regeneration` for an export. Check the preview, then pass its client, proposal ID, exact revision and acknowledgement to `owner_execute_inventory_feed_change`. Retrieve the receipt with `owner_get_inventory_feed_change`. Each owner can apply only their own preview. Provider receipt and import remain separate checks.
+
 ### Inventory and catalogue repair
 
 The feed suite exposes the complete supported repair sequence to marketing staff with `department_management`, `MARKETING_MANAGEMENT`, current client access and signed write consent. Staff use their own connection; an owner preview does not prove employee access.

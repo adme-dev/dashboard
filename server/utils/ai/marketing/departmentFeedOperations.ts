@@ -24,6 +24,10 @@ import { departmentFeedOperationSchemas } from './departmentFeedSchemas'
 import { mergeFeedMappings, mergeFeedPlatformSettings, type MappingUpdate, type PlatformSettingsPatch } from './departmentFeedMapping'
 import { fail, ok, type ToolContext, type ToolResult } from '../toolContext'
 
+import type { TrustedSupplementalExecutionServices } from '../godModeExecution'
+import { getMcpRequestGodModeAuthority } from '../mcp/requestClaim'
+import { isActiveGodModeAuthority } from '~~/server/utils/godMode/authority'
+
 const ACTION = 'department_inventory_feed_change'
 const MUTATIONS = new Set([
   'marketing_propose_inventory_feed_setup',
@@ -193,6 +197,7 @@ interface FeedOperationInput {
 }
 interface Payload {
   version: 1
+  ownerPrepared?: true
   clientId: string
   requestKey: string
   requestDigest: string
@@ -225,7 +230,11 @@ interface Row {
 function allowsFeedLeadExecution(p: Payload) {
   if (p.operation === 'regenerate') return true
   if (p.operation !== 'change' || !p.input.patch) return false
-  return Object.keys(p.input.patch.platformSettings ?? {}).every(key => ['store_code', 'store_address'].includes(key))
+  return supportedExistingFeedSettings(p.input)
+}
+
+function supportedExistingFeedSettings(input: FeedOperationInput) {
+  return Object.keys(input.patch?.platformSettings ?? {}).every(key => ['store_code', 'store_address'].includes(key))
 }
 const feedLeadGrant = `SELECT id FROM client_team_assignments
   WHERE team_member_id=$1 AND client_id=$2 AND can_manage_inventory_feed_directly`
@@ -245,7 +254,7 @@ async function proposalView(row: Row) {
     status: row.status,
     expiresAt: row.expires_at,
     requiresAck: true,
-    requiresIndependentReview: row.status === 'proposed' && new Date(row.expires_at).getTime() > Date.now() && !await hasFeedLeadGrant(row),
+    requiresIndependentReview: row.status === 'proposed' && new Date(row.expires_at).getTime() > Date.now() && !p.ownerPrepared && !await hasFeedLeadGrant(row),
     review: p.review
       ? {
           decision: p.review.decision,
@@ -294,7 +303,8 @@ async function readProposal(
   ctx: ToolContext,
   id: string,
   clientId: string,
-  access: 'owner' | 'reviewer' | 'either' = 'owner'
+  access: 'owner' | 'reviewer' | 'either' = 'owner',
+  ownerPrepared = false
 ): Promise<Row> {
   const row = await queryOneFresh<Row>(
     `SELECT id, user_id, tool_name, status, expires_at, confirmed_by, resolved_payload, result_payload, result_ref FROM ai_pending_actions
@@ -305,6 +315,7 @@ async function readProposal(
     !row
     || row.tool_name !== ACTION
     || row.resolved_payload?.version !== 1
+    || (row.resolved_payload.ownerPrepared === true) !== ownerPrepared
     || row.resolved_payload.clientId !== clientId
     || (access === 'owner' && row.user_id !== ctx.userId)
     || (access === 'reviewer' && row.user_id === ctx.userId)
@@ -337,7 +348,8 @@ async function propose(
   input: FeedOperationInput,
   ctx: ToolContext,
   key: string,
-  digest: string
+  digest: string,
+  owner?: TrustedSupplementalExecutionServices
 ) {
   const intentHash = hash({ name, input })
   // Transaction-scoped advisory lock serializes concurrent retries using the existing durable table.
@@ -354,13 +366,15 @@ async function propose(
     ).rows[0] as Row | undefined
     if (prior) {
       if (
-        prior.resolved_payload.intentHash !== intentHash
+        (prior.resolved_payload.ownerPrepared === true) !== !!owner
+        || prior.resolved_payload.intentHash !== intentHash
         || prior.resolved_payload.requestDigest !== digest
       )
         stop(
           'Idempotency key belongs to a different request.',
           'idempotency_conflict'
         )
+      if (owner) return fail('Proposal already exists. Read its saved status.', 'already_prepared', { proposalId: prior.id })
       return ok(await proposalView(prior))
     }
     const loaded = await load(ctx, input.clientId)
@@ -371,6 +385,7 @@ async function propose(
     const revision = hash({ input, before, mapping: loaded.link })
     const payload: Payload = {
       version: 1,
+      ...(owner ? { ownerPrepared: true as const } : {}),
       clientId: input.clientId,
       requestKey: key,
       requestDigest: digest,
@@ -385,6 +400,7 @@ async function propose(
       revision,
       preview: previewView(preview)
     }
+    await owner?.markDispatched()
     const row = (
       await db.query(
         `INSERT INTO ai_pending_actions (user_id, tool_name, resolved_payload, status, source, conversation_id)
@@ -425,13 +441,15 @@ async function review(
 }
 async function execute(
   input: FeedOperationInput,
-  initial: ToolContext
+  initial: ToolContext,
+  owner?: TrustedSupplementalExecutionServices
 ): Promise<ToolResult> {
   let ctx = initial
-  const row = await readProposal(ctx, input.proposalId!, input.clientId)
+  const row = await readProposal(ctx, input.proposalId!, input.clientId, 'owner', !!owner)
   const payload = row.resolved_payload
   if (input.ack !== true || input.expectedRevision !== payload.revision)
     stop('Exact feed revision acknowledgement required.', 'revision_conflict')
+  if (owner && row.status === 'executed') return fail('Already claimed. Read the saved proposal outcome.', 'already_claimed', { proposalId: row.id })
   if (row.status === 'executed')
     return row.result_payload
       ? ok(row.result_payload)
@@ -440,12 +458,12 @@ async function execute(
           'reconciliation_required'
         )
   const reviewerId = payload.review?.reviewerId
-  const direct = row.status === 'proposed' && !payload.review && row.confirmed_by == null && await hasFeedLeadGrant(row)
+  const direct = row.status === 'proposed' && !payload.review && row.confirmed_by == null && (owner ? allowsFeedLeadExecution(payload) : await hasFeedLeadGrant(row))
   const peerApproved = row.status === 'approved' && payload.review?.decision === 'approved'
     && !!reviewerId && reviewerId !== row.user_id && row.confirmed_by === reviewerId
   if ((!direct && !peerApproved) || new Date(row.expires_at).getTime() <= Date.now())
     stop('An unexpired approval or an assigned feed lead grant is required.', 'approval_required')
-  await requireCurrentProposer(ctx, row)
+  if (!owner) await requireCurrentProposer(ctx, row)
   if (!direct) await requireProposalReviewer(ctx, row, reviewerId)
   const loaded = await load(ctx, input.clientId)
   const before = await baseline(loaded, payload.input, payload.operation === 'setup')
@@ -459,12 +477,15 @@ async function execute(
       'revision_conflict'
     )
   // Refresh permission/grant/client immediately before durable claim and provider dispatch.
-  ctx = await requireMarketingDepartment(ctx, true)
+  ctx = owner ? await requireOwnerFeedContext(ctx) : await requireMarketingDepartment(ctx, true)
   await requireClient(ctx, input.clientId)
   const claimed = await transactionWithoutRetry(async db => {
     // Serialize the grant check with assignment revocation and the one-shot claim.
-    if (direct && !(await db.query(feedLeadGrant + ' FOR SHARE', [ctx.userId, input.clientId])).rows.length)
+    if (owner && !(await db.query(activeOwnerSql + ' FOR SHARE', [ctx.userId])).rows.length)
+      stop('Active owner required.', 'forbidden')
+    if (!owner && direct && !(await db.query(feedLeadGrant + ' FOR SHARE', [ctx.userId, input.clientId])).rows.length)
       stop('Feed lead grant is no longer active.', 'approval_required')
+    await owner?.markDispatched()
     return (await db.query(
       `UPDATE ai_pending_actions SET status = 'executed', executed_at = NOW(), confirmed_by = COALESCE(confirmed_by, $2)
        WHERE id = $1 AND user_id = $2 AND source = 'mcp' AND tool_name = $3 AND status = $6
@@ -546,7 +567,7 @@ async function execute(
       revision: payload.revision,
       feed: feedView(readback),
       ...(generation ? { generation } : {}),
-      authorization: direct ? 'assigned_feed_lead' : 'independent_review',
+      authorization: owner ? 'active_owner' : direct ? 'assigned_feed_lead' : 'independent_review',
       readbackVerified: true,
       providerDeliveryVerified: false
     }
@@ -576,6 +597,40 @@ async function execute(
     )
   }
 }
+const activeOwnerSql = "SELECT email FROM team_members WHERE id=$1 AND is_active AND user_role='owner'"
+
+async function requireOwnerFeedContext(ctx: ToolContext): Promise<ToolContext> {
+  if (!isActiveGodModeAuthority(getMcpRequestGodModeAuthority(ctx.event, ctx.userId), ctx.userId))
+    stop('Verified owner MCP request required.', 'forbidden')
+  const actor = await queryOneFresh<{ email: string }>(activeOwnerSql, [ctx.userId])
+  if (!actor?.email) stop('Active owner identity required.', 'forbidden')
+  return { ...ctx, userEmail: actor.email, assistantScope: ctx.assistantScope ?? { departmentIds: [], catalogReleaseIds: [], assignedClientIds: [], clientAccessMode: 'all_active' } }
+}
+
+export async function runOwnerFeedOperation(name: string, raw: unknown, initial: ToolContext, owner?: TrustedSupplementalExecutionServices): Promise<ToolResult> {
+  try {
+    const ctx = await requireOwnerFeedContext(initial)
+    const schema = departmentFeedOperationSchemas[name as keyof typeof departmentFeedOperationSchemas]
+    const parsed = schema?.safeParse(raw)
+    if (!parsed?.success) return fail('Invalid owner feed operation.', 'bad_args')
+    const input = parsed.data as FeedOperationInput
+    await requireClient(ctx, input.clientId)
+    if (name === 'marketing_get_inventory_feed_change')
+      return ok(await proposalView(await readProposal(ctx, input.proposalId!, input.clientId, 'owner', true)))
+    if (name === 'marketing_get_inventory_feed_health' || name === 'marketing_preview_inventory_feed')
+      return await readFeed(name, input, ctx)
+    if (!owner || !/^mcp:[0-9a-f]{64}$/.test(ctx.godModeExecutionKey ?? ''))
+      return fail('Owner execution coordinator required.', 'coordinator_required')
+    if (name === 'marketing_execute_inventory_feed_change') return await execute(input, ctx, owner)
+    if (name !== 'marketing_propose_inventory_feed_change' && name !== 'marketing_propose_inventory_feed_regeneration')
+      return fail('Unsupported owner operation.', 'bad_args')
+    if (!supportedExistingFeedSettings(input)) return fail('Destination changes require a separate workflow.', 'bad_args')
+    return await propose(name, input, ctx, ctx.godModeExecutionKey!, hash({ name, input }), owner)
+  } catch (error) {
+    return fail('Owner feed operation unavailable. Check the client, proposal and provider.', (error as { feedCode?: string }).feedCode ?? 'unavailable')
+  }
+}
+
 export async function runDepartmentFeedOperation(
   name: string,
   raw: unknown,
@@ -609,56 +664,7 @@ export async function runDepartmentFeedOperation(
     if (name === 'marketing_execute_inventory_feed_change')
       return await execute(input, ctx)
     if (write) return await propose(name, input, ctx, key!, digest!)
-    const loaded = await load(ctx, input.clientId)
-    if (name === 'marketing_preview_inventory_feed') {
-      const detail = await scopedFeed(loaded, input.feedId!)
-      const preview = await loaded.provider.previewFeed(
-        loaded.providerContext,
-        loaded.link,
-        ref(loaded.link, detail),
-        { limit: input.limit, offset: 0 }
-      )
-      return ok({
-        clientId: input.clientId,
-        feed: feedView(detail),
-        ...previewView(preview),
-        previewLimit: input.limit
-      })
-    }
-    const list = await loaded.provider.listFeeds(
-      loaded.providerContext,
-      loaded.link
-    )
-    const feeds = []
-    for (const summary of list.slice(0, 50)) {
-      const detail = await loaded.provider.getFeed(loaded.providerContext, {
-        providerId: loaded.link.providerId,
-        feedId: summary.id,
-        platform: summary.platform
-      })
-      if (!sellerScoped(detail, loaded.link)) continue
-      const preview = await loaded.provider.previewFeed(
-        loaded.providerContext,
-        loaded.link,
-        ref(loaded.link, detail),
-        { limit: 100, offset: 0 }
-      )
-      const { items: _items, ...health } = previewView(preview)
-      feeds.push({ ...feedView(detail), ...health })
-    }
-    return ok({
-      clientId: input.clientId,
-      feeds,
-      providerReadAt: new Date().toISOString(),
-      complete: list.length <= 50,
-      dataStatus: feeds.length ? 'available' : 'no_scoped_feeds',
-      providerDeliveryVerified: false,
-      unavailableOperations: [
-        'supplier connection/credential changes require verified seller/org ownership',
-        'Meta catalogue/product-set changes require client/catalogue/set binding validation',
-        'raw inventory edits and Google Merchant Center ingestion/approval have no department executor'
-      ]
-    })
+    return await readFeed(name, input, ctx)
   } catch (error) {
     const safe = error as { feedCode?: string, statusMessage?: string }
     return fail(
@@ -668,4 +674,57 @@ export async function runDepartmentFeedOperation(
       safe.feedCode ?? 'unavailable'
     )
   }
+}
+
+async function readFeed(name: string, input: FeedOperationInput, ctx: ToolContext) {
+  const loaded = await load(ctx, input.clientId)
+  if (name === 'marketing_preview_inventory_feed') {
+    const detail = await scopedFeed(loaded, input.feedId!)
+    const preview = await loaded.provider.previewFeed(
+      loaded.providerContext,
+      loaded.link,
+      ref(loaded.link, detail),
+      { limit: input.limit, offset: 0 }
+    )
+    return ok({
+      clientId: input.clientId,
+      feed: feedView(detail),
+      ...previewView(preview),
+      previewLimit: input.limit
+    })
+  }
+  const list = await loaded.provider.listFeeds(
+    loaded.providerContext,
+    loaded.link
+  )
+  const feeds = []
+  for (const summary of list.slice(0, 50)) {
+    const detail = await loaded.provider.getFeed(loaded.providerContext, {
+      providerId: loaded.link.providerId,
+      feedId: summary.id,
+      platform: summary.platform
+    })
+    if (!sellerScoped(detail, loaded.link)) continue
+    const preview = await loaded.provider.previewFeed(
+      loaded.providerContext,
+      loaded.link,
+      ref(loaded.link, detail),
+      { limit: 100, offset: 0 }
+    )
+    const { items: _items, ...health } = previewView(preview)
+    feeds.push({ ...feedView(detail), ...health })
+  }
+  return ok({
+    clientId: input.clientId,
+    feeds,
+    providerReadAt: new Date().toISOString(),
+    complete: list.length <= 50,
+    dataStatus: feeds.length ? 'available' : 'no_scoped_feeds',
+    providerDeliveryVerified: false,
+    unavailableOperations: [
+      'supplier connection/credential changes require verified seller/org ownership',
+      'Meta catalogue/product-set changes require client/catalogue/set binding validation',
+      'raw inventory edits and Google Merchant Center ingestion/approval have no department executor'
+    ]
+  })
 }
