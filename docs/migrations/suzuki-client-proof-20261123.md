@@ -47,3 +47,35 @@ XeroFlow already has the project assigned to Peter Davey Suzuki, client
 bbb6bc08-ecc0-45b7-99f3-349fadfe1333. Its Xero contact binding was null at check.
 The user says it trades under another name; that name was requested before any
 accounting contact or binding change, to avoid an incorrect duplicate.
+
+## Production acceptance
+
+PR #977 merged as `0bef28b9cc48259647314141adb7574856d0f928`. Guarded source and
+target checks, production build and upload passed. Production deployment
+`e09f786c-ba57-40e7-976f-75ca6f1616f9` uses that source on agency-dashboard/main.
+Fresh main readback matched the deployed application commit.
+
+The live sharing dialog offered the expected 22 November Video Studio render,
+job 234d1798-3bb9-4b89-8957-b501acaf6006, native reels_9x16. Attaching it streamed
+the actual stored MP4 into project-scoped proof storage. The team viewer updated
+to its native player, and the dialog enabled client link creation only after the
+attachment was ready. A seven-day client link was created, expiring 30 November
+2026 Melbourne time; its capability token is kept in private evidence, not Git.
+
+The actual anonymously delivered client MP4 is 40652216 bytes, SHA-256
+`58e2304741a5b9505d6bc6ccc2fbb0227c522258de1512d840125ba74fa74bb3`.
+This exactly matches both the downloaded source and the earlier qualified native
+ReelMotion output in the render-container qualification ledger. Full FFmpeg decode
+passed. The file contains 40.2 seconds, 1206 H.264 frames at 30 fps, 1080×1920, and AAC
+audio. Prefix/suffix ranges returned 206; an invalid range returned 416. The public
+page uses a native MP4 player and zero HTML5 iframes. Playback was observed
+advancing to 38.446 seconds at readyState 4, beyond the old 30-second cutoff.
+QR Codes navigation loaded, and the accepted saved canvas remained JSON-identical
+to its pre-check snapshot. Its JPEG poster returned 200, 675×1200,
+140449 bytes, with the readable Suzuki/Rhino scene shown before playing.
+
+The user subsequently instructed that the Xero/contact setup be left for the
+moment because the earlier work may have been testing. No Xero contact was created
+or linked. That accounting task is paused; it does not block the creative proof.
+No client message was sent. The original creative remains editable, and the
+colleague's unrelated analytics edits remain untouched.
