@@ -244,7 +244,7 @@ const approve = async (proposal: any) => {
     expectedRevision: data.revision,
     decision: 'approved'
   }, reviewer)
-  expect(result, JSON.stringify(result)).toMatchObject({ ok: true })
+  expect(result, JSON.stringify(result)).toMatchObject({ ok: true, data: { status: 'approved', requiresIndependentReview: false } })
 }
 beforeEach(() => {
   Object.assign(state, {
@@ -665,8 +665,45 @@ describe('department inventory boundary', () => {
     state.loseGrantAtClaim = false
     expect(await run('marketing_execute_inventory_feed_change', args)).toMatchObject({ ok: true, data: { authorization: 'assigned_feed_lead', readbackVerified: true } })
     expect((await run('marketing_execute_inventory_feed_change', args)).ok).toBe(true)
+    expect(await run('marketing_get_inventory_feed_change', { clientId, proposalId })).toMatchObject({ data: { status: 'executed', requiresIndependentReview: false } })
+    expect(await run('marketing_propose_inventory_feed_change', { clientId, feedId: 'feed-1', patch: { isActive: true } })).toMatchObject({ data: { status: 'executed', requiresIndependentReview: false } })
     expect(state.detail.isActive).toBe(true)
     expect(state.updates).toBe(1)
+  })
+  it.each([
+    ['setup', true, false],
+    ['regenerate', true, true],
+    ['regenerate', false, false],
+    ['store', true, true],
+    ['store', false, false],
+    ['mixed', true, false],
+    ['other client', true, false]
+  ] as const)('checks direct execution for %s with grant %s', async (kind, grant, allowed) => {
+    state.lead = grant
+    const target = kind === 'other client' ? '77777777-7777-4777-8777-777777777777' : clientId
+    state.link.clientId = target
+    const proposal = kind === 'setup' ? await setup()
+      : kind === 'regenerate' ? await run('marketing_propose_inventory_feed_regeneration', { clientId: target, feedId: 'feed-1', format: 'xml' })
+        : await run('marketing_propose_inventory_feed_change', { clientId: target, feedId: 'feed-1', patch: {
+          platformSettings: { store_code: 'Store3156', store_address: '1 Test Road', ...(kind === 'mixed' ? { fb_page_id: '123' } : {}) }
+        } })
+    expect(proposal).toMatchObject({ ok: true, data: { requiresIndependentReview: !allowed } })
+    const { proposalId, revision } = (proposal as any).data
+    const args = { clientId: target, proposalId, expectedRevision: revision, ack: true }
+    const exec = () => run('marketing_execute_inventory_feed_change', args)
+    expect((await exec()).ok).toBe(allowed)
+    if (allowed) expect(await exec()).toMatchObject({ ok: true, data: { authorization: 'assigned_feed_lead' } })
+    expect(state.updates + state.generates + state.creates).toBe(Number(allowed))
+  })
+  it.each(['revoked', 'expired', 'rejected'])('denies a previously eligible lead after the proposal is %s', async reason => {
+    state.lead = true
+    const proposal = await run('marketing_propose_inventory_feed_change', { clientId, feedId: 'feed-1', patch: { isActive: false } })
+    const { proposalId, revision } = (proposal as any).data
+    if (reason === 'revoked') state.lead = false
+    if (reason === 'expired') state.rows[0].expires_at = '2000-01-01'
+    if (reason === 'rejected') expect((await run('marketing_review_inventory_feed_change', { clientId, proposalId, expectedRevision: revision, decision: 'rejected' }, reviewer)).ok).toBe(true)
+    expect((await run('marketing_execute_inventory_feed_change', { clientId, proposalId, expectedRevision: revision, ack: true })).ok).toBe(false)
+    expect(state.updates).toBe(0)
   })
   it('retains independent review for a lead changing a destination', async () => {
     state.lead = true
@@ -757,6 +794,8 @@ describe('department inventory boundary', () => {
       generation: { format: 'xml', itemCount: 2 },
       providerDeliveryVerified: false
     } })
+    expect(executed).toMatchObject({ data: { authorization: 'independent_review' } })
+    expect(state.rows[0].confirmed_by).toBe(reviewer.userId)
     expect(JSON.stringify(executed)).not.toContain('secret')
     expect(await run('marketing_execute_inventory_feed_change', args)).toEqual(executed)
     expect(state.generates).toBe(1)

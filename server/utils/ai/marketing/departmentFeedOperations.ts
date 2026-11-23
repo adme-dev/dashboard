@@ -245,7 +245,7 @@ async function proposalView(row: Row) {
     status: row.status,
     expiresAt: row.expires_at,
     requiresAck: true,
-    requiresIndependentReview: !(row.status === 'proposed' && await hasFeedLeadGrant(row)),
+    requiresIndependentReview: row.status === 'proposed' && new Date(row.expires_at).getTime() > Date.now() && !await hasFeedLeadGrant(row),
     review: p.review
       ? {
           decision: p.review.decision,
