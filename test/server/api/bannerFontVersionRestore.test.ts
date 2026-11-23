@@ -6,7 +6,7 @@ vi.mock('~~/server/utils/db', () => ({ transaction: async (fn: (db: unknown) => 
   return fn({ query: m.query })
 } }))
 vi.mock('~~/server/utils/auth', () => ({ requireAuth: async () => ({ id: 'staff' }) }))
-vi.mock('~~/server/utils/social/clientAccess', () => ({ requireSocialClientAccess: m.access }))
+vi.mock('~~/server/utils/banner/clientAccess', () => ({ requireBannerClientAccess: m.access }))
 vi.stubGlobal('defineEventHandler', (fn: unknown) => fn)
 vi.stubGlobal('readBody', async () => ({ versionId: 'version' }))
 vi.stubGlobal('createError', (input: { statusMessage: string }) => Object.assign(new Error(input.statusMessage), input))

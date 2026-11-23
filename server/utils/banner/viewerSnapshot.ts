@@ -2,7 +2,7 @@ import type { H3Event } from 'h3'
 import { createHash } from 'node:crypto'
 import { queryOneFresh } from '~~/server/utils/db'
 import { requireAuth, requireWriteAccess } from '~~/server/utils/auth'
-import { hasAllSocialClientAccess, requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
+import { hasAllBannerClientAccess, requireBannerClientAccess } from '~~/server/utils/banner/clientAccess'
 import { readStoredObject, uploadFile, type R2BucketBinding } from '~~/server/utils/storage'
 
 const MAX_BYTES = 16 * 1024 * 1024
@@ -33,8 +33,8 @@ export async function authorizedBannerSnapshot(event: H3Event, write = false) {
     `SELECT p.id, p.name, p.canvas_data AS "canvasData", p.client_id AS "clientId", c.name AS "clientName", p.created_by AS "createdBy"
      FROM banner_projects p LEFT JOIN agency_clients c ON c.id = p.client_id WHERE p.id = $1`, [id])
   if (!project) throw createError({ statusCode: 404, statusMessage: 'Project not found' })
-  if (project.clientId) await requireSocialClientAccess(event, project.clientId)
-  else if (project.createdBy !== user.id && !hasAllSocialClientAccess(user)) throw createError({ statusCode: 403, statusMessage: 'No access to this project' })
+  if (project.clientId) await requireBannerClientAccess(event, project.clientId)
+  else if (project.createdBy !== user.id && !await hasAllBannerClientAccess(user)) throw createError({ statusCode: 403, statusMessage: 'No access to this project' })
   return bannerViewerSnapshot(project)
 }
 

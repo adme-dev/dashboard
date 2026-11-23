@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const mocks = vi.hoisted(() => ({ auth: vi.fn(), query: vi.fn(), execute: vi.fn(), access: vi.fn() }))
 vi.mock('~~/server/utils/auth', () => ({ requireWriteAccess: mocks.auth }))
 vi.mock('~~/server/utils/db', () => ({ queryOneFresh: mocks.query, execute: mocks.execute }))
-vi.mock('~~/server/utils/social/clientAccess', () => ({ requireSocialClientAccess: mocks.access, hasAllSocialClientAccess: () => false, isSocialClientId: () => true }))
+vi.mock('~~/server/utils/banner/clientAccess', () => ({ requireBannerClientAccess: mocks.access, hasAllBannerClientAccess: () => false, isBannerClientId: () => true }))
 vi.stubGlobal('defineEventHandler', (handler: unknown) => handler)
 const handler = (await import('~~/server/api/agency/banner-studio/export-video/jobs/[id]/retry.post')).default
 const id = '11111111-1111-4111-8111-111111111111'

@@ -1,10 +1,10 @@
 import { requireAuth } from '~~/server/utils/auth'
 import { queryRowsFresh } from '~~/server/utils/db'
-import { hasAllSocialClientAccess, hasSocialClientPermission } from '~~/server/utils/social/clientAccess'
+import { hasAllBannerClientAccess, hasBannerClientPermission } from '~~/server/utils/banner/clientAccess'
 
 export default defineEventHandler(async (event) => {
   const user = await requireAuth(event)
-  if (!hasAllSocialClientAccess(user) && !hasSocialClientPermission(user)) {
+  if (!await hasAllBannerClientAccess(user) && !hasBannerClientPermission(user)) {
     throw createError({ statusCode: 403, statusMessage: 'No access to the banner library' })
   }
   // Shared agency folder metadata only. Project lists retain their client/owner scope.

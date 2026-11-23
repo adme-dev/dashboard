@@ -1,5 +1,5 @@
 import { validateCanvasFontAssets } from '~~/server/utils/banner/fontAssets'
-import { requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
+import { requireBannerClientAccess } from '~~/server/utils/banner/clientAccess'
 import { transaction } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
 
@@ -17,7 +17,7 @@ export default defineEventHandler(async (event) => {
       SELECT canvas_data, client_id FROM banner_projects WHERE id = $1 FOR UPDATE
     `, [version.projectId])).rows[0]
     if (!project) throw createError({ statusCode: 404, statusMessage: 'Project not found' })
-    if (project.client_id) await requireSocialClientAccess(event, project.client_id)
+    if (project.client_id) await requireBannerClientAccess(event, project.client_id)
     await validateCanvasFontAssets(version.canvasData, project.client_id, db)
     await db.query(`
       INSERT INTO banner_versions (project_id, version_number, canvas_data, label, created_by)

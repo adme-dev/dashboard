@@ -4,7 +4,7 @@ import handler from '../../../server/api/agency/banner-studio/ai/design-assist.p
 const mocks = vi.hoisted(() => ({ write: vi.fn(), scope: vi.fn(), project: vi.fn(), assets: vi.fn(), kit: vi.fn(), edge: vi.fn(), groq: vi.fn(), assignment: vi.fn(), references: vi.fn(), styleGuide: vi.fn() }))
 vi.mock('h3', async importOriginal => ({ ...await importOriginal<typeof import('h3')>(), readBody: async (event: { body: unknown }) => event.body }))
 vi.mock('~~/server/utils/auth', () => ({ requireWriteAccess: mocks.write }))
-vi.mock('~~/server/utils/social/clientAccess', () => ({ requireSocialClientScope: mocks.scope }))
+vi.mock('~~/server/utils/banner/clientAccess', () => ({ requireBannerClientScope: mocks.scope }))
 vi.mock('~~/server/utils/db', () => ({ queryOneFresh: mocks.project, queryRowsFresh: mocks.assets }))
 vi.mock('~~/server/utils/banner/brandKits', () => ({ getDefaultBrandKitForClient: mocks.kit, brandContextBlock: (kit: { name: string }) => kit?.name || '' }))
 vi.mock('~~/server/utils/banner/designReferences', () => ({ resolveDesignReferences: mocks.references, loadDesignClientStyleGuide: mocks.styleGuide }))

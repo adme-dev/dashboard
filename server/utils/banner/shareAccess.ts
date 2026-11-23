@@ -1,6 +1,6 @@
 import type { H3Event } from 'h3'
 import { queryOneFresh } from '~~/server/utils/db'
-import { hasAllSocialClientAccess, requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
+import { hasAllBannerClientAccess, requireBannerClientAccess } from '~~/server/utils/banner/clientAccess'
 import { isMarketingPortfolioUser, requireMarketingBannerProjectAccess } from '~~/server/utils/banner/marketingProjectAccess'
 import type { User } from '~~/server/utils/auth'
 
@@ -12,8 +12,8 @@ export async function requireBannerShareAccess(event: H3Event, user: User, proje
     'SELECT client_id, created_by, tags FROM banner_projects WHERE id = $1', [projectId])
   if (!project) throw createError({ statusCode: 404, statusMessage: 'Project not found' })
   if (isMarketingPortfolioUser(user)) await requireMarketingBannerProjectAccess(event, user, project)
-  else if (project.client_id) await requireSocialClientAccess(event, project.client_id)
-  else if (project.created_by !== user.id && !hasAllSocialClientAccess(user)) {
+  else if (project.client_id) await requireBannerClientAccess(event, project.client_id)
+  else if (project.created_by !== user.id && !await hasAllBannerClientAccess(user)) {
     throw createError({ statusCode: 403, statusMessage: 'No access to this project' })
   }
   return project

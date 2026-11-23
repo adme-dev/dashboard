@@ -18,9 +18,9 @@ const queryRows = vi.fn()
 const queryOneFresh = vi.fn()
 const clientAccess = vi.fn()
 const allClientAccess = vi.fn()
-vi.mock('~~/server/utils/social/clientAccess', () => ({
-  requireSocialClientAccess: (...args: unknown[]) => clientAccess(...args),
-  hasAllSocialClientAccess: (...args: unknown[]) => allClientAccess(...args)
+vi.mock('~~/server/utils/banner/clientAccess', () => ({
+  requireBannerClientAccess: (...args: unknown[]) => clientAccess(...args),
+  hasAllBannerClientAccess: (...args: unknown[]) => allClientAccess(...args)
 }))
 
 vi.mock('~~/server/utils/auth', () => ({

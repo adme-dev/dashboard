@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { bannerEffectRecipeSchema } from '~~/shared/bannerEffects'
 import { requireWriteAccess } from '~~/server/utils/auth'
 import { queryOne } from '~~/server/utils/db'
-import { requireSocialClientScope } from '~~/server/utils/social/clientAccess'
+import { requireBannerClientScope } from '~~/server/utils/banner/clientAccess'
 import { requireBannerEffectProject } from '~~/server/utils/banner/effectScope'
 import { resolveDesignReferences } from '~~/server/utils/banner/designReferences'
 
@@ -16,7 +16,7 @@ export default defineEventHandler(async (event) => {
   const project = await requireBannerEffectProject(event, projectId)
   const clientId = scope === 'client' ? project.client_id : null
   if (scope === 'client' && !clientId) throw createError({ statusCode: 400, statusMessage: 'Assign this project to a client first' })
-  if (scope === 'agency') await requireSocialClientScope(event, undefined)
+  if (scope === 'agency') await requireBannerClientScope(event, undefined)
   if (recipe.referenceIds.length) {
     const refProject = await requireBannerEffectProject(event, recipe.referenceProjectId)
     if (refProject.client_id !== clientId) throw createError({ statusCode: 403, statusMessage: 'References must belong to the preset client or agency scope' })

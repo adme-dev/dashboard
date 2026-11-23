@@ -4,7 +4,7 @@ const m = vi.hoisted(() => ({ rows: vi.fn(), query: vi.fn(), access: vi.fn(), al
 vi.mock('~~/server/utils/db', () => ({ queryRowsFresh: m.rows, transaction: async (fn: (db: unknown) => unknown) => fn({ query: m.query }) }))
 vi.mock('~~/server/utils/auth', () => ({ requireAuth: async () => m.user, requireRole: async () => m.user }))
 vi.mock('~~/server/utils/clientScoping', () => ({ hasFreshMarketingManagementPermission: async () => true }))
-vi.mock('~~/server/utils/social/clientAccess', () => ({ hasSocialClientPermission: () => true, hasAllSocialClientAccess: () => false, requireSocialClientAccess: m.access, requireAllSocialClientAccess: m.all }))
+vi.mock('~~/server/utils/banner/clientAccess', () => ({ hasBannerClientPermission: () => true, hasAllBannerClientAccess: () => false, requireBannerClientAccess: m.access, requireAllBannerClientAccess: m.all }))
 vi.mock('~~/server/utils/banner/fontDelivery', () => ({ withBannerFontDelivery: async (_event: unknown, fonts: unknown[]) => fonts }))
 vi.mock('~~/server/utils/bannerStorage', () => ({ deleteBannerFile: m.remove }))
 vi.mock('~~/server/utils/banner/assetDelivery', () => ({ resolveBannerAssetDelivery: () => ({ nativeUpload: { bucket: 'native-bucket' } }) }))

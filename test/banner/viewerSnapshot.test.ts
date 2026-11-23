@@ -4,7 +4,7 @@ import type { H3Event } from 'h3'
 const m = vi.hoisted(() => ({ user: { id: 'owner' }, project: null as any, access: vi.fn(), fallbackWrite: vi.fn() }))
 vi.mock('~~/server/utils/db', () => ({ queryOneFresh: vi.fn(async () => m.project) }))
 vi.mock('~~/server/utils/auth', () => ({ requireAuth: async () => m.user, requireWriteAccess: async () => m.user }))
-vi.mock('~~/server/utils/social/clientAccess', () => ({ hasAllSocialClientAccess: () => false, requireSocialClientAccess: (...a: any[]) => m.access(...a) }))
+vi.mock('~~/server/utils/banner/clientAccess', () => ({ hasAllBannerClientAccess: () => false, requireBannerClientAccess: (...a: any[]) => m.access(...a) }))
 vi.mock('~~/server/utils/storage', () => ({ uploadFile: (...a: any[]) => m.fallbackWrite(...a), readStoredObject: vi.fn() }))
 vi.stubGlobal('createError', (x: any) => Object.assign(new Error(x.statusMessage), x))
 vi.stubGlobal('getRouterParam', () => '44444444-4444-4444-8444-444444444444')

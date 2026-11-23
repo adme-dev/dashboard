@@ -3,7 +3,7 @@ import { deliverBannerVideo, isSafeVideoKey } from '~~/server/utils/banner/video
 
 import { requireAuth } from '~~/server/utils/auth'
 import { queryOneFresh } from '~~/server/utils/db'
-import { hasAllSocialClientAccess, requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
+import { hasAllBannerClientAccess, requireBannerClientAccess } from '~~/server/utils/banner/clientAccess'
 
 const JOB_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 function notFound(): never {
@@ -41,8 +41,8 @@ export default defineEventHandler(async (event) => {
     storageUnavailable('Banner video delivery is unavailable')
   }
   if (!job || job.id !== id || job.status !== 'done' || !isSafeVideoKey(job.r2_key, job.project_id)) notFound()
-  if (job.client_id) await requireSocialClientAccess(event, job.client_id)
-  else if (job.created_by !== user.id && !hasAllSocialClientAccess(user)) {
+  if (job.client_id) await requireBannerClientAccess(event, job.client_id)
+  else if (job.created_by !== user.id && !await hasAllBannerClientAccess(user)) {
     throw createError({ statusCode: 403, statusMessage: 'No access to this project' })
   }
 

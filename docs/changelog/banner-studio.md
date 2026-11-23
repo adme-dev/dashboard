@@ -1,5 +1,24 @@
 # Banner Studio change log
 
+## Creative team library access — pending release (23 November 2026)
+
+An active, current Creative permission grants automatic access to all Banner Studio
+clients, folder contents, projects, assets, brand kits, saved viewers and downloads.
+Individual client assignments are no longer required for that creative workspace;
+new client artwork becomes available automatically. This covers the Creative and
+Producer system roles and custom roles explicitly granted Creative permission.
+
+The grant is specific to Banner Studio. It does not add client assignments or change
+finance, billing, social account or publishing permissions. Other roles keep their
+existing scope, and the marketing-management protected-artwork rules remain in place.
+The new full-library authority is checked against the current active member and
+selected database role; a stale Creative session cannot retain it after revocation.
+
+Validation on Node 24.18.0: 839 tests passed and one skipped across the Banner Studio,
+creative access, finance, social, QR and deployment-guard checks. One existing
+rectangle-gradient rendering test fails identically on unchanged main. The new
+creative access helper and regression suite pass lint. Deployment is pending.
+
 ## 23 November 2026 — Editable RAM and Nissan entrances
 
 - Added reviewed word/letter effects, soft wipes and TV shape reveals with native timing and removal controls across the editor, saved viewer and client video renderer. Text and packaged fonts remain editable.

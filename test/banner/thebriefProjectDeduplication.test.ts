@@ -15,8 +15,8 @@ vi.mock('~~/server/utils/auth', () => ({
   requireAuth: async () => ({ id: 'actor' }),
   requireWriteAccess: (...args: unknown[]) => writeAccess(...args)
 }))
-vi.mock('~~/server/utils/social/clientAccess', () => ({
-  requireSocialClientAccess: (...args: unknown[]) => clientAccess(...args)
+vi.mock('~~/server/utils/banner/clientAccess', () => ({
+  requireBannerClientAccess: (...args: unknown[]) => clientAccess(...args)
 }))
 vi.mock('~~/server/utils/banner/godModeProjectCreation', () => ({
   executeGodModeBannerProjectCreation: (...args: unknown[]) => coordinator(...args)

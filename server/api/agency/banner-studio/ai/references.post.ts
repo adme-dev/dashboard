@@ -2,7 +2,7 @@ import { createError, defineEventHandler, getHeader, readMultipartFormData } fro
 import { z } from 'zod'
 import { requireWriteAccess } from '~~/server/utils/auth'
 import { queryOneFresh } from '~~/server/utils/db'
-import { requireSocialClientScope } from '~~/server/utils/social/clientAccess'
+import { requireBannerClientScope } from '~~/server/utils/banner/clientAccess'
 import { createDesignReference, MAX_DESIGN_REFERENCE_BYTES } from '~~/server/utils/banner/designReferences'
 
 export default defineEventHandler(async (event) => {
@@ -17,7 +17,7 @@ export default defineEventHandler(async (event) => {
   if (!parsed.success) throw createError({ statusCode: 400, statusMessage: 'A valid projectId is required' })
   const project = await queryOneFresh<{ client_id: string | null }>('SELECT client_id FROM banner_projects WHERE id = $1', [parsed.data])
   if (!project) throw createError({ statusCode: 404, statusMessage: 'Banner project not found' })
-  await requireSocialClientScope(event, project.client_id ?? undefined)
+  await requireBannerClientScope(event, project.client_id ?? undefined)
   try {
     const reference = await createDesignReference(event, { projectId: parsed.data, clientId: project.client_id, userId: user.id, file: files[0]! })
     return { reference }

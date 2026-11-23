@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const mocks = vi.hoisted(() => ({ one: vi.fn(), access: vi.fn(), resolve: vi.fn(), body: { folderId: null as string | null } }))
 vi.mock('~~/server/utils/db', () => ({ queryOneFresh: mocks.one }))
 vi.mock('~~/server/utils/auth', () => ({ requireWriteAccess: async () => ({ id: 'user' }) }))
-vi.mock('~~/server/utils/social/clientAccess', () => ({ hasAllSocialClientAccess: () => false, requireSocialClientAccess: mocks.access }))
+vi.mock('~~/server/utils/banner/clientAccess', () => ({ hasAllBannerClientAccess: () => false, requireBannerClientAccess: mocks.access }))
 vi.mock('~~/server/utils/banner/marketingProjectAccess', () => ({ ACTIVE_PROJECT_CLIENT_SQL: 'TRUE', isMarketingPortfolioUser: () => false }))
 vi.mock('~~/server/utils/banner/folders', () => ({ resolveBannerFolderId: mocks.resolve }))
 vi.stubGlobal('defineEventHandler', (handler: unknown) => handler)

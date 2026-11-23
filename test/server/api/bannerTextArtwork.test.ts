@@ -5,7 +5,7 @@ const mocks = vi.hoisted(() => ({ write: vi.fn(), project: vi.fn(), scope: vi.fn
 vi.mock('h3', async original => ({ ...await original<typeof import('h3')>(), readBody: async (event: { body: unknown }) => event.body }))
 vi.mock('~~/server/utils/auth', () => ({ requireWriteAccess: mocks.write }))
 vi.mock('~~/server/utils/banner/effectScope', () => ({ requireBannerEffectProject: mocks.project }))
-vi.mock('~~/server/utils/social/clientAccess', () => ({ requireSocialClientScope: mocks.scope }))
+vi.mock('~~/server/utils/banner/clientAccess', () => ({ requireBannerClientScope: mocks.scope }))
 vi.mock('~~/server/utils/banner/designReferences', () => ({ resolveDesignReferences: mocks.references }))
 vi.mock('~~/server/utils/creative-generation/modelRegistry', () => ({ getCreativeGenerationModel: mocks.model }))
 vi.mock('~~/server/utils/db', () => ({ queryOne: mocks.query }))

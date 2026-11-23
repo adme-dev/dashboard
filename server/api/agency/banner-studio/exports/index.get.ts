@@ -1,7 +1,7 @@
 import { queryOneFresh, queryRows } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
 import { bannerRenderDownloadUrl } from '~~/server/utils/banner/renderJob'
-import { hasAllSocialClientAccess, requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
+import { hasAllBannerClientAccess, requireBannerClientAccess } from '~~/server/utils/banner/clientAccess'
 
 interface BannerExportRow {
   id: string
@@ -28,8 +28,8 @@ export default defineEventHandler(async (event) => {
   const project = await queryOneFresh<{ client_id: string | null, created_by: string | null }>(
     'SELECT client_id, created_by FROM banner_projects WHERE id = $1', [projectId])
   if (!project) throw createError({ statusCode: 404, statusMessage: 'Project not found' })
-  if (project.client_id) await requireSocialClientAccess(event, project.client_id)
-  else if (project.created_by !== user.id && !hasAllSocialClientAccess(user)) {
+  if (project.client_id) await requireBannerClientAccess(event, project.client_id)
+  else if (project.created_by !== user.id && !await hasAllBannerClientAccess(user)) {
     throw createError({ statusCode: 403, statusMessage: 'No access to this project' })
   }
 

@@ -2,7 +2,7 @@ import { canRetryBannerJob } from '~~/server/utils/banner/renderDispatch'
 import { requireAuth } from '~~/server/utils/auth'
 import { queryOneFresh, queryRowsFresh } from '~~/server/utils/db'
 import { projectJobStatus, type BannerJobRow } from '~~/server/utils/banner/renderJob'
-import { hasAllSocialClientAccess, requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
+import { hasAllBannerClientAccess, requireBannerClientAccess } from '~~/server/utils/banner/clientAccess'
 
 type TimedJobRow = BannerJobRow & {
   created_at: string
@@ -17,8 +17,8 @@ export default defineEventHandler(async (event) => {
   const projectId = typeof query.projectId === 'string' ? query.projectId : ''
   type ProjectAccess = { client_id: string | null, created_by: string | null }
   async function requireProjectAccess(project: ProjectAccess) {
-    if (project.client_id) await requireSocialClientAccess(event, project.client_id)
-    else if (project.created_by !== user.id && !hasAllSocialClientAccess(user)) {
+    if (project.client_id) await requireBannerClientAccess(event, project.client_id)
+    else if (project.created_by !== user.id && !await hasAllBannerClientAccess(user)) {
       throw createError({ statusCode: 403, statusMessage: 'No access to this project' })
     }
   }

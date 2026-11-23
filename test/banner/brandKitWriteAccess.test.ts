@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({ clientAccess: vi.fn(), allAccess: vi.fn(), query: vi.fn(), snapshot: vi.fn(), defaultKit: vi.fn() }))
 vi.mock('~~/server/utils/auth', () => ({ requireRole: async () => ({ id: 'creative' }) }))
-vi.mock('~~/server/utils/social/clientAccess', () => ({ requireSocialClientAccess: mocks.clientAccess, requireAllSocialClientAccess: mocks.allAccess }))
+vi.mock('~~/server/utils/banner/clientAccess', () => ({ requireBannerClientAccess: mocks.clientAccess, requireAllBannerClientAccess: mocks.allAccess }))
 vi.mock('~~/server/utils/db', () => ({ transaction: async (fn: (db: unknown) => unknown) => fn({ query: mocks.query }) }))
 vi.mock('~~/server/utils/banner/brandKits', async original => ({
   ...await original<typeof import('~~/server/utils/banner/brandKits')>(),

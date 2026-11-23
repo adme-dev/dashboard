@@ -38,9 +38,9 @@ vi.mock('~~/server/utils/auth', () => ({
   requireAuth: (...args: unknown[]) => mockRequireAuth(...args),
   requireWriteAccess: (...args: unknown[]) => mockWriteAccess(...args)
 }))
-vi.mock('~~/server/utils/social/clientAccess', async importOriginal => ({
-  ...await importOriginal<typeof import('~~/server/utils/social/clientAccess')>(),
-  requireSocialClientAccess: (...args: unknown[]) => mockClientAccess(...args)
+vi.mock('~~/server/utils/banner/clientAccess', async importOriginal => ({
+  ...await importOriginal<typeof import('~~/server/utils/banner/clientAccess')>(),
+  requireBannerClientAccess: (...args: unknown[]) => mockClientAccess(...args)
 }))
 
 vi.mock('~~/server/utils/bannerStorage', () => ({

@@ -1,7 +1,7 @@
 import { queryRowsFresh } from '~~/server/utils/db'
 import { hasFreshMarketingManagementPermission } from '~~/server/utils/clientScoping'
 import { requireAuth } from '~~/server/utils/auth'
-import { hasAllSocialClientAccess, hasSocialClientPermission, requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
+import { hasAllBannerClientAccess, hasBannerClientPermission, requireBannerClientAccess } from '~~/server/utils/banner/clientAccess'
 
 export default defineEventHandler(async (event) => {
   const user = await requireAuth(event)
@@ -9,7 +9,7 @@ export default defineEventHandler(async (event) => {
 
   const query = getQuery(event)
   const { clientId, status, search, limit, offset } = query
-  if (clientId) await requireSocialClientAccess(event, String(clientId))
+  if (clientId) await requireBannerClientAccess(event, String(clientId))
   const marketingPortfolio = user.permissionGroups?.includes('MARKETING_MANAGEMENT') === true
   if (marketingPortfolio && !await hasFreshMarketingManagementPermission(user.id)) {
     throw createError({ statusCode: 403, statusMessage: 'Marketing permission revoked' })
@@ -35,17 +35,17 @@ export default defineEventHandler(async (event) => {
 
     const params: any[] = []
     let paramIndex = 1
-    if (!hasAllSocialClientAccess(user)) {
+    if (!await hasAllBannerClientAccess(user)) {
       sql += ` AND ((p.client_id IS NULL AND p.created_by = $${paramIndex})`
       params.push(user.id)
       if (marketingPortfolio) {
         sql += ` OR EXISTS (SELECT 1 FROM agency_clients active_client WHERE active_client.id = p.client_id AND active_client.is_active = TRUE)`
-      } else if (hasSocialClientPermission(user)) {
+      } else if (hasBannerClientPermission(user)) {
         sql += ` OR EXISTS (SELECT 1 FROM client_team_assignments a WHERE a.client_id = p.client_id AND a.team_member_id = $${paramIndex})`
       }
       sql += ')'
       paramIndex++
-    } else if (!hasSocialClientPermission(user)) {
+    } else if (!hasBannerClientPermission(user)) {
       sql += ' AND p.client_id IS NULL'
     }
 

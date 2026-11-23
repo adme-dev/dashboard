@@ -1,4 +1,4 @@
-import { requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
+import { requireBannerClientAccess } from '~~/server/utils/banner/clientAccess'
 import { validateCanvasFontAssets, canvasFontLayers } from '~~/server/utils/banner/fontAssets'
 import { transaction, queryOneFresh } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
@@ -36,7 +36,7 @@ export default defineEventHandler(async (event) => {
       )
       if (!source) throw createError({ statusCode: 404, statusMessage: 'Project not found' })
       await requireMarketingBannerProjectAccess(event, user, source)
-      if (source.client_id && canvasFontLayers(source.canvas_data).some(layer => layer.fontAssetId)) await requireSocialClientAccess(event, source.client_id)
+      if (source.client_id && canvasFontLayers(source.canvas_data).some(layer => layer.fontAssetId)) await requireBannerClientAccess(event, source.client_id)
       await validateCanvasFontAssets(source.canvas_data, source.client_id, db)
       const row = await queryOne(`
       INSERT INTO banner_projects (name, client_id, canvas_data, tags, created_by, folder_id)
@@ -66,7 +66,7 @@ export default defineEventHandler(async (event) => {
         throw createError({ statusCode: 404, statusMessage: 'Project not found' })
       }
 
-      if (source.client_id && canvasFontLayers(source.canvas_data).some(layer => layer.fontAssetId)) await requireSocialClientAccess(event, source.client_id)
+      if (source.client_id && canvasFontLayers(source.canvas_data).some(layer => layer.fontAssetId)) await requireBannerClientAccess(event, source.client_id)
       await validateCanvasFontAssets(source.canvas_data, source.client_id, db)
       const row = await queryOne(`
       INSERT INTO banner_projects (name, client_id, canvas_data, tags, created_by, folder_id)

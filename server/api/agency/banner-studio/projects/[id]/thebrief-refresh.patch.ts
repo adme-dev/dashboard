@@ -1,5 +1,5 @@
 import { requireWriteAccess } from '~~/server/utils/auth'
-import { requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
+import { requireBannerClientAccess } from '~~/server/utils/banner/clientAccess'
 import { isMarketingPortfolioUser } from '~~/server/utils/banner/marketingProjectAccess'
 import { transaction } from '~~/server/utils/db'
 import { readTheBriefDraftRefresh, refreshTheBriefDraft } from '~~/server/utils/banner/thebriefDraftRefresh'
@@ -11,7 +11,7 @@ export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id')
   if (!id || !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(id)) throw createError({ statusCode: 400, statusMessage: 'Invalid project ID' })
   const input = readTheBriefDraftRefresh(await readBody(event))
-  await requireSocialClientAccess(event, input.clientId)
+  await requireBannerClientAccess(event, input.clientId)
   try {
     const saved = await transaction(db => refreshTheBriefDraft(db, id, user.id, input))
     setHeader(event, 'Cache-Control', 'private, no-store')

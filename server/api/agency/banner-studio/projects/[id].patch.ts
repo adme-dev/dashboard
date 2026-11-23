@@ -1,5 +1,5 @@
 import { validateCanvasFontAssets, canvasFontLayers } from '~~/server/utils/banner/fontAssets'
-import { requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
+import { requireBannerClientAccess } from '~~/server/utils/banner/clientAccess'
 import { transaction, queryOneFresh } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
 import {
@@ -40,8 +40,8 @@ export default defineEventHandler(async (event) => {
       const nextClient = clientId === undefined ? currentFontState.client_id : clientId
       const nextCanvas = canvasData === undefined ? currentFontState.canvas_data : canvasData
       if (canvasFontLayers(nextCanvas).some(layer => layer.fontAssetId)) {
-        if (currentFontState.client_id) await requireSocialClientAccess(event, currentFontState.client_id)
-        if (nextClient && nextClient !== currentFontState.client_id) await requireSocialClientAccess(event, nextClient)
+        if (currentFontState.client_id) await requireBannerClientAccess(event, currentFontState.client_id)
+        if (nextClient && nextClient !== currentFontState.client_id) await requireBannerClientAccess(event, nextClient)
       }
       await validateCanvasFontAssets(nextCanvas, nextClient, db)
       // Auto-snapshot: save current canvas_data as a version before overwriting
