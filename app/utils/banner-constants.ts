@@ -1,9 +1,11 @@
 import type { BannerFormat, AnimPreset, AnimOutPreset, BannerSetDef, ElementCategory, PlatformMeta, Layer } from '~/types/banner-studio'
 
 // ══════════════════════════════════════
-// FORMATS — 23 ad sizes
+// FORMATS — shared display, social and video sizes
 // ══════════════════════════════════════
 export const FORMATS: Record<string, BannerFormat> = {
+  // Keep the gallery's persisted Full HD key available in existing-project size pickers.
+  custom_1920x1080: { key: 'custom_1920x1080', w: 1920, h: 1080, name: 'Full HD landscape', label: '1920×1080 · Full HD landscape', platform: 'Custom', icon: 'C' },
   // Google Display
   mrec:      { key: 'mrec',      w: 300,  h: 250,  name: 'MRec',           label: '300×250 · MRec',        platform: 'Google',    icon: 'G' },
   leader:    { key: 'leader',    w: 728,  h: 90,   name: 'Leaderboard',    label: '728×90 · Leaderboard',  platform: 'Google',    icon: 'G' },

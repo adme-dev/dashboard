@@ -233,6 +233,7 @@ export function buildBannerHTML(
     throw new Error('Paused previews require animations and a non-negative finite time')
   }
   const playback = resolveBannerPlayback(options.playback)
+  const cycleEnd = playback?.duration ?? estimateBannerDuration(layers)
   const customFontFamilies = new Set(customFonts.map(cf => cf.family))
   const fmt = resolveBannerFormat(fmtKey)
   if (!fmt) return ''
@@ -363,7 +364,7 @@ export function buildBannerHTML(
 
       // Keyframe-based layers use dedicated builder
       if (layerHasKeyframes(l)) {
-        lines.push(...buildKeyframeAnimLines(l, playback?.duration))
+        lines.push(...buildKeyframeAnimLines(l, cycleEnd))
         lines.push(...buildWordPopAnimLines(l), ...buildRevealAnimLines(l))
         // Video sync for keyframe layers
         if ((l.type === 'bg' && l.srcType === 'video') || l.type === 'video') {
@@ -380,7 +381,7 @@ export function buildBannerHTML(
         const target = `'[data-id="${l.id}"]'`
         lines.push(`  tl.set(${target}, { visibility: '${l.startTime === 0 ? 'visible' : 'hidden'}' }, 0);`)
         if (l.startTime > 0) lines.push(`  tl.set(${target}, { visibility: 'visible' }, ${l.startTime});`)
-        if (l.endTime !== playback?.duration) lines.push(`  tl.set(${target}, { visibility: 'hidden' }, ${l.endTime});`)
+        if (l.endTime !== cycleEnd) lines.push(`  tl.set(${target}, { visibility: 'hidden' }, ${l.endTime});`)
       }
       const sel = `'[data-id="${l.id}"]'`
       const timing = bannerAnimationTiming(l)
@@ -397,7 +398,8 @@ export function buildBannerHTML(
       if (isBg) {
         lines.push(`  tl.set(${sel}, { autoAlpha: ${initialOpacity} }, 0);`)
       } else {
-        lines.push(`  tl.set(${sel}, { opacity: ${initialOpacity} }, 0);`)
+        lines.push(`  tl.set(${sel}, { opacity: ${initialOpacity}, visibility: '${startTime === 0 ? 'visible' : 'hidden'}' }, 0);`)
+        if (startTime > 0) lines.push(`  tl.set(${sel}, { visibility: 'visible' }, ${startTime});`)
       }
 
       // Animate in
@@ -442,7 +444,9 @@ export function buildBannerHTML(
         const opKey = isBg ? 'autoAlpha' : 'opacity'
 
         if (outPreset.id === 'none' || !Object.keys(outPreset.to).length) {
-          lines.push(`  tl.to(${sel}, { ${opKey}: 0, duration: 0.05 }, ${endTime - 0.05});`)
+          // No exit means a cut at a shorter presence boundary, never an
+          // implicit fade on the final frame of a complete reading hold.
+          if (endTime < cycleEnd) lines.push(`  tl.set(${sel}, { visibility: 'hidden' }, ${endTime});`)
         } else {
           const toEntries = Object.entries(outPreset.to)
             .filter(([k]) => !hasMP || (k !== 'x' && k !== 'y'))
@@ -524,7 +528,7 @@ export function buildBannerHTML(
   })();`)
     })
 
-    if (playback) lines.push(`  tl.to({}, { duration: ${playback.duration} }, 0);`)
+    lines.push(`  tl.to({}, { duration: ${cycleEnd} }, 0);`)
     animLines = lines.join('\n')
   }
 

@@ -79,6 +79,7 @@ export const DESIGN_VARIANTS = {
 // test protects these dimensions without importing the UI element/template bundle.
 export const DESIGN_FORMAT_DIMENSIONS: Record<string, { w: number, h: number }> = {
   ...DESIGN_VARIANTS,
+  custom_1920x1080: { w: 1920, h: 1080 },
   mrec: { w: 300, h: 250 }, leader: { w: 728, h: 90 }, half: { w: 300, h: 600 },
   wsky: { w: 160, h: 600 }, billboard: { w: 970, h: 250 }, mob_ban: { w: 320, h: 50 }, mob_lg: { w: 320, h: 100 },
   fb_feed: { w: 1200, h: 628 }, fb_cover: { w: 820, h: 312 }, ig_land: { w: 1080, h: 566 },
