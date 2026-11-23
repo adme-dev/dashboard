@@ -554,13 +554,15 @@ describe('God mode gate inventory', () => {
     expect(bannerReview.additions).toHaveLength(7)
     expect(bannerReview.removals).toEqual([])
     for (const row of bannerReview.additions) expect(inventory.rows).toContain(row)
-    const previousRows = inventory.rows.filter(row => !bannerReview.additions.includes(row))
+    const ownerFeedGate = "server/utils/ai/marketing/departmentFeedOperations.ts\tconst activeOwnerSql = 'SELECT email FROM team_members WHERE id=$1 AND is_active AND user_role=\\'owner\\''\tidentity_tenant_hard_boundary"
+    expect(inventory.rows).toContain(ownerFeedGate)
+    const previousRows = inventory.rows.filter(row => row !== ownerFeedGate && !bannerReview.additions.includes(row))
     expect(previousRows).toHaveLength(1871)
-    expect(inventory.rows).toHaveLength(1878)
+    expect(inventory.rows).toHaveLength(1879)
     expect(inventory.counts).toEqual({
       spend_authorization_hard_boundary: 4,
       fresh_role_grant_hard_boundary: 99,
-      identity_tenant_hard_boundary: 153,
+      identity_tenant_hard_boundary: 154,
       provider_infrastructure_availability: 235,
       application_governance_bypass: 1624,
       ordinary_user_behavior: 329,
@@ -599,7 +601,7 @@ describe('God mode gate inventory', () => {
     expect(createHash('sha256').update(previousRows.filter(row => row !== campaignReadGate && row !== canonicalMcpGate && row !== changeHistoryGate && !editableCopyGates.has(row)).join('\n')).digest('hex')).toBe('4ba5a258ef55a4627ace3d2dec418b3f503c47ccad7e18b331d68bc256667ddf')
     // Pins the complete reviewed inventory, including the video funding boundaries.
     expect(createHash('sha256').update(previousRows.join('\n')).digest('hex')).toBe('13de1cd01bb5ba0cad42653b328b0e48997fc3e0b65411dc8e31e74b362359b1')
-    expect(inventory.digest).toBe('c3bdb09c15acd3733707047ff072bec102507677202f72a177fade8681e0d970')
+    expect(inventory.digest).toBe('ae08ee9ae423b068a06df5bcce1088c6c4def726c7ff1c0bc94707a0673b0474')
     expect(inventory.rows).toContain(
       'app/composables/usePageStudioLauncher.ts\tconst config = useRuntimeConfig()\tunrelated_configuration'
     )
