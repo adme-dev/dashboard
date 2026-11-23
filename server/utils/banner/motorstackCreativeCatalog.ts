@@ -1,4 +1,4 @@
-import { isCurrentMotorstackOffer } from '~~/shared/bannerMotorstackOffer'
+import { isCurrentMotorstackOffer, motorstackOfferDateIssue } from '~~/shared/bannerMotorstackOffer'
 import { createHash } from 'node:crypto'
 import { z } from 'zod'
 import { createError, type H3Event } from 'h3'
@@ -20,7 +20,7 @@ const offerSchema = z.object({
   disclaimer: z.string().max(12000).nullable(), hasImage: z.boolean(),
   artworkAssetId: z.string().regex(/^[a-f0-9]{64}$/).nullable()
 })
-export type MotorstackCreativeOffer = z.infer<typeof offerSchema> & { id: string, current: boolean, artworkPreviewUrl: string | null }
+export type MotorstackCreativeOffer = z.infer<typeof offerSchema> & { id: string, current: boolean, verificationIssue: string | null, artworkPreviewUrl: string | null }
 const catalogSchema = z.object({ schemaVersion: z.literal(1), brand: z.object({ id: motorstackBrandId, name: label }), kind: z.enum(['variants', 'offers']), updatedAt: z.string().max(50).nullable(), items: z.array(z.unknown()).max(500) })
 
 interface CatalogBinding { listCreativeCatalog(input: { brandId: string, kind: 'variants' | 'offers' }): Promise<unknown> }
@@ -42,7 +42,8 @@ export async function getMotorstackCreativeCatalog(event: H3Event, input: Catalo
   if (input.kind === 'offers') {
     const offers = items.data as z.infer<typeof offerSchema>[]
     return { ...response.data, kit, items: offers.map(item => ({
-      ...item, current: isCurrentMotorstackOffer(item.endDate), id: createHash('sha256').update(JSON.stringify(item)).digest('hex'),
+      ...item, current: isCurrentMotorstackOffer(item.endDate) && !motorstackOfferDateIssue(item.endDate, item.disclaimer),
+      verificationIssue: motorstackOfferDateIssue(item.endDate, item.disclaimer), id: createHash('sha256').update(JSON.stringify(item)).digest('hex'),
       artworkPreviewUrl: item.artworkAssetId
         ? `/api/agency/banner-studio/motorstack/file?${new URLSearchParams({ brandId, assetId: item.artworkAssetId })}`
         : null

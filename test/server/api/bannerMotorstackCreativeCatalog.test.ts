@@ -46,4 +46,11 @@ describe('MotorStack editor catalogue boundary', () => {
     mocks.catalog.mockResolvedValueOnce({ schemaVersion: 1, brand: { id: 'geely', name: 'Geely Auto Australia' }, kind: 'offers', updatedAt: null, items: [{ title: 'Offer', model: null, variant: null, price: null, priceLabel: null, offer: null, endDate: null, disclaimer: null, hasImage: true, artworkAssetId: 'https://localhost/private.png' }] })
     await expect(handler(event)).rejects.toMatchObject({ statusCode: 502 })
   })
+  it('retains contradictory offers for source review but excludes them from current AI choices', async () => {
+    const source = { title: 'Accessory offer', model: 'Forester', variant: null, price: null, priceLabel: null, offer: null, endDate: '2027-01-01', disclaimer: 'Offer available from 2 November 2026 to 31 December 2026.', hasImage: false, artworkAssetId: null }
+    mocks.catalog.mockResolvedValueOnce({ schemaVersion: 1, brand: { id: 'geely', name: 'Geely' }, kind: 'offers', updatedAt: null, items: [source, { ...source, model: 'Outback', endDate: '2026-12-31' }] })
+    const result = await handler(event)
+    expect(result.items[0]).toMatchObject({ endDate: '2027-01-01', current: false, verificationIssue: expect.stringContaining('conflicts') })
+    expect(result.items[1]).toMatchObject({ endDate: '2026-12-31', current: true, verificationIssue: null })
+  })
 })

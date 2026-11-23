@@ -15,6 +15,14 @@ Banner Studio detects an unambiguous OEM kit from the saved source, explicit kit
 
 This extends the existing [native AI design workflow](../guides/banner-studio-ai-workflow.md), rather than generating flattened raster banners or executable HTML. Generation uses the existing configured model assignment and its fallback.
 
+Explicit availability periods in supplied terms are checked against the structured end date. A contradiction remains visible in Brand → Offers with a source-review warning, and is excluded from AI generation. The server checks again before preparing artwork or calling AI. This is a deterministic check of supplied data, not an automated OEM website comparison; a designer must still verify the official offer.
+
+### OEM source check — 23 November 2026
+
+MotorStack's Forester accessory and crossbar offers supplied `2027-01-01` as the end date while their terms stated `2026-12-31`. The [official Forester offer](https://www.subaru.com.au/special-offers/forester-accessory-special-offer) also ends on 31 December. AI generation is blocked for these contradictory entries rather than silently changing the source date.
+
+The [official Outback accessory offer](https://www.subaru.com.au/special-offers/outback-accessory-special-offer) matches MotorStack: $850 including GST and standard fitting, MY2026 Outback eligibility, participating retailers, and a 31 December 2026 end date. Use this offer and its supplied artwork for the pending live AI acceptance check. The website check was read-only; no enquiry was submitted.
+
 ## Pick the right vehicle image
 
 1. Open a design, then **Insert → Vehicle images**, or **Brand → Variants**. Check the selected brand kit.

@@ -601,6 +601,9 @@ function addLogo(logo: BrandKitLogo, event: MouseEvent) {
                   Ends {{ offer.endDate }}
                 </UBadge>
                 <UAccordion v-if="offer.disclaimer" :items="[{ label: 'Terms and conditions', content: offer.disclaimer }]" :ui="{ body: 'whitespace-pre-line text-xs leading-relaxed text-muted' }" />
+                <p v-if="offer.verificationIssue" role="alert" class="text-xs text-warning">
+                  {{ offer.verificationIssue }}
+                </p>
                 <p v-if="offerErrors[index]" role="alert" class="text-xs text-error">
                   {{ offerErrors[index] }}
                 </p>

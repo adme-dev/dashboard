@@ -357,11 +357,12 @@ const motorstackSource = { kitId: motorstackKit.id, offerId: motorstackOffer.id,
 
 it('loads only the detected brand, retains current offer artwork, and previews the complete AI set before Apply', async () => {
   fetchMock.mockImplementation(async (url: string) => {
-    if (url.endsWith('/creative-catalog')) return { items: [motorstackOffer, { ...motorstackOffer, id: 'c'.repeat(64), current: false }] }
+    if (url.endsWith('/creative-catalog')) return { items: [motorstackOffer, { ...motorstackOffer, id: 'c'.repeat(64), current: false, verificationIssue: 'Source dates conflict' }] }
     if (url.endsWith('/motorstack-offer')) return { assetId: motorstackSource.assetId, offerId: motorstackOffer.id }
     return { ...response(), motorstack: motorstackSource }
   })
   const view = await mount('project-1', { brandKit: motorstackKit })
+  expect(view.host.textContent).toContain('Some offers need source review')
   expect(fetchMock.mock.calls).toHaveLength(1)
   expect(fetchMock).toHaveBeenCalledWith('/api/agency/banner-studio/motorstack/creative-catalog', { query: { kitId: motorstackKit.id, kind: 'offers' } })
   await view.click('Create offer set with AI')

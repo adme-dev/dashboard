@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { isCurrentMotorstackOffer } from '~~/shared/bannerMotorstackOffer'
+import { isCurrentMotorstackOffer, motorstackOfferDateIssue } from '~~/shared/bannerMotorstackOffer'
 import { motorstackOfferCanvas, protectMotorstackOfferCanvas, refineMotorstackOfferCanvas, resolveMotorstackDesignContext, resolveMotorstackDesignOffer } from '~~/server/utils/banner/motorstackDesign'
 
 const mocks = vi.hoisted(() => ({ catalog: vi.fn(), asset: vi.fn() }))
@@ -29,6 +29,20 @@ describe('current MotorStack design source', () => {
     expect(isCurrentMotorstackOffer('2026-11-22', new Date('2026-11-22T23:00:00Z'))).toBe(false)
     expect(isCurrentMotorstackOffer('2026-02-31')).toBe(false)
     expect(isCurrentMotorstackOffer(null)).toBe(true)
+  })
+  it('flags explicit availability conflicts without guessing dates from unrelated or ambiguous terms', () => {
+    const forester = 'Offer available from 2 November 2026 to 31 December 2026, while stocks last.'
+    expect(motorstackOfferDateIssue('2027-01-01', forester)).toContain('2026-12-31')
+    expect(motorstackOfferDateIssue('2026-12-31', forester)).toBeNull()
+    expect(motorstackOfferDateIssue('2027-01-01', 'Accessories purchased and fitted between 2 November 2026 and 31 December 2026.')).toContain('conflicts')
+    expect(motorstackOfferDateIssue('2027-01-01', 'Warranty expires 31 December 2026.')).toBeNull()
+    expect(motorstackOfferDateIssue('2027-01-01', 'Offer available from 2 November 2026 to 31 February 2026.')).toBeNull()
+    expect(motorstackOfferDateIssue(null, forester)).toBeNull()
+  })
+  it('blocks contradictory source dates before artwork preparation', async () => {
+    mocks.catalog.mockResolvedValue({ kit, brand: { id: 'subaru' }, items: [{ ...offer, endDate: '2027-01-01', disclaimer: 'Offer available from 2 November 2026 to 31 December 2026.' }] })
+    await expect(resolveMotorstackDesignContext({} as never, selection, null, 'designer')).rejects.toMatchObject({ statusCode: 409, statusMessage: expect.stringContaining('conflicts') })
+    expect(mocks.asset).not.toHaveBeenCalled()
   })
   it('rebinds source identity and kit to the saved client, then verifies exact owner/source artwork', async () => {
     const event = {} as never

@@ -3,12 +3,14 @@ import { createError, type H3Event } from 'h3'
 import type { ArtboardState, Layer } from '~~/app/types/banner-studio'
 import { getMotorstackCreativeCatalog, type MotorstackCreativeOffer } from './motorstackCreativeCatalog'
 import { queryOneFresh } from '~~/server/utils/db'
-import { isCurrentMotorstackOffer } from '~~/shared/bannerMotorstackOffer'
+import { isCurrentMotorstackOffer, motorstackOfferDateIssue } from '~~/shared/bannerMotorstackOffer'
 
 export async function resolveMotorstackDesignOffer(event: H3Event, selection: Pick<MotorstackDesignSelection, 'kitId' | 'offerId'>, clientId: string | null) {
   const catalog = await getMotorstackCreativeCatalog(event, { kitId: selection.kitId, kind: 'offers' }, clientId)
   const offer = (catalog.items as MotorstackCreativeOffer[]).find(item => item.id === selection.offerId)
   if (!offer) throw createError({ statusCode: 409, statusMessage: 'This MotorStack offer changed or is no longer published. Reload the offers and choose again.' })
+  const dateIssue = motorstackOfferDateIssue(offer.endDate, offer.disclaimer)
+  if (dateIssue) throw createError({ statusCode: 409, statusMessage: dateIssue })
   if (!isCurrentMotorstackOffer(offer.endDate)) throw createError({ statusCode: 409, statusMessage: 'This MotorStack offer has expired. Choose a current offer.' })
   return { kit: catalog.kit, brandId: catalog.brand.id, offer }
 }

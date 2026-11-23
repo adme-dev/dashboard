@@ -85,6 +85,7 @@ const sourceOffers = ref<Array<BannerMotorStackOffer & { id: string, current: bo
 const sourceOfferId = ref('__choose_offer__')
 const offersLoading = ref(false)
 const offersError = ref('')
+const offersNeedReview = ref(false)
 const preparingOffer = ref(false)
 let offerRequestVersion = 0
 const sourceOffer = computed(() => sourceOffers.value.find(offer => offer.id === sourceOfferId.value))
@@ -98,12 +99,14 @@ async function loadMotorstackOffers() {
   sourceOffers.value = []
   sourceOfferId.value = '__choose_offer__'
   offersError.value = ''
+  offersNeedReview.value = false
   offersLoading.value = false
   if (!props.open || !currentMotorstackBrand.value || !kitId) return
   offersLoading.value = true
   try {
     const result = await $fetch<{ items: Array<BannerMotorStackOffer & { id: string, current: boolean }> }>('/api/agency/banner-studio/motorstack/creative-catalog', { query: { kitId, kind: 'offers' } })
     if (version !== offerRequestVersion) return
+    offersNeedReview.value = result.items.some(offer => !!offer.verificationIssue)
     sourceOffers.value = result.items.filter(offer => offer.current && offer.id)
     const projectName = (state.project?.name || '').toLocaleLowerCase()
     const matching = sourceOffers.value.filter(offer => offer.model && projectName.includes(offer.model.toLocaleLowerCase()))
@@ -425,6 +428,12 @@ const quickActions = computed(() => [
               @click="loadMotorstackOffers"
             />
             <template v-else-if="!offersLoading">
+              <UAlert
+                v-if="offersNeedReview"
+                title="Some offers need source review"
+                description="Offers with conflicting source dates and terms are excluded from AI generation. Check the OEM website before using them."
+                color="warning"
+              />
               <p v-if="!sourceOffers.length" class="text-sm text-muted">
                 No current published offers are available for this brand.
               </p>
