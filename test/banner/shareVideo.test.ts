@@ -108,3 +108,33 @@ describe('compiled client previews', () => {
     expect(mocks.deliver).toHaveBeenCalledWith(expect.anything(), `banner-videos/${projectId}/render.mp4`, projectId, true)
   })
 })
+
+it('uses the same cached MP4 through authorized team URLs without a public token', async () => {
+  const access = { load: vi.fn().mockResolvedValue(share()), basePath: `/api/agency/banner-studio/projects/${projectId}` }
+  mocks.one.mockResolvedValue({ status: 'done', r2_key: 'private-key' })
+  const result = await bannerShareVideos(event, access)
+  expect(result.videos[0]!.url).toContain(`${access.basePath}/video?`)
+  expect(mocks.load).not.toHaveBeenCalled()
+  await prepareBannerShareVideo(event, 'custom_1200x1200', false, undefined, access)
+  expect(mocks.send).not.toHaveBeenCalled()
+  expect(mocks.load).not.toHaveBeenCalled()
+})
+
+it('denies team status, rendering and byte delivery before reading a job when access is revoked', async () => {
+  const access = { load: vi.fn().mockRejectedValue(Object.assign(new Error(), { statusCode: 403 })), basePath: '/api/agency/banner-studio/projects/forbidden' }
+  await expect(bannerShareVideos(event, access)).rejects.toMatchObject({ statusCode: 403 })
+  await expect(prepareBannerShareVideo(event, 'custom_1200x1200', false, undefined, access)).rejects.toMatchObject({ statusCode: 403 })
+  await expect(bannerShareVideo(event, access)).rejects.toMatchObject({ statusCode: 403 })
+  expect(mocks.one).not.toHaveBeenCalled()
+  expect(mocks.deliver).not.toHaveBeenCalled()
+})
+
+it('delivers an authorized team MP4 through the existing inline byte-range delivery helper', async () => {
+  const access = { load: vi.fn().mockResolvedValue(share()), basePath: `/api/agency/banner-studio/projects/${projectId}` }
+  const plan = bannerShareVideoPlans(share())[0]!
+  const request = { query: { formatKey: plan.key, revision: plan.revision } } as never
+  mocks.one.mockResolvedValue({ status: 'done', r2_key: 'private-key' })
+  await bannerShareVideo(request, access)
+  expect(mocks.deliver).toHaveBeenCalledWith(request, 'private-key', projectId, true)
+  expect(mocks.load).not.toHaveBeenCalled()
+})

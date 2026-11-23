@@ -173,3 +173,18 @@ Chosen proof frames now resynchronize embedded video as well as native layers.
 The capture seeks away from the initially pre-rendered timeline position before
 seeking the saved frame, ensuring GSAP media callbacks execute. The poster cache
 revision changes so earlier first-video-frame captures are regenerated.
+
+
+## 23 November 2026 — Automatic posters and consistent video previews
+
+Client proofs choose a still automatically from visible copy, imagery and settled
+timeline holds. Designers can choose another time or restore Automatic frame;
+existing overrides remain saved. The cache includes the selector revision.
+Timeline selection does not optically assess blur inside video footage.
+
+Team saved viewers now use the same rendered MP4 player and jobs as client links.
+They are labelled **Team preview · Sign-in required**, with **Share with client**
+for creating/copying the external link. Team media routes check existing project
+and client access before returning status, posters or bytes; no public capability
+is created just by viewing internally. Earlier render-worker, queue/retry, audio
+and HTML5 playback implementations remain intact.

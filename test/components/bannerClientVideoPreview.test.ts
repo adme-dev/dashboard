@@ -289,3 +289,13 @@ describe('client compiled video player', () => {
     expect(fetch).toHaveBeenCalledTimes(1)
   })
 })
+
+it('uses authenticated MP4 and poster endpoints for a team viewer, with no HTML5 fallback', async () => {
+  const id = '22222222-2222-4222-8222-222222222222'
+  fetch.mockResolvedValue({ videos: [{ ...ready.videos[0], url: `/api/agency/banner-studio/projects/${id}/video?revision=square` }] })
+  const { host } = await mount({ projectId: id, shareToken: undefined })
+  expect(fetch).toHaveBeenCalledWith(`/api/agency/banner-studio/projects/${id}/videos`, expect.anything())
+  expect(host.querySelector('video')?.getAttribute('src')).toContain(`/projects/${id}/video?`)
+  expect(host.querySelector('video')?.getAttribute('poster')).toContain(`/projects/${id}/image?`)
+  expect(host.querySelector('iframe')).toBeNull()
+})

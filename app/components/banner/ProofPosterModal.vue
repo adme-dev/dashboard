@@ -4,7 +4,7 @@ import { bannerPosterTime } from '~~/shared/bannerPosterTime'
 const open = defineModel<boolean>('open', { default: false })
 const { state, setProofPosterTime, saveProject } = useBannerStudio()
 const toast = useToast()
-const time = ref(bannerPosterTime(state.duration, state.sets[state.activeKey]?.posterTime))
+const time = ref(bannerPosterTime(state.duration, state.sets[state.activeKey]?.posterTime, state.sets[state.activeKey]?.layers))
 const busy = ref(false)
 const error = ref('')
 const { canWrite } = useAuth()
@@ -32,8 +32,11 @@ async function save(automatic = false) {
     <template #body>
       <div class="space-y-4">
         <p class="text-sm text-muted">
-          Choose a settled frame so the offer and legal copy are visible before playback.
+          A poster is chosen automatically from settled artwork. Choose another frame to override it.
           {{ state.layoutView === 'all' ? 'Applies to all layouts.' : 'Applies to this layout.' }}
+        </p>
+        <p class="text-sm text-muted">
+          {{ Number.isFinite(state.sets[state.activeKey]?.posterTime) ? 'Using a designer-selected frame.' : 'Using an automatic frame. It updates when the artwork changes.' }}
         </p>
         <UFormField label="Poster frame (seconds)" help="Measured from the start of the animation.">
           <UInput

@@ -8,7 +8,10 @@ import MetaFeedPreview from '~/components/ad-preview/MetaFeedPreview.vue'
 import MetaStoryPreview from '~/components/ad-preview/MetaStoryPreview.vue'
 
 type VideoStatus = { formatKey: string, revision: string, status: string, url: string | null, canRetry: boolean }
-const props = defineProps<{ shareToken: string, canvas: Record<string, ArtboardState>, initialVideos?: VideoStatus[], clientName?: string | null, projectName?: string }>()
+const props = defineProps<{ shareToken?: string, projectId?: string, canvas: Record<string, ArtboardState>, initialVideos?: VideoStatus[], clientName?: string | null, projectName?: string }>()
+const basePath = computed(() => props.projectId
+  ? `/api/agency/banner-studio/projects/${encodeURIComponent(props.projectId)}`
+  : `/api/public/banner-share/${encodeURIComponent(props.shareToken || '')}`)
 const preferredKey = preferredBannerPreviewKey(props.canvas) || ''
 const initiallyReady = props.initialVideos?.filter(item => item.status === 'done' && item.url && props.canvas[item.formatKey]) || []
 const selectedKey = ref(initiallyReady.find(item => item.formatKey === preferredKey)?.formatKey || initiallyReady[0]?.formatKey || preferredKey)
@@ -29,7 +32,7 @@ const root = ref<HTMLElement | null>(null)
 const video = ref<HTMLVideoElement | null>(null)
 const posterFailed = ref(false)
 const posterUrl = computed(() => active.value
-  ? `/api/public/banner-share/${encodeURIComponent(props.shareToken)}/image?formatKey=${encodeURIComponent(active.value.key)}`
+  ? `${basePath.value}/image?formatKey=${encodeURIComponent(active.value.key)}`
   : undefined)
 const { width, height } = useElementSize(viewport)
 const { toggle: toggleFullscreen, isSupported: supportsFullscreen } = useFullscreen(root)
@@ -44,8 +47,8 @@ const displayWidth = computed(() => {
 const creativeSlot = computed(() => mode.value === 'social' ? 'creative' : 'default')
 const presentation = computed(() => mode.value === 'social' ? story.value ? MetaStoryPreview : MetaFeedPreview : 'div')
 const pageName = computed(() => props.clientName || props.projectName || 'Shared banner')
-const endpoint = computed(() => `/api/public/banner-share/${encodeURIComponent(props.shareToken)}/videos`)
-const pageUrl = computed(() => `/share/banner/${encodeURIComponent(props.shareToken)}`)
+const endpoint = computed(() => `${basePath.value}/videos`)
+const pageUrl = computed(() => props.projectId ? `/creative/banner-studio/view/${encodeURIComponent(props.projectId)}` : `/share/banner/${encodeURIComponent(props.shareToken || '')}`)
 let generation = 0
 let timer: ReturnType<typeof setTimeout> | undefined
 let abort: AbortController | undefined
@@ -79,7 +82,7 @@ async function load(retry = false) {
     knownVideos.value = response.videos
     result.value = response.videos.find(item => item.formatKey === key) || null
     if (!result.value) throw new Error('Artwork size unavailable')
-    const recoveryKey = `${props.shareToken}:${key}:${result.value.revision}`
+    const recoveryKey = `${basePath.value}:${key}:${result.value.revision}`
     if (result.value.status === 'queued' && result.value.canRetry && !recoveredQueues.has(recoveryKey)) {
       recoveredQueues.add(recoveryKey)
       await $fetch(endpoint.value, { method: 'POST', body: { formatKey: key, retry: true }, signal, retry: false })
@@ -106,7 +109,7 @@ async function load(retry = false) {
     if (current()) preparing.value = false
   }
 }
-watch(() => [props.shareToken, active.value?.key], ([token], previous) => {
+watch(() => [basePath.value, active.value?.key], ([token], previous) => {
   cancel()
   video.value?.pause()
   result.value = null
