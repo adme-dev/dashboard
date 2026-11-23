@@ -10,6 +10,49 @@ const layers: any[] = [
 ]
 
 describe('server banner builder parity', () => {
+  it.each([undefined, { duration: 8, loopCount: 2 }])('holds no-exit text through the last frame and replay (%j)', (playback) => {
+    const base = { name: 'Offer', x: 0, y: 0, w: 200, h: 60, zIndex: 1, opacity: 1, animIn: 'none' as const, animInDur: 0, animOut: 'none' as const, outDur: 0, startTime: 0, endTime: 8 }
+    const sample: Parameters<typeof client>[1] = [
+      { ...base, id: 1, type: 'text', text: 'Ranger Wolftrak' },
+      { ...base, id: 2, type: 'text', text: 'Short scene', endTime: 2 },
+      { ...base, id: 3, type: 'image', src: 'https://cdn.example.com/car.jpg', animIn: 'slideL', animInDur: 0.8, startTime: 0.1 },
+      { ...base, id: 4, type: 'text', text: 'Moving title', keyframes: { x: [{ time: 0, value: 0 }, { time: 0.3, value: 20 }] } }
+    ]
+    const html = client('custom_1920x1080', sample, { playback })
+    expect(server('custom_1920x1080', sample, { playback })).toBe(html)
+    const script = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].find(match => match[1]!.includes('const tl ='))![1]!
+    const nodes = Object.fromEntries([1, 2, 3, 4].map(id => [`[data-id="${id}"]`, { opacity: 1, x: 0, visibility: 'visible' }]))
+    const tl = gsap.timeline({ paused: true })
+    const wrapped: Record<string, unknown> = { eventCallback: tl.eventCallback.bind(tl) }
+    for (const method of ['set', 'to', 'from', 'fromTo'] as const) {
+      wrapped[method] = (selector: string | object, ...args: unknown[]) => Reflect.apply(tl[method], tl, [typeof selector === 'string' ? nodes[selector] : selector, ...args])
+    }
+    new Function('gsap', 'document', 'window', script)(
+      { timeline: (options?: { repeat?: number }) => {
+        tl.repeat(options?.repeat ?? 0)
+        return wrapped
+      } },
+      { querySelector: (selector: string) => nodes[selector] }, {}
+    )
+    expect(tl.duration()).toBe(8)
+    tl.seek(0.3)
+    const earlyCarX = nodes['[data-id="3"]']!.x
+    expect(earlyCarX).toBeLessThan(0)
+    tl.seek(0.6)
+    expect(nodes['[data-id="3"]']!.x).toBeGreaterThan(earlyCarX)
+    tl.seek(2.1)
+    expect(nodes['[data-id="2"]']!.visibility).toBe('hidden')
+    tl.seek(7.99)
+    expect(nodes['[data-id="1"]']!.opacity).toBe(1)
+    tl.seek(8)
+    expect(nodes['[data-id="4"]']!.visibility).toBe('visible')
+    if (playback) tl.totalTime(8.3)
+    else tl.seek(0.3)
+    expect(nodes['[data-id="1"]']!.opacity).toBe(1)
+    expect(nodes['[data-id="2"]']!.visibility).toBe('visible')
+    tl.kill()
+  })
+
   it('matches the client builder byte-for-byte (absolute srcs)', () => {
     expect(server('fb_story', layers as any)).toBe(client('fb_story', layers as any))
   })
