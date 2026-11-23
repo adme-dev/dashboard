@@ -1,6 +1,6 @@
 # Banner Studio change log
 
-## Creative team library access — pending release (23 November 2026)
+## Creative team library access — live (23 November 2026)
 
 An active, current Creative permission grants automatic access to all Banner Studio
 clients, folder contents, projects, assets, brand kits, saved viewers and downloads.
@@ -18,7 +18,19 @@ Validation with locked dependencies on Node 24.18.0: 850 tests passed and one
 optional browser test skipped across Banner Studio, creative access, finance,
 social, QR, deployment guards and imported-motion coverage. The new creative
 access helper and regression suite pass lint, with no new lint findings across
-edited files. Deployment is pending.
+edited files.
+
+Released in [PR #965](https://github.com/adme-dev/dashboard/pull/965), source
+`833242f2264423104dcbc4ca8af02ce611f5a4ce`, production deployment
+`d8a6b2b5-b3e1-4c0e-a1c5-2c91000bce63` on `agency-dashboard/main`.
+The production build, worker runtime guards and size budgets pass (15.33 MB raw,
+5.32 MB gzip). Cloudflare production metadata identifies the merged source.
+Live browser checks in the admin session retained 408 projects, the folder tree,
+20 projects in Northern Motor Group and the existing QR library (23 codes).
+The affected staff accounts remain active with the Creative role. No individual
+client assignment, role upgrade or finance grant was made. The regression suite
+exercises a Creative user without client assignments; an affected user's own
+signed-in browser confirmation remains separate from the admin smoke check.
 
 ## 23 November 2026 — Editable RAM and Nissan entrances
 
