@@ -87,3 +87,9 @@ Staff accounts with existing Banner Studio write/client access can reconcile a p
 In the editor, choose **Actions → Client proof poster**, enter a settled frame time or use the playhead, then **Save poster**. All layouts / Single edit determines the scope. The choice saves with the artwork and supports undo. **Automatic frame** restores the default midpoint. The image route clamps a saved choice to the animation duration and includes it in the cached image revision. Selecting a clear frame is particularly useful when a midpoint falls on an animated-video zoom or blur.
 
 The Banner Studio asset route uses bounded multipart headers and byte views for binary bodies; it does not use the h3 per-byte-array multipart parser. A 22 MiB / 128 MiB heap regression control records the original parser failure and the replacement's intact payload. Archive/package bounds still apply before upload. An upload failure should display the server's short status message when available, with the durable attempt held for reconciliation.
+
+The internal `banner-share-images` renderer must be released alongside chosen-frame
+support: it accepts finite frame times from 0 through 300 seconds. The saved frame
+is clamped to the project duration before capture; the old 3-second renderer cap
+caused late-frame poster requests to fail. Verify an actual late-frame JPEG after
+releasing the worker.
