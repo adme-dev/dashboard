@@ -18,6 +18,8 @@ const testGlobal = globalThis as unknown as {
 }
 testGlobal.defineEventHandler = handler => handler
 
+vi.mock('~~/server/utils/banner/multipart', () => ({ readBannerMultipart: (...args: unknown[]) => mockReadMultipartFormData(...args) }))
+
 vi.mock('h3', async (importOriginal) => {
   const original = await importOriginal<typeof import('h3')>()
   return {

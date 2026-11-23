@@ -300,7 +300,9 @@ async function importDrafts() {
           row.status += ' · viewer pending; prepare its saved viewer to retry'
         }
       } catch (cause) {
-        row.status = cause instanceof Error ? cause.message : 'Import failed'
+        const failure = cause as { data?: { statusMessage?: unknown }, statusMessage?: unknown }
+        const detail = failure?.data?.statusMessage || failure?.statusMessage
+        row.status = typeof detail === 'string' && detail.length <= 300 ? detail : cause instanceof Error ? cause.message : 'Import failed'
         // Retain the durable attempt marker on failure: a lost response may have committed.
         throw new Error(`${pkg.name}: ${row.status}`, { cause })
       }

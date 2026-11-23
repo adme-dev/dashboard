@@ -1,4 +1,5 @@
-import { createError, getHeader, readMultipartFormData } from 'h3'
+import { readBannerMultipart } from '~~/server/utils/banner/multipart'
+import { createError, getHeader } from 'h3'
 import { queryOne } from '~~/server/utils/db'
 import { requireAuth, requireWriteAccess } from '~~/server/utils/auth'
 import { isBannerClientId, requireBannerClientAccess } from '~~/server/utils/banner/clientAccess'
@@ -42,7 +43,7 @@ function constantTimeDigestEqual(left: string, right: string): boolean {
 export default defineEventHandler(async (event) => {
   const user = await requireAuth(event)
 
-  const formData = await readMultipartFormData(event)
+  const formData = await readBannerMultipart(event)
   const files = formData?.filter(part => part.name === 'file') ?? []
   if (files.length !== 1 || !files[0]?.data) {
     throw createError({ statusCode: 400, statusMessage: 'Exactly one file field is required' })
