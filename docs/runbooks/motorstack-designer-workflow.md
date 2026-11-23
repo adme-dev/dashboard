@@ -23,6 +23,29 @@ MotorStack's Forester accessory and crossbar offers supplied `2027-01-01` as the
 
 The [official Outback accessory offer](https://www.subaru.com.au/special-offers/outback-accessory-special-offer) matches MotorStack: $850 including GST and standard fitting, MY2026 Outback eligibility, participating retailers, and a 31 December 2026 end date. Use this offer and its supplied artwork for the pending live AI acceptance check. The website check was read-only; no enquiry was submitted.
 
+## Proposed automatic brand templates — recurring-work evidence
+
+The user requested brand templates based on the monthly work in monday.com. Read-only review on 23 November covered all 134 Creative Request items and a sample of the 500 most recently created items on Approved To Be Billed (May–November 2026). Of that sample, 127 titles matched banner/display/PMax/OEM-creative/template keywords; this is a discovery sample, not an exhaustive count of monthly banner jobs.
+
+TheBrief's live template library offers reusable multi-size design sets and a Customized category. XeroFlow already has native saved sets (`Actions → Save as template`) and `buildBrandTemplateLayers`; reuse those foundations. The following automation is proposed and is **not implemented or scheduled by this release**:
+
+1. Generate a draft master set from each MotorStack brand kit, with named hero, headline, price, CTA and legal roles. Keep fonts, logo variants, safe areas and animation rules in the brand template; review it once before marking it approved.
+2. Store dealer/destination profiles separately: desktop/mobile dimensions, landing-page links, dealer identity and approval requirements. A brand alone cannot determine website dimensions. Multi-franchise group artwork needs an explicit group template rather than guessing one OEM.
+3. Populate approved templates from verified current MotorStack and official OEM offer evidence. Preserve exact commercial facts and asset identity; let AI arrange content within template constraints. Missing eligibility, conflicting dates, missing mobile profiles or unverified links require review.
+4. On a monthly run or source change, create one draft package per dealer, offer revision, template revision and destination profile. Use that identity to avoid duplicates on retries. Preserve the last approved version and designer changes; changed facts create a new review revision.
+5. Produce a review package showing source links, checked time, offer changes, expiry, every output size and destination. Record a named owner and client/OEM sign-off. Publishing and website replacement remain explicit delivery steps; expiry should flag or retire only assets owned by that automation.
+
+Evidence behind the proposed families:
+
+| Reusable family | Observed work |
+| --- | --- |
+| Monthly OEM offers, desktop/mobile + group variants | [Big Garage monthly resize](https://adme2.monday.com/boards/3199166934/pulses/11055898325) explicitly requires monthly dealer and group website banners. Its January brief specifies Subaru 1600×625 / 562×742; Nissan 1500×612 / 566×1127; Suzuki 1600×1122 / 566×610; Volkswagen 1600×780 / 2200×1072; LDV 1600×600 / 600×450; group 2000×1334 / 480×469. These are historical site profiles to confirm before reuse, not universal OEM sizes. |
+| Offer variants within one campaign | [Courtney & Patterson Ford monthly offers](https://adme2.monday.com/boards/3199166934/pulses/11802891251) requested six offer sets, official Ford assets, 1440×870 desktop / 566×884 mobile and separate links. [Knox GWM seven offers](https://adme2.monday.com/boards/3199166934/pulses/11907986655) includes a later finance-expiry correction, supporting revision-based checks. |
+| Website banner + social tile | [Big Garage LDV loyalty offer](https://adme2.monday.com/boards/3199166934/pulses/13541366538) contains separate questions about the mobile variant, expiry, link and which asset to deliver. The package should carry these fields together. |
+| Dealer update and customer review designs | [Blood Hyundai templates](https://adme2.monday.com/boards/3199166934/pulses/13331455318) and [Frankston Forthing templates](https://adme2.monday.com/boards/3199166934/pulses/13500734056) explicitly request separate update/review masters. These use approved supplied content rather than inventing testimonials or treating everything as an OEM offer. |
+
+The [Web Banner brief](https://adme2.monday.com/boards/1655369777/pulses/4881392251) already identifies headings, CTA, OEM approval/style, destination dimensions, campaign dates and button URL. The [PMax brief](https://adme2.monday.com/boards/1655369777/pulses/8950371011) adds channel-specific size/count requirements. Map these stable inputs into template population instead of inferring them from job titles. No monday.com item, website or delivery recipient was changed during this discovery.
+
 ## Pick the right vehicle image
 
 1. Open a design, then **Insert → Vehicle images**, or **Brand → Variants**. Check the selected brand kit.

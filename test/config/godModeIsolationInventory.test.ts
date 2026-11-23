@@ -103,8 +103,8 @@ const API_INVENTORY = {
   // Banner viewer snapshots add one GET and one POST. Both call authorizedBannerSnapshot.
   // GET authenticates; POST requires write access in viewerSnapshot.ts, so the route
   // file itself is not an inline guarded mutation and calls no transaction().
-  // Client projects recheck requireSocialClientAccess. Projects without a client
-  // require the creator or all-client social access. Stored project bytes are the
+  // Client projects recheck requireBannerClientAccess. Projects without a client
+  // require the creator or fresh all-client Banner access. Stored project bytes are the
   // only snapshot body. Neither path is a reviewed read, a Task 5 target, or a
   // registered God mode mutation, so the write gate stays fail-closed.
   // Email template clients GET authenticates, then resolveEmailClientScope filters
@@ -154,9 +154,11 @@ const API_INVENTORY = {
   // Marketing alerts adds one cron POST (/api/cron/marketing-alerts) authenticated by the
   // machine cron secret, not a staff session; it is notify-only and registers no bypass.
   // Model Ops adds one admin/owner aggregate GET; it cannot dispatch a job or change its payer.
-  totalRouteFiles: 2398,
-  mutationRouteFiles: 1310,
-  explicitlyGuardedMutationFiles: 436,
+  // Eight released Banner preview/recovery routes plus MotorStack preparation.
+  // Delegated scope and the fresh CREATIVE grant remain mandatory; no bypass.
+  totalRouteFiles: 2407,
+  mutationRouteFiles: 1313,
+  explicitlyGuardedMutationFiles: 437,
   guardedMutationFilesWithTransactionCall: 58
 } as const
 
@@ -208,9 +210,9 @@ describe('God mode route isolation inventory', () => {
       // T10 adds two scoped reads and four guarded production writes; no authority bypass.
   // Governance phase 4 adds one client-scoped read (clients/[id]/change-history.get.ts).
       // Marketing alerts adds one cron-secret POST; no authority bypass.
-      totalRouteFiles: 2398,
-      mutationRouteFiles: 1310,
-      explicitlyGuardedMutationFiles: 436,
+      totalRouteFiles: 2407,
+      mutationRouteFiles: 1313,
+      explicitlyGuardedMutationFiles: 437,
       guardedMutationFilesWithTransactionCall: 58
     })
   })
@@ -413,7 +415,16 @@ describe('God mode route isolation inventory', () => {
         expect(source.indexOf('await loadPublicBannerShare(event)')).toBeLessThan(source.indexOf('await publicBannerShareVideos('))
         gateSource = readFileSync('server/utils/banner/publicShare.ts', 'utf8')
       }
-      for (const gate of gates) expect(gateSource).toContain(gate)
+      const currentGates: Record<string, string[]> = {
+        'server/api/agency/banner-studio/folders/index.get.ts': ['await requireAuth(event)', '!await hasAllBannerClientAccess(user) && !hasBannerClientPermission(user)'],
+        'server/api/agency/banner-studio/projects/[id]/folder.patch.ts': ['await requireWriteAccess(event)', 'await requireBannerClientAccess(event, project.client_id)', 'AND ${ACTIVE_PROJECT_CLIENT_SQL}'],
+        'server/api/agency/banner-studio/projects/[id]/thebrief-refresh.patch.ts': ['await requireWriteAccess(event)', 'await requireBannerClientAccess(event, input.clientId)', 'transaction(db => refreshTheBriefDraft']
+      }
+      if (file === 'server/api/agency/banner-studio/motorstack/creative-catalog.get.ts') {
+        expect(source).toContain('await getMotorstackCreativeCatalog(event, input.data)')
+        gateSource += readFileSync('server/utils/banner/motorstackCreativeCatalog.ts', 'utf8')
+      }
+      for (const gate of currentGates[file] || gates) expect(gateSource).toContain(gate)
       expect(source).not.toContain('registerGodModeMutationFamily')
       expect(gateSource).not.toContain('registerGodModeMutationFamily')
     }
@@ -437,10 +448,12 @@ describe('God mode route isolation inventory', () => {
     expect(mutation).toContain('return prepareBannerShareVideo(event, body.formatKey, body.retry === true)')
     const service = readFileSync('server/utils/banner/shareVideo.ts', 'utf8')
     expect(service).toContain('const share = await loadPublicBannerShare(event, token)')
-    expect(service).toContain('const share = await loadPublicBannerShare(event)')
+    expect(service).toContain('const share = await (access ? access.load() : loadPublicBannerShare(event))')
+    expect(service).toContain('const load = access?.load || (() => loadPublicBannerShare(event, token))')
+    expect(service).toContain('const share = await load()')
     expect(service).toContain('plan.key === formatKey && plan.revision === revision')
     expect(service).toContain('await enforceRateLimit(event, { key: `banner-share-video:${share.project.id}`, limit: 10, windowSeconds: 600, failureMode: \'closed\' })')
-    expect(service).toContain('markDispatched: async () => {\n    await loadPublicBannerShare(event, token)')
+    expect(service).toContain('markDispatched: async () => {\n    await load()')
     for (const source of [mutation, service]) expect(source).not.toContain('registerGodModeMutationFamily')
   })
 
@@ -610,11 +623,27 @@ describe('God mode route isolation inventory', () => {
     expect(editableCopy).toContain('await saveImportedTemplate(')
     const snapshot = readFileSync('server/utils/banner/viewerSnapshot.ts', 'utf8')
     expect(snapshot).toContain('const user = write ? await requireWriteAccess(event) : await requireAuth(event)')
-    expect(snapshot).toContain('if (project.clientId) await requireSocialClientAccess(event, project.clientId)')
-    expect(snapshot).toContain('project.createdBy !== user.id && !hasAllSocialClientAccess(user)')
+    expect(snapshot).toContain('if (project.clientId) await requireBannerClientAccess(event, project.clientId)')
+    expect(snapshot).toContain('project.createdBy !== user.id && !await hasAllBannerClientAccess(user)')
     expect(snapshot).not.toMatch(/isApplicationCapabilityEnabled|registerGodModeMutationFamily/)
     const reviewed = listReviewedGodModeReadRoutes().map(route => route.file)
     for (const file of Object.keys(routes)) expect(reviewed).not.toContain(file)
+  })
+
+  it('pins the current Banner preview and MotorStack preparation routes to native authority', () => {
+    const review = JSON.parse(readFileSync('docs/runbooks/motorstack-ci-inventory-review-20261123.json', 'utf8')) as { newRoutes: Record<string, string[]> }
+    expect(Object.keys(review.newRoutes)).toHaveLength(9)
+    for (const [file, gates] of Object.entries(review.newRoutes)) {
+      const source = readFileSync(file, 'utf8')
+      for (const gate of gates) expect(source).toContain(gate)
+      expect(source).not.toContain('registerGodModeMutationFamily')
+    }
+    expect(readFileSync('server/utils/banner/teamPreview.ts', 'utf8')).toContain('await authorizedBannerSnapshot(event)')
+    expect(readFileSync('server/utils/banner/proofVideo.ts', 'utf8')).toContain('const actor = await requireWriteAccess(event)')
+    const access = readFileSync('server/utils/banner/clientAccess.ts', 'utf8')
+    expect(access).toContain("rpg.permission_group = 'CREATIVE'")
+    expect(access).toContain('tm.is_active = TRUE')
+    expect(access).not.toContain('registerGodModeMutationFamily')
   })
 
   it('pins the concrete uncoordinated mutation evidence', () => {
