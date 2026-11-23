@@ -101,7 +101,9 @@ it.each([-1, 300.001, null, '5.9'])('rejects an invalid poster worker time: %s',
 it('seeks embedded video after the paused HTML already rendered the chosen frame', async () => {
   const video = { readyState: 2, seeking: false, currentTime: 0, addEventListener: vi.fn(), removeEventListener: vi.fn() }
   const clock = { time: 0 }
-  const timeline = gsap.timeline({ paused: true }).to(clock, { time: 6, duration: 6, ease: 'none', onUpdate: () => { video.currentTime = clock.time } }, 0)
+  const timeline = gsap.timeline({ paused: true }).to(clock, { time: 6, duration: 6, ease: 'none', onUpdate: () => {
+    video.currentTime = clock.time
+  } }, 0)
   timeline.render(1.5, true, true)
   expect(video.currentTime).toBe(0)
   const setAttribute = vi.fn()
