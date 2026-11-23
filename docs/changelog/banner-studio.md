@@ -195,3 +195,12 @@ Banner Studio and linked Video Studio artwork now let embedded video decode
 continuously during playback. Pause/scrub, trim points, looping and editable motion
 remain synchronized with the existing timeline. Audio and the qualified render
 container remain unchanged. See the Suzuki playback verification ledger.
+
+## 23 November 2026 — full-length Video Studio client proofs
+
+A producer can attach a completed Video Studio MP4 to a matching 30–90-second
+Banner Studio artboard from Share with client. This preserves the qualified
+rendered output, full duration, native playback and poster without editing the
+source artwork or changing the30-second capture limit. Attachments are tied to
+the saved artwork/font revision, and unchecked long proofs cannot create a new
+client link from the sharing dialog.

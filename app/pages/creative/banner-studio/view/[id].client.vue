@@ -9,6 +9,7 @@ const unavailable = ref(false)
 const loading = ref(true)
 const sharingOpen = ref(false)
 const downloadsOpen = ref(false)
+const proofVersion = ref(0)
 let disposed = false
 let timer: ReturnType<typeof setTimeout> | undefined
 async function refresh() {
@@ -94,13 +95,13 @@ onBeforeUnmount(() => {
     <USkeleton v-if="loading" class="m-4 h-64" />
     <BannerClientVideoPreview
       v-if="snapshot"
-      :key="snapshot.revision"
+      :key="`${snapshot.revision}:${proofVersion}`"
       :canvas="snapshot.canvasData"
       :project-id="projectId"
       :client-name="snapshot.clientName"
       :project-name="snapshot.name"
     />
-    <BannerProjectShareModal v-model:open="sharingOpen" :project="shareProject" />
+    <BannerProjectShareModal v-model:open="sharingOpen" :project="shareProject" @proof-video-updated="proofVersion++" />
     <BannerVideoDownloads
       v-if="snapshot"
       v-model:open="downloadsOpen"
