@@ -460,7 +460,7 @@ async function execute(
         )
   const reviewerId = payload.review?.reviewerId
   const direct = row.status === 'proposed' && !payload.review && row.confirmed_by == null && (owner ? allowsFeedLeadExecution(payload) : await hasFeedLeadGrant(row))
-  const peerApproved = row.status === 'approved' && payload.review?.decision === 'approved'
+  const peerApproved = !owner && row.status === 'approved' && payload.review?.decision === 'approved'
     && !!reviewerId && reviewerId !== row.user_id && row.confirmed_by === reviewerId
   if ((!direct && !peerApproved) || new Date(row.expires_at).getTime() <= Date.now())
     stop('An unexpired approval or an assigned feed lead grant is required.', 'approval_required')
@@ -486,11 +486,13 @@ async function execute(
     if (!owner && direct && !(await db.query(feedLeadGrant + ' FOR SHARE', [ctx.userId, input.clientId])).rows.length)
       stop('Feed lead grant is no longer active.', 'approval_required')
     const claim = (await db.query(
-      `UPDATE ai_pending_actions SET status = 'executed', executed_at = NOW(), confirmed_by = COALESCE(confirmed_by, $2)
+      `UPDATE ai_pending_actions SET status = 'executed', executed_at = NOW(), confirmed_by = COALESCE(confirmed_by, $2),
+         resolved_payload = resolved_payload || $7::jsonb
        WHERE id = $1 AND user_id = $2 AND source = 'mcp' AND tool_name = $3 AND status = $6
          AND expires_at > NOW() AND resolved_payload = $4::jsonb
          AND confirmed_by IS NOT DISTINCT FROM $5::uuid RETURNING id`,
-      [row.id, ctx.userId, ACTION, JSON.stringify(payload), row.confirmed_by, row.status]
+      [row.id, ctx.userId, ACTION, JSON.stringify(payload), row.confirmed_by, row.status,
+        JSON.stringify(owner ? { ownerExecutionKey: ctx.godModeExecutionKey } : {})]
     )).rows[0]
     if (claim) await owner?.markDispatched()
     return claim

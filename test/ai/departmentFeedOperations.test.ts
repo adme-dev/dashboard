@@ -113,6 +113,7 @@ const query = vi.hoisted(() =>
         r => r.id === p[0] && r.user_id === p[1] && r.status === p[5] && r.confirmed_by === p[4]
       )
       if (!row) return { rows: [] }
+      Object.assign(row.resolved_payload, JSON.parse(p[6]))
       row.confirmed_by ??= p[1]
       row.status = 'executed'
       return { rows: [row] }
@@ -874,6 +875,7 @@ describe('owner MCP inventory feed controls', () => {
     expect((await ownerCall('owner_execute_inventory_feed_change', args)).ok).toBe(false)
     expect(await ownerCall('owner_get_inventory_feed_change', { clientId, proposalId })).toMatchObject({ data: { status: 'executed' } })
     expect(state.updates).toBe(1)
+    expect(state.rows[0].resolved_payload.ownerExecutionKey).toBe(key)
     expect(services.markDispatched).toHaveBeenCalledTimes(2)
   })
 
