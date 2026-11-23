@@ -5,6 +5,7 @@ import BrandPanel from '../../app/components/banner/BrandPanel.vue'
 
 const kitId = '6f8d4f20-3b5f-45e9-a086-e0024f74fafb'
 const image = { id: 'a'.repeat(64), name: 'Renault Duster · evolution · white', mime: 'image/webp', importable: true, previewUrl: '/api/agency/banner-studio/motorstack/file?image' }
+const otherGrade = { ...image, id: 'b'.repeat(64), name: 'Renault Duster · Techno · white' }
 const saved = { id: 'saved-image', name: image.name, mimeType: image.mime, url: '/managed/duster.webp' }
 let app: Vue.App | undefined
 let host: HTMLDivElement
@@ -26,7 +27,7 @@ describe('brand kit vehicle images', () => {
     const addMotorStackImageToAllLayouts = vi.fn(() => 3)
     const api = vi.fn(async (url: string, options: { method?: string, query?: { brandId: string }, body?: { brandId: string, assetId: string } }) => {
       if (options?.method === 'POST') return { asset: saved }
-      return { brand: { id: 'renault', name: 'Renault' }, assets: [image], models: ['Duster'], warnings: [] }
+      return { brand: { id: 'renault', name: 'Renault' }, assets: [image, otherGrade], models: ['Duster'], warnings: [] }
     })
     vi.stubGlobal('$fetch', api)
     vi.stubGlobal('useBannerStudio', () => ({
@@ -49,7 +50,7 @@ describe('brand kit vehicle images', () => {
     app.component('UTabs', Vue.defineComponent({ setup: () => () => Vue.h('span') }))
     app.component('BannerBrandStyleGuide', Vue.defineComponent({ setup: () => () => Vue.h('span') }))
     app.component('BannerMotorStackLogo', Vue.defineComponent({ setup: () => () => Vue.h('span', 'MOTORSTACK') }))
-    app.component('BannerMotorStackMediaPicker', Vue.defineComponent({ props: ['open', 'initialBrandId', 'imagesOnly', 'addToCanvas'], emits: ['imported'], setup: (props, { emit }) => () => props.open ? Vue.h('button', { 'data-brand': props.initialBrandId, 'onClick': () => emit('imported', saved) }, 'Choose modal image') : null }))
+    app.component('BannerMotorStackMediaPicker', Vue.defineComponent({ props: ['open', 'initialBrandId', 'imagesOnly', 'addToCanvas', 'initialModel', 'initialGrade', 'initialColour'], emits: ['imported'], setup: (props, { emit }) => () => props.open ? Vue.h('button', { 'data-brand': props.initialBrandId, 'data-model': props.initialModel, 'data-grade': props.initialGrade, 'data-colour': props.initialColour, 'onClick': () => emit('imported', saved) }, 'Choose modal image') : null }))
     app.component('UModal', Vue.defineComponent({ setup: () => () => Vue.h('span') }))
     app.component('UIcon', Vue.defineComponent({ setup: () => () => Vue.h('span') }))
     app.mount(host)
@@ -59,11 +60,15 @@ describe('brand kit vehicle images', () => {
     await settle()
     expect(api).toHaveBeenCalledWith('/api/agency/banner-studio/motorstack/media', { query: { brandId: 'renault' } })
     expect(api.mock.calls.some(call => call[0].includes('creative-catalog'))).toBe(false)
-    expect(host.textContent).toContain('1 image')
+    expect(host.textContent).toContain('2 images')
     expect(host.querySelector('img')?.getAttribute('src')).toBe(image.previewUrl)
     Array.from(host.querySelectorAll<HTMLButtonElement>('[data-value="Duster"]')).at(-1)!.click()
     await settle()
+    expect(host.textContent).toContain('2 images')
+    host.querySelector<HTMLButtonElement>('[data-value="evolution"]')!.click()
+    await settle()
     expect(host.textContent).toContain('1 image')
+    expect(host.textContent).not.toContain(otherGrade.name)
     host.querySelector<HTMLButtonElement>('[data-value="white"]')!.click()
     await settle()
     expect(host.querySelector('img')?.getAttribute('src')).toBe(image.previewUrl)
@@ -74,7 +79,9 @@ describe('brand kit vehicle images', () => {
     const openModal = [...host.querySelectorAll('button')].find(button => button.textContent?.trim() === 'Open large image browser')!
     openModal.click()
     await settle()
-    expect(host.querySelector('[data-brand="renault"]')).not.toBeNull()
+    expect(host.querySelector('[data-brand="renault"]')?.getAttribute('data-model')).toBe('Duster')
+    expect(host.querySelector('[data-brand="renault"]')?.getAttribute('data-grade')).toBe('evolution')
+    expect(host.querySelector('[data-brand="renault"]')?.getAttribute('data-colour')).toBe('white')
     host.querySelector<HTMLButtonElement>('[data-brand="renault"]')!.click()
     await settle()
     expect(addMotorStackImageToAllLayouts).toHaveBeenCalledTimes(2)

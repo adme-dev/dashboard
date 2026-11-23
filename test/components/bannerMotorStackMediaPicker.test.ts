@@ -50,7 +50,11 @@ async function mount(options: { read?: (query: { brandId: string, model?: string
   })
   const imported = vi.fn()
   const closed = vi.fn()
-  app = Vue.createApp(Picker, { 'open': true, 'onImported': imported, 'onUpdate:open': closed, ...options.props })
+  const isOpen = Vue.ref(true)
+  app = Vue.createApp({ setup: () => () => Vue.h(Picker, { 'open': isOpen.value, 'onImported': imported, 'onUpdate:open': (value: boolean) => {
+    closed(value)
+    isOpen.value = value
+  }, ...options.props }) })
   app.component('UModal', Vue.defineComponent({ props: ['open', 'dismissible'], setup: (props, { slots }) => () => props.open ? Vue.h('section', { 'data-dismissible': props.dismissible }, [slots.body?.(), slots.footer?.()]) : null }))
   app.component('UButton', Vue.defineComponent({ props: ['disabled', 'label', 'href'], setup: (props, { slots, attrs }) => () => Vue.h(props.href ? 'a' : 'button', { ...attrs, href: props.href, disabled: props.disabled }, props.label || slots.default?.()) }))
   app.component('UFormField', Vue.defineComponent({ props: ['label'], setup: (props, { slots }) => () => Vue.h('div', { 'data-field': props.label }, slots.default?.()) }))
@@ -61,7 +65,7 @@ async function mount(options: { read?: (query: { brandId: string, model?: string
   app.component('BannerMotorStackLogo', Vue.defineComponent({ setup: () => () => Vue.h('span', 'MOTORSTACK') }))
   app.mount(host)
   await settle()
-  return { write, imported, queries, closed }
+  return { write, imported, queries, closed, isOpen }
 }
 beforeEach(() => {
   for (const [name, value] of Object.entries(Vue)) vi.stubGlobal(name, value)
@@ -74,6 +78,13 @@ afterEach(() => {
 })
 
 describe('MotorStack media picker', () => {
+  it('uses the known project brand without requesting or displaying the full brand catalogue', async () => {
+    const { queries } = await mount({ props: { initialBrandId: 'gwm', initialModel: 'Cannon' } })
+    expect(queries).toEqual([{ brandId: 'gwm', model: 'Cannon' }])
+    expect(host.querySelector('[data-field="Brand"]')).toBeNull()
+    expect(host.textContent).not.toContain('Kia')
+  })
+
   it('opens with images visible and loads further previews on demand', async () => {
     const assets = Array.from({ length: 35 }, (_, index) => ({ ...image, id: `image-${index}`, name: `Vehicle ${index}` }))
     await mount({ props: { initialBrandId: 'gwm', imagesOnly: true, addToCanvas: true }, read: async () => ({ ...response(), assets }) })
@@ -100,6 +111,46 @@ describe('MotorStack media picker', () => {
     await settle()
     expect(write).toHaveBeenCalledWith('/api/agency/banner-studio/motorstack/media', { method: 'POST', body: { brandId: 'gwm', model: 'Forester', assetId: white.id } })
   })
+  it('filters by grade before colour and carries both selections into the large browser', async () => {
+    const base = { ...image, name: 'Forester · AWD · Crystal White Pearl' }
+    const sport = { ...image, id: 'sport', name: 'Forester · Sport · Crystal White Pearl' }
+    const grey = { ...image, id: 'grey', name: 'Forester · Sport · Magnetite Grey Metallic · photos 2' }
+    const { write } = await mount({ props: { initialBrandId: 'gwm', initialModel: 'Forester', imagesOnly: true, addToCanvas: true, initialGrade: 'Sport', initialColour: 'Crystal White Pearl' }, read: async () => ({ ...response(), assets: [base, sport, grey] }) })
+    expect(host.textContent).toContain('1 of 3 assets')
+    expect(host.textContent).toContain(sport.name)
+    expect(host.textContent).not.toContain(base.name)
+    expect(host.textContent).not.toContain(grey.name)
+    choose('Variant / grade', 'AWD')
+    await settle()
+    expect(host.textContent).toContain(base.name)
+    expect(host.querySelector('[data-field="Paint colour"]')?.textContent).not.toContain('Magnetite Grey Metallic')
+    button('Add to all layouts').click()
+    await settle()
+    expect(write).toHaveBeenCalledWith('/api/agency/banner-studio/motorstack/media', { method: 'POST', body: { brandId: 'gwm', model: 'Forester', assetId: base.id } })
+  })
+
+  it('keeps PDF downloads visible in All media while a grade and paint are selected', async () => {
+    await mount({ props: { initialBrandId: 'gwm', initialModel: 'Cannon', initialGrade: 'Lux', initialColour: 'White' }, read: async () => ({ ...response(), assets: [{ ...image, name: 'Cannon · Lux · White' }, pdf] }) })
+    choose('Media type', 'all')
+    await settle()
+    expect(host.querySelector('a')?.getAttribute('href')).toBe(pdf.previewUrl)
+  })
+
+  it('clears an old search when switching brands', async () => {
+    await mount()
+    choose('Brand', 'gwm')
+    await settle()
+    const input = host.querySelector('input')!
+    input.value = 'no-match'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    await settle()
+    expect(host.textContent).toContain('No media matches')
+    choose('Brand', 'kia')
+    await settle()
+    expect(host.textContent).toContain(image.name)
+    expect(host.querySelector('input')!.value).toBe('')
+  })
+
   it('opens with the paint colour already selected in the Brand Kit sidebar', async () => {
     const white = { ...image, id: 'white', name: 'Forester · AWD · Crystal White Pearl' }
     const grey = { ...image, id: 'grey', name: 'Forester · AWD · Magnetite Grey Metallic' }
@@ -232,8 +283,8 @@ describe('MotorStack media picker', () => {
     let finishOld!: (value: ReturnType<typeof response>) => void
     const { queries } = await mount({ read: query => query.brandId === 'gwm'
       ? new Promise((resolve) => {
-          finishOld = resolve
-        })
+        finishOld = resolve
+      })
       : Promise.resolve(response('kia')) })
     choose('Brand', 'gwm')
     await settle()
@@ -245,6 +296,26 @@ describe('MotorStack media picker', () => {
     await settle()
     expect(host.textContent).toContain('KIA')
     expect(host.querySelector('p.font-medium')?.textContent).not.toBe('GWM')
+  })
+
+  it('reloads after closing during a request and ignores that old response', async () => {
+    let finishOld!: (value: ReturnType<typeof response>) => void
+    const read = vi.fn().mockImplementationOnce(() => new Promise((resolve) => {
+      finishOld = resolve
+    })).mockResolvedValueOnce({ ...response(), assets: [{ ...image, name: 'Current image' }] })
+    const { isOpen, queries } = await mount({ read })
+    choose('Brand', 'gwm')
+    await settle()
+    button('Close').click()
+    await settle()
+    isOpen.value = true
+    await settle()
+    expect(queries).toHaveLength(2)
+    expect(host.textContent).toContain('Current image')
+    finishOld(response())
+    await settle()
+    expect(host.textContent).toContain('Current image')
+    expect(host.textContent).not.toContain(image.name)
   })
 
   it('shows a failed media read and allows retry without making an import request', async () => {

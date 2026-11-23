@@ -15,14 +15,15 @@ const cleanup: Array<() => void> = []
 async function settle() {
   for (let i = 0; i < 5; i++) await nextTick()
 }
-async function mount(projectId = 'project-1') {
+async function mount(projectId = 'project-1', props: Record<string, unknown> = {}) {
   const id = ref(projectId)
   const social = vi.fn()
   const host = document.createElement('div')
   document.body.appendChild(host)
-  const app = createApp({ render: () => h(DesignAssistant, { open: true, projectId: id.value, onPrepareSocial: social }) })
+  const app = createApp({ render: () => h(DesignAssistant, { open: true, projectId: id.value, onPrepareSocial: social, ...props }) })
   app.component('USlideover', { template: '<section><slot name="body"/></section>' })
   app.component('UFileUpload', { props: ['modelValue', 'disabled'], emits: ['update:modelValue'], template: '<input type="file" multiple :disabled="disabled" @change="$emit(\'update:modelValue\', Array.from($event.target.files))" />' })
+  app.component('UAccordion', { props: ['items'], template: '<div>{{ items.map(item => item.content).join(" ") }}</div>' })
   app.component('UIcon', { template: '<span/>' })
   app.component('UFormField', { props: ['label'], template: '<label>{{ label }}<slot/></label>' })
   app.component('UButton', { props: ['label', 'disabled'], emits: ['click'], template: '<button :disabled="disabled" @click="$emit(\'click\')">{{ label }}</button>' })
@@ -96,6 +97,15 @@ describe('native Banner Studio design assistant', () => {
     expect(state.sets).toEqual(initialCanvas())
     expect(view.button('Prepare social export').disabled).toBe(true)
   })
+  it('sends a plain design request when using the keyboard shortcut', async () => {
+    const view = await mount()
+    await view.prompt('Improve spacing')
+    view.host.querySelectorAll('textarea')[1]!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true }))
+    await settle()
+    expect(fetchMock.mock.calls[0][1].body).not.toHaveProperty('motorstack')
+    expect(fetchMock.mock.calls[0][1].body.prompt).toBe('Improve spacing')
+  })
+
   it('rejects a proposal after a canvas edit while the request was running', async () => {
     let resolve!: (data: unknown) => void
     fetchMock.mockImplementation(() => new Promise((done) => {
@@ -339,4 +349,80 @@ describe('native Banner Studio design assistant', () => {
     expect(view.host.textContent).not.toContain('Old client reference')
     expect(sessionStorage.getItem('banner-design-chat:v2:project-1:client-2')).toBeNull()
   })
+})
+
+const motorstackKit = { id: '11111111-1111-4111-8111-111111111111', name: 'Subaru Australia', sourceUrl: 'https://oem-variants.pages.dev/api/mcp#brand=subaru' }
+const motorstackOffer = { id: 'a'.repeat(64), current: true, title: 'Current Forester offer', model: 'Forester', offer: 'Source copy', endDate: '2026-11-30', disclaimer: 'Full source terms.', artworkAssetId: 'b'.repeat(64), artworkPreviewUrl: '/source/hero' }
+const motorstackSource = { kitId: motorstackKit.id, offerId: motorstackOffer.id, assetId: '22222222-2222-4222-8222-222222222222', mode: 'refine', title: motorstackOffer.title, checkedAt: '2026-11-23T03:00:00Z' }
+
+it('loads only the detected brand, retains current offer artwork, and previews the complete AI set before Apply', async () => {
+  fetchMock.mockImplementation(async (url: string) => {
+    if (url.endsWith('/creative-catalog')) return { items: [motorstackOffer, { ...motorstackOffer, id: 'c'.repeat(64), current: false, verificationIssue: 'Source dates conflict' }] }
+    if (url.endsWith('/motorstack-offer')) return { assetId: motorstackSource.assetId, offerId: motorstackOffer.id }
+    return { ...response(), motorstack: motorstackSource }
+  })
+  const view = await mount('project-1', { brandKit: motorstackKit })
+  expect(view.host.textContent).toContain('Some offers need source review')
+  expect(fetchMock.mock.calls).toHaveLength(1)
+  expect(fetchMock).toHaveBeenCalledWith('/api/agency/banner-studio/motorstack/creative-catalog', { query: { kitId: motorstackKit.id, kind: 'offers' } })
+  await view.click('Create offer set with AI')
+  expect(fetchMock.mock.calls.map(call => call[0])).toEqual(['/api/agency/banner-studio/motorstack/creative-catalog', '/api/agency/banner-studio/ai/motorstack-offer', '/api/agency/banner-studio/ai/design-assist'])
+  const body = fetchMock.mock.calls[2][1].body
+  expect(body).toMatchObject({ brandKitId: motorstackKit.id, motorstack: { kitId: motorstackKit.id, offerId: motorstackOffer.id, assetId: motorstackSource.assetId, mode: 'create' } })
+  expect(applyMock).not.toHaveBeenCalled()
+  await view.click('Apply to canvas')
+  expect(applyMock).toHaveBeenCalledOnce()
+  expect(fetchMock.mock.calls.at(-1)?.[0]).toContain('/creative-catalog')
+  await view.prompt('Improve the spacing')
+  await view.click('Preview proposal')
+  expect(fetchMock.mock.calls.at(-1)?.[1].body.motorstack.mode).toBe('refine')
+})
+
+it('blocks Apply when the selected MotorStack offer has changed since generation', async () => {
+  let reads = 0
+  fetchMock.mockImplementation(async (url: string) => {
+    if (url.endsWith('/creative-catalog')) return { items: ++reads === 1 ? [motorstackOffer] : [] }
+    if (url.endsWith('/motorstack-offer')) return { assetId: motorstackSource.assetId, offerId: motorstackOffer.id }
+    return { ...response(), motorstack: motorstackSource }
+  })
+  const view = await mount('project-1', { brandKit: motorstackKit })
+  await view.click('Create offer set with AI')
+  await view.click('Apply to canvas')
+  expect(applyMock).not.toHaveBeenCalled()
+  expect(view.host.textContent).toContain('This offer changed, expired or is no longer published')
+})
+
+it('does not run AI if artwork preparation fails', async () => {
+  fetchMock.mockImplementation(async (url: string) => {
+    if (url.endsWith('/creative-catalog')) return { items: [motorstackOffer] }
+    throw new Error('Source artwork unavailable')
+  })
+  const view = await mount('project-1', { brandKit: motorstackKit })
+  await view.click('Create offer set with AI')
+  expect(fetchMock.mock.calls.some(call => call[0].endsWith('/design-assist'))).toBe(false)
+  expect(view.host.textContent).toContain('Source artwork unavailable')
+  expect(applyMock).not.toHaveBeenCalled()
+})
+
+it('does not clear a new project’s artwork preparation when the old response arrives late', async () => {
+  const finish: Array<(value: unknown) => void> = []
+  fetchMock.mockImplementation(async (url: string) => {
+    if (url.endsWith('/creative-catalog')) return { items: [motorstackOffer] }
+    if (url.endsWith('/motorstack-offer')) return new Promise(resolve => finish.push(resolve))
+    return { ...response(), motorstack: motorstackSource }
+  })
+  const view = await mount('project-1', { brandKit: motorstackKit })
+  await view.click('Create offer set with AI')
+  state.project.id = 'project-2'
+  view.id.value = 'project-2'
+  await settle()
+  await view.click('Create offer set with AI')
+  expect(finish).toHaveLength(2)
+  finish[0]!({ assetId: motorstackSource.assetId, offerId: motorstackOffer.id })
+  await settle()
+  expect(view.button('Create offer set with AI').disabled).toBe(true)
+  expect(fetchMock.mock.calls.some(call => call[0].endsWith('/design-assist'))).toBe(false)
+  finish[1]!({ assetId: motorstackSource.assetId, offerId: motorstackOffer.id })
+  await settle()
+  expect(fetchMock.mock.calls.filter(call => call[0].endsWith('/design-assist'))).toHaveLength(1)
 })

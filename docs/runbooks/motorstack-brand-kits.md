@@ -1,5 +1,7 @@
 # MotorStack OEM brand kits
 
+For designer steps, variant/grade and paint selection, offer insertion, recovery and acceptance checks, see [MotorStack designer workflow](motorstack-designer-workflow.md). The dated release sections below record historical verification; later behavior is described in the designer guide.
+
 Banner Studio → Brand Kits → Import from MotorStack lists the brands available through the existing Creative Suite connection. Import all creates shared OEM kits, one brand at a time. It does not assign dealerships, change client defaults or apply anything to existing designs.
 
 The importer stores available font files, exact declared font weights, logo variants and colours in managed Banner Studio assets. Heading/body roles remain heading/body; MotorStack's medium role becomes an extra font role. The source role, filename and weight remain in the kit's source notes. Main logos precede dark variants and favicons. The kit contains source metadata, not an inferred OEM style guide.

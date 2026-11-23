@@ -5,8 +5,8 @@ import { createBannerUploadSession } from '~/utils/bannerUpload'
 import { bannerAssetLayer, bannerAssetType, type BannerMediaType } from '~/utils/banner-media'
 import { startBannerMediaDrag, endBannerMediaDrag } from '~/utils/banner-media-drag'
 
-const props = withDefaults(defineProps<{ mediaType?: BannerMediaType, selectionOnly?: boolean }>(), { mediaType: 'all', selectionOnly: false })
-const emit = defineEmits<{ select: [asset: BannerAsset] }>()
+const props = withDefaults(defineProps<{ mediaType?: BannerMediaType, selectionOnly?: boolean, motorstackBrandId?: string, inlineMotorstack?: boolean }>(), { mediaType: 'all', selectionOnly: false })
+const emit = defineEmits<{ select: [asset: BannerAsset], browseMotorstack: [] }>()
 const { addLayer, activeFormat, activeLayers, currentSlide, state } = useBannerStudio()
 const { decomposingAssetId, decomposeFromUrl } = useDecompose()
 const { openGenerate } = useAiImageGenerate()
@@ -225,9 +225,14 @@ async function deleteAsset(asset: BannerAsset) {
       variant="outline"
       size="xs"
       class="w-full justify-center"
-      @click="() => { motorstackOpen = true }"
+      @click="() => { if (inlineMotorstack) emit('browseMotorstack'); else motorstackOpen = true }"
     />
-    <BannerMotorStackMediaPicker v-model:open="motorstackOpen" @imported="() => refreshAssets()" />
+    <BannerMotorStackMediaPicker
+      :key="motorstackBrandId || 'unassigned'"
+      v-model:open="motorstackOpen"
+      :initial-brand-id="motorstackBrandId"
+      @imported="() => refreshAssets()"
+    />
 
     <!-- Upload Zone -->
     <div

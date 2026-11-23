@@ -1,0 +1,56 @@
+{
+  "base": "cbc20a938e0bf561270db3a9e7d5d8a823fe9454",
+  "additions": [
+    "server/api/agency/banner-studio/ai/motorstack-offer.post.ts\tconst user = await requireRole(event, PERMISSIONS.CREATIVE)\tapplication_governance_bypass",
+    "server/api/agency/banner-studio/ai/motorstack-offer.post.ts\tawait requireWriteAccess(event)\tapplication_governance_bypass",
+    "server/api/agency/banner-studio/assets/import-recovery.get.ts\tawait requireWriteAccess(event)\tapplication_governance_bypass",
+    "server/utils/banner/clientAccess.ts\texport async function hasAllBannerClientAccess(user: Pick<User, 'id' | 'role' | 'permissionGroups'>): Promise<boolean> {\tordinary_user_behavior",
+    "server/utils/banner/clientAccess.ts\tif (!roleHasPermission(user.role, 'CREATIVE') && !user.permissionGroups?.includes('CREATIVE')) return false\tapplication_governance_bypass",
+    "server/utils/banner/clientAccess.ts\tOR (tm.custom_role_id IS NULL AND cr.is_system = TRUE AND cr.slug = tm.user_role::text)\tidentity_tenant_hard_boundary",
+    "server/utils/banner/proofVideo.ts\tconst actor = await requireWriteAccess(event)\tapplication_governance_bypass"
+  ],
+  "removals": [],
+  "reviewedCandidate": "2c65cea46c8e92f979f426787bec10bafb77aab3",
+  "main": "c5ad0541666c52cca82f77004c9d4c2602bce6bb",
+  "review": "Seven added lexical rows and no removals since the last frozen inventory. Five rows are already on main (Banner native access, retained import recovery and proof-video write authority); two belong to MotorStack artwork preparation. No runtime authority or mutation registration is changed by this audit repair.",
+  "routes": {
+    "totalRouteFiles": 2407,
+    "mutationRouteFiles": 1313,
+    "explicitlyGuardedMutationFiles": 437,
+    "guardedMutationFilesWithTransactionCall": 58
+  },
+  "newRoutes": {
+    "server/api/agency/banner-studio/ai/motorstack-offer.post.ts": [
+      "await requireRole(event, PERMISSIONS.CREATIVE)",
+      "await requireWriteAccess(event)",
+      "await requireBannerClientScope(event, project.client_id ?? undefined)",
+      "await resolveMotorstackDesignOffer(event, parsed.data, project.client_id)"
+    ],
+    "server/api/agency/banner-studio/assets/import-recovery.get.ts": [
+      "await requireAuth(event)",
+      "await requireWriteAccess(event)",
+      "await requireBannerClientAccess(event, clientId)"
+    ],
+    "server/api/agency/banner-studio/projects/[id]/image.get.ts": [
+      "teamBannerPreviewAccess(event)"
+    ],
+    "server/api/agency/banner-studio/projects/[id]/proof-video.get.ts": [
+      "bannerProofVideoOptions(event)"
+    ],
+    "server/api/agency/banner-studio/projects/[id]/proof-video.post.ts": [
+      "attachBannerProofVideo(event, parsed.data)"
+    ],
+    "server/api/agency/banner-studio/projects/[id]/video.get.ts": [
+      "teamBannerPreviewAccess(event)"
+    ],
+    "server/api/agency/banner-studio/projects/[id]/video.head.ts": [
+      "export { default } from './video.get'"
+    ],
+    "server/api/agency/banner-studio/projects/[id]/videos.get.ts": [
+      "teamBannerPreviewAccess(event)"
+    ],
+    "server/api/agency/banner-studio/projects/[id]/videos.post.ts": [
+      "teamBannerPreviewAccess(event)"
+    ]
+  }
+}

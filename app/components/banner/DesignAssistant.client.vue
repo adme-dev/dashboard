@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useElementSize } from '@vueuse/core'
-import type { ArtboardState } from '~/types/banner-studio'
+import { motorstackBrandId } from '~~/shared/bannerBrandGuides'
+import type { MotorstackDesignSelection } from '~~/shared/bannerMotorstackOffer'
+import type { BannerMotorStackOffer } from '~/utils/banner-offer'
+import type { ArtboardState, BannerBrandKit } from '~/types/banner-studio'
 import { resolveBannerFormat } from '~/utils/banner-constants'
 import { buildBannerHTML } from '~/utils/banner-html-builder'
 import { apiErrorDescription } from '~/utils/apiError'
@@ -9,12 +12,13 @@ import { apiErrorDescription } from '~/utils/apiError'
 type Canvas = Record<string, ArtboardState>
 type Message = { role: 'user' | 'assistant', content: string }
 type DesignReference = { id: string, name: string, kind: 'image' | 'guide', description: string, url?: string, guideCharacterCount?: number, analysisModel?: string }
-type Proposal = { reply: string, model: string, canvasData: Canvas, caption?: string, suggestedSchedule?: string, context?: { brandKit: string | null, clientStyleGuide: boolean, references: Array<{ id: string, name: string, kind: 'image' | 'guide' }> } }
-const props = defineProps<{ open: boolean, projectId: string }>()
+type Proposal = { motorstack?: MotorstackDesignSelection & { title: string, checkedAt: string }, reply: string, model: string, canvasData: Canvas, caption?: string, suggestedSchedule?: string, context?: { brandKit: string | null, clientStyleGuide: boolean, references: Array<{ id: string, name: string, kind: 'image' | 'guide' }> } }
+const props = defineProps<{ open: boolean, projectId: string, brandKit?: BannerBrandKit | null, initialMotorstackOffer?: string }>()
 const emit = defineEmits<{
   'update:open': [value: boolean]
   'prepare-social': [suggestion: { caption?: string, suggestedSchedule?: string }]
   'generate-image': []
+  'choose-brand': []
 }>()
 const { state, getCanvasData, applyAssistantCanvas, canUndo, undo } = useBannerStudio()
 const { getExportCustomFonts } = useBannerFonts(() => state.project?.clientId ?? null)
@@ -41,15 +45,16 @@ const appliedSnapshot = ref('')
 const proposalProjectId = ref('')
 const clientId = computed(() => state.project?.clientId || null)
 const proposalClientId = ref<string | null>(null)
+const proposalKitId = ref<string | null>(null)
 const previewKey = ref('')
 const replay = ref(0)
 let requestVersion = 0
 let controller: AbortController | undefined
 const snapshot = computed(() => JSON.stringify(getCanvasData()))
-const stale = computed(() => !!proposal.value && (proposalProjectId.value !== props.projectId || proposalClientId.value !== clientId.value || sourceSnapshot.value !== snapshot.value))
+const stale = computed(() => !!proposal.value && (proposalProjectId.value !== props.projectId || proposalClientId.value !== clientId.value || proposalKitId.value !== (props.brandKit?.id || null) || sourceSnapshot.value !== snapshot.value))
 const applied = computed(() => !!appliedSnapshot.value && appliedSnapshot.value === snapshot.value && proposalProjectId.value === props.projectId && proposalClientId.value === clientId.value)
-const canRequest = computed(() => !!prompt.value.trim() && !uploadingReference.value && !pending.value && props.projectId !== 'new' && state.project?.id === props.projectId)
-const canAttach = computed(() => !pending.value && !uploadingReference.value && references.value.length < 6 && props.projectId !== 'new' && state.project?.id === props.projectId)
+const canRequest = computed(() => !!prompt.value.trim() && !uploadingReference.value && !pending.value && !preparingOffer.value && props.projectId !== 'new' && state.project?.id === props.projectId)
+const canAttach = computed(() => !pending.value && !preparingOffer.value && !uploadingReference.value && references.value.length < 6 && props.projectId !== 'new' && state.project?.id === props.projectId)
 const formats = computed(() => Object.keys(proposal.value?.canvasData || {}).flatMap((key) => {
   const format = resolveBannerFormat(key)
   if (!format) return []
@@ -75,6 +80,76 @@ const preview = computed(() => {
   }
 })
 
+const currentMotorstackBrand = computed(() => motorstackBrandId(props.brandKit?.sourceUrl))
+const sourceOffers = ref<Array<BannerMotorStackOffer & { id: string, current: boolean }>>([])
+const sourceOfferId = ref('__choose_offer__')
+const offersLoading = ref(false)
+const offersError = ref('')
+const offersNeedReview = ref(false)
+const preparingOffer = ref(false)
+let offerRequestVersion = 0
+const sourceOffer = computed(() => sourceOffers.value.find(offer => offer.id === sourceOfferId.value))
+const sourceOfferItems = computed(() => [
+  { label: 'Choose a current offer', value: '__choose_offer__' },
+  ...sourceOffers.value.map(offer => ({ label: [offer.model, offer.title || offer.offer].filter(Boolean).join(' · '), value: offer.id }))
+])
+async function loadMotorstackOffers() {
+  const version = ++offerRequestVersion
+  const kitId = props.brandKit?.id
+  sourceOffers.value = []
+  sourceOfferId.value = '__choose_offer__'
+  offersError.value = ''
+  offersNeedReview.value = false
+  offersLoading.value = false
+  if (!props.open || !currentMotorstackBrand.value || !kitId) return
+  offersLoading.value = true
+  try {
+    const result = await $fetch<{ items: Array<BannerMotorStackOffer & { id: string, current: boolean }> }>('/api/agency/banner-studio/motorstack/creative-catalog', { query: { kitId, kind: 'offers' } })
+    if (version !== offerRequestVersion) return
+    offersNeedReview.value = result.items.some(offer => !!offer.verificationIssue)
+    sourceOffers.value = result.items.filter(offer => offer.current && offer.id)
+    const projectName = (state.project?.name || '').toLocaleLowerCase()
+    const matching = sourceOffers.value.filter(offer => offer.model && projectName.includes(offer.model.toLocaleLowerCase()))
+    sourceOfferId.value = sourceOffers.value.find(offer => offer.id === (props.initialMotorstackOffer || Object.values(getCanvasData()).find(board => board.motorstackSource?.kitId === kitId)?.motorstackSource?.offerId))?.id || (matching.length === 1 ? matching[0]!.id : sourceOffers.value.length === 1 ? sourceOffers.value[0]!.id : '__choose_offer__')
+  } catch (cause) {
+    if (version === offerRequestVersion) offersError.value = apiErrorDescription(cause, 'Could not load current offers for this brand. Retry.')
+  } finally {
+    if (version === offerRequestVersion) offersLoading.value = false
+  }
+}
+watch([() => props.open, () => props.brandKit?.id, () => props.initialMotorstackOffer], loadMotorstackOffers, { immediate: true })
+watch(() => props.brandKit?.id, () => {
+  requestVersion++
+  controller?.abort()
+  proposal.value = null
+  pending.value = false
+  preparingOffer.value = false
+})
+async function createMotorstackSet() {
+  const offer = sourceOffer.value
+  const kitId = props.brandKit?.id
+  const projectId = props.projectId
+  const requestClientId = clientId.value
+  const original = JSON.stringify(getCanvasData())
+  if (!offer || !kitId || pending.value || preparingOffer.value || projectId === 'new' || state.project?.id !== projectId) return
+  const version = ++requestVersion
+  preparingOffer.value = true
+  error.value = ''
+  try {
+    const prepared = await $fetch<{ assetId: string | null, offerId: string }>('/api/agency/banner-studio/ai/motorstack-offer', { method: 'POST', body: { projectId, kitId, offerId: offer.id } })
+    if (version !== requestVersion || props.projectId !== projectId || props.brandKit?.id !== kitId || clientId.value !== requestClientId) return
+    if (original !== JSON.stringify(getCanvasData())) throw new Error('The canvas changed while preparing artwork. Create the set again using the latest design.')
+    if (prepared.offerId !== offer.id) throw new Error('The source offer changed. Reload offers and choose again.')
+    prompt.value = `Create a complete editable banner set for the selected current MotorStack offer across every existing canvas size. Use the supplied brand fonts, logo, photography, exact copy, price, end date and full terms. Improve visual hierarchy and fit. Use restrained native animation. ${prompt.value.trim()}`.slice(0, 4000)
+    preparingOffer.value = false
+    await requestProposal({ kitId, offerId: offer.id, assetId: prepared.assetId, mode: 'create' })
+  } catch (cause) {
+    if (version === requestVersion) error.value = apiErrorDescription(cause, 'Could not prepare the MotorStack offer. Retry; your canvas has not changed.')
+  } finally {
+    if (version === requestVersion) preparingOffer.value = false
+  }
+}
+
 function storageKey(id: string) {
   return `banner-design-chat:v2:${encodeURIComponent(id)}:${encodeURIComponent(clientId.value || '__unassigned__')}`
 }
@@ -85,6 +160,7 @@ function persist() {
 }
 watch([() => props.projectId, clientId], () => {
   requestVersion++
+  preparingOffer.value = false
   controller?.abort()
   uploadVersion++
   uploadController?.abort()
@@ -121,7 +197,9 @@ watch([() => props.projectId, clientId], () => {
   } catch { /* Invalid history can be replaced by the next successful request. */ }
 }, { immediate: true, flush: 'sync' })
 onBeforeUnmount(() => {
+  offerRequestVersion++
   requestVersion++
+  preparingOffer.value = false
   controller?.abort()
   uploadVersion++
   uploadController?.abort()
@@ -200,14 +278,16 @@ function removeReference(id: string) {
   persist()
 }
 
-async function requestProposal() {
+async function requestProposal(source?: MotorstackDesignSelection) {
   if (!canRequest.value) return
   const version = ++requestVersion
   const projectId = props.projectId
   const requestClientId = clientId.value
   const original = JSON.stringify(getCanvasData())
-  const canvasData = proposal.value && !stale.value && !applied.value ? proposal.value.canvasData : getCanvasData()
+  const canvasData = !source && proposal.value && !stale.value && !applied.value ? proposal.value.canvasData : getCanvasData()
   const text = prompt.value.trim()
+  const motorstack = source || (proposal.value && (!stale.value || applied.value) ? proposal.value.motorstack : undefined)
+  const selection = motorstack ? { kitId: motorstack.kitId, offerId: motorstack.offerId, assetId: motorstack.assetId, mode: motorstack.mode } : undefined
   const history = messages.value.slice(-12)
   controller = new AbortController()
   pending.value = true
@@ -215,13 +295,14 @@ async function requestProposal() {
   try {
     const result = await $fetch<Proposal>('/api/agency/banner-studio/ai/design-assist', {
       method: 'POST', signal: controller.signal,
-      body: { projectId, prompt: text, brief: brief.value, history, canvasData, activeKey: state.activeKey, model: model.value, allowLocked: allowLocked.value, referenceIds: references.value.map(item => item.id) }
+      body: { projectId, prompt: text, brief: brief.value, history, canvasData, activeKey: state.activeKey, model: model.value, allowLocked: allowLocked.value, referenceIds: references.value.map(item => item.id), ...(props.brandKit?.id ? { brandKitId: props.brandKit.id } : {}), ...(selection ? { motorstack: selection } : {}) }
     })
     if (version !== requestVersion || props.projectId !== projectId || clientId.value !== requestClientId) return
     proposal.value = result
     sourceSnapshot.value = original
     proposalProjectId.value = projectId
     proposalClientId.value = requestClientId
+    proposalKitId.value = props.brandKit?.id || null
     appliedSnapshot.value = ''
     previewKey.value = Object.hasOwn(result.canvasData, state.activeKey) ? state.activeKey : Object.keys(result.canvasData)[0] || ''
     replay.value++
@@ -236,10 +317,28 @@ async function requestProposal() {
     if (version === requestVersion) pending.value = false
   }
 }
-function apply() {
-  if (!proposal.value || stale.value || applied.value || pending.value || state.project?.id !== props.projectId) return
-  applyAssistantCanvas(proposal.value.canvasData)
-  appliedSnapshot.value = JSON.stringify(getCanvasData())
+async function apply() {
+  if (!proposal.value || stale.value || applied.value || pending.value || preparingOffer.value || state.project?.id !== props.projectId) return
+  const selected = proposal.value
+  if (!selected.motorstack) {
+    applyAssistantCanvas(selected.canvasData)
+    appliedSnapshot.value = JSON.stringify(getCanvasData())
+    return
+  }
+  const version = ++requestVersion
+  pending.value = true
+  error.value = ''
+  try {
+    const result = await $fetch<{ items: Array<{ id: string, current: boolean }> }>('/api/agency/banner-studio/motorstack/creative-catalog', { query: { kitId: selected.motorstack.kitId, kind: 'offers' } })
+    if (version !== requestVersion || stale.value || proposal.value !== selected || state.project?.id !== props.projectId) return
+    if (!result.items.some(offer => offer.id === selected.motorstack!.offerId && offer.current)) throw new Error('This offer changed, expired or is no longer published. Reload current offers and create a new set.')
+    applyAssistantCanvas(selected.canvasData)
+    appliedSnapshot.value = JSON.stringify(getCanvasData())
+  } catch (cause) {
+    if (version === requestVersion) error.value = apiErrorDescription(cause, 'Could not verify the current offer. Your canvas has not changed; retry Apply.')
+  } finally {
+    if (version === requestVersion) pending.value = false
+  }
 }
 function discard() {
   proposal.value = null
@@ -258,11 +357,13 @@ function clearConversation() {
   discard()
   persist()
 }
-const quickActions = [
+const quickActions = computed(() => [
   { label: 'Edit layout', prompt: 'Improve the headline hierarchy and spacing while preserving the existing artwork and brand.' },
   { label: 'Animate', prompt: 'Add a restrained, readable animation to this design using native layer motion.' },
-  { label: 'Social variants', prompt: 'Create matching square, portrait and story formats using the existing artwork. Suggest a social caption for review.' }
-]
+  proposal.value?.motorstack
+    ? { label: 'Adapt all sizes', prompt: 'Improve composition across every active canvas size, preserving the supplied source layers, exact commercial facts and existing formats.' }
+    : { label: 'Social variants', prompt: 'Create matching square, portrait and story formats using the existing artwork. Suggest a social caption for review.' }
+])
 </script>
 
 <template>
@@ -285,6 +386,95 @@ const quickActions = [
           description="Save your project to use its client and artwork context."
           color="warning"
         />
+        <section class="space-y-3 rounded-lg border border-default p-3" aria-label="MotorStack offer set">
+          <div class="flex items-center justify-between gap-2">
+            <h3 class="text-sm font-semibold">
+              MotorStack offer set
+            </h3>
+            <UBadge
+              v-if="currentMotorstackBrand"
+              :label="brandKit?.name"
+              color="neutral"
+              variant="soft"
+            />
+          </div>
+          <p v-if="!currentMotorstackBrand" class="text-sm text-muted">
+            Choose the project's OEM brand kit to load only that brand's current offers.
+          </p>
+          <UButton
+            v-if="!currentMotorstackBrand"
+            label="Choose brand kit"
+            variant="outline"
+            color="neutral"
+            @click="emit('update:open', false); emit('choose-brand')"
+          />
+          <template v-else>
+            <p class="text-xs text-muted">
+              Uses the brand detected for this project. Creates an editable preview across your current sizes.
+            </p>
+            <p v-if="offersLoading" role="status" class="text-sm text-muted">
+              Loading this brand's current offers…
+            </p>
+            <UAlert
+              v-else-if="offersError"
+              title="Could not load current offers"
+              :description="offersError"
+              color="error"
+            />
+            <UButton
+              v-if="offersError"
+              label="Retry current offers"
+              variant="outline"
+              @click="loadMotorstackOffers"
+            />
+            <template v-else-if="!offersLoading">
+              <UAlert
+                v-if="offersNeedReview"
+                title="Some offers need source review"
+                description="Offers with conflicting source dates and terms are excluded from AI generation. Check the OEM website before using them."
+                color="warning"
+              />
+              <p v-if="!sourceOffers.length" class="text-sm text-muted">
+                No current published offers are available for this brand.
+              </p>
+              <UFormField v-else label="Current offer">
+                <USelect
+                  v-model="sourceOfferId"
+                  :items="sourceOfferItems"
+                  :disabled="pending || preparingOffer"
+                  class="w-full"
+                />
+              </UFormField>
+              <article v-if="sourceOffer" class="space-y-2">
+                <img
+                  v-if="sourceOffer.artworkPreviewUrl"
+                  :src="sourceOffer.artworkPreviewUrl"
+                  :alt="sourceOffer.title || sourceOffer.model || 'Offer artwork'"
+                  class="max-h-36 w-full rounded bg-elevated object-contain"
+                  loading="lazy"
+                >
+                <p class="text-sm font-medium">
+                  {{ sourceOffer.title || sourceOffer.offer }}
+                </p>
+                <p class="text-xs text-muted">
+                  {{ sourceOffer.endDate ? `Ends ${sourceOffer.endDate}` : 'No end date supplied; review before export.' }} · National offer
+                </p>
+                <UAccordion v-if="sourceOffer.disclaimer" :items="[{ label: 'Source terms and conditions', content: sourceOffer.disclaimer }]" :ui="{ body: 'whitespace-pre-line text-xs text-muted' }" />
+                <UButton
+                  label="Create offer set with AI"
+                  icon="i-lucide-wand-sparkles"
+                  :loading="preparingOffer || pending"
+                  :disabled="pending || preparingOffer || uploadingReference || projectId === 'new'"
+                  class="w-full justify-center"
+                  @click="createMotorstackSet"
+                />
+                <p class="text-xs text-muted">
+                  Retains source artwork in your library. Preview first, then Apply as one undoable edit; review every size and the full terms.
+                </p>
+              </article>
+            </template>
+          </template>
+        </section>
         <UFormField label="Brief and context" help="Audience, offer, tone and anything the design must preserve.">
           <UTextarea
             v-model="brief"
@@ -404,8 +594,8 @@ const quickActions = [
             :maxlength="4000"
             :disabled="pending"
             placeholder="Make the headline clearer and bring the call to action in last…"
-            @keydown.meta.enter.prevent="requestProposal"
-            @keydown.ctrl.enter.prevent="requestProposal"
+            @keydown.meta.enter.prevent="() => requestProposal()"
+            @keydown.ctrl.enter.prevent="() => requestProposal()"
           />
         </UFormField>
         <UButton
@@ -441,7 +631,7 @@ const quickActions = [
             icon="i-lucide-wand-sparkles"
             :loading="pending"
             :disabled="!canRequest"
-            @click="requestProposal"
+            @click="() => requestProposal()"
           />
           <UButton
             label="Generate an image"
@@ -465,6 +655,9 @@ const quickActions = [
             />
           </div>
           <div v-if="proposal.context" class="space-y-1 text-xs text-muted" aria-label="Included design context">
+            <p v-if="proposal.motorstack">
+              Current MotorStack offer: {{ proposal.motorstack.title }} · checked {{ proposal.motorstack.checkedAt }}
+            </p>
             <p v-if="proposal.context.brandKit">
               Brand kit included: {{ proposal.context.brandKit }}
             </p>
@@ -508,7 +701,7 @@ const quickActions = [
             color="warning"
           />
           <div class="flex flex-wrap gap-2">
-            <UButton :label="applied ? 'Applied' : 'Apply to canvas'" :disabled="stale || applied || pending" @click="apply" />
+            <UButton :label="applied ? 'Applied' : 'Apply to canvas'" :disabled="stale || applied || pending || preparingOffer" @click="apply" />
             <UButton
               label="Discard preview"
               variant="outline"

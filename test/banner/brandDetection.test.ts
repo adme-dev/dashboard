@@ -32,4 +32,9 @@ describe('project brand kit detection', () => {
     expect(JSON.stringify(p)).toBe(before)
     expect(detectBannerBrandKit(p, [branded, { ...branded, id: 'duplicate' }])).toBeUndefined()
   })
+  it('restores the saved MotorStack source kit for a generic project without loading every OEM asset', () => {
+    const saved = project('New campaign', { canvasData: { mrec: { layers: [], motorstackSource: { kitId: 'Geely', offerId: 'offer', checkedAt: '2026-11-23' } } } })
+    expect(detectBannerBrandKit(saved, kits)?.id).toBe('Geely')
+    expect(detectBannerBrandKit(saved, [kit('Geely', { clientId: 'other' })])).toBeUndefined()
+  })
 })

@@ -550,14 +550,20 @@ describe('God mode gate inventory', () => {
     expect(videoRows.some(row => row.includes("reason: 'payer_changed'"))).toBe(true)
     expect(inventory.rows.filter(row => row.startsWith('server/api/agency/video/generation/')
       && row.endsWith('requireVideoGenerationEnabled(event)\tprovider_infrastructure_availability'))).toHaveLength(8)
-    expect(inventory.rows).toHaveLength(1871)
+    const bannerReview = JSON.parse(readFileSync('docs/runbooks/motorstack-ci-inventory-review-20261123.json', 'utf8')) as { additions: string[], removals: string[] }
+    expect(bannerReview.additions).toHaveLength(7)
+    expect(bannerReview.removals).toEqual([])
+    for (const row of bannerReview.additions) expect(inventory.rows).toContain(row)
+    const previousRows = inventory.rows.filter(row => !bannerReview.additions.includes(row))
+    expect(previousRows).toHaveLength(1871)
+    expect(inventory.rows).toHaveLength(1878)
     expect(inventory.counts).toEqual({
       spend_authorization_hard_boundary: 4,
       fresh_role_grant_hard_boundary: 99,
-      identity_tenant_hard_boundary: 152,
+      identity_tenant_hard_boundary: 153,
       provider_infrastructure_availability: 235,
-      application_governance_bypass: 1619,
-      ordinary_user_behavior: 328,
+      application_governance_bypass: 1624,
+      ordinary_user_behavior: 329,
       unrelated_configuration: 433
     })
     // Removing the session KV shortcut removes four auth middleware rows:
@@ -588,11 +594,12 @@ describe('God mode gate inventory', () => {
     const canonicalMcpGate = 'server/utils/ai/marketing/departmentEmailOperations.ts\tif (!enabled(\'FIGFLOW_EDM_DRAFT_SAVES_ENABLED\', process.env.FIGFLOW_EDM_DRAFT_SAVES_ENABLED) || (selection && !enabled(\'FIGFLOW_EDM_LIBRARY_ENABLED\', process.env.FIGFLOW_EDM_LIBRARY_ENABLED))) refuse(\'Canonical email drafts are unavailable for this environment\', \'not_found\')\tapplication_governance_bypass'
     expect(inventory.rows).toContain(canonicalMcpGate)
     const editableCopyGates = new Set(['server/api/email/templates/[id]/editable-copy.post.ts\tconst user = input.save ? await requireWriteAccess(event) : await requireAuth(event)\tapplication_governance_bypass', 'server/api/email/templates/[id]/editable-copy.post.ts\tconst fresh = await requireWriteAccess(event)\tapplication_governance_bypass'])
-    expect(createHash('sha256').update(inventory.rows.filter(row => row !== canonicalMcpGate && row !== changeHistoryGate && !editableCopyGates.has(row)).join('\n')).digest('hex')).toBe('366871cfc9e0809466cbe34ba19711472abc05c6ff4aae6dad0399aa422613c5')
+    expect(createHash('sha256').update(previousRows.filter(row => row !== canonicalMcpGate && row !== changeHistoryGate && !editableCopyGates.has(row)).join('\n')).digest('hex')).toBe('366871cfc9e0809466cbe34ba19711472abc05c6ff4aae6dad0399aa422613c5')
     const campaignReadGate = 'server/utils/ai/marketing/departmentEmailOperations.ts\tif (!fresh.permissionGroups?.some(group => [\'ADMIN\', \'MANAGEMENT\'].includes(group))) refuse(\'Agency template access required\', \'forbidden\')\tordinary_user_behavior'
-    expect(createHash('sha256').update(inventory.rows.filter(row => row !== campaignReadGate && row !== canonicalMcpGate && row !== changeHistoryGate && !editableCopyGates.has(row)).join('\n')).digest('hex')).toBe('4ba5a258ef55a4627ace3d2dec418b3f503c47ccad7e18b331d68bc256667ddf')
+    expect(createHash('sha256').update(previousRows.filter(row => row !== campaignReadGate && row !== canonicalMcpGate && row !== changeHistoryGate && !editableCopyGates.has(row)).join('\n')).digest('hex')).toBe('4ba5a258ef55a4627ace3d2dec418b3f503c47ccad7e18b331d68bc256667ddf')
     // Pins the complete reviewed inventory, including the video funding boundaries.
-    expect(inventory.digest).toBe('13de1cd01bb5ba0cad42653b328b0e48997fc3e0b65411dc8e31e74b362359b1')
+    expect(createHash('sha256').update(previousRows.join('\n')).digest('hex')).toBe('13de1cd01bb5ba0cad42653b328b0e48997fc3e0b65411dc8e31e74b362359b1')
+    expect(inventory.digest).toBe('c3bdb09c15acd3733707047ff072bec102507677202f72a177fade8681e0d970')
     expect(inventory.rows).toContain(
       'app/composables/usePageStudioLauncher.ts\tconst config = useRuntimeConfig()\tunrelated_configuration'
     )

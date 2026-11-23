@@ -1,6 +1,14 @@
 # Banner Studio: brief to social draft
 
-Updated 4 October 2026. Manual editing and optional **Create with AI** share the same native canvas. The assistant proposes changes; you control which revision is saved and published.
+Updated 23 November 2026. The MotorStack additions below describe the current review candidate; the earlier deployed AI workflow is recorded in the implementation plan. Manual editing and optional **Create with AI** share the same native canvas. The assistant proposes changes; you control which revision is saved and published.
+
+## MotorStack current offers
+
+For an OEM campaign, Banner Studio supplies the detected or selected brand kit to the AI panel. **MotorStack offer set** loads only that brand's current published offers. Choose an offer and use **Create offer set with AI** to retain its actual artwork and generate editable layouts across the project's active sizes. The server re-fetches source facts and checks saved-project/client/kit access; the model cannot choose arbitrary asset URLs or rewrite source prices, conditions or dates.
+
+Review each format, refine the layout, then Apply as one undoable edit. Apply rechecks the offer; changed or expired sources require **Refresh offers** and a fresh set. Saved canvas source metadata retains the OEM kit/offer identity for brand detection after reload. Offer generation retains artwork in the library before proposing the canvas, so a discarded or failed proposal can still leave a reusable managed image. No project canvas or publication write occurs in the design-proposal endpoint itself.
+
+**Insert → MotorStack media** and the editor's **Browse MotorStack** action now open the detected brand inline. Use the optional larger browser for more room; it retains model, grade and paint without loading the full brand catalogue. Detailed steps and acceptance checks: [MotorStack designer workflow](../runbooks/motorstack-designer-workflow.md).
 
 ## Everyday workflow
 

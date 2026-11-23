@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { motorstackDesignSelectionSchema } from '~~/shared/bannerMotorstackOffer'
 import type { ArtboardState, Layer } from '~~/app/types/banner-studio'
 
 // Edits use a deliberately closed schema. Existing fields outside this schema are
@@ -65,6 +66,8 @@ export const designAssistRequestSchema = z.object({
   history: z.array(z.object({ role: z.enum(['user', 'assistant']), content: z.string().max(4000) }).strict()).max(12).default([]),
   canvasData: z.unknown(), activeKey: key, model: z.enum(['auto', 'fast', 'quality']).default('auto'),
   allowLocked: z.boolean().default(false),
+  brandKitId: z.string().uuid().optional(),
+  motorstack: motorstackDesignSelectionSchema.optional(),
   referenceIds: z.array(z.string().uuid()).max(6).refine(ids => new Set(ids).size === ids.length).default([])
 }).strict()
 

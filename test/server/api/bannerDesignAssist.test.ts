@@ -1,13 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import handler from '../../../server/api/agency/banner-studio/ai/design-assist.post'
 
-const mocks = vi.hoisted(() => ({ write: vi.fn(), scope: vi.fn(), project: vi.fn(), assets: vi.fn(), kit: vi.fn(), edge: vi.fn(), groq: vi.fn(), assignment: vi.fn(), references: vi.fn(), styleGuide: vi.fn() }))
+const mocks = vi.hoisted(() => ({ write: vi.fn(), scope: vi.fn(), project: vi.fn(), assets: vi.fn(), kit: vi.fn(), edge: vi.fn(), groq: vi.fn(), assignment: vi.fn(), references: vi.fn(), styleGuide: vi.fn(), selectedKit: vi.fn(), motorstack: vi.fn() }))
 vi.mock('h3', async importOriginal => ({ ...await importOriginal<typeof import('h3')>(), readBody: async (event: { body: unknown }) => event.body }))
 vi.mock('~~/server/utils/auth', () => ({ requireWriteAccess: mocks.write }))
 vi.mock('~~/server/utils/banner/clientAccess', () => ({ requireBannerClientScope: mocks.scope }))
 vi.mock('~~/server/utils/db', () => ({ queryOneFresh: mocks.project, queryRowsFresh: mocks.assets }))
-vi.mock('~~/server/utils/banner/brandKits', () => ({ getDefaultBrandKitForClient: mocks.kit, brandContextBlock: (kit: { name: string }) => kit?.name || '' }))
+vi.mock('~~/server/utils/banner/brandKits', () => ({ getDefaultBrandKitForClient: mocks.kit, getBrandKit: mocks.selectedKit, brandContextBlock: (kit: { name: string }) => kit?.name || '' }))
 vi.mock('~~/server/utils/banner/designReferences', () => ({ resolveDesignReferences: mocks.references, loadDesignClientStyleGuide: mocks.styleGuide }))
+vi.mock('~~/server/utils/banner/brandKitAccess', () => ({ requireBrandKitReadAccess: vi.fn() }))
+vi.mock('~~/server/utils/banner/motorstackDesign', async original => ({ ...await original<typeof import('~~/server/utils/banner/motorstackDesign')>(), resolveMotorstackDesignContext: mocks.motorstack }))
 vi.mock('~~/server/utils/edgeAi', () => ({ edgeGenerate: mocks.edge }))
 vi.mock('~~/server/utils/groqClient', () => ({ generateGroqInsight: mocks.groq, GROQ_MODELS: { REASONING_120B: 'openai/gpt-oss-120b', REASONING_20B: 'openai/gpt-oss-20b', LLAMA_70B: 'llama-3.3-70b-versatile', LLAMA_8B: 'llama-3.1-8b-instant' } }))
 vi.mock('~~/server/utils/ai/modelAssignments', () => ({ resolveAiModelAssignment: mocks.assignment, groqModelIdFromAssignment: (value: string) => value.replace(/^groq\//, '') }))
@@ -159,4 +161,29 @@ describe('Banner native AI proposal endpoint', () => {
     mocks.project.mockResolvedValue(null)
     await expect(call()).rejects.toMatchObject({ statusCode: 404 })
   })
+})
+
+it('resolves the selected OEM kit instead of silently using a different client default', async () => {
+  const brandKitId = '33333333-3333-4333-8333-333333333333'
+  mocks.selectedKit.mockResolvedValue({ name: 'Selected OEM', clientId: null, logos: [] })
+  const result = await call(request({ brandKitId }))
+  expect(mocks.selectedKit).toHaveBeenCalledWith(brandKitId)
+  expect(result.context.brandKit).toBe('Selected OEM')
+  mocks.selectedKit.mockResolvedValue({ name: 'Foreign OEM', clientId: 'other-client', logos: [] })
+  await expect(call(request({ brandKitId }))).rejects.toMatchObject({ statusCode: 403 })
+})
+
+it('creates a source-grounded set and restores commercial facts after model layout edits', async () => {
+  const kitId = '33333333-3333-4333-8333-333333333333'
+  mocks.motorstack.mockResolvedValue({ kit: { id: kitId, name: 'Subaru', clientId: null, fonts: [], logos: [], colors: [] }, brandId: 'subaru', checkedAt: '2026-11-23T03:00:00Z', artwork: null,
+    offer: { title: 'Current Forester offer', model: 'Forester', price: 45990, priceLabel: null, offer: 'Source copy', disclaimer: 'Full source terms', endDate: '2026-11-30', artworkAssetId: null } })
+  mocks.edge.mockImplementation(async (_event, prompt) => {
+    const seed = JSON.parse(prompt).canvasData
+    const headline = seed.fb_sq.layers.find((layer: { name: string }) => layer.name === 'MotorStack headline')
+    return JSON.stringify({ reply: 'Arranged the supplied offer.', updates: [{ formatKey: 'fb_sq', layerId: headline.id, changes: { text: 'Invented price', x: 123 } }] })
+  })
+  const result = await call(request({ brandKitId: kitId, motorstack: { kitId, offerId: 'a'.repeat(64), assetId: null, mode: 'create' } }))
+  expect(result.canvasData.fb_sq.layers.find(layer => layer.name === 'MotorStack headline')).toMatchObject({ text: 'Current Forester offer', x: 123 })
+  expect(result.canvasData.fb_sq.layers.find(layer => layer.name === 'MotorStack terms 1')?.text).toContain('Full source terms')
+  expect(result.motorstack).toMatchObject({ mode: 'refine', kitId, checkedAt: '2026-11-23T03:00:00Z' })
 })
