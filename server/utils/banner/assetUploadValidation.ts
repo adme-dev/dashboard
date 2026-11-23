@@ -32,7 +32,8 @@ export function validateBannerAssetUpload(file: BannerAssetUploadFile, clientId?
     throw new Error('Banner asset upload exceeds the 100 MiB limit')
   }
 
-  const buffer = Buffer.from(file.data)
+  // Multipart buffers are request-owned and only read below; retain the view instead of copying large videos.
+  const buffer = Buffer.isBuffer(file.data) ? file.data : Buffer.from(file.data.buffer, file.data.byteOffset, file.data.byteLength)
   if (buffer.length === 0) throw new Error('Banner asset upload is empty')
 
   const contentSha256 = createHash('sha256').update(buffer).digest('hex')

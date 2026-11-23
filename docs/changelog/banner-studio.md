@@ -135,3 +135,7 @@ Play All follow-up: [PR #737](https://github.com/adme-dev/dashboard/pull/737). S
 - Treat complex legacy/bulk conversion and scheduled MotorStack refresh as separate workstreams; do not infer completion from the current two campaign drafts.
 
 TheBrief has not been retired. Existing features are not listed as missing solely because an October note predates their release.
+
+## 23 November 2026 — Interrupted large-video imports
+
+Large video packages upload sequentially and use request-owned byte views through validation and native R2 storage. An active owner can check stored receipts and expired, reclaimable upload claims before resuming the same import keys. Uncertain, foreign, failed and active claims remain held. Recovery never resets the execution ledger or creates another project blindly.

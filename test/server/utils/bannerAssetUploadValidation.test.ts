@@ -137,3 +137,13 @@ describe('digestBannerAssetUpload', () => {
     expect(digestBannerAssetUpload(input)).toBe(digestBannerAssetUpload({ ...input }))
   })
 })
+
+it('retains the request-owned byte view for large uploads without an extra copy', () => {
+  const original = Buffer.alloc(1024 * 1024)
+  signatures.mp4.copy(original)
+  const view = new Uint8Array(original.buffer, original.byteOffset, original.byteLength)
+  const validated = validateBannerAssetUpload({ filename: 'large-video.mp4', type: 'video/mp4', data: view })
+  expect(validated.buffer.buffer).toBe(original.buffer)
+  expect(validated.buffer.byteOffset).toBe(original.byteOffset)
+  expect(validated.size).toBe(original.length)
+})

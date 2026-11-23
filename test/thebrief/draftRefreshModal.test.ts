@@ -30,7 +30,7 @@ const stubs = {
   UBadge: defineComponent({ setup: (_, { slots }) => () => h('span', slots.default?.()) }),
   UAlert: defineComponent({ props: ['title', 'description'], setup: (p, { slots }) => () => h('div', [h('p', `${p.title}: ${p.description}`), slots.actions?.()]) }),
   UCheckbox: defineComponent({ props: ['modelValue', 'label', 'disabled'], emits: ['update:modelValue'], setup: (p, { emit }) => () => h('button', { disabled: p.disabled, onClick: () => emit('update:modelValue', !p.modelValue) }, p.label) }),
-  UButton: defineComponent({ props: ['disabled', 'loading', 'to'], emits: ['click'], setup: (p, { slots, emit }) => () => h('button', { 'disabled': p.disabled || p.loading, 'data-to': p.to, 'onClick': () => emit('click') }, slots.default?.()) })
+  UButton: defineComponent({ props: ['disabled', 'loading', 'to', 'label'], emits: ['click'], setup: (p, { slots, emit }) => () => h('button', { 'disabled': p.disabled || p.loading, 'data-to': p.to, 'onClick': () => emit('click') }, p.label || slots.default?.()) })
 }
 async function flush() {
   await new Promise(resolve => setTimeout(resolve, 0))
@@ -47,6 +47,7 @@ async function click(label: string) {
 }
 async function mountModal(loadPackages = true) {
   for (const [name, value] of Object.entries({ ref, shallowRef, computed, watch, toRaw, $fetch: api })) vi.stubGlobal(name, value)
+  vi.stubGlobal('useAuth', () => ({ isGodMode: ref(true) }))
   vi.stubGlobal('useBannerFonts', () => ({ uploadCustomFont: vi.fn(), refreshCustomFonts: refreshFonts }))
   const { default: Modal } = await import('../../app/components/banner/TheBriefImportModal.client.vue')
   const props = reactive({ open: false })
@@ -319,4 +320,27 @@ describe('client and folder loading before package selection', () => {
     await click('Load packages')
     expect(readBatch.mock.calls[0]?.slice(2)).toEqual([currentClients, []])
   })
+})
+
+it('clears a paused attempt only after successful server receipt reconciliation', async () => {
+  let canResume = false
+  api.mockImplementation(async (url: string) => {
+    if (url.endsWith('/clients')) return [{ id: clientId, name: 'Blood Motor Group' }]
+    if (url.endsWith('/folders') || url.endsWith('/projects')) return []
+    if (url.endsWith('/import-recovery')) return { canResume, completed: 1, total: 2 }
+    throw new Error('Unexpected write')
+  })
+  const key = `thebrief-import-pending:${clientId}:${hash}`
+  localStorage.setItem(key, '{}')
+  await mountModal(false)
+  await click('Load packages')
+  await click('Import undated drafts and backfill the date later')
+  await click('Import assigned drafts')
+  await click('Check interrupted upload receipts')
+  expect(localStorage.getItem(key)).toBe('{}')
+  canResume = true
+  await click('Check interrupted upload receipts')
+  expect(localStorage.getItem(key)).toBeNull()
+  expect(host.textContent).toContain('ready to resume')
+  expect(api.mock.calls.some(([, options]) => options?.method === 'POST')).toBe(false)
 })

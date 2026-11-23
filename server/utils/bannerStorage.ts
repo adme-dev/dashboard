@@ -173,7 +173,7 @@ export async function uploadBannerAsset(
     throw new Error('Invalid Banner Studio asset delivery URL')
   }
 
-  const bytes = new Uint8Array(buffer)
+  const bytes = new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength)
   await nativeUpload.bucket.put(precomputedKey, bytes, {
     httpMetadata: { contentType: mimeType }
   })
