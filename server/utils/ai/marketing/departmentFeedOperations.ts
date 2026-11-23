@@ -400,7 +400,7 @@ async function propose(
       revision,
       preview: previewView(preview)
     }
-    await owner?.markDispatched()
+    if (owner) await lockActiveOwner(db, ctx.userId)
     const row = (
       await db.query(
         `INSERT INTO ai_pending_actions (user_id, tool_name, resolved_payload, status, source, conversation_id)
@@ -408,6 +408,7 @@ async function propose(
         [ctx.userId, ACTION, JSON.stringify(payload)]
       )
     ).rows[0] as Row
+    await owner?.markDispatched()
     return ok(await proposalView(row))
   })
 }
@@ -479,20 +480,20 @@ async function execute(
   // Refresh permission/grant/client immediately before durable claim and provider dispatch.
   ctx = owner ? await requireOwnerFeedContext(ctx) : await requireMarketingDepartment(ctx, true)
   await requireClient(ctx, input.clientId)
-  const claimed = await transactionWithoutRetry(async db => {
+  const claimed = await transactionWithoutRetry(async (db) => {
     // Serialize the grant check with assignment revocation and the one-shot claim.
-    if (owner && !(await db.query(activeOwnerSql + ' FOR SHARE', [ctx.userId])).rows.length)
-      stop('Active owner required.', 'forbidden')
+    if (owner) await lockActiveOwner(db, ctx.userId)
     if (!owner && direct && !(await db.query(feedLeadGrant + ' FOR SHARE', [ctx.userId, input.clientId])).rows.length)
       stop('Feed lead grant is no longer active.', 'approval_required')
-    await owner?.markDispatched()
-    return (await db.query(
+    const claim = (await db.query(
       `UPDATE ai_pending_actions SET status = 'executed', executed_at = NOW(), confirmed_by = COALESCE(confirmed_by, $2)
        WHERE id = $1 AND user_id = $2 AND source = 'mcp' AND tool_name = $3 AND status = $6
          AND expires_at > NOW() AND resolved_payload = $4::jsonb
          AND confirmed_by IS NOT DISTINCT FROM $5::uuid RETURNING id`,
       [row.id, ctx.userId, ACTION, JSON.stringify(payload), row.confirmed_by, row.status]
     )).rows[0]
+    if (claim) await owner?.markDispatched()
+    return claim
   })
   if (!claimed)
     return fail(
@@ -597,7 +598,11 @@ async function execute(
     )
   }
 }
-const activeOwnerSql = "SELECT email FROM team_members WHERE id=$1 AND is_active AND user_role='owner'"
+const activeOwnerSql = 'SELECT email FROM team_members WHERE id=$1 AND is_active AND user_role=\'owner\''
+
+async function lockActiveOwner(db: { query: (sql: string, args: string[]) => Promise<{ rows: unknown[] }> }, userId: string) {
+  if (!(await db.query(activeOwnerSql + ' FOR SHARE', [userId])).rows.length) stop('Active owner required.', 'forbidden')
+}
 
 async function requireOwnerFeedContext(ctx: ToolContext): Promise<ToolContext> {
   if (!isActiveGodModeAuthority(getMcpRequestGodModeAuthority(ctx.event, ctx.userId), ctx.userId))

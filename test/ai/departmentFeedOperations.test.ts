@@ -64,9 +64,9 @@ vi.mock('~~/server/utils/ai/mcp/runtimeConfig', () => ({
 }))
 const query = vi.hoisted(() =>
   vi.fn(async (sql: string, p: any[] = []) => {
-    if (sql.includes('FROM team_members') && sql.includes("user_role='owner'"))
-      return { rows: !state.revoked && p[0] === ctx.userId ? [{ email: 'owner@example.test' }] : [] }
-    if (sql.includes('FROM team_members') && sql.includes("user_role = 'owner'"))
+    if (sql.includes('FROM team_members') && sql.includes('user_role=\'owner\''))
+      return { rows: !state.revoked && p[0] === ctx.userId && !(state.loseGrantAtClaim && sql.includes('FOR SHARE')) ? [{ email: 'owner@example.test' }] : [] }
+    if (sql.includes('FROM team_members') && sql.includes('user_role = \'owner\''))
       return { rows: !state.revoked && p[0] === ctx.userId ? [{ id: ctx.userId }] : [] }
     if (sql.includes('can_manage_inventory_feed_directly'))
       return { rows: state.lead && p[0] === ctx.userId && p[1] === clientId && !(state.loseGrantAtClaim && sql.includes('FOR SHARE')) ? [{ id: clientId }] : [] }
@@ -689,11 +689,13 @@ describe('department inventory boundary', () => {
     state.lead = grant
     const target = kind === 'other client' ? '77777777-7777-4777-8777-777777777777' : clientId
     state.link.clientId = target
-    const proposal = kind === 'setup' ? await setup()
-      : kind === 'regenerate' ? await run('marketing_propose_inventory_feed_regeneration', { clientId: target, feedId: 'feed-1', format: 'xml' })
+    const proposal = kind === 'setup'
+      ? await setup()
+      : kind === 'regenerate'
+        ? await run('marketing_propose_inventory_feed_regeneration', { clientId: target, feedId: 'feed-1', format: 'xml' })
         : await run('marketing_propose_inventory_feed_change', { clientId: target, feedId: 'feed-1', patch: {
-          platformSettings: { store_code: 'Store3156', store_address: '1 Test Road', ...(kind === 'mixed' ? { fb_page_id: '123' } : {}) }
-        } })
+            platformSettings: { store_code: 'Store3156', store_address: '1 Test Road', ...(kind === 'mixed' ? { fb_page_id: '123' } : {}) }
+          } })
     expect(proposal).toMatchObject({ ok: true, data: { requiresIndependentReview: !allowed } })
     const { proposalId, revision } = (proposal as any).data
     const args = { clientId: target, proposalId, expectedRevision: revision, ack: true }
@@ -702,7 +704,7 @@ describe('department inventory boundary', () => {
     if (allowed) expect(await exec()).toMatchObject({ ok: true, data: { authorization: 'assigned_feed_lead' } })
     expect(state.updates + state.generates + state.creates).toBe(Number(allowed))
   })
-  it.each(['revoked', 'expired', 'rejected'])('denies a previously eligible lead after the proposal is %s', async reason => {
+  it.each(['revoked', 'expired', 'rejected'])('denies a previously eligible lead after the proposal is %s', async (reason) => {
     state.lead = true
     const proposal = await run('marketing_propose_inventory_feed_change', { clientId, feedId: 'feed-1', patch: { isActive: false } })
     const { proposalId, revision } = (proposal as any).data
@@ -858,7 +860,7 @@ describe('owner MCP inventory feed controls', () => {
     expect(state.reads).toBe(0)
   })
 
-  it.each(['google', 'facebook'])('previews and applies an existing %s feed change as its owner', async platform => {
+  it.each(['google', 'facebook'])('previews and applies an existing %s feed change as its owner', async (platform) => {
     state.detail.platform = platform
     const input = { clientId, feedId: 'feed-1', patch: { isActive: false, platformSettings: { store_code: 'TEST42' } } }
     const preview = await ownerCall('owner_propose_inventory_feed_change', input)
@@ -873,6 +875,19 @@ describe('owner MCP inventory feed controls', () => {
     expect(await ownerCall('owner_get_inventory_feed_change', { clientId, proposalId })).toMatchObject({ data: { status: 'executed' } })
     expect(state.updates).toBe(1)
     expect(services.markDispatched).toHaveBeenCalledTimes(2)
+  })
+
+  it('rejects a proposal or execution when owner access is revoked at the transaction boundary', async () => {
+    const input = { clientId, feedId: 'feed-1', patch: { isActive: false } }
+    state.loseGrantAtClaim = true
+    expect((await ownerCall('owner_propose_inventory_feed_change', input)).ok).toBe(false)
+    state.loseGrantAtClaim = false
+    const preview = await ownerCall('owner_propose_inventory_feed_change', input)
+    const { proposalId, revision } = (preview as any).data
+    state.loseGrantAtClaim = true
+    expect((await ownerCall('owner_execute_inventory_feed_change', { clientId, proposalId, expectedRevision: revision, ack: true })).ok).toBe(false)
+    expect(state.updates).toBe(0)
+    expect(services.markDispatched).toHaveBeenCalledTimes(1)
   })
 
   it('regenerates a disposable feed, and refuses destination changes or a foreign client', async () => {

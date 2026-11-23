@@ -27,10 +27,12 @@ const operations = Object.entries(descriptions).map(([operation, description]) =
   }
   const execution: McpExecutionDescriptor = {
     name, canonicalName: name, kind: 'supplemental', tool,
-    ...(mutates ? {
-      executionClass: operation.startsWith('marketing_execute') ? 'external-provider' as const : 'internal-http' as const,
-      godModeBypassedControls: ['permission'] as const, executeSupplemental: run
-    } : {})
+    ...(mutates
+      ? {
+          executionClass: operation.startsWith('marketing_execute') ? 'external-provider' as const : 'internal-http' as const,
+          godModeBypassedControls: ['permission'] as const, executeSupplemental: run
+        }
+      : {})
   }
   return { tool, execution }
 })
