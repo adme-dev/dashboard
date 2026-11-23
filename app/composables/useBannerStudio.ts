@@ -1,3 +1,4 @@
+import { bannerPosterTime } from '~~/shared/bannerPosterTime'
 import { retimeLayerPresence } from '~/utils/banner-timeline-edit'
 import { editSlides, layerSlideId, resolveSlides, slideAtTime, slideRanges, type SlideEdit } from '~/utils/banner-slides'
 import { layerRotationChange } from '~/utils/banner-transform'
@@ -875,6 +876,19 @@ export function useBannerStudio() {
     _uid = maxId + 1
   }
 
+  function setProofPosterTime(time?: number) {
+    if (time !== undefined && !Number.isFinite(time)) return
+    const keys = state.layoutView === 'all' ? state.setKeys : [state.activeKey]
+    withCanvasUndo(() => {
+      for (const key of keys) {
+        const board = state.sets[key]
+        if (!board) continue
+        if (time === undefined) delete board.posterTime
+        else board.posterTime = bannerPosterTime(resolveSlides(board).reduce((sum, slide) => sum + slide.duration, 0), time)
+      }
+    })
+  }
+
   function getCanvasData(): Record<string, ArtboardState> {
     return JSON.parse(JSON.stringify(state.sets))
   }
@@ -1315,6 +1329,7 @@ export function useBannerStudio() {
     // Project I/O
     loadProject,
     getCanvasData,
+    setProofPosterTime,
     restoreCanvasData,
     applyAssistantCanvas,
     withCanvasUndo,

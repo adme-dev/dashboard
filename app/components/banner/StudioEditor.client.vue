@@ -247,6 +247,7 @@ const showGenerateUrl = ref(false)
 const showDissector = ref(false)
 const showPublishModal = ref(false)
 const showSaveTemplate = ref(false)
+const showProofPoster = ref(false)
 const showDCOModal = ref(false)
 const showAnalytics = ref(false)
 const showABTests = ref(false)
@@ -577,6 +578,10 @@ const moreMenuItems = computed(() => [[
   { label: 'From URL', icon: 'i-lucide-globe', onSelect: () => { showGenerateUrl.value = true } },
   { label: 'Dissect artwork', icon: 'i-lucide-scan-line', onSelect: () => { showDissector.value = true } }
 ], [
+  { label: 'Client proof poster', icon: 'i-lucide-image', onSelect: () => {
+    pauseTimeline()
+    showProofPoster.value = true
+  } },
   { label: 'Preview in ad placements', icon: 'i-lucide-eye', onSelect: () => { showPreview.value = true } },
   { label: 'Ad tags & embed code', icon: 'i-lucide-code', onSelect: () => { showPublishModal.value = true } },
   { label: 'Publish to Meta Ads', icon: 'i-lucide-megaphone', onSelect: () => { showAdPublish.value = true } },
@@ -960,6 +965,7 @@ const { activeSize } = useBannerFileSize()
     <BannerDissectorModal v-if="showDissector" v-model:open="showDissector" />
     <BannerPublishModal v-if="showPublishModal" v-model:open="showPublishModal" @open-dco="showDCOModal = true" />
     <BannerDCOGenerateModal v-if="showDCOModal" v-model:open="showDCOModal" />
+    <BannerProofPosterModal v-if="showProofPoster" v-model:open="showProofPoster" />
     <BannerSaveAsTemplate v-if="showSaveTemplate" v-model:open="showSaveTemplate" />
 
     <!-- A/B Tests Modal -->

@@ -82,3 +82,9 @@ describe('shared artwork images', () => {
     for (const url of ['http://127.0.0.1/', 'https://169.254.169.254/', 'https://app.xeroflow.io.evil.test/api/public/banner-assets/v1.abc.def', 'https://app.xeroflow.io/api/agency/clients', 'https://cdnjs.cloudflare.com/evil.js']) expect(permits(url)).toBe(false)
   })
 })
+
+it('uses a saved clear poster frame and clamps it to the animation', async () => {
+  mocks.load.mockResolvedValueOnce({ project: { id: 'project', canvasData: { custom_1080x1080: { layers: [], posterTime: 1.5, playback: { duration: 6, loopCount: 0 } } } }, fonts: [] })
+  await bannerShareImage(event as never)
+  expect(mocks.screenshot.mock.calls[0][1].html).toContain('window.__engagrFrame.seek(1.5)')
+})
