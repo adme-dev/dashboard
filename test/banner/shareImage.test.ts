@@ -1,3 +1,4 @@
+import { gsap } from 'gsap'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({ load: vi.fn(), limit: vi.fn(), get: vi.fn(), put: vi.fn(), screenshot: vi.fn() }))
@@ -43,6 +44,8 @@ describe('shared artwork images', () => {
     expect(options.viewport).toEqual({ width: 1080, height: 1080, deviceScaleFactor: 1 })
     expect(options.html).toContain('window.__engagrFrame.seek(3)')
     expect(options.html).not.toContain('<audio')
+    expect(options.addScriptTag[0].content).toContain('window.__engagrFrame.seek(0);')
+    expect(options.addScriptTag[0].content.indexOf('seek(0)')).toBeLessThan(options.addScriptTag[0].content.indexOf('seek(3)'))
     expect(options.waitForSelector.selector).toBe('[data-share-image-ready]')
     expect(mocks.put).toHaveBeenCalledWith(expect.stringMatching(/^banner-share-previews\/project\/[a-f0-9]{64}\.jpg$/), expect.any(ArrayBuffer), expect.anything())
   })
@@ -93,4 +96,26 @@ it.each([-1, 300.001, null, '5.9'])('rejects an invalid poster worker time: %s',
   const response = await renderer.fetch(new Request('https://banner-share-images/screenshot', { method: 'POST', body: JSON.stringify({ html: '<html></html>', width: 1200, height: 1200, time }) }), { BROWSER: { quickAction: mocks.screenshot } })
   expect(response.status).toBe(400)
   expect(mocks.screenshot).not.toHaveBeenCalled()
+})
+
+it('seeks embedded video after the paused HTML already rendered the chosen frame', async () => {
+  const video = { readyState: 2, seeking: false, currentTime: 0, addEventListener: vi.fn(), removeEventListener: vi.fn() }
+  const clock = { time: 0 }
+  const timeline = gsap.timeline({ paused: true }).to(clock, { time: 6, duration: 6, ease: 'none', onUpdate: () => {
+    video.currentTime = clock.time
+  } }, 0)
+  timeline.render(1.5, true, true)
+  expect(video.currentTime).toBe(0)
+  const setAttribute = vi.fn()
+  const document = { fonts: { ready: Promise.resolve() }, images: [], querySelectorAll: () => [video], body: { setAttribute } }
+  const window = { __engagrFrame: { seek: (time: number) => timeline.seek(time, false) } }
+  const { bannerShareCaptureOptions } = await import('~~/shared/bannerShareCapture')
+  const script = bannerShareCaptureOptions('', 1200, 1200, 1.5).addScriptTag[0].content
+  try {
+    new Function('window', 'document', 'requestAnimationFrame', script)(window, document, (callback: () => void) => callback())
+    await vi.waitFor(() => expect(setAttribute).toHaveBeenCalledWith('data-share-image-ready', ''))
+    expect(video.currentTime).toBe(1.5)
+  } finally {
+    timeline.kill()
+  }
 })

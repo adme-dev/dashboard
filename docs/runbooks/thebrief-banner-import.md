@@ -93,3 +93,7 @@ support: it accepts finite frame times from 0 through 300 seconds. The saved fra
 is clamped to the project duration before capture; the old 3-second renderer cap
 caused late-frame poster requests to fail. Verify an actual late-frame JPEG after
 releasing the worker.
+
+When checking a chosen still, compare the video background as well as native text.
+A valid JPEG can still show an unseeked video frame. The capture must move away
+from the initially pre-rendered position before seeking the requested time.

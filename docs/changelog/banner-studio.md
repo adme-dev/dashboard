@@ -168,3 +168,8 @@ banner timeline. Frames after three seconds previously failed with a 503 because
 the renderer retained the old automatic-midpoint limit. Regression coverage sends
 5.9 and 299.9 seconds through the complete Pages-to-renderer path and retains
 negative, nonnumeric and over-limit input rejection.
+
+Chosen proof frames now resynchronize embedded video as well as native layers.
+The capture seeks away from the initially pre-rendered timeline position before
+seeking the saved frame, ensuring GSAP media callbacks execute. The poster cache
+revision changes so earlier first-video-frame captures are regenerated.
