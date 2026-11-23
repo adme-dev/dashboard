@@ -2,6 +2,7 @@
 import { createApp, h, nextTick, reactive, ref } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import DesignAssistant from '~~/app/components/banner/DesignAssistant.client.vue'
+import { buildBannerHTML } from '~/utils/banner-html-builder'
 
 vi.mock('~/utils/banner-html-builder', () => ({ buildBannerHTML: vi.fn((key: string) => `<html><body>${key}</body></html>`) }))
 const initialCanvas = () => ({ mrec: { layers: [], bgColor: '#ffffff' } })
@@ -82,6 +83,17 @@ afterEach(() => {
 })
 
 describe('native Banner Studio design assistant', () => {
+  it('loops the review iframe without changing the proposed or applied playback', async () => {
+    const result = response()
+    Object.assign(result.canvasData.mrec, { playback: { duration: 8, loopCount: 1 } })
+    fetchMock.mockResolvedValue(result)
+    const view = await mount()
+    await view.request()
+    expect(vi.mocked(buildBannerHTML)).toHaveBeenLastCalledWith('mrec', [], expect.objectContaining({ playback: { duration: 8, loopCount: 0 } }))
+    expect(applyMock).not.toHaveBeenCalled()
+    await view.click('Apply to canvas')
+    expect(applyMock.mock.calls[0][0].mrec.playback).toEqual({ duration: 8, loopCount: 1 })
+  })
   it('previews a proposal without editing, applies explicitly, and supports undo', async () => {
     const view = await mount()
     await view.request()

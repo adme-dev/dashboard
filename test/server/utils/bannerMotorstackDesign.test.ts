@@ -35,6 +35,10 @@ describe('current MotorStack design source', () => {
     expect(motorstackOfferDateIssue('2027-01-01', forester)).toContain('2026-12-31')
     expect(motorstackOfferDateIssue('2026-12-31', forester)).toBeNull()
     expect(motorstackOfferDateIssue('2027-01-01', 'Accessories purchased and fitted between 2 November 2026 and 31 December 2026.')).toContain('conflicts')
+    const dealerTerms = 'Offer available on crossbars purchased and fitted by a participating authorised dealer between 2 November 2026 and 31 December 2026.'
+    expect(motorstackOfferDateIssue('2027-01-01', dealerTerms)).toContain('2026-12-31')
+    expect(motorstackOfferDateIssue('2026-12-31', dealerTerms)).toBeNull()
+    expect(motorstackOfferDateIssue('2027-01-01', 'Offer available now. Warranty applies between 2 November 2026 and 31 December 2026.')).toBeNull()
     expect(motorstackOfferDateIssue('2027-01-01', 'Warranty expires 31 December 2026.')).toBeNull()
     expect(motorstackOfferDateIssue('2027-01-01', 'Offer available from 2 November 2026 to 31 February 2026.')).toBeNull()
     expect(motorstackOfferDateIssue(null, forester)).toBeNull()
