@@ -67,3 +67,15 @@ preserved; artwork timing has not been rewritten.
 Actual Safari/iPhone playback and producer approval remain distinct from Chrome
 verification. Unsupported render formats retain their explicit status and do not
 fall back to HTML5 animation.
+
+## Production verification
+
+PR #974 merged as `6708df4a2460c5df9d61207b5eb103432d34d86d` and deployed
+to production `a496b9e3-fcaa-45e2-bbd5-2ec5c6769a58`. GAC and We Buy Any Cars
+team previews contain native MP4 players and no HTML5 iframe. Each of six formats
+reports the same rendered revision through team and client delivery. All six
+MP4s fully decode with H.264/AAC; valid byte ranges return 206 and invalid ranges 416.
+All six automatic posters return JPEG. Private videos, posters and status routes
+return 401 without sign-in. The GAC share dialog clearly labels team/client access
+and exposes existing client links. At 390px the team page has no horizontal overflow.
+Existing client links were reused; no client message was sent.

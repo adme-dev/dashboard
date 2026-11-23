@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { bannerVideoMediaTime } from '~~/shared/bannerVideoClock'
+import { createBannerVideoTransport } from '~/utils/bannerVideoPlayback'
 import { layerTransformOrigin, layerFlipTransform } from '~/utils/banner-transform'
 import type { Layer } from '~/types/banner-studio'
 import { FORMATS } from '~/utils/banner-constants'
@@ -9,10 +9,11 @@ import { SAFE_ZONE_MAP, FORMAT_SAFE_ZONE_MAP } from '~/utils/banner-safe-zones'
 import { useBannerTimeline } from '~/composables/useBannerTimeline'
 import { updateTimelineMasks } from '~/utils/bannerTimelineMasks'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   formatKey: string
   isActive: boolean
-}>()
+  followPlayhead?: boolean
+}>(), { followPlayhead: true })
 
 const { state, selectLayer, activeLayers, updatePathPoint, addPathPoint, getMotionPathTweens } = useBannerStudio()
 const { openEffects } = useBannerInspector()
@@ -45,8 +46,10 @@ const transitionZIndex = computed(() => Math.max(0, ...layers.value.filter(layer
 // Inactive layouts share the playhead, but never own the audio transport. Using
 // the same timeline renderer preserves imported opacity, scale and presence.
 const { buildTimelineForKey } = useBannerTimeline()
+const overviewVideo = createBannerVideoTransport()
 let overviewTimeline: ReturnType<typeof buildTimelineForKey> | undefined
 function clearOverviewTimeline() {
+  overviewVideo.dispose()
   overviewTimeline?.kill()
   overviewTimeline = undefined
 }
@@ -55,23 +58,21 @@ function seekOverview(time: number) {
   // Suppress completion callbacks: a silent preview must not start its own loop.
   overviewTimeline.seek(time, true)
   updateTimelineMasks(overviewTimeline)
-  // Suppressed callbacks also skip the video proxy's onUpdate. Scrub explicitly
-  // while paused so inactive layouts never become independent media players.
+  // Overview layouts follow the shared clock silently; footage decodes natively.
   for (const layer of layers.value) {
     if (layer.type !== 'video' && !(layer.type === 'bg' && layer.srcType === 'video')) continue
     const video = artboardEl.value?.querySelector<HTMLVideoElement>(`#lyr-${layer.id} video`)
     if (!video) continue
-    video.pause()
-    video.currentTime = bannerVideoMediaTime(time - (layer.startTime || 0), layer, video.duration)
+    overviewVideo.sync(video, time, state.isPlaying, layer)
   }
 }
-watch([artboardEl, () => props.isActive, layers, () => state.sets[props.formatKey]?.playback], () => {
+watch([artboardEl, () => props.isActive, () => props.followPlayhead, layers, () => state.sets[props.formatKey]?.playback], () => {
   clearOverviewTimeline()
-  if (props.isActive || !artboardEl.value) return
-  overviewTimeline = buildTimelineForKey(artboardEl.value, layers.value, state.sets[props.formatKey]?.playback, false)
+  if (props.isActive || props.followPlayhead === false || !artboardEl.value) return
+  overviewTimeline = buildTimelineForKey(artboardEl.value, layers.value, state.sets[props.formatKey]?.playback, false, false)
   seekOverview(state.currentTime)
 }, { deep: true, flush: 'post' })
-watch(() => state.currentTime, seekOverview, { flush: 'post' })
+watch(() => [state.currentTime, state.isPlaying], () => seekOverview(state.currentTime), { flush: 'post' })
 onBeforeUnmount(clearOverviewTimeline)
 
 // Compute clip-path for masked layers based on mask positions

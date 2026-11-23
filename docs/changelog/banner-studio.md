@@ -188,3 +188,10 @@ for creating/copying the external link. Team media routes check existing project
 and client access before returning status, posters or bytes; no public capability
 is created just by viewing internally. Earlier render-worker, queue/retry, audio
 and HTML5 playback implementations remain intact.
+
+## 23 November 2026 — continuous editor video playback
+
+Banner Studio and linked Video Studio artwork now let embedded video decode
+continuously during playback. Pause/scrub, trim points, looping and editable motion
+remain synchronized with the existing timeline. Audio and the qualified render
+container remain unchanged. See the Suzuki playback verification ledger.

@@ -1,5 +1,5 @@
 import { revealCommands, safeWordEntrance, wordEntranceDelay, wordEntranceSteps } from '~~/shared/bannerImportedMotion'
-import { bannerVideoMediaTime } from '~~/shared/bannerVideoClock'
+import { registerTimelineVideo, syncTimelineVideo, pauseTimelineVideo, disposeTimelineVideo } from '~/utils/bannerTimelineVideo'
 import { ref, readonly, watch } from 'vue'
 import { bannerAnimationTiming } from '~/utils/banner-animation-timing'
 import { applyBannerPlayback, resolveBannerPlayback } from '~/utils/banner-playback'
@@ -347,19 +347,11 @@ function addVideoSync(tl: gsap.core.Timeline, el: HTMLElement, layer: Layer) {
   if ((layer.type === 'bg' && layer.srcType === 'video') || layer.type === 'video') {
     const videoEl = el.querySelector('video') as HTMLVideoElement
     if (videoEl) {
-      videoEl.pause()
       const startTime = layer.startTime || 0
-      const endTime = layer.endTime || (startTime + 3)
-      const presenceDur = endTime - startTime
-      // Elapsed presence time drives the shared media clock: normal speed,
-      // clip in/out points and looping match both HTML exporters.
-      const proxy = { t: 0 }
-      tl.to(proxy, {
-        t: presenceDur,
-        duration: presenceDur,
-        ease: 'none',
-        onUpdate() { videoEl.currentTime = bannerVideoMediaTime(proxy.t, layer, videoEl.duration) },
-      }, startTime)
+      const endTime = layer.endTime || startTime + 3
+      registerTimelineVideo(tl, videoEl, { ...layer, startTime, endTime })
+      // Keep the video presence in the timeline; native decoding owns its frames.
+      tl.to({}, { duration: endTime - startTime }, startTime)
     }
   }
 }
@@ -497,6 +489,7 @@ function addLayerToTimeline(tl: gsap.core.Timeline, el: HTMLElement, layer: Laye
   }
 
   if (syncVideo) addVideoSync(tl, el, layer)
+  else if (layer.type === 'video' || (layer.type === 'bg' && layer.srcType === 'video')) tl.to({}, { duration: layer.endTime || 3 }, 0)
 }
 
 /** Get the latest end time from a layer's keyframes */
@@ -602,6 +595,7 @@ export function useBannerTimeline() {
       stopWatching()
       timeline.pause(Math.min(timeline.time(), end), true)
       disposeTimelineAudio(timeline)
+      disposeTimelineVideo(timeline)
       timeline.kill()
       overlay.querySelectorAll('audio, video').forEach(media => (media as HTMLMediaElement).pause())
       overlay.remove()
@@ -622,6 +616,7 @@ export function useBannerTimeline() {
     stopWatching = watch(() => [state.activeKey, state.selectedLayerId, state.project?.id, activeLayers.value], finish, { deep: true })
     timeline.play()
     syncTimelineAudio(timeline, true)
+    syncTimelineVideo(timeline)
     return true
   }
 
@@ -664,6 +659,7 @@ export function useBannerTimeline() {
             masterTl.seek(state.loopIn)
             updateTimelineMasks(masterTl)
             syncTimelineAudio(masterTl, true)
+            syncTimelineVideo(masterTl)
             state.currentTime = state.loopIn
           }
         }
@@ -691,6 +687,7 @@ export function useBannerTimeline() {
       onComplete() {
         stopTimePoller()
         if (masterTl) pauseTimelineAudio(masterTl)
+        if (masterTl) pauseTimelineVideo(masterTl)
         state.currentTime = state.duration
         if (!playback && state.isLooping) {
           const loopStart = state.loopIn != null ? state.loopIn : 0
@@ -698,6 +695,7 @@ export function useBannerTimeline() {
           if (masterTl) updateTimelineMasks(masterTl)
           masterTl?.play()
           if (masterTl) syncTimelineAudio(masterTl, true)
+          if (masterTl) syncTimelineVideo(masterTl)
           startTimePoller()
         } else {
           state.isPlaying = false
@@ -739,6 +737,7 @@ export function useBannerTimeline() {
     state.isPlaying = true
     masterTl.play()
     syncTimelineAudio(masterTl, true)
+    syncTimelineVideo(masterTl)
     startTimePoller()
   }
 
@@ -750,7 +749,9 @@ export function useBannerTimeline() {
     state.currentTime = masterTl.time()
     masterTl.pause()
     pauseTimelineAudio(masterTl)
+    pauseTimelineVideo(masterTl)
     syncTimelineAudio(masterTl, true)
+    syncTimelineVideo(masterTl)
   }
 
   function togglePlay() {
@@ -770,19 +771,9 @@ export function useBannerTimeline() {
     pauseTimeline()
     masterTl.seek(time)
     syncTimelineAudio(masterTl, true)
+    syncTimelineVideo(masterTl)
     updateTimelineMasks(masterTl)
     state.currentTime = time
-    // Videos are scrubbed separately; audio is owned by the timeline transport.
-    if (lastArtboardEl) {
-      lastLayers.forEach(layer => {
-        if ((layer.type === 'bg' && layer.srcType === 'video') || layer.type === 'video') {
-          const el = lastArtboardEl!.querySelector(`#lyr-${layer.id} video`) as HTMLVideoElement
-          if (el) {
-            el.currentTime = bannerVideoMediaTime(time - (layer.startTime || 0), layer, el.duration)
-          }
-        }
-      })
-    }
   }
 
   function scrubTo(fraction: number) {
@@ -800,7 +791,9 @@ export function useBannerTimeline() {
     if (masterTl) {
       masterTl.pause(0)
       pauseTimelineAudio(masterTl)
+      pauseTimelineVideo(masterTl)
       syncTimelineAudio(masterTl, true)
+      syncTimelineVideo(masterTl)
     }
     if (lastArtboardEl) clearGsap(lastArtboardEl, lastLayers)
   }
@@ -809,8 +802,10 @@ export function useBannerTimeline() {
     stopAnimationPreview()
     if (!masterTl) return
     pauseTimelineAudio(masterTl)
+    pauseTimelineVideo(masterTl)
     masterTl.restart()
     syncTimelineAudio(masterTl, true)
+    syncTimelineVideo(masterTl)
     state.isPlaying = true
     startTimePoller()
   }
@@ -825,6 +820,7 @@ export function useBannerTimeline() {
     state.currentTime = preserveTime ? time : 0
     if (masterTl) {
       disposeTimelineAudio(masterTl)
+      disposeTimelineVideo(masterTl)
       masterTl.kill()
       masterTl = null
     }
@@ -834,7 +830,7 @@ export function useBannerTimeline() {
   }
 
   // Build a standalone timeline for a specific artboard key (for PlayAll)
-  function buildTimelineForKey(artboardEl: HTMLElement, layers: Layer[], playback?: BannerPlayback, audible = true): gsap.core.Timeline {
+  function buildTimelineForKey(artboardEl: HTMLElement, layers: Layer[], playback?: BannerPlayback, audible = true, syncVideo = true): gsap.core.Timeline {
     const tl = gsap.timeline({
       paused: true,
       onComplete() {
@@ -847,7 +843,7 @@ export function useBannerTimeline() {
     layers.forEach(layer => {
       const el = artboardEl.querySelector(`#lyr-${layer.id}`) as HTMLElement
       if (!el) return
-      if (layer.type !== 'audio' || audible) addLayerToTimeline(tl, el, layer, null, playback?.duration)
+      if (layer.type !== 'audio' || audible) addLayerToTimeline(tl, el, layer, null, playback?.duration, syncVideo)
       else tl.to({}, { duration: layer.endTime || 3 }, 0)
       addMaskAnimation(tl, el, layer, layers)
     })

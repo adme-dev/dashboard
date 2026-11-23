@@ -206,6 +206,8 @@ export interface BuildBannerOptions {
   includeAnimations?: boolean
   /** Render a real timeline frame without starting playback (saved/client previews). */
   pausedAt?: number
+  /** Interactive AV editor owns video playback; capture/export keeps deterministic seeks. */
+  nativeVideoPlayback?: boolean
   bgColor?: string
   feedUrl?: string
   feedBindings?: Record<number, { column: string; property: string }[]>
@@ -360,7 +362,7 @@ export function buildBannerHTML(
           const startTime = l.startTime || 0
           const endTime = l.endTime || (startTime + 3)
           const presenceDur = endTime - startTime
-          lines.push(`  (function() { var vid = document.querySelector('[data-id="${l.id}"] video'); if (vid) { vid.pause(); var p = { t: 0 }; tl.to(p, { t: ${presenceDur.toFixed(2)}, duration: ${presenceDur.toFixed(2)}, ease: 'none', onUpdate: function() { vid.currentTime = ${bannerVideoMediaTimeScript(l)}(p.t); } }, ${startTime}); } })();`)
+          lines.push(`  (function() { var vid = document.querySelector('[data-id="${l.id}"] video'); if (vid) { vid.pause(); var p = { t: 0 }; tl.to(p, { t: ${presenceDur.toFixed(2)}, duration: ${presenceDur.toFixed(2)}, ease: 'none'${options.nativeVideoPlayback ? '' : `, onUpdate: function() { vid.currentTime = ${bannerVideoMediaTimeScript(l)}(p.t); }`} }, ${startTime}); } })();`)
         }
         return
       }
@@ -448,7 +450,7 @@ export function buildBannerHTML(
       // Video sync
       if ((l.type === 'bg' && l.srcType === 'video') || l.type === 'video') {
         const presenceDur = endTime - startTime
-        lines.push(`  (function() { var vid = document.querySelector('[data-id="${l.id}"] video'); if (vid) { vid.pause(); var p = { t: 0 }; tl.to(p, { t: ${presenceDur.toFixed(2)}, duration: ${presenceDur.toFixed(2)}, ease: 'none', onUpdate: function() { vid.currentTime = ${bannerVideoMediaTimeScript(l)}(p.t); } }, ${startTime}); } })();`)
+        lines.push(`  (function() { var vid = document.querySelector('[data-id="${l.id}"] video'); if (vid) { vid.pause(); var p = { t: 0 }; tl.to(p, { t: ${presenceDur.toFixed(2)}, duration: ${presenceDur.toFixed(2)}, ease: 'none'${options.nativeVideoPlayback ? '' : `, onUpdate: function() { vid.currentTime = ${bannerVideoMediaTimeScript(l)}(p.t); }`} }, ${startTime}); } })();`)
       }
 
       // Motion path tweens (chained) for preset-based layers
