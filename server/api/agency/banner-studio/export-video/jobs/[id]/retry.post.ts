@@ -1,19 +1,19 @@
 import { createError, getRouterParam } from 'h3'
 import { requireWriteAccess } from '~~/server/utils/auth'
 import { execute, queryOneFresh } from '~~/server/utils/db'
-import { hasAllSocialClientAccess, isSocialClientId, requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
+import { hasAllBannerClientAccess, isBannerClientId, requireBannerClientAccess } from '~~/server/utils/banner/clientAccess'
 import { canRetryBannerJob, dispatchBannerRenderJob, RECORD_BANNER_DISPATCH_FAILURE_SQL, RESERVE_BANNER_RETRY_SQL } from '~~/server/utils/banner/renderDispatch'
 
 export default defineEventHandler(async (event) => {
   const user = await requireWriteAccess(event)
   const jobId = getRouterParam(event, 'id')
-  if (!isSocialClientId(jobId)) throw createError({ statusCode: 400, statusMessage: 'A valid render job is required' })
+  if (!isBannerClientId(jobId)) throw createError({ statusCode: 400, statusMessage: 'A valid render job is required' })
   const job = await queryOneFresh<{ status: string, updated_at: string, source_r2_key: string, client_id: string | null, created_by: string }>(
     `SELECT j.status, j.updated_at, j.source_r2_key, p.client_id, p.created_by
        FROM banner_render_jobs j JOIN banner_projects p ON p.id = j.project_id WHERE j.id = $1`, [jobId])
   if (!job) throw createError({ statusCode: 404, statusMessage: 'Render job not found' })
-  if (job.client_id) await requireSocialClientAccess(event, job.client_id)
-  else if (job.created_by !== user.id && !hasAllSocialClientAccess(user)) throw createError({ statusCode: 403, statusMessage: 'No access to this project' })
+  if (job.client_id) await requireBannerClientAccess(event, job.client_id)
+  else if (job.created_by !== user.id && !await hasAllBannerClientAccess(user)) throw createError({ statusCode: 403, statusMessage: 'No access to this project' })
   if (!canRetryBannerJob(job)) throw createError({ statusCode: 409, statusMessage: 'This job is active or complete. Refresh its status before retrying.' })
   const env = event.context.cloudflare?.env as {
     BANNER_RENDER_QUEUE?: { send: (message: { jobId: string }) => Promise<void> }

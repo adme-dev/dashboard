@@ -6,8 +6,8 @@ const mocks = vi.hoisted(() => ({ auth: vi.fn(), rows: vi.fn(), all: vi.fn(), pe
 vi.mock('~~/server/utils/clientScoping', () => ({ hasFreshMarketingManagementPermission: mocks.freshMarketing }))
 vi.mock('~~/server/utils/auth', () => ({ requireAuth: mocks.auth }))
 vi.mock('~~/server/utils/db', () => ({ queryRowsFresh: mocks.rows }))
-vi.mock('~~/server/utils/social/clientAccess', () => ({
-  hasAllSocialClientAccess: mocks.all, hasSocialClientPermission: mocks.permission, requireSocialClientAccess: mocks.access
+vi.mock('~~/server/utils/banner/clientAccess', () => ({
+  hasAllBannerClientAccess: mocks.all, hasBannerClientPermission: mocks.permission, requireBannerClientAccess: mocks.access
 }))
 vi.stubGlobal('defineEventHandler', (handler: unknown) => handler)
 vi.stubGlobal('getQuery', (event: { query: unknown }) => event.query)

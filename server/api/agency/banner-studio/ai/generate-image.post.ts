@@ -1,5 +1,5 @@
 import { createError, defineEventHandler, readBody } from 'h3'
-import { requireSocialClientScope } from '~~/server/utils/social/clientAccess'
+import { requireBannerClientScope } from '~~/server/utils/banner/clientAccess'
 import { requireWriteAccess } from '~~/server/utils/auth'
 import { requireBannerEffectProject } from '~~/server/utils/banner/effectScope'
 import { resolveDesignReferences } from '~~/server/utils/banner/designReferences'
@@ -73,7 +73,7 @@ export default defineEventHandler(async (event) => {
     const project = await requireBannerEffectProject(event, body.projectId)
     body.clientId = project.client_id ?? undefined
   } else {
-    await requireSocialClientScope(event, body.clientId)
+    await requireBannerClientScope(event, body.clientId)
   }
 
   if (body.effect) {

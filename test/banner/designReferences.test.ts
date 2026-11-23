@@ -12,7 +12,7 @@ vi.mock('~~/server/utils/appUrl', () => ({ getAppUrl: () => 'https://app.example
 vi.mock('~~/server/utils/ai/invocationLedger', () => ({ recordAiInvocation: mock.record }))
 vi.mock('~~/server/utils/video-generation/clientProfile', () => ({ loadVideoClientProfile: mock.profile }))
 vi.mock('~~/server/utils/auth', () => ({ requireWriteAccess: mock.write }))
-vi.mock('~~/server/utils/social/clientAccess', () => ({ requireSocialClientScope: mock.scope }))
+vi.mock('~~/server/utils/banner/clientAccess', () => ({ requireBannerClientScope: mock.scope }))
 vi.mock('h3', async original => ({ ...await original<typeof import('h3')>(), readMultipartFormData: async (event: { form: unknown }) => event.form, getHeader: (event: { length?: string }) => event.length }))
 
 const projectId = '11111111-1111-4111-8111-111111111111'

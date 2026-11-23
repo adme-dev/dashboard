@@ -28,10 +28,10 @@ vi.mock('~~/server/utils/auth', () => ({
 vi.mock('~~/server/utils/db', () => ({
   queryRowsFresh: (...args: unknown[]) => mockQueryRows(...args)
 }))
-vi.mock('~~/server/utils/social/clientAccess', () => ({
-  hasAllSocialClientAccess: () => false,
-  hasSocialClientPermission: () => true,
-  requireSocialClientAccess: vi.fn()
+vi.mock('~~/server/utils/banner/clientAccess', () => ({
+  hasAllBannerClientAccess: () => false,
+  hasBannerClientPermission: () => true,
+  requireBannerClientAccess: vi.fn()
 }))
 
 const { default: handler } = await import(

@@ -1,6 +1,6 @@
 import { queryOneFresh } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
-import { hasAllSocialClientAccess, requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
+import { hasAllBannerClientAccess, requireBannerClientAccess } from '~~/server/utils/banner/clientAccess'
 
 export default defineEventHandler(async (event) => {
   const user = await requireAuth(event)
@@ -31,8 +31,8 @@ export default defineEventHandler(async (event) => {
     if (!row) {
       throw createError({ statusCode: 404, statusMessage: 'Project not found' })
     }
-    if (row.clientId) await requireSocialClientAccess(event, row.clientId)
-    else if (row.createdBy !== user.id && !hasAllSocialClientAccess(user)) {
+    if (row.clientId) await requireBannerClientAccess(event, row.clientId)
+    else if (row.createdBy !== user.id && !await hasAllBannerClientAccess(user)) {
       throw createError({ statusCode: 403, statusMessage: 'No access to this project' })
     }
 

@@ -1,17 +1,17 @@
 import { queryRowsFresh } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
 import { hasFreshMarketingManagementPermission } from '~~/server/utils/clientScoping'
-import { hasAllSocialClientAccess, hasSocialClientPermission, requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
+import { hasAllBannerClientAccess, hasBannerClientPermission, requireBannerClientAccess } from '~~/server/utils/banner/clientAccess'
 import { withBannerFontDelivery } from '~~/server/utils/banner/fontDelivery'
 import { FONT_ASSET_SELECT, fontAssetMetadata, type FontAssetRow } from '~~/server/utils/banner/fontAssets'
 
 export default defineEventHandler(async (event) => {
   const user = await requireAuth(event)
-  if (!hasSocialClientPermission(user)) throw createError({ statusCode: 403, statusMessage: 'Creative client access required' })
+  if (!hasBannerClientPermission(user)) throw createError({ statusCode: 403, statusMessage: 'Creative client access required' })
   setHeader(event, 'Cache-Control', 'private, no-store')
   const clientId = getQuery(event).clientId
   if (clientId !== undefined && typeof clientId !== 'string') throw createError({ statusCode: 400, statusMessage: 'Invalid clientId' })
-  if (clientId !== undefined && clientId !== '__agency__') await requireSocialClientAccess(event, clientId)
+  if (clientId !== undefined && clientId !== '__agency__') await requireBannerClientAccess(event, clientId)
   const params: unknown[] = []
   let scope = ''
   if (clientId === '__agency__') {
@@ -19,7 +19,7 @@ export default defineEventHandler(async (event) => {
   } else if (clientId !== undefined) {
     params.push(clientId)
     scope = 'AND (client_id IS NULL OR client_id = $1::uuid)'
-  } else if (!hasAllSocialClientAccess(user)) {
+  } else if (!await hasAllBannerClientAccess(user)) {
     if (user.permissionGroups?.includes('MARKETING_MANAGEMENT')) {
       if (!await hasFreshMarketingManagementPermission(user.id)) throw createError({ statusCode: 403, statusMessage: 'Marketing permission revoked' })
       scope = 'AND (client_id IS NULL OR EXISTS (SELECT 1 FROM agency_clients c WHERE c.id = banner_assets.client_id AND c.is_active = TRUE))'

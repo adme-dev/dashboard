@@ -1,6 +1,6 @@
 import { queryOneFresh } from '~~/server/utils/db'
 import { requireWriteAccess } from '~~/server/utils/auth'
-import { hasAllSocialClientAccess, requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
+import { hasAllBannerClientAccess, requireBannerClientAccess } from '~~/server/utils/banner/clientAccess'
 import { ACTIVE_PROJECT_CLIENT_SQL, isMarketingPortfolioUser, requireMarketingBannerProjectAccess } from '~~/server/utils/banner/marketingProjectAccess'
 import { resolveBannerFolderId } from '~~/server/utils/banner/folders'
 
@@ -17,8 +17,8 @@ export default defineEventHandler(async (event) => {
     'SELECT client_id, created_by, tags, review_status FROM banner_projects WHERE id = $1', [id])
   if (!project) throw createError({ statusCode: 404, statusMessage: 'Project not found' })
   if (isMarketingPortfolioUser(user)) await requireMarketingBannerProjectAccess(event, user, project)
-  else if (project.client_id) await requireSocialClientAccess(event, project.client_id)
-  else if (project.created_by !== user.id && !hasAllSocialClientAccess(user)) throw createError({ statusCode: 403, statusMessage: 'No access to this project' })
+  else if (project.client_id) await requireBannerClientAccess(event, project.client_id)
+  else if (project.created_by !== user.id && !await hasAllBannerClientAccess(user)) throw createError({ statusCode: 403, statusMessage: 'No access to this project' })
 
   const row = await queryOneFresh<{ id: string, folderId: string | null }>(`
     UPDATE banner_projects SET folder_id = $2::uuid, updated_at = NOW()

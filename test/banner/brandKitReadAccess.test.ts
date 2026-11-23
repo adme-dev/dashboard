@@ -2,9 +2,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const m = vi.hoisted(() => ({ user: { id: 'staff', permissionGroups: [] as string[] }, all: false, permission: true, fresh: true, access: vi.fn(), rows: vi.fn(), kit: null as Record<string, unknown> | null }))
 vi.mock('~~/server/utils/auth', () => ({ requireAuth: async () => m.user }))
-vi.mock('~~/server/utils/social/clientAccess', () => ({
-  requireSocialClientAccess: m.access, requireAllSocialClientAccess: vi.fn(),
-  hasSocialClientPermission: () => m.permission, hasAllSocialClientAccess: () => m.all
+vi.mock('~~/server/utils/banner/clientAccess', () => ({
+  requireBannerClientAccess: m.access, requireAllBannerClientAccess: vi.fn(),
+  hasBannerClientPermission: () => m.permission, hasAllBannerClientAccess: () => m.all
 }))
 vi.mock('~~/server/utils/clientScoping', () => ({ hasFreshMarketingManagementPermission: async () => m.fresh }))
 vi.mock('~~/server/utils/db', () => ({ queryRowsFresh: m.rows }))

@@ -1,7 +1,7 @@
 import { createError, defineEventHandler, readBody } from 'h3'
 import { requireWriteAccess } from '~~/server/utils/auth'
 import { queryOneFresh, queryRowsFresh } from '~~/server/utils/db'
-import { requireSocialClientScope } from '~~/server/utils/social/clientAccess'
+import { requireBannerClientScope } from '~~/server/utils/banner/clientAccess'
 import { brandContextBlock, getDefaultBrandKitForClient } from '~~/server/utils/banner/brandKits'
 import { loadDesignClientStyleGuide, resolveDesignReferences } from '~~/server/utils/banner/designReferences'
 import { edgeGenerate } from '~~/server/utils/edgeAi'
@@ -29,7 +29,7 @@ export default defineEventHandler(async (event) => {
     'SELECT name, client_id, canvas_data FROM banner_projects WHERE id = $1', [body.projectId]
   )
   if (!project) throw createError({ statusCode: 404, statusMessage: 'Banner project not found' })
-  await requireSocialClientScope(event, project.client_id ?? undefined)
+  await requireBannerClientScope(event, project.client_id ?? undefined)
 
   // Saved source assets and the client library are authority. Never derive scope
   // from a client ID, an asset ID or an arbitrary URL supplied in the request.

@@ -1,7 +1,7 @@
 import { createError, getHeader, readMultipartFormData } from 'h3'
 import { queryOne } from '~~/server/utils/db'
 import { requireAuth, requireWriteAccess } from '~~/server/utils/auth'
-import { isSocialClientId, requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
+import { isBannerClientId, requireBannerClientAccess } from '~~/server/utils/banner/clientAccess'
 import { getAppUrl } from '~~/server/utils/appUrl'
 import {
   bannerAssetDeliveryUrl,
@@ -49,12 +49,12 @@ export default defineEventHandler(async (event) => {
   }
   const clientFields = formData?.filter(part => part.name === 'clientId') ?? []
   const clientId = clientFields[0]?.data.toString('utf-8').trim().toLowerCase() || null
-  if (clientFields.length > 1 || (clientFields.length && !isSocialClientId(clientId))) {
+  if (clientFields.length > 1 || (clientFields.length && !isBannerClientId(clientId))) {
     throw createError({ statusCode: 400, statusMessage: 'A single valid clientId is required' })
   }
   if (clientId) {
     await requireWriteAccess(event)
-    await requireSocialClientAccess(event, clientId)
+    await requireBannerClientAccess(event, clientId)
   }
 
   let validated: ValidatedBannerAssetUpload

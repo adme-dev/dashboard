@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const mocks = vi.hoisted(() => ({ auth: vi.fn(), fresh: vi.fn(), rows: vi.fn(), access: vi.fn(), all: vi.fn() }))
 vi.mock('~~/server/utils/auth', () => ({ requireAuth: mocks.auth }))
 vi.mock('~~/server/utils/db', () => ({ queryOneFresh: mocks.fresh, queryRowsFresh: mocks.rows }))
-vi.mock('~~/server/utils/social/clientAccess', () => ({ requireSocialClientAccess: mocks.access, hasAllSocialClientAccess: mocks.all }))
+vi.mock('~~/server/utils/banner/clientAccess', () => ({ requireBannerClientAccess: mocks.access, hasAllBannerClientAccess: mocks.all }))
 vi.stubGlobal('defineEventHandler', (handler: unknown) => handler)
 vi.stubGlobal('getRouterParam', (event: { id: string }) => event.id)
 vi.stubGlobal('getQuery', (event: { query: unknown }) => event.query)

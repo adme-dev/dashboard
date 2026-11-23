@@ -3,7 +3,7 @@ import { resolveBannerFolderId } from '~~/server/utils/banner/folders'
 import { requireAuth, requireWriteAccess } from '~~/server/utils/auth'
 import { executeGodModeBannerProjectCreation } from '~~/server/utils/banner/godModeProjectCreation'
 import { findExistingTheBriefProject, readTheBriefProjectIdentity } from '~~/server/utils/banner/thebriefProjectImport'
-import { requireSocialClientAccess } from '~~/server/utils/social/clientAccess'
+import { requireBannerClientAccess } from '~~/server/utils/banner/clientAccess'
 import { isMarketingPortfolioUser, requireMarketingBannerProjectCreate } from '~~/server/utils/banner/marketingProjectAccess'
 
 export default defineEventHandler(async (event) => {
@@ -22,14 +22,14 @@ export default defineEventHandler(async (event) => {
     // Deduplication can return saved canvas data, including on coordinator replay.
     // Check current write and client authority before either path can run.
     await requireWriteAccess(event)
-    await requireSocialClientAccess(event, importIdentity.clientId)
+    await requireBannerClientAccess(event, importIdentity.clientId)
   }
   // Marketing-management portfolio: active clients only; the INSERT re-checks the client atomically.
   const marketing = isMarketingPortfolioUser(user)
   if (marketing && !importIdentity) await requireMarketingBannerProjectCreate(event, user, { clientId, tags })
 
   try {
-    if (canvasFontLayers(canvasData).some(layer => layer.fontAssetId) && clientId) await requireSocialClientAccess(event, clientId)
+    if (canvasFontLayers(canvasData).some(layer => layer.fontAssetId) && clientId) await requireBannerClientAccess(event, clientId)
     const row = await executeGodModeBannerProjectCreation(event, async (db) => {
       if (importIdentity) {
         const existing = await findExistingTheBriefProject(db, importIdentity)
