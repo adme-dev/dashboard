@@ -14,10 +14,11 @@ existing scope, and the marketing-management protected-artwork rules remain in p
 The new full-library authority is checked against the current active member and
 selected database role; a stale Creative session cannot retain it after revocation.
 
-Validation on Node 24.18.0: 839 tests passed and one skipped across the Banner Studio,
-creative access, finance, social, QR and deployment-guard checks. One existing
-rectangle-gradient rendering test fails identically on unchanged main. The new
-creative access helper and regression suite pass lint. Deployment is pending.
+Validation with locked dependencies on Node 24.18.0: 850 tests passed and one
+optional browser test skipped across Banner Studio, creative access, finance,
+social, QR, deployment guards and imported-motion coverage. The new creative
+access helper and regression suite pass lint, with no new lint findings across
+edited files. Deployment is pending.
 
 ## 23 November 2026 — Editable RAM and Nissan entrances
 
