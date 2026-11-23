@@ -15,6 +15,8 @@ Banner Studio detects an unambiguous OEM kit from the saved source, explicit kit
 
 ## Dealer templates and canvas zoom
 
+For a Full HD brief, use **Sets → Add Size → Custom sizes → Full HD landscape (1920×1080)** in the existing project, then remove formats the brief no longer requires. Match the vehicle's entrance to the direction its front faces; do not mirror OEM photography. Keep offer text, CTA and terms visible through the full reading hold and test a second playback cycle, including the end frame.
+
 Use the normal three-size set unless the brief specifies otherwise: **MRec 300×250, square 1080×1080 and story 1080×1920**. In the multi-canvas workspace, hold **Option/Alt and scroll** to zoom toward the pointer. Trackpad pinch / Ctrl or Command + scroll also zoom; ordinary scrolling pans. The toolbar's Zoom in, Zoom out, 100% and Fit controls remain available. Zoom changes the view, not artwork dimensions or saved layers.
 
 In **Templates**, enter an optional **Dealer name**, choose the OEM kit, then **Hero + CTA** or **Two CTAs**. Native templates use separate logo/dealer, headline, vehicle, supporting copy and CTA regions, with a restrained vehicle slide-in and CTA reveal. Automatic image selection excludes promotional sale/deal graphics and prefers the campaign's matching model. Review the selected grade and paint before reuse; source metadata alone does not establish dealer-specific stock or offer eligibility.
