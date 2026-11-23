@@ -1,3 +1,4 @@
+import { estimateBannerDuration } from '~~/app/utils/banner-render-runtime'
 import { bannerPosterTime } from '~~/shared/bannerPosterTime'
 import { createHash } from 'node:crypto'
 import { getQuery } from 'h3'
@@ -11,8 +12,8 @@ import { enforceRateLimit } from '~~/server/utils/rateLimit'
 import { loadPublicBannerShare } from '~~/server/utils/banner/publicShare'
 
 /** Recheck the live link before reading even a previously cached artwork image. */
-export async function bannerShareImage(event: H3Event): Promise<Response> {
-  const { project, fonts } = await loadPublicBannerShare(event)
+export async function bannerShareImage(event: H3Event, load = () => loadPublicBannerShare(event)): Promise<Response> {
+  const { project, fonts } = await load()
   const canvas: Record<string, ArtboardState> = typeof project.canvasData === 'string'
     ? JSON.parse(project.canvasData)
     : project.canvasData as Record<string, ArtboardState>
@@ -29,7 +30,7 @@ export async function bannerShareImage(event: H3Event): Promise<Response> {
   const env = event.context.cloudflare?.env
   const bucket = env?.MEDIA_BUCKET
   if (!bucket?.get || !bucket.put) throw createError({ statusCode: 503, statusMessage: 'Artwork preview storage unavailable' })
-  const revision = createHash('sha256').update(JSON.stringify({ key, canvas: board, fonts, version: 4 })).digest('hex')
+  const revision = createHash('sha256').update(JSON.stringify({ key, canvas: board, fonts, version: 5 })).digest('hex')
   const imageKey = `banner-share-previews/${project.id}/${revision}.jpg`
   const headers = { 'Content-Type': 'image/jpeg', 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer' }
   const cached = await bucket.get(imageKey)
@@ -42,7 +43,7 @@ export async function bannerShareImage(event: H3Event): Promise<Response> {
     weight: Number(font.tags.find(tag => tag.startsWith('weight:'))?.slice(7) || 400),
     format: font.tags.find(tag => tag.startsWith('format:'))?.slice(7) || 'woff2'
   }))
-  const time = bannerPosterTime(board.playback?.duration || 5, board.posterTime)
+  const time = bannerPosterTime(board.playback?.duration || estimateBannerDuration(board.layers), board.posterTime, board.layers)
   const scale = Math.min(1, 1200 / Math.max(format.w, format.h))
   const width = Math.max(1, Math.round(format.w * scale)), height = Math.max(1, Math.round(format.h * scale))
   const html = buildBannerHTML(key, board.layers.filter(layer => layer.type !== 'audio'), {

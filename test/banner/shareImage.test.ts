@@ -42,10 +42,10 @@ describe('shared artwork images', () => {
     const [action, options] = mocks.screenshot.mock.calls[0]!
     expect(action).toBe('screenshot')
     expect(options.viewport).toEqual({ width: 1080, height: 1080, deviceScaleFactor: 1 })
-    expect(options.html).toContain('window.__engagrFrame.seek(3)')
+    expect(options.html).toContain('window.__engagrFrame.seek(7.5)')
     expect(options.html).not.toContain('<audio')
     expect(options.addScriptTag[0].content).toContain('window.__engagrFrame.seek(0);')
-    expect(options.addScriptTag[0].content.indexOf('seek(0)')).toBeLessThan(options.addScriptTag[0].content.indexOf('seek(3)'))
+    expect(options.addScriptTag[0].content.indexOf('seek(0)')).toBeLessThan(options.addScriptTag[0].content.indexOf('seek(7.5)'))
     expect(options.waitForSelector.selector).toBe('[data-share-image-ready]')
     expect(mocks.put).toHaveBeenCalledWith(expect.stringMatching(/^banner-share-previews\/project\/[a-f0-9]{64}\.jpg$/), expect.any(ArrayBuffer), expect.anything())
   })
@@ -118,4 +118,17 @@ it('seeks embedded video after the paused HTML already rendered the chosen frame
   } finally {
     timeline.kill()
   }
+})
+
+it('uses the saved layer duration for automatic posters when playback metadata is absent', async () => {
+  mocks.load.mockResolvedValueOnce({ project: { id: 'project', canvasData: { custom_1080x1080: { layers: [{ id: 1, type: 'video', x: 0, y: 0, w: 1080, h: 1080, opacity: 1, startTime: 0, endTime: 12, animIn: 'none' }] } } }, fonts: [] })
+  await bannerShareImage(event as never)
+  expect(mocks.screenshot.mock.calls[0][1].html).toContain('window.__engagrFrame.seek(6)')
+})
+
+it('authorizes team posters before reading a cached image', async () => {
+  const load = vi.fn().mockRejectedValue(Object.assign(new Error(), { statusCode: 403 }))
+  await expect(bannerShareImage(event as never, load)).rejects.toMatchObject({ statusCode: 403 })
+  expect(mocks.get).not.toHaveBeenCalled()
+  expect(mocks.load).not.toHaveBeenCalled()
 })

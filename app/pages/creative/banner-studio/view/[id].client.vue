@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { ArtboardState } from '~/types/banner-studio'
+import type { ArtboardState, BannerProject } from '~/types/banner-studio'
 
 definePageMeta({ layout: false, middleware: ['role-creative'] })
 const route = useRoute()
@@ -7,9 +7,8 @@ const projectId = String(route.params.id)
 const snapshot = shallowRef<{ clientId?: string | null, clientName?: string | null, name: string, canvasData: Record<string, ArtboardState>, revision: string } | null>(null)
 const unavailable = ref(false)
 const loading = ref(true)
-const fontsReady = ref(false)
+const sharingOpen = ref(false)
 const downloadsOpen = ref(false)
-const { fetchCustomFonts, getExportCustomFonts } = useBannerFonts(() => snapshot.value?.clientId ?? null)
 let disposed = false
 let timer: ReturnType<typeof setTimeout> | undefined
 async function refresh() {
@@ -18,8 +17,6 @@ async function refresh() {
     if (!disposed && next) {
       if (snapshot.value?.revision !== next.revision || snapshot.value?.clientId !== next.clientId) {
         snapshot.value = next
-        await fetchCustomFonts()
-        fontsReady.value = true
       } else if (snapshot.value.clientName !== next.clientName) {
         snapshot.value = next
       }
@@ -40,9 +37,7 @@ async function refresh() {
     }
   }
 }
-const customFonts = computed(() => snapshot.value && fontsReady.value
-  ? getExportCustomFonts(Object.values(snapshot.value.canvasData).flatMap(board => board.layers || []))
-  : [])
+const shareProject = computed<Pick<BannerProject, 'id' | 'name'> | null>(() => snapshot.value ? { id: projectId, name: snapshot.value.name } : null)
 onMounted(() => {
   void refresh()
 })
@@ -60,11 +55,17 @@ onBeforeUnmount(() => {
           {{ snapshot?.name || 'Saved banner viewer' }}
         </h1>
         <p class="text-sm text-muted">
-          Latest saved layouts · Updates automatically
+          Team preview · Sign-in required · Latest saved layouts
         </p>
       </div>
-      <div class="flex items-center gap-2">
+      <div class="flex flex-wrap items-center gap-2">
         <BannerThemeToggle />
+        <UButton
+          label="Share with client"
+          icon="i-lucide-share-2"
+          :disabled="!snapshot"
+          @click="sharingOpen = true"
+        />
         <UButton
           label="MP4 downloads"
           icon="i-lucide-download"
@@ -91,13 +92,15 @@ onBeforeUnmount(() => {
       :description="snapshot ? 'Showing the last loaded version. The latest changes are not available yet; retrying automatically.' : 'Save the project in its editor. This viewer will refresh automatically when the snapshot is ready.'"
     />
     <USkeleton v-if="loading" class="m-4 h-64" />
-    <BannerSavedPreview
-      v-if="snapshot && fontsReady"
+    <BannerClientVideoPreview
+      v-if="snapshot"
+      :key="snapshot.revision"
       :canvas="snapshot.canvasData"
-      :fonts="customFonts"
+      :project-id="projectId"
       :client-name="snapshot.clientName"
       :project-name="snapshot.name"
     />
+    <BannerProjectShareModal v-model:open="sharingOpen" :project="shareProject" />
     <BannerVideoDownloads
       v-if="snapshot"
       v-model:open="downloadsOpen"

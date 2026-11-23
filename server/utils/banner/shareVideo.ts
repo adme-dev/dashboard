@@ -13,6 +13,7 @@ import { enforceRateLimit } from '~~/server/utils/rateLimit'
 import { deliverBannerVideo } from '~~/server/utils/banner/videoDelivery'
 
 type Share = Awaited<ReturnType<typeof loadPublicBannerShare>>
+export interface BannerPreviewAccess { load: () => Promise<Share>, basePath: string }
 type Job = { id: string, status: string, r2_key: string | null, updated_at: string }
 const PROFILE = { version: 1, fps: 24, crf: 20, quality: 1 as const }
 const ASSET_URL = /^https:\/\/app\.xeroflow\.io\/api\/public\/banner-assets\/v1\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/
@@ -43,20 +44,20 @@ async function readJob(projectId: string, plan: Plan) {
   [plan.id, projectId, plan.key, `banner-render-jobs/${plan.id}/source.html`])
 }
 
-export async function publicBannerShareVideos(share: Share, token: string) {
+export async function publicBannerShareVideos(share: Share, token: string, basePath = `/api/public/banner-share/${token}`) {
   const videos = await Promise.all(bannerShareVideoPlans(share).map(async (plan) => {
     const job = plan.unsupported ? null : await readJob(share.project.id, plan)
     return { formatKey: plan.key, revision: plan.revision, width: plan.width, height: plan.height,
       status: plan.unsupported ? 'unsupported' : job?.status || 'missing',
       canRetry: job ? canRetryBannerJob(job) : false,
-      url: job?.status === 'done' ? `/api/public/banner-share/${token}/video?formatKey=${encodeURIComponent(plan.key)}&revision=${plan.revision}` : null }
+      url: job?.status === 'done' ? `${basePath}/video?formatKey=${encodeURIComponent(plan.key)}&revision=${plan.revision}` : null }
   }))
   return { videos }
 }
 
-export async function bannerShareVideos(event: H3Event) {
-  const share = await loadPublicBannerShare(event)
-  return publicBannerShareVideos(share, getRouterParam(event, 'token')!)
+export async function bannerShareVideos(event: H3Event, access?: BannerPreviewAccess) {
+  const share = await (access ? access.load() : loadPublicBannerShare(event))
+  return publicBannerShareVideos(share, getRouterParam(event, 'token')!, access?.basePath)
 }
 
 export function buildBannerShareVideoHtml(share: Share, plan: Plan) {
@@ -81,8 +82,9 @@ export function buildBannerShareVideoHtml(share: Share, plan: Plan) {
   return html.replace('<head>', `<head><meta http-equiv="Content-Security-Policy" content="${csp}">`)
 }
 
-export async function prepareBannerShareVideo(event: H3Event, formatKey: string, retry = false, token = getRouterParam(event, 'token')) {
-  const share = await loadPublicBannerShare(event, token)
+export async function prepareBannerShareVideo(event: H3Event, formatKey: string, retry = false, token = getRouterParam(event, 'token'), access?: BannerPreviewAccess) {
+  const load = access?.load || (() => loadPublicBannerShare(event, token))
+  const share = await load()
   const plan = bannerShareVideoPlans(share).find(plan => plan.key === formatKey)
   if (!plan) throw createError({ statusCode: 404, statusMessage: 'Artwork size not found' })
   if (plan.unsupported) throw createError({ statusCode: 422, statusMessage: 'Client video previews support even dimensions up to 2000 pixels and animations up to 30 seconds.' })
@@ -90,7 +92,7 @@ export async function prepareBannerShareVideo(event: H3Event, formatKey: string,
   if (job && (!retry || !canRetryBannerJob(job))) return { status: job.status }
   await enforceRateLimit(event, { key: `banner-share-video:${share.project.id}`, limit: 10, windowSeconds: 600, failureMode: 'closed' })
   const deps = buildBannerRenderEnqueueDeps(event, { genId: () => plan.id, markDispatched: async () => {
-    await loadPublicBannerShare(event, token)
+    await load()
   } })
   if (job) {
     const reserved = await queryOneFresh(RESERVE_BANNER_RETRY_SQL, [job.id])
@@ -128,8 +130,8 @@ export async function warmBannerShareVideos(event: H3Event, token: string) {
   if (deferred) throw createError({ statusCode: 503, statusMessage: 'Some preview sizes could not be prepared' })
 }
 
-export async function bannerShareVideo(event: H3Event) {
-  const share = await loadPublicBannerShare(event)
+export async function bannerShareVideo(event: H3Event, access?: BannerPreviewAccess) {
+  const share = await (access ? access.load() : loadPublicBannerShare(event))
   const { formatKey, revision } = getQuery(event)
   const plan = bannerShareVideoPlans(share).find(plan => plan.key === formatKey && plan.revision === revision)
   if (!plan || plan.unsupported) throw createError({ statusCode: 404, statusMessage: 'Preview revision not found' })

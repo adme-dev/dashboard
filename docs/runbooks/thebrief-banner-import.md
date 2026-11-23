@@ -46,7 +46,7 @@ Use the project menu’s **Move to folder** action to change an existing design�
 
 Review/comment links and view-only client links use separate token formats. The public client endpoint returns current artwork and only the fonts needed to render it; it does not return comments or reviewer identities.
 
-Client proofs use a compiled native video with embedded audio. Prepare every required size before delivery, then verify playback, seeking and sound without an agency login. The player uses a saved-artwork still for the selected size before Play and while the video prepares. It captures the midpoint up to three seconds, caches by canvas/font/size revision, and still checks live link authorization before serving cached bytes. A failed poster must leave video controls and retry status usable. Client links expire or can be revoked; creating one does not email it to a client. Browser/mobile layout evidence is separate from an actual Safari/iPhone playback check.
+Client proofs use a compiled native video with embedded audio. Prepare every required size before delivery, then verify playback, seeking and sound without an agency login. The player uses a saved-artwork still for the selected size before Play and while the video prepares. It chooses a settled frame from the saved timeline by default, respects any designer override, caches by canvas/font/size/selector revision, and still checks live link authorization before serving cached bytes. A failed poster must leave video controls and retry status usable. Client links expire or can be revoked; creating one does not email it to a client. Browser/mobile layout evidence is separate from an actual Safari/iPhone playback check.
 
 ## Reusing an imported design
 
@@ -97,3 +97,28 @@ releasing the worker.
 When checking a chosen still, compare the video background as well as native text.
 A valid JPEG can still show an unseeked video frame. The capture must move away
 from the initially pre-rendered position before seeking the requested time.
+
+
+## Automatic proof posters and live footage — 23 November 2026
+
+Client links generate a still automatically; a separate manual poster-preparation
+step is not required. Selection evaluates a bounded set of timeline frames,
+favouring visible native copy and substantial imagery, stable holds and distance
+from entrances, exits and scene boundaries. It is a deterministic timeline
+heuristic, not an optical-quality or semantic guarantee for text embedded in video.
+Every saved layout is evaluated independently. A finite `posterTime` is a designer
+override and is never replaced by automatic selection. **Automatic frame** clears
+that override; later artwork edits cause the choice and cached JPEG to refresh.
+
+Saved team viewers use the same rendered MP4 player, poster selector, content-addressed
+jobs and private delivery pipeline as client links. They require the existing
+signed-in project/client access; opening one does not create a public token.
+**Team preview · Sign-in required** identifies the internal page. Choose **Share
+with client** to create or copy the expiring external client link. Public client
+links remain view-only and do not require sign-in. Both routes show preparation
+status and retry rather than falling back to HTML5 animation.
+
+The earlier container-readiness, queue/retry, FFmpeg/Chromium and native-video
+player work is retained. This change does not rewrite HTML5 animation/audio clocks
+or the renderer worker. A local HTML playback experiment was discarded before
+release after confirming the requested surface should use the compiled video.

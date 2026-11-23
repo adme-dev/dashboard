@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { BannerProject } from '~/types/banner-studio'
 
-const props = defineProps<{ open: boolean, project: BannerProject | null }>()
+const props = defineProps<{ open: boolean, project: Pick<BannerProject, 'id' | 'name'> | null }>()
 const emit = defineEmits<{ 'update:open': [value: boolean] }>()
 type Link = { id: string, token: string, expiresAt: string, revoked: boolean, createdAt: string }
 const links = ref<Link[]>([])
@@ -88,7 +88,7 @@ async function revokeLink(link: Link) {
             Team access
           </h3>
           <p class="mt-1 text-sm text-muted">
-            Team members with Banner Studio access to this client can open the saved banner viewer.
+            For your team. Sign-in and Banner Studio access are required. Use a client link below when sharing outside the team.
           </p>
           <UButton
             v-if="project"
@@ -109,7 +109,7 @@ async function revokeLink(link: Link) {
               Client links
             </h3>
             <p class="mt-1 text-sm text-muted">
-              Anyone with a link can view the current banner. Links expire automatically and can be revoked.
+              Send a client link to preview the rendered video without signing in. Links expire automatically and can be revoked.
             </p>
           </div>
           <UFormField label="Link expires after">
