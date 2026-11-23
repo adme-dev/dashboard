@@ -83,8 +83,14 @@ describe('shared artwork images', () => {
   })
 })
 
-it('uses a saved clear poster frame and clamps it to the animation', async () => {
-  mocks.load.mockResolvedValueOnce({ project: { id: 'project', canvasData: { custom_1080x1080: { layers: [], posterTime: 1.5, playback: { duration: 6, loopCount: 0 } } } }, fonts: [] })
+it.each([1.5, 5.9, 299.9])('renders a saved poster beyond the old midpoint limit: %s', async (time) => {
+  mocks.load.mockResolvedValueOnce({ project: { id: 'project', canvasData: { custom_1080x1080: { layers: [], posterTime: time, playback: { duration: 300, loopCount: 0 } } } }, fonts: [] })
   await bannerShareImage(event as never)
-  expect(mocks.screenshot.mock.calls[0][1].html).toContain('window.__engagrFrame.seek(1.5)')
+  expect(mocks.screenshot.mock.calls[0][1].html).toContain(`window.__engagrFrame.seek(${time})`)
+})
+
+it.each([-1, 300.001, null, '5.9'])('rejects an invalid poster worker time: %s', async (time) => {
+  const response = await renderer.fetch(new Request('https://banner-share-images/screenshot', { method: 'POST', body: JSON.stringify({ html: '<html></html>', width: 1200, height: 1200, time }) }), { BROWSER: { quickAction: mocks.screenshot } })
+  expect(response.status).toBe(400)
+  expect(mocks.screenshot).not.toHaveBeenCalled()
 })

@@ -160,3 +160,11 @@ Large video packages upload sequentially and use request-owned byte views throug
 ## 23 November 2026 — Binary multipart upload parsing
 
 The large-video upload path now parses multipart boundaries with byte views. The former h3 parser expanded payload bytes into JavaScript number arrays and copied them again; an isolated 22 MiB control exhausted a 128 MiB heap. The replacement parsed the same body with approximately 12 MiB of JavaScript heap and retained the original binary buffer. File signatures, client scope, duplicate-file checks, digest validation and native R2 persistence checks remain enforced. Malformed, duplicate-header and oversized forms are rejected. Live RAM transfer verification is recorded separately in the migration ledger.
+
+## 23 November 2026 — Full-timeline proof poster frames
+
+The internal poster renderer accepts chosen frames through the supported 300-second
+banner timeline. Frames after three seconds previously failed with a 503 because
+the renderer retained the old automatic-midpoint limit. Regression coverage sends
+5.9 and 299.9 seconds through the complete Pages-to-renderer path and retains
+negative, nonnumeric and over-limit input rejection.
