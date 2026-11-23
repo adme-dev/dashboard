@@ -1,3 +1,4 @@
+import { bannerTeamReviewUrl } from '~~/shared/bannerTeamReviewUrl'
 import { z } from 'zod'
 import { queryRowsFresh } from '~~/server/utils/db'
 import { resolveMarketingReadScope, clientScopeSql, type MarketingReadScope } from '../marketing/readScope'
@@ -18,6 +19,7 @@ export interface CreativeWorkspaceMetadata {
   name: string
   clientId: string | null
   type: string
+  reviewUrl?: string
   updatedAt: string | null
 }
 interface MetadataRow { id: string; name: string | null; client_id: string | null; asset_type: string | null; updated_at: string | Date | null }
@@ -73,6 +75,7 @@ function project(source: CreativeWorkspaceSource, row: MetadataRow): CreativeWor
     clientId: row.client_id,
     type: typeof row.asset_type === 'string' ? row.asset_type.slice(0, 100) : source,
     updatedAt: date,
+    ...(source === 'banner_projects' ? { reviewUrl: bannerTeamReviewUrl(row.id) } : {}),
   }
 }
 

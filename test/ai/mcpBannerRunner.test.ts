@@ -116,6 +116,13 @@ describe('buildBannerReadRunner — canvas_data flat-parse (C1)', () => {
     expect(result.projects[0].formats.sort()).toEqual(['leader', 'mrec'])
   })
 
+  it('orders newest creations before limiting and links to saved custom-sized artwork', async () => {
+    queryRows.mockResolvedValueOnce([{ id: 'sample', name: 'Art', canvas_data: { custom_1200x1200: { layers: [] } }, created_at: '2026-11-24', updated_at: '2026-11-24' }])
+    const result = await buildBannerReadRunner().list_banner_projects({ sortBy: 'created' }, ctx) as any
+    expect(queryRows.mock.calls.at(-1)?.[0]).toContain('ORDER BY created_at DESC NULLS LAST, id LIMIT')
+    expect(result.projects[0]).toMatchObject({ savedLayouts: ['custom_1200x1200'], createdAt: '2026-11-24', reviewUrl: 'https://app.xeroflow.io/creative/banner-studio/view/sample' })
+  })
+
   it('excludes a format key whose artboard has no layers array', async () => {
     // mrec present but no layers array → excluded; fb_feed present and has layers → included
     const canvasData = { mrec: { layers: [] }, fb_feed: { layers: [{ id: 'l1' }] }, wsky: {} }

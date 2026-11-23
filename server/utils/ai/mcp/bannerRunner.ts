@@ -1,3 +1,4 @@
+import { bannerTeamReviewUrl } from '~~/shared/bannerTeamReviewUrl'
 import type { BannerPlayback } from '~~/app/types/banner-studio'
 // server/utils/ai/mcp/bannerRunner.ts
 import type { ToolContext } from '~~/server/utils/ai/toolContext'
@@ -7,7 +8,7 @@ import { buildBannerHTML, type ExportCustomFont } from '~~/server/utils/banner/h
 import { enqueueBannerRender, projectJobStatus, type BannerJobRow, type BannerRenderInput } from '~~/server/utils/banner/renderJob'
 import { proposeAction } from '~~/server/utils/ai/pendingActions'
 import { queryRows, queryOne, execute } from '~~/server/utils/db'
-import { FORMATS } from '~~/app/utils/banner-constants'
+import { FORMATS, resolveBannerFormat } from '~~/app/utils/banner-constants'
 import { uploadFile } from '~~/server/utils/storage'
 import { randomUUID } from 'uncrypto'
 import { buildMrecDraftCanvas } from '~~/server/utils/banner/draftCanvas'
@@ -33,12 +34,12 @@ function extractFormats(raw: unknown): string[] {
   return Object.keys(cd).filter(k => k in FORMATS && cd[k] && Array.isArray((cd[k] as any).layers))
 }
 
-export interface LoadProjectsRow { id: string, name: string, canvas_data: unknown, updated_at: string }
+export interface LoadProjectsRow { id: string, name: string, canvas_data: unknown, updated_at: string, created_at?: string }
 export interface LoadProjectRow { id: string, name: string, canvas_data: unknown }
 
 /** Injected loaders for banner projects — default implementations reach the DB; override in tests. */
 export interface BannerProjectLoaders {
-  loadProjectsRows: () => Promise<LoadProjectsRow[]>
+  loadProjectsRows: (sortBy: 'created' | 'updated') => Promise<LoadProjectsRow[]>
   loadProjectRow: (nameOrId: string) => Promise<LoadProjectRow | null>
 }
 
@@ -92,8 +93,8 @@ export const BANNER_JOB_STATUS_CAP = 20
 
 function defaultLoaders(): BannerProjectLoaders {
   return {
-    loadProjectsRows: () => queryRows<LoadProjectsRow>(
-      `SELECT id, name, canvas_data, updated_at FROM banner_projects ORDER BY updated_at DESC LIMIT ${BANNER_PROJECT_LIST_CAP + 1}`, []),
+    loadProjectsRows: sortBy => queryRows<LoadProjectsRow>(
+      `SELECT id, name, canvas_data, created_at, updated_at FROM banner_projects ORDER BY ${sortBy === 'created' ? 'created_at' : 'updated_at'} DESC NULLS LAST, id LIMIT ${BANNER_PROJECT_LIST_CAP + 1}`, []),
     loadProjectRow: (nameOrId: string) => queryOne<LoadProjectRow>(
       `SELECT id, name, canvas_data FROM banner_projects WHERE id::text = $1 OR name ILIKE $2 ORDER BY (id::text = $1) DESC, name ASC LIMIT 1`,
       [nameOrId, `%${escapeLike(nameOrId)}%`]),
@@ -111,8 +112,9 @@ async function resolveBannerProject(nameOrId: string, loaders: BannerProjectLoad
 export function buildBannerReadRunner(loaders?: BannerProjectLoaders): BannerReadRunner {
   const l = loaders ?? defaultLoaders()
   return {
-    list_banner_projects: async () => {
-      const all = await l.loadProjectsRows()
+    list_banner_projects: async (raw) => {
+      const sortBy = (raw as { sortBy?: string })?.sortBy === 'created' ? 'created' : 'updated'
+      const all = await l.loadProjectsRows(sortBy)
       const truncatedAtSource = all.length > BANNER_PROJECT_LIST_CAP
       const rows = truncatedAtSource ? all.slice(0, BANNER_PROJECT_LIST_CAP) : all
       return {
@@ -122,7 +124,12 @@ export function buildBannerReadRunner(loaders?: BannerProjectLoaders): BannerRea
           id: r.id,
           name: r.name,
           formats: extractFormats(r.canvas_data),
+          savedLayouts: Object.entries(parseCanvasData(r.canvas_data))
+            .filter(([key, board]) => resolveBannerFormat(key) && Array.isArray((board as { layers?: unknown } | null)?.layers))
+            .map(([key]) => key),
+          createdAt: r.created_at,
           updatedAt: r.updated_at,
+          reviewUrl: bannerTeamReviewUrl(r.id),
         })),
       }
     },
