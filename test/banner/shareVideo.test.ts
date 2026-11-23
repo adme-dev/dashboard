@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ArtboardState } from '~~/app/types/banner-studio'
-import { bannerShareVideoPlans, bannerShareVideos, prepareBannerShareVideo, bannerShareVideo } from '~~/server/utils/banner/shareVideo'
+import { bannerShareVideoPlans, bannerShareVideos, prepareBannerShareVideo, bannerShareVideo, bannerProofSourceKey } from '~~/server/utils/banner/shareVideo'
 
 const mocks = vi.hoisted(() => ({ load: vi.fn(), one: vi.fn(), limit: vi.fn(), put: vi.fn(), send: vi.fn(), deliver: vi.fn() }))
 vi.mock('~~/server/utils/banner/publicShare', () => ({ loadPublicBannerShare: mocks.load }))
@@ -36,6 +36,24 @@ describe('compiled client previews', () => {
     const fonts = { ...share(), fonts: [{ id: 'font', name: 'Face', url: 'url', tags: [], clientId: null, sha256: 'new' }] }
     expect(bannerShareVideoPlans(fonts as never)[0]!.id).not.toBe(first.id)
     expect(first.id).toMatch(/^[\da-f]{8}-[\da-f]{4}-5[\da-f]{3}-a[\da-f]{3}-[\da-f]{12}$/)
+  })
+  it('serves a full-length attached Video Studio video without enqueueing the 30-second capture path', async () => {
+    const long = share()
+    long.project.canvasData.custom_1200x1200.playback!.duration = 40.18
+    const plan = bannerShareVideoPlans(long)[0]!
+    expect(plan.unsupported).toBe(true)
+    const job = { id: plan.id, status: 'done', source_r2_key: bannerProofSourceKey(plan.id, 'a'.repeat(16)), r2_key: 'verified-full-video' }
+    mocks.load.mockResolvedValue(long)
+    mocks.one.mockResolvedValue(job)
+    const result = await bannerShareVideos(event)
+    expect(result.videos[0]).toMatchObject({ status: 'done', canRetry: false })
+    await expect(prepareBannerShareVideo(event, plan.key)).resolves.toEqual({ status: 'done' })
+    await bannerShareVideo({ query: { formatKey: plan.key, revision: plan.revision } } as never)
+    expect(mocks.deliver).toHaveBeenCalledWith(expect.anything(), job.r2_key, projectId, true)
+    expect(mocks.send).not.toHaveBeenCalled()
+    // A 30-second capture result can never qualify as the full 40-second proof.
+    mocks.one.mockResolvedValue({ ...job, source_r2_key: `banner-render-jobs/${plan.id}/source.html` })
+    expect((await bannerShareVideos(event)).videos[0]!.status).toBe('unsupported')
   })
   it('enqueues server-generated artwork with its soundtrack, native resolution, and restricted subresources', async () => {
     await prepareBannerShareVideo(event, 'custom_1200x1200')
@@ -89,7 +107,7 @@ describe('compiled client previews', () => {
     expect(response.videos[0]!.url).toContain('/video?formatKey=custom_1200x1200&revision=')
     expect(JSON.stringify(response)).not.toMatch(/private-key|secret/)
     const sql = mocks.one.mock.calls[0]!
-    expect(sql[1]).toEqual([expect.any(String), projectId, 'custom_1200x1200', expect.stringContaining('/source.html')])
+    expect(sql[1]).toEqual([expect.any(String), projectId, 'custom_1200x1200', expect.stringContaining('/source.html'), expect.stringContaining('/video-studio')])
   })
   it('checks revocation before status, enqueue and every video range request', async () => {
     mocks.load.mockRejectedValue({ statusCode: 410 })

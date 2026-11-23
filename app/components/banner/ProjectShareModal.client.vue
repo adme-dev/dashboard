@@ -2,11 +2,12 @@
 import type { BannerProject } from '~/types/banner-studio'
 
 const props = defineProps<{ open: boolean, project: Pick<BannerProject, 'id' | 'name'> | null }>()
-const emit = defineEmits<{ 'update:open': [value: boolean] }>()
+const emit = defineEmits<{ 'update:open': [value: boolean], 'proof-video-updated': [] }>()
 type Link = { id: string, token: string, expiresAt: string, revoked: boolean, createdAt: string }
 const links = ref<Link[]>([])
 const loading = ref(false)
 const busy = ref(false)
+const proofPending = ref(true)
 const error = ref('')
 const expiry = ref('7')
 const expiryOptions = [{ label: '7 days', value: '7' }, { label: '30 days', value: '30' }, { label: '90 days', value: '90' }]
@@ -34,11 +35,14 @@ async function refresh() {
   }
 }
 watch(() => [props.open, props.project?.id] as const, ([open]) => {
-  if (open) void refresh()
+  if (open) {
+    proofPending.value = true
+    void refresh()
+  }
 }, { immediate: true })
 
 async function createLink() {
-  if (!props.project || busy.value) return
+  if (!props.project || busy.value || proofPending.value) return
   busy.value = true
   error.value = ''
   try {
@@ -103,6 +107,13 @@ async function revokeLink(link: Link) {
             Open team viewer
           </UButton>
         </div>
+        <BannerProofVideoPicker
+          v-if="open && project"
+          :key="project.id"
+          :project-id="project.id"
+          @needs-video="proofPending = $event"
+          @updated="emit('proof-video-updated')"
+        />
         <div class="space-y-3">
           <div>
             <h3 class="text-sm font-semibold">
@@ -118,7 +129,7 @@ async function revokeLink(link: Link) {
           <UButton
             icon="i-lucide-link"
             :loading="busy"
-            :disabled="busy"
+            :disabled="busy || proofPending"
             @click="createLink"
           >
             Create client link

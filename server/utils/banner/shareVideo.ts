@@ -14,7 +14,7 @@ import { deliverBannerVideo } from '~~/server/utils/banner/videoDelivery'
 
 type Share = Awaited<ReturnType<typeof loadPublicBannerShare>>
 export interface BannerPreviewAccess { load: () => Promise<Share>, basePath: string }
-type Job = { id: string, status: string, r2_key: string | null, updated_at: string }
+type Job = { id: string, status: string, r2_key: string | null, updated_at: string, source_r2_key?: string }
 const PROFILE = { version: 1, fps: 24, crf: 20, quality: 1 as const }
 const ASSET_URL = /^https:\/\/app\.xeroflow\.io\/api\/public\/banner-assets\/v1\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/
 
@@ -32,25 +32,33 @@ export function bannerShareVideoPlans(share: Share) {
     const duration = Math.max(board?.playback?.duration || 0, estimateBannerDuration(board?.layers || []))
     const revision = createHash('sha256').update(canonical({ project: share.project.id, key, board, fonts: [...share.fonts].sort((a, b) => a.url.localeCompare(b.url)), profile: PROFILE })).digest('hex')
     const id = `${revision.slice(0, 8)}-${revision.slice(8, 12)}-5${revision.slice(13, 16)}-a${revision.slice(17, 20)}-${revision.slice(20, 32)}`
-    const unsupported = !format || !Array.isArray(board?.layers) || format.w > 2000 || format.h > 2000 || format.w % 2 !== 0 || format.h % 2 !== 0 || duration > 30 || !Number.isFinite(duration)
-    return { key, board, revision, id, width: format?.w || 0, height: format?.h || 0, unsupported }
+    const invalidFormat = !format || !Array.isArray(board?.layers) || format.w > 2000 || format.h > 2000 || format.w % 2 !== 0 || format.h % 2 !== 0 || !Number.isFinite(duration)
+    const unsupported = invalidFormat || duration > 30
+    const canAttachVideo = !invalidFormat && duration > 30 && duration <= 90
+    return { key, board, revision, id, duration, width: format?.w || 0, height: format?.h || 0, unsupported, canAttachVideo }
   })
 }
 type Plan = ReturnType<typeof bannerShareVideoPlans>[number]
 
+export const bannerProofSourceKey = (id: string, fingerprint?: string) => `banner-render-jobs/${id}/video-studio${fingerprint ? `-${fingerprint}` : ''}.json`
+export const bannerProofSourcePattern = (id: string) => `^banner-render-jobs/${id}/video-studio(-[a-f0-9]{16})?\\.json$`
+function usableProof(plan: Plan, job: Job | null) {
+  return !plan.unsupported || (plan.canAttachVideo && job?.status === 'done' && new RegExp(bannerProofSourcePattern(plan.id)).test(job.source_r2_key || ''))
+}
+
 async function readJob(projectId: string, plan: Plan) {
-  return queryOneFresh<Job>(`SELECT id, status, r2_key, updated_at FROM banner_render_jobs
-    WHERE id = $1 AND project_id = $2 AND format_key = $3 AND source_r2_key = $4`,
-  [plan.id, projectId, plan.key, `banner-render-jobs/${plan.id}/source.html`])
+  return queryOneFresh<Job>(`SELECT id, status, r2_key, updated_at, source_r2_key FROM banner_render_jobs
+    WHERE id = $1 AND project_id = $2 AND format_key = $3 AND (source_r2_key = $4 OR source_r2_key ~ $5)`,
+  [plan.id, projectId, plan.key, `banner-render-jobs/${plan.id}/source.html`, bannerProofSourcePattern(plan.id)])
 }
 
 export async function publicBannerShareVideos(share: Share, token: string, basePath = `/api/public/banner-share/${token}`) {
   const videos = await Promise.all(bannerShareVideoPlans(share).map(async (plan) => {
-    const job = plan.unsupported ? null : await readJob(share.project.id, plan)
+    const job = plan.unsupported && !plan.canAttachVideo ? null : await readJob(share.project.id, plan)
     return { formatKey: plan.key, revision: plan.revision, width: plan.width, height: plan.height,
-      status: plan.unsupported ? 'unsupported' : job?.status || 'missing',
-      canRetry: job ? canRetryBannerJob(job) : false,
-      url: job?.status === 'done' ? `${basePath}/video?formatKey=${encodeURIComponent(plan.key)}&revision=${plan.revision}` : null }
+      status: !usableProof(plan, job) ? 'unsupported' : job?.status || 'missing',
+      canRetry: !plan.unsupported && job ? canRetryBannerJob(job) : false,
+      url: usableProof(plan, job) && job?.status === 'done' ? `${basePath}/video?formatKey=${encodeURIComponent(plan.key)}&revision=${plan.revision}` : null }
   }))
   return { videos }
 }
@@ -87,8 +95,8 @@ export async function prepareBannerShareVideo(event: H3Event, formatKey: string,
   const share = await load()
   const plan = bannerShareVideoPlans(share).find(plan => plan.key === formatKey)
   if (!plan) throw createError({ statusCode: 404, statusMessage: 'Artwork size not found' })
-  if (plan.unsupported) throw createError({ statusCode: 422, statusMessage: 'Client video previews support even dimensions up to 2000 pixels and animations up to 30 seconds.' })
   const job = await readJob(share.project.id, plan)
+  if (!usableProof(plan, job)) throw createError({ statusCode: 422, statusMessage: 'Client video previews support animations up to 30 seconds. Attach a completed Video Studio render for longer artwork.' })
   if (job && (!retry || !canRetryBannerJob(job))) return { status: job.status }
   await enforceRateLimit(event, { key: `banner-share-video:${share.project.id}`, limit: 10, windowSeconds: 600, failureMode: 'closed' })
   const deps = buildBannerRenderEnqueueDeps(event, { genId: () => plan.id, markDispatched: async () => {
@@ -134,8 +142,9 @@ export async function bannerShareVideo(event: H3Event, access?: BannerPreviewAcc
   const share = await (access ? access.load() : loadPublicBannerShare(event))
   const { formatKey, revision } = getQuery(event)
   const plan = bannerShareVideoPlans(share).find(plan => plan.key === formatKey && plan.revision === revision)
-  if (!plan || plan.unsupported) throw createError({ statusCode: 404, statusMessage: 'Preview revision not found' })
+  if (!plan) throw createError({ statusCode: 404, statusMessage: 'Preview revision not found' })
   const job = await readJob(share.project.id, plan)
+  if (!usableProof(plan, job)) throw createError({ statusCode: 404, statusMessage: 'Preview revision not found' })
   if (!job || job.status !== 'done' || !job.r2_key) throw createError({ statusCode: 404, statusMessage: 'Preview is not ready' })
   return deliverBannerVideo(event, job.r2_key, share.project.id, true)
 }

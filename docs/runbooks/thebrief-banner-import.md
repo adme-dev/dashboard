@@ -131,3 +131,22 @@ resume, and change layout. The existing audio clock owns sound. Rendered client
 proofs continue to use the existing MP4 renderer. If an editor jitters while the
 rendered MP4 is smooth, inspect interactive video transport before changing the
 qualified encoder. See `docs/migrations/suzuki-editor-video-playback-20261123.md`.
+
+### Client proofs longer than 30 seconds
+
+Automatic banner capture remains limited to 30 seconds. For a 30–90-second saved
+artboard, open Share with client and use a completed full-frame render from its
+linked Video Studio project. Review video opens the original rendered MP4;
+Use rendered video attaches that completed file to the saved artwork revision.
+The client link uses the existing native MP4 player and automatic/designer poster.
+There is no re-encoding, silent truncation or HTML5 fallback. The original layers
+and fonts remain editable. Saving new artwork or changing managed font content
+invalidates the attachment; review/select a render for the new saved revision.
+
+Candidates must share the client, reference exactly this artboard as their only
+full-frame visual, match its size/duration, and have the same timeline input as
+the current Video Studio edit. Selecting a completed render is a producer review
+step: timeline equality does not independently prove that a linked banner was
+unchanged since that render. Check headline, fonts, footage, cuts and end card.
+Only the matching native output variant can be attached; contained square or
+landscape variants cannot stand in for a portrait artboard.
