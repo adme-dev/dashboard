@@ -17,7 +17,7 @@ const variantSchema = z.object({
 const offerSchema = z.object({
   title: label.nullable(), model: label.nullable(), variant: label.nullable(), price: amount, priceLabel: label.nullable(),
   offer: z.string().max(2000).nullable(), endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
-  disclaimer: z.string().max(12000).nullable(), hasImage: z.boolean(),
+  disclaimer: z.string().max(24000).nullable(), hasImage: z.boolean(),
   artworkAssetId: z.string().regex(/^[a-f0-9]{64}$/).nullable()
 })
 export type MotorstackCreativeOffer = z.infer<typeof offerSchema> & { id: string, current: boolean, verificationIssue: string | null, artworkPreviewUrl: string | null }

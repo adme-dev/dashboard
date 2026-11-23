@@ -86,6 +86,17 @@ describe('editable offer set source preservation', () => {
     }
     expect(original).toEqual(canvas())
   })
+  it('keeps a long Ford-style disclaimer across separate native fields', () => {
+    const source = context() as unknown as { offer: typeof offer }
+    source.offer.disclaimer = 'Full source conditions. '.repeat(750)
+    const result = motorstackOfferCanvas(canvas(), dimensions, source as never)
+    for (const board of Object.values(result)) {
+      const terms = board.layers.filter(layer => layer.name.startsWith('MotorStack terms'))
+      expect(terms.length).toBeGreaterThan(1)
+      expect(terms.every(layer => layer.text!.length <= 9000)).toBe(true)
+      expect(terms.map(layer => layer.text).join('')).toBe(source.offer.disclaimer + '\nOffer ends 2026-11-30')
+    }
+  })
   it('uses the on-dark logo and contrasting button text for a dark kit', () => {
     const source = context() as unknown as { kit: typeof kit }
     source.kit = { ...kit, colors: [{ role: 'background', hex: '#333333' }, { role: 'accent', hex: '#ffff00' }], logos: [{ name: 'White mark', url: 'https://assets.example/white.png', variant: 'dark' } as never, { name: 'Black mark', url: 'https://assets.example/black.png', variant: 'light' } as never] }
