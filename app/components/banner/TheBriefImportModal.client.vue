@@ -13,6 +13,7 @@ import { createReelmotionVideoDraft } from '~/utils/video/reelmotionImport'
 
 const open = defineModel<boolean>('open', { default: false })
 const emit = defineEmits<{ imported: [] }>()
+const { isGodMode } = useAuth()
 const api = $fetch as <T>(url: string, options?: Record<string, unknown>) => Promise<T>
 const { uploadCustomFont, refreshCustomFonts } = useBannerFonts()
 const clients = ref<Array<{ id: string, name: string }>>([])
@@ -221,6 +222,20 @@ async function openVideoDraft(row: TheBriefImportRow) {
     await navigateTo(`/agency/audio/projects/${id}`)
   } catch (cause) {
     error.value = cause instanceof Error ? cause.message : 'Could not prepare the Video Studio draft. Your banner draft is retained.'
+  } finally { busy.value = false }
+}
+
+async function reconcileInterruptedImport(row: TheBriefImportRow) {
+  if (busy.value || row.projectId || row.clientId === '__unassigned__') return
+  busy.value = true
+  error.value = ''
+  try {
+    const result = await api<{ canResume: boolean, completed: number, total: number }>('/api/agency/banner-studio/assets/import-recovery', { query: { clientId: row.clientId, hashes: [...new Set(row.pkg.assets.map(asset => asset.sha256))].join(',') } })
+    if (!result.canResume) throw new Error('Upload receipts are not safely replayable yet. Keep this package held for reconciliation.')
+    finishImportAttempt(localStorage, importAttemptKey(row.clientId, row.pkg.source.sha256))
+    row.status = `Upload receipts checked · ${result.completed} of ${result.total} stored · ready to resume`
+  } catch (cause) {
+    error.value = cause instanceof Error ? cause.message : 'Could not reconcile the interrupted import'
   } finally { busy.value = false }
 }
 
@@ -434,6 +449,14 @@ async function importDrafts() {
             <p class="text-sm" role="status">
               {{ row.status }}
             </p>
+            <UButton
+              v-if="isGodMode && !row.projectId && row.clientId !== '__unassigned__' && row.status !== 'Ready for draft import'"
+              label="Check interrupted upload receipts"
+              color="neutral"
+              variant="outline"
+              :disabled="busy"
+              @click="reconcileInterruptedImport(row)"
+            />
             <div v-if="row.projectId" class="flex flex-wrap gap-2">
               <UButton
                 v-if="row.pkg.kind === 'xeroflow-reelmotion-import'"

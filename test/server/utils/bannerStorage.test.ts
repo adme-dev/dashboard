@@ -50,12 +50,13 @@ describe('banner asset storage keys', () => {
   it('uses the request bucket directly and returns the first-party capability URL without AWS storage', async () => {
     const ownerId = '11111111-1111-4111-8111-111111111111'
     const key = createBannerAssetStorageKey('launch-car.jpg', ownerId)
-    const put = vi.fn(async () => ({}))
+    const put = vi.fn(async (_key: string, _bytes: Uint8Array) => ({}))
     const head = vi.fn(async () => ({ size: 4 }))
     const mediaBucket = { put, head, delete: vi.fn() }
 
+    const original = Buffer.from([0xff, 0xd8, 0xff, 0x00])
     await expect(uploadBannerAsset(
-      Buffer.from([0xff, 0xd8, 0xff, 0x00]),
+      original,
       'launch-car.jpg',
       'image/jpeg',
       ownerId,
@@ -73,6 +74,8 @@ describe('banner asset storage keys', () => {
     expect(put).toHaveBeenCalledWith(key, new Uint8Array([0xff, 0xd8, 0xff, 0x00]), {
       httpMetadata: { contentType: 'image/jpeg' }
     })
+    expect(put.mock.calls[0][1].buffer).toBe(original.buffer)
+    expect(put.mock.calls[0][1].byteOffset).toBe(original.byteOffset)
     expect(head).toHaveBeenCalledWith(key)
     expect(uploadFile).not.toHaveBeenCalled()
   })

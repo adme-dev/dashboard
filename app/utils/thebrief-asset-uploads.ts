@@ -1,5 +1,5 @@
 /** Bound browser memory and requests; drain in-flight writes before reporting failure. */
-export async function uploadTheBriefAssets<T extends { path: string, sha256: string }>(
+export async function uploadTheBriefAssets<T extends { path: string, sha256: string, base64?: string }>(
   assets: T[],
   clientId: string,
   acknowledged: Map<string, string>,
@@ -8,10 +8,12 @@ export async function uploadTheBriefAssets<T extends { path: string, sha256: str
   const identity = (asset: T) => `${clientId}:${asset.sha256}`
   const unique = [...new Map(assets.map(asset => [identity(asset), asset])).values()]
   const pending = unique.filter(asset => !acknowledged.has(identity(asset)))
+  // Large videos are sequential: concurrent multipart bodies share an edge isolate's memory.
+  const concurrency = pending.some(asset => (asset.base64?.length || 0) > 8 * 1024 * 1024) ? 1 : 3
   let cursor = 0
   let failed = false
   let failure: unknown
-  await Promise.all(Array.from({ length: Math.min(3, pending.length) }, async () => {
+  await Promise.all(Array.from({ length: Math.min(concurrency, pending.length) }, async () => {
     while (!failed) {
       const asset = pending[cursor++]
       if (!asset) return

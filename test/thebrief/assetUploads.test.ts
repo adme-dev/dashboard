@@ -89,3 +89,16 @@ describe('bounded TheBrief asset uploads', () => {
     expect(retry.mock.calls.map(([value]) => Number(value.sha256))).toEqual([0, 3, 4])
   })
 })
+
+it('serializes large-video packages instead of retaining three edge request bodies', async () => {
+  const gates = [deferred<ReturnType<typeof stored>>(), deferred<ReturnType<typeof stored>>()]
+  const input = [0, 1].map(id => ({ ...asset(id), base64: 'x'.repeat(9 * 1024 * 1024) }))
+  const upload = vi.fn((value: ReturnType<typeof asset>) => gates[Number(value.sha256)]!.promise)
+  const done = uploadTheBriefAssets(input, 'client-a', new Map(), upload)
+  expect(upload).toHaveBeenCalledTimes(1)
+  gates[0]!.resolve(stored(0))
+  await flush()
+  expect(upload).toHaveBeenCalledTimes(2)
+  gates[1]!.resolve(stored(1))
+  expect((await done).size).toBe(2)
+})
