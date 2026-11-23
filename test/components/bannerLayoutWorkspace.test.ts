@@ -67,3 +67,86 @@ it('switches mounted artboards between overview and single edit without replacin
   expect(studio.state.sets.custom_1200x1200.layers).toHaveLength(0)
   expect(studio.state.sets.custom_1920x1080.layers).toHaveLength(0)
 })
+
+it('zooms overview artwork at the Option-wheel pointer across fixed gutters without editing the design', async () => {
+  const studio = useBannerStudio()
+  studio.loadProject({ id: 'zoom', canvasData: { fb_sq: { layers: [] }, ig_story: { layers: [] } } } as unknown as Parameters<typeof studio.loadProject>[0])
+  vi.stubGlobal('useBannerStudio', () => studio)
+  vi.stubGlobal('useBannerRealtime', () => ({ sendCursorMove: vi.fn() }))
+  vi.stubGlobal('useBannerProjectBrand', () => ({ kit: Vue.ref() }))
+  vi.stubGlobal('useToast', () => ({ add: vi.fn() }))
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1000)
+  vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(700)
+  HTMLElement.prototype.scrollTo = vi.fn(function (this: HTMLElement, options: ScrollToOptions) {
+    this.scrollLeft = options.left || 0
+    this.scrollTop = options.top || 0
+  })
+  const host = document.createElement('div')
+  document.body.append(host)
+  type ZoomControls = { zoomBy: (factor: number) => Promise<void>, zoomTo: (scale: number) => Promise<void> }
+  let canvas: ZoomControls
+  const app = Vue.createApp({ setup: () => () => Vue.h(Canvas, { ref: (el: unknown) => {
+    canvas = el as ZoomControls
+  } }) })
+  app.component('UButton', { props: ['label'], setup: (p, { attrs }) => () => Vue.h('button', attrs, p.label) })
+  app.component('BannerArtboard', { props: ['formatKey'], setup: (p, { expose }) => {
+    const el = Vue.ref()
+    expose({ artboardEl: el })
+    return () => Vue.h('div', { 'ref': el, 'data-test-format': p.formatKey })
+  } })
+  app.component('BannerCollaborationCursors', { render: () => null })
+  app.component('BannerCommentOverlay', { render: () => null })
+  app.mount(host)
+  clean = () => {
+    app.unmount()
+    host.remove()
+  }
+  await Vue.nextTick()
+  await Vue.nextTick()
+  const viewport = host.querySelector('[aria-label="Design layouts canvas"]') as HTMLElement
+  vi.spyOn(viewport, 'getBoundingClientRect').mockReturnValue({ left: 100, top: 50 } as DOMRect)
+  for (const board of host.querySelectorAll('[data-test-format]')) {
+    vi.spyOn(board, 'getBoundingClientRect').mockImplementation(() => {
+      const story = board.getAttribute('data-test-format') === 'ig_story'
+      const left = 132 + (story ? 1080 * studio.state.wsScale + 64 : 0) - viewport.scrollLeft
+      const top = 82 - viewport.scrollTop
+      return { left, top, right: left + 1080 * studio.state.wsScale, bottom: top + (story ? 1920 : 1080) * studio.state.wsScale } as DOMRect
+    })
+  }
+  studio.state.wsScale = 0.5
+  viewport.scrollLeft = 160
+  viewport.scrollTop = 100
+  const before = JSON.stringify(studio.state.sets)
+  const pointer = { x: 650, y: 200 }
+  const story = host.querySelector('[data-test-format="ig_story"]')!
+  const origin = story.getBoundingClientRect()
+  const local = { x: (pointer.x - origin.left) / 0.5, y: (pointer.y - origin.top) / 0.5 }
+  const wheel = new WheelEvent('wheel', { deltaY: -100, altKey: true, clientX: pointer.x, clientY: pointer.y, bubbles: true, cancelable: true })
+  // happy-dom's WheelEvent omits MouseEvent modifier/position initialisers.
+  Object.defineProperties(wheel, { altKey: { value: true }, clientX: { value: pointer.x }, clientY: { value: pointer.y } })
+  viewport.dispatchEvent(wheel)
+  await canvas.zoomBy(1)
+  expect(wheel.defaultPrevented).toBe(true)
+  expect(studio.state.wsScale).toBeGreaterThan(0.5)
+  const after = story.getBoundingClientRect()
+  expect(after.left + local.x * studio.state.wsScale).toBeCloseTo(pointer.x)
+  expect(after.top + local.y * studio.state.wsScale).toBeCloseTo(pointer.y)
+  const scale = studio.state.wsScale
+  const scroll = new WheelEvent('wheel', { deltaY: 100, bubbles: true, cancelable: true })
+  viewport.dispatchEvent(scroll)
+  await Vue.nextTick()
+  expect(scroll.defaultPrevented).toBe(false)
+  expect(studio.state.wsScale).toBe(scale)
+  await Promise.all([canvas.zoomBy(1.2), canvas.zoomBy(1.2)])
+  expect(studio.state.wsScale).toBeCloseTo(scale * 1.44)
+  await canvas.zoomTo(10)
+  expect(studio.state.wsScale).toBe(4)
+  await canvas.zoomTo(0)
+  expect(studio.state.wsScale).toBe(0.05)
+  await canvas.zoomTo(1)
+  expect(studio.state.wsScale).toBe(1)
+  expect(studio.state.layoutView).toBe('all')
+  expect(studio.state.activeKey).toBe('fb_sq')
+  expect(studio.state.isDirty).toBe(false)
+  expect(JSON.stringify(studio.state.sets)).toBe(before)
+})

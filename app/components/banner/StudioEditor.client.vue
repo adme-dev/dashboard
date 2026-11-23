@@ -564,13 +564,13 @@ async function handleSaveVersion() {
 
 // Zoom controls
 function zoomIn() {
-  state.wsScale = Math.min(4, state.wsScale * 1.2)
+  canvasRef.value?.zoomBy?.(1.2)
 }
 function resetZoom() {
-  state.wsScale = 1
+  canvasRef.value?.zoomTo?.(1)
 }
 function zoomOut() {
-  state.wsScale = Math.max(0.05, state.wsScale / 1.2)
+  canvasRef.value?.zoomBy?.(1 / 1.2)
 }
 function zoomFit() {
   canvasRef.value?.fitWorkspace?.()
@@ -805,12 +805,36 @@ const { activeSize } = useBannerFileSize()
 
       <!-- Zoom -->
       <div class="flex items-center gap-1">
-        <UTooltip text="Zoom out"><UButton icon="i-lucide-zoom-out" variant="ghost" size="xs" @click="zoomOut" /></UTooltip>
+        <UTooltip text="Zoom out · Option/Alt + scroll">
+          <UButton
+            icon="i-lucide-zoom-out"
+            aria-label="Zoom out"
+            variant="ghost"
+            size="xs"
+            @click="zoomOut"
+          />
+        </UTooltip>
         <UTooltip text="Actual size (100%)">
           <UButton :label="`${zoomPercent}%`" aria-label="Reset zoom to actual size (100%)" variant="ghost" color="neutral" size="xs" class="w-14 justify-center font-mono tabular-nums" @click="resetZoom" />
         </UTooltip>
-        <UTooltip text="Zoom in"><UButton icon="i-lucide-zoom-in" variant="ghost" size="xs" @click="zoomIn" /></UTooltip>
-        <UTooltip text="Fit to view"><UButton icon="i-lucide-scan" variant="ghost" size="xs" @click="zoomFit" /></UTooltip>
+        <UTooltip text="Zoom in · Option/Alt + scroll">
+          <UButton
+            icon="i-lucide-zoom-in"
+            aria-label="Zoom in"
+            variant="ghost"
+            size="xs"
+            @click="zoomIn"
+          />
+        </UTooltip>
+        <UTooltip text="Fit to view">
+          <UButton
+            icon="i-lucide-scan"
+            aria-label="Fit to view"
+            variant="ghost"
+            size="xs"
+            @click="zoomFit"
+          />
+        </UTooltip>
         <UTooltip text="Fit all layouts"><UButton icon="i-lucide-layout-grid" variant="ghost" size="xs" aria-label="Fit all layouts" @click="canvasRef?.fitAllArtboards?.()" /></UTooltip>
       </div>
 

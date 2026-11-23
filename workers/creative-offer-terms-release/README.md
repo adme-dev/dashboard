@@ -1,0 +1,11 @@
+# Long offer terms and large vehicle galleries
+
+The live Ford catalogue remained blocked after Pages accepted longer terms: its private Worker adapter independently rejected disclaimers above 12,000 characters. This candidate accepts complete terms up to 24,000, matching Pages. Short offers remain available; source copy is never truncated. Existing credential, control-character, source-host and document checks remain.
+
+Ford's selected-model photo response is explicitly truncated by MotorStack at 200,000 characters. When that response cannot be parsed, recover the smaller `include_photos: false` response for that same OEM/model. This restores grade/paint hero images and shows a gallery-availability warning. A successful complete gallery keeps its normal images. No all-brand image request is added.
+
+Build/test with `python3 workers/creative-offer-terms-release/build.py` and `node --test workers/creative-offer-terms-release/offer-terms.test.mjs`. Generated modules/config are ignored.
+
+Release only from reviewed current main using normal Wrangler authentication, following the [Creative Worker release procedure](../creative-motorstack-brand-release/README.md#current-release-transport-normal-wrangler-cli). Check active/latest version and baseline hashes before upload; preserve inherited assets, secrets and FigFlow binding. Inspect dry-run and actual multipart module hashes/runtime metadata, then activate only the accepted version. Record the exact version, deployment and subsequent live Ford catalogue/image outcome. Never use a partial asset-directory deploy or the retired OAuth-file API transport.
+
+The baseline is the **promoted six-editor Creative Suite**, version `b13ec84c-3f51-4d8d-a002-24b276b5ea41`, not the older MotorStack-only bundles. The builder reproduces the published gateway transformations and requires the exact promotion module hashes before applying these two narrow patches. Both standalone and FigFlow service bindings are inherited alongside the original assets and two credentials. `prepare-cli.mjs FULL_MERGED_MAIN_SHA` checks clean current main and fresh active/latest version, etag, full runtime and all five bindings through normal Wrangler CLI before preparing an upload-only config. This release does not rebuild or replace the standalone asset service.

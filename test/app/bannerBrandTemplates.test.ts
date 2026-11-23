@@ -22,7 +22,32 @@ describe('brand templates', () => {
       ]
     })
     expect(selected).toMatchObject({ asset: { id: 'hero' }, model: 'All-New Navara' })
-    expect(chooseMotorstackPreview({ models: ['Ariya'], assets: [{ id: 'hero', name: 'Navara hero.png', mime: 'image/png', importable: true, previewUrl: '/hero' }] })?.model).toBeNull()
+    expect(chooseMotorstackPreview({ models: ['Ariya'], assets: [{ id: 'hero', name: 'Navara hero.png', mime: 'image/png', importable: true, previewUrl: '/hero' }] })).toBeNull()
+  })
+  it('excludes promotional artwork and prefers the campaign vehicle', () => {
+    const asset = (id: string, name: string) => ({ id, name, mime: 'image/webp', importable: true, previewUrl: '/' + id })
+    const selected = chooseMotorstackPreview({ models: ['Ranger', 'Everest'], assets: [asset('bad', 'Black Friday Deals · hero'), asset('promo', 'Ranger sale offer · hero'), asset('everest', 'Everest · hero'), asset('wolftrak', 'Ranger Wolftrak · hero')] }, 'Ford / Ranger Wolftrak')
+    expect(selected).toMatchObject({ asset: { id: 'wolftrak' }, model: 'Ranger' })
+  })
+
+  it('separates vehicle, text, buttons and dealer across the normal three sizes', () => {
+    const ford = { ...kit, name: 'Ford Australia', sourceUrl: 'https://oem-variants.pages.dev/api/mcp#brand=ford' } as BannerBrandKit
+    for (const fmt of [{ w: 300, h: 250 }, { w: 1080, h: 1080 }, { w: 1080, h: 1920 }, { w: 728, h: 90 }, { w: 970, h: 250 }]) {
+      for (const variant of ['hero', 'dual-cta'] as const) {
+        const layers = buildBrandTemplateLayers(ford, fmt, variant, '/car.webp', 'Courtney & Patterson Ford')
+        const visible = layers.filter(layer => layer.type !== 'bg')
+        expect(layers.find(layer => layer.name === 'Dealer name')).toMatchObject({ text: 'Courtney & Patterson Ford', locked: true })
+        expect(layers.find(layer => layer.name === 'MotorStack vehicle')).toMatchObject({ animIn: 'slideR', animInDur: 0.65, endTime: 8 })
+        for (const [index, a] of visible.entries()) {
+          expect(a.x! + a.w!).toBeLessThanOrEqual(fmt.w)
+          expect(a.y! + a.h!).toBeLessThanOrEqual(fmt.h)
+          for (const b of visible.slice(index + 1)) {
+            const intersects = a.x! < b.x! + b.w! && b.x! < a.x! + a.w! && a.y! < b.y! + b.h! && b.y! < a.y! + a.h!
+            expect(intersects, `${fmt.w}x${fmt.h} ${variant}: ${a.name} overlaps ${b.name}`).toBe(false)
+          }
+        }
+      }
+    }
   })
   it('uses the verified LDV CTA and contrast rules on light and dark layouts', () => {
     const light = buildBrandTemplateLayers(kit, { w: 300, h: 250 }, 'hero')

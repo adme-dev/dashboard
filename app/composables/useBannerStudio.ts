@@ -678,14 +678,14 @@ export function useBannerStudio() {
     state.isDirty = true
   }
 
-  function loadBrandTemplate(kit: BannerBrandKit, variant: BrandTemplateVariant, vehicleImageUrl?: string | null) {
+  function loadBrandTemplate(kit: BannerBrandKit, variant: BrandTemplateVariant, vehicleImageUrl?: string | null, dealerName = '') {
     const before = JSON.parse(JSON.stringify(state.sets))
     const beforeAccent = state.accentColor
     const beforeBg = state.bgColor
     state.setKeys.forEach(key => {
       const fmt = FORMATS[key]
       if (!fmt) return
-      state.sets[key] = { layers: buildBrandTemplateLayers(kit, fmt, variant, vehicleImageUrl).map(layer => migrateLayer({ ...layer, id: nextId() })) }
+      state.sets[key] = { layers: buildBrandTemplateLayers(kit, fmt, variant, vehicleImageUrl, dealerName).map(layer => migrateLayer({ ...layer, id: nextId() })) }
     })
     state.accentColor = brandColor(kit, 'accent') || state.accentColor
     state.bgColor = state.sets[state.activeKey]?.layers.find(layer => layer.type === 'bg')?.bgColor || state.bgColor

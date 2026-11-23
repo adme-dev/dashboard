@@ -63,7 +63,50 @@ function getActiveArtboardEl(): HTMLElement | null {
   return comp?.artboardEl || null
 }
 
-defineExpose({ getActiveArtboardEl, fitAllArtboards, fitWorkspace, artboardRefs })
+let zoomQueue = Promise.resolve()
+async function applyZoom(scale: number, pointer?: { x: number, y: number }) {
+  const el = canvasEl.value
+  if (!el || disposed || !Number.isFinite(scale)) return
+  const next = Math.max(0.05, Math.min(4, scale))
+  if (next === state.wsScale) return
+  const viewport = el.getBoundingClientRect()
+  const point = pointer || { x: viewport.left + el.clientWidth / 2, y: viewport.top + el.clientHeight / 2 }
+  const candidates = Object.entries(artboardRefs.value)
+    .filter(([key]) => isOverview.value || key === state.activeKey)
+    .map(([, board]) => board.artboardEl as HTMLElement | undefined).filter((board): board is HTMLElement => Boolean(board))
+  // Measure an actual board: rows have fixed gutters and centred alignment, so
+  // multiplying the old scroll position would move the artwork under the pointer.
+  const distance = (board: HTMLElement) => {
+    const rect = board.getBoundingClientRect()
+    return Math.hypot(Math.max(rect.left - point.x, 0, point.x - rect.right), Math.max(rect.top - point.y, 0, point.y - rect.bottom))
+  }
+  const anchor = candidates.sort((a, b) => distance(a) - distance(b))[0]
+  const before = anchor?.getBoundingClientRect()
+  const local = before ? { x: (point.x - before.left) / state.wsScale, y: (point.y - before.top) / state.wsScale } : null
+  const scroll = { x: el.scrollLeft, y: el.scrollTop }
+  state.wsScale = next
+  await nextTick()
+  if (disposed || !local || !anchor) return
+  const after = anchor.getBoundingClientRect()
+  el.scrollTo({ left: Math.max(0, scroll.x + after.left + local.x * next - point.x), top: Math.max(0, scroll.y + after.top + local.y * next - point.y) })
+}
+
+function zoomBy(factor: number, pointer?: { x: number, y: number }) {
+  zoomQueue = zoomQueue.then(() => applyZoom(state.wsScale * factor, pointer))
+  return zoomQueue
+}
+function zoomTo(scale: number) {
+  zoomQueue = zoomQueue.then(() => applyZoom(scale))
+  return zoomQueue
+}
+function onCanvasWheel(event: WheelEvent) {
+  if (!event.altKey && !event.ctrlKey && !event.metaKey) return
+  event.preventDefault()
+  const pixels = event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? canvasEl.value?.clientHeight || 800 : 1)
+  void zoomBy(Math.exp(-Math.max(-500, Math.min(500, pixels)) * 0.002), { x: event.clientX, y: event.clientY })
+}
+
+defineExpose({ getActiveArtboardEl, fitAllArtboards, fitWorkspace, artboardRefs, zoomBy, zoomTo })
 
 function onCanvasClick() {
   if (state.activeTool === 'hand') return
@@ -190,6 +233,7 @@ function onCanvasCursorMove(e: MouseEvent) {
     @mousemove="onCanvasMouseMove($event); onCanvasCursorMove($event)"
     @mouseup="onCanvasMouseUp"
     @mouseleave="onCanvasMouseUp"
+    @wheel="onCanvasWheel"
   >
     <p v-if="importingMedia" role="status" class="sticky top-0 z-20 mx-auto w-fit rounded-lg bg-elevated px-3 py-2 text-sm shadow">Adding media…</p>
     <div class="flex min-w-fit flex-col" :style="{ gap: `${WORKSPACE_GAP}px` }" @click.self="onCanvasClick">

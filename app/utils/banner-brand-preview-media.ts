@@ -2,14 +2,18 @@ export interface MotorstackPreviewAsset { id: string, name: string, mime: string
 export interface MotorstackPreviewCatalog { assets: MotorstackPreviewAsset[], models: string[] }
 
 /** Prefer an exterior/hero car image, never a brochure, interior or logo. */
-export function chooseMotorstackPreview(catalog: MotorstackPreviewCatalog): { asset: MotorstackPreviewAsset, model: string | null } | null {
-  const images = catalog.assets.filter(asset => asset.importable && asset.mime.startsWith('image/') && !/interior|logo|badge|icon|brochure/i.test(asset.name))
+export function chooseMotorstackPreview(catalog: MotorstackPreviewCatalog, context = ''): { asset: MotorstackPreviewAsset, model: string | null } | null {
+  const normalise = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, '')
+  const modelFor = (name: string) => [...catalog.models].sort((a, b) => b.length - a.length).find(model => normalise(name).includes(normalise(model))) || null
+  const images = catalog.assets.filter(asset => asset.importable && asset.mime.startsWith('image/')
+    && !/interior|logo|badge|icon|brochure|black\s*friday|\b(?:sale|deals?|offer|bonus|cashback|fuel card)\b/i.test(asset.name)
+    && (!catalog.models.length || modelFor(asset.name)))
   if (!images.length) return null
-  const scored = images.map((asset, index) => ({ asset, index, score: /hero|exterior|front|three.quarter/i.test(asset.name) ? 3 : 0 }))
+  const words = context.toLowerCase().split(/[^a-z0-9]+/).filter(word => word.length > 2)
+  const scored = images.map((asset, index) => ({ asset, index, score: (/hero|exterior|front|three.quarter/i.test(asset.name) ? 3 : 0)
+    + words.filter(word => asset.name.toLowerCase().includes(word)).length * 4 }))
   scored.sort((a, b) => b.score - a.score || a.index - b.index)
   const asset = scored[0]!.asset
-  const normalise = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, '')
-  const assetName = normalise(asset.name)
-  const model = [...catalog.models].sort((a, b) => b.length - a.length).find(name => assetName.includes(normalise(name))) || null
+  const model = modelFor(asset.name)
   return { asset, model }
 }
