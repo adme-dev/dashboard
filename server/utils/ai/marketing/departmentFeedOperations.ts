@@ -221,7 +221,21 @@ interface Row {
   result_payload: unknown
   result_ref: string | null
 }
-function proposalView(row: Row) {
+// Only existing-feed operations qualify. Destination changes and setup retain peer review.
+function allowsFeedLeadExecution(p: Payload) {
+  if (p.operation === 'regenerate') return true
+  if (p.operation !== 'change' || !p.input.patch) return false
+  return Object.keys(p.input.patch.platformSettings ?? {}).every(key => ['store_code', 'store_address'].includes(key))
+}
+const feedLeadGrant = `SELECT id FROM client_team_assignments
+  WHERE team_member_id=$1 AND client_id=$2 AND can_manage_inventory_feed_directly`
+
+async function hasFeedLeadGrant(row: Row) {
+  return allowsFeedLeadExecution(row.resolved_payload)
+    && !!await queryOneFresh(feedLeadGrant, [row.user_id, row.resolved_payload.clientId])
+}
+
+async function proposalView(row: Row) {
   const p = row.resolved_payload
   return {
     proposalId: row.id,
@@ -231,6 +245,7 @@ function proposalView(row: Row) {
     status: row.status,
     expiresAt: row.expires_at,
     requiresAck: true,
+    requiresIndependentReview: !(row.status === 'proposed' && await hasFeedLeadGrant(row)),
     review: p.review
       ? {
           decision: p.review.decision,
@@ -346,7 +361,7 @@ async function propose(
           'Idempotency key belongs to a different request.',
           'idempotency_conflict'
         )
-      return ok(proposalView(prior))
+      return ok(await proposalView(prior))
     }
     const loaded = await load(ctx, input.clientId)
     const setup = name === 'marketing_propose_inventory_feed_setup'
@@ -377,7 +392,7 @@ async function propose(
         [ctx.userId, ACTION, JSON.stringify(payload)]
       )
     ).rows[0] as Row
-    return ok(proposalView(row))
+    return ok(await proposalView(row))
   })
 }
 async function review(
@@ -406,7 +421,7 @@ async function review(
     [row.id, row.user_id, status, ctx.userId, JSON.stringify(reviewedPayload), ACTION, JSON.stringify(payload)]
   )).rows[0])
   if (!reviewed) stop('Feed proposal expired or was already reviewed.', 'revision_conflict')
-  return ok(proposalView({ ...row, status, confirmed_by: ctx.userId, resolved_payload: reviewedPayload }))
+  return ok(await proposalView({ ...row, status, confirmed_by: ctx.userId, resolved_payload: reviewedPayload }))
 }
 async function execute(
   input: FeedOperationInput,
@@ -425,16 +440,13 @@ async function execute(
           'reconciliation_required'
         )
   const reviewerId = payload.review?.reviewerId
-  if (
-    row.status !== 'approved'
-    || payload.review?.decision !== 'approved'
-    || !reviewerId
-    || reviewerId === row.user_id
-    || row.confirmed_by !== reviewerId
-    || new Date(row.expires_at).getTime() <= Date.now()
-  ) stop('An unexpired independent approval is required.', 'approval_required')
+  const direct = row.status === 'proposed' && !payload.review && row.confirmed_by == null && await hasFeedLeadGrant(row)
+  const peerApproved = row.status === 'approved' && payload.review?.decision === 'approved'
+    && !!reviewerId && reviewerId !== row.user_id && row.confirmed_by === reviewerId
+  if ((!direct && !peerApproved) || new Date(row.expires_at).getTime() <= Date.now())
+    stop('An unexpired approval or an assigned feed lead grant is required.', 'approval_required')
   await requireCurrentProposer(ctx, row)
-  await requireProposalReviewer(ctx, row, reviewerId)
+  if (!direct) await requireProposalReviewer(ctx, row, reviewerId)
   const loaded = await load(ctx, input.clientId)
   const before = await baseline(loaded, payload.input, payload.operation === 'setup')
   const next = candidate(loaded, payload.input, before, payload.operation === 'setup')
@@ -449,17 +461,18 @@ async function execute(
   // Refresh permission/grant/client immediately before durable claim and provider dispatch.
   ctx = await requireMarketingDepartment(ctx, true)
   await requireClient(ctx, input.clientId)
-  const claimed = await transactionWithoutRetry(
-    async db =>
-      (
-        await db.query(
-          `UPDATE ai_pending_actions SET status = 'executed', executed_at = NOW()
-    WHERE id = $1 AND user_id = $2 AND source = 'mcp' AND tool_name = $3 AND status = 'approved'
-      AND expires_at > NOW() AND resolved_payload = $4::jsonb AND confirmed_by = $5 RETURNING id`,
-          [row.id, ctx.userId, ACTION, JSON.stringify(payload), reviewerId]
-        )
-      ).rows[0]
-  )
+  const claimed = await transactionWithoutRetry(async db => {
+    // Serialize the grant check with assignment revocation and the one-shot claim.
+    if (direct && !(await db.query(feedLeadGrant + ' FOR SHARE', [ctx.userId, input.clientId])).rows.length)
+      stop('Feed lead grant is no longer active.', 'approval_required')
+    return (await db.query(
+      `UPDATE ai_pending_actions SET status = 'executed', executed_at = NOW(), confirmed_by = COALESCE(confirmed_by, $2)
+       WHERE id = $1 AND user_id = $2 AND source = 'mcp' AND tool_name = $3 AND status = $6
+         AND expires_at > NOW() AND resolved_payload = $4::jsonb
+         AND confirmed_by IS NOT DISTINCT FROM $5::uuid RETURNING id`,
+      [row.id, ctx.userId, ACTION, JSON.stringify(payload), row.confirmed_by, row.status]
+    )).rows[0]
+  })
   if (!claimed)
     return fail(
       'Feed proposal was claimed or changed; read its status.',
@@ -533,6 +546,7 @@ async function execute(
       revision: payload.revision,
       feed: feedView(readback),
       ...(generation ? { generation } : {}),
+      authorization: direct ? 'assigned_feed_lead' : 'independent_review',
       readbackVerified: true,
       providerDeliveryVerified: false
     }
@@ -588,7 +602,7 @@ export async function runDepartmentFeedOperation(
     await requireClient(ctx, input.clientId)
     if (name === 'marketing_get_inventory_feed_change')
       return ok(
-        proposalView(await readProposal(ctx, input.proposalId!, input.clientId, 'either'))
+        await proposalView(await readProposal(ctx, input.proposalId!, input.clientId, 'either'))
       )
     if (name === 'marketing_review_inventory_feed_change')
       return await review(input, ctx)

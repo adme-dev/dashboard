@@ -8,6 +8,8 @@ import {
 
 const state = vi.hoisted(() => ({
   rows: [] as any[],
+  lead: false,
+  loseGrantAtClaim: false,
   active: true,
   revoked: false,
   revokedUsers: [] as string[],
@@ -59,6 +61,8 @@ vi.mock('~~/server/utils/ai/mcp/runtimeConfig', () => ({
 }))
 const query = vi.hoisted(() =>
   vi.fn(async (sql: string, p: any[] = []) => {
+    if (sql.includes('can_manage_inventory_feed_directly'))
+      return { rows: state.lead && p[0] === ctx.userId && p[1] === clientId && !(state.loseGrantAtClaim && sql.includes('FOR SHARE')) ? [{ id: clientId }] : [] }
     if (sql.includes('UPDATE client_feed_links')) {
       if (state.failBinding) return { rows: [] }
       state.link.defaultFeedIds = JSON.parse(p[5])
@@ -99,9 +103,10 @@ const query = vi.hoisted(() =>
       && sql.includes('status = \'executed\'')
     ) {
       const row = state.rows.find(
-        r => r.id === p[0] && r.user_id === p[1] && r.status === 'approved'
+        r => r.id === p[0] && r.user_id === p[1] && r.status === p[5] && r.confirmed_by === p[4]
       )
       if (!row) return { rows: [] }
+      row.confirmed_by ??= p[1]
       row.status = 'executed'
       return { rows: [row] }
     }
@@ -244,6 +249,8 @@ const approve = async (proposal: any) => {
 beforeEach(() => {
   Object.assign(state, {
     rows: [],
+    lead: false,
+    loseGrantAtClaim: false,
     active: true,
     revoked: false,
     revokedUsers: [],
@@ -642,6 +649,31 @@ describe('department inventory boundary', () => {
         })
       ).ok
     ).toBe(false)
+  })
+  it('lets the assigned feed lead activate their exact pending revision once', async () => {
+    state.detail.isActive = false
+    state.lead = true
+    const proposal = await run('marketing_propose_inventory_feed_change', { clientId, feedId: 'feed-1', patch: { isActive: true } })
+    expect(proposal).toMatchObject({ ok: true, data: { requiresIndependentReview: false } })
+    const { proposalId, revision } = (proposal as any).data
+    const args = { clientId, proposalId, expectedRevision: revision, ack: true }
+    expect((await run('marketing_execute_inventory_feed_change', args, reviewer)).ok).toBe(false)
+    expect((await run('marketing_execute_inventory_feed_change', { ...args, expectedRevision: 'c'.repeat(64) })).ok).toBe(false)
+    state.loseGrantAtClaim = true
+    expect((await run('marketing_execute_inventory_feed_change', args)).ok).toBe(false)
+    expect(state.updates).toBe(0)
+    state.loseGrantAtClaim = false
+    expect(await run('marketing_execute_inventory_feed_change', args)).toMatchObject({ ok: true, data: { authorization: 'assigned_feed_lead', readbackVerified: true } })
+    expect((await run('marketing_execute_inventory_feed_change', args)).ok).toBe(true)
+    expect(state.detail.isActive).toBe(true)
+    expect(state.updates).toBe(1)
+  })
+  it('retains independent review for a lead changing a destination', async () => {
+    state.lead = true
+    const proposal = await run('marketing_propose_inventory_feed_change', { clientId, feedId: 'feed-1', patch: { isActive: true, platformSettings: { fb_page_id: '123' } } })
+    expect(proposal).toMatchObject({ ok: true, data: { requiresIndependentReview: true } })
+    const { proposalId, revision } = (proposal as any).data
+    expect((await run('marketing_execute_inventory_feed_change', { clientId, proposalId, expectedRevision: revision, ack: true })).ok).toBe(false)
   })
   it('forbids self review and execution before independent approval', async () => {
     const proposal = await setup()
