@@ -12,8 +12,8 @@ defineEmits<{ open: [id: string] }>()
       <div v-if="view === 'list'" class="hidden items-center gap-4 bg-elevated/50 px-4 py-2 text-xs font-medium text-muted @4xl:grid @4xl:grid-cols-[minmax(240px,2fr)_minmax(110px,1fr)_minmax(120px,1fr)_100px_110px_72px]" aria-hidden="true">
         <span>Name</span><span>{{ contextLabel }}</span><span>Dimensions</span><span>Type</span><span>Dates</span><span />
       </div>
-      <article v-for="item in items" :key="item.id" :class="view === 'grid' ? 'group relative min-w-0 @container/card' : 'flex items-center gap-4 p-3 @4xl:grid @4xl:grid-cols-[minmax(240px,2fr)_minmax(110px,1fr)_minmax(120px,1fr)_100px_110px_72px] @4xl:px-4'">
-        <div :class="view === 'grid' ? '' : 'flex min-w-0 flex-1 items-center gap-3'">
+      <article v-for="item in items" :key="item.id" :class="view === 'grid' ? 'group relative grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-x-2' : 'flex items-center gap-4 p-3 @4xl:grid @4xl:grid-cols-[minmax(240px,2fr)_minmax(110px,1fr)_minmax(120px,1fr)_100px_110px_72px] @4xl:px-4'">
+        <div :class="view === 'grid' ? 'contents' : 'flex min-w-0 flex-1 items-center gap-3'">
           <UButton
             :to="item.to"
             :aria-label="`Open ${item.name}`"
@@ -21,7 +21,7 @@ defineEmits<{ open: [id: string] }>()
             variant="link"
             color="neutral"
             class="p-0"
-            :class="view === 'grid' ? 'relative flex w-full overflow-hidden rounded-xl ring-1 ring-default transition-shadow hover:ring-primary focus-visible:ring-2 focus-visible:ring-primary' : 'shrink-0'"
+            :class="view === 'grid' ? 'relative col-span-2 flex w-full overflow-hidden rounded-xl ring-1 ring-default transition-shadow hover:ring-primary focus-visible:ring-2 focus-visible:ring-primary' : 'shrink-0'"
             @click="!item.to && $emit('open', item.id)"
           >
             <BannerLibraryThumbnail
@@ -34,14 +34,14 @@ defineEmits<{ open: [id: string] }>()
               {{ item.type }}
             </span>
           </UButton>
-          <div class="min-w-0" :class="view === 'grid' ? 'pr-9 pt-3' : ''">
+          <div class="min-w-0" :class="view === 'grid' ? 'self-center pt-3' : ''">
             <UButton
               :to="item.to"
               :label="item.name"
               :title="item.name"
               variant="link"
               color="neutral"
-              class="max-w-full p-0 text-left font-medium text-default"
+              class="min-w-0 max-w-full p-0 text-left font-medium text-default"
               :ui="{ label: 'truncate' }"
               @click="!item.to && $emit('open', item.id)"
             />
@@ -56,7 +56,7 @@ defineEmits<{ open: [id: string] }>()
             </p>
           </div>
         </div>
-        <p class="truncate text-xs text-muted" :class="view === 'grid' ? 'pt-1' : 'hidden @4xl:block'" :title="item.client">
+        <p class="truncate text-xs text-muted" :class="view === 'grid' ? 'col-span-2 pt-1' : 'hidden @4xl:block'" :title="item.client">
           {{ item.client }}<span v-if="view === 'grid' && item.category"> · {{ item.category }}</span>
         </p>
         <p v-if="view === 'list'" class="text-xs text-muted hidden @4xl:line-clamp-2" :title="item.dimensions">
@@ -65,13 +65,13 @@ defineEmits<{ open: [id: string] }>()
         <p v-if="view === 'list'" class="hidden text-xs text-muted @4xl:block">
           {{ item.type }}
         </p>
-        <div class="text-xs text-muted" :class="view === 'grid' ? 'pt-1 text-[11px]' : 'hidden @4xl:block'">
+        <div class="text-xs text-muted" :class="view === 'grid' ? 'col-span-2 pt-1 text-[11px]' : 'hidden @4xl:block'">
           <p v-if="item.sourceCreatedDate !== undefined">
             Original creation: {{ item.sourceCreatedDate ? libraryDate(item.sourceCreatedDate) : 'unverified' }}
           </p>
           <p>{{ item.dateLabel || (item.sourceCreatedDate !== undefined ? 'Modified ' : '') }}{{ libraryDate(item.date) }}</p>
         </div>
-        <div class="flex items-center gap-1" :class="view === 'grid' ? 'absolute right-0 top-[calc(100cqw+0.5rem)]' : 'shrink-0'">
+        <div class="flex shrink-0 items-center gap-1" :class="view === 'grid' ? 'col-start-2 row-start-2 self-center pt-3' : ''">
           <slot :id="item.id" name="actions" />
         </div>
       </article>
