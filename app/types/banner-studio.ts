@@ -203,6 +203,7 @@ export interface BannerSlide {
 }
 
 export interface ArtboardState {
+  posterTime?: number
   slides?: BannerSlide[]
   playback?: BannerPlayback
   layers: Layer[]

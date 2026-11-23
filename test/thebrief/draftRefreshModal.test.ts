@@ -47,7 +47,7 @@ async function click(label: string) {
 }
 async function mountModal(loadPackages = true) {
   for (const [name, value] of Object.entries({ ref, shallowRef, computed, watch, toRaw, $fetch: api })) vi.stubGlobal(name, value)
-  vi.stubGlobal('useAuth', () => ({ isGodMode: ref(true) }))
+  vi.stubGlobal('useAuth', () => ({ canWrite: ref(true) }))
   vi.stubGlobal('useBannerFonts', () => ({ uploadCustomFont: vi.fn(), refreshCustomFonts: refreshFonts }))
   const { default: Modal } = await import('../../app/components/banner/TheBriefImportModal.client.vue')
   const props = reactive({ open: false })

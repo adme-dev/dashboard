@@ -13,7 +13,7 @@ import { createReelmotionVideoDraft } from '~/utils/video/reelmotionImport'
 
 const open = defineModel<boolean>('open', { default: false })
 const emit = defineEmits<{ imported: [] }>()
-const { isGodMode } = useAuth()
+const { canWrite } = useAuth()
 const api = $fetch as <T>(url: string, options?: Record<string, unknown>) => Promise<T>
 const { uploadCustomFont, refreshCustomFonts } = useBannerFonts()
 const clients = ref<Array<{ id: string, name: string }>>([])
@@ -230,8 +230,10 @@ async function reconcileInterruptedImport(row: TheBriefImportRow) {
   busy.value = true
   error.value = ''
   try {
-    const result = await api<{ canResume: boolean, completed: number, total: number }>('/api/agency/banner-studio/assets/import-recovery', { query: { clientId: row.clientId, hashes: [...new Set(row.pkg.assets.map(asset => asset.sha256))].join(',') } })
-    if (!result.canResume) throw new Error('Upload receipts are not safely replayable yet. Keep this package held for reconciliation.')
+    const marker = JSON.parse(localStorage.getItem(importAttemptKey(row.clientId, row.pkg.source.sha256)) || '{}')
+    const result = await api<{ canResume: boolean, completed: number, total: number, receipts?: Array<{ sha256: string, url: string }> }>('/api/agency/banner-studio/assets/import-recovery', { query: { startedAt: marker.startedAt, clientId: row.clientId, hashes: [...new Set(row.pkg.assets.map(asset => asset.sha256))].join(',') } })
+    if (!result.canResume) throw new Error('Upload receipts are not ready for safe recovery. Wait at least 15 minutes after an interrupted staff upload, then check again. Unverified files stay held.')
+    for (const receipt of result.receipts || []) uploaded.set(`${row.clientId}:${receipt.sha256}`, receipt.url)
     finishImportAttempt(localStorage, importAttemptKey(row.clientId, row.pkg.source.sha256))
     row.status = `Upload receipts checked · ${result.completed} of ${result.total} stored · ready to resume`
   } catch (cause) {
@@ -450,7 +452,7 @@ async function importDrafts() {
               {{ row.status }}
             </p>
             <UButton
-              v-if="isGodMode && !row.projectId && row.clientId !== '__unassigned__' && row.status !== 'Ready for draft import'"
+              v-if="canWrite && !row.projectId && row.clientId !== '__unassigned__' && row.status !== 'Ready for draft import'"
               label="Check interrupted upload receipts"
               color="neutral"
               variant="outline"

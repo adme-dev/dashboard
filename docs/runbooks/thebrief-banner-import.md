@@ -79,3 +79,9 @@ Compare early reveals as well as settled/end frames in every size. The offline c
 ### Interrupted upload recovery
 
 Large-video packages upload one asset at a time to bound edge memory. An uncertain upload response still pauses that package. An active owner can select **Check interrupted upload receipts**: the server checks existing same-actor upload ledger keys, stored asset/client identity and expired reclaimable leases. It does not reset failed rows, remove assets or issue a new upload identity. Missing, foreign, active or unreconciled evidence keeps the package held. After a safe check, **Import assigned drafts** reuses the original per-asset keys and the project deduplication check. Fonts and acknowledged uploads are reused. The recovery control is read-only until that explicit resume.
+
+Staff accounts with existing Banner Studio write/client access can reconcile a paused package after 15 minutes. The check reads only that staff member's matching client assets, streams private R2 bytes through SHA-256, bounds the scan to 150 files / 64 MiB, and reuses verified receipts. Missing, corrupt or unsafe receipts keep recovery held. No role change is required. Pending package files upload sequentially after the check; project/source deduplication still runs. Read-only recovery is rate limited.
+
+### Choosing a clear client poster
+
+In the editor, choose **Actions → Client proof poster**, enter a settled frame time or use the playhead, then **Save poster**. All layouts / Single edit determines the scope. The choice saves with the artwork and supports undo. **Automatic frame** restores the default midpoint. The image route clamps a saved choice to the animation duration and includes it in the cached image revision. Selecting a clear frame is particularly useful when a midpoint falls on an animated-video zoom or blur.

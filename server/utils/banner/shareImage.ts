@@ -1,3 +1,4 @@
+import { bannerPosterTime } from '~~/shared/bannerPosterTime'
 import { createHash } from 'node:crypto'
 import { getQuery } from 'h3'
 import type { H3Event } from 'h3'
@@ -28,7 +29,7 @@ export async function bannerShareImage(event: H3Event): Promise<Response> {
   const env = event.context.cloudflare?.env
   const bucket = env?.MEDIA_BUCKET
   if (!bucket?.get || !bucket.put) throw createError({ statusCode: 503, statusMessage: 'Artwork preview storage unavailable' })
-  const revision = createHash('sha256').update(JSON.stringify({ key, canvas: board, fonts, version: 2 })).digest('hex')
+  const revision = createHash('sha256').update(JSON.stringify({ key, canvas: board, fonts, version: 3 })).digest('hex')
   const imageKey = `banner-share-previews/${project.id}/${revision}.jpg`
   const headers = { 'Content-Type': 'image/jpeg', 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer' }
   const cached = await bucket.get(imageKey)
@@ -41,7 +42,7 @@ export async function bannerShareImage(event: H3Event): Promise<Response> {
     weight: Number(font.tags.find(tag => tag.startsWith('weight:'))?.slice(7) || 400),
     format: font.tags.find(tag => tag.startsWith('format:'))?.slice(7) || 'woff2'
   }))
-  const time = Math.min(3, (board.playback?.duration || 5) / 2)
+  const time = bannerPosterTime(board.playback?.duration || 5, board.posterTime)
   const scale = Math.min(1, 1200 / Math.max(format.w, format.h))
   const width = Math.max(1, Math.round(format.w * scale)), height = Math.max(1, Math.round(format.h * scale))
   const html = buildBannerHTML(key, board.layers.filter(layer => layer.type !== 'audio'), {

@@ -151,3 +151,8 @@ TheBrief has not been retired. Existing features are not listed as missing solel
 ## 23 November 2026 — Interrupted large-video imports
 
 Large video packages upload sequentially and use request-owned byte views through validation and native R2 storage. An active owner can check stored receipts and expired, reclaimable upload claims before resuming the same import keys. Uncertain, foreign, failed and active claims remain held. Recovery never resets the execution ledger or creates another project blindly.
+
+## 23 November 2026 — Staff import receipts and chosen proof posters
+
+- Staff with existing Banner Studio write access can check interrupted imports after a 15-minute hold. Matching private files are verified by content hash and reused, with bounded reads and no permission changes. Owner ledger recovery remains separate.
+- Designers can save a chosen client-poster time from Actions for all layouts or a single layout, use the playhead, restore the automatic frame, and undo the choice. Animated proof output keeps its original timeline.
