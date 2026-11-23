@@ -1,0 +1,41 @@
+import { beforeEach, expect, it, vi } from 'vitest'
+import handler from '~~/server/api/agency/banner-studio/ai/motorstack-offer.post'
+
+const mocks = vi.hoisted(() => ({ role: vi.fn(), write: vi.fn(), project: vi.fn(), scope: vi.fn(), source: vi.fn(), import: vi.fn(), binding: {} }))
+vi.mock('h3', async original => ({ ...await original<typeof import('h3')>(), readBody: async (event: { body: unknown }) => event.body, setHeader: vi.fn() }))
+vi.mock('~~/server/utils/auth', () => ({ requireRole: mocks.role, requireWriteAccess: mocks.write }))
+vi.mock('~~/server/utils/db', () => ({ queryOneFresh: mocks.project }))
+vi.mock('~~/server/utils/banner/clientAccess', () => ({ requireBannerClientScope: mocks.scope }))
+vi.mock('~~/server/utils/banner/motorstackDesign', () => ({ resolveMotorstackDesignOffer: mocks.source }))
+vi.mock('~~/server/utils/banner/motorstackMedia', () => ({ importMedia: mocks.import, mediaBinding: () => mocks.binding }))
+const request = () => ({ body: { projectId: '11111111-1111-4111-8111-111111111111', kitId: '22222222-2222-4222-8222-222222222222', offerId: 'a'.repeat(64) } })
+beforeEach(() => {
+  vi.resetAllMocks()
+  mocks.role.mockResolvedValue({ id: 'designer' })
+  mocks.project.mockResolvedValue({ client_id: 'saved-client' })
+  mocks.source.mockResolvedValue({ brandId: 'subaru', offer: { id: 'a'.repeat(64), artworkAssetId: 'b'.repeat(64) } })
+  mocks.import.mockResolvedValue({ asset: { id: 'retained-source' } })
+})
+it('retains only the current resolved offer artwork after saved-project access checks', async () => {
+  const event = request()
+  expect(await handler(event as never)).toEqual({ assetId: 'retained-source', offerId: event.body.offerId })
+  expect(mocks.scope).toHaveBeenCalledWith(event, 'saved-client')
+  expect(mocks.source).toHaveBeenCalledWith(event, event.body, 'saved-client')
+  expect(mocks.import).toHaveBeenCalledWith(event, mocks.binding, { brandId: 'subaru', assetId: 'b'.repeat(64) }, 'designer')
+})
+it('does not retain files for unauthorized projects, stale offers or read-only users', async () => {
+  mocks.scope.mockRejectedValueOnce(Object.assign(new Error('Forbidden'), { statusCode: 403 }))
+  await expect(handler(request() as never)).rejects.toMatchObject({ statusCode: 403 })
+  mocks.source.mockRejectedValueOnce(Object.assign(new Error('Offer changed'), { statusCode: 409 }))
+  await expect(handler(request() as never)).rejects.toMatchObject({ statusCode: 409 })
+  mocks.write.mockRejectedValueOnce(Object.assign(new Error('Read only'), { statusCode: 403 }))
+  await expect(handler(request() as never)).rejects.toMatchObject({ statusCode: 403 })
+  expect(mocks.import).not.toHaveBeenCalled()
+})
+it('rejects caller supplied URLs and supports a genuinely text-only source offer', async () => {
+  const event = request()
+  await expect(handler({ body: { ...event.body, url: 'https://evil.test' } } as never)).rejects.toMatchObject({ statusCode: 400 })
+  mocks.source.mockResolvedValue({ brandId: 'subaru', offer: { id: event.body.offerId, artworkAssetId: null } })
+  expect(await handler(event as never)).toEqual({ assetId: null, offerId: event.body.offerId })
+  expect(mocks.import).not.toHaveBeenCalled()
+})

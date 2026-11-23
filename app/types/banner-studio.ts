@@ -203,6 +203,7 @@ export interface BannerSlide {
 }
 
 export interface ArtboardState {
+  motorstackSource?: { kitId: string, offerId: string, checkedAt: string }
   posterTime?: number
   slides?: BannerSlide[]
   playback?: BannerPlayback

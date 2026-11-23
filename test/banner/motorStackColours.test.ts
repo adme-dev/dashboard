@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { matchesMotorStackPaint, motorStackPaintName, motorStackPaintNames } from '../../app/utils/banner-motorstack-colours'
+import { matchesMotorStackGrade, motorStackGradeName, motorStackGradeNames, matchesMotorStackPaint, motorStackPaintName, motorStackPaintNames } from '../../app/utils/banner-motorstack-colours'
 
 describe('MotorStack paint choices', () => {
   it('extracts distinct paint labels from vehicle photos and keeps unlabelled media separate', () => {
@@ -15,5 +15,19 @@ describe('MotorStack paint choices', () => {
     expect(matchesMotorStackPaint(images[0]!, 'Crystal White Pearl')).toBe(true)
     expect(matchesMotorStackPaint(images[2]!, 'Crystal White Pearl')).toBe(false)
     expect(matchesMotorStackPaint(images[4]!, '__other_images__')).toBe(true)
+  })
+  it('keeps grades distinct even when their paint names match', () => {
+    const images = [
+      { name: 'Forester · AWD · White · photos 2', mime: 'image/webp', importable: true },
+      { name: 'Forester · Sport · White', mime: 'image/webp', importable: true },
+      { name: 'Forester · sport · Grey · interior_photos 1', mime: 'image/webp', importable: true },
+      { name: 'Forester · gallery · images 1', mime: 'image/webp', importable: true }
+    ]
+    expect(motorStackGradeNames(images)).toEqual(['AWD', 'sport'])
+    expect(motorStackGradeName(images[0]!.name)).toBe('AWD')
+    expect(matchesMotorStackGrade(images[2]!, 'Sport')).toBe(true)
+    expect(matchesMotorStackGrade(images[0]!, 'Sport')).toBe(false)
+    expect(motorStackPaintName(images[3]!.name)).toBeNull()
+    expect(motorStackGradeName(images[3]!.name)).toBeNull()
   })
 })

@@ -3,7 +3,7 @@ import type { BannerAsset, BannerBrandKit, BrandKitFont, BrandKitLogo } from '~/
 import { brandFontSelection, type BrandButtonVariant } from '~/utils/banner-brand-kit'
 import { bannerFontFamily } from '~/utils/banner-font-family'
 import { apiErrorDescription } from '~/utils/apiError'
-import { matchesMotorStackPaint, motorStackPaintName, motorStackPaintNames } from '~/utils/banner-motorstack-colours'
+import { matchesMotorStackGrade, motorStackGradeNames, matchesMotorStackPaint, motorStackPaintName, motorStackPaintNames } from '~/utils/banner-motorstack-colours'
 import { loadedImageMetadata } from '~/utils/banner-image-metadata'
 import type { BannerMotorStackOffer } from '~/utils/banner-offer'
 import { startBannerMediaDrag, endBannerMediaDrag } from '~/utils/banner-media-drag'
@@ -23,7 +23,7 @@ interface MotorStackImages {
 }
 
 const props = withDefaults(defineProps<{ initialTab?: 'logos' | 'variants' | 'offers' }>(), { initialTab: 'logos' })
-const emit = defineEmits<{ browseAssets: [] }>()
+const emit = defineEmits<{ browseAssets: [], createOffer: [offerId: string] }>()
 const { state, selectedLayer, activeFormat, applyBrandKit, updateLayer, addLayer, addMotorStackImageToAllLayouts, addMotorStackOfferToAllLayouts, addBrandGuideButton } = useBannerStudio()
 const { isLayerLockedByOther } = useBannerRealtime()
 const toast = useToast()
@@ -44,6 +44,7 @@ let catalogRequest = 0
 const money = (value: number) => new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', maximumFractionDigits: 0 }).format(value)
 const images = ref<MotorStackImages | null>(null)
 const imageModel = ref('__all_models__')
+const imageGrade = ref('__all_grades__')
 const imageColour = ref('__all_colours__')
 const imageSearch = ref('')
 const imageModalOpen = ref(false)
@@ -52,7 +53,7 @@ const imageLoading = ref(false)
 const imageError = ref('')
 const addingImage = ref<string | null>(null)
 const imageModels = ref<string[]>([])
-const imageItems = computed(() => (images.value?.assets || []).filter(asset => asset.mime.startsWith('image/') && asset.importable && matchesMotorStackPaint(asset, imageColour.value) && imageSearch.value.trim().toLowerCase().split(/\s+/).filter(Boolean).every(word => asset.name.toLowerCase().includes(word))))
+const imageItems = computed(() => (images.value?.assets || []).filter(asset => asset.mime.startsWith('image/') && asset.importable && matchesMotorStackGrade(asset, imageGrade.value) && matchesMotorStackPaint(asset, imageColour.value) && imageSearch.value.trim().toLowerCase().split(/\s+/).filter(Boolean).every(word => asset.name.toLowerCase().includes(word))))
 const visibleImageCount = ref(24)
 const visibleImageItems = computed(() => imageItems.value.slice(0, visibleImageCount.value))
 const imageMetadata = ref<Record<string, string>>({})
@@ -61,8 +62,12 @@ function rememberImageDimensions(event: Event, id: string) {
   if (details) imageMetadata.value[id] = details
 }
 const modelItems = computed(() => [{ label: 'All models', value: '__all_models__' }, ...imageModels.value.map(name => ({ label: name, value: name }))])
+const gradeItems = computed(() => [
+  { label: 'All grades', value: '__all_grades__' },
+  ...motorStackGradeNames(images.value?.assets || []).map(name => ({ label: name, value: name }))
+])
 const colourItems = computed(() => {
-  const assets = images.value?.assets || []
+  const assets = (images.value?.assets || []).filter(asset => matchesMotorStackGrade(asset, imageGrade.value))
   return [
     { label: 'All colours', value: '__all_colours__' },
     ...motorStackPaintNames(assets).map(name => ({ label: name, value: name })),
@@ -75,6 +80,7 @@ async function loadImages() {
   const request = ++imageRequest
   images.value = null
   imageError.value = ''
+  imageLoading.value = false
   if (activeTab.value !== 'variants' || !brandId) return
   imageLoading.value = true
   try {
@@ -120,12 +126,27 @@ function addModalImage(asset: BannerAsset) {
   }
 }
 const offers = computed(() => catalog.value?.kitId === kit.value?.id ? catalog.value.items : [])
+const offerModel = ref('__all_models__')
+const offerSearch = ref('')
+const offerErrors = ref<Record<number, string>>({})
+const offerModelItems = computed(() => [
+  { label: 'All models', value: '__all_models__' },
+  ...[...new Set(offers.value.map(offer => offer.model).filter((model): model is string => !!model))].sort((a, b) => a.localeCompare(b)).map(model => ({ label: model, value: model }))
+])
+const filteredOffers = computed(() => {
+  const words = offerSearch.value.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean)
+  return offers.value.map((offer, index) => ({ offer, index })).filter(({ offer }) =>
+    (offerModel.value === '__all_models__' || offer.model === offerModel.value)
+    && words.every(word => [offer.title, offer.model, offer.variant, offer.offer, offer.priceLabel, offer.price === null ? '' : money(offer.price)].filter(Boolean).join(' ').toLocaleLowerCase().includes(word)))
+})
 async function loadCatalog() {
   const kitId = kit.value?.id
   const request = ++catalogRequest
   catalog.value = null
   catalogError.value = ''
   artworkErrors.value = {}
+  offerErrors.value = {}
+  catalogLoading.value = false
   if (!motorStackBrandId.value || activeTab.value !== 'offers' || !kitId) return
   catalogLoading.value = true
   try {
@@ -137,14 +158,15 @@ async function loadCatalog() {
     if (request === catalogRequest) catalogLoading.value = false
   }
 }
-async function addOffer(offer: BannerMotorStackOffer, index: number) {
+async function addOffer(offer: BannerMotorStackOffer, index: number, includeArtwork = true) {
   const brandId = motorStackBrandId.value
   const selectedKit = kit.value
   if (!brandId || !selectedKit || addingOffer.value !== null) return
   addingOffer.value = index
+  offerErrors.value[index] = ''
   try {
     let image: BannerAsset | undefined
-    if (offer.artworkAssetId) {
+    if (includeArtwork && offer.artworkAssetId) {
       const result = await $fetch<{ asset: BannerAsset }>('/api/agency/banner-studio/motorstack/media', {
         method: 'POST', body: { brandId, assetId: offer.artworkAssetId }
       })
@@ -156,27 +178,40 @@ async function addOffer(offer: BannerMotorStackOffer, index: number) {
     const count = addMotorStackOfferToAllLayouts(offer, selectedKit, image)
     toast.add({ title: 'Offer added', description: `${count} ${count === 1 ? 'layout' : 'layouts'} · Review the end date and fit of the supplied terms.`, color: 'success' })
   } catch (error) {
+    if (kit.value?.id !== selectedKit.id) return
+    offerErrors.value[index] = apiErrorDescription(error, 'Retry this offer, or add the text without artwork.')
     toast.add({ title: 'Could not add offer', description: apiErrorDescription(error, 'Retry this offer.'), color: 'error' })
   } finally {
     addingOffer.value = null
   }
 }
+watch(() => kit.value?.id, () => {
+  offerModel.value = '__all_models__'
+  offerSearch.value = ''
+})
 watch([() => kit.value?.id, activeTab], loadCatalog, { immediate: true })
 watch(motorStackBrandId, () => {
   imageModalOpen.value = false
   imageModel.value = '__all_models__'
+  imageGrade.value = '__all_grades__'
   imageColour.value = '__all_colours__'
+  visibleImageCount.value = 24
   imageModels.value = []
   imageSearch.value = ''
 })
 watch([motorStackBrandId, activeTab, imageModel], loadImages, { immediate: true })
 watch(imageModel, () => {
+  imageGrade.value = '__all_grades__'
+  imageColour.value = '__all_colours__'
+})
+watch(imageGrade, () => {
   imageColour.value = '__all_colours__'
 })
 watch(colourItems, (items) => {
+  if (imageLoading.value || !images.value) return
   if (!items.some(item => item.value === imageColour.value)) imageColour.value = '__all_colours__'
 })
-watch([imageModel, imageColour, imageSearch], () => {
+watch([imageModel, imageGrade, imageColour, imageSearch], () => {
   visibleImageCount.value = 24
 })
 watch(motorStackBrandId, (value) => {
@@ -255,7 +290,7 @@ function addLogo(logo: BrandKitLogo, event: MouseEvent) {
         :items="kitItems"
         value-key="value"
         :loading="loading"
-        :disabled="loading"
+        :disabled="loading || !!addingImage || addingOffer !== null"
         class="w-full"
       />
     </UFormField>
@@ -381,7 +416,7 @@ function addLogo(logo: BrandKitLogo, event: MouseEvent) {
       </div>
       <div v-else-if="activeTab === 'variants'" class="space-y-3">
         <p class="text-xs leading-relaxed text-muted">
-          Browse vehicle images or narrow them by model and paint colour, then add one to every canvas size.
+          Choose a model, variant / grade and paint colour, then add one to every canvas size.
         </p>
         <UButton
           label="Open large image browser"
@@ -396,6 +431,15 @@ function addLogo(logo: BrandKitLogo, event: MouseEvent) {
             v-model="imageModel"
             :items="modelItems"
             value-key="value"
+            class="w-full"
+          />
+        </UFormField>
+        <UFormField label="Variant / grade">
+          <USelectMenu
+            v-model="imageGrade"
+            :items="gradeItems"
+            value-key="value"
+            :disabled="imageModel === '__all_models__' || imageLoading || gradeItems.length === 1"
             class="w-full"
           />
         </UFormField>
@@ -442,7 +486,7 @@ function addLogo(logo: BrandKitLogo, event: MouseEvent) {
             variant="subtle"
           />
           <p v-if="!imageItems.length" class="text-xs text-muted">
-            {{ imageModel === '__all_models__' ? 'No vehicle images are available for this brand.' : 'No images match this model, colour or search.' }}
+            {{ imageModel === '__all_models__' ? 'No vehicle images are available for this brand.' : 'No images match this model, grade, colour or search.' }}
           </p>
           <div v-else class="grid grid-cols-2 gap-2 @lg:grid-cols-3">
             <UButton
@@ -505,7 +549,29 @@ function addLogo(logo: BrandKitLogo, event: MouseEvent) {
             No published offers are available for this brand.
           </p>
           <template v-else>
-            <UCard v-for="(offer, index) in offers" :key="`${offer.title}-${index}`" :ui="{ body: 'p-3 sm:p-3' }">
+            <UFormField label="Offer model">
+              <USelectMenu
+                v-model="offerModel"
+                :items="offerModelItems"
+                value-key="value"
+                class="w-full"
+              />
+            </UFormField>
+            <UFormField label="Search offers">
+              <UInput
+                v-model="offerSearch"
+                icon="i-lucide-search"
+                placeholder="Model, grade or offer text"
+                class="w-full"
+              />
+            </UFormField>
+            <p role="status" class="text-xs text-muted">
+              {{ filteredOffers.length }} of {{ offers.length }} offers
+            </p>
+            <p v-if="!filteredOffers.length" class="text-xs text-muted">
+              No offers match this model or search. Choose All models or clear the search.
+            </p>
+            <UCard v-for="{ offer, index } in filteredOffers" :key="`${offer.title}-${index}`" :ui="{ body: 'p-3 sm:p-3' }">
               <div class="space-y-2">
                 <div v-if="offer.artworkPreviewUrl && !artworkErrors[offer.artworkAssetId || '']" class="overflow-hidden rounded-md border border-default bg-muted">
                   <img
@@ -517,7 +583,7 @@ function addLogo(logo: BrandKitLogo, event: MouseEvent) {
                   >
                 </div>
                 <p v-else-if="offer.hasImage" class="text-xs text-warning">
-                  Offer artwork is unavailable; the offer text can still be added.
+                  Offer artwork preview is unavailable. Try importing it, or add the text separately.
                 </p>
                 <p class="text-sm font-semibold leading-snug">
                   {{ offer.title || offer.offer || 'Untitled offer' }}
@@ -535,6 +601,18 @@ function addLogo(logo: BrandKitLogo, event: MouseEvent) {
                   Ends {{ offer.endDate }}
                 </UBadge>
                 <UAccordion v-if="offer.disclaimer" :items="[{ label: 'Terms and conditions', content: offer.disclaimer }]" :ui="{ body: 'whitespace-pre-line text-xs leading-relaxed text-muted' }" />
+                <p v-if="offerErrors[index]" role="alert" class="text-xs text-error">
+                  {{ offerErrors[index] }}
+                </p>
+                <UButton
+                  v-if="offer.id && offer.current !== false"
+                  label="Create set with AI"
+                  icon="i-lucide-wand-sparkles"
+                  size="xs"
+                  class="w-full justify-center"
+                  :disabled="addingOffer !== null"
+                  @click="emit('createOffer', offer.id)"
+                />
                 <UButton
                   :label="offer.artworkAssetId ? 'Add offer and artwork to all layouts' : 'Add offer text to all layouts'"
                   :aria-label="`Add ${offer.title || offer.model || 'offer'} to all layouts`"
@@ -545,6 +623,16 @@ function addLogo(logo: BrandKitLogo, event: MouseEvent) {
                   :loading="addingOffer === index"
                   :disabled="addingOffer !== null"
                   @click="addOffer(offer, index)"
+                />
+                <UButton
+                  v-if="offer.artworkAssetId && (offerErrors[index] || artworkErrors[offer.artworkAssetId])"
+                  label="Add offer text without artwork"
+                  size="xs"
+                  color="neutral"
+                  variant="outline"
+                  class="w-full justify-center"
+                  :disabled="addingOffer !== null"
+                  @click="addOffer(offer, index, false)"
                 />
               </div>
             </UCard>
@@ -615,6 +703,7 @@ function addLogo(logo: BrandKitLogo, event: MouseEvent) {
       v-model:open="imageModalOpen"
       :initial-brand-id="motorStackBrandId"
       :initial-model="imageModel === '__all_models__' ? undefined : imageModel"
+      :initial-grade="imageGrade === '__all_grades__' ? undefined : imageGrade"
       :initial-colour="imageColour === '__all_colours__' ? undefined : imageColour"
       :initial-models="imageModels"
       images-only

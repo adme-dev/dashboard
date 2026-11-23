@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { BannerAsset } from '~/types/banner-studio'
 import { apiErrorDescription } from '~/utils/apiError'
-import { matchesMotorStackPaint, motorStackPaintName, motorStackPaintNames } from '~/utils/banner-motorstack-colours'
+import { matchesMotorStackGrade, motorStackGradeNames, matchesMotorStackPaint, motorStackPaintName, motorStackPaintNames } from '~/utils/banner-motorstack-colours'
 import { loadedImageMetadata } from '~/utils/banner-image-metadata'
 
 interface MotorStackMediaAsset {
@@ -22,6 +22,7 @@ interface MotorStackMediaResponse {
 const props = withDefaults(defineProps<{
   initialBrandId?: string
   initialModel?: string
+  initialGrade?: string
   initialColour?: string
   initialModels?: string[]
   imagesOnly?: boolean
@@ -30,10 +31,13 @@ const props = withDefaults(defineProps<{
 const open = defineModel<boolean>('open', { default: false })
 const emit = defineEmits<{ imported: [asset: BannerAsset] }>()
 const allModels = '__all_models__'
+const needsBrandPicker = computed(() => !props.imagesOnly && !props.initialBrandId)
 const brandId = ref<string>()
 const model = ref(allModels)
+const grade = ref('__all_grades__')
 const colour = ref('__all_colours__')
 const pendingInitialColour = ref<string>()
+const pendingInitialGrade = ref<string>()
 const search = ref('')
 const assetType = ref('images')
 const typeItems = [{ label: 'Images', value: 'images' }, { label: 'Documents', value: 'documents' }, { label: 'All media', value: 'all' }]
@@ -57,8 +61,12 @@ const { data: mediaData, error: mediaFetchError, execute: fetchMedia } = useFetc
 )
 const brandItems = computed(() => (brandsData.value?.brands || []).map(brand => ({ label: brand.name, value: brand.id })))
 const modelItems = computed(() => [{ label: 'All models', value: allModels }, ...modelNames.value.map(name => ({ label: name, value: name }))])
+const gradeItems = computed(() => [
+  { label: 'All grades', value: '__all_grades__' },
+  ...motorStackGradeNames(media.value?.assets || []).map(name => ({ label: name, value: name }))
+])
 const colourItems = computed(() => {
-  const assets = media.value?.assets || []
+  const assets = (media.value?.assets || []).filter(asset => matchesMotorStackGrade(asset, grade.value))
   return [
     { label: 'All colours', value: '__all_colours__' },
     ...motorStackPaintNames(assets).map(name => ({ label: name, value: name })),
@@ -70,7 +78,7 @@ const filteredAssets = computed(() => {
   return (media.value?.assets || []).filter((asset) => {
     if (assetType.value === 'images' && !isImage(asset)) return false
     if (assetType.value === 'documents' && !isPdf(asset)) return false
-    if (assetType.value !== 'documents' && !matchesMotorStackPaint(asset, colour.value)) return false
+    if (assetType.value !== 'documents' && isImage(asset) && (!matchesMotorStackGrade(asset, grade.value) || !matchesMotorStackPaint(asset, colour.value))) return false
     const text = `${asset.name} ${asset.type} ${formatLabel(asset)}`.toLowerCase()
     return terms.every(term => text.includes(term))
   })
@@ -88,7 +96,11 @@ function selectBrand(value: string) {
   if (value === brandId.value) return
   brandId.value = value
   model.value = allModels
+  grade.value = '__all_grades__'
   colour.value = '__all_colours__'
+  pendingInitialGrade.value = undefined
+  search.value = ''
+  visibleAssetCount.value = 30
   pendingInitialColour.value = undefined
   modelNames.value = []
 }
@@ -107,6 +119,10 @@ async function loadMedia() {
     previewErrors.value = {}
     media.value = mediaData.value
     modelNames.value = [...new Set([...modelNames.value, ...mediaData.value.models.filter(name => name.trim() && name !== allModels)])]
+    if (pendingInitialGrade.value) {
+      grade.value = gradeItems.value.find(item => item.value.toLocaleLowerCase() === pendingInitialGrade.value!.toLocaleLowerCase())?.value || '__all_grades__'
+      pendingInitialGrade.value = undefined
+    }
     if (pendingInitialColour.value) {
       colour.value = colourItems.value.find(item => item.value.toLocaleLowerCase() === pendingInitialColour.value!.toLocaleLowerCase())?.value || '__all_colours__'
       pendingInitialColour.value = undefined
@@ -121,28 +137,42 @@ watch([brandId, model], () => {
   if (open.value) loadMedia()
 })
 watch(model, () => {
+  if (!pendingInitialGrade.value) grade.value = '__all_grades__'
   if (!pendingInitialColour.value) colour.value = '__all_colours__'
 })
+watch(grade, () => {
+  if (!pendingInitialColour.value) colour.value = '__all_colours__'
+}, { flush: 'sync' })
 watch(colourItems, (items) => {
+  if (loadingMedia.value || !media.value) return
   if (!items.some(item => item.value === colour.value)) colour.value = '__all_colours__'
 })
-watch([model, colour, search, assetType], () => {
+watch([model, grade, colour, search, assetType], () => {
   visibleAssetCount.value = 30
 })
 watch(open, (value) => {
-  if (!value) return
+  if (!value) {
+    requestGeneration++
+    return
+  }
+  search.value = ''
+  visibleAssetCount.value = 30
   if (props.initialBrandId) {
     const nextModel = props.initialModel || allModels
     const changed = brandId.value !== props.initialBrandId || model.value !== nextModel
     brandId.value = props.initialBrandId
     model.value = nextModel
+    grade.value = '__all_grades__'
     colour.value = '__all_colours__'
+    pendingInitialGrade.value = props.initialGrade
     pendingInitialColour.value = props.initialColour
     modelNames.value = [...new Set(props.initialModels || [])]
     assetType.value = 'images'
     if (!changed) loadMedia()
+  } else if (brandId.value) {
+    loadMedia()
   }
-  if (!props.imagesOnly && !brandsData.value && brandsStatus.value !== 'pending') loadBrands()
+  if (needsBrandPicker.value && !brandsData.value && brandsStatus.value !== 'pending') loadBrands()
 }, { immediate: true })
 onBeforeUnmount(() => {
   requestGeneration++
@@ -180,7 +210,7 @@ async function importAsset(asset: MotorStackMediaAsset) {
     const result = await api<{ asset: BannerAsset }>('/api/agency/banner-studio/motorstack/media', {
       method: 'POST', body: { brandId: brandId.value, ...(model.value === allModels ? {} : { model: model.value }), assetId: asset.id }
     })
-    if (!result.asset?.id || !result.asset.url || !result.asset.mimeType.startsWith('image/')) throw new Error('Could not verify the saved image. Retry to check its library status.')
+    if (!result.asset?.id || !result.asset.url || !result.asset.mimeType?.startsWith('image/')) throw new Error('Could not verify the saved image. Retry to check its library status.')
     imported.value[key] = result.asset
     emit('imported', result.asset)
     if (props.addToCanvas) open.value = false
@@ -205,14 +235,14 @@ async function importAsset(asset: MotorStackMediaAsset) {
       <div class="@container space-y-4">
         <BannerMotorStackLogo />
         <UAlert
-          v-if="brandsError && !props.imagesOnly"
+          v-if="brandsError && needsBrandPicker"
           color="error"
           title="Could not load brands"
           :description="apiErrorDescription(brandsError, 'Try loading the brand list again.')"
           :actions="[{ label: 'Retry loading', color: 'error', variant: 'soft', onClick: () => loadBrands() }]"
         />
         <div class="grid grid-cols-1 gap-4 @lg:grid-cols-2">
-          <UFormField v-if="!props.imagesOnly" label="Brand">
+          <UFormField v-if="needsBrandPicker" label="Brand">
             <USelectMenu
               :model-value="brandId"
               :items="brandItems"
@@ -230,6 +260,15 @@ async function importAsset(asset: MotorStackMediaAsset) {
               :items="modelItems"
               value-key="value"
               :disabled="busy || !brandId || loadingMedia"
+              class="w-full"
+            />
+          </UFormField>
+          <UFormField v-if="assetType !== 'documents'" label="Variant / grade">
+            <USelectMenu
+              v-model="grade"
+              :items="gradeItems"
+              value-key="value"
+              :disabled="busy || loadingMedia || model === allModels || gradeItems.length === 1"
               class="w-full"
             />
           </UFormField>
@@ -260,7 +299,7 @@ async function importAsset(asset: MotorStackMediaAsset) {
           </UFormField>
         </div>
         <p v-if="brandId" class="text-sm text-muted">
-          {{ model === allModels ? 'Browse model heroes now, or choose a model for paint colours and gallery photos.' : 'Browse images and narrow them by paint colour.' }}
+          {{ model === allModels ? 'Browse model heroes now, or choose a model for paint colours and gallery photos.' : 'Choose a variant / grade and paint colour to find the right vehicle image.' }}
         </p>
         <template v-if="!props.imagesOnly">
           <UAlert
@@ -302,7 +341,7 @@ async function importAsset(asset: MotorStackMediaAsset) {
             </p>
           </div>
           <div v-if="!filteredAssets.length" class="py-16 text-center text-sm text-muted">
-            {{ media.assets.length ? 'No media matches these filters. Try another model, colour or media type.' : 'No media is available for this selection. Try another model or brand.' }}
+            {{ media.assets.length ? 'No media matches these filters. Try another model, grade, colour or media type.' : 'No media is available for this selection. Try another model or brand.' }}
           </div>
           <ul v-else class="grid max-h-[min(55vh,38rem)] grid-cols-1 gap-4 overflow-y-auto @sm:grid-cols-2 @2xl:grid-cols-3" aria-label="MotorStack media assets">
             <li v-for="asset in visibleAssets" :key="asset.id" class="flex min-w-0 flex-col overflow-hidden rounded-lg border border-default">

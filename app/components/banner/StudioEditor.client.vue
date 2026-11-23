@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { FORMAT_SAFE_ZONE_MAP, SAFE_ZONE_MAP } from '~/utils/banner-safe-zones'
+import { motorstackBrandId } from '~~/shared/bannerBrandGuides'
 import { FORMATS } from '~/utils/banner-constants'
 import { buildBannerHTML } from '~/utils/banner-html-builder'
 import { isAmbiguousApiFailure } from '~/utils/apiError'
@@ -42,7 +43,7 @@ const {
 } = useBannerStudio()
 
 // Load the matched MotorStack/client kit and its actual font faces on project open.
-useBannerProjectBrand(true)
+const { kit: currentBrandKit } = useBannerProjectBrand(true)
 
 // Timeline integration
 const { togglePlay, restartTimeline, stopTimeline, buildTimeline, destroyTimeline, pauseTimeline, animationPreview } = useBannerTimeline()
@@ -206,6 +207,11 @@ function openBrandResource(tab: 'logos' | 'variants' | 'offers') {
 const showSizePicker = ref(false)
 const showExportModal = ref(false)
 const showDesignAssistant = ref(false)
+const initialMotorstackOffer = ref<string>()
+function createMotorstackOfferSet(offerId: string) {
+  initialMotorstackOffer.value = offerId
+  showDesignAssistant.value = true
+}
 const exportInitialType = ref<'html5' | 'mp4'>('html5')
 function openVideoExports() {
   exportInitialType.value = 'mp4'
@@ -886,9 +892,20 @@ const { activeSize } = useBannerFileSize()
           <BannerSlidesPanel v-else-if="leftTab === 'slides'" />
           <BannerTemplatesPanel v-else-if="leftTab === 'templates'" />
           <BannerInsertPanel v-else-if="leftTab === 'elements'" @browse-brand="openBrandResource" />
-          <BannerAssetsPanel v-else-if="leftTab === 'assets'" :media-type="assetMediaType" />
+          <BannerAssetsPanel
+            v-else-if="leftTab === 'assets'"
+            :media-type="assetMediaType"
+            :motorstack-brand-id="motorstackBrandId(currentBrandKit?.sourceUrl) || undefined"
+            inline-motorstack
+            @browse-motorstack="openBrandResource('variants')"
+          />
           <BannerFeedsPanel v-else-if="leftTab === 'feeds'" />
-          <BannerBrandPanel v-else-if="leftTab === 'brand'" :initial-tab="brandPanelTab" @browse-assets="openLeftPanel('assets')" />
+          <BannerBrandPanel
+            v-else-if="leftTab === 'brand'"
+            :initial-tab="brandPanelTab"
+            @browse-assets="openLeftPanel('assets')"
+            @create-offer="createMotorstackOfferSet"
+          />
           <BannerVersionHistoryPanel v-else-if="leftTab === 'history'" :project-id="projectId" />
         </div>
         <div
@@ -946,6 +963,9 @@ const { activeSize } = useBannerFileSize()
     <BannerDesignAssistant
       v-model:open="showDesignAssistant"
       :project-id="projectId"
+      :brand-kit="currentBrandKit"
+      :initial-motorstack-offer="initialMotorstackOffer"
+      @choose-brand="openBrandResource('logos')"
       @prepare-social="prepareAssistantSocial"
       @generate-image="openGenerateImage"
     />

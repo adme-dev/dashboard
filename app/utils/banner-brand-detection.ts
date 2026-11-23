@@ -13,6 +13,11 @@ export function detectBannerBrandKit(project: BannerProject | null | undefined, 
   if (!project) return
   const explicit = (project.tags || []).find(tag => tag.startsWith('brand-kit:'))?.slice('brand-kit:'.length)
   if (explicit) return kits.find(kit => kit.id === explicit && (!kit.clientId || kit.clientId === project.clientId))
+  const savedKits = [...new Set(Object.values(project.canvasData || {}).map(board => board.motorstackSource?.kitId).filter(Boolean))]
+  if (savedKits.length === 1) {
+    const saved = kits.find(kit => kit.id === savedKits[0] && (!kit.clientId || kit.clientId === project.clientId))
+    if (saved) return saved
+  }
   const clientDefaults = kits.filter(kit => kit.clientId === project.clientId && kit.clientId && kit.isDefault)
   if (clientDefaults.length === 1) return clientDefaults[0]
   const accessible = kits.filter(kit => !kit.clientId || kit.clientId === project.clientId)

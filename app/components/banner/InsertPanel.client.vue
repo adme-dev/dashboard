@@ -24,11 +24,10 @@ async function upload() {
   await nextTick()
   assetsPanel.value?.openUpload()
 }
-async function motorstack() {
-  view.value = 'image'
-  await nextTick()
-  assetsPanel.value?.openMotorStack()
+function motorstack() {
+  emit('browseBrand', brandId.value ? 'variants' : 'logos')
 }
+
 function addStyleButton(variant: BrandButtonVariant) {
   if (!kit.value || !addBrandGuideButton(kit.value, variant)) return
   toast.add({ title: 'Brand button added', description: 'Edit its label in the inspector.', color: 'success' })
@@ -213,6 +212,9 @@ function addStyleButton(variant: BrandButtonVariant) {
       ref="assetsPanel"
       :key="view"
       :media-type="view"
+      :motorstack-brand-id="brandId || undefined"
+      inline-motorstack
+      @browse-motorstack="motorstack"
     />
   </section>
 </template>

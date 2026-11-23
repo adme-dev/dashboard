@@ -45,13 +45,13 @@ it('loads the selected kit into Insert and opens its vehicle and offer resources
     const click = (label: string) => [...host.querySelectorAll('button')].find(button => button.textContent?.includes(label))!.click()
     click('Vehicle images')
     click('Offer artwork')
-    expect(onBrowseBrand.mock.calls).toEqual([['variants'], ['offers']])
+    click('MotorStack media')
+    expect(onBrowseBrand.mock.calls).toEqual([['variants'], ['offers'], ['variants']])
   } finally {
     app.unmount()
     host.remove()
   }
 })
-
 
 const BrandStyleGuide = (await import('~/components/banner/BrandStyleGuide.vue')).default
 async function mountPicker() {

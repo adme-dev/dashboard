@@ -2,6 +2,8 @@ import type { BannerAsset, BannerBrandKit, Layer } from '~/types/banner-studio'
 import { brandColor, brandFont, brandFontSelection, isDarkColor } from '~/utils/banner-brand-kit'
 
 export interface BannerMotorStackOffer {
+  id?: string
+  current?: boolean
   title: string | null
   model: string | null
   variant: string | null

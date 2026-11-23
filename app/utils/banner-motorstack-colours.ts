@@ -5,12 +5,29 @@ export interface MotorStackNamedImage {
 }
 
 /** MotorStack media names retain the source path: model · grade · paint · photos N. */
-export function motorStackPaintName(name: string): string | null {
+function vehicleParts(name: string): string[] {
   const parts = name.split('·').map(part => part.trim()).filter(Boolean)
-  if (parts.length < 3) return null
-  const last = parts.at(-1)!
-  const paint = /^(?:interior_)?(?:photos|gallery|images)\s+\d+$/i.test(last) ? parts.at(-2)! : last
-  return paint && !/^(?:interior_)?(?:photos|gallery|images)\s+\d+$/i.test(paint) ? paint : null
+  if (/^(?:interior_)?(?:photos|gallery|images)\s+\d+$/i.test(parts.at(-1) || '')) parts.pop()
+  return parts.length >= 3 ? parts : []
+}
+
+export function motorStackPaintName(name: string): string | null {
+  return vehicleParts(name).at(-1) || null
+}
+
+export function motorStackGradeName(name: string): string | null {
+  return vehicleParts(name).at(-2) || null
+}
+
+export function motorStackGradeNames(images: MotorStackNamedImage[]): string[] {
+  return [...new Map(images.filter(image => image.importable && image.mime.startsWith('image/'))
+    .map(image => motorStackGradeName(image.name))
+    .filter((grade): grade is string => !!grade)
+    .map(grade => [grade.toLocaleLowerCase(), grade])).values()].sort((a, b) => a.localeCompare(b))
+}
+
+export function matchesMotorStackGrade(image: MotorStackNamedImage, grade: string): boolean {
+  return grade === '__all_grades__' || motorStackGradeName(image.name)?.toLocaleLowerCase() === grade.toLocaleLowerCase()
 }
 
 export function motorStackPaintNames(images: MotorStackNamedImage[]): string[] {
