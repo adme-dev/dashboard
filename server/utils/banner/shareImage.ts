@@ -29,7 +29,7 @@ export async function bannerShareImage(event: H3Event): Promise<Response> {
   const env = event.context.cloudflare?.env
   const bucket = env?.MEDIA_BUCKET
   if (!bucket?.get || !bucket.put) throw createError({ statusCode: 503, statusMessage: 'Artwork preview storage unavailable' })
-  const revision = createHash('sha256').update(JSON.stringify({ key, canvas: board, fonts, version: 3 })).digest('hex')
+  const revision = createHash('sha256').update(JSON.stringify({ key, canvas: board, fonts, version: 4 })).digest('hex')
   const imageKey = `banner-share-previews/${project.id}/${revision}.jpg`
   const headers = { 'Content-Type': 'image/jpeg', 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer' }
   const cached = await bucket.get(imageKey)

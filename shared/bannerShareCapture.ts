@@ -27,6 +27,9 @@ export function bannerShareCaptureOptions(html: string, width: number, height: n
         await Promise.all(Array.from(document.images).map(function(image){return image.decode();}));
         var videos=Array.from(document.querySelectorAll('video'));
         await Promise.all(videos.map(ready));
+        // The initial paused HTML has already rendered this timeline time with
+        // callbacks suppressed. Seek away first so video onUpdate runs too.
+        window.__engagrFrame.seek(0);
         window.__engagrFrame.seek(${time});
         await Promise.all(videos.map(ready));
         requestAnimationFrame(function(){requestAnimationFrame(function(){document.body.setAttribute('data-share-image-ready','');});});
