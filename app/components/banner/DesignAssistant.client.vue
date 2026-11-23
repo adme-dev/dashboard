@@ -7,6 +7,7 @@ import type { BannerMotorStackOffer } from '~/utils/banner-offer'
 import type { ArtboardState, BannerBrandKit } from '~/types/banner-studio'
 import { resolveBannerFormat } from '~/utils/banner-constants'
 import { buildBannerHTML } from '~/utils/banner-html-builder'
+import { estimateBannerDuration } from '~/utils/banner-render-runtime'
 import { apiErrorDescription } from '~/utils/apiError'
 
 type Canvas = Record<string, ArtboardState>
@@ -73,7 +74,8 @@ const preview = computed(() => {
   return {
     format, scale,
     html: buildBannerHTML(previewKey.value, artboard.layers, {
-      playback: artboard.playback,
+      // Loop only the isolated review iframe; retain saved/export playback unchanged.
+      playback: { duration: Math.min(300, Math.max(artboard.playback?.duration || 0, estimateBannerDuration(artboard.layers))), loopCount: 0 },
       includeAnimations: true, bgColor: artboard.bgColor || state.bgColor,
       customFonts: getExportCustomFonts(artboard.layers)
     })

@@ -16,7 +16,7 @@ export function motorstackOfferDateIssue(endDate: string | null, disclaimer: str
   if (!endDate || !disclaimer) return null
   const months = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december']
   const date = '(\\d{1,2})\\s+(' + months.join('|') + ')\\s+(\\d{4})'
-  const period = new RegExp('\\b(?:offer\\s+(?:is\\s+)?available\\s+from|purchased?\\s+(?:and\\s+fitted\\s+)?between|purchase\\s+and\\s+fitting\\s+between)\\s+' + date + '\\s+(?:to|and|until)\\s+' + date, 'gi')
+  const period = new RegExp('\\b(?:offer\\s+(?:is\\s+)?available\\s+(?:from|[^.!?]{0,240}?\\bbetween)|purchased?\\s+(?:and\\s+fitted\\s+)?between|purchase\\s+and\\s+fitting\\s+between)\\s+' + date + '\\s+(?:to|and|until)\\s+' + date, 'gi')
   for (const match of disclaimer.matchAll(period)) {
     const stated = `${match[6]}-${String(months.indexOf(match[5]!.toLowerCase()) + 1).padStart(2, '0')}-${match[4]!.padStart(2, '0')}`
     const parsed = new Date(`${stated}T00:00:00Z`)

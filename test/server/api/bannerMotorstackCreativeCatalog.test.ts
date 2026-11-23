@@ -53,4 +53,16 @@ describe('MotorStack editor catalogue boundary', () => {
     expect(result.items[0]).toMatchObject({ endDate: '2027-01-01', current: false, verificationIssue: expect.stringContaining('conflicts') })
     expect(result.items[1]).toMatchObject({ endDate: '2026-12-31', current: true, verificationIssue: null })
   })
+  it('retains long Ford-style terms in full without preventing shorter offers from loading', async () => {
+    const disclaimer = 'Full source conditions. '.repeat(750)
+    expect(disclaimer.length).toBeGreaterThan(12000)
+    const source = { title: 'Fuel card', model: 'Ranger', variant: null, price: 5000, priceLabel: null, offer: '$5K fuel card', endDate: '2026-12-31', disclaimer, hasImage: false, artworkAssetId: null }
+    mocks.catalog.mockResolvedValueOnce({ schemaVersion: 1, brand: { id: 'geely', name: 'Geely' }, kind: 'offers', updatedAt: null, items: [source, { ...source, title: 'Wolftrak', disclaimer: 'While stocks last.' }] })
+    const result = await handler(event)
+    expect(result.items).toHaveLength(2)
+    expect(result.items[0].disclaimer).toBe(disclaimer)
+    expect(result.items[1]).toMatchObject({ title: 'Wolftrak', disclaimer: 'While stocks last.' })
+    mocks.catalog.mockResolvedValueOnce({ schemaVersion: 1, brand: { id: 'geely', name: 'Geely' }, kind: 'offers', updatedAt: null, items: [{ ...source, disclaimer: 'x'.repeat(24001) }] })
+    await expect(handler(event)).rejects.toMatchObject({ statusCode: 502 })
+  })
 })
