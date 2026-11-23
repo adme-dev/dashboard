@@ -12,7 +12,7 @@ import { fitRect, kenBurnsTransformAt, activeVisualClipAt, extractBannerLayers }
 import { isSamePreviewSourceUrl, resolveVideoPreviewState, type VideoPreviewMediaStatus } from '~~/app/utils/video/videoPreviewState'
 import { effectPreviewPlan, shakeOffsetAt } from '~~/app/utils/video/effectPreview'
 import { applyOverlayPlacement } from '~~/shared/utils/overlayPlacement'
-import { overlayPreviewFonts, seekOverlayPreview } from '~~/app/utils/video/bannerPreview'
+import { overlayPreviewFonts, seekOverlayPreview, pauseOverlayPreview, disposeOverlayPreview, withInteractiveOverlayPlayback, type OverlayWindow } from '~~/app/utils/video/bannerPreview'
 import type { CustomFont } from '~~/app/composables/useBannerFonts'
 
 const props = defineProps<{
@@ -246,6 +246,7 @@ function syncVideoSeek() {
 watch(() => props.isPlaying, (playing) => {
   if (!playing) { for (const el of videoEls.values()) if (!el.paused) el.pause() }
   else syncVideoSeek()
+  syncOverlays()
 })
 
 const overlayHtml = ref<Record<string, string>>({})
@@ -279,7 +280,7 @@ async function buildOverlayHtmlFor(clip: any) {
     // black backdrop over the preview canvas. Pin both sides to the same scheme.
     const bannerSize = bannerFormatSize(proj.canvasData, fmtKey)
     const html = applyOverlayPlacement(
-      buildBannerHTML(fmtKey, layers.filter((layer: { type: string }) => layer.type !== 'audio'), { includeAnimations: true, playback: proj.canvasData[fmtKey]?.playback, customFonts }),
+      withInteractiveOverlayPlayback(buildBannerHTML(fmtKey, layers.filter((layer: { type: string }) => layer.type !== 'audio'), { includeAnimations: true, pausedAt: 0, nativeVideoPlayback: true, playback: proj.canvasData[fmtKey]?.playback, customFonts }), layers),
       clip.placement ?? null,
       { width: W.value, height: H.value },
       bannerSize
@@ -298,8 +299,11 @@ function syncOverlays() {
   for (const clip of overlayClips.value) {
     const iframe = overlayRefs.value[clip.id]
     const isActive = props.currentTime >= clip.timeline_start_sec && props.currentTime < clip.timeline_start_sec + clip.duration_sec
-    if (!isActive) continue
-    void seekOverlayPreview(iframe?.contentWindow as any, props.currentTime - clip.timeline_start_sec).catch(() => {
+    if (!isActive) {
+      pauseOverlayPreview(iframe?.contentWindow as unknown as OverlayWindow)
+      continue
+    }
+    void seekOverlayPreview(iframe?.contentWindow as unknown as OverlayWindow, props.currentTime - clip.timeline_start_sec, props.isPlaying).catch(() => {
       overlayErrors.value[clip.id] = 'Artwork playback could not seek. Reopen the linked banner and check its media.'
     })
   }
@@ -310,7 +314,8 @@ function overlayActive(clip: any): boolean {
 }
 
 function onOverlayLoad(clip: any) {
-  void seekOverlayPreview(overlayRefs.value[clip.id]?.contentWindow as any, props.currentTime - clip.timeline_start_sec).catch(() => {
+  if (!overlayActive(clip)) return
+  void seekOverlayPreview(overlayRefs.value[clip.id]?.contentWindow as unknown as OverlayWindow, props.currentTime - clip.timeline_start_sec, props.isPlaying).catch(() => {
     overlayErrors.value[clip.id] = 'Artwork playback could not seek. Reopen the linked banner and check its media.'
   })
 }
@@ -325,6 +330,7 @@ onMounted(() => {
 })
 onBeforeUnmount(() => {
   frameObserver?.disconnect()
+  for (const iframe of Object.values(overlayRefs.value)) disposeOverlayPreview(iframe?.contentWindow as unknown as OverlayWindow)
   for (const el of videoEls.values()) { try { el.pause(); el.removeAttribute('src'); el.load() } catch { /* noop */ } }
   videoEls.clear(); imgEls.clear()
 })

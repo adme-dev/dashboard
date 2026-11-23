@@ -122,3 +122,12 @@ The earlier container-readiness, queue/retry, FFmpeg/Chromium and native-video
 player work is retained. This change does not rewrite HTML5 animation/audio clocks
 or the renderer worker. A local HTML playback experiment was discarded before
 release after confirming the requested surface should use the compiled video.
+
+### Editor footage checks
+
+Video layers decode continuously during interactive playback. Check moving footage,
+scene cuts and authored zooms alongside narration; then pause, scrub forward/back,
+resume, and change layout. The existing audio clock owns sound. Rendered client
+proofs continue to use the existing MP4 renderer. If an editor jitters while the
+rendered MP4 is smooth, inspect interactive video transport before changing the
+qualified encoder. See `docs/migrations/suzuki-editor-video-playback-20261123.md`.

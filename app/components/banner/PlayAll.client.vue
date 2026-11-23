@@ -2,6 +2,7 @@
 import type gsap from 'gsap'
 import { ref, shallowRef, nextTick, watch, onUnmounted } from 'vue'
 import { syncTimelineAudio, pauseTimelineAudio, disposeTimelineAudio } from '~/utils/bannerTimelineAudio'
+import { syncTimelineVideo, pauseTimelineVideo, disposeTimelineVideo } from '~/utils/bannerTimelineVideo'
 import { resolveBannerPlayback } from '~/utils/banner-playback'
 import { FORMATS, PLATFORM_META } from '~/utils/banner-constants'
 
@@ -39,7 +40,11 @@ function artboardScale(key: string): number {
 
 function buildAll() {
   // Kill old timelines
-  timelines.value.forEach(tl => { disposeTimelineAudio(tl); tl.kill() })
+  timelines.value.forEach((tl) => {
+    disposeTimelineAudio(tl)
+    disposeTimelineVideo(tl)
+    tl.kill()
+  })
   timelines.value = []
   let maxEnd = 0
 
@@ -58,6 +63,7 @@ function buildAll() {
       // Override onComplete for synced loop behavior
       tl.eventCallback('onComplete', () => {
         pauseTimelineAudio(tl)
+        pauseTimelineVideo(tl)
         if (playback) {
           if (timelines.value.every(t => t.repeat() !== -1 && t.totalProgress() === 1)) {
             isPlaying.value = false
@@ -66,7 +72,11 @@ function buildAll() {
         } else if (isLooping.value) {
           const legacy = timelines.value.filter(t => !t.data?.importedPlayback)
           if (legacy.every(t => t.totalProgress() >= 1)) {
-            legacy.forEach(t => { t.restart(); syncTimelineAudio(t, true) })
+            legacy.forEach((t) => {
+              t.restart()
+              syncTimelineAudio(t, true)
+              syncTimelineVideo(t)
+            })
           }
         } else if (!timelines.value.some(t => t.data?.importedPlayback) || timelines.value.every(t => t.repeat() !== -1 && t.totalProgress() === 1)) {
           isPlaying.value = false
@@ -102,13 +112,20 @@ function playAll() {
     if (tl.repeat() !== -1 && tl.totalProgress() >= 1) tl.totalTime(0)
     tl.play()
     syncTimelineAudio(tl, true)
+    syncTimelineVideo(tl)
   })
   startTimePoller()
 }
 
 function pauseAll() {
   isPlaying.value = false
-  timelines.value.forEach(tl => { tl.pause(); pauseTimelineAudio(tl); syncTimelineAudio(tl, true) })
+  timelines.value.forEach((tl) => {
+    tl.pause()
+    pauseTimelineAudio(tl)
+    pauseTimelineVideo(tl)
+    syncTimelineAudio(tl, true)
+    syncTimelineVideo(tl)
+  })
   stopTimePoller()
   if (timelines.value.length > 0) {
     currentTime.value = timelines.value[0].time()
@@ -129,8 +146,10 @@ function restartAll() {
   timelines.value.forEach(tl => {
     tl.timeScale(playbackSpeed.value)
     pauseTimelineAudio(tl)
+    pauseTimelineVideo(tl)
     tl.restart()
     syncTimelineAudio(tl, true)
+    syncTimelineVideo(tl)
   })
   startTimePoller()
 }
@@ -164,7 +183,11 @@ watch(() => props.open, (val) => {
     nextTick(() => buildAll())
   } else {
     stopTimePoller()
-    timelines.value.forEach(tl => { disposeTimelineAudio(tl); tl.kill() })
+    timelines.value.forEach((tl) => {
+      disposeTimelineAudio(tl)
+      disposeTimelineVideo(tl)
+      tl.kill()
+    })
     timelines.value = []
     currentTime.value = 0
   }
@@ -172,7 +195,11 @@ watch(() => props.open, (val) => {
 
 onUnmounted(() => {
   stopTimePoller()
-  timelines.value.forEach(tl => { disposeTimelineAudio(tl); tl.kill() })
+  timelines.value.forEach((tl) => {
+    disposeTimelineAudio(tl)
+    disposeTimelineVideo(tl)
+    tl.kill()
+  })
 })
 </script>
 
@@ -277,6 +304,7 @@ onUnmounted(() => {
                   :ref="(el: any) => setArtboardRef(key, el)"
                   :format-key="key"
                   :is-active="false"
+                  :follow-playhead="false"
                 />
               </div>
             </div>

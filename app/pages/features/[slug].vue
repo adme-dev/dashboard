@@ -780,7 +780,7 @@ const features: Record<string, Feature> = {
     details: [
       {
         title: 'One Screen, Every Source',
-        content: 'Open a project from the thumbnail gallery, then work with producer controls beside a large preview and a docked timeline. Switch between Storyboard, Preview, Library, History and How it works without losing the edit. Compare the storyboard draft with the duration of the current edit. Expand the preview to check framing, captions and end cards. Drop in uploaded footage and stills, pull overlays straight from Banner Studio, add voiceover and music from Audio Studio, or generate B-roll and image-to-video clips with AI — all from the same command bar.'
+        content: 'Open a project from the thumbnail gallery, then work with producer controls beside a large preview and a docked timeline. Switch between Storyboard, Preview, Library, History and How it works without losing the edit. Compare the storyboard draft with the duration of the current edit. Embedded footage decodes continuously during editing while the shared playhead preserves authored graphics, zooms and cuts. Pause and scrub to inspect a frame. Expand the preview to check framing, captions and end cards. Drop in uploaded footage and stills, pull overlays straight from Banner Studio, add voiceover and music from Audio Studio, or generate B-roll and image-to-video clips with AI — all from the same command bar.'
       },
       {
         title: 'A Real Editing Timeline',
