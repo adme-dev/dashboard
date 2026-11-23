@@ -40,13 +40,13 @@ const definitions = [
     'marketing_propose_inventory_feed_change',
     departmentFeedChangeSchema,
     true,
-    'Prepare name, active-state, filters, typed mappingUpdates (merged by target_field), or bounded platformSettings corrections to one scoped feed; preview evaluates the candidate. Exact prior configuration is bound to the proposal; source and seller changes are not supported. Independent approval is required before execution.'
+    'Prepare name, active-state, filters, typed mappingUpdates (merged by target_field), or bounded platformSettings corrections to one scoped feed; preview evaluates the candidate. Exact prior configuration is bound to the proposal; source and seller changes are not supported. Check requiresIndependentReview in the preview. When false, the assigned feed lead may execute the exact revision immediately after acknowledgement.'
   ],
   [
     'marketing_propose_inventory_feed_regeneration',
     departmentFeedRegenerationSchema,
     true,
-    'Prepare regeneration of one exact scoped feed as XML or CSV. Returns a revision-bound readiness preview; the native provider is called only after independent approval and explicit execution.'
+    'Prepare regeneration of one exact scoped feed as XML or CSV. Returns a revision-bound readiness preview; the native provider is called after acknowledgement by an assigned feed lead or after independent approval and execution.'
   ],
   [
     'marketing_review_inventory_feed_change',
@@ -58,7 +58,7 @@ const definitions = [
     'marketing_execute_inventory_feed_change',
     departmentFeedExecuteSchema,
     true,
-    'Execute this proposer’s exact independently approved feed setup, change or regeneration after acknowledgement. Revalidates proposer, reviewer, client, mapping and configuration; unknown outcomes stay held for reconciliation.'
+    'Execute your own exact revision with acknowledgement. If the preview says requiresIndependentReview is false, execute directly. Otherwise obtain independent approval first. Revalidates proposer, reviewer, client, mapping and configuration; unknown outcomes stay held for reconciliation.'
   ]
 ] as const
 
