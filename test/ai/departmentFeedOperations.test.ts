@@ -1,5 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- Boundary fixtures model heterogeneous database and provider records. */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { projectOwnerFeedMcpSuite, resolveOwnerFeedMcpExecutions } from '~~/server/utils/ai/mcp/ownerFeedTools'
+import { consumeMcpRequestClaim } from '~~/server/utils/ai/mcp/requestClaim'
+import { MCP_REQUEST_AUDIENCE, digestMcpRequestBody, signMcpRequestClaim } from '~~/shared/utils/mcpRequestClaim'
 import type { ToolContext } from '~~/server/utils/ai/toolContext'
 import {
   departmentFeedTools,
@@ -61,6 +64,10 @@ vi.mock('~~/server/utils/ai/mcp/runtimeConfig', () => ({
 }))
 const query = vi.hoisted(() =>
   vi.fn(async (sql: string, p: any[] = []) => {
+    if (sql.includes('FROM team_members') && sql.includes('user_role=\'owner\''))
+      return { rows: !state.revoked && p[0] === ctx.userId && !(state.loseGrantAtClaim && sql.includes('FOR SHARE')) ? [{ email: 'owner@example.test' }] : [] }
+    if (sql.includes('FROM team_members') && sql.includes('user_role = \'owner\''))
+      return { rows: !state.revoked && p[0] === ctx.userId ? [{ id: ctx.userId }] : [] }
     if (sql.includes('can_manage_inventory_feed_directly'))
       return { rows: state.lead && p[0] === ctx.userId && p[1] === clientId && !(state.loseGrantAtClaim && sql.includes('FOR SHARE')) ? [{ id: clientId }] : [] }
     if (sql.includes('UPDATE client_feed_links')) {
@@ -106,6 +113,7 @@ const query = vi.hoisted(() =>
         r => r.id === p[0] && r.user_id === p[1] && r.status === p[5] && r.confirmed_by === p[4]
       )
       if (!row) return { rows: [] }
+      Object.assign(row.resolved_payload, JSON.parse(p[6]))
       row.confirmed_by ??= p[1]
       row.status = 'executed'
       return { rows: [row] }
@@ -682,11 +690,13 @@ describe('department inventory boundary', () => {
     state.lead = grant
     const target = kind === 'other client' ? '77777777-7777-4777-8777-777777777777' : clientId
     state.link.clientId = target
-    const proposal = kind === 'setup' ? await setup()
-      : kind === 'regenerate' ? await run('marketing_propose_inventory_feed_regeneration', { clientId: target, feedId: 'feed-1', format: 'xml' })
+    const proposal = kind === 'setup'
+      ? await setup()
+      : kind === 'regenerate'
+        ? await run('marketing_propose_inventory_feed_regeneration', { clientId: target, feedId: 'feed-1', format: 'xml' })
         : await run('marketing_propose_inventory_feed_change', { clientId: target, feedId: 'feed-1', patch: {
-          platformSettings: { store_code: 'Store3156', store_address: '1 Test Road', ...(kind === 'mixed' ? { fb_page_id: '123' } : {}) }
-        } })
+            platformSettings: { store_code: 'Store3156', store_address: '1 Test Road', ...(kind === 'mixed' ? { fb_page_id: '123' } : {}) }
+          } })
     expect(proposal).toMatchObject({ ok: true, data: { requiresIndependentReview: !allowed } })
     const { proposalId, revision } = (proposal as any).data
     const args = { clientId: target, proposalId, expectedRevision: revision, ack: true }
@@ -695,7 +705,7 @@ describe('department inventory boundary', () => {
     if (allowed) expect(await exec()).toMatchObject({ ok: true, data: { authorization: 'assigned_feed_lead' } })
     expect(state.updates + state.generates + state.creates).toBe(Number(allowed))
   })
-  it.each(['revoked', 'expired', 'rejected'])('denies a previously eligible lead after the proposal is %s', async reason => {
+  it.each(['revoked', 'expired', 'rejected'])('denies a previously eligible lead after the proposal is %s', async (reason) => {
     state.lead = true
     const proposal = await run('marketing_propose_inventory_feed_change', { clientId, feedId: 'feed-1', patch: { isActive: false } })
     const { proposalId, revision } = (proposal as any).data
@@ -820,6 +830,76 @@ describe('department inventory boundary', () => {
       code: 'reconciliation_required'
     })
     expect((await run('marketing_execute_inventory_feed_change', args)).ok).toBe(false)
+    expect(state.generates).toBe(1)
+  })
+})
+
+describe('owner MCP inventory feed controls', () => {
+  const projection = { governanceBypass: true } as Parameters<typeof projectOwnerFeedMcpSuite>[0]
+  const services = { markDispatched: vi.fn(async () => {}), captureResult: vi.fn(async () => {}) }
+  async function ownerCall(tool: string, args: object, signed = true) {
+    const entry = resolveOwnerFeedMcpExecutions(projection).find(e => e.name === tool)!
+    const event = { context: {} } as ToolContext['event']
+    const owner = { ...ctx, event, userRole: 'owner', godModeExecutionKey: key }
+    if (signed) {
+      const body = { userId: ctx.userId, tool, args }
+      const secret = 'disposable-test-only-owner-feed-claim'
+      const path = '/api/internal/mcp/call'
+      const claim = await signMcpRequestClaim({
+        uid: ctx.userId, scope: ['mcp:read', 'mcp:write'], godMode: true,
+        audience: MCP_REQUEST_AUDIENCE, method: 'POST', path, toolName: tool, bodyDigest: await digestMcpRequestBody(body)
+      }, secret)
+      await consumeMcpRequestClaim(event, claim, ctx.userId, { signingSecret: secret, body, method: 'POST', path, scopeHeader: undefined, consumeNonce: async () => true })
+    }
+    return entry.tool.mutates ? entry.executeSupplemental!(args, owner, services) : entry.tool.handler(args, owner)
+  }
+
+  it('projects only to owners and rejects an owner-shaped context without a verified request', async () => {
+    expect(projectOwnerFeedMcpSuite({ ...projection, governanceBypass: false })).toEqual([])
+    expect(projectOwnerFeedMcpSuite(projection)).toHaveLength(6)
+    expect((await ownerCall('owner_get_inventory_feed_health', { clientId }, false)).ok).toBe(false)
+    expect(state.reads).toBe(0)
+  })
+
+  it.each(['google', 'facebook'])('previews and applies an existing %s feed change as its owner', async (platform) => {
+    state.detail.platform = platform
+    const input = { clientId, feedId: 'feed-1', patch: { isActive: false, platformSettings: { store_code: 'TEST42' } } }
+    const preview = await ownerCall('owner_propose_inventory_feed_change', input)
+    expect(preview).toMatchObject({ ok: true, data: { requiresIndependentReview: false, proposed: { isActive: false } } })
+    expect(state.updates).toBe(0)
+    const { proposalId, revision } = (preview as any).data
+    const args = { clientId, proposalId, expectedRevision: revision, ack: true }
+    expect((await run('marketing_execute_inventory_feed_change', args)).ok).toBe(false)
+    expect((await ownerCall('owner_execute_inventory_feed_change', { ...args, expectedRevision: 'c'.repeat(64) })).ok).toBe(false)
+    expect(await ownerCall('owner_execute_inventory_feed_change', args)).toMatchObject({ ok: true, data: { authorization: 'active_owner', readbackVerified: true } })
+    expect((await ownerCall('owner_execute_inventory_feed_change', args)).ok).toBe(false)
+    expect(await ownerCall('owner_get_inventory_feed_change', { clientId, proposalId })).toMatchObject({ data: { status: 'executed' } })
+    expect(state.updates).toBe(1)
+    expect(state.rows[0].resolved_payload.ownerExecutionKey).toBe(key)
+    expect(services.markDispatched).toHaveBeenCalledTimes(2)
+  })
+
+  it('rejects a proposal or execution when owner access is revoked at the transaction boundary', async () => {
+    const input = { clientId, feedId: 'feed-1', patch: { isActive: false } }
+    state.loseGrantAtClaim = true
+    expect((await ownerCall('owner_propose_inventory_feed_change', input)).ok).toBe(false)
+    state.loseGrantAtClaim = false
+    const preview = await ownerCall('owner_propose_inventory_feed_change', input)
+    const { proposalId, revision } = (preview as any).data
+    state.loseGrantAtClaim = true
+    expect((await ownerCall('owner_execute_inventory_feed_change', { clientId, proposalId, expectedRevision: revision, ack: true })).ok).toBe(false)
+    expect(state.updates).toBe(0)
+    expect(services.markDispatched).toHaveBeenCalledTimes(1)
+  })
+
+  it('regenerates a disposable feed, and refuses destination changes or a foreign client', async () => {
+    expect((await ownerCall('owner_preview_inventory_feed', { clientId, feedId: 'feed-1' })).ok).toBe(true)
+    expect((await ownerCall('owner_propose_inventory_feed_change', { clientId, feedId: 'feed-1', patch: { platformSettings: { fb_page_id: '123' } } })).ok).toBe(false)
+    const r = await ownerCall('owner_propose_inventory_feed_regeneration', { clientId, feedId: 'feed-1', format: 'xml' })
+    const { proposalId, revision } = (r as any).data
+    const args = { clientId, proposalId, expectedRevision: revision, ack: true }
+    expect((await ownerCall('owner_execute_inventory_feed_change', { ...args, clientId: reviewer.userId })).ok).toBe(false)
+    expect(await ownerCall('owner_execute_inventory_feed_change', args)).toMatchObject({ data: { authorization: 'active_owner', generation: { format: 'xml' } } })
     expect(state.generates).toBe(1)
   })
 })
