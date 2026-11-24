@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Video Studio — Prepare asset layout options</title>
+<style>
+  :root {
+    --bg: #0f1012; --panel: #18191c; --raised: #202226; --line: #2c2f35;
+    --text: #e9eaec; --muted: #8e939c; --primary: #00dc82; --primary-soft: rgba(0,220,130,.12);
+    --note: #f5b942;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 13px/1.45 Inter, system-ui, -apple-system, "Segoe UI", sans-serif; }
+  button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+  .switch { display: flex; gap: 6px; align-items: center; padding: 8px 12px; border-bottom: 1px solid var(--line); background: #0b0c0d; }
+  .switch b { margin-right: 8px; color: var(--muted); font-weight: 500; }
+  .switch button { padding: 5px 12px; border-radius: 6px; border: 1px solid var(--line); color: var(--muted); }
+  .switch button[aria-pressed="true"] { background: var(--note); border-color: var(--note); color: #1a1300; font-weight: 600; }
+  .option { display: none; height: calc(100vh - 43px); padding: 12px; flex-direction: column; gap: 8px; }
+  .option.on { display: flex; }
+
+  .shell { flex: 1; min-height: 0; display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); overflow: hidden; }
+  .bar { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  .group { display: flex; gap: 2px; padding: 3px; border: 1px solid var(--line); border-radius: 7px; background: rgba(255,255,255,.02); }
+  .btn { padding: 4px 9px; border-radius: 5px; color: var(--text); white-space: nowrap; }
+  .btn.soft { background: var(--primary-soft); color: var(--primary); }
+  .btn.solid { background: var(--primary); color: #00130a; font-weight: 600; }
+  .btn.ghost { color: var(--muted); }
+  .btn.outline { border: 1px solid var(--line); }
+  .new { outline: 2px solid var(--note); outline-offset: 2px; position: relative; }
+  .new::after { content: "NEW"; position: absolute; top: -9px; right: -6px; background: var(--note); color: #1a1300; font-size: 9px; font-weight: 700; padding: 0 4px; border-radius: 3px; letter-spacing: .04em; }
+  .spacer { margin-left: auto; }
+  .body { flex: 1; min-height: 0; display: grid; }
+  .inspector { border-right: 1px solid var(--line); background: rgba(0,0,0,.18); display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+  .tabs { display: flex; gap: 14px; padding: 10px 14px 0; border-bottom: 1px solid var(--line); color: var(--muted); }
+  .tabs span { padding-bottom: 7px; }
+  .tabs .on { color: var(--primary); border-bottom: 2px solid var(--primary); }
+  .scroll { padding: 12px 14px; overflow: auto; display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+  .card { border: 1px solid var(--line); border-radius: 8px; background: var(--raised); padding: 10px; }
+  .row { display: flex; align-items: center; gap: 8px; }
+  .ico { width: 28px; height: 28px; border-radius: 6px; background: var(--primary-soft); color: var(--primary); display: grid; place-items: center; flex: none; font-size: 14px; }
+  .ttl { font-weight: 600; }
+  .sub { color: var(--muted); font-size: 11.5px; }
+  .label { font-size: 10.5px; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
+  .field { border: 1px solid var(--line); border-radius: 6px; background: var(--bg); padding: 6px 8px; }
+  .chev { margin-left: auto; color: var(--muted); }
+  .main { display: flex; flex-direction: column; min-height: 0; min-width: 0; background: var(--bg); }
+  .views { display: flex; gap: 4px; padding: 8px 14px; border-bottom: 1px solid var(--line); }
+  .views span { padding: 5px 10px; border-radius: 6px; color: var(--muted); white-space: nowrap; }
+  .views .on { background: var(--primary); color: #00130a; font-weight: 600; }
+  .dock { height: 96px; flex: none; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); padding: 10px 12px; color: var(--muted); }
+  .lane { height: 16px; border-radius: 4px; background: var(--raised); margin-top: 8px; position: relative; }
+  .lane i { position: absolute; top: 2px; bottom: 2px; border-radius: 3px; background: #3b6fd6; }
+  .lane i.g { background: var(--primary); opacity: .7; }
+
+  /* stage */
+  .stage { flex: 1; min-height: 0; display: grid; gap: 0; }
+  .tools { border-right: 1px solid var(--line); padding: 12px; display: flex; flex-direction: column; gap: 6px; overflow: auto; }
+  .tool { text-align: left; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; background: var(--panel); display: flex; gap: 8px; align-items: flex-start; }
+  .tool.on { border-color: var(--primary); background: var(--primary-soft); }
+  .canvaswrap { min-width: 0; min-height: 0; display: flex; flex-direction: column; align-items: center; padding: 12px; gap: 10px; }
+  .frame { flex: 1; min-height: 0; aspect-ratio: 9/16; border-radius: 8px; position: relative; overflow: hidden; cursor: crosshair;
+    background: linear-gradient(180deg, #7fb2e6 0%, #cfe3f5 38%, #d9c79b 39%, #b99a62 100%); }
+  .frame .car { position: absolute; left: 14%; right: 14%; top: 52%; height: 14%; background: #b3242b; border-radius: 30% 34% 12% 12% / 70% 70% 20% 20%; }
+  .frame .car::before, .frame .car::after { content: ""; position: absolute; bottom: -22%; width: 20%; aspect-ratio: 1; border-radius: 50%; background: #17181a; }
+  .frame .car::before { left: 12%; } .frame .car::after { right: 12%; }
+  .frame .sign { position: absolute; right: 10%; top: 26%; width: 22%; height: 9%; background: #f1f1f1; border: 2px solid #333; border-radius: 3px; }
+  .frame .sign::after { content: ""; position: absolute; left: 46%; top: 100%; width: 8%; height: 190%; background: #555; }
+  .frame svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .taskbar { display: flex; align-items: center; gap: 8px; padding: 6px; border: 1px solid var(--line); border-radius: 10px; background: var(--raised); width: min(720px, 100%); box-shadow: 0 8px 30px rgba(0,0,0,.45); }
+  .taskbar .field { flex: 1; min-width: 0; }
+  .slider { width: 90px; height: 4px; border-radius: 2px; background: var(--line); position: relative; flex: none; }
+  .slider::after { content: ""; position: absolute; left: 40%; top: -5px; width: 14px; height: 14px; border-radius: 50%; background: var(--primary); }
+  .results { border-left: 1px solid var(--line); padding: 12px; display: flex; flex-direction: column; gap: 8px; overflow: auto; }
+  .thumb { height: 64px; border-radius: 6px; background: linear-gradient(180deg, #7fb2e6, #b99a62); }
+  .thumb.t { background: repeating-conic-gradient(#2a2c30 0 25%, #1c1d20 0 50%) 0 0/14px 14px; }
+  .badge { font-size: 10px; padding: 1px 6px; border-radius: 999px; background: var(--primary-soft); color: var(--primary); }
+  .badge.n { background: rgba(255,255,255,.07); color: var(--muted); }
+  .modal { position: absolute; inset: 22px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); box-shadow: 0 30px 90px rgba(0,0,0,.7); display: flex; flex-direction: column; overflow: hidden; }
+  .dim { position: absolute; inset: 0; background: rgba(0,0,0,.62); }
+  .rel { position: relative; }
+  .note { color: var(--note); font-size: 11.5px; }
+  .preview { flex: 1; min-height: 0; margin: 12px; border-radius: 8px; background: #000; display: grid; place-items: center; }
+  .preview div { height: 92%; aspect-ratio: 9/16; border-radius: 6px; background: linear-gradient(180deg, #7fb2e6 0%, #cfe3f5 38%, #d9c79b 39%, #b99a62 100%); }
+  .cliptools { margin: 0 12px 12px; }
+</style>
+</head>
+<body>
+<div class="switch">
+  <b>Mockup</b>
+  <button data-o="a" aria-pressed="true">A · Tidy the inspector</button>
+  <button data-o="b" aria-pressed="false">B · Prepare workspace (recommended)</button>
+  <button data-o="c" aria-pressed="false">C · Full-screen editor</button>
+  <span class="note spacer">Amber outline = new or moved. Static mockup, not production code.</span>
+</div>
+
+<!-- ───────── Option A ───────── -->
+<section class="option on" id="o-a">
+  <div class="shell">
+    <div class="bar">
+      <div class="group"><span class="btn">Footage</span><span class="btn">Overlay</span><span class="btn">Generate</span><span class="btn">Saved videos</span></div>
+      <div class="group spacer"><span class="btn ghost">3 formats</span><span class="btn soft">Render 3 formats</span></div>
+    </div>
+    <div class="body" style="grid-template-columns: 380px minmax(0,1fr)">
+      <aside class="inspector">
+        <div class="tabs"><span>Details</span><span class="on">Produce</span><span>Review</span></div>
+        <div class="scroll">
+          <div class="card row new"><div class="ico">✦</div><div><div class="ttl">AI generation</div><div class="sub">Animate an image or write a prompt</div></div><span class="chev">▸</span></div>
+          <div class="card row"><div class="ico">🎙</div><div><div class="ttl">Voiceover</div><div class="sub">Script to voice on the voiceover lane</div></div><span class="chev">▸</span></div>
+          <div class="card row"><div class="ico">◇</div><div><div class="ttl">Overlays</div><div class="sub">Banner Studio overlays</div></div><span class="chev">▸</span></div>
+          <div class="card new" style="border-color: var(--primary)">
+            <div class="row"><div class="ico">⌫</div><div><div class="ttl">Prepare / erase asset</div><div class="sub">Erase, lift, mask, remove background</div></div><span class="chev">▾</span></div>
+            <div style="margin-top:10px"><div class="label">Asset</div><div class="field row">Generated video 9125e7dc… <span class="chev">▾</span></div></div>
+            <div style="margin-top:8px"><div class="label">Tool</div><div class="field row">Erase and heal <span class="chev">▾</span></div></div>
+            <div style="margin-top:8px"><div class="label">Instruction</div><div class="field" style="min-height:52px">Erase the highlighted object and heal the background.</div></div>
+            <div style="margin-top:8px" class="row"><div class="label" style="margin:0">Highlighter mask</div><span class="btn outline spacer" style="font-size:11.5px">⤢ Open large</span></div>
+            <div style="margin-top:6px; display:grid; place-items:center; background:#000; border-radius:6px; padding:8px">
+              <div class="frame" style="flex:none; height:200px"><div class="sign"></div><div class="car"></div>
+                <svg viewBox="0 0 90 160"><path d="M62 42 q8 -6 16 0 q4 8 -2 14 q-10 4 -16 -2 z" fill="rgba(0,255,150,.55)"/></svg></div>
+            </div>
+            <div class="row" style="margin-top:8px"><span class="sub">Brush</span><div class="slider"></div><span class="btn soft spacer">Run</span></div>
+          </div>
+          <div class="card row"><div class="ico">▤</div><div><div class="ttl">Draft plan</div><div class="sub">Build a timeline from prepared assets</div></div><span class="chev">▸</span></div>
+        </div>
+      </aside>
+      <main class="main">
+        <div class="views"><span>Storyboard</span><span class="on">Preview</span><span>Project assets</span><span>History</span><span>How it works</span></div>
+        <div class="preview"><div></div></div>
+      </main>
+    </div>
+  </div>
+  <div class="dock">Timeline<div class="lane"><i style="left:2%;width:30%"></i><i style="left:33%;width:22%"></i><i class="g" style="left:56%;width:18%"></i></div><div class="lane"><i class="g" style="left:2%;width:60%"></i></div></div>
+</section>
+
+<!-- ───────── Option B ───────── -->
+<section class="option" id="o-b">
+  <div class="shell">
+    <div class="bar">
+      <div class="group"><span class="btn">Footage</span><span class="btn">Overlay</span><span class="btn">Generate</span><span class="btn new">⌫ Prepare</span><span class="btn">Saved videos</span></div>
+      <div class="group spacer"><span class="btn ghost">3 formats</span><span class="btn soft">Render 3 formats</span></div>
+    </div>
+    <div class="body" style="grid-template-columns: minmax(0,1fr)">
+      <main class="main">
+        <div class="views"><span>Storyboard</span><span>Preview</span><span>Project assets</span><span class="on new">⌫ Prepare</span><span>History</span><span>How it works</span>
+          <span class="spacer sub" style="align-self:center">Inspector hidden while preparing · <u>Show</u></span></div>
+        <div class="stage" style="grid-template-columns: 232px minmax(0,1fr) 264px">
+          <div class="tools">
+            <div class="label">Asset</div>
+            <div class="field row" style="margin-bottom:6px"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Generated video 9125e7dc…</span><span class="chev">▾</span></div>
+            <div class="label">What do you want to do?</div>
+            <button class="tool on"><div class="ico">⌫</div><div><div class="ttl">Erase and heal</div><div class="sub">Paint over something to remove it</div></div></button>
+            <button class="tool"><div class="ico">⇪</div><div><div class="ttl">Lift highlighted area</div><div class="sub">Cut the painted area out as a layer</div></div></button>
+            <button class="tool"><div class="ico">◐</div><div><div class="ttl">Remove background</div><div class="sub">One click, no painting</div></div></button>
+            <button class="tool"><div class="ico">▧</div><div><div class="ttl">Separate layers</div><div class="sub">Split into editable layers</div></div></button>
+            <button class="tool"><div class="ico">◌</div><div><div class="ttl">Mask only</div><div class="sub">Save the painted mask</div></div></button>
+          </div>
+          <div class="canvaswrap">
+            <div class="row sub" style="width:100%"><span>Frame 00:02.4 of 00:08</span><div class="slider" style="flex:1; max-width:none"></div><span class="btn ghost">↶ Undo</span><span class="btn ghost">Clear</span></div>
+            <div class="frame"><div class="sign"></div><div class="car"></div>
+              <svg viewBox="0 0 90 160"><path d="M60 40 q10 -8 20 0 q5 10 -2 18 q-12 5 -19 -3 q-3 -8 1 -15 z" fill="rgba(0,255,150,.55)"/></svg></div>
+            <div class="taskbar new">
+              <span class="sub" style="padding-left:6px">Brush</span><div class="slider"></div>
+              <div class="field">Erase the highlighted sign and heal the sky behind it.</div>
+              <span class="btn solid">Run erase</span>
+            </div>
+          </div>
+          <div class="results">
+            <div class="label">Results for this asset</div>
+            <div class="card"><div class="thumb"></div><div class="row" style="margin-top:6px"><span class="badge">ready</span><span class="sub">Erase · 2 min ago</span></div>
+              <div class="row" style="margin-top:6px"><span class="btn soft">Add to timeline</span><span class="btn ghost">Replace clip</span></div></div>
+            <div class="card"><div class="thumb t"></div><div class="row" style="margin-top:6px"><span class="badge n">running</span><span class="sub">Remove background</span></div></div>
+            <div class="label" style="margin-top:6px">Recent activity</div>
+            <div class="sub">Lift · Showroom still · ready</div>
+            <div class="sub">Erase · Generated video · failed · <u>Retry</u></div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+  <div class="dock">Timeline<div class="lane"><i style="left:2%;width:30%"></i><i style="left:33%;width:22%"></i><i class="g" style="left:56%;width:18%"></i></div><div class="lane"><i class="g" style="left:2%;width:60%"></i></div></div>
+</section>
+
+<!-- ───────── Option C ───────── -->
+<section class="option rel" id="o-c">
+  <div class="shell">
+    <div class="bar">
+      <div class="group"><span class="btn">Footage</span><span class="btn">Overlay</span><span class="btn">Generate</span><span class="btn">Saved videos</span></div>
+      <div class="group spacer"><span class="btn ghost">3 formats</span><span class="btn soft">Render 3 formats</span></div>
+    </div>
+    <div class="body" style="grid-template-columns: 310px minmax(0,1fr)">
+      <aside class="inspector"><div class="tabs"><span class="on">Details</span><span>Produce</span><span>Review</span></div>
+        <div class="scroll"><div class="card"><div class="ttl">Generated video 9125e7dc…</div><div class="row" style="margin-top:8px; flex-wrap:wrap"><span class="btn outline">Add to timeline</span><span class="btn outline">Generate from asset</span><span class="btn soft">⌫ Erase / clean up…</span></div></div></div>
+      </aside>
+      <main class="main"><div class="views"><span>Storyboard</span><span class="on">Preview</span><span>Project assets</span><span>History</span></div><div class="preview"><div></div></div></main>
+    </div>
+  </div>
+  <div class="dock">Timeline</div>
+  <div class="dim"></div>
+  <div class="modal new">
+    <div class="bar"><div class="ico">⌫</div><div><div class="ttl">Prepare asset</div><div class="sub">Generated video 9125e7dc…</div></div>
+      <span class="spacer btn ghost">Cancel</span><span class="btn solid">Run erase</span><span class="btn ghost">✕</span></div>
+    <div class="stage" style="grid-template-columns: 232px minmax(0,1fr) 264px">
+      <div class="tools">
+        <div class="label">Tool</div>
+        <button class="tool on"><div class="ico">⌫</div><div><div class="ttl">Erase and heal</div><div class="sub">Paint over something to remove it</div></div></button>
+        <button class="tool"><div class="ico">⇪</div><div><div class="ttl">Lift highlighted area</div></div></button>
+        <button class="tool"><div class="ico">◐</div><div><div class="ttl">Remove background</div></div></button>
+        <button class="tool"><div class="ico">▧</div><div><div class="ttl">Separate layers</div></div></button>
+        <button class="tool"><div class="ico">◌</div><div><div class="ttl">Mask only</div></div></button>
+        <div class="label" style="margin-top:8px">Instruction</div>
+        <div class="field" style="min-height:70px">Erase the highlighted sign and heal the sky behind it.</div>
+        <div class="row" style="margin-top:6px"><span class="sub">Brush</span><div class="slider" style="flex:1; max-width:none"></div></div>
+      </div>
+      <div class="canvaswrap">
+        <div class="row sub" style="width:100%"><span>Frame 00:02.4 of 00:08</span><div class="slider" style="flex:1; max-width:none"></div><span class="btn ghost">↶ Undo</span><span class="btn ghost">Clear</span></div>
+        <div class="frame"><div class="sign"></div><div class="car"></div>
+          <svg viewBox="0 0 90 160"><path d="M60 40 q10 -8 20 0 q5 10 -2 18 q-12 5 -19 -3 q-3 -8 1 -15 z" fill="rgba(0,255,150,.55)"/></svg></div>
+      </div>
+      <div class="results">
+        <div class="label">Results</div>
+        <div class="card"><div class="thumb"></div><div class="row" style="margin-top:6px"><span class="badge">ready</span><span class="sub">Erase · 2 min ago</span></div>
+          <div class="row" style="margin-top:6px"><span class="btn soft">Add to timeline</span></div></div>
+        <div class="sub">Closing keeps running jobs going. Results also appear under the asset in Details.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+  const pick = (o) => {
+    document.querySelectorAll('.option').forEach(s => s.classList.toggle('on', s.id === 'o-' + o))
+    document.querySelectorAll('.switch button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.o === o)))
+  }
+  document.querySelectorAll('.switch button').forEach(b => b.addEventListener('click', () => pick(b.dataset.o)))
+  const fromHash = location.hash.replace('#', '')
+  if (['a', 'b', 'c'].includes(fromHash)) pick(fromHash)
+</script>
+</body>
+</html>
