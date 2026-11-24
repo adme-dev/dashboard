@@ -1,11 +1,12 @@
 import { z } from 'zod'
 import { requireWriteAccess } from '~~/server/utils/auth'
 import { requireVideoProjectWriteAccess } from '~~/server/utils/video-asset-intelligence/access'
-import { assetIntelligenceUnavailableReason, defaultModelForAction, getAssetIntelligenceAction, getAssetIntelligenceModel, isAssetIntelligenceActionRunnable } from '~~/server/utils/video-asset-intelligence/registry'
+import { assetIntelligenceUnavailableReason, defaultModelForAction, getAssetIntelligenceAction, getAssetIntelligenceModel, isAssetIntelligenceActionMetered, isAssetIntelligenceActionRunnable } from '~~/server/utils/video-asset-intelligence/registry'
 import { createBlockedExtractionJob, createQueuedExtractionJob, getAssetProjectRelationship, getBucketItemProjectRelationship, markAssetIntelligenceJobFailed } from '~~/server/utils/video-asset-intelligence/db'
 import { enqueueAssetIntelligence, getAssetIntelligenceQueue } from '~~/server/utils/video-asset-intelligence/enqueue'
 import type { AssetIntelligenceActionId } from '~~/server/utils/video-asset-intelligence/registry'
 import { recordAiInvocation } from '~~/server/utils/ai/invocationLedger'
+import { getAiGatewayGenerationPolicyStatus } from '~~/server/utils/aiGatewayGenerationPolicy'
 import { withGodModeLedger } from '~~/server/utils/video/godModeStudioMutations'
 import { isBrushMaskKeyFor } from '~~/shared/video/assetIntelligenceMaskFrame'
 
@@ -32,7 +33,7 @@ async function recordAssetIntelligenceRequest(input: {
     featureKey: 'video_asset_intelligence_job',
     provider: input.provider,
     modelId: input.modelId,
-    gatewayUsed: input.gatewayProvider === 'workers-ai',
+    gatewayUsed: input.gatewayProvider === 'workers-ai' || input.gatewayProvider === 'aigateway',
     userId: input.userId,
     status: input.status ?? 'success',
     errorCode: input.errorCode ?? null,
@@ -71,6 +72,19 @@ export default defineEventHandler(event => withGodModeLedger(event, 'assetExtrac
   // Erase acts on a painted area: without one there is nothing to remove.
   if (body.action === 'erase-fill' && !body.brushMaskKey) {
     throw createError({ statusCode: 400, statusMessage: 'Paint over what to erase first.' })
+  }
+  if (body.action === 'mask-lift' && !body.brushMaskKey) {
+    throw createError({ statusCode: 400, statusMessage: 'Paint over what to lift first.' })
+  }
+  // Layer tools are billed per run through AI Gateway. They stay off until an operator
+  // has confirmed the gateway spend limit, the same control video generation relies on.
+  if (isAssetIntelligenceActionMetered(body.action)) {
+    // Read from the deployed environment only, as video generation does.
+    const env = ((event.context as { cloudflare?: { env?: Record<string, unknown> } } | undefined)?.cloudflare?.env ?? {})
+    const policy = getAiGatewayGenerationPolicyStatus(env)
+    if (!policy.spendLimitConfirmed) {
+      throw createError({ statusCode: 409, statusMessage: `${action.label} is switched off until the AI Gateway spend limit is confirmed.` })
+    }
   }
 
   await requireVideoProjectWriteAccess(user, body.projectId, 'Asset intelligence requires an AV project')

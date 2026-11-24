@@ -17,6 +17,7 @@ import {
 } from './eraseComposite'
 import { decodePicture, encodeJpeg, encodePng, sniffPictureFormat } from './imageCodec'
 import { paintedFrameKeyForMask } from '../../../shared/video/assetIntelligenceMaskFrame'
+import { runBackgroundRemoval, runLayerDecomposition, runMaskLift } from './layers'
 
 export interface AssetIntelligenceWorkerJob {
   id: string
@@ -47,6 +48,10 @@ export interface ProviderDeps {
     AI?: {
       run(model: string, inputs: Record<string, unknown>, options?: Record<string, unknown>): Promise<unknown>
     }
+    /** Most layers one Separate layers job may produce. Default 8, never more than 12. */
+    ASSET_INTELLIGENCE_MAX_LAYERS?: string
+    /** Most one layer job may cost, in US dollars, estimated from published prices. Default 0.50. */
+    ASSET_INTELLIGENCE_MAX_JOB_COST_USD?: string
   }
   fetchAssetBytes(sourceAssetId: string): Promise<{ dataUri: string; contentType: string }>
   /**
@@ -64,6 +69,8 @@ export interface ProviderDeps {
 
 export interface AssetIntelligenceProviderResult {
   derivatives: AssetDerivativeOutput[]
+  /** Cost, latency and call counts for jobs that bill per model call. Recorded on the invocation ledger. */
+  usage?: Record<string, unknown>
 }
 
 const MASK_ONLY_PROVIDER = 'replicate'
@@ -113,10 +120,7 @@ export function cleanObjectName(text: unknown): string | null {
 }
 
 const EXTERNAL_PROVIDER_ACTIONS = new Set([
-  'background-removal',
   'object-segmentation',
-  'layer-decomposition',
-  'mask-lift',
 ])
 
 function decodeBase64(value: string): Uint8Array {
@@ -421,6 +425,10 @@ export async function runAssetIntelligenceProvider(deps: ProviderDeps): Promise<
       }],
     }
   }
+
+  if (job.action === 'layer-decomposition') return runLayerDecomposition(deps)
+  if (job.action === 'mask-lift') return runMaskLift(deps)
+  if (job.action === 'background-removal') return runBackgroundRemoval(deps)
 
   if (EXTERNAL_PROVIDER_ACTIONS.has(job.action)) {
     throw new Error(`${job.action} requires configured provider runtime: ${job.modelId}`)

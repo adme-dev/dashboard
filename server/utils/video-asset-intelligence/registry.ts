@@ -41,6 +41,9 @@ export interface AssetIntelligenceActionOffer extends AssetIntelligenceAction {
 // catalogued for later but has no provider runtime, so it must not be queued.
 const RUNNABLE_ACTIONS = new Set<AssetIntelligenceActionId>([
   'asset-analysis',
+  'background-removal',
+  'layer-decomposition',
+  'mask-lift',
   'erase-fill',
   'mask-only',
   'image-edit',
@@ -56,12 +59,14 @@ export function assetIntelligenceUnavailableReason(action: Pick<AssetIntelligenc
 
 export interface AssetIntelligenceModel {
   id: string
-  provider: 'workers-ai' | 'replicate' | 'huggingface' | 'fal' | 'openai' | 'bria' | 'mock'
-  gatewayProvider: 'workers-ai' | 'replicate' | 'huggingface' | 'fal' | 'openai' | 'custom'
+  provider: 'workers-ai' | 'aigateway' | 'replicate' | 'huggingface' | 'fal' | 'openai' | 'bria' | 'mock'
+  gatewayProvider: 'workers-ai' | 'aigateway' | 'replicate' | 'huggingface' | 'fal' | 'openai' | 'custom'
   displayName: string
   actions: AssetIntelligenceActionId[]
   defaultEnabled: boolean
   cfModel?: string
+  /** True when every run is billed per call through AI Gateway unified billing. */
+  meteredPerRun?: boolean
   notes: string
 }
 
@@ -76,8 +81,8 @@ const ACTIONS: AssetIntelligenceAction[] = [
   {
     id: 'background-removal',
     label: 'Remove background',
-    description: 'Create an alpha foreground and optional background plate.',
-    outputKinds: ['foreground-png', 'mask-png', 'background-png'],
+    description: 'Keep the main subject on a transparent background.',
+    outputKinds: ['foreground-png'],
     // Listed in the studio as "not available yet" until a provider can run it.
     surface: 'tenant',
   },
@@ -91,16 +96,16 @@ const ACTIONS: AssetIntelligenceAction[] = [
   {
     id: 'layer-decomposition',
     label: 'Separate layers',
-    description: 'Split a flattened image into editable RGBA layers.',
-    outputKinds: ['layer-package', 'foreground-png', 'mask-png'],
+    description: 'Split a flattened picture into a base and separate cut-out layers for text, logos and products.',
+    outputKinds: ['layer-package', 'foreground-png', 'background-png'],
     // Listed in the studio as "not available yet" until a provider can run it.
     surface: 'tenant',
   },
   {
     id: 'mask-lift',
     label: 'Lift highlighted area',
-    description: 'Use a brush/highlighter mask to lift embedded graphics or objects into a new alpha layer.',
-    outputKinds: ['foreground-png', 'mask-png', 'layer-package'],
+    description: 'Paint over a graphic or object to lift it out as a transparent cut-out.',
+    outputKinds: ['foreground-png'],
     // Listed in the studio as "not available yet" until a provider can run it.
     surface: 'tenant',
   },
@@ -167,20 +172,24 @@ const MODELS: AssetIntelligenceModel[] = [
     notes: 'Planning and multimodal reasoning through Workers AI/Gateway.',
   },
   {
-    id: 'replicate/qwen-image-layered',
-    provider: 'replicate',
-    gatewayProvider: 'replicate',
-    displayName: 'Qwen Image Layered',
-    actions: ['layer-decomposition', 'mask-lift'],
-    defaultEnabled: false,
-    notes: 'Specialist flattened-image-to-RGBA-layer decomposition routed through Replicate Gateway.',
+    id: 'aigateway/seedream-5.5',
+    provider: 'aigateway',
+    gatewayProvider: 'aigateway',
+    displayName: 'Seedream 5.5 layers',
+    actions: ['layer-decomposition', 'mask-lift', 'background-removal'],
+    defaultEnabled: true,
+    cfModel: 'bytedance/seedream-5.5',
+    meteredPerRun: true,
+    notes: 'Cuts elements out as RGBA layers through Cloudflare AI Gateway. Separate layers also uses google/gemini-3.8-flash to find the elements. The gateway does not expose Seedream\'s native layer decomposition, so layers are made one element at a time.',
   },
   {
     id: 'replicate/sam-2',
     provider: 'replicate',
     gatewayProvider: 'replicate',
     displayName: 'SAM 2 segmentation',
-    actions: ['object-segmentation', 'mask-lift', 'mask-only'],
+    // Not reachable through AI Gateway, so it is not a Lift fallback. Kept as the
+    // label for stored masks and for mask tracking on video later.
+    actions: ['object-segmentation', 'mask-only'],
     defaultEnabled: false,
     notes: 'Prompted object masks and future video mask tracking.',
   },
@@ -247,6 +256,11 @@ export function getAssetIntelligenceModel(id: string): AssetIntelligenceModel | 
 
 export function listAssetIntelligenceModelsForAction(actionId: string, includeDisabled = true): AssetIntelligenceModel[] {
   return listAssetIntelligenceModels(includeDisabled).filter(model => model.actions.includes(actionId as AssetIntelligenceActionId))
+}
+
+/** True when running this action is billed per call through AI Gateway. */
+export function isAssetIntelligenceActionMetered(actionId: string): boolean {
+  return Boolean(defaultModelForAction(actionId)?.meteredPerRun)
 }
 
 export function defaultModelForAction(actionId: string): AssetIntelligenceModel | null {

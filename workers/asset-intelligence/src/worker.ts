@@ -60,6 +60,16 @@ function safeErrorMessage(error: unknown): string {
   return String(error || 'asset intelligence failed')
 }
 
+/** A failed layer job may still have paid for model calls; keep the reason code and what it cost. */
+function failureDetail(error: unknown): Record<string, unknown> {
+  const detail = error as { code?: unknown; usage?: { costUsd?: unknown; latencyMs?: unknown; calls?: unknown[] } | null } | null
+  if (!detail || typeof detail !== 'object') return {}
+  return {
+    ...(typeof detail.code === 'string' ? { failureCode: detail.code } : {}),
+    ...(detail.usage ? { usage: { costUsd: detail.usage.costUsd ?? null, latencyMs: detail.usage.latencyMs ?? null, modelCalls: detail.usage.calls?.length ?? 0 } } : {}),
+  }
+}
+
 function withContentMetadata(derivative: AssetDerivativeOutput): AssetDerivativeOutput {
   const metadata = { ...derivative.metadata }
   if (derivative.contentType) metadata.contentType = derivative.contentType
@@ -89,7 +99,7 @@ async function recordRuntime(
     featureKey: 'video_asset_intelligence_worker_runtime',
     provider: job.provider,
     modelId: job.modelId,
-    gatewayUsed: job.provider === 'workers-ai',
+    gatewayUsed: job.provider === 'workers-ai' || job.provider === 'aigateway',
     clientId: uuidOrNull(job.tenantId),
     requestId: job.id,
     status: input.status ?? 'success',
@@ -140,6 +150,7 @@ export async function processAssetIntelligenceJob(
         outcome: 'succeeded',
         derivativeCount: outputDerivativeIds.length,
         outputDerivativeIds,
+        ...(result.usage ? { usage: result.usage } : {}),
       },
     })
     return { skipped: false, status: 'succeeded' }
@@ -149,7 +160,7 @@ export async function processAssetIntelligenceJob(
       status: 'error',
       errorCode: 'asset_intelligence_worker_failed',
       latencyMs: Date.now() - startedAt,
-      metadata: { outcome: 'failed', errorMessage: safeErrorMessage(error) },
+      metadata: { outcome: 'failed', errorMessage: safeErrorMessage(error), ...failureDetail(error) },
     })
     return { skipped: false, status: 'failed' }
   }

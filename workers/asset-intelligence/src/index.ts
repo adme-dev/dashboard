@@ -20,6 +20,8 @@ interface Env {
   HYPERDRIVE?: { connectionString: string }
   AI?: { run(model: string, inputs: Record<string, unknown>, options?: any): Promise<any> }
   MEDIA_BUCKET: R2Bucket
+  ASSET_INTELLIGENCE_MAX_LAYERS?: string
+  ASSET_INTELLIGENCE_MAX_JOB_COST_USD?: string
 }
 
 export default {

@@ -349,27 +349,95 @@ describe('video asset harness API', () => {
     expect(res.job.status).toBe('queued')
   })
 
-  it.each([
-    ['layer-decomposition', 'Separate layers is not available yet.'],
-    ['background-removal', 'Remove background is not available yet.'],
-    ['object-segmentation', 'Segment object is not available yet.'],
-    ['mask-lift', 'Lift highlighted area is not available yet.'],
-  ])('refuses %s outright: no job is created for a tool with no provider behind it', async (action, statusMessage) => {
+  it('refuses a tool with no provider behind it outright: no job is created', async () => {
     mockGetAssetIntelligenceQueue.mockReturnValue({ send: vi.fn() })
 
     await expect(extractHandler({
       params: { id: '22222222-2222-4222-8222-222222222222' },
       body: {
         projectId: '11111111-1111-4111-8111-111111111111',
-        action,
-        prompt: 'separate editable layers',
+        action: 'object-segmentation',
+        prompt: 'mask the car',
       }
-    } as any)).rejects.toMatchObject({ statusCode: 409, statusMessage })
+    } as any)).rejects.toMatchObject({ statusCode: 409, statusMessage: 'Segment object is not available yet.' })
 
     expect(mockCreateBlockedExtractionJob).not.toHaveBeenCalled()
     expect(mockCreateQueuedExtractionJob).not.toHaveBeenCalled()
     expect(mockEnqueueAssetIntelligence).not.toHaveBeenCalled()
     expect(mockRecordAiInvocation).not.toHaveBeenCalled()
+  })
+
+  describe('layer tools billed through AI Gateway', () => {
+    // The deployed environment, as the route sees it on Cloudflare.
+    const confirmed = { cloudflare: { env: { AI_GATEWAY_SPEND_LIMIT_CONFIRMED: 'true', AI_GATEWAY_GENERATION_MONTHLY_LIMIT_USD: '250' } } }
+
+    it.each([
+      ['layer-decomposition', 'Separate layers is switched off until the AI Gateway spend limit is confirmed.'],
+      ['background-removal', 'Remove background is switched off until the AI Gateway spend limit is confirmed.'],
+      ['mask-lift', 'Lift highlighted area is switched off until the AI Gateway spend limit is confirmed.'],
+    ])('refuses %s while the gateway spend limit is unconfirmed, without creating a job', async (action, statusMessage) => {
+      mockGetAssetIntelligenceQueue.mockReturnValue({ send: vi.fn() })
+
+      await expect(extractHandler({
+        params: { id: '22222222-2222-4222-8222-222222222222' },
+        body: { projectId: '11111111-1111-4111-8111-111111111111', action, brushMaskKey: 'mask.png' },
+      } as any)).rejects.toMatchObject({ statusCode: 409, statusMessage })
+
+      expect(mockCreateBlockedExtractionJob).not.toHaveBeenCalled()
+      expect(mockCreateQueuedExtractionJob).not.toHaveBeenCalled()
+      expect(mockEnqueueAssetIntelligence).not.toHaveBeenCalled()
+    })
+
+    it('treats a confirmed flag with no dollar limit as unconfirmed', async () => {
+      mockGetAssetIntelligenceQueue.mockReturnValue({ send: vi.fn() })
+
+      await expect(extractHandler({
+        context: { cloudflare: { env: { AI_GATEWAY_SPEND_LIMIT_CONFIRMED: 'true' } } },
+        params: { id: '22222222-2222-4222-8222-222222222222' },
+        body: { projectId: '11111111-1111-4111-8111-111111111111', action: 'layer-decomposition' },
+      } as any)).rejects.toMatchObject({ statusCode: 409 })
+      expect(mockCreateQueuedExtractionJob).not.toHaveBeenCalled()
+    })
+
+    it.each([
+      ['layer-decomposition', null],
+      ['background-removal', null],
+      // A mask key this app wrote for this project and asset.
+      ['mask-lift', 'video-asset-masks/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/m1.png'],
+    ])('queues %s on Seedream once the spend limit is confirmed', async (action, brushMaskKey) => {
+      mockGetAssetIntelligenceQueue.mockReturnValue({ send: vi.fn() })
+      mockCreateQueuedExtractionJob.mockResolvedValue({ id: 'job-queued', status: 'queued', action })
+
+      const res = await extractHandler({
+        context: confirmed,
+        params: { id: '22222222-2222-4222-8222-222222222222' },
+        body: { projectId: '11111111-1111-4111-8111-111111111111', action, brushMaskKey },
+      } as any)
+
+      expect(mockCreateQueuedExtractionJob).toHaveBeenCalledWith(expect.objectContaining({ action, brushMaskKey }))
+      expect(mockEnqueueAssetIntelligence).toHaveBeenCalled()
+      expect(mockCreateBlockedExtractionJob).not.toHaveBeenCalled()
+      expect(mockRecordAiInvocation).toHaveBeenCalledWith(expect.objectContaining({
+        featureKey: 'video_asset_intelligence_job',
+        provider: 'aigateway',
+        modelId: 'aigateway/seedream-5.5',
+        gatewayUsed: true,
+        status: 'success',
+      }))
+      expect(res.job.status).toBe('queued')
+    })
+
+    it('refuses Lift without a painted area instead of queuing a job that cannot work', async () => {
+      mockGetAssetIntelligenceQueue.mockReturnValue({ send: vi.fn() })
+
+      await expect(extractHandler({
+        context: confirmed,
+        params: { id: '22222222-2222-4222-8222-222222222222' },
+        body: { projectId: '11111111-1111-4111-8111-111111111111', action: 'mask-lift', prompt: 'lift the badge' },
+      } as any)).rejects.toMatchObject({ statusCode: 400, statusMessage: 'Paint over what to lift first.' })
+      expect(mockCreateQueuedExtractionJob).not.toHaveBeenCalled()
+      expect(mockCreateBlockedExtractionJob).not.toHaveBeenCalled()
+    })
   })
 
   it('creates and enqueues executable asset intelligence jobs when queue binding exists', async () => {

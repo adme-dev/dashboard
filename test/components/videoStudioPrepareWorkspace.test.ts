@@ -203,4 +203,29 @@ describe('VideoStudioPrepareWorkspace', () => {
       withStill.app.unmount()
     }
   })
+
+  it('asks for a painted area before Lift can run, and runs the whole-picture layer tools without one', async () => {
+    const tools = [
+      { label: 'Lift highlighted area', value: 'mask-lift', description: 'Paint over a graphic to lift it out.', available: true, unavailableReason: null },
+      { label: 'Separate layers', value: 'layer-decomposition', description: 'Split a flattened picture.', available: true, unavailableReason: null },
+    ]
+    const unpainted = await render({ ...baseProps, toolOptions: tools, selectedAction: 'mask-lift', hasMaskStroke: false })
+    expect(unpainted).toContain('Paint over what to lift first.')
+    expect(unpainted).toMatch(/<button disabled[^>]*>[^<]*(<!--[^>]*-->)*Run lift highlighted area/)
+    const painted = await render({ ...baseProps, toolOptions: tools, selectedAction: 'mask-lift', hasMaskStroke: true })
+    expect(painted).not.toContain('Paint over what to lift first.')
+    expect(painted).not.toMatch(/<button disabled[^>]*>[^<]*(<!--[^>]*-->)*Run lift highlighted area/)
+
+    // Separate layers needs no paint and carries no "Not available yet" badge.
+    const { app, host, events } = await mount({ ...baseProps, toolOptions: tools, selectedAction: 'layer-decomposition', maskToolEnabled: false, hasMaskStroke: false })
+    try {
+      expect(host.textContent).not.toContain('Not available yet')
+      const run = buttonByText(host, 'Run separate layers')
+      expect(run.disabled).toBe(false)
+      run.click()
+      expect(events.map(event => event.name)).toContain('run')
+    } finally {
+      app.unmount()
+    }
+  })
 })

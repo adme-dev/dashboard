@@ -106,6 +106,7 @@ const runBlockedReason = computed(() => {
   if (tool && tool.available === false) return tool.unavailableReason || `${tool.label} is not available yet.`
   if (!props.selectedItemAssetId) return 'Choose an asset first.'
   if (props.selectedAction === 'erase-fill' && !props.hasMaskStroke) return 'Paint over what to erase first.'
+  if (props.selectedAction === 'mask-lift' && !props.hasMaskStroke) return 'Paint over what to lift first.'
   return null
 })
 const hasPreview = computed(() => Boolean(props.previewImageUrl || props.previewVideoUrl))
