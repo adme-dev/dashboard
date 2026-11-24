@@ -143,6 +143,11 @@ export interface Layer {
   videoCrop?: import('../../shared/bannerImageCrop').BannerImageCrop
   /** Marks an image layer as the brand logo so brand kits can swap it */
   isLogo?: boolean
+  /**
+   * Set by "Import image as layers". `logoPlaceholder` marks a logo the model redrew,
+   * which still needs replacing with the real logo file.
+   */
+  importedFrom?: { jobId: string, role: 'base' | 'element' | 'text' | 'text-source', kind?: string, logoPlaceholder?: boolean }
   focalX?: number // 0-100, default 50 (center)
   focalY?: number // 0-100, default 50 (center)
   /** Video media clock (see shared/bannerVideoClock): clip in/out points in seconds and clip looping. */
@@ -679,18 +684,3 @@ export interface GenerateImageResult {
   seed: number | null
 }
 
-// ── Layer Decomposition Types ──
-
-export interface DecomposeResultLayer {
-  name: string
-  url: string
-  r2Key: string
-  width: number
-  height: number
-}
-
-export interface DecomposeResult {
-  layers: DecomposeResultLayer[]
-  pptxUrl: string | null
-  zipUrl: string | null
-}

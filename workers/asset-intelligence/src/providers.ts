@@ -24,6 +24,10 @@ export interface AssetIntelligenceWorkerJob {
   tenantId: string
   projectId: string
   sourceAssetId: string | null
+  /** Set when the picture is a Banner Studio upload rather than a Video Studio asset. */
+  sourceBannerAssetId?: string | null
+  /** Who queued the job. Banner Studio layers are stored in this person's key space. */
+  createdBy?: string | null
   action: string
   modelId: string
   provider: string
@@ -60,6 +64,8 @@ export interface ProviderDeps {
    * at `paintedFrameKey` when there is one, otherwise the asset's preview frame.
    */
   fetchAssetPicture(sourceAssetId: string, paintedFrameKey?: string | null): Promise<{ bytes: Uint8Array; source: 'picture' | 'video-frame' }>
+  /** A Banner Studio upload, for jobs whose source is a banner asset. */
+  fetchBannerPicture?: (bannerAssetId: string) => Promise<{ bytes: Uint8Array; source: 'picture' }>
   /** Raw bytes of a stored object, e.g. the painted mask. */
   fetchObjectBytes(key: string): Promise<Uint8Array>
   copyR2Object(sourceKey: string, destinationKey: string): Promise<{ r2Key: string; contentType: string; size: number }>

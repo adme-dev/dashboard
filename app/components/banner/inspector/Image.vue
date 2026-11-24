@@ -30,9 +30,20 @@ function current() {
 }
 function replace(asset: BannerAsset) {
   if (!current() || !asset.mimeType.startsWith('image/')) return
-  updateLayer(selectedLayer.value!.id, { src: asset.url, imageCrop: undefined, fit: 'contain' })
+  // Replacing a redrawn logo with a real file settles the "replace this logo" prompt.
+  const imported = selectedLayer.value!.importedFrom
+  updateLayer(selectedLayer.value!.id, { src: asset.url, imageCrop: undefined, fit: 'contain', ...(imported?.logoPlaceholder ? { importedFrom: { ...imported, logoPlaceholder: false } } : {}) })
   replaceOpen.value = false
   toast.add({ title: 'Image replaced', description: asset.name, color: 'success' })
+}
+const { kit: brandKit } = useBannerProjectBrand()
+const logoPlaceholder = computed(() => !!selectedLayer.value?.importedFrom?.logoPlaceholder)
+const brandLogos = computed(() => (brandKit.value?.logos ?? []).slice(0, 4))
+function useBrandLogo(url: string, name: string) {
+  const layer = selectedLayer.value
+  if (disabled.value || !layer?.importedFrom) return
+  updateLayer(layer.id, { src: url, imageCrop: undefined, fit: 'contain', isLogo: true, importedFrom: { ...layer.importedFrom, logoPlaceholder: false } })
+  toast.add({ title: 'Logo replaced', description: name, color: 'success' })
 }
 function applyCrop(crop: BannerImageCrop) {
   if (current() && bannerImageCropCss(crop)) updateLayer(selectedLayer.value!.id, { imageCrop: crop })
@@ -58,6 +69,27 @@ function fillCanvas() {
         :alt="selectedLayer.name"
         class="size-full object-contain"
       >
+    </div>
+    <UAlert
+      v-if="logoPlaceholder"
+      color="warning"
+      variant="subtle"
+      icon="i-lucide-triangle-alert"
+      title="Replace with the real logo file"
+      :description="brandLogos.length ? `This logo was redrawn by AI when the picture was imported. Use a logo from ${brandKit?.name}, or replace the image.` : 'This logo was redrawn by AI when the picture was imported. Replace the image with the real logo file, or add it to the client\'s brand kit in Brand.'"
+    />
+    <div v-if="logoPlaceholder && brandLogos.length" class="flex flex-wrap gap-1.5">
+      <UButton
+        v-for="logo in brandLogos"
+        :key="logo.url"
+        :label="`Use ${logo.name}`"
+        icon="i-lucide-replace"
+        size="xs"
+        color="primary"
+        variant="soft"
+        :disabled="disabled"
+        @click="useBrandLogo(logo.url, logo.name)"
+      />
     </div>
     <UButton
       label="Replace image"

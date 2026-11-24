@@ -118,7 +118,7 @@ it('keeps the waveform visible beneath transparent audio controls in the actual 
   vi.stubGlobal('useBannerRealtime', () => ({ remoteLocks: new Map(), isLayerLockedByOther: () => false }))
   vi.stubGlobal('useBannerInspector', () => ({ inspectorTab: Vue.ref('properties') }))
   vi.stubGlobal('useBannerTimeline', () => ({ animationPreview: Vue.ref(null) }))
-  vi.stubGlobal('useDecompose', () => ({ decomposingLayerId: Vue.ref(null) }))
+  vi.stubGlobal('useBannerLayerImport', () => ({ openFor: vi.fn() }))
   vi.stubGlobal('useAiLayerEdit', () => ({ isEditing: Vue.ref(false) }))
   vi.stubGlobal('useMergeLayers', () => ({ isMerging: Vue.ref(false) }))
   vi.stubGlobal('useAiImageGenerate', () => ({}))

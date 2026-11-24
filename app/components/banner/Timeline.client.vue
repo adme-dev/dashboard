@@ -14,7 +14,7 @@ const { state, activeLayers, activeFormat, selectLayer, updateLayer, duplicateLa
 const { remoteLocks, isLayerLockedByOther } = useBannerRealtime()
 const { inspectorTab } = useBannerInspector()
 const { togglePlay, seekTo, restartTimeline, buildTimeline, pauseTimeline, currentLayerValue, animationPreview } = useBannerTimeline()
-const { decomposingLayerId, decomposeFromUrl } = useDecompose()
+const layerImport = useBannerLayerImport()
 const { isEditing: isAiEditing, openEdit: openAiEdit } = useAiLayerEdit()
 const { isMerging, mergeLayers } = useMergeLayers()
 const { openGenerate: openAiGenerate } = useAiImageGenerate()
@@ -30,9 +30,7 @@ function onLayerContextMenu(e: MouseEvent, layer: Layer) {
 }
 
 function handleContextDecompose(layer: Layer) {
-  if (layer.src) {
-    decomposeFromUrl(layer.src, layer.name, layer.id, 'layer')
-  }
+  if (layer.src) layerImport.openFor({ src: layer.src, name: layer.name, url: layer.src })
   contextMenuLayer.value = null
 }
 
@@ -1083,7 +1081,6 @@ onUnmounted(() => {
                   <UIcon name="i-lucide-chevron-right" class="w-3 h-3" />
                 </UButton>
                 <UIcon :name="LAYER_ICONS[layer.type]" class="w-3 h-3 shrink-0" :style="{ color: getLayerColor(layer) }" />
-                <UIcon v-if="decomposingLayerId === layer.id" name="i-lucide-loader-2" class="w-3 h-3 animate-spin text-(--ui-primary) shrink-0" />
                 <span class="min-w-0 flex-1 text-xs truncate text-default" :class="state.selectedLayerId === layer.id ? 'font-semibold' : ''">{{ layer.name }}</span>
                 <UButton
                   color="neutral"
@@ -1532,7 +1529,6 @@ onUnmounted(() => {
       :layer="contextMenuLayer"
       :x="contextMenuPos.x"
       :y="contextMenuPos.y"
-      :is-decomposing="decomposingLayerId === contextMenuLayer?.id"
       :is-ai-editing="isAiEditing"
       :multi-select-count="multiSelectedLayers.length"
       @close="contextMenuLayer = null"

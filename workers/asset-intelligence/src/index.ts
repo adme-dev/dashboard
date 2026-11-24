@@ -2,6 +2,7 @@ import {
   createDerivative,
   failStaleAssetIntelligenceJobs,
   getAssetIntelligenceJob,
+  getBannerAssetR2Key,
   getVideoAssetPictureKeys,
   getVideoAssetR2Key,
   markAssetIntelligenceJobFailed,
@@ -53,6 +54,10 @@ export default {
             env,
             fetchAssetBytes: sourceAssetId => fetchAssetBytes(env.MEDIA_BUCKET, sourceAssetId, getVideoAssetR2Key),
             fetchAssetPicture: (sourceAssetId, paintedFrameKey) => fetchAssetPicture(env.MEDIA_BUCKET, sourceAssetId, getVideoAssetPictureKeys, paintedFrameKey),
+            fetchBannerPicture: async bannerAssetId => ({
+              bytes: await fetchObjectBytes(env.MEDIA_BUCKET, await getBannerAssetR2Key(bannerAssetId)),
+              source: 'picture' as const,
+            }),
             fetchObjectBytes: key => fetchObjectBytes(env.MEDIA_BUCKET, key),
             copyR2Object: (sourceKey, destinationKey) => copyR2Object(env.MEDIA_BUCKET, sourceKey, destinationKey),
             uploadJson: (key, value) => uploadJson(env.MEDIA_BUCKET, key, value),

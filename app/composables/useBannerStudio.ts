@@ -261,6 +261,47 @@ export function useBannerStudio() {
     return added.length
   }
 
+  /**
+   * Add related layers to one canvas as a single undo step, stacked above what is
+   * there in the order given (back to front). Used by "Import image as layers".
+   */
+  function addLayerSet(partials: Partial<Layer>[], targetKey = state.activeKey): Layer[] {
+    const board = state.sets[targetKey]
+    if (!board || !resolveBannerFormat(targetKey)) throw new Error('Choose an available canvas.')
+    if (!partials.length) return []
+    const ranges = slideRanges(resolveSlides(board))
+    const slide = (targetKey === state.activeKey && ranges.find(range => range.id === currentSlide.value?.id)) || ranges[0]
+    const hasMultipleSlides = ranges.length > 1 || !!board.slides?.length
+    const added: Layer[] = []
+    withCanvasUndo(() => {
+      if (hasMultipleSlides && !board.slides?.length) board.slides = JSON.parse(JSON.stringify(resolveSlides(board)))
+      let zIndex = Math.max(0, ...board.layers.filter(item => !item.slideTransitionFor).map(item => item.zIndex))
+      for (const partial of partials) {
+        const layer = migrateLayer({
+          opacity: 1, x: 0, y: 0, w: 100, h: 40,
+          ...partial,
+          id: nextId(), zIndex: ++zIndex,
+          startTime: hasMultipleSlides ? slide.start : 0,
+          endTime: hasMultipleSlides ? slide.end : Math.max(state.duration, slide.end),
+          ...(hasMultipleSlides ? { slideId: slide.id, clipToPresence: true } : {})
+        })
+        board.layers.push(layer)
+        added.push(layer)
+      }
+      state.activeKey = targetKey
+      state.selectedLayerId = [...added].reverse().find(layer => !layer.hidden)?.id ?? null
+    })
+    state.activeTool = 'select'
+    for (const layer of added) {
+      try {
+        useBannerRealtime().sendLayerAdd(layer, targetKey)
+      } catch {
+        // An offline collaborator receives the saved project on reconnect.
+      }
+    }
+    return added
+  }
+
   /** Add an offer's editable image, copy and supplied terms as one undoable design-set edit. */
   function addMotorStackOfferToAllLayouts(offer: BannerMotorStackOffer, kit: BannerBrandKit, image?: BannerAsset): number {
     if (image && (!image.url || !image.mimeType.startsWith('image/'))) throw new Error('The offer artwork is not an available image.')
@@ -1303,6 +1344,7 @@ export function useBannerStudio() {
     addMotorStackImageToAllLayouts,
     addMediaToLayouts,
     addMotorStackOfferToAllLayouts,
+    addLayerSet,
     addBrandGuideButton,
     removeLayer,
     duplicateLayer,

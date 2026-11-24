@@ -87,6 +87,8 @@ function mapJob(row: any): AssetIntelligenceWorkerJob & AssetIntelligenceClaim {
     tenantId: String(row.tenant_id ?? 'agency'),
     projectId: row.project_id,
     sourceAssetId: row.source_asset_id ?? null,
+    sourceBannerAssetId: row.source_banner_asset_id ?? null,
+    createdBy: row.created_by ?? null,
     action: row.action,
     modelId: row.model_id,
     provider: row.provider,
@@ -99,10 +101,11 @@ function mapJob(row: any): AssetIntelligenceWorkerJob & AssetIntelligenceClaim {
 export async function getAssetIntelligenceJob(id: string): Promise<AssetIntelligenceWorkerJob | null> {
   const row = await queryOne(
     `SELECT j.*,
-            COALESCE(mp.client_id::text, va.client_id::text, 'agency') AS tenant_id
+            COALESCE(mp.client_id::text, va.client_id::text, ba.client_id::text, 'agency') AS tenant_id
        FROM video_asset_intelligence_jobs j
        LEFT JOIN media_projects mp ON mp.id = j.project_id
        LEFT JOIN video_assets va ON va.id = j.source_asset_id
+       LEFT JOIN banner_assets ba ON ba.id = j.source_banner_asset_id
       WHERE j.id = $1`,
     [id]
   )
@@ -214,4 +217,13 @@ export async function getVideoAssetPictureKeys(sourceAssetId: string): Promise<{
 export async function failStaleAssetIntelligenceJobs(): Promise<number> {
   const rows = await queryRows(FAIL_STALE_ASSET_INTELLIGENCE_JOBS_SQL, staleAssetIntelligenceJobParams(null))
   return rows.length
+}
+
+export async function getBannerAssetR2Key(bannerAssetId: string): Promise<string> {
+  const row = await queryOne<{ r2_key: string | null }>(
+    `SELECT r2_key FROM banner_assets WHERE id = $1`,
+    [bannerAssetId]
+  )
+  if (!row?.r2_key) throw new Error('The Banner Studio picture for this job no longer exists.')
+  return row.r2_key
 }

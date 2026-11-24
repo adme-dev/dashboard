@@ -185,7 +185,7 @@ describe('MotorStack media picker', () => {
       return { data, error: Vue.ref(null), status: Vue.ref('success'), refresh }
     })
     vi.stubGlobal('useBannerStudio', () => ({ addLayer, nextId: () => 1, activeLayers: Vue.ref([]) }))
-    vi.stubGlobal('useDecompose', () => ({ decomposingAssetId: Vue.ref(null), decomposeFromUrl: vi.fn() }))
+    vi.stubGlobal('useBannerLayerImport', () => ({ openFor: vi.fn() }))
     vi.stubGlobal('useAiImageGenerate', () => ({ openGenerate: vi.fn() }))
     vi.stubGlobal('useToast', () => ({ add: vi.fn() }))
     app = Vue.createApp(AssetsPanel)
