@@ -896,6 +896,31 @@ describe('video asset harness API', () => {
     expect(res).toEqual({ location: 'https://signed.example.com/derivative.png', statusCode: 302 })
   })
 
+  it('serves a derivative from our own origin when asked inline, so the editor can read it', async () => {
+    mockIsStorageConfigured.mockReturnValue(true)
+    mockReadStoredObject.mockResolvedValue({ body: 'png-bytes', contentType: 'application/octet-stream', size: 1234, range: null, etag: null })
+    mockGetPresignedDownloadUrl.mockClear()
+
+    const res = await derivativeStreamHandler({ params: { id: 'd1' }, query: { inline: '1' } } as any)
+
+    expect(mockReadStoredObject).toHaveBeenCalledWith('video-asset-derivatives/p1/a1/foreground.png', { requestBucket: undefined })
+    expect(res).toBe('png-bytes')
+    expect(g.setHeader).toHaveBeenCalledWith(expect.anything(), 'Content-Type', 'image/png')
+    expect(g.setHeader).toHaveBeenCalledWith(expect.anything(), 'Content-Length', 1234)
+    // No redirect: a presigned URL would be unreadable from the page.
+    expect(mockGetPresignedDownloadUrl).not.toHaveBeenCalled()
+  })
+
+  it('checks project access before serving a derivative inline, and 404s a missing file', async () => {
+    mockRequireWriteAccess.mockResolvedValue({ id: 'user-2', role: 'editor' })
+    await expect(derivativeStreamHandler({ params: { id: 'd1' }, query: { inline: '1' } } as any)).rejects.toMatchObject({ statusCode: 403 })
+    expect(mockReadStoredObject).not.toHaveBeenCalled()
+
+    mockRequireWriteAccess.mockResolvedValue({ id: 'user-1', role: 'owner' })
+    mockReadStoredObject.mockResolvedValue(null)
+    await expect(derivativeStreamHandler({ params: { id: 'd1' }, query: { inline: '1' } } as any)).rejects.toMatchObject({ statusCode: 404 })
+  })
+
   it('rejects derivative stream requests when the derivative is not attached to a project', async () => {
     mockGetDerivative.mockResolvedValue({ id: 'd-projectless', projectId: null })
 
