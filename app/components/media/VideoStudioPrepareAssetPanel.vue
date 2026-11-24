@@ -86,7 +86,7 @@ onBeforeUnmount(() => emit('mask-canvas-ready', null))
 </script>
 
 <template>
-  <section>
+  <section class="@container">
     <div class="mb-3 flex flex-wrap items-start justify-between gap-2">
       <div class="min-w-0">
         <p class="text-xs font-medium uppercase text-muted">Prepare asset</p>
@@ -105,7 +105,7 @@ onBeforeUnmount(() => emit('mask-canvas-ready', null))
     </div>
 
     <div class="space-y-3">
-      <div class="grid gap-2 xl:grid-cols-[220px_minmax(0,1fr)]">
+      <div class="grid gap-2 @lg:grid-cols-[220px_minmax(0,1fr)]">
         <UFormField label="Tool">
           <USelect
             :model-value="props.selectedAction"
@@ -153,7 +153,7 @@ onBeforeUnmount(() => emit('mask-canvas-ready', null))
             />
           </div>
         </div>
-        <div class="relative mx-auto aspect-[9/16] h-[min(64vh,620px)] min-h-[360px] overflow-hidden rounded-md border border-default bg-black">
+        <div class="relative mx-auto aspect-[9/16] w-[min(100%,calc(min(64vh,620px)*0.5625))] overflow-hidden rounded-md border border-default bg-black">
           <img
             v-if="props.selectedAssetThumbnailUrl"
             :src="props.selectedAssetThumbnailUrl"
