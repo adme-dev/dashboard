@@ -89,7 +89,7 @@ const KF_PROP_LABELS: Record<KeyframeProperty, string> = {
   scaleX: 'Scale X',
   scaleY: 'Scale Y',
   rotation: 'Rotation',
-  rotationX: 'X-axis rotation',
+  rotationX: 'X-axis rotation', rotationY: 'Y-axis rotation', blur: 'Blur radius',
   originY: 'Pivot Y',
 }
 

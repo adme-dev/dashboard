@@ -106,6 +106,8 @@ function onKeydown(e: KeyboardEvent) {
       </div>
       <div
         ref="textEl"
+        data-banner-text-body
+        :data-banner-sweep="layer.textSweep?.wholeRow ? true : undefined"
         :contenteditable="isEditing"
         :class="{ 'pointer-events-none': !isEditing }"
         :style="{
@@ -143,7 +145,16 @@ function onKeydown(e: KeyboardEvent) {
         @blur="onBlur"
         @keydown="onKeydown"
       >
+        <span v-if="layer.textSweep && !layer.textSweep.wholeRow" data-banner-sweep>
         <TextGlyphs
+          :text="isEditing ? (layer.text || '') : displayText"
+          :runs="displayRuns"
+          :word-pop="!isEditing && layer.wordPop"
+          :line-box-font-size="!isEditing ? layer.lineBoxFontSize : undefined"
+          :font-size="layer.fontSize"
+        />
+        </span>
+        <TextGlyphs v-else
           :text="isEditing ? (layer.text || '') : displayText"
           :runs="displayRuns"
           :word-pop="!isEditing && layer.wordPop"

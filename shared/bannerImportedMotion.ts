@@ -1,6 +1,6 @@
 /** Reviewed native entrances. Imported HTML/CSS is never executed or retained. */
 export interface BannerReveal { type: 'softWipe' | 'tvExpand', duration: number, ease: string }
-export interface BannerWordEntrance { duration: number, stagger: number, ease: string, variant?: 'pop' | 'blurLeft' | 'blurUp' | 'zoomOut' | 'typewriter' | 'fade', unit?: 'word' | 'character', delays?: number[], offset?: number }
+export interface BannerWordEntrance { duration: number, stagger: number, ease: string, variant?: 'pop' | 'blur' | 'blurLeft' | 'blurUp' | 'zoomOut' | 'typewriter' | 'fade', unit?: 'word' | 'character', delays?: number[], offset?: number }
 export type MotionCommand = { target: 'effect' | 'content' | 'glow', property: string, from: string | number, to: string | number, start: number, duration: number, ease: string }
 const safeEase = (ease: string) => typeof ease === 'string' && /^[a-z][a-z0-9.,() -]{0,100}$/i.test(ease) ? ease : 'linear'
 export function safeWordEntrance(effect?: BannerWordEntrance): BannerWordEntrance | undefined {
@@ -17,7 +17,7 @@ export function wordEntranceDelay(effect: BannerWordEntrance, index: number) {
   return delays.at(-1)! + (index - delays.length + 1) * Math.max(0, step)
 }
 export const revealLabel = (type?: string) => type === 'tvExpand' ? 'TV reveal' : 'Soft wipe'
-export const wordEntranceLabel = (variant?: string) => ({ fade: 'Words fade', blurLeft: 'Words blur from left', blurUp: 'Words blur from below', zoomOut: 'Words zoom out', typewriter: 'Typewriter' }[variant || ''] || 'Words Pop')
+export const wordEntranceLabel = (variant?: string) => ({ blur: 'Words blur in', fade: 'Words fade', blurLeft: 'Words blur from left', blurUp: 'Words blur from below', zoomOut: 'Words zoom out', typewriter: 'Typewriter' }[variant || ''] || 'Words Pop')
 export const REVEAL_WRAPPER_STYLE = 'position:relative;width:100%;height:100%;'
 export const REVEAL_GLOW_STYLE = 'position:absolute;pointer-events:none;left:0;right:0;top:50%;height:2px;margin-top:-1px;opacity:0;background:linear-gradient(90deg,transparent,#fff 12%,#fff 88%,transparent);box-shadow:0 0 13.6px 1.2px rgba(255,255,255,.77);'
 export function revealContentStyle(type: string) {
@@ -36,6 +36,7 @@ export function revealCommands(reveal: BannerReveal | undefined, height: number)
 }
 export function wordEntranceSteps(effect: BannerWordEntrance): Array<{ property: string, from: number | string, to: number | string, start: number, duration: number, ease?: string }> {
   const d = effect.duration
+  if (effect.variant === 'blur') return [{ property: 'opacity', from: 0, to: 1, start: 0, duration: d * 0.3 }, { property: 'filter', from: 'blur(5px)', to: 'blur(0px)', start: 0, duration: d }]
   if (effect.variant === 'fade') return [{ property: 'opacity', from: 0, to: 1, start: 0, duration: d }]
   if (effect.variant === 'typewriter') return [{ property: 'opacity', from: 0, to: 1, start: 0, duration: d, ease: 'step-end' }]
   const result = [{ property: 'opacity', from: 0, to: 1, start: 0, duration: d * 0.4 }, { property: 'filter', from: 'blur(10px)', to: 'blur(0px)', start: 0, duration: d }]

@@ -26,7 +26,7 @@ const effects = computed(() => effectStyleFromLayer(props.layer as unknown as Re
     :style="{
       backgroundColor: displayBgColor,
       filter: effects.visualFilter,
-      borderRadius: `${layer.borderRadius ?? 2}px`,
+      borderRadius: layer.rectShape === 'ellipse' ? '50%' : `${layer.borderRadius ?? 2}px`,
       opacity: layer.opacity,
       boxSizing: 'border-box',
       border: layer.borderWidth !== undefined ? `${layer.borderWidth}px solid ${layer.borderColor || 'transparent'}` : layer.bgColor === 'transparent' ? '1px solid rgba(255,255,255,0.3)' : 'none'

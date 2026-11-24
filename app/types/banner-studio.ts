@@ -23,7 +23,7 @@ export type AnimOutType =
   | 'zoomIn' | 'zoomOut' | 'spinOut'
 
 // Keyframe animation types (Phase 4b)
-export type KeyframeProperty = 'opacity' | 'x' | 'y' | 'z' | 'scaleX' | 'scaleY' | 'rotation' | 'rotationX' | 'originY'
+export type KeyframeProperty = 'opacity' | 'x' | 'y' | 'z' | 'scaleX' | 'scaleY' | 'rotation' | 'rotationX' | 'rotationY' | 'blur' | 'originY'
 
 export interface Keyframe {
   time: number    // seconds on timeline
@@ -71,7 +71,7 @@ export interface Layer {
   /** Scene ownership; absent layers can span the whole sequence. */
   slideId?: string
   /** A source scene fades as one composited group while its layers remain editable. */
-  slideFade?: { id: string, start: number, end: number, duration: number, ease: string }
+  slideFade?: { exit?: { at: number, duration: number, ease: string }, id: string, start: number, end: number, duration: number, ease: string }
   /** Generated, locked fade-through-background overlay. */
   slideTransitionFor?: string
   // Position & size
@@ -86,6 +86,8 @@ export interface Layer {
   rotation?: number
   /** A centered perspective on an image's editable X-axis flip. */
   textTilt?: { perspective: number, width: number, height: number }
+  textSweep?: { wholeRow?: boolean, gradient: string, at: number, duration: number, iterations: number }
+  textTracking?: { from: number, to: number, width: number, glyphScale: number, at: number, duration: number, ease: string }
   imageFlipPerspective?: number
   /** Source content scheduled after the authored loop, retained hidden for editing. */
   sourceInactiveTiming?: { start: number, loopEnd: number }

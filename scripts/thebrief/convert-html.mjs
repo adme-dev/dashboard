@@ -135,6 +135,8 @@ function fontManifest(document, warnings) {
 function transformValues(text) {
   // TheBrief pads its X-axis flip with two identity rotations.
   const flip = /^rotateX\((0|-?(?:\d*\.)?\d+deg)\)(?:\s+rotateY\(0(?:deg)?\)\s+rotate3d\(1,\s*1,\s*0,\s*0deg\))?$/.exec(text)
+  const flipY = /^rotateX\(0(?:deg)?\)\s+rotateY\((-?(?:\d*\.)?\d+deg)\)\s+rotate3d\(1,\s*1,\s*0,\s*0deg\)$/.exec(text)
+  if (flipY && Number.parseFloat(flipY[1]) !== 0) return { rotationY: Number.parseFloat(flipY[1]) }
   if (flip) return { rotationX: Number.parseFloat(flip[1]) }
   // A planar scale3d with a unit depth is exactly the two planar scale axes.
   const planarScale = /^scale3d\((-?(?:\d*\.)?\d+),\s*(-?(?:\d*\.)?\d+),\s*1\)$/.exec(text)
@@ -275,6 +277,7 @@ function sourceWordPop(element, sourceId, style, rules) {
   const signature = JSON.stringify(frames)
   const variants = [
     ['pop', [['0%', 'translateY(0) scale(.6)', 'blur(10px)', '0'], ['40%', '', '', '1'], ['70%', 'translateY(0) scale(1.05)', '', ''], ['100%', 'translateY(0) scale(1)', 'blur(0px)', '']]],
+    ['blur', [['0%', '', 'blur(5px)', '0'], ['30%', '', '', '1'], ['100%', '', 'blur(0px)', '']]],
     ['blurLeft', [['0%', 'translateX(-20px) scale(1)', 'blur(10px)', '0'], ['40%', '', '', '1'], ['100%', 'translateX(0) scale(1)', 'blur(0px)', '']]],
     ['blurUp', [['0%', 'translateY(20px) scale(1)', 'blur(10px)', '0'], ['40%', '', '', '1'], ['100%', 'translateY(0) scale(1)', 'blur(0px)', '']]],
     ['zoomOut', [['0%', 'translateY(0) scale(1.3)', 'blur(10px)', '0'], ['40%', '', '', '1'], ['100%', 'translateY(0) scale(1)', 'blur(0px)', '']]],
@@ -406,10 +409,12 @@ function effectTracks(effect, style, rules, start, end, warnings, geometry, inte
     const fractions = selectors.map(selector => selector === 'from' ? 0 : selector === 'to' ? 1 : Number.parseFloat(selector) / 100)
     if (fractions.some(fraction => !Number.isFinite(fraction) || fraction < 0 || fraction > 1)) throw new Error('Unsupported keyframe selector')
     const properties = Array.from({ length: frame.style.length }, (_, index) => frame.style.item(index))
+    const blur = /^blur\((\d+(?:\.\d+)?)px\)$/.exec(frame.style.filter)
     const noOpBlur = /^blur\(0(?:\.0+)?(?:px)?\)$/.test(frame.style.filter)
     if (noOpBlur && css.filter && css.filter !== 'none' && !/^blur\(0(?:\.0+)?(?:px)?\)$/.test(css.filter)) throw new Error('Unsupported underlying filter')
-    if (properties.some(p => !['transform', 'transform-origin', 'opacity', 'animation-timing-function'].includes(p) && !(p === 'filter' && noOpBlur))) throw new Error(`Unsupported animated properties: ${properties.join(', ')}`)
+    if (properties.some(p => !['transform', 'transform-origin', 'opacity', 'animation-timing-function'].includes(p) && !(p === 'filter' && (noOpBlur || blur && Number(blur[1]) <= 100 && recipeFrames.every(f => !f.style.filter || /^blur\(\d+(?:\.\d+)?px\)$/.test(f.style.filter)) && recipeFrames.filter(f => f.style.filter).length >= 2)))) throw new Error(`Unsupported animated properties: ${properties.join(', ')}`)
     const values = transformValues(frame.style.transform || '')
+    if (blur && recipeFrames.some(f => /^blur\((?!0(?:px)?\))/.test(f.style.filter))) values.blur = Number(blur[1])
     if (frame.style.opacity !== '') values.opacity = Number(frame.style.opacity)
     if (fractions.includes(0) || fractions.includes(1) || frame.style.transformOrigin) {
       const origin = originPixels(frame.style.transformOrigin || css.transformOrigin, geometry.w, geometry.h)
@@ -419,15 +424,18 @@ function effectTracks(effect, style, rules, start, end, warnings, geometry, inte
     }
     for (const fraction of fractions) parsedFrames.push({ fraction, values: { ...values }, hasTransform: Boolean(frame.style.transform), easing: cssEase(frame.style.animationTimingFunction || css.animationTimingFunction) })
   }
-  const transformProperties = new Set(parsedFrames.flatMap(frame => Object.keys(frame.values).filter(key => key !== 'opacity')))
+  if (parsedFrames.some(frame => frame.values.rotationY) && !parsedFrames.some(frame => frame.values.rotationX)) {
+    for (const frame of parsedFrames) if (frame.values.rotationX === 0) { delete frame.values.rotationX; frame.values.rotationY = 0 }
+  }
+  const transformProperties = new Set(parsedFrames.flatMap(frame => Object.keys(frame.values).filter(key => key !== 'opacity' && key !== 'blur')))
   let perspective
   if (transformProperties.has('z')) {
-    const owner = effect.parentElement
+    const owner = effect.closest('[data-eltype]') || effect.parentElement
     const ownerCss = style(owner)
     perspective = px(ownerCss.getPropertyValue('perspective'))
     const centre = transformOrigin && sameTime(transformOrigin.x, geometry.w / 2) && sameTime(transformOrigin.y, geometry.h / 2)
-    if (!['image', 'svg'].includes(owner.getAttribute('data-eltype')) || effect.id !== owner.id.replace('element-', 'effIn')
-      || [...transformProperties].some(property => !['z', 'rotation'].includes(property)) || !centre
+    if (!['image', 'svg', 'text'].includes(owner.getAttribute('data-eltype')) || !['effIn', 'effOut'].some(prefix => effect.id === owner.id.replace('element-', prefix))
+      || [...transformProperties].some(property => !['z', 'rotation', 'rotationX'].includes(property)) || !centre
       || !['center', 'center center', '50% 50%'].includes(ownerCss.getPropertyValue('perspective-origin'))
       || !['', 'none'].includes(css.transform) || !['', 'none'].includes(ownerCss.transform)
       || !Number.isFinite(perspective) || perspective < 1 || perspective > 100000
@@ -435,21 +443,21 @@ function effectTracks(effect, style, rules, start, end, warnings, geometry, inte
       throw new Error('Unsupported depth entrance composition')
     }
   }
-  if (transformProperties.has('rotationX') && !textTilt) {
-    const owner = effect.parentElement
+  if ((transformProperties.has('rotationX') || transformProperties.has('rotationY')) && !transformProperties.has('z') && !textTilt) {
+    const owner = effect.closest('[data-eltype]') || effect.parentElement
     const ownerCss = style(owner)
     perspective = px(ownerCss.getPropertyValue('perspective'))
     const centre = transformOrigin && sameTime(transformOrigin.x, geometry.w / 2) && sameTime(transformOrigin.y, geometry.h / 2)
-    if (owner.getAttribute('data-eltype') !== 'image' || effect.id !== owner.id.replace('element-', 'effIn')
+    if (!['image', 'text'].includes(owner.getAttribute('data-eltype')) || !['effIn', 'effOut'].some(prefix => effect.id === owner.id.replace('element-', prefix))
       || transformProperties.size !== 1 || !centre || css.getPropertyValue('backface-visibility') !== 'hidden'
       || !['center', 'center center', '50% 50%'].includes(ownerCss.getPropertyValue('perspective-origin'))
       || !['', 'none'].includes(css.transform) || !['', 'none'].includes(ownerCss.transform)
       || !Number.isFinite(perspective) || perspective < 1 || perspective > 100000
-      || parsedFrames.some(frame => Math.abs(frame.values.rotationX ?? 0) > 90)) {
+      || parsedFrames.some(frame => Math.abs(frame.values.rotationX ?? frame.values.rotationY ?? 0) > 90)) {
       throw new Error('Unsupported 3D image flip composition')
     }
   }
-  if (['scaleX', 'scaleY', 'rotation', 'rotationX'].some(property => transformProperties.has(property))) {
+  if (['scaleX', 'scaleY', 'rotation', 'rotationX', 'rotationY'].some(property => transformProperties.has(property))) {
     if ((css.width !== '100%' && px(css.width) !== geometry.w) || (css.height !== '100%' && px(css.height) !== geometry.h)) throw new Error('Unsupported effect geometry for transform origin')
   }
   for (const { fraction, values, hasTransform, easing } of parsedFrames) {
@@ -543,7 +551,7 @@ function reconcileLegacyIds(document, source) {
   if (!root || !Array.isArray(source.animations)) return false
   const containers = [...root.querySelectorAll('[id^="slide-"]')]
   const elements = [...root.querySelectorAll('[data-eltype][id^="element-"]')]
-  if (elements.length > 150 || containers.length > 50) throw new Error('Too many elements or slides')
+  if (elements.length > 199 || containers.length > 50) throw new Error('Too many elements or slides')
   const duplicated = nodes => new Set(nodes.filter((node, i) => nodes.findIndex(other => other.id === node.id) < i).map(node => node.id))
   const repeatedSlides = duplicated(containers), repeatedElements = duplicated(elements)
   if (!repeatedSlides.size && !repeatedElements.size) return false
@@ -598,7 +606,14 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {}, reviewe
     const document = window.document
     const source = sourceData(document)
     const reconciledIds = reconcileLegacyIds(document, source)
-    if (!source.animations?.length || source.animations.length > 50 || source.customAnimations?.length) throw new Error('Unsupported slide sequence or custom animations')
+    if (!source.animations?.length || source.animations.length > 50) throw new Error('Unsupported slide sequence or custom animations')
+    const trackingIds = new Set()
+    for (const animation of source.customAnimations || []) {
+      const id = animation.elementId
+      if (animation.type !== 'tracking' || animation.buildType !== 'buildIn' || animation.props?.letterSpacing !== 5 || trackingIds.has(id)
+        || document.getElementById('element-' + id)?.getAttribute('data-eltype') !== 'text') throw new Error('Unsupported custom animations')
+      trackingIds.add(id)
+    }
     let duration = 0
     const hasSlideFades = source.animations.some(slide => slide.effInDuration > 0 || slide.effOutDuration > 0)
     const slides = source.animations.map((slide, index, all) => {
@@ -607,14 +622,19 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {}, reviewe
       // Some exports retain a "cross" label after both durations become zero.
       const zeroDurationCross = slide.crossTypeOut === 'cross' && slide.effInDuration === 0 && slide.effOutDuration === 0
       const fadeSequence = hasSlideFades && [slide.effInDuration, slide.effOutDuration].every(value => typeof value === 'number' && value >= 0 && value <= 5000)
-        && (index === 0 ? slide.effInDuration === 0 : slide.effInDuration === all[index - 1].effOutDuration)
-        && (index === all.length - 1 ? slide.effOutDuration === 0 && (!slide.crossTypeOut || ['show', 'cross'].includes(slide.crossTypeOut)) : !slide.crossTypeOut || slide.crossTypeOut === 'show')
+        && (slide.effInDuration === (all[index - 1]?.effOutDuration ?? (slide.crossTypeOut === 'hide' ? all.at(-1).effOutDuration : 0)))
+        && (slide.crossTypeOut === 'hide' || (index === all.length - 1 ? slide.effOutDuration === 0 && (!slide.crossTypeOut || ['show', 'cross'].includes(slide.crossTypeOut)) : !slide.crossTypeOut || slide.crossTypeOut === 'show'))
       if (slide.stop || (hasSlideFades ? !fadeSequence : slide.effInDuration || slide.effOutDuration || (slide.crossTypeOut && slide.crossTypeOut !== 'hide' && !zeroDurationCross))) throw new Error('Slide transitions/stop are not supported')
       if (!Number.isFinite(slide.duration) || slide.duration <= 0) throw new Error('Invalid slide duration')
       const start = duration
-      duration += (slide.duration + (hasSlideFades ? slide.effInDuration : 0)) / 1000
-      return { ...slide, start, end: duration, visibleEnd: duration + (hasSlideFades ? slide.effOutDuration / 1000 : 0), entranceDuration: hasSlideFades ? slide.effInDuration / 1000 : 0 }
+      // The source skips the cyclic entrance on first play. The final outgoing
+      // overlap runs against the initial composition at the end of the cycle.
+      const entranceMs = index === 0 ? 0 : slide.effInDuration
+      duration += (slide.duration + (hasSlideFades ? entranceMs : 0)) / 1000
+      return { ...slide, start, end: duration, visibleEnd: duration + (hasSlideFades ? slide.effOutDuration / 1000 : 0), entranceDuration: hasSlideFades ? entranceMs / 1000 : 0 }
     })
+    const wrap = slides.at(-1).visibleEnd - duration
+    duration += wrap
     if (new Set(slides.map(slide => slide.id)).size !== slides.length) throw new Error('Duplicate slide identity')
     if (!(duration > 0 && duration <= 300) || !Number.isInteger(source.width) || !Number.isInteger(source.height) || source.width <= 0 || source.height <= 0 || source.width > 4096 || source.height > 4096) throw new Error('Invalid dimensions or duration')
     const style = element => window.getComputedStyle(element)
@@ -631,7 +651,7 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {}, reviewe
       }
     }
     if (elements.some(element => !slideByElement.has(element)) || new Set(elements.map(element => element.id)).size !== elements.length) throw new Error('Ambiguous element ownership')
-    if (elements.length > 150) throw new Error('Too many elements')
+    if (elements.length > 199) throw new Error('Too many elements')
     const rules = [...document.styleSheets].flatMap(sheet => [...sheet.cssRules].filter(rule => rule.type === 7))
     if (!Number.isInteger(source.loopCount) || source.loopCount < 0 || source.loopCount > 1000) throw new Error('Unsupported source loop count')
     const warnings = []
@@ -639,9 +659,18 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {}, reviewe
     const reviewedElements = new Set()
     if (hasSlideFades) {
       for (const slide of slides) {
-        if (document.getElementById(`effOut${slide.id}`)) throw new Error('Slide transitions/stop: outgoing scene effects require an adapter')
+        const outgoing = document.getElementById(`effOut${slide.id}`)
+        if (outgoing || slide.crossTypeOut === 'hide' && slide.effOutDuration) {
+          const css = outgoing && style(outgoing)
+          const d = slide.effOutDuration / 1000
+          if (!css || slide.crossTypeOut !== 'hide' || seconds(css.animationDuration) !== d || seconds(css.animationDelay) !== (slide.duration + slide.effInDuration) / 1000) throw new Error('Slide transitions/stop: outgoing timing differs from source')
+          const rule = rules.findLast(rule => rule.name === css.animationName)
+          const frames = rule && [...rule.cssRules]
+          if (!frames || frames.length !== 2 || frames.some((f,i) => f.style.length !== 1 || f.keyText !== (i ? '100%' : '0%') || f.style.opacity !== String(i)) || css.animationDirection !== 'reverse' || css.animationIterationCount !== '1') throw new Error('Slide transitions/stop: unsupported outgoing effect')
+          slide.exit = { at: slide.end, duration: d, ease: reverseEase(cssEase(css.animationTimingFunction)) }
+        }
         const entrance = document.getElementById(`effIn${slide.id}`)
-        if (!slide.entranceDuration) {
+        if (!entrance && slide.crossTypeOut === 'hide' || !slide.entranceDuration) {
           if (entrance) throw new Error('Slide transitions/stop: unexpected scene entrance')
           continue
         }
@@ -699,7 +728,7 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {}, reviewe
       const layerBase = { ...base, slideId: `source-slide:${slide.id}`, linkId: `source:${sourceId}`, x: px(css.left), y: px(css.top), w: px(css.width), h: px(css.height), zIndex: id, startTime: start, endTime: end, ...(clipToPresence ? { clipToPresence: true } : {}) }
       if (sourceInactiveTiming) Object.assign(layerBase, { hidden: true, sourceInactiveTiming })
       if (hasSlideFades) {
-        layerBase.slideFade = { id: layerBase.slideId, start: slide.start, end: slide.visibleEnd, duration: slide.entranceDuration, ease: slide.fadeEase || 'cubic-bezier(0,0,1,1)' }
+        layerBase.slideFade = { id: layerBase.slideId, start: slide.start, end: slide.visibleEnd, duration: slide.fadeEase ? slide.entranceDuration : 0, ...(slide.exit ? { exit: slide.exit } : {}), ease: slide.fadeEase || 'cubic-bezier(0,0,1,1)' }
         layerBase.animInStart = effectStart
       }
       if ([layerBase.x, layerBase.y, layerBase.w, layerBase.h].some(n => !Number.isFinite(n))) throw new Error('Unsupported element geometry')
@@ -717,9 +746,45 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {}, reviewe
           if (start + reveal.duration > end + 1e-6) throw new Error('Reveal crosses layer boundary')
           layerBase.reveal = reveal
         }
-        let effect = wordPop || reveal ? {} : effectTracks(document.getElementById(`effIn${sourceId}`), style, rules, effectStart, end, warnings, layerBase)
+        let tracking
+        if (trackingIds.has(sourceId)) {
+          const target = [entrance, element.querySelector('.text-content')].find(node => node && rules.some(rule => rule.name === style(node).animationName))
+          const css = target && style(target)
+          const frames = css && [...rules.findLast(rule => rule.name === css.animationName).cssRules]
+          const first = frames?.[0]?.style, last = frames?.[1]?.style
+          if (frames?.length !== 2 || frames[0].keyText !== '0%' || frames[1].keyText !== '100%' || first.length !== 5 || last.length !== 5
+            || first.opacity !== '0' || last.opacity !== '1' || first.letterSpacing !== '5px' || !Number.isFinite(px(last.letterSpacing))
+            || first.width !== `var(--eff-tracking-buildIn-${sourceId}-width)` || first.left !== `var(--eff-tracking-buildIn-${sourceId}-left)`
+            || first.position !== 'absolute' || last.position !== 'absolute' || px(last.left) !== 0 || !Number.isFinite(px(last.width))
+            || css.animationIterationCount !== '1' || css.animationDirection !== 'normal') throw new Error('Unsupported text tracking recipe')
+          const at = effectStart + seconds(css.animationDelay || '0s'), d = seconds(css.animationDuration)
+          const ease = cssEase(css.animationTimingFunction)
+          layerBase.textTracking = { at, duration: d, ease, from: 5, to: px(last.letterSpacing), width: px(last.width), glyphScale: Number(element.querySelector('.text-content')?.dataset.glyphScaleX || 1) }
+          tracking = { tracks: { opacity: [{ time: at, value: 0, easing: ease }, { time: at + d, value: 1 }] } }
+        }
+        let effect = tracking || (wordPop || reveal ? {} : effectTracks(document.getElementById(`effIn${sourceId}`), style, rules, effectStart, end, warnings, layerBase))
         const middle = document.getElementById(`effMid${sourceId}`)
-        if (middle) {
+        const glyphs = middle && [...middle.querySelectorAll('[data-gradient-glyph="true"]')]
+        const whole = middle?.querySelector('.text-content')
+        const wholeSweep = whole && rules.some(rule => rule.name === style(whole).animationName && [...rule.cssRules].some(f => f.style.backgroundClip === 'text'))
+        if (wholeSweep) glyphs.push(whole)
+        if (glyphs?.length) {
+          const glyph = glyphs[0], css = style(glyph)
+          const rule = rules.findLast(rule => rule.name === css.animationName)
+          const frames = rule && [...rule.cssRules]
+          const g = frames?.[0]?.style.backgroundImage
+          const validated = /^linear-gradient\(-270deg,\s*#([\da-f]{3}|[\da-f]{6}) 0,\s*#([\da-f]{3}|[\da-f]{6}) 100%(?:,\s*#([\da-f]{3}|[\da-f]{6}) 100%)?\)$/i.exec(g || '')
+          const raw = [...document.querySelectorAll('style')].map(s => s.textContent).join('\n')
+          const recipe = raw.split('@keyframes ' + css.animationName + '{').at(-1)?.split('}}')[0] || ''
+          if (glyphs.length !== 1 || glyph.textContent.trim() !== element.textContent.trim() || !validated || frames?.length !== 2
+            || frames[0].keyText !== '100%' || frames[1].keyText !== '0%' || frames[1].style.backgroundImage !== g
+            || !(wholeSweep ? recipe.includes('background-position:200% center') && recipe.includes('background-position:0 center') : [0, -2].every(n => recipe.includes(' * ' + n + ' - var(--ctp-gw-wx,0px)) center')))
+            || !frames.every(frame => frame.style.backgroundClip === 'text' && (wholeSweep && frame.style.backgroundSize === '200% auto' || /^calc\(var\(--ctp-gw-tw,[\d.]+px\) \* 2\) auto$/.test(frame.style.backgroundSize)))
+            || css.animationTimingFunction !== 'linear' || css.animationFillMode !== 'none' || css.animationDirection !== 'normal') throw new Error('Unsupported gradient text motion')
+          const hex = s => '#' + (s.length === 3 ? [...s].map(c => c + c).join('') : s)
+          const gradient = 'linear-gradient(-270deg,' + validated.slice(1).filter(Boolean).map((s,i) => hex(s) + (i ? ' 100%' : ' 0%')).join(',') + ')'
+          layerBase.textSweep = { gradient, ...(wholeSweep ? { wholeRow: true } : {}), at: effectStart + seconds(css.animationDelay), duration: seconds(css.animationDuration), iterations: Number(css.animationIterationCount) }
+        } else if (middle) {
           try {
             effect = appendEffect(effect, effectTracks(middle, style, rules, effectStart, end, warnings, layerBase, true), effectStart)
           } catch (cause) {
@@ -748,7 +813,7 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {}, reviewe
         keyframes = effect.tracks || {}
         if (effect.textTilt) layerBase.textTilt = effect.textTilt
         if (effect.perspective) {
-          const allowed = keyframes.z ? ['opacity', 'z', 'rotation', 'scaleX', 'scaleY'] : ['opacity', 'rotationX']
+          const allowed = keyframes.z ? ['opacity', 'z', 'rotation', 'rotationX', 'scaleX', 'scaleY'] : ['opacity', 'rotationX', 'rotationY', 'scaleX', 'scaleY']
           if (Object.keys(keyframes).some(property => !allowed.includes(property))) throw new Error('Nested 3D transforms need an adapter')
           layerBase.imageFlipPerspective = effect.perspective
           const forward = Math.max(0, ...(keyframes.z || []).map(frame => frame.value))
@@ -921,8 +986,8 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {}, reviewe
             // This wrapper mirrors the clipped viewport as a unit. Studio's
             // content flip does the same without re-encoding the source clip.
             const mirror = /^rotate\(0(?:deg)?\)\s+scale\((-?1),\s*(-?1)\)$/.exec(nodeCss.transform)
-            const rotation = /^rotate\((-?90|-?180|-?270)deg\)$/.exec(nodeCss.transform)
-            if ((!mirror && !rotation) || node.parentElement !== element || !node.contains(video)
+            const rotation = /^rotate\((-?\d+(?:\.\d+)?)deg\)$/.exec(nodeCss.transform)
+            if ((!mirror && !rotation) || (node.parentElement !== element && !(rotation && node.parentElement?.closest('[data-eltype]') === element && /^eff(?:Out|In)\d+$/.test(node.parentElement.id))) || (rotation && Number(rotation[1]) % 90 !== 0 && !keyframes.scaleX) || !node.contains(video)
               || nodeCss.width !== '100%' || nodeCss.height !== '100%'
               || !['', 'center', '50% 50%'].includes(nodeCss.transformOrigin)
               || !['', '0px', 'auto'].includes(nodeCss.left) || !['', '0px', 'auto'].includes(nodeCss.top)
@@ -930,7 +995,7 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {}, reviewe
               throw new Error(`Video ${sourceId}: transformed video requires an adapter`)
             }
             if (rotation) {
-              if (keyframes.rotation || keyframes.scaleX || keyframes.scaleY) throw new Error(`Video ${sourceId}: rotated video with animated rotation or scale requires an adapter`)
+              if (keyframes.rotation || JSON.stringify(keyframes.scaleX) !== JSON.stringify(keyframes.scaleY)) throw new Error(`Video ${sourceId}: rotated video with animated rotation or scale requires an adapter`)
               layerBase.rotation = Number(rotation[1])
             }
             flipX = mirror?.[1] === '-1'
@@ -1355,10 +1420,10 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {}, reviewe
             const sides = ['Top', 'Right', 'Bottom', 'Left']
             const colors = sides.map(side => contentCss[`border${side}Color`])
             const styles = sides.map(side => contentCss[`border${side}Style`])
-            if (new Set(borders).size !== 1 || !Number.isFinite(borders[0]) || borders[0] < 0 || borders[0] > 100 || new Set(colors).size !== 1 || styles.some(value => value !== 'solid') || (rectShape && layerBase.w !== layerBase.h)) throw new Error(`${element.id}: shape border composition needs an adapter`)
+            if (new Set(borders).size !== 1 || !Number.isFinite(borders[0]) || borders[0] < 0 || borders[0] > 100 || new Set(colors).size !== 1 || styles.some(value => value !== 'solid') || (rectShape && Math.abs(layerBase.w - layerBase.h) > 1)) throw new Error(`${element.id}: shape border composition needs an adapter`)
             // Native buttons support border-box fill, uniform stroke and corners.
             // Empty text retains this shape as an editable native visual layer.
-            layers.push({ ...layerBase, id: id++, type: 'button', name: `Bordered shape ${sourceId}`, text: '', rotation, borderRadius: rectShape ? layerBase.w / 2 : borderRadius || 0, borderWidth: borders[0], borderColor: colors[0], bgColor: contentCss.backgroundColor || 'transparent', textColor: 'transparent', ...(visualFilter ? { visualFilter } : {}) })
+            layers.push({ ...layerBase, id: id++, type: 'button', name: `Bordered shape ${sourceId}`, text: '', rotation, ...(rectShape && layerBase.w !== layerBase.h ? { rectShape } : { borderRadius: rectShape ? layerBase.w / 2 : borderRadius || 0 }), borderWidth: borders[0], borderColor: colors[0], bgColor: contentCss.backgroundColor || 'transparent', textColor: 'transparent', ...(visualFilter ? { visualFilter } : {}) })
             warnings.push(`${element.id}: uniform bordered shape preserved as an editable native button with empty text; review border and corner geometry`)
           } else {
             layers.push({ ...layerBase, id: id++, type: 'rect', name: `Shape ${sourceId}`, rotation, ...(borderRadius !== undefined ? { borderRadius } : {}), ...shapeEffects, fillColor: contentCss.backgroundColor || 'transparent' })
@@ -1368,6 +1433,32 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {}, reviewe
         throw new Error(`Unsupported layer type: ${type}`)
       }
       sourceElements.push({ sourceId, slideId: slide.id, type, nativeLayerIds: layers.slice(before).map(layer => layer.id), start: sourceInactiveTiming?.start ?? start, end, ...(effectStart !== start ? { effectStart } : {}) })
+    }
+    if (wrap) {
+      const last = slides.at(-1)
+      const firstId = 'source-slide:' + slides[0].id
+      // Expose the opening pose underneath the outgoing group during loop wrap.
+      // The source starts the incoming layer effects after this overlap.
+      for (const layer of layers.filter(l => l.slideId === firstId && l.startTime === 0)) {
+        if (layer.wordPop || layer.reveal || layer.type === 'video' || layer.type === 'audio') throw new Error('Loop opening pose needs a media adapter')
+        if (layer.keyframes?.opacity?.[0]?.value === 0) continue
+        const copy = structuredClone(layer)
+        delete copy.slideFade
+        copy.slideId = 'source-slide:' + last.id
+        copy.id = id++
+        copy.linkId = 'source:loop:' + layer.linkId
+        copy.name += ' (loop overlap)'
+        copy.startTime = last.end
+        copy.endTime = duration
+        copy.clipToPresence = true
+        // Keep the outgoing group above the held opening pose.
+        copy.zIndex = layer.zIndex
+        for (const [key, frames] of Object.entries(copy.keyframes || {})) {
+          copy.keyframes[key] = [{ time: last.end, value: frames[0].value, easing: 'linear' }, { time: duration, value: frames[0].value }]
+        }
+        layers.push(copy)
+      }
+      last.end = duration
     }
     for (const layer of layers) for (const face of [layer, ...layer.textRuns || []]) {
       if (!face.fontFamily?.includes(',')) continue
