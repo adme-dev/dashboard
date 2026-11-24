@@ -61,7 +61,10 @@ describe('MediaAssetHarness embedded mode', () => {
     expect(html).toContain('Model catalogue')
     expect(html).not.toContain('models ready')
     expect(html).toContain('AI activity')
-    expect(html).toContain('xl:grid-cols-[260px_minmax(0,1fr)]')
+    // Columns key off the harness's own width, never the screen: the inspector is 280-640px wide.
+    expect(html).toContain('@container')
+    expect(html).toContain('@3xl:grid-cols-[260px_minmax(0,1fr)]')
+    expect(html).not.toMatch(/\bxl:grid-cols/)
     expect(html).not.toContain('AI Producer workspace')
     expect(html).not.toContain('Prepare clean layers, reuse derivatives, and assemble draft edits')
     expect(html).not.toContain('aria-expanded')

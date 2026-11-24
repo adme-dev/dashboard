@@ -175,11 +175,13 @@ const recentActivityJobs = computed(() => intelligenceJobs.value.map(job => ({
   ...job,
   assetLabel: jobAssetLabel(job),
 })))
+// Columns follow the harness's own width (container queries), not the screen:
+// inside the Video Studio inspector it is 280-640px wide even on a 1920px display.
 const contentGridClass = computed(() => props.embedded
-  ? 'grid min-h-0 divide-y divide-default xl:grid-cols-[280px_minmax(0,1fr)] xl:divide-x xl:divide-y-0'
+  ? 'grid min-h-0 divide-y divide-default @3xl:grid-cols-[280px_minmax(0,1fr)] @3xl:divide-x @3xl:divide-y-0'
   : props.studio
-    ? 'grid min-h-0 gap-3 xl:grid-cols-[260px_minmax(0,1fr)]'
-  : 'grid gap-3 p-3 xl:grid-cols-[320px_minmax(0,1fr)_360px]')
+    ? 'grid min-h-0 gap-3 @3xl:grid-cols-[260px_minmax(0,1fr)]'
+  : 'grid gap-3 p-3 @6xl:grid-cols-[320px_minmax(0,1fr)_360px]')
 const workspacePanelClass = computed(() => props.embedded
   ? 'min-h-0 min-w-0 p-3'
   : props.studio
@@ -487,7 +489,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section :class="studio || embedded ? 'space-y-3' : 'rounded-lg border border-default bg-elevated'">
+  <section :class="['@container', studio || embedded ? 'space-y-3' : 'rounded-lg border border-default bg-elevated']">
     <div
       v-if="embedded"
       class="flex flex-wrap items-start justify-between gap-3"

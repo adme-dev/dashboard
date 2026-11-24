@@ -71,6 +71,16 @@ async function mount(props: Record<string, unknown>) {
 }
 
 describe('VideoStudioPrepareAssetPanel', () => {
+  it('sizes its form and mask canvas from its own width, not the screen', async () => {
+    // The panel lives in a 280-640px inspector on wide screens; screen breakpoints squashed it.
+    const html = await render(baseProps)
+    expect(html).toContain('@container')
+    expect(html).toContain('@lg:grid-cols-[220px_minmax(0,1fr)]')
+    expect(html).not.toMatch(/\bxl:grid-cols/)
+    expect(html).toContain('w-[min(100%,calc(min(64vh,620px)*0.5625))]')
+    expect(html).not.toContain('min-h-[360px]')
+  })
+
   it('distinguishes catalogue defaults without claiming provider readiness', async () => {
     const html = await render({ ...baseProps, selectedActionModels: [
       { id: 'enabled', displayName: 'Enabled model', defaultEnabled: true },
