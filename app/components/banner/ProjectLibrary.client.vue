@@ -2,7 +2,7 @@
 import type { BannerProject, BannerProjectSummary, BannerFolder } from '~/types/banner-studio'
 import { bannerFolderPath, bannerFolderRows, bannerProjectFolderId, bannerProjectInFolder } from '~/utils/banner-folders'
 import { isAmbiguousApiFailure } from '~/utils/apiError'
-import { bannerDimensions, preferredBannerSummaryPreviewKey, bannerLibraryFacets, filterBannerProjects, sortLibrary, theBriefCreatedDate } from '~/utils/banner-library'
+import { bannerDimensions, bannerLibraryFacets, filterBannerProjects, sortLibrary, theBriefCreatedDate } from '~/utils/banner-library'
 import type { LibrarySort } from '~/utils/banner-library'
 
 const props = withDefaults(defineProps<{ fullScreen?: boolean }>(), { fullScreen: false })
@@ -62,7 +62,7 @@ async function refresh() {
   folderError.value = false
   try {
     const [projects, folders] = await Promise.all([
-      apiFetch<BannerProjectSummary[]>('/api/agency/banner-studio/projects?view=library'),
+      apiFetch<BannerProjectSummary[]>('/api/agency/banner-studio/projects?view=gallery'),
       apiFetch<BannerFolder[]>('/api/agency/banner-studio/folders').catch(() => {
         folderError.value = true
         return []
@@ -129,7 +129,7 @@ const visibleProjects = computed(() => projects.value.slice((page.value - 1) * p
 const libraryItems = computed(() => visibleProjects.value.map(p => ({
   id: p.id, name: p.name, clientId: p.clientId, client: p.clientName || (p.clientId ? 'Unnamed client' : 'Unassigned'),
   category: p.tags?.includes('import:needs-review') ? `${p.status} · Import needs review` : p.status, dimensions: bannerDimensions(undefined, p.formats), type: `${p.formats.length} size${p.formats.length === 1 ? '' : 's'} · Editable`,
-  date: p.updatedAt || p.createdAt, thumbnailUrl: p.thumbnailUrl, projectId: p.id, previewVersion: p.updatedAt, previewKey: preferredBannerSummaryPreviewKey(p.formats, p.populatedFormats),
+  date: p.updatedAt || p.createdAt, thumbnailUrl: p.thumbnailUrl, projectId: p.id, previewVersion: p.updatedAt, hasLayouts: p.formats.length > 0,
   sourceCreatedDate: p.tags?.includes('source:thebrief') ? theBriefCreatedDate(p.tags) : undefined,
   to: `${editorBase.value}/${p.id}`
 })))

@@ -18,7 +18,7 @@ export interface BannerLibraryItem {
   thumbnailUrl?: string | null
   canvasData?: Record<string, ArtboardState>
   projectId?: string
-  previewKey?: string
+  hasLayouts?: boolean
   previewVersion?: string
   to?: string
 }

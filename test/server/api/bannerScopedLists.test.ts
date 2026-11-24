@@ -94,6 +94,14 @@ describe('lightweight banner library', () => {
     expect(sql).toContain('client_team_assignments')
     expect(params).toEqual(['staff-id'])
   })
+  it('reads only format keys for poster galleries under the same client scope', async () => {
+    await projects(request({ view: 'gallery' }))
+    const [sql, params] = mocks.rows.mock.calls[0]!
+    expect(sql).toContain('jsonb_object_keys(p.canvas_data)')
+    expect(sql).not.toMatch(/jsonb_each|populatedFormats|AS "canvasData"/)
+    expect(sql).toContain('client_team_assignments')
+    expect(params).toEqual(['staff-id'])
+  })
   it('retains full canvases for existing API consumers', async () => {
     await projects(request())
     expect(mocks.rows.mock.calls[0]![0]).toContain('p.canvas_data AS "canvasData"')

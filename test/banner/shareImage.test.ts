@@ -132,3 +132,23 @@ it('authorizes team posters before reading a cached image', async () => {
   expect(mocks.get).not.toHaveBeenCalled()
   expect(mocks.load).not.toHaveBeenCalled()
 })
+
+it('renders a small private gallery JPEG without replacing the full-size proof', async () => {
+  await bannerShareImage(event as never, mocks.load, true)
+  expect(mocks.screenshot.mock.calls[0][1].viewport).toEqual({ width: 480, height: 480, deviceScaleFactor: 1 })
+  expect(mocks.put).toHaveBeenCalledWith(expect.stringMatching(/^banner-gallery-posters\/project\//), expect.any(ArrayBuffer), expect.anything())
+  await bannerShareImage(event as never, mocks.load)
+  expect(mocks.screenshot.mock.calls[1][1].viewport.width).toBe(1080)
+})
+
+it('reuses an existing proof on a gallery miss and a stored gallery JPEG on the next read', async () => {
+  const jpeg = { body: new Uint8Array([255, 216, 255]) }
+  mocks.get.mockResolvedValueOnce(null).mockResolvedValueOnce(jpeg).mockResolvedValueOnce(jpeg)
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const res = await bannerShareImage(event as never, mocks.load, true)
+    expect(res.headers.get('content-type')).toBe('image/jpeg')
+    expect(res.headers.get('cache-control')).toBe('private, no-store')
+  }
+  expect(mocks.get).toHaveBeenCalledTimes(3)
+  expect(mocks.screenshot).not.toHaveBeenCalled()
+})

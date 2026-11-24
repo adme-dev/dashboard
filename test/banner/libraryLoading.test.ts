@@ -14,13 +14,13 @@ it('loads summaries, defers closed tools and fetches complete artwork only when 
   for (const [key, value] of Object.entries(Vue)) vi.stubGlobal(key, value)
   const summary: BannerProjectSummary = {
     id: 'project', name: 'Summer sale', clientId: 'client', clientName: 'Dealer', folderId: null,
-    formats: ['fb_sq', 'ig_story'], populatedFormats: ['fb_sq', 'ig_story'], thumbnailUrl: null,
+    formats: ['fb_sq', 'ig_story'], thumbnailUrl: null,
     status: 'draft', tags: [], createdBy: 'designer', createdAt: '2026-11-24', updatedAt: '2026-11-24'
   }
   const artwork = { fb_sq: { layers: [{ id: 1, text: 'Complete artwork' }] }, ig_story: { layers: [{ id: 2 }] } }
   const fetch = vi.fn(async (url: string, options?: { method?: string }) => {
     if (options?.method === 'POST') return { project: { id: 'copy' } }
-    if (url.endsWith('?view=library')) return [summary]
+    if (url.endsWith('?view=gallery')) return [summary]
     if (url.endsWith('/folders')) return []
     if (url.endsWith('/project')) return { ...summary, canvasData: artwork }
     throw new Error(`Unexpected request: ${url}`)
@@ -57,7 +57,7 @@ it('loads summaries, defers closed tools and fetches complete artwork only when 
   app.mount(host)
   for (let i = 0; i < 5; i++) await Vue.nextTick()
   expect(fetch).toHaveBeenCalledTimes(2)
-  expect(fetch).toHaveBeenCalledWith('/api/agency/banner-studio/projects?view=library')
+  expect(fetch).toHaveBeenCalledWith('/api/agency/banner-studio/projects?view=gallery')
   expect(host.textContent).toContain('1080 × 1080 · 1080 × 1920')
   expect(toolMounted).not.toHaveBeenCalled()
 
