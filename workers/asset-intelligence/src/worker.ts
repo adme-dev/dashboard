@@ -1,3 +1,4 @@
+import { assetIntelligenceFailureMessage } from '../../../shared/video/assetIntelligenceFailureMessage'
 import type { AssetDerivativeOutput, AssetIntelligenceProviderResult, AssetIntelligenceWorkerJob } from './providers'
 
 export interface AssetIntelligenceMessage {
@@ -155,7 +156,8 @@ export async function processAssetIntelligenceJob(
     })
     return { skipped: false, status: 'succeeded' }
   } catch (error) {
-    await deps.markFailed(job.id, safeErrorMessage(error))
+    // The editor reads this. The provider's own wording is kept on the ledger below.
+    await deps.markFailed(job.id, assetIntelligenceFailureMessage(safeErrorMessage(error)))
     await recordRuntime(job, deps, {
       status: 'error',
       errorCode: 'asset_intelligence_worker_failed',

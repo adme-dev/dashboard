@@ -140,6 +140,48 @@ describe('Separate layers job', () => {
     expect(String(run.mock.calls[0]![1].messages[0].content[0].text)).toContain('Return at most 2 elements')
   })
 
+  // The cap is enforced on what the vision model returns, not only requested in the prompt.
+  it.each([
+    { setting: undefined, cap: 8, why: 'the default when the worker has no setting' },
+    { setting: '99', cap: 12, why: 'the ceiling when the setting is higher' },
+    { setting: 'lots', cap: 8, why: 'the default when the setting is not a number' },
+    { setting: '3', cap: 3, why: 'the setting' }
+  ])('cuts no more than $cap layers when the vision model lists 20: $why', async ({ setting, cap }) => {
+    const many = Array.from({ length: 20 }, (_, index) => ({ name: `part${index}`, box_2d: [100, 50, 300, 450], z: index + 1 }))
+    const { deps, run } = setup({
+      elements: many,
+      outputs: [{ match: 'Extract only the part', bytes: cutOut({ x: 64, y: 72, w: 512, h: 144 }) }, outputs[2]!],
+      env: setting === undefined ? {} : { ASSET_INTELLIGENCE_MAX_LAYERS: setting }
+    })
+    const result = await runAssetIntelligenceProvider({ job: { ...layerJob, action: 'layer-decomposition' }, ...deps })
+
+    expect(result.derivatives.filter(derivative => derivative.kind === 'foreground-png')).toHaveLength(cap)
+    // One vision call, one paid cut-out per kept element, one base. Nothing is spent on the rest.
+    expect(run.mock.calls.filter(call => call[0] === SEEDREAM_LAYER_MODEL)).toHaveLength(cap + 1)
+    expect(result.usage).toMatchObject({ layerCount: cap, modelCalls: cap + 2 })
+  })
+
+  it('keeps the cap when the editor\'s instruction asks for more', async () => {
+    const many = Array.from({ length: 20 }, (_, index) => ({ name: `part${index}`, box_2d: [100, 50, 300, 450], z: index + 1 }))
+    const { deps } = setup({
+      elements: many,
+      outputs: [{ match: 'Extract only the part', bytes: cutOut({ x: 64, y: 72, w: 512, h: 144 }) }, outputs[2]!],
+      env: { ASSET_INTELLIGENCE_MAX_LAYERS: '2' }
+    })
+    const result = await runAssetIntelligenceProvider({ job: { ...layerJob, action: 'layer-decomposition', prompt: 'Separate all 20 elements.' }, ...deps })
+
+    expect(result.derivatives.filter(derivative => derivative.kind === 'foreground-png')).toHaveLength(2)
+  })
+
+  it('says the safety filter blocked an element when the model flags it', async () => {
+    const flagged = new Error('3030: Your output has been flagged. Please choose another prompt / input image combination')
+    const { deps } = setup({ elements, outputs: [{ match: 'Extract only the headline', error: flagged }, outputs[1]!, outputs[2]!] })
+    const result = await runAssetIntelligenceProvider({ job: { ...layerJob, action: 'layer-decomposition' }, ...deps })
+
+    const manifest = result.derivatives.find(derivative => derivative.kind === 'layer-package')!
+    expect(manifest.metadata.skipped).toEqual([{ name: 'headline', step: 'extract', reason: 'the AI safety filter blocked it' }])
+  })
+
   it('refuses the job before any model call when it would exceed the worker\'s cost limit', async () => {
     const { deps, run } = setup({ elements, outputs, env: { ASSET_INTELLIGENCE_MAX_JOB_COST_USD: '0.02' } })
     await expect(runAssetIntelligenceProvider({ job: { ...layerJob, action: 'layer-decomposition' }, ...deps }))
@@ -306,6 +348,38 @@ describe('job status for layer jobs', () => {
       status: 'error',
       metadata: expect.objectContaining({ outcome: 'failed', failureCode: 'no_elements', usage: { costUsd: 0.0024, latencyMs: 7000, modelCalls: 1 } })
     }))
+  })
+})
+
+describe('a job the safety filter blocked', () => {
+  const message = { jobId: '22222222-2222-4222-8222-222222222222', projectId: 'project-1', sourceAssetId: 'asset-1' }
+  const queued = { ...layerJob, id: message.jobId, action: 'erase-fill', provider: 'workers-ai', modelId: 'workers-ai/flux-edit', status: 'queued' }
+  const raw = '3030: Your output has been flagged. Please choose another prompt / input image combination'
+
+  it('stores a message the editor can act on and keeps the provider\'s wording on the ledger', async () => {
+    const deps = {
+      getJob: vi.fn().mockResolvedValue(queued),
+      markRunning: vi.fn().mockResolvedValue({ id: queued.id, status: 'running' }),
+      markFailed: vi.fn().mockResolvedValue({ id: queued.id, status: 'failed' }),
+      markSucceeded: vi.fn(),
+      createDerivative: vi.fn(),
+      recordInvocation: vi.fn().mockResolvedValue(undefined)
+    }
+    const result = await processAssetIntelligenceJob(message, { ...deps, runProvider: vi.fn().mockRejectedValue(new Error(raw)) })
+
+    expect(result).toEqual({ skipped: false, status: 'failed' })
+    expect(deps.markFailed).toHaveBeenCalledWith(queued.id, 'The AI safety filter blocked this edit. Try a different area or instruction.')
+    expect(deps.recordInvocation).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'error',
+      metadata: expect.objectContaining({ outcome: 'failed', errorMessage: raw })
+    }))
+  })
+
+  it('says so when Lift is blocked', async () => {
+    const mask = encodePng(withRect(solid(W, H, [0, 0, 0, 0]), { x: 100, y: 500, w: 250, h: 140 }, [255, 255, 255, 255]))
+    const { deps } = setup({ mask, outputs: [{ match: 'Extract only', error: new Error(raw) }] })
+    await expect(runAssetIntelligenceProvider({ job: { ...layerJob, action: 'mask-lift', brushMaskKey: 'video-asset-masks/project-1/asset-1/m1.png' }, ...deps }))
+      .rejects.toThrow('None of the 1 element could be cut out: the AI safety filter blocked it.')
   })
 })
 
