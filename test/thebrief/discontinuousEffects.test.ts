@@ -70,7 +70,7 @@ it('clips a cubic curve algebraically instead of changing its timing or sampling
   const from = frames.find(frame => frame.time === 2.5)
   const to = frames.find(frame => frame.time === 2.65)
   const original = CustomEase.create('', 'M0,0 C0.42,0 1,1 1,1')
-  const clipped = CustomEase.create('', from.easing.replace('cubic-bezier(', '').replace(')', ''))
+  const clipped = CustomEase.create('', from.easing.replace('cubic-bezier(', '').replace(')', ''), { precision: 10 })
   for (const fraction of [0.1, 0.4, 0.75, 1]) {
     expect(from.value + (to.value - from.value) * clipped(fraction)).toBeCloseTo(1 - 0.8 * original(fraction / 2), 3)
   }
@@ -80,6 +80,27 @@ it('clips a cubic curve algebraically instead of changing its timing or sampling
 it('continues to hold fractional effects outside the supported intermediate adapter', async () => {
   const result = await convertTheBriefHtml(fixture(pulse).replaceAll('effMid1', 'effOut1'))
   expect(result.warnings.join(' ')).toMatch(/Fractional non-intermediate.*animation not converted/)
+})
+
+it.each(['normal', 'reverse'])('clips a %s one-shot at the authored slide boundary without speeding it up', async (direction) => {
+  const html = source.replace('animation-duration:1s', 'animation-duration:5s')
+    .replace('animation-direction:normal', `animation-direction:${direction};animation-fill-mode:forwards`)
+  const result = await convertTheBriefHtml(html)
+  expect(result.warnings).toEqual([])
+  const layer = result.canvasData.custom_300x250.layers.find(l => l.type === 'text')
+  const frames = layer.keyframes.x
+  expect(frames.at(-1).time).toBe(4)
+  const from = frames.find(f => f.time === 0.2)
+  const end = frames.at(-1)
+  const original = CustomEase.create('', 'M0,0 C0.165,0.84 0.44,1 1,1', { precision: 10 })
+  const clipped = CustomEase.create('', from.easing.replace('cubic-bezier(', '').replace(')', ''), { precision: 10 })
+  for (const t of [0, 0.1, 0.5, 0.9, 1]) {
+    const progress = t * 3.8 / 5
+    const expected = direction === 'normal' ? -100 + 100 * original(progress) : -100 + 100 * original(1 - progress)
+    // CustomEase uses a lookup table; keep the comparison below 0.02 pixels.
+    expect(Math.abs(from.value + (end.value - from.value) * clipped(t) - expected)).toBeLessThan(0.02)
+  }
+  expect(layer.endTime).toBe(4)
 })
 
 it.each([

@@ -363,7 +363,7 @@ function effectTracks(effect, style, rules, start, end, warnings, geometry, inte
   if (!intermediate && !Number.isInteger(iterations)) throw new Error('Fractional non-intermediate repetitions need an adapter')
   const animationEnd = at + duration * iterations
   if (![at, duration, animationEnd].every(Number.isFinite)) throw new Error('Invalid animation timing')
-  if (at < 0 || duration <= 0 || (!intermediate && animationEnd > end + 1e-9)) throw new Error('Animation crosses slide boundary')
+  if (at < 0 || duration <= 0 || (!intermediate && iterations !== 1 && animationEnd > end + 1e-9)) throw new Error('Animation crosses slide boundary')
   if ((intermediate || iterations > 1) && ((!['', 'none'].includes(css.transform)) || !['', '1'].includes(css.opacity))) throw new Error('Intermediate effect has nonidentity underlying styles')
   const tracks = {}
   const parsedFrames = []
@@ -432,7 +432,11 @@ function effectTracks(effect, style, rules, start, end, warnings, geometry, inte
       })))
     }
     if (!intermediate && frames.at(-1).value !== identityValue(property) && !['forwards', 'both'].includes(css.animationFillMode)) throw new Error('Animation reset after completion needs an adapter')
-    if (intermediate && ((iterations > 1 && (!Number.isInteger(iterations) || animationEnd > end + 1e-9)) || frames[0].value !== identityValue(property))) {
+    if (!intermediate && iterations === 1 && animationEnd > end + 1e-9) {
+      // The source slide hides this wrapper before its animation completes.
+      // Preserve the visible portion and original easing, not a faster tween.
+      frames.splice(0, frames.length, ...boundedRepeatedFrames(frames, at, duration, end, identityValue(property), false, false))
+    } else if (intermediate && ((iterations > 1 && (!Number.isInteger(iterations) || animationEnd > end + 1e-9)) || frames[0].value !== identityValue(property))) {
       if (!['none', 'backwards', '', 'forwards', 'both'].includes(css.animationFillMode)) throw new Error('Unsupported animation fill mode')
       frames.splice(0, frames.length, ...boundedRepeatedFrames(frames, at, duration, Number(Math.min(end, animationEnd).toFixed(9)), identityValue(property), animationEnd < end - 1e-9 && !['forwards', 'both'].includes(css.animationFillMode), true))
     } else if (iterations > 1) {

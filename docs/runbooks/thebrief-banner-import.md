@@ -176,3 +176,5 @@ landscape variants cannot stand in for a portrait artboard.
 ### Circular image masks
 
 The importer preserves a full circular SVG mask on a square original image as an editable corner radius. The editor, saved viewer and HTML export retain the original image asset and animation. Partial circles, translucent or composite masks, padded mask geometry and masked image filters remain on hold rather than being approximated. Compare every layout and scene before saving a review draft.
+
+Single-run source animations that cross a slide boundary retain the original visible curve up to that boundary. The adapter clips cubic easing algebraically; it does not shorten the full tween to fit. Reverse playback is preserved. Repeated unsupported compositions still remain held.
