@@ -13,7 +13,8 @@ export interface AssetIntelligenceClaim {
 }
 
 export interface CreateDerivativeInput extends AssetDerivativeOutput {
-  sourceAssetId: string
+  /** Null for a job whose source is a Banner Studio upload. */
+  sourceAssetId: string | null
   projectId: string
 }
 
@@ -134,7 +135,7 @@ export async function processAssetIntelligenceJob(
   try {
     const result = await deps.runProvider(job)
     const outputDerivativeIds: string[] = []
-    const sourceAssetId = job.sourceAssetId ?? message.sourceAssetId
+    const sourceAssetId = job.sourceBannerAssetId ? null : job.sourceAssetId ?? message.sourceAssetId
     for (const derivative of result.derivatives) {
       const persisted = await deps.createDerivative({
         ...withContentMetadata(derivative),

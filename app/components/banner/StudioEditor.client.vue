@@ -1098,6 +1098,9 @@ const { activeSize } = useBannerFileSize()
     <!-- AI Generate Image Slideover -->
     <BannerAiGenerateSlideover />
 
+    <!-- Import image as layers -->
+    <BannerLayerImportModal @open-brand="openLeftPanel('brand')" />
+
     <!-- Save Version Modal -->
     <UModal v-if="showSaveVersion" v-model:open="showSaveVersion">
       <template #content>

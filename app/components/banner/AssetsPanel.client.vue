@@ -4,11 +4,12 @@ import type { AudioAsset } from '~/types'
 import { createBannerUploadSession } from '~/utils/bannerUpload'
 import { bannerAssetLayer, bannerAssetType, type BannerMediaType } from '~/utils/banner-media'
 import { startBannerMediaDrag, endBannerMediaDrag } from '~/utils/banner-media-drag'
+import { LAYER_IMPORT_MIME_TYPES } from '~~/shared/bannerLayerImport'
 
 const props = withDefaults(defineProps<{ mediaType?: BannerMediaType, selectionOnly?: boolean, motorstackBrandId?: string, inlineMotorstack?: boolean }>(), { mediaType: 'all', selectionOnly: false })
 const emit = defineEmits<{ select: [asset: BannerAsset], browseMotorstack: [] }>()
 const { addLayer, activeFormat, activeLayers, currentSlide, state } = useBannerStudio()
-const { decomposingAssetId, decomposeFromUrl } = useDecompose()
+const layerImport = useBannerLayerImport()
 const { openGenerate } = useAiImageGenerate()
 const toast = useToast()
 const apiFetch = $fetch as <T = unknown>(request: string, options?: {
@@ -163,15 +164,34 @@ async function uploadFiles(files: FileList | File[]) {
         ...request
       })
     })
-    for (const outcome of outcomes) {
-      toast.add(outcome.ok
-        ? { title: 'Uploaded', description: `${outcome.file.name} uploaded`, color: 'success' }
-        : { title: 'Upload failed', description: `Failed to upload ${outcome.file.name}`, color: 'error' })
-    }
     await refreshAssets()
+    for (const outcome of outcomes) {
+      if (!outcome.ok) {
+        toast.add({ title: 'Upload failed', description: `Failed to upload ${outcome.file.name}`, color: 'error' })
+        continue
+      }
+      // A flat JPEG or PNG can be split into editable layers straight after upload.
+      const uploaded = outcome.value as Partial<BannerAsset> | undefined
+      const splittable = !props.selectionOnly && !!uploaded?.id && !!uploaded.url && LAYER_IMPORT_MIME_TYPES.includes(uploaded.mimeType || '')
+      toast.add({
+        title: 'Uploaded',
+        description: `${outcome.file.name} uploaded`,
+        color: 'success',
+        ...(splittable
+          ? { actions: [{ label: 'Import as layers', icon: 'i-lucide-layers', onClick: () => importAsLayers(uploaded as BannerAsset) }] }
+          : {})
+      })
+    }
   } finally {
     uploading.value = false
   }
+}
+
+function canImportAsLayers(asset: BannerAsset) {
+  return LAYER_IMPORT_MIME_TYPES.includes(asset.mimeType)
+}
+function importAsLayers(asset: BannerAsset) {
+  layerImport.openFor({ assetId: asset.id, name: asset.name, url: asset.thumbnailUrl || asset.url })
 }
 
 async function onFileSelect(e: Event) {
@@ -377,20 +397,21 @@ async function deleteAsset(asset: BannerAsset) {
             </div>
           </div>
         </UButton>
-        <!-- Decompose overlay (image assets only) -->
+        <!-- Import as layers (flat JPEG and PNG pictures) -->
         <div
-          v-if="!selectionOnly && asset.mimeType?.startsWith('image')"
-          class="absolute top-1 left-1 opacity-0 group-hover:opacity-100 transition-opacity"
+          v-if="!selectionOnly && canImportAsLayers(asset)"
+          class="absolute top-1 left-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity"
         >
-          <UButton
-            :icon="decomposingAssetId === asset.id ? 'i-lucide-loader-2' : 'i-lucide-layers'"
-            variant="solid"
-            color="neutral"
-            size="xs"
-            :loading="decomposingAssetId === asset.id"
-            :disabled="!!decomposingAssetId"
-            @click.stop="() => { decomposeFromUrl(asset.url, asset.name, asset.id, 'asset') }"
-          />
+          <UTooltip text="Import as layers">
+            <UButton
+              icon="i-lucide-layers"
+              :aria-label="`Import ${asset.name} as layers`"
+              variant="solid"
+              color="neutral"
+              size="xs"
+              @click.stop="importAsLayers(asset)"
+            />
+          </UTooltip>
         </div>
         <!-- Delete overlay -->
         <div v-if="!selectionOnly" class="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity">

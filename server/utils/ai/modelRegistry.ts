@@ -612,14 +612,25 @@ const FEATURE_SEEDS: FeatureSeed[] = [
   },
   {
     featureKey: 'banner_image_layer_decomposition',
-    label: 'Banner Studio image layer decomposition',
+    label: 'Banner Studio import image as layers',
     surface: '/agency/banner-studio',
     owner: 'Creative',
-    provider: 'huggingface_space',
-    modelId: 'Qwen/Qwen-Image-Layered',
+    provider: 'aigateway',
+    modelId: 'bytedance/seedream-5.5',
     modality: 'image',
     riskTier: 'high',
-    sourceFile: 'server/utils/qwenLayerDecomposer.ts'
+    sourceFile: 'server/api/agency/banner-studio/layer-imports/index.post.ts'
+  },
+  {
+    featureKey: 'banner_image_layer_decomposition',
+    label: 'Banner Studio import image as layers: reading the lettering',
+    surface: 'asset-intelligence Worker',
+    owner: 'Creative',
+    provider: 'aigateway',
+    modelId: 'google/gemini-3.8-flash',
+    modality: 'vision',
+    riskTier: 'high',
+    sourceFile: 'server/utils/image-layers/readText.ts'
   },
   {
     featureKey: 'banner_copy_suggest',

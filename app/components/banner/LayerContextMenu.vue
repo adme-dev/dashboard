@@ -5,7 +5,6 @@ const props = defineProps<{
   layer: Layer | null
   x: number
   y: number
-  isDecomposing: boolean
   isAiEditing?: boolean
   multiSelectCount?: number
 }>()
@@ -42,12 +41,11 @@ const items = computed(() => {
     })
   }
 
-  // Decompose (image layers only)
+  // Split a flat picture into a background and separate elements
   if (isImageLayer.value) {
     group1.push({
-      label: props.isDecomposing ? 'Decomposing...' : 'Decompose to Layers',
-      icon: props.isDecomposing ? 'i-lucide-loader-2' : 'i-lucide-layers',
-      disabled: props.isDecomposing,
+      label: 'Import as layers',
+      icon: 'i-lucide-layers',
       onSelect: () => emit('decompose', props.layer!),
     })
   }

@@ -558,17 +558,28 @@ describe('God mode gate inventory', () => {
     expect(inventory.rows).toContain(ownerFeedGate)
     const importWriteGate = 'server/api/agency/banner-studio/import/prepare.post.ts\tawait requireWriteAccess(event)\tapplication_governance_bypass'
     expect(inventory.rows).toContain(importWriteGate)
-    const previousRows = inventory.rows.filter(row => row !== importWriteGate && row !== ownerFeedGate && !bannerReview.additions.includes(row))
-    expect(previousRows).toHaveLength(1871)
-    expect(inventory.rows).toHaveLength(1880)
+    // Import image as layers replaces the retired Qwen decompose route. Its two routes each add one
+    // requireWriteAccess gate (application_governance_bypass, the same as import/prepare above); the
+    // retired route's single useRuntimeConfig read (unrelated_configuration) leaves the inventory.
+    // Restoring that row in place reproduces the previous frozen digest 13de1cd0…, so nothing else
+    // moved. No God mode bypass is registered. Spend stays behind the AI Gateway policy switch.
+    const layerImportGates = [
+      'server/api/agency/banner-studio/layer-imports/[jobId].get.ts	const user = await requireWriteAccess(event)	application_governance_bypass',
+      'server/api/agency/banner-studio/layer-imports/index.post.ts	const user = await requireWriteAccess(event)	application_governance_bypass'
+    ]
+    for (const row of layerImportGates) expect(inventory.rows).toContain(row)
+    expect(inventory.rows.some(row => row.startsWith('server/api/agency/banner-studio/ai/decompose.post.ts	'))).toBe(false)
+    const previousRows = inventory.rows.filter(row => row !== importWriteGate && row !== ownerFeedGate && !bannerReview.additions.includes(row) && !layerImportGates.includes(row))
+    expect(previousRows).toHaveLength(1870)
+    expect(inventory.rows).toHaveLength(1881)
     expect(inventory.counts).toEqual({
       spend_authorization_hard_boundary: 4,
       fresh_role_grant_hard_boundary: 99,
       identity_tenant_hard_boundary: 154,
       provider_infrastructure_availability: 235,
-      application_governance_bypass: 1625,
+      application_governance_bypass: 1627,
       ordinary_user_behavior: 329,
-      unrelated_configuration: 433
+      unrelated_configuration: 432
     })
     // Removing the session KV shortcut removes four auth middleware rows:
     // cached identity read, cached role branch, cached auth assignment and cache
@@ -598,12 +609,12 @@ describe('God mode gate inventory', () => {
     const canonicalMcpGate = 'server/utils/ai/marketing/departmentEmailOperations.ts\tif (!enabled(\'FIGFLOW_EDM_DRAFT_SAVES_ENABLED\', process.env.FIGFLOW_EDM_DRAFT_SAVES_ENABLED) || (selection && !enabled(\'FIGFLOW_EDM_LIBRARY_ENABLED\', process.env.FIGFLOW_EDM_LIBRARY_ENABLED))) refuse(\'Canonical email drafts are unavailable for this environment\', \'not_found\')\tapplication_governance_bypass'
     expect(inventory.rows).toContain(canonicalMcpGate)
     const editableCopyGates = new Set(['server/api/email/templates/[id]/editable-copy.post.ts\tconst user = input.save ? await requireWriteAccess(event) : await requireAuth(event)\tapplication_governance_bypass', 'server/api/email/templates/[id]/editable-copy.post.ts\tconst fresh = await requireWriteAccess(event)\tapplication_governance_bypass'])
-    expect(createHash('sha256').update(previousRows.filter(row => row !== canonicalMcpGate && row !== changeHistoryGate && !editableCopyGates.has(row)).join('\n')).digest('hex')).toBe('366871cfc9e0809466cbe34ba19711472abc05c6ff4aae6dad0399aa422613c5')
+    expect(createHash('sha256').update(previousRows.filter(row => row !== canonicalMcpGate && row !== changeHistoryGate && !editableCopyGates.has(row)).join('\n')).digest('hex')).toBe('5135af13b5cb00a074aa7abe7e6b82aff446820b9ad96684fd86621e985f3898')
     const campaignReadGate = 'server/utils/ai/marketing/departmentEmailOperations.ts\tif (!fresh.permissionGroups?.some(group => [\'ADMIN\', \'MANAGEMENT\'].includes(group))) refuse(\'Agency template access required\', \'forbidden\')\tordinary_user_behavior'
-    expect(createHash('sha256').update(previousRows.filter(row => row !== campaignReadGate && row !== canonicalMcpGate && row !== changeHistoryGate && !editableCopyGates.has(row)).join('\n')).digest('hex')).toBe('4ba5a258ef55a4627ace3d2dec418b3f503c47ccad7e18b331d68bc256667ddf')
+    expect(createHash('sha256').update(previousRows.filter(row => row !== campaignReadGate && row !== canonicalMcpGate && row !== changeHistoryGate && !editableCopyGates.has(row)).join('\n')).digest('hex')).toBe('6823174c9c4c345945510df91cb41f4d8dd7cf37656471221c2926ad9da6a939')
     // Pins the complete reviewed inventory, including the video funding boundaries.
-    expect(createHash('sha256').update(previousRows.join('\n')).digest('hex')).toBe('13de1cd01bb5ba0cad42653b328b0e48997fc3e0b65411dc8e31e74b362359b1')
-    expect(inventory.digest).toBe('39775c37ad2d01acc96935a23dd905e2bae7b6ee23b68579149b49b4d762c31e')
+    expect(createHash('sha256').update(previousRows.join('\n')).digest('hex')).toBe('57024038c87fcbe6d775987181303b04f5070f8477774e097e10f0def3c2bab2')
+    expect(inventory.digest).toBe('75b0b470fad5b32a8cb4aeb59076b4fd61dcfcb76c1105ff04bc3da7932c7eba')
     expect(inventory.rows).toContain(
       'app/composables/usePageStudioLauncher.ts\tconst config = useRuntimeConfig()\tunrelated_configuration'
     )
