@@ -4,6 +4,10 @@
 
 The HTML5 converter now carries exported artwork group membership into prepared packages. FI Pro’s four logo letters share **Group 13** in the square, both landscape and social layouts. The editor keeps each member’s original placement and animation independently editable.
 
+The live Banner Studio import dialog prepared the original FI Pro ZIP as one design with four sizes. The production importer returned exactly Artwork 5, 6, 7 and 8 in Group 13 at 1000×1000, 800×300, 600×300 and 1200×644. Verification stopped at the import preview to preserve the existing draft.
+
+[PR #1006](https://github.com/adme-dev/dashboard/pull/1006) shipped as main commit `eb59c949d8a787df83a742e73fc4154a0f55ec18` on `agency-dashboard/main`, deployment `4d63b3d9-a771-4040-9e7f-aacad8e8c0db`. The private importer used Worker version `cfc626fe-6769-43e1-9f86-13640ab15a90` and container version 13.
+
 ## 25 November 2026 — Folder recovery and canvas groups
 
 Deleting a folder keeps its designs available in their original client libraries. The folder tree can be restored for 30 days. Deleting a design individually sends that design to the recycling bin with its own recovery period.
