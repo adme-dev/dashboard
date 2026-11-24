@@ -31,6 +31,29 @@ export interface AssetIntelligenceAction {
   surface: 'tenant' | 'internal'
 }
 
+/** An action as offered to the studio: says whether running it can produce a result today. */
+export interface AssetIntelligenceActionOffer extends AssetIntelligenceAction {
+  available: boolean
+  unavailableReason: string | null
+}
+
+// Actions the deployed worker can carry through to a result. Everything else is
+// catalogued for later but has no provider runtime, so it must not be queued.
+const RUNNABLE_ACTIONS = new Set<AssetIntelligenceActionId>([
+  'asset-analysis',
+  'erase-fill',
+  'mask-only',
+  'image-edit',
+])
+
+export function isAssetIntelligenceActionRunnable(id: string): boolean {
+  return RUNNABLE_ACTIONS.has(id as AssetIntelligenceActionId)
+}
+
+export function assetIntelligenceUnavailableReason(action: Pick<AssetIntelligenceAction, 'id' | 'label'>): string | null {
+  return isAssetIntelligenceActionRunnable(action.id) ? null : `${action.label} is not available yet.`
+}
+
 export interface AssetIntelligenceModel {
   id: string
   provider: 'workers-ai' | 'replicate' | 'huggingface' | 'fal' | 'openai' | 'bria' | 'mock'
@@ -55,7 +78,8 @@ const ACTIONS: AssetIntelligenceAction[] = [
     label: 'Remove background',
     description: 'Create an alpha foreground and optional background plate.',
     outputKinds: ['foreground-png', 'mask-png', 'background-png'],
-    surface: 'internal',
+    // Listed in the studio as "not available yet" until a provider can run it.
+    surface: 'tenant',
   },
   {
     id: 'object-segmentation',
@@ -69,14 +93,16 @@ const ACTIONS: AssetIntelligenceAction[] = [
     label: 'Separate layers',
     description: 'Split a flattened image into editable RGBA layers.',
     outputKinds: ['layer-package', 'foreground-png', 'mask-png'],
-    surface: 'internal',
+    // Listed in the studio as "not available yet" until a provider can run it.
+    surface: 'tenant',
   },
   {
     id: 'mask-lift',
     label: 'Lift highlighted area',
     description: 'Use a brush/highlighter mask to lift embedded graphics or objects into a new alpha layer.',
     outputKinds: ['foreground-png', 'mask-png', 'layer-package'],
-    surface: 'internal',
+    // Listed in the studio as "not available yet" until a provider can run it.
+    surface: 'tenant',
   },
   {
     id: 'erase-fill',
@@ -180,11 +206,11 @@ const MODELS: AssetIntelligenceModel[] = [
     id: 'workers-ai/flux-edit',
     provider: 'workers-ai',
     gatewayProvider: 'workers-ai',
-    displayName: 'Flux image edit',
+    displayName: 'FLUX.2 klein image edit',
     actions: ['erase-fill', 'image-edit', 'thumbnail-generation'],
     defaultEnabled: true,
-    cfModel: '@cf/black-forest-labs/flux-1-schnell',
-    notes: 'Image generation/editing path for masked creative operations where supported.',
+    cfModel: '@cf/black-forest-labs/flux-2-klein-4b',
+    notes: 'Edits a reference picture. Erase pastes only the painted region back onto the original.',
   },
   {
     id: 'workers-ai/deepgram-captioning',
@@ -197,8 +223,14 @@ const MODELS: AssetIntelligenceModel[] = [
   },
 ]
 
-export function listAssetIntelligenceActions(includeInternal = false): AssetIntelligenceAction[] {
-  return ACTIONS.filter(action => includeInternal || action.surface === 'tenant')
+export function listAssetIntelligenceActions(includeInternal = false): AssetIntelligenceActionOffer[] {
+  return ACTIONS
+    .filter(action => includeInternal || action.surface === 'tenant')
+    .map(action => ({
+      ...action,
+      available: isAssetIntelligenceActionRunnable(action.id),
+      unavailableReason: assetIntelligenceUnavailableReason(action),
+    }))
 }
 
 export function getAssetIntelligenceAction(id: string): AssetIntelligenceAction | null {

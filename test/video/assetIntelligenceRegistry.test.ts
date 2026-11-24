@@ -3,6 +3,8 @@ import {
   getAssetIntelligenceAction,
   getAssetIntelligenceModel,
   listAssetIntelligenceActions,
+  defaultModelForAction,
+  listAssetIntelligenceModels,
   listAssetIntelligenceModelsForAction,
 } from '~~/server/utils/video-asset-intelligence/registry'
 
@@ -24,8 +26,9 @@ describe('video asset intelligence registry', () => {
     expect(listAssetIntelligenceModelsForAction('mask-lift').map(model => model.id)).toContain('replicate/sam-2')
   })
 
-  it('only exposes deployed executable actions to tenants by default', () => {
-    const actionIds = listAssetIntelligenceActions().map(action => action.id)
+  it('lists studio tools to tenants, marking the ones that cannot run yet, and keeps internal ones hidden', () => {
+    const offers = listAssetIntelligenceActions()
+    const actionIds = offers.map(action => action.id)
     expect(actionIds).toEqual(expect.arrayContaining([
       'asset-analysis',
       'erase-fill',
@@ -35,13 +38,11 @@ describe('video asset intelligence registry', () => {
       'caption-generation',
       'timeline-assembly',
     ]))
-    for (const hiddenAction of [
-      'background-removal',
-      'object-segmentation',
-      'layer-decomposition',
-      'mask-lift',
-      'provider-test',
-    ]) {
+    // Shown so people know they exist, but never offered as runnable.
+    for (const pending of ['background-removal', 'layer-decomposition', 'mask-lift']) {
+      expect(offers.find(action => action.id === pending)).toMatchObject({ available: false })
+    }
+    for (const hiddenAction of ['object-segmentation', 'provider-test']) {
       expect(actionIds).not.toContain(hiddenAction)
     }
   })
@@ -61,5 +62,23 @@ describe('video asset intelligence registry', () => {
 
   it('does not expose internal actions by default', () => {
     expect(listAssetIntelligenceActions().map(action => action.id)).not.toContain('provider-test')
+  })
+
+  it('tells the studio which tools can produce a result today', () => {
+    const offers = Object.fromEntries(listAssetIntelligenceActions().map(action => [action.id, action]))
+    for (const id of ['erase-fill', 'mask-only', 'asset-analysis', 'image-edit']) {
+      expect(offers[id]).toMatchObject({ available: true, unavailableReason: null })
+    }
+    expect(offers['mask-lift']).toMatchObject({ available: false, unavailableReason: 'Lift highlighted area is not available yet.' })
+    expect(offers['background-removal']).toMatchObject({ available: false, unavailableReason: 'Remove background is not available yet.' })
+    expect(offers['layer-decomposition']).toMatchObject({ available: false, unavailableReason: 'Separate layers is not available yet.' })
+  })
+
+  it('routes erase to an image-editing model, never a text-only or retired one', () => {
+    const model = defaultModelForAction('erase-fill')
+    expect(model?.cfModel).toBe('@cf/black-forest-labs/flux-2-klein-4b')
+    const cfModels = listAssetIntelligenceModels().map(entry => entry.cfModel ?? '')
+    expect(cfModels).not.toContain('@cf/black-forest-labs/flux-1-schnell')
+    expect(cfModels.some(id => id.includes('inpainting'))).toBe(false)
   })
 })

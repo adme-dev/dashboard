@@ -1,6 +1,7 @@
 import {
   createDerivative,
   getAssetIntelligenceJob,
+  getVideoAssetPictureKeys,
   getVideoAssetR2Key,
   markAssetIntelligenceJobFailed,
   markAssetIntelligenceJobRunning,
@@ -8,7 +9,7 @@ import {
   dbRecordAiInvocation,
 } from './db'
 import { runAssetIntelligenceProvider } from './providers'
-import { copyR2Object, fetchAssetBytes, uploadBinary, uploadJson } from './storage'
+import { copyR2Object, fetchAssetBytes, fetchAssetPicture, fetchObjectBytes, uploadBinary, uploadJson } from './storage'
 import { processAssetIntelligenceJob, type AssetIntelligenceMessage } from './worker'
 
 declare const process: { env: Record<string, string | undefined> }
@@ -40,6 +41,8 @@ export default {
             job,
             env,
             fetchAssetBytes: sourceAssetId => fetchAssetBytes(env.MEDIA_BUCKET, sourceAssetId, getVideoAssetR2Key),
+            fetchAssetPicture: sourceAssetId => fetchAssetPicture(env.MEDIA_BUCKET, sourceAssetId, getVideoAssetPictureKeys),
+            fetchObjectBytes: key => fetchObjectBytes(env.MEDIA_BUCKET, key),
             copyR2Object: (sourceKey, destinationKey) => copyR2Object(env.MEDIA_BUCKET, sourceKey, destinationKey),
             uploadJson: (key, value) => uploadJson(env.MEDIA_BUCKET, key, value),
             uploadBinary: (key, bytes, contentType) => uploadBinary(env.MEDIA_BUCKET, key, bytes, contentType),

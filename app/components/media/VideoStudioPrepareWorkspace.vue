@@ -9,6 +9,9 @@ interface ToolOption {
   label: string
   value: string
   description?: string
+  // False when no provider can run the tool yet. It stays listed, clearly marked, and cannot be run.
+  available?: boolean
+  unavailableReason?: string | null
 }
 
 interface AssetOption {
@@ -94,6 +97,14 @@ const frameStyle = computed(() => {
 
 const selectedTool = computed(() => props.toolOptions.find(tool => tool.value === props.selectedAction) ?? null)
 const runLabel = computed(() => selectedTool.value ? `Run ${selectedTool.value.label.toLowerCase()}` : 'Run')
+// Why Run is off, in the user's terms. Null when it can run.
+const runBlockedReason = computed(() => {
+  const tool = selectedTool.value
+  if (tool && tool.available === false) return tool.unavailableReason || `${tool.label} is not available yet.`
+  if (!props.selectedItemAssetId) return 'Choose an asset first.'
+  if (props.selectedAction === 'erase-fill' && !props.hasMaskStroke) return 'Paint over what to erase first.'
+  return null
+})
 const hasPreview = computed(() => Boolean(props.previewImageUrl || props.previewVideoUrl))
 
 function jobStatusColor(status: SelectedJob['status']) {
@@ -101,6 +112,11 @@ function jobStatusColor(status: SelectedJob['status']) {
   if (status === 'failed' || status === 'blocked') return 'error'
   if (status === 'running') return 'primary'
   return 'neutral'
+}
+
+function derivativeNote(derivative: AssetDerivative) {
+  const note = derivative.metadata?.note
+  return typeof note === 'string' && note.trim() ? note.trim() : null
 }
 
 function derivativeLabel(derivative: AssetDerivative) {
@@ -158,7 +174,16 @@ onBeforeUnmount(() => emit('mask-canvas-ready', null))
             @click="emit('update:selectedAction', tool.value)"
           >
             <span class="min-w-0">
-              <span class="block text-sm font-medium text-highlighted">{{ tool.label }}</span>
+              <span class="flex flex-wrap items-center gap-1.5">
+                <span class="text-sm font-medium text-highlighted">{{ tool.label }}</span>
+                <UBadge
+                  v-if="tool.available === false"
+                  label="Not available yet"
+                  size="xs"
+                  variant="subtle"
+                  color="neutral"
+                />
+              </span>
               <span v-if="tool.description" class="mt-0.5 block whitespace-normal text-xs font-normal leading-snug text-muted">{{ tool.description }}</span>
             </span>
           </UButton>
@@ -269,10 +294,16 @@ onBeforeUnmount(() => emit('mask-canvas-ready', null))
             color="primary"
             :label="runLabel"
             :loading="props.running"
-            :disabled="!props.selectedItemAssetId"
+            :disabled="Boolean(runBlockedReason)"
             class="justify-center"
             @click="emit('run')"
           />
+          <p v-if="runBlockedReason" data-run-blocked class="text-xs leading-snug text-muted @2xl/stage:col-span-2">
+            {{ runBlockedReason }}
+          </p>
+          <p v-else-if="props.selectedAction === 'erase-fill'" class="text-xs leading-snug text-muted @2xl/stage:col-span-2">
+            Erase works on a still picture and changes only the painted area. On a video it uses the preview frame and gives you a still; the video itself is not changed.
+          </p>
         </div>
       </div>
 
@@ -303,6 +334,9 @@ onBeforeUnmount(() => emit('mask-canvas-ready', null))
                 />
                 <span class="min-w-0 flex-1 truncate text-xs text-default">{{ derivativeLabel(derivative) }}</span>
               </div>
+              <p v-if="derivativeNote(derivative)" class="mt-1 text-xs leading-snug text-muted">
+                {{ derivativeNote(derivative) }}
+              </p>
               <div class="mt-2 flex flex-wrap gap-1.5">
                 <UButton
                   icon="i-lucide-list-plus"

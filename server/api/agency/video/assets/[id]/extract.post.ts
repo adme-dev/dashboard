@@ -1,22 +1,15 @@
 import { z } from 'zod'
 import { requireWriteAccess } from '~~/server/utils/auth'
 import { requireVideoProjectWriteAccess } from '~~/server/utils/video-asset-intelligence/access'
-import { defaultModelForAction, getAssetIntelligenceAction, getAssetIntelligenceModel } from '~~/server/utils/video-asset-intelligence/registry'
+import { assetIntelligenceUnavailableReason, defaultModelForAction, getAssetIntelligenceAction, getAssetIntelligenceModel, isAssetIntelligenceActionRunnable } from '~~/server/utils/video-asset-intelligence/registry'
 import { createBlockedExtractionJob, createQueuedExtractionJob, getAssetProjectRelationship, getBucketItemProjectRelationship, markAssetIntelligenceJobFailed } from '~~/server/utils/video-asset-intelligence/db'
 import { enqueueAssetIntelligence, getAssetIntelligenceQueue } from '~~/server/utils/video-asset-intelligence/enqueue'
 import type { AssetIntelligenceActionId } from '~~/server/utils/video-asset-intelligence/registry'
 import { recordAiInvocation } from '~~/server/utils/ai/invocationLedger'
 import { withGodModeLedger } from '~~/server/utils/video/godModeStudioMutations'
 
-const QUEUE_SUPPORTED_ACTIONS = new Set<AssetIntelligenceActionId>([
-  'asset-analysis',
-  'erase-fill',
-  'mask-only',
-  'image-edit',
-])
-
 function queueSupportsExtractionInput(action: AssetIntelligenceActionId, modelId: string | null): boolean {
-  if (!QUEUE_SUPPORTED_ACTIONS.has(action)) return false
+  if (!isAssetIntelligenceActionRunnable(action)) return false
   if (!modelId) return true
   return defaultModelForAction(action)?.id === modelId
 }
@@ -70,6 +63,14 @@ export default defineEventHandler(event => withGodModeLedger(event, 'assetExtrac
   const body = BodySchema.parse(await readBody(event))
   const action = getAssetIntelligenceAction(body.action)
   if (!action) throw createError({ statusCode: 400, statusMessage: 'Unknown extraction action' })
+  // A tool with no provider behind it is refused outright. Saving a "blocked" job
+  // looked like work had been queued when nothing could ever come back.
+  const unavailableReason = assetIntelligenceUnavailableReason(action)
+  if (unavailableReason) throw createError({ statusCode: 409, statusMessage: unavailableReason })
+  // Erase acts on a painted area: without one there is nothing to remove.
+  if (body.action === 'erase-fill' && !body.brushMaskKey) {
+    throw createError({ statusCode: 400, statusMessage: 'Paint over what to erase first.' })
+  }
 
   await requireVideoProjectWriteAccess(user, body.projectId, 'Asset intelligence requires an AV project')
 
@@ -148,9 +149,7 @@ export default defineEventHandler(event => withGodModeLedger(event, 'assetExtrac
   const job = await createBlockedExtractionJob({
     ...input,
     errorMessage: queue
-      ? !QUEUE_SUPPORTED_ACTIONS.has(body.action)
-        ? `Asset intelligence action ${body.action} is not production-enabled.`
-        : input.modelId
+      ? input.modelId
         ? `Asset intelligence action ${body.action} with model ${input.modelId} is not supported by the deployed worker.`
         : `Asset intelligence action ${body.action} is not supported by the deployed worker.`
       : undefined,
