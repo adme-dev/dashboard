@@ -23,6 +23,7 @@ let imported: ReturnType<typeof vi.fn>
 const stubs = {
   UModal: defineComponent({ props: ['open', 'title'], setup: (p, { slots }) => () => p.open ? h('section', { 'aria-label': p.title }, [slots.body?.(), slots.footer?.()]) : null }),
   UFormField: defineComponent({ setup: (_, { slots }) => () => h('div', slots.default?.()) }),
+  UCollapsible: defineComponent({ setup: (_, { slots }) => () => h('div', slots.default?.({ open: false })) }),
   UPopover: defineComponent({ setup: (_, { slots }) => () => h('div', [slots.default?.(), slots.content?.()]) }),
   UCalendar: defineComponent({ setup: () => () => h('div') }),
   UFileUpload: defineComponent({ props: ['disabled'], emits: ['update:modelValue'], setup: (p, { emit }) => () => h('button', { disabled: p.disabled, onClick: () => emit('update:modelValue', [new File(['{}'], 'prepared.json')]) }, 'Load packages') }),

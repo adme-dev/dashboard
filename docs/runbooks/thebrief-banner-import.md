@@ -2,6 +2,8 @@
 
 ## Current route
 
+In **Banner Studio → Import creative packages**, expand **Import work instruction** above the upload box for the current designer steps. It covers the TheBrief export settings, group assignment, source dates, stalled uploads and review of every saved size.
+
 **24 November release status:** direct group ZIP import is deployed. The original Alfa archive was uploaded in production and all three designs are saved with two sizes each. Fresh preparation and duplicate reconciliation were also exercised. See the [Alfa ZIP verification record](../migrations/alfa-direct-zip-import-20261124.md) for the saved projects, source comparisons, release IDs and test limitations. The designer work instruction is version 2, dated 24 November; it replaces the earlier manual package-preparation handoff.
 
 Download **HTML5** from TheBrief with **All sizes**, **General usage**, and **Convert custom fonts to SVG** off. In **Banner Studio → Import creative packages**, choose the original ZIP, including a group download such as `Designs-HTML.zip`. The private conversion service inspects the complete archive before extraction and never executes its scripts. Each design becomes one editable draft containing all its sizes. Prepared `.xeroflow.json` packages remain supported.

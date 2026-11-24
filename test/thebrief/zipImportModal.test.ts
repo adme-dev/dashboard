@@ -37,6 +37,7 @@ it('assigns and imports a whole ZIP, skips an existing parent, and retains saved
   const stubs = {
     UModal: defineComponent({ props: ['open'], setup: (props, { slots }) => () => props.open ? h('section', [slots.body?.(), slots.footer?.()]) : null }),
     UFormField: container, UBadge: container, UPopover: container, UCalendar: container,
+    UCollapsible: defineComponent({ setup: (_, { slots }) => () => h('div', slots.default?.({ open: false })) }),
     UAlert: defineComponent({ props: ['title', 'description'], setup: (props, { slots }) => () => h('div', [props.title, props.description, slots.actions?.()]) }),
     UFileUpload: defineComponent({ props: ['disabled'], emits: ['update:modelValue'], setup: (props, { emit }) => () => h('button', { disabled: props.disabled, onClick: () => emit('update:modelValue', [selected]) }, 'Choose ZIP') }),
     UCheckbox: defineComponent({ props: ['modelValue', 'label', 'disabled'], emits: ['update:modelValue'], setup: (props, { emit }) => () => h('button', { disabled: props.disabled, onClick: () => emit('update:modelValue', !props.modelValue) }, props.label) }),
@@ -81,5 +82,10 @@ it('assigns and imports a whole ZIP, skips an existing parent, and retains saved
     expect(api.mock.calls.filter(([url]) => url.endsWith('/import/prepare'))).toHaveLength(1)
     expect(api.mock.calls.filter(([url, options]) => url.endsWith('/projects') && options?.method === 'POST')).toHaveLength(2)
     expect(host.textContent?.match(/saved viewer ready/g)).toHaveLength(2)
-  } finally { app.unmount(); host.remove(); vi.unstubAllGlobals(); localStorage.clear() }
+  } finally {
+    app.unmount()
+    host.remove()
+    vi.unstubAllGlobals()
+    localStorage.clear()
+  }
 }, 30000)

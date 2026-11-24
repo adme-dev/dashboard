@@ -345,19 +345,58 @@ async function importDrafts() {
   <UModal
     v-model:open="open"
     title="Import creative packages"
-    description="Assign each prepared design to its client and save it as a draft for review."
+    description="Upload a TheBrief group ZIP or prepared packages and save editable drafts for review."
     :dismissible="!busy"
     :ui="{ content: 'sm:max-w-3xl' }"
   >
     <template #body>
       <div class="space-y-5">
-        <UAlert
-          icon="i-lucide-info"
-          color="neutral"
-          variant="subtle"
-          title="Import a whole TheBrief group"
-          description="Choose the original HTML5 ZIP from TheBrief. Each design keeps all its sizes together as an editable draft. Prepared TheBrief and ReelMotion packages are also supported. Review the artwork before export."
-        />
+        <UCollapsible class="rounded-lg border border-default bg-elevated/30">
+          <template #default="{ open: guideOpen }">
+            <UButton
+              type="button"
+              label="Import work instruction"
+              color="neutral"
+              variant="ghost"
+              icon="i-lucide-book-open"
+              :trailing-icon="guideOpen ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'"
+              :ui="{ trailingIcon: 'ms-auto' }"
+              class="w-full px-3 py-2.5"
+            />
+          </template>
+          <template #content>
+            <div class="space-y-3 border-t border-default p-3 text-sm leading-relaxed text-muted">
+              <ol class="list-decimal space-y-2 ps-5 marker:font-medium">
+                <li>
+                  <strong class="font-medium text-highlighted">Export the group.</strong>
+                  Check the library for existing drafts. In TheBrief, select the designs, download <strong>HTML5</strong> for <strong>General usage</strong>, include all sizes, and leave <strong>Convert custom fonts to SVG</strong> off.
+                </li>
+                <li>
+                  <strong class="font-medium text-highlighted">Upload the original ZIP.</strong>
+                  Select it below without unzipping it or using a converter. One ZIP can contain several designs. Each design keeps its sizes together. Prepared TheBrief and ReelMotion <code>.xeroflow.json</code> files also work.
+                </li>
+                <li>
+                  <strong class="font-medium text-highlighted">Assign and check the designs.</strong>
+                  Apply the client and folder to the group, then check each row’s owner and sizes. Use the <strong>Created</strong> date from TheBrief’s Info panel, or use the undated draft option and backfill it later.
+                </li>
+                <li>
+                  <strong class="font-medium text-highlighted">Save the batch.</strong>
+                  Click <strong>Import assigned drafts</strong>. Open existing drafts when the importer finds a match. Keep the ZIP and record the issue for any held design.
+                </li>
+                <li>
+                  <strong class="font-medium text-highlighted">Review every size.</strong>
+                  Open the saved draft and viewer. Compare artwork, fonts, copy, motion and sound against TheBrief. Record the draft links and results in the tracker, and leave the drafts for producer review.
+                </li>
+              </ol>
+              <p>
+                <strong class="font-medium text-highlighted">If preparation fails</strong>, try <strong>Start next batch</strong> and select the ZIP again. For a large export, try a smaller group. If a draft is already saved, use <strong>Prepare saved viewer</strong> to retry its preview.
+              </p>
+              <p>
+                If an asset upload was interrupted, use <strong>Check interrupted upload receipts</strong> when offered before resuming.
+              </p>
+            </div>
+          </template>
+        </UCollapsible>
         <UFormField label="Banners to import" help="Choose a TheBrief HTML5 ZIP up to 64 MB, or prepared .xeroflow.json files. Import up to 50 designs together.">
           <UFileUpload
             v-model="files"
