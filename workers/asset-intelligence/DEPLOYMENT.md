@@ -78,3 +78,30 @@ The Worker `wrangler.toml` declares:
 - `AI` for Workers AI model execution
 
 For local or fallback database access, provide `DATABASE_URL`.
+
+## Erase and heal
+
+Erase runs entirely in this Worker and on Workers AI. No extra bindings or secrets.
+
+1. Loads the picture. A picture asset is used as it is. For a video, the asset's
+   preview frame (`thumbnail_key`) is used and the result is a still; the video is
+   never edited. A video with no preview frame fails with a message saying so.
+2. Reads the painted mask from R2 (`brush_mask_key`). It must be a PNG with the
+   same shape as the picture.
+3. Sends the picture, with the painted area tinted green, to
+   `@cf/black-forest-labs/flux-2-klein-4b` at about one megapixel.
+4. Pastes only the painted region of the model's result, with a soft edge and a
+   tone correction, onto the original at full resolution, and stores a lossless PNG.
+
+Limits: PNG and JPEG sources up to 9 megapixels (4K UHD fits). Memory use at that
+size has not been measured on a deployed Worker, only locally. `wrangler.toml` raises the CPU
+limit to 5 minutes for decoding and encoding large pictures; this needs a paid
+Workers plan.
+
+Lift highlighted area, Remove background and Separate layers have no provider
+runtime. The app lists them as "Not available yet" and the extract endpoint
+refuses them with HTTP 409 instead of saving a blocked job. Wiring them to
+Replicate needs a Replicate API token on this Worker and cost approval; no
+Replicate call exists in this repository today.
+
+Deploying this Worker is a separate step from deploying Pages (see above).

@@ -50,6 +50,9 @@ interface HarnessAction {
   label: string
   description: string
   outputKinds: string[]
+  // Whether a provider can run it today. Absent on older responses: treated as available.
+  available?: boolean
+  unavailableReason?: string | null
 }
 
 interface HarnessModel {
@@ -153,7 +156,13 @@ const selectedItem = computed(() => items.value.find(item => item.id === selecte
 const selectedItemTitle = computed(() => selectedItem.value?.title || selectedItem.value?.r2Key || 'No asset selected')
 const actionOptions = computed(() => actions.value
   .filter(action => ['mask-lift', 'erase-fill', 'mask-only', 'layer-decomposition', 'background-removal'].includes(action.id))
-  .map(action => ({ label: action.label, value: action.id, description: action.description })))
+  .map(action => ({
+    label: action.label,
+    value: action.id,
+    description: action.description,
+    available: action.available !== false,
+    unavailableReason: action.unavailableReason ?? null,
+  })))
 const assetOptions = computed(() => items.value.map(item => ({
   label: item.title || item.r2Key || 'Untitled asset',
   value: item.id,
@@ -439,6 +448,12 @@ async function saveDirective(item: BucketItem) {
 }
 
 async function runExtraction() {
+  // Never send a tool that cannot run: it used to be saved as a "blocked" job that looked queued.
+  const tool = actionOptions.value.find(option => option.value === selectedAction.value)
+  if (tool && !tool.available) {
+    toast.add({ title: tool.unavailableReason || `${tool.label} is not available yet.`, color: 'warning' })
+    return
+  }
   const item = selectedItem.value
   if (!item?.assetId) {
     toast.add({ title: 'Select a library asset first', description: 'Generated/library assets can be lifted, erased, or masked.', color: 'warning' })

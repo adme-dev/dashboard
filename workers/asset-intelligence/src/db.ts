@@ -195,3 +195,12 @@ export async function getVideoAssetR2Key(sourceAssetId: string): Promise<string>
   if (!row?.r2_key) throw new Error(`video asset ${sourceAssetId} has no R2 key`)
   return row.r2_key
 }
+
+export async function getVideoAssetPictureKeys(sourceAssetId: string): Promise<{ r2Key: string; thumbnailKey: string | null }> {
+  const row = await queryOne<{ r2_key: string | null; thumbnail_key: string | null }>(
+    `SELECT r2_key, thumbnail_key FROM video_assets WHERE id = $1`,
+    [sourceAssetId]
+  )
+  if (!row?.r2_key) throw new Error(`video asset ${sourceAssetId} has no R2 key`)
+  return { r2Key: row.r2_key, thumbnailKey: row.thumbnail_key ?? null }
+}

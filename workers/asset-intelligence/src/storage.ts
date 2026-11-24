@@ -1,5 +1,5 @@
 interface R2ReadableWritable {
-  get(key: string): Promise<(R2ObjectBody & { size?: number }) | null>
+  get(key: string, options?: { range?: { offset: number; length: number } }): Promise<(R2ObjectBody & { size?: number }) | null>
   put(key: string, value: ArrayBuffer | Uint8Array, options?: R2PutOptions): Promise<unknown>
 }
 
@@ -65,4 +65,41 @@ export async function fetchAssetBytes(
   const contentType = contentTypeOf(object)
   const bytes = new Uint8Array(await object.arrayBuffer())
   return { dataUri: `data:${contentType};base64,${base64FromBytes(bytes)}`, contentType }
+}
+
+export async function fetchObjectBytes(bucket: R2ReadableWritable, key: string): Promise<Uint8Array> {
+  const object = await bucket.get(key)
+  if (!object) throw new Error(`R2 object ${key} not found`)
+  return new Uint8Array(await object.arrayBuffer())
+}
+
+function looksLikePicture(head: Uint8Array): boolean {
+  const png = head.length >= 4 && head[0] === 0x89 && head[1] === 0x50 && head[2] === 0x4e && head[3] === 0x47
+  const jpeg = head.length >= 3 && head[0] === 0xff && head[1] === 0xd8 && head[2] === 0xff
+  return png || jpeg
+}
+
+/**
+ * The still an image tool can work on. Picture assets are used as they are. A video
+ * is far too large to load and cannot be edited as a picture, so its preview frame
+ * is used instead and the caller is told.
+ */
+export async function fetchAssetPicture(
+  bucket: R2ReadableWritable,
+  sourceAssetId: string,
+  getAssetKeys: (sourceAssetId: string) => Promise<{ r2Key: string; thumbnailKey: string | null }>
+): Promise<{ bytes: Uint8Array; source: 'picture' | 'video-frame' }> {
+  const keys = await getAssetKeys(sourceAssetId)
+  // Read only the first bytes to tell a picture from a video before loading anything large.
+  const head = await bucket.get(keys.r2Key, { range: { offset: 0, length: 16 } })
+  if (!head) throw new Error(`R2 object ${keys.r2Key} not found for asset ${sourceAssetId}`)
+  if (looksLikePicture(new Uint8Array(await head.arrayBuffer()))) {
+    return { bytes: await fetchObjectBytes(bucket, keys.r2Key), source: 'picture' }
+  }
+  if (!keys.thumbnailKey) {
+    throw new Error('This video has no preview frame yet, so there is no picture to edit. Picture tools work on a still, not on the video itself.')
+  }
+  const frame = await fetchObjectBytes(bucket, keys.thumbnailKey)
+  if (!looksLikePicture(frame)) throw new Error('The preview frame of this video is not a PNG or JPEG picture, so it cannot be edited.')
+  return { bytes: frame, source: 'video-frame' }
 }

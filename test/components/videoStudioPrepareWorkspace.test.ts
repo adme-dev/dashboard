@@ -146,4 +146,37 @@ describe('VideoStudioPrepareWorkspace', () => {
     expect(named).toContain('edited-image result')
     expect(named).not.toContain('video-asset-derivatives/')
   })
+
+  it('marks a tool with no provider as not available yet and will not run it', async () => {
+    const tools = [
+      { label: 'Erase and heal', value: 'erase-fill', description: 'Remove a highlighted object.', available: true, unavailableReason: null },
+      { label: 'Remove background', value: 'background-removal', description: 'Create an alpha foreground.', available: false, unavailableReason: 'Remove background is not available yet.' }
+    ]
+    const { app, host, events } = await mount({ ...baseProps, toolOptions: tools, selectedAction: 'background-removal', maskToolEnabled: false })
+    try {
+      expect(host.textContent).toContain('Not available yet')
+      expect(host.querySelector('[data-run-blocked]')?.textContent).toContain('Remove background is not available yet.')
+      const run = buttonByText(host, 'Run remove background')
+      expect(run.disabled).toBe(true)
+      run.click()
+      expect(events.map(event => event.name)).not.toContain('run')
+    } finally {
+      app.unmount()
+    }
+    // The available tool carries no badge.
+    const html = await render({ ...baseProps, toolOptions: tools })
+    expect(html.match(/Not available yet/g)).toHaveLength(1)
+  })
+
+  it('asks for a painted area before erase can run, and is explicit that a video is not erased', async () => {
+    const unpainted = await render({ ...baseProps, hasMaskStroke: false })
+    expect(unpainted).toContain('Paint over what to erase first.')
+    expect(unpainted).toMatch(/<button disabled[^>]*>[^<]*(<!--[^>]*-->)*Run erase and heal/)
+    const ready = await render(baseProps)
+    expect(ready).not.toContain('Paint over what to erase first.')
+    expect(ready).toContain('On a video it uses the preview frame and gives you a still; the video itself is not changed.')
+    const fromVideo = await render({ ...baseProps, selectedDerivatives: [{ id: 'd', kind: 'edited-image', r2Key: 'k', metadata: { title: 'Erased still from video frame', note: 'Made from the video\'s preview frame. The video itself is unchanged.' } }] })
+    expect(fromVideo).toContain('Erased still from video frame')
+    expect(fromVideo).toContain('The video itself is unchanged.')
+  })
 })

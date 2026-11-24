@@ -203,4 +203,53 @@ describe('asset intelligence worker', () => {
     expect(deps.markSucceeded).not.toHaveBeenCalled()
     expect(deps.markFailed).not.toHaveBeenCalled()
   })
+
+  it('marks an erase job failed with the reason the editor can act on, and saves no result', async () => {
+    const deps = {
+      getJob: vi.fn().mockResolvedValue({
+        id: 'job-9', tenantId: 'tenant-1', projectId: 'project-1', sourceAssetId: 'asset-1',
+        action: 'erase-fill', modelId: 'workers-ai/flux-edit', provider: 'workers-ai', status: 'queued', prompt: null, brushMaskKey: 'mask.png',
+      }),
+      markRunning: vi.fn().mockResolvedValue({ id: 'job-9', status: 'running' }),
+      markFailed: vi.fn().mockResolvedValue({ id: 'job-9', status: 'failed' }),
+      markSucceeded: vi.fn(),
+      createDerivative: vi.fn(),
+      recordInvocation: vi.fn().mockResolvedValue(undefined),
+      runProvider: vi.fn().mockRejectedValue(new Error('The painted mask (540 x 960) does not match the shape of the picture (1920 x 1080). Paint it again in Prepare.')),
+    }
+
+    const result = await processAssetIntelligenceJob(validMessage, deps)
+
+    expect(result).toEqual({ skipped: false, status: 'failed' })
+    expect(deps.markFailed).toHaveBeenCalledWith('job-9', 'The painted mask (540 x 960) does not match the shape of the picture (1920 x 1080). Paint it again in Prepare.')
+    expect(deps.createDerivative).not.toHaveBeenCalled()
+    expect(deps.markSucceeded).not.toHaveBeenCalled()
+  })
+
+  it('records the erased picture with its size and what it was made from', async () => {
+    const deps = {
+      getJob: vi.fn().mockResolvedValue({
+        id: 'job-10', tenantId: 'tenant-1', projectId: 'project-1', sourceAssetId: 'asset-1',
+        action: 'erase-fill', modelId: 'workers-ai/flux-edit', provider: 'workers-ai', status: 'queued', prompt: null, brushMaskKey: 'mask.png',
+      }),
+      markRunning: vi.fn().mockResolvedValue({ id: 'job-10', status: 'running' }),
+      markFailed: vi.fn(),
+      markSucceeded: vi.fn().mockResolvedValue({ id: 'job-10', status: 'succeeded' }),
+      createDerivative: vi.fn().mockResolvedValue({ id: 'derivative-10' }),
+      recordInvocation: vi.fn().mockResolvedValue(undefined),
+      runProvider: vi.fn().mockResolvedValue({
+        derivatives: [{ kind: 'edited-image', r2Key: 'out/edited.png', width: 1920, height: 1080, metadata: { source: 'video-frame', title: 'Erased still from video frame' }, contentType: 'image/png', size: 2048 }],
+      }),
+    }
+
+    const result = await processAssetIntelligenceJob(validMessage, deps)
+
+    expect(result).toEqual({ skipped: false, status: 'succeeded' })
+    expect(deps.createDerivative).toHaveBeenCalledWith(expect.objectContaining({
+      kind: 'edited-image', width: 1920, height: 1080, sourceAssetId: 'asset-1', projectId: 'project-1',
+      metadata: { source: 'video-frame', title: 'Erased still from video frame', contentType: 'image/png', size: 2048 },
+    }))
+    expect(deps.markSucceeded).toHaveBeenCalledWith({ id: 'job-10', outputDerivativeIds: ['derivative-10'] })
+    expect(deps.markFailed).not.toHaveBeenCalled()
+  })
 })
