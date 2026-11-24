@@ -1,6 +1,6 @@
 # Banner Studio change log
 
-## 24 November 2026 — Faster project library loading
+## 24 November 2026 — Faster project library loading — live
 
 The agency and full-screen libraries load project summaries first. Search, client
 counts, folder and tag filters, dimensions, sorting and pagination still cover
@@ -15,6 +15,24 @@ The project detail endpoint accepts `previewFormat` for a single layout. Both
 reads retain their existing access checks and private, no-store responses.
 Existing callers that omit these options receive full project data. This change
 requires no schema migration.
+
+The median time from a signed-in Chrome reload to the first project link fell
+from 9.27 s to 3.37 s (64% faster). Three reloads in the same browser profile
+took 7.83, 9.27 and 9.57 s before release and 4.05, 3.37 and 3.27 s after.
+These timings cover one browser session and include browser automation overhead.
+
+Production checks covered the 461-project library, its 36-card first page,
+on-demand artwork frames, pagination, client filtering, search, grid and list
+views, and opening a two-layout project in the editor. The import, sharing and
+MP4 dialogs opened successfully. The QR Codes library retained its baseline
+counts. Live checks used existing records and made no project edits.
+
+[PR #997](https://github.com/adme-dev/dashboard/pull/997) shipped from current
+main `eca0b9de8210a318488d49e415acc3cd9f5b3d7e` to `agency-dashboard/main` as
+Cloudflare Pages deployment `b2523d8f-a89f-4874-9fde-27ccc7140df2`.
+[CI](https://github.com/adme-dev/dashboard/actions/runs/45378213335) passed
+24,756 tests with 4,445 skipped. The production build and worker size checks passed.
+The previous production deployment was `ff2f3241-69b7-4d7a-8301-bf3008f178bb`.
 
 ## 24 November 2026 — Audio controls, trim and fades — live
 
