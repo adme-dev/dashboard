@@ -266,9 +266,10 @@ function sourceWordPop(element, sourceId, style, rules) {
     ['blurLeft', [['0%', 'translateX(-20px) scale(1)', 'blur(10px)', '0'], ['40%', '', '', '1'], ['100%', 'translateX(0) scale(1)', 'blur(0px)', '']]],
     ['blurUp', [['0%', 'translateY(20px) scale(1)', 'blur(10px)', '0'], ['40%', '', '', '1'], ['100%', 'translateY(0) scale(1)', 'blur(0px)', '']]],
     ['zoomOut', [['0%', 'translateY(0) scale(1.3)', 'blur(10px)', '0'], ['40%', '', '', '1'], ['100%', 'translateY(0) scale(1)', 'blur(0px)', '']]],
-    ['typewriter', [['0%', '', '', '0'], ['100%', '', '', '1']]]
+    ['typewriter', [['0%', '', '', '0'], ['100%', '', '', '1']]],
+    ['fade', [['0%', '', '', '0'], ['100%', '', '', '1']]]
   ]
-  const variant = variants.find(([, expected]) => JSON.stringify(expected) === signature)?.[0]
+  const variant = variants.find(([name, expected]) => JSON.stringify(expected) === signature && (name !== 'typewriter' || [...rule.cssRules][0].style.animationTimingFunction === 'step-end'))?.[0]
   if (!variant || (variant === 'typewriter' && [...rule.cssRules][0].style.animationTimingFunction !== 'step-end')) throw new Error('Unsupported word animation keyframes')
   const character = words.every(word => word.hasAttribute('data-chars-split'))
   if (words.some(word => word.hasAttribute('data-chars-split')) && (!character || words.some(word => Array.from(word.textContent.trim()).length !== 1))) throw new Error('Unsupported character animation structure')
@@ -478,16 +479,20 @@ export async function convertTheBriefHtml(html) {
     const source = sourceData(document)
     if (!source.animations?.length || source.animations.length > 50 || source.customAnimations?.length) throw new Error('Unsupported slide sequence or custom animations')
     let duration = 0
-    const slides = source.animations.map((slide) => {
+    const hasSlideFades = source.animations.some(slide => slide.effInDuration > 0 || slide.effOutDuration > 0)
+    const slides = source.animations.map((slide, index, all) => {
       if (slide.type !== 'slide' || !Array.isArray(slide.elements)) throw new Error('Invalid slide metadata')
       // The source player schedules slide overlap from the effect durations.
       // Some exports retain a "cross" label after both durations become zero.
       const zeroDurationCross = slide.crossTypeOut === 'cross' && slide.effInDuration === 0 && slide.effOutDuration === 0
-      if (slide.effInDuration || slide.effOutDuration || slide.stop || (slide.crossTypeOut && slide.crossTypeOut !== 'hide' && !zeroDurationCross)) throw new Error('Slide transitions/stop are not supported')
+      const fadeSequence = hasSlideFades && [slide.effInDuration, slide.effOutDuration].every(value => typeof value === 'number' && value >= 0 && value <= 5000)
+        && (index === 0 ? slide.effInDuration === 0 : slide.effInDuration === all[index - 1].effOutDuration)
+        && (index === all.length - 1 ? slide.effOutDuration === 0 && (!slide.crossTypeOut || ['show', 'cross'].includes(slide.crossTypeOut)) : !slide.crossTypeOut || slide.crossTypeOut === 'show')
+      if (slide.stop || (hasSlideFades ? !fadeSequence : slide.effInDuration || slide.effOutDuration || (slide.crossTypeOut && slide.crossTypeOut !== 'hide' && !zeroDurationCross))) throw new Error('Slide transitions/stop are not supported')
       if (!Number.isFinite(slide.duration) || slide.duration <= 0) throw new Error('Invalid slide duration')
       const start = duration
-      duration += slide.duration / 1000
-      return { ...slide, start, end: duration }
+      duration += (slide.duration + (hasSlideFades ? slide.effInDuration : 0)) / 1000
+      return { ...slide, start, end: duration, visibleEnd: duration + (hasSlideFades ? slide.effOutDuration / 1000 : 0), entranceDuration: hasSlideFades ? slide.effInDuration / 1000 : 0 }
     })
     if (new Set(slides.map(slide => slide.id)).size !== slides.length) throw new Error('Duplicate slide identity')
     if (!(duration > 0 && duration <= 300) || !Number.isInteger(source.width) || !Number.isInteger(source.height) || source.width <= 0 || source.height <= 0 || source.width > 4096 || source.height > 4096) throw new Error('Invalid dimensions or duration')
@@ -509,11 +514,28 @@ export async function convertTheBriefHtml(html) {
     const rules = [...document.styleSheets].flatMap(sheet => [...sheet.cssRules].filter(rule => rule.type === 7))
     if (!Number.isInteger(source.loopCount) || source.loopCount < 0 || source.loopCount > 1000) throw new Error('Unsupported source loop count')
     const warnings = []
+    if (hasSlideFades) {
+      for (const slide of slides) {
+        if (document.getElementById(`effOut${slide.id}`)) throw new Error('Slide transitions/stop: outgoing scene effects require an adapter')
+        const entrance = document.getElementById(`effIn${slide.id}`)
+        if (!slide.entranceDuration) {
+          if (entrance) throw new Error('Slide transitions/stop: unexpected scene entrance')
+          continue
+        }
+        if (!entrance || seconds(style(entrance).animationDuration) !== slide.entranceDuration || seconds(style(entrance).animationDelay || '0s') !== 0) throw new Error('Slide transitions/stop: scene fade timing differs from metadata')
+        const effect = effectTracks(entrance, style, rules, slide.start, slide.end, warnings, { w: source.width, h: source.height })
+        const opacity = effect.tracks.opacity
+        if (Object.keys(effect.tracks).length !== 1 || opacity?.length !== 2 || opacity[0].time !== slide.start || opacity[0].value !== 0 || opacity[1].value !== 1 || opacity[1].time !== slide.start + slide.entranceDuration) throw new Error('Slide transitions/stop: only complete scene fade-ins are supported')
+        slide.fadeEase = opacity[0].easing
+      }
+      warnings.push('Scene fade-ins retain composited slide groups and overlapping source holds; review every transition before export')
+    }
     const fonts = fontManifest(document, warnings)
     const externalFontStylesheets = [...document.querySelectorAll('link[rel="stylesheet"][href]')].map(link => link.getAttribute('href')).filter(href => /^https:\/\/fonts\.googleapis\.com\//i.test(href))
     if (source.hasClickTag || document.querySelector('a[href], [onclick]')) warnings.push('Click destinations are not migrated by this pilot')
     const layers = []
     const imageTransforms = []
+    const audioTransforms = []
     const videoFrames = []
     const sourceElements = []
     let id = 1
@@ -535,11 +557,16 @@ export async function convertTheBriefHtml(html) {
       const sourceId = Number(element.id.replace('element-', ''))
       const slide = slideByElement.get(element)
       const timing = slide.elements.find(item => item.id === sourceId) || {}
-      const start = slide.start + (timing.from || 0) / 1000
-      const end = Math.min(slide.end, timing.duration === undefined ? slide.end : start + timing.duration / 1000)
+      const effectStart = slide.start + slide.entranceDuration + (timing.from || 0) / 1000
+      const start = timing.from ? effectStart : slide.start
+      const end = Math.min(slide.visibleEnd, timing.duration === undefined ? slide.visibleEnd : effectStart + timing.duration / 1000)
       if (!(start >= 0 && end > start)) throw new Error('Invalid element presence')
       const clipToPresence = slides.length > 1 || end < duration
       const layerBase = { ...base, slideId: `source-slide:${slide.id}`, linkId: `source:${sourceId}`, x: px(css.left), y: px(css.top), w: px(css.width), h: px(css.height), zIndex: id, startTime: start, endTime: end, ...(clipToPresence ? { clipToPresence: true } : {}) }
+      if (hasSlideFades) {
+        layerBase.slideFade = { id: layerBase.slideId, start: slide.start, end: slide.visibleEnd, duration: slide.entranceDuration, ease: slide.fadeEase || 'cubic-bezier(0,0,1,1)' }
+        layerBase.animInStart = effectStart
+      }
       if ([layerBase.x, layerBase.y, layerBase.w, layerBase.h].some(n => !Number.isFinite(n))) throw new Error('Unsupported element geometry')
       if (css.mixBlendMode && css.mixBlendMode !== 'normal') {
         if (/^(multiply|screen|overlay|darken|lighten|color-dodge|color-burn|hard-light|soft-light|difference|exclusion|hue|saturation|color|luminosity)$/.test(css.mixBlendMode)) layerBase.mixBlendMode = css.mixBlendMode
@@ -555,20 +582,20 @@ export async function convertTheBriefHtml(html) {
           if (start + reveal.duration > end + 1e-6) throw new Error('Reveal crosses layer boundary')
           layerBase.reveal = reveal
         }
-        let effect = wordPop || reveal ? {} : effectTracks(document.getElementById(`effIn${sourceId}`), style, rules, start, end, warnings, layerBase)
+        let effect = wordPop || reveal ? {} : effectTracks(document.getElementById(`effIn${sourceId}`), style, rules, effectStart, end, warnings, layerBase)
         const middle = document.getElementById(`effMid${sourceId}`)
         if (middle) {
           try {
-            effect = appendEffect(effect, effectTracks(middle, style, rules, start, end, warnings, layerBase, true), start)
+            effect = appendEffect(effect, effectTracks(middle, style, rules, effectStart, end, warnings, layerBase, true), effectStart)
           } catch (cause) {
             throw new Error(`${middle.id}: ${cause.message}`, { cause })
           }
         }
         const exit = document.getElementById(`effOut${sourceId}`)
         if (exit) {
-          const exitStart = start + seconds(style(exit).animationDelay || '0s')
+          const exitStart = effectStart + seconds(style(exit).animationDelay || '0s')
           if (exitStart >= end) warnings.push(`${exit.id}: exit at ${exitStart}s is outside the ${duration}s loop`)
-          else effect = appendEffect(effect, effectTracks(exit, style, rules, start, end, warnings, layerBase), start)
+          else effect = appendEffect(effect, effectTracks(exit, style, rules, effectStart, end, warnings, layerBase), effectStart)
         }
         keyframes = effect.tracks || {}
         if (effect.transformOrigin) layerBase.transformOrigin = effect.transformOrigin
@@ -579,6 +606,13 @@ export async function convertTheBriefHtml(html) {
       }
       // Explicit holds avoid Banner Studio's default entrance/exit fades and
       // preserve the full source duration when the entrance finishes early.
+      if (hasSlideFades && effectStart > start) {
+        const entrance = document.getElementById(`effIn${sourceId}`)
+        if (entrance && !wordPop && !['backwards', 'both'].includes(style(entrance).animationFillMode)) throw new Error(`${element.id}: scene entrance requires a backwards-filled layer effect`)
+        for (const frames of Object.values(keyframes)) if (frames[0].time > start) {
+          frames.unshift({ time: start, value: frames[0].value, easing: 'linear' })
+        }
+      }
       if (!keyframes.opacity) keyframes.opacity = holdOpacity(start, end)
       else if (keyframes.opacity.at(-1).time < end) keyframes.opacity.push({ time: end, value: keyframes.opacity.at(-1).value, easing: 'linear' })
       layerBase.keyframes = keyframes
@@ -602,18 +636,25 @@ export async function convertTheBriefHtml(html) {
         if (offset !== 0) throw new Error(`Audio ${sourceId}: source clip offset ${offset}s requires exported-clip reconciliation`)
         if (audioConfig?.soundOnHover) throw new Error(`Audio ${sourceId}: hover playback requires an audio adapter`)
         const stages = [audioConfig?.buildIn, audioConfig?.buildMid, audioConfig?.buildOut].filter(Boolean)
-        if (stages.some(stage => stage.type === 'fadeAudio')) throw new Error(`Audio ${sourceId}: source fades require exported-clip reconciliation`)
-        if (stages.some(stage => !['none', 'instant', 'audio'].includes(stage.type))) throw new Error(`Audio ${sourceId}: unsupported source audio effect`)
+        if (stages.some(stage => !['none', 'instant', 'audio', 'fadeAudio'].includes(stage.type))) throw new Error(`Audio ${sourceId}: unsupported source audio effect`)
+        const hasAudioFade = stages.some(stage => stage.type === 'fadeAudio')
+        const stageDuration = hasAudioFade ? stages.reduce((sum, stage) => sum + stage.duration, 0) : null
+        if (hasAudioFade && (stages.length !== 3 || stages.some(stage => !Number.isFinite(stage.duration) || stage.duration < 0 || stage.duration > 300 || stage.delay !== 0) || audioConfig.buildMid.type !== 'audio' || !(stageDuration > 0))) throw new Error(`Audio ${sourceId}: source fades require exported-clip reconciliation: unsupported fade timing`)
         const delay = audioConfig?.buildIn?.delay
         if (delay !== undefined && (!Number.isFinite(delay) || delay < 0 || Math.abs(slide.start + delay - start) > 1e-6)) throw new Error(`Audio ${sourceId}: source audio presence requires reconciliation`)
         if (audioConfig?.endTime !== undefined && audioConfig?.duration !== undefined) {
           const clipDuration = audioConfig.endTime - offset
-          if (!Number.isFinite(clipDuration) || clipDuration <= 0 || Math.abs(clipDuration - audioConfig.duration) > 1e-6 || start + clipDuration > slide.end + 1e-6) throw new Error(`Audio ${sourceId}: clip duration requires reconciliation`)
+          if (!Number.isFinite(clipDuration) || clipDuration <= 0 || (Math.abs(clipDuration - audioConfig.duration) > 1e-6 && !(hasAudioFade && Math.abs(stageDuration - clipDuration) < 1e-6)) || start + clipDuration > slide.end + 1e-6) throw new Error(`Audio ${sourceId}: clip duration requires reconciliation`)
           if (Math.abs(layerBase.endTime - (start + clipDuration)) > 1e-6) {
             layerBase.endTime = start + clipDuration
             layerBase.keyframes = { opacity: holdOpacity(start, layerBase.endTime) }
             warnings.push(`Audio ${sourceId}: presence reconciled to the authored ${clipDuration}s clip trim rather than the generic element duration; review soundtrack timing`)
           }
+        }
+        if (hasAudioFade) {
+          if (Math.abs(layerBase.endTime - start - stageDuration) > 1e-6) throw new Error(`Audio ${sourceId}: fade stages differ from the exported clip`)
+          audioTransforms.push({ layerId: id, duration: stageDuration, fadeIn: audioConfig.buildIn.type === 'fadeAudio' ? audioConfig.buildIn.duration : 0, fadeOut: audioConfig.buildOut.type === 'fadeAudio' ? audioConfig.buildOut.duration : 0 })
+          warnings.push(`Audio ${sourceId}: authored volume fades are baked into a managed soundtrack; the original MP3 remains in the source ZIP`)
         }
         layers.push({ ...layerBase, id: id++, type: 'audio', name: `Audio ${sourceId}`, src: localAsset(sources[0].getAttribute('src')), x: 0, y: 0, w: 1, h: 1, volume, ...(audio.muted || audio.hasAttribute('muted') || audioConfig?.muted === true ? { muted: true } : {}) })
       } else if (type === 'video') {
@@ -723,7 +764,7 @@ export async function convertTheBriefHtml(html) {
         const rowHeights = []
         for (const [rowIndex, row] of rows.entries()) {
           const rowCss = style(row)
-          const span = [...row.querySelectorAll('span')].find(item => item.textContent.trim() && !item.closest('sup')) || row
+          const span = [...row.querySelectorAll('span')].find(item => item.textContent.trim() && !item.children.length && !item.closest('sup')) || row
           const textCss = style(span)
           if (textCss.fontStyle && !['normal', 'italic'].includes(textCss.fontStyle)) throw new Error('Unsupported text font style')
           // Animated word wrappers inherit their visible child's typography but
@@ -798,7 +839,19 @@ export async function convertTheBriefHtml(html) {
         const extra = layerBase.h - (y - layerBase.y)
         if (rows.length > 1 && extra > 0.4 * Math.min(...rowHeights)) {
           const wholeLines = height => extra / height >= 0.9 && Math.abs(extra / height - Math.round(extra / height)) < 0.1
-          if (!wholeLines(rowHeights.at(-1)) || rowHeights.slice(0, -1).some(wholeLines)) throw new Error('Wrapped text across stacked rows needs an adapter')
+          const candidates = rowHeights.flatMap((height, index) => wholeLines(height) ? [index] : [])
+          if (candidates.length !== 1) throw new Error('Wrapped text across stacked rows needs an adapter')
+          const wrapped = candidates[0]
+          for (const [index] of rows.entries()) {
+            const line = layers.find(layer => layer.linkId === `source:${sourceId}:row:${index}`)
+            if (!line) continue
+            if (index === wrapped) line.h += extra
+            if (index > wrapped) {
+              line.y += extra
+              if (line.transformOrigin) line.transformOrigin.y -= extra
+            }
+          }
+          warnings.push(`${element.id}: a uniquely sized wrapped row retains its extra line boxes and shifts later editable rows; review text wrapping`)
         }
         if (new Set(rows.map(row => style(row).fontSize)).size > 1) warnings.push(`${element.id}: mixed-size text split into editable lines; baseline alignment needs visual review`)
       } else if (type === 'button') {
@@ -967,7 +1020,7 @@ export async function convertTheBriefHtml(html) {
       } else {
         throw new Error(`Unsupported layer type: ${type}`)
       }
-      sourceElements.push({ sourceId, slideId: slide.id, type, nativeLayerIds: layers.slice(before).map(layer => layer.id), start, end })
+      sourceElements.push({ sourceId, slideId: slide.id, type, nativeLayerIds: layers.slice(before).map(layer => layer.id), start, end, ...(effectStart !== start ? { effectStart } : {}) })
     }
     for (const layer of layers) {
       if (!layer.fontFamily?.includes(',')) continue
@@ -976,7 +1029,7 @@ export async function convertTheBriefHtml(html) {
       if (declared.length !== 1 || !names[0].startsWith(declared[0].family + ' file-')) throw new Error(`${layer.name}: ambiguous export font alias needs reconciliation`)
       layer.fontFamily = declared[0].family
     }
-    return { schemaVersion: 1, adapter: slides.length === 1 ? 'thebrief-css-single-slide-pilot' : 'thebrief-css-hard-cut-slides', fidelityVerified: false, fonts, externalFontStylesheets, imageTransforms, source: { designHash: source.designHash || null, width: source.width, height: source.height, duration, loopCount: source.loopCount, elementCount: elements.length }, videoFrames, canvasData: { [`custom_${source.width}x${source.height}`]: { slides: slides.map((slide, index) => ({ id: `source-slide:${slide.id}`, name: `Slide ${index + 1}`, duration: slide.end - slide.start })), playback: { duration, loopCount: source.loopCount }, layers, bgColor: background } }, sourceElements, warnings }
+    return { schemaVersion: 1, adapter: slides.length === 1 ? 'thebrief-css-single-slide-pilot' : 'thebrief-css-hard-cut-slides', fidelityVerified: false, fonts, externalFontStylesheets, imageTransforms, audioTransforms, source: { designHash: source.designHash || null, width: source.width, height: source.height, duration, loopCount: source.loopCount, elementCount: elements.length }, videoFrames, canvasData: { [`custom_${source.width}x${source.height}`]: { slides: slides.map((slide, index) => ({ id: `source-slide:${slide.id}`, name: `Slide ${index + 1}`, duration: slide.end - slide.start })), playback: { duration, loopCount: source.loopCount }, layers, bgColor: background } }, sourceElements, warnings }
   } finally {
     await window.happyDOM.close()
   }

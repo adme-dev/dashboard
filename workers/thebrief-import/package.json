@@ -1,0 +1,8 @@
+{
+  "name": "xeroflow-thebrief-import",
+  "private": true,
+  "type": "module",
+  "scripts": { "deploy": "wrangler deploy --config wrangler.toml" },
+  "dependencies": { "@cloudflare/containers": "0.3.7" },
+  "devDependencies": { "wrangler": "4.110.0" }
+}

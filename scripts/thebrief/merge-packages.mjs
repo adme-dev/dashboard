@@ -1,14 +1,12 @@
 import { readFile, writeFile } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
+import { pathToFileURL } from 'node:url'
 import { parseTheBriefPackage } from '../../app/utils/thebrief-import.ts'
 
 // Merge independently verified HTML5 size exports into one editable design set.
 // Run with Node's tsx loader, as with package-import.mjs.
-const [designHash, name, output, ...inputs] = process.argv.slice(2)
-if (!/^[\w-]{1,100}$/.test(designHash || '') || !name || !output || inputs.length < 2 || inputs.length > 20) {
-  throw new Error('Usage: merge-packages.mjs <design hash> <design name> <output.json> <prepared-size-1.json> <prepared-size-2.json> [...]')
-}
-const packages = await Promise.all(inputs.map(async path => parseTheBriefPackage(JSON.parse(await readFile(path, 'utf8')))))
+export function mergeTheBriefPackages(packages, designHash, name) {
+if (packages.length < 1 || packages.length > 20 || !/^[\w-]{1,100}$/.test(designHash)) throw new Error('Invalid design set')
 const [{ source }] = packages
 if (packages.some(pkg => pkg.source.duration !== source.duration || pkg.source.loopCount !== source.loopCount || pkg.source.folder !== source.folder || pkg.source.createdDate !== source.createdDate)) {
   throw new Error('Source sizes have different playback, folder or creation-date metadata')
@@ -54,5 +52,14 @@ const merged = parseTheBriefPackage({
   canvasData, assets: [...assets.values()], fonts: [...fonts.values()],
   warnings: [...new Set(packages.flatMap(pkg => pkg.warnings))]
 })
-await writeFile(output, JSON.stringify(merged), { mode: 0o600 })
-console.log(JSON.stringify({ output, sizes: Object.keys(merged.canvasData), assets: merged.assets.length, fonts: merged.fonts.length }))
+return merged
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  const [designHash, name, output, ...inputs] = process.argv.slice(2)
+  if (!/^[\w-]{1,100}$/.test(designHash || '') || !name || !output || inputs.length < 2 || inputs.length > 20) throw new Error('Usage: merge-packages.mjs <design hash> <design name> <output.json> <prepared-size-1.json> <prepared-size-2.json> [...]')
+  const packages = await Promise.all(inputs.map(async path => parseTheBriefPackage(JSON.parse(await readFile(path, 'utf8')))))
+  const merged = mergeTheBriefPackages(packages, designHash, name)
+  await writeFile(output, JSON.stringify(merged), { mode: 0o600 })
+  console.log(JSON.stringify({ output, sizes: Object.keys(merged.canvasData), assets: merged.assets.length, fonts: merged.fonts.length }))
+}

@@ -116,6 +116,13 @@ function animationSignals(text) {
   ].filter(([pattern]) => pattern.test(text)).map(([, label]) => label)
 }
 
+/** Validated regular entries only; callers must inspect the complete archive before extraction. */
+export function readArchiveEntries(input, options = {}) {
+  const limits = { ...defaults, ...options }
+  for (const value of Object.values(limits)) if (!Number.isSafeInteger(value) || value < 0) fail('Invalid inspection limit')
+  return entries(Buffer.from(input), limits, { files: 0, bytes: 0, videoBytes: 0 })
+}
+
 export function inspectArchive(input, options = {}) {
   const limits = { ...defaults, ...options }
   for (const value of Object.values(limits)) if (!Number.isSafeInteger(value) || value < 0) fail('Invalid inspection limit')

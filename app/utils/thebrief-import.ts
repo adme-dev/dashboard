@@ -15,14 +15,16 @@ const layer = z.object({
   x: number, y: number, w: number.positive(), h: number.positive(), zIndex: number, opacity: z.number().min(0).max(1),
   animIn: z.literal('none'), animOut: z.literal('none').optional(), animInDur: z.literal(0),
   startTime: z.number().min(0).max(300), endTime: z.number().positive().max(300),
+  animInStart: z.number().min(0).max(300).optional(),
   clipToPresence: z.boolean().optional(),
   slideId: z.string().max(100).regex(/^[a-zA-Z0-9:_-]+$/).optional(),
+  slideFade: z.object({ id: z.string().max(100).regex(/^[a-zA-Z0-9:_-]+$/), start: z.number().min(0).max(300), end: z.number().positive().max(300), duration: z.number().min(0).max(5), ease: z.string().regex(/^cubic-bezier\([\d.,\s-]+\)$/) }).strict().optional(),
   textRuns: z.array(z.object({ text: z.string().max(10000), fontSize: number.positive().optional(), top: number.optional() }).strict()).max(100).optional(),
   borderWidth: number.nonnegative().max(100).optional(), borderColor: css.optional(), textColor: css.optional(),
   rotation: number.optional(), borderRadius: number.nonnegative().optional(), transformOrigin: z.object({ x: number, y: number }).optional(),
   mixBlendMode: z.enum(['normal', 'multiply', 'screen', 'overlay', 'darken', 'lighten', 'color-dodge', 'color-burn', 'hard-light', 'soft-light', 'difference', 'exclusion', 'hue', 'saturation', 'color', 'luminosity']).optional(),
   text: z.string().max(10000).optional(), textTransform: z.enum(['uppercase', 'lowercase', 'capitalize', 'none']).optional(), fontFamily: z.string().max(150).regex(/^[\w ,.-]+$/).optional(),
-  wordPop: z.object({ duration: z.number().positive().max(5), stagger: z.number().min(0).max(5), ease: z.string().regex(/^cubic-bezier\([\d.,\s-]+\)$/), variant: z.enum(['pop', 'blurLeft', 'blurUp', 'zoomOut', 'typewriter']).optional(), unit: z.enum(['word', 'character']).optional(), delays: z.array(z.number().min(0).max(5)).max(500).optional(), offset: z.number().min(0).max(5).optional() }).strict().optional(),
+  wordPop: z.object({ duration: z.number().positive().max(5), stagger: z.number().min(0).max(5), ease: z.string().regex(/^cubic-bezier\([\d.,\s-]+\)$/), variant: z.enum(['pop', 'blurLeft', 'blurUp', 'zoomOut', 'typewriter', 'fade']).optional(), unit: z.enum(['word', 'character']).optional(), delays: z.array(z.number().min(0).max(5)).max(500).optional(), offset: z.number().min(0).max(5).optional() }).strict().optional(),
   reveal: z.object({ type: z.enum(['softWipe', 'tvExpand']), duration: z.number().positive().max(5), ease: z.string().regex(/^cubic-bezier\([\d.,\s-]+\)$/) }).strict().optional(),
   fontSize: number.positive().optional(), fontWeight: z.number().int().min(1).max(1000).optional(),
   fontStyle: z.enum(['normal', 'italic']).optional(),
@@ -44,7 +46,7 @@ const layer = z.object({
 const binary = z.object({ path: local, fileName: z.string().max(150).regex(/^[\w .-]+$/), sha256: sha, base64: z.string().max(32 * 1024 * 1024).regex(/^[A-Za-z0-9+/]*={0,2}$/), mimeType: z.string().max(100) })
 const schema = z.object({
   kind: z.enum(['xeroflow-thebrief-import', 'xeroflow-reelmotion-import']), version: z.literal(1), name: z.string().trim().min(1).max(200),
-  source: z.object({ designHash: z.string().regex(/^[\w-]+$/).max(100), sha256: sha, folder: z.string().max(250), duration: z.number().positive().max(300), loopCount: z.number().int().min(0).max(1000), createdDate: z.iso.date().optional(), clientName: z.string().trim().min(1).max(200).optional() }),
+  source: z.object({ designHash: z.string().regex(/^[\w-]+$/).max(100), sha256: sha, folder: z.string().max(250), duration: z.number().positive().max(300), loopCount: z.number().int().min(0).max(1000), createdDate: z.iso.date().optional(), clientName: z.string().trim().min(1).max(200).optional(), sizeSources: z.array(z.object({ designHash: z.string().regex(/^[\w-]{1,100}$/), sha256: sha }).strict()).min(1).max(20).optional() }),
   reelmotion: z.object({ lastSpokenWordEndSec: z.number().finite().nonnegative(), endCardStartSec: z.number().finite().nonnegative(), headClashes: z.literal(0), faceSampleFps: z.number().finite().min(6).max(60) }).strict().optional(),
   canvasData: z.record(z.string(), z.object({ layers: z.array(layer).min(1).max(600), bgColor: css.optional(), slides: z.array(z.object({ id: z.string().max(100).regex(/^[a-zA-Z0-9:_-]+$/), name: z.string().min(1).max(100), duration: z.number().finite().min(0.1).max(300) }).strict()).min(1).max(50).optional(), playback: z.object({ duration: z.number().positive().max(300), loopCount: z.number().int().min(0).max(1000) }).optional() })),
   warnings: z.array(z.string().max(1000)).max(250),
@@ -95,12 +97,15 @@ export function parseTheBriefPackage(input: unknown): TheBriefPackage {
         if (index < 0) throw new Error('Artwork references a missing slide')
         const start = board.slides!.slice(0, index).reduce((sum, slide) => sum + slide.duration, 0)
         const end = start + board.slides![index]!.duration
-        if (item.startTime < start - 0.0001 || item.endTime > end + 0.0001) throw new Error('Artwork crosses its slide boundary')
+        const fade = item.slideFade
+        if (fade && (fade.id !== item.slideId || Math.abs(fade.start - start) > 0.0001 || fade.end < end || fade.end > result.source.duration || fade.duration > end - start)) throw new Error('Invalid source slide fade')
+        if (item.startTime < start - 0.0001 || item.endTime > (fade?.end ?? end) + 0.0001) throw new Error('Artwork crosses its slide boundary')
       }
+      if (item.slideFade && !item.slideId) throw new Error('Slide fade requires scene ownership')
       if (item.src && !result.assets.some(a => a.path === item.src)) throw new Error('Missing packaged asset')
       if (item.textRuns && item.textRuns.map(run => run.text).join('') !== item.text) throw new Error('Text runs differ from layer text')
       if (item.reveal && item.type !== 'rect' && item.type !== 'button') throw new Error('Reveal requires editable shape geometry')
-      if (item.wordPop && (item.type !== 'text' || item.textRuns)) throw new Error('Word animation requires plain text')
+      if (item.wordPop && item.type !== 'text') throw new Error('Word animation requires text')
       if (['image', 'audio', 'video'].includes(item.type) && !item.src) throw new Error('Image, audio or video layer is missing its asset')
       const mime = item.src ? result.assets.find(a => a.path === item.src)?.mimeType : undefined
       if ((item.type === 'video') !== (mime === 'video/mp4')) throw new Error('Video layers must reference MP4 assets, and only video layers may')
@@ -112,6 +117,12 @@ export function parseTheBriefPackage(input: unknown): TheBriefPackage {
       for (const frames of Object.values(item.keyframes || {})) {
         if (frames?.some((f, i) => f.time > result.source.duration || (i > 0 && f.time < frames[i - 1]!.time))) throw new Error('Invalid animation timing')
       }
+    }
+    const fades = new Map<string, string>()
+    for (const item of board.layers) if (item.slideFade) {
+      const value = JSON.stringify(item.slideFade)
+      if (fades.has(item.slideFade.id) && fades.get(item.slideFade.id) !== value) throw new Error('Scene layers have conflicting fades')
+      fades.set(item.slideFade.id, value)
     }
   }
   return result
@@ -136,6 +147,7 @@ export function clientFromHint(hint: string | undefined, clients: Array<{ id: st
 export function importTags(pkg: TheBriefPackage, createdDate = pkg.source.createdDate, { datePending = false } = {}): string[] {
   if (createdDate && !z.iso.date().safeParse(createdDate).success) throw new Error('Invalid TheBrief creation date')
   return [pkg.kind === 'xeroflow-reelmotion-import' ? 'source:reelmotion' : 'source:thebrief', `source-design:${pkg.source.designHash}`, `source-sha256:${pkg.source.sha256}`,
+    ...(pkg.source.sizeSources || []).map(source => `source-size:${source.designHash}`),
     `source-folder:${pkg.source.folder}`, `category:${pkg.source.folder.split('/').at(-1) || 'Imported'}`,
     `source-duration:${pkg.source.duration}`, `source-loops:${pkg.source.loopCount}`,
     ...(createdDate ? [`source-created-date:${createdDate}`] : datePending ? ['import:created-date-pending'] : []), 'import:needs-review']

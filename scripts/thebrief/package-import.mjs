@@ -10,6 +10,7 @@ import { convertTheBriefHtml } from './convert-html.mjs'
 import { inspectArchive } from './inspect-archive.mjs'
 import { packSfntAsWoff } from './woff-font.mjs'
 import { transformImage } from './image-transforms.mjs'
+import { transformAudio } from './audio-transforms.mjs'
 import { parseTheBriefPackage } from '../../app/utils/thebrief-import.ts'
 
 // Offline preparation. The studio imports only validated native data and binary
@@ -58,12 +59,14 @@ for (const board of Object.values(candidate.canvasData)) {
     if (!layer.src) continue
     const originalPath = layer.src
     const operations = (candidate.imageTransforms || []).filter(item => item.layerId === layer.id).map(item => ({ operation: item.operation }))
-    const assetKey = `${originalPath}:${JSON.stringify(operations)}`
+    const audioFade = (candidate.audioTransforms || []).find(item => item.layerId === layer.id)
+    const assetKey = `${originalPath}:${JSON.stringify(operations)}:${JSON.stringify(audioFade || null)}`
     let asset = sourceAssets.get(assetKey)
     if (!asset) {
       let bytes = await sourceFile(originalPath)
       if (extname(originalPath).toLowerCase() === '.mp3') {
         if (layer.type !== 'audio') throw new Error('Audio is used by a non-audio layer')
+        bytes = await transformAudio(bytes, audioFade)
         const sha256 = hash(bytes)
         asset = assets.find(item => item.sha256 === sha256)
         if (!asset) {

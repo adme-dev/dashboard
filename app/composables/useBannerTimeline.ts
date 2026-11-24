@@ -1,3 +1,4 @@
+import { bannerSlideGroups } from '~~/shared/bannerSlideFade'
 import { revealCommands, safeWordEntrance, wordEntranceDelay, wordEntranceSteps } from '~~/shared/bannerImportedMotion'
 import { registerTimelineVideo, syncTimelineVideo, pauseTimelineVideo, disposeTimelineVideo } from '~/utils/bannerTimelineVideo'
 import { ref, readonly, watch } from 'vue'
@@ -387,7 +388,8 @@ function addMaskAnimation(tl: gsap.core.Timeline, el: HTMLElement, layer: Layer,
   // Hide mask layer visually during playback
   tl.set(el, { autoAlpha: 0 }, 0)
 
-  const artboard = el.parentElement
+  const parent = el.parentElement
+  const artboard = parent?.hasAttribute('data-banner-slide') ? parent.parentElement : parent
   if (!artboard) return
 
   const targets = layer.maskTargetIds
@@ -423,6 +425,16 @@ function addMaskAnimation(tl: gsap.core.Timeline, el: HTMLElement, layer: Layer,
       )
     }
   })
+}
+
+function addSlideFades(tl: gsap.core.Timeline, artboard: HTMLElement, layers: Layer[]) {
+  for (const group of bannerSlideGroups(layers)) if (group.fade) {
+    const el = artboard.querySelector<HTMLElement>(`[data-banner-slide="${group.key}"]`)
+    if (!el) continue
+    const fade = group.fade
+    tl.set(el, { opacity: fade.duration > 0 ? 0 : 1, immediateRender: false }, 0)
+    if (fade.duration > 0) tl.to(el, { opacity: 1, duration: fade.duration, ease: resolveEase(fade.ease), immediateRender: false }, fade.start)
+  }
 }
 
 /** Add a layer's animation to a GSAP timeline (keyframes or preset) */
@@ -602,6 +614,7 @@ export function useBannerTimeline() {
     }
     animationPreviewSession = { timeline, stop: finish }
     animationPreviewState.value = { layerId, start, end }
+    addSlideFades(timeline, overlay, lastLayers)
     addLayerToTimeline(timeline, element, layer, null, state.sets[state.activeKey]?.playback?.duration, false)
     // Keep masks in the frozen scene, updating only their clipping calculations.
     for (const mask of lastLayers.filter(mask => mask.isMask && (mask.id === layerId || mask.maskTargetIds?.includes(layerId)))) {
@@ -704,6 +717,7 @@ export function useBannerTimeline() {
       },
     })
 
+    addSlideFades(masterTl, artboardEl, layers)
     let naturalEnd = 0
 
     layers.forEach(layer => {
@@ -840,6 +854,7 @@ export function useBannerTimeline() {
       },
     })
 
+    addSlideFades(tl, artboardEl, layers)
     layers.forEach(layer => {
       const el = artboardEl.querySelector(`#lyr-${layer.id}`) as HTMLElement
       if (!el) return

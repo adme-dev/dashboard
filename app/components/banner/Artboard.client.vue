@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import SlideGroup from './SlideGroup.client.vue'
+import { bannerSlideGroups } from '~~/shared/bannerSlideFade'
 import { createBannerVideoTransport } from '~/utils/bannerVideoPlayback'
 import { layerTransformOrigin, layerFlipTransform } from '~/utils/banner-transform'
 import type { Layer } from '~/types/banner-studio'
@@ -15,7 +17,7 @@ const props = withDefaults(defineProps<{
   followPlayhead?: boolean
 }>(), { followPlayhead: true })
 
-const { state, selectLayer, activeLayers, updatePathPoint, addPathPoint, getMotionPathTweens } = useBannerStudio()
+const { state, selectLayer, updatePathPoint, addPathPoint, getMotionPathTweens } = useBannerStudio()
 const { openEffects } = useBannerInspector()
 const effectMenu = ref<{ id: number, x: number, y: number } | null>(null)
 const effectMenuItems = computed(() => [[{ label: 'Effects and AI artwork', icon: 'i-lucide-sparkles', onSelect: () => {
@@ -476,74 +478,80 @@ defineExpose({ artboardEl })
         />
       </svg>
 
-      <!-- Layers -->
-      <div
-        v-for="layer in layers"
-        :id="`lyr-${layer.id}`"
-        :key="layer.id"
-        :data-slide-transition="layer.slideTransitionFor || undefined"
-        class="absolute"
-        :style="{
-          left: `${layer.x}px`,
-          top: `${layer.y}px`,
-          width: layer.type === 'audio' ? '0px' : (layer.type === 'bg' ? '100%' : `${layer.w}px`),
-          height: layer.type === 'audio' ? '0px' : (layer.type === 'bg' ? '100%' : `${layer.h}px`),
-          zIndex: layer.slideTransitionFor ? transitionZIndex : layer.zIndex,
-          mixBlendMode: layer.mixBlendMode || 'normal',
-          pointerEvents: isActive && !layer.locked && layer.type !== 'bg' && layer.type !== 'audio' ? 'auto' : 'none',
-          display: layer.hidden && layer.type !== 'audio' ? 'none' : undefined,
-          transformOrigin: layerTransformOrigin(layer.transformOrigin),
-          cursor: isActive && !layer.locked && layer.type !== 'bg' && layer.type !== 'audio' ? 'move' : 'default',
-          clipPath: maskClipPaths.get(layer.id) || undefined,
-          outline: layer.isMask ? '2px dashed #e84aff' : undefined,
-          outlineOffset: layer.isMask ? '-1px' : undefined
-        }"
-        @click="onLayerClick($event, layer)"
-        @contextmenu="onLayerContextMenu($event, layer)"
-        @mousedown="$event.button === 0 && isActive && !layer.locked && layer.type !== 'bg' ? onLayerMouseDown($event, layer.id) : undefined"
+      <!-- A source slide fades as one composited scene, retaining independent layer editing. -->
+      <SlideGroup
+        v-for="group in bannerSlideGroups(layers)"
+        :key="group.key"
+        :group="group"
       >
-        <!-- Content flips independently of animated position/rotation/scale. -->
-        <div data-layer-content class="h-full w-full" :style="{ transform: layerFlipTransform(layer) }">
-          <BannerMotionReveal :layer="layer">
-            <!-- Layer type renderers -->
-            <BannerLayersBg v-if="layer.type === 'bg'" :layer="layer" :is-active="isActive" />
-            <BannerLayersText
-              v-else-if="layer.type === 'text'"
-              :client-id="state.project?.clientId"
-              :layer="layer"
-              :is-active="isActive"
-            />
-            <BannerLayersImage v-else-if="layer.type === 'image'" :layer="layer" :is-active="isActive" />
-            <BannerLayersVideo v-else-if="layer.type === 'video'" :layer="layer" :is-active="isActive" />
-            <BannerLayersButton
-              v-else-if="layer.type === 'button'"
-              :client-id="state.project?.clientId"
-              :layer="layer"
-              :is-active="isActive"
-            />
-            <BannerLayersRect v-else-if="layer.type === 'rect'" :layer="layer" :is-active="isActive" />
-            <BannerLayersAudio v-else-if="layer.type === 'audio'" :layer="layer" :is-active="isActive" />
-          </BannerMotionReveal>
-        </div>
-
-        <!-- Remote lock indicator -->
-        <template v-if="getRemoteLock(layer.id) && !isSelected(layer)">
-          <div
-            class="absolute inset-0 pointer-events-none"
-            :style="{
-              border: `2px dashed ${getRemoteLock(layer.id)!.color}`,
-              zIndex: 9997
-            }"
-          />
-          <!-- Name badge -->
-          <div
-            class="absolute -top-5 left-0 px-1.5 py-0.5 rounded text-[8px] font-medium text-white pointer-events-none whitespace-nowrap"
-            :style="{ backgroundColor: getRemoteLock(layer.id)!.color, zIndex: 9998 }"
-          >
-            {{ getRemoteLock(layer.id)!.userName }}
+        <div
+          v-for="layer in group.layers"
+          :id="`lyr-${layer.id}`"
+          :key="layer.id"
+          :data-slide-transition="layer.slideTransitionFor || undefined"
+          class="absolute"
+          :style="{
+            left: `${layer.x}px`,
+            top: `${layer.y}px`,
+            width: layer.type === 'audio' ? '0px' : (layer.type === 'bg' ? '100%' : `${layer.w}px`),
+            height: layer.type === 'audio' ? '0px' : (layer.type === 'bg' ? '100%' : `${layer.h}px`),
+            zIndex: layer.slideTransitionFor ? transitionZIndex : layer.zIndex,
+            mixBlendMode: layer.mixBlendMode || 'normal',
+            pointerEvents: isActive && !layer.locked && layer.type !== 'bg' && layer.type !== 'audio' ? 'auto' : 'none',
+            display: layer.hidden && layer.type !== 'audio' ? 'none' : undefined,
+            transformOrigin: layerTransformOrigin(layer.transformOrigin),
+            cursor: isActive && !layer.locked && layer.type !== 'bg' && layer.type !== 'audio' ? 'move' : 'default',
+            clipPath: maskClipPaths.get(layer.id) || undefined,
+            outline: layer.isMask ? '2px dashed #e84aff' : undefined,
+            outlineOffset: layer.isMask ? '-1px' : undefined
+          }"
+          @click="onLayerClick($event, layer)"
+          @contextmenu="onLayerContextMenu($event, layer)"
+          @mousedown="$event.button === 0 && isActive && !layer.locked && layer.type !== 'bg' ? onLayerMouseDown($event, layer.id) : undefined"
+        >
+          <!-- Content flips independently of animated position/rotation/scale. -->
+          <div data-layer-content class="h-full w-full" :style="{ transform: layerFlipTransform(layer) }">
+            <BannerMotionReveal :layer="layer">
+              <!-- Layer type renderers -->
+              <BannerLayersBg v-if="layer.type === 'bg'" :layer="layer" :is-active="isActive" />
+              <BannerLayersText
+                v-else-if="layer.type === 'text'"
+                :client-id="state.project?.clientId"
+                :layer="layer"
+                :is-active="isActive"
+              />
+              <BannerLayersImage v-else-if="layer.type === 'image'" :layer="layer" :is-active="isActive" />
+              <BannerLayersVideo v-else-if="layer.type === 'video'" :layer="layer" :is-active="isActive" />
+              <BannerLayersButton
+                v-else-if="layer.type === 'button'"
+                :client-id="state.project?.clientId"
+                :layer="layer"
+                :is-active="isActive"
+              />
+              <BannerLayersRect v-else-if="layer.type === 'rect'" :layer="layer" :is-active="isActive" />
+              <BannerLayersAudio v-else-if="layer.type === 'audio'" :layer="layer" :is-active="isActive" />
+            </BannerMotionReveal>
           </div>
-        </template>
-      </div>
+
+          <!-- Remote lock indicator -->
+          <template v-if="getRemoteLock(layer.id) && !isSelected(layer)">
+            <div
+              class="absolute inset-0 pointer-events-none"
+              :style="{
+                border: `2px dashed ${getRemoteLock(layer.id)!.color}`,
+                zIndex: 9997
+              }"
+            />
+            <!-- Name badge -->
+            <div
+              class="absolute -top-5 left-0 px-1.5 py-0.5 rounded text-[8px] font-medium text-white pointer-events-none whitespace-nowrap"
+              :style="{ backgroundColor: getRemoteLock(layer.id)!.color, zIndex: 9998 }"
+            >
+              {{ getRemoteLock(layer.id)!.userName }}
+            </div>
+          </template>
+        </div>
+      </SlideGroup>
 
       <Teleport to="body">
         <UDropdownMenu :items="effectMenuItems" :open="!!effectMenu" @update:open="value => { if (!value) effectMenu = null }">
