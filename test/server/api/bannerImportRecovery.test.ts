@@ -1,3 +1,4 @@
+import { MAX_CREATIVE_PACKAGE_ASSETS } from '~~/app/utils/thebrief-import'
 import { beforeEach, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({ auth: vi.fn(), write: vi.fn(), authority: vi.fn(), active: vi.fn(), client: vi.fn(), rows: vi.fn(), query: vi.fn(), header: vi.fn() }))
@@ -38,6 +39,7 @@ it('scopes staff receipt reads to the current actor and client without escalatin
   const get = vi.fn()
   const event = { context: { cloudflare: { env: { MEDIA_BUCKET: { get } } } } }
   await expect(handler(event as Parameters<typeof handler>[0])).resolves.toMatchObject({ canResume: false, receipts: [] })
-  expect(mocks.rows.mock.calls[0][1]).toEqual([clientId, 'owner', ['a'.repeat(64)]])
+  expect(mocks.rows.mock.calls[0][0]).toContain('LIMIT $4')
+  expect(mocks.rows.mock.calls[0][1]).toEqual([clientId, 'owner', ['a'.repeat(64)], MAX_CREATIVE_PACKAGE_ASSETS + 1])
   expect(get).not.toHaveBeenCalled()
 })
