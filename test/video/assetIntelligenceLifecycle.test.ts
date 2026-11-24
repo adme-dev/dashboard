@@ -13,7 +13,9 @@ const {
   markAssetIntelligenceJobRunning,
   markAssetIntelligenceJobSucceeded,
   markAssetIntelligenceJobFailed,
+  listProjectIntelligenceJobs,
 } = await import('~~/server/utils/video-asset-intelligence/db')
+const staleJobs = await import('~~/shared/video/assetIntelligenceStaleJobs')
 
 describe('asset intelligence lifecycle', () => {
   beforeEach(() => {
@@ -101,5 +103,33 @@ describe('asset intelligence lifecycle', () => {
 
     expect(mockQueryOne.mock.calls[0][0]).toContain(`status IN ('queued','running')`)
     expect(mockQueryOne.mock.calls[2][0]).toContain(`status IN ('queued','running')`)
+  })
+  // The editor polls this list while a job is active, so this is where a job whose
+  // worker died stops showing as queued or running.
+  it('closes stranded jobs in the project before listing its jobs', async () => {
+    const calls: string[] = []
+    mockQueryRows.mockImplementation(async (sql: string) => {
+      calls.push(sql.includes('UPDATE') ? 'sweep' : 'list')
+      return sql.includes('UPDATE') ? [{ id: 'job-stale' }] : [{ id: 'job-stale', project_id: 'project-1', status: 'failed', error_message: staleJobs.STALE_QUEUED_JOB_MESSAGE, output_derivative_ids: [] }]
+    })
+
+    const jobs = await listProjectIntelligenceJobs('project-1', 30)
+
+    expect(calls).toEqual(['sweep', 'list'])
+    expect(mockQueryRows.mock.calls[0]).toEqual([
+      staleJobs.FAIL_STALE_ASSET_INTELLIGENCE_JOBS_SQL,
+      ['project-1', staleJobs.STALE_RUNNING_JOB_MINUTES, staleJobs.STALE_QUEUED_JOB_MINUTES, staleJobs.STALE_RUNNING_JOB_MESSAGE, staleJobs.STALE_QUEUED_JOB_MESSAGE],
+    ])
+    expect(jobs[0]).toMatchObject({ id: 'job-stale', status: 'failed', errorMessage: staleJobs.STALE_QUEUED_JOB_MESSAGE })
+  })
+
+  it('still lists jobs when closing stranded ones fails', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    mockQueryRows.mockImplementation(async (sql: string) => {
+      if (sql.includes('UPDATE')) throw new Error('lock timeout')
+      return [{ id: 'job-1', project_id: 'project-1', status: 'queued', output_derivative_ids: [] }]
+    })
+
+    await expect(listProjectIntelligenceJobs('project-1')).resolves.toMatchObject([{ id: 'job-1', status: 'queued' }])
   })
 })

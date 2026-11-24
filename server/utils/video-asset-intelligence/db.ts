@@ -13,6 +13,7 @@ import {
 } from './buckets'
 import { defaultModelForAction } from './registry'
 import type { AssetDerivativeKind, AssetIntelligenceActionId } from './registry'
+import { FAIL_STALE_ASSET_INTELLIGENCE_JOBS_SQL, staleAssetIntelligenceJobParams } from '~~/shared/video/assetIntelligenceStaleJobs'
 
 export async function ensureDefaultBuckets(projectId: string): Promise<void> {
   for (const bucket of DEFAULT_VIDEO_BUCKETS) {
@@ -217,6 +218,13 @@ export async function addDerivativeToProjectBucket(input: {
 
 export async function listProjectIntelligenceJobs(projectId: string, limit = 50): Promise<VideoAssetIntelligenceJob[]> {
   const safeLimit = Math.min(Math.max(Math.trunc(limit || 50), 1), 100)
+  // The editor polls this list while a job is active. Closing stranded jobs here means
+  // a job whose worker died stops showing as queued or running, even if nothing else runs.
+  try {
+    await queryRows(FAIL_STALE_ASSET_INTELLIGENCE_JOBS_SQL, staleAssetIntelligenceJobParams(projectId))
+  } catch (error) {
+    console.warn('[asset-intelligence] stale job sweep failed', error instanceof Error ? error.message : String(error))
+  }
   const rows = await queryRows(
     `SELECT * FROM video_asset_intelligence_jobs
       WHERE project_id = $1

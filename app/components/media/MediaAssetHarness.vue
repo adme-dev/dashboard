@@ -7,6 +7,7 @@ import VideoStudioPrepareWorkspace from '~~/app/components/media/VideoStudioPrep
 import { assemblyPlanToTimelinePayloads, type AiAssemblyTimelinePayload } from '~~/app/utils/video/aiAssemblyTimeline'
 import { derivativeTimelinePayload } from '~~/app/utils/video/assetDerivativeTimeline'
 import { idempotencyKey } from '~~/app/utils/idempotencyKey'
+import { captureVideoFrame } from '~~/app/utils/video/captureVideoFrame'
 
 const props = withDefaults(defineProps<{
   projectId: string
@@ -111,7 +112,8 @@ const loadingDerivatives = ref(false)
 const addingDerivativeId = ref<string | null>(null)
 const selectedItemId = ref<string | null>(null)
 const selectedAction = ref('erase-fill')
-const toolPrompt = ref('Erase the highlighted object and heal the background.')
+// Empty by default: erase works out what is under the paint by itself. Text here is extra guidance.
+const toolPrompt = ref('')
 const brushMaskKey = ref('')
 const brief = ref('Create a punchy vertical social edit using the strongest project assets.')
 const targetFormat = ref('reels_9x16')
@@ -119,6 +121,8 @@ const runningExtraction = ref(false)
 const assembling = ref(false)
 const assemblyPlan = ref<any | null>(null)
 const maskCanvasRef = ref<HTMLCanvasElement | null>(null)
+// Set while a video, not a still, is shown under the mask.
+const previewVideoRef = ref<HTMLVideoElement | null>(null)
 const maskPreviewUrl = ref<string | null>(null)
 const brushSize = ref(24)
 const isDrawingMask = ref(false)
@@ -168,7 +172,8 @@ const assetOptions = computed(() => items.value.map(item => ({
   value: item.id,
 })))
 const selectedAssetVideoUrl = computed(() => selectedItem.value?.assetId && !maskVideoFailed.value
-  ? `/api/agency/video/assets/${encodeURIComponent(selectedItem.value.assetId)}/stream`
+  // inline=1: served from this origin, so the frame painted on can be captured.
+  ? `/api/agency/video/assets/${encodeURIComponent(selectedItem.value.assetId)}/stream?inline=1`
   : null)
 const selectedActionModels = computed(() => models.value.filter(model => model.actions.includes(selectedAction.value)))
 const defaultEnabledModelCount = computed(() => models.value.filter(model => model.defaultEnabled).length)
@@ -336,6 +341,16 @@ async function uploadMask(): Promise<string | null> {
     const form = new FormData()
     form.append('projectId', props.projectId)
     form.append('file', blob, 'brush-mask.png')
+    // A video has no still of its own: send the frame the mask was painted on.
+    const video = previewVideoRef.value
+    if (video) {
+      try {
+        form.append('frame', await captureVideoFrame(video), 'painted-frame.jpg')
+      } catch (e: any) {
+        toast.add({ title: 'Could not capture the video frame', description: e?.message ?? '', color: 'error' })
+        return null
+      }
+    }
     const res = await apiFetch<{ maskKey: string; url: string; size: number }>(`/api/agency/video/assets/${item.assetId}/masks`, {
       method: 'POST',
       headers: { 'Idempotency-Key': idempotencyKey('asset-masks') },
@@ -594,6 +609,7 @@ onBeforeUnmount(() => {
     @refresh="refreshActivity"
     @frame-size="setFrameSize"
     @mask-canvas-ready="maskCanvasRef = $event"
+    @preview-video-ready="previewVideoRef = $event"
     @preview-image-error="maskPreviewFailed = true"
     @preview-video-error="maskVideoFailed = true"
     @start-mask-stroke="startMaskStroke"

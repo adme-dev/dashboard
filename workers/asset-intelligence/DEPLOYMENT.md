@@ -83,18 +83,31 @@ For local or fallback database access, provide `DATABASE_URL`.
 
 Erase runs entirely in this Worker and on Workers AI. No extra bindings or secrets.
 
-1. Loads the picture. A picture asset is used as it is. For a video, the asset's
-   preview frame (`thumbnail_key`) is used and the result is a still; the video is
-   never edited. A video with no preview frame fails with a message saying so.
+1. Loads the picture. A picture asset is used as it is. For a video, a still frame
+   is used and the result is a still; the video is never edited. The frame is the
+   one the editor painted on, which Prepare captures in the browser and the masks
+   endpoint stores beside the mask (`<mask key>.frame.jpg`). Without one, the
+   asset's preview frame (`thumbnail_key`) is used. A video with neither fails
+   with a message saying what to do.
 2. Reads the painted mask from R2 (`brush_mask_key`). It must be a PNG with the
    same shape as the picture.
-3. Sends the picture, with the painted area tinted green, to
-   `@cf/black-forest-labs/flux-2-klein-4b` at about one megapixel.
-4. Pastes only the painted region of the model's result, with a soft edge and a
+3. Asks `@cf/mistralai/mistral-small-3.1-24b-instruct` what is under the painted
+   area (a crop of the clean picture) and gets back a short name such as
+   "sailboats in a bay". If that call fails the erase still runs and says
+   "the object".
+4. Sends the picture, with the painted area tinted green, to
+   `@cf/black-forest-labs/flux-2-klein-4b` at about one megapixel, with an
+   instruction that names the object. Naming it is what makes erase reliable with
+   no instruction from the editor: measured on six pictures, the model removed the
+   object in 17 of 19 runs when it was named, 12 of 19 with a strongly worded
+   generic instruction and 9 of 19 with the editor's old default text. Hiding the
+   object behind a solid patch was worse than all of these.
+5. Pastes only the painted region of the model's result, with a soft edge and a
    tone correction, onto the original at full resolution, and stores a lossless PNG.
 
-Limits: PNG and JPEG sources up to 9 megapixels (4K UHD fits). Memory use at that
-size has not been measured on a deployed Worker, only locally. `wrangler.toml` raises the CPU
+Limits: PNG and JPEG sources up to 9 megapixels (4K UHD fits). An 8.6 megapixel
+picture with a full-size mask ran on the deployed Worker in 14 seconds using 3.4
+seconds of CPU, with no memory or CPU limit reached. `wrangler.toml` raises the CPU
 limit to 5 minutes for decoding and encoding large pictures; this needs a paid
 Workers plan.
 
@@ -105,3 +118,21 @@ Replicate needs a Replicate API token on this Worker and cost approval; no
 Replicate call exists in this repository today.
 
 Deploying this Worker is a separate step from deploying Pages (see above).
+
+## Database connections and stranded jobs
+
+Every query opens its own `pg` connection through Hyperdrive and closes it. Do not
+cache a client in module scope: the isolate outlives a queue delivery, the cached
+socket belongs to the delivery that opened it, and the next delivery's query never
+settles. The runtime then kills each invocation with no error, the message uses up
+its retries and the job row is left `queued` or `running`. This happened on
+2026-11-24 with both the old and the new version.
+
+A job that is `running` for more than 10 minutes, or `queued` for more than 15, is
+marked failed with a message telling the editor to run it again. This is done by
+the Pages app whenever it lists a project's jobs (the editor polls that list) and
+by this Worker at the start of each delivery. The rule lives in
+`shared/video/assetIntelligenceStaleJobs.ts`.
+
+After deploying, run at least two jobs back to back. One job on a fresh isolate
+proves nothing about connection handling.

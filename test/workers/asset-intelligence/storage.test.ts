@@ -33,10 +33,41 @@ describe('asset intelligence storage', () => {
     expect(videoReads).toEqual([['assets/clip.mp4', { range: { offset: 0, length: 16 } }]])
   })
 
-  it('fails clearly for a video with no preview frame', async () => {
+  it('prefers the frame the editor painted on over the preview frame of a video', async () => {
+    const bucket = bucketWith({
+      'assets/clip.mp4': [...MP4_HEAD, ...new Array(64).fill(7)],
+      'thumbs/clip.jpg': [...JPEG_HEAD, 9, 9],
+      'video-asset-masks/p/a/1.frame.jpg': [...JPEG_HEAD, 4, 2],
+    })
+    const picture = await fetchAssetPicture(bucket, 'asset-2', async () => ({ r2Key: 'assets/clip.mp4', thumbnailKey: 'thumbs/clip.jpg' }), 'video-asset-masks/p/a/1.frame.jpg')
+    expect(picture.source).toBe('video-frame')
+    expect([...picture.bytes]).toEqual([...JPEG_HEAD, 4, 2])
+  })
+
+  it('erases a video that has no preview frame when the painted frame was saved', async () => {
+    const bucket = bucketWith({ 'assets/clip.mp4': MP4_HEAD, 'video-asset-masks/p/a/1.frame.jpg': [...JPEG_HEAD, 4, 2] })
+    const picture = await fetchAssetPicture(bucket, 'asset-3', async () => ({ r2Key: 'assets/clip.mp4', thumbnailKey: null }), 'video-asset-masks/p/a/1.frame.jpg')
+    expect([...picture.bytes]).toEqual([...JPEG_HEAD, 4, 2])
+  })
+
+  it('falls back to the preview frame when no painted frame was saved or it is not a picture', async () => {
+    const bucket = bucketWith({ 'assets/clip.mp4': MP4_HEAD, 'thumbs/clip.jpg': [...JPEG_HEAD, 9, 9], 'video-asset-masks/p/a/2.frame.jpg': [1, 2, 3, 4] })
+    const keys = async () => ({ r2Key: 'assets/clip.mp4', thumbnailKey: 'thumbs/clip.jpg' })
+    expect([...(await fetchAssetPicture(bucket, 'asset-2', keys, 'video-asset-masks/p/a/missing.frame.jpg')).bytes]).toEqual([...JPEG_HEAD, 9, 9])
+    expect([...(await fetchAssetPicture(bucket, 'asset-2', keys, 'video-asset-masks/p/a/2.frame.jpg')).bytes]).toEqual([...JPEG_HEAD, 9, 9])
+  })
+
+  it('never swaps a picture asset for a painted frame', async () => {
+    const bucket = bucketWith({ 'assets/still.png': [...PNG_HEAD, 1], 'video-asset-masks/p/a/1.frame.jpg': [...JPEG_HEAD, 4, 2] })
+    const picture = await fetchAssetPicture(bucket, 'asset-1', async () => ({ r2Key: 'assets/still.png', thumbnailKey: null }), 'video-asset-masks/p/a/1.frame.jpg')
+    expect(picture.source).toBe('picture')
+    expect([...picture.bytes]).toEqual([...PNG_HEAD, 1])
+  })
+
+  it('says what to do when a video has neither a painted frame nor a preview frame', async () => {
     const bucket = bucketWith({ 'assets/clip.mp4': MP4_HEAD })
-    await expect(fetchAssetPicture(bucket, 'asset-3', async () => ({ r2Key: 'assets/clip.mp4', thumbnailKey: null })))
-      .rejects.toThrow('This video has no preview frame yet')
+    await expect(fetchAssetPicture(bucket, 'asset-3', async () => ({ r2Key: 'assets/clip.mp4', thumbnailKey: null }), 'video-asset-masks/p/a/missing.frame.jpg'))
+      .rejects.toThrow('No still frame of this video was saved')
   })
 
   it('fails clearly when the preview frame is not a PNG or JPEG', async () => {

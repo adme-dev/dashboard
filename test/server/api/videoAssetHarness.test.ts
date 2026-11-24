@@ -9,6 +9,9 @@ g.readBody = async (event: TestEvent) => event.body ?? {}
 g.readMultipartFormData = vi.fn()
 g.createError = (input: any) => Object.assign(new Error(input.statusMessage), input)
 g.setResponseStatus = vi.fn()
+g.getHeader = (event: TestEvent & { headers?: Record<string, string> }, name: string) => event.headers?.[name.toLowerCase()]
+g.setHeader = vi.fn()
+g.sendStream = vi.fn((_event: TestEvent, body: unknown) => body)
 g.sendRedirect = vi.fn((_event: TestEvent, location: string, statusCode: number) => ({ location, statusCode }))
 g.useRuntimeConfig = () => ({ public: { appUrl: 'https://app.example.test' } })
 
@@ -36,12 +39,14 @@ const mockDownloadFileBuffer = vi.fn()
 const mockGetPresignedDownloadUrl = vi.fn()
 const mockGetPublicUrl = vi.fn()
 const mockIsStorageConfigured = vi.fn()
+const mockReadStoredObject = vi.fn()
 vi.mock('~~/server/utils/storage', () => ({
   uploadFile: (...args: unknown[]) => mockUploadFile(...args),
   downloadFileBuffer: (...args: unknown[]) => mockDownloadFileBuffer(...args),
   getPresignedDownloadUrl: (...args: unknown[]) => mockGetPresignedDownloadUrl(...args),
   getPublicUrl: (...args: unknown[]) => mockGetPublicUrl(...args),
   isStorageConfigured: (...args: unknown[]) => mockIsStorageConfigured(...args),
+  readStoredObject: (...args: unknown[]) => mockReadStoredObject(...args),
 }))
 
 const mockSpeechToText = vi.fn()
@@ -123,6 +128,11 @@ const assembleHandler = (await import('~~/server/api/agency/video/projects/[id]/
 const jobsHandler = (await import('~~/server/api/agency/video/projects/[id]/intelligence-jobs.get')).default
 const thumbnailHandler = (await import('~~/server/api/agency/video/assets/[id]/thumbnail.get')).default
 const captionsHandler = (await import('~~/server/api/agency/video/assets/[id]/captions.vtt.get')).default
+
+const { paintedFrameKeyForMask } = await import('~~/shared/video/assetIntelligenceMaskFrame')
+
+// A brush mask key as the masks endpoint writes it: under this project and asset.
+const MASK_KEY = 'video-asset-masks/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/mask.png'
 
 describe('video asset harness API', () => {
   beforeEach(() => {
@@ -272,13 +282,13 @@ describe('video asset harness API', () => {
   })
 
   it('creates a blocked job, not a silent success, when the queue is unavailable for a runnable tool', async () => {
-    const res = await extractHandler({ params: { id: '22222222-2222-4222-8222-222222222222' }, body: { projectId: '11111111-1111-4111-8111-111111111111', action: 'mask-only', prompt: 'keep the logo mask', brushMaskKey: 'mask.png' } } as any)
+    const res = await extractHandler({ params: { id: '22222222-2222-4222-8222-222222222222' }, body: { projectId: '11111111-1111-4111-8111-111111111111', action: 'mask-only', prompt: 'keep the logo mask', brushMaskKey: MASK_KEY } } as any)
     expect(mockGetProject).toHaveBeenCalledWith('11111111-1111-4111-8111-111111111111')
     expect(mockGetAssetProjectRelationship).toHaveBeenCalledWith('22222222-2222-4222-8222-222222222222')
     expect(mockCreateBlockedExtractionJob).toHaveBeenCalledWith(expect.objectContaining({
       sourceAssetId: '22222222-2222-4222-8222-222222222222',
       action: 'mask-only',
-      brushMaskKey: 'mask.png',
+      brushMaskKey: MASK_KEY,
       createdBy: 'user-1'
     }))
     expect(mockRecordAiInvocation).toHaveBeenCalledWith(expect.objectContaining({
@@ -310,7 +320,7 @@ describe('video asset harness API', () => {
         projectId: '11111111-1111-4111-8111-111111111111',
         action: 'erase-fill',
         prompt: 'erase badge',
-        brushMaskKey: 'mask.png',
+        brushMaskKey: MASK_KEY,
       }
     } as any)
 
@@ -372,7 +382,7 @@ describe('video asset harness API', () => {
         projectId: '11111111-1111-4111-8111-111111111111',
         action: 'mask-only',
         prompt: 'store mask',
-        brushMaskKey: 'mask.png',
+        brushMaskKey: MASK_KEY,
       }
     } as any)
 
@@ -454,7 +464,7 @@ describe('video asset harness API', () => {
         projectId: '11111111-1111-4111-8111-111111111111',
         action: 'mask-only',
         prompt: 'store mask',
-        brushMaskKey: 'mask.png',
+        brushMaskKey: MASK_KEY,
       }
     } as any)).rejects.toThrow('Queue offline')
 
@@ -473,7 +483,7 @@ describe('video asset harness API', () => {
 
     await expect(extractHandler({
       params: { id: '22222222-2222-4222-8222-222222222222' },
-      body: { projectId: '11111111-1111-4111-8111-111111111111', action: 'mask-only', brushMaskKey: 'mask.png' },
+      body: { projectId: '11111111-1111-4111-8111-111111111111', action: 'mask-only', brushMaskKey: MASK_KEY },
     } as any)).rejects.toMatchObject({ statusCode: 403, statusMessage: 'Access denied to this project' })
 
     expect(mockGetAssetProjectRelationship).not.toHaveBeenCalled()
@@ -489,7 +499,7 @@ describe('video asset harness API', () => {
 
     await expect(extractHandler({
       params: { id: '22222222-2222-4222-8222-222222222222' },
-      body: { projectId: '11111111-1111-4111-8111-111111111111', action: 'mask-only', brushMaskKey: 'mask.png' },
+      body: { projectId: '11111111-1111-4111-8111-111111111111', action: 'mask-only', brushMaskKey: MASK_KEY },
     } as any)).rejects.toMatchObject({ statusCode: 403, statusMessage: 'Source asset does not belong to this project' })
 
     expect(mockCreateQueuedExtractionJob).not.toHaveBeenCalled()
@@ -548,6 +558,31 @@ describe('video asset harness API', () => {
 
     expect(mockGetPresignedDownloadUrl).toHaveBeenCalledWith('asset.mp4', 3600)
     expect(res).toEqual({ location: 'https://signed.example.com/asset.mp4', statusCode: 302 })
+  })
+
+  it('serves the video from this origin with ?inline=1, so Prepare can capture the frame painted on', async () => {
+    mockRequireWriteAccess.mockResolvedValue({ id: 'user-1', role: 'editor' })
+    mockIsStorageConfigured.mockReturnValue(true)
+    const body = { stream: true }
+    mockReadStoredObject.mockResolvedValue({ body, contentType: 'video/mp4', size: 1000, etag: 'abc', range: { start: 100, end: 199 } })
+
+    const res = await assetStreamHandler({ params: { id: '22222222-2222-4222-8222-222222222222' }, query: { inline: '1' }, headers: { range: 'bytes=100-199' } } as any)
+
+    expect(res).toBe(body)
+    expect(g.sendRedirect).not.toHaveBeenCalled()
+    expect(mockReadStoredObject).toHaveBeenCalledWith('asset.mp4', expect.objectContaining({ range: { start: 100, end: 199 } }))
+    expect(g.setResponseStatus).toHaveBeenCalledWith(expect.anything(), 206)
+    expect(g.setHeader).toHaveBeenCalledWith(expect.anything(), 'Content-Range', 'bytes 100-199/1000')
+    expect(g.setHeader).toHaveBeenCalledWith(expect.anything(), 'Content-Type', 'video/mp4')
+  })
+
+  it('does not serve inline media the editor cannot access', async () => {
+    mockRequireWriteAccess.mockResolvedValue({ id: 'user-2', role: 'editor' })
+    mockQueryOne.mockResolvedValue(null)
+
+    await expect(assetStreamHandler({ params: { id: '22222222-2222-4222-8222-222222222222' }, query: { inline: '1' } } as any))
+      .rejects.toMatchObject({ statusCode: 404, statusMessage: 'Asset not found' })
+    expect(mockReadStoredObject).not.toHaveBeenCalled()
   })
 
   it('rejects social draft publishing when the editor cannot access the saved asset', async () => {
@@ -634,7 +669,7 @@ describe('video asset harness API', () => {
         projectId: '11111111-1111-4111-8111-111111111111',
         bucketItemId: '33333333-3333-4333-8333-333333333333',
         action: 'mask-only',
-        brushMaskKey: 'mask.png',
+        brushMaskKey: MASK_KEY,
       },
     } as any)).rejects.toMatchObject({ statusCode: 403, statusMessage: 'Bucket item does not belong to this project' })
 
@@ -642,10 +677,66 @@ describe('video asset harness API', () => {
     expect(mockCreateBlockedExtractionJob).not.toHaveBeenCalled()
   })
 
+  it('refuses a mask saved for a different asset or outside the mask folder', async () => {
+    mockGetAssetIntelligenceQueue.mockReturnValue({ send: vi.fn() })
+    for (const brushMaskKey of [
+      'video-asset-masks/11111111-1111-4111-8111-111111111111/99999999-9999-4999-8999-999999999999/mask.png',
+      'video-generation/someone-else/output.mp4',
+      'video-asset-masks/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/../../secret.png',
+    ]) {
+      await expect(extractHandler({
+        params: { id: '22222222-2222-4222-8222-222222222222' },
+        body: { projectId: '11111111-1111-4111-8111-111111111111', action: 'erase-fill', brushMaskKey },
+      } as any)).rejects.toMatchObject({ statusCode: 400, statusMessage: 'That mask does not belong to this asset. Paint it again.' })
+    }
+    expect(mockCreateQueuedExtractionJob).not.toHaveBeenCalled()
+    expect(mockEnqueueAssetIntelligence).not.toHaveBeenCalled()
+  })
+
+  it('stores the video frame the mask was painted on beside the mask', async () => {
+    g.readMultipartFormData.mockResolvedValue([
+      { name: 'projectId', data: Buffer.from('11111111-1111-4111-8111-111111111111') },
+      { name: 'file', filename: 'brush-mask.png', type: 'image/png', data: Buffer.from([1, 2, 3, 4]) },
+      { name: 'frame', filename: 'painted-frame.jpg', type: 'image/jpeg', data: Buffer.from([0xff, 0xd8, 0xff, 0xe0]) },
+    ])
+
+    const res = await maskHandler({ params: { id: '22222222-2222-4222-8222-222222222222' } } as any)
+
+    expect(res.frameSaved).toBe(true)
+    expect(mockUploadFile).toHaveBeenCalledTimes(2)
+    const frameUpload = mockUploadFile.mock.calls.find(call => call[2] === 'image/jpeg')!
+    const maskUpload = mockUploadFile.mock.calls.find(call => call[2] === 'image/png')!
+    expect(frameUpload[0]).toEqual(Buffer.from([0xff, 0xd8, 0xff, 0xe0]))
+    // Same name as the mask, so the erase worker finds it from the mask key alone.
+    expect(frameUpload[1]).toBe(String(maskUpload[1]).replace(/\.png$/, '.frame.jpg'))
+    expect(frameUpload[1]).toBe(paintedFrameKeyForMask(res.maskKey))
+    expect(frameUpload[3]).toMatchObject({ kind: 'brush-mask-frame' })
+  })
+
+  it('saves no frame when none is sent, and refuses a frame that is not a JPEG', async () => {
+    g.readMultipartFormData.mockResolvedValue([
+      { name: 'projectId', data: Buffer.from('11111111-1111-4111-8111-111111111111') },
+      { name: 'file', filename: 'brush-mask.png', type: 'image/png', data: Buffer.from([1, 2, 3, 4]) },
+    ])
+    const plain = await maskHandler({ params: { id: '22222222-2222-4222-8222-222222222222' } } as any)
+    expect(plain.frameSaved).toBe(false)
+    expect(mockUploadFile).toHaveBeenCalledTimes(1)
+
+    mockUploadFile.mockClear()
+    g.readMultipartFormData.mockResolvedValue([
+      { name: 'projectId', data: Buffer.from('11111111-1111-4111-8111-111111111111') },
+      { name: 'file', filename: 'brush-mask.png', type: 'image/png', data: Buffer.from([1, 2, 3, 4]) },
+      { name: 'frame', filename: 'frame.mp4', type: 'video/mp4', data: Buffer.from([1, 2, 3]) },
+    ])
+    await expect(maskHandler({ params: { id: '22222222-2222-4222-8222-222222222222' } } as any))
+      .rejects.toMatchObject({ statusCode: 400, statusMessage: 'The painted frame must be a JPEG image' })
+    expect(mockUploadFile).not.toHaveBeenCalled()
+  })
+
   it('uploads a brush mask for a selected asset', async () => {
     g.readMultipartFormData.mockResolvedValue([
       { name: 'projectId', data: Buffer.from('11111111-1111-4111-8111-111111111111') },
-      { name: 'file', filename: 'mask.png', type: 'image/png', data: Buffer.from([1, 2, 3, 4]) },
+      { name: 'file', filename: MASK_KEY, type: 'image/png', data: Buffer.from([1, 2, 3, 4]) },
     ])
 
     const res = await maskHandler({ params: { id: '22222222-2222-4222-8222-222222222222' } } as any)
@@ -672,7 +763,7 @@ describe('video asset harness API', () => {
     mockRequireWriteAccess.mockResolvedValue({ id: 'user-2', role: 'editor' })
     g.readMultipartFormData.mockResolvedValue([
       { name: 'projectId', data: Buffer.from('11111111-1111-4111-8111-111111111111') },
-      { name: 'file', filename: 'mask.png', type: 'image/png', data: Buffer.from([1, 2, 3, 4]) },
+      { name: 'file', filename: MASK_KEY, type: 'image/png', data: Buffer.from([1, 2, 3, 4]) },
     ])
 
     await expect(maskHandler({ params: { id: '22222222-2222-4222-8222-222222222222' } } as any))
@@ -689,7 +780,7 @@ describe('video asset harness API', () => {
     })
     g.readMultipartFormData.mockResolvedValue([
       { name: 'projectId', data: Buffer.from('11111111-1111-4111-8111-111111111111') },
-      { name: 'file', filename: 'mask.png', type: 'image/png', data: Buffer.from([1, 2, 3, 4]) },
+      { name: 'file', filename: MASK_KEY, type: 'image/png', data: Buffer.from([1, 2, 3, 4]) },
     ])
 
     await expect(maskHandler({ params: { id: '22222222-2222-4222-8222-222222222222' } } as any))
