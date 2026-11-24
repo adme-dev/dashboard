@@ -26,6 +26,6 @@ Select an individual child row to edit that layer’s properties. To move layers
 
 ## Check a group after a TheBrief import
 
-Open the imported design and select the layout you want to edit. Expand the timeline. If the logo already has a group row, drag one letter on the canvas and check that the rest follow. If the letters appear as separate rows, Shift-click the logo layers, choose **Group**, then double-click the new group name and give it a name such as **ADME logo**. Check each layout where you need the group.
+Import the original HTML5 ZIP and expand the timeline in any layout. Layers carrying the same TheBrief group marker in a scene appear together. The FI Pro export labels its four logo letters as group 13 in each of the four sizes. Drag any letter to move the full logo or double-click **Group 13** to rename it.
 
-For the FI Pro example, the released HTML converter produced editable layers for all four archived sizes. All four layouts needed the logo letters grouped in Banner Studio. The live drag check used a copy of the project and kept the four letters’ spacing intact. [Production verification](https://github.com/adme-dev/dashboard/pull/1003)
+Layouts without a source group marker still open as individual editable layers. You can group those layers in the timeline. Existing drafts keep their saved grouping when reopened. To update an eligible draft from a newly prepared ZIP, use the import workflow’s explicit draft update and review the changes before saving.
