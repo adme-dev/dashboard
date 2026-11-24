@@ -27,13 +27,16 @@ runtime dependencies. It has no public Worker route or `workers.dev` endpoint.
 1. Fetch current `origin/main`, reconcile the candidate and record the source
    revision. Run the banner/TheBrief and deployment/navigation regression checks.
 2. Install the isolated Worker dependencies from this directory with
-   `pnpm install --ignore-workspace --frozen-lockfile`. From the repository root,
-   run `pnpm --dir workers/thebrief-import exec wrangler deploy --dry-run` to
-   validate the bundle and build the Docker context without publishing it.
+   `pnpm install --ignore-workspace --frozen-lockfile`. Build the Linux/amd64
+   candidate explicitly from the repository root using
+   `docker build --platform linux/amd64 -f workers/thebrief-import/container/Dockerfile -t thebrief-import:candidate .`.
+   Run the original archive and negative fixtures against that exact image under
+   the production memory cap. A Wrangler dry run validates the Worker bundle;
+   the digest-pinned configuration does not rebuild the container.
 3. Obtain any required approval for uploading this application-source/dependency
    image to the existing Cloudflare account's container registry. Push the tested
-   image, record its immutable registry digest and replace the configuration's
-   local Dockerfile `image` with that digest before the production Worker deploy.
+   image, record its immutable registry digest and update the configuration's
+   pinned `image` digest before the production Worker deploy.
    Do not substitute an untested rebuild or a public registry.
 4. Deploy the private Worker using its package's `deploy` script. Keep the fixed
    account, pool bounds and private ingress settings in `wrangler.toml`.
