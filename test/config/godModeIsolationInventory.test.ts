@@ -156,9 +156,10 @@ const API_INVENTORY = {
   // Model Ops adds one admin/owner aggregate GET; it cannot dispatch a job or change its payer.
   // Eight released Banner preview/recovery routes plus MotorStack preparation.
   // Delegated scope and the fresh CREATIVE grant remain mandatory; no bypass.
-  totalRouteFiles: 2407,
-  mutationRouteFiles: 1313,
-  explicitlyGuardedMutationFiles: 437,
+  // TheBrief ZIP preparation adds one authenticated, write-guarded POST.
+  totalRouteFiles: 2408,
+  mutationRouteFiles: 1314,
+  explicitlyGuardedMutationFiles: 438,
   guardedMutationFilesWithTransactionCall: 58
 } as const
 
@@ -210,9 +211,9 @@ describe('God mode route isolation inventory', () => {
       // T10 adds two scoped reads and four guarded production writes; no authority bypass.
   // Governance phase 4 adds one client-scoped read (clients/[id]/change-history.get.ts).
       // Marketing alerts adds one cron-secret POST; no authority bypass.
-      totalRouteFiles: 2407,
-      mutationRouteFiles: 1313,
-      explicitlyGuardedMutationFiles: 437,
+      totalRouteFiles: 2408,
+      mutationRouteFiles: 1314,
+      explicitlyGuardedMutationFiles: 438,
       guardedMutationFilesWithTransactionCall: 58
     })
   })

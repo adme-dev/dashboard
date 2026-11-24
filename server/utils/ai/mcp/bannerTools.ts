@@ -40,9 +40,9 @@ export const bannerReadTools: BannerToolDescriptor[] = [
   {
     name: 'list_banner_projects',
     description:
-      'List banner projects you can render into. Returns id/name/formats/updatedAt. '
+      'Find saved banners for review. For the latest banner created use sortBy created and share the first project’s reviewUrl. The viewer requires XeroFlow sign-in. Returns creation and update times, saved layouts and renderable formats. '
       + 'Pick a project (and one of its formats) before calling propose_banner_render.',
-    parameters: z.object({}),
+    parameters: z.object({ sortBy: z.enum(['updated', 'created']).optional() }),
     requiredPermission: 'CREATIVE',
   },
   {
