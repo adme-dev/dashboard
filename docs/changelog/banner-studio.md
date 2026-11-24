@@ -1,11 +1,23 @@
 # Banner Studio change log
 
-## 24 November 2026 — Audio timeline waveform (unreleased)
+## 24 November 2026 — Audio timeline waveform — live
 
 Audio tracks show normalized waveform bars beneath transparent Sound controls.
 The preview redraws when the timeline or clip resizes, repeats for looped audio,
 and leaves the remainder empty when a non-looping source finishes. Linked
 layouts share decoded peak data; failed previews leave audio controls usable.
+
+Released in [PR #990](https://github.com/adme-dev/dashboard/pull/990), source
+`64c31893be05e7cf4cc88e5b8384a36400844618` (current main at release), production
+deployment `7ec5de36-3dc3-46c3-ace5-d0c203a351a7` on `agency-dashboard/main`.
+Cloudflare production metadata confirms the source. The guarded production build
+and worker budgets passed (15,356,834 bytes raw; 5,329,412 bytes gzip).
+
+Validation on Node 24.18.0: 894 tests passed and one optional test skipped across
+BannerStudio, QR Codes and deployment guards; new waveform files pass lint.
+Live browser checks on `app.xeroflow.io` confirmed waveform bars for Audio 40 in
+an existing RAM project and redraw on timeline zoom (canvas width 1920 → 2240).
+The editor remained saved, and QR Codes retained 23 codes and 165 scans.
 
 ## Creative team library access — live (23 November 2026)
 
