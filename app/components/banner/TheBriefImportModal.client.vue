@@ -385,7 +385,7 @@ async function importDrafts() {
                 </li>
                 <li>
                   <strong class="font-medium text-highlighted">Review every size.</strong>
-                  Open the saved draft and viewer. Compare artwork, fonts, copy, motion and sound against TheBrief. Scrub through entrances, scene changes and the loop restart. Check the order and timing of related layers. The ZIP may not include TheBrief’s editing-group names or nesting. Record the draft links and results in the tracker, and leave the drafts for producer review.
+                  Open the saved draft and viewer. Compare artwork, fonts, copy, motion and sound against TheBrief. Scrub through entrances, scene changes and the loop restart. Check the order and timing of related layers. Layers marked as a group in the export appear together in the timeline. Drag a member to check the group and double-click its name to rename it. Record the draft links and results in the tracker, and leave the drafts for producer review.
                 </li>
               </ol>
               <p>

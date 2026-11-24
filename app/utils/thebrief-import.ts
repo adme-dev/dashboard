@@ -13,6 +13,10 @@ const track = z.array(z.object({
 })).min(2).max(500)
 const layer = z.object({
   id: z.number().int().positive(), type: z.enum(['bg', 'image', 'video', 'text', 'rect', 'button', 'audio']), name: z.string().max(250),
+  timelineGroup: z.object({
+    id: z.string().max(140).regex(/^[a-zA-Z0-9:_-]+$/),
+    name: z.string().trim().min(1).max(250)
+  }).strict().optional(),
   linkId: z.string().max(80).regex(/^source:[a-z0-9:]+$/).optional(),
   x: number, y: number, w: number.positive(), h: number.positive(), zIndex: number, opacity: z.number().min(0).max(1),
   animIn: z.literal('none'), animOut: z.literal('none').optional(), animInDur: z.literal(0),

@@ -629,6 +629,9 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {} } = {}) 
       if (!(start >= 0 && end > start)) throw new Error('Invalid element presence')
       const clipToPresence = slides.length > 1 || end < duration
       const layerBase = { ...base, slideId: `source-slide:${slide.id}`, linkId: `source:${sourceId}`, x: px(css.left), y: px(css.top), w: px(css.width), h: px(css.height), zIndex: id, startTime: start, endTime: end, ...(clipToPresence ? { clipToPresence: true } : {}) }
+      // Only the source element owns designer group membership. Inner slate-* markers describe text content.
+      const groupNumber = /^cgroup-(\d{1,16})$/.exec(element.getAttribute('data-elgroup') || '')?.[1]
+      if (groupNumber) layerBase.timelineGroup = { id: `${layerBase.slideId}:cgroup-${groupNumber}`, name: `Group ${groupNumber}` }
       if (sourceInactiveTiming) Object.assign(layerBase, { hidden: true, sourceInactiveTiming })
       if (hasSlideFades) {
         layerBase.slideFade = { id: layerBase.slideId, start: slide.start, end: slide.visibleEnd, duration: slide.entranceDuration, ease: slide.fadeEase || 'cubic-bezier(0,0,1,1)' }
