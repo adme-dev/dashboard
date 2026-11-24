@@ -411,6 +411,7 @@ export function useBannerStudio() {
       'text', 'textRuns', 'fontFamily', 'fontAssetId', 'fontWeight', 'fontStyle', 'color',
       'textTransform', 'letterSpacing', 'lineHeight', 'textAlign',
       'textShadow', 'textStroke', 'textPaintOrder', 'src', 'fit', 'volume', 'muted', 'loopAudio',
+      'audioFadeIn', 'audioFadeOut',
       'bgColor', 'fillColor', 'borderColor', 'borderWidth', 'borderRadius',
     ]
     // Source replacement clears the previous image crop in every linked layout.
@@ -420,7 +421,7 @@ export function useBannerStudio() {
       sharedFields.push('imageCrop')
       // A replacement source must not inherit an out-of-range trim in another size.
       // Trimming by itself stays local, like image crop, because sources can differ.
-      if (layer.type === 'video') {
+      if (layer.type === 'video' || layer.type === 'audio') {
         props = { ...props, mediaStart: 0, mediaEnd: undefined }
         sharedFields.push('mediaStart', 'mediaEnd')
       }

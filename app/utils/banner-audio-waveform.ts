@@ -46,14 +46,21 @@ export function audioWaveform(src: string): Promise<AudioWaveform> {
 }
 
 /** Sample timeline seconds, so extending a clip never stretches the source audio. */
-export function waveformBars(waveform: AudioWaveform, span: number, count: number, loop = false): number[] {
+export function waveformBars(waveform: AudioWaveform, span: number, count: number, loop = false, clock: { mediaStart?: number, mediaEnd?: number } = {}): number[] {
   const { duration, peaks } = waveform
   if (duration <= 0 || !peaks.length || span <= 0 || count <= 0) return []
+  const sourceStart = Math.max(0, Math.min(duration, clock.mediaStart ?? 0))
+  const sourceEnd = Math.min(duration, clock.mediaEnd ?? duration)
+  const length = sourceEnd - sourceStart
+  if (!(length > 0)) return []
   return Array.from({ length: count }, (_, i) => {
     const start = i * span / count
     const end = (i + 1) * span / count
-    if (!loop && start >= duration) return 0
-    if (loop && end - start >= duration) return Math.max(...peaks)
+    if (!loop && start >= length) return 0
+    if (loop && end - start >= length) {
+      const selected = peaks.subarray(Math.floor(sourceStart / duration * peaks.length), Math.ceil(sourceEnd / duration * peaks.length))
+      return Math.max(0, ...selected)
+    }
     const peakAt = (from: number, to: number) => {
       let peak = 0
       const first = Math.floor(from / duration * peaks.length)
@@ -61,9 +68,9 @@ export function waveformBars(waveform: AudioWaveform, span: number, count: numbe
       for (let j = first; j < last; j++) peak = Math.max(peak, peaks[j]!)
       return peak
     }
-    if (!loop) return peakAt(start, Math.min(end, duration))
-    const from = start % duration
+    if (!loop) return peakAt(sourceStart + start, Math.min(sourceStart + end, sourceEnd))
+    const from = sourceStart + start % length
     const to = from + end - start
-    return to <= duration ? peakAt(from, to) : Math.max(peakAt(from, duration), peakAt(0, to - duration))
+    return to <= sourceEnd ? peakAt(from, to) : Math.max(peakAt(from, sourceEnd), peakAt(sourceStart, sourceStart + to - sourceEnd))
   })
 }

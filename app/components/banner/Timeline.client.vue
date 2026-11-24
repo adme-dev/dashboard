@@ -1279,6 +1279,8 @@ onUnmounted(() => {
                     :src="layer.src"
                     :span="layer.endTime - layer.startTime"
                     :loop="layer.loopAudio"
+                    :media-start="layer.mediaStart"
+                    :media-end="layer.mediaEnd"
                   />
                   <!-- Timing comes from the actual preset or imported keyframe intervals. -->
                   <div

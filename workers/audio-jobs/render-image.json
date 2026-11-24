@@ -1,50 +1,74 @@
 {
   "schemaVersion": 1,
-  "image": "registry.cloudflare.com/a5b299b3ad15c1b5b895dc66f9357b17/xeroflow-render@sha256:e345af76da37aca367e1a2f7428dd47bf1160719f3e8465227d0a5df8cecf6ca",
+  "image": "registry.cloudflare.com/a5b299b3ad15c1b5b895dc66f9357b17/xeroflow-render@sha256:9506a1196579d35fc37daae78ee25d0c4f0bcf8a09333a10b0d3db45dc66ec34",
   "instanceType": "standard-4",
-  "sourceCommit": "7715828edc602df049d0ba13e46b9ed0a772c769",
-  "contextSha256": "f30ced9f4c160590e1445b79816cfa6097419cbb94965130a0b1be557686b12a",
-  "qualifiedAt": "2026-11-20T07:22:17.972238+00:00",
+  "sourceCommit": "9a94075f929ab3c19cdae2d227cb0c68dd709f07",
+  "contextSha256": "2ba43829fb4e256f20e2497a92ba69961059c4e9ff473a2a723c11f86fec0937",
+  "qualifiedAt": "2026-11-24T05:13:56.751Z",
   "platform": "linux/amd64",
   "ffmpeg": "5.1.9-0+deb12u1",
   "qualificationStatus": "qualified-full-sample",
   "checks": [
     "packaged-http-service",
     "real-media-13",
+    "banner-audio-trim-volume-loop-fades",
     "sigterm-audio-and-chromium-drain",
     "sigint-audio-and-chromium-drain",
-    "lossless-canonical-rgba",
-    "full-40s-composite-and-picture-timing",
-    "whole-composite-deadline-and-disconnect-cleanup",
-    "measured-capture-and-encoder-progress",
-    "slow-and-interrupted-completed-file-stream"
+    "full-40s-composite-and-picture-timing"
   ],
-  "previousImage": "registry.cloudflare.com/a5b299b3ad15c1b5b895dc66f9357b17/xeroflow-render@sha256:de3be03d105a7f9ac918a1495a2f8686a08443e11c41a0f545ea80d85c54fbc6",
+  "previousImage": "registry.cloudflare.com/a5b299b3ad15c1b5b895dc66f9357b17/xeroflow-render@sha256:e345af76da37aca367e1a2f7428dd47bf1160719f3e8465227d0a5df8cecf6ca",
   "previousInstanceType": "standard-4",
+  "qualificationRun": "https://github.com/adme-dev/dashboard/actions/runs/45331230773",
+  "imageId": "sha256:9506a1196579d35fc37daae78ee25d0c4f0bcf8a09333a10b0d3db45dc66ec34",
+  "archiveSha256": "b4a0939d7d7bd713a01a60f54ae51ecad14f474514f8ab129e11c30575ac3ea5",
   "sample": {
+    "kind": "synthetic-full-HD-composite",
     "inputDurationSec": 40.18,
     "outputDurationSec": 40.2,
-    "audioDurationSec": 40.18,
     "frames": 1206,
     "fps": 30,
     "width": 1080,
     "height": 1920,
-    "elapsedMs": 161685,
-    "outputBytes": 40674651,
-    "outputSha256": "b50aa80c98e2f05d13bd1c9a4d0b394f40b42252580e651ceb50d9366f0f618b",
+    "elapsedMs": 117945,
+    "outputBytes": 306470,
+    "outputSha256": "08dc8a98c7b6c1045bb9794b1e1aface3f8091e7be1ca378c788da99d7ecffc6",
     "fullDecode": "passed",
-    "encodedSourceMatches": 20,
-    "visibleZoomControls": 32,
-    "maxObservedZoomDeltaVsBrowser": 0.004,
+    "pictureTiming": [
+      {
+        "time": 1,
+        "color": "100"
+      },
+      {
+        "time": 11,
+        "color": "010"
+      },
+      {
+        "time": 21,
+        "color": "001"
+      },
+      {
+        "time": 31,
+        "color": "110"
+      }
+    ],
+    "encodedZoomEdges": [
+      {
+        "time": 1,
+        "left": 100,
+        "right": 299
+      },
+      {
+        "time": 39,
+        "left": 80,
+        "right": 287
+      }
+    ],
     "voiceLagMs": [
-      5,
       5,
       5,
       5
     ],
-    "anomalousAudioPackets": 0,
-    "capturedPngBytes": 235048618,
-    "observedContainerMemoryBytes": 1503023104,
-    "environment": "Local Linux amd64 emulation on ARM;4CPU quota;nominal12GiB cap/Docker VM7.65GiB. Native deployment and queued-export acceptance are separate."
+    "copy": "measured readable",
+    "environment": "GitHub Actions native Ubuntu linux/amd64; 4-CPU and 12-GiB Docker cap"
   }
 }

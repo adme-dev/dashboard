@@ -3,13 +3,14 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { audioWaveform, waveformBars, type AudioWaveform } from '~/utils/banner-audio-waveform'
 import { safeMediaUrl } from '~/utils/safe-url'
 
-const props = defineProps<{ src: string, span: number, loop?: boolean }>()
+const props = defineProps<{ src: string, span: number, loop?: boolean, mediaStart?: number, mediaEnd?: number, color?: string }>()
+const emit = defineEmits<{ loaded: [duration: number], error: [] }>()
 const canvas = ref<HTMLCanvasElement>()
 const waveform = ref<AudioWaveform>()
 const width = ref(0)
 const height = ref(0)
 const bars = computed(() => waveform.value
-  ? waveformBars(waveform.value, props.span, Math.max(1, Math.floor(width.value / 5)), props.loop)
+  ? waveformBars(waveform.value, props.span, Math.max(1, Math.floor(width.value / 5)), props.loop, { mediaStart: props.mediaStart, mediaEnd: props.mediaEnd })
   : [])
 let observer: ResizeObserver | undefined
 
@@ -33,11 +34,16 @@ watch(() => props.src, async (value, _, cleanup) => {
   if (!src) return
   try {
     const result = await audioWaveform(src)
-    if (current) waveform.value = result
-  } catch { /* Keep the audio controls usable when a preview cannot be decoded. */ }
+    if (current) {
+      waveform.value = result
+      emit('loaded', result.duration)
+    }
+  } catch {
+    if (current) emit('error')
+  }
 }, { immediate: true })
 
-watch([bars, height, canvas], () => {
+watch([bars, height, canvas, () => props.color], () => {
   const el = canvas.value
   if (!el) return
   const ratio = window.devicePixelRatio || 1
@@ -46,7 +52,7 @@ watch([bars, height, canvas], () => {
   const ctx = el.getContext('2d')
   if (!ctx) return
   ctx.scale(ratio, ratio)
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.65)'
+  ctx.fillStyle = props.color === 'currentColor' ? getComputedStyle(el).color : (props.color ?? 'rgba(255, 255, 255, 0.65)')
   const step = width.value / bars.value.length
   for (let i = 0; i < bars.value.length; i++) {
     if (!bars.value[i]) continue

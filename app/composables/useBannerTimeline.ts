@@ -363,7 +363,15 @@ function addAudioSync(tl: gsap.core.Timeline, el: HTMLElement, layer: Layer) {
   if (!audio) return
   const start = layer.startTime || 0
   const end = layer.endTime || start + 3
-  registerTimelineAudio(tl, audio, { start, end, volume: layer.muted ? 0 : (layer.volume ?? 1), loop: !!layer.loopAudio })
+  const { state } = useBannerStudio()
+  const ownerKey = Object.keys(state.sets).find(key => state.sets[key]?.layers?.includes(layer))
+  registerTimelineAudio(tl, audio, {
+    start, end, volume: layer.muted || layer.hidden ? 0 : (layer.volume ?? 1), loop: !!layer.loopAudio,
+    // Read current settings while playing, including after Undo replaces the board.
+    settings: () => ownerKey
+      ? state.sets[ownerKey]?.layers.find(current => current.id === layer.id) ?? { muted: true }
+      : layer
+  })
   // Keep audio-only banners and delayed tracks in the timeline's duration.
   tl.to({}, { duration: Math.max(0, end - start) }, start)
 }

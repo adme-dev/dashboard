@@ -1,5 +1,19 @@
 # Banner Studio change log
 
+## 24 November 2026 — Audio controls, trim and fades (unreleased)
+
+Selecting an audio layer opens an audio-only inspector. Volume changes reach
+playing tracks immediately, including zero and mute; Undo remains supported.
+Choose a source interval with the waveform selection or precise start/end
+fields, preview it, and apply or cancel. Looping repeats the selected interval.
+Fade-in and fade-out have adjustable durations. Replacement keeps the timeline
+placement and clears the old source trim. Trim applies to the current layout;
+volume, mute, loop and fades follow linked-layout editing scope and locks.
+
+Brand kit now sits immediately beside the + Insert tab in Tools & resources.
+Saved HTML previews share the editor audio clock; the versioned MP4 soundtrack
+contract includes source trim and fades while retaining legacy audio exports.
+
 ## 24 November 2026 — Audio timeline waveform — live
 
 Audio tracks show normalized waveform bars beneath transparent Sound controls.

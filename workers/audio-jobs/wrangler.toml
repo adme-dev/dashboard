@@ -78,7 +78,7 @@ dead_letter_queue = "banner-render-dlq"
 name = "audio-render"
 class_name = "RenderContainer"
 # Qualify once, deploy exactly those bytes; do not rebuild at deployment time.
-image = "registry.cloudflare.com/a5b299b3ad15c1b5b895dc66f9357b17/xeroflow-render@sha256:e345af76da37aca367e1a2f7428dd47bf1160719f3e8465227d0a5df8cecf6ca"
+image = "registry.cloudflare.com/a5b299b3ad15c1b5b895dc66f9357b17/xeroflow-render@sha256:9506a1196579d35fc37daae78ee25d0c4f0bcf8a09333a10b0d3db45dc66ec34"
 max_instances = 6
 # Shared render service qualified on four CPUs with the bounded split portrait pilot.
 # The qualification guard admits the image and instance class together.

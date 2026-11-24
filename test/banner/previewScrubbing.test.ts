@@ -2,6 +2,7 @@
 // @vitest-environment-options {"settings":{"disableCSSFileLoading":true,"enableJavaScriptEvaluation":false}}
 import { afterEach, expect, it, vi } from 'vitest'
 import gsap from 'gsap'
+import { withBannerPreviewAudio } from '~/utils/banner-preview-audio'
 import { buildBannerHTML } from '~/utils/banner-html-builder'
 import { withBannerPreviewPlayback } from '~/utils/banner-preview-playback'
 import type { Layer } from '~/types/banner-studio'
@@ -65,4 +66,25 @@ it('seeks actual scenes and timed audio both ways, holds the loop endpoint, and 
   command('replay')
   expect(timeline!.time()).toBe(0)
   expect(parent.postMessage.mock.lastCall?.[0]).toMatchObject({ state: 'playing', commandId, current: 0 })
+})
+
+it('keeps trimmed fades on the same clock in saved HTML and includes a silent fade-in in host sound controls', () => {
+  vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue()
+  vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {})
+  const layers = [{ id: 9, type: 'audio', src: 'https://example.test/tone.wav', startTime: 0, endTime: 4, volume: 0.8, mediaStart: 3, mediaEnd: 5, loopAudio: true, audioFadeIn: 1, audioFadeOut: 1 }] as Layer[]
+  const html = withBannerPreviewAudio(buildBannerHTML('mrec', layers, { pausedAt: 0, playback: { duration: 4, loopCount: 1 } }))
+  document.body.innerHTML = new DOMParser().parseFromString(html, 'text/html').body.innerHTML
+  const audio = document.querySelector('audio')!
+  Object.defineProperty(audio, 'duration', { value: 10 })
+  const parent = { postMessage: vi.fn() }
+  const runtime = { parent, addEventListener: vi.fn(), __engagrTimeline: undefined as gsap.core.Timeline | undefined }
+  for (const script of document.querySelectorAll('script:not([src]):not([type])')) new Function('window', 'document', 'gsap', 'setInterval', script.textContent!)(runtime, document, gsap, vi.fn())
+  timeline = runtime.__engagrTimeline!
+  expect(parent.postMessage).toHaveBeenCalledWith({ type: 'banner-preview-audio', status: 'ready' }, '*')
+  timeline.pause().time(0.5, false)
+  expect(audio.currentTime).toBeCloseTo(3.5)
+  expect(audio.volume).toBeCloseTo(0.4)
+  timeline.time(3.5, false)
+  expect(audio.currentTime).toBeCloseTo(4.5)
+  expect(audio.volume).toBeCloseTo(0.4)
 })

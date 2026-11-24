@@ -470,7 +470,7 @@ jobs:
           ffmpeg -hide_banner -version | head -1
           ffprobe -hide_banner -version | head -1
           node scripts/check-render-image.mjs
-          pnpm exec vitest run test/video/storyboardMediaDecode.test.ts test/audio/renderAudioSpansTimeline.test.ts test/banner/audioRender.test.ts
+          pnpm exec vitest run test/video/storyboardMediaDecode.test.ts test/audio/renderAudioSpansTimeline.test.ts test/banner/audioRender.test.ts test/banner/audioEditing.test.ts
         timeout-minutes: 15
 
       - name: Packaged render HTTP service and Chromium acceptance
