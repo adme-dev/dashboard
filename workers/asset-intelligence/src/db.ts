@@ -1,11 +1,9 @@
 import pg from 'pg'
 import type { AssetIntelligenceWorkerJob } from './providers'
 import type { AssetIntelligenceClaim, CreateDerivativeInput } from './worker'
+import { FAIL_STALE_ASSET_INTELLIGENCE_JOBS_SQL, staleAssetIntelligenceJobParams } from '../../../shared/video/assetIntelligenceStaleJobs'
 
 declare const process: { env: Record<string, string | undefined> }
-
-let client: pg.Client | null = null
-let connectPromise: Promise<pg.Client> | null = null
 
 function getConnectionString(): string {
   const cs = (globalThis as any).__HYPERDRIVE_CS || process.env.DATABASE_URL
@@ -13,23 +11,27 @@ function getConnectionString(): string {
   return cs
 }
 
-async function getClient(): Promise<pg.Client> {
-  if (client) return client
-  if (connectPromise) return connectPromise
-  connectPromise = (async () => {
-    const c = new pg.Client({ connectionString: getConnectionString() })
-    await c.connect()
-    client = c
-    connectPromise = null
-    return c
-  })()
-  return connectPromise
-}
-
+// One connection per query, closed when the query ends.
+//
+// A Worker isolate outlives a queue delivery, but a socket belongs to the delivery
+// that opened it. A pg.Client kept in module scope is reused by the next delivery,
+// whose query then never settles: the runtime kills the invocation with no error,
+// the message burns its retries and the job is left queued or running forever.
+// Hyperdrive pools the real connections, so connecting per query is cheap.
 async function queryRows<T = any>(sql: string, params?: any[]): Promise<T[]> {
-  const c = await getClient()
-  const result = await c.query(sql, params)
-  return result.rows as T[]
+  const client = new pg.Client({
+    connectionString: getConnectionString(),
+    connectionTimeoutMillis: 5_000,
+    statement_timeout: 15_000,
+    query_timeout: 20_000,
+  })
+  try {
+    await client.connect()
+    const result = await client.query(sql, params)
+    return result.rows as T[]
+  } finally {
+    await client.end().catch(() => {})
+  }
 }
 
 async function queryOne<T = any>(sql: string, params?: any[]): Promise<T | null> {
@@ -203,4 +205,13 @@ export async function getVideoAssetPictureKeys(sourceAssetId: string): Promise<{
   )
   if (!row?.r2_key) throw new Error(`video asset ${sourceAssetId} has no R2 key`)
   return { r2Key: row.r2_key, thumbnailKey: row.thumbnail_key ?? null }
+}
+
+/**
+ * Fails jobs whose delivery died without recording anything, so they stop showing
+ * as queued or running forever. Returns how many were closed.
+ */
+export async function failStaleAssetIntelligenceJobs(): Promise<number> {
+  const rows = await queryRows(FAIL_STALE_ASSET_INTELLIGENCE_JOBS_SQL, staleAssetIntelligenceJobParams(null))
+  return rows.length
 }

@@ -7,6 +7,7 @@ import { enqueueAssetIntelligence, getAssetIntelligenceQueue } from '~~/server/u
 import type { AssetIntelligenceActionId } from '~~/server/utils/video-asset-intelligence/registry'
 import { recordAiInvocation } from '~~/server/utils/ai/invocationLedger'
 import { withGodModeLedger } from '~~/server/utils/video/godModeStudioMutations'
+import { isBrushMaskKeyFor } from '~~/shared/video/assetIntelligenceMaskFrame'
 
 function queueSupportsExtractionInput(action: AssetIntelligenceActionId, modelId: string | null): boolean {
   if (!isAssetIntelligenceActionRunnable(action)) return false
@@ -86,6 +87,12 @@ export default defineEventHandler(event => withGodModeLedger(event, 'assetExtrac
     if (bucketItem.projectId !== body.projectId) {
       throw createError({ statusCode: 403, statusMessage: 'Bucket item does not belong to this project' })
     }
+  }
+
+  // A mask is only ever read from where this app saved it for this asset. The worker
+  // also looks beside it for the frame that was painted on.
+  if (body.brushMaskKey && !isBrushMaskKeyFor(body.brushMaskKey, body.projectId, sourceAssetId)) {
+    throw createError({ statusCode: 400, statusMessage: 'That mask does not belong to this asset. Paint it again.' })
   }
 
   const input = {

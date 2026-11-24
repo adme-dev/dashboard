@@ -1,5 +1,6 @@
 import {
   createDerivative,
+  failStaleAssetIntelligenceJobs,
   getAssetIntelligenceJob,
   getVideoAssetPictureKeys,
   getVideoAssetR2Key,
@@ -28,6 +29,14 @@ export default {
     }
     if (env.DATABASE_URL) process.env.DATABASE_URL = env.DATABASE_URL
 
+    // Close jobs an earlier delivery left behind. Never blocks the work in hand.
+    try {
+      const closed = await failStaleAssetIntelligenceJobs()
+      if (closed) console.warn('asset-intelligence.stale-jobs-closed', closed)
+    } catch (error) {
+      console.warn('asset-intelligence.stale-jobs-sweep-failed', error instanceof Error ? error.message : String(error))
+    }
+
     for (const msg of batch.messages) {
       try {
         await processAssetIntelligenceJob(msg.body, {
@@ -41,7 +50,7 @@ export default {
             job,
             env,
             fetchAssetBytes: sourceAssetId => fetchAssetBytes(env.MEDIA_BUCKET, sourceAssetId, getVideoAssetR2Key),
-            fetchAssetPicture: sourceAssetId => fetchAssetPicture(env.MEDIA_BUCKET, sourceAssetId, getVideoAssetPictureKeys),
+            fetchAssetPicture: (sourceAssetId, paintedFrameKey) => fetchAssetPicture(env.MEDIA_BUCKET, sourceAssetId, getVideoAssetPictureKeys, paintedFrameKey),
             fetchObjectBytes: key => fetchObjectBytes(env.MEDIA_BUCKET, key),
             copyR2Object: (sourceKey, destinationKey) => copyR2Object(env.MEDIA_BUCKET, sourceKey, destinationKey),
             uploadJson: (key, value) => uploadJson(env.MEDIA_BUCKET, key, value),

@@ -253,3 +253,32 @@ describe('erase compositing maths', () => {
     expect(pixel(resized, 35, 10)).toEqual([255, 255, 255, 255])
   })
 })
+
+describe('cropping to the painted area', () => {
+  const coverageWith = (width: number, height: number, rect: { x: number; y: number; w: number; h: number }) => {
+    const data = new Float32Array(width * height)
+    for (let y = rect.y; y < rect.y + rect.h; y += 1) for (let x = rect.x; x < rect.x + rect.w; x += 1) data[y * width + x] = 1
+    return { width, height, data }
+  }
+
+  it('finds the painted area with a margin of its own size, kept inside the picture', async () => {
+    const { paintedBounds } = await import('~~/workers/asset-intelligence/src/eraseComposite')
+    expect(paintedBounds(coverageWith(200, 100, { x: 50, y: 40, w: 40, h: 20 }), 0.25)).toEqual({ x: 40, y: 30, width: 60, height: 40 })
+    // Painted against the corner: the margin does not leave the picture.
+    expect(paintedBounds(coverageWith(200, 100, { x: 0, y: 0, w: 40, h: 20 }), 0.5)).toEqual({ x: 0, y: 0, width: 60, height: 40 })
+    expect(paintedBounds(coverageWith(200, 100, { x: 180, y: 90, w: 20, h: 10 }), 1)).toEqual({ x: 160, y: 70, width: 40, height: 30 })
+    expect(paintedBounds({ width: 8, height: 8, data: new Float32Array(64) }, 0.25)).toBeNull()
+  })
+
+  it('copies exactly the requested rectangle and clamps one that runs off the picture', async () => {
+    const { cropImage } = await import('~~/workers/asset-intelligence/src/eraseComposite')
+    const image: RgbaImage = { width: 4, height: 3, data: new Uint8Array(4 * 3 * 4) }
+    for (let index = 0; index < 12; index += 1) image.data.set([index, index * 2, index * 3, 255], index * 4)
+    const crop = cropImage(image, { x: 1, y: 1, width: 2, height: 2 })
+    expect([crop.width, crop.height]).toEqual([2, 2])
+    expect([...crop.data].filter((_, at) => at % 4 === 0)).toEqual([5, 6, 9, 10])
+    const clamped = cropImage(image, { x: 3, y: 2, width: 10, height: 10 })
+    expect([clamped.width, clamped.height]).toEqual([1, 1])
+    expect(clamped.data[0]).toBe(11)
+  })
+})

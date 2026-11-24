@@ -5,9 +5,11 @@ import { getPresignedDownloadUrl, getPublicUrl, isStorageConfigured, uploadFile 
 import { requireVideoProjectWriteAccess } from '~~/server/utils/video-asset-intelligence/access'
 import { getAssetProjectRelationship } from '~~/server/utils/video-asset-intelligence/db'
 import { withGodModeLedger } from '~~/server/utils/video/godModeStudioMutations'
+import { paintedFrameKeyForMask } from '~~/shared/video/assetIntelligenceMaskFrame'
 
 const ProjectIdSchema = z.string().uuid()
 const MAX_MASK_BYTES = 10 * 1024 * 1024
+const MAX_FRAME_BYTES = 10 * 1024 * 1024
 
 function decodeField(data: Buffer | Uint8Array | undefined): string {
   if (!data) return ''
@@ -42,7 +44,19 @@ export default defineEventHandler(event => withGodModeLedger(event, 'assetMasks'
     throw createError({ statusCode: 400, statusMessage: 'Brush mask exceeds the 10MB size limit' })
   }
 
+  // Optional: the video frame the mask was painted on. A video has no still of its
+  // own, so erase works on this frame. It is stored beside the mask.
+  const frame = form.find(part => part.name === 'frame')
+  if (frame?.data?.length) {
+    if (frame.type !== 'image/jpeg') throw createError({ statusCode: 400, statusMessage: 'The painted frame must be a JPEG image' })
+    if (frame.data.length > MAX_FRAME_BYTES) throw createError({ statusCode: 400, statusMessage: 'The painted frame exceeds the 10MB size limit' })
+  }
+
   const key = `video-asset-masks/${projectId}/${sourceAssetId}/${Date.now()}-${randomUUID()}.png`
+  const frameKey = frame?.data?.length ? paintedFrameKeyForMask(key) : null
+  if (frame?.data?.length && frameKey) {
+    await uploadFile(frame.data, frameKey, 'image/jpeg', { projectId, sourceAssetId, kind: 'brush-mask-frame' })
+  }
   const uploaded = await uploadFile(file.data, key, 'image/png', {
     projectId,
     sourceAssetId,
@@ -53,5 +67,5 @@ export default defineEventHandler(event => withGodModeLedger(event, 'assetMasks'
     : uploaded.url
 
   setResponseStatus(event, 201)
-  return { maskKey: key, url, size: uploaded.size }
+  return { maskKey: key, url, size: uploaded.size, frameSaved: Boolean(frameKey) }
 }))

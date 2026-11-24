@@ -182,6 +182,42 @@ export function blendBounds(blend: CoverageMap, target: { width: number; height:
   return { x, y, width: right - x, height: bottom - y }
 }
 
+/** Copies a rectangle out of a picture. The rectangle is clamped to the picture. */
+export function cropImage(image: RgbaImage, rect: PixelRect): RgbaImage {
+  const x = clamp(Math.floor(rect.x), 0, image.width - 1)
+  const y = clamp(Math.floor(rect.y), 0, image.height - 1)
+  const width = clamp(Math.ceil(rect.width), 1, image.width - x)
+  const height = clamp(Math.ceil(rect.height), 1, image.height - y)
+  const data = new Uint8Array(width * height * 4)
+  for (let row = 0; row < height; row += 1) {
+    const from = ((y + row) * image.width + x) * 4
+    data.set(image.data.subarray(from, from + width * 4), row * width * 4)
+  }
+  return { width, height, data }
+}
+
+/** The painted area plus a margin of its own size times `margin`, as a rectangle of the coverage map. Null when nothing is painted. */
+export function paintedBounds(coverage: CoverageMap, margin: number): PixelRect | null {
+  let minX = coverage.width
+  let minY = coverage.height
+  let maxX = -1
+  let maxY = -1
+  for (let y = 0; y < coverage.height; y += 1) {
+    for (let x = 0; x < coverage.width; x += 1) {
+      if (coverage.data[y * coverage.width + x]! < 0.5) continue
+      if (x < minX) minX = x
+      if (x > maxX) maxX = x
+      if (y < minY) minY = y
+      if (y > maxY) maxY = y
+    }
+  }
+  if (maxX < 0) return null
+  const pad = Math.round(Math.max(maxX - minX + 1, maxY - minY + 1) * margin)
+  const x = Math.max(0, minX - pad)
+  const y = Math.max(0, minY - pad)
+  return { x, y, width: Math.min(coverage.width, maxX + pad + 1) - x, height: Math.min(coverage.height, maxY + pad + 1) - y }
+}
+
 /** Bilinear resize of an RGBA picture. */
 export function resizeImage(image: RgbaImage, width: number, height: number): RgbaImage {
   const data = new Uint8Array(width * height * 4)

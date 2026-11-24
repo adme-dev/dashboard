@@ -81,13 +81,15 @@ function looksLikePicture(head: Uint8Array): boolean {
 
 /**
  * The still an image tool can work on. Picture assets are used as they are. A video
- * is far too large to load and cannot be edited as a picture, so its preview frame
- * is used instead and the caller is told.
+ * is far too large to load and cannot be edited as a picture, so a still frame is
+ * used instead and the caller is told: the frame the editor painted on when one was
+ * saved with the mask (`paintedFrameKey`), otherwise the asset's preview frame.
  */
 export async function fetchAssetPicture(
   bucket: R2ReadableWritable,
   sourceAssetId: string,
-  getAssetKeys: (sourceAssetId: string) => Promise<{ r2Key: string; thumbnailKey: string | null }>
+  getAssetKeys: (sourceAssetId: string) => Promise<{ r2Key: string; thumbnailKey: string | null }>,
+  paintedFrameKey?: string | null
 ): Promise<{ bytes: Uint8Array; source: 'picture' | 'video-frame' }> {
   const keys = await getAssetKeys(sourceAssetId)
   // Read only the first bytes to tell a picture from a video before loading anything large.
@@ -96,8 +98,15 @@ export async function fetchAssetPicture(
   if (looksLikePicture(new Uint8Array(await head.arrayBuffer()))) {
     return { bytes: await fetchObjectBytes(bucket, keys.r2Key), source: 'picture' }
   }
+  if (paintedFrameKey) {
+    const painted = await bucket.get(paintedFrameKey)
+    if (painted) {
+      const frame = new Uint8Array(await painted.arrayBuffer())
+      if (looksLikePicture(frame)) return { bytes: frame, source: 'video-frame' }
+    }
+  }
   if (!keys.thumbnailKey) {
-    throw new Error('This video has no preview frame yet, so there is no picture to edit. Picture tools work on a still, not on the video itself.')
+    throw new Error('No still frame of this video was saved, so there is no picture to edit. Open it in Prepare, paint over what to erase and run it again: the frame you paint on is used.')
   }
   const frame = await fetchObjectBytes(bucket, keys.thumbnailKey)
   if (!looksLikePicture(frame)) throw new Error('The preview frame of this video is not a PNG or JPEG picture, so it cannot be edited.')

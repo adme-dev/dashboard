@@ -71,11 +71,14 @@ const emit = defineEmits<{
   (event: 'run' | 'clear-mask' | 'undo-mask' | 'refresh' | 'preview-image-error' | 'preview-video-error'): void
   (event: 'frame-size', value: { width: number, height: number }): void
   (event: 'mask-canvas-ready', value: HTMLCanvasElement | null): void
+  // The video shown under the mask, when the asset has no still. Null when a still is shown.
+  (event: 'preview-video-ready', value: HTMLVideoElement | null): void
   (event: 'start-mask-stroke' | 'move-mask-stroke' | 'end-mask-stroke', value: PointerEvent): void
   (event: 'add-derivative-to-timeline' | 'add-derivative-to-bucket', value: AssetDerivative): void
 }>()
 
 const maskCanvas = ref<HTMLCanvasElement | null>(null)
+const previewVideo = ref<HTMLVideoElement | null>(null)
 const root = ref<HTMLElement | null>(null)
 const stage = ref<HTMLElement | null>(null)
 const { width: rootWidth } = useElementSize(root)
@@ -135,8 +138,15 @@ function onVideoMetadata(event: Event) {
 }
 
 watch(maskCanvas, canvas => emit('mask-canvas-ready', canvas), { flush: 'post' })
-onMounted(() => emit('mask-canvas-ready', maskCanvas.value))
-onBeforeUnmount(() => emit('mask-canvas-ready', null))
+watch(previewVideo, video => emit('preview-video-ready', video), { flush: 'post' })
+onMounted(() => {
+  emit('mask-canvas-ready', maskCanvas.value)
+  emit('preview-video-ready', previewVideo.value)
+})
+onBeforeUnmount(() => {
+  emit('mask-canvas-ready', null)
+  emit('preview-video-ready', null)
+})
 </script>
 
 <template>
@@ -235,9 +245,10 @@ onBeforeUnmount(() => emit('mask-canvas-ready', null))
             >
             <video
               v-else-if="props.previewVideoUrl"
+              ref="previewVideo"
               :src="props.previewVideoUrl"
               class="absolute inset-0 size-full object-fill"
-              preload="metadata"
+              preload="auto"
               muted
               playsinline
               @loadedmetadata="onVideoMetadata"
@@ -283,7 +294,7 @@ onBeforeUnmount(() => emit('mask-canvas-ready', null))
                 :model-value="props.toolPrompt"
                 :rows="2"
                 autoresize
-                placeholder="Describe what to lift, erase or keep"
+                placeholder="Optional. Say what to lift, erase or keep if the result misses it"
                 class="w-full"
                 @update:model-value="value => emit('update:toolPrompt', String(value))"
               />
@@ -302,7 +313,7 @@ onBeforeUnmount(() => emit('mask-canvas-ready', null))
             {{ runBlockedReason }}
           </p>
           <p v-else-if="props.selectedAction === 'erase-fill'" class="text-xs leading-snug text-muted @2xl/stage:col-span-2">
-            Erase works on a still picture and changes only the painted area. On a video it uses the preview frame and gives you a still; the video itself is not changed.
+            Erase works on a still picture and changes only the painted area. On a video it uses the frame you painted on and gives you a still; the video itself is not changed.
           </p>
         </div>
       </div>

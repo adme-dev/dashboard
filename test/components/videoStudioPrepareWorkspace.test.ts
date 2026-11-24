@@ -64,6 +64,7 @@ async function mount(props: Record<string, unknown>) {
       'onClearMask': record('clear-mask'),
       'onUndoMask': record('undo-mask'),
       'onFrameSize': record('frame-size'),
+      'onPreviewVideoReady': record('preview-video-ready'),
       'onUpdate:selectedAction': record('update:selectedAction'),
       'onAddDerivativeToTimeline': record('add-derivative-to-timeline')
     })
@@ -174,9 +175,32 @@ describe('VideoStudioPrepareWorkspace', () => {
     expect(unpainted).toMatch(/<button disabled[^>]*>[^<]*(<!--[^>]*-->)*Run erase and heal/)
     const ready = await render(baseProps)
     expect(ready).not.toContain('Paint over what to erase first.')
-    expect(ready).toContain('On a video it uses the preview frame and gives you a still; the video itself is not changed.')
-    const fromVideo = await render({ ...baseProps, selectedDerivatives: [{ id: 'd', kind: 'edited-image', r2Key: 'k', metadata: { title: 'Erased still from video frame', note: 'Made from the video\'s preview frame. The video itself is unchanged.' } }] })
+    expect(ready).toContain('On a video it uses the frame you painted on and gives you a still; the video itself is not changed.')
+    const fromVideo = await render({ ...baseProps, selectedDerivatives: [{ id: 'd', kind: 'edited-image', r2Key: 'k', metadata: { title: 'Erased still from video frame', note: 'Made from a still frame of the video. The video itself is unchanged.' } }] })
     expect(fromVideo).toContain('Erased still from video frame')
     expect(fromVideo).toContain('The video itself is unchanged.')
+  })
+  // Erase needs a still. A video has none, so the parent captures the frame from this element.
+  it('hands the video under the mask to the parent, and nothing when a still is shown', async () => {
+    const withVideo = await mount({ ...baseProps, previewImageUrl: null, previewVideoUrl: '/api/agency/video/assets/asset-1/stream?inline=1' })
+    try {
+      const video = withVideo.host.querySelector('video')!
+      // The first frame must be decoded to be captured: metadata alone is not enough.
+      expect(video.getAttribute('preload')).toBe('auto')
+      expect(video.getAttribute('src')).toBe('/api/agency/video/assets/asset-1/stream?inline=1')
+      const ready = withVideo.events.filter(event => event.name === 'preview-video-ready')
+      expect(ready[ready.length - 1]!.payload).toBe(video)
+    } finally {
+      withVideo.app.unmount()
+    }
+    expect(withVideo.events[withVideo.events.length - 1]).toEqual({ name: 'preview-video-ready', payload: null })
+
+    const withStill = await mount(baseProps)
+    try {
+      expect(withStill.host.querySelector('video')).toBeNull()
+      expect(withStill.events.filter(event => event.name === 'preview-video-ready').every(event => event.payload === null)).toBe(true)
+    } finally {
+      withStill.app.unmount()
+    }
   })
 })
