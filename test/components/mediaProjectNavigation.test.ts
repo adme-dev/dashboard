@@ -149,9 +149,160 @@ describe('Video Studio project actions preserve mediaType=av context', () => {
     expect(navigate).toHaveBeenCalledExactlyOnceWith('/agency/audio/projects/av-proj-created?mediaType=av')
   })
 
-  it('publishes loaded project mediaType from ProjectEditor to the agency sidebar state', () => {
+  it('publishes loaded project metadata from ProjectEditor independent of engine readiness', () => {
     const editorSource = readFileSync('app/components/media/ProjectEditor.client.vue', 'utf8')
-    expect(editorSource).toContain('ACTIVE_MEDIA_PROJECT_NAV_STATE_KEY')
-    expect(editorSource).toContain('mediaType: mediaType === \'av\' ? \'av\' : \'audio\'')
+    const start = editorSource.indexOf('const activeMediaProjectNav = useState')
+    const end = editorSource.indexOf('const storyboardEnabled =', start)
+    expect(start).toBeGreaterThan(-1)
+    expect(end).toBeGreaterThan(start)
+    const watcherBlock = editorSource.slice(start, end)
+    expect(watcherBlock).toContain('ACTIVE_MEDIA_PROJECT_NAV_STATE_KEY')
+    expect(watcherBlock).toContain('resolveLoadedMediaProjectContext')
+    expect(watcherBlock).toContain('() => editor.project.value')
+    expect(watcherBlock).not.toContain('editor.status')
+  })
+})
+
+describe('useMediaProjectEditor metadata availability under delayed or failed audio engine load', () => {
+  it('exposes AV project metadata for sidebar resolution while engine.load is pending and when audio init fails', async () => {
+    const engineLoadMock = vi.fn()
+    const audioCtxMock = vi.fn()
+
+    vi.resetModules()
+    vi.doMock('~~/app/utils/audio/audioContextFactory', () => ({
+      createBrowserAudioContext: audioCtxMock,
+      browserSetTimer: vi.fn(),
+      makeR2Resolver: () => vi.fn()
+    }))
+    vi.doMock('~~/app/composables/useAudioEngine', () => ({
+      createAudioEngine: () => ({
+        load: engineLoadMock,
+        duration: () => 12,
+        currentTime: () => 0,
+        isPlaying: () => false,
+        play: vi.fn(),
+        pause: vi.fn(),
+        seek: vi.fn(),
+        dispose: vi.fn()
+      })
+    }))
+
+    const { useMediaProjectEditor } = await import('~~/app/composables/useMediaProjectEditor')
+    const {
+      applyActiveSidebarNav,
+      applyMediaProjectSidebarContext,
+      resolveLoadedMediaProjectContext
+    } = await import('~~/app/utils/sidebarActiveNav')
+
+    function mountEditorComposable(id: string) {
+      let editor!: ReturnType<typeof useMediaProjectEditor>
+      const host = document.createElement('div')
+      const app = createApp({
+        setup() {
+          editor = useMediaProjectEditor(id)
+          return () => h('div')
+        }
+      })
+      apps.push(app)
+      app.mount(host)
+      return { editor, app }
+    }
+
+    const sidebarNav = [[
+      { label: 'Audio Studio', to: '/agency/audio' },
+      { label: 'Video Studio', to: '/agency/audio/projects?mediaType=av' },
+      { label: 'Audio Projects', to: '/agency/audio/projects' }
+    ]]
+    const avTimeline = {
+      schema_version: 1,
+      media_type: 'av',
+      sample_rate: 48000,
+      fps: 30,
+      width: 1080,
+      height: 1920,
+      duration_sec: 10,
+      tracks: [],
+      ducking: []
+    }
+
+    // 1. Delayed engine.load: status is still 'loading', yet metadata already highlights Video Studio.
+    let resolveEngineLoad!: (value: { missingClipIds: string[] }) => void
+    engineLoadMock.mockImplementationOnce(() => new Promise((res) => {
+      resolveEngineLoad = res
+    }))
+    audioCtxMock.mockReturnValueOnce({})
+    vi.stubGlobal('$fetch', vi.fn(async (url: string) => {
+      if (url.endsWith('/clip-sources')) return { sources: {} }
+      return {
+        project: { id: 'av-delayed', title: 'Delayed Reel', mediaType: 'av', status: 'draft' },
+        timeline: { id: 'tl-1', editRevision: 1, state: avTimeline }
+      }
+    }))
+
+    const { editor: delayedEditor, app: delayedApp } = mountEditorComposable('av-delayed')
+    await settle()
+
+    expect(delayedEditor.status.value).toBe('loading')
+    const delayedContext = resolveLoadedMediaProjectContext(delayedEditor.project.value, delayedEditor.timeline.value?.media_type)
+    expect(delayedContext).toEqual({ projectId: 'av-delayed', mediaType: 'av' })
+    const delayedResolved = applyActiveSidebarNav(
+      sidebarNav,
+      applyMediaProjectSidebarContext(
+        { path: '/agency/audio/projects/av-delayed', matched: [{ path: '/agency/audio/projects/:id()' }] },
+        delayedContext
+      )
+    )
+    expect(delayedResolved[0]!.filter(item => item.active).map(item => item.label)).toEqual(['Video Studio'])
+
+    resolveEngineLoad({ missingClipIds: [] })
+    await settle()
+    expect(delayedEditor.status.value).toBe('ready')
+    delayedApp.unmount()
+
+    // 2. Failed audio engine load: status becomes 'error', yet Video Studio remains highlighted.
+    audioCtxMock.mockImplementationOnce(() => {
+      throw new Error('AudioContext blocked by browser autoplay policy')
+    })
+    vi.stubGlobal('$fetch', vi.fn(async (url: string) => {
+      if (url.endsWith('/clip-sources')) return { sources: {} }
+      return {
+        project: { id: 'av-failed', title: 'Blocked Audio Reel', mediaType: 'av', status: 'draft' },
+        timeline: { id: 'tl-2', editRevision: 1, state: avTimeline }
+      }
+    }))
+
+    const { editor: failedEditor, app: failedApp } = mountEditorComposable('av-failed')
+    await settle()
+    expect(failedEditor.status.value).toBe('error')
+    const failedContext = resolveLoadedMediaProjectContext(failedEditor.project.value, failedEditor.timeline.value?.media_type)
+    expect(failedContext).toEqual({ projectId: 'av-failed', mediaType: 'av' })
+    const failedResolved = applyActiveSidebarNav(
+      sidebarNav,
+      applyMediaProjectSidebarContext(
+        { path: '/agency/audio/projects/av-failed', matched: [{ path: '/agency/audio/projects/:id()' }] },
+        failedContext
+      )
+    )
+    expect(failedResolved[0]!.filter(item => item.active).map(item => item.label)).toEqual(['Video Studio'])
+    failedApp.unmount()
+
+    // 3. Project missing timeline: status is 'error', yet project.mediaType still highlights Video Studio.
+    vi.stubGlobal('$fetch', vi.fn(async (url: string) => {
+      if (url.endsWith('/clip-sources')) return { sources: {} }
+      return {
+        project: { id: 'av-no-timeline', title: 'Empty AV Project', mediaType: 'av', status: 'draft' },
+        timeline: null
+      }
+    }))
+
+    const { editor: noTimelineEditor, app: noTimelineApp } = mountEditorComposable('av-no-timeline')
+    await settle()
+    expect(noTimelineEditor.status.value).toBe('error')
+    const noTimelineContext = resolveLoadedMediaProjectContext(noTimelineEditor.project.value, noTimelineEditor.timeline.value?.media_type)
+    expect(noTimelineContext).toEqual({ projectId: 'av-no-timeline', mediaType: 'av' })
+    noTimelineApp.unmount()
+
+    vi.doUnmock('~~/app/utils/audio/audioContextFactory')
+    vi.doUnmock('~~/app/composables/useAudioEngine')
   })
 })

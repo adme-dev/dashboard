@@ -301,6 +301,18 @@ const defaultLocation = computed(() => ({
   query: route.query,
   matched: route.matched
 }))
+const openCollapsedPopovers = ref<Set<string>>(new Set())
+function handleCollapsedPopoverOpenChange(key: string, isOpen: boolean) {
+  if (isOpen === openCollapsedPopovers.value.has(key)) return
+  const next = new Set(openCollapsedPopovers.value)
+  if (isOpen) next.add(key)
+  else next.delete(key)
+  openCollapsedPopovers.value = next
+}
+watch(() => route.fullPath, () => {
+  if (openCollapsedPopovers.value.size) openCollapsedPopovers.value = new Set()
+})
+
 const resolvedLinks = computed(() => applyActiveSidebarNav(
   links.value,
   defaultLocation.value
@@ -308,7 +320,12 @@ const resolvedLinks = computed(() => applyActiveSidebarNav(
 const resolvedCollapsedLinks = computed(() => applyActiveSidebarNav(
   links.value,
   defaultLocation.value,
-  { collapsed: true }
+  {
+    collapsed: true,
+    popover: true,
+    openPopoverKeys: openCollapsedPopovers.value,
+    onPopoverOpenChange: handleCollapsedPopoverOpenChange
+  }
 ))
 
 const groups = computed(() => [{

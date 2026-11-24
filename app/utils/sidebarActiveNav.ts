@@ -12,6 +12,9 @@ export interface SidebarRouteLocation {
 
 export interface ApplyActiveSidebarNavOptions {
   collapsed?: boolean
+  popover?: boolean
+  openPopoverKeys?: ReadonlySet<string> | readonly string[]
+  onPopoverOpenChange?: (key: string, open: boolean) => void
 }
 
 export interface ActiveMediaProjectContext {
@@ -20,6 +23,23 @@ export interface ActiveMediaProjectContext {
 }
 
 export const ACTIVE_MEDIA_PROJECT_NAV_STATE_KEY = 'agency-sidebar-active-media-project'
+
+/**
+ * Derives the sidebar media-project context directly from loaded project metadata
+ * (and optional timeline media_type fallback), independent of audio engine readiness.
+ */
+export function resolveLoadedMediaProjectContext(
+  project: { id?: string | null, mediaType?: string | null } | null | undefined,
+  timelineMediaType?: string | null
+): ActiveMediaProjectContext | null {
+  if (!project?.id) return null
+  const resolvedType = project.mediaType ?? timelineMediaType
+  if (resolvedType !== 'av' && resolvedType !== 'audio') return null
+  return {
+    projectId: project.id,
+    mediaType: resolvedType
+  }
+}
 
 export interface ParsedNavTarget {
   path: string
@@ -360,32 +380,78 @@ function containsDescendant(
   return false
 }
 
+export function collapsedPopoverKey(groupIndex: number, itemIndex: number): string {
+  return `g${groupIndex}:i${itemIndex}`
+}
+
+function toOpenPopoverSet(keys?: ReadonlySet<string> | readonly string[]): ReadonlySet<string> {
+  if (!keys) return new Set<string>()
+  return keys instanceof Set ? keys : new Set(keys)
+}
+
 function collectCollapsedActiveAncestors(
   groups: readonly (readonly NavigationMenuItem[])[],
-  winner: NavigationMenuItem | null
+  winner: NavigationMenuItem | null,
+  openPopoverKeys: ReadonlySet<string>
 ): Set<NavigationMenuItem> {
   const ancestors = new Set<NavigationMenuItem>()
   if (!winner) return ancestors
 
-  for (const group of groups) {
-    for (const item of group) {
+  for (let groupIndex = 0; groupIndex < groups.length; groupIndex += 1) {
+    const group = groups[groupIndex]!
+    for (let itemIndex = 0; itemIndex < group.length; itemIndex += 1) {
+      const item = group[itemIndex]!
       if (item !== winner && containsDescendant(item.children, winner)) {
-        ancestors.add(item)
+        // When a collapsed group's flyout is open, its winning child link is visible inside
+        // the flyout, so only the child should carry the active/current-page indicator.
+        if (!openPopoverKeys.has(collapsedPopoverKey(groupIndex, itemIndex))) {
+          ancestors.add(item)
+        }
       }
     }
   }
   return ancestors
 }
 
+function withCollapsedPopoverTracking(
+  item: NavigationMenuItem,
+  key: string,
+  onPopoverOpenChange: (key: string, open: boolean) => void
+): NavigationMenuItem['popover'] {
+  const existingPopover = typeof item.popover === 'object' && item.popover !== null
+    ? item.popover as Record<string, unknown>
+    : {}
+  const existingOnUpdateOpen = existingPopover['onUpdate:open']
+  const existingOnVnodeBeforeUnmount = existingPopover.onVnodeBeforeUnmount
+
+  return {
+    ...existingPopover,
+    'onUpdate:open': (open: boolean) => {
+      if (typeof existingOnUpdateOpen === 'function') {
+        existingOnUpdateOpen(open)
+      }
+      onPopoverOpenChange(key, open)
+    },
+    'onVnodeBeforeUnmount': (...args: unknown[]) => {
+      if (typeof existingOnVnodeBeforeUnmount === 'function') {
+        existingOnVnodeBeforeUnmount(...args)
+      }
+      onPopoverOpenChange(key, false)
+    }
+  } as NavigationMenuItem['popover']
+}
+
 function mapGroupWithActive(
   items: readonly NavigationMenuItem[],
   winner: NavigationMenuItem | null,
   collapsedActiveAncestors: ReadonlySet<NavigationMenuItem>,
+  groupIndex: number,
+  options?: ApplyActiveSidebarNavOptions,
   depth = 0
 ): NavigationMenuItem[] {
-  return items.map((item) => {
+  return items.map((item, itemIndex) => {
     const mappedChildren = item.children?.length
-      ? mapGroupWithActive(item.children, winner, collapsedActiveAncestors, depth + 1)
+      ? mapGroupWithActive(item.children, winner, collapsedActiveAncestors, groupIndex, options, depth + 1)
       : item.children
 
     if (item.type === 'label') {
@@ -396,14 +462,28 @@ function mapGroupWithActive(
     const isCollapsedAncestor = depth === 0 && collapsedActiveAncestors.has(item)
     const isActive = isWinner || isCollapsedAncestor
     const hasLinkOrTrigger = Boolean(item.to) || (item.type === 'trigger' && Boolean(item.children?.length))
+    const shouldTrackPopover = depth === 0
+      && Boolean(options?.collapsed)
+      && Boolean(options?.onPopoverOpenChange)
+      && Boolean(item.children?.length)
+      && (Boolean(options?.popover) || Boolean(item.popover))
 
-    if (!hasLinkOrTrigger && !isCollapsedAncestor) {
+    if (!hasLinkOrTrigger && !isCollapsedAncestor && !shouldTrackPopover) {
       return mappedChildren !== item.children ? { ...item, children: mappedChildren } : item
     }
 
     const nextItem: NavigationMenuItem = {
       ...item,
       ...(mappedChildren !== item.children ? { children: mappedChildren } : {}),
+      ...(shouldTrackPopover
+        ? {
+            popover: withCollapsedPopoverTracking(
+              item,
+              collapsedPopoverKey(groupIndex, itemIndex),
+              options!.onPopoverOpenChange!
+            )
+          }
+        : {}),
       active: isActive,
       exact: isWinner ? item.exact : false
     }
@@ -416,8 +496,8 @@ function mapGroupWithActive(
  * Returns cloned navigation groups where strictly at most one item across all
  * groups has `active: true` and every other navigable item has `active: false`.
  * When `collapsed` is true and the winning item is a hidden child inside a
- * top-level group, that visible top-level ancestor is marked active so the
- * collapsed sidebar preserves its current-page indicator.
+ * top-level group, that visible top-level ancestor is marked active while its
+ * flyout is closed, and yields back to the child link when the flyout opens.
  */
 export function applyActiveSidebarNav(
   groups: readonly (readonly NavigationMenuItem[])[],
@@ -425,10 +505,13 @@ export function applyActiveSidebarNav(
   options?: ApplyActiveSidebarNavOptions
 ): NavigationMenuItem[][] {
   const winner = resolveActiveSidebarNavItem(groups, location)
+  const openPopoverKeys = options?.collapsed ? toOpenPopoverSet(options.openPopoverKeys) : new Set<string>()
   const collapsedActiveAncestors = options?.collapsed
-    ? collectCollapsedActiveAncestors(groups, winner)
+    ? collectCollapsedActiveAncestors(groups, winner, openPopoverKeys)
     : new Set<NavigationMenuItem>()
-  return groups.map(group => mapGroupWithActive(group, winner, collapsedActiveAncestors))
+  return groups.map((group, groupIndex) =>
+    mapGroupWithActive(group, winner, collapsedActiveAncestors, groupIndex, options)
+  )
 }
 
 export function applyActiveSidebarNavGroup(

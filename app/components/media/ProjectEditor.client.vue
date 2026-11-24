@@ -47,6 +47,7 @@ import type { VideoAsset } from '~~/server/utils/video/assets'
 import { idempotencyKey } from '~~/app/utils/idempotencyKey'
 import {
   ACTIVE_MEDIA_PROJECT_NAV_STATE_KEY,
+  resolveLoadedMediaProjectContext,
   type ActiveMediaProjectContext
 } from '~/utils/sidebarActiveNav'
 
@@ -121,13 +122,11 @@ const videoAssetHarnessEnabled = computed(() => Boolean(publicConfig.videoAssetH
 const isAv = computed(() => editor.mediaType.value === 'av')
 const activeMediaProjectNav = useState<ActiveMediaProjectContext | null>(ACTIVE_MEDIA_PROJECT_NAV_STATE_KEY, () => null)
 watch(
-  [projectId, () => editor.status.value, () => editor.mediaType.value],
-  ([id, status, mediaType]) => {
-    if (status === 'ready') {
-      activeMediaProjectNav.value = {
-        projectId: id,
-        mediaType: mediaType === 'av' ? 'av' : 'audio'
-      }
+  [projectId, () => editor.project.value, () => editor.timeline.value?.media_type],
+  ([id, loadedProject, timelineMediaType]) => {
+    const context = resolveLoadedMediaProjectContext(loadedProject, timelineMediaType)
+    if (context) {
+      activeMediaProjectNav.value = context
     } else if (activeMediaProjectNav.value && activeMediaProjectNav.value.projectId !== id) {
       activeMediaProjectNav.value = null
     }
@@ -135,7 +134,11 @@ watch(
   { immediate: true }
 )
 onBeforeUnmount(() => {
-  if (activeMediaProjectNav.value?.projectId === projectId.value) {
+  const loadedId = editor.project.value?.id
+  if (
+    activeMediaProjectNav.value
+    && (activeMediaProjectNav.value.projectId === projectId.value || activeMediaProjectNav.value.projectId === loadedId)
+  ) {
     activeMediaProjectNav.value = null
   }
 })

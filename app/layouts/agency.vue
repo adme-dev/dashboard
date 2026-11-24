@@ -498,6 +498,18 @@ const sidebarLocation = computed(() => applyMediaProjectSidebarContext(
   { path: route.path, query: route.query, matched: route.matched },
   activeMediaProject.value
 ))
+const openCollapsedPopovers = ref<Set<string>>(new Set())
+function handleCollapsedPopoverOpenChange(key: string, isOpen: boolean) {
+  if (isOpen === openCollapsedPopovers.value.has(key)) return
+  const next = new Set(openCollapsedPopovers.value)
+  if (isOpen) next.add(key)
+  else next.delete(key)
+  openCollapsedPopovers.value = next
+}
+watch(() => route.fullPath, () => {
+  if (openCollapsedPopovers.value.size) openCollapsedPopovers.value = new Set()
+})
+
 const resolvedSidebarNav = computed(() => applyActiveSidebarNav(
   [workspaceNav.value, mainNav.value, footerNav.value],
   sidebarLocation.value
@@ -505,7 +517,12 @@ const resolvedSidebarNav = computed(() => applyActiveSidebarNav(
 const resolvedCollapsedSidebarNav = computed(() => applyActiveSidebarNav(
   [workspaceNav.value, mainNav.value, footerNav.value],
   sidebarLocation.value,
-  { collapsed: true }
+  {
+    collapsed: true,
+    popover: true,
+    openPopoverKeys: openCollapsedPopovers.value,
+    onPopoverOpenChange: handleCollapsedPopoverOpenChange
+  }
 ))
 
 // Search groups for UDashboardSearch

@@ -182,7 +182,7 @@ export function useMediaProjectEditor(projectId: string) {
   // project still loads (status 'ready'); the page shows a warning so the user can
   // remove or replace them. Kept in sync on every engine reload via commitMissing.
   const missingClipIds = ref<string[]>([])
-  const mediaType = computed(() => timeline.value?.media_type ?? 'audio')
+  const mediaType = computed(() => timeline.value?.media_type ?? project.value?.mediaType ?? 'audio')
   // Live presigned-URL map — keyed by r2_key. makeR2Resolver reads from this map
   // on every resolve call so newly-added clip URLs are visible without rebuilding
   // the resolver.  sourcesRef is a reactive snapshot of the map — passed as the
@@ -761,11 +761,13 @@ export function useMediaProjectEditor(projectId: string) {
         apiFetch<{ project: MediaProject, timeline: MediaTimeline | null }>(`/api/agency/audio/projects/${projectId}`),
         apiFetch<{ sources: Record<string, string> }>(`/api/agency/audio/projects/${projectId}/clip-sources`)
       ])
+      // Commit project metadata as soon as the GET resolves so navigation and UI know
+      // the project's mediaType before audio context creation or engine.load() finishes.
+      project.value = proj.project ?? null
       const state = proj.timeline?.state as TimelineState | undefined
       if (!state) { status.value = 'error'; error.value = 'This project has no timeline yet.'; return }
       adoptTimelineToken(proj.timeline!)
       timeline.value = state
-      project.value = proj.project
       // Populate the live sources map from the initial presigned URLs
       for (const [k, v] of Object.entries(src.sources)) mergeSource(k, v)
       const plan = planTimeline(state)

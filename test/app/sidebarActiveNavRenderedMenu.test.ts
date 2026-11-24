@@ -6,11 +6,12 @@ import * as VueUseCore from '@vueuse/core'
 import { defu } from 'defu'
 import * as OhashUtils from 'ohash/utils'
 import * as RekaUi from 'reka-ui'
+import * as RekaUiNamespaced from 'reka-ui/namespaced'
 import ts from 'typescript'
 import * as Ufo from 'ufo'
 import { afterEach, describe, expect, it } from 'vitest'
 import * as Vue from 'vue'
-import { computed, createApp, defineComponent, h, nextTick, ref, type App } from 'vue'
+import { computed, createApp, defineComponent, h, nextTick, ref, watch, type App } from 'vue'
 import { createMemoryHistory, createRouter, RouterLink, useRoute } from 'vue-router'
 import type { NavigationMenuItem } from '@nuxt/ui'
 import { applyActiveSidebarNav } from '~~/app/utils/sidebarActiveNav'
@@ -27,6 +28,13 @@ const linkTheme = {
     disabled: {
       true: 'opacity-50'
     }
+  }
+}
+
+const popoverTheme = {
+  slots: {
+    content: 'popover-content',
+    arrow: 'popover-arrow'
   }
 }
 
@@ -87,7 +95,9 @@ const appConfigStub = {
 
 const nuxtUiUtils = await import('../../node_modules/@nuxt/ui/dist/runtime/utils/index.js')
 const nuxtUiLinkUtils = await import('../../node_modules/@nuxt/ui/dist/runtime/utils/link.js')
+const nuxtUiOverlayUtils = await import('../../node_modules/@nuxt/ui/dist/runtime/utils/overlay.js')
 const nuxtUiForwardProps = await import('../../node_modules/@nuxt/ui/dist/runtime/composables/useForwardProps.js')
+const nuxtUiPortal = await import('../../node_modules/@nuxt/ui/dist/runtime/composables/usePortal.js')
 
 const nuxtUiTv = {
   tv: (config: { extend?: { __slots?: Record<string, string>, __base?: string }, slots?: Record<string, string>, base?: string }) => {
@@ -114,8 +124,37 @@ const nuxtUiTv = {
   }
 }
 
-const useComponentPropsStub = {
-  useComponentProps: (_name: string, props: Record<string, unknown>) => props
+function loadNuxtUiJs(relativePath: string) {
+  const fullPath = resolve(process.cwd(), 'node_modules/@nuxt/ui/dist/runtime', relativePath)
+  const source = readFileSync(fullPath, 'utf8')
+  const js = ts.transpileModule(source, {
+    compilerOptions: {
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2022,
+      esModuleInterop: true
+    }
+  }).outputText
+  const mod: { exports: Record<string, unknown> } = { exports: {} }
+  const req = (id: string): unknown => {
+    if (id === 'vue') return Vue
+    if (id === 'reka-ui') return RekaUi
+    if (id === 'defu') return { __esModule: true, default: defu, defu }
+    if (id === '#imports') return { useAppConfig: () => appConfigStub }
+    if (id === '../utils/index.js') return nuxtUiUtils
+    throw new Error(`Unexpected import in ${relativePath}: ${id}`)
+  }
+  new Function('require', 'exports', 'module', js)(req, mod.exports, mod)
+  return mod.exports
+}
+
+const useComponentPropsReal = loadNuxtUiJs('composables/useComponentProps.js')
+
+const fieldGroupStub = {
+  FieldGroupReset: defineComponent({
+    setup(_props, { slots }) {
+      return () => slots.default?.()
+    }
+  })
 }
 
 function compileNuxtUiSfc(fileName: string, localResolver: (id: string) => unknown) {
@@ -135,6 +174,7 @@ function compileNuxtUiSfc(fileName: string, localResolver: (id: string) => unkno
   const customRequire = (id: string): unknown => {
     if (id === 'vue') return Vue
     if (id === 'reka-ui') return RekaUi
+    if (id === 'reka-ui/namespaced') return RekaUiNamespaced
     if (id === '@vueuse/core') return VueUseCore
     if (id === 'defu') return { defu }
     if (id === 'ohash/utils') return OhashUtils
@@ -147,12 +187,16 @@ function compileNuxtUiSfc(fileName: string, localResolver: (id: string) => unkno
       }
     }
     if (id === '#build/ui/link') return { __esModule: true, default: linkTheme }
+    if (id === '#build/ui/popover') return { __esModule: true, default: popoverTheme }
     if (id === '#build/ui/navigation-menu') return { __esModule: true, default: navigationMenuTheme }
     if (id === '../utils') return nuxtUiUtils
     if (id === '../utils/link') return nuxtUiLinkUtils
+    if (id === '../utils/overlay') return nuxtUiOverlayUtils
     if (id === '../utils/tv') return nuxtUiTv
     if (id === '../composables/useForwardProps') return nuxtUiForwardProps
-    if (id === '../composables/useComponentProps') return useComponentPropsStub
+    if (id === '../composables/usePortal') return nuxtUiPortal
+    if (id === '../composables/useComponentProps') return useComponentPropsReal
+    if (id === '../composables/useFieldGroup') return fieldGroupStub
     return localResolver(id)
   }
 
@@ -169,15 +213,14 @@ const ULink = compileNuxtUiSfc('Link.vue', (id) => {
   throw new Error(`Unexpected import in Link.vue: ${id}`)
 })
 
+const UPopover = compileNuxtUiSfc('Popover.vue', (id) => {
+  throw new Error(`Unexpected import in Popover.vue: ${id}`)
+})
+
 const UAvatarStub = { template: '<span />' }
 const UIconStub = { props: ['name'], template: '<i :data-icon="name" />' }
 const UBadgeStub = { props: ['label'], template: '<span>{{ label }}</span>' }
 const UChipStub = { template: '<span><slot /></span>' }
-const UPopoverStub = defineComponent({
-  setup(_props, { attrs, slots }) {
-    return () => h(RekaUi.Slot, attrs, slots)
-  }
-})
 const UTooltipStub = defineComponent({
   setup(_props, { attrs, slots }) {
     return () => h(RekaUi.Slot, attrs, slots)
@@ -187,11 +230,11 @@ const UTooltipStub = defineComponent({
 const UNavigationMenu = compileNuxtUiSfc('NavigationMenu.vue', (id) => {
   if (id === './LinkBase.vue') return { __esModule: true, default: ULinkBase }
   if (id === './Link.vue') return { __esModule: true, default: ULink }
+  if (id === './Popover.vue') return { __esModule: true, default: UPopover }
   if (id === './Avatar.vue') return { __esModule: true, default: UAvatarStub }
   if (id === './Icon.vue') return { __esModule: true, default: UIconStub }
   if (id === './Badge.vue') return { __esModule: true, default: UBadgeStub }
   if (id === './Chip.vue') return { __esModule: true, default: UChipStub }
-  if (id === './Popover.vue') return { __esModule: true, default: UPopoverStub }
   if (id === './Tooltip.vue') return { __esModule: true, default: UTooltipStub }
   throw new Error(`Unexpected import in NavigationMenu.vue: ${id}`)
 })
@@ -229,25 +272,58 @@ function buildTestRouter() {
   })
 }
 
+async function flushUi() {
+  for (let i = 0; i < 4; i += 1) {
+    await new Promise(resolveTimer => setTimeout(resolveTimer, 10))
+    await nextTick()
+  }
+}
+
 async function mountMenu(
   router: ReturnType<typeof buildTestRouter>,
   getGroups: () => NavigationMenuItem[][],
-  initialCollapsed = false
+  options: { initialCollapsed?: boolean, popover?: boolean } = {}
 ) {
-  const collapsed = ref(initialCollapsed)
+  const collapsed = ref(options.initialCollapsed ?? false)
+  const usePopover = Boolean(options.popover)
+
   const Host = defineComponent({
     setup() {
       const route = useRoute()
+      const openCollapsedPopovers = ref<Set<string>>(new Set())
+      const handleCollapsedPopoverOpenChange = (key: string, isOpen: boolean) => {
+        if (isOpen === openCollapsedPopovers.value.has(key)) return
+        const next = new Set(openCollapsedPopovers.value)
+        if (isOpen) next.add(key)
+        else next.delete(key)
+        openCollapsedPopovers.value = next
+      }
+      watch(() => route.fullPath, () => {
+        if (openCollapsedPopovers.value.size) openCollapsedPopovers.value = new Set()
+      })
+
       const resolved = computed(() => applyActiveSidebarNav(
         getGroups(),
         { path: route.path, query: route.query, matched: route.matched },
-        { collapsed: collapsed.value }
+        collapsed.value
+          ? {
+              collapsed: true,
+              ...(usePopover
+                ? {
+                    popover: true,
+                    openPopoverKeys: openCollapsedPopovers.value,
+                    onPopoverOpenChange: handleCollapsedPopoverOpenChange
+                  }
+                : {})
+            }
+          : undefined
       ))
       return () => h('aside', resolved.value.map(items => h(UNavigationMenu as never, {
         collapsed: collapsed.value,
         items,
         orientation: 'vertical',
-        tooltip: true
+        tooltip: true,
+        ...(usePopover ? { popover: { openDelay: 0, closeDelay: 0, portal: false } } : {})
       })))
     }
   })
@@ -256,6 +332,7 @@ async function mountMenu(
   document.body.appendChild(host)
   const app = createApp(Host)
   app.use(router)
+  app.provide(nuxtUiPortal.portalTargetInjectionKey, computed(() => 'body'))
   app.component('NuxtLink', RouterLink)
   mountedApps.push(app)
   app.mount(host)
@@ -319,6 +396,83 @@ describe('rendered UNavigationMenu active-item behavior', () => {
     collapsed.value = false
     await nextTick()
     expect([...host.querySelectorAll('a[aria-current="page"]')].map(el => el.textContent?.trim())).toEqual(['Google'])
+  })
+
+  it('keeps strictly one current-page link across closed -> open -> closed transitions of a real collapsed workspace popover', async () => {
+    const router = buildTestRouter()
+    await router.push('/agency/boards/marketing')
+    await router.isReady()
+
+    const { host, collapsed } = await mountMenu(
+      router,
+      () => [
+        [
+          {
+            label: 'Client Delivery',
+            to: '/agency/w/client-delivery',
+            defaultOpen: true,
+            children: [
+              { label: 'Marketing Board', to: '/agency/boards/marketing' },
+              { label: 'Design Board', to: '/agency/boards/design' }
+            ]
+          }
+        ],
+        [
+          { label: 'All Boards', to: '/agency/boards' }
+        ]
+      ],
+      { initialCollapsed: false, popover: true }
+    )
+
+    // 0. Expanded: only the child board link is current.
+    expect([...document.body.querySelectorAll('a[aria-current="page"]')].map(el => el.getAttribute('href')))
+      .toEqual(['/agency/boards/marketing'])
+
+    // 1. Collapsed with flyout closed: only the rail workspace link is current.
+    collapsed.value = true
+    await flushUi()
+    let currentLinks = [...document.body.querySelectorAll('a[aria-current="page"]')]
+    expect(currentLinks).toHaveLength(1)
+    expect(currentLinks[0]?.getAttribute('href')).toBe('/agency/w/client-delivery')
+    expect(currentLinks[0]?.className).toContain('text-primary')
+
+    // 2. Open the real UPopover (HoverCard) flyout: only the child board link inside the flyout is current.
+    const workspaceTrigger = host.querySelector<HTMLAnchorElement>('a[href="/agency/w/client-delivery"]')!
+    expect(workspaceTrigger).toBeTruthy()
+    workspaceTrigger.dispatchEvent(new PointerEvent('pointerenter', { bubbles: true, pointerType: 'mouse' }))
+    await flushUi()
+
+    currentLinks = [...document.body.querySelectorAll('a[aria-current="page"]')]
+    expect(currentLinks).toHaveLength(1)
+    expect(currentLinks[0]?.getAttribute('href')).toBe('/agency/boards/marketing')
+    expect(workspaceTrigger.getAttribute('aria-current')).toBeNull()
+    expect(workspaceTrigger.className).not.toContain('text-primary')
+
+    // 3. Close the flyout (Escape / pointerleave): rail workspace link cleanly regains the single current-page indicator.
+    workspaceTrigger.dispatchEvent(new PointerEvent('pointerleave', { bubbles: true, pointerType: 'mouse' }))
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    await flushUi()
+
+    currentLinks = [...document.body.querySelectorAll('a[aria-current="page"]')]
+    expect(currentLinks).toHaveLength(1)
+    expect(currentLinks[0]?.getAttribute('href')).toBe('/agency/w/client-delivery')
+    expect(workspaceTrigger.className).toContain('text-primary')
+
+    // 4. Open flyout, then expand sidebar while open, then re-collapse: open state never gets stuck.
+    workspaceTrigger.dispatchEvent(new PointerEvent('pointerenter', { bubbles: true, pointerType: 'mouse' }))
+    await flushUi()
+    expect([...document.body.querySelectorAll('a[aria-current="page"]')].map(el => el.getAttribute('href')))
+      .toEqual(['/agency/boards/marketing'])
+
+    collapsed.value = false
+    await flushUi()
+    expect([...document.body.querySelectorAll('a[aria-current="page"]')].map(el => el.getAttribute('href')))
+      .toEqual(['/agency/boards/marketing'])
+
+    collapsed.value = true
+    await flushUi()
+    expect([...document.body.querySelectorAll('a[aria-current="page"]')].map(el => el.getAttribute('href')))
+      .toEqual(['/agency/w/client-delivery'])
   })
 
   it('handles mixed-case static segments, distinct param slugs, and repeated query keys in a real Vue Router menu', async () => {

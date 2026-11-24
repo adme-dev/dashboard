@@ -7,8 +7,10 @@ import {
   applyActiveSidebarNavGroup,
   applyMediaProjectSidebarContext,
   canonicalizeMatchedSidebarPath,
+  collapsedPopoverKey,
   parseInternalNavTarget,
   resolveActiveSidebarNavItem,
+  resolveLoadedMediaProjectContext,
   type SidebarMatchedRecord
 } from '~~/app/utils/sidebarActiveNav'
 import { searchAuthorityNavItems } from '~~/app/utils/searchAuthorityNavigation'
@@ -513,6 +515,43 @@ describe('sidebarActiveNav', () => {
       { projectId: 'av-42', mediaType: 'av' }
     )
     expect(collectActiveItems(applyActiveSidebarNav(groups, backToList)).map(i => i.label)).toEqual(['Audio Projects'])
+
+    // Loaded metadata helper resolves project ID and mediaType directly without engine readiness.
+    expect(resolveLoadedMediaProjectContext({ id: 'av-42', mediaType: 'av' }, null)).toEqual({
+      projectId: 'av-42',
+      mediaType: 'av'
+    })
+    expect(resolveLoadedMediaProjectContext({ id: 'aud-9', mediaType: null }, 'audio')).toEqual({
+      projectId: 'aud-9',
+      mediaType: 'audio'
+    })
+    expect(resolveLoadedMediaProjectContext(null, 'av')).toBeNull()
+  })
+
+  it('transfers collapsed active highlight from workspace rail ancestor to board child when flyout opens', () => {
+    const groups = buildFullAgencySidebarGroups()
+    const location = routeFromUrl('/agency/boards/marketing', [{ path: '/agency' }, { path: '/agency/boards/:id()' }])
+    const workspaceKey = collapsedPopoverKey(0, 0)
+
+    const closed = applyActiveSidebarNav(groups, location, {
+      collapsed: true,
+      popover: true,
+      openPopoverKeys: new Set()
+    })
+    const closedWorkspace = closed[0]![0]!
+    expect(closedWorkspace.active).toBe(true)
+    expect(closedWorkspace['aria-current']).toBe('page')
+
+    const open = applyActiveSidebarNav(groups, location, {
+      collapsed: true,
+      popover: true,
+      openPopoverKeys: new Set([workspaceKey])
+    })
+    const openWorkspace = open[0]![0]!
+    expect(openWorkspace.active).toBe(false)
+    expect(openWorkspace['aria-current']).toBeUndefined()
+    expect(openWorkspace.children?.[0]?.active).toBe(true)
+    expect(openWorkspace.children?.[0]?.['aria-current']).toBe('page')
   })
 
   it('handles default layout query-scoped siblings without double-activating', () => {
