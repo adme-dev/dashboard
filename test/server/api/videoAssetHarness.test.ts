@@ -24,9 +24,13 @@ vi.mock('~~/server/utils/auth', () => ({
 
 const mockQueryOne = vi.fn()
 const mockQueryRows = vi.fn()
+const freshReads: string[] = []
 vi.mock('~~/server/utils/db', () => ({
   queryOne: (...args: unknown[]) => mockQueryOne(...args),
   queryRows: (...args: unknown[]) => mockQueryRows(...args),
+  // Fresh reads share the same fakes; freshReads records which statements asked for them.
+  queryOneFresh: (...args: unknown[]) => { freshReads.push(String(args[0])); return mockQueryOne(...args) },
+  queryRowsFresh: (...args: unknown[]) => { freshReads.push(String(args[0])); return mockQueryRows(...args) },
 }))
 
 const mockGetProject = vi.fn()
@@ -127,6 +131,7 @@ const derivativeStreamHandler = (await import('~~/server/api/agency/video/deriva
 const assembleHandler = (await import('~~/server/api/agency/video/projects/[id]/assemble.post')).default
 const jobsHandler = (await import('~~/server/api/agency/video/projects/[id]/intelligence-jobs.get')).default
 const thumbnailHandler = (await import('~~/server/api/agency/video/assets/[id]/thumbnail.get')).default
+const saveThumbnailHandler = (await import('~~/server/api/agency/video/assets/[id]/thumbnail.post')).default
 const captionsHandler = (await import('~~/server/api/agency/video/assets/[id]/captions.vtt.get')).default
 
 const { paintedFrameKeyForMask } = await import('~~/shared/video/assetIntelligenceMaskFrame')
@@ -137,6 +142,7 @@ const MASK_KEY = 'video-asset-masks/11111111-1111-4111-8111-111111111111/2222222
 describe('video asset harness API', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    freshReads.length = 0
     process.env.VIDEO_STUDIO_ENABLED = 'true'
     mockRequireWriteAccess.mockResolvedValue({ id: 'user-1', role: 'owner' })
     mockRequireAuth.mockResolvedValue({ id: 'user-1', role: 'owner' })
@@ -972,6 +978,8 @@ describe('video asset harness API', () => {
       role: 'hero-overlay',
       title: 'Lifted logo',
       directive,
+      // The keeper is passed on so a picture result becomes a library asset.
+      createdBy: 'user-1',
     })
     expect(g.setResponseStatus).toHaveBeenCalledWith(expect.anything(), 201)
     expect(res).toEqual({
@@ -1114,6 +1122,70 @@ describe('video asset harness API', () => {
     expect(mockGetAssetProjectRelationship).toHaveBeenCalledWith('22222222-2222-4222-8222-222222222222')
     expect(mockGetPresignedDownloadUrl).toHaveBeenCalledWith('thumbs/asset.jpg', 3600)
     expect(res).toEqual({ location: 'https://signed.example.com/thumb.jpg', statusCode: 302 })
+  })
+
+  it('serves a PNG or JPEG asset as its own thumbnail when none was saved', async () => {
+    mockQueryOne.mockResolvedValue({ id: '22222222-2222-4222-8222-222222222222', created_by: 'user-1', r2_key: 'media/p1/still/hero.png', format: 'still', thumbnail_key: null })
+    const res = await thumbnailHandler({ params: { id: '22222222-2222-4222-8222-222222222222' } } as any)
+    expect(res).toEqual({ location: '/api/_uploads/media/p1/still/hero.png', statusCode: 302 })
+
+    mockQueryOne.mockResolvedValue({ id: '22222222-2222-4222-8222-222222222222', created_by: 'user-1', r2_key: 'video/clip.mp4', format: '9:16', thumbnail_key: null })
+    await expect(thumbnailHandler({ params: { id: '22222222-2222-4222-8222-222222222222' } } as any))
+      .rejects.toMatchObject({ statusCode: 404 })
+  })
+
+  describe('saving a preview frame for a video that has none', () => {
+    const ASSET = '22222222-2222-4222-8222-222222222222'
+    const PROJECT = '11111111-1111-4111-8111-111111111111'
+    const frame = { name: 'file', filename: 'preview-frame.jpg', type: 'image/jpeg', data: Buffer.from([0xff, 0xd8, 0xff, 1]) }
+
+    it('stores the frame and sets it on an asset without one', async () => {
+      g.readMultipartFormData.mockResolvedValue([frame])
+      let update: { sql: string, params: unknown[] } | null = null
+      mockQueryOne.mockImplementation(async (sql: string, params: unknown[]) => {
+        update = { sql, params }
+        return { thumbnail_key: params[1] }
+      })
+
+      const res = await saveThumbnailHandler({ params: { id: ASSET } } as any)
+
+      const key = mockUploadFile.mock.calls[0]?.[1] as string
+      expect(key).toMatch(new RegExp(`^video-asset-thumbnails/${PROJECT}/${ASSET}/\\d+-[a-f0-9-]+\\.jpg$`))
+      expect(mockUploadFile).toHaveBeenCalledWith(frame.data, key, 'image/jpeg', expect.objectContaining({ sourceAssetId: ASSET, kind: 'asset-thumbnail' }))
+      // Only an asset with no frame is changed.
+      expect(update!.sql).toContain('thumbnail_key IS NULL')
+      expect(update!.params).toEqual([ASSET, key])
+      expect(g.setResponseStatus).toHaveBeenCalledWith(expect.anything(), 201)
+      expect(res).toEqual({ saved: true, thumbnailUrl: `/api/agency/video/assets/${ASSET}/thumbnail` })
+    })
+
+    it('keeps the frame an asset already has', async () => {
+      g.readMultipartFormData.mockResolvedValue([frame])
+      mockQueryOne.mockImplementation(async (sql: string) => sql.includes('UPDATE video_assets') ? null : { thumbnail_key: 'thumbs/existing.jpg' })
+
+      const res = await saveThumbnailHandler({ params: { id: ASSET } } as any)
+
+      expect(g.setResponseStatus).toHaveBeenCalledWith(expect.anything(), 200)
+      expect(res).toMatchObject({ saved: false })
+    })
+
+    it('rejects a frame that is not a JPEG or PNG, or is missing', async () => {
+      g.readMultipartFormData.mockResolvedValue([{ ...frame, type: 'image/svg+xml' }])
+      await expect(saveThumbnailHandler({ params: { id: ASSET } } as any))
+        .rejects.toMatchObject({ statusCode: 400, statusMessage: 'The preview frame must be a JPEG or PNG image' })
+      g.readMultipartFormData.mockResolvedValue([])
+      await expect(saveThumbnailHandler({ params: { id: ASSET } } as any))
+        .rejects.toMatchObject({ statusCode: 400, statusMessage: 'Missing preview frame' })
+      expect(mockUploadFile).not.toHaveBeenCalled()
+    })
+
+    it('refuses a user who cannot change the project, before reading the upload', async () => {
+      mockRequireWriteAccess.mockResolvedValue({ id: 'user-2', role: 'editor' })
+      await expect(saveThumbnailHandler({ params: { id: ASSET } } as any))
+        .rejects.toMatchObject({ statusCode: 403 })
+      expect(g.readMultipartFormData).not.toHaveBeenCalled()
+      expect(mockUploadFile).not.toHaveBeenCalled()
+    })
   })
 
   it('rejects captions when the asset project is not accessible', async () => {

@@ -34,6 +34,7 @@ export const STUDIO_FAMILIES = {
   assetCaptions: family('video-asset-captions', 'caption generation', 'POST', `/api/agency/video/assets/${UUID}/captions`),
   assetExtract: family('video-asset-extract', 'asset extraction', 'POST', `/api/agency/video/assets/${UUID}/extract`),
   assetMasks: family('video-asset-masks', 'asset masking', 'POST', `/api/agency/video/assets/${UUID}/masks`),
+  assetThumbnail: family('video-asset-thumbnail', 'asset preview frame', 'POST', `/api/agency/video/assets/${UUID}/thumbnail`),
   assetPublishSocial: family('video-asset-publish-social', 'asset publish', 'POST', `/api/agency/video/assets/${UUID}/publish-social`),
   bucketItemDirective: family('video-bucket-item-directive', 'bucket item directive', 'POST', `/api/agency/video/bucket-items/${UUID}/directive`),
   derivativeAddToBucket: family('video-derivative-add-to-bucket', 'derivative bucket add', 'POST', `/api/agency/video/derivatives/${UUID}/add-to-bucket`),

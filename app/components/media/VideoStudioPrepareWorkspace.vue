@@ -62,6 +62,7 @@ const props = defineProps<{
   selectedDerivatives: AssetDerivative[]
   loadingDerivatives?: boolean
   addingDerivativeId?: string | null
+  uploading?: boolean
   recentJobs: ActivityJob[]
 }>()
 
@@ -74,23 +75,47 @@ const emit = defineEmits<{
   // The video shown under the mask, when the asset has no still. Null when a still is shown.
   (event: 'preview-video-ready', value: HTMLVideoElement | null): void
   (event: 'start-mask-stroke' | 'move-mask-stroke' | 'end-mask-stroke', value: PointerEvent): void
+  // A picture or video picked from disk, to become a library asset.
+  (event: 'upload-file', value: File): void
   (event: 'add-derivative-to-timeline' | 'add-derivative-to-bucket' | 'animate-layers', value: AssetDerivative): void
 }>()
+
+const UPLOAD_ACCEPT = 'image/jpeg,image/png,image/webp,video/mp4,video/webm,video/quicktime'
+const fileInput = ref<HTMLInputElement | null>(null)
+function onFilePicked(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  // Reset so picking the same file again still fires.
+  input.value = ''
+  if (file) emit('upload-file', file)
+}
 
 const maskCanvas = ref<HTMLCanvasElement | null>(null)
 const previewVideo = ref<HTMLVideoElement | null>(null)
 const root = ref<HTMLElement | null>(null)
 const stage = ref<HTMLElement | null>(null)
-const { width: rootWidth } = useElementSize(root)
+const toolbar = ref<HTMLElement | null>(null)
+const { width: rootWidth, height: rootHeight } = useElementSize(root)
 const { width: stageWidth, height: stageHeight } = useElementSize(stage)
-// Matches the @4xl container breakpoint below: three columns from 896px.
+const { height: toolbarHeight } = useElementSize(toolbar)
+// Matches the @4xl/prepare breakpoint below: three columns from 896px of workspace width.
+// Every column class names that container. The picture column is a container too (for the
+// toolbar above the picture), so an unnamed @4xl inside it measured the column, not the
+// workspace, and the stage lost its height on screens narrower than about 1650px.
 const stacked = computed(() => rootWidth.value > 0 && rootWidth.value < 896)
 
 // Fit the picture inside the stage at its own shape, so a stroke lands where it is drawn.
 const frameStyle = computed(() => {
   const ratio = props.frameWidth / Math.max(1, props.frameHeight)
-  // Stacked (phones, narrow panes): the picture sets the height, capped so tools stay reachable.
-  if (stacked.value) return { aspectRatio: `${props.frameWidth} / ${props.frameHeight}`, width: `min(100%, calc(60svh * ${ratio.toFixed(4)}))` }
+  // Stacked (phones, narrow panes): the picture sets the height. It is capped so the picture
+  // and the toolbar above it fit in the pane together: the whole picture can be painted, and
+  // Undo and Run stay in view. The pane is short on a laptop because the timeline stays docked.
+  if (stacked.value) {
+    // 32px: the column's padding and the gap under the toolbar.
+    const room = rootHeight.value - toolbarHeight.value - 32
+    const visible = rootHeight.value > 0 ? `${Math.max(180, Math.floor(room))}px` : '60svh'
+    return { aspectRatio: `${props.frameWidth} / ${props.frameHeight}`, width: `min(100%, calc(min(${visible}, 60svh) * ${ratio.toFixed(4)}))` }
+  }
   const availableWidth = Math.max(0, stageWidth.value)
   const availableHeight = Math.max(0, stageHeight.value)
   if (!availableWidth || !availableHeight) return { aspectRatio: `${props.frameWidth} / ${props.frameHeight}`, width: '100%' }
@@ -104,12 +129,22 @@ const runLabel = computed(() => selectedTool.value ? `Run ${selectedTool.value.l
 const runBlockedReason = computed(() => {
   const tool = selectedTool.value
   if (tool && tool.available === false) return tool.unavailableReason || `${tool.label} is not available yet.`
-  if (!props.selectedItemAssetId) return 'Choose an asset first.'
+  // An item kept before results became library assets has nothing the tools can open.
+  if (props.selectedItemId && !props.selectedItemAssetId) return 'This item is not a library asset yet. Find it under Results for the asset it came from and press "Keep in assets" again, or upload the picture here.'
+  if (!props.selectedItemAssetId) return 'Choose an asset first, or upload a picture or video.'
   if (props.selectedAction === 'erase-fill' && !props.hasMaskStroke) return 'Paint over what to erase first.'
   if (props.selectedAction === 'mask-lift' && !props.hasMaskStroke) return 'Paint over what to lift first.'
   return null
 })
 const hasPreview = computed(() => Boolean(props.previewImageUrl || props.previewVideoUrl))
+// One line of guidance beside the paint controls: what is missing, or what happens next.
+const stageHint = computed(() => {
+  if (runBlockedReason.value) return runBlockedReason.value
+  if (!props.maskToolEnabled) return 'This tool works on the whole picture. No painting needed.'
+  return 'Paint more to add to the selection, or run it.'
+})
+// A video is shown only when the asset has no still. Erase then works on the painted frame.
+const eraseOnVideo = computed(() => props.selectedAction === 'erase-fill' && !props.previewImageUrl && Boolean(props.previewVideoUrl))
 
 function jobStatusColor(status: SelectedJob['status']) {
   if (status === 'succeeded') return 'success'
@@ -151,10 +186,11 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section ref="root" class="@container flex h-full min-h-0 flex-col" aria-label="Prepare asset">
-    <div class="grid min-h-0 flex-1 grid-cols-1 @4xl:grid-cols-[232px_minmax(0,1fr)_264px] @4xl:grid-rows-[minmax(0,1fr)]">
+  <section ref="root" class="@container/prepare flex h-full min-h-0 flex-col" aria-label="Prepare asset">
+    <!-- Stacked, the grid keeps its natural height and the pane scrolls. In three columns it fills the pane and each column scrolls. -->
+    <div class="grid shrink-0 grid-cols-1 @4xl/prepare:min-h-0 @4xl/prepare:flex-1 @4xl/prepare:shrink @4xl/prepare:grid-cols-[232px_minmax(0,1fr)_264px] @4xl/prepare:grid-rows-[minmax(0,1fr)]">
       <!-- What to work on, and what to do to it. -->
-      <div class="min-w-0 space-y-4 border-b border-default p-3 @4xl:overflow-y-auto @4xl:border-b-0 @4xl:border-r">
+      <div class="min-w-0 space-y-4 border-b border-default p-3 @4xl/prepare:overflow-y-auto @4xl/prepare:border-b-0 @4xl/prepare:border-r">
         <UFormField label="Asset">
           <USelectMenu
             :model-value="props.selectedItemId ?? undefined"
@@ -168,11 +204,35 @@ onBeforeUnmount(() => {
             @update:model-value="value => emit('update:selectedItemId', String(value))"
           />
         </UFormField>
-        <p v-if="!props.loading && !props.assetOptions.length" class="text-xs leading-snug text-muted">
-          No project assets yet. Add footage or generate a clip, then come back to clean it up.
-        </p>
+        <div>
+          <UButton
+            data-upload-asset
+            icon="i-lucide-upload"
+            size="sm"
+            variant="outline"
+            color="neutral"
+            block
+            :label="props.uploading ? 'Uploading…' : 'Upload a picture or video'"
+            :loading="props.uploading"
+            @click="fileInput?.click()"
+          />
+          <!-- Hidden file picker behind the button above, as in the Footage uploader. -->
+          <input
+            ref="fileInput"
+            data-upload-input
+            type="file"
+            class="hidden"
+            :accept="UPLOAD_ACCEPT"
+            @change="onFilePicked"
+          >
+          <p class="mt-1.5 text-xs leading-snug text-muted">
+            {{ !props.loading && !props.assetOptions.length
+              ? 'No project assets yet. Upload a picture or video to prepare it, or generate a clip.'
+              : 'JPEG, PNG or WebP up to 50MB, or MP4, WebM or MOV up to 500MB.' }}
+          </p>
+        </div>
 
-        <div role="radiogroup" aria-label="Prepare tool" class="grid gap-1.5 @md:grid-cols-2 @4xl:grid-cols-1">
+        <div role="radiogroup" aria-label="Prepare tool" class="grid gap-1.5 @md/prepare:grid-cols-2 @4xl/prepare:grid-cols-1">
           <UButton
             v-for="tool in props.toolOptions"
             :key="tool.value"
@@ -201,39 +261,74 @@ onBeforeUnmount(() => {
         </div>
       </div>
 
-      <!-- The picture. -->
-      <div class="@container/stage flex min-h-0 min-w-0 flex-col gap-2 p-3 @4xl:overflow-y-auto">
-        <div v-if="props.maskToolEnabled" class="flex shrink-0 flex-wrap items-center gap-2">
-          <p class="mr-auto text-xs text-muted">
-            Paint over the part of the picture this tool should act on.
+      <!-- The picture. Controls take one row above it and one below, so the picture gets the height. -->
+      <div class="@container/stage flex min-w-0 flex-col gap-2 p-3 @4xl/prepare:min-h-0 @4xl/prepare:overflow-y-auto">
+        <div ref="toolbar" data-prepare-toolbar class="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1">
+          <template v-if="props.maskToolEnabled">
+            <UFormField
+              :label="`Brush ${props.brushSize}`"
+              orientation="horizontal"
+              class="shrink-0 items-center gap-2"
+              :ui="{ label: 'text-xs font-normal text-muted tabular-nums', container: 'mt-0' }"
+            >
+              <USlider
+                :model-value="props.brushSize"
+                :min="8"
+                :max="72"
+                :step="2"
+                size="sm"
+                class="w-24"
+                aria-label="Brush size"
+                @update:model-value="value => emit('update:brushSize', Number(value))"
+              />
+            </UFormField>
+            <UButton
+              icon="i-lucide-undo-2"
+              size="xs"
+              variant="ghost"
+              color="neutral"
+              aria-label="Undo"
+              title="Undo the last stroke"
+              :disabled="!props.canUndoMask"
+              @click="emit('undo-mask')"
+            >
+              <span class="hidden @2xl/stage:inline">Undo</span>
+            </UButton>
+            <UButton
+              icon="i-lucide-eraser"
+              size="xs"
+              variant="ghost"
+              color="neutral"
+              aria-label="Clear"
+              title="Clear everything painted"
+              :disabled="!props.hasMaskStroke"
+              @click="emit('clear-mask')"
+            >
+              <span class="hidden @2xl/stage:inline">Clear</span>
+            </UButton>
+          </template>
+          <p
+            :data-run-blocked="runBlockedReason ? '' : undefined"
+            class="order-last w-full min-w-0 text-xs leading-snug text-muted @2xl/stage:order-none @2xl/stage:w-auto @2xl/stage:flex-1"
+          >
+            {{ stageHint }}
           </p>
           <UButton
-            icon="i-lucide-undo-2"
-            size="xs"
-            variant="ghost"
-            color="neutral"
-            label="Undo"
-            :disabled="!props.canUndoMask"
-            @click="emit('undo-mask')"
-          />
-          <UButton
-            icon="i-lucide-eraser"
-            size="xs"
-            variant="ghost"
-            color="neutral"
-            label="Clear"
-            :disabled="!props.hasMaskStroke"
-            @click="emit('clear-mask')"
+            icon="i-lucide-wand-sparkles"
+            color="primary"
+            size="sm"
+            :label="runLabel"
+            :loading="props.running"
+            :disabled="Boolean(runBlockedReason)"
+            class="ml-auto shrink-0 justify-center"
+            @click="emit('run')"
           />
         </div>
-        <p v-else class="shrink-0 text-xs text-muted">
-          This tool works on the whole picture. No painting needed.
-        </p>
 
         <div
           ref="stage"
           data-prepare-stage
-          class="flex min-h-0 items-center justify-center overflow-hidden rounded-md bg-black @4xl:min-h-40 @4xl:flex-1"
+          class="flex shrink-0 items-center justify-center overflow-hidden rounded-md bg-black @4xl/prepare:min-h-40 @4xl/prepare:flex-1 @4xl/prepare:shrink"
         >
           <div data-prepare-frame class="relative overflow-hidden rounded bg-neutral-900" :style="frameStyle">
             <img
@@ -277,50 +372,30 @@ onBeforeUnmount(() => {
           </div>
         </div>
 
-        <!-- Instruction and Run sit directly under the picture they act on. -->
-        <div class="grid shrink-0 gap-3 rounded-md border border-default bg-elevated p-3 @2xl/stage:grid-cols-[minmax(0,1fr)_auto] @2xl/stage:items-end">
-          <div class="grid min-w-0 gap-3 @2xl/stage:grid-cols-[150px_minmax(0,1fr)]">
-            <UFormField v-if="props.maskToolEnabled" :label="`Brush size ${props.brushSize}`">
-              <USlider
-                :model-value="props.brushSize"
-                :min="8"
-                :max="72"
-                :step="2"
-                class="py-2"
-                @update:model-value="value => emit('update:brushSize', Number(value))"
-              />
-            </UFormField>
-            <UFormField label="Instruction" :class="props.maskToolEnabled ? '' : '@2xl/stage:col-span-2'">
-              <UTextarea
-                :model-value="props.toolPrompt"
-                :rows="2"
-                autoresize
-                placeholder="Optional. Say what to lift, erase or keep if the result misses it"
-                class="w-full"
-                @update:model-value="value => emit('update:toolPrompt', String(value))"
-              />
-            </UFormField>
-          </div>
-          <UButton
-            icon="i-lucide-wand-sparkles"
-            color="primary"
-            :label="runLabel"
-            :loading="props.running"
-            :disabled="Boolean(runBlockedReason)"
-            class="justify-center"
-            @click="emit('run')"
+        <UFormField
+          label="Instruction"
+          orientation="horizontal"
+          class="shrink-0 items-start gap-3"
+          :ui="{ label: 'pt-1.5 text-xs font-normal text-muted', container: 'mt-0 min-w-0 flex-1' }"
+        >
+          <UTextarea
+            :model-value="props.toolPrompt"
+            :rows="1"
+            autoresize
+            :maxrows="4"
+            size="sm"
+            placeholder="Optional. Say what to lift, erase or keep if the result misses it"
+            class="w-full"
+            @update:model-value="value => emit('update:toolPrompt', String(value))"
           />
-          <p v-if="runBlockedReason" data-run-blocked class="text-xs leading-snug text-muted @2xl/stage:col-span-2">
-            {{ runBlockedReason }}
-          </p>
-          <p v-else-if="props.selectedAction === 'erase-fill'" class="text-xs leading-snug text-muted @2xl/stage:col-span-2">
-            Erase works on a still picture and changes only the painted area. On a video it uses the frame you painted on and gives you a still; the video itself is not changed.
-          </p>
-        </div>
+        </UFormField>
+        <p v-if="eraseOnVideo" class="shrink-0 text-xs leading-snug text-muted">
+          This asset has no still, so erase uses the video frame you paint on and gives you a still. The video itself is not changed.
+        </p>
       </div>
 
       <!-- What came back. -->
-      <div class="min-w-0 space-y-4 border-t border-default p-3 @4xl:overflow-y-auto @4xl:border-l @4xl:border-t-0">
+      <div class="min-w-0 space-y-4 border-t border-default p-3 @4xl/prepare:overflow-y-auto @4xl/prepare:border-l @4xl/prepare:border-t-0">
         <div>
           <h4 class="text-sm font-medium text-highlighted">
             Results for this asset

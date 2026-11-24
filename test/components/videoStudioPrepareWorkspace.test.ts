@@ -67,7 +67,8 @@ async function mount(props: Record<string, unknown>) {
       'onPreviewVideoReady': record('preview-video-ready'),
       'onUpdate:selectedAction': record('update:selectedAction'),
       'onAddDerivativeToTimeline': record('add-derivative-to-timeline'),
-      'onAnimateLayers': record('animate-layers')
+      'onAnimateLayers': record('animate-layers'),
+      'onUploadFile': record('upload-file')
     })
   })
   Object.entries(stubs).forEach(([name, comp]) => app.component(name, comp))
@@ -95,9 +96,72 @@ describe('VideoStudioPrepareWorkspace', () => {
 
   it('lays out from its own width so it works in any pane', async () => {
     const html = await render(baseProps)
-    expect(html).toContain('@container')
-    expect(html).toContain('@4xl:grid-cols-[232px_minmax(0,1fr)_264px]')
+    expect(html).toContain('@container/prepare')
+    expect(html).toContain('@4xl/prepare:grid-cols-[232px_minmax(0,1fr)_264px]')
     expect(html).not.toMatch(/(?<![@\w])(md|lg|xl):grid-cols/)
+  })
+
+  // The picture column is itself a container (@container/stage). An unnamed @4xl inside it
+  // measures that column, which is under 896px until the window is about 1650px wide, so the
+  // stage lost flex-1 and collapsed to 0-19px at 1280 and 1440. Every three-column class must
+  // name the workspace container.
+  it('ties every three-column class to the workspace width, not to the picture column', async () => {
+    const html = await render(baseProps)
+    const classes = [...html.matchAll(/class="([^"]*)"/g)].flatMap(match => match[1]!.split(/\s+/))
+    const breakpoint = classes.filter(name => name.startsWith('@4xl'))
+    expect(breakpoint.length).toBeGreaterThan(8)
+    expect(breakpoint.filter(name => !name.startsWith('@4xl/prepare:'))).toEqual([])
+
+    const stage = html.match(/<div[^>]*data-prepare-stage[^>]*>/)?.[0] ?? ''
+    expect(stage).toContain('@4xl/prepare:flex-1')
+    expect(stage).toContain('@4xl/prepare:min-h-40')
+    // The only classes that follow the picture column are the ones in the box under the picture.
+    const stageScoped = classes.filter(name => name.includes('/stage:'))
+    expect(stageScoped.length).toBeGreaterThan(0)
+    expect(stageScoped.every(name => name.startsWith('@2xl/stage:'))).toBe(true)
+  })
+
+  // The pane is 271-435px tall on a laptop (the timeline stays docked), so the controls
+  // take one row above the picture instead of a tall box under it.
+  it('puts the paint controls and Run in one toolbar above the picture', async () => {
+    const html = await render(baseProps)
+    const toolbar = html.indexOf('data-prepare-toolbar')
+    const stage = html.indexOf('data-prepare-stage')
+    const run = html.indexOf('Run erase and heal')
+    expect(toolbar).toBeGreaterThan(-1)
+    expect(html.indexOf('aria-label="Brush size"')).toBeGreaterThan(toolbar)
+    expect(html.indexOf('aria-label="Brush size"')).toBeLessThan(stage)
+    expect(run).toBeGreaterThan(toolbar)
+    expect(run).toBeLessThan(stage)
+    // Only the optional instruction sits under the picture.
+    expect(html.indexOf('Optional. Say what to lift')).toBeGreaterThan(stage)
+    // Stacked, the grid keeps its natural height so the pane scrolls and the stage is not squeezed to nothing.
+    expect(html).toMatch(/<div class="grid shrink-0 grid-cols-1 @4xl\/prepare:min-h-0 @4xl\/prepare:flex-1/)
+    expect(html.match(/<div[^>]*data-prepare-stage[^>]*>/)![0]).toContain('shrink-0')
+  })
+
+  it('uploads a picked picture or video as a new asset', async () => {
+    const { app, host, events } = await mount(baseProps)
+    try {
+      expect(buttonByText(host, 'Upload a picture or video')).toBeTruthy()
+      const input = host.querySelector('[data-upload-input]') as HTMLInputElement
+      expect(input.accept).toContain('image/png')
+      expect(input.accept).toContain('video/mp4')
+      const file = new File([new Uint8Array([1])], 'hero.png', { type: 'image/png' })
+      Object.defineProperty(input, 'files', { value: [file], configurable: true })
+      input.dispatchEvent(new Event('change'))
+      expect(events).toContainEqual({ name: 'upload-file', payload: file })
+    } finally {
+      app.unmount()
+    }
+  })
+
+  it('says how to fix an item that is not a library asset, instead of "choose an asset"', async () => {
+    const kept = await render({ ...baseProps, selectedItemAssetId: null })
+    expect(kept).toContain('This item is not a library asset yet.')
+    expect(kept).toContain('Keep in assets')
+    const none = await render({ ...baseProps, selectedItemId: null, selectedItemAssetId: null })
+    expect(none).toContain('Choose an asset first, or upload a picture or video.')
   })
 
   it('reports the real size of the picture once it loads', async () => {
@@ -139,9 +203,12 @@ describe('VideoStudioPrepareWorkspace', () => {
   })
 
   it('hides painting controls for whole-picture tools and blocks Run without an asset', async () => {
-    const html = await render({ ...baseProps, maskToolEnabled: false, selectedItemAssetId: null })
-    expect(html).toContain('This tool works on the whole picture.')
+    const html = await render({ ...baseProps, maskToolEnabled: false, selectedItemId: null, selectedItemAssetId: null })
+    expect(html).toContain('Choose an asset first, or upload a picture or video.')
     expect(html).not.toContain('Brush size')
+    expect(html).not.toContain('aria-label="Undo"')
+    // With an asset chosen, the same line says no painting is needed.
+    expect(await render({ ...baseProps, maskToolEnabled: false })).toContain('This tool works on the whole picture. No painting needed.')
     expect(html).toMatch(/<button disabled[^>]*>[^<]*(<!--[^>]*-->)*Run erase and heal/)
     // Internal storage keys are never shown as result names.
     const named = await render(baseProps)
@@ -176,7 +243,10 @@ describe('VideoStudioPrepareWorkspace', () => {
     expect(unpainted).toMatch(/<button disabled[^>]*>[^<]*(<!--[^>]*-->)*Run erase and heal/)
     const ready = await render(baseProps)
     expect(ready).not.toContain('Paint over what to erase first.')
-    expect(ready).toContain('On a video it uses the frame you painted on and gives you a still; the video itself is not changed.')
+    // The note about video appears only when a video, not a still, is under the mask.
+    expect(ready).not.toContain('The video itself is not changed.')
+    const onVideo = await render({ ...baseProps, previewImageUrl: null })
+    expect(onVideo).toContain('erase uses the video frame you paint on and gives you a still. The video itself is not changed.')
     const fromVideo = await render({ ...baseProps, selectedDerivatives: [{ id: 'd', kind: 'edited-image', r2Key: 'k', metadata: { title: 'Erased still from video frame', note: 'Made from a still frame of the video. The video itself is unchanged.' } }] })
     expect(fromVideo).toContain('Erased still from video frame')
     expect(fromVideo).toContain('The video itself is unchanged.')

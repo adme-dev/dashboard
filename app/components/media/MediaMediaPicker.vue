@@ -72,7 +72,7 @@ function accept() { return kind.value === 'footage' ? 'video/mp4,video/webm,vide
 </script>
 
 <template>
-  <USlideover :open="open" title="Add footage or still" description="Upload a video clip or an image (ken-burns) to the timeline." @update:open="emit('update:open', $event)">
+  <USlideover :open="open" title="Add footage or still" description="Upload a video clip or an image. It goes on the timeline and into Project assets, ready for Prepare." @update:open="emit('update:open', $event)">
     <template #body>
       <div class="flex flex-col gap-4">
         <UFormField label="Media type">

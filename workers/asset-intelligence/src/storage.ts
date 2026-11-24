@@ -106,7 +106,7 @@ export async function fetchAssetPicture(
     }
   }
   if (!keys.thumbnailKey) {
-    throw new Error('No still frame of this video was saved, so there is no picture to edit. Open it in Prepare, paint over what to erase and run it again: the frame you paint on is used.')
+    throw new Error('No still frame of this video was saved, so there is no picture to work on. Open the video in Prepare, wait until you can see it in the picture area, then run the tool again: the frame on screen is saved and used. If the video never appears there, upload it again as an MP4.')
   }
   const frame = await fetchObjectBytes(bucket, keys.thumbnailKey)
   if (!looksLikePicture(frame)) throw new Error('The preview frame of this video is not a PNG or JPEG picture, so it cannot be edited.')

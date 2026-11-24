@@ -157,9 +157,11 @@ const API_INVENTORY = {
   // Eight released Banner preview/recovery routes plus MotorStack preparation.
   // Delegated scope and the fresh CREATIVE grant remain mandatory; no bypass.
   // TheBrief ZIP preparation adds one authenticated, write-guarded POST.
-  totalRouteFiles: 2409,
-  mutationRouteFiles: 1314,
-  explicitlyGuardedMutationFiles: 439,
+  // Prepare adds one write-access, project-scoped POST that saves a missing preview frame
+  // (video/assets/[id]/thumbnail.post.ts) in its own God mode family; no authority bypass.
+  totalRouteFiles: 2410,
+  mutationRouteFiles: 1315,
+  explicitlyGuardedMutationFiles: 440,
   guardedMutationFilesWithTransactionCall: 58
 } as const
 
@@ -212,9 +214,9 @@ describe('God mode route isolation inventory', () => {
   // Governance phase 4 adds one client-scoped read (clients/[id]/change-history.get.ts).
       // Marketing alerts adds one cron-secret POST; no authority bypass.
       // Import image as layers adds a guarded POST and a GET and retires the unguarded decompose POST.
-      totalRouteFiles: 2409,
-      mutationRouteFiles: 1314,
-      explicitlyGuardedMutationFiles: 439,
+      totalRouteFiles: 2410,
+      mutationRouteFiles: 1315,
+      explicitlyGuardedMutationFiles: 440,
       guardedMutationFilesWithTransactionCall: 58
     })
   })

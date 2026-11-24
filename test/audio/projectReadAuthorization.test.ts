@@ -45,6 +45,16 @@ vi.mock('~~/server/utils/audio/projectCovers', () => ({
   projectCovers: (...args: unknown[]) => mockProjectCovers(...args)
 }))
 
+// An upload also becomes a library asset; that write is covered in uploadMediaLibraryAsset.test.ts.
+vi.mock('~~/server/utils/video/assets', async importOriginal => ({
+  ...await importOriginal<typeof import('~~/server/utils/video/assets')>(),
+  createVideoAsset: vi.fn(async (input: { id: string }) => ({ id: input.id }))
+}))
+vi.mock('~~/server/utils/video-asset-intelligence/db', async importOriginal => ({
+  ...await importOriginal<typeof import('~~/server/utils/video-asset-intelligence/db')>(),
+  addAssetToProjectBucket: vi.fn(async () => ({ id: 'bucket-item-1' }))
+}))
+
 const mockExecuteUpload = vi.fn()
 vi.mock('~~/server/utils/audio/godModeExternalMutations', () => ({
   executeGodModeMediaUpload: (...args: unknown[]) => mockExecuteUpload(...args)

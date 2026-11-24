@@ -184,6 +184,8 @@ function onOverlayPick(p: { gsapProjectId: string, gsapFormatKey: string, durati
 }
 function onMediaUploaded(p: { r2Key: string, durationSec: number, baseSource: 'uploaded_footage' | 'still_kenburns' }) {
   editor.addVideoClipAction(p.r2Key, p.durationSec, p.baseSource, editor.currentTime.value)
+  // The upload is a library asset too: show it in Project assets and Prepare.
+  void refreshVideoAssets()
 }
 
 // ─── Video generation wiring ──────────────────────────────────────────────────
@@ -398,7 +400,8 @@ function onGenerationSubmitted(_jobId: string) {
 }
 function onLibraryAddToTimeline(p: { assetId: string, r2Key: string, durationSec: number, streamUrl: string, title: string | null, format: string | null }) {
   editor.mergeSource(p.r2Key, p.streamUrl, { durationSec: p.durationSec, assetId: p.assetId, title: p.title, format: p.format })
-  editor.addVideoClipAction(p.r2Key, p.durationSec, 'uploaded_footage', editor.currentTime.value, p.assetId)
+  // A library still plays as a still, not as footage.
+  editor.addVideoClipAction(p.r2Key, p.durationSec, imageR2Key(p.r2Key) ? 'still_kenburns' : 'uploaded_footage', editor.currentTime.value, p.assetId)
   toast.add({ title: 'Added to timeline', color: 'success' })
 }
 
@@ -1717,6 +1720,8 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
               :project-id="projectId"
               workspace
               :preselect-asset-id="prepareAssetId"
+              :library-version="videoAssets.length"
+              @assets-changed="refreshVideoAssets"
               @add-to-timeline="onHarnessAddToTimeline"
               @add-derivative-to-timeline="onHarnessAddDerivativeToTimeline"
               @animate-layers="onAnimateLayers"

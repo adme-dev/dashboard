@@ -9,6 +9,8 @@ import { derivativeTimelinePayload } from '~~/app/utils/video/assetDerivativeTim
 import { layerPackagesFromDerivatives, type LayerPackage } from '~~/app/utils/video/layerAnimation'
 import { idempotencyKey } from '~~/app/utils/idempotencyKey'
 import { captureVideoFrame } from '~~/app/utils/video/captureVideoFrame'
+import { mediaUploadForm, mediaUploadKind, readMediaUploadPreview } from '~~/app/utils/video/mediaUploadPreview'
+import { isPossiblyAppliedFailure } from '~~/app/utils/apiError'
 
 const props = withDefaults(defineProps<{
   projectId: string
@@ -18,16 +20,21 @@ const props = withDefaults(defineProps<{
   workspace?: boolean
   // Library asset to open with, e.g. the asset selected elsewhere in the studio.
   preselectAssetId?: string | null
+  // Changes when the library gains or loses an asset elsewhere in the studio (e.g. an upload in Footage).
+  libraryVersion?: number
 }>(), {
   embedded: false,
   studio: false,
   workspace: false,
   preselectAssetId: null,
+  libraryVersion: 0,
 })
 const emit = defineEmits<{
   (event: 'add-to-timeline', payload: AiAssemblyTimelinePayload): void
   (event: 'add-derivative-to-timeline', payload: ReturnType<typeof derivativeTimelinePayload>): void
   (event: 'animate-layers', pkg: LayerPackage): void
+  // An asset was added to the library from here (an upload, or a kept result).
+  (event: 'assets-changed'): void
 }>()
 
 interface Bucket {
@@ -112,6 +119,7 @@ const intelligenceJobs = ref<IntelligenceJob[]>([])
 const selectedDerivatives = ref<AssetDerivative[]>([])
 const loadingDerivatives = ref(false)
 const addingDerivativeId = ref<string | null>(null)
+const uploadingAsset = ref(false)
 const selectedItemId = ref<string | null>(null)
 const selectedAction = ref('erase-fill')
 // Empty by default: erase works out what is under the paint by itself. Text here is extra guidance.
@@ -369,6 +377,75 @@ async function uploadMask(): Promise<string | null> {
   }
 }
 
+// A video with no saved still is shown as the video itself. The picture tools need a
+// still, so the frame on screen is saved as the asset's preview frame the first time
+// a tool runs. Returns why not when there is no saved frame afterwards.
+async function savePreviewFrameIfMissing(assetId: string): Promise<{ ok: true } | { ok: false, title: string, description: string }> {
+  const video = previewVideoRef.value
+  // No video on screen means a saved still is already showing.
+  if (!video) return { ok: true }
+  let frame: Blob
+  try {
+    frame = await captureVideoFrame(video)
+  } catch (e: any) {
+    return {
+      ok: false,
+      title: 'No still frame of this video yet',
+      description: `${e?.message ?? 'The frame could not be captured.'} Wait until you can see the video in the picture area, then run again. If it never appears, upload it again as an MP4.`,
+    }
+  }
+  try {
+    const form = new FormData()
+    form.append('file', frame, 'preview-frame.jpg')
+    await apiFetch(`/api/agency/video/assets/${encodeURIComponent(assetId)}/thumbnail`, {
+      method: 'POST',
+      headers: { 'Idempotency-Key': idempotencyKey('asset-thumbnail') },
+      body: form,
+    })
+    emit('assets-changed')
+    return { ok: true }
+  } catch (e: any) {
+    return {
+      ok: false,
+      title: 'Could not save a still frame of this video',
+      description: `${e?.data?.statusMessage ?? e?.message ?? 'The frame was not saved.'} Run again in a moment.`,
+    }
+  }
+}
+
+// Upload a picture or a clip straight into the library and open it here.
+async function uploadAsset(file: File) {
+  const kind = mediaUploadKind(file)
+  if (!kind) {
+    toast.add({ title: 'This file type cannot be prepared', description: 'Upload a JPEG, PNG or WebP picture, or an MP4, WebM or MOV video.', color: 'warning' })
+    return
+  }
+  uploadingAsset.value = true
+  try {
+    const preview = await readMediaUploadPreview(file, kind)
+    const res = await apiFetch<{ assetId?: string | null }>(`/api/agency/audio/projects/${props.projectId}/upload-media`, {
+      method: 'POST',
+      headers: { 'Idempotency-Key': idempotencyKey('upload') },
+      body: mediaUploadForm(file, kind, preview),
+    })
+    await loadHarness()
+    const uploaded = res.assetId ? items.value.find(item => item.assetId === res.assetId) : null
+    if (uploaded) selectedItemId.value = uploaded.id
+    emit('assets-changed')
+    toast.add({ title: kind === 'still' ? 'Picture added to assets' : 'Video added to assets', description: 'It is selected and ready to prepare.', color: 'success' })
+  } catch (e: any) {
+    const reason = e?.data?.statusMessage ?? e?.message ?? ''
+    if (isPossiblyAppliedFailure(e)) {
+      toast.add({ title: 'Upload may have completed', description: `${reason}. Check the Asset list before uploading again.`, color: 'warning' })
+      await loadHarness()
+    } else {
+      toast.add({ title: 'Upload failed', description: reason, color: 'error' })
+    }
+  } finally {
+    uploadingAsset.value = false
+  }
+}
+
 async function loadHarness() {
   if (!props.projectId) return
   loading.value = true
@@ -478,6 +555,13 @@ async function runExtraction() {
   }
   runningExtraction.value = true
   try {
+    // A painted mask carries its own frame. Any other run on a video needs the saved still.
+    const paints = maskToolEnabled.value && hasMaskStroke.value
+    const frame = await savePreviewFrameIfMissing(item.assetId)
+    if ('title' in frame && !paints) {
+      toast.add({ title: frame.title, description: frame.description, color: 'warning' })
+      return
+    }
     const uploadedMaskKey = maskToolEnabled.value && hasMaskStroke.value ? await uploadMask() : (brushMaskKey.value || null)
     if (maskToolEnabled.value && hasMaskStroke.value && !uploadedMaskKey) return
     const res = await apiFetch<{ job: { id: string; status: string; errorMessage?: string | null } }>(`/api/agency/video/assets/${item.assetId}/extract`, {
@@ -538,20 +622,25 @@ function animateLayers(derivative: AssetDerivative) {
 async function addDerivativeToBucket(derivative: AssetDerivative) {
   addingDerivativeId.value = derivative.id
   try {
-    await apiFetch(`/api/agency/video/derivatives/${encodeURIComponent(derivative.id)}/add-to-bucket`, {
+    const metadataTitle = typeof derivative.metadata?.title === 'string' ? derivative.metadata.title.trim() : ''
+    const res = await apiFetch<{ item?: { id: string; assetId: string | null } }>(`/api/agency/video/derivatives/${encodeURIComponent(derivative.id)}/add-to-bucket`, {
       method: 'POST',
       headers: { 'Idempotency-Key': idempotencyKey('derivative-add-to-bucket') },
       body: {
         bucketKind: 'generated',
         role: `derivative-${derivative.kind}`,
-        title: `${derivative.kind} derivative`,
+        title: metadataTitle || `${derivative.kind.replace(/-/g, ' ')} result`,
         directive: { addedFrom: 'harness' },
       },
     })
     await loadHarness()
-    toast.add({ title: 'Derivative added to bucket', color: 'success' })
+    emit('assets-changed')
+    // A picture or clip becomes a library asset. A layer package or caption file is only filed.
+    toast.add(res?.item?.assetId
+      ? { title: 'Kept in assets', description: 'Choose it in the Asset list to prepare it.', color: 'success' }
+      : { title: 'Kept in assets', color: 'success' })
   } catch (e: any) {
-    toast.add({ title: 'Could not add derivative to bucket', description: e?.data?.statusMessage ?? '', color: 'error' })
+    toast.add({ title: 'Could not keep this result', description: e?.data?.statusMessage ?? '', color: 'error' })
   } finally {
     addingDerivativeId.value = null
   }
@@ -577,6 +666,7 @@ watch(activeJobCount, () => {
   scheduleActivityRefresh()
 })
 watch(() => props.preselectAssetId, selectPreselectedAsset)
+watch(() => props.libraryVersion, () => { if (!loading.value) void loadHarness() })
 watch(selectedItemId, () => {
   clearMask()
   maskPreviewFailed.value = false
@@ -613,7 +703,9 @@ onBeforeUnmount(() => {
     :selected-derivatives="selectedDerivatives"
     :loading-derivatives="loadingDerivatives"
     :adding-derivative-id="addingDerivativeId"
+    :uploading="uploadingAsset"
     :recent-jobs="recentActivityJobs"
+    @upload-file="uploadAsset"
     @run="runExtraction"
     @clear-mask="clearMask"
     @undo-mask="undoMask"

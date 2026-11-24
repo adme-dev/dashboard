@@ -1,4 +1,4 @@
-import { queryOne, queryRows } from '~~/server/utils/db'
+import { queryOne, queryOneFresh, queryRows, queryRowsFresh } from '~~/server/utils/db'
 import {
   DEFAULT_VIDEO_BUCKETS,
   mapBucketItemRow,
@@ -13,6 +13,7 @@ import {
 } from './buckets'
 import { defaultModelForAction } from './registry'
 import type { AssetDerivativeKind, AssetIntelligenceActionId } from './registry'
+import { createVideoAsset, isPreparablePictureKey, mapVideoAssetRow } from '~~/server/utils/video/assets'
 import { FAIL_STALE_ASSET_INTELLIGENCE_JOBS_SQL, staleAssetIntelligenceJobParams } from '~~/shared/video/assetIntelligenceStaleJobs'
 
 export async function ensureDefaultBuckets(projectId: string): Promise<void> {
@@ -34,6 +35,7 @@ export async function syncProjectVideoAssetsIntoGeneratedBucket(projectId: strin
     [projectId]
   )
   if (!bucket?.id) return
+  // Skips assets already filed in any bucket of this project: uploads go to Footage or Stills.
   await queryRows(
     `INSERT INTO video_project_bucket_items (bucket_id, asset_id, r2_key, title, role, directive, status)
      SELECT $2, va.id, va.r2_key, COALESCE(va.title, 'Generated video ' || va.id::text), 'generated-video',
@@ -43,14 +45,18 @@ export async function syncProjectVideoAssetsIntoGeneratedBucket(projectId: strin
       WHERE va.source_project_id = $1
         AND NOT EXISTS (
           SELECT 1 FROM video_project_bucket_items existing
-           WHERE existing.bucket_id = $2 AND existing.asset_id = va.id
+            JOIN video_project_buckets eb ON eb.id = existing.bucket_id
+           WHERE eb.project_id = $1 AND existing.asset_id = va.id
         )`,
     [projectId, bucket.id]
   )
 }
 
+// The lists the editor reloads after a change are read fresh. The default connection
+// caches an identical SELECT for up to a minute, so a poll kept returning the old list:
+// a finished job, a new result or a just-uploaded asset showed up about a minute late.
 export async function listProjectBuckets(projectId: string): Promise<VideoProjectBucket[]> {
-  const rows = await queryRows(
+  const rows = await queryRowsFresh(
     `SELECT * FROM video_project_buckets WHERE project_id = $1 ORDER BY sort_order ASC, name ASC`,
     [projectId]
   )
@@ -58,7 +64,7 @@ export async function listProjectBuckets(projectId: string): Promise<VideoProjec
 }
 
 export async function listBucketItemsForProject(projectId: string): Promise<VideoBucketItem[]> {
-  const rows = await queryRows(
+  const rows = await queryRowsFresh(
     `SELECT i.*
        FROM video_project_bucket_items i
        JOIN video_project_buckets b ON b.id = i.bucket_id
@@ -103,7 +109,7 @@ export async function getBucketItemProjectRelationship(id: string): Promise<{ bu
 }
 
 export async function listAssetDerivatives(sourceAssetId: string) {
-  const rows = await queryRows(
+  const rows = await queryRowsFresh(
     `SELECT * FROM video_asset_derivatives WHERE source_asset_id = $1 ORDER BY created_at DESC`,
     [sourceAssetId]
   )
@@ -170,12 +176,83 @@ function derivativeBucketDirective(derivative: VideoAssetDerivative, directive?:
   }
 }
 
+/** Files a library asset in one of the project's buckets. Filing it twice keeps one item. */
+export async function addAssetToProjectBucket(input: {
+  projectId: string
+  bucketKind: VideoBucketKind
+  assetId: string
+  r2Key: string
+  title: string | null
+  role: string
+  directive?: Record<string, unknown> | null
+}): Promise<VideoBucketItem> {
+  await ensureDefaultBuckets(input.projectId)
+  const bucket = await queryOne(
+    `SELECT id FROM video_project_buckets WHERE project_id = $1 AND kind = $2`,
+    [input.projectId, input.bucketKind]
+  )
+  if (!bucket?.id) throw new Error(`video project bucket ${input.bucketKind} not found for project ${input.projectId}`)
+  const row = await queryOne(
+    `INSERT INTO video_project_bucket_items
+      (bucket_id, asset_id, r2_key, title, role, directive, status)
+     VALUES ($1, $2, $3, $4, $5, $6::jsonb, 'ready')
+     ON CONFLICT (bucket_id, asset_id) WHERE asset_id IS NOT NULL
+     DO UPDATE SET r2_key = EXCLUDED.r2_key, title = EXCLUDED.title, updated_at = now()
+     RETURNING *`,
+    [bucket.id, input.assetId, input.r2Key, input.title, input.role, JSON.stringify(input.directive ?? {})]
+  )
+  return mapBucketItemRow(row)
+}
+
+// Results that are a picture or a clip. A layer package or caption file is not something to prepare.
+const LIBRARY_DERIVATIVE_KEY = /\.(png|jpe?g|webp|mp4|webm|mov)$/i
+
+/**
+ * The library asset for a kept result, created the first time it is kept. Prepare
+ * works on library assets only, so a kept picture needs one to be selectable there.
+ */
+async function ensureDerivativeLibraryAsset(derivative: VideoAssetDerivative, input: { createdBy: string; title: string }) {
+  if (!derivative.projectId || !LIBRARY_DERIVATIVE_KEY.test(derivative.r2Key.split('?')[0] ?? '')) return null
+  // Fresh: a cached "none yet" would make a second asset when a result is kept twice in a minute.
+  const existing = await queryOneFresh(
+    `SELECT * FROM video_assets
+      WHERE source_project_id = $1 AND metadata->>'source' = 'video_asset_derivatives' AND metadata->>'derivativeId' = $2
+      ORDER BY created_at ASC LIMIT 1`,
+    [derivative.projectId, derivative.id]
+  )
+  if (existing) return mapVideoAssetRow(existing)
+  const source = await queryOne(`SELECT client_id FROM video_assets WHERE id = $1`, [derivative.sourceAssetId])
+  const picture = isPreparablePictureKey(derivative.r2Key)
+  return await createVideoAsset({
+    clientId: source?.client_id ?? null,
+    createdBy: input.createdBy,
+    title: input.title,
+    sourceProjectId: derivative.projectId,
+    sourceJobId: null,
+    r2Key: derivative.r2Key,
+    format: /\.(mp4|webm|mov)$/i.test(derivative.r2Key) ? 'footage' : 'still',
+    width: derivative.width,
+    height: derivative.height,
+    durationSec: null,
+    // A PNG or JPEG is its own preview picture.
+    thumbnailKey: picture ? derivative.r2Key : null,
+    metadata: {
+      source: 'video_asset_derivatives',
+      derivativeId: derivative.id,
+      sourceAssetId: derivative.sourceAssetId,
+      kind: derivative.kind,
+    },
+  })
+}
+
 export async function addDerivativeToProjectBucket(input: {
   derivative: VideoAssetDerivative
   bucketKind?: VideoBucketKind
   role?: string | null
   title?: string | null
   directive?: Record<string, unknown> | null
+  /** Who is keeping it. With this set, a picture or clip also becomes a library asset. */
+  createdBy?: string | null
 }): Promise<VideoBucketItem> {
   if (!input.derivative.projectId) throw new Error(`asset derivative ${input.derivative.id} is not attached to a project`)
 
@@ -190,14 +267,19 @@ export async function addDerivativeToProjectBucket(input: {
   const title = input.title ?? derivativeTitle(input.derivative)
   const role = input.role ?? `derivative-${input.derivative.kind}`
   const directive = derivativeBucketDirective(input.derivative, input.directive)
+  const asset = input.createdBy
+    ? await ensureDerivativeLibraryAsset(input.derivative, { createdBy: input.createdBy, title })
+    : null
+  // An item kept before results became library assets has no asset id: keeping it again fills it in.
   const row = await queryOne(
     `INSERT INTO video_project_bucket_items
       (bucket_id, asset_id, r2_key, title, role, directive, status)
-     VALUES ($1, null, $2, $3, $4, $5::jsonb, 'ready')
+     VALUES ($1, $6, $2, $3, $4, $5::jsonb, 'ready')
      ON CONFLICT (bucket_id, (directive->>'derivativeId'))
        WHERE directive->>'source' = 'video_asset_derivatives'
          AND directive ? 'derivativeId'
      DO UPDATE SET
+       asset_id = COALESCE(EXCLUDED.asset_id, video_project_bucket_items.asset_id),
        r2_key = EXCLUDED.r2_key,
        title = EXCLUDED.title,
        role = EXCLUDED.role,
@@ -211,6 +293,7 @@ export async function addDerivativeToProjectBucket(input: {
       title,
       role,
       JSON.stringify(directive),
+      asset?.id ?? null,
     ]
   )
   return mapBucketItemRow(row)
@@ -225,7 +308,8 @@ export async function listProjectIntelligenceJobs(projectId: string, limit = 50)
   } catch (error) {
     console.warn('[asset-intelligence] stale job sweep failed', error instanceof Error ? error.message : String(error))
   }
-  const rows = await queryRows(
+  // Fresh, or the 3-second poll gets a cached list and a job looks queued long after it finished.
+  const rows = await queryRowsFresh(
     `SELECT * FROM video_asset_intelligence_jobs
       WHERE project_id = $1
       ORDER BY created_at DESC
