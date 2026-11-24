@@ -71,3 +71,7 @@ previous image independently. Do not remove saved drafts as a deployment rollbac
 
 See [the import runbook](../../docs/runbooks/thebrief-banner-import.md) and
 [the Alfa qualification record](../../docs/migrations/alfa-direct-zip-import-20261124.md).
+
+## Alan Mance completion qualification — 24 November 2026
+
+Image `sha256:ea440adef1d6c2cda2db0c3f678ddc711ec3260d985bb3821e7c1530f164c143` was built from source `fa7f38f49` and exercised via the real Linux HTTP server under a 4 GiB memory limit. Eleven previously held design groups (25 layouts) prepared without holds; every asset and font checksum and archive receipt was checked, and malformed ZIP input returned 422. Exact-source reviewed row receipts unlock the four qualified multi-scene video groups. Native depth and changing-pivot text, masked/positioned logos, clipped audio fades, inline gradients and hidden post-loop content remain editable. Unknown source compositions remain held. Pages source `fa7f38f49` supplies the matching native renderer and package schema.
