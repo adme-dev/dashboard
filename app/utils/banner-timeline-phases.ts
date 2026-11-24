@@ -48,6 +48,7 @@ export function describeKeyframeMotion(layer: Layer, start = layer.startTime ?? 
   }
   const rotation = deltas('rotation')
   if (rotation.length) labels.push('Rotate')
+  if (deltas('rotationX').length) labels.push('3D flip')
   if ((layer.motionPath?.length ?? 0) >= 2 && (!layer.motionPathTweens?.length || layer.motionPathTweens.some(tween => tween.startTime < end && tween.endTime > start && tween.pathStart !== tween.pathEnd))) labels.push('Motion path')
   return labels.join(' + ') || 'Animation'
 }

@@ -42,11 +42,15 @@ it('imports an editable CTA with its border and typography', async () => {
   expect(result.canvasData.custom_300x250.layers.find(l => l.type === 'button')).toMatchObject({ text: 'FIND OUT MORE', borderWidth: 4, borderColor: '#fff', borderRadius: 50, fontFamily: 'Poppins', fontSize: 32, fontWeight: 600, lineHeight: 1.4, letterSpacing: '0px', textTransform: 'none' })
 })
 
-it('preserves superscripts as editable text runs and rejects unsupported mixed colours', async () => {
+it('preserves raised and coloured text runs and holds unadapted font changes', async () => {
   const html = source.replace('Hello world', 'Saturday 2<sup style="position:relative;top:-5px;vertical-align:baseline"><span style="font-size:14px">nd</span></sup> Dec')
   const result = await convertTheBriefHtml(html)
   expect(result.canvasData.custom_300x250.layers.find(l => l.type === 'text')).toMatchObject({ text: 'Saturday 2nd Dec', textRuns: [{ text: 'Saturday 2' }, { text: 'nd', fontSize: 14, top: -5 }, { text: ' Dec' }] })
-  await expect(convertTheBriefHtml(source.replace('Hello world', '<span style="color:red">Red</span><span style="color:blue">Blue</span>'))).rejects.toThrow(/Mixed styled/)
+  const coloured = await convertTheBriefHtml(source.replace('Hello world', '<span style="color:red">Red</span><span style="color:blue">Blue</span>'))
+  expect(coloured.canvasData.custom_300x250.layers.find(l => l.type === 'text')).toMatchObject({ color: 'red', textRuns: [{ text: 'Red' }, { text: 'Blue', color: 'blue' }] })
+  await expect(convertTheBriefHtml(source.replace('Hello world', '<span style="font-family:Arial">First</span><span style="font-family:Georgia">Second</span>'))).rejects.toThrow(/Mixed styled/)
+  const mixed = await convertTheBriefHtml(source.replace('Hello world', '<span style="font-family:Arial;font-weight:800;font-style:italic">First</span><span style="font-family:Arial;font-weight:400;font-style:normal">Second</span>'))
+  expect(mixed.canvasData.custom_300x250.layers.find(l => l.type === 'text')).toMatchObject({ textRuns: [{ text: 'First' }, { text: 'Second', fontFamily: 'Arial', fontWeight: 400, fontStyle: 'normal' }] })
 })
 
 it('round-trips 63 second timing and inline text through the import contract', async () => {

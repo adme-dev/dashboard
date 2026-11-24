@@ -40,6 +40,11 @@ describe('managed brand font references', () => {
     await expect(validateBrandKitFontAssets([{ ...kit[0], defaultWeight: 700 }], CLIENT, db)).rejects.toMatchObject({ statusCode: 400 })
     await expect(validateBrandKitFontAssets([{ ...kit[0], weights: [325, 700] }], CLIENT, db)).rejects.toMatchObject({ statusCode: 400 })
   })
+  it('enforces the project scope for managed font references inside a text run', async () => {
+    const inline = { custom_300x250: { layers: [{ textRuns: [{ text: 'Price', fontFamily: 'Brand', fontWeight: 325, fontAssetId: ID }] }] } }
+    await expect(validateCanvasFontAssets(inline, CLIENT, db)).resolves.toEqual([face])
+    await expect(validateCanvasFontAssets(inline, 'other', db)).rejects.toMatchObject({ statusCode: 400 })
+  })
   it('rejects malformed explicit layer ids before querying', async () => {
     await expect(validateCanvasFontAssets({ x: { layers: [{ fontAssetId: 'not-id' }] } }, CLIENT, db)).rejects.toMatchObject({ statusCode: 400 })
     expect(query).not.toHaveBeenCalled()

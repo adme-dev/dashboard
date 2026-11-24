@@ -26,6 +26,21 @@ describe('Imported native artwork rendering', () => {
     for (const render of [client, server]) expect(render('mrec', [{ ...video, visualFilter: 'url(https://example.com/filter.svg)' }])).not.toContain('filter:url(')
   })
 
+  it.each([true, false])('mirrors the cropped video viewport in exports with animations=%s', (includeAnimations) => {
+    const video: Layer = { ...layer, type: 'video', src: '/clip.mp4', fit: 'cover', flipX: true, focalY: 72.86 }
+    const html = client('mrec', [video], { includeAnimations })
+    expect(server('mrec', [video], { includeAnimations })).toBe(html)
+    expect(html).toContain('transform:scale(-1, 1);"><video src="/clip.mp4" muted playsinline preload="auto" style="width:100%;height:100%;object-fit:cover;object-position:50% 72.86%;"')
+  })
+
+  it('clips the zoomed source before flipping the viewport in both exporters', () => {
+    const video: Layer = { ...layer, type: 'video', src: '/clip.mp4', flipY: true, videoCrop: { x: 0.125, y: 0.125, w: 0.5, h: 0.25 } }
+    const html = client('mrec', [video])
+    expect(server('mrec', [video])).toBe(html)
+    expect(html).toContain('overflow:hidden;transform:scale(1, -1);"><video')
+    expect(html).toContain('width:200%;height:400%;left:-25%;top:-50%;object-fit:cover;')
+  })
+
   it('preserves finite local pixel origins in both exports and drops unsafe origins', () => {
     const pivot = { ...layer, transformOrigin: { x: 100, y: -28.8 } }
     expect(client('mrec', [pivot])).toContain('transform-origin:100px -28.8px;')
@@ -35,6 +50,21 @@ describe('Imported native artwork rendering', () => {
       expect(client('mrec', [unsafe])).not.toContain('transform-origin:')
       expect(server('mrec', [unsafe])).not.toContain('transform-origin:')
     }
+  })
+
+  it('projects an original image and its in-plane rotation through an editable GSAP flip', () => {
+    const image: Layer = {
+      ...layer, type: 'image', src: '/source.png', imageFlipPerspective: 56.35, rotation: 346,
+      transformOrigin: { x: 10, y: 10 },
+      keyframes: { rotationX: [{ time: 0.6, value: -80, easing: 'linear' }, { time: 1.6, value: 0 }] }
+    }
+    const html = client('mrec', [image])
+    expect(server('mrec', [image])).toBe(html)
+    expect(html).toContain('backface-visibility:hidden;')
+    expect(html).toContain('transform:rotate(346deg);"><img')
+    expect(html).toContain('transformPerspective: 56.35')
+    expect(html).toContain('rotationX: -80')
+    expect(html).toContain('rotationX: 0, duration: 1.000')
   })
 
   it('retains gradient backgrounds in both exports', () => {

@@ -37,7 +37,7 @@ const db = {
     queries.push(sql)
     if (sql.includes('FROM banner_projects')) return { rows: project ? [structuredClone(project)] : [] }
     if (sql.includes('FROM agency_clients')) return { rows: active ? [{ id: CLIENT }] : [] }
-    if (sql.includes('FROM banner_assets') && sql.includes("'font' = ANY(tags)")) return { rows: fontRows }
+    if (sql.includes('FROM banner_assets') && sql.includes('\'font\' = ANY(tags)')) return { rows: fontRows }
     if (sql.includes('FROM banner_assets')) return { rows: owned.map(url => ({ url })) }
     if (sql.includes('INSERT INTO banner_versions')) {
       if (failAt === 'backup') throw new Error('Backup storage unavailable')
@@ -222,6 +222,16 @@ describe('strict managed draft update validation', () => {
     const parsed = readTheBriefDraftRefresh((request() as any).body)
     expect(parsed.canvasData).toEqual(replacement)
     expect(parsed.assetUrls).toEqual([ASSET])
+  })
+  it('accepts source ZIP size receipts and preserves editable crop data through a draft update', async () => {
+    const videoUrl = 'https://assets.example.com/banners/clip.mp4'
+    const video = { ...layer, type: 'video', src: videoUrl, flipY: true, videoCrop: { x: 0.01, y: 0.42, w: 0.92, h: 0.42 }, mediaStart: 0, mediaEnd: 12 }
+    const sizeSources = [{ designHash: 'billboard-size-medium', sha256: 'b'.repeat(64) }]
+    const canvasData = { custom_300x250: { ...replacement.custom_300x250, layers: [video] } }
+    owned = [videoUrl]
+    const saved = await endpoint(request({ source: { ...source, sizeSources }, canvasData })) as any
+    expect(saved.canvasData.custom_300x250.layers).toEqual([video])
+    expect(versions).toHaveLength(1)
   })
   it.each([
     ['external effect', (body: any) => { body.canvasData.custom_300x250.layers[0].visualFilter = 'url(https://attacker.example/filter)' }],

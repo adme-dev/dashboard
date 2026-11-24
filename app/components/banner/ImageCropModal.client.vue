@@ -10,6 +10,7 @@ const stage = ref<HTMLElement>()
 const dimensions = ref({ w: 0, h: 0 })
 const crop = ref<BannerImageCrop>({ x: 0, y: 0, w: 1, h: 1 })
 const loadError = ref(false)
+const isVideo = computed(() => props.layer.type === 'video')
 const ready = computed(() => dimensions.value.w > 0 && dimensions.value.h > 0 && !loadError.value)
 const corners: CropCorner[] = ['nw', 'ne', 'sw', 'se']
 let gesture: { crop: BannerImageCrop, x: number, y: number, w: number, h: number, kind: 'move' | CropCorner, id: number } | null = null
@@ -24,9 +25,19 @@ watch(open, (value) => {
 
 function imageLoaded(event: Event) {
   const image = event.target as HTMLImageElement
-  dimensions.value = { w: image.naturalWidth, h: image.naturalHeight }
-  crop.value = props.layer.imageCrop && bannerImageCropCss(props.layer.imageCrop)
-    ? { ...props.layer.imageCrop }
+  mediaLoaded(image.naturalWidth, image.naturalHeight)
+}
+function videoLoaded(event: Event) {
+  const video = event.target as HTMLVideoElement
+  mediaLoaded(video.videoWidth, video.videoHeight)
+  if (props.layer.mediaStart) video.currentTime = Math.min(props.layer.mediaStart, video.duration)
+}
+function mediaLoaded(w: number, h: number) {
+  if (!(w > 0 && h > 0)) return
+  dimensions.value = { w, h }
+  const savedCrop = isVideo.value ? props.layer.videoCrop : props.layer.imageCrop
+  crop.value = savedCrop && bannerImageCropCss(savedCrop)
+    ? { ...savedCrop }
     : coverImageCrop(dimensions.value, props.layer)
 }
 function start(event: PointerEvent, kind: 'move' | CropCorner) {
@@ -75,8 +86,8 @@ function apply() {
     <template #body>
       <UAlert
         v-if="loadError"
-        title="Could not load this image"
-        description="Close crop and try again, or replace the image."
+        :title="isVideo ? 'Could not load this video' : 'Could not load this image'"
+        :description="isVideo ? 'Close crop and try again, or replace the video.' : 'Close crop and try again, or replace the image.'"
         color="error"
       />
       <div class="overflow-hidden rounded-lg bg-muted p-4">
@@ -89,8 +100,18 @@ function apply() {
           @pointercancel="cancel"
           @lostpointercapture="end"
         >
+          <video
+            v-if="open && isVideo"
+            :src="safeMediaUrl(layer.src)"
+            muted
+            playsinline
+            preload="auto"
+            class="absolute inset-0 size-full object-contain pointer-events-none"
+            @loadedmetadata="videoLoaded"
+            @error="loadError = true"
+          />
           <img
-            v-if="open"
+            v-else-if="open"
             :src="safeMediaUrl(layer.src)"
             :alt="layer.name"
             draggable="false"
@@ -122,7 +143,7 @@ function apply() {
         </div>
       </div>
       <p class="mt-3 text-xs text-muted">
-        Crop applies to this layout. The image frame and its animation stay in place.
+        Crop applies to this layout.
       </p>
     </template>
     <template #footer>

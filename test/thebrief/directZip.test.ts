@@ -4,11 +4,13 @@ import { describe, expect, it, vi } from 'vitest'
 import { prepareTheBriefGroup } from '../../scripts/thebrief/prepare-group.mjs'
 import { readImportBatch } from '../../app/utils/thebrief-import-batch'
 import { findTheBriefDuplicate } from '../../app/utils/thebrief-import-duplicates'
+import { parseTheBriefPackage } from '../../app/utils/thebrief-import'
+import { resolveBannerFormat } from '../../app/utils/banner-constants'
 import { source } from './fixture'
 
 const hash = (bytes: Uint8Array | string) => createHash('sha256').update(bytes).digest('hex')
-function creative(identity: string, width = 300, invalid = false) {
-  const html = source.replace('designData:{', `designData:{designHash:"${identity}",`).replaceAll('width:300', `width:${width}`)
+function creative(identity: string, width = 300, invalid = false, duration = 4000) {
+  const html = source.replace('designData:{', `designData:{designHash:"${identity}",`).replaceAll('width:300', `width:${width}`).replace('duration:4000', `duration:${duration}`)
   return zipSync({ 'index.html': strToU8(invalid ? html.replace('type:"slide"', 'type:"unknown"') : html) })
 }
 const packageFixture = (name: string) => ({
@@ -33,6 +35,48 @@ describe('direct TheBrief ZIP preparation', () => {
       expect(pkg.source.folder).toBe('')
     }
   }, 30000)
+
+  it('keeps distinctly authored variants with identical dimensions in one draft', async () => {
+    const result = await prepareTheBriefGroup(zipSync({
+      'Sale-300x250-px-1.zip': creative('second'),
+      'Sale-300x250-px.zip': creative('first'),
+      'Sale-600x250-px.zip': creative('wide', 600)
+    }))
+    expect(result.issues).toEqual([])
+    const [pkg] = result.packages
+    expect(pkg.name).toBe('Sale')
+    expect(Object.keys(pkg.canvasData)).toEqual(['custom_300x250', 'custom_600x250', 'custom_300x250__v2'])
+    expect(resolveBannerFormat('custom_300x250__v2')).toMatchObject({ w: 300, h: 250, name: 'Variant 2' })
+    expect(pkg.source.sizeSources.map(x => x.designHash)).toEqual(['first', 'second', 'wide'])
+  }, 20000)
+
+  it('holds the group if the two same-size entries duplicate a source layout ID', async () => {
+    const art = creative('repeat')
+    const result = await prepareTheBriefGroup(zipSync({
+      'Sale-300x250-px.zip': art,
+      'Sale-300x250-px-1.zip': art
+    }))
+    expect(result.packages).toEqual([])
+    expect(result.issues[0].message).toMatch(/Duplicate source layout identity/)
+  }, 20000)
+
+  it('retains each layout’s source duration and validates the corresponding timeline', async () => {
+    const result = await prepareTheBriefGroup(zipSync({
+      'Sale-300x250-px.zip': creative('short', 300),
+      'Sale-600x250-px.zip': creative('long', 600, false, 6000)
+    }))
+    expect(result.issues).toEqual([])
+    const [pkg] = result.packages
+    expect(pkg.source).toMatchObject({ duration: 6, layoutPlayback: {
+      custom_300x250: { duration: 4, loopCount: 0 },
+      custom_600x250: { duration: 6, loopCount: 0 }
+    } })
+    expect(pkg.canvasData.custom_300x250.playback.duration).toBe(4)
+    expect(pkg.canvasData.custom_600x250.playback.duration).toBe(6)
+    const wrongTiming = structuredClone(pkg)
+    wrongTiming.canvasData.custom_300x250.layers[0].endTime = 5
+    expect(() => parseTheBriefPackage(wrongTiming)).toThrow()
+  }, 20000)
 
   it('holds every size of an incompatible design while keeping the rest of the group available', async () => {
     const result = await prepareTheBriefGroup(zipSync({

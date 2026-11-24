@@ -69,7 +69,11 @@ export function canvasFontLayers(canvas: unknown): FontLayer[] {
   if (typeof canvas !== 'object' || Array.isArray(canvas)) throw createError({ statusCode: 400, statusMessage: 'Invalid canvas data' })
   const layers = Object.values(canvas).flatMap(board => board && typeof board === 'object' && Array.isArray(board.layers) ? board.layers : [])
   if (layers.some(layer => !layer || typeof layer !== 'object' || Array.isArray(layer))) throw createError({ statusCode: 400, statusMessage: 'Invalid canvas layer' })
-  return layers
+  return layers.flatMap((layer) => {
+    if (layer.textRuns === undefined) return [layer]
+    if (!Array.isArray(layer.textRuns) || layer.textRuns.some((run: unknown) => !run || typeof run !== 'object' || Array.isArray(run))) throw createError({ statusCode: 400, statusMessage: 'Invalid canvas text runs' })
+    return [layer, ...layer.textRuns]
+  })
 }
 export async function validateCanvasFontAssets(canvas: unknown, clientId: string | null, db?: FontDb) {
   const allLayers = canvasFontLayers(canvas)

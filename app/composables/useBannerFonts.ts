@@ -1,5 +1,5 @@
 import { computed, readonly, ref } from 'vue'
-import { bannerFontFamily, matchingBannerFontWeight, parseBannerFontTags as parseFontTags } from '~~/shared/banner/fonts'
+import { bannerFontTargets, type BannerFontLayer, bannerFontFamily, matchingBannerFontWeight, parseBannerFontTags as parseFontTags } from '~~/shared/banner/fonts'
 
 // Google Fonts + Custom Font integration for Banner Studio
 // Embeds curated list of 120+ popular fonts with on-demand loading
@@ -416,9 +416,9 @@ export function useBannerFonts(clientScope?: () => string | null | undefined) {
   }
 
   /** Get unique Google font families from a layer set (excludes custom + system) */
-  function getUsedFonts(layers: { fontFamily?: string, fontWeight?: number, fontAssetId?: string }[]): Map<string, Set<number>> {
+  function getUsedFonts(layers: BannerFontLayer[]): Map<string, Set<number>> {
     const fonts = new Map<string, Set<number>>()
-    for (const l of layers) {
+    for (const l of bannerFontTargets(layers)) {
       if (!l.fontFamily || l.fontAssetId) continue
       if (SYSTEM_FONT_FAMILIES.has(l.fontFamily)) continue
       if (isCustomFont(l.fontFamily)) continue // custom fonts handled separately
@@ -429,9 +429,10 @@ export function useBannerFonts(clientScope?: () => string | null | undefined) {
   }
 
   /** Get custom fonts used in layers (for HTML export @font-face generation) */
-  function getUsedCustomFonts(layers: { fontFamily?: string, fontAssetId?: string }[]): CustomFont[] {
-    const families = new Set(layers.filter(layer => !layer.fontAssetId).map(layer => layer.fontFamily).filter(Boolean))
-    const ids = new Set(layers.map(layer => layer.fontAssetId?.toLowerCase()).filter(Boolean))
+  function getUsedCustomFonts(layers: BannerFontLayer[]): CustomFont[] {
+    const targets = bannerFontTargets(layers)
+    const families = new Set(targets.filter(layer => !layer.fontAssetId).map(layer => layer.fontFamily).filter(Boolean))
+    const ids = new Set(targets.map(layer => layer.fontAssetId?.toLowerCase()).filter(Boolean))
     const used: CustomFont[] = []
     const seen = new Set<string>()
     for (const font of visibleFonts.value) {
@@ -448,26 +449,28 @@ export function useBannerFonts(clientScope?: () => string | null | undefined) {
   }
 
   /** Get custom fonts used in layers, formatted for HTML export options */
-  function getExportCustomFonts(layers: { fontFamily?: string, fontAssetId?: string }[]): { id?: string, family: string, url: string, format: string, weight: number }[] {
+  function getExportCustomFonts(layers: BannerFontLayer[]): { id?: string, family: string, url: string, format: string, weight: number }[] {
+    const targets = bannerFontTargets(layers)
     return getUsedCustomFonts(layers)
       .filter(cf => isSafeUrl(cf.url))
       .map((cf) => {
         const { weight, format } = parseFontTags(cf.tags)
-        return { ...(layers.some(layer => layer.fontAssetId?.toLowerCase() === cf.id.toLowerCase()) ? { id: cf.id } : {}), family: cf.name, url: cf.url, format, weight }
+        return { ...(targets.some(layer => layer.fontAssetId?.toLowerCase() === cf.id.toLowerCase()) ? { id: cf.id } : {}), family: cf.name, url: cf.url, format, weight }
       })
   }
 
   /** Build @font-face CSS rules for custom fonts used in layers (for HTML export) */
-  function buildCustomFontsCss(layers: { fontFamily?: string, fontAssetId?: string }[]): string {
+  function buildCustomFontsCss(layers: BannerFontLayer[]): string {
+    const targets = bannerFontTargets(layers)
     const fonts = getUsedCustomFonts(layers).filter(cf => isSafeUrl(cf.url))
     if (fonts.length === 0) return ''
 
     return fonts.flatMap((cf) => {
       const { weight, format } = parseFontTags(cf.tags)
       const names = new Set<string>()
-      if (layers.some(layer => layer.fontAssetId?.toLowerCase() === cf.id.toLowerCase())) names.add(bannerFontFamily(cf.name, cf.id))
+      if (targets.some(layer => layer.fontAssetId?.toLowerCase() === cf.id.toLowerCase())) names.add(bannerFontFamily(cf.name, cf.id))
       const winner = visibleFonts.value.find(face => face.name === cf.name && parseFontTags(face.tags).weight === weight)
-      if (winner?.id === cf.id && layers.some(layer => !layer.fontAssetId && layer.fontFamily === cf.name)) names.add(cf.name)
+      if (winner?.id === cf.id && targets.some(layer => !layer.fontAssetId && layer.fontFamily === cf.name)) names.add(cf.name)
       return [...names].map((name) => {
         const family = name.replace(/\\/g, '\\\\').replace(/'/g, '\\\'')
         return `@font-face { font-family: '${family}'; src: url('${cf.url}') format('${format}'); font-weight: ${weight}; font-display: swap; }`
@@ -476,7 +479,7 @@ export function useBannerFonts(clientScope?: () => string | null | undefined) {
   }
 
   /** Build Google Fonts CSS URL for HTML export */
-  function buildGoogleFontsUrl(layers: { fontFamily?: string, fontWeight?: number, fontAssetId?: string }[]): string {
+  function buildGoogleFontsUrl(layers: BannerFontLayer[]): string {
     const fonts = getUsedFonts(layers)
     if (fonts.size === 0) return ''
 
@@ -492,7 +495,7 @@ export function useBannerFonts(clientScope?: () => string | null | undefined) {
   }
 
   /** Load all fonts used in layers (for editor preview) */
-  function loadUsedFonts(layers: { fontFamily?: string, fontWeight?: number, fontAssetId?: string }[]) {
+  function loadUsedFonts(layers: BannerFontLayer[]) {
     const fonts = getUsedFonts(layers)
     for (const [family, weights] of fonts) {
       loadFont(family, Array.from(weights))

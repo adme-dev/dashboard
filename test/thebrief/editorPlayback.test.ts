@@ -146,3 +146,34 @@ it('exports scene cuts that seek backwards and hold the last scene at the captur
     artboard.remove()
   }
 })
+
+it('scrubs the native 3D flip independently of the image’s flat rotation', () => {
+  const flip: Layer = {
+    ...layers[0]!, type: 'image', src: '/source.png', endTime: 5, rotation: 346, imageFlipPerspective: 56.35,
+    keyframes: {
+      opacity: [{ time: 0.6, value: 0, easing: 'linear' }, { time: 1.1, value: 1 }, { time: 5, value: 1 }],
+      rotationX: [{ time: 0.6, value: -80, easing: 'linear' }, { time: 1.6, value: 0 }]
+    }
+  }
+  const playback: BannerPlayback = { duration: 5, loopCount: 0 }
+  const state = { sets: { imported: { layers: [flip], playback } }, activeKey: 'imported', isLooping: true, isPlaying: false, currentTime: 0, duration: 5 }
+  vi.stubGlobal('useBannerStudio', () => ({ state, activeLayers: ref([flip]) }))
+  const artboard = document.createElement('div')
+  artboard.innerHTML = '<div id="lyr-1"><div data-layer-content style="transform:rotate(346deg)"></div></div>'
+  document.body.append(artboard)
+  const frame = artboard.firstElementChild as HTMLElement
+  const studio = useBannerTimeline()
+  const timeline = studio.buildTimeline(artboard, [flip])
+  try {
+    for (const [time, angle] of [[1.1, -40], [1.6, 0], [0.6, -80], [6.1, -40]]) {
+      timeline.totalTime(time!, false)
+      expect(Number(gsap.getProperty(frame, 'rotationX'))).toBeCloseTo(angle!)
+      expect(Number(gsap.getProperty(frame, 'transformPerspective'))).toBeCloseTo(56.35)
+      expect(Number(gsap.getProperty(frame, 'rotation'))).toBe(0)
+      expect((frame.firstElementChild as HTMLElement).style.transform).toBe('rotate(346deg)')
+    }
+  } finally {
+    studio.destroyTimeline()
+    artboard.remove()
+  }
+})

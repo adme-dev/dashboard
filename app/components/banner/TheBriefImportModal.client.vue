@@ -492,11 +492,14 @@ async function importDrafts() {
                   {{ row.pkg.name }}
                 </h3>
                 <p class="text-xs text-muted">
-                  {{ row.pkg.source.folder }} · {{ row.pkg.source.duration }} seconds · {{ row.pkg.source.loopCount === 0 ? 'Source loops continuously' : `Source plays ${row.pkg.source.loopCount} time(s)` }}
+                  <template v-if="row.pkg.source.layoutPlayback">Source playback varies by layout</template>
+                  <template v-else>
+                    {{ row.pkg.source.folder }} · {{ row.pkg.source.duration }} seconds · {{ row.pkg.source.loopCount === 0 ? 'Source loops continuously' : `Source plays ${row.pkg.source.loopCount} time(s)` }}
+                  </template>
                 </p>
               </div>
               <UBadge color="neutral" variant="subtle">
-                {{ Object.keys(row.pkg.canvasData).map(key => key.replace('custom_', '')).join(' · ') }}
+                {{ Object.keys(row.pkg.canvasData).map(key => key.replace('custom_', '').replace(/__v(\d+)$/, ' (variant $1)')).join(' · ') }}
               </UBadge>
             </div>
             <UFormField label="Client" help="Confirm ownership before importing. Unassigned designs are skipped.">
@@ -670,8 +673,8 @@ async function importDrafts() {
           description="This includes any edits in the draft. The current canvas is saved in version history before replacement. The project name, client and folder stay the same. If the draft changes while this update is prepared, the update stops."
         />
         <p class="text-sm text-muted">
-          Replacing sizes: {{ Object.keys(draftUpdate.project.canvasData).map(key => key.replace('custom_', '')).join(' · ') }}.
-          Prepared sizes: {{ Object.keys(draftUpdate.row.pkg.canvasData).map(key => key.replace('custom_', '')).join(' · ') }}.
+          Replacing sizes: {{ Object.keys(draftUpdate.project.canvasData).map(key => key.replace('custom_', '').replace(/__v(\d+)$/, ' (variant $1)')).join(' · ') }}.
+          Prepared sizes: {{ Object.keys(draftUpdate.row.pkg.canvasData).map(key => key.replace('custom_', '').replace(/__v(\d+)$/, ' (variant $1)')).join(' · ') }}.
         </p>
         <UAlert
           v-if="draftUpdateError"

@@ -2,6 +2,7 @@ import { bannerSlideGroups } from '~~/shared/bannerSlideFade'
 import { revealCommands, safeWordEntrance, wordEntranceDelay, wordEntranceSteps } from '~~/shared/bannerImportedMotion'
 import { registerTimelineVideo, syncTimelineVideo, pauseTimelineVideo, disposeTimelineVideo } from '~/utils/bannerTimelineVideo'
 import { ref, readonly, watch } from 'vue'
+import { layerFrameTransform } from '~/utils/banner-transform'
 import { bannerAnimationTiming } from '~/utils/banner-animation-timing'
 import { applyBannerPlayback, resolveBannerPlayback } from '~/utils/banner-playback'
 import gsap from 'gsap'
@@ -39,6 +40,7 @@ const KF_GSAP_MAP: Record<KeyframeProperty, string> = {
   scaleX: 'scaleX',
   scaleY: 'scaleY',
   rotation: 'rotation',
+  rotationX: 'rotationX',
 }
 
 // Default values for each keyframe property (layer's resting state)
@@ -49,7 +51,8 @@ function getDefaultValue(prop: KeyframeProperty, layer: Layer): number {
     case 'y': return 0
     case 'scaleX': return 1
     case 'scaleY': return 1
-    case 'rotation': return layer.rotation || 0
+    case 'rotation': return layerFrameTransform(layer).rotation
+    case 'rotationX': return 0
   }
 }
 
@@ -185,10 +188,10 @@ export function presetToKeyframes(layer: Layer): Partial<Record<KeyframeProperty
   if (fromProps.rotation !== undefined || outProps.rotation !== undefined) {
     const rKfs: Keyframe[] = [
       { time: startTime, value: fromProps.rotation || 0, easing: ease },
-      { time: inTime, value: layer.rotation || 0 },
+      { time: inTime, value: layerFrameTransform(layer).rotation },
     ]
     if (outProps.rotation !== undefined) {
-      rKfs.push({ time: outStart, value: layer.rotation || 0, easing: outEase })
+      rKfs.push({ time: outStart, value: layerFrameTransform(layer).rotation, easing: outEase })
       rKfs.push({ time: Math.min(endTime, timing.exitStart + outDur), value: outProps.rotation })
     }
     result.rotation = rKfs
@@ -240,6 +243,8 @@ function addKeyframeTrack(
 function buildLayerKeyframes(tl: gsap.core.Timeline, el: HTMLElement, layer: Layer, cycleEnd?: number) {
   const isBg = layer.type === 'bg' && !layer.clipToPresence
   const kfs = layer.keyframes!
+  const { transformPerspective } = layerFrameTransform(layer)
+  if (transformPerspective) tl.set(el, { transformPerspective, immediateRender: false }, 0)
 
   // Preserve zero-time opacity when seeking backwards to the first frame.
   const firstOpacity = [...(kfs.opacity || [])].sort((a, b) => a.time - b.time)[0]
@@ -290,7 +295,7 @@ function buildPresetLayer(tl: gsap.core.Timeline, el: HTMLElement, layer: Layer)
   const noEntrance = !preset?.special && (!preset || Object.keys(preset.from).length === 0)
 
   // Static layers are visible on their first frame, including a paused playhead.
-  const init: Record<string, any> = { [opKey]: noEntrance && startTime === 0 ? layer.opacity : 0, scale: 1, rotation: layer.rotation || 0, immediateRender: false }
+  const init: Record<string, any> = { [opKey]: noEntrance && startTime === 0 ? layer.opacity : 0, scale: 1, ...layerFrameTransform(layer), immediateRender: false }
   if (!hasMP) { init.x = 0; init.y = 0 }
   tl.set(el, init, 0)
 
@@ -312,7 +317,7 @@ function buildPresetLayer(tl: gsap.core.Timeline, el: HTMLElement, layer: Layer)
       ? Object.fromEntries(Object.entries(preset.from).filter(([k]) => k !== 'x' && k !== 'y'))
       : { ...preset.from }
     if (Object.keys(fromProps).length > 0) {
-      const toProp: Record<string, any> = { [opKey]: layer.opacity, scale: 1, rotation: layer.rotation || 0, duration: animDur, ease, immediateRender: false }
+      const toProp: Record<string, any> = { [opKey]: layer.opacity, scale: 1, ...layerFrameTransform(layer), duration: animDur, ease, immediateRender: false }
       if (!hasMP) { toProp.x = 0; toProp.y = 0 }
       tl.fromTo(el, fromProps, toProp, startTime)
     } else {
@@ -590,7 +595,7 @@ export function useBannerTimeline() {
       const copy = overlay.querySelector<HTMLElement>(`#lyr-${contextLayer.id}`)
       if (!source || !copy || contextLayer.type === 'audio') continue
       const frame: Record<string, number> = {}
-      for (const property of ['x', 'y', 'xPercent', 'yPercent', 'scaleX', 'scaleY', 'rotation', 'opacity']) {
+      for (const property of ['x', 'y', 'xPercent', 'yPercent', 'scaleX', 'scaleY', 'rotation', 'rotationX', 'transformPerspective', 'opacity']) {
         const value = Number(gsap.getProperty(source, property))
         if (Number.isFinite(value)) frame[property] = value
       }
@@ -599,7 +604,7 @@ export function useBannerTimeline() {
     }
     positionVideos.forEach(position => position())
     gsap.set(element, { clearProps: 'transform,opacity,visibility,clipPath' })
-    gsap.set(element, { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: layer.rotation || 0 })
+    gsap.set(element, { x: 0, y: 0, scaleX: 1, scaleY: 1, ...layerFrameTransform(layer) })
     let stopWatching = () => {}
     const timeline = gsap.timeline({
       paused: true,
@@ -657,7 +662,7 @@ export function useBannerTimeline() {
         // through GSAP so both its cache and the inline style agree. Vue does not
         // reapply unchanged rotation bindings after an imperative style reset.
         gsap.set(el, { clearProps: 'transform' })
-        gsap.set(el, { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: layer.rotation || 0 })
+        gsap.set(el, { x: 0, y: 0, scaleX: 1, scaleY: 1, ...layerFrameTransform(layer) })
         el.style.removeProperty('opacity')
         if (layer.clipToPresence) el.style.visibility = layer.hidden || state.currentTime < layer.startTime || (state.currentTime >= layer.endTime && layer.endTime !== state.sets[state.activeKey]?.playback?.duration) ? 'hidden' : 'visible'
         else el.style.removeProperty('visibility')

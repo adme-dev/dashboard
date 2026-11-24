@@ -88,7 +88,11 @@ const KF_PROP_LABELS: Record<KeyframeProperty, string> = {
   scaleX: 'Scale X',
   scaleY: 'Scale Y',
   rotation: 'Rotation',
+  rotationX: 'X-axis rotation',
 }
+
+const visibleKeyframeProperties = computed(() => (Object.keys(KF_PROP_LABELS) as KeyframeProperty[])
+  .filter(property => property !== 'rotationX' || selectedLayer.value?.imageFlipPerspective))
 
 const isKeyframeMode = computed(() => selectedLayer.value && hasKeyframes(selectedLayer.value))
 
@@ -293,12 +297,12 @@ function deleteSelectedKeyframe() {
         </summary>
         <div class="pt-1.5 space-y-1">
           <div
-            v-for="(label, prop) in KF_PROP_LABELS"
+            v-for="prop in visibleKeyframeProperties"
             :key="prop"
             class="flex items-center justify-between px-2 py-0.5 rounded text-[10px]"
             :class="kfCount(prop) >= 2 ? 'text-(--ui-text)' : 'text-(--ui-text-dimmed)'"
           >
-            <span>{{ label }}</span>
+            <span>{{ KF_PROP_LABELS[prop] }}</span>
             <span class="font-mono">{{ kfCount(prop) }} kf</span>
           </div>
           <p class="text-[9px] text-(--ui-text-dimmed) mt-1">Double-click track in timeline to add keyframes</p>

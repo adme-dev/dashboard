@@ -142,7 +142,8 @@ const KF_PROPERTIES: { key: KeyframeProperty, label: string, icon: string }[] = 
   { key: 'y', label: 'Y', icon: 'Y' },
   { key: 'scaleX', label: 'Scale X', icon: 'Sx' },
   { key: 'scaleY', label: 'Scale Y', icon: 'Sy' },
-  { key: 'rotation', label: 'Rotation', icon: 'R' }
+  { key: 'rotation', label: 'Rotation', icon: 'R' },
+  { key: 'rotationX', label: 'X-axis rotation', icon: 'Rx' }
 ]
 
 /** Unique tween boundary times for a layer's motion path (keyframe diamonds) */
@@ -152,11 +153,11 @@ function tweenBoundaryTimes(layer: any): number[] {
 }
 
 /** Get visible KF properties for a layer — hides x/y when motion path is active */
-function getVisibleKfProperties(layer: { motionPath?: any[] }) {
-  if (layer.motionPath?.length >= 2) {
-    return KF_PROPERTIES.filter(p => p.key !== 'x' && p.key !== 'y')
-  }
-  return KF_PROPERTIES
+function getVisibleKfProperties(layer?: Pick<Layer, 'motionPath' | 'imageFlipPerspective'>) {
+  return KF_PROPERTIES.filter(({ key }) =>
+    (key !== 'rotationX' || !!layer?.imageFlipPerspective)
+    && (!(layer?.motionPath && layer.motionPath.length >= 2) || (key !== 'x' && key !== 'y'))
+  )
 }
 
 function sceneBounds(layer: Layer) {
@@ -238,7 +239,7 @@ function getLaneHeight(layerId: number): number {
   const layer = activeLayers.value.find(l => l.id === layerId)
   const height = layer ? laneHeight(layer) : LANE_H
   if (state.expandedKeyframeLayers.has(layerId)) {
-    const props = layer ? getVisibleKfProperties(layer) : KF_PROPERTIES
+    const props = getVisibleKfProperties(layer)
     // Add 1 extra track for "Path" sub-track when motion path is active
     const extraTrack = (layer?.motionPath?.length ?? 0) >= 2 ? 1 : 0
     return height + (props.length + extraTrack) * KF_TRACK_H
@@ -280,7 +281,7 @@ function canEditTiming(layer: Layer) {
   return !layer.locked && !isLayerLockedByOther(layer.id)
 }
 function insertKeyframe(layer: Layer, prop: KeyframeProperty, at: number) {
-  if (!canEditTiming(layer) || layer.type === 'audio') return
+  if (!canEditTiming(layer) || layer.type === 'audio' || !getVisibleKfProperties(layer).some(property => property.key === prop)) return
   pauseTimeline()
   const time = Math.round(Math.max(layer.startTime ?? 0, Math.min(layer.endTime ?? state.duration, at)) * 100) / 100
   seekTo(time)
@@ -963,7 +964,7 @@ onUnmounted(() => {
               Keyframe at {{ state.currentTime.toFixed(2) }}s
             </p>
             <UFormField label="Animated property">
-              <USelect v-model="keyframeProperty" :items="KF_PROPERTIES.map(prop => ({ label: prop.label, value: prop.key }))" class="w-full" />
+              <USelect v-model="keyframeProperty" :items="getVisibleKfProperties(selectedTimelineLayer).map(prop => ({ label: prop.label, value: prop.key }))" class="w-full" />
             </UFormField>
             <p class="text-xs text-muted">
               Captures the current value. Double-click a property track to add at another time.

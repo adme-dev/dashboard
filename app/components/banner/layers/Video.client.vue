@@ -2,12 +2,14 @@
 import { mediaMaskCss } from '~~/shared/bannerImportedMotion'
 import type { Layer } from '~/types/banner-studio'
 import { effectStyleFromLayer } from '~~/shared/bannerEffects'
+import { bannerImageCropCss } from '~~/shared/bannerImageCrop'
 
 const props = defineProps<{
   layer: Layer
   isActive: boolean
 }>()
 const effects = computed(() => effectStyleFromLayer(props.layer as unknown as Record<string, unknown>))
+const cropStyle = computed(() => bannerImageCropCss(props.layer.videoCrop))
 </script>
 
 <template>
@@ -22,10 +24,10 @@ const effects = computed(() => effectStyleFromLayer(props.layer as unknown as Re
       playsinline
       preload="auto"
       class="w-full h-full pointer-events-none"
-      :style="{
-        objectFit: layer.fit || 'cover',
-        objectPosition: `${layer.focalX ?? 50}% ${layer.focalY ?? 50}%`
-      }"
+      :style="[cropStyle, {
+        objectFit: cropStyle ? 'cover' : (layer.fit || 'cover'),
+        objectPosition: cropStyle ? '50% 50%' : `${layer.focalX ?? 50}% ${layer.focalY ?? 50}%`
+      }]"
     />
     <div
       v-else

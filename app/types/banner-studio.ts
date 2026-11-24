@@ -1,3 +1,5 @@
+import type { BannerTextRun } from '../../shared/bannerWordPop'
+
 // Banner Studio Types
 
 export interface BannerFormat {
@@ -21,7 +23,7 @@ export type AnimOutType =
   | 'zoomIn' | 'zoomOut' | 'spinOut'
 
 // Keyframe animation types (Phase 4b)
-export type KeyframeProperty = 'opacity' | 'x' | 'y' | 'scaleX' | 'scaleY' | 'rotation'
+export type KeyframeProperty = 'opacity' | 'x' | 'y' | 'scaleX' | 'scaleY' | 'rotation' | 'rotationX'
 
 export interface Keyframe {
   time: number    // seconds on timeline
@@ -82,6 +84,8 @@ export interface Layer {
   /** Original opacity track retained while the layer opacity slider rescales it. */
   opacityTrackSource?: { opacity: number, frames: Keyframe[] }
   rotation?: number
+  /** A centered perspective on an image's editable X-axis flip. */
+  imageFlipPerspective?: number
   flipX?: boolean
   flipY?: boolean
   /** Local pixel pivot; may lie outside a split text row. Defaults to CSS centre. */
@@ -95,7 +99,7 @@ export interface Layer {
   // Text properties
   text?: string
   /** Safe inline superscripts; rendered only while their text matches the layer. */
-  textRuns?: Array<{ text: string, fontSize?: number, top?: number }>
+  textRuns?: BannerTextRun[]
   /** Reviewed TheBrief per-word entrance; words remain one editable text layer. */
   wordPop?: import('../../shared/bannerImportedMotion').BannerWordEntrance
   reveal?: import('../../shared/bannerImportedMotion').BannerReveal
@@ -131,6 +135,7 @@ export interface Layer {
   srcType?: 'image' | 'video' // default 'image'
   fit?: 'cover' | 'contain' | 'fill'
   imageCrop?: import('../../shared/bannerImageCrop').BannerImageCrop
+  videoCrop?: import('../../shared/bannerImageCrop').BannerImageCrop
   /** Marks an image layer as the brand logo so brand kits can swap it */
   isLogo?: boolean
   focalX?: number // 0-100, default 50 (center)

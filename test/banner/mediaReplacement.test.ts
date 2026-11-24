@@ -8,10 +8,11 @@ vi.stubGlobal('ref', ref)
 vi.stubGlobal('window', { innerWidth: 1440, innerHeight: 900 })
 const { useBannerStudio } = await import('../../app/composables/useBannerStudio')
 
-function setup() {
+function setup(type: 'image' | 'video' = 'image') {
   const studio = useBannerStudio()
   const image = { id: 1, linkId: 'car', type: 'image', name: 'Vehicle', src: '/old.png', x: 30, y: 40, w: 200, h: 100, rotation: 20, opacity: 1, zIndex: 2, startTime: 1, endTime: 5, imageCrop: { x: 0.2, y: 0.1, w: 0.5, h: 0.8 }, keyframes: { x: [{ time: 1, value: -50 }, { time: 2, value: 0 }] } } as Layer
-  studio.loadProject({ id: 'test', name: 'GEELY', canvasData: { mrec: { layers: [image] }, fb_story: { layers: [{ ...image, id: 2, w: 400, h: 500 }] } } } as BannerProject)
+  const layer: Layer = type === 'video' ? { ...image, type, src: '/old.mp4', videoCrop: image.imageCrop, imageCrop: undefined, mediaStart: 1, mediaEnd: 4 } : image
+  studio.loadProject({ id: 'test', name: 'GEELY', canvasData: { mrec: { layers: [layer] }, fb_story: { layers: [{ ...layer, id: 2, w: 400, h: 500 }] } } } as BannerProject)
   studio.selectLayer(1)
   return studio
 }
@@ -41,4 +42,20 @@ describe('image replacement and crop history', () => {
     studio.undo()
     expect(studio.selectedLayer.value!.imageCrop).toEqual(old)
   })
+})
+
+it('keeps video crop edits local and resets stale crops and trims on linked replacement', () => {
+  const studio = setup('video')
+  const other = JSON.stringify(studio.state.sets.fb_story)
+  const crop = { x: 0.1, y: 0.1, w: 0.6, h: 0.8 }
+  studio.updateLayer(1, { videoCrop: crop })
+  expect(studio.selectedLayer.value).toMatchObject({ src: '/old.mp4', videoCrop: crop, mediaStart: 1, mediaEnd: 4 })
+  expect(JSON.stringify(studio.state.sets.fb_story)).toBe(other)
+  const before = JSON.stringify(studio.state.sets)
+  studio.updateLayer(1, { src: '/new.mp4' })
+  for (const board of Object.values(studio.state.sets)) {
+    expect(board.layers[0]).toMatchObject({ src: '/new.mp4', videoCrop: undefined, mediaStart: 0, mediaEnd: undefined })
+  }
+  studio.undo()
+  expect(JSON.stringify(studio.state.sets)).toBe(before)
 })

@@ -35,6 +35,21 @@ it('uses the authored clip trim when the generic audio element duration is stale
   expect(track.keyframes.opacity.at(-1)).toMatchObject({ time: 4, value: 1 })
 })
 
+it('keeps a verified original audio trim when TheBrief uses a delayed instant exit', async () => {
+  const config = {
+    endTime: 4, duration: 121,
+    buildIn: { duration: 1, delay: 0, type: 'instant' },
+    buildMid: { duration: 2, delay: 0, type: 'none' },
+    buildOut: { duration: 1, delay: 2, type: 'instant' }
+  }
+  const input = (options: Record<string, unknown>) => audioSource(options).replace('{id:1,from:200}', '{id:1,from:0}')
+  const result = await convertTheBriefHtml(input(config))
+  const track = result.canvasData.custom_300x250.layers.find(layer => layer.type === 'audio')
+  expect(track).toMatchObject({ startTime: 0, endTime: 4, src: './clip.mp3' })
+  expect(result.audioTransforms).toContainEqual({ layerId: track.id, duration: 4, fadeIn: 0, fadeOut: 0 })
+  await expect(convertTheBriefHtml(input({ ...config, buildOut: { ...config.buildOut, delay: 3 } }))).rejects.toThrow('clip duration requires reconciliation')
+})
+
 it('holds inconsistent clip duration metadata rather than guessing the audio end', async () => {
   await expect(convertTheBriefHtml(audioSource({ endTime: 3, duration: 2 }))).rejects.toThrow('clip duration requires reconciliation')
 })

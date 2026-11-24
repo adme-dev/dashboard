@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { resolveBannerFormat } from '~~/app/utils/banner-constants'
 import { motorstackDesignSelectionSchema } from '~~/shared/bannerMotorstackOffer'
 import type { ArtboardState, Layer } from '~~/app/types/banner-studio'
 
@@ -91,9 +92,9 @@ export function designCanvasDimensions(canvas: DesignCanvas) {
   return Object.fromEntries(Object.keys(canvas).map((formatKey) => {
     const known = Object.prototype.hasOwnProperty.call(DESIGN_FORMAT_DIMENSIONS, formatKey) ? DESIGN_FORMAT_DIMENSIONS[formatKey] : undefined
     if (known) return [formatKey, known]
-    const custom = /^custom_([1-9]\d{0,3})x([1-9]\d{0,3})$/.exec(formatKey)
+    const custom = resolveBannerFormat(formatKey)
     if (!custom) throw new Error('Unsupported canvas format')
-    return [formatKey, { w: Number(custom[1]), h: Number(custom[2]) }]
+    return [formatKey, { w: custom.w, h: custom.h }]
   }))
 }
 
