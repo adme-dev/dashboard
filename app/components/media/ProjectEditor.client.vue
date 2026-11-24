@@ -45,6 +45,11 @@ import { videoStudioAssetImageSource, type VideoStudioAsset } from '~~/app/utils
 import type { VideoClip } from '~~/server/utils/audio/timelineSchema'
 import type { VideoAsset } from '~~/server/utils/video/assets'
 import { idempotencyKey } from '~~/app/utils/idempotencyKey'
+import {
+  ACTIVE_MEDIA_PROJECT_NAV_STATE_KEY,
+  resolveLoadedMediaProjectContext,
+  type ActiveMediaProjectContext
+} from '~/utils/sidebarActiveNav'
 
 const activityHubLauncherTarget = inject<ShallowRef<HTMLElement | null>>('activity-hub-launcher-target', shallowRef(null))
 const [DefineTransport, Transport] = createReusableTemplate()
@@ -115,6 +120,28 @@ const publicConfig = config.public as {
 const _videoStudioEnabled = computed(() => Boolean(publicConfig.videoStudioEnabled))
 const videoAssetHarnessEnabled = computed(() => Boolean(publicConfig.videoAssetHarnessEnabled))
 const isAv = computed(() => editor.mediaType.value === 'av')
+const activeMediaProjectNav = useState<ActiveMediaProjectContext | null>(ACTIVE_MEDIA_PROJECT_NAV_STATE_KEY, () => null)
+watch(
+  [projectId, () => editor.project.value, () => editor.timeline.value?.media_type],
+  ([id, loadedProject, timelineMediaType]) => {
+    const context = resolveLoadedMediaProjectContext(loadedProject, timelineMediaType)
+    if (context) {
+      activeMediaProjectNav.value = context
+    } else if (activeMediaProjectNav.value && activeMediaProjectNav.value.projectId !== id) {
+      activeMediaProjectNav.value = null
+    }
+  },
+  { immediate: true }
+)
+onBeforeUnmount(() => {
+  const loadedId = editor.project.value?.id
+  if (
+    activeMediaProjectNav.value
+    && (activeMediaProjectNav.value.projectId === projectId.value || activeMediaProjectNav.value.projectId === loadedId)
+  ) {
+    activeMediaProjectNav.value = null
+  }
+})
 const storyboardEnabled = computed(() => Boolean(publicConfig.videoStoryboardEnabled))
 const storyboard = useVideoStoryboard(projectId.value, {
   enabled: () => storyboardEnabled.value,

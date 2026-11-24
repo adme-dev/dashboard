@@ -1,5 +1,7 @@
 <script setup lang="ts">
+import { useCollapsedSidebarPopovers } from '~/composables/useCollapsedSidebarPopovers'
 import type { NavigationMenuItem } from '@nuxt/ui'
+import { applyActiveSidebarNav } from '~/utils/sidebarActiveNav'
 
 const route = useRoute()
 const toast = useToast()
@@ -295,6 +297,28 @@ const links = computed(() => [[{
   target: '_blank'
 }]] satisfies NavigationMenuItem[][])
 
+const defaultLocation = computed(() => ({
+  path: route.path,
+  query: route.query,
+  matched: route.matched
+}))
+const { openCollapsedPopovers, handleCollapsedPopoverOpenChange } = useCollapsedSidebarPopovers()
+
+const resolvedLinks = computed(() => applyActiveSidebarNav(
+  links.value,
+  defaultLocation.value
+))
+const resolvedCollapsedLinks = computed(() => applyActiveSidebarNav(
+  links.value,
+  defaultLocation.value,
+  {
+    collapsed: true,
+    popover: true,
+    openPopoverKeys: openCollapsedPopovers,
+    onPopoverOpenChange: handleCollapsedPopoverOpenChange
+  }
+))
+
 const groups = computed(() => [{
   id: 'links',
   label: 'Go to',
@@ -356,7 +380,7 @@ onMounted(async () => {
 
         <UNavigationMenu
           :collapsed="collapsed"
-          :items="links[0]"
+          :items="collapsed ? (resolvedCollapsedLinks[0] ?? []) : (resolvedLinks[0] ?? [])"
           orientation="vertical"
           tooltip
           popover
@@ -364,7 +388,7 @@ onMounted(async () => {
 
         <UNavigationMenu
           :collapsed="collapsed"
-          :items="links[1]"
+          :items="collapsed ? (resolvedCollapsedLinks[1] ?? []) : (resolvedLinks[1] ?? [])"
           orientation="vertical"
           tooltip
           class="mt-auto"

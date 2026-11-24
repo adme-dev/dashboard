@@ -1,8 +1,15 @@
 <script setup lang="ts">
+import { useCollapsedSidebarPopovers } from '~/composables/useCollapsedSidebarPopovers'
 import type { CommandPaletteGroup, CommandPaletteItem, NavigationMenuItem } from '@nuxt/ui'
 import { socialSpendSuiteNavItems } from '~/utils/socialSpendNavigation'
 import { socialSuiteNavItems } from '~/utils/socialSuiteNavigation'
 import { searchAuthorityNavItems } from '~/utils/searchAuthorityNavigation'
+import {
+  ACTIVE_MEDIA_PROJECT_NAV_STATE_KEY,
+  applyActiveSidebarNav,
+  applyMediaProjectSidebarContext,
+  type ActiveMediaProjectContext
+} from '~/utils/sidebarActiveNav'
 import { useAuthenticatedFetch } from '~/composables/useAuthenticatedFetch'
 
 const route = useRoute()
@@ -484,6 +491,31 @@ const footerNav = computed<NavigationMenuItem[]>(() => {
   return items
 })
 
+// Resolve a single most-specific active item across all three sidebar menus
+// so query-scoped routes (e.g. Video Studio vs Audio Projects, Voice AI vs AI Chat)
+// and nested routes never highlight multiple items at once.
+const activeMediaProject = useState<ActiveMediaProjectContext | null>(ACTIVE_MEDIA_PROJECT_NAV_STATE_KEY, () => null)
+const sidebarLocation = computed(() => applyMediaProjectSidebarContext(
+  { path: route.path, query: route.query, matched: route.matched },
+  activeMediaProject.value
+))
+const { openCollapsedPopovers, handleCollapsedPopoverOpenChange } = useCollapsedSidebarPopovers()
+
+const resolvedSidebarNav = computed(() => applyActiveSidebarNav(
+  [workspaceNav.value, mainNav.value, footerNav.value],
+  sidebarLocation.value
+))
+const resolvedCollapsedSidebarNav = computed(() => applyActiveSidebarNav(
+  [workspaceNav.value, mainNav.value, footerNav.value],
+  sidebarLocation.value,
+  {
+    collapsed: true,
+    popover: true,
+    openPopoverKeys: openCollapsedPopovers,
+    onPopoverOpenChange: handleCollapsedPopoverOpenChange
+  }
+))
+
 // Search groups for UDashboardSearch
 function toCommandPaletteItem(item: NavigationMenuItem): CommandPaletteItem | null {
   if (!item.to || !item.label) return null
@@ -614,7 +646,7 @@ watch([() => route.path, () => mainNav.value.length], () => {
         <!-- Workspace List -->
         <UNavigationMenu
           :collapsed="collapsed"
-          :items="workspaceNav"
+          :items="collapsed ? (resolvedCollapsedSidebarNav[0] ?? []) : (resolvedSidebarNav[0] ?? [])"
           orientation="vertical"
           tooltip
           popover
@@ -624,7 +656,7 @@ watch([() => route.path, () => mainNav.value.length], () => {
         <div class="agency-main-nav">
           <UNavigationMenu
             :collapsed="collapsed"
-            :items="mainNav"
+            :items="collapsed ? (resolvedCollapsedSidebarNav[1] ?? []) : (resolvedSidebarNav[1] ?? [])"
             orientation="vertical"
             tooltip
             popover
@@ -634,7 +666,7 @@ watch([() => route.path, () => mainNav.value.length], () => {
         <!-- Footer Navigation -->
         <UNavigationMenu
           :collapsed="collapsed"
-          :items="footerNav"
+          :items="collapsed ? (resolvedCollapsedSidebarNav[2] ?? []) : (resolvedSidebarNav[2] ?? [])"
           orientation="vertical"
           tooltip
           popover
