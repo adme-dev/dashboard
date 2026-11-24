@@ -11,6 +11,33 @@ on their longest side and are stored by artwork and font revision after the
 first successful render. A first visit to new artwork can take longer.
 Access checks run before serving stored images. Templates keep their existing previews.
 
+Production verification for [PR #1000](https://github.com/adme-dev/dashboard/pull/1000)
+used main `2615244c0c02228ec043f6eb045e88e1bd10e8fd` on `agency-dashboard/main`.
+Cloudflare deployment `05a8edc1-7b86-4ae2-8691-ab336aa31b54` replaced
+`b2523d8f-a89f-4874-9fde-27ccc7140df2`. [CI](https://github.com/adme-dev/dashboard/actions/runs/45383729333)
+passed 24,808 tests with 4,445 skipped. A further 1,219 tests passed on the
+combined release tree with one skip.
+
+In signed-in desktop Chrome, all 15 near-viewport posters loaded on each of two
+gallery pages. Both pages had 36 project cards and zero embedded HTML frames,
+canvases or video players. Search, grid/list switching, opening a two-layout
+editor and the QR Codes library passed. A signed-out poster request returned 401.
+
+| Time from reload in one browser profile | Before, median of three | After, median of three |
+| --- | ---: | ---: |
+| First project card visible | 3.41 s | 3.61 s |
+| First HTML frame attached | 5.77 s | — |
+| First poster image loaded | — | 5.05 s |
+| Four poster images loaded | — | 7.22 s |
+
+The first navigation immediately after deployment took 12.97 s to show cards
+and 14.81 s to load an image. Four initial proof images had been requested
+during pre-release checks. Repeat runs used stored posters. These measurements
+include browser automation overhead. Frame attachment does not measure artwork
+paint, and none of these timings measure field LCP. Three direct signed-in
+requests returned 461 project summaries in 1.38–1.76 s and 101 folders in
+0.69–2.97 s, including browser navigation and reading the JSON response.
+
 ## 24 November 2026 — Faster project library loading — live
 
 The agency and full-screen libraries load project summaries first. Search, client
