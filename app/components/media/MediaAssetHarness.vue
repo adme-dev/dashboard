@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useLocalStorage } from '@vueuse/core'
 import VideoStudioAssetActivityPanel from '~~/app/components/media/VideoStudioAssetActivityPanel.vue'
 import VideoStudioPrepareAssetPanel from '~~/app/components/media/VideoStudioPrepareAssetPanel.vue'
+import VideoStudioPrepareWorkspace from '~~/app/components/media/VideoStudioPrepareWorkspace.vue'
 import { assemblyPlanToTimelinePayloads, type AiAssemblyTimelinePayload } from '~~/app/utils/video/aiAssemblyTimeline'
 import { derivativeTimelinePayload } from '~~/app/utils/video/assetDerivativeTimeline'
 import { idempotencyKey } from '~~/app/utils/idempotencyKey'
@@ -11,9 +12,15 @@ const props = withDefaults(defineProps<{
   projectId: string
   embedded?: boolean
   studio?: boolean
+  // Fills the Video Studio "Prepare" workspace: the picture takes the main stage.
+  workspace?: boolean
+  // Library asset to open with, e.g. the asset selected elsewhere in the studio.
+  preselectAssetId?: string | null
 }>(), {
   embedded: false,
   studio: false,
+  workspace: false,
+  preselectAssetId: null,
 })
 const emit = defineEmits<{
   (event: 'add-to-timeline', payload: AiAssemblyTimelinePayload): void
@@ -115,6 +122,13 @@ const isDrawingMask = ref(false)
 const hasMaskStroke = ref(false)
 const uploadingMask = ref(false)
 const maskPreviewFailed = ref(false)
+const maskVideoFailed = ref(false)
+// The mask canvas always has the picture's own shape, so a stroke maps 1:1 onto it.
+const DEFAULT_FRAME = { width: 540, height: 960 }
+const MAX_FRAME_EDGE = 1280
+const frameSize = ref({ ...DEFAULT_FRAME })
+const MAX_MASK_UNDO = 20
+const maskHistory = ref<ImageData[]>([])
 let activityRefreshTimer: ReturnType<typeof setTimeout> | null = null
 
 // Open by default in the AV editor. This is a core production workspace, not a
@@ -139,7 +153,14 @@ const selectedItem = computed(() => items.value.find(item => item.id === selecte
 const selectedItemTitle = computed(() => selectedItem.value?.title || selectedItem.value?.r2Key || 'No asset selected')
 const actionOptions = computed(() => actions.value
   .filter(action => ['mask-lift', 'erase-fill', 'mask-only', 'layer-decomposition', 'background-removal'].includes(action.id))
-  .map(action => ({ label: action.label, value: action.id })))
+  .map(action => ({ label: action.label, value: action.id, description: action.description })))
+const assetOptions = computed(() => items.value.map(item => ({
+  label: item.title || item.r2Key || 'Untitled asset',
+  value: item.id,
+})))
+const selectedAssetVideoUrl = computed(() => selectedItem.value?.assetId && !maskVideoFailed.value
+  ? `/api/agency/video/assets/${encodeURIComponent(selectedItem.value.assetId)}/stream`
+  : null)
 const selectedActionModels = computed(() => models.value.filter(model => model.actions.includes(selectedAction.value)))
 const defaultEnabledModelCount = computed(() => models.value.filter(model => model.defaultEnabled).length)
 const activeJobCount = computed(() => intelligenceJobs.value.filter(job => job.status === 'queued' || job.status === 'running').length)
@@ -226,6 +247,8 @@ function startMaskStroke(event: PointerEvent) {
   canvas.setPointerCapture?.(event.pointerId)
   const ctx = canvas.getContext('2d')
   if (!ctx) return
+  // Snapshot before the stroke so Undo can step back one stroke at a time.
+  maskHistory.value = [...maskHistory.value, ctx.getImageData(0, 0, canvas.width, canvas.height)].slice(-MAX_MASK_UNDO)
   ctx.beginPath()
   ctx.moveTo(point.x, point.y)
   isDrawingMask.value = true
@@ -252,6 +275,40 @@ function clearMask() {
   hasMaskStroke.value = false
   brushMaskKey.value = ''
   maskPreviewUrl.value = null
+  maskHistory.value = []
+}
+
+function undoMask() {
+  const canvas = maskCanvasRef.value
+  const ctx = canvas?.getContext('2d')
+  const previous = maskHistory.value[maskHistory.value.length - 1]
+  if (!canvas || !ctx || !previous) return
+  ctx.putImageData(previous, 0, 0)
+  maskHistory.value = maskHistory.value.slice(0, -1)
+  // A saved mask no longer matches what is painted.
+  brushMaskKey.value = ''
+  hasMaskStroke.value = maskHistory.value.length > 0
+  maskPreviewUrl.value = hasMaskStroke.value ? canvas.toDataURL('image/png') : null
+}
+
+// Resizing a canvas wipes it, so the mask and its history restart with the new picture.
+function setFrameSize(size: { width: number, height: number }) {
+  if (!(size.width > 0) || !(size.height > 0)) return
+  const scale = Math.min(1, MAX_FRAME_EDGE / Math.max(size.width, size.height))
+  const next = { width: Math.max(1, Math.round(size.width * scale)), height: Math.max(1, Math.round(size.height * scale)) }
+  if (next.width === frameSize.value.width && next.height === frameSize.value.height) return
+  frameSize.value = next
+  hasMaskStroke.value = false
+  brushMaskKey.value = ''
+  maskPreviewUrl.value = null
+  maskHistory.value = []
+}
+
+function selectPreselectedAsset() {
+  const assetId = props.preselectAssetId
+  if (!assetId) return
+  const match = items.value.find(item => item.assetId === assetId)
+  if (match) selectedItemId.value = match.id
 }
 
 async function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
@@ -301,6 +358,7 @@ async function loadHarness() {
     actions.value = modelRes.actions
     models.value = modelRes.models
     intelligenceJobs.value = jobsRes.jobs
+    selectPreselectedAsset()
     if (!selectedItemId.value || !items.value.some(item => item.id === selectedItemId.value)) {
       selectedItemId.value = items.value[0]?.id ?? null
     }
@@ -477,9 +535,12 @@ watch(() => props.projectId, () => { void loadHarness() })
 watch(activeJobCount, () => {
   scheduleActivityRefresh()
 })
+watch(() => props.preselectAssetId, selectPreselectedAsset)
 watch(selectedItemId, () => {
   clearMask()
   maskPreviewFailed.value = false
+  maskVideoFailed.value = false
+  frameSize.value = { ...DEFAULT_FRAME }
   void loadSelectedDerivatives()
 })
 onMounted(() => { void loadHarness() })
@@ -489,7 +550,44 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section :class="['@container', studio || embedded ? 'space-y-3' : 'rounded-lg border border-default bg-elevated']">
+  <VideoStudioPrepareWorkspace
+    v-if="workspace"
+    v-model:selected-item-id="selectedItemId"
+    v-model:selected-action="selectedAction"
+    v-model:tool-prompt="toolPrompt"
+    v-model:brush-size="brushSize"
+    :asset-options="assetOptions"
+    :selected-item-asset-id="selectedItem?.assetId"
+    :tool-options="actionOptions"
+    :mask-tool-enabled="maskToolEnabled"
+    :preview-image-url="selectedAssetThumbnailUrl"
+    :preview-video-url="selectedAssetVideoUrl"
+    :frame-width="frameSize.width"
+    :frame-height="frameSize.height"
+    :has-mask-stroke="hasMaskStroke"
+    :can-undo-mask="maskHistory.length > 0"
+    :running="runningExtraction"
+    :loading="loading"
+    :selected-item-jobs="selectedItemJobs"
+    :selected-derivatives="selectedDerivatives"
+    :loading-derivatives="loadingDerivatives"
+    :adding-derivative-id="addingDerivativeId"
+    :recent-jobs="recentActivityJobs"
+    @run="runExtraction"
+    @clear-mask="clearMask"
+    @undo-mask="undoMask"
+    @refresh="refreshActivity"
+    @frame-size="setFrameSize"
+    @mask-canvas-ready="maskCanvasRef = $event"
+    @preview-image-error="maskPreviewFailed = true"
+    @preview-video-error="maskVideoFailed = true"
+    @start-mask-stroke="startMaskStroke"
+    @move-mask-stroke="moveMaskStroke"
+    @end-mask-stroke="endMaskStroke"
+    @add-derivative-to-timeline="addDerivativeToTimeline"
+    @add-derivative-to-bucket="addDerivativeToBucket"
+  />
+  <section v-else :class="['@container', studio || embedded ? 'space-y-3' : 'rounded-lg border border-default bg-elevated']">
     <div
       v-if="embedded"
       class="flex flex-wrap items-start justify-between gap-3"

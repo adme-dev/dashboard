@@ -20,6 +20,7 @@ const props = defineProps<{
   activity?: VideoStudioSelectedAssetActivity[]
   captionGenerating?: boolean
   canReplaceSelectedClip?: boolean
+  canPrepare?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -28,6 +29,7 @@ const emit = defineEmits<{
   (event: 'add-captions-to-timeline', asset: VideoStudioAsset): void
   (event: 'generate-from-asset', asset: VideoStudioAsset): void
   (event: 'generate-captions', asset: VideoStudioAsset): void
+  (event: 'prepare-asset', asset: VideoStudioAsset): void
 }>()
 
 const canGenerate = computed(() => Boolean(videoStudioAssetImageSource(props.asset)))
@@ -114,6 +116,16 @@ function activityTimeLabel(value: string | null) {
           class="min-w-0"
           :disabled="!canGenerate"
           @click="emit('generate-from-asset', props.asset)"
+        />
+        <UButton
+          v-if="props.canPrepare"
+          icon="i-lucide-eraser"
+          size="xs"
+          variant="ghost"
+          color="neutral"
+          label="Erase / clean up"
+          class="min-w-0"
+          @click="emit('prepare-asset', props.asset)"
         />
         <UButton
           v-if="showCaptionAction"

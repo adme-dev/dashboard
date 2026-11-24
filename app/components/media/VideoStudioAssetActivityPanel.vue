@@ -36,7 +36,7 @@ function fmtJobDate(iso: string) {
 </script>
 
 <template>
-  <section>
+  <section class="@container">
     <div class="mb-2 flex items-center justify-between gap-2">
       <p class="text-xs font-medium uppercase text-muted">AI activity</p>
       <UButton
@@ -48,7 +48,7 @@ function fmtJobDate(iso: string) {
         @click="emit('refresh')"
       />
     </div>
-    <div v-if="props.jobs.length" class="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+    <div v-if="props.jobs.length" class="grid gap-2 @xl:grid-cols-2 @4xl:grid-cols-3">
       <div v-for="job in props.jobs.slice(0, 6)" :key="job.id" class="rounded-md border border-default bg-elevated p-2">
         <div class="flex items-start gap-2">
           <UBadge :label="job.status" size="xs" :color="jobStatusColor(job.status)" variant="subtle" />
