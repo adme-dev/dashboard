@@ -1,5 +1,13 @@
 # Banner Studio change log
 
+## 25 November 2026 — Folder recovery and canvas groups
+
+Deleting a folder keeps its designs available in their original client libraries. The folder tree can be restored for 30 days. Deleting a design individually sends that design to the recycling bin with its own recovery period.
+
+Dragging any member of a canvas group moves its members together. Layer and group names support inline editing in the timeline and Properties panel. The [folder and group guide](../banner-studio/folders-and-groups.md) covers filing, recovery, selection and renaming.
+
+Folder creation, pins, moving, renaming, breadcrumb navigation and recovery of an old folder URL after a move were verified on the production release of [PR #1002](https://github.com/adme-dev/dashboard/pull/1002), deployment `36f75216-9cfc-4568-87b1-27c84957b70c`.
+
 ## 24 November 2026 — Still posters for the project gallery
 
 Each project card displays a JPEG of its saved artwork. The poster follows the

@@ -145,7 +145,7 @@ export default defineEventHandler(async (event) => {
       const row = await queryOne(`
       UPDATE banner_projects
       SET ${sets.join(', ')}
-      WHERE id = $${idIndex}${guard}
+      WHERE id = $${idIndex}${guard} AND binned_at IS NULL
       RETURNING
         id, name,
         client_id AS "clientId",

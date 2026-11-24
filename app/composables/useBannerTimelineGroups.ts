@@ -43,5 +43,18 @@ export function useBannerTimelineGroups() {
     if (!delta) return false
     return apply(layers, layers.map(layer => retimeLayerPresence(layer, layer.startTime + delta, layer.endTime + delta)))
   }
-  return { groupLayers, ungroupLayers, moveGroup, canEditGroup: editable }
+  function renameGroup(id: string, value: string) {
+    const name = value.trim()
+    const members = activeLayers.value.filter(layer => layer.timelineGroup?.id === id)
+    if (!name || members.every(layer => layer.timelineGroup?.name === name)) return false
+    return apply(members, members.map(() => ({ timelineGroup: { id, name } })))
+  }
+
+  function translateGroup(id: string, dx: number, dy: number) {
+    if (!Number.isFinite(dx) || !Number.isFinite(dy) || (!dx && !dy)) return false
+    const members = activeLayers.value.filter(layer => layer.timelineGroup?.id === id)
+    return apply(members, members.map(layer => ({ x: layer.x + dx, y: layer.y + dy })))
+  }
+
+  return { groupLayers, ungroupLayers, moveGroup, translateGroup, renameGroup, canEditGroup: editable }
 }

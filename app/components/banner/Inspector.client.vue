@@ -1,5 +1,9 @@
 <script setup lang="ts">
-const { selectedLayer } = useBannerStudio()
+import { useBannerTimelineGroups } from '~/composables/useBannerTimelineGroups'
+
+const { selectedLayer, selectedGroup, activeLayers, updateLayer } = useBannerStudio()
+const { renameGroup, canEditGroup } = useBannerTimelineGroups()
+const groupMembers = computed(() => activeLayers.value.filter(layer => layer.timelineGroup?.id === selectedGroup.value?.id))
 const { feedsState } = useBannerFeeds()
 
 const { inspectorTab: activeTab } = useBannerInspector()
@@ -27,7 +31,19 @@ watch(selectedLayer, (layer, previous) => {
 <template>
   <div class="h-full flex flex-col overflow-hidden">
     <!-- No selection: show Background tab directly -->
-    <template v-if="!selectedLayer">
+    <div v-if="selectedGroup" class="flex items-center gap-2 border-b border-default p-3">
+      <UIcon name="i-lucide-group" class="size-4 shrink-0" />
+      <BannerEditableName
+        :key="selectedGroup.id"
+        kind="Group"
+        class="flex-1 text-sm font-semibold"
+        :name="selectedGroup.name"
+        :disabled="!canEditGroup(groupMembers)"
+        @rename="renameGroup(selectedGroup.id, $event)"
+      />
+      <span class="text-xs text-muted">{{ groupMembers.length }} layers</span>
+    </div>
+    <template v-else-if="!selectedLayer">
       <!-- Tab bar with only Background active -->
       <div class="flex border-b border-default shrink-0">
         <button
@@ -43,6 +59,14 @@ watch(selectedLayer, (layer, previous) => {
 
     <!-- Inspector content when layer selected -->
     <template v-else>
+      <BannerEditableName
+        :key="selectedLayer.id"
+        kind="Layer"
+        class="border-b border-default p-3 text-sm font-semibold"
+        :name="selectedLayer.name"
+        :disabled="!canEditGroup([selectedLayer])"
+        @rename="canEditGroup([selectedLayer]) && updateLayer(selectedLayer.id, { name: $event })"
+      />
       <UTabs
         v-model="activeTab"
         :items="tabs"

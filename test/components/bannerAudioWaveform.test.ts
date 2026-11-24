@@ -122,7 +122,7 @@ it('keeps the waveform visible beneath transparent audio controls in the actual 
   vi.stubGlobal('useAiLayerEdit', () => ({ isEditing: Vue.ref(false) }))
   vi.stubGlobal('useMergeLayers', () => ({ isMerging: Vue.ref(false) }))
   vi.stubGlobal('useAiImageGenerate', () => ({}))
-  vi.stubGlobal('useBannerTimelineGroups', () => ({}))
+  vi.stubGlobal('useBannerTimelineGroups', () => ({ canEditGroup: () => true }))
   vi.stubGlobal('useBannerPhaseDrag', () => ({ timingHint: Vue.ref('') }))
   const host = document.createElement('div')
   document.body.append(host)

@@ -53,3 +53,15 @@ it('refuses all group mutations when any member is locked', () => {
   expect(groups.moveGroup(id, 1)).toBe(false)
   expect(groups.ungroupLayers(id)).toBe(false)
 })
+it('renames a saved group across its members and refuses partial moves when a member is locked', () => {
+  const { studio, groups } = setup()
+  const id = groups.groupLayers([1, 2])!
+  expect(groups.renameGroup(id, ' ADME logo ')).toBe(true)
+  const canvas = studio.getCanvasData()
+  studio.loadProject({ id: 'groups', canvasData: canvas } as any)
+  expect(studio.activeLayers.value.slice(0, 2).map(l => l.timelineGroup?.name)).toEqual(['ADME logo', 'ADME logo'])
+  studio.activeLayers.value[1]!.locked = true
+  expect(groups.translateGroup(id, 15, 35)).toBe(false)
+  expect(groups.renameGroup(id, 'Changed')).toBe(false)
+  expect(studio.activeLayers.value.map(l => l.x)).toEqual([10, 20, 30])
+})

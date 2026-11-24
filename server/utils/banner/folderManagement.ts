@@ -23,7 +23,8 @@ export async function saveBannerFolder(id: string, change: FolderChange) {
   return transaction(async db => {
     // Validate against the committed tree after competing moves have finished.
     await db.query('LOCK TABLE banner_folders IN SHARE ROW EXCLUSIVE MODE')
-    const current = (await db.query('SELECT name, parent_id FROM banner_folders WHERE id = $1', [id])).rows[0]
+    const current = (await db.query('SELECT name, parent_id, binned_at FROM banner_folders WHERE id = $1', [id])).rows[0]
+    if (current?.binned_at) throw createError({ statusCode: 409, statusMessage: 'Restore this folder before editing it' })
     const creating = 'id' in change
     if (!current && !creating) throw createError({ statusCode: 404, statusMessage: 'Folder no longer exists' })
     const nextName = 'name' in change ? change.name : current.name
@@ -33,7 +34,7 @@ export async function saveBannerFolder(id: string, change: FolderChange) {
 
     if (parentId) {
       const ancestors = await db.query(`WITH RECURSIVE ancestors AS (
-        SELECT id, parent_id FROM banner_folders WHERE id = $1
+        SELECT id, parent_id FROM banner_folders WHERE id = $1 AND binned_at IS NULL
         UNION
         SELECT f.id, f.parent_id FROM banner_folders f JOIN ancestors a ON f.id = a.parent_id
       ) SELECT id FROM ancestors`, [parentId])
@@ -43,7 +44,7 @@ export async function saveBannerFolder(id: string, change: FolderChange) {
       }
     }
     const sibling = await db.query(`SELECT 1 FROM banner_folders WHERE parent_id IS NOT DISTINCT FROM $1::uuid
-      AND lower(name) = lower($2) AND id <> $3 LIMIT 1`, [parentId, nextName, id])
+      AND binned_at IS NULL AND lower(name) = lower($2) AND id <> $3 LIMIT 1`, [parentId, nextName, id])
     if (sibling.rowCount) throw createError({ statusCode: 409, statusMessage: 'A folder with this name already exists here' })
     if (creating) {
       await db.query('INSERT INTO banner_folders (id, name, parent_id) VALUES ($1, $2, $3)', [id, nextName, parentId])

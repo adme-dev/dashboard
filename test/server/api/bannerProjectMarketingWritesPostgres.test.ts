@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto'
 import type { H3Event } from 'h3'
 import pg from 'pg'
+import { readFileSync } from 'node:fs'
+import { clearExpiredBannerBin, setBannerFolderBinned } from '~~/server/utils/banner/folderBin'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // Browser Banner Studio PATCH/duplicate for the marketing portfolio on PostgreSQL: the real route
@@ -31,6 +33,7 @@ async function inTransaction<T>(work: (db: { query: (sql: string, params?: unkno
 vi.mock('~~/server/utils/db', () => ({
   queryOne: async (sql: string, params?: unknown[]) => (await rows(sql, params))[0] ?? null,
   queryOneFresh: async (sql: string, params?: unknown[]) => (await rows(sql, params))[0] ?? null,
+  queryRowsFresh: rows,
   queryRows: async (sql: string, params?: unknown[]) => rows(sql, params),
   execute: async (sql: string, params?: unknown[]) => (await rows(sql, params)).length,
   transaction: inTransaction
@@ -42,6 +45,9 @@ vi.mock('~~/server/utils/banner/godModeProjectCreation', () => ({
 vi.mock('~~/server/utils/kv', () => ({ kvGet: async () => null, kvPut: () => undefined, kvDelete: () => undefined }))
 vi.stubGlobal('defineEventHandler', (handler: unknown) => handler)
 vi.stubGlobal('getRouterParam', (event: { params: { id: string } }) => event.params.id)
+vi.stubGlobal('getValidatedRouterParams', (event: { params: { id: string } }, validate: (params: object) => unknown) => validate(event.params))
+vi.stubGlobal('getQuery', (event: { query?: object }) => event.query ?? {})
+vi.stubGlobal('setHeader', vi.fn())
 vi.stubGlobal('readBody', async (event: { body: unknown }) => event.body)
 
 const databaseUrl = process.env.MARKETING_MCP_STUDIO_BRIDGE_DATABASE_TEST_URL
@@ -57,6 +63,8 @@ const SHA = `source-sha256:${'a'.repeat(64)}`
 const patch = (await import('~~/server/api/agency/banner-studio/projects/[id].patch')).default as unknown as (event: H3Event) => Promise<Record<string, unknown>>
 const duplicate = (await import('~~/server/api/agency/banner-studio/projects/[id]/duplicate.post')).default as unknown as (event: H3Event) => Promise<Record<string, unknown>>
 const remove = (await import('~~/server/api/agency/banner-studio/projects/[id].delete')).default as unknown as (event: H3Event) => Promise<Record<string, unknown>>
+const list = (await import('~~/server/api/agency/banner-studio/projects/index.get')).default
+const restore = (await import('~~/server/api/agency/banner-studio/projects/[id]/restore.post')).default as unknown as typeof patch
 const create = (await import('~~/server/api/agency/banner-studio/projects/index.post')).default as unknown as (event: H3Event) => Promise<Record<string, unknown>>
 const call = (handler: typeof patch, id: string, body: Record<string, unknown> = {}) => handler({ params: { id }, body, context: {} } as unknown as H3Event)
 
@@ -64,7 +72,7 @@ describe.runIf(Boolean(databaseUrl))('marketing Banner Studio browser writes on 
   let db: pg.Client
   let schema: string
   let project: string
-  const projectRow = async () => (await db.query('SELECT name, client_id, tags, canvas_data FROM banner_projects WHERE id = $1', [project])).rows[0]
+  const projectRow = async () => (await db.query('SELECT name, client_id, tags, canvas_data, binned_at FROM banner_projects WHERE id = $1', [project])).rows[0]
 
   beforeEach(async () => {
     schema = `banner_marketing_${randomUUID().replaceAll('-', '')}`
@@ -73,11 +81,12 @@ describe.runIf(Boolean(databaseUrl))('marketing Banner Studio browser writes on 
     await db.query(`CREATE SCHEMA "${schema}"`)
     await db.query(`SET search_path TO "${schema}", public, pg_catalog`)
     await db.query(`
-      CREATE TABLE team_members(id UUID PRIMARY KEY,is_active BOOLEAN,user_role TEXT,custom_role_id UUID);
+      CREATE TABLE team_members(id UUID PRIMARY KEY,is_active BOOLEAN,user_role TEXT,custom_role_id UUID, dashboard_preferences JSONB);
       CREATE TABLE custom_roles(id UUID PRIMARY KEY,slug TEXT,is_system BOOLEAN,is_read_only BOOLEAN);
       CREATE TABLE role_permission_groups(role_id UUID,permission_group TEXT);
-      CREATE TABLE agency_clients(id UUID PRIMARY KEY,is_active BOOLEAN);
-      CREATE TABLE banner_folders(id UUID PRIMARY KEY);
+      CREATE TABLE agency_clients(id UUID PRIMARY KEY,is_active BOOLEAN, name TEXT);
+      CREATE TABLE client_team_assignments(client_id UUID, team_member_id UUID);
+      CREATE TABLE banner_folders(id UUID PRIMARY KEY, parent_id UUID REFERENCES banner_folders(id), name TEXT);
       CREATE TABLE banner_projects(id UUID PRIMARY KEY DEFAULT gen_random_uuid(), name VARCHAR(255) NOT NULL,
         client_id UUID REFERENCES agency_clients(id), folder_id UUID REFERENCES banner_folders(id), canvas_data JSONB NOT NULL DEFAULT '{}', thumbnail_url TEXT,
         status VARCHAR(20) DEFAULT 'draft', tags TEXT[] DEFAULT '{}', created_by UUID NOT NULL REFERENCES team_members(id),
@@ -86,6 +95,7 @@ describe.runIf(Boolean(databaseUrl))('marketing Banner Studio browser writes on 
       CREATE TABLE banner_versions(id UUID PRIMARY KEY DEFAULT gen_random_uuid(), project_id UUID, version_number INT,
         canvas_data JSONB, created_by UUID, created_at TIMESTAMPTZ DEFAULT NOW());
     `)
+    await db.query(readFileSync('server/database/migrations/522_banner_folder_bin.sql', 'utf8'))
     await db.query('INSERT INTO custom_roles VALUES($1,\'marketing\',FALSE,FALSE)', [ROLE])
     await db.query('INSERT INTO role_permission_groups VALUES($1,\'MARKETING_MANAGEMENT\')', [ROLE])
     await db.query('INSERT INTO team_members VALUES($1,TRUE,\'staff\',$2)', [STAFF, ROLE])
@@ -167,9 +177,41 @@ describe.runIf(Boolean(databaseUrl))('marketing Banner Studio browser writes on 
       await db.query('UPDATE agency_clients SET is_active = TRUE')
     }
     expect(await projectRow()).toBeDefined()
-    expect(await call(remove, project)).toEqual({ success: true, message: 'Project deleted' })
+    expect(await call(remove, project)).toEqual({ success: true, message: 'Design moved to recycling bin' })
+    expect(await projectRow()).toMatchObject({ client_id: ACTIVE, binned_at: expect.any(Date) })
+    expect((await db.query('SELECT COUNT(*)::int AS n FROM banner_dissections')).rows[0].n).toBe(1)
+  })
+
+  it('keeps client designs accessible through folder deletion, restoration and expiry', async () => {
+    const root = randomUUID(), child = randomUUID()
+    await db.query('INSERT INTO banner_folders(id, name) VALUES ($1, $2)', [root, 'Campaign'])
+    await db.query('INSERT INTO banner_folders(id, parent_id, name) VALUES ($1, $2, $3)', [child, root, 'Logos'])
+    await db.query('UPDATE banner_projects SET folder_id = $1 WHERE id = $2', [child, project])
+    const library = (view: string) => list({ query: { clientId: ACTIVE, view }, context: {} } as unknown as H3Event)
+    await setBannerFolderBinned(root, true)
+    expect(await library('library')).toContainEqual(expect.objectContaining({ id: project, clientId: ACTIVE, folderId: null }))
+    expect(await library('bin')).toEqual([])
+    await expect(db.query('INSERT INTO banner_projects(name, created_by, folder_id) VALUES ($1,$2,$3)', ['New', STAFF, child])).rejects.toMatchObject({ code: '23503' })
+    await db.query('INSERT INTO banner_folders(id, name) VALUES ($1,$2)', [randomUUID(), 'Campaign'])
+    await setBannerFolderBinned(root, false)
+    expect((await db.query('SELECT name FROM banner_folders WHERE id=$1', [root])).rows[0].name).toBe('Campaign (restored)')
+    expect(await library('library')).toContainEqual(expect.objectContaining({ id: project, folderId: child }))
+    await setBannerFolderBinned(root, true)
+    await db.query('UPDATE banner_folders SET binned_at = now() - interval \'31 days\' WHERE bin_root_id = $1', [root])
+    await clearExpiredBannerBin()
+    expect((await db.query('SELECT id FROM banner_folders WHERE id=$1', [child])).rows).toEqual([])
+    expect(await library('library')).toContainEqual(expect.objectContaining({ id: project, clientId: ACTIVE, folderId: null }))
+    expect(await projectRow()).toMatchObject({ client_id: ACTIVE, binned_at: null, canvas_data: { mrec: { layers: [] } } })
+    await call(remove, project)
+    expect(await library('library')).toEqual([])
+    expect(await library('bin')).toContainEqual(expect.objectContaining({ id: project, clientId: ACTIVE }))
+    await call(restore, project)
+    expect(await library('library')).toContainEqual(expect.objectContaining({ id: project, clientId: ACTIVE }))
+    await call(remove, project)
+    await db.query('UPDATE banner_projects SET binned_at = now() - interval \'31 days\' WHERE id=$1', [project])
+    await expect(call(restore, project)).rejects.toMatchObject({ statusCode: 409 })
+    await clearExpiredBannerBin()
     expect(await projectRow()).toBeUndefined()
-    expect((await db.query('SELECT COUNT(*)::int AS n FROM banner_dissections')).rows[0].n).toBe(0)
   })
 
   it('creates only into an active client, re-checked atomically by the INSERT', async () => {
@@ -193,6 +235,6 @@ describe.runIf(Boolean(databaseUrl))('marketing Banner Studio browser writes on 
     expect(await call(duplicate, project)).toMatchObject({ name: 'Legacy (Copy)' })
     expect(await create({ body: { name: 'Legacy create', clientId: ACTIVE }, context: {} } as unknown as H3Event)).toMatchObject({ clientId: ACTIVE })
     await db.query('UPDATE banner_projects SET review_status = \'approved\' WHERE id = $1', [project])
-    expect(await call(remove, project)).toMatchObject({ success: true })
+    await expect(call(remove, project)).rejects.toMatchObject({ statusCode: 403 })
   })
 })

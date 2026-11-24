@@ -159,9 +159,10 @@ const API_INVENTORY = {
   // TheBrief ZIP preparation adds one authenticated, write-guarded POST.
   // Prepare adds one write-access, project-scoped POST that saves a missing preview frame
   // (video/assets/[id]/thumbnail.post.ts) in its own God mode family; no authority bypass.
-  // Banner folders adds three scoped mutations for shared edits and personal pins.
-  totalRouteFiles: 2413,
-  mutationRouteFiles: 1318,
+  // Banner folders have three scoped mutations for shared edits and personal pins.
+  // Restoring a binned design adds one client-scoped mutation guarded by setDesignBinned.
+  totalRouteFiles: 2414,
+  mutationRouteFiles: 1319,
   explicitlyGuardedMutationFiles: 440,
   guardedMutationFilesWithTransactionCall: 58
 } as const
@@ -215,8 +216,8 @@ describe('God mode route isolation inventory', () => {
   // Governance phase 4 adds one client-scoped read (clients/[id]/change-history.get.ts).
       // Marketing alerts adds one cron-secret POST; no authority bypass.
       // Import image as layers adds a guarded POST and a GET and retires the unguarded decompose POST.
-      totalRouteFiles: 2413,
-      mutationRouteFiles: 1318,
+      totalRouteFiles: 2414,
+      mutationRouteFiles: 1319,
       explicitlyGuardedMutationFiles: 440,
       guardedMutationFilesWithTransactionCall: 58
     })

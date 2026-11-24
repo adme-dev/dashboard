@@ -437,3 +437,29 @@ describe('canvas resize handles', () => {
     expect(studio.canUndo.value).toBe(false)
   })
 })
+
+it('drags the whole saved group from any member at canvas zoom and undoes it in one step', async () => {
+  const original = studio.state.sets.mrec.layers[0]!
+  const group = { id: 'logo', name: 'ADME logo' }
+  original.timelineGroup = group
+  studio.state.sets.mrec.layers.push({ ...original, id: 2, x: 80, timelineGroup: { ...group } }, { ...original, id: 3, x: 130, timelineGroup: null })
+  studio.state.wsScale = 0.5
+  studio.state.snapToGrid = false
+  mount(Artboard, { formatKey: 'mrec', isActive: true })
+  const positions = () => studio.activeLayers.value.map(l => l.x)
+  const member = host.querySelector('#lyr-2')!
+  member.dispatchEvent(pointer('pointerdown', 50))
+  window.dispatchEvent(pointer('pointermove', 65))
+  await Vue.nextTick()
+  expect(studio.selectedGroup.value?.id).toBe('logo')
+  expect(positions()).toEqual([40, 80, 130])
+  expect(host.querySelector<HTMLElement>('#lyr-1')!.style.translate).toBe('30px 0px')
+  window.dispatchEvent(pointer('pointerup', 65))
+  expect(positions()).toEqual([70, 110, 130])
+  studio.undo()
+  expect(positions()).toEqual([40, 80, 130])
+  member.dispatchEvent(pointer('pointerdown', 50))
+  window.dispatchEvent(pointer('pointermove', 80))
+  window.dispatchEvent(pointer('pointercancel', 80))
+  expect(positions()).toEqual([40, 80, 130])
+})

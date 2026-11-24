@@ -40,6 +40,7 @@ const state = reactive({
   activeKey: '',
   layoutView: 'all' as 'all' | 'single',
   selectedLayerId: null as number | null,
+  selectedGroupId: null as string | null,
   clipboard: null as Layer | null,
   wsScale: 1,
   isDirty: false,
@@ -535,7 +536,18 @@ export function useBannerStudio() {
     state.isDirty = true
   }
 
+  const selectedGroup = computed(() => {
+    if (!state.selectedGroupId || state.selectedLayerId != null) return null
+    return activeLayers.value.find(layer => layer.timelineGroup?.id === state.selectedGroupId)?.timelineGroup ?? null
+  })
+
+  function selectGroup(id: string) {
+    selectLayer(null)
+    state.selectedGroupId = id
+  }
+
   function selectLayer(id: number | null) {
+    state.selectedGroupId = null
     if (id !== state.selectedLayerId) state.selectedKeyframe = null
     state.selectedLayerId = id
 
@@ -558,6 +570,7 @@ export function useBannerStudio() {
 
   function setActiveArtboard(key: string) {
     if (!state.sets[key]) return
+    state.selectedGroupId = null
     state.selectedLayerId = null
     state.activeKey = key
     if (state.layoutView === 'single') zoomToFitFormat(key)
@@ -708,6 +721,7 @@ export function useBannerStudio() {
     })
 
     state.activeKey = setDef.keys[0]
+    state.selectedGroupId = null
     state.selectedLayerId = null
     zoomToFitFormat(setDef.keys[0])
     state.isDirty = true
@@ -724,6 +738,7 @@ export function useBannerStudio() {
         layers: tpl.layers(fmt).map(l => migrateLayer({ ...l, id: nextId() })),
       }
     })
+    state.selectedGroupId = null
     state.selectedLayerId = null
     state.isDirty = true
   }
@@ -739,6 +754,7 @@ export function useBannerStudio() {
     })
     state.accentColor = brandColor(kit, 'accent') || state.accentColor
     state.bgColor = state.sets[state.activeKey]?.layers.find(layer => layer.type === 'bg')?.bgColor || state.bgColor
+    state.selectedGroupId = null
     state.selectedLayerId = null
     state.isDirty = true
     pushUndo({
@@ -779,6 +795,7 @@ export function useBannerStudio() {
 
     // Don't auto-select bg layers — keep current selection
     if (bgCount > 0) {
+      state.selectedGroupId = null
       state.selectedLayerId = null
     }
 
@@ -912,6 +929,7 @@ export function useBannerStudio() {
     state.activeKey = state.setKeys[0] || ''
     state.wsScale = 1
     zoomToFitFormat(state.activeKey)
+    state.selectedGroupId = null
     state.selectedLayerId = null
     state.isDirty = false
     // Migrate all layers
@@ -951,6 +969,7 @@ export function useBannerStudio() {
       if (format) FORMATS[key] = format
     }
     state.activeKey = state.setKeys[0] || ''
+    state.selectedGroupId = null
     state.selectedLayerId = null
     state.isDirty = true
     // Migrate all layers
@@ -1353,6 +1372,8 @@ export function useBannerStudio() {
     bringToFront,
     sendToBack,
     selectLayer,
+    selectGroup,
+    selectedGroup,
     // Artboard ops
     setActiveArtboard,
     setLayoutView,

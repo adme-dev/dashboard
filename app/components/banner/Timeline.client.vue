@@ -10,7 +10,7 @@ import { insertTimelineKeyframe, retimeLayerPresence } from '~/utils/banner-time
 import { layerSlideId, resolveSlides, slideRanges } from '~/utils/banner-slides'
 import { timelinePhases } from '~/utils/banner-timeline-phases'
 
-const { state, activeLayers, activeFormat, selectLayer, updateLayer, duplicateLayer, removeLayer, bringToFront, sendToBack, getMotionPathTweens, updateMotionPathTween, addMotionPathTween, removeMotionPathTween } = useBannerStudio()
+const { state, activeLayers, activeFormat, selectGroup, selectLayer, updateLayer, duplicateLayer, removeLayer, bringToFront, sendToBack, getMotionPathTweens, updateMotionPathTween, addMotionPathTween, removeMotionPathTween } = useBannerStudio()
 const { remoteLocks, isLayerLockedByOther } = useBannerRealtime()
 const { inspectorTab } = useBannerInspector()
 const { togglePlay, seekTo, restartTimeline, buildTimeline, pauseTimeline, currentLayerValue, animationPreview } = useBannerTimeline()
@@ -75,11 +75,15 @@ function handleContextGenerateImage() {
 // ── Multi-select ──
 const multiSelectedLayers = ref<number[]>([])
 const collapsedGroups = ref(new Set<string>())
-const { groupLayers, ungroupLayers, canEditGroup } = useBannerTimelineGroups()
+const { groupLayers, ungroupLayers, renameGroup, canEditGroup } = useBannerTimelineGroups()
 const selectedForGrouping = computed(() => activeLayers.value.filter(layer => multiSelectedLayers.value.includes(layer.id)))
 function createTimelineGroup() {
   const id = groupLayers(multiSelectedLayers.value)
-  if (id) multiSelectedLayers.value = []
+  if (id) chooseGroup(id)
+}
+function chooseGroup(id: string) {
+  multiSelectedLayers.value = []
+  selectGroup(id)
 }
 function toggleGroup(id: string) {
   const next = new Set(collapsedGroups.value)
@@ -1029,24 +1033,35 @@ onUnmounted(() => {
           </div>
           <!-- Layer labels + keyframe sub-labels -->
           <template v-for="row in displayRows" :key="row.id">
-            <div v-if="row.kind === 'group'" class="flex h-9 items-center gap-1 border-b border-default bg-elevated/70 px-2">
+            <div
+              v-if="row.kind === 'group'"
+              class="flex h-9 cursor-pointer items-center gap-1 border-b border-default px-2"
+              :class="state.selectedGroupId === row.id ? 'bg-primary/10' : 'bg-elevated/70'"
+              @click="chooseGroup(row.id)"
+            >
               <ShadcnButton
                 variant="ghost"
                 size="icon-xs"
                 :aria-label="`${collapsedGroups.has(row.id) ? 'Expand' : 'Collapse'} ${row.name}`"
                 :aria-expanded="!collapsedGroups.has(row.id)"
-                @click="toggleGroup(row.id)"
+                @click.stop="toggleGroup(row.id)"
               >
                 <UIcon :name="collapsedGroups.has(row.id) ? 'i-lucide-chevron-right' : 'i-lucide-chevron-down'" class="size-3" />
               </ShadcnButton>
-              <UIcon name="i-lucide-group" class="size-3 text-muted" /><span class="min-w-0 flex-1 truncate text-xs font-medium">{{ row.name }}</span><span class="text-[10px] text-muted">{{ row.layers.length }}</span>
+              <UIcon name="i-lucide-group" class="size-3 text-muted" /><BannerEditableName
+                kind="Group"
+                class="flex-1 text-xs font-medium"
+                :name="row.name"
+                :disabled="!canEditGroup(row.layers)"
+                @rename="renameGroup(row.id, $event)"
+              /><span class="text-[10px] text-muted">{{ row.layers.length }}</span>
               <ShadcnButton
                 variant="ghost"
                 size="icon-xs"
                 :aria-label="`Ungroup ${row.name}`"
                 :disabled="!canEditGroup(row.layers)"
                 title="Ungroup layers"
-                @click="ungroupLayers(row.id)"
+                @click.stop="ungroupLayers(row.id)"
               >
                 <UIcon name="i-lucide-ungroup" class="size-3" />
               </ShadcnButton>
@@ -1081,7 +1096,14 @@ onUnmounted(() => {
                   <UIcon name="i-lucide-chevron-right" class="w-3 h-3" />
                 </UButton>
                 <UIcon :name="LAYER_ICONS[layer.type]" class="w-3 h-3 shrink-0" :style="{ color: getLayerColor(layer) }" />
-                <span class="min-w-0 flex-1 text-xs truncate text-default" :class="state.selectedLayerId === layer.id ? 'font-semibold' : ''">{{ layer.name }}</span>
+                <BannerEditableName
+                  kind="Layer"
+                  class="flex-1 text-xs text-default"
+                  :class="{ 'font-semibold': state.selectedLayerId === layer.id }"
+                  :name="layer.name"
+                  :disabled="!canEditGroup([layer])"
+                  @rename="canEditGroup([layer]) && updateLayer(layer.id, { name: $event })"
+                />
                 <UButton
                   color="neutral"
                   variant="ghost"

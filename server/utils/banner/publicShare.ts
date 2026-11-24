@@ -19,7 +19,7 @@ export async function loadPublicBannerShare(event: H3Event, token = getRouterPar
     SELECT p.id, p.name, p.client_id AS "clientId", c.name AS "clientName", p.canvas_data AS "canvasData", p.updated_at AS "updatedAt"
     FROM banner_projects p
     LEFT JOIN agency_clients c ON c.id = p.client_id
-    WHERE p.id = $1
+    WHERE p.id = $1 AND p.binned_at IS NULL
   `, [link.projectId])
   if (!project) throw createError({ statusCode: 404, statusMessage: 'Banner not found' })
   const canvas = typeof project.canvasData === 'string' ? JSON.parse(project.canvasData) : project.canvasData
