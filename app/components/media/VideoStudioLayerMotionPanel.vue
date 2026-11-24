@@ -157,23 +157,10 @@ async function generate() {
     </div>
 
     <ul class="mt-3 space-y-2">
-      <li v-for="layer in layers" :key="layer.id" class="grid grid-cols-[minmax(0,1fr)_9.5rem] items-center gap-2">
-        <div class="min-w-0">
-          <p class="truncate text-xs text-default">
-            {{ layer.name }}
-          </p>
-          <UButton
-            v-if="motionOn && props.motionModel && canGenerate(layer)"
-            class="-ml-1.5 mt-0.5"
-            icon="i-lucide-clapperboard"
-            size="xs"
-            variant="ghost"
-            color="primary"
-            label="Generate motion"
-            :disabled="generating"
-            @click="askToGenerate(layer)"
-          />
-        </div>
+      <li v-for="layer in layers" :key="layer.id" class="grid grid-cols-[minmax(0,1fr)_9.5rem] items-center gap-x-2 gap-y-1">
+        <p class="truncate text-xs text-default">
+          {{ layer.name }}
+        </p>
         <p v-if="hasGeneratedLayerMotion(layer)" class="text-right text-xs text-muted">
           Generated clip
         </p>
@@ -188,6 +175,18 @@ async function generate() {
           :disabled="savingLayerId !== null || generating"
           :aria-label="`Motion for ${layer.name}`"
           @update:model-value="value => setPreset(layer, String(value))"
+        />
+        <!-- On its own line: the inspector is narrow and the label must not be cut off. -->
+        <UButton
+          v-if="motionOn && props.motionModel && canGenerate(layer)"
+          class="col-span-2 -ml-1.5 justify-self-start"
+          icon="i-lucide-clapperboard"
+          size="xs"
+          variant="ghost"
+          color="primary"
+          label="Generate motion"
+          :disabled="generating"
+          @click="askToGenerate(layer)"
         />
       </li>
     </ul>
