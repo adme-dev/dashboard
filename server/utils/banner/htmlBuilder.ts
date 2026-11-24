@@ -111,7 +111,7 @@ function layerHasKeyframes(l: Layer): boolean {
 /** GSAP property name for keyframe property (bg layers use autoAlpha for opacity) */
 function kfGsapProp(prop: KeyframeProperty, isBg: boolean): string {
   if (prop === 'opacity' && isBg) return 'autoAlpha'
-  return prop
+  return prop === 'originY' ? '"--xf-origin-y"' : prop
 }
 
 /** Generate GSAP animation JS lines for a keyframe-based layer */
@@ -140,11 +140,12 @@ function buildKeyframeAnimLines(l: Layer, cycleEnd?: number): string[] {
     if (skipXY && (prop === 'x' || prop === 'y')) continue
     const sorted = [...keyframes].sort((a, b) => a.time - b.time)
     const gProp = kfGsapProp(prop as KeyframeProperty, isBg)
-    const first = sorted[0]
+    const target = l.textTilt && prop !== 'opacity' ? `'[data-id="${l.id}"] [data-banner-tilt]'` : sel
+      const first = sorted[0]
     if (!first) continue
 
     // Set initial value
-    lines.push(`  tl.set(${sel}, { ${gProp}: ${first.value} }, ${first.time});`)
+    lines.push(`  tl.set(${target}, { ${gProp}: ${first.value} }, ${first.time});`)
 
     // Tweens between keyframes
     for (let i = 0; i < sorted.length - 1; i++) {
@@ -153,12 +154,12 @@ function buildKeyframeAnimLines(l: Layer, cycleEnd?: number): string[] {
       if (!from || !to) continue
       const dur = to.time - from.time
       if (dur === 0) {
-        lines.push(`  tl.set(${sel}, { ${gProp}: ${to.value}, immediateRender: false }, ${to.time});`)
+        lines.push(`  tl.set(${target}, { ${gProp}: ${to.value}, immediateRender: false }, ${to.time});`)
         continue
       }
       const ease = from.easing || 'power2.out'
       const exactDuration = Number(dur.toFixed(3)) === dur ? dur.toFixed(3) : String(dur)
-      lines.push(`  tl.to(${sel}, { ${gProp}: ${to.value}, duration: ${exactDuration}, ease: ${easeToExportExpr(ease)} }, ${from.time});`)
+      lines.push(`  tl.to(${target}, { ${gProp}: ${to.value}, duration: ${exactDuration}, ease: ${easeToExportExpr(ease)} }, ${from.time});`)
     }
   }
 
@@ -259,6 +260,7 @@ export function buildBannerHTML(
           content = `<div data-layer-content style="width:100%;height:100%;box-sizing:border-box;${style.slice(frameStyle.length)}transform:${contentTransform};">${content}</div>`
           style = frameStyle
         }
+        if (l.textTilt) content = `<div data-banner-tilt style="width:${l.textTilt.width}px;height:${l.textTilt.height}px;transform-origin:${l.textTilt.width / 2}px calc(var(--xf-origin-y, ${l.textTilt.height}) * 1px);">${content}</div>`
         return `<div class="layer" data-id="${l.id}" style="${style}">${content}</div>`
       }
       let style = `position:absolute;left:${l.x}px;top:${l.y}px;width:${l.w}px;height:${l.h}px;opacity:${l.opacity};`
@@ -268,6 +270,7 @@ export function buildBannerHTML(
       if (l.clipToPresence && l.startTime > 0) style += 'visibility:hidden;'
       const frame = layerFrameTransform(l)
       if (frame.rotation) style += `transform:rotate(${frame.rotation}deg);`
+      if (l.textTilt) style += `perspective:${l.textTilt.perspective}px;perspective-origin:${l.textTilt.width / 2}px ${l.textTilt.height / 2}px;`
       if (frame.transformPerspective) style += 'backface-visibility:hidden;'
       if (l.mixBlendMode && /^(normal|multiply|screen|overlay|darken|lighten|color-dodge|color-burn|hard-light|soft-light|difference|exclusion|hue|saturation|color|luminosity)$/.test(l.mixBlendMode)) {
         style += `mix-blend-mode:${l.mixBlendMode};`

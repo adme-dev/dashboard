@@ -133,7 +133,7 @@ function transformValues(text) {
   const flip = /^rotateX\((0|-?(?:\d*\.)?\d+deg)\)(?:\s+rotateY\(0(?:deg)?\)\s+rotate3d\(1,\s*1,\s*0,\s*0deg\))?$/.exec(text)
   if (flip) return { rotationX: Number.parseFloat(flip[1]) }
   const values = {}
-  const pattern = /(translateX|translateY|translateZ|translate|rotate|scaleX|scaleY|scale)\(([^)]+)\)/g
+  const pattern = /(translateX|translateY|translateZ|translate|rotateX|rotate|scaleX|scaleY|scale)\(([^)]+)\)/g
   const parts = [...text.matchAll(pattern)]
   if (text.replace(pattern, '').trim()) throw new Error(`Unsupported transform ${text}`)
   let hasRotationOrScale = false
@@ -148,17 +148,17 @@ function transformValues(text) {
       values.y = Number.parseFloat(coords[1])
       continue
     }
-    const unit = name === 'rotate' ? 'deg' : name.startsWith('translate') ? 'px' : ''
+    const unit = name.startsWith('rotate') ? 'deg' : name.startsWith('translate') ? 'px' : ''
     if (!new RegExp(`^-?(?:\\d*\\.)?\\d+(?:${unit})?$`).test(raw)) throw new Error(`Unsupported transform ${text}`)
     const value = Number.parseFloat(raw)
     // Native GSAP composes translation, then rotation, then scale. A translation
     // after a scale/rotation would require matrix-aware interpolation, not just
     // multiplying endpoint coordinates (which changes the path between them).
     if (name.startsWith('translate') && value !== 0 && hasRotationOrScale) throw new Error('Unsupported ordered translation after rotation/scale')
-    if (name === 'rotate' && hasScale) throw new Error('Unsupported rotation after scale')
-    if (name === 'rotate' || name.startsWith('scale')) hasRotationOrScale = true
+    if (name.startsWith('rotate') && hasScale) throw new Error('Unsupported rotation after scale')
+    if (name.startsWith('rotate') || name.startsWith('scale')) hasRotationOrScale = true
     if (name.startsWith('scale')) hasScale = true
-    const properties = name === 'scale' ? ['scaleX', 'scaleY'] : [{ translateX: 'x', translateY: 'y', translateZ: 'z', rotate: 'rotation', scaleX: 'scaleX', scaleY: 'scaleY' }[name]]
+    const properties = name === 'scale' ? ['scaleX', 'scaleY'] : [{ translateX: 'x', translateY: 'y', translateZ: 'z', rotate: 'rotation', rotateX: 'rotationX', scaleX: 'scaleX', scaleY: 'scaleY' }[name]]
     for (const property of properties) {
       if (property in values) throw new Error('Repeated transform function')
       values[property] = value
@@ -332,6 +332,7 @@ function sourceReveal(effect, style, rules) {
 // transform. Overlapping/nested transforms need matrix-aware composition.
 function appendEffect(current, effect, start) {
   if (!effect.tracks || !Object.keys(effect.tracks).length) return current
+  if (current.textTilt || effect.textTilt) throw new Error('Nested 3D text effects need an adapter')
   const at = Math.min(...Object.values(effect.tracks).map(frames => frames[0].time))
   if (Object.entries(current.tracks || {}).some(([property, frames]) => frames.at(-1).time > at + 1e-9 || frames.at(-1).value !== identityValue(property))) throw new Error('Overlapping or unsettled nested effects need an adapter')
   const pivot = effect.transformOrigin || current.transformOrigin
@@ -367,6 +368,20 @@ function effectTracks(effect, style, rules, start, end, warnings, geometry, inte
   if (at < 0 || duration <= 0 || (!intermediate && iterations !== 1 && animationEnd > end + 1e-9)) throw new Error('Animation crosses slide boundary')
   if ((intermediate || iterations > 1) && ((!['', 'none'].includes(css.transform)) || !['', '1'].includes(css.opacity))) throw new Error('Intermediate effect has nonidentity underlying styles')
   const tracks = {}
+  const owner = effect.parentElement
+  const ownerCss = style(owner)
+  const recipeFrames = [...rule.cssRules]
+  const isTextTilt = owner.getAttribute('data-eltype') === 'text'
+    && effect.id === owner.id.replace('element-', 'effIn') && !intermediate && iterations === 1
+    && ['', 'normal'].includes(css.animationDirection) && recipeFrames.length === 2
+    && recipeFrames[0].keyText === '0%' && recipeFrames[1].keyText === '100%'
+    && recipeFrames[0].style.transform === 'translateY(-200px) rotateX(-30deg) scale(0)'
+    && recipeFrames[1].style.transform === 'translateY(0) rotateX(0) scale(1)'
+    && recipeFrames[0].style.transformOrigin === '50% 100%' && recipeFrames[1].style.transformOrigin === '50% 480px'
+  const textTilt = isTextTilt ? { perspective: px(ownerCss.getPropertyValue('perspective')), width: geometry.w, height: geometry.h } : undefined
+  if (textTilt && (!Number.isFinite(textTilt.perspective) || textTilt.perspective < 1 || textTilt.perspective > 100000
+    || !['center', 'center center', '50% 50%'].includes(ownerCss.getPropertyValue('perspective-origin'))
+    || !['', 'none'].includes(ownerCss.transform) || !['', 'none'].includes(css.transform))) throw new Error('Unsupported 3D text perspective')
   const parsedFrames = []
   let transformOrigin
   for (const frame of rule.cssRules) {
@@ -382,8 +397,9 @@ function effectTracks(effect, style, rules, start, end, warnings, geometry, inte
     if (frame.style.opacity !== '') values.opacity = Number(frame.style.opacity)
     if (fractions.includes(0) || fractions.includes(1) || frame.style.transformOrigin) {
       const origin = originPixels(frame.style.transformOrigin || css.transformOrigin, geometry.w, geometry.h)
-      if (transformOrigin && (origin.x !== transformOrigin.x || origin.y !== transformOrigin.y)) throw new Error('Changing transform origins need an adapter')
-      transformOrigin = origin
+      if (!textTilt && transformOrigin && (origin.x !== transformOrigin.x || origin.y !== transformOrigin.y)) throw new Error('Changing transform origins need an adapter')
+      if (textTilt) values.originY = origin.y
+      else transformOrigin = origin
     }
     for (const fraction of fractions) parsedFrames.push({ fraction, values: { ...values }, hasTransform: Boolean(frame.style.transform), easing: cssEase(frame.style.animationTimingFunction || css.animationTimingFunction) })
   }
@@ -403,7 +419,7 @@ function effectTracks(effect, style, rules, start, end, warnings, geometry, inte
       throw new Error('Unsupported depth entrance composition')
     }
   }
-  if (transformProperties.has('rotationX')) {
+  if (transformProperties.has('rotationX') && !textTilt) {
     const owner = effect.parentElement
     const ownerCss = style(owner)
     perspective = px(ownerCss.getPropertyValue('perspective'))
@@ -446,7 +462,7 @@ function effectTracks(effect, style, rules, start, end, warnings, geometry, inte
         ...(index < original.length - 1 ? { easing: reverseEase(original[original.length - index - 2].easing || cssEase(css.animationTimingFunction)) } : {})
       })))
     }
-    if (!intermediate && frames.at(-1).value !== identityValue(property) && !['forwards', 'both'].includes(css.animationFillMode)) throw new Error('Animation reset after completion needs an adapter')
+    if (!(textTilt && property === 'originY') && !intermediate && frames.at(-1).value !== identityValue(property) && !['forwards', 'both'].includes(css.animationFillMode)) throw new Error('Animation reset after completion needs an adapter')
     if (!intermediate && iterations === 1 && animationEnd > end + 1e-9) {
       // The source slide hides this wrapper before its animation completes.
       // Preserve the visible portion and original easing, not a faster tween.
@@ -465,7 +481,7 @@ function effectTracks(effect, style, rules, start, end, warnings, geometry, inte
       if (frames.length > 500) throw new Error('Too many effect keyframes')
     }
   }
-  return { tracks, transformOrigin, perspective }
+  return { tracks, transformOrigin, perspective, ...(textTilt ? { textTilt } : {}) }
 }
 
 // One static text shadow with a hex or rgb()/rgba() colour, in either CSS order.
@@ -649,6 +665,7 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {} } = {}) 
           else effect = appendEffect(effect, effectTracks(exit, style, rules, effectStart, end, warnings, layerBase), effectStart)
         }
         keyframes = effect.tracks || {}
+        if (effect.textTilt) layerBase.textTilt = effect.textTilt
         if (effect.perspective) {
           const allowed = keyframes.z ? ['opacity', 'z', 'rotation', 'scaleX', 'scaleY'] : ['opacity', 'rotationX']
           if (Object.keys(keyframes).some(property => !allowed.includes(property))) throw new Error('Nested 3D transforms need an adapter')
@@ -660,6 +677,7 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {} } = {}) 
         keyframes = {}
         delete layerBase.transformOrigin
         delete layerBase.imageFlipPerspective
+        delete layerBase.textTilt
       }
       // Explicit holds avoid Banner Studio's default entrance/exit fades and
       // preserve the full source duration when the entrance finishes early.
@@ -866,8 +884,8 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {} } = {}) 
         const rotation = transformed.length ? Number.parseFloat(style(transformed[0]).transform.slice(7)) : 0
         if (rotation && (keyframes.scaleX || keyframes.scaleY || keyframes.rotation)) {
           const origin = layerBase.transformOrigin
-          if (keyframes.rotation || !keyframes.scaleX || JSON.stringify(keyframes.scaleX) !== JSON.stringify(keyframes.scaleY)
-            || (origin && (Math.abs(origin.x - layerBase.w / 2) > 0.001 || Math.abs(origin.y - layerBase.h / 2) > 0.001))) {
+          if (!layerBase.textTilt && (keyframes.rotation || !keyframes.scaleX || JSON.stringify(keyframes.scaleX) !== JSON.stringify(keyframes.scaleY)
+            || (origin && (Math.abs(origin.x - layerBase.w / 2) > 0.001 || Math.abs(origin.y - layerBase.h / 2) > 0.001)))) {
             throw new Error('Nested text rotation with scale/rotation needs an adapter')
           }
           // Uniform scale and a static rotation commute when both use the
@@ -880,6 +898,7 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {} } = {}) 
             }
           }
         }
+        if (layerBase.textTilt && rows.length !== 1) throw new Error('3D text entrance requires one source row')
         if (rotation) {
           layerBase.rotation = rotation
           layerBase.transformOrigin = { x: layerBase.w / 2, y: layerBase.h / 2 }

@@ -90,10 +90,11 @@ const KF_PROP_LABELS: Record<KeyframeProperty, string> = {
   scaleY: 'Scale Y',
   rotation: 'Rotation',
   rotationX: 'X-axis rotation',
+  originY: 'Pivot Y',
 }
 
 const visibleKeyframeProperties = computed(() => (Object.keys(KF_PROP_LABELS) as KeyframeProperty[])
-  .filter(property => !['rotationX', 'z'].includes(property) || selectedLayer.value?.imageFlipPerspective))
+  .filter(property => property === 'originY' ? !!selectedLayer.value?.textTilt : property === 'rotationX' ? !!(selectedLayer.value?.textTilt || selectedLayer.value?.imageFlipPerspective) : property !== 'z' || !!selectedLayer.value?.imageFlipPerspective))
 
 const isKeyframeMode = computed(() => selectedLayer.value && hasKeyframes(selectedLayer.value))
 

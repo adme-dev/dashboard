@@ -42,6 +42,7 @@ const KF_GSAP_MAP: Record<KeyframeProperty, string> = {
   scaleY: 'scaleY',
   rotation: 'rotation',
   rotationX: 'rotationX',
+  originY: '--xf-origin-y',
 }
 
 // Default values for each keyframe property (layer's resting state)
@@ -55,6 +56,7 @@ function getDefaultValue(prop: KeyframeProperty, layer: Layer): number {
     case 'scaleY': return 1
     case 'rotation': return layerFrameTransform(layer).rotation
     case 'rotationX': return 0
+    case 'originY': return layer.textTilt?.height ?? layer.h / 2
   }
 }
 
@@ -209,9 +211,11 @@ function addKeyframeTrack(
   prop: KeyframeProperty,
   keyframes: Keyframe[],
   isBg: boolean,
+  layer?: Layer,
 ) {
   if (keyframes.length < 2) return
 
+  if (layer?.textTilt && prop !== 'opacity') el = el.querySelector<HTMLElement>('[data-banner-tilt]') || el
   // Sort keyframes by time
   const sorted = [...keyframes].sort((a, b) => a.time - b.time)
 
@@ -262,7 +266,7 @@ function buildLayerKeyframes(tl: gsap.core.Timeline, el: HTMLElement, layer: Lay
   for (const [prop, keyframes] of Object.entries(kfs)) {
     if (!keyframes || keyframes.length < 2) continue
     if (skipXY && (prop === 'x' || prop === 'y')) continue
-    addKeyframeTrack(tl, el, prop as KeyframeProperty, keyframes, isBg)
+    addKeyframeTrack(tl, el, prop as KeyframeProperty, keyframes, isBg, layer)
   }
 
   if (layer.clipToPresence) {
@@ -275,6 +279,7 @@ function buildLayerKeyframes(tl: gsap.core.Timeline, el: HTMLElement, layer: Lay
   const startTime = layer.startTime || 0
   const props: KeyframeProperty[] = ['opacity', 'x', 'y', 'scaleX', 'scaleY', 'rotation']
   for (const prop of props) {
+    if (layer.textTilt && prop !== 'opacity') continue
     if (kfs[prop] && kfs[prop]!.length >= 2) continue
     const gsapProp = (prop === 'opacity' && isBg) ? 'autoAlpha' : KF_GSAP_MAP[prop]
     const val = getDefaultValue(prop, layer)
@@ -659,6 +664,12 @@ export function useBannerTimeline() {
           if (layer.reveal?.type === 'tvExpand') gsap.set(child, { clearProps: 'maskSize,webkitMaskSize' })
           if (child.hasAttribute('data-banner-reveal-glow')) gsap.set(child, { opacity: 0 })
         })
+        const tilt = el.querySelector<HTMLElement>('[data-banner-tilt]')
+        if (tilt && layer.textTilt) {
+          gsap.killTweensOf(tilt)
+          gsap.set(tilt, { clearProps: 'transform' })
+          gsap.set(tilt, { x: 0, y: 0, rotationX: 0, scaleX: 1, scaleY: 1, '--xf-origin-y': layer.textTilt.height })
+        }
         gsap.killTweensOf(el)
         // Clear animated transforms, then restore the model's resting transform
         // through GSAP so both its cache and the inline style agree. Vue does not

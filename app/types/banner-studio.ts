@@ -23,7 +23,7 @@ export type AnimOutType =
   | 'zoomIn' | 'zoomOut' | 'spinOut'
 
 // Keyframe animation types (Phase 4b)
-export type KeyframeProperty = 'opacity' | 'x' | 'y' | 'z' | 'scaleX' | 'scaleY' | 'rotation' | 'rotationX'
+export type KeyframeProperty = 'opacity' | 'x' | 'y' | 'z' | 'scaleX' | 'scaleY' | 'rotation' | 'rotationX' | 'originY'
 
 export interface Keyframe {
   time: number    // seconds on timeline
@@ -85,6 +85,7 @@ export interface Layer {
   opacityTrackSource?: { opacity: number, frames: Keyframe[] }
   rotation?: number
   /** A centered perspective on an image's editable X-axis flip. */
+  textTilt?: { perspective: number, width: number, height: number }
   imageFlipPerspective?: number
   /** Source content scheduled after the authored loop, retained hidden for editing. */
   sourceInactiveTiming?: { start: number, loopEnd: number }

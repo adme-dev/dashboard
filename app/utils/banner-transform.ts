@@ -11,21 +11,22 @@ export function layerFlipTransform(layer: Pick<Layer, 'flipX' | 'flipY'>): strin
 }
 
 /** Project the frame first, then rotate the image within that plane. */
-export function layerFrameTransform(layer: Pick<Layer, 'rotation' | 'imageFlipPerspective'>) {
+export function layerFrameTransform(layer: Pick<Layer, 'rotation' | 'imageFlipPerspective' | 'textTilt'>) {
+  if (layer.textTilt) return { rotation: 0 }
   const perspective = layer.imageFlipPerspective
   if (perspective && Number.isFinite(perspective) && perspective > 0) return { rotation: 0, transformPerspective: perspective }
   return { rotation: layer.rotation || 0 }
 }
 
-export function layerContentTransform(layer: Pick<Layer, 'flipX' | 'flipY' | 'rotation' | 'imageFlipPerspective'>): string | undefined {
+export function layerContentTransform(layer: Pick<Layer, 'flipX' | 'flipY' | 'rotation' | 'imageFlipPerspective' | 'textTilt'>): string | undefined {
   const flip = layerFlipTransform(layer)
-  if (!layerFrameTransform(layer).transformPerspective || !layer.rotation || !Number.isFinite(layer.rotation)) return flip
+  if ((!layer.textTilt && !layerFrameTransform(layer).transformPerspective) || !layer.rotation || !Number.isFinite(layer.rotation)) return flip
   return `rotate(${layer.rotation}deg)${flip ? ` ${flip}` : ''}`
 }
 
 /** Rotate the whole motion, retaining imported rotation curves and their timing. */
 export function layerRotationChange(layer: Layer, rotation: number): Partial<Layer> {
-  if (layer.imageFlipPerspective) return { rotation }
+  if (layer.imageFlipPerspective || layer.textTilt) return { rotation }
   const frames = layer.keyframes?.rotation
   if (!frames?.length) return { rotation }
   const delta = rotation - (layer.rotation || 0)

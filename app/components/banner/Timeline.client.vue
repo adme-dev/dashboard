@@ -144,7 +144,8 @@ const KF_PROPERTIES: { key: KeyframeProperty, label: string, icon: string }[] = 
   { key: 'scaleX', label: 'Scale X', icon: 'Sx' },
   { key: 'scaleY', label: 'Scale Y', icon: 'Sy' },
   { key: 'rotation', label: 'Rotation', icon: 'R' },
-  { key: 'rotationX', label: 'X-axis rotation', icon: 'Rx' }
+  { key: 'rotationX', label: 'X-axis rotation', icon: 'Rx' },
+  { key: 'originY', label: 'Pivot Y', icon: 'Py' }
 ]
 
 /** Unique tween boundary times for a layer's motion path (keyframe diamonds) */
@@ -154,9 +155,9 @@ function tweenBoundaryTimes(layer: any): number[] {
 }
 
 /** Get visible KF properties for a layer — hides x/y when motion path is active */
-function getVisibleKfProperties(layer?: Pick<Layer, 'motionPath' | 'imageFlipPerspective'>) {
+function getVisibleKfProperties(layer?: Pick<Layer, 'motionPath' | 'imageFlipPerspective' | 'textTilt'>) {
   return KF_PROPERTIES.filter(({ key }) =>
-    (!['rotationX', 'z'].includes(key) || !!layer?.imageFlipPerspective)
+    (key === 'originY' ? !!layer?.textTilt : key === 'rotationX' ? !!(layer?.textTilt || layer?.imageFlipPerspective) : key !== 'z' || !!layer?.imageFlipPerspective)
     && (!(layer?.motionPath && layer.motionPath.length >= 2) || (key !== 'x' && key !== 'y'))
   )
 }

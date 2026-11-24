@@ -25,6 +25,7 @@ const layer = z.object({
   slideFade: z.object({ id: z.string().max(100).regex(/^[a-zA-Z0-9:_-]+$/), start: z.number().min(0).max(300), end: z.number().positive().max(300), duration: z.number().min(0).max(5), ease: z.string().regex(/^cubic-bezier\([\d.,\s-]+\)$/) }).strict().optional(),
   textRuns: z.array(z.object({ text: z.string().max(10000), fontSize: number.positive().optional(), top: number.optional(), color: z.string().refine(isBannerInlineTextColor).optional(), gradient: z.string().refine(isBannerInlineTextGradient).optional(), fontFamily: z.string().max(150).regex(/^[\w .-]+$/).optional(), fontWeight: z.number().int().min(1).max(1000).optional(), fontStyle: z.enum(['normal', 'italic']).optional() }).strict()).max(100).optional(),
   borderWidth: number.nonnegative().max(100).optional(), borderColor: css.optional(), textColor: css.optional(),
+  textTilt: z.object({ perspective: number.min(1), width: number.positive().max(4096), height: number.positive().max(4096) }).strict().optional(),
   rotation: number.optional(), imageFlipPerspective: number.min(1).optional(), flipX: z.boolean().optional(), flipY: z.boolean().optional(), borderRadius: number.nonnegative().optional(), transformOrigin: z.object({ x: number, y: number }).optional(),
   mixBlendMode: z.enum(['normal', 'multiply', 'screen', 'overlay', 'darken', 'lighten', 'color-dodge', 'color-burn', 'hard-light', 'soft-light', 'difference', 'exclusion', 'hue', 'saturation', 'color', 'luminosity']).optional(),
   text: z.string().max(10000).optional(), textTransform: z.enum(['uppercase', 'lowercase', 'capitalize', 'none']).optional(), fontFamily: z.string().max(150).regex(/^[\w ,.-]+$/).optional(),
@@ -49,7 +50,7 @@ const layer = z.object({
   videoCrop: z.object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1), w: z.number().min(0.01).max(1), h: z.number().min(0.01).max(1) }).strict()
     .refine(crop => crop.x + crop.w <= 1.000001 && crop.y + crop.h <= 1.000001, 'Video crop falls outside the source').optional(),
   mediaStart: z.number().min(0).max(300).optional(), mediaEnd: z.number().positive().max(300).optional(), mediaLoop: z.boolean().optional(),
-  keyframes: z.object({ opacity: track.optional(), x: track.optional(), y: track.optional(), z: track.optional(), scaleX: track.optional(), scaleY: track.optional(), rotation: track.optional(), rotationX: track.optional() }).optional()
+  keyframes: z.object({ opacity: track.optional(), x: track.optional(), y: track.optional(), z: track.optional(), scaleX: track.optional(), scaleY: track.optional(), rotation: track.optional(), rotationX: track.optional(), originY: track.optional() }).optional()
 }).strict()
 const binary = z.object({ path: local, fileName: z.string().max(150).regex(/^[\w .-]+$/), sha256: sha, base64: z.string().max(32 * 1024 * 1024).regex(/^[A-Za-z0-9+/]*={0,2}$/), mimeType: z.string().max(100) })
 export const theBriefSourceSchema = z.object({
@@ -143,7 +144,12 @@ export function parseTheBriefPackage(input: unknown): TheBriefPackage {
       if (item.slideFade && !item.slideId) throw new Error('Slide fade requires scene ownership')
       if (item.src && !result.assets.some(a => a.path === item.src)) throw new Error('Missing packaged asset')
       if (item.textRuns && item.textRuns.map(run => run.text).join('') !== item.text) throw new Error('Text runs differ from layer text')
-      if (item.imageFlipPerspective || item.keyframes?.rotationX || item.keyframes?.z) {
+      if (item.textTilt || item.keyframes?.originY) {
+        if (item.type !== 'text' || !item.textTilt || !item.keyframes?.originY || !item.keyframes.rotationX
+          || item.imageFlipPerspective || item.wordPop || item.reveal || item.keyframes.z || item.keyframes.rotation
+          || item.textTilt.width !== item.w || item.keyframes.rotationX.some(frame => Math.abs(frame.value) > 90)) throw new Error('Invalid TheBrief 3D text entrance')
+      }
+      if (item.imageFlipPerspective || (!item.textTilt && item.keyframes?.rotationX) || item.keyframes?.z) {
         if (item.type !== 'image' || !item.imageFlipPerspective || !(item.keyframes?.rotationX || item.keyframes?.z)
           || (item.keyframes.rotationX && item.keyframes.z)
           || item.keyframes.rotationX?.some(frame => Math.abs(frame.value) > 90)
