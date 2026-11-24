@@ -82,17 +82,21 @@ function legacyLayerContent(element, style, kind) {
   const legacy = style(content)
   const sides = ['Top', 'Right', 'Bottom', 'Left']
   const corners = ['TopLeft', 'TopRight', 'BottomLeft', 'BottomRight']
-  const radii = corners.map(corner => px(legacy[`border${corner}Radius`] || '0px'))
+  const radii = corners.map(corner => {
+    const value = legacy[`border${corner}Radius`] || '0px'
+    return kind === 'shape' && value === '100%' ? 100 : px(value)
+  })
   if (content.children.length || legacy.width !== '100%' || legacy.height !== '100%'
     || !['', 'block'].includes(legacy.display) || !['', 'visible'].includes(contentVisibility)
     || (kind === 'image' && (legacy.backgroundSize !== 'cover' || legacy.backgroundPosition !== '50% 50%' || legacy.backgroundRepeat !== 'no-repeat'))
-    || sides.some(side => px(legacy[`border${side}Width`] || '0px') !== 0)
+    || (kind !== 'shape' && sides.some(side => px(legacy[`border${side}Width`] || '0px') !== 0))
     || sides.some(side => px(legacy[`padding${side}`] || '0px') !== 0 || px(legacy[`margin${side}`] || '0px') !== 0)
     || ['top', 'right', 'bottom', 'left'].some(side => !['', 'auto', '0px'].includes(legacy[side]))
     || radii.some(radius => !Number.isFinite(radius) || radius < 0) || new Set(radii).size !== 1
     || (kind === 'image' && radii.some(radius => radius !== 0))
     || (kind === 'image' && !['', 'transparent', 'rgba(0, 0, 0, 0)'].includes(legacy.backgroundColor))
-    || !['', '1'].includes(legacy.opacity) || !['', 'none'].includes(legacy.filter)
+    || (legacy.opacity !== '' && (!Number.isFinite(Number(legacy.opacity)) || Number(legacy.opacity) < 0 || Number(legacy.opacity) > 1))
+    || !['', 'none'].includes(legacy.filter)
     || !['', 'none'].includes(legacy.transform) || !['', 'none'].includes(legacy.boxShadow)
     || !['', 'none'].includes(legacy.clipPath) || !['', 'none'].includes(legacy.getPropertyValue('mask-image'))
     || !['', 'normal'].includes(legacy.mixBlendMode)
@@ -132,6 +136,9 @@ function transformValues(text) {
   // TheBrief pads its X-axis flip with two identity rotations.
   const flip = /^rotateX\((0|-?(?:\d*\.)?\d+deg)\)(?:\s+rotateY\(0(?:deg)?\)\s+rotate3d\(1,\s*1,\s*0,\s*0deg\))?$/.exec(text)
   if (flip) return { rotationX: Number.parseFloat(flip[1]) }
+  // A planar scale3d with a unit depth is exactly the two planar scale axes.
+  const planarScale = /^scale3d\((-?(?:\d*\.)?\d+),\s*(-?(?:\d*\.)?\d+),\s*1\)$/.exec(text)
+  if (planarScale) return { scaleX: Number(planarScale[1]), scaleY: Number(planarScale[2]) }
   const values = {}
   const pattern = /(translateX|translateY|translateZ|translate|rotateX|rotate|scaleX|scaleY|scale)\(([^)]+)\)/g
   const parts = [...text.matchAll(pattern)]
@@ -335,8 +342,17 @@ function appendEffect(current, effect, start) {
   if (current.textTilt || effect.textTilt) throw new Error('Nested 3D text effects need an adapter')
   const at = Math.min(...Object.values(effect.tracks).map(frames => frames[0].time))
   if (Object.entries(current.tracks || {}).some(([property, frames]) => frames.at(-1).time > at + 1e-9 || frames.at(-1).value !== identityValue(property))) throw new Error('Overlapping or unsettled nested effects need an adapter')
-  const pivot = effect.transformOrigin || current.transformOrigin
-  if (effect.transformOrigin && current.transformOrigin && (effect.transformOrigin.x !== current.transformOrigin.x || effect.transformOrigin.y !== current.transformOrigin.y)) throw new Error('Nested effects with different origins need an adapter')
+  let pivot = effect.transformOrigin || current.transformOrigin
+  if (effect.transformOrigin && current.transformOrigin && (effect.transformOrigin.x !== current.transformOrigin.x || effect.transformOrigin.y !== current.transformOrigin.y)) {
+    // A sequential planar scale about Q is a scale about P followed by
+    // (Q-P)*(1-scale). Both tracks use the same easing, including fractional cycles.
+    if (Object.keys(effect.tracks).some(key => !['opacity', 'scaleX', 'scaleY'].includes(key))) throw new Error('Nested effects with different origins need an adapter')
+    for (const [axis, scale] of [['x', 'scaleX'], ['y', 'scaleY']]) {
+      const delta = effect.transformOrigin[axis] - current.transformOrigin[axis]
+      if (delta && effect.tracks[scale]) effect.tracks[axis] = effect.tracks[scale].map(frame => ({ ...frame, value: delta * (1 - frame.value) }))
+    }
+    pivot = current.transformOrigin
+  }
   const tracks = structuredClone(current.tracks || {})
   for (const [property, frames] of Object.entries(effect.tracks)) {
     if (frames[0].value !== identityValue(property)) throw new Error('Nested effect must begin at identity')
@@ -410,12 +426,12 @@ function effectTracks(effect, style, rules, start, end, warnings, geometry, inte
     const ownerCss = style(owner)
     perspective = px(ownerCss.getPropertyValue('perspective'))
     const centre = transformOrigin && sameTime(transformOrigin.x, geometry.w / 2) && sameTime(transformOrigin.y, geometry.h / 2)
-    if (owner.getAttribute('data-eltype') !== 'image' || effect.id !== owner.id.replace('element-', 'effIn')
+    if (!['image', 'svg'].includes(owner.getAttribute('data-eltype')) || effect.id !== owner.id.replace('element-', 'effIn')
       || [...transformProperties].some(property => !['z', 'rotation'].includes(property)) || !centre
       || !['center', 'center center', '50% 50%'].includes(ownerCss.getPropertyValue('perspective-origin'))
       || !['', 'none'].includes(css.transform) || !['', 'none'].includes(ownerCss.transform)
       || !Number.isFinite(perspective) || perspective < 1 || perspective > 100000
-      || parsedFrames.some(frame => (frame.values.z ?? 0) > 0 || (frame.values.z ?? 0) < -100000)) {
+      || parsedFrames.some(frame => (frame.values.z ?? 0) >= perspective - 1 || (frame.values.z ?? 0) < -100000)) {
       throw new Error('Unsupported depth entrance composition')
     }
   }
@@ -519,8 +535,58 @@ function sourceDeclarations(document, element, property) {
   return values
 }
 
+// Some legacy authoring exports repeat numeric IDs. The authored timeline and
+// painted DOM are both ordered. Reconcile only when every timed occurrence maps
+// one-to-one, before looking up content, effects or native link IDs.
+function reconcileLegacyIds(document, source) {
+  const root = document.getElementById('designContainer')
+  if (!root || !Array.isArray(source.animations)) return false
+  const containers = [...root.querySelectorAll('[id^="slide-"]')]
+  const elements = [...root.querySelectorAll('[data-eltype][id^="element-"]')]
+  if (elements.length > 150 || containers.length > 50) throw new Error('Too many elements or slides')
+  const duplicated = nodes => new Set(nodes.filter((node, i) => nodes.findIndex(other => other.id === node.id) < i).map(node => node.id))
+  const repeatedSlides = duplicated(containers), repeatedElements = duplicated(elements)
+  if (!repeatedSlides.size && !repeatedElements.size) return false
+  if (containers.length !== source.animations.length || containers.some((node, i) => node.id !== `slide-${source.animations[i].id}`)) throw new Error('Ambiguous slide ownership')
+  const used = [...containers, ...elements].map(node => Number(node.id.split('-')[1]))
+  if (!used.every(Number.isSafeInteger) || Math.max(...used) >= 1000000) throw new Error('Invalid legacy source ID')
+  let next = Math.max(...used) + 1
+  const seenSlides = new Set(), seenElements = new Set()
+  const css = [...document.querySelectorAll('style')].map(sheet => sheet.textContent).join('\n')
+  const media = [...source.audioElements || [], ...source.videoElements || [], ...source.customAnimations || []]
+  for (const [i, node] of containers.entries()) {
+    const slide = source.animations[i]
+    if (!Array.isArray(slide.elements)) throw new Error('Invalid slide metadata')
+    if (repeatedSlides.has(node.id) && (slide.effInDuration || slide.effOutDuration || media.some(m => m.slideId === slide.id) || css.includes('#' + node.id))) throw new Error('Ambiguous slide ownership')
+    if (seenSlides.has(node.id)) { slide.id = next++; node.id = `slide-${slide.id}` }
+    seenSlides.add(node.id)
+    const children = [...node.querySelectorAll('[data-eltype][id^="element-"]')]
+    const ids = children.map(child => Number(child.id.slice(8)))
+    const timings = slide.elements.filter(item => ids.includes(item.id))
+    const timed = ids.filter(id => timings.some(item => item.id === id))
+    if (timed.length !== timings.length || timed.some((id, k) => timings[k].id !== id)) throw new Error('Ambiguous element ownership')
+    let j = 0
+    for (const child of children) {
+      const original = child.id, id = Number(original.slice(8))
+      const timing = timings[j]?.id === id ? timings[j++] : undefined
+      if (seenElements.has(original)) {
+        const names = [original, ...['effIn', 'effMid', 'effOut', 'c-'].map(prefix => prefix + id)]
+        if (!timing || media.some(m => m.elementId === id) || names.some(name => new RegExp('#' + name + '(?![\\w-])').test(css))) throw new Error('Ambiguous element ownership')
+        const replacement = next++
+        for (const inner of child.querySelectorAll('[id]')) {
+          if (names.slice(1).includes(inner.id)) inner.id = inner.id.slice(0, -String(id).length) + replacement
+        }
+        child.id = 'element-' + replacement
+        timing.id = replacement
+      }
+      seenElements.add(original)
+    }
+  }
+  return true
+}
+
 /** Offline CSS export adapter for bounded, hard-cut slide sequences. Source scripts are parsed, never run. */
-export async function convertTheBriefHtml(html, { reviewedRowLines = {} } = {}) {
+export async function convertTheBriefHtml(html, { reviewedRowLines = {}, reviewedRowHeights = {} } = {}) {
   if (Buffer.byteLength(html) > 2 * 1024 * 1024) throw new Error('HTML exceeds pilot limit')
   const window = new Window({ settings: { enableJavaScriptEvaluation: false, disableJavaScriptFileLoading: true, disableCSSFileLoading: true, disableIframePageLoading: true } })
   try {
@@ -531,6 +597,7 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {} } = {}) 
     window.document.write(html.replace(/\r\n?/g, '\n'))
     const document = window.document
     const source = sourceData(document)
+    const reconciledIds = reconcileLegacyIds(document, source)
     if (!source.animations?.length || source.animations.length > 50 || source.customAnimations?.length) throw new Error('Unsupported slide sequence or custom animations')
     let duration = 0
     const hasSlideFades = source.animations.some(slide => slide.effInDuration > 0 || slide.effOutDuration > 0)
@@ -568,6 +635,7 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {} } = {}) 
     const rules = [...document.styleSheets].flatMap(sheet => [...sheet.cssRules].filter(rule => rule.type === 7))
     if (!Number.isInteger(source.loopCount) || source.loopCount < 0 || source.loopCount > 1000) throw new Error('Unsupported source loop count')
     const warnings = []
+    if (reconciledIds) warnings.push('Repeated legacy IDs were separated using the matching authored timeline and source DOM order; review playback against the original design')
     const reviewedElements = new Set()
     if (hasSlideFades) {
       for (const slide of slides) {
@@ -662,7 +730,20 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {} } = {}) 
         if (exit) {
           const exitStart = effectStart + seconds(style(exit).animationDelay || '0s')
           if (exitStart >= end) warnings.push(`${exit.id}: exit at ${exitStart}s is outside the ${duration}s loop`)
-          else effect = appendEffect(effect, effectTracks(exit, style, rules, effectStart, end, warnings, layerBase), effectStart)
+          else {
+            let target = exit
+            if (wordPop && exit.getAttribute('data-words-animation') === 'true') {
+              // A single painted token covers the whole text layer. Its exit
+              // opacity therefore composes exactly with the native word entrance.
+              const tokens = [...exit.querySelectorAll('span.word.out')]
+              const token = tokens[0]
+              const rule = token && rules.findLast(r => r.name === style(token).animationName)
+              if (tokens.length !== 1 || token.textContent.trim() !== element.textContent.trim()
+                || !rule || [...rule.cssRules].some(frame => frame.style.length !== 1 || frame.style.item(0) !== 'opacity')) throw new Error('Staggered word exit needs an adapter')
+              target = token
+            }
+            effect = appendEffect(effect, effectTracks(target, style, rules, effectStart, end, warnings, layerBase), effectStart)
+          }
         }
         keyframes = effect.tracks || {}
         if (effect.textTilt) layerBase.textTilt = effect.textTilt
@@ -670,6 +751,17 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {} } = {}) 
           const allowed = keyframes.z ? ['opacity', 'z', 'rotation', 'scaleX', 'scaleY'] : ['opacity', 'rotationX']
           if (Object.keys(keyframes).some(property => !allowed.includes(property))) throw new Error('Nested 3D transforms need an adapter')
           layerBase.imageFlipPerspective = effect.perspective
+          const forward = Math.max(0, ...(keyframes.z || []).map(frame => frame.value))
+          if (forward > 0) {
+            // Keep the native depth track behind its camera while preserving
+            // the exact source projection d/(d-z) at every point on the curve.
+            const camera = effect.perspective - forward
+            const scale = effect.perspective / camera
+            if (camera < 1 || scale > 8 || keyframes.scaleX || keyframes.scaleY) throw new Error('Unsupported forward-depth scale composition')
+            layerBase.imageFlipPerspective = camera
+            keyframes.z = keyframes.z.map(frame => ({ ...frame, value: frame.value - forward }))
+            for (const axis of ['scaleX', 'scaleY']) keyframes[axis] = [{ time: start, value: scale, easing: 'linear' }, { time: end, value: scale }]
+          }
         }
         if (effect.transformOrigin) layerBase.transformOrigin = effect.transformOrigin
       } catch (error) {
@@ -914,10 +1006,10 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {} } = {}) 
           // can report an empty computed colour in offline CSS parsing. Compare
           // the painted leaf spans, not both a wrapper and its child.
           const runs = [...row.querySelectorAll('span')].filter(item => item.textContent.trim() && !item.children.length)
-          const unadaptedSignature = node => ['fontFamily', 'letterSpacing'].map(key => style(node)[key]).join('|')
+          const unadaptedSignature = node => style(node).letterSpacing
           const plainRuns = runs.filter(item => !item.closest('sup'))
           if (new Set(plainRuns.map(unadaptedSignature)).size > 1) throw new Error('Mixed styled text within a line needs an adapter')
-          const hasInlineStyles = new Set(plainRuns.map(item => ['fontSize', 'color', 'fontWeight', 'fontStyle'].map(key => style(item)[key]).join('|'))).size > 1
+          const hasInlineStyles = new Set(plainRuns.map(item => ['fontSize', 'color', 'fontFamily', 'fontWeight', 'fontStyle'].map(key => style(item)[key]).join('|'))).size > 1
           const paintedCss = style(runs.find(item => !item.closest('sup')) || span)
           const textTransform = paintedCss.textTransform || textCss.textTransform || rowCss.textTransform || 'none'
           if (!['none', 'uppercase', 'lowercase', 'capitalize'].includes(textTransform)) throw new Error('Unsupported text transform')
@@ -946,9 +1038,10 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {} } = {}) 
             const fills = [css.getPropertyValue('-webkit-text-fill-color'), ...sourceDeclarations(document, node, '-webkit-text-fill-color')]
             if ([css.getPropertyValue('background-clip'), css.getPropertyValue('-webkit-background-clip'), ...sourceDeclarations(document, node, 'background-clip|-webkit-background-clip')].includes('text')
               || fills.some(fill => !plainFills.includes((fill || '').toLowerCase()))) {
-              if (node.tagName !== 'SPAN' || node.children.length || !isBannerInlineTextGradient(css.backgroundImage)
+              const gradient = (css.backgroundImage || '').replace(/(#[0-9a-f]{6}\s+)0(?=\s*[,\)])/gi, (_, color) => color + '0%')
+              if (node.tagName !== 'SPAN' || node.children.length || !isBannerInlineTextGradient(gradient)
                 || ![css.getPropertyValue('background-clip'), css.getPropertyValue('-webkit-background-clip')].includes('text')) throw new Error('Gradient or clipped text fill needs an adapter')
-              gradients.set(node, css.backgroundImage)
+              gradients.set(node, gradient)
             }
           }
           const textRuns = []
@@ -957,17 +1050,17 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {} } = {}) 
               if (node.nodeType === 3 && node.textContent) {
                 const parent = node.parentElement
                 const runCss = style(parent)
-                if (node.textContent.trim() && ['fontFamily', 'letterSpacing'].some(key => runCss[key] !== textCss[key])) throw new Error('Mixed styled superscript needs an adapter')
+                if (node.textContent.trim() && runCss.letterSpacing !== textCss.letterSpacing) throw new Error('Mixed styled superscript needs an adapter')
                 const color = runCss.color && runCss.color !== textCss.color ? runCss.color : undefined
                 if (color && !isBannerInlineTextColor(color)) throw new Error('Unsupported inline text colour')
                 const run = { text: node.textContent }
                 if (gradients.has(parent)) run.gradient = gradients.get(parent)
                 if (color) run.color = color
-                if (node.textContent.trim() && (runCss.fontWeight !== textCss.fontWeight || runCss.fontStyle !== textCss.fontStyle)) {
+                if (node.textContent.trim() && (runCss.fontFamily !== textCss.fontFamily || runCss.fontWeight !== textCss.fontWeight || runCss.fontStyle !== textCss.fontStyle)) {
                   const fontWeight = Number(runCss.fontWeight) || (runCss.fontWeight === 'bold' ? 700 : 400)
                   const fontStyle = runCss.fontStyle || 'normal'
                   if (!['normal', 'italic'].includes(fontStyle)) throw new Error('Unsupported inline font style')
-                  run.fontFamily = textCss.fontFamily.replace(/["']/g, '')
+                  run.fontFamily = runCss.fontFamily.replace(/["']/g, '')
                   run.fontWeight = fontWeight
                   run.fontStyle = fontStyle
                 }
@@ -1021,7 +1114,18 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {} } = {}) 
               throw new Error(`${element.id}: reviewed row counts do not match the source rows`)
             }
             const offsets = reviewed.map((lines, index) => (lines - 1) * rowHeights[index])
-            if (Math.abs(offsets.reduce((sum, offset) => sum + offset, 0) - extra) > 1) {
+            const measured = reviewedRowHeights[element.id]
+            // Some source boxes allow text to overflow their saved height. A
+            // checksum-bound measurement of each original row proves its actual
+            // layout independently of the stale enclosing height.
+            let measuredOverflow = Array.isArray(measured) && measured.length === rows.length
+              && measured.every((height, i) => Number.isFinite(height) && Math.abs(height - reviewed[i] * rowHeights[i]) <= 0.6)
+            if (measuredOverflow) {
+              for (let node = rows[0].parentElement; node && element.contains(node); node = node.parentElement) {
+                if (!['', 'visible'].includes(style(node).overflowY) || !['', 'visible'].includes(style(node).overflow)) measuredOverflow = false
+              }
+            }
+            if (!measuredOverflow && Math.abs(offsets.reduce((sum, offset) => sum + offset, 0) - extra) > 1) {
               throw new Error(`${element.id}: reviewed row heights do not match the source box`)
             }
             allocation = offsets
@@ -1084,7 +1188,7 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {} } = {}) 
           }
         }
         const transformed = [...element.querySelectorAll('div')].filter(div => style(div).transform && style(div).transform !== 'none')
-        const mirrored = transformed.filter(div => /^rotate\(0(?:deg)?\)\s+scale\((?:-1,\s*1|1,\s*-1)\)$/.test(style(div).transform))
+        const mirrored = transformed.filter(div => /^rotate\(0(?:deg)?\)\s+scale\((?:-1,\s*-?1|1,\s*-1)\)$/.test(style(div).transform))
         if (layerBase.imageFlipPerspective && transformed.some(div => {
           const nested = style(div)
           return nested.width !== '100%' || nested.height !== '100%'
@@ -1096,7 +1200,7 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {} } = {}) 
             || style(mirrored[0]).width !== '100%' || style(mirrored[0]).height !== '100%'
             || !['', '50% 50%', 'center center', 'center'].includes(style(mirrored[0]).transformOrigin)))) throw new Error('Unsupported static transform')
         if (mirrored.length && layerBase.imageBackground) throw new Error('Mirrored positioned background needs an adapter')
-        if (mirrored.length) imageTransforms.push({ layerId: id, operation: /scale\(-1/.test(style(mirrored[0]).transform) ? 'flop' : 'flip' })
+        if (mirrored.length) imageTransforms.push({ layerId: id, operation: /scale\(-1,\s*-1\)/.test(style(mirrored[0]).transform) ? 'rotate180' : /scale\(-1/.test(style(mirrored[0]).transform) ? 'flop' : 'flip' })
         let contentOpacity = 1
         const imageFilters = []
         const imageFilterNodes = []
@@ -1251,10 +1355,10 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {} } = {}) 
             const sides = ['Top', 'Right', 'Bottom', 'Left']
             const colors = sides.map(side => contentCss[`border${side}Color`])
             const styles = sides.map(side => contentCss[`border${side}Style`])
-            if (new Set(borders).size !== 1 || !Number.isFinite(borders[0]) || borders[0] < 0 || borders[0] > 100 || new Set(colors).size !== 1 || styles.some(value => value !== 'solid') || rectShape) throw new Error(`${element.id}: shape border composition needs an adapter`)
+            if (new Set(borders).size !== 1 || !Number.isFinite(borders[0]) || borders[0] < 0 || borders[0] > 100 || new Set(colors).size !== 1 || styles.some(value => value !== 'solid') || (rectShape && layerBase.w !== layerBase.h)) throw new Error(`${element.id}: shape border composition needs an adapter`)
             // Native buttons support border-box fill, uniform stroke and corners.
             // Empty text retains this shape as an editable native visual layer.
-            layers.push({ ...layerBase, id: id++, type: 'button', name: `Bordered shape ${sourceId}`, text: '', rotation, borderRadius: borderRadius || 0, borderWidth: borders[0], borderColor: colors[0], bgColor: contentCss.backgroundColor || 'transparent', textColor: 'transparent', ...shapeEffects })
+            layers.push({ ...layerBase, id: id++, type: 'button', name: `Bordered shape ${sourceId}`, text: '', rotation, borderRadius: rectShape ? layerBase.w / 2 : borderRadius || 0, borderWidth: borders[0], borderColor: colors[0], bgColor: contentCss.backgroundColor || 'transparent', textColor: 'transparent', ...(visualFilter ? { visualFilter } : {}) })
             warnings.push(`${element.id}: uniform bordered shape preserved as an editable native button with empty text; review border and corner geometry`)
           } else {
             layers.push({ ...layerBase, id: id++, type: 'rect', name: `Shape ${sourceId}`, rotation, ...(borderRadius !== undefined ? { borderRadius } : {}), ...shapeEffects, fillColor: contentCss.backgroundColor || 'transparent' })

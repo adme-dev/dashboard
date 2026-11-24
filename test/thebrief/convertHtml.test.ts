@@ -365,9 +365,11 @@ describe('TheBrief single-slide native conversion pilot', () => {
     await expect(convertTheBriefHtml(html.replace(content, content + content))).rejects.toThrow(/legacy image/)
     await expect(convertTheBriefHtml(html.replace('background-size:cover', 'background-size:contain'))).rejects.toThrow(/legacy image/)
     await expect(convertTheBriefHtml(html.replace('width:100%;height:100%;background-image', 'width:50%;height:100%;background-image'))).rejects.toThrow(/legacy image/)
-    for (const css of ['margin-left:10px', 'padding:5px', 'left:4px', 'border:1px solid red', 'border-radius:10px', 'opacity:0.5', 'filter:blur(2px)', 'background-blend-mode:multiply', 'display:none', 'visibility:hidden']) {
+    for (const css of ['margin-left:10px', 'padding:5px', 'left:4px', 'border:1px solid red', 'border-radius:10px', 'filter:blur(2px)', 'background-blend-mode:multiply', 'display:none', 'visibility:hidden']) {
       await expect(convertTheBriefHtml(html.replace('background-size:cover', `${css};background-size:cover`))).rejects.toThrow(/legacy image/)
     }
+    const translucent = await convertTheBriefHtml(html.replace('background-size:cover', 'opacity:.5;background-size:cover'))
+    expect(translucent.canvasData.custom_300x250.layers.find(l => l.type === 'image').opacity).toBe(.5)
     await expect(convertTheBriefHtml(html.replace('./media/photo.jpg', 'https://example.com/photo.jpg'))).rejects.toThrow(/local asset/)
   })
 

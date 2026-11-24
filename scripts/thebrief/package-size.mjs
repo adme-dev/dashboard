@@ -35,7 +35,7 @@ export async function packageTheBriefSize({ sourceFile, sourceSha256, name, fold
     || !reviewed.rowLines || typeof reviewed.rowLines !== 'object' || Array.isArray(reviewed.rowLines))) {
     throw new Error('Reviewed row counts do not match the source ZIP')
   }
-  const candidate = await convertTheBriefHtml((await sourceFile('index.html')).toString('utf8'), { reviewedRowLines: reviewed?.rowLines })
+  const candidate = await convertTheBriefHtml((await sourceFile('index.html')).toString('utf8'), { reviewedRowLines: reviewed?.rowLines, reviewedRowHeights: reviewed?.rowHeights })
   if (reviewed && reviewed.designHash !== candidate.source.designHash) throw new Error('Reviewed row counts do not match the source layout')
   if (candidate.warnings.some(warning => /animation not converted|additional effects are not converted/.test(warning))) throw new Error('Import held: source animation requires an adapter; no package was created')
   const external = await resolveGoogleFonts(candidate.externalFontStylesheets || [], fetch, fontCache)
@@ -100,7 +100,11 @@ export async function packageTheBriefSize({ sourceFile, sourceSha256, name, fold
           const svg = bytes.toString('utf8')
           if (/<!DOCTYPE|<!ENTITY|<script|<foreignObject|@import|(?:href\s*=\s*["'](?!#|data:))|url\(\s*["']?(?!#)/i.test(svg)) throw new Error('SVG contains unsupported external or active content')
           const width = Math.min(4096, Math.max(1, Math.ceil(layer.w * 2)))
-          bytes = await sharp(bytes, { density: 192, limitInputPixels: 4096 * 4096 }).resize({ width }).png().toBuffer()
+          const pixelLimit = 4096 * 4096
+          const intrinsic = await sharp(bytes, { density: 72, limitInputPixels: pixelLimit }).metadata()
+          // Avoid oversampling large viewBoxes beyond the raster budget before resizing.
+          const density = Math.min(192, Math.floor(72 * Math.sqrt(pixelLimit / (intrinsic.width * intrinsic.height))))
+          bytes = await sharp(bytes, { density, limitInputPixels: pixelLimit }).resize({ width }).png().toBuffer()
           candidate.warnings.push(`${basename(originalPath)}: vector artwork stored as ${width}px PNG for supported asset delivery; original SVG retained in source ZIP`)
         } else {
           bytes = await sharp(bytes, { limitInputPixels: 4096 * 4096 }).png().toBuffer()
