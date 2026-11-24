@@ -47,7 +47,7 @@ const layer = z.object({
   videoCrop: z.object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1), w: z.number().min(0.01).max(1), h: z.number().min(0.01).max(1) }).strict()
     .refine(crop => crop.x + crop.w <= 1.000001 && crop.y + crop.h <= 1.000001, 'Video crop falls outside the source').optional(),
   mediaStart: z.number().min(0).max(300).optional(), mediaEnd: z.number().positive().max(300).optional(), mediaLoop: z.boolean().optional(),
-  keyframes: z.object({ opacity: track.optional(), x: track.optional(), y: track.optional(), scaleX: track.optional(), scaleY: track.optional(), rotation: track.optional(), rotationX: track.optional() }).optional()
+  keyframes: z.object({ opacity: track.optional(), x: track.optional(), y: track.optional(), z: track.optional(), scaleX: track.optional(), scaleY: track.optional(), rotation: track.optional(), rotationX: track.optional() }).optional()
 }).strict()
 const binary = z.object({ path: local, fileName: z.string().max(150).regex(/^[\w .-]+$/), sha256: sha, base64: z.string().max(32 * 1024 * 1024).regex(/^[A-Za-z0-9+/]*={0,2}$/), mimeType: z.string().max(100) })
 export const theBriefSourceSchema = z.object({
@@ -136,9 +136,11 @@ export function parseTheBriefPackage(input: unknown): TheBriefPackage {
       if (item.slideFade && !item.slideId) throw new Error('Slide fade requires scene ownership')
       if (item.src && !result.assets.some(a => a.path === item.src)) throw new Error('Missing packaged asset')
       if (item.textRuns && item.textRuns.map(run => run.text).join('') !== item.text) throw new Error('Text runs differ from layer text')
-      if (item.imageFlipPerspective || item.keyframes?.rotationX) {
-        if (item.type !== 'image' || !item.imageFlipPerspective || !item.keyframes?.rotationX
-          || item.keyframes.rotationX.some(frame => Math.abs(frame.value) > 90)) throw new Error('Invalid TheBrief 3D image flip')
+      if (item.imageFlipPerspective || item.keyframes?.rotationX || item.keyframes?.z) {
+        if (item.type !== 'image' || !item.imageFlipPerspective || !(item.keyframes?.rotationX || item.keyframes?.z)
+          || (item.keyframes.rotationX && item.keyframes.z)
+          || item.keyframes.rotationX?.some(frame => Math.abs(frame.value) > 90)
+          || item.keyframes.z?.some(frame => frame.value > 0)) throw new Error('Invalid TheBrief 3D image flip')
       }
       if (item.reveal && item.type !== 'rect' && item.type !== 'button') throw new Error('Reveal requires editable shape geometry')
       if (item.wordPop && item.type !== 'text') throw new Error('Word animation requires text')

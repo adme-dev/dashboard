@@ -133,7 +133,7 @@ function transformValues(text) {
   const flip = /^rotateX\((0|-?(?:\d*\.)?\d+deg)\)(?:\s+rotateY\(0(?:deg)?\)\s+rotate3d\(1,\s*1,\s*0,\s*0deg\))?$/.exec(text)
   if (flip) return { rotationX: Number.parseFloat(flip[1]) }
   const values = {}
-  const pattern = /(translateX|translateY|translate|rotate|scaleX|scaleY|scale)\(([^)]+)\)/g
+  const pattern = /(translateX|translateY|translateZ|translate|rotate|scaleX|scaleY|scale)\(([^)]+)\)/g
   const parts = [...text.matchAll(pattern)]
   if (text.replace(pattern, '').trim()) throw new Error(`Unsupported transform ${text}`)
   let hasRotationOrScale = false
@@ -158,7 +158,7 @@ function transformValues(text) {
     if (name === 'rotate' && hasScale) throw new Error('Unsupported rotation after scale')
     if (name === 'rotate' || name.startsWith('scale')) hasRotationOrScale = true
     if (name.startsWith('scale')) hasScale = true
-    const properties = name === 'scale' ? ['scaleX', 'scaleY'] : [{ translateX: 'x', translateY: 'y', rotate: 'rotation', scaleX: 'scaleX', scaleY: 'scaleY' }[name]]
+    const properties = name === 'scale' ? ['scaleX', 'scaleY'] : [{ translateX: 'x', translateY: 'y', translateZ: 'z', rotate: 'rotation', scaleX: 'scaleX', scaleY: 'scaleY' }[name]]
     for (const property of properties) {
       if (property in values) throw new Error('Repeated transform function')
       values[property] = value
@@ -389,6 +389,20 @@ function effectTracks(effect, style, rules, start, end, warnings, geometry, inte
   }
   const transformProperties = new Set(parsedFrames.flatMap(frame => Object.keys(frame.values).filter(key => key !== 'opacity')))
   let perspective
+  if (transformProperties.has('z')) {
+    const owner = effect.parentElement
+    const ownerCss = style(owner)
+    perspective = px(ownerCss.getPropertyValue('perspective'))
+    const centre = transformOrigin && sameTime(transformOrigin.x, geometry.w / 2) && sameTime(transformOrigin.y, geometry.h / 2)
+    if (owner.getAttribute('data-eltype') !== 'image' || effect.id !== owner.id.replace('element-', 'effIn')
+      || [...transformProperties].some(property => !['z', 'rotation'].includes(property)) || !centre
+      || !['center', 'center center', '50% 50%'].includes(ownerCss.getPropertyValue('perspective-origin'))
+      || !['', 'none'].includes(css.transform) || !['', 'none'].includes(ownerCss.transform)
+      || !Number.isFinite(perspective) || perspective < 1 || perspective > 100000
+      || parsedFrames.some(frame => (frame.values.z ?? 0) > 0 || (frame.values.z ?? 0) < -100000)) {
+      throw new Error('Unsupported depth entrance composition')
+    }
+  }
   if (transformProperties.has('rotationX')) {
     const owner = effect.parentElement
     const ownerCss = style(owner)
@@ -624,7 +638,8 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {} } = {}) 
         }
         keyframes = effect.tracks || {}
         if (effect.perspective) {
-          if (Object.keys(keyframes).some(property => property !== 'opacity' && property !== 'rotationX')) throw new Error('Nested 3D transforms need an adapter')
+          const allowed = keyframes.z ? ['opacity', 'z', 'rotation', 'scaleX', 'scaleY'] : ['opacity', 'rotationX']
+          if (Object.keys(keyframes).some(property => !allowed.includes(property))) throw new Error('Nested 3D transforms need an adapter')
           layerBase.imageFlipPerspective = effect.perspective
         }
         if (effect.transformOrigin) layerBase.transformOrigin = effect.transformOrigin

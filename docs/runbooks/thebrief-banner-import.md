@@ -186,3 +186,5 @@ TheBrief can suffix duplicate dimensions with either `-1` or ` (1)` in a group Z
 Fixed-pixel background images retain source size, position and repeat behavior as editable image layers, including circular logo masks. A glow or blur outside the source mask stays outside its native clipping wrapper; ambiguous filter order remains held. Opaque RGB text outlines retain their exact color as native hex outlines.
 
 For historical stacked text, an operator may supply line counts measured in the original preview. The recipe must match the exact child ZIP SHA-256 and source layout ID, and the measured line heights must match the source box. Never guess ambiguous wrapping or ask designers to use an online JSON converter. These reviewed packages can be imported together using the normal client/folder assignment.
+
+Bounded image depth entrances retain separate native GSAP depth and rotation tracks under the source perspective. The importer accepts centered, backward depth movement followed by sequential 2D effects; mixed 3D axes, forward-plane movement and unverified transform origins remain held. Depth remains adjustable in the existing keyframe controls.

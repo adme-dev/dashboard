@@ -23,7 +23,7 @@ export type AnimOutType =
   | 'zoomIn' | 'zoomOut' | 'spinOut'
 
 // Keyframe animation types (Phase 4b)
-export type KeyframeProperty = 'opacity' | 'x' | 'y' | 'scaleX' | 'scaleY' | 'rotation' | 'rotationX'
+export type KeyframeProperty = 'opacity' | 'x' | 'y' | 'z' | 'scaleX' | 'scaleY' | 'rotation' | 'rotationX'
 
 export interface Keyframe {
   time: number    // seconds on timeline

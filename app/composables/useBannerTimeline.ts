@@ -37,6 +37,7 @@ const KF_GSAP_MAP: Record<KeyframeProperty, string> = {
   opacity: 'opacity',
   x: 'x',
   y: 'y',
+  z: 'z',
   scaleX: 'scaleX',
   scaleY: 'scaleY',
   rotation: 'rotation',
@@ -49,6 +50,7 @@ function getDefaultValue(prop: KeyframeProperty, layer: Layer): number {
     case 'opacity': return layer.opacity
     case 'x': return 0
     case 'y': return 0
+    case 'z': return 0
     case 'scaleX': return 1
     case 'scaleY': return 1
     case 'rotation': return layerFrameTransform(layer).rotation
@@ -595,7 +597,7 @@ export function useBannerTimeline() {
       const copy = overlay.querySelector<HTMLElement>(`#lyr-${contextLayer.id}`)
       if (!source || !copy || contextLayer.type === 'audio') continue
       const frame: Record<string, number> = {}
-      for (const property of ['x', 'y', 'xPercent', 'yPercent', 'scaleX', 'scaleY', 'rotation', 'rotationX', 'transformPerspective', 'opacity']) {
+      for (const property of ['x', 'y', 'z', 'xPercent', 'yPercent', 'scaleX', 'scaleY', 'rotation', 'rotationX', 'transformPerspective', 'opacity']) {
         const value = Number(gsap.getProperty(source, property))
         if (Number.isFinite(value)) frame[property] = value
       }

@@ -177,3 +177,25 @@ it('scrubs the native 3D flip independently of the image’s flat rotation', () 
     artboard.remove()
   }
 })
+
+it('scrubs depth and rotation together without flattening the entrance into scale', () => {
+  const layer: Layer = { ...layers[0]!, type: 'image', src: '/source.png', endTime: 4, imageFlipPerspective: 500,
+    keyframes: { z: [{ time: 0, value: -200, easing: 'linear' }, { time: 1, value: 0 }], rotation: [{ time: 0, value: -45, easing: 'linear' }, { time: 1, value: 0 }] } }
+  const playback: BannerPlayback = { duration: 4, loopCount: 0 }
+  const state = { sets: { imported: { layers: [layer], playback } }, activeKey: 'imported', isLooping: true, isPlaying: false, currentTime: 0, duration: 4 }
+  vi.stubGlobal('useBannerStudio', () => ({ state, activeLayers: ref([layer]) }))
+  const artboard = document.createElement('div')
+  artboard.innerHTML = '<div id="lyr-1"></div>'
+  document.body.append(artboard)
+  const frame = artboard.firstElementChild as HTMLElement
+  const studio = useBannerTimeline()
+  const timeline = studio.buildTimeline(artboard, [layer])
+  try {
+    for (const [time, z, angle] of [[.5, -100, -22.5], [1, 0, 0], [0, -200, -45], [4.5, -100, -22.5]]) {
+      timeline.totalTime(time!, false)
+      expect(Number(gsap.getProperty(frame, 'z'))).toBeCloseTo(z!)
+      expect(Number(gsap.getProperty(frame, 'rotation'))).toBeCloseTo(angle!)
+      expect(Number(gsap.getProperty(frame, 'transformPerspective'))).toBe(500)
+    }
+  } finally { studio.destroyTimeline(); artboard.remove() }
+})

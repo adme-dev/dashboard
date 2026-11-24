@@ -58,8 +58,8 @@ const blockLabel = computed(() => props.phase?.label ?? selectedLabel.value)
 const blockDescription = computed(() => props.phase ? `${blockLabel.value} · ${props.phase.start.toFixed(2)}–${props.phase.end.toFixed(2)}s` : blockLabel.value)
 const foreground = computed(() => props.phase?.kind === 'hold' ? 'var(--ui-text)' : '#ffffff')
 const iconFor = (id: string) => ({ none: 'circle-slash', fadeIn: 'blend', fadeOut: 'blend', slideL: 'arrow-left', slideR: 'arrow-right', slideU: 'arrow-up', slideD: 'arrow-down', zoomIn: 'zoom-in', zoomOut: 'zoom-out', spinIn: 'rotate-cw', spinOut: 'rotate-cw', bounceIn: 'corner-right-up', elastic: 'move-horizontal', kenBurns: 'scan', wordPop: 'whole-word' }[id] || 'sparkles')
-const propLabels: Record<KeyframeProperty, string> = { opacity: 'Opacity', x: 'Horizontal position', y: 'Vertical position', scaleX: 'Horizontal scale', scaleY: 'Vertical scale', rotation: 'Rotation', rotationX: 'X-axis rotation' }
-const tracks = computed(() => (Object.keys(propLabels) as KeyframeProperty[]).filter(p => (p !== 'rotationX' || props.layer.imageFlipPerspective) && !(props.layer.motionPath?.length && ['x', 'y'].includes(p))).map(p => ({ label: propLabels[p], value: p })))
+const propLabels: Record<KeyframeProperty, string> = { opacity: 'Opacity', x: 'Horizontal position', y: 'Vertical position', z: 'Depth', scaleX: 'Horizontal scale', scaleY: 'Vertical scale', rotation: 'Rotation', rotationX: 'X-axis rotation' }
+const tracks = computed(() => (Object.keys(propLabels) as KeyframeProperty[]).filter(p => (!['rotationX', 'z'].includes(p) || props.layer.imageFlipPerspective) && !(props.layer.motionPath?.length && ['x', 'y'].includes(p))).map(p => ({ label: propLabels[p], value: p })))
 const frames = computed(() => props.layer.keyframes?.[property.value] ?? [])
 const frame = computed(() => frames.value[Number(frameIndex.value)])
 const frameOptions = computed(() => frames.value.map((f, i) => ({ label: `${i + 1} · ${f.time.toFixed(2)}s`, value: String(i) })))

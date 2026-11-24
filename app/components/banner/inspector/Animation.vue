@@ -85,6 +85,7 @@ const KF_PROP_LABELS: Record<KeyframeProperty, string> = {
   opacity: 'Opacity',
   x: 'X',
   y: 'Y',
+  z: 'Depth',
   scaleX: 'Scale X',
   scaleY: 'Scale Y',
   rotation: 'Rotation',
@@ -92,7 +93,7 @@ const KF_PROP_LABELS: Record<KeyframeProperty, string> = {
 }
 
 const visibleKeyframeProperties = computed(() => (Object.keys(KF_PROP_LABELS) as KeyframeProperty[])
-  .filter(property => property !== 'rotationX' || selectedLayer.value?.imageFlipPerspective))
+  .filter(property => !['rotationX', 'z'].includes(property) || selectedLayer.value?.imageFlipPerspective))
 
 const isKeyframeMode = computed(() => selectedLayer.value && hasKeyframes(selectedLayer.value))
 

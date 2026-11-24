@@ -140,6 +140,7 @@ const KF_PROPERTIES: { key: KeyframeProperty, label: string, icon: string }[] = 
   { key: 'opacity', label: 'Opacity', icon: 'O' },
   { key: 'x', label: 'X', icon: 'X' },
   { key: 'y', label: 'Y', icon: 'Y' },
+  { key: 'z', label: 'Depth', icon: 'Z' },
   { key: 'scaleX', label: 'Scale X', icon: 'Sx' },
   { key: 'scaleY', label: 'Scale Y', icon: 'Sy' },
   { key: 'rotation', label: 'Rotation', icon: 'R' },
@@ -155,7 +156,7 @@ function tweenBoundaryTimes(layer: any): number[] {
 /** Get visible KF properties for a layer — hides x/y when motion path is active */
 function getVisibleKfProperties(layer?: Pick<Layer, 'motionPath' | 'imageFlipPerspective'>) {
   return KF_PROPERTIES.filter(({ key }) =>
-    (key !== 'rotationX' || !!layer?.imageFlipPerspective)
+    (!['rotationX', 'z'].includes(key) || !!layer?.imageFlipPerspective)
     && (!(layer?.motionPath && layer.motionPath.length >= 2) || (key !== 'x' && key !== 'y'))
   )
 }
