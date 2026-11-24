@@ -187,7 +187,7 @@ function replace(asset: BannerAsset) {
         {{ (range[1] - range[0]).toFixed(2) }}s selected from {{ duration.toFixed(2) }}s. Trim applies to this layout.
       </p>
     </div>
-    <BannerInspectorPresence />
+    <BannerInspectorPresence :disabled="disabled" />
     <UButton
       label="Replace audio"
       icon="i-lucide-replace"

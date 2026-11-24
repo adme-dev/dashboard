@@ -3,6 +3,7 @@ import * as Vue from 'vue'
 import { afterEach, expect, it, vi } from 'vitest'
 import AudioInspector from '~/components/banner/inspector/Audio.vue'
 import Inspector from '~/components/banner/Inspector.client.vue'
+import Presence from '~/components/banner/inspector/Presence.vue'
 import TrimModal from '~/components/banner/AudioTrimModal.client.vue'
 import TrimRange from '~/components/banner/AudioTrimRange.client.vue'
 import type { BannerProject, Layer } from '~/types/banner-studio'
@@ -82,7 +83,8 @@ it('lowers volume through both the slider and percent field, persists zero, and 
 it('enables adjustable fades and blocks edits to locked audio', async () => {
   const { studio: s, locked } = studio()
   const { host, change } = await mount(AudioInspector, {}, (app) => {
-    for (const name of ['BannerInspectorPresence', 'BannerAudioTrimModal', 'BannerAssetsPanel']) app.component(name, { render: () => null })
+    app.component('BannerInspectorPresence', Presence)
+    for (const name of ['BannerAudioTrimModal', 'BannerAssetsPanel']) app.component(name, { render: () => null })
   })
   const fade = [...host.querySelectorAll('label')].find(l => l.textContent?.trim() === 'Fade in')!.querySelector('input')!
   fade.checked = true
@@ -96,6 +98,8 @@ it('enables adjustable fades and blocks edits to locked audio', async () => {
   await Vue.nextTick()
   await change('Volume (%)', '10')
   expect(s.selectedLayer.value!.volume).toBe(1)
+  await change('End (seconds)', '6')
+  expect(s.selectedLayer.value!.endTime).toBe(8)
 })
 it('shows audio controls immediately and hides visual position, alignment and animation settings', async () => {
   studio()

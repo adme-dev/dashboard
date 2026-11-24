@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { layerSlideId, resolveSlides, slideRanges } from '~/utils/banner-slides'
 
+const props = defineProps<{ disabled?: boolean }>()
 const { selectedLayer, updateLayer, state, setLayerSlide } = useBannerStudio()
+const { isLayerLockedByOther } = useBannerRealtime()
+const disabled = computed(() => props.disabled || !selectedLayer.value || selectedLayer.value.locked || isLayerLockedByOther(selectedLayer.value.id))
 const toast = useToast()
 function assignSlide(value: string) {
-  if (!selectedLayer.value) return
+  if (disabled.value || !selectedLayer.value) return
   try {
     setLayerSlide(selectedLayer.value.id, value === '__all__' ? null : value)
   } catch (error) {
@@ -17,7 +20,7 @@ const ownership = computed(() => selectedLayer.value && board.value ? layerSlide
 const owner = computed(() => slides.value.find(slide => slide.id === ownership.value))
 const bounds = computed(() => ({ start: owner.value?.start || 0, end: owner.value?.end || state.duration || 5 }))
 function setNum(key: string, value: string | number) {
-  if (!selectedLayer.value || !Number.isFinite(Number(value))) return
+  if (disabled.value || !selectedLayer.value || value === '' || !Number.isFinite(Number(value))) return
   updateLayer(selectedLayer.value.id, { [key]: Number(value) })
 }
 </script>
@@ -34,6 +37,7 @@ function setNum(key: string, value: string | number) {
           :model-value="ownership || '__all__'"
           :items="[{ label: 'All slides', value: '__all__' }, ...slides.map((slide, index) => ({ label: `${index + 1} · ${slide.name}`, value: slide.id }))]"
           class="w-full"
+          :disabled="disabled"
           @update:model-value="assignSlide"
         />
       </UFormField>
@@ -45,6 +49,7 @@ function setNum(key: string, value: string | number) {
           :max="selectedLayer.endTime - 0.1"
           :step="0.1"
           class="w-full"
+          :disabled="disabled"
           @update:model-value="setNum('startTime', $event)"
         />
       </UFormField>
@@ -56,6 +61,7 @@ function setNum(key: string, value: string | number) {
           :max="bounds.end"
           :step="0.1"
           class="w-full"
+          :disabled="disabled"
           @update:model-value="setNum('endTime', $event)"
         />
       </UFormField>
