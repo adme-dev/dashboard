@@ -10,7 +10,7 @@ import { parseTheBriefPackage } from '../../app/utils/thebrief-import.ts'
 
 export const MAX_THEBRIEF_ZIP_BYTES = 64 * 1024 * 1024
 const MAX_PREPARED_BYTES = 128 * 1024 * 1024
-const childName = /^(.*)-(\d+)x(\d+)-px(?:-([1-9]\d?))?\.zip$/i
+const childName = /^(.*)-(\d+)x(\d+)-px(?:-([1-9]\d?)| \(([1-9]\d?)\))?\.zip$/i
 const hash = bytes => createHash('sha256').update(bytes).digest('hex')
 const sizeWorkerPath = join(dirname(fileURLToPath(import.meta.url)), 'prepare-size-worker.mjs')
 
@@ -112,7 +112,7 @@ export async function prepareTheBriefGroup(input, fileName = 'TheBrief.zip') {
         if (sources.length > 20) throw new Error('A design can contain up to 20 sizes')
         const sizes = []
         // TheBrief adds a numeric filename suffix when a second layout uses the same dimensions.
-        const ordered = sources.toSorted((a, b) => Number(childName.exec(a.name)?.[4] || 0) - Number(childName.exec(b.name)?.[4] || 0))
+        const ordered = sources.toSorted((a, b) => Number(childName.exec(a.name)?.[4] || childName.exec(a.name)?.[5] || 0) - Number(childName.exec(b.name)?.[4] || childName.exec(b.name)?.[5] || 0))
         for (const source of ordered) {
           if (Date.now() >= deadline) throw new Error('Group preparation timed out; choose a smaller ZIP')
           const pkg = await sizePreparer.prepare(source.data, name, Math.max(1, Math.min(60000, deadline - Date.now())))

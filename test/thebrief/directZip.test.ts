@@ -36,9 +36,9 @@ describe('direct TheBrief ZIP preparation', () => {
     }
   }, 30000)
 
-  it('keeps distinctly authored variants with identical dimensions in one draft', async () => {
+  it.each(['-1', ' (1)'])('keeps distinctly authored variants with identical dimensions and %s suffix in one draft', async (suffix) => {
     const result = await prepareTheBriefGroup(zipSync({
-      'Sale-300x250-px-1.zip': creative('second'),
+      [`Sale-300x250-px${suffix}.zip`]: creative('second'),
       'Sale-300x250-px.zip': creative('first'),
       'Sale-600x250-px.zip': creative('wide', 600)
     }))
