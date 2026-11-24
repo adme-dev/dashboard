@@ -370,6 +370,11 @@ jobs:
       # Broadest signal, and `deploy` gates on this job. Until this
       # step existed CI ran ~750 of ~8200 tests, so a regression anywhere else
       # reached production behind a green check — main deploys on merge.
+      - name: Install FFmpeg for TheBrief soundtrack tests
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends ffmpeg
+
       - name: Full test suite
         # The repository-wide caller scan competes with other test files for CPU.
         # The governance layout checks also launch Chromium. Run both suites
