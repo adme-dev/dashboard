@@ -93,7 +93,8 @@ Erase runs entirely in this Worker and on Workers AI. No extra bindings or secre
 4. Pastes only the painted region of the model's result, with a soft edge and a
    tone correction, onto the original at full resolution, and stores a lossless PNG.
 
-Limits: PNG and JPEG sources up to 24 megapixels. `wrangler.toml` raises the CPU
+Limits: PNG and JPEG sources up to 9 megapixels (4K UHD fits). Memory use at that
+size has not been measured on a deployed Worker, only locally. `wrangler.toml` raises the CPU
 limit to 5 minutes for decoding and encoding large pictures; this needs a paid
 Workers plan.
 

@@ -5,8 +5,9 @@ import type { RgbaImage } from './eraseComposite'
 
 export type PictureFormat = 'png' | 'jpeg'
 
-// Decoded size cap. 24MP of RGBA is about 96MB, close to a worker's memory ceiling.
-export const MAX_PICTURE_PIXELS = 24_000_000
+// Decoded size cap: 4K UHD (3840 x 2160) with a little room. A worker has 128MB, and one
+// picture is held as RGBA (4 bytes a pixel) while a second copy is built for encoding.
+export const MAX_PICTURE_PIXELS = 9_000_000
 
 /** Identifies a picture by its first bytes. Content types on stored objects are not reliable. */
 export function sniffPictureFormat(bytes: Uint8Array): PictureFormat | null {
@@ -41,10 +42,10 @@ export function decodePicture(bytes: Uint8Array): RgbaImage {
   const size = readPictureSize(bytes)
   if (!size || !size.width || !size.height) throw new Error('The picture could not be read.')
   if (size.width * size.height > MAX_PICTURE_PIXELS) {
-    throw new Error(`The picture is too large to edit (${size.width} x ${size.height}). The limit is 24 megapixels.`)
+    throw new Error(`The picture is too large to edit (${size.width} x ${size.height}). The limit is 9 megapixels, about 4K.`)
   }
   if (format === 'png') return decodePng(bytes)
-  const decoded = jpeg.decode(bytes, { useTArray: true, formatAsRGBA: true, maxMemoryUsageInMB: 512, maxResolutionInMP: 24 })
+  const decoded = jpeg.decode(bytes, { useTArray: true, formatAsRGBA: true, maxMemoryUsageInMB: 256, maxResolutionInMP: 9 })
   return { width: decoded.width, height: decoded.height, data: decoded.data }
 }
 

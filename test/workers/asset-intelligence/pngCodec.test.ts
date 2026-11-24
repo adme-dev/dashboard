@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { PNG } from 'pngjs'
 import { decodePng, encodePng } from '~~/workers/asset-intelligence/src/pngCodec'
-import { decodePicture, readPictureSize, sniffPictureFormat, encodeJpeg } from '~~/workers/asset-intelligence/src/imageCodec'
+import { MAX_PICTURE_PIXELS, decodePicture, readPictureSize, sniffPictureFormat, encodeJpeg } from '~~/workers/asset-intelligence/src/imageCodec'
 
 function gradient(width: number, height: number) {
   const data = new Uint8Array(width * height * 4)
@@ -72,5 +72,15 @@ describe('worker PNG codec', () => {
     const decoded = decodePicture(jpeg)
     expect([decoded.width, decoded.height]).toEqual([80, 32])
     expect(() => decodePicture(new TextEncoder().encode('not a picture at all'))).toThrow('Only PNG and JPEG pictures can be edited.')
+  })
+
+  it('refuses a picture too large for a worker before decoding it', () => {
+    // A header claiming 5000 x 4000 (20MP); the body is never read.
+    const header = encodePng(gradient(2, 2)).slice()
+    new DataView(header.buffer).setUint32(16, 5000)
+    new DataView(header.buffer).setUint32(20, 4000)
+    expect(() => decodePicture(header)).toThrow('too large to edit (5000 x 4000). The limit is 9 megapixels, about 4K.')
+    // 4K UHD is inside the limit.
+    expect(3840 * 2160).toBeLessThanOrEqual(MAX_PICTURE_PIXELS)
   })
 })
