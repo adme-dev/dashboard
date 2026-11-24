@@ -7,7 +7,7 @@ vi.mock('~~/server/utils/db', () => ({ queryOneFresh: mocks.fresh, queryRowsFres
 vi.mock('~~/server/utils/banner/clientAccess', () => ({ requireBannerClientAccess: mocks.access, hasAllBannerClientAccess: mocks.all }))
 vi.stubGlobal('defineEventHandler', (handler: unknown) => handler)
 vi.stubGlobal('getRouterParam', (event: { id: string }) => event.id)
-vi.stubGlobal('getQuery', (event: { query: unknown }) => event.query)
+vi.stubGlobal('getQuery', (event: { query: unknown }) => event.query || {})
 const setHeader = vi.fn()
 vi.stubGlobal('setHeader', setHeader)
 const project = (await import('~~/server/api/agency/banner-studio/projects/[id].get')).default

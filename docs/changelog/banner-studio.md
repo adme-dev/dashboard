@@ -1,5 +1,21 @@
 # Banner Studio change log
 
+## 24 November 2026 — Faster project library loading
+
+The agency and full-screen libraries load project summaries first. Search, client
+counts, folder and tag filters, dimensions, sorting and pagination still cover
+all accessible projects. As a tile approaches the viewport it requests one
+populated layout for its preview, preferring square artwork. Scrolling away
+releases the preview frame. Returning to the tile on the same page can reuse
+that layout. Opening the editor or duplicating a project uses the full artwork.
+Import, sharing and download tools load when opened.
+
+The library opts into `GET /api/agency/banner-studio/projects?view=library`.
+The project detail endpoint accepts `previewFormat` for a single layout. Both
+reads retain their existing access checks and private, no-store responses.
+Existing callers that omit these options receive full project data. This change
+requires no schema migration.
+
 ## 24 November 2026 — Audio controls, trim and fades — live
 
 Selecting an audio layer opens an audio-only inspector. Volume changes reach

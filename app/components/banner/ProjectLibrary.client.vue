@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import type { BannerProject, BannerFolder } from '~/types/banner-studio'
+import type { BannerProject, BannerProjectSummary, BannerFolder } from '~/types/banner-studio'
 import { bannerFolderPath, bannerFolderRows, bannerProjectFolderId, bannerProjectInFolder } from '~/utils/banner-folders'
 import { isAmbiguousApiFailure } from '~/utils/apiError'
-import { bannerDimensions, bannerLibraryFacets, filterBannerProjects, sortLibrary, theBriefCreatedDate } from '~/utils/banner-library'
+import { bannerDimensions, preferredBannerSummaryPreviewKey, bannerLibraryFacets, filterBannerProjects, sortLibrary, theBriefCreatedDate } from '~/utils/banner-library'
 import type { LibrarySort } from '~/utils/banner-library'
 
 const props = withDefaults(defineProps<{ fullScreen?: boolean }>(), { fullScreen: false })
@@ -31,16 +31,20 @@ const sort = ref<LibrarySort>('modified')
 const page = ref(1)
 const pageSize = 36
 const showImportModal = ref(false)
+const importToolsLoaded = ref(false)
+watch(showImportModal, (open) => {
+  if (open) importToolsLoaded.value = true
+})
 const statusFilter = ref<'all' | 'draft' | 'published'>('all')
 const showDeleteModal = ref(false)
-const deleteTarget = ref<BannerProject | null>(null)
-const moveTarget = ref<BannerProject | null>(null)
+const deleteTarget = ref<BannerProjectSummary | null>(null)
+const moveTarget = ref<BannerProjectSummary | null>(null)
 const moveFolderId = ref('__unfiled__')
 const moveBusy = ref(false)
 const moveError = ref('')
-const shareTarget = ref<BannerProject | null>(null)
-const downloadTarget = ref<BannerProject | null>(null)
-const renameTarget = ref<BannerProject | null>(null)
+const shareTarget = ref<BannerProjectSummary | null>(null)
+const downloadTarget = ref<BannerProjectSummary | null>(null)
+const renameTarget = ref<BannerProjectSummary | null>(null)
 const renameValue = ref('')
 const renameBusy = ref(false)
 const renameError = ref('')
@@ -50,7 +54,7 @@ const apiFetch = $fetch as <T = unknown>(
   options?: { method?: string, body?: unknown, headers?: Record<string, string> }
 ) => Promise<T>
 const duplicateIdempotencyKeys = new Map<string, string>()
-const projectsData = ref<BannerProject[]>([])
+const projectsData = shallowRef<BannerProjectSummary[]>([])
 const fetchStatus = ref<'idle' | 'pending' | 'success' | 'error'>('idle')
 
 async function refresh() {
@@ -58,7 +62,7 @@ async function refresh() {
   folderError.value = false
   try {
     const [projects, folders] = await Promise.all([
-      apiFetch<BannerProject[]>('/api/agency/banner-studio/projects'),
+      apiFetch<BannerProjectSummary[]>('/api/agency/banner-studio/projects?view=library'),
       apiFetch<BannerFolder[]>('/api/agency/banner-studio/folders').catch(() => {
         folderError.value = true
         return []
@@ -124,8 +128,8 @@ const projects = computed(() => sortLibrary(filterBannerProjects(clientProjects.
 const visibleProjects = computed(() => projects.value.slice((page.value - 1) * pageSize, page.value * pageSize))
 const libraryItems = computed(() => visibleProjects.value.map(p => ({
   id: p.id, name: p.name, clientId: p.clientId, client: p.clientName || (p.clientId ? 'Unnamed client' : 'Unassigned'),
-  category: p.tags?.includes('import:needs-review') ? `${p.status} · Import needs review` : p.status, dimensions: bannerDimensions(p.canvasData), type: `${Object.keys(p.canvasData || {}).length} size${Object.keys(p.canvasData || {}).length === 1 ? '' : 's'} · Editable`,
-  date: p.updatedAt || p.createdAt, thumbnailUrl: p.thumbnailUrl, canvasData: p.canvasData,
+  category: p.tags?.includes('import:needs-review') ? `${p.status} · Import needs review` : p.status, dimensions: bannerDimensions(undefined, p.formats), type: `${p.formats.length} size${p.formats.length === 1 ? '' : 's'} · Editable`,
+  date: p.updatedAt || p.createdAt, thumbnailUrl: p.thumbnailUrl, projectId: p.id, previewVersion: p.updatedAt, previewKey: preferredBannerSummaryPreviewKey(p.formats, p.populatedFormats),
   sourceCreatedDate: p.tags?.includes('source:thebrief') ? theBriefCreatedDate(p.tags) : undefined,
   to: `${editorBase.value}/${p.id}`
 })))
@@ -151,17 +155,17 @@ function newProject() {
   router.push({ path: `${editorBase.value}/new`, query: selectedFolderPath.value.length ? { folder: folderFilter.value } : {} })
 }
 
-function editProject(p: BannerProject) {
+function editProject(p: BannerProjectSummary) {
   router.push(`${editorBase.value}/${p.id}`)
 }
 
-function moveProject(p: BannerProject) {
+function moveProject(p: BannerProjectSummary) {
   moveTarget.value = p
   moveFolderId.value = bannerProjectFolderId(p, folderData.value) || '__unfiled__'
   moveError.value = ''
 }
 
-function renameProject(p: BannerProject) {
+function renameProject(p: BannerProjectSummary) {
   renameTarget.value = p
   renameValue.value = p.name
   renameError.value = ''
@@ -203,10 +207,11 @@ async function saveProjectFolder() {
   }
 }
 
-async function duplicateProject(p: BannerProject) {
+async function duplicateProject(p: BannerProjectSummary) {
   const idempotencyKey = duplicateIdempotencyKeys.get(p.id) || crypto.randomUUID()
   duplicateIdempotencyKeys.set(p.id, idempotencyKey)
   try {
+    const source = await apiFetch<BannerProject>(`/api/agency/banner-studio/projects/${p.id}`)
     await apiFetch<{ project: BannerProject }>('/api/agency/banner-studio/projects', {
       method: 'POST',
       headers: { 'Idempotency-Key': idempotencyKey },
@@ -214,7 +219,7 @@ async function duplicateProject(p: BannerProject) {
         name: `${p.name} (copy)`,
         clientId: p.clientId,
         folderId: p.folderId,
-        canvasData: p.canvasData,
+        canvasData: source.canvasData,
         status: 'draft'
       }
     })
@@ -227,7 +232,7 @@ async function duplicateProject(p: BannerProject) {
   }
 }
 
-function confirmDelete(p: BannerProject) {
+function confirmDelete(p: BannerProjectSummary) {
   deleteTarget.value = p
   showDeleteModal.value = true
 }
@@ -251,7 +256,7 @@ const statusItems = [
   { label: 'Published', value: 'published' }
 ]
 
-const dropdownItems = (p: BannerProject) => [
+const dropdownItems = (p: BannerProjectSummary) => [
   [
     { label: 'Edit', icon: 'i-lucide-pencil', onSelect: () => editProject(p) },
     { label: 'Share', icon: 'i-lucide-share-2', onSelect: () => { shareTarget.value = p } },
@@ -718,9 +723,14 @@ function clearFilters() {
         </div>
       </main>
     </div>
-    <BannerTheBriefImportModal v-model:open="showImportModal" @imported="refresh" />
-    <BannerProjectShareModal :open="!!shareTarget" :project="shareTarget" @update:open="value => { if (!value) shareTarget = null }" />
-    <BannerVideoDownloads
+    <LazyBannerTheBriefImportModal v-if="importToolsLoaded" v-model:open="showImportModal" @imported="refresh" />
+    <LazyBannerProjectShareModal
+      v-if="shareTarget"
+      :open="!!shareTarget"
+      :project="shareTarget"
+      @update:open="value => { if (!value) shareTarget = null }"
+    />
+    <LazyBannerVideoDownloads
       v-if="downloadTarget"
       :open="!!downloadTarget"
       :project-id="downloadTarget.id"

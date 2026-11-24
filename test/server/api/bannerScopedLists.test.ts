@@ -83,3 +83,19 @@ describe.each([
     expect(mocks.rows.mock.calls[0]?.[0]).toContain(`${client} IS NULL AND ${owner} = $1`)
   })
 })
+
+describe('lightweight banner library', () => {
+  it('selects metadata without returning layer payloads and preserves assignment scoping', async () => {
+    await projects(request({ view: 'library' }))
+    const [sql, params] = mocks.rows.mock.calls[0]!
+    expect(sql).not.toContain('p.canvas_data AS "canvasData"')
+    expect(sql).toContain('AS "formats"')
+    expect(sql).toContain('AS "populatedFormats"')
+    expect(sql).toContain('client_team_assignments')
+    expect(params).toEqual(['staff-id'])
+  })
+  it('retains full canvases for existing API consumers', async () => {
+    await projects(request())
+    expect(mocks.rows.mock.calls[0]![0]).toContain('p.canvas_data AS "canvasData"')
+  })
+})

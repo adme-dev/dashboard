@@ -49,6 +49,18 @@ describe('automatic creative team Banner Studio access', () => {
     expect(m.one).not.toHaveBeenCalled()
   })
 
+  it('returns only the requested preview layout through the same client permission boundary', async () => {
+    await expect(detail(event({ previewFormat: 'custom_1200x1200' }))).resolves.toEqual(project)
+    expect(m.fresh).toHaveBeenCalledWith(expect.stringContaining('jsonb_build_object($2::text, p.canvas_data->$2::text)'), [expect.any(String), 'custom_1200x1200'])
+    m.granted = false
+    await expect(detail(event({ previewFormat: 'custom_1200x1200' }))).rejects.toMatchObject({ statusCode: 403 })
+  })
+
+  it('rejects an invalid preview format parameter before reading the project', async () => {
+    await expect(detail(event({ previewFormat: ['fb_sq', 'mrec'] }))).rejects.toMatchObject({ statusCode: 400 })
+    expect(m.fresh).not.toHaveBeenCalled()
+  })
+
   it('allows newly added clients automatically without inserting assignment rows', async () => {
     const nextClient = '33333333-3333-4333-8333-333333333333'
     await expect(requireBannerClientAccess(event(), nextClient)).resolves.toEqual(user)

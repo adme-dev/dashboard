@@ -1,6 +1,8 @@
 import type { ArtboardState, BannerProject } from '~/types/banner-studio'
 import { resolveBannerFormat } from '~/utils/banner-constants'
 
+type LibraryProject = Omit<BannerProject, 'canvasData'> & { canvasData?: Record<string, ArtboardState>, formats?: string[] }
+
 export type LibrarySort = 'modified' | 'name' | 'oldest' | 'created'
 export interface BannerLibraryItem {
   id: string
@@ -15,6 +17,9 @@ export interface BannerLibraryItem {
   sourceCreatedDate?: string | null
   thumbnailUrl?: string | null
   canvasData?: Record<string, ArtboardState>
+  projectId?: string
+  previewKey?: string
+  previewVersion?: string
   to?: string
 }
 
@@ -28,6 +33,15 @@ export function preferredBannerPreviewKey(canvasData?: Record<string, ArtboardSt
   })
   const populated = layouts.filter(layout => layout.board.layers.length > 0)
   return (populated.length ? populated : layouts).sort((a, b) => a.distance - b.distance)[0]?.key
+}
+
+/** Choose the same square-first layout from lightweight library metadata. */
+export function preferredBannerSummaryPreviewKey(formats: string[], populatedFormats: string[]): string | undefined {
+  const populated = populatedFormats.filter(key => resolveBannerFormat(key))
+  return (populated.length ? populated : formats)
+    .map(key => ({ key, format: resolveBannerFormat(key) }))
+    .filter(item => item.format)
+    .sort((a, b) => Math.abs(Math.log(a.format!.w / a.format!.h)) - Math.abs(Math.log(b.format!.w / b.format!.h)))[0]?.key
 }
 
 /** Native saved canvas takes precedence over potentially stale imported thumbnails. */
@@ -56,13 +70,13 @@ export function sortLibrary<T extends { name: string, createdAt?: string, update
     : (sort === 'created' ? created(a) - created(b) : sort === 'oldest' ? timestamp(a) - timestamp(b) : timestamp(b) - timestamp(a)) || a.name.localeCompare(b.name))
 }
 
-export function filterBannerProjects(items: BannerProject[], filters: { client: string, tag: string, status: string, search: string }): BannerProject[] {
+export function filterBannerProjects<T extends LibraryProject>(items: T[], filters: { client: string, tag: string, status: string, search: string }): T[] {
   const search = filters.search.trim().toLocaleLowerCase()
   return items.filter((project) => {
     if (filters.client === 'unassigned' ? Boolean(project.clientId) : filters.client !== 'all' && project.clientId !== filters.client) return false
     if (filters.tag !== 'all' && !project.tags?.includes(filters.tag)) return false
     if (filters.status !== 'all' && project.status !== filters.status) return false
-    return !search || [project.name, project.clientName, ...project.tags || [], bannerDimensions(project.canvasData)]
+    return !search || [project.name, project.clientName, ...project.tags || [], bannerDimensions(project.canvasData, project.formats)]
       .some(value => value?.toLocaleLowerCase().includes(search))
   })
 }
@@ -84,7 +98,7 @@ export function theBriefCreatedDate(tags: string[]): string | null {
 }
 
 /** Facets are derived after client filtering; internal provenance tags are never categories. */
-export function bannerLibraryFacets(items: BannerProject[]) {
+export function bannerLibraryFacets(items: LibraryProject[]) {
   const tags = [...new Set(items.flatMap(project => project.tags || []))]
   return {
     folders: tags.filter(tag => tag.startsWith('source-folder:') && tag.length > 14).sort(),

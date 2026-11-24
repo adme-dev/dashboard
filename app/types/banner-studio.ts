@@ -248,6 +248,12 @@ export interface BannerProject {
   updatedAt: string
 }
 
+/** Library reads carry dimensions and populated keys, without editable layer data. */
+export type BannerProjectSummary = Omit<BannerProject, 'canvasData'> & {
+  formats: string[]
+  populatedFormats: string[]
+}
+
 export interface BannerAsset {
   id: string
   name: string

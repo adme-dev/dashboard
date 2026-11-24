@@ -82,7 +82,7 @@ watch(open, (value) => {
   }).catch(() => {
     if (generation === catalogGeneration) error.value = 'Could not load clients or folders. Close and reopen to retry.'
   })
-})
+}, { immediate: true })
 
 async function readPackages() {
   if (busy.value) return
