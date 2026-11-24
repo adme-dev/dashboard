@@ -154,6 +154,11 @@ Limits and controls:
   where some elements or the base failed succeeds and its manifest is marked
   `partial` with what is missing.
 
+- When a model's safety filter blocks a result (Workers AI answers `3030: Your output
+  has been flagged`), the job fails with "The AI safety filter blocked this edit. Try a
+  different area or instruction." The provider's wording is kept on the invocation
+  ledger. The rule lives in `shared/video/assetIntelligenceFailureMessage.ts`.
+
 Segment object still has no provider runtime and is refused with HTTP 409.
 
 Deploying this Worker is a separate step from deploying Pages (see above).
