@@ -1,5 +1,12 @@
 # Banner Studio change log
 
+## 24 November 2026 — Audio timeline waveform (unreleased)
+
+Audio tracks show normalized waveform bars beneath transparent Sound controls.
+The preview redraws when the timeline or clip resizes, repeats for looped audio,
+and leaves the remainder empty when a non-looping source finishes. Linked
+layouts share decoded peak data; failed previews leave audio controls usable.
+
 ## Creative team library access — live (23 November 2026)
 
 An active, current Creative permission grants automatic access to all Banner Studio
