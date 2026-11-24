@@ -37,6 +37,7 @@ export default defineEventHandler(event => withGodModeLedger(event, 'derivativeA
     role: body.role,
     title: body.title,
     directive: body.directive,
+    createdBy: user.id,
   })
   setResponseStatus(event, 201)
   return { item, derivative }

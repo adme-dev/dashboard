@@ -3,9 +3,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const mockQueryOne = vi.fn()
 const mockQueryRows = vi.fn()
 
+const freshReads: string[] = []
 vi.mock('~~/server/utils/db', () => ({
   queryOne: (...args: unknown[]) => mockQueryOne(...args),
   queryRows: (...args: unknown[]) => mockQueryRows(...args),
+  // Fresh reads share the same fakes; freshReads records which statements asked for them.
+  queryOneFresh: (...args: unknown[]) => { freshReads.push(String(args[0])); return mockQueryOne(...args) },
+  queryRowsFresh: (...args: unknown[]) => { freshReads.push(String(args[0])); return mockQueryRows(...args) },
 }))
 
 const {
@@ -14,11 +18,15 @@ const {
   markAssetIntelligenceJobSucceeded,
   markAssetIntelligenceJobFailed,
   listProjectIntelligenceJobs,
+  listAssetDerivatives,
+  listBucketItemsForProject,
+  listProjectBuckets,
 } = await import('~~/server/utils/video-asset-intelligence/db')
 const staleJobs = await import('~~/shared/video/assetIntelligenceStaleJobs')
 
 describe('asset intelligence lifecycle', () => {
   beforeEach(() => {
+    freshReads.length = 0
     mockQueryOne.mockReset()
     mockQueryRows.mockReset()
   })
@@ -121,6 +129,21 @@ describe('asset intelligence lifecycle', () => {
       ['project-1', staleJobs.STALE_RUNNING_JOB_MINUTES, staleJobs.STALE_QUEUED_JOB_MINUTES, staleJobs.STALE_RUNNING_JOB_MESSAGE, staleJobs.STALE_QUEUED_JOB_MESSAGE],
     ])
     expect(jobs[0]).toMatchObject({ id: 'job-stale', status: 'failed', errorMessage: staleJobs.STALE_QUEUED_JOB_MESSAGE })
+  })
+
+  // The default connection caches an identical SELECT for up to a minute. The editor polls
+  // these lists every 3 seconds, so a cached read showed a finished job as queued for about a minute.
+  it('reads the lists the editor polls without the read cache', async () => {
+    mockQueryRows.mockResolvedValue([])
+    await listProjectIntelligenceJobs('project-1', 30)
+    await listAssetDerivatives('asset-1')
+    await listBucketItemsForProject('project-1')
+    await listProjectBuckets('project-1')
+
+    expect(freshReads.some(sql => sql.includes('FROM video_asset_intelligence_jobs'))).toBe(true)
+    expect(freshReads.some(sql => sql.includes('FROM video_asset_derivatives'))).toBe(true)
+    expect(freshReads.some(sql => sql.includes('FROM video_project_bucket_items'))).toBe(true)
+    expect(freshReads.some(sql => sql.includes('FROM video_project_buckets'))).toBe(true)
   })
 
   it('still lists jobs when closing stranded ones fails', async () => {

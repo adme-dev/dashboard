@@ -792,7 +792,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Prepare Pictures Before You Cut',
-        content: 'The Prepare workspace puts a picture on a large stage with its tools beside it. Paint over an unwanted object to erase it and heal the background. Paint over a logo, badge or product to lift it out as a transparent cut-out. Separate a flattened ad into a clean base and up to eight cut-out layers for text, logos and products, each stored with its position and stacking order so it can be moved or animated. Remove the background to keep only the subject. Cut-outs are redrawn by an image model, so check fine detail such as small text before delivery. On a video these tools work on a still frame and give you stills; the video itself is not changed.'
+        content: 'The Prepare workspace puts a picture on a large stage with its tools beside it. Upload a picture or clip straight into it, or keep a result as a project asset and prepare it again. Paint over an unwanted object to erase it and heal the background. Paint over a logo, badge or product to lift it out as a transparent cut-out. Separate a flattened ad into a clean base and up to eight cut-out layers for text, logos and products, each stored with its position and stacking order so it can be moved or animated. Remove the background to keep only the subject. Cut-outs are redrawn by an image model, so check fine detail such as small text before delivery. On a video these tools work on a still frame and give you stills; the video itself is not changed.'
       },
       {
         title: 'Animate Separated Layers',

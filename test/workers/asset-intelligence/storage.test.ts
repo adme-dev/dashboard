@@ -67,7 +67,7 @@ describe('asset intelligence storage', () => {
   it('says what to do when a video has neither a painted frame nor a preview frame', async () => {
     const bucket = bucketWith({ 'assets/clip.mp4': MP4_HEAD })
     await expect(fetchAssetPicture(bucket, 'asset-3', async () => ({ r2Key: 'assets/clip.mp4', thumbnailKey: null }), 'video-asset-masks/p/a/missing.frame.jpg'))
-      .rejects.toThrow('No still frame of this video was saved')
+      .rejects.toThrow(/No still frame of this video was saved.*Open the video in Prepare.*run the tool again/)
   })
 
   it('fails clearly when the preview frame is not a PNG or JPEG', async () => {

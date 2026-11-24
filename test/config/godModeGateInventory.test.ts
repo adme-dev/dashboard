@@ -569,15 +569,21 @@ describe('God mode gate inventory', () => {
     ]
     for (const row of layerImportGates) expect(inventory.rows).toContain(row)
     expect(inventory.rows.some(row => row.startsWith('server/api/agency/banner-studio/ai/decompose.post.ts	'))).toBe(false)
-    const previousRows = inventory.rows.filter(row => row !== importWriteGate && row !== ownerFeedGate && !bannerReview.additions.includes(row) && !layerImportGates.includes(row))
+    // Prepare saves a preview frame for a video that has none: one requireWriteAccess gate
+    // (application_governance_bypass, the same classification as masks.post.ts beside it),
+    // followed by the project write-access check. It registers the video-asset-thumbnail
+    // God mode family; no authority bypass.
+    const previewFrameGate = 'server/api/agency/video/assets/[id]/thumbnail.post.ts\tconst user = await requireWriteAccess(event)\tapplication_governance_bypass'
+    expect(inventory.rows).toContain(previewFrameGate)
+    const previousRows = inventory.rows.filter(row => row !== importWriteGate && row !== ownerFeedGate && row !== previewFrameGate && !bannerReview.additions.includes(row) && !layerImportGates.includes(row))
     expect(previousRows).toHaveLength(1870)
-    expect(inventory.rows).toHaveLength(1881)
+    expect(inventory.rows).toHaveLength(1882)
     expect(inventory.counts).toEqual({
       spend_authorization_hard_boundary: 4,
       fresh_role_grant_hard_boundary: 99,
       identity_tenant_hard_boundary: 154,
       provider_infrastructure_availability: 235,
-      application_governance_bypass: 1627,
+      application_governance_bypass: 1628,
       ordinary_user_behavior: 329,
       unrelated_configuration: 432
     })
@@ -614,7 +620,7 @@ describe('God mode gate inventory', () => {
     expect(createHash('sha256').update(previousRows.filter(row => row !== campaignReadGate && row !== canonicalMcpGate && row !== changeHistoryGate && !editableCopyGates.has(row)).join('\n')).digest('hex')).toBe('6823174c9c4c345945510df91cb41f4d8dd7cf37656471221c2926ad9da6a939')
     // Pins the complete reviewed inventory, including the video funding boundaries.
     expect(createHash('sha256').update(previousRows.join('\n')).digest('hex')).toBe('57024038c87fcbe6d775987181303b04f5070f8477774e097e10f0def3c2bab2')
-    expect(inventory.digest).toBe('75b0b470fad5b32a8cb4aeb59076b4fd61dcfcb76c1105ff04bc3da7932c7eba')
+    expect(inventory.digest).toBe('981704e6bfc86e8b868de1159c2ddf091cbd0fc375b92d742b4d62b58dd7f522')
     expect(inventory.rows).toContain(
       'app/composables/usePageStudioLauncher.ts\tconst config = useRuntimeConfig()\tunrelated_configuration'
     )
