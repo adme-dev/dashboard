@@ -156,10 +156,16 @@ export interface ImportTextMetrics {
   frame: { x: number, y: number, w: number, h: number }
 }
 
+// The cut-out's box is not always tight on the lettering (a rule or flourish beside the
+// words stretches it), so the measured width may move the size this far from the height's answer.
+const WIDTH_FIT_MIN = 0.55
+const WIDTH_FIT_MAX = 1.35
+
 /**
  * Sizes live text to cover the lettering's box. The height of the box gives a first
- * size; when the line can be measured in the chosen font, the size is nudged so the
- * widest line is as wide as the original, within a quarter either way.
+ * size. When the line can be measured in the chosen font, the size follows the width
+ * instead, so the words span what they spanned in the picture, and the line spacing
+ * is opened or closed so a paragraph still fills the box's height.
  */
 export function importTextMetrics(
   text: Pick<BannerLayerImportText, 'text' | 'align' | 'letterSpacing'>,
@@ -169,30 +175,34 @@ export function importTextMetrics(
 ): ImportTextMetrics {
   const lines = text.text.split('\n').filter(line => line.trim())
   const count = Math.max(1, lines.length)
-  const lineHeight = count > 1 ? 1.15 : 1.1
   const hasDescender = /[gjpqy,;]/.test(text.text) && text.text !== text.text.toUpperCase()
-  const inkEm = (count - 1) * lineHeight + CAP_HEIGHT_EM + (hasDescender ? DESCENDER_EM : 0)
-  const byHeight = box.h / inkEm
+  const inkEm = CAP_HEIGHT_EM + (hasDescender ? DESCENDER_EM : 0)
+  const byHeight = box.h / ((count - 1) * 1.15 + inkEm)
   const spacingEm = LETTER_SPACING_EM[text.letterSpacing] ?? 0
 
+  // Width of the widest line at a reference size, when the font can be measured.
+  const reference = 100
+  const widest = measure
+    ? Math.max(0, ...lines.map((line) => {
+        const width = measure(line, { ...font, fontSize: reference })
+        return width == null ? 0 : width + Math.max(0, [...line].length - 1) * spacingEm * reference
+      }))
+    : 0
+
   let fontSize = byHeight
-  if (measure) {
-    const reference = 100
-    const widest = Math.max(0, ...lines.map((line) => {
-      const width = measure(line, { ...font, fontSize: reference })
-      return width == null ? 0 : width + Math.max(0, [...line].length - 1) * spacingEm * reference
-    }))
-    if (widest > 0) {
-      const byWidth = reference * box.w / widest
-      fontSize = Math.min(byHeight * 1.25, Math.max(byHeight * 0.75, byWidth))
-    }
-  }
+  if (widest > 0) fontSize = Math.min(byHeight * WIDTH_FIT_MAX, Math.max(byHeight * WIDTH_FIT_MIN, reference * box.w / widest))
   fontSize = Math.max(4, Math.round(fontSize * 10) / 10)
 
-  // Slack on the width so the widest line never wraps in a slightly wider fallback face.
+  // A paragraph keeps the height it had: the gap between lines takes up the difference.
+  const lineHeight = count > 1
+    ? Math.round(Math.min(1.6, Math.max(0.9, (box.h / fontSize - inkEm) / (count - 1))) * 100) / 100
+    : 1.1
+
+  // Room on the width so the widest line never wraps, whichever size was chosen.
   const slack = Math.max(4, box.w * 0.08)
-  const w = box.w + slack
-  const x = text.align === 'center' ? box.x - slack / 2 : text.align === 'right' ? box.x - slack : box.x
+  const w = Math.max(box.w, widest * fontSize / reference) + slack
+  const extra = w - box.w
+  const x = text.align === 'center' ? box.x - extra / 2 : text.align === 'right' ? box.x - extra : box.x
   const y = box.y - fontSize * ((lineHeight - 1) / 2 + CAP_TOP_EM)
   return {
     fontSize,

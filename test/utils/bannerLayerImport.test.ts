@@ -210,15 +210,36 @@ describe('sizing rebuilt text', () => {
     expect(importTextMetrics(text({ text: 'Spring pricing', uppercase: false }), { ...box, h: 46.5 }, font).fontSize).toBe(50)
   })
 
-  it('nudges the size so the widest line is as wide as the original', () => {
+  it('follows the measured width, so the words span what they spanned in the picture', () => {
     // At 100px the line measures 1000px, so 400px wide needs 40px; height alone said 50px.
     const metrics = importTextMetrics(text(), box, font, () => 1000)
     expect(metrics.fontSize).toBe(40)
+    // The frame is the line's width plus a little room, so it cannot wrap.
+    expect(metrics.frame.w).toBeGreaterThan(400)
   })
 
-  it('limits the width correction to a quarter either way', () => {
-    expect(importTextMetrics(text(), box, font, () => 4000).fontSize).toBe(37.5)
-    expect(importTextMetrics(text(), box, font, () => 100).fontSize).toBe(62.5)
+  it('limits how far the width may move the size from the height\'s answer', () => {
+    expect(importTextMetrics(text(), box, font, () => 4000).fontSize).toBe(27.5)
+    expect(importTextMetrics(text(), box, font, () => 100).fontSize).toBe(67.5)
+  })
+
+  it('widens the frame when the limited size still leaves the line wider than its box', () => {
+    // Clamped to 27.5px, a 4000px-per-100px line is 1100px wide: far wider than the 400px box.
+    const metrics = importTextMetrics(text(), box, font, () => 4000)
+    expect(metrics.frame.w).toBeGreaterThan(1100)
+    expect(metrics.frame.x).toBe(100)
+  })
+
+  it('opens the line spacing so a paragraph still fills the height of its box', () => {
+    // Two lines in a 200px box, sized by width to 100px: (200 / 100 - 0.72) = 1.28 between the lines.
+    const metrics = importTextMetrics(text({ text: 'SUMMER\nSALE', lines: 2 }), { ...box, h: 200 }, font, () => 400)
+    expect(metrics.fontSize).toBe(100)
+    expect(metrics.lineHeight).toBe(1.28)
+  })
+
+  it('keeps line spacing within a readable range', () => {
+    expect(importTextMetrics(text({ text: 'A\nB', lines: 2 }), { ...box, h: 400 }, font, () => 400).lineHeight).toBe(1.6)
+    expect(importTextMetrics(text({ text: 'A\nB', lines: 2 }), { ...box, h: 130 }, font, () => 400).lineHeight).toBe(0.9)
   })
 
   it('sizes by height alone when the font cannot be measured yet', () => {

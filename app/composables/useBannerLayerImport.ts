@@ -43,16 +43,35 @@ function errorMessage(error: unknown, fallback: string): string {
   return candidate?.data?.statusMessage || candidate?.data?.message || candidate?.statusMessage || fallback
 }
 
-/** Measures a line in the font it will be set in, once that font has loaded. */
-function canvasMeasure(): MeasureLine | undefined {
+type FontSpec = { fontFamily: string, fontWeight: number, italic: boolean }
+const fontKey = (font: FontSpec) => `${font.fontFamily}|${font.fontWeight}|${font.italic ? 'i' : 'n'}`
+const fontCss = (font: FontSpec, size: number) => `${font.italic ? 'italic ' : ''}${font.fontWeight} ${size}px "${font.fontFamily}"`
+
+/**
+ * Waits for a web font to be usable. `document.fonts.check` says yes for a family the
+ * page has never heard of, so this asks for the face itself and waits for one to arrive.
+ */
+async function webFontReady(font: FontSpec, sample: string, timeoutMs = 5000): Promise<boolean> {
+  if (typeof document === 'undefined' || !document.fonts?.load) return false
+  const until = Date.now() + timeoutMs
+  while (Date.now() < until) {
+    try {
+      if ((await document.fonts.load(fontCss(font, 40), sample)).length) return true
+    } catch { /* keep waiting */ }
+    await new Promise(resolve => setTimeout(resolve, 150))
+  }
+  return false
+}
+
+/** Measures a line in the font it will be set in. Fonts that never loaded are not measured. */
+function canvasMeasure(ready: Set<string>): MeasureLine | undefined {
   if (typeof document === 'undefined') return undefined
   const context = document.createElement('canvas').getContext('2d')
   if (!context) return undefined
   return (line, font) => {
-    const spec = `${font.italic ? 'italic ' : ''}${font.fontWeight} ${font.fontSize}px "${font.fontFamily}"`
-    // An unloaded font would be measured in the fallback face, which is worse than no measurement.
-    if (document.fonts?.check && !document.fonts.check(spec)) return null
-    context.font = spec
+    // Measuring in a fallback face would size the text for the wrong letters.
+    if (!ready.has(fontKey(font))) return null
+    context.font = fontCss(font, font.fontSize)
     return context.measureText(line).width
   }
 }
@@ -111,15 +130,18 @@ export function useBannerLayerImport() {
         brandFonts: kit.value?.fonts ?? [],
         catalogue: fonts.allFonts.value.map(font => ({ family: font.family, category: font.category, weights: [...font.weights] }))
       }
-      // Choose the fonts first and load them, so the lettering can be measured in the real face.
+      // Choose the fonts first and wait for them, so the lettering is measured in the real face.
       const draft = buildImportedLayers(result, format, options)
+      const textLayers = draft.layers.filter(layer => layer.type === 'text')
+      const ready = new Set<string>()
       try {
-        await Promise.race([
-          Promise.resolve(fonts.loadUsedFonts(draft.layers.filter(layer => layer.type === 'text') as never)).then(() => document.fonts?.ready),
-          new Promise(resolve => setTimeout(resolve, 4000))
-        ])
-      } catch { /* measured by height alone */ }
-      const built = buildImportedLayers(result, format, { ...options, measure: canvasMeasure() })
+        fonts.loadUsedFonts(textLayers as never)
+        await Promise.all(textLayers.map(async (layer) => {
+          const font = { fontFamily: layer.fontFamily!, fontWeight: layer.fontWeight ?? 400, italic: layer.fontStyle === 'italic' }
+          if (fonts.isSystemFont(font.fontFamily) || await webFontReady(font, layer.text || '')) ready.add(fontKey(font))
+        }))
+      } catch { /* sized by height alone */ }
+      const built = buildImportedLayers(result, format, { ...options, measure: canvasMeasure(ready) })
       const added = studio.addLayerSet(built.layers, formatKey)
       outcome.value = {
         formatKey,
