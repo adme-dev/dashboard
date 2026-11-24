@@ -56,6 +56,6 @@ try {
     for(let n=Math.round((seconds-0.03)*48000);n<Math.round((seconds+0.05)*48000);n++) if(Math.abs(pcm.readFloatLE(n*4))>0.03){first=n/48000;break}
     assert.ok(first>=0 && Math.abs(first-seconds)<0.02);onsets.push(Math.round((first-seconds)*1000))
   }
-  const receipt={kind:'synthetic-full-HD-composite',inputDurationSec:duration,outputDurationSec:Number(facts.format.duration),frames:Number(v.nb_frames),fps,width:v.width,height:v.height,elapsedMs,outputBytes:bytes.length,outputSha256:createHash('sha256').update(bytes).digest('hex'),fullDecode:'passed',pictureTiming:pictures,encodedZoomEdges:zoomEdges,voiceLagMs:onsets,copy:'measured readable',environment:'Linux amd64 emulation, 4 CPUs, 8 GiB Colima VM'}
+  const receipt={kind:'synthetic-full-HD-composite',inputDurationSec:duration,outputDurationSec:Number(facts.format.duration),frames:Number(v.nb_frames),fps,width:v.width,height:v.height,elapsedMs,outputBytes:bytes.length,outputSha256:createHash('sha256').update(bytes).digest('hex'),fullDecode:'passed',pictureTiming:pictures,encodedZoomEdges:zoomEdges,voiceLagMs:onsets,copy:'measured readable',environment:`${process.platform}/${process.arch}; record the host and container limits with the qualification receipt`}
   console.log(JSON.stringify(receipt))
 } finally {server.kill('SIGTERM');rmSync(dir,{recursive:true,force:true})}
