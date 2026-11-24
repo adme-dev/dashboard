@@ -17,7 +17,7 @@
 
       <UNavigationMenu
         orientation="vertical"
-        :items="adminNavItems"
+        :items="activeAdminNavItems"
         tooltip
       />
 
@@ -74,8 +74,11 @@
 
 <script setup lang="ts">
 import { useId } from 'vue'
+import type { NavigationMenuItem } from '@nuxt/ui'
 import { useAuth } from '~/composables/useAuth'
+import { applyActiveSidebarNavGroup } from '~/utils/sidebarActiveNav'
 
+const route = typeof useRoute === 'function' ? useRoute() : null
 const { user, logout, fetchUser, isGodMode } = useAuth()
 const godModeStatusDescription = 'All registered application and MCP capabilities are available. Authentication and session checks, exact active-owner authority, tenant, client and entity isolation, mandatory audit, emergency disable, provider bindings and secrets, and SSRF protections remain enforced.'
 const godModeStatusDescriptionId = useId()
@@ -88,11 +91,12 @@ onMounted(() => {
   if (!user.value) void fetchUser()
 })
 
-const adminNavItems = [
+const adminNavItems: NavigationMenuItem[] = [
   {
     label: 'Dashboard',
     icon: 'i-lucide-layout-dashboard',
-    to: '/admin'
+    to: '/admin',
+    exact: true
   },
   {
     label: 'Teams',
@@ -125,4 +129,8 @@ const adminNavItems = [
     to: '/admin/settings'
   }
 ]
+
+const activeAdminNavItems = computed(() =>
+  route ? applyActiveSidebarNavGroup(adminNavItems, { path: route.path, query: route.query }) : adminNavItems
+)
 </script>

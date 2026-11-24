@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { NavigationMenuItem } from '@nuxt/ui'
 import { portalSocialNavItems } from '~/utils/portalSocialNavigation'
+import { applyActiveSidebarNav } from '~/utils/sidebarActiveNav'
 
 const { user, stats, logout } = usePortalAuth()
 const route = useRoute()
@@ -190,6 +191,12 @@ const mainNav = computed<NavigationMenuItem[]>(() => {
 const footerItems: NavigationMenuItem[] = [
   { label: 'Settings', icon: 'i-lucide-settings', to: '/portal/settings', onSelect: close }
 ]
+const resolvedPortalNav = computed(() => applyActiveSidebarNav(
+  [mainNav.value, footerItems],
+  { path: route.path, query: route.query }
+))
+const activeMainNav = computed(() => resolvedPortalNav.value[0] ?? [])
+const activeFooterItems = computed(() => resolvedPortalNav.value[1] ?? [])
 const identityItems = computed(() => [[{
   label: user.value?.name || 'User',
   type: 'label' as const
@@ -245,14 +252,14 @@ async function handleLogout() {
       <template #default="{ collapsed }">
         <UNavigationMenu
           :collapsed="collapsed"
-          :items="mainNav"
+          :items="activeMainNav"
           orientation="vertical"
           tooltip
         />
 
         <UNavigationMenu
           :collapsed="collapsed"
-          :items="footerItems"
+          :items="activeFooterItems"
           orientation="vertical"
           tooltip
           class="mt-auto"

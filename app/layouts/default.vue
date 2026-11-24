@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { NavigationMenuItem } from '@nuxt/ui'
+import { applyActiveSidebarNav } from '~/utils/sidebarActiveNav'
 
 const route = useRoute()
 const toast = useToast()
@@ -295,6 +296,11 @@ const links = computed(() => [[{
   target: '_blank'
 }]] satisfies NavigationMenuItem[][])
 
+const resolvedLinks = computed(() => applyActiveSidebarNav(
+  links.value,
+  { path: route.path, query: route.query }
+))
+
 const groups = computed(() => [{
   id: 'links',
   label: 'Go to',
@@ -356,7 +362,7 @@ onMounted(async () => {
 
         <UNavigationMenu
           :collapsed="collapsed"
-          :items="links[0]"
+          :items="resolvedLinks[0]"
           orientation="vertical"
           tooltip
           popover
@@ -364,7 +370,7 @@ onMounted(async () => {
 
         <UNavigationMenu
           :collapsed="collapsed"
-          :items="links[1]"
+          :items="resolvedLinks[1]"
           orientation="vertical"
           tooltip
           class="mt-auto"
