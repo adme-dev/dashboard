@@ -3,7 +3,12 @@ import type { CommandPaletteGroup, CommandPaletteItem, NavigationMenuItem } from
 import { socialSpendSuiteNavItems } from '~/utils/socialSpendNavigation'
 import { socialSuiteNavItems } from '~/utils/socialSuiteNavigation'
 import { searchAuthorityNavItems } from '~/utils/searchAuthorityNavigation'
-import { applyActiveSidebarNav } from '~/utils/sidebarActiveNav'
+import {
+  ACTIVE_MEDIA_PROJECT_NAV_STATE_KEY,
+  applyActiveSidebarNav,
+  applyMediaProjectSidebarContext,
+  type ActiveMediaProjectContext
+} from '~/utils/sidebarActiveNav'
 import { useAuthenticatedFetch } from '~/composables/useAuthenticatedFetch'
 
 const route = useRoute()
@@ -488,13 +493,20 @@ const footerNav = computed<NavigationMenuItem[]>(() => {
 // Resolve a single most-specific active item across all three sidebar menus
 // so query-scoped routes (e.g. Video Studio vs Audio Projects, Voice AI vs AI Chat)
 // and nested routes never highlight multiple items at once.
+const activeMediaProject = useState<ActiveMediaProjectContext | null>(ACTIVE_MEDIA_PROJECT_NAV_STATE_KEY, () => null)
+const sidebarLocation = computed(() => applyMediaProjectSidebarContext(
+  { path: route.path, query: route.query, matched: route.matched },
+  activeMediaProject.value
+))
 const resolvedSidebarNav = computed(() => applyActiveSidebarNav(
   [workspaceNav.value, mainNav.value, footerNav.value],
-  { path: route.path, query: route.query }
+  sidebarLocation.value
 ))
-const activeWorkspaceNav = computed(() => resolvedSidebarNav.value[0] ?? [])
-const activeMainNav = computed(() => resolvedSidebarNav.value[1] ?? [])
-const activeFooterNav = computed(() => resolvedSidebarNav.value[2] ?? [])
+const resolvedCollapsedSidebarNav = computed(() => applyActiveSidebarNav(
+  [workspaceNav.value, mainNav.value, footerNav.value],
+  sidebarLocation.value,
+  { collapsed: true }
+))
 
 // Search groups for UDashboardSearch
 function toCommandPaletteItem(item: NavigationMenuItem): CommandPaletteItem | null {
@@ -626,7 +638,7 @@ watch([() => route.path, () => mainNav.value.length], () => {
         <!-- Workspace List -->
         <UNavigationMenu
           :collapsed="collapsed"
-          :items="activeWorkspaceNav"
+          :items="collapsed ? (resolvedCollapsedSidebarNav[0] ?? []) : (resolvedSidebarNav[0] ?? [])"
           orientation="vertical"
           tooltip
           popover
@@ -636,7 +648,7 @@ watch([() => route.path, () => mainNav.value.length], () => {
         <div class="agency-main-nav">
           <UNavigationMenu
             :collapsed="collapsed"
-            :items="activeMainNav"
+            :items="collapsed ? (resolvedCollapsedSidebarNav[1] ?? []) : (resolvedSidebarNav[1] ?? [])"
             orientation="vertical"
             tooltip
             popover
@@ -646,7 +658,7 @@ watch([() => route.path, () => mainNav.value.length], () => {
         <!-- Footer Navigation -->
         <UNavigationMenu
           :collapsed="collapsed"
-          :items="activeFooterNav"
+          :items="collapsed ? (resolvedCollapsedSidebarNav[2] ?? []) : (resolvedSidebarNav[2] ?? [])"
           orientation="vertical"
           tooltip
           popover

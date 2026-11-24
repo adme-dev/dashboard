@@ -129,8 +129,14 @@ function fmtDate(iso: string) {
   return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(date)
 }
 
+function projectEditorPath(id: string, mediaType?: string | null) {
+  return mediaType === 'av'
+    ? `/agency/audio/projects/${id}?mediaType=av`
+    : `/agency/audio/projects/${id}`
+}
+
 function openProject(project: MediaProject) {
-  void navigateTo(`/agency/audio/projects/${project.id}`)
+  void navigateTo(projectEditorPath(project.id, project.mediaType))
 }
 
 const duplicating = ref<string | null>(null)
@@ -157,7 +163,7 @@ async function duplicateProject(project: MediaProject) {
     })
     toast.add({ title: 'Project duplicated', color: 'success' })
     await refresh()
-    await navigateTo(`/agency/audio/projects/${res.project.id}`)
+    await navigateTo(projectEditorPath(res.project.id, res.project.mediaType ?? project.mediaType))
   } catch (error: unknown) {
     toast.add({
       title: 'Failed to duplicate project',
@@ -289,7 +295,7 @@ async function createProject() {
   toast.add({ title: 'Project created', color: 'success' })
   createOpen.value = false
   resetCreateDraft()
-  await navigateTo(`/agency/audio/projects/${createdId}`)
+  await navigateTo(projectEditorPath(createdId, mediaType))
 }
 </script>
 

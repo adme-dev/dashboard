@@ -254,7 +254,7 @@ async function openVideoDraft(row: TheBriefImportRow) {
   try {
     const id = videoDrafts.value[row.projectId] || await createReelmotionVideoDraft(row.projectId, row.clientId, api)
     videoDrafts.value[row.projectId] = id
-    await navigateTo(`/agency/audio/projects/${id}`)
+    await navigateTo(`/agency/audio/projects/${id}?mediaType=av`)
   } catch (cause) {
     error.value = cause instanceof Error ? cause.message : 'Could not prepare the Video Studio draft. Your banner draft is retained.'
   } finally { busy.value = false }

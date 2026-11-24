@@ -1,11 +1,15 @@
 import { readFileSync } from 'node:fs'
 import type { NavigationMenuItem } from '@nuxt/ui'
+import { parseQuery } from 'vue-router'
 import { describe, expect, it } from 'vitest'
 import {
   applyActiveSidebarNav,
   applyActiveSidebarNavGroup,
+  applyMediaProjectSidebarContext,
+  canonicalizeMatchedSidebarPath,
   parseInternalNavTarget,
-  resolveActiveSidebarNavItem
+  resolveActiveSidebarNavItem,
+  type SidebarMatchedRecord
 } from '~~/app/utils/sidebarActiveNav'
 import { searchAuthorityNavItems } from '~~/app/utils/searchAuthorityNavigation'
 import { socialSpendSuiteNavItems } from '~~/app/utils/socialSpendNavigation'
@@ -37,13 +41,13 @@ function collectNavigableItems(groups: readonly (readonly NavigationMenuItem[])[
   return navigable
 }
 
-function routeFromUrl(url: string) {
+function routeFromUrl(url: string, matched?: readonly SidebarMatchedRecord[]) {
   const parsed = new URL(url, 'http://xeroflow.local')
-  const query: Record<string, string> = {}
-  parsed.searchParams.forEach((value, key) => {
-    query[key] = value
-  })
-  return { path: parsed.pathname, query }
+  return {
+    path: parsed.pathname,
+    query: parseQuery(parsed.search),
+    ...(matched ? { matched } : {})
+  }
 }
 
 function buildFullAgencySidebarGroups(): NavigationMenuItem[][] {
@@ -416,6 +420,99 @@ describe('sidebarActiveNav', () => {
     expect(collectActiveItems([applyActiveSidebarNavGroup(portalNav, routeFromUrl('/portal/projects?status=completed'))]).map(i => i.label)).toEqual(['Jobs'])
     expect(collectActiveItems([applyActiveSidebarNavGroup(portalNav, routeFromUrl('/portal/analytics?metric=leads'))]).map(i => i.label)).toEqual(['Overview'])
     expect(collectActiveItems([applyActiveSidebarNavGroup(portalNav, routeFromUrl('/portal/analytics/google'))]).map(i => i.label)).toEqual(['Google'])
+
+    // Collapsed mode promotes the active indicator to the visible top-level Analytics link
+    // because Overview/Google children are unmounted when the sidebar collapses.
+    const collapsedAnalytics = applyActiveSidebarNavGroup(portalNav, routeFromUrl('/portal/analytics?metric=leads'), { collapsed: true })
+    const analyticsGroup = collapsedAnalytics.find(i => i.label === 'Analytics')
+    expect(analyticsGroup?.active).toBe(true)
+    expect(analyticsGroup?.['aria-current']).toBe('page')
+
+    const collapsedGoogle = applyActiveSidebarNavGroup(portalNav, routeFromUrl('/portal/analytics/google'), { collapsed: true })
+    const analyticsOnGoogle = collapsedGoogle.find(i => i.label === 'Analytics')
+    expect(analyticsOnGoogle?.active).toBe(true)
+    expect(analyticsOnGoogle?.['aria-current']).toBe('page')
+  })
+
+  it('canonicalizes mixed-case static route segments while preserving dynamic parameter casing', () => {
+    const groups = buildFullAgencySidebarGroups()
+
+    expect(canonicalizeMatchedSidebarPath('/agency/AUDIO/projects', [{ path: '/agency' }, { path: '/agency/audio/projects' }]))
+      .toBe('/agency/audio/projects')
+    expect(canonicalizeMatchedSidebarPath('/agency/BOARDS/Marketing', [{ path: '/agency' }, { path: '/agency/boards/:id()' }]))
+      .toBe('/agency/boards/Marketing')
+
+    // Mixed-case static segments still highlight Video Studio
+    const mixedCaseVideo = applyActiveSidebarNav(
+      groups,
+      routeFromUrl('/agency/AUDIO/projects?mediaType=av', [{ path: '/agency' }, { path: '/agency/audio/projects' }])
+    )
+    expect(collectActiveItems(mixedCaseVideo).map(i => i.label)).toEqual(['Video Studio'])
+
+    // Mixed-case static segment with lowercase board slug matches the workspace board
+    const lowerSlug = applyActiveSidebarNav(
+      groups,
+      routeFromUrl('/agency/BOARDS/marketing', [{ path: '/agency' }, { path: '/agency/boards/:id()' }])
+    )
+    expect(collectActiveItems(lowerSlug).map(i => i.label)).toEqual(['Marketing Board'])
+
+    // Distinct casing on dynamic board slug stays distinct from `marketing` and falls back to All Boards
+    const upperSlug = applyActiveSidebarNav(
+      groups,
+      routeFromUrl('/agency/BOARDS/Marketing', [{ path: '/agency' }, { path: '/agency/boards/:id()' }])
+    )
+    expect(collectActiveItems(upperSlug).map(i => i.label)).toEqual(['All Boards'])
+  })
+
+  it('matches scalar page semantics when query keys are repeated', () => {
+    const groups = buildFullAgencySidebarGroups()
+
+    // Vue Router parses repeated keys as arrays; pages check `route.query.mediaType === 'av'`
+    // (which is false for arrays, rendering the unfiltered project list).
+    const repeatedMediaType = applyActiveSidebarNav(groups, routeFromUrl('/agency/audio/projects?mediaType=av&mediaType=audio'))
+    expect(collectActiveItems(repeatedMediaType).map(i => i.label)).toEqual(['Audio Projects'])
+
+    const duplicateAv = applyActiveSidebarNav(groups, routeFromUrl('/agency/audio/projects?mediaType=av&mediaType=av'))
+    expect(collectActiveItems(duplicateAv).map(i => i.label)).toEqual(['Audio Projects'])
+
+    const repeatedVoiceMode = applyActiveSidebarNav(groups, routeFromUrl('/agency/ai/chat?mode=voice&mode=text'))
+    expect(collectActiveItems(repeatedVoiceMode).map(i => i.label)).toEqual(['AI Chat'])
+  })
+
+  it('highlights Video Studio on direct bare video-editor URLs once the loaded media type is known', () => {
+    const groups = buildFullAgencySidebarGroups()
+    const matched = [{ path: '/agency' }, { path: '/agency/audio/projects/:id()' }]
+
+    // Before the project finishes loading, bare URL falls back to Audio Projects.
+    const beforeLoad = applyMediaProjectSidebarContext(routeFromUrl('/agency/audio/projects/av-42', matched), null)
+    expect(collectActiveItems(applyActiveSidebarNav(groups, beforeLoad)).map(i => i.label)).toEqual(['Audio Projects'])
+
+    // Once the editor loads an AV project, Video Studio highlights (including mixed-case static segments).
+    const afterAvLoad = applyMediaProjectSidebarContext(
+      routeFromUrl('/agency/AUDIO/PROJECTS/av-42', matched),
+      { projectId: 'av-42', mediaType: 'av' }
+    )
+    expect(collectActiveItems(applyActiveSidebarNav(groups, afterAvLoad)).map(i => i.label)).toEqual(['Video Studio'])
+
+    // Mismatched query on an audio project corrects to Audio Projects once loaded.
+    const afterAudioLoad = applyMediaProjectSidebarContext(
+      routeFromUrl('/agency/audio/projects/aud-9?mediaType=av', matched),
+      { projectId: 'aud-9', mediaType: 'audio' }
+    )
+    expect(collectActiveItems(applyActiveSidebarNav(groups, afterAudioLoad)).map(i => i.label)).toEqual(['Audio Projects'])
+
+    // Context for another project never leaks across project IDs or back to the list route.
+    const wrongId = applyMediaProjectSidebarContext(
+      routeFromUrl('/agency/audio/projects/other-1', matched),
+      { projectId: 'av-42', mediaType: 'av' }
+    )
+    expect(collectActiveItems(applyActiveSidebarNav(groups, wrongId)).map(i => i.label)).toEqual(['Audio Projects'])
+
+    const backToList = applyMediaProjectSidebarContext(
+      routeFromUrl('/agency/audio/projects', [{ path: '/agency' }, { path: '/agency/audio/projects' }]),
+      { projectId: 'av-42', mediaType: 'av' }
+    )
+    expect(collectActiveItems(applyActiveSidebarNav(groups, backToList)).map(i => i.label)).toEqual(['Audio Projects'])
   })
 
   it('handles default layout query-scoped siblings without double-activating', () => {

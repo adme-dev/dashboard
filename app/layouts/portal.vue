@@ -191,12 +191,20 @@ const mainNav = computed<NavigationMenuItem[]>(() => {
 const footerItems: NavigationMenuItem[] = [
   { label: 'Settings', icon: 'i-lucide-settings', to: '/portal/settings', onSelect: close }
 ]
+const portalLocation = computed(() => ({
+  path: route.path,
+  query: route.query,
+  matched: route.matched
+}))
 const resolvedPortalNav = computed(() => applyActiveSidebarNav(
   [mainNav.value, footerItems],
-  { path: route.path, query: route.query }
+  portalLocation.value
 ))
-const activeMainNav = computed(() => resolvedPortalNav.value[0] ?? [])
-const activeFooterItems = computed(() => resolvedPortalNav.value[1] ?? [])
+const resolvedCollapsedPortalNav = computed(() => applyActiveSidebarNav(
+  [mainNav.value, footerItems],
+  portalLocation.value,
+  { collapsed: true }
+))
 const identityItems = computed(() => [[{
   label: user.value?.name || 'User',
   type: 'label' as const
@@ -252,14 +260,14 @@ async function handleLogout() {
       <template #default="{ collapsed }">
         <UNavigationMenu
           :collapsed="collapsed"
-          :items="activeMainNav"
+          :items="collapsed ? (resolvedCollapsedPortalNav[0] ?? []) : (resolvedPortalNav[0] ?? [])"
           orientation="vertical"
           tooltip
         />
 
         <UNavigationMenu
           :collapsed="collapsed"
-          :items="activeFooterItems"
+          :items="collapsed ? (resolvedCollapsedPortalNav[1] ?? []) : (resolvedPortalNav[1] ?? [])"
           orientation="vertical"
           tooltip
           class="mt-auto"

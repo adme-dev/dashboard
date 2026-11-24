@@ -131,6 +131,6 @@ const adminNavItems: NavigationMenuItem[] = [
 ]
 
 const activeAdminNavItems = computed(() =>
-  route ? applyActiveSidebarNavGroup(adminNavItems, { path: route.path, query: route.query }) : adminNavItems
+  route ? applyActiveSidebarNavGroup(adminNavItems, { path: route.path, query: route.query, matched: route.matched }) : adminNavItems
 )
 </script>

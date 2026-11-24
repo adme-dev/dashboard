@@ -296,9 +296,19 @@ const links = computed(() => [[{
   target: '_blank'
 }]] satisfies NavigationMenuItem[][])
 
+const defaultLocation = computed(() => ({
+  path: route.path,
+  query: route.query,
+  matched: route.matched
+}))
 const resolvedLinks = computed(() => applyActiveSidebarNav(
   links.value,
-  { path: route.path, query: route.query }
+  defaultLocation.value
+))
+const resolvedCollapsedLinks = computed(() => applyActiveSidebarNav(
+  links.value,
+  defaultLocation.value,
+  { collapsed: true }
 ))
 
 const groups = computed(() => [{
@@ -362,7 +372,7 @@ onMounted(async () => {
 
         <UNavigationMenu
           :collapsed="collapsed"
-          :items="resolvedLinks[0]"
+          :items="collapsed ? (resolvedCollapsedLinks[0] ?? []) : (resolvedLinks[0] ?? [])"
           orientation="vertical"
           tooltip
           popover
@@ -370,7 +380,7 @@ onMounted(async () => {
 
         <UNavigationMenu
           :collapsed="collapsed"
-          :items="resolvedLinks[1]"
+          :items="collapsed ? (resolvedCollapsedLinks[1] ?? []) : (resolvedLinks[1] ?? [])"
           orientation="vertical"
           tooltip
           class="mt-auto"
