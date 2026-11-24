@@ -1,3 +1,4 @@
+import { isBannerImageBackground } from '../../shared/bannerImageBackground.mjs'
 import { z } from 'zod'
 import { isBannerInlineTextColor } from '../../shared/bannerTextColor.mjs'
 import { isSafeBannerImageFilter } from '../../shared/bannerImageFilters.mjs'
@@ -35,6 +36,8 @@ const layer = z.object({
   textShadow: z.string().max(100).regex(/^-?\d+(?:\.\d+)?px -?\d+(?:\.\d+)?px (?:\d+(?:\.\d+)?px|0) (?:#[0-9a-f]{3,6}|rgba?\(\d{1,3},\d{1,3},\d{1,3}(?:,(?:0|1|0?\.\d+))?\))$/i).optional(),
   textPaintOrder: z.enum(['fill', 'stroke']).optional(),
   textStroke: z.string().max(40).regex(/^\d+(?:\.\d+)?px #[0-9a-f]{6}$/i).optional(),
+  imageOuterFilter: z.string().max(500).refine(isSafeBannerImageFilter).optional(),
+  imageBackground: z.object({ size: z.string().max(80), position: z.string().max(80), repeat: z.enum(['repeat', 'no-repeat']) }).strict().refine(isBannerImageBackground).optional(),
   src: local.optional(), fit: z.enum(['fill', 'contain', 'cover']).optional(),
   volume: z.number().min(0).max(1).optional(),
   visualFilter: z.string().max(500).refine(isSafeBannerImageFilter).optional(),
@@ -144,6 +147,8 @@ export function parseTheBriefPackage(input: unknown): TheBriefPackage {
       if ((item.type === 'video') !== (mime === 'video/mp4')) throw new Error('Video layers must reference MP4 assets, and only video layers may')
       if (item.type !== 'video' && (item.flipX !== undefined || item.flipY !== undefined)) throw new Error('Imported mirroring requires a video layer')
       if (item.type !== 'video' && item.mediaMask) throw new Error('Video mask requires a video layer')
+      if (item.imageOuterFilter && (item.type !== 'image' || !item.borderRadius)) throw new Error('Outer image filter requires a masked image layer')
+      if (item.type !== 'image' && item.imageBackground) throw new Error('Image background requires an image layer')
       if (item.type !== 'video' && item.videoCrop) throw new Error('Video crop requires a video layer')
       if (item.type !== 'video' && (item.mediaStart !== undefined || item.mediaEnd !== undefined || item.mediaLoop !== undefined)) throw new Error('Media clock is only valid on video layers')
       if (item.mediaEnd !== undefined && item.mediaEnd <= (item.mediaStart ?? 0)) throw new Error('Invalid video clip timing')

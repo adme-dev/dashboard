@@ -134,6 +134,8 @@ export interface Layer {
   src?: string
   srcType?: 'image' | 'video' // default 'image'
   fit?: 'cover' | 'contain' | 'fill'
+  imageOuterFilter?: string
+  imageBackground?: { size: string, position: string, repeat: 'repeat' | 'no-repeat' }
   imageCrop?: import('../../shared/bannerImageCrop').BannerImageCrop
   videoCrop?: import('../../shared/bannerImageCrop').BannerImageCrop
   /** Marks an image layer as the brand logo so brand kits can swap it */

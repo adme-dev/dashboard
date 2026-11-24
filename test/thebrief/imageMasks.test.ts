@@ -35,3 +35,22 @@ it.each([
 ])('holds unsupported image-mask composition %s %s', async (svg, extra) => {
   await expect(convertTheBriefHtml(fixture(svg, extra))).rejects.toThrow(/mask|Masked/)
 })
+
+it('preserves a glow applied outside the circular source mask without clipping it', async () => {
+  const html = fixture().replace('<div class="mask">', '<div class="outer-glow"><div class="mask">').replace('</div></div></div></div>', '</div></div></div></div></div>')
+    + '<style>.outer-glow{width:100%;height:100%;filter:drop-shadow(0px 0px 11px rgba(255,255,255,.5))}</style>'
+  const image = (await convertTheBriefHtml(html)).canvasData.custom_300x250.layers.find(l => l.type === 'image')
+  expect(image.imageOuterFilter).toBe('drop-shadow(0px 0px 11px rgba(255,255,255,.5))')
+  expect(image.visualFilter).toBeUndefined()
+  const exported = client('mrec', [image])
+  expect(server('mrec', [image])).toBe(exported)
+  expect(exported).toContain('border-radius:100px;overflow:hidden;')
+  expect(exported).toContain('filter:drop-shadow(')
+})
+
+it('keeps fixed-size source image tiling, positioning and original asset editable', async () => {
+  const html = fixture().replace('<img src="./media/logo.png" style="width:100%;height:100%;object-fit:cover">', '<div id="c-1" style="width:100%;height:100%;background-image:url(./media/logo.png);background-size:172.8px;background-position:89% 0px;background-repeat:repeat"></div>')
+  const image = (await convertTheBriefHtml(html)).canvasData.custom_300x250.layers.find(l => l.type === 'image')
+  expect(image).toMatchObject({ src: './media/logo.png', borderRadius: 100, imageBackground: { size: '172.8px', position: '89% 0px', repeat: 'repeat' } })
+  expect(server('mrec', [image])).toBe(client('mrec', [image]))
+})

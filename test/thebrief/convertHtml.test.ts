@@ -5,6 +5,15 @@ import { convertTheBriefHtml } from '../../scripts/thebrief/convert-html.mjs'
 import { source } from './fixture'
 
 describe('TheBrief single-slide native conversion pilot', () => {
+  it.each(['rgb(28,19,100)', 'rgba(28, 19, 100, 1)'])('retains the opaque %s text outline as editable hex colour', async (color) => {
+    const result = await convertTheBriefHtml(source.replace('.row{', `.row{-webkit-text-stroke:3px ${color};`))
+    expect(result.canvasData.custom_300x250.layers.find(l => l.type === 'text').textStroke).toBe('3px #1c1364')
+  })
+
+  it.each(['rgba(28,19,100,.5)', 'rgb(300,19,100)'])('holds unsupported %s outlines', async (color) => {
+    await expect(convertTheBriefHtml(source.replace('.row{', `.row{-webkit-text-stroke:3px ${color};`))).rejects.toThrow('Unsupported text stroke')
+  })
+
   it.each([
     ['', 'fill'], ['normal', 'fill'], ['fill', 'fill'], ['fill stroke', 'fill'],
     ['stroke', 'stroke'], ['stroke fill', 'stroke']

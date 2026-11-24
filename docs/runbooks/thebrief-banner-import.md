@@ -175,8 +175,14 @@ landscape variants cannot stand in for a portrait artboard.
 
 ### Circular image masks
 
-The importer preserves a full circular SVG mask on a square original image as an editable corner radius. The editor, saved viewer and HTML export retain the original image asset and animation. Partial circles, translucent or composite masks, padded mask geometry and masked image filters remain on hold rather than being approximated. Compare every layout and scene before saving a review draft.
+The importer preserves a full circular SVG mask on a square original image as an editable corner radius. The editor, saved viewer and HTML export retain the original image asset and animation. Partial circles, translucent or composite masks, padded mask geometry and spatial filters inside the mask remain on hold rather than being approximated. Compare every layout and scene before saving a review draft.
 
 Single-run source animations that cross a slide boundary retain the original visible curve up to that boundary. The adapter clips cubic easing algebraically; it does not shorten the full tween to fit. Reverse playback is preserved. Repeated unsupported compositions still remain held.
 
 TheBrief can suffix duplicate dimensions with either `-1` or ` (1)` in a group ZIP. Both forms retain separate editable variants inside the same design draft; duplicate source layout identities still hold the entire set.
+
+### Positioned original logo images
+
+Fixed-pixel background images retain source size, position and repeat behavior as editable image layers, including circular logo masks. A glow or blur outside the source mask stays outside its native clipping wrapper; ambiguous filter order remains held. Opaque RGB text outlines retain their exact color as native hex outlines.
+
+For historical stacked text, an operator may supply line counts measured in the original preview. The recipe must match the exact child ZIP SHA-256 and source layout ID, and the measured line heights must match the source box. Never guess ambiguous wrapping or ask designers to use an online JSON converter. These reviewed packages can be imported together using the normal client/folder assignment.

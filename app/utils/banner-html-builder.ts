@@ -1,3 +1,4 @@
+import { bannerImageBackgroundCss } from '../../shared/bannerImageBackground.mjs'
 import { bannerAudioState } from '~~/shared/bannerAudioClock'
 import { bannerSlideGroups } from '~~/shared/bannerSlideFade'
 import { mediaMaskCss, revealCommands, safeWordEntrance, wordEntranceSteps, REVEAL_WRAPPER_STYLE, REVEAL_GLOW_STYLE, revealContentStyle } from '~~/shared/bannerImportedMotion'
@@ -328,6 +329,21 @@ export function buildBannerHTML(
         return visualLayer(style, escapeHtml(l.text || ''))
       }
       if (l.type === 'image') {
+        const sourceBackground = bannerImageBackgroundCss(l.imageBackground)
+        if (l.imageOuterFilter && l.borderRadius) {
+          style += bannerEffectCss({ visualFilter: l.imageOuterFilter })
+          const originalImageStyle = `width:100%;height:100%;border-radius:${l.borderRadius}px;overflow:hidden;` + bannerEffectCss({ visualFilter: l.visualFilter })
+          const originalSrc = l.src || ''
+          const image = sourceBackground
+            ? `<div style="${escapeHtml('width:100%;height:100%;background-image:url(' + JSON.stringify(originalSrc) + ');' + sourceBackground)}"></div>`
+            : `<img src="${escapeHtml(originalSrc)}" style="width:100%;height:100%;object-fit:${l.fit || 'cover'};" />`
+          return visualLayer(style, `<div style="${originalImageStyle}">${image}</div>`)
+        }
+        if (sourceBackground) {
+          if (l.borderRadius) style += `border-radius:${l.borderRadius}px;`
+          style += 'overflow:hidden;' + bannerEffectCss({ visualFilter: l.visualFilter })
+          return visualLayer(style, `<div style="${escapeHtml('width:100%;height:100%;background-image:url(' + JSON.stringify(l.src || '') + ');' + sourceBackground)}"></div>`)
+        }
         if (l.borderRadius) style += `border-radius:${l.borderRadius}px;`
         style += 'overflow:hidden;' + bannerEffectCss({ visualFilter: l.visualFilter })
         return visualLayer(style, `<img src="${escapeHtml(l.src || '')}" style="${bannerImageCropCss(l.imageCrop) || `width:100%;height:100%;object-fit:${l.fit || 'cover'};`}" />`)

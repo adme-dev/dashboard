@@ -1,3 +1,4 @@
+import { isBannerImageBackground } from '../../shared/bannerImageBackground.mjs'
 import { isBannerInlineTextColor } from '../../shared/bannerTextColor.mjs'
 import { parse } from 'acorn'
 import { Window } from 'happy-dom'
@@ -879,7 +880,9 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {} } = {}) 
             const lines = [css.getPropertyValue('text-decoration-line'), css.getPropertyValue('text-decoration'), ...sourceDeclarations(document, node, 'text-decoration|text-decoration-line')]
             if (lines.some(value => /line-through|underline|overline/i.test(value || ''))) throw new Error('Text decoration needs an adapter')
           }
-          const textStroke = containerCss.getPropertyValue('-webkit-text-stroke') || ''
+          let textStroke = containerCss.getPropertyValue('-webkit-text-stroke') || ''
+          const rgbStroke = /^(\d+(?:\.\d+)?px) rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})(?:\s*,\s*(1(?:\.0+)?))?\s*\)$/i.exec(textStroke)
+          if (rgbStroke && rgbStroke.slice(2, 5).every(channel => Number(channel) <= 255)) textStroke = `${rgbStroke[1]} #${rgbStroke.slice(2, 5).map(channel => Number(channel).toString(16).padStart(2, '0')).join('')}`
           const textShadow = normaliseTextShadow(containerCss.textShadow)
           if (textStroke && !/^\d+(?:\.\d+)?px #[0-9a-f]{6}$/i.test(textStroke)) throw new Error('Unsupported text stroke')
           const paintOrder = (containerCss.paintOrder || 'normal').trim().replace(/\s+/g, ' ')
@@ -972,7 +975,7 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {} } = {}) 
             reviewedElements.add(element.id)
             warnings.push(`${element.id}: wrapped rows use line counts measured in the source preview`)
           } else if (allocations.length !== 1) {
-            throw new Error('Wrapped text across stacked rows needs an adapter')
+            throw new Error(`${element.id}: Wrapped text across stacked rows needs an adapter`)
           }
           let shift = 0
           for (const [index, extraHeight] of allocation.entries()) {
@@ -1011,10 +1014,20 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {} } = {}) 
         if (!image && content) {
           const contentCss = style(content)
           if (contentCss.backgroundSize) {
-            if (!['contain', 'cover'].includes(contentCss.backgroundSize)
-              || (contentCss.backgroundPosition && !['50% 50%', 'center', 'center center'].includes(contentCss.backgroundPosition))
-              || (contentCss.backgroundRepeat && contentCss.backgroundRepeat !== 'no-repeat')) throw new Error('Unsupported image background fit/position')
-            fit = contentCss.backgroundSize
+            const sourceBackground = { size: contentCss.backgroundSize, position: contentCss.backgroundPosition, repeat: contentCss.backgroundRepeat }
+            if (isBannerImageBackground(sourceBackground)) {
+              if (contentCss.width !== '100%' || contentCss.height !== '100%'
+                || ['paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth'].some(key => !['', '0', '0px'].includes(contentCss[key]))
+                || !['', 'scroll'].includes(contentCss.backgroundAttachment)
+                || !['', 'padding-box'].includes(contentCss.backgroundOrigin)
+                || !['', 'border-box'].includes(contentCss.backgroundClip)) throw new Error('Unsupported image background composition')
+              layerBase.imageBackground = sourceBackground
+            } else {
+              if (!['contain', 'cover'].includes(contentCss.backgroundSize)
+                || (contentCss.backgroundPosition && !['50% 50%', 'center', 'center center'].includes(contentCss.backgroundPosition))
+                || (contentCss.backgroundRepeat && contentCss.backgroundRepeat !== 'no-repeat')) throw new Error('Unsupported image background fit/position')
+              fit = contentCss.backgroundSize
+            }
           }
         }
         const transformed = [...element.querySelectorAll('div')].filter(div => style(div).transform && style(div).transform !== 'none')
@@ -1029,9 +1042,12 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {} } = {}) 
           || (mirrored.length && (rotated.some(t => Number.parseFloat(t.slice(7)) !== 0)
             || style(mirrored[0]).width !== '100%' || style(mirrored[0]).height !== '100%'
             || !['', '50% 50%', 'center center', 'center'].includes(style(mirrored[0]).transformOrigin)))) throw new Error('Unsupported static transform')
+        if (mirrored.length && layerBase.imageBackground) throw new Error('Mirrored positioned background needs an adapter')
         if (mirrored.length) imageTransforms.push({ layerId: id, operation: /scale\(-1/.test(style(mirrored[0]).transform) ? 'flop' : 'flip' })
         let contentOpacity = 1
         const imageFilters = []
+        const imageFilterNodes = []
+        const imageMaskNodes = []
         for (let node = image || content; node && element.contains(node); node = node.parentElement) {
           const nodeCss = style(node)
           const opacity = nodeCss.opacity === '' ? 1 : Number(nodeCss.opacity)
@@ -1040,6 +1056,7 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {} } = {}) 
           contentOpacity *= opacity
           const masks = [nodeCss.getPropertyValue('mask-image'), nodeCss.getPropertyValue('-webkit-mask-image')].filter(value => value && value !== 'none')
           if (masks.length) {
+            imageMaskNodes.push(node)
             const supported = masks.every(value => {
               const match = /^url\(["']?(data:image\/svg\+xml;charset=UTF-8,[^"')]+)["']?\)$/i.exec(value)
               if (!match) return false
@@ -1067,17 +1084,22 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {} } = {}) 
               || [...sourceDeclarations(document, node, 'mask-mode')].some(v => !['alpha', 'match-source'].includes(v))) throw new Error(`Image ${sourceId}: unsupported mask composition`)
             layerBase.borderRadius = layerBase.w / 2
           }
-          if (nodeCss.filter && nodeCss.filter !== 'none') imageFilters.push(nodeCss.filter)
+          if (nodeCss.filter && nodeCss.filter !== 'none') { imageFilters.push(nodeCss.filter); imageFilterNodes.push(node) }
           if (node === element) break
         }
         layerBase.opacity = contentOpacity
         layerBase.keyframes = { ...layerBase.keyframes, opacity: layerBase.keyframes.opacity.map(frame => ({ ...frame, value: frame.value * contentOpacity })) }
         const visualFilter = imageFilters.join(' ')
         if (visualFilter) {
-          if (layerBase.borderRadius !== undefined) throw new Error('Masked image filter requires an adapter')
+          // Pointwise colour filters commute with the circle alpha mask. Spatial
+          // blur and shadows do not and must retain their explicit hold.
+          if (layerBase.borderRadius !== undefined && /(?:blur|drop-shadow)\(/.test(visualFilter)) {
+            if (!imageFilterNodes.every(filterNode => imageMaskNodes.every(maskNode => filterNode !== maskNode && filterNode.contains(maskNode)))) throw new Error('Masked image filter requires an adapter')
+            layerBase.imageOuterFilter = visualFilter
+          }
           if (!isSafeBannerImageFilter(visualFilter)) throw new Error('Unsupported static image filter')
           if (mirrored.length && visualFilter.includes('drop-shadow(')) throw new Error('Mirrored nested image shadow needs an adapter')
-          layerBase.visualFilter = visualFilter
+          if (!layerBase.imageOuterFilter) layerBase.visualFilter = visualFilter
         }
         layers.push({ ...layerBase, id: id++, type: 'image', name: `Artwork ${sourceId}`, src: localAsset(raw), fit, rotation: rotated.reduce((sum, t) => sum + Number.parseFloat(t.slice(7)), 0) })
       } else if (type === 'shape') {
