@@ -172,3 +172,7 @@ step: timeline equality does not independently prove that a linked banner was
 unchanged since that render. Check headline, fonts, footage, cuts and end card.
 Only the matching native output variant can be attached; contained square or
 landscape variants cannot stand in for a portrait artboard.
+
+### Circular image masks
+
+The importer preserves a full circular SVG mask on a square original image as an editable corner radius. The editor, saved viewer and HTML export retain the original image asset and animation. Partial circles, translucent or composite masks, padded mask geometry and masked image filters remain on hold rather than being approximated. Compare every layout and scene before saving a review draft.

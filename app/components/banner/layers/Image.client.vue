@@ -16,7 +16,7 @@ const displaySrc = computed(() => getFeedOverride(props.layer.id, 'src') ?? prop
 <template>
   <div
     class="relative w-full h-full overflow-hidden"
-    :style="{ filter: effects.visualFilter }"
+    :style="{ filter: effects.visualFilter, borderRadius: layer.borderRadius ? `${layer.borderRadius}px` : undefined }"
   >
     <img
       v-if="displaySrc"

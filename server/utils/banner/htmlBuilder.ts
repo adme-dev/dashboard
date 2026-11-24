@@ -336,6 +336,7 @@ export function buildBannerHTML(
         return visualLayer(style, escapeHtml(l.text || ''))
       }
       if (l.type === 'image') {
+        if (l.borderRadius) style += `border-radius:${l.borderRadius}px;`
         style += 'overflow:hidden;' + bannerEffectCss({ visualFilter: l.visualFilter })
         return visualLayer(style, `<img src="${escapeHtml(absSrc(l.src, options.baseUrl))}" style="${bannerImageCropCss(l.imageCrop) || `width:100%;height:100%;object-fit:${l.fit || 'cover'};`}" />`)
       }

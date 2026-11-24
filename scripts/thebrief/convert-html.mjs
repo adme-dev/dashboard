@@ -1034,6 +1034,35 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {} } = {}) 
           if (!Number.isFinite(opacity) || opacity < 0 || opacity > 1) throw new Error('Unsupported image opacity')
           if (nodeCss.animationName && nodeCss.animationName !== 'none' && opacity !== 1) throw new Error('Animated image with nonidentity underlying opacity needs an adapter')
           contentOpacity *= opacity
+          const masks = [nodeCss.getPropertyValue('mask-image'), nodeCss.getPropertyValue('-webkit-mask-image')].filter(value => value && value !== 'none')
+          if (masks.length) {
+            const supported = masks.every(value => {
+              const match = /^url\(["']?(data:image\/svg\+xml;charset=UTF-8,[^"')]+)["']?\)$/i.exec(value)
+              if (!match) return false
+              let svg
+              try { svg = new window.DOMParser().parseFromString(decodeURIComponent(match[1].split(',').slice(1).join(',')), 'image/svg+xml').documentElement } catch { return false }
+              const shape = svg?.children[0]
+              const box = svg?.getAttribute('viewBox')?.trim().split(/\s+/).map(Number)
+              const harmlessRoot = new Set(['version','id','xmlns','xmlns:xlink','x','y','viewBox','enable-background','xml:space','width','height','preserveAspectRatio'])
+              const harmlessShape = new Set(['fill','cx','cy','r','data-color-group'])
+              return svg?.localName === 'svg' && svg.children.length === 1 && shape?.localName === 'circle' && shape.children.length === 0
+                && [...svg.attributes].every(a => harmlessRoot.has(a.name)) && [...shape.attributes].every(a => harmlessShape.has(a.name))
+                && box?.length === 4 && box[0] === 0 && box[1] === 0 && box[2] > 0 && box[2] === box[3]
+                && Number(shape.getAttribute('cx')) === box[2] / 2 && Number(shape.getAttribute('cy')) === box[2] / 2 && Number(shape.getAttribute('r')) === box[2] / 2
+                && /^#[0-9a-f]{6}$/i.test(shape.getAttribute('fill') || '')
+                && ['0', '0px', null].includes(svg.getAttribute('x')) && ['0', '0px', null].includes(svg.getAttribute('y'))
+                && ['100%', null].includes(svg.getAttribute('width')) && ['100%', null].includes(svg.getAttribute('height'))
+            })
+            if (!supported || layerBase.borderRadius !== undefined || Math.abs(layerBase.w - layerBase.h) > 0.001
+              || nodeCss.width !== '100%' || nodeCss.height !== '100%'
+              || ['paddingTop','paddingRight','paddingBottom','paddingLeft','borderTopWidth','borderRightWidth','borderBottomWidth','borderLeftWidth'].some(key => !['', '0', '0px'].includes(nodeCss[key]))
+              || [...sourceDeclarations(document, node, 'mask-composite|-webkit-mask-composite')].some(v => !['add', 'source-over'].includes(v))
+              || [...sourceDeclarations(document, node, 'mask-size|-webkit-mask-size')].some(v => v !== '100% 100%')
+              || [...sourceDeclarations(document, node, 'mask-position|-webkit-mask-position')].some(v => !['center', '50% 50%'].includes(v))
+              || [...sourceDeclarations(document, node, 'mask-repeat|-webkit-mask-repeat')].some(v => v !== 'no-repeat')
+              || [...sourceDeclarations(document, node, 'mask-mode')].some(v => !['alpha', 'match-source'].includes(v))) throw new Error(`Image ${sourceId}: unsupported mask composition`)
+            layerBase.borderRadius = layerBase.w / 2
+          }
           if (nodeCss.filter && nodeCss.filter !== 'none') imageFilters.push(nodeCss.filter)
           if (node === element) break
         }
@@ -1041,6 +1070,7 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {} } = {}) 
         layerBase.keyframes = { ...layerBase.keyframes, opacity: layerBase.keyframes.opacity.map(frame => ({ ...frame, value: frame.value * contentOpacity })) }
         const visualFilter = imageFilters.join(' ')
         if (visualFilter) {
+          if (layerBase.borderRadius !== undefined) throw new Error('Masked image filter requires an adapter')
           if (!isSafeBannerImageFilter(visualFilter)) throw new Error('Unsupported static image filter')
           if (mirrored.length && visualFilter.includes('drop-shadow(')) throw new Error('Mirrored nested image shadow needs an adapter')
           layerBase.visualFilter = visualFilter
