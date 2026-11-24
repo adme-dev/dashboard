@@ -244,7 +244,7 @@ async function generate() {
             label="Cancel"
             color="neutral"
             variant="ghost"
-            @click="confirmOpen = false"
+            @click="() => { confirmOpen = false }"
           />
           <UButton
             :label="`Generate for ${motionCost}`"

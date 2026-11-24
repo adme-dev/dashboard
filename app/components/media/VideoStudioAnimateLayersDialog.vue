@@ -150,7 +150,7 @@ function submit() {
           color="neutral"
           variant="ghost"
           :disabled="props.busy"
-          @click="open = false"
+          @click="() => { open = false }"
         />
         <UButton
           label="Animate layers"

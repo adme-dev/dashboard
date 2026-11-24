@@ -25,7 +25,7 @@ export default defineEventHandler(async (event) => {
     const object = await readStoredObject(derivative.r2Key, { requestBucket })
     if (!object) throw createError({ statusCode: 404, statusMessage: 'Derivative file not found' })
     setHeader(event, 'Content-Type', /\.png$/i.test(derivative.r2Key) ? 'image/png' : object.contentType)
-    setHeader(event, 'Content-Length', String(object.size))
+    setHeader(event, 'Content-Length', object.size)
     setHeader(event, 'Cache-Control', 'private, max-age=3600')
     return sendStream(event, object.body as unknown as ReadableStream)
   }
