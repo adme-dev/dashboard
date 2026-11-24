@@ -2,7 +2,41 @@
 
 Date: 2026-11-24. R&D only: no product code changed, nothing called with a key, **no live test run**.
 
-## Recommendation
+## Update 2026-11-24: Cloudflare AI Gateway route (supersedes the BytePlus account route below)
+
+Paul's direction: use the gateway we already use for Seedance, not a BytePlus account. **No live call was made**: this worktree has no `.env`, `.dev.vars`, or `AI_GATEWAY_*` / `CLOUDFLARE_*` variables, and I did not look elsewhere. The bake-off budget is unspent. Everything below is from Cloudflare's docs and published schemas.
+
+**Short answer: Seedream 5.5 is in the catalogue, but Cloudflare's schema does not expose layer decomposition. Lift looks doable through the gateway; real "Separate layers" does not.**
+
+1. **Model id.** `bytedance/seedream-5.5` ([model page](https://developers.cloudflare.com/ai/models/bytedance/seedream-5.5/)). Also listed: `bytedance/seedream-5-pro`, `seedream-5-lite`, `seedream-4.5`, `seedream-4.0`. There is no 5.0 flash. Called exactly like Seedance: `env.AI.run('bytedance/seedream-5.5', {...})` or `POST /accounts/{id}/ai/run`, unified billing. The asset-intelligence Worker already has the `AI` binding, so no new secret is needed.
+2. **Layer decomposition is not passed through, per the docs.**
+   - The [input schema](https://developers.cloudflare.com/ai/models/bytedance/seedream-5.5/schema-input.json) allows only `prompt`, `image`, `size`, `output_format`, `background`, `watermark`, with `additionalProperties: false`. There is no `layer_decomposition`, `layer_decomposition_options` or `max_images`.
+   - The [binding docs](https://developers.cloudflare.com/ai-gateway/usage/worker-binding-methods/) say "AI Gateway rejects fields that the model does not accept", so sending `layer_decomposition: true` should fail with `7003: User Input Error`. Our Seedance code already records that behaviour for an unsupported envelope.
+   - The [output schema](https://developers.cloudflare.com/ai/models/bytedance/seedream-5.5/schema-output.json) is only `{ images: [uri] }`, so even if the flag got through, `z_index`, `bounding_box` and layer names would have nowhere to come back.
+   - The gateway has no BytePlus provider-native endpoint to pass the raw BytePlus request through with our own key.
+   - Still worth one real call to confirm the rejection; it costs nothing if it is refused.
+3. **What does work through the gateway: native RGBA.** `background: 'transparent'` with `output_format: 'png'` and an input `image` returns one RGBA PNG. Cloudflare's own example extracts stickers from two images onto a transparent background. That is a Lift: "extract the element at `<bbox>…</bbox>` onto a transparent background, keep its pixels unchanged". The `<bbox>` tags live in the prompt text, so they should pass through, but that is untested. Limits: one image out per call, no position metadata (we would place the result using the brush mask's bounds), and the pixels are still redrawn.
+4. **Data region.** Cloudflare does not publish where third-party model requests are processed. The page marks the model "Third-party" and "Zero data retention: Yes", and its "More information" link goes to BytePlus, whose only region for this model is Johor, Malaysia. So assume inference happens at BytePlus in Malaysia via Cloudflare, with Cloudflare's zero-retention provider endpoint. [ZDR](https://developers.cloudflare.com/ai-gateway/features/unified-billing/) covers the provider only; AI Gateway's own request logging is a separate setting. Not Australia either way.
+5. **Price through the gateway** (model page): $0.008 per input image, $0.02 per 1K output, $0.035 per 2K output. Same as BytePlus direct. A Lift is about $0.03 to $0.04.
+
+### Revised recommendation
+
+- **Lift:** try `bytedance/seedream-5.5` through the gateway with `background: 'transparent'`. No new account, key or secret.
+- **Separate layers:** real decomposition is not available through the gateway today. Options, in order of preference:
+  1. Keep Qwen Image Layered for layers (already working in Banner Studio via the Hugging Face Space) until Cloudflare exposes `layer_decomposition`.
+  2. Approximate layers through the gateway with one RGBA extraction call per element plus one "remove these elements" call for the base. Cost is about $0.03 to $0.04 per element, with no bounding boxes returned.
+  3. Go direct to BytePlus for layers only (sections below), which Paul has ruled out for now.
+- Worth asking Cloudflare whether `layer_decomposition` is planned for `bytedance/seedream-5.5`.
+
+### What is missing to run the bake-off
+
+A way to call the gateway from here: either `AI_GATEWAY_URL` + `AI_GATEWAY_AUTH_TOKEN`, or a `CLOUDFLARE_ACCOUNT_ID` + API token with the Workers AI permission, in this worktree's `.env`. Alternatively the test can run inside a deployed Worker that has the `AI` binding. With that, the plan is about 10 calls (under US$1): one `layer_decomposition: true` probe, then banner and vehicle-frame extractions with and without `<bbox>`, recording latency and comparing lifted pixels with the source.
+
+---
+
+*The sections below are the original report, written for the direct BytePlus route. The facts about what Seedream can do still hold; the setup steps in section 5 no longer apply.*
+
+## Recommendation (original, BytePlus direct)
 
 **Use BytePlus Seedream for "Separate layers", and try it first for "Lift". Do not set up Replicate yet.**
 
