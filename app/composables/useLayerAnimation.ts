@@ -13,6 +13,8 @@ import {
   applyGeneratedLayerMotion,
   applyLayerMotionPreset,
   buildLayerComposition,
+  generatedMotionBackdrop,
+  layerMotionFeatherPx,
   layerMotionRegion,
   type CompositionLayerInput,
   type FrameSize,
@@ -195,6 +197,40 @@ export function useLayerAnimation() {
     return blob
   }
 
+  /**
+   * The background with a soft-edged window where the clip shows. Placed above the
+   * clip, it hides the clip's hard edge: the clip fades into the still picture.
+   */
+  async function composeSurroundPicture(backdrop: Layer, region: LayerMotionRegion): Promise<Blob> {
+    const image = await loadImage(await api<Blob>(backdrop.src!, { responseType: 'blob' }))
+    const canvas = document.createElement('canvas')
+    canvas.width = image.naturalWidth
+    canvas.height = image.naturalHeight
+    const ctx = canvas.getContext('2d')
+    if (!ctx) throw new Error('The picture could not be prepared in this browser.')
+    ctx.drawImage(image, 0, 0)
+    // Frame pixels → this picture's own pixels.
+    const sx = image.naturalWidth / backdrop.w, sy = image.naturalHeight / backdrop.h
+    const feather = layerMotionFeatherPx(region)
+    const steps = Math.max(4, Math.min(48, feather))
+    ctx.globalCompositeOperation = 'destination-out'
+    // Erase in nested steps: fully kept at the region's edge, fully clear one feather inside.
+    // Each step removes an equal share of what the first one saw, so the ramp is linear.
+    for (let step = 0; step < steps; step++) {
+      const inset = (step + 0.5) * feather / steps
+      ctx.globalAlpha = 1 / (steps - step)
+      ctx.fillRect(
+        (region.x - backdrop.x + inset) * sx,
+        (region.y - backdrop.y + inset) * sy,
+        Math.max(0, region.w - inset * 2) * sx,
+        Math.max(0, region.h - inset * 2) * sy
+      )
+    }
+    const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/png'))
+    if (!blob) throw new Error('The picture could not be prepared in this browser.')
+    return blob
+  }
+
   async function waitForJob(videoProjectId: string, jobId: string, onStatus?: (status: string) => void): Promise<GenerationJob> {
     const deadline = Date.now() + 12 * 60 * 1000
     while (Date.now() < deadline) {
@@ -259,7 +295,11 @@ export function useLayerAnimation() {
       const latest = await loadComposition(project.id)
       const latestArtboard = latest.canvasData[input.formatKey]
       if (!latestArtboard?.layers.some(layer => layer.id === input.layerId)) throw new Error('That layer was removed while the clip was being made. The clip is in the Library.')
-      const layers = applyGeneratedLayerMotion(latestArtboard.layers, input.layerId, { src, region, durationSeconds: input.durationSeconds }, { playback: latestArtboard.playback })
+      const backdrop = generatedMotionBackdrop(latestArtboard.layers, input.layerId, region)
+      const surroundSrc = backdrop?.src
+        ? await uploadToBannerAssets(new File([await composeSurroundPicture(backdrop, region)], `layer-motion-surround-${job.id}.png`, { type: 'image/png' }), 'layer-motion-surround', project.clientId)
+        : null
+      const layers = applyGeneratedLayerMotion(latestArtboard.layers, input.layerId, { src, surroundSrc, region, durationSeconds: input.durationSeconds }, { playback: latestArtboard.playback })
       return { project: await saveLayers(latest, input.formatKey, layers), job }
     } finally {
       busy.value = false

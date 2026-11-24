@@ -487,22 +487,71 @@ export function layerMotionPrompt(layerName: string): string {
   return `Subtle, realistic motion for ${subject}. Locked-off camera, no zoom, no pan. The background and framing stay exactly as they are. No new objects, no text, no logos.`
 }
 
+const FOLLOWED_TRACKS: KeyframeProperty[] = ['scaleX', 'scaleY', 'x', 'y']
+
+/** The picture directly behind a region: the lowest image layer that covers all of it. */
+export function generatedMotionBackdrop(layers: Layer[], layerId: number, region: PlacedBox): Layer | null {
+  const target = layers.find(layer => layer.id === layerId)
+  if (!target) return null
+  return layers
+    .filter(layer => layer.id !== layerId && layer.type === 'image' && !layer.hidden && layer.zIndex < target.zIndex
+      && layer.x <= region.x && layer.y <= region.y && layer.x + layer.w >= region.x + region.w && layer.y + layer.h >= region.y + region.h)
+    .sort((a, b) => a.zIndex - b.zIndex)[0] ?? null
+}
+
 /**
  * Swap one layer for its generated clip. The clip sits on the region it was made
  * from, in the layer's place in the stack, and plays for the whole composition.
+ * The clip contains its own patch of background, so it follows the background's
+ * zoom and drift exactly (same keyframes, same pivot) instead of sliding against it.
+ *
+ * `surroundSrc` is the background picture with a soft-edged window cut where the
+ * clip shows. It goes directly above the clip and moves with the background, so
+ * the clip fades into the still picture instead of ending at a hard rectangle.
  * Saving the project snapshots the previous version, which is how this is undone.
  */
 export function applyGeneratedLayerMotion(
   layers: Layer[],
   layerId: number,
-  clip: { src: string, region: PlacedBox, durationSeconds: number },
+  clip: { src: string, region: PlacedBox, durationSeconds: number, surroundSrc?: string | null },
   options: { playback?: { duration?: number } | null } = {}
 ): Layer[] {
   const duration = durationOf(layers, options.playback)
-  return layers.map((layer) => {
-    if (layer.id !== layerId) return layer
-    const { imageCrop: _crop, ...rest } = layer
-    return {
+  const backdrop = generatedMotionBackdrop(layers, layerId, clip.region)
+  const followed: LayerKeyframes = {}
+  for (const track of FOLLOWED_TRACKS) {
+    const frames = backdrop?.keyframes?.[track]
+    if (frames?.length) followed[track] = frames.map(frame => ({ ...frame }))
+  }
+  // The backdrop turns about its own pivot; give the clip that same point, in the clip's local pixels.
+  const pivot = backdrop
+    ? {
+        x: backdrop.x + (backdrop.transformOrigin?.x ?? backdrop.w / 2) - clip.region.x,
+        y: backdrop.y + (backdrop.transformOrigin?.y ?? backdrop.h / 2) - clip.region.y
+      }
+    : null
+  const target = layers.find(layer => layer.id === layerId)
+  if (!target) return layers
+  const surround: Layer | null = backdrop && clip.surroundSrc
+    ? {
+        ...backdrop,
+        id: Math.max(...layers.map(layer => layer.id)) + 1,
+        name: `${backdrop.name} around ${target.name}`,
+        src: clip.surroundSrc,
+        zIndex: target.zIndex + 1,
+        locked: true,
+        animationClips: []
+      }
+    : null
+  const next: Layer[] = []
+  for (const layer of layers) {
+    if (layer.id !== layerId) {
+      // Make room for the surround directly above the clip.
+      next.push(surround && layer.zIndex > target.zIndex ? { ...layer, zIndex: layer.zIndex + 1 } : layer)
+      continue
+    }
+    const { imageCrop: _crop, transformOrigin: _origin, ...rest } = layer
+    next.push({
       ...rest,
       type: 'video',
       srcType: 'video',
@@ -519,10 +568,18 @@ export function applyGeneratedLayerMotion(
       mediaLoop: clip.durationSeconds < duration,
       startTime: 0,
       endTime: duration,
-      keyframes: { opacity: visibleThroughout(duration) },
+      ...(pivot && Object.keys(followed).length ? { transformOrigin: pivot } : {}),
+      keyframes: { opacity: visibleThroughout(duration), ...followed },
       animationClips: [{ start: 0, end: Math.min(duration, clip.durationSeconds), label: GENERATED_MOTION_LABEL }]
-    } as Layer
-  })
+    } as Layer)
+    if (surround) next.push(surround)
+  }
+  return next
+}
+
+/** How far the clip fades into the picture around it, in frame pixels. */
+export function layerMotionFeatherPx(region: PlacedBox): number {
+  return Math.max(8, Math.round(Math.min(region.w, region.h) * 0.06))
 }
 
 export const GENERATED_MOTION_LABEL = 'Generated motion'

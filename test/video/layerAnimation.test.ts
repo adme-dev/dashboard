@@ -9,9 +9,11 @@ import {
   buildLayerComposition,
   defaultLayerFit,
   entranceStartSec,
+  generatedMotionBackdrop,
   hasGeneratedLayerMotion,
   layerCompositionFormatKey,
   layerMotionCostCents,
+  layerMotionFeatherPx,
   layerMotionPresetOf,
   layerMotionRegion,
   layerPackagesFromDerivatives,
@@ -180,6 +182,62 @@ describe('motion presets', () => {
   })
 })
 
+describe('generated motion follows the background', () => {
+  it('copies a drifting background\'s x track too, and stays put over a still one', () => {
+    const frame = { width: 1920, height: 1080 }
+    const inputs = compositionInputs()
+    inputs[0]!.preset = 'bg-drift'
+    const drifting = buildLayerComposition({ source: { width: 1600, height: 900 }, frame, layers: inputs })
+    const board = drifting.canvasData[drifting.formatKey]!
+    const region = layerMotionRegion({ x: 360, y: 420, w: 1200, h: 540 }, frame)
+    const moved = applyGeneratedLayerMotion(board.layers, 2, { src: 'https://app.test/a/car.mp4', region, durationSeconds: 10 }, { playback: board.playback })
+    expect(moved[1]!.keyframes!.x).toEqual(board.layers[0]!.keyframes!.x)
+    expect(moved[1]!.mediaLoop).toBe(false)
+
+    inputs[0]!.preset = 'hold'
+    const still = buildLayerComposition({ source: { width: 1600, height: 900 }, frame, layers: inputs })
+    const stillBoard = still.canvasData[still.formatKey]!
+    const placed = applyGeneratedLayerMotion(stillBoard.layers, 2, { src: 'https://app.test/a/car.mp4', region, durationSeconds: 5 }, { playback: stillBoard.playback })
+    expect(Object.keys(placed[1]!.keyframes!)).toEqual(['opacity'])
+    expect(placed[1]!.transformOrigin).toBeUndefined()
+  })
+})
+
+describe('generated motion blends into the picture around it', () => {
+  const frame = { width: 1920, height: 1080 }
+  const composition = buildLayerComposition({ source: { width: 1600, height: 900 }, frame, layers: compositionInputs() })
+  const board = composition.canvasData[composition.formatKey]!
+  const region = layerMotionRegion({ x: 360, y: 420, w: 1200, h: 540 }, frame)
+
+  it('finds the background behind the region, not a small layer under it', () => {
+    expect(generatedMotionBackdrop(board.layers, 2, region)?.name).toBe('Background')
+    // Nothing behind the lowest layer.
+    expect(generatedMotionBackdrop(board.layers, 1, region)).toBeNull()
+  })
+
+  it('puts a windowed copy of the background directly above the clip, moving with it', () => {
+    const next = applyGeneratedLayerMotion(board.layers, 2, { src: 'https://app.test/a/car.mp4', surroundSrc: 'https://app.test/a/surround.png', region, durationSeconds: 5 }, { playback: board.playback })
+    expect(next.map(layer => [layer.name, layer.zIndex])).toEqual([
+      ['Background', 1], ['Red SUV', 2], ['Background around Red SUV', 3], ['Headline', 4], ['Price badge', 5]
+    ])
+    const surround = next[2]!
+    expect(surround).toMatchObject({ type: 'image', src: 'https://app.test/a/surround.png', x: 0, y: 0, w: 1920, h: 1080, locked: true })
+    expect(surround.keyframes).toEqual(board.layers[0]!.keyframes)
+    expect(new Set(next.map(layer => layer.id)).size).toBe(5)
+    expect(new Set(next.map(layer => layer.zIndex)).size).toBe(5)
+    // Layers that were above the car keep their own motion.
+    expect(next[3]!.keyframes).toEqual(board.layers[2]!.keyframes)
+    const html = buildBannerHTML(composition.formatKey, next, { playback: board.playback })
+    expect(html.indexOf('car.mp4')).toBeLessThan(html.indexOf('surround.png'))
+    expect(html.indexOf('surround.png')).toBeLessThan(html.indexOf(board.layers[2]!.src!))
+  })
+
+  it('feathers by a small share of the region', () => {
+    expect(layerMotionFeatherPx({ x: 0, y: 0, w: 871, h: 490 })).toBe(29)
+    expect(layerMotionFeatherPx({ x: 0, y: 0, w: 60, h: 60 })).toBe(8)
+  })
+})
+
 describe('layer composition', () => {
   const frame = { width: 1920, height: 1080 }
   const composition = buildLayerComposition({ source: { width: 1600, height: 900 }, frame, layers: compositionInputs() })
@@ -319,6 +377,11 @@ describe('generated motion on one layer', () => {
     expect(next[0]).toBe(artboard.layers[0])
     const html = buildBannerHTML(composition.formatKey, next, { playback: artboard.playback })
     expect(html).toContain('<video src="https://app.test/a/car.mp4"')
+    // The clip carries its own patch of background, so it moves with the background: same zoom, same pivot.
+    expect(next[1]!.keyframes!.scaleX).toEqual(artboard.layers[0]!.keyframes!.scaleX)
+    expect(next[1]!.keyframes!.scaleY).toEqual(artboard.layers[0]!.keyframes!.scaleY)
+    expect(next[1]!.transformOrigin).toEqual({ x: 960 - region.x, y: 540 - region.y })
+    expect(next[1]!.keyframes!.opacity!.every(frame => frame.value === 1)).toBe(true)
     // Still between the background and the headline.
     expect(html.indexOf('data-id="1"')).toBeLessThan(html.indexOf('data-id="2"'))
     expect(html.indexOf('data-id="2"')).toBeLessThan(html.indexOf('data-id="3"'))
