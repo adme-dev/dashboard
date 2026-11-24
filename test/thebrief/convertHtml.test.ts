@@ -5,6 +5,15 @@ import { convertTheBriefHtml } from '../../scripts/thebrief/convert-html.mjs'
 import { source } from './fixture'
 
 describe('TheBrief single-slide native conversion pilot', () => {
+  it.each(['rgb(28,19,100)', 'rgba(28, 19, 100, 1)'])('retains the opaque %s text outline as editable hex colour', async (color) => {
+    const result = await convertTheBriefHtml(source.replace('.row{', `.row{-webkit-text-stroke:3px ${color};`))
+    expect(result.canvasData.custom_300x250.layers.find(l => l.type === 'text').textStroke).toBe('3px #1c1364')
+  })
+
+  it.each(['rgba(28,19,100,.5)', 'rgb(300,19,100)'])('holds unsupported %s outlines', async (color) => {
+    await expect(convertTheBriefHtml(source.replace('.row{', `.row{-webkit-text-stroke:3px ${color};`))).rejects.toThrow('Unsupported text stroke')
+  })
+
   it.each([
     ['', 'fill'], ['normal', 'fill'], ['fill', 'fill'], ['fill stroke', 'fill'],
     ['stroke', 'stroke'], ['stroke fill', 'stroke']
@@ -294,6 +303,42 @@ describe('TheBrief single-slide native conversion pilot', () => {
     expect(single.canvasData.custom_300x250.layers.find(l => l.type === 'text').text).toBe('Hello world')
   })
 
+  it('combines centered static text rotation with uniform source scale', async () => {
+    const html = source.replace('translateX(-100px) translateY(0)', 'scale(0.5)').replace('translateX(0)', 'scale(1)')
+      .replace('<div class="row">Hello world</div>', '<div style="width:100%;height:100%;transform:rotate(348deg)"><div class="row">Hello world</div></div>')
+    const result = await convertTheBriefHtml(html)
+    const text = result.canvasData.custom_300x250.layers.find(layer => layer.type === 'text')
+    expect(text.rotation).toBe(348)
+    expect(text.transformOrigin).toEqual({ x: 100, y: 40 })
+    expect(text.keyframes.scaleX).toEqual(text.keyframes.scaleY)
+    await expect(convertTheBriefHtml(html.replace('scale(0.5)', 'scaleX(0.5) scaleY(0.7)'))).rejects.toThrow('Nested text rotation')
+  })
+
+  it('uses reviewed source line counts for ambiguous stacked wraps', async () => {
+    const html = source.replace('height:80px', 'height:87px')
+      .replace('<div class="row">Hello world</div>', '<div class="row">Massive Savings</div><div class="row">on Sportage</div>')
+    const result = await convertTheBriefHtml(html, { reviewedRowLines: { 'element-1': [2, 1] } })
+    const text = result.canvasData.custom_300x250.layers.filter(layer => layer.type === 'text')
+    expect(text[0].h).toBeCloseTo(57.6)
+    expect(text[1].y).toBeCloseTo(77.6)
+    await expect(convertTheBriefHtml(html, { reviewedRowLines: { 'element-1': [2, 2] } })).rejects.toThrow('reviewed row heights do not match')
+    await expect(convertTheBriefHtml(html, { reviewedRowLines: { 'element-1': [2] } })).rejects.toThrow('reviewed row counts do not match')
+  })
+
+  it('preserves editable rows when both wrap and only one line allocation fits', async () => {
+    const html = source
+      .replace('height:80px', 'height:307px')
+      .replace('<div class="row">Hello world</div>', '<div class="row" style="font-size:82.7533px;line-height:1">First offer</div><div class="row" style="font-size:70.7281px;line-height:1">Second offer</div>')
+    const result = await convertTheBriefHtml(html)
+    const [first, second] = result.canvasData.custom_300x250.layers.filter(l => l.type === 'text')
+    expect(first).toMatchObject({ text: 'First offer', y: 20 })
+    expect(first.h).toBeCloseTo(165.5066)
+    expect(second.text).toBe('Second offer')
+    expect(second.y).toBeCloseTo(first.y + first.h)
+    expect(second.y + second.h).toBeCloseTo(327)
+    expect(second.keyframes).toEqual(first.keyframes)
+  })
+
   it('retains uppercase styling while keeping raw text editable', async () => {
     const result = await convertTheBriefHtml(source.replace('font-weight:700', 'font-weight:700;text-transform:uppercase'))
     expect(result.canvasData.custom_300x250.layers.find(l => l.type === 'text')).toMatchObject({ text: 'Hello world', textTransform: 'uppercase' })
@@ -357,4 +402,30 @@ it('normalises unitless zero shadow offsets while rejecting unsupported shadow s
   const result = await convertTheBriefHtml(withShadow('0 0 24px #ff8bbf'))
   expect(result.canvasData.custom_300x250.layers.find(l => l.type === 'text').textShadow).toBe('0px 0px 24px #ff8bbf')
   await expect(convertTheBriefHtml(withShadow('0 0 24px #ff8bbf, 0 0 2px #fff'))).rejects.toThrow('Unsupported text shadow')
+})
+
+it('converts a centered TheBrief image flip with its original perspective, timing and inner rotation', async () => {
+  const flip = source
+    .replace('width:200px;height:80px}', 'width:200px;height:80px;perspective:56.35px;perspective-origin:center}')
+    .replace('translateX(-100px) translateY(0)', 'rotateX(-80deg) rotateY(0) rotate3d(1,1,0,0deg)')
+    .replace('translateX(0) translateY(0)', 'rotateX(0) rotateY(0) rotate3d(1,1,0,0deg)')
+    .replace('opacity:0}100%', 'opacity:0}50%{opacity:1}100%')
+    .replace('animation-name:enter;', 'animation-name:enter;backface-visibility:hidden;')
+    .replace('data-eltype="text"', 'data-eltype="image"')
+    .replace('<div class="row">Hello world</div>', '<div style="width:100%;height:100%;transform:rotate(346deg)"><div id="c-1" role="img" style="background-image:url(./media/original.png);background-size:cover"></div></div>')
+  const imported = await convertTheBriefHtml(flip)
+  expect(imported.warnings).toEqual([])
+  expect(imported.canvasData.custom_300x250.layers[1]).toMatchObject({
+    type: 'image', src: './media/original.png', imageFlipPerspective: 56.35, rotation: 346,
+    transformOrigin: { x: 100, y: 40 },
+    keyframes: {
+      rotationX: [{ time: 0.2, value: -80, easing: 'cubic-bezier(.165,.84,.44,1)' }, { time: 1.2, value: 0 }],
+      opacity: [{ time: 0.2, value: 0 }, { time: 0.7, value: 1 }, { time: 1.2, value: 1 }, { time: 4, value: 1 }]
+    }
+  })
+  for (const unsupported of [
+    flip.replace('perspective-origin:center', 'perspective-origin:left top'),
+    flip.replace('rotateY(0)', 'rotateY(12deg)'),
+    flip.replace('rotateX(-80deg)', 'rotateX(-110deg)')
+  ]) expect((await convertTheBriefHtml(unsupported)).warnings).toEqual([expect.stringMatching(/animation not converted/)])
 })

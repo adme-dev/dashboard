@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { MAX_CREATIVE_PACKAGE_ASSETS } from '~~/app/utils/thebrief-import'
 
 /** Read-only admission to retry the existing audited upload keys. Never resets ledger rows. */
 export interface ImportRecoveryRow {
@@ -38,7 +39,7 @@ export async function recoverStoredImportReceipts(
 ) {
   const empty = { canResume: false, completed: 0, total: hashes.length, receipts: [] as Array<{ sha256: string, url: string }> }
   const age = now - Date.parse(startedAt)
-  if (!Number.isFinite(age) || age < 15 * 60_000 || age > 7 * 86400_000 || !assets.length || assets.length > 150 || assets.reduce((sum, asset) => sum + asset.fileSize, 0) > 64 * 1024 * 1024) return empty
+  if (!Number.isFinite(age) || age < 15 * 60_000 || age > 7 * 86400_000 || !assets.length || assets.length > MAX_CREATIVE_PACKAGE_ASSETS || assets.reduce((sum, asset) => sum + asset.fileSize, 0) > 64 * 1024 * 1024) return empty
   const receipts = new Map<string, string>()
   for (const asset of assets) {
     const sha = /^([a-f0-9]{64})\.(?:png|jpg|gif|webp|mp4|webm|mp3)$/.exec(asset.name)?.[1]

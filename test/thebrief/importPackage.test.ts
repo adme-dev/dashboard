@@ -172,6 +172,22 @@ describe('video packages', () => {
     expect(Object.values(pkg.canvasData)[0]!.layers.find(layer => layer.type === 'video')).toMatchObject({ mediaEnd: 3, mediaLoop: true, focalY: 25 })
   })
 
+  it('validates editable content mirrors on video layers only', () => {
+    const pkg = parseTheBriefPackage(withVideo('video/mp4', { flipX: true, flipY: false }))
+    expect(Object.values(pkg.canvasData)[0]!.layers.find(layer => layer.type === 'video')).toMatchObject({ flipX: true, flipY: false })
+    expect(() => parseTheBriefPackage(withVideo('video/mp4', { flipX: 'true' }))).toThrow()
+    const input = fixture()
+    const board = Object.values(input.canvasData)[0] as { layers: Array<Record<string, unknown>> }
+    board.layers[0]!.flipY = true
+    expect(() => parseTheBriefPackage(input)).toThrow('Imported mirroring requires a video layer')
+  })
+
+  it('retains bounded video source crops and rejects crops outside the original frame', () => {
+    const videoCrop = { x: 0.1, y: 0.2, w: 0.8, h: 0.6 }
+    expect(Object.values(parseTheBriefPackage(withVideo('video/mp4', { videoCrop })).canvasData)[0]!.layers.at(-1)).toMatchObject({ videoCrop })
+    expect(() => parseTheBriefPackage(withVideo('video/mp4', { videoCrop: { ...videoCrop, x: 0.3 } }))).toThrow('Video crop falls outside the source')
+  })
+
   it('rejects video layers without MP4 assets and media clocks on other layers', () => {
     expect(() => parseTheBriefPackage(withVideo('image/png'))).toThrow('Video layers must reference MP4 assets')
     expect(() => parseTheBriefPackage(withVideo('video/mp4', { mediaStart: 3, mediaEnd: 2 }))).toThrow('Invalid video clip timing')

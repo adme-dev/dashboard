@@ -1,4 +1,5 @@
 import { ANIM_OUT } from '~/utils/banner-constants'
+import { layerFrameTransform } from './banner-transform'
 import type { AnimOutType, Keyframe, KeyframeProperty, Layer } from '~/types/banner-studio'
 import { timelinePhases, type TimelinePhase } from '~/utils/banner-timeline-phases'
 
@@ -64,7 +65,7 @@ export function retimeAnimationPhase(layer: Layer, phase: TimelinePhase, start: 
 }
 
 export function keyframeDefault(layer: Layer, property: KeyframeProperty) {
-  return property === 'opacity' ? layer.opacity : property === 'rotation' ? layer.rotation || 0 : property.startsWith('scale') ? 1 : 0
+  return property === 'opacity' ? layer.opacity : property === 'rotation' ? layerFrameTransform(layer).rotation : property.startsWith('scale') ? 1 : 0
 }
 
 /** New tracks have two resting anchors so even a single added keyframe plays. */

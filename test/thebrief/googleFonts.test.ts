@@ -1,3 +1,6 @@
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { expect, it, vi } from 'vitest'
 import { resolveGoogleFonts } from '../../scripts/thebrief/google-fonts.mjs'
 
@@ -28,4 +31,18 @@ it('retains separate full normal and italic faces at the same weight', async () 
   expect(result.receipts.map(face => face.style)).toEqual(['italic', 'normal'])
   await expect(resolveGoogleFonts([url], async address => new Response(address === url ? italic + italic : font))).rejects.toThrow(/Ambiguous/)
   await expect(resolveGoogleFonts([url], async () => new Response(css.replace('font-style:normal', 'font-style:oblique')))).rejects.toThrow(/Unsupported/)
+})
+
+it('reuses only the allowlisted bytes downloaded during this group preparation', async () => {
+  const cache = await mkdtemp(join(tmpdir(), 'thebrief-font-group-'))
+  const fetcher = vi.fn(async (address: string) => new Response(address === url ? css : font))
+  try {
+    const first = await resolveGoogleFonts([url], fetcher, cache)
+    const next = await resolveGoogleFonts([url], fetcher, cache)
+    expect(fetcher).toHaveBeenCalledTimes(2)
+    expect(next).toEqual(first)
+    await expect(resolveGoogleFonts(['https://localhost/css2'], fetcher, cache)).rejects.toThrow(/Unapproved/)
+  } finally {
+    await rm(cache, { recursive: true, force: true })
+  }
 })

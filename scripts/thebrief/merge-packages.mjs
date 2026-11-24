@@ -7,14 +7,17 @@ import { parseTheBriefPackage } from '../../app/utils/thebrief-import.ts'
 // Run with Node's tsx loader, as with package-import.mjs.
 export function mergeTheBriefPackages(packages, designHash, name) {
 if (packages.length < 1 || packages.length > 20 || !/^[\w-]{1,100}$/.test(designHash)) throw new Error('Invalid design set')
+if (new Set(packages.map(pkg => pkg.source.designHash)).size !== packages.length) throw new Error('Duplicate source layout identity')
 const [{ source }] = packages
-if (packages.some(pkg => pkg.source.duration !== source.duration || pkg.source.loopCount !== source.loopCount || pkg.source.folder !== source.folder || pkg.source.createdDate !== source.createdDate)) {
-  throw new Error('Source sizes have different playback, folder or creation-date metadata')
+if (packages.some(pkg => pkg.source.folder !== source.folder || pkg.source.createdDate !== source.createdDate)) {
+  throw new Error('Source sizes have different folder or creation-date metadata')
 }
 if (packages.some(pkg => pkg.warnings.some(w => /animation not converted|additional effects are not converted/.test(w)))) {
   throw new Error('Import held: a source size still has unsupported animation')
 }
 const canvasData = {}
+const layoutCounts = new Map()
+const layoutPlayback = {}
 const assets = new Map()
 const fonts = new Map()
 for (const pkg of packages) {
@@ -33,9 +36,16 @@ for (const pkg of packages) {
     fontAliases.set(face, canonical.family)
   }
   for (const [key, board] of Object.entries(pkg.canvasData)) {
-    if (Object.hasOwn(canvasData, key)) throw new Error(`Duplicate design size: ${key}`)
-    canvasData[key] = { ...board, layers: board.layers.map(layer => ({
-      ...layer, fontFamily: layer.fontFamily ? fontAliases.get(`${layer.fontFamily}:${layer.fontWeight || 400}:${layer.fontStyle || 'normal'}`) || layer.fontFamily : layer.fontFamily
+    const count = (layoutCounts.get(key) || 0) + 1
+    layoutCounts.set(key, count)
+    const layoutKey = count === 1 ? key : `${key}__v${count}`
+    if (Object.hasOwn(canvasData, layoutKey)) throw new Error(`Duplicate design layout key: ${layoutKey}`)
+    const expected = pkg.source.layoutPlayback?.[key] ?? pkg.source
+    layoutPlayback[layoutKey] = { duration: expected.duration, loopCount: expected.loopCount }
+    const alias = face => face.fontFamily ? fontAliases.get(`${face.fontFamily}:${face.fontWeight || 400}:${face.fontStyle || 'normal'}`) || face.fontFamily : face.fontFamily
+    canvasData[layoutKey] = { ...board, layers: board.layers.map(layer => ({
+      ...layer, fontFamily: alias(layer),
+      ...(layer.textRuns ? { textRuns: layer.textRuns.map(run => ({ ...run, ...(run.fontFamily ? { fontFamily: alias(run) } : {}) })) } : {})
     })) }
   }
   for (const item of pkg.assets) {
@@ -46,9 +56,14 @@ for (const pkg of packages) {
 }
 const digest = createHash('sha256')
 for (const value of [designHash, ...packages.map(pkg => pkg.source.sha256).sort()]) digest.update(`${value}\n`)
+const profiles = Object.values(layoutPlayback)
+const duration = Math.max(...profiles.map(p => p.duration))
+const loopCount = profiles.some(p => p.loopCount === 0) ? 0 : Math.max(...profiles.map(p => p.loopCount))
+const varies = profiles.some(p => p.duration !== duration || p.loopCount !== loopCount)
+if (varies) for (const [key, playback] of Object.entries(layoutPlayback)) canvasData[key].playback ??= playback
 const merged = parseTheBriefPackage({
   kind: 'xeroflow-thebrief-import', version: 1, name,
-  source: { ...source, designHash, sha256: digest.digest('hex') },
+  source: { ...source, designHash, sha256: digest.digest('hex'), duration, loopCount, layoutPlayback: varies ? layoutPlayback : undefined },
   canvasData, assets: [...assets.values()], fonts: [...fonts.values()],
   warnings: [...new Set(packages.flatMap(pkg => pkg.warnings))]
 })

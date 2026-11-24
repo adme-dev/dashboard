@@ -36,6 +36,15 @@ describe('TheBrief imported font identity', () => {
     })
   })
 
+  it('binds verified faces used by individual editable text runs', () => {
+    const other = { text: 'Regular', fontFamily: prepared.family, fontWeight: 400 }
+    const selected = { text: 'Fine print', fontFamily: prepared.family, fontWeight: prepared.weight }
+    const boards = { square: { layers: [{ fontFamily: prepared.family, fontWeight: 700, textRuns: [other, selected] }] } }
+    bindImportedFontFace(boards, prepared, face(), 'client-a')
+    expect(other).not.toHaveProperty('fontAssetId')
+    expect(selected).toHaveProperty('fontAssetId', 'face-a')
+  })
+
   it('rejects a mismatched upload response before binding any layout', () => {
     const boards = { square: { layers: [{ fontFamily: prepared.family, fontWeight: 325 }] } }
     expect(() => bindImportedFontFace(boards, prepared, face({ clientId: 'client-b' }), 'client-a')).toThrow('client scope')

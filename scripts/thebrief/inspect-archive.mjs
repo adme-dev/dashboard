@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { inflateRawSync } from 'node:zlib'
+import { crc32, inflateRawSync } from 'node:zlib'
 
 // Offline preflight only. Never evaluate imported code, fetch resources, or write
 // archive paths to disk. This is not an approval to execute or publish a package.
@@ -19,15 +19,6 @@ function safePath(name) {
   if (!name || /[\\:]/.test(name) || [...name].some(char => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127) || name.startsWith('/') || unsafePercent) fail('Unsafe ZIP path')
   const parts = name.replace(/\/$/, '').split('/')
   if (parts.some(part => !part || part === '.' || part === '..' || part.trim() !== part)) fail('Unsafe ZIP path')
-}
-
-function crc32(bytes) {
-  let crc = 0xffffffff
-  for (const byte of bytes) {
-    crc ^= byte
-    for (let i = 0; i < 8; i++) crc = (crc >>> 1) ^ ((crc & 1) ? 0xedb88320 : 0)
-  }
-  return (crc ^ 0xffffffff) >>> 0
 }
 
 function entries(bytes, limits, budget) {

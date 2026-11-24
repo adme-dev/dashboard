@@ -2,6 +2,7 @@
 import TextGlyphs from './TextGlyphs.client.vue'
 import type { Layer } from '~/types/banner-studio'
 import { effectStyleFromLayer, bannerTextBackdropShadow, safeBannerTextTexture } from '~~/shared/bannerEffects'
+import { isBannerInlineTextColor } from '~~/shared/bannerTextColor.mjs'
 import { useBannerFonts } from '~/composables/useBannerFonts'
 import { bannerFontFamily } from '~/utils/banner-font-family'
 
@@ -53,10 +54,14 @@ function onBlur() {
     if (props.layer.textRuns && textEl.value) {
       const collect = (node: Node) => {
         if (node.nodeType === Node.TEXT_NODE) {
+          if (!node.textContent) return
           const span = node.parentElement
           const fontSize = Number.parseFloat(span?.style.fontSize || '')
           const top = Number.parseFloat(span?.style.top || '')
-          textRuns.push({ text: node.textContent || '', ...(span !== textEl.value && Number.isFinite(fontSize) ? { fontSize } : {}), ...(Number.isFinite(top) ? { top } : {}) })
+          const color = span?.style.color
+          const sourceIndex = span?.closest('[data-banner-run]')?.getAttribute('data-banner-run')
+          const sourceRun = sourceIndex == null ? undefined : props.layer.textRuns?.[Number(sourceIndex)]
+          textRuns.push({ ...sourceRun, text: node.textContent, ...(span !== textEl.value && Number.isFinite(fontSize) ? { fontSize } : {}), ...(Number.isFinite(top) ? { top } : {}), ...(isBannerInlineTextColor(color) ? { color } : {}) })
         } else for (const child of node.childNodes) collect(child)
       }
       for (const child of textEl.value.childNodes) collect(child)

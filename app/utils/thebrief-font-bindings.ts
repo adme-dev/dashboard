@@ -1,3 +1,5 @@
+import { bannerFontTargets, type BannerFontLayer } from '~~/shared/banner/fonts'
+
 /** Imported faces are reused by bytes and scope, never by family name alone. */
 export interface ImportedFontFace {
   id: string
@@ -23,14 +25,14 @@ export function findImportedFontFace<T extends ImportedFontFace>(faces: T[], fon
 }
 
 export function bindImportedFontFace(
-  boards: Record<string, { layers: Array<{ fontFamily?: string, fontWeight?: number, fontAssetId?: string }> }>,
+  boards: Record<string, { layers: BannerFontLayer[] }>,
   font: PreparedFontIdentity,
   face: ImportedFontFace,
   clientId: string
 ) {
   if (!findImportedFontFace([face], font, clientId)) throw new Error('Stored font differs from the prepared package or client scope')
   for (const board of Object.values(boards)) {
-    for (const layer of board.layers) {
+    for (const layer of bannerFontTargets(board.layers)) {
       if (layer.fontFamily === font.family && (layer.fontWeight ?? 400) === font.weight) layer.fontAssetId = face.id
     }
   }

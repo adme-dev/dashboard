@@ -2,7 +2,7 @@
 import SlideGroup from './SlideGroup.client.vue'
 import { bannerSlideGroups } from '~~/shared/bannerSlideFade'
 import { createBannerVideoTransport } from '~/utils/bannerVideoPlayback'
-import { layerTransformOrigin, layerFlipTransform } from '~/utils/banner-transform'
+import { layerTransformOrigin, layerContentTransform } from '~/utils/banner-transform'
 import type { Layer } from '~/types/banner-studio'
 import { FORMATS } from '~/utils/banner-constants'
 import { computeClipPath } from '~/utils/banner-mask'
@@ -500,6 +500,9 @@ defineExpose({ artboardEl })
             pointerEvents: isActive && !layer.locked && layer.type !== 'bg' && layer.type !== 'audio' ? 'auto' : 'none',
             display: layer.hidden && layer.type !== 'audio' ? 'none' : undefined,
             transformOrigin: layerTransformOrigin(layer.transformOrigin),
+            perspective: layer.textTilt ? `${layer.textTilt.perspective}px` : undefined,
+            perspectiveOrigin: layer.textTilt ? `${layer.textTilt.width / 2}px ${layer.textTilt.height / 2}px` : undefined,
+            backfaceVisibility: layer.imageFlipPerspective ? 'hidden' : undefined,
             cursor: isActive && !layer.locked && layer.type !== 'bg' && layer.type !== 'audio' ? 'move' : 'default',
             clipPath: maskClipPaths.get(layer.id) || undefined,
             outline: layer.isMask ? '2px dashed #e84aff' : undefined,
@@ -510,7 +513,12 @@ defineExpose({ artboardEl })
           @mousedown="$event.button === 0 && isActive && !layer.locked && layer.type !== 'bg' ? onLayerMouseDown($event, layer.id) : undefined"
         >
           <!-- Content flips independently of animated position/rotation/scale. -->
-          <div data-layer-content class="h-full w-full" :style="{ transform: layerFlipTransform(layer) }">
+          <div v-if="layer.textTilt" data-banner-tilt :style="{ width: `${layer.textTilt.width}px`, height: `${layer.textTilt.height}px`, transformOrigin: `${layer.textTilt.width / 2}px calc(var(--xf-origin-y, ${layer.textTilt.height}) * 1px)` }">
+            <div data-layer-content class="h-full w-full" :style="{ transform: layerContentTransform(layer) }">
+              <BannerLayersText :client-id="state.project?.clientId" :layer="layer" :is-active="isActive" />
+            </div>
+          </div>
+          <div v-else data-layer-content class="h-full w-full" :style="{ transform: layerContentTransform(layer) }">
             <BannerMotionReveal :layer="layer">
               <!-- Layer type renderers -->
               <BannerLayersBg v-if="layer.type === 'bg'" :layer="layer" :is-active="isActive" />

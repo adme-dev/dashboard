@@ -7,10 +7,13 @@ parsed as bounded literal data and never executed.
 
 ## Runtime and limits
 
-- Use Node 22+ and the pinned package-manager/dependency versions.
+- Use Node 22.18+ and the pinned package-manager/dependency versions.
 - The container needs FFmpeg, Sharp and the existing TheBrief static converter.
 - Two fixed pool IDs, one active request per container, `standard-1` / 4 GiB,
   sleep after 60 seconds. A busy instance returns a retryable status.
+- One reusable conversion process per ZIP. The complete archive is validated before
+  conversion, and layouts read their verified bytes directly from the ZIP. Each
+  size still has a 60-second deadline.
 - 64 MiB input; 128 MiB aggregate prepared JSON; 50 designs / 20 sizes per design;
   standard independent child-archive limits. Three-minute preparation deadline,
   four-minute service timeout. Large request/response bodies stream at the edge.
@@ -44,12 +47,20 @@ runtime dependencies. It has no public Worker route or `workers.dev` endpoint.
    `pnpm deploy:production` to `agency-dashboard`. The production service binding
    is `THEBRIEF_IMPORT`; environments without it return a clear 503 while prepared
    JSON imports remain usable. Do not use direct Pages Wrangler commands.
+   When the existing binding and package schema already support the converter
+   change, verify the guard and live caller and release only the private Worker.
+   When a change adds optional prepared-package fields, first release and
+   verify the compatible Pages caller against the current Worker. Then enable
+   the new output on the private Worker so clients can parse it as it rolls out.
 6. In the signed-in app, upload the original Alfa ZIP, assign its client/folder,
    acknowledge undated drafts, confirm three designs / six sizes and skip the
    verified existing Traffic draft. Save the other two drafts. Reopen every size,
    compare early/settled/end and transition frames with TheBrief, then check the
    saved compiled proofs, sound and QR/navigation. Record deployment and project
    IDs in the verification record. Keep `import:needs-review` until producer review.
+   For a converter-only update, test the original ZIP that prompted the change
+   in the live importer and verify that an existing draft is matched by its
+   source IDs before any new draft is created.
 
 ## Rollback
 
@@ -60,3 +71,7 @@ previous image independently. Do not remove saved drafts as a deployment rollbac
 
 See [the import runbook](../../docs/runbooks/thebrief-banner-import.md) and
 [the Alfa qualification record](../../docs/migrations/alfa-direct-zip-import-20261124.md).
+
+## Alan Mance completion qualification — 24 November 2026
+
+Image `sha256:ea440adef1d6c2cda2db0c3f678ddc711ec3260d985bb3821e7c1530f164c143` was built from source `fa7f38f49` and exercised via the real Linux HTTP server under a 4 GiB memory limit. Eleven previously held design groups (25 layouts) prepared without holds; every asset and font checksum and archive receipt was checked, and malformed ZIP input returned 422. Exact-source reviewed row receipts unlock the four qualified multi-scene video groups. Native depth and changing-pivot text, masked/positioned logos, clipped audio fades, inline gradients and hidden post-loop content remain editable. Unknown source compositions remain held. Pages source `fa7f38f49` supplies the matching native renderer and package schema.

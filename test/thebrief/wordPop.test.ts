@@ -15,14 +15,15 @@ const html = source
 @keyframes pop{0%{transform:translateY(0) scale(.6);filter:blur(10px);opacity:0}40%{opacity:1}70%{transform:translateY(0) scale(1.05)}100%{transform:translateY(0) scale(1);filter:blur(0px)}}</style>`
 
 it('retains a raised footnote inside an animated word without separating its entrance', async () => {
-  const input = html.replace('>world</span>', '>world<sup style="position:relative;top:-5px;vertical-align:baseline"><span style="font-size:14px">*</span></sup></span>')
+  const input = html.replace('>world</span>', '><span style="color:#213456">world</span><sup style="position:relative;top:-5px;vertical-align:baseline"><span style="font-size:14px">*</span></sup></span>')
   const result = await convertTheBriefHtml(input)
   const pkg = parseTheBriefPackage({ kind: 'xeroflow-thebrief-import', version: 1, name: 'Superscript', source: { ...result.source, designHash: 'superscript', sha256: 'a'.repeat(64), folder: '' }, canvasData: result.canvasData, assets: [], fonts: [], warnings: result.warnings })
   const layer = pkg.canvasData.custom_300x250!.layers.find(layer => layer.type === 'text')!
   expect(layer.text).toBe('Hello world*')
-  expect(bannerWordRuns(layer.text!, 'word', layer.textRuns).at(-1)).toMatchObject({ text: 'world*', wordIndex: 1, runs: [{ text: 'world' }, { text: '*', fontSize: 14, top: -5 }] })
+  expect(bannerWordRuns(layer.text!, 'word', layer.textRuns).at(-1)).toMatchObject({ text: 'world*', wordIndex: 1, runs: [{ text: 'world', color: '#213456' }, { text: '*', fontSize: 14, top: -5 }] })
   const output = buildBannerHTML('custom_300x250', pkg.canvasData.custom_300x250!.layers as never)
   expect(output).toContain('font-size:14px;position:relative;top:-5px;')
+  expect(output).toContain('color:#213456;')
   expect(output).toContain('data-banner-word="1"')
 })
 

@@ -50,10 +50,11 @@ export const PLATFORM_META: Record<string, PlatformMeta> = {
 /** Recover dimensions encoded by the image-importer's custom format keys. */
 export function resolveBannerFormat(key: string): BannerFormat | undefined {
   if (Object.prototype.hasOwnProperty.call(FORMATS, key)) return FORMATS[key]
-  const match = /^custom_([1-9]\d{0,3})x([1-9]\d{0,3})$/.exec(key)
+  const match = /^custom_([1-9]\d{0,3})x([1-9]\d{0,3})(?:__v([2-9]|1\d|20))?$/.exec(key)
   if (!match) return undefined
   const w = Number(match[1]), h = Number(match[2])
-  return { key, w, h, name: 'Custom', label: `${w}×${h} · Custom`, platform: 'Custom', icon: 'C' }
+  const name = match[3] ? `Variant ${match[3]}` : 'Custom'
+  return { key, w, h, name, label: `${w}×${h} · ${name}`, platform: 'Custom', icon: 'C' }
 }
 
 // ══════════════════════════════════════

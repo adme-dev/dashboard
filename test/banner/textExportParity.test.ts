@@ -106,13 +106,13 @@ it('keeps imported button borders, line height and case identical in editor and 
   } finally { editor.unmount() }
 })
 
-it('keeps safe superscript runs in editor and exports, and ignores stale runs after a plain text edit', () => {
+it('keeps safe coloured superscripts in editor and exports, and ignores stale runs after a plain text edit', () => {
   vi.stubGlobal('computed', computed)
   vi.stubGlobal('ref', ref)
   vi.stubGlobal('nextTick', nextTick)
   vi.stubGlobal('useBannerStudio', () => ({ updateLayer: vi.fn() }))
   vi.stubGlobal('useBannerFeeds', () => ({ getFeedOverride: () => undefined }))
-  const layer = { id: 1, type: 'text', text: '2nd Dec', textRuns: [{ text: '2' }, { text: 'nd', fontSize: 14, top: -5 }, { text: ' Dec' }], x: 0, y: 0, w: 200, h: 40, zIndex: 1 } as Layer
+  const layer = { id: 1, type: 'text', text: '2nd Dec', textRuns: [{ text: '2' }, { text: 'nd', fontSize: 14, top: -5, color: '#213456' }, { text: ' Dec' }], x: 0, y: 0, w: 200, h: 40, zIndex: 1 } as Layer
   const root = document.createElement('div')
   const editor = createApp(TextLayer, { layer, isActive: true })
   editor.mount(root)
@@ -124,6 +124,36 @@ it('keeps safe superscript runs in editor and exports, and ignores stale runs af
     expect(exported.textContent).toBe('2nd Dec')
     expect([...exported.children].map(el => (el as HTMLElement).style.cssText)).toEqual(spans.map(el => (el as HTMLElement).style.cssText))
     expect(buildBannerHTML('mrec', [{ ...layer, text: 'New date' }], { includeAnimations: false })).not.toContain('top:-5px')
+  } finally { editor.unmount() }
+})
+
+it('loads the exact managed inline face in the editor and both HTML exports', async () => {
+  vi.stubGlobal('computed', computed)
+  vi.stubGlobal('ref', ref)
+  vi.stubGlobal('nextTick', nextTick)
+  const updateLayer = vi.fn()
+  vi.stubGlobal('useBannerStudio', () => ({ updateLayer }))
+  vi.stubGlobal('useBannerFeeds', () => ({ getFeedOverride: () => undefined }))
+  const fontAssetId = 'c307dc16-1eac-4e63-8f28-394639170259'
+  const cssAlias = 'XeroFlowFont_c307dc161eac4e638f28394639170259'
+  const run = { text: '900', fontFamily: 'Dealer Bold', fontWeight: 800, fontAssetId, fontStyle: 'normal' as const }
+  const layer = { id: 1, type: 'text', text: 'SAVE 900', textRuns: [{ text: 'SAVE ' }, run], x: 0, y: 0, w: 300, h: 40, zIndex: 1 } as Layer
+  const customFonts = [{ id: fontAssetId, family: run.fontFamily, weight: 800, format: 'woff2', url: 'https://assets.example.com/dealer.woff2' }]
+  const root = document.createElement('div')
+  const editor = createApp(TextLayer, { layer, isActive: true })
+  editor.mount(root)
+  try {
+    const markup = buildBannerHTML('mrec', [layer], { customFonts, includeAnimations: false })
+    expect(serverBuilder('mrec', [layer], { customFonts, includeAnimations: false })).toBe(markup)
+    expect(markup).toContain(`@font-face { font-family: '${cssAlias}'`)
+    const face = root.querySelector('[contenteditable]') as HTMLElement
+    const amount = face.querySelector('[data-banner-run="1"]') as HTMLElement
+    expect(amount.style.fontFamily).toContain(cssAlias)
+    root.firstElementChild!.dispatchEvent(new MouseEvent('dblclick'))
+    await nextTick()
+    amount.textContent = '950'
+    face.dispatchEvent(new FocusEvent('blur'))
+    expect(updateLayer).toHaveBeenCalledWith(1, { text: 'SAVE 950', textRuns: [{ text: 'SAVE ' }, { ...run, text: '950' }] })
   } finally { editor.unmount() }
 })
 

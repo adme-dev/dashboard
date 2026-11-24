@@ -2,6 +2,7 @@
 import type { BannerAsset, Layer } from '~/types/banner-studio'
 import { validVideoTrim, videoTrimRange } from '~/utils/banner-video-edit'
 import { safeMediaUrl } from '~/utils/safe-url'
+import { bannerImageCropCss, type BannerImageCrop } from '~~/shared/bannerImageCrop'
 
 const { state, selectedLayer, updateLayer, activeFormat } = useBannerStudio()
 const { pauseTimeline } = useBannerTimeline()
@@ -9,6 +10,7 @@ const realtime = useBannerRealtime()
 const toast = useToast()
 const replaceOpen = ref(false)
 const trimOpen = ref(false)
+const cropOpen = ref(false)
 const duration = ref(0)
 const loadError = ref(false)
 const preview = ref<HTMLVideoElement>()
@@ -31,6 +33,7 @@ const identity = computed(() =>
     selectedLayer.value?.mediaStart,
     selectedLayer.value?.mediaEnd,
     selectedLayer.value?.mediaLoop,
+    selectedLayer.value?.videoCrop,
     state.layoutView
   ])
 )
@@ -41,6 +44,7 @@ let editingIdentity = ''
 watch(identity, () => {
   replaceOpen.value = false
   trimOpen.value = false
+  cropOpen.value = false
 })
 watch(
   () => selectedLayer.value?.src,
@@ -58,12 +62,13 @@ function loaded(event: Event) {
   duration.value = video.duration
   if (Number.isFinite(video.duration)) video.currentTime = range.value[0]
 }
-function begin(kind: 'replace' | 'trim') {
+function begin(kind: 'replace' | 'trim' | 'crop') {
   if (disabled.value || (kind === 'replace' && replaceDisabled.value)) return
   pauseTimeline()
   editingIdentity = identity.value
   if (kind === 'replace') replaceOpen.value = true
-  else trimOpen.value = true
+  else if (kind === 'trim') trimOpen.value = true
+  else cropOpen.value = true
 }
 function current() {
   if (!disabled.value && editingIdentity === identity.value) return true
@@ -100,6 +105,9 @@ function applyTrim(value: { mediaStart: number, mediaEnd: number }) {
     && validVideoTrim(value.mediaStart, value.mediaEnd, duration.value)
   )
     updateLayer(selectedLayer.value!.id, value)
+}
+function applyCrop(crop: BannerImageCrop) {
+  if (current() && bannerImageCropCss(crop)) updateLayer(selectedLayer.value!.id, { videoCrop: crop })
 }
 function set(value: Partial<Layer>) {
   if (!disabled.value) updateLayer(selectedLayer.value!.id, value)
@@ -182,6 +190,16 @@ function fillCanvas() {
       "
       @click="begin('trim')"
     />
+    <UButton
+      label="Crop video"
+      icon="i-lucide-crop"
+      variant="outline"
+      color="neutral"
+      size="sm"
+      class="w-full justify-center"
+      :disabled="disabled || !selectedLayer.src || loadError"
+      @click="begin('crop')"
+    />
     <UFormField
       label="Clip playback"
       help="Video plays silently with the banner timeline. Trim and loop settings apply to this layout."
@@ -248,6 +266,11 @@ function fillCanvas() {
       v-model:open="trimOpen"
       :layer="selectedLayer"
       @apply="applyTrim"
+    />
+    <BannerImageCropModal
+      v-model:open="cropOpen"
+      :layer="selectedLayer"
+      @apply="applyCrop"
     />
   </section>
 </template>

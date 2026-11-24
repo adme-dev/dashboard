@@ -46,6 +46,35 @@ it('maps TheBrief cover-crop framing to a native focal point and records the exp
   expect(top).toMatchObject({ focalX: 50, focalY: 0 })
 })
 
+it('keeps an asymmetric crop and centred mirror editable without changing the media source', async () => {
+  const html = videoSource({}, { videoCss: 'width:200px;height:112.5px;object-fit:cover;transform:translate(0,-25px) rotate(0)' })
+    .replace('<div id="effIn1">', '<div style="width:100%;height:100%;transform:rotate(0) scale(-1,-1)"><div id="effIn1">')
+    .replace('</video></div>', '</video></div></div>')
+  const result = await convertTheBriefHtml(html)
+  const layer = result.canvasData.custom_300x250.layers.find(layer => layer.type === 'video')
+  expect(layer).toMatchObject({ flipX: true, flipY: true, focalX: 50, focalY: 76.92, src: './media/clip.mp4', mediaStart: 0, mediaEnd: 8 })
+  expect(layer.keyframes.x).toHaveLength(2)
+  expect(result.videoFrames).toEqual([{ layerId: layer.id, src: './media/clip.mp4', aspect: 200 / 112.5 }])
+  await expect(videoLayer(html.replace('rotate(0) scale', 'rotate(90deg) scale'))).rejects.toThrow('transformed video')
+})
+
+it('keeps a full viewport quarter-turn as editable rotation', async () => {
+  const html = videoSource()
+    .replace('<div id="effIn1">', '<div style="width:100%;height:100%;transform:rotate(90deg)"><div id="effIn1">')
+    .replace('</video></div>', '</video></div></div>')
+  expect(await videoLayer(html)).toMatchObject({ rotation: 90, x: 10, y: 20, w: 200, h: 80, src: './media/clip.mp4' })
+  await expect(videoLayer(html.replace('rotate(90deg)', 'rotate(12deg)'))).rejects.toThrow('transformed video')
+})
+
+it('stores a zoom beyond cover as the clipped source rectangle', async () => {
+  const html = videoSource({}, { videoCss: 'width:320px;height:180px;object-fit:cover;transform:translate(-10px,-35px) rotate(0)' })
+    .replace('<video ', '<div style="width:100%;height:100%;overflow:hidden"><video ')
+    .replace('</video>', '</video></div>')
+  const layer = await videoLayer(html)
+  expect(layer).toMatchObject({ src: './media/clip.mp4', videoCrop: { x: 10 / 320, y: 35 / 180, w: 200 / 320, h: 80 / 180 } })
+  await expect(videoLayer(html.replace('translate(-10px', 'translate(0.5px'))).rejects.toThrow('cropped video framing')
+})
+
 it.each([
   [{ startTime: 2 }, {}, 'source clip start 2s requires exported-clip reconciliation'],
   [{ soundOnHover: true }, {}, 'hover playback'],

@@ -1,15 +1,16 @@
+import { bannerImageBackgroundCss } from '../../shared/bannerImageBackground.mjs'
 import { bannerAudioState } from '~~/shared/bannerAudioClock'
 import { bannerSlideGroups } from '~~/shared/bannerSlideFade'
 import { mediaMaskCss, revealCommands, safeWordEntrance, wordEntranceSteps, REVEAL_WRAPPER_STYLE, REVEAL_GLOW_STYLE, revealContentStyle } from '~~/shared/bannerImportedMotion'
 import { bannerAnimationTiming } from '~/utils/banner-animation-timing'
-import { bannerFontFamily } from '~~/shared/banner/fonts'
+import { bannerFontFamily, bannerFontTargets } from '~~/shared/banner/fonts'
 import { buildBannerAudioManifest } from '~~/shared/bannerAudioRender.mjs'
 import { bannerImageCropCss } from '~~/shared/bannerImageCrop'
-import { bannerWordRuns } from '~~/shared/bannerWordPop'
+import { bannerTextRunCss, bannerWordRuns } from '~~/shared/bannerWordPop'
 import { bannerVideoMediaTimeScript } from '~~/shared/bannerVideoClock'
 import { bannerEffectCss, bannerTextDepthShadow, bannerTextMarkup, safeBannerTextTexture } from '~~/shared/bannerEffects'
 import { resolveBannerPlayback, bannerPlaybackRepeat } from '~/utils/banner-playback'
-import { layerTransformOrigin, layerFlipTransform } from '~/utils/banner-transform'
+import { layerTransformOrigin, layerContentTransform, layerFrameTransform } from '~/utils/banner-transform'
 import { ANIM_IN, ANIM_OUT, resolveBannerFormat } from '~/utils/banner-constants'
 import type { Layer, KeyframeProperty, Keyframe, BannerPlayback } from '~/types/banner-studio'
 import { computeClipPathPx } from '~/utils/banner-mask'
@@ -42,7 +43,7 @@ export interface ExportCustomFont {
 /** Build dynamic Google Fonts <link> based on fonts actually used in layers (excludes custom fonts) */
 function buildFontLink(layers: Layer[], customFontFamilies: Set<string>): string {
   const fonts = new Map<string, Set<number>>()
-  for (const l of layers) {
+  for (const l of bannerFontTargets(layers)) {
     if (!l.fontFamily || l.fontAssetId || SYSTEM_FONTS.has(l.fontFamily)) continue
     if (customFontFamilies.has(l.fontFamily)) continue // handled by @font-face
     if (!fonts.has(l.fontFamily)) fonts.set(l.fontFamily, new Set())
@@ -74,8 +75,9 @@ function isSafeCssUrl(url: string): boolean {
 /** Build @font-face CSS rules for custom fonts */
 function buildCustomFontFaces(layers: Layer[], customFonts: ExportCustomFont[]): string {
   if (!customFonts.length) return ''
-  const usedFamilies = new Set(layers.filter(l => !l.fontAssetId && l.fontFamily).map(l => l.fontFamily!))
-  const usedIds = new Set(layers.map(l => l.fontAssetId?.toLowerCase()).filter(Boolean))
+  const targets = bannerFontTargets(layers)
+  const usedFamilies = new Set(targets.filter(l => !l.fontAssetId && l.fontFamily).map(l => l.fontFamily!))
+  const usedIds = new Set(targets.map(l => l.fontAssetId?.toLowerCase()).filter(Boolean))
   const used = customFonts.filter(cf => (usedFamilies.has(cf.family) || (cf.id && usedIds.has(cf.id.toLowerCase()))) && isSafeCssUrl(cf.url))
   if (!used.length) return ''
   return used.flatMap((cf) => {
@@ -109,7 +111,7 @@ function layerHasKeyframes(l: Layer): boolean {
 /** GSAP property name for keyframe property (bg layers use autoAlpha for opacity) */
 function kfGsapProp(prop: KeyframeProperty, isBg: boolean): string {
   if (prop === 'opacity' && isBg) return 'autoAlpha'
-  return prop
+  return prop === 'originY' ? '"--xf-origin-y"' : prop
 }
 
 /** Generate GSAP animation JS lines for a keyframe-based layer */
@@ -118,6 +120,8 @@ function buildKeyframeAnimLines(l: Layer, cycleEnd?: number): string[] {
   const isBg = l.type === 'bg' && !l.clipToPresence
   const sel = `'[data-id="${l.id}"]'`
   const kfs = l.keyframes!
+  const { transformPerspective } = layerFrameTransform(l)
+  if (transformPerspective) lines.push(`  tl.set(${sel}, { transformPerspective: ${transformPerspective} }, 0);`)
   const skipXY = (l.motionPath?.length ?? 0) >= 2
 
   // A zero-time hold must restore its first opacity when scrubbing backwards.
@@ -136,9 +140,10 @@ function buildKeyframeAnimLines(l: Layer, cycleEnd?: number): string[] {
     if (skipXY && (prop === 'x' || prop === 'y')) continue
     const sorted = [...keyframes].sort((a, b) => a.time - b.time)
     const gProp = kfGsapProp(prop as KeyframeProperty, isBg)
+    const target = l.textTilt && prop !== 'opacity' ? `'[data-id="${l.id}"] [data-banner-tilt]'` : sel
 
     // Set initial value
-    lines.push(`  tl.set(${sel}, { ${gProp}: ${sorted[0].value} }, ${sorted[0].time});`)
+    lines.push(`  tl.set(${target}, { ${gProp}: ${sorted[0].value} }, ${sorted[0].time});`)
 
     // Tweens between keyframes
     for (let i = 0; i < sorted.length - 1; i++) {
@@ -146,12 +151,12 @@ function buildKeyframeAnimLines(l: Layer, cycleEnd?: number): string[] {
       const to = sorted[i + 1]
       const dur = to.time - from.time
       if (dur === 0) {
-        lines.push(`  tl.set(${sel}, { ${gProp}: ${to.value}, immediateRender: false }, ${to.time});`)
+        lines.push(`  tl.set(${target}, { ${gProp}: ${to.value}, immediateRender: false }, ${to.time});`)
         continue
       }
       const ease = from.easing || 'power2.out'
       const exactDuration = Number(dur.toFixed(3)) === dur ? dur.toFixed(3) : String(dur)
-      lines.push(`  tl.to(${sel}, { ${gProp}: ${to.value}, duration: ${exactDuration}, ease: ${easeToExportExpr(ease)} }, ${from.time});`)
+      lines.push(`  tl.to(${target}, { ${gProp}: ${to.value}, duration: ${exactDuration}, ease: ${easeToExportExpr(ease)} }, ${from.time});`)
     }
   }
 
@@ -242,11 +247,12 @@ export function buildBannerHTML(
           content = `<div data-banner-reveal style="${REVEAL_WRAPPER_STYLE}"><div data-banner-reveal-content style="${contentStyle}${style.slice(frameStyle.length)}">${content}</div>${l.reveal.type === 'tvExpand' ? `<div data-banner-reveal-glow style="${REVEAL_GLOW_STYLE}"></div>` : ''}</div>`
           style = frameStyle
         }
-        const flip = !l.isMask && layerFlipTransform(l)
-        if (flip) {
-          content = `<div data-layer-content style="width:100%;height:100%;box-sizing:border-box;${style.slice(frameStyle.length)}transform:${flip};">${content}</div>`
+        const contentTransform = !l.isMask && layerContentTransform(l)
+        if (contentTransform) {
+          content = `<div data-layer-content style="width:100%;height:100%;box-sizing:border-box;${style.slice(frameStyle.length)}transform:${contentTransform};">${content}</div>`
           style = frameStyle
         }
+        if (l.textTilt) content = `<div data-banner-tilt style="width:${l.textTilt.width}px;height:${l.textTilt.height}px;transform-origin:${l.textTilt.width / 2}px calc(var(--xf-origin-y, ${l.textTilt.height}) * 1px);">${content}</div>`
         return `<div class="layer" data-id="${l.id}" style="${style}">${content}</div>`
       }
       let style = `position:absolute;left:${l.x}px;top:${l.y}px;width:${l.w}px;height:${l.h}px;opacity:${l.opacity};`
@@ -254,7 +260,10 @@ export function buildBannerHTML(
       if (transformOrigin) style += `transform-origin:${transformOrigin};`
       if (l.hidden) style += 'display:none!important;'
       if (l.clipToPresence && l.startTime > 0) style += 'visibility:hidden;'
-      if (l.rotation) style += `transform:rotate(${l.rotation}deg);`
+      const frame = layerFrameTransform(l)
+      if (frame.rotation) style += `transform:rotate(${frame.rotation}deg);`
+      if (l.textTilt) style += `perspective:${l.textTilt.perspective}px;perspective-origin:${l.textTilt.width / 2}px ${l.textTilt.height / 2}px;`
+      if (frame.transformPerspective) style += 'backface-visibility:hidden;'
       if (l.mixBlendMode && /^(normal|multiply|screen|overlay|darken|lighten|color-dodge|color-burn|hard-light|soft-light|difference|exclusion|hue|saturation|color|luminosity)$/.test(l.mixBlendMode)) {
         style += `mix-blend-mode:${l.mixBlendMode};`
       }
@@ -303,16 +312,17 @@ export function buildBannerHTML(
           : ''
         const textMarkup = l.wordPop
           ? bannerWordRuns(l.text || '', l.wordPop?.unit, l.textRuns).map((token) => {
-              const markup = token.runs.map(run => `<span style="${run.fontSize ? `font-size:${run.fontSize}px;` : ''}${run.top !== undefined ? `position:relative;top:${run.top}px;` : ''}">${escapeHtml(run.text)}</span>`).join('')
+              const markup = token.runs.map(run => `<span style="${bannerTextRunCss(run)}">${escapeHtml(run.text)}</span>`).join('')
               return token.wordIndex === null ? markup : `<span data-banner-word="${token.wordIndex}" style="display:inline-block;transform-origin:center center">${markup}</span>`
             }).join('')
           : l.textRuns?.length && l.textRuns.map(run => run.text).join('') === l.text
-            ? l.textRuns.map(run => `<span style="${run.fontSize ? `font-size:${run.fontSize}px;` : ''}${run.top !== undefined ? `position:relative;top:${run.top}px;` : ''}">${escapeHtml(run.text)}</span>`).join('')
+            ? l.textRuns.map(run => `<span style="${bannerTextRunCss(run)}">${escapeHtml(run.text)}</span>`).join('')
             : escapeHtml(l.text || '')
         const content = `${textMarkup}${lineStrut}`
         return visualLayer(style, bannerTextMarkup(content, l as unknown as Record<string, unknown>))
       }
       if (l.type === 'button') {
+        style += bannerEffectCss({ visualFilter: l.visualFilter })
         style += `font-size:${l.fontSize || 12}px;font-weight:${l.fontWeight || 700};font-family:'${bannerFontFamily(l.fontFamily, l.fontAssetId)}',sans-serif;`
         style += `background:${l.bgColor || '#e8c84a'};color:${l.textColor || '#000'};`
         style += `display:flex;align-items:center;justify-content:center;cursor:pointer;box-sizing:border-box;white-space:nowrap;line-height:${l.lineHeight || 1};`
@@ -323,6 +333,22 @@ export function buildBannerHTML(
         return visualLayer(style, escapeHtml(l.text || ''))
       }
       if (l.type === 'image') {
+        const sourceBackground = bannerImageBackgroundCss(l.imageBackground)
+        if (l.imageOuterFilter && l.borderRadius) {
+          style += bannerEffectCss({ visualFilter: l.imageOuterFilter })
+          const originalImageStyle = `width:100%;height:100%;border-radius:${l.borderRadius}px;overflow:hidden;` + bannerEffectCss({ visualFilter: l.visualFilter })
+          const originalSrc = l.src || ''
+          const image = sourceBackground
+            ? `<div style="${escapeHtml('width:100%;height:100%;background-image:url(' + JSON.stringify(originalSrc) + ');' + sourceBackground)}"></div>`
+            : `<img src="${escapeHtml(originalSrc)}" style="width:100%;height:100%;object-fit:${l.fit || 'cover'};" />`
+          return visualLayer(style, `<div style="${originalImageStyle}">${image}</div>`)
+        }
+        if (sourceBackground) {
+          if (l.borderRadius) style += `border-radius:${l.borderRadius}px;`
+          style += 'overflow:hidden;' + bannerEffectCss({ visualFilter: l.visualFilter })
+          return visualLayer(style, `<div style="${escapeHtml('width:100%;height:100%;background-image:url(' + JSON.stringify(l.src || '') + ');' + sourceBackground)}"></div>`)
+        }
+        if (l.borderRadius) style += `border-radius:${l.borderRadius}px;`
         style += 'overflow:hidden;' + bannerEffectCss({ visualFilter: l.visualFilter })
         return visualLayer(style, `<img src="${escapeHtml(l.src || '')}" style="${bannerImageCropCss(l.imageCrop) || `width:100%;height:100%;object-fit:${l.fit || 'cover'};`}" />`)
       }
@@ -330,7 +356,10 @@ export function buildBannerHTML(
         style += mediaMaskCss(l.mediaMask)
         const objPos = `${l.focalX ?? 50}% ${l.focalY ?? 50}%`
         style += bannerEffectCss({ visualFilter: l.visualFilter })
-        return visualLayer(style, `<video src="${escapeHtml(l.src || '')}" muted playsinline preload="auto" style="width:100%;height:100%;object-fit:${l.fit || 'cover'};object-position:${objPos};" />`)
+        const crop = bannerImageCropCss(l.videoCrop)
+        if (crop) style += 'overflow:hidden;'
+        const videoStyle = crop ? `${crop}object-fit:cover;` : `width:100%;height:100%;object-fit:${l.fit || 'cover'};object-position:${objPos};`
+        return visualLayer(style, `<video src="${escapeHtml(l.src || '')}" muted playsinline preload="auto" style="${videoStyle}" />`)
       }
       if (l.type === 'audio') {
         if (!l.src) return ''

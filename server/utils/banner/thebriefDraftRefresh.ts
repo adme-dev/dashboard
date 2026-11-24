@@ -1,16 +1,13 @@
 import { validateCanvasFontAssets, FONT_UUID } from '~~/server/utils/banner/fontAssets'
 import { createError } from 'h3'
 import { z } from 'zod'
-import { parseTheBriefPackage, sameImportedCanvas } from '~~/app/utils/thebrief-import'
+import { parseTheBriefPackage, sameImportedCanvas, theBriefSourceSchema } from '~~/app/utils/thebrief-import'
 
 // The package parser is pure at module load; browser File/atob helpers are never called here.
 const requestSchema = z.object({
   clientId: z.string().uuid(),
   expectedUpdatedAt: z.string().datetime({ offset: true }),
-  source: z.object({
-    designHash: z.string().regex(/^[\w-]+$/).max(100), sha256: z.string().regex(/^[a-f0-9]{64}$/),
-    folder: z.string().max(250), duration: z.number().positive().max(300), loopCount: z.number().int().min(0).max(1000)
-  }).strict(),
+  source: theBriefSourceSchema.strict(),
   canvasData: z.record(z.string(), z.unknown())
 }).strict()
 
@@ -40,16 +37,18 @@ const canonical = (value: unknown): string => {
 export function readTheBriefDraftRefresh(body: unknown) {
   try {
     const input = requestSchema.parse(body)
-    const canvas = structuredClone(input.canvasData) as Record<string, { layers?: Array<{ src?: unknown, type?: unknown, fontAssetId?: unknown }> }>
+    const canvas = structuredClone(input.canvasData) as Record<string, { layers?: Array<{ src?: unknown, type?: unknown, fontAssetId?: unknown, textRuns?: Array<{ fontAssetId?: unknown }> }> }>
     const urls: string[] = []
     const videoUrls = new Set<string>()
     const fontReferences: Array<string | undefined> = []
     for (const board of Object.values(canvas)) {
       if (!board || !Array.isArray(board.layers)) throw new Error('Invalid artboard')
       for (const layer of board.layers) {
-        if (layer.fontAssetId !== undefined && (typeof layer.fontAssetId !== 'string' || !FONT_UUID.test(layer.fontAssetId))) throw new Error('Invalid font asset id')
-        fontReferences.push(layer.fontAssetId as string | undefined)
-        delete layer.fontAssetId
+        for (const face of [layer, ...layer.textRuns ?? []]) {
+          if (face.fontAssetId !== undefined && (typeof face.fontAssetId !== 'string' || !FONT_UUID.test(face.fontAssetId))) throw new Error('Invalid font asset id')
+          fontReferences.push(face.fontAssetId as string | undefined)
+          delete face.fontAssetId
+        }
         if (layer.src === undefined) continue
         if (typeof layer.src !== 'string' || layer.src.length > 2048 || !/^https:\/\//.test(layer.src)) throw new Error('Managed asset URL required')
         if (!urls.includes(layer.src)) urls.push(layer.src)
@@ -68,8 +67,10 @@ export function readTheBriefDraftRefresh(body: unknown) {
     })
     let fontIndex = 0
     for (const board of Object.values(parsed.canvasData)) for (const layer of board.layers) {
-      const fontAssetId = fontReferences[fontIndex++]
-      if (fontAssetId) Object.assign(layer, { fontAssetId })
+      for (const face of [layer, ...layer.textRuns ?? []]) {
+        const fontAssetId = fontReferences[fontIndex++]
+        if (fontAssetId) Object.assign(face, { fontAssetId })
+      }
       if (layer.src) layer.src = urls[Number(/^\.\/media\/asset-(\d+)\.(?:png|mp4)$/.exec(layer.src)![1])]!
     }
     return { ...input, clientId: input.clientId.toLowerCase(), canvasData: parsed.canvasData, assetUrls: urls }

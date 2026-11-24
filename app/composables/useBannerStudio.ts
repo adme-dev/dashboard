@@ -414,7 +414,7 @@ export function useBannerStudio() {
       'audioFadeIn', 'audioFadeOut',
       'bgColor', 'fillColor', 'borderColor', 'borderWidth', 'borderRadius',
     ]
-    // Source replacement clears the previous image crop in every linked layout.
+    // Source replacement clears the previous crop in every linked layout.
     // Crop-only edits remain local because layout frame ratios can differ.
     if (Object.prototype.hasOwnProperty.call(props, 'src')) {
       props = { imageCrop: undefined, ...props }
@@ -424,7 +424,15 @@ export function useBannerStudio() {
       if (layer.type === 'video' || layer.type === 'audio') {
         props = { ...props, mediaStart: 0, mediaEnd: undefined }
         sharedFields.push('mediaStart', 'mediaEnd')
+        if (layer.type === 'video') {
+          props = { ...props, videoCrop: undefined }
+          sharedFields.push('videoCrop')
+        }
       }
+    }
+    if (layer.type === 'video' && props.fit !== undefined && !Object.prototype.hasOwnProperty.call(props, 'videoCrop')) {
+      props = { ...props, videoCrop: undefined }
+      sharedFields.push('videoCrop')
     }
     const shared = Object.fromEntries(sharedFields
       .filter(key => Object.prototype.hasOwnProperty.call(props, key))

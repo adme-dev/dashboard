@@ -1,3 +1,17 @@
+export interface BannerFontChoice {
+  fontFamily?: string
+  fontStyle?: 'normal' | 'italic'
+  fontWeight?: number
+  fontAssetId?: string
+}
+
+export type BannerFontLayer = BannerFontChoice & { textRuns?: readonly BannerFontChoice[] }
+
+/** Font faces can be used by an entire layer or by an editable text run. */
+export function bannerFontTargets(layers: readonly BannerFontLayer[]) {
+  return layers.flatMap(layer => [layer, ...layer.textRuns ?? []])
+}
+
 /** Stable CSS identity keeps equal family names from different uploads independent. */
 export function bannerFontFamily(family?: string, fontAssetId?: string): string {
   if (fontAssetId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(fontAssetId)) {
