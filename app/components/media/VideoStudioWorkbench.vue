@@ -21,6 +21,7 @@ const props = withDefaults(defineProps<{
   generationStatusDetail?: string
   rendering?: boolean
   producerCollapsed?: boolean
+  prepareEnabled?: boolean
 }>(), {
   mode: 'edit',
   assetCount: 0,
@@ -29,7 +30,8 @@ const props = withDefaults(defineProps<{
   generationEnabled: false,
   generationStatusDetail: '',
   rendering: false,
-  producerCollapsed: false
+  producerCollapsed: false,
+  prepareEnabled: false
 })
 
 const emit = defineEmits<{
@@ -39,15 +41,26 @@ const emit = defineEmits<{
   (event: 'update:producer-collapsed', value: boolean): void
 }>()
 
-type WorkspaceView = 'preview' | 'storyboard' | 'library' | 'history' | 'guide'
+type WorkspaceView = 'preview' | 'storyboard' | 'library' | 'prepare' | 'history' | 'guide'
 const workspaceView = defineModel<WorkspaceView>('workspaceView', { default: 'preview' })
 const workspaceItems = computed(() => [
   { label: 'Storyboard', icon: 'i-lucide-panels-top-left', value: 'storyboard' },
   { label: 'Preview', icon: 'i-lucide-monitor-play', value: 'preview' },
   { label: 'Project assets', icon: 'i-lucide-library', value: 'library', badge: props.assetCount ? String(props.assetCount) : undefined },
+  ...(props.prepareEnabled ? [{ label: 'Prepare', icon: 'i-lucide-eraser', value: 'prepare' }] : []),
   { label: 'History', icon: 'i-lucide-history', value: 'history', badge: props.renderJobCount ? String(props.renderJobCount) : undefined },
   { label: 'How it works', icon: 'i-lucide-circle-help', value: 'guide' }
 ])
+// Prepare paints on the main stage, so it takes the whole workspace: no preview
+// beside it, and the inspector steps aside on desktop until asked for.
+const preparing = computed(() => workspaceView.value === 'prepare')
+const prepareMounted = ref(false)
+const prepareInspectorShown = ref(false)
+const inspectorHiddenForPrepare = computed(() => preparing.value && !prepareInspectorShown.value && !props.producerCollapsed)
+watch(preparing, (active) => {
+  if (active) prepareMounted.value = true
+  else prepareInspectorShown.value = false
+}, { immediate: true })
 const expandedTarget = ref<HTMLElement | null>(null)
 const frameArea = ref<HTMLElement | null>(null)
 const { height: frameHeight } = useElementSize(frameArea)
@@ -115,7 +128,7 @@ onMounted(() => {
 const workspaceStyle = computed(() => ({
   '--vs-inspector': `min(${inspectorWidth.value}px, 38%)`
 }))
-const workspaceGridClass = computed(() => props.producerCollapsed
+const workspaceGridClass = computed(() => props.producerCollapsed || inspectorHiddenForPrepare.value
   ? 'lg:grid-cols-1'
   : 'lg:grid-cols-[var(--vs-inspector)_6px_minmax(0,1fr)]')
 
@@ -134,6 +147,8 @@ function renderSelectedFormats() {
 }
 
 function panelClass(panel: 'assets' | 'edit' | 'produce') {
+  // Phones reach the inspector through the tab strip, so Prepare only hides it from lg up.
+  if (panel === 'produce' && inspectorHiddenForPrepare.value) return mobilePanel.value === panel ? 'flex lg:hidden' : 'hidden'
   return mobilePanel.value === panel ? 'flex' : 'hidden lg:flex'
 }
 
@@ -166,7 +181,8 @@ watch(() => props.mode, (mode) => {
         :items="[
           { label: 'Add footage', icon: 'i-lucide-film', onSelect: () => emit('add-footage') },
           { label: 'Add overlay', icon: 'i-lucide-shapes', onSelect: () => emit('add-overlay') },
-          { label: 'Saved videos', icon: 'i-lucide-library', onSelect: () => emit('open-library') }
+          { label: 'Saved videos', icon: 'i-lucide-library', onSelect: () => emit('open-library') },
+          ...(props.prepareEnabled ? [{ label: 'Prepare asset', icon: 'i-lucide-eraser', onSelect: () => selectWorkspace('prepare') }] : [])
         ]"
       >
         <UButton
@@ -214,6 +230,16 @@ watch(() => props.mode, (mode) => {
           :disabled="!props.generationEnabled"
           :title="generationStatusDetail"
           @click="emit('generate')"
+        />
+        <UButton
+          v-if="props.prepareEnabled"
+          icon="i-lucide-eraser"
+          size="xs"
+          :variant="preparing ? 'soft' : 'ghost'"
+          :color="preparing ? 'primary' : 'neutral'"
+          label="Prepare"
+          title="Erase, lift or mask part of an asset"
+          @click="selectWorkspace('prepare')"
         />
         <UButton
           icon="i-lucide-library"
@@ -309,7 +335,7 @@ watch(() => props.mode, (mode) => {
       </aside>
       <div
         v-if="!props.producerCollapsed"
-        class="group hidden cursor-col-resize touch-none items-stretch justify-center lg:flex"
+        :class="['group hidden cursor-col-resize touch-none items-stretch justify-center', inspectorHiddenForPrepare ? '' : 'lg:flex']"
         role="separator"
         aria-orientation="vertical"
         aria-label="Resize inspector column"
@@ -321,7 +347,7 @@ watch(() => props.mode, (mode) => {
         <span class="w-px bg-default transition group-hover:w-0.5 group-hover:bg-primary" />
       </div>
       <main :class="['min-h-0 min-w-0 flex-col overflow-hidden bg-default', mobilePanel === 'produce' ? 'hidden lg:flex' : 'flex']">
-        <div class="hidden shrink-0 overflow-x-auto border-b border-default px-4 py-2 lg:block">
+        <div class="hidden shrink-0 items-center gap-3 overflow-x-auto border-b border-default px-4 py-2 lg:flex">
           <UTabs
             :model-value="workspaceView"
             :items="workspaceItems"
@@ -329,19 +355,29 @@ watch(() => props.mode, (mode) => {
             :content="false"
             size="sm"
             variant="pill"
-            class="w-max min-w-full sm:min-w-0"
+            class="w-max min-w-0"
             aria-label="Project workspace"
             @update:model-value="selectWorkspace"
+          />
+          <UButton
+            v-if="preparing && !props.producerCollapsed"
+            class="ml-auto shrink-0"
+            :icon="prepareInspectorShown ? 'i-lucide-panel-left-close' : 'i-lucide-panel-left-open'"
+            size="xs"
+            variant="ghost"
+            color="neutral"
+            :label="prepareInspectorShown ? 'Hide inspector' : 'Show inspector'"
+            @click="prepareInspectorShown = !prepareInspectorShown"
           />
         </div>
         <div
           class="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,1fr)] overflow-hidden"
-          :class="{ 'lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]': workspaceView !== 'preview' }"
+          :class="{ 'lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]': workspaceView !== 'preview' && !preparing }"
         >
           <div
             data-workspace-pane="preview"
             class="min-h-0 min-w-0 flex-col overflow-y-auto bg-default p-2 sm:p-3"
-            :class="workspaceView === 'preview' ? 'flex' : 'hidden border-r border-default lg:flex'"
+            :class="workspaceView === 'preview' ? 'flex' : preparing ? 'hidden' : 'hidden border-r border-default lg:flex'"
           >
             <div class="flex h-full min-h-36 shrink-0 flex-col gap-1.5">
               <div class="flex shrink-0 items-center justify-between gap-2">
@@ -382,6 +418,14 @@ watch(() => props.mode, (mode) => {
           </div>
           <div v-show="workspaceView === 'library'" data-workspace-pane="library" class="h-full min-h-0 min-w-0 overflow-y-auto p-3 sm:p-4">
             <slot name="library" />
+          </div>
+          <div
+            v-if="prepareMounted"
+            v-show="preparing"
+            data-workspace-pane="prepare"
+            class="h-full min-h-0 min-w-0 overflow-y-auto"
+          >
+            <slot name="prepare" />
           </div>
           <div v-if="workspaceView === 'history'" data-workspace-pane="history" class="mx-auto h-full min-h-0 w-full min-w-0 max-w-5xl space-y-4 overflow-y-auto p-3 sm:p-5">
             <div class="min-w-0">

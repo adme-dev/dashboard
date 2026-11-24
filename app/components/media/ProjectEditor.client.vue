@@ -126,7 +126,7 @@ watch(() => editor.dirty.value, (dirty) => {
   if (dirty) adjustedReview.invalidate()
 })
 const adjustedReviewClips = computed(() => editor.timeline.value?.tracks.flatMap(track => track.clips.map(clip => ({ value: clip.id, label: `${track.name}: ${clip.id}` }))) ?? [])
-const videoWorkspaceView = ref<'preview' | 'storyboard' | 'library' | 'history' | 'guide'>(storyboard.pendingOperation.value ? 'storyboard' : 'preview')
+const videoWorkspaceView = ref<'preview' | 'storyboard' | 'library' | 'prepare' | 'history' | 'guide'>(storyboard.pendingOperation.value ? 'storyboard' : 'preview')
 const storyboardOpen = computed({
   get: () => videoWorkspaceView.value === 'storyboard',
   set: (open: boolean) => { videoWorkspaceView.value = open ? 'storyboard' : 'preview' }
@@ -457,6 +457,13 @@ function onStudioAssetAddCaptions(asset: VideoStudioAsset) {
     asset.captionVttUrl
   )
   toast.add({ title: 'Captions added to timeline', color: 'success' })
+}
+
+// Prepare opens on the main stage, on the asset the user was already looking at.
+const prepareAssetId = ref<string | null>(null)
+function openPrepare(asset?: VideoStudioAsset | null) {
+  if (asset?.libraryAssetId) prepareAssetId.value = asset.libraryAssetId
+  videoWorkspaceView.value = 'prepare'
 }
 
 function openGenerator() {
@@ -1239,6 +1246,8 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
       :status-detail="videoGenerationStatusDetail"
       @storyboard="() => { videoStudioMode = 'edit'; storyboardOpen = true }"
       @produce="() => { videoStudioMode = 'produce'; storyboardOpen = false }"
+      :prepare-enabled="videoAssetHarnessEnabled"
+      @prepare="openPrepare()"
       @library="() => { videoStudioMode = 'assets'; videoWorkspaceView = 'library' }"
       @history="() => { videoStudioMode = 'review'; videoWorkspaceView = 'history' }"
       @select-model="(id) => { selectedGenerationModelId = id; modelSelectionKey++; storyboardOpen = false; videoStudioMode = 'produce' }"
@@ -1551,6 +1560,7 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
           :render-job-count="editor.renderJobs.value.length"
           :generation-enabled="videoGenerationEnabled"
           :generation-status-detail="videoGenerationStatusDetail"
+          :prepare-enabled="videoAssetHarnessEnabled"
           :rendering="editor.rendering.value"
           @add-footage="mediaPickerOpen = true"
           @add-overlay="overlayPickerOpen = true"
@@ -1612,6 +1622,15 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
                 </li>
               </ul>
             </div>
+          </template>
+          <template v-if="videoAssetHarnessEnabled" #prepare>
+            <MediaAssetHarness
+              :project-id="projectId"
+              workspace
+              :preselect-asset-id="prepareAssetId"
+              @add-to-timeline="onHarnessAddToTimeline"
+              @add-derivative-to-timeline="onHarnessAddDerivativeToTimeline"
+            />
           </template>
           <template #library>
             <VideoStudioLibraryRail
@@ -1880,6 +1899,8 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
                   :activity="selectedStudioAssetActivity"
                   :caption-generating="captionGeneratingAssetId === selectedStudioAsset?.id"
                   :can-replace-selected-clip="canReplaceSelectedClipWithAsset"
+                  :can-prepare="videoAssetHarnessEnabled && Boolean(selectedStudioAsset?.libraryAssetId)"
+                  @prepare-asset="openPrepare"
                   @add-to-timeline="onStudioAssetAdd"
                   @replace-selected-clip="replaceSelectedClipWithAsset"
                   @add-captions-to-timeline="onStudioAssetAddCaptions"
@@ -1973,26 +1994,27 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
                   @add-overlay="onOverlayPick"
                   @replace-overlay="onReplaceSelectedOverlay"
                 />
-                <div v-if="videoAssetHarnessEnabled" class="space-y-3">
-                  <div class="mb-3 flex items-start gap-2">
-                    <div class="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary/10">
-                      <UIcon name="i-lucide-eraser" class="size-4 text-primary" />
-                    </div>
-                    <div class="min-w-0">
-                      <h4 class="text-sm font-medium text-highlighted">
-                        Prepare / erase asset
-                      </h4>
-                      <p class="mt-0.5 text-xs leading-snug text-muted">
-                        Lift, erase, mask, remove backgrounds, or decompose selected project assets.
-                      </p>
-                    </div>
+                <div v-if="videoAssetHarnessEnabled" class="flex items-start gap-2 rounded-md border border-default bg-elevated p-3">
+                  <div class="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary/10">
+                    <UIcon name="i-lucide-eraser" class="size-4 text-primary" />
                   </div>
-                  <MediaAssetHarness
-                    :project-id="projectId"
-                    studio
-                    @add-to-timeline="onHarnessAddToTimeline"
-                    @add-derivative-to-timeline="onHarnessAddDerivativeToTimeline"
-                  />
+                  <div class="min-w-0 flex-1">
+                    <h4 class="text-sm font-medium text-highlighted">
+                      Prepare / erase asset
+                    </h4>
+                    <p class="mt-0.5 text-xs leading-snug text-muted">
+                      Erase, lift, mask or remove backgrounds. Opens on the main stage so you can paint on the picture.
+                    </p>
+                    <UButton
+                      class="mt-2"
+                      size="xs"
+                      variant="soft"
+                      color="primary"
+                      icon="i-lucide-eraser"
+                      label="Open Prepare"
+                      @click="openPrepare(selectedStudioAsset)"
+                    />
+                  </div>
                 </div>
                 <VideoStudioProducerRail
                   :project-id="projectId"

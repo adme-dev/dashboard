@@ -82,6 +82,51 @@ function buttonByText(host: HTMLElement, text: string) {
 }
 
 describe('VideoStudioWorkbench', () => {
+  it('keeps Prepare out of the workspace unless the project has it enabled', async () => {
+    const off = await render({}, { prepare: () => h('p', 'Prepare stage') })
+    expect(off).not.toContain('Prepare')
+    const on = await render({ prepareEnabled: true }, { prepare: () => h('p', 'Prepare stage') })
+    expect(on).toContain('Prepare')
+    // Mounted on first visit only, so opening the editor does not load it.
+    expect(on).not.toContain('Prepare stage')
+  })
+
+  it('gives Prepare the whole stage: no preview beside it, inspector aside until asked for', async () => {
+    const { app, host } = await mount({ prepareEnabled: true }, {
+      preview: () => h('div', { 'data-preview': '' }, 'Preview state'),
+      prepare: () => h('div', { 'data-prepare': '' }, 'Prepare stage'),
+      producer: () => h('div', { 'data-producer': '' }, 'Producer content')
+    })
+    try {
+      const tabs = host.querySelector('[aria-label="Project workspace"]') as HTMLElement
+      const aside = host.querySelector('[data-producer]')!.closest('aside') as HTMLElement
+      expect(host.querySelector('[data-prepare]')).toBeNull()
+      buttonByText(tabs, 'Prepare').click()
+      await nextTick()
+      const pane = host.querySelector('[data-workspace-pane="prepare"]') as HTMLElement
+      expect(pane.style.display).not.toBe('none')
+      const previewPane = host.querySelector('[data-workspace-pane="preview"]') as HTMLElement
+      expect(previewPane.classList.contains('hidden')).toBe(true)
+      expect(previewPane.classList.contains('lg:flex')).toBe(false)
+      expect(aside.classList.contains('lg:flex')).toBe(false)
+      buttonByText(host, 'Show inspector').click()
+      await nextTick()
+      expect(aside.classList.contains('lg:flex')).toBe(true)
+      // Leaving keeps the painted state mounted and restores the usual layout.
+      buttonByText(tabs, 'Preview').click()
+      await nextTick()
+      expect(host.querySelector('[data-prepare]')).not.toBeNull()
+      expect((host.querySelector('[data-workspace-pane="prepare"]') as HTMLElement).style.display).toBe('none')
+      expect(aside.classList.contains('lg:flex')).toBe(true)
+      // The header button is a second way in.
+      buttonByText(host.querySelector('header') as HTMLElement, 'Prepare').click()
+      await nextTick()
+      expect((host.querySelector('[data-workspace-pane="prepare"]') as HTMLElement).style.display).not.toBe('none')
+    } finally {
+      app.unmount()
+    }
+  })
+
   it('renders independently scrolling controls and tabbed workspace', async () => {
     const html = await render({
       assetCount: 5,

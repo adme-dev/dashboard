@@ -12,6 +12,7 @@ const stubs = {
     emits: ['click'],
     template: '<button :disabled="disabled" @click="$emit(\'click\', $event)"><slot />{{ label }}</button>'
   },
+  USelectMenu: { name: 'USelectMenu', props: ['modelValue', 'items'], template: '<select />' },
   UFormField: { name: 'UFormField', props: ['label'], template: '<label><span>{{ label }}</span><slot /></label>' },
   UInput: { name: 'UInput', props: ['modelValue', 'placeholder'], emits: ['update:modelValue'], template: '<input :value="modelValue" :placeholder="placeholder" />' },
   USelect: { name: 'USelect', props: ['modelValue', 'items'], emits: ['update:modelValue'], template: '<select :value="modelValue"><option v-for="item in items || []" :key="item.value" :value="item.value">{{ item.label }}</option></select>' },
@@ -70,5 +71,16 @@ describe('MediaAssetHarness embedded mode', () => {
     expect(html).not.toContain('aria-expanded')
     expect(html).not.toContain('Draft assembly')
     expect(html).not.toContain('Build draft plan from this brief')
+  })
+
+  it('fills the Prepare workspace with the stage layout and none of the inspector chrome', async () => {
+    const html = await render({ projectId: 'project-1', workspace: true })
+
+    expect(html).toContain('aria-label="Prepare asset"')
+    expect(html).toContain('data-prepare-stage')
+    expect(html).toContain('Results for this asset')
+    expect(html).not.toContain('Bucketed media available to this edit')
+    expect(html).not.toContain('Model catalogue')
+    expect(html).not.toContain('Brush mask key')
   })
 })

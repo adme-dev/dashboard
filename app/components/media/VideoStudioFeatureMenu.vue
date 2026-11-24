@@ -6,10 +6,11 @@ withDefaults(defineProps<{
   models?: VideoModelOption[]
   pending?: boolean
   generationEnabled?: boolean
+  prepareEnabled?: boolean
   statusDetail?: string
-}>(), { models: () => [], pending: false, generationEnabled: false, statusDetail: '' })
+}>(), { models: () => [], pending: false, generationEnabled: false, prepareEnabled: false, statusDetail: '' })
 const emit = defineEmits<{
-  (event: 'storyboard' | 'produce' | 'library' | 'history'): void
+  (event: 'storyboard' | 'produce' | 'library' | 'history' | 'prepare'): void
   (event: 'select-model', id: string): void
 }>()
 </script>
@@ -70,6 +71,20 @@ const emit = defineEmits<{
           <p class="text-xs leading-5 text-muted">
             Browse actual project assets and choose what belongs in the edit.
           </p>
+          <template v-if="prepareEnabled">
+            <UButton
+              label="Prepare asset"
+              icon="i-lucide-eraser"
+              variant="ghost"
+              color="neutral"
+              block
+              class="justify-start"
+              @click="emit('prepare'); close()"
+            />
+            <p class="text-xs leading-5 text-muted">
+              Paint over part of a picture to erase, lift or mask it, or remove a background.
+            </p>
+          </template>
           <UButton
             label="Outputs and history"
             icon="i-lucide-history"
