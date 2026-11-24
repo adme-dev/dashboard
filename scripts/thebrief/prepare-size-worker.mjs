@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 import { readArchiveEntries } from './inspect-archive.mjs'
+import { reviewedRowsForArchive } from './reviewed-row-layouts.mjs'
 import { packageTheBriefSize } from './package-size.mjs'
 
 // Reuse the converter runtime for this request. The caller dispatches one
@@ -17,7 +18,7 @@ process.on('message', async ({ archive, name }) => {
       return data
     }
     const sourceSha256 = createHash('sha256').update(archive).digest('hex')
-    const { pkg } = await packageTheBriefSize({ sourceFile, sourceSha256, name, folder: '', fontCache: process.env.THEBRIEF_REQUEST_FONT_CACHE })
+    const { pkg } = await packageTheBriefSize({ sourceFile, sourceSha256, name, folder: '', reviewed: reviewedRowsForArchive(sourceSha256), fontCache: process.env.THEBRIEF_REQUEST_FONT_CACHE })
     process.send({ pkg })
   } catch (cause) {
     process.send({ error: cause instanceof Error ? cause.message : 'This size could not be converted; the design is held for review' })

@@ -1,6 +1,6 @@
 import { isBannerImageBackground } from '../../shared/bannerImageBackground.mjs'
 import { z } from 'zod'
-import { isBannerInlineTextColor } from '../../shared/bannerTextColor.mjs'
+import { isBannerInlineTextColor, isBannerInlineTextGradient } from '../../shared/bannerTextColor.mjs'
 import { isSafeBannerImageFilter } from '../../shared/bannerImageFilters.mjs'
 
 const number = z.number().finite().min(-100000).max(100000)
@@ -19,9 +19,11 @@ const layer = z.object({
   startTime: z.number().min(0).max(300), endTime: z.number().positive().max(300),
   animInStart: z.number().min(0).max(300).optional(),
   clipToPresence: z.boolean().optional(),
+  hidden: z.literal(true).optional(),
+  sourceInactiveTiming: z.object({ start: z.number().min(0).max(300), loopEnd: z.number().positive().max(300) }).strict().optional(),
   slideId: z.string().max(100).regex(/^[a-zA-Z0-9:_-]+$/).optional(),
   slideFade: z.object({ id: z.string().max(100).regex(/^[a-zA-Z0-9:_-]+$/), start: z.number().min(0).max(300), end: z.number().positive().max(300), duration: z.number().min(0).max(5), ease: z.string().regex(/^cubic-bezier\([\d.,\s-]+\)$/) }).strict().optional(),
-  textRuns: z.array(z.object({ text: z.string().max(10000), fontSize: number.positive().optional(), top: number.optional(), color: z.string().refine(isBannerInlineTextColor).optional(), fontFamily: z.string().max(150).regex(/^[\w .-]+$/).optional(), fontWeight: z.number().int().min(1).max(1000).optional(), fontStyle: z.enum(['normal', 'italic']).optional() }).strict()).max(100).optional(),
+  textRuns: z.array(z.object({ text: z.string().max(10000), fontSize: number.positive().optional(), top: number.optional(), color: z.string().refine(isBannerInlineTextColor).optional(), gradient: z.string().refine(isBannerInlineTextGradient).optional(), fontFamily: z.string().max(150).regex(/^[\w .-]+$/).optional(), fontWeight: z.number().int().min(1).max(1000).optional(), fontStyle: z.enum(['normal', 'italic']).optional() }).strict()).max(100).optional(),
   borderWidth: number.nonnegative().max(100).optional(), borderColor: css.optional(), textColor: css.optional(),
   rotation: number.optional(), imageFlipPerspective: number.min(1).optional(), flipX: z.boolean().optional(), flipY: z.boolean().optional(), borderRadius: number.nonnegative().optional(), transformOrigin: z.object({ x: number, y: number }).optional(),
   mixBlendMode: z.enum(['normal', 'multiply', 'screen', 'overlay', 'darken', 'lighten', 'color-dodge', 'color-burn', 'hard-light', 'soft-light', 'difference', 'exclusion', 'hue', 'saturation', 'color', 'luminosity']).optional(),
@@ -124,6 +126,11 @@ export function parseTheBriefPackage(input: unknown): TheBriefPackage {
     const links = board.layers.map(l => l.linkId).filter(Boolean)
     if (new Set(links).size !== links.length) throw new Error('Duplicate linked content identity in one size')
     for (const item of board.layers) {
+      if (item.sourceInactiveTiming || item.hidden) {
+        if (!item.hidden || !item.sourceInactiveTiming || !['image', 'text', 'rect', 'button'].includes(item.type)
+          || board.slides?.length !== 1 || item.sourceInactiveTiming.loopEnd !== duration
+          || item.sourceInactiveTiming.start < duration || item.startTime !== 0 || item.endTime !== duration) throw new Error('Invalid inactive source layer')
+      }
       if (item.slideId) {
         const index = board.slides?.findIndex(slide => slide.id === item.slideId) ?? -1
         if (index < 0) throw new Error('Artwork references a missing slide')

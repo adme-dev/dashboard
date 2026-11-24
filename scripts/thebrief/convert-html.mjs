@@ -1,5 +1,5 @@
 import { isBannerImageBackground } from '../../shared/bannerImageBackground.mjs'
-import { isBannerInlineTextColor } from '../../shared/bannerTextColor.mjs'
+import { isBannerInlineTextColor, isBannerInlineTextGradient } from '../../shared/bannerTextColor.mjs'
 import { parse } from 'acorn'
 import { Window } from 'happy-dom'
 import { isSafeBannerImageFilter } from '../../shared/bannerImageFilters.mjs'
@@ -596,12 +596,24 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {} } = {}) 
       const sourceId = Number(element.id.replace('element-', ''))
       const slide = slideByElement.get(element)
       const timing = slide.elements.find(item => item.id === sourceId) || {}
-      const effectStart = slide.start + slide.entranceDuration + (timing.from || 0) / 1000
-      const start = timing.from ? effectStart : slide.start
-      const end = Math.min(slide.visibleEnd, timing.duration === undefined ? slide.visibleEnd : effectStart + timing.duration / 1000)
+      let effectStart = slide.start + slide.entranceDuration + (timing.from || 0) / 1000
+      let start = timing.from ? effectStart : slide.start
+      let end = Math.min(slide.visibleEnd, timing.duration === undefined ? slide.visibleEnd : effectStart + timing.duration / 1000)
+      let sourceInactiveTiming
+      if (slides.length === 1 && !hasSlideFades && Number.isFinite(start) && start >= slide.end && start < 300
+        && timing.duration === undefined && ['image', 'text', 'shape'].includes(element.getAttribute('data-eltype'))) {
+        sourceInactiveTiming = { start, loopEnd: slide.end }
+        // This element never becomes visible in the source loop. Retain its
+        // editable content as a hidden layer and record the original schedule.
+        // Its local entrance remains editable if a designer later unhides it.
+        effectStart = start = slide.start
+        end = slide.end
+        warnings.push(`${element.id}: scheduled at ${sourceInactiveTiming.start}s after the ${slide.end}s loop; retained as a hidden editable layer with its original schedule recorded`)
+      }
       if (!(start >= 0 && end > start)) throw new Error('Invalid element presence')
       const clipToPresence = slides.length > 1 || end < duration
       const layerBase = { ...base, slideId: `source-slide:${slide.id}`, linkId: `source:${sourceId}`, x: px(css.left), y: px(css.top), w: px(css.width), h: px(css.height), zIndex: id, startTime: start, endTime: end, ...(clipToPresence ? { clipToPresence: true } : {}) }
+      if (sourceInactiveTiming) Object.assign(layerBase, { hidden: true, sourceInactiveTiming })
       if (hasSlideFades) {
         layerBase.slideFade = { id: layerBase.slideId, start: slide.start, end: slide.visibleEnd, duration: slide.entranceDuration, ease: slide.fadeEase || 'cubic-bezier(0,0,1,1)' }
         layerBase.animInStart = effectStart
@@ -908,17 +920,20 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {} } = {}) 
           const textPaintOrder = paintOrder.startsWith('stroke') ? 'stroke' : 'fill'
           // Text clipped to a background paints that background, not its colour.
           // Keeping only the colour would silently replace a gradient fill.
+          const gradients = new Map()
           for (const node of new Set([row, span, ...runs, ...(textContainer ? [textContainer] : [])])) {
             const css = style(node)
             const plainFills = ['', 'currentcolor', 'inherit', (css.color || '').toLowerCase()]
             const fills = [css.getPropertyValue('-webkit-text-fill-color'), ...sourceDeclarations(document, node, '-webkit-text-fill-color')]
             if ([css.getPropertyValue('background-clip'), css.getPropertyValue('-webkit-background-clip'), ...sourceDeclarations(document, node, 'background-clip|-webkit-background-clip')].includes('text')
               || fills.some(fill => !plainFills.includes((fill || '').toLowerCase()))) {
-              throw new Error('Gradient or clipped text fill needs an adapter')
+              if (node.tagName !== 'SPAN' || node.children.length || !isBannerInlineTextGradient(css.backgroundImage)
+                || ![css.getPropertyValue('background-clip'), css.getPropertyValue('-webkit-background-clip')].includes('text')) throw new Error('Gradient or clipped text fill needs an adapter')
+              gradients.set(node, css.backgroundImage)
             }
           }
           const textRuns = []
-          if (row.querySelector('sup') || hasInlineStyles) {
+          if (row.querySelector('sup') || hasInlineStyles || gradients.size) {
             const walk = (node) => {
               if (node.nodeType === 3 && node.textContent) {
                 const parent = node.parentElement
@@ -927,6 +942,7 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {} } = {}) 
                 const color = runCss.color && runCss.color !== textCss.color ? runCss.color : undefined
                 if (color && !isBannerInlineTextColor(color)) throw new Error('Unsupported inline text colour')
                 const run = { text: node.textContent }
+                if (gradients.has(parent)) run.gradient = gradients.get(parent)
                 if (color) run.color = color
                 if (node.textContent.trim() && (runCss.fontWeight !== textCss.fontWeight || runCss.fontStyle !== textCss.fontStyle)) {
                   const fontWeight = Number(runCss.fontWeight) || (runCss.fontWeight === 'bold' ? 700 : 400)
@@ -1228,7 +1244,7 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {} } = {}) 
       } else {
         throw new Error(`Unsupported layer type: ${type}`)
       }
-      sourceElements.push({ sourceId, slideId: slide.id, type, nativeLayerIds: layers.slice(before).map(layer => layer.id), start, end, ...(effectStart !== start ? { effectStart } : {}) })
+      sourceElements.push({ sourceId, slideId: slide.id, type, nativeLayerIds: layers.slice(before).map(layer => layer.id), start: sourceInactiveTiming?.start ?? start, end, ...(effectStart !== start ? { effectStart } : {}) })
     }
     for (const layer of layers) for (const face of [layer, ...layer.textRuns || []]) {
       if (!face.fontFamily?.includes(',')) continue

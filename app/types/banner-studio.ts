@@ -86,6 +86,8 @@ export interface Layer {
   rotation?: number
   /** A centered perspective on an image's editable X-axis flip. */
   imageFlipPerspective?: number
+  /** Source content scheduled after the authored loop, retained hidden for editing. */
+  sourceInactiveTiming?: { start: number, loopEnd: number }
   flipX?: boolean
   flipY?: boolean
   /** Local pixel pivot; may lie outside a split text row. Defaults to CSS centre. */
