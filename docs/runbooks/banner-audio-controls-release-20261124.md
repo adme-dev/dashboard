@@ -29,7 +29,8 @@ passed from source `9a94075f929ab3c19cdae2d227cb0c68dd709f07`. The native Ubuntu
 amd64 job used the exact archived Docker image for all checks, with no application
 source mounted over its packaged `/app`:
 
-- 17 real-FFmpeg tests, including the previous 13 and new trim/volume/fade output.
+- 17 media and clock/contract tests, including the previous 13 and new real
+  FFmpeg trim/volume/fade output.
 - Packaged HTTP, Chromium, corrupt-input recovery, full decoding and accepted
   audio/Chromium completion under both SIGTERM and SIGINT.
 - A synthetic 40.18-second portrait composite at 1080×1920/30 fps: 1,206 frames,
@@ -55,7 +56,45 @@ Downloaded image archive: `b4a0939d7d7bd713a01a60f54ae51ecad14f474514f8ab129e11c
 The loaded image ID matches the native-run provenance. Registry push reports the
 same immutable digest pinned in both Worker configuration and `render-image.json`.
 
-## Release ledger
+## Release ledger — live
 
-Pending integration and production readback. No customer project or audio values
-were changed by the local verification fixture.
+- [PR #992](https://github.com/adme-dev/dashboard/pull/992) merged as
+  `283e3bfb7feb649fb96401ea096b6c4151c6454f`.
+- [Current-head CI 45333151534](https://github.com/adme-dev/dashboard/actions/runs/45333151534)
+  passed both media-render and the dashboard job, including the production build,
+  database gates and full suite (24,506 passed, 4,445 existing skips).
+- Main advanced to `a438fdfcf` during CI. A local combined candidate included its
+  navigation and erase-tool fixes and passed 964 focused tests (one optional
+  skip). The merged source's complete Git tree exactly matched that tested
+  candidate: `f500bce9501c34daf35d461bbd3a5f91327f52aa`.
+- Guarded production Pages deployment:
+  `17b1d0b9-a4b9-4890-a0d9-a070f946937f`, `agency-dashboard/main`,
+  <https://17b1d0b9.agency-dashboard-6cm.pages.dev>. Provider metadata confirms
+  the exact merged commit, production environment, successful deployment and clean
+  source. Runtime and size guards passed: 15,367,288 bytes raw / 5,334,027 gzip.
+- Worker deployed first: version `18ea1e1b-843d-4015-94c8-ce95b4813fe2`,
+  100% deployment `4eef565a-fb80-42bf-9d74-ad72fa5b7b0d`.
+- Container application `a037cecd-2a4a-4758-a915-205696996d7b` reached version 18
+  with the qualified `9506a119…` image. Rollout
+  `39ad2762-7942-49bf-8b92-b10209333d4a` reported completed, 5/5 instances updated,
+  without health errors. The existing four-CPU/12-GiB class and maximum six
+  instances were preserved. Initial readbacks still showed version 17 while
+  rollout progressed; no blind re-upload was used.
+- After rollout, the private exact-copy Chromium endpoint returned HTTP 200 with
+  `{"findings":[]}` through an authenticated local service binding. No customer
+  project, queued export, R2 object or AI generation was created. The temporary
+  probe and local UI fixture servers were stopped, and fixture symlinks removed.
+- Final requested audio battle check on merged source: 42 passed, no skips,
+  including real AAC trim/loop/quarter-volume/fade output, live gain/Undo, saved
+  HTML clocks, locks, cancellation, waveform bounds and image admission.
+- Live browser checks on `app.xeroflow.io`: selecting Audio 40 opened only Audio
+  controls; volume, mute, clip loop and fades were available. Trim loaded a real
+  waveform, accepted 1–5 seconds, moved it by keyboard to 2–6, and played the
+  preview. Cancel retained the saved 0–8-second source range and all media paused.
+  Brand kit was immediately beside Insert and opened the existing brand library.
+  QR Codes retained 23 codes and 165 scans. The project remained Saved; no customer
+  audio values were changed. Local synthetic checks separately exercised live
+  volume changes and applying a source trim.
+- The completed remote and local `fix/banner-audio-controls` branches were
+  retired after verifying the remote had no new work and the local tree exactly
+  equalled the merged release. No unrelated branch or worktree was removed.

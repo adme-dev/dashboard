@@ -1,6 +1,6 @@
 # Banner Studio change log
 
-## 24 November 2026 — Audio controls, trim and fades (unreleased)
+## 24 November 2026 — Audio controls, trim and fades — live
 
 Selecting an audio layer opens an audio-only inspector. Volume changes reach
 playing tracks immediately, including zero and mute; Undo remains supported.
@@ -13,6 +13,17 @@ volume, mute, loop and fades follow linked-layout editing scope and locks.
 Brand kit now sits immediately beside the + Insert tab in Tools & resources.
 Saved HTML previews share the editor audio clock; the versioned MP4 soundtrack
 contract includes source trim and fades while retaining legacy audio exports.
+
+Released in [PR #992](https://github.com/adme-dev/dashboard/pull/992), source
+`283e3bfb7feb649fb96401ea096b6c4151c6454f` (current main at release), production
+deployment `17b1d0b9-a4b9-4890-a0d9-a070f946937f` on `agency-dashboard/main`.
+The audio Worker and qualified Container image deployed first; private Chromium
+acceptance passed after the Container rollout. CI passed 24,506 tests; the
+current-main integration passed 964 focused tests and the final audio/export
+check passed 42 tests. Live checks confirmed the audio-only inspector, movable
+trim selection, preview and cancellation without changing saved audio, Brand kit
+beside Insert, and the existing QR Codes library. See the
+[qualification and release ledger](../runbooks/banner-audio-controls-release-20261124.md).
 
 ## 24 November 2026 — Audio timeline waveform — live
 
