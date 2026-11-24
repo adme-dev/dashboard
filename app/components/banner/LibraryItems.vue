@@ -16,6 +16,7 @@ defineEmits<{ open: [id: string] }>()
         <div :class="view === 'grid' ? 'contents' : 'flex min-w-0 flex-1 items-center gap-3'">
           <UButton
             :to="item.to"
+            :prefetch-on="item.projectId ? 'interaction' : undefined"
             :aria-label="`Open ${item.name}`"
             :title="item.dimensions"
             variant="link"
@@ -24,13 +25,20 @@ defineEmits<{ open: [id: string] }>()
             :class="view === 'grid' ? 'relative col-span-2 flex w-full overflow-hidden rounded-xl ring-1 ring-default transition-shadow hover:ring-primary focus-visible:ring-2 focus-visible:ring-primary' : 'shrink-0'"
             @click="!item.to && $emit('open', item.id)"
           >
+            <BannerProjectPoster
+              v-if="item.projectId"
+              :key="JSON.stringify([item.projectId, item.hasLayouts, item.previewVersion, item.thumbnailUrl])"
+              :project-id="item.projectId"
+              :has-layouts="item.hasLayouts"
+              :version="item.previewVersion"
+              :thumbnail-url="item.thumbnailUrl"
+              :class="view === 'grid' ? 'aspect-square w-full' : 'h-12 w-20 rounded'"
+            />
             <BannerLibraryThumbnail
+              v-else
               :thumbnail-url="item.thumbnailUrl"
               :canvas-data="item.canvasData"
               :client-id="item.clientId"
-              :project-id="item.projectId"
-              :preview-key="item.previewKey"
-              :preview-version="item.previewVersion"
               :class="view === 'grid' ? 'aspect-square w-full' : 'h-12 w-20 rounded'"
             />
             <span v-if="view === 'grid'" class="pointer-events-none absolute bottom-2 left-2 max-w-[calc(100%-1rem)] truncate rounded-md bg-default/90 px-2 py-1 text-[11px] font-medium text-default shadow-sm">
@@ -40,6 +48,7 @@ defineEmits<{ open: [id: string] }>()
           <div class="min-w-0" :class="view === 'grid' ? 'self-center pt-3' : ''">
             <UButton
               :to="item.to"
+              :prefetch-on="item.projectId ? 'interaction' : undefined"
               :label="item.name"
               :title="item.name"
               variant="link"

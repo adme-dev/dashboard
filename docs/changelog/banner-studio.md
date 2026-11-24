@@ -1,5 +1,16 @@
 # Banner Studio change log
 
+## 24 November 2026 — Still posters for the project gallery
+
+Each project card displays a JPEG of its saved artwork. The poster follows the
+designer’s chosen frame or the automatic frame for the preferred layout.
+The gallery requests up to four images at a time near the viewport, retains
+loaded images when scrolling back, and loads the editor on interaction.
+Existing proof JPEGs can be reused. New gallery JPEGs are at most 480 pixels
+on their longest side and are stored by artwork and font revision after the
+first successful render. A first visit to new artwork can take longer.
+Access checks run before serving stored images. Templates keep their existing previews.
+
 ## 24 November 2026 — Faster project library loading — live
 
 The agency and full-screen libraries load project summaries first. Search, client

@@ -34,12 +34,6 @@ function mount(props: InstanceType<typeof LibraryThumbnail>['$props']) {
   app.mount(host)
   return host
 }
-async function settle() {
-  await Promise.resolve()
-  await nextTick()
-  await nextTick()
-}
-
 it('shows saved artwork near the viewport, releases offscreen previews and handles broken imported images', async () => {
   const props = reactive({ thumbnailUrl: '/old.png', canvasData: canvas(1) })
   const host = mount(props)
@@ -62,59 +56,4 @@ it('shows saved artwork near the viewport, releases offscreen previews and handl
   props.thumbnailUrl = '/replacement.png'
   await nextTick()
   expect(host.querySelector('img')?.getAttribute('src')).toBe('/replacement.png')
-})
-
-it('fetches just the selected layout on visibility and reuses it when the tile re-enters the viewport', async () => {
-  let resolve!: (value: unknown) => void
-  fetchPreview.mockReturnValue(new Promise((done) => {
-    resolve = done
-  }))
-  const host = mount({ projectId: 'project', previewKey: 'fb_sq' })
-  expect(fetchPreview).not.toHaveBeenCalled()
-  intersect([{ isIntersecting: true }])
-  await nextTick()
-  expect(fetchPreview).toHaveBeenCalledExactlyOnceWith('/api/agency/banner-studio/projects/project', { query: { previewFormat: 'fb_sq' } })
-  intersect([{ isIntersecting: false }])
-  await nextTick()
-  intersect([{ isIntersecting: true }])
-  await nextTick()
-  expect(fetchPreview).toHaveBeenCalledTimes(1)
-  resolve({ canvasData: canvas(2) })
-  await settle()
-  expect(host.querySelector('[data-layer-id]')?.getAttribute('data-layer-id')).toBe('2')
-  intersect([{ isIntersecting: false }])
-  await nextTick()
-  expect(host.querySelector('[data-native-preview]')).toBeNull()
-  intersect([{ isIntersecting: true }])
-  await nextTick()
-  expect(host.querySelector('[data-native-preview]')).not.toBeNull()
-  expect(fetchPreview).toHaveBeenCalledTimes(1)
-})
-
-it('refreshes saved revisions and ignores an older preview response arriving afterwards', async () => {
-  let resolveOld!: (value: unknown) => void
-  fetchPreview.mockReturnValueOnce(new Promise((done) => {
-    resolveOld = done
-  }))
-    .mockResolvedValueOnce({ canvasData: canvas(3) })
-  const props = reactive({ projectId: 'project', previewKey: 'fb_sq', previewVersion: 'before' })
-  const host = mount(props)
-  intersect([{ isIntersecting: true }])
-  await nextTick()
-  props.previewVersion = 'after'
-  await settle()
-  expect(fetchPreview).toHaveBeenCalledTimes(2)
-  expect(host.querySelector('[data-layer-id]')?.getAttribute('data-layer-id')).toBe('3')
-  resolveOld({ canvasData: canvas(1) })
-  await settle()
-  expect(host.querySelector('[data-layer-id]')?.getAttribute('data-layer-id')).toBe('3')
-})
-
-it('keeps an image fallback when a preview request fails', async () => {
-  fetchPreview.mockRejectedValue(new Error('unavailable'))
-  const host = mount({ projectId: 'project', previewKey: 'fb_sq', thumbnailUrl: '/fallback.png' })
-  intersect([{ isIntersecting: true }])
-  await settle()
-  expect(host.querySelector('img')?.getAttribute('src')).toBe('/fallback.png')
-  expect(host.querySelector('[data-native-preview]')).toBeNull()
 })
