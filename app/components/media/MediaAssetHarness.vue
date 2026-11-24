@@ -558,7 +558,7 @@ async function runExtraction() {
     // A painted mask carries its own frame. Any other run on a video needs the saved still.
     const paints = maskToolEnabled.value && hasMaskStroke.value
     const frame = await savePreviewFrameIfMissing(item.assetId)
-    if (!frame.ok && !paints) {
+    if ('title' in frame && !paints) {
       toast.add({ title: frame.title, description: frame.description, color: 'warning' })
       return
     }

@@ -108,7 +108,7 @@ export default defineEventHandler(async (event) => {
     // re-root its category segment under media/<id>/<kind> so all AV media lands in one prefix
     // regardless of footage/still category split.
     // The reserved id replaces the random uuid so a God-mode replay can re-derive the key.
-    const generated = generateStorageKey(category, file.filename)
+    const generated = generateStorageKey(category, file.filename!)
     const key = `media/${id}/${kind}/${generated.slice(generated.indexOf('/') + 1).replace(/[0-9a-f-]{36}(?=\.[^.]+$)/i, run.ids[0]!)}`
 
     await uploadFile(file.data, key, fileType, { projectId: id, kind })
