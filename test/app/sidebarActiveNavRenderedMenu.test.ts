@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import { useCollapsedSidebarPopovers } from '~~/app/composables/useCollapsedSidebarPopovers'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { compileScript, parse } from '@vue/compiler-sfc'
@@ -11,7 +12,7 @@ import ts from 'typescript'
 import * as Ufo from 'ufo'
 import { afterEach, describe, expect, it } from 'vitest'
 import * as Vue from 'vue'
-import { computed, createApp, defineComponent, h, nextTick, ref, watch, type App } from 'vue'
+import { computed, createApp, defineComponent, h, nextTick, ref, type App } from 'vue'
 import { createMemoryHistory, createRouter, RouterLink, useRoute } from 'vue-router'
 import type { NavigationMenuItem } from '@nuxt/ui'
 import { applyActiveSidebarNav } from '~~/app/utils/sidebarActiveNav'
@@ -290,17 +291,7 @@ async function mountMenu(
   const Host = defineComponent({
     setup() {
       const route = useRoute()
-      const openCollapsedPopovers = ref<Set<string>>(new Set())
-      const handleCollapsedPopoverOpenChange = (key: string, isOpen: boolean) => {
-        if (isOpen === openCollapsedPopovers.value.has(key)) return
-        const next = new Set(openCollapsedPopovers.value)
-        if (isOpen) next.add(key)
-        else next.delete(key)
-        openCollapsedPopovers.value = next
-      }
-      watch(() => route.fullPath, () => {
-        if (openCollapsedPopovers.value.size) openCollapsedPopovers.value = new Set()
-      })
+      const { openCollapsedPopovers, handleCollapsedPopoverOpenChange } = useCollapsedSidebarPopovers()
 
       const resolved = computed(() => applyActiveSidebarNav(
         getGroups(),
@@ -311,7 +302,7 @@ async function mountMenu(
               ...(usePopover
                 ? {
                     popover: true,
-                    openPopoverKeys: openCollapsedPopovers.value,
+                    openPopoverKeys: openCollapsedPopovers,
                     onPopoverOpenChange: handleCollapsedPopoverOpenChange
                   }
                 : {})
@@ -473,6 +464,34 @@ describe('rendered UNavigationMenu active-item behavior', () => {
     await flushUi()
     expect([...document.body.querySelectorAll('a[aria-current="page"]')].map(el => el.getAttribute('href')))
       .toEqual(['/agency/w/client-delivery'])
+  })
+
+  it('keeps only the destination board current after clicking inside an open collapsed flyout', async () => {
+    const router = buildTestRouter()
+    const workspace = '/agency/w/client-delivery'
+    const marketing = '/agency/boards/marketing'
+    const design = '/agency/boards/design'
+    await router.push(marketing)
+    const { host } = await mountMenu(router, () => [[{
+      label: 'Client Delivery',
+      to: workspace,
+      children: [{ label: 'Marketing', to: marketing }, { label: 'Design', to: design }]
+    }]], { initialCollapsed: true, popover: true })
+    const current = () => [...document.querySelectorAll('a[aria-current="page"]')].map(link => link.getAttribute('href'))
+    const trigger = host.querySelector<HTMLAnchorElement>(`a[href="${workspace}"]`)!
+    trigger.dispatchEvent(new PointerEvent('pointerenter', { bubbles: true, pointerType: 'mouse' }))
+    await flushUi()
+    expect(current()).toEqual([marketing])
+
+    document.querySelector<HTMLAnchorElement>(`a[href="${design}"]`)!.click()
+    await flushUi()
+    expect(router.currentRoute.value.path).toBe(design)
+    expect(trigger.getAttribute('data-state')).toBe('open')
+    expect(current()).toEqual([design])
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    await flushUi()
+    expect(current()).toEqual([workspace])
   })
 
   it('handles mixed-case static segments, distinct param slugs, and repeated query keys in a real Vue Router menu', async () => {

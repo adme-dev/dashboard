@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useCollapsedSidebarPopovers } from '~/composables/useCollapsedSidebarPopovers'
 import type { CommandPaletteGroup, CommandPaletteItem, NavigationMenuItem } from '@nuxt/ui'
 import { socialSpendSuiteNavItems } from '~/utils/socialSpendNavigation'
 import { socialSuiteNavItems } from '~/utils/socialSuiteNavigation'
@@ -498,17 +499,7 @@ const sidebarLocation = computed(() => applyMediaProjectSidebarContext(
   { path: route.path, query: route.query, matched: route.matched },
   activeMediaProject.value
 ))
-const openCollapsedPopovers = ref<Set<string>>(new Set())
-function handleCollapsedPopoverOpenChange(key: string, isOpen: boolean) {
-  if (isOpen === openCollapsedPopovers.value.has(key)) return
-  const next = new Set(openCollapsedPopovers.value)
-  if (isOpen) next.add(key)
-  else next.delete(key)
-  openCollapsedPopovers.value = next
-}
-watch(() => route.fullPath, () => {
-  if (openCollapsedPopovers.value.size) openCollapsedPopovers.value = new Set()
-})
+const { openCollapsedPopovers, handleCollapsedPopoverOpenChange } = useCollapsedSidebarPopovers()
 
 const resolvedSidebarNav = computed(() => applyActiveSidebarNav(
   [workspaceNav.value, mainNav.value, footerNav.value],
@@ -520,7 +511,7 @@ const resolvedCollapsedSidebarNav = computed(() => applyActiveSidebarNav(
   {
     collapsed: true,
     popover: true,
-    openPopoverKeys: openCollapsedPopovers.value,
+    openPopoverKeys: openCollapsedPopovers,
     onPopoverOpenChange: handleCollapsedPopoverOpenChange
   }
 ))

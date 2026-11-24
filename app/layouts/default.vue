@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useCollapsedSidebarPopovers } from '~/composables/useCollapsedSidebarPopovers'
 import type { NavigationMenuItem } from '@nuxt/ui'
 import { applyActiveSidebarNav } from '~/utils/sidebarActiveNav'
 
@@ -301,17 +302,7 @@ const defaultLocation = computed(() => ({
   query: route.query,
   matched: route.matched
 }))
-const openCollapsedPopovers = ref<Set<string>>(new Set())
-function handleCollapsedPopoverOpenChange(key: string, isOpen: boolean) {
-  if (isOpen === openCollapsedPopovers.value.has(key)) return
-  const next = new Set(openCollapsedPopovers.value)
-  if (isOpen) next.add(key)
-  else next.delete(key)
-  openCollapsedPopovers.value = next
-}
-watch(() => route.fullPath, () => {
-  if (openCollapsedPopovers.value.size) openCollapsedPopovers.value = new Set()
-})
+const { openCollapsedPopovers, handleCollapsedPopoverOpenChange } = useCollapsedSidebarPopovers()
 
 const resolvedLinks = computed(() => applyActiveSidebarNav(
   links.value,
@@ -323,7 +314,7 @@ const resolvedCollapsedLinks = computed(() => applyActiveSidebarNav(
   {
     collapsed: true,
     popover: true,
-    openPopoverKeys: openCollapsedPopovers.value,
+    openPopoverKeys: openCollapsedPopovers,
     onPopoverOpenChange: handleCollapsedPopoverOpenChange
   }
 ))

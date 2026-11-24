@@ -164,6 +164,39 @@ describe('Video Studio project actions preserve mediaType=av context', () => {
 })
 
 describe('useMediaProjectEditor metadata availability under delayed or failed audio engine load', () => {
+  it('keeps a bare AV editor link current while clip sources load and after they fail', async () => {
+    const { useMediaProjectEditor } = await import('~~/app/composables/useMediaProjectEditor')
+    const { applyActiveSidebarNavGroup, applyMediaProjectSidebarContext, resolveLoadedMediaProjectContext } = await import('~~/app/utils/sidebarActiveNav')
+    const path = '/agency/audio/projects'
+    const clipSources = Promise.withResolvers<{ sources: Record<string, string> }>()
+    vi.stubGlobal('$fetch', vi.fn((url: string) => url.endsWith('/clip-sources')
+      ? clipSources.promise
+      : Promise.resolve({ project: avProject, timeline: null })))
+
+    let editor!: ReturnType<typeof useMediaProjectEditor>
+    const app = createApp({
+      setup() {
+        editor = useMediaProjectEditor(avProject.id)
+        return () => h('div')
+      }
+    })
+    apps.push(app)
+    app.mount(document.createElement('div'))
+    const current = () => {
+      const context = resolveLoadedMediaProjectContext(editor.project.value, editor.timeline.value?.media_type)
+      const location = applyMediaProjectSidebarContext({ path: `${path}/${avProject.id}` }, context)
+      return applyActiveSidebarNavGroup([{ to: path }, { to: `${path}?mediaType=av` }], location)
+        .filter(item => item.active).map(item => item.to)
+    }
+    await settle()
+    expect(editor.status.value).toBe('loading')
+    expect(current()).toEqual([`${path}?mediaType=av`])
+    clipSources.reject(new Error('Clip sources unavailable'))
+    await settle()
+    expect(editor.status.value).toBe('error')
+    expect(current()).toEqual([`${path}?mediaType=av`])
+  })
+
   it('exposes AV project metadata for sidebar resolution while engine.load is pending and when audio init fails', async () => {
     const engineLoadMock = vi.fn()
     const audioCtxMock = vi.fn()

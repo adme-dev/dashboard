@@ -757,13 +757,15 @@ export function useMediaProjectEditor(projectId: string) {
     try {
       // The SP0 project GET returns the MediaTimeline WRAPPER; the TimelineState lives
       // in `.state` (validated on write — cast rather than re-import the Zod value client-side).
+      const projectRequest = apiFetch<{ project: MediaProject, timeline: MediaTimeline | null }>(`/api/agency/audio/projects/${projectId}`)
+        .then((result) => {
+          project.value = result.project ?? null
+          return result
+        })
       const [proj, src] = await Promise.all([
-        apiFetch<{ project: MediaProject, timeline: MediaTimeline | null }>(`/api/agency/audio/projects/${projectId}`),
+        projectRequest,
         apiFetch<{ sources: Record<string, string> }>(`/api/agency/audio/projects/${projectId}/clip-sources`)
       ])
-      // Commit project metadata as soon as the GET resolves so navigation and UI know
-      // the project's mediaType before audio context creation or engine.load() finishes.
-      project.value = proj.project ?? null
       const state = proj.timeline?.state as TimelineState | undefined
       if (!state) { status.value = 'error'; error.value = 'This project has no timeline yet.'; return }
       adoptTimelineToken(proj.timeline!)
