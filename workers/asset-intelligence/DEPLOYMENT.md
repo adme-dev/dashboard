@@ -111,11 +111,49 @@ seconds of CPU, with no memory or CPU limit reached. `wrangler.toml` raises the 
 limit to 5 minutes for decoding and encoding large pictures; this needs a paid
 Workers plan.
 
-Lift highlighted area, Remove background and Separate layers have no provider
-runtime. The app lists them as "Not available yet" and the extract endpoint
-refuses them with HTTP 409 instead of saving a blocked job. Wiring them to
-Replicate needs a Replicate API token on this Worker and cost approval; no
-Replicate call exists in this repository today.
+## Separate layers, Lift and Remove background
+
+These three tools cut a picture into RGBA pieces. They run in this Worker through
+the `AI` binding and Cloudflare AI Gateway (unified billing), the same route video
+generation uses. No extra bindings or secrets.
+
+- Model: `bytedance/seedream-5.5`. Separate layers also calls
+  `google/gemini-3.8-flash` once to find the elements.
+- The gateway does not expose Seedream's native layer decomposition (the
+  `layer_decomposition` flag is rejected with `7003`). Layers are made one element
+  at a time instead: the vision model lists elements with boxes and stacking order,
+  one Seedream call per element redraws it alone on a transparent canvas, and one
+  more call removes the elements to make the base. See
+  `server/utils/image-layers/decompose.ts`, which Banner Studio and Video Studio
+  can reuse.
+- **Separate layers** stores each layer (`foreground-png`, with `bbox`, `z` and
+  `layerName` in its metadata), the base (`background-png`) and a manifest
+  (`layer-package`, `layers.json`).
+- **Lift** turns the painted area into a box and returns one cut-out.
+- **Remove background** returns the main subject as one cut-out.
+- A video is never edited: its preview frame is used and the results are stills.
+
+Cost, from published prices: US$0.028 per cut-out or base, plus about US$0.003 for
+the vision call. A Lift is about US$0.03; Separate layers with six elements is
+about US$0.20 and takes about a minute. Each job records its cost and latency on
+the AI invocation ledger (`video_asset_intelligence_worker_runtime`) and in
+`layers.json`.
+
+Limits and controls:
+
+- `ASSET_INTELLIGENCE_MAX_LAYERS` (optional var): most layers per job. Default 8,
+  never more than 12.
+- `ASSET_INTELLIGENCE_MAX_JOB_COST_USD` (optional var): most one job may cost.
+  Default 0.50. A job is trimmed to fit, or refused before any model call.
+- The Pages app refuses to queue these tools (HTTP 409) unless
+  `AI_GATEWAY_SPEND_LIMIT_CONFIRMED=true` and
+  `AI_GATEWAY_GENERATION_MONTHLY_LIMIT_USD` are set, the same operator control
+  video generation relies on. The real cap is enforced at the gateway.
+- A job that cannot produce any layer is marked `failed` with the reason. A job
+  where some elements or the base failed succeeds and its manifest is marked
+  `partial` with what is missing.
+
+Segment object still has no provider runtime and is refused with HTTP 409.
 
 Deploying this Worker is a separate step from deploying Pages (see above).
 

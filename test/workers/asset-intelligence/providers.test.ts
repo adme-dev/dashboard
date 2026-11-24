@@ -311,7 +311,8 @@ describe('asset intelligence providers', () => {
     })
   })
 
-  it('fails layer-decomposition jobs with a specific external provider setup error', async () => {
+  it('refuses layer jobs that name the retired Qwen model instead of calling a provider', async () => {
+    const run = vi.fn()
     await expect(runAssetIntelligenceProvider({
       job: {
         id: 'job-6',
@@ -324,12 +325,34 @@ describe('asset intelligence providers', () => {
         prompt: 'separate product and badge',
         brushMaskKey: null,
       },
+      env: { AI: { run } } as any,
+      fetchAssetBytes: vi.fn(),
+      copyR2Object: vi.fn(),
+      uploadJson: vi.fn(),
+      uploadBinary: vi.fn(),
+    } as any)).rejects.toThrow('layer-decomposition model not supported: replicate/qwen-image-layered')
+    expect(run).not.toHaveBeenCalled()
+  })
+
+  it('still has no runtime for object segmentation', async () => {
+    await expect(runAssetIntelligenceProvider({
+      job: {
+        id: 'job-7',
+        tenantId: 'tenant-1',
+        projectId: 'project-1',
+        sourceAssetId: 'asset-1',
+        action: 'object-segmentation',
+        modelId: 'replicate/sam-2',
+        provider: 'replicate',
+        prompt: null,
+        brushMaskKey: null,
+      },
       env: { AI: { run: vi.fn() } } as any,
       fetchAssetBytes: vi.fn(),
       copyR2Object: vi.fn(),
       uploadJson: vi.fn(),
       uploadBinary: vi.fn(),
-    })).rejects.toThrow('layer-decomposition requires configured provider runtime: replicate/qwen-image-layered')
+    } as any)).rejects.toThrow('object-segmentation requires configured provider runtime: replicate/sam-2')
   })
 
   it('rejects asset-analysis jobs for unsupported providers before calling AI', async () => {

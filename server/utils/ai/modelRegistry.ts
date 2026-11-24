@@ -105,6 +105,15 @@ const MODEL_CATALOG: Record<string, ModelCatalogEntry> = {
   '@cf/myshell-ai/melotts': {
     status: 'production'
   },
+  // One Seedream call: one input picture (US$0.008) and one output picture up to 1.5K (US$0.02).
+  'bytedance/seedream-5.5': {
+    status: 'production',
+    pricing: { unitPriceCents: 2.8, unitName: 'cut-out or base picture' }
+  },
+  'google/gemini-3.8-flash': {
+    status: 'production',
+    pricing: { inputPricePerMillionUsd: 0.75, outputPricePerMillionUsd: 3.75 }
+  },
   'minimax/music-2.6': {
     status: 'production'
   },
@@ -946,6 +955,28 @@ const FEATURE_SEEDS: FeatureSeed[] = [
     sourceFile: 'workers/asset-intelligence/src/worker.ts'
   },
   {
+    featureKey: 'video_asset_intelligence_worker_runtime',
+    label: 'Video asset layers: cut-outs and base picture',
+    surface: 'asset-intelligence Worker',
+    owner: 'Media Studio',
+    provider: 'aigateway',
+    modelId: 'bytedance/seedream-5.5',
+    modality: 'image',
+    riskTier: 'high',
+    sourceFile: 'server/utils/image-layers/decompose.ts'
+  },
+  {
+    featureKey: 'video_asset_intelligence_worker_runtime',
+    label: 'Video asset layers: finding the elements',
+    surface: 'asset-intelligence Worker',
+    owner: 'Media Studio',
+    provider: 'aigateway',
+    modelId: 'google/gemini-3.8-flash',
+    modality: 'vision',
+    riskTier: 'high',
+    sourceFile: 'server/utils/image-layers/decompose.ts'
+  },
+  {
     featureKey: 'audio_render_publish_social_caption',
     label: 'Audio render social caption draft',
     surface: '/agency/audio/projects/:id/renders/:jobId/publish-social',
@@ -1110,8 +1141,8 @@ function buildAssetIntelligenceRows(): AiModelMapRow[] {
     riskTier: model.defaultEnabled ? 'high' : 'medium',
     sourceFile: 'server/utils/video-asset-intelligence/registry.ts',
     status: model.defaultEnabled ? 'production' : 'preview',
-    pricing: null,
-    warnings: ['Pricing not yet mapped']
+    pricing: metadataForModel(model.cfModel || model.id).pricing ?? null,
+    warnings: metadataForModel(model.cfModel || model.id).pricing ? [] : ['Pricing not yet mapped']
   }))
 }
 

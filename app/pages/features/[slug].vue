@@ -791,6 +791,10 @@ const features: Record<string, Feature> = {
         content: 'Select any video clip to set its framing (fit, fill or crop) and stack effect presets — film grain, motion blur, VHS, shake, bloom, fisheye — with the preview approximating what it can and flagging what is render-only. Generated clips carry their prompt and model with them, so you can copy the prompt, duplicate the clip, or publish it directly.'
       },
       {
+        title: 'Prepare Pictures Before You Cut',
+        content: 'The Prepare workspace puts a picture on a large stage with its tools beside it. Paint over an unwanted object to erase it and heal the background. Paint over a logo, badge or product to lift it out as a transparent cut-out. Separate a flattened ad into a clean base and up to eight cut-out layers for text, logos and products, each stored with its position and stacking order so it can be moved or animated. Remove the background to keep only the subject. Cut-outs are redrawn by an image model, so check fine detail such as small text before delivery. On a video these tools work on the preview frame and give you stills; the video itself is not changed.'
+      },
+      {
         title: 'Prepared ReelMotion Edits',
         content: 'Import a prepared ReelMotion package through Banner Studio’s creative-package importer. Footage, captions, fonts and motion remain editable; open the saved artwork in a linked Video Studio draft to mix audio and queue a portrait export. Packages carry preparation checks for head clearance and the final spoken line before the end card. Exports show measured artwork capture, encoding and saving progress when available, with completed formats tracked separately. Review the saved result before delivery. Footage selection, transcription and face checks are prepared outside the hosted editor in this pilot; importing does not automatically edit a new shoot.'
       },
