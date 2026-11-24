@@ -21,7 +21,7 @@ export const LAYER_PROVIDER = 'aigateway'
 export const LAYER_MODEL_ID = 'aigateway/seedream-5.5'
 export const LAYER_ACTIONS = new Set(['layer-decomposition', 'mask-lift', 'background-removal'])
 
-const VIDEO_FRAME_NOTE = 'Made from the video\'s preview frame. The video itself is unchanged.'
+const VIDEO_FRAME_NOTE = 'Made from a still frame of the video. The video itself is unchanged.'
 
 function positiveNumber(value: unknown): number | null {
   const parsed = Number(value)

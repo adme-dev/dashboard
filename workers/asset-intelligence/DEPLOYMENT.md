@@ -131,7 +131,8 @@ generation uses. No extra bindings or secrets.
   (`layer-package`, `layers.json`).
 - **Lift** turns the painted area into a box and returns one cut-out.
 - **Remove background** returns the main subject as one cut-out.
-- A video is never edited: its preview frame is used and the results are stills.
+- A video is never edited. Lift works on the frame that was painted on; the other
+  two use the preview frame. The results are stills.
 
 Cost, from published prices: US$0.028 per cut-out or base, plus about US$0.003 for
 the vision call. A Lift is about US$0.03; Separate layers with six elements is

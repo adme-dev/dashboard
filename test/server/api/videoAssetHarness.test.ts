@@ -402,7 +402,8 @@ describe('video asset harness API', () => {
     it.each([
       ['layer-decomposition', null],
       ['background-removal', null],
-      ['mask-lift', 'mask.png'],
+      // A mask key this app wrote for this project and asset.
+      ['mask-lift', 'video-asset-masks/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/m1.png'],
     ])('queues %s on Seedream once the spend limit is confirmed', async (action, brushMaskKey) => {
       mockGetAssetIntelligenceQueue.mockReturnValue({ send: vi.fn() })
       mockCreateQueuedExtractionJob.mockResolvedValue({ id: 'job-queued', status: 'queued', action })

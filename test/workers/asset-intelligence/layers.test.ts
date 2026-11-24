@@ -169,7 +169,7 @@ describe('Separate layers job', () => {
   it('says a still came from a video frame', async () => {
     const { deps } = setup({ elements, outputs, source: 'video-frame' })
     const result = await runAssetIntelligenceProvider({ job: { ...layerJob, action: 'layer-decomposition' }, ...deps })
-    expect(result.derivatives[0]!.metadata).toMatchObject({ source: 'video-frame', note: 'Made from the video\'s preview frame. The video itself is unchanged.' })
+    expect(result.derivatives[0]!.metadata).toMatchObject({ source: 'video-frame', note: 'Made from a still frame of the video. The video itself is unchanged.' })
   })
 })
 
@@ -306,5 +306,17 @@ describe('job status for layer jobs', () => {
       status: 'error',
       metadata: expect.objectContaining({ outcome: 'failed', failureCode: 'no_elements', usage: { costUsd: 0.0024, latencyMs: 7000, modelCalls: 1 } })
     }))
+  })
+})
+
+describe('Lift on a video', () => {
+  it('lifts from the frame the mask was painted on, not the preview frame', async () => {
+    const mask = encodePng(withRect(solid(W / 2, H / 2, [0, 0, 0, 0]), { x: 50, y: 250, w: 125, h: 70 }, [255, 255, 255, 255]))
+    const { deps } = setup({ mask, source: 'video-frame', outputs: [{ match: 'Extract only', bytes: cutOut({ x: 104, y: 504, w: 240, h: 130 }) }] })
+    const maskKey = 'video-asset-masks/project-1/asset-1/m1.png'
+    const result = await runAssetIntelligenceProvider({ job: { ...layerJob, action: 'mask-lift', brushMaskKey: maskKey }, ...deps })
+
+    expect(deps.fetchAssetPicture).toHaveBeenCalledWith('asset-1', 'video-asset-masks/project-1/asset-1/m1.frame.jpg')
+    expect(result.derivatives[0]!.metadata).toMatchObject({ title: 'Lifted cut-out from video frame', source: 'video-frame' })
   })
 })
