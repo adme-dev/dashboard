@@ -1,3 +1,4 @@
+import { isBannerInlineTextColor } from '../../shared/bannerTextColor.mjs'
 import { parse } from 'acorn'
 import { Window } from 'happy-dom'
 import { isSafeBannerImageFilter } from '../../shared/bannerImageFilters.mjs'
@@ -127,6 +128,9 @@ function fontManifest(document, warnings) {
 }
 
 function transformValues(text) {
+  // TheBrief pads its X-axis flip with two identity rotations.
+  const flip = /^rotateX\((0|-?(?:\d*\.)?\d+deg)\)(?:\s+rotateY\(0(?:deg)?\)\s+rotate3d\(1,\s*1,\s*0,\s*0deg\))?$/.exec(text)
+  if (flip) return { rotationX: Number.parseFloat(flip[1]) }
   const values = {}
   const pattern = /(translateX|translateY|translate|rotate|scaleX|scaleY|scale)\(([^)]+)\)/g
   const parts = [...text.matchAll(pattern)]
@@ -340,7 +344,7 @@ function appendEffect(current, effect, start) {
     tracks[property] = [...previous, ...frames]
     if (tracks[property].length > 500) throw new Error('Too many effect keyframes')
   }
-  return { tracks, transformOrigin: pivot }
+  return { tracks, transformOrigin: pivot, perspective: current.perspective || effect.perspective }
 }
 
 function effectTracks(effect, style, rules, start, end, warnings, geometry, intermediate = false) {
@@ -383,7 +387,22 @@ function effectTracks(effect, style, rules, start, end, warnings, geometry, inte
     for (const fraction of fractions) parsedFrames.push({ fraction, values: { ...values }, hasTransform: Boolean(frame.style.transform), easing: cssEase(frame.style.animationTimingFunction || css.animationTimingFunction) })
   }
   const transformProperties = new Set(parsedFrames.flatMap(frame => Object.keys(frame.values).filter(key => key !== 'opacity')))
-  if (['scaleX', 'scaleY', 'rotation'].some(property => transformProperties.has(property))) {
+  let perspective
+  if (transformProperties.has('rotationX')) {
+    const owner = effect.parentElement
+    const ownerCss = style(owner)
+    perspective = px(ownerCss.getPropertyValue('perspective'))
+    const centre = transformOrigin && sameTime(transformOrigin.x, geometry.w / 2) && sameTime(transformOrigin.y, geometry.h / 2)
+    if (owner.getAttribute('data-eltype') !== 'image' || effect.id !== owner.id.replace('element-', 'effIn')
+      || transformProperties.size !== 1 || !centre || css.getPropertyValue('backface-visibility') !== 'hidden'
+      || !['center', 'center center', '50% 50%'].includes(ownerCss.getPropertyValue('perspective-origin'))
+      || !['', 'none'].includes(css.transform) || !['', 'none'].includes(ownerCss.transform)
+      || !Number.isFinite(perspective) || perspective < 1 || perspective > 100000
+      || parsedFrames.some(frame => Math.abs(frame.values.rotationX ?? 0) > 90)) {
+      throw new Error('Unsupported 3D image flip composition')
+    }
+  }
+  if (['scaleX', 'scaleY', 'rotation', 'rotationX'].some(property => transformProperties.has(property))) {
     if ((css.width !== '100%' && px(css.width) !== geometry.w) || (css.height !== '100%' && px(css.height) !== geometry.h)) throw new Error('Unsupported effect geometry for transform origin')
   }
   for (const { fraction, values, hasTransform, easing } of parsedFrames) {
@@ -427,7 +446,7 @@ function effectTracks(effect, style, rules, start, end, warnings, geometry, inte
       if (frames.length > 500) throw new Error('Too many effect keyframes')
     }
   }
-  return { tracks, transformOrigin }
+  return { tracks, transformOrigin, perspective }
 }
 
 // One static text shadow with a hex or rgb()/rgba() colour, in either CSS order.
@@ -466,7 +485,7 @@ function sourceDeclarations(document, element, property) {
 }
 
 /** Offline CSS export adapter for bounded, hard-cut slide sequences. Source scripts are parsed, never run. */
-export async function convertTheBriefHtml(html) {
+export async function convertTheBriefHtml(html, { reviewedRowLines = {} } = {}) {
   if (Buffer.byteLength(html) > 2 * 1024 * 1024) throw new Error('HTML exceeds pilot limit')
   const window = new Window({ settings: { enableJavaScriptEvaluation: false, disableJavaScriptFileLoading: true, disableCSSFileLoading: true, disableIframePageLoading: true } })
   try {
@@ -514,6 +533,7 @@ export async function convertTheBriefHtml(html) {
     const rules = [...document.styleSheets].flatMap(sheet => [...sheet.cssRules].filter(rule => rule.type === 7))
     if (!Number.isInteger(source.loopCount) || source.loopCount < 0 || source.loopCount > 1000) throw new Error('Unsupported source loop count')
     const warnings = []
+    const reviewedElements = new Set()
     if (hasSlideFades) {
       for (const slide of slides) {
         if (document.getElementById(`effOut${slide.id}`)) throw new Error('Slide transitions/stop: outgoing scene effects require an adapter')
@@ -598,11 +618,16 @@ export async function convertTheBriefHtml(html) {
           else effect = appendEffect(effect, effectTracks(exit, style, rules, effectStart, end, warnings, layerBase), effectStart)
         }
         keyframes = effect.tracks || {}
+        if (effect.perspective) {
+          if (Object.keys(keyframes).some(property => property !== 'opacity' && property !== 'rotationX')) throw new Error('Nested 3D transforms need an adapter')
+          layerBase.imageFlipPerspective = effect.perspective
+        }
         if (effect.transformOrigin) layerBase.transformOrigin = effect.transformOrigin
       } catch (error) {
         warnings.push(`${element.id}: ${error.message}; animation not converted`)
         keyframes = {}
         delete layerBase.transformOrigin
+        delete layerBase.imageFlipPerspective
       }
       // Explicit holds avoid Banner Studio's default entrance/exit fades and
       // preserve the full source duration when the entrance finishes early.
@@ -633,34 +658,54 @@ export async function convertTheBriefHtml(html) {
         if (!Number.isFinite(volume) || volume < 0 || volume > 1) throw new Error(`Audio ${sourceId}: invalid source volume`)
         const offset = audioConfig?.startTime === undefined ? 0 : audioConfig.startTime
         if (!Number.isFinite(offset) || offset < 0) throw new Error(`Audio ${sourceId}: invalid source clip offset`)
-        if (offset !== 0) throw new Error(`Audio ${sourceId}: source clip offset ${offset}s requires exported-clip reconciliation`)
         if (audioConfig?.soundOnHover) throw new Error(`Audio ${sourceId}: hover playback requires an audio adapter`)
         const stages = [audioConfig?.buildIn, audioConfig?.buildMid, audioConfig?.buildOut].filter(Boolean)
         if (stages.some(stage => !['none', 'instant', 'audio', 'fadeAudio'].includes(stage.type))) throw new Error(`Audio ${sourceId}: unsupported source audio effect`)
         const hasAudioFade = stages.some(stage => stage.type === 'fadeAudio')
-        const stageDuration = hasAudioFade ? stages.reduce((sum, stage) => sum + stage.duration, 0) : null
+        const stageDuration = stages.reduce((sum, stage) => sum + stage.duration, 0)
         if (hasAudioFade && (stages.length !== 3 || stages.some(stage => !Number.isFinite(stage.duration) || stage.duration < 0 || stage.duration > 300 || stage.delay !== 0) || audioConfig.buildMid.type !== 'audio' || !(stageDuration > 0))) throw new Error(`Audio ${sourceId}: source fades require exported-clip reconciliation: unsupported fade timing`)
         const delay = audioConfig?.buildIn?.delay
         if (delay !== undefined && (!Number.isFinite(delay) || delay < 0 || Math.abs(slide.start + delay - start) > 1e-6)) throw new Error(`Audio ${sourceId}: source audio presence requires reconciliation`)
+        let verifyExportedDuration
         if (audioConfig?.endTime !== undefined && audioConfig?.duration !== undefined) {
           const clipDuration = audioConfig.endTime - offset
-          if (!Number.isFinite(clipDuration) || clipDuration <= 0 || (Math.abs(clipDuration - audioConfig.duration) > 1e-6 && !(hasAudioFade && Math.abs(stageDuration - clipDuration) < 1e-6)) || start + clipDuration > slide.end + 1e-6) throw new Error(`Audio ${sourceId}: clip duration requires reconciliation`)
-          if (Math.abs(layerBase.endTime - (start + clipDuration)) > 1e-6) {
-            layerBase.endTime = start + clipDuration
+          if (!Number.isFinite(clipDuration) || clipDuration <= 0 || clipDuration > 300) throw new Error(`Audio ${sourceId}: invalid clip duration`)
+          const genericDuration = Math.abs(clipDuration - audioConfig.duration) < 1e-6
+          const hasPlainPlaybackStages = audioConfig.buildMid?.type === 'audio' && stages.every(stage => stage.delay === 0)
+          // The editor still plays the whole clip with no middle effect and an
+          // instant exit delayed by that middle interval.
+          const hasInstantExit = audioConfig.buildIn?.type === 'instant' && audioConfig.buildIn.delay === 0
+            && audioConfig.buildMid?.type === 'none' && audioConfig.buildMid.delay === 0
+            && audioConfig.buildOut?.type === 'instant' && audioConfig.buildOut.delay === audioConfig.buildMid.duration
+          const hasMatchingStages = stages.length === 3 && (hasPlainPlaybackStages || hasInstantExit)
+            && stages.every(stage => Number.isFinite(stage.duration) && stage.duration >= 0)
+            && Math.abs(stageDuration - clipDuration) < 1e-6
+          const visibleDuration = Math.min(clipDuration, slide.end - start)
+          if (offset || (!genericDuration && !hasAudioFade) || clipDuration > visibleDuration + 1e-6) {
+            if (!hasMatchingStages || (hasAudioFade && clipDuration > visibleDuration + 1e-6) || Math.abs(end - (start + visibleDuration)) > 1e-6) {
+              throw new Error(offset ? `Audio ${sourceId}: source clip offset ${offset}s requires exported-clip reconciliation` : `Audio ${sourceId}: clip duration requires reconciliation`)
+            }
+            verifyExportedDuration = clipDuration
+            warnings.push(`Audio ${sourceId}: source trim ${offset}–${audioConfig.endTime}s verified against the exported soundtrack file before import`)
+          } else if (!genericDuration && !hasMatchingStages) throw new Error(`Audio ${sourceId}: clip duration requires reconciliation`)
+          if (Math.abs(layerBase.endTime - (start + visibleDuration)) > 1e-6) {
+            layerBase.endTime = start + visibleDuration
             layerBase.keyframes = { opacity: holdOpacity(start, layerBase.endTime) }
             warnings.push(`Audio ${sourceId}: presence reconciled to the authored ${clipDuration}s clip trim rather than the generic element duration; review soundtrack timing`)
           }
-        }
+        } else if (offset) throw new Error(`Audio ${sourceId}: source clip offset ${offset}s requires exported-clip reconciliation`)
         if (hasAudioFade) {
           if (Math.abs(layerBase.endTime - start - stageDuration) > 1e-6) throw new Error(`Audio ${sourceId}: fade stages differ from the exported clip`)
           audioTransforms.push({ layerId: id, duration: stageDuration, fadeIn: audioConfig.buildIn.type === 'fadeAudio' ? audioConfig.buildIn.duration : 0, fadeOut: audioConfig.buildOut.type === 'fadeAudio' ? audioConfig.buildOut.duration : 0 })
           warnings.push(`Audio ${sourceId}: authored volume fades are baked into a managed soundtrack; the original MP3 remains in the source ZIP`)
+        } else if (verifyExportedDuration !== undefined) {
+          audioTransforms.push({ layerId: id, duration: verifyExportedDuration, fadeIn: 0, fadeOut: 0 })
         }
         layers.push({ ...layerBase, id: id++, type: 'audio', name: `Audio ${sourceId}`, src: localAsset(sources[0].getAttribute('src')), x: 0, y: 0, w: 1, h: 1, volume, ...(audio.muted || audio.hasAttribute('muted') || audioConfig?.muted === true ? { muted: true } : {}) })
       } else if (type === 'video') {
         // Bounded video adapter: one local muted autoplay clip that starts at media
         // time zero with its layer. Trim starts, sound, hover playback, playback past
-        // the slide and non-centred or transformed framing remain explicit holds.
+        // the slide and framing other than cover and centred mirrors remain holds.
         const videos = [...element.querySelectorAll('video')]
         if (videos.length !== 1 || !videos[0].getAttribute('src')) throw new Error(`Video ${sourceId}: unsupported video source`)
         const video = videos[0]
@@ -724,38 +769,82 @@ export async function convertTheBriefHtml(html) {
         let fit = videoCss.objectFit || 'fill'
         if (!['cover', 'contain', 'fill'].includes(fit)) throw new Error(`Video ${sourceId}: unsupported video fit ${fit}`)
         if (videoCss.objectPosition && !['50% 50%', 'center', 'center center'].includes(videoCss.objectPosition)) throw new Error(`Video ${sourceId}: unsupported video position`)
+        let flipX = false, flipY = false
         for (const node of [element, ...element.querySelectorAll('div')]) {
           const nodeCss = style(node)
-          if (nodeCss.transform && nodeCss.transform !== 'none') throw new Error(`Video ${sourceId}: transformed video requires an adapter`)
+          if (nodeCss.transform && nodeCss.transform !== 'none') {
+            // This wrapper mirrors the clipped viewport as a unit. Studio's
+            // content flip does the same without re-encoding the source clip.
+            const mirror = /^rotate\(0(?:deg)?\)\s+scale\((-?1),\s*(-?1)\)$/.exec(nodeCss.transform)
+            const rotation = /^rotate\((-?90|-?180|-?270)deg\)$/.exec(nodeCss.transform)
+            if ((!mirror && !rotation) || node.parentElement !== element || !node.contains(video)
+              || nodeCss.width !== '100%' || nodeCss.height !== '100%'
+              || !['', 'center', '50% 50%'].includes(nodeCss.transformOrigin)
+              || !['', '0px', 'auto'].includes(nodeCss.left) || !['', '0px', 'auto'].includes(nodeCss.top)
+              || (nodeCss.animationName && nodeCss.animationName !== 'none') || masks) {
+              throw new Error(`Video ${sourceId}: transformed video requires an adapter`)
+            }
+            if (rotation) {
+              if (keyframes.rotation || keyframes.scaleX || keyframes.scaleY) throw new Error(`Video ${sourceId}: rotated video with animated rotation or scale requires an adapter`)
+              layerBase.rotation = Number(rotation[1])
+            }
+            flipX = mirror?.[1] === '-1'
+            flipY = mirror?.[2] === '-1'
+          }
           if (nodeCss.borderRadius && !/^0(px)?( 0(px)?)*$/.test(nodeCss.borderRadius)) throw new Error(`Video ${sourceId}: rounded video requires an adapter`)
         }
         if (videoCss.borderRadius && !/^0(px)?( 0(px)?)*$/.test(videoCss.borderRadius)) throw new Error(`Video ${sourceId}: rounded video requires an adapter`)
-        // TheBrief frames a clip by sizing the <video> to cover its clipping wrapper and
-        // shifting it. That is native cover framing with a focal point; any zoom beyond
-        // cover, rotation or scale stays held. The packager checks the file's aspect.
+        // A cover crop uses a focal point. Extra zoom needs the visible
+        // rectangle in source coordinates. Both leave the MP4 untouched.
         let focalX = 50, focalY = 50
+        let videoCrop
         const boxW = px(videoCss.width), boxH = px(videoCss.height)
-        const shift = /^(?:translate\((-?[\d.]+)px,\s*(-?[\d.]+)px\))?(?:\s*rotate\(0(?:deg)?\))?$/.exec((videoCss.transform && videoCss.transform !== 'none') ? videoCss.transform.trim() : '')
+        const shift = /^(?:translate\((0|-?(?:\d+\.?\d*|\.\d+)px),\s*(0|-?(?:\d+\.?\d*|\.\d+)px)\))?(?:\s*rotate\(0(?:deg)?\))?$/.exec((videoCss.transform && videoCss.transform !== 'none') ? videoCss.transform.trim() : '')
         if (!shift) throw new Error(`Video ${sourceId}: transformed video requires an adapter`)
-        const left = (px(videoCss.left) || 0) + Number(shift[1] || 0), top = (px(videoCss.top) || 0) + Number(shift[2] || 0)
+        const left = (px(videoCss.left) || 0) + (Number.parseFloat(shift[1]) || 0)
+        const top = (px(videoCss.top) || 0) + (Number.parseFloat(shift[2]) || 0)
         if (Number.isFinite(boxW) && Number.isFinite(boxH) && (Math.abs(boxW - layerBase.w) > 1 || Math.abs(boxH - layerBase.h) > 1 || Math.abs(left) > 1 || Math.abs(top) > 1)) {
           const coversWidth = Math.abs(boxW - layerBase.w) <= 1 && boxH >= layerBase.h - 1
           const coversHeight = Math.abs(boxH - layerBase.h) <= 1 && boxW >= layerBase.w - 1
-          if (!(coversWidth || coversHeight) || left > 1 || top > 1 || left + boxW < layerBase.w - 1 || top + boxH < layerBase.h - 1) throw new Error(`Video ${sourceId}: cropped video framing requires an adapter`)
-          const percent = (offset, free) => Math.abs(free) <= 1 ? 50 : Math.min(100, Math.max(0, Math.round(offset / free * 10000) / 100))
-          focalX = percent(left, layerBase.w - boxW)
-          focalY = percent(top, layerBase.h - boxH)
+          const { w, h } = layerBase
+          if (left > 1 || top > 1 || left + boxW < w - 1 || top + boxH < h - 1) throw new Error(`Video ${sourceId}: cropped video framing requires an adapter`)
+          if (coversWidth || coversHeight) {
+            const percent = (offset, free) => Math.abs(free) <= 1 ? 50 : Math.min(100, Math.max(0, Math.round(offset / free * 10000) / 100))
+            focalX = percent(left, w - boxW)
+            focalY = percent(top, h - boxH)
+          } else {
+            const viewport = style(video.parentElement)
+            if (fit !== 'cover' || masks || viewport.overflow !== 'hidden' || viewport.width !== '100%' || viewport.height !== '100%'
+              || left > 0 || top > 0 || left + boxW < w || top + boxH < h
+              || w / boxW < 0.01 || h / boxH < 0.01) throw new Error(`Video ${sourceId}: cropped video framing requires an adapter`)
+            videoCrop = { x: -left / boxW, y: -top / boxH, w: w / boxW, h: h / boxH }
+          }
           fit = 'cover'
           videoFrames.push({ layerId: id, src, aspect: boxW / boxH })
         }
-        layers.push({ ...layerBase, id: id++, type: 'video', name: `Video ${sourceId}`, src, fit, focalX, focalY, mediaStart, mediaEnd, ...(config.loop ? { mediaLoop: true } : {}) })
+        layers.push({ ...layerBase, id: id++, type: 'video', name: `Video ${sourceId}`, src, fit, focalX, focalY, ...(videoCrop ? { videoCrop } : {}), ...(flipX ? { flipX } : {}), ...(flipY ? { flipY } : {}), mediaStart, mediaEnd, ...(config.loop ? { mediaLoop: true } : {}) })
       } else if (type === 'text') {
         const rows = [...element.querySelectorAll('.row')]
         if (!rows.length) throw new Error('Unsupported text layout')
-        const rotations = [...element.querySelectorAll('div')].map(div => style(div).transform).filter(t => t && t !== 'none')
-        if (rotations.some(t => !/^rotate\(-?[\d.]+deg\)$/.test(t)) || rotations.length > 1) throw new Error('Unsupported static text transform')
-        const rotation = rotations.length ? Number.parseFloat(rotations[0].slice(7)) : 0
-        if (rotation && (keyframes.scaleX || keyframes.scaleY || keyframes.rotation)) throw new Error('Nested text rotation with scale/rotation needs an adapter')
+        const transformed = [...element.querySelectorAll('div')].filter(div => style(div).transform && style(div).transform !== 'none')
+        if (transformed.some(div => !/^rotate\(-?[\d.]+deg\)$/.test(style(div).transform)) || transformed.length > 1) throw new Error('Unsupported static text transform')
+        const rotation = transformed.length ? Number.parseFloat(style(transformed[0]).transform.slice(7)) : 0
+        if (rotation && (keyframes.scaleX || keyframes.scaleY || keyframes.rotation)) {
+          const origin = layerBase.transformOrigin
+          if (keyframes.rotation || !keyframes.scaleX || JSON.stringify(keyframes.scaleX) !== JSON.stringify(keyframes.scaleY)
+            || (origin && (Math.abs(origin.x - layerBase.w / 2) > 0.001 || Math.abs(origin.y - layerBase.h / 2) > 0.001))) {
+            throw new Error('Nested text rotation with scale/rotation needs an adapter')
+          }
+          // Uniform scale and a static rotation commute when both use the
+          // same center. Each intervening box must fill the source element.
+          for (let node = transformed[0]; node !== element; node = node.parentElement) {
+            const css = style(node)
+            if (css.width !== '100%' || css.height !== '100%' || !['', 'center', '50% 50%'].includes(css.transformOrigin)
+              || [css.left, css.top, css.marginLeft, css.marginTop, css.paddingLeft, css.paddingTop].some(v => !['', 'auto', '0', '0px'].includes(v))) {
+              throw new Error('Nested text rotation with scale/rotation needs an adapter')
+            }
+          }
+        }
         if (rotation) {
           layerBase.rotation = rotation
           layerBase.transformOrigin = { x: layerBase.w / 2, y: layerBase.h / 2 }
@@ -771,10 +860,10 @@ export async function convertTheBriefHtml(html) {
           // can report an empty computed colour in offline CSS parsing. Compare
           // the painted leaf spans, not both a wrapper and its child.
           const runs = [...row.querySelectorAll('span')].filter(item => item.textContent.trim() && !item.children.length)
-          const signature = node => ['fontFamily', 'fontWeight', 'fontStyle', 'color', 'letterSpacing'].map(key => style(node)[key]).join('|')
+          const unadaptedSignature = node => ['fontFamily', 'letterSpacing'].map(key => style(node)[key]).join('|')
           const plainRuns = runs.filter(item => !item.closest('sup'))
-          if (new Set(plainRuns.map(signature)).size > 1) throw new Error('Mixed styled text within a line needs an adapter')
-          const hasInlineSizes = new Set(plainRuns.map(item => style(item).fontSize)).size > 1
+          if (new Set(plainRuns.map(unadaptedSignature)).size > 1) throw new Error('Mixed styled text within a line needs an adapter')
+          const hasInlineStyles = new Set(plainRuns.map(item => ['fontSize', 'color', 'fontWeight', 'fontStyle'].map(key => style(item)[key]).join('|'))).size > 1
           const paintedCss = style(runs.find(item => !item.closest('sup')) || span)
           const textTransform = paintedCss.textTransform || textCss.textTransform || rowCss.textTransform || 'none'
           if (!['none', 'uppercase', 'lowercase', 'capitalize'].includes(textTransform)) throw new Error('Unsupported text transform')
@@ -804,20 +893,34 @@ export async function convertTheBriefHtml(html) {
             }
           }
           const textRuns = []
-          if (row.querySelector('sup') || hasInlineSizes) {
+          if (row.querySelector('sup') || hasInlineStyles) {
             const walk = (node) => {
               if (node.nodeType === 3 && node.textContent) {
                 const parent = node.parentElement
                 const runCss = style(parent)
-                if (['fontFamily', 'fontWeight', 'fontStyle', 'color', 'letterSpacing'].some(key => runCss[key] !== textCss[key])) throw new Error('Mixed styled superscript needs an adapter')
+                if (node.textContent.trim() && ['fontFamily', 'letterSpacing'].some(key => runCss[key] !== textCss[key])) throw new Error('Mixed styled superscript needs an adapter')
+                const color = runCss.color && runCss.color !== textCss.color ? runCss.color : undefined
+                if (color && !isBannerInlineTextColor(color)) throw new Error('Unsupported inline text colour')
+                const run = { text: node.textContent }
+                if (color) run.color = color
+                if (node.textContent.trim() && (runCss.fontWeight !== textCss.fontWeight || runCss.fontStyle !== textCss.fontStyle)) {
+                  const fontWeight = Number(runCss.fontWeight) || (runCss.fontWeight === 'bold' ? 700 : 400)
+                  const fontStyle = runCss.fontStyle || 'normal'
+                  if (!['normal', 'italic'].includes(fontStyle)) throw new Error('Unsupported inline font style')
+                  run.fontFamily = textCss.fontFamily.replace(/["']/g, '')
+                  run.fontWeight = fontWeight
+                  run.fontStyle = fontStyle
+                }
                 const sup = parent.closest('sup')
                 if (sup) {
                   const supCss = style(sup)
                   if (supCss.position !== 'relative' || supCss.verticalAlign !== 'baseline' || !Number.isFinite(px(supCss.top))) throw new Error('Unsupported superscript positioning')
-                  textRuns.push({ text: node.textContent, fontSize: px(runCss.fontSize), top: px(supCss.top) })
-                } else {
-                  textRuns.push({ text: node.textContent, ...(runCss.fontSize !== textCss.fontSize ? { fontSize: px(runCss.fontSize) } : {}) })
+                  run.fontSize = px(runCss.fontSize)
+                  run.top = px(supCss.top)
+                } else if (Number.isFinite(px(runCss.fontSize)) && runCss.fontSize !== textCss.fontSize) {
+                  run.fontSize = px(runCss.fontSize)
                 }
+                textRuns.push(run)
               } else for (const child of node.childNodes) walk(child)
             }
             walk(row)
@@ -831,27 +934,53 @@ export async function convertTheBriefHtml(html) {
           y += height
           rowHeights.push(height)
         }
-        // Rows are stacked one line box apart. When the source box is taller than
-        // that stack, a row soft-wraps and any row below it would overlap its extra
-        // lines. Only the last row may wrap safely (the native box wraps to the same
-        // width); accept that only when the extra height is a whole number of its
-        // line boxes and of no other row's, so the wrapping row is unambiguous.
+        // Native text wraps to the source width. Allocate extra line boxes before
+        // positioning later rows so wrapped text stays editable without overlap.
         const extra = layerBase.h - (y - layerBase.y)
         if (rows.length > 1 && extra > 0.4 * Math.min(...rowHeights)) {
           const wholeLines = height => extra / height >= 0.9 && Math.abs(extra / height - Math.round(extra / height)) < 0.1
           const candidates = rowHeights.flatMap((height, index) => wholeLines(height) ? [index] : [])
-          if (candidates.length !== 1) throw new Error('Wrapped text across stacked rows needs an adapter')
-          const wrapped = candidates[0]
-          for (const [index] of rows.entries()) {
-            const line = layers.find(layer => layer.linkId === `source:${sourceId}:row:${index}`)
-            if (!line) continue
-            if (index === wrapped) line.h += extra
-            if (index > wrapped) {
-              line.y += extra
-              if (line.transformOrigin) line.transformOrigin.y -= extra
+          const allocations = candidates.map(index => rowHeights.map((_, rowIndex) => rowIndex === index ? extra : 0))
+          if (rows.length === 2) {
+            const [first, second] = rowHeights
+            // Integer source dimensions round the combined line boxes. Use a
+            // one-pixel tolerance, and hold if more than one layout fits.
+            for (let count = 1; count <= 64 && count * first + second <= extra + 1; count++) {
+              const remainder = extra - count * first
+              const lines = Math.round(remainder / second)
+              if (lines >= 1 && lines <= 64 && Math.abs(remainder - lines * second) <= 1) {
+                allocations.push([count * first, remainder])
+              }
             }
           }
-          warnings.push(`${element.id}: a uniquely sized wrapped row retains its extra line boxes and shifts later editable rows; review text wrapping`)
+          const reviewed = Object.hasOwn(reviewedRowLines, element.id) ? reviewedRowLines[element.id] : undefined
+          let allocation = allocations[0]
+          if (reviewed !== undefined) {
+            if (!Array.isArray(reviewed) || reviewed.length !== rows.length
+              || reviewed.some(lines => !Number.isSafeInteger(lines) || lines < 1 || lines > 64)) {
+              throw new Error(`${element.id}: reviewed row counts do not match the source rows`)
+            }
+            const offsets = reviewed.map((lines, index) => (lines - 1) * rowHeights[index])
+            if (Math.abs(offsets.reduce((sum, offset) => sum + offset, 0) - extra) > 1) {
+              throw new Error(`${element.id}: reviewed row heights do not match the source box`)
+            }
+            allocation = offsets
+            reviewedElements.add(element.id)
+            warnings.push(`${element.id}: wrapped rows use line counts measured in the source preview`)
+          } else if (allocations.length !== 1) {
+            throw new Error('Wrapped text across stacked rows needs an adapter')
+          }
+          let shift = 0
+          for (const [index, extraHeight] of allocation.entries()) {
+            const line = layers.find(layer => layer.linkId === `source:${sourceId}:row:${index}`)
+            if (line) {
+              line.h += extraHeight
+              line.y += shift
+              if (line.transformOrigin) line.transformOrigin.y -= shift
+            }
+            shift += extraHeight
+          }
+          warnings.push(`${element.id}: wrapped rows retain their extra line boxes and shift later editable rows; review text wrapping`)
         }
         if (new Set(rows.map(row => style(row).fontSize)).size > 1) warnings.push(`${element.id}: mixed-size text split into editable lines; baseline alignment needs visual review`)
       } else if (type === 'button') {
@@ -886,6 +1015,11 @@ export async function convertTheBriefHtml(html) {
         }
         const transformed = [...element.querySelectorAll('div')].filter(div => style(div).transform && style(div).transform !== 'none')
         const mirrored = transformed.filter(div => /^rotate\(0(?:deg)?\)\s+scale\((?:-1,\s*1|1,\s*-1)\)$/.test(style(div).transform))
+        if (layerBase.imageFlipPerspective && transformed.some(div => {
+          const nested = style(div)
+          return nested.width !== '100%' || nested.height !== '100%'
+            || !['', '50% 50%', 'center center', 'center'].includes(nested.transformOrigin)
+        })) throw new Error('3D image flip has an unsupported inner transform origin')
         const rotated = transformed.filter(div => !mirrored.includes(div)).map(div => style(div).transform)
         if (rotated.some(t => !/^rotate\(-?[\d.]+deg\)$/.test(t)) || mirrored.length > 1
           || (mirrored.length && (rotated.some(t => Number.parseFloat(t.slice(7)) !== 0)
@@ -1022,13 +1156,14 @@ export async function convertTheBriefHtml(html) {
       }
       sourceElements.push({ sourceId, slideId: slide.id, type, nativeLayerIds: layers.slice(before).map(layer => layer.id), start, end, ...(effectStart !== start ? { effectStart } : {}) })
     }
-    for (const layer of layers) {
-      if (!layer.fontFamily?.includes(',')) continue
-      const names = layer.fontFamily.split(',').map(value => value.trim().replace(/^["']|["']$/g, ''))
-      const declared = fonts.filter(font => names.includes(font.family) && font.weight === (layer.fontWeight || 400) && font.style === (layer.fontStyle || 'normal'))
+    for (const layer of layers) for (const face of [layer, ...layer.textRuns || []]) {
+      if (!face.fontFamily?.includes(',')) continue
+      const names = face.fontFamily.split(',').map(value => value.trim().replace(/^["']|["']$/g, ''))
+      const declared = fonts.filter(font => names.includes(font.family) && font.weight === (face.fontWeight || 400) && font.style === (face.fontStyle || 'normal'))
       if (declared.length !== 1 || !names[0].startsWith(declared[0].family + ' file-')) throw new Error(`${layer.name}: ambiguous export font alias needs reconciliation`)
-      layer.fontFamily = declared[0].family
+      face.fontFamily = declared[0].family
     }
+    if (Object.keys(reviewedRowLines).some(id => !reviewedElements.has(id))) throw new Error('Reviewed row counts include an element without stacked wrapping')
     return { schemaVersion: 1, adapter: slides.length === 1 ? 'thebrief-css-single-slide-pilot' : 'thebrief-css-hard-cut-slides', fidelityVerified: false, fonts, externalFontStylesheets, imageTransforms, audioTransforms, source: { designHash: source.designHash || null, width: source.width, height: source.height, duration, loopCount: source.loopCount, elementCount: elements.length }, videoFrames, canvasData: { [`custom_${source.width}x${source.height}`]: { slides: slides.map((slide, index) => ({ id: `source-slide:${slide.id}`, name: `Slide ${index + 1}`, duration: slide.end - slide.start })), playback: { duration, loopCount: source.loopCount }, layers, bgColor: background } }, sourceElements, warnings }
   } finally {
     await window.happyDOM.close()

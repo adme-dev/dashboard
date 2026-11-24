@@ -15,7 +15,7 @@ export async function transformAudio(bytes, fade) {
     const run = promisify(execFile)
     const { stdout } = await run('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'json', input], { timeout: 15000, maxBuffer: 65536 })
     const duration = Number(JSON.parse(stdout).format?.duration)
-    if (!Number.isFinite(duration) || duration < fade.duration - 0.05 || duration > fade.duration + 0.1) throw new Error('Exported audio duration differs from the authored fade stages')
+    if (!Number.isFinite(duration) || duration < fade.duration - 0.05 || duration > fade.duration + 0.1) throw new Error('Exported audio duration differs from the authored clip trim')
     const filters = []
     if (fade.fadeIn) filters.push(`afade=t=in:st=0:d=${fade.fadeIn}`)
     if (fade.fadeOut) filters.push(`afade=t=out:st=${fade.duration - fade.fadeOut}:d=${fade.fadeOut}`)
