@@ -118,72 +118,6 @@ function isMultiSelected(layerId: number): boolean {
   return multiSelectedLayers.value.includes(layerId)
 }
 
-// ── Waveform cache for audio layers ──
-const waveformCache = new Map<string, Float32Array>()
-const waveformCanvases = ref<Map<number, HTMLCanvasElement>>(new Map())
-
-async function getWaveform(src: string): Promise<Float32Array | null> {
-  if (waveformCache.has(src)) return waveformCache.get(src)!
-  try {
-    const response = await fetch(src)
-    const buffer = await response.arrayBuffer()
-    const ctx = new AudioContext()
-    const audio = await ctx.decodeAudioData(buffer)
-    const data = audio.getChannelData(0)
-    const points = 200
-    const step = Math.floor(data.length / points)
-    const peaks = new Float32Array(points)
-    for (let i = 0; i < points; i++) {
-      let max = 0
-      for (let j = i * step; j < (i + 1) * step && j < data.length; j++) {
-        max = Math.max(max, Math.abs(data[j]))
-      }
-      peaks[i] = max
-    }
-    waveformCache.set(src, peaks)
-    await ctx.close()
-    return peaks
-  } catch { return null }
-}
-
-function drawWaveform(canvas: HTMLCanvasElement, peaks: Float32Array, color: string) {
-  const ctx = canvas.getContext('2d')
-  if (!ctx) return
-  const { width, height } = canvas
-  ctx.clearRect(0, 0, width, height)
-  ctx.fillStyle = color
-  const barW = Math.max(1, width / peaks.length)
-  for (let i = 0; i < peaks.length; i++) {
-    const barH = Math.max(1, peaks[i] * height * 0.9)
-    const x = i * barW
-    const y = (height - barH) / 2
-    ctx.fillRect(x, y, Math.max(1, barW - 0.5), barH)
-  }
-}
-
-function setWaveformCanvas(layerId: number, el: HTMLCanvasElement | null) {
-  if (el) {
-    waveformCanvases.value.set(layerId, el)
-  }
-}
-
-// Render waveforms when audio layers change
-watch(
-  () => activeLayers.value.filter(l => l.type === 'audio').map(l => ({ id: l.id, src: l.src })),
-  async (audioLayers) => {
-    for (const al of audioLayers) {
-      if (!al.src) continue
-      const peaks = await getWaveform(al.src)
-      if (!peaks) continue
-      // Wait a tick for canvas to mount
-      await nextTick()
-      const canvas = waveformCanvases.value.get(al.id)
-      if (canvas) drawWaveform(canvas, peaks, 'rgba(255, 255, 255, 0.5)')
-    }
-  },
-  { immediate: true, deep: true }
-)
-
 const timelineEl = ref<HTMLElement | null>(null)
 const rulerEl = ref<HTMLElement | null>(null)
 const isDraggingPlayhead = ref(false)
@@ -1325,7 +1259,7 @@ onUnmounted(() => {
                     :title="`Drag to move ${layer.name}`"
                     :style="{
                       backgroundColor: getLayerColor(layer),
-                      opacity: 0.2
+                      opacity: layer.type === 'audio' ? 0.55 : 0.2
                     }"
                     @mousedown="onPresenceMouseDown($event, layer.id, 'move')"
                     @click.stop="onPresenceBarClick(layer)"
@@ -1337,13 +1271,14 @@ onUnmounted(() => {
                     :clock="layer"
                     :span="layer.endTime - layer.startTime"
                   />
-                  <!-- Waveform canvas for audio layers -->
-                  <canvas
+                  <!-- Render above the clip background and below the transparent audio controls. -->
+                  <BannerAudioWaveform
                     v-if="layer.type === 'audio' && layer.src"
-                    :ref="(el: any) => setWaveformCanvas(layer.id, el as HTMLCanvasElement)"
-                    class="absolute inset-0 pointer-events-none rounded-sm"
-                    :width="Math.round(((layer.endTime || 3) - (layer.startTime || 0)) * pxPerSec)"
-                    :height="LANE_H - 8"
+                    class="absolute inset-0 z-[1] pointer-events-none"
+                    style="mask-image: linear-gradient(to right, transparent 72px, #000 104px)"
+                    :src="layer.src"
+                    :span="layer.endTime - layer.startTime"
+                    :loop="layer.loopAudio"
                   />
                   <!-- Timing comes from the actual preset or imported keyframe intervals. -->
                   <div
@@ -1355,7 +1290,7 @@ onUnmounted(() => {
                       left: `${(phase.start - (layer.startTime ?? 0)) * pxPerSec}px`,
                       width: `${(phase.end - phase.start) * pxPerSec}px`,
                       height: layer.type === 'video' && phase.kind !== 'hold' ? '18px' : '100%',
-                      backgroundColor: phase.kind === 'hold' ? 'transparent' : getLayerColor(layer),
+                      backgroundColor: phase.kind === 'hold' || phase.kind === 'audio' ? 'transparent' : getLayerColor(layer),
                       filter: phase.kind === 'exit' ? 'brightness(0.85)' : undefined
                     }"
                     @click.capture="onPhaseClick"
