@@ -57,6 +57,8 @@ it('rejects failed downloads before creating a decoder', async () => {
 it('preserves source timing through clip shortening, extension and looping', () => {
   const waveform = { duration: 4, peaks: new Float32Array([0.25, 0.5, 0.75, 1]) }
   expect(waveformBars(waveform, 2, 2)).toEqual([0.25, 0.5])
+  expect(waveformBars(waveform, 8, 1, true, { mediaStart: 0, mediaEnd: 1 })).toEqual([0.25])
+  expect(waveformBars(waveform, 4, 4, true, { mediaStart: 1, mediaEnd: 3 })).toEqual([0.5, 0.75, 0.5, 0.75])
   expect(waveformBars(waveform, 6, 6)).toEqual([0.25, 0.5, 0.75, 1, 0, 0])
   expect(waveformBars(waveform, 6, 6, true)).toEqual([0.25, 0.5, 0.75, 1, 0.25, 0.5])
   expect(waveformBars(waveform, 9, 3, true)).toEqual([0.75, 1, 1])

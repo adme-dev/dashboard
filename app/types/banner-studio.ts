@@ -157,6 +157,8 @@ export interface Layer {
   volume?: number       // 0-1, default 1
   muted?: boolean       // default false
   loopAudio?: boolean   // loop the audio source within presence range
+  audioFadeIn?: number  // seconds, 0 disables the fade
+  audioFadeOut?: number // seconds, 0 disables the fade
   // Animation
   animIn: AnimInType
   /** Absolute start of a directly positioned entrance or exit block. */

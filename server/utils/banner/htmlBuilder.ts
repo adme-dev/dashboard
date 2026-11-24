@@ -1,3 +1,4 @@
+import { bannerAudioState } from '~~/shared/bannerAudioClock'
 import { bannerSlideGroups } from '~~/shared/bannerSlideFade'
 import { mediaMaskCss, revealCommands, safeWordEntrance, wordEntranceSteps, REVEAL_WRAPPER_STYLE, REVEAL_GLOW_STYLE, revealContentStyle } from '~~/shared/bannerImportedMotion'
 import { bannerAnimationTiming } from '~~/app/utils/banner-animation-timing'
@@ -341,7 +342,7 @@ export function buildBannerHTML(
       }
       if (l.type === 'audio') {
         if (!l.src) return ''
-        return `<audio data-id="${l.id}" src="${escapeHtml(absSrc(l.src, options.baseUrl))}" preload="auto"${l.loopAudio ? ' loop' : ''} style="display:none;"></audio>`
+        return `<audio data-id="${l.id}" data-banner-audible="${!(l.muted || l.hidden) && (l.volume ?? 1) > 0}" src="${escapeHtml(absSrc(l.src, options.baseUrl))}" preload="auto"${l.loopAudio ? ' loop' : ''} style="display:none;"></audio>`
       }
       return ''
     })
@@ -371,8 +372,8 @@ export function buildBannerHTML(
         const endTime = l.endTime || (startTime + 3)
         if (l.src) {
           const presenceDur = endTime - startTime
-          const volume = l.muted || l.hidden ? 0 : (l.volume ?? 1)
-          lines.push(`  (function() { var a = document.querySelector('[data-id="${l.id}"]'); if (a) { a.pause(); a.volume = ${volume}; var p = { t: 0 }; tl.to(p, { t: ${presenceDur.toFixed(2)}, duration: ${presenceDur.toFixed(2)}, ease: 'none', onStart: function() { if (!tl.paused()) { a.currentTime = 0; a.play().catch(function() {}); } }, onUpdate: function() { var loaded = isFinite(a.duration) && a.duration > 0; var mt = loaded ? (a.loop ? p.t % a.duration : Math.min(p.t, a.duration)) : p.t; if (tl.paused()) { a.pause(); a.currentTime = mt; } else if (loaded && !a.loop && p.t >= a.duration) { a.pause(); } else { if (Math.abs(a.currentTime - mt) > 0.3) a.currentTime = mt; if (a.paused) a.play().catch(function() {}); } }, onComplete: function() { a.pause(); } }, ${startTime}); } })();`)
+          const clock = JSON.stringify({ mediaStart: l.mediaStart, mediaEnd: l.mediaEnd, loopAudio: l.loopAudio, volume: l.volume, muted: l.muted, hidden: l.hidden, audioFadeIn: l.audioFadeIn, audioFadeOut: l.audioFadeOut }).replace(/</g, '\\u003c')
+          lines.push(`  (function() { var a = document.querySelector('[data-id="${l.id}"]'); if (a) { var sampleAudio = ${bannerAudioState.toString()}; var clock = ${clock}; a.pause(); a.loop = false; a.volume = sampleAudio(0, ${presenceDur}, clock, a.duration).volume; var p = { t: 0 }; function sync() { var sample = sampleAudio(p.t, ${presenceDur}, clock, a.duration); a.volume = sample.volume; if (Math.abs(a.currentTime - sample.time) > 0.1) { try { a.currentTime = sample.time; } catch(e) {} } if (tl.paused() || !sample.active) a.pause(); else if (a.paused) a.play().catch(function() {}); } tl.to(p, { t: ${presenceDur.toFixed(2)}, duration: ${presenceDur.toFixed(2)}, ease: 'none', onStart: sync, onUpdate: sync, onComplete: function() { a.pause(); } }, ${startTime}); } })();`)
         }
         return
       }

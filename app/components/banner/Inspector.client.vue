@@ -4,22 +4,24 @@ const { feedsState } = useBannerFeeds()
 
 const { inspectorTab: activeTab } = useBannerInspector()
 
-const tabs = [
+const tabs = computed(() => selectedLayer.value?.type === 'audio'
+  ? [{ label: 'Audio', value: 'properties' }]
+  : [
   { label: 'Properties', value: 'properties' },
   { label: 'Animation', value: 'animation' },
   { label: 'Background', value: 'background' },
   { label: 'Effects', value: 'effects' }
-]
+])
 
 // When a layer is selected, switch to properties if on background tab
 watch(selectedLayer, (layer, previous) => {
-  if (layer && (activeTab.value === 'background' || (layer.type === 'video' && layer.id !== previous?.id))) {
+  if (layer && (activeTab.value === 'background' || layer.type === 'audio' || (layer.type === 'video' && layer.id !== previous?.id))) {
     activeTab.value = 'properties'
   }
   if (!layer) {
     activeTab.value = 'background'
   }
-})
+}, { immediate: true })
 </script>
 
 <template>
@@ -54,9 +56,9 @@ watch(selectedLayer, (layer, previous) => {
       <div class="flex-1 min-h-0 overflow-y-auto p-3 space-y-3 inspector-content">
         <!-- Properties tab -->
         <template v-if="activeTab === 'properties'">
-          <BannerInspectorPosition />
+          <BannerInspectorPosition v-if="selectedLayer.type !== 'audio'" />
 
-          <BannerInspectorAlignment />
+          <BannerInspectorAlignment v-if="selectedLayer.type !== 'audio'" />
 
           <BannerInspectorText v-if="selectedLayer.type === 'text'" />
           <BannerInspectorImage v-else-if="selectedLayer.type === 'image'" />
@@ -66,10 +68,10 @@ watch(selectedLayer, (layer, previous) => {
           <BannerInspectorAudio v-else-if="selectedLayer.type === 'audio'" />
 
           <!-- Mask inspector -->
-          <BannerInspectorMask />
+          <BannerInspectorMask v-if="selectedLayer.type !== 'audio'" />
 
           <!-- Feed Bindings (Phase 3a) -->
-          <BannerInspectorFeedBindings v-if="feedsState.feeds.length > 0" />
+          <BannerInspectorFeedBindings v-if="selectedLayer.type !== 'audio' && feedsState.feeds.length > 0" />
         </template>
 
         <!-- Animation tab -->
@@ -80,7 +82,7 @@ watch(selectedLayer, (layer, previous) => {
           <BannerInspectorMotionPath />
         </template>
 
-        <BannerInspectorEffects v-show="activeTab === 'effects'" />
+        <BannerInspectorEffects v-if="selectedLayer.type !== 'audio'" v-show="activeTab === 'effects'" />
 
         <!-- Background tab -->
         <template v-if="activeTab === 'background'">

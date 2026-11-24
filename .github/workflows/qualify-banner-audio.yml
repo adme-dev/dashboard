@@ -1,0 +1,74 @@
+name: Qualify BannerStudio audio renderer
+on:
+  push:
+    branches: [fix/banner-audio-controls]
+    paths:
+      - workers/audio-jobs/container/**
+      - scripts/verify-render-container.mjs
+      - scripts/verify-render-full-sample.mjs
+      - .github/workflows/qualify-banner-audio.yml
+permissions:
+  contents: read
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24.18.0
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: workers/audio-jobs/container
+          platforms: linux/amd64
+          load: true
+          tags: xeroflow-render:qualified-audio
+          cache-from: type=gha,scope=render-container
+          cache-to: type=gha,mode=max,scope=render-container
+      - name: Verify actual FFmpeg output in the built image
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/ffshim"
+          for bin in ffmpeg ffprobe; do
+            cat > "$RUNNER_TEMP/ffshim/$bin" <<SHIM
+          #!/usr/bin/env bash
+          exec docker run --rm -i --user "\$(id -u):\$(id -g)" -v /tmp:/tmp -v "$GITHUB_WORKSPACE:$GITHUB_WORKSPACE" -w "\$PWD" --entrypoint $bin xeroflow-render:qualified-audio "\$@"
+          SHIM
+            chmod +x "$RUNNER_TEMP/ffshim/$bin"
+          done
+          PATH="$RUNNER_TEMP/ffshim:$PATH" TMPDIR=/tmp pnpm exec vitest run --maxWorkers=2 test/video/storyboardMediaDecode.test.ts test/audio/renderAudioSpansTimeline.test.ts test/banner/audioRender.test.ts test/banner/audioEditing.test.ts | tee real-media.log
+      - name: Verify packaged HTTP service and graceful shutdown
+        run: |
+          set -euo pipefail
+          for signal in SIGTERM SIGINT; do
+            docker run --rm --platform linux/amd64 --network none --entrypoint node -e VERIFY_DRAIN_SIGNAL="$signal" -v "$PWD/scripts/verify-render-container.mjs:/verification.mjs:ro" xeroflow-render:qualified-audio /verification.mjs | tee "packaged-$signal.log"
+          done
+      - name: Verify full HD forty-second composite and picture timing
+        run: |
+          set -euo pipefail
+          docker run --rm --platform linux/amd64 --network none --cpus 4 --memory 12g --entrypoint node -v "$PWD/scripts/verify-render-full-sample.mjs:/verification.mjs:ro" xeroflow-render:qualified-audio /verification.mjs | tee full-sample.json
+      - name: Preserve the exact tested image and provenance
+        run: |
+          mkdir evidence
+          docker save xeroflow-render:qualified-audio | gzip -1 > evidence/render-image.tar.gz
+          cp real-media.log packaged-*.log full-sample.json evidence/
+          node --input-type=module <<'JS'
+          import { writeFileSync, readFileSync } from 'node:fs'
+          import { execFileSync } from 'node:child_process'
+          import { createHash } from 'node:crypto'
+          import { renderContextHash } from './scripts/check-render-image.mjs'
+          const imageId = execFileSync('docker',['image','inspect','xeroflow-render:qualified-audio','--format','{{.Id}}'],{encoding:'utf8'}).trim()
+          const receipt = { sourceCommit:process.env.GITHUB_SHA, runId:process.env.GITHUB_RUN_ID, imageId, contextSha256:renderContextHash('workers/audio-jobs/container'), archiveSha256:createHash('sha256').update(readFileSync('evidence/render-image.tar.gz')).digest('hex'), qualifiedAt:new Date().toISOString() }
+          writeFileSync('evidence/provenance.json',JSON.stringify(receipt,null,2)+'\n')
+          JS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qualified-banner-audio-renderer
+          path: evidence/
+          compression-level: 0
+          retention-days: 3

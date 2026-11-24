@@ -2,7 +2,7 @@
 export function withBannerPreviewAudio(html: string): string {
   return html.replace('</body>', `<script>
 (function() {
-  var tracks = Array.from(document.querySelectorAll('audio')).filter(function(audio) { return audio.volume > 0; });
+  var tracks = Array.from(document.querySelectorAll('audio')).filter(function(audio) { return audio.volume > 0 || audio.dataset.bannerAudible === 'true'; });
   if (!tracks.length) return;
   var failed = new WeakSet();
   function report(status) {

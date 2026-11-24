@@ -75,8 +75,9 @@ try {
   const copyHtml = '<html><body style="margin:0;background:white"><div data-storyboard-copy-id="copy1" style="position:absolute;left:5px;top:5px;color:black;background:white;font:16px Arial">Test</div></body></html>'
   const copy = { html: copyHtml, width: 128, height: 64, fps: 2, durationSec: 0.5, required: [{ clipId: 'copy1', text: 'Test', startSec: 0, durationSec: 0.5 }] }
   const measured = await post('/measure-copy', copy)
-  assert.equal(measured.status, 200, logs)
-  assert.deepEqual((await measured.json()).findings, [])
+  const measuredBody = await measured.text()
+  assert.equal(measured.status, 200, measuredBody + '\n' + logs)
+  assert.deepEqual(JSON.parse(measuredBody).findings, [])
   const mismatch = await post('/measure-copy', { ...copy, required: [{ ...copy.required[0], text: 'Wrong' }] })
   assert.equal(mismatch.status, 200)
   assert.ok((await mismatch.json()).findings.some(f => f.code === 'COPY_TEXT_MISMATCH'))
@@ -184,6 +185,25 @@ try {
   const first = frame(0), last = frame(0.4)
   assert.ok(first[0] > first[2] + 100, 'first frame is red')
   assert.ok(last[2] > last[0] + 100, 'last frame is blue: frame seeking works')
+  // Verify the packaged /render-banner path consumes the new trim/fade contract.
+  const editedSourcePath = join(dir, 'edited-source.wav')
+  ffmpeg(['-f', 'lavfi', '-i', 'aevalsrc=if(between(t\\,1\\,2)\\,0.5*sin(2*PI*440*t)\\,0):s=48000:d=3', editedSourcePath])
+  const editedSource = 'data:audio/wav;base64,' + readFileSync(editedSourcePath).toString('base64')
+  const soundtrack = { version: 2, tracks: [{ src: editedSource, start: 0, end: 3, volume: 0.25, loop: true, mediaStart: 1, mediaEnd: 2, audioFadeIn: 0.5, audioFadeOut: 0.5 }] }
+  const editedHtml = `<body style="margin:0;background:green"><audio src="${editedSource}"></audio><script type="application/json" id="banner-audio">${JSON.stringify(soundtrack)}</script><script>window.__engagrFrame={ready:true,duration:3,seek(){}}</script></body>`
+  const edited = await output(await post('/render-banner', { html: editedHtml, width: 64, height: 64, fps: 12, crf: 23, quality: 1 }), 'edited-audio.mp4', 'video/mp4')
+  const pcm = ffmpeg(['-i', edited.path, '-vn', '-ac', '1', '-ar', '48000', '-f', 'f32le', 'pipe:1'])
+  const rms = (start, end) => {
+    let sum = 0
+    const first = Math.round(start * 48000), last = Math.round(end * 48000)
+    for (let i = first; i < last; i++) sum += pcm.readFloatLE(i * 4) ** 2
+    return Math.sqrt(sum / (last - first))
+  }
+  const level = rms(1.2, 1.4)
+  assert.ok(level > 0.07 && level < 0.11, 'quarter-volume tone is encoded')
+  assert.ok(rms(2.1, 2.3) > 0.07, 'only the selected tone repeats, excluding source silence')
+  assert.ok(rms(0.02, 0.08) / level < 0.2, 'audio fades in')
+  assert.ok(rms(2.92, 2.98) / level < 0.2, 'audio fades out')
   // Rejection must leave the service usable for the next job.
   assert.equal((await post('/render', tone)).status, 400)
   assert.equal((await post('/measure-copy', { html: '<script>alert(1)</script>' })).status, 422)

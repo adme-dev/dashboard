@@ -181,11 +181,11 @@ function onSidebarResizeKey(event: KeyboardEvent) {
 onBeforeUnmount(stopSidebarResize)
 const leftTabItems = [
   { id: 'elements' as const, label: 'Insert', icon: 'i-lucide-circle-plus' },
+  { id: 'brand' as const, label: 'Brand kit', icon: 'i-lucide-palette' },
   { id: 'sets' as const, label: 'Sets', icon: 'i-lucide-layers' },
   { id: 'templates' as const, label: 'Templates', icon: 'i-lucide-layout-template' },
   { id: 'assets' as const, label: 'Assets', icon: 'i-lucide-image' },
   { id: 'feeds' as const, label: 'Feeds', icon: 'i-lucide-database' },
-  { id: 'brand' as const, label: 'Brand', icon: 'i-lucide-palette' },
   { id: 'slides' as const, label: 'Slides', icon: 'i-lucide-gallery-horizontal-end' },
   { id: 'history' as const, label: 'History', icon: 'i-lucide-history' },
 ]

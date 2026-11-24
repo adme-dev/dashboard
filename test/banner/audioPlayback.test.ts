@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import gsap from 'gsap'
+import { reactive } from 'vue'
 import { useBannerTimeline } from '~/composables/useBannerTimeline'
 import { registerTimelineAudio, syncTimelineAudio, pauseTimelineAudio, disposeTimelineAudio } from '~/utils/bannerTimelineAudio'
 import type { Layer } from '~/types/banner-studio'
@@ -221,4 +222,29 @@ describe('audio clock', () => {
     expect(audio.paused).toBe(true)
     expect(audio.currentTime).toBe(2)
   })
+})
+
+it('changes live volume while playing and follows Undo replacements without rebuilding or rewinding', () => {
+  const state = reactive({ activeKey: 'square', sets: { square: { layers: [{ ...layer }], playback: { duration: 8, loopCount: 0 } } }, duration: 8, currentTime: 0, isPlaying: false, isLooping: false })
+  vi.stubGlobal('useBannerStudio', () => ({ state, activeLayers: { value: state.sets.square.layers } }))
+  const controller = useBannerTimeline()
+  const { root, audio } = board()
+  const timeline = controller.buildTimeline(root, state.sets.square.layers)
+  cleanup = controller.destroyTimeline
+  timeline.time(2, false)
+  controller.playTimeline()
+  state.sets.square.layers[0]!.volume = 0.25
+  syncTimelineAudio(timeline)
+  expect(audio.volume).toBe(0.25)
+  expect(timeline.time()).toBe(2)
+  expect(audio.paused).toBe(false)
+  state.sets.square.layers = [{ ...layer, volume: 0 }]
+  syncTimelineAudio(timeline)
+  expect(audio.volume).toBe(0)
+  state.sets.square.layers = [{ ...layer, volume: 0.6 }]
+  syncTimelineAudio(timeline)
+  expect(audio.volume).toBe(0.6)
+  state.sets.square.layers[0]!.muted = true
+  syncTimelineAudio(timeline)
+  expect(audio.volume).toBe(0)
 })
