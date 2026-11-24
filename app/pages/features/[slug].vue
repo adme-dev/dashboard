@@ -2842,7 +2842,7 @@ const features: Record<string, Feature> = {
     categoryIcon: 'i-lucide-palette',
     categoryIconBg: 'bg-rose-50',
     categoryIconColor: 'text-rose-600',
-    description: 'AI text-to-image generation, layer editing & decomposition, copy suggestions, URL-to-banner, auto-resize, and image recommendations — built into the editor.',
+    description: 'AI text-to-image generation, layer editing, import of a flat JPEG or PNG as editable layers with live text, copy suggestions, URL-to-banner, auto-resize, and image recommendations — built into the editor.',
     details: [
       {
         title: 'AI Text-to-Image Generation',
@@ -2853,8 +2853,8 @@ const features: Record<string, Feature> = {
         content: 'Right-click any image layer and select "Edit with AI" to open a prompt-based editor. Describe the change — "make the background blue," "remove the text," "add a sunset sky" — and the AI generates a modified version using Qwen-Image-Edit. Preview before and after side by side, adjust guidance scale and inference steps, lock a seed for reproducibility, then apply or try again. The original layer is preserved until you confirm.'
       },
       {
-        title: 'AI Layer Decomposition',
-        content: 'Break a flat image into individual editable layers with one click. The AI identifies distinct visual elements — foreground objects, backgrounds, text, logos — and extracts each as a transparent PNG layer on the canvas. Supports prompt-guided decomposition for targeted extraction, and exports PPTX and ZIP bundles of the decomposed layers for use outside the editor.'
+        title: 'Import Image as Layers',
+        content: 'Turn a flat JPEG or PNG into an editable banner. Choose Import as layers on any picture in the media library, or right-click an image layer on the canvas. The cost estimate is shown before you start and the run continues while you keep working. The background and each element are placed where they sat in the picture, scaled to the canvas, in the same stacking order and inside one named group, so every piece can be moved, resized, hidden or deleted. Lettering is rebuilt as live text in the closest brand or library font, size and colour, with the original lettering kept hidden underneath for comparison. Redrawn logos are flagged with a prompt to replace them with the real file from the client\'s brand assets. Anything that could not be separated is listed, and one undo removes the whole import.'
       },
       {
         title: 'Merge Layers',
