@@ -14,5 +14,5 @@ it('requires a current folder and uses a bound identifier', async () => {
   await expect(resolveBannerFolderId(id)).rejects.toMatchObject({ statusCode: 400 })
   vi.mocked(queryOneFresh).mockResolvedValueOnce({ id })
   expect(await resolveBannerFolderId(id)).toBe(id)
-  expect(queryOneFresh).toHaveBeenLastCalledWith('SELECT id FROM banner_folders WHERE id = $1', [id])
+  expect(queryOneFresh).toHaveBeenLastCalledWith('SELECT id FROM banner_folders WHERE id = $1 AND binned_at IS NULL', [id])
 })

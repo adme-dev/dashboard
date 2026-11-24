@@ -22,7 +22,7 @@ export default defineEventHandler(async (event) => {
 
   const row = await queryOneFresh<{ id: string, folderId: string | null }>(`
     UPDATE banner_projects SET folder_id = $2::uuid, updated_at = NOW()
-    WHERE id = $1 AND client_id IS NOT DISTINCT FROM $3::uuid
+    WHERE id = $1 AND binned_at IS NULL AND client_id IS NOT DISTINCT FROM $3::uuid
       AND created_by IS NOT DISTINCT FROM $4::uuid AND review_status::text IS NOT DISTINCT FROM $5::text
       AND ${ACTIVE_PROJECT_CLIENT_SQL}
     RETURNING id, folder_id AS "folderId"

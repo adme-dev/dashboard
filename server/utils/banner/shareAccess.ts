@@ -9,7 +9,7 @@ export async function requireBannerShareAccess(event: H3Event, user: User, proje
     throw createError({ statusCode: 400, statusMessage: 'Invalid project ID' })
   }
   const project = await queryOneFresh<{ client_id: string | null, created_by: string | null, tags: string[] | null }>(
-    'SELECT client_id, created_by, tags FROM banner_projects WHERE id = $1', [projectId])
+    'SELECT client_id, created_by, tags FROM banner_projects WHERE id = $1 AND binned_at IS NULL', [projectId])
   if (!project) throw createError({ statusCode: 404, statusMessage: 'Project not found' })
   if (isMarketingPortfolioUser(user)) await requireMarketingBannerProjectAccess(event, user, project)
   else if (project.client_id) await requireBannerClientAccess(event, project.client_id)

@@ -30,7 +30,7 @@ export default defineEventHandler(async (event) => {
         p.updated_at AS "updatedAt"
       FROM banner_projects p
       LEFT JOIN agency_clients c ON p.client_id = c.id
-      WHERE p.id = $1
+      WHERE p.id = $1 AND p.binned_at IS NULL
     `, previewFormat === undefined ? [id] : [id, previewFormat])
 
     if (!row) {

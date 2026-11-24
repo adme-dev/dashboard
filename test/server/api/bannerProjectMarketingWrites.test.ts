@@ -28,7 +28,11 @@ function query(sql: string, params: any[] = []) {
     m.project = null
     return null
   }
-  if (sql.includes('FROM banner_projects WHERE id = $1')) return p && params[0] === p.id ? { ...p } : null
+  if (sql.includes('UPDATE banner_projects SET binned_at') && p) {
+    p.binned_at = sql.includes('coalesce') ? (p.binned_at ?? new Date()) : null
+    return p
+  }
+  if (/FROM banner_projects(?: p)? WHERE id = \$1/.test(sql)) return p && params[0] === p.id ? { ...p } : null
   if (sql.includes('UPDATE banner_projects')) {
     if (!p || params.at(-1) !== p.id) return null
     // Marketing guard predicates: bound to the checked client/review state and an active client.
@@ -65,6 +69,7 @@ vi.mock('~~/server/utils/banner/godModeProjectCreation', () => ({
 }))
 vi.mock('~~/server/utils/clientScoping', () => ({ hasFreshMarketingManagementPermission: vi.fn(async () => m.freshMarketing) }))
 vi.mock('~~/server/utils/social/clientAccess', () => ({
+  isSocialClientId: (id: string) => [ACTIVE, INACTIVE, OTHER_ACTIVE].includes(id),
   hasAllSocialClientAccess: (user: any) => ['ADMIN', 'MANAGEMENT'].some(group => user.permissionGroups?.includes(group)),
   requireSocialClientAccess: vi.fn(async (_event: unknown, clientId: string) => {
     if (!clientId) throw Object.assign(new Error('clientId required'), { statusCode: 400 })
@@ -206,8 +211,8 @@ describe('browser Banner Studio duplicate for the marketing-management portfolio
 
 describe('browser Banner Studio delete for the marketing-management portfolio', () => {
   it('deletes an active-client draft under a lock bound to the checked state', async () => {
-    expect(await call(remove)).toEqual({ success: true, message: 'Project deleted' })
-    expect(m.project).toBeNull()
+    expect(await call(remove)).toEqual({ success: true, message: 'Design moved to recycling bin' })
+    expect(m.project).toMatchObject({ binned_at: expect.any(Date), client_id: ACTIVE })
   })
 
   it('refuses inactive or inaccessible projects and protected artwork without deleting', async () => {
@@ -232,7 +237,7 @@ describe('browser Banner Studio delete for the marketing-management portfolio', 
     expect(m.project).not.toBeNull()
   })
 
-  it('keeps legacy deletion for non-marketing staff', async () => {
+  it('bins a design for non-marketing staff with client access', async () => {
     m.user = { id: STAFF, role: 'staff', permissionGroups: ['CREATIVE'] }
     m.project!.review_status = 'approved'
     expect(await call(remove)).toMatchObject({ success: true })

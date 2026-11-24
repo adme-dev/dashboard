@@ -18,10 +18,11 @@ export default defineEventHandler(async (event) => {
   try {
     let sql = `
       SELECT
-        p.id, p.name, p.folder_id AS "folderId",
+        p.id, p.name, CASE WHEN f.binned_at IS NULL THEN p.folder_id ELSE NULL END AS "folderId",
         p.client_id AS "clientId",
+        p.binned_at + interval '30 days' AS "expiresAt",
         c.name AS "clientName",
-        ${query.view === 'gallery'
+        ${(query.view === 'gallery' || query.view === 'bin')
           ? 'ARRAY(SELECT jsonb_object_keys(p.canvas_data)) AS "formats",'
           : query.view === 'library'
             ? `
@@ -39,7 +40,10 @@ export default defineEventHandler(async (event) => {
         p.updated_at AS "updatedAt"
       FROM banner_projects p
       LEFT JOIN agency_clients c ON p.client_id = c.id
-      WHERE 1=1
+      LEFT JOIN banner_folders f ON f.id = p.folder_id
+      WHERE ${query.view === 'bin'
+        ? 'p.binned_at > now() - interval \'30 days\''
+        : 'p.binned_at IS NULL'}
     `
 
     const params: any[] = []

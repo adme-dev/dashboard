@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useBannerCanvasGroup } from '~/composables/useBannerCanvasGroup'
 import SlideGroup from './SlideGroup.client.vue'
 import { bannerSlideGroups } from '~~/shared/bannerSlideFade'
 import { createBannerVideoTransport } from '~/utils/bannerVideoPlayback'
@@ -17,7 +18,7 @@ const props = withDefaults(defineProps<{
   followPlayhead?: boolean
 }>(), { followPlayhead: true })
 
-const { state, selectLayer, updatePathPoint, addPathPoint, getMotionPathTweens } = useBannerStudio()
+const { state, selectLayer, selectGroup, selectedGroup, updatePathPoint, addPathPoint, getMotionPathTweens } = useBannerStudio()
 const { openEffects } = useBannerInspector()
 const effectMenu = ref<{ id: number, x: number, y: number } | null>(null)
 const effectMenuItems = computed(() => [[{ label: 'Effects and AI artwork', icon: 'i-lucide-sparkles', onSelect: () => {
@@ -32,6 +33,7 @@ function onLayerContextMenu(event: MouseEvent, layer: Layer) {
 }
 const { remoteLocks } = useBannerRealtime()
 const artboardEl = ref<HTMLElement | null>(null)
+const { bounds: groupBounds, preview: groupPreview, start: startGroupDrag } = useBannerCanvasGroup(artboardEl, () => props.isActive)
 const { dragState, guides, onLayerMouseDown, onResizeHandleMouseDown } = useBannerDrag(artboardEl)
 const { onRotatePointerDown, onRotateKeyDown } = useBannerRotation()
 
@@ -95,7 +97,8 @@ function onLayerClick(e: MouseEvent, layer: Layer) {
   if (!props.isActive) return
   if (layer.locked || layer.type === 'bg') return
   e.stopPropagation()
-  selectLayer(layer.id)
+  if (layer.timelineGroup) selectGroup(layer.timelineGroup.id)
+  else selectLayer(layer.id)
 }
 
 function onBackgroundClick(e: MouseEvent) {
@@ -491,6 +494,8 @@ defineExpose({ artboardEl })
           :data-slide-transition="layer.slideTransitionFor || undefined"
           class="absolute"
           :style="{
+            touchAction: layer.timelineGroup ? 'none' : undefined,
+            translate: groupPreview && layer.timelineGroup?.id === groupPreview.id ? `${groupPreview.dx}px ${groupPreview.dy}px` : undefined,
             left: `${layer.x}px`,
             top: `${layer.y}px`,
             width: layer.type === 'audio' ? '0px' : (layer.type === 'bg' ? '100%' : `${layer.w}px`),
@@ -510,7 +515,8 @@ defineExpose({ artboardEl })
           }"
           @click="onLayerClick($event, layer)"
           @contextmenu="onLayerContextMenu($event, layer)"
-          @mousedown="$event.button === 0 && isActive && !layer.locked && layer.type !== 'bg' ? onLayerMouseDown($event, layer.id) : undefined"
+          @pointerdown="layer.timelineGroup && startGroupDrag($event, layer.timelineGroup.id)"
+          @mousedown="!layer.timelineGroup && $event.button === 0 && isActive && !layer.locked && layer.type !== 'bg' ? onLayerMouseDown($event, layer.id) : undefined"
         >
           <!-- Content flips independently of animated position/rotation/scale. -->
           <div v-if="layer.textTilt" data-banner-tilt :style="{ width: `${layer.textTilt.width}px`, height: `${layer.textTilt.height}px`, transformOrigin: `${layer.textTilt.width / 2}px calc(var(--xf-origin-y, ${layer.textTilt.height}) * 1px)` }">
@@ -567,6 +573,16 @@ defineExpose({ artboardEl })
         </UDropdownMenu>
       </Teleport>
     </div>
+    <div
+      v-if="isActive && selectedGroup && groupBounds && !state.isPlaying"
+      data-testid="banner-group-selection"
+      class="absolute z-[99999] cursor-move touch-none border border-[#4a8fe8]"
+      :aria-label="`Move ${selectedGroup.name}`"
+      :style="{ left: groupBounds.left + 'px', top: groupBounds.top + 'px', width: groupBounds.width + 'px', height: groupBounds.height + 'px' }"
+      @click.stop
+      @mousedown.stop
+      @pointerdown="startGroupDrag($event, selectedGroup.id)"
+    />
     <!-- Selection belongs to the editor, outside layer stacking and clip paths. -->
     <div
       v-if="isActive && !state.isPlaying && selectedLayerObj && !selectedLayerObj.hidden && !selectedLayerObj.locked && !['bg', 'audio'].includes(selectedLayerObj.type)"

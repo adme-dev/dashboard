@@ -31,7 +31,7 @@ export default defineEventHandler(async (event) => {
     // Marketing-management portfolio: same active client only, re-checked atomically by the INSERT.
     // A copy is new work, not an import: provenance identity stays with the original artwork.
       const source = await queryOneFresh<MarketingBannerProject & { name: string, canvas_data: unknown, folder_id?: string | null }>(
-        'SELECT name, client_id, canvas_data, tags, created_by, folder_id FROM banner_projects WHERE id = $1',
+        'SELECT name, client_id, canvas_data, tags, created_by, (SELECT id FROM banner_folders f WHERE f.id = p.folder_id AND f.binned_at IS NULL) AS folder_id FROM banner_projects p WHERE id = $1 AND binned_at IS NULL',
         [id]
       )
       if (!source) throw createError({ statusCode: 404, statusMessage: 'Project not found' })
@@ -58,8 +58,8 @@ export default defineEventHandler(async (event) => {
 
     try {
       const source = await queryOne(`
-      SELECT name, client_id, canvas_data, tags, folder_id
-      FROM banner_projects WHERE id = $1
+      SELECT name, client_id, canvas_data, tags, (SELECT id FROM banner_folders f WHERE f.id = p.folder_id AND f.binned_at IS NULL) AS folder_id
+      FROM banner_projects p WHERE id = $1 AND binned_at IS NULL
     `, [id])
 
       if (!source) {

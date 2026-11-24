@@ -31,7 +31,7 @@ export async function authorizedBannerSnapshot(event: H3Event, write = false) {
   if (!id || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) throw createError({ statusCode: 400, statusMessage: 'Invalid project ID' })
   const project = await queryOneFresh<{ id: string, name: string, canvasData: unknown, clientId: string | null, clientName: string | null, createdBy: string }>(
     `SELECT p.id, p.name, p.canvas_data AS "canvasData", p.client_id AS "clientId", c.name AS "clientName", p.created_by AS "createdBy"
-     FROM banner_projects p LEFT JOIN agency_clients c ON c.id = p.client_id WHERE p.id = $1`, [id])
+     FROM banner_projects p LEFT JOIN agency_clients c ON c.id = p.client_id WHERE p.id = $1 AND p.binned_at IS NULL`, [id])
   if (!project) throw createError({ statusCode: 404, statusMessage: 'Project not found' })
   if (project.clientId) await requireBannerClientAccess(event, project.clientId)
   else if (project.createdBy !== user.id && !await hasAllBannerClientAccess(user)) throw createError({ statusCode: 403, statusMessage: 'No access to this project' })

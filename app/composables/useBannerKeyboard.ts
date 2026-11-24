@@ -1,3 +1,4 @@
+import { useBannerTimelineGroups } from './useBannerTimelineGroups'
 import { onKeyDown } from '@vueuse/core'
 
 export function useBannerKeyboard(opts: {
@@ -181,6 +182,15 @@ export function useBannerKeyboard(opts: {
       if (target.closest('button, [role=button], [role=dialog]')) return
       e.preventDefault()
       if (!e.repeat) togglePlay()
+      return
+    }
+
+    if (state.selectedGroupId && state.selectedLayerId == null && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+      e.preventDefault()
+      const step = e.shiftKey ? 10 : 1
+      const dx = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0
+      const dy = e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0
+      useBannerTimelineGroups().translateGroup(state.selectedGroupId, dx, dy)
       return
     }
 

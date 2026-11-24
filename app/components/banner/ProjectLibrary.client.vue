@@ -25,6 +25,10 @@ const browseTab = computed<'clients' | 'folders' | 'tags'>({
 const clientSearch = ref('')
 const tagSearch = ref('')
 const folderEditor = ref<{ action: 'add' | 'rename' | 'move', folder?: BannerFolder } | null>(null)
+const trashTarget = ref<BannerFolder | null>(null)
+const trashBusy = ref(false)
+const trashError = ref('')
+const showBin = ref(false)
 const canManageFolders = ref(false)
 const pinnedIds = ref<string[]>([])
 const pinBusy = ref(false)
@@ -185,6 +189,25 @@ async function setPinned(folder: BannerFolder, pinned: boolean) {
   }
 }
 
+const trashSubfolders = computed(() => folderData.value.filter(folder => folder.id !== trashTarget.value?.id
+  && bannerFolderPath(folderData.value, folder.id).some(part => part.id === trashTarget.value?.id)).length)
+
+async function trashFolder() {
+  if (!trashTarget.value || trashBusy.value) return
+  trashBusy.value = true
+  trashError.value = ''
+  try {
+    const id = trashTarget.value.id
+    await apiFetch(`/api/agency/banner-studio/folders/${id}`, { method: 'PATCH', body: { binned: true } })
+    if (selectedFolderPath.value.some(f => f.id === id)) await router.replace(folderLink('all'))
+    trashTarget.value = null
+    await refresh()
+    toast.add({ title: 'Folder moved to recycling bin', color: 'success' })
+  } catch (cause) {
+    trashError.value = apiErrorDescription(cause, 'Could not move folder to recycling bin')
+  } finally { trashBusy.value = false }
+}
+
 function folderMenu(folder: BannerFolder) {
   const pinned = pinnedIds.value.includes(folder.id)
   return [
@@ -193,7 +216,11 @@ function folderMenu(folder: BannerFolder) {
       { label: 'Rename', icon: 'i-lucide-pencil', onSelect: () => { folderEditor.value = { action: 'rename', folder } } },
       { label: 'Move folder', icon: 'i-lucide-folder-input', onSelect: () => { folderEditor.value = { action: 'move', folder } } }
     ] : []),
-    { label: pinned ? 'Unpin folder' : 'Pin folder', icon: pinned ? 'i-lucide-pin-off' : 'i-lucide-pin', disabled: pinBusy.value, onSelect: () => setPinned(folder, !pinned) }
+    { label: pinned ? 'Unpin folder' : 'Pin folder', icon: pinned ? 'i-lucide-pin-off' : 'i-lucide-pin', disabled: pinBusy.value, onSelect: () => setPinned(folder, !pinned) },
+    ...(canManageFolders.value
+      ? [{ label: 'Delete', icon: 'i-lucide-trash-2', color: 'error' as const,
+          onSelect: () => { trashError.value = ''; trashTarget.value = folder } }]
+      : [])
   ]
 }
 
@@ -320,7 +347,7 @@ async function doDelete() {
   if (!deleteTarget.value) return
   try {
     await apiFetch(`/api/agency/banner-studio/projects/${deleteTarget.value.id}`, { method: 'DELETE' })
-    toast.add({ title: 'Deleted', description: `${deleteTarget.value.name} removed`, color: 'success' })
+    toast.add({ title: 'Design moved to recycling bin', description: deleteTarget.value.name, color: 'success' })
     showDeleteModal.value = false
     deleteTarget.value = null
     await refresh()
@@ -551,6 +578,15 @@ function clearFilters() {
               variant="subtle"
               :actions="[{ label: 'Retry', onClick: refresh }]"
               class="mb-2"
+            />
+            <UButton
+              label="Recycling bin"
+              icon="i-lucide-trash-2"
+              size="sm"
+              color="neutral"
+              variant="ghost"
+              class="mb-2 w-full justify-start"
+              @click="showBin = true"
             />
             <div v-if="visiblePins.length" class="mb-2 border-b border-default pb-2">
               <UButton label="Pinned folders" icon="i-lucide-pin" :trailing-icon="pinsExpanded ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'" :aria-expanded="pinsExpanded" size="sm" variant="ghost" color="neutral" @click="pinsExpanded = !pinsExpanded" />
@@ -914,16 +950,58 @@ function clearFilters() {
         </div>
       </template>
     </UModal>
+    <BannerFolderBin
+      v-if="showBin"
+      :active-folders="folderData"
+      @close="showBin = false"
+      @restored="refresh"
+    />
+    <UModal
+      :open="!!trashTarget"
+      title="Move folder to recycling bin?"
+      :description="trashTarget?.name"
+      :dismissible="!trashBusy"
+      @update:open="open => { if (!open && !trashBusy) trashTarget = null }"
+    >
+      <template #body>
+        <p class="text-sm">
+          This folder<span v-if="trashSubfolders"> and its {{ trashSubfolders }} {{ trashSubfolders === 1 ? 'subfolder' : 'subfolders' }}</span> will move to the recycling bin for 30 days. All designs stay in their current client libraries. Restoring the folder restores the filing of designs still assigned to it.
+        </p>
+        <UAlert
+          v-if="trashError"
+          :title="trashError"
+          color="error"
+          class="mt-3"
+        />
+      </template>
+      <template #footer>
+        <div class="flex w-full justify-end gap-2">
+          <UButton
+            label="Cancel"
+            color="neutral"
+            variant="ghost"
+            :disabled="trashBusy"
+            @click="trashTarget = null"
+          />
+          <UButton
+            label="Move to bin"
+            color="error"
+            :loading="trashBusy"
+            @click="trashFolder"
+          />
+        </div>
+      </template>
+    </UModal>
     <BannerFolderEditModal v-if="folderEditor" :action="folderEditor.action" :folder="folderEditor.folder" :folders="folderData" @close="folderEditor = null" @saved="folderSaved" />
     <!-- Delete Confirmation Modal -->
     <UModal v-model:open="showDeleteModal">
       <template #content>
         <div class="p-6">
           <h3 class="text-lg font-semibold text-[var(--ui-text-highlighted)] mb-2">
-            Delete Project
+            Delete design?
           </h3>
           <p class="text-sm text-[var(--ui-text-muted)] mb-6">
-            Are you sure you want to delete <span class="font-medium text-[var(--ui-text)]">"{{ deleteTarget?.name }}"</span>? This action cannot be undone.
+            Move <span class="font-medium text-[var(--ui-text)]">"{{ deleteTarget?.name }}"</span> to the recycling bin? You can restore this design for 30 days.
           </p>
           <div class="flex justify-end gap-2">
             <UButton
@@ -932,7 +1010,7 @@ function clearFilters() {
               color="neutral"
               @click="() => { showDeleteModal = false }"
             />
-            <UButton label="Delete" color="error" @click="doDelete" />
+            <UButton label="Move to bin" color="error" @click="doDelete" />
           </div>
         </div>
       </template>
