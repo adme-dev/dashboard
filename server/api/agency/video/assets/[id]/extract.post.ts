@@ -79,11 +79,9 @@ export default defineEventHandler(event => withGodModeLedger(event, 'assetExtrac
   // Layer tools are billed per run through AI Gateway. They stay off until an operator
   // has confirmed the gateway spend limit, the same control video generation relies on.
   if (isAssetIntelligenceActionMetered(body.action)) {
-    const env = ((event.context as any)?.cloudflare?.env ?? {}) as Record<string, unknown>
-    const policy = getAiGatewayGenerationPolicyStatus({
-      AI_GATEWAY_SPEND_LIMIT_CONFIRMED: env.AI_GATEWAY_SPEND_LIMIT_CONFIRMED ?? process.env.AI_GATEWAY_SPEND_LIMIT_CONFIRMED,
-      AI_GATEWAY_GENERATION_MONTHLY_LIMIT_USD: env.AI_GATEWAY_GENERATION_MONTHLY_LIMIT_USD ?? process.env.AI_GATEWAY_GENERATION_MONTHLY_LIMIT_USD,
-    })
+    // Read from the deployed environment only, as video generation does.
+    const env = ((event.context as { cloudflare?: { env?: Record<string, unknown> } } | undefined)?.cloudflare?.env ?? {})
+    const policy = getAiGatewayGenerationPolicyStatus(env)
     if (!policy.spendLimitConfirmed) {
       throw createError({ statusCode: 409, statusMessage: `${action.label} is switched off until the AI Gateway spend limit is confirmed.` })
     }

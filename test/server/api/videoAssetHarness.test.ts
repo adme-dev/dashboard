@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 interface TestEvent { params?: Record<string, string>; body?: any; query?: Record<string, any> }
 const g = globalThis as any
@@ -368,14 +368,8 @@ describe('video asset harness API', () => {
   })
 
   describe('layer tools billed through AI Gateway', () => {
-    const confirmSpendLimit = () => {
-      process.env.AI_GATEWAY_SPEND_LIMIT_CONFIRMED = 'true'
-      process.env.AI_GATEWAY_GENERATION_MONTHLY_LIMIT_USD = '250'
-    }
-    afterEach(() => {
-      delete process.env.AI_GATEWAY_SPEND_LIMIT_CONFIRMED
-      delete process.env.AI_GATEWAY_GENERATION_MONTHLY_LIMIT_USD
-    })
+    // The deployed environment, as the route sees it on Cloudflare.
+    const confirmed = { cloudflare: { env: { AI_GATEWAY_SPEND_LIMIT_CONFIRMED: 'true', AI_GATEWAY_GENERATION_MONTHLY_LIMIT_USD: '250' } } }
 
     it.each([
       ['layer-decomposition', 'Separate layers is switched off until the AI Gateway spend limit is confirmed.'],
@@ -395,10 +389,10 @@ describe('video asset harness API', () => {
     })
 
     it('treats a confirmed flag with no dollar limit as unconfirmed', async () => {
-      process.env.AI_GATEWAY_SPEND_LIMIT_CONFIRMED = 'true'
       mockGetAssetIntelligenceQueue.mockReturnValue({ send: vi.fn() })
 
       await expect(extractHandler({
+        context: { cloudflare: { env: { AI_GATEWAY_SPEND_LIMIT_CONFIRMED: 'true' } } },
         params: { id: '22222222-2222-4222-8222-222222222222' },
         body: { projectId: '11111111-1111-4111-8111-111111111111', action: 'layer-decomposition' },
       } as any)).rejects.toMatchObject({ statusCode: 409 })
@@ -410,11 +404,11 @@ describe('video asset harness API', () => {
       ['background-removal', null],
       ['mask-lift', 'mask.png'],
     ])('queues %s on Seedream once the spend limit is confirmed', async (action, brushMaskKey) => {
-      confirmSpendLimit()
       mockGetAssetIntelligenceQueue.mockReturnValue({ send: vi.fn() })
       mockCreateQueuedExtractionJob.mockResolvedValue({ id: 'job-queued', status: 'queued', action })
 
       const res = await extractHandler({
+        context: confirmed,
         params: { id: '22222222-2222-4222-8222-222222222222' },
         body: { projectId: '11111111-1111-4111-8111-111111111111', action, brushMaskKey },
       } as any)
@@ -433,10 +427,10 @@ describe('video asset harness API', () => {
     })
 
     it('refuses Lift without a painted area instead of queuing a job that cannot work', async () => {
-      confirmSpendLimit()
       mockGetAssetIntelligenceQueue.mockReturnValue({ send: vi.fn() })
 
       await expect(extractHandler({
+        context: confirmed,
         params: { id: '22222222-2222-4222-8222-222222222222' },
         body: { projectId: '11111111-1111-4111-8111-111111111111', action: 'mask-lift', prompt: 'lift the badge' },
       } as any)).rejects.toMatchObject({ statusCode: 400, statusMessage: 'Paint over what to lift first.' })
