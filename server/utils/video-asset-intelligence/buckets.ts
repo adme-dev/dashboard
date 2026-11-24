@@ -1,4 +1,5 @@
 import type { AssetDerivativeKind, AssetIntelligenceActionId } from './registry'
+import { assetIntelligenceFailureMessage } from '~~/shared/video/assetIntelligenceFailureMessage'
 
 export type VideoBucketKind =
   | 'footage'
@@ -186,7 +187,8 @@ export function mapIntelligenceJobRow(row: any): VideoAssetIntelligenceJob {
     prompt: row.prompt ?? null,
     brushMaskKey: row.brush_mask_key ?? null,
     outputDerivativeIds: stringArray(row.output_derivative_ids),
-    errorMessage: row.error_message ?? null,
+    // Provider codes such as Workers AI's 3030 are shown as a sentence the editor can act on.
+    errorMessage: assetIntelligenceFailureMessage(row.error_message ?? null),
     createdBy: row.created_by,
     createdAt: row.created_at,
     updatedAt: row.updated_at,

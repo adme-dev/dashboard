@@ -422,6 +422,7 @@ export function seedreamImageUrl(raw: unknown): string | null {
 function modelErrorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error || 'request failed')
   if (message.includes('7003')) return 'the image service rejected the request'
+  if (/(^|\D)3030(\D|$)/.test(message) || /been flagged/i.test(message)) return 'the AI safety filter blocked it'
   return message.slice(0, 200)
 }
 

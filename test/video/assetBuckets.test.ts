@@ -50,6 +50,18 @@ describe('video asset buckets', () => {
     })).toMatchObject({ id: 'j1', action: 'mask-lift', outputDerivativeIds: ['d1'] })
   })
 
+  it('shows a safety filter block as a sentence, including on jobs stored with the provider code', () => {
+    const row = {
+      id: 'j2', project_id: 'p1', source_asset_id: 'a1', bucket_item_id: null, action: 'erase-fill',
+      model_id: 'workers-ai/flux-edit', provider: 'workers-ai', status: 'failed', prompt: null,
+      brush_mask_key: 'mask.png', output_derivative_ids: [], created_by: 'u1', created_at: 'now', updated_at: 'now'
+    }
+    expect(mapIntelligenceJobRow({ ...row, error_message: '3030: Your output has been flagged. Please choose another prompt / input image combination' }).errorMessage)
+      .toBe('The AI safety filter blocked this edit. Try a different area or instruction.')
+    expect(mapIntelligenceJobRow({ ...row, error_message: 'The picture could not be read.' }).errorMessage).toBe('The picture could not be read.')
+    expect(mapIntelligenceJobRow({ ...row, status: 'succeeded', error_message: null }).errorMessage).toBeNull()
+  })
+
   it('builds a reviewable assembly plan without mutating the timeline', () => {
     const plan = buildReviewableAssemblyPlan({
       projectId: 'p1',
