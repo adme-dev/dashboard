@@ -8,6 +8,10 @@ Dragging any member of a canvas group moves its members together. Layer and grou
 
 Folder creation, pins, moving, renaming, breadcrumb navigation and recovery of an old folder URL after a move were verified on the production release of [PR #1002](https://github.com/adme-dev/dashboard/pull/1002), deployment `36f75216-9cfc-4568-87b1-27c84957b70c`.
 
+Production deployment `f012d826-8a4b-4712-81a8-123f32846a5a` served main `a8e7a3920dda5fb3b7a8d0fa03ff13ce690bad18`. On a copy of FI Pro, dragging one grouped letter moved all four 40 pixels left and 24 pixels up. The group name edited in the timeline and the layer name edited in the inspector both survived reload. Deleting the test folder kept its design in the ADME client library. Restoring the folder recovered its filing, and deleting and restoring the design separately recovered the same project. A follow-up check found both test items in the live bin with separate Restore actions. [Release record](https://github.com/adme-dev/dashboard/pull/1003)
+
+The released HTML converter produced 11, 9, 11 and 11 editable layers respectively from the archived FI Pro layouts at 1000 × 1000, 800 × 300, 600 × 300 and 1200 × 644. Each converted layout had zero group memberships. This check exercised offline layer conversion. The end-to-end ZIP preparation for this archive also requires external fonts. Across the TheBrief import and editor grouping suites, 405 automated tests passed.
+
 ## 24 November 2026 — Still posters for the project gallery
 
 Each project card displays a JPEG of its saved artwork. The poster follows the

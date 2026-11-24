@@ -23,3 +23,9 @@ In the timeline, select a layer, then Shift-click or Command/Ctrl-click the othe
 Double-click or double-tap a layer or group name in the timeline to rename it. You can also select its row and edit the name in the right-hand **Properties** panel the same way. Press Enter or click away to save, or Escape to cancel. The label describes the layer in the editor and is independent of the text displayed in the artwork.
 
 Select an individual child row to edit that layer’s properties. To move layers independently on the canvas again, use **Ungroup** on the group row. Group membership belongs to the layout you are editing.
+
+## Check a group after a TheBrief import
+
+Open the imported design and select the layout you want to edit. Expand the timeline. If the logo already has a group row, drag one letter on the canvas and check that the rest follow. If the letters appear as separate rows, Shift-click the logo layers, choose **Group**, then double-click the new group name and give it a name such as **ADME logo**. Check each layout where you need the group.
+
+For the FI Pro example, the released HTML converter produced editable layers for all four archived sizes. All four layouts needed the logo letters grouped in Banner Studio. The live drag check used a copy of the project and kept the four letters’ spacing intact. [Production verification](https://github.com/adme-dev/dashboard/pull/1003)
