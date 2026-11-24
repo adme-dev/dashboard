@@ -23,6 +23,8 @@ const props = defineProps<{
   maxHeight?: number
   /** r2_key → presigned URL (from the editor's sources map) */
   sources: Record<string, string>
+  /** Banner project id → revision. A bump reloads that overlay's artwork after it is edited here. */
+  overlayRevisions?: Record<string, number>
 }>()
 const apiFetch = $fetch as <T = unknown>(request: string) => Promise<T>
 
@@ -264,7 +266,7 @@ const overlayRefs = ref<Record<string, HTMLIFrameElement | null>>({})
 const overlayHtmlKey = ref<Record<string, string>>({})
 const overlayErrors = ref<Record<string, string>>({})
 async function buildOverlayHtmlFor(clip: any) {
-  const key = JSON.stringify(clip.placement ?? null)
+  const key = JSON.stringify([clip.placement ?? null, props.overlayRevisions?.[clip.gsap_project_id] ?? 0])
   if (overlayHtml.value[clip.id] && overlayHtmlKey.value[clip.id] === key) return
   overlayHtmlKey.value = { ...overlayHtmlKey.value, [clip.id]: key }
   try {
@@ -293,7 +295,7 @@ async function buildOverlayHtmlFor(clip: any) {
   }
 }
 
-watch(overlayClips, (clips) => { for (const c of clips) void buildOverlayHtmlFor(c) }, { immediate: true, deep: true })
+watch([overlayClips, () => props.overlayRevisions], ([clips]) => { for (const c of clips) void buildOverlayHtmlFor(c) }, { immediate: true, deep: true })
 
 function syncOverlays() {
   for (const clip of overlayClips.value) {

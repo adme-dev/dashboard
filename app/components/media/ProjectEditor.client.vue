@@ -26,6 +26,10 @@ import VideoStudioSelectedAssetPanel from '~~/app/components/media/VideoStudioSe
 import VideoStudioVoiceComposer from '~~/app/components/media/VideoStudioVoiceComposer.vue'
 import VideoStudioWorkbench from '~~/app/components/media/VideoStudioWorkbench.vue'
 import VideoStudioFeatureMenu from '~~/app/components/media/VideoStudioFeatureMenu.vue'
+import VideoStudioAnimateLayersDialog from '~~/app/components/media/VideoStudioAnimateLayersDialog.vue'
+import VideoStudioLayerMotionPanel from '~~/app/components/media/VideoStudioLayerMotionPanel.vue'
+import { useLayerAnimation } from '~~/app/composables/useLayerAnimation'
+import { LAYER_MOTION_MODEL_ID, type LayerFit, type LayerMotionPresetId, type LayerPackage } from '~~/app/utils/video/layerAnimation'
 import { generationReceiptLabel } from '~~/app/utils/video/generationBudget'
 import { modelLabelFor } from '~~/app/utils/video/modelPresentation'
 import { apiErrorDescription } from '~~/app/utils/apiError'
@@ -404,6 +408,62 @@ function onHarnessAddToTimeline(p: AiAssemblyTimelinePayload) {
   editor.addVideoClipAction(p.r2Key, p.durationSec, 'uploaded_footage', p.startSec, p.assetId)
 }
 
+// ─── Animate layers (2.5D) ────────────────────────────────────────────────────
+// A Separate layers result becomes one overlay clip: a composition of the base and
+// every layer at its own position, each with keyframes. It uses the overlay lane's
+// existing preview and render path.
+const layerAnimation = useLayerAnimation()
+const animateLayersOpen = ref(false)
+const animateLayersPackage = ref<LayerPackage | null>(null)
+const timelineFrame = computed(() => ({ width: editor.timeline.value?.width ?? 1080, height: editor.timeline.value?.height ?? 1920 }))
+/** Banner project id → bump. Tells the preview to reload a composition after it is saved. */
+const overlayRevisions = ref<Record<string, number>>({})
+
+function onAnimateLayers(pkg: LayerPackage) {
+  animateLayersPackage.value = pkg
+  animateLayersOpen.value = true
+}
+
+async function animateLayers(choice: { fit: LayerFit, durationSec: number, presets: Record<string, LayerMotionPresetId | 'auto'> }) {
+  const pkg = animateLayersPackage.value
+  if (!pkg || layerAnimation.busy.value) return
+  try {
+    const created = await layerAnimation.createComposition({
+      pkg,
+      frame: timelineFrame.value,
+      fit: choice.fit,
+      durationSec: choice.durationSec,
+      presets: choice.presets,
+      clientId: editor.project.value?.clientId ?? null,
+      name: `${projectTitle.value} · animated layers`
+    })
+    editor.addOverlayClipAction(created.projectId, created.formatKey, created.durationSec, editor.currentTime.value)
+    const placed = editor.timeline.value?.tracks.flatMap(track => track.clips).find(clip => clip.type === 'overlay' && clip.gsap_project_id === created.projectId)
+    animateLayersOpen.value = false
+    videoWorkspaceView.value = 'preview'
+    if (placed) selectTimelineClip(placed.id)
+    void refreshStudioBannerProjects()
+    toast.add({ title: 'Layers animated', description: 'They are on the overlay lane. Select the clip to change how each layer moves.', color: 'success' })
+  } catch (error) {
+    toast.add({ title: 'Could not animate the layers', description: apiErrorDescription(error, (error as Error)?.message), color: 'error' })
+  }
+}
+
+function onLayerCompositionChanged(bannerProjectId: string) {
+  overlayRevisions.value = { ...overlayRevisions.value, [bannerProjectId]: (overlayRevisions.value[bannerProjectId] ?? 0) + 1 }
+}
+
+// Generated motion on one layer goes through the normal generation path, so it is
+// only offered when this project may use that model.
+const layerMotionModel = computed(() => {
+  const model = generationModelOptions.value.find(option => option.id === LAYER_MOTION_MODEL_ID)
+  if (!model || model.costUnit !== 'second') return null
+  return { label: model.displayName, centsPerSecond: model.estimatedCostCents, durationsSeconds: [...model.durationsSeconds] }
+})
+const layerMotionUnavailableReason = computed(() => videoGenerationEnabled.value
+  ? 'Not available: this project cannot use the image-to-video model.'
+  : 'Not available: AI clip generation is switched off for this workspace.')
+
 function onHarnessAddDerivativeToTimeline(p: AssetDerivativeTimelinePayload) {
   editor.mergeSource(p.r2Key, p.streamUrl, { durationSec: p.durationSec, assetId: null, title: p.title, format: p.format })
   editor.addVideoClipAction(p.r2Key, p.durationSec, p.baseSource, editor.currentTime.value, null)
@@ -594,7 +654,9 @@ const selectedOverlayClip = computed(() => {
     return {
       clipId: clip.id,
       startSec: clip.timeline_start_sec,
-      durationSec: clip.duration_sec
+      durationSec: clip.duration_sec,
+      gsapProjectId: clip.gsap_project_id,
+      gsapFormatKey: clip.gsap_format_key ?? null
     }
   }
   return null
@@ -1657,6 +1719,7 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
               :preselect-asset-id="prepareAssetId"
               @add-to-timeline="onHarnessAddToTimeline"
               @add-derivative-to-timeline="onHarnessAddDerivativeToTimeline"
+              @animate-layers="onAnimateLayers"
             />
           </template>
           <template #library>
@@ -1714,6 +1777,7 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
               :current-time="editor.currentTime.value"
               :is-playing="editor.isPlaying.value"
               :sources="editor.sources.value"
+              :overlay-revisions="overlayRevisions"
             />
           </template>
           <template #transport>
@@ -1944,6 +2008,18 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
                   @set-caption-style="setSelectedCaptionStyle"
                   @set-timing="setSelectedTiming"
                   @set-placement="(p) => selectedClipInspector && editor.setOverlayPlacementAction(selectedClipInspector.clipId, p)"
+                />
+                <VideoStudioLayerMotionPanel
+                  v-if="selectedOverlayClip"
+                  :key="selectedOverlayClip.gsapProjectId"
+                  :video-project-id="projectId"
+                  :banner-project-id="selectedOverlayClip.gsapProjectId"
+                  :format-key="selectedOverlayClip.gsapFormatKey"
+                  :frame="timelineFrame"
+                  :motion-model="layerMotionModel"
+                  :motion-unavailable-reason="layerMotionUnavailableReason"
+                  @changed="onLayerCompositionChanged"
+                  @generated="() => { void genJobs.refresh(); void refreshVideoAssets() }"
                 />
                 <VideoStudioSelectedAssetPanel
                   v-if="!selectedStudioAsset && !selectedClipInspector"
@@ -2345,4 +2421,12 @@ const backTo = computed(() => isAv.value ? '/agency/audio/projects?mediaType=av'
       </div>
     </template>
   </UModal>
+
+  <VideoStudioAnimateLayersDialog
+    v-model:open="animateLayersOpen"
+    :pkg="animateLayersPackage"
+    :frame="timelineFrame"
+    :busy="layerAnimation.busy.value"
+    @animate="animateLayers"
+  />
 </template>
