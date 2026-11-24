@@ -74,7 +74,7 @@ const emit = defineEmits<{
   // The video shown under the mask, when the asset has no still. Null when a still is shown.
   (event: 'preview-video-ready', value: HTMLVideoElement | null): void
   (event: 'start-mask-stroke' | 'move-mask-stroke' | 'end-mask-stroke', value: PointerEvent): void
-  (event: 'add-derivative-to-timeline' | 'add-derivative-to-bucket', value: AssetDerivative): void
+  (event: 'add-derivative-to-timeline' | 'add-derivative-to-bucket' | 'animate-layers', value: AssetDerivative): void
 }>()
 
 const maskCanvas = ref<HTMLCanvasElement | null>(null)
@@ -350,7 +350,19 @@ onBeforeUnmount(() => {
                 {{ derivativeNote(derivative) }}
               </p>
               <div class="mt-2 flex flex-wrap gap-1.5">
+                <!-- A layer package is a set, not a picture: it goes to the timeline as animated layers. -->
                 <UButton
+                  v-if="derivative.kind === 'layer-package'"
+                  data-animate-layers
+                  icon="i-lucide-layers"
+                  size="xs"
+                  variant="soft"
+                  color="primary"
+                  label="Animate layers"
+                  @click="emit('animate-layers', derivative)"
+                />
+                <UButton
+                  v-else
                   icon="i-lucide-list-plus"
                   size="xs"
                   variant="soft"

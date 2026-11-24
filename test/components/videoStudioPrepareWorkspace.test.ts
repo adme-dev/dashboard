@@ -66,7 +66,8 @@ async function mount(props: Record<string, unknown>) {
       'onFrameSize': record('frame-size'),
       'onPreviewVideoReady': record('preview-video-ready'),
       'onUpdate:selectedAction': record('update:selectedAction'),
-      'onAddDerivativeToTimeline': record('add-derivative-to-timeline')
+      'onAddDerivativeToTimeline': record('add-derivative-to-timeline'),
+      'onAnimateLayers': record('animate-layers')
     })
   })
   Object.entries(stubs).forEach(([name, comp]) => app.component(name, comp))
@@ -224,6 +225,25 @@ describe('VideoStudioPrepareWorkspace', () => {
       expect(run.disabled).toBe(false)
       run.click()
       expect(events.map(event => event.name)).toContain('run')
+    } finally {
+      app.unmount()
+    }
+  })
+
+  it('sends a layer package to the timeline as animated layers, not as a single picture', async () => {
+    const pkg = { id: 'pkg-1', kind: 'layer-package', r2Key: 'video-asset-derivatives/t/p/j/layers.json', metadata: { title: '6 layers and a base' } }
+    const layer = { id: 'layer-1', kind: 'foreground-png', r2Key: 'video-asset-derivatives/t/p/j/layer-01-car.png', metadata: { title: 'car' } }
+    const { app, host, events } = await mount({ ...baseProps, selectedDerivatives: [pkg, layer] })
+    try {
+      const cards = [...host.querySelectorAll('.rounded-md.border')].filter(card => card.textContent?.includes('Keep in assets'))
+      const packageCard = cards.find(card => card.textContent?.includes('6 layers and a base'))!
+      expect(packageCard.textContent).toContain('Animate layers')
+      expect(packageCard.textContent).not.toContain('Add to timeline')
+      const layerCard = cards.find(card => card.textContent?.includes('car'))!
+      expect(layerCard.textContent).toContain('Add to timeline')
+      expect(layerCard.textContent).not.toContain('Animate layers')
+      buttonByText(host, 'Animate layers').click()
+      expect(events).toContainEqual({ name: 'animate-layers', payload: pkg })
     } finally {
       app.unmount()
     }

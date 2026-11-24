@@ -6,6 +6,7 @@ import VideoStudioPrepareAssetPanel from '~~/app/components/media/VideoStudioPre
 import VideoStudioPrepareWorkspace from '~~/app/components/media/VideoStudioPrepareWorkspace.vue'
 import { assemblyPlanToTimelinePayloads, type AiAssemblyTimelinePayload } from '~~/app/utils/video/aiAssemblyTimeline'
 import { derivativeTimelinePayload } from '~~/app/utils/video/assetDerivativeTimeline'
+import { layerPackagesFromDerivatives, type LayerPackage } from '~~/app/utils/video/layerAnimation'
 import { idempotencyKey } from '~~/app/utils/idempotencyKey'
 import { captureVideoFrame } from '~~/app/utils/video/captureVideoFrame'
 
@@ -26,6 +27,7 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{
   (event: 'add-to-timeline', payload: AiAssemblyTimelinePayload): void
   (event: 'add-derivative-to-timeline', payload: ReturnType<typeof derivativeTimelinePayload>): void
+  (event: 'animate-layers', pkg: LayerPackage): void
 }>()
 
 interface Bucket {
@@ -524,6 +526,15 @@ function addDerivativeToTimeline(derivative: AssetDerivative) {
   emit('add-derivative-to-timeline', derivativeTimelinePayload(derivative))
 }
 
+function animateLayers(derivative: AssetDerivative) {
+  const pkg = layerPackagesFromDerivatives(selectedDerivatives.value).find(candidate => candidate.id === derivative.id)
+  if (!pkg) {
+    toast.add({ title: 'These layers cannot be animated', description: 'The result has no layers with a position. Run Separate layers again.', color: 'warning' })
+    return
+  }
+  emit('animate-layers', pkg)
+}
+
 async function addDerivativeToBucket(derivative: AssetDerivative) {
   addingDerivativeId.value = derivative.id
   try {
@@ -617,6 +628,7 @@ onBeforeUnmount(() => {
     @end-mask-stroke="endMaskStroke"
     @add-derivative-to-timeline="addDerivativeToTimeline"
     @add-derivative-to-bucket="addDerivativeToBucket"
+    @animate-layers="animateLayers"
   />
   <section v-else :class="['@container', studio || embedded ? 'space-y-3' : 'rounded-lg border border-default bg-elevated']">
     <div
