@@ -1,0 +1,26 @@
+name = "xeroflow-thebrief-import"
+account_id = "a5b299b3ad15c1b5b895dc66f9357b17"
+main = "src/index.ts"
+compatibility_date = "2026-11-01"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = false
+preview_urls = false
+routes = []
+
+[[containers]]
+name = "thebrief-import"
+class_name = "TheBriefImportContainer"
+image = "registry.cloudflare.com/a5b299b3ad15c1b5b895dc66f9357b17/thebrief-import@sha256:39932f8ccd1ae869b71faf6fbeba61acfe48734cd69acde4f1412fd615ecfc6d"
+max_instances = 2
+instance_type = "standard-1"
+
+[[durable_objects.bindings]]
+name = "IMPORTER"
+class_name = "TheBriefImportContainer"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["TheBriefImportContainer"]
+
+[observability]
+enabled = true

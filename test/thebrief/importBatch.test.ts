@@ -12,6 +12,21 @@ function file(name: string, hash: string, createdDate?: string, clientName?: str
 }
 
 describe('TheBrief batch selection', () => {
+  it('explains source ZIP preparation and group selection without parsing binary JSON', async () => {
+    for (const name of ['Designs-HTML.zip', 'renamed.xeroflow.json']) {
+      const archive = new File([new Uint8Array([0x50, 0x4b, 3, 4, 0])], name)
+      await expect(readImportBatch([archive], [], [])).rejects.toThrow('select all the prepared packages together')
+    }
+  })
+
+  it('identifies the invalid file while preserving the current prepared group', async () => {
+    const first = file('First', 'a')
+    const rows = await readImportBatch([first], [], [])
+    rows[0]!.clientId = 'manual-client'
+    await expect(readImportBatch([first, new File(['broken'], 'bad.json')], rows, [])).rejects.toThrow('bad.json is not a valid prepared JSON package')
+    expect(rows[0]!.clientId).toBe('manual-client')
+  })
+
   it('retains saved results and manual client choices when more files are added', async () => {
     const first = file('First', 'a')
     const second = file('Second', 'b')

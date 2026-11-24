@@ -1,0 +1,15 @@
+**
+!scripts/
+!scripts/thebrief/
+!scripts/thebrief/*.mjs
+!scripts/thebrief/tsconfig.json
+!app/
+!app/utils/
+!app/utils/thebrief-import.ts
+!shared/
+!shared/bannerImageFilters.mjs
+!workers/
+!workers/thebrief-import/
+!workers/thebrief-import/container/
+!workers/thebrief-import/container/server.mjs
+!workers/thebrief-import/container/Dockerfile

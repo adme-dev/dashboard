@@ -68,6 +68,8 @@ export interface Layer {
   timelineGroup?: { id: string, name: string } | null
   /** Scene ownership; absent layers can span the whole sequence. */
   slideId?: string
+  /** A source scene fades as one composited group while its layers remain editable. */
+  slideFade?: { id: string, start: number, end: number, duration: number, ease: string }
   /** Generated, locked fade-through-background overlay. */
   slideTransitionFor?: string
   // Position & size

@@ -4,7 +4,8 @@ import type { DateValue } from '@internationalized/date'
 import type { BannerProject, ArtboardState, BannerFolder } from '~/types/banner-studio'
 import { bannerFolderPath } from '~/utils/banner-folders'
 import { importTags, packageFile, sameImportedCanvas } from '~/utils/thebrief-import'
-import { readImportBatch, type TheBriefImportRow } from '~/utils/thebrief-import-batch'
+import { readImportBatch, type TheBriefImportRow, type TheBriefArchiveResult } from '~/utils/thebrief-import-batch'
+import { findTheBriefDuplicate } from '~/utils/thebrief-import-duplicates'
 import { uploadTheBriefAssets } from '~/utils/thebrief-asset-uploads'
 import { beginImportAttempt, finishImportAttempt, importAttemptKey } from '~/utils/thebrief-import-attempt'
 import { prepareBannerUploadRequest } from '~/utils/bannerUpload'
@@ -27,6 +28,10 @@ let catalogLoad: Promise<void> | null = null
 let catalogGeneration = 0
 const error = ref('')
 const progress = ref('')
+const archiveCache = new WeakMap<File, TheBriefArchiveResult>()
+const archiveIssues = ref<TheBriefArchiveResult['issues']>([])
+const groupClientId = ref('__unassigned__')
+const groupFolderId = ref('__unfiled__')
 const readyViewers = ref(new Set<string>())
 const videoDrafts = ref<Record<string, string>>({})
 // Explicit, per-batch operator choice: import undated drafts and mark them for a
@@ -87,18 +92,48 @@ async function readPackages() {
     await catalogLoad
     if (!catalogReady.value) throw new Error('Wait for clients and folders to finish loading, then choose your packages again.')
     // Commit the new selection only after every added package is validated.
-    rows.value = await readImportBatch(files.value, rows.value, clients.value, folders.value)
+    const issues: TheBriefArchiveResult['issues'] = []
+    rows.value = await readImportBatch(files.value, rows.value, clients.value, folders.value, {
+      cache: archiveCache,
+      prepareZip: async (file) => {
+        progress.value = `Preparing ${file.name}… Designs and sizes will appear together when ready.`
+        try {
+          return await api<TheBriefArchiveResult>('/api/agency/banner-studio/import/prepare', {
+            method: 'POST', body: file, timeout: 250000, retry: 0,
+            headers: { 'content-type': 'application/zip', 'x-thebrief-filename': encodeURIComponent(file.name) }
+          })
+        } catch (cause) {
+          const failure = cause as { data?: { message?: string, statusMessage?: string } }
+          throw new Error(failure?.data?.statusMessage || failure?.data?.message || 'The ZIP could not be prepared. Your source file is unchanged; try again.', { cause })
+        }
+      },
+      onArchive: (_file, result) => issues.push(...result.issues)
+    })
+    archiveIssues.value = issues
     filesValid.value = true
   } catch (cause) {
     filesValid.value = false
     error.value = cause instanceof Error ? cause.message : 'Could not read import package'
-  } finally { busy.value = false }
+  } finally {
+    busy.value = false
+    progress.value = ''
+  }
+}
+
+function applyGroupAssignment() {
+  for (const row of rows.value.filter(row => !row.projectId)) {
+    if (groupClientId.value !== '__unassigned__') row.clientId = groupClientId.value
+    row.folderId = groupFolderId.value
+  }
 }
 
 function startNextBatch() {
   if (busy.value) return
   files.value = []
   rows.value = []
+  archiveIssues.value = []
+  groupClientId.value = '__unassigned__'
+  groupFolderId.value = '__unfiled__'
   readyViewers.value.clear()
   filesValid.value = true
   error.value = ''
@@ -253,18 +288,9 @@ async function importDrafts() {
       if (!clients.value.some(c => c.id === row.clientId)) throw new Error('Select an existing client')
       if (row.folderId !== '__unfiled__' && !folders.value.some(folder => folder.id === row.folderId)) throw new Error('Select an existing folder')
       const pkg = row.pkg
-      const sourceTag = pkg.kind === 'xeroflow-reelmotion-import' ? 'source:reelmotion' : 'source:thebrief'
-      const duplicate = existing.find(p => p.clientId === row.clientId && p.tags?.includes(sourceTag) && p.tags.includes(`source-sha256:${pkg.source.sha256}`))
+      const duplicate = await findTheBriefDuplicate(existing, row.clientId, pkg)
       if (duplicate) {
         row.projectId = duplicate.id
-        row.status = 'Already imported · open for review or explicitly update this draft'
-        continue
-      }
-      // A fresh export of the same TheBrief design has different archive bytes.
-      // Never create a second draft for it; corrections use the explicit update flow.
-      const sameDesign = existing.find(p => p.clientId === row.clientId && p.tags?.includes(sourceTag) && p.tags.includes(`source-design:${pkg.source.designHash}`))
-      if (sameDesign) {
-        row.projectId = sameDesign.id
         row.status = pkg.kind === 'xeroflow-thebrief-import' ? 'Already imported from this TheBrief design · open for review or explicitly update this draft' : 'Already imported from this ReelMotion edit · open the draft for review'
         continue
       }
@@ -329,21 +355,64 @@ async function importDrafts() {
           icon="i-lucide-info"
           color="neutral"
           variant="subtle"
-          title="Prepared native packages"
-          description="Import prepared TheBrief designs or ReelMotion edits as editable drafts. ReelMotion packages include footage, fonts, captions and recorded head/timing checks; review the result before export."
+          title="Import a whole TheBrief group"
+          description="Choose the original HTML5 ZIP from TheBrief. Each design keeps all its sizes together as an editable draft. Prepared TheBrief and ReelMotion packages are also supported. Review the artwork before export."
         />
-        <UFormField label="Import packages" help="Choose prepared .xeroflow.json files. Keep original source files for reference.">
+        <UFormField label="Banners to import" help="Choose a TheBrief HTML5 ZIP up to 64 MB, or prepared .xeroflow.json files. Import up to 50 designs together.">
           <UFileUpload
             v-model="files"
             multiple
             :preview="false"
-            accept=".json"
-            :label="catalogReady ? 'Choose prepared banner packages' : 'Loading clients and folders…'"
+            accept=".zip,.json"
+            :label="catalogReady ? 'Choose TheBrief ZIP or prepared packages' : 'Loading clients and folders…'"
             class="w-full"
             :disabled="busy || !catalogReady"
             @update:model-value="readPackages"
           />
         </UFormField>
+        <div v-if="rows.length > 1" class="@container space-y-3 rounded-lg border border-default p-4">
+          <p class="font-medium">
+            Assign the group
+          </p>
+          <div class="grid grid-cols-1 gap-4 @lg:grid-cols-2">
+            <UFormField label="Client for this group">
+              <USelectMenu
+                v-model="groupClientId"
+                :items="options"
+                value-key="value"
+                label-key="label"
+                class="w-full"
+                :disabled="busy"
+              />
+            </UFormField>
+            <UFormField label="Folder for this group">
+              <USelectMenu
+                v-model="groupFolderId"
+                :items="folderOptions"
+                value-key="value"
+                label-key="label"
+                class="w-full"
+                :disabled="busy"
+              />
+            </UFormField>
+          </div>
+          <UButton
+            variant="soft"
+            color="neutral"
+            :disabled="busy"
+            @click="applyGroupAssignment"
+          >
+            Apply to unimported designs
+          </UButton>
+        </div>
+        <UAlert
+          v-for="(issue, index) in archiveIssues"
+          :key="index"
+          color="warning"
+          variant="subtle"
+          :title="`${issue.name} · held for review`"
+          :description="`${issue.message} All ${issue.sizes} sizes of this design are held together.`"
+        />
         <UButton
           v-if="files.length"
           variant="ghost"

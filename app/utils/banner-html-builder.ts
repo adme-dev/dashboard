@@ -1,9 +1,10 @@
+import { bannerSlideGroups } from '~~/shared/bannerSlideFade'
 import { mediaMaskCss, revealCommands, safeWordEntrance, wordEntranceSteps, REVEAL_WRAPPER_STYLE, REVEAL_GLOW_STYLE, revealContentStyle } from '~~/shared/bannerImportedMotion'
 import { bannerAnimationTiming } from '~/utils/banner-animation-timing'
 import { bannerFontFamily } from '~~/shared/banner/fonts'
 import { buildBannerAudioManifest } from '~~/shared/bannerAudioRender.mjs'
 import { bannerImageCropCss } from '~~/shared/bannerImageCrop'
-import { bannerWordTokens } from '~~/shared/bannerWordPop'
+import { bannerWordRuns } from '~~/shared/bannerWordPop'
 import { bannerVideoMediaTimeScript } from '~~/shared/bannerVideoClock'
 import { bannerEffectCss, bannerTextDepthShadow, bannerTextMarkup, safeBannerTextTexture } from '~~/shared/bannerEffects'
 import { resolveBannerPlayback, bannerPlaybackRepeat } from '~/utils/banner-playback'
@@ -230,8 +231,9 @@ export function buildBannerHTML(
   const fmt = resolveBannerFormat(fmtKey)
   if (!fmt) return ''
 
-  const layerDivs = [...layers]
-    .sort((a, b) => Number(!!a.slideTransitionFor) - Number(!!b.slideTransitionFor) || a.zIndex - b.zIndex)
+  const layerMarkup = new Map<number, string>()
+  const orderedLayers = [...layers].sort((a, b) => Number(!!a.slideTransitionFor) - Number(!!b.slideTransitionFor) || a.zIndex - b.zIndex)
+  const renderedLayers = orderedLayers
     .map((l) => {
       function visualLayer(style: string, content = '') {
         if (l.reveal) {
@@ -299,7 +301,10 @@ export function buildBannerHTML(
           ? `<span aria-hidden="true" style="font-size:${l.lineBoxFontSize}px">&#160;</span>`
           : ''
         const textMarkup = l.wordPop
-          ? bannerWordTokens(l.text || '', l.wordPop?.unit).map(token => token.wordIndex === null ? escapeHtml(token.text) : `<span data-banner-word="${token.wordIndex}" style="display:inline-block;transform-origin:center center">${escapeHtml(token.text)}</span>`).join('')
+          ? bannerWordRuns(l.text || '', l.wordPop?.unit, l.textRuns).map((token) => {
+              const markup = token.runs.map(run => `<span style="${run.fontSize ? `font-size:${run.fontSize}px;` : ''}${run.top !== undefined ? `position:relative;top:${run.top}px;` : ''}">${escapeHtml(run.text)}</span>`).join('')
+              return token.wordIndex === null ? markup : `<span data-banner-word="${token.wordIndex}" style="display:inline-block;transform-origin:center center">${markup}</span>`
+            }).join('')
           : l.textRuns?.length && l.textRuns.map(run => run.text).join('') === l.text
             ? l.textRuns.map(run => `<span style="${run.fontSize ? `font-size:${run.fontSize}px;` : ''}${run.top !== undefined ? `position:relative;top:${run.top}px;` : ''}">${escapeHtml(run.text)}</span>`).join('')
             : escapeHtml(l.text || '')
@@ -332,7 +337,12 @@ export function buildBannerHTML(
       }
       return ''
     })
-    .join('\n    ')
+  renderedLayers.forEach((markup, index) => layerMarkup.set(orderedLayers[index]!.id, markup))
+  const slideGroups = bannerSlideGroups(layers)
+  const layerDivs = slideGroups.map((group) => {
+    const markup = group.layers.map(layer => layerMarkup.get(layer.id) || '').join('\n')
+    return group.fade ? `<div data-banner-slide="${escapeHtml(group.key)}" style="position:absolute;inset:0;z-index:${group.zIndex};opacity:${includeAnimations && group.fade.duration > 0 ? 0 : 1};">${markup}</div>` : markup
+  }).join('\n    ')
 
   // Build GSAP animation script
   let animLines = ''
@@ -340,6 +350,11 @@ export function buildBannerHTML(
     const sortedByTime = [...layers].sort((a, b) => (a.startTime || 0) - (b.startTime || 0))
 
     const lines: string[] = []
+    for (const group of slideGroups) if (group.fade) {
+      const f = group.fade, target = `'[data-banner-slide="${group.key}"]'`
+      lines.push(`tl.set(${target}, {opacity:${f.duration > 0 ? 0 : 1}}, 0);`)
+      if (f.duration > 0) lines.push(`tl.to(${target}, {opacity:1,duration:${f.duration},ease:${easeToExportExpr(f.ease)}}, ${f.start});`)
+    }
 
     sortedByTime.forEach((l) => {
       // Audio layers only need sync script — no visual animation

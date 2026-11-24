@@ -2,11 +2,21 @@
 
 ## Current route
 
-TheBrief design URLs are references, not a file format accepted by Banner Studio. For an editable import, download **HTML5** from TheBrief with **All sizes**, **General usage**, and **Convert custom fonts to SVG** off. MP4 is useful for visual reference but does not carry editable layers. The XeroFlow import dialog currently accepts prepared `.xeroflow.json` packages, not the original ZIP.
+**24 November release status:** direct group ZIP support is locally qualified and awaits deployment approval. The production importer still accepts prepared packages. See the [Alfa ZIP verification record](../migrations/alfa-direct-zip-import-20261124.md) for the tested archive, source comparisons and remaining live checks.
+
+Download **HTML5** from TheBrief with **All sizes**, **General usage**, and **Convert custom fonts to SVG** off. In **Banner Studio → Import creative packages**, choose the original ZIP, including a group download such as `Designs-HTML.zip`. The private conversion service inspects the complete archive before extraction and never executes its scripts. Each design becomes one editable draft containing all its sizes. Prepared `.xeroflow.json` packages remain supported.
+
+Choose a client and folder under **Assign the group**, apply them to the unimported designs, then review each row and select **Import assigned drafts**. A ZIP does not contain a verified original creation date or its TheBrief folder. Choose the destination explicitly and use **Import undated drafts and backfill the date later** when needed; the download date is never substituted. A compatible design is retained only when every size converts. Unsupported designs appear as named review holds while the other designs remain available.
+
+Source ZIPs are capped at 64 MiB, 50 designs and 20 sizes per design. Prepared selections remain capped at 128 MiB. Child archives retain independent path, symlink, CRC, entry, image, media and expansion limits. Conversion is bounded to three minutes and uses a private, stateless container with no database or storage credentials. Request and result bodies stream through Pages. Assets and fonts are saved only after client assignment, through the existing authenticated upload and draft-creation paths. Re-selecting the same file in the dialog reuses its verified preparation without losing assignments or saved rows. Exact child-export receipts reconcile earlier manually merged drafts; design names alone never establish duplicate identity.
+
+TheBrief design URLs remain references rather than upload files. MP4 is useful for visual reference but does not carry editable layers.
 
 TheBrief API documents a credential-based design list and export flow: authenticate with a client ID and secret, find the design hash, request an export, poll it, then download the ZIP. The signed-in account previously showed no available API scopes, so direct design-URL import has not been verified. Do not put browser session credentials into XeroFlow or imply that an iframe is a native import. See [transition evidence](../plans/2026-10-29-banner-studio-transition.md) and TheBrief's [authentication](https://docs.thebrief.ai/public-api/rest-api/auth), [designs](https://docs.thebrief.ai/public-api/rest-api/designs), and [exports](https://docs.thebrief.ai/public-api/rest-api/exports) references.
 
 ## Preparing another design
+
+The following offline tools remain available for diagnosing a conversion hold. They are no longer required for supported direct ZIP imports.
 
 1. Keep the original download outside Git. Inspect the outer ZIP and each nested size ZIP before extraction. Record the design URL/hash, source folder, size count, playback duration, fonts, asset hashes, and conversion warnings. Do not execute the exported JavaScript.
 2. Extract each size into a separate private directory. Run the strict converter and package builder for each size. Any unsupported animation holds the import for review rather than silently flattening it.
@@ -29,6 +39,12 @@ The Recents thumbnail and HTML export can identify an individual size rather tha
 For an outer design-set archive above 20 MB, use `node scripts/thebrief/inspect.mjs /private/tmp/design/set.zip --design-set`. This profile accepts only a container of child ZIPs, capped at 64 MB compressed, 128 MB total expansion, 1,500 entries and one nesting level. Each child is independently checked with the standard 20 MB archive, 10 MB file, 40 MB expansion and 500-entry limits. Literal offer percentages in child ZIP filenames are permitted; encoded paths, traversal, symlinks and unsafe asset paths remain rejected. Keep the original archive and its checksum.
 
 ## Conversion and review boundaries
+
+Reviewed scene fade-ins preserve the source overlap as composited scene groups, with independent editable child layers. A scene group fades once; individual layer opacity is not used as a substitute for group compositing. Word fades and animated raised footnotes retain their shared word timing and inline typography. A uniquely identifiable wrapped row expands its line box and shifts the rows below it. Ambiguous wrapping and unknown transition recipes remain holds. Bounded soundtrack fades are baked into managed MP3 bytes after verifying the exported clip duration against the authored stages; original bytes remain in the source ZIP, and the conversion note records the transformation. Native, exported and saved-proof HTML use the same scene and word recipes.
+
+The conversion worker lives in `workers/thebrief-import/`; deploy and test it before releasing the Pages caller's `THEBRIEF_IMPORT` binding. It is internal-only (`workers_dev = false`, no routes) and has a bounded pool of two idle-sleeping containers. Keep its Docker context allowlist in place so source downloads, credentials and unrelated project files never enter the image.
+
+Follow the [worker release procedure](../../workers/thebrief-import/README.md). The qualified target uses `standard-1` (4 GiB); the full Alfa archive exceeded a 1 GiB stress-test container. A locally successful preparation is separate from a saved production import and its compiled proof.
 
 The converter retains supported hard-cut slide timing as editable layers. It does not create a Slides editor. Bounded intermediate pulse and bounce effects preserve cycle boundaries, fractional endings and instantaneous resets; these packages require the matching native and HTML playback release that handles equal-time keyframes. Do not validate their playback against an older deployment.
 

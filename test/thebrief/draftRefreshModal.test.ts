@@ -287,7 +287,7 @@ describe('client and folder loading before package selection', () => {
     await flush()
     expect(button('Load packages').disabled).toBe(false)
     await click('Load packages')
-    expect(readBatch.mock.calls[0]?.slice(2)).toEqual([clients, folders])
+    expect(readBatch.mock.calls[0]?.slice(2, 4)).toEqual([clients, folders])
   })
 
   it('keeps package selection disabled when loading fails and explains how to retry', async () => {
@@ -318,7 +318,7 @@ describe('client and folder loading before package selection', () => {
     oldFolders.resolve([{ id: 'stale-folder', name: 'Stale folder' }])
     await flush()
     await click('Load packages')
-    expect(readBatch.mock.calls[0]?.slice(2)).toEqual([currentClients, []])
+    expect(readBatch.mock.calls[0]?.slice(2, 4)).toEqual([currentClients, []])
   })
 })
 

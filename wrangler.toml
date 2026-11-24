@@ -554,3 +554,9 @@ service = "audio-jobs"
 [[env.production.services]]
 binding = "BANNER_SHARE_IMAGES"
 service = "xeroflow-banner-share-images"
+
+# Stateless TheBrief ZIP conversion. Client ownership is confirmed by the
+# existing draft importer after preparation; this service has no data bindings.
+[[env.production.services]]
+binding = "THEBRIEF_IMPORT"
+service = "xeroflow-thebrief-import"
