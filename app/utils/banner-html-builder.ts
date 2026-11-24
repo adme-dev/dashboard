@@ -319,6 +319,7 @@ export function buildBannerHTML(
         return visualLayer(style, bannerTextMarkup(content, l as unknown as Record<string, unknown>))
       }
       if (l.type === 'button') {
+        style += bannerEffectCss({ visualFilter: l.visualFilter })
         style += `font-size:${l.fontSize || 12}px;font-weight:${l.fontWeight || 700};font-family:'${bannerFontFamily(l.fontFamily, l.fontAssetId)}',sans-serif;`
         style += `background:${l.bgColor || '#e8c84a'};color:${l.textColor || '#000'};`
         style += `display:flex;align-items:center;justify-content:center;cursor:pointer;box-sizing:border-box;white-space:nowrap;line-height:${l.lineHeight || 1};`

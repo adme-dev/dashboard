@@ -2,6 +2,7 @@
 import type { Layer } from '~/types/banner-studio'
 import { useBannerFonts } from '~/composables/useBannerFonts'
 import { bannerFontFamily } from '~/utils/banner-font-family'
+import { effectStyleFromLayer } from '~~/shared/bannerEffects'
 
 const props = defineProps<{
   layer: Layer
@@ -16,6 +17,7 @@ const resolvedFontId = computed(() => props.layer.fontAssetId || getCustomFont(p
 const displayText = computed(() => getFeedOverride(props.layer.id, 'text') ?? props.layer.text ?? 'Button')
 const displayBgColor = computed(() => getFeedOverride(props.layer.id, 'bgColor') ?? props.layer.bgColor ?? '#e8c84a')
 const displayTextColor = computed(() => getFeedOverride(props.layer.id, 'color') ?? props.layer.textColor ?? '#000')
+const effects = computed(() => effectStyleFromLayer(props.layer as unknown as Record<string, unknown>))
 </script>
 
 <template>
@@ -23,6 +25,7 @@ const displayTextColor = computed(() => getFeedOverride(props.layer.id, 'color')
     class="w-full h-full flex items-center justify-center pointer-events-none"
     :style="{
       backgroundColor: displayBgColor,
+      filter: effects.visualFilter,
       borderRadius: `${layer.borderRadius ?? 2}px`,
       opacity: layer.opacity,
       boxSizing: 'border-box',

@@ -687,7 +687,7 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {} } = {}) 
             && Math.abs(stageDuration - clipDuration) < 1e-6
           const visibleDuration = Math.min(clipDuration, slide.end - start)
           if (offset || (!genericDuration && !hasAudioFade) || clipDuration > visibleDuration + 1e-6) {
-            if (!hasMatchingStages || (hasAudioFade && clipDuration > visibleDuration + 1e-6) || Math.abs(end - (start + visibleDuration)) > 1e-6) {
+            if (!hasMatchingStages || Math.abs(end - (start + visibleDuration)) > 1e-6) {
               throw new Error(offset ? `Audio ${sourceId}: source clip offset ${offset}s requires exported-clip reconciliation` : `Audio ${sourceId}: clip duration requires reconciliation`)
             }
             verifyExportedDuration = clipDuration
@@ -700,7 +700,10 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {} } = {}) 
           }
         } else if (offset) throw new Error(`Audio ${sourceId}: source clip offset ${offset}s requires exported-clip reconciliation`)
         if (hasAudioFade) {
-          if (Math.abs(layerBase.endTime - start - stageDuration) > 1e-6) throw new Error(`Audio ${sourceId}: fade stages differ from the exported clip`)
+          // Keep fades at their authored positions in the full exported clip.
+          // A shorter slide stops playback; it must not compress the fade into
+          // the visible interval or discard the original soundtrack tail.
+          if (Math.abs(layerBase.endTime - start - Math.min(stageDuration, slide.end - start)) > 1e-6) throw new Error(`Audio ${sourceId}: fade stages differ from the exported clip`)
           audioTransforms.push({ layerId: id, duration: stageDuration, fadeIn: audioConfig.buildIn.type === 'fadeAudio' ? audioConfig.buildIn.duration : 0, fadeOut: audioConfig.buildOut.type === 'fadeAudio' ? audioConfig.buildOut.duration : 0 })
           warnings.push(`Audio ${sourceId}: authored volume fades are baked into a managed soundtrack; the original MP3 remains in the source ZIP`)
         } else if (verifyExportedDuration !== undefined) {
@@ -1198,10 +1201,10 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {} } = {}) 
             const sides = ['Top', 'Right', 'Bottom', 'Left']
             const colors = sides.map(side => contentCss[`border${side}Color`])
             const styles = sides.map(side => contentCss[`border${side}Style`])
-            if (new Set(borders).size !== 1 || !Number.isFinite(borders[0]) || borders[0] < 0 || borders[0] > 100 || new Set(colors).size !== 1 || styles.some(value => value !== 'solid') || rectShape || visualFilter) throw new Error(`${element.id}: shape border composition needs an adapter`)
+            if (new Set(borders).size !== 1 || !Number.isFinite(borders[0]) || borders[0] < 0 || borders[0] > 100 || new Set(colors).size !== 1 || styles.some(value => value !== 'solid') || rectShape) throw new Error(`${element.id}: shape border composition needs an adapter`)
             // Native buttons support border-box fill, uniform stroke and corners.
             // Empty text retains this shape as an editable native visual layer.
-            layers.push({ ...layerBase, id: id++, type: 'button', name: `Bordered shape ${sourceId}`, text: '', rotation, borderRadius: borderRadius || 0, borderWidth: borders[0], borderColor: colors[0], bgColor: contentCss.backgroundColor || 'transparent', textColor: 'transparent' })
+            layers.push({ ...layerBase, id: id++, type: 'button', name: `Bordered shape ${sourceId}`, text: '', rotation, borderRadius: borderRadius || 0, borderWidth: borders[0], borderColor: colors[0], bgColor: contentCss.backgroundColor || 'transparent', textColor: 'transparent', ...shapeEffects })
             warnings.push(`${element.id}: uniform bordered shape preserved as an editable native button with empty text; review border and corner geometry`)
           } else {
             layers.push({ ...layerBase, id: id++, type: 'rect', name: `Shape ${sourceId}`, rotation, ...(borderRadius !== undefined ? { borderRadius } : {}), ...shapeEffects, fillColor: contentCss.backgroundColor || 'transparent' })

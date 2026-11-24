@@ -54,6 +54,21 @@ it('holds inconsistent clip duration metadata rather than guessing the audio end
   await expect(convertTheBriefHtml(audioSource({ endTime: 3, duration: 2 }))).rejects.toThrow('clip duration requires reconciliation')
 })
 
+it('keeps full soundtrack fades when a short looping slide stops playback first', async () => {
+  const config = {
+    startTime: 15.7, endTime: 23.7, duration: 153.887325,
+    buildIn: { duration: 1, delay: 0, type: 'instant' },
+    buildMid: { duration: 6, delay: 0, type: 'audio' },
+    buildOut: { duration: 1, delay: 0, type: 'fadeAudio' }
+  }
+  const input = (options: Record<string, unknown>) => audioSource(options).replace('{id:1,from:200}', '{id:1,from:0}')
+  const result = await convertTheBriefHtml(input(config))
+  const track = result.canvasData.custom_300x250.layers.find(layer => layer.type === 'audio')
+  expect(track).toMatchObject({ startTime: 0, endTime: 4, src: './clip.mp3' })
+  expect(result.audioTransforms).toContainEqual({ layerId: track.id, duration: 8, fadeIn: 0, fadeOut: 1 })
+  await expect(convertTheBriefHtml(input({ ...config, endTime: 24.7 }))).rejects.toThrow('requires exported-clip reconciliation')
+})
+
 it('holds already-clipped exports with unresolved original offsets or fades instead of guessing', async () => {
   await expect(convertTheBriefHtml(audioSource({ startTime: 12.4, endTime: 18.4, duration: 130 }))).rejects.toThrow('source clip offset 12.4s requires exported-clip reconciliation')
   await expect(convertTheBriefHtml(audioSource({ buildOut: { type: 'fadeAudio', duration: 1 } }))).rejects.toThrow('source fades require exported-clip reconciliation')
