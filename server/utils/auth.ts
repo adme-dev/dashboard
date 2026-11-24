@@ -18,6 +18,7 @@ export interface User {
   email_verified_at?: string | Date | null
   avatar_url?: string
   custom_role_id?: string | null
+  isCustomReadOnly?: boolean
   permissionGroups?: string[]
 }
 

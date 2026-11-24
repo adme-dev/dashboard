@@ -21,19 +21,20 @@ it('loads summaries, defers closed tools and fetches complete artwork only when 
   const fetch = vi.fn(async (url: string, options?: { method?: string }) => {
     if (options?.method === 'POST') return { project: { id: 'copy' } }
     if (url.endsWith('?view=gallery')) return [summary]
-    if (url.endsWith('/folders')) return []
+    if (url.endsWith('/folders?view=library')) return { folders: [], canManage: true, pinnedIds: [] }
     if (url.endsWith('/project')) return { ...summary, canvasData: artwork }
     throw new Error(`Unexpected request: ${url}`)
   })
   vi.stubGlobal('$fetch', fetch)
   vi.stubGlobal('useCookie', () => Vue.ref('grid'))
+  vi.stubGlobal('useRoute', () => ({ path: '/agency/banner-studio', params: {}, query: {} }))
   vi.stubGlobal('useRouter', () => ({ push: vi.fn() }))
   vi.stubGlobal('useToast', () => ({ add: vi.fn() }))
   const toolMounted = vi.fn()
   let closeImport = () => {}
   const host = document.createElement('div')
   app = Vue.createApp(Library)
-  for (const name of ['UIcon', 'UInput', 'USelect', 'USelectMenu', 'UTabs', 'UPagination', 'USkeleton', 'BannerThemeToggle']) {
+  for (const name of ['UIcon', 'UInput', 'USelect', 'USelectMenu', 'UTabs', 'UPagination', 'USkeleton', 'BannerThemeToggle', 'BannerFolderEditModal']) {
     app.component(name, { render: () => null })
   }
   for (const name of ['UFormField', 'UAlert']) {

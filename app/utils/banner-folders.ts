@@ -52,3 +52,17 @@ export function bannerProjectInFolder(project: Pick<BannerProject, 'folderId'>, 
   if (project.folderId) return bannerFolderPath(folders, project.folderId).some(folder => folder.id === id)
   return false
 }
+
+export function bannerFolderUrl(base: string, path: BannerFolder[]) {
+  const slugs = path.map(folder => folder.name.normalize('NFKD').replace(/\p{M}/gu, '')
+    .toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '') || 'folder')
+  if (!slugs.length) return `${base}/folders`
+  // The last segment carries identity so old links survive moves and renames.
+  return `${base}/folders/${slugs.map(encodeURIComponent).join('/')}~${path.at(-1)!.id}`
+}
+
+export function bannerFolderRouteId(trail: string | string[] | undefined) {
+  const last = Array.isArray(trail) ? trail.at(-1) : trail?.split('/').at(-1)
+  if (!last || trail === 'folders') return 'all'
+  return last.match(/~([\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12})$/i)?.[1]?.toLowerCase() || 'missing'
+}

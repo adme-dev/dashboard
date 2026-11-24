@@ -1,5 +1,5 @@
 <script setup lang="ts">
-definePageMeta({ layout: false, middleware: ['role-creative'] })
+definePageMeta({ path: '/creative/banner-studio/:trail(folders/.*|folders)?', key: 'creative-banner-library', layout: false, middleware: ['role-creative'] })
 </script>
 
 <template>

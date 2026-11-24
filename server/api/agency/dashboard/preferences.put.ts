@@ -20,7 +20,8 @@ export default defineEventHandler(async (event) => {
   }
 
   await execute(
-    `UPDATE team_members SET dashboard_preferences = $1::jsonb WHERE email = $2`,
+    `UPDATE team_members SET dashboard_preferences =
+       (coalesce(dashboard_preferences, '{}') - 'widgets' - 'pinnedItems') || $1::jsonb WHERE email = $2`,
     [JSON.stringify(preferences), user.email]
   )
 
