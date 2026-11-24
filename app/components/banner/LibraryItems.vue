@@ -28,6 +28,9 @@ defineEmits<{ open: [id: string] }>()
               :thumbnail-url="item.thumbnailUrl"
               :canvas-data="item.canvasData"
               :client-id="item.clientId"
+              :project-id="item.projectId"
+              :preview-key="item.previewKey"
+              :preview-version="item.previewVersion"
               :class="view === 'grid' ? 'aspect-square w-full' : 'h-12 w-20 rounded'"
             />
             <span v-if="view === 'grid'" class="pointer-events-none absolute bottom-2 left-2 max-w-[calc(100%-1rem)] truncate rounded-md bg-default/90 px-2 py-1 text-[11px] font-medium text-default shadow-sm">

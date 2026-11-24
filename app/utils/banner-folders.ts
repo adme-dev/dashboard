@@ -19,7 +19,7 @@ export function bannerFolderForSource(folders: BannerFolder[], sourceFolder: str
   return matches.length === 1 ? matches[0]!.id : null
 }
 
-export function bannerProjectFolderId(project: BannerProject, folders: BannerFolder[]): string | null {
+export function bannerProjectFolderId(project: Pick<BannerProject, 'folderId'>, folders: BannerFolder[]): string | null {
   return project.folderId && folders.some(folder => folder.id === project.folderId) ? project.folderId : null
 }
 
@@ -46,7 +46,7 @@ export function bannerFolderRows(folders: BannerFolder[], expanded: Set<string>,
   return result
 }
 
-export function bannerProjectInFolder(project: BannerProject, id: string, folders: BannerFolder[]): boolean {
+export function bannerProjectInFolder(project: Pick<BannerProject, 'folderId'>, id: string, folders: BannerFolder[]): boolean {
   if (id === 'all') return true
   if (id === 'unfiled') return !project.folderId
   if (project.folderId) return bannerFolderPath(folders, project.folderId).some(folder => folder.id === id)

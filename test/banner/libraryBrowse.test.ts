@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ArtboardState, BannerProject } from '../../app/types/banner-studio'
-import { bannerDimensions, preferredBannerPreviewKey, hasBannerPreview, bannerLibraryFacets, filterBannerProjects, libraryDate, sortLibrary, theBriefCreatedDate } from '../../app/utils/banner-library'
+import { bannerDimensions, preferredBannerPreviewKey, preferredBannerSummaryPreviewKey, hasBannerPreview, bannerLibraryFacets, filterBannerProjects, libraryDate, sortLibrary, theBriefCreatedDate } from '../../app/utils/banner-library'
 
 const project = (id: string, clientId: string | null, tags: string[] = []): BannerProject => ({
   id, name: `Banner ${id}`, clientId, clientName: clientId === 'news' ? 'DriveAgent News' : 'DriveAgent', tags,
@@ -84,4 +84,13 @@ describe('square-first banner previews', () => {
     expect(preferredBannerPreviewKey({ unknown: populated, fb_sq: null } as unknown as Record<string, ArtboardState>)).toBeUndefined()
     expect(preferredBannerPreviewKey({ leader: { layers: [] }, fb_sq: { layers: [] } })).toBe('fb_sq')
   })
+})
+
+it('searches summary dimensions and selects the same preview without editable canvases', () => {
+  const { canvasData: _canvas, ...base } = project('summary', 'news')
+  const summary = { ...base, formats: ['ig_story', 'fb_sq', 'mrec'], populatedFormats: ['ig_story', 'mrec'] }
+  expect(filterBannerProjects([summary], { ...filters, search: '1080 × 1080' })).toEqual([summary])
+  expect(preferredBannerSummaryPreviewKey(summary.formats, summary.populatedFormats)).toBe('mrec')
+  expect(preferredBannerSummaryPreviewKey(summary.formats, ['fb_sq', 'mrec'])).toBe('fb_sq')
+  expect(preferredBannerSummaryPreviewKey(['unknown', 'fb_sq'], [])).toBe('fb_sq')
 })

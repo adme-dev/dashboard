@@ -9,6 +9,7 @@ export default defineEventHandler(async (event) => {
 
   const query = getQuery(event)
   const { clientId, status, search, limit, offset } = query
+  const libraryView = query.view === 'library'
   if (clientId) await requireBannerClientAccess(event, String(clientId))
   const marketingPortfolio = user.permissionGroups?.includes('MARKETING_MANAGEMENT') === true
   if (marketingPortfolio && !await hasFreshMarketingManagementPermission(user.id)) {
@@ -21,7 +22,14 @@ export default defineEventHandler(async (event) => {
         p.id, p.name, p.folder_id AS "folderId",
         p.client_id AS "clientId",
         c.name AS "clientName",
-        p.canvas_data AS "canvasData",
+        ${libraryView
+          ? `
+        ARRAY(SELECT key FROM jsonb_each(p.canvas_data)) AS "formats",
+        ARRAY(SELECT key FROM jsonb_each(p.canvas_data) WHERE
+          CASE WHEN jsonb_typeof(value->'layers') = 'array'
+            THEN jsonb_array_length(value->'layers') > 0 ELSE FALSE END
+        ) AS "populatedFormats",`
+          : 'p.canvas_data AS "canvasData",'}
         p.thumbnail_url AS "thumbnailUrl",
         p.status,
         p.tags,

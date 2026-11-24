@@ -11,13 +11,18 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Project ID is required' })
   }
 
+  const previewFormat = getQuery(event).previewFormat
+  if (previewFormat !== undefined && (typeof previewFormat !== 'string' || previewFormat.length > 100)) {
+    throw createError({ statusCode: 400, statusMessage: 'Invalid preview format' })
+  }
+
   try {
     const row = await queryOneFresh(`
       SELECT
         p.id, p.name, p.folder_id AS "folderId",
         p.client_id AS "clientId",
         c.name AS "clientName",
-        p.canvas_data AS "canvasData",
+        ${previewFormat === undefined ? 'p.canvas_data' : 'jsonb_build_object($2::text, p.canvas_data->$2::text)'} AS "canvasData",
         p.thumbnail_url AS "thumbnailUrl",
         p.status, p.tags,
         p.created_by AS "createdBy",
@@ -26,7 +31,7 @@ export default defineEventHandler(async (event) => {
       FROM banner_projects p
       LEFT JOIN agency_clients c ON p.client_id = c.id
       WHERE p.id = $1
-    `, [id])
+    `, previewFormat === undefined ? [id] : [id, previewFormat])
 
     if (!row) {
       throw createError({ statusCode: 404, statusMessage: 'Project not found' })
