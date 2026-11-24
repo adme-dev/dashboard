@@ -159,8 +159,9 @@ const API_INVENTORY = {
   // TheBrief ZIP preparation adds one authenticated, write-guarded POST.
   // Prepare adds one write-access, project-scoped POST that saves a missing preview frame
   // (video/assets/[id]/thumbnail.post.ts) in its own God mode family; no authority bypass.
-  totalRouteFiles: 2410,
-  mutationRouteFiles: 1315,
+  // Banner folders adds three scoped mutations for shared edits and personal pins.
+  totalRouteFiles: 2413,
+  mutationRouteFiles: 1318,
   explicitlyGuardedMutationFiles: 440,
   guardedMutationFilesWithTransactionCall: 58
 } as const
@@ -214,8 +215,8 @@ describe('God mode route isolation inventory', () => {
   // Governance phase 4 adds one client-scoped read (clients/[id]/change-history.get.ts).
       // Marketing alerts adds one cron-secret POST; no authority bypass.
       // Import image as layers adds a guarded POST and a GET and retires the unguarded decompose POST.
-      totalRouteFiles: 2410,
-      mutationRouteFiles: 1315,
+      totalRouteFiles: 2413,
+      mutationRouteFiles: 1318,
       explicitlyGuardedMutationFiles: 440,
       guardedMutationFilesWithTransactionCall: 58
     })
@@ -420,7 +421,7 @@ describe('God mode route isolation inventory', () => {
         gateSource = readFileSync('server/utils/banner/publicShare.ts', 'utf8')
       }
       const currentGates: Record<string, string[]> = {
-        'server/api/agency/banner-studio/folders/index.get.ts': ['await requireAuth(event)', '!await hasAllBannerClientAccess(user) && !hasBannerClientPermission(user)'],
+        'server/api/agency/banner-studio/folders/index.get.ts': ['await requireAuth(event)', 'const allClients = await hasAllBannerClientAccess(user)', '!allClients && !hasBannerClientPermission(user)'],
         'server/api/agency/banner-studio/projects/[id]/folder.patch.ts': ['await requireWriteAccess(event)', 'await requireBannerClientAccess(event, project.client_id)', 'AND ${ACTIVE_PROJECT_CLIENT_SQL}'],
         'server/api/agency/banner-studio/projects/[id]/thebrief-refresh.patch.ts': ['await requireWriteAccess(event)', 'await requireBannerClientAccess(event, input.clientId)', 'transaction(db => refreshTheBriefDraft']
       }

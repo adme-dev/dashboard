@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { BannerProject, BannerProjectSummary, BannerFolder } from '~/types/banner-studio'
-import { bannerFolderPath, bannerFolderRows, bannerProjectFolderId, bannerProjectInFolder } from '~/utils/banner-folders'
-import { isAmbiguousApiFailure } from '~/utils/apiError'
+import { bannerFolderPath, bannerFolderRouteId, bannerFolderRows, bannerFolderUrl, bannerProjectFolderId, bannerProjectInFolder } from '~/utils/banner-folders'
+import { apiErrorDescription, isAmbiguousApiFailure } from '~/utils/apiError'
 import { bannerDimensions, bannerLibraryFacets, filterBannerProjects, sortLibrary, theBriefCreatedDate } from '~/utils/banner-library'
 import type { LibrarySort } from '~/utils/banner-library'
 
@@ -12,16 +12,36 @@ const router = useRouter()
 const toast = useToast()
 
 const searchQuery = ref('')
-const clientFilter = ref('all')
-const browseTab = ref<'clients' | 'folders' | 'tags'>('clients')
+const route = useRoute()
+const inFolders = computed(() => route.path === `${editorBase.value}/folders` || route.path.startsWith(`${editorBase.value}/folders/`))
+const folderFilter = computed(() => inFolders.value ? bannerFolderRouteId(route.params.trail) : 'all')
+const browseTab = computed<'clients' | 'folders' | 'tags'>({
+  get: () => route.query.tab === 'tags' || route.query.tab === 'clients' ? route.query.tab : inFolders.value ? 'folders' : 'clients',
+  set(tab) {
+    const path = folderFilter.value === 'all' ? editorBase.value + (tab === 'folders' ? '/folders' : '') : route.path
+    void router.push({ path, query: { ...route.query, tab: tab === 'folders' || (tab === 'clients' && path === editorBase.value) ? undefined : tab } })
+  }
+})
 const clientSearch = ref('')
 const tagSearch = ref('')
-const folderFilter = ref('all')
+const folderEditor = ref<{ action: 'add' | 'rename' | 'move', folder?: BannerFolder } | null>(null)
+const canManageFolders = ref(false)
+const pinnedIds = ref<string[]>([])
+const pinBusy = ref(false)
+const pinsExpanded = ref(true)
 const folderSearch = ref('')
 const expandedFolders = ref(new Set<string>())
 const folderData = ref<BannerFolder[]>([])
 const folderError = ref(false)
-const tagFilter = ref('all')
+const clientFilter = computed(() => typeof route.query.client === 'string' ? route.query.client : 'all')
+const tagFilter = computed(() => typeof route.query.tag === 'string' ? route.query.tag : 'all')
+function selectClient(id: string) {
+  const path = browseTab.value === 'folders' ? editorBase.value + '/folders' : editorBase.value
+  void router.push({ path, query: { ...route.query, client: id === 'all' ? undefined : id, tag: undefined, tab: browseTab.value === 'tags' ? 'tags' : undefined } })
+}
+function selectTag(tag: string) {
+  void router.push({ path: route.path, query: { ...route.query, tag: tag === 'all' ? undefined : tag } })
+}
 const savedView = useCookie<'list' | 'grid'>('banner-library-view', { default: () => 'grid', sameSite: 'lax' })
 const view = computed<'list' | 'grid'>({
   get: () => savedView.value === 'list' ? 'list' : 'grid',
@@ -57,19 +77,28 @@ const duplicateIdempotencyKeys = new Map<string, string>()
 const projectsData = shallowRef<BannerProjectSummary[]>([])
 const fetchStatus = ref<'idle' | 'pending' | 'success' | 'error'>('idle')
 
+async function refreshFolders() {
+  try {
+    const result = await apiFetch<{ folders: BannerFolder[], pinnedIds: string[], canManage: boolean }>('/api/agency/banner-studio/folders?view=library')
+    folderData.value = result.folders
+    pinnedIds.value = result.pinnedIds
+    canManageFolders.value = result.canManage
+    folderError.value = false
+    return true
+  } catch {
+    folderError.value = true
+    return false
+  }
+}
+
 async function refresh() {
   fetchStatus.value = 'pending'
-  folderError.value = false
   try {
-    const [projects, folders] = await Promise.all([
+    const [projects] = await Promise.all([
       apiFetch<BannerProjectSummary[]>('/api/agency/banner-studio/projects?view=gallery'),
-      apiFetch<BannerFolder[]>('/api/agency/banner-studio/folders').catch(() => {
-        folderError.value = true
-        return []
-      })
+      refreshFolders()
     ])
     projectsData.value = projects
-    folderData.value = folders
     fetchStatus.value = 'success'
   } catch {
     projectsData.value = []
@@ -114,6 +143,60 @@ const folderRows = computed(() => bannerFolderRows(folderData.value, expandedFol
 const selectedFolderPath = computed(() => bannerFolderPath(folderData.value, folderFilter.value))
 const folderOptions = computed(() => [{ label: 'Unfiled', value: '__unfiled__' }, ...folderData.value.map(folder => ({ label: bannerFolderPath(folderData.value, folder.id).map(part => part.name).join(' / '), value: folder.id }))])
 const childFolders = computed(() => folderData.value.filter(f => f.parentId === (folderFilter.value === 'all' ? null : folderFilter.value)))
+const visiblePins = computed(() => folderData.value.filter(folder => pinnedIds.value.includes(folder.id)
+  && bannerFolderPath(folderData.value, folder.id).map(f => f.name).join(' / ').toLowerCase().includes(folderSearch.value.trim().toLowerCase())))
+
+function folderLink(id: string) {
+  return { path: bannerFolderUrl(editorBase.value, bannerFolderPath(folderData.value, id)), query: { ...route.query, tab: undefined } }
+}
+function clearFolder() {
+  const path = browseTab.value === 'folders' ? editorBase.value + '/folders' : editorBase.value
+  void router.push({ path, query: { ...route.query, tab: browseTab.value === 'tags' ? 'tags' : undefined } })
+}
+
+watch([() => route.path, selectedFolderPath], ([, path]) => {
+  if (!path.length || !inFolders.value) return
+  for (const folder of path.slice(0, -1)) expandedFolders.value.add(folder.id)
+  const canonical = bannerFolderUrl(editorBase.value, path)
+  if (route.path !== canonical) void router.replace({ path: canonical, query: route.query })
+})
+
+async function folderSaved(id: string) {
+  const action = folderEditor.value?.action
+  folderEditor.value = null
+  toast.add({ title: action === 'move' ? 'Folder moved' : action === 'rename' ? 'Folder renamed' : 'Folder added', color: 'success' })
+  if (await refreshFolders()) {
+    folderSearch.value = ''
+    await router.push(folderLink(id))
+  }
+}
+
+async function setPinned(folder: BannerFolder, pinned: boolean) {
+  if (pinBusy.value) return
+  pinBusy.value = true
+  try {
+    await apiFetch(`/api/agency/banner-studio/folders/${folder.id}/pin`, { method: 'PUT', body: { pinned } })
+    pinnedIds.value = [...pinnedIds.value.filter(id => id !== folder.id), ...(pinned ? [folder.id] : [])]
+    if (pinned) pinsExpanded.value = true
+  } catch (cause) {
+    toast.add({ title: 'Could not update pinned folders', description: apiErrorDescription(cause), color: 'error' })
+  } finally {
+    pinBusy.value = false
+  }
+}
+
+function folderMenu(folder: BannerFolder) {
+  const pinned = pinnedIds.value.includes(folder.id)
+  return [
+    ...(canManageFolders.value ? [
+      { label: 'Add folder', icon: 'i-lucide-folder-plus', onSelect: () => { folderEditor.value = { action: 'add', folder } } },
+      { label: 'Rename', icon: 'i-lucide-pencil', onSelect: () => { folderEditor.value = { action: 'rename', folder } } },
+      { label: 'Move folder', icon: 'i-lucide-folder-input', onSelect: () => { folderEditor.value = { action: 'move', folder } } }
+    ] : []),
+    { label: pinned ? 'Unpin folder' : 'Pin folder', icon: pinned ? 'i-lucide-pin-off' : 'i-lucide-pin', disabled: pinBusy.value, onSelect: () => setPinned(folder, !pinned) }
+  ]
+}
+
 function toggleFolder(id: string) {
   const next = new Set(expandedFolders.value)
   if (next.has(id)) next.delete(id)
@@ -136,10 +219,6 @@ const libraryItems = computed(() => visibleProjects.value.map(p => ({
 const projectById = computed(() => new Map(allProjects.value.map(p => [p.id, p])))
 watch([searchQuery, statusFilter, clientFilter, folderFilter, tagFilter, sort], () => {
   page.value = 1
-})
-watch(clientFilter, () => {
-  folderFilter.value = 'all'
-  tagFilter.value = 'all'
 })
 watch(projects, (list) => {
   page.value = Math.min(page.value, Math.max(1, Math.ceil(list.length / pageSize)))
@@ -277,9 +356,7 @@ function clearFilters() {
   clientSearch.value = ''
   tagSearch.value = ''
   statusFilter.value = 'all'
-  clientFilter.value = 'all'
-  folderFilter.value = 'all'
-  tagFilter.value = 'all'
+  selectClient('all')
 }
 </script>
 
@@ -397,7 +474,7 @@ function clearFilters() {
               :variant="clientFilter === 'all' ? 'soft' : 'ghost'"
               color="neutral"
               class="w-full justify-start"
-              @click="clientFilter = 'all'"
+              @click="selectClient('all')"
             >
               <template #trailing>
                 <span class="ml-auto shrink-0 text-xs tabular-nums text-muted">{{ allProjects.length }}</span>
@@ -411,23 +488,25 @@ function clearFilters() {
               :variant="clientFilter === 'unassigned' ? 'soft' : 'ghost'"
               color="neutral"
               class="w-full justify-start"
-              @click="clientFilter = 'unassigned'"
+              @click="selectClient('unassigned')"
             >
               <template #trailing>
                 <span class="ml-auto shrink-0 text-xs tabular-nums text-muted">{{ unassignedCount }}</span>
               </template>
             </UButton>
           </div>
-          <UButton
-            v-else-if="browseTab === 'folders'"
-            label="All folders"
-            icon="i-lucide-folders"
-            :aria-pressed="folderFilter === 'all'"
-            :variant="folderFilter === 'all' ? 'soft' : 'ghost'"
-            color="neutral"
-            class="w-full justify-start"
-            @click="folderFilter = 'all'"
-          />
+          <div v-else-if="browseTab === 'folders'" class="flex items-center gap-1">
+            <UButton
+              label="All folders"
+              icon="i-lucide-folders"
+              :aria-pressed="folderFilter === 'all'"
+              :variant="folderFilter === 'all' ? 'soft' : 'ghost'"
+              color="neutral"
+              class="min-w-0 flex-1 justify-start"
+              :to="folderLink('all')"
+            />
+            <UButton v-if="canManageFolders" icon="i-lucide-folder-plus" aria-label="Add top-level folder" title="Add folder" color="neutral" variant="ghost" @click="folderEditor = { action: 'add' }" />
+          </div>
           <UButton
             v-else
             label="All tags"
@@ -436,7 +515,7 @@ function clearFilters() {
             :variant="tagFilter === 'all' ? 'soft' : 'ghost'"
             color="neutral"
             class="w-full justify-start"
-            @click="tagFilter = 'all'"
+            @click="selectTag('all')"
           />
         </div>
 
@@ -452,7 +531,7 @@ function clearFilters() {
               color="neutral"
               class="min-h-9 w-full items-start justify-start px-2.5 py-2 text-left text-[13px]"
               :ui="{ label: 'min-w-0 whitespace-normal break-words leading-5' }"
-              @click="clientFilter = client.id"
+              @click="selectClient(client.id)"
             >
               <template #trailing>
                 <span class="ml-auto shrink-0 pl-2 text-xs leading-5 tabular-nums text-muted">{{ client.count }}</span>
@@ -473,11 +552,20 @@ function clearFilters() {
               :actions="[{ label: 'Retry', onClick: refresh }]"
               class="mb-2"
             />
+            <div v-if="visiblePins.length" class="mb-2 border-b border-default pb-2">
+              <UButton label="Pinned folders" icon="i-lucide-pin" :trailing-icon="pinsExpanded ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'" :aria-expanded="pinsExpanded" size="sm" variant="ghost" color="neutral" @click="pinsExpanded = !pinsExpanded" />
+              <template v-if="pinsExpanded">
+                <div v-for="folder in visiblePins" :key="folder.id" class="flex items-center pl-4">
+                  <UButton :label="folder.name" :title="bannerFolderPath(folderData, folder.id).map(f => f.name).join(' / ')" :to="folderLink(folder.id)" icon="i-lucide-folder" :variant="folderFilter === folder.id ? 'soft' : 'ghost'" color="neutral" class="min-w-0 flex-1" :ui="{ label: 'truncate' }" />
+                  <UButton icon="i-lucide-pin-off" :aria-label="`Unpin ${folder.name}`" :disabled="pinBusy" size="xs" variant="ghost" color="neutral" @click="setPinned(folder, false)" />
+                </div>
+              </template>
+            </div>
             <div
               v-for="row in folderRows"
               :key="row.folder.id"
               class="flex min-w-0 items-start"
-              :style="{ paddingLeft: `${row.depth * 12}px` }"
+              :style="{ paddingLeft: `${Math.min(row.depth, 6) * 12}px` }"
             >
               <UButton
                 v-if="row.hasChildren"
@@ -501,8 +589,11 @@ function clearFilters() {
                 color="neutral"
                 class="min-h-9 min-w-0 flex-1 items-start justify-start py-2 text-left text-[13px]"
                 :ui="{ label: 'min-w-0 whitespace-normal break-words leading-5', leadingIcon: 'mt-0.5 shrink-0' }"
-                @click="folderFilter = row.folder.id"
+                :to="folderLink(row.folder.id)"
               />
+              <UDropdownMenu :items="folderMenu(row.folder)">
+                <UButton icon="i-lucide-ellipsis-vertical" :aria-label="`Actions for ${row.folder.name}`" size="xs" color="neutral" variant="ghost" class="mt-1 shrink-0" />
+              </UDropdownMenu>
             </div>
             <p v-if="!folderError && fetchStatus === 'success' && !folderRows.length" class="px-2.5 py-4 text-sm text-muted">
               {{ folderSearch.trim() ? 'No matching folders. Try another name.' : 'No folders yet.' }}
@@ -520,7 +611,7 @@ function clearFilters() {
               color="neutral"
               class="min-h-9 w-full justify-start py-2 text-left text-[13px]"
               :ui="{ label: 'min-w-0 whitespace-normal break-words leading-5' }"
-              @click="tagFilter = tag"
+              @click="selectTag(tag)"
             />
             <p v-if="!visibleCategories.length" class="px-2.5 py-4 text-sm text-muted">
               {{ tagSearch.trim() ? 'No matching tags. Try another name.' : 'No tags for this client.' }}
@@ -574,7 +665,7 @@ function clearFilters() {
             color="neutral"
             variant="soft"
             size="xs"
-            @click="clientFilter = 'all'"
+            @click="selectClient('all')"
           />
           <UButton
             v-if="folderFilter !== 'all'"
@@ -585,7 +676,7 @@ function clearFilters() {
             color="neutral"
             variant="soft"
             size="xs"
-            @click="folderFilter = 'all'"
+            @click="clearFolder"
           />
           <UButton
             v-if="tagFilter !== 'all'"
@@ -596,26 +687,28 @@ function clearFilters() {
             color="neutral"
             variant="soft"
             size="xs"
-            @click="tagFilter = 'all'"
+            @click="selectTag('all')"
           />
         </div>
         <div class="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
+          <UAlert v-if="!folderError && fetchStatus === 'success' && folderFilter !== 'all' && !selectedFolderPath.length" title="Folder not found" color="warning" class="mb-4" :actions="[{ label: 'All folders', to: folderLink('all') }]" />
           <nav v-if="selectedFolderPath.length" aria-label="Folder breadcrumb" class="mb-4 flex flex-wrap items-center gap-1">
             <UButton
               label="All folders"
               variant="link"
               color="neutral"
               size="xs"
-              @click="folderFilter = 'all'"
+              :to="folderLink('all')"
             />
             <template v-for="folder in selectedFolderPath" :key="folder.id">
               <UIcon name="i-lucide-chevron-right" class="size-3 text-muted" />
               <UButton
                 :label="folder.name"
+                :aria-current="folder.id === folderFilter ? 'page' : undefined"
                 variant="link"
                 color="neutral"
                 size="xs"
-                @click="folderFilter = folder.id"
+                :to="folderLink(folder.id)"
               />
             </template>
           </nav>
@@ -628,7 +721,7 @@ function clearFilters() {
               color="neutral"
               variant="outline"
               class="justify-start"
-              @click="folderFilter = folder.id"
+              :to="folderLink(folder.id)"
             />
           </div>
           <div class="mb-4 flex items-center justify-between gap-2">
@@ -821,6 +914,7 @@ function clearFilters() {
         </div>
       </template>
     </UModal>
+    <BannerFolderEditModal v-if="folderEditor" :action="folderEditor.action" :folder="folderEditor.folder" :folders="folderData" @close="folderEditor = null" @saved="folderSaved" />
     <!-- Delete Confirmation Modal -->
     <UModal v-model:open="showDeleteModal">
       <template #content>
