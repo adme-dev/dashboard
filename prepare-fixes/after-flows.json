@@ -1,0 +1,49 @@
+{
+  "upload": {
+    "selected": "upload",
+    "runBlocked": "Paint over what to erase first.",
+    "picture": {
+      "w": 254,
+      "h": 318
+    }
+  },
+  "calls": [
+    {
+      "call": "POST upload-media",
+      "kind": "still",
+      "width": "1080",
+      "height": "1350",
+      "durationSec": null,
+      "filename": "upload.png",
+      "posterSent": false,
+      "posterIsJpeg": false
+    },
+    {
+      "call": "POST thumbnail",
+      "asset": "a-video",
+      "bytes": 61910,
+      "jpeg": true,
+      "contentType": "multipart/form-data"
+    },
+    {
+      "call": "POST extract",
+      "action": "layer-decomposition"
+    },
+    {
+      "call": "POST upload-media",
+      "kind": "footage",
+      "width": "1280",
+      "height": "720",
+      "durationSec": "4",
+      "filename": "clip.mp4",
+      "posterSent": true,
+      "posterIsJpeg": true
+    }
+  ],
+  "unhandled": [
+    "GET /api/ai/anomalies/count/critical-open",
+    "GET /api/xero/status",
+    "GET /api/agency/video/projects/11111111-1111-4111-8111-111111111111/storyboard"
+  ],
+  "errors": []
+}
