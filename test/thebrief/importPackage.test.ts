@@ -197,3 +197,15 @@ describe('video packages', () => {
     expect(() => parseTheBriefPackage(input)).toThrow('Media clock is only valid on video layers')
   })
 })
+
+it('accepts centered Y-axis flips on editable shapes within the native angle bounds', () => {
+  const input = fixture()
+  const layer = input.canvasData.custom_300x250.layers[0]
+  Object.assign(layer, {
+    type: 'rect', fillColor: '#123456', imageFlipPerspective: 375.2,
+    keyframes: { rotationY: [{ time: 0, value: 80 }, { time: 1, value: 0 }] }
+  })
+  expect(parseTheBriefPackage(input).canvasData.custom_300x250.layers[0]).toMatchObject({ type: 'rect', imageFlipPerspective: 375.2 })
+  Object.assign(layer, { keyframes: { rotationY: [{ time: 0, value: 100 }, { time: 1, value: 0 }] } })
+  expect(() => parseTheBriefPackage(input)).toThrow('Invalid TheBrief 3D image flip')
+})

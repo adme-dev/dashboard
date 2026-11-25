@@ -158,7 +158,8 @@ export function parseTheBriefPackage(input: unknown): TheBriefPackage {
       }
       if (item.imageFlipPerspective || (!item.textTilt && item.keyframes?.rotationX) || item.keyframes?.rotationY || item.keyframes?.z) {
         const depthShape = ['rect', 'button'].includes(item.type) && !!item.keyframes?.z
-        if ((!['image', 'text'].includes(item.type) && !depthShape) || !item.imageFlipPerspective || !(item.keyframes?.rotationX || item.keyframes?.rotationY || item.keyframes?.z)
+        const flipShape = ['rect', 'button'].includes(item.type) && !!item.keyframes?.rotationY
+        if ((!['image', 'text'].includes(item.type) && !depthShape && !flipShape) || !item.imageFlipPerspective || !(item.keyframes?.rotationX || item.keyframes?.rotationY || item.keyframes?.z)
           || (item.keyframes.rotationY && (item.keyframes.rotationX || item.keyframes.z)) || (item.keyframes.rotationX && item.keyframes.z && item.type !== 'text' && !depthShape)
           || item.keyframes.rotationY?.some(frame => Math.abs(frame.value) > 90)
           || item.keyframes.rotationX?.some(frame => Math.abs(frame.value) > 90)

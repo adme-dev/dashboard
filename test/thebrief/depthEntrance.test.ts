@@ -53,3 +53,17 @@ it('retains the native border and 3D rotation of a projected shape', async () =>
   expect(layer.keyframes.z.map(frame => frame.value)).toEqual([-200, 0])
   expect(server('mrec', [layer])).toBe(client('mrec', [layer]))
 })
+
+it('keeps a bordered shape and its centered Y-axis flip editable', async () => {
+  const sourceFlip = depth.replace('data-eltype="image"', 'data-eltype="shape"')
+    .replace('background-image:url(./original.png);background-size:cover', 'border:3px solid #fff;border-radius:54px')
+    .replace('translateZ(-200px) rotate(-45deg)', 'rotateX(0) rotateY(80deg) rotate3d(1,1,0,0deg)')
+    .replace('translateZ(0) rotate(0)', 'rotateX(0) rotateY(0) rotate3d(1,1,0,0deg)')
+    .replace('animation-delay:0s;', 'animation-delay:0s;backface-visibility:hidden;')
+  const result = await convertTheBriefHtml(sourceFlip)
+  const layer = result.canvasData.custom_300x250.layers.find(l => l.type === 'button')
+  expect(result.warnings).toEqual([expect.stringContaining('editable native button')])
+  expect(layer).toMatchObject({ borderWidth: 3, imageFlipPerspective: 500 })
+  expect(layer.keyframes.rotationY.map(frame => frame.value)).toEqual([80, 0])
+  expect(server('mrec', [layer])).toBe(client('mrec', [layer]))
+})
