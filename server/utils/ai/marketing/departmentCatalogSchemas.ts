@@ -1,15 +1,9 @@
 import { z } from 'zod'
 import type { DealerLink, FeedDetail } from '~~/server/utils/feeds/types'
+import { hasExactFeedSellerScope, isBareNativeFeedSource } from './departmentFeedOwnership'
 /** Native source selectors and manual includes must not bypass the mapped seller predicate. */
 export function isExactNativeFeedScope(feed: FeedDetail, link: DealerLink): boolean {
-  if (!link.externalOrgId || !link.sellerRefs.length) return false
-  if (feed.source && (feed.source.type !== 'meilisearch' || Object.keys(feed.source).some(k => k !== 'type'))) return false
-  const f = feed.filters
-  if (f.manualIncludeIds !== undefined || f.includeIds !== undefined || f.selectionMode !== undefined) return false
-  const owned = (s: unknown) => typeof s === 'string' && link.sellerRefs.includes(s)
-  if (Array.isArray(f.rulesets)) return f.rulesets.length > 0 && f.rulesets.every(r => r && typeof r === 'object' && owned(r.sellerId))
-  const sellers = [...(Array.isArray(f.sellerIds) ? f.sellerIds : []), ...(Array.isArray(f.dealerIds) ? f.dealerIds : [])]
-  return sellers.length > 0 && sellers.every(owned)
+  return isBareNativeFeedSource(feed.source) && hasExactFeedSellerScope(feed, link)
 }
 const id = z.string().regex(/^\d{5,30}$/)
 const bound = z.strictObject({ clientId: z.string().uuid(), connectionId: z.string().uuid(), catalogId: id, sourceFeedId: z.string().uuid() })

@@ -8,9 +8,12 @@ const feed: any = { source: { type: 'meilisearch' }, filters: { sellerIds: ['sel
 describe('exact native catalog ownership', () => {
   it('requires native source and nonempty owned seller scope', () => {
     expect(isExactNativeFeedScope(feed, link)).toBe(true)
-    for (const filters of [{}, { sellerIds: ['seller-2'] }, { sellerIds: ['seller-1'], manualIncludeIds: ['foreign'] }, { rulesets: [{ sellerId: '' }] }]) expect(isExactNativeFeedScope({ ...feed, filters }, link)).toBe(false)
+    expect(isExactNativeFeedScope({ ...feed, source: { type: 'supabase' } }, link)).toBe(true)
+    expect(isExactNativeFeedScope({ ...feed, filters: { sellerIds: ['seller-1'], includeIds: [], manualIncludeIds: [], selectionMode: 'filters' } }, link)).toBe(true)
+    for (const filters of [{}, { sellerIds: ['seller-2'] }, { sellerIds: ['seller-1'], manualIncludeIds: ['foreign'] }, { sellerIds: ['seller-1'], selectionMode: 'manual' }, { rulesets: [{ sellerId: '' }] }]) expect(isExactNativeFeedScope({ ...feed, filters }, link)).toBe(false)
     expect(isExactNativeFeedScope({ ...feed, source: { type: 'csv', url: 'https://foreign.example' } }, link)).toBe(false)
     expect(isExactNativeFeedScope({ ...feed, source: { type: 'meilisearch', url: 'https://foreign.example' } }, link)).toBe(false)
+    expect(isExactNativeFeedScope({ ...feed, source: { type: 'supabase', url: 'https://foreign.example' } }, link)).toBe(false)
   })
   it('requires every ruleset seller to be owned', () => {
     expect(isExactNativeFeedScope({ ...feed, filters: { rulesets: [{ sellerId: 'seller-1' }] } }, link)).toBe(true)

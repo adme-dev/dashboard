@@ -12,13 +12,39 @@ describe('department bound supplier feed ownership', () => {
     expect(isScopedDepartmentFeed(feed, { ...link, defaultFeedIds: [] })).toBe(false)
   })
   it('never lets an explicit binding bypass seller scope or manual include guards', () => {
-    for (const filters of [{}, { sellerIds: ['foreign'] }, { sellerIds: ['knox-ford-gwm', 'foreign'] }, { sellerIds: ['knox-ford-gwm'], includeIds: ['foreign'] }, { sellerIds: ['knox-ford-gwm'], manualIncludeIds: ['foreign'] }, { rulesets: [{ sellerId: 'knox-ford-gwm' }, { sellerId: '' }] }]) {
+    for (const filters of [
+      {},
+      { sellerIds: ['foreign'] },
+      { sellerIds: ['knox-ford-gwm', 'foreign'] },
+      { sellerIds: ['knox-ford-gwm'], includeIds: ['foreign'] },
+      { sellerIds: ['knox-ford-gwm'], manualIncludeIds: ['foreign'] },
+      { sellerIds: ['knox-ford-gwm'], selectionMode: 'manual' },
+      { sellerIds: ['knox-ford-gwm'], includeIds: 'foreign' },
+      { sellerIds: ['knox-ford-gwm'], filterGroups: [{ mode: 'manual', sellerIds: ['knox-ford-gwm'], includeIds: [] }] },
+      { sellerIds: ['knox-ford-gwm'], filterGroups: [{ mode: 'criteria', sellerIds: ['knox-ford-gwm'], includeIds: ['foreign'] }] },
+      { sellerIds: ['knox-ford-gwm'], filterGroups: [{ mode: 'criteria', sellerIds: ['foreign'], includeIds: [] }] },
+      { rulesets: [{ sellerId: 'knox-ford-gwm' }, { sellerId: '' }] },
+      { rulesets: [{ sellerId: 'knox-ford-gwm' }], sellerIds: ['foreign'] }
+    ]) {
       expect(isScopedDepartmentFeed({ ...feed, filters }, link)).toBe(false)
     }
     expect(isScopedDepartmentFeed(feed, { ...link, externalOrgId: '' })).toBe(false)
   })
+  it('accepts Social Dashboard UI filter defaults when seller scope is exact and no manual includes exist', () => {
+    const uiFilters = {
+      sellerIds: ['knox-ford-gwm'],
+      rulesets: [{ id: 'r1', sellerId: 'knox-ford-gwm' }],
+      filterGroups: [{ id: 'r1', mode: 'criteria', sellerIds: ['knox-ford-gwm'], includeIds: [] }],
+      includeIds: [],
+      manualIncludeIds: [],
+      selectionMode: 'filters'
+    }
+    expect(isScopedDepartmentFeed({ ...feed, filters: uiFilters }, link)).toBe(true)
+  })
   it('keeps native feeds supported and excludes unknown supplier types', () => {
     expect(isScopedDepartmentFeed({ ...feed, id: 'native', source: { type: 'meilisearch' } }, link)).toBe(true)
+    expect(isScopedDepartmentFeed({ ...feed, id: 'native-supabase', source: { type: 'supabase' } }, link)).toBe(true)
+    expect(isScopedDepartmentFeed({ ...feed, source: { type: 'supabase', url: 'https://foreign.example' } }, link)).toBe(false)
     expect(isScopedDepartmentFeed({ ...feed, source: { type: 'csv', url: 'https://other.example' } }, link)).toBe(false)
     expect(isScopedDepartmentFeed({ ...feed, source: { type: 'meilisearch', url: 'https://foreign.example' } }, link)).toBe(false)
     expect(isScopedDepartmentFeed({ ...feed, source: { type: 'adtorque', baseUrl: 'https://dealer.example' } }, link)).toBe(true)
