@@ -10,7 +10,7 @@ routes = []
 [[containers]]
 name = "thebrief-import"
 class_name = "TheBriefImportContainer"
-image = "registry.cloudflare.com/a5b299b3ad15c1b5b895dc66f9357b17/thebrief-import@sha256:b279d2131399ba13a2d50b75782e7bb010c1dae4e99ad0e12acd33ae11dfdbda"
+image = "registry.cloudflare.com/a5b299b3ad15c1b5b895dc66f9357b17/thebrief-import@sha256:fea91c9470d8b3b574a68421613a4cf1c2e5445ab398adfa5430406155c1f3dd"
 max_instances = 2
 instance_type = "standard-1"
 
