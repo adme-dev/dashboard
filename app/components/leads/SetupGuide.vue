@@ -1,4 +1,10 @@
 <script setup lang="ts">
+import {
+  renderGenericLeadCurlSnippet,
+  renderGenericLeadWebhookUrl,
+  renderGoogleLeadWebhookUrl
+} from '~~/shared/leads/leadCopybook'
+
 const open = defineModel<boolean>('open', { default: false })
 
 const sections = [
@@ -103,10 +109,18 @@ const baseUrl = computed(() =>
   import.meta.client ? window.location.origin : 'https://app.xeroflow.io'
 )
 const googleWebhookUrl = computed(() =>
-  selectedEndpoint.value ? `${baseUrl.value}/api/leads/webhook/google/${selectedEndpoint.value.url_token}` : ''
+  selectedEndpoint.value ? renderGoogleLeadWebhookUrl(baseUrl.value, selectedEndpoint.value.url_token) : ''
 )
 const genericWebhookUrl = computed(() =>
-  selectedEndpoint.value ? `${baseUrl.value}/api/leads/webhook/generic/${selectedEndpoint.value.url_token}` : ''
+  selectedEndpoint.value ? renderGenericLeadWebhookUrl(baseUrl.value, selectedEndpoint.value.url_token) : ''
+)
+const genericCurlSnippet = computed(() =>
+  renderGenericLeadCurlSnippet({
+    baseUrl: baseUrl.value,
+    urlToken: selectedEndpoint.value?.url_token,
+    secretKey: selectedEndpoint.value?.secret_key,
+    revealSecret: revealed.value
+  })
 )
 
 const revealed = ref(false)
@@ -597,16 +611,20 @@ watch(endpointItems, (items) => {
               </div>
 
               <div>
-                <p class="font-medium mb-1.5">
-                  Quick test with curl
-                </p>
-                <pre class="bg-elevated rounded p-3 text-xs font-mono overflow-x-auto leading-relaxed">curl -X POST \
-  https://app.xeroflow.io/api/leads/webhook/generic/&lt;token&gt; \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "key": "&lt;secret_key&gt;",
-    "fields": { "full_name": "Test", "email": "t@example.com" }
-  }'</pre>
+                <div class="flex items-center justify-between gap-2 mb-1.5">
+                  <p class="font-medium">
+                    Quick test with curl
+                  </p>
+                  <UButton
+                    icon="i-lucide-copy"
+                    color="neutral"
+                    variant="subtle"
+                    size="xs"
+                    label="Copy curl"
+                    @click="copyText(genericCurlSnippet, 'Curl snippet copied')"
+                  />
+                </div>
+                <pre class="bg-elevated rounded p-3 text-xs font-mono overflow-x-auto leading-relaxed">{{ genericCurlSnippet }}</pre>
               </div>
 
               <div>

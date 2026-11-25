@@ -1710,7 +1710,7 @@ const features: Record<string, Feature> = {
       },
       {
         title: 'Every Registered Capability',
-        content: 'Active owners can discover registered capabilities across Finance, Marketing, Banners, publishing, media generation, administration and MCP integrations. Company accounting execution additionally requires a current explicit Finance grant, including for owners. Other registered operations retain owner authority across application rollout, permission, budget and confirmation gates. Owners can preview a client’s existing Google or Meta inventory feed, edit filters and mappings, activate or pause it, and regenerate its export. Applying a preview records the exact revision and verifies the saved feed. Registered operations include creating editable Banner Studio drafts and staged Google Tag Manager binding, drafting, publishing, verification and rollback through dedicated execution ledgers. Missing providers, bindings, secrets or unimplemented tools remain real operational failures.'
+        content: 'Active owners can discover registered capabilities across Finance, Marketing, Banners, publishing, media generation, administration and MCP integrations. Company accounting execution additionally requires a current explicit Finance grant, including for owners. Other registered operations retain owner authority across application rollout, permission, budget and confirmation gates. Owners can list, upsert and deactivate client dealer feed links, discover native inventory sellers with dealership addresses, inspect raw organization feeds with ownership diagnostics, repair missing seller scopes after preview parity checks, create new Google or Meta feeds with dry-run previews, and edit, activate, pause or regenerate existing feeds with verified read-back. Registered operations also include creating editable Banner Studio drafts and staged Google Tag Manager binding, drafting, publishing, verification and rollback through dedicated execution ledgers. Missing providers, bindings, secrets or unimplemented tools remain real operational failures.'
       },
       {
         title: 'Security Boundaries Stay Enforced',
@@ -2034,6 +2034,10 @@ const features: Record<string, Feature> = {
       {
         title: 'Vision Evidence Before Human Sign-Off',
         content: 'Every generated or transformed Banner Studio image can be checked by Qwen 3.6 vision in JSON mode against up to four approved references. Inspection has its own governance mode and higher read-like rate ceiling, separate from billed asset creation. The append-only verdict records vehicle and badge match, OCR disclaimer and price, logo distortion, visual artefacts, confidence and notes; final approval remains with the human reviewer.'
+      },
+      {
+        title: 'Tested Starter Prompts & Setup Snippets',
+        content: 'The Connect AI Assistants page renders a copyable Cursor mcp.json snippet alongside capability-filtered starter prompts tailored to the signed-in user’s actual tools, role, and read-only policy. Every starter prompt is verified against the registered MCP tool catalog in CI so guidance never drifts from live tool names or approval workflows.'
       }
     ]
   },
