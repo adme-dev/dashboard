@@ -47,6 +47,9 @@ export function wordEntranceSteps(effect: BannerWordEntrance): Array<{ property:
 }
 
 export const MEDIA_TOP_FADE = 'linear-gradient(0deg,rgba(0,0,0,1) 45%,rgba(0,0,0,0.8) 78%,rgba(0,0,0,0) 100%)'
+const scallopedCorner = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" preserveAspectRatio="none"><path d="M318.114,0H0l0,318.114c0,12.926,9.21,24.441,22.012,26.232c0.086,0.012,0.173,0.024,0.26,0.035 l13.967,1.858l6.084,12.71c7.549,15.771,24.731,24.525,41.927,21.363l13.858-2.549l9.714,10.208 c12.053,12.666,31.099,15.683,46.476,7.361l12.392-6.706l12.393,6.707c15.377,8.322,34.423,5.305,46.476-7.362l9.713-10.208 l13.858,2.549c17.196,3.163,34.378-5.591,41.927-21.362l6.084-12.71l13.968-1.859c17.332-2.306,30.967-15.942,33.273-33.273 l1.859-13.968l12.71-6.084c15.771-7.549,24.526-24.731,21.363-41.927l-2.549-13.858l10.208-9.713 c12.666-12.053,15.683-31.099,7.361-46.476l-6.707-12.392l6.707-12.393c8.322-15.377,5.305-34.423-7.361-46.476l-10.208-9.713 l2.549-13.858c3.163-17.196-5.592-34.378-21.363-41.927l-12.709-6.083l-1.858-13.968c-0.012-0.087-0.023-0.174-0.035-0.26 C342.555,9.21,331.04,0,318.114,0z"/></svg>`
+const scallopedMask = `url(data:image/svg+xml,${encodeURIComponent(scallopedCorner)})`
 export function mediaMaskCss(mask?: string) {
-  return mask === 'fadeTop' ? `mask-image:${MEDIA_TOP_FADE};-webkit-mask-image:${MEDIA_TOP_FADE};mask-repeat:no-repeat;-webkit-mask-repeat:no-repeat;mask-position:center;-webkit-mask-position:center;mask-size:100% 100%;-webkit-mask-size:100% 100%;mask-origin:content-box;-webkit-mask-origin:content-box;backdrop-filter:opacity(1);` : ''
+  const image = mask === 'fadeTop' ? MEDIA_TOP_FADE : mask === 'scallopedCorner' ? scallopedMask : ''
+  return image ? `mask-image:${image};-webkit-mask-image:${image};mask-repeat:no-repeat;-webkit-mask-repeat:no-repeat;mask-position:center;-webkit-mask-position:center;mask-size:100% 100%;-webkit-mask-size:100% 100%;mask-origin:content-box;-webkit-mask-origin:content-box;backdrop-filter:opacity(1);` : ''
 }

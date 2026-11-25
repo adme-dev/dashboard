@@ -1,5 +1,6 @@
 import { isBannerImageBackground } from '../../shared/bannerImageBackground.mjs'
 import { isBannerInlineTextColor, isBannerInlineTextGradient } from '../../shared/bannerTextColor.mjs'
+import { createHash } from 'node:crypto'
 import { parse } from 'acorn'
 import { Window } from 'happy-dom'
 import { isSafeBannerImageFilter } from '../../shared/bannerImageFilters.mjs'
@@ -449,7 +450,7 @@ function effectTracks(effect, style, rules, start, end, warnings, geometry, inte
     const ownerCss = style(owner)
     perspective = px(ownerCss.getPropertyValue('perspective'))
     const centre = transformOrigin && sameTime(transformOrigin.x, geometry.w / 2) && sameTime(transformOrigin.y, geometry.h / 2)
-    if (!['image', 'text'].includes(owner.getAttribute('data-eltype')) || !['effIn', 'effOut'].some(prefix => effect.id === owner.id.replace('element-', prefix))
+    if (!['image', 'svg', 'text'].includes(owner.getAttribute('data-eltype')) || !['effIn', 'effOut'].some(prefix => effect.id === owner.id.replace('element-', prefix))
       || transformProperties.size !== 1 || !centre || css.getPropertyValue('backface-visibility') !== 'hidden'
       || !['center', 'center center', '50% 50%'].includes(ownerCss.getPropertyValue('perspective-origin'))
       || !['', 'none'].includes(css.transform) || !['', 'none'].includes(ownerCss.transform)
@@ -534,7 +535,7 @@ function sourceDeclarations(document, element, property) {
   const classes = [...element.classList]
   const values = new Set()
   if (!classes.length) return values
-  const declaration = new RegExp(`(?:^|;)\\s*(?:${property})\\s*:\\s*([^;]*)`, 'gi')
+  const declaration = new RegExp(`(?:^|;)\\s*(?:${property})\\s*:\\s*((?:"[^"]*"|'[^']*'|[^;"'])*)`, 'gi')
   for (const sheet of document.querySelectorAll('style')) {
     for (const [, selectors, body] of sheet.textContent.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
       if (!selectors.split(',').some(selector => classes.some(name => selector.trim() === `.${name}`))) continue
@@ -817,7 +818,7 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {}, reviewe
         keyframes = effect.tracks || {}
         if (effect.textTilt) layerBase.textTilt = effect.textTilt
         if (effect.perspective) {
-          const allowed = keyframes.z ? ['opacity', 'z', 'rotation', 'rotationX', 'scaleX', 'scaleY'] : ['opacity', 'rotationX', 'rotationY', 'scaleX', 'scaleY']
+          const allowed = keyframes.z ? ['opacity', 'x', 'y', 'z', 'rotation', 'rotationX', 'scaleX', 'scaleY'] : ['opacity', 'x', 'y', 'rotationX', 'rotationY', 'scaleX', 'scaleY']
           if (Object.keys(keyframes).some(property => !allowed.includes(property))) throw new Error('Nested 3D transforms need an adapter')
           layerBase.imageFlipPerspective = effect.perspective
           const forward = Math.max(0, ...(keyframes.z || []).map(frame => frame.value))
@@ -966,16 +967,26 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {}, reviewe
           }
         }
         let masks = 0
+        let maskOwner
         for (const node of ancestry) {
           const values = [...sourceDeclarations(document, node, 'mask-image|-webkit-mask-image'), style(node).getPropertyValue('mask-image'), style(node).getPropertyValue('-webkit-mask-image'), node.style.getPropertyValue('mask-image'), node.style.getPropertyValue('-webkit-mask-image')].filter(value => value && value !== 'none')
           if (!values.length) continue
           const expected = 'linear-gradient(0deg,rgba(0,0,0,1)45%,rgba(0,0,0,0.8)78%,rgba(0,0,0,0)100%)'
-          if (++masks > 1 || values.some(value => value.replace(/\s+/g, '') !== expected)
+          const maskType = value => {
+            if (value.replace(/\s+/g, '') === expected) return 'fadeTop'
+            const encoded = /^url\(["']?data:image\/svg\+xml;charset=UTF-8,([^"')]+)["']?\)$/i.exec(value)?.[1]
+            if (!encoded) return
+            // Match the reviewed silhouette, retaining only its native preset in the draft.
+            if (createHash('sha256').update(decodeURIComponent(encoded)).digest('hex') === '8452a4fae14e6899f61e8b18cb5857f32f2508b4c1f05d7343daaa469982ad6f') return 'scallopedCorner'
+          }
+          const mask = maskType(values[0])
+          if (++masks > 1 || !mask || values.some(value => maskType(value) !== mask)
             || [...sourceDeclarations(document, node, 'mask-repeat|-webkit-mask-repeat')].some(value => value !== 'no-repeat')
             || [...sourceDeclarations(document, node, 'mask-position|-webkit-mask-position')].some(value => value !== 'center')
             || [...sourceDeclarations(document, node, 'mask-size|-webkit-mask-size')].some(value => value !== '100% 100%')
             || [...sourceDeclarations(document, node, 'mask-origin|-webkit-mask-origin')].some(value => value !== 'content-box')) throw new Error(`Video ${sourceId}: unsupported media mask composition`)
-          layerBase.mediaMask = 'fadeTop'
+          layerBase.mediaMask = mask
+          maskOwner = node
         }
         const videoFilter = videoFilters.join(' ')
         if (videoFilter && !isSafeBannerImageFilter(videoFilter)) throw new Error(`Video ${sourceId}: unsupported static filter`)
@@ -994,11 +1005,11 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {}, reviewe
             // content flip does the same without re-encoding the source clip.
             const mirror = /^rotate\(0(?:deg)?\)\s+scale\((-?1),\s*(-?1)\)$/.exec(nodeCss.transform)
             const rotation = /^rotate\((-?\d+(?:\.\d+)?)deg\)$/.exec(nodeCss.transform)
-            if ((!mirror && !rotation) || (node.parentElement !== element && !(rotation && node.parentElement?.closest('[data-eltype]') === element && /^eff(?:Out|In)\d+$/.test(node.parentElement.id))) || (rotation && Number(rotation[1]) % 90 !== 0 && !keyframes.scaleX) || !node.contains(video)
+            if ((!mirror && !rotation) || (node.parentElement !== element && !(node.parentElement?.closest('[data-eltype]') === element && /^eff(?:Out|In)\d+$/.test(node.parentElement.id))) || (rotation && Number(rotation[1]) % 90 !== 0 && !keyframes.scaleX) || !node.contains(video)
               || nodeCss.width !== '100%' || nodeCss.height !== '100%'
               || !['', 'center', '50% 50%'].includes(nodeCss.transformOrigin)
               || !['', '0px', 'auto'].includes(nodeCss.left) || !['', '0px', 'auto'].includes(nodeCss.top)
-              || (nodeCss.animationName && nodeCss.animationName !== 'none') || masks) {
+              || (nodeCss.animationName && nodeCss.animationName !== 'none') || (masks && !(mirror && maskOwner !== node && node.contains(maskOwner)))) {
               throw new Error(`Video ${sourceId}: transformed video requires an adapter`)
             }
             if (rotation) {
@@ -1121,7 +1132,7 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {}, reviewe
             const fills = [css.getPropertyValue('-webkit-text-fill-color'), ...sourceDeclarations(document, node, '-webkit-text-fill-color')]
             if ([css.getPropertyValue('background-clip'), css.getPropertyValue('-webkit-background-clip'), ...sourceDeclarations(document, node, 'background-clip|-webkit-background-clip')].includes('text')
               || fills.some(fill => !plainFills.includes((fill || '').toLowerCase()))) {
-              const gradient = (css.backgroundImage || '').replace(/(#[0-9a-f]{6}\s+)0(?=\s*[,\)])/gi, (_, color) => color + '0%')
+              const gradient = (css.backgroundImage || '').replace(/#([0-9a-f]{3})(?=\s)/gi, (_, hex) => '#' + [...hex].map(c => c + c).join('')).replace(/(#[0-9a-f]{6}\s+)0(?=\s*[,\)])/gi, (_, color) => color + '0%')
               if (node.tagName !== 'SPAN' || node.children.length || !isBannerInlineTextGradient(gradient)
                 || ![css.getPropertyValue('background-clip'), css.getPropertyValue('-webkit-background-clip')].includes('text')) throw new Error('Gradient or clipped text fill needs an adapter')
               gradients.set(node, gradient)
