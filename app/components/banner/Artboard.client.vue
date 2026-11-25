@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useKeyModifier } from '@vueuse/core'
 import { useBannerCanvasGroup } from '~/composables/useBannerCanvasGroup'
 import SlideGroup from './SlideGroup.client.vue'
 import { bannerSlideGroups } from '~~/shared/bannerSlideFade'
@@ -32,6 +33,7 @@ function onLayerContextMenu(event: MouseEvent, layer: Layer) {
   effectMenu.value = { id: layer.id, x: event.clientX, y: event.clientY }
 }
 const { remoteLocks } = useBannerRealtime()
+const shiftHeld = useKeyModifier('Shift')
 const artboardEl = ref<HTMLElement | null>(null)
 const { bounds: groupBounds, preview: groupPreview, start: startGroupDrag } = useBannerCanvasGroup(artboardEl, () => props.isActive)
 const { dragState, guides, onLayerMouseDown, onResizeHandleMouseDown } = useBannerDrag(artboardEl)
@@ -97,7 +99,8 @@ function onLayerClick(e: MouseEvent, layer: Layer) {
   if (!props.isActive) return
   if (layer.locked || layer.type === 'bg') return
   e.stopPropagation()
-  if (layer.timelineGroup) selectGroup(layer.timelineGroup.id)
+  if (e.shiftKey) selectLayer(layer.id, true)
+  else if (layer.timelineGroup) selectGroup(layer.timelineGroup.id)
   else selectLayer(layer.id)
 }
 
@@ -510,13 +513,13 @@ defineExpose({ artboardEl })
             backfaceVisibility: layer.imageFlipPerspective ? 'hidden' : undefined,
             cursor: isActive && !layer.locked && layer.type !== 'bg' && layer.type !== 'audio' ? 'move' : 'default',
             clipPath: maskClipPaths.get(layer.id) || undefined,
-            outline: layer.isMask ? '2px dashed #e84aff' : undefined,
+            outline: isActive && state.multiSelectedLayerIds?.includes(layer.id) ? '2px solid #4a8fe8' : layer.isMask ? '2px dashed #e84aff' : undefined,
             outlineOffset: layer.isMask ? '-1px' : undefined
           }"
           @click="onLayerClick($event, layer)"
           @contextmenu="onLayerContextMenu($event, layer)"
-          @pointerdown="layer.timelineGroup && startGroupDrag($event, layer.timelineGroup.id)"
-          @mousedown="!layer.timelineGroup && $event.button === 0 && isActive && !layer.locked && layer.type !== 'bg' ? onLayerMouseDown($event, layer.id) : undefined"
+          @pointerdown="!$event.shiftKey && layer.timelineGroup && startGroupDrag($event, layer.timelineGroup.id)"
+          @mousedown="!$event.shiftKey && !layer.timelineGroup && $event.button === 0 && isActive && !layer.locked && layer.type !== 'bg' ? onLayerMouseDown($event, layer.id) : undefined"
         >
           <!-- Content flips independently of animated position/rotation/scale. -->
           <div v-if="layer.textTilt" data-banner-tilt :style="{ width: `${layer.textTilt.width}px`, height: `${layer.textTilt.height}px`, transformOrigin: `${layer.textTilt.width / 2}px calc(var(--xf-origin-y, ${layer.textTilt.height}) * 1px)` }">
@@ -584,14 +587,14 @@ defineExpose({ artboardEl })
       data-testid="banner-group-selection"
       class="absolute z-[99999] cursor-move touch-none border border-[#4a8fe8]"
       :aria-label="`Move ${selectedGroup.name}`"
-      :style="{ left: groupBounds.left + 'px', top: groupBounds.top + 'px', width: groupBounds.width + 'px', height: groupBounds.height + 'px' }"
+      :style="{ pointerEvents: shiftHeld ? 'none' : undefined, left: groupBounds.left + 'px', top: groupBounds.top + 'px', width: groupBounds.width + 'px', height: groupBounds.height + 'px' }"
       @click.stop
       @mousedown.stop
       @pointerdown="startGroupDrag($event, selectedGroup.id)"
     />
     <!-- Selection belongs to the editor, outside layer stacking and clip paths. -->
     <div
-      v-if="isActive && !state.isPlaying && selectedLayerObj && !selectedLayerObj.hidden && !selectedLayerObj.locked && !['bg', 'audio'].includes(selectedLayerObj.type)"
+      v-if="isActive && !state.multiSelectedLayerIds?.length && !state.isPlaying && selectedLayerObj && !selectedLayerObj.hidden && !selectedLayerObj.locked && !['bg', 'audio'].includes(selectedLayerObj.type)"
       data-testid="banner-selection"
       class="absolute pointer-events-none border border-[#4a8fe8]"
       :style="{
