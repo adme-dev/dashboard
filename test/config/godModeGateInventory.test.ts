@@ -556,6 +556,8 @@ describe('God mode gate inventory', () => {
     for (const row of bannerReview.additions) expect(inventory.rows).toContain(row)
     const ownerFeedGate = "server/utils/ai/marketing/departmentFeedOperations.ts\tconst activeOwnerSql = 'SELECT email FROM team_members WHERE id=$1 AND is_active AND user_role=\\'owner\\''\tidentity_tenant_hard_boundary"
     expect(inventory.rows).toContain(ownerFeedGate)
+    const ownerDealerFeedAdminGate = 'server/utils/ai/marketing/ownerDealerFeedAdmin.ts\tconst ACTIVE_OWNER_SQL = \'SELECT email FROM team_members WHERE id = $1 AND is_active = TRUE AND user_role = \\\'owner\\\'\'\tidentity_tenant_hard_boundary'
+    expect(inventory.rows).toContain(ownerDealerFeedAdminGate)
     const importWriteGate = 'server/api/agency/banner-studio/import/prepare.post.ts\tawait requireWriteAccess(event)\tapplication_governance_bypass'
     expect(inventory.rows).toContain(importWriteGate)
     // Import image as layers replaces the retired Qwen decompose route. Its two routes each add one
@@ -582,13 +584,13 @@ describe('God mode gate inventory', () => {
       'server/utils/banner/folderManagement.ts\tawait requireWriteAccess(event)\tapplication_governance_bypass'
     ]
     for (const row of folderAndBinGates) expect(inventory.rows).toContain(row)
-    const previousRows = inventory.rows.filter(row => !folderAndBinGates.includes(row) && row !== importWriteGate && row !== ownerFeedGate && row !== previewFrameGate && !bannerReview.additions.includes(row) && !layerImportGates.includes(row))
+    const previousRows = inventory.rows.filter(row => !folderAndBinGates.includes(row) && row !== importWriteGate && row !== ownerFeedGate && row !== ownerDealerFeedAdminGate && row !== previewFrameGate && !bannerReview.additions.includes(row) && !layerImportGates.includes(row))
     expect(previousRows).toHaveLength(1870)
-    expect(inventory.rows).toHaveLength(1886)
+    expect(inventory.rows).toHaveLength(1887)
     expect(inventory.counts).toEqual({
       spend_authorization_hard_boundary: 4,
       fresh_role_grant_hard_boundary: 99,
-      identity_tenant_hard_boundary: 154,
+      identity_tenant_hard_boundary: 155,
       provider_infrastructure_availability: 235,
       application_governance_bypass: 1632,
       ordinary_user_behavior: 329,
@@ -627,7 +629,7 @@ describe('God mode gate inventory', () => {
     expect(createHash('sha256').update(previousRows.filter(row => row !== campaignReadGate && row !== canonicalMcpGate && row !== changeHistoryGate && !editableCopyGates.has(row)).join('\n')).digest('hex')).toBe('6823174c9c4c345945510df91cb41f4d8dd7cf37656471221c2926ad9da6a939')
     // Pins the complete reviewed inventory, including the video funding boundaries.
     expect(createHash('sha256').update(previousRows.join('\n')).digest('hex')).toBe('57024038c87fcbe6d775987181303b04f5070f8477774e097e10f0def3c2bab2')
-    expect(createHash('sha256').update(inventory.rows.filter(row => !folderAndBinGates.includes(row)).join('\n')).digest('hex')).toBe('981704e6bfc86e8b868de1159c2ddf091cbd0fc375b92d742b4d62b58dd7f522')
+    expect(createHash('sha256').update(inventory.rows.filter(row => !folderAndBinGates.includes(row) && row !== ownerDealerFeedAdminGate).join('\n')).digest('hex')).toBe('981704e6bfc86e8b868de1159c2ddf091cbd0fc375b92d742b4d62b58dd7f522')
     expect(inventory.rows).toContain(
       'app/composables/usePageStudioLauncher.ts\tconst config = useRuntimeConfig()\tunrelated_configuration'
     )
