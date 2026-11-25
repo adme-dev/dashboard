@@ -2,15 +2,19 @@
 
 ## Current route
 
-**25 November recovery candidate:** the reported Innisfail Mazda four-layout ZIP,
+**25 November recovery release:** the reported Innisfail Mazda four-layout ZIP,
 Bay City Postcode Sale three-layout ZIP, Spring Saver two-layout ZIP, Arctic
-Campers video and Audi Service video prepare through the qualified Linux candidate under a 4 GiB memory
-cap. Unsupported source constructions still hold. Embedded MP4 soundtracks become
+Campers video and Audi Service video all prepare in production. Four assigned
+designs have been saved and reopened; Audi awaits confirmation of its client.
+See the [live verification record](../migrations/tina-import-recovery-20261125.md).
+Unsupported source constructions still hold. Embedded MP4 soundtracks become
 separate editable audio tracks; original MP4 bytes are retained. The reviewed
 changing-pivot video entrance and centered rotated-shape scales remain editable.
 Client corrections preserve scoped managed fonts and saved versions, with access
-checked for both clients. Archive is available for historical work. Production
-rollout and designer resumption require the live verification record.
+checked for both clients. Archive is available for historical work. Refresh
+XeroFlow before retrying an earlier held file so the dialog uses the released
+converter rather than a cached preparation. Keep normal visual review and
+original-date verification when resuming imports.
 
 In **Banner Studio → Import creative packages**, expand **Import work instruction** above the upload box for the current designer steps. It covers the TheBrief export settings, group assignment, source dates, stalled uploads and review of every saved size.
 
