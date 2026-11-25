@@ -452,7 +452,7 @@ export default defineNuxtConfig({
     // Bundle it for both alias and relative imports; deployed Workers have no
     // checkout filesystem from which to load this module.
     externals: {
-      inline: [/[/\\]shared[/\\]pageStudio[/\\]generated[/\\]/, /[/\\]shared[/\\]banner(?:ImageFilters|ImageBackground|TextColor)\.mjs$/]
+      inline: [/[/\\]shared[/\\]pageStudio[/\\]generated[/\\]/, /[/\\]shared[/\\]banner(?:ImageFilters|ImageBackground|TextColor|StripWipe)\.mjs$/]
     },
     // Keep @flyhub/* out of the server bundle (client-only editor packages).
     alias: {
