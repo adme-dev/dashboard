@@ -294,7 +294,7 @@ function sourceWordPop(element, sourceId, style, rules) {
     if (!delays.length) throw new Error('Missing word animation row')
     const stagger = delays.length > 1 ? delays[1] - delays[0] : 0
     const uniform = stagger >= 0 && delays.every((delay, index) => sameTime(delay, delays[0] + index * stagger))
-    return { duration: first.duration, stagger: uniform ? stagger : 0, ease: first.ease, ...(variant !== 'pop' ? { variant } : {}), ...(character ? { unit: 'character' } : {}), ...(uniform ? (delays[0] ? { offset: delays[0] } : {}) : { delays }) }
+    return { duration: first.duration, stagger: uniform ? stagger : 0, ease: first.ease === 'linear' ? 'cubic-bezier(0,0,1,1)' : first.ease, ...(variant !== 'pop' ? { variant } : {}), ...(character ? { unit: 'character' } : {}), ...(uniform ? (delays[0] ? { offset: delays[0] } : {}) : { delays }) }
   }) }
 }
 
@@ -1345,7 +1345,7 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {}, reviewe
         }
         layerBase.opacity = contentOpacity
         layerBase.keyframes = { ...layerBase.keyframes, opacity: layerBase.keyframes.opacity.map(frame => ({ ...frame, value: frame.value * contentOpacity })) }
-        const visualFilter = imageFilters.join(' ')
+        let visualFilter = imageFilters.join(' ')
         if (visualFilter) {
           // Pointwise colour filters commute with the circle alpha mask. Spatial
           // blur and shadows do not and must retain their explicit hold.
@@ -1353,8 +1353,21 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {}, reviewe
             if (!imageFilterNodes.every(filterNode => imageMaskNodes.every(maskNode => filterNode !== maskNode && filterNode.contains(maskNode)))) throw new Error('Masked image filter requires an adapter')
             layerBase.imageOuterFilter = visualFilter
           }
+          if (mirrored.length && visualFilter.includes('drop-shadow(')) {
+            const wrapper = mirrored[0]
+            const shadowNode = imageFilterNodes[0]
+            const shadow = /^drop-shadow\((-?[\d.]+)px (-?[\d.]+)px ([\d.]+px rgba?\([\d., ]+\))\)$/.exec(visualFilter)
+            const axes = /scale\((-?1),\s*(-?1)\)$/.exec(style(wrapper).transform)
+            if (mirrorAngle || imageFilters.length !== 1 || !shadow || !axes || shadowNode === wrapper || !wrapper.contains(shadowNode)
+              || style(shadowNode).width !== '100%' || style(shadowNode).height !== '100%' || layerBase.imageOuterFilter
+              || layerBase.borderRadius !== undefined || layerBase.imageBackground || !image || !['cover', 'fill'].includes(fit)) {
+              throw new Error('Mirrored nested image shadow needs an adapter')
+            }
+            // The image reflection is baked into the asset. Reflect the inner
+            // shadow offsets too, so the editable filter paints in the same place.
+            visualFilter = `drop-shadow(${Number(shadow[1]) * Number(axes[1])}px ${Number(shadow[2]) * Number(axes[2])}px ${shadow[3]})`
+          }
           if (!isSafeBannerImageFilter(visualFilter)) throw new Error('Unsupported static image filter')
-          if (mirrored.length && visualFilter.includes('drop-shadow(')) throw new Error('Mirrored nested image shadow needs an adapter')
           if (!layerBase.imageOuterFilter) layerBase.visualFilter = visualFilter
         }
         layers.push({ ...layerBase, id: id++, type: 'image', name: `Artwork ${sourceId}`, src: localAsset(raw), fit, rotation: rotated.reduce((sum, t) => sum + Number.parseFloat(t.slice(7)), mirrorAngle) })
@@ -1411,13 +1424,17 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {}, reviewe
         const uniformScale = JSON.stringify(keyframes.scaleX || []) === JSON.stringify(keyframes.scaleY || [])
         const inner = transformNodes[0]
         const innerCss = inner && style(inner)
+        const noBackgroundImage = !backgroundImage || backgroundImage === 'none'
+        const fullRect = borderRadius === 0 && contentCss.width === '100%' && contentCss.height === '100%'
+        const supportedInnerPaint = (rectShape === 'ellipse' && noBackgroundImage)
+          || (fullRect && Math.abs(rotation) === 180 && /^linear-gradient\(/.test(backgroundImage))
+          || (fullRect && [90, 270].includes(Math.abs(rotation)) && noBackgroundImage && /^#[\da-f]{3,8}$/i.test(contentCss.backgroundColor))
         const canKeepInnerRotation = transformNodes.length === 1 && inner !== content && inner.contains(content)
           && innerCss.width === '100%' && innerCss.height === '100%'
           && ['', '50% 50%', 'center', 'center center'].includes(innerCss.transformOrigin)
           && ['', 'visible'].includes(innerCss.overflow) && !inner.querySelector('[id^=eff]')
-          && !layerBase.imageFlipPerspective && !shapeFilters.length && rectShape === 'ellipse'
-          && (!backgroundImage || backgroundImage === 'none') && borders.every(width => width === 0)
-          && Number.isFinite(rotation) && Math.abs(rotation) <= 360
+          && !layerBase.imageFlipPerspective && !shapeFilters.length && borders.every(width => width === 0)
+          && supportedInnerPaint && Number.isFinite(rotation) && Math.abs(rotation) <= 360
         if (rotation && canKeepInnerRotation && (keyframes.scaleX || keyframes.scaleY || keyframes.rotation)) {
           layerBase.contentRotation = rotation
           rotation = 0

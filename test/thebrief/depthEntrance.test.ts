@@ -84,3 +84,30 @@ it('keeps a centered inner ellipse rotation separate from the native frame scale
   expect(html).toMatch(/data-layer-content[^>]+transform:rotate\(354deg\)/)
   expect(server('mrec', [layer])).toBe(html)
 })
+
+it.each([
+  [180, 'background-image:linear-gradient(0deg,transparent 0%,#000 47%)', 'linear-gradient(0deg, transparent 0%, #000 47%)'],
+  [270, 'background-color:#ccc', '#ccc']
+])('preserves a %i-degree inner rectangle rotation with independent frame scale', async (angle, paint, expected) => {
+  const input = source.replace('animation-delay:-1ms', 'animation-delay:0s')
+    .replace('data-eltype="text"', 'data-eltype="shape"')
+    .replace('<div class="row">Hello world</div>', `<div style="width:100%;height:100%;transform:rotate(${angle}deg)"><div id="c-1" style="width:100%;height:100%;${paint}"></div></div>`)
+    .replace('translateX(-100px) translateY(0)', 'scaleX(0.25) scaleY(0.75)')
+    .replace('translateX(0) translateY(0)', 'scaleX(1) scaleY(1)')
+  const result = await convertTheBriefHtml(input)
+  const layer = result.canvasData.custom_300x250.layers.find(layer => layer.type === 'rect')
+  expect(layer).toMatchObject({ fillColor: expected, rotation: 0, contentRotation: angle })
+  expect(layer.keyframes.scaleX[0].value).toBe(.25)
+  expect(layer.keyframes.scaleY[0].value).toBe(.75)
+  expect(server('mrec', [layer])).toBe(client('mrec', [layer]))
+})
+
+it('reflects an editable inner shadow with its mirrored artwork', async () => {
+  const input = source.replace('data-eltype="text"', 'data-eltype="svg"')
+    .replace('<div class="row">Hello world</div>', '<div style="width:100%;height:100%;transform:rotate(0) scale(-1,1)"><div id="c-1" style="width:100%;height:100%;filter:drop-shadow(2px 3px 11px rgba(0,0,0,.5))"><img src="./original.svg"></div></div>')
+  const result = await convertTheBriefHtml(input)
+  expect(result.canvasData.custom_300x250.layers.find(layer => layer.type === 'image')).toMatchObject({
+    visualFilter: 'drop-shadow(-2px 3px 11px rgba(0,0,0,.5))'
+  })
+  expect(result.imageTransforms).toEqual([expect.objectContaining({ operation: 'flop' })])
+})

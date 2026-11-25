@@ -62,3 +62,13 @@ it('seeks each word at its own start time in the native timeline', async () => {
     vi.unstubAllGlobals()
   }
 })
+
+it('converts CSS linear word easing to the equivalent package curve', async () => {
+  const result = await convertTheBriefHtml(html.replace('animation-timing-function:cubic-bezier(.21,.79,.09,.97)', 'animation-timing-function:linear'))
+  const pkg = parseTheBriefPackage({
+    kind: 'xeroflow-thebrief-import', version: 1, name: 'Linear word entrance',
+    source: { ...result.source, designHash: 'linear-words', sha256: 'a'.repeat(64), folder: '' },
+    canvasData: result.canvasData, assets: [], fonts: [], warnings: result.warnings
+  })
+  expect(pkg.canvasData.custom_300x250!.layers.find(layer => layer.type === 'text')?.wordPop?.ease).toBe('cubic-bezier(0,0,1,1)')
+})
