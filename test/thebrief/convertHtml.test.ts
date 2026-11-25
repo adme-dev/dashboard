@@ -314,6 +314,15 @@ describe('TheBrief single-slide native conversion pilot', () => {
     await expect(convertTheBriefHtml(html.replace('scale(0.5)', 'scaleX(0.5) scaleY(0.7)'))).rejects.toThrow('Nested text rotation')
   })
 
+  it('preserves a rotated rounded shape inside a centered uniform entrance scale', async () => {
+    const html = source.replace('translateX(-100px) translateY(0)', 'scale(0)').replace('translateX(0)', 'scale(1)')
+      .replace('data-eltype="text"', 'data-eltype="shape"')
+      .replace('<div class="row">Hello world</div>', '<div style="width:100%;height:100%;transform:rotate(357deg)"><div id="c-1" style="width:100%;height:100%;background-color:#fff;border-radius:15px"></div></div>')
+    const result = await convertTheBriefHtml(html)
+    expect(result.canvasData.custom_300x250.layers.find(layer => layer.name === 'Shape 1')).toMatchObject({ rotation: 357, borderRadius: 15 })
+    await expect(convertTheBriefHtml(html.replace('scale(0)', 'scaleX(0) scaleY(0.5)'))).rejects.toThrow('nested static rotation')
+  })
+
   it('uses reviewed source line counts for ambiguous stacked wraps', async () => {
     const html = source.replace('height:80px', 'height:87px')
       .replace('<div class="row">Hello world</div>', '<div class="row">Massive Savings</div><div class="row">on Sportage</div>')
@@ -365,9 +374,11 @@ describe('TheBrief single-slide native conversion pilot', () => {
     await expect(convertTheBriefHtml(html.replace(content, content + content))).rejects.toThrow(/legacy image/)
     await expect(convertTheBriefHtml(html.replace('background-size:cover', 'background-size:contain'))).rejects.toThrow(/legacy image/)
     await expect(convertTheBriefHtml(html.replace('width:100%;height:100%;background-image', 'width:50%;height:100%;background-image'))).rejects.toThrow(/legacy image/)
-    for (const css of ['margin-left:10px', 'padding:5px', 'left:4px', 'border:1px solid red', 'border-radius:10px', 'opacity:0.5', 'filter:blur(2px)', 'background-blend-mode:multiply', 'display:none', 'visibility:hidden']) {
+    for (const css of ['margin-left:10px', 'padding:5px', 'left:4px', 'border:1px solid red', 'border-radius:10px', 'filter:blur(2px)', 'background-blend-mode:multiply', 'display:none', 'visibility:hidden']) {
       await expect(convertTheBriefHtml(html.replace('background-size:cover', `${css};background-size:cover`))).rejects.toThrow(/legacy image/)
     }
+    const translucent = await convertTheBriefHtml(html.replace('background-size:cover', 'opacity:.5;background-size:cover'))
+    expect(translucent.canvasData.custom_300x250.layers.find(l => l.type === 'image').opacity).toBe(.5)
     await expect(convertTheBriefHtml(html.replace('./media/photo.jpg', 'https://example.com/photo.jpg'))).rejects.toThrow(/local asset/)
   })
 

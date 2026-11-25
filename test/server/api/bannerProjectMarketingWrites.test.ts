@@ -142,7 +142,7 @@ describe('browser Banner Studio PATCH for the marketing-management portfolio', (
     expect(m.project!.name).toBe('Spring')
   })
 
-  it('protects in-review and approved artwork, and imported TheBrief canvas and client binding', async () => {
+  it('protects reviewed artwork and imported canvas while allowing a draft client correction', async () => {
     for (const review of ['in_review', 'approved']) {
       m.project!.review_status = review
       for (const body of [{ canvasData: canvas }, { name: 'x' }, { tags: ['a'] }, { clientId: OTHER_ACTIVE }]) {
@@ -152,8 +152,10 @@ describe('browser Banner Studio PATCH for the marketing-management portfolio', (
     m.project!.review_status = null
     m.project!.tags = ['source:thebrief', SHA]
     await expect(call(patch, { canvasData: canvas })).rejects.toMatchObject({ statusCode: 409 })
-    await expect(call(patch, { clientId: OTHER_ACTIVE })).rejects.toMatchObject({ statusCode: 409 })
     expect(writes()).toHaveLength(0)
+    await expect(call(patch, { clientId: OTHER_ACTIVE })).resolves.toMatchObject({ clientId: OTHER_ACTIVE })
+    expect(m.project!.tags).toEqual(['source:thebrief', SHA])
+    expect(m.project!.canvas_data).toEqual({ mrec: { layers: [{ id: 'old' }] } })
   })
 
   it('preserves provenance tags exactly and never accepts supplied provenance', async () => {

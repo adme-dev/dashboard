@@ -6,6 +6,7 @@
 import { requireAuth, requireRole } from '~~/server/utils/auth'
 import { assertFinancePermission, assertPermissionGrant } from '~~/server/utils/financeAccess'
 import { executeGodModeAgencyClientCreate } from '~~/server/utils/clients/godModeMutations'
+import { kvDelete } from '~~/server/utils/kv'
 
 interface CreateClientBody {
   name: string
@@ -107,6 +108,7 @@ export default defineEventHandler(async (event) => {
       return row
     })
 
+    await Promise.all([kvDelete(event, 'agency:clients:true'), kvDelete(event, 'agency:clients:false')])
     return {
       id: client.id,
       name: client.name,

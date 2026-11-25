@@ -1,5 +1,6 @@
 import { validateCanvasFontAssets, canvasFontLayers } from '~~/server/utils/banner/fontAssets'
 import { requireBannerClientAccess } from '~~/server/utils/banner/clientAccess'
+import { reassignProjectFonts } from '~~/server/utils/banner/reassignProjectFonts'
 import { transaction, queryOneFresh } from '~~/server/utils/db'
 import { requireAuth } from '~~/server/utils/auth'
 import {
@@ -38,14 +39,22 @@ export default defineEventHandler(async (event) => {
       const currentFontState = await queryOne('SELECT client_id, canvas_data FROM banner_projects WHERE id = $1 FOR UPDATE', [id])
       if (!currentFontState) throw createError({ statusCode: 404, statusMessage: 'Project not found' })
       const nextClient = clientId === undefined ? currentFontState.client_id : clientId
-      const nextCanvas = canvasData === undefined ? currentFontState.canvas_data : canvasData
+      let nextCanvas = canvasData === undefined ? currentFontState.canvas_data : canvasData
+      const moving = nextClient !== currentFontState.client_id
+      if (moving) {
+        if (currentFontState.client_id) await requireBannerClientAccess(event, currentFontState.client_id)
+        if (nextClient) await requireBannerClientAccess(event, nextClient)
+        // A client correction must preserve the stored artwork. Replacement
+        // canvases retain the normal strict target-client validation below.
+        if (canvasData === undefined) nextCanvas = await reassignProjectFonts(nextCanvas, currentFontState.client_id, nextClient, db)
+      }
       if (canvasFontLayers(nextCanvas).some(layer => layer.fontAssetId)) {
         if (currentFontState.client_id) await requireBannerClientAccess(event, currentFontState.client_id)
         if (nextClient && nextClient !== currentFontState.client_id) await requireBannerClientAccess(event, nextClient)
       }
       await validateCanvasFontAssets(nextCanvas, nextClient, db)
       // Auto-snapshot: save current canvas_data as a version before overwriting
-      if (canvasData !== undefined) {
+      if (canvasData !== undefined || moving) {
         try {
           const current = await queryOne(
             'SELECT canvas_data FROM banner_projects WHERE id = $1',
@@ -83,6 +92,17 @@ export default defineEventHandler(async (event) => {
         }
       }
 
+      if (moving && canvasData === undefined) {
+        // Saved versions belong to the project, so retain their restorability
+        // under the corrected client with the same exact font bytes.
+        const versions = await db.query('SELECT id, canvas_data FROM banner_versions WHERE project_id = $1 ORDER BY version_number FOR UPDATE', [id])
+        for (const version of versions.rows) {
+          if (!version.canvas_data) continue
+          const migrated = await reassignProjectFonts(version.canvas_data, currentFontState.client_id, nextClient, db)
+          await db.query('UPDATE banner_versions SET canvas_data = $1 WHERE id = $2', [JSON.stringify(migrated), version.id])
+        }
+      }
+
       const sets: string[] = []
       const params: unknown[] = []
       let paramIndex = 1
@@ -104,9 +124,9 @@ export default defineEventHandler(async (event) => {
         paramIndex++
       }
 
-      if (canvasData !== undefined) {
+      if (canvasData !== undefined || moving) {
         sets.push(`canvas_data = $${paramIndex}`)
-        params.push(JSON.stringify(canvasData))
+        params.push(JSON.stringify(nextCanvas))
         paramIndex++
       }
 

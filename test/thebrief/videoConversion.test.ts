@@ -13,6 +13,14 @@ function videoSource(config: Record<string, unknown> = {}, { attributes = 'muted
 const videoLayer = async (html: string) => (await convertTheBriefHtml(html)).canvasData.custom_300x250.layers.find(layer => layer.type === 'video')
 const videoComposition = (css: string) => videoSource().replace('#v1{', `#composition{${css}}#v1{`).replace('<video ', '<div id="composition"><video ').replace('</video>', '</video></div>')
 
+it('preserves an audible video as editable video and a synchronized soundtrack', async () => {
+  const result = await convertTheBriefHtml(videoSource({ volume: 60, loop: true }, { attributes: 'autoplay playsinline' }))
+  const layers = result.canvasData.custom_300x250.layers
+  const video = layers.find(layer => layer.type === 'video')
+  const audio = layers.find(layer => layer.type === 'audio')
+  expect(audio).toMatchObject({ src: video.src, volume: 0.6, loopAudio: true, mediaStart: video.mediaStart, mediaEnd: video.mediaEnd, startTime: video.startTime, endTime: video.endTime })
+})
+
 it('preserves nested video opacity and colour filtering with its outer blend mode', async () => {
   const html = videoComposition('opacity:.5;filter:brightness(1.12) contrast(1.12) saturate(1.12) hue-rotate(0deg)').replace('#v1{', '#element-1{mix-blend-mode:screen}#v1{')
   const layer = await videoLayer(html)
@@ -81,7 +89,6 @@ it.each([
   [{ keepPlayingPastSlide: true }, {}, 'playback past its slide'],
   [{ autoplay: false }, {}, 'click-to-play'],
   [{}, { attributes: 'muted autoplay playsinline controls' }, 'player controls'],
-  [{ volume: 60 }, { attributes: 'autoplay playsinline' }, 'audible video requires an audio adapter'],
   [{ delay: 1.5 }, {}, 'source video start requires reconciliation'],
   [{ endTime: 0 }, {}, 'invalid source clip end'],
   [{ src: './media/other.mp4' }, {}, 'missing or mismatched source video settings'],

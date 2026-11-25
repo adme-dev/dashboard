@@ -2,6 +2,16 @@
 
 ## Current route
 
+**25 November recovery candidate:** the reported Innisfail Mazda four-layout ZIP,
+Bay City Postcode Sale three-layout ZIP, Spring Saver two-layout ZIP, Arctic
+Campers video and Audi Service video prepare through the qualified Linux candidate under a 4 GiB memory
+cap. Unsupported source constructions still hold. Embedded MP4 soundtracks become
+separate editable audio tracks; original MP4 bytes are retained. The reviewed
+changing-pivot video entrance and centered rotated-shape scales remain editable.
+Client corrections preserve scoped managed fonts and saved versions, with access
+checked for both clients. Archive is available for historical work. Production
+rollout and designer resumption require the live verification record.
+
 In **Banner Studio → Import creative packages**, expand **Import work instruction** above the upload box for the current designer steps. It covers the TheBrief export settings, group assignment, source dates, stalled uploads and review of every saved size.
 
 **24 November release status:** direct group ZIP import is deployed. The original Alfa archive was uploaded in production and all three designs are saved with two sizes each. Fresh preparation and duplicate reconciliation were also exercised. See the [Alfa ZIP verification record](../migrations/alfa-direct-zip-import-20261124.md) for the saved projects, source comparisons, release IDs and test limitations. The designer work instruction is version 2, dated 24 November; it replaces the earlier manual package-preparation handoff.

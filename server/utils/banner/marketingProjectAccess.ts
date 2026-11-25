@@ -51,7 +51,7 @@ export async function checkMarketingBannerProjectPatch(
     && (body.canvasData !== undefined || body.name !== undefined || body.tags !== undefined || moving)) {
     conflict('Artwork under review or approved is protected; duplicate the project to make changes')
   }
-  if (imported && (body.canvasData !== undefined || moving)) {
+  if (imported && body.canvasData !== undefined) {
     conflict('Imported source artwork is protected; duplicate the project to edit it')
   }
   if (moving) {
