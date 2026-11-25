@@ -161,6 +161,7 @@ export interface Layer {
   /** Style-guide treatment to retain when a brand kit is reapplied. */
   brandButtonVariant?: 'primary' | 'secondary' | 'dark-secondary'
   textColor?: string
+  cornerRadii?: [number, number, number, number] // top left, top right, bottom right, bottom left
   borderRadius?: number
   borderWidth?: number
   borderColor?: string

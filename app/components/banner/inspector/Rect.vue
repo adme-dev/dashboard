@@ -12,6 +12,14 @@ function setNum(key: 'borderRadius', val: string | number) {
   set(key, Number(val))
 }
 
+const corners = ['Top left', 'Top right', 'Bottom right', 'Bottom left'] as const
+function setCorner(index: number, value: string | number) {
+  if (!selectedLayer.value?.cornerRadii) return
+  const radii = [...selectedLayer.value.cornerRadii] as NonNullable<Layer['cornerRadii']>
+  radii[index] = Math.min(100000, Math.max(0, Number(value) || 0))
+  set('cornerRadii', radii)
+}
+
 // The blur control edits only a plain blur; other imported filter chains stay as they are.
 const blur = computed(() => {
   const filter = selectedLayer.value?.visualFilter
@@ -64,7 +72,12 @@ function setBlur(val: string | number) {
             @update:model-value="v => set('rectShape', v === 'ellipse' ? 'ellipse' : undefined)"
           />
         </UFormField>
-        <UFormField v-if="selectedLayer.rectShape !== 'ellipse'" label="Border radius" size="xs">
+        <div v-if="selectedLayer.cornerRadii && selectedLayer.rectShape !== 'ellipse'" class="grid grid-cols-2 gap-2">
+          <UFormField v-for="(corner, index) in corners" :key="corner" :label="corner + ' radius'" size="xs">
+            <UInput type="number" min="0" max="100000" size="xs" :model-value="selectedLayer.cornerRadii[index]" @update:model-value="v => setCorner(index, v)" />
+          </UFormField>
+        </div>
+        <UFormField v-else-if="selectedLayer.rectShape !== 'ellipse'" label="Border radius" size="xs">
           <UInput
             type="number"
             size="xs"

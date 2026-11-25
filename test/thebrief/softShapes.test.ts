@@ -35,7 +35,11 @@ describe('soft TheBrief shapes', () => {
 
   it('holds corner geometry and shape effects it cannot reproduce instead of flattening them', async () => {
     await expect(convertTheBriefHtml(shape(shadow.replace('border-radius:100%', 'border-radius:30%')))).rejects.toThrow(/corner radii need an adapter/)
-    await expect(convertTheBriefHtml(shape(shadow.replace('border-radius:100%', 'border-radius:10px 0 10px 0')))).rejects.toThrow(/corner radii need an adapter/)
+    const corners = await convertTheBriefHtml(shape(shadow.replace('border-radius:100%', 'border-radius:10px 2px 6px 0')))
+    const rectangle = corners.canvasData.custom_300x250.layers.find(l => l.type === 'rect')
+    expect(rectangle.cornerRadii).toEqual([10, 2, 6, 0])
+    expect(client('mrec', [rectangle])).toContain('border-radius:10px 2px 6px 0px;')
+    expect(server('mrec', [rectangle])).toBe(client('mrec', [rectangle]))
     await expect(convertTheBriefHtml(shape(shadow.replace('filter:blur(8px)', 'box-shadow:0 2px 4px #000')))).rejects.toThrow(/box shadow/)
     await expect(convertTheBriefHtml(shape(shadow.replace('filter:blur(8px)', 'border:2px solid #fff')))).rejects.toThrow(/shape border/)
     await expect(convertTheBriefHtml(shape(shadow.replace('blur(8px)', 'url(#warp)')))).rejects.toThrow(/shape filter/)

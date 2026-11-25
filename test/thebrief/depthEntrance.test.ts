@@ -41,3 +41,15 @@ it('preserves forward planar depth by rebasing the camera and scale together', a
     expect(layer.keyframes.scaleX[0].value * 300 / (300 - (z - 200))).toBeCloseTo(500 / (500 - z), 10)
   }
 })
+
+it('retains the native border and 3D rotation of a projected shape', async () => {
+  const html = depth.replace('data-eltype="image"', 'data-eltype="shape"')
+    .replace('background-image:url(./original.png);background-size:cover', 'border:3px solid #fff;border-radius:54px')
+    .replace('rotate(-45deg)', 'rotateX(90deg)').replace('rotate(0)', 'rotateX(0)')
+  const result = await convertTheBriefHtml(html)
+  const layer = result.canvasData.custom_300x250.layers.find(l => l.type === 'button')
+  expect(layer).toMatchObject({ borderWidth: 3, borderRadius: 54, imageFlipPerspective: 500 })
+  expect(layer.keyframes.rotationX.map(frame => frame.value)).toEqual([90, 0])
+  expect(layer.keyframes.z.map(frame => frame.value)).toEqual([-200, 0])
+  expect(server('mrec', [layer])).toBe(client('mrec', [layer]))
+})

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { bannerCornerRadii } from '~~/shared/bannerCornerRadii'
 import { effectStyleFromLayer } from '~~/shared/bannerEffects'
 import type { Layer } from '~/types/banner-studio'
 
@@ -17,7 +18,7 @@ const effects = computed(() => effectStyleFromLayer(props.layer as unknown as Re
     class="w-full h-full pointer-events-none"
     :style="{
       background: displayFillColor,
-      borderRadius: layer.rectShape === 'ellipse' ? '50%' : `${layer.borderRadius ?? 0}px`,
+      borderRadius: layer.rectShape === 'ellipse' ? '50%' : bannerCornerRadii(layer.cornerRadii) ?? `${layer.borderRadius ?? 0}px`,
       filter: effects.visualFilter,
       opacity: layer.opacity
     }"
