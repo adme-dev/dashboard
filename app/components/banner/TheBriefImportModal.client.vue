@@ -72,7 +72,7 @@ watch(open, (value) => {
   clients.value = []
   folders.value = []
   catalogLoad = Promise.all([
-    api<Array<{ id: string, name: string }>>('/api/agency/clients'),
+    api<Array<{ id: string, name: string }>>('/api/agency/clients', { query: { view: 'import-picker' } }),
     api<BannerFolder[]>('/api/agency/banner-studio/folders')
   ]).then(([availableClients, availableFolders]) => {
     if (generation !== catalogGeneration) return

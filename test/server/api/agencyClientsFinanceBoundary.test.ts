@@ -13,7 +13,7 @@ vi.mock('~~/server/utils/kv', () => ({ cachedFetch: m.cache, kvDelete: vi.fn() }
 vi.stubGlobal('defineEventHandler', (fn: unknown) => fn)
 vi.stubGlobal('readBody', async (event: any) => event.body)
 vi.stubGlobal('getRouterParam', () => 'client-id')
-vi.stubGlobal('getQuery', () => ({}))
+vi.stubGlobal('getQuery', (event: any) => event.query || {})
 vi.stubGlobal('createError', createError)
 vi.stubGlobal('setResponseHeader', (event: any, key: string, value: string) => {
   event.headers[key] = value
@@ -42,6 +42,14 @@ beforeEach(() => {
 })
 const financialKeys = ['retainerAmount', 'hourlyRate', 'totalRevenue', 'totalCost', 'grossProfit', 'grossMargin', 'invoices', 'recentTimeEntries', 'xeroContactId', 'mediaCommissionRate']
 describe('client insights and company Finance separation', () => {
+  it('reads current active identities when assigning import ownership', async () => {
+    m.rowsFresh.mockResolvedValueOnce([{ id: 'new-client', name: 'New dealership' }])
+    const result = await list({ ...event(), query: { view: 'import-picker' } })
+    expect(result).toEqual([{ id: 'new-client', name: 'New dealership' }])
+    expect(m.rowsFresh).toHaveBeenCalledWith(expect.stringContaining('SELECT id, name FROM agency_clients WHERE is_active = TRUE'))
+    expect(m.cache).not.toHaveBeenCalled()
+    expect(m.rows).not.toHaveBeenCalled()
+  })
   it.each(['member', 'owner', 'marketing'])('keeps nongrant %s on minimized metadata without financial cache access', async (role) => {
     m.auth.mockResolvedValue({ id: 'user-id', role, isGodMode: true })
     m.marketing.mockResolvedValue(role === 'marketing')
