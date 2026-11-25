@@ -877,7 +877,7 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {}, reviewe
         const stageDuration = stages.reduce((sum, stage) => sum + stage.duration, 0)
         // Some exports record the middle hold as the exit delay. The player
         // starts its fade after the entrance and middle durations in both encodings.
-        const delayedExit = audioConfig?.buildIn?.type === 'instant' && audioConfig.buildIn.delay === 0
+        const delayedExit = ['instant', 'fadeAudio'].includes(audioConfig?.buildIn?.type) && audioConfig.buildIn.delay === 0
           && audioConfig.buildMid?.type === 'none' && audioConfig.buildMid.delay === 0
           && ['instant', 'fadeAudio'].includes(audioConfig.buildOut?.type)
           && audioConfig.buildOut.delay === audioConfig.buildMid.duration
