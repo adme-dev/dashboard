@@ -11,24 +11,60 @@ function supportedSupplier(source: Record<string, unknown>): boolean {
   } catch { return false }
 }
 
+function isEmptyIdList(value: unknown): boolean {
+  return value === undefined || (Array.isArray(value) && value.length === 0)
+}
+
+function isSafeSelectionMode(value: unknown): boolean {
+  return value === undefined || value === 'filters'
+}
+
+export function isBareNativeFeedSource(source: Record<string, unknown> | null | undefined): boolean {
+  return !source
+    || ((source.type === 'meilisearch' || source.type === 'supabase')
+      && Object.keys(source).every(key => key === 'type'))
+}
+
+function hasUnsafeFilterGroups(filters: Record<string, unknown>, owns: (seller: unknown) => boolean): boolean {
+  if (filters.filterGroups === undefined) return false
+  if (!Array.isArray(filters.filterGroups)) return true
+  return filters.filterGroups.some((group) => {
+    if (!group || typeof group !== 'object' || Array.isArray(group)) return true
+    const g = group as Record<string, unknown>
+    if (g.mode !== undefined && g.mode !== 'criteria') return true
+    if (!isEmptyIdList(g.includeIds)) return true
+    return !Array.isArray(g.sellerIds) || g.sellerIds.length === 0 || !g.sellerIds.every(owns)
+  })
+}
+
+export function hasExactFeedSellerScope(feed: FeedDetail, link: DealerLink): boolean {
+  if (!link.externalOrgId || !link.sellerRefs.length) return false
+  const filters = feed.filters
+  if (
+    !filters
+    || !isEmptyIdList(filters.manualIncludeIds)
+    || !isEmptyIdList(filters.includeIds)
+    || !isSafeSelectionMode(filters.selectionMode)
+  ) return false
+  const owns = (seller: unknown) => typeof seller === 'string' && link.sellerRefs.includes(seller)
+  if (hasUnsafeFilterGroups(filters, owns)) return false
+  const sellers = [...(Array.isArray(filters.sellerIds) ? filters.sellerIds : []), ...(Array.isArray(filters.dealerIds) ? filters.dealerIds : [])]
+  if (sellers.some(seller => !owns(seller))) return false
+  return Array.isArray(filters.rulesets)
+    ? filters.rulesets.length > 0 && filters.rulesets.every(rule => rule && typeof rule === 'object' && owns(rule.sellerId))
+    : sellers.length > 0
+}
+
 /**
  * Supplier settings are private, preconfigured authority, not caller input. A
  * saved supplier source is manageable only through the client's explicit feed
  * binding; sharing an organization alone never establishes ownership.
  */
 export function isScopedDepartmentFeed(feed: FeedDetail, link: DealerLink): boolean {
-  if (!link.externalOrgId || !link.sellerRefs.length) return false
-  const filters = feed.filters
-  if (!filters || filters.manualIncludeIds !== undefined || filters.includeIds !== undefined || filters.selectionMode !== undefined) return false
-  const owns = (seller: unknown) => typeof seller === 'string' && link.sellerRefs.includes(seller)
-  const sellers = [...(Array.isArray(filters.sellerIds) ? filters.sellerIds : []), ...(Array.isArray(filters.dealerIds) ? filters.dealerIds : [])]
-  const scoped = Array.isArray(filters.rulesets)
-    ? filters.rulesets.length > 0 && filters.rulesets.every(rule => rule && typeof rule === 'object' && owns(rule.sellerId))
-    : sellers.length > 0 && sellers.every(owns)
-  if (!scoped) return false
+  if (!hasExactFeedSellerScope(feed, link)) return false
   const source = feed.source
-  if (!source || (source.type === 'meilisearch' && Object.keys(source).every(key => key === 'type'))) return true
+  if (isBareNativeFeedSource(source)) return true
   return typeof feed.id === 'string'
     && link.defaultFeedIds?.includes(feed.id) === true
-    && supportedSupplier(source)
+    && supportedSupplier(source!)
 }
