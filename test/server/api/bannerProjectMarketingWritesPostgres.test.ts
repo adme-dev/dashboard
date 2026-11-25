@@ -94,6 +94,8 @@ describe.runIf(Boolean(databaseUrl))('marketing Banner Studio browser writes on 
       CREATE TABLE banner_dissections(id UUID PRIMARY KEY DEFAULT gen_random_uuid(), project_id UUID REFERENCES banner_projects(id));
       CREATE TABLE banner_versions(id UUID PRIMARY KEY DEFAULT gen_random_uuid(), project_id UUID, version_number INT,
         canvas_data JSONB, created_by UUID, created_at TIMESTAMPTZ DEFAULT NOW());
+      CREATE TABLE banner_assets(id UUID PRIMARY KEY, name TEXT, mime_type TEXT, file_size INT, r2_key TEXT, url TEXT,
+        tags TEXT[], uploaded_by UUID, client_id UUID, created_at TIMESTAMPTZ DEFAULT NOW());
     `)
     await db.query(readFileSync('server/database/migrations/522_banner_folder_bin.sql', 'utf8'))
     await db.query('INSERT INTO custom_roles VALUES($1,\'marketing\',FALSE,FALSE)', [ROLE])
@@ -120,6 +122,27 @@ describe.runIf(Boolean(databaseUrl))('marketing Banner Studio browser writes on 
     expect(await call(patch, project, { name: 'Summer', canvasData: { mrec: { layers: [{ id: 'new' }] } } })).toMatchObject({ name: 'Summer' })
     expect((await db.query('SELECT COUNT(*)::int AS n FROM banner_versions')).rows[0].n).toBe(1)
     expect(await call(patch, project, { clientId: OTHER })).toMatchObject({ clientId: OTHER })
+  })
+
+  it('corrects an imported client while preserving scoped font bytes and every saved canvas', async () => {
+    const font = randomUUID()
+    const canvas = { mrec: { layers: [{ id: 1, type: 'text', text: 'Ringwood', x: 18, fontFamily: 'Exact source face', fontWeight: 400, fontAssetId: font }] } }
+    await db.query(`INSERT INTO banner_assets VALUES($1,'Exact source face','font/woff',123,'fonts/original.woff','https://assets.example/original.woff',ARRAY['font','weight:400'],$2,$3,NOW())`, [font, STAFF, ACTIVE])
+    await db.query('UPDATE banner_projects SET canvas_data=$1, tags=$2 WHERE id=$3', [canvas, ['source:thebrief', SHA], project])
+    await db.query('INSERT INTO banner_versions(project_id,version_number,canvas_data,created_by) VALUES($1,1,$2,$3)', [project, canvas, STAFF])
+    const updated = await call(patch, project, { clientId: OTHER })
+    const moved = updated.canvasData as typeof canvas
+    const targetFont = moved.mrec.layers[0].fontAssetId
+    expect(targetFont).not.toBe(font)
+    expect(moved).toEqual({ mrec: { layers: [{ ...canvas.mrec.layers[0], fontAssetId: targetFont }] } })
+    const faces = (await db.query('SELECT id,client_id,r2_key,url FROM banner_assets ORDER BY client_id')).rows
+    expect(faces).toHaveLength(2)
+    expect(faces).toContainEqual({ id: font, client_id: ACTIVE, r2_key: 'fonts/original.woff', url: 'https://assets.example/original.woff' })
+    expect(faces).toContainEqual({ id: targetFont, client_id: OTHER, r2_key: 'fonts/original.woff', url: 'https://assets.example/original.woff' })
+    const versions = (await db.query('SELECT canvas_data FROM banner_versions WHERE project_id=$1', [project])).rows
+    expect(versions).toHaveLength(2)
+    expect(versions.every(version => JSON.stringify(version.canvas_data) === JSON.stringify(moved))).toBe(true)
+    expect((await projectRow()).tags).toEqual(['source:thebrief', SHA])
   })
 
   it('fails closed when the source or target client is deactivated between the check and the UPDATE', async () => {

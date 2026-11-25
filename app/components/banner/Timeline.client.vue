@@ -146,6 +146,8 @@ const KF_PROPERTIES: { key: KeyframeProperty, label: string, icon: string }[] = 
   { key: 'scaleX', label: 'Scale X', icon: 'Sx' },
   { key: 'scaleY', label: 'Scale Y', icon: 'Sy' },
   { key: 'rotation', label: 'Rotation', icon: 'R' },
+  { key: 'rotationY', label: 'Y-axis rotation', icon: 'Ry' },
+  { key: 'blur', label: 'Blur radius', icon: 'B' },
   { key: 'rotationX', label: 'X-axis rotation', icon: 'Rx' },
   { key: 'originY', label: 'Pivot Y', icon: 'Py' }
 ]

@@ -47,7 +47,7 @@ export async function resolveGoogleFonts(stylesheets, fetcher = fetch, cache) {
   const window = new Window({ settings: { enableJavaScriptEvaluation: false, disableCSSFileLoading: true, disableJavaScriptFileLoading: true } })
   try {
     for (const input of new Set(stylesheets)) {
-      const url = allowedUrl(input, 'fonts.googleapis.com', /^\/css2?$/)
+      const url = allowedUrl(input.replace(/&family=:wght@0(?=&|$)/g, ''), 'fonts.googleapis.com', /^\/css2?$/)
       // Subsets for existing text would make subsequent editing lose glyphs.
       if (new URL(url).searchParams.has('text')) throw new Error('Text-subset fonts cannot provide reusable editable text')
       const bytes = await boundedFetch(url, 128 * 1024, fetcher, cache)

@@ -168,12 +168,12 @@ it.skipIf(!hasFfmpeg)('packages the original H.264 bytes for a video layer and h
     const clip = join(directory, 'clip.mp4')
     execFileSync('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', 'color=c=red:s=64x36:d=1', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', clip])
     const bytes = readFileSync(clip)
-    const build = (endTime: number) => source.replace('designData:{', 'designData:{designHash:"video1",')
-      .replace('customAnimations:[]', `customAnimations:[],videoElements:[{elementId:1,slideId:1,volume:0,startTime:0,endTime:${endTime},soundOnHover:false,delay:0.2,autoplay:true,loop:true,keepPlayingPastSlide:false,src:"./clip.mp4"}]`)
+    const build = (endTime: number, loop = true) => source.replace('designData:{', 'designData:{designHash:"video1",')
+      .replace('customAnimations:[]', `customAnimations:[],videoElements:[{elementId:1,slideId:1,volume:0,startTime:0,endTime:${endTime},soundOnHover:false,delay:0.2,autoplay:true,loop:${loop},keepPlayingPastSlide:false,src:"./clip.mp4"}]`)
       .replace('data-eltype="text"', 'data-eltype="video"')
       .replace('<div class="row">Hello world</div>', '<video src="./clip.mp4" muted autoplay playsinline style="width:100%;height:100%;object-fit:cover"></video>')
-    const run = (endTime: number) => {
-      const entries = { 'index.html': strToU8(build(endTime)), 'clip.mp4': new Uint8Array(bytes) }
+    const run = (endTime: number, loop = true) => {
+      const entries = { 'index.html': strToU8(build(endTime, loop)), 'clip.mp4': new Uint8Array(bytes) }
       writeFileSync(join(directory, 'index.html'), entries['index.html'])
       const archive = join(directory, 'source.zip'), output = join(directory, 'package.json')
       writeFileSync(archive, zipSync(entries))
@@ -188,6 +188,11 @@ it.skipIf(!hasFfmpeg)('packages the original H.264 bytes for a video layer and h
     const asset = result.assets.find(a => a.path === layer.src)
     expect(asset.mimeType).toBe('video/mp4')
     expect(Buffer.from(asset.base64, 'base64')).toEqual(bytes)
+    const rounded = run(1.08, false).canvasData.custom_300x250.layers.find(l => l.type === 'video')
+    expect(rounded).toMatchObject({ mediaEnd: 1 })
+    expect(rounded.mediaLoop).toBeFalsy()
+    expect(() => run(1.08, true)).toThrow(/exceeds the .*s file/)
+    expect(() => run(1.2, false)).toThrow(/exceeds the .*s file/)
     expect(() => run(5)).toThrow(/exceeds the .*s file/)
   } finally { rmSync(directory, { recursive: true, force: true }) }
 }, 60000)

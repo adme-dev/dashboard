@@ -26,7 +26,18 @@ it('retains perspective, depth and rotation as separate native GSAP tracks', asy
 })
 
 it('holds unverified depth geometry, front-plane motion and transform ordering', async () => {
-  for (const input of [depth.replace('perspective-origin:center', 'perspective-origin:left top'), depth.replace('translateZ(-200px)', 'translateZ(200px)'), depth.replace('translateZ(-200px) rotate(-45deg)', 'rotate(-45deg) translateZ(-200px)'), depth.replace('perspective:500px', 'perspective:none')]) {
+  for (const input of [depth.replace('perspective-origin:center', 'perspective-origin:left top'), depth.replace('translateZ(-200px)', 'translateZ(500px)'), depth.replace('translateZ(-200px) rotate(-45deg)', 'rotate(-45deg) translateZ(-200px)'), depth.replace('perspective:500px', 'perspective:none')]) {
     expect((await convertTheBriefHtml(input)).warnings).toContainEqual(expect.stringContaining('animation not converted'))
+  }
+})
+
+it('preserves forward planar depth by rebasing the camera and scale together', async () => {
+  const result = await convertTheBriefHtml(depth.replace('translateZ(-200px)', 'translateZ(200px)'))
+  const layer = result.canvasData.custom_300x250.layers.find(l => l.type === 'image')
+  expect(result.warnings).toEqual([])
+  expect(layer.imageFlipPerspective).toBe(300)
+  expect(layer.keyframes.z.map(f => f.value)).toEqual([0, -200])
+  for (const z of [0, 85, 200]) {
+    expect(layer.keyframes.scaleX[0].value * 300 / (300 - (z - 200))).toBeCloseTo(500 / (500 - z), 10)
   }
 })

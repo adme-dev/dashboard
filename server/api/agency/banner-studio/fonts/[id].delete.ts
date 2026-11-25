@@ -36,9 +36,13 @@ export default defineEventHandler(async (event) => {
     LIMIT 1`, [id, asset.name, asset.client_id])
     if (used.rows.length) throw createError({ statusCode: 409, statusMessage: 'Font is used by a brand kit, project or saved version' })
     await db.query('DELETE FROM banner_assets WHERE id = $1', [id])
+    // Client corrections can share immutable font bytes through separately
+    // scoped asset records. Removing one record must not remove another's file.
+    const shared = await db.query('SELECT id FROM banner_assets WHERE r2_key = $1 LIMIT 1', [asset.r2_key])
+    if (shared.rows.length) return null
     return asset.r2_key
   })
   const { nativeUpload } = resolveBannerAssetDelivery(event)
-  await deleteBannerFile(key, nativeUpload?.bucket)
+  if (key) await deleteBannerFile(key, nativeUpload?.bucket)
   return { success: true }
 })

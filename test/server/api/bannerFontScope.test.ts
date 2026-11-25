@@ -100,7 +100,14 @@ describe('font scope boundaries', () => {
     await remove({ id: ID } as never)
     expect(m.access).toHaveBeenCalledWith(expect.anything(), CLIENT)
     expect(m.query.mock.calls[0][0]).toContain('FOR UPDATE')
-    expect(m.query.mock.calls.at(-1)?.[0]).toContain('DELETE FROM banner_assets')
+    expect(m.query.mock.calls.some(([sql]) => sql.includes('DELETE FROM banner_assets'))).toBe(true)
     expect(m.remove).toHaveBeenCalledWith('font-key', 'native-bucket')
+  })
+  it('retains bytes still referenced by another client font record', async () => {
+    m.query.mockImplementation(sql => Promise.resolve({ rows: sql.includes('FOR UPDATE')
+      ? [{ id: ID, name: 'Brand', client_id: CLIENT, r2_key: 'font-key' }]
+      : sql.includes('WHERE r2_key') ? [{ id: 'other-scoped-face' }] : [] }))
+    await expect(remove({ id: ID } as never)).resolves.toEqual({ success: true })
+    expect(m.remove).not.toHaveBeenCalled()
   })
 })

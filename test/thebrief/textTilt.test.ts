@@ -19,6 +19,18 @@ async function converted() {
   return c.canvasData.custom_300x250.layers.find(l => l.type === 'text') as Layer
 }
 afterEach(() => vi.unstubAllGlobals())
+it('preserves the same bounded changing-pivot recipe on editable video', async () => {
+  const html = tilt.replace('data-eltype="text"', 'data-eltype="video"')
+    .replace('customAnimations:[]', 'customAnimations:[],videoElements:[{elementId:1,slideId:1,volume:0,startTime:0,endTime:8,delay:.2,autoplay:true,loop:false,src:"./clip.mp4"}]')
+    .replace('<div style="width:100%;height:100%;transform:rotate(350deg)"><div class="row">Hello world</div></div>', '<video src="./clip.mp4" muted style="width:100%;height:100%;object-fit:cover;object-position:center"></video>')
+  const result = await convertTheBriefHtml(html)
+  expect(result.warnings).toEqual([])
+  const layer = result.canvasData.custom_300x250.layers.find(l => l.type === 'video')
+  expect(layer.textTilt).toEqual({ width: 200, height: 80, perspective: 500 })
+  expect(layer.keyframes.originY.map(f => f.value)).toEqual([80, 480])
+  expect(client('mrec', [layer])).toContain('data-banner-tilt')
+  expect(server('mrec', [layer])).toBe(client('mrec', [layer]))
+})
 it('keeps the camera, changing pivot and inner text rotation separate in both renderers', async () => {
   const layer = await converted()
   expect(layer.textTilt).toEqual({ width: 200, height: 80, perspective: 500 })

@@ -1,6 +1,17 @@
 // Row counts measured against the original source previews. Exact archive and
 // layout identities bind these receipts; edited or rewrapped layouts still hold.
 const reviewed = [
+  // Innisfail Mazda Black Friday: bundled-font, script-free source measurements
+  // confirm one line followed by two lines in each of the four source layouts.
+  { sha256: 'b0122d7b23fe41aca2d9bf2e3f6e588203d0f681e5e45e4061151e219fd06aca', designHash: 'zmr2y6k', rowLines: { 'element-134': [1, 2] } },
+  { sha256: '33dbea67d3e7fde216df021220d29f219f599296ce4d57ae87b9cb3c88c780f4', designHash: 'yeommpw', rowLines: { 'element-134': [1, 2] } },
+  { sha256: 'de1740230bc3d749e0825fcdb601145a25a96e0f89b6c527f6a1c8695e380a0d', designHash: 'o1kee0o', rowLines: { 'element-134': [1, 2] } },
+  { sha256: 'e29425939a55b2c1541315ab15fcd3ac12ab002199c4db0d32a625efece8115c', designHash: 'zmr885k', rowLines: { 'element-134': [1, 2] } },
+  // High (90%) export: independently measured with the same bundled face.
+  { sha256: '1ce6cdc59350d83b5b4396bfb5b353e71593e533ec4e283cac4cf7116fa6eb47', designHash: 'zmr2y6k', rowLines: { 'element-134': [1, 2] } },
+  { sha256: '77db16198f92a1a214446838facb7cca67e9625c58c27dfc7fffb6895be96a92', designHash: 'o1kee0o', rowLines: { 'element-134': [1, 2] } },
+  { sha256: '0b0a98f978891de3a115e0843aea108f93611ed5e989a55050cb65058ee4fa86', designHash: 'yeommpw', rowLines: { 'element-134': [1, 2] } },
+  { sha256: '39924a89770a4d4f03c283cc6b2e74a27dc1ea9a36bde95e3a70f88689d8a31c', designHash: 'zmr885k', rowLines: { 'element-134': [1, 2] } },
   {
     "sha256": "c2e05e14591bcd0939346d1ad448382c5d236cc20a1006cc190fd36130089067",
     "designHash": "g30qe75",
@@ -76,6 +87,62 @@ const reviewed = [
     "designHash": "ey22k8w",
     "rowLines": {
       "element-180": [
+        1,
+        2
+      ]
+    }
+  },
+  {
+    "sha256": "84c32b28946a2c5fe8a73f9c2470b441822c07a39e340a5a71231305b974bae7",
+    "designHash": "qwzqmrg",
+    "rowLines": {
+      "element-13": [
+        2,
+        1,
+        2
+      ]
+    }
+  },
+  {
+    "sha256": "db9ed747ec6b74ffde8ca552f13505a98710671fbddb79e56367507690cd8cbe",
+    "designHash": "gzx3d78",
+    "rowHeights": { "element-4": [122, 183] },
+    "rowLines": {
+      "element-4": [
+        2,
+        3
+      ]
+    }
+  },
+  {
+    "sha256": "d201f6d333a84f31d5fe396d96a0ded9942291c85dda951c1d05de883c397b6c",
+    "designHash": "2rmk7x2",
+    "rowLines": {
+      "element-2": [
+        1,
+        2
+      ]
+    }
+  },
+  {
+    "sha256": "0996c11570426b0a8285cf70f1ed82d20964ff019382fbfce04c69de8b02daca",
+    "designHash": "mql1rwg",
+    "rowLines": {
+      "element-6": [
+        1,
+        1,
+        2
+      ],
+      "element-9": [2, 1, 1],
+      "element-10": [2, 1, 2]
+    }
+  },
+  {
+    "sha256": "60351f4602a1ee7258b1607ff283e16af6f064814f5d80a86c949977ef3cc8d5",
+    "designHash": "7m8130q",
+    "rowHeights": { "element-13": [43, 87] },
+    "rowLines": {
+      "element-13": [
         1,
         2
       ]

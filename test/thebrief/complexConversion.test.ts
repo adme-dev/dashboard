@@ -42,13 +42,14 @@ it('imports an editable CTA with its border and typography', async () => {
   expect(result.canvasData.custom_300x250.layers.find(l => l.type === 'button')).toMatchObject({ text: 'FIND OUT MORE', borderWidth: 4, borderColor: '#fff', borderRadius: 50, fontFamily: 'Poppins', fontSize: 32, fontWeight: 600, lineHeight: 1.4, letterSpacing: '0px', textTransform: 'none' })
 })
 
-it('preserves raised and coloured text runs and holds unadapted font changes', async () => {
+it('preserves raised and coloured text runs and retains changes of inline font family', async () => {
   const html = source.replace('Hello world', 'Saturday 2<sup style="position:relative;top:-5px;vertical-align:baseline"><span style="font-size:14px">nd</span></sup> Dec')
   const result = await convertTheBriefHtml(html)
   expect(result.canvasData.custom_300x250.layers.find(l => l.type === 'text')).toMatchObject({ text: 'Saturday 2nd Dec', textRuns: [{ text: 'Saturday 2' }, { text: 'nd', fontSize: 14, top: -5 }, { text: ' Dec' }] })
   const coloured = await convertTheBriefHtml(source.replace('Hello world', '<span style="color:red">Red</span><span style="color:blue">Blue</span>'))
   expect(coloured.canvasData.custom_300x250.layers.find(l => l.type === 'text')).toMatchObject({ color: 'red', textRuns: [{ text: 'Red' }, { text: 'Blue', color: 'blue' }] })
-  await expect(convertTheBriefHtml(source.replace('Hello world', '<span style="font-family:Arial">First</span><span style="font-family:Georgia">Second</span>'))).rejects.toThrow(/Mixed styled/)
+  const families = await convertTheBriefHtml(source.replace('Hello world', '<span style="font-family:Arial">First</span><span style="font-family:Georgia">Second</span>'))
+  expect(families.canvasData.custom_300x250.layers.find(l => l.type === 'text')).toMatchObject({ textRuns: [{ text: 'First' }, { text: 'Second', fontFamily: 'Georgia' }] })
   const mixed = await convertTheBriefHtml(source.replace('Hello world', '<span style="font-family:Arial;font-weight:800;font-style:italic">First</span><span style="font-family:Arial;font-weight:400;font-style:normal">Second</span>'))
   expect(mixed.canvasData.custom_300x250.layers.find(l => l.type === 'text')).toMatchObject({ textRuns: [{ text: 'First' }, { text: 'Second', fontFamily: 'Arial', fontWeight: 400, fontStyle: 'normal' }] })
 })
@@ -59,4 +60,17 @@ it('round-trips 63 second timing and inline text through the import contract', a
   const input = { kind: 'xeroflow-thebrief-import', version: 1, name: 'Multi-slide test', source: { designHash: 'test', sha256: 'a'.repeat(64), folder: 'Tests', duration: 63, loopCount: 0 }, canvasData: candidate.canvasData, warnings: [], assets: [], fonts: [] }
   const saved = JSON.parse(JSON.stringify(parseTheBriefPackage(input)))
   expect(sameImportedCanvas(saved.canvasData, candidate.canvasData)).toBe(true)
+})
+
+it('maps repeated legacy IDs by matching timed DOM occurrences and keeps distinct editable text', async () => {
+  const legacy = source.replace('#element-1{', '.art{').replace('#effIn1{', '.effect{')
+    .replace('elements:[{id:1,from:200}]', 'elements:[{id:1,from:200},{id:1,from:600}]')
+    .replace('<div id="element-1" data-eltype="text">', '<div id="element-1" class="art" data-eltype="text">')
+    .replace('<div id="effIn1">', '<div id="effIn1" class="effect">')
+    .replace('Hello world</div></div></div>', 'First</div></div></div><div id="element-1" class="art" data-eltype="text"><div id="effIn1" class="effect"><div class="row">Second</div></div></div>')
+  const converted = await convertTheBriefHtml(legacy)
+  const texts = converted.canvasData.custom_300x250.layers.filter(l => l.type === 'text')
+  expect(texts.map(l => [l.text, l.startTime])).toEqual([['First', .2], ['Second', .6]])
+  expect(new Set(texts.map(l => l.linkId)).size).toBe(2)
+  await expect(convertTheBriefHtml(legacy.replace(',{id:1,from:600}', ''))).rejects.toThrow('Ambiguous element ownership')
 })

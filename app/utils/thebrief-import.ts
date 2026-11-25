@@ -26,14 +26,16 @@ const layer = z.object({
   hidden: z.literal(true).optional(),
   sourceInactiveTiming: z.object({ start: z.number().min(0).max(300), loopEnd: z.number().positive().max(300) }).strict().optional(),
   slideId: z.string().max(100).regex(/^[a-zA-Z0-9:_-]+$/).optional(),
-  slideFade: z.object({ id: z.string().max(100).regex(/^[a-zA-Z0-9:_-]+$/), start: z.number().min(0).max(300), end: z.number().positive().max(300), duration: z.number().min(0).max(5), ease: z.string().regex(/^cubic-bezier\([\d.,\s-]+\)$/) }).strict().optional(),
+  slideFade: z.object({ exit: z.object({ at: number.min(0).max(300), duration: number.positive().max(5), ease: z.string().regex(/^cubic-bezier\([\d.,\s-]+\)$/) }).strict().optional(), id: z.string().max(100).regex(/^[a-zA-Z0-9:_-]+$/), start: z.number().min(0).max(300), end: z.number().positive().max(300), duration: z.number().min(0).max(5), ease: z.string().regex(/^cubic-bezier\([\d.,\s-]+\)$/) }).strict().optional(),
   textRuns: z.array(z.object({ text: z.string().max(10000), fontSize: number.positive().optional(), top: number.optional(), color: z.string().refine(isBannerInlineTextColor).optional(), gradient: z.string().refine(isBannerInlineTextGradient).optional(), fontFamily: z.string().max(150).regex(/^[\w .-]+$/).optional(), fontWeight: z.number().int().min(1).max(1000).optional(), fontStyle: z.enum(['normal', 'italic']).optional() }).strict()).max(100).optional(),
   borderWidth: number.nonnegative().max(100).optional(), borderColor: css.optional(), textColor: css.optional(),
   textTilt: z.object({ perspective: number.min(1), width: number.positive().max(4096), height: number.positive().max(4096) }).strict().optional(),
   rotation: number.optional(), imageFlipPerspective: number.min(1).optional(), flipX: z.boolean().optional(), flipY: z.boolean().optional(), borderRadius: number.nonnegative().optional(), transformOrigin: z.object({ x: number, y: number }).optional(),
   mixBlendMode: z.enum(['normal', 'multiply', 'screen', 'overlay', 'darken', 'lighten', 'color-dodge', 'color-burn', 'hard-light', 'soft-light', 'difference', 'exclusion', 'hue', 'saturation', 'color', 'luminosity']).optional(),
   text: z.string().max(10000).optional(), textTransform: z.enum(['uppercase', 'lowercase', 'capitalize', 'none']).optional(), fontFamily: z.string().max(150).regex(/^[\w ,.-]+$/).optional(),
-  wordPop: z.object({ duration: z.number().positive().max(5), stagger: z.number().min(0).max(5), ease: z.string().regex(/^cubic-bezier\([\d.,\s-]+\)$/), variant: z.enum(['pop', 'blurLeft', 'blurUp', 'zoomOut', 'typewriter', 'fade']).optional(), unit: z.enum(['word', 'character']).optional(), delays: z.array(z.number().min(0).max(5)).max(500).optional(), offset: z.number().min(0).max(5).optional() }).strict().optional(),
+  textSweep: z.object({ wholeRow: z.literal(true).optional(), gradient: z.string().refine(isBannerInlineTextGradient), at: number.min(0).max(300), duration: number.positive().max(30), iterations: number.positive().max(50) }).strict().optional(),
+  textTracking: z.object({ from: number.min(0).max(100), to: number.min(-100).max(100), width: number.positive().max(8192), glyphScale: number.positive().max(10), at: number.min(0).max(300), duration: number.positive().max(30), ease: z.string().regex(/^cubic-bezier\([\d.,\s-]+\)$/) }).strict().optional(),
+  wordPop: z.object({ duration: z.number().positive().max(5), stagger: z.number().min(0).max(5), ease: z.string().regex(/^cubic-bezier\([\d.,\s-]+\)$/), variant: z.enum(['pop', 'blur', 'blurLeft', 'blurUp', 'zoomOut', 'typewriter', 'fade']).optional(), unit: z.enum(['word', 'character']).optional(), delays: z.array(z.number().min(0).max(5)).max(500).optional(), offset: z.number().min(0).max(5).optional() }).strict().optional(),
   reveal: z.object({ type: z.enum(['softWipe', 'tvExpand']), duration: z.number().positive().max(5), ease: z.string().regex(/^cubic-bezier\([\d.,\s-]+\)$/) }).strict().optional(),
   fontSize: number.positive().optional(), fontWeight: z.number().int().min(1).max(1000).optional(),
   fontStyle: z.enum(['normal', 'italic']).optional(),
@@ -54,7 +56,7 @@ const layer = z.object({
   videoCrop: z.object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1), w: z.number().min(0.01).max(1), h: z.number().min(0.01).max(1) }).strict()
     .refine(crop => crop.x + crop.w <= 1.000001 && crop.y + crop.h <= 1.000001, 'Video crop falls outside the source').optional(),
   mediaStart: z.number().min(0).max(300).optional(), mediaEnd: z.number().positive().max(300).optional(), mediaLoop: z.boolean().optional(),
-  keyframes: z.object({ opacity: track.optional(), x: track.optional(), y: track.optional(), z: track.optional(), scaleX: track.optional(), scaleY: track.optional(), rotation: track.optional(), rotationX: track.optional(), originY: track.optional() }).optional()
+  keyframes: z.object({ opacity: track.optional(), x: track.optional(), y: track.optional(), z: track.optional(), scaleX: track.optional(), scaleY: track.optional(), rotation: track.optional(), rotationX: track.optional(), rotationY: track.optional(), blur: track.optional(), originY: track.optional() }).optional()
 }).strict()
 const binary = z.object({ path: local, fileName: z.string().max(150).regex(/^[\w .-]+$/), sha256: sha, base64: z.string().max(32 * 1024 * 1024).regex(/^[A-Za-z0-9+/]*={0,2}$/), mimeType: z.string().max(100) })
 export const theBriefSourceSchema = z.object({
@@ -142,6 +144,7 @@ export function parseTheBriefPackage(input: unknown): TheBriefPackage {
         const start = board.slides!.slice(0, index).reduce((sum, slide) => sum + slide.duration, 0)
         const end = start + board.slides![index]!.duration
         const fade = item.slideFade
+        if (fade?.exit && (fade.exit.at < start || Math.abs(fade.exit.at + fade.exit.duration - fade.end) > 0.0001)) throw new Error('Invalid outgoing slide timing')
         if (fade && (fade.id !== item.slideId || Math.abs(fade.start - start) > 0.0001 || fade.end < end || fade.end > duration || fade.duration > end - start)) throw new Error('Invalid source slide fade')
         if (item.startTime < start - 0.0001 || item.endTime > (fade?.end ?? end) + 0.0001) throw new Error('Artwork crosses its slide boundary')
       }
@@ -149,17 +152,20 @@ export function parseTheBriefPackage(input: unknown): TheBriefPackage {
       if (item.src && !result.assets.some(a => a.path === item.src)) throw new Error('Missing packaged asset')
       if (item.textRuns && item.textRuns.map(run => run.text).join('') !== item.text) throw new Error('Text runs differ from layer text')
       if (item.textTilt || item.keyframes?.originY) {
-        if (item.type !== 'text' || !item.textTilt || !item.keyframes?.originY || !item.keyframes.rotationX
+        if (!['text', 'video'].includes(item.type) || !item.textTilt || !item.keyframes?.originY || !item.keyframes.rotationX
           || item.imageFlipPerspective || item.wordPop || item.reveal || item.keyframes.z || item.keyframes.rotation
           || item.textTilt.width !== item.w || item.keyframes.rotationX.some(frame => Math.abs(frame.value) > 90)) throw new Error('Invalid TheBrief 3D text entrance')
       }
-      if (item.imageFlipPerspective || (!item.textTilt && item.keyframes?.rotationX) || item.keyframes?.z) {
-        if (item.type !== 'image' || !item.imageFlipPerspective || !(item.keyframes?.rotationX || item.keyframes?.z)
-          || (item.keyframes.rotationX && item.keyframes.z)
+      if (item.imageFlipPerspective || (!item.textTilt && item.keyframes?.rotationX) || item.keyframes?.rotationY || item.keyframes?.z) {
+        if (!['image', 'text'].includes(item.type) || !item.imageFlipPerspective || !(item.keyframes?.rotationX || item.keyframes?.rotationY || item.keyframes?.z)
+          || (item.keyframes.rotationY && (item.keyframes.rotationX || item.keyframes.z)) || (item.keyframes.rotationX && item.keyframes.z && item.type !== 'text')
+          || item.keyframes.rotationY?.some(frame => Math.abs(frame.value) > 90)
           || item.keyframes.rotationX?.some(frame => Math.abs(frame.value) > 90)
           || item.keyframes.z?.some(frame => frame.value > 0)) throw new Error('Invalid TheBrief 3D image flip')
       }
+      if (item.keyframes?.blur?.some(frame => frame.value < 0 || frame.value > 100)) throw new Error('Invalid blur radius')
       if (item.reveal && item.type !== 'rect' && item.type !== 'button') throw new Error('Reveal requires editable shape geometry')
+      if ((item.textTracking || item.textSweep) && item.type !== 'text') throw new Error('Text motion requires editable text')
       if (item.wordPop && item.type !== 'text') throw new Error('Word animation requires text')
       if (['image', 'audio', 'video'].includes(item.type) && !item.src) throw new Error('Image, audio or video layer is missing its asset')
       const mime = item.src ? result.assets.find(a => a.path === item.src)?.mimeType : undefined
@@ -169,9 +175,10 @@ export function parseTheBriefPackage(input: unknown): TheBriefPackage {
       if (item.imageOuterFilter && (item.type !== 'image' || !item.borderRadius)) throw new Error('Outer image filter requires a masked image layer')
       if (item.type !== 'image' && item.imageBackground) throw new Error('Image background requires an image layer')
       if (item.type !== 'video' && item.videoCrop) throw new Error('Video crop requires a video layer')
-      if (item.type !== 'video' && (item.mediaStart !== undefined || item.mediaEnd !== undefined || item.mediaLoop !== undefined)) throw new Error('Media clock is only valid on video layers')
+      if (!['video', 'audio'].includes(item.type) && (item.mediaStart !== undefined || item.mediaEnd !== undefined || item.mediaLoop !== undefined)) throw new Error('Media clock is only valid on video layers')
+      if (item.type !== 'video' && item.mediaLoop !== undefined) throw new Error('Video loop requires a video layer')
       if (item.mediaEnd !== undefined && item.mediaEnd <= (item.mediaStart ?? 0)) throw new Error('Invalid video clip timing')
-      if (item.rectShape && (item.type !== 'rect' || item.borderRadius !== undefined)) throw new Error('Ellipse shape is only valid on rectangle layers without a corner radius')
+      if (item.rectShape && (!['rect', 'button'].includes(item.type) || item.borderRadius !== undefined)) throw new Error('Ellipse shape is only valid on rectangle layers without a corner radius')
       if (item.endTime <= item.startTime || item.endTime > duration) throw new Error('Invalid layer timing')
       for (const frames of Object.values(item.keyframes || {})) {
         if (frames?.some((f, i) => f.time > duration || (i > 0 && f.time < frames[i - 1]!.time))) throw new Error('Invalid animation timing')

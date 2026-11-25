@@ -1,4 +1,5 @@
 import { bannerSlideGroups } from '~~/shared/bannerSlideFade'
+import { addBannerTextMotion } from '~~/shared/bannerTextMotion.mjs'
 import { revealCommands, safeWordEntrance, wordEntranceDelay, wordEntranceSteps } from '~~/shared/bannerImportedMotion'
 import { registerTimelineVideo, syncTimelineVideo, pauseTimelineVideo, disposeTimelineVideo } from '~/utils/bannerTimelineVideo'
 import { ref, readonly, watch } from 'vue'
@@ -42,6 +43,8 @@ const KF_GSAP_MAP: Record<KeyframeProperty, string> = {
   scaleY: 'scaleY',
   rotation: 'rotation',
   rotationX: 'rotationX',
+  rotationY: 'rotationY',
+  blur: 'filter',
   originY: '--xf-origin-y',
 }
 
@@ -55,6 +58,8 @@ function getDefaultValue(prop: KeyframeProperty, layer: Layer): number {
     case 'scaleX': return 1
     case 'scaleY': return 1
     case 'rotation': return layerFrameTransform(layer).rotation
+    case 'rotationY':
+    case 'blur':
     case 'rotationX': return 0
     case 'originY': return layer.textTilt?.height ?? layer.h / 2
   }
@@ -223,7 +228,7 @@ function addKeyframeTrack(
   const gsapProp = (prop === 'opacity' && isBg) ? 'autoAlpha' : KF_GSAP_MAP[prop]
 
   // Set initial value at the first keyframe's time
-  tl.set(el, { [gsapProp]: sorted[0].value, immediateRender: false }, sorted[0].time)
+  tl.set(el, { [gsapProp]: prop === 'blur' ? `blur(${sorted[0].value}px)` : sorted[0].value, immediateRender: false }, sorted[0].time)
 
   // Create tweens between consecutive keyframes
   for (let i = 0; i < sorted.length - 1; i++) {
@@ -232,12 +237,12 @@ function addKeyframeTrack(
     const duration = to.time - from.time
     if (duration === 0) {
       // Ordered equal-time frames encode CSS repeat/reset discontinuities.
-      tl.set(el, { [gsapProp]: to.value, immediateRender: false }, to.time)
+      tl.set(el, { [gsapProp]: prop === 'blur' ? `blur(${to.value}px)` : to.value, immediateRender: false }, to.time)
       continue
     }
 
     tl.to(el, {
-      [gsapProp]: to.value,
+      [gsapProp]: prop === 'blur' ? `blur(${to.value}px)` : to.value,
       duration,
       ease: resolveEase(from.easing || 'power2.out'),
       immediateRender: false,
@@ -453,6 +458,10 @@ function addSlideFades(tl: gsap.core.Timeline, artboard: HTMLElement, layers: La
     if (!el) continue
     const fade = group.fade
     tl.set(el, { opacity: fade.duration > 0 ? 0 : 1, immediateRender: false }, 0)
+    if (fade.exit) {
+      tl.set(el, { zIndex: 100000, immediateRender: false }, fade.exit.at)
+      tl.to(el, { opacity: 0, duration: fade.exit.duration, ease: resolveEase(fade.exit.ease), immediateRender: false }, fade.exit.at)
+    }
     if (fade.duration > 0) tl.to(el, { opacity: 1, duration: fade.duration, ease: resolveEase(fade.ease), immediateRender: false }, fade.start)
   }
 }
@@ -485,6 +494,7 @@ function addLayerToTimeline(tl: gsap.core.Timeline, el: HTMLElement, layer: Laye
   }
 
   addWordPop(tl, el, layer)
+  if (layer.textSweep || layer.textTracking) addBannerTextMotion(tl, el, layer.textTracking, layer.textSweep, layer.w, layer.endTime, resolveEase(layer.textTracking?.ease || 'linear'))
   const reveals = revealCommands(layer.reveal, layer.h)
   for (const command of reveals) {
     const target = el.querySelector(command.target === 'effect' ? '[data-banner-reveal]' : command.target === 'content' ? '[data-banner-reveal-content]' : '[data-banner-reveal-glow]')
@@ -602,7 +612,7 @@ export function useBannerTimeline() {
       const copy = overlay.querySelector<HTMLElement>(`#lyr-${contextLayer.id}`)
       if (!source || !copy || contextLayer.type === 'audio') continue
       const frame: Record<string, number> = {}
-      for (const property of ['x', 'y', 'z', 'xPercent', 'yPercent', 'scaleX', 'scaleY', 'rotation', 'rotationX', 'transformPerspective', 'opacity']) {
+      for (const property of ['x', 'y', 'z', 'xPercent', 'yPercent', 'scaleX', 'scaleY', 'rotation', 'rotationX', 'rotationY', 'transformPerspective', 'opacity']) {
         const value = Number(gsap.getProperty(source, property))
         if (Number.isFinite(value)) frame[property] = value
       }

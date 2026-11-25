@@ -9,7 +9,7 @@ import { resolveGoogleFonts } from './google-fonts.mjs'
 import { convertTheBriefHtml } from './convert-html.mjs'
 import { packSfntAsWoff } from './woff-font.mjs'
 import { transformImage } from './image-transforms.mjs'
-import { transformAudio } from './audio-transforms.mjs'
+import { transformAudio, extractVideoSoundtrack } from './audio-transforms.mjs'
 import { parseTheBriefPackage } from '../../app/utils/thebrief-import.ts'
 
 const hash = bytes => createHash('sha256').update(bytes).digest('hex')
@@ -35,7 +35,7 @@ export async function packageTheBriefSize({ sourceFile, sourceSha256, name, fold
     || !reviewed.rowLines || typeof reviewed.rowLines !== 'object' || Array.isArray(reviewed.rowLines))) {
     throw new Error('Reviewed row counts do not match the source ZIP')
   }
-  const candidate = await convertTheBriefHtml((await sourceFile('index.html')).toString('utf8'), { reviewedRowLines: reviewed?.rowLines })
+  const candidate = await convertTheBriefHtml((await sourceFile('index.html')).toString('utf8'), { reviewedRowLines: reviewed?.rowLines, reviewedRowHeights: reviewed?.rowHeights })
   if (reviewed && reviewed.designHash !== candidate.source.designHash) throw new Error('Reviewed row counts do not match the source layout')
   if (candidate.warnings.some(warning => /animation not converted|additional effects are not converted/.test(warning))) throw new Error('Import held: source animation requires an adapter; no package was created')
   const external = await resolveGoogleFonts(candidate.externalFontStylesheets || [], fetch, fontCache)
@@ -53,11 +53,16 @@ export async function packageTheBriefSize({ sourceFile, sourceSha256, name, fold
       const originalPath = layer.src
       const operations = (candidate.imageTransforms || []).filter(item => item.layerId === layer.id).map(item => ({ operation: item.operation }))
       const audioFade = (candidate.audioTransforms || []).find(item => item.layerId === layer.id)
-      const assetKey = `${originalPath}:${JSON.stringify(operations)}:${JSON.stringify(audioFade || null)}`
+      const assetKey = `${originalPath}:${layer.type}:${JSON.stringify(operations)}:${JSON.stringify(audioFade || null)}`
       let asset = sourceAssets.get(assetKey)
       if (!asset) {
         let bytes = await sourceFile(originalPath)
-        if (extname(originalPath).toLowerCase() === '.mp3') {
+        const embeddedSoundtrack = layer.type === 'audio' && extname(originalPath).toLowerCase() === '.mp4'
+        if (embeddedSoundtrack) {
+          bytes = await extractVideoSoundtrack(bytes)
+          candidate.warnings.push(`${basename(originalPath)}: embedded soundtrack extracted to an editable audio layer; original MP4 preserved`)
+        }
+        if (extname(originalPath).toLowerCase() === '.mp3' || embeddedSoundtrack) {
           if (layer.type !== 'audio') throw new Error('Audio is used by a non-audio layer')
           bytes = await transformAudio(bytes, audioFade)
           const sha256 = hash(bytes)
@@ -80,8 +85,12 @@ export async function packageTheBriefSize({ sourceFile, sourceSha256, name, fold
           if (!(media.duration > 0)) throw new Error(`Video ${basename(originalPath)}: invalid file duration`)
           if (layer.mediaEnd > media.duration + 0.05) {
             const visible = layer.endTime - layer.startTime
-            if (visible > media.duration - (layer.mediaStart || 0) + 0.001) throw new Error(`Video ${basename(originalPath)}: source clip end ${layer.mediaEnd}s exceeds the ${media.duration}s file`)
-            candidate.warnings.push(`${basename(originalPath)}: rounded source clip end ${layer.mediaEnd}s reconciled to verified file duration ${media.duration}s; the complete visible interval ends before that boundary`)
+            // The exported HTML video holds its final frame at EOF. A non-looping
+            // clip rounded to tenths can therefore retain its full presence while
+            // using the verified file end. Never shorten a looping clip's period.
+            const roundedNonLoop = !layer.mediaLoop && layer.mediaEnd - media.duration <= 0.1
+            if (!roundedNonLoop && visible > media.duration - (layer.mediaStart || 0) + 0.001) throw new Error(`Video ${basename(originalPath)}: source clip end ${layer.mediaEnd}s exceeds the ${media.duration}s file`)
+            candidate.warnings.push(`${basename(originalPath)}: rounded source clip end ${layer.mediaEnd}s reconciled to verified file duration ${media.duration}s; authored presence retained with the final frame held at EOF`)
             layer.mediaEnd = media.duration
           }
           const frame = (candidate.videoFrames || []).find(item => item.layerId === layer.id)
@@ -100,7 +109,11 @@ export async function packageTheBriefSize({ sourceFile, sourceSha256, name, fold
           const svg = bytes.toString('utf8')
           if (/<!DOCTYPE|<!ENTITY|<script|<foreignObject|@import|(?:href\s*=\s*["'](?!#|data:))|url\(\s*["']?(?!#)/i.test(svg)) throw new Error('SVG contains unsupported external or active content')
           const width = Math.min(4096, Math.max(1, Math.ceil(layer.w * 2)))
-          bytes = await sharp(bytes, { density: 192, limitInputPixels: 4096 * 4096 }).resize({ width }).png().toBuffer()
+          const pixelLimit = 4096 * 4096
+          const intrinsic = await sharp(bytes, { density: 72, limitInputPixels: pixelLimit }).metadata()
+          // Avoid oversampling large viewBoxes beyond the raster budget before resizing.
+          const density = Math.min(192, Math.floor(72 * Math.sqrt(pixelLimit / (intrinsic.width * intrinsic.height))))
+          bytes = await sharp(bytes, { density, limitInputPixels: pixelLimit }).resize({ width }).png().toBuffer()
           candidate.warnings.push(`${basename(originalPath)}: vector artwork stored as ${width}px PNG for supported asset delivery; original SVG retained in source ZIP`)
         } else {
           bytes = await sharp(bytes, { limitInputPixels: 4096 * 4096 }).png().toBuffer()

@@ -4,6 +4,26 @@ import { join } from 'node:path'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 
+/** Extract one local MP4 soundtrack without changing the original video bytes. */
+export async function extractVideoSoundtrack(bytes) {
+  const directory = await mkdtemp(join(tmpdir(), 'thebrief-video-audio-'))
+  const run = promisify(execFile)
+  try {
+    const input = join(directory, 'source.mp4'), output = join(directory, 'soundtrack.mp3')
+    await writeFile(input, bytes, { mode: 0o600 })
+    const { stdout } = await run('ffprobe', ['-v', 'error', '-show_entries', 'stream=codec_type:format=duration', '-of', 'json', input], { timeout: 15000, maxBuffer: 65536 })
+    const media = JSON.parse(stdout), duration = Number(media.format?.duration)
+    if (!Number.isFinite(duration) || duration <= 0 || duration > 300 || media.streams?.filter(stream => stream.codec_type === 'audio').length !== 1) throw new Error('Audible video requires exactly one bounded embedded soundtrack')
+    await run('ffmpeg', ['-v', 'error', '-nostdin', '-protocol_whitelist', 'file,pipe', '-i', input, '-map', '0:a:0', '-vn', '-t', String(duration), '-map_metadata', '-1', '-c:a', 'libmp3lame', '-b:a', '192k', output], { timeout: 30000, maxBuffer: 65536 })
+    const result = await readFile(output)
+    if (!result.length || result.length > 10 * 1024 * 1024) throw new Error('Extracted video soundtrack exceeds the package limit')
+    const verified = await run('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'json', output], { timeout: 15000, maxBuffer: 65536 })
+    const extractedDuration = Number(JSON.parse(verified.stdout).format?.duration)
+    if (!Number.isFinite(extractedDuration) || Math.abs(extractedDuration - duration) > 0.1) throw new Error('Extracted video soundtrack duration differs from its source')
+    return result
+  } finally { await rm(directory, { recursive: true, force: true }) }
+}
+
 /** Reproduce the exported player's bounded gain fades; retain the source archive. */
 export async function transformAudio(bytes, fade) {
   if (!fade) return bytes

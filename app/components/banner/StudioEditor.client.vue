@@ -395,16 +395,26 @@ async function saveProjectSettings() {
   settingsSaving.value = true
   const prevClient = state.project.clientId
   try {
+    if (nextClient !== prevClient && state.isDirty) {
+      await saveProject()
+      if (state.isDirty) throw new Error('Artwork changed while saving. Save it before changing the client.')
+    }
     const updated = await $fetch(`/api/agency/banner-studio/projects/${state.project.id}`, {
       method: 'PATCH',
       body: { name: settingsName.value.trim() || state.project.name, clientId: nextClient },
     }) as any
-    state.project = { ...state.project, name: updated?.name ?? settingsName.value, clientId: nextClient, clientName }
-    state.isDirty = true
+    const nextProject = { ...state.project, ...updated, name: updated?.name ?? settingsName.value, clientId: nextClient, clientName }
+    if (nextClient !== prevClient && updated?.canvasData) {
+      const activeKey = state.activeKey
+      loadProject(nextProject)
+      if (state.sets[activeKey]) setActiveArtboard(activeKey)
+    } else state.project = nextProject
+    state.isDirty = nextClient === prevClient
     showProjectSettings.value = false
     if (nextClient && nextClient !== prevClient) offerDefaultBrandKit(nextClient)
-  } catch {
-    toast.add({ title: 'Error', description: 'Failed to update project', color: 'error' })
+  } catch (error: unknown) {
+    const cause = error as { data?: { statusMessage?: string, message?: string }, message?: string }
+    toast.add({ title: 'Error', description: cause?.data?.statusMessage || cause?.data?.message || cause?.message || 'Failed to update project', color: 'error' })
   } finally {
     settingsSaving.value = false
   }

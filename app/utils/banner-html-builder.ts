@@ -1,5 +1,7 @@
 import { bannerImageBackgroundCss } from '../../shared/bannerImageBackground.mjs'
 import { bannerAudioState } from '~~/shared/bannerAudioClock'
+import { isBannerInlineTextGradient } from '~~/shared/bannerTextColor.mjs'
+import { addBannerTextMotion } from '~~/shared/bannerTextMotion.mjs'
 import { bannerSlideGroups } from '~~/shared/bannerSlideFade'
 import { mediaMaskCss, revealCommands, safeWordEntrance, wordEntranceSteps, REVEAL_WRAPPER_STYLE, REVEAL_GLOW_STYLE, revealContentStyle } from '~~/shared/bannerImportedMotion'
 import { bannerAnimationTiming } from '~/utils/banner-animation-timing'
@@ -111,6 +113,7 @@ function layerHasKeyframes(l: Layer): boolean {
 /** GSAP property name for keyframe property (bg layers use autoAlpha for opacity) */
 function kfGsapProp(prop: KeyframeProperty, isBg: boolean): string {
   if (prop === 'opacity' && isBg) return 'autoAlpha'
+  if (prop === 'blur') return 'filter'
   return prop === 'originY' ? '"--xf-origin-y"' : prop
 }
 
@@ -142,8 +145,9 @@ function buildKeyframeAnimLines(l: Layer, cycleEnd?: number): string[] {
     const gProp = kfGsapProp(prop as KeyframeProperty, isBg)
     const target = l.textTilt && prop !== 'opacity' ? `'[data-id="${l.id}"] [data-banner-tilt]'` : sel
 
+    const value = (n: number) => prop === 'blur' ? JSON.stringify(`blur(${n}px)`) : n
     // Set initial value
-    lines.push(`  tl.set(${target}, { ${gProp}: ${sorted[0].value} }, ${sorted[0].time});`)
+    lines.push(`  tl.set(${target}, { ${gProp}: ${value(sorted[0].value)} }, ${sorted[0].time});`)
 
     // Tweens between keyframes
     for (let i = 0; i < sorted.length - 1; i++) {
@@ -151,12 +155,12 @@ function buildKeyframeAnimLines(l: Layer, cycleEnd?: number): string[] {
       const to = sorted[i + 1]
       const dur = to.time - from.time
       if (dur === 0) {
-        lines.push(`  tl.set(${target}, { ${gProp}: ${to.value}, immediateRender: false }, ${to.time});`)
+        lines.push(`  tl.set(${target}, { ${gProp}: ${value(to.value)}, immediateRender: false }, ${to.time});`)
         continue
       }
       const ease = from.easing || 'power2.out'
       const exactDuration = Number(dur.toFixed(3)) === dur ? dur.toFixed(3) : String(dur)
-      lines.push(`  tl.to(${target}, { ${gProp}: ${to.value}, duration: ${exactDuration}, ease: ${easeToExportExpr(ease)} }, ${from.time});`)
+      lines.push(`  tl.to(${target}, { ${gProp}: ${value(to.value)}, duration: ${exactDuration}, ease: ${easeToExportExpr(ease)} }, ${from.time});`)
     }
   }
 
@@ -187,6 +191,12 @@ function buildKeyframeAnimLines(l: Layer, cycleEnd?: number): string[] {
   }
 
   return lines
+}
+
+function buildTextMotionLines(l: Layer): string[] {
+  if (!l.textTracking && !l.textSweep) return []
+  const sweep = l.textSweep && isBannerInlineTextGradient(l.textSweep.gradient) ? l.textSweep : null
+  return [`(${addBannerTextMotion.toString()})(tl, document.querySelector('[data-id="${Number(l.id)}"]'), ${JSON.stringify(l.textTracking || null).replace(/</g, '\\u003c')}, ${JSON.stringify(sweep).replace(/</g, '\\u003c')}, ${Number(l.w)}, ${Number(l.endTime)}, ${easeToExportExpr(l.textTracking?.ease || 'linear')});`]
 }
 
 function buildWordPopAnimLines(l: Layer): string[] {
@@ -318,7 +328,8 @@ export function buildBannerHTML(
           : l.textRuns?.length && l.textRuns.map(run => run.text).join('') === l.text
             ? l.textRuns.map(run => `<span style="${bannerTextRunCss(run)}">${escapeHtml(run.text)}</span>`).join('')
             : escapeHtml(l.text || '')
-        const content = `${textMarkup}${lineStrut}`
+        const glyphs = l.textSweep && !l.textSweep.wholeRow ? `<span data-banner-sweep>${textMarkup}</span>` : textMarkup
+        const content = l.textSweep || l.textTracking ? `<div data-banner-text-body${l.textSweep?.wholeRow ? ' data-banner-sweep' : ''} style="position:relative;width:100%">${glyphs}${lineStrut}</div>` : `${textMarkup}${lineStrut}`
         return visualLayer(style, bannerTextMarkup(content, l as unknown as Record<string, unknown>))
       }
       if (l.type === 'button') {
@@ -327,7 +338,8 @@ export function buildBannerHTML(
         style += `background:${l.bgColor || '#e8c84a'};color:${l.textColor || '#000'};`
         style += `display:flex;align-items:center;justify-content:center;cursor:pointer;box-sizing:border-box;white-space:nowrap;line-height:${l.lineHeight || 1};`
         if (l.borderWidth !== undefined) style += `border:${l.borderWidth}px solid ${l.borderColor || 'transparent'};`
-        if (l.borderRadius) style += `border-radius:${l.borderRadius}px;`
+        if (l.rectShape === 'ellipse') style += 'border-radius:50%;'
+        else if (l.borderRadius) style += `border-radius:${l.borderRadius}px;`
         if (l.textTransform) style += `text-transform:${l.textTransform};`
         if (l.letterSpacing) style += `letter-spacing:${l.letterSpacing};`
         return visualLayer(style, escapeHtml(l.text || ''))
@@ -383,6 +395,7 @@ export function buildBannerHTML(
     for (const group of slideGroups) if (group.fade) {
       const f = group.fade, target = `'[data-banner-slide="${group.key}"]'`
       lines.push(`tl.set(${target}, {opacity:${f.duration > 0 ? 0 : 1}}, 0);`)
+      if (f.exit) lines.push(`tl.set(${target},{zIndex:100000},${Number(f.exit.at)}); tl.to(${target},{opacity:0,duration:${Number(f.exit.duration)},ease:${easeToExportExpr(f.exit.ease)}},${Number(f.exit.at)});`)
       if (f.duration > 0) lines.push(`tl.to(${target}, {opacity:1,duration:${f.duration},ease:${easeToExportExpr(f.ease)}}, ${f.start});`)
     }
 
@@ -402,7 +415,7 @@ export function buildBannerHTML(
       // Keyframe-based layers use dedicated builder
       if (layerHasKeyframes(l)) {
         lines.push(...buildKeyframeAnimLines(l, cycleEnd))
-        lines.push(...buildWordPopAnimLines(l), ...buildRevealAnimLines(l))
+        lines.push(...buildTextMotionLines(l), ...buildWordPopAnimLines(l), ...buildRevealAnimLines(l))
         // Video sync for keyframe layers
         if ((l.type === 'bg' && l.srcType === 'video') || l.type === 'video') {
           const startTime = l.startTime || 0
@@ -520,7 +533,7 @@ export function buildBannerHTML(
         }
       }
 
-      lines.push(...buildWordPopAnimLines(l), ...buildRevealAnimLines(l))
+      lines.push(...buildTextMotionLines(l), ...buildWordPopAnimLines(l), ...buildRevealAnimLines(l))
     })
 
     // Animated mask clip-path proxy scripts
