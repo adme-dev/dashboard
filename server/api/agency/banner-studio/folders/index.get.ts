@@ -22,7 +22,7 @@ export default defineEventHandler(async (event) => {
       WHERE binned_at > now() - interval '30 days' ORDER BY binned_at DESC, position, name, id`)
   }
   const folders = await queryRowsFresh(`SELECT id, name, parent_id AS "parentId", position,
-    source_path AS "sourcePath" FROM banner_folders WHERE binned_at IS NULL ORDER BY position, name, id`)
+    source_path AS "sourcePath" FROM banner_folders WHERE binned_at IS NULL ORDER BY lower(name), name, id`)
   if (view !== 'library') return folders
   const prefs = await queryOneFresh(`SELECT dashboard_preferences->'bannerFolderPins' AS pins
     FROM team_members WHERE id = $1`, [user.id])
