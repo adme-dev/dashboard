@@ -9,6 +9,7 @@
 !shared/
 !shared/bannerImageFilters.mjs
 !shared/bannerImageBackground.mjs
+!shared/bannerStripWipe.mjs
 !shared/bannerTextColor.mjs
 !workers/
 !workers/thebrief-import/

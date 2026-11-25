@@ -3,6 +3,15 @@ import { createHash } from 'node:crypto'
 // Row counts measured against the original source previews. Exact archive and
 // layout identities bind these receipts; edited or rewrapped layouts still hold.
 const reviewed = [
+  // Original Jeep and Toyota row boxes measured with their exported font faces.
+  {"sha256": "167d2fbba728d4bb59962b44a950006d7eced7e01fed17154574b159201c9abd", "designHash": "85kzelz", "rowLines": {"element-201": [3, 3]}, "rowHeights": {"element-201": [478.406, 478.406]}},
+  {"sha256": "6f71c67eb3dcd0a2e619821818323157bdd086e70c5a002589fe90a20134e83e", "designHash": "g23pn78", "rowLines": {"element-201": [3, 3]}, "rowHeights": {"element-201": [426.516, 426.516]}},
+  {"sha256": "9865c38c52e00efa03cdd25f77f5fb4e3cdb45a122da7783c2a9f1350ea7c1f1", "designHash": "0y5r3gz", "rowLines": {"element-6": [4, 4]}, "rowHeights": {"element-6": [418.75, 418.75]}},
+  {"sha256": "3c722af8df348c2913eabf7c01a2d1ad04e268e22ee9690dccb76f7fd4d77dc9", "designHash": "85q1en5", "rowLines": {"element-6": [6, 6]}, "rowHeights": {"element-6": [632.906, 632.906]}},
+  {"sha256": "86f15b0d80723fed90872ab23abe2aced4e7e9ca04d6ae67648af419744d82c0", "designHash": "7nkjrqm", "rowLines": {"element-56": [2, 1, 1]}, "rowHeights": {"element-56": [78.7188, 39.3594, 24.9844]}},
+  {"sha256": "649b43d90decaec2ee353b9474aeb2d3275a7be1457c285c645e00d2015c0e78", "designHash": "x13w2q6", "rowLines": {"element-56": [2, 1, 1]}, "rowHeights": {"element-56": [70.4688, 35.2344, 22.3594]}},
+  {"sha256": "99998862c2e1aa65d1723029cfac2cf581a685415722b8630bd592278f632341", "designHash": "q1j2ggz", "rowLines": {"element-5": [3, 1, 3, 1, 2, 1, 2]}, "rowHeights": {"element-5": [66.5625, 22.1875, 66.5625, 22.1875, 44.375, 22.1875, 44.375]}},
+  {"sha256": "7c068b9f6d0fef00ecc3ac9b25b3491ff686870a83f616ded85b9355e3d9ecf9", "designHash": "x8kgxw6", "rowLines": {"element-15": [4, 1], "element-81": [2, 1], "element-37": [3, 1], "element-39": [2, 1], "element-43": [2, 1, 1], "element-57": [3, 1], "element-64": [4, 1]}, "rowHeights": {"element-15": [120.625, 30.1562], "element-81": [51.125, 25.5625], "element-37": [76.6875, 25.5625], "element-39": [180.594, 90.2969], "element-43": [115.719, 57.8594, 57.8594], "element-57": [76.6875, 25.5625], "element-64": [120.625, 30.1562]}},
   // Suzuki multi-row text, measured with the original bundled fonts at source size.
   { sha256: '447993fde561f55b9ce8e0fea8012b8e377878d6cf6bfe64a73c38b3825a4918', designHash: 'o1q8xoy', rowLines: { 'element-470': [1, 2] }, rowHeights: { 'element-470': [86, 172] } },
   { sha256: '064106b99e527ee2b1318ccbba1294c0c285dadf9cfcbac06e0a695e2a9047c8', designHash: 'w11exxe', rowLines: { 'element-439': [2, 1] }, rowHeights: { 'element-439': [154, 77] } },
@@ -164,6 +173,14 @@ const reviewed = [
 ]
 
 const reviewedContent = new Map([
+  ['b3a6e65722a95e789ff67ffc26bb2b75f8450b1dd7dcd01b8d3befa6a0ba8002', '167d2fbba728d4bb59962b44a950006d7eced7e01fed17154574b159201c9abd'],
+  ['8b1dd87c1738075a7edabfed2b3468529bba816c66c4da02f6f3273337ff6ab6', '6f71c67eb3dcd0a2e619821818323157bdd086e70c5a002589fe90a20134e83e'],
+  ['6cf9d019fcb6dd2683a1df5d255805e5e934782cb9d0e366d5f434fc1d115251', '9865c38c52e00efa03cdd25f77f5fb4e3cdb45a122da7783c2a9f1350ea7c1f1'],
+  ['2932cd1e421abc8102b5af7b0338858dec41ef24b7b881567d852241d8719f2c', '3c722af8df348c2913eabf7c01a2d1ad04e268e22ee9690dccb76f7fd4d77dc9'],
+  ['f5862351415469a44873cc27263f920eb761483997f4089504781e7f54ead7f4', '86f15b0d80723fed90872ab23abe2aced4e7e9ca04d6ae67648af419744d82c0'],
+  ['dfefed30bbaa6eb1c80203578334b4fc789c472e32340699fb9bf022c902bf79', '649b43d90decaec2ee353b9474aeb2d3275a7be1457c285c645e00d2015c0e78'],
+  ['8d08f3836839d6708af249a0b88700c100c0d0a73a5399526786e7aeddf337df', '99998862c2e1aa65d1723029cfac2cf581a685415722b8630bd592278f632341'],
+  ['e5b3a7239c6b729e73b490065bf44c5f6568a35e53e7015158e1204a6b5ea212', '7c068b9f6d0fef00ecc3ac9b25b3491ff686870a83f616ded85b9355e3d9ecf9'],
   ['c708b7e51b3482b870f0c18ba37aaac0287c2bbc70687721e9be4b13ceb2784e', '447993fde561f55b9ce8e0fea8012b8e377878d6cf6bfe64a73c38b3825a4918'],
   ['7c7cd8788be38e768724a82b313dd3aaa56af795b2be94d622b1197837c1cafd', '064106b99e527ee2b1318ccbba1294c0c285dadf9cfcbac06e0a695e2a9047c8'],
   ['194dcfda6528ad8a77ad48c08aa6ddba551d1878b535bc4f99796ca3ebc44de4', 'f9fbe8203969ea0f3564075d1f7f911eca57d4e7e1f7b9a3a2eb9af93f4b8eb9'],

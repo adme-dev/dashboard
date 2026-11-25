@@ -1,5 +1,7 @@
+import { stripWipeImage, stripWipeSize, stripWipePosition } from './bannerStripWipe.mjs'
+
 /** Reviewed native entrances. Imported HTML/CSS is never executed or retained. */
-export interface BannerReveal { type: 'softWipe' | 'tvExpand', duration: number, ease: string }
+export interface BannerReveal { type: 'softWipe' | 'tvExpand' | 'stripWipe', duration: number, ease: string }
 export interface BannerWordEntrance { duration: number, stagger: number, ease: string, variant?: 'pop' | 'blur' | 'blurLeft' | 'blurUp' | 'zoomOut' | 'typewriter' | 'fade', unit?: 'word' | 'character', delays?: number[], offset?: number }
 export type MotionCommand = { target: 'effect' | 'content' | 'glow', property: string, from: string | number, to: string | number, start: number, duration: number, ease: string }
 const safeEase = (ease: string) => typeof ease === 'string' && /^[a-z][a-z0-9.,() -]{0,100}$/i.test(ease) ? ease : 'linear'
@@ -16,17 +18,26 @@ export function wordEntranceDelay(effect: BannerWordEntrance, index: number) {
   const step = delays.length > 1 ? (delays.at(-1)! - delays[0]!) / (delays.length - 1) : effect.stagger
   return delays.at(-1)! + (index - delays.length + 1) * Math.max(0, step)
 }
-export const revealLabel = (type?: string) => type === 'tvExpand' ? 'TV reveal' : 'Soft wipe'
+export const revealLabel = (type?: string) => type === 'tvExpand' ? 'TV reveal' : type === 'stripWipe' ? 'Strip wipe' : 'Soft wipe'
 export const wordEntranceLabel = (variant?: string) => ({ blur: 'Words blur in', fade: 'Words fade', blurLeft: 'Words blur from left', blurUp: 'Words blur from below', zoomOut: 'Words zoom out', typewriter: 'Typewriter' }[variant || ''] || 'Words Pop')
 export const REVEAL_WRAPPER_STYLE = 'position:relative;width:100%;height:100%;'
 export const REVEAL_GLOW_STYLE = 'position:absolute;pointer-events:none;left:0;right:0;top:50%;height:2px;margin-top:-1px;opacity:0;background:linear-gradient(90deg,transparent,#fff 12%,#fff 88%,transparent);box-shadow:0 0 13.6px 1.2px rgba(255,255,255,.77);'
 export function revealContentStyle(type: string) {
+  if (type === 'stripWipe') {
+    const mask = `mask-image:${stripWipeImage};mask-size:${stripWipeSize};mask-repeat:no-repeat;mask-position:${stripWipePosition(5)};`
+    return 'width:100%;height:100%;' + mask + mask.replace(/mask-/g, '-webkit-mask-')
+  }
   return type === 'tvExpand' ? 'width:100%;height:100%;mask-image:linear-gradient(#000,#000);-webkit-mask-image:linear-gradient(#000,#000);mask-repeat:no-repeat;-webkit-mask-repeat:no-repeat;mask-position:center;-webkit-mask-position:center;' : 'width:100%;height:100%;'
 }
 export function revealCommands(reveal: BannerReveal | undefined, height: number): MotionCommand[] {
-  if (!reveal || !['softWipe', 'tvExpand'].includes(reveal.type) || !(reveal.duration > 0 && reveal.duration <= 300) || !Number.isFinite(height) || height <= 0) return []
+  if (!reveal || !['softWipe', 'tvExpand', 'stripWipe'].includes(reveal.type) || !(reveal.duration > 0 && reveal.duration <= 300) || !Number.isFinite(height) || height <= 0) return []
   const d = reveal.duration, ease = safeEase(reveal.ease)
   const cmd = (target: MotionCommand['target'], property: string, from: string | number, to: string | number, start: number, duration: number): MotionCommand => ({ target, property, from, to, start: start * d, duration: duration * d, ease })
+  if (reveal.type === 'stripWipe') return [
+    cmd('effect', 'opacity', 0, 1, 0, 0.15),
+    ...[0, 1, 2, 3, 4].flatMap(i => ['maskPosition', 'webkitMaskPosition'].map(property =>
+      cmd('content', property, stripWipePosition(i), stripWipePosition(i + 1), i / 5, 0.2)))
+  ]
   if (reveal.type === 'softWipe') return [
     cmd('effect', 'opacity', 0, 1, 0, 0.15),
     ...['maskPosition', 'webkitMaskPosition'].map(property => cmd('content', property, '148% 50%', '0% 50%', 0, 1))

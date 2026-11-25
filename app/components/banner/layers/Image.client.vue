@@ -16,7 +16,7 @@ const displaySrc = computed(() => getFeedOverride(props.layer.id, 'src') ?? prop
 </script>
 
 <template>
-  <div class="relative w-full h-full" :style="{ filter: outerEffects.visualFilter || effects.visualFilter, overflow: layer.imageOuterFilter ? undefined : 'hidden', borderRadius: !layer.imageOuterFilter && layer.borderRadius ? `${layer.borderRadius}px` : undefined }">
+  <div class="relative w-full h-full" :style="{ filter: outerEffects.visualFilter || effects.visualFilter, overflow: layer.imageOuterFilter ? undefined : 'hidden', borderRadius: layer.rectShape === 'ellipse' ? '50%' : !layer.imageOuterFilter && layer.borderRadius ? `${layer.borderRadius}px` : undefined }">
     <div
       class="relative w-full h-full"
       :style="{ filter: layer.imageOuterFilter ? effects.visualFilter : undefined, overflow: layer.imageOuterFilter ? 'hidden' : undefined, borderRadius: layer.imageOuterFilter && layer.borderRadius ? `${layer.borderRadius}px` : undefined }"

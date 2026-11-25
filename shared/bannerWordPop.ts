@@ -6,6 +6,7 @@ export interface BannerTextRun extends BannerFontChoice {
   fontSize?: number
   top?: number
   color?: string
+  decoration?: 'line-through'
   gradient?: string
 }
 
@@ -14,6 +15,7 @@ export function bannerTextRunStyle(run: BannerTextRun) {
   const weight = run.fontWeight
   const gradient = isBannerInlineTextGradient(run.gradient) ? run.gradient : undefined
   return {
+    textDecoration: run.decoration === 'line-through' ? run.decoration : undefined,
     fontFamily: family ? `'${family}',sans-serif` : undefined,
     fontWeight: typeof weight === 'number' && Number.isInteger(weight) && weight >= 1 && weight <= 1000 ? weight : undefined,
     fontStyle: run.fontStyle === 'italic' || run.fontStyle === 'normal' ? run.fontStyle : undefined,
@@ -26,8 +28,8 @@ export function bannerTextRunStyle(run: BannerTextRun) {
 }
 
 export function bannerTextRunCss(run: BannerTextRun) {
-  const { fontSize, position, top, color, fontFamily, fontWeight, fontStyle, backgroundImage } = bannerTextRunStyle(run)
-  return `${fontSize ? `font-size:${fontSize};` : ''}${position ? `position:${position};top:${top};` : ''}${color ? `color:${color};` : ''}${fontFamily ? `font-family:${fontFamily};` : ''}${fontWeight ? `font-weight:${fontWeight};` : ''}${fontStyle ? `font-style:${fontStyle};` : ''}${backgroundImage ? `background-image:${backgroundImage};background-clip:text;-webkit-background-clip:text;-webkit-text-fill-color:transparent;` : ''}`
+  const { fontSize, position, top, color, fontFamily, fontWeight, fontStyle, backgroundImage, textDecoration } = bannerTextRunStyle(run)
+  return `${textDecoration ? 'text-decoration:line-through;' : ''}${fontSize ? `font-size:${fontSize};` : ''}${position ? `position:${position};top:${top};` : ''}${color ? `color:${color};` : ''}${fontFamily ? `font-family:${fontFamily};` : ''}${fontWeight ? `font-weight:${fontWeight};` : ''}${fontStyle ? `font-style:${fontStyle};` : ''}${backgroundImage ? `background-image:${backgroundImage};background-clip:text;-webkit-background-clip:text;-webkit-text-fill-color:transparent;` : ''}`
 }
 
 /** Split editable copy into stable word targets while keeping its whitespace. */

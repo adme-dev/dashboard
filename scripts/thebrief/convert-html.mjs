@@ -1,3 +1,4 @@
+import { stripWipeImage, stripWipeSize, stripWipePosition } from '../../shared/bannerStripWipe.mjs'
 import { isBannerImageBackground } from '../../shared/bannerImageBackground.mjs'
 import { isBannerInlineTextColor, isBannerInlineTextGradient } from '../../shared/bannerTextColor.mjs'
 import { createHash } from 'node:crypto'
@@ -306,10 +307,17 @@ function sourceReveal(effect, style, rules) {
   const text = rule.cssText.replace(/\s+/g, '')
   let type
   if (text.includes('mask-position:148%center') && text.includes('linear-gradient(90deg,black0%,black50%,transparent74%)')) type = 'softWipe'
+  else if (text.includes('mask-position:0%148%,25%-48%')) type = 'stripWipe'
   else if (text.includes('--tv-collapse-mask-w:400%') && text.includes('--tv-collapse-mask-h:3px') && text.includes('brightness(3.2)saturate(.15)')) type = 'tvExpand'
   if (!type) return null
   // Match the complete reviewed recipe, including all keyframe offsets and values.
-  const expected = type === 'softWipe'
+  const stripFrames = () => [0, 15, 20, 40, 60, 80, 100].map(offset => {
+    if (offset === 15) return ['15%', { opacity: '1' }]
+    const mask = { 'mask-image': stripWipeImage, 'mask-size': stripWipeSize, 'mask-repeat': 'no-repeat', 'mask-position': stripWipePosition(offset / 20) }
+    const prefixed = Object.fromEntries(Object.entries(mask).map(([name, value]) => ['-webkit-' + name, value]))
+    return [offset + '%', { ...mask, ...prefixed, ...(offset === 0 ? { opacity: '0' } : {}) }]
+  })
+  const expected = type === 'stripWipe' ? stripFrames() : type === 'softWipe'
     ? [
         ['0%', { 'mask-image': 'linear-gradient(90deg,black 0%,black 50%,transparent 74%)', '-webkit-mask-image': 'linear-gradient(90deg,black 0%,black 50%,transparent 74%)', 'mask-repeat': 'no-repeat', '-webkit-mask-repeat': 'no-repeat', 'mask-size': '200% 100%', '-webkit-mask-size': '200% 100%', 'mask-position': '148% center', '-webkit-mask-position': '148% center', 'opacity': '0' }],
         ['15%', { opacity: '1' }],
@@ -392,7 +400,7 @@ function effectTracks(effect, style, rules, start, end, warnings, geometry, inte
   const owner = effect.parentElement
   const ownerCss = style(owner)
   const recipeFrames = [...rule.cssRules]
-  const isTextTilt = ['text', 'video'].includes(owner.getAttribute('data-eltype'))
+  const isTextTilt = ['text', 'video', 'image'].includes(owner.getAttribute('data-eltype'))
     && effect.id === owner.id.replace('element-', 'effIn') && !intermediate && iterations === 1
     && ['', 'normal'].includes(css.animationDirection) && recipeFrames.length === 2
     && recipeFrames[0].keyText === '0%' && recipeFrames[1].keyText === '100%'
@@ -450,7 +458,7 @@ function effectTracks(effect, style, rules, start, end, warnings, geometry, inte
     const ownerCss = style(owner)
     perspective = px(ownerCss.getPropertyValue('perspective'))
     const centre = transformOrigin && sameTime(transformOrigin.x, geometry.w / 2) && sameTime(transformOrigin.y, geometry.h / 2)
-    if (!['image', 'svg', 'text', 'shape'].includes(owner.getAttribute('data-eltype')) || !['effIn', 'effOut'].some(prefix => effect.id === owner.id.replace('element-', prefix))
+    if (!['image', 'svg', 'text', 'shape', 'button'].includes(owner.getAttribute('data-eltype')) || !['effIn', 'effOut'].some(prefix => effect.id === owner.id.replace('element-', prefix))
       || transformProperties.size !== 1 || !centre || css.getPropertyValue('backface-visibility') !== 'hidden'
       || !['center', 'center center', '50% 50%'].includes(ownerCss.getPropertyValue('perspective-origin'))
       || !['', 'none'].includes(css.transform) || !['', 'none'].includes(ownerCss.transform)
@@ -564,12 +572,20 @@ function reconcileLegacyIds(document, source) {
   const seenSlides = new Set(), seenElements = new Set()
   const css = [...document.querySelectorAll('style')].map(sheet => sheet.textContent).join('\n')
   const media = [...source.audioElements || [], ...source.videoElements || [], ...source.customAnimations || []]
+  const mediaOwners = new Map()
+  for (const item of [...source.videoElements || [], ...source.audioElements || []]) {
+    if (!repeatedSlides.has('slide-' + item.slideId)) continue
+    const owners = elements.filter(element => element.id === 'element-' + item.elementId && element.closest('[id^="slide-"]')?.id === 'slide-' + item.slideId)
+    if (owners.length !== 1) throw new Error('Ambiguous slide ownership')
+    mediaOwners.set(item, owners[0].closest('[id^="slide-"]'))
+  }
   for (const [i, node] of containers.entries()) {
     const slide = source.animations[i]
     if (!Array.isArray(slide.elements)) throw new Error('Invalid slide metadata')
-    if (repeatedSlides.has(node.id) && (slide.effInDuration || slide.effOutDuration || media.some(m => m.slideId === slide.id) || css.includes('#' + node.id))) throw new Error('Ambiguous slide ownership')
+    if (repeatedSlides.has(node.id) && (slide.effInDuration || slide.effOutDuration || (source.customAnimations || []).some(m => m.slideId === slide.id) || css.includes('#' + node.id))) throw new Error('Ambiguous slide ownership')
     if (seenSlides.has(node.id)) { slide.id = next++; node.id = `slide-${slide.id}` }
     seenSlides.add(node.id)
+    for (const [item, owner] of mediaOwners) if (owner === node) item.slideId = slide.id
     const children = [...node.querySelectorAll('[data-eltype][id^="element-"]')]
     const ids = children.map(child => Number(child.id.slice(8)))
     const timings = slide.elements.filter(item => ids.includes(item.id))
@@ -581,13 +597,13 @@ function reconcileLegacyIds(document, source) {
       const timing = timings[j]?.id === id ? timings[j++] : undefined
       if (seenElements.has(original)) {
         const names = [original, ...['effIn', 'effMid', 'effOut', 'c-'].map(prefix => prefix + id)]
-        if (!timing || media.some(m => m.elementId === id) || names.some(name => new RegExp('#' + name + '(?![\\w-])').test(css))) throw new Error('Ambiguous element ownership')
+        if (media.some(m => m.elementId === id) || names.some(name => new RegExp('#' + name + '(?![\\w-])').test(css))) throw new Error('Ambiguous element ownership')
         const replacement = next++
         for (const inner of child.querySelectorAll('[id]')) {
           if (names.slice(1).includes(inner.id)) inner.id = inner.id.slice(0, -String(id).length) + replacement
         }
         child.id = 'element-' + replacement
-        timing.id = replacement
+        if (timing) timing.id = replacement
       }
       seenElements.add(original)
     }
@@ -701,8 +717,14 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {}, reviewe
     if (imageBackground && !/gradient\(/.test(imageBackground)) {
       const match = /^url\(["']?([^"')]+)["']?\)$/.exec(imageBackground)
       if (!match) throw new Error('Unsupported canvas background image')
-      if (!['cover', 'contain'].includes(rootCss.backgroundSize) || !['50% 50%', 'center center', 'center'].includes(rootCss.backgroundPosition)) throw new Error('Unsupported canvas background fit/position')
-      rootImage = { src: localAsset(match[1]), fit: rootCss.backgroundSize }
+      const centered = ['50% 50%', 'center center', 'center'].includes(rootCss.backgroundPosition)
+      const position = rootCss.backgroundPosition.split(' ').map(value => {
+        if (value === '0px') return 0
+        return /^\d+(?:\.\d+)?%$/.test(value) ? parseFloat(value) : NaN
+      })
+      if (!['cover', 'contain'].includes(rootCss.backgroundSize) || (!centered && (rootCss.backgroundRepeat !== 'no-repeat'
+        || position.length !== 2 || !position.every(value => value >= 0 && value <= 100)))) throw new Error('Unsupported canvas background fit/position')
+      rootImage = { src: localAsset(match[1]), fit: rootCss.backgroundSize, ...(!centered ? { focalX: position[0], focalY: position[1] } : {}) }
     }
     const background = rootImage.src ? (rootCss.backgroundColor || 'transparent') : (rootCss.background || imageBackground || rootCss.backgroundColor || 'transparent')
     layers.push({ ...base, id: id++, type: 'bg', name: 'Background', linkId: 'source:background', ...rootImage, x: 0, y: 0, w: source.width, h: source.height, zIndex: 0, bgColor: background })
@@ -1110,11 +1132,16 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {}, reviewe
           if (!['none', 'uppercase', 'lowercase', 'capitalize'].includes(textTransform)) throw new Error('Unsupported text transform')
           const textContainer = row.closest('.text-content')
           const containerCss = textContainer ? style(textContainer) : rowCss
-          // Native text layers have no decoration; a struck-through price would lose its meaning.
+          const struckRuns = new Set()
           for (const node of new Set([row, span, ...runs, ...(textContainer ? [textContainer] : [])])) {
             const css = style(node)
             const lines = [css.getPropertyValue('text-decoration-line'), css.getPropertyValue('text-decoration'), ...sourceDeclarations(document, node, 'text-decoration|text-decoration-line')]
-            if (lines.some(value => /line-through|underline|overline/i.test(value || ''))) throw new Error('Text decoration needs an adapter')
+            const decorated = lines.filter(value => /line-through|underline|overline/i.test(value || ''))
+            if (!decorated.length) continue
+            if (node.tagName !== 'SPAN' || node.children.length || decorated.some(value => value.trim() !== 'line-through')
+              || ['text-decoration-color', 'text-decoration-style', 'text-decoration-thickness'].some(property => node.style.getPropertyValue(property))
+              || sourceDeclarations(document, node, 'text-decoration-color|text-decoration-style|text-decoration-thickness').size) throw new Error('Text decoration needs an adapter')
+            struckRuns.add(node)
           }
           let textStroke = containerCss.getPropertyValue('-webkit-text-stroke') || ''
           const rgbStroke = /^(\d+(?:\.\d+)?px) rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})(?:\s*,\s*(1(?:\.0+)?))?\s*\)$/i.exec(textStroke)
@@ -1140,7 +1167,7 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {}, reviewe
             }
           }
           const textRuns = []
-          if (row.querySelector('sup') || hasInlineStyles || gradients.size) {
+          if (row.querySelector('sup') || hasInlineStyles || gradients.size || struckRuns.size) {
             const walk = (node) => {
               if (node.nodeType === 3 && node.textContent) {
                 const parent = node.parentElement
@@ -1149,6 +1176,7 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {}, reviewe
                 const color = runCss.color && runCss.color !== textCss.color ? runCss.color : undefined
                 if (color && !isBannerInlineTextColor(color)) throw new Error('Unsupported inline text colour')
                 const run = { text: node.textContent }
+                if (struckRuns.has(parent)) run.decoration = 'line-through'
                 if (gradients.has(parent)) run.gradient = gradients.get(parent)
                 if (color) run.color = color
                 if (node.textContent.trim() && (runCss.fontFamily !== textCss.fontFamily || runCss.fontWeight !== textCss.fontWeight || runCss.fontStyle !== textCss.fontStyle)) {
@@ -1481,11 +1509,11 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {}, reviewe
           // The native image layer reproduces only a centred, borderless frame
           // with cover sizing. Other CSS backgrounds need their own adapter.
           if (!asset || contentCss.backgroundSize !== 'cover' || contentCss.backgroundPosition !== '50% 50%'
-            || contentCss.backgroundRepeat !== 'no-repeat' || borderRadius !== 0 || visualFilter || borders.some(width => width !== 0)
+            || contentCss.backgroundRepeat !== 'no-repeat' || (borderRadius !== 0 && rectShape !== 'ellipse') || visualFilter || borders.some(width => width !== 0)
             || (contentCss.backgroundColor && !['transparent', 'rgba(0, 0, 0, 0)'].includes(contentCss.backgroundColor))) {
             throw new Error('Unsupported shape background composition')
           }
-          layers.push({ ...layerBase, id: id++, type: 'image', name: `Shape ${sourceId}`, rotation, src: localAsset(asset[1]), fit: 'cover' })
+          layers.push({ ...layerBase, id: id++, type: 'image', name: `Shape ${sourceId}`, rotation, ...(rectShape ? { rectShape } : {}), src: localAsset(asset[1]), fit: 'cover' })
         } else {
           if (borders.some(width => width !== 0)) {
             const sides = ['Top', 'Right', 'Bottom', 'Left']

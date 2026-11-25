@@ -356,6 +356,7 @@ export function buildBannerHTML(
         return visualLayer(style, escapeHtml(l.text || ''))
       }
       if (l.type === 'image') {
+        if (l.rectShape === 'ellipse') style += 'border-radius:50%;'
         const sourceBackground = bannerImageBackgroundCss(l.imageBackground)
         if (l.imageOuterFilter && l.borderRadius) {
           style += bannerEffectCss({ visualFilter: l.imageOuterFilter })

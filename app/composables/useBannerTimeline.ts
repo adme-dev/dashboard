@@ -1,5 +1,6 @@
 import { bannerSlideGroups } from '~~/shared/bannerSlideFade'
 import { addBannerTextMotion } from '~~/shared/bannerTextMotion.mjs'
+import { stripWipePosition } from '~~/shared/bannerStripWipe.mjs'
 import { revealCommands, safeWordEntrance, wordEntranceDelay, wordEntranceSteps } from '~~/shared/bannerImportedMotion'
 import { registerTimelineVideo, syncTimelineVideo, pauseTimelineVideo, disposeTimelineVideo } from '~/utils/bannerTimelineVideo'
 import { ref, readonly, watch } from 'vue'
@@ -672,6 +673,9 @@ export function useBannerTimeline() {
           gsap.killTweensOf(child)
           gsap.set(child, { clearProps: 'transform,opacity,filter,maskPosition,webkitMaskPosition' })
           if (layer.reveal?.type === 'tvExpand') gsap.set(child, { clearProps: 'maskSize,webkitMaskSize' })
+          if (layer.reveal?.type === 'stripWipe' && child.hasAttribute('data-banner-reveal-content')) {
+            gsap.set(child, { maskPosition: stripWipePosition(5), webkitMaskPosition: stripWipePosition(5) })
+          }
           if (child.hasAttribute('data-banner-reveal-glow')) gsap.set(child, { opacity: 0 })
         })
         const tilt = el.querySelector<HTMLElement>('[data-banner-tilt]')
