@@ -22,6 +22,6 @@ it('loads the import catalog when first mounted open after lazy loading', async 
   app.mount(document.createElement('div'))
   await Vue.nextTick()
   expect(fetch).toHaveBeenCalledTimes(2)
-  expect(fetch).toHaveBeenCalledWith('/api/agency/clients?view=import-picker')
+  expect(fetch).toHaveBeenCalledWith('/api/agency/clients', { query: { view: 'import-picker' } })
   expect(fetch).toHaveBeenCalledWith('/api/agency/banner-studio/folders')
 })
