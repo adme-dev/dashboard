@@ -80,3 +80,35 @@ describe.skipIf(!enabled)('Native text effects in real Chromium', () => {
     } finally { await page.close() }
   }, 30_000)
 })
+
+it.skipIf(!enabled)('applies unitless inspector spacing to real canvas glyphs and both HTML exports', async () => {
+  vi.stubGlobal('computed', computed)
+  vi.stubGlobal('ref', ref)
+  vi.stubGlobal('useBannerStudio', () => ({ updateLayer: vi.fn() }))
+  vi.stubGlobal('useBannerFeeds', () => ({ getFeedOverride: () => undefined }))
+  const browser = await chromium.launch({ executablePath, headless: true })
+  try {
+    const page = await browser.newPage()
+    for (const [input, expected] of [['100', '100px'], ['-1.5', '-1.5px'], ['0.1em', '6.4px']]) {
+      const text = { ...layer, text: 'KNOX LDV', w: 2000, letterSpacing: input }
+      const canvas = await renderToString(createSSRApp(TextLayer, { layer: text, isActive: false }))
+      await page.setContent(canvas)
+      const measure = (el: Element) => {
+        const range = document.createRange()
+        range.selectNodeContents(el)
+        return { spacing: getComputedStyle(el).letterSpacing, width: range.getBoundingClientRect().width }
+      }
+      const actual = await page.locator('[data-banner-text-body]').evaluate(measure)
+      expect(actual.spacing).toBe(expected)
+      for (const build of [buildBannerHTML, buildServerHTML]) {
+        await page.setContent(build('custom_2000x250', [text], { includeAnimations: false }))
+        const output = await page.getByText('KNOX LDV', { exact: true }).last().evaluate(measure)
+        expect(output.spacing).toBe(expected)
+        expect(output.width).toBeCloseTo(actual.width, 0)
+      }
+    }
+  } finally {
+    await browser.close()
+    vi.unstubAllGlobals()
+  }
+})

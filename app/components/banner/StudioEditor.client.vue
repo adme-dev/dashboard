@@ -314,7 +314,8 @@ function toggleSafeZone() {
 provide('showSizePicker', showSizePicker)
 
 // Keyboard shortcuts
-useBannerKeyboard({ showExportModal })
+const { user: clipboardUser } = useAuth()
+useBannerKeyboard({ showExportModal, clipboardOwner: () => clipboardUser.value?.id ?? null })
 
 // Load project from API (or init default for "new")
 const { data: projectData, error: projectLoadError } = await useFetch(`/api/agency/banner-studio/projects/${projectId.value}`, {

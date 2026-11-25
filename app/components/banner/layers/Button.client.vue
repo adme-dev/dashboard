@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { bannerLetterSpacing } from '~~/shared/bannerLetterSpacing'
 import type { Layer } from '~/types/banner-studio'
 import { useBannerFonts } from '~/composables/useBannerFonts'
 import { bannerFontFamily } from '~/utils/banner-font-family'
@@ -42,7 +43,7 @@ const effects = computed(() => effectStyleFromLayer(props.layer as unknown as Re
         textShadow: layer.textShadow || 'none',
         WebkitTextStroke: layer.textStroke || 'unset',
         textTransform: (layer.textTransform as any) || 'uppercase',
-        letterSpacing: layer.letterSpacing || '0.1em',
+        letterSpacing: bannerLetterSpacing(layer.letterSpacing, '0.1em'),
         lineHeight: layer.lineHeight || 1,
         whiteSpace: 'nowrap'
       }"

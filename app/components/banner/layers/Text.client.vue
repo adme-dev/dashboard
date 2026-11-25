@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { bannerLetterSpacing } from '~~/shared/bannerLetterSpacing'
 import TextGlyphs from './TextGlyphs.client.vue'
 import type { Layer } from '~/types/banner-studio'
 import { effectStyleFromLayer, bannerTextBackdropShadow, safeBannerTextTexture } from '~~/shared/bannerEffects'
@@ -95,7 +96,7 @@ function onKeydown(e: KeyboardEvent) {
         v-if="depthShadow"
         aria-hidden="true"
         class="absolute inset-0 pointer-events-none"
-        :style="{ fontSize: `${layer.fontSize || 16}px`, fontWeight: layer.fontWeight || 400, fontFamily: bannerFontFamily(layer.fontFamily, resolvedFontId), fontStyle: layer.fontStyle || 'normal', textTransform: (layer.textTransform as any) || 'none', letterSpacing: layer.letterSpacing || 'normal', lineHeight: layer.lineHeight || 1.2, textAlign: (layer.textAlign as any) || 'left', whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: effects.textDepth?.color || displayColor, textShadow: depthShadow }"
+        :style="{ fontSize: `${layer.fontSize || 16}px`, fontWeight: layer.fontWeight || 400, fontFamily: bannerFontFamily(layer.fontFamily, resolvedFontId), fontStyle: layer.fontStyle || 'normal', textTransform: (layer.textTransform as any) || 'none', letterSpacing: bannerLetterSpacing(layer.letterSpacing), lineHeight: layer.lineHeight || 1.2, textAlign: (layer.textAlign as any) || 'left', whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: effects.textDepth?.color || displayColor, textShadow: depthShadow }"
       >
         <TextGlyphs
           :text="displayText"
@@ -124,7 +125,7 @@ function onKeydown(e: KeyboardEvent) {
           WebkitTextStroke: effects.textStroke || 'unset',
           paintOrder: effects.textStroke ? (layer.textPaintOrder === 'fill' ? 'fill' : 'stroke') : undefined,
           textTransform: (layer.textTransform as any) || 'none',
-          letterSpacing: layer.letterSpacing || 'normal',
+          letterSpacing: bannerLetterSpacing(layer.letterSpacing),
           lineHeight: layer.lineHeight || 1.2,
           textAlign: (layer.textAlign as any) || 'left',
           whiteSpace: 'pre-wrap',

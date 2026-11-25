@@ -134,3 +134,28 @@ it('saves a clear client poster in the editing scope and restores it with undo',
   studio.loadProject({ id: 'poster', canvasData: saved } as BannerProject)
   expect(studio.getCanvasData()).toEqual(saved)
 })
+
+it('pastes an editable group across jobs with independent IDs, masks, paint order and one undo', () => {
+  const source = studio.activeLayers.value
+  const group = { id: 'logo-group', name: 'Dealer logo' }
+  Object.assign(source[0]!, { timelineGroup: group, linkId: 'source-link', isMask: true, maskTargetIds: [2, 99] })
+  Object.assign(source[1]!, { timelineGroup: group, zIndex: 3, text: 'KNOX LDV' })
+  studio.selectGroup(group.id)
+  const token = studio.copyLayer('tina')!
+  studio.loadProject({ id: 'another-job', canvasData: { custom_300x250: { layers: [scene(12, 0, 10)] } } } as BannerProject)
+  expect(studio.pasteLayer('someone-else', token)).toBeUndefined()
+  studio.pasteLayer('tina', token)
+  const [, mask, text] = studio.activeLayers.value
+  expect(mask!.maskTargetIds).toEqual([text!.id])
+  expect(mask!.linkId).toBeUndefined()
+  expect(mask!.timelineGroup!.name).toBe('Dealer logo')
+  expect(mask!.timelineGroup!.id).not.toBe(group.id)
+  expect(text!.timelineGroup).toEqual(mask!.timelineGroup)
+  expect(text!.text).toBe('KNOX LDV')
+  expect(text!.zIndex).toBeGreaterThan(mask!.zIndex)
+  expect(studio.selectedGroup.value?.id).toBe(mask!.timelineGroup!.id)
+  studio.undo()
+  expect(studio.activeLayers.value.map(l => l.id)).toEqual([12])
+  studio.redo()
+  expect(studio.activeLayers.value).toHaveLength(3)
+})
