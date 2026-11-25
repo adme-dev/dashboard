@@ -41,6 +41,7 @@ import {
 import { projectGoogleAdsTools } from './googleAdsTools'
 import { projectSocialMcpSuite, resolveSocialMcpExecutions } from './socialTools'
 import { projectOwnerFeedMcpSuite, resolveOwnerFeedMcpExecutions } from './ownerFeedTools'
+import { projectOwnerDealerFeedAdminMcpSuite, resolveOwnerDealerFeedAdminMcpExecutions } from './ownerDealerFeedAdminTools'
 import { projectDepartmentMcpSuite, resolveDepartmentMcpExecutions } from './departmentTools'
 import { projectOwnerMarketingReviewMcpSuite, resolveOwnerMarketingReviewMcpExecutions } from './marketingReviewTools'
 
@@ -113,6 +114,7 @@ const suiteDefinitions: RegisteredMcpSuite[] = [
     sourceProjectors: [projectGoogleAdsTools]
   },
   { key: 'owner-inventory-feeds', project: projectOwnerFeedMcpSuite, executions: resolveOwnerFeedMcpExecutions },
+  { key: 'owner-dealer-feed-admin', project: projectOwnerDealerFeedAdminMcpSuite, executions: resolveOwnerDealerFeedAdminMcpExecutions },
   {
     // Marketing phase 3: owner review of delegated Ads plans and department budget proposals. Projects
     // ONLY into the God-mode union (governanceBypass); ordinary governed projections receive nothing.
