@@ -1500,8 +1500,15 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {}, reviewe
       if (!face.fontFamily?.includes(',')) continue
       const names = face.fontFamily.split(',').map(value => value.trim().replace(/^["']|["']$/g, ''))
       const declared = fonts.filter(font => names.includes(font.family) && font.weight === (face.fontWeight || 400) && font.style === (face.fontStyle || 'normal'))
-      if (declared.length !== 1 || !names[0].startsWith(declared[0].family + ' file-')) throw new Error(`${layer.name}: ambiguous export font alias needs reconciliation`)
-      face.fontFamily = declared[0].family
+      // TheBrief can bundle both the generated first-choice name and its fallback.
+      // Keep the exact source face when declared, including exports with different font files.
+      const [alias, fallback] = names
+      const preferred = declared.filter(font => font.family === alias)
+      const base = declared.filter(font => font.family === fallback)
+      if (names.length !== 2 || !alias.startsWith(fallback + ' file-') || preferred.length > 1 || (!preferred.length && base.length !== 1)) {
+        throw new Error(`${layer.name}: ambiguous export font alias. Keep the original ZIP for the import team to check the typeface; no artwork changes are needed.`)
+      }
+      face.fontFamily = preferred.length ? alias : fallback
     }
     if (Object.keys(reviewedRowLines).some(id => !reviewedElements.has(id))) throw new Error('Reviewed row counts include an element without stacked wrapping')
     return { schemaVersion: 1, adapter: slides.length === 1 ? 'thebrief-css-single-slide-pilot' : 'thebrief-css-hard-cut-slides', fidelityVerified: false, fonts, externalFontStylesheets, imageTransforms, audioTransforms, source: { designHash: source.designHash || null, width: source.width, height: source.height, duration, loopCount: source.loopCount, elementCount: elements.length }, videoFrames, canvasData: { [`custom_${source.width}x${source.height}`]: { slides: slides.map((slide, index) => ({ id: `source-slide:${slide.id}`, name: `Slide ${index + 1}`, duration: slide.end - slide.start })), playback: { duration, loopCount: source.loopCount }, layers, bgColor: background } }, sourceElements, warnings }

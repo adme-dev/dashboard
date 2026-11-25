@@ -17,3 +17,11 @@ it('binds the export-only alias to its packaged font family and exact weight', a
 it('does not guess an unrelated fallback family', async () => {
   await expect(convertTheBriefHtml(fontSource('Unrelated Font'))).rejects.toThrow('ambiguous export font alias')
 })
+
+it('uses the explicitly declared first-choice alias at the matching weight', async () => {
+  const html = fontSource().replace('<style>', '<style>@font-face{font-family:"Example Font file-face-1";font-weight:700;font-style:normal;src:url("./fonts/first.ttf") format("truetype")}')
+  const result = await convertTheBriefHtml(html)
+  const layer = result.canvasData.custom_300x250.layers.find(layer => layer.type === 'text')
+  expect(layer.fontFamily).toBe('Example Font file-face-1')
+  expect(result.fonts).toContainEqual(expect.objectContaining({ family: layer.fontFamily, path: './fonts/first.ttf' }))
+})
