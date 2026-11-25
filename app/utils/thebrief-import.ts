@@ -30,7 +30,7 @@ const layer = z.object({
   textRuns: z.array(z.object({ text: z.string().max(10000), fontSize: number.positive().optional(), top: number.optional(), color: z.string().refine(isBannerInlineTextColor).optional(), gradient: z.string().refine(isBannerInlineTextGradient).optional(), fontFamily: z.string().max(150).regex(/^[\w .-]+$/).optional(), fontWeight: z.number().int().min(1).max(1000).optional(), fontStyle: z.enum(['normal', 'italic']).optional() }).strict()).max(100).optional(),
   borderWidth: number.nonnegative().max(100).optional(), borderColor: css.optional(), textColor: css.optional(),
   textTilt: z.object({ perspective: number.min(1), width: number.positive().max(4096), height: number.positive().max(4096) }).strict().optional(),
-  rotation: number.optional(), imageFlipPerspective: number.min(1).optional(), flipX: z.boolean().optional(), flipY: z.boolean().optional(), borderRadius: number.nonnegative().optional(), transformOrigin: z.object({ x: number, y: number }).optional(),
+  rotation: number.optional(), imageFlipPerspective: number.min(1).optional(), flipX: z.boolean().optional(), flipY: z.boolean().optional(), borderRadius: number.nonnegative().optional(), cornerRadii: z.tuple([number.nonnegative(), number.nonnegative(), number.nonnegative(), number.nonnegative()]).optional(), transformOrigin: z.object({ x: number, y: number }).optional(),
   mixBlendMode: z.enum(['normal', 'multiply', 'screen', 'overlay', 'darken', 'lighten', 'color-dodge', 'color-burn', 'hard-light', 'soft-light', 'difference', 'exclusion', 'hue', 'saturation', 'color', 'luminosity']).optional(),
   text: z.string().max(10000).optional(), textTransform: z.enum(['uppercase', 'lowercase', 'capitalize', 'none']).optional(), fontFamily: z.string().max(150).regex(/^[\w ,.-]+$/).optional(),
   textSweep: z.object({ wholeRow: z.literal(true).optional(), gradient: z.string().refine(isBannerInlineTextGradient), at: number.min(0).max(300), duration: number.positive().max(30), iterations: number.positive().max(50) }).strict().optional(),
@@ -157,8 +157,9 @@ export function parseTheBriefPackage(input: unknown): TheBriefPackage {
           || item.textTilt.width !== item.w || item.keyframes.rotationX.some(frame => Math.abs(frame.value) > 90)) throw new Error('Invalid TheBrief 3D text entrance')
       }
       if (item.imageFlipPerspective || (!item.textTilt && item.keyframes?.rotationX) || item.keyframes?.rotationY || item.keyframes?.z) {
-        if (!['image', 'text'].includes(item.type) || !item.imageFlipPerspective || !(item.keyframes?.rotationX || item.keyframes?.rotationY || item.keyframes?.z)
-          || (item.keyframes.rotationY && (item.keyframes.rotationX || item.keyframes.z)) || (item.keyframes.rotationX && item.keyframes.z && item.type !== 'text')
+        const depthShape = ['rect', 'button'].includes(item.type) && !!item.keyframes?.z
+        if ((!['image', 'text'].includes(item.type) && !depthShape) || !item.imageFlipPerspective || !(item.keyframes?.rotationX || item.keyframes?.rotationY || item.keyframes?.z)
+          || (item.keyframes.rotationY && (item.keyframes.rotationX || item.keyframes.z)) || (item.keyframes.rotationX && item.keyframes.z && item.type !== 'text' && !depthShape)
           || item.keyframes.rotationY?.some(frame => Math.abs(frame.value) > 90)
           || item.keyframes.rotationX?.some(frame => Math.abs(frame.value) > 90)
           || item.keyframes.z?.some(frame => frame.value > 0)) throw new Error('Invalid TheBrief 3D image flip')
@@ -178,6 +179,7 @@ export function parseTheBriefPackage(input: unknown): TheBriefPackage {
       if (!['video', 'audio'].includes(item.type) && (item.mediaStart !== undefined || item.mediaEnd !== undefined || item.mediaLoop !== undefined)) throw new Error('Media clock is only valid on video layers')
       if (item.type !== 'video' && item.mediaLoop !== undefined) throw new Error('Video loop requires a video layer')
       if (item.mediaEnd !== undefined && item.mediaEnd <= (item.mediaStart ?? 0)) throw new Error('Invalid video clip timing')
+      if (item.cornerRadii && (item.type !== 'rect' || item.rectShape || item.borderRadius !== undefined)) throw new Error('Individual corners require a rectangular shape')
       if (item.rectShape && (!['rect', 'button'].includes(item.type) || item.borderRadius !== undefined)) throw new Error('Ellipse shape is only valid on rectangle layers without a corner radius')
       if (item.endTime <= item.startTime || item.endTime > duration) throw new Error('Invalid layer timing')
       for (const frames of Object.values(item.keyframes || {})) {

@@ -1,3 +1,4 @@
+import { bannerCornerRadii } from '~~/shared/bannerCornerRadii'
 import { bannerImageBackgroundCss } from '../../../shared/bannerImageBackground.mjs'
 import { bannerAudioState } from '~~/shared/bannerAudioClock'
 import { isBannerInlineTextGradient } from '~~/shared/bannerTextColor.mjs'
@@ -309,6 +310,7 @@ export function buildBannerHTML(
       if (l.type === 'rect') {
         style += `background:${l.fillColor || 'transparent'};`
         if (l.rectShape === 'ellipse') style += 'border-radius:50%;'
+        else if (bannerCornerRadii(l.cornerRadii)) style += `border-radius:${bannerCornerRadii(l.cornerRadii)};`
         else if (l.borderRadius) style += `border-radius:${l.borderRadius}px;`
         style += bannerEffectCss({ visualFilter: l.visualFilter })
         return visualLayer(style)

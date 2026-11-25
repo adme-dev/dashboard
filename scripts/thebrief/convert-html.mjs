@@ -435,7 +435,7 @@ function effectTracks(effect, style, rules, start, end, warnings, geometry, inte
     const ownerCss = style(owner)
     perspective = px(ownerCss.getPropertyValue('perspective'))
     const centre = transformOrigin && sameTime(transformOrigin.x, geometry.w / 2) && sameTime(transformOrigin.y, geometry.h / 2)
-    if (!['image', 'svg', 'text'].includes(owner.getAttribute('data-eltype')) || !['effIn', 'effOut'].some(prefix => effect.id === owner.id.replace('element-', prefix))
+    if (!['image', 'svg', 'text', 'shape'].includes(owner.getAttribute('data-eltype')) || !['effIn', 'effOut'].some(prefix => effect.id === owner.id.replace('element-', prefix))
       || [...transformProperties].some(property => !['z', 'rotation', 'rotationX'].includes(property)) || !centre
       || !['center', 'center center', '50% 50%'].includes(ownerCss.getPropertyValue('perspective-origin'))
       || !['', 'none'].includes(css.transform) || !['', 'none'].includes(ownerCss.transform)
@@ -1348,14 +1348,15 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {}, reviewe
         if (transforms.some(t => !/^rotate\(-?[\d.]+deg\)$/.test(t))) throw new Error('Unsupported static shape transform')
         let rotation = transforms.reduce((sum, t) => sum + Number.parseFloat(t.slice(7)), 0)
         const contentCss = style(content)
-        const radii = ['borderTopLeftRadius', 'borderTopRightRadius', 'borderBottomLeftRadius', 'borderBottomRightRadius'].map(key => contentCss[key] || '0px')
+        const radii = ['borderTopLeftRadius', 'borderTopRightRadius', 'borderBottomRightRadius', 'borderBottomLeftRadius'].map(key => contentCss[key] || '0px')
         let borderRadius
         let rectShape
+        let cornerRadii
         // Uniform percentages of 50% or more resolve to the inscribed ellipse in CSS.
-        // Any other corner geometry would be flattened, so it is held for an adapter.
         const percent = /^(\d+(?:\.\d+)?)%$/.exec(radii[0])
         if (new Set(radii).size === 1 && Number.isFinite(px(radii[0])) && px(radii[0]) >= 0) borderRadius = px(radii[0])
         else if (new Set(radii).size === 1 && percent && Number(percent[1]) >= 50) rectShape = 'ellipse'
+        else if (radii.every(value => Number.isFinite(px(value)) && px(value) >= 0 && px(value) <= 100000)) cornerRadii = radii.map(px)
         else throw new Error(`${element.id}: unequal or partial-percentage corner radii need an adapter`)
         const shapeFilters = []
         let shapeOpacity = 1
@@ -1373,7 +1374,7 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {}, reviewe
         layerBase.keyframes = { ...layerBase.keyframes, opacity: layerBase.keyframes.opacity.map(frame => ({ ...frame, value: frame.value * shapeOpacity })) }
         const visualFilter = shapeFilters.join(' ')
         if (visualFilter && !isSafeBannerImageFilter(visualFilter)) throw new Error('Unsupported static shape filter')
-        const shapeEffects = { ...(rectShape ? { rectShape } : {}), ...(visualFilter ? { visualFilter } : {}) }
+        const shapeEffects = { ...(cornerRadii ? { cornerRadii } : {}), ...(rectShape ? { rectShape } : {}), ...(visualFilter ? { visualFilter } : {}) }
         // happy-dom can omit a shorthand gradient from computed backgroundImage.
         // Read only the bounded inline gradient value in that case; the strict
         // composition checks below still decide whether it is representable.
@@ -1444,7 +1445,7 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {}, reviewe
             const sides = ['Top', 'Right', 'Bottom', 'Left']
             const colors = sides.map(side => contentCss[`border${side}Color`])
             const styles = sides.map(side => contentCss[`border${side}Style`])
-            if (new Set(borders).size !== 1 || !Number.isFinite(borders[0]) || borders[0] < 0 || borders[0] > 100 || new Set(colors).size !== 1 || styles.some(value => value !== 'solid') || (rectShape && Math.abs(layerBase.w - layerBase.h) > 1)) throw new Error(`${element.id}: shape border composition needs an adapter`)
+            if (cornerRadii || new Set(borders).size !== 1 || !Number.isFinite(borders[0]) || borders[0] < 0 || borders[0] > 100 || new Set(colors).size !== 1 || styles.some(value => value !== 'solid') || (rectShape && Math.abs(layerBase.w - layerBase.h) > 1)) throw new Error(`${element.id}: shape border composition needs an adapter`)
             // Native buttons support border-box fill, uniform stroke and corners.
             // Empty text retains this shape as an editable native visual layer.
             layers.push({ ...layerBase, id: id++, type: 'button', name: `Bordered shape ${sourceId}`, text: '', rotation, ...(rectShape && layerBase.w !== layerBase.h ? { rectShape } : { borderRadius: rectShape ? layerBase.w / 2 : borderRadius || 0 }), borderWidth: borders[0], borderColor: colors[0], bgColor: contentCss.backgroundColor || 'transparent', textColor: 'transparent', ...(visualFilter ? { visualFilter } : {}) })
