@@ -26,3 +26,11 @@ it.each([
     .replace('<div class="row">Hello world</div>', `<div style="width:100%;height:100%;transform:${transform};transform-origin:${origin}"><img src="./art.png"></div>`)
   await expect(convertTheBriefHtml(html)).rejects.toThrow('Unsupported static transform')
 })
+
+it('keeps a centered static rotation after mirroring the editable image', async () => {
+  const html = image.replace('id="effIn1"', '').replace('<div id="c-1"></div>', '<div style="width:100%;height:100%;transform:rotate(330deg) scale(-1,1)"><img src="./art.png"></div>')
+  const converted = await convertTheBriefHtml(html)
+  const layer = converted.canvasData.custom_300x250.layers.find(layer => layer.type === 'image')
+  expect(layer.rotation).toBe(330)
+  expect(converted.imageTransforms).toContainEqual({ layerId: layer.id, operation: 'flop' })
+})
