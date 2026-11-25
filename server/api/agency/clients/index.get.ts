@@ -50,6 +50,12 @@ export default defineEventHandler(async (event) => {
     clientInsights = false
   }
   const marketingOnly = await isMarketingClientViewer(user.id)
+  const query = getQuery(event)
+  if (query.view === 'import-picker') {
+    return await queryRowsFresh<{ id: string, name: string }>(`
+      SELECT id, name FROM agency_clients WHERE is_active = TRUE ORDER BY name, id
+    `)
+  }
   if (!clientInsights || marketingOnly) {
     setResponseHeader(event, CLIENT_FINANCIAL_ACCESS_HEADER, 'marketing')
     try {
@@ -66,7 +72,6 @@ export default defineEventHandler(async (event) => {
     companyFinance = false
   }
 
-  const query = getQuery(event)
   const activeOnly = query.active !== 'false'
 
   const clients = await cachedFetch(event, `agency:clients:${activeOnly}`, 120, async () => {
