@@ -195,8 +195,8 @@ describe('authoritative registered MCP suite projection', () => {
     const executions = resolveGodModeMcpExecutions(ownerContext)
 
     expect(manifests).toHaveLength(executions.length)
-    // Includes the six active-owner inventory-feed tools.
-    expect(manifests).toHaveLength(187)
+    // Includes the six active-owner inventory-feed tools and seven owner dealer-feed admin tools.
+    expect(manifests).toHaveLength(194)
     expect(new Set(executions.map(execution => execution.name)).size).toBe(executions.length)
     expect(manifests.map(manifest => manifest.name)).toContain('list_video_source_assets')
     expect(manifests.map(manifest => manifest.name)).toContain('propose_promote_creative_asset')
