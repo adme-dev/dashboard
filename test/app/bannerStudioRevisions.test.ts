@@ -64,15 +64,16 @@ describe('Banner Studio revisions', () => {
     studio.redo()
     expect(studio.getCanvasData()).toEqual(proposed)
   })
-  it('clears undo history and clipboard when switching clients/projects', () => {
+  it('clears project history and only pastes copied content for the same designer', () => {
     const studio = useBannerStudio()
     studio.addLayer({ type: 'text', text: 'Private text' })
-    studio.copyLayer()
+    const token = studio.copyLayer('designer-one')
     studio.loadProject(project('other'))
     expect(studio.canUndo.value).toBe(false)
-    expect(studio.state.clipboard).toBeNull()
+    expect(studio.pasteLayer('designer-two', token)).toBeUndefined()
     studio.undo()
     expect(studio.activeLayers.value).toEqual([])
+    expect(studio.pasteLayer('designer-one', token)?.text).toBe('Private text')
   })
   it('undoes a layer edit on its original artboard after changing tabs', () => {
     const studio = useBannerStudio()
