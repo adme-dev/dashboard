@@ -1,3 +1,4 @@
+import { bannerLetterSpacing } from '~~/shared/bannerLetterSpacing'
 import { bannerCornerRadii } from '~~/shared/bannerCornerRadii'
 import { bannerImageBackgroundCss } from '../../../shared/bannerImageBackground.mjs'
 import { bannerAudioState } from '~~/shared/bannerAudioClock'
@@ -320,7 +321,7 @@ export function buildBannerHTML(
         if (l.textAntialias) style += '-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;'
         style += `font-size:${l.fontSize || 16}px;font-weight:${l.fontWeight || 400};font-family:'${bannerFontFamily(l.fontFamily, l.fontAssetId)}',sans-serif;color:${l.color || '#fff'};`
         if (l.textTransform) style += `text-transform:${l.textTransform};`
-        if (l.letterSpacing) style += `letter-spacing:${l.letterSpacing};`
+        if (l.letterSpacing) style += `letter-spacing:${bannerLetterSpacing(l.letterSpacing)};`
         style += `line-height:${l.lineHeight || 1.2};`
         if (l.textAlign) style += `text-align:${l.textAlign};`
         if (l.bgColor) style += `background:${l.bgColor};padding:${l.paddingV ?? 4}px ${l.paddingH ?? 10}px;`
@@ -351,7 +352,7 @@ export function buildBannerHTML(
         if (l.rectShape === 'ellipse') style += 'border-radius:50%;'
         else if (l.borderRadius) style += `border-radius:${l.borderRadius}px;`
         if (l.textTransform) style += `text-transform:${l.textTransform};`
-        if (l.letterSpacing) style += `letter-spacing:${l.letterSpacing};`
+        if (l.letterSpacing) style += `letter-spacing:${bannerLetterSpacing(l.letterSpacing)};`
         return visualLayer(style, escapeHtml(l.text || ''))
       }
       if (l.type === 'image') {

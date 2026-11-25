@@ -155,8 +155,8 @@ function setStrokePreset(v: string) {
         />
       </div>
       <div>
-        <label>Spacing</label>
-        <UInput size="xs" :model-value="selectedLayer.letterSpacing ?? '0.1em'" @update:model-value="v => set('letterSpacing', v)" />
+        <label>Letter spacing</label>
+        <UInput size="xs" aria-label="Letter spacing" title="Numbers are pixels. You can also enter a unit such as 0.1em." :model-value="selectedLayer.letterSpacing ?? '0.1em'" @update:model-value="v => set('letterSpacing', v)" />
       </div>
     </div>
 

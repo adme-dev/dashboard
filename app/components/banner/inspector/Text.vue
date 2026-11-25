@@ -496,8 +496,8 @@ function toggleGradient() {
         />
       </div>
       <div>
-        <label class="text-[10px] text-(--ui-text-muted)">Spacing</label>
-        <UInput size="xs" :model-value="selectedLayer.letterSpacing ?? '0'" @update:model-value="v => set('letterSpacing', v)" />
+        <label class="text-[10px] text-(--ui-text-muted)">Letter spacing</label>
+        <UInput size="xs" aria-label="Letter spacing" title="Numbers are pixels. You can also enter a unit such as 0.1em." :model-value="selectedLayer.letterSpacing ?? '0'" @update:model-value="v => set('letterSpacing', v)" />
       </div>
     </div>
 

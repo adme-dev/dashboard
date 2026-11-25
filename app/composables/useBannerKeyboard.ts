@@ -1,8 +1,9 @@
 import { useBannerTimelineGroups } from './useBannerTimelineGroups'
-import { onKeyDown } from '@vueuse/core'
+import { onKeyDown, useEventListener } from '@vueuse/core'
 
 export function useBannerKeyboard(opts: {
   showExportModal: Ref<boolean>
+  clipboardOwner?: () => string | null
 }) {
   const {
     state,
@@ -26,6 +27,33 @@ export function useBannerKeyboard(opts: {
   const { seekTo, togglePlay } = useBannerTimeline()
 
   const toast = useToast()
+
+  function editingText(target: EventTarget | null) {
+    return target instanceof HTMLElement && (target.isContentEditable ||
+      !!target.closest('input, textarea, [role="dialog"], [role="textbox"]'))
+  }
+
+  // Use native clipboard events so normal text editing and browser menu Paste work.
+  // Only a lookup token goes on the system clipboard. Artwork stays on this origin.
+  function copySelection(event: ClipboardEvent) {
+    if (!event.clipboardData || editingText(event.target)) return
+    const owner = opts.clipboardOwner?.() ?? null
+    const token = event.type === 'cut' ? cutLayer(owner) : copyLayer(owner)
+    if (!token) return
+    event.clipboardData.setData('text/plain', token)
+    event.preventDefault()
+  }
+  useEventListener('copy', copySelection)
+  useEventListener('cut', copySelection)
+  useEventListener('paste', (event: ClipboardEvent) => {
+    if (editingText(event.target)) return
+    const token = event.clipboardData?.getData('text/plain')
+    if (!token?.startsWith('xeroflow:banner-layers:')) return
+    event.preventDefault()
+    if (!pasteLayer(opts.clipboardOwner?.() ?? null, token)) {
+      toast.add({ title: 'Copy the layers again from the source design', color: 'warning' })
+    }
+  })
 
   function jumpToKeyframe(direction: 'next' | 'prev') {
     const times = new Set<number>()
@@ -114,27 +142,6 @@ export function useBannerKeyboard(opts: {
     if (mod && e.shiftKey && e.key.toLowerCase() === 'v') {
       e.preventDefault()
       pasteAnimation()
-      return
-    }
-
-    // Ctrl/Cmd+C — copy
-    if (mod && e.key === 'c') {
-      e.preventDefault()
-      copyLayer()
-      return
-    }
-
-    // Ctrl/Cmd+V — paste
-    if (mod && e.key === 'v') {
-      e.preventDefault()
-      pasteLayer()
-      return
-    }
-
-    // Ctrl/Cmd+X — cut
-    if (mod && e.key === 'x') {
-      e.preventDefault()
-      cutLayer()
       return
     }
 

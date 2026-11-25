@@ -1,3 +1,4 @@
+import { readBannerLayers, storeBannerLayers } from '~/utils/banner-layer-clipboard'
 import { bannerPosterTime } from '~~/shared/bannerPosterTime'
 import { retimeLayerPresence } from '~/utils/banner-timeline-edit'
 import { editSlides, layerSlideId, resolveSlides, slideAtTime, slideRanges, type SlideEdit } from '~/utils/banner-slides'
@@ -42,7 +43,6 @@ const state = reactive({
   selectedLayerId: null as number | null,
   multiSelectedLayerIds: [] as number[],
   selectedGroupId: null as string | null,
-  clipboard: null as Layer | null,
   wsScale: 1,
   isDirty: false,
   isSaving: false,
@@ -851,26 +851,78 @@ export function useBannerStudio() {
 
   // ── Clipboard ─────────────────────────
 
-  function copyLayer() {
-    if (!state.selectedLayerId) return
-    const layer = activeLayers.value.find(l => l.id === state.selectedLayerId)
-    if (layer) state.clipboard = JSON.parse(JSON.stringify(layer))
+  function selectedClipboardLayers() {
+    const selected = new Set(state.multiSelectedLayerIds.length ? state.multiSelectedLayerIds : [state.selectedLayerId])
+    return activeLayers.value.filter(layer => !layer.slideTransitionFor && (selectedGroup.value
+      ? layer.timelineGroup?.id === selectedGroup.value.id : selected.has(layer.id)))
+      .sort((a, b) => a.zIndex - b.zIndex)
   }
 
-  function cutLayer() {
-    copyLayer()
-    if (state.selectedLayerId) removeLayer(state.selectedLayerId)
+  function copyLayer(owner: string | null = null) {
+    const selected = selectedClipboardLayers()
+    if (!selected.length || !state.project) return
+    const token = 'xeroflow:banner-layers:' + crypto.randomUUID()
+    const layers: Layer[] = JSON.parse(JSON.stringify(selected))
+    const slides = activeSlides.value
+    for (const layer of layers) {
+      const start = slides.find(slide => slide.id === layer.slideId)?.start
+      if (start) Object.assign(layer, retimeLayerPresence(layer, layer.startTime - start, layer.endTime - start))
+      delete layer.slideId
+      delete layer.slideFade
+    }
+    storeBannerLayers(owner, { token, projectId: state.project.id, format: state.activeKey, grouped: !!selectedGroup.value, layers })
+    return token
   }
 
-  function pasteLayer() {
-    if (!state.clipboard) return
-    const pasted = addLayer({
-      ...state.clipboard,
-      id: undefined as any,
-      name: state.clipboard.name + ' paste',
-      x: state.clipboard.x + 20,
-      y: state.clipboard.y + 20,
+  function cutLayer(owner: string | null = null) {
+    const selected = selectedClipboardLayers()
+    if (selected.some(layer => layer.locked || useBannerRealtime().isLayerLockedByOther?.(layer.id))) return
+    const token = copyLayer(owner)
+    if (token) {
+      withCanvasUndo(() => selected.forEach(layer => removeLayer(layer.id)))
+      selectLayer(null)
+    }
+    return token
+  }
+
+  function pasteLayer(owner: string | null = null, token?: string) {
+    const copied = readBannerLayers(owner, token)
+    if (!copied?.layers.length || !state.project || !state.sets[state.activeKey]) return
+    const layers: Layer[] = JSON.parse(JSON.stringify(copied.layers))
+    const ids = new Map(layers.map(layer => [layer.id, nextId()]))
+    const groups = new Map<string, string>()
+    const sameCanvas = copied.projectId === state.project.id && copied.format === state.activeKey
+    const offset = sameCanvas ? 20 : 0
+    const format = resolveBannerFormat(state.activeKey)
+    const minX = Math.min(...layers.map(layer => layer.x))
+    const minY = Math.min(...layers.map(layer => layer.y))
+    const dx = format && minX + offset >= format.w ? -minX : offset
+    const dy = format && minY + offset >= format.h ? -minY : offset
+    let z = Math.max(0, ...activeLayers.value.filter(l => !l.slideTransitionFor).map(l => l.zIndex))
+    let pasted: Layer | undefined
+    withCanvasUndo(() => {
+      for (const layer of layers) {
+        if (layer.timelineGroup) {
+          const { id, name } = layer.timelineGroup
+          if (!groups.has(id)) groups.set(id, crypto.randomUUID())
+          layer.timelineGroup = { id: groups.get(id)!, name }
+        }
+        if (layer.maskTargetIds) layer.maskTargetIds = layer.maskTargetIds.flatMap(id => ids.has(id) ? [ids.get(id)!] : [])
+        if (layer.effectOrigin) {
+          const source = ids.get(layer.effectOrigin.sourceLayerId)
+          if (source !== undefined) layer.effectOrigin.sourceLayerId = source
+          else delete layer.effectOrigin
+        }
+        delete layer.linkId
+        pasted = addLayer({ ...layer, id: ids.get(layer.id), name: layer.name + ' paste',
+          x: layer.x + dx, y: layer.y + dy, zIndex: ++z })
+      }
     })
+    if (copied.grouped && groups.size === 1) selectGroup([...groups.values()][0]!)
+    else {
+      state.selectedGroupId = null
+      setPrimaryLayer(pasted!.id, [...ids.values()])
+    }
     return pasted
   }
 
@@ -937,7 +989,6 @@ export function useBannerStudio() {
     projectEpoch++
     undoStack.value = []
     redoStack.value = []
-    state.clipboard = null
     animClipboard.value = null
     state.project = project
     state.layoutView = 'all'
