@@ -27,7 +27,7 @@ const layer = z.object({
   sourceInactiveTiming: z.object({ start: z.number().min(0).max(300), loopEnd: z.number().positive().max(300) }).strict().optional(),
   slideId: z.string().max(100).regex(/^[a-zA-Z0-9:_-]+$/).optional(),
   slideFade: z.object({ exit: z.object({ at: number.min(0).max(300), duration: number.positive().max(5), ease: z.string().regex(/^cubic-bezier\([\d.,\s-]+\)$/) }).strict().optional(), id: z.string().max(100).regex(/^[a-zA-Z0-9:_-]+$/), start: z.number().min(0).max(300), end: z.number().positive().max(300), duration: z.number().min(0).max(5), ease: z.string().regex(/^cubic-bezier\([\d.,\s-]+\)$/) }).strict().optional(),
-  textRuns: z.array(z.object({ text: z.string().max(10000), fontSize: number.positive().optional(), top: number.optional(), color: z.string().refine(isBannerInlineTextColor).optional(), gradient: z.string().refine(isBannerInlineTextGradient).optional(), fontFamily: z.string().max(150).regex(/^[\w .-]+$/).optional(), fontWeight: z.number().int().min(1).max(1000).optional(), fontStyle: z.enum(['normal', 'italic']).optional() }).strict()).max(100).optional(),
+  textRuns: z.array(z.object({ decoration: z.literal('line-through').optional(), text: z.string().max(10000), fontSize: number.positive().optional(), top: number.optional(), color: z.string().refine(isBannerInlineTextColor).optional(), gradient: z.string().refine(isBannerInlineTextGradient).optional(), fontFamily: z.string().max(150).regex(/^[\w .-]+$/).optional(), fontWeight: z.number().int().min(1).max(1000).optional(), fontStyle: z.enum(['normal', 'italic']).optional() }).strict()).max(100).optional(),
   borderWidth: number.nonnegative().max(100).optional(), borderColor: css.optional(), textColor: css.optional(),
   textTilt: z.object({ perspective: number.min(1), width: number.positive().max(4096), height: number.positive().max(4096) }).strict().optional(),
   rotation: number.optional(), contentRotation: number.min(-360).max(360).optional(), imageFlipPerspective: number.min(1).optional(), flipX: z.boolean().optional(), flipY: z.boolean().optional(), borderRadius: number.nonnegative().optional(), cornerRadii: z.tuple([number.nonnegative(), number.nonnegative(), number.nonnegative(), number.nonnegative()]).optional(), transformOrigin: z.object({ x: number, y: number }).optional(),
@@ -36,7 +36,7 @@ const layer = z.object({
   textSweep: z.object({ wholeRow: z.literal(true).optional(), gradient: z.string().refine(isBannerInlineTextGradient), at: number.min(0).max(300), duration: number.positive().max(30), iterations: number.positive().max(50) }).strict().optional(),
   textTracking: z.object({ from: number.min(0).max(100), to: number.min(-100).max(100), width: number.positive().max(8192), glyphScale: number.positive().max(10), at: number.min(0).max(300), duration: number.positive().max(30), ease: z.string().regex(/^cubic-bezier\([\d.,\s-]+\)$/) }).strict().optional(),
   wordPop: z.object({ duration: z.number().positive().max(5), stagger: z.number().min(0).max(5), ease: z.string().regex(/^cubic-bezier\([\d.,\s-]+\)$/), variant: z.enum(['pop', 'blur', 'blurLeft', 'blurUp', 'zoomOut', 'typewriter', 'fade']).optional(), unit: z.enum(['word', 'character']).optional(), delays: z.array(z.number().min(0).max(5)).max(500).optional(), offset: z.number().min(0).max(5).optional() }).strict().optional(),
-  reveal: z.object({ type: z.enum(['softWipe', 'tvExpand']), duration: z.number().positive().max(5), ease: z.string().regex(/^cubic-bezier\([\d.,\s-]+\)$/) }).strict().optional(),
+  reveal: z.object({ type: z.enum(['softWipe', 'tvExpand', 'stripWipe']), duration: z.number().positive().max(5), ease: z.string().regex(/^cubic-bezier\([\d.,\s-]+\)$/) }).strict().optional(),
   fontSize: number.positive().optional(), fontWeight: z.number().int().min(1).max(1000).optional(),
   fontStyle: z.enum(['normal', 'italic']).optional(),
   lineBoxFontSize: number.positive().optional(), textAntialias: z.boolean().optional(), lineHeight: z.number().positive().max(10).optional(),
@@ -153,13 +153,13 @@ export function parseTheBriefPackage(input: unknown): TheBriefPackage {
       if (item.textRuns && item.textRuns.map(run => run.text).join('') !== item.text) throw new Error('Text runs differ from layer text')
       if (item.contentRotation !== undefined && (item.type !== 'rect' || item.imageFlipPerspective || item.rotation)) throw new Error('Invalid imported shape content rotation')
       if (item.textTilt || item.keyframes?.originY) {
-        if (!['text', 'video'].includes(item.type) || !item.textTilt || !item.keyframes?.originY || !item.keyframes.rotationX
+        if (!['text', 'video', 'image'].includes(item.type) || !item.textTilt || !item.keyframes?.originY || !item.keyframes.rotationX
           || item.imageFlipPerspective || item.wordPop || item.reveal || item.keyframes.z || item.keyframes.rotation
           || item.textTilt.width !== item.w || item.keyframes.rotationX.some(frame => Math.abs(frame.value) > 90)) throw new Error('Invalid TheBrief 3D text entrance')
       }
       if (item.imageFlipPerspective || (!item.textTilt && item.keyframes?.rotationX) || item.keyframes?.rotationY || item.keyframes?.z) {
         const depthShape = ['rect', 'button'].includes(item.type) && !!item.keyframes?.z
-        const flipShape = ['rect', 'button'].includes(item.type) && !!item.keyframes?.rotationY
+        const flipShape = ['rect', 'button'].includes(item.type) && !!(item.keyframes?.rotationY || item.keyframes?.rotationX)
         if ((!['image', 'text'].includes(item.type) && !depthShape && !flipShape) || !item.imageFlipPerspective || !(item.keyframes?.rotationX || item.keyframes?.rotationY || item.keyframes?.z)
           || (item.keyframes.rotationY && (item.keyframes.rotationX || item.keyframes.z)) || (item.keyframes.rotationX && item.keyframes.z && item.type !== 'text' && !depthShape)
           || item.keyframes.rotationY?.some(frame => Math.abs(frame.value) > 90)
@@ -167,7 +167,7 @@ export function parseTheBriefPackage(input: unknown): TheBriefPackage {
           || item.keyframes.z?.some(frame => frame.value > 0)) throw new Error('Invalid TheBrief 3D image flip')
       }
       if (item.keyframes?.blur?.some(frame => frame.value < 0 || frame.value > 100)) throw new Error('Invalid blur radius')
-      if (item.reveal && item.type !== 'rect' && item.type !== 'button') throw new Error('Reveal requires editable shape geometry')
+      if (item.reveal && !(item.type === 'image' && item.reveal.type === 'stripWipe') && item.type !== 'rect' && item.type !== 'button') throw new Error('Reveal requires editable shape geometry')
       if ((item.textTracking || item.textSweep) && item.type !== 'text') throw new Error('Text motion requires editable text')
       if (item.wordPop && item.type !== 'text') throw new Error('Word animation requires text')
       if (['image', 'audio', 'video'].includes(item.type) && !item.src) throw new Error('Image, audio or video layer is missing its asset')
@@ -182,7 +182,7 @@ export function parseTheBriefPackage(input: unknown): TheBriefPackage {
       if (item.type !== 'video' && item.mediaLoop !== undefined) throw new Error('Video loop requires a video layer')
       if (item.mediaEnd !== undefined && item.mediaEnd <= (item.mediaStart ?? 0)) throw new Error('Invalid video clip timing')
       if (item.cornerRadii && (item.type !== 'rect' || item.rectShape || item.borderRadius !== undefined)) throw new Error('Individual corners require a rectangular shape')
-      if (item.rectShape && (!['rect', 'button'].includes(item.type) || item.borderRadius !== undefined)) throw new Error('Ellipse shape is only valid on rectangle layers without a corner radius')
+      if (item.rectShape && (!['rect', 'button', 'image'].includes(item.type) || item.borderRadius !== undefined)) throw new Error('Ellipse shape is only valid on rectangle layers without a corner radius')
       if (item.endTime <= item.startTime || item.endTime > duration) throw new Error('Invalid layer timing')
       for (const frames of Object.values(item.keyframes || {})) {
         if (frames?.some((f, i) => f.time > duration || (i > 0 && f.time < frames[i - 1]!.time))) throw new Error('Invalid animation timing')

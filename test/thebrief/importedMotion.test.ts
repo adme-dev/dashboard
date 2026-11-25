@@ -133,3 +133,13 @@ it('extends the editable timeline block when new copy exceeds the imported lette
   const text: Layer = { ...shape, type: 'text', text: 'RAMX', reveal: undefined, wordPop: { duration: 0.05, stagger: 0.01, ease: 'linear', unit: 'character', delays: [0, 0.013, 0.029] } }
   expect(timelinePhases(text).find(phase => phase.nativeEntrance === 'words')!.end).toBeCloseTo(0.0935)
 })
+
+it('keeps a five-strip image reveal and elliptical image clipping in both exports', () => {
+  const photo: Layer = { ...shape, type: 'image', src: 'photo.jpg', rectShape: 'ellipse', reveal: { type: 'stripWipe', duration: 1, ease: 'linear' } }
+  const html = buildBannerHTML('custom_300x250', [photo])
+  expect(serverHTML('custom_300x250', [photo])).toBe(html)
+  expect(html).toContain('border-radius:50%')
+  expect(html).toContain('21% 200%,21% 200%,21% 200%,21% 200%,21% 200%')
+  expect(html).toContain('0% 148%,25% -48%,50% 148%,75% -48%,100% 148%')
+  expect(html).toContain('0% 0%,25% 100%,50% 0%,75% 100%,100% 0%')
+})

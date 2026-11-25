@@ -525,6 +525,7 @@ defineExpose({ artboardEl })
           <div v-if="layer.textTilt" data-banner-tilt :style="{ width: `${layer.textTilt.width}px`, height: `${layer.textTilt.height}px`, transformOrigin: `${layer.textTilt.width / 2}px calc(var(--xf-origin-y, ${layer.textTilt.height}) * 1px)` }">
             <div data-layer-content class="h-full w-full" :style="{ transform: layerContentTransform(layer) }">
               <BannerLayersVideo v-if="layer.type === 'video'" :layer="layer" :is-active="isActive" />
+              <BannerLayersImage v-else-if="layer.type === 'image'" :layer="layer" :is-active="isActive" />
               <BannerLayersText
                 v-else
                 :client-id="state.project?.clientId"

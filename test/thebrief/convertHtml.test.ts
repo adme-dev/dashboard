@@ -283,7 +283,8 @@ describe('TheBrief single-slide native conversion pilot', () => {
   })
 
   it('holds struck-through or underlined text instead of dropping the decoration', async () => {
-    await expect(convertTheBriefHtml(source.replace('Hello world', '<span style="text-decoration:line-through">Was $62,967</span>'))).rejects.toThrow('Text decoration needs an adapter')
+    const struck = await convertTheBriefHtml(source.replace('Hello world', '<span style="text-decoration:line-through">Was $62,967</span>'))
+    expect(struck.canvasData.custom_300x250.layers.find(layer => layer.type === 'text')?.textRuns).toEqual([{ text: 'Was $62,967', decoration: 'line-through' }])
     await expect(convertTheBriefHtml(source.replace('</style>', '.was{text-decoration-line:underline}</style>').replace('Hello world', '<span class="was">Was</span>'))).rejects.toThrow('Text decoration needs an adapter')
     const plain = await convertTheBriefHtml(source.replace('Hello world', '<span style="text-decoration:none">Plain</span>'))
     expect(plain.canvasData.custom_300x250.layers.find(l => l.type === 'text').text).toBe('Plain')
