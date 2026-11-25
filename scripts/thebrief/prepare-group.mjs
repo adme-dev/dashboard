@@ -5,6 +5,7 @@ import { createHash } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import { fork } from 'node:child_process'
 import { inspectArchive, readArchiveEntries } from './inspect-archive.mjs'
+import { reviewedGroupName } from './reviewed-group-names.mjs'
 import { mergeTheBriefPackages } from './merge-packages.mjs'
 import { parseTheBriefPackage } from '../../app/utils/thebrief-import.ts'
 
@@ -92,7 +93,9 @@ export async function prepareTheBriefGroup(input, fileName = 'TheBrief.zip') {
   const groups = new Map()
   for (const entry of sources) {
     const match = childName.exec(entry.name)
-    const key = match?.[1] || entry.name.replace(/\.zip$/i, '')
+    const rawKey = match?.[1] || entry.name.replace(/\.zip$/i, '')
+    const reviewed = match && reviewedGroupName(basename(rawKey), entry.data)
+    const key = reviewed ? join(dirname(rawKey), reviewed) : rawKey
     if (!groups.has(key)) groups.set(key, [])
     groups.get(key).push(entry)
   }

@@ -153,7 +153,7 @@ export interface Layer {
   focalX?: number // 0-100, default 50 (center)
   focalY?: number // 0-100, default 50 (center)
   /** Video media clock (see shared/bannerVideoClock): clip in/out points in seconds and clip looping. */
-  mediaMask?: 'fadeTop'
+  mediaMask?: 'fadeTop' | 'scallopedCorner'
   mediaStart?: number
   mediaEnd?: number
   mediaLoop?: boolean

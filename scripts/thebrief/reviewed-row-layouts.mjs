@@ -3,6 +3,8 @@ import { createHash } from 'node:crypto'
 // Row counts measured against the original source previews. Exact archive and
 // layout identities bind these receipts; edited or rewrapped layouts still hold.
 const reviewed = [
+  // Original Gotham row boxes measure 72.90 and 145.80 px at a 72.90 px line height.
+  { sha256: '7b9903ea11b55d8427379b3abf19d75514f10fd3a776ffc2567406009c8ef2f2', designHash: '2r2l82q', rowLines: { 'element-25': [1, 2] } },
   // Innisfail Mazda Black Friday: bundled-font, script-free source measurements
   // confirm one line followed by two lines in each of the four source layouts.
   { sha256: 'b0122d7b23fe41aca2d9bf2e3f6e588203d0f681e5e45e4061151e219fd06aca', designHash: 'zmr2y6k', rowLines: { 'element-134': [1, 2] } },
@@ -153,6 +155,7 @@ const reviewed = [
 ]
 
 const reviewedContent = new Map([
+  ['0e097a5202e8e9b508f9242147aa2725f5356ec563f6d87865a2e9a1d2097371', '7b9903ea11b55d8427379b3abf19d75514f10fd3a776ffc2567406009c8ef2f2'],
   ['7afe59835b015ebea36297848627cccd773b0c37c6bef7c599d3ed8890debf7d', 'b0122d7b23fe41aca2d9bf2e3f6e588203d0f681e5e45e4061151e219fd06aca'],
   ['c81a468c221f866867fa81f2799f6409f089435b0e13a1e0f71948b35af6b064', '33dbea67d3e7fde216df021220d29f219f599296ce4d57ae87b9cb3c88c780f4'],
   ['e928b0a3ecf2b1d3199b162b592c87707a988f5b35c777d21bc59c3219a77b8a', 'de1740230bc3d749e0825fcdb601145a25a96e0f89b6c527f6a1c8695e380a0d'],

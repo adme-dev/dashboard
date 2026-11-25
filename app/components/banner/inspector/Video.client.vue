@@ -156,12 +156,12 @@ function fillCanvas() {
       {{ range[0].toFixed(2) }}–{{ range[1].toFixed(2) }}s of
       {{ duration.toFixed(2) }}s
     </p>
-    <UFormField label="Video fade">
-      <UCheckbox
-        :model-value="selectedLayer.mediaMask === 'fadeTop'"
-        label="Fade top into the background"
+    <UFormField label="Video mask">
+      <USelect
+        :model-value="selectedLayer.mediaMask || 'none'"
+        :items="[{ label: 'None', value: 'none' }, { label: 'Fade top into the background', value: 'fadeTop' }, { label: 'Scalloped corner', value: 'scallopedCorner' }]"
         :disabled="disabled"
-        @update:model-value="set({ mediaMask: $event === true ? 'fadeTop' : undefined })"
+        @update:model-value="set({ mediaMask: $event === 'fadeTop' || $event === 'scallopedCorner' ? $event : undefined })"
       />
     </UFormField>
     <UButton

@@ -52,7 +52,7 @@ const layer = z.object({
   visualFilter: z.string().max(500).refine(isSafeBannerImageFilter).optional(),
   muted: z.boolean().optional(),
   focalX: z.number().min(0).max(100).optional(), focalY: z.number().min(0).max(100).optional(),
-  mediaMask: z.literal('fadeTop').optional(),
+  mediaMask: z.enum(['fadeTop', 'scallopedCorner']).optional(),
   videoCrop: z.object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1), w: z.number().min(0.01).max(1), h: z.number().min(0.01).max(1) }).strict()
     .refine(crop => crop.x + crop.w <= 1.000001 && crop.y + crop.h <= 1.000001, 'Video crop falls outside the source').optional(),
   mediaStart: z.number().min(0).max(300).optional(), mediaEnd: z.number().positive().max(300).optional(), mediaLoop: z.boolean().optional(),
