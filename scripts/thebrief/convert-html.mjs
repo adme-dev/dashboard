@@ -1360,7 +1360,8 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {}, reviewe
         layers.push({ ...layerBase, id: id++, type: 'image', name: `Artwork ${sourceId}`, src: localAsset(raw), fit, rotation: rotated.reduce((sum, t) => sum + Number.parseFloat(t.slice(7)), mirrorAngle) })
       } else if (type === 'shape') {
         const content = document.getElementById(`c-${sourceId}`) || legacyLayerContent(element, style, 'shape')
-        const transforms = [...element.querySelectorAll('div')].map(div => style(div).transform).filter(t => t && t !== 'none')
+        const transformNodes = [...element.querySelectorAll('div')].filter(div => style(div).transform && style(div).transform !== 'none')
+        const transforms = transformNodes.map(div => style(div).transform)
         if (transforms.some(t => !/^rotate\(-?[\d.]+deg\)$/.test(t))) throw new Error('Unsupported static shape transform')
         let rotation = transforms.reduce((sum, t) => sum + Number.parseFloat(t.slice(7)), 0)
         const contentCss = style(content)
@@ -1408,7 +1409,19 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {}, reviewe
         const borders = ['Top', 'Right', 'Bottom', 'Left'].map(side => px(contentCss[`border${side}Width`] || '0px'))
         const center = !layerBase.transformOrigin || (Math.abs(layerBase.transformOrigin.x - layerBase.w / 2) < 0.001 && Math.abs(layerBase.transformOrigin.y - layerBase.h / 2) < 0.001)
         const uniformScale = JSON.stringify(keyframes.scaleX || []) === JSON.stringify(keyframes.scaleY || [])
-        if (rotation && center && uniformScale) {
+        const inner = transformNodes[0]
+        const innerCss = inner && style(inner)
+        const canKeepInnerRotation = transformNodes.length === 1 && inner !== content && inner.contains(content)
+          && innerCss.width === '100%' && innerCss.height === '100%'
+          && ['', '50% 50%', 'center', 'center center'].includes(innerCss.transformOrigin)
+          && ['', 'visible'].includes(innerCss.overflow) && !inner.querySelector('[id^=eff]')
+          && !layerBase.imageFlipPerspective && !shapeFilters.length && rectShape === 'ellipse'
+          && (!backgroundImage || backgroundImage === 'none') && borders.every(width => width === 0)
+          && Number.isFinite(rotation) && Math.abs(rotation) <= 360
+        if (rotation && canKeepInnerRotation && (keyframes.scaleX || keyframes.scaleY || keyframes.rotation)) {
+          layerBase.contentRotation = rotation
+          rotation = 0
+        } else if (rotation && center && uniformScale) {
           // Uniform scale and rotations about the same centre commute. Preserve
           // the static shape angle by offsetting native absolute rotation tracks.
           if (keyframes.rotation) layerBase.keyframes.rotation = keyframes.rotation.map(frame => ({ ...frame, value: frame.value + rotation }))

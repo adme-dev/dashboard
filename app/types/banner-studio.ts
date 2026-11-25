@@ -84,6 +84,8 @@ export interface Layer {
   /** Original opacity track retained while the layer opacity slider rescales it. */
   opacityTrackSource?: { opacity: number, frames: Keyframe[] }
   rotation?: number
+  /** Static inner rotation of an imported editable shape, before its frame animation. */
+  contentRotation?: number
   /** A centered perspective on an image's editable X-axis flip. */
   textTilt?: { perspective: number, width: number, height: number }
   textSweep?: { wholeRow?: boolean, gradient: string, at: number, duration: number, iterations: number }

@@ -209,3 +209,14 @@ it('accepts centered Y-axis flips on editable shapes within the native angle bou
   Object.assign(layer, { keyframes: { rotationY: [{ time: 0, value: 100 }, { time: 1, value: 0 }] } })
   expect(() => parseTheBriefPackage(input)).toThrow('Invalid TheBrief 3D image flip')
 })
+
+it('validates a bounded inner rotation only for its supported imported shape', () => {
+  const input = fixture()
+  const layer = input.canvasData.custom_300x250.layers[0]
+  Object.assign(layer, { type: 'rect', fillColor: '#00132e', rotation: 0, contentRotation: 354, rectShape: 'ellipse' })
+  expect(parseTheBriefPackage(input).canvasData.custom_300x250.layers[0]).toMatchObject({ contentRotation: 354, rectShape: 'ellipse' })
+  Object.assign(layer, { type: 'text' })
+  expect(() => parseTheBriefPackage(input)).toThrow('Invalid imported shape content rotation')
+  Object.assign(layer, { type: 'rect', contentRotation: 361 })
+  expect(() => parseTheBriefPackage(input)).toThrow()
+})

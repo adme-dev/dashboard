@@ -30,7 +30,7 @@ const layer = z.object({
   textRuns: z.array(z.object({ text: z.string().max(10000), fontSize: number.positive().optional(), top: number.optional(), color: z.string().refine(isBannerInlineTextColor).optional(), gradient: z.string().refine(isBannerInlineTextGradient).optional(), fontFamily: z.string().max(150).regex(/^[\w .-]+$/).optional(), fontWeight: z.number().int().min(1).max(1000).optional(), fontStyle: z.enum(['normal', 'italic']).optional() }).strict()).max(100).optional(),
   borderWidth: number.nonnegative().max(100).optional(), borderColor: css.optional(), textColor: css.optional(),
   textTilt: z.object({ perspective: number.min(1), width: number.positive().max(4096), height: number.positive().max(4096) }).strict().optional(),
-  rotation: number.optional(), imageFlipPerspective: number.min(1).optional(), flipX: z.boolean().optional(), flipY: z.boolean().optional(), borderRadius: number.nonnegative().optional(), cornerRadii: z.tuple([number.nonnegative(), number.nonnegative(), number.nonnegative(), number.nonnegative()]).optional(), transformOrigin: z.object({ x: number, y: number }).optional(),
+  rotation: number.optional(), contentRotation: number.min(-360).max(360).optional(), imageFlipPerspective: number.min(1).optional(), flipX: z.boolean().optional(), flipY: z.boolean().optional(), borderRadius: number.nonnegative().optional(), cornerRadii: z.tuple([number.nonnegative(), number.nonnegative(), number.nonnegative(), number.nonnegative()]).optional(), transformOrigin: z.object({ x: number, y: number }).optional(),
   mixBlendMode: z.enum(['normal', 'multiply', 'screen', 'overlay', 'darken', 'lighten', 'color-dodge', 'color-burn', 'hard-light', 'soft-light', 'difference', 'exclusion', 'hue', 'saturation', 'color', 'luminosity']).optional(),
   text: z.string().max(10000).optional(), textTransform: z.enum(['uppercase', 'lowercase', 'capitalize', 'none']).optional(), fontFamily: z.string().max(150).regex(/^[\w ,.-]+$/).optional(),
   textSweep: z.object({ wholeRow: z.literal(true).optional(), gradient: z.string().refine(isBannerInlineTextGradient), at: number.min(0).max(300), duration: number.positive().max(30), iterations: number.positive().max(50) }).strict().optional(),
@@ -151,6 +151,7 @@ export function parseTheBriefPackage(input: unknown): TheBriefPackage {
       if (item.slideFade && !item.slideId) throw new Error('Slide fade requires scene ownership')
       if (item.src && !result.assets.some(a => a.path === item.src)) throw new Error('Missing packaged asset')
       if (item.textRuns && item.textRuns.map(run => run.text).join('') !== item.text) throw new Error('Text runs differ from layer text')
+      if (item.contentRotation !== undefined && (item.type !== 'rect' || item.imageFlipPerspective || item.rotation)) throw new Error('Invalid imported shape content rotation')
       if (item.textTilt || item.keyframes?.originY) {
         if (!['text', 'video'].includes(item.type) || !item.textTilt || !item.keyframes?.originY || !item.keyframes.rotationX
           || item.imageFlipPerspective || item.wordPop || item.reveal || item.keyframes.z || item.keyframes.rotation

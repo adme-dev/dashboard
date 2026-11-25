@@ -18,10 +18,11 @@ export function layerFrameTransform(layer: Pick<Layer, 'rotation' | 'imageFlipPe
   return { rotation: layer.rotation || 0 }
 }
 
-export function layerContentTransform(layer: Pick<Layer, 'flipX' | 'flipY' | 'rotation' | 'imageFlipPerspective' | 'textTilt'>): string | undefined {
+export function layerContentTransform(layer: Pick<Layer, 'flipX' | 'flipY' | 'rotation' | 'imageFlipPerspective' | 'textTilt' | 'contentRotation'>): string | undefined {
   const flip = layerFlipTransform(layer)
-  if ((!layer.textTilt && !layerFrameTransform(layer).transformPerspective) || !layer.rotation || !Number.isFinite(layer.rotation)) return flip
-  return `rotate(${layer.rotation}deg)${flip ? ` ${flip}` : ''}`
+  const angle = layer.contentRotation ?? ((layer.textTilt || layerFrameTransform(layer).transformPerspective) ? layer.rotation : undefined)
+  if (!angle || !Number.isFinite(angle)) return flip
+  return `rotate(${angle}deg)${flip ? ` ${flip}` : ''}`
 }
 
 /** Rotate the whole motion, retaining imported rotation curves and their timing. */
