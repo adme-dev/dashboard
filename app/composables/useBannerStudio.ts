@@ -40,6 +40,7 @@ const state = reactive({
   activeKey: '',
   layoutView: 'all' as 'all' | 'single',
   selectedLayerId: null as number | null,
+  multiSelectedLayerIds: [] as number[],
   selectedGroupId: null as string | null,
   clipboard: null as Layer | null,
   wsScale: 1,
@@ -72,6 +73,12 @@ const state = reactive({
   // Motion path solo preview — plays only the path tween at full opacity
   soloMotionPath: false,
 })
+
+function setPrimaryLayer(id: number | null, selection: number[] = []) {
+  if (id !== state.selectedLayerId) state.selectedKeyframe = null
+  state.selectedLayerId = id
+  state.multiSelectedLayerIds = selection.length > 1 ? selection : []
+}
 
 // Undo/redo stacks
 const undoStack = ref<UndoAction[]>([])
@@ -109,7 +116,7 @@ export function useBannerStudio() {
     withCanvasUndo(() => {
       Object.assign(state.sets, replacements)
     })
-    if (!activeLayers.value.some(layer => layer.id === state.selectedLayerId)) state.selectedLayerId = null
+    if (!activeLayers.value.some(layer => layer.id === state.selectedLayerId)) setPrimaryLayer(null)
   }
 
   function setLayerSlide(id: number, slideId: string | null) {
@@ -193,7 +200,7 @@ export function useBannerStudio() {
       state.sets[state.activeKey] = { layers: [] }
     }
     state.sets[state.activeKey].layers.push(layer)
-    state.selectedLayerId = layer.id
+    setPrimaryLayer(layer.id)
     state.isDirty = true
     pushUndo({ type: 'addLayer', before: null, after: { ...layer } })
 
@@ -247,7 +254,7 @@ export function useBannerStudio() {
         })
         board.layers.push(layer)
         added.push({ key, layer })
-        if (key === targetKey) state.selectedLayerId = layer.id
+        if (key === targetKey) setPrimaryLayer(layer.id)
       }
       state.activeKey = targetKey
     })
@@ -290,7 +297,7 @@ export function useBannerStudio() {
         added.push(layer)
       }
       state.activeKey = targetKey
-      state.selectedLayerId = [...added].reverse().find(layer => !layer.hidden)?.id ?? null
+      setPrimaryLayer([...added].reverse().find(layer => !layer.hidden)?.id ?? null)
     })
     state.activeTool = 'select'
     for (const layer of added) {
@@ -333,7 +340,7 @@ export function useBannerStudio() {
           })
           board.layers.push(layer)
           added.push({ key, layer })
-          if (key === state.activeKey && role === 'headline') state.selectedLayerId = layer.id
+          if (key === state.activeKey && role === 'headline') setPrimaryLayer(layer.id)
         }
       }
     })
@@ -367,7 +374,10 @@ export function useBannerStudio() {
     const removed = layers[idx]
     pushUndo({ type: 'removeLayer', before: { ...removed }, after: null })
     layers.splice(idx, 1)
-    if (state.selectedLayerId === id) state.selectedLayerId = null
+    if (state.multiSelectedLayerIds.includes(id)) {
+      const remaining = state.multiSelectedLayerIds.filter(other => other !== id)
+      setPrimaryLayer(remaining.at(-1) ?? null, remaining)
+    } else if (state.selectedLayerId === id) setPrimaryLayer(null)
     state.isDirty = true
 
     // Broadcast to collaborators
@@ -393,7 +403,7 @@ export function useBannerStudio() {
     // across the sizes in a design set.
     delete copy.linkId
     state.sets[state.activeKey].layers.push(copy)
-    state.selectedLayerId = copy.id
+    setPrimaryLayer(copy.id)
     state.isDirty = true
     return copy
   }
@@ -546,10 +556,21 @@ export function useBannerStudio() {
     state.selectedGroupId = id
   }
 
-  function selectLayer(id: number | null) {
+  function selectLayer(id: number | null, toggle = false) {
+    let selection: number[] = []
+    if (toggle && id !== null) {
+      let current = state.multiSelectedLayerIds
+      if (state.selectedGroupId) {
+        current = activeLayers.value.filter(layer => layer.timelineGroup?.id === state.selectedGroupId
+          && !layer.locked && !layer.hidden && !['audio', 'bg'].includes(layer.type)).map(layer => layer.id)
+      } else if (!current.length && state.selectedLayerId !== null) {
+        current = [state.selectedLayerId]
+      }
+      selection = current.includes(id) ? current.filter(other => other !== id) : [...current, id]
+      id = selection.at(-1) ?? null
+    }
     state.selectedGroupId = null
-    if (id !== state.selectedLayerId) state.selectedKeyframe = null
-    state.selectedLayerId = id
+    setPrimaryLayer(id, selection)
 
     // Broadcast selection (acquires/releases soft lock)
     try { useBannerRealtime().sendLayerSelect(id, state.activeKey) } catch {}
@@ -571,7 +592,7 @@ export function useBannerStudio() {
   function setActiveArtboard(key: string) {
     if (!state.sets[key]) return
     state.selectedGroupId = null
-    state.selectedLayerId = null
+    setPrimaryLayer(null)
     state.activeKey = key
     if (state.layoutView === 'single') zoomToFitFormat(key)
   }
@@ -722,7 +743,7 @@ export function useBannerStudio() {
 
     state.activeKey = setDef.keys[0]
     state.selectedGroupId = null
-    state.selectedLayerId = null
+    setPrimaryLayer(null)
     zoomToFitFormat(setDef.keys[0])
     state.isDirty = true
   }
@@ -739,7 +760,7 @@ export function useBannerStudio() {
       }
     })
     state.selectedGroupId = null
-    state.selectedLayerId = null
+    setPrimaryLayer(null)
     state.isDirty = true
   }
 
@@ -755,7 +776,7 @@ export function useBannerStudio() {
     state.accentColor = brandColor(kit, 'accent') || state.accentColor
     state.bgColor = state.sets[state.activeKey]?.layers.find(layer => layer.type === 'bg')?.bgColor || state.bgColor
     state.selectedGroupId = null
-    state.selectedLayerId = null
+    setPrimaryLayer(null)
     state.isDirty = true
     pushUndo({
       type: 'applyBrandKit',
@@ -796,7 +817,7 @@ export function useBannerStudio() {
     // Don't auto-select bg layers — keep current selection
     if (bgCount > 0) {
       state.selectedGroupId = null
-      state.selectedLayerId = null
+      setPrimaryLayer(null)
     }
 
     return layer
@@ -930,7 +951,7 @@ export function useBannerStudio() {
     state.wsScale = 1
     zoomToFitFormat(state.activeKey)
     state.selectedGroupId = null
-    state.selectedLayerId = null
+    setPrimaryLayer(null)
     state.isDirty = false
     // Migrate all layers
     state.setKeys.forEach(key => {
@@ -970,7 +991,7 @@ export function useBannerStudio() {
     }
     state.activeKey = state.setKeys[0] || ''
     state.selectedGroupId = null
-    state.selectedLayerId = null
+    setPrimaryLayer(null)
     state.isDirty = true
     // Migrate all layers
     state.setKeys.forEach(key => {

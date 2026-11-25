@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Button as ShadcnButton } from '~/components/ui/button'
 import { timelineRows } from '~/utils/banner-timeline-rows'
-import { computed, ref, watch, nextTick, onMounted, onUnmounted } from 'vue'
+import { computed, ref, toRef, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { layoutName } from '~/utils/banner-workspace'
 import { LAYER_COLORS } from '~/utils/banner-constants'
 import type { KeyframeProperty, Keyframe, Layer } from '~/types/banner-studio'
@@ -73,7 +73,7 @@ function handleContextGenerateImage() {
 }
 
 // ── Multi-select ──
-const multiSelectedLayers = ref<number[]>([])
+const multiSelectedLayers = toRef(state, 'multiSelectedLayerIds')
 const collapsedGroups = ref(new Set<string>())
 const { groupLayers, ungroupLayers, renameGroup, canEditGroup } = useBannerTimelineGroups()
 const selectedForGrouping = computed(() => activeLayers.value.filter(layer => multiSelectedLayers.value.includes(layer.id)))
@@ -98,22 +98,7 @@ watch(() => [state.activeKey, state.project?.id], () => {
 
 function onLayerLabelClick(e: MouseEvent, layer: Layer) {
   if (layer.type === 'video') inspectorTab.value = 'properties'
-  if (e.shiftKey || e.metaKey || e.ctrlKey) {
-    if (!multiSelectedLayers.value.length && state.selectedLayerId != null) multiSelectedLayers.value = [state.selectedLayerId]
-    // Toggle in multi-select
-    const idx = multiSelectedLayers.value.indexOf(layer.id)
-    if (idx >= 0) {
-      multiSelectedLayers.value.splice(idx, 1)
-    } else {
-      multiSelectedLayers.value.push(layer.id)
-    }
-    // Also select the layer normally
-    selectLayer(layer.id)
-  } else {
-    // Normal click — clear multi-select
-    multiSelectedLayers.value = []
-    selectLayer(layer.id)
-  }
+  selectLayer(layer.id, e.shiftKey || e.metaKey || e.ctrlKey)
 }
 
 function isMultiSelected(layerId: number): boolean {
