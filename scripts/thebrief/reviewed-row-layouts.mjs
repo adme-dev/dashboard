@@ -3,6 +3,15 @@ import { createHash } from 'node:crypto'
 // Row counts measured against the original source previews. Exact archive and
 // layout identities bind these receipts; edited or rewrapped layouts still hold.
 const reviewed = [
+  // Suzuki multi-row text, measured with the original bundled fonts at source size.
+  { sha256: '447993fde561f55b9ce8e0fea8012b8e377878d6cf6bfe64a73c38b3825a4918', designHash: 'o1q8xoy', rowLines: { 'element-470': [1, 2] }, rowHeights: { 'element-470': [86, 172] } },
+  { sha256: '064106b99e527ee2b1318ccbba1294c0c285dadf9cfcbac06e0a695e2a9047c8', designHash: 'w11exxe', rowLines: { 'element-439': [2, 1] }, rowHeights: { 'element-439': [154, 77] } },
+  { sha256: 'f9fbe8203969ea0f3564075d1f7f911eca57d4e7e1f7b9a3a2eb9af93f4b8eb9', designHash: 'n15pw03', rowLines: { 'element-439': [2, 1] }, rowHeights: { 'element-439': [161, 81] } },
+  { sha256: 'f769130aea7e00e4c437946b66a86ea0cdb81cc278f49e019e0ecfca62044843', designHash: 'm12k6g6', rowLines: { 'element-439': [2, 1] }, rowHeights: { 'element-439': [154, 77] } },
+  { sha256: '71255b4f5b5a2de0c419c8bf2af1bd39560b0df00027a6327121ea0d5b1b602e', designHash: 'xz6pwm5', rowLines: { 'element-5': [2, 1] }, rowHeights: { 'element-5': [92, 46] } },
+  { sha256: 'ac6b46787b83b380cbb98cea61ed4707e205b9cf3ae9244b02e474407bd9f4b7', designHash: '3158m1y', rowLines: { 'element-41': [2, 1] }, rowHeights: { 'element-41': [154, 77] } },
+  { sha256: 'bd62f0e23e2442c06e100502206ed0adcbf40ff20e06a2227cfcb81853e8f0bc', designHash: '0y3dnpd', rowLines: { 'element-409': [2, 1, 2] }, rowHeights: { 'element-409': [83, 30, 61] } },
+  { sha256: '408fd77a66366728e9335b834348a880ab455c7d130081916d88896d557628a5', designHash: 'k5zd7qe', rowLines: { 'element-380': [2, 2] }, rowHeights: { 'element-380': [188, 188] } },
   // Original Gotham row boxes measure 72.90 and 145.80 px at a 72.90 px line height.
   { sha256: '7b9903ea11b55d8427379b3abf19d75514f10fd3a776ffc2567406009c8ef2f2', designHash: '2r2l82q', rowLines: { 'element-25': [1, 2] } },
   // Innisfail Mazda Black Friday: bundled-font, script-free source measurements
@@ -155,6 +164,14 @@ const reviewed = [
 ]
 
 const reviewedContent = new Map([
+  ['c708b7e51b3482b870f0c18ba37aaac0287c2bbc70687721e9be4b13ceb2784e', '447993fde561f55b9ce8e0fea8012b8e377878d6cf6bfe64a73c38b3825a4918'],
+  ['7c7cd8788be38e768724a82b313dd3aaa56af795b2be94d622b1197837c1cafd', '064106b99e527ee2b1318ccbba1294c0c285dadf9cfcbac06e0a695e2a9047c8'],
+  ['194dcfda6528ad8a77ad48c08aa6ddba551d1878b535bc4f99796ca3ebc44de4', 'f9fbe8203969ea0f3564075d1f7f911eca57d4e7e1f7b9a3a2eb9af93f4b8eb9'],
+  ['293fb9085f704930b69dfab18cee6a265b36f82666482c2902b649fefa3433a1', 'f769130aea7e00e4c437946b66a86ea0cdb81cc278f49e019e0ecfca62044843'],
+  ['a5bf13f97e39f71505369957a7b153e0254a77e7217d68fca6a0daa84688179c', '71255b4f5b5a2de0c419c8bf2af1bd39560b0df00027a6327121ea0d5b1b602e'],
+  ['6e11582a8ef1b7b34492345c47aa18807ab39d36a7832e1fa7fb989f69635c6b', 'ac6b46787b83b380cbb98cea61ed4707e205b9cf3ae9244b02e474407bd9f4b7'],
+  ['8feff1baaccae484837d2a034d92d0866516ba390e416f179f1abc77f65bd7eb', 'bd62f0e23e2442c06e100502206ed0adcbf40ff20e06a2227cfcb81853e8f0bc'],
+  ['550b685c63c3ae9e0e58eacc7f6b892604ce8c134e190e77c6a208788313a121', '408fd77a66366728e9335b834348a880ab455c7d130081916d88896d557628a5'],
   ['0e097a5202e8e9b508f9242147aa2725f5356ec563f6d87865a2e9a1d2097371', '7b9903ea11b55d8427379b3abf19d75514f10fd3a776ffc2567406009c8ef2f2'],
   ['7afe59835b015ebea36297848627cccd773b0c37c6bef7c599d3ed8890debf7d', 'b0122d7b23fe41aca2d9bf2e3f6e588203d0f681e5e45e4061151e219fd06aca'],
   ['c81a468c221f866867fa81f2799f6409f089435b0e13a1e0f71948b35af6b064', '33dbea67d3e7fde216df021220d29f219f599296ce4d57ae87b9cb3c88c780f4'],

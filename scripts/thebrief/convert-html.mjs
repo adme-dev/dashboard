@@ -778,16 +778,16 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {}, reviewe
           const rule = rules.findLast(rule => rule.name === css.animationName)
           const frames = rule && [...rule.cssRules]
           const g = frames?.[0]?.style.backgroundImage
-          const validated = /^linear-gradient\(-270deg,\s*#([\da-f]{3}|[\da-f]{6}) 0,\s*#([\da-f]{3}|[\da-f]{6}) 100%(?:,\s*#([\da-f]{3}|[\da-f]{6}) 100%)?\)$/i.exec(g || '')
+          const gradient = (g || '').replace(/#([a-f0-9]{3})(?=\s)/gi, (_, hex) => '#' + [...hex].map(c => c + c).join(''))
+            .replace(/(#[a-f0-9]{6}\s+)0(?=\s*[,\)])/gi, '$10%')
+          const supportedGradient = gradient.startsWith('linear-gradient(-270deg,') && isBannerInlineTextGradient(gradient)
           const raw = [...document.querySelectorAll('style')].map(s => s.textContent).join('\n')
           const recipe = raw.split('@keyframes ' + css.animationName + '{').at(-1)?.split('}}')[0] || ''
-          if (glyphs.length !== 1 || glyph.textContent.trim() !== element.textContent.trim() || !validated || frames?.length !== 2
+          if (glyphs.length !== 1 || glyph.textContent.trim() !== element.textContent.trim() || !supportedGradient || frames?.length !== 2
             || frames[0].keyText !== '100%' || frames[1].keyText !== '0%' || frames[1].style.backgroundImage !== g
             || !(wholeSweep ? recipe.includes('background-position:200% center') && recipe.includes('background-position:0 center') : [0, -2].every(n => recipe.includes(' * ' + n + ' - var(--ctp-gw-wx,0px)) center')))
             || !frames.every(frame => frame.style.backgroundClip === 'text' && (wholeSweep && frame.style.backgroundSize === '200% auto' || /^calc\(var\(--ctp-gw-tw,[\d.]+px\) \* 2\) auto$/.test(frame.style.backgroundSize)))
             || css.animationTimingFunction !== 'linear' || css.animationFillMode !== 'none' || css.animationDirection !== 'normal') throw new Error('Unsupported gradient text motion')
-          const hex = s => '#' + (s.length === 3 ? [...s].map(c => c + c).join('') : s)
-          const gradient = 'linear-gradient(-270deg,' + validated.slice(1).filter(Boolean).map((s,i) => hex(s) + (i ? ' 100%' : ' 0%')).join(',') + ')'
           layerBase.textSweep = { gradient, ...(wholeSweep ? { wholeRow: true } : {}), at: effectStart + seconds(css.animationDelay), duration: seconds(css.animationDuration), iterations: Number(css.animationIterationCount) }
         } else if (middle) {
           try {
@@ -875,7 +875,13 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {}, reviewe
         if (stages.some(stage => !['none', 'instant', 'audio', 'fadeAudio'].includes(stage.type))) throw new Error(`Audio ${sourceId}: unsupported source audio effect`)
         const hasAudioFade = stages.some(stage => stage.type === 'fadeAudio')
         const stageDuration = stages.reduce((sum, stage) => sum + stage.duration, 0)
-        if (hasAudioFade && (stages.length !== 3 || stages.some(stage => !Number.isFinite(stage.duration) || stage.duration < 0 || stage.duration > 300 || stage.delay !== 0) || audioConfig.buildMid.type !== 'audio' || !(stageDuration > 0))) throw new Error(`Audio ${sourceId}: source fades require exported-clip reconciliation: unsupported fade timing`)
+        // Some exports record the middle hold as the exit delay. The player
+        // starts its fade after the entrance and middle durations in both encodings.
+        const delayedExit = ['instant', 'fadeAudio'].includes(audioConfig?.buildIn?.type) && audioConfig.buildIn.delay === 0
+          && audioConfig.buildMid?.type === 'none' && audioConfig.buildMid.delay === 0
+          && ['instant', 'fadeAudio'].includes(audioConfig.buildOut?.type)
+          && audioConfig.buildOut.delay === audioConfig.buildMid.duration
+        if (hasAudioFade && (stages.length !== 3 || stages.some(stage => !Number.isFinite(stage.duration) || stage.duration < 0 || stage.duration > 300) || (!delayedExit && (stages.some(stage => stage.delay !== 0) || audioConfig.buildMid.type !== 'audio')) || !(stageDuration > 0))) throw new Error(`Audio ${sourceId}: source fades require exported-clip reconciliation: unsupported fade timing`)
         const delay = audioConfig?.buildIn?.delay
         if (delay !== undefined && (!Number.isFinite(delay) || delay < 0 || Math.abs(slide.start + delay - start) > 1e-6)) throw new Error(`Audio ${sourceId}: source audio presence requires reconciliation`)
         let verifyExportedDuration
@@ -885,12 +891,7 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {}, reviewe
           const genericDuration = Math.abs(clipDuration - audioConfig.duration) < 1e-6
           const hasPlainPlaybackStages = audioConfig.buildMid?.type === 'audio'
             && stages.every((stage, index) => stage.delay === (index === 0 ? delay ?? 0 : 0))
-          // The editor still plays the whole clip with no middle effect and an
-          // instant exit delayed by that middle interval.
-          const hasInstantExit = audioConfig.buildIn?.type === 'instant' && audioConfig.buildIn.delay === 0
-            && audioConfig.buildMid?.type === 'none' && audioConfig.buildMid.delay === 0
-            && audioConfig.buildOut?.type === 'instant' && audioConfig.buildOut.delay === audioConfig.buildMid.duration
-          const hasMatchingStages = stages.length === 3 && (hasPlainPlaybackStages || hasInstantExit)
+          const hasMatchingStages = stages.length === 3 && (hasPlainPlaybackStages || delayedExit)
             && stages.every(stage => Number.isFinite(stage.duration) && stage.duration >= 0)
             // Exported MP3 trims can be rounded to codec frame boundaries.
             // Package assembly independently verifies the actual file duration.
@@ -1282,13 +1283,17 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {}, reviewe
           }
         }
         const transformed = [...element.querySelectorAll('div')].filter(div => style(div).transform && style(div).transform !== 'none')
-        const mirrored = transformed.filter(div => /^rotate\(0(?:deg)?\)\s+scale\((?:-1,\s*-?1|1,\s*-1)\)$/.test(style(div).transform))
+        const mirrored = transformed.filter(div => /^rotate\((?:0|-?\d+(?:\.\d+)?deg)\)\s+scale\((?:-1,\s*-?1|1,\s*-1)\)$/.test(style(div).transform))
         if (layerBase.imageFlipPerspective && transformed.some(div => {
           const nested = style(div)
           return nested.width !== '100%' || nested.height !== '100%'
             || !['', '50% 50%', 'center center', 'center'].includes(nested.transformOrigin)
         })) throw new Error('3D image flip has an unsupported inner transform origin')
         const rotated = transformed.filter(div => !mirrored.includes(div)).map(div => style(div).transform)
+        const mirrorAngle = mirrored.length ? Number.parseFloat(style(mirrored[0]).transform.slice(7)) : 0
+        if (mirrorAngle && (layerBase.transformOrigin || Object.keys(keyframes).some(key => key !== 'opacity'))) {
+          throw new Error('Unsupported static transform')
+        }
         if (rotated.some(t => !/^rotate\(-?[\d.]+deg\)$/.test(t)) || mirrored.length > 1
           || (mirrored.length && (rotated.some(t => Number.parseFloat(t.slice(7)) !== 0)
             || style(mirrored[0]).width !== '100%' || style(mirrored[0]).height !== '100%'
@@ -1352,7 +1357,7 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {}, reviewe
           if (mirrored.length && visualFilter.includes('drop-shadow(')) throw new Error('Mirrored nested image shadow needs an adapter')
           if (!layerBase.imageOuterFilter) layerBase.visualFilter = visualFilter
         }
-        layers.push({ ...layerBase, id: id++, type: 'image', name: `Artwork ${sourceId}`, src: localAsset(raw), fit, rotation: rotated.reduce((sum, t) => sum + Number.parseFloat(t.slice(7)), 0) })
+        layers.push({ ...layerBase, id: id++, type: 'image', name: `Artwork ${sourceId}`, src: localAsset(raw), fit, rotation: rotated.reduce((sum, t) => sum + Number.parseFloat(t.slice(7)), mirrorAngle) })
       } else if (type === 'shape') {
         const content = document.getElementById(`c-${sourceId}`) || legacyLayerContent(element, style, 'shape')
         const transforms = [...element.querySelectorAll('div')].map(div => style(div).transform).filter(t => t && t !== 'none')

@@ -47,7 +47,21 @@ it('keeps a verified original audio trim when TheBrief uses a delayed instant ex
   const track = result.canvasData.custom_300x250.layers.find(layer => layer.type === 'audio')
   expect(track).toMatchObject({ startTime: 0, endTime: 4, src: './clip.mp3' })
   expect(result.audioTransforms).toContainEqual({ layerId: track.id, duration: 4, fadeIn: 0, fadeOut: 0 })
+  const fade = await convertTheBriefHtml(input({ ...config, buildOut: { ...config.buildOut, type: 'fadeAudio' } }))
+  expect(fade.audioTransforms).toContainEqual({ layerId: track.id, duration: 4, fadeIn: 0, fadeOut: 1 })
   await expect(convertTheBriefHtml(input({ ...config, buildOut: { ...config.buildOut, delay: 3 } }))).rejects.toThrow('clip duration requires reconciliation')
+})
+
+it('preserves both Knox video-card fades around the five-second hold', async () => {
+  const input = (delay: number) => audioSource({
+    startTime: 0, endTime: 7.000000000000002, duration: 82,
+    buildIn: { type: 'fadeAudio', duration: 1, delay: 0 },
+    buildMid: { type: 'none', duration: 5, delay: 0 },
+    buildOut: { type: 'fadeAudio', duration: 1, delay }
+  }).replace('{id:1,from:200}', '{id:1,from:0}')
+  const result = await convertTheBriefHtml(input(5))
+  expect(result.audioTransforms).toContainEqual(expect.objectContaining({ duration: 7, fadeIn: 1, fadeOut: 1 }))
+  await expect(convertTheBriefHtml(input(4))).rejects.toThrow('unsupported fade timing')
 })
 
 it('holds inconsistent clip duration metadata rather than guessing the audio end', async () => {
