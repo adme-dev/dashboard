@@ -46,6 +46,7 @@ export async function packageTheBriefSize({ sourceFile, sourceSha256, name, fold
   const assets = []
   const sourceAssets = new Map()
   const fonts = []
+  const packagedFamilies = new Map()
   const fontTransformations = []
   for (const board of Object.values(candidate.canvasData)) {
     for (const layer of board.layers) {
@@ -153,7 +154,9 @@ export async function packageTheBriefSize({ sourceFile, sourceSha256, name, fold
     // Include the original name when normalising so A/B cannot replace A B.
     // All weights of the same source family still share one managed alias.
     const identity = safeFamily === font.family ? sourceIdentity : hash(Buffer.from(`${sourceIdentity}:${font.family}`))
-    const family = `${safeFamily.slice(0, font.style === 'italic' ? 76 : 83)}${font.style === 'italic' ? ' Italic' : ''} XF ${identity.slice(0, 12)}`
+    const faceKey = `${sha256}:${font.weight}:${font.style}`
+    const existingFamily = packagedFamilies.get(faceKey)
+    const family = existingFamily ?? `${safeFamily.slice(0, font.style === 'italic' ? 76 : 83)}${font.style === 'italic' ? ' Italic' : ''} XF ${identity.slice(0, 12)}`
     for (const face of textFaces) {
       if (face.fontFamily === font.family && (face.fontWeight || 400) === font.weight && (face.fontStyle || 'normal') === font.style) {
         face.fontFamily = family
@@ -163,6 +166,8 @@ export async function packageTheBriefSize({ sourceFile, sourceSha256, name, fold
         face.fontStyle = 'normal'
       }
     }
+    if (existingFamily) continue
+    packagedFamilies.set(faceKey, family)
     fonts.push({ ...font, style: 'normal', format, path, family, fileName: `${sha256}${extname(path)}`, mimeType: { truetype: 'font/ttf', opentype: 'font/otf', woff: 'font/woff', woff2: 'font/woff2' }[format], sha256, base64: bytes.toString('base64') })
   }
   if (unresolvedInlineFaces.size) {
