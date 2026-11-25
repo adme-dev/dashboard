@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { renderCursorMcpConfig, selectStarterPromptsForTools } from '~~/shared/ai/mcpCopybook'
+
 definePageMeta({ layout: 'agency' })
 
 interface McpTool { name: string, description: string, requiresWriteScope?: boolean }
@@ -44,12 +46,32 @@ const clientScopeLabel = computed(() => {
 })
 const { copy, copied } = useClipboard({ source: connectorUrl })
 const toast = useToast()
+const copiedSnippetId = ref<string | null>(null)
+const cursorConfigSnippet = computed(() => renderCursorMcpConfig(connectorUrl.value))
+const starterPrompts = computed(() =>
+  selectStarterPromptsForTools(
+    tools.value.map(tool => tool.name),
+    {
+      isGodMode: isGodMode.value,
+      readOnly: Boolean(data.value?.access?.readOnly)
+    }
+  )
+)
 async function copyUrl() {
   try {
     await copy(connectorUrl.value)
     toast.add({ title: 'Connector URL copied', color: 'success' })
   } catch {
     toast.add({ title: 'Could not copy URL', description: 'Select and copy the URL shown here.', color: 'error' })
+  }
+}
+async function copySnippet(id: string, text: string, label: string) {
+  try {
+    await copy(text)
+    copiedSnippetId.value = id
+    toast.add({ title: `${label} copied`, color: 'success' })
+  } catch {
+    toast.add({ title: `Could not copy ${label.toLowerCase()}`, description: 'Select and copy the text shown here.', color: 'error' })
   }
 }
 function toolTitle(name: string) {
@@ -135,6 +157,20 @@ const steps = {
               Full modify/write MCP support depends on your plan, workspace policy and rollout.
               Check official availability before enabling writes; this page does not verify your ChatGPT plan.
             </p>
+            <div v-else-if="host === 'cursor'" class="space-y-2">
+              <div class="flex items-center justify-between gap-2">
+                <span class="text-xs font-medium text-muted">Cursor mcp.json snippet</span>
+                <UButton
+                  :icon="copiedSnippetId === 'mcp.cursor.config' ? 'i-lucide-check' : 'i-lucide-copy'"
+                  color="neutral"
+                  variant="subtle"
+                  size="xs"
+                  :label="copiedSnippetId === 'mcp.cursor.config' ? 'Copied snippet' : 'Copy snippet'"
+                  @click="copySnippet('mcp.cursor.config', cursorConfigSnippet, 'Cursor config')"
+                />
+              </div>
+              <pre class="overflow-x-auto rounded-md border border-default bg-elevated p-3 text-xs text-highlighted"><code>{{ cursorConfigSnippet }}</code></pre>
+            </div>
             <UButton
               :to="hostGuides[host]"
               target="_blank"
@@ -265,12 +301,48 @@ const steps = {
                     </p>
                   </li>
                 </ul>
-                <p v-if="tools.some(tool => tool.name === 'get_campaign_breakdown')" class="text-sm text-muted">
-                  Try: “Show stored campaign performance for one of my assigned clients, including the reporting period and coverage gaps.”
-                </p>
-                <p v-if="tools.some(tool => tool.name === 'create_social_post_draft')" class="text-sm text-muted">
-                  Try: “Prepare a social draft for my assigned client, then submit the exact revision for independent review.”
-                </p>
+                <div v-if="starterPrompts.length" class="space-y-3 border-t border-default pt-4">
+                  <div class="space-y-1">
+                    <h3 class="text-sm font-semibold text-highlighted">
+                      Starter prompts for your tools
+                    </h3>
+                    <p class="text-xs text-muted">
+                      Each prompt matches tools currently available in your preview. Copy and adjust the client name or values before sending.
+                    </p>
+                  </div>
+                  <div class="space-y-3">
+                    <div
+                      v-for="prompt in starterPrompts"
+                      :key="prompt.id"
+                      class="rounded-md border border-default bg-elevated/50 p-3 space-y-2"
+                    >
+                      <div class="flex flex-wrap items-center justify-between gap-2">
+                        <div class="flex flex-wrap items-center gap-2">
+                          <span class="text-sm font-medium text-highlighted">{{ prompt.title }}</span>
+                          <UBadge
+                            v-if="prompt.requiresWriteScope"
+                            color="warning"
+                            variant="subtle"
+                            size="sm"
+                          >
+                            Write workflow
+                          </UBadge>
+                        </div>
+                        <UButton
+                          :icon="copiedSnippetId === prompt.id ? 'i-lucide-check' : 'i-lucide-copy'"
+                          color="neutral"
+                          variant="subtle"
+                          size="xs"
+                          :label="copiedSnippetId === prompt.id ? 'Copied prompt' : 'Copy prompt'"
+                          @click="copySnippet(prompt.id, prompt.text, 'Prompt')"
+                        />
+                      </div>
+                      <p class="text-xs text-default leading-relaxed">
+                        {{ prompt.text }}
+                      </p>
+                    </div>
+                  </div>
+                </div>
               </div>
             </template>
           </section>
