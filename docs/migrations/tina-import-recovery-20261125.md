@@ -7,7 +7,10 @@ as permission to resume until the deployment and live results are recorded.
 ## Changes
 
 Preserve editable text for all four Innisfail Mazda Black Friday sizes, with
-checksum-bound row measurements for Uncompressed and High (90%) exports.
+checksum-bound row measurements for Uncompressed and High (90%) exports. Exact
+validated file-content digests also recognize identical exports with different
+ZIP timestamps, ordering or compression; every filename and byte remains bound
+to the review and the actual uploaded archive SHA is retained as provenance.
 Support centered uniformly scaled rotated shapes, sequential translation exits
 and the reviewed changing-pivot video entrance. Audible MP4s retain their original
 video bytes and gain an editable extracted MP3 soundtrack. Non-looping video clip
@@ -33,10 +36,10 @@ deployment. Existing imports must not be recreated to correct client assignment.
   project correction with exact font storage keys, unchanged artwork and all
   saved versions preserved.
 - Linux/amd64 image under 4 GiB and two CPUs:
-  `sha256:c61ec55dd6b49cb44ec42fa20b36749fd9d742e80a647dbbbbdb30af9cbef14e`.
+  `sha256:56fa0b4178b00641aac8c2ef8db1110f08f0cef564d2ba55e6a64a1e237fcc1f`.
   The original Innisfail (four sizes), Bay City Postcode Sale (three), Spring Saver
   Traffic (two), Arctic Campers (one), Audi Service (one), and High (90%) Innisfail
-  variant (four) are qualification fixtures. Every packaged asset/font checksum
+  variant (four), plus an identically sourced repacked variant (four), are qualification fixtures. Every packaged asset/font checksum
   and source archive receipt is checked; malformed ZIPs must return 422.
 - The Spring Saver fixture was downloaded directly through the existing TheBrief
   session using Tina's High (90%) settings. Slack's attachment tool cannot fetch
