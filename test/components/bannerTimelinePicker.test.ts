@@ -57,12 +57,13 @@ it('opens the clicked imported phase at its changing property without replacing 
   expect(studio.activeLayers.value[0]!.keyframes).toEqual(keyframes)
 })
 
-it('shows the Hold label and photo thumbnail before hover', async () => {
+it('keeps the photo visible and the duration accessible without repeating Hold on the timeline', async () => {
   const { host } = await mount({ type: 'bg', src: '/photos/slide.jpg' }, { kind: 'hold', start: 1, end: 2, label: 'Hold', direction: 'in' })
-  const trigger = host.querySelector<HTMLButtonElement>('button[aria-label^="Edit Hold"]')!
+  const trigger = host.querySelector<HTMLButtonElement>('button[aria-label^="Edit timing for"]')!
   expect(trigger.style.color).toBe('var(--ui-text)')
   expect(trigger.classList.contains('opacity-0')).toBe(false)
-  expect(trigger.textContent?.trim()).toBe('Hold')
+  expect(trigger.textContent?.trim()).toBe('')
+  expect(trigger.getAttribute('title')).toBe('On screen · 1.00–2.00s')
   expect(trigger.querySelector('img')?.getAttribute('src')).toBe('/photos/slide.jpg')
 })
 
@@ -214,7 +215,7 @@ it('switches preview to the chosen exit while keeping the original block label',
   const { click, host, previewAnimation } = await mount({ endTime: 4, animOut: 'fadeOut', outDur: 0.5 }, { kind: 'hold', start: 0.5, end: 3.5, label: 'Hold', direction: 'in' })
   await click('Exit'); await click('Preview')
   expect(previewAnimation).toHaveBeenCalledWith(1, { start: 3.5, end: 4 })
-  expect(host.querySelector('button[aria-label^="Edit Hold"]')).toBeTruthy()
+  expect(host.querySelector('button[aria-label^="Edit timing for"]')).toBeTruthy()
 })
 
 it('reopens an authored middle Bounce with middle presets', async () => {
