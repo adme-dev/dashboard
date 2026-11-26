@@ -41,18 +41,17 @@ export function resolveSlides(board?: ArtboardState): BannerSlide[] {
   return ends.map((end, index) => ({ id: `slide-${index + 1}`, name: `Slide ${index + 1}`, duration: round(end - (ends[index - 1] || 0)) }))
 }
 
-export function slideAtTime(board: ArtboardState | undefined, time: number) {
-  const ranges = slideRanges(resolveSlides(board))
+export function slideAtTime(board: ArtboardState | undefined, time: number, ranges = slideRanges(resolveSlides(board))) {
   return ranges.find(slide => time < slide.end - 0.00001) || ranges.at(-1)
 }
 
-export function layerSlideId(board: ArtboardState, layer: Layer): string | undefined {
+export function layerSlideId(board: ArtboardState, layer: Layer, ranges?: ReturnType<typeof slideRanges>): string | undefined {
   if (layer.slideTransitionFor) return undefined
   if (layer.slideId) return layer.slideId
   // A full-cycle background stays behind every slide.
   if (layer.type === 'bg' && !layer.clipToPresence) return undefined
   const presence = scenePresence(layer)
-  return slideRanges(resolveSlides(board)).find(slide => presence.startTime >= slide.start - 0.0001 && presence.endTime <= slide.end + 0.0001)?.id
+  return (ranges ?? slideRanges(resolveSlides(board))).find(slide => presence.startTime >= slide.start - 0.0001 && presence.endTime <= slide.end + 0.0001)?.id
 }
 
 export function slidePoster(board: ArtboardState, slideId: string): ArtboardState {

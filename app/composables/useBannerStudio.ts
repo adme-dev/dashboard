@@ -98,7 +98,18 @@ export function useBannerStudio() {
   })
 
   const activeSlides = computed(() => slideRanges(resolveSlides(state.sets[state.activeKey])))
-  const currentSlide = computed(() => slideAtTime(state.sets[state.activeKey], state.currentTime))
+  const currentSlide = computed(() => slideAtTime(state.sets[state.activeKey], state.currentTime, activeSlides.value))
+  const slideLayers = computed(() => {
+    const board = state.sets[state.activeKey]
+    const slide = currentSlide.value
+    if (!slide || !board) return []
+    return board.layers.filter(layer => {
+      if (layer.slideTransitionFor) return false
+      const owner = layerSlideId(board, layer, activeSlides.value)
+      if (owner) return owner === slide.id
+      return !layer.clipToPresence || (layer.startTime < slide.end && layer.endTime > slide.start)
+    }).sort((a, b) => a.zIndex - b.zIndex).reverse()
+  })
 
   function changeSlides(edit: SlideEdit) {
     const peers = typeof useBannerRealtime === 'function' ? useBannerRealtime().remoteUsers?.value : []
@@ -591,6 +602,26 @@ export function useBannerStudio() {
   function bringToFront(id: number) {
     const maxZ = activeLayers.value.length ? Math.max(0, ...activeLayers.value.filter(l => !l.slideTransitionFor).map(l => l.zIndex)) : 0
     reorderLayer(id, maxZ + 1)
+  }
+
+  function moveSlideLayer(id: number, targetId: number) {
+    const ordered = [...slideLayers.value]
+    const from = ordered.findIndex(layer => layer.id === id)
+    const to = ordered.findIndex(layer => layer.id === targetId)
+    if (from < 0 || to < 0 || from === to || ordered[from]!.locked) return
+    // Reuse the slide's stacking slots. Imported layers may share a z-index.
+    const slots = ordered.map(layer => layer.zIndex).reverse()
+    ordered.splice(to, 0, ordered.splice(from, 1)[0]!)
+    withCanvasUndo(() => {
+      let previous = -Infinity
+      ordered.reverse().forEach((layer, index) => {
+        const z = Math.max(slots[index]!, previous + 1)
+        previous = z
+        if (layer.zIndex === z) return
+        layer.zIndex = z
+        try { useBannerRealtime().sendLayerReorder(layer.id, state.activeKey, z) } catch {}
+      })
+    })
   }
 
   function sendToBack(id: number) {
@@ -1488,6 +1519,8 @@ export function useBannerStudio() {
     selectedLayer,
     allFormats,
     activeSlides,
+    slideLayers,
+    moveSlideLayer,
     currentSlide,
     changeSlides,
     setLayerSlide,
