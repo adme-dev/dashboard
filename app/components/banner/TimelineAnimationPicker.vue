@@ -55,6 +55,8 @@ const presets = computed(() => (isMiddle.value ? MIDDLE_ANIMATIONS.filter(preset
 const selectedId = computed(() => selectedDirection.value === 'in' && props.layer.wordPop ? 'wordPop' : selectedDirection.value === 'in' ? props.layer.animIn : (props.layer.animOut ?? 'fadeOut'))
 const selectedLabel = computed(() => isAudio.value ? 'Sound' : isKeyframe.value ? describeKeyframeMotion(props.layer) : props.layer.reveal && selectedDirection.value === 'in' ? revealLabel(props.layer.reveal.type) : selectedId.value === 'wordPop' ? wordEntranceLabel(props.layer.wordPop?.variant) : ([...ANIM_IN, ...ANIM_OUT].find(p => p.id === selectedId.value)?.label ?? 'None'))
 const blockLabel = computed(() => props.phase?.label ?? selectedLabel.value)
+const stillHold = computed(() => props.phase?.kind === 'hold' && props.phase.label === 'Hold')
+const photoThumbnail = computed(() => stillHold.value && (props.layer.type === 'image' || (props.layer.type === 'bg' && props.layer.srcType !== 'video')) ? props.layer.src : undefined)
 const blockDescription = computed(() => props.phase ? `${blockLabel.value} · ${props.phase.start.toFixed(2)}–${props.phase.end.toFixed(2)}s` : blockLabel.value)
 const foreground = computed(() => props.phase?.kind === 'hold' ? 'var(--ui-text)' : '#ffffff')
 const iconFor = (id: string) => ({ none: 'circle-slash', fadeIn: 'blend', fadeOut: 'blend', slideL: 'arrow-left', slideR: 'arrow-right', slideU: 'arrow-up', slideD: 'arrow-down', zoomIn: 'zoom-in', zoomOut: 'zoom-out', spinIn: 'rotate-cw', spinOut: 'rotate-cw', bounceIn: 'corner-right-up', elastic: 'move-horizontal', kenBurns: 'scan', wordPop: 'whole-word' }[id] || 'sparkles')
@@ -244,14 +246,23 @@ onBeforeUnmount(() => {
       :variant="triggerLabel ? 'outline' : 'ghost'"
       size="xs"
       :disabled="!!triggerLabel && !editable"
-      class="h-full min-h-0 w-full min-w-0 justify-start gap-1 overflow-hidden rounded-lg text-[11px] font-medium hover:bg-white/20 cursor-grab active:cursor-grabbing"
+      class="@container h-full min-h-0 w-full min-w-0 justify-start gap-1 overflow-hidden rounded-lg text-[11px] font-medium hover:bg-white/20 cursor-grab active:cursor-grabbing"
       :style="{ color: triggerLabel ? 'var(--ui-text)' : foreground }"
-      :class="[compact ? 'px-0' : 'px-3', triggerLabel ? 'w-auto cursor-pointer py-1' : phase?.kind === 'hold' && phase.label === 'Hold' ? 'opacity-0 hover:opacity-100 focus:opacity-100' : '']"
+      :class="[compact ? 'justify-center px-0' : 'px-2', triggerLabel && 'w-auto cursor-pointer py-1']"
       @mousedown.stop="emit('dragStart', $event)"
       @keydown="emit('moveKey', $event)"
       @click.stop="focusAnimation"
     >
-      <UIcon :name="`i-lucide-${isAudio ? 'volume-2' : isKeyframe ? 'diamond' : iconFor(selectedId)}`" class="size-3 shrink-0" />
+      <img
+        v-if="photoThumbnail && !compact"
+        :src="photoThumbnail"
+        alt=""
+        loading="lazy"
+        decoding="async"
+        draggable="false"
+        class="pointer-events-none hidden h-5 w-8 shrink-0 rounded-sm object-cover @[100px]:block"
+      >
+      <UIcon :name="`i-lucide-${stillHold ? 'pause' : isAudio ? 'volume-2' : isKeyframe ? 'diamond' : iconFor(selectedId)}`" class="size-3 shrink-0" />
       <span v-if="!compact" class="truncate">{{ triggerLabel || blockLabel.replace(/^(Entry|Exit|Motion) · /, '') }}</span>
     </UButton>
     <template #content>
