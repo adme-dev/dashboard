@@ -30,6 +30,31 @@ describe('MotorStack image placement', () => {
     expect(studio.state.sets.leader!.layers).toHaveLength(1)
   })
 
+  it('links a new brand logo and synced legacy layers across three sizes, including custom sizes and undo', () => {
+    const studio = useBannerStudio()
+    studio.loadProject({ id: 'brand-set', name: 'Brand', canvasData: {
+      mrec: { layers: [] }, leader: { layers: [] }, custom_1080x1920: { layers: [] }
+    } } as BannerProject)
+    studio.state.layoutView = 'single'
+    studio.addBrandLogoToAllLayouts({ name: 'Dealer', url: '/logo.svg', r2Key: 'logo.svg' }, 600, 200)
+    const boards = () => studio.state.setKeys.map(key => studio.state.sets[key]!)
+    expect(boards().map(board => board.layers[0]!.w / board.layers[0]!.h)).toEqual([3, 3, 3])
+    expect(boards()[0]!.layers[0]).toMatchObject({ isLogo: true, w: 120, h: 40 })
+    studio.addLayer({ type: 'text', name: 'Offer' })
+    studio.syncAllFromActive()
+    const restoredData = studio.getCanvasData()
+    studio.loadProject({ id: 'brand-set', name: 'Brand', canvasData: restoredData } as BannerProject)
+    studio.setActiveArtboard('custom_1080x1920')
+    const offer = studio.state.sets.custom_1080x1920!.layers.find(layer => layer.name === 'Offer')!
+    studio.removeLayer(offer.id)
+    expect(boards().map(board => board.layers.length)).toEqual([1, 1, 1])
+    studio.undo()
+    expect(boards().map(board => board.layers.length)).toEqual([2, 2, 2])
+    const logo = studio.state.sets.custom_1080x1920!.layers.find(layer => layer.isLogo)!
+    studio.removeLayer(logo.id)
+    expect(boards().every(board => board.layers.length === 1 && board.layers[0]!.name === 'Offer')).toBe(true)
+  })
+
   it('maps an all-layout drop proportionally and keeps media inside each canvas', () => {
     const studio = useBannerStudio()
     studio.loadProject({ id: 'media-drop-all', name: 'Drop all', canvasData: {

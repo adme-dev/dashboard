@@ -93,3 +93,11 @@ it('holds already-clipped exports with unresolved original offsets or fades inst
 it.each([-1, 101, 'loud', null])('rejects invalid source volume %j', async (volume) => {
   await expect(convertTheBriefHtml(audioSource({ volume }))).rejects.toThrow('invalid source volume')
 })
+
+it('verifies a shorter MP3 with instant endpoints against its file duration', async () => {
+  const html = audioSource({ startTime: 0, endTime: 1.3, duration: 1.38449, buildIn: { type: 'instant', duration: 0.6, delay: 1 }, buildMid: { type: 'audio', duration: 0.2, delay: 0.8 }, buildOut: { type: 'instant', duration: 0.5, delay: 0 } }).replace('{id:1,from:200}', '{id:1,from:1000}')
+  const result = await convertTheBriefHtml(html)
+  const audio = result.canvasData.custom_300x250.layers.find(layer => layer.type === 'audio')
+  expect(audio).toMatchObject({ startTime: 1, endTime: 2.3 })
+  expect(result.audioTransforms).toContainEqual({ layerId: audio.id, duration: 1.3, fadeIn: 0, fadeOut: 0 })
+})

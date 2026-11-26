@@ -8,7 +8,7 @@ import { bannerFontFamily } from '../../app/utils/banner-font-family'
 const kits = [{ id: 'gwm', name: 'GWM Australia', clientId: null, logos: [{ name: 'GWM mark', url: '/logo.svg', variant: 'dark' }], colors: [{ role: 'primary', hex: '#e60012' }], fonts: [{ role: 'heading', family: 'Helvetica Now', weights: [700], assets: [{ id: '11111111-1111-4111-8111-111111111111', weight: 700 }] }] }]
 const state = Vue.reactive({ project: { id: 'brand-test', clientId: 'dealer' }, duration: 8 })
 const selectedLayer = Vue.ref<{ id: number, type: string }>({ id: 1, type: 'text' })
-const updateLayer = vi.fn(), addLayer = vi.fn(), applyBrandKit = vi.fn(), loadUsedFonts = vi.fn(), fetcher = vi.fn()
+const updateLayer = vi.fn(), addBrandLogoToAllLayouts = vi.fn(), applyBrandKit = vi.fn(), loadUsedFonts = vi.fn(), fetcher = vi.fn()
 const locked = Vue.ref(false)
 let app: Vue.App, host: HTMLElement
 const button = Vue.defineComponent({ props: ['label'], setup: (props, { attrs, slots }) => () => Vue.h('button', attrs, slots.default?.() ?? props.label) })
@@ -56,7 +56,7 @@ beforeEach(async () => {
     return { data, error, status, refresh }
   })
   vi.stubGlobal('useBannerProjectBrand', useBannerProjectBrand)
-  vi.stubGlobal('useBannerStudio', () => ({ state, selectedLayer, activeFormat: Vue.ref({ w: 300, h: 250 }), updateLayer, addLayer, applyBrandKit }))
+  vi.stubGlobal('useBannerStudio', () => ({ state, selectedLayer, activeFormat: Vue.ref({ w: 300, h: 250 }), updateLayer, addBrandLogoToAllLayouts, applyBrandKit }))
   vi.stubGlobal('useBannerRealtime', () => ({ isLayerLockedByOther: () => locked.value }))
   vi.stubGlobal('useBannerFonts', () => ({ fetchCustomFonts: async () => {}, loadUsedFonts, getFont: () => undefined }))
   vi.stubGlobal('useToast', () => ({ add: vi.fn() }))
@@ -111,12 +111,12 @@ describe('brand sidebar asset interactions', () => {
     await click('#e60012')
     expect(updateLayer).toHaveBeenCalledTimes(2)
   })
-  it('adds a proportionally sized logo to the current layout', async () => {
+  it('adds the selected logo to every layout with its original dimensions', async () => {
     await choose()
     const image = host.querySelector('img')!
     Object.defineProperties(image, { naturalWidth: { value: 600 }, naturalHeight: { value: 200 } })
     await click('GWM mark')
-    expect(addLayer).toHaveBeenCalledWith(expect.objectContaining({ src: '/logo.svg', isLogo: true, w: 120, h: 40, x: 90, y: 105, endTime: 8 }))
+    expect(addBrandLogoToAllLayouts).toHaveBeenCalledWith(expect.objectContaining({ url: '/logo.svg' }), 600, 200)
     expect(applyBrandKit).not.toHaveBeenCalled()
   })
   it('offers a retry after a failed refresh', async () => {

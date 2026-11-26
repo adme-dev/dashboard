@@ -3,6 +3,11 @@ import { createHash } from 'node:crypto'
 // Row counts measured against the original source previews. Exact archive and
 // layout identities bind these receipts; edited or rewrapped layouts still hold.
 const reviewed = [
+  // Original package fonts and script-disabled Chromium row measurements.
+  {"sha256": "c4bca05595059b6113d45937a70c276c98946a16fd1a1784ad64edb90ddb5c43", "designHash": "xzzr77p", "rowLines": {"element-713": [3, 3], "element-718": [1, 1]}, "rowHeights": {"element-713": [271, 271], "element-718": [63, 20]}},
+  {"sha256": "e5d08de157229aa4645f2a48382be97d9dd3fe120ceb01f1c8f38f059c0ff8cf", "designHash": "jrrq11q", "rowLines": {"element-718": [1, 1]}, "rowHeights": {"element-718": [60, 19]}},
+  {"sha256": "88fca8b3a4ead68895e0099ebdb53772b9646a497cdfa78dc76ad2d95c7b4ca8", "designHash": "311rpxy", "rowLines": {"element-713": [3, 3], "element-718": [1, 1]}, "rowHeights": {"element-713": [307, 307], "element-718": [60, 19]}},
+  {"sha256": "d01b16266d9865da3b21d6dcb581a21c3ddadfbcf13c0ed24eaf9870f1695774", "designHash": "gzrx22l", "rowLines": {"element-101": [3, 1]}, "rowHeights": {"element-101": [199, 66]}},
   // Original Jeep and Toyota row boxes measured with their exported font faces.
   {"sha256": "167d2fbba728d4bb59962b44a950006d7eced7e01fed17154574b159201c9abd", "designHash": "85kzelz", "rowLines": {"element-201": [3, 3]}, "rowHeights": {"element-201": [478.406, 478.406]}},
   {"sha256": "6f71c67eb3dcd0a2e619821818323157bdd086e70c5a002589fe90a20134e83e", "designHash": "g23pn78", "rowLines": {"element-201": [3, 3]}, "rowHeights": {"element-201": [426.516, 426.516]}},

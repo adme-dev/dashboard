@@ -26,6 +26,8 @@ const effects = computed(() => effectStyleFromLayer(props.layer as unknown as Re
     class="w-full h-full flex items-center justify-center pointer-events-none"
     :style="{
       backgroundColor: displayBgColor,
+      backgroundImage: /^(?:linear|radial)-gradient\([\w\s#(),.%+-]+\) border-box$/.test(displayBgColor) ? displayBgColor.slice(0, -11) : undefined,
+      backgroundOrigin: 'border-box',
       filter: effects.visualFilter,
       borderRadius: layer.rectShape === 'ellipse' ? '50%' : `${layer.borderRadius ?? 2}px`,
       opacity: layer.opacity,

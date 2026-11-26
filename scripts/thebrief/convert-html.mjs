@@ -393,7 +393,7 @@ function effectTracks(effect, style, rules, start, end, warnings, geometry, inte
   const rule = rules.findLast(r => r.name === css.animationName)
   if (!rule) throw new Error(`Missing animation ${css.animationName}`)
   const iterations = Number(css.animationIterationCount || 1)
-  if (!Number.isFinite(iterations) || iterations < 1 || iterations > 50 || !['normal', 'reverse', ''].includes(css.animationDirection)) throw new Error('Unsupported repeated/reversed animation')
+  if (!Number.isFinite(iterations) || iterations <= 0 || iterations > 50 || !['normal', 'reverse', ''].includes(css.animationDirection)) throw new Error('Unsupported repeated/reversed animation')
   if (!intermediate && !Number.isInteger(iterations)) throw new Error('Fractional non-intermediate repetitions need an adapter')
   const animationEnd = at + duration * iterations
   if (![at, duration, animationEnd].every(Number.isFinite)) throw new Error('Invalid animation timing')
@@ -403,7 +403,7 @@ function effectTracks(effect, style, rules, start, end, warnings, geometry, inte
   const owner = effect.parentElement
   const ownerCss = style(owner)
   const recipeFrames = [...rule.cssRules]
-  const isTextTilt = ['text', 'video', 'image'].includes(owner.getAttribute('data-eltype'))
+  const isTextTilt = ['text', 'video', 'image', 'svg', 'shape'].includes(owner.getAttribute('data-eltype'))
     && effect.id === owner.id.replace('element-', 'effIn') && !intermediate && iterations === 1
     && ['', 'normal'].includes(css.animationDirection) && recipeFrames.length === 2
     && recipeFrames[0].keyText === '0%' && recipeFrames[1].keyText === '100%'
@@ -504,7 +504,7 @@ function effectTracks(effect, style, rules, start, end, warnings, geometry, inte
       // The source slide hides this wrapper before its animation completes.
       // Preserve the visible portion and original easing, not a faster tween.
       frames.splice(0, frames.length, ...boundedRepeatedFrames(frames, at, duration, end, identityValue(property), false, false))
-    } else if (intermediate && ((iterations > 1 && (!Number.isInteger(iterations) || animationEnd > end + 1e-9)) || frames[0].value !== identityValue(property))) {
+    } else if (intermediate && ((iterations !== 1 && (!Number.isInteger(iterations) || animationEnd > end + 1e-9)) || frames[0].value !== identityValue(property))) {
       if (!['none', 'backwards', '', 'forwards', 'both'].includes(css.animationFillMode)) throw new Error('Unsupported animation fill mode')
       frames.splice(0, frames.length, ...boundedRepeatedFrames(frames, at, duration, Number(Math.min(end, animationEnd).toFixed(9)), identityValue(property), animationEnd < end - 1e-9 && !['forwards', 'both'].includes(css.animationFillMode), true))
     } else if (iterations > 1) {
@@ -524,7 +524,7 @@ function effectTracks(effect, style, rules, start, end, warnings, geometry, inte
 // One static text shadow with a hex or rgb()/rgba() colour, in either CSS order.
 // Multiple shadows, named colours and other units remain explicit holds.
 export function normaliseTextShadow(value) {
-  const css = String(value || '').trim()
+  const css = String(value || '').trim().replace(/\bred\b/gi, '#f00')
   if (!css || css === 'none') return ''
   const colors = css.match(/#[0-9a-f]+\b|rgba?\([^)]*\)/gi) || []
   if (colors.length !== 1) throw new Error('Unsupported text shadow')
@@ -740,8 +740,8 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {}, reviewe
       let start = timing.from ? effectStart : slide.start
       let end = Math.min(slide.visibleEnd, timing.duration === undefined ? slide.visibleEnd : effectStart + timing.duration / 1000)
       let sourceInactiveTiming
-      if (slides.length === 1 && !hasSlideFades && Number.isFinite(start) && start >= slide.end && start < 300
-        && timing.duration === undefined && ['image', 'text', 'shape'].includes(element.getAttribute('data-eltype'))) {
+      if (!hasSlideFades && Number.isFinite(start) && start >= slide.end && start < 300
+        && timing.duration === undefined && ['image', 'svg', 'text', 'shape'].includes(element.getAttribute('data-eltype'))) {
         sourceInactiveTiming = { start, loopEnd: slide.end }
         // This element never becomes visible in the source loop. Retain its
         // editable content as a hidden layer and record the original schedule.
@@ -897,7 +897,14 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {}, reviewe
         if (!Number.isFinite(offset) || offset < 0) throw new Error(`Audio ${sourceId}: invalid source clip offset`)
         if (audioConfig?.soundOnHover) throw new Error(`Audio ${sourceId}: hover playback requires an audio adapter`)
         const stages = [audioConfig?.buildIn, audioConfig?.buildMid, audioConfig?.buildOut].filter(Boolean)
-        if (stages.some(stage => !['none', 'instant', 'audio', 'fadeAudio'].includes(stage.type))) throw new Error(`Audio ${sourceId}: unsupported source audio effect`)
+        // Legacy exports label the middle playback interval of an audio tag as
+        // video. Only the flanking stages apply gain; verify the MP3 duration.
+        const legacyAudioHold = stages.length === 3 && audioConfig.buildIn?.type === 'fadeAudio'
+          && audioConfig.buildMid?.type === 'video' && audioConfig.buildOut?.type === 'none'
+          && stages.every(stage => stage.delay === 0)
+        const plainAudioMiddle = audioConfig?.buildMid?.type === 'audio' || legacyAudioHold
+        if (stages.some(stage => !['none', 'instant', 'audio', 'fadeAudio'].includes(stage.type)
+          && !(legacyAudioHold && stage === audioConfig.buildMid))) throw new Error(`Audio ${sourceId}: unsupported source audio effect`)
         const hasAudioFade = stages.some(stage => stage.type === 'fadeAudio')
         const stageDuration = stages.reduce((sum, stage) => sum + stage.duration, 0)
         // Some exports record the middle hold as the exit delay. The player
@@ -906,7 +913,7 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {}, reviewe
           && audioConfig.buildMid?.type === 'none' && audioConfig.buildMid.delay === 0
           && ['instant', 'fadeAudio'].includes(audioConfig.buildOut?.type)
           && audioConfig.buildOut.delay === audioConfig.buildMid.duration
-        if (hasAudioFade && (stages.length !== 3 || stages.some(stage => !Number.isFinite(stage.duration) || stage.duration < 0 || stage.duration > 300) || (!delayedExit && (stages.some(stage => stage.delay !== 0) || audioConfig.buildMid.type !== 'audio')) || !(stageDuration > 0))) throw new Error(`Audio ${sourceId}: source fades require exported-clip reconciliation: unsupported fade timing`)
+        if (hasAudioFade && (stages.length !== 3 || stages.some(stage => !Number.isFinite(stage.duration) || stage.duration < 0 || stage.duration > 300) || (!delayedExit && (stages.some(stage => stage.delay !== 0) || !plainAudioMiddle)) || !(stageDuration > 0))) throw new Error(`Audio ${sourceId}: source fades require exported-clip reconciliation: unsupported fade timing`)
         const delay = audioConfig?.buildIn?.delay
         if (delay !== undefined && (!Number.isFinite(delay) || delay < 0 || Math.abs(slide.start + delay - start) > 1e-6)) throw new Error(`Audio ${sourceId}: source audio presence requires reconciliation`)
         let verifyExportedDuration
@@ -914,8 +921,12 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {}, reviewe
           const clipDuration = audioConfig.endTime - offset
           if (!Number.isFinite(clipDuration) || clipDuration <= 0 || clipDuration > 300) throw new Error(`Audio ${sourceId}: invalid clip duration`)
           const genericDuration = Math.abs(clipDuration - audioConfig.duration) < 1e-6
-          const hasPlainPlaybackStages = audioConfig.buildMid?.type === 'audio'
+          const hasPlainPlaybackStages = plainAudioMiddle
             && stages.every((stage, index) => stage.delay === (index === 0 ? delay ?? 0 : 0))
+          const instantTrim = stages.length === 3 && audioConfig.buildIn.type === 'instant' && audioConfig.buildOut.type === 'instant'
+            && audioConfig.buildMid.type === 'audio' && audioConfig.buildOut.delay === 0 && audioConfig.buildMid.delay >= 0
+            && audioConfig.buildMid.delay <= clipDuration && stages.every(stage => Number.isFinite(stage.duration) && stage.duration >= 0)
+            && Math.abs(clipDuration - stageDuration) <= 0.05 && offset === 0 && start + clipDuration <= end
           const hasMatchingStages = stages.length === 3 && (hasPlainPlaybackStages || delayedExit)
             && stages.every(stage => Number.isFinite(stage.duration) && stage.duration >= 0)
             // Exported MP3 trims can be rounded to codec frame boundaries.
@@ -923,7 +934,7 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {}, reviewe
             && Math.abs(stageDuration - clipDuration) <= 0.05
           const visibleDuration = Math.min(clipDuration, slide.end - start)
           if (offset || (!genericDuration && !hasAudioFade) || clipDuration > visibleDuration + 1e-6) {
-            if (!hasMatchingStages || Math.abs(end - (start + visibleDuration)) > 1e-6) {
+            if (!instantTrim && (!hasMatchingStages || Math.abs(end - (start + visibleDuration)) > 1e-6)) {
               throw new Error(offset ? `Audio ${sourceId}: source clip offset ${offset}s requires exported-clip reconciliation` : `Audio ${sourceId}: clip duration requires reconciliation`)
             }
             verifyExportedDuration = clipDuration
@@ -1322,16 +1333,29 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {}, reviewe
             || !['', '50% 50%', 'center center', 'center'].includes(nested.transformOrigin)
         })) throw new Error('3D image flip has an unsupported inner transform origin')
         const rotated = transformed.filter(div => !mirrored.includes(div)).map(div => style(div).transform)
-        const mirrorAngle = mirrored.length ? Number.parseFloat(style(mirrored[0]).transform.slice(7)) : 0
+        let mirrorAngle = mirrored.length ? Number.parseFloat(style(mirrored[0]).transform.slice(7)) : 0
+        let invertMirrorAxes = false
+        if (Math.abs(mirrorAngle) === 180) {
+          // A half turn about the same centre negates both reflection axes.
+          invertMirrorAxes = true
+          mirrorAngle = 0
+        }
         if (mirrorAngle && (layerBase.transformOrigin || Object.keys(keyframes).some(key => key !== 'opacity'))) {
-          throw new Error('Unsupported static transform')
+          if (layerBase.imageFlipPerspective || mirrored[0].querySelector('[id^=eff]') || Math.abs(mirrorAngle) > 360
+            || !['', 'visible'].includes(style(mirrored[0]).overflow)) throw new Error('Unsupported static transform')
+          layerBase.contentRotation = mirrorAngle
         }
         if (rotated.some(t => !/^rotate\(-?[\d.]+deg\)$/.test(t)) || mirrored.length > 1
           || (mirrored.length && (rotated.some(t => Number.parseFloat(t.slice(7)) !== 0)
             || style(mirrored[0]).width !== '100%' || style(mirrored[0]).height !== '100%'
             || !['', '50% 50%', 'center center', 'center'].includes(style(mirrored[0]).transformOrigin)))) throw new Error('Unsupported static transform')
         if (mirrored.length && layerBase.imageBackground) throw new Error('Mirrored positioned background needs an adapter')
-        if (mirrored.length) imageTransforms.push({ layerId: id, operation: /scale\(-1,\s*-1\)/.test(style(mirrored[0]).transform) ? 'rotate180' : /scale\(-1/.test(style(mirrored[0]).transform) ? 'flop' : 'flip' })
+        if (mirrored.length) {
+          const axes = /scale\((-?1),\s*(-?1)\)/.exec(style(mirrored[0]).transform)
+          const flipX = (axes[1] === '-1') !== invertMirrorAxes
+          const flipY = (axes[2] === '-1') !== invertMirrorAxes
+          if (flipX || flipY) imageTransforms.push({ layerId: id, operation: flipX && flipY ? 'rotate180' : flipX ? 'flop' : 'flip' })
+        }
         let contentOpacity = 1
         const imageFilters = []
         const imageFilterNodes = []
@@ -1390,23 +1414,35 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {}, reviewe
             const shadowNode = imageFilterNodes[0]
             const shadow = /^drop-shadow\((-?[\d.]+)px (-?[\d.]+)px ([\d.]+px rgba?\([\d., ]+\))\)$/.exec(visualFilter)
             const axes = /scale\((-?1),\s*(-?1)\)$/.exec(style(wrapper).transform)
-            if (mirrorAngle || imageFilters.length !== 1 || !shadow || !axes || shadowNode === wrapper || !wrapper.contains(shadowNode)
+            if ((mirrorAngle && layerBase.contentRotation === undefined) || imageFilters.length !== 1 || !shadow || !axes || shadowNode === wrapper || !wrapper.contains(shadowNode)
               || style(shadowNode).width !== '100%' || style(shadowNode).height !== '100%' || layerBase.imageOuterFilter
               || layerBase.borderRadius !== undefined || layerBase.imageBackground || !image || !['cover', 'fill'].includes(fit)) {
               throw new Error('Mirrored nested image shadow needs an adapter')
             }
             // The image reflection is baked into the asset. Reflect the inner
             // shadow offsets too, so the editable filter paints in the same place.
-            visualFilter = `drop-shadow(${Number(shadow[1]) * Number(axes[1])}px ${Number(shadow[2]) * Number(axes[2])}px ${shadow[3]})`
+            visualFilter = `drop-shadow(${Number(shadow[1]) * Number(axes[1]) * (invertMirrorAxes ? -1 : 1)}px ${Number(shadow[2]) * Number(axes[2]) * (invertMirrorAxes ? -1 : 1)}px ${shadow[3]})`
           }
           if (!isSafeBannerImageFilter(visualFilter)) throw new Error('Unsupported static image filter')
           if (!layerBase.imageOuterFilter) layerBase.visualFilter = visualFilter
         }
-        layers.push({ ...layerBase, id: id++, type: 'image', name: `Artwork ${sourceId}`, src: localAsset(raw), fit, rotation: rotated.reduce((sum, t) => sum + Number.parseFloat(t.slice(7)), mirrorAngle) })
+        layers.push({ ...layerBase, id: id++, type: 'image', name: `Artwork ${sourceId}`, src: localAsset(raw), fit, rotation: rotated.reduce((sum, t) => sum + Number.parseFloat(t.slice(7)), layerBase.contentRotation === undefined ? mirrorAngle : 0) })
       } else if (type === 'shape') {
         const content = document.getElementById(`c-${sourceId}`) || legacyLayerContent(element, style, 'shape')
         const transformNodes = [...element.querySelectorAll('div')].filter(div => style(div).transform && style(div).transform !== 'none')
-        const transforms = transformNodes.map(div => style(div).transform)
+        const mirror = transformNodes.length === 1 && /^rotate\((0|-?[\d.]+deg)\)\s+scale\((-?1),\s*(-?1)\)$/.exec(style(transformNodes[0]).transform)
+        if (mirror) {
+          const wrapper = transformNodes[0], frame = style(wrapper)
+          if (wrapper === content || !wrapper.contains(content) || wrapper.querySelector('[id^=eff]')
+            || frame.width !== '100%' || frame.height !== '100%' || !['', 'visible'].includes(frame.overflow)
+            || !['', 'center', 'center center', '50% 50%'].includes(frame.transformOrigin)
+            || layerBase.imageFlipPerspective || Math.abs(Number.parseFloat(mirror[1])) > 360) throw new Error('Unsupported static shape transform')
+          const angle = Number.parseFloat(mirror[1])
+          if (angle) layerBase.contentRotation = angle
+          if (mirror[2] === '-1') layerBase.flipX = true
+          if (mirror[3] === '-1') layerBase.flipY = true
+        }
+        const transforms = mirror ? [] : transformNodes.map(div => style(div).transform)
         if (transforms.some(t => !/^rotate\(-?[\d.]+deg\)$/.test(t))) throw new Error('Unsupported static shape transform')
         let rotation = transforms.reduce((sum, t) => sum + Number.parseFloat(t.slice(7)), 0)
         const contentCss = style(content)
@@ -1459,8 +1495,8 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {}, reviewe
         const noBackgroundImage = !backgroundImage || backgroundImage === 'none'
         const fullRect = borderRadius === 0 && contentCss.width === '100%' && contentCss.height === '100%'
         const supportedInnerPaint = (rectShape === 'ellipse' && noBackgroundImage)
-          || (fullRect && Math.abs(rotation) === 180 && /^linear-gradient\(/.test(backgroundImage))
-          || (fullRect && [90, 270].includes(Math.abs(rotation)) && noBackgroundImage && /^#[\da-f]{3,8}$/i.test(contentCss.backgroundColor))
+          || (fullRect && /^linear-gradient\(/.test(backgroundImage))
+          || (fullRect && noBackgroundImage && /^#[\da-f]{3,8}$/i.test(contentCss.backgroundColor))
         const canKeepInnerRotation = transformNodes.length === 1 && inner !== content && inner.contains(content)
           && innerCss.width === '100%' && innerCss.height === '100%'
           && ['', '50% 50%', 'center', 'center center'].includes(innerCss.transformOrigin)
@@ -1494,6 +1530,22 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {}, reviewe
           rotation = 0
           warnings.push(`${element.id}: 90-degree solid divider rotation baked into native geometry; review its entrance motion`)
         }
+        // TheBrief compensates for the padding-box origin by enlarging the
+        // background by two strokes and shifting it back by one stroke.
+        // A single border-box gradient paints the exact same rectangle.
+        let borderedFill
+        if (borders[0] > 0 && /^(linear|radial)-gradient\(/.test(backgroundImage)) {
+          const size = /^calc\(100% \+ ([\d.]+)px\) calc\(100% \+ ([\d.]+)px\)$/.exec(contentCss.backgroundSize)
+          const position = /^(-[\d.]+)px (-[\d.]+)px$/.exec(contentCss.backgroundPosition)
+          if (size && position && size.slice(1).every(n => Math.abs(Number(n) - 2 * borders[0]) < 0.0001)
+            && position.slice(1).every(n => Math.abs(Number(n) + borders[0]) < 0.0001)
+            && ['', 'initial', 'normal'].includes(contentCss.getPropertyValue('background-blend-mode'))
+            && ['', 'initial', 'transparent', 'rgba(0, 0, 0, 0)'].includes(contentCss.backgroundColor)
+            && /^[\w\s#(),.%+-]+$/.test(backgroundImage)) {
+            borderedFill = backgroundImage + ' border-box'
+            backgroundImage = ''
+          }
+        }
         if (/^(linear|radial)-gradient\(/.test(backgroundImage)) {
           if (!/^[\w\s#(),.%+-]+$/.test(backgroundImage)
             // A gradient has no intrinsic size, so TheBrief's shared shape frame
@@ -1526,7 +1578,7 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {}, reviewe
             if (cornerRadii || new Set(borders).size !== 1 || !Number.isFinite(borders[0]) || borders[0] < 0 || borders[0] > 100 || new Set(colors).size !== 1 || styles.some(value => value !== 'solid') || (rectShape && Math.abs(layerBase.w - layerBase.h) > 1)) throw new Error(`${element.id}: shape border composition needs an adapter`)
             // Native buttons support border-box fill, uniform stroke and corners.
             // Empty text retains this shape as an editable native visual layer.
-            layers.push({ ...layerBase, id: id++, type: 'button', name: `Bordered shape ${sourceId}`, text: '', rotation, ...(rectShape && layerBase.w !== layerBase.h ? { rectShape } : { borderRadius: rectShape ? layerBase.w / 2 : borderRadius || 0 }), borderWidth: borders[0], borderColor: colors[0], bgColor: contentCss.backgroundColor || 'transparent', textColor: 'transparent', ...(visualFilter ? { visualFilter } : {}) })
+            layers.push({ ...layerBase, id: id++, type: 'button', name: `Bordered shape ${sourceId}`, text: '', rotation, ...(rectShape && layerBase.w !== layerBase.h ? { rectShape } : { borderRadius: rectShape ? layerBase.w / 2 : borderRadius || 0 }), borderWidth: borders[0], borderColor: colors[0], bgColor: borderedFill || contentCss.backgroundColor || 'transparent', textColor: 'transparent', ...(visualFilter ? { visualFilter } : {}) })
             warnings.push(`${element.id}: uniform bordered shape preserved as an editable native button with empty text; review border and corner geometry`)
           } else {
             layers.push({ ...layerBase, id: id++, type: 'rect', name: `Shape ${sourceId}`, rotation, ...(borderRadius !== undefined ? { borderRadius } : {}), ...shapeEffects, fillColor: contentCss.backgroundColor || 'transparent' })

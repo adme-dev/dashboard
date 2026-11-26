@@ -3,7 +3,7 @@ import { bannerPosterTime } from '~~/shared/bannerPosterTime'
 import { retimeLayerPresence } from '~/utils/banner-timeline-edit'
 import { editSlides, layerSlideId, resolveSlides, slideAtTime, slideRanges, type SlideEdit } from '~/utils/banner-slides'
 import { layerRotationChange } from '~/utils/banner-transform'
-import type { Layer, ArtboardState, BannerProject, BannerAsset, UndoAction, BannerBrandKit, AnimInType, AnimOutType, MotionPathPoint, MotionPathTween } from '~/types/banner-studio'
+import type { Layer, ArtboardState, BannerProject, BannerAsset, BrandKitLogo, UndoAction, BannerBrandKit, AnimInType, AnimOutType, MotionPathPoint, MotionPathTween } from '~/types/banner-studio'
 import { toRaw } from 'vue'
 import { FORMATS, TEMPLATES, migrateLayer, DEFAULT_BG, resolveBannerFormat } from '~/utils/banner-constants'
 import { brandButtonStyle, brandColor, brandFont, brandFontSelection, isLogoLayer, isDarkColor } from '~/utils/banner-brand-kit'
@@ -217,10 +217,23 @@ export function useBannerStudio() {
   }
 
   function addMediaToLayouts(asset: BannerAsset, targetKey = state.activeKey, point?: { x: number, y: number }, allLayouts = state.layoutView === 'all'): number {
+    if (!asset.url) throw new Error('Choose available media.')
+    return placeMedia(targetKey, allLayouts, format => bannerAssetLayer(asset, format), point)
+  }
+
+  function addBrandLogoToAllLayouts(logo: BrandKitLogo, width: number, height: number) {
+    if (!(width > 0 && height > 0) || !logo.url) throw new Error('Choose an available logo.')
+    return placeMedia(state.activeKey, true, format => {
+      const scale = Math.min(format.w * 0.4 / width, format.h * 0.3 / height, 1)
+      const w = width * scale, h = height * scale
+      return { type: 'image', isLogo: true, name: logo.name, src: logo.url, fit: 'contain',
+        w, h, x: (format.w - w) / 2, y: (format.h - h) / 2, animIn: 'none', animOut: 'none' }
+    })
+  }
+
+  function placeMedia(targetKey: string, allLayouts: boolean, makeLayer: (format: { w: number, h: number }) => Partial<Layer>, point?: { x: number, y: number }) {
     const origin = resolveBannerFormat(targetKey)
     if (!origin || !state.setKeys.includes(targetKey)) throw new Error('Choose an available canvas.')
-    if (!asset.url) throw new Error('Choose available media.')
-    bannerAssetLayer(asset, origin)
     const keys = allLayouts ? [...state.setKeys] : [targetKey]
     if (!keys.length) throw new Error('Open a banner design before adding media.')
     const activeRanges = slideRanges(resolveSlides(state.sets[state.activeKey]))
@@ -238,7 +251,7 @@ export function useBannerStudio() {
     withCanvasUndo(() => {
       for (const { key, board, format, slide, hasMultipleSlides } of targets) {
         if (hasMultipleSlides && !board.slides?.length) board.slides = JSON.parse(JSON.stringify(resolveSlides(board)))
-        const partial = bannerAssetLayer(asset, format)
+        const partial = makeLayer(format)
         if (point && partial.type !== 'audio') {
           partial.x = Math.max(0, Math.min(format.w - partial.w!, point.x / origin.w * format.w - partial.w! / 2))
           partial.y = Math.max(0, Math.min(format.h - partial.h!, point.y / origin.h * format.h - partial.h! / 2))
@@ -372,8 +385,22 @@ export function useBannerStudio() {
     const idx = layers.findIndex(l => l.id === id)
     if (idx < 0) return
     const removed = layers[idx]
-    pushUndo({ type: 'removeLayer', before: { ...removed }, after: null })
-    layers.splice(idx, 1)
+    const peers = removed.linkId ? state.setKeys.filter(key => key !== state.activeKey).flatMap(key =>
+      (state.sets[key]?.layers || []).filter(layer => layer.linkId === removed.linkId && layer.type === removed.type).map(layer => ({ key, layer }))
+    ) : []
+    if (peers.length) {
+      withCanvasUndo(() => {
+        layers.splice(idx, 1)
+        for (const { key, layer } of peers) {
+          const board = state.sets[key]!
+          board.layers = board.layers.filter(item => item.id !== layer.id)
+          try { useBannerRealtime().sendLayerRemove(layer.id, key) } catch {}
+        }
+      })
+    } else {
+      pushUndo({ type: 'removeLayer', before: { ...removed }, after: null })
+      layers.splice(idx, 1)
+    }
     if (state.multiSelectedLayerIds.includes(id)) {
       const remaining = state.multiSelectedLayerIds.filter(other => other !== id)
       setPrimaryLayer(remaining.at(-1) ?? null, remaining)
@@ -681,19 +708,25 @@ export function useBannerStudio() {
   }
 
   function syncAllFromActive() {
-    const srcFmt = FORMATS[state.activeKey]
-    const srcLayers = state.sets[state.activeKey]?.layers ?? []
+    const srcFmt = resolveBannerFormat(state.activeKey)
+    if (!srcFmt || state.setKeys.length < 2) return
+    withCanvasUndo(() => syncLinkedSizes(srcFmt))
+  }
 
+  function syncLinkedSizes(srcFmt: { w: number, h: number }) {
+    const srcLayers = state.sets[state.activeKey]?.layers ?? []
+    const originalLinks = new Map(srcLayers.map(layer => [layer.id, layer.linkId]))
+    for (const layer of srcLayers) layer.linkId ||= `sync:${nextId()}`
     state.setKeys.forEach(key => {
       if (key === state.activeKey) return
-      const tgtFmt = FORMATS[key]
+      const tgtFmt = resolveBannerFormat(key)
       if (!tgtFmt) return
       const sx = tgtFmt.w / srcFmt.w
       const sy = tgtFmt.h / srcFmt.h
       const idMap = new Map<number, number>()
       const usedIds = new Set<number>()
       const scaled = srcLayers.map(l => {
-        const existing = state.sets[key]?.layers?.find(x => !usedIds.has(x.id) && (l.linkId ? x.linkId === l.linkId : x.name === l.name && x.slideId === l.slideId))
+        const existing = state.sets[key]?.layers?.find(x => !usedIds.has(x.id) && (originalLinks.get(l.id) ? x.linkId === l.linkId : x.type === l.type && x.name === l.name && x.slideId === l.slideId))
         const newId = existing?.id ?? nextId()
         usedIds.add(newId)
         idMap.set(l.id, newId)
@@ -1434,6 +1467,7 @@ export function useBannerStudio() {
     addLayer,
     addMotorStackImageToAllLayouts,
     addMediaToLayouts,
+    addBrandLogoToAllLayouts,
     addMotorStackOfferToAllLayouts,
     addLayerSet,
     addBrandGuideButton,

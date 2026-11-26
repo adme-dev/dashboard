@@ -29,3 +29,13 @@ it('preserves a bordered shape shadow around its border in both native exports',
   expect(html).toContain('border:4px solid #e70357;')
   expect(server('mrec', [layer])).toBe(html)
 })
+
+it('preserves the source border-box gradient', async () => {
+  const gradient = 'linear-gradient(0deg,#ff0026 1%,#ffc300 100%)'
+  const html = shapeSource('border:4px solid #fff;background-image:' + gradient + ';background-color:initial;background-position:-4px -4px;background-size:calc(100% + 8px) calc(100% + 8px)')
+  const result = await convertTheBriefHtml(html)
+  const layer = result.canvasData.custom_300x250.layers.find(layer => layer.type === 'button')
+  expect(layer).toMatchObject({ borderWidth: 4, bgColor: 'linear-gradient(0deg, #ff0026 1%, #ffc300 100%) border-box' })
+  expect(client('mrec', [layer])).toBe(server('mrec', [layer]))
+  await expect(convertTheBriefHtml(html.replace('-4px -4px', '-3px -4px'))).rejects.toThrow('Unsupported gradient shape composition')
+})
