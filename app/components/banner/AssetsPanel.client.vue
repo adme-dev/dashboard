@@ -11,7 +11,7 @@ import { LAYER_IMPORT_MIME_TYPES } from '~~/shared/bannerLayerImport'
 
 const props = withDefaults(defineProps<{ mediaType?: BannerMediaType, selectionOnly?: boolean, motorstackBrandId?: string, inlineMotorstack?: boolean }>(), { mediaType: 'all', selectionOnly: false })
 const emit = defineEmits<{ select: [asset: BannerAsset], browseMotorstack: [] }>()
-const { addLayer, activeFormat, activeLayers, currentSlide, state } = useBannerStudio()
+const { addLayer, addMediaToLayouts, activeFormat, activeLayers, currentSlide, state } = useBannerStudio()
 const replacementBrand = props.selectionOnly && props.mediaType === 'image' ? useBannerProjectBrand() : undefined
 const pickerBrand = computed(() => props.motorstackBrandId || kitMotorStackBrand(replacementBrand?.kit.value?.sourceUrl) || undefined)
 const layerImport = useBannerLayerImport()
@@ -106,6 +106,11 @@ function handleAssetClick(asset: BannerAsset) {
   }
   if (!activeFormat.value) return
   try {
+    if (asset.mimeType?.startsWith('image/')) {
+      const count = addMediaToLayouts(asset)
+      toast.add({ title: 'Image added', description: `${asset.name} · ${count} ${count === 1 ? 'layout' : 'layouts'}`, color: 'success' })
+      return
+    }
     addLayer({ ...bannerAssetLayer(asset, activeFormat.value), startTime: 0, endTime: currentSlide.value?.duration || state.duration })
     toast.add({ title: 'Media added', description: asset.name, color: 'success' })
   } catch (error) {

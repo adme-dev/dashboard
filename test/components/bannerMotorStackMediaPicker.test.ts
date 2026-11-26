@@ -180,19 +180,21 @@ describe('MotorStack media picker', () => {
     expect(imported).toHaveBeenCalledWith(saved)
     expect(closed).toHaveBeenCalledWith(false)
   })
-  it('refreshes the Assets panel library after import without adding a canvas layer', async () => {
+  it('refreshes the library after import and places the image in the chosen layouts only when clicked', async () => {
     const addLayer = vi.fn()
-    const api = vi.fn(async (_url: string) => ({ assets: [] }))
+    const addMediaToLayouts = vi.fn(() => 3)
+    const api = vi.fn(async (url: string) => ({ assets: url.endsWith('/banner-studio/assets') ? [saved] : [] }))
     vi.stubGlobal('$fetch', api)
     vi.stubGlobal('useFetch', (url: string) => {
-      const data = Vue.ref({ assets: [] })
+      const data = Vue.ref<{ assets: typeof saved[] }>({ assets: [] })
       const refresh = async () => {
         data.value = await api(url)
       }
       refresh()
       return { data, error: Vue.ref(null), status: Vue.ref('success'), refresh }
     })
-    vi.stubGlobal('useBannerStudio', () => ({ addLayer, nextId: () => 1, activeLayers: Vue.ref([]) }))
+    vi.stubGlobal('useBannerStudio', () => ({ addLayer, addMediaToLayouts, activeFormat: Vue.ref({ w: 300, h: 250 }), activeLayers: Vue.ref([]) }))
+    vi.stubGlobal('safeMediaUrl', (url?: string) => url)
     vi.stubGlobal('useBannerLayerImport', () => ({ openFor: vi.fn() }))
     vi.stubGlobal('useAiImageGenerate', () => ({ openGenerate: vi.fn() }))
     vi.stubGlobal('useToast', () => ({ add: vi.fn() }))
@@ -207,6 +209,9 @@ describe('MotorStack media picker', () => {
     button('Import fixture image').click()
     await settle()
     expect(api.mock.calls.filter(call => call[0] === '/api/agency/banner-studio/assets')).toHaveLength(2)
+    expect(addMediaToLayouts).not.toHaveBeenCalled()
+    host.querySelector<HTMLButtonElement>(`[aria-label="Insert ${saved.name}"]`)!.click()
+    expect(addMediaToLayouts).toHaveBeenCalledWith(saved)
     expect(addLayer).not.toHaveBeenCalled()
   })
   it('browses without importing and gives PDFs a download action instead of adding them as images', async () => {
