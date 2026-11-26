@@ -16,6 +16,8 @@ const { data, error: requestError } = await useFetch<{
   videos: Array<{ formatKey: string, revision: string, status: string, url: string | null, canRetry: boolean }>
 }>(`/api/public/banner-share/${token}`)
 const useVideoFallback = ref(false)
+const focusedSize = ref('')
+const hasOverview = computed(() => Object.keys(data.value?.previewDocuments || {}).length > 1)
 const error = computed(() => requestError.value
   ? requestError.value.data?.statusMessage || 'This link has expired, was revoked, or is unavailable.'
   : '')
@@ -62,6 +64,7 @@ const canvas = computed<Record<string, ArtboardState>>(() => {
           {{ data?.project.name || 'Shared banner' }}
         </h1>
       </div>
+      <UButton v-if="hasOverview && focusedSize && !useVideoFallback" label="All sizes" icon="i-lucide-layout-grid" color="neutral" variant="outline" @click="focusedSize = ''" />
       <UBadge
         label="View only"
         icon="i-lucide-eye"
@@ -77,10 +80,18 @@ const canvas = computed<Record<string, ArtboardState>>(() => {
       title="Preview unavailable"
       :description="error"
     />
+    <LazyBannerClientSizeGallery
+      v-else-if="data?.previewDocuments && hasOverview && !focusedSize && !useVideoFallback"
+      :documents="data.previewDocuments"
+      :canvas="canvas"
+      @focus="focusedSize = $event"
+      @unavailable="useVideoFallback = true"
+    />
     <LazyBannerSavedPreview
       v-else-if="data?.previewDocuments && !useVideoFallback"
       :canvas="canvas"
       :preview-documents="data.previewDocuments"
+      :initial-size="focusedSize"
       @unavailable="useVideoFallback = true"
       :client-name="data.project.clientName"
       :project-name="data.project.name"

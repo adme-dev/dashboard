@@ -124,11 +124,14 @@ export async function prepareBannerShareVideo(event: H3Event, formatKey: string,
   return { status: 'queued' }
 }
 
-/** Photo and text PMax artwork can play directly in the sandboxed saved-artwork viewer. */
-export function performanceMaxPreviewDocuments(share: Share): Record<string, string> | undefined {
-  if (!share.project.performanceMaxFolder && !/\b(?:performance[ -]*max|p[ -]*max)\b/i.test(share.project.name)) return
+/** Multi-size HTML and photo or text PMax artwork can play directly in the sandboxed saved-artwork viewer. */
+export function bannerClientPreviewDocuments(share: Share): Record<string, string> | undefined {
   const plans = bannerShareVideoPlans(share)
-  if (!plans.length || plans.some(plan => plan.unsupported || !plan.board.layers.length
+  const isPmax = share.project.performanceMaxFolder || /\b(?:performance[ -]*max|p[ -]*max)\b/i.test(share.project.name)
+  if (!plans.length || (plans.length === 1 && !isPmax)) return
+  // HTML canvases can have odd pixel dimensions. The even-dimension requirement is specific to MP4.
+  if (plans.some(plan => !plan.width || !plan.height || plan.width > 4000 || plan.height > 4000
+    || !Number.isFinite(plan.duration) || plan.duration > 30 || !Array.isArray(plan.board?.layers) || !plan.board.layers.length
     || plan.board.layers.some(layer => layer.type === 'video' || layer.srcType === 'video'))) return
   try {
     return Object.fromEntries(plans.map(plan => [plan.key, buildBannerShareVideoHtml(share, plan)]))
@@ -141,7 +144,7 @@ export function performanceMaxPreviewDocuments(share: Share): Record<string, str
 
 export async function warmBannerShareVideos(event: H3Event, token: string) {
   const share = await loadPublicBannerShare(event, token)
-  if (performanceMaxPreviewDocuments(share)) return
+  if (bannerClientPreviewDocuments(share)) return
   // Enqueue only; compiling happens asynchronously in the existing render worker.
   let deferred = false
   for (const plan of bannerShareVideoPlans(share).filter(plan => !plan.unsupported).slice(0, 10)) {

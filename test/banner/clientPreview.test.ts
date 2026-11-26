@@ -43,6 +43,16 @@ describe('view-only client banner preview', () => {
     expect(mocks.one).toHaveBeenCalledTimes(2)
   })
 
+  it('serves all saved HTML sizes including odd pixel dimensions in ordinary banner sets', async () => {
+    const board = { layers: [{ id: 1, type: 'rect', w: 300, h: 250, startTime: 0, endTime: 3 }] }
+    mocks.one.mockResolvedValueOnce({ projectId: 'project', revoked: false, expiresAt: null })
+      .mockResolvedValueOnce({ ...project, canvasData: { custom_301x251: board, custom_728x90: board } })
+    mocks.rows.mockResolvedValueOnce([])
+    const result = await preview({ token } as never)
+    expect(Object.keys(result.previewDocuments || {})).toEqual(['custom_301x251', 'custom_728x90'])
+    expect(result.videos).toEqual([])
+  })
+
   it('keeps a PMax project with a video layer on its existing video proof', async () => {
     mocks.one.mockResolvedValueOnce({ projectId: 'project', revoked: false, expiresAt: null })
       .mockResolvedValueOnce({ ...project, name: 'PMax film', canvasData: { custom_1200x1200: { layers: [{ type: 'video', endTime: 15 }] } } })
