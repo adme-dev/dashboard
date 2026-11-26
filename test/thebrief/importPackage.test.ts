@@ -210,6 +210,23 @@ it('accepts centered Y-axis flips on editable shapes within the native angle bou
   expect(() => parseTheBriefPackage(input)).toThrow('Invalid TheBrief 3D image flip')
 })
 
+it('retains image depth and X-axis flip tracks together for Nissan entrances', () => {
+  const input = fixture()
+  const layer = input.canvasData.custom_300x250.layers[0]
+  const rotationX = [{ time: 0, value: 90 }, { time: 0.4, value: 87 }, { time: 1, value: 0 }]
+  const z = [{ time: 0, value: -800 }, { time: 0.4, value: -160 }, { time: 1, value: 0 }]
+  const src = './media/nissan.png'
+  Object.assign(input, { assets: [{ path: src, fileName: 'nissan.png', sha256: 'c'.repeat(64), base64: 'AAAA', mimeType: 'image/png' }] })
+  Object.assign(layer, { type: 'image', src, imageFlipPerspective: 179.71, keyframes: { rotationX, z } })
+  expect(parseTheBriefPackage(input).canvasData.custom_300x250.layers[0]).toMatchObject({
+    imageFlipPerspective: 179.71, keyframes: { rotationX, z }
+  })
+  for (const keyframes of [{ rotationY: rotationX, z }, { rotationX, z: [{ time: 0, value: 1 }, { time: 1, value: 0 }] }]) {
+    Object.assign(layer, { keyframes })
+    expect(() => parseTheBriefPackage(input)).toThrow('Invalid TheBrief 3D image flip')
+  }
+})
+
 it('validates a bounded inner rotation only for its supported imported shape', () => {
   const input = fixture()
   const layer = input.canvasData.custom_300x250.layers[0]
