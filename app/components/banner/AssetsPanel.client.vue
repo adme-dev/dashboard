@@ -2,7 +2,9 @@
 import type { BannerAsset } from '~/types/banner-studio'
 import type { AudioAsset } from '~/types'
 import { createBannerUploadSession } from '~/utils/bannerUpload'
-import { bannerAssetLayer, bannerAssetType, type BannerMediaType } from '~/utils/banner-media'
+import { refDebounced } from '@vueuse/core'
+import { apiErrorDescription } from '~/utils/apiError'
+import { bannerAssetLayer, type BannerMediaType } from '~/utils/banner-media'
 import { startBannerMediaDrag, endBannerMediaDrag } from '~/utils/banner-media-drag'
 import { motorstackBrandId as kitMotorStackBrand } from '~~/shared/bannerBrandGuides'
 import { LAYER_IMPORT_MIME_TYPES } from '~~/shared/bannerLayerImport'
@@ -78,14 +80,18 @@ function applySuggestionToSearch(keyword: string) {
   searchQuery.value = keyword
 }
 
-const { data: assetsData, error: assetsError, status: assetsStatus, refresh: refreshAssets } = useFetch<{ assets: BannerAsset[] }>('/api/agency/banner-studio/assets')
-const assets = computed(() => {
-  const q = searchQuery.value.trim().toLowerCase()
-  return (assetsData.value?.assets || []).filter((asset) => {
-    const type = bannerAssetType(asset)
-    return type && (props.mediaType === 'all' || type === props.mediaType) && (!q || asset.name.toLowerCase().includes(q))
-  })
-})
+const pageSize = 12
+const page = ref(0)
+const search = refDebounced(searchQuery, 250)
+watch([search, () => props.mediaType], () => { page.value = 0 }, { flush: 'sync' })
+const query = computed(() => ({ mediaType: props.mediaType, search: search.value.trim(), limit: pageSize + 1, offset: page.value * pageSize }))
+const { data: assetsData, error: assetsError, status: assetsStatus, refresh: refreshAssets } = useFetch<{ assets: BannerAsset[] }>('/api/agency/banner-studio/assets', { query, deep: false })
+const assets = computed(() => (assetsData.value?.assets || []).slice(0, pageSize))
+const hasNext = computed(() => (assetsData.value?.assets.length || 0) > pageSize)
+async function showNewestAssets() {
+  if (page.value) page.value = 0
+  else await refreshAssets()
+}
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -167,10 +173,10 @@ async function uploadFiles(files: FileList | File[]) {
         ...request
       })
     })
-    await refreshAssets()
+    await showNewestAssets()
     for (const outcome of outcomes) {
       if (!outcome.ok) {
-        toast.add({ title: 'Upload failed', description: `Failed to upload ${outcome.file.name}`, color: 'error' })
+        toast.add({ title: 'Upload failed', description: `${outcome.file.name} · ${apiErrorDescription(outcome.error, 'Try uploading again.')}`, color: 'error' })
         continue
       }
       // A flat JPEG or PNG can be split into editable layers straight after upload.
@@ -256,7 +262,7 @@ async function deleteAsset(asset: BannerAsset) {
       :initial-brand-id="pickerBrand"
       :replace-image="!!replacementBrand"
       :project-brand-context="replacementBrand ? [state.project?.name || '', state.project?.clientName || ''] : undefined"
-      @imported="asset => { if (replacementBrand) handleAssetClick(asset); refreshAssets() }"
+      @imported="asset => { if (replacementBrand) handleAssetClick(asset); showNewestAssets() }"
     />
 
     <!-- Upload Zone -->
@@ -379,6 +385,8 @@ async function deleteAsset(asset: BannerAsset) {
               v-if="asset.mimeType?.startsWith('image') && (safeMediaUrl(asset.thumbnailUrl) || safeMediaUrl(asset.url))"
               :src="safeMediaUrl(asset.thumbnailUrl) || safeMediaUrl(asset.url)"
               :alt="asset.name"
+              loading="lazy"
+              decoding="async"
               draggable="false"
               class="w-full h-full object-cover"
             >
@@ -387,7 +395,8 @@ async function deleteAsset(asset: BannerAsset) {
               :src="safeMediaUrl(asset.url)"
               muted
               playsinline
-              preload="metadata"
+              preload="none"
+              :poster="safeMediaUrl(asset.thumbnailUrl) || undefined"
               class="w-full h-full object-contain pointer-events-none"
             />
             <UIcon v-else-if="asset.mimeType?.startsWith('audio')" name="i-lucide-music" class="w-8 h-8 text-(--ui-text-muted)" />
@@ -434,5 +443,10 @@ async function deleteAsset(asset: BannerAsset) {
     <div v-else class="text-center py-6 text-xs text-(--ui-text-muted)">
       {{ assetsStatus === 'pending' ? 'Loading media…' : searchQuery ? 'No matching media. Try another search.' : 'No media here yet. Upload a file or browse MotorStack.' }}
     </div>
+    <nav v-if="page || hasNext" aria-label="Media pages" class="flex items-center justify-between gap-2">
+      <UButton label="Previous" size="xs" color="neutral" variant="outline" :disabled="!page || assetsStatus === 'pending'" @click="page--" />
+      <span class="text-xs text-muted">Page {{ page + 1 }}</span>
+      <UButton label="Next" size="xs" color="neutral" variant="outline" :disabled="!hasNext || assetsStatus === 'pending'" @click="page++" />
+    </nav>
   </div>
 </template>

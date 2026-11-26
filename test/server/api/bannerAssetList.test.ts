@@ -45,6 +45,13 @@ describe('GET /api/agency/banner-studio/assets', () => {
     mockQueryRows.mockResolvedValue([{ id: 'asset-1', name: 'Leap-Motor.jpg' }])
   })
 
+  it('filters matching images before taking a stable page of search results', async () => {
+    await handler({ query: { mediaType: 'image', search: 'tiggo', limit: '13', offset: '12' } })
+    const [sql, params] = mockQueryRows.mock.calls[0]!
+    expect(sql).toMatch(/mime_type LIKE .*name ILIKE .*ORDER BY created_at DESC, id DESC LIMIT .* OFFSET /s)
+    expect(params).toEqual(expect.arrayContaining(['image/%', '%tiggo%', 13, 12]))
+  })
+
   it('returns the asset wrapper expected by every picker', async () => {
     await expect(handler({ query: {} })).resolves.toEqual({
       assets: [expect.objectContaining({ id: 'asset-1' })]
