@@ -10,10 +10,13 @@ import { withBannerPreviewPlayback, readBannerPreviewPlayback, type BannerPrevie
 
 const props = defineProps<{
   canvas: Record<string, ArtboardState>
+  previewDocuments?: Record<string, string>
   fonts?: ExportCustomFont[]
   clientName?: string | null
   projectName?: string
 }>()
+
+const emit = defineEmits<{ unavailable: [] }>()
 
 const pageName = computed(() => props.clientName?.trim() || props.projectName?.trim() || 'Shared banner')
 
@@ -64,7 +67,10 @@ function receivePlaybackStatus(event: MessageEvent) {
   const frame = root.value?.querySelector('iframe')
   if (!frame || event.source !== frame.contentWindow) return
   const next = readBannerPreviewPlayback(event.data, previewDocument.value.frameId)
-  if (next && (event.data.commandId ?? 0) === commandSequence) playback.value = next
+  if (next && (event.data.commandId ?? 0) === commandSequence) {
+    playback.value = next
+    if (next.state === 'unavailable') emit('unavailable')
+  }
 }
 function toggleSound() {
   muted.value = !muted.value
@@ -105,7 +111,7 @@ const previewDocument = computed(() => {
   void mode.value
   const frameId = ++frameSequence
   const source = active.value
-    ? buildBannerHTML(active.value.key, active.value.board.layers, {
+    ? props.previewDocuments?.[active.value.key] ?? buildBannerHTML(active.value.key, active.value.board.layers, {
         // A stopped preview still needs the timeline to evaluate keyframes and scene visibility.
         pausedAt: 0,
         playback: active.value.board.playback,

@@ -124,8 +124,24 @@ export async function prepareBannerShareVideo(event: H3Event, formatKey: string,
   return { status: 'queued' }
 }
 
+/** Photo and text PMax artwork can play directly in the sandboxed saved-artwork viewer. */
+export function performanceMaxPreviewDocuments(share: Share): Record<string, string> | undefined {
+  if (!share.project.performanceMaxFolder && !/\b(?:performance[ -]*max|p[ -]*max)\b/i.test(share.project.name)) return
+  const plans = bannerShareVideoPlans(share)
+  if (!plans.length || plans.some(plan => plan.unsupported || !plan.board.layers.length
+    || plan.board.layers.some(layer => layer.type === 'video' || layer.type === 'audio' || layer.srcType === 'video'))) return
+  try {
+    return Object.fromEntries(plans.map(plan => [plan.key, buildBannerShareVideoHtml(share, plan)]))
+  } catch (error) {
+    // Artwork that cannot use the restricted HTML renderer keeps its existing video proof.
+    if ([413, 422].includes((error as { statusCode?: number }).statusCode ?? 0)) return
+    throw error
+  }
+}
+
 export async function warmBannerShareVideos(event: H3Event, token: string) {
   const share = await loadPublicBannerShare(event, token)
+  if (performanceMaxPreviewDocuments(share)) return
   // Enqueue only; compiling happens asynchronously in the existing render worker.
   let deferred = false
   for (const plan of bannerShareVideoPlans(share).filter(plan => !plan.unsupported).slice(0, 10)) {

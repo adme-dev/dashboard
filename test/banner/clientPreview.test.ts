@@ -30,6 +30,26 @@ describe('view-only client banner preview', () => {
     expect(result.videos[0]!.url).toContain(`/api/public/banner-share/${token}/video?`)
     expect(JSON.stringify(result)).not.toContain('private-storage-key')
   })
+  it.each([{ name: 'Brighton Nissan P-Max' }, { name: 'January inventory', performanceMaxFolder: true }])('opens a basic PMax share without waiting for video jobs (%o)', async (identity) => {
+    mocks.one.mockResolvedValueOnce({ projectId: 'project', revoked: false, expiresAt: null })
+      .mockResolvedValueOnce({ ...project, ...identity, canvasData: { custom_1200x1200: {
+        layers: [{ id: 1, type: 'rect', w: 1200, h: 1200, startTime: 0, endTime: 3 }]
+      } } })
+    mocks.rows.mockResolvedValueOnce([])
+    const result = await preview({ token } as never)
+    expect(result).toMatchObject({ videos: [], previewDocuments: { custom_1200x1200: expect.stringContaining('Content-Security-Policy') } })
+    expect(mocks.one).toHaveBeenCalledTimes(2)
+  })
+
+  it('keeps a PMax project with a video layer on its existing video proof', async () => {
+    mocks.one.mockResolvedValueOnce({ projectId: 'project', revoked: false, expiresAt: null })
+      .mockResolvedValueOnce({ ...project, name: 'PMax film', canvasData: { custom_1200x1200: { layers: [{ type: 'video', endTime: 15 }] } } })
+    mocks.rows.mockResolvedValueOnce([])
+    const result = await preview({ token } as never)
+    expect(result).not.toHaveProperty('previewDocuments')
+    expect(result.videos).toHaveLength(1)
+  })
+
   it('rejects legacy review tokens before reading project data', async () => {
     await expect(preview({ token: 'a'.repeat(32) } as never)).rejects.toMatchObject({ statusCode: 404 })
     expect(mocks.one).not.toHaveBeenCalled()
