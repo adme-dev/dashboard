@@ -167,7 +167,7 @@ export function parseTheBriefPackage(input: unknown): TheBriefPackage {
           || item.keyframes.z?.some(frame => frame.value > 0)) throw new Error('Invalid TheBrief 3D image flip')
       }
       if (item.keyframes?.blur?.some(frame => frame.value < 0 || frame.value > 100)) throw new Error('Invalid blur radius')
-      if (item.reveal && !(item.type === 'image' && item.reveal.type === 'stripWipe') && item.type !== 'rect' && item.type !== 'button') throw new Error('Reveal requires editable shape geometry')
+      if (item.reveal && !((item.type === 'image' || item.type === 'text') && item.reveal.type === 'stripWipe') && item.type !== 'rect' && item.type !== 'button') throw new Error('Reveal requires editable shape geometry')
       if ((item.textTracking || item.textSweep) && item.type !== 'text') throw new Error('Text motion requires editable text')
       if (item.wordPop && item.type !== 'text') throw new Error('Word animation requires text')
       if (['image', 'audio', 'video'].includes(item.type) && !item.src) throw new Error('Image, audio or video layer is missing its asset')

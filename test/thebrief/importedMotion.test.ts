@@ -143,3 +143,12 @@ it('keeps a five-strip image reveal and elliptical image clipping in both export
   expect(html).toContain('0% 148%,25% -48%,50% 148%,75% -48%,100% 148%')
   expect(html).toContain('0% 0%,25% 100%,50% 0%,75% 100%,100% 0%')
 })
+
+it('exports the editable text and GSAP mask commands for a strip wipe together', () => {
+  const title: Layer = { ...shape, type: 'text', text: 'Editable title', reveal: { type: 'stripWipe', duration: 1, ease: 'linear' } }
+  const html = buildBannerHTML('custom_300x250', [title])
+  expect(serverHTML('custom_300x250', [title])).toBe(html)
+  expect(html).toContain('Editable title')
+  expect(html).toContain('data-banner-reveal-content')
+  expect(html).toContain('0% 0%,25% 100%,50% 0%,75% 100%,100% 0%')
+})
