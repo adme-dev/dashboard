@@ -108,7 +108,8 @@ onBeforeUnmount(() => {
         size="xs"
         variant="outline"
         :href="latestDone.url"
-        download
+        external
+        :download="`${latestDone.formatKey}-${latestDone.jobId}.mp4`"
       />
     </div>
   </aside>

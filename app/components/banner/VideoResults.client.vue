@@ -205,7 +205,8 @@ async function createDraft(job: ExportJob) {
             label="Download MP4"
             icon="i-lucide-download"
             :href="job.url!"
-            download
+            external
+            :download="`${job.formatKey}-${job.jobId}.mp4`"
             variant="outline"
             size="sm"
           />

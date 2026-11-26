@@ -73,6 +73,7 @@ describe('video export recovery UI', () => {
     expect(root.textContent).toContain('1080 × 1920')
     expect(root.textContent).toContain('Completed')
     expect(root.textContent).toContain('Download MP4')
+    expect(root.querySelector('a[download]')?.hasAttribute('external')).toBe(true)
     expect(root.textContent).not.toContain('Create social draft')
     expect(root.textContent).not.toContain('Assign a client')
     app.unmount()
