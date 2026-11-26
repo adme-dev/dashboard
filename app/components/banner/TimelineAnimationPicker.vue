@@ -54,8 +54,8 @@ const directionLabel = computed(() => isMiddle.value ? 'middle' : selectedDirect
 const presets = computed(() => (isMiddle.value ? MIDDLE_ANIMATIONS.filter(preset => !props.layer.motionPath?.length || !preset.properties.some(property => property === 'x' || property === 'y')) : selectedDirection.value === 'in' ? ANIM_IN : ANIM_OUT).filter(p => !(selectedDirection.value === 'out' && (props.addAtEnd || isKeyframe.value || placement.value === 'out') && p.id === 'none')).filter(p => p.label.toLowerCase().includes(search.value.trim().toLowerCase())))
 const selectedId = computed(() => selectedDirection.value === 'in' && props.layer.wordPop ? 'wordPop' : selectedDirection.value === 'in' ? props.layer.animIn : (props.layer.animOut ?? 'fadeOut'))
 const selectedLabel = computed(() => isAudio.value ? 'Sound' : isKeyframe.value ? describeKeyframeMotion(props.layer) : props.layer.reveal && selectedDirection.value === 'in' ? revealLabel(props.layer.reveal.type) : selectedId.value === 'wordPop' ? wordEntranceLabel(props.layer.wordPop?.variant) : ([...ANIM_IN, ...ANIM_OUT].find(p => p.id === selectedId.value)?.label ?? 'None'))
-const blockLabel = computed(() => props.phase?.label ?? selectedLabel.value)
 const stillHold = computed(() => props.phase?.kind === 'hold' && props.phase.label === 'Hold')
+const blockLabel = computed(() => stillHold.value ? 'On screen' : props.phase?.label ?? selectedLabel.value)
 const photoThumbnail = computed(() => stillHold.value && (props.layer.type === 'image' || (props.layer.type === 'bg' && props.layer.srcType !== 'video')) ? props.layer.src : undefined)
 const blockDescription = computed(() => props.phase ? `${blockLabel.value} · ${props.phase.start.toFixed(2)}–${props.phase.end.toFixed(2)}s` : blockLabel.value)
 const foreground = computed(() => props.phase?.kind === 'hold' ? 'var(--ui-text)' : '#ffffff')
@@ -239,16 +239,16 @@ onBeforeUnmount(() => {
 <template>
   <UPopover v-model:open="open" :content="{ side: 'top', align: selectedDirection === 'in' ? 'start' : 'end', sideOffset: 8 }">
     <UButton
-      :aria-label="triggerLabel ? `${triggerLabel} for ${layer.name}` : phase ? `Edit ${blockDescription} for ${layer.name}` : isAudio ? `Edit audio for ${layer.name}` : isKeyframe ? `Edit ${selectedLabel} for ${layer.name}` : `Edit ${directionLabel} animation for ${layer.name}: ${selectedLabel}`"
+      :aria-label="triggerLabel ? `${triggerLabel} for ${layer.name}` : stillHold ? `Edit timing for ${layer.name} · ${blockDescription}` : phase ? `Edit ${blockDescription} for ${layer.name}` : isAudio ? `Edit audio for ${layer.name}` : isKeyframe ? `Edit ${selectedLabel} for ${layer.name}` : `Edit ${directionLabel} animation for ${layer.name}: ${selectedLabel}`"
       :title="triggerLabel || (phase && phase.kind !== 'hold' && phase.kind !== 'audio' ? `${blockDescription} · Drag left or right to move; click to edit` : blockDescription)"
       :aria-expanded="open"
       color="neutral"
       :variant="triggerLabel ? 'outline' : 'ghost'"
       size="xs"
       :disabled="!!triggerLabel && !editable"
-      class="@container h-full min-h-0 w-full min-w-0 justify-start gap-1 overflow-hidden rounded-lg text-[11px] font-medium hover:bg-white/20 cursor-grab active:cursor-grabbing"
+      class="@container h-full min-h-0 w-full min-w-0 justify-start gap-1 overflow-hidden rounded-lg text-[11px] font-medium cursor-grab active:cursor-grabbing"
       :style="{ color: triggerLabel ? 'var(--ui-text)' : foreground }"
-      :class="[compact ? 'justify-center px-0' : 'px-2', triggerLabel && 'w-auto cursor-pointer py-1']"
+      :class="[stillHold ? 'hover:bg-transparent' : 'hover:bg-white/20', compact ? 'justify-center px-0' : 'px-2', triggerLabel && 'w-auto cursor-pointer py-1']"
       @mousedown.stop="emit('dragStart', $event)"
       @keydown="emit('moveKey', $event)"
       @click.stop="focusAnimation"
@@ -262,8 +262,8 @@ onBeforeUnmount(() => {
         draggable="false"
         class="pointer-events-none hidden h-5 w-8 shrink-0 rounded-sm object-cover @[100px]:block"
       >
-      <UIcon :name="`i-lucide-${stillHold ? 'pause' : isAudio ? 'volume-2' : isKeyframe ? 'diamond' : iconFor(selectedId)}`" class="size-3 shrink-0" />
-      <span v-if="!compact" class="truncate">{{ triggerLabel || blockLabel.replace(/^(Entry|Exit|Motion) · /, '') }}</span>
+      <UIcon v-if="!stillHold || triggerLabel" :name="`i-lucide-${isAudio ? 'volume-2' : isKeyframe ? 'diamond' : iconFor(selectedId)}`" class="size-3 shrink-0" />
+      <span v-if="!compact && (!stillHold || triggerLabel)" class="truncate">{{ triggerLabel || blockLabel.replace(/^(Entry|Exit|Motion) · /, '') }}</span>
     </UButton>
     <template #content>
       <section
@@ -283,7 +283,7 @@ onBeforeUnmount(() => {
               {{ blockDescription }}
             </p>
             <p v-if="isMiddle" class="mt-1 text-xs text-muted">
-              Hold keeps the layer visible between animations. Use Add exit at the end of its timeline to animate it out.
+              Choose an effect to animate the layer during this interval.
             </p>
             <p v-else-if="addAtEnd" class="mt-1 text-xs text-muted">
               Choose an exit effect, then drag its timeline block to adjust the timing.

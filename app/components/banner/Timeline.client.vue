@@ -1264,7 +1264,8 @@ onUnmounted(() => {
                 >
                   <!-- Full presence bar -->
                   <div
-                    class="absolute inset-0 rounded-lg cursor-grab active:cursor-grabbing"
+                    class="absolute inset-x-0 rounded-sm cursor-grab active:cursor-grabbing"
+                    :class="layer.type === 'audio' || layer.type === 'video' ? 'inset-y-0' : 'inset-y-1'"
                     :title="`Drag to move ${layer.name}`"
                     :style="{
                       backgroundColor: getLayerColor(layer),
@@ -1297,13 +1298,11 @@ onUnmounted(() => {
                     :key="`${phase.start}-${phase.kind}`"
                     class="group/phase absolute top-0 z-10 overflow-visible rounded-lg"
                     :data-animation-phase="phase.kind"
-                    :class="{ 'border-s-[3px]': phase.kind === 'hold' && layer.type !== 'video' }"
                     :style="{
                       left: `${(phase.start - (layer.startTime ?? 0)) * pxPerSec}px`,
                       width: `${(phase.end - phase.start) * pxPerSec}px`,
                       height: layer.type === 'video' && phase.kind !== 'hold' ? '18px' : '100%',
-                      backgroundColor: phase.kind === 'hold' || phase.kind === 'audio' ? 'transparent' : getLayerColor(layer),
-                      borderInlineStartColor: getLayerColor(layer),
+                      backgroundColor: (phase.kind === 'hold' && phase.label === 'Hold') || phase.kind === 'audio' ? 'transparent' : getLayerColor(layer),
                       filter: phase.kind === 'exit' ? 'brightness(0.85)' : undefined
                     }"
                     @click.capture="onPhaseClick"
