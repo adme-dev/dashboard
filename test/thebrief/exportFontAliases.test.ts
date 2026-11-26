@@ -25,3 +25,10 @@ it('uses the explicitly declared first-choice alias at the matching weight', asy
   expect(layer.fontFamily).toBe('Example Font file-face-1')
   expect(result.fonts).toContainEqual(expect.objectContaining({ family: layer.fontFamily, path: './fonts/first.ttf' }))
 })
+
+it('ignores an unused hosted weight only when the requested family has an exact local face', async () => {
+  const html = fontSource().replace('<style>', '<style>@font-face{font-family:"Example Font";font-weight:300;src:url("https://example.invalid/light.ttf") format("truetype")}')
+  const result = await convertTheBriefHtml(html)
+  expect(result.fonts.map(font => font.path)).toEqual(['./fonts/example.ttf'])
+  await expect(convertTheBriefHtml(html.replaceAll('font-family:"Example Font file-face-1","Example Font"', 'font-family:"Example Font"').replace('font-weight:300;src:url("https', 'font-weight:700;src:url("https'))).rejects.toThrow('package-local')
+})

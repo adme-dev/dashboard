@@ -220,3 +220,12 @@ it('validates a bounded inner rotation only for its supported imported shape', (
   Object.assign(layer, { type: 'rect', contentRotation: 361 })
   expect(() => parseTheBriefPackage(input)).toThrow()
 })
+
+it('retains the strip wipe on editable text and holds other text reveal recipes', () => {
+  const input = fixture()
+  const reveal = { type: 'stripWipe', duration: 0.8, ease: 'cubic-bezier(.1,.3,.2,1)' }
+  Object.assign(input.canvasData.custom_300x250.layers[0], { reveal })
+  expect(parseTheBriefPackage(input).canvasData.custom_300x250.layers[0]).toMatchObject({ type: 'text', text: 'Hello', reveal })
+  reveal.type = 'tvExpand'
+  expect(() => parseTheBriefPackage(input)).toThrow('Reveal requires')
+})

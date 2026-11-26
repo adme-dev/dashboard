@@ -123,7 +123,10 @@ function fontManifest(document, warnings) {
     if (!['normal', 'italic', 'oblique'].includes(fontStyle)) throw new Error('Unsupported custom font style')
     const match = /^url\(["']?([^"')]+)["']?\)\s+format\(["'](truetype|opentype|woff2?)["']\)$/.exec(css.getPropertyValue('src').trim())
     if (!match) throw new Error('Unsupported custom font source')
-    return { family, weight, style: fontStyle, format: match[2], path: localAsset(match[1]) }
+    const face = { family, weight, style: fontStyle, format: match[2] }
+    // A legacy export can declare a hosted face even when every painted run
+    // uses a different, bundled weight. Never fetch the source URL.
+    return /^https:\/\//i.test(match[1]) ? { ...face, hosted: true } : { ...face, path: localAsset(match[1]) }
   })
   if (fonts.length) warnings.push('Custom fonts require managed upload before studio fidelity review')
   for (const link of document.querySelectorAll('link[rel="stylesheet"][href]')) {
@@ -700,7 +703,7 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {}, reviewe
       }
       warnings.push('Scene fade-ins retain composited slide groups and overlapping source holds; review every transition before export')
     }
-    const fonts = fontManifest(document, warnings)
+    const declaredFonts = fontManifest(document, warnings)
     const externalFontStylesheets = [...document.querySelectorAll('link[rel="stylesheet"][href]')].map(link => link.getAttribute('href')).filter(href => /^https:\/\/fonts\.googleapis\.com\//i.test(href))
     if (source.hasClickTag || document.querySelector('a[href], [onclick]')) warnings.push('Click destinations are not migrated by this pilot')
     const layers = []
@@ -1107,6 +1110,7 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {}, reviewe
             }
           }
         }
+        if (layerBase.reveal && (layerBase.reveal.type !== 'stripWipe' || rows.length !== 1 || rotation)) throw new Error('Text reveal requires one unrotated source row')
         if (layerBase.textTilt && rows.length !== 1) throw new Error('3D text entrance requires one source row')
         if (rotation) {
           layerBase.rotation = rotation
@@ -1206,7 +1210,7 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {}, reviewe
           const lineHeight = /^\d*\.?\d+$/.test(rowCss.lineHeight) ? Number(rowCss.lineHeight) : px(rowCss.lineHeight) / fontSize
           const height = lineBoxFontSize * lineHeight
           if (!Number.isFinite(height)) throw new Error('Unsupported text line height')
-          if (row.textContent.trim()) layers.push({ ...layerBase, linkId: `source:${sourceId}:row:${rowIndex}`, id: id++, type: 'text', name: row.textContent.trim().slice(0, 60), y, h: height, ...(layerBase.transformOrigin ? { transformOrigin: { x: layerBase.transformOrigin.x, y: layerBase.transformOrigin.y - (y - layerBase.y) } } : {}), text: row.textContent.replace(/^[ \t\r\n]+|[ \t\r\n]+$/g, ''), ...(textRuns.length ? { text: row.textContent, textRuns } : {}), ...(wordPop ? { wordPop: wordPop.rows[rowIndex] } : {}), textTransform, fontFamily: textCss.fontFamily.replace(/["']/g, ''), fontStyle: textCss.fontStyle === 'italic' ? 'italic' : 'normal', fontSize, lineBoxFontSize, textAntialias: style(document.documentElement).getPropertyValue('-webkit-font-smoothing') === 'antialiased', fontWeight: Number(textCss.fontWeight) || 400, lineHeight, color: paintedCss.color || textCss.color || '#fff', ...(textStroke ? { textStroke, textPaintOrder } : {}), ...(textShadow ? { textShadow } : {}), textAlign: textCss.textAlign || 'left', letterSpacing: !textCss.letterSpacing || textCss.letterSpacing === 'normal' ? '0px' : textCss.letterSpacing })
+          if (row.textContent.trim()) layers.push({ ...layerBase, linkId: `source:${sourceId}:row:${rowIndex}`, id: id++, type: 'text', name: row.textContent.trim().slice(0, 60), y, h: layerBase.reveal ? layerBase.h : height, ...(layerBase.transformOrigin ? { transformOrigin: { x: layerBase.transformOrigin.x, y: layerBase.transformOrigin.y - (y - layerBase.y) } } : {}), text: row.textContent.replace(/^[ \t\r\n]+|[ \t\r\n]+$/g, ''), ...(textRuns.length ? { text: row.textContent, textRuns } : {}), ...(wordPop ? { wordPop: wordPop.rows[rowIndex] } : {}), textTransform, fontFamily: textCss.fontFamily.replace(/["']/g, ''), fontStyle: textCss.fontStyle === 'italic' ? 'italic' : 'normal', fontSize, lineBoxFontSize, textAntialias: style(document.documentElement).getPropertyValue('-webkit-font-smoothing') === 'antialiased', fontWeight: Number(textCss.fontWeight) || 400, lineHeight, color: paintedCss.color || textCss.color || '#fff', ...(textStroke ? { textStroke, textPaintOrder } : {}), ...(textShadow ? { textShadow } : {}), textAlign: textCss.textAlign || 'left', letterSpacing: !textCss.letterSpacing || textCss.letterSpacing === 'normal' ? '0px' : textCss.letterSpacing })
           y += height
           rowHeights.push(height)
         }
@@ -1562,7 +1566,7 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {}, reviewe
     for (const layer of layers) for (const face of [layer, ...layer.textRuns || []]) {
       if (!face.fontFamily?.includes(',')) continue
       const names = face.fontFamily.split(',').map(value => value.trim().replace(/^["']|["']$/g, ''))
-      const declared = fonts.filter(font => names.includes(font.family) && font.weight === (face.fontWeight || 400) && font.style === (face.fontStyle || 'normal'))
+      const declared = declaredFonts.filter(font => names.includes(font.family) && font.weight === (face.fontWeight || 400) && font.style === (face.fontStyle || 'normal'))
       // TheBrief can bundle both the generated first-choice name and its fallback.
       // Keep the exact source face when declared, including exports with different font files.
       const [alias, fallback] = names
@@ -1572,6 +1576,21 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {}, reviewe
         throw new Error(`${layer.name}: ambiguous export font alias. Keep the original ZIP for the import team to check the typeface; no artwork changes are needed.`)
       }
       face.fontFamily = preferred.length ? alias : fallback
+    }
+    const fonts = declaredFonts.filter(font => !font.hosted)
+    for (const remote of declaredFonts.filter(font => font.hosted)) {
+      for (const layer of layers) for (const run of [layer, ...layer.textRuns || []]) {
+        const family = (run.fontFamily || layer.fontFamily || '').toLowerCase()
+        if (family !== remote.family.toLowerCase()) continue
+        const weight = run.fontWeight || layer.fontWeight || 400
+        const style = run.fontStyle || layer.fontStyle || 'normal'
+        // Without an exact local match the browser can choose a nearby remote
+        // weight. A competing remote declaration for the same face is ambiguous.
+        if ((remote.weight === weight && remote.style === style) || !fonts.some(font =>
+          font.family.toLowerCase() === family && font.weight === weight && font.style === style)) {
+          throw new Error('Only package-local assets are supported for a referenced custom font')
+        }
+      }
     }
     if (Object.keys(reviewedRowLines).some(id => !reviewedElements.has(id))) throw new Error('Reviewed row counts include an element without stacked wrapping')
     return { schemaVersion: 1, adapter: slides.length === 1 ? 'thebrief-css-single-slide-pilot' : 'thebrief-css-hard-cut-slides', fidelityVerified: false, fonts, externalFontStylesheets, imageTransforms, audioTransforms, source: { designHash: source.designHash || null, width: source.width, height: source.height, duration, loopCount: source.loopCount, elementCount: elements.length }, videoFrames, canvasData: { [`custom_${source.width}x${source.height}`]: { slides: slides.map((slide, index) => ({ id: `source-slide:${slide.id}`, name: `Slide ${index + 1}`, duration: slide.end - slide.start })), playback: { duration, loopCount: source.loopCount }, layers, bgColor: background } }, sourceElements, warnings }
