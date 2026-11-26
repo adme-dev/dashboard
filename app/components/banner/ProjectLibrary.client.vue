@@ -362,12 +362,44 @@ const statusItems = [
   { label: 'Published', value: 'published' }
 ]
 
+const sourceDateTarget = ref<BannerProjectSummary | null>(null)
+const sourceDateValue = ref('')
+const sourceDateBusy = ref(false)
+const sourceDateError = ref('')
+
+function openSourceDate(project: BannerProjectSummary) {
+  sourceDateValue.value = theBriefCreatedDate(project.tags || []) || ''
+  sourceDateError.value = ''
+  sourceDateTarget.value = project
+}
+
+async function saveSourceDate() {
+  const project = sourceDateTarget.value
+  if (!project || !sourceDateValue.value || sourceDateBusy.value) return
+  sourceDateBusy.value = true
+  sourceDateError.value = ''
+  try {
+    await apiFetch(`/api/agency/banner-studio/projects/${project.id}/thebrief-created-date`, {
+      method: 'PATCH',
+      body: { createdDate: sourceDateValue.value, expectedDate: theBriefCreatedDate(project.tags || []) }
+    })
+    sourceDateTarget.value = null
+    toast.add({ title: 'Original creation date saved', color: 'success' })
+    await refresh()
+  } catch (error) {
+    sourceDateError.value = apiErrorDescription(error, 'Could not save the original creation date')
+  } finally {
+    sourceDateBusy.value = false
+  }
+}
+
 const dropdownItems = (p: BannerProjectSummary) => [
   [
     { label: 'Edit', icon: 'i-lucide-pencil', onSelect: () => editProject(p) },
     { label: 'Share', icon: 'i-lucide-share-2', onSelect: () => { shareTarget.value = p } },
     { label: 'Move to folder', icon: 'i-lucide-folder-input', onSelect: () => moveProject(p) },
     { label: 'Rename', icon: 'i-lucide-pencil-line', onSelect: () => renameProject(p) },
+    ...(p.tags?.includes('source:thebrief') ? [{ label: 'Set original creation date', icon: 'i-lucide-calendar', onSelect: () => openSourceDate(p) }] : []),
     { label: 'Duplicate', icon: 'i-lucide-copy', onSelect: () => duplicateProject(p) }
   ],
   [
@@ -906,6 +938,23 @@ function clearFilters() {
             Save name
           </UButton>
         </div>
+      </template>
+    </UModal>
+    <UModal
+      :open="!!sourceDateTarget"
+      title="Original creation date"
+      :description="sourceDateTarget?.name"
+      @update:open="value => { if (!value && !sourceDateBusy) sourceDateTarget = null }"
+    >
+      <template #body>
+        <UFormField label="Created in The Brief" help="Use the Created on date in the source preview’s Info panel.">
+          <UInput v-model="sourceDateValue" type="date" aria-label="Created in The Brief" :disabled="sourceDateBusy" />
+        </UFormField>
+        <UAlert v-if="sourceDateError" title="Could not save date" :description="sourceDateError" color="error" class="mt-3" />
+      </template>
+      <template #footer>
+        <UButton color="neutral" variant="ghost" :disabled="sourceDateBusy" @click="sourceDateTarget = null">Cancel</UButton>
+        <UButton :loading="sourceDateBusy" :disabled="!sourceDateValue" @click="saveSourceDate">Save date</UButton>
       </template>
     </UModal>
     <UModal
