@@ -80,6 +80,7 @@ watch(selectedLayer, (layer, previous) => {
       <div class="flex-1 min-h-0 overflow-y-auto p-3 space-y-3 inspector-content">
         <!-- Properties tab -->
         <template v-if="activeTab === 'properties'">
+          <BannerBackgroundImageReplace v-if="selectedLayer.type === 'bg'" :layer="selectedLayer" />
           <BannerInspectorPosition v-if="selectedLayer.type !== 'audio'" />
 
           <BannerInspectorAlignment v-if="selectedLayer.type !== 'audio'" />

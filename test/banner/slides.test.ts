@@ -157,3 +157,13 @@ it('keeps scene ownership and frame values consistent through a long sequence of
     }
   }
 })
+
+it('shows the visible photo on slide two when its stored opacity starts at zero', () => {
+  const photo = layer(4, 1.5, 3, { opacity: 0, slideId: 'photo', keyframes: { opacity: [
+    { time: 1.5, value: 0 }, { time: 1.6, value: 1 }, { time: 2.9, value: 1 }, { time: 3, value: 0 }
+  ] } })
+  const board = { layers: [photo], slides: [{ id: 'logo', name: 'Logo', duration: 1.5 }, { id: 'photo', name: 'Photo', duration: 1.5 }] }
+  expect(slidePoster(board, 'photo').layers[0]).toMatchObject({ id: 4, opacity: 1, keyframes: undefined })
+  expect(slidePoster(board, 'logo').layers).toHaveLength(0)
+  expect(photo.opacity).toBe(0)
+})

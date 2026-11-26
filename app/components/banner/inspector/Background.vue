@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import type { BannerAsset, AnimInType } from '~/types/banner-studio'
 import { ANIM_IN, EASES, EASE_GROUPS, easeSvgPath } from '~/utils/banner-constants'
+import { layerSlideId } from '~/utils/banner-slides'
 import { createBannerUploadSession } from '~/utils/bannerUpload'
 
-const { state, activeLayers, updateLayer, addBgLayer, removeLayer } = useBannerStudio()
+const { state, activeLayers, selectedLayer, currentSlide, updateLayer, addBgLayer, removeLayer } = useBannerStudio()
 const toast = useToast()
 const apiFetch = $fetch as <T = unknown>(request: string, options?: {
   method?: string
@@ -37,6 +38,14 @@ const activeBg = computed(() => {
   }
   return bgLayers.value[0] ?? null
 })
+
+watch([() => state.activeKey, () => currentSlide.value?.id, () => selectedLayer.value?.id], () => {
+  const board = state.sets[state.activeKey]
+  if (!board) return
+  const layer = selectedLayer.value?.type === 'bg' ? selectedLayer.value
+    : bgLayers.value.find(item => currentSlide.value && layerSlideId(board, item) === currentSlide.value.id)
+  activeBgId.value = layer?.id ?? null
+}, { immediate: true })
 
 // Keep activeBgId in sync when bg layers change
 watch(bgLayers, (bgs) => {
@@ -210,6 +219,7 @@ function removeBgImage() {
 
 <template>
   <div class="space-y-4">
+    <BannerBackgroundImageReplace v-if="activeBg" :layer="activeBg" />
     <!-- Background Color (artboard-level) -->
     <details open class="bs-section group">
       <summary class="flex items-center gap-1.5 cursor-pointer select-none py-1.5 -mx-1 px-1 rounded hover:bg-accented">

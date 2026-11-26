@@ -1,5 +1,7 @@
 import type { ArtboardState, BannerSlide, Layer } from '~/types/banner-studio'
 
+import { bannerPosterOpacity } from '../../shared/bannerPosterTime'
+
 export const MIN_SLIDE_DURATION = 0.1
 export const MAX_SEQUENCE_DURATION = 300
 export const MAX_SLIDES = 50
@@ -54,7 +56,17 @@ export function layerSlideId(board: ArtboardState, layer: Layer): string | undef
 }
 
 export function slidePoster(board: ArtboardState, slideId: string): ArtboardState {
-  return { bgColor: board.bgColor, layers: board.layers.filter(layer => layer.type !== 'audio' && !layer.slideTransitionFor && (!layerSlideId(board, layer) || layerSlideId(board, layer) === slideId)).map(layer => ({ ...layer, clipToPresence: false, animIn: 'none', animOut: 'none', keyframes: undefined })) }
+  const slide = slideRanges(resolveSlides(board)).find(slide => slide.id === slideId)
+  const time = slide ? (slide.start + slide.end) / 2 : 0
+  const layers = board.layers.filter(layer => {
+    const owner = layerSlideId(board, layer)
+    return layer.type !== 'audio' && !layer.slideTransitionFor && (!owner || owner === slideId)
+      && (!layer.clipToPresence || (time >= layer.startTime && time < layer.endTime))
+  }).map(layer => ({
+    ...layer, opacity: bannerPosterOpacity(layer, time), clipToPresence: false,
+    animIn: 'none' as const, animOut: 'none' as const, keyframes: undefined
+  }))
+  return { bgColor: board.bgColor, layers }
 }
 
 export type SlideEdit

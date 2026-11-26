@@ -159,3 +159,21 @@ it('pastes an editable group across jobs with independent IDs, masks, paint orde
   studio.redo()
   expect(studio.activeLayers.value).toHaveLength(3)
 })
+
+it('replaces a legacy photo background across matching layouts in one undo while preserving layout-specific crop and timing', () => {
+  vi.stubGlobal('useBannerRealtime', () => ({ isLayerLockedByOther: () => false, sendLayerUpdate: vi.fn() }))
+  for (const board of Object.values(studio.state.sets)) {
+    const layer = board.layers[1]!
+    Object.assign(layer, { type: 'bg', name: 'Vehicle photo', srcType: 'image', src: 'old.jpg', focalY: layer.id })
+  }
+  const before = studio.getCanvasData()
+  expect(studio.replaceBackgroundImage(2, 'new.jpg', true)).toBe(2)
+  const layers = Object.values(studio.state.sets).map(board => board.layers[1]!)
+  expect(layers.map(layer => [layer.src, layer.focalY, layer.startTime])).toEqual([['new.jpg', 2, 6], ['new.jpg', 4, 6]])
+  studio.undo()
+  expect(studio.getCanvasData()).toEqual(before)
+  studio.state.sets.custom_1080x1920!.layers.pop()
+  expect(() => studio.replaceBackgroundImage(2, 'missing.jpg', true)).toThrow('matching background')
+  expect(studio.activeLayers.value[1]!.src).toBe('old.jpg')
+  expect(studio.replaceBackgroundImage(2, 'single.jpg', false)).toBe(1)
+})
