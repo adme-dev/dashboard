@@ -1,3 +1,4 @@
+import { resolveSlides, slideRanges } from '~~/app/utils/banner-slides'
 import { estimateBannerDuration } from '~~/app/utils/banner-render-runtime'
 import { bannerPosterTime } from '~~/shared/bannerPosterTime'
 import { createHash } from 'node:crypto'
@@ -12,7 +13,7 @@ import { enforceRateLimit } from '~~/server/utils/rateLimit'
 import { loadPublicBannerShare } from '~~/server/utils/banner/publicShare'
 
 /** Recheck the live link before reading even a previously cached artwork image. */
-export async function bannerShareImage(event: H3Event, load = () => loadPublicBannerShare(event), gallery = false): Promise<Response> {
+export async function bannerShareImage(event: H3Event, load = () => loadPublicBannerShare(event), gallery = false, slideExport?: { index: number, scale: number, quality: number }): Promise<Response> {
   const { project, fonts } = await load()
   const canvas: Record<string, ArtboardState> = typeof project.canvasData === 'string'
     ? JSON.parse(project.canvasData)
@@ -27,41 +28,43 @@ export async function bannerShareImage(event: H3Event, load = () => loadPublicBa
   if (!key || !format || !board || (gallery && !board.layers?.length) || format.w > 4000 || format.h > 4000) {
     throw createError({ statusCode: 404, statusMessage: 'Artwork preview unavailable' })
   }
+  const slide = slideExport && slideRanges(resolveSlides(board))[slideExport.index]
+  if (slideExport && !slide) throw createError({ statusCode: 400, statusMessage: 'Slide unavailable in the selected size' })
   const env = event.context.cloudflare?.env
   const bucket = env?.MEDIA_BUCKET
   if (!bucket?.get || !bucket.put) throw createError({ statusCode: 503, statusMessage: 'Artwork preview storage unavailable' })
-  const revision = createHash('sha256').update(JSON.stringify({ key, canvas: board, fonts, version: 5 })).digest('hex')
+  const revision = createHash('sha256').update(JSON.stringify({ key, canvas: board, fonts, slideExport, version: 5 })).digest('hex')
   const proofKey = `banner-share-previews/${project.id}/${revision}.jpg`
-  const imageKey = gallery ? `banner-gallery-posters/${project.id}/${revision}.jpg` : proofKey
+  const imageKey = slideExport ? `banner-slide-images/${project.id}/${revision}.jpg` : gallery ? `banner-gallery-posters/${project.id}/${revision}.jpg` : proofKey
   const headers = { 'Content-Type': 'image/jpeg', 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer' }
   // Reuse a finished proof if the gallery does not have its own smaller still yet.
   const cached = await bucket.get(imageKey) || (gallery && await bucket.get(proofKey))
   if (cached) return new Response(cached.body, { headers })
   const renderer = env?.BANNER_SHARE_IMAGES as unknown as { fetch: (request: Request) => Promise<Response> } | undefined
   if (!renderer?.fetch) throw createError({ statusCode: 503, statusMessage: 'Artwork preview rendering unavailable' })
-  await enforceRateLimit(event, { key: `banner-share-image:${project.id}`, limit: 3, windowSeconds: 60, failureMode: 'closed' })
+  await enforceRateLimit(event, { key: `${slideExport ? 'banner-slide-export' : 'banner-share-image'}:${project.id}`, limit: slideExport ? 150 : 3, windowSeconds: 60, failureMode: 'closed' })
   const customFonts: ExportCustomFont[] = fonts.map(font => ({
     id: font.id, family: font.name, url: font.url,
     weight: Number(font.tags.find(tag => tag.startsWith('weight:'))?.slice(7) || 400),
     format: font.tags.find(tag => tag.startsWith('format:'))?.slice(7) || 'woff2'
   }))
-  const time = bannerPosterTime(board.playback?.duration || estimateBannerDuration(board.layers), board.posterTime, board.layers)
-  const scale = Math.min(1, (gallery ? 480 : 1200) / Math.max(format.w, format.h))
+  const time = slide ? (slide.start + slide.end) / 2 : bannerPosterTime(board.playback?.duration || estimateBannerDuration(board.layers), board.posterTime, board.layers)
+  const scale = slideExport?.scale ?? Math.min(1, (gallery ? 480 : 1200) / Math.max(format.w, format.h))
   const width = Math.max(1, Math.round(format.w * scale)), height = Math.max(1, Math.round(format.h * scale))
   const html = buildBannerHTML(key, board.layers.filter(layer => layer.type !== 'audio'), {
     pausedAt: time, playback: board.playback, bgColor: board.bgColor, customFonts,
     baseUrl: 'https://app.xeroflow.io'
   }).replace('</head>', `<style>body{width:${width}px;height:${height}px;overflow:hidden}.ad{transform:scale(${scale});transform-origin:top left}</style></head>`)
   if (html.length > 2 * 1024 * 1024) throw createError({ statusCode: 413, statusMessage: 'Artwork preview is too large' })
-  const response = await renderer.fetch(new Request('https://banner-share-images/screenshot', {
+  const response = await renderer.fetch(new Request(slideExport ? 'https://banner-share-images/export-slide' : 'https://banner-share-images/screenshot', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ html, width, height, time })
+    body: JSON.stringify({ html, width, height, time, quality: slideExport?.quality })
   }))
   if (!response.ok || !response.headers.get('content-type')?.startsWith('image/jpeg')) {
     throw createError({ statusCode: 503, statusMessage: 'Artwork preview could not be rendered' })
   }
   const image = await response.arrayBuffer()
-  if (image.byteLength > 3 * 1024 * 1024) throw createError({ statusCode: 503, statusMessage: 'Artwork preview could not be stored' })
+  if (image.byteLength > (slideExport ? 20 : 3) * 1024 * 1024) throw createError({ statusCode: 503, statusMessage: 'Artwork preview could not be stored' })
   await bucket.put(imageKey, image, { httpMetadata: { contentType: 'image/jpeg' } })
   return new Response(image, { headers })
 }

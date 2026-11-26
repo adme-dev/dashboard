@@ -152,3 +152,25 @@ it('reuses an existing proof on a gallery miss and a stored gallery JPEG on the 
   expect(mocks.get).toHaveBeenCalledTimes(3)
   expect(mocks.screenshot).not.toHaveBeenCalled()
 })
+
+it('exports the second slide of a portrait set at its own midpoint, scale and JPEG quality', async () => {
+  mocks.load.mockResolvedValueOnce({ project: { id: 'project', canvasData: {
+    custom_1200x1500: { layers: [], slides: [{ id: 'a', name: 'Logo', duration: 1 }, { id: 'b', name: 'Offer', duration: 3 }], playback: { duration: 4 } }
+  } }, fonts: [] })
+  const response = await bannerShareImage({ ...event, query: { formatKey: 'custom_1200x1500' } } as never, mocks.load, false, { index: 1, scale: 2, quality: 95 })
+  expect(response.status).toBe(200)
+  const [, options] = mocks.screenshot.mock.calls[0]!
+  expect(options.viewport).toMatchObject({ width: 2400, height: 3000 })
+  expect(options.screenshotOptions).toEqual({ type: 'jpeg', quality: 95 })
+  expect(options.html).toContain('window.__engagrFrame.seek(2.5)')
+  expect(mocks.put.mock.calls[0]![0]).toMatch(/^banner-slide-images\//)
+})
+
+it('plans separately named JPEGs for selected slides in all three PMax sizes', async () => {
+  const { planSlideDownloads } = await import('../../app/utils/banner-slide-downloads')
+  const sizes = ['custom_1200x628', 'custom_1200x1200', 'custom_1200x1500']
+  const boards = Object.fromEntries(sizes.map(size => [size, { layers: [], slides: Array.from({ length: 6 }, (_, i) => ({ id: String(i), name: 'Slide', duration: 2 })) }]))
+  const files = planSlideDownloads(boards, sizes, new Set([0, 1, 2, 3, 4, 5]))
+  expect(new Set(files.map(file => file.folder + '/' + file.name)).size).toBe(18)
+  expect(planSlideDownloads(boards, sizes.slice(-1), new Set([4]))).toEqual([{ key: sizes[2], index: 4, folder: '1200x1500', name: 'Slide-5.jpg' }])
+})

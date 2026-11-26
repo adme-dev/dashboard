@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import JSZip from 'jszip'
+import { planSlideDownloads } from '~/utils/banner-slide-downloads'
 import { resolveSlides, slideAtTime, slidePoster } from '~/utils/banner-slides'
 import { apiErrorDescription, apiErrorStatus } from '~/utils/apiError'
-import { FORMATS, PLATFORM_META } from '~/utils/banner-constants'
+import { FORMATS, PLATFORM_META, resolveBannerFormat } from '~/utils/banner-constants'
 import { buildBannerHTML } from '~/utils/banner-html-builder'
 import type { Layer, ImageExportResult } from '~/types/banner-studio'
 import { exportFormatLabel } from '~/utils/bannerExportPoll'
@@ -14,7 +15,7 @@ import { bannerRenderSuggestions, snapshotBannerSocialSuggestion } from '~/utils
 const props = defineProps<{ open: boolean, initialType?: 'html5' | 'png' | 'jpg' | 'gif' | 'mp4', socialSuggestion?: { caption?: string, suggestedSchedule?: string } }>()
 const emit = defineEmits<{ 'update:open': [value: boolean] }>()
 
-const { state, activeLayers, activeSlides } = useBannerStudio()
+const { state, activeLayers, activeSlides, saveProject } = useBannerStudio()
 const { estimateSize } = useBannerFileSize()
 const { getExportCustomFonts } = useBannerFonts(() => state.project?.clientId ?? null)
 const toast = useToast()
@@ -28,6 +29,17 @@ const apiFetch = $fetch as <T = unknown>(request: string, options?: {
 const selected = ref<Set<string>>(new Set(state.setKeys))
 const imageSlideIndex = ref(String(Math.max(0, activeSlides.value.findIndex(slide => slide.id === slideAtTime(state.sets[state.activeKey], state.currentTime)?.id))))
 const imageSlideOptions = computed(() => activeSlides.value.map((slide, index) => ({ label: `${index + 1} · ${slide.name}`, value: String(index) })))
+const jpegSlides = computed(() => {
+  const layouts = state.setKeys.map(key => resolveSlides(state.sets[key]))
+  return layouts.reduce((longest, slides) => slides.length > longest.length ? slides : longest, activeSlides.value)
+})
+const jpegSelection = ref(new Set(jpegSlides.value.map((_, index) => index)))
+const jpegFiles = computed(() => planSlideDownloads(state.sets, [...selected.value], jpegSelection.value))
+function selectJpegSlide(index: number, checked: boolean) {
+  if (checked) jpegSelection.value.add(index)
+  else jpegSelection.value.delete(index)
+}
+
 const isExporting = ref(false)
 const exportProgress = ref(0)
 const currentJobs = ref<ExportJob[]>([])
@@ -39,6 +51,7 @@ const currentVideoBlocked = computed(() => videoJobsUnavailable.value || videoPe
 watch(() => props.open, (open) => {
   if (open) {
     selected.value = new Set(state.setKeys)
+    jpegSelection.value = new Set(jpegSlides.value.map((_, index) => index))
     imageSlideIndex.value = String(Math.max(0, activeSlides.value.findIndex(slide => slide.id === slideAtTime(state.sets[state.activeKey], state.currentTime)?.id)))
     if (props.initialType) exportType.value = props.initialType
   }
@@ -76,7 +89,7 @@ const estimatedVideoFrames = computed(() => Math.ceil(state.duration * videoFps.
 const platformGroups = computed(() => {
   const groups: Record<string, string[]> = {}
   state.setKeys.forEach((key) => {
-    const fmt = FORMATS[key]
+    const fmt = resolveBannerFormat(key)
     if (!fmt) return
     const platform = isVideoExport.value && ['Facebook', 'Instagram'].includes(fmt.platform) ? 'Social formats' : fmt.platform
     if (!groups[platform]) groups[platform] = []
@@ -149,7 +162,7 @@ function downloadBlob(blob: Blob, filename: string) {
   a.href = url
   a.download = filename
   a.click()
-  URL.revokeObjectURL(url)
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
 function downloadHTML(html: string, filename: string) {
@@ -187,7 +200,7 @@ async function exportZip() {
 
     for (let i = 0; i < keys.length; i++) {
       const key = keys[i]
-      const fmt = FORMATS[key]
+      const fmt = resolveBannerFormat(key)
       if (!fmt) continue
       const layers = getScaledLayers(key)
       const html = buildExportHTML(key, layers)
@@ -208,6 +221,26 @@ async function exportZip() {
   }
 }
 
+async function downloadJpegSlides(projectId: string) {
+  const files = jpegFiles.value
+  if (!files.length) throw new Error('Choose at least one slide and size.')
+  const projectName = (state.project?.name || 'Banner').replace(/[^\p{L}\p{N} ._-]+/gu, '-')
+  const scale = imageQuality.value
+  const quality = jpgQuality.value
+  if (state.isDirty || state.isSaving) await saveProject()
+  const zip = new JSZip()
+  for (const [position, file] of files.entries()) {
+    const query = new URLSearchParams({ formatKey: file.key, index: String(file.index), scale: String(scale), quality: String(quality) })
+    const blob = await $fetch<Blob>(`/api/agency/banner-studio/projects/${projectId}/slide-image?${query}`, { responseType: 'blob' })
+    if (blob.type !== 'image/jpeg' || !blob.size) throw new Error(`Could not download ${file.folder} slide ${file.index + 1}.`)
+    if (files.length === 1) downloadBlob(blob, `${projectName}-${file.folder}-${file.name}`)
+    else zip.file(`${file.folder}/${file.name}`, await blob.arrayBuffer())
+    exportProgress.value = Math.round(95 * (position + 1) / files.length)
+  }
+  if (files.length > 1) downloadBlob(await zip.generateAsync({ type: 'blob' }), `${projectName}-JPG.zip`)
+  toast.add({ title: 'Download ready', description: `${files.length} JPEG ${files.length === 1 ? 'file' : 'files'}`, color: 'success' })
+}
+
 async function exportImages() {
   const keys = [...selected.value]
   if (!keys.length) return
@@ -221,9 +254,14 @@ async function exportImages() {
   exportProgress.value = 0
 
   try {
+    if (exportType.value === 'jpg') {
+      await downloadJpegSlides(state.project.id)
+      emit('update:open', false)
+      return
+    }
     // Build HTML for each selected format (static, no animations)
     const formats = keys.map((key) => {
-      const fmt = FORMATS[key]
+      const fmt = resolveBannerFormat(key)
       if (!fmt) throw new Error(`Unknown canvas size: ${key}. Add a supported size before exporting.`)
       const layers = getScaledLayers(key)
       const html = buildExportHTML(key, layers)
@@ -240,7 +278,6 @@ async function exportImages() {
         formats,
         quality: imageQuality.value,
         format: exportType.value,
-        jpgQuality: exportType.value === 'jpg' ? jpgQuality.value : undefined
       }
     })
 
@@ -253,7 +290,7 @@ async function exportImages() {
       // Multiple images — download as ZIP
       const zip = new JSZip()
       const projectName = state.project?.name || 'banners'
-      const ext = exportType.value === 'jpg' ? 'jpg' : 'png'
+      const ext = 'png'
 
       for (const result of results) {
         const fmt = FORMATS[result.formatKey]
@@ -303,7 +340,7 @@ async function exportGifs() {
   try {
     // Build HTML for each selected format (WITH animations for GSAP)
     const formats = keys.map((key) => {
-      const fmt = FORMATS[key]
+      const fmt = resolveBannerFormat(key)
       if (!fmt) throw new Error(`Unknown canvas size: ${key}. Add a supported size before exporting.`)
       const layers = getScaledLayers(key)
       const html = buildBannerHTML(key, layers, {
@@ -383,7 +420,7 @@ async function exportVideos() {
 
   try {
     const formats = keys.map((key) => {
-      const fmt = FORMATS[key]
+      const fmt = resolveBannerFormat(key)
       if (!fmt) throw new Error(`Unknown canvas size: ${key}. Add a supported size before exporting.`)
       const layers = getScaledLayers(key)
       const html = buildBannerHTML(key, layers, {
@@ -450,6 +487,7 @@ const exportButtonLabel = computed(() => {
   if (isGifExport.value) {
     return `Export ${selected.value.size} as GIF`
   }
+  if (exportType.value === 'jpg') return `Download ${jpegFiles.value.length} JPEG${jpegFiles.value.length === 1 ? '' : 's'}`
   if (isImageExport.value) {
     const qualityLabel = imageQuality.value === 2 ? ' @2x' : ''
     return `Export ${selected.value.size} as ${exportType.value.toUpperCase()}${qualityLabel}`
@@ -494,7 +532,15 @@ const exportButtonLabel = computed(() => {
 
         <!-- Image export options -->
         <div v-if="isImageExport" class="space-y-3 mb-4 p-3 bg-(--ui-bg) rounded-lg">
-          <UFormField v-if="activeSlides.length > 1" label="Slide" help="PNG and JPG export this slide. Animated formats include the full sequence.">
+          <UFormField v-if="exportType === 'jpg' && jpegSlides.length > 1" label="Slides">
+            <UCheckbox label="All slides" :model-value="jpegSelection.size === jpegSlides.length ? true : jpegSelection.size ? 'indeterminate' : false"
+              @update:model-value="jpegSelection = new Set($event === true ? jpegSlides.map((_, index) => index) : [])" />
+            <div class="mt-2 grid grid-cols-2 gap-2 max-h-40 overflow-y-auto">
+              <UCheckbox v-for="(slide, index) in jpegSlides" :key="index" :label="`${index + 1} · ${slide.name}`"
+                :model-value="jpegSelection.has(index)" @update:model-value="selectJpegSlide(index, $event === true)" />
+            </div>
+          </UFormField>
+          <UFormField v-else-if="exportType === 'png' && activeSlides.length > 1" label="Slide">
             <USelect v-model="imageSlideIndex" :items="imageSlideOptions" class="w-full" />
           </UFormField>
           <!-- Resolution -->
@@ -704,7 +750,7 @@ const exportButtonLabel = computed(() => {
             :icon="isVideoExport ? 'i-lucide-video' : isGifExport ? 'i-lucide-film' : isImageExport ? 'i-lucide-image' : 'i-lucide-file-code'"
             variant="outline"
             size="sm"
-            :disabled="isExporting || (isVideoExport && currentVideoBlocked)"
+            :disabled="isExporting || (exportType === 'jpg' && !jpegSelection.size) || (isVideoExport && currentVideoBlocked)"
             @click="exportCurrent"
           />
           <UButton
@@ -712,7 +758,7 @@ const exportButtonLabel = computed(() => {
             :icon="isVideoExport ? 'i-lucide-video' : isGifExport ? 'i-lucide-film' : isImageExport ? 'i-lucide-images' : 'i-lucide-archive'"
             size="sm"
             class="flex-1"
-            :disabled="selected.size === 0 || isExporting || (isVideoExport && videoJobsBlocked)"
+            :disabled="selected.size === 0 || (exportType === 'jpg' && !jpegFiles.length) || isExporting || (isVideoExport && videoJobsBlocked)"
             :loading="isExporting"
             @click="handleExport"
           />
