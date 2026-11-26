@@ -24,3 +24,10 @@ it('checks MotorStack brand access before loading published media', async () => 
   await expect(pageImageCatalog(binding, 'other', 'headers')).rejects.toMatchObject({ statusCode: 403 })
   expect(fetch).not.toHaveBeenCalled()
 })
+
+it('rejects redirects from the catalogue on the Workers runtime', async () => {
+  const fetch = vi.fn(async () => new Response(null, { status: 302, headers: { location: 'https://example.com/other' } }))
+  vi.stubGlobal('fetch', fetch)
+  await expect(pageImageCatalog(binding, 'ldv', 'headers')).rejects.toMatchObject({ statusCode: 502 })
+  expect(fetch).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ redirect: 'manual' }))
+})

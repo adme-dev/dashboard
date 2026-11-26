@@ -40,7 +40,7 @@ export async function readMedia(binding: MediaBinding, input: Selection) {
   const asset = catalog.assets.find(asset => asset.id === input.assetId)
   if (!asset) throw createError({ statusCode: 404, statusMessage: 'MotorStack media is no longer available' })
   const file = await readMotorstackAsset({ listBrands: async () => null, getBrandKit: async () => null, getBrandAsset: () => input.collection
-    ? fetch(asset.previewUrl, { redirect: 'error', signal: AbortSignal.timeout(20000) })
+    ? fetch(asset.previewUrl, { redirect: 'manual', signal: AbortSignal.timeout(20000) })
     : binding.getMediaAsset(input) }, input.brandId, input.assetId, 20 * 1024 * 1024)
   const rasterMimes = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif'])
   if (file.mimeType !== asset.mime && !(rasterMimes.has(file.mimeType) && rasterMimes.has(asset.mime))) throw createError({ statusCode: 502, statusMessage: 'MotorStack media type changed; refresh the library' })

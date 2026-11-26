@@ -12,7 +12,7 @@ type Page = {
 type Collection = 'lifestyle' | 'headers'
 
 async function catalogueJson<T>(path: string, missing: T): Promise<T> {
-  const response = await fetch(origin + '/' + path, { redirect: 'error', signal: AbortSignal.timeout(15000) })
+  const response = await fetch(origin + '/' + path, { redirect: 'manual', signal: AbortSignal.timeout(15000) })
   if (response.status === 404) return missing
   if (!response.ok) throw createError({ statusCode: 502, statusMessage: 'MotorStack image catalogue is unavailable' })
   return response.json() as Promise<T>
