@@ -78,6 +78,14 @@ afterEach(() => {
 })
 
 describe('MotorStack media picker', () => {
+  it('opens the matching project brand when the dealer represents multiple brands', async () => {
+    const { queries } = await mount({ props: { projectBrandContext: ['Brighton Kia January', 'Brighton Auto Group'] } })
+    expect(queries.map(query => query.brandId)).toEqual(['kia'])
+  })
+  it('requests the selected brand and page image collection', async () => {
+    const { queries } = await mount({ props: { initialBrandId: 'gwm', collection: 'headers', imagesOnly: true } })
+    expect(queries).toContainEqual({ brandId: 'gwm', collection: 'headers' })
+  })
   it('uses the known project brand without requesting or displaying the full brand catalogue', async () => {
     const { queries } = await mount({ props: { initialBrandId: 'gwm', initialModel: 'Cannon' } })
     expect(queries).toEqual([{ brandId: 'gwm', model: 'Cannon' }])

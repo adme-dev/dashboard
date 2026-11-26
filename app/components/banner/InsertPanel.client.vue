@@ -1,11 +1,12 @@
 <script setup lang="ts">
+import type { BannerAsset } from '~/types/banner-studio'
 import type { BannerMediaType } from '~/utils/banner-media'
 import { motorstackBrandId } from '~~/shared/bannerBrandGuides'
 import { brandStyleProfile } from '~~/shared/bannerBrandProfiles'
 import type { BrandButtonVariant } from '~/utils/banner-brand-kit'
 
 const { insertElement } = useBannerInsert()
-const { addBrandGuideButton } = useBannerStudio()
+const { addBrandGuideButton, addMotorStackImageToAllLayouts } = useBannerStudio()
 const { kit, loading: kitLoading, error: kitError, refresh: refreshKits } = useBannerProjectBrand()
 const toast = useToast()
 const emit = defineEmits<{ browseBrand: [tab: 'logos' | 'variants' | 'offers'] }>()
@@ -19,6 +20,21 @@ const categories = [
   { label: 'Audio tracks', icon: 'i-lucide-music', value: 'audio' }
 ] as const
 
+const imageCollection = ref<'lifestyle' | 'headers'>('lifestyle')
+const imagePickerOpen = ref(false)
+function browseImages(collection: 'lifestyle' | 'headers') {
+  imageCollection.value = collection
+  imagePickerOpen.value = true
+}
+watch(brandId, () => { imagePickerOpen.value = false })
+function insertBrandImage(asset: BannerAsset) {
+  try {
+    const count = addMotorStackImageToAllLayouts(asset)
+    toast.add({ title: 'Image added', description: `${asset.name} · ${count} ${count === 1 ? 'layout' : 'layouts'}`, color: 'success' })
+  } catch (error) {
+    toast.add({ title: 'Could not add image', description: error instanceof Error ? error.message : 'Try again.', color: 'error' })
+  }
+}
 async function upload() {
   view.value = 'all'
   await nextTick()
@@ -115,6 +131,18 @@ function addStyleButton(variant: BrandButtonVariant) {
             size="sm"
             class="justify-center"
             @click="emit('browseBrand', 'offers')"
+          />
+          <UButton label="Lifestyle images" icon="i-lucide-images" color="neutral" variant="outline" size="sm" class="justify-center" @click="browseImages('lifestyle')" />
+          <UButton label="Page headers" icon="i-lucide-panels-top-left" color="neutral" variant="outline" size="sm" class="justify-center" @click="browseImages('headers')" />
+          <BannerMotorStackMediaPicker
+            v-if="imagePickerOpen"
+            :key="brandId + imageCollection"
+            v-model:open="imagePickerOpen"
+            :initial-brand-id="brandId"
+            :collection="imageCollection"
+            images-only
+            add-to-canvas
+            @imported="insertBrandImage"
           />
         </div>
       </div>
