@@ -99,10 +99,14 @@ describe('validateBannerAssetUpload', () => {
     })).toThrowError(/filename/i)
   })
 
-  it('requires a six-character safe basename', () => {
+  it.each(['Isuzu.png', 'LDV.png', 'a.png'])('accepts the short filename %s', (filename) => {
+    expect(validateBannerAssetUpload({ filename, type: 'image/png', data: signatures.png }).fileName).toBe(filename)
+  })
+
+  it('requires a nonempty safe basename', () => {
     expect(() => validateBannerAssetUpload({
-      filename: 'car.jpg', type: 'image/jpeg', data: signatures.jpeg
-    })).toThrowError(/six characters/i)
+      filename: '---.jpg', type: 'image/jpeg', data: signatures.jpeg
+    })).toThrowError(/filename/i)
   })
 
   it('rejects data above the absolute ceiling before copying a Uint8Array', () => {

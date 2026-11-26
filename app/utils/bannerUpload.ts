@@ -31,8 +31,32 @@ export function nextBannerUploadKey(): string {
   return `banner-upload:${globalThis.crypto.randomUUID()}`
 }
 
+// Some manufacturer sites deliver a still AVIF under a PNG or JPEG filename.
+async function avifToPng(file: File): Promise<File> {
+  if (file.size > 20 * 1024 * 1024) throw new Error('This image exceeds the 20 MiB upload limit.')
+  const bitmap = await createImageBitmap(file.slice(0, file.size, 'image/avif'))
+  try {
+    if (bitmap.width * bitmap.height > 32_000_000) throw new Error('Please resize this AVIF image before uploading.')
+    const canvas = document.createElement('canvas')
+    canvas.width = bitmap.width
+    canvas.height = bitmap.height
+    const context = canvas.getContext('2d')
+    if (!context) throw new Error('Could not prepare this image. Export it as PNG and try again.')
+    context.drawImage(bitmap, 0, 0)
+    const png = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/png'))
+    if (!png || png.size > 20 * 1024 * 1024) throw new Error('Please export a smaller PNG and try again.')
+    return new File([png], file.name.replace(/\.[^.]+$/, '') + '.png', { type: 'image/png', lastModified: file.lastModified })
+  } finally {
+    bitmap.close()
+  }
+}
+
 export async function prepareBannerUploadRequest(file: File, key: string, clientId?: string | null): Promise<PreparedBannerUploadRequest> {
-  const bytes = new Uint8Array(await file.arrayBuffer())
+  let bytes = new Uint8Array(await file.arrayBuffer())
+  if (String.fromCharCode(...bytes.subarray(4, 12)) === 'ftypavif') {
+    file = await avifToPng(file)
+    bytes = new Uint8Array(await file.arrayBuffer())
+  }
   const contentSha256 = await sha256Hex(bytes)
   const identity = canonicalBannerAssetIdentity({
     bytes,
