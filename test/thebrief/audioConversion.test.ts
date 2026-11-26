@@ -101,3 +101,18 @@ it('verifies a shorter MP3 with instant endpoints against its file duration', as
   expect(audio).toMatchObject({ startTime: 1, endTime: 2.3 })
   expect(result.audioTransforms).toContainEqual({ layerId: audio.id, duration: 1.3, fadeIn: 0, fadeOut: 0 })
 })
+
+it('keeps the authored fade on a soundtrack that starts partway through a slide', async () => {
+  const config = {
+    endTime: 3.8, duration: 3.82,
+    buildIn: { duration: 1, delay: 0.2, type: 'fadeAudio' },
+    buildMid: { duration: 1.3, delay: 0, type: 'audio' },
+    buildOut: { duration: 1.5, delay: 0, type: 'fadeAudio' }
+  }
+  const result = await convertTheBriefHtml(audioSource(config))
+  const audio = result.canvasData.custom_300x250.layers.find(layer => layer.type === 'audio')
+  expect(audio).toMatchObject({ startTime: 0.2, endTime: 4 })
+  expect(result.audioTransforms).toContainEqual({ layerId: audio.id, duration: 3.8, fadeIn: 1, fadeOut: 1.5 })
+  await expect(convertTheBriefHtml(audioSource({ ...config, buildIn: { ...config.buildIn, delay: 0.4 } }))).rejects.toThrow('source audio presence')
+  await expect(convertTheBriefHtml(audioSource({ ...config, buildMid: { ...config.buildMid, delay: 0.4 } }))).rejects.toThrow('unsupported fade timing')
+})
