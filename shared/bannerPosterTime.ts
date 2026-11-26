@@ -1,6 +1,22 @@
 import type { Layer } from '../app/types/banner-studio'
 import { safeWordEntrance, wordEntranceDelay } from './bannerImportedMotion'
 
+export function bannerPosterOpacity(layer: Layer, time: number) {
+  const frames = layer.keyframes?.opacity
+  if (!frames?.length) return layer.opacity ?? 1
+  let value = frames[0]!.value
+  for (let i = 0; i < frames.length; i++) {
+    const frame = frames[i]!, next = frames[i + 1]
+    if (time < frame.time) break
+    value = frame.value
+    if (next && time < next.time) {
+      if (frame.easing !== 'step-end') value += (next.value - value) * (time - frame.time) / (next.time - frame.time)
+      break
+    }
+  }
+  return value
+}
+
 /** Honour a designer's saved frame; otherwise choose readable, settled timeline content. */
 export function bannerPosterTime(duration: number, selected?: number, layers: Layer[] = []) {
   const length = Number.isFinite(duration) && duration > 0 ? Math.min(300, duration) : 5
@@ -14,7 +30,6 @@ export function bannerPosterTime(duration: number, selected?: number, layers: La
     const start = Number.isFinite(layer.startTime) ? layer.startTime : 0
     const end = Number.isFinite(layer.endTime) ? layer.endTime : length
     const tracks = Object.values(layer.keyframes || {}).filter((track): track is NonNullable<typeof track> => !!track?.length)
-    const opacity = layer.keyframes?.opacity
     const word = safeWordEntrance(layer.wordPop)
     const count = word?.unit === 'character' ? Array.from(layer.text || '').length : (layer.text || '').trim().split(/\s+/).length
     const entrance = word
@@ -25,7 +40,7 @@ export function bannerPosterTime(duration: number, selected?: number, layers: La
     const text = !!layer.text?.trim() && (layer.type === 'text' || layer.type === 'button')
     const visual = layer.type === 'image' || layer.type === 'video' || (layer.type === 'bg' && !!layer.src)
     const weight = text ? 2 + Math.min(80, layer.text!.trim().length) / 20 : visual ? 1 + 12 * Math.min(1, Math.max(0, layer.w * layer.h) / area) : 0.25
-    return { layer, start, end, entered, exit, tracks, opacity, weight, visual, mainVisual: visual && layer.w * layer.h / area > 0.15 }
+    return { layer, start, end, entered, exit, tracks, weight, visual, mainVisual: visual && layer.w * layer.h / area > 0.15 }
   })
   const hasMainVisual = samples.some(sample => sample.mainVisual)
   let best = Math.min(3, length / 2), bestScore = -Infinity
@@ -36,19 +51,7 @@ export function bannerPosterTime(duration: number, selected?: number, layers: La
     let visualScore = 0, mainVisible = 0
     for (const sample of samples) {
       if (time < sample.start || time >= sample.end) continue
-      let opacity = sample.layer.opacity ?? 1
-      if (sample.opacity?.length) {
-        opacity = Number(sample.opacity[0]!.value)
-        for (let i = 0; i < sample.opacity.length; i++) {
-          const frame = sample.opacity[i]!, next = sample.opacity[i + 1]
-          if (time < frame.time) break
-          opacity = Number(frame.value)
-          if (next && time < next.time) {
-            opacity += (Number(next.value) - opacity) * (time - frame.time) / (next.time - frame.time)
-            break
-          }
-        }
-      }
+      const opacity = bannerPosterOpacity(sample.layer, time)
       if (!Number.isFinite(opacity)) continue
       const moving = sample.tracks.some(track => track.some((frame, i) => {
         const next = track[i + 1]
