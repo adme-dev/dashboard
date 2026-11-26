@@ -228,16 +228,29 @@ async function downloadJpegSlides(projectId: string) {
   const scale = imageQuality.value
   const quality = jpgQuality.value
   if (state.isDirty || state.isSaving) await saveProject()
-  const zip = new JSZip()
+  const archives = new Map<string, JSZip>()
   for (const [position, file] of files.entries()) {
     const query = new URLSearchParams({ formatKey: file.key, index: String(file.index), scale: String(scale), quality: String(quality) })
     const blob = await $fetch<Blob>(`/api/agency/banner-studio/projects/${projectId}/slide-image?${query}`, { responseType: 'blob' })
     if (blob.type !== 'image/jpeg' || !blob.size) throw new Error(`Could not download ${file.folder} slide ${file.index + 1}.`)
     if (files.length === 1) downloadBlob(blob, `${projectName}-${file.folder}-${file.name}`)
-    else zip.file(`${file.folder}/${file.name}`, await blob.arrayBuffer())
+    else {
+      const archive = archives.get(file.folder) ?? new JSZip()
+      archive.file(file.name, await blob.arrayBuffer())
+      archives.set(file.folder, archive)
+    }
     exportProgress.value = Math.round(95 * (position + 1) / files.length)
   }
-  if (files.length > 1) downloadBlob(await zip.generateAsync({ type: 'blob' }), `${projectName}-JPG.zip`)
+  if (archives.size === 1) {
+    const [size, archive] = [...archives][0]!
+    downloadBlob(await archive.generateAsync({ type: 'blob' }), `${projectName}-${size}-px.zip`)
+  } else if (archives.size > 1) {
+    const bundle = new JSZip()
+    for (const [size, archive] of archives) {
+      bundle.file(`${projectName}-${size}-px.zip`, await archive.generateAsync({ type: 'uint8array' }))
+    }
+    downloadBlob(await bundle.generateAsync({ type: 'blob' }), `${projectName}-JPG.zip`)
+  }
   toast.add({ title: 'Download ready', description: `${files.length} JPEG ${files.length === 1 ? 'file' : 'files'}`, color: 'success' })
 }
 
