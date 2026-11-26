@@ -141,6 +141,17 @@ it('renders a small private gallery JPEG without replacing the full-size proof',
   expect(mocks.screenshot.mock.calls[1][1].viewport.width).toBe(1080)
 })
 
+it('uses the first slide for existing gallery cards, ignoring later saved posters and cached proof images', async () => {
+  mocks.load.mockResolvedValueOnce({ project: { id: 'project', canvasData: { custom_1200x1200: {
+    layers: [{ id: 1, type: 'rect', startTime: 0, endTime: 4, w: 1200, h: 1200 }],
+    slides: [{ id: 'logo', name: 'Logo', duration: 1.5 }, { id: 'car', name: 'Car', duration: 2.5 }],
+    playback: { duration: 4 }, posterTime: 3
+  } } }, fonts: [] })
+  await bannerShareImage(event as never, mocks.load, true)
+  expect(mocks.get).toHaveBeenCalledTimes(1)
+  expect(mocks.screenshot.mock.calls[0][1].html).toContain('window.__engagrFrame.seek(0.75)')
+})
+
 it('reuses an existing proof on a gallery miss and a stored gallery JPEG on the next read', async () => {
   const jpeg = { body: new Uint8Array([255, 216, 255]) }
   mocks.get.mockResolvedValueOnce(null).mockResolvedValueOnce(jpeg).mockResolvedValueOnce(jpeg)

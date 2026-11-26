@@ -4,11 +4,14 @@ import type { AudioAsset } from '~/types'
 import { createBannerUploadSession } from '~/utils/bannerUpload'
 import { bannerAssetLayer, bannerAssetType, type BannerMediaType } from '~/utils/banner-media'
 import { startBannerMediaDrag, endBannerMediaDrag } from '~/utils/banner-media-drag'
+import { motorstackBrandId as kitMotorStackBrand } from '~~/shared/bannerBrandGuides'
 import { LAYER_IMPORT_MIME_TYPES } from '~~/shared/bannerLayerImport'
 
 const props = withDefaults(defineProps<{ mediaType?: BannerMediaType, selectionOnly?: boolean, motorstackBrandId?: string, inlineMotorstack?: boolean }>(), { mediaType: 'all', selectionOnly: false })
 const emit = defineEmits<{ select: [asset: BannerAsset], browseMotorstack: [] }>()
 const { addLayer, activeFormat, activeLayers, currentSlide, state } = useBannerStudio()
+const replacementBrand = props.selectionOnly && props.mediaType === 'image' ? useBannerProjectBrand() : undefined
+const pickerBrand = computed(() => props.motorstackBrandId || kitMotorStackBrand(replacementBrand?.kit.value?.sourceUrl) || undefined)
 const layerImport = useBannerLayerImport()
 const { openGenerate } = useAiImageGenerate()
 const toast = useToast()
@@ -248,10 +251,12 @@ async function deleteAsset(asset: BannerAsset) {
       @click="() => { if (inlineMotorstack) emit('browseMotorstack'); else motorstackOpen = true }"
     />
     <BannerMotorStackMediaPicker
-      :key="motorstackBrandId || 'unassigned'"
+      :key="pickerBrand || 'unassigned'"
       v-model:open="motorstackOpen"
-      :initial-brand-id="motorstackBrandId"
-      @imported="() => refreshAssets()"
+      :initial-brand-id="pickerBrand"
+      :replace-image="!!replacementBrand"
+      :project-brand-context="replacementBrand ? [state.project?.name || '', state.project?.clientName || ''] : undefined"
+      @imported="asset => { if (replacementBrand) handleAssetClick(asset); refreshAssets() }"
     />
 
     <!-- Upload Zone -->

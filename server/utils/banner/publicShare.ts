@@ -15,9 +15,11 @@ export async function loadPublicBannerShare(event: H3Event, token = getRouterPar
   if (link.revoked || (link.expiresAt && new Date(link.expiresAt).getTime() <= Date.now())) {
     throw createError({ statusCode: 410, statusMessage: 'Preview link has expired or was revoked' })
   }
-  const project = await queryOneFresh<{ id: string, name: string, clientId: string | null, clientName: string | null, canvasData: Record<string, { layers?: Array<{ fontFamily?: string }> }> | string, updatedAt?: string }>(`
-    SELECT p.id, p.name, p.client_id AS "clientId", c.name AS "clientName", p.canvas_data AS "canvasData", p.updated_at AS "updatedAt"
+  const project = await queryOneFresh<{ id: string, name: string, performanceMaxFolder?: boolean, clientId: string | null, clientName: string | null, canvasData: Record<string, { layers?: Array<{ fontFamily?: string }> }> | string, updatedAt?: string }>(`
+    SELECT p.id, p.name, p.client_id AS "clientId", c.name AS "clientName", p.canvas_data AS "canvasData", p.updated_at AS "updatedAt",
+      concat_ws(' ', f.name, array_to_string(f.source_path, ' ')) ~* '\\m(performance[ -]*max|p[ -]*max)\\M' AS "performanceMaxFolder"
     FROM banner_projects p
+    LEFT JOIN banner_folders f ON f.id = p.folder_id
     LEFT JOIN agency_clients c ON c.id = p.client_id
     WHERE p.id = $1 AND p.binned_at IS NULL
   `, [link.projectId])

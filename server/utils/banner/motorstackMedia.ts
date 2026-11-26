@@ -9,10 +9,13 @@ import { resolveBannerAssetDelivery } from './assetDelivery'
 import { validateBannerAssetUpload } from './assetUploadValidation'
 import { boundedMotorstackCall, motorstackBrandId, readMotorstackAsset } from './motorstackClient'
 
-export const mediaQuerySchema = z.object({ brandId: motorstackBrandId, model: z.string().trim().min(1).max(100).refine(value => [...value].every(char => char.charCodeAt(0) >= 32 && char.charCodeAt(0) !== 127)).optional() }).strict()
+import { pageImageCatalog } from './motorstackPageImages'
+
+export const mediaQuerySchema = z.object({ brandId: motorstackBrandId, collection: z.enum(['lifestyle', 'headers']).optional(), model: z.string().trim().min(1).max(100).refine(value => [...value].every(char => char.charCodeAt(0) >= 32 && char.charCodeAt(0) !== 127)).optional() }).strict()
 export const mediaSelectionSchema = mediaQuerySchema.extend({ assetId: z.string().regex(/^[a-f0-9]{64}$/) })
 type Selection = z.infer<typeof mediaSelectionSchema>
 interface MediaBinding {
+  listBrands?(): Promise<unknown>
   listMedia(input: z.infer<typeof mediaQuerySchema>): Promise<unknown>
   getMediaAsset(input: Selection): Promise<Response>
 }
@@ -25,6 +28,7 @@ export function mediaBinding(event: H3Event): MediaBinding {
   return binding
 }
 export async function mediaCatalog(binding: MediaBinding, query: z.infer<typeof mediaQuerySchema>) {
+  if (query.collection) return pageImageCatalog(binding, query.brandId, query.collection, query.model)
   const result = catalogSchema.safeParse(await boundedMotorstackCall(binding.listMedia(query), 45000))
   if (!result.success || result.data.brand.id !== query.brandId || new Set(result.data.assets.map(asset => asset.id)).size !== result.data.assets.length) throw createError({ statusCode: 502, statusMessage: 'MotorStack returned invalid media metadata' })
   const warnings = [...result.data.warnings]
@@ -32,10 +36,12 @@ export async function mediaCatalog(binding: MediaBinding, query: z.infer<typeof 
   return { ...result.data, warnings, assets: result.data.assets.filter(asset => EXTENSIONS[asset.mime]).map(asset => ({ ...asset, importable: asset.importable && asset.mime.startsWith('image/'), previewUrl: `/api/agency/banner-studio/motorstack/file?${new URLSearchParams({ ...query, assetId: asset.id })}` })) }
 }
 export async function readMedia(binding: MediaBinding, input: Selection) {
-  const catalog = await mediaCatalog(binding, { brandId: input.brandId, ...(input.model ? { model: input.model } : {}) })
+  const catalog = await mediaCatalog(binding, { brandId: input.brandId, ...(input.collection ? { collection: input.collection } : {}), ...(input.model ? { model: input.model } : {}) })
   const asset = catalog.assets.find(asset => asset.id === input.assetId)
   if (!asset) throw createError({ statusCode: 404, statusMessage: 'MotorStack media is no longer available' })
-  const file = await readMotorstackAsset({ listBrands: async () => null, getBrandKit: async () => null, getBrandAsset: () => binding.getMediaAsset(input) }, input.brandId, input.assetId, 20 * 1024 * 1024)
+  const file = await readMotorstackAsset({ listBrands: async () => null, getBrandKit: async () => null, getBrandAsset: () => input.collection
+    ? fetch(asset.previewUrl, { redirect: 'manual', signal: AbortSignal.timeout(20000) })
+    : binding.getMediaAsset(input) }, input.brandId, input.assetId, 20 * 1024 * 1024)
   const rasterMimes = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif'])
   if (file.mimeType !== asset.mime && !(rasterMimes.has(file.mimeType) && rasterMimes.has(asset.mime))) throw createError({ statusCode: 502, statusMessage: 'MotorStack media type changed; refresh the library' })
   const detectedMime = asset.mime === 'application/pdf' ? null : detectBannerAssetMime(file.bytes)

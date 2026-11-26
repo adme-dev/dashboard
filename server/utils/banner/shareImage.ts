@@ -28,17 +28,19 @@ export async function bannerShareImage(event: H3Event, load = () => loadPublicBa
   if (!key || !format || !board || (gallery && !board.layers?.length) || format.w > 4000 || format.h > 4000) {
     throw createError({ statusCode: 404, statusMessage: 'Artwork preview unavailable' })
   }
-  const slide = slideExport && slideRanges(resolveSlides(board))[slideExport.index]
+  const slides = gallery || slideExport ? resolveSlides(board) : []
+  const galleryFirstSlide = gallery && (board.slides?.length || slides.length > 1)
+  const slide = slideExport ? slideRanges(slides)[slideExport.index] : galleryFirstSlide ? slideRanges(slides)[0] : undefined
   if (slideExport && !slide) throw createError({ statusCode: 400, statusMessage: 'Slide unavailable in the selected size' })
   const env = event.context.cloudflare?.env
   const bucket = env?.MEDIA_BUCKET
   if (!bucket?.get || !bucket.put) throw createError({ statusCode: 503, statusMessage: 'Artwork preview storage unavailable' })
-  const revision = createHash('sha256').update(JSON.stringify({ key, canvas: board, fonts, slideExport, version: 5 })).digest('hex')
+  const revision = createHash('sha256').update(JSON.stringify({ key, canvas: board, fonts, slideExport, version: galleryFirstSlide ? 6 : 5 })).digest('hex')
   const proofKey = `banner-share-previews/${project.id}/${revision}.jpg`
   const imageKey = slideExport ? `banner-slide-images/${project.id}/${revision}.jpg` : gallery ? `banner-gallery-posters/${project.id}/${revision}.jpg` : proofKey
   const headers = { 'Content-Type': 'image/jpeg', 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer' }
   // Reuse a finished proof if the gallery does not have its own smaller still yet.
-  const cached = await bucket.get(imageKey) || (gallery && await bucket.get(proofKey))
+  const cached = await bucket.get(imageKey) || (gallery && !galleryFirstSlide && await bucket.get(proofKey))
   if (cached) return new Response(cached.body, { headers })
   const renderer = env?.BANNER_SHARE_IMAGES as unknown as { fetch: (request: Request) => Promise<Response> } | undefined
   if (!renderer?.fetch) throw createError({ statusCode: 503, statusMessage: 'Artwork preview rendering unavailable' })

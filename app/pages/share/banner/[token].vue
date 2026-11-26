@@ -12,8 +12,10 @@ const token = String(route.params.token)
 const { data, error: requestError } = await useFetch<{
   project: { name: string, clientName?: string | null, canvasData: Record<string, ArtboardState> | string, updatedAt?: string }
   fonts: Array<{ id?: string, name: string, url: string, tags: string[] }>
+  previewDocuments?: Record<string, string>
   videos: Array<{ formatKey: string, revision: string, status: string, url: string | null, canRetry: boolean }>
 }>(`/api/public/banner-share/${token}`)
+const useVideoFallback = ref(false)
 const error = computed(() => requestError.value
   ? requestError.value.data?.statusMessage || 'This link has expired, was revoked, or is unavailable.'
   : '')
@@ -74,6 +76,14 @@ const canvas = computed<Record<string, ArtboardState>>(() => {
       color="warning"
       title="Preview unavailable"
       :description="error"
+    />
+    <LazyBannerSavedPreview
+      v-else-if="data?.previewDocuments && !useVideoFallback"
+      :canvas="canvas"
+      :preview-documents="data.previewDocuments"
+      @unavailable="useVideoFallback = true"
+      :client-name="data.project.clientName"
+      :project-name="data.project.name"
     />
     <BannerClientVideoPreview
       v-else

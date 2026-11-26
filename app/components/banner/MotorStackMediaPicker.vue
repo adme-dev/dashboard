@@ -20,6 +20,9 @@ interface MotorStackMediaResponse {
 }
 
 const props = withDefaults(defineProps<{
+  replaceImage?: boolean
+  collection?: 'lifestyle' | 'headers'
+  projectBrandContext?: string[]
   initialBrandId?: string
   initialModel?: string
   initialGrade?: string
@@ -31,8 +34,12 @@ const props = withDefaults(defineProps<{
 const open = defineModel<boolean>('open', { default: false })
 const emit = defineEmits<{ imported: [asset: BannerAsset] }>()
 const allModels = '__all_models__'
-const needsBrandPicker = computed(() => !props.imagesOnly && !props.initialBrandId)
+const needsBrandPicker = computed(() => !props.imagesOnly && (!props.initialBrandId || !!props.projectBrandContext))
 const brandId = ref<string>()
+const collectionChoice = ref<'vehicles' | 'headers' | 'lifestyle'>(props.collection || 'vehicles')
+const activeCollection = computed(() => collectionChoice.value === 'vehicles' ? undefined : collectionChoice.value)
+const collectionItems = [{ label: 'Vehicle images', value: 'vehicles' }, { label: 'Lifestyle images', value: 'lifestyle' }, { label: 'Page headers', value: 'headers' }]
+const selectImage = computed(() => props.addToCanvas || props.replaceImage)
 const model = ref(allModels)
 const grade = ref('__all_grades__')
 const colour = ref('__all_colours__')
@@ -55,7 +62,7 @@ const { data: brandsData, error: brandsError, status: brandsStatus, execute: loa
   brands: Array<{ id: string, name: string }>
   warnings?: string[]
 }>('/api/agency/banner-studio/motorstack/brands', { immediate: false })
-const mediaQuery = computed(() => ({ brandId: brandId.value, ...(model.value === allModels ? {} : { model: model.value }) }))
+const mediaQuery = computed(() => ({ brandId: brandId.value, ...(activeCollection.value ? { collection: activeCollection.value } : {}), ...(model.value === allModels ? {} : { model: model.value }) }))
 const { data: mediaData, error: mediaFetchError, execute: fetchMedia } = useFetch<MotorStackMediaResponse>(
   '/api/agency/banner-studio/motorstack/media', { immediate: false, query: mediaQuery, watch: false }
 )
@@ -133,7 +140,14 @@ async function loadMedia() {
     if (generation === requestGeneration) loadingMedia.value = false
   }
 }
-watch([brandId, model], () => {
+watch(collectionChoice, () => {
+  model.value = allModels
+  grade.value = '__all_grades__'
+  colour.value = '__all_colours__'
+  search.value = ''
+  modelNames.value = []
+}, { flush: 'sync' })
+watch([brandId, model, collectionChoice], () => {
   if (open.value) loadMedia()
 })
 watch(model, () => {
@@ -174,6 +188,17 @@ watch(open, (value) => {
   }
   if (needsBrandPicker.value && !brandsData.value && brandsStatus.value !== 'pending') loadBrands()
 }, { immediate: true })
+// Older banners may have a dealership assigned but no MotorStack-linked kit.
+watch([open, brandsData], () => {
+  if (!open.value || brandId.value || !props.projectBrandContext || props.initialBrandId) return
+  const words = (value: string) => ` ${value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()} `
+  for (const context of props.projectBrandContext) {
+    const matches = (brandsData.value?.brands || []).filter(brand =>
+      [brand.id, brand.name].some(alias => words(context).includes(words(alias))))
+    if (matches.length === 1) selectBrand(matches[0]!.id)
+    if (matches.length) break
+  }
+}, { immediate: true })
 onBeforeUnmount(() => {
   requestGeneration++
 })
@@ -198,7 +223,7 @@ async function importAsset(asset: MotorStackMediaAsset) {
   if (busy.value || !brandId.value || !canImport(asset)) return
   const key = assetKey(asset)
   if (imported.value[key]) {
-    if (props.addToCanvas) {
+    if (selectImage.value) {
       emit('imported', imported.value[key])
       open.value = false
     }
@@ -208,12 +233,12 @@ async function importAsset(asset: MotorStackMediaAsset) {
   importErrors.value[key] = ''
   try {
     const result = await api<{ asset: BannerAsset }>('/api/agency/banner-studio/motorstack/media', {
-      method: 'POST', body: { brandId: brandId.value, ...(model.value === allModels ? {} : { model: model.value }), assetId: asset.id }
+      method: 'POST', body: { brandId: brandId.value, ...(activeCollection.value ? { collection: activeCollection.value } : {}), ...(model.value === allModels ? {} : { model: model.value }), assetId: asset.id }
     })
     if (!result.asset?.id || !result.asset.url || !result.asset.mimeType?.startsWith('image/')) throw new Error('Could not verify the saved image. Retry to check its library status.')
     imported.value[key] = result.asset
     emit('imported', result.asset)
-    if (props.addToCanvas) open.value = false
+    if (selectImage.value) open.value = false
   } catch (error) {
     importErrors.value[key] = apiErrorDescription(error, 'Could not add this image. Try again.')
   } finally {
@@ -225,8 +250,8 @@ async function importAsset(asset: MotorStackMediaAsset) {
 <template>
   <UModal
     v-model:open="open"
-    :title="props.imagesOnly ? 'Vehicle images' : 'MotorStack media'"
-    :description="props.addToCanvas ? 'Choose a vehicle image for every canvas size.' : 'Browse OEM images and documents. Add images to your asset library when you are ready.'"
+    :title="collection === 'lifestyle' ? 'Lifestyle images' : collection === 'headers' ? 'Page headers' : props.imagesOnly ? 'Vehicle images' : 'MotorStack media'"
+    :description="replaceImage ? 'Choose an image to replace the selected layer.' : props.addToCanvas ? 'Choose an image for every canvas size.' : 'Browse OEM images and documents. Add images to your asset library when you are ready.'"
     :dismissible="!busy"
     :close="!busy"
     :ui="{ content: 'sm:max-w-5xl', body: 'min-h-0' }"
@@ -254,6 +279,9 @@ async function importAsset(asset: MotorStackMediaAsset) {
               @update:model-value="selectBrand"
             />
           </UFormField>
+          <UFormField v-if="replaceImage" label="Image collection">
+            <USelectMenu v-model="collectionChoice" :items="collectionItems" value-key="value" :disabled="busy" class="w-full" />
+          </UFormField>
           <UFormField label="Model">
             <USelectMenu
               v-model="model"
@@ -263,7 +291,7 @@ async function importAsset(asset: MotorStackMediaAsset) {
               class="w-full"
             />
           </UFormField>
-          <UFormField v-if="assetType !== 'documents'" label="Variant / grade">
+          <UFormField v-if="!activeCollection && assetType !== 'documents'" label="Variant / grade">
             <USelectMenu
               v-model="grade"
               :items="gradeItems"
@@ -272,7 +300,7 @@ async function importAsset(asset: MotorStackMediaAsset) {
               class="w-full"
             />
           </UFormField>
-          <UFormField v-if="assetType !== 'documents'" label="Paint colour">
+          <UFormField v-if="!activeCollection && assetType !== 'documents'" label="Paint colour">
             <USelectMenu
               v-model="colour"
               :items="colourItems"
@@ -281,7 +309,7 @@ async function importAsset(asset: MotorStackMediaAsset) {
               class="w-full"
             />
           </UFormField>
-          <UFormField v-if="!props.imagesOnly" label="Media type">
+          <UFormField v-if="!props.imagesOnly && !replaceImage" label="Media type">
             <USelectMenu
               v-model="assetType"
               :items="typeItems"
@@ -298,7 +326,7 @@ async function importAsset(asset: MotorStackMediaAsset) {
             />
           </UFormField>
         </div>
-        <p v-if="brandId" class="text-sm text-muted">
+        <p v-if="brandId && !activeCollection" class="text-sm text-muted">
           {{ model === allModels ? 'Browse model heroes now, or choose a model for paint colours and gallery photos.' : 'Choose a variant / grade and paint colour to find the right vehicle image.' }}
         </p>
         <template v-if="!props.imagesOnly">
@@ -389,11 +417,11 @@ async function importAsset(asset: MotorStackMediaAsset) {
                 <div class="mt-auto">
                   <UButton
                     v-if="canImport(asset)"
-                    :label="props.addToCanvas ? importErrors[assetKey(asset)] ? 'Retry adding to all layouts' : 'Add to all layouts' : imported[assetKey(asset)] ? 'Added to library' : importErrors[assetKey(asset)] ? 'Retry adding to library' : 'Add to library'"
-                    :icon="!props.addToCanvas && imported[assetKey(asset)] ? 'i-lucide-check' : 'i-lucide-plus'"
+                    :label="replaceImage ? 'Use this image' : props.addToCanvas ? importErrors[assetKey(asset)] ? 'Retry adding to all layouts' : 'Add to all layouts' : imported[assetKey(asset)] ? 'Added to library' : importErrors[assetKey(asset)] ? 'Retry adding to library' : 'Add to library'"
+                    :icon="!selectImage && imported[assetKey(asset)] ? 'i-lucide-check' : 'i-lucide-plus'"
                     :loading="importing === assetKey(asset)"
-                    :disabled="busy || (!props.addToCanvas && Boolean(imported[assetKey(asset)]))"
-                    :color="!props.addToCanvas && imported[assetKey(asset)] ? 'success' : 'primary'"
+                    :disabled="busy || (!selectImage && Boolean(imported[assetKey(asset)]))"
+                    :color="!selectImage && imported[assetKey(asset)] ? 'success' : 'primary'"
                     variant="soft"
                     size="sm"
                     class="w-full justify-center"
@@ -433,7 +461,7 @@ async function importAsset(asset: MotorStackMediaAsset) {
     <template #footer>
       <div class="flex w-full items-center justify-between gap-3">
         <p role="status" aria-live="polite" class="text-xs text-muted">
-          {{ busy ? 'Adding the image…' : props.addToCanvas ? 'Choose an image to add it to every canvas size.' : 'Adding to the library does not change the artwork on your canvas.' }}
+          {{ busy ? 'Adding the image…' : replaceImage ? 'Choose an image to replace the selected layer.' : props.addToCanvas ? 'Choose an image to add it to every canvas size.' : 'Adding to the library does not change the artwork on your canvas.' }}
         </p>
         <UButton
           color="neutral"

@@ -120,7 +120,7 @@ async function revokeLink(link: Link) {
               Client links
             </h3>
             <p class="mt-1 text-sm text-muted">
-              Send a client link to preview the rendered video without signing in. Links expire automatically and can be revoked.
+              Send a client link to preview the saved artwork without signing in. Links expire automatically and can be revoked.
             </p>
           </div>
           <UFormField label="Link expires after">
