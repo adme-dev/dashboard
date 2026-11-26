@@ -18,7 +18,7 @@ it('holds offset image composition that cannot be expressed by the import schema
 
 it.each([
   ['rotate(0) scale(-1,1)', '20% 50%'],
-  ['rotate(20deg) scale(-1,1)', '50% 50%'],
+  ['rotate(20deg) scale(-1,1)', '20% 50%'],
   ['translateZ(-800px) rotateX(90deg)', '50% 50%'],
   ['rotate(0) scale(-1,2)', '50% 50%']
 ])('holds image transform %s with origin %s', async (transform, origin) => {
@@ -33,4 +33,12 @@ it('keeps a centered static rotation after mirroring the editable image', async 
   const layer = converted.canvasData.custom_300x250.layers.find(layer => layer.type === 'image')
   expect(layer.rotation).toBe(330)
   expect(converted.imageTransforms).toContainEqual({ layerId: layer.id, operation: 'flop' })
+})
+
+it('keeps mirrored image rotation inside the animated frame', async () => {
+  const html = source.replace('data-eltype="text"', 'data-eltype="image"')
+    .replace('<div class="row">Hello world</div>', '<div style="width:100%;height:100%;transform:rotate(20deg) scale(-1,1)"><img src="./art.png"></div>')
+  const result = await convertTheBriefHtml(html)
+  expect(result.canvasData.custom_300x250.layers[1]).toMatchObject({ type: 'image', rotation: 0, contentRotation: 20 })
+  expect(result.imageTransforms).toEqual([expect.objectContaining({ operation: 'flop' })])
 })

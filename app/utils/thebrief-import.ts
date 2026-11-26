@@ -133,16 +133,18 @@ export function parseTheBriefPackage(input: unknown): TheBriefPackage {
     const links = board.layers.map(l => l.linkId).filter(Boolean)
     if (new Set(links).size !== links.length) throw new Error('Duplicate linked content identity in one size')
     for (const item of board.layers) {
-      if (item.sourceInactiveTiming || item.hidden) {
-        if (!item.hidden || !item.sourceInactiveTiming || !['image', 'text', 'rect', 'button'].includes(item.type)
-          || board.slides?.length !== 1 || item.sourceInactiveTiming.loopEnd !== duration
-          || item.sourceInactiveTiming.start < duration || item.startTime !== 0 || item.endTime !== duration) throw new Error('Invalid inactive source layer')
-      }
+      if ((item.hidden || item.sourceInactiveTiming) && !(item.hidden && item.sourceInactiveTiming
+        && ['image', 'text', 'rect', 'button'].includes(item.type))) throw new Error('Invalid inactive source layer')
+      if (item.sourceInactiveTiming && !item.slideId && (board.slides?.length !== 1 || item.sourceInactiveTiming.loopEnd !== duration
+        || item.sourceInactiveTiming.start < duration || item.startTime !== 0 || item.endTime !== duration)) throw new Error('Invalid inactive source layer')
       if (item.slideId) {
         const index = board.slides?.findIndex(slide => slide.id === item.slideId) ?? -1
         if (index < 0) throw new Error('Artwork references a missing slide')
         const start = board.slides!.slice(0, index).reduce((sum, slide) => sum + slide.duration, 0)
         const end = start + board.slides![index]!.duration
+        if (item.sourceInactiveTiming && (item.slideFade || Math.abs(item.sourceInactiveTiming.loopEnd - end) > 0.0001
+          || item.sourceInactiveTiming.start < end - 0.0001 || Math.abs(item.startTime - start) > 0.0001
+          || Math.abs(item.endTime - end) > 0.0001)) throw new Error('Invalid inactive source layer')
         const fade = item.slideFade
         if (fade?.exit && (fade.exit.at < start || Math.abs(fade.exit.at + fade.exit.duration - fade.end) > 0.0001)) throw new Error('Invalid outgoing slide timing')
         if (fade && (fade.id !== item.slideId || Math.abs(fade.start - start) > 0.0001 || fade.end < end || fade.end > duration || fade.duration > end - start)) throw new Error('Invalid source slide fade')
@@ -151,9 +153,9 @@ export function parseTheBriefPackage(input: unknown): TheBriefPackage {
       if (item.slideFade && !item.slideId) throw new Error('Slide fade requires scene ownership')
       if (item.src && !result.assets.some(a => a.path === item.src)) throw new Error('Missing packaged asset')
       if (item.textRuns && item.textRuns.map(run => run.text).join('') !== item.text) throw new Error('Text runs differ from layer text')
-      if (item.contentRotation !== undefined && (item.type !== 'rect' || item.imageFlipPerspective || item.rotation)) throw new Error('Invalid imported shape content rotation')
+      if (item.contentRotation !== undefined && (!['image', 'rect', 'button'].includes(item.type) || item.imageFlipPerspective || item.rotation)) throw new Error('Invalid imported shape content rotation')
       if (item.textTilt || item.keyframes?.originY) {
-        if (!['text', 'video', 'image'].includes(item.type) || !item.textTilt || !item.keyframes?.originY || !item.keyframes.rotationX
+        if (!['text', 'video', 'image', 'rect', 'button'].includes(item.type) || !item.textTilt || !item.keyframes?.originY || !item.keyframes.rotationX
           || item.imageFlipPerspective || item.wordPop || item.reveal || item.keyframes.z || item.keyframes.rotation
           || item.textTilt.width !== item.w || item.keyframes.rotationX.some(frame => Math.abs(frame.value) > 90)) throw new Error('Invalid TheBrief 3D text entrance')
       }
@@ -173,7 +175,7 @@ export function parseTheBriefPackage(input: unknown): TheBriefPackage {
       if (['image', 'audio', 'video'].includes(item.type) && !item.src) throw new Error('Image, audio or video layer is missing its asset')
       const mime = item.src ? result.assets.find(a => a.path === item.src)?.mimeType : undefined
       if ((item.type === 'video') !== (mime === 'video/mp4')) throw new Error('Video layers must reference MP4 assets, and only video layers may')
-      if (item.type !== 'video' && (item.flipX !== undefined || item.flipY !== undefined)) throw new Error('Imported mirroring requires a video layer')
+      if (!['video', 'rect', 'button'].includes(item.type) && (item.flipX !== undefined || item.flipY !== undefined)) throw new Error('Imported mirroring requires a video layer')
       if (item.type !== 'video' && item.mediaMask) throw new Error('Video mask requires a video layer')
       if (item.imageOuterFilter && (item.type !== 'image' || !item.borderRadius)) throw new Error('Outer image filter requires a masked image layer')
       if (item.type !== 'image' && item.imageBackground) throw new Error('Image background requires an image layer')

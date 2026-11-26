@@ -526,6 +526,8 @@ defineExpose({ artboardEl })
             <div data-layer-content class="h-full w-full" :style="{ transform: layerContentTransform(layer) }">
               <BannerLayersVideo v-if="layer.type === 'video'" :layer="layer" :is-active="isActive" />
               <BannerLayersImage v-else-if="layer.type === 'image'" :layer="layer" :is-active="isActive" />
+              <BannerLayersRect v-else-if="layer.type === 'rect'" :layer="layer" :is-active="isActive" />
+              <BannerLayersButton v-else-if="layer.type === 'button'" :client-id="state.project?.clientId" :layer="layer" :is-active="isActive" />
               <BannerLayersText
                 v-else
                 :client-id="state.project?.clientId"

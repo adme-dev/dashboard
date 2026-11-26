@@ -122,3 +122,11 @@ it('plays repeated pulse anchors and restores them when scrubbing backwards afte
     vi.unstubAllGlobals()
   }
 })
+
+it('trims a middle animation that runs for less than one cycle', async () => {
+  const result = await convertTheBriefHtml(pulse.replace('animation-iteration-count:2;', 'animation-iteration-count:0.98;'))
+  expect(result.warnings.join(' ')).not.toContain('animation not converted')
+  const frames = result.canvasData.custom_300x250.layers.find(layer => layer.type === 'text').keyframes.scaleX
+  expect(frames.some(frame => frame.value < 1)).toBe(true)
+  expect(frames.every(frame => frame.time <= 4)).toBe(true)
+})

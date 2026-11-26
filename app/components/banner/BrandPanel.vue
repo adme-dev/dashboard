@@ -24,7 +24,7 @@ interface MotorStackImages {
 
 const props = withDefaults(defineProps<{ initialTab?: 'logos' | 'variants' | 'offers' }>(), { initialTab: 'logos' })
 const emit = defineEmits<{ browseAssets: [], createOffer: [offerId: string] }>()
-const { state, selectedLayer, activeFormat, applyBrandKit, updateLayer, addLayer, addMotorStackImageToAllLayouts, addMotorStackOfferToAllLayouts, addBrandGuideButton } = useBannerStudio()
+const { state, selectedLayer, applyBrandKit, updateLayer, addBrandLogoToAllLayouts, addMotorStackImageToAllLayouts, addMotorStackOfferToAllLayouts, addBrandGuideButton } = useBannerStudio()
 const { isLayerLockedByOther } = useBannerRealtime()
 const toast = useToast()
 const clientId = computed(() => state.project?.clientId || undefined)
@@ -255,17 +255,11 @@ function useColour(hex: string) {
 }
 function addLogo(logo: BrandKitLogo, event: MouseEvent) {
   const image = (event.currentTarget as HTMLElement).querySelector('img')
-  const format = activeFormat.value
-  if (!format) return
   if (!image?.naturalWidth || !image.naturalHeight) {
     toast.add({ title: 'Logo is still loading', description: 'Try again once the preview is visible.', color: 'warning' })
     return
   }
-  const scale = Math.min(format.w * 0.4 / image.naturalWidth, format.h * 0.3 / image.naturalHeight, 1)
-  const w = image.naturalWidth * scale, h = image.naturalHeight * scale
-  addLayer({ type: 'image', name: logo.name, isLogo: true, src: logo.url, fit: 'contain',
-    x: (format.w - w) / 2, y: (format.h - h) / 2, w, h,
-    startTime: 0, endTime: state.duration, animIn: 'none', animOut: 'none' })
+  addBrandLogoToAllLayouts(logo, image.naturalWidth, image.naturalHeight)
 }
 </script>
 
@@ -353,7 +347,7 @@ function addLogo(logo: BrandKitLogo, event: MouseEvent) {
       </div>
       <div v-if="activeTab === 'logos'" class="space-y-2">
         <p class="text-xs text-muted">
-          Click a logo to add it to this layout.
+          Click a logo to add it to every size.
         </p>
         <p v-if="!kit.logos.length" class="text-xs text-muted">
           No logos in this kit.

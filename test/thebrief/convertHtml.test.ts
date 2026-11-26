@@ -406,7 +406,8 @@ it('keeps a single rgb or rgba text shadow in canonical order and holds ambiguou
   expect(await shadowOf('2px 2px 33px rgba(0, 0, 0, 0.83)')).toBe('2px 2px 33px rgba(0,0,0,0.83)')
   expect(await shadowOf('1px 1px rgb(10,20,30)')).toBe('1px 1px 0px rgb(10,20,30)')
   await expect(convertTheBriefHtml(withShadow('2px 2px 22px rgba(98,29,0,.8), 0 0 2px #fff'))).rejects.toThrow('Unsupported text shadow')
-  await expect(convertTheBriefHtml(withShadow('2px 2px 22px red'))).rejects.toThrow('Unsupported text shadow')
+  expect(await shadowOf('2px 2px 22px red')).toBe('2px 2px 22px #f00')
+  await expect(convertTheBriefHtml(withShadow('2px 2px 22px currentColor'))).rejects.toThrow('Unsupported text shadow')
 })
 
 it('normalises unitless zero shadow offsets while rejecting unsupported shadow syntax', async () => {

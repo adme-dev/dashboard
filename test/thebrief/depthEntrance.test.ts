@@ -87,6 +87,8 @@ it('keeps a centered inner ellipse rotation separate from the native frame scale
 
 it.each([
   [180, 'background-image:linear-gradient(0deg,transparent 0%,#000 47%)', 'linear-gradient(0deg, transparent 0%, #000 47%)'],
+  [67, 'background-image:linear-gradient(0deg,transparent 0%,#000 47%)', 'linear-gradient(0deg, transparent 0%, #000 47%)'],
+  [65, 'background-color:#ccc', '#ccc'],
   [270, 'background-color:#ccc', '#ccc']
 ])('preserves a %i-degree inner rectangle rotation with independent frame scale', async (angle, paint, expected) => {
   const input = source.replace('animation-delay:-1ms', 'animation-delay:0s')
