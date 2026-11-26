@@ -10,6 +10,7 @@ import { withBannerPreviewPlayback, readBannerPreviewPlayback, type BannerPrevie
 
 const props = defineProps<{
   canvas: Record<string, ArtboardState>
+  initialSize?: string
   previewDocuments?: Record<string, string>
   fonts?: ExportCustomFont[]
   clientName?: string | null
@@ -41,7 +42,7 @@ async function toggleScreen() {
   }
   expanded.value = true
 }
-const selectedKey = ref('')
+const selectedKey = ref(props.initialSize ?? '')
 const muted = ref(false)
 const audioError = ref('')
 const playback = ref<BannerPreviewPlayback>({ state: 'loading', current: 0, duration: 0, iteration: 1, repeat: 0 })
