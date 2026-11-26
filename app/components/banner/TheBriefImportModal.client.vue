@@ -282,7 +282,9 @@ async function importDrafts() {
   error.value = ''
   let changed = false
   try {
-    const existing = await api<BannerProject[]>('/api/agency/banner-studio/projects')
+    const existing = await api<Pick<BannerProject, 'id' | 'clientId' | 'tags'>[]>('/api/agency/banner-studio/projects', {
+      query: { view: 'gallery' }
+    })
     const assigned = assignedRows.value
     for (const [index, row] of assigned.entries()) {
       if (!clients.value.some(c => c.id === row.clientId)) throw new Error('Select an existing client')
