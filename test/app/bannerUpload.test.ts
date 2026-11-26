@@ -20,6 +20,33 @@ function keyFactory(...keys: string[]) {
 }
 
 describe('banner upload browser identity', () => {
+  it('uploads a PNG when a manufacturer supplies a still AVIF with a PNG filename', async () => {
+    const bitmap = { width: 1023, height: 419, close: vi.fn() }
+    const pngBytes = Uint8Array.of(137, 80, 78, 71, 13, 10, 26, 10)
+    const drawImage = vi.fn()
+    const canvas = document.createElement('canvas')
+    vi.stubGlobal('createImageBitmap', vi.fn().mockResolvedValue(bitmap))
+    vi.spyOn(canvas, 'getContext').mockReturnValue({ drawImage } as unknown as CanvasRenderingContext2D)
+    vi.spyOn(canvas, 'toBlob').mockImplementation(callback => callback(new Blob([pngBytes], { type: 'image/png' })))
+    vi.spyOn(document, 'createElement').mockReturnValueOnce(canvas)
+    try {
+      const file = new File(['0000ftypavif'], 'models-tiggo.png', { type: 'image/png' })
+      const request = await prepareBannerUploadRequest(file, 'banner-upload:avif')
+      const uploaded = request.body.get('file') as File
+      const bytes = new Uint8Array(await uploaded.arrayBuffer())
+      expect([canvas.width, canvas.height]).toEqual([1023, 419])
+      expect(drawImage).toHaveBeenCalledWith(bitmap, 0, 0)
+      expect(bitmap.close).toHaveBeenCalledOnce()
+      expect(bytes).toEqual(pngBytes)
+      expect(uploaded.name).toBe('models-tiggo.png')
+      expect(request.headers['X-Banner-Upload-Digest']).toBe(validateBannerAssetUpload({
+        filename: uploaded.name, type: uploaded.type, data: bytes
+      }).requestDigest)
+    } finally {
+      vi.restoreAllMocks()
+      vi.unstubAllGlobals()
+    }
+  })
   it('binds the client into the digest and multipart body with server parity', async () => {
     const file = jpegFile()
     const clientA = 'AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA'

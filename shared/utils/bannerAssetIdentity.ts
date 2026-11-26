@@ -75,8 +75,8 @@ export function canonicalBannerAssetFileName(
     .replace(/^-+|-+$/g, '')
     .slice(0, 96)
 
-  if (stem.length < 6) {
-    throw new Error('Filename must have a safe basename of at least six characters')
+  if (!stem) {
+    throw new Error('Filename must contain at least one letter or number')
   }
 
   return `${stem}.${MIME_EXTENSIONS[mimeType]}`
