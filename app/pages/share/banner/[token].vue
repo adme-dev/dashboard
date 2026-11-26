@@ -17,6 +17,12 @@ const { data, error: requestError } = await useFetch<{
 }>(`/api/public/banner-share/${token}`)
 const useVideoFallback = ref(false)
 const focusedSize = ref('')
+const showAllSizes = ref(false)
+const muted = ref(false)
+function focusSize(key: string) {
+  focusedSize.value = key
+  showAllSizes.value = false
+}
 const hasOverview = computed(() => Object.keys(data.value?.previewDocuments || {}).length > 1)
 const error = computed(() => requestError.value
   ? requestError.value.data?.statusMessage || 'This link has expired, was revoked, or is unavailable.'
@@ -64,7 +70,7 @@ const canvas = computed<Record<string, ArtboardState>>(() => {
           {{ data?.project.name || 'Shared banner' }}
         </h1>
       </div>
-      <UButton v-if="hasOverview && focusedSize && !useVideoFallback" label="All sizes" icon="i-lucide-layout-grid" color="neutral" variant="outline" @click="focusedSize = ''" />
+      <UButton v-if="hasOverview && !showAllSizes && !useVideoFallback" label="View all sizes" icon="i-lucide-layout-grid" color="neutral" variant="outline" @click="showAllSizes = true" />
       <UBadge
         label="View only"
         icon="i-lucide-eye"
@@ -81,10 +87,11 @@ const canvas = computed<Record<string, ArtboardState>>(() => {
       :description="error"
     />
     <LazyBannerClientSizeGallery
-      v-else-if="data?.previewDocuments && hasOverview && !focusedSize && !useVideoFallback"
+      v-else-if="data?.previewDocuments && hasOverview && showAllSizes && !useVideoFallback"
       :documents="data.previewDocuments"
       :canvas="canvas"
-      @focus="focusedSize = $event"
+      v-model:muted="muted"
+      @focus="focusSize"
       @unavailable="useVideoFallback = true"
     />
     <LazyBannerSavedPreview
@@ -92,6 +99,7 @@ const canvas = computed<Record<string, ArtboardState>>(() => {
       :canvas="canvas"
       :preview-documents="data.previewDocuments"
       :initial-size="focusedSize"
+      v-model:muted="muted"
       @unavailable="useVideoFallback = true"
       :client-name="data.project.clientName"
       :project-name="data.project.name"

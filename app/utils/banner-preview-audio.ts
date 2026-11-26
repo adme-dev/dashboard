@@ -31,3 +31,9 @@ export function withBannerPreviewAudio(html: string): string {
 </script>
 </body>`)
 }
+
+// Shared HTML is emitted by the banner compiler. Its timeline keeps the full cycle
+// duration even when the parent page owns its audio elements.
+export function withoutFrameSoundtrack(html: string): string {
+  return html.replace(/<audio\b[^>]*><\/audio>/gi, '')
+}
