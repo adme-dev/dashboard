@@ -913,7 +913,12 @@ export async function convertTheBriefHtml(html, { reviewedRowLines = {}, reviewe
           && audioConfig.buildMid?.type === 'none' && audioConfig.buildMid.delay === 0
           && ['instant', 'fadeAudio'].includes(audioConfig.buildOut?.type)
           && audioConfig.buildOut.delay === audioConfig.buildMid.duration
-        if (hasAudioFade && (stages.length !== 3 || stages.some(stage => !Number.isFinite(stage.duration) || stage.duration < 0 || stage.duration > 300) || (!delayedExit && (stages.some(stage => stage.delay !== 0) || !plainAudioMiddle)) || !(stageDuration > 0))) throw new Error(`Audio ${sourceId}: source fades require exported-clip reconciliation: unsupported fade timing`)
+        // A build-in delay is the element's start on the slide, not silence
+        // inside the MP3. The presence check below verifies that position.
+        const stagedAudio = plainAudioMiddle && stages.length === 3
+          && Number.isFinite(audioConfig.buildIn.delay) && audioConfig.buildIn.delay >= 0
+          && audioConfig.buildMid.delay === 0 && audioConfig.buildOut.delay === 0
+        if (hasAudioFade && (stages.length !== 3 || stages.some(stage => !Number.isFinite(stage.duration) || stage.duration < 0 || stage.duration > 300) || (!delayedExit && !stagedAudio) || !(stageDuration > 0))) throw new Error(`Audio ${sourceId}: source fades require exported-clip reconciliation: unsupported fade timing`)
         const delay = audioConfig?.buildIn?.delay
         if (delay !== undefined && (!Number.isFinite(delay) || delay < 0 || Math.abs(slide.start + delay - start) > 1e-6)) throw new Error(`Audio ${sourceId}: source audio presence requires reconciliation`)
         let verifyExportedDuration
