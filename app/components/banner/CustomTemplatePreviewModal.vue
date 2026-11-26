@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useElementSize } from '@vueuse/core'
 import type { CustomTemplate } from '~/types/banner-studio'
 import { buildCustomBannerPreviewHTML } from '~/utils/custom-banner-builder'
 
@@ -12,10 +13,19 @@ const emit = defineEmits<{
   use: []
 }>()
 
+// Gallery rows contain summaries. Load the full artwork only while the preview is open.
+const { data: detail, status, refresh } = useAsyncData(
+  () => 'banner-template-preview:' + props.template.id,
+  () => $fetch<CustomTemplate>('/api/agency/banner-studio/custom-templates/' + encodeURIComponent(props.template.id)),
+  { server: false }
+)
 const previewHtml = computed(() => {
-  const variables = typeof props.template.variables === 'string'
-    ? JSON.parse(props.template.variables)
-    : (props.template.variables || [])
+  const template = detail.value
+  if (!template || template.id !== props.template.id) return ''
+
+  const variables = typeof template.variables === 'string'
+    ? JSON.parse(template.variables)
+    : (template.variables || [])
 
   const defaults: Record<string, string> = {}
   for (const v of variables) {
@@ -23,19 +33,22 @@ const previewHtml = computed(() => {
   }
 
   return buildCustomBannerPreviewHTML({
-    html: props.template.html || '',
-    css: props.template.css || '',
-    js: props.template.js || '',
-    width: props.template.width,
-    height: props.template.height,
+    html: template.html || '',
+    css: template.css || '',
+    js: template.js || '',
+    width: template.width,
+    height: template.height,
     variableDefaults: defaults,
-    externalScripts: props.template.externalScripts || [],
-    externalStyles: props.template.externalStyles || [],
+    includeGsap: true,
+    externalScripts: template.externalScripts || [],
+    externalStyles: template.externalStyles || [],
   })
 })
 
+const viewport = ref<HTMLElement | null>(null)
+const { width: availableWidth } = useElementSize(viewport)
 const scale = computed(() => {
-  const maxW = 560
+  const maxW = Math.max(1, availableWidth.value)
   const maxH = 400
   const sx = maxW / props.template.width
   const sy = maxH / props.template.height
@@ -64,21 +77,24 @@ const categoryLabels: Record<string, string> = {
               <span class="text-xs text-muted">{{ template.width }}x{{ template.height }}</span>
             </div>
           </div>
-          <UButton icon="i-lucide-x" variant="ghost" size="sm" @click="emit('update:open', false)" />
+          <UButton icon="i-lucide-x" aria-label="Close preview" variant="ghost" size="sm" @click="emit('update:open', false)" />
         </div>
 
         <p v-if="template.description" class="text-sm text-muted mb-4">{{ template.description }}</p>
 
         <!-- Preview -->
-        <div class="flex items-center justify-center bg-elevated rounded-lg p-4 mb-4 overflow-hidden">
-          <div :style="{ transform: `scale(${scale})`, transformOrigin: 'top center' }">
+        <div ref="viewport" class="flex items-center justify-center bg-elevated rounded-lg p-4 mb-4 overflow-hidden">
+          <UAlert v-if="status === 'error'" title="Could not load this preview" color="error" :actions="[{ label: 'Retry', onClick: () => refresh() }]" />
+          <div v-else-if="!previewHtml" role="status">Loading preview…</div>
+          <div v-else :style="{ width: template.width * scale + 'px', height: template.height * scale + 'px' }">
             <iframe
+              :title="template.name + ' preview'"
               :srcdoc="previewHtml"
               :width="template.width"
               :height="template.height"
               sandbox="allow-scripts"
               class="border border-default rounded"
-              style="display: block;"
+              :style="{ display: 'block', transform: `scale(${scale})`, transformOrigin: 'top left' }"
             />
           </div>
         </div>
