@@ -88,29 +88,6 @@ function selectBgEase(id: string) {
   bgEaseOpen.value = false
 }
 
-// Fetch existing assets for the picker
-const assetsData = ref<{ assets: BannerAsset[] }>({ assets: [] })
-
-async function refreshAssets() {
-  try {
-    assetsData.value = await apiFetch<{ assets: BannerAsset[] }>('/api/agency/banner-studio/assets')
-  } catch {
-    assetsData.value = { assets: [] }
-  }
-}
-
-onMounted(() => {
-  refreshAssets()
-})
-
-const imageAssets = computed(() => {
-  return (assetsData.value?.assets || []).filter(a => a.mimeType?.startsWith('image'))
-})
-
-const videoAssets = computed(() => {
-  return (assetsData.value?.assets || []).filter(a => a.mimeType?.startsWith('video'))
-})
-
 // Source type for the active bg layer
 const bgSourceType = computed(() => activeBg.value?.srcType || 'image')
 
@@ -499,45 +476,13 @@ function removeBgImage() {
           >
         </div>
 
-        <!-- Asset picker grid (Image) -->
-        <div v-if="showAssetPicker && bgSourceType !== 'video'" class="space-y-1.5">
-          <div v-if="imageAssets.length" class="grid grid-cols-3 gap-1">
-            <div
-              v-for="asset in imageAssets"
-              :key="asset.id"
-              class="aspect-square rounded border border-(--ui-border) overflow-hidden cursor-pointer hover:ring-2 hover:ring-(--ui-primary)/30 transition-all"
-              @click="pickAsset(asset)"
-            >
-              <img
-                v-if="safeMediaUrl(asset.thumbnailUrl) || safeMediaUrl(asset.url)"
-                :src="safeMediaUrl(asset.thumbnailUrl) || safeMediaUrl(asset.url)"
-                :alt="asset.name"
-                class="w-full h-full object-cover"
-              />
-            </div>
-          </div>
-          <p v-else class="text-[10px] text-(--ui-text-muted) text-center py-2">
-            No image assets uploaded yet
-          </p>
-        </div>
-
-        <!-- Asset picker grid (Video) -->
-        <div v-if="showAssetPicker && bgSourceType === 'video'" class="space-y-1.5">
-          <div v-if="videoAssets.length" class="grid grid-cols-2 gap-1">
-            <div
-              v-for="asset in videoAssets"
-              :key="asset.id"
-              class="rounded border border-(--ui-border) overflow-hidden cursor-pointer hover:ring-2 hover:ring-(--ui-primary)/30 transition-all p-1.5"
-              @click="pickVideoAsset(asset)"
-            >
-              <UIcon name="i-lucide-film" class="w-4 h-4 text-(--ui-text-muted) mb-0.5" />
-              <span class="text-[9px] text-(--ui-text-muted) block truncate">{{ asset.name }}</span>
-            </div>
-          </div>
-          <p v-else class="text-[10px] text-(--ui-text-muted) text-center py-2">
-            No video assets uploaded yet
-          </p>
-        </div>
+        <BannerAssetsPanel
+          v-if="showAssetPicker"
+          :key="bgSourceType"
+          :media-type="bgSourceType === 'video' ? 'video' : 'image'"
+          selection-only
+          @select="bgSourceType === 'video' ? pickVideoAsset($event) : pickAsset($event)"
+        />
 
         <!-- Opacity -->
         <div>

@@ -8,7 +8,7 @@ export default defineEventHandler(async (event) => {
   setHeader(event, 'Cache-Control', 'private, no-store')
 
   const query = getQuery(event)
-  const { clientId, search, limit, offset } = query
+  const { clientId, search, limit, offset, mediaType } = query
   if (clientId) await requireBannerClientAccess(event, String(clientId))
   const marketingPortfolio = user.permissionGroups?.includes('MARKETING_MANAGEMENT') === true
   if (marketingPortfolio && !await hasFreshMarketingManagementPermission(user.id)) {
@@ -53,13 +53,20 @@ export default defineEventHandler(async (event) => {
       paramIndex++
     }
 
+    if (mediaType === 'all') {
+      sql += " AND (mime_type LIKE 'image/%' OR mime_type LIKE 'video/%' OR mime_type LIKE 'audio/%')"
+    } else if (mediaType === 'image' || mediaType === 'video' || mediaType === 'audio') {
+      sql += ` AND mime_type LIKE $${paramIndex++}`
+      params.push(mediaType + '/%')
+    }
+
     if (search) {
       sql += ` AND name ILIKE $${paramIndex}`
       params.push(`%${search}%`)
       paramIndex++
     }
 
-    sql += ' ORDER BY created_at DESC'
+    sql += ' ORDER BY created_at DESC, id DESC'
 
     if (limit) {
       sql += ` LIMIT $${paramIndex}`
