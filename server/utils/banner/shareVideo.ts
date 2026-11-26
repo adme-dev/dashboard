@@ -129,7 +129,7 @@ export function performanceMaxPreviewDocuments(share: Share): Record<string, str
   if (!share.project.performanceMaxFolder && !/\b(?:performance[ -]*max|p[ -]*max)\b/i.test(share.project.name)) return
   const plans = bannerShareVideoPlans(share)
   if (!plans.length || plans.some(plan => plan.unsupported || !plan.board.layers.length
-    || plan.board.layers.some(layer => layer.type === 'video' || layer.type === 'audio' || layer.srcType === 'video'))) return
+    || plan.board.layers.some(layer => layer.type === 'video' || layer.srcType === 'video'))) return
   try {
     return Object.fromEntries(plans.map(plan => [plan.key, buildBannerShareVideoHtml(share, plan)]))
   } catch (error) {

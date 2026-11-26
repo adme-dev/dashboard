@@ -33,11 +33,13 @@ describe('view-only client banner preview', () => {
   it.each([{ name: 'Brighton Nissan P-Max' }, { name: 'January inventory', performanceMaxFolder: true }])('opens a basic PMax share without waiting for video jobs (%o)', async (identity) => {
     mocks.one.mockResolvedValueOnce({ projectId: 'project', revoked: false, expiresAt: null })
       .mockResolvedValueOnce({ ...project, ...identity, canvasData: { custom_1200x1200: {
-        layers: [{ id: 1, type: 'rect', w: 1200, h: 1200, startTime: 0, endTime: 3 }]
+        layers: [{ id: 1, type: 'rect', w: 1200, h: 1200, startTime: 0, endTime: 3 },
+          { id: 2, type: 'audio', startTime: 0, endTime: 3, src: 'https://app.xeroflow.io/api/public/banner-assets/v1.abc.def' }]
       } } })
     mocks.rows.mockResolvedValueOnce([])
     const result = await preview({ token } as never)
     expect(result).toMatchObject({ videos: [], previewDocuments: { custom_1200x1200: expect.stringContaining('Content-Security-Policy') } })
+    expect(result).toMatchObject({ previewDocuments: { custom_1200x1200: expect.stringContaining('<audio data-id="2"') } })
     expect(mocks.one).toHaveBeenCalledTimes(2)
   })
 
