@@ -3,7 +3,7 @@ import type { DropdownMenuItem } from '@nuxt/ui'
 import type { BannerTemplateDB, CustomTemplate, BannerProject } from '~/types/banner-studio'
 import { bannerDimensions, sortLibrary } from '~/utils/banner-library'
 import type { LibrarySort } from '~/utils/banner-library'
-import { BANNER_CATALOG_PRESETS } from '~/utils/banner-format-catalog'
+import { BANNER_CATALOG_PRESETS, buildPresetCanvas } from '~/utils/banner-format-catalog'
 import type { BannerCatalogPreset } from '~/utils/banner-format-catalog'
 import { canDeleteBannerTemplate } from '~~/shared/bannerTemplatePermissions'
 import { apiErrorDescription } from '~/utils/apiError'
@@ -26,6 +26,9 @@ const showDeleteModal = ref(false)
 const deleteTarget = ref<LibraryTemplate | null>(null)
 const deleting = ref(false)
 const deleteError = ref('')
+const previewTemplate = shallowRef<LibraryTemplate | null>(null)
+const previewPreset = shallowRef<BannerCatalogPreset | null>(null)
+const presetCanvas = computed(() => previewPreset.value ? buildPresetCanvas(previewPreset.value) : null)
 const showStartModal = ref(false)
 const startPreset = ref<BannerCatalogPreset | null>(null)
 const startTemplate = ref<BannerTemplateDB | null>(null)
@@ -250,12 +253,14 @@ const dropdownItems = (tpl: LibraryTemplate): DropdownMenuItem[][] => [
           <span class="text-xs text-muted">Choose sizes before creating</span>
         </div>
         <div v-if="visiblePresets.length" class="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-6">
-          <BannerFormatPresetCard
+          <div
             v-for="preset in visiblePresets"
             :key="preset.id"
-            :preset="preset"
-            @select="startFromPreset(preset)"
-          />
+            class="min-w-0"
+          >
+            <BannerFormatPresetCard :preset="preset" @select="startFromPreset(preset)" />
+            <UButton label="Preview" icon="i-lucide-eye" :aria-label="'Preview ' + preset.name" variant="ghost" color="neutral" size="xs" class="mt-1" @click="previewPreset = preset" />
+          </div>
         </div>
         <p v-else class="rounded-lg border border-dashed border-default p-6 text-sm text-muted">
           No starting formats match this search.
@@ -333,6 +338,16 @@ const dropdownItems = (tpl: LibraryTemplate): DropdownMenuItem[][] => [
           >
             <template #actions="{ id }">
               <div class="flex items-center gap-1">
+                <UTooltip text="Preview template">
+                  <UButton
+                    icon="i-lucide-eye"
+                    :aria-label="'Preview ' + templateById.get(id)?.name"
+                    variant="ghost"
+                    color="neutral"
+                    size="xs"
+                    @click="previewTemplate = templateById.get(id) || null"
+                  />
+                </UTooltip>
                 <UTooltip v-if="canDelete(templateById.get(id)!)" text="Delete template">
                   <UButton
                     icon="i-lucide-trash-2"
@@ -374,6 +389,25 @@ const dropdownItems = (tpl: LibraryTemplate): DropdownMenuItem[][] => [
         </template>
       </section>
     </main>
+    <BannerCustomTemplatePreviewModal
+      v-if="previewTemplate?._isCustomHtml"
+      :open="true"
+      :template="previewTemplate"
+      @update:open="!$event && (previewTemplate = null)"
+      @use="useTemplate(previewTemplate!)"
+    />
+    <BannerTemplatePreviewModal
+      v-else-if="previewTemplate"
+      :name="previewTemplate.name"
+      :canvas-data="previewTemplate.canvasData"
+      @close="previewTemplate = null"
+    />
+    <BannerTemplatePreviewModal
+      v-if="previewPreset && presetCanvas"
+      :name="previewPreset.name"
+      :canvas-data="presetCanvas"
+      @close="previewPreset = null"
+    />
     <BannerTemplateStartModal
       v-model:open="showStartModal"
       :preset="startPreset"

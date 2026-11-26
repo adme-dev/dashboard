@@ -229,7 +229,8 @@ const categoryLabel = (cat: string) => categories.find(c => c.value === cat)?.la
           </div>
 
           <div class="flex items-center justify-between mt-2 text-xs text-muted">
-            <span>{{ tpl.usageCount || 0 }} uses</span>
+            <span class="mr-auto">{{ tpl.usageCount || 0 }} uses</span>
+            <UButton label="Preview" :aria-label="'Preview ' + tpl.name" icon="i-lucide-eye" size="xs" color="neutral" variant="ghost" @click="openPreview(tpl)" />
             <UButton
               label="Use"
               icon="i-lucide-play"
@@ -253,7 +254,7 @@ const categoryLabel = (cat: string) => categories.find(c => c.value === cat)?.la
 
     <!-- Preview Modal -->
     <BannerCustomTemplatePreviewModal
-      v-if="previewTemplate"
+      v-if="previewTemplate && showPreviewModal"
       v-model:open="showPreviewModal"
       :template="previewTemplate"
       @use="useTemplate(previewTemplate!)"
