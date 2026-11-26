@@ -138,7 +138,7 @@ watch(() => activeLayers.value, (layers) => {
 const assetMediaType = ref<'all' | 'image' | 'video' | 'audio'>('all')
 
 // Left panel tab state
-const leftTab = ref<'sets' | 'templates' | 'elements' | 'assets' | 'feeds' | 'brand' | 'history' | 'slides'>('elements')
+const leftTab = ref<'sets' | 'templates' | 'elements' | 'assets' | 'feeds' | 'brand' | 'history' | 'slides' | 'layers'>('elements')
 const leftPanelCollapsed = useCookie<boolean>('banner-studio-sidebar-collapsed', {
   default: () => false,
   maxAge: 60 * 60 * 24 * 365,
@@ -182,13 +182,15 @@ onBeforeUnmount(stopSidebarResize)
 const leftTabItems = [
   { id: 'elements' as const, label: 'Insert', icon: 'i-lucide-circle-plus' },
   { id: 'brand' as const, label: 'Brand kit', icon: 'i-lucide-palette' },
-  { id: 'sets' as const, label: 'Sets', icon: 'i-lucide-layers' },
+  { id: 'sets' as const, label: 'Sets', icon: 'i-lucide-panels-top-left' },
   { id: 'templates' as const, label: 'Templates', icon: 'i-lucide-layout-template' },
   { id: 'assets' as const, label: 'Assets', icon: 'i-lucide-image' },
   { id: 'feeds' as const, label: 'Feeds', icon: 'i-lucide-database' },
+  { id: 'layers' as const, label: 'Layers', icon: 'i-lucide-layers' },
   { id: 'slides' as const, label: 'Slides', icon: 'i-lucide-gallery-horizontal-end' },
   { id: 'history' as const, label: 'History', icon: 'i-lucide-history' },
 ]
+const visibleTabItems = computed(() => leftPanelCollapsed.value ? leftTabItems : leftTabItems.filter(tab => tab.id !== 'layers'))
 const brandPanelTab = ref<'logos' | 'variants' | 'offers'>('logos')
 function openLeftPanel(tab: string, brandTab: 'logos' | 'variants' | 'offers' = 'logos') {
   assetMediaType.value = ['image', 'video', 'audio'].includes(tab) ? tab as 'image' | 'video' | 'audio' : 'all'
@@ -885,7 +887,12 @@ const { activeSize } = useBannerFileSize()
         :style="leftPanelCollapsed ? undefined : { width: `min(${clampSidebarWidth(Number(sidebarWidth) || 320)}px, calc(100vw - 7rem))` }"
       >
         <div class="flex shrink-0 items-center justify-between gap-2 border-b border-default p-1.5">
-          <span v-if="!leftPanelCollapsed" class="pl-1.5 text-xs font-medium text-muted">Tools & resources</span>
+          <span v-if="!leftPanelCollapsed" class="mr-auto pl-1.5 text-xs font-medium text-muted">Tools & resources</span>
+          <UButton
+            v-if="!leftPanelCollapsed" label="Layers" icon="i-lucide-layers" size="xs"
+            :color="leftTab === 'layers' ? 'primary' : 'neutral'" :variant="leftTab === 'layers' ? 'soft' : 'ghost'"
+            :aria-pressed="leftTab === 'layers'" aria-controls="banner-tools-content" @click="openLeftPanel('layers')"
+          />
           <UTooltip :text="leftPanelCollapsed ? 'Expand sidebar' : 'Collapse sidebar'">
             <UButton
               :icon="leftPanelCollapsed ? 'i-lucide-panel-left-open' : 'i-lucide-panel-left-close'"
@@ -905,7 +912,7 @@ const { activeSize } = useBannerFileSize()
           class="flex bg-default"
           :class="leftPanelCollapsed ? 'flex-col items-center gap-1 overflow-y-auto py-2' : 'shrink-0 items-center border-b border-default'"
         >
-          <UTooltip v-for="tab in leftTabItems" :key="tab.id" :text="tab.label" :delay-duration="300">
+          <UTooltip v-for="tab in visibleTabItems" :key="tab.id" :text="tab.label" :delay-duration="300">
             <UButton
               :icon="tab.icon"
               :aria-label="tab.label"
@@ -924,6 +931,7 @@ const { activeSize } = useBannerFileSize()
         <!-- Left panel content -->
         <div v-show="!leftPanelCollapsed" id="banner-tools-content" class="flex-1 min-h-0 overflow-y-auto">
           <BannerSetsPanel v-if="leftTab === 'sets'" />
+          <BannerLayersPanel v-else-if="leftTab === 'layers'" />
           <BannerSlidesPanel v-else-if="leftTab === 'slides'" />
           <BannerTemplatesPanel v-else-if="leftTab === 'templates'" />
           <BannerInsertPanel v-else-if="leftTab === 'elements'" @browse-brand="openBrandResource" />

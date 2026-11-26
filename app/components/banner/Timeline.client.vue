@@ -3,7 +3,7 @@ import { Button as ShadcnButton } from '~/components/ui/button'
 import { timelineRows } from '~/utils/banner-timeline-rows'
 import { computed, ref, toRef, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { layoutName } from '~/utils/banner-workspace'
-import { LAYER_COLORS } from '~/utils/banner-constants'
+import { LAYER_COLORS, LAYER_ICONS } from '~/utils/banner-constants'
 import type { KeyframeProperty, Keyframe, Layer } from '~/types/banner-studio'
 import { hasKeyframes, presetToKeyframes } from '~/composables/useBannerTimeline'
 import { insertTimelineKeyframe, retimeLayerPresence } from '~/utils/banner-timeline-edit'
@@ -215,15 +215,6 @@ const laneHeight = (layer: Layer) => layer.type === 'video' ? 48 : LANE_H
 const KF_TRACK_H = 20
 const RULER_H = 32
 const LABEL_W = 256
-const LAYER_ICONS: Record<Layer['type'], string> = {
-  text: 'i-lucide-type',
-  image: 'i-lucide-image',
-  video: 'i-lucide-video',
-  rect: 'i-lucide-square',
-  button: 'i-lucide-mouse-pointer-click',
-  bg: 'i-lucide-panels-top-left',
-  audio: 'i-lucide-music-2'
-}
 
 /** Get height for a layer lane (main + expanded keyframe tracks) */
 function getLaneHeight(layerId: number): number {

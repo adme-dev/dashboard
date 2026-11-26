@@ -1,5 +1,15 @@
 import type { BannerFormat, AnimPreset, AnimOutPreset, BannerSetDef, ElementCategory, PlatformMeta, Layer } from '~/types/banner-studio'
 
+export const LAYER_ICONS: Record<Layer['type'], string> = {
+  text: 'i-lucide-type',
+  image: 'i-lucide-image',
+  video: 'i-lucide-video',
+  rect: 'i-lucide-square',
+  button: 'i-lucide-mouse-pointer-click',
+  bg: 'i-lucide-panels-top-left',
+  audio: 'i-lucide-music-2'
+}
+
 // ══════════════════════════════════════
 // FORMATS — shared display, social and video sizes
 // ══════════════════════════════════════
