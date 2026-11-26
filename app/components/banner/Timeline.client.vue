@@ -260,7 +260,7 @@ const rulerMarks = computed(() => {
 const playheadX = computed(() => state.currentTime * pxPerSec.value)
 
 function getLayerColor(layer: { type: string }): string {
-  return ({ text: '#7963ca', image: '#705318', rect: '#4578b9', button: '#7963ca', bg: '#777b85', video: '#705318', audio: '#b66c8f' } as Record<string, string>)[layer.type] || LAYER_COLORS[0]
+  return ({ text: '#7963ca', image: '#705318', rect: '#4578b9', button: '#7963ca', bg: '#137c78', video: '#705318', audio: '#b66c8f' } as Record<string, string>)[layer.type] || LAYER_COLORS[0]
 }
 
 const phasesByLayer = computed(() => new Map(activeLayers.value.map(layer => [layer.id, timelinePhases(layer)])))
@@ -1268,7 +1268,7 @@ onUnmounted(() => {
                     :title="`Drag to move ${layer.name}`"
                     :style="{
                       backgroundColor: getLayerColor(layer),
-                      opacity: layer.type === 'audio' ? 0.55 : 0.2
+                      opacity: layer.type === 'audio' ? 0.55 : 0.28
                     }"
                     @mousedown="onPresenceMouseDown($event, layer.id, 'move')"
                     @click.stop="onPresenceBarClick(layer)"
@@ -1297,11 +1297,13 @@ onUnmounted(() => {
                     :key="`${phase.start}-${phase.kind}`"
                     class="group/phase absolute top-0 z-10 overflow-visible rounded-lg"
                     :data-animation-phase="phase.kind"
+                    :class="{ 'border-s-[3px]': phase.kind === 'hold' && layer.type !== 'video' }"
                     :style="{
                       left: `${(phase.start - (layer.startTime ?? 0)) * pxPerSec}px`,
                       width: `${(phase.end - phase.start) * pxPerSec}px`,
                       height: layer.type === 'video' && phase.kind !== 'hold' ? '18px' : '100%',
                       backgroundColor: phase.kind === 'hold' || phase.kind === 'audio' ? 'transparent' : getLayerColor(layer),
+                      borderInlineStartColor: getLayerColor(layer),
                       filter: phase.kind === 'exit' ? 'brightness(0.85)' : undefined
                     }"
                     @click.capture="onPhaseClick"

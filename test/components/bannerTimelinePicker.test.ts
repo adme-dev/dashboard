@@ -57,10 +57,13 @@ it('opens the clicked imported phase at its changing property without replacing 
   expect(studio.activeLayers.value[0]!.keyframes).toEqual(keyframes)
 })
 
-it('uses the theme foreground for transparent hold blocks', async () => {
-  const { host } = await mount({}, { kind: 'hold', start: 1, end: 2, label: 'Hold', direction: 'in' })
+it('shows the Hold label and photo thumbnail before hover', async () => {
+  const { host } = await mount({ type: 'bg', src: '/photos/slide.jpg' }, { kind: 'hold', start: 1, end: 2, label: 'Hold', direction: 'in' })
   const trigger = host.querySelector<HTMLButtonElement>('button[aria-label^="Edit Hold"]')!
   expect(trigger.style.color).toBe('var(--ui-text)')
+  expect(trigger.classList.contains('opacity-0')).toBe(false)
+  expect(trigger.textContent?.trim()).toBe('Hold')
+  expect(trigger.querySelector('img')?.getAttribute('src')).toBe('/photos/slide.jpg')
 })
 
 it('edits imported keyframes in the pop-up without replacing the rest of the motion, and undo restores them', async () => {
