@@ -21,7 +21,10 @@ it('assigns and imports a whole ZIP, skips an existing parent, and retains saved
     if (url.endsWith('/folders')) return [{ id: 'folder', name: 'Alfa Romeo', parentId: null, position: 0 }]
     if (url.endsWith('/import/prepare')) return prepared
     if (url.endsWith('/projects')) {
-      if (options?.method !== 'POST') return structuredClone(projects)
+      if (options?.method !== 'POST') {
+        expect(options).toEqual({ query: { view: 'gallery' } })
+        return projects.map(({ id, clientId, tags }) => ({ id, clientId, tags }))
+      }
       const project = { ...options.body, id: `draft-${projects.length}`, status: 'draft' }
       projects.push(project as never)
       return project
