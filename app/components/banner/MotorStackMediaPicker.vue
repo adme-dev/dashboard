@@ -2,7 +2,7 @@
 import type { BannerAsset } from '~/types/banner-studio'
 import { apiErrorDescription } from '~/utils/apiError'
 import { matchesMotorStackGrade, motorStackGradeNames, matchesMotorStackPaint, motorStackPaintName, motorStackPaintNames } from '~/utils/banner-motorstack-colours'
-import { loadedImageMetadata } from '~/utils/banner-image-metadata'
+import { imageMetadata } from '~/utils/banner-image-metadata'
 
 interface MotorStackMediaAsset {
   id: string
@@ -48,6 +48,20 @@ const pendingInitialGrade = ref<string>()
 const search = ref('')
 const assetType = ref('images')
 const typeItems = [{ label: 'Images', value: 'images' }, { label: 'Documents', value: 'documents' }, { label: 'All media', value: 'all' }]
+const imageSizes = [
+  { label: 'Any size', minPixels: 0, maxPixels: Infinity },
+  { label: 'Large (2 MP and up)', minPixels: 2_000_000, maxPixels: Infinity },
+  { label: 'Medium (0.5 to under 2 MP)', minPixels: 500_000, maxPixels: 2_000_000 },
+  { label: 'Small (under 0.5 MP)', minPixels: 0, maxPixels: 500_000 }
+] as const
+const anySize = imageSizes[0]
+const imageSize = shallowRef<(typeof imageSizes)[number]>(anySize)
+const sizeMenuItems = computed(() => imageSizes.map(size => ({
+  label: size.label,
+  type: 'checkbox' as const,
+  checked: imageSize.value === size,
+  onSelect: () => { imageSize.value = size }
+})))
 const media = ref<MotorStackMediaResponse | null>(null)
 const modelNames = ref<string[]>([])
 const loadingMedia = ref(false)
@@ -80,7 +94,7 @@ const colourItems = computed(() => {
     ...(assets.some(asset => asset.importable && asset.mime.startsWith('image/') && !motorStackPaintName(asset.name)) ? [{ label: 'Other images', value: '__other_images__' }] : [])
   ]
 })
-const filteredAssets = computed(() => {
+const matchingAssets = computed(() => {
   const terms = search.value.trim().toLowerCase().split(/\s+/).filter(Boolean)
   return (media.value?.assets || []).filter((asset) => {
     if (assetType.value === 'images' && !isImage(asset)) return false
@@ -90,12 +104,74 @@ const filteredAssets = computed(() => {
     return terms.every(term => text.includes(term))
   })
 })
+const dimensionsByUrl = reactive(new Map<string, ReturnType<typeof imageMetadata>>())
+const filterBySize = computed(() => imageSize.value !== anySize && assetType.value !== 'documents')
+const sizeCandidates = computed(() => matchingAssets.value.filter(isImage))
+const pendingSizeCount = computed(() => filterBySize.value
+  ? sizeCandidates.value.filter(asset => asset.previewUrl && !dimensionsByUrl.has(asset.previewUrl)).length
+  : 0)
+const unavailableSizeCount = computed(() => filterBySize.value
+  ? sizeCandidates.value.filter(asset => !asset.previewUrl || dimensionsByUrl.get(asset.previewUrl) === null).length
+  : 0)
+const filteredAssets = computed(() => {
+  if (!filterBySize.value) return matchingAssets.value
+  const { minPixels, maxPixels } = imageSize.value
+  return sizeCandidates.value.filter((asset) => {
+    const dimensions = asset.previewUrl && dimensionsByUrl.get(asset.previewUrl)
+    if (!dimensions) return false
+    const pixels = dimensions.width * dimensions.height
+    return pixels >= minPixels && pixels < maxPixels
+  })
+})
 const visibleAssetCount = ref(30)
 const visibleAssets = computed(() => filteredAssets.value.slice(0, visibleAssetCount.value))
-const imageMetadata = ref<Record<string, string>>({})
-function rememberImageDimensions(event: Event, id: string) {
-  const details = loadedImageMetadata(event)
-  if (details) imageMetadata.value[id] = details
+function rememberImageDimensions(event: Event, url: string) {
+  const details = imageMetadata(event.target as HTMLImageElement | null)
+  if (details) dimensionsByUrl.set(url, details)
+}
+
+// Look up uncached dimensions only when a size is selected. Limit concurrent
+// preview requests and stop stale work when the search or gallery changes.
+watch([open, filterBySize, sizeCandidates], ([isOpen, active, candidates], _, onCleanup) => {
+  if (!isOpen || !active) return
+  const urls = [...new Set(candidates.flatMap(asset => asset.previewUrl ? [asset.previewUrl] : []))]
+    .filter(url => !dimensionsByUrl.has(url))
+  if (!urls.length) return
+  const controller = new AbortController()
+  let next = 0
+  async function checkSizes() {
+    while (!controller.signal.aborted && next < urls.length) {
+      const url = urls[next++]!
+      if (dimensionsByUrl.has(url)) continue
+      const details = await checkImageDimensions(url, controller.signal)
+      if (!controller.signal.aborted && !dimensionsByUrl.has(url)) dimensionsByUrl.set(url, details)
+    }
+  }
+  const start = setTimeout(() => {
+    for (let index = 0; index < Math.min(4, urls.length); index++) void checkSizes()
+  }, 200)
+  onCleanup(() => {
+    clearTimeout(start)
+    controller.abort()
+  })
+})
+
+function checkImageDimensions(url: string, signal: AbortSignal): Promise<ReturnType<typeof imageMetadata>> {
+  return new Promise((resolve) => {
+    const image = new Image()
+    function finish() {
+      clearTimeout(timeout)
+      signal.removeEventListener('abort', finish)
+      image.onload = image.onerror = null
+      const details = imageMetadata(image)
+      image.removeAttribute('src')
+      resolve(details)
+    }
+    const timeout = setTimeout(finish, 20_000)
+    image.onload = image.onerror = finish
+    signal.addEventListener('abort', finish, { once: true })
+    image.src = url
+  })
 }
 const busy = computed(() => importing.value !== null)
 
@@ -161,15 +237,17 @@ watch(colourItems, (items) => {
   if (loadingMedia.value || !media.value) return
   if (!items.some(item => item.value === colour.value)) colour.value = '__all_colours__'
 })
-watch([model, grade, colour, search, assetType], () => {
+watch([model, grade, colour, search, assetType, imageSize], () => {
   visibleAssetCount.value = 30
 })
 watch(open, (value) => {
   if (!value) {
     requestGeneration++
+    dimensionsByUrl.clear()
     return
   }
   search.value = ''
+  imageSize.value = anySize
   visibleAssetCount.value = 30
   if (props.initialBrandId) {
     const nextModel = props.initialModel || allModels
@@ -360,18 +438,41 @@ async function importAsset(asset: MotorStackMediaAsset) {
             variant="soft"
             :description="warning"
           />
-          <div class="flex items-center justify-between gap-3 text-sm">
+          <div class="flex flex-wrap items-center justify-between gap-3 text-sm">
             <p class="font-medium">
               {{ media.brand.name }}
             </p>
-            <p class="text-muted">
-              {{ filteredAssets.length }} of {{ media.assets.length }} assets
-            </p>
+            <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
+              <p class="text-muted">
+                {{ filteredAssets.length }} of {{ media.assets.length }} assets
+              </p>
+              <UDropdownMenu
+                v-if="assetType !== 'documents' && media.assets.some(isImage)"
+                :items="sizeMenuItems"
+                :content="{ align: 'end' }"
+              >
+                <UButton
+                  :label="filterBySize ? `Image size · ${imageSize.label}` : 'Image size'"
+                  trailing-icon="i-lucide-chevron-down"
+                  color="neutral"
+                  variant="outline"
+                  size="sm"
+                  :disabled="busy"
+                />
+              </UDropdownMenu>
+            </div>
           </div>
-          <div v-if="!filteredAssets.length" class="py-16 text-center text-sm text-muted">
-            {{ media.assets.length ? 'No media matches these filters. Try another model, grade, colour or media type.' : 'No media is available for this selection. Try another model or brand.' }}
+          <p v-if="pendingSizeCount" role="status" class="flex items-center gap-2 text-sm text-muted">
+            <UIcon name="i-lucide-loader-circle" class="animate-spin" />
+            Checking image sizes…
+          </p>
+          <p v-else-if="unavailableSizeCount" role="status" class="text-sm text-muted">
+            Image size unavailable for {{ unavailableSizeCount }} {{ unavailableSizeCount === 1 ? 'image' : 'images' }}. Choose Any size to browse them.
+          </p>
+          <div v-if="!filteredAssets.length && !pendingSizeCount" class="py-16 text-center text-sm text-muted">
+            {{ media.assets.length ? 'No media matches these filters. Try changing a filter.' : 'No media is available for this selection. Try another model or brand.' }}
           </div>
-          <ul v-else class="grid max-h-[min(55vh,38rem)] grid-cols-1 gap-4 overflow-y-auto @sm:grid-cols-2 @2xl:grid-cols-3" aria-label="MotorStack media assets">
+          <ul v-else-if="filteredAssets.length" class="grid max-h-[min(55vh,38rem)] grid-cols-1 gap-4 overflow-y-auto @sm:grid-cols-2 @2xl:grid-cols-3" aria-label="MotorStack media assets">
             <li v-for="asset in visibleAssets" :key="asset.id" class="flex min-w-0 flex-col overflow-hidden rounded-lg border border-default">
               <div class="relative flex aspect-[4/3] shrink-0 items-center justify-center overflow-hidden bg-elevated">
                 <img
@@ -381,7 +482,7 @@ async function importAsset(asset: MotorStackMediaAsset) {
                   loading="lazy"
                   decoding="async"
                   class="absolute inset-0 h-full w-full object-contain"
-                  @load="rememberImageDimensions($event, asset.id)"
+                  @load="rememberImageDimensions($event, asset.previewUrl)"
                   @error="previewErrors[assetKey(asset)] = true"
                 >
                 <div v-else class="space-y-2 p-4 text-center text-muted">
@@ -407,8 +508,8 @@ async function importAsset(asset: MotorStackMediaAsset) {
                   <p class="text-xs text-muted">
                     {{ asset.type }} · {{ formatLabel(asset) }}
                   </p>
-                  <p v-if="imageMetadata[asset.id]" class="text-xs text-muted">
-                    {{ imageMetadata[asset.id] }}
+                  <p v-if="asset.previewUrl && dimensionsByUrl.get(asset.previewUrl)" class="text-xs text-muted">
+                    {{ dimensionsByUrl.get(asset.previewUrl)?.label }}
                   </p>
                 </div>
                 <p v-if="importErrors[assetKey(asset)]" role="alert" class="text-xs text-error">
