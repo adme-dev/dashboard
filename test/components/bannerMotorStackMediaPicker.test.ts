@@ -59,6 +59,10 @@ async function mount(options: { read?: (query: { brandId: string, model?: string
   app.component('UButton', Vue.defineComponent({ props: ['disabled', 'label', 'href'], setup: (props, { slots, attrs }) => () => Vue.h(props.href ? 'a' : 'button', { ...attrs, href: props.href, disabled: props.disabled }, props.label || slots.default?.()) }))
   app.component('UFormField', Vue.defineComponent({ props: ['label'], setup: (props, { slots }) => () => Vue.h('div', { 'data-field': props.label }, slots.default?.()) }))
   app.component('USelectMenu', Vue.defineComponent({ props: ['items', 'disabled'], emits: ['update:modelValue'], setup: (props, { emit }) => () => Vue.h('div', props.items.map((item: { label: string, value: string }) => Vue.h('button', { 'disabled': props.disabled, 'data-value': item.value, 'onClick': () => emit('update:modelValue', item.value) }, item.label))) }))
+  app.component('UDropdownMenu', Vue.defineComponent({ props: ['items'], setup: (props, { slots }) => () => Vue.h('div', [
+    slots.default?.(),
+    ...props.items.map((item: { label: string, checked: boolean, onSelect: () => void }) => Vue.h('button', { 'aria-pressed': item.checked, 'onClick': item.onSelect }, item.label))
+  ]) }))
   app.component('UInput', Vue.defineComponent({ props: ['modelValue'], emits: ['update:modelValue'], setup: (props, { emit }) => () => Vue.h('input', { value: props.modelValue, onInput: (event: Event) => emit('update:modelValue', (event.target as HTMLInputElement).value) }) }))
   app.component('UAlert', Vue.defineComponent({ props: ['title', 'description', 'actions'], setup: props => () => Vue.h('aside', [props.title, props.description, ...(props.actions || []).map((action: { label: string, onClick: () => void }) => Vue.h('button', { onClick: action.onClick }, action.label))]) }))
   app.component('UIcon', Vue.defineComponent({ setup: () => () => Vue.h('span') }))
@@ -74,6 +78,7 @@ beforeEach(() => {
 afterEach(() => {
   app?.unmount()
   app = undefined
+  vi.useRealTimers()
   vi.unstubAllGlobals()
 })
 
@@ -103,6 +108,83 @@ describe('MotorStack media picker', () => {
     await settle()
     expect(host.querySelectorAll('img')).toHaveLength(35)
     expect(host.textContent).toContain('Vehicle 34')
+  })
+
+  it('filters by pixel area across preview pages, reuses checked sizes and restores PDFs with Any size', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const requests: string[] = []
+    let inFlight = 0
+    let peakInFlight = 0
+    vi.stubGlobal('Image', class {
+      naturalWidth = 0
+      naturalHeight = 0
+      onload: (() => void) | null = null
+      onerror: (() => void) | null = null
+      set src(url: string) {
+        requests.push(url)
+        peakInFlight = Math.max(peakInFlight, ++inFlight)
+        queueMicrotask(() => {
+          if (url.endsWith('/broken')) {
+            this.onerror?.()
+            return
+          }
+          this.naturalWidth = url.endsWith('/large') ? 2000 : url.endsWith('/medium') ? 500 : 499
+          this.naturalHeight = 1000
+          this.onload?.()
+        })
+      }
+
+      removeAttribute() { inFlight-- }
+    })
+    const assets = [
+      ...Array.from({ length: 30 }, (_, index) => ({ ...image, id: `small-${index}`, name: `Small car ${index}`, previewUrl: `/preview/small-${index}` })),
+      { ...image, id: 'medium', name: 'Medium car', previewUrl: '/preview/medium' },
+      { ...image, id: 'large', name: 'Large car', previewUrl: '/preview/large' },
+      { ...image, id: 'broken', name: 'Broken preview car', previewUrl: '/preview/broken' },
+      pdf
+    ]
+    await mount({ props: { initialBrandId: 'gwm' }, read: async () => ({ ...response(), assets }) })
+    choose('Media type', 'all')
+    await settle()
+    expect(requests).toHaveLength(0)
+    expect(host.textContent).not.toContain('Large car')
+
+    button('Large (2 MP and up)').click()
+    await settle()
+    expect(host.textContent).toContain('Checking image sizes')
+    await vi.advanceTimersByTimeAsync(200)
+    await settle()
+    expect(host.textContent).toContain('1 of 34 assets')
+    expect(host.textContent).toContain('Large car')
+    expect(host.textContent).toContain('2000 × 1000 px')
+    expect(host.textContent).toContain('Image size unavailable for 1 image')
+    expect(host.querySelector('a')).toBeNull()
+    expect(requests).toHaveLength(33)
+    expect(peakInFlight).toBe(4)
+
+    button('Medium (0.5 to under 2 MP)').click()
+    await settle()
+    expect(host.textContent).toContain('Medium car')
+    expect(host.textContent).not.toContain('Large car')
+    const search = host.querySelector('input')!
+    search.value = 'large'
+    search.dispatchEvent(new Event('input', { bubbles: true }))
+    await settle()
+    expect(host.textContent).toContain('No media matches these filters')
+    search.value = ''
+    search.dispatchEvent(new Event('input', { bubbles: true }))
+    await vi.advanceTimersByTimeAsync(200)
+    expect(requests).toHaveLength(33)
+
+    choose('Media type', 'documents')
+    await settle()
+    expect(host.querySelector('a')?.getAttribute('href')).toBe(pdf.previewUrl)
+    choose('Media type', 'all')
+    await settle()
+    button('Any size').click()
+    await settle()
+    expect(host.textContent).toContain('34 of 34 assets')
+    expect(host.textContent).toContain('Small car 0')
   })
 
   it('shows only the chosen paint colour before importing a vehicle image', async () => {
