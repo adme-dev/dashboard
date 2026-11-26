@@ -5,7 +5,7 @@ import type { ArtboardState } from '~/types/banner-studio'
 import { buildBannerHTML, type ExportCustomFont } from '~/utils/banner-html-builder'
 import { preferredBannerPreviewKey } from '~/utils/banner-library'
 import { resolveBannerFormat } from '~/utils/banner-constants'
-import { withBannerPreviewAudio } from '~/utils/banner-preview-audio'
+import { withBannerPreviewAudio, withoutFrameSoundtrack } from '~/utils/banner-preview-audio'
 import { withBannerPreviewPlayback, readBannerPreviewPlayback, type BannerPreviewPlayback } from '~/utils/banner-preview-playback'
 
 const props = defineProps<{
@@ -43,7 +43,8 @@ async function toggleScreen() {
   expanded.value = true
 }
 const selectedKey = ref(props.initialSize ?? '')
-const muted = ref(false)
+const muted = defineModel<boolean>('muted', { default: false })
+const soundtrack = ref<{ sync(time: number, playing: boolean, gesture?: boolean): void }>()
 const audioError = ref('')
 const playback = ref<BannerPreviewPlayback>({ state: 'loading', current: 0, duration: 0, iteration: 1, repeat: 0 })
 const playing = computed(() => playback.value.state === 'playing')
@@ -55,6 +56,7 @@ const playbackLoop = computed(() => playback.value.repeat === -1
   ? `Loop ${playback.value.iteration} · ∞`
   : playback.value.repeat > 0 ? `Loop ${playback.value.iteration} / ${playback.value.repeat + 1}` : '')
 function sendSoundPreference() {
+  if (props.previewDocuments) return
   root.value?.querySelector('iframe')?.contentWindow?.postMessage({ type: 'banner-preview-sound', muted: muted.value }, '*')
 }
 function receiveAudioStatus(event: MessageEvent) {
@@ -70,6 +72,7 @@ function receivePlaybackStatus(event: MessageEvent) {
   const next = readBannerPreviewPlayback(event.data, previewDocument.value.frameId)
   if (next && (event.data.commandId ?? 0) === commandSequence) {
     playback.value = next
+    soundtrack.value?.sync(next.current, next.state === 'playing')
     if (next.state === 'unavailable') emit('unavailable')
   }
 }
@@ -120,7 +123,7 @@ const previewDocument = computed(() => {
         customFonts: props.fonts || []
       })
     : ''
-  return { frameId, html: withBannerPreviewPlayback(withBannerPreviewAudio(source), frameId) }
+  return { frameId, html: withBannerPreviewPlayback(props.previewDocuments ? withoutFrameSoundtrack(source) : withBannerPreviewAudio(source), frameId) }
 })
 const html = computed(() => previewDocument.value.html)
 watch(html, () => {
@@ -131,6 +134,8 @@ watch(html, () => {
 function sendPlaybackCommand(action: 'seek' | 'play' | 'pause' | 'replay', time?: number) {
   if (!canControl.value) return
   audioError.value = ''
+  const position = action === 'replay' ? 0 : time ?? playback.value.current
+  soundtrack.value?.sync(position, action === 'play' || action === 'replay', true)
   sendSoundPreference()
   root.value?.querySelector('iframe')?.contentWindow?.postMessage({
     type: 'banner-preview-control', frameId: previewDocument.value.frameId,
@@ -169,6 +174,7 @@ function changeZoom(direction: number) {
     @keydown.esc="expanded = false"
   >
     <div v-if="active" class="flex min-h-0 flex-1 flex-col">
+      <BannerPreviewSoundtrack v-if="previewDocuments" :key="previewDocument.frameId" ref="soundtrack" :layers="active.board.layers" :muted="muted" @error="audioError = $event" />
       <div class="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-default bg-default px-4 py-3 sm:px-6">
         <div class="flex max-w-full min-w-0 items-center gap-2 overflow-x-auto" aria-label="Preview size">
           <UButton
