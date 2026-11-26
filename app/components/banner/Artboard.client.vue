@@ -504,6 +504,7 @@ defineExpose({ artboardEl })
             width: layer.type === 'audio' ? '0px' : (layer.type === 'bg' ? '100%' : `${layer.w}px`),
             height: layer.type === 'audio' ? '0px' : (layer.type === 'bg' ? '100%' : `${layer.h}px`),
             zIndex: layer.slideTransitionFor ? transitionZIndex : layer.zIndex,
+            opacity: layer.type === 'bg' ? layer.opacity : undefined,
             mixBlendMode: layer.mixBlendMode || 'normal',
             pointerEvents: isActive && !layer.locked && layer.type !== 'bg' && layer.type !== 'audio' ? 'auto' : 'none',
             display: layer.hidden && layer.type !== 'audio' ? 'none' : undefined,

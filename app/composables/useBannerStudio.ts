@@ -435,6 +435,36 @@ export function useBannerStudio() {
     return copy
   }
 
+  function replaceBackgroundImage(id: number, src: string, allLayouts: boolean) {
+    const source = activeLayers.value.find(layer => layer.id === id && layer.type === 'bg')
+    if (!source || !src) throw new Error('Select a background photo.')
+    const board = state.sets[state.activeKey]!
+    const owner = layerSlideId(board, source)
+    const slideIndex = resolveSlides(board).findIndex(slide => slide.id === owner)
+    const realtime = useBannerRealtime()
+    const targets = (allLayouts ? state.setKeys : [state.activeKey]).map(key => {
+      const targetBoard = state.sets[key]!
+      const backgrounds = targetBoard.layers.filter(layer => layer.type === 'bg')
+      const linked = source.linkId ? backgrounds.filter(layer => layer.linkId === source.linkId) : []
+      // Older design sets can have distinct layer IDs in each layout. Match the
+      // named background on its corresponding slide, never an arbitrary layer.
+      const targetSlide = resolveSlides(targetBoard)[slideIndex]
+      const peers = linked.length ? linked : backgrounds.filter(layer =>
+        (!source.linkId || !layer.linkId) && layer.name === source.name
+        && (!owner || targetSlide) && layerSlideId(targetBoard, layer) === targetSlide?.id)
+      const target = key === state.activeKey ? source : peers.length === 1 ? peers[0] : undefined
+      if (!target) throw new Error(`The matching background could not be identified in ${resolveBannerFormat(key)?.label || key}. Select this layout only or add the matching slide.`)
+      if (realtime.isLayerLockedByOther(target.id)) throw new Error('Another designer is editing the background.')
+      return { key, target }
+    })
+    const patch = { src, srcType: 'image' as const }
+    withCanvasUndo(() => {
+      for (const { target } of targets) Object.assign(target, patch)
+    })
+    for (const { key, target } of targets) realtime.sendLayerUpdate(target.id, key, patch)
+    return targets.length
+  }
+
   function updateLayer(id: number, props: Partial<Layer>) {
     const layer = activeLayers.value.find(l => l.id === id)
     if (!layer) return
@@ -1474,6 +1504,7 @@ export function useBannerStudio() {
     removeLayer,
     duplicateLayer,
     updateLayer,
+    replaceBackgroundImage,
     reorderLayer,
     bringToFront,
     sendToBack,
